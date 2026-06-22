@@ -1,16 +1,19 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { presetForDirection, type RebuildBringOverChoice } from '@airo/shared'
 import Box from '@ux/box'
 import Button from '@ux/button'
 import ArrowRightIcon from '@ux/icon/arrow-right'
 import Modal from '@ux/modal'
 import text from '@ux/text'
+import ToggleButton from '@ux/toggle-button'
 
 import {
   trackRebuildDesignModalChoice,
   trackRebuildDesignModalShown,
 } from '@/app/[market]/develop/components/rebuild/rebuildIntakeInstrumentation'
+import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 import type { RebuildModalDirection } from '@/lib/rebuild-design-choice'
 import { defaultMessageForRebuildIntakeKey } from '@/lib/translations/rebuild-intake-defaults'
@@ -18,7 +21,7 @@ import { defaultMessageForRebuildIntakeKey } from '@/lib/translations/rebuild-in
 interface RebuildDesignModalProps {
   open: boolean
   onClose: () => void
-  onSelect: (direction: RebuildModalDirection, url: string) => void
+  onSelect: (choice: RebuildBringOverChoice, url: string) => void
   /** Pre-fill the source URL (Switchers deep link). */
   initialUrl?: string
   /** Pre-select a direction (Switchers deep link); user can still change it. */
@@ -39,6 +42,13 @@ const OPTIONS: { direction: RebuildModalDirection; labelKey: string; descKey: st
   },
 ]
 
+const TOGGLE_FIELDS: { field: keyof Pick<RebuildBringOverChoice, 'keepLogo' | 'keepImages' | 'keepColors' | 'keepFonts'>; labelKey: string; testId: string }[] = [
+  { field: 'keepLogo', labelKey: 'builder_rebuild_bring_over_logo', testId: 'rebuild-bring-over-logo' },
+  { field: 'keepImages', labelKey: 'builder_rebuild_bring_over_images', testId: 'rebuild-bring-over-images' },
+  { field: 'keepColors', labelKey: 'builder_rebuild_bring_over_colors', testId: 'rebuild-bring-over-colors' },
+  { field: 'keepFonts', labelKey: 'builder_rebuild_bring_over_fonts', testId: 'rebuild-bring-over-fonts' },
+]
+
 export default function RebuildDesignModal({
   open,
   onClose,
@@ -48,8 +58,9 @@ export default function RebuildDesignModal({
 }: RebuildDesignModalProps) {
   const t = useTranslations()
   const [url, setUrl] = useState('')
-  // Select-then-confirm: a card click selects (highlights); Continue commits.
-  const [selected, setSelected] = useState<RebuildModalDirection | null>(null)
+  // Select-then-confirm: a card click selects (highlights + seeds toggles); Continue commits.
+  const [choice, setChoice] = useState<RebuildBringOverChoice | null>(null)
+  const showAdvanced = useSwitchboard('appbuilder-rebuild-bring-over-toggles')
 
   function tr(key: string) {
     return t(key, undefined, defaultMessageForRebuildIntakeKey(key))
@@ -59,7 +70,7 @@ export default function RebuildDesignModal({
     if (open) {
       trackRebuildDesignModalShown()
       setUrl(initialUrl)
-      setSelected(initialDirection)
+      setChoice(initialDirection ? presetForDirection(initialDirection) : null)
     }
   }, [open, initialUrl, initialDirection])
 
@@ -85,7 +96,7 @@ export default function RebuildDesignModal({
           />
         </div>
         {OPTIONS.map((option, index) => {
-          const isSelected = selected === option.direction
+          const isSelected = choice?.direction === option.direction
           return (
             // Wrapper owns the entrance (opacity + lift) so it never competes with
             // the button's hover transform.
@@ -98,7 +109,7 @@ export default function RebuildDesignModal({
                 type="button"
                 aria-pressed={isSelected}
                 data-testid={`rebuild-design-option-${option.direction}`}
-                onClick={() => setSelected(option.direction)}
+                onClick={() => setChoice(presetForDirection(option.direction))}
                 className={`group flex w-full items-center gap-2 text-start p-2 rounded-lg border cursor-pointer transition-all duration-200 ease-out hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 ${
                   isSelected ? 'border-primary shadow-sm' : 'border-border hover:border-primary'
                 }`}
@@ -122,15 +133,36 @@ export default function RebuildDesignModal({
             </div>
           )
         })}
+        {showAdvanced && choice && (
+          <div
+            className="animate-rebuild-reveal grid grid-cols-2 gap-x-16 gap-y-3 w-fit mx-auto"
+            style={{ animationDelay: '260ms' }}
+          >
+            {TOGGLE_FIELDS.map(({ field, labelKey, testId }) => (
+              <div key={field} className="flex items-center gap-2">
+                <ToggleButton
+                  id={testId}
+                  data-testid={testId}
+                  active={choice[field]}
+                  aria-label={tr(labelKey)}
+                  onClick={() => setChoice({ ...choice, [field]: !choice[field] })}
+                />
+                <label htmlFor={testId} className="text-sm cursor-pointer select-none">
+                  {tr(labelKey)}
+                </label>
+              </div>
+            ))}
+          </div>
+        )}
         <Button
           data-testid="rebuild-design-continue"
           design="primary"
-          disabled={!selected}
+          disabled={!choice}
           text={t('builder_common_continue', undefined, 'Continue')}
           onClick={() => {
-            if (!selected) return
-            trackRebuildDesignModalChoice(selected)
-            onSelect(selected, url.trim())
+            if (!choice) return
+            trackRebuildDesignModalChoice(choice.direction)
+            onSelect(choice, url.trim())
           }}
         />
       </Box>

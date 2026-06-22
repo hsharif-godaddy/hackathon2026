@@ -73,6 +73,8 @@ function builtPrompt(stylePreferences: Partial<StylePreferences>): string {
       colorPreference: 'keep-original',
       typographyStyle: 'keep-original',
       layoutApproach: 'responsive',
+      keepLogo: true,
+      keepSourceImages: true,
       ...stylePreferences,
     },
     assetManifest,

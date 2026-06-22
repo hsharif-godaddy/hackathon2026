@@ -240,6 +240,37 @@ describe('websiteRebuild orchestration', function websiteRebuildOrchestration() 
     }));
   });
 
+  it('bringOver choice overrides direction-derived defaults when present', async function bringOverOverridesDefaults() {
+    mockWaitForScrapeCompletion.mockResolvedValue(baseState({ stylePreferences: undefined }));
+
+    await run({
+      rebuildIntakeFormEnabled: false,
+      rebuildBringOverChoice: { direction: 'keep-similar', keepLogo: true, keepImages: false, keepColors: false, keepFonts: true },
+    });
+
+    expect(mockSubmitStylePreferences).toHaveBeenCalledWith('app1', expect.objectContaining({
+      keepSourceImages: false,
+      colorPreference: 'suggest-new',
+    }));
+  });
+
+  it('falls back to direction-derived defaults when rebuildBringOverChoice is malformed', async function malformedBringOverFallback() {
+    mockWaitForScrapeCompletion.mockResolvedValue(baseState({ stylePreferences: undefined }));
+
+    await run({
+      rebuildIntakeFormEnabled: false,
+      rebuildBringOverChoice: { direction: 'keep-similar' }, // missing keepLogo/keepImages/keepColors/keepFonts — fails isRebuildBringOverChoice
+    });
+
+    // Must not throw and must use direction-derived defaults (not bringOver overrides).
+    // Specifically, colorPreference must be the direction default ('keep-original'), not the
+    // bringOver-derived 'suggest-new' that a valid keep-similar choice with keepColors:false would produce.
+    expect(mockSubmitStylePreferences).toHaveBeenCalledTimes(1);
+    expect(mockSubmitStylePreferences).toHaveBeenCalledWith('app1', expect.objectContaining({
+      colorPreference: 'keep-original',
+    }));
+  });
+
   it('threads the agent tool designIntent onto the submitted style preferences', async function toolDesignIntent() {
     mockWaitForScrapeCompletion.mockResolvedValue(baseState({ stylePreferences: undefined }));
 

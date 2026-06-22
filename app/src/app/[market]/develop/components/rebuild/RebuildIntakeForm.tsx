@@ -17,7 +17,7 @@ import { useTranslations } from '@/hooks/useTranslations'
 import {
   directionToDesignChoiceId,
   readDesignChoiceForId,
-  type RebuildModalDirection,
+  type RebuildBringOverChoice,
 } from '@/lib/rebuild-design-choice'
 import { defaultMessageForRebuildIntakeKey } from '@/lib/translations/rebuild-intake-defaults'
 import {
@@ -59,9 +59,9 @@ export default function RebuildIntakeForm({ appId, sourceUrl }: RebuildIntakeFor
   const [scope, setScope] = useState<RebuildScope>('homepage_only')
   // Design direction captured upfront in the homepage rebuild modal, if any. Seeds the
   // initial selection AND the "use recommended defaults" path so the choice isn't lost.
-  const [homepageChoice] = useState<RebuildModalDirection | null>(() => readDesignChoiceForId(null, appId))
+  const [homepageChoice] = useState<RebuildBringOverChoice | null>(() => readDesignChoiceForId(null, appId))
   const [designChoice, setDesignChoice] = useState<DesignChoiceId>(() =>
-    homepageChoice ? directionToDesignChoiceId(homepageChoice) : 'modernize',
+    homepageChoice ? directionToDesignChoiceId(homepageChoice.direction) : 'modernize',
   )
   const { data: workflowStatus } = useRebuildWorkflowStatus(appId, true)
   const { data: scopeEstimates, isLoading: estimatesLoading, isError: estimatesError } = useRebuildScopeEstimates(appId)
@@ -271,10 +271,10 @@ export default function RebuildIntakeForm({ appId, sourceUrl }: RebuildIntakeFor
             userSubmittedRef.current = true
             // Recommended defaults skip the scope decision, but still honor the design
             // direction the user chose upfront on the homepage (modernize otherwise).
-            const designDirection: DesignDirection = homepageChoice ?? 'modernize'
+            const designDirection: DesignDirection = homepageChoice?.direction ?? 'modernize'
             trackRebuildIntakeSubmitted({
               scope: 'homepage_only',
-              designChoice: homepageChoice ? directionToDesignChoiceId(homepageChoice) : 'modernize',
+              designChoice: homepageChoice ? directionToDesignChoiceId(homepageChoice.direction) : 'modernize',
               designDirection,
               submitSource: 'defaults',
               sourceUrl,

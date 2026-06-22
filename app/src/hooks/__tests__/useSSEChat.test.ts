@@ -344,6 +344,27 @@ vi.mock('@/hooks/shared/completionSideEffects', async (importOriginal) => {
 })
 
 // ---------------------------------------------------------------------------
+// useSwitchboard + readDesignChoiceForCurrentApp mocks
+// ---------------------------------------------------------------------------
+
+let mockBringOverTogglesEnabled: boolean | undefined = false
+let mockDesignChoiceForApp: unknown = null
+
+vi.mock('@/hooks/useSwitchboard', () => ({
+  useSwitchboard: vi.fn(function (flag: string) {
+    if (flag === 'appbuilder-rebuild-bring-over-toggles') return mockBringOverTogglesEnabled
+    return false
+  }),
+  getSwitchboardFlag: vi.fn(() => false),
+}))
+
+vi.mock('@/lib/rebuild-design-choice', () => ({
+  readDesignChoiceForCurrentApp: vi.fn(function () { return mockDesignChoiceForApp }),
+  persistPendingDesignChoice: vi.fn(),
+  clearDesignChoiceForApp: vi.fn(),
+}))
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -376,6 +397,8 @@ describe('useSSEChat', () => {
     storeState = {}
     mockRouteParams = {}
     mockTokenAuthType = 'basic'
+    mockBringOverTogglesEnabled = false
+    mockDesignChoiceForApp = null
     mockConversationIdFromCookie = null
     // Mock fetch for conversation creation POST
     global.fetch = vi.fn().mockResolvedValue({
@@ -1455,6 +1478,53 @@ describe('useSSEChat', () => {
     })
 
     expect(lastTransport.sendMessage).not.toHaveBeenCalled()
+  })
+
+  it('sendMessage omits rebuildBringOverChoice when bring-over flag is off', async () => {
+    mockBringOverTogglesEnabled = false
+    mockDesignChoiceForApp = { direction: 'modernize', keepLogo: false, keepImages: false }
+    const hook = await setupHook()
+
+    await act(async () => {
+      await hook.result.current.actions.send({ content: 'rebuild it' })
+    })
+
+    expect(lastTransport.sendMessage).toHaveBeenCalledWith(
+      expect.not.objectContaining({ rebuildBringOverChoice: expect.anything() })
+    )
+  })
+
+  it('sendMessage includes rebuildBringOverChoice when bring-over flag is on', async () => {
+    mockBringOverTogglesEnabled = true
+    const choice = { direction: 'modernize', keepLogo: false, keepImages: false }
+    mockDesignChoiceForApp = choice
+    const hook = await setupHook()
+
+    await act(async () => {
+      await hook.result.current.actions.send({ content: 'rebuild it' })
+    })
+
+    expect(lastTransport.sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ rebuildBringOverChoice: choice })
+    )
+  })
+
+  it('with bring-over flag OFF but stored choice present, sends rebuildDesignDirection but NOT rebuildBringOverChoice', async () => {
+    mockBringOverTogglesEnabled = false
+    const choice = { direction: 'keep-similar', keepLogo: true, keepImages: true, keepColors: true, keepFonts: true }
+    mockDesignChoiceForApp = choice
+    const hook = await setupHook()
+
+    await act(async () => {
+      await hook.result.current.actions.send({ content: 'rebuild it' })
+    })
+
+    expect(lastTransport.sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ rebuildDesignDirection: 'keep-similar' })
+    )
+    expect(lastTransport.sendMessage).toHaveBeenCalledWith(
+      expect.not.objectContaining({ rebuildBringOverChoice: expect.anything() })
+    )
   })
 
   it('stop calls transport.stopGeneration', async () => {

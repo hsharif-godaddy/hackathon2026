@@ -27,6 +27,8 @@ const stylePreferencesSchema = z.object({
     .optional(),
   typographyStyle: z.enum(['keep-original', 'modern', 'classic', 'playful']).optional(),
   layoutApproach: z.enum(['responsive', 'mobile-first', 'desktop-first']).optional(),
+  keepLogo: z.boolean().optional(),
+  keepSourceImages: z.boolean().optional(),
 })
 
 const intakeBodySchema = z.object({
@@ -114,6 +116,8 @@ router.post('/:id/rebuild/intake', async (req: AuthenticatedRequest, res: Respon
       colorPreference: parsed.data.stylePreferences.colorPreference ?? 'keep-original',
       typographyStyle: parsed.data.stylePreferences.typographyStyle ?? 'keep-original',
       layoutApproach: parsed.data.stylePreferences.layoutApproach ?? 'responsive',
+      keepLogo: parsed.data.stylePreferences.keepLogo ?? true,
+      keepSourceImages: parsed.data.stylePreferences.keepSourceImages ?? true,
       ...(parsed.data.stylePreferences.customColors && {
         customColors: parsed.data.stylePreferences.customColors,
       }),

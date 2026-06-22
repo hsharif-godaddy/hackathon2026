@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { MediaSlotTool, type MediaSlotImportUploadResult, type MediaSlotResult } from '../media-slot-tool.js';
 import { AppRepository } from '../../database/repositories/AppRepository.js';
 import { logger } from '../../logging/index.js';
-import { fillSlotFromRebuildSource } from '../rebuild-source-media.js';
+import { fillSlotFromRebuildSource, getRebuildBuildContext } from '../rebuild-source-media.js';
 import { recordUploadSlotUrl } from '../../services/upload-classification-store.js';
 
 /**
@@ -173,6 +173,25 @@ EXAMPLES:
     const sourceFill = await fillSlotFromRebuildSource({ appId, slot, query: query ?? '', mediaType: (mediaType ?? 'image') as 'image' | 'video' });
     if (sourceFill) {
       return JSON.stringify(sourceFill, null, 2);
+    }
+
+    // keepSourceImages lever: no matching source photo and the user chose to keep
+    // their images — block the Getty fallthrough rather than substitute stock.
+    // Uses the same getRebuildBuildContext scope as the source-fill above, so the
+    // two image gates never disagree (e.g. during the rebuild's review phase).
+    const rebuildCtx = action === 'search' ? await getRebuildBuildContext(appId) : null;
+    if (rebuildCtx?.keepSourceImages) {
+      logger.info('rebuild.media.gated', { appId, slot });
+      // success:false + note survive toModelOutput's projection (disabled/reason/message
+      // would be stripped, leaving the model an empty object).
+      return JSON.stringify(
+        {
+          success: false,
+          note: 'Stock media is disabled for this rebuild because the user chose to keep their existing images. Do not use this tool for this slot — reference the imported source images directly via their /assets/images/... paths.',
+        },
+        null,
+        2,
+      );
     }
 
     const mediaSlotTool = new MediaSlotTool();

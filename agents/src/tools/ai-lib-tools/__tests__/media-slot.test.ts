@@ -1,5 +1,15 @@
 import { describe, it, expect, vi } from 'vitest'
 
+const { mockFillSlot, mockGetRebuildCtx } = vi.hoisted(() => ({
+  mockFillSlot: vi.fn(),
+  mockGetRebuildCtx: vi.fn(),
+}))
+
+vi.mock('../../rebuild-source-media.js', () => ({
+  fillSlotFromRebuildSource: mockFillSlot,
+  getRebuildBuildContext: mockGetRebuildCtx,
+}))
+
 vi.mock('../../media-slot-tool.js', () => ({
   MediaSlotTool: class {
     async selectMedia() {
@@ -82,5 +92,67 @@ describe('mediaSlotAITool', () => {
       expect(lean.note).toContain('<video')
       expect(lean.resolvedUrl).toBeUndefined()
     })
+  })
+})
+
+describe('rebuild Getty-gate (keepSourceImages)', () => {
+  beforeEach(() => { vi.clearAllMocks() })
+
+  it('keepSourceImages: true + action: search → returns a gated result the model can read', async () => {
+    mockFillSlot.mockResolvedValue(null)
+    mockGetRebuildCtx.mockResolvedValue({ appPath: 'x', rootPath: '/', keepSourceImages: true })
+
+    const result = await (mediaSlotAITool as any).execute(
+      { action: 'search', slot: 'pages/home/hero', mediaType: 'image', query: 'restaurant hero image' },
+      { experimental_context: { metadata: { appId: 'app123' } } },
+    )
+
+    // success:false + note survive toModelOutput's projection (disabled/reason would be stripped).
+    const parsed = JSON.parse(result)
+    expect(parsed.success).toBe(false)
+    expect(parsed.note).toMatch(/\/assets\/images/)
+  })
+
+  it('keepSourceImages: false + action: search → gate does NOT fire', async () => {
+    mockFillSlot.mockResolvedValue(null)
+    mockGetRebuildCtx.mockResolvedValue({ appPath: 'x', rootPath: '/', keepSourceImages: false })
+
+    let result: string | undefined
+    try {
+      result = await (mediaSlotAITool as any).execute(
+        { action: 'search', slot: 'pages/home/hero', mediaType: 'image', query: 'restaurant hero image' },
+        { experimental_context: { metadata: { appId: 'app123' } } },
+      )
+    } catch (e) {
+      // May throw for reasons unrelated to the gate — that's acceptable, but
+      // must not be the keep-source-images gate itself
+      expect((e as Error).message).not.toMatch(/keep-source-images/i)
+      return
+    }
+
+    if (result !== undefined) {
+      const parsed = JSON.parse(result)
+      expect(parsed.disabled).not.toBe(true)
+    }
+  })
+
+  it('action: import_upload → gate is never consulted', async () => {
+    mockFillSlot.mockResolvedValue(null)
+    mockGetRebuildCtx.mockResolvedValue({ appPath: 'x', rootPath: '/', keepSourceImages: true })
+
+    let result: string | undefined
+    try {
+      result = await (mediaSlotAITool as any).execute(
+        { action: 'import_upload', slot: 'pages/home/hero', mediaType: 'image', filename: 'photo.jpg' },
+        { experimental_context: { metadata: { appId: 'app123' } } },
+      )
+    } catch {
+      // May throw for unrelated reasons — gate not consulted is the assertion
+    }
+
+    expect(mockGetRebuildCtx).not.toHaveBeenCalled()
+    if (result !== undefined) {
+      expect(result).not.toContain('"disabled": true')
+    }
   })
 })

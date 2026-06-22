@@ -69,6 +69,7 @@ import { buildValidationToolCallFromEvent } from './shared/validationToolCallBui
 import { handleVideoNotification } from './shared/videoNotification'
 import { useBudgetUpdate } from './useBudgetUpdate'
 import { useGrantContext } from './useGrantContext'
+import { useSwitchboard } from './useSwitchboard'
 import { useTranslations } from './useTranslations'
 
 const BROWSER_TIMEZONE: string = Intl.DateTimeFormat().resolvedOptions().timeZone
@@ -199,12 +200,16 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
   })
 
   const budgetServiceEnabled = useResolvedBillingMode(currentAppId)
+  const bringOverTogglesEnabled = useSwitchboard('appbuilder-rebuild-bring-over-toggles')
 
   const subscriptionIdRef = useRef(subscriptionId)
   subscriptionIdRef.current = subscriptionId
 
   const budgetServiceEnabledRef = useRef(budgetServiceEnabled)
   budgetServiceEnabledRef.current = budgetServiceEnabled
+
+  const bringOverTogglesEnabledRef = useRef(bringOverTogglesEnabled)
+  bringOverTogglesEnabledRef.current = bringOverTogglesEnabled
 
   const tokenAuthTypeRef = useRef(tokenAuthType)
   tokenAuthTypeRef.current = tokenAuthType
@@ -1199,9 +1204,14 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
         getFullStorySessionId(),
       ])
 
-      // Homepage rebuild modal choice (sessionStorage). Carried on the message so the
-      // rebuild honors it even with the intake form off.
-      const rebuildDesignDirection = readDesignChoiceForCurrentApp(activeAppId) ?? undefined
+      // Homepage rebuild modal choice (sessionStorage). The design direction is always
+      // honored (pre-flag behavior). The four bring-over toggles ride along only when the
+      // flag is on; off = direction-only, exactly as before the toggles existed.
+      const rebuildBringOverChoiceRaw = readDesignChoiceForCurrentApp(activeAppId) ?? undefined
+      const rebuildBringOverChoice = bringOverTogglesEnabledRef.current
+        ? rebuildBringOverChoiceRaw
+        : undefined
+      const rebuildDesignDirection = rebuildBringOverChoiceRaw?.direction
 
       const resolvedSendParams: SendMessageParams = {
         content: options.content,
@@ -1219,6 +1229,7 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
         customContext: options.customContext,
         rebuildBuildPageSlug: options.rebuildBuildPageSlug,
         ...(rebuildDesignDirection && { rebuildDesignDirection }),
+        ...(rebuildBringOverChoice && { rebuildBringOverChoice }),
         budgetServiceEnabled: budgetServiceEnabledRef.current || undefined,
         market: marketRef.current,
         subscriptionId: subscriptionIdRef.current,

@@ -3,9 +3,37 @@
  * photo for an agent's media slot+query (instead of Getty stock) during the
  * initial build of a rebuilt site. See rebuild-source-media.ts.
  */
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { selectSourceImageForSlot, toServableSlotUrl, tokenize } from '../rebuild-source-media.js';
+import { fillSlotFromRebuildSource, selectSourceImageForSlot, toServableSlotUrl, tokenize } from '../rebuild-source-media.js';
+
+// ---- Mocks for getRebuildBuildContext (I/O-dependent) ----
+// vi.hoisted runs before module evaluation so these refs are safe to use
+// inside vi.mock factories (which are hoisted to the top of the file).
+
+const { mockFindById, mockReadFile } = vi.hoisted(() => ({
+  mockFindById: vi.fn(),
+  mockReadFile: vi.fn(),
+}));
+
+vi.mock('../../database/repositories/AppRepository.js', () => ({
+  AppRepository: vi.fn(function (this: unknown) {
+    (this as { findById: typeof mockFindById }).findById = mockFindById;
+  }),
+}));
+
+vi.mock('node:fs/promises', () => ({ readFile: mockReadFile }));
+
+vi.mock('../../logging/index.js', () => ({
+  Logger: { create: vi.fn(() => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() })) },
+  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+}));
+
+vi.mock('../../services/MediaManifestService.js', () => ({
+  mediaManifestService: { getOrCreateManifest: vi.fn(), setSlot: vi.fn() },
+}));
+
+const { getRebuildBuildContext } = await import('../rebuild-source-media.js');
 
 describe('toServableSlotUrl', () => {
   it('rewrites a public /assets/ path to the uploads form dev-supervisor serves', () => {
@@ -193,5 +221,69 @@ describe('selectSourceImageForSlot — placement (Atlas SSM) signals', () => {
   it('fills a logo slot from the in-header image even without a vision usageContext', () => {
     const pick = selectSourceImageForSlot(pool, 'logo/primary', 'logo', new Set());
     expect(pick?.url).toBe('/assets/images/header-logo.png');
+  });
+});
+
+describe('getRebuildBuildContext — keepSourceImages gate', () => {
+  const appPath = '/apps/testapp';
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockFindById.mockReturnValue({ id: 'app1', path: appPath, initialBuildComplete: false });
+  });
+
+  it('returns keepSourceImages:false when stylePreferences.keepSourceImages is false', async () => {
+    mockReadFile.mockResolvedValue(
+      JSON.stringify({ rootPath: '/', stylePreferences: { keepSourceImages: false } }),
+    );
+    const ctx = await getRebuildBuildContext('app1');
+    expect(ctx).not.toBeNull();
+    expect(ctx!.keepSourceImages).toBe(false);
+  });
+
+  it('returns keepSourceImages:true when stylePreferences.keepSourceImages is true', async () => {
+    mockReadFile.mockResolvedValue(
+      JSON.stringify({ rootPath: '/', stylePreferences: { keepSourceImages: true } }),
+    );
+    const ctx = await getRebuildBuildContext('app1');
+    expect(ctx).not.toBeNull();
+    expect(ctx!.keepSourceImages).toBe(true);
+  });
+
+  it('defaults keepSourceImages to true when stylePreferences is absent (legacy state)', async () => {
+    mockReadFile.mockResolvedValue(JSON.stringify({ rootPath: '/' }));
+    const ctx = await getRebuildBuildContext('app1');
+    expect(ctx).not.toBeNull();
+    expect(ctx!.keepSourceImages).toBe(true);
+  });
+
+  it('returns null when app is not found', async () => {
+    mockFindById.mockReturnValue(undefined);
+    expect(await getRebuildBuildContext('unknown-app')).toBeNull();
+  });
+});
+
+describe('fillSlotFromRebuildSource — keepImages early-return', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('returns null immediately when keepSourceImages is false, without loading manifest', async () => {
+    mockFindById.mockReturnValue({ id: 'app1', path: '/apps/app1', initialBuildComplete: false });
+    mockReadFile.mockResolvedValue(
+      JSON.stringify({ rootPath: '/', stylePreferences: { keepSourceImages: false } }),
+    );
+
+    const { mediaManifestService } = await import('../../services/MediaManifestService.js');
+
+    const result = await fillSlotFromRebuildSource({
+      appId: 'app1',
+      slot: 'pages/home/hero',
+      query: 'restaurant interior',
+      mediaType: 'image',
+    });
+
+    expect(result).toBeNull();
+    expect(mediaManifestService.getOrCreateManifest).not.toHaveBeenCalled();
   });
 });

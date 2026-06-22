@@ -47,6 +47,23 @@ export interface BuildUserPromptArgs {
   hasScreenshot: boolean;
 }
 
+/**
+ * Which source assets the agent is allowed to see, per the bring-over flags.
+ * This is the deterministic image/logo lever: the agent cannot reuse an asset
+ * that isn't in the prompt. Logo identity uses the isLikelyLogo heuristic.
+ */
+export function selectPromptAssets(assets: AssetInfo[], prefs: StylePreferences): AssetInfo[] {
+  // Default undefined → keep: an in-flight rebuild whose persisted workflow-state
+  // predates these fields must still surface its assets (else every asset, logo
+  // included, is filtered out → AIROBUILD-2104 fabrication). Only an explicit
+  // false drops.
+  return assets.filter((asset) => {
+    const isLogo = isLikelyLogo(asset);
+    if (isLogo) return prefs.keepLogo !== false;
+    return prefs.keepSourceImages !== false;
+  });
+}
+
 export function buildUserPrompt(args: BuildUserPromptArgs): string {
   const { siteMetadata, pageContent, stylePreferences, assetManifest, isFirstPage, hasScreenshot } = args;
 
@@ -54,12 +71,12 @@ export function buildUserPrompt(args: BuildUserPromptArgs): string {
 
   // Sort once by placement so both the dimensioned list and the categorized
   // section map operate on the same top-N slice (MAX_ASSETS_IN_PROMPT cap).
-  // Reimagine is a fresh redesign: only the logo is offered back (so the brand
-  // stays recognizable); listing the source photos here just tempts the agent to
-  // reuse them despite the "use fresh imagery" directive. Clone keeps all assets.
+  // Asset selection is now driven by the explicit keepLogo/keepSourceImages flags
+  // rather than the preserve-design predicate, so the agent only sees assets
+  // the user chose to bring over.
   const orderedAssets = [...assetManifest.assets]
     .sort((a, b) => placementOrder(a.placement) - placementOrder(b.placement));
-  const promptAssets = preserveDesign ? orderedAssets : orderedAssets.filter(isLikelyLogo);
+  const promptAssets = selectPromptAssets(orderedAssets, stylePreferences);
   const categorizedAssets = categorizeAssets(promptAssets);
   const assetsList = renderAssetList(promptAssets);
 
@@ -86,14 +103,14 @@ export function buildUserPrompt(args: BuildUserPromptArgs): string {
   const designInstructions = isFirstPage ? buildDesignInstructions(stylePreferences, siteMetadata, hasScreenshot) : '';
   const typographyInstructions = buildTypographyInstructions(stylePreferences, siteMetadata);
 
-  // Asset sourcing forks on the same clone-vs-redesign predicate everything else
-  // keys off. keep-similar reuses the scraped images verbatim (AIROBUILD-2104:
-  // never fabricate). modernize is a reimagining — keep the source logo so the
-  // brand stays recognizable, but pull fresh imagery for everything else.
+  // Asset directive is now a three-way keyed on the explicit bring-over flags
+  // rather than the preserve-design predicate (AIROBUILD-2715).
   const assetDirectiveNum = isFirstPage ? '5' : '4';
-  const assetDirective = shouldPreserveDesign(stylePreferences)
-    ? `${assetDirectiveNum}. **USE IMPORTED ASSETS — DO NOT GENERATE NEW IMAGES** - The source site's images are already downloaded and listed above with paths like \`/assets/images/[filename]\`. Use those paths directly in the code. Do NOT use the media tool to search for or generate replacement images. Only search for stock images if a section genuinely has no suitable imported image AND the design requires one.`
-    : `${assetDirectiveNum}. **REIMAGINE WITH FRESH IMAGERY** - This is a redesign, not a clone. Keep the source **logo** (listed above with a \`/assets/images/[filename]\` path) so the brand stays recognizable. For everything else — hero, sections, backgrounds — choose fresh imagery that fits the new design: use the media tool to search for modern stock photos. Do not feel bound to reuse the source site's photos.`;
+  const assetDirective = stylePreferences.keepSourceImages
+    ? `${assetDirectiveNum}. **USE IMPORTED ASSETS — DO NOT GENERATE NEW IMAGES** - The source site's images are already downloaded and listed above with paths like \`/assets/images/[filename]\`. Use those paths directly. Do NOT use the media tool to search for or generate replacement images. Only search for stock images if a section genuinely has no suitable imported image AND the design requires one.`
+    : stylePreferences.keepLogo
+      ? `${assetDirectiveNum}. **REIMAGINE WITH FRESH IMAGERY** - This is a redesign. Keep the source **logo** (listed above with a \`/assets/images/[filename]\` path) so the brand stays recognizable. For everything else — hero, sections, backgrounds — choose fresh imagery: use the media tool for modern stock photos.`
+      : `${assetDirectiveNum}. **FRESH IMAGERY, NO SOURCE BRAND ASSETS** - Do not reuse any source images, including the logo. Choose all imagery fresh via the media tool to fit the new design.`;
 
   const siteType = siteMetadata.siteType ?? 'content';
   const siteTypeRules = buildSiteTypeRules(siteType, isFirstPage);

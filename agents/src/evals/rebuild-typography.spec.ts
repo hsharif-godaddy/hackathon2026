@@ -44,6 +44,8 @@ const keepOriginalPrefs: StylePreferences = {
   colorPreference: 'keep-original',
   typographyStyle: 'keep-original',
   layoutApproach: 'responsive',
+  keepLogo: true,
+  keepSourceImages: true,
 };
 
 const basePageContent: PageContent = {
@@ -186,6 +188,64 @@ describe('rebuild typography fidelity eval (AIROBUILD-2651)', function rebuildTy
       expect(fontTheme).toContain("mode: 'suggest'");
       expect(fontTheme).toContain("mode: 'apply'");
       expect(fontTheme).toContain('User asks for options');
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // AIROBUILD-2715 bring-over toggle eval dimension: font-match
+  // -------------------------------------------------------------------------
+  // Asserts that `typographyStyle` flips correctly from the keepFonts toggle,
+  // and that `shouldApplyRebuildTypography` gates on the resolved value.
+
+  describe('eval dimension: font-match (AIROBUILD-2715)', function fontMatchDimension() {
+    it('keepFonts: keep-original → shouldApplyRebuildTypography fires on first page', function keepOriginalFires() {
+      const prefsKeep: StylePreferences = {
+        designDirection: 'keep-similar',
+        colorPreference: 'keep-original',
+        typographyStyle: 'keep-original',
+        layoutApproach: 'responsive',
+        keepLogo: true,
+        keepSourceImages: true,
+      };
+      expect(shouldApplyRebuildTypography(true, prefsKeep, maxineduboisMetadata.typography)).toBe(true);
+    });
+
+    it('keepFonts: modern → shouldApplyRebuildTypography does NOT fire (fresh font path)', function modernSkips() {
+      const prefsModern: StylePreferences = {
+        designDirection: 'modernize',
+        colorPreference: 'suggest-new',
+        typographyStyle: 'modern',
+        layoutApproach: 'responsive',
+        keepLogo: false,
+        keepSourceImages: false,
+      };
+      expect(shouldApplyRebuildTypography(true, prefsModern, maxineduboisMetadata.typography)).toBe(false);
+    });
+
+    it('keep-original prompt includes pre-applied typography guidance (not fontTheme)', function keepOriginalPrompt() {
+      const prompt = buildKeepOriginalPrompt(maxineduboisMetadata, true);
+      expect(prompt).toContain('TYPOGRAPHY DIRECTION');
+      expect(prompt).toContain('already applied to globals.css');
+      expect(prompt).toContain('do NOT call fontTheme');
+    });
+
+    it('modern (suggest-new) prompt does NOT include keep-original typography guidance', function modernPrompt() {
+      const modernPrompt = buildUserPrompt({
+        siteMetadata: maxineduboisMetadata,
+        pageContent: basePageContent,
+        stylePreferences: {
+          designDirection: 'modernize',
+          colorPreference: 'suggest-new',
+          typographyStyle: 'modern',
+          layoutApproach: 'responsive',
+          keepLogo: false,
+          keepSourceImages: false,
+        },
+        assetManifest: emptyAssetManifest,
+        isFirstPage: true,
+        hasScreenshot: false,
+      });
+      expect(modernPrompt).not.toContain('already applied to globals.css');
     });
   });
 });

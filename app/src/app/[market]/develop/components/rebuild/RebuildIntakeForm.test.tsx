@@ -4,6 +4,7 @@
 import '@testing-library/jest-dom'
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { presetForDirection } from '@airo/shared'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 
 import { persistPendingDesignChoice, promotePendingDesignChoice } from '@/lib/rebuild-design-choice'
@@ -194,7 +195,7 @@ describe('RebuildIntakeForm', () => {
 
   describe('homepage design-choice pre-fill', () => {
     it('pre-selects modernize when the persisted choice is modernize', async () => {
-      persistPendingDesignChoice('modernize')
+      persistPendingDesignChoice(presetForDirection('modernize'))
       promotePendingDesignChoice('app-abc')
 
       render(<RebuildIntakeForm appId="app-abc" sourceUrl="https://example.com" />)
@@ -210,7 +211,7 @@ describe('RebuildIntakeForm', () => {
     })
 
     it('pre-selects keep-similar when the persisted choice is keep-similar', async () => {
-      persistPendingDesignChoice('keep-similar')
+      persistPendingDesignChoice(presetForDirection('keep-similar'))
       promotePendingDesignChoice('app-abc')
 
       render(<RebuildIntakeForm appId="app-abc" sourceUrl="https://example.com" />)
@@ -239,7 +240,7 @@ describe('RebuildIntakeForm', () => {
     })
 
     it('honors the homepage choice when Use recommended defaults is clicked', async () => {
-      persistPendingDesignChoice('modernize')
+      persistPendingDesignChoice(presetForDirection('modernize'))
       promotePendingDesignChoice('app-abc')
 
       render(<RebuildIntakeForm appId="app-abc" sourceUrl="https://example.com" />)
@@ -263,7 +264,7 @@ describe('RebuildIntakeForm', () => {
     })
 
     it('allows the user to override the pre-filled choice', async () => {
-      persistPendingDesignChoice('modernize')
+      persistPendingDesignChoice(presetForDirection('modernize'))
       promotePendingDesignChoice('app-abc')
 
       render(<RebuildIntakeForm appId="app-abc" sourceUrl="https://example.com" />)

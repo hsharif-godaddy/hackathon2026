@@ -100,8 +100,17 @@ describe('stylePreferencesForDirection', () => {
     expect(stylePreferencesForDirection('modernize', undefined, undefined, 'reimagine from first principles')).toEqual({
       ...DEFAULT_STYLE_PREFERENCES,
       designDirection: 'modernize',
+      keepSourceImages: false,
       designIntent: 'reimagine from first principles',
     });
+  });
+
+  it('derives the image axis from direction: modernize → fresh, keep-similar → clone', () => {
+    // Regression guard for the flag-off path that previously inherited the static
+    // DEFAULT keepSourceImages:true and cloned source imagery on a "Reimagine".
+    expect(stylePreferencesForDirection('modernize').keepSourceImages).toBe(false);
+    expect(stylePreferencesForDirection('modernize').keepLogo).toBe(true);
+    expect(stylePreferencesForDirection('keep-similar').keepSourceImages).toBe(true);
   });
 
   it('omits the designIntent key entirely when no intent is supplied', () => {
@@ -110,8 +119,10 @@ describe('stylePreferencesForDirection', () => {
   });
 
   it('returns modernize defaults with no warning when no choice was supplied', () => {
-    expect(stylePreferencesForDirection(undefined)).toEqual(DEFAULT_STYLE_PREFERENCES);
-    expect(stylePreferencesForDirection()).toEqual(DEFAULT_STYLE_PREFERENCES);
+    // modernize (the default direction) derives keepSourceImages:false (fresh imagery).
+    const modernizeDefaults = { ...DEFAULT_STYLE_PREFERENCES, keepSourceImages: false };
+    expect(stylePreferencesForDirection(undefined)).toEqual(modernizeDefaults);
+    expect(stylePreferencesForDirection()).toEqual(modernizeDefaults);
     expect(warn).not.toHaveBeenCalled();
   });
 
@@ -119,11 +130,13 @@ describe('stylePreferencesForDirection', () => {
     expect(stylePreferencesForDirection(undefined, 'simplify')).toEqual({
       ...DEFAULT_STYLE_PREFERENCES,
       designDirection: 'simplify',
+      keepSourceImages: false,
     });
   });
 
   it('warns via resolveDesignDirection when a choice arrived but failed validation', () => {
-    expect(stylePreferencesForDirection('moderinze')).toEqual(DEFAULT_STYLE_PREFERENCES);
+    // Invalid direction falls back to modernize → keepSourceImages:false (fresh).
+    expect(stylePreferencesForDirection('moderinze')).toEqual({ ...DEFAULT_STYLE_PREFERENCES, keepSourceImages: false });
     expect(warn).toHaveBeenCalledWith(
       'rebuild.intakeDefaults.invalidDirection',
       { source: 'client', received: 'moderinze' },
@@ -135,7 +148,7 @@ describe('defaultIntakeChoices', () => {
   it('carries the direction into homepage-scoped choices', () => {
     expect(defaultIntakeChoices('bold')).toEqual({
       scope: 'homepage_only',
-      stylePreferences: { ...DEFAULT_STYLE_PREFERENCES, designDirection: 'bold' },
+      stylePreferences: { ...DEFAULT_STYLE_PREFERENCES, designDirection: 'bold', keepSourceImages: false },
     });
   });
 
@@ -145,8 +158,33 @@ describe('defaultIntakeChoices', () => {
       stylePreferences: {
         ...DEFAULT_STYLE_PREFERENCES,
         designDirection: 'modernize',
+        keepSourceImages: false,
         designIntent: 'reimagine from scratch',
       },
     });
+  });
+});
+
+describe('DEFAULT_STYLE_PREFERENCES bring-over flags', () => {
+  it('defaults keepLogo and keepSourceImages to true', () => {
+    expect(DEFAULT_STYLE_PREFERENCES.keepLogo).toBe(true);
+    expect(DEFAULT_STYLE_PREFERENCES.keepSourceImages).toBe(true);
+  });
+});
+
+import { bringOverToStylePreferences } from '@airo/shared';
+
+describe('fonts toggle wiring', () => {
+  it('keepFonts true → typographyStyle keep-original (deterministic apply path)', () => {
+    const mapped = bringOverToStylePreferences({
+      direction: 'keep-similar', keepLogo: true, keepImages: true, keepColors: true, keepFonts: true,
+    });
+    expect(mapped.typographyStyle).toBe('keep-original');
+  });
+  it('keepFonts false → typographyStyle modern (fresh-font path)', () => {
+    const mapped = bringOverToStylePreferences({
+      direction: 'modernize', keepLogo: false, keepImages: false, keepColors: false, keepFonts: false,
+    });
+    expect(mapped.typographyStyle).toBe('modern');
   });
 });

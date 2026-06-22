@@ -14,7 +14,7 @@ import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 import { JourneyTracker } from '@/lib/journeyTracker'
 import { logLogoDesignerEntry } from '@/lib/logo-designer-entry'
-import { persistPendingDesignChoice, type RebuildModalDirection } from '@/lib/rebuild-design-choice'
+import { persistPendingDesignChoice, type RebuildBringOverChoice, type RebuildModalDirection } from '@/lib/rebuild-design-choice'
 import { generateClickEID, logClickEvent } from '@/utils/instrumentation'
 
 const REBUILD_SITE_SLUG = 'rebuild_site'
@@ -76,10 +76,10 @@ export default function HeroExamples({ className, theme = 'dark', onExampleClick
     logExampleClick(example)
   }
 
-  function handleRebuildDesignSelect(direction: RebuildModalDirection, url: string) {
-    persistPendingDesignChoice(direction)
+  function handleRebuildDesignSelect(choice: RebuildBringOverChoice, url: string) {
+    persistPendingDesignChoice(choice)
     const urlPart = url ? ` at ${url}` : ''
-    onExampleClick(`${rebuildBasePromptRef.current}${urlPart}. ${REBUILD_PROMPT_HINTS[direction]}`)
+    onExampleClick(`${rebuildBasePromptRef.current}${urlPart}. ${REBUILD_PROMPT_HINTS[choice.direction]}`)
     setRebuildModalOpen(false)
   }
 

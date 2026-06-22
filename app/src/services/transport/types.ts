@@ -1,3 +1,5 @@
+import type { RebuildBringOverChoice } from '@airo/shared'
+
 export type TransportState = 'disconnected' | 'connected' | 'streaming' | 'error' | 'dormant'
 
 export interface TransportEvent {
@@ -33,6 +35,8 @@ export interface SendMessageParams {
   /** Homepage rebuild modal design direction ('modernize' | 'keep-similar') — lets the
    *  rebuild honor the choice even when the intake form is off. */
   rebuildDesignDirection?: string
+  /** Full bring-over choice from the homepage rebuild modal — carries all four toggle values. */
+  rebuildBringOverChoice?: RebuildBringOverChoice
   budgetServiceEnabled?: boolean
   subscriptionId?: string
   buildErrorContext?: { error: string; details: string; exitCode?: number } | null

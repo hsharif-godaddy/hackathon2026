@@ -16,6 +16,7 @@ import { getKvMemoryStore } from '../../memory/adapters/index.js'
 import { customerIdFromContext, workspaceScopeFromAppId } from '../../memory/interfaces/scope.js'
 import { createForWorkspace } from '../../workspace/index.js'
 import type { WorkspaceFiles } from '../../workspace/files.js'
+import { loadWorkflowState } from './rebuild-page-selector.js'
 
 import { appPlanTool } from '../app-plan-tool.js'
 import { getAgentModelWithName } from '../../utils/model-selection.js'
@@ -874,6 +875,24 @@ export async function updateCssFontVariables(
   }
 }
 
+/**
+ * Bring-over fonts lever (deterministic): during a rebuild, block font changes only
+ * when the user chose to keep their source typography (typographyStyle === 'keep-original').
+ * When the user chose fresh fonts, the agent should be allowed to set them.
+ * Defaults to true (block) on any read error or missing workspace state.
+ * @internal exported for testing
+ */
+export async function rebuildKeepsSourceFonts(appId: string): Promise<boolean> {
+  try {
+    const workspace = createForWorkspace(appId, 'preview');
+    if (!workspace) return true;
+    const state = await loadWorkflowState(workspace.files);
+    return (state?.stylePreferences?.typographyStyle ?? 'keep-original') === 'keep-original';
+  } catch {
+    return true;
+  }
+}
+
 const REBUILD_FONTS_LOCKED_MESSAGE =
   'Fonts are already set from your site rebuild (--font-heading and --font-sans in globals.css). Font changes are not available until the rebuild finishes.';
 
@@ -980,19 +999,21 @@ MODE SELECTION GUIDE:
       // appbuilder-sse-transport develop leg. WS processContext re-spreads the original client
       // payload on handoff iterations and would drop this flag if rebuild ever moved to WS.
       if ((context?.metadata as ExecutionContextMetadata | undefined)?.isRebuildFlow === true) {
-        if (input.mode === 'set') {
-          logger.warn('fontTheme.rebuild.blocked', { appId, mode: input.mode });
-          throw new Error(
-            'fontTheme cannot change fonts during a website rebuild — source typography is pre-applied in globals.css. Use var(--font-heading) and var(--font-sans); do not hardcode fontFamily.',
-          );
-        }
-        if (input.mode === 'apply' || input.mode === 'suggest') {
-          logger.warn('fontTheme.rebuild.blocked', { appId, mode: input.mode });
-          return {
-            success: true,
-            skipped: true,
-            message: REBUILD_FONTS_LOCKED_MESSAGE,
-          };
+        if (await rebuildKeepsSourceFonts(appId)) {
+          if (input.mode === 'set') {
+            logger.warn('fontTheme.rebuild.blocked', { appId, mode: input.mode });
+            throw new Error(
+              'fontTheme cannot change fonts during a website rebuild — source typography is pre-applied in globals.css. Use var(--font-heading) and var(--font-sans); do not hardcode fontFamily.',
+            );
+          }
+          if (input.mode === 'apply' || input.mode === 'suggest') {
+            logger.warn('fontTheme.rebuild.blocked', { appId, mode: input.mode });
+            return {
+              success: true,
+              skipped: true,
+              message: REBUILD_FONTS_LOCKED_MESSAGE,
+            };
+          }
         }
       }
 

@@ -120,6 +120,8 @@ describe('useRebuildIntake', () => {
               colorPreference: 'keep-original',
               typographyStyle: 'keep-original',
               layoutApproach: 'responsive',
+              keepLogo: true,
+              keepSourceImages: false,
             },
           }),
         }),

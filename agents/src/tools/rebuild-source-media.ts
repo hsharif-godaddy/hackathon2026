@@ -62,6 +62,10 @@ interface SourceImageAsset {
 export interface RebuildBuildContext {
   appPath: string;
   rootPath: string;
+  /** Bring-over images toggle. When false (Reimagine / keepImages off), source
+   * photos must NOT be served — slots fall through to fresh imagery. Defaults to
+   * true for legacy manifests written before the toggle existed. */
+  keepSourceImages: boolean;
 }
 
 /**
@@ -75,8 +79,12 @@ export async function getRebuildBuildContext(appId: string | undefined): Promise
     const app = appRepo.findById(appId);
     if (!app || app.initialBuildComplete) return null;
     const stateRaw = await readFile(path.join(app.path, '.source-site', 'workflow-state.json'), 'utf-8');
-    const state = JSON.parse(stateRaw) as { rootPath?: string };
-    return { appPath: app.path, rootPath: state.rootPath ?? '/' };
+    const state = JSON.parse(stateRaw) as { rootPath?: string; stylePreferences?: { keepSourceImages?: boolean } };
+    return {
+      appPath: app.path,
+      rootPath: state.rootPath ?? '/',
+      keepSourceImages: state.stylePreferences?.keepSourceImages ?? true,
+    };
   } catch (error: unknown) {
     const isNotFound = error instanceof Error && 'code' in error && (error as NodeJS.ErrnoException).code === 'ENOENT';
     if (!isNotFound) {
@@ -263,6 +271,14 @@ export async function fillSlotFromRebuildSource(opts: {
 
   const ctx = await getRebuildBuildContext(opts.appId);
   if (!ctx) return null;
+
+  // keepImages off (Reimagine): do not serve scraped photos — let the slot fall
+  // through to fresh imagery. This is the runtime half of the images lever; the
+  // prompt-manifest filter (selectPromptAssets) only controls what the agent sees.
+  if (!ctx.keepSourceImages) {
+    logger.info('rebuild.source-fill.skipped-keepimages-off', { appId: opts.appId, slot: opts.slot });
+    return null;
+  }
 
   const normalizedSlot = opts.slot.trim().replace(/^\/+|\/+$/g, '');
   const logContext = { appId: opts.appId, slot: normalizedSlot, query: opts.query };

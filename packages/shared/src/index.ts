@@ -108,6 +108,9 @@ export type { SharePayload } from './share-url/index.js';
 export type { AppMetadata, KnownAppMetadata } from './app-metadata/index.js';
 export { mergeAppMetadata } from './app-metadata/index.js';
 
+// Rebuild bring-over choice
+export * from './rebuild/bring-over-choice.js';
+
 // Brand Data
 export type {
   BrandData,

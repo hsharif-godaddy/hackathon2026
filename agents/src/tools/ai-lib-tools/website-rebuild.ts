@@ -1,4 +1,9 @@
 import { createTool, type Tool, type HandoffStateManager } from '@airo/ai-lib'
+import {
+  type BringOverStylePreferences,
+  bringOverToStylePreferences,
+  isRebuildBringOverChoice,
+} from '@airo/shared'
 import { z } from 'zod'
 
 import { AppRepository } from '../../database/repositories/AppRepository.js'
@@ -39,6 +44,7 @@ async function ensureStylePreferencesReady(
   toolDirection?: unknown,
   clientIntent?: unknown,
   toolIntent?: unknown,
+  bringOver?: BringOverStylePreferences,
 ): Promise<void> {
   if (completedState.stylePreferences) {
     if (completedState.status === 'style_questions') {
@@ -46,9 +52,10 @@ async function ensureStylePreferencesReady(
     }
     return
   }
+  const directionPrefs = stylePreferencesForDirection(designDirection, toolDirection, clientIntent, toolIntent)
   await service.submitStylePreferences(
     appId,
-    stylePreferencesForDirection(designDirection, toolDirection, clientIntent, toolIntent),
+    bringOver ? { ...directionPrefs, ...bringOver } : directionPrefs,
   )
 }
 
@@ -134,6 +141,13 @@ This tool starts the website rebuild process:
     // the live source for typed/NL rebuilds. Client source wins (resolveDesignIntent).
     const rebuildDesignIntent = context?.metadata?.rebuildDesignIntent
 
+    // Full bring-over choice from the homepage modal (four toggles). Validated here
+    // because it arrives via untrusted message metadata.
+    const bringOverRaw = context?.metadata?.rebuildBringOverChoice
+    const bringOver = isRebuildBringOverChoice(bringOverRaw)
+      ? bringOverToStylePreferences(bringOverRaw)
+      : undefined
+
     logger.info('websiteRebuild.start', {
       appId,
       url: input.url,
@@ -145,6 +159,7 @@ This tool starts the website rebuild process:
       resolvedDesignDirection,
       hasDesignIntent: !!(rebuildDesignIntent ?? input.designIntent),
       initialBuildComplete: !!app.initialBuildComplete,
+      hasBringOverChoice: !!bringOver,
     })
 
     const useAtlasCrawler = context?.metadata?.useAtlasCrawler === true
@@ -181,6 +196,7 @@ This tool starts the website rebuild process:
         input.designDirection,
         rebuildDesignIntent,
         input.designIntent,
+        bringOver,
       )
 
       const { slugs, homepagePrompt } = await service.buildUpfrontPagePrompts(appId)

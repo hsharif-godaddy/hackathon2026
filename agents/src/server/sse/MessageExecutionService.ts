@@ -225,6 +225,8 @@ interface ExecuteParams {
   /** Homepage rebuild modal design direction — applied by websiteRebuild on the
    *  flag-off and intake-timeout paths. */
   rebuildDesignDirection?: string
+  /** Full bring-over choice from the homepage modal (four toggles). */
+  rebuildBringOverChoice?: unknown
   uploadedFileName?: string
   bmsBudgetId?: string
   budgetSessionId?: string
@@ -1908,7 +1910,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
     const turnStartMs = Date.now()
     const {
       appId, conversationId, content, siteId, agentId,
-      templateId, modelOverride, rebuildBuildPageSlug, rebuildDesignDirection,
+      templateId, modelOverride, rebuildBuildPageSlug, rebuildDesignDirection, rebuildBringOverChoice,
       visualContext, aiEditContext, aiEditContexts, selectedAssets,
       todoListContext, isActionRequest, customContext, buildErrorContext,
       bmsBudgetId, budgetSessionId, subscriptionId, authType,
@@ -2096,6 +2098,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
         ...(agentCtx?.rebuildIntakeFormEnabled && { rebuildIntakeFormEnabled: true }),
         ...(agentCtx?.skillSuggestionsEnabled && { skillSuggestionsEnabled: true }),
         ...(rebuildDesignDirection && { rebuildDesignDirection }),
+        ...(rebuildBringOverChoice !== undefined && { rebuildBringOverChoice }),
         // isRebuildFlow is SSE-only — WS handoff re-spreads client metadata and would drop it.
         ...(rebuildBuildPageSlug && { rebuildBuildPageSlug, isRebuildFlow: true }),
         ...(isEmbedded !== undefined && { isEmbedded }),

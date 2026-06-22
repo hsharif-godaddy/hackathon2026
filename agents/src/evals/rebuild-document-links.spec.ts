@@ -30,6 +30,8 @@ const stylePreferences: StylePreferences = {
   colorPreference: 'keep-original',
   typographyStyle: 'keep-original',
   layoutApproach: 'responsive',
+  keepLogo: true,
+  keepSourceImages: true,
 };
 
 const assetManifest: AssetManifest = {

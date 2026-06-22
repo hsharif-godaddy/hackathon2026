@@ -13,6 +13,7 @@ import path from 'node:path';
 
 import { PagePromptAgent } from '../../agents/page-prompt-agent.js';
 import { shouldPreserveDesign } from '../../agents/page-prompt/style-instructions.js';
+import { selectPromptAssets, isLikelyLogo } from '../../agents/page-prompt/user-prompt-builder.js';
 import { AppRepository } from '../../database/repositories/AppRepository.js';
 import { Logger } from '../../logging/index.js';
 import {
@@ -29,6 +30,7 @@ import { normalizeAssetPath, resolveFavicon } from '../../utils/asset-paths.js';
 import { resolvePageTitle } from '../../utils/rebuild-utils.js';
 import { resizeForVision } from '../../utils/image-resize.js';
 import { AssetProcessingService } from '../AssetProcessingService.js';
+import { applyRebuildColors } from './apply-rebuild-colors.js';
 import { applyRebuildTypography } from './typography.js';
 import type { PagePersistenceService } from './page-persistence.js';
 
@@ -119,6 +121,20 @@ export class RebuildPromptBuilder {
     const pageAssetManifest = await this.analyzePageAssets(appId, pageSlug, pageContent, sourceSiteData);
     const screenshotBase64 = isFirstPage ? await this.loadHomepageScreenshot(appId, pageSlug) : undefined;
 
+    // Observability for the logo/images bring-over levers — mirrors the asset
+    // filter buildUserPrompt applies internally (kept pure there; logged here).
+    const selectedAssets = selectPromptAssets(pageAssetManifest.assets, state.stylePreferences);
+    logger.info('rebuild-orchestration.assets-selected', {
+      appId,
+      pageSlug,
+      isFirstPage,
+      keepLogo: state.stylePreferences.keepLogo,
+      keepSourceImages: state.stylePreferences.keepSourceImages,
+      totalAssets: pageAssetManifest.assets.length,
+      keptAssets: selectedAssets.length,
+      logoIncluded: selectedAssets.some(isLikelyLogo),
+    });
+
     const typographyResult = await applyRebuildTypography(
       appId,
       sourceSiteData.metadata.typography,
@@ -130,6 +146,19 @@ export class RebuildPromptBuilder {
       pageSlug,
       isFirstPage,
       ...typographyResult,
+    });
+
+    const colorsResult = await applyRebuildColors(
+      appId,
+      sourceSiteData.metadata,
+      state.stylePreferences,
+      isFirstPage,
+    );
+    logger.info('rebuild-orchestration.colors', {
+      appId,
+      pageSlug,
+      isFirstPage,
+      ...colorsResult,
     });
 
     const prompt = await this.runPagePromptAgent(

@@ -2363,6 +2363,27 @@ describe('MessageExecutionService', () => {
       expect(executionContext.metadata.rebuildDesignDirection).toBeUndefined()
     })
 
+    it('threads rebuildBringOverChoice into executionContext metadata when provided', async () => {
+      deps = createMockDeps()
+      service = new MessageExecutionService(deps as any)
+
+      const bringOverChoice = { direction: 'modernize', keepLogo: false, keepImages: false, keepColors: true, keepFonts: false }
+      await service.execute({ ...DEFAULT_PARAMS, rebuildBringOverChoice: bringOverChoice })
+
+      const executionContext = deps.contextManager.loadContextMessages.mock.calls[0][0]
+      expect(executionContext.metadata.rebuildBringOverChoice).toEqual(bringOverChoice)
+    })
+
+    it('omits rebuildBringOverChoice from metadata when not provided', async () => {
+      deps = createMockDeps()
+      service = new MessageExecutionService(deps as any)
+
+      await service.execute(DEFAULT_PARAMS)
+
+      const executionContext = deps.contextManager.loadContextMessages.mock.calls[0][0]
+      expect(executionContext.metadata.rebuildBringOverChoice).toBeUndefined()
+    })
+
     it('threads rebuildBuildPageSlug and isRebuildFlow into executionContext metadata', async () => {
       deps = createMockDeps()
       service = new MessageExecutionService(deps as any)

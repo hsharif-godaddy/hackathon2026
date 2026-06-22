@@ -4,6 +4,7 @@
 import '@testing-library/jest-dom';
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { presetForDirection, type RebuildBringOverChoice } from '@airo/shared';
 import { screen, waitFor } from '@testing-library/react';
 
 import { LOGO_DESIGNER_TEMPLATE } from '@/app/[market]/components/types';
@@ -59,14 +60,14 @@ vi.mock('@/hooks/useRebuildDeeplink', () => ({ useRebuildDeeplink: mockUseRebuil
 vi.mock('@/app/[market]/components/RebuildDesignModal', () => ({
   default: ({ open, onSelect, initialUrl, initialDirection }: {
     open: boolean
-    onSelect: (d: string, url: string) => void
+    onSelect: (choice: RebuildBringOverChoice, url: string) => void
     initialUrl?: string
     initialDirection?: string | null
   }) =>
     open ? (
       <div data-testid="rebuild-design-modal" data-initial-url={initialUrl} data-initial-direction={initialDirection ?? ''}>
-        <button data-testid="mock-select-modernize" onClick={() => onSelect('modernize', 'https://test.com')}>m</button>
-        <button data-testid="mock-select-keep" onClick={() => onSelect('keep-similar', '')}>k</button>
+        <button data-testid="mock-select-modernize" onClick={() => onSelect(presetForDirection('modernize'), 'https://test.com')}>m</button>
+        <button data-testid="mock-select-keep" onClick={() => onSelect(presetForDirection('keep-similar'), '')}>k</button>
       </div>
     ) : null,
 }));
@@ -137,7 +138,7 @@ describe('HeroExamples', () => {
       await user.click(getRebuildButton());
       await user.click(screen.getByTestId('mock-select-modernize'));
 
-      expect(readPendingDesignChoice()).toBe('modernize');
+      expect(readPendingDesignChoice()).toEqual(presetForDirection('modernize'));
       expect(onExampleClick).toHaveBeenCalledTimes(1);
       // Base rebuild prompt preserved (rebuild detection) + URL + direction hint.
       const typed = onExampleClick.mock.calls[0][0] as string;
@@ -159,7 +160,7 @@ describe('HeroExamples', () => {
       await user.click(getRebuildButton());
       await user.click(screen.getByTestId('mock-select-keep'));
 
-      expect(readPendingDesignChoice()).toBe('keep-similar');
+      expect(readPendingDesignChoice()).toEqual(presetForDirection('keep-similar'));
       expect(onExampleClick).toHaveBeenCalledTimes(1);
       // Empty URL → no " at <url>" fragment; just the base prompt + the direction hint.
       const typed = onExampleClick.mock.calls[0][0] as string;

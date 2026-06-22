@@ -54,7 +54,8 @@ vi.mock('@airo/ai-lib', async (importOriginal) => {
 })
 
 // Import after mocks are set up
-const { updateCssFontVariables, FONT_THEMES, clearFontValidationCache, validateAndFilterFonts } = await import('../font-theme.js')
+const { updateCssFontVariables, FONT_THEMES, clearFontValidationCache, validateAndFilterFonts, rebuildKeepsSourceFonts, fontThemeAITool } = await import('../font-theme.js')
+const { createForWorkspace } = await import('../../../workspace/index.js')
 
 describe('font-theme', function packageTests() {
   describe('#updateCssFontVariables', function updateTests() {
@@ -1279,8 +1280,55 @@ describe('font-theme', function packageTests() {
       expect(result.message).toMatch(/already set from your site rebuild/i);
       expect(result.widget).toBeUndefined();
     });
+
+    it('allows set mode when isRebuildFlow is true and typographyStyle is not keep-original', async function allowSetWhenFreshFonts() {
+      mockView.mockResolvedValue({ content: JSON.stringify({ status: 'building', stylePreferences: { typographyStyle: 'modern' } }) });
+
+      try {
+        await (fontThemeAITool as any).execute(
+          { mode: 'set', description: 'clean sans-serif' },
+          { metadata: { appId: 'app1234567', isRebuildFlow: true } },
+        );
+      } catch (e) {
+        expect((e as Error).message).not.toMatch(/cannot change fonts during a website rebuild/i);
+      }
+
+      // Workspace must have been consulted for font state regardless of outcome
+      expect(mockView).toHaveBeenCalled();
+    });
   });
 })
 
+describe('rebuildKeepsSourceFonts — typography gate', function keepFontsGate() {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (createForWorkspace as ReturnType<typeof vi.fn>).mockReturnValue({ files: mockFiles });
+  });
 
+  it('returns true (block) when typographyStyle is keep-original', async function blockKeepOriginal() {
+    mockView.mockResolvedValue({
+      content: JSON.stringify({ stylePreferences: { typographyStyle: 'keep-original' } }),
+    });
+    expect(await rebuildKeepsSourceFonts('app1')).toBe(true);
+  });
+
+  it('returns false (allow) when typographyStyle is modern', async function allowModern() {
+    mockView.mockResolvedValue({
+      content: JSON.stringify({ stylePreferences: { typographyStyle: 'modern' } }),
+    });
+    expect(await rebuildKeepsSourceFonts('app1')).toBe(false);
+  });
+
+  it('returns true (block) when typographyStyle is absent (legacy state, default-safe)', async function defaultBlock() {
+    mockView.mockResolvedValue({
+      content: JSON.stringify({ stylePreferences: {} }),
+    });
+    expect(await rebuildKeepsSourceFonts('app1')).toBe(true);
+  });
+
+  it('returns true (block) when createForWorkspace returns null (workspace unavailable)', async function nullWorkspace() {
+    (createForWorkspace as ReturnType<typeof vi.fn>).mockReturnValue(null);
+    expect(await rebuildKeepsSourceFonts('app1')).toBe(true);
+  });
+})
 

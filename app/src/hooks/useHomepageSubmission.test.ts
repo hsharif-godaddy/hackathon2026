@@ -2,6 +2,7 @@
  * @vitest-environment jsdom
  */
 import { beforeEach, describe, expect, it, type Mock,vi } from 'vitest'
+import { presetForDirection } from '@airo/shared'
 import { act, renderHook, waitFor } from '@testing-library/react'
 
 import type { DesignKit } from '@/lib/design-kits'
@@ -227,14 +228,14 @@ describe('useHomepageSubmission', () => {
     })
 
     it('promotes a pending design choice onto the site id after quick-create', async () => {
-      persistPendingDesignChoice('modernize')
+      persistPendingDesignChoice(presetForDirection('modernize'))
 
       const { result } = renderHook(() => useHomepageSubmission())
       await act(async () => { await result.current.handleStartBuilding('rebuild my site') })
 
       // Pending cleared; choice keyed under the resolved site id.
       expect(readPendingDesignChoice()).toBeNull()
-      expect(readDesignChoiceForId('site-1', null)).toBe('modernize')
+      expect(readDesignChoiceForId('site-1', null)).toEqual(presetForDirection('modernize'))
     })
 
     it('is a no-op when there is no pending choice', async () => {

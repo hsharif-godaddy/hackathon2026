@@ -47,12 +47,20 @@ vi.mock('@ux/button', () => ({
   ),
 }))
 
+vi.mock('@ux/toggle-button', () => ({
+  default: ({ active, onClick, ...rest }: { active?: boolean; onClick?: () => void; [key: string]: unknown }) => (
+    <button type="button" role="switch" aria-checked={active} onClick={onClick} {...rest} />
+  ),
+}))
+
 vi.mock('@ux/text', () => ({
   default: {
     span: ({ children, ...props }: React.ComponentProps<'span'>) => <span {...props}>{children}</span>,
     p: ({ children, ...props }: React.ComponentProps<'p'>) => <p {...props}>{children}</p>,
   },
 }))
+
+vi.mock('@/hooks/useSwitchboard', () => ({ useSwitchboard: () => true }))
 
 describe('RebuildDesignModal', () => {
   beforeEach(() => {
@@ -80,7 +88,7 @@ describe('RebuildDesignModal', () => {
     expect(mockTrackShown).toHaveBeenCalledTimes(1)
   })
 
-  it('disables Continue until a direction is selected, then fires onSelect with it', () => {
+  it('disables Continue until a direction is selected, then fires onSelect with the full choice', () => {
     const onSelect = vi.fn()
     render(<RebuildDesignModal open onClose={vi.fn()} onSelect={onSelect} />)
 
@@ -96,7 +104,10 @@ describe('RebuildDesignModal', () => {
     expect(onSelect).not.toHaveBeenCalled() // selection alone does not submit
 
     fireEvent.click(continueBtn)
-    expect(onSelect).toHaveBeenCalledWith('modernize', 'https://example.com')
+    expect(onSelect).toHaveBeenCalledWith(
+      expect.objectContaining({ direction: 'modernize' }),
+      'https://example.com',
+    )
     expect(mockTrackChoice).toHaveBeenCalledWith('modernize')
   })
 
@@ -107,7 +118,7 @@ describe('RebuildDesignModal', () => {
     fireEvent.click(screen.getByTestId('rebuild-design-option-keep-similar'))
     fireEvent.click(screen.getByTestId('rebuild-design-continue'))
 
-    expect(onSelect).toHaveBeenCalledWith('keep-similar', '')
+    expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ direction: 'keep-similar' }), '')
   })
 
   it('pre-fills url and pre-selects direction from props (deep link)', () => {
@@ -126,6 +137,51 @@ describe('RebuildDesignModal', () => {
     // Pre-selected → Continue immediately enabled and commits the pre-set direction.
     expect(screen.getByTestId('rebuild-design-continue')).not.toBeDisabled()
     fireEvent.click(screen.getByTestId('rebuild-design-continue'))
-    expect(onSelect).toHaveBeenCalledWith('keep-similar', 'https://example.com')
+    expect(onSelect).toHaveBeenCalledWith(
+      expect.objectContaining({ direction: 'keep-similar' }),
+      'https://example.com',
+    )
+  })
+})
+
+describe('RebuildDesignModal toggles', () => {
+  it('selecting Keep similar seeds all toggles on and submits an all-on choice', () => {
+    const onSelect = vi.fn()
+    render(<RebuildDesignModal open onClose={() => {}} onSelect={onSelect} />)
+    fireEvent.click(screen.getByTestId('rebuild-design-option-keep-similar'))
+    fireEvent.click(screen.getByTestId('rebuild-design-continue'))
+    expect(onSelect).toHaveBeenCalledWith(
+      expect.objectContaining({ direction: 'keep-similar', keepLogo: true, keepImages: true, keepColors: true, keepFonts: true }),
+      expect.any(String),
+    )
+  })
+
+  it('Reimagine then flipping Colors on submits a mixed choice', () => {
+    const onSelect = vi.fn()
+    render(<RebuildDesignModal open onClose={() => {}} onSelect={onSelect} />)
+    fireEvent.click(screen.getByTestId('rebuild-design-option-modernize'))
+    fireEvent.click(screen.getByTestId('rebuild-bring-over-colors'))
+    fireEvent.click(screen.getByTestId('rebuild-design-continue'))
+    expect(onSelect).toHaveBeenCalledWith(
+      expect.objectContaining({ direction: 'modernize', keepColors: true, keepLogo: true }),
+      expect.any(String),
+    )
+  })
+
+  it('Reimagine preset: keepLogo on, all other toggles off', () => {
+    const onSelect = vi.fn()
+    render(<RebuildDesignModal open onClose={() => {}} onSelect={onSelect} />)
+    fireEvent.click(screen.getByTestId('rebuild-design-option-modernize'))
+    fireEvent.click(screen.getByTestId('rebuild-design-continue'))
+    expect(onSelect).toHaveBeenCalledWith(
+      expect.objectContaining({
+        direction: 'modernize',
+        keepLogo: true,
+        keepImages: false,
+        keepColors: false,
+        keepFonts: false,
+      }),
+      expect.any(String),
+    )
   })
 })

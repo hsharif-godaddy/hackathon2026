@@ -1,7 +1,10 @@
+import { bringOverToStylePreferences, DEFAULT_BRING_OVER_PREFERENCES, presetForDirection, type RebuildBringOverChoice } from '@airo/shared'
 import { useMutation, useQuery } from '@tanstack/react-query'
 
 import { buildDynamicAgentUrl } from '@/config/dynamic-api'
+import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { agentFetch } from '@/lib/agent-fetch'
+import { readDesignChoiceForCurrentApp } from '@/lib/rebuild-design-choice'
 
 export type RebuildScope = 'homepage_only' | 'small' | 'large'
 
@@ -78,23 +81,50 @@ export function useRebuildScopeEstimates(appId: string | undefined) {
   })
 }
 
+/**
+ * Build the StylePreferences object for the intake POST from a design direction
+ * and an optional bring-over choice. When choice is null (e.g. flag off, or the
+ * user hasn't gone through the modal), falls back to keep-original colors/fonts
+ * but derives the logo/image axes from the direction — mirroring the backend
+ * `stylePreferencesForDirection`. A static all-keep fallback made a flag-off
+ * `modernize` clone source imagery instead of reimagining (AIROBUILD-2104).
+ */
+export function buildIntakeStylePreferences(
+  designDirection: DesignDirection,
+  choice: RebuildBringOverChoice | null,
+) {
+  const assetPrefs = bringOverToStylePreferences(
+    presetForDirection(designDirection === 'keep-similar' ? 'keep-similar' : 'modernize'),
+  )
+  const bringOver = choice
+    ? bringOverToStylePreferences(choice)
+    : { ...DEFAULT_BRING_OVER_PREFERENCES, keepLogo: assetPrefs.keepLogo, keepSourceImages: assetPrefs.keepSourceImages }
+  return {
+    designDirection,
+    colorPreference: bringOver.colorPreference,
+    typographyStyle: bringOver.typographyStyle,
+    layoutApproach: 'responsive' as const,
+    keepLogo: bringOver.keepLogo,
+    keepSourceImages: bringOver.keepSourceImages,
+  }
+}
+
 export function useSubmitRebuildIntake(appId: string | undefined) {
+  // Only honor the stored bring-over choice when the flag is on; flag-off must
+  // reproduce the pre-PR hardcoded keep-original prefs (null → DEFAULT_BRING_OVER_PREFERENCES).
+  const bringOverEnabled = useSwitchboard('appbuilder-rebuild-bring-over-toggles')
   return useMutation({
     mutationFn: async (input: SubmitRebuildIntakeInput) => {
       if (!appId) throw new Error('No appId')
       const url = await buildDynamicAgentUrl(`apps/${appId}/rebuild/intake`, appId)
+      const choice = bringOverEnabled ? readDesignChoiceForCurrentApp(appId) : null
       const response = await agentFetch(url, {
         siteId: appId,
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           scope: input.scope,
-          stylePreferences: {
-            designDirection: input.designDirection,
-            colorPreference: 'keep-original',
-            typographyStyle: 'keep-original',
-            layoutApproach: 'responsive',
-          },
+          stylePreferences: buildIntakeStylePreferences(input.designDirection, choice),
         }),
       })
       if (!response.ok) {

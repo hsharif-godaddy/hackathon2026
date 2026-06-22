@@ -480,7 +480,7 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
     const conversationId = req.params.conversationId!
     const {
       content,
-      templateId, modelOverride, rebuildBuildPageSlug, rebuildDesignDirection,
+      templateId, modelOverride, rebuildBuildPageSlug, rebuildDesignDirection, rebuildBringOverChoice,
       visualContext, aiEditContext, aiEditContexts, selectedAssets,
       todoListContext, isActionRequest, customContext, buildErrorContext,
       uploadedFileName,
@@ -766,6 +766,7 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
       customContext,
       rebuildBuildPageSlug,
       rebuildDesignDirection,
+      rebuildBringOverChoice,
       buildErrorContext,
       uploadedFileName,
       bmsBudgetId,

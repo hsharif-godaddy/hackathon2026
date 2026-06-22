@@ -1,7 +1,40 @@
 import { describe, expect, it } from 'vitest';
 
-import type { AssetManifest, PageContent, SiteContactInfo, SiteMetadata, StylePreferences } from '../../../types/rebuild.js';
-import { buildContactBlock, buildDesignIntentBlock, buildPatternsBlock, buildUserPrompt } from '../user-prompt-builder.js';
+import type { AssetInfo, AssetManifest, PageContent, SiteContactInfo, SiteMetadata, StylePreferences } from '../../../types/rebuild.js';
+import { buildContactBlock, buildDesignIntentBlock, buildPatternsBlock, buildUserPrompt, selectPromptAssets } from '../user-prompt-builder.js';
+
+const logo: AssetInfo = {
+  url: 'u', localPath: '/assets/images/logo.png', type: 'image',
+  placement: { inHeader: true, inFooter: false, inFirstSection: false, nearH1: false, isFirstInContainer: true },
+  sourcePages: [],
+};
+const hero: AssetInfo = {
+  url: 'u2', localPath: '/assets/images/hero.jpg', type: 'image',
+  dimensions: { width: 1600, height: 900 }, sourcePages: [],
+};
+
+function prefs(keepLogo: boolean, keepSourceImages: boolean) {
+  return { designDirection: 'modernize', colorPreference: 'suggest-new', typographyStyle: 'modern', layoutApproach: 'responsive', keepLogo, keepSourceImages } as const;
+}
+
+describe('selectPromptAssets', () => {
+  it('keepLogo + keepSourceImages → all assets', () => {
+    expect(selectPromptAssets([logo, hero], prefs(true, true))).toEqual([logo, hero]);
+  });
+  it('keepLogo only → logo only', () => {
+    expect(selectPromptAssets([logo, hero], prefs(true, false))).toEqual([logo]);
+  });
+  it('neither → empty', () => {
+    expect(selectPromptAssets([logo, hero], prefs(false, false))).toEqual([]);
+  });
+  it('images without logo → non-logo assets only', () => {
+    expect(selectPromptAssets([logo, hero], prefs(false, true))).toEqual([hero]);
+  });
+  it('legacy state (flags undefined) → keeps all assets (no AIROBUILD-2104 fabrication)', () => {
+    const legacy = { designDirection: 'modernize', colorPreference: 'keep-original', typographyStyle: 'keep-original', layoutApproach: 'responsive' } as unknown as Parameters<typeof selectPromptAssets>[1];
+    expect(selectPromptAssets([logo, hero], legacy)).toEqual([logo, hero]);
+  });
+});
 
 const siteMetadata: SiteMetadata = {
   sourceUrl: 'https://example.com',

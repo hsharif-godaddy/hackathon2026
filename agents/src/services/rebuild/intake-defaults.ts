@@ -1,3 +1,4 @@
+import { bringOverToStylePreferences, presetForDirection } from '@airo/shared';
 import { Logger } from '../../logging/index.js';
 import type { RebuildIntakeChoices, RebuildScope, StylePreferences } from '../../types/rebuild.js';
 
@@ -11,6 +12,8 @@ export const DEFAULT_STYLE_PREFERENCES: StylePreferences = {
   colorPreference: 'keep-original',
   typographyStyle: 'keep-original',
   layoutApproach: 'responsive',
+  keepLogo: true,
+  keepSourceImages: true,
 };
 
 export const DEFAULT_REBUILD_SCOPE: RebuildScope = 'homepage_only';
@@ -67,10 +70,21 @@ export function stylePreferencesForDirection(
   clientIntent?: unknown,
   toolIntent?: unknown,
 ): StylePreferences {
+  const resolved = resolveDesignDirection(designDirection, toolDirection);
   const designIntent = resolveDesignIntent(clientIntent, toolIntent);
+  // Derive the logo/image axes from the direction (single-sourced via the shared
+  // preset) so the flag-off / intake-off path matches the modal: keep-similar clones
+  // imagery; every redesign direction keeps only the logo + fresh imagery. Without
+  // this, the static DEFAULT keepSourceImages:true made a flag-off `modernize` clone
+  // the source images instead of reimagining (AIROBUILD-2104 regression).
+  const assetPrefs = bringOverToStylePreferences(
+    presetForDirection(resolved === 'keep-similar' ? 'keep-similar' : 'modernize'),
+  );
   return {
     ...DEFAULT_STYLE_PREFERENCES,
-    designDirection: resolveDesignDirection(designDirection, toolDirection),
+    designDirection: resolved,
+    keepLogo: assetPrefs.keepLogo,
+    keepSourceImages: assetPrefs.keepSourceImages,
     ...(designIntent ? { designIntent } : {}),
   };
 }

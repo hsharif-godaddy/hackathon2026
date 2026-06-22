@@ -48,6 +48,10 @@ export interface StylePreferences {
   };
   typographyStyle: 'keep-original' | 'modern' | 'classic' | 'playful';
   layoutApproach: 'responsive' | 'mobile-first' | 'desktop-first';
+  /** Bring-over: keep the source logo asset. Default true. */
+  keepLogo: boolean;
+  /** Bring-over: keep the source content photos (vs. fresh imagery). Default true. */
+  keepSourceImages: boolean;
 }
 
 /**

@@ -2,6 +2,7 @@
  * @vitest-environment jsdom
  */
 import { afterEach, describe, expect, it } from 'vitest'
+import { presetForDirection } from '@airo/shared'
 
 import {
   directionToDesignChoiceId,
@@ -17,24 +18,37 @@ afterEach(() => {
   sessionStorage.clear()
 })
 
+describe('bring-over choice persistence', () => {
+  it('round-trips a full choice object', () => {
+    const choice = { direction: 'modernize', keepLogo: false, keepImages: false, keepColors: true, keepFonts: false } as const
+    persistPendingDesignChoice(choice)
+    expect(readPendingDesignChoice()).toEqual(choice)
+  })
+
+  it('reads a legacy bare-string entry as its preset', () => {
+    sessionStorage.setItem('rebuild-design-choice-pending', 'keep-similar')
+    expect(readPendingDesignChoice()).toEqual(presetForDirection('keep-similar'))
+  })
+})
+
 describe('rebuild-design-choice persistence', () => {
   it('round-trips a pending choice', () => {
-    persistPendingDesignChoice('modernize')
-    expect(readPendingDesignChoice()).toBe('modernize')
+    persistPendingDesignChoice(presetForDirection('modernize'))
+    expect(readPendingDesignChoice()).toEqual(presetForDirection('modernize'))
   })
 
   it('overwrites a prior pending choice', () => {
-    persistPendingDesignChoice('modernize')
-    persistPendingDesignChoice('keep-similar')
-    expect(readPendingDesignChoice()).toBe('keep-similar')
+    persistPendingDesignChoice(presetForDirection('modernize'))
+    persistPendingDesignChoice(presetForDirection('keep-similar'))
+    expect(readPendingDesignChoice()).toEqual(presetForDirection('keep-similar'))
   })
 
   it('promotes the pending choice onto a resolved id and clears pending', () => {
-    persistPendingDesignChoice('modernize')
+    persistPendingDesignChoice(presetForDirection('modernize'))
     promotePendingDesignChoice('job-123')
 
     expect(readPendingDesignChoice()).toBeNull()
-    expect(readDesignChoiceForId('job-123', null)).toBe('modernize')
+    expect(readDesignChoiceForId('job-123', null)).toEqual(presetForDirection('modernize'))
   })
 
   it('promote is a no-op when there is no pending choice', () => {
@@ -43,13 +57,13 @@ describe('rebuild-design-choice persistence', () => {
   })
 
   it('reads by jobId first, then falls back to appId', () => {
-    persistPendingDesignChoice('keep-similar')
+    persistPendingDesignChoice(presetForDirection('keep-similar'))
     promotePendingDesignChoice('app-789')
 
     // Stored under app-789; a read that knows only the appId still resolves it.
-    expect(readDesignChoiceForId(null, 'app-789')).toBe('keep-similar')
+    expect(readDesignChoiceForId(null, 'app-789')).toEqual(presetForDirection('keep-similar'))
     // jobId namespace empty -> falls through to appId.
-    expect(readDesignChoiceForId('job-000', 'app-789')).toBe('keep-similar')
+    expect(readDesignChoiceForId('job-000', 'app-789')).toEqual(presetForDirection('keep-similar'))
   })
 
   it('returns null when nothing is stored', () => {
@@ -65,18 +79,18 @@ describe('rebuild-design-choice persistence', () => {
 
 describe('readDesignChoiceForCurrentApp', () => {
   it('resolves the choice via the appId namespace', () => {
-    persistPendingDesignChoice('modernize')
+    persistPendingDesignChoice(presetForDirection('modernize'))
     promotePendingDesignChoice('app-1')
-    expect(readDesignChoiceForCurrentApp('app-1')).toBe('modernize')
+    expect(readDesignChoiceForCurrentApp('app-1')).toEqual(presetForDirection('modernize'))
   })
 
   it('resolves the choice via the jobId when only the job namespace has it', () => {
-    persistPendingDesignChoice('keep-similar')
+    persistPendingDesignChoice(presetForDirection('keep-similar'))
     promotePendingDesignChoice('job-9')
     // Simulate the develop view knowing the realAppId and its initial-job-id mapping
     // before the choice was copied across the flip.
     sessionStorage.setItem('initial-job-id-app-2', 'job-9')
-    expect(readDesignChoiceForCurrentApp('app-2')).toBe('keep-similar')
+    expect(readDesignChoiceForCurrentApp('app-2')).toEqual(presetForDirection('keep-similar'))
   })
 
   it('returns null for a null appId or when nothing is stored', () => {
