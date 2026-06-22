@@ -12,11 +12,10 @@ import text from '@ux/text'
 import { ChatTab } from '@/app/[market]/develop/components/types'
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils'
 import DomainCheckoutModal from '@/app/[market]/develop/components/widgets/DomainCheckoutModal'
-import { COHORT_ON, EXPERIMENT_IDS } from '@/config/experiments'
 import { useWebSocketContext } from '@/contexts/WebSocketContext'
 import { useDomainSearch } from '@/hooks/useDomainSearch'
-import { useIsInCohort } from '@/hooks/useHivemind'
 import { useModifyDomains } from '@/hooks/useModifyDomains'
+import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 import { DomainStatus, DomainType } from '@/lib/control-plane/types'
 import { appFetch } from '@/lib/gasket-config'
@@ -72,13 +71,12 @@ export default function DomainBar() {
   const isAiroSubdomainCheck = isAiroSubdomain(fqdn);
   const isPublished = hasBeenPublished(site);
 
-  // A custom domain that is connected OR still connecting (pending). `resolveSiteFqdn` only
-  // flips `isAiroSubdomain` once a custom domain is ACTIVE, so this also covers the
-  // provisioning window. Excludes inactive/failed so a removed domain re-shows the banner.
-  const hasConnectingDomain = (site?.domains ?? []).some(
-    (d) =>
-      d.domainType !== DomainType.PREFIX &&
-      (d.status === DomainStatus.ACTIVE || d.status === DomainStatus.PENDING),
+  // mgmt-airo has a single custom-domain slot and 409s ('CUSTOM_DOMAIN_SLOT_OCCUPIED') if we
+  // try to attach while any non-prefix domain still holds it — including failed/error/deleting
+  // ones that haven't been removed. Only INACTIVE frees the slot, so treat anything else as
+  // occupied and hide the bar (don't sell a domain whose auto-attach would fail after payment).
+  const hasCustomDomainOccupyingSlot = (site?.domains ?? []).some(
+    (d) => d.domainType !== DomainType.PREFIX && d.status !== DomainStatus.INACTIVE,
   );
 
   // Suggest a domain from the site/app name; request 5 so the API can offer alternatives
@@ -103,17 +101,22 @@ export default function DomainBar() {
     setIsDismissed(wasDismissed);
   }, []);
 
-  // Expedite experiment (treatment = COHORT_ON): clicking the suggested domain adds it
-  // to the cart and opens Express Checkout instead of sending a chat prompt to the agent.
-  const isExpedite = useIsInCohort(EXPERIMENT_IDS.domainExpeditePurchase, COHORT_ON);
+  // Switchboard-gated: ON → clicking the suggested domain adds it to the cart and opens
+  // Express Checkout; OFF → sends a chat prompt for the agent to handle (pre-expedite behavior).
+  const isExpedite = useSwitchboard('appbuilder-domain-expedite-purchase') ?? false;
 
-  // API key NAME (resolved server-side) for add-to-cart. Only the expedite treatment
-  // needs it, so the control cohort skips the request entirely.
+  // API key NAME (resolved server-side) required for add-to-cart. Only the expedite path
+  // needs it, so skip the request when the flag is off. Throw on non-OK so a transient
+  // failure goes to React Query's error/retry state instead of caching an empty config as
+  // fresh data forever (which would block the purchase flow until a full reload).
   const { data: domainConfig, isLoading: isDomainConfigLoading } = useQuery({
     queryKey: ['domainConfig'],
     queryFn: async () => {
       const res = await appFetch('/api/domains/config');
-      if (!res.ok) return { apiKeyName: '' };
+      if (!res.ok) {
+        logger.warn('domain_bar.config.fetch_failed', { status: res.status });
+        throw new Error(`domains config fetch failed: ${res.status}`);
+      }
       return res.json() as Promise<{ apiKeyName: string }>;
     },
     staleTime: Infinity,
@@ -146,14 +149,14 @@ export default function DomainBar() {
     logImpressionEvent('develop.preview.domain_checkout_modal', { suggested_domain: suggestedDomain ?? '' })();
   }, [isCheckoutOpen, suggestedDomain]);
 
-  // Don't show DomainBar if a custom domain is connected / connecting (active or pending),
-  // an attach job is in flight, no suggestion is available, or the user dismissed it.
+  // Don't show DomainBar if the custom-domain slot is already occupied, an attach job is in
+  // flight, no suggestion is available, or the user dismissed it.
   if (
     !isAiroSubdomainCheck ||
     !suggestedDomain ||
     isDismissed ||
     attachJobInProgress ||
-    hasConnectingDomain
+    hasCustomDomainOccupyingSlot
   ) {
     return null;
   }
@@ -186,11 +189,10 @@ export default function DomainBar() {
       suggestedDomain,
     });
 
-    // Treatment: add to cart + open Express Checkout directly (no agent round-trip).
+    // Treatment (flag ON): add to cart + open Express Checkout directly (no agent round-trip).
     if (isExpedite) {
       if (!apiKeyName) {
-        // Config not ready/unavailable: surface it rather than silently dropping the
-        // treatment user into the control chat flow (which would muddy the A/B).
+        // Config not ready/unavailable — block with a busy growl while it loads, error otherwise.
         Growl.addGrowlMessage(
           isDomainConfigLoading
             ? {
@@ -214,7 +216,7 @@ export default function DomainBar() {
       return;
     }
 
-    // Control: send a chat prompt for the agent to handle.
+    // Control (flag OFF): send a chat prompt for the agent to handle.
     setActiveChatTab(ChatTab.CHAT);
     try {
       await sendMessage({ content: t('builder_custom_domain_suggestion_prompt_domain', { domain: suggestedDomain }) });

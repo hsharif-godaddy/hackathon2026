@@ -20,13 +20,12 @@ const mockDevelopStore: any = {
   domainJobsInProgress: {},
 };
 
-const mockSendMessage = vi.fn();
 const mockShipAnalyticsLog = vi.fn();
+const mockSendMessage = vi.fn();
 const mockGetSite = vi.fn(function (_id: string) { return null; });
 // vi.hoisted: these are referenced eagerly inside vi.mock factories (hoisted above
 // the imports), so they must be initialized before those factories run.
-const { mockUseIsInCohort, mockPostToSapi, mockAddGrowl, mockIsLoading, mockIsStreaming, mockMutateAsync, mockAddCompletedMessage, mockLogImpressionEvent, mockLogClickEvent, mockUseQuery } = vi.hoisted(() => ({
-  mockUseIsInCohort: vi.fn(function () { return false; }),
+const { mockPostToSapi, mockAddGrowl, mockIsLoading, mockIsStreaming, mockMutateAsync, mockAddCompletedMessage, mockLogImpressionEvent, mockLogClickEvent, mockUseQuery, mockUseSwitchboard } = vi.hoisted(() => ({
   mockPostToSapi: vi.fn(function () { return Promise.resolve({ basketId: 'basket-1', cartCount: 1 }); }),
   mockAddGrowl: vi.fn(),
   mockIsLoading: vi.fn(function () { return false; }),
@@ -39,6 +38,8 @@ const { mockUseIsInCohort, mockPostToSapi, mockAddGrowl, mockIsLoading, mockIsSt
   mockLogClickEvent: vi.fn(function () { return vi.fn(); }),
   // domainConfig query — default resolves the api key; override per-test for not-ready cases.
   mockUseQuery: vi.fn(function () { return { data: { apiKeyName: 'test-key' }, isLoading: false }; }),
+  // appbuilder-domain-expedite-purchase Switchboard flag — default OFF (control); override per-test.
+  mockUseSwitchboard: vi.fn(function () { return false; }),
 }));
 
 vi.mock('@/app/[market]/develop/components/utils', () => ({
@@ -56,17 +57,16 @@ vi.mock('@/stores/useSiteStore', () => ({
   ),
 }));
 
-vi.mock('@/contexts/WebSocketContext', () => ({
-  useWebSocketContext: () => ({ sendMessage: mockSendMessage }),
-}));
-
 vi.mock('@/stores/useStreamingConversationStore', () => ({
   useIsActivelyStreaming: mockIsStreaming,
   useIsLoading: mockIsLoading,
   useStreamingConversationStore: (selector: any) => selector({ addCompletedMessage: mockAddCompletedMessage }),
 }));
 
-vi.mock('@/hooks/useHivemind', () => ({ useIsInCohort: mockUseIsInCohort }));
+vi.mock('@/contexts/WebSocketContext', () => ({
+  useWebSocketContext: () => ({ sendMessage: mockSendMessage }),
+}));
+vi.mock('@/hooks/useSwitchboard', () => ({ useSwitchboard: mockUseSwitchboard }));
 vi.mock('@/hooks/useModifyDomains', () => ({ useModifyDomains: () => ({ mutateAsync: mockMutateAsync }) }));
 vi.mock('@site/buttons/lib/services/DomainServices', () => ({ postToSapi: mockPostToSapi }));
 vi.mock('@ux/growl', () => ({ default: { addGrowlMessage: mockAddGrowl } }));
@@ -429,22 +429,24 @@ describe('DomainBar', () => {
     });
   });
 
-  describe('expedite experiment (add-to-cart on click)', () => {
+  describe('expedite checkout (add-to-cart on click)', () => {
     beforeEach(() => {
       vi.mocked(useDomainSearch).mockReturnValue({
         data: { domains: [{ fqdn: 'testapp.com', available: true }] },
         isError: false,
       } as any);
-      mockUseIsInCohort.mockReturnValue(false);
       mockIsLoading.mockReturnValue(false);
       mockIsStreaming.mockReturnValue(false);
       mockPostToSapi.mockResolvedValue({ basketId: 'basket-1', cartCount: 1 });
       mockMutateAsync.mockResolvedValue({ statusJobId: 'job-1', status: 'RUNNING', message: 'ok' });
       mockUseQuery.mockReturnValue({ data: { apiKeyName: 'test-key' }, isLoading: false });
+      mockSendMessage.mockResolvedValue(undefined);
+      // domain-expedite-purchase flag ON for the expedite path.
+      mockUseSwitchboard.mockReturnValue(true);
     });
 
-    it('control: clicking the domain sends a chat prompt and does NOT add to cart', async () => {
-      mockUseIsInCohort.mockReturnValue(false);
+    it('flag OFF: clicking sends a chat prompt and does NOT add to cart', async () => {
+      mockUseSwitchboard.mockReturnValue(false);
 
       renderWithProviders(<DomainBar />);
       fireEvent.click(screen.getByText('testapp.com'));
@@ -454,13 +456,33 @@ describe('DomainBar', () => {
           content: 'builder_custom_domain_suggestion_prompt_domain',
         }),
       );
+      expect(mockUseSwitchboard).toHaveBeenCalledWith('appbuilder-domain-expedite-purchase');
       expect(mockPostToSapi).not.toHaveBeenCalled();
       expect(screen.queryByTestId('checkout-modal')).not.toBeInTheDocument();
+      // Control cohort skips the domains-config request.
+      expect(mockUseQuery).toHaveBeenCalledWith(expect.objectContaining({ enabled: false }));
     });
 
-    it('treatment: clicking the domain adds to cart, opens checkout, and notifies chat', async () => {
-      mockUseIsInCohort.mockReturnValue(true);
+    it('flag OFF: surfaces an error growl when the chat prompt fails to send', async () => {
+      mockUseSwitchboard.mockReturnValue(false);
+      mockSendMessage.mockRejectedValue(new Error('send failed'));
 
+      renderWithProviders(<DomainBar />);
+      fireEvent.click(screen.getByText('testapp.com'));
+
+      await waitFor(() =>
+        expect(mockAddGrowl).toHaveBeenCalledWith(
+          expect.objectContaining({ id: 'domain-suggestion-error' }),
+        ),
+      );
+    });
+
+    it('flag ON: enables the domains-config query', () => {
+      renderWithProviders(<DomainBar />);
+      expect(mockUseQuery).toHaveBeenCalledWith(expect.objectContaining({ enabled: true }));
+    });
+
+    it('clicking the domain adds to cart, opens checkout, and notifies chat', async () => {
       renderWithProviders(<DomainBar />);
       fireEvent.click(screen.getByText('testapp.com'));
 
@@ -477,7 +499,6 @@ describe('DomainBar', () => {
           content: "Heads up: I'm buying testapp.com in the checkout window — it will be connected to the site automatically once purchased, so no action or follow-up is needed from you.",
         }),
       );
-      expect(mockSendMessage).not.toHaveBeenCalled();
       // CSP impression fires when the checkout modal opens.
       await waitFor(() =>
         expect(mockLogImpressionEvent).toHaveBeenCalledWith(
@@ -487,10 +508,8 @@ describe('DomainBar', () => {
       );
     });
 
-    it('treatment: with no apiKey resolved, shows a growl and does NOT fall back to the control chat flow', async () => {
-      mockUseIsInCohort.mockReturnValue(true);
-      // Config resolved but empty (endpoint failed/returned no key) — treatment must not
-      // silently run the control sendMessage path.
+    it('with no apiKey resolved, shows an error growl and does not open checkout', async () => {
+      // Config resolved but empty (endpoint failed/returned no key).
       mockUseQuery.mockReturnValue({ data: { apiKeyName: '' }, isLoading: false });
 
       renderWithProviders(<DomainBar />);
@@ -501,13 +520,11 @@ describe('DomainBar', () => {
           expect.objectContaining({ id: 'domain-suggestion-error' }),
         ),
       );
-      expect(mockSendMessage).not.toHaveBeenCalled();
       expect(mockPostToSapi).not.toHaveBeenCalled();
       expect(screen.queryByTestId('checkout-modal')).not.toBeInTheDocument();
     });
 
-    it('treatment: while apiKey config is still loading, shows the busy growl (not control fallback)', async () => {
-      mockUseIsInCohort.mockReturnValue(true);
+    it('while apiKey config is still loading, shows the busy growl', async () => {
       mockUseQuery.mockReturnValue({ data: undefined, isLoading: true });
 
       renderWithProviders(<DomainBar />);
@@ -518,12 +535,10 @@ describe('DomainBar', () => {
           expect.objectContaining({ id: 'domain-suggestion-busy' }),
         ),
       );
-      expect(mockSendMessage).not.toHaveBeenCalled();
       expect(mockPostToSapi).not.toHaveBeenCalled();
     });
 
-    it('treatment: shows a busy growl and does not add to cart while processing', async () => {
-      mockUseIsInCohort.mockReturnValue(true);
+    it('shows a busy growl and does not add to cart while processing', async () => {
       mockIsLoading.mockReturnValue(true);
 
       renderWithProviders(<DomainBar />);
@@ -538,8 +553,7 @@ describe('DomainBar', () => {
       expect(screen.queryByTestId('checkout-modal')).not.toBeInTheDocument();
     });
 
-    it('treatment: shows an error growl and no checkout when add-to-cart fails', async () => {
-      mockUseIsInCohort.mockReturnValue(true);
+    it('shows an error growl and no checkout when add-to-cart fails', async () => {
       mockPostToSapi.mockRejectedValue(new Error('sapi down'));
 
       renderWithProviders(<DomainBar />);
@@ -553,9 +567,7 @@ describe('DomainBar', () => {
       expect(screen.queryByTestId('checkout-modal')).not.toBeInTheDocument();
     });
 
-    it('treatment: completing checkout attaches the purchased domain to the site', async () => {
-      mockUseIsInCohort.mockReturnValue(true);
-
+    it('completing checkout attaches the purchased domain to the site', async () => {
       renderWithProviders(<DomainBar />);
       fireEvent.click(screen.getByText('testapp.com'));
 
@@ -583,13 +595,10 @@ describe('DomainBar', () => {
           }),
         ),
       );
-      expect(mockSendMessage).not.toHaveBeenCalled();
       await waitFor(() => expect(screen.queryByTestId('checkout-modal')).not.toBeInTheDocument());
     });
 
-    it('treatment: shows a checkout-error growl and dismisses the modal when checkout fails', async () => {
-      mockUseIsInCohort.mockReturnValue(true);
-
+    it('shows a checkout-error growl and dismisses the modal when checkout fails', async () => {
       renderWithProviders(<DomainBar />);
       fireEvent.click(screen.getByText('testapp.com'));
 
@@ -610,8 +619,7 @@ describe('DomainBar', () => {
       await waitFor(() => expect(screen.queryByTestId('checkout-modal')).not.toBeInTheDocument());
     });
 
-    it('treatment: shows an attach-error growl and no purchase-confirmation when auto-attach fails after purchase', async () => {
-      mockUseIsInCohort.mockReturnValue(true);
+    it('shows an attach-error growl and no purchase-confirmation when auto-attach fails after purchase', async () => {
       // Domain was purchased (money spent) but the auto-attach call rejects — the
       // highest-value error path: the user must not be told it succeeded.
       mockMutateAsync.mockRejectedValue(new Error('attach failed'));
@@ -632,7 +640,6 @@ describe('DomainBar', () => {
       expect(mockAddCompletedMessage).not.toHaveBeenCalledWith(
         expect.objectContaining({ content: expect.stringContaining('is purchased') }),
       );
-      expect(mockSendMessage).not.toHaveBeenCalled();
     });
 
     it('does not render while a domain attach job is in progress', () => {
@@ -660,6 +667,26 @@ describe('DomainBar', () => {
         domains: [
           { fqdn: 'test.airoapp.ai', domainType: 'prefix', status: 'active' },
           { fqdn: 'mybrand.com', domainType: 'custom', status: 'pending' },
+        ],
+      };
+
+      const { container } = renderWithProviders(<DomainBar />);
+      expect(container.firstChild).toBeNull();
+    });
+
+    it('does not render when a custom domain is in error status (slot still occupied)', () => {
+      vi.mocked(useDomainSearch).mockReturnValue({
+        data: { domains: [{ fqdn: 'testapp.com', available: true }] },
+        isError: false,
+      } as any);
+      // A prior attach failed and left the custom domain in 'error' status. mgmt-airo still
+      // treats the slot as occupied (409 CUSTOM_DOMAIN_SLOT_OCCUPIED), so the bar must hide —
+      // selling a domain here would charge the user and then fail to auto-attach.
+      mockDevelopStore.site = {
+        name: 'Test App',
+        domains: [
+          { fqdn: 'test.airoapp.ai', domainType: 'prefix', status: 'active' },
+          { fqdn: 'broken.com', domainType: 'custom', status: 'error' },
         ],
       };
 
