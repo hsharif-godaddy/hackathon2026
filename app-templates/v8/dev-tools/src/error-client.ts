@@ -2,6 +2,7 @@ import { advanceCycleId, getCurrentCycleId } from './cycle-state';
 import { type BusEventType, type BusMessage, send } from './utils/eventBus';
 import { injectDevToolsStyles } from './utils/injectDevToolsStyles';
 import { isOriginAllowed } from './utils/postMessage';
+import { setTranslations, t } from './utils/translations';
 
 /**
  * postMessage helper that short-circuits when the preview is loaded
@@ -381,9 +382,20 @@ function buildPlaceholderOverlay(): HTMLDivElement {
 /**
  * The actionable error overlay shown when the agent is idle and the compile
  * error is unresolved. Mirrors `AiroErrorBoundary`'s `MessageOverlay`: title,
- * the error message + location, and a "Ask Airo to Fix Code" action (or a
- * clipboard-copy affordance when the preview is loaded standalone).
+ * intro + error details, and an "Ask Airo to Fix It" action (or a clipboard
+ * affordance when the preview is loaded standalone).
  */
+function formatCompileOverlayMessage(parsed: ParsedViteError, standalone: boolean): string {
+  const intro = standalone
+    ? t('devtools_error_overlay_standalone_intro', 'Copy this error and paste it into Airo to get help.')
+    : t('devtools_error_overlay_intro', 'Airo caught an error and is ready to help sort it out.');
+  const fallback = t('devtools_error_overlay_fallback_message', 'An unexpected error occurred');
+  const detail = parsed.file
+    ? `${parsed.message || fallback}\n\n${parsed.file}`
+    : (parsed.message || fallback);
+  return `${intro}\n\n${detail}`;
+}
+
 function buildActionableOverlay(parsed: ParsedViteError): HTMLDivElement {
   const standalone = isStandalonePreview();
 
@@ -418,11 +430,11 @@ function buildActionableOverlay(parsed: ParsedViteError): HTMLDivElement {
   `;
 
   const title = document.createElement('h1');
-  title.textContent = 'Something went wrong';
+  title.textContent = t('devtools_error_overlay_title', 'Something hit a snag');
   title.style.cssText = 'font-size: 1.5rem; font-weight: 600; color: var(--color-text-primary); margin: 0;';
 
   const message = document.createElement('pre');
-  message.textContent = parsed.file ? `${parsed.message}\n\n${parsed.file}` : parsed.message;
+  message.textContent = formatCompileOverlayMessage(parsed, standalone);
   message.style.cssText = `
     color: var(--color-text-tertiary);
     font-size: 0.875rem;
@@ -434,11 +446,13 @@ function buildActionableOverlay(parsed: ParsedViteError): HTMLDivElement {
 
   const actions = document.createElement('div');
   actions.style.cssText = 'display: flex; gap: 1rem; justify-content: flex-end; flex-wrap: wrap;';
-  actions.appendChild(createOverlayButton('Dismiss', 'secondary', clearCompileError));
+  actions.appendChild(createOverlayButton(t('devtools_error_overlay_dismiss', 'Dismiss'), 'secondary', clearCompileError));
   if (standalone) {
     actions.appendChild(
       createOverlayButton(
-        copiedToClipboard ? 'Copied — paste into Airo' : 'Give this error to Airo to fix',
+        copiedToClipboard
+          ? t('devtools_error_overlay_copied', 'Copied — paste into Airo')
+          : t('devtools_error_overlay_copy', 'Copy Error for Airo'),
         'primary',
         () => copyErrorToClipboard(parsed),
       ),
@@ -446,7 +460,9 @@ function buildActionableOverlay(parsed: ParsedViteError): HTMLDivElement {
   } else {
     actions.appendChild(
       createOverlayButton(
-        isFixRequested ? 'Processing...' : 'Ask Airo to Fix Code',
+        isFixRequested
+          ? t('devtools_error_overlay_processing', 'Processing...')
+          : t('devtools_error_overlay_ask_airo_fix', 'Ask Airo to Fix It'),
         'primary',
         () => requestAgentFix(parsed),
         { disabled: isFixRequested },
@@ -486,6 +502,13 @@ function ensureProcessingStateListener() {
   if (processingStateHandler) return;
   processingStateHandler = (event: MessageEvent) => {
     if (!event.origin || !isOriginAllowed(event)) return;
+    if (event.data?.type === 'DEVTOOLS_TRANSLATIONS') {
+      if (event.data.translations && typeof event.data.translations === 'object') {
+        setTranslations(event.data.translations);
+        renderErrorOverlay();
+      }
+      return;
+    }
     if (event.data?.type !== 'AGENT_PROCESSING_STATE') return;
     const nowProcessing = Boolean(event.data.isProcessing);
     isAgentProcessing = nowProcessing;

@@ -91,9 +91,10 @@ describe('error-client compile-error overlay', () => {
 
       const el = overlay();
       expect(el).not.toBeNull();
+      expect(el!.textContent).toContain('Airo caught an error and is ready to help sort it out.');
       expect(el!.textContent).toContain('Unexpected token (3:10)');
       expect(el!.textContent).toContain('src/App.tsx:3:10');
-      expect(findButton('Ask Airo to Fix Code')).toBeTruthy();
+      expect(findButton('Ask Airo to Fix It')).toBeTruthy();
       expect(findButton('Dismiss')).toBeTruthy();
     });
 
@@ -102,7 +103,7 @@ describe('error-client compile-error overlay', () => {
       presentCompileError(makeParsedError());
       broadcastProcessingState(false);
 
-      findButton('Ask Airo to Fix Code')!.click();
+      findButton('Ask Airo to Fix It')!.click();
 
       const fixCall = fakeParent.postMessage.mock.calls.find(
         ([message]) => (message as { type?: string })?.type === 'error-fix-user-requested',
@@ -145,9 +146,9 @@ describe('error-client compile-error overlay', () => {
       const el = overlay();
       expect(el).not.toBeNull();
       expect(el!.textContent).toContain('Unexpected token (3:10)');
-      expect(findButton('Give this error to Airo to fix')).toBeTruthy();
+      expect(findButton('Copy Error for Airo')).toBeTruthy();
       // No parent agent to ask, so the embedded fix button is absent.
-      expect(findButton('Ask Airo to Fix Code')).toBeUndefined();
+      expect(findButton('Ask Airo to Fix It')).toBeUndefined();
     });
   });
 

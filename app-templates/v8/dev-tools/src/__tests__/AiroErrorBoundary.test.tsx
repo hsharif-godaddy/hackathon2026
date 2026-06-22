@@ -123,12 +123,12 @@ describe('AiroErrorBoundary handleDismiss', () => {
     act(() => {
       window.dispatchEvent(new ErrorEvent('error', { error: err, message: 'user-async' }));
     });
-    expect(screen.getByText('Something went wrong')).not.toBeNull();
+    expect(screen.getByText('Something hit a snag')).not.toBeNull();
     expect(screen.getByText('child')).not.toBeNull();
     act(() => {
       fireEvent.click(screen.getByText('Dismiss'));
     });
-    expect(screen.queryByText('Something went wrong')).toBeNull();
+    expect(screen.queryByText('Something hit a snag')).toBeNull();
     expect(screen.getByText('child')).not.toBeNull();
   });
 
@@ -157,7 +157,7 @@ describe('AiroErrorBoundary handleDismiss', () => {
     act(() => {
       vi.advanceTimersByTime(600);
     });
-    expect(screen.getByText('Something went wrong')).not.toBeNull();
+    expect(screen.getByText('Something hit a snag')).not.toBeNull();
     act(() => {
       fireEvent.click(screen.getByText('Dismiss'));
     });
@@ -215,8 +215,8 @@ describe('AiroErrorBoundary dev-tools suppression', () => {
     act(() => {
       window.dispatchEvent(new ErrorEvent('error', { error: err, message: 'dev-tools-async' }));
     });
-    expect(screen.queryByText('Something went wrong')).toBeNull();
-    expect(screen.queryByText('Ask Airo to Fix Code')).toBeNull();
+    expect(screen.queryByText('Something hit a snag')).toBeNull();
+    expect(screen.queryByText('Ask Airo to Fix It')).toBeNull();
     expect(screen.queryByText('dev-tools-async')).toBeNull();
     expect(screen.getByText('child')).not.toBeNull();
   });
@@ -271,8 +271,8 @@ describe('AiroErrorBoundary dev-tools suppression', () => {
     act(() => {
       vi.advanceTimersByTime(600);
     });
-    expect(screen.queryByText('Something went wrong')).toBeNull();
-    expect(screen.queryByText('Ask Airo to Fix Code')).toBeNull();
+    expect(screen.queryByText('Something hit a snag')).toBeNull();
+    expect(screen.queryByText('Ask Airo to Fix It')).toBeNull();
     const reportCall = postSpy.mock.calls.find(call => (call[0] as { type?: string })?.type === 'error-platform-report');
     const fixCall = postSpy.mock.calls.find(call => (call[0] as { type?: string })?.type === 'error-fix-request');
     expect(reportCall).not.toBeUndefined();
@@ -312,7 +312,7 @@ describe('AiroErrorBoundary dev-tools suppression', () => {
     act(() => {
       window.dispatchEvent(rejectionEvent);
     });
-    expect(screen.queryByText('Something went wrong')).toBeNull();
+    expect(screen.queryByText('Something hit a snag')).toBeNull();
     expect(screen.queryByText('dev-tools-rejection')).toBeNull();
     expect(screen.getByText('child')).not.toBeNull();
     const reportCall = postSpy.mock.calls.find(call => (call[0] as { type?: string })?.type === 'error-platform-report');
@@ -363,7 +363,7 @@ describe('AiroErrorBoundary dev-tools suppression', () => {
     const fixCalls = postSpy.mock.calls.filter(call => (call[0] as { type?: string })?.type === 'error-fix-request');
     expect(reportCalls.length).toBe(1); // only componentDidCatch forwarded; re-dispatch short-circuited
     expect(fixCalls.length).toBe(0);
-    expect(screen.queryByText('Something went wrong')).toBeNull();
+    expect(screen.queryByText('Something hit a snag')).toBeNull();
 
     errorSpy.mockRestore();
     warnSpy.mockRestore();
@@ -411,7 +411,7 @@ describe('AiroErrorBoundary dev-tools suppression', () => {
       boundary.handleHotUpdate();
     });
 
-    expect(screen.queryByText('Something went wrong')).toBeNull();
+    expect(screen.queryByText('Something hit a snag')).toBeNull();
     expect(screen.queryByText('user-async-for-hmr')).toBeNull();
     expect(screen.getByText('child')).not.toBeNull();
     expect(boundary.hasActiveError).toBe(false);
@@ -491,12 +491,12 @@ describe('AiroErrorBoundary dev-tools suppression', () => {
 
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     act(() => {
-      fireEvent.click(screen.getByText('Ask Airo to Fix Code'));
+      fireEvent.click(screen.getByText('Ask Airo to Fix It'));
     });
 
     // Button stays disabled (shows 'Processing...' label because isFixing remains true).
     expect(screen.queryByText('Processing...')).not.toBeNull();
-    expect(screen.queryByText('Ask Airo to Fix Code')).toBeNull();
+    expect(screen.queryByText('Ask Airo to Fix It')).toBeNull();
     const diagnosticLogged = errorSpy.mock.calls.some(args => {
       const msg = typeof args[0] === 'string' ? args[0] : '';
       return msg.includes('SecurityError') && msg.includes('VITE_PARENT_ORIGIN');
@@ -610,7 +610,7 @@ describe('AiroErrorBoundary dev-tools suppression', () => {
     act(() => {
       window.dispatchEvent(new ErrorEvent('error', { error: platformErr, message: 'dev-tools-first' }));
     });
-    expect(screen.queryByText('Something went wrong')).toBeNull();
+    expect(screen.queryByText('Something hit a snag')).toBeNull();
 
     // Step 2: genuine user async error afterwards.
     const userErr = makeError(
@@ -651,7 +651,7 @@ describe('AiroErrorBoundary dev-tools suppression', () => {
     act(() => {
       window.dispatchEvent(new ErrorEvent('error', { error: err, message: 'dev-tools-dist' }));
     });
-    expect(screen.queryByText('Something went wrong')).toBeNull();
+    expect(screen.queryByText('Something hit a snag')).toBeNull();
     const reportCall = postSpy.mock.calls.find(call => (call[0] as { type?: string })?.type === 'error-platform-report');
     const fixCall = postSpy.mock.calls.find(call => (call[0] as { type?: string })?.type === 'error-fix-request');
     expect(reportCall).not.toBeUndefined();
@@ -734,7 +734,7 @@ describe('AiroErrorBoundary captureGlobalErrors', () => {
 
     // componentDidCatch is independent of window handlers, so the route
     // render error still surfaces and forwards.
-    expect(screen.getByText('Something went wrong')).not.toBeNull();
+    expect(screen.getByText('Something hit a snag')).not.toBeNull();
     const fixCall = postSpy.mock.calls.find(call => (call[0] as { type?: string })?.type === 'error-fix-request');
     expect(fixCall).not.toBeUndefined();
     errorSpy.mockRestore();
@@ -776,7 +776,7 @@ describe('AiroErrorBoundary captureGlobalErrors', () => {
     });
 
     // Inner boundary caught the render error: one overlay, one forward.
-    expect(screen.getAllByText('Something went wrong')).toHaveLength(1);
+    expect(screen.getAllByText('Something hit a snag')).toHaveLength(1);
     expect(screen.getByText('root-child')).not.toBeNull();
 
     // React 18 re-dispatches the same Error to window.onerror; the root
@@ -787,7 +787,7 @@ describe('AiroErrorBoundary captureGlobalErrors', () => {
 
     // Still exactly one overlay and one error-fix-request — the root's
     // window handler short-circuited on the shared claim.
-    expect(screen.getAllByText('Something went wrong')).toHaveLength(1);
+    expect(screen.getAllByText('Something hit a snag')).toHaveLength(1);
     const fixCalls = postSpy.mock.calls.filter(call => (call[0] as { type?: string })?.type === 'error-fix-request');
     expect(fixCalls.length).toBe(1);
 
@@ -945,7 +945,7 @@ describe('AiroErrorBoundary render-error recovery reload', () => {
 
     // An explicit user retry clears the budget so the overlay reloads again.
     act(() => {
-      fireEvent.click(screen.getByText('Ask Airo to Fix Code'));
+      fireEvent.click(screen.getByText('Ask Airo to Fix It'));
     });
     finishAgentFix();
     act(() => {
@@ -971,6 +971,80 @@ describe('AiroErrorBoundary render-error recovery reload', () => {
     });
     expect(reload).not.toHaveBeenCalled();
     errorSpy.mockRestore();
+  });
+});
+
+describe('AiroErrorBoundary overlay copy', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    mockParentAvailable();
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  function showEmbeddedAsyncError(message: string) {
+    render(
+      <AiroErrorBoundary>
+        <div>child</div>
+      </AiroErrorBoundary>,
+    );
+    act(() => {
+      vi.advanceTimersByTime(600);
+    });
+    const err = makeError(
+      `Error: ${message}\n    at handler (http://localhost:3000/src/MyComp.tsx:5:3)`,
+      message,
+    );
+    act(() => {
+      window.dispatchEvent(new ErrorEvent('error', { error: err, message }));
+    });
+  }
+
+  it('prefixes embedded errors with the intro before the error message', () => {
+    showEmbeddedAsyncError('user-runtime-error');
+    const message = screen.getByText((_, element) => element?.tagName === 'PRE')?.textContent;
+    expect(message).toBe(
+      'Airo caught an error and is ready to help sort it out.\n\nuser-runtime-error',
+    );
+    expect(screen.getByText('Ask Airo to Fix It')).not.toBeNull();
+    expect(screen.queryByText('Copy Error for Airo')).toBeNull();
+  });
+
+  it('shows standalone copy affordance and intro when there is no parent frame', () => {
+    Object.defineProperty(window, 'parent', { configurable: true, value: window });
+    showEmbeddedAsyncError('standalone-runtime-error');
+    const message = screen.getByText((_, element) => element?.tagName === 'PRE')?.textContent;
+    expect(message).toBe(
+      'Copy this error and paste it into Airo to get help.\n\nstandalone-runtime-error',
+    );
+    expect(screen.getByText('Copy Error for Airo')).not.toBeNull();
+    expect(screen.queryByText('Ask Airo to Fix It')).toBeNull();
+  });
+
+  it('applies DEVTOOLS_TRANSLATIONS to overlay strings', () => {
+    showEmbeddedAsyncError('translated-runtime-error');
+    act(() => {
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: {
+            type: 'DEVTOOLS_TRANSLATIONS',
+            translations: {
+              devtools_error_overlay_title: 'Title from parent',
+              devtools_error_overlay_intro: 'Intro from parent.',
+              devtools_error_overlay_ask_airo_fix: 'Ask Airo to Fix It',
+            },
+          },
+          origin: 'http://localhost:3000',
+        }),
+      );
+    });
+    expect(screen.getByText('Title from parent')).not.toBeNull();
+    expect(screen.getByText('Intro from parent.\n\ntranslated-runtime-error')).not.toBeNull();
+    expect(screen.getByText('Ask Airo to Fix It')).not.toBeNull();
   });
 });
 

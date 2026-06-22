@@ -7,6 +7,7 @@ import MessageOverlay from './components/MessageOverlay';
 import Button from './components/Button';
 import { getCurrentCycleId } from './cycle-state';
 import { claim, isClaimed, reset as resetClaims } from './error-claims';
+import { setTranslations, t } from './utils/translations';
 
 interface Props {
   children: ReactNode;
@@ -194,6 +195,13 @@ export default class AiroErrorBoundary extends Component<Props, State> {
     // shows as a manual escape hatch.
     this.agentProcessingMessageHandler = (event: MessageEvent) => {
       if (!event.origin || !isOriginAllowed(event)) return;
+      if (event.data?.type === 'DEVTOOLS_TRANSLATIONS') {
+        if (event.data.translations && typeof event.data.translations === 'object') {
+          setTranslations(event.data.translations);
+          this.forceUpdate();
+        }
+        return;
+      }
       if (event.data?.type === 'AGENT_PROCESSING_STATE') {
         const nowProcessing = Boolean(event.data.isProcessing);
         // Read the prior value before `setState` queues the update so we can
@@ -636,6 +644,15 @@ export default class AiroErrorBoundary extends Component<Props, State> {
     }
   };
 
+  private formatOverlayMessage(error: Error, standalone: boolean): string {
+    const intro = standalone
+      ? t('devtools_error_overlay_standalone_intro', 'Copy this error and paste it into Airo to get help.')
+      : t('devtools_error_overlay_intro', 'Airo caught an error and is ready to help sort it out.');
+    const detail = error.message
+      || t('devtools_error_overlay_fallback_message', 'An unexpected error occurred');
+    return `${intro}\n\n${detail}`;
+  }
+
   render() {
     const { error, source, isFixing, isAgentProcessing, hasProcessingStateSync, copiedToClipboard } = this.state;
 
@@ -666,30 +683,34 @@ export default class AiroErrorBoundary extends Component<Props, State> {
       <>
         {childrenIfAny}
         <MessageOverlay
-          title="Something went wrong"
-          message={error.message}
+          title={t('devtools_error_overlay_title', 'Something hit a snag')}
+          message={this.formatOverlayMessage(error, standalone)}
           button={
             standalone ? (
               <>
                 <Button
-                  text="Dismiss"
+                  text={t('devtools_error_overlay_dismiss', 'Dismiss')}
                   variant="secondary"
                   onClick={this.handleDismiss}
                 />
                 <Button
-                  text={copiedToClipboard ? 'Copied — paste into Airo' : 'Give this error to Airo to fix'}
+                  text={copiedToClipboard
+                    ? t('devtools_error_overlay_copied', 'Copied — paste into Airo')
+                    : t('devtools_error_overlay_copy', 'Copy Error for Airo')}
                   onClick={this.handleCopyErrorForAiro}
                 />
               </>
             ) : (
               <>
                 <Button
-                  text="Dismiss"
+                  text={t('devtools_error_overlay_dismiss', 'Dismiss')}
                   variant="secondary"
                   onClick={this.handleDismiss}
                 />
                 <Button
-                  text={isFixing ? 'Processing...' : 'Ask Airo to Fix Code'}
+                  text={isFixing
+                    ? t('devtools_error_overlay_processing', 'Processing...')
+                    : t('devtools_error_overlay_ask_airo_fix', 'Ask Airo to Fix It')}
                   onClick={this.handleAskAiroToFix}
                   loading={isFixing}
                 />
