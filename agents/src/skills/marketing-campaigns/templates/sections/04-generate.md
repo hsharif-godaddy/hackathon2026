@@ -1,13 +1,15 @@
 # GENERATE Phase
 
-**Execute content creation in this order. No deviation.** The first two steps run on the marketing agent (which has the social tool); Third step should only be run AFTER 1 and 2, the build handoff is LAST.
+**Execute content creation in this order. No deviation.** The first two steps run on the marketing agent (which has the social tool); Third step should only be run AFTER 1 and 2, the build handoff is LAST. (The business signal — vertical / salesType / location — is persisted primarily by `campaignPlanPropose` in PLAN; skill.md's GENERATE runs a backstop `brandIdentity` set for the rare case the plan params were dropped.)
 
-1. **Social posts** (`socialPostCreate`) — FIRST.
+1. **Social posts** (`socialPostCreate`) — FIRST content step.
 2. **Email + ad copy** — inline, in the same response.
 3. **Scaffold landing page** (`marketing-campaigns__campaignScaffoldPage`) — writes the landing page template (with countdown timer + date-gating) to the workspace. The landing page MUST exist before the build handoff.
 4. **Handoff to DevelopAgent** to EDIT the landing page + create blog — LAST. This handoff builds CODE FILES only; social posts, email, and ad copy are the marketing agent's responsibility and MUST already be created (steps 1–2) before you hand off — do not defer any of them past this point. NEVER hand off to build before the social posts exist. After the build completes, continue to SUMMARY to save and show the campaign card.
 
 (The canonical slug was sanitized and frozen in the `campaignPlanPropose` response — use `plan.landingPageSlug` for all references. All CTAs across channels MUST point to `/lp/[canonicalSlug]`, never a bare top-level route. Do NOT invent a different slug — reuse the exact value from the approved plan.)
+
+**Local signals are derived.** If the business sells in person — derive this from the stored/known `salesType` (`in_store` / `service` / `hybrid` → in-person; `online` → online), the vertical (`restaurant` / `service` / `health` → in-person; `saas` / `blog` → online), plus a physical address / opening hours on the existing site — the landing-page handoff should tell DevelopAgent to surface address, hours, directions, and a "visit us in person" angle, pulled from the existing site. Omit local signals for online-only businesses.
 
 ---
 

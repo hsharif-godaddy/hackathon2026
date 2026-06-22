@@ -91,6 +91,33 @@ describe('mergeBrandIdentity', () => {
     expect(result.voice).toEqual({ tone: 'friendly' })
   })
 
+  it('merges the business-signal fields (salesType, vertical, location) independently', () => {
+    const existing: BrandIdentity = { brandName: 'Acme', vertical: 'old vertical' }
+    const update: BrandIdentity = {
+      salesType: 'in_store',
+      vertical: 'coffee roaster',
+      location: '123 Main St, Austin TX',
+    }
+
+    const result = mergeBrandIdentity(existing, update)
+
+    expect(result.brandName).toBe('Acme')
+    expect(result.salesType).toBe('in_store')
+    expect(result.vertical).toBe('coffee roaster')
+    expect(result.location).toBe('123 Main St, Austin TX')
+  })
+
+  it('preserves a stored vertical when the update does not change it', () => {
+    const existing: BrandIdentity = { vertical: 'law firm', salesType: 'service' }
+    const update: BrandIdentity = { brandName: 'Acme Legal' }
+
+    const result = mergeBrandIdentity(existing, update)
+
+    expect(result.vertical).toBe('law firm')
+    expect(result.salesType).toBe('service')
+    expect(result.brandName).toBe('Acme Legal')
+  })
+
   it('does not remove existing fields when update has undefined values', () => {
     const existing: BrandIdentity = {
       brandName: 'Keep',

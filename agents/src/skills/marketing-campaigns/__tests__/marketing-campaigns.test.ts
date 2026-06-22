@@ -3,6 +3,19 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 
+// Stable mocks for the KV memory store backing the brand-signal persist side effect.
+const { mockGet, mockSet } = vi.hoisted(() => ({
+  mockGet: vi.fn(),
+  mockSet: vi.fn(),
+}))
+
+vi.mock('../../../memory/adapters/index.js', () => ({
+  getKvMemoryStore: () => ({ get: mockGet, set: mockSet }),
+}))
+vi.mock('../../../memory/interfaces/scope.js', () => ({
+  workspaceScopeFromAppId: vi.fn(() => ({ scope: 'test' })),
+  customerIdFromContext: vi.fn(() => undefined),
+}))
 vi.mock('../../../workspace/index.js', () => ({ createForWorkspace: vi.fn() }))
 
 import { tools, campaignPlanPropose, campaignPlanCreate, campaignCreate, campaignScaffoldPage, sanitizeSlug, buildLandingPage } from '../tools/index.js'
@@ -31,6 +44,12 @@ const run = (tool: typeof campaignPlanPropose, input: unknown, context: unknown)
   (tool.execute as (i: unknown, c: unknown) => Promise<any>)(input, context)
 
 describe('marketing-campaigns orchestrator tools', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockGet.mockResolvedValue({ success: true, exists: false })
+    mockSet.mockResolvedValue({ success: true })
+  })
+
   describe('campaignPlanPropose (PLAN phase gate)', () => {
     it('stops the agent after running so the user can approve', () => {
       expect(campaignPlanPropose.config?.stopAfter).toBe(true)
@@ -66,6 +85,97 @@ describe('marketing-campaigns orchestrator tools', () => {
     })
   })
 
+  describe('campaignPlanPropose brand-signal persist (empty-only side effect)', () => {
+    const signalPlan = { ...samplePlan, vertical: 'coffee roaster', salesType: 'in_store' as const, location: '123 Main St, Austin TX' }
+
+    it('persists vertical/salesType/location to brand.identity when the brand book is empty', async () => {
+      mockGet.mockResolvedValue({ success: true, exists: false })
+
+      await run(campaignPlanPropose, signalPlan, enabledContext)
+
+      expect(mockSet).toHaveBeenCalledTimes(1)
+      expect(mockSet).toHaveBeenCalledWith(expect.anything(), 'brand.identity', expect.objectContaining({
+        vertical: 'coffee roaster',
+        salesType: 'in_store',
+        location: '123 Main St, Austin TX',
+      }))
+    })
+
+    it('never overwrites a field that is already stored', async () => {
+      mockGet.mockResolvedValue({ success: true, exists: true, value: { vertical: 'law firm' } })
+
+      await run(campaignPlanPropose, signalPlan, enabledContext)
+
+      expect(mockSet).toHaveBeenCalledTimes(1)
+      const written = mockSet.mock.calls[0][2]
+      // existing vertical preserved, only the missing fields filled
+      expect(written.vertical).toBe('law firm')
+      expect(written.salesType).toBe('in_store')
+      expect(written.location).toBe('123 Main St, Austin TX')
+    })
+
+    it('does not call set when every signal field is already present', async () => {
+      mockGet.mockResolvedValue({
+        success: true,
+        exists: true,
+        value: { vertical: 'law firm', salesType: 'service', location: 'Austin' },
+      })
+
+      await run(campaignPlanPropose, signalPlan, enabledContext)
+
+      expect(mockSet).not.toHaveBeenCalled()
+    })
+
+    it('does not touch the store when no signal args are provided', async () => {
+      await run(campaignPlanPropose, samplePlan, enabledContext)
+
+      expect(mockGet).not.toHaveBeenCalled()
+      expect(mockSet).not.toHaveBeenCalled()
+    })
+
+    it('still returns the campaign-plan-propose widget unchanged when persisting', async () => {
+      const result = await run(campaignPlanPropose, signalPlan, enabledContext)
+
+      expect(result.success).toBe(true)
+      expect(result.widgetType).toBe('campaign-plan-propose')
+      expect(result.widgetData.plan.name).toBe('Summer Sale')
+      // signal fields are NOT leaked into the rendered plan
+      expect(result.widgetData.plan.vertical).toBeUndefined()
+      expect(result.widgetData.plan.salesType).toBeUndefined()
+      expect(result.widgetData.plan.location).toBeUndefined()
+    })
+
+    it('does not break the tool when the store read fails', async () => {
+      mockGet.mockResolvedValue({ success: false, exists: false, error: 'boom' })
+
+      const result = await run(campaignPlanPropose, signalPlan, enabledContext)
+
+      expect(mockSet).not.toHaveBeenCalled()
+      expect(result.success).toBe(true)
+      expect(result.widgetType).toBe('campaign-plan-propose')
+    })
+
+    it('does not break the tool when the store throws', async () => {
+      mockGet.mockRejectedValue(new Error('kaboom'))
+
+      const result = await run(campaignPlanPropose, signalPlan, enabledContext)
+
+      expect(result.success).toBe(true)
+      expect(result.widgetType).toBe('campaign-plan-propose')
+    })
+
+    it('does not break the tool when the store write reports failure', async () => {
+      mockGet.mockResolvedValue({ success: true, exists: false })
+      mockSet.mockResolvedValue({ success: false, error: 'disk full' })
+
+      const result = await run(campaignPlanPropose, signalPlan, enabledContext)
+
+      expect(mockSet).toHaveBeenCalledTimes(1)
+      expect(result.success).toBe(true)
+      expect(result.widgetType).toBe('campaign-plan-propose')
+    })
+  })
+
   describe('feature gating', () => {
     it('campaignPlanCreate is gated behind the flag', async () => {
       const result = await run(campaignPlanCreate, { ...samplePlan, plannedContent: [] }, disabledContext)
@@ -89,16 +199,25 @@ describe('marketing-campaigns orchestrator tools', () => {
 })
 
 describe('marketing-campaigns orchestration contract', () => {
-  it('CLARIFY asks only promoting + goal — name, dates, channels are proposed not asked', () => {
+  it('CLARIFY always asks promoting + goal, asks the vertical when missing, but never channels/dates/name/sales-mode/location', () => {
     const clarify = readSection('templates/sections/01-clarify.md')
     // Assert against the askQuestion code block so the prose (which legitimately
     // mentions "name"/"channels" in prohibitions) does not give a false pass.
     const example = clarify.match(/```javascript[\s\S]*?```/)?.[0] ?? ''
+    // the two core questions are always present
     expect(example).toMatch(/promoting/i)
-    expect(example).not.toMatch(/channel/i)
+    // the vertical IS asked when missing (inferred from the site, not stored/retrieved via any tool)
+    expect(example).toMatch(/what kind of business/i)       // → vertical
+    expect(example).toMatch(/INCLUDE ONLY IF MISSING/i)     // conditional — drop if already known
+    // brand-identity fields were removed — sales mode + location are NOT asked
+    expect(example).not.toMatch(/how do customers buy/i)    // salesType is not asked up front
+    expect(example).not.toMatch(/where do you sell or serve/i) // location — never asked
+    // these stay proposed by the AI, NEVER asked
+    expect(example).not.toMatch(/channel/i)  // channel mix is proposed in PLAN
     expect(example).not.toMatch(/\bname\b/i) // the campaign name is proposed, never asked
+    // prose: single call, ask the vertical only if missing, never duration/channels
     expect(clarify).toMatch(/SINGLE askQuestion call/i)
-    expect(clarify).toMatch(/Do NOT ask a second round/i)
+    expect(clarify).toMatch(/ONLY if it's NOT already known/i)
     expect(clarify).toMatch(/how long should the campaign run/i) // duration is proposed, never asked
     expect(clarify).toMatch(/PROPOSES the campaign name, the dates/i)
     expect(clarify).toMatch(/Do NOT ask the user to pick channels/i)
@@ -183,6 +302,25 @@ describe('marketing-campaigns orchestration contract', () => {
     expect(generate).toMatch(/Social posts.*do this FIRST/is)
     expect(generate).toMatch(/do this LAST/i) // build handoff is last
     expect(generate).toMatch(/NEVER hand off to build before the social posts exist/i)
+  })
+
+  it('persists the business signal via campaignPlanPropose, never via appPlan', () => {
+    const generate = readSection('templates/sections/04-generate.md')
+    const skill = readSection('skill.md')
+    // vertical/salesType/location are persisted to the brand book as a side effect of
+    // campaignPlanPropose (a gate-enforced call), NOT a separate model-initiated set —
+    // a separate set loses to the PLAN gate, so the signal never landed before.
+    expect(skill).toMatch(/campaignPlanPropose/i)
+    expect(skill).toMatch(/vertical/i)
+    expect(skill).toMatch(/salesType/)
+    expect(skill).toMatch(/brand book/i)
+    // the legacy appPlan path is gone everywhere
+    expect(generate).not.toMatch(/appPlan/)
+    expect(skill).not.toMatch(/appPlan/)
+    // CLARIFY reads the stored values back so a later campaign doesn't re-ask
+    const clarify = readSection('templates/sections/01-clarify.md')
+    expect(clarify).toMatch(/brandIdentity/)
+    expect(clarify).not.toMatch(/appPlan/)
   })
 
   it('SUMMARY never claims the campaign is live/launched and keeps asset status honest', () => {

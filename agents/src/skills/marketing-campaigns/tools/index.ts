@@ -7,6 +7,9 @@ import type { CreateSimpleCampaignParams, CreateSimpleCampaignContentParams } fr
 import { SimpleCampaignStatus } from '../../../database/schema.js'
 import type { SimpleCampaignContentType, SimpleCampaignContentStatus } from '../../../database/schema.js'
 import { MediaSearchTool } from '../../../tools/media-search-tool.js'
+import { mergeBrandIdentity, MEMORY_KEY, type BrandIdentity } from '../../../tools/ai-lib-tools/brand-identity.js'
+import { getKvMemoryStore } from '../../../memory/adapters/index.js'
+import { workspaceScopeFromAppId, customerIdFromContext } from '../../../memory/interfaces/scope.js'
 import { createForWorkspace } from '../../../workspace/index.js'
 import { readFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
@@ -16,6 +19,7 @@ const logger = Logger.create({ component: 'marketing-campaigns-tools' })
 
 const campaignRepo = new SimpleCampaignRepository()
 const mediaSearch = new MediaSearchTool()
+const kvMemory = getKvMemoryStore()
 
 function isCampaignsEnabled(context: any): boolean {
   return !!context?.metadata?.marketingCampaignsEnabled
@@ -109,6 +113,9 @@ CRITICAL RULES:
     assumptions: z.array(z.string()).min(1).describe('3-4 short plain-language assumptions you inferred about the business (audience, main goal, what to feature). Rendered on the card under "Here\'s what I\'m assuming — tell me if any of this is off" so the owner can correct a wrong guess before anything is built.'),
     whyThisMix: z.string().describe('One or two plain sentences explaining why this channel mix serves their goal and what the key assets do (e.g. landing page = one place to buy, blog = search traffic over time, social = reach your followers). No jargon.'),
     expectation: z.string().describe('A rough, directional, honest expectation — a ballpark, NEVER precise numbers or guarantees (e.g. "a small first wave of visitors and a handful of early sales, with the blog building over the following weeks"). Frame as depending on their audience and offer.'),
+    vertical: z.string().optional().describe('The business vertical/industry you confirmed or inferred in CLARIFY (e.g. "coffee roaster", "law firm"). Pass it on every campaign — an inferred value is fine. Persisted to the brand book so future campaigns reuse it.'),
+    salesType: z.enum(['online', 'in_store', 'service', 'hybrid']).optional().describe('How the business sells/serves customers if known or inferable: online | in_store | service | hybrid.'),
+    location: z.string().optional().describe('Storefront address or service area, if known (e.g. "123 Main St, Austin TX").'),
   }),
   config: { stopAfter: true },
   async execute(input, context) {
@@ -127,6 +134,41 @@ CRITICAL RULES:
       assetCount: input.assets.length,
       canonicalSlug,
     })
+
+    // Persist the business signal as a side effect of this gate-enforced plan proposal.
+    // A separate model-initiated brandIdentity SET loses to the PLAN gate (rule 11), so we
+    // write here instead. Empty-only: never overwrite a value the brand book already has.
+    if (appId && (input.vertical || input.salesType || input.location)) {
+      try {
+        const scope = workspaceScopeFromAppId(appId, customerIdFromContext(context))
+        const existing = await kvMemory.get(scope, MEMORY_KEY)
+        if (existing.success) {
+          const current = (existing.exists && existing.value ? existing.value : {}) as BrandIdentity
+          const update: BrandIdentity = {}
+          if (input.vertical && !current.vertical) update.vertical = input.vertical
+          if (input.salesType && !current.salesType) update.salesType = input.salesType
+          if (input.location && !current.location) update.location = input.location
+          const fields = Object.keys(update)
+          if (fields.length > 0) {
+            const writeResult = await kvMemory.set(scope, MEMORY_KEY, mergeBrandIdentity(current, update))
+            if (writeResult.success) {
+              logger.info('campaign-plan-propose.brand_signal_persisted', { appId, fields })
+            } else {
+              logger.warn('campaign-plan-propose.brand_signal_persist_failed', {
+                appId,
+                fields,
+                error: writeResult.error ?? 'Unknown error',
+              })
+            }
+          }
+        }
+      } catch (error) {
+        logger.warn('campaign-plan-propose.brand_signal_persist_failed', {
+          appId,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      }
+    }
 
     return {
       success: true,

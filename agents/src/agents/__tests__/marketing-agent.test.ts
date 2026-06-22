@@ -261,11 +261,11 @@ describe('marketing-agent', function marketingAgentTests() {
   });
 
   describe('#tools', function toolsTests() {
-    it('should have exactly 8 base tools configured (campaign tools are skill-scoped)', async function toolCount() {
+    it('should have exactly 9 base tools configured (campaign tools are skill-scoped)', async function toolCount() {
       const config = await createMarketingAgent();
       const toolNames = Object.keys(config.tools);
 
-      expect(toolNames).toHaveLength(8);
+      expect(toolNames).toHaveLength(9);
     });
 
     it('should include seoAnalysis tool', async function seoTool() {

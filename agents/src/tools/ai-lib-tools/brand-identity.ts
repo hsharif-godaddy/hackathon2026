@@ -17,7 +17,7 @@ import { Logger } from '../../logging/index.js'
 const logger = Logger.create({ component: 'brand-identity-tool' })
 const memoryStore = getKvMemoryStore()
 
-const MEMORY_KEY = 'brand.identity'
+export const MEMORY_KEY = 'brand.identity'
 
 /**
  * Structured brand identity data stored in memory.
@@ -29,6 +29,9 @@ const MEMORY_KEY = 'brand.identity'
  */
 export interface BrandIdentity {
   brandName?: string
+  salesType?: 'online' | 'in_store' | 'service' | 'hybrid'
+  vertical?: string
+  location?: string
   personality?: BrandDataPersonality
   voice?: BrandDataVoice
   tagline?: string
@@ -105,6 +108,15 @@ export function mergeBrandIdentity(existing: BrandIdentity, update: BrandIdentit
   if (update.brandName !== undefined) {
     merged.brandName = update.brandName
   }
+  if (update.salesType !== undefined) {
+    merged.salesType = update.salesType
+  }
+  if (update.vertical !== undefined) {
+    merged.vertical = update.vertical
+  }
+  if (update.location !== undefined) {
+    merged.location = update.location
+  }
   if (update.personality !== undefined) {
     merged.personality = update.personality
   }
@@ -143,10 +155,13 @@ export function mergeBrandIdentity(existing: BrandIdentity, update: BrandIdentit
  * Uses merge semantics so agents can set one field at a time without losing others.
  */
 export const brandIdentityAITool: Tool = createTool(
-  'Save or retrieve brand book data (brandName, personality, voice, audience, iconography, layout, tagline, photography, mission, toneMatrix). Use this tool when the user asks about their "brand book" or "brand guidelines". Use mode "set" to save/update data (merges with existing), "get" to retrieve current data. Do NOT create pages or files for brand book requests — use this tool instead.',
+  'Save or retrieve brand book data (brandName, salesType, vertical, location, personality, voice, audience, iconography, layout, tagline, photography, mission, toneMatrix). Use this tool when the user asks about their "brand book" or "brand guidelines". Use mode "set" to save/update data (merges with existing), "get" to retrieve current data. Do NOT create pages or files for brand book requests — use this tool instead.',
   z.object({
     mode: z.enum(['set', 'get']).describe('Operation mode: "set" to save/update identity data, "get" to retrieve current data'),
     brandName: z.string().min(1).optional().describe('Brand or business name'),
+    salesType: z.enum(['online', 'in_store', 'service', 'hybrid']).optional().describe('How the business sells/serves customers: online only, in-store/physical location, service business, or hybrid'),
+    vertical: z.string().optional().describe('Industry or vertical the business operates in — e.g. "coffee roaster", "law firm", "boutique fashion"'),
+    location: z.string().optional().describe('Where the business sells/services customers: a storefront address or a service area — e.g. "123 Main St, Austin TX" or "Serving greater Austin (mobile)"'),
     personality: personalitySchema.describe('Brand personality: description and traits'),
     voice: voiceSchema.describe('Brand voice: tone attributes (weAre/weAreNot) and sample copy'),
     tagline: z.string().optional().describe('Brand tagline or slogan'),
@@ -183,6 +198,9 @@ export const brandIdentityAITool: Tool = createTool(
       // mode === 'set'
       const update: BrandIdentity = {}
       if (input.brandName !== undefined) update.brandName = input.brandName
+      if (input.salesType !== undefined) update.salesType = input.salesType
+      if (input.vertical !== undefined) update.vertical = input.vertical
+      if (input.location !== undefined) update.location = input.location
       if (input.personality !== undefined) update.personality = input.personality
       if (input.voice !== undefined) update.voice = input.voice
       if (input.tagline !== undefined) update.tagline = input.tagline
