@@ -18,7 +18,7 @@
  */
 
 import { z } from 'zod';
-import { access, writeFile, readFile, mkdir } from 'fs/promises';
+import { access, writeFile, readFile, mkdir, unlink } from 'fs/promises';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import type { SkillToolDefinition, SkillHooks } from '@airo/ai-skills';
@@ -474,6 +474,66 @@ export const updateWidgetConfigTool: SkillToolDefinition = {
 };
 
 // ============================================================================
+// remove_widget — delete widget component, config, and clear memory
+// ============================================================================
+
+export const removeWidgetTool: SkillToolDefinition = {
+  name: 'remove_widget',
+  description:
+    'Remove the Inbox chat widget from this site. Deletes the widget component and config file, ' +
+    'and clears the cached embeddable ID. After this tool succeeds, you MUST remove the ' +
+    '<InboxChatWidget /> import and render from src/App.tsx.',
+  parameters: z.object({}),
+  execute: async (_input: Record<string, never>, context?: ToolContext) => {
+    const appId = getAppId(context);
+    if (!appId) return { error: 'App ID required. Pass context.metadata.appId.' };
+
+    const app = await appRepository.findById(appId);
+    if (!app?.path) return { error: `Could not resolve app path for appId: ${appId}` };
+
+    const widgetPath = join(app.path, 'src', 'components', 'InboxChatWidget.tsx');
+    const configPath = join(app.path, 'src', 'lib', 'inboxChat.config.json');
+
+    const deleted: string[] = [];
+
+    try {
+      await unlink(widgetPath);
+      deleted.push(widgetPath);
+    } catch (err: unknown) {
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+        return { error: `Failed to delete widget component: ${(err as Error).message}` };
+      }
+    }
+
+    try {
+      await unlink(configPath);
+      deleted.push(configPath);
+    } catch (err: unknown) {
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+        return { error: `Failed to delete widget config: ${(err as Error).message}` };
+      }
+    }
+
+    await memoryRepo.delete(appId, MEM_EMBEDDABLE_ID);
+
+    logger.info('inbox.skill.remove_widget.success', { appId, deleted });
+
+    return {
+      success: true,
+      deleted,
+      NEXT_STEP:
+        'Remove the <InboxChatWidget /> import and render from src/App.tsx. ' +
+        'Delete the import line and the <InboxChatWidget /> JSX element.',
+    };
+  },
+  computeState(_input: any, output: any) {
+    if (!output?.success) return null;
+    return { removed: true, removedAt: new Date().toISOString() };
+  },
+  config: { requiresApp: true, timeout: 15_000 },
+};
+
+// ============================================================================
 // ensureEmailChannel — ensure an email category exists for the brand
 // ============================================================================
 
@@ -667,6 +727,17 @@ export const setupFormTool: SkillToolDefinition = {
       ],
     };
   },
+  computeState(input: any, output: any) {
+    if (!output?.success) return null;
+    return {
+      forms: {
+        [input.name]: {
+          postUrl: output.postUrl,
+          configuredAt: new Date().toISOString(),
+        },
+      },
+    };
+  },
   config: { requiresApp: true, timeout: 30_000 },
 };
 
@@ -736,6 +807,17 @@ export const setFormEmailTool: SkillToolDefinition = {
       success: true,
       formName: input.formName,
       email: input.email ?? null,
+    };
+  },
+  computeState(input: any, output: any) {
+    if (!output?.success) return null;
+    return {
+      forms: {
+        [input.formName]: {
+          overrideEmail: output.email,
+          emailUpdatedAt: new Date().toISOString(),
+        },
+      },
     };
   },
   config: { requiresApp: true, timeout: 15_000 },
@@ -810,4 +892,138 @@ export const updateStaffSettingsTool: SkillToolDefinition = {
     });
   },
   config: { requiresApp: true, timeout: 30_000 },
+};
+
+// ============================================================================
+// remove_form — remove a contact form entry and optionally clean up route
+// ============================================================================
+
+export const removeFormTool: SkillToolDefinition = {
+  name: 'remove_form',
+  description:
+    'Remove a contact form by name. Deletes the form entry from the config. ' +
+    'If it was the last form, also removes the server route and config files entirely. ' +
+    'Requires the form to have been set up via setup_form first.',
+
+  parameters: z.object({
+    formName: z
+      .string()
+      .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'Must be lowercase alphanumeric with hyphens')
+      .describe('The form slug to remove (must already exist via setup_form).'),
+  }),
+  execute: async (input: { formName: string }, context?: ToolContext) => {
+    const appId = getAppId(context);
+    if (!appId) return { error: 'App ID required. Pass context.metadata.appId.' };
+
+    const app = await appRepository.findById(appId);
+    if (!app?.path) return { error: `Could not resolve app path for appId: ${appId}` };
+
+    const configPath = join(app.path, 'src', 'lib', 'contact-form.config.json');
+    const distConfigPath = join(app.path, 'dist', 'contact-form.config.json');
+    const config = await readExistingConfig(configPath);
+
+    if (!config.forms[input.formName]) {
+      return { error: `Form "${input.formName}" not found in config.` };
+    }
+
+    delete config.forms[input.formName];
+
+    const remainingForms = Object.keys(config.forms).length;
+    const cleaned: string[] = [];
+
+    if (remainingForms === 0) {
+      try { await unlink(configPath); cleaned.push(configPath); } catch (err: unknown) {
+        if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+          return { error: `Failed to delete config: ${(err as Error).message}` };
+        }
+      }
+      try { await unlink(distConfigPath); cleaned.push(distConfigPath); } catch (err: unknown) {
+        if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+          logger.warn('inbox.skill.remove_form.dist_config_unlink_failed', { appId, error: (err as Error).message });
+        }
+      }
+
+      const routePath = join(app.path, 'src', 'server', 'api', 'contact', '[formName]', 'POST.ts');
+      try { await unlink(routePath); cleaned.push(routePath); } catch (err: unknown) {
+        if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+          logger.warn('inbox.skill.remove_form.route_unlink_failed', { appId, error: (err as Error).message });
+        }
+      }
+
+      await memoryRepo.delete(appId, MEM_CATEGORY_ID);
+
+      const workspace = createForWorkspace(appId, 'preview');
+      if (workspace) {
+        try {
+          await regenerateEntryApiRegistrations(workspace.files);
+        } catch (err: unknown) {
+          logger.warn('inbox.skill.remove_form.entry_regenerate_failed', {
+            appId,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      }
+    } else {
+      const configJson = JSON.stringify(config, null, 2) + '\n';
+      try {
+        await writeFile(configPath, configJson);
+      } catch (err: unknown) {
+        return { error: `Failed to write updated config: ${(err as Error).message}` };
+      }
+      try {
+        await mkdir(dirname(distConfigPath), { recursive: true });
+        await writeFile(distConfigPath, configJson);
+      } catch (err: unknown) {
+        logger.warn('inbox.skill.remove_form.dist_config_write_failed', { appId, error: (err as Error).message });
+      }
+    }
+
+    logger.info('inbox.skill.remove_form.success', { appId, formName: input.formName, remainingForms });
+
+    return {
+      success: true,
+      formName: input.formName,
+      remainingForms,
+      cleaned,
+    };
+  },
+  computeState(input: any, output: any) {
+    if (!output?.success) return null;
+    return {
+      removedForm: input.formName,
+      removedAt: new Date().toISOString(),
+    };
+  },
+  config: { requiresApp: true, timeout: 15_000 },
+};
+
+// ============================================================================
+// list_forms — list all configured contact forms
+// ============================================================================
+
+export const listFormsTool: SkillToolDefinition = {
+  name: 'list_forms',
+  description:
+    'List all configured contact forms for this app. Returns form names and their override emails. ' +
+    'Use this to check what forms exist before adding or removing one.',
+
+  parameters: z.object({}),
+  execute: async (_input: Record<string, never>, context?: ToolContext) => {
+    const appId = getAppId(context);
+    if (!appId) return { error: 'App ID required. Pass context.metadata.appId.' };
+
+    const app = await appRepository.findById(appId);
+    if (!app?.path) return { error: `Could not resolve app path for appId: ${appId}` };
+
+    const configPath = join(app.path, 'src', 'lib', 'contact-form.config.json');
+    const config = await readExistingConfig(configPath);
+
+    const forms = Object.entries(config.forms).map(([name, entry]) => ({
+      name,
+      overrideEmail: entry.overrideEmail ?? null,
+    }));
+
+    return { forms };
+  },
+  config: { requiresApp: true, timeout: 10_000 },
 };

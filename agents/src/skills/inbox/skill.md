@@ -10,6 +10,8 @@ intents:
   - chat widget/live chat/customer messaging/support chat/chatbot/chat feature/messaging/contact widget/chat bubble/inbox
   - contact form/contact us/inquiry form/message form/feedback form/get in touch form
   - notification email/change notification email/update notification email/inbox email/email notifications settings/check notification email/staff settings
+  - remove chat widget/delete chat/uninstall chat/disable chat widget/remove inbox widget
+  - remove contact form/delete contact form/uninstall form/remove form
 ---
 
 # Airo Inbox
@@ -181,74 +183,7 @@ Calling `setup_form` with the same name again updates that form's config (idempo
 
 ### Step 2: Generate the Form UI
 
-After `setup_form` succeeds, **generate a form component** tailored to the user's request. The form can have any design, layout, or fields — the only requirements are:
-
-1. It POSTs JSON to `/api/contact/{formName}` (e.g. `/api/contact/contact-us`) using the submission contract below
-2. The body includes `user.email` at minimum
-3. **`messages_attributes[0].body` is REQUIRED by the server** (400 error if missing or empty). The submit handler must always send a non-empty body. If the form has no message textarea, or the user leaves it blank, use a default value such as `"New contact form submission"`. Never POST with an empty or missing body.
-4. It handles loading, success, and error states
-5. **EVERY form field that is rendered MUST be read in the submit handler and included in the payload.** No exceptions. If a field appears in the UI, its value must appear in either `user` (email/name) or `conversation.data` (everything else). Never render a field without wiring it into the submission.
-6. **Include a honeypot field.** A hidden text input that real users never see. The submit handler must NOT include it in the POST body — the server route drops submissions silently when it is non-empty.
-
-```tsx
-{/* Honeypot — positioned off-screen, never included in POST body */}
-<input
-  type="text"
-  name="_gotcha"
-  tabIndex={-1}
-  autoComplete="off"
-  style={{ position: "absolute", left: "-9999px" }}
-  aria-hidden="true"
-/>
-```
-
-Example — a checkbox labeled "Existing customer" must be read and included:
-
-```typescript
-const existingCustomer = data.get('existing-customer') === 'on';
-
-body: JSON.stringify({
-  conversation: {
-    messages_attributes: [{ body: message }],
-    data: {
-      __gd_contact_form_title: 'Contact Us',
-      'Existing customer': existingCustomer ? 'Yes' : 'No',
-    },
-  },
-  user: { email, name },
-})
-```
-
-### Submission Contract
-
-The form MUST POST JSON to `/api/contact/{formName}` matching:
-
-```json
-{
-  "conversation": {
-    "messages_attributes": [{ "body": "The visitor's message" }],
-    "data": {
-      "__gd_contact_form_title": "Contact Us",
-      "What can we help with?": "Order Status"
-    }
-  },
-  "user": {
-    "email": "visitor@example.com",
-    "name": "Visitor Name"
-  }
-}
-```
-
-**Field mapping rules:**
-
-- `messages_attributes[0].body` — **REQUIRED.** Use the message textarea value if provided; otherwise fall back to a default like `"New contact form submission"`. Must be non-empty — the server rejects submissions without it. Never concatenate other field values into the message body.
-- `conversation.data` — ALL additional form fields (dropdowns, radio buttons, checkboxes, hidden fields) go here as key-value pairs. The key MUST be the field's label text (e.g. a dropdown labeled "What can we help with?" with value "Order Status" becomes `"What can we help with?": "Order Status"` in `data`).
-- `user.email` / `user.name` — visitor identity fields.
-- `__gd_contact_form_title` — always include in `data`, set to the form's heading.
-
-**Do NOT concatenate extra fields into the message body** (e.g. `[${topic}] ${message}` is wrong). Each field must be its own key in `conversation.data` so it appears as structured metadata in the inbox.
-
-The server route handles all backend communication — the form only needs to POST the shape above.
+Follow the instructions in `sections/contact-form-contract.md` (loaded with this skill's templates) to build the form component. That file contains the submission contract, field mapping rules, and honeypot requirements — all REQUIRED.
 
 ---
 
@@ -273,6 +208,56 @@ inbox__update_staff_settings({ notificationEmail: "jane@mail.com" });
 ```
 
 Changes the account-level notification email. Applies to all chat messages and any contact forms that don't have a per-form override via `set_form_email`.
+
+---
+
+## Listing Forms
+
+To see what contact forms are currently configured:
+
+```typescript
+inbox__list_forms({});
+```
+
+Returns `{ forms: [{ name, overrideEmail }] }` or `{ forms: [] }` if none exist.
+
+---
+
+## Legacy Contact Forms (pre-Inbox)
+
+Before the inbox skill existed, contact forms were created via the **email skill**. These use a completely different architecture:
+- A route handler that imports `sendEmail` from `@/server/email`
+- A `CONTACT_FORM_RECIPIENT_EMAIL` environment variable/secret for the recipient
+- No `contact-form.config.json` exists
+- No inbox account in memory
+
+**Detection:** If the user asks to update or remove a contact form, and `inbox__list_forms` returns empty, check the app's server routes for files that import `sendEmail` with contact-form-like logic (reading `process.env.CONTACT_FORM_RECIPIENT_EMAIL`, accepting name/email/message from the request body).
+
+**Handling legacy forms:**
+- **Remove:** Delete the route handler file and the corresponding form UI component. No inbox tools are needed — these forms have no backend state to clean up.
+- **Update (fields, styling, layout):** Edit the form component directly. The submission shape is just `{ name, email, message }` posted to `sendEmail` — there is no `conversation.data` structure or inbox backend involved.
+- **Update notification email:** The recipient is stored as the `CONTACT_FORM_RECIPIENT_EMAIL` secret. Use `requestSecrets` to prompt the user for a new value.
+- **Migrate to Inbox:** If the user wants inbox features (threaded replies, chat widget integration), set up a new inbox contact form via the normal flow (discover_account → setup_form → generate new form UI), then remove the legacy route and component.
+
+---
+
+## Removing
+
+### Remove Chat Widget
+
+```typescript
+inbox__remove_widget({});
+```
+
+Deletes the widget component and config file, clears the cached embeddable ID. After this tool succeeds, you MUST also remove the `<InboxChatWidget />` import and render from `src/App.tsx`.
+
+### Remove Contact Form
+
+```typescript
+inbox__remove_form({ formName: "contact-us" });
+```
+
+Removes the named form from the config. If it was the last form, also removes the server route and config files entirely.
 
 ---
 

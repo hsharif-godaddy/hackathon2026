@@ -8,10 +8,12 @@ vi.mock('../../../../logging/index.js', () => ({
 
 const mockMemoryGet = vi.fn();
 const mockMemorySet = vi.fn();
+const mockMemoryDelete = vi.fn();
 vi.mock('../../../../database/repositories/MemoryRepository.js', () => ({
   MemoryRepository: vi.fn().mockImplementation(function () { return {
     get: mockMemoryGet,
     set: mockMemorySet,
+    delete: mockMemoryDelete,
   }; }),
 }));
 
@@ -52,11 +54,13 @@ const mockAccess = vi.fn();
 const mockWriteFile = vi.fn();
 const mockReadFile = vi.fn();
 const mockMkdir = vi.fn();
+const mockUnlink = vi.fn();
 vi.mock('fs/promises', () => ({
   access: (...args: unknown[]) => mockAccess(...args),
   writeFile: (...args: unknown[]) => mockWriteFile(...args),
   readFile: (...args: unknown[]) => mockReadFile(...args),
   mkdir: (...args: unknown[]) => mockMkdir(...args),
+  unlink: (...args: unknown[]) => mockUnlink(...args),
 }));
 
 const mockReadWidgetConfig = vi.fn();
@@ -76,7 +80,7 @@ vi.mock('../../../../utils/entry-api-sync.js', () => ({
   regenerateEntryApiRegistrations: (...args: unknown[]) => mockRegenerateEntryApiRegistrations(...args),
 }));
 
-const { discoverAccountTool, setupWidgetTool, updateWidgetConfigTool, setupFormTool, setFormEmailTool, getStaffSettingsTool, updateStaffSettingsTool } =
+const { discoverAccountTool, setupWidgetTool, updateWidgetConfigTool, removeWidgetTool, setupFormTool, setFormEmailTool, removeFormTool, listFormsTool, getStaffSettingsTool, updateStaffSettingsTool } =
   await import('../index.js');
 
 // --- Test helpers ---
@@ -1185,6 +1189,332 @@ describe('inbox skill tools', () => {
         42,
         { notification_email: 'new@example.com' },
       );
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // remove_widget
+  // --------------------------------------------------------------------------
+
+  describe('remove_widget', () => {
+    beforeEach(() => {
+      mockUnlink.mockResolvedValue(undefined);
+      mockMemoryDelete.mockResolvedValue({ success: true });
+    });
+
+    it('has correct tool definition', () => {
+      expect(removeWidgetTool.name).toBe('remove_widget');
+      expect(removeWidgetTool.execute).toBeTypeOf('function');
+    });
+
+    it('returns error when appId is missing', async () => {
+      const result = await removeWidgetTool.execute({}, {});
+      expect(result.error).toContain('App ID required');
+    });
+
+    it('returns error when app path cannot be resolved', async () => {
+      mockFindById.mockResolvedValue(null);
+      const result = await removeWidgetTool.execute({}, context);
+      expect(result.error).toContain('Could not resolve app path');
+    });
+
+    it('deletes widget component and config file', async () => {
+      const result = await removeWidgetTool.execute({}, context);
+
+      expect(result.success).toBe(true);
+      expect(mockUnlink).toHaveBeenCalledWith(
+        expect.stringContaining('src/components/InboxChatWidget.tsx'),
+      );
+      expect(mockUnlink).toHaveBeenCalledWith(
+        expect.stringContaining('src/lib/inboxChat.config.json'),
+      );
+      expect(result.deleted).toHaveLength(2);
+    });
+
+    it('clears embeddable ID from memory', async () => {
+      await removeWidgetTool.execute({}, context);
+
+      expect(mockMemoryDelete).toHaveBeenCalledWith('app-123', 'integrations.inbox.embeddableId');
+    });
+
+    it('succeeds even if files do not exist (ENOENT)', async () => {
+      mockUnlink.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
+
+      const result = await removeWidgetTool.execute({}, context);
+
+      expect(result.success).toBe(true);
+      expect(result.deleted).toHaveLength(0);
+    });
+
+    it('returns error on non-ENOENT unlink failure for widget', async () => {
+      mockUnlink.mockRejectedValueOnce(Object.assign(new Error('EACCES'), { code: 'EACCES' }));
+
+      const result = await removeWidgetTool.execute({}, context);
+
+      expect(result.error).toContain('Failed to delete widget component');
+    });
+
+    it('returns error on non-ENOENT unlink failure for config', async () => {
+      mockUnlink
+        .mockResolvedValueOnce(undefined)
+        .mockRejectedValueOnce(Object.assign(new Error('EACCES'), { code: 'EACCES' }));
+
+      const result = await removeWidgetTool.execute({}, context);
+
+      expect(result.error).toContain('Failed to delete widget config');
+    });
+
+    it('returns NEXT_STEP guidance', async () => {
+      const result = await removeWidgetTool.execute({}, context);
+
+      expect(result.NEXT_STEP).toContain('InboxChatWidget');
+      expect(result.NEXT_STEP).toContain('src/App.tsx');
+    });
+
+    it('computeState returns state on success', () => {
+      const state = removeWidgetTool.computeState!({}, { success: true, deleted: [] });
+      expect(state).toMatchObject({ removed: true });
+      expect(state!.removedAt).toBeDefined();
+    });
+
+    it('computeState returns null on failure', () => {
+      const state = removeWidgetTool.computeState!({}, { error: 'something failed' });
+      expect(state).toBeNull();
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // remove_form
+  // --------------------------------------------------------------------------
+
+  describe('remove_form', () => {
+    beforeEach(() => {
+      mockUnlink.mockResolvedValue(undefined);
+      mockWriteFile.mockResolvedValue(undefined);
+      mockMkdir.mockResolvedValue(undefined);
+      mockMemoryDelete.mockResolvedValue({ success: true });
+      mockCreateForWorkspace.mockReturnValue(null);
+    });
+
+    it('has correct tool definition', () => {
+      expect(removeFormTool.name).toBe('remove_form');
+      expect(removeFormTool.execute).toBeTypeOf('function');
+    });
+
+    it('returns error when appId is missing', async () => {
+      const result = await removeFormTool.execute({ formName: 'contact-us' }, {});
+      expect(result.error).toContain('App ID required');
+    });
+
+    it('returns error when app path cannot be resolved', async () => {
+      mockFindById.mockResolvedValue(null);
+      const result = await removeFormTool.execute({ formName: 'contact-us' }, context);
+      expect(result.error).toContain('Could not resolve app path');
+    });
+
+    it('returns error when form does not exist in config', async () => {
+      mockReadFile.mockResolvedValue(JSON.stringify({ forms: { other: { brandId: 'b', categoryId: 1 } } }));
+
+      const result = await removeFormTool.execute({ formName: 'contact-us' }, context);
+
+      expect(result.error).toContain('Form "contact-us" not found');
+    });
+
+    it('removes form entry and writes updated config when other forms remain', async () => {
+      const existingConfig = {
+        forms: {
+          'contact-us': { brandId: 'brand-1', categoryId: 1 },
+          'support': { brandId: 'brand-1', categoryId: 1 },
+        },
+      };
+      mockReadFile.mockResolvedValue(JSON.stringify(existingConfig));
+
+      const result = await removeFormTool.execute({ formName: 'contact-us' }, context);
+
+      expect(result.success).toBe(true);
+      expect(result.remainingForms).toBe(1);
+      const expectedConfig = { forms: { support: { brandId: 'brand-1', categoryId: 1 } } };
+      expect(mockWriteFile).toHaveBeenCalledWith(
+        expect.stringContaining('contact-form.config.json'),
+        JSON.stringify(expectedConfig, null, 2) + '\n',
+      );
+    });
+
+    it('deletes config and route files when last form is removed', async () => {
+      const existingConfig = { forms: { 'contact-us': { brandId: 'brand-1', categoryId: 1 } } };
+      mockReadFile.mockResolvedValue(JSON.stringify(existingConfig));
+
+      const result = await removeFormTool.execute({ formName: 'contact-us' }, context);
+
+      expect(result.success).toBe(true);
+      expect(result.remainingForms).toBe(0);
+      expect(mockUnlink).toHaveBeenCalledWith(expect.stringContaining('contact-form.config.json'));
+      expect(mockUnlink).toHaveBeenCalledWith(expect.stringContaining('POST.ts'));
+    });
+
+    it('clears category memory when last form is removed', async () => {
+      const existingConfig = { forms: { 'contact-us': { brandId: 'brand-1', categoryId: 1 } } };
+      mockReadFile.mockResolvedValue(JSON.stringify(existingConfig));
+
+      await removeFormTool.execute({ formName: 'contact-us' }, context);
+
+      expect(mockMemoryDelete).toHaveBeenCalledWith('app-123', 'integrations.inbox.contactFormCategoryId');
+    });
+
+    it('regenerates entry registrations when last form is removed and workspace available', async () => {
+      const existingConfig = { forms: { 'contact-us': { brandId: 'brand-1', categoryId: 1 } } };
+      mockReadFile.mockResolvedValue(JSON.stringify(existingConfig));
+      mockCreateForWorkspace.mockReturnValue({ files: {} });
+      mockRegenerateEntryApiRegistrations.mockResolvedValue({ changed: true, routeCount: 0 });
+
+      await removeFormTool.execute({ formName: 'contact-us' }, context);
+
+      expect(mockRegenerateEntryApiRegistrations).toHaveBeenCalledWith({});
+    });
+
+    it('does not regenerate entry when workspace is unavailable', async () => {
+      const existingConfig = { forms: { 'contact-us': { brandId: 'brand-1', categoryId: 1 } } };
+      mockReadFile.mockResolvedValue(JSON.stringify(existingConfig));
+      mockCreateForWorkspace.mockReturnValue(null);
+
+      await removeFormTool.execute({ formName: 'contact-us' }, context);
+
+      expect(mockRegenerateEntryApiRegistrations).not.toHaveBeenCalled();
+    });
+
+    it('handles ENOENT gracefully when deleting files for last form', async () => {
+      const existingConfig = { forms: { 'contact-us': { brandId: 'brand-1', categoryId: 1 } } };
+      mockReadFile.mockResolvedValue(JSON.stringify(existingConfig));
+      mockUnlink.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
+
+      const result = await removeFormTool.execute({ formName: 'contact-us' }, context);
+
+      expect(result.success).toBe(true);
+      expect(result.cleaned).toHaveLength(0);
+    });
+
+    it('computeState returns state on success', () => {
+      const state = removeFormTool.computeState!({ formName: 'contact-us' }, { success: true });
+      expect(state).toMatchObject({ removedForm: 'contact-us' });
+      expect(state!.removedAt).toBeDefined();
+    });
+
+    it('computeState returns null on failure', () => {
+      const state = removeFormTool.computeState!({ formName: 'x' }, { error: 'not found' });
+      expect(state).toBeNull();
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // list_forms
+  // --------------------------------------------------------------------------
+
+  describe('list_forms', () => {
+    it('has correct tool definition', () => {
+      expect(listFormsTool.name).toBe('list_forms');
+      expect(listFormsTool.execute).toBeTypeOf('function');
+    });
+
+    it('returns error when appId is missing', async () => {
+      const result = await listFormsTool.execute({}, {});
+      expect(result.error).toContain('App ID required');
+    });
+
+    it('returns error when app path cannot be resolved', async () => {
+      mockFindById.mockResolvedValue(null);
+      const result = await listFormsTool.execute({}, context);
+      expect(result.error).toContain('Could not resolve app path');
+    });
+
+    it('returns empty forms array when config file does not exist', async () => {
+      mockReadFile.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
+
+      const result = await listFormsTool.execute({}, context);
+
+      expect(result.forms).toEqual([]);
+    });
+
+    it('returns forms with names and override emails', async () => {
+      const existingConfig = {
+        forms: {
+          'contact-us': { brandId: 'brand-1', categoryId: 1 },
+          'support': { brandId: 'brand-1', categoryId: 1, overrideEmail: 'help@test.com' },
+        },
+      };
+      mockReadFile.mockResolvedValue(JSON.stringify(existingConfig));
+
+      const result = await listFormsTool.execute({}, context);
+
+      expect(result.forms).toEqual([
+        { name: 'contact-us', overrideEmail: null },
+        { name: 'support', overrideEmail: 'help@test.com' },
+      ]);
+    });
+
+    it('returns empty array when config has no forms', async () => {
+      mockReadFile.mockResolvedValue(JSON.stringify({ forms: {} }));
+
+      const result = await listFormsTool.execute({}, context);
+
+      expect(result.forms).toEqual([]);
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // computeState on setup_form and set_form_email
+  // --------------------------------------------------------------------------
+
+  describe('computeState', () => {
+    describe('setupFormTool.computeState', () => {
+      it('returns form state on success', () => {
+        const state = setupFormTool.computeState!(
+          { name: 'contact-us' },
+          { success: true, postUrl: '/api/contact/contact-us' },
+        );
+        expect(state).toMatchObject({
+          forms: { 'contact-us': { postUrl: '/api/contact/contact-us' } },
+        });
+        expect(state!.forms['contact-us'].configuredAt).toBeDefined();
+      });
+
+      it('returns null on failure', () => {
+        const state = setupFormTool.computeState!(
+          { name: 'contact-us' },
+          { error: 'something failed' },
+        );
+        expect(state).toBeNull();
+      });
+    });
+
+    describe('setFormEmailTool.computeState', () => {
+      it('returns email state on success', () => {
+        const state = setFormEmailTool.computeState!(
+          { formName: 'support' },
+          { success: true, email: 'support@test.com' },
+        );
+        expect(state).toMatchObject({
+          forms: { support: { overrideEmail: 'support@test.com' } },
+        });
+        expect(state!.forms.support.emailUpdatedAt).toBeDefined();
+      });
+
+      it('returns null email when reverted to default', () => {
+        const state = setFormEmailTool.computeState!(
+          { formName: 'support' },
+          { success: true, email: null },
+        );
+        expect(state).toMatchObject({
+          forms: { support: { overrideEmail: null } },
+        });
+      });
+
+      it('returns null on failure', () => {
+        const state = setFormEmailTool.computeState!(
+          { formName: 'support' },
+          { error: 'Form not found' },
+        );
+        expect(state).toBeNull();
+      });
     });
   });
 });
