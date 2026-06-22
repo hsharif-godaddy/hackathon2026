@@ -185,6 +185,13 @@ jobs:
               exit 1
             fi
             echo "Published new artifact $PUBLISHED_ID for $VERSION"
+            # The release-manager captures this id for the prod promote by scraping the run's
+            # stdout (`gh run view --log`) with the `(\d+)` pattern in release-manager.yml's
+            # deploy-app stage. The Build Summary below renders to $GITHUB_STEP_SUMMARY, which
+            # --log does NOT include — so the canonical line must reach stdout here, on both the
+            # published and reused paths. (Keep any example value out of this comment: a digit
+            # right after the prefix would make the script-source echo the first matched line.)
+            echo "Artifact ID: $PUBLISHED_ID"
             echo "artifact_id=$PUBLISHED_ID" >> "$GITHUB_OUTPUT"
             echo "source=published" >> "$GITHUB_OUTPUT"
             echo "image=$PUBLISHED_IMAGE" >> "$GITHUB_OUTPUT"
@@ -219,6 +226,7 @@ jobs:
             exit 1
           fi
           echo "Reusing already-published artifact $ID for $VERSION (Katana artifacts are immutable per commit)."
+          echo "Artifact ID: $ID" # canonical stdout line scraped by the release-manager (see note on the published path)
           echo "artifact_id=$ID" >> "$GITHUB_OUTPUT"
           echo "source=reused" >> "$GITHUB_OUTPUT"
           # Best-effort: surface the reused artifact's image in the summary (// empty if the
