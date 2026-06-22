@@ -358,6 +358,26 @@ describe('AskQuestionToolRenderer', () => {
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
   })
 
+  it('allowOther: false renders skip in footer and skipping dismisses without sending', () => {
+    const onSkip = vi.fn()
+    const result = makeResult([
+      makeQuestion('What color?', [{ text: 'Red' }, { text: 'Blue' }], false),
+    ])
+    render(
+      <AskQuestionToolRenderer
+        {...defaultProps}
+        result={result}
+        onSkip={onSkip}
+      />,
+    )
+
+    expect(screen.getByTestId('ask-question-skip')).toBeInTheDocument()
+    skipSelection()
+
+    expect(mockSendUserMessage).not.toHaveBeenCalled()
+    expect(onSkip).toHaveBeenCalledTimes(1)
+  })
+
   it('allowOther: true (default) shows Other input and pressing Enter sends freeform as answer', () => {
     const result = makeResult([
       makeQuestion('What color?', [{ text: 'Red' }]),

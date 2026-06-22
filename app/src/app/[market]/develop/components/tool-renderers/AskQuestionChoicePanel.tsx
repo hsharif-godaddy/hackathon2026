@@ -300,22 +300,29 @@ export default function AskQuestionChoicePanel({
     </ChoiceList.Item>
   ))
 
+  const showFooterNav =
+    isMulti || (!effectiveAllowOther && !isTextStep && (skipLabel || activeStepIndex > 0))
+
   const singleSelectInlineProps = {
     showOptionChevron: false as const,
     showOptionArrowOnHover: true as const,
     suppressLastRowBottomBorder: true as const,
     commitBehavior: 'immediate' as const,
     showDeferredFooter: false as const,
-    inlineSkipLabel: skipLabel,
-    onInlineSkip: handleSkip,
-    inlineBackLabel: activeStepIndex > 0 ? backLabel : undefined,
-    onInlineBack: activeStepIndex > 0 ? handleBack : undefined,
-    inlineBackTestId: 'ask-question-back',
-    inlineSkipOrSubmit: effectiveAllowOther,
-    otherSubmitTestId: 'ask-question-submit',
-    inlineSkipTestId: 'ask-question-skip',
-    otherSubmitLabel: submitLabel,
-    showOtherSubmitButton: false as const,
+    ...(effectiveAllowOther
+      ? {
+          inlineSkipLabel: skipLabel,
+          onInlineSkip: handleSkip,
+          inlineBackLabel: activeStepIndex > 0 ? backLabel : undefined,
+          onInlineBack: activeStepIndex > 0 ? handleBack : undefined,
+          inlineBackTestId: 'ask-question-back',
+          inlineSkipOrSubmit: true as const,
+          otherSubmitTestId: 'ask-question-submit',
+          inlineSkipTestId: 'ask-question-skip',
+          otherSubmitLabel: submitLabel,
+          showOtherSubmitButton: false as const,
+        }
+      : {}),
   }
 
   return (
@@ -399,15 +406,18 @@ export default function AskQuestionChoicePanel({
         </ChoiceList>
       )}
 
-      {isMulti ? (
+      {showFooterNav ? (
         <div className="flex justify-end items-center gap-2 pt-1">
-          <Button
-            design="control"
-            size="sm"
-            text={skipLabel}
-            disabled={disabled}
-            onClick={handleSkip}
-          />
+          {skipLabel ? (
+            <Button
+              design="control"
+              size="sm"
+              text={skipLabel}
+              disabled={disabled}
+              onClick={handleSkip}
+              data-testid="ask-question-skip"
+            />
+          ) : null}
           {activeStepIndex > 0 ? (
             <Button
               design="control"
@@ -419,15 +429,17 @@ export default function AskQuestionChoicePanel({
               data-testid="ask-question-back"
             />
           ) : null}
-          <Button
-            design="primary"
-            size="sm"
-            icon={<ArrowRightIcon className="rtl:scale-x-[-1]" />}
-            aria-label={submitLabel}
-            disabled={disabled || !canSubmit}
-            onClick={handleSubmit}
-            data-testid="ask-question-submit"
-          />
+          {isMulti ? (
+            <Button
+              design="primary"
+              size="sm"
+              icon={<ArrowRightIcon className="rtl:scale-x-[-1]" />}
+              aria-label={submitLabel}
+              disabled={disabled || !canSubmit}
+              onClick={handleSubmit}
+              data-testid="ask-question-submit"
+            />
+          ) : null}
         </div>
       ) : null}
     </div>
