@@ -6,6 +6,17 @@ import type { Turn } from './transcript.js';
 
 const DONE_SIGNAL = 'DONE';
 
+interface AskQuestionOutput {
+  widgetType: 'ask-question';
+  widgetData: {
+    questions: Array<{
+      question: string;
+      suggestions?: Array<{ text: string }>;
+      allowOther?: boolean;
+    }>;
+  };
+}
+
 export class GocodeSyntheticUser implements SyntheticUserAgent {
   constructor(private readonly client: IGocodeClient) {}
 
@@ -57,6 +68,7 @@ export class GocodeSyntheticUser implements SyntheticUserAgent {
       `Your goals:\n${goalLines}\n\n` +
       `Respond ONLY with your next message to the agent. ` +
       `Do not include any prefix like "User:" or extra explanation. ` +
+      `Do not summarize or describe what the agent built — react as a real user would (brief acknowledgment and your next request). ` +
       `If you believe all goals are accomplished, respond with exactly: ` +
       `${DONE_SIGNAL}`
     );
@@ -71,6 +83,7 @@ export class GocodeSyntheticUser implements SyntheticUserAgent {
       `${goalTracker.buildGoalPrompt()}\n\n` +
       `Respond ONLY with your next message to the agent. ` +
       `Do not include any prefix like "User:" or extra explanation. ` +
+      `Do not summarize or describe what the agent built — react as a real user would (brief acknowledgment and your next request). ` +
       `Continue engaging naturally after each request. ` +
       `If all requests have been made, respond with exactly: ` +
       `${DONE_SIGNAL}`
@@ -92,11 +105,47 @@ export class GocodeSyntheticUser implements SyntheticUserAgent {
       `${turn.role.toUpperCase()}: ${turn.content}`,
     ];
     for (const tc of turn.toolCalls) {
-      const detail = tc.output !== undefined ? tc.output : tc.input;
-      if (detail !== undefined) {
-        lines.push(`[tool: ${tc.name}] ${JSON.stringify(detail)}`);
+      if (this.isAskQuestion(tc.output)) {
+        lines.push(this.formatAskQuestion(tc.output));
       } else {
-        lines.push(`[tool: ${tc.name}]`);
+        const detail = tc.output !== undefined ? tc.output : tc.input;
+        if (detail !== undefined) {
+          lines.push(`[tool: ${tc.name}] ${JSON.stringify(detail)}`);
+        } else {
+          lines.push(`[tool: ${tc.name}]`);
+        }
+      }
+    }
+    return lines.join('\n');
+  }
+
+  private isAskQuestion(output: unknown): output is AskQuestionOutput {
+    if (typeof output !== 'object' || output === null) return false;
+    const o = output as Record<string, unknown>;
+    const widgetData = o.widgetData;
+    if (
+      o.widgetType !== 'ask-question' ||
+      typeof widgetData !== 'object' ||
+      widgetData === null
+    ) {
+      return false;
+    }
+    const questions = (widgetData as Record<string, unknown>).questions;
+    return Array.isArray(questions) && questions.length > 0;
+  }
+
+  private formatAskQuestion(output: AskQuestionOutput): string {
+    const lines = [
+      '[AGENT IS ASKING YOU — answer these questions in your next message]:',
+    ];
+    for (let i = 0; i < output.widgetData.questions.length; i++) {
+      const q = output.widgetData.questions[i];
+      lines.push(`Q${i + 1}: ${q.question}`);
+      if (q.suggestions && q.suggestions.length > 0) {
+        lines.push(
+          `    Options: ${q.suggestions.map(s => s.text).join(' | ')}` +
+          `${q.allowOther !== false ? ' | or your own answer' : ''}`,
+        );
       }
     }
     return lines.join('\n');

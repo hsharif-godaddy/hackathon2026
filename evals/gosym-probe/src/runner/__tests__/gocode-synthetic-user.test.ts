@@ -95,7 +95,7 @@ describe('GocodeSyntheticUser — history prompt', () => {
     expect(getHistoryContent(client)).toContain('[tool: askQuestion]');
   });
 
-  it('renders tool call output in assistant turn', async () => {
+  it('renders ask-question widget as natural-language directive', async () => {
     const client = makeClient('answer');
     const user = new GocodeSyntheticUser(client);
     const widgetOutput = {
@@ -124,8 +124,130 @@ describe('GocodeSyntheticUser — history prompt', () => {
     await user.nextMessage(history, makeScenario());
 
     const content = getHistoryContent(client);
+    expect(content).toContain('[AGENT IS ASKING YOU');
+    expect(content).toContain("Q1: What's your business name?");
+    expect(content).not.toContain('[tool: askQuestion]');
+  });
+
+  it('falls back to generic tool rendering when ask-question widgetData lacks questions', async () => {
+    const client = makeClient('answer');
+    const user = new GocodeSyntheticUser(client);
+    const widgetOutput = {
+      widgetType: 'ask-question',
+      widgetData: {},
+    };
+    const history: Turn[] = [
+      userTurn('help me'),
+      assistantTurn('', [
+        {
+          id: 'tc-1',
+          name: 'askQuestion',
+          output: widgetOutput,
+          startTime: 0,
+          endTime: 0,
+        },
+      ]),
+    ];
+
+    await user.nextMessage(history, makeScenario());
+
+    const content = getHistoryContent(client);
     expect(content).toContain('[tool: askQuestion]');
-    expect(content).toContain("What's your business name?");
+    expect(content).not.toContain('[AGENT IS ASKING YOU');
+  });
+
+  it('falls back when ask-question questions is not an array', async () => {
+    const client = makeClient('answer');
+    const user = new GocodeSyntheticUser(client);
+    const widgetOutput = {
+      widgetType: 'ask-question',
+      widgetData: { questions: 'not-an-array' },
+    };
+    const history: Turn[] = [
+      userTurn('help me'),
+      assistantTurn('', [
+        {
+          id: 'tc-1',
+          name: 'askQuestion',
+          output: widgetOutput,
+          startTime: 0,
+          endTime: 0,
+        },
+      ]),
+    ];
+
+    await user.nextMessage(history, makeScenario());
+
+    const content = getHistoryContent(client);
+    expect(content).toContain('[tool: askQuestion]');
+    expect(content).not.toContain('[AGENT IS ASKING YOU');
+  });
+
+  it('falls back when ask-question questions array is empty', async () => {
+    const client = makeClient('answer');
+    const user = new GocodeSyntheticUser(client);
+    const widgetOutput = {
+      widgetType: 'ask-question',
+      widgetData: { questions: [] },
+    };
+    const history: Turn[] = [
+      userTurn('help me'),
+      assistantTurn('', [
+        {
+          id: 'tc-1',
+          name: 'askQuestion',
+          output: widgetOutput,
+          startTime: 0,
+          endTime: 0,
+        },
+      ]),
+    ];
+
+    await user.nextMessage(history, makeScenario());
+
+    const content = getHistoryContent(client);
+    expect(content).toContain('[tool: askQuestion]');
+    expect(content).not.toContain('[AGENT IS ASKING YOU');
+  });
+
+  it('renders ask-question suggestions as pipe-separated options', async () => {
+    const client = makeClient('answer');
+    const user = new GocodeSyntheticUser(client);
+    const widgetOutput = {
+      success: true,
+      widgetType: 'ask-question',
+      widgetData: {
+        questions: [
+          {
+            question: 'What are your booking hours?',
+            suggestions: [
+              { text: 'Mon–Fri, 9am–5pm' },
+              { text: 'Mon–Fri, 8am–6pm' },
+            ],
+            allowOther: true,
+          },
+        ],
+        answers: [],
+      },
+    };
+    const history: Turn[] = [
+      userTurn('help me'),
+      assistantTurn('', [
+        {
+          id: 'tc-1',
+          name: 'askQuestion',
+          output: widgetOutput,
+          startTime: 0,
+          endTime: 0,
+        },
+      ]),
+    ];
+
+    await user.nextMessage(history, makeScenario());
+
+    const content = getHistoryContent(client);
+    expect(content).toContain('Mon–Fri, 9am–5pm | Mon–Fri, 8am–6pm');
+    expect(content).toContain('or your own answer');
   });
 
   it('renders both content and tool calls when both present', async () => {
@@ -281,6 +403,19 @@ describe('GocodeSyntheticUser — system prompt', () => {
       getMsgs(client).find((m) => m.role === 'user')?.content ?? '';
     expect(userMsg).toContain('Start the conversation');
   });
+
+  it('includes anti-narration instruction in flat system prompt', async () => {
+    const client = makeClient('DONE');
+    const user = new GocodeSyntheticUser(client);
+
+    await user.nextMessage([], makeScenario());
+
+    const sysPrompt =
+      getMsgs(client).find((m) => m.role === 'system')?.content ?? '';
+    expect(sysPrompt).toContain(
+      'Do not summarize or describe what the agent built',
+    );
+  });
 });
 
 // ── Tracker-aware prompt ──────────────────────────────────────────────────────
@@ -322,6 +457,18 @@ describe('GocodeSyntheticUser — tracker-aware prompt', () => {
 
     expect(getSystemContent(client)).toContain(
       'Continue engaging naturally after each request.',
+    );
+  });
+
+  it('includes anti-narration instruction in tracker system prompt', async () => {
+    const client = makeClient('DONE');
+    const user = new GocodeSyntheticUser(client);
+    const tracker = makeTracker();
+
+    await user.nextMessage([], makeScenario(), tracker);
+
+    expect(getSystemContent(client)).toContain(
+      'Do not summarize or describe what the agent built',
     );
   });
 
