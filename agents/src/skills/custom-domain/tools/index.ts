@@ -174,7 +174,9 @@ async function attach(
             success: false,
             requiresPublish: true,
             error: 'App must be published before attaching a domain',
-            message: 'App must be published first. Ask the user if they want to publish.'
+            message: domain
+                ? `${domain} has been saved and will be automatically connected after publishing. Ask the user if they want to publish now and connect the domain in one step — if they agree, call the publish tool and the domain will be attached automatically.`
+                : 'The app must be published before attaching a domain. Ask the user if they want to publish now — if they agree, call the publish tool. Once published, the domain can be connected.',
         }
     }
 
@@ -471,7 +473,7 @@ export const domainPurchaseTool: SkillToolDefinition = {
     description: `Purchase, attach, or forward a domain.
 
 purchase: show domain search/buy widget.
-attach: connect an existing domain to this app.
+attach: connect an existing domain to this app — widget lists the user's existing GoDaddy domains with one-click connect, plus a purchase option for users who don't have one yet.
 forward: explain how to set up domain forwarding for secondary domains.
 
 Rules:
@@ -484,7 +486,8 @@ Rules:
 7. Call attach for DNS requests to show the official record table
 8. Show the widget directly (skip clarifying questions)
 9. Use only real DNS values from tool results (not fabricated or Preview URL \`*.preview.*\`)
-10. For "forward" requests, guide the user through GoDaddy forwarding (DCC deep link) — never suggest attaching a second domain as primary`,
+10. For "forward" requests, guide the user through GoDaddy forwarding (DCC deep link) — never suggest attaching a second domain as primary
+11. **Default to attach when uncertain** — use purchase ONLY when user explicitly says "buy", "purchase", "find", or "get a new" domain; phrases like "connect a domain", "add my domain", "I need a domain", "let's set up a domain" all map to attach`,
     parameters: domainInputSchema,
     execute: async (input, context) => {
         const appId = (context?.metadata?.appId as string) || input.appId

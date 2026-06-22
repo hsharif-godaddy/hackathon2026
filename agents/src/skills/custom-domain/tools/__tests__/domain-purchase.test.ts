@@ -353,6 +353,48 @@ describe('custom-domain', function packageTests() {
             expect(result.error).toBe('App must be published before attaching a domain')
         })
 
+        it('should tell agent to publish-then-auto-attach when domain is provided and app not published', async function requiresPublishWithDomainMessage() {
+            mockGetClientActionService.mockReturnValue({
+                executeAction: vi.fn().mockResolvedValue({
+                    success: true,
+                    result: { variants: [] }
+                })
+            } as any)
+
+            const result = await execute(
+                { action: 'attach', domain: 'mydomain.com' },
+                {
+                    metadata: { appId: 'app-123', permissions: { canPurchaseDomain: true } },
+                    socketId: 'socket-123'
+                }
+            )
+
+            expect(result.requiresPublish).toBe(true)
+            expect(result.message).toContain('mydomain.com')
+            expect(result.message).toContain('automatically connected after publishing')
+            expect(result.message).toContain('publish tool')
+        })
+
+        it('should tell agent to publish first when no domain provided and app not published', async function requiresPublishNoDomainMessage() {
+            mockGetClientActionService.mockReturnValue({
+                executeAction: vi.fn().mockResolvedValue({
+                    success: true,
+                    result: { variants: [] }
+                })
+            } as any)
+
+            const result = await execute(
+                { action: 'attach' },
+                {
+                    metadata: { appId: 'app-123', permissions: { canPurchaseDomain: true } },
+                    socketId: 'socket-123'
+                }
+            )
+
+            expect(result.requiresPublish).toBe(true)
+            expect(result.message).toContain('publish tool')
+        })
+
         it('should store domain.purchased in memory when domain is provided', async function storeMemory() {
             const mockExecuteAction = vi.fn().mockImplementation(function ({ action }) {
                 if (action === 'getSiteData') {

@@ -10,12 +10,15 @@ intents:
 
 ## Intent Mapping
 
+**Default rule: when uncertain between `attach` and `purchase`, always use `attach`.** The attach widget shows the user's existing GoDaddy domains with one-click connect, and also includes a "Buy a domain" option — so it handles both cases. Only call `purchase` when the user explicitly says they want to buy or find a new domain they don't yet own (e.g. "buy", "purchase", "find", "get a new", "I don't have a domain").
+
 | User says                                              | Call                                                   |
 | ------------------------------------------------------ | ------------------------------------------------------ |
 | "I purchased/bought … mydomain.com" (any follow-up)    | `{ action: 'attach', domain: 'mydomain.com' }`         |
 | "Attach/connect/use mydomain.com"                      | `{ action: 'attach', domain: 'mydomain.com' }`         |
 | "Add/connect a domain" / "custom domain" / DNS request | `{ action: 'attach' }`                                 |
-| "Buy/find a domain" / "I need a domain"                | `{ action: 'purchase', brandName: '[project name]' }`  |
+| "I want/need a domain" / "let's set up a domain" (ownership unclear) | `{ action: 'attach' }` — show existing domains first; purchase option is inside the widget |
+| "Buy/find/get a new domain" / "I don't have a domain yet" | `{ action: 'purchase', brandName: '[project name]' }` |
 | "I want to buy my-sweet-store.com"                     | `{ action: 'purchase', domain: 'my-sweet-store.com' }` |
 | "Forward mybusiness.org to my site" / "make my other domain go here" / "forward my domain" / "multiple domains" | `{ action: 'forward', domain: 'mybusiness.org' }` |
 | "How do I point all my domains here?" / "secondary domain" | `{ action: 'forward' }`                             |
