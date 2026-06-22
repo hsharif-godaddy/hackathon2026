@@ -19,8 +19,8 @@ const mockSecretOperations = vi.hoisted(() => ({
 }));
 const mockStreamingState = vi.hoisted(() => ({ value: 'idle' as 'idle' | 'streaming' }));
 
-vi.mock('@/contexts/WebSocketContext', () => ({
-  useWebSocketContext: () => ({ sendMessage: mockSendMessage }),
+vi.mock('@/contexts/ChatContext', () => ({
+  useChatContext: () => ({ sendMessage: mockSendMessage }),
 }));
 
 vi.mock('@/hooks/useSecretOperations', () => ({

@@ -15,7 +15,7 @@ import { getAgentConfig } from '../../services/features.js'
 import type { FormattedContext } from '../../services/helpers/ContextFormatter.js'
 
 import type { AgentExecutionContext } from '../../base/agent.interface.js'
-import type { AgentsAppContext } from '../../types/websocket-context.js'
+import type { AgentsAppContext } from '../../types/agents-app-context.js'
 import { getValidatedTemplateVersion, getTemplateDescriptionPath } from '../../utils/prompt-utils.js'
 import { AppRepository } from '../../database/repositories/AppRepository.js'
 import { existsSync, readFileSync } from 'fs'

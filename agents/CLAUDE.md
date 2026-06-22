@@ -83,7 +83,7 @@ Key methods: `addFiles`, `removeFiles`, `writeTree`, `commitTree`, `reset`, `pus
 
 **Integration via callbacks** (not hard coupling): `agentRouter`, `contextProvider`, `messageProvider`, `messagePersistence`. The agents service provides domain-specific implementations, wired into the SSE chat path (`src/server/sse/MessageExecutionService.ts`).
 
-**Shared domain types** (grants, context-attachment, social, websocket) live in `@airo/shared`. Agents-specific extensions (type guards, Zod schemas, rendering infrastructure) stay local in `src/types/`.
+**Shared domain types** (grants, context-attachment, social, chat) live in `@airo/shared`. Agents-specific extensions (type guards, Zod schemas, rendering infrastructure) stay local in `src/types/`.
 
 ## Database
 

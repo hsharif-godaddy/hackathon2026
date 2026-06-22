@@ -7,7 +7,7 @@ import Modal from '@ux/modal';
 import text from '@ux/text';
 
 import { ChatTab } from '@/app/[market]/develop/components/types';
-import { useWebSocketContext } from '@/contexts/WebSocketContext';
+import { useChatContext } from '@/contexts/ChatContext';
 import { useChatTabs } from '@/hooks/useChatTabs';
 import { useTranslations } from '@/hooks/useTranslations';
 import { CalendarEvent } from '@/types/marketing';
@@ -43,7 +43,7 @@ export default function EventModal({
   const [selectedContentType, setSelectedContentType] = useState<ContentType>(null);
   const [scheduledTime, setScheduledTime] = useState('10:00 AM');
   const [selectedPlatforms, setSelectedPlatforms] = useState<Set<'facebook' | 'instagram'>>(new Set(['facebook', 'instagram']));
-  const { sendMessage } = useWebSocketContext();
+  const { sendMessage } = useChatContext();
   const { setActiveChatTab } = useChatTabs();
 
   // Check if selected date is today

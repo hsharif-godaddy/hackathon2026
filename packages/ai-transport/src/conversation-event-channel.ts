@@ -552,7 +552,7 @@ export class ConversationEventChannel {
   /**
    * Removes expired conversations based on TTL
    * Only removes conversations with no active subscribers and no activity for longer than TTL
-   * This prevents dropping live WebSocket connections that may be idle but still subscribed
+   * This prevents dropping live connections that may be idle but still subscribed
    *
    * @returns Number of conversations cleaned up
    *

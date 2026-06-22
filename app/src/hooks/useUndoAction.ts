@@ -1,10 +1,10 @@
 'use client'
 
 import { useCallback, useMemo, useState } from 'react'
-import { isRestoreMetadata } from '@airo/shared/websocket'
+import { isRestoreMetadata } from '@airo/shared/chat'
 
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils'
-import { useWebSocketContext } from '@/contexts/WebSocketContext'
+import { useChatContext } from '@/contexts/ChatContext'
 import { useGitHistoryQuery } from '@/hooks/useGitHistory'
 import { extractChatTurnCommits } from '@/hooks/useHeadUndoAction'
 import { type RestoreCommitResult,useRestoreCommitMutation } from '@/hooks/useRestoreCommitMutation'
@@ -75,7 +75,7 @@ export function useUndoAction(): UndoAction {
 
   const isStreaming = useIsActivelyStreaming()
   const messages = useMessages()
-  const { stopGeneration } = useWebSocketContext()
+  const { stopGeneration } = useChatContext()
   const addCompletedMessage = useStreamingConversationStore((s) => s.addCompletedMessage)
   const clearActiveStream = useStreamingConversationStore((s) => s.clearActiveStream)
 

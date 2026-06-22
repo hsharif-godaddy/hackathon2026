@@ -63,8 +63,8 @@ vi.mock('@/stores/useStreamingConversationStore', () => ({
   useStreamingConversationStore: (selector: any) => selector({ addCompletedMessage: mockAddCompletedMessage }),
 }));
 
-vi.mock('@/contexts/WebSocketContext', () => ({
-  useWebSocketContext: () => ({ sendMessage: mockSendMessage }),
+vi.mock('@/contexts/ChatContext', () => ({
+  useChatContext: () => ({ sendMessage: mockSendMessage }),
 }));
 vi.mock('@/hooks/useSwitchboard', () => ({ useSwitchboard: mockUseSwitchboard }));
 vi.mock('@/hooks/useModifyDomains', () => ({ useModifyDomains: () => ({ mutateAsync: mockMutateAsync }) }));

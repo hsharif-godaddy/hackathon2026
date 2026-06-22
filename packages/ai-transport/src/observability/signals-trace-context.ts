@@ -45,7 +45,7 @@ function screenshotUrlsForApp(appId: string | undefined): {
 }
 
 /**
- * Signals + OTEL trace context for chat (WebSocket handshake or SSE HTTP request).
+ * Signals + OTEL trace context for chat (SSE HTTP request).
  * JWT `trafficSessionId` maps to Signals `sessionId`.
  */
 export function buildChatSignalsTraceContext(options: {

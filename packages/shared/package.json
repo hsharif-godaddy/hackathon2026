@@ -19,9 +19,9 @@
       "types": "./dist/context-attachment/index.d.ts",
       "import": "./dist/context-attachment/index.js"
     },
-    "./websocket": {
-      "types": "./dist/websocket/index.d.ts",
-      "import": "./dist/websocket/index.js"
+    "./chat": {
+      "types": "./dist/chat/index.d.ts",
+      "import": "./dist/chat/index.js"
     },
     "./social": {
       "types": "./dist/social/index.d.ts",
@@ -88,8 +88,8 @@
       "context-attachment": [
         "dist/context-attachment/index.d.ts"
       ],
-      "websocket": [
-        "dist/websocket/index.d.ts"
+      "chat": [
+        "dist/chat/index.d.ts"
       ],
       "social": [
         "dist/social/index.d.ts"

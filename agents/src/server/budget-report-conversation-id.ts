@@ -1,4 +1,4 @@
-import type { AgentsAppContext } from '../types/websocket-context.js'
+import type { AgentsAppContext } from '../types/agents-app-context.js'
 
 /**
  * Select the conversationId to write into `budgetReportConversationCache` for OTel

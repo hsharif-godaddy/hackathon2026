@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect } from 'react'
-import type { DebugTurnStatsEvent } from '@airo/shared/websocket'
+import type { DebugTurnStatsEvent } from '@airo/shared/chat'
 
 import { useDebugStats } from './DebugStatsContext'
 

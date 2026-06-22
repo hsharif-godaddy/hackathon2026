@@ -382,7 +382,7 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
 
     const initData = connectionInitializer.initialize()
     writeFormatted('initialize', {
-      serverConfig: { supportsWebSocketHistory: false, supportsConnectThenAuth: false, serverVersion: initData.serverConfig.version },
+      serverConfig: { supportsConnectThenAuth: false, serverVersion: initData.serverConfig.version },
       agents: initData.agents,
     })
 

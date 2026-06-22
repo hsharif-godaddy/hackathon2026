@@ -40,8 +40,8 @@ vi.mock('@/app/[market]/develop/components/utils', () => ({
   useAppIdFromParams: () => mockAppId.value,
 }));
 
-vi.mock('@/contexts/WebSocketContext', () => ({
-  useWebSocketContext: () => ({
+vi.mock('@/contexts/ChatContext', () => ({
+  useChatContext: () => ({
     sendMessage: vi.fn(),
     loadHistory: vi.fn(function () { return true; }),
     stopGeneration: mockStopGeneration,
@@ -108,7 +108,7 @@ function makeNotice(overrides: Partial<RestoreNotice> = {}): RestoreNotice {
     content: '[system] The user performed a rollback.',
     createdAt: new Date('2026-05-18T12:00:00Z').toISOString(),
     // Matches the persisted `RestoreActionMetadata` shape from
-    // `@airo/shared/websocket` — `isRestoreMetadata` checks `kind === 'restore'`.
+    // `@airo/shared/chat` — `isRestoreMetadata` checks `kind === 'restore'`.
     metadata: {
       kind: 'restore',
       commitHash: null,

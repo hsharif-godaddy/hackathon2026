@@ -8,7 +8,7 @@ import { SocialConnectionStatus, SocialConnectionStatusMessage } from '@/app/[ma
 import type { DefaultToolRendererProps } from '@/app/[market]/develop/components/tool-renderers/DefaultToolRenderer'
 import DefaultToolRenderer from '@/app/[market]/develop/components/tool-renderers/DefaultToolRenderer'
 import ToolHeader from '@/app/[market]/develop/components/tool-renderers/ToolHeader'
-import { useWebSocketContext } from '@/contexts/WebSocketContext'
+import { useChatContext } from '@/contexts/ChatContext'
 import { useToolResultSync } from '@/hooks/useToolResultSync'
 import { useTranslations } from '@/hooks/useTranslations'
 import { logger } from '@/lib/request-context'
@@ -31,7 +31,7 @@ function SocialConnectToolRenderer({
   ...rest
 }: DefaultToolRendererProps) {
   const t = useTranslations()
-  const { sendMessage } = useWebSocketContext()
+  const { sendMessage } = useChatContext()
   const currentAppId = useStreamingConversationStore(state => state.currentAppId)
 
   const r = (toolStatus === 'completed' && result && typeof result === 'object')

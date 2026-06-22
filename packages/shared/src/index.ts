@@ -26,8 +26,8 @@ export type {
   BuildContextAttachmentsBuildErrorContext,
 } from './context-attachment/index.js'
 
-// WebSocket Context
-export type { AgentsAppContext, AgentsAppChatMessage } from './websocket/index.js';
+// Chat / agents-app context
+export type { AgentsAppContext, AgentsAppChatMessage } from './chat/index.js';
 
 // Social
 export { CONNECT_REQUEST_FROM_PUBLISH } from './social/index.js';

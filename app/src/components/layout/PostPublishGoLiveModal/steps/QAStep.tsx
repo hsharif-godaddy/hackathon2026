@@ -12,7 +12,7 @@ import Button from '@ux/button';
 import text from '@ux/text';
 
 import { ButtonBar } from '@/components/layout/PostPublishGoLiveModal/components/ButtonBar';
-import { useWebSocketContext } from '@/contexts/WebSocketContext';
+import { useChatContext } from '@/contexts/ChatContext';
 import { useBreakpoints } from '@/hooks/useBreakpoints';
 import { useTranslations } from '@/hooks/useTranslations';
 import { shipAnalyticsLog } from '@/lib/logging';
@@ -38,7 +38,7 @@ export function QAStep({ appId, isAnalyzing, analysisError, analysisResults, upd
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
   const [selectedIssues, setSelectedIssues] = useState<Set<string>>(new Set());
   const [isMarkingFixed, setIsMarkingFixed] = useState(false);
-  const { sendMessage } = useWebSocketContext();
+  const { sendMessage } = useChatContext();
   const { isMdBreakpoint } = useBreakpoints();
 
   const hasErrors = (analysisResults?.report?.summary?.errors || 0) > 0;

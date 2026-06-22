@@ -8,7 +8,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import Growl from '@ux/growl'
 
 import type { ActiveSecretsRequest } from '@/app/[market]/develop/components/chat/secrets/types'
-import { useWebSocketContext } from '@/contexts/WebSocketContext'
+import { useChatContext } from '@/contexts/ChatContext'
 import { useSecretOperations } from '@/hooks/useSecretOperations'
 import { useTranslations } from '@/hooks/useTranslations'
 import { logger } from '@/lib/request-context'
@@ -58,7 +58,7 @@ export function useSecretsRequestActions(
   const t = useTranslations()
   const queryClient = useQueryClient()
   const currentAppId = useCurrentAppId()
-  const { sendMessage } = useWebSocketContext()
+  const { sendMessage } = useChatContext()
   const secretOperations = useSecretOperations()
   const resolveSecretsComposerToolCall = useStreamingConversationStore(
     (state) => state.resolveSecretsComposerToolCall,

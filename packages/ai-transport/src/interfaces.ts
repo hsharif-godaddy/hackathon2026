@@ -1,5 +1,5 @@
 /**
- * Clean interfaces for WebSocket server message and context management
+ * Clean interfaces for chat server message and context management
  * These interfaces allow for flexible, testable, and generic message injection
  */
 
@@ -110,44 +110,6 @@ export interface HistoryProvider {
     appId: string,
     options?: HistoryPaginationOptions
   ): Promise<PaginatedHistoryResult | PersistedMessage[]>
-}
-
-/**
- * Data structure for recovery_status WebSocket message
- */
-export interface RecoveryStatusData {
-  isRecovering: boolean
-  hasBufferedEvents: boolean
-  bufferedEventCount: number
-  streamCompleted?: boolean
-  conversationId?: string
-  agentName?: string
-  recoveryMode?: string
-  requiresAck?: boolean
-  lastSequence?: number
-  lossDetected?: boolean
-  lostEventCount?: number
-  eventsReplayed?: number
-
-  // History streaming
-  historyStreaming?: boolean
-  historyMessageCount?: number
-}
-
-/**
- * Data structure for server_config WebSocket message
- * Sent immediately after connection (before authentication) so the client has
- * timeout values and capability flags available when it sends the authenticate event.
- */
-export interface ServerConfigData {
-  /** Stream recovery window timeout in milliseconds */
-  streamRecoveryWindow: number
-  /** Acknowledgement timeout in milliseconds */
-  ackTimeout: number
-  /** Whether server supports WebSocket-based conversation history loading (for backwards compatibility) */
-  supportsWebSocketHistory?: boolean
-  /** Server version for capability negotiation */
-  serverVersion?: string
 }
 
 /**

@@ -450,7 +450,7 @@ describe('git routes', function gitRouteTests() {
       mocks.getLatestForApp.mockResolvedValueOnce({ id: 'conv-9' });
       const persistedAt = new Date('2026-05-18T12:00:00Z');
       // Mocked-out store mirrors the metadata shape the route asks it to
-      // persist — `RestoreActionMetadata` from `@airo/shared/websocket`
+      // persist — `RestoreActionMetadata` from `@airo/shared/chat`
       // (`kind: 'restore'` plus the three rollback hashes).
       const persistedMetadata = {
         kind: 'restore',

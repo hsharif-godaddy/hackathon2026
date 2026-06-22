@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { SocialPlatform } from '../../types/social.js';
 import { SocialAssociationRepository } from '../../database/repositories/SocialAssociationRepository.js';
 import { Logger } from '../../logging/index.js';
-import type { AgentsAppContext } from '../../types/websocket-context.js';
+import type { AgentsAppContext } from '../../types/agents-app-context.js';
 
 const logger = Logger.create({ component: 'social-read' });
 

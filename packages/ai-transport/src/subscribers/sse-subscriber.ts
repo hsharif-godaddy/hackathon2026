@@ -13,9 +13,9 @@ export interface SSESubscriberLogger {
  * SSE subscriber that delivers events to a connected HTTP client via an SSEWriter.
  *
  * Coalescing of consecutive chunk / tool_input_delta events is delegated to the
- * shared `EventCoalescer` so SSE and WebSocket apply identical policy. Merging
- * advances the event's sequence to the latest, so the SSE `id:` line on a
- * coalesced frame is the correct Last-Event-Id resumption cursor.
+ * shared `EventCoalescer`. Merging advances the event's sequence to the latest,
+ * so the SSE `id:` line on a coalesced frame is the correct Last-Event-Id
+ * resumption cursor.
  *
  * Reducing the number of writes also reduces the number of compressed-stream
  * flush boundaries, improving compression ratio when brotli/gzip is enabled.

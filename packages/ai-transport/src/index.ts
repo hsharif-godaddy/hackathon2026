@@ -28,8 +28,7 @@ export type {
   EventMetadata,
   CircularBufferConfig,
   HistoryProvider,
-  PersistedMessage,
-  RecoveryStatusData
+  PersistedMessage
 } from './interfaces.js'
 
 // No-op Persistence for Tests/Examples

@@ -11,7 +11,7 @@
 
 import { z } from 'zod';
 import type { SkillToolDefinition } from '@airo/ai-skills';
-import type { AgentsAppContext } from '../../../types/websocket-context.js';
+import type { AgentsAppContext } from '../../../types/agents-app-context.js';
 import type { ContextAttachment } from '@airo/shared/context-attachment';
 import type { GoogleReview } from '@airo/shared/social';
 import { SocialPlatform, GOOGLE_REVIEWS_READY } from '../../../types/social.js';

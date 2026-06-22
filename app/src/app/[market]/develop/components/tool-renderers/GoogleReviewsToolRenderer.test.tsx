@@ -12,8 +12,8 @@ import GoogleReviewsToolRenderer from './GoogleReviewsToolRenderer'
 // --- mocks ---
 
 const mockSendMessage = vi.fn()
-vi.mock('@/contexts/WebSocketContext', () => ({
-  useWebSocketContext: () => ({ sendMessage: mockSendMessage }),
+vi.mock('@/contexts/ChatContext', () => ({
+  useChatContext: () => ({ sendMessage: mockSendMessage }),
 }))
 
 const mockGetConnectionById = vi.fn()

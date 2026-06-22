@@ -31,23 +31,16 @@ interface AppBranchInfo {
  * Tracks branches per appId since git operations are per-repository.
  *
  * Shutdown integration:
- * The shutdown sequence in app.ts calls waitForInFlightOps() to block until any
- * git operations registered via trackOperation() complete. The legacy WS server
- * (deleted in AIROBUILD-2632) was the only registrant — its socket-disconnect
- * handlers tracked the per-connection git drain. On the SSE path the equivalent
- * drain lives in MessageExecutionService.shutdown(), which awaits in-flight turns
- * (including their git commits) before app.ts closes the DB. trackOperation() now
- * has no caller, so this drain is inert pending removal; see follow-up.
+ * In-flight git commits drain on the SSE path via MessageExecutionService.shutdown(),
+ * which awaits in-flight turns (including their git commits) before app.ts closes the DB.
  */
 export class GitHookService {
   private appRepository: AppRepository;
   private appBranches: Map<string, AppBranchInfo>;
-  private inFlightOps: Set<Promise<unknown>>;
 
   constructor() {
     this.appRepository = new AppRepository();
     this.appBranches = new Map();
-    this.inFlightOps = new Set();
   }
 
   /**
@@ -498,27 +491,5 @@ export class GitHookService {
    */
   clearBranchTracking(appId: string): void {
     this.appBranches.delete(appId);
-  }
-
-  /**
-   * Track an in-flight handleConnectionEnd promise so shutdown can await it.
-   * The promise is removed from the set when it settles.
-   */
-  trackOperation(op: Promise<unknown>): void {
-    this.inFlightOps.add(op);
-    // Catch prevents unhandled rejection from the derived .finally() chain.
-    // The original rejection is still observable via waitForInFlightOps/Promise.allSettled.
-    op.catch(() => {}).finally(() => this.inFlightOps.delete(op));
-  }
-
-  /**
-   * Wait for all in-flight git operations to complete.
-   * Used during graceful shutdown to ensure disconnect-triggered
-   * git commits finish before the process exits.
-   */
-  async waitForInFlightOps(): Promise<void> {
-    if (this.inFlightOps.size > 0) {
-      await Promise.allSettled(Array.from(this.inFlightOps));
-    }
   }
 }

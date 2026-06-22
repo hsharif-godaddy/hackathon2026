@@ -441,7 +441,6 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
                 }
                 useStreamingConversationStore.setState({
                   serverCapabilities: {
-                    supportsWebSocketHistory: (event.data as any)?.supportsWebSocketHistory === true,
                     version: (event.data as any)?.serverVersion as string | undefined
                   }
                 })

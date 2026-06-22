@@ -18,7 +18,7 @@ import { useEffect, useState } from 'react';
 import Modal from '@ux/modal';
 
 import { Confetti } from '@/components/icons/Confetti';
-import { useWebSocketContext } from '@/contexts/WebSocketContext';
+import { useChatContext } from '@/contexts/ChatContext';
 import { useBreakpoints } from '@/hooks/useBreakpoints';
 import { useTranslations } from '@/hooks/useTranslations';
 import { shipAnalyticsLog } from '@/lib/logging';
@@ -52,7 +52,7 @@ export default function PostPublishGoLiveModal({ appId }: PostPublishGoLiveModal
     markAsGoneLive
   } = useDevelopPageStore();
 
-  const { sendMessage } = useWebSocketContext();
+  const { sendMessage } = useChatContext();
   const getSite = useSiteStore((state) => state.getSite);
 
   const publishState = getPublishState(appId);

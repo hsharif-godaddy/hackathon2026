@@ -7,7 +7,7 @@ import { createForWorkspace } from '../../workspace/index.js';
 import { validateAppOwnership } from '../middleware/app-ownership.js';
 import { ConversationRepository } from '../../database/index.js';
 import { getMessageStore } from '../../memory/index.js';
-import { RESTORE, RestoreActionMetadata } from "@airo/shared/websocket";
+import { RESTORE, RestoreActionMetadata } from "@airo/shared/chat";
 
 const router: Router = Router();
 const appRepository = new AppRepository();

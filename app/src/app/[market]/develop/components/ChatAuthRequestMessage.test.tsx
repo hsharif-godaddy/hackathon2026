@@ -13,8 +13,8 @@ vi.mock('@/stores/useStreamingConversationStore', () => ({
   useCurrentAppId: () => 'app-123',
 }));
 
-vi.mock('@/contexts/WebSocketContext', () => ({
-  useWebSocketContext: () => ({
+vi.mock('@/contexts/ChatContext', () => ({
+  useChatContext: () => ({
     sendMessage: vi.fn(),
   }),
 }));

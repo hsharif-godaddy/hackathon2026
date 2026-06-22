@@ -1,6 +1,6 @@
 import { AILibContextManager } from '../agents/ai-lib-agents/context-manager.js'
 import { AppRepository } from '../database/repositories/AppRepository.js'
-import type { AgentsAppContext } from '../types/websocket-context.js'
+import type { AgentsAppContext } from '../types/agents-app-context.js'
 import { logger } from '../logging/index.js'
 
 export interface ContextBuildOptions {

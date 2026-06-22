@@ -8,7 +8,7 @@ import DeleteIcon from '@ux/icon/x-thick'
 
 import { secretsComposerSaveLabel } from '@/app/[market]/develop/components/chat/secrets/secretsComposerLabels'
 import IconButton from '@/app/[market]/develop/components/IconButton'
-import { useWebSocketContext } from '@/contexts/WebSocketContext'
+import { useChatContext } from '@/contexts/ChatContext'
 import { useSecretOperations } from '@/hooks/useSecretOperations'
 import { useTranslations } from '@/hooks/useTranslations'
 import { logger } from '@/lib/request-context'
@@ -99,7 +99,7 @@ export default function ChatSecretsRequestMessage({
   isInteractive = true
 }: ChatSecretsRequestMessageProps) {
   const currentAppId = useCurrentAppId()
-  const { sendMessage } = useWebSocketContext()
+  const { sendMessage } = useChatContext()
   const secretOperations = useSecretOperations()
   const t = useTranslations()
 

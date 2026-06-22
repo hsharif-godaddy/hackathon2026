@@ -153,8 +153,8 @@ vi.mock('@/lib/request-context', () => ({
   },
 }));
 
-vi.mock('@/contexts/WebSocketContext', () => ({
-  useWebSocketContext: () => ({
+vi.mock('@/contexts/ChatContext', () => ({
+  useChatContext: () => ({
     sendMessage: vi.fn(),
   }),
 }));

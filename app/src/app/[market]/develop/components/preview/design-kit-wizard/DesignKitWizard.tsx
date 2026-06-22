@@ -7,7 +7,7 @@ import WandIcon from '@ux/icon/wand';
 import text from '@ux/text';
 
 import { ViewMode } from '@/app/[market]/develop/components/types';
-import { useWebSocketContext } from '@/contexts/WebSocketContext';
+import { useChatContext } from '@/contexts/ChatContext';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { useWizardStore, type WizardStep } from '@/stores/useWizardStore';
 import { AssemblingKit } from './AssemblingKit';
@@ -61,7 +61,7 @@ export function DesignKitWizard({
   previewUrl?: string;
 }): JSX.Element {
   const { step, setStep } = useWizardStep(appId);
-  const { sendMessage } = useWebSocketContext();
+  const { sendMessage } = useChatContext();
   const reduce = useReducedMotion();
 
   // Step 5 hands off to the build: the launch sequence plays, then we flip the

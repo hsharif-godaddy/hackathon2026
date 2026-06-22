@@ -6,7 +6,7 @@ import StarIcon from '@ux/icon/star'
 import type { DefaultToolRendererProps } from '@/app/[market]/develop/components/tool-renderers/DefaultToolRenderer'
 import DefaultToolRenderer from '@/app/[market]/develop/components/tool-renderers/DefaultToolRenderer'
 import ToolHeader from '@/app/[market]/develop/components/tool-renderers/ToolHeader'
-import { useWebSocketContext } from '@/contexts/WebSocketContext'
+import { useChatContext } from '@/contexts/ChatContext'
 import { logger } from '@/lib/request-context'
 import { socialV2Client } from '@/lib/social'
 import { isGoogleConnection } from '@/lib/utils/social-type-guards'
@@ -23,7 +23,7 @@ function GoogleReviewsToolRenderer({
   isLastAssistantMessage = false,
   ...rest
 }: DefaultToolRendererProps) {
-  const { sendMessage } = useWebSocketContext()
+  const { sendMessage } = useChatContext()
   const [fetchStatus, setFetchStatus] = useState<FetchStatus>('fetching')
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const hasFetchedRef = useRef(false)

@@ -185,7 +185,7 @@ import compression from 'compression';
 import { create as createServer } from './server-factory.js';
 import { corsMiddleware, timingAllowOriginMiddleware, errorHandler, notFoundHandler, requestLogger, jwtAuthMiddleware, validateProductAccess } from './middleware/index.js';
 import { agentsRouter, appsRouter, chatRouter, healthRouter, diagnosticsRouter, gitRouter, debugRouter, filesRouter, filesPublicRouter, publishRouter, downloadRouter, dbRouter, dbImportRouter, todoListRouter, securityMisconfigScanRouter, vulnerabilityScanRouter, securityReportRouter, secretsScanRouter, videoRouter, conversationsRouter, qaAnalyzeRouter, gitRemoteRouter, goLiveRouter, adsenseRouter, complianceRouter, socialRouter, blogPostsRouter, customerLogsRouter, diagnoseRouter, autoFixRouter, zipImportRouter, uiKitRouter, shareRouter, mediaRouter, modelsRouter, profilesRouter, transferValidateRouter, runtimeErrorsRouter, formatOverridesRouter, brandDataRouter, designKitRouter, rebuildRouter, nextActionsRouter, captureScreenshotRouter, feedbackRouter, inboxAccountRouter, seoQualityRouter, campaignsRouter, appMetadataRouter, commerceRouter, dkimRouter } from './routes/index.js';
-import { initAgentRuntime, getEventChannel, getAgentFactory, getMessageLifecycleDeps, getGitHookService } from './agent-runtime.js';
+import { initAgentRuntime, getEventChannel, getAgentFactory, getMessageLifecycleDeps } from './agent-runtime.js';
 import { EventStreamRegistry } from './sse/EventStreamRegistry.js';
 import { initSSERegistry } from './sse/registry-singleton.js';
 import { createSSERoutes } from './sse/routes.js';
@@ -801,27 +801,6 @@ async function shutdown() {
       } finally {
         sseExecutionService = null;
       }
-    }
-
-    // Wait for any in-flight git operations to complete before exiting,
-    // or work triggered late in a turn's lifecycle will be lost.
-    try {
-      const gitHookService = getGitHookService();
-
-      logger.info('server.shutdown.git.await', {
-        service: serviceName,
-      });
-
-      await gitHookService.waitForInFlightOps();
-
-      logger.info('server.shutdown.git.complete', {
-        service: serviceName,
-      });
-    } catch (error) {
-      logger.error('server.shutdown.git.error', {
-        service: serviceName,
-        error: error instanceof Error ? error.message : String(error),
-      });
     }
 
     const SERVER_CLOSE_TIMEOUT_MS = 20000; // 20 seconds

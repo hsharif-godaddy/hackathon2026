@@ -12,8 +12,8 @@ import SocialConnectToolRenderer from './SocialConnectToolRenderer'
 const mockSendMessage = vi.fn()
 const mockSyncResult = vi.fn().mockResolvedValue(true)
 
-vi.mock('@/contexts/WebSocketContext', () => ({
-  useWebSocketContext: () => ({
+vi.mock('@/contexts/ChatContext', () => ({
+  useChatContext: () => ({
     sendMessage: mockSendMessage
   })
 }))

@@ -111,8 +111,8 @@ vi.mock('@/app/[market]/develop/components/layout/ShareLink', () => ({
   default: () => <div data-testid="share-link-button">ShareLink</div>,
 }));
 
-vi.mock('@/contexts/WebSocketContext', () => ({
-  useWebSocketContext: () => ({ sendMessage: vi.fn() }),
+vi.mock('@/contexts/ChatContext', () => ({
+  useChatContext: () => ({ sendMessage: vi.fn() }),
 }));
 
 vi.mock('@/stores/useStreamingConversationStore', () => ({

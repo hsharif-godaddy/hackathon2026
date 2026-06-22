@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { DebugTurnStatsEvent } from '@airo/shared/websocket'
+import type { DebugTurnStatsEvent } from '@airo/shared/chat'
 
 import { debugStatsReducer, type DebugStatsState, MAX_HISTORY } from './DebugStatsContext'
 

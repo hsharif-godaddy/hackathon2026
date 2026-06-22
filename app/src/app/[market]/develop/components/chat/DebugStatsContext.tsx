@@ -1,7 +1,7 @@
 'use client'
 
 import { createContext, type Dispatch,type ReactNode, useContext, useReducer, useState } from 'react'
-import type { DebugTurnStatsEvent } from '@airo/shared/websocket'
+import type { DebugTurnStatsEvent } from '@airo/shared/chat'
 
 export const MAX_HISTORY = 50
 

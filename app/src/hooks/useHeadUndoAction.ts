@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useMemo, useState } from 'react'
-import { isRestoreMetadata } from '@airo/shared/websocket'
+import { isRestoreMetadata } from '@airo/shared/chat'
 
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils'
 import { useGitHistoryQuery } from '@/hooks/useGitHistory'

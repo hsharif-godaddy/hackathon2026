@@ -62,9 +62,8 @@ export interface AgentSummary {
   description?: string
 }
 
-// Server capabilities (for backwards compatibility)
+// Server capabilities advertised in the server_config message
 export interface ServerCapabilities {
-  supportsWebSocketHistory: boolean
   version?: string
 }
 

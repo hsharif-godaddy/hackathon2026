@@ -2,7 +2,7 @@ import { createTool, type Tool } from '@airo/ai-lib';
 import { z } from 'zod';
 import { randomUUID } from 'node:crypto';
 import { Logger } from '../../logging/index.js';
-import type { AgentsAppContext } from '../../types/websocket-context.js';
+import type { AgentsAppContext } from '../../types/agents-app-context.js';
 import type { ContextAttachment } from '@airo/shared/context-attachment';
 import type { SocialPost } from '../../types/social-posts.js';
 

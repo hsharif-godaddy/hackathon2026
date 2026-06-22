@@ -1,5 +1,5 @@
 import { calculateCostEstimate, calculateCacheMetrics, calculateContextWindowUtilization, type TokenUsage } from '@airo/ai-lib'
-import { DEBUG_TURN_STATS_EVENT, type DebugTurnStatsEvent } from '@airo/shared/websocket'
+import { DEBUG_TURN_STATS_EVENT, type DebugTurnStatsEvent } from '@airo/shared/chat'
 
 export interface ComputeDebugTurnStatsInput {
   conversationId: string

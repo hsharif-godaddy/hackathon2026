@@ -1686,7 +1686,7 @@ describe('useSSEChat', () => {
       act(() => {
         lastTransport.callbacks?.onEvent({
           type: 'server_config',
-          data: { supportsWebSocketHistory: false, supportsConnectThenAuth: false, serverVersion: '2.0' },
+          data: { supportsConnectThenAuth: false, serverVersion: '2.0' },
         })
       })
 

@@ -33,13 +33,13 @@ vi.mock('../useBrandData', () => ({
   }),
 }));
 
-// Both the wizard shell and the Color/Logo panels call `useWebSocketContext` at
-// render via `useWebSocketContext()`. Stub the context module so it resolves
+// Both the wizard shell and the Color/Logo panels call `useChatContext` at
+// render via `useChatContext()`. Stub the context module so it resolves
 // without a real provider; `sendMessage` is a no-op spy (no message is sent on
 // render at step 3).
 const sendMessage = vi.fn(async () => undefined);
-vi.mock('@/contexts/WebSocketContext', () => ({
-  useWebSocketContext: (): { sendMessage: typeof sendMessage } => ({ sendMessage }),
+vi.mock('@/contexts/ChatContext', () => ({
+  useChatContext: (): { sendMessage: typeof sendMessage } => ({ sendMessage }),
 }));
 
 // FontsPanel (a child of DesignKitPanels) imports `previewFontInIframe` at module

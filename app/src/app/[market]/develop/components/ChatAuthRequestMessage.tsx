@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import Button from '@ux/button'
 
-import { useWebSocketContext } from '@/contexts/WebSocketContext'
+import { useChatContext } from '@/contexts/ChatContext'
 import { openOAuthPopupAndAwait } from '@/lib/oauth-popup'
 import { logger } from '@/lib/request-context'
 import { useCurrentAppId } from '@/stores/useStreamingConversationStore'
@@ -40,7 +40,7 @@ export default function ChatAuthRequestMessage({
     const [status, setStatus] = useState<'pending' | 'authenticating' | 'success' | 'failed'>('pending')
     const [error, setError] = useState<string | null>(null)
     const currentAppId = useCurrentAppId()
-    const { sendMessage } = useWebSocketContext()
+    const { sendMessage } = useChatContext()
 
     const { title, description, redirectUrl, state, provider } = payload
 

@@ -1,4 +1,4 @@
-import { isRestoreMetadata, type RestoreActionMetadata } from '@airo/shared/websocket'
+import { isRestoreMetadata, type RestoreActionMetadata } from '@airo/shared/chat'
 
 import { buildApiUrl } from '@/config/api'
 import { buildDynamicAgentUrl, buildDynamicApiUrl } from '@/config/dynamic-api'

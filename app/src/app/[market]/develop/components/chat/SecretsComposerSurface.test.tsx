@@ -83,8 +83,8 @@ vi.mock('@/stores/useStreamingConversationStore', () => ({
     }),
 }))
 
-vi.mock('@/contexts/WebSocketContext', () => ({
-  useWebSocketContext: () => ({
+vi.mock('@/contexts/ChatContext', () => ({
+  useChatContext: () => ({
     sendMessage: mockSendMessage,
   }),
 }))

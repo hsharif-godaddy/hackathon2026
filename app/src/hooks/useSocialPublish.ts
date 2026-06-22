@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react'
 
-import { useWebSocketContext } from '@/contexts/WebSocketContext'
+import { useChatContext } from '@/contexts/ChatContext'
 import { useTranslations } from '@/hooks/useTranslations'
 import { useUserLocale } from '@/hooks/useUserLocale'
 import { PLATFORM_TRANSFORMS } from '@/lib/social-platforms'
@@ -40,7 +40,7 @@ export function useSocialPublish({
 }: UseSocialPublishOptions): UseSocialPublishReturn {
     const t = useTranslations()
     const locale = useUserLocale()
-    const { sendMessage } = useWebSocketContext()
+    const { sendMessage } = useChatContext()
     const [isPublishing, setIsPublishing] = useState(false)
 
     const publish = useCallback(

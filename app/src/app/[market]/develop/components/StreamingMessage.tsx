@@ -8,7 +8,7 @@ import {
   parseSecretsComposerOutcomeKind,
   stripSecretsComposerOutcomeTag,
 } from '@airo/shared'
-import { isRestoreMetadata } from '@airo/shared/websocket'
+import { isRestoreMetadata } from '@airo/shared/chat'
 import Button from '@ux/button'
 import Modal from '@ux/modal'
 

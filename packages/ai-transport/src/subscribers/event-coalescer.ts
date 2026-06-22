@@ -47,7 +47,7 @@ export interface CoalescerConfig {
 }
 
 /**
- * Pure coalescing logic for WebSocket messages.
+ * Pure coalescing logic for streaming events.
  *
  * Buffers consecutive same-type coalesceable events (chunk, tool_input_delta)
  * and flushes them as a single message with concatenated content on a timer.

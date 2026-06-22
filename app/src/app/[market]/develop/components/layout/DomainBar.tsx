@@ -12,7 +12,7 @@ import text from '@ux/text'
 import { ChatTab } from '@/app/[market]/develop/components/types'
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils'
 import DomainCheckoutModal from '@/app/[market]/develop/components/widgets/DomainCheckoutModal'
-import { useWebSocketContext } from '@/contexts/WebSocketContext'
+import { useChatContext } from '@/contexts/ChatContext'
 import { useDomainSearch } from '@/hooks/useDomainSearch'
 import { useModifyDomains } from '@/hooks/useModifyDomains'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
@@ -38,7 +38,7 @@ function toDomainQuery(name: string): string {
 export default function DomainBar() {
   const t = useTranslations();
   const appId = useAppIdFromParams();
-  const { sendMessage } = useWebSocketContext();
+  const { sendMessage } = useChatContext();
   const addCompletedMessage = useStreamingConversationStore((s) => s.addCompletedMessage);
   const isStreaming = useIsActivelyStreaming();
   const isLoading = useIsLoading();

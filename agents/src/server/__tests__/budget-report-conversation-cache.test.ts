@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import type { AgentsAppContext } from '@airo/shared/websocket'
+import type { AgentsAppContext } from '@airo/shared/chat'
 
 import { selectCacheConversationId } from '../budget-report-conversation-id.js'
 

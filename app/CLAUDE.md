@@ -88,7 +88,7 @@ Local dev inherits the Switchboard Reader dev grant when `AWS_PROFILE=airobuild-
 | Flag | Default | Purpose | Env |
 | ---- | ------- | ------- | --- |
 | `appbuilder-rebuild-intake-form` | `false` | Initial rebuild only: show scope/design intake in develop chat before scraping; embedded in agent JWT as `rebuildIntakeFormEnabled`. Follow-up rebuilds (`initialBuildComplete`) skip intake even when flag is on. | dev (create in test/prod before rollout) |
-| `appbuilder-skill-suggestions` | `false` | Master switch for the pending-skills feature (e.g. online-appointments next steps). Embedded in agent JWT as `skillSuggestionsEnabled`. Gates both the "Continue building" next-actions chips (`NextActionsService`, read via `getActiveAgentContext()`) and the proactive session-start "what's new" announcements (`skill-announcements-context.ts`, threaded via `context.metadata` on WS + SSE). Off → next-actions shows LLM suggestions only and no announcements are injected. | dev (create in test/prod before rollout) |
+| `appbuilder-skill-suggestions` | `false` | Master switch for the pending-skills feature (e.g. online-appointments next steps). Embedded in agent JWT as `skillSuggestionsEnabled`. Gates both the "Continue building" next-actions chips (`NextActionsService`, read via `getActiveAgentContext()`) and the proactive session-start "what's new" announcements (`skill-announcements-context.ts`, threaded via `context.metadata` over SSE). Off → next-actions shows LLM suggestions only and no announcements are injected. | dev (create in test/prod before rollout) |
 | `appbuilder-fanout-jira-eligibility` | _(absent → Lambda default)_ | **JSON** single-value setting gating which categories/ratings the fanout Lambda opens an AABSP Jira ticket for. Shape: `{"issue":bool,"support":bool,"feedback":{"enabled":bool,"maxRating":number}}` (`maxRating` is a strict `rating < maxRating` threshold). The BFF resolves it via `checkSwitchboardObject` at submit time (gasket surfaces a json setting as an object), re-serializes to a canonical string, and stamps it into the parquet column `jira_eligibility_config`; the Lambda parses it (`fanout/jira-eligibility.mjs`). When absent/null/malformed, the Lambda applies its built-in default: **issue/support OFF, feedback ON with maxRating 7**. Flip this to re-enable Bug/SOS tickets or retune the feedback rating threshold — no redeploy. **Must be created as the `json` setting type** (a String-typed value reads back as non-object → null → default). A Switchboard flip affects only NEW submissions (parquet replays use the value stamped at original submit time). | dev, test, prod |
 
 **Setting up a flag for local development:**
@@ -141,13 +141,13 @@ Auth docs: `docs/ui-agents-authentication-architecture.md`.
 
 ## Shared Types (`@airo/shared`)
 
-App uses `@airo/shared` for grants types, context-attachment, social types, and websocket types. App does **NOT** depend on `@airo/ai-lib` — shared types come from `@airo/shared`.
+App uses `@airo/shared` for grants types, context-attachment, social types, and chat types. App does **NOT** depend on `@airo/ai-lib` — shared types come from `@airo/shared`.
 
 | Import path                       | Contents                                                             |
 | --------------------------------- | -------------------------------------------------------------------- |
 | `@airo/shared/grants`             | `CreditGrant`, `GrantType`, `GrantFinalState`, `GrantManager`        |
 | `@airo/shared/context-attachment` | `ContextAttachment`, `createContextAttachment`                       |
-| `@airo/shared/websocket`          | `AgentsAppContext`, `AgentsAppChatMessage`                           |
+| `@airo/shared/chat`               | `AgentsAppContext`, `AgentsAppChatMessage`                           |
 | `@airo/shared/social`             | `ValidationDetails`, `PostImageData`, `CONNECT_REQUEST_FROM_PUBLISH` |
 
 ## Initialization State Machine

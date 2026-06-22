@@ -1,9 +1,9 @@
 /**
- * App-specific WebSocket context types (agents extensions)
- * Base types come from @airo/shared/websocket
+ * Agents-specific app context types (agents extensions)
+ * Base types come from @airo/shared/chat
  */
 
-import type { AgentsAppContext as BaseAgentsAppContext } from '@airo/shared/websocket'
+import type { AgentsAppContext as BaseAgentsAppContext } from '@airo/shared/chat'
 import type { IClientActionService } from '../services/ClientActionService.js'
 
 /**

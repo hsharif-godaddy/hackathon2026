@@ -8,7 +8,7 @@ import Checkbox from '@ux/checkbox'
 import Modal from '@ux/modal'
 import text from '@ux/text'
 
-import { useWebSocketContext } from '@/contexts/WebSocketContext'
+import { useChatContext } from '@/contexts/ChatContext'
 import { useScheduling } from '@/hooks/useScheduling'
 import { useSiteAssociations } from '@/hooks/useSocial'
 import { useTranslations } from '@/hooks/useTranslations'
@@ -54,7 +54,7 @@ export const PostModal = memo(({
   initialPlatforms
 }: SocialPostModalProps) => {
   const t = useTranslations()
-  const { sendMessage } = useWebSocketContext()
+  const { sendMessage } = useChatContext()
   const { data: associationsData, isLoading: isLoadingAssociations, isError: isAssociationsError } = useSiteAssociations(appId)
 
   const [isEditMode, setIsEditMode] = useState(false)

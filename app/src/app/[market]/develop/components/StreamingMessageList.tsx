@@ -13,7 +13,7 @@ import { useThinkerLabel } from '@/app/[market]/develop/components/chat/useThink
 import StaticSkeleton from '@/app/[market]/develop/components/StaticSkeleton'
 import { ChatTab } from '@/app/[market]/develop/components/types'
 import { navigatePreviewToRoute, useAppIdFromParams } from '@/app/[market]/develop/components/utils'
-import { useWebSocketContext } from '@/contexts/WebSocketContext'
+import { useChatContext } from '@/contexts/ChatContext'
 import { useChatTabs } from '@/hooks/useChatTabs'
 import { useIsHistoryDisabled } from '@/hooks/useIsHistoryDisabled'
 import { useSound } from '@/hooks/useSound'
@@ -112,7 +112,7 @@ export default function StreamingMessageList({
   const historyLoadingMore = useStreamingConversationStore((s) => s.historyLoadingMore)
   const setHistoryLoadingMore = useStreamingConversationStore((s) => s.setHistoryLoadingMore)
 
-  const { loadHistory } = useWebSocketContext()
+  const { loadHistory } = useChatContext()
   const isConnected = useConnectionState().connected
 
   // Keep refs in sync so handleScroll reads latest values without dependency churn

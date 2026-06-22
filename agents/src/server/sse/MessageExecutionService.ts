@@ -329,8 +329,8 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
   private activeStreams = new Map<string, ActiveStream>()
   private endedApmTransactions = new WeakSet<NonNullable<ActiveStream['apmTransaction']>>()
   // Tracks in-flight execute() turns (promise → conversationId) so shutdown()
-  // can await their finalization before the DB closes. Entries self-remove when
-  // the turn settles. Mirrors git-hook-service's trackOperation/waitForInFlightOps.
+  // can await their finalization (including their git commits) before the DB
+  // closes. Entries self-remove when the turn settles.
   private inFlightTurns = new Map<Promise<void>, string>()
 
   constructor(deps: ExecutionDeps) {

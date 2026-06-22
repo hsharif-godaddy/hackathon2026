@@ -47,10 +47,8 @@ export interface TokenUsageApmTracker {
 export interface TokenUsageObservabilityParams {
   /**
    * Per-call usage in the `@airo/ai-lib` `TokenUsage` shape — exactly what
-   * `buildTokenUsage()` returns and `calculateCostEstimate()` consumes. SSE
-   * passes `buildTokenUsage(...)` straight through; WS maps its `onTokenUsage`
-   * callback fields (cachedInputTokens/cacheWriteInputTokens) into this shape
-   * at the single call site.
+   * `buildTokenUsage()` returns and `calculateCostEstimate()` consumes. The SSE
+   * path passes `buildTokenUsage(...)` straight through.
    */
   usage: TokenUsage
   metadata: {
@@ -62,12 +60,11 @@ export interface TokenUsageObservabilityParams {
   apmTracker: TokenUsageApmTracker
   logger: TokenUsageObservabilityLogger
   /**
-   * Log-event namespace prefix for the appId-scoped events so WS and SSE turns
-   * stay distinguishable in Loki. Emits `${eventPrefix}.tracked`,
-   * `${eventPrefix}.no_app_id`, and `${eventPrefix}.tracking_failed`. WS passes
-   * 'websocket.token_usage' (preserving its historical names); SSE passes
-   * 'sse.token_usage'. (The granular `token.usage`/`token.cache`/`token.cost`
-   * logs below are intentionally unprefixed — identical across both transports.)
+   * Log-event namespace prefix for the appId-scoped events. Emits
+   * `${eventPrefix}.tracked`, `${eventPrefix}.no_app_id`, and
+   * `${eventPrefix}.tracking_failed`. The SSE path passes 'sse.token_usage'.
+   * (The granular `token.usage`/`token.cache`/`token.cost` logs below are
+   * intentionally unprefixed.)
    */
   eventPrefix: string
 }
@@ -86,20 +83,18 @@ export interface TokenUsageObservabilityResult {
  * and returns the estimated cost so callers can attach it to the Langfuse
  * invocation span.
  *
- * This is the single source of truth for token cost/APM observability shared
- * by the WebSocket (`onTokenUsage` adapter) and SSE (`MessageExecutionService`)
- * paths. Transport-agnostic and self-contained: a token-calc, APM, or logging
- * failure is caught and logged as `${eventPrefix}.tracking_failed` rather than
- * propagated (the one exception is a misbehaving injected logger that throws
- * from `.error`, which would defeat the catch). The granular logs are produced
- * regardless of appId (matching the WS base server's historical behavior);
- * only APM + the `.tracked` log require an appId.
+ * This is the single source of truth for token cost/APM observability on the
+ * SSE path (`MessageExecutionService`). Transport-agnostic and self-contained: a
+ * token-calc, APM, or logging failure is caught and logged as
+ * `${eventPrefix}.tracking_failed` rather than propagated (the one exception is a
+ * misbehaving injected logger that throws from `.error`, which would defeat the
+ * catch). The granular logs are produced regardless of appId; only APM + the
+ * `.tracked` log require an appId.
  *
  * Cost is computed first and returned even when the downstream side-effecting
  * observability (APM / logs) fails — the span must not lose an already-computed
- * cost, matching the WS base server's pre-consolidation behavior where the span
- * cost was set independently of the APM callback. The only "no cost" case is
- * `calculateCostEstimate` itself throwing (e.g. an unknown-model lookup).
+ * cost. The only "no cost" case is `calculateCostEstimate` itself throwing
+ * (e.g. an unknown-model lookup).
  */
 export function recordTokenUsageObservability(
   params: TokenUsageObservabilityParams,
@@ -126,9 +121,8 @@ export function recordTokenUsageObservability(
   // Side-effecting observability (granular logs + APM + consolidated log). A
   // failure here is logged but must not drop the cost computed above.
   try {
-    // Granular per-call logs — unprefixed and emitted for both transports
-    // regardless of appId (they carry no appId, and WS has always logged them
-    // unconditionally).
+    // Granular per-call logs — unprefixed and emitted regardless of appId
+    // (they carry no appId).
     logger.info('token.usage', {
       inputTokens: usage.inputTokens || 0,
       outputTokens: usage.outputTokens || 0,

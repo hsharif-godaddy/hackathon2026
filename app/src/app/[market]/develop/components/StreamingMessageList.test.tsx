@@ -82,8 +82,8 @@ vi.mock('@airo-ux/pattern-library/chat/thinker', () => ({
 // Module-level so individual tests can control return value (true = socket connected/sent).
 const mockLoadHistory = vi.fn(function () { return true; });
 
-vi.mock('@/contexts/WebSocketContext', () => ({
-  useWebSocketContext: () => ({
+vi.mock('@/contexts/ChatContext', () => ({
+  useChatContext: () => ({
     sendMessage: vi.fn(),
     loadHistory: mockLoadHistory,
     stopGeneration: vi.fn(),

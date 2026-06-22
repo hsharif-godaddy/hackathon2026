@@ -45,7 +45,7 @@ import { FEEDBACK_ID } from '@/components/feedback/utils'
 import { UpgradeModal } from '@/components/upgrade/UpgradeModal'
 import { buildDynamicApiUrl, dynamicApiConfigService } from '@/config/dynamic-api'
 import { EXPERIMENT_IDS } from '@/config/experiments'
-import { WebSocketProvider } from '@/contexts/WebSocketContext'
+import { ChatProvider } from '@/contexts/ChatContext'
 import { prefetchGitRemoteConfig } from '@/hooks/github/useGitRemoteConfig'
 import { activateInitialBuildFunnel } from '@/hooks/shared/initialBuildFunnel'
 import { useAotPreload } from '@/hooks/useAotPreload'
@@ -1419,7 +1419,7 @@ function DevelopPageContent({ layout = BuilderLayout.Develop }: { layout?: Build
     typeof document !== 'undefined' && document.documentElement.dir === 'rtl'
 
   return (
-    <WebSocketProvider sendMessage={ws.actions.send} loadHistory={ws.actions.loadHistory} stopGeneration={ws.actions.stop} cancelLogoGeneration={ws.actions.cancelLogo}>
+    <ChatProvider sendMessage={ws.actions.send} loadHistory={ws.actions.loadHistory} stopGeneration={ws.actions.stop} cancelLogoGeneration={ws.actions.cancelLogo}>
       <div
         className={cn("absolute inset-0 flex flex-col overflow-hidden bg-develop-bg", {
           "ios-fixed-container": isMobile
@@ -1850,7 +1850,7 @@ function DevelopPageContent({ layout = BuilderLayout.Develop }: { layout?: Build
           />
         )}
       </div>
-    </WebSocketProvider>
+    </ChatProvider>
   )
 }
 
