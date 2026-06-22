@@ -13,7 +13,7 @@ import { logger } from '@/lib/request-context'
 import { type App, appService } from '@/services/AppService'
 import { type Site, useSitesStore } from '@/stores/useSitesStore'
 import { SubscriptionPlan } from '@/types/credits'
-import type { BusMediaDeletePayload } from '@/utils/eventBus'
+import type { BusMediaDeletePayload, BusUnsupportedFeature } from '@/utils/eventBus'
 import { logImpressionEvent } from '@/utils/instrumentation'
 import { postMessageToIframe } from '@/utils/postMessage'
 
@@ -194,6 +194,7 @@ const createDefaultPublishState = () => {
     postPublishFeatureSelectionNonce: 0,
     isSecurityAnalysisRunning: false,
     seoRegressionAlert: null,
+    previewUnsupportedFeatureWarnings: {} as Partial<Record<BusUnsupportedFeature, true>>,
     securityAnalysisResult: null as 'safe' | 'issues' | null,
     // Agent-initiated publish confirmation (human-in-the-loop gate). Only the agent's
     // publish path consults this; the UI Publish button uses usePublishApp and bypasses it.
@@ -323,6 +324,7 @@ interface DevelopPageStore {
       currentScore: number;
       regressions: Array<{ path: string; newIssues: string[] }>;
     } | null
+    previewUnsupportedFeatureWarnings: Partial<Record<BusUnsupportedFeature, true>>
     securityAnalysisResult: 'safe' | 'issues' | null
     // Agent-initiated publish confirmation: 'pending' shows the approval modal;
     // 'approved'/'cancelled' are read by the awaiting publishAction, then reset to 'idle'.
@@ -421,6 +423,8 @@ interface DevelopPageStore {
   clearPublishStatus: (appId: string) => void
   setSeoRegressionAlert: (appId: string, alert: { scoreDelta: number; currentScore: number; regressions: Array<{ path: string; newIssues: string[] }> } | null) => void
   dismissSeoRegressionAlert: (appId: string) => void
+  addPreviewUnsupportedFeatureWarning: (appId: string, feature: BusUnsupportedFeature) => void
+  clearPreviewUnsupportedFeatureWarnings: (appId: string) => void
   setShowPaywallModal: (appId: string, show: boolean) => void
   setShowPublishLimitModal: (appId: string, show: boolean, data?: PublishLimitData) => void
   setShowFirstPublishCongrats: (appId: string, show: boolean) => void
@@ -460,6 +464,7 @@ interface DevelopPageStore {
       currentScore: number;
       regressions: Array<{ path: string; newIssues: string[] }>;
     } | null
+    previewUnsupportedFeatureWarnings: Partial<Record<BusUnsupportedFeature, true>>
     securityAnalysisResult: 'safe' | 'issues' | null
     agentPublishConfirmation: 'idle' | 'pending' | 'approved' | 'cancelled'
   }
@@ -1003,6 +1008,17 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     dismissSeoRegressionAlert: (appId: string) => set((state) => {
       if (state.publishStates[appId]) {
         state.publishStates[appId].seoRegressionAlert = null;
+      }
+    }),
+    addPreviewUnsupportedFeatureWarning: (appId: string, feature: BusUnsupportedFeature) => set((state) => {
+      if (!state.publishStates[appId]) {
+        state.publishStates[appId] = createDefaultPublishState();
+      }
+      state.publishStates[appId].previewUnsupportedFeatureWarnings[feature] = true;
+    }),
+    clearPreviewUnsupportedFeatureWarnings: (appId: string) => set((state) => {
+      if (state.publishStates[appId]) {
+        state.publishStates[appId].previewUnsupportedFeatureWarnings = {};
       }
     }),
     setShowPaywallModal: (appId: string, show: boolean) => set((state) => {

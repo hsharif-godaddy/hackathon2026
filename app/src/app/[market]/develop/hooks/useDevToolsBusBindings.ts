@@ -74,6 +74,7 @@ export interface DevToolsBusBindingsDeps {
   speechBridge: SpeechBridge
   t: (key: string, values?: Record<string, unknown>, fallback?: string) => string
   wsSend: (options: SendMessageOptions) => Promise<unknown> | unknown
+  showUnsupportedFeatureWarning: boolean
 }
 
 const REGISTERED_TYPES: readonly BusEventType[] = [
@@ -114,6 +115,7 @@ const REGISTERED_TYPES: readonly BusEventType[] = [
   'SPEECH_STOP',
   'AUTO_IMPORT_MEDIA_SLOT',
   'MEDIA_SLOT_SCROLL_RESULT',
+  'PREVIEW_UNSUPPORTED_FEATURE',
 ] as const
 
 function getPreviewIframe(): HTMLIFrameElement | null {
@@ -397,6 +399,12 @@ export function useDevToolsBusBindings(deps: DevToolsBusBindingsDeps): void {
 
     on('URL_CHANGE', (m) => {
       d().lastIframeState.current.url = m.url
+      useDevelopPageStore.getState().clearPreviewUnsupportedFeatureWarnings(d().appId)
+    })
+
+    on('PREVIEW_UNSUPPORTED_FEATURE', (m) => {
+      if (!d().showUnsupportedFeatureWarning) return
+      useDevelopPageStore.getState().addPreviewUnsupportedFeatureWarning(d().appId, m.feature)
     })
 
     on('MESSAGE_COMPLETE', () => {

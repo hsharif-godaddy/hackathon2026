@@ -11,6 +11,7 @@ export { devToolsPlugin } from './vite-plugin'
 // Early "I'm alive" beacon for the builder's evidence-based recovery
 export { postIframeBootingBeacon } from './iframe-booting'
 import { postIframeBootingBeacon } from './iframe-booting'
+import { installUnsupportedApiWrappers } from './utils/unsupportedApiWrappers'
 
 // FullStory injector for development tracking
 export { injectFullStory } from './fullstory-injector'
@@ -161,6 +162,13 @@ if (typeof window !== 'undefined') {
   // is executing well ahead of the late IFRAME_READY handshake, so it won't
   // mistake a slow cold-start for an auth-blocked frame and remount us.
   postIframeBootingBeacon()
+  if (import.meta.env.MODE === 'development') {
+    try {
+      installUnsupportedApiWrappers()
+    } catch {
+      // never propagate — wrappers are best-effort
+    }
+  }
   // Use a small delay to ensure DOM is ready
   setTimeout(injectDevelopmentMode, 100)
   injectPreviewHeader()

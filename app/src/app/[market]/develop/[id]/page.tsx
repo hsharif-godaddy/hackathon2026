@@ -346,6 +346,7 @@ function DevelopPageContent({ layout = BuilderLayout.Develop }: { layout?: Build
   const cmsInlineEditEnabled = useSwitchboard('appbuilder-cms-inline-edit') ?? false
   const isIntroTourEnabled = useSwitchboard('appbuilder-intro-tour')
   const isGitHubSyncEnabled = useSwitchboard('appbuilder-github-sync')
+  const showUnsupportedFeatureWarning = useSwitchboard('appbuilder-preview-unsupported-feature-warnings') === true
   const autoSendInitialMessage = useAutoSendInitialMessage()
   const ws = useChatTransport({ enabled: imageReadiness.isReady })
   const isLoading = useIsLoading()
@@ -1245,6 +1246,7 @@ function DevelopPageContent({ layout = BuilderLayout.Develop }: { layout?: Build
     speechBridge,
     t,
     wsSend: ws.actions.send,
+    showUnsupportedFeatureWarning,
   })
   // Warn user before leaving page with unsaved changes
   useEffect(() => {

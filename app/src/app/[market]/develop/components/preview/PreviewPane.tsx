@@ -10,6 +10,7 @@ import { Loader } from '@airo-ux/loader'
 import { Thinker } from '@airo-ux/pattern-library/chat/thinker'
 import { Canvas } from '@airo-ux/pattern-library/surfaces/canvas'
 import Button from '@ux/button'
+import Growl from '@ux/growl'
 
 import { useLatestNBAs } from '@/app/[market]/develop/components/chat/useLatestNBAs'
 import { useThinkerIndicator } from '@/app/[market]/develop/components/chat/useThinkerIndicator'
@@ -41,6 +42,7 @@ import { logger } from '@/lib/request-context'
 import { useCommanderCanvasTabsEnabled } from '@/stores/useCommanderStore'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { useServerPollingStore } from '@/stores/useServerPollingStore'
+import type { BusUnsupportedFeature } from '@/utils/eventBus'
 import { postMessageToIframe } from '@/utils/postMessage'
 
 const DomainPanel = dynamic(
@@ -196,6 +198,7 @@ async function probePreviewAuth(previewUrl: string): Promise<boolean> {
 // anyway. `usb`, `serial`, and `xr-spatial-tracking` are excluded because no
 // generated app template uses them today; add only with a concrete use case.
 const PREVIEW_IFRAME_ALLOW = 'camera; microphone; geolocation; clipboard-read; fullscreen'
+const EMPTY_UNSUPPORTED_WARNINGS: Partial<Record<BusUnsupportedFeature, true>> = {}
 
 function buildStorageAccessUrl(previewUrl: string): string {
   const u = new URL(previewUrl)
@@ -317,6 +320,32 @@ export default function PreviewPane({
   )
 
   const appId = useAppIdFromParams()
+  const previewUnsupportedFeatureWarnings = useDevelopPageStore(
+    (state) => state.publishStates[appId]?.previewUnsupportedFeatureWarnings ?? EMPTY_UNSUPPORTED_WARNINGS
+  )
+  const clearPreviewUnsupportedFeatureWarnings = useDevelopPageStore(
+    (state) => state.clearPreviewUnsupportedFeatureWarnings
+  )
+  const activeUnsupportedFeatures = Object.keys(previewUnsupportedFeatureWarnings) as BusUnsupportedFeature[]
+  const unsupportedFeatureLabels: Record<BusUnsupportedFeature, string> = {
+    payment: t('builder_preview_unsupported_feature_payment', undefined, 'Payments'),
+    'push-notification': t('builder_preview_unsupported_feature_push_notification', undefined, 'Push Notifications'),
+    'oauth-popup': t('builder_preview_unsupported_feature_oauth_popup', undefined, 'Social Login'),
+  }
+  const unsupportedFeaturesStr = activeUnsupportedFeatures.map((f) => unsupportedFeatureLabels[f]).join(', ')
+
+  useEffect(() => {
+    if (activeUnsupportedFeatures.length === 0) return
+    Growl.addGrowlMessage({
+      id: 'preview-unsupported-feature',
+      title: t('builder_preview_unsupported_feature_title', { features: unsupportedFeaturesStr }, `${unsupportedFeaturesStr} can't be tested here`),
+      children: t('builder_preview_unsupported_feature_body', undefined, 'Open the preview in a new tab instead.'),
+      emphasis: 'info',
+      lifetime: 5000,
+    })
+    const timer = setTimeout(() => clearPreviewUnsupportedFeatureWarnings(appId), 5000)
+    return () => clearTimeout(timer)
+  }, [activeUnsupportedFeatures.length, appId, clearPreviewUnsupportedFeatureWarnings, unsupportedFeaturesStr])
 
   const isBuildTimeEstimateFlagOn = useSwitchboard('appbuilder-build-time-estimate') === true
   const { cohort: initialAgentCohort } = useHivemind(EXPERIMENT_IDS.initialAgent)

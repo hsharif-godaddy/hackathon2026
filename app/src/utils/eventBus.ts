@@ -232,7 +232,10 @@ export interface BusEventMap {
   SPEECH_START: object;
   SPEECH_STOP: object;
   EDITABLE_ELEMENT_CLICKED_IN_PREVIEW: { tagName: string };
+  PREVIEW_UNSUPPORTED_FEATURE: { feature: BusUnsupportedFeature };
 }
+
+export type BusUnsupportedFeature = 'payment' | 'push-notification' | 'oauth-popup';
 
 export type BusEventType = keyof BusEventMap;
 export type BusMessage<K extends BusEventType = BusEventType> = { type: K } & BusEventMap[K];
