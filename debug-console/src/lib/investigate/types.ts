@@ -57,9 +57,9 @@ export interface InvestigationState {
   error: string | null;
   source?: 'console' | 'feedback';
   /**
-   * Mirrors `app/src/lib/feedback/category.ts:FeedbackCategory`. debug-console
-   * doesn't depend on `@airo/shared` so it keeps an inline literal; if a
-   * 4th category is added there, update both sites.
+   * Feedback dialog category. debug-console keeps this inline literal (no
+   * `@airo/shared` dep); keep it in sync with the builder's feedback
+   * categories if a 4th is ever added.
    */
   category?: 'issue' | 'support' | 'feedback';
   rating?: number;

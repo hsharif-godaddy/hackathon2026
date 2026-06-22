@@ -4,9 +4,9 @@ import assert from 'node:assert/strict';
 import { formatSlackBlockMessage } from './slack-format.mjs';
 
 /**
- * DITTO PARITY TESTS — assert byte-for-byte JSON equivalence with what
- * `formatSlackBlockMessage` from `app/src/lib/slack-webhook.ts` produces
- * for the same inputs. Hand-written expected shapes catch drift either side.
+ * Block Kit JSON shape tests for `formatSlackBlockMessage` (the canonical
+ * formatter since the UI's slack-webhook.ts was removed). Hand-written
+ * expected shapes catch drift.
  */
 
 await test('formatSlackBlockMessage: title-only message', () => {

@@ -1,11 +1,10 @@
 /**
  * Format a SlackBlockMessage as a Slack Block Kit payload.
  *
- * VERBATIM PORT of `formatSlackBlockMessage` from
- * `app/src/lib/slack-webhook.ts`. The UI source is the canonical version;
- * this module exists only so the fanout Lambda produces byte-identical
- * Block Kit JSON. If you change either side, change BOTH and the
- * ditto-parity tests in slack-format.test.mjs will catch drift.
+ * Originally a verbatim port of the UI's `formatSlackBlockMessage`. The UI
+ * copy was removed once the fanout Lambda took over all Slack delivery, so
+ * this is now the canonical formatter. Block Kit JSON shape is covered by
+ * slack-format.test.mjs.
  */
 
 export function formatSlackBlockMessage(data) {

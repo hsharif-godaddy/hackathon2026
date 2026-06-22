@@ -75,11 +75,10 @@ interface FeedbackFanoutStackProps extends GDStackProps {
  *    CRM_KEY_SECRET_ARN); IAM granted via wildcard ARN to tolerate ASM's
  *    random suffix.
  *
- * Flag-gated entry: per-submission via the `appbuilder-fanout-via-lambda`
- * Switchboard flag. The BFF (`app/src/app/api/feedback/s3-store/route.ts`)
- * resolves the flag at submit time and stamps the boolean into the
- * parquet's `fanout_via_lambda` column. Lambda reads from there — no
- * switchboard client / IAM in Lambda, atomic flip per submission.
+ * Trigger: the BFF (`app/src/app/api/feedback/s3-store/route.ts`)
+ * async-invokes this Lambda (InvocationType=Event) right after the parquet
+ * write — GD's permissions boundary denies s3:PutBucketNotification, so
+ * there is no bucket-notification trigger. Every submission fans out.
  *
  * Image base: pulled from Airo's private ECR mirror (LambdaBaseEcrStack)
  * to satisfy GCI policy. Mirror must be populated by
@@ -282,11 +281,6 @@ export class FeedbackFanoutStack extends GDStack {
         // renders as plain text). Pattern verified against Confluence
         // page 3863389051 (DIFY Salesforce Bug Reporting SOP).
         SALESFORCE_LIGHTNING_BASE: config.salesforceLightningBase,
-        // Cutover gating is per-submission via the `appbuilder-fanout-via-lambda`
-        // Switchboard flag (resolved by the BFF and stamped into the parquet's
-        // `fanout_via_lambda` column). No environment kill-switch — Lambda
-        // no-ops on every event whose row lacks `fanout_via_lambda === true`,
-        // which is the safe default while the flag rolls out.
         LOG_LEVEL: config.envName === 'prod' ? 'info' : 'debug',
       },
     });

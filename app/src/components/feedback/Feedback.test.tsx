@@ -98,9 +98,8 @@ vi.mock('@/hooks/useGasketData', () => ({
 }));
 
 // Keep `airo-builder-feedback-multistep` ON so the FeedbackMultiStep component
-// renders. The feedback flow no longer reads any other Switchboard flag (the
-// fanout-via-lambda gate moved server-side at 100% cutover), so a blanket true
-// is sufficient; the switchboard-gate test overrides this to false.
+// renders. The feedback flow no longer reads any other Switchboard flag, so a
+// blanket true is sufficient; the switchboard-gate test overrides this to false.
 vi.mock('@/hooks/useSwitchboard', () => ({
   useSwitchboard: vi.fn(function () { return true; }),
 }));
@@ -187,10 +186,6 @@ vi.mock('./utils', () => ({
   ],
 }));
 
-vi.mock('@/lib/slack-webhook', () => ({
-  formatSlackBlockMessage: vi.fn(function () { return {}; }),
-}));
-
 vi.mock('@/utils/credits', () => ({
   getEffectiveCreditsSpent: vi.fn(function (spent, max) { return Math.min(spent || 0, max || 0); }),
 }));
@@ -212,13 +207,6 @@ vi.mock('./submitFeedback', () => ({
   }); }),
   saveToCompanionHub: vi.fn(function () { return Promise.resolve(); }),
   storeToS3: vi.fn(),
-  logDevFeedbackBlockMessage: vi.fn(),
-}));
-
-vi.mock('./slackBuilders', () => ({
-  buildSupportRequestBlocks: vi.fn(function () { return { title: 'test' }; }),
-  buildBugReportBlocks: vi.fn(function () { return { title: 'test' }; }),
-  buildFeedbackBlocks: vi.fn(function () { return { title: 'test' }; }),
 }));
 
 import { buildExperimentsLineFromSwitchboard } from '@/components/feedback/experimentsLine';
@@ -229,7 +217,6 @@ import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { renderWithProviders } from '@/tests/test-utils';
 import { isLocalDev } from '@/utils/is-local-dev';
 import { Feedback } from './Feedback';
-import { buildBugReportBlocks, buildFeedbackBlocks, buildSupportRequestBlocks } from './slackBuilders';
 import { fetchDiagnosticContext, saveToCompanionHub, storeToS3 } from './submitFeedback';
 import { getAppIdFromUrl } from './utils';
 
@@ -568,11 +555,6 @@ describe('Feedback', function feedbackTests() {
       await waitFor(() => {
         expect(fetchDiagnosticContext).toHaveBeenCalled();
         expect(vi.mocked(fetchDiagnosticContext).mock.calls[0][5]).toBe(EXPECTED_EXPERIMENTS_LINE_DEFAULT);
-        expect(buildSupportRequestBlocks).toHaveBeenCalledWith(
-          expect.objectContaining({ topics: ['Domain or DNS'], description: 'My domain is not resolving' }),
-          undefined,
-          expect.objectContaining({ isInternalUser: false }),
-        );
         // UI owns the companion-hub write + the parquet write; the fanout
         // Lambda (triggered by the parquet) owns Slack + CRM.
         expect(saveToCompanionHub).toHaveBeenCalled();
@@ -625,15 +607,6 @@ describe('Feedback', function feedbackTests() {
       await waitFor(() => {
         expect(fetchDiagnosticContext).toHaveBeenCalled();
         expect(vi.mocked(fetchDiagnosticContext).mock.calls[0][5]).toBe(EXPECTED_EXPERIMENTS_LINE_DEFAULT);
-        expect(buildBugReportBlocks).toHaveBeenCalledWith(
-          expect.objectContaining({
-            topics: ['AI assistant'],
-            description: 'The assistant stopped responding',
-            followUp: false,
-          }),
-          undefined,
-          expect.objectContaining({ isInternalUser: false }),
-        );
         // UI owns the companion-hub + parquet writes; the Lambda owns Slack + CRM.
         expect(saveToCompanionHub).toHaveBeenCalled();
         expect(storeToS3).toHaveBeenCalled();
@@ -683,11 +656,6 @@ describe('Feedback', function feedbackTests() {
       await waitFor(() => {
         expect(fetchDiagnosticContext).toHaveBeenCalled();
         expect(vi.mocked(fetchDiagnosticContext).mock.calls[0][5]).toBe(EXPECTED_EXPERIMENTS_LINE_DEFAULT);
-        expect(buildFeedbackBlocks).toHaveBeenCalledWith(
-          expect.objectContaining({ rating: 5, topics: ['AI assistant'] }),
-          undefined,
-          expect.objectContaining({ isInternalUser: false }),
-        );
         expect(saveToCompanionHub).toHaveBeenCalled();
         expect(storeToS3).toHaveBeenCalled();
         expect(storeToS3).toHaveBeenCalledWith(expect.objectContaining({
@@ -799,11 +767,6 @@ describe('Feedback', function feedbackTests() {
 
       await waitFor(() => {
         expect(fetchDiagnosticContext).toHaveBeenCalled();
-        expect(buildFeedbackBlocks).toHaveBeenCalledWith(
-          expect.objectContaining({ rating: null }),
-          undefined,
-          expect.objectContaining({ isInternalUser: false }),
-        );
         expect(storeToS3).toHaveBeenCalled();
         expect(storeToS3).toHaveBeenCalledWith(expect.objectContaining({
           rating: null,

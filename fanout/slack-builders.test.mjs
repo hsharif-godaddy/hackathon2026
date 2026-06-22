@@ -8,10 +8,9 @@ import {
 } from './slack-builders.mjs';
 
 /**
- * DITTO PARITY TESTS — assert exact JSON equivalence with what
- * `app/src/components/feedback/slackBuilders.ts` produces for the same
- * inputs. The expected shapes are hand-written from the UI source so
- * any drift in either side surfaces immediately.
+ * Block Kit shape tests for the fanout Lambda's Slack builders (the
+ * canonical copy since the UI's slackBuilders.ts was removed). Expected
+ * shapes are hand-written so any drift surfaces immediately.
  */
 
 await test('buildSupportRequestBlocks: compact shape — Subscription + Origin + Details deep-link', () => {

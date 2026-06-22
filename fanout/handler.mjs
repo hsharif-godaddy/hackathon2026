@@ -32,17 +32,11 @@ const ESCALATED_CAPTURE_DELAYS = [0, 500, 1000, 2000];
 /**
  * S3 ObjectCreated event handler. Processes one parquet at a time.
  *
- * Flag-gated entry: the BFF stamps `fanout_via_lambda` into the parquet row
- * at submit time based on the `appbuilder-fanout-via-lambda` Switchboard
- * flag. When that field is not strictly `true`, this handler exits clean
- * without touching anything — the BFF/UI owns the fanout (legacy path).
- * Per-submission gating avoids the Lambda needing its own switchboard
- * client + IAM grant, and gives an atomic flip per submission.
- *
- * Scope note: only NPS feedback writes parquet today, so only the NPS
- * path can be flag-ON. Issue/support submissions continue through their
- * existing CRM endpoint regardless. PR #3946 widens parquet writes to all
- * categories, after which the same gate applies uniformly.
+ * Every parquet the BFF writes is fanned out here: the BFF async-invokes
+ * this Lambda immediately after the S3 write (GD's permissions boundary
+ * denies s3:PutBucketNotification, so there is no bucket-notification
+ * trigger). All feedback categories (issue/support/feedback) write parquet
+ * and fan out through this handler.
  */
 export async function handler(event) {
   const record = event.Records?.[0];
@@ -57,19 +51,6 @@ export async function handler(event) {
 
   const parquetBytes = await readParquet(bucket, key);
   const row = await parseFeedbackParquet(parquetBytes);
-
-  // Per-submission Switchboard gate, stamped by the BFF in
-  // `app/src/app/api/feedback/s3-store/route.ts`. We check immediately
-  // after parsing the row and before any dedup/CRM/Slack/invoke work so
-  // legacy submissions trigger zero side effects in the Lambda.
-  if (row.fanout_via_lambda !== true) {
-    log('info', 'fanout.disabled', {
-      reason: 'fanout_via_lambda flag false in parquet',
-      customerId: row.customer_id ?? null,
-      appId: row.app_id ?? null,
-    });
-    return;
-  }
 
   const customerId = row.customer_id;
   const appId = row.app_id;
@@ -277,9 +258,8 @@ async function handleFreshPath({ row, customerId, appId, submissionId, stateBuck
   // for any genuinely-needed retry.
   // CRM new-case eligibility: issue/support open cases for support agents;
   // NPS feedback (rating-based survey) NEVER opens a case — even rating < 7.
-  // Mirrors the legacy BFF contract from `/api/crm/case` which was
-  // issue/support only. Without this gate every NPS submission would
-  // create a case and flood the support queue with non-issues.
+  // Without this gate every NPS submission would create a case and flood the
+  // support queue with non-issues.
   let caseId = null;
   let caseNumber = null;
   let caseRecordId = null;
@@ -627,14 +607,11 @@ function buildEnrichment({ caseRecordId, caseNumber, jiraKey }) {
  * Internal-user gate: GoDaddy employees have 3-char shopperIds (TLA — three
  * letter acronym). They MUST NOT open CRM cases — internal employees
  * testing the product would otherwise flood the support triage queue. PR
- * #3301 codified this contract for the legacy `/api/crm/case` route; the
- * legacy UI fanout-OFF branches in `FeedbackMultiStep.tsx` keep enforcing
- * `!isInternalUser`. The deleted `/api/feedback/submit` route enforced the
- * same with a hard 403. Lambda's `handler.buildDiagnosticContextFromRow`
- * even has a comment claiming the BFF gates internal users out before the
- * parquet write — but the new s3-store route doesn't, so this is the
- * defense-in-depth gate. Slack still runs for internal users (matches UI
- * legacy: Slack always pings); CRM is the only blocked downstream here.
+ * #3301 codified this contract for the now-removed legacy `/api/crm/case`
+ * route. The s3-store route writes the parquet for everyone (internal users
+ * included, for analytics) and does NOT pre-filter internal users, so this
+ * is the defense-in-depth gate. Slack still runs for internal users; CRM is
+ * the only blocked downstream here.
  *
  * Distinct from `shouldCreateJiraTicket` (jira-eligibility.mjs, which gates
  * the AABSP Jira ticket): a customer may be eligible for a Jira triage ticket
@@ -658,9 +635,8 @@ function shouldOpenCrmCase(row) {
 // Airo L2 queue — `issue` is a reporting/triage label, not a routing key.
 // `AI assistant` has no dedicated SF issue type yet, so it maps to General
 // Support (revisit if SF adds an "AI Assistant" type).
-// Note: app/src/lib/crm/case-client.ts is the legacy BFF path (flag-gated,
-// effectively dead — fanout Lambda owns all CRM case creation). It still
-// hardcodes issue: 'General Support' and will be removed in a follow-up cleanup.
+// Note: the legacy BFF CRM path (app/src/lib/crm/case-client.ts) has been
+// removed — the fanout Lambda owns all CRM case creation.
 const TOPIC_TO_ISSUE = {
   support: {
     'Domain or DNS': 'Domain Change',
@@ -737,11 +713,10 @@ function resolveIssueType(category, topics) {
 }
 
 /**
- * Build a CMAPI case body that matches the legacy BFF
- * (`app/src/lib/crm/case-client.ts:buildCaseBody`) shape verbatim — same
- * field set, same caseNotes structure (`Comment : (appid - <id>) <details>`),
- * same recordType/status/categories — so support agents see "Saideep
- * Kilaru / skilaru@godaddy.com / 9170...", not a raw customerId with a
+ * Build a CMAPI case body. The field set, caseNotes structure
+ * (`Comment : (appid - <id>) <details>`), and recordType/status/categories
+ * are fixed by the CMAPI support-tooling contract — so support agents see
+ * "Saideep Kilaru / skilaru@godaddy.com / 9170...", not a raw customerId with a
  * noreply email. Profile fields come from the parquet (BFF best-effort
  * fetched them via Profile API at submit time); when unavailable we fall
  * back to safe nulls/customerId rather than blocking the case.
@@ -794,12 +769,11 @@ function buildCaseBody({ row, customerId, appId, submissionId }) {
 }
 
 /**
- * Mirrors the legacy BFF's `buildEscalationDetails`
- * (`app/src/lib/crm/case-client.ts`) verbatim — same `[ISSUE]` /
- * `[SUPPORT]` / `[FEEDBACK NPS <n> | consent=yes|no]` prefixes, same
- * `Topics: a, b, c` capitalization, same `consent=yes` / `consent=no`
- * markers — so support tooling that triages on these literals continues
- * to work without re-training.
+ * Build the escalation-details string. The `[ISSUE]` / `[SUPPORT]` /
+ * `[FEEDBACK NPS <n> | consent=yes|no]` prefixes, `Topics: a, b, c`
+ * capitalization, and `consent=yes` / `consent=no` markers are fixed by the
+ * support-tooling contract that triages on these literals — changing them
+ * requires re-training that tooling.
  */
 function buildEscalationDetails({ row, truncatedDescription }) {
   const cat = row.feedback_category;

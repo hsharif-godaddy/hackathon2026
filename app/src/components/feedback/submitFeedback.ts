@@ -1,29 +1,9 @@
 import { logger } from '@/lib/request-context';
-import { formatSlackBlockMessage, type SlackBlockMessage } from '@/lib/slack-webhook';
 import { SubscriptionPlan, SubscriptionStatus } from '@/types/credits';
 import { getEffectiveCreditsSpent } from '@/utils/credits';
 import { isLocalDev } from '@/utils/is-local-dev';
 import type { DiagnosticContext, FeedbackStorePayload } from './types';
 import { getBaseUrl, getFullStorySessionUrl } from './utils';
-
-/**
- * Dev-only console preview of a feedback Slack message. On the Lambda-fanout
- * path the BFF short-circuits when FEEDBACK_BUCKET is unset, so the client
- * echoes the Block Kit payload locally for pasting into the Block Kit Builder.
- * No-op outside local dev so it never leaks in test/prod.
- */
-export function logDevFeedbackBlockMessage(blockMessage: SlackBlockMessage | undefined | null): void {
-  if (!isLocalDev() || !blockMessage) return;
-  // Block Kit Builder rejects top-level fields other than `blocks`; strip the
-  // `text` fallback that Slack uses for push notifications so the dev can
-  // paste the output straight into https://app.slack.com/block-kit-builder.
-  const { blocks } = formatSlackBlockMessage(blockMessage);
-   
-  console.log(
-    '📧 [DEV MODE] Feedback Slack payload (paste into https://app.slack.com/block-kit-builder):\n',
-    JSON.stringify({ blocks }, null, 2),
-  );
-}
 
 interface SiteInfo {
   preview_url?: string;

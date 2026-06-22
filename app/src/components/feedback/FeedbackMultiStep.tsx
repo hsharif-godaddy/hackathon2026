@@ -15,12 +15,11 @@ import { useSitesStore } from '@/stores/useSitesStore';
 import { useSiteStore } from '@/stores/useSiteStore';
 import { logClickEvent } from '@/utils/instrumentation';
 import { hasBeenPublished } from '@/utils/site';
-import { buildBugReportBlocks, buildFeedbackBlocks, buildSupportRequestBlocks } from './slackBuilders';
 import { CategorySelectStep } from './steps/CategorySelectStep';
 import { GetSupportStep } from './steps/GetSupportStep';
 import { ReportIssueStep } from './steps/ReportIssueStep';
 import { ShareFeedbackStep } from './steps/ShareFeedbackStep';
-import { fetchDiagnosticContext, logDevFeedbackBlockMessage, saveToCompanionHub, storeToS3 } from './submitFeedback';
+import { fetchDiagnosticContext, saveToCompanionHub, storeToS3 } from './submitFeedback';
 import type {
   DiagnosticContext,
   FeedbackCategory,
@@ -212,7 +211,6 @@ export function FeedbackMultiStep(props: FeedbackProps) {
       // Jira + investigator end-to-end. The UI only writes the parquet (and
       // companion hub above); it must NOT call Slack/CRM directly or recipients
       // get duplicate messages / cases.
-      logDevFeedbackBlockMessage(buildSupportRequestBlocks(data, origin, ctx));
       const storeResult = await storeToS3(buildFanoutPayload(
         'support',
         { feedbackText: data.description, consent: data.followUp, publicShareConsent: false, rating: null, topics: data.topics },
@@ -277,7 +275,6 @@ export function FeedbackMultiStep(props: FeedbackProps) {
 
       // The fanout Lambda owns Slack + CRM + Jira + investigator end-to-end
       // from the parquet write. UI just writes the parquet; Lambda fans out.
-      logDevFeedbackBlockMessage(buildBugReportBlocks(data, origin, ctx));
       const storeResult = await storeToS3(buildFanoutPayload(
         'issue',
         { feedbackText: data.description, consent: data.followUp, publicShareConsent: false, rating: null, topics: data.topics },
@@ -347,7 +344,6 @@ export function FeedbackMultiStep(props: FeedbackProps) {
       // The fanout Lambda owns Slack + CRM + Jira + investigator end-to-end
       // from the parquet write. UI must NOT call Slack here, or recipients get
       // duplicates. Companion hub is written above — the Lambda does NOT write it.
-      logDevFeedbackBlockMessage(buildFeedbackBlocks(data, origin, ctx));
       const storeResult = await storeToS3(buildFanoutPayload(
         'feedback',
         { feedbackText: data.comment ?? null, consent: data.customerConsent, publicShareConsent: data.publicShareConsent, rating: data.rating ?? null, topics: data.topics },

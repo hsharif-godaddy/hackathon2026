@@ -1,6 +1,6 @@
 # Airo Fanout Lambda
 
-S3-event-triggered Lambda that fans out feedback submissions to Slack, CRM (CMAPI), the investigator Lambda, and Jira (AABSP).
+Lambda that the BFF async-invokes after each feedback parquet write (InvocationType=Event), fanning out the submission to Slack, CRM (CMAPI), and Jira (AABSP).
 
 ## Architecture
 
@@ -25,7 +25,6 @@ The handler follows a **bulkhead** pattern: every downstream
 | Step | On failure |
 |------|------------|
 | Parquet read | Throws → DLQ (corrupt parquet, replay won't help) |
-| Switchboard gate `fanout_via_lambda !== true` | Early return (no-op, not a failure) |
 | State.json read | Throws → AWS Lambda async retry → DLQ |
 | State.json write race (`PreconditionFailed`) | Resolved by re-read + age check |
 | CRM `getCase` (dedup check) | Falls through to fresh path with `IfMatch` overwrite |
@@ -87,67 +86,27 @@ aws lambda invoke \
 5. Verify `fanout.fresh.done` in CloudWatch
 6. Delete the DLQ message
 
-## Switchboard flag setup
+## Setup (per env)
 
-Flag name: `appbuilder-fanout-via-lambda` (boolean, default `false`)
-
-Create in dev + test + prod via the Switchboard UI:
-1. Navigate to the airo-app-builder app config (e.g.
-   `https://switchboard.int.test-gdcorp.tools/airo-app-builder` for test;
-   swap the env subdomain for dev/prod).
-2. **New flag** → name `appbuilder-fanout-via-lambda`, type `boolean`, default `false`.
-3. Description: "When ON, the fanout Lambda owns Slack/CRM/investigator
-   dispatch for feedback submissions. When OFF, BFF/UI owns everything
-   (today's behavior from PR #3946)."
-
-The flag is read by **two** call sites, but only one of them talks to
-Switchboard directly:
-- **BFF** (`app/src/app/api/feedback/s3-store/route.ts`) resolves it on every
-  feedback submit, stamps the resolved boolean into the parquet's
-  `fanout_via_lambda` column, and logs `feedback.store.s3.fanout_flag`.
-- **Lambda** reads `row.fanout_via_lambda` directly from the parsed parquet —
-  it has no Switchboard client, no IAM grant, and no env-var kill switch.
-  Anything other than strict `true` (false / null / missing column) makes
-  the Lambda no-op at handler entry, so legacy submissions are safe.
-
-This avoids Lambda needing its own Switchboard client + IAM, and gives
-an atomic per-submission flip — no risk of doubled Slack messages or
-missed CRM cases mid-rollout.
-
-## Cutover (per env)
-
-1. Land this PR → CDK deploys the Lambda; Switchboard flag exists with
-   default `false`. Lambda is live but every event no-ops via
-   `fanout.disabled` because the BFF stamps `fanout_via_lambda=false` for
-   everyone.
-2. **Wire `FANOUT_LAMBDA_FN` on the website Katana container** to the
+1. **Wire `FANOUT_LAMBDA_FN` on the website Katana container** to the
    value of the CDK `FanoutFunctionName` output (e.g. `airo-fanout-dev-v2`
    in dev, `airo-fanout-test`, `airo-fanout-prod`). Without this env var
    the BFF silently skips the invoke and logs
    `feedback.store.fanout.fn_not_configured` at startup — fanout will be
    a complete no-op end-to-end. Redeploy the website pod after setting it.
-3. Fill the two CDK-owned secrets via AWS Console:
+2. Fill the two CDK-owned secrets via AWS Console:
    - `<env>-airo-fanout-slack-webhook` → `{"webhookUrl": "<URL>"}`
    - `<env>-airo-fanout-jira-api-token` → `{"email": "<sa-email>", "apiToken": "<token>"}`
-4. Verify Lambda is idle: submit feedback in the env, look for
-   `fanout.disabled` in CloudWatch and `feedback.store.s3.fanout_flag`
-   `value: false` in Loki.
-5. Add a per-shopper override in the dev Switchboard (your shopperId →
-   `true`) and submit test feedback. Verify Lambda runs end-to-end:
-   single Slack message in the same Block Kit format the UI used to
-   build, CRM case opened, no duplicate messages, investigator invoked.
-6. Widen flag rollout: 10% → 50% → 100% in dev.
-7. Repeat in test, then prod, with shopper-override staging at each step.
-8. After 100% in prod is stable, follow-up PR drops the legacy UI Slack
-   + companion-hub paths and removes the gate.
+3. Verify end-to-end: submit feedback in the env and confirm a single
+   Slack message, a CRM case (issue/support), and `fanout.fresh.done` in
+   CloudWatch.
 
 Scope: the Lambda fires for ALL three feedback categories (issue,
-support, feedback) when the flag is ON. Flag OFF preserves today's
-per-category flow — issue/support → `/api/crm/case` + Slack;
-feedback (NPS) → companion-hub + Slack. The same Switchboard gate
-applies uniformly across categories; the Lambda picks the right Slack
-Block Kit builder via `row.feedback_category` (the BFF stamps it on
-every parquet write).
+support, feedback) on every submission. It picks the right Slack Block
+Kit builder via `row.feedback_category` (the BFF stamps it on every
+parquet write). AABSP Jira eligibility is tuned at submit time via the
+`appbuilder-fanout-jira-eligibility` Switchboard value (stamped into the
+parquet's `jira_eligibility_config` column).
 
 ## Slack message triage links
 

@@ -73,19 +73,6 @@ export interface FeedbackS3Record {
   customer_email: string | null;
   customer_phone: string | null;
   /**
-   * Per-submission Switchboard gate (`appbuilder-fanout-via-lambda`). The BFF
-   * resolves the flag at submit time and stamps the boolean here so the
-   * fanout Lambda can decide whether to take ownership of Slack/CRM/
-   * investigator dispatch without needing its own switchboard client + IAM.
-   *
-   * `true`  → Lambda owns Slack/CRM/investigator dispatch (UI skipped them).
-   * `false` → BFF/UI already dispatched (legacy flow); Lambda no-ops on read.
-   * `null`  → flag couldn't be resolved (system failure during submit). Lambda
-   *           treats anything other than strict `true` as no-op, so we fail
-   *           safely closed (no doubled Slack messages, no missed CRM cases).
-   */
-  fanout_via_lambda: boolean | null;
-  /**
    * Per-submission AABSP Jira-ticket eligibility config — a canonical JSON
    * string serialized from the JSON-typed `appbuilder-fanout-jira-eligibility`
    * Switchboard setting (resolved as an object by the gasket plugin at submit
@@ -98,9 +85,9 @@ export interface FeedbackS3Record {
    * eligibility semantics have a single source of truth. `null` → flag absent,
    * non-object, or lookup failed; the Lambda applies its built-in default
    * (issue/support OFF, feedback ON with maxRating 7, strict `rating < maxRating`).
-   * Mirrors the `fanout_via_lambda` BFF-stamp pattern — a Switchboard flip
-   * affects only NEW submissions; parquet replays use the value stamped at
-   * original submit time.
+   * Like every BFF-stamped parquet column, a Switchboard flip affects only
+   * NEW submissions; parquet replays use the value stamped at original
+   * submit time.
    */
   jira_eligibility_config: string | null;
 }

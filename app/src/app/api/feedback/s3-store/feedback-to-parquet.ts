@@ -41,10 +41,6 @@ try {
     customer_last_name: { type: 'UTF8', optional: true, compression: 'UNCOMPRESSED' },
     customer_email: { type: 'UTF8', optional: true, compression: 'UNCOMPRESSED' },
     customer_phone: { type: 'UTF8', optional: true, compression: 'UNCOMPRESSED' },
-    // Per-submission Switchboard gate (`appbuilder-fanout-via-lambda`).
-    // Optional so legacy parquet rows (pre-cutover) read back as null and the
-    // Lambda treats anything other than strict `true` as no-op.
-    fanout_via_lambda: { type: 'BOOLEAN', optional: true, compression: 'UNCOMPRESSED' },
     // Per-submission Jira-ticket eligibility config — raw JSON string from the
     // `appbuilder-fanout-jira-eligibility` Switchboard value. Optional so
     // legacy rows read back as null; the Lambda applies its built-in default.
@@ -110,7 +106,6 @@ function rowForParquet(record: FeedbackS3Record): Record<string, unknown> {
     customer_last_name: record.customer_last_name,
     customer_email: record.customer_email,
     customer_phone: record.customer_phone,
-    fanout_via_lambda: record.fanout_via_lambda,
     jira_eligibility_config: record.jira_eligibility_config,
   };
 }

@@ -6,8 +6,7 @@
  * `appbuilder-fanout-jira-eligibility` Switchboard value at submit time and
  * stamps the raw JSON string into the parquet column `jira_eligibility_config`.
  * This module parses that string and decides whether a given feedback row
- * should open an AABSP Jira ticket — mirroring how `fanout_via_lambda` is
- * resolved by the BFF and read by the Lambda.
+ * should open an AABSP Jira ticket.
  *
  * Config shape (single Switchboard string value):
  *   { "issue": false, "support": false, "feedback": { "enabled": true, "maxRating": 7 } }

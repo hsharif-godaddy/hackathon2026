@@ -63,8 +63,8 @@ await test('parseFeedbackParquet throws on empty buffer', async () => {
  * If a future change adds a column to the BFF schema or removes one without
  * updating the parser, this round-trip will start failing — preventing a
  * silent prod regression where fields the Lambda relies on (e.g.
- * `fanout_via_lambda`, `customer_email`, `feedback_category`) come back
- * undefined and the handler silently no-ops or sends bad CRM bodies.
+ * `customer_email`, `feedback_category`) come back undefined and the
+ * handler silently no-ops or sends bad CRM bodies.
  *
  * Keep this list in sync with `feedback-to-parquet.ts:PARQUET_SCHEMA`.
  */
@@ -100,7 +100,6 @@ async function buildFullSchemaParquet(row) {
     customer_last_name: { type: 'UTF8', optional: true },
     customer_email: { type: 'UTF8', optional: true },
     customer_phone: { type: 'UTF8', optional: true },
-    fanout_via_lambda: { type: 'BOOLEAN', optional: true },
   });
   const chunks = [];
   const stream = {
@@ -145,7 +144,6 @@ await test('parseFeedbackParquet round-trips the full BFF schema (every column t
     customer_last_name: 'Kilaru',
     customer_email: 'skilaru@godaddy.com',
     customer_phone: '917032698060',
-    fanout_via_lambda: true,
   };
   const buf = await buildFullSchemaParquet(fullRow);
 
@@ -167,24 +165,11 @@ await test('parseFeedbackParquet round-trips the full BFF schema (every column t
   assert.equal(rec.customer_last_name, 'Kilaru');
   assert.equal(rec.customer_email, 'skilaru@godaddy.com');
   assert.equal(rec.customer_phone, '917032698060');
-  assert.equal(rec.fanout_via_lambda, true);
   assert.equal(rec.preview_url, 'https://preview.example.com/?t=abc');
   assert.equal(rec.published_url_full, 'https://customer.app.example.com');
   assert.equal(rec.full_story_url, 'https://app.fullstory.com/ui/123');
   assert.equal(rec.subscription_info, 'Pro Annual / Active');
   assert.equal(rec.experiments_line, 'exp1=A, exp2=B');
-});
-
-await test('parseFeedbackParquet handles fanout_via_lambda=false (legacy gate path)', async () => {
-  const ts = new Date(1747834200000);
-  const buf = await buildFullSchemaParquet({
-    feedback_id: 'sub-1', customer_id: 'cust-1', app_id: 'app-1',
-    feedback_utc_ts: ts, cln_create_utc_ts: ts,
-    fanout_via_lambda: false,
-  });
-  const { parseFeedbackParquet } = await import('./parquet-reader.mjs');
-  const rec = await parseFeedbackParquet(buf);
-  assert.equal(rec.fanout_via_lambda, false, 'Lambda gate must read false correctly');
 });
 
 await test('parseFeedbackParquet handles missing optional fields (legacy parquets pre-fanout)', async () => {
@@ -202,8 +187,6 @@ await test('parseFeedbackParquet handles missing optional fields (legacy parquet
   });
   const { parseFeedbackParquet } = await import('./parquet-reader.mjs');
   const rec = await parseFeedbackParquet(buf);
-  // fanout_via_lambda missing → handler treats as no-op (correct backward-compat).
-  assert.equal(rec.fanout_via_lambda, undefined);
   // All four contact columns absent in legacy rows — handler.mjs ?? '' / ?? null
   // fallbacks rely on this returning undefined (not null or throwing).
   assert.equal(rec.customer_email, undefined);

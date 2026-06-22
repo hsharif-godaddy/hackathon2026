@@ -1,12 +1,12 @@
 /**
  * Slack Block Kit message builders for feedback submissions.
  *
- * VERBATIM PORT of `app/src/components/feedback/slackBuilders.ts`.
- * The UI source is the canonical version; this module exists only so the
- * fanout Lambda can rebuild the same Block Kit message from a parquet row.
+ * Originally a verbatim port of the UI's feedback Slack builders. The UI
+ * copy (and its local-dev Block Kit echo) was removed once the fanout Lambda
+ * took over all Slack delivery, so this is now the canonical version — it
+ * rebuilds the Block Kit message from a parquet row.
  *
- * If you change either side, change BOTH and the ditto-parity tests in
- * slack-builders.test.mjs / Feedback.test.tsx will catch drift.
+ * Parity / shape is covered by slack-builders.test.mjs.
  */
 
 const RATING_EMOJIS = {
@@ -53,9 +53,8 @@ function buildDiagnosticLinks(ctx) {
  * note posts the same link upfront. Slack would be a third copy with
  * no triage value-add.
  *
- * Lambda-only: the UI's slackBuilders.ts doesn't have this helper
- * because the UI builds Slack messages BEFORE these downstreams run.
- * Lambda has the IDs in hand at message-build time, so it can deep-link.
+ * The Lambda has the CRM/Jira IDs in hand at message-build time (it runs
+ * after those downstreams), so it can deep-link to them here.
  */
 function buildTriageLinks(enrichment) {
   if (!enrichment) return [];

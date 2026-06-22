@@ -27,18 +27,9 @@ import { airoCertTokenService, fetchCustomerProfile } from '@/lib/crm';
 import { type CustomerAuthContext, withCustomerAuth } from '@/lib/customer-auth';
 import { logger } from '@/lib/request-context';
 import { APP_ID_PATTERN, buildS3Key, formatUtcTs, s3Client, s3ClientInitError } from '@/lib/s3-parquet';
-import { checkSwitchboardFlag, checkSwitchboardObject } from '@/lib/switchboard/server';
+import { checkSwitchboardObject } from '@/lib/switchboard/server';
 import { encodeFeedbackParquet } from './feedback-to-parquet';
 import type { FeedbackS3Record } from './types';
-
-/**
- * Switchboard flag that gates per-submission Lambda fanout.
- * - ON  → UI skips Slack + companion-hub; Lambda owns delivery.
- * - OFF → today's BFF/UI flow keeps running; Lambda no-ops on read.
- * Issue/support paths use `/api/crm/case` regardless of this flag —
- * only the NPS path writes parquet today.
- */
-const FANOUT_VIA_LAMBDA_FLAG = 'appbuilder-fanout-via-lambda';
 
 /**
  * Switchboard JSON-typed value gating which categories/ratings the fanout
@@ -273,24 +264,6 @@ export const POST = withCustomerAuth(async (
     return NextResponse.json({ error: 'Invalid app_id format' }, { status: 400 });
   }
 
-  // Resolve the per-submission Switchboard gate. Failure-mode: fail closed —
-  // a system failure stamps `null` and the Lambda treats anything other than
-  // strict `true` as no-op, so the BFF/UI legacy path remains the source of
-  // truth. We log both success and failure so ops can verify rollout in Loki.
-  const fanoutViaLambda: boolean | null = await (async () => {
-    try {
-      const value = await checkSwitchboardFlag(FANOUT_VIA_LAMBDA_FLAG, request);
-      logger.info('feedback.store.s3.fanout_flag', { flag: FANOUT_VIA_LAMBDA_FLAG, value });
-      return value;
-    } catch (err) {
-      logger.warn('feedback.store.s3.fanout_flag_lookup_failed', {
-        flag: FANOUT_VIA_LAMBDA_FLAG,
-        error: err instanceof Error ? err.message : String(err),
-      });
-      return null;
-    }
-  })();
-
   // Resolve the Jira-ticket eligibility config from the JSON-typed Switchboard
   // setting (the gasket plugin surfaces it as an already-parsed object). We
   // re-serialize to a canonical JSON string for the parquet column, which the
@@ -322,8 +295,8 @@ export const POST = withCustomerAuth(async (
   // (firstName/lastName/email/phone, not raw IDs). Profile API failure must
   // NOT block the parquet write: legacy rows render fine in the Lambda with
   // null-safe fallbacks (customer_id used as contactName, no email/phone).
-  // Mirrors the pattern used by app/src/lib/crm/case-client.ts:openCrmCase
-  // which we replaced for the fanout flow.
+  // The fanout Lambda reads these profile fields from the parquet to build
+  // the CRM case body — it has no Profile API access of its own.
   let profileFirstName: string | null = null;
   let profileLastName: string | null = null;
   let profileEmail: string | null = null;
@@ -379,7 +352,6 @@ export const POST = withCustomerAuth(async (
     customer_last_name: profileLastName,
     customer_email: profileEmail,
     customer_phone: profilePhone,
-    fanout_via_lambda: fanoutViaLambda,
     jira_eligibility_config: jiraEligibilityConfig,
   };
 

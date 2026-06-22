@@ -160,10 +160,6 @@ const FEEDBACK_ROW = {
   customer_email: 'jane.doe@example.com',
   customer_phone: '5551234567',
   shopper_id: 'shopper-123',
-  // Per-submission Switchboard gate stamped by the BFF. Default fixture
-  // is ON so the bulk of fanout tests exercise the full flow; the
-  // dedicated `fanout_via_lambda !== true` tests below override this.
-  fanout_via_lambda: true,
   // No `jira_eligibility_config` → Lambda applies its default: issue/support
   // OFF, feedback ON (rating < 7). Tests needing issue/support Jira tickets
   // stamp ENABLE_ALL_JIRA explicitly.
@@ -541,51 +537,6 @@ await test('fresh path: support category routes Slack with category=support and 
   });
   // support Jira is OFF by default.
   assert.equal(calls.jiraCreate.length, 0);
-});
-
-await test('exits cleanly when row.fanout_via_lambda === false (BFF/UI owns delivery)', async () => {
-  parseFeedbackParquetImpl = async () => ({ ...FEEDBACK_ROW, fanout_via_lambda: false });
-  await handler(S3_EVENT);
-  assert.equal(calls.stateRead.length, 0);
-  assert.equal(calls.postCase.length, 0);
-  assert.equal(calls.slack.length, 0);
-});
-
-await test('exits cleanly when row.fanout_via_lambda is null/missing (legacy or failed flag lookup)', async () => {
-  parseFeedbackParquetImpl = async () => {
-    const { fanout_via_lambda: _omit, ...rest } = FEEDBACK_ROW;
-    return rest;
-  };
-  await handler(S3_EVENT);
-  assert.equal(calls.stateRead.length, 0);
-  assert.equal(calls.postCase.length, 0);
-  assert.equal(calls.slack.length, 0);
-});
-
-await test('runs full flow when row.fanout_via_lambda === true', async () => {
-  // Sanity duplicate of the fresh-path coverage but explicit on the gate
-  // value — guards against a future change that ignores the gate.
-  let readCount = 0;
-  readStateImpl = async () => {
-    readCount += 1;
-    if (readCount === 1) return null;
-    return {
-      state: {
-        schemaVersion: 1,
-        submissionId: 'sub-1',
-        crmCaseId: null,
-        startedAt: Date.now(),
-        lastUpdatedAt: Date.now(),
-      },
-      etag: '"e-fresh"',
-    };
-  };
-  parseFeedbackParquetImpl = async () => ({ ...FEEDBACK_ROW, fanout_via_lambda: true });
-
-  await handler(S3_EVENT);
-
-  assert.equal(calls.postCase.length, 1);
-  assert.equal(calls.slack.length, 1);
 });
 
 // Dedup state with a captured escalated case. The escalated case is the
