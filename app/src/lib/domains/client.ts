@@ -5,6 +5,23 @@ import { logger } from '@/lib/request-context';
  */
 const MGMT_AIRO_AUTH_SCHEME = 'sso-jwt';
 
+export type DomainState =
+  | 'ACTIVE'
+  | 'DCC_ACTIVE_EXCEPT_STATUS_ZERO'
+  | 'DNS_HOSTING'
+  | 'DNS_OFFSITE'
+  | 'INACTIVE'
+  | 'RAA_ACTION_NEEDED'
+  | 'REDEMPTION'
+  | 'ADULT_BLOCK'
+  | 'DCC_ACTIVE_REGISTERED_DOMAINS'
+  | 'DCC_REGISTERED_DOMAINS_EXCEPT_STATUS_ZERO';
+
+export interface DomainFilter {
+  domainStates?: DomainState[];
+  hasInternalDNS?: boolean;
+}
+
 /**
  * Application identifier for X-App-Key header
  * This identifies the requesting application to the Domains API
@@ -25,6 +42,14 @@ const APP_KEY = 'airo-app-builder';
  * - Data mapping/transformation
  * - Status translation
  */
+export interface DomainsApiResponse {
+  domains: Array<{ domain: string; nameservers?: string[]; hasInternalNameservers?: boolean }>;
+  total: number;
+  startIndex?: number;
+  pageSize?: number;
+  filter?: string;
+}
+
 export class DomainsClient {
   private baseUrl: string;
   private jwt: string;
@@ -194,6 +219,12 @@ export class DomainsClient {
   /**
    * Get all domains for a customer
    *
+   * API: POST /v2/customers/{customerId}/domains/get
+   * Docs: https://domains.dcc.api.test-godaddy.com/docs#/default/post_v2_customers__customerId__domains_get
+   *
+   * Filtering with domainStates: ['ACTIVE'] and hasInternalDNS: true validated
+   * against test, dev, and prod environments.
+   *
    * @param customerId - Customer identifier (must match JWT's 'cid' field)
    * @param options - Optional pagination and filtering options
    * @returns Domains response with pagination info
@@ -204,25 +235,27 @@ export class DomainsClient {
       pageSize?: number;
       sortColumn?: string;
       sortDirection?: 'ascending' | 'descending';
+      filter?: DomainFilter;
     }
-  ) {
+  ): Promise<DomainsApiResponse> {
     const requestBody = {
       pagination: {
         pageSize: options?.pageSize || 50,
         sortColumn: options?.sortColumn || 'domainName',
         sortDirection: options?.sortDirection || 'ascending',
-        pagingDirection: 'forward'
+        pagingDirection: 'forward',
+        ...(options?.filter !== undefined ? { filter: options.filter } : {}),
       }
     };
 
-    const response = await this.request(
+    const response = await this.request<DomainsApiResponse>(
       'POST',
       `/v2/customers/${customerId}/domains/get`,
       requestBody,
       { logEvent: 'domains.get-all-domains-for-customer' }
     );
 
-    return response || [];
+    return response;
   }
 }
 

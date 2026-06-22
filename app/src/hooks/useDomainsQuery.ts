@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 
+import { type DomainFilter } from '@/lib/domains';
 import { appFetch } from '@/lib/gasket-config';
 import { logger } from '@/lib/request-context';
 
@@ -38,6 +39,7 @@ interface DomainsResponse {
  */
 export interface UseDomainsQueryOptions {
   enabled?: boolean;
+  filter?: DomainFilter;
 }
 
 /**
@@ -63,15 +65,19 @@ export interface UseDomainsQueryOptions {
  */
 export function useDomainsQuery({
   enabled = true,
+  filter,
 }: UseDomainsQueryOptions = {}) {
   return useQuery({
-    queryKey: ['domains'],
+    queryKey: ['domains', filter ?? null],
     queryFn: async (): Promise<Domain[]> => {
       logger.debug('domains-query.fetch.start', {
         message: 'Fetching domains via React Query',
       });
 
-      const response = await appFetch(`/api/domains`);
+      const url = filter
+        ? `/api/domains?filter=${encodeURIComponent(JSON.stringify(filter))}`
+        : '/api/domains';
+      const response = await appFetch(url);
 
       if (!response.ok) {
         const errorMessage = `Failed to fetch domains: ${response.status} ${response.statusText}`;

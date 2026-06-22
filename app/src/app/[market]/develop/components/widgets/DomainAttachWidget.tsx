@@ -166,10 +166,24 @@ export default function DomainAttachWidget({
     isFetched: isDomainsFetched,
   } = useDomainsQuery({
     enabled: isAuthenticated && !authLoading,
+    filter: { domainStates: ['ACTIVE'], hasInternalDNS: true },
   });
 
-  // Compute actual loading state
-  const isLoading = authLoading || isLoadingDomains || (!isDomainsFetched && isAuthenticated);
+  // Unfiltered list — used for domain classification (useCustomerDomainAttach,
+  // isCustomerDomain checks on already-attached site domains). Distinct cache key
+  // from the picker query so external-DNS customer domains are visible here.
+  const {
+    data: allCustomerDomains = [],
+    isLoading: isLoadingAllDomains,
+    isFetched: isAllDomainsFetched,
+  } = useDomainsQuery({
+    enabled: isAuthenticated && !authLoading,
+  });
+
+  // Compute actual loading state — gate on both queries so classification
+  // (isCustomerDomain, useCustomerDomainAttach) never runs against an empty list.
+  const isLoading = authLoading || isLoadingDomains || isLoadingAllDomains ||
+    (isAuthenticated && (!isDomainsFetched || !isAllDomainsFetched));
 
   const hasActiveDomainJob = useDevelopPageStore(
     (s) => Boolean(appId && s.domainJobsInProgress?.[appId]),
@@ -182,7 +196,7 @@ export default function DomainAttachWidget({
   const {
     pendingCustomerDomain: pendingCustomerDomainForAttach,
     requiresManualDnsSetup,
-  } = useCustomerDomainAttach(appDetails, domains);
+  } = useCustomerDomainAttach(appDetails, allCustomerDomains);
 
   const siteDomains = useMemo(
     () => dedupeSiteDomainsByFqdn(appDetails?.domains ?? []),
@@ -201,13 +215,13 @@ export default function DomainAttachWidget({
     // Then check for custom domains (not customer-owned)
     const pending = siteDomains.find((d) => {
       if (d.domainType === 'prefix') return false;
-      if (isCustomerDomain(d.fqdn, domains)) return false;
+      if (isCustomerDomain(d.fqdn, allCustomerDomains)) return false;
       // ERROR/FAILED/INACTIVE are terminal, and no-status means we don't yet know — don't show DNS instructions for either.
       return d.status === DomainStatus.PENDING || d.status === DomainStatus.DELETING;
     });
 
     return pending ? pending.fqdn : null;
-  }, [siteDomains, domains, requiresManualDnsSetup, pendingCustomerDomainForAttach]);
+  }, [siteDomains, allCustomerDomains, requiresManualDnsSetup, pendingCustomerDomainForAttach]);
 
   const pendingDomainDetails = pendingDomain
     ? siteDomains.find((d) => normalizeFqdn(d.fqdn) === normalizeFqdn(pendingDomain))
@@ -244,10 +258,10 @@ export default function DomainAttachWidget({
   const activeExternalDomainDetails = useMemo(() => {
     return siteDomains.find((d) => {
       if (d.domainType === 'prefix') return false;
-      if (isCustomerDomain(d.fqdn, domains)) return false;
+      if (isCustomerDomain(d.fqdn, allCustomerDomains)) return false;
       return d.status === DomainStatus.ACTIVE;
     }) ?? null;
-  }, [siteDomains, domains]);
+  }, [siteDomains, allCustomerDomains]);
   const activeExternalDomainForDkim = activeExternalDomainDetails?.fqdn ?? null;
 
   // Pending external domains are already attached, so onboard can provision
@@ -711,7 +725,7 @@ export default function DomainAttachWidget({
     ? siteDomains.filter(
       (appDomain) =>
         appDomain.domainType !== 'prefix' &&
-        !isCustomerDomain(appDomain.fqdn, domains)
+        !isCustomerDomain(appDomain.fqdn, allCustomerDomains)
     )
     : [];
 

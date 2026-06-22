@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { type CustomerAuthContext, withCustomerAuth } from '@/lib/customer-auth';
-import { DomainsClient } from '@/lib/domains';
+import { type DomainFilter, type DomainsApiResponse, DomainsClient } from '@/lib/domains';
 import { logger } from '@/lib/request-context';
 
 export const dynamic = 'force-dynamic';
@@ -60,24 +60,34 @@ export const GET = withCustomerAuth(async (
     const baseUrl = getDomainsBaseUrl();
     const client = new DomainsClient({ baseUrl, jwt: authContext.jwt });
 
+    const filterParam = request.nextUrl.searchParams.get('filter');
+    let filter: DomainFilter | undefined;
+    if (filterParam) {
+      try {
+        const parsed: unknown = JSON.parse(filterParam);
+        if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+          return NextResponse.json({ error: 'Invalid filter parameter' }, { status: 400 });
+        }
+        filter = parsed as DomainFilter;
+      } catch {
+        return NextResponse.json({ error: 'Invalid filter parameter' }, { status: 400 });
+      }
+    }
+
     logger.info('domains.api.start', {
       message: 'Fetching domains via API route',
       customerId,
-      shopperId: authContext.user.shopperId
+      shopperId: authContext.user.shopperId,
+      ...(filter ? { filter } : {})
     });
 
-    const response = await client.getAllDomainsForCustomer(customerId) as {
-      filter: string;
-      startIndex: number;
-      total: number;
-      pageSize: number;
-      domains: Array<{ domain: string; nameservers?: string[]; hasInternalNameservers?: boolean }>;
-    };
+    const response: DomainsApiResponse = await client.getAllDomainsForCustomer(customerId, { filter });
 
     logger.info('domains.api.success', {
       message: 'Domains fetched successfully',
       count: response.domains?.length || 0,
-      total: response.total
+      total: response.total,
+      ...(filter ? { appliedFilter: filter } : {}),
     });
 
     return NextResponse.json(response);
