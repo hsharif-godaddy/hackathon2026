@@ -334,12 +334,14 @@ vi.mock('@/services/transport/buffering/toolDeltaBuffer', () => ({
 // ---------------------------------------------------------------------------
 
 const mockPostInitialBuildEvent = vi.fn()
+const mockTrackInitialBuildComplete = vi.fn()
 
 vi.mock('@/hooks/shared/completionSideEffects', async (importOriginal) => {
   const actual = await importOriginal() as Record<string, unknown>
   return {
     ...actual,
     postInitialBuildEvent: (...args: unknown[]) => mockPostInitialBuildEvent(...args),
+    trackInitialBuildComplete: (...args: unknown[]) => mockTrackInitialBuildComplete(...args),
   }
 })
 
@@ -349,13 +351,19 @@ vi.mock('@/hooks/shared/completionSideEffects', async (importOriginal) => {
 
 let mockBringOverTogglesEnabled: boolean | undefined = false
 let mockDesignChoiceForApp: unknown = null
+// A1 (AIROBUILD-2665) is gated on this flag — default true so the parked-turn
+// skip tests exercise the gallery-on path; the flag-off test flips it false.
+let mockDesignKitGalleryEnabled: boolean | undefined = true
 
 vi.mock('@/hooks/useSwitchboard', () => ({
   useSwitchboard: vi.fn(function (flag: string) {
     if (flag === 'appbuilder-rebuild-bring-over-toggles') return mockBringOverTogglesEnabled
     return false
   }),
-  getSwitchboardFlag: vi.fn(() => false),
+  getSwitchboardFlag: vi.fn(function (flag: string) {
+    if (flag === 'appbuilder-design-kit-gallery') return mockDesignKitGalleryEnabled
+    return false
+  }),
 }))
 
 vi.mock('@/lib/rebuild-design-choice', () => ({
@@ -398,6 +406,7 @@ describe('useSSEChat', () => {
     mockRouteParams = {}
     mockTokenAuthType = 'basic'
     mockBringOverTogglesEnabled = false
+    mockDesignKitGalleryEnabled = true
     mockDesignChoiceForApp = null
     mockConversationIdFromCookie = null
     // Mock fetch for conversation creation POST
@@ -897,6 +906,102 @@ describe('useSSEChat', () => {
       })
 
       expect(mockPostInitialBuildEvent).not.toHaveBeenCalled()
+    })
+
+    // AIROBUILD-2665 / A1 — the kit-attach interview turn parks on an unanswered
+    // askQuestion AND commits its forced-install tokens, so the complete event
+    // carries a commitHash. That commitHash must NOT flip the client first-build
+    // flag: a parked askQuestion is a pre-build interview, not a completed build.
+    // So neither postInitialBuildEvent (optimistic client flip) nor
+    // trackInitialBuildComplete (build-complete telemetry) may fire.
+    //
+    // GATED on `appbuilder-design-kit-gallery`: the skip only applies with the
+    // gallery flag ON (default in these tests). The flag-off case below proves the
+    // non-gallery path is unchanged (both still fire on a parked turn).
+    function parkedAskQuestionMessages() {
+      return [
+        { id: 'u1', role: 'user' as const, content: 'build me a coffee shop', timestamp: new Date() },
+        {
+          id: 'a1',
+          role: 'assistant' as const,
+          content: 'A few questions first.',
+          timestamp: new Date(),
+          toolCalls: [
+            {
+              id: 'tc-ask',
+              name: 'askQuestion',
+              input: {},
+              status: 'completed' as const,
+              result: {
+                output: {
+                  widgetData: {
+                    currentQuestionIndex: 0,
+                    questions: [
+                      {
+                        question: 'What is your brand voice?',
+                        suggestions: [{ text: 'Warm and rustic' }, { text: 'Modern and minimal' }],
+                      },
+                    ],
+                  },
+                },
+              },
+            },
+          ],
+        },
+      ]
+    }
+
+    it('does NOT call postInitialBuildEvent or trackInitialBuildComplete when parked on an unanswered askQuestion (commitHash present, gallery flag ON)', async () => {
+      mockDesignKitGalleryEnabled = true
+      storeState.messages = parkedAskQuestionMessages()
+      await setupHook('test-app-123')
+
+      act(() => {
+        lastTransport.callbacks?.onEvent({
+          type: 'complete',
+          data: { commitHash: 'abc123' },
+        })
+      })
+
+      expect(mockPostInitialBuildEvent).not.toHaveBeenCalled()
+      expect(mockTrackInitialBuildComplete).not.toHaveBeenCalled()
+    })
+
+    it('DOES call BOTH on a parked askQuestion when the gallery flag is OFF (non-gallery path unchanged)', async () => {
+      // Regression guard: A1 must be inert with appbuilder-design-kit-gallery off,
+      // so the standard design-system flow (which also ends its first build on a
+      // "Do you like the design?" askQuestion) behaves exactly as before A1.
+      mockDesignKitGalleryEnabled = false
+      storeState.messages = parkedAskQuestionMessages()
+      await setupHook('test-app-123')
+
+      act(() => {
+        lastTransport.callbacks?.onEvent({
+          type: 'complete',
+          data: { commitHash: 'abc123' },
+        })
+      })
+
+      expect(mockPostInitialBuildEvent).toHaveBeenCalledWith('test-app-123')
+      expect(mockTrackInitialBuildComplete).toHaveBeenCalledWith('abc123')
+    })
+
+    it('calls BOTH postInitialBuildEvent and trackInitialBuildComplete on a normal complete (commitHash present, not parked)', async () => {
+      storeState.messages = [
+        { id: 'u1', role: 'user' as const, content: 'add a hero section', timestamp: new Date() },
+        { id: 'a1', role: 'assistant' as const, content: 'Done — added the hero section.', timestamp: new Date() },
+      ]
+      await setupHook('test-app-123')
+
+      act(() => {
+        lastTransport.callbacks?.onEvent({
+          type: 'complete',
+          data: { commitHash: 'abc123' },
+        })
+      })
+
+      expect(mockPostInitialBuildEvent).toHaveBeenCalledWith('test-app-123')
+      expect(mockTrackInitialBuildComplete).toHaveBeenCalledWith('abc123')
     })
   })
 

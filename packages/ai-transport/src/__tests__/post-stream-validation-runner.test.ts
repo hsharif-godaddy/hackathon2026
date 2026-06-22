@@ -181,6 +181,71 @@ describe('runPostStreamValidation', () => {
     expect('stopAfterTools' in (capturedInput ?? {})).toBe(false)
   })
 
+  // AIROBUILD-2665: the forced design-kit install turn forwards
+  // `forcedInstallThisTurn` to the validator so it can grant that single turn
+  // validator-immunity (skip on the stop-after interview turn even with a
+  // dirty tree). Pin the forwarding contract at the runner seam.
+  it('forwards forcedInstallThisTurn to the validator when provided', async () => {
+    let capturedInput: PostStreamValidatorInput | undefined
+    const validator: PostStreamValidatorFn = async (input) => {
+      capturedInput = input
+      return undefined
+    }
+
+    await runPostStreamValidation({
+      ...baseParams(),
+      forcedInstallThisTurn: true,
+      validator,
+      publishValidationMessage: vi.fn(async () => true),
+    })
+
+    expect(capturedInput?.forcedInstallThisTurn).toBe(true)
+  })
+
+  it('omits forcedInstallThisTurn key from validator input when not provided', async () => {
+    // Conditional spread must produce an absent key, not present-and-undefined,
+    // matching the stopAfterTools forwarding convention.
+    let capturedInput: PostStreamValidatorInput | undefined
+    const validator: PostStreamValidatorFn = async (input) => {
+      capturedInput = input
+      return undefined
+    }
+
+    await runPostStreamValidation({
+      ...baseParams(),
+      validator,
+      publishValidationMessage: vi.fn(async () => true),
+    })
+
+    expect('forcedInstallThisTurn' in (capturedInput ?? {})).toBe(false)
+  })
+
+  // AIROBUILD-2665: `stop_after_forced_install` is a benign clean skip — the
+  // runner must treat it like `stop_after_no_changes` / `no_uncommitted_changes`:
+  // no status events, no warn log, no continuation, returns null.
+  it('emits no status events and returns null for stop_after_forced_install skip', async () => {
+    const { publish, calls } = makePublishCapture()
+    const logger = makeLogger()
+    const validator: PostStreamValidatorFn = async () => ({
+      skipped: true,
+      reason: 'stop_after_forced_install'
+    })
+
+    const result = await runPostStreamValidation({
+      ...baseParams(),
+      validator,
+      logger,
+      publishValidationMessage: publish,
+    })
+
+    expect(result).toBeNull()
+    expect(calls).toHaveLength(0)
+    expect(logger.warn).not.toHaveBeenCalledWith(
+      'post_stream_validator.unhandled_skipped_result',
+      expect.anything()
+    )
+  })
+
   // Step D: helper-level coverage for the `stop_after_no_changes` skip reason.
   // The validator returns this when the turn ended with a stop-after tool AND
   // the working tree is clean — the preserved PR #3985 intent. The runner

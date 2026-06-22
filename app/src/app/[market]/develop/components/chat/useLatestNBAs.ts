@@ -130,6 +130,23 @@ function extractLatestNBAFromMessages(messages: ChatMessage[]): LatestNBAData | 
 }
 
 /**
+ * True when the latest assistant message parked on an unanswered `askQuestion`
+ * NBA (the model asked a question and is waiting for the user to answer or skip).
+ *
+ * Used to keep an interview turn from being treated as a completed first build:
+ * the kit-attach interview turn commits its forced-install tokens (connection-end
+ * git hook), so the SSE `complete` event carries a commitHash that would otherwise
+ * optimistically flip the client `initialBuildComplete` → activate First Build
+ * Feedback → suppress this very interview card (AIROBUILD-2665). Reuses
+ * `extractLatestNBAFromMessages` (which already returns null once a user answer
+ * follows via `hasNbaResponseAfter`).
+ */
+export function isParkedOnAskQuestion(messages: ChatMessage[]): boolean {
+  const nba = extractLatestNBAFromMessages(messages)
+  return nba?.source === 'askQuestion'
+}
+
+/**
  * Hook that extracts the latest NBA (suggested response) data from conversation messages.
  * Returns null when no NBA data is available, or when feedbackActive is true.
  */

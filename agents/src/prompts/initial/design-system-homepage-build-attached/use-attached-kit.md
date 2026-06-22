@@ -29,7 +29,7 @@ Design system at `docs/ui-kit/`. Load it with `loadUiKit` before building anythi
 The kit defines your visual vocabulary. Default to kit components for every UI need. When extending, match the kit's style and tokens. Never contradict the kit.
 Build the homepage ONLY. Remaining pages have placeholder routes — build them when the user asks.
 [List pages with their layout reference — one line each]
-After building the homepage, use askQuestion: \"Do you like the design?\" with suggestions [\"Yes, build the next page\", \"Change the color scheme\", \"Change the fonts\", \"Adjust the layout\"] and allowOther: true."
+After building the homepage, use askQuestion: \"Do you like the design?\" with suggestions [\"Yes, build the next page\", \"Adjust the layout\", \"Add a section\"] and allowOther: true."
 }
 ```
 

@@ -448,6 +448,125 @@ describe('createPostStreamValidator', () => {
     });
   });
 
+  // ─── Forced-install immunity (AIROBUILD-2665) ─────────────────────────────
+  // The forced design-kit `-attached` interview turn parks on a stop-after
+  // tool (`askQuestion`) with a dirty tree the agent never authored
+  // (`applyKitDesignTokens` wrote globals.css / brand-tokens.css before the
+  // model ran). Validating that tree would fire `ran_despite_stop_after` and a
+  // phantom postcss continuation would hijack the interview into a premature
+  // build. So when `forcedInstallThisTurn` is set AND the turn ended on a
+  // stop-after tool, the validator skips with `stop_after_forced_install`
+  // regardless of the tree state — and only that single turn carries the flag.
+  describe('forced-install immunity', () => {
+    it('skips with reason "stop_after_forced_install" when forcedInstallThisTurn AND stop-after fired, even with a dirty tree', async () => {
+      const { deps, mocks } = makeDeps({ hasUncommittedChanges: true });
+      const validator = createPostStreamValidator(deps);
+      const emitValidationStart = vi.fn(async function () {});
+      const result = await validator(
+        makeArgs({
+          emitValidationStart,
+          forcedInstallThisTurn: true,
+          toolCalls: [{ toolName: 'askQuestion' }],
+          stopAfterTools: ['askQuestion']
+        })
+      );
+      expect(result).toEqual({ skipped: true, reason: 'stop_after_forced_install' });
+      // Neither phase runs — the dirty tree is the deterministic kit-token write.
+      expect(mocks.runTypecheck).not.toHaveBeenCalled();
+      expect(mocks.pollRuntimeErrors).not.toHaveBeenCalled();
+      expect(emitValidationStart).not.toHaveBeenCalled();
+      // The skip must NOT take the dirty-tree ran_despite_stop_after path.
+      expect(mocks.logger.warn).not.toHaveBeenCalledWith(
+        'agent.post_stream_validator.ran_despite_stop_after',
+        expect.anything()
+      );
+      expect(mocks.logger.info).toHaveBeenCalledWith(
+        'agent.typecheck.skipped',
+        expect.objectContaining({ reason: 'stop_after_forced_install' })
+      );
+      expect(mocks.logger.info).toHaveBeenCalledWith(
+        'agent.runtime_errors.skipped',
+        expect.objectContaining({ reason: 'stop_after_forced_install' })
+      );
+    });
+
+    it('does NOT grant immunity on a normal (non-forced-install) dirty stop-after turn — phases still run', async () => {
+      // Regression guard: immunity must not leak to ordinary interview-answer
+      // / develop turns. forcedInstallThisTurn false + dirty + stop-after must
+      // keep the existing ran_despite_stop_after behavior (validation runs).
+      const { deps, mocks } = makeDeps({ hasUncommittedChanges: true });
+      const validator = createPostStreamValidator(deps);
+      const emitValidationStart = vi.fn(async function () {});
+      const result = await validator(
+        makeArgs({
+          emitValidationStart,
+          forcedInstallThisTurn: false,
+          toolCalls: [
+            { toolName: 'str_replace_based_edit_tool' },
+            { toolName: 'askQuestion' }
+          ],
+          stopAfterTools: ['askQuestion']
+        })
+      );
+      expect(result).toBeUndefined();
+      expect(emitValidationStart).toHaveBeenCalledTimes(1);
+      expect(mocks.runTypecheck).toHaveBeenCalledTimes(1);
+      expect(mocks.pollRuntimeErrors).toHaveBeenCalledTimes(1);
+      expect(mocks.logger.warn).toHaveBeenCalledWith(
+        'agent.post_stream_validator.ran_despite_stop_after',
+        expect.objectContaining({ lastTool: 'askQuestion' })
+      );
+      expect(mocks.logger.info).not.toHaveBeenCalledWith(
+        'agent.typecheck.skipped',
+        expect.objectContaining({ reason: 'stop_after_forced_install' })
+      );
+    });
+
+    it('does NOT grant immunity when forcedInstallThisTurn is set but the turn did NOT end on a stop-after tool', async () => {
+      // Proves the branch needs BOTH conditions: the flag alone is not enough.
+      // A forced-install turn whose last tool is a regular edit must validate
+      // normally (dirty tree → phases run).
+      const { deps, mocks } = makeDeps({ hasUncommittedChanges: true });
+      const validator = createPostStreamValidator(deps);
+      const result = await validator(
+        makeArgs({
+          forcedInstallThisTurn: true,
+          toolCalls: [
+            { toolName: 'askQuestion' },
+            { toolName: 'str_replace_based_edit_tool' }
+          ],
+          stopAfterTools: ['askQuestion']
+        })
+      );
+      expect(result).toBeUndefined();
+      expect(mocks.runTypecheck).toHaveBeenCalledTimes(1);
+      expect(mocks.pollRuntimeErrors).toHaveBeenCalledTimes(1);
+      expect(mocks.logger.info).not.toHaveBeenCalledWith(
+        'agent.typecheck.skipped',
+        expect.objectContaining({ reason: 'stop_after_forced_install' })
+      );
+    });
+
+    it('clean tree + stop-after (no forced install) still skips with "stop_after_no_changes"', async () => {
+      // Sanity: the new immunity branch does not disturb the existing
+      // clean-tree stop-after skip. forcedInstallThisTurn omitted entirely.
+      const { deps, mocks } = makeDeps({ hasUncommittedChanges: false });
+      const validator = createPostStreamValidator(deps);
+      const emitValidationStart = vi.fn(async function () {});
+      const result = await validator(
+        makeArgs({
+          emitValidationStart,
+          toolCalls: [{ toolName: 'readFile' }, { toolName: 'askQuestion' }],
+          stopAfterTools: ['askQuestion']
+        })
+      );
+      expect(result).toEqual({ skipped: true, reason: 'stop_after_no_changes' });
+      expect(mocks.runTypecheck).not.toHaveBeenCalled();
+      expect(mocks.pollRuntimeErrors).not.toHaveBeenCalled();
+      expect(emitValidationStart).not.toHaveBeenCalled();
+    });
+  });
+
   // ─── Auto restart-after-fix: HMR limbo recovery ──────────────────────────
   // Concrete production failure this guards against: file A has a parse
   // error; file B imports A; Vite drops B's HMR update because the dep

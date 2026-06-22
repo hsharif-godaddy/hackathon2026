@@ -26,6 +26,7 @@ interface ColorPaletteWidget {
   }
 }
 import { AppRepository } from '../../database/repositories/AppRepository.js'
+import { kitTokensLocked } from '../../services/design-system/kit-tokens-locked.js'
 import { getKvMemoryStore } from '../../memory/adapters/index.js'
 import { customerIdFromContext, workspaceScopeFromAppId } from '../../memory/interfaces/scope.js'
 
@@ -35,6 +36,9 @@ import { logger } from '../../logging/index.js'
 
 const appRepo = new AppRepository()
 const memoryStore = getKvMemoryStore()
+
+const COLOR_SCHEME_KIT_LOCKED_MESSAGE =
+  "This app uses an attached design kit — its colors are fixed by the kit and can't be changed here. The kit's palette is already applied; build on top of it."
 
 function formatPaletteForWidget(palette: ReturnType<typeof generatePalette>, name: string) {
   return {
@@ -352,6 +356,19 @@ IMPORTANT:
     const stateManager = context?.metadata?.stateManager as any
     const subscriptionId = context?.metadata?.subscriptionId as string | undefined
     const customerId = context?.metadata?.customerId as string | undefined
+
+    // When the kit's tokens were applied in code by the forced-install path
+    // (apply-kit-design.ts), its palette is the source of truth — block the model
+    // from overwriting it via set/apply. suggest only previews (no write), so it's
+    // exempt. The design-kit wizard never sets this marker, so it stays usable.
+    if ((input.mode === 'set' || input.mode === 'apply') && appId && kitTokensLocked(appId)) {
+      logger.info('colorScheme.kit.locked', { appId, mode: input.mode })
+      return {
+        success: true,
+        skipped: true,
+        message: COLOR_SCHEME_KIT_LOCKED_MESSAGE,
+      }
+    }
 
     if (input.mode === 'suggest') {
       if (!input.description) {

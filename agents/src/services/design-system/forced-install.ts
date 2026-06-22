@@ -1,7 +1,9 @@
 import { randomUUID } from 'crypto'
 import { runPreflightTools } from '@airo/ai-transport'
+import type { KnownAppMetadata } from '@airo/shared'
 import { installDesignKitForApp } from './install.js'
 import { applyKitDesignTokens } from './apply-kit-design.js'
+import { AppMetadataRepository } from '../../database/repositories/AppMetadataRepository.js'
 
 export interface ForcedInstallLogger {
   info: (event: string, data?: Record<string, unknown>) => void
@@ -95,10 +97,35 @@ export async function injectForcedDesignKit(input: {
     // catalog tokens. A prompt directive to "apply the kit's colors" does NOT
     // hold — the model re-derives its own palette from the business domain
     // (observed: a dark kit became terracotta for a coffee shop). So we apply in
-    // code and remove colorScheme/fontTheme from this variant. Best-effort.
+    // code and lock colorScheme/fontTheme via the `designKitTokensLocked` marker
+    // below (the tools stay wired on every variant — the marker-keyed guard in
+    // color-scheme.ts/font-theme.ts does the locking, so it also covers post-handoff
+    // develop turns). Best-effort.
     const applied = await applyKitDesignTokens({
       appId, design: result.design, displayName: result.displayName, customerId,
     })
+
+    // The deterministic token writes leave the interview turn's tree dirty.
+    // Rather than commit them (a forced-install -attached turn has no git
+    // workspace connection, so the commit fails and the tree stays dirty), the
+    // post-stream validator grants this single turn validator-immunity: it skips
+    // on the askQuestion stop-after even with a dirty tree, keyed on the forced
+    // install having run THIS turn (see MessageExecutionService / forcedInstallThisTurn,
+    // AIROBUILD-2665). That prevents the phantom-postcss continuation → premature
+    // build without touching validation on any other turn.
+    if (applied.appliedColors || applied.appliedFonts) {
+      // Record the forced-install-only lock signal: the kit's tokens were
+      // applied DETERMINISTICALLY IN CODE here, so colorScheme/fontTheme must be
+      // locked (a model override would undo this in-code apply). The wizard flow
+      // never runs applyKitDesignTokens (it applies via the tools themselves), so
+      // it never sets this marker and keeps the tools usable. Best-effort — a
+      // metadata hiccup must never block the build (AIROBUILD-2665).
+      try {
+        new AppMetadataRepository().merge(appId, { designKitTokensLocked: true } satisfies Partial<KnownAppMetadata>)
+      } catch (err) {
+        logger.warn('design_kit.forced_install.lock_marker_failed', { appId, slug: result.slug, err: String(err) })
+      }
+    }
 
     // Load the kit's primitives so the model builds layout/components to THIS
     // kit. loadUiKit only needs the appId off context.metadata; runPreflightTools

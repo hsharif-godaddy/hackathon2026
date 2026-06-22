@@ -344,17 +344,19 @@ export async function createInitialAgent(
     // gallery: the kit is force-installed, so the variant must NOT be able to
     // list or install a different one — those tools are omitted on purpose.
     // colorScheme/fontTheme stay wired on every variant.
-    // NOTE (AIROBUILD-2665): these tools are NOT actually execution-locked when a
-    // kit is attached. There is no designKit guard in css-color-tool.ts /
-    // font-theme.ts today (the earlier lock was dropped in commit fb43ec1c2), so
-    // the model CAN still override the deterministically-applied kit palette/fonts
-    // on any turn (the interview turn here, or after handoff to develop). The
-    // kit-honoring guarantee currently rests on a prompt directive alone
-    // (use-attached-kit.md), which apply-kit-design.ts explicitly distrusts.
-    // AIROBUILD-2665 will either add the real execution lock (gate on the
-    // designKit app-metadata) or drop the false "locked" claims here and in the
-    // prompt. Removing the tools from one variant wouldn't help — the build runs
-    // base turns too.
+    // NOTE (AIROBUILD-2665): these tools are now execution-locked when the kit's
+    // tokens were applied in code by the forced-install path. The set/apply handlers
+    // in color-scheme.ts / font-theme.ts guard on kitTokensLocked(appId) (the
+    // designKitTokensLocked app-metadata marker set by forced-install.ts) and no-op
+    // with a "locked" message, so the model can NOT override the deterministically-
+    // applied kit palette/fonts on any turn — the interview turn here OR after handoff
+    // to develop. (suggest stays unlocked: it only previews. The design-kit wizard
+    // applies the kit via these tools and never sets the marker, so it stays usable.)
+    // The lock lives in the
+    // shared tool code, not the variant toolset, because develop runs base turns
+    // too — removing the tools from one variant wouldn't cover those. This makes
+    // the use-attached-kit.md "do not call colorScheme/fontTheme" directive a real
+    // guarantee rather than a prompt-only hope.
     if (!trimmedPromptVersion.endsWith('-attached')) {
       tools.listDesignSystems = allAILibTools.listDesignSystems
       tools.installDesignSystem = allAILibTools.installDesignSystem

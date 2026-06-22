@@ -41,6 +41,13 @@ export interface PostStreamValidatorInput {
    * surfaces pre-existing errors that hijack intentional pauses.
    */
   stopAfterTools?: readonly string[]
+  /**
+   * True only on the forced design-kit install turn (the `-attached`
+   * interview turn that deterministically wrote kit token files). Lets the
+   * validator skip on the stop-after interview turn even with a dirty tree,
+   * scoped to that single turn so later real edits are still validated.
+   */
+  forcedInstallThisTurn?: boolean
 }
 
 export type PostStreamValidatorResult =
@@ -68,6 +75,13 @@ export interface RunPostStreamValidationParams {
   iteration: number
   /** Stop-after tool names for the resolved agent. Forwarded to the validator. */
   stopAfterTools?: readonly string[]
+  /**
+   * True only on the forced design-kit install turn. Forwarded to the
+   * validator so it can grant that turn validator-immunity (skip on the
+   * stop-after interview turn even with a dirty tree). See
+   * `PostStreamValidatorInput.forcedInstallThisTurn`.
+   */
+  forcedInstallThisTurn?: boolean
   /** Publish a `chunk` event appended to the in-flight assistant message. */
   emitChunk: (text: string) => Promise<void>
   /** Publish a `validation_message` event. Return true when the event was delivered. */
@@ -97,7 +111,7 @@ export async function runPostStreamValidation(
 ): Promise<RunPostStreamValidationResult | null> {
   const {
     validator, socketId, agentName, context, toolCalls, abortSignal, iteration,
-    stopAfterTools, emitChunk, publishValidationMessage, persistValidationMessage,
+    stopAfterTools, forcedInstallThisTurn, emitChunk, publishValidationMessage, persistValidationMessage,
     logger, logContext,
   } = params
 
@@ -127,6 +141,7 @@ export async function runPostStreamValidation(
       abortSignal,
       emitChunk,
       ...(stopAfterTools !== undefined && { stopAfterTools }),
+      ...(forcedInstallThisTurn !== undefined && { forcedInstallThisTurn }),
       emitValidationStart: async () => {
         validationStarted = await emitStatus('running', 'Validating code...')
       },
@@ -194,6 +209,7 @@ export async function runPostStreamValidation(
       } else if (
         skippedResult.reason === 'no_uncommitted_changes' ||
         skippedResult.reason === 'stop_after_no_changes' ||
+        skippedResult.reason === 'stop_after_forced_install' ||
         skippedResult.reason === 'initial_agent'
       ) {
         // Intentional no-op: clean skip before emitValidationStart was called,

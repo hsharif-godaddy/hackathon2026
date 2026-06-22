@@ -494,6 +494,66 @@ describe('MessageExecutionService', () => {
     })
   })
 
+  // AIROBUILD-2665 / A2 — pin the activation seam the leaf tests miss. The runner
+  // (post-stream-validation-runner.test.ts) and the validator (post-stream-validator
+  // .test.ts) both test that `forcedInstallThisTurn` is honored, but the derivation
+  // `forcedInstallThisTurn = forcedKitMessages.length > 0` and its forwarding through
+  // runPostStreamValidation into the validator live only here — a regression in this
+  // predicate/spread would pass every leaf test. These drive the REAL runner and assert
+  // the validator received the flag MES derived.
+  describe('forcedInstallThisTurn forwarding to the post-stream validator', () => {
+    it('forwards forcedInstallThisTurn=true when the forced install produced messages this turn', async () => {
+      const postStreamValidator = vi.fn().mockResolvedValue(undefined)
+      const agentWithConfig = {
+        streamGenerate: vi.fn().mockResolvedValue({
+          textStream: (async function* () {})(),
+          baseStream: makeReadableStream([]),
+        }),
+        getName: vi.fn().mockReturnValue('AI Developer'),
+        getConfig: vi.fn().mockReturnValue({ id: 'x', tools: { loadUiKit: {} }, metadata: {} }),
+      }
+      const known: Record<string, unknown> = {
+        'initial-design-system-homepage-build': agentWithConfig,
+        'initial-design-system-homepage-build-attached': agentWithConfig,
+      }
+      deps.getAgent.mockImplementation((id: string) => {
+        if (!(id in known)) throw new Error(`Agent config not found for id: ${id}`)
+        return known[id]
+      })
+      ;(deps as any).postStreamValidator = postStreamValidator
+      service = new MessageExecutionService(deps as any)
+      // install ran this turn (produced a synthesized message). Note this keys on
+      // "install produced messages", which is BROADER than the kit-lock marker — an
+      // install that succeeds but applies no tokens still grants validator immunity.
+      mockEnrichWithForcedDesignKit.mockResolvedValueOnce([{ role: 'user', content: 'installed' }])
+
+      await service.execute({
+        ...DEFAULT_PARAMS,
+        agentId: 'initial-design-system-homepage-build-attached',
+        designKitSlug: 'modern-bento',
+        lifecycleContext: { isInitialPrompt: true },
+      })
+
+      expect(postStreamValidator).toHaveBeenCalledWith(
+        expect.objectContaining({ forcedInstallThisTurn: true }),
+      )
+    })
+
+    it('forwards forcedInstallThisTurn=false on a normal turn (no forced install)', async () => {
+      const postStreamValidator = vi.fn().mockResolvedValue(undefined)
+      ;(deps as any).postStreamValidator = postStreamValidator
+      service = new MessageExecutionService(deps as any)
+
+      // DEFAULT_PARAMS: agentId 'develop', no designKitSlug → prepareForcedDesignKit
+      // early-returns forcedKitMessages: [] → predicate is false.
+      await service.execute(DEFAULT_PARAMS)
+
+      expect(postStreamValidator).toHaveBeenCalledWith(
+        expect.objectContaining({ forcedInstallThisTurn: false }),
+      )
+    })
+  })
+
   describe('streaming loop', () => {
     it('publishes chunk event for text-delta parts', async () => {
       deps = createMockDeps([{ type: 'text-delta', text: 'hello' }])

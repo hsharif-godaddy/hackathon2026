@@ -2,6 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const mockInstallDesignKitForApp = vi.hoisted(() => vi.fn())
 const mockApplyKitDesignTokens = vi.hoisted(() => vi.fn())
+const mockMerge = vi.hoisted(() => vi.fn())
+const MockAppMetadataRepository = vi.hoisted(() => vi.fn())
 
 vi.mock('../install.js', () => ({
   installDesignKitForApp: mockInstallDesignKitForApp,
@@ -9,6 +11,7 @@ vi.mock('../install.js', () => ({
 vi.mock('../apply-kit-design.js', () => ({
   applyKitDesignTokens: mockApplyKitDesignTokens,
 }))
+vi.mock('../../../database/repositories/AppMetadataRepository.js', () => ({ AppMetadataRepository: MockAppMetadataRepository }))
 
 const mockLogger = { info: vi.fn(), warn: vi.fn() }
 
@@ -263,5 +266,72 @@ describe('enrichWithForcedDesignKit', () => {
     expect(result).toHaveLength(0)
     expect(mockInstallDesignKitForApp).not.toHaveBeenCalled()
     expect(mockLogger.warn).toHaveBeenCalledWith('design_kit.forced_install.skipped_non_variant', expect.objectContaining({ transport: 'ws' }))
+  })
+})
+
+// AIROBUILD-2665 / Fix B — the forced-install path applied the kit's tokens
+// DETERMINISTICALLY IN CODE, so it records the designKitTokensLocked marker via
+// AppMetadataRepository.merge. This is the only path that sets the marker (the
+// wizard applies via the tools themselves and stays unlocked), so the marker is
+// scoped to the in-code-apply (gallery/-attached) path. The merge is gated on
+// applied.appliedColors || applied.appliedFonts and is best-effort (a throw must
+// never block the build).
+describe('injectForcedDesignKit — kit-tokens-locked marker (Fix B)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.resetModules()
+    mockInstallDesignKitForApp.mockResolvedValue({
+      slug: 'golden-hour', written: 5, message: 'ok', displayName: 'Golden Hour',
+      design: { palette: { primary: '#c86d42' } }, questions: [],
+    })
+    MockAppMetadataRepository.mockImplementation(function () {
+      return { merge: mockMerge }
+    })
+    mockMerge.mockReturnValue({ designKitTokensLocked: true })
+  })
+
+  it('records the lock marker when colors were applied', async () => {
+    mockApplyKitDesignTokens.mockResolvedValue({ appliedColors: true, appliedFonts: false })
+    const { injectForcedDesignKit } = await import('../forced-install.js')
+
+    await injectForcedDesignKit({ designKitSlug: 'golden-hour', appId: 'test-app', logger: mockLogger })
+
+    expect(mockMerge).toHaveBeenCalledWith('test-app', { designKitTokensLocked: true })
+  })
+
+  it('records the lock marker when only fonts were applied', async () => {
+    mockApplyKitDesignTokens.mockResolvedValue({ appliedColors: false, appliedFonts: true })
+    const { injectForcedDesignKit } = await import('../forced-install.js')
+
+    await injectForcedDesignKit({ designKitSlug: 'golden-hour', appId: 'test-app', logger: mockLogger })
+
+    expect(mockMerge).toHaveBeenCalledWith('test-app', { designKitTokensLocked: true })
+  })
+
+  it('does NOT record the lock marker when nothing was applied (wizard-equivalent path stays unlocked)', async () => {
+    mockApplyKitDesignTokens.mockResolvedValue({ appliedColors: false, appliedFonts: false })
+    const { injectForcedDesignKit } = await import('../forced-install.js')
+
+    await injectForcedDesignKit({ designKitSlug: 'golden-hour', appId: 'test-app', logger: mockLogger })
+
+    expect(mockMerge).not.toHaveBeenCalled()
+  })
+
+  it('is best-effort: a merge throw is swallowed, warns, and the install still returns the synthesized pair', async () => {
+    mockApplyKitDesignTokens.mockResolvedValue({ appliedColors: true, appliedFonts: true })
+    mockMerge.mockImplementation(() => {
+      throw new Error('metadata write failed')
+    })
+    const { injectForcedDesignKit } = await import('../forced-install.js')
+
+    const result = await injectForcedDesignKit({ designKitSlug: 'golden-hour', appId: 'test-app', logger: mockLogger })
+
+    // The install still succeeds — the synthesized tool_call + tool_result pair is returned.
+    expect(result).toHaveLength(2)
+    expect((result[1]!.content as any[])[0]!.toolName).toBe('installDesignSystem')
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      'design_kit.forced_install.lock_marker_failed',
+      expect.objectContaining({ appId: 'test-app', slug: 'golden-hour' }),
+    )
   })
 })

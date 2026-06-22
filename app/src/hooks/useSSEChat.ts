@@ -2,6 +2,7 @@ import { useParams } from 'next/navigation'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { getMessageOriginForAuthType } from '@airo/shared/auth'
 
+import { isParkedOnAskQuestion } from '@/app/[market]/develop/components/chat/useLatestNBAs'
 import { getFullStorySessionId } from '@/components/feedback/utils'
 import { useAuthContext } from '@/components/providers/AuthProvider'
 import { dynamicApiConfigService } from '@/config/dynamic-api'
@@ -10,6 +11,7 @@ import {
   getConversationIdFromCookie,
   setConversationIdCookie,
 } from '@/hooks/chat/useChatHelpers'
+import { getSwitchboardFlag } from '@/hooks/useSwitchboard'
 import { agentFetch, getAgentToken } from '@/lib/agent-fetch'
 import { readDesignChoiceForCurrentApp } from '@/lib/rebuild-design-choice'
 import { logger } from '@/lib/request-context'
@@ -557,10 +559,32 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
                   ? completeData.commitHash : undefined
                 const activeAppId = store.currentAppId
 
+                // A turn that parked on an unanswered askQuestion is a pre-build
+                // interview, not a completed build — even though the kit-attach
+                // interview turn commits its forced-install tokens and so carries a
+                // commitHash. Align the client with the server (which only marks
+                // first-build on an agent git-tool commit) by not flipping
+                // initialBuildComplete here, so First Build Feedback doesn't activate
+                // and suppress the interview card (AIROBUILD-2665). finalizeStream has
+                // already run, so the finalized assistant message is in the store.
+                //
+                // Gated on `appbuilder-design-kit-gallery` so the deferral is scoped
+                // to the design-kit gallery feature. With the flag OFF (current prod)
+                // this is always false, so trackInitialBuildComplete + postInitialBuildEvent
+                // fire exactly as before — the standard design-system flow (whose first
+                // build also ends on a "Do you like the design?" askQuestion, hiding the
+                // composer / deferring FBF) is byte-for-byte unchanged. Matches A2/B,
+                // which are likewise dormant when the gallery flag is off (AIROBUILD-2665).
+                const parkedOnAskQuestion =
+                  getSwitchboardFlag('appbuilder-design-kit-gallery') === true &&
+                  isParkedOnAskQuestion(useStreamingConversationStore.getState().messages)
+
                 incrementSessionPromptCount(activeAppId)
                 maybeShowFeedbackBanner()
                 trackCompletion(!!completeData?.usage)
-                trackInitialBuildComplete(commitHash)
+                if (!parkedOnAskQuestion) {
+                  trackInitialBuildComplete(commitHash)
+                }
 
                 // Reset intent_category from sessionStorage after stream ends.
                 // Clears stale eager 'rebuild' if websiteRebuild wasn't called; no-op if already restored.
@@ -582,7 +606,14 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
                         error: err instanceof Error ? err.message : String(err),
                       })
                     })
-                    postInitialBuildEvent(activeAppId)
+                    // Skip on a parked askQuestion turn: postInitialBuildEvent
+                    // optimistically sets client initialBuildComplete=true, which would
+                    // suppress the pre-build interview card via First Build Feedback
+                    // (AIROBUILD-2665). handleCommitComplete still runs (commit-side
+                    // effects are correct regardless).
+                    if (!parkedOnAskQuestion) {
+                      postInitialBuildEvent(activeAppId)
+                    }
                   } else {
                     checkNewPageCreation().catch(err => {
                       logger.warn('sse.complete.check_new_page_failed', {

@@ -12,6 +12,7 @@ import { FONT_THEMES, clampWeightsToAvailable, type FontCategory, type FontInfo 
 export { FONT_THEMES }
 
 import { AppRepository } from '../../database/repositories/AppRepository.js'
+import { kitTokensLocked } from '../../services/design-system/kit-tokens-locked.js'
 import { getKvMemoryStore } from '../../memory/adapters/index.js'
 import { customerIdFromContext, workspaceScopeFromAppId } from '../../memory/interfaces/scope.js'
 import { createForWorkspace } from '../../workspace/index.js'
@@ -896,6 +897,9 @@ export async function rebuildKeepsSourceFonts(appId: string): Promise<boolean> {
 const REBUILD_FONTS_LOCKED_MESSAGE =
   'Fonts are already set from your site rebuild (--font-heading and --font-sans in globals.css). Font changes are not available until the rebuild finishes.';
 
+const FONT_THEME_KIT_LOCKED_MESSAGE =
+  "This app uses an attached design kit — its fonts are fixed by the kit and can't be changed here. The kit's typography is already applied; build on top of it.";
+
 export const fontThemeAITool: Tool = createTool(
   `Manage font themes for professional websites.
 
@@ -994,6 +998,19 @@ MODE SELECTION GUIDE:
       const subscriptionId = context?.metadata?.subscriptionId as string | undefined
       const customerId = context?.metadata?.customerId as string | undefined
       const budgetContext = extractBudgetContext(context as AgentContext | undefined)
+
+      // When the kit's tokens were applied in code by the forced-install path
+      // (apply-kit-design.ts), its fonts are the source of truth — block the model
+      // from overwriting them via set/apply. suggest only previews (no write), so it's
+      // exempt. The design-kit wizard never sets this marker, so it stays usable.
+      if ((input.mode === 'set' || input.mode === 'apply') && appId && kitTokensLocked(appId)) {
+        logger.info('fontTheme.kit.locked', { appId, mode: input.mode })
+        return {
+          success: true,
+          skipped: true,
+          message: FONT_THEME_KIT_LOCKED_MESSAGE,
+        }
+      }
 
       // isRebuildFlow is SSE-only today: set when rebuildBuildPageSlug is present on the
       // appbuilder-sse-transport develop leg. WS processContext re-spreads the original client

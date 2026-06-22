@@ -2230,6 +2230,13 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
       resolvedAgentId, designKitSlug, appId, conversationId, isInitialPrompt: lifecycleContext?.isInitialPrompt ?? false,
       customerId: agentCtx?.customerId,
     })
+    // The forced kit install ran THIS turn iff it produced synthesized
+    // messages. That single turn parks on the `-attached` interview's
+    // askQuestion stop-after with a dirty tree (deterministic token writes the
+    // model never authored), so we grant the validator immunity for it only —
+    // every later turn leaves this false and is validated normally
+    // (AIROBUILD-2665).
+    const forcedInstallThisTurn = forcedKitMessages.length > 0
 
     try {
       let lastTurnResult: Awaited<ReturnType<typeof this.streamAgentTurn>> | undefined
@@ -2431,6 +2438,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
               abortSignal: abortController.signal,
               iteration: currentIteration,
               ...(stopAfterTools !== undefined && { stopAfterTools }),
+              forcedInstallThisTurn,
               emitChunk: async (text) => {
                 if (!text) return
                 await this.publishNonTerminal(appId, conversationId, {

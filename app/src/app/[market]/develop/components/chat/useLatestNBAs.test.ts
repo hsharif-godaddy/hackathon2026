@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { renderHook } from '@testing-library/react'
 
 import type { ChatMessage, StreamingMessage, ToolCall } from '@/stores/useStreamingConversationStore'
-import { useLatestNBAs } from './useLatestNBAs'
+import { isParkedOnAskQuestion, useLatestNBAs } from './useLatestNBAs'
 
 // ─── Store mocks ─────────────────────────────────────────────────────────────
 
@@ -706,5 +706,64 @@ describe('useLatestNBAs — feedbackActive suppression', () => {
     mockActiveStream = null
     const { result } = renderHook(() => useLatestNBAs(false))
     expect(result.current).not.toBeNull()
+  })
+})
+
+// ─── isParkedOnAskQuestion (AIROBUILD-2665, A1) ──────────────────────────────
+// Pure function: feeds the useSSEChat `complete` gate that keeps the kit-attach
+// interview turn from being treated as a completed first build. It operates only
+// on the passed `messages` array (not the store), so it's called directly.
+describe('isParkedOnAskQuestion', () => {
+  function makeAskQuestionMessage(): ChatMessage {
+    return makeAssistantMessage([
+      {
+        id: 'tc-aq-parked',
+        name: 'askQuestion',
+        status: 'completed',
+        input: {},
+        result: {
+          output: {
+            widgetData: {
+              questions: [{
+                question: 'What palette fits your brand?',
+                suggestions: [{ text: 'Warm' }, { text: 'Cool' }],
+                allowOther: true,
+              }],
+              currentQuestionIndex: 0,
+              answers: [],
+            },
+          },
+        },
+      },
+    ])
+  }
+
+  it('returns true when the latest assistant message parked on an unanswered askQuestion', () => {
+    expect(isParkedOnAskQuestion([makeAskQuestionMessage()])).toBe(true)
+  })
+
+  it('returns false once the user answered the askQuestion via an action request', () => {
+    expect(
+      isParkedOnAskQuestion([makeAskQuestionMessage(), makeActionUserMessage('Warm')]),
+    ).toBe(false)
+  })
+
+  it('returns false once the user skipped the askQuestion', () => {
+    expect(
+      isParkedOnAskQuestion([makeAskQuestionMessage(), makeSkippedAskQuestionUserMessage()]),
+    ).toBe(false)
+  })
+
+  it('returns false when the latest NBA is a suggestedResponse (not an interview question)', () => {
+    expect(isParkedOnAskQuestion([makeAssistantMessage([makeSuggestedResponseToolCall()])])).toBe(false)
+  })
+
+  it('returns false when there is no NBA at all (plain assistant turn, e.g. a normal build commit)', () => {
+    const otherTool: ToolCall = { id: 'other', name: 'createFile', status: 'completed', input: {} }
+    expect(isParkedOnAskQuestion([makeAssistantMessage([otherTool])])).toBe(false)
+  })
+
+  it('returns false for an empty conversation', () => {
+    expect(isParkedOnAskQuestion([])).toBe(false)
   })
 })

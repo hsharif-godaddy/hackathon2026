@@ -20,4 +20,14 @@ export type AppMetadata = Record<string, unknown>;
 export interface KnownAppMetadata {
   /** Purchased domain carried in from the DPP handoff (mirrors SiteInfo.fqdn). */
   fqdn?: string;
+  /**
+   * Set by the design-kit gallery forced-install path (`forced-install.ts`) after
+   * `applyKitDesignTokens` writes the kit's palette/fonts deterministically in code.
+   * Read by `kitTokensLocked(appId)` to lock the colorScheme/fontTheme tools so the
+   * model can't overwrite the in-code-applied kit tokens (AIROBUILD-2665). Narrower
+   * than "a kit is installed" — the wizard installs a kit but applies via the tools
+   * and never sets this, so it stays unlocked. Declared here so the writer and reader
+   * are not stringly-typed across files.
+   */
+  designKitTokensLocked?: boolean;
 }

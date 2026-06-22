@@ -68,6 +68,19 @@ export interface PostStreamValidatorArgs {
    * with `askQuestion` would land unvalidated.
    */
   stopAfterTools?: readonly string[];
+  /**
+   * True only on the forced design-kit install turn — the `-attached`
+   * interview turn where `prepareForcedDesignKit` synthesized install
+   * messages and `applyKitDesignTokens` wrote globals.css/brand-tokens.css
+   * deterministically. That leaves a dirty tree the agent itself never
+   * authored, so when this turn parks on a stop-after tool (`askQuestion`)
+   * the validator must skip rather than run `ran_despite_stop_after` (a
+   * phantom postcss continuation would hijack the interview and prematurely
+   * build). Scoped to THIS turn only: every later interview-answer/develop
+   * turn leaves this false, so real agent edits are still validated
+   * (AIROBUILD-2665).
+   */
+  forcedInstallThisTurn?: boolean;
 }
 
 export type PostStreamValidatorResult =
@@ -968,6 +981,35 @@ export function createPostStreamValidator(deps: CompositePostStreamValidatorDeps
       args.toolCalls,
       args.stopAfterTools
     );
+
+    // Forced-install immunity: the forced design-kit `-attached` interview
+    // turn parks on a stop-after tool (`askQuestion`) with a dirty tree it
+    // never authored — `applyKitDesignTokens` wrote globals.css /
+    // brand-tokens.css deterministically before the model ran. Validating
+    // that tree runs `ran_despite_stop_after` and a phantom postcss
+    // continuation hijacks the interview into a premature build. So when the
+    // forced install ran THIS turn AND the turn ended on a stop-after, skip —
+    // regardless of `hasChanges`. Tightly scoped: only this turn sets the
+    // flag, so every later interview-answer / develop turn falls through to
+    // the normal gate and real edits are still validated (AIROBUILD-2665).
+    if (endedWithStopAfter && args.forcedInstallThisTurn) {
+      const reason = 'stop_after_forced_install';
+      logger.info('agent.typecheck.skipped', {
+        socketId,
+        appId,
+        conversationId,
+        agentName,
+        reason
+      });
+      logger.info('agent.runtime_errors.skipped', {
+        socketId,
+        appId,
+        conversationId,
+        agentName,
+        reason
+      });
+      return { skipped: true, reason };
+    }
 
     if (!hasChanges) {
       // Combined gate: when the turn ended with a stop-after tool
