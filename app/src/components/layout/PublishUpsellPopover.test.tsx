@@ -95,6 +95,16 @@ describe('PublishUpsellPopover', () => {
     expect(content).not.toHaveClass('w-[300px]');
   });
 
+  it('invokes onPublishClick on the publish-button click and still emits publish_click', async () => {
+    const onPublishClick = vi.fn();
+    const { user } = renderWithProviders(
+      <PublishUpsellPopover appId="app-1" triggerLabel="Publish" onPublishClick={onPublishClick} />,
+    );
+    await user.click(screen.getByTestId('publish-upsell-trigger'));
+    expect(onPublishClick).toHaveBeenCalledTimes(1);
+    expect(mockLogClickEvent).toHaveBeenCalledWith('develop.publish_upsell.publish_click', { appId: 'app-1' });
+  });
+
   it('emits events without clickContext when appId is undefined', async () => {
     const { user } = renderWithProviders(<PublishUpsellPopover appId={undefined} triggerLabel="Publish" />);
     await user.click(screen.getByTestId('publish-upsell-trigger'));

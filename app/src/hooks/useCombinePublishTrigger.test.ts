@@ -19,12 +19,24 @@ vi.mock('@/hooks/useHivemind', () => ({
   useHivemind: vi.fn(() => ({ cohort: 'on' })),
 }));
 vi.mock('@/hooks/usePublishUpsellEligibility', () => ({
-  usePublishUpsellEligibility: vi.fn(() => ({ isExperimentEligible: true, isTreatment: true, isLoading: false })),
+  usePublishUpsellEligibility: vi.fn(() => ({ isExperimentEligible: true, isTreatment: true, isOnCohort: false })),
+}));
+
+let mockBuildAppId: string | undefined = 'app-1';
+let mockBuildComplete: boolean | undefined = true;
+vi.mock('@/stores/useDevelopPageStore', () => ({
+  useDevelopPageStore: vi.fn((selector: (s: unknown) => unknown) =>
+    selector({ app: { id: mockBuildAppId, initialBuildComplete: mockBuildComplete } })),
 }));
 
 async function setEligible(isExperimentEligible: boolean) {
   const mod = await import('@/hooks/usePublishUpsellEligibility');
-  vi.mocked(mod.usePublishUpsellEligibility).mockReturnValue({ isExperimentEligible, isTreatment: false, isLoading: false });
+  vi.mocked(mod.usePublishUpsellEligibility).mockReturnValue({ isExperimentEligible, isTreatment: false, isOnCohort: false });
+}
+
+function setBuild(appId: string | undefined, initialBuildComplete: boolean | undefined) {
+  mockBuildAppId = appId;
+  mockBuildComplete = initialBuildComplete;
 }
 
 async function setCohort(cohort: string | undefined) {
@@ -33,7 +45,7 @@ async function setCohort(cohort: string | undefined) {
 }
 
 describe('useCombinePublishTrigger', () => {
-  beforeEach(() => { vi.clearAllMocks(); });
+  beforeEach(() => { vi.clearAllMocks(); mockBuildAppId = 'app-1'; mockBuildComplete = true; });
 
   it('fires the trigger once when eligible, with cohort attached to both events', async () => {
     await setEligible(true);
@@ -71,6 +83,7 @@ describe('useCombinePublishTrigger', () => {
     await setEligible(true);
     await setCohort('on');
     const { rerender } = renderHook(({ id }) => useCombinePublishTrigger(id), { initialProps: { id: 'app-1' } });
+    setBuild('app-2', true);
     rerender({ id: 'app-2' });
     expect(mockLogImpressionEvent).toHaveBeenCalledTimes(2);
     expect(mockLogImpressionEvent).toHaveBeenLastCalledWith('develop.combine_publish.trigger', { appId: 'app-2', cohort: 'on' });
@@ -86,5 +99,29 @@ describe('useCombinePublishTrigger', () => {
     await setEligible(true);
     renderHook(() => useCombinePublishTrigger(undefined));
     expect(mockLogImpressionEvent).not.toHaveBeenCalled();
+  });
+
+  it('does not fire when the initial build is not complete', async () => {
+    await setEligible(true);
+    await setCohort('on');
+    setBuild('app-1', false);
+    renderHook(() => useCombinePublishTrigger('app-1'));
+    expect(mockLogImpressionEvent).not.toHaveBeenCalled();
+  });
+
+  it('does not fire when build-complete is unknown for the current app', async () => {
+    await setEligible(true);
+    await setCohort('on');
+    setBuild('other-app', true); // store knows about a different app -> selector returns undefined for app-1
+    renderHook(() => useCombinePublishTrigger('app-1'));
+    expect(mockLogImpressionEvent).not.toHaveBeenCalled();
+  });
+
+  it('fires once the build is complete (returning or freshly-built)', async () => {
+    await setEligible(true);
+    await setCohort('on');
+    setBuild('app-1', true);
+    renderHook(() => useCombinePublishTrigger('app-1'));
+    expect(mockLogImpressionEvent).toHaveBeenCalledWith('develop.combine_publish.trigger', { appId: 'app-1', cohort: 'on' });
   });
 });

@@ -37,7 +37,7 @@ vi.mock('@/hooks/useSwitchboard', () => ({
 }));
 
 vi.mock('@/hooks/usePublishUpsellEligibility', () => ({
-  usePublishUpsellEligibility: vi.fn(function () { return { isExperimentEligible: false, isTreatment: false, isLoading: false }; }),
+  usePublishUpsellEligibility: vi.fn(function () { return { isExperimentEligible: false, isTreatment: false, isOnCohort: false }; }),
 }));
 
 vi.mock('@/hooks/useBreakpoints', () => ({
@@ -81,7 +81,7 @@ describe('HeaderUpgradeButton', function headerUpgradeButtonTests() {
     vi.mocked(nextNavigation).usePathname.mockReturnValue('/develop/test-app');
     // Restore default non-treatment eligibility (clearAllMocks wipes the mock implementation)
     const { usePublishUpsellEligibility } = await import('@/hooks/usePublishUpsellEligibility');
-    vi.mocked(usePublishUpsellEligibility).mockReturnValue({ isExperimentEligible: false, isTreatment: false, isLoading: false });
+    vi.mocked(usePublishUpsellEligibility).mockReturnValue({ isExperimentEligible: false, isTreatment: false, isOnCohort: false });
   });
 
   it('is hidden for a shared app (owner-pays), even when paywall/upgrade would show', async function hiddenForSharedApp() {
@@ -96,6 +96,19 @@ describe('HeaderUpgradeButton', function headerUpgradeButtonTests() {
   });
 
   describe('rendering conditions', function renderingTests() {
+    it('does not render for an on-cohort user who is already PAID (showPaywall false)', async () => {
+      const { usePaywallEligibility } = await import('@/hooks/usePaywallEligibility');
+      const { useSwitchboard } = await import('@/hooks/useSwitchboard');
+      const { usePublishUpsellEligibility } = await import('@/hooks/usePublishUpsellEligibility');
+
+      vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: false, isLoading: false, isError: false, error: null });
+      vi.mocked(useSwitchboard).mockImplementation(function (flag: string) { return flag === 'appbuilder-airoplus-upgrade-button'; });
+      vi.mocked(usePublishUpsellEligibility).mockReturnValue({ isExperimentEligible: false, isTreatment: false, isOnCohort: true });
+
+      const { container } = renderWithProviders(<HeaderUpgradeButton location="test" />);
+      expect(container).toBeEmptyDOMElement();
+    });
+
     it('should render when user does not have Airo Plus and feature is enabled', async function renderWithoutAiroPlus() {
       const { usePaywallEligibility } = await import('@/hooks/usePaywallEligibility');
       const { useSwitchboard } = await import('@/hooks/useSwitchboard');
@@ -197,7 +210,7 @@ describe('HeaderUpgradeButton', function headerUpgradeButtonTests() {
         if (flag === 'appbuilder-airoplus-upgrade-button') return true;
         return false;
       });
-      vi.mocked(usePublishUpsellEligibility).mockReturnValue({ isExperimentEligible: true, isTreatment: true, isLoading: false });
+      vi.mocked(usePublishUpsellEligibility).mockReturnValue({ isExperimentEligible: true, isTreatment: true, isOnCohort: true });
 
       const { container } = renderWithProviders(<HeaderUpgradeButton location="test" />);
 

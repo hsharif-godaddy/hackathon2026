@@ -84,4 +84,21 @@ describe('usePublishUpsellEligibility', () => {
     const { result } = renderHook(() => usePublishUpsellEligibility());
     expect(result.current.isExperimentEligible).toBe(false);
   });
+
+  it('isOnCohort is true for on cohort even when paid (showPaywall false)', async () => {
+    await setMocks({ cohort: 'on', showPaywall: false });
+    const { result } = renderHook(() => usePublishUpsellEligibility());
+    expect(result.current.isOnCohort).toBe(true);
+    expect(result.current.isTreatment).toBe(false);
+  });
+
+  it('isOnCohort is false for off cohort and off the develop page', async () => {
+    await setMocks({ cohort: 'off' });
+    const { result } = renderHook(() => usePublishUpsellEligibility());
+    expect(result.current.isOnCohort).toBe(false);
+
+    await setMocks({ cohort: 'on', pathname: '/commander/test-app' });
+    const { result: commander } = renderHook(() => usePublishUpsellEligibility());
+    expect(commander.current.isOnCohort).toBe(false);
+  });
 });

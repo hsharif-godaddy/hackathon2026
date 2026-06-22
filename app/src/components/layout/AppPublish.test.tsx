@@ -279,7 +279,7 @@ vi.mock('@ux/growl', () => ({
 }));
 
 vi.mock('@/hooks/usePublishUpsellEligibility', () => ({
-  usePublishUpsellEligibility: vi.fn(() => ({ isExperimentEligible: false, isTreatment: false, isLoading: false })),
+  usePublishUpsellEligibility: vi.fn(() => ({ isExperimentEligible: false, isTreatment: false, isOnCohort: false })),
 }));
 
 describe('AppPublish', () => {
@@ -1775,6 +1775,22 @@ describe('AppPublish', () => {
         expect(usePaywallStore.getState().publishOpenAfterUpgradeAppId).toBe(null);
       });
     });
+
+    it('keeps the rehydrated arm while currentAppId is null, then consumes it once it hydrates', async () => {
+      // arm restored from sessionStorage by persist; develop store not yet hydrated.
+      // Preconditions for the auto-open path: paid (showPaywall false), not polling, active instance.
+      usePaywallStore.setState({ publishOpenAfterUpgradeAppId: 'app-1' });
+      mockShowPaywall.value = false;
+      mockDevelopStore.currentAppId = null;
+      const { rerender } = renderWithProviders(<AppPublish location="develop" />);
+      expect(usePaywallStore.getState().publishOpenAfterUpgradeAppId).toBe('app-1'); // safeguard did NOT clear it
+
+      mockDevelopStore.currentAppId = 'app-1';
+      rerender(<AppPublish location="develop" />);
+      await waitFor(() =>
+        expect(usePaywallStore.getState().publishOpenAfterUpgradeAppId).toBeNull(), // auto-open consumed it
+      );
+    });
   });
 
   describe('publish.attempted analytics', () => {
@@ -1921,7 +1937,7 @@ describe('AppPublish — combine-publish treatment', () => {
   beforeEach(async () => {
     mockPathname = '/develop/app-123';
     const { usePublishUpsellEligibility } = await import('@/hooks/usePublishUpsellEligibility');
-    vi.mocked(usePublishUpsellEligibility).mockReturnValue({ isExperimentEligible: true, isTreatment: true, isLoading: false });
+    vi.mocked(usePublishUpsellEligibility).mockReturnValue({ isExperimentEligible: true, isTreatment: true, isOnCohort: false });
   });
 
   it('renders the upsell popover and not the normal publish flow when isTreatment', async () => {
@@ -1947,7 +1963,7 @@ describe('AppPublish — combine-publish treatment', () => {
 
     // Simulate the purchase landing: account becomes paid → treatment turns off.
     mockShowPaywall.value = false;
-    vi.mocked(usePublishUpsellEligibility).mockReturnValue({ isExperimentEligible: false, isTreatment: false, isLoading: false });
+    vi.mocked(usePublishUpsellEligibility).mockReturnValue({ isExperimentEligible: false, isTreatment: false, isOnCohort: false });
     rerender(<AppPublish location="develop" />);
 
     await waitFor(() => {
@@ -1955,5 +1971,26 @@ describe('AppPublish — combine-publish treatment', () => {
     });
     expect(mockSiteStore.fetchSite).toHaveBeenCalledWith('app-123', true, true);
     expect(usePaywallStore.getState().publishOpenAfterUpgradeAppId).toBe(null);
+  });
+
+  it('emits app_first_publish at the treatment upsell publish-button click (control-equivalent)', async () => {
+    const { usePublishUpsellEligibility } = await import('@/hooks/usePublishUpsellEligibility');
+    vi.mocked(usePublishUpsellEligibility).mockReturnValue({ isExperimentEligible: true, isTreatment: true, isOnCohort: true });
+    mockShowPaywall.value = true;
+    const { user } = renderWithProviders(<AppPublish location="develop" />);
+    await user.click(await screen.findByTestId('publish-upsell-trigger'));
+    expect(mockLogClickEvent).toHaveBeenCalledWith('develop.header.app_first_publish', { appId: 'app-123' });
+  });
+
+  it('does NOT emit app_*publish at the post-upgrade auto-open', async () => {
+    // Paid (showPaywall false) => isTreatment is false => normal branch; arm set + currentAppId already
+    // the armed app so the popover auto-opens. The click EID must NOT fire here (it fired at the click).
+    const { usePublishUpsellEligibility } = await import('@/hooks/usePublishUpsellEligibility');
+    vi.mocked(usePublishUpsellEligibility).mockReturnValue({ isExperimentEligible: false, isTreatment: false, isOnCohort: true });
+    usePaywallStore.setState({ publishOpenAfterUpgradeAppId: 'app-123' });
+    mockShowPaywall.value = false;
+    mockDevelopStore.currentAppId = 'app-123';
+    renderWithProviders(<AppPublish location="develop" />);
+    expect(mockLogClickEvent).not.toHaveBeenCalledWith('develop.header.app_first_publish', { appId: 'app-123' });
   });
 });

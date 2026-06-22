@@ -18,6 +18,7 @@ interface PublishUpsellPopoverProps {
   appId?: string;
   triggerLabel: string;
   triggerClassName?: string;
+  onPublishClick?: () => void;
 }
 
 /**
@@ -29,6 +30,7 @@ export default function PublishUpsellPopover({
   appId,
   triggerLabel,
   triggerClassName,
+  onPublishClick,
 }: PublishUpsellPopoverProps) {
   const t = useTranslations();
   const [open, setOpen] = useState(false);
@@ -48,6 +50,7 @@ export default function PublishUpsellPopover({
   // never emit dismiss_outside — no guard/ref needed.
   const handleOpenChange = (next: boolean): void => {
     if (next) {
+      onPublishClick?.();
       logClickEvent('develop.publish_upsell.publish_click', clickContext)();
       logImpressionEvent('develop.publish_upsell.view', clickContext)();
       setOpen(true);

@@ -275,8 +275,12 @@ export default function AppPublish({ location = 'develop' }: { location?: string
   // completing the upgrade, drop the stale intent so it can't auto-open later on an unrelated
   // paid-state read. Keyed on app identity (not unmount), so mobile mode toggles that remount this
   // component for the same app do not clear a legitimately-armed intent.
+  // The clear is deferred until `currentAppId` is known (non-null): on a post-purchase hard reload
+  // the persisted arm rehydrates synchronously BEFORE the develop store hydrates currentAppId (it
+  // starts null), so clearing while null would wipe the just-restored arm before the auto-open
+  // effect above can consume it.
   useEffect(() => {
-    if (publishOpenAfterUpgradeAppId && publishOpenAfterUpgradeAppId !== currentAppId) {
+    if (currentAppId && publishOpenAfterUpgradeAppId && publishOpenAfterUpgradeAppId !== currentAppId) {
       clearPublishOpenAfterUpgrade();
     }
   }, [currentAppId, publishOpenAfterUpgradeAppId, clearPublishOpenAfterUpgrade]);
@@ -465,6 +469,13 @@ export default function AppPublish({ location = 'develop' }: { location?: string
 
   // Check if this is first-time publishing
   const isFirstTimePublishing = !hasBeenPublished(site);
+
+  // Treatment publish-button click: emit the SAME canonical click EID control logs at its publish
+  // button (publishTriggerClickEid), at the same funnel position (the upsell open, pre-paywall), so
+  // the event is comparable across arms. publish_upsell.publish_click stays as the treatment intent.
+  const handleUpsellPublishClick = useCallback(() => {
+    logClickEvent(publishTriggerClickEid(location, isFirstTimePublishing), clickContext)();
+  }, [location, isFirstTimePublishing, clickContext]);
 
   // Internal deploy function (called after QA gate passes or is skipped)
   const handleDeploy = useCallback(async () => {
@@ -843,6 +854,7 @@ export default function AppPublish({ location = 'develop' }: { location?: string
           appId={currentAppId ?? undefined}
           triggerLabel={t('builder_publish_button')}
           triggerClassName="!rounded-xmd !pl-1.5 !pr-1.5 sm:!p-1 !border-none md:!border-solid"
+          onPublishClick={handleUpsellPublishClick}
         />
       </>
     );
