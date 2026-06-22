@@ -103,7 +103,6 @@ vi.mock('../../context-builders.js', () => ({
     role: 'user', content: '## Dynamic Context\n\nToday is Wednesday', insertionOrder: 'after_history',
   }),
   buildTodoContextMessage: vi.fn().mockResolvedValue(null),
-  buildRagContextMessage: vi.fn().mockResolvedValue(null),
   buildMemoryContextMessage: vi.fn().mockResolvedValue(null),
   collectImagesFromFormattedContexts: vi.fn().mockReturnValue([]),
   dataUrlsToProcessedFiles: vi.fn().mockReturnValue([]),

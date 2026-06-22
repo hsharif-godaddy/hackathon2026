@@ -11,11 +11,15 @@ whenToUse: >-
   inbox skill instead. Use this skill only for phrases like "custom AI chatbot",
   "build my own chatbot with OpenAI", "AI agent that calls APIs", "chatbot with tool use",
   "agent that can search my data", "AI that can answer questions about my app",
-  "I want to use my own API key for chat".
+  "I want to use my own API key for chat". ALSO load for advice or comparison
+  questions about which AI model or provider to use for a chatbot or agent (model
+  selection, provider trade-offs, fast/cheap vs capable tiers), even when phrased
+  as a question with no build verb.
 dependencies:
   - ai
 intents:
   - custom AI chatbot/AI agent with tools/build my own AI chatbot
+  - AI model selection or provider comparison for a chatbot/agent
 ---
 
 # AI Chatbot/Agent Skill
@@ -36,18 +40,23 @@ skill({ action: 'install', skill: 'ai-agent' });
 
 ## Step 2: Ask the User — Provider, Model, and Mode
 
+→ See `references/available-models.md` for the full model catalog and selection guide.
+
 > "Which AI provider and model would you like to use?
 >
-> 1. **OpenAI** — e.g. `gpt-5-mini` (fast, cheap), `gpt-5-nano` (more capable)
-> 2. **Anthropic** — e.g. `claude-haiku-4-5` (fast), `claude-sonnet-4-6` (more capable)
-> 3. **Google** — e.g. `gemini-2.5-flash` (fast), `gemini-2.5-pro` (more capable)
+> 1. **OpenAI** — e.g. `gpt-5-nano` (fast/cheap), `gpt-5-mini` (balanced), `gpt-5` (most capable)
+> 2. **Anthropic** — e.g. `claude-haiku-4-5-20251001` (fast), `claude-sonnet-4-6` (balanced), `claude-opus-4-7` (most capable)
+> 3. **Google** — e.g. `gemini-2.5-flash` (fast), `gemini-2.5-pro` (balanced), `gemini-3.1-pro-preview` (most capable)
 >
 > And what mode?
 >
 > - **Simple chatbot** — conversation only, no external tool calls
 > - **Agent** — chatbot that can call tools (e.g. get current time, search data, call an API)"
 
-Wait for the user's answer before proceeding.
+Wait for the user's answer before proceeding. If the user is unsure which model
+to pick, consult `references/available-models.md` and recommend based on their
+use case (latency needs, complexity, budget). Copy model IDs verbatim from the
+catalog — don't guess them.
 
 ---
 

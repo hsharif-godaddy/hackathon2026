@@ -1,7 +1,7 @@
 ---
 name: custom-domain
 description: Purchase, attach, or forward domains for the app
-whenToUse: Domain topic — attach/connect/buy/find/forward/redirect domain; "custom domain"; DNS; "I bought/purchased [domain]" + vague follow-ups ("set it up", "hook it up", "help with it"); "multiple domains" / "secondary domain" / "other domain". Domain intent + any action phrase = this skill.
+whenToUse: Domain topic — attach/connect/buy/find/forward/redirect domain; "custom domain"; DNS; "I bought/purchased [domain]" + vague follow-ups ("set it up", "hook it up", "help with it"); "multiple domains" / "secondary domain" / "other domain". Domain intent + any action phrase = this skill. ALSO load for explanatory or advice questions about domains even with no action verb — e.g. choosing between attaching and forwarding, how forwarding/redirects work, or pointing multiple owned domains at one site.
 intents:
   - buy domain/want domain/purchase domain/find domain/custom domain/connect domain/DNS/domain forward
 ---
@@ -31,7 +31,7 @@ intents:
 - `Failed to connect/purchase` → acknowledge, offer retry.
 - `action: 'forward'` → **Always call the tool** — do not answer from KB alone. The tool looks up the user's actual attached domain and generates a personalized DCC deep link. Paraphrase the tool result with forwarding steps.
 
-Follow Knowledge Base DNS guidance when present. **Exception:** for forwarding/redirect requests, always call the tool first — the KB article is supplementary context only.
+Follow Knowledge Base DNS guidance when present. **Exception:** for forwarding/redirect requests, always call the tool first — the KB article is supplementary context only. For forwarding specifics (redirect types, nameserver requirements, registrar steps, limitations), load `references/forwarding-details.md`.
 
 ## Domain Purchase Intent (Initial Handoff)
 

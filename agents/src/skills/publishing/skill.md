@@ -5,6 +5,10 @@ whenToUse: >-
   User wants to publish/deploy, asks about build errors,
   npm run build, vite build, publish flow, CDN caching,
   preview vs published, "published app not working", or live site status.
+  ALSO load for explanatory or advice questions about how publishing and
+  deployment work even with no action verb — e.g. what happens on publish,
+  why the live site differs from the preview, or how to monitor and track a
+  deploy.
 ---
 
 # Publishing
@@ -14,6 +18,12 @@ Preview container = dev mode (hot reload). Published site = separate production 
 <human_confirmation>
 When the user asks to publish, call `publishing__publish` directly — a confirmation prompt then appears in their browser and the deploy proceeds only if they approve. That prompt is the approval step, so don't ask the user to confirm in chat first.
 </human_confirmation>
+
+Only **committed** changes are published — the publish builds the current HEAD commit, so uncommitted edits won't go live.
+
+<after_publish>
+Tell the user the deploy has started and that it typically takes a minute or two. They can watch progress in the **History tab**, and once it's live they can connect a custom domain from settings (see the custom-domain skill).
+</after_publish>
 
 <publish_flow>
 

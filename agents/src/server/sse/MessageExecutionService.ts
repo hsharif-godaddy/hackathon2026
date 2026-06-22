@@ -83,7 +83,7 @@ import {
   type MessageLifecycleDeps, type ParallelAssessmentHandle,
 } from '../message-lifecycle.js'
 import {
-  buildDynamicDataMessage, buildTodoContextMessage, buildRagContextMessage,
+  buildDynamicDataMessage, buildTodoContextMessage,
   buildMemoryContextMessage,
   collectImagesFromFormattedContexts, dataUrlsToProcessedFiles,
   checkAndTriggerSummarization,
@@ -1093,8 +1093,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
     const metadata = (executionContext.metadata ?? {}) as Record<string, unknown>
     const todoListContext = executionContext['todoListContext']
 
-    const [ragContextMessage, todoContextMessage, memoryContextMessage, historyMessages] = await Promise.all([
-      buildRagContextMessage({ userMessage: message, appId, sessionId: sseSocketId }),
+    const [todoContextMessage, memoryContextMessage, historyMessages] = await Promise.all([
       buildTodoContextMessage({
         sessionId: sseSocketId, appId, metadata,
         contextAttachments: todoListContext
@@ -1121,7 +1120,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
 
     const appliedSkillsMessage = await buildAppliedSkillsContextMessage(appId)
 
-    const extraAfterHistory = [ragContextMessage, todoContextMessage, memoryContextMessage, dynamicDataMessage, appliedSkillsMessage]
+    const extraAfterHistory = [todoContextMessage, memoryContextMessage, dynamicDataMessage, appliedSkillsMessage]
       .filter((m): m is NonNullable<typeof m> => m != null)
       .map(m => ({ role: m.role, content: m.content, ...(m.cachePoint && { cachePoint: m.cachePoint }) }))
 
