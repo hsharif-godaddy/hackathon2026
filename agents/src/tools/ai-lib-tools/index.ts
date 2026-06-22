@@ -44,6 +44,7 @@ export { websiteScraperAITool } from './website-scraper.js';
 export { qaAnalyzeAITool } from './qa-analyze.js';
 export { setProjectNameAITool } from './set-project-name.js';
 export { askQuestionAITool } from './ask-question.js';
+export { logoCompletionSuggestionsAITool } from './logo-completion-suggestions.js';
 export { qrCodeAITool } from './qr-code.js';
 export { websiteRebuildAITool } from './website-rebuild.js';
 export { rebuildPageSelectorAITool } from './rebuild-page-selector.js';
@@ -96,6 +97,7 @@ import { websiteScraperAITool } from './website-scraper.js';
 import { qaAnalyzeAITool } from './qa-analyze.js';
 import { setProjectNameAITool } from './set-project-name.js';
 import { askQuestionAITool } from './ask-question.js';
+import { logoCompletionSuggestionsAITool } from './logo-completion-suggestions.js';
 import { qrCodeAITool } from './qr-code.js';
 import { websiteRebuildAITool } from './website-rebuild.js';
 import { rebuildPageSelectorAITool } from './rebuild-page-selector.js';
@@ -166,6 +168,7 @@ export const allAILibTools: Record<string, Tool> = {
   qaAnalyze: qaAnalyzeAITool,
   setProjectName: setProjectNameAITool,
   askQuestion: askQuestionAITool,
+  logoCompletionSuggestions: logoCompletionSuggestionsAITool,
   qrCode: qrCodeAITool,
   websiteRebuild: websiteRebuildAITool,
   rebuildPageSelector: rebuildPageSelectorAITool,

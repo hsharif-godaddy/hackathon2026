@@ -39,6 +39,7 @@ export interface SendMessageParams {
   uploadedFileName?: string
   market?: string
   fullStorySessionId?: string
+  isEmbedded?: boolean
 }
 
 export interface ChatTransport {

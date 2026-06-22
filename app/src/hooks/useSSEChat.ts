@@ -1225,6 +1225,7 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
         buildErrorContext: store.buildErrorContext,
         uploadedFileName: options.uploadedFileName,
         ...(fullStorySessionId && { fullStorySessionId }),
+        isEmbedded: typeof window !== 'undefined' && window.self !== window.top,
       }
       lastResolvedSendParamsRef.current = resolvedSendParams
       monitorRef.current?.markSend()

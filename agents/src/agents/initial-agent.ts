@@ -306,6 +306,7 @@ export async function createInitialAgent(
     tools.colorScheme = allAILibTools.colorScheme
     tools.fontTheme = allAILibTools.fontTheme
     tools.skill = allAILibTools.skill
+    tools.logoCompletionSuggestions = allAILibTools.logoCompletionSuggestions
     // No websiteRebuild — logo-designer hands off out-of-scope requests to initial
     delete tools.websiteRebuild
   }

@@ -239,17 +239,13 @@ Wait for logo generation to complete, then proceed to Step 7.
 ## Step 7: Ask What's Next
 
 <instructions>
-**CRITICAL:** After all brand elements are saved, use EXACTLY the `askQuestion` call below. Do NOT rephrase the question, do NOT insert a satisfaction/feedback question first (e.g., "Is this what you imagined?", "How does this look?", "Are you happy with this?"). Go directly to actionable next steps — the user can always ask for changes via the options provided. Do NOT hand off automatically.
+**CRITICAL:** After all brand elements are saved, call `logoCompletionSuggestions({})` to get the available next-step options, then pass them directly to `askQuestion`. Do NOT hardcode the suggestions — the tool returns the correct set based on the user's session context. Do NOT rephrase the question, do NOT insert a satisfaction/feedback question first (e.g., "Is this what you imagined?", "How does this look?", "Are you happy with this?"). Go directly to actionable next steps — the user can always ask for changes via the options provided. Do NOT hand off automatically.
 
 ```
+const { suggestions } = logoCompletionSuggestions({})
 askQuestion({
   question: "Your logo and brand identity are ready. What would you like to do next?",
-  suggestions: [
-    "Edit or refine this logo",
-    "Try a different logo style",
-    { text: "Build a website with this logo", trackingId: "logo_designer_build_website" },
-    "Set as my logo"
-  ]
+  suggestions: suggestions
 })
 ```
 
@@ -258,24 +254,13 @@ Wait for the user's response:
 - **Edit or refine this logo** → use `media-logo__generate_logo` with `referenceUrl` omitted (see Logo Editing below)
 - **Try a different logo style** → use `media-logo__generate_logo` with a new prompt, then ask again
 - **Build a website with this logo** → hand off to the `initial` agent to build a website that uses the current brand identity and logo
-- **Set as my logo** → run the venture-sync sequence:
+- **Set as my logo** (only available in some contexts) → run the venture-sync sequence:
   1. First, post a brief user-facing message so they know what's happening: "Generating a square version of your logo so it works in any layout…" Send this BEFORE the `generate_logo` call so the user has context during the wait.
   2. Call `media-logo__generate_logo({ prompt: "Reformat for a square layout, preserving the existing icon design and arranging the text as required", layout: "square", background: false })` to produce a square companion of the current logo.
   3. If `generate_logo` returns an `error`, surface it to the user and offer to retry. Do NOT call `set_venture_logo` in that case.
   4. On success, call `media-logo__set_venture_logo({})`.
   5. Reply with a short confirmation: "Done — your logo is set! Your dashboard will now show the new logo."
-  6. Then ask again, but WITHOUT "Set as my logo" (they just did it):
-     ```
-     askQuestion({
-       question: "What would you like to do next?",
-       suggestions: [
-         { text: "Build a website with this logo", trackingId: "logo_designer_build_website" },
-         "Edit or refine this logo",
-         "Try a different logo style"
-       ]
-     })
-     ```
-     If the user subsequently edits or restyles the logo, re-present the full Step 7 options (including "Set as my logo") since the logo has changed.
+  6. Then ask again using `logoCompletionSuggestions({ excludeSetAsLogo: true })` — this excludes "Set as my logo" since it was just set. If the user subsequently edits or restyles the logo, call `logoCompletionSuggestions({})` (without `excludeSetAsLogo`) to get the full options again.
 - **Anything else outside brand/logo scope** (e.g., "buy a domain") → hand off to the initial agent
   </instructions>
 

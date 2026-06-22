@@ -244,6 +244,8 @@ interface ExecuteParams {
   apmTransaction?: { setLabel: (k: string, v: string | number) => void; setOutcome: (o: 'unknown' | 'success' | 'failure') => void; end: () => void; result?: string | number } | null
   /** User-selected design kit slug from the gallery; forces install on turn 1 for design-system variants. */
   designKitSlug?: string
+  /** Whether the client is running inside an iframe (embedded in a parent product). */
+  isEmbedded?: boolean
 }
 
 interface ActiveStream {
@@ -1911,7 +1913,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
       todoListContext, isActionRequest, customContext, buildErrorContext,
       bmsBudgetId, budgetSessionId, subscriptionId, authType,
       lifecycleContext, uploadedFileName, market, userTimezone, requestId, apmTransaction,
-      designKitSlug,
+      designKitSlug, isEmbedded,
     } = params
 
     const resolvedAgentId = agentId
@@ -2096,6 +2098,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
         ...(rebuildDesignDirection && { rebuildDesignDirection }),
         // isRebuildFlow is SSE-only — WS handoff re-spreads client metadata and would drop it.
         ...(rebuildBuildPageSlug && { rebuildBuildPageSlug, isRebuildFlow: true }),
+        ...(isEmbedded !== undefined && { isEmbedded }),
         ...(content && { _userMessage: content }),
         ...(agentCtx?.marketingCampaignsEnabled && { marketingCampaignsEnabled: true }),
       },

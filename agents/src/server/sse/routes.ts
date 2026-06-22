@@ -488,6 +488,7 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
       userTimezone,
       designKitSlug,
       fullStorySessionId,
+      isEmbedded,
     } = req.body
 
     // WS permits empty content after stripping /agent markers and when the
@@ -776,6 +777,7 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
       designKitSlug: typeof designKitSlug === 'string' ? designKitSlug : undefined,
       requestHeaders: req.headers as Record<string, string | string[] | undefined>,
       ...(fullStorySessionId !== undefined && { fullStorySessionId }),
+      ...(typeof isEmbedded === 'boolean' && { isEmbedded }),
       requestId: (req as any).requestId,
       apmTransaction,
       lifecycleContext: {

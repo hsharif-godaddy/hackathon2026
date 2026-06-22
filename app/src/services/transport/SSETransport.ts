@@ -360,6 +360,7 @@ export class SSETransport implements ChatTransport {
         uploadedFileName: params.uploadedFileName,
         market: params.market,
         fullStorySessionId: params.fullStorySessionId,
+        ...(params.isEmbedded !== undefined && { isEmbedded: params.isEmbedded }),
       })
     })
 
