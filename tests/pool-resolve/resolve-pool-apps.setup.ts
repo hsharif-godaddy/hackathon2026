@@ -26,7 +26,7 @@ import { writePoolCache } from '../helpers/pool-cache';
 import { dismissOverlays } from '../helpers/ui';
 
 /** Every purpose any e2e-v2 spec looks up via getCachedPoolAppId. */
-const POOL_PURPOSES: readonly string[] = ['develop-ui', 'publish-domain'];
+const POOL_PURPOSES: readonly string[] = ['develop-ui', 'chat-send', 'publish-domain'];
 
 const { env } = getEnvConfig();
 

@@ -44,6 +44,13 @@ const { env } = getEnvConfig();
 // pipeline, so the "publish this app" instruction in the creation prompt
 // has no effect there.
 const autoPublishSupported = env !== 'local';
+// Attaching an EXTERNAL custom domain only completes end-to-end on prod. On
+// test the domain pipeline doesn't actually connect: it requires a real
+// prod-registered domain, only surfaces manual-DNS instructions, and leftover
+// domains linger in a "being deleted" state that blocks re-adds — so a full
+// attach → DNS → disconnect can never be reliably green there. Non-prod
+// validates that the custom-domain affordance RENDERS and stops.
+const customDomainAttachSupported = env === 'prod';
 
 /**
  * Disconnect a custom domain from the currently-open Domain settings panel
@@ -203,6 +210,17 @@ test.describe('E2E v2 - Publish and custom domain', () => {
     const customDomainInput = page.locator('#custom-domain-slug');
     await expect(customDomainInput).toBeVisible({ timeout: DEFAULT_TIMEOUT });
     await expect(customDomainInput).toBeEnabled();
+
+    // On non-prod the attach can't complete (see customDomainAttachSupported).
+    // We've now verified the custom-domain affordance renders (heading + an
+    // enabled slug input) — that's the meaningful, reliable coverage off-prod.
+    // Stop before the live attach rather than drive one that never lands.
+    if (!customDomainAttachSupported) {
+      console.log(
+        `Custom-domain attach/disconnect skipped (env=${env}); validated the Custom Domain UI renders`,
+      );
+      return;
+    }
 
     // Idempotency against the long-lived pool app: clear any leftover
     // attachment from a prior run that failed mid-test before attaching.

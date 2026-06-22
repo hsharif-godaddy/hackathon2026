@@ -24,6 +24,7 @@ import { test, expect } from '../helpers/test-fixtures';
 import { deleteApp, findPoolAppId, getPoolPrefix, getPublishedUrl, waitForPublishedUrl } from '../helpers/api';
 import { detectSsoType, handleSsoLogin, isSignInUIResult, loginViaSsoDirect } from '../helpers/auth';
 import {
+  AI_RESPONSE_TIMEOUT_MS,
   DEFAULT_TIMEOUT,
   LONG_TIMEOUT,
   PREVIEW_TIMEOUT,
@@ -105,6 +106,61 @@ test.describe('Pool app bootstrap', () => {
     const prompt = `${getPoolPrefix('develop-ui')} Simple landing page with a hero section`;
     const appId = await createPoolApp(page, prompt);
     console.log(`✓ Created develop-ui pool app: ${appId}`);
+  });
+
+  test('ensure chat-send pool app exists (scratch app for chat round-trips)', async ({ page }) => {
+    // Up to 10 min: create + initial AI gen + a generous settle-to-idle wait.
+    test.setTimeout(600_000);
+
+    await loginViaSsoDirect(page);
+    await page.goto('/');
+    await dismissOverlays(page);
+
+    // chat-send mutates the transcript each run (it sends messages), but
+    // e2e-v2 runs are serialized per env (workflow concurrency group), so the
+    // shared app is never written by two runs at once. The app stays
+    // unpublished — chat-send only needs an idle, pre-generated app so the
+    // spec's readiness gate isn't a cold-gen wait.
+    //
+    // Unlike develop-ui, this pool app must be verified IDLE, not merely
+    // present: if a prior run or bootstrap disconnected mid-generation it can
+    // be left stuck "awaiting stream" (a disabled Stop button, no send button —
+    // ChatInput keeps Stop on a busy app with an empty input), which the spec
+    // can never recover from. Confirmed-absent → null (create); a transient
+    // /api/sites failure throws (don't mint a duplicate).
+    const existing = await findPoolAppId(page, 'chat-send');
+    if (existing) {
+      await page.goto(`/develop/${existing}`);
+      await waitForDevelopPage(page);
+      const idle = await page
+        .getByTestId('chat-stop-button')
+        .waitFor({ state: 'hidden', timeout: 60_000 })
+        .then(() => true)
+        .catch(() => false);
+      if (idle) {
+        console.log(`✓ chat-send pool app already exists and is idle: ${existing}`);
+        return;
+      }
+      // Stuck awaiting/streaming — self-heal by re-seeding (mirrors the
+      // publish-domain unpublished-reseed path) rather than failing and
+      // requiring a manual delete.
+      console.log(
+        `  chat-send pool app ${existing} is stuck (stop button never cleared); deleting and re-seeding`,
+      );
+      await page.goto('/');
+      await dismissOverlays(page);
+      await deleteApp(page, existing);
+    }
+
+    const prompt = `${getPoolPrefix('chat-send')} Simple landing page with a hero section`;
+    const appId = await createPoolApp(page, prompt);
+
+    // Wait for the initial generation to fully settle to idle BEFORE this test
+    // ends — the test's context closing mid-stream is exactly what leaves the
+    // app stuck awaiting. The pool app is only usable once the Stop button is
+    // gone (idle). Throws on timeout so we never cache a stuck app.
+    await expect(page.getByTestId('chat-stop-button')).toBeHidden({ timeout: AI_RESPONSE_TIMEOUT_MS });
+    console.log(`✓ Created chat-send pool app (idle): ${appId}`);
   });
 
   test('ensure publish-domain pool app exists (pre-published landing page)', async ({ page }) => {
