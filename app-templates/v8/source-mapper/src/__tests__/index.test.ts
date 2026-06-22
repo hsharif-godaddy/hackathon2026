@@ -146,6 +146,21 @@ describe('jsxSourceMapper — data-dev-content-key', () => {
     expect(output).toContain('data-dev-content-key-template="products[].image.alt"');
   });
 
+  it('emits a template key for a nested .map (map over a map-item field)', () => {
+    // Mirrors a real menu page: categories.map → cat.items.map → {item.price}.
+    // The inner map iterates `cat.items`, where `cat` is the OUTER map's param,
+    // so the inner field must resolve through the parent frame.
+    const output = transform(`
+      import { menu } from 'virtual:content';
+      export default () => (
+        <div>{menu.categories.map((cat) => (
+          <section>{cat.items.map((item) => <span>{item.price}</span>)}</section>
+        ))}</div>
+      );
+    `);
+    expect(output).toContain('data-dev-content-key-template="menu.categories[].items[].price"');
+  });
+
   it('falls through to data-dev-dynamic when expression is not content-rooted', () => {
     const output = transform(`
       const product = { price: 1 };
@@ -291,18 +306,17 @@ describe('jsxSourceMapper — data-dev-content-key', () => {
     expect(output).toContain('data-dev-content-key="h.title"');
   });
 
-  it('falls through for nested .map() on a map-param field', () => {
+  it('resolves a nested .map() over a map-param field to a deep template key', () => {
     const output = transform(`
       import { products } from 'virtual:content';
       export default () => (
         <ul>{products.map((p) => <li>{p.tags.map((tag) => <span>{tag.name}</span>)}</li>)}</ul>
       );
     `);
-    // p.tags.map(...) is a computed expression (not a simple member access),
-    // so the <li> gets data-dev-dynamic. The inner tag.name is not a content
-    // binding either — nested .map() is a v1 limitation.
-    expect(output).not.toContain('data-dev-content-key');
-    expect(output).toMatch(/<span[^>]*data-dev-dynamic/);
+    // Nested collections are attributable: the inner map (p.tags) resolves
+    // through its parent frame (p → products), so tag.name becomes a two-level
+    // template key. (Previously a documented v1 limitation; now lifted.)
+    expect(output).toContain('data-dev-content-key-template="products[].tags[].name"');
   });
 
   it('attributes content through a JSX comment sibling', () => {
@@ -802,5 +816,172 @@ describe('jsxSourceMapper — bound text format overrides', () => {
     const second = transform(first);
 
     expect((second.match(/<FormattedBoundText/g) ?? []).length).toBe(1);
+  });
+});
+
+describe('jsxSourceMapper — per-item list instrumentation (gap 2b)', () => {
+  // Single-level content map: must inject data-dev-content-list + index attrs
+  // and synthesize an index param when the callback has none.
+  it('single-level map: injects data-dev-content-list and data-dev-content-list-index on the item element', () => {
+    const output = transform(`
+      import { products } from 'virtual:content';
+      export default () => (
+        <ul>{products.map((p) => <div>{p.name}</div>)}</ul>
+      );
+    `);
+    expect(output).toContain('data-dev-content-list="products"');
+    expect(output).toContain('data-dev-content-list-index={');
+  });
+
+  it('single-level map: callback gains an index param when none was provided', () => {
+    const output = transform(`
+      import { products } from 'virtual:content';
+      export default () => (
+        <ul>{products.map((p) => <div>{p.name}</div>)}</ul>
+      );
+    `);
+    // The arrow callback should have a second param injected; the expression
+    // container for the index attr should reference that same identifier.
+    // Arrow with 2 params: "(p, _airoIdx) =>"
+    expect(output).toMatch(/\(p,\s*\w+\)\s*=>/);
+  });
+
+  // Nested map: both levels must carry correct template-form pathBase values.
+  it('nested map: emits data-dev-content-list for both outer and inner levels', () => {
+    const output = transform(`
+      import { menu } from 'virtual:content';
+      export default () => (
+        <div>{menu.categories.map((cat) => (
+          <section>{cat.items.map((item) => <div><span>{item.price}</span></div>)}</section>
+        ))}</div>
+      );
+    `);
+    // Outer item (section) gets the outer frame's pathBase
+    expect(output).toContain('data-dev-content-list="menu.categories"');
+    // Inner item (div) gets the inner frame's pathBase (template-form)
+    expect(output).toContain('data-dev-content-list="menu.categories[].items"');
+    // Both carry index attrs
+    expect(output.match(/data-dev-content-list-index=\{/g)?.length).toBeGreaterThanOrEqual(2);
+  });
+
+  // Existing index param reuse: callback already has (item, i) => — must reuse i, not add another.
+  it('reuses existing index param when callback already declares one', () => {
+    const output = transform(`
+      import { products } from 'virtual:content';
+      export default () => (
+        <ul>{products.map((p, i) => <div>{p.name}</div>)}</ul>
+      );
+    `);
+    expect(output).toContain('data-dev-content-list="products"');
+    // The index expression should reference "i"
+    expect(output).toContain('data-dev-content-list-index={i}');
+    // Callback still has exactly two params — no duplication
+    expect(output).toMatch(/\(p,\s*i\)\s*=>/);
+  });
+
+  // Block-body callback must also get injection.
+  it('block-body callback: injects list attrs on the returned element', () => {
+    const output = transform(`
+      import { products } from 'virtual:content';
+      export default () => (
+        <ul>{products.map((p) => { return <div>{p.name}</div>; })}</ul>
+      );
+    `);
+    expect(output).toContain('data-dev-content-list="products"');
+    expect(output).toContain('data-dev-content-list-index={');
+  });
+
+  // Non-content map must NOT get list instrumentation.
+  it('non-content map: does NOT inject list attributes', () => {
+    const output = transform(`
+      export default () => (
+        <ul>{[1, 2, 3].map((n) => <li>{n}</li>)}</ul>
+      );
+    `);
+    expect(output).not.toContain('data-dev-content-list');
+    expect(output).not.toContain('data-dev-content-list-index');
+  });
+
+  // 3-level nested map: all three list-field attrs + leaf template key + distinct index params.
+  it('3-level nested map: injects list attrs for all three levels with distinct index params', () => {
+    const output = transform(`
+      import { a } from 'virtual:content';
+      export default () => (
+        <div>{a.b.map(x => (
+          <section>{x.c.map(y => (
+            <article>{y.d.map(z => (
+              <div><span>{z.e}</span></div>
+            ))}</article>
+          ))}</section>
+        ))}</div>
+      );
+    `);
+    // All three list-field data attrs must be present
+    expect(output).toContain('data-dev-content-list="a.b"');
+    expect(output).toContain('data-dev-content-list="a.b[].c"');
+    expect(output).toContain('data-dev-content-list="a.b[].c[].d"');
+    // Leaf template key must reach the 4th level
+    expect(output).toContain('data-dev-content-key-template="a.b[].c[].d[].e"');
+    // Three distinct index attrs must be injected (one per level)
+    expect((output.match(/data-dev-content-list-index=\{/g) ?? []).length).toBe(3);
+    // The injected index param names must be distinct — source-mapper uses _airoIdx, _airoIdx2, _airoIdx3
+    expect(output).toContain('_airoIdx}');
+    expect(output).toContain('_airoIdx2}');
+    expect(output).toContain('_airoIdx3}');
+  });
+
+  // Double-emit guard: element already carrying data-dev-content-list must NOT receive a second one.
+  it('double-emit guard: does not add a second data-dev-content-list when one is already present', () => {
+    const output = transform(`
+      import { products } from 'virtual:content';
+      export default () => <div>{products.map(p => <div data-dev-content-list="manual">{p.name}</div>)}</div>;
+    `);
+    // Original manual value must be preserved
+    expect(output).toContain('data-dev-content-list="manual"');
+    // Plugin must NOT inject the computed "products" value on top of an existing attr
+    expect(output).not.toContain('data-dev-content-list="products"');
+  });
+
+  // Bail-out contract paths (skip injection without side effects).
+
+  it('destructuring 2nd param: skips injection and synthesizes no index param', () => {
+    const output = transform(`
+      import { products } from 'virtual:content';
+      export default () => <ul>{products.map((p, [i]) => <li>{p.name}</li>)}</ul>;
+    `);
+    // Can't reference a destructured 2nd param by name → no list instrumentation...
+    expect(output).not.toContain('data-dev-content-list');
+    expect(output).not.toContain('data-dev-content-list-index');
+    // ...and no orphaned index param is synthesized.
+    expect(output).not.toContain('_airoIdx');
+  });
+
+  it('fragment root: no injection and no orphaned index param', () => {
+    const output = transform(`
+      import { products } from 'virtual:content';
+      export default () => <div>{products.map((p) => <>{p.name}</>)}</div>;
+    `);
+    // A fragment has nothing to tag — must not inject, and must not synthesize a
+    // param that would never be referenced (the rootless-map guard).
+    expect(output).not.toContain('data-dev-content-list');
+    expect(output).not.toContain('_airoIdx');
+  });
+
+  it('conditional root: instruments both ternary branches', () => {
+    const output = transform(`
+      import { products } from 'virtual:content';
+      export default () => <ul>{products.map((p) => p.featured ? <li>{p.name}</li> : <div>{p.name}</div>)}</ul>;
+    `);
+    expect((output.match(/data-dev-content-list="products"/g) ?? []).length).toBe(2);
+    expect(output).toContain('data-dev-content-list-index={');
+  });
+
+  it('block-body with a guard return: instruments the JSX return, ignores the null return', () => {
+    const output = transform(`
+      import { products } from 'virtual:content';
+      export default () => <ul>{products.map((p) => { if (!p) return null; return <li>{p.name}</li>; })}</ul>;
+    `);
+    expect(output).toContain('data-dev-content-list="products"');
+    expect(output).toContain('data-dev-content-list-index={');
   });
 });

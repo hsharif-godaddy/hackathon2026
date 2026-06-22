@@ -386,6 +386,111 @@ describe('element-detection', () => {
       expect(resolveContentKey(descEl)).toEqual({ key: 'products[2].description', kind: 'copy' });
       expect(resolveContentKey(priceEl)).toEqual({ key: 'products[2].price', kind: 'copy' });
     });
+
+    it('resolves a 2-level nested key using self-describing layout (field+index on same element)', () => {
+      const root = document.createElement('div');
+      // nosemgrep: javascript.browser.security.insecure-document-method.insecure-document-method, godaddy.js.jquery.security.frameworks.dom-text-interpreted-as-html
+      root.innerHTML = `
+        <div data-dev-content-list="menu.categories" data-dev-content-list-index="0">
+          <div data-dev-content-list="menu.categories[].items" data-dev-content-list-index="0">
+            <span data-dev-content-key-template="menu.categories[].items[].price">$9.99</span>
+          </div>
+        </div>
+      `;
+      const span = root.querySelector('span') as HTMLElement;
+      expect(resolveContentKey(span)).toEqual({ key: 'menu.categories[0].items[0].price', kind: 'copy' });
+    });
+
+    // Backward-compat: this field-on-wrapper / index-on-child shape is what a
+    // MANUAL <ContentListContext> emits — source-mapper auto-injection always
+    // puts field + index on the same node (covered by the self-describing tests
+    // above). The resolver must handle both layouts.
+    it('resolves a 2-level nested key using nested-ContentListContext layout (field on wrapper, index on child)', () => {
+      const root = document.createElement('div');
+      // nosemgrep: javascript.browser.security.insecure-document-method.insecure-document-method, godaddy.js.jquery.security.frameworks.dom-text-interpreted-as-html
+      root.innerHTML = `
+        <div data-dev-content-list="menu.categories">
+          <div data-dev-content-list-index="0">
+            <div data-dev-content-list="menu.categories[].items">
+              <div data-dev-content-list-index="0">
+                <span data-dev-content-key-template="menu.categories[].items[].price">$9.99</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+      const span = root.querySelector('span') as HTMLElement;
+      expect(resolveContentKey(span)).toEqual({ key: 'menu.categories[0].items[0].price', kind: 'copy' });
+    });
+
+    it('resolves a 2-level nested key with non-zero indices', () => {
+      const root = document.createElement('div');
+      // nosemgrep: javascript.browser.security.insecure-document-method.insecure-document-method, godaddy.js.jquery.security.frameworks.dom-text-interpreted-as-html
+      root.innerHTML = `
+        <div data-dev-content-list="menu.categories" data-dev-content-list-index="1">
+          <div data-dev-content-list="menu.categories[].items" data-dev-content-list-index="2">
+            <span data-dev-content-key-template="menu.categories[].items[].price">$9.99</span>
+          </div>
+        </div>
+      `;
+      const span = root.querySelector('span') as HTMLElement;
+      expect(resolveContentKey(span)).toEqual({ key: 'menu.categories[1].items[2].price', kind: 'copy' });
+    });
+
+    it('returns null when a template [] prefix matches no collected list field', () => {
+      const root = document.createElement('div');
+      // nosemgrep: javascript.browser.security.insecure-document-method.insecure-document-method, godaddy.js.jquery.security.frameworks.dom-text-interpreted-as-html
+      root.innerHTML = `
+        <div data-dev-content-list="other.field" data-dev-content-list-index="0">
+          <span data-dev-content-key-template="menu.categories[].price">$9.99</span>
+        </div>
+      `;
+      const span = root.querySelector('span') as HTMLElement;
+      expect(resolveContentKey(span)).toBeNull();
+    });
+
+    it('returns null when a list field is present but no index is found anywhere', () => {
+      const root = document.createElement('div');
+      // nosemgrep: javascript.browser.security.insecure-document-method.insecure-document-method, godaddy.js.jquery.security.frameworks.dom-text-interpreted-as-html
+      root.innerHTML = `
+        <div data-dev-content-list="menu.categories">
+          <span data-dev-content-key-template="menu.categories[].price">$9.99</span>
+        </div>
+      `;
+      const span = root.querySelector('span') as HTMLElement;
+      expect(resolveContentKey(span)).toBeNull();
+    });
+
+    it('resolves a single-level key using self-describing layout (backward compat)', () => {
+      const root = document.createElement('div');
+      // nosemgrep: javascript.browser.security.insecure-document-method.insecure-document-method, godaddy.js.jquery.security.frameworks.dom-text-interpreted-as-html
+      root.innerHTML = `
+        <div data-dev-content-list="products" data-dev-content-list-index="5">
+          <span data-dev-content-key-template="products[].name">Widget</span>
+        </div>
+      `;
+      const span = root.querySelector('span') as HTMLElement;
+      expect(resolveContentKey(span)).toEqual({ key: 'products[5].name', kind: 'copy' });
+    });
+
+    it('resolves a 3-level nested key using self-describing layout (distinct indices per level)', () => {
+      // Each ancestor element carries both list field and index on the same node
+      // (self-describing layout — the form source-mapper emits).
+      // Distinct indices 0/1/2 prove each [] placeholder maps to the correct level.
+      const root = document.createElement('div');
+      // nosemgrep: javascript.browser.security.insecure-document-method.insecure-document-method, godaddy.js.jquery.security.frameworks.dom-text-interpreted-as-html
+      root.innerHTML = `
+        <div data-dev-content-list="a.b" data-dev-content-list-index="0">
+          <div data-dev-content-list="a.b[].c" data-dev-content-list-index="1">
+            <div data-dev-content-list="a.b[].c[].d" data-dev-content-list-index="2">
+              <div><span data-dev-content-key-template="a.b[].c[].d[].e">X</span></div>
+            </div>
+          </div>
+        </div>
+      `;
+      const span = root.querySelector('span') as HTMLElement;
+      expect(resolveContentKey(span)).toEqual({ key: 'a.b[0].c[1].d[2].e', kind: 'copy' });
+    });
   });
 
   // ─── isBodyTextElement ────────────────────────────────────────────────────────

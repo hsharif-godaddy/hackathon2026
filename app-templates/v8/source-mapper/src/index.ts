@@ -133,14 +133,18 @@ export default function jsxSourceMapper(babel: { types: typeof types }): PluginO
     if (!t.isMemberExpression(node.callee)) return null;
     if (node.callee.computed) return null;
     if (!t.isIdentifier(node.callee.property, { name: 'map' })) return null;
-    const chain = readChain(node.callee.object as Expression);
-    if (!chain) return null;
-    if (!s.contentBindings.has(chain[0])) return null;
+    // Resolve the iterated chain to a content path. This handles both a direct
+    // content root (`menu.categories` → `menu.categories`) and a NESTED map over
+    // an outer loop param (`cat.items` → `menu.categories[].items`), so nested
+    // collections (categories → items → price) are attributable, not just one
+    // level deep. The parent map's frame is already on the stack at this point.
+    const pathBase = resolveContentKey(node.callee.object as Expression, s);
+    if (!pathBase) return null;
     const cb = node.arguments[0];
     if (!cb || (!t.isArrowFunctionExpression(cb) && !t.isFunctionExpression(cb))) return null;
     const first = cb.params[0];
     if (!t.isIdentifier(first)) return null;
-    return { paramName: first.name, pathBase: chain.join('.') };
+    return { paramName: first.name, pathBase };
   }
 
   function isAnyMapCall(node: CallExpression): boolean {
@@ -149,6 +153,113 @@ export default function jsxSourceMapper(babel: { types: typeof types }): PluginO
       t.isIdentifier(node.callee.property, { name: 'map' }) &&
       node.arguments.length > 0 &&
       (t.isArrowFunctionExpression(node.arguments[0]) || t.isFunctionExpression(node.arguments[0]));
+  }
+
+  // Unwrap a conditional/logical expression down to a JSXElement, if possible.
+  // LogicalExpression (&&) → right; ConditionalExpression (? :) → both branches.
+  // Returns all reachable JSXElement leaves (may be empty if none found).
+  function unwrapToJsxElements(node: types.Expression): types.JSXElement[] {
+    if (t.isJSXElement(node)) return [node];
+    if (t.isLogicalExpression(node)) return unwrapToJsxElements(node.right);
+    if (t.isConditionalExpression(node)) {
+      return [
+        ...unwrapToJsxElements(node.consequent),
+        ...unwrapToJsxElements(node.alternate),
+      ];
+    }
+    return [];
+  }
+
+  // Collect the per-item root JSXElement(s) that a map callback returns.
+  // Handles: arrow with expression body (JSXElement), and arrow/function
+  // with block body (top-level return statements, without descending into
+  // nested functions). Fragments and non-element returns are skipped.
+  function collectCallbackRootElements(
+    cb: types.ArrowFunctionExpression | types.FunctionExpression,
+  ): types.JSXElement[] {
+    const body = cb.body;
+
+    if (!t.isBlockStatement(body)) {
+      // Arrow expression body: unwrap conditional/logical to JSXElement(s)
+      return unwrapToJsxElements(body as types.Expression);
+    }
+
+    // Block body: collect JSX from top-level return statements only;
+    // do not descend into nested arrow/function nodes.
+    const roots: types.JSXElement[] = [];
+    function visitStmts(stmts: types.Statement[]): void {
+      for (const stmt of stmts) {
+        if (t.isReturnStatement(stmt) && stmt.argument) {
+          roots.push(...unwrapToJsxElements(stmt.argument));
+        } else if (t.isIfStatement(stmt)) {
+          visitStmts([stmt.consequent]);
+          if (stmt.alternate) visitStmts([stmt.alternate]);
+        } else if (t.isBlockStatement(stmt)) {
+          visitStmts(stmt.body);
+        }
+        // Do NOT recurse into nested ArrowFunctionExpression / FunctionExpression
+      }
+    }
+    visitStmts(body.body);
+    return roots;
+  }
+
+  // Inject per-item list instrumentation onto each per-item root JSXElement.
+  // This is the gap 2b contract: each element returned by a content-bound .map()
+  // callback carries data-dev-content-list (frame.pathBase — the template-form path
+  // of the iterated array) and data-dev-content-list-index (the map callback's index
+  // param). This allows the 2a resolver to substitute concrete indices into the
+  // leaf data-dev-content-key-template, resolving e.g.
+  //   "menu.categories[].items[].price" → "menu.categories[0].items[0].price".
+  function injectListAttrs(
+    mapPath: NodePath<CallExpression>,
+    frame: IterationFrame,
+  ): void {
+    if (process.env.NODE_ENV === 'production') return;
+
+    const cb = mapPath.node.arguments[0];
+    if (!t.isArrowFunctionExpression(cb) && !t.isFunctionExpression(cb)) return;
+
+    // Find the per-item root element(s) first: a fragment/non-element return has
+    // nothing to tag, so we must not synthesize an (orphaned) index param for it.
+    const roots = collectCallbackRootElements(cb);
+    if (roots.length === 0) return;
+
+    // Determine index param name: reuse existing 2nd param if it's an identifier;
+    // skip if 2nd param is a destructuring pattern (can't reference it by name);
+    // otherwise generate a unique name and inject it as a new 2nd param.
+    let idxParamName: string;
+    const secondParam = cb.params[1];
+    if (secondParam !== undefined) {
+      if (!t.isIdentifier(secondParam)) {
+        // Destructuring pattern — can't reference it; skip injection for this map
+        return;
+      }
+      idxParamName = secondParam.name;
+    } else {
+      // No 2nd param: generate a unique name scoped to this callback to avoid
+      // shadowing across nested maps (each map gets a distinct _airoIdx_N name).
+      // generateUid reserves the name in the scope's uid registry, so successive
+      // calls stay distinct even though we push the param directly without a
+      // scope.crawl() to register the binding — uid uniqueness, not binding
+      // lookup, is what guarantees no collision here.
+      const cbPath = mapPath.get('arguments.0') as NodePath;
+      idxParamName = cbPath.scope.generateUid('airoIdx');
+      cb.params.push(t.identifier(idxParamName));
+    }
+
+    for (const root of roots) {
+      const attrs = root.openingElement.attributes;
+      // Guard: skip if already carries data-dev-content-list (e.g. manual ContentListContext)
+      if (hasAttr(attrs, 'data-dev-content-list')) continue;
+      attrs.push(
+        t.jsxAttribute(t.jsxIdentifier('data-dev-content-list'), t.stringLiteral(frame.pathBase)),
+        t.jsxAttribute(
+          t.jsxIdentifier('data-dev-content-list-index'),
+          t.jsxExpressionContainer(t.identifier(idxParamName)),
+        ),
+      );
+    }
   }
 
   // Given a child expression, try to resolve a content key.
@@ -252,6 +363,10 @@ export default function jsxSourceMapper(babel: { types: typeof types }): PluginO
           if (frame) {
             state.mapFrames.set(path.node, frame);
             state.mapStack.push(frame);
+            // Inject per-item list instrumentation onto the callback's root JSX element(s).
+            // Must happen in enter (before child JSX visitors run) so the attrs are present
+            // when the JSX visitor checks for existing content-list attributes.
+            injectListAttrs(path, frame);
           }
         },
         exit(path: NodePath<CallExpression>, state: PluginState) {

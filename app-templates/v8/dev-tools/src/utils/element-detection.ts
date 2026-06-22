@@ -129,26 +129,44 @@ export function resolveContentKey(element: HTMLElement): { key: string; kind: "c
   const template = element.getAttribute("data-dev-content-key-template");
   if (!template) return null;
 
-  // Walk up to find the nearest data-dev-content-list ancestor and the per-item
-  // index. Template looks like "products[].name"; we substitute the index at []
-  // to produce "products[3].name".
-  // v1 limitation: single-level lists only. Nested lists would need prefix
-  // matching (verify ancestor's list path matches the template prefix before []).
+  // Walk ancestors (starting at the element itself) collecting (field, index) pairs.
+  // Supports both self-describing layout (field + index on same element) and
+  // ContentListContext layout (field on wrapper, index on child). Each [] in the
+  // template is resolved left→right by matching the prefix before that [] to a
+  // collected pair's field.
+  const pairs: Array<{ field: string; index: string }> = [];
+  let pendingIndex: string | null = null;
   let cursor: HTMLElement | null = element;
-  let index: string | null = null;
   while (cursor) {
+    const field = cursor.getAttribute("data-dev-content-list");
     const idx = cursor.getAttribute("data-dev-content-list-index");
-    if (idx !== null && index === null) index = idx;
-    if (cursor.hasAttribute("data-dev-content-list")) break;
+    if (field !== null) {
+      // Index = own idx if present, else the nearest pending index from below.
+      const resolvedIndex = idx ?? pendingIndex;
+      if (resolvedIndex !== null) {
+        pairs.push({ field, index: resolvedIndex });
+        pendingIndex = null;
+      }
+    } else if (idx !== null && pendingIndex === null) {
+      // No field on this element — stash the index for the next field above.
+      pendingIndex = idx;
+    }
     cursor = cursor.parentElement;
   }
-  if (!cursor || index === null) {
-    if (index !== null && !cursor) console.warn("[dev-tools] orphaned data-dev-content-list-index without data-dev-content-list ancestor");
-    return null;
+
+  // Substitute each [] left→right. The prefix before the i-th [] is the
+  // template-form list path (e.g. "menu.categories[].items"); match it to a
+  // collected pair's field and splice in that pair's index.
+  const segments = template.split("[]");
+  let result = segments[0];
+  for (let i = 1; i < segments.length; i++) {
+    const prefix = segments.slice(0, i).join("[]");
+    const pair = pairs.find((p) => p.field === prefix);
+    if (!pair) return null;
+    result += `[${pair.index}]${segments[i]}`;
   }
 
-  const resolved = template.replace("[]", `[${index}]`);
-  return { key: resolved, kind };
+  return { key: result, kind };
 }
 
 /** Check if an element is a leaf content element worth targeting for AI edit */
