@@ -1,10 +1,8 @@
 # Engineering Guidelines
 
-These are strongly encouraged heuristics for code and system design, not strict policy. Nothing below assumes automated enforcement via linting, typechecking, or CI.
-
 ## Types
 
-- All local variables, function parameters, and function return types should have explicit type annotations.
+- All local variables, function parameters, and function return types MUST have explicit type annotations. This includes single-use locals — it overrides the minimal-scope and "match the surrounding idiom" defaults, which otherwise lean on inference. Annotate the local even when the initializer's type is obvious.
 - Avoid `any`. Prefer primitive types, union types, type aliases, interfaces, generics, classes, enums, or `unknown` when the value is genuinely opaque at a boundary.
 
 ## Constrain mutable state

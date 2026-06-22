@@ -154,6 +154,7 @@ Translation keys are validated during pre-commit (blocks on missing keys). Fetch
 - **dependency-validation** — every imported package must be declared in that package's `package.json`.
 - **test-implementation**, **test-structure** — no placeholder tests; required test organization.
 - **react** (`*.tsx`), **uxcore-tailwind** (`app/src/**`) — component architecture and UXCore Tailwind intent classes.
+- **explicit types** — all local variables, function parameters, and return types MUST carry explicit type annotations (including single-use locals); avoid `any`. This is a hard rule and overrides the minimal-scope/idiom defaults above. See [Engineering Guidelines → Types](docs/gd-charter/systems/guidelines.md#types).
 
 ## Engineering Guidelines
 
