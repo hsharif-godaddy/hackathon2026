@@ -3,10 +3,10 @@
  *
  * @example
  * ```ts
- * console.log(SUBSCRIPTION_ID_PREFIX) // => 'airo-build:sid:'
+ * console.log(SUBSCRIPTION_ID_PREFIX) // => 'airo-builder:sid:'
  * ```
  */
-const SUBSCRIPTION_ID_PREFIX = 'airo-build:sid:'
+const SUBSCRIPTION_ID_PREFIX = 'airo-builder:sid:'
 
 /**
  * Prefix subscription identifiers for agents service calls.
@@ -15,7 +15,7 @@ const SUBSCRIPTION_ID_PREFIX = 'airo-build:sid:'
  * @returns Fully-qualified subscription identifier or undefined if no subscription exists.
  * @example
  * ```ts
- * const prefixed = formatSubscriptionId('sub-123') // => 'airo-build:sid:sub-123'
+ * const prefixed = formatSubscriptionId('sub-123') // => 'airo-builder:sid:sub-123'
  * ```
  */
 export const formatSubscriptionId = (subscriptionId?: string | null): string | undefined => {

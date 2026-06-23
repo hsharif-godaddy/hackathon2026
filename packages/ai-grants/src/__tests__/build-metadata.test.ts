@@ -392,7 +392,7 @@ describe('build-metadata', function tests() {
       expect(isBudgetOverride(undefined)).toBe(false)
       expect(isBudgetOverride('')).toBe(false)
       expect(isBudgetOverride('sub-123')).toBe(false)
-      expect(isBudgetOverride('airo-build:sid:sub-123')).toBe(false)
+      expect(isBudgetOverride('airo-builder:sid:sub-123')).toBe(false)
     })
   })
 
@@ -692,7 +692,7 @@ describe('build-metadata', function tests() {
 
       expect(result).toBeDefined()
       // Should fallback to prefixed subscriptionId
-      expect(result?.user).toBe('airo-build:sid:sub-no-grants')
+      expect(result?.user).toBe('airo-builder:sid:sub-no-grants')
     })
   })
 
@@ -711,7 +711,7 @@ describe('build-metadata', function tests() {
         socketId: 'new-socket',
         metadata: {
           appId: 'app-1',
-          subscriptionId: 'airo-build:sid:sub-reconnect', // prefixed, from app DB
+          subscriptionId: 'airo-builder:sid:sub-reconnect', // prefixed, from app DB
           customerId: 'customer-123',
         },
       }
@@ -763,7 +763,7 @@ describe('build-metadata', function tests() {
         socketId: 'new-socket-exhausted',
         metadata: {
           appId: 'app-1',
-          subscriptionId: 'airo-build:sid:sub-exhausted-reconnect',
+          subscriptionId: 'airo-builder:sid:sub-exhausted-reconnect',
           customerId: 'customer-123',
         },
       }
@@ -782,7 +782,7 @@ describe('build-metadata', function tests() {
         socketId: 'new-socket-no-grants',
         metadata: {
           appId: 'app-1',
-          subscriptionId: 'airo-build:sid:sub-never-provisioned',
+          subscriptionId: 'airo-builder:sid:sub-never-provisioned',
           customerId: 'customer-123',
         },
       }
@@ -793,7 +793,7 @@ describe('build-metadata', function tests() {
 
       // Falls through to subscriptionId fallback (no grants to look up)
       expect(result).toBeDefined()
-      expect(result?.user).toBe('airo-build:sid:sub-never-provisioned')
+      expect(result?.user).toBe('airo-builder:sid:sub-never-provisioned')
     })
   })
 
@@ -810,14 +810,14 @@ describe('build-metadata', function tests() {
         source: LlmCallSource.UserChat,
       })
 
-      expect(result?.user).toBe('airo-build:sid:raw-sub-id')
+      expect(result?.user).toBe('airo-builder:sid:raw-sub-id')
     })
 
     it('should not double-prefix already prefixed subscriptionId', function noDoublePrefix() {
       const context = {
         metadata: {
           appId: 'app-1',
-          subscriptionId: 'airo-build:sid:already-prefixed',
+          subscriptionId: 'airo-builder:sid:already-prefixed',
         },
       }
 
@@ -825,7 +825,22 @@ describe('build-metadata', function tests() {
         source: LlmCallSource.UserChat,
       })
 
-      expect(result?.user).toBe('airo-build:sid:already-prefixed')
+      expect(result?.user).toBe('airo-builder:sid:already-prefixed')
+    })
+
+    it('should strip legacy prefix from immutable DB rows', function legacyPrefix() {
+      const context = {
+        metadata: {
+          appId: 'app-1',
+          subscriptionId: 'airo-build:sid:legacy-sub',
+        },
+      }
+
+      const result = buildLitellmMetadataFromContext(context, {
+        source: LlmCallSource.UserChat,
+      })
+
+      expect(result?.user).toBe('airo-builder:sid:legacy-sub')
     })
 
     it('should fallback to customerId only when no subscriptionId', function customerIdFallback() {
@@ -862,7 +877,7 @@ describe('build-metadata', function tests() {
       const result = buildLitellmMetadataFromContext(context, { source: LlmCallSource.UserChat })
 
       expect(result).toBeDefined()
-      expect(result?.user).toBe('airo-build:sid:sub-bms-123')
+      expect(result?.user).toBe('airo-builder:sid:sub-bms-123')
       expect(result?.budgetId).toBe('budget-uuid-1')
       expect(result?.budgetSessionId).toBe('session-uuid-1')
       expect(result?.tags).toContain('budgetId:budget-uuid-1')
@@ -872,7 +887,7 @@ describe('build-metadata', function tests() {
       const context = {
         metadata: {
           appId: 'app-1',
-          subscriptionId: 'airo-build:sid:already-prefixed',
+          subscriptionId: 'airo-builder:sid:already-prefixed',
           budgetServiceEnabled: true,
           bmsBudgetId: 'budget-uuid-1',
           budgetSessionId: 'session-uuid-1',
@@ -881,7 +896,7 @@ describe('build-metadata', function tests() {
 
       const result = buildLitellmMetadataFromContext(context, { source: LlmCallSource.UserChat })
 
-      expect(result?.user).toBe('airo-build:sid:already-prefixed')
+      expect(result?.user).toBe('airo-builder:sid:already-prefixed')
     })
 
     it('uses degraded prefix when BMS enabled but no budget session (fail-open)', function bmsDegradedPrefix() {
@@ -1109,7 +1124,7 @@ describe('build-metadata', function tests() {
       const result = buildLitellmMetadataFromContext(context, { source: LlmCallSource.UserChat })
 
       // BMS mode skips grant lookup; user is subscription-based
-      expect(result?.user).toBe('airo-build:sid:sub-1')
+      expect(result?.user).toBe('airo-builder:sid:sub-1')
       expect(result?.budgetId).toBe('budget-uuid-1')
       expect(result?.budgetSessionId).toBe('session-uuid-1')
       expect(result?.tags).toContain('budgetId:budget-uuid-1')

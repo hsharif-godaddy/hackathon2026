@@ -9,13 +9,30 @@ import { LlmCallSource } from '@airo/shared/grants'
  * Prefix for subscription-based billing identifiers
  * Must match the frontend prefix in app/src/lib/subscription-id.ts
  */
-const SUBSCRIPTION_ID_PREFIX = 'airo-build:sid:'
+const SUBSCRIPTION_ID_PREFIX = 'airo-builder:sid:'
 
 /**
  * Prefix for degraded BMS mode (session creation failed, fail-open).
  * GoCode uses this to identify requests during BMS outages for retroactive cost attribution.
  */
 const DEGRADED_SUBSCRIPTION_ID_PREFIX = 'airo-builder:degraded:'
+
+/** Legacy prefix stored in immutable DB rows created before the prefix migration. */
+const LEGACY_SUBSCRIPTION_ID_PREFIX = 'airo-build:sid:'
+
+/** Strip any known prefix to get the raw subscription ID. */
+function stripSubscriptionPrefix(subscriptionId: string): string {
+  if (subscriptionId.startsWith(SUBSCRIPTION_ID_PREFIX)) {
+    return subscriptionId.slice(SUBSCRIPTION_ID_PREFIX.length)
+  }
+  if (subscriptionId.startsWith(DEGRADED_SUBSCRIPTION_ID_PREFIX)) {
+    return subscriptionId.slice(DEGRADED_SUBSCRIPTION_ID_PREFIX.length)
+  }
+  if (subscriptionId.startsWith(LEGACY_SUBSCRIPTION_ID_PREFIX)) {
+    return subscriptionId.slice(LEGACY_SUBSCRIPTION_ID_PREFIX.length)
+  }
+  return subscriptionId
+}
 
 /**
  * APM agent type (loose typing to avoid strict dependency)
@@ -190,12 +207,7 @@ export function buildLitellmMetadataFromContext(
     const prefix = degraded ? DEGRADED_SUBSCRIPTION_ID_PREFIX : SUBSCRIPTION_ID_PREFIX
     let userId: string | undefined
     if (subscriptionId) {
-      // Strip any existing prefix to get the raw subscription ID, then apply the correct prefix
-      const rawSubscriptionId = subscriptionId.startsWith(SUBSCRIPTION_ID_PREFIX)
-        ? subscriptionId.slice(SUBSCRIPTION_ID_PREFIX.length)
-        : subscriptionId.startsWith(DEGRADED_SUBSCRIPTION_ID_PREFIX)
-          ? subscriptionId.slice(DEGRADED_SUBSCRIPTION_ID_PREFIX.length)
-          : subscriptionId
+      const rawSubscriptionId: string = stripSubscriptionPrefix(subscriptionId)
       userId = `${prefix}${rawSubscriptionId}`
     } else {
       userId = customerId
@@ -288,9 +300,7 @@ export function buildLitellmMetadataFromContext(
   // on disconnect, not yet restored by registerSession or setGrants). Try subscription-based
   // lookup as bridge using the subscriptionId from context metadata.
   if (socketId && !grantSessionManager.hasGrants(socketId) && subscriptionId) {
-    const rawSubscriptionId = subscriptionId.startsWith(SUBSCRIPTION_ID_PREFIX)
-      ? subscriptionId.slice(SUBSCRIPTION_ID_PREFIX.length)
-      : subscriptionId
+    const rawSubscriptionId: string = stripSubscriptionPrefix(subscriptionId)
 
     const userId = grantSessionManager.getUserIdBySubscription(rawSubscriptionId)
 
@@ -350,10 +360,7 @@ export function buildLitellmMetadataFromContext(
   // For background tasks: Try subscription-based grant lookup when no socketId
   // This uses grants that were indexed when a user's websocket session received them
   if (!socketId && subscriptionId) {
-    // Strip prefix if present - grants are indexed by raw subscriptionId without budget prefix
-    const rawSubscriptionId = subscriptionId.startsWith(SUBSCRIPTION_ID_PREFIX)
-      ? subscriptionId.slice(SUBSCRIPTION_ID_PREFIX.length)
-      : subscriptionId
+    const rawSubscriptionId: string = stripSubscriptionPrefix(subscriptionId)
     logger.debug('grants.build_metadata.subscription_check', {
       appId,
       subscriptionId,
@@ -409,9 +416,8 @@ export function buildLitellmMetadataFromContext(
   // subscriptionId provides budget control, customerId gives infinite budget
   if (subscriptionId) {
     apm?.setLabel?.('litellm.user_type', 'subscription_id')
-    const prefixedSubscriptionId = subscriptionId.startsWith(SUBSCRIPTION_ID_PREFIX)
-      ? subscriptionId
-      : `${SUBSCRIPTION_ID_PREFIX}${subscriptionId}`
+    const rawSubscriptionId: string = stripSubscriptionPrefix(subscriptionId)
+    const prefixedSubscriptionId: string = `${SUBSCRIPTION_ID_PREFIX}${rawSubscriptionId}`
     const metadata = { user: prefixedSubscriptionId, tags, ...budgetFields, ...traceFields }
     logger.debug('grants.build_metadata.result', {
       appId,
