@@ -45,51 +45,73 @@ describe("findEditableContainer", () => {
   it("returns a text element when clicked directly", () => {
     const root = html('<p>Hello</p>');
     const p = root.querySelector("p")!;
-    expect(findEditableContainer(p)).toBe(p);
+    expect(findEditableContainer(p, true)).toBe(p);
   });
 
   it("walks up through inline tags to find container", () => {
     const root = html('<p><strong>Bold</strong></p>');
     const strong = root.querySelector("strong")!;
-    expect(findEditableContainer(strong)?.tagName).toBe("P");
+    expect(findEditableContainer(strong, true)?.tagName).toBe("P");
   });
 
   it("returns null for non-text elements", () => {
     const root = html('<div><img /></div>');
     const img = root.querySelector("img")!;
-    expect(findEditableContainer(img as HTMLElement)).toBeNull();
+    expect(findEditableContainer(img as HTMLElement, true)).toBeNull();
   });
 
   it("rejects elements containing <br>", () => {
     const root = html('<h1>Hello<br /><span>World</span></h1>');
     const h1 = root.querySelector("h1")!;
-    expect(findEditableContainer(h1)).toBeNull();
+    expect(findEditableContainer(h1, true)).toBeNull();
   });
 
   it("lifts from <li> to parent <ul> when parent is editable", () => {
     const root = html('<ul class="list-disc pl-6"><li>Item text</li></ul>');
     const li = root.querySelector("li")!;
     const ul = root.querySelector("ul")!;
-    expect(findEditableContainer(li)).toBe(ul);
+    expect(findEditableContainer(li, true)).toBe(ul);
   });
 
   it("lifts from <li> to parent <ol> when parent is editable", () => {
     const root = html('<ol class="list-decimal pl-6"><li>Item text</li></ol>');
     const li = root.querySelector("li")!;
     const ol = root.querySelector("ol")!;
-    expect(findEditableContainer(li)).toBe(ol);
+    expect(findEditableContainer(li, true)).toBe(ol);
   });
 
   it("returns <ul> directly when clicked", () => {
     const root = html('<ul class="list-disc"><li>Item</li></ul>');
     const ul = root.querySelector("ul")!;
-    expect(findEditableContainer(ul)).toBe(ul);
+    expect(findEditableContainer(ul, true)).toBe(ul);
   });
 
   it("returns null when walking past a non-inline tag", () => {
     const root = html('<div><p>Text</p></div>');
     const div = root.querySelector("div")!;
-    expect(findEditableContainer(div)).toBeNull();
+    expect(findEditableContainer(div, true)).toBeNull();
+  });
+
+  it("returns null for content-keyed span inside text-editable p when flag is off (regression)", () => {
+    // The bug: with flag OFF, isTextEditable(span, false) → false (content key),
+    // loop advances to <p> (no content key) → isTextEditable(p, false) → true,
+    // returns <p> and opens JSX editor, corrupting the CMS binding.
+    // The fix: return null immediately when a content-keyed element is encountered.
+    const root = html('<p>Label <span data-dev-content-key=\'{"key":"hero.label","kind":"copy"}\'>value</span></p>');
+    const span = root.querySelector("span")!;
+    expect(findEditableContainer(span as HTMLElement, false)).toBeNull();
+  });
+
+  it("does not return null for content-keyed span when flag is on", () => {
+    // Flag ON: the content-keyed element should be editable via the CMS path.
+    const root = html('<p>Label <span data-dev-content-key=\'{"key":"hero.label","kind":"copy"}\'>value</span></p>');
+    const span = root.querySelector("span")!;
+    const result = findEditableContainer(span as HTMLElement, true);
+    expect(result).not.toBeNull();
+    // Must not return the wrapping <p> — the content-keyed span itself (or its
+    // inline container) is the correct edit target, not the parent block element.
+    const p = root.querySelector("p")!;
+    expect(result).not.toBe(p);
   });
 });
 
@@ -100,7 +122,7 @@ describe("findBrSegment", () => {
     const root = html('<h1>Hello<br /><span class="x">World</span></h1>');
     const span = root.querySelector("span")!;
     const h1 = root.querySelector("h1")!;
-    const result = findBrSegment(span, 0, 0);
+    const result = findBrSegment(span, 0, 0, true);
     expect(result).not.toBeNull();
     expect(result!.segment).toBe(span);
     expect(result!.parent).toBe(h1);
@@ -110,7 +132,7 @@ describe("findBrSegment", () => {
     const root = html('<h1>Text<br /><span><strong>Bold</strong></span></h1>');
     const strong = root.querySelector("strong")!;
     const span = root.querySelector("span")!;
-    const result = findBrSegment(strong, 0, 0);
+    const result = findBrSegment(strong, 0, 0, true);
     expect(result).not.toBeNull();
     expect(result!.segment).toBe(span);
   });
@@ -118,27 +140,27 @@ describe("findBrSegment", () => {
   it("returns null when no br-containing ancestor exists", () => {
     const root = html('<p>No breaks here</p>');
     const p = root.querySelector("p")!;
-    expect(findBrSegment(p, 0, 0)).toBeNull();
+    expect(findBrSegment(p, 0, 0, true)).toBeNull();
   });
 
   it("returns null for a <br> element itself", () => {
     const root = html('<h1>Hello<br /><span>World</span></h1>');
     const br = root.querySelector("br")!;
-    expect(findBrSegment(br as HTMLElement, 0, 0)).toBeNull();
+    expect(findBrSegment(br as HTMLElement, 0, 0, true)).toBeNull();
   });
 
   it("returns null when element is the br-parent and no caret range found", () => {
     const root = html('<h1>Hello<br /><span>World</span></h1>');
     const h1 = root.querySelector("h1")!;
     document.caretRangeFromPoint = vi.fn(() => null);
-    expect(findBrSegment(h1, 0, 0)).toBeNull();
+    expect(findBrSegment(h1, 0, 0, true)).toBeNull();
   });
 
   it("wraps multi-element segment before first <br>", () => {
     const root = html('<h1><span>Find </span><strong>stillness.</strong><br /><span>Rest.</span></h1>');
     const strong = root.querySelector("strong")!;
     const h1 = root.querySelector("h1")!;
-    const result = findBrSegment(strong, 0, 0);
+    const result = findBrSegment(strong, 0, 0, true);
     expect(result).not.toBeNull();
     expect(result!.parent).toBe(h1);
     expect(result!.segment.getAttribute("data-airo-segment")).toBe("true");
@@ -148,7 +170,7 @@ describe("findBrSegment", () => {
   it("wraps multi-element segment after last <br>", () => {
     const root = html('<h1><span>Hello</span><br /><span>Find </span><strong>stillness.</strong></h1>');
     const strong = root.querySelector("strong")!;
-    const result = findBrSegment(strong, 0, 0);
+    const result = findBrSegment(strong, 0, 0, true);
     expect(result).not.toBeNull();
     expect(result!.segment.getAttribute("data-airo-segment")).toBe("true");
     expect(result!.segment.textContent).toBe("Find stillness.");
@@ -157,7 +179,7 @@ describe("findBrSegment", () => {
   it("wraps multi-element segment between <br>s", () => {
     const root = html('<h1><span>Hello</span><br /><span>Find </span><strong>stillness.</strong><br /><span>Rest.</span></h1>');
     const span = root.querySelectorAll("span")[1]; // "Find "
-    const result = findBrSegment(span, 0, 0);
+    const result = findBrSegment(span, 0, 0, true);
     expect(result).not.toBeNull();
     expect(result!.segment.getAttribute("data-airo-segment")).toBe("true");
     expect(result!.segment.textContent).toBe("Find stillness.");
@@ -166,10 +188,20 @@ describe("findBrSegment", () => {
   it("does not wrap single-element segment", () => {
     const root = html('<h1>Hello<br /><span>World</span></h1>');
     const span = root.querySelector("span")!;
-    const result = findBrSegment(span, 0, 0);
+    const result = findBrSegment(span, 0, 0, true);
     expect(result).not.toBeNull();
     expect(result!.segment).toBe(span);
     expect(result!.segment.hasAttribute("data-airo-segment")).toBe(false);
+  });
+
+  it("returns null for a content-keyed inline element with a <br> when flag is off (guard regression)", () => {
+    // An inline content-keyed element containing a <br> would otherwise walk past
+    // to its parent; only the flag-off hard-stop stops it from opening the JSX
+    // editor there and corrupting the binding. isTextEditable's own `!isInline`
+    // check doesn't cover this case — the element is inline.
+    const root = html('<span data-dev-content-key=\'{"key":"hero.label","kind":"copy"}\'>A<br />B</span>');
+    const span = root.querySelector("span")!;
+    expect(findBrSegment(span, 0, 0, false)).toBeNull();
   });
 });
 

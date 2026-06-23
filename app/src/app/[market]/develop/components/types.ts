@@ -84,6 +84,20 @@ export enum IframeMessageType {
   SPEECH_TRANSCRIPT = 'SPEECH_TRANSCRIPT',
 }
 
+/** Payload for the EDIT_MODE_ENABLED postMessage. */
+export interface EditModeEnabledMessage {
+  type: IframeMessageType.EDIT_MODE_ENABLED
+  cmsInlineEditEnabled: boolean
+}
+
+/**
+ * Build the EDIT_MODE_ENABLED postMessage payload.
+ * Single factory used by all send sites so they can't drift.
+ */
+export function buildEditModeEnabledMessage(cmsInlineEditEnabled: boolean): EditModeEnabledMessage {
+  return { type: IframeMessageType.EDIT_MODE_ENABLED, cmsInlineEditEnabled }
+}
+
 export enum MobileMode {
   PREVIEW = 'preview',
   TOOLS = 'tools'

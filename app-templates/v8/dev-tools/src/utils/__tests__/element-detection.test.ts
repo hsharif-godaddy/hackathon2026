@@ -261,32 +261,64 @@ describe('element-detection', () => {
   describe('isTextEditable — data-dev-dynamic guard', () => {
     it('should reject elements with data-dev-dynamic attribute', () => {
       const element = buildElement('<p data-dev-dynamic="true">500+</p>');
-      expect(isTextEditable(element)).toBe(false);
+      expect(isTextEditable(element, true)).toBe(false);
     });
 
     it('should reject elements containing a descendant with data-dev-dynamic', () => {
       const element = buildElement('<p><span data-dev-dynamic="true">500+</span></p>');
-      expect(isTextEditable(element)).toBe(false);
+      expect(isTextEditable(element, true)).toBe(false);
     });
 
     it('should allow plain text elements without data-dev-dynamic', () => {
       const element = buildElement('<p>Hello World</p>');
-      expect(isTextEditable(element)).toBe(true);
+      expect(isTextEditable(element, true)).toBe(true);
     });
 
     it('should allow elements with inline formatting but no data-dev-dynamic', () => {
       const element = buildElement('<p><strong>Bold text</strong></p>');
-      expect(isTextEditable(element)).toBe(true);
+      expect(isTextEditable(element, true)).toBe(true);
     });
 
     it('should reject deeply nested data-dev-dynamic descendants', () => {
       const element = buildElement('<p><em><span data-dev-dynamic="true">price</span></em></p>');
-      expect(isTextEditable(element)).toBe(false);
+      expect(isTextEditable(element, true)).toBe(false);
     });
 
     it('treats content-keyed elements as editable even if they also have dynamic markup around them', () => {
       const element = buildElement('<h1 data-dev-content-key="home.hero.title">Welcome</h1>');
-      expect(isTextEditable(element)).toBe(true);
+      expect(isTextEditable(element, true)).toBe(true);
+    });
+  });
+
+  // ─── isTextEditable — CMS inline-edit flag gate ───────────────────────────────
+
+  describe('isTextEditable — CMS inline-edit flag gate', () => {
+    function contentKeyed(): HTMLElement {
+      const el = document.createElement('p');
+      el.setAttribute('data-dev-content-key', 'home.hero.title');
+      el.textContent = 'Welcome';
+      return el;
+    }
+
+    it('content-keyed element is NOT editable when the flag is off', () => {
+      expect(isTextEditable(contentKeyed(), false)).toBe(false);
+    });
+
+    it('content-keyed element IS editable when the flag is on', () => {
+      expect(isTextEditable(contentKeyed(), true)).toBe(true);
+    });
+
+    it('content-keyed element with flag off does not fall through to AST-editable', () => {
+      // a plain <p> with text would be AST-editable; the content key must force false
+      const el = contentKeyed();
+      expect(isTextEditable(el, false)).toBe(false);
+    });
+
+    it('non-content text element is editable regardless of the flag', () => {
+      const el = document.createElement('p');
+      el.textContent = 'Plain text';
+      expect(isTextEditable(el, false)).toBe(true);
+      expect(isTextEditable(el, true)).toBe(true);
     });
   });
 

@@ -23,7 +23,7 @@ import { useIsDesignKitWizardProfile } from '@/app/[market]/develop/components/p
 import PreviewPane, { type PublishSnapshotRequestDetail } from '@/app/[market]/develop/components/preview/PreviewPane'
 import ResizableDivider from '@/app/[market]/develop/components/ResizableDivider'
 import { SettingsLoadingState } from '@/app/[market]/develop/components/settings/components/SettingsLoadingState'
-import { ChatTab, IframeMessageType, MobileMode, SettingsSection, ViewMode } from '@/app/[market]/develop/components/types'
+import { buildEditModeEnabledMessage, ChatTab, IframeMessageType, MobileMode, SettingsSection, ViewMode } from '@/app/[market]/develop/components/types'
 import { handlePreviewRefresh, useAppIdFromParams } from '@/app/[market]/develop/components/utils'
 import { clearExpiredWidgetStates } from '@/app/[market]/develop/components/widgets'
 import { sendPendingAutoSendMessage } from '@/app/[market]/develop/hooks/sendPendingAutoSendMessage'
@@ -45,6 +45,7 @@ import { FEEDBACK_ID } from '@/components/feedback/utils'
 import { UpgradeModal } from '@/components/upgrade/UpgradeModal'
 import { buildDynamicApiUrl, dynamicApiConfigService } from '@/config/dynamic-api'
 import { EXPERIMENT_IDS } from '@/config/experiments'
+import { SWITCHBOARD_APPBUILDER_CMS_INLINE_EDIT } from '@/config/switchboard-flags'
 import { ChatProvider } from '@/contexts/ChatContext'
 import { prefetchGitRemoteConfig } from '@/hooks/github/useGitRemoteConfig'
 import { activateInitialBuildFunnel } from '@/hooks/shared/initialBuildFunnel'
@@ -343,7 +344,7 @@ function DevelopPageContent({ layout = BuilderLayout.Develop }: { layout?: Build
   const setAiEditContext = useSetAiEditContext()
   const addAiEditContext = useAddAiEditContext()
   const isMultiElementSelect = useSwitchboard('appbuilder-multi-element-select')
-  const cmsInlineEditEnabled = useSwitchboard('appbuilder-cms-inline-edit') ?? false
+  const cmsInlineEditEnabled = useSwitchboard(SWITCHBOARD_APPBUILDER_CMS_INLINE_EDIT) ?? false
   const isIntroTourEnabled = useSwitchboard('appbuilder-intro-tour')
   const isGitHubSyncEnabled = useSwitchboard('appbuilder-github-sync')
   const showUnsupportedFeatureWarning = useSwitchboard('appbuilder-preview-unsupported-feature-warnings') === true
@@ -644,7 +645,11 @@ function DevelopPageContent({ layout = BuilderLayout.Develop }: { layout?: Build
   const sendEditModeMessage = useCallback((enabled: boolean) => {
     const iframe = document.getElementById('preview-iframe') as HTMLIFrameElement
     if (iframe) {
-      postMessageToIframe(iframe, { type: enabled ? IframeMessageType.EDIT_MODE_ENABLED : IframeMessageType.EDIT_MODE_DISABLED })
+      if (enabled) {
+        postMessageToIframe(iframe, buildEditModeEnabledMessage(cmsInlineEditEnabled))
+      } else {
+        postMessageToIframe(iframe, { type: IframeMessageType.EDIT_MODE_DISABLED })
+      }
       // Send multi-select mode state alongside edit mode
       if (useDevelopPageStore.getState().isMultiSelectEnabled) {
         const contexts = useStreamingConversationStore.getState().aiEditContexts
@@ -652,7 +657,7 @@ function DevelopPageContent({ layout = BuilderLayout.Develop }: { layout?: Build
         postMessageToIframe(iframe, { type: enabled ? 'MULTI_SELECT_ENABLED' : 'MULTI_SELECT_DISABLED', data: { nextNumber } })
       }
     }
-  }, [])
+  }, [cmsInlineEditEnabled])
 
   // Speech-to-text bridge for the dev-tools Quick Edit bar. The iframe can't
   // install react-speech-recognition, so the parent owns recognition and

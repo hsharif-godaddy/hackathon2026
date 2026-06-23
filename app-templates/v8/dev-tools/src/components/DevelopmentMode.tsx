@@ -13,6 +13,7 @@ import { isClickable, isInsideNavSurface, isDevToolsElement, isManagedPath, hasM
 
 export default function DevelopmentMode() {
   const [isEditModeActive, setIsEditModeActive] = useState(false); // off by default, parent enables via EDIT_MODE_ENABLED message
+  const [cmsInlineEditEnabled, setCmsInlineEditEnabled] = useState(false); // off by default, parent sets via EDIT_MODE_ENABLED message payload
   const [isMultiSelectActive, setIsMultiSelectActive] = useState(false); // off by default, parent enables via MULTI_SELECT_ENABLED message
   const [, setTranslationsLoaded] = useState(0); // counter that always changes to force re-render
   const [pathname, setPathname] = useState(() => window.location.pathname); // updated synchronously on SPA navigation (see onNavigate)
@@ -25,7 +26,7 @@ export default function DevelopmentMode() {
   // page without the markup is NOT managed and keeps full inline editing.
   const isManagedDoc = isManagedPath(pathname) && hasManagedMarkup
 
-  const { hoveredElement, toolbarMode, setToolbarMode, handleBarMouseEnter, handleBarMouseLeave } = useEditMode(isEditModeActive && !isManagedDoc, isMultiSelectActive)
+  const { hoveredElement, toolbarMode, setToolbarMode, handleBarMouseEnter, handleBarMouseLeave } = useEditMode(isEditModeActive && !isManagedDoc, cmsInlineEditEnabled, isMultiSelectActive)
 
   // Compliance docs: highlight + inline-edit field values and toggle boolean
   // sections, gated to edit mode like every other inline-editing affordance.
@@ -1318,6 +1319,7 @@ export default function DevelopmentMode() {
           return;
         }
         if (event.data && event.data.type === 'EDIT_MODE_ENABLED') {
+          setCmsInlineEditEnabled(event.data.cmsInlineEditEnabled === true);
           setIsEditModeActive(true);
           return;
         }

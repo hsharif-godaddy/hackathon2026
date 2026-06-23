@@ -49,7 +49,7 @@ interface PendingSave {
   originalText: string;
 }
 
-export function useTextEditing(isEditModeActive: boolean) {
+export function useTextEditing(isEditModeActive: boolean, cmsInlineEditEnabled: boolean) {
   const [state, setState] = useState<TextEditingState>({
     editingElement: null,
     originalText: null,
@@ -533,12 +533,12 @@ export function useTextEditing(isEditModeActive: boolean) {
 
       // Check for br-segment first — inline children of br-containing blocks
       // must be handled as segments, not standalone editable containers
-      const brResult = findBrSegment(rawTarget, e.clientX, e.clientY);
+      const brResult = findBrSegment(rawTarget, e.clientX, e.clientY, cmsInlineEditEnabled);
       if (brResult) {
         target = brResult.segment;
         brParent = brResult.parent;
       } else {
-        target = findEditableContainer(rawTarget);
+        target = findEditableContainer(rawTarget, cmsInlineEditEnabled);
       }
       if (!target) return;
 
@@ -549,7 +549,7 @@ export function useTextEditing(isEditModeActive: boolean) {
 
     document.addEventListener("click", handleClick, true);
     return () => document.removeEventListener("click", handleClick, true);
-  }, [isEditModeActive, startEditing]);
+  }, [isEditModeActive, cmsInlineEditEnabled, startEditing]);
 
   // ── Listen for save result from parent ──
 

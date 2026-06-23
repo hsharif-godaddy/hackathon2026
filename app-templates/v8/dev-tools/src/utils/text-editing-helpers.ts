@@ -1,4 +1,4 @@
-import { isDevToolsElement, isTextEditable } from "./element-detection";
+import { isDevToolsElement, isTextEditable, resolveContentKey } from "./element-detection";
 import { t } from "./translations";
 import { rgbToHex } from "./color";
 
@@ -29,18 +29,25 @@ const COPY_STYLES = [
 
 // ── Element finding ──
 
-export function findEditableContainer(el: HTMLElement): HTMLElement | null {
+export function findEditableContainer(el: HTMLElement, cmsInlineEditEnabled: boolean): HTMLElement | null {
   let current: HTMLElement | null = el;
   let best: HTMLElement | null = null;
   let outermostInline: HTMLElement | null = null;
   while (current) {
+    // Hard-stop: when the flag is off, a content-keyed element must not be walked
+    // past. Returning null here — at the top of each iteration, before any
+    // editable-container or outermostInline fallback below can return — prevents
+    // the walk from landing on a non-content ancestor and opening the JSX editor
+    // on it, which would hardcode the value and corrupt the CMS binding.
+    if (!cmsInlineEditEnabled && resolveContentKey(current) !== null) return null;
+
     const isInline = INLINE_TAGS.has(current.tagName.toLowerCase());
-    if (isTextEditable(current) && !current.querySelector("br")) {
+    if (isTextEditable(current, cmsInlineEditEnabled) && !current.querySelector("br")) {
       if (isInline) {
         best = current;
       } else {
         const result = best || current;
-        return liftToParentList(result);
+        return liftToParentList(result, cmsInlineEditEnabled);
       }
     }
     if (isInline) {
@@ -67,12 +74,12 @@ function hasOnlyInlineChildren(el: HTMLElement): boolean {
     });
 }
 
-function liftToParentList(el: HTMLElement): HTMLElement {
+function liftToParentList(el: HTMLElement, cmsInlineEditEnabled: boolean): HTMLElement {
   if (el.tagName.toLowerCase() !== "li") return el;
   const parent = el.parentElement;
   if (!parent) return el;
   const parentTag = parent.tagName.toLowerCase();
-  if ((parentTag === "ul" || parentTag === "ol") && isTextEditable(parent)) {
+  if ((parentTag === "ul" || parentTag === "ol") && isTextEditable(parent, cmsInlineEditEnabled)) {
     return parent;
   }
   return el;
@@ -82,11 +89,16 @@ export function findBrSegment(
   el: HTMLElement,
   x: number,
   y: number,
+  cmsInlineEditEnabled: boolean,
 ): { segment: HTMLElement; parent: HTMLElement } | null {
   let brParent: HTMLElement | null = el;
   while (brParent) {
+    // Hard-stop: same as findEditableContainer — don't walk past a content-keyed
+    // element when the flag is off.
+    if (!cmsInlineEditEnabled && resolveContentKey(brParent) !== null) return null;
+
     const isInline = INLINE_TAGS.has(brParent.tagName.toLowerCase());
-    if (!isInline && isTextEditable(brParent) && brParent.querySelector("br")) break;
+    if (!isInline && isTextEditable(brParent, cmsInlineEditEnabled) && brParent.querySelector("br")) break;
     if (!isInline) return null;
     brParent = brParent.parentElement;
   }

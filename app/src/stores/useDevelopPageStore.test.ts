@@ -1155,8 +1155,25 @@ describe('useDevelopPageStore', function useDevelopPageStoreTests() {
 
       expect(postMessageSpy).toHaveBeenCalledWith(
         mockIframe,
-        { type: 'EDIT_MODE_ENABLED' }
+        { type: 'EDIT_MODE_ENABLED', cmsInlineEditEnabled: false }
       );
+    });
+
+    it('should send EDIT_MODE_ENABLED with cmsInlineEditEnabled: true when flag is on', function postMessageFlagOn() {
+      (window as unknown as { gasketData?: unknown }).gasketData = {
+        switchboard: { 'appbuilder-cms-inline-edit': true },
+      };
+
+      act(function toggle() {
+        useDevelopPageStore.getState().toggleMobileInlineEdit();
+      });
+
+      expect(postMessageSpy).toHaveBeenCalledWith(
+        mockIframe,
+        { type: 'EDIT_MODE_ENABLED', cmsInlineEditEnabled: true }
+      );
+
+      delete (window as unknown as { gasketData?: unknown }).gasketData;
     });
 
     it('should send CLEAR_SELECTION and EDIT_MODE_DISABLED messages when toggling off', function postMessagesOnDisable() {
@@ -1196,6 +1213,104 @@ describe('useDevelopPageStore', function useDevelopPageStoreTests() {
       const state = useDevelopPageStore.getState();
       expect(state.isMobileInlineEditActive).toBe(true);
       expect(state.isEditModeEnabled).toBe(true);
+    });
+  });
+
+  describe('#toggleEditMode', function toggleEditModeTests() {
+    let postMessageSpy: ReturnType<typeof vi.spyOn>;
+    let mockIframe: HTMLIFrameElement;
+
+    beforeEach(function setup() {
+      act(function reset() {
+        useDevelopPageStore.setState({ isEditModeEnabled: false });
+      });
+
+      mockIframe = document.createElement('iframe');
+      mockIframe.id = 'preview-iframe';
+      document.body.appendChild(mockIframe);
+
+      postMessageSpy = vi.spyOn(postMessageModule, 'postMessageToIframe');
+    });
+
+    afterEach(function cleanup() {
+      mockIframe.remove();
+      postMessageSpy.mockRestore();
+      delete (window as unknown as { gasketData?: unknown }).gasketData;
+    });
+
+    it('should send EDIT_MODE_ENABLED message with cmsInlineEditEnabled: false when flag is off', function postMessageFlagOff() {
+      act(function toggle() {
+        useDevelopPageStore.getState().toggleEditMode();
+      });
+
+      expect(postMessageSpy).toHaveBeenCalledWith(
+        mockIframe,
+        { type: 'EDIT_MODE_ENABLED', cmsInlineEditEnabled: false }
+      );
+    });
+
+    it('should send EDIT_MODE_ENABLED message with cmsInlineEditEnabled: true when flag is on', function postMessageFlagOn() {
+      (window as unknown as { gasketData?: unknown }).gasketData = {
+        switchboard: { 'appbuilder-cms-inline-edit': true },
+      };
+
+      act(function toggle() {
+        useDevelopPageStore.getState().toggleEditMode();
+      });
+
+      expect(postMessageSpy).toHaveBeenCalledWith(
+        mockIframe,
+        { type: 'EDIT_MODE_ENABLED', cmsInlineEditEnabled: true }
+      );
+    });
+  });
+
+  describe('#handleViewModeChange', function handleViewModeChangeTests() {
+    let postMessageSpy: ReturnType<typeof vi.spyOn>;
+    let mockIframe: HTMLIFrameElement;
+
+    beforeEach(function setup() {
+      act(function reset() {
+        useDevelopPageStore.setState({ viewMode: ViewMode.PREVIEW, isEditModeEnabled: false });
+      });
+
+      mockIframe = document.createElement('iframe');
+      mockIframe.id = 'preview-iframe';
+      document.body.appendChild(mockIframe);
+
+      postMessageSpy = vi.spyOn(postMessageModule, 'postMessageToIframe');
+    });
+
+    afterEach(function cleanup() {
+      mockIframe.remove();
+      postMessageSpy.mockRestore();
+      delete (window as unknown as { gasketData?: unknown }).gasketData;
+    });
+
+    it('should send EDIT_MODE_ENABLED message with cmsInlineEditEnabled: false when switching to EDIT with flag off', function postMessageFlagOff() {
+      act(function changeMode() {
+        useDevelopPageStore.getState().handleViewModeChange(ViewMode.EDIT, false);
+      });
+
+      expect(postMessageSpy).toHaveBeenCalledWith(
+        mockIframe,
+        { type: 'EDIT_MODE_ENABLED', cmsInlineEditEnabled: false }
+      );
+    });
+
+    it('should send EDIT_MODE_ENABLED message with cmsInlineEditEnabled: true when switching to EDIT with flag on', function postMessageFlagOn() {
+      (window as unknown as { gasketData?: unknown }).gasketData = {
+        switchboard: { 'appbuilder-cms-inline-edit': true },
+      };
+
+      act(function changeMode() {
+        useDevelopPageStore.getState().handleViewModeChange(ViewMode.EDIT, false);
+      });
+
+      expect(postMessageSpy).toHaveBeenCalledWith(
+        mockIframe,
+        { type: 'EDIT_MODE_ENABLED', cmsInlineEditEnabled: true }
+      );
     });
   });
 

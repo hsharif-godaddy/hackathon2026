@@ -4,9 +4,10 @@ import { immer } from 'zustand/middleware/immer'
 
 import { isDesignKitWizardProfile } from '@/app/[market]/develop/components/preview/design-kit-wizard/isDesignKitWizardProfile'
 import { DEFAULT_DESKTOP_DEVICE, DEFAULT_MOBILE_DEVICE, DEFAULT_TABLET_DEVICE } from '@/app/[market]/develop/components/preview/devicePresets'
-import { ChatTab, IframeMessageType, MobileMode, PreviewViewMode, SettingsSection, ViewMode } from '@/app/[market]/develop/components/types'
+import { buildEditModeEnabledMessage, ChatTab, IframeMessageType, MobileMode, PreviewViewMode, SettingsSection, ViewMode } from '@/app/[market]/develop/components/types'
 import type { LogoSessionLogo } from '@/app/[market]/develop/components/widgets/logo-utils'
 import type { FeedbackCategory } from '@/components/feedback/types'
+import { SWITCHBOARD_APPBUILDER_CMS_INLINE_EDIT } from '@/config/switchboard-flags'
 import { getSwitchboardFlag, getSwitchboardValue } from '@/hooks/useSwitchboard'
 import type { SiteInfo } from '@/lib/control-plane/types'
 import { logger } from '@/lib/request-context'
@@ -16,6 +17,16 @@ import { SubscriptionPlan } from '@/types/credits'
 import type { BusMediaDeletePayload, BusUnsupportedFeature } from '@/utils/eventBus'
 import { logImpressionEvent } from '@/utils/instrumentation'
 import { postMessageToIframe } from '@/utils/postMessage'
+
+/** Post EDIT_MODE_ENABLED to the preview iframe, carrying the current CMS
+ * inline-edit flag so dev-tools knows whether content-bound elements are
+ * editable. Reads the flag at call time (the value is stable per session). */
+function postEditModeEnabled(iframe: HTMLIFrameElement): void {
+  postMessageToIframe(
+    iframe,
+    buildEditModeEnabledMessage(getSwitchboardFlag(SWITCHBOARD_APPBUILDER_CMS_INLINE_EDIT) ?? false),
+  )
+}
 
 // Loading phases for proper sequencing
 type LoadingPhase = 'idle' | 'loading-app' | 'loading-site' | 'loading-conversations' | 'ready'
@@ -677,7 +688,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
       if (iframe) {
         if (newState) {
           // Turning ON: enable edit mode
-          postMessageToIframe(iframe, { type: IframeMessageType.EDIT_MODE_ENABLED })
+          postEditModeEnabled(iframe)
         } else {
           // Turning OFF: clear selection and disable edit mode
           postMessageToIframe(iframe, { type: 'CLEAR_SELECTION' })
@@ -1232,7 +1243,11 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
 
       const iframe = document.getElementById('preview-iframe') as HTMLIFrameElement
       if (iframe) {
-        postMessageToIframe(iframe, { type: newEditMode ? IframeMessageType.EDIT_MODE_ENABLED : IframeMessageType.EDIT_MODE_DISABLED })
+        if (newEditMode) {
+          postEditModeEnabled(iframe)
+        } else {
+          postMessageToIframe(iframe, { type: IframeMessageType.EDIT_MODE_DISABLED })
+        }
         if (get().isMultiSelectEnabled) {
           postMessageToIframe(iframe, { type: newEditMode ? 'MULTI_SELECT_ENABLED' : 'MULTI_SELECT_DISABLED' })
         }
@@ -1268,7 +1283,11 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
         set((state) => { state.isEditModeEnabled = editModeEnabled })
         const iframe = document.getElementById('preview-iframe') as HTMLIFrameElement
         if (iframe) {
-          postMessageToIframe(iframe, { type: editModeEnabled ? IframeMessageType.EDIT_MODE_ENABLED : IframeMessageType.EDIT_MODE_DISABLED })
+          if (editModeEnabled) {
+            postEditModeEnabled(iframe)
+          } else {
+            postMessageToIframe(iframe, { type: IframeMessageType.EDIT_MODE_DISABLED })
+          }
           if (get().isMultiSelectEnabled) {
             postMessageToIframe(iframe, { type: editModeEnabled ? 'MULTI_SELECT_ENABLED' : 'MULTI_SELECT_DISABLED' })
           }

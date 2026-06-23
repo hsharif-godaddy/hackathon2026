@@ -9,9 +9,9 @@ import { useImageHoverDetection } from "./useImageHoverDetection";
  * - useHoverHint — AI sparkle button, selection overlay, scroll tracking
  * - useImageHoverDetection — image hover state for ImageHoverBar
  */
-export function useEditMode(isEditModeActive: boolean, isMultiSelectActive = false) {
+export function useEditMode(isEditModeActive: boolean, cmsInlineEditEnabled: boolean, isMultiSelectActive = false) {
   const { editingElement, saveStatus, stateRef, stopEditing } =
-    useTextEditing(isEditModeActive);
+    useTextEditing(isEditModeActive, cmsInlineEditEnabled);
 
   useHoverHint(isEditModeActive, stateRef, isMultiSelectActive);
 

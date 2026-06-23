@@ -106,6 +106,11 @@ export interface ClearSelectionMessage {
  */
 export interface EditModeEnabledMessage {
   type: "EDIT_MODE_ENABLED";
+  // Optional for backward compat: dev-tools is container-baked into customer
+  // apps and the builder deploys separately, so an older builder may send
+  // EDIT_MODE_ENABLED without this field. The handler defaults a missing value
+  // to false (content non-editable) — fail-safe.
+  cmsInlineEditEnabled?: boolean;
 }
 
 /**

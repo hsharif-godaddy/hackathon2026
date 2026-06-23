@@ -112,10 +112,12 @@ export function isBodyTextElement(element: HTMLElement): boolean {
 }
 
 /** Check if an element is suitable for inline text editing */
-export function isTextEditable(element: HTMLElement): boolean {
-  // Elements attributed to the content layer are always editable via the
-  // content-edit path, regardless of dynamic-expression heuristics.
-  if (resolveContentKey(element) !== null) return true;
+export function isTextEditable(element: HTMLElement, cmsInlineEditEnabled: boolean): boolean {
+  // Content-layer elements are editable only when CMS inline-edit is enabled.
+  // When the flag is off they are NOT editable AND must not fall through to the
+  // AST heuristics below — editing a content-bound element via the JSX source
+  // path hardcodes the value and breaks the binding for every mapped item.
+  if (resolveContentKey(element) !== null) return cmsInlineEditEnabled;
 
   if (element.hasAttribute("data-dev-dynamic") || element.querySelector("[data-dev-dynamic]")) return false;
 
