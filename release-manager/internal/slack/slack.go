@@ -34,6 +34,14 @@ type Notifier struct {
 	mu       sync.Mutex
 	ts       string
 	lastText string
+
+	// verbose surfaces Slack API failures to STDOUT (as GitHub Actions
+	// ::warning:: annotations) in addition to the file log. Enable it ONLY on the
+	// headless/CI path (Verbose()): the interactive TUI owns stdout, so a stray
+	// write would corrupt its render. The release-manager logs to a file the GHA
+	// run log does not surface, so without this a swallowed Slack error is
+	// invisible (it cost a full investigation to even find one).
+	verbose bool
 }
 
 func New(token, channelID string) *Notifier {
@@ -42,6 +50,26 @@ func New(token, channelID string) *Notifier {
 		channelID: channelID,
 		client:    &http.Client{Timeout: 10 * time.Second},
 		baseURL:   "https://slack.com/api",
+	}
+}
+
+// Verbose enables surfacing Slack failures to STDOUT (GHA ::warning::). Headless
+// only — never call it on the TUI notifier. Returns the receiver for chaining.
+func (n *Notifier) Verbose() *Notifier {
+	if n != nil {
+		n.verbose = true
+	}
+	return n
+}
+
+// warn records a Slack failure to the file log always, and to STDOUT as a GHA
+// ::warning:: when verbose — so a swallowed Slack error is visible in the run
+// log instead of only on the ephemeral runner's log file.
+func (n *Notifier) warn(format string, args ...any) {
+	msg := fmt.Sprintf(format, args...)
+	logger.Log("slack.error: %s", msg)
+	if n.verbose {
+		fmt.Printf("::warning::slack: %s\n", msg)
 	}
 }
 
@@ -163,7 +191,7 @@ func (n *Notifier) post(ctx context.Context, text string) {
 
 	resp, err := n.call(ctx, n.baseURL+"/chat.postMessage", body)
 	if err != nil {
-		logger.Log("slack.error: postMessage: %s", err)
+		n.warn("chat.postMessage failed: %v", err)
 		return
 	}
 
@@ -231,7 +259,16 @@ func (n *Notifier) Update(ctx context.Context, text string) {
 	}
 
 	if _, err := n.call(ctx, n.baseURL+"/chat.update", body); err != nil {
-		logger.Log("slack.error: chat.update: %s", err)
+		// The in-place edit failed (a transient Slack error, or the message became
+		// uneditable). With no fallback this strands the message on its last good
+		// edit — e.g. a SUCCESSFUL prod release left on the test phase's "Awaiting
+		// prod approval" CTA, because runProd's "Deploying"/"Complete" edits were
+		// swallowed here. Self-heal: drop the ts and re-post as a fresh message
+		// (which re-seeds ts so subsequent edits land), so the true status is
+		// always visible. The orphaned message is harmless.
+		n.warn("chat.update failed (ts=%s): %v — reposting as a new message", n.ts, err)
+		n.ts = ""
+		n.post(ctx, text)
 		return
 	}
 

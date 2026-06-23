@@ -190,7 +190,9 @@ func runHeadless(args []string) int {
 	var notifier *slack.Notifier
 	if !*dryRun {
 		if creds, ok := slack.CredentialsFromEnv(); ok {
-			notifier = slack.New(creds.Token, creds.ChannelID)
+			// Verbose(): headless owns stdout (no TUI), so surface swallowed Slack
+			// failures as GHA ::warning:: annotations in the run log.
+			notifier = slack.New(creds.Token, creds.ChannelID).Verbose()
 		} else {
 			logger.Log("headless: SLACK_BOT_TOKEN/SLACK_CHANNEL_ID unset — Slack disabled")
 		}

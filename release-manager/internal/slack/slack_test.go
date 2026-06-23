@@ -152,6 +152,54 @@ func TestUpdateFallsBackToPost(t *testing.T) {
 	}
 }
 
+// TestUpdateRepostsWhenEditFails covers the self-heal: when the in-place
+// chat.update fails (a stale ts, an uneditable message, a transient Slack
+// error), Update must NOT leave the message stranded on its last good edit —
+// e.g. a successful prod release stuck on the test phase's "Awaiting prod
+// approval" CTA. It re-posts as a fresh message and adopts that ts so the true
+// status is visible and subsequent edits land.
+func TestUpdateRepostsWhenEditFails(t *testing.T) {
+	var mu sync.Mutex
+	var updates, posts int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/chat.update":
+			updates++
+			json.NewEncoder(w).Encode(apiResponse{OK: false, Error: "message_not_found"})
+		case "/chat.postMessage":
+			posts++
+			json.NewEncoder(w).Encode(apiResponse{OK: true, TS: "reposted.ts"})
+		default:
+			t.Errorf("unexpected path %q", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	n := New("xoxb-test-token", "C12345")
+	n.baseURL = server.URL
+	n.SeedTS("stale.ts") // a prod phase seeding the test phase's ts
+
+	n.Update(context.Background(), "Deploying to prod")
+
+	mu.Lock()
+	defer mu.Unlock()
+	if updates != 1 {
+		t.Errorf("expected exactly 1 chat.update attempt, got %d", updates)
+	}
+	if posts != 1 {
+		t.Errorf("expected self-heal to repost via chat.postMessage exactly once, got %d", posts)
+	}
+	if n.ts != "reposted.ts" {
+		t.Errorf("ts should adopt the reposted message, got %q", n.ts)
+	}
+	if n.lastText != "Deploying to prod" {
+		t.Errorf("lastText should be set after repost (so later edits dedup), got %q", n.lastText)
+	}
+}
+
 func TestUpdateDedupSkipsAPICall(t *testing.T) {
 	var callCount atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
