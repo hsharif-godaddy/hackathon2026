@@ -1100,6 +1100,13 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
     );
   }
 
+  const showLegacyEmptyDomainState =
+    !isDomainConnectEnabled &&
+    !isLoading &&
+    !error &&
+    domainRowCount === 0 &&
+    domains.length === 0;
+
   function handleDomainPageChange(newOffset: number) {
     setDomainPage(Math.floor(newOffset / DOMAIN_LIST_PER_PAGE) + 1);
   }
@@ -1111,7 +1118,7 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
       status={customDomainSectionStatus}
       useDomainConnectLayout={isDomainConnectEnabled}
     >
-      <Box orientation="vertical" className="w-full">
+      <Box orientation="vertical" gap="md" className="w-full">
         {isDomainConnectEnabled ? (
           <>
             <Tabs
@@ -1125,7 +1132,7 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
 
             <div className={DOMAIN_ATTACH_TAB_PANELS_GRID_CLASS}>
               <Box
-                gap="sm"
+                gap="md"
                 className={getDomainAttachTabPanelClass(effectiveActiveTab === DOMAIN_ATTACH_TAB.CONNECT)}
                 inert={effectiveActiveTab !== DOMAIN_ATTACH_TAB.CONNECT || undefined}
               >
@@ -1172,22 +1179,27 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
                     </div>
                   </FieldFrame>
                 )}
-                <Box
-                  data-testid="domain-attach-list"
-                  orientation="vertical"
-                  gap="sm"
-                  className={cn("min-w-0 overflow-x-hidden", DOMAIN_LIST_SCROLL_CLASS)}
-                >
-                  {!isLoading && !error && normalizedSearch && !hasVisibleDomains && (
-                    <text.p className="text-intents-ux-text-secondaryColor">
-                      {t('builder_domain_list_no_results', { query: searchQuery })}
-                    </text.p>
-                  )}
-                  {!isLoading && !error && visibleDomainUnits.map((unit) => renderDomainUnit(unit))}
-                </Box>
+                {(totalDomainUnits > 0 || normalizedSearch) && (
+                  <Box
+                    data-testid="domain-attach-list"
+                    orientation="vertical"
+                    gap="sm"
+                    className={cn(
+                      'min-w-0 overflow-x-hidden',
+                      totalDomainUnits > 0 && DOMAIN_LIST_SCROLL_CLASS,
+                    )}
+                  >
+                    {!isLoading && !error && normalizedSearch && !hasVisibleDomains && (
+                      <text.p className="text-intents-ux-text-secondaryColor">
+                        {t('builder_domain_list_no_results', { query: searchQuery })}
+                      </text.p>
+                    )}
+                    {!isLoading && !error && visibleDomainUnits.map((unit) => renderDomainUnit(unit))}
+                  </Box>
+                )}
 
-                {!isLoading && !error && (
-                  <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                {!isLoading && !error && totalDomainUnits > 0 && (
+                  <div className="flex flex-wrap items-center justify-between gap-2">
                     <Button
                       text={t('builder_domain_button_connect')}
                       design="primary"
@@ -1214,7 +1226,7 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
 
               <Box
                 orientation="vertical"
-                gap="sm"
+                gap="md"
                 inlineAlignChildren="start"
                 className={getDomainAttachTabPanelClass(effectiveActiveTab === DOMAIN_ATTACH_TAB.BUY)}
                 inert={effectiveActiveTab !== DOMAIN_ATTACH_TAB.BUY || undefined}
@@ -1236,7 +1248,7 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
 
               <Box
                 orientation="vertical"
-                gap="sm"
+                gap="md"
                 inlineAlignChildren="start"
                 className={getDomainAttachTabPanelClass(
                   effectiveActiveTab === DOMAIN_ATTACH_TAB.EXTERNAL,
@@ -1343,6 +1355,21 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
                 {getErrorMessage(error, t)}
               </text.p>
             )}
+            {showLegacyEmptyDomainState ? (
+              <Box orientation="vertical" gap="sm" inlineAlignChildren="start">
+                <text.p>{t('builder_custom_domain_no_domains')}</text.p>
+                <Button
+                  text={t('builder_custom_domain_button_buy')}
+                  design="primary"
+                  size="sm"
+                  data-eid={generateClickEID(`settings.domains.buy_new_domain`)}
+                  href={buyDomainUrl}
+                  external
+                  className="self-start"
+                />
+              </Box>
+            ) : (
+              <>
             {!isLoading && !error && domains.length === 0 && (
               <text.p>{t('builder_custom_domain_no_domains')}</text.p>
             )}
@@ -1362,7 +1389,16 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
                 </div>
               </FieldFrame>
             )}
-            <Box data-testid="domain-attach-list" orientation="vertical" gap="sm" className={cn("min-w-0 overflow-x-hidden", DOMAIN_LIST_SCROLL_CLASS)}>
+            {(domainRowCount > 0 || normalizedSearch) && (
+            <Box
+              data-testid="domain-attach-list"
+              orientation="vertical"
+              gap="sm"
+              className={cn(
+                'min-w-0 overflow-x-hidden',
+                domainRowCount > 0 && DOMAIN_LIST_SCROLL_CLASS,
+              )}
+            >
               {!isLoading && !error && normalizedSearch && !hasVisibleDomains && (
                 <text.p className="text-intents-ux-text-secondaryColor">
                   {t('builder_domain_list_no_results', { query: searchQuery })}
@@ -1458,7 +1494,8 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
                 );
               })}
             </Box>
-            {!isLoading && !error && (
+            )}
+            {!showLegacyEmptyDomainState && !isLoading && !error && (
               <Button
                 text={t('builder_custom_domain_button_buy')}
                 design="primary"
@@ -1468,6 +1505,8 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
                 external
                 className="self-start"
               />
+            )}
+              </>
             )}
             {isDomainDataReady && !hasActiveOrPendingCustomDomain && (
               <>

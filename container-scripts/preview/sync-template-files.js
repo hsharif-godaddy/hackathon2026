@@ -487,6 +487,7 @@ const SYNC_MANIFEST = [
     description: 'Template dependency manifest — synced to push security patches to customer apps',
     known_hashes: [
       '9c795a81d30c266ae7c54b58df716ba5', // before vitest 4.x + tsx/esbuild/babel security upgrades
+      'e35c659efb87610eee8eafde2bb49963', // merge main into domains-page-spacing-fix — pre-main v8 package.json
     ],
     force: false
   },
@@ -495,6 +496,7 @@ const SYNC_MANIFEST = [
     description: 'Lockfile for template dependencies — synced alongside package.json for security patches',
     known_hashes: [
       'af484ed6d3e61e6f1292a3417163f57a', // before vitest 4.x + tsx/esbuild/babel security upgrades
+      '779ae8d66e49a0ff908bd31689c8be67', // merge main into domains-page-spacing-fix — pre-main v8 package-lock.json
     ],
     force: false
   }

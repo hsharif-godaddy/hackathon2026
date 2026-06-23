@@ -279,9 +279,10 @@ describe('DomainAttach', function domainAttachTests() {
     );
 
     await waitFor(function waitForLegacyDomainAttach() {
-      expect(screen.getByTestId('domain-attach-list')).toBeInTheDocument();
+      expect(screen.getByText('builder_custom_domain_no_domains')).toBeInTheDocument();
     });
 
+    expect(screen.queryByTestId('domain-attach-list')).not.toBeInTheDocument();
     expect(screen.queryByRole('tab')).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'builder_custom_domain_button_buy' })).toBeInTheDocument();
     expect(screen.getByText('builder_custom_domain_input_label')).toBeInTheDocument();
@@ -985,8 +986,10 @@ describe('DomainAttach', function domainAttachTests() {
       />
     );
 
-    await waitFor(function waitForDomainList() {
-      expect(screen.getByTestId('domain-attach-list')).toBeInTheDocument();
+    await waitFor(function waitForBuyTab() {
+      expect(
+        screen.getByText('builder_domain_attach_buy_description'),
+      ).toBeInTheDocument();
     });
     expect(
       screen.queryByText('builder_domain_connection_timing_info'),
@@ -1011,8 +1014,10 @@ describe('DomainAttach', function domainAttachTests() {
       />
     );
 
-    await waitFor(function waitForDomainList() {
-      expect(screen.getByTestId('domain-attach-list')).toBeInTheDocument();
+    await waitFor(function waitForBuyTab() {
+      expect(
+        screen.getByText('builder_domain_attach_buy_description'),
+      ).toBeInTheDocument();
     });
     expect(
       screen.queryByText('builder_domain_connection_timing_info'),
@@ -1089,9 +1094,7 @@ describe('DomainAttach', function domainAttachTests() {
     expect(
       screen.queryByRole('tab', { name: 'builder_domain_attach_tab_domains' }),
     ).not.toBeInTheDocument();
-    const domainList = screen.queryByTestId('domain-attach-list', { hidden: true });
-    expect(domainList).toBeInTheDocument();
-    expect(domainList!.closest('[inert]')).toBeInTheDocument();
+    expect(screen.queryByTestId('domain-attach-list')).not.toBeInTheDocument();
   });
 
   it('hides GoDaddy domains tab and defaults to buy tab when domain list is empty', async function hideConnectTabWhenEmpty() {
@@ -1622,8 +1625,10 @@ describe('DomainAttach', function domainAttachTests() {
         />
       );
 
-      await waitFor(function waitForDomainList() {
-        expect(screen.getByTestId('domain-attach-list')).toBeInTheDocument();
+      await waitFor(function waitForPanelReady() {
+        expect(
+          screen.getByText('builder_domain_attach_buy_description'),
+        ).toBeInTheDocument();
       });
 
       const panelCalls = vi.mocked(logImpressionEvent).mock.calls.filter(
