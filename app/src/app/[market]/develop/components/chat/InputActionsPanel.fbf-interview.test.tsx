@@ -8,6 +8,7 @@ import { screen } from '@testing-library/react'
 
 import { ViewMode } from '@/app/[market]/develop/components/types'
 import * as Switchboard from '@/hooks/useSwitchboard'
+import { markFeedbackRevealMilestone } from '@/lib/initial-build-reveal-storage'
 import * as DevelopPageStore from '@/stores/useDevelopPageStore'
 import type { ChatMessage, StreamingMessage } from '@/stores/useStreamingConversationStore'
 import * as StreamingStore from '@/stores/useStreamingConversationStore'
@@ -190,6 +191,7 @@ function setFlags(): void {
 describe('InputActionsPanel — FBF must not suppress the kit-attach interview card (AIROBUILD-2665 A1)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    localStorage.clear()
     mockActiveStream = null
     mockMessages = [parkedAskQuestionMessage()]
     setFlags()
@@ -210,10 +212,20 @@ describe('InputActionsPanel — FBF must not suppress the kit-attach interview c
     expect(screen.getByTestId('input-actions-panel-card')).toBeInTheDocument()
   })
 
-  it('reproduces the pre-fix bug: a premature initialBuildComplete=true activates FBF and SUPPRESSES the interview card', () => {
-    // This is the bug A1 fixes at the source: the old client optimistically flipped
-    // initialBuildComplete=true on the interview turn's commit, activating FBF →
-    // suppressNBA → ThemeSelection's useLatestNBAs(true) returns null → no card.
+  it('still renders the interview card when initialBuildComplete is prematurely true but no agent file edit occurred', () => {
+    // Old behavior (pre firstFileEdit gate): initialBuildComplete=true alone activated
+    // FBF and suppressed this card. FBF now also requires firstFileEdit, so a premature
+    // complete flag during kit-attach interview must not hide the askQuestion card.
+    setStoreApp(true)
+
+    renderWithProviders(<InputActionsPanel />)
+
+    expect(screen.getByText(INTERVIEW_QUESTION)).toBeInTheDocument()
+    expect(screen.getByTestId('input-actions-panel-card')).toBeInTheDocument()
+  })
+
+  it('suppresses the interview card when FBF is legitimately active (build complete and first file edit)', () => {
+    markFeedbackRevealMilestone('test-app-id', 'firstFileEdit')
     setStoreApp(true)
 
     renderWithProviders(<InputActionsPanel />)

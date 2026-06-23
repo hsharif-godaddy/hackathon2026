@@ -9,6 +9,7 @@ import { act, renderHook } from '@testing-library/react'
 let mockFlag: boolean | undefined = true
 let mockInitialBuildComplete: boolean | undefined = false
 let mockStoreAppId: string | undefined = 'app1'
+let mockFirstFileEdit = true
 
 vi.mock('@/hooks/useSwitchboard', () => ({
   useSwitchboard: () => mockFlag,
@@ -17,6 +18,15 @@ vi.mock('@/hooks/useSwitchboard', () => ({
 vi.mock('@/stores/useDevelopPageStore', () => ({
   useDevelopPageStore: (selector: (s: { app: { id?: string; initialBuildComplete?: boolean } | null }) => unknown) =>
     selector({ app: mockInitialBuildComplete !== undefined ? { id: mockStoreAppId, initialBuildComplete: mockInitialBuildComplete } : null }),
+}))
+
+vi.mock('@/app/[market]/develop/hooks/useInitialBuildRevealSignals', () => ({
+  useInitialBuildRevealSignals: () => ({
+    firstFileEdit: mockFirstFileEdit,
+    logoCreation: false,
+    imageSelection: false,
+    isRevealReady: mockFirstFileEdit,
+  }),
 }))
 
 const mockGetItem = vi.fn()
@@ -39,8 +49,15 @@ describe('useFirstBuildFeedback', () => {
     mockFlag = true
     mockInitialBuildComplete = true
     mockStoreAppId = 'app1'
+    mockFirstFileEdit = true
     mockGetItem.mockReturnValue(null)
     mockSetItem.mockReset()
+  })
+
+  it('returns null when no agent file edit has been recorded for this app', () => {
+    mockFirstFileEdit = false
+    const { result } = renderHook(() => useFirstBuildFeedback('app1'))
+    expect(result.current).toBeNull()
   })
 
   it('returns null when flag is off', () => {
