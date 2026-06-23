@@ -39,6 +39,7 @@ import { deriveIsAwaitingStream, useInitialization } from '@/app/[market]/develo
 import { usePublishSnapshotCapture } from '@/app/[market]/develop/hooks/usePublishSnapshotCapture'
 import { broadcast as broadcastProcessingState } from '@/app/[market]/develop/utils/iframeProcessingState'
 import { mutatesFiles } from '@/app/[market]/develop/utils/mutatesFiles'
+import { showEditApplyFailureGrowl } from '@/app/[market]/develop/utils/showEditApplyFailureGrowl'
 import { ProtectedRoute } from '@/components/auth'
 import ErrorBoundary from '@/components/ErrorBoundary'
 import { FEEDBACK_ID } from '@/components/feedback/utils'
@@ -1027,6 +1028,7 @@ function DevelopPageContent({ layout = BuilderLayout.Develop }: { layout?: Build
         if (iframe) postMessageToIframe(iframe, { type: 'TEXT_EDIT_SUCCEEDED' })
       } else {
         logger.error('develop-page.text-update.failed', { appId })
+        showEditApplyFailureGrowl(t)
         if (iframe) postMessageToIframe(iframe, 'code' in result ? { type: 'TEXT_EDIT_FAILED', code: result.code } : { type: 'TEXT_EDIT_FAILED' })
       }
     } catch (error) {
@@ -1034,9 +1036,10 @@ function DevelopPageContent({ layout = BuilderLayout.Develop }: { layout?: Build
         appId,
         error: error instanceof Error ? error.message : String(error)
       })
+      showEditApplyFailureGrowl(t)
       if (iframe) postMessageToIframe(iframe, { type: 'TEXT_EDIT_FAILED' })
     }
-  }, [appId])
+  }, [appId, t])
 
   const sendTextFix = useCallback(async (data: { requestId?: string; oldText: string }) => {
     if (!appId) return
@@ -1092,6 +1095,7 @@ function DevelopPageContent({ layout = BuilderLayout.Develop }: { layout?: Build
         if (iframe) postMessageToIframe(iframe, { type: 'STYLE_EDIT_SUCCEEDED', commitId })
       } else {
         logger.error('develop-page.style-update.failed', { appId })
+        showEditApplyFailureGrowl(t)
         if (iframe) postMessageToIframe(iframe, { type: 'STYLE_EDIT_FAILED', commitId })
       }
     } catch (error) {
@@ -1099,9 +1103,10 @@ function DevelopPageContent({ layout = BuilderLayout.Develop }: { layout?: Build
         appId,
         error: error instanceof Error ? error.message : String(error)
       })
+      showEditApplyFailureGrowl(t)
       if (iframe) postMessageToIframe(iframe, { type: 'STYLE_EDIT_FAILED', commitId })
     }
-  }, [appId])
+  }, [appId, t])
 
   const sendFormatOverrideUpdate = useCallback(async (data: BusFormatOverrideUpdatePayload) => {
     if (!appId) return

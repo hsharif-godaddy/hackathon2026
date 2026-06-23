@@ -221,6 +221,28 @@ export interface ElementDeletePayload {
   }
 }
 
+function readEditErrorBody(body: unknown, fallback: string): string {
+  if (!body || typeof body !== 'object') return fallback
+
+  const data = body as { details?: unknown; error?: unknown }
+  if (typeof data.details === 'string') return data.details
+  if (typeof data.error === 'string') return `${fallback}: ${data.error}`
+  return fallback
+}
+
+async function readEditError(response: Response, fallback: string): Promise<string> {
+  const body = await response.json().catch(() => null)
+  return readEditErrorBody(body, fallback)
+}
+
+function isUnsupportedDynamicTextContentError(response: Response, body: unknown): body is TextUpdateResult {
+  return response.status === 400 &&
+    !!body &&
+    typeof body === 'object' &&
+    'code' in body &&
+    body.code === TextEditErrorCode.UnsupportedDynamicTextContent
+}
+
 export interface ImageReplaceData {
   elementInfo: {
     tagName: string
@@ -659,21 +681,9 @@ export class AppService {
 
     if (!response.ok) {
       const body = await response.json().catch(() => null)
-      if (
-        response.status === 400 &&
-        body &&
-        typeof body === 'object' &&
-        'code' in body &&
-        body.code === TextEditErrorCode.UnsupportedDynamicTextContent
-      ) return body as TextUpdateResult
+      if (isUnsupportedDynamicTextContentError(response, body)) return body
 
-      const error = body &&
-        typeof body === 'object' &&
-        'error' in body &&
-        typeof body.error === 'string'
-        ? `: ${body.error}`
-        : ''
-      throw new Error(`Failed to send text update to API: ${response.status}${error}`)
+      throw new Error(readEditErrorBody(body, `Failed to send text update to API: ${response.status}`))
     }
 
     return response.json()
@@ -723,7 +733,7 @@ export class AppService {
     })
 
     if (!response.ok) {
-      throw new Error(`Failed to send style update to API: ${response.status}`)
+      throw new Error(await readEditError(response, `Failed to send style update to API: ${response.status}`))
     }
 
     return response.json()

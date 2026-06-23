@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+vi.mock('@airo/shared/chat', () => ({
+  isRestoreMetadata: vi.fn(function isRestoreMetadata() { return false }),
+}))
+
 const { agentFetch, buildDynamicApiUrl } = vi.hoisted(() => ({
   agentFetch: vi.fn(),
   buildDynamicApiUrl: vi.fn(),
