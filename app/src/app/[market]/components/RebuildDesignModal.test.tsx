@@ -111,14 +111,80 @@ describe('RebuildDesignModal', () => {
     expect(mockTrackChoice).toHaveBeenCalledWith('modernize')
   })
 
-  it('passes an empty url when the input is blank', () => {
+  it('keeps Continue disabled when a direction is selected but the url is blank', () => {
     const onSelect = vi.fn()
     render(<RebuildDesignModal open onClose={vi.fn()} onSelect={onSelect} />)
 
     fireEvent.click(screen.getByTestId('rebuild-design-option-keep-similar'))
-    fireEvent.click(screen.getByTestId('rebuild-design-continue'))
 
-    expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ direction: 'keep-similar' }), '')
+    const continueBtn = screen.getByTestId('rebuild-design-continue')
+    expect(continueBtn).toBeDisabled()
+    fireEvent.click(continueBtn)
+    expect(onSelect).not.toHaveBeenCalled()
+  })
+
+  it('keeps Continue disabled when the url is only whitespace', () => {
+    const onSelect = vi.fn()
+    render(<RebuildDesignModal open onClose={vi.fn()} onSelect={onSelect} />)
+
+    fireEvent.click(screen.getByTestId('rebuild-design-option-modernize'))
+    fireEvent.change(screen.getByTestId('rebuild-design-url-input'), {
+      target: { value: '   ' },
+    })
+
+    expect(screen.getByTestId('rebuild-design-continue')).toBeDisabled()
+  })
+
+  it('keeps Continue disabled when the url is not a valid website', () => {
+    const onSelect = vi.fn()
+    render(<RebuildDesignModal open onClose={vi.fn()} onSelect={onSelect} />)
+
+    fireEvent.click(screen.getByTestId('rebuild-design-option-modernize'))
+    fireEvent.change(screen.getByTestId('rebuild-design-url-input'), {
+      target: { value: 'asdf' },
+    })
+
+    expect(screen.getByTestId('rebuild-design-continue')).toBeDisabled()
+  })
+
+  it('accepts a bare domain without a scheme', () => {
+    const onSelect = vi.fn()
+    render(<RebuildDesignModal open onClose={vi.fn()} onSelect={onSelect} />)
+
+    fireEvent.change(screen.getByTestId('rebuild-design-url-input'), {
+      target: { value: 'mysite.com' },
+    })
+    fireEvent.click(screen.getByTestId('rebuild-design-option-modernize'))
+
+    const continueBtn = screen.getByTestId('rebuild-design-continue')
+    expect(continueBtn).not.toBeDisabled()
+    fireEvent.click(continueBtn)
+    expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ direction: 'modernize' }), 'mysite.com')
+  })
+
+  it('shows the invalid-url message only after blur, and clears it once valid', () => {
+    render(<RebuildDesignModal open onClose={vi.fn()} onSelect={vi.fn()} />)
+    const input = screen.getByTestId('rebuild-design-url-input')
+
+    fireEvent.change(input, { target: { value: 'asdf' } })
+    // Pristine (not blurred) → no error yet, even though it's invalid.
+    expect(screen.queryByTestId('rebuild-design-url-error')).toBeNull()
+
+    fireEvent.blur(input)
+    expect(screen.getByTestId('rebuild-design-url-error')).toBeInTheDocument()
+
+    fireEvent.change(input, { target: { value: 'https://example.com' } })
+    expect(screen.queryByTestId('rebuild-design-url-error')).toBeNull()
+  })
+
+  it('does not show the invalid-url message when the field is blurred while empty', () => {
+    render(<RebuildDesignModal open onClose={vi.fn()} onSelect={vi.fn()} />)
+    const input = screen.getByTestId('rebuild-design-url-input')
+
+    fireEvent.focus(input)
+    fireEvent.blur(input)
+
+    expect(screen.queryByTestId('rebuild-design-url-error')).toBeNull()
   })
 
   it('pre-fills url and pre-selects direction from props (deep link)', () => {
@@ -148,6 +214,7 @@ describe('RebuildDesignModal toggles', () => {
   it('selecting Keep similar seeds all toggles on and submits an all-on choice', () => {
     const onSelect = vi.fn()
     render(<RebuildDesignModal open onClose={() => {}} onSelect={onSelect} />)
+    fireEvent.change(screen.getByTestId('rebuild-design-url-input'), { target: { value: 'https://example.com' } })
     fireEvent.click(screen.getByTestId('rebuild-design-option-keep-similar'))
     fireEvent.click(screen.getByTestId('rebuild-design-continue'))
     expect(onSelect).toHaveBeenCalledWith(
@@ -159,6 +226,7 @@ describe('RebuildDesignModal toggles', () => {
   it('Reimagine then flipping Colors on submits a mixed choice', () => {
     const onSelect = vi.fn()
     render(<RebuildDesignModal open onClose={() => {}} onSelect={onSelect} />)
+    fireEvent.change(screen.getByTestId('rebuild-design-url-input'), { target: { value: 'https://example.com' } })
     fireEvent.click(screen.getByTestId('rebuild-design-option-modernize'))
     fireEvent.click(screen.getByTestId('rebuild-bring-over-colors'))
     fireEvent.click(screen.getByTestId('rebuild-design-continue'))
@@ -171,6 +239,7 @@ describe('RebuildDesignModal toggles', () => {
   it('Reimagine preset: keepLogo on, all other toggles off', () => {
     const onSelect = vi.fn()
     render(<RebuildDesignModal open onClose={() => {}} onSelect={onSelect} />)
+    fireEvent.change(screen.getByTestId('rebuild-design-url-input'), { target: { value: 'https://example.com' } })
     fireEvent.click(screen.getByTestId('rebuild-design-option-modernize'))
     fireEvent.click(screen.getByTestId('rebuild-design-continue'))
     expect(onSelect).toHaveBeenCalledWith(

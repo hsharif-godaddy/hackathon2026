@@ -34,6 +34,7 @@ export const REBUILD_INTAKE_DEFAULT_MESSAGES: Record<string, string> = {
   builder_rebuild_design_option_modernize_description: 'A fresh, modern redesign',
   builder_rebuild_design_option_keep_similar_label: 'Clone my existing site',
   builder_rebuild_design_option_keep_similar_description: 'A faithful copy of my design & content',
+  builder_rebuild_design_url_invalid: 'Enter a valid website URL',
   builder_rebuild_bring_over_logo: 'Keep logo',
   builder_rebuild_bring_over_images: 'Keep images',
   builder_rebuild_bring_over_colors: 'Keep colors',

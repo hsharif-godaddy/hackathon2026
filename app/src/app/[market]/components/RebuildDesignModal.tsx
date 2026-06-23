@@ -42,6 +42,11 @@ const OPTIONS: { direction: RebuildModalDirection; labelKey: string; descKey: st
   },
 ]
 
+// Soft check: optional scheme, at least one dot, 2+ char TLD. Accepts "mysite.com"
+// and "https://sub.site.co.uk/path"; rejects garbage like "asdf". Not a strict
+// validator — just enough to keep obvious junk from triggering a doomed scrape.
+const URL_PATTERN: RegExp = /^(https?:\/\/)?([\w-]+\.)+[a-z]{2,}(\/.*)?$/i
+
 const TOGGLE_FIELDS: { field: keyof Pick<RebuildBringOverChoice, 'keepLogo' | 'keepImages' | 'keepColors' | 'keepFonts'>; labelKey: string; testId: string }[] = [
   { field: 'keepLogo', labelKey: 'builder_rebuild_bring_over_logo', testId: 'rebuild-bring-over-logo' },
   { field: 'keepImages', labelKey: 'builder_rebuild_bring_over_images', testId: 'rebuild-bring-over-images' },
@@ -58,6 +63,9 @@ export default function RebuildDesignModal({
 }: RebuildDesignModalProps) {
   const t = useTranslations()
   const [url, setUrl] = useState('')
+  // Defer the invalid-URL message until the field is blurred, so we don't flag
+  // a half-typed address mid-keystroke.
+  const [urlTouched, setUrlTouched] = useState(false)
   // Select-then-confirm: a card click selects (highlights + seeds toggles); Continue commits.
   const [choice, setChoice] = useState<RebuildBringOverChoice | null>(null)
   const showAdvanced = useSwitchboard('appbuilder-rebuild-bring-over-toggles')
@@ -66,10 +74,15 @@ export default function RebuildDesignModal({
     return t(key, undefined, defaultMessageForRebuildIntakeKey(key))
   }
 
+  const trimmedUrl: string = url.trim()
+  const isUrlValid: boolean = URL_PATTERN.test(trimmedUrl)
+  const showUrlError: boolean = urlTouched && trimmedUrl.length > 0 && !isUrlValid
+
   useEffect(() => {
     if (open) {
       trackRebuildDesignModalShown()
       setUrl(initialUrl)
+      setUrlTouched(false)
       setChoice(initialDirection ? presetForDirection(initialDirection) : null)
     }
   }, [open, initialUrl, initialDirection])
@@ -91,9 +104,26 @@ export default function RebuildDesignModal({
             placeholder="https://yoursite.com"
             value={url}
             onChange={(e) => setUrl(e.target.value)}
-            className="w-full px-2 py-1.5 rounded-lg border border-border bg-transparent transition-colors duration-200 focus:outline-none focus:border-primary text-sm"
+            onBlur={() => setUrlTouched(true)}
+            aria-invalid={showUrlError}
+            aria-describedby={showUrlError ? 'rebuild-design-url-error' : undefined}
+            className={`w-full px-2 py-1.5 rounded-lg border bg-transparent transition-colors duration-200 focus:outline-none text-sm ${
+              showUrlError
+                ? 'border-intents-ux-feedbackCritical-feedbackColor'
+                : 'border-border focus:border-primary'
+            }`}
             autoFocus
           />
+          {showUrlError && (
+            <text.span
+              id="rebuild-design-url-error"
+              data-testid="rebuild-design-url-error"
+              size={-2}
+              className="block mt-1 text-start text-intents-ux-feedbackHighContrastCritical-feedbackColor"
+            >
+              {tr('builder_rebuild_design_url_invalid')}
+            </text.span>
+          )}
         </div>
         {OPTIONS.map((option, index) => {
           const isSelected = choice?.direction === option.direction
@@ -157,12 +187,12 @@ export default function RebuildDesignModal({
         <Button
           data-testid="rebuild-design-continue"
           design="primary"
-          disabled={!choice}
+          disabled={!choice || !isUrlValid}
           text={t('builder_common_continue', undefined, 'Continue')}
           onClick={() => {
-            if (!choice) return
+            if (!choice || !isUrlValid) return
             trackRebuildDesignModalChoice(choice.direction)
-            onSelect(choice, url.trim())
+            onSelect(choice, trimmedUrl)
           }}
         />
       </Box>
