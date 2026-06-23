@@ -1,10 +1,10 @@
-# Brand Showcase (Step 4)
+# Brand Showcase
 
 When the user triggers **Build my brand showcase**, write a self-contained brand specimen page to
 `public/brand-showcase.html` using `str_replace_based_edit_tool` (create the file). Use a
 workspace-relative path (`public/brand-showcase.html`), not a leading-slash absolute path.
-**Only after the file is written**, call `setWizardStep({ step: 4 })` — the wizard reveals the
-showcase as soon as you advance, so write first, then advance.
+The wizard reveals the showcase in the **working** phase as soon as the file exists — just write
+it; do not change the phase.
 It is iframed standalone by the wizard — it is NOT a website page and is never published.
 
 ## Read content first

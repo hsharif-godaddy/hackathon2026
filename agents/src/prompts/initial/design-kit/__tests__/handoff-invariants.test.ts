@@ -4,11 +4,12 @@ import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 
 /**
- * Guards the design-kit wizard's single-handoff invariant at the prompt level: the
- * agent must hand off to `develop` ONLY at Step 5 ("Create my website"), and do every
- * other step's work itself. These assertions read the real prompt fragments from disk
- * (the agent test mocks the prompt builder, so the composed prompt is otherwise
- * untested) and would have caught the historical premature-handoff regression.
+ * Guards the design-kit flow's single-handoff invariant at the prompt level: the
+ * agent must hand off to `develop` ONLY in the "Create website" phase ("Create my
+ * website"), and do every other phase's work itself. These assertions read the real
+ * prompt fragments from disk (the agent test mocks the prompt builder, so the composed
+ * prompt is otherwise untested) and would have caught the historical premature-handoff
+ * regression.
  */
 const DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const read = (file: string): string => readFileSync(path.join(DIR, file), 'utf8')
@@ -33,30 +34,30 @@ describe('design-kit prompt handoff invariants', () => {
     }
   })
 
-  it('wizard-flow.md mentions handoff/develop ONLY within the Step 5 section', () => {
+  it('wizard-flow.md mentions handoff/develop ONLY within the Create website section', () => {
     const wf = read('wizard-flow.md')
-    const step5Idx = wf.indexOf('## Step 5')
-    expect(step5Idx).toBeGreaterThan(0)
-    expect(HANDOFF_RE.test(wf.slice(0, step5Idx)), 'handoff/develop must not appear before Step 5').toBe(false)
-    expect(HANDOFF_RE.test(wf.slice(step5Idx)), 'Step 5 must contain the handoff').toBe(true)
+    const handoffIdx = wf.indexOf('## Create website')
+    expect(handoffIdx).toBeGreaterThan(0)
+    expect(HANDOFF_RE.test(wf.slice(0, handoffIdx)), 'handoff/develop must not appear before the Create website section').toBe(false)
+    expect(HANDOFF_RE.test(wf.slice(handoffIdx)), 'Create website section must contain the handoff').toBe(true)
   })
 
-  it('Step 5 gates the handoff on the real UI trigger, not co-located with the showcase trigger', () => {
+  it('Create website section gates the handoff on the real UI trigger, not co-located with the showcase trigger', () => {
     const wf = read('wizard-flow.md')
-    const step5 = wf.slice(wf.indexOf('## Step 5'))
+    const handoff = wf.slice(wf.indexOf('## Create website'))
     // The literal message the UI sends from the "Create my website" / "Skip to my
     // website" buttons (DesignKitWizard handleCreateWebsite). Gating on anything else
     // (e.g. "Create website") would never fire and convert the bug into a never-handoff.
-    expect(step5).toContain('Create my website')
+    expect(handoff).toContain('Create my website')
     // The showcase trigger must not sit beside the handoff (priming + the guard would
     // otherwise risk matching/blocking the wrong message).
-    expect(step5).not.toContain('Build my brand showcase')
+    expect(handoff).not.toContain('Build my brand showcase')
   })
 
-  it('workflow-override.md revokes the base scaffold-then-handoff workflow and names the single Step-5 handoff', () => {
+  it('workflow-override.md revokes the base scaffold-then-handoff workflow and names the single Create-website handoff', () => {
     const override = read('workflow-override.md')
     expect(override.toLowerCase()).toContain('does not apply')
-    expect(override).toContain('Step 5')
+    expect(override).toContain('Create website')
     expect(HANDOFF_RE.test(override)).toBe(true)
   })
 })

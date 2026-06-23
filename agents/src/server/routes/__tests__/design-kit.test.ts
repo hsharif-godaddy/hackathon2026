@@ -222,18 +222,18 @@ describe('design-kit direct-edit routes', () => {
     expect(setMock).not.toHaveBeenCalled();
   });
 
-  it('PUT wizard-step persists and publishes build_phase', async () => {
+  it('PUT wizard-step persists the phase and publishes build_phase', async () => {
     getConversationsByApp.mockReturnValueOnce(['conv-a']);
 
     const res = await request(makeApp())
       .put('/apps/app1234567/design-kit/wizard-step')
-      .send({ step: 3 });
+      .send({ phase: 'working' });
 
     expect(res.status).toBe(200);
-    expect(setMock).toHaveBeenCalledWith(expect.anything(), 'brand.wizard.step', { step: 3 });
+    expect(setMock).toHaveBeenCalledWith(expect.anything(), 'brand.wizard.phase', { phase: 'working' });
     expect(ssePublish).toHaveBeenCalledWith(
       'conv-a',
-      expect.objectContaining({ type: 'build_phase', data: expect.objectContaining({ step: 3, appId: 'app1234567' }) }),
+      expect.objectContaining({ type: 'build_phase', data: expect.objectContaining({ phase: 'working', appId: 'app1234567' }) }),
     );
   });
 
@@ -242,7 +242,7 @@ describe('design-kit direct-edit routes', () => {
 
     const res = await request(makeApp())
       .put('/apps/app1234567/design-kit/wizard-step')
-      .send({ step: 3 });
+      .send({ phase: 'working' });
 
     expect(res.status).toBe(200);
     // SSE path: one publish per active conversation for this app.
@@ -253,7 +253,7 @@ describe('design-kit direct-edit routes', () => {
       expect.objectContaining({
         conversationId: 'conv-a',
         type: 'build_phase',
-        data: expect.objectContaining({ step: 3, appId: 'app1234567' }),
+        data: expect.objectContaining({ phase: 'working', appId: 'app1234567' }),
       }),
     );
     expect(ssePublish).toHaveBeenCalledWith(
@@ -262,10 +262,10 @@ describe('design-kit direct-edit routes', () => {
     );
   });
 
-  it('PUT wizard-step returns 400 for an out-of-range step', async () => {
+  it('PUT wizard-step returns 400 for an invalid phase', async () => {
     const res = await request(makeApp())
       .put('/apps/app1234567/design-kit/wizard-step')
-      .send({ step: 9 });
+      .send({ phase: 'nonsense' });
 
     expect(res.status).toBe(400);
     expect(setMock).not.toHaveBeenCalled();

@@ -1,9 +1,10 @@
-# Workflow — Follow the 5-Step Design Kit Wizard
+# Workflow — Follow the Design Kit Brand Flow
 
-The 5-step Design Kit Wizard below is your complete workflow, from start to finish. Any
-general "analyze → plan → hand off" workflow described earlier does not apply to you — you run
-the wizard and do the work of every step yourself.
+The Design Kit brand flow below is your complete workflow, from start to finish:
+**Gathering → Working → Create website (handoff)**. Any general "analyze → plan → hand off"
+workflow described earlier does not apply to you — you run this flow and do the work of every
+phase yourself.
 
-You hand off to the `develop` agent at exactly one moment: **Step 5**, when the user asks to
-create their website. Before that, you stay in the wizard and do each step's own work yourself
-— including writing the brand showcase at Step 4. Follow the steps in order.
+You hand off to the `develop` agent at exactly one moment: the **Create website** step, when the
+user asks to create their website. Before that, you stay in the flow and do each phase's own work
+yourself — including writing the brand showcase in the working phase. Follow the phases in order.

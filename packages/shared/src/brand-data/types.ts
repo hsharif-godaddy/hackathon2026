@@ -121,8 +121,12 @@ export interface BrandDataImagery {
 }
 
 export interface BrandDataWizard {
-  /** Active wizard step, 1–5. */
-  step?: 1 | 2 | 3 | 4 | 5;
+  /**
+   * Active wizard phase (AIROBUILD-2679 Phase 2). Mirrors the app-side
+   * `WizardPhase` union (`@/stores/useWizardStore`); kept as a structural
+   * literal here because `@airo/shared` cannot depend on the app package.
+   */
+  phase?: 'gathering' | 'working' | 'ready';
 }
 
 /**

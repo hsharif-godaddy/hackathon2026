@@ -5,10 +5,10 @@ import path from 'node:path'
 
 /**
  * Guards the design-kit questioning gate: the opening pass asks only for the core missing
- * essentials (business name; business type when unclear) and defers everything else to
- * Step 3 — not the old "up to 4 questions (name, audience, location, scope)" pass. Reads the
- * real prompt fragments from disk (the agent test mocks the prompt builder, so the composed
- * prompt is otherwise untested).
+ * essentials (business name; business type when unclear) and defers everything else to the
+ * working phase — not the old "up to 4 questions (name, audience, location, scope)" pass.
+ * Reads the real prompt fragments from disk (the agent test mocks the prompt builder, so the
+ * composed prompt is otherwise untested).
  */
 const DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const read = (file: string): string => readFileSync(path.join(DIR, file), 'utf8')
@@ -40,8 +40,8 @@ describe('design-kit questioning gate (core-only)', () => {
     expect(wizardFlow).not.toContain('(name, audience, scope)')
   })
 
-  it('wizard-flow Step 1 points at the core-only gate', () => {
-    const step1 = wizardFlow.slice(wizardFlow.indexOf('## Step 1'), wizardFlow.indexOf('## Step 2'))
-    expect(/first message|missing essentials|ask nothing/i.test(step1)).toBe(true)
+  it('wizard-flow gathering points at the core-only gate', () => {
+    const gathering = wizardFlow.slice(wizardFlow.indexOf('## Gathering'), wizardFlow.indexOf('## Working'))
+    expect(/first message|missing essentials|ask nothing/i.test(gathering)).toBe(true)
   })
 })

@@ -1,7 +1,7 @@
 'use client';
 
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
-import { type JSX,useEffect, useRef, useState } from 'react';
+import { type JSX, useEffect, useRef, useState } from 'react';
 import Button from '@ux/button';
 import WandIcon from '@ux/icon/wand';
 import text from '@ux/text';
@@ -9,16 +9,13 @@ import text from '@ux/text';
 import { ViewMode } from '@/app/[market]/develop/components/types';
 import { useChatContext } from '@/contexts/ChatContext';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
-import { useWizardStore, type WizardStep } from '@/stores/useWizardStore';
 import { AssemblingKit } from './AssemblingKit';
 import { DesignKitPanels } from './DesignKitPanels';
-import { Stepper } from './Stepper';
-import { UnderstandingIntro } from './UnderstandingIntro';
-import { useWizardStep } from './useWizardStep';
+import { useWizardPhase } from './useWizardPhase';
 import { WebsiteHandoff, WebsiteHandoffDone } from './WebsiteHandoff';
 
 // The wizard chrome is Airo-branded (`--color-ai`), not the user's generated
-// brand colour — those appear only in the step-4 showcase.
+// brand colour — those appear only in the working-phase showcase.
 const AIRO = 'var(--color-ai)';
 
 /**
@@ -43,15 +40,18 @@ export function buildShowcaseUrl(previewUrl: string, reloadKey: number): string 
 }
 
 /**
- * Design Kit Wizard shell.
+ * Design Kit Wizard shell (AIROBUILD-2679 Phase 2 — chat-only, 2-phase model).
  *
- * Routes by step: 1–2 show the chat-driven "assembling the kit" state, 3 shows
- * the editing panels, 4 shows ONLY the standalone brand-showcase iframe (the
- * step-3 panels are hidden), 5 shows a finalizing state.
+ * Routes by phase:
+ * - `gathering`: chat-only "assembling the kit" state, no buttons. The agent
+ *   gathers core info and assembles the kit while AssemblingKit's rows fill.
+ * - `working`: the editing panels + the standalone brand-showcase iframe + the
+ *   Build / Skip / Create-website buttons.
+ * - `ready`: the build has completed; play the launch send-off once, then flip
+ *   to the Edit tab so the build overlay takes over.
  *
- * The Build / Create-website buttons move the stepper locally for an instant
- * response AND send a chat message so the agent acts (generate showcase / hand
- * off). The agent's prompt calls `setWizardStep(4)`/`(5)` itself, reconciling.
+ * `ready` is driven by the real build-completion signal
+ * (`useDevelopPageStore.app.initialBuildComplete`) — the agent never emits it.
  */
 export function DesignKitWizard({
   appId,
@@ -60,45 +60,55 @@ export function DesignKitWizard({
   appId: string;
   previewUrl?: string;
 }): JSX.Element {
-  const { step, setStep } = useWizardStep(appId);
+  const { phase, setPhase } = useWizardPhase(appId);
   const { sendMessage } = useChatContext();
   const reduce = useReducedMotion();
 
-  // Step 5 hands off to the build: the launch sequence plays, then we flip the
-  // view to the Edit tab so the build overlay takes over. `handoffDone` gates
-  // this to the first arrival — a later revisit shows a calm "watch it build"
-  // panel instead of replaying the animation and re-yanking the user away.
+  // The `ready` phase hands off to the build: the launch sequence plays, then we
+  // flip the view to the Edit tab so the build overlay takes over.
   const setViewMode = useDevelopPageStore((s) => s.setViewMode);
-  const handoffDone = useWizardStore((s) => s.handoffDoneByApp[appId] ?? false);
-  const markHandoffDone = useWizardStore((s) => s.markHandoffDone);
   const handleHandoffComplete = (): void => {
-    markHandoffDone(appId);
     setViewMode(ViewMode.EDIT);
   };
 
+  // Drive the hand-off from the real build-completion signal — the agent never
+  // emits `ready`. Scope to this app so a stale store entry for another app can't
+  // flip us. The hand-off shows when the build is done OR the persisted phase is
+  // already `ready`, so the reveal does not wait on the setPhase round-trip below.
+  const initialBuildComplete = useDevelopPageStore(
+    (s) => (s.app?.id === appId ? (s.app?.initialBuildComplete ?? false) : false),
+  );
+  const inHandoff = phase === 'ready' || initialBuildComplete;
+
+  // Distinguish the live build (mounted while gathering/working, then reached the
+  // hand-off) from resuming straight into it: only the former replays the launch
+  // animation. Captured once on first render.
+  const startedAtReadyRef = useRef<boolean | null>(null);
+  if (startedAtReadyRef.current === null) startedAtReadyRef.current = inHandoff;
+
   // `assembled` flips true only once AssemblingKit's "kit ready" packaging
-  // animation has finished; we hold the step-2 → step-3 crossfade until then so
-  // the payoff is never cut short. `cameThroughStep2` distinguishes the live
-  // build (1 → 2 → 3, play the payoff) from resuming straight at step 3
-  // (skip it — nothing was just assembled).
+  // animation has finished; we hold the gathering → working crossfade until then
+  // so the payoff is never cut short. `cameThroughGathering` distinguishes the
+  // live build (gathering → working, play the payoff) from resuming straight at
+  // `working` (skip it — nothing was just assembled).
   const [assembled, setAssembled] = useState(false);
-  const [cameThroughStep2, setCameThroughStep2] = useState(false);
+  const [cameThroughGathering, setCameThroughGathering] = useState(false);
   useEffect(() => {
-    if (step === 2) setCameThroughStep2(true);
-  }, [step]);
+    if (phase === 'gathering') setCameThroughGathering(true);
+  }, [phase]);
 
-  // True from clicking "Build my brand showcase" until the agent advances to step 4
-  // (which it does only AFTER writing public/brand-showcase.html). Gives feedback while
-  // the user stays on step 3, and is cleared on any step change.
+  // True from clicking "Build my brand showcase" until the showcase is ready (the
+  // BRAND_SHOWCASE_READY handler clears it). Also cleared on any phase change.
   const [building, setBuilding] = useState(false);
-  useEffect(() => { setBuilding(false); }, [step]);
+  useEffect(() => { setBuilding(false); }, [phase]);
 
-  // Furthest step the user has reached, so the stepper lets them revisit step 3 ↔ 4
-  // freely once the showcase has been built.
-  const [maxStep, setMaxStep] = useState<WizardStep>(step);
-  useEffect(() => { setMaxStep((m) => (step > m ? step : m)); }, [step]);
+  // Persist the `ready` phase so the develop page reveals the chrome (it reads
+  // phaseByApp). The DOM hand-off above does not wait on this round-trip.
+  useEffect(() => {
+    if (initialBuildComplete && phase !== 'ready') void setPhase('ready');
+  }, [initialBuildComplete, phase, setPhase]);
 
-  // Step-4 showcase readiness. The iframe loads `${previewUrl}/brand-showcase.html`,
+  // Working-phase showcase readiness. The iframe loads `${previewUrl}/brand-showcase.html`,
   // but until the agent has actually written that file, Vite's SPA fallback serves
   // the site's index.html (the website) instead. So we keep the iframe hidden behind
   // a loader and only reveal it once the real showcase announces itself via
@@ -108,7 +118,7 @@ export function DesignKitWizard({
   const [showcaseReloadKey, setShowcaseReloadKey] = useState(0);
   const showcaseReadyRef = useRef(false);
   useEffect(() => {
-    if (step !== 4) return undefined;
+    if (phase !== 'working') return undefined;
     setShowcaseReady(false);
     showcaseReadyRef.current = false;
     // The showcase iframe is loaded cross-site from the preview URL, so validate
@@ -128,6 +138,7 @@ export function DesignKitWizard({
       if ((e.data as { type?: string } | null)?.type === 'BRAND_SHOWCASE_READY') {
         showcaseReadyRef.current = true;
         setShowcaseReady(true);
+        setBuilding(false); // showcase is live — re-enable the Build button for rebuilds
       }
     };
     window.addEventListener('message', onMessage);
@@ -138,41 +149,40 @@ export function DesignKitWizard({
       window.removeEventListener('message', onMessage);
       window.clearInterval(intervalId);
     };
-  }, [step, previewUrl]);
+  }, [phase, previewUrl]);
 
   const handleBuild = (): void => {
-    // Don't switch to step 4 here. The agent advances to step 4 itself, but only AFTER
-    // it has written public/brand-showcase.html — so the showcase iframe never loads
-    // before the file exists. We just request the build and show a building state.
+    // Don't change phase here. The showcase becomes ready only AFTER the agent
+    // has written public/brand-showcase.html — so we just request the build and
+    // show a building state; the iframe reveals itself on BRAND_SHOWCASE_READY.
     setBuilding(true);
     void sendMessage({ content: 'Build my brand showcase' });
   };
 
   const handleCreateWebsite = (): void => {
-    void setStep(5 as WizardStep);
+    // Do NOT setPhase('ready') — `ready` is build-driven (initialBuildComplete).
     void sendMessage({ content: 'Create my website' });
   };
 
-  // Crossfade between the three visual phases: invitation (1), assembly (2),
-  // editing (3+). Keying AnimatePresence on the phase gives a clean transition.
-  // We linger on 'assembling' when the agent has advanced to step 3 but the
-  // packaging payoff hasn't finished (cameThroughStep2 && !assembled).
-  const phase: 'understanding' | 'assembling' | 'editing' =
-    step === 1
-      ? 'understanding'
-      : step === 2
+  // Crossfade between the two working visual phases: assembly (gathering, plus
+  // the working-phase payoff while the kit seals) and editing (working, once the
+  // payoff has finished). We linger on 'assembling' when the phase has advanced
+  // to working but the packaging payoff hasn't finished (cameThroughGathering &&
+  // !assembled). `ready` renders its own send-off outside this crossfade.
+  const visual: 'assembling' | 'editing' | 'handoff' =
+    inHandoff
+      ? 'handoff'
+      : phase === 'gathering'
         ? 'assembling'
-        : cameThroughStep2 && !assembled
+        : cameThroughGathering && !assembled
           ? 'assembling'
           : 'editing';
 
   const subtitle: JSX.Element =
-    step <= 2 ? (
+    phase === 'gathering' ? (
       <>Airo is crafting the perfect brand for you — about <span className="font-semibold" style={{ color: AIRO }}>4–6 minutes</span>.</>
-    ) : step === 3 ? (
+    ) : phase === 'working' ? (
       <>Fine-tune any element — your brand updates live as you go.</>
-    ) : step === 4 ? (
-      <>Here&rsquo;s your brand, assembled. Review it, then create your site.</>
     ) : (
       <>Handing off to build your website…</>
     );
@@ -182,43 +192,60 @@ export function DesignKitWizard({
       className="flex h-full w-full flex-col overflow-auto bg-intents-ux-boxLowContrast-backgroundColor"
       data-testid="design-kit-wizard"
     >
-      <div className="mb-4 w-full px-4 pt-4">
-        {/* Compact header: Airo wand + title inline, phase subtitle below */}
-        <div className="mb-3 flex flex-col items-center text-center">
-          <div className="flex items-center gap-2.5">
-            <motion.span
-              initial={reduce ? false : { scale: 0.8, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              transition={{ type: 'spring', stiffness: 400, damping: 18 }}
-              className="flex h-8 w-8 items-center justify-center rounded-xl"
-              style={{ background: 'color-mix(in srgb, var(--color-ai) 12%, white)', color: AIRO }}
-            >
-              <WandIcon className="h-4 w-4" />
-            </motion.span>
-            <h1 className="text-xl font-semibold tracking-tight text-intents-ux-box-foregroundColor">Building your brand.</h1>
+      {/* The hand-off (ready) renders its own full-screen send-off, so suppress the
+          compact wizard header during it. */}
+      {visual !== 'handoff' && (
+        <div className="mb-4 w-full px-4 pt-4">
+          {/* Compact header: Airo wand + title inline, phase subtitle below */}
+          <div className="mb-3 flex flex-col items-center text-center">
+            <div className="flex items-center gap-2.5">
+              <motion.span
+                initial={reduce ? false : { scale: 0.8, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ type: 'spring', stiffness: 400, damping: 18 }}
+                className="flex h-8 w-8 items-center justify-center rounded-xl"
+                style={{ background: 'color-mix(in srgb, var(--color-ai) 12%, white)', color: AIRO }}
+              >
+                <WandIcon className="h-4 w-4" />
+              </motion.span>
+              <h1 className="text-xl font-semibold tracking-tight text-intents-ux-box-foregroundColor">Building your brand.</h1>
+            </div>
+            <text.p as="caption" emphasis="passive" className="mt-1.5">{subtitle}</text.p>
           </div>
-          <text.p as="caption" emphasis="passive" className="mt-1.5">{subtitle}</text.p>
         </div>
-        <Stepper current={step} maxStep={maxStep} onStepClick={setStep} />
-      </div>
+      )}
 
       <div className="w-full">
         <AnimatePresence mode="wait">
           <motion.div
-            key={phase}
+            key={visual}
             initial={reduce ? { opacity: 0 } : { opacity: 0, y: 14 }}
             animate={{ opacity: 1, y: 0 }}
             exit={reduce ? { opacity: 0 } : { opacity: 0, y: -10 }}
             transition={{ duration: 0.35, ease: 'easeOut' }}
           >
-            {phase === 'understanding' && <UnderstandingIntro />}
-            {phase === 'assembling' && (
-              <AssemblingKit appId={appId} step={step} onAssembled={() => setAssembled(true)} />
+            {visual === 'assembling' && (
+              // gathering: rows fill (step=2). working-before-assembled: feed
+              // step=3 so the seal/payoff plays and fires onAssembled.
+              <AssemblingKit
+                appId={appId}
+                step={phase === 'working' ? 3 : 2}
+                onAssembled={() => setAssembled(true)}
+              />
             )}
 
-            {phase === 'editing' && (
+            {visual === 'handoff' && (
+              startedAtReadyRef.current
+                ? <WebsiteHandoffDone onGo={() => setViewMode(ViewMode.EDIT)} />
+                : <WebsiteHandoff appId={appId} onComplete={handleHandoffComplete} />
+            )}
+
+            {visual === 'editing' && (
               <>
-                {step === 4 && previewUrl && (
+                {/* The showcase area appears only once the user has requested a build
+                    (or it is already live) — otherwise there is no file yet and the
+                    loader would spin forever. */}
+                {previewUrl && (building || showcaseReady) && (
                   <div className="relative mb-8 h-[60vh] w-full">
                     <motion.iframe
                       // Remount on each reload tick so a not-yet-written showcase is
@@ -246,61 +273,44 @@ export function DesignKitWizard({
                     )}
                   </div>
                 )}
-                {step === 5 && (
-                  handoffDone
-                    ? <WebsiteHandoffDone onGo={() => setViewMode(ViewMode.EDIT)} />
-                    : <WebsiteHandoff appId={appId} onComplete={handleHandoffComplete} />
-                )}
 
-                {step === 3 && (
-                  <div className="mb-4">
-                    <h2 className="text-[22px] font-semibold tracking-tight text-intents-ux-box-foregroundColor">Design your visuals</h2>
-                    <text.p as="caption" emphasis="passive" className="mt-0.5">
-                      Everything below is live — tweak any element and your brand updates instantly.
-                    </text.p>
-                  </div>
-                )}
+                <div className="mb-4">
+                  <h2 className="text-[22px] font-semibold tracking-tight text-intents-ux-box-foregroundColor">Design your visuals</h2>
+                  <text.p as="caption" emphasis="passive" className="mt-0.5">
+                    Everything below is live — tweak any element and your brand updates instantly.
+                  </text.p>
+                </div>
 
-                {/* The editing panels belong to Step 3 only. Step 4 shows the
-                    standalone brand showcase; Step 5 the finalizing state. */}
-                {step === 3 && (
-                  <motion.div
-                    initial={reduce ? { opacity: 0 } : { opacity: 0, y: 16 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.45, ease: 'easeOut', delay: 0.05 }}
-                  >
-                    <DesignKitPanels appId={appId} />
-                  </motion.div>
-                )}
+                <motion.div
+                  initial={reduce ? { opacity: 0 } : { opacity: 0, y: 16 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.45, ease: 'easeOut', delay: 0.05 }}
+                >
+                  <DesignKitPanels appId={appId} />
+                </motion.div>
 
-                {step === 3 && (
-                  <div className="mt-2 pt-2 flex items-center justify-end gap-3 border-t border-intents-ux-box-borderColor">
-                    {/* Optional path: skip the brand showcase and go straight to the website (step 5). */}
-                    <Button
-                      design="secondary"
-                      data-testid="design-kit-skip-to-website"
-                      text="Skip to my website"
-                      onClick={handleCreateWebsite}
-                    />
-                    <Button
-                      design="primary"
-                      data-testid="design-kit-build"
-                      text={building ? 'Building your showcase…' : 'Build my brand showcase'}
-                      disabled={building}
-                      onClick={handleBuild}
-                    />
-                  </div>
-                )}
-                {step === 4 && (
-                  <div className="m-2 pt-2 flex justify-end border-t border-intents-ux-box-borderColor">
-                    <Button
-                      design="primary"
-                      data-testid="design-kit-create-website"
-                      text="Create my website"
-                      onClick={handleCreateWebsite}
-                    />
-                  </div>
-                )}
+                <div className="mt-2 pt-2 flex items-center justify-end gap-3 border-t border-intents-ux-box-borderColor">
+                  {/* Optional path: skip the brand showcase and go straight to the website. */}
+                  <Button
+                    design="secondary"
+                    data-testid="design-kit-skip-to-website"
+                    text="Skip to my website"
+                    onClick={handleCreateWebsite}
+                  />
+                  <Button
+                    design="primary"
+                    data-testid="design-kit-build"
+                    text={building ? 'Building your showcase…' : 'Build my brand showcase'}
+                    disabled={building}
+                    onClick={handleBuild}
+                  />
+                  <Button
+                    design="primary"
+                    data-testid="design-kit-create-website"
+                    text="Create my website"
+                    onClick={handleCreateWebsite}
+                  />
+                </div>
               </>
             )}
           </motion.div>

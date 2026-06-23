@@ -26,7 +26,7 @@ vi.mock('../../../server/agent-runtime.js', () => ({
   getEventChannel: () => ({ publish: publishMock }),
 }))
 
-// Step 4 syncs public/brand-tokens.css for the showcase via the workspace.
+// Entering the working phase syncs public/brand-tokens.css for the showcase via the workspace.
 vi.mock('../../../workspace/index.js', () => ({
   createForWorkspace: createForWorkspaceMock,
 }))
@@ -69,30 +69,30 @@ describe('setWizardStepAITool execution', () => {
     setMock.mockResolvedValue({ success: true })
   })
 
-  it('syncs public/brand-tokens.css when advancing to step 4 (showcase reveal)', async function syncsTokensOnStep4() {
-    await setWizardStepAITool.execute({ step: 4 }, createContext('app1234567') as never)
+  it('syncs public/brand-tokens.css when advancing to the working phase (showcase reveal)', async () => {
+    await setWizardStepAITool.execute({ phase: 'working' }, createContext('app1234567') as never)
 
     expect(syncBrandTokensCssMock).toHaveBeenCalledTimes(1)
     expect(syncBrandTokensCssMock).toHaveBeenCalledWith('app1234567', 'cust1', expect.anything())
   })
 
-  it('does not sync brand-tokens.css for non-showcase steps', async function noSyncOffStep4() {
-    await setWizardStepAITool.execute({ step: 3 }, createContext('app1234567') as never)
+  it('does not sync brand-tokens.css for the gathering phase', async () => {
+    await setWizardStepAITool.execute({ phase: 'gathering' }, createContext('app1234567') as never)
 
     expect(syncBrandTokensCssMock).not.toHaveBeenCalled()
   })
 
-  it('persists brand.wizard.step under the workspace scope and emits a build_phase event', async () => {
+  it('persists brand.wizard.phase under the workspace scope and emits a build_phase event', async () => {
     const result = await setWizardStepAITool.execute(
-      { step: 3 },
+      { phase: 'working' },
       createContext('app1234567') as never,
     )
 
     // Scope is built via workspaceScopeFromAppId(appId, customerId) → resolved scope.
     expect(setMock).toHaveBeenCalledWith(
       expect.objectContaining({ appId: 'app1234567', customerId: 'cust1' }),
-      'brand.wizard.step',
-      { step: 3 },
+      'brand.wizard.phase',
+      { phase: 'working' },
     )
 
     expect(publishMock).toHaveBeenCalledWith(
@@ -100,17 +100,17 @@ describe('setWizardStepAITool execution', () => {
       expect.objectContaining({
         conversationId: 'conv-1',
         type: 'build_phase',
-        data: expect.objectContaining({ step: 3, appId: 'app1234567' }),
+        data: expect.objectContaining({ phase: 'working', appId: 'app1234567' }),
       }),
     )
 
     expect(typeof result).toBe('string')
-    expect(result).toContain('3')
+    expect(result).toContain('working')
   })
 
   it('returns an error and does not persist or emit when appId is missing', async () => {
     const result = await setWizardStepAITool.execute(
-      { step: 2 },
+      { phase: 'gathering' },
       { experimental_context: { metadata: {} } } as never,
     )
 
@@ -124,12 +124,12 @@ describe('setWizardStepAITool execution', () => {
     setMock.mockResolvedValueOnce({ success: false, error: 'Write failed' })
 
     const result = await setWizardStepAITool.execute(
-      { step: 4 },
+      { phase: 'working' },
       createContext('app1234567') as never,
     )
 
     expect(result).toContain('Error')
-    expect(result).toContain('Failed to save wizard step')
+    expect(result).toContain('Failed to save wizard phase')
     expect(publishMock).not.toHaveBeenCalled()
   })
 
@@ -139,34 +139,33 @@ describe('setWizardStepAITool execution', () => {
     })
 
     const result = await setWizardStepAITool.execute(
-      { step: 5 },
+      { phase: 'gathering' },
       createContext('app1234567') as never,
     )
 
     expect(setMock).toHaveBeenCalled()
     expect(typeof result).toBe('string')
     expect(result).not.toContain('Error')
-    expect(result).toContain('5')
+    expect(result).toContain('gathering')
   })
 })
 
-describe('StepSchema bounds', () => {
-  it('accepts integer steps within 1-5', () => {
-    expect(StepSchema.safeParse({ step: 1 }).success).toBe(true)
-    expect(StepSchema.safeParse({ step: 3 }).success).toBe(true)
-    expect(StepSchema.safeParse({ step: 5 }).success).toBe(true)
+describe('StepSchema (phase) bounds', () => {
+  it('accepts the three valid phases', () => {
+    expect(StepSchema.safeParse({ phase: 'gathering' }).success).toBe(true)
+    expect(StepSchema.safeParse({ phase: 'working' }).success).toBe(true)
+    expect(StepSchema.safeParse({ phase: 'ready' }).success).toBe(true)
   })
 
-  it('rejects a step below the minimum of 1', () => {
-    expect(StepSchema.safeParse({ step: 0 }).success).toBe(false)
+  it('rejects an unknown phase', () => {
+    expect(StepSchema.safeParse({ phase: 'finished' }).success).toBe(false)
   })
 
-  it('rejects a step above the maximum of 5', () => {
-    expect(StepSchema.safeParse({ step: 6 }).success).toBe(false)
-    expect(StepSchema.safeParse({ step: 9 }).success).toBe(false)
+  it('rejects a missing phase', () => {
+    expect(StepSchema.safeParse({}).success).toBe(false)
   })
 
-  it('rejects a non-integer step', () => {
-    expect(StepSchema.safeParse({ step: 2.5 }).success).toBe(false)
+  it('rejects a legacy numeric step payload', () => {
+    expect(StepSchema.safeParse({ step: 3 }).success).toBe(false)
   })
 })

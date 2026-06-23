@@ -200,16 +200,18 @@ router.put('/apps/:id/design-kit/imagery', validateAppOwnership, async (req: Req
   }
 });
 
-// PUT /apps/:id/design-kit/wizard-step  { step }  (user jumping back to step 3, etc.)
+// PUT /apps/:id/design-kit/wizard-step  { phase }  (user jumping back to the working phase, etc.)
+const WIZARD_PHASES = ['gathering', 'working', 'ready'] as const;
+
 router.put('/apps/:id/design-kit/wizard-step', validateAppOwnership, async (req: Request, res: Response): Promise<void> => {
   const { appId, customerId } = ctx(req);
   try {
-    const step = Number(req.body?.step);
-    if (!Number.isInteger(step) || step < 1 || step > 5) { res.status(400).json({ error: 'step must be 1-5' }); return; }
-    const writeResult = await memory.set(workspaceScopeFromAppId(appId, customerId), 'brand.wizard.step', { step });
+    const phase: unknown = req.body?.phase;
+    if (typeof phase !== 'string' || !(WIZARD_PHASES as readonly string[]).includes(phase)) { res.status(400).json({ error: 'phase must be gathering, working, or ready' }); return; }
+    const writeResult = await memory.set(workspaceScopeFromAppId(appId, customerId), 'brand.wizard.phase', { phase });
     if (!writeResult.success) {
       log.forApp(appId).error('designKit.wizardStep.persist_failed', { appId, error: writeResult.error });
-      res.status(500).json({ error: 'Failed to set wizard step' }); return;
+      res.status(500).json({ error: 'Failed to set wizard phase' }); return;
     }
     try {
       // SSE delivery: publish to each active SSE conversation for this app via
@@ -224,16 +226,16 @@ router.put('/apps/:id/design-kit/wizard-step', validateAppOwnership, async (req:
             conversationId: convId,
             type: 'build_phase',
             content: '',
-            data: { step, appId },
+            data: { phase, appId },
             agentName: 'system',
           });
         }
       }
     } catch { /* non-fatal */ }
-    res.json({ success: true, wizard: { step } });
+    res.json({ success: true, wizard: { phase } });
   } catch (error) {
     log.forApp(appId).error('designKit.wizardStep.failed', { appId, error: error instanceof Error ? error.message : String(error) });
-    res.status(500).json({ error: 'Failed to set wizard step' });
+    res.status(500).json({ error: 'Failed to set wizard phase' });
   }
 });
 

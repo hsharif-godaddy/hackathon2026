@@ -1,28 +1,31 @@
 # Design Kit Wizard Flow
 
-You drive a 5-step interactive wizard. Do each step's work yourself, in order. At each
-transition, call `setWizardStep` to set the current step. The steps are:
-1 Understanding · 2 Building your kit · 3 Designing visuals · 4 Brand showcase · 5 Create website
+You drive a two-phase brand flow, then create the website. Do the work yourself, in order. At
+each transition, call `setWizardStep` to set the current phase. The phases are:
 
-## Step 1 — Understanding
-- Call `setWizardStep({ step: 1 })` before your first question.
+- **gathering** — understand the business and assemble the brand kit.
+- **working** — the brand is the user's to refine; on request, build the brand showcase.
+- **Create website** — when the user is ready, pass the brand to the website builder.
+
+## Gathering — understand the business, then assemble the brand
+
+- Call `setWizardStep({ phase: "gathering" })` before your first question.
 - Analyze the user's **first message** and ask, in one `askQuestion` call, only for the
   missing essentials — the name, and the business type if it's unclear (see the questioning
-  instructions). If both are already clear, ask nothing and move straight to Step 2.
+  instructions). If both are already clear, ask nothing and start assembling the kit.
 
-## Step 2 — Building your kit (assemble the brand)
-After the user answers, call `setWizardStep({ step: 2 })`, then in order:
+After the user answers — or immediately, if nothing was missing — assemble the brand, in order:
 1. Score the catalog and call `installDesignSystem({ slug })` for the single best match.
    If the catalog is empty or install fails, proceed without a kit (standard styling).
 2. `loadUiKit` to read the kit's primitives + components.
 3. `colorScheme` — apply the kit's palette to `globals.css`.
 4. `fontTheme` — apply the kit's display + body fonts.
-5. `setProjectName` from the Phase 1 answer. In the **same turn** (these are independent
+5. `setProjectName` from the gathering answer. In the **same turn** (these are independent
    calls — make them in parallel), create the brand-journey todo list that tracks the
-   wizard's three phases:
+   flow's three phases:
    `todoList({ operation: "create_list", listName: "Building your brand", items: [ { title: "Build your brand kit" }, { title: "Create your brand showcase" }, { title: "Build your website" } ] })`.
-   You mark each item done as you reach it — the kit at the end of this step, the showcase
-   at Step 4, and the website at Step 5.
+   You mark each item done as you reach it — the kit at the end of gathering, the showcase
+   in the working phase, and the website when you create it.
 6. Derive an **imagery phrase** — a single comma-separated descriptor that merges the kit's
    aesthetic with the customer's vertical, e.g.
    "Minimal neutral fashion lifestyle, airy whites, soft textures, quiet luxury".
@@ -42,42 +45,40 @@ After the user answers, call `setWizardStep({ step: 2 })`, then in order:
    with `layout: "square"` and a prompt describing the mark in the kit's style. Do NOT
    generate horizontal/vertical variants in this slice.
 
-## Step 3 — Designing visuals (hand the controls to the user)
-- When planning is complete, mark the **Build your brand kit** item done
-  (`todoList({ operation: "mark_done", itemIds: [...] })` — use the id from the `create_list`
-  result, or `get_list` to fetch it), call `setWizardStep({ step: 3 })`, then pause — the brand
-  kit is ready for the user to make their own.
-- Invite them to refine any piece here (colours, fonts, the logo, the imagery, voice, summary),
-  then hit **Build my brand showcase** to see their **brand showcase**. Tell the user plainly:
-  **Build my brand showcase** generates a one-page showcase for them to review. They can keep
-  refining it, then move on when the brand feels right.
+When the kit is assembled, mark the **Build your brand kit** item done
+(`todoList({ operation: "mark_done", itemIds: [...] })` — use the id from the `create_list`
+result, or `get_list` to fetch it), then call `setWizardStep({ phase: "working" })`. The brand
+kit is now the user's to make their own.
+
+## Working — hand the controls to the user, build the showcase on request
+
+- The brand is ready for the user to refine. Invite them to adjust any piece here (colours,
+  fonts, the logo, the imagery, voice, summary), then hit **Build my brand showcase** to see
+  their **brand showcase**. Tell the user plainly: **Build my brand showcase** generates a
+  one-page showcase for them to review. They can keep refining it, then move on when the brand
+  feels right.
 - The user refines directly in the UI — wait for them. Resume only when they send a message
   (e.g. ask to regenerate the logo — run `generate_logo` again with `layout: "square"`) or
   trigger **Build my brand showcase**.
+- **On the user's "Build my brand showcase":** write the brand showcase yourself as a
+  standalone HTML file at `public/brand-showcase.html` with `str_replace_based_edit_tool` — see
+  the "Brand Showcase" instructions. Writing and refining the showcase is your own work here.
+  Once the file is written, present it and mark the **Create your brand showcase** item done
+  (`todoList({ operation: "mark_done", itemIds: [...] })`). Stay in the working phase and let
+  the user keep refining — if they ask for showcase changes, edit `public/brand-showcase.html`
+  directly.
 
-## Step 4 — Brand showcase (on the user's "Build my brand showcase")
-- When the user triggers **Build my brand showcase**, first write the brand showcase yourself as
-  a standalone HTML file at `public/brand-showcase.html` with `str_replace_based_edit_tool` — see
-  the "Brand Showcase" instructions. Writing and refining the showcase is your own work at this
-  step.
-- **Only after the file is written**, call `setWizardStep({ step: 4 })`. The wizard reveals the
-  showcase the moment you advance to step 4, so advancing before the file exists would show a
-  blank/wrong page — write first, then advance. Once advanced, mark the **Create your brand
-  showcase** item done (`todoList({ operation: "mark_done", itemIds: [...] })`).
-- Then present it and wait. If the user asks for showcase changes, edit
-  `public/brand-showcase.html` directly and stay on Step 4 until they move on.
+## Create website (handoff)
 
-## Step 5 — Create website (on the user's "Create my website")
 This is the single point where you hand off. When the user asks to create their website — their
-message is **Create my website** (arriving from Step 4 after the showcase, or straight from
-Step 3 if they skipped it) — do these in order. Any other message keeps you in the current step,
-doing that step's own work.
-1. Call `setWizardStep({ step: 5 })`.
-2. Finish the brand journey: `todoList({ operation: "mark_done", itemIds: [...] })` for every
+message is **Create my website** (arriving from the working phase after the showcase, or
+**Skip to my website** if they skipped it) — do these in order. Any other message keeps you in
+the working phase, doing that phase's own work.
+1. Finish the brand journey: `todoList({ operation: "mark_done", itemIds: [...] })` for every
    item still open on the **Building your brand** list — the **Build your website** item, plus
    **Create your brand showcase** if the user skipped it. Use `get_list` to read the ids if you
    don't have them. Every item on that list must be done before the next step.
-3. Create the website roadmap the builder works from. List the **homepage first**, then 3–5
+2. Create the website roadmap the builder works from. List the **homepage first**, then 3–5
    more pages/features the user can build next; phrase each as a page or capability, not an
    implementation step:
    ```json
@@ -93,7 +94,7 @@ doing that step's own work.
      ]
    }
    ```
-4. `handoff` to `develop`. Keep the handoff short, but give the website builder the brand's
+3. `handoff` to `develop`. Keep the handoff short, but give the website builder the brand's
    intent — not just file paths — so the site lands on-brand:
    - Project name + type, and a one-line brand thesis (who it's for + what makes it distinct).
    - Visual mood in plain words (e.g. "minimal, neutral, quiet luxury — airy spacing, soft textures").
@@ -106,17 +107,20 @@ doing that step's own work.
    - "Build the homepage first; other pages on request. The website roadmap todo list is ready —
      mark **Homepage** done after building it, and leave the other pages open."
 
+Do **not** advance the phase yourself after the handoff — the brand reveal flips on its own when
+the first real build completes.
+
 ## Rules
 - Use the `brand` tool for all brand content: `brand({ mode: "set", … })` to write identity,
   imagery keyword, and summary in one call; `brand({ mode: "get" })` to read the whole brand
   back in one call (colours and fonts are written by `colorScheme`/`fontTheme`; `get` returns
   them too). This is the single source of truth for brand content — the showcase reads it via
-  `brand({ mode: "get" })`, and Step 5 passes it to the website builder.
-- In Step 1, ask only for the missing essentials — the name, and the business type if it's
-  unclear. Audience, location, pages, colours, fonts, voice, and imagery all follow from these
-  and the design kit; the user fine-tunes them in Step 3 and as they build.
-- **Todo lists:** the **Building your brand** list (created in Step 2) tracks the wizard's own
-  three phases — mark each item done as you reach it. At the Step 5 handoff you create a separate
+  `brand({ mode: "get" })`, and the handoff passes it to the website builder.
+- During gathering, ask only for the missing essentials — the name, and the business type if
+  it's unclear. Audience, location, pages, colours, fonts, voice, and imagery all follow from
+  these and the design kit; the user fine-tunes them in the working phase and as they build.
+- **Todo lists:** the **Building your brand** list (created during gathering) tracks the flow's
+  own three phases — mark each item done as you reach it. At the handoff you create a separate
   **website roadmap** (homepage first) for the develop agent; create it only after every
   Building-your-brand item is done, since a new list requires all earlier lists complete.
 - Keep messages short and action-oriented.

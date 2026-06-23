@@ -18,6 +18,7 @@ import PanelSkeleton from '@/app/[market]/develop/components/PanelSkeleton'
 import { DevelopCreditsModal, PaywallErrorFallback, RenewalPollingModal, UpgradePollingModal } from '@/app/[market]/develop/components/paywall'
 import { CdsEsmPreload } from '@/app/[market]/develop/components/paywall/CdsEsmPreload'
 import BrandBookView from '@/app/[market]/develop/components/preview/brand-book'
+import { DesignKitChatHeader } from '@/app/[market]/develop/components/preview/design-kit-wizard/DesignKitChatHeader'
 import { DesignKitWizard } from '@/app/[market]/develop/components/preview/design-kit-wizard/DesignKitWizard'
 import { useIsDesignKitWizardProfile } from '@/app/[market]/develop/components/preview/design-kit-wizard/isDesignKitWizardProfile'
 import PreviewPane, { type PublishSnapshotRequestDetail } from '@/app/[market]/develop/components/preview/PreviewPane'
@@ -108,6 +109,7 @@ import {
   useStreamingConversationStore
 } from '@/stores/useStreamingConversationStore'
 import { useTodoListStore } from '@/stores/useTodoListStore'
+import { useWizardStore } from '@/stores/useWizardStore'
 import type { RuntimeErrorData } from '@/types/runtime-error'
 import { type BusFormatOverrideUpdatePayload, type BusMediaDeletePayload, registerTrackEventBus } from '@/utils/eventBus'
 import { logAiroHQEvent, logClickEvent, logImpressionEvent } from '@/utils/instrumentation'
@@ -212,7 +214,12 @@ function DevelopPageContent({ layout = BuilderLayout.Develop }: { layout?: Build
   // the wizard's own file writes (showcase HTML, brand-tokens.css).
   const showDesignKitWizard = useIsDesignKitWizardProfile()
 
-  // previewUrl for the design-kit wizard's Step-4 showcase iframe
+  // Chat-only design-kit flow: the 5-step wizard is replaced by a
+  // 2-phase chat-driven flow. Pre-reveal (phase gathering/working) we hide the
+  // develop-page chrome so only the chat + wizard overlay show; we reveal at 'ready'.
+  const wizardPhase = useWizardStore((s) => s.phaseByApp[appId])
+
+  // previewUrl for the design-kit wizard's working-phase showcase iframe
   // (`${previewUrl}/brand-showcase.html`). Sourced from the same server-polling
   // store PreviewPane reads, via a reactive primitive selector so this re-renders
   // when the ready URL changes; null until the preview server is ready. The wizard
@@ -407,6 +414,9 @@ function DevelopPageContent({ layout = BuilderLayout.Develop }: { layout?: Build
   ])
 
   const viewMode = useDevelopPageStore((state) => state.viewMode)
+  // Hide develop chrome (header + divider, full-width chat) while the chat-only design-kit
+  // flow is gathering/working in the BRAND tab; reveal normally once phase is 'ready'.
+  const hideDevelopChrome = showDesignKitWizard && viewMode === ViewMode.BRAND && wizardPhase !== 'ready'
   const chatPaneWidth = useDevelopPageStore((state) => state.chatPaneWidth)
   const hasUnsavedChanges = useDevelopPageStore((state) => state.hasUnsavedChanges)
   const isChatPaneCollapsed = useDevelopPageStore((state) => state.isChatPaneCollapsed)
@@ -1485,7 +1495,9 @@ function DevelopPageContent({ layout = BuilderLayout.Develop }: { layout?: Build
           />
         ) : (
           <>
-        <DevelopHeader onPreviewRefresh={() => handlePreviewRefresh({ lastIframeState })} />
+        {hideDevelopChrome
+          ? <DesignKitChatHeader />
+          : <DevelopHeader onPreviewRefresh={() => handlePreviewRefresh({ lastIframeState })} />}
 
         {/* Desktop Layout */}
         {!isMobile && (
@@ -1494,34 +1506,42 @@ function DevelopPageContent({ layout = BuilderLayout.Develop }: { layout?: Build
             <motion.div
               className="absolute top-0 start-0 bottom-0 isolate"
               animate={{
-                x: isChatPaneCollapsed
+                // Only the non-immersive, collapsed pane slides off-screen. In the
+                // immersive design-kit mode the chat fills the row and is centered
+                // below, so it stays at x:0 (the minimal header has no expand control).
+                x: !hideDevelopChrome && isChatPaneCollapsed
                   ? (isLayoutRtl ? chatPaneWidth + 16 : -(chatPaneWidth + 16))
                   : 0,
-                width: chatPaneWidth
+                width: hideDevelopChrome ? '100%' : chatPaneWidth
               }}
               transition={{
                 duration: 0.3,
                 ease: [0.4, 0, 0.2, 1]
               }}
               style={{
-                pointerEvents: isChatPaneCollapsed ? 'none' : 'auto'
+                pointerEvents: !hideDevelopChrome && isChatPaneCollapsed ? 'none' : 'auto'
               }}
             >
-              <ChatPane
-                sendMessage={ws.actions.send}
-                stopGeneration={ws.actions.stop}
-                isCreateFlowSession={isCreateFlowSession}
-                hasInitialPrompt={init.context.hasInitialPrompt}
-                isAwaitingStream={isAwaitingStream}
-                initialPromptText={init.context.initialPromptText}
-                loadingMessage={chatLoadingMessage}
-                layout={layout}
-                onPreviewRefresh={() => handlePreviewRefresh({ lastIframeState })}
-              />
+              {/* Centered, constrained column for the immersive chat-only mode; the
+                  always-present wrapper keeps ChatPane mounted across phase changes. */}
+              <div className={cn('h-full w-full', hideDevelopChrome && 'mx-auto max-w-3xl')}>
+                <ChatPane
+                  sendMessage={ws.actions.send}
+                  stopGeneration={ws.actions.stop}
+                  isCreateFlowSession={isCreateFlowSession}
+                  hasInitialPrompt={init.context.hasInitialPrompt}
+                  isAwaitingStream={isAwaitingStream}
+                  initialPromptText={init.context.initialPromptText}
+                  loadingMessage={chatLoadingMessage}
+                  layout={layout}
+                  hideToolbar={hideDevelopChrome}
+                  onPreviewRefresh={() => handlePreviewRefresh({ lastIframeState })}
+                />
+              </div>
             </motion.div>
 
             {/* Resizable Divider */}
-            {!isChatPaneCollapsed && (
+            {!isChatPaneCollapsed && !hideDevelopChrome && (
               <ResizableDivider
                 onResize={handlePanelResize}
                 minLeftWidth={300}
@@ -1532,12 +1552,15 @@ function DevelopPageContent({ layout = BuilderLayout.Develop }: { layout?: Build
               />
             )}
 
-            {/* Content (Preview, Settings, Code) */}
+            {/* Content (Preview, Settings, Code). When the chat-only design-kit flow hides
+                the chrome, the chat pane goes full-width and this content area collapses to
+                zero width — PreviewPane stays MOUNTED (its polling yields designKitPreviewUrl),
+                just off-screen, until the flow reveals at phase 'ready'. */}
             <motion.div
               className="absolute top-0 end-0 bottom-0 flex flex-col"
               initial={false}
               animate={{
-                insetInlineStart: isChatPaneCollapsed ? 8 : chatPaneWidth + 16
+                insetInlineStart: hideDevelopChrome ? '100%' : isChatPaneCollapsed ? 8 : chatPaneWidth + 16
               }}
               transition={{
                 duration: 0.3,
@@ -1752,12 +1775,14 @@ function DevelopPageContent({ layout = BuilderLayout.Develop }: { layout?: Build
                 </>
               )}
             </div>
-            <ChatToolbar
-              className="fixed bottom-1 left-0 right-0"
-              onBeforeTabChange={setOptimisticMobileTab}
-              optimisticActiveTab={optimisticMobileTab}
-              onPreviewRefresh={() => handlePreviewRefresh({ lastIframeState })}
-            />
+            {!hideDevelopChrome && (
+              <ChatToolbar
+                className="fixed bottom-1 left-0 right-0"
+                onBeforeTabChange={setOptimisticMobileTab}
+                optimisticActiveTab={optimisticMobileTab}
+                onPreviewRefresh={() => handlePreviewRefresh({ lastIframeState })}
+              />
+            )}
           </div>
         )}
           </>

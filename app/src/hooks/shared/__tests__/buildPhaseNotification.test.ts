@@ -2,11 +2,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { handleBuildPhaseNotification } from '../buildPhaseNotification'
 
-const setStep = vi.fn()
+const setPhase = vi.fn()
 
 vi.mock('@/stores/useWizardStore', () => ({
   useWizardStore: {
-    getState: () => ({ setStep: (...args: unknown[]) => setStep(...args) }),
+    getState: () => ({ setPhase: (...args: unknown[]) => setPhase(...args) }),
   },
 }))
 
@@ -16,42 +16,63 @@ vi.mock('@/lib/request-context', () => ({
 
 describe('handleBuildPhaseNotification', () => {
   beforeEach(() => {
-    setStep.mockClear()
+    setPhase.mockClear()
   })
 
-  it('advances the wizard step for a matching, non-empty appId', () => {
+  it.each(['gathering', 'working', 'ready'] as const)(
+    'sets the wizard phase to %s for a matching, non-empty appId',
+    (phase) => {
+      handleBuildPhaseNotification({
+        raw: { appId: 'app1', phase },
+        clientAppId: 'app1',
+        logPrefix: 'sse.build_phase',
+      })
+      expect(setPhase).toHaveBeenCalledWith('app1', phase)
+    },
+  )
+
+  it('does not write to the store for an unknown phase string', () => {
     handleBuildPhaseNotification({
-      raw: { appId: 'app1', step: 3 },
+      raw: { appId: 'app1', phase: 'finished' },
       clientAppId: 'app1',
       logPrefix: 'sse.build_phase',
     })
-    expect(setStep).toHaveBeenCalledWith('app1', 3)
+    expect(setPhase).not.toHaveBeenCalled()
+  })
+
+  it('does not write to the store when the phase is missing', () => {
+    handleBuildPhaseNotification({
+      raw: { appId: 'app1' },
+      clientAppId: 'app1',
+      logPrefix: 'sse.build_phase',
+    })
+    expect(setPhase).not.toHaveBeenCalled()
   })
 
   it('does not write to the store when both the payload and client appId are empty', () => {
     handleBuildPhaseNotification({
-      raw: { appId: '', step: 3 },
+      raw: { appId: '', phase: 'working' },
       clientAppId: '',
       logPrefix: 'sse.build_phase',
     })
-    expect(setStep).not.toHaveBeenCalled()
+    expect(setPhase).not.toHaveBeenCalled()
   })
 
   it('does not write to the store when the client appId is empty and the payload has no appId', () => {
     handleBuildPhaseNotification({
-      raw: { step: 2 },
+      raw: { phase: 'working' },
       clientAppId: '',
       logPrefix: 'sse.build_phase',
     })
-    expect(setStep).not.toHaveBeenCalled()
+    expect(setPhase).not.toHaveBeenCalled()
   })
 
   it('ignores events whose appId does not match the client app', () => {
     handleBuildPhaseNotification({
-      raw: { appId: 'other', step: 2 },
+      raw: { appId: 'other', phase: 'working' },
       clientAppId: 'app1',
       logPrefix: 'sse.build_phase',
     })
-    expect(setStep).not.toHaveBeenCalled()
+    expect(setPhase).not.toHaveBeenCalled()
   })
 })

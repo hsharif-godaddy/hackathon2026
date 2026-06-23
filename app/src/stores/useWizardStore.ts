@@ -1,28 +1,23 @@
 import { create } from 'zustand'
 
-export type WizardStep = 1 | 2 | 3 | 4 | 5
+/**
+ * Design Kit Wizard phase (AIROBUILD-2679 Phase 2 — replaces the 1–5 step machine).
+ * - `gathering`: chat-only, app chrome hidden, agent gathers core info + assembles the kit.
+ * - `working`: brand cards + showcase shown; user refines and triggers the build.
+ * - `ready`: the website build has completed; the full builder is revealed.
+ */
+export type WizardPhase = 'gathering' | 'working' | 'ready'
 
 interface WizardState {
-  /** Per-app current step. Key = appId. */
-  stepByApp: Record<string, WizardStep>
-  setStep: (appId: string, step: WizardStep) => void
-  getStep: (appId: string) => WizardStep | undefined
-  /**
-   * Per-app flag: the step-5 launch sequence has played and handed off to the
-   * Edit tab once. Key = appId. Lets the wizard force the view switch only on
-   * the first arrival at step 5 — revisiting the Logo & Brand tab afterwards
-   * shows a calm "watch it build" panel instead of replaying + re-yanking.
-   */
-  handoffDoneByApp: Record<string, boolean>
-  markHandoffDone: (appId: string) => void
+  /** Per-app current phase. Key = appId. */
+  phaseByApp: Record<string, WizardPhase>
+  setPhase: (appId: string, phase: WizardPhase) => void
+  getPhase: (appId: string) => WizardPhase | undefined
 }
 
 export const useWizardStore = create<WizardState>((set, get) => ({
-  stepByApp: {},
-  setStep: (appId, step) =>
-    set((state) => ({ stepByApp: { ...state.stepByApp, [appId]: step } })),
-  getStep: (appId) => get().stepByApp[appId],
-  handoffDoneByApp: {},
-  markHandoffDone: (appId) =>
-    set((state) => ({ handoffDoneByApp: { ...state.handoffDoneByApp, [appId]: true } })),
+  phaseByApp: {},
+  setPhase: (appId, phase) =>
+    set((state) => ({ phaseByApp: { ...state.phaseByApp, [appId]: phase } })),
+  getPhase: (appId) => get().phaseByApp[appId],
 }))

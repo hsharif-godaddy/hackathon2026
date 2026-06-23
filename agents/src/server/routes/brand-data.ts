@@ -77,7 +77,7 @@ router.get('/apps/:id/brand-data', validateAppOwnership, async (req: Request, re
       memory.get(scope, 'design.audience'),
       memory.get(scope, 'brand.summary'),
       memory.get(scope, 'brand.imagery'),
-      memory.get(scope, 'brand.wizard.step'),
+      memory.get(scope, 'brand.wizard.phase'),
       getBrandMoodImages(appId!),
     ]);
 
@@ -93,7 +93,7 @@ router.get('/apps/:id/brand-data', validateAppOwnership, async (req: Request, re
       { key: 'design.audience', result: audienceResult },
       { key: 'brand.summary', result: summaryResult },
       { key: 'brand.imagery', result: imageryResult },
-      { key: 'brand.wizard.step', result: wizardResult },
+      { key: 'brand.wizard.phase', result: wizardResult },
     ];
     for (const { key, result } of allResults) {
       if (!result.success) {
@@ -152,7 +152,12 @@ router.get('/apps/:id/brand-data', validateAppOwnership, async (req: Request, re
         if (!base && moodImages.length === 0) return undefined;
         return { ...(base ?? {}), ...(moodImages.length > 0 ? { moodImages } : {}) };
       })(),
-      wizard: wizardResult.exists ? wizardResult.value as BrandData['wizard'] : undefined,
+      wizard: ((): BrandData['wizard'] => {
+        // Validate the opaque memory value before trusting it as a phase (mirrors
+        // the SSE/route guards); an unknown value degrades to no wizard field.
+        const phase = wizardResult.exists ? (wizardResult.value as { phase?: unknown }).phase : undefined;
+        return phase === 'gathering' || phase === 'working' || phase === 'ready' ? { phase } : undefined;
+      })(),
       kit: designKit?.displayName ? { name: designKit.displayName } : undefined,
     };
 

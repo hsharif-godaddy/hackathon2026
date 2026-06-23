@@ -10,16 +10,16 @@ import { getEventChannel } from '../../server/agent-runtime.js'
 
 const logger = Logger.create({ component: 'set-wizard-step-tool' })
 const memoryStore = getKvMemoryStore()
-const MEMORY_KEY = 'brand.wizard.step'
+const MEMORY_KEY = 'brand.wizard.phase'
 
 export const StepSchema = z.object({
-  step: z.number().int().min(1).max(5).describe(
-    'Active design-kit wizard step: 1=Understanding, 2=Building your kit, 3=Designing visuals, 4=Brand showcase, 5=Create website.',
+  phase: z.enum(['gathering', 'working', 'ready']).describe(
+    'Active design-kit wizard phase: gathering=asking core questions and assembling the kit (kit/colors/fonts/keywords/logo); working=brand showcase and build buttons are shown; ready=the website build has completed and the full builder is revealed.',
   ),
 })
 
 export const setWizardStepAITool: Tool = createTool(
-  'Advance the Design Kit Wizard to a step (1-5) and notify the UI. Call this at each phase transition: 1 when you start asking questions, 2 when you begin building the kit (kit/colors/fonts/keywords/logo), 3 when the kit is complete and the user can edit, 4 AFTER you have written public/brand-showcase.html (advancing reveals the showcase, so write the file first), 5 when the user asks to create their website.',
+  'Advance the Design Kit Wizard to a phase and notify the UI. Call this at each transition: "gathering" when you start asking the core questions and assembling the kit; "working" once the kit is assembled (colours, fonts, imagery, logo) so the editing panels and the Build / Create-website buttons appear — the user builds the brand showcase from there. Do not emit "ready" — the UI reveals the full builder on its own when the website build completes.',
   StepSchema,
   async (input, context) => {
     const appId = context?.metadata?.appId as string | undefined
@@ -28,24 +28,24 @@ export const setWizardStepAITool: Tool = createTool(
     }
 
     const scope = workspaceScopeFromAppId(appId, customerIdFromContext(context))
-    const value = { step: input.step }
+    const value = { phase: input.phase }
 
     const writeResult = await memoryStore.set(scope, MEMORY_KEY, value)
     if (!writeResult.success) {
       logger.warn('setWizardStep.write.failed', { appId, error: writeResult.error ?? 'Unknown error' })
-      return '**Error:** Failed to save wizard step. Please try again.'
+      return '**Error:** Failed to save wizard phase. Please try again.'
     }
 
-    // Revealing the brand showcase (step 4): make sure public/brand-tokens.css exists
+    // Entering the working phase: make sure public/brand-tokens.css exists
     // and reflects the current palette + fonts. The showcase links it for its CSS
     // variables (--primary, --background, --font-heading, …); the agent's
     // colorScheme/fontTheme write those to memory but never emit the file, so without
     // this the showcase's /brand-tokens.css 404s and Vite serves the SPA index instead
-    // (the variables silently fall back to defaults). Sync BEFORE emitting the step so
+    // (the variables silently fall back to defaults). Sync BEFORE emitting the phase so
     // the file is in place the moment the iframe loads. Best-effort — never block the
-    // step transition. (User edits via the design-kit panels sync it through their own
+    // phase transition. (User edits via the design-kit panels sync it through their own
     // route; this covers the agent-assembled first load.)
-    if (input.step === 4) {
+    if (input.phase === 'working') {
       try {
         const workspace = createForWorkspace(appId, 'preview')
         if (workspace) {
@@ -59,7 +59,7 @@ export const setWizardStepAITool: Tool = createTool(
       }
     }
 
-    const eventData = { step: input.step, appId }
+    const eventData = { phase: input.phase, appId }
 
     try {
       // SSE delivery: publish to each active SSE conversation for this app via
@@ -81,7 +81,7 @@ export const setWizardStepAITool: Tool = createTool(
       logger.warn('setWizardStep.sse_emit.failed', { appId, error: error instanceof Error ? error.message : String(error) })
     }
 
-    logger.info('setWizardStep.success', { appId, step: input.step })
-    return `Wizard advanced to step ${input.step}.`
+    logger.info('setWizardStep.success', { appId, phase: input.phase })
+    return `Wizard advanced to ${input.phase} phase.`
   },
 )

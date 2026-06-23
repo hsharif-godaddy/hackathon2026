@@ -149,6 +149,12 @@ interface ChatPaneProps {
   initialPromptText?: string | null;
   layout?: BuilderLayout;
   onPreviewRefresh?: () => void;
+  /**
+   * Suppress the bottom toolbar (Chat/Media/History/Settings tabs). Used by the
+   * immersive design-kit chat mode, which renders a standalone centered chat with
+   * no tab switching. Desktop only — the mobile layout has no in-pane toolbar.
+   */
+  hideToolbar?: boolean;
 }
 
 function mapUploadedFilesToAssetItems(files: UploadedFile[], agentUrl: string): AssetManagerItem[] {
@@ -243,6 +249,7 @@ function ChatPaneInner({
   initialPromptText = null,
   layout = BuilderLayout.Develop,
   onPreviewRefresh,
+  hideToolbar = false,
 }: ChatPaneProps) {
   const t = useTranslations();
   useDebugStatsBridge();
@@ -1775,7 +1782,7 @@ function ChatPaneInner({
       <div
         ref={chatPaneRootRef}
         data-media-delete-overlay-boundary
-        className={clsx("flex-1 flex flex-col h-full p-0 md:ps-2", {
+        className={clsx("flex-1 flex flex-col h-full p-0", !hideToolbar && "md:ps-2", {
           'gap-1 md:pb-2': !isCommanderChatEnabled,
           'md:pb-1': isCommanderChatEnabled,
         })}
@@ -1963,13 +1970,14 @@ function ChatPaneInner({
           </div>
         )}
 
-        {isCommanderChatEnabled ? (
-          <div ref={commanderChatRowWrapperRef} className="shrink-0">
-            <CommanderChatRow appId={appId} onPreviewRefresh={onPreviewRefresh} />
-          </div>
-        ) : (
-          <ChatToolbar />
-        )}
+        {!hideToolbar &&
+          (isCommanderChatEnabled ? (
+            <div ref={commanderChatRowWrapperRef} className="shrink-0">
+              <CommanderChatRow appId={appId} onPreviewRefresh={onPreviewRefresh} />
+            </div>
+          ) : (
+            <ChatToolbar />
+          ))}
       </div>
     </ChatContext.Provider>
   );

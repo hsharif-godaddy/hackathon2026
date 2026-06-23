@@ -289,16 +289,16 @@ describe('Brand Data Route', () => {
       expect(response.body.brandName).toBe('Your Brand');
     });
 
-    it('surfaces brand.summary, brand.imagery, and brand.wizard.step', async () => {
+    it('surfaces brand.summary, brand.imagery, and brand.wizard.phase', async () => {
       const summary = { text: 'A calm, considered brand.' };
       const imagery = { keyword: 'minimal neutral, airy whites' };
-      const wizard = { step: 3 };
+      const wizard = { phase: 'working' };
 
       mockMemoryGet.mockImplementation(function (_scope: unknown, key: string) {
         const map: Record<string, unknown> = {
           'brand.summary': summary,
           'brand.imagery': imagery,
-          'brand.wizard.step': wizard,
+          'brand.wizard.phase': wizard,
         };
         if (key in map) return Promise.resolve(memoryResult(map[key]));
         return Promise.resolve(noResult);

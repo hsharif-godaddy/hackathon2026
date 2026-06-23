@@ -409,6 +409,16 @@ describe('ChatPane', () => {
     expect(screen.getByTestId('chat-toolbar')).toBeInTheDocument();
   });
 
+  it('should hide the chat toolbar when hideToolbar is set (immersive design-kit mode)', () => {
+    renderWithProviders(
+      <ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} hideToolbar />
+    );
+
+    expect(screen.queryByTestId('chat-toolbar')).not.toBeInTheDocument();
+    // The composer itself must remain available.
+    expect(screen.getByTestId('chat-input')).toBeInTheDocument();
+  });
+
   it('should render message list', () => {
     renderWithProviders(<ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />);
 
