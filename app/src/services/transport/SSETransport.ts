@@ -1,7 +1,9 @@
 import { EventSource } from 'eventsource'
 import { STREAMING_EVENT_TYPES, type StreamingEventType } from '@airo/ai-transport/event-types'
+import { REQUEST_IDP_TOKEN } from '@airo/shared/chat'
 
 import { agentFetch, clearAgentTokenCache, getAgentToken } from '@/lib/agent-fetch'
+import { pushIdpToken } from '@/lib/push-idp-token'
 import { logger } from '@/lib/request-context'
 import type { SSEQualityMonitor } from './SSEQualityMonitor'
 import type { ChatTransport, ChatTransportCallbacks, SendMessageParams, TransportEvent, TransportState } from './types'
@@ -136,6 +138,11 @@ export class SSETransport implements ChatTransport {
       this.closeEventSource()
       this.openEventSource()
     }
+  }
+
+  private prefetchIdpToken(): Promise<void> {
+    if (!this.appId || !this.conversationId) return Promise.resolve()
+    return pushIdpToken(this.appId, this.conversationId)
   }
 
   private async refreshTokenAndReopen(): Promise<void> {
@@ -633,6 +640,10 @@ export class SSETransport implements ChatTransport {
       if (data.agents?.length) {
         this.callbacks?.onEvent({ type: 'agents_available', data: { agents: data.agents } })
       }
+    })
+
+    this.eventSource.addEventListener(REQUEST_IDP_TOKEN, () => {
+      void this.prefetchIdpToken()
     })
 
     for (const type of SSE_REGISTERED_EVENT_TYPES) {

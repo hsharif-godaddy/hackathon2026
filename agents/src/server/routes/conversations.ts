@@ -4,10 +4,11 @@ import { z } from 'zod';
 import { Logger } from '../../logging/index.js';
 import { getConversationLifecycleStore, getMessageStore } from '../../memory/adapters/index.js';
 import { workspaceScopeFromAppId } from '../../memory/interfaces/scope.js';
-import { validateAppOwnershipFromQuery, validateConversationOwnership, type ConversationRequest } from '../middleware/app-ownership.js';
+import { validateAppOwnershipFromParam, validateAppOwnershipFromQuery, validateConversationOwnership, type ConversationRequest } from '../middleware/app-ownership.js';
+import { asyncHandler } from '../middleware/async-handler.js';
 import type { AuthenticatedRequest } from '../middleware/jwt-auth.js';
 import { mapSegmentsToUI, mapToolCallsToUI } from '../tool-call-mapper.js';
-
+import { cacheIdpToken } from '../../utils/idp-token-cache.js';
 const router: RouterType = Router();
 const logger = Logger.create({ component: 'conversations-routes' });
 const lifecycle = getConversationLifecycleStore();
@@ -363,5 +364,20 @@ router.patch('/api/conversations/:id/tools/:toolId', validateAppOwnershipFromQue
     return res.status(500).json({ error: 'Failed to update tool result' });
   }
 });
+
+router.post(
+  '/api/conversations/:appId/:conversationId/idp-token',
+  validateAppOwnershipFromParam('appId'),
+  validateConversationOwnership('conversationId'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const { conversationId } = req.params as { conversationId: string }
+    const { token } = req.body as { token?: unknown }
+    if (!token || typeof token !== 'string') {
+      res.status(400).json({ error: 'token is required' })
+      return
+    }
+    res.status(200).json({ accepted: cacheIdpToken(conversationId, token) })
+  })
+)
 
 export const conversationsRouter = router;

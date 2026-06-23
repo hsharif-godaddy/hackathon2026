@@ -35,6 +35,7 @@ vi.mock('../../../memory/adapters/index.js', () => ({
 
 vi.mock('../../middleware/app-ownership.js', () => ({
   validateAppOwnershipFromBody: () => (_req: express.Request, _res: express.Response, next: express.NextFunction) => next(),
+  validateAppOwnershipFromParam: () => (_req: express.Request, _res: express.Response, next: express.NextFunction) => next(),
   validateAppOwnershipFromQuery: () => (_req: express.Request, _res: express.Response, next: express.NextFunction) => next(),
   validateConversationOwnership: () => (req: express.Request, _res: express.Response, next: express.NextFunction) => {
     (req as express.Request & { conversation: typeof fakeConversation }).conversation = fakeConversation;
