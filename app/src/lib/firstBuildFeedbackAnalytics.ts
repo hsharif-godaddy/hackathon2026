@@ -17,6 +17,12 @@ export function trackFeedbackResponse(
   })()
 }
 
+// Chatted-past: user sent a new chat message instead of answering. Rolls up under the same
+// `skipped` EID as the explicit skip button; no timeToRespondMs since there is no response moment.
+export function trackFeedbackChattedPast(appId: string): void {
+  logClickEvent(`${SECTION}.skipped`, { appId })()
+}
+
 // parseEID enforces exactly 2 dots (3 parts). Keep all EIDs as product.section.widget.
 // Close chip selections: develop.first_build_feedback.close_{selection}
 // Offbase actions:       develop.first_build_feedback.offbase_{action}

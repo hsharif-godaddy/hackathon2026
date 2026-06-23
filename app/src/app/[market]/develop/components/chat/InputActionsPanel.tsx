@@ -42,6 +42,7 @@ import { useNextActions } from '@/app/[market]/develop/hooks/useNextActions'
 import { manualRebuildSelectorPages, useRebuildPages } from '@/app/[market]/develop/hooks/useRebuildPages'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
+import { trackFeedbackChattedPast } from '@/lib/firstBuildFeedbackAnalytics'
 import { logger } from '@/lib/request-context'
 import { cn } from '@/lib/utils'
 import { todoListService } from '@/services/TodoListService'
@@ -1521,6 +1522,7 @@ export default function InputActionsPanel({
       return
     }
     if (currentCount > userMessageCountRef.current) {
+      trackFeedbackChattedPast(appId ?? '')
       feedback.dismiss('chatted-past')
     }
     userMessageCountRef.current = currentCount

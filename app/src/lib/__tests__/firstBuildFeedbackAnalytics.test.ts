@@ -16,6 +16,7 @@ vi.mock('@/utils/instrumentation', () => ({
 
 import {
   trackCloseSelection,
+  trackFeedbackChattedPast,
   trackFeedbackResponse,
   trackFeedbackShown,
   trackOffbaseAction,
@@ -80,6 +81,14 @@ describe('firstBuildFeedbackAnalytics', () => {
     trackOffbaseAction('skipped', 'app123')
     expect(mockLogClick).toHaveBeenCalledWith(
       'develop.first_build_feedback.offbase_skipped',
+      { appId: 'app123' }
+    )
+  })
+
+  it('trackFeedbackChattedPast rolls up under skipped EID with appId only (no timeToRespondMs)', () => {
+    trackFeedbackChattedPast('app123')
+    expect(mockLogClick).toHaveBeenCalledWith(
+      'develop.first_build_feedback.skipped',
       { appId: 'app123' }
     )
   })
