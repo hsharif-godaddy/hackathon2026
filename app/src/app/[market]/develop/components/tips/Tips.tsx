@@ -6,7 +6,24 @@ import { Loader } from '@airo-ux/loader'
 import Box from '@ux/box'
 import ClockIcon from '@ux/icon/clock'
 
+import { ProgressTrackerCard } from '@/app/[market]/develop/components/tips/ProgressTrackerCard'
 import { shuffleArray } from '@/app/[market]/develop/components/tips/tips-content'
+import {
+  ANIMATED_CARD_TRANSITION,
+  getSlot,
+  horizontalCardVariants,
+  naturalHeightsPxEqual,
+  REDUCED_MOTION_CARD_TRANSITION,
+  STACK_WINDOW_SIZE,
+  stackLazyShowBody,
+  TIP_CARD_HEIGHT_RESIZE_EASE_CLASS,
+  TIP_CARD_SHELL_BASE_CLASS,
+  TIP_CARD_SHELL_VERTICAL_CHROME_PX,
+  TIP_STACK_UNIFORM_SLACK_PX,
+  VERTICAL_STACK_PERSPECTIVE_PX,
+  VERTICAL_STACK_STEP_PX,
+  verticalCardVariants,
+} from '@/app/[market]/develop/components/tips/tips-stack-config'
 import {
   maxNaturalTipHeightsPx,
   verticalLazyInnerFloorPx,
@@ -19,139 +36,11 @@ import { logger } from '@/lib/request-context'
 /** Minimum dwell time before advancing; calibrated to the longest translated tip (~12s read at 200 wpm). */
 export const CARD_DWELL_MS = 12000
 
-/** Number of cards in the visible z-stack (front, second, third) before the hidden recycle slot. */
-const VISIBLE_STACK_SLOTS = 3
-/** Window rendered from `orderedTips`: visible slots + one hidden slot for the card recycling in. */
-const STACK_WINDOW_SIZE = VISIBLE_STACK_SLOTS + 1
-
-/** Horizontal strip (<md): gap between full-width cards; `translateX` uses `calc(n*100% + n*gap)`. */
-const HORIZONTAL_STRIP_GAP_PX = 8
-/**
- * Subpixel slack after the inner body floor + `TIP_CARD_SHELL_VERTICAL_CHROME_PX` on
- * each `motion` shell. Horizontal and vertical both use that sum for `unifiedStackMinHeightPx`;
- * vertical deck vertical extent (translateY steps) is added separately on the ghost spacer.
- */
-const TIP_STACK_UNIFORM_SLACK_PX = 6
-
-/**
- * Inner body measure → add to `height` on the `motion` shell (`box-border`):
- * Tailwind `py-2` (16px) + 1px borders (2px) + 4px for descenders / sub-pixel
- * rounding under `overflow-hidden`. Do not reduce to 18 without re-checking clipping.
- */
-const TIP_CARD_SHELL_VERTICAL_CHROME_PX = 22
-
-/** Ease reflow when viewport width changes tip wrapping (not Framer slot motion). */
-const TIP_CARD_SHELL_BASE_CLASS =
-  'absolute inset-x-0 top-0 box-border overflow-hidden rounded-lg border border-intents-ux-box-borderColor bg-intents-ux-box-backgroundColor px-2.5 py-2'
-
-const TIP_CARD_HEIGHT_RESIZE_EASE_CLASS =
-  'transition-[height] duration-300 ease-out'
-
-/** Vertical deck: translateY offset between resting stack slots. */
-const VERTICAL_STACK_STEP_PX = 12
-/** Stronger `translateZ` per slot behind the front (parent uses a short `perspective`). */
-const VERTICAL_STACK_DEPTH_Z_STEP_PX = 26
-/** Slight scale-down per depth step so the deck reads like physical cards. */
-const VERTICAL_STACK_DEPTH_SCALE_SECOND = 0.988
-const VERTICAL_STACK_DEPTH_SCALE_THIRD = 0.974
-const VERTICAL_STACK_DEPTH_SCALE_HIDDEN = 0.96
-/** Shorter = more dramatic foreshortening; vertical stack only (see track `style`). */
-const VERTICAL_STACK_PERSPECTIVE_PX = 580
-
-const verticalCardVariants = {
-  front: {
-    x: 0, y: 0, z: 6,
-    scale: 1, opacity: 1, filter: 'blur(0px)', zIndex: 40,
-  },
-  second: {
-    x: 0, y: VERTICAL_STACK_STEP_PX, z: -VERTICAL_STACK_DEPTH_Z_STEP_PX,
-    scale: VERTICAL_STACK_DEPTH_SCALE_SECOND, opacity: 0.92, filter: 'blur(0px)', zIndex: 30,
-  },
-  third: {
-    x: 0, y: VERTICAL_STACK_STEP_PX * 2, z: -2 * VERTICAL_STACK_DEPTH_Z_STEP_PX,
-    scale: VERTICAL_STACK_DEPTH_SCALE_THIRD, opacity: 0.82, filter: 'blur(0px)', zIndex: 20,
-  },
-  hidden: {
-    x: 0, y: VERTICAL_STACK_STEP_PX * 3, z: -3 * VERTICAL_STACK_DEPTH_Z_STEP_PX,
-    scale: VERTICAL_STACK_DEPTH_SCALE_HIDDEN, opacity: 0, filter: 'blur(0px)', zIndex: 10,
-  },
-  exitFront: {
-    x: 0, y: -16, z: 28,
-    scale: 1.08, opacity: 0, filter: 'blur(2px)', zIndex: 50,
-  },
-}
-
-const horizontalCardVariants = {
-  front: {
-    x: 0, y: 0, z: 0,
-    scale: 1, opacity: 1, filter: 'blur(0px)', zIndex: 40,
-  },
-  second: {
-    x: `calc(100% + ${HORIZONTAL_STRIP_GAP_PX}px)`,
-    y: 0,
-    z: 0,
-    scale: VERTICAL_STACK_DEPTH_SCALE_SECOND, opacity: 1, filter: 'blur(0px)', zIndex: 30,
-  },
-  third: {
-    x: `calc(200% + ${2 * HORIZONTAL_STRIP_GAP_PX}px)`,
-    y: 0,
-    z: 0,
-    scale: VERTICAL_STACK_DEPTH_SCALE_THIRD, opacity: 1, filter: 'blur(0px)', zIndex: 20,
-  },
-  hidden: {
-    x: `calc(300% + ${3 * HORIZONTAL_STRIP_GAP_PX}px)`,
-    y: 0,
-    z: 0,
-    scale: VERTICAL_STACK_DEPTH_SCALE_HIDDEN, opacity: 0, filter: 'blur(0px)', zIndex: 10,
-  },
-  exitFront: {
-    x: `calc(-100% - ${HORIZONTAL_STRIP_GAP_PX}px)`,
-    y: 0,
-    z: 28,
-    scale: 1.08, opacity: 0, filter: 'blur(2px)', zIndex: 50,
-  },
-}
-
-const ANIMATED_CARD_TRANSITION = {
-  duration: 0.75,
-  ease: [0.4, 0, 0.2, 1] as const,
-}
-const REDUCED_MOTION_CARD_TRANSITION = { duration: 0 }
-
-type SlotName = 'front' | 'second' | 'third' | 'hidden'
-
-function getSlot(index: number): SlotName {
-  if (index === 0) return 'front'
-  if (index === 1) return 'second'
-  if (index === 2) return 'third'
-  return 'hidden'
-}
-
-/** At rest: only front (index 0) mounts tip copy; during exit, outgoing + next-up (slot 1). */
-function stackLazyShowBody(exitingTip: string | null, index: number) {
-  if (exitingTip === null) {
-    return index === 0
-  }
-  return index <= 1
-}
-
-function naturalHeightsPxEqual(
-  prev: Partial<Record<string, number>>,
-  next: Partial<Record<string, number>>,
-): boolean {
-  for (const k of Object.keys(next)) {
-    if (prev[k] !== next[k]) return false
-  }
-  for (const k of Object.keys(prev)) {
-    if (prev[k] !== next[k]) return false
-  }
-  return true
-}
-
 interface TipsProps {
   buildingMessage?: string | null
   buildingDescription?: string | null
   showTips?: boolean
+  showProgressTracker?: boolean
   staticTipTitle?: string | null
   staticTipDescription?: string | null
   timeEstimateMinutes?: number | null
@@ -174,6 +63,7 @@ export default function Tips({
   buildingMessage = null,
   buildingDescription = null,
   showTips = true,
+  showProgressTracker = false,
   staticTipTitle = null,
   staticTipDescription = null,
   timeEstimateMinutes = null,
@@ -197,6 +87,19 @@ export default function Tips({
   const orderedTipsRef = useRef(orderedTips)
   const exitingTipRef = useRef<string | null>(null)
   const rotationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Auto-rotation runs only in the standalone stacked-tips carousel. In the
+  // unified progress-tracker card the copy stays put and advances only when the
+  // user clicks the ‹ / › nav, so the tracker is the sole animating element.
+  const autoRotateEnabled = showTips && !hasStaticTip && !showProgressTracker
+  const autoRotateEnabledRef = useRef(autoRotateEnabled)
+  useEffect(() => {
+    autoRotateEnabledRef.current = autoRotateEnabled
+    if (!autoRotateEnabled && rotationTimeoutRef.current) {
+      clearTimeout(rotationTimeoutRef.current)
+      rotationTimeoutRef.current = null
+    }
+  }, [autoRotateEnabled])
 
   // Fire the "pill shown" impression from the pill's own render, so it counts
   // only when the user actually sees the estimate (not merely when gating passes).
@@ -315,6 +218,11 @@ export default function Tips({
       rotationTimeoutRef.current = null
     }
 
+    // In the progress-tracker card the copy is manual-only — never self-advance.
+    if (!autoRotateEnabledRef.current) {
+      return
+    }
+
     if (orderedTipsRef.current.length < 2) {
       return
     }
@@ -424,6 +332,32 @@ export default function Tips({
     return () => clearTimeout(id)
   }, [exitingTip, reduceMotion, complete])
 
+  const rotateNext = useCallback(function next() {
+    if (exitingTipRef.current) return
+    if (orderedTipsRef.current.length < 2) return
+    if (rotationTimeoutRef.current) {
+      clearTimeout(rotationTimeoutRef.current)
+      rotationTimeoutRef.current = null
+    }
+    setOrderedTips((current) =>
+      current.length < 2 ? current : [...current.slice(1), current[0]!],
+    )
+    scheduleNextRotation()
+  }, [scheduleNextRotation])
+
+  const rotatePrev = useCallback(function prev() {
+    if (exitingTipRef.current) return
+    if (orderedTipsRef.current.length < 2) return
+    if (rotationTimeoutRef.current) {
+      clearTimeout(rotationTimeoutRef.current)
+      rotationTimeoutRef.current = null
+    }
+    setOrderedTips((current) =>
+      current.length < 2 ? current : [current[current.length - 1]!, ...current.slice(0, -1)],
+    )
+    scheduleNextRotation()
+  }, [scheduleNextRotation])
+
   const loaderTitle = buildingMessage ?? t('builder_tips_message')
 
   const loaderDescription = buildingDescription ?? undefined
@@ -435,135 +369,143 @@ export default function Tips({
         : VERTICAL_STACK_STEP_PX * (STACK_WINDOW_SIZE - 1) + unifiedStackMinHeightPx
       : undefined
 
+  const firstTip = visibleTips[0]
+  const progressTip = firstTip
+    ? { title: tipTitle(firstTip), description: tipDescription(firstTip) }
+    : null
+
   return (
     <Box className="h-full mt-6" blockAlignChildren="center" inlineAlignChildren="center" gap="lg">
-      <Loader
-        title={loaderTitle}
-        description={loaderDescription}
-      />
+      {showProgressTracker && showTips && !hasStaticTip ? (
+        <ProgressTrackerCard
+          title={loaderTitle}
+          timeEstimateMinutes={timeEstimateMinutes}
+          tip={progressTip}
+          onPrev={rotatePrev}
+          onNext={rotateNext}
+        />
+      ) : (
+        /* ── Original layout (no progress tracker) ── */
+        <>
+          <Loader
+            title={loaderTitle}
+            description={loaderDescription}
+          />
 
-      {timeEstimateMinutes != null && (
-        <div
-          data-testid="build-time-estimate"
-          role="status"
-          className="flex items-center gap-1.5 rounded-full px-3 py-1"
-          // Bespoke translucent-white pill with a soft ambient shadow per design;
-          // no matching UXCore token, so these literals are intentional.
-          style={{
-            background: 'rgba(255, 255, 255, 0.5)',
-            boxShadow: '0 8px 24px rgba(20, 20, 40, 0.025)',
-          }}
-        >
-          <ClockIcon width={25} height={25} aria-hidden="true" className="text-ai-light" />
-          <span className="text-sm" style={{ color: 'rgba(20, 20, 30, 0.78)' }}>
-            {t('builder_preview_build_time_estimate', { minutes: timeEstimateMinutes }, 'On average ~{minutes} minutes')}
-          </span>
-        </div>
-      )}
-
-      {showTips && hasStaticTip && (
-        <Box className="w-full max-w-2xl px-3" gap="md">
-          <Box className="relative min-h-40">
+          {timeEstimateMinutes != null && (
             <div
-              className="rounded-lg border border-intents-ux-box-borderColor bg-intents-ux-box-backgroundColor px-2.5 py-2"
+              data-testid="build-time-estimate"
               role="status"
-              aria-live="polite"
+              className="flex items-center gap-1.5 rounded-full px-3 py-1"
+              style={{
+                background: 'rgba(255, 255, 255, 0.5)',
+                boxShadow: '0 8px 24px rgba(20, 20, 40, 0.025)',
+              }}
             >
-              <div className="text-base font-semibold">{staticTipTitle}</div>
-              <div className="text-sm">{staticTipDescription}</div>
-            </div>
-          </Box>
-        </Box>
-      )}
-
-      {showTips && !hasStaticTip && (
-        <Box className="w-full max-w-2xl px-3" gap="md">
-          {visibleTips.length > 0 && (
-            <div role="status" aria-live="polite" className="sr-only">
-              {tipTitle(visibleTips[0])}
+              <ClockIcon width={25} height={25} aria-hidden="true" className="text-ai-light" />
+              <span className="text-sm" style={{ color: 'rgba(20, 20, 30, 0.78)' }}>
+                {t('builder_preview_build_time_estimate', { minutes: timeEstimateMinutes }, 'On average ~{minutes} minutes')}
+              </span>
             </div>
           )}
-          <div
-            ref={stackTrackRef}
-            className="relative w-full min-h-40 overflow-x-hidden md:overflow-x-visible"
-            style={
-              isHorizontalStack
-                ? undefined
-                : {
-                    perspective: `${VERTICAL_STACK_PERSPECTIVE_PX}px`,
-                    perspectiveOrigin: '50% 32%',
-                    transformStyle: 'preserve-3d',
-                  }
-            }
-          >
-            {visibleTips.map((tip, index) => {
-              const showTipBody = stackLazyShowBody(exitingTip, index)
-              const cardReflowEaseClass =
-                unifiedStackMinHeightPx > 0 && !reduceMotion
-                  ? TIP_CARD_HEIGHT_RESIZE_EASE_CLASS
-                  : ''
-              const cardClassName = [TIP_CARD_SHELL_BASE_CLASS, cardReflowEaseClass]
-                .filter((c) => c.length > 0)
-                .join(' ')
-              return (
-              <motion.div
-                key={tip}
-                data-testid="tip-card"
-                aria-hidden={!showTipBody ? true : undefined}
-                className={cardClassName}
-                initial={false}
-                animate={
-                  exitingTip === null
-                    ? getSlot(index)
-                    : index === 0
-                      ? 'exitFront'
-                      : getSlot(index - 1)
-                }
-                variants={cardVariants}
-                transition={cardTransition}
-                style={{
-                  transformOrigin: '50% 0%',
-                  transformStyle: 'preserve-3d',
-                  ...(unifiedStackMinHeightPx > 0 ? { height: unifiedStackMinHeightPx } : {}),
-                }}
-                onAnimationComplete={
-                  index === 0 && exitingTip !== null ? onFrontStackAnimationComplete : undefined
+
+          {showTips && hasStaticTip && (
+            <Box className="w-full max-w-2xl px-3" gap="md">
+              <Box className="relative min-h-40">
+                <div
+                  className="rounded-lg border border-intents-ux-box-borderColor bg-intents-ux-box-backgroundColor px-2.5 py-2"
+                  role="status"
+                  aria-live="polite"
+                >
+                  <div className="text-base font-semibold">{staticTipTitle}</div>
+                  <div className="text-sm">{staticTipDescription}</div>
+                </div>
+              </Box>
+            </Box>
+          )}
+
+          {showTips && !hasStaticTip && (
+            <Box className="w-full max-w-2xl px-3" gap="md">
+              {visibleTips.length > 0 && (
+                <div role="status" aria-live="polite" className="sr-only">
+                  {tipTitle(visibleTips[0])}
+                </div>
+              )}
+              <div
+                ref={stackTrackRef}
+                className="relative w-full min-h-40 overflow-x-hidden md:overflow-x-visible"
+                style={
+                  isHorizontalStack
+                    ? undefined
+                    : {
+                        perspective: `${VERTICAL_STACK_PERSPECTIVE_PX}px`,
+                        perspectiveOrigin: '50% 32%',
+                        transformStyle: 'preserve-3d' as const,
+                      }
                 }
               >
-                {showTipBody ? (
-                <div ref={measureHostRef(tip)} className="w-full">
-                  <div className="text-base font-semibold">
-                    {tipTitle(tip)}
-                  </div>
-                  <div className="text-sm">
-                    {tipDescription(tip)}
-                  </div>
+                {visibleTips.map(function renderCard(tip, index) {
+                  const showTipBody = stackLazyShowBody(exitingTip, index)
+                  const cardReflowEaseClass =
+                    unifiedStackMinHeightPx > 0 && !reduceMotion
+                      ? TIP_CARD_HEIGHT_RESIZE_EASE_CLASS
+                      : ''
+                  const cardClassName = [TIP_CARD_SHELL_BASE_CLASS, cardReflowEaseClass]
+                    .filter((c) => c.length > 0)
+                    .join(' ')
+                  return (
+                    <motion.div
+                      key={tip}
+                      data-testid="tip-card"
+                      aria-hidden={!showTipBody ? true : undefined}
+                      className={cardClassName}
+                      initial={false}
+                      animate={
+                        exitingTip === null
+                          ? getSlot(index)
+                          : index === 0
+                            ? 'exitFront'
+                            : getSlot(index - 1)
+                      }
+                      variants={cardVariants}
+                      transition={cardTransition}
+                      style={{
+                        transformOrigin: '50% 0%',
+                        transformStyle: 'preserve-3d',
+                        ...(unifiedStackMinHeightPx > 0 ? { height: unifiedStackMinHeightPx } : {}),
+                      }}
+                      onAnimationComplete={
+                        index === 0 && exitingTip !== null ? onFrontStackAnimationComplete : undefined
+                      }
+                    >
+                      {showTipBody ? (
+                        <div ref={measureHostRef(tip)} className="w-full">
+                          <div className="text-base font-semibold">{tipTitle(tip)}</div>
+                          <div className="text-sm">{tipDescription(tip)}</div>
+                        </div>
+                      ) : (
+                        <div className="min-h-0 w-full" aria-hidden />
+                      )}
+                    </motion.div>
+                  )
+                })}
+                <div
+                  aria-hidden="true"
+                  className={[
+                    'pointer-events-none box-border opacity-0 rounded-lg border border-transparent px-2.5 py-2',
+                    ghostStackHeightPx != null && !reduceMotion ? TIP_CARD_HEIGHT_RESIZE_EASE_CLASS : '',
+                  ]
+                    .filter((c) => c.length > 0)
+                    .join(' ')}
+                  style={ghostStackHeightPx != null ? { height: ghostStackHeightPx } : undefined}
+                >
+                  <div className="text-base font-semibold">{tipTitle(spacerTip)}</div>
+                  <div className="text-sm">{tipDescription(spacerTip)}</div>
                 </div>
-                ) : (
-                  <div className="min-h-0 w-full" aria-hidden />
-                )}
-              </motion.div>
-              )
-            })}
-            <div
-              aria-hidden="true"
-              className={[
-                'pointer-events-none box-border opacity-0 rounded-lg border border-transparent px-2.5 py-2',
-                ghostStackHeightPx != null && !reduceMotion ? TIP_CARD_HEIGHT_RESIZE_EASE_CLASS : '',
-              ]
-                .filter((c) => c.length > 0)
-                .join(' ')}
-              style={ghostStackHeightPx != null ? { height: ghostStackHeightPx } : undefined}
-            >
-              <div className="text-base font-semibold">
-                {tipTitle(spacerTip)}
               </div>
-              <div className="text-sm">
-                {tipDescription(spacerTip)}
-              </div>
-            </div>
-          </div>
-        </Box>
+            </Box>
+          )}
+        </>
       )}
     </Box>
   )

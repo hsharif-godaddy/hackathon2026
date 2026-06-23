@@ -12,11 +12,12 @@ interface PreviewLoadingStateProps {
   description?: string
   isMobile?: boolean
   testId?: string
+  showProgressTracker?: boolean
   timeEstimateMinutes?: number | null
   onTimeEstimateShown?: () => void
 }
 
-export default function PreviewLoadingState({ message, description, isMobile = false, testId, timeEstimateMinutes = null, onTimeEstimateShown }: PreviewLoadingStateProps) {
+export default function PreviewLoadingState({ message, description, isMobile = false, testId, showProgressTracker = false, timeEstimateMinutes = null, onTimeEstimateShown }: PreviewLoadingStateProps) {
   const previewViewMode = useDevelopPageStore((state) => state.previewViewMode)
   const selectedDeviceId = useDevelopPageStore((state) => state.selectedDeviceId)
 
@@ -50,7 +51,7 @@ export default function PreviewLoadingState({ message, description, isMobile = f
                 height: `min(${deviceHeight}px, calc(100% - ${deviceVerticalMargin * 2}px))`
               } : undefined}
             >
-              <Tips buildingMessage={message} buildingDescription={description} timeEstimateMinutes={timeEstimateMinutes} onTimeEstimateShown={onTimeEstimateShown} />
+              <Tips buildingMessage={message} buildingDescription={description} showProgressTracker={showProgressTracker} timeEstimateMinutes={timeEstimateMinutes} onTimeEstimateShown={onTimeEstimateShown} />
             </div>
           </div>
         </div>

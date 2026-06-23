@@ -31,6 +31,7 @@ import { useFirstBuildEstimateImpression } from '@/app/[market]/develop/hooks/us
 import ErrorBoundary from '@/components/ErrorBoundary'
 import { buildDynamicApiUrl } from '@/config/dynamic-api'
 import { EXPERIMENT_IDS, INITIAL_AGENT_V3_COHORT } from '@/config/experiments'
+import { useAabProgressTracker } from '@/experiments/aab-progress-tracker/useAabProgressTracker'
 import { useBuildingTipsVariant } from '@/experiments/building-tips-variant/useBuildingTipsVariant'
 import { isInitialBuildComplete, isInitialBuildFunnelActive } from '@/hooks/shared/initialBuildFunnel'
 import { useHivemind } from '@/hooks/useHivemind'
@@ -359,6 +360,8 @@ export default function PreviewPane({
   const markBuildEstimateShown = useFirstBuildEstimateImpression(appId)
 
   const buildingTipsVariant = useBuildingTipsVariant()
+  const aabProgressTrackerEnabled = useAabProgressTracker()
+  const showProgressTracker = isFirstBuildScreen && aabProgressTrackerEnabled
 
   useEffect(() => {
     if (isMobile) {
@@ -1367,7 +1370,7 @@ export default function PreviewPane({
     } else {
       loadingMessage = t(buildingTipsVariant.loadingAppMessageKey, undefined, buildingTipsVariant.loadingAppDefaultMessage);
     }
-    return <PreviewLoadingState message={loadingMessage} isMobile={isMobile} timeEstimateMinutes={buildEstimateMinutes} onTimeEstimateShown={markBuildEstimateShown} />
+    return <PreviewLoadingState message={loadingMessage} isMobile={isMobile} showProgressTracker={showProgressTracker} timeEstimateMinutes={buildEstimateMinutes} onTimeEstimateShown={markBuildEstimateShown} />
   }
 
   // Error state when server failed — show "Ask Airo to fix" alongside "Try Again"
@@ -1701,6 +1704,7 @@ export default function PreviewPane({
                         undefined,
                         buildingTipsVariant.buildingAppDefaultMessage,
                       )}
+                      showProgressTracker={showProgressTracker}
                       timeEstimateMinutes={buildEstimateMinutes}
                       onTimeEstimateShown={markBuildEstimateShown}
                     />

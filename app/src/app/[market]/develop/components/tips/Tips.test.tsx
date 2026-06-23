@@ -4,7 +4,7 @@
 import '@testing-library/jest-dom'
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { act, screen, within } from '@testing-library/react'
+import { act, fireEvent, screen, within } from '@testing-library/react'
 
 import type { TipsVariantPackage } from '@/experiments/building-tips-variant/variant-packages'
 import { logger } from '@/lib/request-context'
@@ -423,7 +423,7 @@ describe('Tips', () => {
     expect(ariaHiddenNodes.length).toBeGreaterThan(0)
 
     const spacer = Array.from(ariaHiddenNodes).find((node) =>
-      node.className.includes('opacity-0'),
+      node.getAttribute('class')?.includes('opacity-0'),
     )
     expect(spacer).toBeDefined()
     expect(
@@ -440,7 +440,7 @@ describe('Tips', () => {
 
     const spacer = Array.from(
       container.querySelectorAll<HTMLElement>('[aria-hidden="true"]'),
-    ).find((node) => node.className.includes('opacity-0'))
+    ).find((node) => node.getAttribute('class')?.includes('opacity-0'))
     expect(spacer).toBeDefined()
     expect(
       within(spacer as HTMLElement).getByText(`builder_tips_${tips[1]}_title`),
@@ -748,6 +748,41 @@ describe('Tips', () => {
       expect(
         within(cards[0] as HTMLElement).getByText(treatmentTipCopyDefaults.get_into_details.title),
       ).toBeInTheDocument()
+    })
+  })
+
+  describe('progress tracker card', () => {
+    it('renders the tracker alongside a manual-nav tip card', () => {
+      renderWithProviders(<Tips showProgressTracker />)
+
+      expect(screen.getByTestId('build-progress-tracker')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Previous tip' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Next tip' })).toBeInTheDocument()
+    })
+
+    it('keeps the copy static — does not auto-advance after the dwell window', () => {
+      renderWithProviders(<Tips showProgressTracker />)
+
+      expect(screen.getAllByText(`builder_tips_${tips[0]}_title`).length).toBeGreaterThan(0)
+
+      act(() => {
+        vi.advanceTimersByTime(CARD_DWELL_MS * 3)
+      })
+
+      // The tracker keeps ticking, but the tip copy must not rotate on its own.
+      expect(screen.getAllByText(`builder_tips_${tips[0]}_title`).length).toBeGreaterThan(0)
+      expect(screen.queryByText(`builder_tips_${tips[1]}_title`)).not.toBeInTheDocument()
+    })
+
+    it('advances the copy only when the next-tip nav is clicked', () => {
+      renderWithProviders(<Tips showProgressTracker />)
+
+      act(() => {
+        fireEvent.click(screen.getByRole('button', { name: 'Next tip' }))
+      })
+
+      expect(screen.getAllByText(`builder_tips_${tips[1]}_title`).length).toBeGreaterThan(0)
+      expect(screen.queryByText(`builder_tips_${tips[0]}_title`)).not.toBeInTheDocument()
     })
   })
 })

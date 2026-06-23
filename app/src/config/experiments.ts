@@ -14,6 +14,8 @@ export const EXPERIMENT_IDS = {
   bmsLaunchAA: 'airo-app-builder-bms-launch-aa',
   /** Building tips variant: tests the initial build loading screen (H1 headline + tip cards) as a single packaged experience. */
   buildingTipsVariant: 'endgame_first_build_action_h1_update',
+  /** First-build progress tracker: shows the 5-stage stepper during the first build (treatment cohort `on`) vs not (control). Gated in PreviewPane via useAabProgressTracker. */
+  aabProgressTracker: 'aab_progress_tracker',
   /** Combine Upgrade + Publish into a single Publish button with an educational upsell popup. */
   combineUpgradeWithPublish: 'aab_combine_upgrade_with_publish',
 } as const
