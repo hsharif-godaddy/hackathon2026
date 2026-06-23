@@ -1,0 +1,120 @@
+# Weekly Katana artifact cleanup (AIROBUILD-2745).
+#
+# Deletes Katana artifacts older than the retention window so deprecated-GCI ECR images don't
+# accumulate (each deleted artifact's underlying ECR image is removed by Katana, and any open
+# ServiceNow GCI vulnerable item for it auto-resolves). Runs across every app in the `airobuilde`
+# namespace (incl. the proxy), so it covers "other katana projects too" from the ticket.
+#
+# Uses the community action gdcorp-actions/katana-artifact-cleanup, which never deletes an artifact
+# that is promoted to any environment (live/rollback images are always kept). The action retains by
+# age OR count (not both); this job defaults to age (artifact_retention_days), per the ticket's
+# "older than 90 days". Switch retention_mode=count at dispatch time to keep the newest N instead.
+#
+# Manual runs preview by default (dryrun=true); the weekly schedule deletes for real.
+name: Katana Artifact Cleanup
+
+on:
+  workflow_dispatch:
+    inputs:
+      retention_mode:
+        description: 'Retain by age (days) or by count (newest N)'
+        type: choice
+        options: [days, count]
+        default: days
+      retention_value:
+        description: 'Days to keep (mode=days) or newest-N to keep (mode=count)'
+        type: number
+        default: 90
+      dryrun:
+        description: 'Preview only — list what would be deleted, delete nothing'
+        type: boolean
+        default: true
+  schedule:
+    - cron: '0 9 * * 1' # Mondays 09:00 UTC
+
+run-name: 'Katana artifact cleanup [${{ github.event_name }}]'
+
+permissions:
+  id-token: write # OIDC for katana-auth / katana-api
+  contents: read
+
+env:
+  KATANA_NAMESPACE: airobuilde
+  RETENTION_MODE: ${{ github.event.inputs.retention_mode || 'days' }}
+  RETENTION_VALUE: ${{ github.event.inputs.retention_value || '90' }}
+
+jobs:
+  discover:
+    name: Discover apps + resolve mode
+    runs-on:
+      labels:
+        - self-hosted
+        - airo-cicd-runners
+    outputs:
+      apps: ${{ steps.set-apps.outputs.apps }}
+      dryrun: ${{ steps.mode.outputs.dryrun }}
+    steps:
+      # List every app in the namespace so the matrix covers all katana projects + the proxy.
+      - id: list
+        name: List Katana apps
+        uses: gdcorp-actions/katana-api@b83a427b8cb7b421b765ff0357b954ab572e15c0 # v1
+        with:
+          method: GET
+          path: /v1/apps/${{ env.KATANA_NAMESPACE }}
+          fail_on_status_codes: true
+
+      - id: set-apps
+        name: Build app matrix
+        env:
+          BODY: ${{ steps.list.outputs.body_json }}
+        run: |
+          apps="$(printf '%s' "$BODY" | jq -c '[.[].name]')"
+          if [ "$apps" = "[]" ] || [ -z "$apps" ]; then
+            echo "::error::No apps returned for namespace ${KATANA_NAMESPACE}" >&2
+            exit 1
+          fi
+          echo "apps=$apps" >> "$GITHUB_OUTPUT"
+          echo "Apps to clean: $apps"
+
+      # Manual runs preview by default; the schedule deletes for real.
+      - id: mode
+        name: Resolve dry-run
+        env:
+          EVENT: ${{ github.event_name }}
+          INPUT_DRYRUN: ${{ github.event.inputs.dryrun }}
+        run: |
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            echo "dryrun=${INPUT_DRYRUN}" >> "$GITHUB_OUTPUT"
+          else
+            echo "dryrun=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  cleanup:
+    name: Cleanup ${{ matrix.app }}
+    needs: discover
+    runs-on:
+      labels:
+        - self-hosted
+        - airo-cicd-runners
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        app: ${{ fromJson(needs.discover.outputs.apps) }}
+    steps:
+      - id: auth
+        name: Authenticate with Katana
+        uses: gdcorp-actions/katana-auth@8ad45fa591b1cc9105510f220aa8f01bd299343c # v1
+
+      - name: Clean up artifacts for ${{ matrix.app }}
+        uses: gdcorp-actions/katana-artifact-cleanup@4d2ce7344761cabbddf5e8ca50815afb1e6e6047 # v1.2
+        with:
+          jwt: ${{ steps.auth.outputs.jwt }}
+          namespace: ${{ env.KATANA_NAMESPACE }}
+          app: ${{ matrix.app }}
+          # Exactly one of the two below is non-empty (the action rejects both/neither).
+          artifact_retention_days: ${{ env.RETENTION_MODE == 'days' && env.RETENTION_VALUE || '' }}
+          artifact_retention_count: ${{ env.RETENTION_MODE == 'count' && env.RETENTION_VALUE || '' }}
+          # Fetch well beyond the default 100 so old artifacts on busy apps are actually seen.
+          artifact_fetch_size: 5000
+          dryrun: ${{ needs.discover.outputs.dryrun }}
