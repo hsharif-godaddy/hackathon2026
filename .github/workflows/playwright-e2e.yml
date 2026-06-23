@@ -61,6 +61,11 @@ on:
         required: false
         type: string
         default: ''
+      run_host_paas_e2e:
+        description: 'Also run hosting-web-apps PaaS E2E (off by default — opt in only)'
+        required: false
+        type: boolean
+        default: false
 
   # Allow triggering from other GitHub Actions
   workflow_call:
@@ -85,6 +90,11 @@ on:
         required: false
         type: string
         default: ''
+      run_host_paas_e2e:
+        description: 'Also run hosting-web-apps PaaS E2E (off by default — opt in only)'
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   id-token: write # required for artifactory token login
@@ -578,20 +588,18 @@ jobs:
   #   test → @integration (latest test env changes)
 
   # --- prod: runs tests from main ---
-  # Filter gate intentionally excludes 'regression': a prod release dispatches
-  # this workflow twice (separate 'e2e' and 'regression' runs), so gating on
-  # 'e2e' (+ 'e2e-then-regression' for legacy callers) triggers the PaaS suite
-  # exactly once per release. Scheduled prod runs still trigger it via the
-  # github.event_name == 'schedule' branch regardless of filter.
-  # The `(inputs.dark_url || '') == ''` clause below additionally skips this on
-  # dark runs: the PaaS suite isn't dark-aware (it runs hosting-web-apps' own
-  # tests, not the dark AAB build), so there's no point dispatching it then.
+  # Opt-in only: paas E2E runs when a caller (manual dispatch or another
+  # workflow) explicitly sets `run_host_paas_e2e: true`. Cron, post-deploy,
+  # and post-promotion no longer fan paas E2E out by default. The env gate
+  # routes prod-targeted runs to this job (vs. host-paas-e2e-test for test
+  # env). Dark runs are still skipped — the PaaS suite isn't dark-aware
+  # (it runs hosting-web-apps' own tests, not the dark AAB build), so
+  # dispatching on a dark run is pure waste even when explicitly opted in.
   host-paas-e2e:
     if: >-
-      (inputs.environment || 'prod') == 'prod'
-      && (inputs.dark_url || '') == ''
-      && (github.event_name == 'schedule'
-          || contains(fromJSON('["e2e", "e2e-then-regression"]'), inputs.test_filter || 'e2e'))
+      ${{ inputs.run_host_paas_e2e
+          && (inputs.environment || 'prod') == 'prod'
+          && (inputs.dark_url || '') == '' }}
     name: E2E Tests (host-paas, prod)
     uses: gdcorp-partners/hosting-web-apps/.github/workflows/e2e-playwright.yml@main
     with:
@@ -606,13 +614,15 @@ jobs:
 
   # --- test: runs tests from integration branch ---
   # Reaches the VPN-gated test env (host.beta.test-godaddy.com) via the
-  # airo-cicd-runners' TGW egress, now allowlisted in the PaaS test WAF
-  # (hosting-infra HPXPaasWebACLv2). Before that allowlist landed, BFF
-  # API calls were blocked with 403 "RBAC: access denied" at the edge.
+  # airo-cicd-runners' TGW egress, allowlisted in the PaaS test WAF
+  # (hosting-infra HPXPaasWebACLv2).
+  # Opt-in only (matches host-paas-e2e above): runs when a caller sets
+  # `run_host_paas_e2e: true`. The env gate routes test-targeted runs
+  # here vs. the prod job above.
   host-paas-e2e-test:
-    if: >
-      ${{ (inputs.environment || 'prod') == 'test'
-          && contains(fromJSON('["e2e", "e2e-then-regression"]'), inputs.test_filter || 'e2e') }}
+    if: >-
+      ${{ inputs.run_host_paas_e2e
+          && (inputs.environment || 'prod') == 'test' }}
     name: E2E Tests (host-paas, test)
     uses: gdcorp-partners/hosting-web-apps/.github/workflows/e2e-playwright.yml@integration
     with:

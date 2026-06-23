@@ -12,6 +12,41 @@ AI-powered app development platform. Multi-service architecture with AI agents, 
 
 **App creation flow:** User clicks create → BFF calls mhp-core management service → control plane allocates Nomad job → user redirected to job instance running agent/preview/publish containers.
 
+## Cross-repo coupling (hosting-web-apps / paas)
+
+Runtime: the paas BFF in `gdcorp-partners/hosting-web-apps` (`apps/paas`) consumes mgmt-airo, agent service, and V2 publish APIs from this repo. Do not change those response shapes, auth contracts, or route paths without coordinating with hosting-web-apps.
+
+**Routes paas wraps.** `apps/paas` is a Next.js BFF that wraps a substantial subset of this repo's surfaces — `/api/airo/v1/*`, per-app agents-service routes (zip upload, customer logs, database, git ops), plus domains/secrets/git/github/sites/project-domain handlers in `app/src/app/api/`. The canonical list of wrappers lives in the BFF itself; enumerate with:
+
+```bash
+gh search code --repo gdcorp-partners/hosting-web-apps 'path:apps/paas/pages/api'
+```
+
+**Treat any change to a `/api/airo/v1/*` route, any per-app agents-service route, or any handler in `app/src/app/api/` as potentially paas-affecting** and follow the PR checklist below. The table that follows is a non-exhaustive sample of the highest-traffic wrappers — useful as anchor points, not a complete coverage map. Update it when convenient, but the canonical source is the BFF source itself.
+
+| airo (this repo, sample)                                  | paas (`apps/paas` BFF)                       |
+| --------------------------------------------------------- | -------------------------------------------- |
+| `POST /api/airo/v1/signup`                                | `POST /paas/api/airo/signup`                 |
+| `GET  /api/airo/v1/customers/me/apps`                     | `GET  /paas/api/airo/apps`                   |
+| `GET  /api/airo/v1/.../apps/{id}`                         | `GET  /paas/api/airo/apps/:id`               |
+| `POST /api/airo/v1/.../apps/{id}/publish` (V2 publish)    | `POST /paas/api/airo/apps/:id/publish`       |
+| `GET  /api/airo/v1/.../apps/{id}/deployments`             | `GET  /paas/api/airo/apps/:id/deployments`   |
+| `POST /api/airo/v1/.../apps/{id}/rollback`                | `POST /paas/api/airo/apps/:id/rollback`      |
+
+CI/CD: the only cross-repo workflow triggers are in `.github/workflows/playwright-e2e.yml` — job `host-paas-e2e` (prod) and job `host-paas-e2e-test` (test). Both are gated by the `run_host_paas_e2e` input, default `false`. The env-specific gate routes prod runs to the prod job and test runs to the test job. Do **not**:
+
+- add new `uses: gdcorp-partners/hosting-web-apps/...` steps in any workflow;
+- pass `run_host_paas_e2e: true` from `deploy-test-e2e.yml`, `promote-artifact.yml`, or any scheduled trigger.
+
+To validate paas after an airo change, dispatch `playwright-e2e.yml` manually from the GitHub Actions UI and tick `run_host_paas_e2e` (target `prod` or `test` via the `environment` input).
+
+**Before merging a paas-affecting change** (per the route table above):
+
+1. Search hosting-web-apps for the route or symbol you're changing. From a local checkout: `rg <name> /path/to/hosting-web-apps/apps/paas`. From CI (or without a local checkout): `gh search code --repo gdcorp-partners/hosting-web-apps 'path:apps/paas <name>'` (the `path:` prefix is a search qualifier inside the query string — `gh search code` has no `--path` flag).
+2. Open a tracking issue in hosting-web-apps, or comment on the paas PR that depends on this change.
+3. Manually trigger `playwright-e2e.yml` from the Actions UI with `run_host_paas_e2e=true` and confirm the cross-repo job passes.
+4. If the change is breaking, bump the route to `/api/airo/v2/...` instead of changing v1 in place. Keep v1 live for at least one paas release.
+
 ## Dual-Product Architecture
 
 This codebase serves two products. Some features need product-gating.

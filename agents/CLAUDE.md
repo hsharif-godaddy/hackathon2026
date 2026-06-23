@@ -2,6 +2,8 @@
 
 Express API (port 4000) providing AI agent orchestration, app lifecycle, SSE streaming, and SQLite persistence.
 
+> **External consumer:** the `apps/paas` BFF in `gdcorp-partners/hosting-web-apps` calls per-app routes on this service (zip upload, customer logs, database, git ops) after resolving the per-app URL via mgmt-airo. Path, request shape, response shape, and status-code changes on those routes are paas-affecting. See root [`CLAUDE.md`](../CLAUDE.md) → "Cross-repo coupling" for the route table, PR checklist, and how to validate paas E2E. **Note:** this is distinct from the "PaaS-mode" SQLite-schema notes below (under §Database), which describe internal product-mode behavior, not the external BFF contract.
+
 ## Security — Tenant Isolation
 
 **All routes accepting appId or conversationId MUST validate ownership.** Every request has `req.agentContext.siteId` from the JWT. Resources must belong to that site.

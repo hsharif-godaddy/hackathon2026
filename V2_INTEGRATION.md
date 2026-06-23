@@ -7,6 +7,7 @@ The AiroAppBuilder (Katana) application integrates with the V2 Control Plane arc
 **Key Points:**
 
 - AiroAppBuilder **ONLY** calls `mgmt-airo` backend, **NOT** `mgmt-hosting` directly
+- **Downstream consumer:** the `apps/paas` Next.js BFF in `gdcorp-partners/hosting-web-apps` wraps these `/api/airo/v1/*` routes as `/paas/api/airo/*`. Route paths, request/response shapes, and auth contracts here are part of paas's runtime contract — coordinate with hosting-web-apps before changing them. See [`CLAUDE.md`](CLAUDE.md) → "Cross-repo coupling" for the route table, PR checklist, and CI/CD rules.
 - Authentication uses `shopperJwt` (SSO JWT tokens) validated via `gd-auth`
 - Hierarchical resource model: Customer → Subscription → System → App → Domain
 - Async workflows return job IDs, requiring polling to discover app IDs

@@ -221,6 +221,8 @@ Browser iframe refreshes
    database lookups
 4. No BFF involved
 
+> **Primary external client:** the `apps/paas` Next.js BFF in `gdcorp-partners/hosting-web-apps`. See [`CLAUDE.md`](CLAUDE.md) → "Cross-repo coupling" for the runtime + CI/CD contract.
+
 ---
 
 ## Developer Guide
