@@ -1,37 +1,24 @@
 ---
 name: database
 description: MySQL database with Drizzle ORM for data persistence
-whenToUse: User needs to store data, create tables, query data, or build data-driven features. Phrases like "save data", "database", "store information", "persist", "tables", "queries", "CRUD operations".
+whenToUse: User needs to store, query, or manage persistent data. Triggers include database, MySQL, tables, rows, records, CRUD, persist, save data, data model, schema, Drizzle, ORM, relational data, foreign keys, migrations, seed data, query data, data-driven features.
 dependencies:
   - drizzle-orm
   - drizzle-kit
   - mysql2
 intents:
-  - save data/database/CRUD/persist records
+  - database/MySQL/save data/persist records/data model/schema/tables/CRUD/Drizzle/ORM/seed
 ---
 
 # MySQL Database Skill
 
-**Purpose:** Add MySQL database with Drizzle ORM for data persistence and querying.
+Add MySQL with Drizzle ORM for persistent data storage and querying.
 
-> **Note:** This skill provides custom tools that are automatically loaded when you activate the skill. Tools are prefixed with `database__` (e.g., `database__listTables`, `database__getSchema`). Unload with `skill({ action: 'unload', skill: 'database' })` when no longer needed.
-
----
-
-## When to Use This Skill
-
-Load when users need to:
-
-- Store persistent data
-- Create database tables
-- Query or manage data
-- Build data-driven features
+> Tools prefixed `database__` are auto-loaded with this skill (listTables, getSchema, getTableData, insertRow, updateRow, deleteRow). Unload with `skill({ action: 'unload', skill: 'database' })` when no longer needed.
 
 ---
 
 ## Installation
-
-### Step 1: Install Skill Templates
 
 ```typescript
 skill({ action: 'install', skill: 'database' });
@@ -39,154 +26,41 @@ skill({ action: 'install', skill: 'database' });
 
 This installs:
 
-- Database client (`src/server/db/client.ts`) - IMMUTABLE
-- Config loader (`src/server/db/config.ts`) - IMMUTABLE
-- Schema file (`src/server/db/schema.ts`) - MODIFY THIS
-- Drizzle config (`drizzle.config.ts`) - IMMUTABLE
-- Dependencies: drizzle-orm, drizzle-kit, mysql2
+| File | Role |
+|------|------|
+| `src/server/db/client.ts` | Connection pool — IMMUTABLE |
+| `src/server/db/config.ts` | Credential loader — IMMUTABLE |
+| `drizzle.config.ts` | Migration config — IMMUTABLE |
+| `src/server/db/schema.ts` | Table definitions — MODIFY THIS |
+
+Dependencies added: `drizzle-orm`, `drizzle-kit`, `mysql2`.
 
 ---
 
 ## Available Tools
 
-When you load this skill, the following tools become available:
+| Tool | Purpose |
+|------|---------|
+| `database__listTables` | List all tables (excludes system tables) |
+| `database__getSchema` | Get column names, types, constraints for a table |
+| `database__getTableData` | Paginated rows (page, limit, hasMore) |
+| `database__insertRow` | Insert row with column-value pairs |
+| `database__updateRow` | Update row by primaryKey |
+| `database__deleteRow` | Delete row by primaryKey |
 
-### `database__listTables`
-
-List all tables in the application's database (excludes system tables).
-
-**Parameters:** None (uses app context)
-
-**Returns:** `{ success: boolean, tables: string[] }`
-
-**Example:**
-
-```typescript
-database__listTables();
-// Returns: { success: true, tables: ["users", "products", "orders"] }
-```
-
-### `database__getSchema`
-
-Get schema information for a specific table (column names, types, constraints).
-
-**Parameters:**
-
-- `tableName` (string): Name of the table
-
-**Returns:** `{ success: boolean, tableName: string, columns: TableColumn[] }`
-
-**Example:**
-
-```typescript
-database__getSchema({ tableName: 'users' });
-// Returns: { success: true, tableName: "users", columns: [{ name: "id", type: "int", nullable: false, key: "PRI", ... }, ...] }
-```
-
-### `database__getTableData`
-
-Get paginated data from a table.
-
-**Parameters:**
-
-- `tableName` (string): Name of the table
-- `page` (number, optional): Page number (default: 1)
-- `limit` (number, optional): Rows per page (default: 25, max: 1000)
-
-**Returns:** `TableDataResult` - Paginated rows with metadata
-
-**Example:**
-
-```typescript
-database__getTableData({ tableName: 'users', page: 1, limit: 10 });
-// Returns: { rows: [...], total: 42, page: 1, limit: 10, hasMore: true }
-```
-
-### `database__insertRow`
-
-Insert a new row into a table.
-
-**Parameters:**
-
-- `tableName` (string): Name of the table
-- `data` (object): Column-value pairs for the new row
-
-**Returns:** `{ success: boolean }`
-
-**Example:**
-
-```typescript
-database__insertRow({
-  tableName: 'users',
-  data: { name: 'John Doe', email: 'john@example.com' },
-});
-```
-
-### `database__updateRow`
-
-Update an existing row in a table.
-
-**Parameters:**
-
-- `tableName` (string): Name of the table
-- `primaryKey` (object): Primary key column-value pairs for WHERE clause
-- `data` (object): Column-value pairs to update
-
-**Returns:** `{ success: boolean }`
-
-**Example:**
-
-```typescript
-database__updateRow({
-  tableName: 'users',
-  primaryKey: { id: 1 },
-  data: { name: 'Jane Doe' },
-});
-```
-
-### `database__deleteRow`
-
-Delete a row from a table.
-
-**Parameters:**
-
-- `tableName` (string): Name of the table
-- `primaryKey` (object): Primary key column-value pairs for WHERE clause
-
-**Returns:** `{ success: boolean }`
-
-**Example:**
-
-```typescript
-database__deleteRow({
-  tableName: 'users',
-  primaryKey: { id: 1 },
-});
-```
+All tools require app context (appId). Use `database__listTables` after migrations to verify tables exist.
 
 ---
 
-## Workflow
+## Workflow (repeat for every schema change)
 
-1. Import `db` from `src/server/db/client.ts` (pre-configured, read-only)
-2. Define schema in `src/server/db/schema.ts` (single source of truth)
-3. Run `npx drizzle-kit generate` (create migration files)
-4. Run `npx drizzle-kit migrate` (apply migrations)
+1. Define or modify tables in `src/server/db/schema.ts`
+2. Generate migration: `npx drizzle-kit generate`
+3. Apply migration: `npx drizzle-kit migrate`
+4. Verify: call `database__listTables` to confirm tables exist
+5. If step 2 or 3 fails → read error, fix schema, go to step 2
 
----
-
-## MySQL Limitation - No .returning()
-
-MySQL doesn't support `.returning()`. Use `insertId` pattern:
-
-```typescript
-// Create record
-const result = await db.insert(users).values(data);
-const insertedId = Number(result[0].insertId);
-
-// Fetch the created record
-const user = await db.select().from(users).where(eq(users.id, insertedId)).limit(1);
-```
+Never skip verification. A migration that silently fails leaves the app in a broken state the user discovers later.
 
 ---
 
@@ -204,6 +78,44 @@ export const users = mysqlTable('users', {
   createdAt: timestamp('created_at').defaultNow(),
 });
 ```
+
+Common column types: `int`, `varchar(length)`, `text`, `boolean`, `timestamp`, `json`, `decimal(precision, scale)`.
+
+### Relationships (Foreign Keys)
+
+```typescript
+export const posts = mysqlTable('posts', {
+  id: int('id').primaryKey().autoincrement(),
+  title: varchar('title', { length: 255 }).notNull(),
+  authorId: int('author_id').notNull().references(() => users.id),
+  createdAt: timestamp('created_at').defaultNow(),
+});
+```
+
+### Schema Evolution
+
+New columns on existing tables must be **nullable** or have a `.default()` value — existing rows cannot satisfy a NOT NULL constraint without a default.
+
+---
+
+## MySQL Constraints
+
+**No `.returning()` support.** MySQL requires the `insertId` pattern:
+
+```typescript
+const result = await db.insert(users).values(data);
+const insertedId = Number(result[0].insertId);
+const user = await db.select().from(users).where(eq(users.id, insertedId)).limit(1);
+```
+
+**`.js` extensions required** in API route imports:
+
+```typescript
+import { db } from '../../db/client.js';
+import { users } from '../../db/schema.js';
+```
+
+Template files (handled by Vite) use extensionless imports.
 
 ---
 
@@ -248,14 +160,12 @@ res.status(201).json(newUser[0]);
 
 ## Server Restarts
 
-**ONLY restart when:**
-
+**Restart only when:**
 - Applying database schema migrations
-- Installing NEW backend dependencies
+- Installing new backend dependencies
 - Modifying server configuration files
 
-**DO NOT restart for:**
-
+**Do not restart for:**
 - Code changes (Vite HMR handles this)
 - Frontend dependency installations
 
@@ -263,8 +173,8 @@ res.status(201).json(newUser[0]);
 
 ## Key Rules
 
-- MySQL only - No `.returning()` support
-- Pre-configured DB - Use `db` from client.ts, don't modify connection
-- Schema changes require migrations - Use `npx drizzle-kit generate` and `npx drizzle-kit migrate`
-- Use `.js` extensions - Backend imports in API routes require explicit extensions (e.g., `import { db } from '../../db/client.js'`). Template files use TypeScript imports without extensions (handled by Vite bundler).
-- Migration files auto-committed - Git tracks schema changes
+- MySQL only — no `.returning()` support, use insertId pattern
+- Pre-configured DB — use `db` from client.ts, never modify the connection
+- Schema changes require migrations — `npx drizzle-kit generate` then `npx drizzle-kit migrate`
+- `.js` extensions in API routes — template files use extensionless (Vite handles it)
+- Migration files are auto-committed — git tracks schema changes

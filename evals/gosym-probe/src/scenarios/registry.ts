@@ -23,6 +23,14 @@ import {
 } from './prompt-vs-skill/index.js';
 import { buildPortfolioPromptTaxScenarios } from './prompt-tax/index.js';
 import { buildCookieConsentGtmScenario } from './cookie-consent-gtm.js';
+import {
+  addUserTableScenario,
+  crudApiHandlerScenario,
+  noReturningScenario,
+  foreignKeyRelationshipScenario,
+  noRawSqlClientScenario,
+  schemaEvolutionScenario,
+} from './skills/database/index.js';
 import type { IGocodeClient } from '../clients/gocode-client.js';
 import type {
   AABCtrlPlaneClient,
@@ -53,5 +61,11 @@ export function createAllScenarios(
     buildCookieConsentGtmScenario(gocode, ctrlPlane),
     ...buildAiroBaselineScenarios(gocode, ctrlPlane),
     ...buildPortfolioPromptTaxScenarios(gocode, ctrlPlane),
+    addUserTableScenario(gocode, ctrlPlane),
+    crudApiHandlerScenario(gocode, ctrlPlane),
+    noReturningScenario(gocode, ctrlPlane),
+    foreignKeyRelationshipScenario(gocode, ctrlPlane),
+    noRawSqlClientScenario(gocode, ctrlPlane),
+    schemaEvolutionScenario(gocode, ctrlPlane),
   ];
 }

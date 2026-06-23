@@ -4,10 +4,12 @@ metadata:
 
 # Database skill routing rules (from skill.md frontmatter):
 #
-# database — MySQL + Drizzle ORM for data persistence.
-#            Trigger phrases: "save data", "database", "store information",
-#            "persist", "tables", "queries", "CRUD operations".
-#            Intents: save data/database/CRUD/persist records
+# database — MySQL database with Drizzle ORM for data persistence.
+#            whenToUse: User needs to store, query, or manage persistent data.
+#            Triggers: database, MySQL, tables, rows, records, CRUD, persist,
+#            save data, data model, schema, Drizzle, ORM, relational data,
+#            foreign keys, migrations, seed data, query data, data-driven features.
+#            Intents: database/MySQL/save data/persist records/data model/schema/tables/CRUD/Drizzle/ORM/seed
 #
 # Important disambiguation:
 #   - commerce skill handles product catalogs, not database
