@@ -724,9 +724,8 @@ function resolveIssueType(category, topics) {
 function buildCaseBody({ row, customerId, appId, submissionId }) {
   const text = row.feedback_text ?? '';
   const truncatedDescription = text.slice(0, 4000);
-  const escalationDetails = buildEscalationDetails({ row, truncatedDescription });
-  const appIdSegment = appId ? `(appid - ${appId}) ` : '';
-  const note = `Comment : ${appIdSegment}${escalationDetails}`;
+  const escalationDetails = buildEscalationDetails({ row, truncatedDescription, appId });
+  const note = `Comment : ${escalationDetails}`;
 
   const firstName = row.customer_first_name ?? '';
   const lastName = row.customer_last_name ?? '';
@@ -775,13 +774,16 @@ function buildCaseBody({ row, customerId, appId, submissionId }) {
  * support-tooling contract that triages on these literals — changing them
  * requires re-training that tooling.
  */
-function buildEscalationDetails({ row, truncatedDescription }) {
+function buildEscalationDetails({ row, truncatedDescription, appId }) {
   const cat = row.feedback_category;
   const topics = parseTopics(row.feedback_topic_list);
   const topicsLine = topics.length > 0 ? ` | Topics: ${topics.join(', ')}` : '';
-  if (cat === 'issue') return `[ISSUE] ${truncatedDescription}${topicsLine}`;
+  // appIdSegment appears after the routing prefix so support tooling that
+  // matches on the literal [ISSUE] / [SUPPORT] prefix continues to work.
+  const appIdSegment = appId ? `(appid - ${appId}) ` : '';
+  if (cat === 'issue') return `[ISSUE] ${appIdSegment}${truncatedDescription}${topicsLine}`;
   if (cat === 'support') {
-    return `[SUPPORT] ${truncatedDescription}${topicsLine}`;
+    return `[SUPPORT] ${appIdSegment}${truncatedDescription}${topicsLine}`;
   }
   // feedback (NPS)
   const consentMarker = row.consent_flag === true ? 'consent=yes' : 'consent=no';
