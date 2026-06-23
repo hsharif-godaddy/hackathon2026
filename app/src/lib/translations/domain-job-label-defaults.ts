@@ -11,6 +11,7 @@ export const DOMAIN_JOB_LABEL_DEFAULT_MESSAGES: Record<string, string> = {
   builder_domain_job_verifying_domain: 'Verifying domain...',
   builder_domain_job_waiting_for_dns: 'Waiting for DNS setup...',
   builder_domain_job_connecting_domain: 'Connecting domain...',
+  builder_domain_job_checking_propagation: 'Checking DNS propagation...',
   builder_domain_job_connected: 'Domain connected',
 };
 

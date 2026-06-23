@@ -184,6 +184,7 @@ var domainJobStubPhases = []map[string]any{
 	{"id": "mock-dns", "label": "builder_domain_job_configuring_dns", "status": "RUNNING"},
 	{"id": "mock-verify", "label": "builder_domain_job_verifying_domain", "status": "RUNNING"},
 	{"id": "mock-connect", "label": "builder_domain_job_connecting_domain", "status": "RUNNING"},
+	{"id": "mock-propagation", "label": "builder_domain_job_checking_propagation", "status": "RUNNING"},
 }
 
 func domainJobStubCacheKey(vars map[string]string, fqdn string) string {
