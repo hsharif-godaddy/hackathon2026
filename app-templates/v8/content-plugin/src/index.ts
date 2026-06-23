@@ -125,7 +125,10 @@ export function contentPlugin(options: Options = {}): Plugin {
       const resolved = resolveAbsolute(cleanSource, importer, projectRoot);
       if (!resolved) return undefined;
 
-      if (resolved === contentDir || resolved.startsWith(contentDir + path.sep)) {
+      if (
+        (resolved === contentDir || resolved.startsWith(contentDir + path.sep)) &&
+        !isSchemasModule(resolved, contentDir)
+      ) {
         throw directImportError(path.relative(path.dirname(contentDir), resolved));
       }
 
@@ -144,7 +147,7 @@ export function contentPlugin(options: Options = {}): Plugin {
       const cleanId = id.replace(/[?#].*$/, '');
       if (
         (cleanId === contentDir || cleanId.startsWith(contentDir + path.sep)) &&
-        cleanId !== path.join(contentDir, 'schemas.ts')
+        !isSchemasModule(cleanId, contentDir)
       ) {
         throw directImportError(path.relative(path.dirname(contentDir), cleanId));
       }
@@ -346,6 +349,20 @@ function resolveAbsolute(
     return path.resolve(path.dirname(importer), clean);
   }
   return undefined;
+}
+
+/**
+ * The schemas module is the ONE consumer allowed under contentDir — it holds
+ * Zod schemas (meta), not content data, and both the virtual module and the
+ * eager validator (`validateContentEager` via `ssrLoadModule`) import it. The
+ * two hooks see it in different forms: `resolveId` gets the extensionless
+ * project-root-relative path (`/src/content/schemas` → `<root>/src/content/schemas`),
+ * while `load` gets the extension-resolved id (`.../schemas.ts`). Match both by
+ * the contentDir-relative name so neither hook blocks the validator.
+ */
+function isSchemasModule(resolvedPath: string, contentDir: string): boolean {
+  const rel = path.relative(contentDir, resolvedPath);
+  return rel === 'schemas' || rel === 'schemas.ts';
 }
 
 async function exists(p: string): Promise<boolean> {

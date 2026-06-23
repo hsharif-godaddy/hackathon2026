@@ -260,6 +260,19 @@ describe('contentPlugin — resolveId block for direct JSON imports', () => {
     );
   });
 
+  it('does NOT throw for the schemas module — the eager validator loads it via ssrLoadModule("/src/content/schemas")', async () => {
+    const plugin = await initPlugin(root);
+    // Extensionless, project-root-relative — exactly how validateContentEager
+    // resolves it. Must pass through (load() then handles schemas.ts).
+    await expect(callResolveId(plugin, '/src/content/schemas')).resolves.toBeUndefined();
+  });
+
+  it('does NOT throw for an absolute schemas.ts path', async () => {
+    const plugin = await initPlugin(root);
+    const abs = path.join(root, 'src/content/schemas.ts');
+    await expect(callResolveId(plugin, abs)).resolves.toBeUndefined();
+  });
+
   it('throws on a relative import from a page that resolves under src/content/', async () => {
     const plugin = await initPlugin(root);
     const importer = path.join(root, 'src/pages/index.tsx');
