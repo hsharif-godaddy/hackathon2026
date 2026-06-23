@@ -28,7 +28,7 @@ import type { Page } from '@playwright/test';
 import { test, expect } from '../helpers/test-fixtures';
 
 import { deleteAppsWithPrefix, evictOldestE2eAppsToFitLimit } from '../helpers/api';
-import { handleSsoLogin, ensureAuthenticated } from '../helpers/auth';
+import { detectSsoType, ensureAuthenticated, handleSsoLogin, isSignInUIResult, loginViaSsoDirect } from '../helpers/auth';
 import {
   LONG_TIMEOUT,
   DEFAULT_TIMEOUT,
@@ -74,7 +74,13 @@ async function createDevelopApp(page: Page): Promise<string> {
   await dismissOverlays(page);
   await page.locator('[data-eid*="homepage.prompt.submit"]').click();
 
-  await handleSsoLogin(page);
+  // Already authenticated in beforeEach (fast standalone-SSO login), so the
+  // submit normally redirects straight to /develop/. Only drive the SSO flow
+  // if the session refreshed mid-test and the sign-in UI reappeared.
+  const ssoResult = await detectSsoType(page, true);
+  if (isSignInUIResult(ssoResult)) {
+    await handleSsoLogin(page);
+  }
 
   await page.waitForURL(/\/develop\//, { timeout: LONG_TIMEOUT });
   await waitForDevelopPage(page);
@@ -120,6 +126,10 @@ async function openHistoryTab(page: Page): Promise<void> {
 test.describe('Develop Page', () => {
   test.beforeEach(async ({ page }, testInfo) => {
     logTestStart(testInfo);
+    // Authenticate once here via the fast standalone-SSO login (e2e-v2 style)
+    // instead of the slower in-body homepage user-menu -> sign-in iframe flow;
+    // createDevelopApp's post-submit step is now a conditional re-auth guard.
+    await loginViaSsoDirect(page);
     if (!E2E_NO_DELETE) {
       await page.goto('/');
       await evictOldestE2eAppsToFitLimit(page).catch(() => {});
@@ -348,32 +358,51 @@ test.describe('Develop Page', () => {
   // user types text mid-stream (Send-to-queue mode). Either disable the
   // flag for this test (Switchboard override) or fill the message AFTER
   // capturing the stop button to avoid the testid flip.
-  test.skip('Stop button during streaming', async ({ page }) => {
-    await page.goto('/');
-    const promptInput = page.getByTestId('homepage-prompt-input');
-    await promptInput.waitFor({ state: 'visible', timeout: LONG_TIMEOUT });
-    await promptInput.fill('Create a long detailed blog post');
-    await page.locator('[data-eid*="homepage.prompt.submit"]').click();
-    await handleSsoLogin(page);
-    await page.waitForURL(/\/develop\//, { timeout: LONG_TIMEOUT });
-    await waitForDevelopPage(page);
+  // Re-enabled (VNEXT-80871). Previously skipped citing AIROBUILD-1235 (clicking
+  // Stop didn't cancel the agent, so the UI flipped back to streaming). That
+  // ticket is now Cancelled and the symptom no longer reproduces — verified on
+  // prod that Stop cancels cleanly and the UI settles to idle and STAYS idle
+  // (~40s observed). The test asserts the client stop affordance + that idle
+  // sticks, which guards against the regression returning.
+  test('Stop button during streaming', async ({ page }, testInfo) => {
+    // Initial gen (up to 2 cycles) + the long streamed response we interrupt.
+    testInfo.setTimeout(3 * AI_RESPONSE_TIMEOUT_MS + 120_000);
 
-    await waitForChatInput(page);
+    await createDevelopApp(page);
+    await dismissOverlays(page);
+
     const chatInput = page.getByTestId('chat-input-textarea');
     const transcript = page.getByTestId('chat-transcript');
+    const sendButton = page.getByTestId('chat-send-button');
+    const stopButton = page.getByTestId('chat-stop-button');
 
-    const stopMessage = 'Create a long detailed blog post';
-    await chatInput.clear();
+    // Send a long-generating follow-up so there's a real stream to interrupt.
+    // "Write it directly, no questions" avoids a clarifying-question card, which
+    // would collapse the chat input instead of streaming a response.
+    const stopMessage =
+      'Write a very long, detailed 2000-word blog post with 10 sections about gardening. ' +
+      'Write the full content directly now — do not ask any questions.';
+    await expect(chatInput).toBeEnabled({ timeout: DEFAULT_TIMEOUT });
     await chatInput.fill(stopMessage);
+    await expect(sendButton).toBeEnabled({ timeout: DEFAULT_TIMEOUT });
     await chatInput.press('Enter');
 
+    // The message lands, then streaming starts: the action button carries the
+    // stop testid and the idle send button is gone.
     await expect(transcript.getByText(stopMessage, { exact: true })).toBeVisible({ timeout: DEFAULT_TIMEOUT });
-    const stopButton = page.getByTestId('chat-stop-button');
     await expect(stopButton).toBeVisible({ timeout: AI_RESPONSE_TIMEOUT_MS });
-    await expect(page.getByTestId('chat-send-button')).not.toBeVisible();
+    await expect(sendButton).not.toBeVisible();
+
+    // Click Stop → the UI returns to idle (send button back, input enabled).
     await stopButton.click({ force: true });
-    await expect(page.getByTestId('chat-send-button')).toBeVisible({ timeout: AI_RESPONSE_TIMEOUT_MS });
+    await expect(sendButton).toBeVisible({ timeout: AI_RESPONSE_TIMEOUT_MS });
     await expect(chatInput).not.toBeDisabled();
+
+    // ...and STAYS idle. If the backend resumed streaming (the AIROBUILD-1235
+    // symptom), the action button would flip back to Stop — assert it doesn't.
+    await page.waitForTimeout(5_000);
+    await expect(stopButton).toBeHidden();
+    await expect(sendButton).toBeVisible();
   });
 
   test.afterEach(async ({ page }, testInfo) => {
