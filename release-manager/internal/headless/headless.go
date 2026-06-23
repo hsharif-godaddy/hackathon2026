@@ -245,10 +245,18 @@ func (r *run) runTest(ctx context.Context, opts Options) error {
 		r.fail(ctx, "writing phase state failed")
 		return fmt.Errorf("writing phase state: %w", err)
 	}
-	// TEST done. The dark phase runs next (before the prod gate), so keep the
-	// message "in progress" — the awaiting-approval CTA + approver ping moved to
-	// the end of the dark phase (runProdDark), when the gate is actually imminent.
-	r.update(ctx, false)
+	// TEST done and the prod gate is next — edit the single status message to the
+	// "awaiting prod approval" CTA, then ping the approvers in a SEPARATE fresh
+	// post. The in-place edit can't notify anyone (Slack only delivers @-mentions
+	// on a new message, never on a chat.update edit), so resolve the approver handles
+	// → mention tokens and post them as a broadcast threaded reply. Best-effort:
+	// unresolved handles / a missing scope just yield no ping.
+	r.updateAwaiting(ctx)
+	if r.notifier != nil && len(r.approvalMentions) > 0 {
+		if mentions := r.notifier.ResolveMentions(ctx, r.approvalMentions); len(mentions) > 0 {
+			r.notifier.PostReply(ctx, approvalPing(r.runURL, mentions))
+		}
+	}
 	r.writeTestSummary()
 	return nil
 }
