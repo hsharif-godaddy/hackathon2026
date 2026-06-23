@@ -1,6 +1,6 @@
 import { withAuth } from '@/lib/api-auth';
 import { logger } from '@/lib/logger';
-import { runRebuildComposite } from '@/lib/feedback-ingest';
+import { runRebuildComposite } from '@/lib/supportplane/ingest/feedback-ingest';
 
 export const dynamic = 'force-dynamic';
 

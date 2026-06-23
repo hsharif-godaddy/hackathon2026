@@ -26,13 +26,20 @@ async function checkGoCaaS(): Promise<ServiceHealth> {
     const base = process.env.OPENAI_BASE_URL
         ?? (process.env.ANTHROPIC_AUTH_TOKEN ? 'https://api.anthropic.com' : '');
 
-    if (!key || !base) {
-        return { name: 'GoCaaS (AI)', ok: false, detail: 'OPENAI_API_KEY or OPENAI_BASE_URL not set' };
+    if (!base) {
+        return { name: 'GoCaaS (AI)', ok: false, detail: 'OPENAI_BASE_URL not set' };
     }
 
     try {
+        // In production with s2s auth, the key might be provided via platform mechanisms
+        // (e.g., service tokens), so attempt the request even without explicit OPENAI_API_KEY
+        const headers: Record<string, string> = {};
+        if (key) {
+            headers.Authorization = `Bearer ${key}`;
+        }
+
         const res = await fetch(`${base.replace(/\/$/, '')}/v1/models`, {
-            headers: { Authorization: `Bearer ${key}` },
+            headers,
             signal: abortAfter(TIMEOUT_MS),
         });
         if (res.ok || res.status === 404) {
@@ -207,13 +214,13 @@ async function checkSharePoint(): Promise<ServiceHealth> {
 
 async function checkTranscriptsDynamo(): Promise<ServiceHealth> {
     try {
-        const { getStore } = await import('@/lib/supportplane-store');
+        const { getStore } = await import('@/lib/supportplane/store');
         const store = getStore();
-        const hasData = await store.hasTranscripts();
+        const count = await store.countAllTranscripts();
         return {
             name: 'DynamoDB · Transcripts',
-            ok: hasData,
-            detail: hasData ? 'Connected · transcripts available' : 'No transcripts — sync from SharePoint',
+            ok: count > 0,
+            detail: count > 0 ? `${count.toLocaleString()} transcripts in DynamoDB` : 'No transcripts — sync from SharePoint',
         };
     } catch (err) {
         return { name: 'DynamoDB · Transcripts', ok: false, detail: `DynamoDB error: ${(err as Error).message.slice(0, 100)}` };
@@ -232,18 +239,18 @@ async function checkFeedbackS3(): Promise<ServiceHealth> {
         : (process.env.S3_FEEDBACK_BUCKET_DEV  ?? 'airo-builder-feedback-dev');
     const region  = process.env.AWS_DEFAULT_REGION ?? 'us-west-2';
 
-    if (!profile && !(keyId && secret)) {
-        return { name: 'S3 · Feedback', ok: false, detail: `No AWS credentials — set AWS_PROFILE in .env.local` };
-    }
-
     try {
+        // In production with s2s auth / IAM roles, credentials are provided by the platform.
+        // Attempt the connection even without explicit env vars — the SDK will use IAM role credentials.
         const credentials = (keyId && secret)
             ? { accessKeyId: keyId, secretAccessKey: secret, ...(process.env.AWS_SESSION_TOKEN ? { sessionToken: process.env.AWS_SESSION_TOKEN } : {}) }
-            : fromIni({ profile });
+            : profile
+                ? fromIni({ profile })
+                : undefined;  // Let SDK use default credential chain (IAM roles, etc.)
 
         const s3 = new S3Client({
             region,
-            credentials,
+            ...(credentials ? { credentials } : {}),
             requestHandler: { requestTimeout: TIMEOUT_MS } as Record<string, unknown>,
         });
 
@@ -252,12 +259,15 @@ async function checkFeedbackS3(): Promise<ServiceHealth> {
     } catch (err) {
         const msg = (err as Error).message ?? String(err);
         const isExpired = /ExpiredToken|expir.*token|sso.*session/i.test(msg);
+        const isNoCredentials = /Could not load credentials|Credential is missing/i.test(msg);
         return {
             name: 'S3 · Feedback',
             ok: false,
             detail: isExpired
                 ? `SSO session expired — run: aws sso login --profile ${profile}`
-                : `S3 error: ${msg.slice(0, 120)}`,
+                : isNoCredentials
+                    ? `No AWS credentials — set AWS_PROFILE in .env.local`
+                    : `S3 error: ${msg.slice(0, 120)}`,
         };
     }
 }

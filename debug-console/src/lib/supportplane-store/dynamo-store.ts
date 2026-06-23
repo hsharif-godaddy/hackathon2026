@@ -17,7 +17,7 @@ import type {
   UploadUpdate,
 } from '@/lib/supportplane-store/types';
 import { getConfig } from '@/lib/supportplane-store/config';
-import type { TranscriptFilter, TranscriptRow, UploadRecord } from '@/lib/l1-transcript-db';
+import type { TranscriptFilter, TranscriptRow, UploadRecord } from '@/lib/supportplane/db/l1-transcript-db';
 
 const GROUP_FIELDS = {
   agent_name: 'agent_name',
@@ -158,7 +158,7 @@ function matches(item: Record<string, unknown>, filter: TranscriptFilter): boole
 
   if (filter.tags?.length) {
     const tags = parseTags(item.tags);
-    if (!tags || !filter.tags.some((tag) => tags.includes(tag))) {
+    if (!tags || !filter.tags.some((tag: string) => tags.includes(tag))) {
       return false;
     }
   }

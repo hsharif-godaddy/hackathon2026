@@ -12,7 +12,7 @@ import {
   parseFeedbackFilters,
   parseFeedbackRequest,
   type FeedbackWindow,
-} from '@/lib/feedback-s3';
+} from '@/lib/supportplane/ingest/feedback-s3';
 import { routeCached, setRouteCache } from '@/lib/route-cache';
 
 export const dynamic = 'force-dynamic';

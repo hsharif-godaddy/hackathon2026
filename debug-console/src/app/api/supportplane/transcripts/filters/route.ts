@@ -6,7 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withAuth } from '@/lib/api-auth';
 import { logger } from '@/lib/logger';
-import { queryTranscripts } from '@/lib/l1-transcript-db';
+import { getStore } from '@/lib/supportplane/store';
 
 const FILTERS_CACHE_TTL_MS = 60000;
 let filtersCache:
@@ -35,59 +35,11 @@ async function handler(request: NextRequest) {
       return NextResponse.json(filtersCache.payload);
     }
 
-    const rows = await queryTranscripts({});
-    const categories = new Set<string>();
-    const statuses = new Set<string>();
-    const tagsSet = new Set<string>();
-
-    const subIntentSet = new Set<string>();
-    const frictionPointSet = new Set<string>();
-
-    rows.forEach(row => {
-      if (row.category) {
-        categories.add(row.category);
-      }
-      if (row.interaction_status) {
-        statuses.add(row.interaction_status);
-      }
-      if (Array.isArray(row.tags)) {
-        row.tags.forEach((tag) => tagsSet.add(tag));
-      } else if (typeof row.tags === 'string') {
-        try {
-          const tags = JSON.parse(row.tags) as string[];
-          tags.forEach((tag) => tagsSet.add(tag));
-        } catch {
-          // skip
-        }
-      }
-
-      try {
-        const data =
-          typeof row.raw_data === 'string' ? JSON.parse(row.raw_data) : row.raw_data;
-        if (data.sub_intent && data.sub_intent !== 'N/A' && data.sub_intent !== '') {
-          subIntentSet.add(data.sub_intent);
-        }
-        if (data.friction_point && data.friction_point !== 'N/A' && data.friction_point !== '') {
-          frictionPointSet.add(data.friction_point);
-        }
-      } catch {
-        // Skip invalid JSON
-      }
-    });
-
-    const subIntents = Array.from(subIntentSet).sort();
-    const frictionPoints = Array.from(frictionPointSet).sort();
-    const tags = Array.from(tagsSet).sort();
+    const filters = await getStore().getTranscriptFilterOptions();
 
     const payload = {
       success: true,
-      filters: {
-        categories: Array.from(categories).sort(),
-        interaction_statuses: Array.from(statuses).sort(),
-        sub_intents: subIntents,
-        friction_points: frictionPoints,
-        tags: tags,
-      },
+      filters,
     } as const;
 
     filtersCache = {

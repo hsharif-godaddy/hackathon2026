@@ -20,7 +20,7 @@ export const GET = withAuth(async (req: NextRequest) => {
             };
 
             try {
-                const { runFeedbackIngestion } = await import('@/lib/feedback-ingest');
+                const { runFeedbackIngestion } = await import('@/lib/supportplane/ingest/feedback-ingest');
                 logger.info('supportplane.feedback.sync.stream.start', { force, sources });
 
                 await runFeedbackIngestion((progress) => {

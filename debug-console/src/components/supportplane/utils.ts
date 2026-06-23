@@ -1,5 +1,3 @@
-'use client';
-
 export function userInitials(email: string | undefined): string {
     if (!email) return '?';
     const name = (email.split('@')[0] ?? '').replace(/[._-]/g, ' ');

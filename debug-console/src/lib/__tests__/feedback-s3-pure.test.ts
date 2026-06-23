@@ -4,7 +4,7 @@ import {
   filterFeedbackItemsForWindow,
   parseFeedbackUtc,
   type FeedbackWindow,
-} from '@/lib/feedback-s3';
+} from '@/lib/supportplane/ingest/feedback-s3';
 
 describe('feedback-s3 parseFeedbackUtc', function parseUtc() {
   it('parses naive space-separated timestamp as UTC', function spaceUtc() {

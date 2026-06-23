@@ -1,4 +1,3 @@
-'use client';
 
 // ── Panel IDs ─────────────────────────────────────────────────────────────────
 
@@ -8,7 +7,7 @@ export type PanelId =
     // ── Top-level dashboards ─────────────────────────────────────
     | 'dash-transcripts' | 'dash-feedback' | 'dash-tickets'
     // ── L1 Transcripts section ───────────────────────────────────
-    | 'transcripts' | 'upload' | 'analysis' | 'transcript-chat'
+    | 'transcripts' | 'upload' | 'analysis' | 'transcript-chat' | 'derived-insights'
     // ── Feedback section (S3 / Athena) ───────────────────────────
     | 'feedback-overview' | 'feedback-trends' | 'feedback-ratings'
     | 'feedback-topics' | 'feedback-browse' | 'feedback-chat'
@@ -61,6 +60,7 @@ export const PANEL_LABELS: Record<PanelId, string> = {
     upload:             'L1 Transcripts — Upload & Sync',
     analysis:           'L1 Transcripts — Deep Dive Analysis',
     'transcript-chat':  'L1 Transcripts — AI Chat',
+    'derived-insights': 'L1 Transcripts — Derived Insights (ML)',
     // Feedback
     'feedback-overview': 'Feedback — Overview',
     'feedback-trends':   'Feedback — Trends (WoW / MoM)',

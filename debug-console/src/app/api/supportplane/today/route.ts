@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { withAuth } from '@/lib/api-auth';
 import { logger } from '@/lib/logger';
-import { queryTranscripts } from '@/lib/l1-transcript-db';
-import { getRecentFeedback } from '@/lib/feedback-db';
-import { listTickets } from '@/lib/support-db';
+import { queryTranscripts, type TranscriptRow } from '@/lib/supportplane/db/l1-transcript-db';
+import { getRecentFeedback, type FeedbackRow } from '@/lib/supportplane/db/feedback-db';
+import { listTickets, type Ticket } from '@/lib/supportplane/db/support-db';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,6 +14,7 @@ interface TodayStats {
     today: number;
     yesterday: number;
     delta: number;
+    error?: string;
   };
   feedback: {
     today: number;
@@ -24,64 +25,106 @@ interface TodayStats {
       neutral: number;
       negative: number;
     };
+    error?: string;
   };
   support: {
     open: number;
     resolved_today: number;
     p1_count: number;
     backlog_velocity: number;
+    error?: string;
   };
 }
 
-export const GET = withAuth(async function todayStats(_request: NextRequest) {
+async function safeQueryTranscripts(start: string, end: string): Promise<{ rows: TranscriptRow[]; error?: string }> {
   try {
-    const today = new Date().toISOString().split('T')[0]!;
-    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().split('T')[0]!;
-    const yesterdayStart = `${yesterday}T00:00:00.000Z`;
-    const todayEnd = `${today}T23:59:59.999Z`;
-    const env = process.env.FEEDBACK_ENV ?? process.env.SP_ENV ?? 'dev';
-
-    const [transcriptRows, feedbackResult, tickets] = await Promise.all([
-      queryTranscripts({ start_date: yesterdayStart, end_date: todayEnd }),
-      getRecentFeedback(env, 5000, 0, { days: 2 }),
-      listTickets({ limit: 5000 }),
-    ]);
-
-    // L1 Transcripts
-    const transcriptsToday = transcriptRows.filter((r) => r.created_at?.slice(0, 10) === today).length;
-    const transcriptsYesterday = transcriptRows.filter((r) => r.created_at?.slice(0, 10) === yesterday).length;
-
-    // Feedback counts
-    const feedbackRows = feedbackResult.rows;
-    const feedbackToday = feedbackRows.filter((r) => r.feedback_utc_ts?.slice(0, 10) === today).length;
-    const feedbackYesterday = feedbackRows.filter((r) => r.feedback_utc_ts?.slice(0, 10) === yesterday).length;
-
-    const todayFeedback = feedbackRows.filter((r) => r.feedback_utc_ts?.slice(0, 10) === today);
-    const positive = todayFeedback.filter((r) => (r.rating ?? 0) >= 5).length;
-    const neutral = todayFeedback.filter((r) => r.rating === 4).length;
-    const negative = todayFeedback.filter((r) => (r.rating ?? 0) <= 3 && r.rating !== null).length;
-
-    // Support Tickets
-    const resolved = new Set(['Done', 'Closed']);
-    const openCount = tickets.filter((t) => !resolved.has(t.status ?? '')).length;
-    const resolvedToday = tickets.filter((t) => t.resolved_utc?.slice(0, 10) === today).length;
-    const p1Count = tickets.filter((t) => t.priority === 'P1' && !resolved.has(t.status ?? '')).length;
-    const createdToday = tickets.filter((t) => t.created_utc?.slice(0, 10) === today).length;
-    const backlogVelocity = createdToday - resolvedToday;
-
-    const stats: TodayStats = {
-      date: today,
-      transcripts: { today: transcriptsToday, yesterday: transcriptsYesterday, delta: transcriptsToday - transcriptsYesterday },
-      feedback: {
-        today: feedbackToday, yesterday: feedbackYesterday, delta: feedbackToday - feedbackYesterday,
-        sentiment: { positive, neutral, negative },
-      },
-      support: { open: openCount, resolved_today: resolvedToday, p1_count: p1Count, backlog_velocity: backlogVelocity },
-    };
-
-    return NextResponse.json(stats);
+    const rows: TranscriptRow[] = await queryTranscripts({ start_date: start, end_date: end });
+    return { rows };
   } catch (err) {
-    logger.error('supportplane.today.error', {}, { error: err as Error });
-    return NextResponse.json({ error: err instanceof Error ? err.message : 'Unknown error' }, { status: 500 });
+    const msg: string = err instanceof Error ? err.message : String(err);
+    logger.warn('supportplane.today.transcripts.error', { error: msg });
+    return { rows: [], error: msg };
   }
+}
+
+async function safeFeedback(env: string): Promise<{ rows: FeedbackRow[]; error?: string }> {
+  try {
+    const result: { rows: FeedbackRow[]; total: number } = await getRecentFeedback(env, 5000, 0, { days: 2 });
+    return { rows: result.rows };
+  } catch (err) {
+    const msg: string = err instanceof Error ? err.message : String(err);
+    logger.warn('supportplane.today.feedback.error', { error: msg });
+    return { rows: [], error: msg };
+  }
+}
+
+async function safeTickets(): Promise<{ rows: Ticket[]; error?: string }> {
+  try {
+    const rows: Ticket[] = await listTickets({ limit: 5000 });
+    return { rows };
+  } catch (err) {
+    const msg: string = err instanceof Error ? err.message : String(err);
+    logger.warn('supportplane.today.tickets.error', { error: msg });
+    return { rows: [], error: msg };
+  }
+}
+
+export const GET = withAuth(async function todayStats(_request: NextRequest) {
+  const today: string = new Date().toISOString().split('T')[0]!;
+  const yesterday: string = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().split('T')[0]!;
+  const env: string = process.env.FEEDBACK_ENV ?? process.env.SP_ENV ?? 'dev';
+
+  const [transcriptResult, feedbackResult, ticketResult] = await Promise.all([
+    safeQueryTranscripts(`${yesterday}T00:00:00.000Z`, `${today}T23:59:59.999Z`),
+    safeFeedback(env),
+    safeTickets(),
+  ]);
+
+  // L1 Transcripts
+  const transcriptRows: TranscriptRow[] = transcriptResult.rows;
+  const transcriptsToday: number = transcriptRows.filter((r) => r.created_at?.slice(0, 10) === today).length;
+  const transcriptsYesterday: number = transcriptRows.filter((r) => r.created_at?.slice(0, 10) === yesterday).length;
+
+  // Feedback
+  const feedbackRows: FeedbackRow[] = feedbackResult.rows;
+  const feedbackToday: number = feedbackRows.filter((r) => r.feedback_utc_ts?.slice(0, 10) === today).length;
+  const feedbackYesterday: number = feedbackRows.filter((r) => r.feedback_utc_ts?.slice(0, 10) === yesterday).length;
+  const todayFeedback: FeedbackRow[] = feedbackRows.filter((r) => r.feedback_utc_ts?.slice(0, 10) === today);
+  const positive: number = todayFeedback.filter((r) => (r.rating ?? 0) >= 5).length;
+  const neutral: number = todayFeedback.filter((r) => r.rating === 4).length;
+  const negative: number = todayFeedback.filter((r) => r.rating !== null && r.rating !== undefined && r.rating <= 3).length;
+
+  // Support Tickets
+  const resolved: Set<string> = new Set(['Done', 'Closed']);
+  const tickets: Ticket[] = ticketResult.rows;
+  const openCount: number = tickets.filter((t) => !resolved.has(t.status ?? '')).length;
+  const resolvedToday: number = tickets.filter((t) => t.resolved_utc?.slice(0, 10) === today).length;
+  const p1Count: number = tickets.filter((t) => t.priority === 'P1' && !resolved.has(t.status ?? '')).length;
+  const createdToday: number = tickets.filter((t) => t.created_utc?.slice(0, 10) === today).length;
+
+  const stats: TodayStats = {
+    date: today,
+    transcripts: {
+      today: transcriptsToday,
+      yesterday: transcriptsYesterday,
+      delta: transcriptsToday - transcriptsYesterday,
+      ...(transcriptResult.error ? { error: transcriptResult.error } : {}),
+    },
+    feedback: {
+      today: feedbackToday,
+      yesterday: feedbackYesterday,
+      delta: feedbackToday - feedbackYesterday,
+      sentiment: { positive, neutral, negative },
+      ...(feedbackResult.error ? { error: feedbackResult.error } : {}),
+    },
+    support: {
+      open: openCount,
+      resolved_today: resolvedToday,
+      p1_count: p1Count,
+      backlog_velocity: createdToday - resolvedToday,
+      ...(ticketResult.error ? { error: ticketResult.error } : {}),
+    },
+  };
+
+  return NextResponse.json(stats);
 });

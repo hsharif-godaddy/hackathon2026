@@ -14,7 +14,7 @@ import {
   createUploadRecord,
   getExistingInteractionIds,
   updateUploadRecord,
-} from '@/lib/l1-transcript-db';
+} from '@/lib/supportplane/db/l1-transcript-db';
 import { parseXlsxFile, processAllRows } from '@/lib/l1-transcript-ingestion';
 import {
   downloadFile,

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { withAuth } from '@/lib/api-auth';
 import { logger } from '@/lib/logger';
-import { queryTranscripts } from '@/lib/l1-transcript-db';
+import { getStore } from '@/lib/supportplane/store';
 
 const UNTAGGED_CACHE_TTL_MS = 30000;
 let untaggedCache: { expiresAt: number; count: number } | null = null;
@@ -16,14 +16,7 @@ async function handler(request: NextRequest) {
       });
     }
 
-    const rows = await queryTranscripts({});
-    const count = rows.filter(
-      (row) =>
-        (row.tags === null || row.tags === undefined) &&
-        row.full_transcript !== null &&
-        row.full_transcript !== undefined &&
-        row.full_transcript !== ''
-    ).length;
+    const count = await getStore().countUntaggedTranscripts();
 
     untaggedCache = {
       expiresAt: Date.now() + UNTAGGED_CACHE_TTL_MS,

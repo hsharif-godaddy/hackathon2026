@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { getFeedbackItemsCached } from '@/lib/feedback-s3';
+import { getFeedbackItemsCached } from '@/lib/supportplane/ingest/feedback-s3';
 
 const live =
   process.env.FEEDBACK_S3_LIVE_TEST === '1' && Boolean(process.env.FEEDBACK_S3_BUCKET?.trim());

@@ -29,7 +29,7 @@ describe('feedback-s3', function feedbackS3Package() {
   });
 
   it('parseFeedbackRequest accepts all=1', async function parseAllOne() {
-    const { parseFeedbackRequest } = await import('@/lib/feedback-s3');
+    const { parseFeedbackRequest } = await import('@/lib/supportplane/ingest/feedback-s3');
     const w = parseFeedbackRequest(new URLSearchParams({ all: '1' }));
     expect('error' in w).toBe(false);
     if ('error' in w) return;
@@ -37,7 +37,7 @@ describe('feedback-s3', function feedbackS3Package() {
   });
 
   it('parseFeedbackRequest accepts all=true', async function parseAllTrue() {
-    const { parseFeedbackRequest } = await import('@/lib/feedback-s3');
+    const { parseFeedbackRequest } = await import('@/lib/supportplane/ingest/feedback-s3');
     const w = parseFeedbackRequest(new URLSearchParams({ all: 'true' }));
     expect('error' in w).toBe(false);
     if ('error' in w) return;
@@ -45,7 +45,7 @@ describe('feedback-s3', function feedbackS3Package() {
   });
 
   it('buildFeedbackSummary counts all items in all-time window', async function allWindowTotals() {
-    const { buildFeedbackSummary } = await import('@/lib/feedback-s3');
+    const { buildFeedbackSummary } = await import('@/lib/supportplane/ingest/feedback-s3');
     const window = { kind: 'all' as const };
     const items = [
       { feedback_text: 'a', rating: 8, feedback_utc_ts: '2026-05-05T10:00:00.000Z' },
@@ -82,7 +82,7 @@ describe('feedback-s3', function feedbackS3Package() {
       throw new Error('unexpected S3 command');
     });
 
-    const { getFeedbackItemsCached, buildFeedbackSummary } = await import('@/lib/feedback-s3');
+    const { getFeedbackItemsCached, buildFeedbackSummary } = await import('@/lib/supportplane/ingest/feedback-s3');
     const window = { kind: 'all' as const };
     const { items, merged_truncated, partition_errors } = await getFeedbackItemsCached(window);
     expect(items.length).toBeGreaterThanOrEqual(1);
@@ -93,7 +93,7 @@ describe('feedback-s3', function feedbackS3Package() {
   });
 
   it('parseFeedbackRequest accepts a 7-day rolling window', async function parseSevenDays() {
-    const { parseFeedbackRequest } = await import('@/lib/feedback-s3');
+    const { parseFeedbackRequest } = await import('@/lib/supportplane/ingest/feedback-s3');
     const sp = new URLSearchParams({ days: '7' });
     const w = parseFeedbackRequest(sp);
     expect('error' in w).toBe(false);
@@ -103,7 +103,7 @@ describe('feedback-s3', function feedbackS3Package() {
 
   it('buildFeedbackSummary totals only rows whose timestamps fall inside the rolling 7-day window', async function rollingFilter() {
     vi.useFakeTimers({ now: new Date('2026-05-06T12:00:00.000Z').getTime() });
-    const { buildFeedbackSummary } = await import('@/lib/feedback-s3');
+    const { buildFeedbackSummary } = await import('@/lib/supportplane/ingest/feedback-s3');
     const window = { kind: 'rolling' as const, days: 7 as const };
     const items = [
       { feedback_text: 'inside', rating: 8, feedback_utc_ts: '2026-05-05T10:00:00.000Z' },
@@ -118,7 +118,7 @@ describe('feedback-s3', function feedbackS3Package() {
 
   it('getFeedbackItemsCached returns no items without FEEDBACK_S3_BUCKET', async function missingBucket() {
     vi.stubEnv('FEEDBACK_S3_BUCKET', '');
-    const { getFeedbackItemsCached } = await import('@/lib/feedback-s3');
+    const { getFeedbackItemsCached } = await import('@/lib/supportplane/ingest/feedback-s3');
     const out = await getFeedbackItemsCached({ kind: 'rolling' as const, days: 7 });
     expect(out.items).toHaveLength(0);
     expect(out.partition_errors).toBe(0);
@@ -151,7 +151,7 @@ describe('feedback-s3', function feedbackS3Package() {
       throw new Error('unexpected S3 command');
     });
 
-    const { getFeedbackItemsCached, buildFeedbackSummary } = await import('@/lib/feedback-s3');
+    const { getFeedbackItemsCached, buildFeedbackSummary } = await import('@/lib/supportplane/ingest/feedback-s3');
     const window = { kind: 'rolling' as const, days: 7 as const };
     const { items, merged_truncated, partition_errors } = await getFeedbackItemsCached(window);
     expect(items.length).toBeGreaterThanOrEqual(1);
@@ -171,7 +171,7 @@ describe('feedback-s3', function feedbackS3Package() {
       throw new Error('unexpected GetObject');
     });
 
-    const { getFeedbackItemsCached, buildFeedbackSummary } = await import('@/lib/feedback-s3');
+    const { getFeedbackItemsCached, buildFeedbackSummary } = await import('@/lib/supportplane/ingest/feedback-s3');
     const window = { kind: 'rolling' as const, days: 7 as const };
     const { items, merged_truncated, partition_errors } = await getFeedbackItemsCached(window);
     expect(items).toHaveLength(0);

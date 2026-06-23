@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withAuth } from '@/lib/api-auth';
 import { logger } from '@/lib/logger';
-import { browsePage, isTaggingActive, queryTranscripts, QueryFilters } from '@/lib/l1-transcript-db';
+import { browsePage, countTranscripts, isTaggingActive, queryTranscripts, QueryFilters } from '@/lib/supportplane/db/l1-transcript-db';
 
 async function handler(request: NextRequest) {
   try {
@@ -38,28 +38,49 @@ async function handler(request: NextRequest) {
 
     let transcripts: QueryFilters[];
     let hasMore: boolean;
+    let actualTotal: number;
+
     if (!hasSearchFilter) {
       // Browse mode: fast index query — O(limit), independent of table size
       const rows = await browsePage(pageLimit + 1, pageOffset);
       hasMore = rows.length > pageLimit;
       transcripts = rows.slice(0, pageLimit).map(({ full_transcript: _ft, conversation_summary: _cs, ...summary }) => summary) as unknown as QueryFilters[];
+
+      // Get actual total count for browse mode
+      actualTotal = await countTranscripts({});
     } else {
       // Search mode: full candidate scan with filter matching
       const pageRowsFilter: QueryFilters = { ...filters, limit: pageLimit + 1 };
       const rows = await queryTranscripts(pageRowsFilter);
       hasMore = rows.length > pageLimit;
       transcripts = rows.slice(0, pageLimit).map(({ full_transcript: _ft, conversation_summary: _cs, ...summary }) => summary) as unknown as QueryFilters[];
+
+      // Get actual total count for search mode with filters
+      actualTotal = await countTranscripts({
+        app_id: filters.app_id,
+        shopper_id: filters.shopper_id,
+        customer_id: filters.customer_id,
+        domain: filters.domain,
+        interaction_id: filters.interaction_id,
+        category: filters.category,
+        interaction_status: filters.interaction_status,
+        sub_intent: filters.sub_intent,
+        friction_point: filters.friction_point,
+        tags: filters.tags,
+        text_search: filters.text_search,
+        start_date: filters.start_date,
+        end_date: filters.end_date,
+      });
     }
 
     const taggingActive = await isTaggingActive();
-    const estimatedTotal = pageOffset + transcripts.length + (hasMore ? 1 : 0);
 
     return NextResponse.json({
       transcripts,
       tagging_active: taggingActive,
       pagination: {
-        total: estimatedTotal,
-        total_is_estimate: true,
+        total: actualTotal,
+        total_is_estimate: false,
         limit: filters.limit,
         offset: filters.offset,
         has_more: hasMore,

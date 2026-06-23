@@ -4,14 +4,18 @@
   "type": "module",
   "scripts": {
     "predev": "pnpm turbo run build --filter=@airo/shared --filter=@airo/ai-lib",
-    "dev": "NEXT_TELEMETRY_DISABLED=1 PORT=3443 tsx watch server.ts",
+    "dev": "NODE_OPTIONS='--max-old-space-size=8192' NEXT_TELEMETRY_DISABLED=1 PORT=3443 tsx watch server.ts",
     "build": "next build",
     "start": "tsx server.ts",
     "typecheck": "next typegen && tsc --noEmit",
     "lint": "eslint src/",
     "test": "vitest run",
     "test:watch": "vitest watch",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "insights:bugs": "tsx scripts/generate-insights.ts bugs",
+    "insights:features": "tsx scripts/generate-insights.ts features",
+    "insights:patterns": "tsx scripts/generate-insights.ts patterns",
+    "insights:all": "tsx scripts/generate-insights.ts all"
   },
   "dependencies": {
     "@airo/ai-lib": "workspace:*",
@@ -23,9 +27,9 @@
     "@aws-sdk/client-secrets-manager": "^3.1049.0",
     "@aws-sdk/credential-providers": "^3.1055.0",
     "@aws-sdk/lib-dynamodb": "catalog:",
-    "@smithy/node-http-handler": "^4.7.8",
     "@aws-sdk/s3-request-presigner": "^3.1049.0",
     "@elastic/elasticsearch": "catalog:",
+    "@smithy/node-http-handler": "catalog:",
     "archiver": "catalog:",
     "echarts": "catalog:",
     "echarts-for-react": "catalog:",

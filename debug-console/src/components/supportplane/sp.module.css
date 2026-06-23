@@ -6,6 +6,8 @@
 
 /* ── Base theme tokens ─────────────────────────────────────── */
 .sp {
+    color-scheme: light;
+
     /* Brand palette */
     --sp-bg:          #f0f4f8;
     --sp-s1:          #ffffff;
@@ -51,6 +53,8 @@
 }
 
 .sp[data-theme="dark"] {
+    color-scheme: dark;
+
     --sp-bg:          #080b10;
     --sp-s1:          #0e1117;
     --sp-s2:          #151b24;
@@ -74,6 +78,46 @@
 .sp ::-webkit-scrollbar-track    { background: transparent; }
 .sp ::-webkit-scrollbar-thumb    { background: var(--sp-s3); border-radius: 2px; }
 .sp ::-webkit-scrollbar-thumb:hover { background: var(--sp-txm); }
+
+/* ── Global element resets within .sp scope ─────────────────
+   Prevents browser-default white backgrounds from showing
+   in dark mode on bare input/select/textarea/table elements.
+   These apply as a baseline; sp.searchInput / sp.select etc.
+   override with more specific styling where needed.
+─────────────────────────────────────────────────────────────── */
+.sp input,
+.sp select,
+.sp textarea {
+    background: var(--sp-s2);
+    color: var(--sp-tx1);
+    border: 1px solid var(--sp-border);
+    border-radius: 6px;
+    padding: 5px 8px;
+    font-size: 12.5px;
+    font-family: inherit;
+    outline: none;
+    transition: border-color 0.15s, background 0.15s;
+    color-scheme: inherit;
+}
+.sp input::placeholder,
+.sp textarea::placeholder { color: var(--sp-txm); }
+.sp input:focus,
+.sp select:focus,
+.sp textarea:focus { border-color: var(--sp-accent); background: var(--sp-s1); }
+.sp input[type="checkbox"],
+.sp input[type="radio"] {
+    width: 14px; height: 14px;
+    padding: 0;
+    border-radius: 3px;
+    accent-color: var(--sp-accent);
+    background: var(--sp-s2);
+}
+
+/* Table rows inherit surface background — prevents white flicker */
+.sp table { border-collapse: collapse; width: 100%; font-size: 11px; }
+.sp td,
+.sp th { color: var(--sp-tx1); border-color: var(--sp-border); background: transparent; }
+.sp tr:hover > td { background: var(--sp-s2); }
 
 /* ══════════════════════════════════════════════════════════════
    TODAY DASHBOARD COMPONENTS
@@ -410,17 +454,17 @@
 
 /* ── Header ──────────────────────────────────────────────── */
 .header {
-    display: flex;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, auto) minmax(0, 1fr);
     align-items: center;
-    gap: 12px;
     padding: 0 20px;
     height: 52px;
     background: var(--sp-s1);
     border-bottom: 1px solid var(--sp-border);
     flex-shrink: 0;
 }
-.headerLeft  { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; overflow: hidden; }
-.headerRight { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.headerLeft  { min-width: 0; display: flex; align-items: center; gap: 10px; overflow: hidden; }
+.headerRight { display: flex; align-items: center; gap: 10px; justify-self: end; }
 
 .panelBreadcrumb { font-size: 12.5px; font-weight: 600; color: var(--sp-tx2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .breadcrumbSep   { color: var(--sp-txm); margin: 0 5px; }
@@ -715,7 +759,8 @@
 .dotErr { background: #ef4444; }
 .dotWarn{ background: #f59e0b; }
 
-.healthBar    { display: flex; align-items: center; gap: 4px; padding: 0 10px; flex: 1; justify-content: center; flex-wrap: nowrap; overflow: hidden; }
+.healthBar    { display: flex; align-items: center; gap: 4px; padding: 0 10px; justify-content: center; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+.healthBar::-webkit-scrollbar { display: none; }
 .healthBarLabel { font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--sp-txm); margin-right: 2px; white-space: nowrap; flex-shrink: 0; }
 .healthPillMini { display: inline-flex; align-items: center; gap: 4px; padding: 1px 6px; border-radius: 10px; border: 1px solid; font-size: 10.5px; font-weight: 600; white-space: nowrap; cursor: default; background: transparent; flex-shrink: 0; }
 .healthDotDot   { width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; }
@@ -743,3 +788,4 @@
 .emptyIcon  { opacity: 0.4; }
 .emptyTitle { font-size: 14px; font-weight: 600; color: var(--sp-tx2); }
 .emptySub   { font-size: 12px; }
+

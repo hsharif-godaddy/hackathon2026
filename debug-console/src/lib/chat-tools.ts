@@ -4,7 +4,7 @@
  */
 
 import { logger } from './logger';
-import { getStore } from './supportplane-store';
+import { getStore } from '@/lib/supportplane/store';
 
 export interface ToolDefinition {
   type: 'function';
@@ -34,8 +34,8 @@ export const TRANSCRIPT_TOOLS: ToolDefinition[] = [
           },
           group_by: {
             type: 'string',
-            enum: ['category', 'tags', 'sentiment', 'agent_name', 'interaction_status'],
-            description: 'Field to group results by',
+            enum: ['category', 'tags', 'sentiment', 'agent_name', 'interaction_status', 'friction_point', 'sub_intent', 'issue_resolution', 'customer_sentiment'],
+            description: 'Field to group results by. friction_point, sub_intent, issue_resolution, and customer_sentiment are extracted from the raw_data JSON field.',
           },
           limit: {
             type: 'number',
@@ -93,6 +93,15 @@ const GROUP_FIELDS = {
   sentiment: 'sentiment_score',
 } as const;
 
+const RAW_DATA_FIELDS = [
+  'friction_point',
+  'sub_intent',
+  'issue_resolution',
+  'customer_sentiment',
+] as const;
+
+type ValidGroupBy = keyof typeof GROUP_FIELDS | 'tags' | typeof RAW_DATA_FIELDS[number];
+
 function readDaysBack(value: unknown): number {
   if (!Number.isInteger(value) || (value as number) < 1 || (value as number) > 365) {
     throw new Error('Invalid days_back: expected integer in range 1-365');
@@ -110,17 +119,23 @@ function readLimit(value: unknown, fallback = 10): number {
   return value as number;
 }
 
-function readGroupBy(value: unknown): keyof typeof GROUP_FIELDS | 'tags' {
-  if (
-    value === 'tags' ||
-    value === 'category' ||
-    value === 'sentiment' ||
-    value === 'agent_name' ||
-    value === 'interaction_status'
-  ) {
-    return value;
+function readGroupBy(value: unknown): ValidGroupBy {
+  const validValues = [
+    'tags',
+    'category',
+    'sentiment',
+    'agent_name',
+    'interaction_status',
+    'friction_point',
+    'sub_intent',
+    'issue_resolution',
+    'customer_sentiment',
+  ];
+
+  if (validValues.includes(value as string)) {
+    return value as ValidGroupBy;
   }
-  throw new Error('Invalid group_by');
+  throw new Error(`Invalid group_by: expected one of ${validValues.join(', ')}`);
 }
 
 /**

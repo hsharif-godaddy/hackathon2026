@@ -3,36 +3,37 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 
 import ProtectedRoute from '@/components/ProtectedRoute';
-import AABSPPanel from '@/components/supportplane/AABSPPanel';
-import AnalysisPanel from '@/components/supportplane/AnalysisPanel';
-import CIECPanel from '@/components/supportplane/CIECPanel';
-import CannibalizationPanel from '@/components/supportplane/CannibalizationPanel';
-import ChatPanel from '@/components/supportplane/ChatPanel';
-import DashboardPanel from '@/components/supportplane/DashboardPanel';
-import FeedbackBrowsePanel from '@/components/supportplane/FeedbackBrowsePanel';
-import FeedbackChatPanel from '@/components/supportplane/FeedbackChatPanel';
-import FeedbackDashboard from '@/components/supportplane/FeedbackDashboard';
-import FeedbackOverviewPanel from '@/components/supportplane/FeedbackOverviewPanel';
-import FeedbackRatingsPanel from '@/components/supportplane/FeedbackRatingsPanel';
-import FeedbackTopicsPanel from '@/components/supportplane/FeedbackTopicsPanel';
-import FeedbackTrendsPanel from '@/components/supportplane/FeedbackTrendsPanel';
-import FunnelPanel from '@/components/supportplane/FunnelPanel';
-import Header from '@/components/supportplane/Header';
-import HeatmapPanel from '@/components/supportplane/HeatmapPanel';
-import LeadershipPanel from '@/components/supportplane/LeadershipPanel';
-import OpsPanel from '@/components/supportplane/OpsPanel';
-import RefundAuditPanel from '@/components/supportplane/RefundAuditPanel';
-import Sidebar from '@/components/supportplane/Sidebar';
-import TagCloudPanel from '@/components/supportplane/TagCloudPanel';
-import TicketsDashboard from '@/components/supportplane/TicketsDashboard';
-import TodayPanel from '@/components/supportplane/TodayPanel';
-import TranscriptChatPanel from '@/components/supportplane/TranscriptChatPanel';
-import TranscriptsDashboard from '@/components/supportplane/TranscriptsDashboard';
-import TranscriptsBrowsePanel from '@/components/supportplane/TranscriptsBrowsePanel';
-import TrendsPanel from '@/components/supportplane/TrendsPanel';
-import UploadPanel from '@/components/supportplane/UploadPanel';
+import AABSPPanel from '@/components/supportplane/tickets/AABSPPanel';
+import AnalysisPanel from '@/components/supportplane/analysis/AnalysisPanel';
+import CIECPanel from '@/components/supportplane/tickets/CIECPanel';
+import CannibalizationPanel from '@/components/supportplane/overview/CannibalizationPanel';
+import ChatPanel from '@/components/supportplane/overview/ChatPanel';
+import DashboardPanel from '@/components/supportplane/overview/DashboardPanel';
+import FeedbackBrowsePanel from '@/components/supportplane/feedback/BrowsePanel';
+import FeedbackChatPanel from '@/components/supportplane/feedback/ChatPanel';
+import FeedbackDashboard from '@/components/supportplane/feedback/Dashboard';
+import FeedbackOverviewPanel from '@/components/supportplane/feedback/OverviewPanel';
+import FeedbackRatingsPanel from '@/components/supportplane/feedback/RatingsPanel';
+import FeedbackTopicsPanel from '@/components/supportplane/feedback/TopicsPanel';
+import FeedbackTrendsPanel from '@/components/supportplane/feedback/TrendsPanel';
+import FunnelPanel from '@/components/supportplane/analysis/FunnelPanel';
+import Header from '@/components/supportplane/_shell/Header';
+import HeatmapPanel from '@/components/supportplane/analysis/HeatmapPanel';
+import LeadershipPanel from '@/components/supportplane/overview/LeadershipPanel';
+import OpsPanel from '@/components/supportplane/overview/OpsPanel';
+import RefundAuditPanel from '@/components/supportplane/overview/RefundAuditPanel';
+import Sidebar from '@/components/supportplane/_shell/Sidebar';
+import TagCloudPanel from '@/components/supportplane/analysis/TagCloudPanel';
+import TicketsDashboard from '@/components/supportplane/tickets/Dashboard';
+import TodayPanel from '@/components/supportplane/overview/TodayPanel';
+import TranscriptChatPanel from '@/components/supportplane/transcripts/ChatPanel';
+import TranscriptsDashboard from '@/components/supportplane/transcripts/Dashboard';
+import TranscriptsBrowsePanel from '@/components/supportplane/transcripts/BrowsePanel';
+import TrendsPanel from '@/components/supportplane/analysis/TrendsPanel';
+import UploadPanel from '@/components/supportplane/transcripts/UploadPanel';
 import { type PanelId } from '@/components/supportplane/types';
 import { useAuth } from '@/hooks/useAuth';
+import { SupportPlaneDataProvider, useSupportPlaneData } from '@/contexts/SupportPlaneDataContext';
 import sp from '@/components/supportplane/sp.module.css';
 
 function SupportPlaneApp() {
@@ -75,11 +76,89 @@ function SupportPlaneApp() {
     }, []);
 
     return (
-        <div ref={containerRef} className={sp.sp} data-theme={theme}>
-            <Sidebar active={panel} collapsed={collapsed} onSelect={setPanel} onToggle={toggleSidebar} />
-            <div className={sp.main}>
-                <Header panel={panel} isDark={theme === 'dark'} email={user?.email} onToggle={toggleTheme} />
-                <div className={sp.content}>
+        <SupportPlaneDataProvider>
+            <SupportPlaneAppContent
+                containerRef={containerRef}
+                theme={theme}
+                panel={panel}
+                setPanel={setPanel}
+                collapsed={collapsed}
+                toggleSidebar={toggleSidebar}
+                toggleTheme={toggleTheme}
+                user={user}
+                goToSync={goToSync}
+                syncTrigger={syncTrigger}
+            />
+        </SupportPlaneDataProvider>
+    );
+}
+
+interface SupportPlaneAppContentProps {
+    containerRef: React.RefObject<HTMLDivElement | null>;
+    theme: 'light' | 'dark';
+    panel: PanelId;
+    setPanel: (panel: PanelId) => void;
+    collapsed: boolean;
+    toggleSidebar: () => void;
+    toggleTheme: () => void;
+    user: ReturnType<typeof useAuth>['user'];
+    goToSync: () => void;
+    syncTrigger: number;
+}
+
+function SupportPlaneAppContent({
+    containerRef,
+    theme,
+    panel,
+    setPanel,
+    collapsed,
+    toggleSidebar,
+    toggleTheme,
+    user,
+    goToSync,
+    syncTrigger,
+}: SupportPlaneAppContentProps) {
+    const { loading: contextLoading } = useSupportPlaneData();
+
+    React.useEffect(() => {
+        containerRef.current?.setAttribute('data-theme', theme);
+    }, [theme, containerRef]);
+
+    return (
+        <>
+            <style>{`
+                @keyframes sp-spin {
+                    to { transform: rotate(360deg); }
+                }
+            `}</style>
+            <div ref={containerRef} className={sp.sp} data-theme={theme}>
+                <Sidebar active={panel} collapsed={collapsed} onSelect={setPanel} onToggle={toggleSidebar} />
+                <div className={sp.main}>
+                    <Header panel={panel} isDark={theme === 'dark'} email={user?.email ?? user?.shopperId} onToggle={toggleTheme} />
+                    {/* Global loading indicator during initial data fetch */}
+                    {contextLoading && (
+                        <div style={{
+                            padding: '8px 16px',
+                            background: 'var(--sp-s2)',
+                            borderBottom: '1px solid var(--sp-border)',
+                            color: 'var(--sp-txm)',
+                            fontSize: 12,
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 8,
+                        }}>
+                            <div style={{
+                                width: 12,
+                                height: 12,
+                                border: '2px solid var(--sp-txm)',
+                                borderTopColor: 'transparent',
+                                borderRadius: '50%',
+                                animation: 'sp-spin 0.8s linear infinite',
+                            }} />
+                            Loading Support Plane data...
+                        </div>
+                    )}
+                    <div className={sp.content}>
                     {/* Executive View */}
                     {panel === 'today' && <TodayPanel onNav={setPanel} />}
 
@@ -125,6 +204,7 @@ function SupportPlaneApp() {
                 </div>
             </div>
         </div>
+        </>
     );
 }
 

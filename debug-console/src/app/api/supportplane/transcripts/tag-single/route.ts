@@ -3,7 +3,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getTranscriptById, updateTranscriptTags } from '@/lib/l1-transcript-db';
+import { getTranscriptById, updateTranscriptTags } from '@/lib/supportplane/db/l1-transcript-db';
 import { extractTagsFromTranscript } from '@/lib/l1-transcript-ai-tagging';
 import { logger } from '@/lib/logger';
 

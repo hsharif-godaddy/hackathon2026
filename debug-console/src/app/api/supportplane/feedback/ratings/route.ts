@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { withAuth } from '@/lib/api-auth';
 import { logger } from '@/lib/logger';
-import { getRatingDistribution, getCategoryBreakdown } from '@/lib/feedback-db';
+import { getRatingDistribution, getCategoryBreakdown } from '@/lib/supportplane/db/feedback-db';
 
 export const GET = withAuth(async (req: NextRequest) => {
     try {

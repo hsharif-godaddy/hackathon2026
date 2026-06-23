@@ -710,8 +710,8 @@ export function mapCsvRowToTranscript(
     'agent_department',
     'call_type',
     'country',
-    'issue_resolution',
-    'customer_sentiment',
+    // NOTE: issue_resolution and customer_sentiment MUST remain in raw_data
+    // because analytics queries (e.g., Issue Resolution Methods chart) look for them there
   ]);
 
   const raw_data: Record<string, any> = {};

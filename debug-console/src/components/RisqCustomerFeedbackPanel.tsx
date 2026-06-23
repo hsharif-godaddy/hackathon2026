@@ -14,7 +14,7 @@ import {
 } from 'recharts';
 
 import RisqSectionCard from '@/components/RisqSectionCard';
-import type { FeedbackDailyRow, FeedbackRecentRow } from '@/lib/feedback-s3';
+import type { FeedbackDailyRow, FeedbackRecentRow } from '@/lib/supportplane/ingest/feedback-s3';
 
 type TimeRangeKey = '1d' | '7d' | 'all';
 

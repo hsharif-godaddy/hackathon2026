@@ -28,6 +28,7 @@ catalog:
   '@aws-sdk/client-dynamodb': ^3.1073.0
   '@aws-sdk/client-lambda': ^3.1048.0
   '@aws-sdk/lib-dynamodb': ^3.1073.0
+  '@smithy/node-http-handler': ^4.8.0
 
   # Shared runtime
   '@babel/generator': ^7.29.1
@@ -67,8 +68,8 @@ catalog:
   '@ux/text-entry': ^2500.11.1
   '@ux/tooltip': ^2500.11.1
   '@ux/util': ^2400.11.0
-  '@vitest/coverage-v8': 4.1.0
-  '@vitest/ui': 4.1.0
+  '@vitest/coverage-v8': ^4.1.0
+  '@vitest/ui': ^4.1.0
 
   # AI SDK
   ai: ^6.0.177

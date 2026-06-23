@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { withAuth } from '@/lib/api-auth';
 import { logger } from '@/lib/logger';
-import { listTickets } from '@/lib/support-db';
+import { listTickets } from '@/lib/supportplane/db/support-db';
 
 export const dynamic = 'force-dynamic';
 

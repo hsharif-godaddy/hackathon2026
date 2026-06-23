@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { withAuth } from '@/lib/api-auth';
 import { logger } from '@/lib/logger';
-import { getFeedbackHeatmap } from '@/lib/feedback-db';
+import { getFeedbackHeatmap } from '@/lib/supportplane/db/feedback-db';
 
 export const GET = withAuth(async (req: NextRequest) => {
     try {

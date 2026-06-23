@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { withAuth } from '@/lib/api-auth';
 import { callGoCode, isGoCodeConfigured } from '@/lib/gocode-client';
 import { logger } from '@/lib/logger';
-import { queryTranscripts as queryTranscriptRows } from '@/lib/l1-transcript-db';
+import { queryTranscripts as queryTranscriptRows } from '@/lib/supportplane/db/l1-transcript-db';
 
 export const dynamic = 'force-dynamic';
 

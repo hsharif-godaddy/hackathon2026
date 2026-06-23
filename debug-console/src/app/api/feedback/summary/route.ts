@@ -14,7 +14,7 @@ import {
   parseFeedbackFilters,
   parseFeedbackRequest,
   parseFeedbackUtc,
-} from '@/lib/feedback-s3';
+} from '@/lib/supportplane/ingest/feedback-s3';
 import { routeCached } from '@/lib/route-cache';
 
 export const dynamic = 'force-dynamic';

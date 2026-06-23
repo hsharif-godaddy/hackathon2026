@@ -16,7 +16,7 @@ import {
   updateUploadRecord,
   updateTranscriptTags,
   updateUploadTaggingStatus,
-} from '@/lib/l1-transcript-db';
+} from '@/lib/supportplane/db/l1-transcript-db';
 import { tagTranscriptsBatch } from '@/lib/l1-transcript-ai-tagging';
 import { logger } from '@/lib/logger';
 
@@ -56,7 +56,7 @@ async function handler(request: NextRequest, auth: AuthenticatedRequest) {
 
     // Check if this exact file was already uploaded successfully
     // Log it but don't block - allow reprocessing in case previous upload failed
-    const { checkDuplicateUpload } = await import('@/lib/l1-transcript-db');
+    const { checkDuplicateUpload } = await import('@/lib/supportplane/db/l1-transcript-db');
     const existingUpload = await checkDuplicateUpload(fileHash);
 
     if (existingUpload && existingUpload.status === 'completed') {

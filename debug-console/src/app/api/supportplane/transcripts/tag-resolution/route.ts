@@ -7,7 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withAuth } from '@/lib/api-auth';
 import { logger } from '@/lib/logger';
-import { queryTranscripts } from '@/lib/l1-transcript-db';
+import { queryTranscripts } from '@/lib/supportplane/db/l1-transcript-db';
 
 interface TagResolutionData {
   tag: string;

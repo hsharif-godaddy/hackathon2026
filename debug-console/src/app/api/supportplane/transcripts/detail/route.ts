@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { withAuth } from '@/lib/api-auth';
-import { getTranscriptById } from '@/lib/l1-transcript-db';
+import { getTranscriptById } from '@/lib/supportplane/db/l1-transcript-db';
 import { logger } from '@/lib/logger';
 
 async function handler(request: NextRequest) {

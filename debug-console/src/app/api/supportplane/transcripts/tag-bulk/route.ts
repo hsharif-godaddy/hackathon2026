@@ -6,7 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withAuth } from '@/lib/api-auth';
 import { logger } from '@/lib/logger';
-import { getUntaggedTranscripts, updateTranscriptTags } from '@/lib/l1-transcript-db';
+import { getUntaggedTranscripts, updateTranscriptTags } from '@/lib/supportplane/db/l1-transcript-db';
 import { tagTranscriptsBatch } from '@/lib/l1-transcript-ai-tagging';
 import { isGoCodeConfigured } from '@/lib/gocode-client';
 

@@ -1,4 +1,4 @@
-import type { TranscriptFilter, TranscriptRow, UploadRecord } from '@/lib/l1-transcript-db';
+import type { TranscriptFilter, TranscriptRow, UploadRecord } from '@/lib/supportplane/db/l1-transcript-db';
 
 export interface QueryGroupResult {
   field_value?: string | null;

@@ -21,6 +21,7 @@ export class SupportplaneDynamoStack extends GDStack {
   public readonly feedbackStatsTable: dynamodb.Table;
   public readonly feedbackIngestTable: dynamodb.Table;
   public readonly ticketsTable: dynamodb.Table;
+  public readonly insightsTable: dynamodb.Table;
 
   constructor(scope: Construct, id: string, props: GDStackProps) {
     super(scope, id, props);
@@ -32,6 +33,7 @@ export class SupportplaneDynamoStack extends GDStack {
     this.feedbackStatsTable = this.buildFeedbackStats();
     this.feedbackIngestTable = this.buildFeedbackIngest();
     this.ticketsTable = this.buildTickets();
+    this.insightsTable = this.buildInsights();
 
     this.grant();
     this.output();
@@ -46,7 +48,8 @@ export class SupportplaneDynamoStack extends GDStack {
       pointInTimeRecovery: true,
       encryption: dynamodb.TableEncryption.AWS_MANAGED,
       deletionProtection: config.envName === 'prod',
-      removalPolicy: config.envName === 'prod' ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
+      removalPolicy:
+        config.envName === 'prod' ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
     });
 
     table.addGlobalSecondaryIndex({
@@ -121,7 +124,8 @@ export class SupportplaneDynamoStack extends GDStack {
       pointInTimeRecovery: true,
       encryption: dynamodb.TableEncryption.AWS_MANAGED,
       deletionProtection: config.envName === 'prod',
-      removalPolicy: config.envName === 'prod' ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
+      removalPolicy:
+        config.envName === 'prod' ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
     });
 
     table.addGlobalSecondaryIndex({
@@ -150,7 +154,8 @@ export class SupportplaneDynamoStack extends GDStack {
       pointInTimeRecovery: true,
       encryption: dynamodb.TableEncryption.AWS_MANAGED,
       deletionProtection: config.envName === 'prod',
-      removalPolicy: config.envName === 'prod' ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
+      removalPolicy:
+        config.envName === 'prod' ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
     });
   }
 
@@ -163,7 +168,8 @@ export class SupportplaneDynamoStack extends GDStack {
       pointInTimeRecovery: true,
       encryption: dynamodb.TableEncryption.AWS_MANAGED,
       deletionProtection: config.envName === 'prod',
-      removalPolicy: config.envName === 'prod' ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
+      removalPolicy:
+        config.envName === 'prod' ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
     });
   }
 
@@ -176,7 +182,8 @@ export class SupportplaneDynamoStack extends GDStack {
       pointInTimeRecovery: true,
       encryption: dynamodb.TableEncryption.AWS_MANAGED,
       deletionProtection: config.envName === 'prod',
-      removalPolicy: config.envName === 'prod' ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
+      removalPolicy:
+        config.envName === 'prod' ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
     });
   }
 
@@ -189,7 +196,8 @@ export class SupportplaneDynamoStack extends GDStack {
       pointInTimeRecovery: true,
       encryption: dynamodb.TableEncryption.AWS_MANAGED,
       deletionProtection: config.envName === 'prod',
-      removalPolicy: config.envName === 'prod' ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
+      removalPolicy:
+        config.envName === 'prod' ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
     });
   }
 
@@ -202,13 +210,58 @@ export class SupportplaneDynamoStack extends GDStack {
       pointInTimeRecovery: true,
       encryption: dynamodb.TableEncryption.AWS_MANAGED,
       deletionProtection: config.envName === 'prod',
-      removalPolicy: config.envName === 'prod' ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
+      removalPolicy:
+        config.envName === 'prod' ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
     });
   }
 
+  private buildInsights(): dynamodb.Table {
+    // Derived insights table for aggregated bugs, features, patterns.
+    // Single-table design with insight_type as discriminator.
+    // PK: insight_type#insight_id (e.g., "BUG#logo_auth_001", "FEATURE#commerce_001")
+    // SK: created_at (ISO8601 timestamp for sorting)
+    const table = new dynamodb.Table(this, 'SupportplaneInsightsTable', {
+      tableName: `airo-builde-supportplane-insights-${config.envName}`,
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      partitionKey: { name: 'insight_key', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'created_at', type: dynamodb.AttributeType.STRING },
+      pointInTimeRecovery: true,
+      encryption: dynamodb.TableEncryption.AWS_MANAGED,
+      deletionProtection: config.envName === 'prod',
+      removalPolicy:
+        config.envName === 'prod' ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
+    });
+
+    // GSI1: Query by insight type (BUG, FEATURE, PATTERN) + last seen
+    table.addGlobalSecondaryIndex({
+      indexName: 'insightTypeIndex',
+      partitionKey: { name: 'insight_type', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'last_seen', type: dynamodb.AttributeType.STRING },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+
+    // GSI2: Query by product line + occurrence count for heatmaps
+    table.addGlobalSecondaryIndex({
+      indexName: 'productLineIndex',
+      partitionKey: { name: 'product_line', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'occurrence_count', type: dynamodb.AttributeType.NUMBER },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+
+    // GSI3: Query by business impact score (for prioritization)
+    table.addGlobalSecondaryIndex({
+      indexName: 'impactScoreIndex',
+      partitionKey: { name: 'insight_type', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'business_impact_score', type: dynamodb.AttributeType.NUMBER },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+
+    return table;
+  }
+
   private grant(): void {
-    const consoleWriterRoleArns = config.katanaEcsTaskRoleArn.filter((arn) =>
-      arn.includes('7794') || arn.includes('7797'),
+    const consoleWriterRoleArns = config.katanaEcsTaskRoleArn.filter(
+      (arn) => arn.includes('7794') || arn.includes('7797')
     );
     // Guard hook blocks mutating GD-managed Ops roles and creating custom
     // managed-policy resources in this stack. Keep grants scoped to app-owned
@@ -232,24 +285,28 @@ export class SupportplaneDynamoStack extends GDStack {
       `${this.feedbackIngestTable.tableArn}/index/*`,
       this.ticketsTable.tableArn,
       `${this.ticketsTable.tableArn}/index/*`,
+      this.insightsTable.tableArn,
+      `${this.insightsTable.tableArn}/index/*`,
     ];
 
     uniqueRoleArns.forEach((roleArn, index) => {
       const role = iam.Role.fromRoleArn(this, `SupportplaneRole${index}`, roleArn);
-      role.addToPrincipalPolicy(new iam.PolicyStatement({
-        effect: iam.Effect.ALLOW,
-        actions: [
-          'dynamodb:GetItem',
-          'dynamodb:PutItem',
-          'dynamodb:UpdateItem',
-          'dynamodb:DeleteItem',
-          'dynamodb:Query',
-          'dynamodb:Scan',
-          'dynamodb:BatchGetItem',
-          'dynamodb:BatchWriteItem',
-        ],
-        resources,
-      }));
+      role.addToPrincipalPolicy(
+        new iam.PolicyStatement({
+          effect: iam.Effect.ALLOW,
+          actions: [
+            'dynamodb:GetItem',
+            'dynamodb:PutItem',
+            'dynamodb:UpdateItem',
+            'dynamodb:DeleteItem',
+            'dynamodb:Query',
+            'dynamodb:Scan',
+            'dynamodb:BatchGetItem',
+            'dynamodb:BatchWriteItem',
+          ],
+          resources,
+        })
+      );
     });
   }
 
@@ -289,6 +346,11 @@ export class SupportplaneDynamoStack extends GDStack {
       description: 'SupportPlane tickets DynamoDB table name',
       exportName: `airo-builde-supportplane-tickets-table-name-${config.envName}`,
     });
+    new cdk.CfnOutput(this, 'SupportplaneInsightsTableName', {
+      value: this.insightsTable.tableName,
+      description: 'SupportPlane derived insights DynamoDB table name',
+      exportName: `airo-builde-supportplane-insights-table-name-${config.envName}`,
+    });
     new cdk.CfnOutput(this, 'SupportplaneTranscriptsTableArn', {
       value: this.transcriptsTable.tableArn,
       description: 'SupportPlane L1 transcripts DynamoDB table ARN',
@@ -323,6 +385,11 @@ export class SupportplaneDynamoStack extends GDStack {
       value: this.ticketsTable.tableArn,
       description: 'SupportPlane tickets DynamoDB table ARN',
       exportName: `airo-builde-supportplane-tickets-table-arn-${config.envName}`,
+    });
+    new cdk.CfnOutput(this, 'SupportplaneInsightsTableArn', {
+      value: this.insightsTable.tableArn,
+      description: 'SupportPlane derived insights DynamoDB table ARN',
+      exportName: `airo-builde-supportplane-insights-table-arn-${config.envName}`,
     });
   }
 }
