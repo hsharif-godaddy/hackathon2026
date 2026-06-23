@@ -435,7 +435,8 @@ export async function runContentRulesPhase(
     v.rule === 'missed-content-opportunity' ||
     v.rule === 'local-content-object' ||
     v.rule === 'direct-content-import' ||
-    v.rule === 'content-prop-drill'
+    v.rule === 'content-prop-drill' ||
+    v.rule === 'content-derived-array-map'
   );
   if (actionable.length === 0) {
     logger.info('agent.content_rules.pass', {

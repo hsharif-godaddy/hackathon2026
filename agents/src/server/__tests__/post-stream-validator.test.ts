@@ -1631,6 +1631,24 @@ describe('createPostStreamValidator', () => {
       expect(mocks.crCounters.get(SOCKET_ID)).toBe(1);
     });
 
+    it('continues on content-derived-array-map violations', async () => {
+      checkContentRulesForFileMock.mockReturnValue([{
+        rule: 'content-derived-array-map',
+        file: 'src/pages/index.tsx',
+        message: 'items is a content-derived local (via .find) — .map() over it makes those items uneditable'
+      }]);
+      const { deps, mocks } = makeDeps({ contentRulesAppPath: '/tmp/app' });
+      const validator = createPostStreamValidator(deps);
+      const tmpDir = '/tmp/app/src/pages';
+      await import('node:fs/promises').then((f) => f.mkdir(tmpDir, { recursive: true }));
+      await import('node:fs/promises').then((f) => f.writeFile(`${tmpDir}/index.tsx`, 'export default function Home() {}'));
+      const result = await validator(makeArgs({ toolCalls: pageEditToolCalls }));
+      expect(result).toMatchObject({
+        continuationPrompt: expect.stringContaining('Content-layer violations')
+      });
+      expect(mocks.crCounters.get(SOCKET_ID)).toBe(1);
+    });
+
     it('skips the phase when there are no uncommitted changes', async () => {
       const { deps } = makeDeps({
         hasUncommittedChanges: false,

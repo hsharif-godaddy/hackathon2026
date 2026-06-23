@@ -14,6 +14,7 @@ import type {
   Expression,
   Node,
 } from '@babel/types';
+import { traverseFast } from '@babel/types';
 import { Logger } from '../logging/index.js';
 
 // Babel's traverse default-export has a CJS interop quirk under ESM bundlers.
@@ -30,7 +31,8 @@ export type RuleId =
   | 'missed-content-opportunity'
   | 'local-content-object'
   | 'direct-content-import'
-  | 'content-prop-drill';
+  | 'content-prop-drill'
+  | 'content-derived-array-map';
 
 /**
  * Threshold for the "missed-content-opportunity" heuristic.
@@ -46,6 +48,59 @@ const DIRECT_CONTENT_PATH_RE = /^(@\/content(?:\/|$)|\.\.?\/(?:.*\/)?content(?:\
 
 export function isDirectContentPath(src: string): boolean {
   return DIRECT_CONTENT_PATH_RE.test(src);
+}
+
+const DERIVE_METHODS: ReadonlySet<string> = new Set(['find', 'filter', 'slice', 'flatMap']);
+
+/**
+ * True if `init`'s subtree reads a `virtual:content` binding AND applies an
+ * array-producing derive (`.find`/`.filter`/`.slice`/`.flatMap`, or a computed
+ * member access) — e.g. `home.menu.categories.find(...)?.items ?? []`. Such a
+ * value can't be statically attributed, so mapping it renders non-editable items.
+ */
+function isContentDerivedInit(init: Node, contentBindings: ReadonlySet<string>): boolean {
+  let readsContent = false;
+  let hasDerive = false;
+  traverseFast(init, (n: Node) => {
+    if (n.type === 'Identifier' && contentBindings.has(n.name)) {
+      readsContent = true;
+    } else if (
+      (n.type === 'CallExpression' || n.type === 'OptionalCallExpression') &&
+      (n.callee.type === 'MemberExpression' || n.callee.type === 'OptionalMemberExpression') &&
+      n.callee.property.type === 'Identifier' &&
+      DERIVE_METHODS.has(n.callee.property.name)
+    ) {
+      hasDerive = true;
+    } else if (
+      (n.type === 'MemberExpression' || n.type === 'OptionalMemberExpression') &&
+      n.computed
+    ) {
+      hasDerive = true;
+    }
+  });
+  return readsContent && hasDerive;
+}
+
+/** True if `call` is `<x>.map(cb)` whose callback renders a JSX leaf referencing
+ *  the callback's first param (`{item.field}`) — i.e. it renders content. */
+function mapCallbackRendersContentLeaf(call: CallExpression): boolean {
+  const cb = call.arguments[0];
+  if (!cb || (cb.type !== 'ArrowFunctionExpression' && cb.type !== 'FunctionExpression')) return false;
+  const param = cb.params[0];
+  if (!param || param.type !== 'Identifier') return false;
+  const paramName = param.name;
+  let found = false;
+  traverseFast(cb.body, (n: Node) => {
+    if (
+      n.type === 'JSXExpressionContainer' &&
+      (n.expression.type === 'MemberExpression' || n.expression.type === 'OptionalMemberExpression')
+    ) {
+      let cur: Node = n.expression;
+      while (cur.type === 'MemberExpression' || cur.type === 'OptionalMemberExpression') cur = cur.object;
+      if (cur.type === 'Identifier' && cur.name === paramName) found = true;
+    }
+  });
+  return found;
 }
 
 /**
@@ -199,6 +254,10 @@ function collectViolations(
   const localContentObjects = new Map<string, number>();
   const jsxReferencedBindings = new Set<string>();
 
+  // content-derived-array-map: locals assigned from a content collection via a
+  // derive operation (find/filter/slice/computed) — mapping these loses attribution.
+  const contentDerivedLocals = new Set<string>();
+
   // content-prop-drill: tracks .map() callback params whose iterated value is
   // content-rooted, so we can detect when those params are drilled into components.
   const contentMapParams = new Set<string>();
@@ -282,6 +341,12 @@ function collectViolations(
           }
         }
 
+        // content-derived-array-map (part 1): record locals assigned from a
+        // derived content collection (find/filter/slice/computed) for the map check.
+        if (p.node.id.type === 'Identifier' && p.node.init && isContentDerivedInit(p.node.init, contentBindings)) {
+          contentDerivedLocals.add(p.node.id.name);
+        }
+
         // Destructured content bindings
         if (p.node.init.type !== 'Identifier') return;
         if (!contentBindings.has(p.node.init.name)) return;
@@ -304,6 +369,21 @@ function collectViolations(
           // Resolve the root of the chain being mapped over.
           // Handles both `products.map` and `home.menu.categories.map`.
           const chainRoot = rootIdentifier(callee.object);
+
+          // content-derived-array-map (part 2): mapping a content collection that
+          // was derived into a local → items lose attribution, not inline-editable.
+          if (chainRoot !== null && contentDerivedLocals.has(chainRoot) && mapCallbackRendersContentLeaf(p.node)) {
+            violations.push({
+              rule: 'content-derived-array-map',
+              file: relPath,
+              line: p.node.loc?.start.line,
+              message:
+                `${chainRoot}.map(...) iterates a content collection derived into a local ` +
+                `(e.g. via .find()/.filter()/.slice()) — its items have no content key and won't be inline-editable. ` +
+                `Render a direct chain instead (nest categories.map(cat => cat.items.map(item => …))) ` +
+                `and drive tabs/filters with CSS visibility (or a conditional className), not by filtering content into a local.`,
+            });
+          }
 
           // map-without-list-context: only fires for direct contentBindings root
           // (the simple case the original rule detected)

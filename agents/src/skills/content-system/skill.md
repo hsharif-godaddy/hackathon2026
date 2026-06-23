@@ -124,7 +124,11 @@ import { products } from 'virtual:content';
 
 source-mapper auto-tags each item with its content field + per-item index, so edit-mode resolves `{p.name}` back to `products[3].name` at click time — **as long as the `.map()` and the `{p.field}` leaf stay in the page's own JSX** (not extracted into a per-item/per-section component that takes the content as props). The `<ContentListContext field="…">` wrapper from `@airo/content` is an optional fallback for shapes the auto-tagging can't reach; it is not required.
 
-### 6. Collection items carry a managed `id`
+### 6. Never filter content into a local before mapping
+
+`const items = home.menu.categories.find(...).items; items.map(...)` makes those items uneditable — the build can't trace a runtime-filtered local back to a content key. Render the full structure off a direct binding (`home.menu.categories.map(cat => cat.items.map(item => …))`) and drive tabs/filters with CSS visibility or a conditional className.
+
+### 7. Collection items carry a managed `id`
 
 The `content_scaffold` tool adds a stable `id` to every item in a list. Keep it — it anchors inline edits to the right item even when the list is reordered. Do not hand-author, renumber, or strip these ids; the tool manages them completely. The `id` field never needs to appear in your JSX.
 

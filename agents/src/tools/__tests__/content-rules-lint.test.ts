@@ -525,6 +525,53 @@ describe('page/component root matching is a full path segment', () => {
   });
 });
 
+describe('content-derived-array-map', () => {
+  // helper: run the linter on a synthetic .tsx source string
+  function lint(src: string): string[] {
+    return checkContentRulesForFile(src, 'src/pages/index.tsx').map((v) => v.rule);
+  }
+
+  it('flags a content collection derived into a local then mapped with content leaves', () => {
+    const src = `
+      import { home } from 'virtual:content';
+      export default function Page() {
+        const activeItems = home.menu.categories.find((c) => c.id === 'x')?.items ?? [];
+        return <div>{activeItems.map((item) => <span>{item.price}</span>)}</div>;
+      }`;
+    expect(lint(src)).toContain('content-derived-array-map');
+  });
+
+  it('does NOT flag a direct nested content chain map', () => {
+    const src = `
+      import { home } from 'virtual:content';
+      export default function Page() {
+        return <div>{home.menu.categories.map((cat) => (
+          <div>{cat.items.map((item) => <span>{item.price}</span>)}</div>
+        ))}</div>;
+      }`;
+    expect(lint(src)).not.toContain('content-derived-array-map');
+  });
+
+  it('does NOT flag a content-derived local that is not mapped', () => {
+    const src = `
+      import { home } from 'virtual:content';
+      export default function Page() {
+        const active = home.menu.categories.find((c) => c.id === 'x');
+        return <h2>{active?.name}</h2>;
+      }`;
+    expect(lint(src)).not.toContain('content-derived-array-map');
+  });
+
+  it('does NOT flag a map over a non-content local array', () => {
+    const src = `
+      export default function Page() {
+        const xs = [1, 2, 3];
+        return <div>{xs.map((n) => <span>{n}</span>)}</div>;
+      }`;
+    expect(lint(src)).not.toContain('content-derived-array-map');
+  });
+});
+
 describe('checkContentRulesForFile (single-file entry point)', () => {
   it('returns violations for the single file it was called with', () => {
     const source = `

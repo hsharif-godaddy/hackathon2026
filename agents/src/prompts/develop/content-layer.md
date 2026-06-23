@@ -18,7 +18,7 @@ content_scaffold({
 
 For later edits to existing content files, use `str_replace_based_edit_tool` on the JSON, or let the user edit inline through the canvas. Re-calling `content_scaffold` on an existing key is safe — it preserves fields the user has inline-edited and only adds/updates the rest. **Never pass `mode: "replace"` unless the user explicitly asks to rebuild a page from scratch — it discards their inline edits.**
 
-### Five rules when consuming content in JSX
+### Rules for consuming content in JSX
 
 For full reasoning and examples, load the `content-system` skill.
 
@@ -26,6 +26,8 @@ For full reasoning and examples, load the `content-system` skill.
 2. **Direct member access only.** Use `{home.hero.title}`, never `const { hero } = home; {hero.title}`.
 3. **Render editable content where you read it — never hand a content value to a child component as a data prop.** The element that renders a content field (`<span>{item.price}</span>`) must live in the page's own JSX, in the same scope as the `virtual:content` binding or the `.map()` item. Passing the value — or the content object — to a child component to render (`<MenuItem price={item.price} />`, `<MenuCategory category={cat} />`) **severs inline editing**: the field gets no content key and becomes uneditable. Components are still fine as presentational wrappers that receive already-rendered content as `children` (`<Card><span>{item.price}</span></Card>`), and must never import from `virtual:content` directly.
 4. **Keep `.map()` over a content list — and its leaf text — on the page.** The iteration and the `{item.field}` that renders each editable value go in the page; do not extract a per-item or per-section component that takes the content as props.
+
+5. **Never filter content into a local before mapping.** `const items = home.menu.categories.find(...).items; items.map(...)` makes those items uneditable (the build can't trace a runtime-filtered local back to a content key). Render the full structure off a direct binding — nest `home.menu.categories.map(cat => cat.items.map(item => …))` — and drive tabs/filters with CSS visibility or a conditional className.
 
 ```jsx
 // ✅ editable — map + leaf text stay on the page
@@ -43,6 +45,6 @@ For full reasoning and examples, load the `content-system` skill.
 // …and inside MenuCategory: category.items.map((item) => <MenuItem price={item.price} />)
 ```
 
-5. **Two-element composition around dynamic values.** `<span>Label </span><span>{value}</span>`, not `<p>Label {value}</p>` (a content value must be the sole expression child of its element).
+6. **Two-element composition around dynamic values.** `<span>Label </span><span>{value}</span>`, not `<p>Label {value}</p>` (a content value must be the sole expression child of its element).
 
-6. **Collection items carry a managed `id`.** The `content_scaffold` tool adds a stable `id` to every item in a list (e.g. each menu item, each product). Keep it: it anchors inline edits so a user's change stays attached to the right item when the list is reordered. Do not hand-author, renumber, or strip these ids — the tool manages them. You never need to reference `id` in JSX.
+7. **Collection items carry a managed `id`.** The `content_scaffold` tool adds a stable `id` to every item in a list (e.g. each menu item, each product). Keep it: it anchors inline edits so a user's change stays attached to the right item when the list is reordered. Do not hand-author, renumber, or strip these ids — the tool manages them. You never need to reference `id` in JSX.
