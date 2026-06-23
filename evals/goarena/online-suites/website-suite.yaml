@@ -1,0 +1,8 @@
+version: "1.0"
+
+suite:
+  name: "website"
+  description: "Production trace evaluators for the Website (airo-app-builder) product area"
+  evaluatorIds:
+    - "airo-batch-skill-authentication"
+    - "airo-batch-intent-resolution-status"

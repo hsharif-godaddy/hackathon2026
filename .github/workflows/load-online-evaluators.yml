@@ -11,6 +11,7 @@ on:
         options:
           - prod
           - test
+          - dev
       langfuse-project-id:
         description: 'Langfuse project ID to target (prod: cmj7ew7m20026tr41gsi9knd4)'
         required: true
@@ -51,6 +52,13 @@ jobs:
           config-path: evals/goarena/online-evaluators
           synthia-env: ${{ inputs.synthia-env }}
 
+      - name: Load Online Suites
+        id: load-suites
+        uses: gdcorp-dna/synthia/actions/load-online-suites@main
+        with:
+          config-path: evals/goarena/online-suites
+          synthia-env: ${{ inputs.synthia-env }}
+
       - name: Summary
         if: always()
         env:
@@ -58,9 +66,15 @@ jobs:
           CREATED_COUNT: ${{ steps.load-evaluators.outputs.created-count }}
           UPDATED_COUNT: ${{ steps.load-evaluators.outputs.updated-count }}
           EVALUATOR_NAMES: ${{ steps.load-evaluators.outputs.evaluator-names }}
+          SUITE_COUNT: ${{ steps.load-suites.outputs.suite-count }}
+          SUITE_NAMES: ${{ steps.load-suites.outputs.suite-names }}
         run: |
           echo "## Online Evaluators Loaded" >> "$GITHUB_STEP_SUMMARY"
           echo "- Total: $EVALUATOR_COUNT" >> "$GITHUB_STEP_SUMMARY"
           echo "- Created: $CREATED_COUNT" >> "$GITHUB_STEP_SUMMARY"
           echo "- Updated: $UPDATED_COUNT" >> "$GITHUB_STEP_SUMMARY"
           echo "- Names: $EVALUATOR_NAMES" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "## Online Suites Loaded" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Total: $SUITE_COUNT" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Names: $SUITE_NAMES" >> "$GITHUB_STEP_SUMMARY"

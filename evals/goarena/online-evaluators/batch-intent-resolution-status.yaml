@@ -5,7 +5,6 @@ name: "Batch Intent Resolution Status Evaluator"
 description: "Session-level batch evaluator for production traces. Scores how well the agent resolved the user's goal for the session, infers an intent tag for the session's primary objective, and records an outcome classification. Runs on every session (alwaysRun: true) — not skill-gated."
 
 type: llm
-customOutputSchema: true
 
 # schema-only: not read by the batch runner
 scoreType: NUMERIC
@@ -59,30 +58,87 @@ staticContext: |
     metadata. Do not require screenshots, browser navigation, or rendered artifacts.
   - Never assume or hallucinate steps that are not present in the transcript.
 
-template: |
-  {{staticContext}}
+steps:
+  - id: intent_classification
+    llmConfig:
+      model: gpt-5.2
+      temperature: 0
+      maxTokens: 600
+    template: |
+      {{staticContext}}
 
-  Score this production session for objective completion.
+      Classify this production session's primary user intent and determine the outcome.
 
-  Session:
-  {{workflow}}
+      Session:
+      {{workflow}}
 
-  Response Format:
-  Return ONLY a valid JSON object — no markdown, no prose, no trailing text.
-  Required fields:
+      Response Format:
+      Return ONLY a valid JSON object — no markdown, no prose, no trailing text.
+      Required fields:
+        intent_tag — the single best-fitting tag for the session's primary objective.
+                     Must be exactly one of:
+                       add_feature | edit_text | edit_media | troubleshoot | publish_deploy |
+                       rebuild_redesign | explore_test | create_new | migrate |
+                       post_build_guidance | other
+                     Use "other" only when none of the above fit.
+        outcome    — one of: fully_resolved | largely_resolved | partial | poor | failed
+                     Map from goal satisfaction: fully satisfies → fully_resolved,
+                     largely satisfies with minor gaps → largely_resolved,
+                     partially satisfies → partial, poorly aligns → poor,
+                     fails or contradicts → failed
+        goal       — string ≤200 chars: the inferred user goal for this session
+    output:
+      kind: json
+      schema:
+        type: object
+        required: [intent_tag, outcome, goal]
+        properties:
+          intent_tag:
+            type: string
+            enum: [add_feature, edit_text, edit_media, troubleshoot, publish_deploy, rebuild_redesign, explore_test, create_new, migrate, post_build_guidance, other]
+          outcome:
+            type: string
+            enum: [fully_resolved, largely_resolved, partial, poor, failed]
+          goal:
+            type: string
+        additionalProperties: false
 
-    score         — integer 0–100 following the rubric above
-    outcome       — one of: fully_resolved | largely_resolved | partial | poor | failed
-                    Map from score range: 90–100 → fully_resolved, 70–89 → largely_resolved,
-                    50–69 → partial, 25–49 → poor, 0–24 → failed
-    confidence    — float 0–1: your confidence in this evaluation (1.0 = certain, 0.0 = guessing)
-    intent_tag    — the single best-fitting tag for the session's primary objective.
-                    Must be exactly one of:
-                      add_feature | edit_text | edit_media | troubleshoot | publish_deploy |
-                      rebuild_redesign | explore_test | create_new | migrate |
-                      post_build_guidance | other
-                    Use "other" only when none of the above fit.
-    reason        — string ≤500 chars: one- or two-sentence rationale citing key evidence
+  - id: objective_scoring
+    template: |
+      {{staticContext}}
+
+      You previously classified this session:
+      - User goal: {{steps.intent_classification.goal}}
+      - Intent tag: {{steps.intent_classification.intent_tag}}
+      - Outcome: {{steps.intent_classification.outcome}}
+
+      Now score the session numerically.
+
+      Session:
+      {{workflow}}
+
+      Response Format:
+      Return ONLY a valid JSON object — no markdown, no prose, no trailing text.
+      Required fields:
+        score      — integer 0–100 following the rubric above
+        confidence — float 0–1: your confidence in this evaluation (1.0 = certain, 0.0 = guessing)
+        reason     — string ≤500 chars: one- or two-sentence rationale citing key evidence
+        summary    — string ≤500 chars: one- or two-sentence summary of the evaluation
+    output:
+      kind: score
+      schema:
+        type: object
+        required: [score, confidence, reason, summary]
+        properties:
+          score:
+            type: number
+          confidence:
+            type: number
+          reason:
+            type: string
+          summary:
+            type: string
+        additionalProperties: false
 
 onlineConfig:
   enabled: true
@@ -104,6 +160,10 @@ onlineConfig:
       detectionKeywords: []
       detectionToolPatterns: []
       # scoreMapping maps LLM output fields → Langfuse score names.
+      # The batch runner merges ALL step outputs into one flat object before
+      # applying scoreMapping — fields from step 1 (intent_tag, outcome) and
+      # step 2 (score, confidence) are all present in the merged result.
+      # See: synthia/batch-evaluator/src/BatchEvaluationRunner.ts → runStepsEvaluator()
       # nonMatchValue is moot under alwaysRun: true but set as a sentinel.
       scoreMapping:
         - langfuseName: "session_objective_completion"
