@@ -8,6 +8,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, screen } from '@testing-library/react';
 
 import { renderWithProviders } from '@/tests/test-utils';
+import { logClickEvent, logImpressionEvent } from '@/utils/instrumentation';
 import DomainPurchaseWidget from './DomainPurchaseWidget';
 
 const {
@@ -16,15 +17,20 @@ const {
   mockUseDomainSearch,
   mockUseIscResolver,
   mockUseOfferEligibility,
-} = vi.hoisted(() => ({
-  mockCheckoutProps: { current: null as any },
-  mockUseSwitchboard: vi.fn(function () { return true; }),
-  mockUseDomainSearch: vi.fn(
-    function () { return { data: null, isLoading: false, error: null }; }
-  ),
-  mockUseIscResolver: vi.fn(function () { return { isc: null, source: null }; }),
-  mockUseOfferEligibility: vi.fn(function () { return { eligible: false }; }),
-}));
+  mockSendUserMessage,
+} = vi.hoisted(() => {
+  const mockSendUserMessage = vi.fn();
+  return {
+    mockCheckoutProps: { current: null as any },
+    mockUseSwitchboard: vi.fn(function () { return true; }),
+    mockUseDomainSearch: vi.fn(
+      function () { return { data: null, isLoading: false, error: null }; }
+    ),
+    mockUseIscResolver: vi.fn(function () { return { isc: null, source: null }; }),
+    mockUseOfferEligibility: vi.fn(function () { return { eligible: false }; }),
+    mockSendUserMessage,
+  };
+});
 
 // -- Hook mocks --
 
@@ -45,7 +51,7 @@ vi.mock('@/hooks/useOfferEligibility', () => ({
 }));
 
 vi.mock('@/app/[market]/develop/components/chat/ChatContext', () => ({
-  useSendUserMessage: vi.fn(function () { return vi.fn(); }),
+  useSendUserMessage: vi.fn(function () { return mockSendUserMessage; }),
 }));
 
 vi.mock('@/app/[market]/develop/components/utils', () => ({
@@ -84,16 +90,16 @@ vi.mock('@/utils/getRootDomain', () => ({
   getRootDomain: vi.fn(function () { return 'godaddy.com'; }),
 }));
 
+vi.mock('@/utils/instrumentation', () => ({
+  logClickEvent: vi.fn(function () { return vi.fn(); }),
+  logImpressionEvent: vi.fn(function () { return vi.fn(); }),
+}));
+
 vi.mock('@/utils/reactCompat', () => ({
   shimReactInternals: vi.fn(),
 }));
 
-vi.mock('@/utils/instrumentation', async (importActual) => {
-  const actual = await importActual<typeof import('@/utils/instrumentation')>();
-  return { ...actual, logImpressionEvent: vi.fn(function () { return vi.fn(); }) };
-});
-
-const { logImpressionEvent } = await import('@/utils/instrumentation');
+const mockLogClickEvent = vi.mocked(logClickEvent);
 const mockLogImpressionEvent = vi.mocked(logImpressionEvent);
 
 // -- External package mocks --
@@ -535,6 +541,56 @@ describe('DomainPurchaseWidget — ISC offer flow', function () {
     expect(
       screen.queryByTestId('domain-offer-disclaimer')
     ).not.toBeInTheDocument();
+  });
+
+  describe('connect existing domain CTA', function () {
+    it('shows the CTA when rendered in standalone mode (no onPurchaseComplete)', function () {
+      renderWithProviders(<DomainPurchaseWidget brandName="testapp" />);
+
+      expect(screen.getByTestId('domain-purchase-connect-existing-cta')).toBeInTheDocument();
+      expect(screen.getByTestId('domain-purchase-connect-existing-button')).toBeInTheDocument();
+    });
+
+    it('does not show the CTA when onPurchaseComplete is provided (embedded in DomainAttachWidget)', function () {
+      const onPurchaseComplete = vi.fn();
+      renderWithProviders(
+        <DomainPurchaseWidget brandName="testapp" onPurchaseComplete={onPurchaseComplete} onCancel={vi.fn()} />
+      );
+
+      expect(screen.queryByTestId('domain-purchase-connect-existing-cta')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('domain-purchase-connect-existing-button')).not.toBeInTheDocument();
+    });
+
+    it('does not show the CTA when sendUserMessage is null', async function () {
+      const { useSendUserMessage } = await import('@/app/[market]/develop/components/chat/ChatContext');
+      vi.mocked(useSendUserMessage).mockReturnValueOnce(null as any);
+
+      renderWithProviders(<DomainPurchaseWidget brandName="testapp" />);
+
+      expect(screen.queryByTestId('domain-purchase-connect-existing-cta')).not.toBeInTheDocument();
+    });
+
+    it('sends the attach chat message when clicked', async function () {
+      const { user } = renderWithProviders(<DomainPurchaseWidget brandName="testapp" />);
+
+      const connectButton = screen.getByTestId('domain-purchase-connect-existing-button');
+      await user.click(connectButton);
+
+      expect(mockSendUserMessage).toHaveBeenCalledWith('I want to connect a domain I already own', { isActionRequest: true });
+    });
+
+    it('fires a CSP click event when clicked', async function () {
+      const mockClickHandler = vi.fn();
+      mockLogClickEvent.mockReturnValue(mockClickHandler);
+
+      const { user } = renderWithProviders(<DomainPurchaseWidget brandName="testapp" />);
+
+      const connectButton = screen.getByTestId('domain-purchase-connect-existing-button');
+      await user.click(connectButton);
+
+      expect(mockLogClickEvent).toHaveBeenCalledWith('develop.domains.widget_connect_existing');
+      expect(mockClickHandler).toHaveBeenCalled();
+    });
   });
 });
 

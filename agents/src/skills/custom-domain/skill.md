@@ -14,8 +14,9 @@ intents:
 
 | User says                                              | Call                                                   |
 | ------------------------------------------------------ | ------------------------------------------------------ |
+| "I have/own a domain" / "use my domain" / "don't want to buy" / "connect an existing domain" / "connect my own domain" | `{ action: 'attach' }` |
 | "I purchased/bought … mydomain.com" (any follow-up)    | `{ action: 'attach', domain: 'mydomain.com' }`         |
-| "Attach/connect/use mydomain.com"                      | `{ action: 'attach', domain: 'mydomain.com' }`         |
+| "Attach/connect/use mydomain.com" / "already own mydomain.com" | `{ action: 'attach', domain: 'mydomain.com' }`  |
 | "Add/connect a domain" / "custom domain" / DNS request | `{ action: 'attach' }`                                 |
 | "I want/need a domain" / "let's set up a domain" (ownership unclear) | `{ action: 'attach' }` — show existing domains first; purchase option is inside the widget |
 | "Buy/find/get a new domain" / "I don't have a domain yet" | `{ action: 'purchase', brandName: '[project name]' }` |
@@ -35,4 +36,8 @@ Follow Knowledge Base DNS guidance when present. **Exception:** for forwarding/r
 
 ## Domain Purchase Intent (Initial Handoff)
 
-Handoff has `DOMAIN PURCHASE INTENT: yes` → complete first preview build, then immediately call `{ action: 'purchase', brandName: '[project name]' }`. No confirmation. Wait for preview so project name yields better suggestions.
+Handoff has `DOMAIN PURCHASE INTENT: yes` → complete first preview build, then **on the first custom-domain tool call in this conversation** immediately call `{ action: 'purchase', brandName: '[project name]' }`. No confirmation. Wait for preview so project name yields better suggestions.
+
+**One-shot rule:** `DOMAIN PURCHASE INTENT: yes` only applies until the first custom-domain tool call (any action). After that first tool call, treat the flag as consumed — use the Intent Mapping table for all subsequent domain messages.
+
+**Override:** Even on the first domain message, if the user's phrasing indicates they already own a domain (matches the first row of the Intent Mapping table), call `{ action: 'attach' }` instead.

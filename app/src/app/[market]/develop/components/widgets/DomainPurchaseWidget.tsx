@@ -29,7 +29,7 @@ import { logger } from '@/lib/request-context';
 import { useSiteStore } from '@/stores/useSiteStore';
 import type { Domain, DomainPurchaseWidgetProps, Product } from '@/types/domain-purchase';
 import { getRootDomain } from '@/utils/getRootDomain';
-import { logImpressionEvent } from '@/utils/instrumentation';
+import { logClickEvent, logImpressionEvent } from '@/utils/instrumentation';
 import { shimReactInternals } from '@/utils/reactCompat';
 import {
   buildSearchResultsLogKey,
@@ -58,6 +58,7 @@ const DynamicCheckout: ComponentType<any> = dynamic(
  * 3. User clicks price button to purchase (uses @site/buttons AddToCartButton)
  * 4. Express checkout flow handles payment
  * 5. On success, sends chat message "I purchased <domain_name>!" and notifies parent via onPurchaseComplete callback
+ * 6. In standalone mode (no onPurchaseComplete), shows a "Connect it" CTA that sends a chat message to trigger the attach flow
  */
 export default function DomainPurchaseWidget({
   brandName,
@@ -471,6 +472,13 @@ export default function DomainPurchaseWidget({
     }
   }
 
+  function handleConnectExistingDomain() {
+    logClickEvent('develop.domains.widget_connect_existing')();
+    if (sendUserMessage) {
+      sendUserMessage('I want to connect a domain I already own', { isActionRequest: true });
+    }
+  }
+
   // Don't render if feature flag is disabled
   if (!isDomainPurchaseEnabled) {
     return null;
@@ -681,6 +689,28 @@ export default function DomainPurchaseWidget({
             <text.span size={-1} className="text-intents-ux-error-textColor">
               {t('builder_domain_purchase_error_message')}
             </text.span>
+          </Box>
+        )}
+
+        {/* Connect existing domain CTA — shown only in standalone (agent-rendered) mode */}
+        {!onPurchaseComplete && !!sendUserMessage && (
+          <Box
+            data-testid="domain-purchase-connect-existing-cta"
+            orientation="horizontal"
+            gap="sm"
+            inlineAlignChildren="center"
+            className="pt-2 border-t border-intents-ux-boxLowContrast-borderColor"
+          >
+            <text.span size={-2} className="text-intents-ux-text-secondary">
+              {t('builder_domain_purchase_connect_existing_cta', undefined, 'Already have a domain?')}
+            </text.span>
+            <Button
+              data-testid="domain-purchase-connect-existing-button"
+              design="inline"
+              size="sm"
+              text={t('builder_domain_purchase_connect_existing_button', undefined, 'Connect it')}
+              onClick={handleConnectExistingDomain}
+            />
           </Box>
         )}
       </Box>
