@@ -47,6 +47,9 @@ test.describe('Apps Page & Navigation', () => {
     await promptInput.waitFor({ state: 'visible', timeout: LONG_TIMEOUT });
     await promptInput.fill(`${getSpecPrefix('apps-page')} Single page app that displays hello world`);
 
+    // The authenticated homepage auto-opens the "Projects" popover which can
+    // overlay the prompt area and intercept clicks. Dismiss it before Submit.
+    await dismissOverlays(page);
     await page.locator('[data-eid*="homepage.prompt.submit"]').click();
 
     // Already authenticated in beforeEach, so the submit normally redirects
@@ -238,16 +241,12 @@ test.describe('Apps Page & Navigation', () => {
     const deletedCardLocator = page.locator(`[data-testid="project-card-edit-button"][aria-label="${escapedLabel}"]`);
     const matchingBefore = await deletedCardLocator.count();
 
-    // The delete confirmation UI is gated by the appbuilder-app-delete-modal
-    // switchboard flag: when enabled the app renders a confirmation modal, and
-    // when off (the default without the Switchboard grant) it renders an inline
-    // confirmation overlay on the card. Read the flag from gasket-data so we
-    // assert against whichever path production actually serves.
-    const deleteModalEnabled = await page.evaluate(
-      () => (window as unknown as { gasketData?: { switchboard?: Record<string, unknown> } }).gasketData?.switchboard?.['appbuilder-app-delete-modal'] === true,
-    );
-    const confirmationTestId = deleteModalEnabled ? 'delete-project-confirmation-modal' : 'inline-confirmation';
-    const confirmButtonTestId = deleteModalEnabled ? 'delete-project-confirm-button' : 'confirm-button';
+    // The /apps page renders ProjectCard which always shows
+    // DeleteProjectConfirmationModal regardless of the appbuilder-app-delete-modal
+    // switchboard flag (that flag only gated the legacy AppCard inline-confirmation
+    // path, which is no longer used here).
+    const confirmationTestId = 'delete-project-confirmation-modal';
+    const confirmButtonTestId = 'delete-project-confirm-button';
 
     await dismissBanners(page);
     await page.getByTestId('project-card-menu-button').first().click();
@@ -255,8 +254,10 @@ test.describe('Apps Page & Navigation', () => {
     await dismissBanners(page);
     await page.getByTestId('project-card-delete-button').click();
 
-    // Verify confirmation UI
-    await expect(page.getByTestId(confirmationTestId)).toBeVisible();
+    // Verify confirmation UI — the modal testId is on an empty inner div (zero
+    // size → Playwright reports hidden). Check the confirm button which is
+    // inside the modal and has visible content.
+    await expect(page.getByTestId(confirmButtonTestId)).toBeVisible();
 
     // Delete and wait for response
     const deletePromise = page.waitForResponse('**/api/sites/*');
