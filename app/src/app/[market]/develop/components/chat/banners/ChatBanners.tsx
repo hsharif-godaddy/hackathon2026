@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { isEmployeeAuthType } from '@airo/shared/auth';
 
 import { useAuthContext } from '@/components/providers/AuthProvider';
+import { useCreditThresholdEvents } from '@/hooks/useCreditThresholdEvents';
 import { usePaywallEligibility } from '@/hooks/usePaywallEligibility';
 import { useSubscription } from '@/hooks/useSubscription';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
@@ -53,6 +54,7 @@ export default function ChatBanners({ appId }: ChatBannersProps) {
   const { tokenAuthType } = useAuthContext();
   const isImpersonating = isEmployeeAuthType(tokenAuthType);
   const { isWarningBannerActive } = useUsage({ appId, enabled: !!appId });
+  useCreditThresholdEvents();
   const upgradeBannerEnabled = useSwitchboard('appbuilder-airoplus-upgrade-banner');
   const feedbackBannerEnabled = useSwitchboard('appbuilder-feedback-banner');
   const suspendedComplianceBannerEnabled = useSwitchboard('appbuilder-suspended-compliance-banner');
