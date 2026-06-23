@@ -95,6 +95,23 @@ const config: StorybookConfig = {
     aliasTransitiveDep('react-draggable', 'react-rnd');
 
     config.optimizeDeps ??= {};
+    // Pin the dep-optimizer's esbuild target. Vite/Storybook otherwise hands
+    // esbuild the default browser-target list, whose `safari14` entry resolves
+    // to Safari 14.0 — which had a destructuring bug, so esbuild refuses to
+    // emit (and cannot lower) destructuring for it. Every CJS `@ux/*` dep we
+    // pre-bundle below destructures at module scope, so pre-bundling fails with
+    // "Transforming destructuring to the configured target environment ... is
+    // not supported yet" and the preview iframe hangs. `esnext` is Vite's own
+    // default optimizer target; restoring it sidesteps the bad Safari target.
+    config.optimizeDeps.esbuildOptions ??= {};
+    config.optimizeDeps.esbuildOptions.target = 'esnext';
+    // Same Safari-14.0 destructuring bug on the production build path
+    // (`storybook build`): the `vite:esbuild-transpile` plugin transpiles the
+    // emitted chunks against `build.target`, whose default `safari14` entry
+    // trips the identical esbuild error. Keep Vite's default browser baseline
+    // but pin Safari to 14.1, the first version without the bug.
+    config.build ??= {};
+    config.build.target = ['es2020', 'edge88', 'firefox78', 'chrome87', 'safari14.1'];
     config.optimizeDeps.include ??= [];
     const include = config.optimizeDeps.include;
     const deps = [
