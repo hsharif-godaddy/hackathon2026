@@ -1058,6 +1058,22 @@ describe('useSSEChat', () => {
     )
   })
 
+  it('error event sanitizes gateway timeout before markUpstreamError', async function gatewayTimeoutErrorEvent() {
+    await setupHook()
+
+    act(() => {
+      lastTransport.callbacks?.onEvent({ type: 'error', content: 'Gateway Time-out', data: {} })
+    })
+
+    expect(mockMarkUpstreamError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: 'builder_common_error_generic',
+        type: 'UPSTREAM_ERROR',
+        statusCode: 504,
+      })
+    )
+  })
+
   it('copies retry metadata from SSE error events into StructuredError', async () => {
     await setupHook()
 
@@ -1076,7 +1092,7 @@ describe('useSSEChat', () => {
     })
 
     expect(mockMarkUpstreamError).toHaveBeenCalledWith(expect.objectContaining({
-      message: 'retry failed',
+      message: 'builder_common_error_generic',
       type: 'RETRY_ERROR',
       statusCode: 500,
       retryAttempts: 3,
@@ -1413,6 +1429,23 @@ describe('useSSEChat', () => {
     expect(lastTransport.sendMessage).toHaveBeenCalledWith(
       expect.objectContaining({ content: 'build a login page', sessionId: 'test-app-123', userTimezone: expect.any(String) })
     )
+  })
+
+  it('sendMessage maps transport failures to friendly upstream error copy', async function sendFailureFriendlyCopy() {
+    const hook = await setupHook()
+    lastTransport.sendMessage.mockRejectedValueOnce(new Error('Gateway Time-out'))
+
+    await act(async () => {
+      await hook.result.current.actions.send({ content: 'hello' })
+    })
+
+    expect(mockMarkUpstreamError).toHaveBeenCalledWith({
+      message: 'builder_common_error_generic',
+      type: 'UPSTREAM_ERROR',
+      statusCode: 504,
+    })
+    expect(mockFinalizeStream).toHaveBeenCalled()
+    expect(mockSetIsLoading).toHaveBeenCalledWith(false)
   })
 
   it('sendMessage forwards aiEditContexts and uploadedFileName', async () => {

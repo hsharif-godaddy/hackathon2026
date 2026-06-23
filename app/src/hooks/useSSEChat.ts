@@ -11,6 +11,10 @@ import {
   getConversationIdFromCookie,
   setConversationIdCookie,
 } from '@/hooks/chat/useChatHelpers'
+import {
+  resolveUpstreamErrorStatusCode,
+  sanitizeUpstreamErrorMessage,
+} from '@/hooks/shared/sanitizeUpstreamErrorMessage'
 import { getSwitchboardFlag } from '@/hooks/useSwitchboard'
 import { agentFetch, getAgentToken } from '@/lib/agent-fetch'
 import { readDesignChoiceForCurrentApp } from '@/lib/rebuild-design-choice'
@@ -687,9 +691,9 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
                 }
 
                 const structuredError: StructuredError = {
-                  message: errMsg,
+                  message: sanitizeUpstreamErrorMessage(errMsg, tRef.current),
                   type: (errorType as StructuredError['type']) ?? 'UPSTREAM_ERROR',
-                  statusCode: errData?.statusCode,
+                  statusCode: resolveUpstreamErrorStatusCode(errMsg, errData?.statusCode),
                   timestamp: errData?.timestamp,
                   retryAttempts: errData?.retryAttempts,
                   retryReason: errData?.retryReason,
@@ -1290,7 +1294,12 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
 
       logger.error('sse.send_message.failed', { appId: activeAppId, error: err instanceof Error ? err.message : String(err) })
       s.setIsLoading(false)
-      s.markUpstreamError({ message: err instanceof Error ? err.message : 'Send failed', type: 'UPSTREAM_ERROR' })
+      const errMessage: string = err instanceof Error ? err.message : 'Send failed'
+      s.markUpstreamError({
+        message: sanitizeUpstreamErrorMessage(errMessage, tRef.current),
+        type: 'UPSTREAM_ERROR',
+        statusCode: resolveUpstreamErrorStatusCode(errMessage, (err as { statusCode?: number }).statusCode),
+      })
       s.finalizeStream()
     }
   }, [])

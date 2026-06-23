@@ -289,7 +289,7 @@ describe('StreamingIntegratedResponse', function streamingIntegratedResponseTest
   });
 
   describe('budget service error handling', function budgetServiceErrorTests() {
-    it('shows translated BMS error banner for BUDGET_NOT_FOUND errorType', function budgetNotFoundError() {
+    it('shows generic error for BUDGET_NOT_FOUND errorType', function budgetNotFoundError() {
       renderWithProviders(
         <StreamingIntegratedResponse
           message={upstreamErrorMessage(BudgetErrorType.BUDGET_NOT_FOUND)}
@@ -297,11 +297,12 @@ describe('StreamingIntegratedResponse', function streamingIntegratedResponseTest
         />
       );
 
-      expect(screen.getByText('builder_bms_error_title')).toBeInTheDocument();
-      expect(screen.getByText('builder_bms_error_message')).toBeInTheDocument();
+      expect(screen.getByText('builder_common_error_title')).toBeInTheDocument();
+      expect(screen.getByText('builder_common_error_generic')).toBeInTheDocument();
+      expect(screen.queryByText('builder_bms_error_title')).not.toBeInTheDocument();
     });
 
-    it('shows translated BMS error banner for BUDGET_SERVICE_UNAVAILABLE errorType', function budgetServiceUnavailableError() {
+    it('shows generic error for BUDGET_SERVICE_UNAVAILABLE errorType', function budgetServiceUnavailableError() {
       renderWithProviders(
         <StreamingIntegratedResponse
           message={upstreamErrorMessage(BudgetErrorType.BUDGET_SERVICE_UNAVAILABLE)}
@@ -309,11 +310,12 @@ describe('StreamingIntegratedResponse', function streamingIntegratedResponseTest
         />
       );
 
-      expect(screen.getByText('builder_bms_error_title')).toBeInTheDocument();
-      expect(screen.getByText('builder_bms_error_message')).toBeInTheDocument();
+      expect(screen.getByText('builder_common_error_title')).toBeInTheDocument();
+      expect(screen.getByText('builder_common_error_generic')).toBeInTheDocument();
+      expect(screen.queryByText('builder_bms_error_title')).not.toBeInTheDocument();
     });
 
-    it('shows translated BMS error banner for BUDGET_SERVICE_ERROR errorType', function budgetServiceError() {
+    it('shows generic error for BUDGET_SERVICE_ERROR errorType', function budgetServiceError() {
       renderWithProviders(
         <StreamingIntegratedResponse
           message={upstreamErrorMessage(BudgetErrorType.BUDGET_SERVICE_ERROR)}
@@ -321,11 +323,12 @@ describe('StreamingIntegratedResponse', function streamingIntegratedResponseTest
         />
       );
 
-      expect(screen.getByText('builder_bms_error_title')).toBeInTheDocument();
-      expect(screen.getByText('builder_bms_error_message')).toBeInTheDocument();
+      expect(screen.getByText('builder_common_error_title')).toBeInTheDocument();
+      expect(screen.getByText('builder_common_error_generic')).toBeInTheDocument();
+      expect(screen.queryByText('builder_bms_error_title')).not.toBeInTheDocument();
     });
 
-    it('shows translated BMS error banner for BUDGET_SERVICE_AUTH_ERROR errorType', function budgetServiceAuthError() {
+    it('shows generic error for BUDGET_SERVICE_AUTH_ERROR errorType', function budgetServiceAuthError() {
       renderWithProviders(
         <StreamingIntegratedResponse
           message={upstreamErrorMessage(BudgetErrorType.BUDGET_SERVICE_AUTH_ERROR)}
@@ -333,11 +336,12 @@ describe('StreamingIntegratedResponse', function streamingIntegratedResponseTest
         />
       );
 
-      expect(screen.getByText('builder_bms_error_title')).toBeInTheDocument();
-      expect(screen.getByText('builder_bms_error_message')).toBeInTheDocument();
+      expect(screen.getByText('builder_common_error_title')).toBeInTheDocument();
+      expect(screen.getByText('builder_common_error_generic')).toBeInTheDocument();
+      expect(screen.queryByText('builder_bms_error_title')).not.toBeInTheDocument();
     });
 
-    it('falls through to generic error for unhandled budget error types', function genericErrorFallthrough() {
+    it('shows generic error for unhandled budget error types', function genericErrorFallthrough() {
       renderWithProviders(
         <StreamingIntegratedResponse
           message={upstreamErrorMessage(BudgetErrorType.BUDGET_NO_CAPACITY)}
@@ -345,10 +349,11 @@ describe('StreamingIntegratedResponse', function streamingIntegratedResponseTest
         />
       );
 
-      // BUDGET_NO_CAPACITY is not in the BMS error branch, should fall through to generic
+      // BUDGET_NO_CAPACITY uses the same generic upstream error copy as other BMS types
       expect(screen.queryByText('builder_bms_error_title')).not.toBeInTheDocument();
       expect(screen.getByText('builder_common_error_title')).toBeInTheDocument();
-      expect(screen.getByText('Test error message')).toBeInTheDocument();
+      expect(screen.getByText('builder_common_error_generic')).toBeInTheDocument();
+      expect(screen.queryByText('Test error message')).not.toBeInTheDocument();
     });
 
     it('shows BudgetExceededBanner instead of BMS error when both budgetExceeded and errorType are present', function budgetExceededTakesPrecedence() {
@@ -365,6 +370,40 @@ describe('StreamingIntegratedResponse', function streamingIntegratedResponseTest
       expect(screen.queryByText('builder_bms_error_title')).not.toBeInTheDocument();
       // BudgetExceededBanner should be shown instead
       expect(screen.getByText('builder_usage_limit_title')).toBeInTheDocument();
+    });
+  });
+
+  describe('retry upstream error', function retryUpstreamErrorTests() {
+    it('shows friendly copy for RETRY_ERROR without leaking retryReason or raw error', function retryErrorFriendlyCopy() {
+      renderWithProviders(
+        <StreamingIntegratedResponse
+          message={upstreamErrorMessage('RETRY_ERROR', {
+            error: 'retry failed',
+            retryAttempts: 2,
+            retryReason: 'maxRetriesExceeded',
+          })}
+          streamingState="idle"
+        />
+      );
+
+      expect(screen.getByText('builder_common_error_title')).toBeInTheDocument();
+      expect(screen.getByText('builder_common_error_generic')).toBeInTheDocument();
+      expect(screen.queryByText('maxRetriesExceeded')).not.toBeInTheDocument();
+      expect(screen.queryByText('retry failed')).not.toBeInTheDocument();
+      expect(screen.queryByText(/Failed after \d+ attempts/)).not.toBeInTheDocument();
+    });
+
+    it('shows friendly copy for RETRY_ERROR even without retryAttempts', function retryErrorWithoutAttempts() {
+      renderWithProviders(
+        <StreamingIntegratedResponse
+          message={upstreamErrorMessage('RETRY_ERROR', { error: 'Fresh retry error' })}
+          streamingState="idle"
+        />
+      );
+
+      expect(screen.getByText('builder_common_error_title')).toBeInTheDocument();
+      expect(screen.getByText('builder_common_error_generic')).toBeInTheDocument();
+      expect(screen.queryByText('Fresh retry error')).not.toBeInTheDocument();
     });
   });
 
@@ -416,8 +455,37 @@ describe('StreamingIntegratedResponse', function streamingIntegratedResponseTest
       );
 
       expect(screen.getByText('builder_common_error_title')).toBeInTheDocument();
-      expect(screen.getByText('Something went wrong')).toBeInTheDocument();
+      expect(screen.getByText('builder_common_error_generic')).toBeInTheDocument();
+      expect(screen.queryByText('Something went wrong')).not.toBeInTheDocument();
       expect(screen.queryByText('builder_connection_dropped_title')).not.toBeInTheDocument();
+    });
+
+    it('shows timeout copy for upstream errors with 408 or 504 status', function upstreamTimeoutStatus() {
+      renderWithProviders(
+        <StreamingIntegratedResponse
+          message={upstreamErrorMessage('UPSTREAM_ERROR', { error: 'Gateway Time-out', errorCode: 504 })}
+          streamingState="idle"
+        />
+      );
+
+      expect(screen.getByText('builder_common_error_title')).toBeInTheDocument();
+      expect(screen.getByText('builder_chat_error_timeout')).toBeInTheDocument();
+      expect(screen.queryByText('builder_common_error_generic')).not.toBeInTheDocument();
+      expect(screen.queryByText('Gateway Time-out')).not.toBeInTheDocument();
+    });
+
+    it('shows generic error for gateway timeout text without status code', function gatewayTimeoutWithoutStatus() {
+      renderWithProviders(
+        <StreamingIntegratedResponse
+          message={upstreamErrorMessage('UPSTREAM_ERROR', { error: 'Gateway Time-out' })}
+          streamingState="idle"
+        />
+      );
+
+      expect(screen.getByText('builder_common_error_title')).toBeInTheDocument();
+      expect(screen.getByText('builder_common_error_generic')).toBeInTheDocument();
+      expect(screen.queryByText('builder_chat_error_timeout')).not.toBeInTheDocument();
+      expect(screen.queryByText('Gateway Time-out')).not.toBeInTheDocument();
     });
 
     it('shows the stream-error banner for STREAM_TYPE_VALIDATION', function streamTypeValidationError() {
@@ -428,9 +496,9 @@ describe('StreamingIntegratedResponse', function streamingIntegratedResponseTest
         />
       );
 
-      expect(screen.getByText('builder_stream_error_title')).toBeInTheDocument();
+      expect(screen.getByText('builder_common_error_title')).toBeInTheDocument();
       expect(screen.getByText('builder_stream_error_message')).toBeInTheDocument();
-      expect(screen.queryByText('builder_common_error_title')).not.toBeInTheDocument();
+      expect(screen.queryByText('builder_stream_error_title')).not.toBeInTheDocument();
     });
   });
 

@@ -2,7 +2,6 @@
 
 import { useMemo } from 'react'
 import { isEmployeeAuthType } from '@airo/shared/auth'
-import { BudgetErrorType } from '@airo/shared/budget'
 
 import { groupConsecutiveActionTools, groupConsecutiveMediaTools, isSystemHiddenToolCall } from '@/app/[market]/develop/components/actionToolGrouping'
 import BudgetExceededBanner from '@/app/[market]/develop/components/chat/BudgetExceededBanner'
@@ -291,12 +290,11 @@ export default function StreamingIntegratedResponse({
       {/* Upstream service error notification */}
       {message.upstreamError && !message.budgetExceeded && (
         <>
-          {/* Retry error - show attempt count and reason */}
-          {message.errorType === 'RETRY_ERROR' && message.retryAttempts ? (
+          {message.errorType === 'RETRY_ERROR' ? (
             <StreamingAlertMessage
               type="Critical"
-              title="Connection Failed After Multiple Attempts"
-              message={`Failed after ${message.retryAttempts} attempts${message.retryReason ? ` (${message.retryReason})` : ''}. ${message.error || 'Please try again.'}`}
+              title={t('builder_common_error_title', undefined, 'Something went wrong')}
+              message={t('builder_common_error_generic', undefined, 'Something went wrong. Please try again.')}
             />
           ) : message.errorType === 'NETWORK_ERROR' ? (
             /* Network error - prompt to check connection */
@@ -305,18 +303,16 @@ export default function StreamingIntegratedResponse({
               title="Network Error"
               message="Unable to reach the service. Please check your internet connection and try again."
             />
-          ) : message.errorType === BudgetErrorType.BUDGET_NOT_FOUND || message.errorType === BudgetErrorType.BUDGET_SERVICE_UNAVAILABLE || message.errorType === BudgetErrorType.BUDGET_SERVICE_ERROR || message.errorType === BudgetErrorType.BUDGET_SERVICE_AUTH_ERROR ? (
-            <StreamingAlertMessage
-              type="Critical"
-              title={t('builder_bms_error_title', undefined, 'Unable to Process Request')}
-              message={t('builder_bms_error_message', undefined, 'Something went wrong on our end. Please try again.')}
-            />
           ) : message.errorType === 'STREAM_TYPE_VALIDATION' ? (
             /* Malformed upstream stream chunk (AI SDK TypeValidationError) */
             <StreamingAlertMessage
               type="Critical"
-              title={t('builder_stream_error_title', undefined, 'Unexpected response')}
-              message={t('builder_stream_error_message', undefined, 'The AI service returned an unexpected response. Please try again, and rephrase your message if it keeps happening.')}
+              title={t('builder_common_error_title', undefined, 'Something went wrong')}
+              message={t(
+                'builder_stream_error_message',
+                undefined,
+                'Airo couldn\'t process the reply. Send your message again, or try to rephrase it.',
+              )}
             />
           ) : /\bterminated\b/i.test(message.error ?? '') && !(hasSegments || chronologicalContent.length > 0) ? (
             <StreamingAlertMessage
@@ -328,12 +324,22 @@ export default function StreamingIntegratedResponse({
                 'This happens occasionally and isn\'t caused by anything you did. Type "continue" and I\'ll pick up right where I left off.'
               )}
             />
+          ) : message.errorCode === 408 || message.errorCode === 504 ? (
+            <StreamingAlertMessage
+              type="Critical"
+              title={t('builder_common_error_title', undefined, 'Something went wrong')}
+              message={t(
+                'builder_chat_error_timeout',
+                undefined,
+                'Airo took too long to respond. Please send your message again.',
+              )}
+            />
           ) : (
             /* Generic upstream error for all other types */
             <StreamingAlertMessage
               type="Critical"
               title={t('builder_common_error_title', undefined, 'Something went wrong')}
-              message={message.error || t('builder_common_error_generic', undefined, 'Something went wrong. Please try again.')}
+              message={t('builder_common_error_generic', undefined, 'Something went wrong. Please try again.')}
             />
           )}
         </>
