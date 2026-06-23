@@ -576,6 +576,43 @@ NOTES.md                  # Integration discoveries and known issues
 
 ---
 
+## Skill-Specific Scenarios
+
+Scenarios can be grouped by **suite** — a logical label that lets you run
+and evaluate related scenarios together. Skill-specific scenarios live under
+`src/scenarios/skills/{skill-name}/` and share a common suite tag.
+
+### Running a specific suite
+
+```bash
+# Run all scenarios in the email suite (1 trial each by default)
+pnpm run eval --suite email
+
+# Run with multiple trials for statistical confidence
+pnpm run eval --suite email --trials 5
+
+# Skip baseline comparison (useful during development)
+pnpm run eval --suite email --trials 2 --skip-baseline
+```
+
+### Running a single scenario
+
+```bash
+pnpm run eval --scenario email-add-contact-form --trials 3
+```
+
+### Adding a new skill suite
+
+1. Create `src/scenarios/skills/{skill-name}/` with:
+   - `create-{skill}-scenario.ts` — factory function with shared setup
+   - Individual scenario files (one per test case)
+   - `index.ts` — re-exports all scenarios
+2. Each scenario sets `suite: '{skill-name}'` so it can be filtered.
+3. Register scenarios in `src/scenarios/registry.ts`.
+4. Add a `__tests__/` folder with unit tests for scenario configuration.
+
+---
+
 ## Running Tests
 
 Unit tests cover all modules with fixture-based inputs — no live AAB or

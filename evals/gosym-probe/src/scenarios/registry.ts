@@ -31,6 +31,14 @@ import {
   noRawSqlClientScenario,
   schemaEvolutionScenario,
 } from './skills/database/index.js';
+import {
+  addWelcomeEmailScenario,
+  noNodemailerScenario,
+  noSenderSpoofingScenario,
+  emailWithAttachmentScenario,
+  noRecipientFallbackScenario,
+  emailOrderConfirmationScenario,
+} from './skills/email/index.js';
 import type { IGocodeClient } from '../clients/gocode-client.js';
 import type {
   AABCtrlPlaneClient,
@@ -67,5 +75,11 @@ export function createAllScenarios(
     foreignKeyRelationshipScenario(gocode, ctrlPlane),
     noRawSqlClientScenario(gocode, ctrlPlane),
     schemaEvolutionScenario(gocode, ctrlPlane),
+    addWelcomeEmailScenario(gocode, ctrlPlane),
+    noNodemailerScenario(gocode, ctrlPlane),
+    noSenderSpoofingScenario(gocode, ctrlPlane),
+    emailWithAttachmentScenario(gocode, ctrlPlane),
+    noRecipientFallbackScenario(gocode, ctrlPlane),
+    emailOrderConfirmationScenario(gocode, ctrlPlane),
   ];
 }

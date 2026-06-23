@@ -67,6 +67,10 @@ Tools registered in `src/tools/ai-lib-tools/index.ts` (`allAILibTools`). Each ag
 
 **Skills system:** Dynamic tool loading via `skillToolManager`; skills activated/deactivated per conversation; tool names use `{skillName}__{toolName}`. Skills live in `src/skills/` — see `src/skills/README.md`. **Skills must be self-contained:** routing data, intent phrases, and any per-skill metadata live in that skill's `skill.md` frontmatter — never in shared code keyed by skill name (see `src/skills/README.md` "Self-Containment Rule").
 
+### Skill Eval Validation
+
+When modifying skills, run the matching eval suite if one exists. See [SKILL-EVALS.md](SKILL-EVALS.md) for the full A/B comparison workflow.
+
 ### GitUtils Requirement
 
 **All git operations in git-tool.ts MUST use `GitUtils` methods** (`src/utils/git.ts`). This ensures consistent error recovery via `attemptGitRecovery()` and proper logging. If a git operation isn't available in GitUtils, add a new method there.

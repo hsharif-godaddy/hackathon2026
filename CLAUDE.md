@@ -139,6 +139,7 @@ Translation keys are validated during pre-commit (blocks on missing keys). Fetch
 - [ ] Changes tested
 - [ ] Backward compatibility verified
 - [ ] **UI changes:** E2E tests in `tests/e2e/`, `tests/e2e-v2/`, and `tests/regression/` updated if `data-testid` or user flows changed (during the e2e/e2e-v2 overlap, both must be kept in sync)
+- [ ] **Skill changes:** gosym-probe eval suite run if one exists for the modified skill (see agents/CLAUDE.md § Skill Eval Validation)
 - [ ] **dev-supervisor only:** `make check` passes
 
 ## Code Conventions
