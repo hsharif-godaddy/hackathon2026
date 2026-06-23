@@ -4,7 +4,6 @@ import clsx from 'clsx'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { FormattedMessage } from 'react-intl'
 import Button from '@ux/button'
-import CheckboxFilledIcon from '@ux/icon/checkbox-filled'
 import ChevronDownIcon from '@ux/icon/chevron-down'
 import ChevronUpIcon from '@ux/icon/chevron-up'
 import CropIcon from '@ux/icon/crop'
@@ -17,6 +16,7 @@ import Skeleton from '@ux/skeleton'
 import Tag from '@ux/tag'
 
 import { MediaLoadError } from '@/app/[market]/develop/components/media/MediaLoadError'
+import { SelectedThumbnailOverlay } from '@/app/[market]/develop/components/media/SelectedThumbnailOverlay'
 import { getPreviewOrigin, getSlotImageUrl, getSlotThumbnailUrl } from '@/app/[market]/develop/components/media/slotImageUrl'
 import type { DeleteUploadResult, SlotUploadItem } from '@/app/[market]/develop/components/media/UploadedMediaSection'
 import { UploadedMediaSection } from '@/app/[market]/develop/components/media/UploadedMediaSection'
@@ -1290,21 +1290,7 @@ export function MediaSlotDetail({
                             playsInline
                             preload="metadata"
                           />
-                          {isSelected && (
-                            <>
-                              <div
-                                className="absolute inset-0 rounded-md pointer-events-none"
-                                style={{
-                                  backgroundColor: 'rgba(128, 90, 213, 0.2)',
-                                  boxShadow: 'inset 0 0 0 3px black',
-                                }}
-                              />
-                              <span className="absolute bottom-1 right-1 w-3 h-3">
-                                <div className="w-2 h-2 absolute bottom-0.5 right-0.5" style={{ backgroundColor: 'var(--background)' }} />
-                                <CheckboxFilledIcon className="w-3 h-3 absolute inset-0 text-black" />
-                              </span>
-                            </>
-                          )}
+                          {isSelected && <SelectedThumbnailOverlay />}
                         </button>
                       )
                     })}
@@ -1438,21 +1424,7 @@ function ImageGrid({ images, selectedUrl, slotName, previewBaseUrl, onSelect, is
                 onError={(e) => { e.currentTarget.style.display = 'none' }}
               />
             )}
-            {isSelected && (
-              <>
-                <div
-                  className="absolute inset-0 rounded-md pointer-events-none"
-                  style={{
-                    backgroundColor: 'rgba(128, 90, 213, 0.2)',
-                    boxShadow: 'inset 0 0 0 3px black',
-                  }}
-                />
-                <span className="absolute bottom-1 right-1 w-3 h-3">
-                  <div className="w-2 h-2 absolute bottom-0.5 right-0.5" style={{ backgroundColor: 'var(--background)' }} />
-                  <CheckboxFilledIcon className="w-3 h-3 absolute inset-0 text-black" />
-                </span>
-              </>
-            )}
+            {isSelected && <SelectedThumbnailOverlay />}
           </button>
         )
       })}

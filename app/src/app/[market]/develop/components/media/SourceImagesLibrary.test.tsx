@@ -28,11 +28,6 @@ vi.mock('@/utils/instrumentation', () => ({
   generateClickEID: vi.fn().mockReturnValue(''),
 }));
 
-const useSwitchboardMock = vi.fn().mockReturnValue(false);
-vi.mock('@/hooks/useSwitchboard', () => ({
-  useSwitchboard: (...args: unknown[]) => useSwitchboardMock(...args),
-}));
-
 const file = (overrides: Record<string, unknown>) => ({
   id: overrides.filename as string,
   filename: 'f.jpg',
@@ -50,7 +45,6 @@ const mockFetchList = (files: Array<Record<string, unknown>>) => {
 describe('SourceImagesLibrary', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    useSwitchboardMock.mockReturnValue(false);
   });
 
   it('renders only crawled images under the Source images section', async () => {
@@ -92,18 +86,16 @@ describe('SourceImagesLibrary', () => {
     await waitFor(() => expect(screen.queryByTestId('source-images-library')).not.toBeInTheDocument());
   });
 
-  it('shows no delete control when the deletion flag is off', async () => {
-    useSwitchboardMock.mockReturnValue(false);
+  it('renders a delete control for each crawled image', async () => {
     mockFetchList([file({ filename: 'crawled-a.jpg', originalName: 'Crawled A', signedUrl: '/files/uploads/app-123/crawled-a.jpg', source: 'crawled' })]);
 
     renderWithProviders(<SourceImagesLibrary appId={mockAppId} />);
 
     await waitFor(() => expect(screen.getByTestId('source-images-library')).toBeInTheDocument());
-    expect(screen.queryByTestId('uploaded-image-delete-crawled-a.jpg')).not.toBeInTheDocument();
+    expect(screen.getByTestId('uploaded-image-delete-crawled-a.jpg')).toBeInTheDocument();
   });
 
-  it('opens the confirmation modal and deletes everywhere when the flag is on', async () => {
-    useSwitchboardMock.mockReturnValue(true);
+  it('opens the confirmation modal and deletes everywhere', async () => {
     mockFetchList([file({ filename: 'crawled-a.jpg', originalName: 'Crawled A', signedUrl: '/files/uploads/app-123/crawled-a.jpg', source: 'crawled' })]);
 
     renderWithProviders(<SourceImagesLibrary appId={mockAppId} mediaManifest={null} />);

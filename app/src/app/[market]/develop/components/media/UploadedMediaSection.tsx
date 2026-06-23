@@ -2,20 +2,19 @@
 
 import clsx from 'clsx';
 import { useCallback, useRef, useState } from "react";
-import CheckboxFilledIcon from '@ux/icon/checkbox-filled';
 import PlusIcon from '@ux/icon/plus';
 import Spinner from '@ux/spinner';
 
 import { dynamicApiConfigService } from "@/config/dynamic-api";
-import { SWITCHBOARD_APPBUILDER_UPLOADED_IMAGE_DELETION } from '@/config/switchboard-flags'
-import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from "@/hooks/useTranslations";
 import { regenerateToken } from "@/lib/jwt-regeneration";
 import { logger } from "@/lib/request-context";
 import { compressImageFile } from "@/utils/image-compression";
 import { logImpressionEvent } from "@/utils/instrumentation";
+import { SelectedThumbnailOverlay } from './SelectedThumbnailOverlay'
 import { UploadDeleteButton } from './UploadDeleteButton'
 import { UploadDeleteConfirmationModal } from './UploadDeleteConfirmationModal'
+import { useLongPressReveal } from './useLongPressReveal'
 import { useUploadDeleteOverlayBounds } from './useUploadDeleteOverlayBounds'
 import { type UploadedFile,useUploadedMedia } from './useUploadedMedia'
 
@@ -120,7 +119,7 @@ export function UploadedMediaSection({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const sectionRef = useRef<HTMLDivElement>(null)
 
-  const isUploadDeletionEnabled = useSwitchboard(SWITCHBOARD_APPBUILDER_UPLOADED_IMAGE_DELETION) === true
+  const { revealedKey, getHandlers, clearRevealed, consumeLongPress } = useLongPressReveal()
   const [deleteError, setDeleteError] = useState<string | null>(null)
   const [deletingFilename, setDeletingFilename] = useState<string | null>(null)
   const [pendingDelete, setPendingDelete] = useState<PendingUploadDelete | null>(null)
@@ -210,7 +209,6 @@ export function UploadedMediaSection({
 
   const handleDeleteUpload = useCallback(
     async (filename: string, scope: DeleteUploadScope): Promise<boolean> => {
-      if (!isUploadDeletionEnabled) return false
       setDeleteError(null)
       setDeletingFilename(filename)
       try {
@@ -242,12 +240,11 @@ export function UploadedMediaSection({
         setDeletingFilename(null)
       }
     },
-    [appId, isUploadDeletionEnabled, onDeleteSuccess, slotName, t]
+    [appId, onDeleteSuccess, slotName, t]
   )
 
   const handleRequestDeleteUpload = useCallback(
     (filename: string) => {
-      if (!isUploadDeletionEnabled) return
       setDeleteError(null)
       updateDeleteOverlayBounds()
       const currentSlot = slotName ? mediaManifest?.[slotName] : undefined
@@ -259,7 +256,7 @@ export function UploadedMediaSection({
         otherUsageLocations: getOtherUploadUsageLocationNames({ mediaManifest, filename, currentSlotName: slotName }),
       })
     },
-    [isUploadDeletionEnabled, mediaManifest, slotName, updateDeleteOverlayBounds, uploads]
+    [mediaManifest, slotName, updateDeleteOverlayBounds, uploads]
   )
 
   const handleCancelDelete = useCallback(() => {
@@ -348,14 +345,17 @@ export function UploadedMediaSection({
         {uploads.map((file) => {
           const isSelected = selectedFilename === file.filename;
           return (
-            <div key={file.id} className="relative">
+            <div
+              key={file.id}
+              className="group relative"
+              {...getHandlers(file.filename)}
+            >
             <button
               type="button"
-              onClick={() => onSelectImage(file)}
+              onClick={() => { if (consumeLongPress()) return; clearRevealed(); onSelectImage(file) }}
               disabled={isDisabled || isUploading}
               aria-pressed={isSelected}
               data-upload-filename={file.filename}
-              onContextMenu={isUploadDeletionEnabled ? (e) => { e.preventDefault(); handleRequestDeleteUpload(file.filename) } : undefined}
               className={clsx(
                 'relative aspect-square rounded-md overflow-hidden transition-opacity hover:cursor-pointer w-full',
                 !isSelected && !(isDisabled || isUploading) && 'hover:opacity-80',
@@ -387,29 +387,14 @@ export function UploadedMediaSection({
                   {file.originalName}
                 </span>
               )}
-              {isSelected && (
-                <>
-                  <div
-                    className="absolute inset-0 rounded-md pointer-events-none"
-                    style={{
-                      backgroundColor: 'rgba(128, 90, 213, 0.2)',
-                      boxShadow: 'inset 0 0 0 3px black',
-                    }}
-                  />
-                  <span className="absolute bottom-1 right-1 w-3 h-3">
-                    <div className="w-2 h-2 absolute bottom-0.5 right-0.5" style={{ backgroundColor: 'var(--background)' }} />
-                    <CheckboxFilledIcon className="w-3 h-3 absolute inset-0 text-black" />
-                  </span>
-                </>
-              )}
+              {isSelected && <SelectedThumbnailOverlay />}
             </button>
-            {isUploadDeletionEnabled && (
-              <UploadDeleteButton
-                filename={file.filename}
-                disabled={isDisabled || isUploading || deletingFilename !== null}
-                onDelete={handleRequestDeleteUpload}
-              />
-            )}
+            <UploadDeleteButton
+              filename={file.filename}
+              disabled={isDisabled || isUploading || deletingFilename !== null}
+              onDelete={handleRequestDeleteUpload}
+              revealed={revealedKey === file.filename}
+            />
             </div>
           );
         })}
@@ -417,10 +402,14 @@ export function UploadedMediaSection({
           const isSelected = selectedSlotUploadUrl === su.url;
           const deleteFilename = su.sourceFilename || su.url.split('/').pop() || '';
           return (
-            <div key={su.url} className="relative">
+            <div
+              key={su.url}
+              className="group relative"
+              {...(deleteFilename ? getHandlers(deleteFilename) : {})}
+            >
             <button
               type="button"
-              onClick={() => onSelectSlotUpload?.(su.url)}
+              onClick={() => { if (consumeLongPress()) return; clearRevealed(); onSelectSlotUpload?.(su.url) }}
               disabled={isDisabled || isUploading}
               aria-pressed={isSelected}
               className={clsx(
@@ -436,27 +425,14 @@ export function UploadedMediaSection({
                 onError={(e) => { e.currentTarget.style.display = 'none' }}
                 className="w-full h-full object-cover"
               />
-              {isSelected && (
-                <>
-                  <div
-                    className="absolute inset-0 rounded-md pointer-events-none"
-                    style={{
-                      backgroundColor: 'rgba(128, 90, 213, 0.2)',
-                      boxShadow: 'inset 0 0 0 3px black',
-                    }}
-                  />
-                  <span className="absolute bottom-1 right-1 w-3 h-3">
-                    <div className="w-2 h-2 absolute bottom-0.5 right-0.5" style={{ backgroundColor: 'var(--background)' }} />
-                    <CheckboxFilledIcon className="w-3 h-3 absolute inset-0 text-black" />
-                  </span>
-                </>
-              )}
+              {isSelected && <SelectedThumbnailOverlay />}
             </button>
-            {isUploadDeletionEnabled && deleteFilename && (
+            {deleteFilename && (
               <UploadDeleteButton
                 filename={deleteFilename}
                 disabled={isDisabled || isUploading || deletingFilename !== null}
                 onDelete={handleRequestDeleteUpload}
+                revealed={revealedKey === deleteFilename}
               />
             )}
             </div>

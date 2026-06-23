@@ -69,7 +69,10 @@ describe('UploadedImagesSection', () => {
       await waitFor(() => {
         expect(screen.getByAltText('Photo A')).toBeInTheDocument();
         expect(screen.getByAltText('Photo B')).toBeInTheDocument();
-        expect(screen.getAllByRole('button')).toHaveLength(3); // 2 photos + upload placeholder
+        // 2 photos + upload placeholder + a delete control per photo
+        expect(screen.getAllByRole('button')).toHaveLength(5);
+        expect(screen.getByTestId('uploaded-image-delete-photo-a.jpg')).toBeInTheDocument();
+        expect(screen.getByTestId('uploaded-image-delete-photo-b.jpg')).toBeInTheDocument();
       });
     });
 

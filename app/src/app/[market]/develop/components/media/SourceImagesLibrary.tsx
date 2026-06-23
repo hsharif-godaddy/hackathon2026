@@ -3,13 +3,12 @@
 import { useCallback, useRef, useState } from "react";
 
 import { dynamicApiConfigService } from "@/config/dynamic-api";
-import { SWITCHBOARD_APPBUILDER_UPLOADED_IMAGE_DELETION } from '@/config/switchboard-flags';
-import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from "@/hooks/useTranslations";
 import { regenerateToken } from "@/lib/jwt-regeneration";
 import { logger } from "@/lib/request-context";
 import { UploadDeleteButton } from './UploadDeleteButton';
 import { UploadDeleteConfirmationModal } from './UploadDeleteConfirmationModal';
+import { useLongPressReveal } from './useLongPressReveal';
 import { useUploadDeleteOverlayBounds } from './useUploadDeleteOverlayBounds';
 import { useUploadedMedia } from './useUploadedMedia';
 
@@ -58,7 +57,7 @@ export function SourceImagesLibrary({ appId, mediaManifest, refreshKey }: Source
   const { uploads, setUploads, isLoading, error, handleImageError } = useUploadedMedia(appId, refreshKey);
   const sectionRef = useRef<HTMLDivElement>(null);
 
-  const isDeletionEnabled = useSwitchboard(SWITCHBOARD_APPBUILDER_UPLOADED_IMAGE_DELETION) === true;
+  const { revealedKey, getHandlers } = useLongPressReveal();
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
   const [deletingFilename, setDeletingFilename] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -84,7 +83,6 @@ export function SourceImagesLibrary({ appId, mediaManifest, refreshKey }: Source
 
   const handleRequestDelete = useCallback(
     (filename: string) => {
-      if (!isDeletionEnabled) return;
       setDeleteError(null);
       updateDeleteOverlayBounds();
       const file = sourceImages.find((f) => f.filename === filename);
@@ -94,7 +92,7 @@ export function SourceImagesLibrary({ appId, mediaManifest, refreshKey }: Source
         otherUsageLocations: getUploadUsageLocationNames(mediaManifest, filename),
       });
     },
-    [isDeletionEnabled, mediaManifest, sourceImages, updateDeleteOverlayBounds],
+    [mediaManifest, sourceImages, updateDeleteOverlayBounds],
   );
 
   const handleCancelDelete = useCallback(() => {
@@ -152,10 +150,11 @@ export function SourceImagesLibrary({ appId, mediaManifest, refreshKey }: Source
           return (
             <div
               key={file.id}
-              className="relative"
+              className="group relative"
               data-source-image-tile
               data-filename={file.filename}
               data-delete-target={isPendingTarget ? 'true' : undefined}
+              {...getHandlers(file.filename)}
             >
               <div className="relative aspect-square rounded-md overflow-hidden bg-intents-ux-box-backgroundColor border border-intents-ux-box-borderColor">
                 {file.fullSignedUrl ? (
@@ -184,13 +183,12 @@ export function SourceImagesLibrary({ appId, mediaManifest, refreshKey }: Source
                   </span>
                 )}
               </div>
-              {isDeletionEnabled && (
-                <UploadDeleteButton
-                  filename={file.filename}
-                  disabled={deletingFilename !== null}
-                  onDelete={handleRequestDelete}
-                />
-              )}
+              <UploadDeleteButton
+                filename={file.filename}
+                disabled={deletingFilename !== null}
+                onDelete={handleRequestDelete}
+                revealed={revealedKey === file.filename}
+              />
             </div>
           );
         })}

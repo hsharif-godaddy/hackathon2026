@@ -948,6 +948,49 @@ body:has(#UpgradeLibraryPortal .ux-modal) .tooltip[role="tooltip"] {
     }
   }
 
+  /* Selected media thumbnail: a 4px purple ring with a lighter band sweeping
+     around it. Mirrors the edit-mode shimmer border — #805AD5 base with the
+     Proud Purple 200 token as the moving shine, masked to just the padding. */
+  @keyframes selected-thumbnail-shimmer {
+    0% { background-position: 150% 0; }
+    100% { background-position: -50% 0; }
+  }
+
+  .selected-thumbnail-shimmer-border::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 4px;
+    background: linear-gradient(
+      100deg,
+      #805ad5 0%,
+      #805ad5 42%,
+      var(--color-light-purple-solid) 50%,
+      #805ad5 58%,
+      #805ad5 100%
+    );
+    background-size: 200% auto;
+    animation: selected-thumbnail-shimmer 2.4s linear infinite;
+    -webkit-mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .selected-thumbnail-shimmer-border::before {
+      animation: none;
+      background: #805ad5;
+      background-size: auto;
+    }
+  }
+
   @keyframes paywall-skeleton-shimmer {
     0% { background-position: 100% 100%; opacity: 0.6; }
     50% { opacity: 1; }
