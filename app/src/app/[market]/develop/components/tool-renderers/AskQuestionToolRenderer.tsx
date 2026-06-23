@@ -9,8 +9,20 @@ import AskQuestionChoicePanel, {
 import type { DefaultToolRendererProps } from '@/app/[market]/develop/components/tool-renderers/DefaultToolRenderer'
 import DefaultToolRenderer from '@/app/[market]/develop/components/tool-renderers/DefaultToolRenderer'
 import { useNumberKeySelection } from '@/app/[market]/develop/components/tool-renderers/useNumberKeySelection'
+import { EXPERIMENT_IDS } from '@/config/experiments'
 import { isInitialBuildComplete, isInitialBuildFunnelActive } from '@/hooks/shared/initialBuildFunnel'
+import { useHivemind } from '@/hooks/useHivemind'
 import { useTranslations } from '@/hooks/useTranslations'
+import {
+  type AskQuestionFlowContext,
+  generateFlowId,
+  trackFlowCompleted,
+  trackFlowStarted,
+  trackNavigatorClicked,
+  trackQuestionAnswered,
+  trackQuestionShown,
+  trackQuestionSkipped,
+} from '@/lib/askQuestionAnalytics'
 import { shipAnalyticsLog } from '@/lib/logging'
 import { prelaunchKindForUserMessage } from '@/lib/post-publish-prelaunch-ask-question'
 import { logger } from '@/lib/request-context'
@@ -128,6 +140,39 @@ export default function AskQuestionToolRenderer({
     choiceListContainerRef: panelRef,
   })
 
+  const { cohort: endgameCohort } = useHivemind(EXPERIMENT_IDS.initialAgent)
+
+  // One stable flow id per on-screen question set. `result` is the tool result for this
+  // askQuestion call; when it changes the agent has asked a new set, so we regenerate.
+  // All three flow-context fields (id, appCreation, endgameCohort) are snapshotted at that
+  // moment and held constant for the life of the flow. app_creation is the same funnel state
+  // that drives intent_category='new_build' (strongly correlated), but NOT strictly identical
+  // — e.g. rebuild flows are app_creation=false yet intent_category='rebuild'.
+  const flowBox = useRef<{ result: unknown; id: string; appCreation: boolean; endgameCohort: string | undefined } | null>(null)
+  if (!flowBox.current || flowBox.current.result !== result) {
+    flowBox.current = {
+      result,
+      id: generateFlowId(),
+      appCreation: isInitialBuildFunnelActive() && !isInitialBuildComplete(),
+      endgameCohort,
+    }
+  }
+  const flowId = flowBox.current.id
+  const flowContext: AskQuestionFlowContext = {
+    flowId,
+    appCreation: flowBox.current.appCreation,
+    endgameCohort: flowBox.current.endgameCohort,
+  }
+
+  // Fire flow_started exactly once per question set, synchronously before the first question_shown.
+  const totalQuestions = widgetDataPeek?.questions?.length ?? 0
+  const flowStartedFiredRef = useRef<string | null>(null)
+  function emitFlowStartedOnce() {
+    if (flowStartedFiredRef.current === flowId) return
+    flowStartedFiredRef.current = flowId
+    trackFlowStarted(flowContext, totalQuestions)
+  }
+
   if (toolStatus === 'error') {
     return (
       <DefaultToolRenderer
@@ -159,6 +204,11 @@ export default function AskQuestionToolRenderer({
   function handleStepChange(stepId: string, value: string | string[] | null) {
     pingUserActivity()
     const idx = parseInt(stepId, 10)
+    if (value === null) {
+      trackQuestionSkipped(flowContext, idx + 1)
+    } else {
+      trackQuestionAnswered(flowContext, idx + 1)
+    }
     const values = Array.isArray(value) ? value : value ? [value] : []
     const visible = suggestionsForQuestion(questions[idx])
     for (const v of values) {
@@ -192,6 +242,8 @@ export default function AskQuestionToolRenderer({
   function handleActiveStepChange(_stepId: string, idx: number) {
     pingUserActivity()
     setActiveStepIndex(idx)
+    emitFlowStartedOnce()
+    trackQuestionShown(flowContext, idx + 1)
     const q = questions[idx]
     if (q && onQuestionChange) onQuestionChange(q.question)
     logAiroHQEvent({
@@ -205,6 +257,7 @@ export default function AskQuestionToolRenderer({
   function handleCompleteSelections(selections: Record<string, string | string[] | null>) {
     if (isProcessing || submitted) return
     setSubmitted(true)
+    trackFlowCompleted(flowContext)
     pingUserActivity()
 
     const perQuestion = questions.map((q, i) => {
@@ -270,6 +323,7 @@ export default function AskQuestionToolRenderer({
         ariaLabel={questions[0].question}
         onStepChange={handleStepChange}
         onActiveStepChange={handleActiveStepChange}
+        onNavigateBack={(fromIndex) => trackNavigatorClicked(flowContext, fromIndex + 1, 'back')}
         onStepProgressChange={onStepProgressChange}
         onComplete={handleCompleteSelections}
         backLabel={t('builder_common_back')}

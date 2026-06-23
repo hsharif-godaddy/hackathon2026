@@ -36,6 +36,34 @@ vi.mock('@/hooks/shared/initialBuildFunnel', () => ({
   isInitialBuildComplete: () => mockIsInitialBuildComplete(),
 }))
 
+const {
+  mockTrackFlowStarted,
+  mockTrackQuestionShown,
+  mockTrackQuestionAnswered,
+  mockTrackQuestionSkipped,
+  mockTrackNavigatorClicked,
+  mockTrackFlowCompleted,
+} = vi.hoisted(() => ({
+  mockTrackFlowStarted: vi.fn(),
+  mockTrackQuestionShown: vi.fn(),
+  mockTrackQuestionAnswered: vi.fn(),
+  mockTrackQuestionSkipped: vi.fn(),
+  mockTrackNavigatorClicked: vi.fn(),
+  mockTrackFlowCompleted: vi.fn(),
+}))
+vi.mock('@/lib/askQuestionAnalytics', () => ({
+  trackFlowStarted: (...a: unknown[]) => mockTrackFlowStarted(...a),
+  trackQuestionShown: (...a: unknown[]) => mockTrackQuestionShown(...a),
+  trackQuestionAnswered: (...a: unknown[]) => mockTrackQuestionAnswered(...a),
+  trackQuestionSkipped: (...a: unknown[]) => mockTrackQuestionSkipped(...a),
+  trackNavigatorClicked: (...a: unknown[]) => mockTrackNavigatorClicked(...a),
+  trackFlowCompleted: (...a: unknown[]) => mockTrackFlowCompleted(...a),
+  generateFlowId: () => 'test-flow-id',
+}))
+vi.mock('@/hooks/useHivemind', () => ({
+  useHivemind: () => ({ cohort: 'initial_agent_v3', data: undefined, experiment: undefined }),
+}))
+
 vi.mock('framer-motion', () => ({
   motion: {
     button: ({ children, ...props }: any) => <button {...props}>{children}</button>,
@@ -961,6 +989,124 @@ describe('AskQuestionToolRenderer', () => {
 
     submitSelection()
     expect(mockSendUserMessage).toHaveBeenCalledWith('Show menus, Take reservations', { isActionRequest: true })
+  })
+
+  describe('analytics events', () => {
+    beforeEach(() => {
+      mockTrackFlowStarted.mockReset()
+      mockTrackQuestionShown.mockReset()
+      mockTrackQuestionAnswered.mockReset()
+      mockTrackQuestionSkipped.mockReset()
+      mockTrackNavigatorClicked.mockReset()
+      mockTrackFlowCompleted.mockReset()
+      mockIsInitialBuildFunnelActive.mockReturnValue(true)
+      mockIsInitialBuildComplete.mockReturnValue(false)
+    })
+
+    it('fires flow_started once with total_questions, app_creation and endgame_cohort', () => {
+      const result = makeResult([
+        makeQuestion('Q1?', [{ text: 'A' }, { text: 'B' }]),
+        makeQuestion('Q2?', [{ text: 'C' }, { text: 'D' }]),
+      ])
+      render(<AskQuestionToolRenderer {...defaultProps} result={result} />)
+
+      expect(mockTrackFlowStarted).toHaveBeenCalledTimes(1)
+      expect(mockTrackFlowStarted).toHaveBeenCalledWith(
+        expect.objectContaining({
+          flowId: expect.any(String),
+          appCreation: true,
+          endgameCohort: 'initial_agent_v3',
+        }),
+        2,
+      )
+    })
+
+    it('does not fire flow_started when this is not the last assistant message', () => {
+      const result = makeResult([makeQuestion('Q1?', [{ text: 'A' }, { text: 'B' }])])
+      render(
+        <AskQuestionToolRenderer {...defaultProps} result={result} isLastAssistantMessage={false} />,
+      )
+      expect(mockTrackFlowStarted).not.toHaveBeenCalled()
+    })
+
+    it('fires question_shown with 1-based position on initial render', () => {
+      const result = makeResult([makeQuestion('Q1?', [{ text: 'A' }, { text: 'B' }])])
+      render(<AskQuestionToolRenderer {...defaultProps} result={result} />)
+      expect(mockTrackQuestionShown).toHaveBeenCalledWith(
+        expect.objectContaining({ flowId: expect.any(String) }),
+        1,
+      )
+    })
+
+    it('fires question_answered with position when a suggestion is selected', () => {
+      const result = makeResult([makeQuestion('Q1?', [{ text: 'Red' }, { text: 'Blue' }])])
+      render(<AskQuestionToolRenderer {...defaultProps} result={result} />)
+      clickChipOption(/Red/)
+      expect(mockTrackQuestionAnswered).toHaveBeenCalledWith(
+        expect.objectContaining({ flowId: expect.any(String) }),
+        1,
+      )
+      expect(mockTrackQuestionSkipped).not.toHaveBeenCalled()
+    })
+
+    it('fires question_skipped with position when Skip is clicked', () => {
+      const result = makeResult([
+        makeQuestion('Q1?', [{ text: 'Red' }, { text: 'Blue' }]),
+        makeQuestion('Q2?', [{ text: 'C' }, { text: 'D' }]),
+      ])
+      render(<AskQuestionToolRenderer {...defaultProps} result={result} />)
+      fireEvent.click(screen.getByTestId('ask-question-skip'))
+      expect(mockTrackQuestionSkipped).toHaveBeenCalledWith(
+        expect.objectContaining({ flowId: expect.any(String) }),
+        1,
+      )
+    })
+
+    it('fires navigator_clicked back when Back is clicked on question 2', () => {
+      const result = makeResult([
+        makeQuestion('Q1?', [{ text: 'A' }, { text: 'B' }]),
+        makeQuestion('Q2?', [{ text: 'C' }, { text: 'D' }]),
+      ])
+      render(<AskQuestionToolRenderer {...defaultProps} result={result} />)
+      clickChipOption(/A/) // answer Q1 -> advances to Q2 (position 2)
+      fireEvent.click(screen.getByTestId('ask-question-back'))
+      expect(mockTrackNavigatorClicked).toHaveBeenCalledWith(
+        expect.objectContaining({ flowId: expect.any(String) }),
+        2,
+        'back',
+      )
+    })
+
+    it('fires flow_completed once when the single-question flow advances', () => {
+      const result = makeResult([makeQuestion('Q1?', [{ text: 'Red' }, { text: 'Blue' }])])
+      render(<AskQuestionToolRenderer {...defaultProps} result={result} />)
+      clickChipOption(/Red/) // single question commits -> completes
+      expect(mockTrackFlowCompleted).toHaveBeenCalledTimes(1)
+      expect(mockTrackFlowCompleted).toHaveBeenCalledWith(
+        expect.objectContaining({ flowId: expect.any(String), appCreation: true }),
+      )
+    })
+
+    it('stamps app_creation=false when not in the initial-build funnel', () => {
+      mockIsInitialBuildFunnelActive.mockReturnValue(false)
+      mockIsInitialBuildComplete.mockReturnValue(true)
+      const result = makeResult([makeQuestion('Q1?', [{ text: 'A' }, { text: 'B' }])])
+      render(<AskQuestionToolRenderer {...defaultProps} result={result} />)
+      expect(mockTrackFlowStarted).toHaveBeenCalledWith(
+        expect.objectContaining({ appCreation: false }),
+        1,
+      )
+    })
+
+    it('fires flow_started before the first question_shown', () => {
+      const result = makeResult([makeQuestion('Q1?', [{ text: 'A' }, { text: 'B' }])])
+      render(<AskQuestionToolRenderer {...defaultProps} result={result} />)
+      expect(mockTrackFlowStarted).toHaveBeenCalledTimes(1)
+      expect(mockTrackQuestionShown).toHaveBeenCalled()
+      const startedOrder = mockTrackFlowStarted.mock.invocationCallOrder[0]
+      const shownOrder = mockTrackQuestionShown.mock.invocationCallOrder[0]
+      expect(startedOrder).toBeLessThan(shownOrder)
+    })
   })
 
   describe('follow-up single select', function followUpSingleSelect() {

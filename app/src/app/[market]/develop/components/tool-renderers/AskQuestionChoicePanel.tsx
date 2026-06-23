@@ -42,6 +42,7 @@ interface AskQuestionChoicePanelProps {
   onActiveStepChange: (stepId: string, index: number) => void
   onStepProgressChange?: (current: number, total: number) => void
   onComplete: (selections: Record<string, string | string[] | null>) => void
+  onNavigateBack?: (fromIndex: number) => void
 }
 
 function isMultiSelectQuestion(q: AskQuestionChoiceQuestion): boolean {
@@ -121,6 +122,7 @@ export default function AskQuestionChoicePanel({
   onActiveStepChange,
   onStepProgressChange,
   onComplete,
+  onNavigateBack,
 }: AskQuestionChoicePanelProps) {
   const [activeStepIndex, setActiveStepIndex] = useState(0)
   const [collected, setCollected] = useState<Record<string, string | string[] | null>>({})
@@ -247,6 +249,7 @@ export default function AskQuestionChoicePanel({
 
   function handleBack() {
     if (disabled || activeStepIndex === 0) return
+    onNavigateBack?.(activeStepIndex)
     const prevIndex = activeStepIndex - 1
     setCollected(prev => {
       const next = { ...prev }
