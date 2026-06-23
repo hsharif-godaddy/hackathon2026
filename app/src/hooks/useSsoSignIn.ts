@@ -46,12 +46,17 @@ export function useSsoSignIn() {
    * @param options.onShowMockLogin Callback invoked when `AUTH_TYPE=mock`.
    *                              Host component is responsible for rendering
    *                              the `MockLoginDialog`.
+   * @param options.authReason   Auth failure reason (e.g. HBI step-up). Only
+   *                              used by the redirect path, where it is appended
+   *                              as `auth_reason` so SSO performs the right
+   *                              step-up rather than a plain login.
    */
   const signIn = useCallback((options?: {
     redirectUrl?: string;
     onShowMockLogin?: () => void;
+    authReason?: number | null;
   }) => {
-    const { redirectUrl, onShowMockLogin } = options || {};
+    const { redirectUrl, onShowMockLogin, authReason } = options || {};
 
     if (isMockAuth) {
       onShowMockLogin?.();
@@ -61,7 +66,7 @@ export function useSsoSignIn() {
     if (useSsoModal) {
       openSsoLogin();
     } else {
-      handleSignIn(redirectUrl);
+      handleSignIn(redirectUrl, authReason);
     }
   }, [isMockAuth, useSsoModal, openSsoLogin, handleSignIn]);
 

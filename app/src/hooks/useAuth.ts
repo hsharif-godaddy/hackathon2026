@@ -132,7 +132,7 @@ export function useAuth(options: UseAuthOptions = {}) {
   // envs where Chrome's Private Network Access check blocks the SSO Deck
   // iframe. See docs/sso-login-env-gating.md. Prod/local go through the
   // modal via `openSsoLogin()` and never reach this function.
-  const handleSignIn = async (redirectUrl?: string) => {
+  const handleSignIn = async (redirectUrl?: string, authReason?: number | null) => {
     if (configError) {
       logger.error('auth.signin.config_error', 'Cannot sign in: configuration not loaded');
       return { showModal: false };
@@ -154,7 +154,7 @@ export function useAuth(options: UseAuthOptions = {}) {
           : undefined
       );
 
-      window.location.href = await getLoginUrl(finalRedirectUrl);
+      window.location.href = await getLoginUrl(finalRedirectUrl, authReason);
     } catch (error) {
       logger.error('auth.signin.url_error', {
         message: 'Failed to get login URL',

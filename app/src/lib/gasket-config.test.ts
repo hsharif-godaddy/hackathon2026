@@ -81,6 +81,30 @@ describe('gasket-config', function gasketConfigTests() {
 
       expect(result).toBe('https://sso.test-godaddy.com/login?app=airo-builder&path=%2Fdevelop%2Fapp%3Fsid%3Dx%26tab%3Dcode%23preview');
     });
+
+    it('should append auth_reason for a step-up', async function authReasonStepUp() {
+      const result = await getLoginUrl('/develop/abc123', 2);
+
+      expect(result).toBe('https://sso.test-godaddy.com/login?app=airo-builder&path=%2Fdevelop%2Fabc123&auth_reason=2');
+    });
+
+    it('should omit auth_reason for a plain login', async function plainLogin() {
+      const result = await getLoginUrl('/develop/abc123');
+
+      expect(result).toBe('https://sso.test-godaddy.com/login?app=airo-builder&path=%2Fdevelop%2Fabc123');
+    });
+
+    it('should omit auth_reason when explicitly null', async function authReasonNull() {
+      const result = await getLoginUrl('/develop/abc123', null);
+
+      expect(result).toBe('https://sso.test-godaddy.com/login?app=airo-builder&path=%2Fdevelop%2Fabc123');
+    });
+
+    it('should append auth_reason without a path on root URL', async function authReasonRoot() {
+      const result = await getLoginUrl('/', 2);
+
+      expect(result).toBe('https://sso.test-godaddy.com/login?app=airo-builder&auth_reason=2');
+    });
   });
 
 });

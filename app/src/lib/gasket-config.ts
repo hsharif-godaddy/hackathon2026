@@ -154,7 +154,7 @@ export const authConfigs = {
 // GoDaddy SSO recognized params: realm, path, app, auth_reason.
 // 'path' is a URI-encoded relative path; SSO appends it to the app's
 // registered domain when redirecting back after authentication.
-export async function getLoginUrl(returnUrl?: string): Promise<string> {
+export async function getLoginUrl(returnUrl?: string, authReason?: number | null): Promise<string> {
   const gasketConfig = await getGasketConfig();
   const params = new URLSearchParams({ app: gasketConfig.sso.appName });
 
@@ -172,6 +172,15 @@ export async function getLoginUrl(returnUrl?: string): Promise<string> {
         params.set('path', target);
       }
     }
+  }
+
+  // Forward the auth failure reason so a full-page redirect re-auth performs the
+  // required step-up (e.g. HBI) instead of an ordinary login that would not
+  // satisfy the level-3 requirement, leaving the post-redirect probe to 401 and
+  // loop. auth_reason is a GoDaddy SSO recognized param; the SsoDeck modal path
+  // already passes it via pageToLoadParams.
+  if (authReason != null) {
+    params.set('auth_reason', String(authReason));
   }
 
   return `${gasketConfig.sso.loginUrl}?${params.toString()}`;
@@ -486,7 +495,7 @@ async function openModalAndVerify(
 
   if (!canUseSsoModal) {
     try {
-      window.location.href = await getLoginUrl(window.location.href);
+      window.location.href = await getLoginUrl(window.location.href, authReason);
     } catch (err) {
       logger.warn('app-fetch.auth-resolve.redirect-url-failed', {
         level,
