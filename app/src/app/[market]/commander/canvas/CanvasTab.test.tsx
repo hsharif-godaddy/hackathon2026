@@ -50,4 +50,19 @@ describe('CanvasTab', () => {
     expect(onClose).toHaveBeenCalledTimes(1)
     expect(onActivate).not.toHaveBeenCalled()
   })
+
+  it('renders the close button outside the icon hit area when collapseLabel is true', async () => {
+    const onActivate = vi.fn()
+    const onClose = vi.fn()
+    const { user } = renderWithProviders(
+      <CanvasTab {...baseProps} collapseLabel onActivate={onActivate} onClose={onClose} />,
+    )
+    const closeButton = screen.getByRole('button', { name: 'Close tab' })
+    const iconSpan = screen.getByTestId('canvas-icon').parentElement?.parentElement
+    expect(iconSpan).not.toBeNull()
+    expect(iconSpan?.contains(closeButton)).toBe(false)
+    await user.click(closeButton)
+    expect(onClose).toHaveBeenCalledTimes(1)
+    expect(onActivate).not.toHaveBeenCalled()
+  })
 })

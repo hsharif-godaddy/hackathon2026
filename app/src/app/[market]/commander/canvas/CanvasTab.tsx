@@ -36,7 +36,8 @@ export function CanvasTab({
   const [isHovered, setIsHovered] = useState(false)
 
   const showLabel = active || !collapseLabel || isHovered
-  const showCloseIcon = dismissible && isHovered
+  const showCloseOnIcon = !collapseLabel && dismissible && isHovered
+  const showCloseAtEnd = collapseLabel && dismissible && isHovered
 
   const handleClose = (e: React.MouseEvent) => {
     e.stopPropagation()
@@ -73,25 +74,25 @@ export function CanvasTab({
     >
       <span className="relative inline-flex shrink-0 items-center justify-center size-2.5">
         <span
-          aria-hidden={showCloseIcon}
+          aria-hidden={showCloseOnIcon}
           className={clsx(
             'absolute inset-0 flex items-center justify-center transition-opacity duration-150',
-            showCloseIcon ? 'opacity-0' : 'opacity-100',
+            showCloseOnIcon ? 'opacity-0' : 'opacity-100',
           )}
         >
           {icon}
         </span>
-        {dismissible && (
+        {dismissible && !collapseLabel && (
           <button
             type="button"
             aria-label={closeLabel}
             onClick={handleClose}
             data-testid={testId ? `${testId}-close` : undefined}
-            tabIndex={showCloseIcon ? 0 : -1}
+            tabIndex={showCloseOnIcon ? 0 : -1}
             className={clsx(
               'absolute inset-0 flex items-center justify-center transition-opacity duration-150',
               'cursor-pointer bg-transparent border-0 p-0',
-              showCloseIcon ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none',
+              showCloseOnIcon ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none',
             )}
           >
             <XIcon className="size-2.5" />
@@ -109,6 +110,26 @@ export function CanvasTab({
       >
         {label}
       </span>
+
+      {dismissible && collapseLabel && (
+        <button
+          type="button"
+          aria-label={closeLabel}
+          onClick={handleClose}
+          data-testid={testId ? `${testId}-close` : undefined}
+          tabIndex={showCloseAtEnd ? 0 : -1}
+          className={clsx(
+            'inline-flex shrink-0 items-center justify-center overflow-hidden size-2.5',
+            'cursor-pointer bg-transparent border-0 p-0 ml-0.5',
+            'transition-[max-width,opacity,margin] duration-150 ease-out',
+            showCloseAtEnd
+              ? 'max-w-[0.625rem] opacity-100 mr-0.5 pointer-events-auto'
+              : 'max-w-0 opacity-0 mr-0 pointer-events-none',
+          )}
+        >
+          <XIcon className="size-2.5" />
+        </button>
+      )}
     </div>
   )
 }
