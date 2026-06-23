@@ -25,7 +25,7 @@ interface Props {
 const CLOSE_OPTIONS = [
   'Show me 2-3 color scheme options to choose from.',
   'Show me 2-3 font options to choose from.',
-  'Show me 2-3 tone options to choose from.',
+  'Change the writing tone and voice of the page copy. Ask me to pick from 2-3 copy voice options, then rewrite the text to match.',
 ]
 
 const PROMPT_QUESTION: AskQuestionChoiceQuestion = {
@@ -45,7 +45,7 @@ const closeQuestion: AskQuestionChoiceQuestion = {
   suggestions: [
     { text: 'Change the color scheme' },
     { text: 'Change the fonts' },
-    { text: 'Change the tone' },
+    { text: 'Change the writing tone' },
   ],
   allowOther: true,
 }

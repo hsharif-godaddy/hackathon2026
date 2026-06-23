@@ -63,6 +63,10 @@ vi.mock('./useLatestNBAs', () => ({
   useLatestNBAs: vi.fn()
 }))
 
+vi.mock('./useFirstBuildFeedback', () => ({
+  useFirstBuildFeedback: vi.fn(function () { return null; }),
+}))
+
 vi.mock('@/app/[market]/develop/components/chat/secrets/useSecretsComposerTakeover', () => ({
   useSecretsComposerTakeover: vi.fn(function () { return null; }),
 }))
@@ -1320,6 +1324,79 @@ describe('InputActionsPanel', () => {
 
       // Should remain collapsed (falling edge doesn't expand)
       expect(chevronButton.getAttribute('aria-expanded')).toBe('false')
+    })
+  })
+
+  describe('fbf NBA suppression after close chip', () => {
+    const baselineMessageCount = 6
+
+    const writingToneAskQuestion = {
+      question: 'Pick a copy voice',
+      suggestions: [{ text: 'Professional' }, { text: 'Casual' }],
+      source: 'askQuestion' as const,
+      toolResult: {
+        output: {
+          widgetType: 'ask-question',
+          widgetData: {
+            type: 'ask-question',
+            currentQuestionIndex: 0,
+            answers: [],
+            questions: [{
+              question: 'Pick a copy voice',
+              suggestions: [{ text: 'Professional' }, { text: 'Casual' }],
+              allowOther: false,
+            }],
+          },
+        },
+      },
+    }
+
+    let messageCount = baselineMessageCount
+
+    beforeEach(() => {
+      localStorage.clear()
+      localStorage.setItem('fbf_answered_test-app-id', 'close')
+      messageCount = baselineMessageCount
+      vi.mocked(DevelopPageStore.useDevelopPageStore).mockImplementation(function (selector: any) {
+        return selector({
+          viewMode: ViewMode.PREVIEW,
+          isMobile: false,
+          app: { id: 'test-app-id', initialBuildComplete: true },
+        })
+      })
+      vi.mocked(StreamingStore.useMessages).mockImplementation(function () {
+        return Array.from({ length: messageCount }, function (_, index) {
+          return {
+            id: `msg-${index}`,
+            role: index % 2 === 0 ? 'user' : 'assistant',
+            content: 'hello',
+          }
+        }) as ReturnType<typeof StreamingStore.useMessages>
+      })
+      vi.mocked(TodoListStore.useCurrentList).mockReturnValue(null)
+      vi.mocked(useLatestNBAsModule.useLatestNBAs).mockImplementation(function (feedbackActive: boolean) {
+        if (feedbackActive) {
+          return null
+        }
+        return writingToneAskQuestion
+      })
+    })
+
+    it('suppresses askQuestion at resolve baseline and renders after agent reply', async function fbfBaseline() {
+      const { rerender } = renderWithProviders(<InputActionsPanel />)
+
+      await waitFor(function () {
+        expect(useLatestNBAsModule.useLatestNBAs).toHaveBeenLastCalledWith(true)
+      })
+      expect(screen.queryByRole('option', { name: /Professional/ })).not.toBeInTheDocument()
+
+      messageCount = baselineMessageCount + 1
+      rerender(<InputActionsPanel />)
+
+      await waitFor(function () {
+        expect(useLatestNBAsModule.useLatestNBAs).toHaveBeenLastCalledWith(false)
+      })
+      expect(screen.getByRole('option', { name: /Professional/ })).toBeInTheDocument()
     })
   })
 })

@@ -221,7 +221,7 @@ describe('FirstBuildFeedbackPanel — close_followup step', () => {
     )
     expect(screen.getByTestId('choice-item-0')).toHaveTextContent('Change the color scheme')
     expect(screen.getByTestId('choice-item-1')).toHaveTextContent('Change the fonts')
-    expect(screen.getByTestId('choice-item-2')).toHaveTextContent('Change the tone')
+    expect(screen.getByTestId('choice-item-2')).toHaveTextContent('Change the writing tone')
     expect(screen.getByPlaceholderText('Tell us what to tweak...')).toBeInTheDocument()
   })
 
@@ -309,6 +309,22 @@ describe('FirstBuildFeedbackPanel — close_followup step', () => {
     fireEvent.click(screen.getByTestId('choice-item-0'))
     expect(mockTrackCloseSelection).toHaveBeenCalledWith('color_scheme', 'app1')
     expect(mockSendUserMessage).toHaveBeenCalledWith('Show me 2-3 color scheme options to choose from.', { isActionRequest: true })
+    expect(dismiss).toHaveBeenCalledWith('close')
+  })
+
+  it('chip selection (index 2) sends writing tone message and dismisses close', () => {
+    const dismiss = vi.fn()
+    render(
+      <FirstBuildFeedbackPanel
+        feedback={makeFeedback({ step: 'close_followup', dismiss })}
+        appId="app1"
+      />
+    )
+    fireEvent.click(screen.getByTestId('choice-item-2'))
+    expect(mockSendUserMessage).toHaveBeenCalledWith(
+      'Change the writing tone and voice of the page copy. Ask me to pick from 2-3 copy voice options, then rewrite the text to match.', { isActionRequest: true },
+    )
+    expect(mockTrackCloseSelection).toHaveBeenCalledWith('tone', 'app1')
     expect(dismiss).toHaveBeenCalledWith('close')
   })
 })

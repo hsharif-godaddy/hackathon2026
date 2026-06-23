@@ -1473,8 +1473,9 @@ export default function InputActionsPanel({
   const feedback = useFirstBuildFeedback(appId ?? '')
   const feedbackActive = feedback !== null
 
-  // After FBF is answered/skipped (localStorage marks it), permanently suppress
-  // the agent's askQuestion NBA for this app so it doesn't snap back.
+  // After FBF is answered/skipped, suppress stale askQuestion NBAs (e.g. the initial
+  // build interview) so they do not snap back when the user picks a close chip.
+  // Color/font chip replies use colorScheme/fontTheme panels and bypass this gate.
   const initialBuildComplete = useDevelopPageStore(
     (s) => s.app?.id === appId ? s.app?.initialBuildComplete : undefined,
   )
@@ -1482,8 +1483,8 @@ export default function InputActionsPanel({
     safeGetItem(`fbf_answered_${appId}`) || safeGetItem(`fbf_skipped_${appId}`),
   )
 
-  // Track message count when FBF was first resolved so we can stop
-  // suppressing once new messages arrive (agent asks new questions after).
+  // Baseline message count at FBF resolve (includes the chip user message — send runs
+  // before dismiss). Suppression lifts once the agent reply adds a message above it.
   const [fbfConsumedMessageCount, setFbfConsumedMessageCount] = useState<number | null>(null)
   useEffect(() => {
     if (feedbackResolved && fbfConsumedMessageCount === null) {
@@ -1493,10 +1494,10 @@ export default function InputActionsPanel({
     }
   }, [feedbackResolved, messages.length, fbfConsumedMessageCount])
 
-  // Suppress NBA while FBF is active OR until 2+ new messages arrive after FBF resolved.
-  // Once the conversation moves forward, allow new agent askQuestions normally.
+  // Suppress askQuestion NBAs at or below the resolve baseline (chip in flight).
+  // Lifts when the agent response lands so writing-tone askQuestion can render.
   const fbfNBASuppressed = !!initialBuildComplete && feedbackResolved &&
-    (fbfConsumedMessageCount === null || messages.length <= fbfConsumedMessageCount + 1)
+    (fbfConsumedMessageCount === null || messages.length <= fbfConsumedMessageCount)
   const suppressNBA = feedbackActive || fbfNBASuppressed
 
   // Chatted-past: dismiss if the user sends a message AFTER the panel first appears.
