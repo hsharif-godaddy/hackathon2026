@@ -4,6 +4,7 @@ import { KeyboardEvent, useEffect, useRef } from 'react';
 import { FloatingFooter } from '@airo-ux/pattern-library/surfaces/floating-footer';
 import Button from '@ux/button';
 import AsyncIcon from '@ux/icon/async-icon.js';
+import Spinner from '@ux/spinner';
 
 import { useTranslations } from '@/hooks/useTranslations';
 import { cn } from '@/lib/utils';
@@ -14,6 +15,7 @@ interface InboxReplyComposerProps {
   onChange: (value: string) => void;
   onSend: (body: string) => void;
   disabled?: boolean;
+  sending?: boolean;
   error?: boolean;
 }
 
@@ -22,6 +24,7 @@ export function InboxReplyComposer({
   onChange,
   onSend,
   disabled = false,
+  sending = false,
   error = false,
 }: InboxReplyComposerProps) {
   const t = useTranslations();
@@ -38,8 +41,8 @@ export function InboxReplyComposer({
   );
 
   function handleSubmit(): void {
-    const trimmed = value.trim();
-    if (!trimmed || disabled) return;
+    const trimmed: string = value.trim();
+    if (!trimmed || disabled || sending) return;
     onSend(trimmed);
   }
 
@@ -82,10 +85,10 @@ export function InboxReplyComposer({
             <Button
               design="primary"
               size="sm"
-              icon={<AsyncIcon icon="arrow-up" />}
+              icon={sending ? <span className="flex items-center justify-center"><Spinner size="sm" /></span> : <AsyncIcon icon="arrow-up" />}
               aria-label={t('builder_chatinput_send')}
               onClick={handleSubmit}
-              disabled={disabled || !value.trim()}
+              disabled={disabled || sending || !value.trim()}
               data-testid="inbox-reply-send"
             />
           </div>

@@ -147,4 +147,52 @@ describe('InboxReplyComposer', () => {
 
     expect(screen.queryByTestId('inbox-reply-error')).not.toBeInTheDocument();
   });
+
+  it('keeps textarea enabled when sending is true', () => {
+    renderWithProviders(
+      <InboxReplyComposer
+        value="Hello"
+        onChange={vi.fn()}
+        onSend={vi.fn()}
+        sending
+      />,
+    );
+
+    expect(screen.getByTestId('inbox-reply-input')).not.toBeDisabled();
+  });
+
+  it('disables send button when sending is true', () => {
+    renderWithProviders(
+      <InboxReplyComposer
+        value="Hello"
+        onChange={vi.fn()}
+        onSend={vi.fn()}
+        sending
+      />,
+    );
+
+    expect(screen.getByTestId('inbox-reply-send')).toBeDisabled();
+  });
+
+  it('does not call onSend when sending is true', async () => {
+    const onSend = vi.fn();
+    const user = userEvent.setup();
+
+    renderWithProviders(
+      <InboxReplyComposer
+        value="Hello"
+        onChange={vi.fn()}
+        onSend={onSend}
+        sending
+      />,
+    );
+
+    await user.click(screen.getByTestId('inbox-reply-send'));
+    expect(onSend).not.toHaveBeenCalled();
+
+    const input = screen.getByTestId('inbox-reply-input');
+    await user.click(input);
+    await user.keyboard('{Enter}');
+    expect(onSend).not.toHaveBeenCalled();
+  });
 });

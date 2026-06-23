@@ -58,7 +58,7 @@ export function InboxConversationDetail({
       sendReply.mutate({ body: replyBody }, {
         onSuccess: () => {
           logClickEvent('inbox.detail.reply_send')();
-          setBody('');
+          setBody((current: string) => current.trim() === replyBody ? '' : current);
         },
         onError: () => {
           logImpressionEvent('inbox.detail.reply_failed')();
@@ -115,7 +115,8 @@ export function InboxConversationDetail({
         value={body}
         onChange={(value: string) => { setSendError(false); setBody(value); }}
         onSend={handleSend}
-        disabled={sendReply.isPending || isGuideBotConversation(conversation)}
+        disabled={isGuideBotConversation(conversation)}
+        sending={sendReply.isPending}
         error={sendError}
       />
     </div>
