@@ -17,6 +17,12 @@ import { safePostMessage } from "./postMessage";
 
 // ── Payload shapes ────────────────────────────────────────────────────────
 
+export const TextEditErrorCode = {
+  UnsupportedDynamicTextContent: "UNSUPPORTED_DYNAMIC_TEXT_CONTENT",
+} as const;
+
+export type TextEditErrorCodeValue = (typeof TextEditErrorCode)[keyof typeof TextEditErrorCode];
+
 export interface BusDevContext {
   fileName: string;
   componentName: string;

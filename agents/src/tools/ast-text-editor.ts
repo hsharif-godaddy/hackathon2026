@@ -5,6 +5,8 @@ import { Logger } from '../logging/index.js';
 
 const logger = Logger.create({ component: 'ast-text-editor' });
 
+const UNSUPPORTED_DYNAMIC_TEXT_CONTENT = 'UNSUPPORTED_DYNAMIC_TEXT_CONTENT';
+
 const TEXT_CONTAINER_TAGS = new Set([
   'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
   'li', 'blockquote', 'figcaption', 'pre', 'label',
@@ -24,6 +26,7 @@ export interface TextEditRequest {
 export interface TextEditResult extends BaseEditResult {
   oldText: string;
   newText: string;
+  code?: typeof UNSUPPORTED_DYNAMIC_TEXT_CONTENT;
   commitHash?: string;
 }
 
@@ -122,6 +125,19 @@ export class ASTTextEditor extends ASTEditorBase {
    */
   private hasElementChildren(element: t.JSXElement): boolean {
     return element.children.some(child => this.t.isJSXElement(child));
+  }
+
+  private isStaticTextExpression(expression: t.Expression | t.JSXEmptyExpression): boolean {
+    return this.t.isJSXEmptyExpression(expression) ||
+      this.t.isStringLiteral(expression) ||
+      (this.t.isTemplateLiteral(expression) && expression.expressions.length === 0);
+  }
+
+  private hasUnsupportedDynamicTextExpression(element: t.JSXElement): boolean {
+    return element.children.some(child =>
+      this.t.isJSXExpressionContainer(child) &&
+      !this.isStaticTextExpression(child.expression)
+    );
   }
 
   /**
@@ -386,6 +402,7 @@ export class ASTTextEditor extends ASTEditorBase {
     success: boolean;
     changes?: { oldText: string; newText: string };
     error?: string;
+    code?: typeof UNSUPPORTED_DYNAMIC_TEXT_CONTENT;
   } {
     const { oldText, newText, devContext, preciseSelector } = request;
 
@@ -436,6 +453,20 @@ export class ASTTextEditor extends ASTEditorBase {
     const devIdMap = devContext.devId
       ? this.computeDevIds(ast, devContext.fileName)
       : null;
+
+    if (devContext.devId && devIdMap) {
+      const dynamicTarget = candidates.find(candidate =>
+        (devIdMap.get(candidate.element) ?? this.getDevId(candidate.element)) === devContext.devId &&
+        this.hasUnsupportedDynamicTextExpression(candidate.element)
+      );
+      if (dynamicTarget) {
+        return {
+          success: false,
+          error: 'Unsupported dynamic text content',
+          code: UNSUPPORTED_DYNAMIC_TEXT_CONTENT,
+        };
+      }
+    }
 
     // Find matches prioritizing text content over line number
     const normalizedOldText = oldText.replace(/\s+/g, ' ').trim();

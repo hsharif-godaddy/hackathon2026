@@ -10,6 +10,7 @@ import { formatSubscriptionId } from '@/lib/subscription-id'
 import { type AppStatusType } from '@/stores/useAppStore'
 import { type ServerStatusType } from '@/stores/useServerStore'
 import { useSiteStore } from '@/stores/useSiteStore'
+import { TextEditErrorCode, type TextEditErrorCodeValue } from '@/utils/eventBus'
 
 function stripShareToken(url: string | undefined): string | undefined {
   if (!url) return url
@@ -118,6 +119,10 @@ export interface TextUpdateData {
   newHtml?: string
   devContext: Record<string, unknown>
 }
+
+export type TextUpdateResult =
+  | { success: true; message?: string; data?: unknown }
+  | { success?: false; error?: string; details?: string; code: TextEditErrorCodeValue }
 
 export interface StyleUpdateData {
   selector: string
@@ -634,7 +639,7 @@ export class AppService {
   /**
    * Update element text content
    */
-  async updateText(appId: string, textData: TextUpdateData): Promise<unknown> {
+  async updateText(appId: string, textData: TextUpdateData): Promise<TextUpdateResult> {
     const requestBody = {
       selector: textData.selector,
       preciseSelector: textData.preciseSelector,
@@ -653,7 +658,22 @@ export class AppService {
     })
 
     if (!response.ok) {
-      throw new Error(`Failed to send text update to API: ${response.status}`)
+      const body = await response.json().catch(() => null)
+      if (
+        response.status === 400 &&
+        body &&
+        typeof body === 'object' &&
+        'code' in body &&
+        body.code === TextEditErrorCode.UnsupportedDynamicTextContent
+      ) return body as TextUpdateResult
+
+      const error = body &&
+        typeof body === 'object' &&
+        'error' in body &&
+        typeof body.error === 'string'
+        ? `: ${body.error}`
+        : ''
+      throw new Error(`Failed to send text update to API: ${response.status}${error}`)
     }
 
     return response.json()

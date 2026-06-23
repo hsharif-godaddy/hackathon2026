@@ -24,6 +24,7 @@ export interface BaseEditResult {
   filePath: string;
   diff?: string;
   error?: string;
+  code?: string;
   commitHash?: string;
 }
 
@@ -106,6 +107,7 @@ export abstract class ASTEditorBase {
     success: boolean;
     changes?: any;
     error?: string;
+    code?: string;
   };
 
   /**
@@ -233,6 +235,7 @@ export abstract class ASTEditorBase {
           success: false,
           filePath: relativePath,
           error: processResult.error,
+          code: processResult.code,
         } as TResult;
       }
 

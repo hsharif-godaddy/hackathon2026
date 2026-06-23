@@ -1219,4 +1219,60 @@ export default function DevIdPage() {
       expect(updated).not.toContain('Original text here');
     });
   });
+
+  describe('unsupported dynamic text', () => {
+    it('allows static JSX string expressions', async () => {
+      const staticExpressionPath = join(testAppPath, 'src', 'pages', 'static-expression.tsx');
+      await writeFile(staticExpressionPath, `export default function StaticExpressionPage() {
+  return <h1>{'Welcome'}</h1>;
+}
+`);
+
+      const result = await editor.editElementText(testAppPath, {
+        selector: 'h1',
+        oldText: 'Welcome',
+        newText: 'Hello',
+        devContext: {
+          fileName: 'src/pages/static-expression.tsx',
+          componentName: 'StaticExpressionPage',
+          lineNumber: 2,
+        },
+      }, TEST_APP_ID);
+
+      expect(result.success).toBe(true);
+
+      const updated = await readFile(staticExpressionPath, 'utf-8');
+      expect(updated).toContain('Hello');
+      expect(updated).not.toContain('Welcome');
+    });
+
+    it('refuses i18n call expressions without rewriting them as literal text', async () => {
+      const i18nFixturePath = join(testAppPath, 'src', 'pages', 'i18n.tsx');
+      await writeFile(i18nFixturePath, `const t = (_key: string) => 'Welcome';
+
+export default function I18nPage() {
+  return <h1>{t('home.title')}</h1>;
+}
+`);
+
+      const result = await editor.editElementText(testAppPath, {
+        selector: 'h1',
+        oldText: 'Welcome',
+        newText: 'Hello',
+        devContext: {
+          fileName: 'src/pages/i18n.tsx',
+          componentName: 'I18nPage',
+          lineNumber: 4,
+          devId: '0270ce',
+        },
+      }, TEST_APP_ID);
+
+      expect(result.success).toBe(false);
+      expect(result.code).toBe('UNSUPPORTED_DYNAMIC_TEXT_CONTENT');
+
+      const updated = await readFile(i18nFixturePath, 'utf-8');
+      expect(updated).toContain("{t('home.title')}");
+      expect(updated).not.toContain('Hello');
+    });
+  });
 });

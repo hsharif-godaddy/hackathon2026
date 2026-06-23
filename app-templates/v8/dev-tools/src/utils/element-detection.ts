@@ -119,7 +119,7 @@ export function isTextEditable(element: HTMLElement, cmsInlineEditEnabled: boole
   // path hardcodes the value and breaks the binding for every mapped item.
   if (resolveContentKey(element) !== null) return cmsInlineEditEnabled;
 
-  if (element.hasAttribute("data-dev-dynamic") || element.querySelector("[data-dev-dynamic]")) return false;
+  if (element.closest("[data-dev-dynamic]") || element.querySelector("[data-dev-dynamic]")) return false;
 
   const tagName = element.tagName.toLowerCase();
   const textContent = element.textContent?.trim() || "";

@@ -1021,13 +1021,13 @@ function DevelopPageContent({ layout = BuilderLayout.Develop }: { layout?: Build
     const iframe = document.getElementById('preview-iframe') as HTMLIFrameElement | null
 
     try {
-      const result = await appService.updateText(appId, textData) as { success?: boolean }
+      const result = await appService.updateText(appId, textData)
       if (result?.success) {
         logger.info('develop-page.text-update.success', { appId })
         if (iframe) postMessageToIframe(iframe, { type: 'TEXT_EDIT_SUCCEEDED' })
       } else {
         logger.error('develop-page.text-update.failed', { appId })
-        if (iframe) postMessageToIframe(iframe, { type: 'TEXT_EDIT_FAILED' })
+        if (iframe) postMessageToIframe(iframe, 'code' in result ? { type: 'TEXT_EDIT_FAILED', code: result.code } : { type: 'TEXT_EDIT_FAILED' })
       }
     } catch (error) {
       logger.error('develop-page.text-update.error', {

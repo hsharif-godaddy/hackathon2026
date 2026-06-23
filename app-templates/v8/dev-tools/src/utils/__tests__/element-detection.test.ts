@@ -269,6 +269,12 @@ describe('element-detection', () => {
       expect(isTextEditable(element, true)).toBe(false);
     });
 
+    it('should reject formatted descendants inside data-dev-dynamic elements', () => {
+      const element = buildElement('<h1 data-dev-dynamic="true"><span data-airo-formatted-bound-text="true">Welcome</span></h1>');
+      const formatted = element.querySelector('span') as HTMLElement;
+      expect(isTextEditable(formatted)).toBe(false);
+    });
+
     it('should allow plain text elements without data-dev-dynamic', () => {
       const element = buildElement('<p>Hello World</p>');
       expect(isTextEditable(element, true)).toBe(true);

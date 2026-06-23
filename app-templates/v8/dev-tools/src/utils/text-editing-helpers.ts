@@ -654,7 +654,7 @@ export function mergeOriginalClasses(newHtml: string, originalClasses: string): 
 
 // ── UI ──
 
-export function showIndicator(element: HTMLElement, type: "success" | "error" | "saving") {
+export function showIndicator(element: HTMLElement, type: "success" | "error" | "saving", message?: string) {
   injectEditorCss();
   const existing = document.getElementById("edit-mode-save-indicator");
   if (existing) existing.remove();
@@ -670,7 +670,7 @@ export function showIndicator(element: HTMLElement, type: "success" | "error" | 
     color = "#dc2626";
     bg = "#fef2f2";
     border = "#fecaca";
-    indicator.textContent = t("devtools_edit_failed", "Edit failed");
+    indicator.textContent = message || t("devtools_edit_failed", "Edit failed");
   } else if (type === "saving") {
     color = "#6b7280";
     bg = "#f9fafb";
