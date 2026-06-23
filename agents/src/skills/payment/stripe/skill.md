@@ -131,6 +131,7 @@ const result = await skill({ action: 'install', skill: 'payment/stripe' });
 - API routes: `server/api/stripe/create-checkout-session/POST.ts`, `server/api/stripe/session/[sessionId]/GET.ts`
 - Pages: `pages/Products.tsx`, `pages/cart.tsx`, `pages/checkout/success.tsx`, `pages/checkout/cancel.tsx`
 - Contexts: `contexts/cart-context.tsx`, `contexts/use-cart.ts`
+- Analytics: `lib/analytics/track.ts`, `lib/analytics/funnel-session.ts`, `lib/analytics/checkout.ts` — commerce-funnel instrumentation. `startTrackedCheckout()` (from `checkout.ts`) is the single source of truth for the checkout flow + events; the page templates call it, and so must any hand-enhanced page (Step 5 Option B).
 - Library: `lib/stripe/format.ts` (browser-safe) + `lib/stripe/stripe.ts` (server SDK helper, legacy flow)
 - Manual key scripts: `scripts/stripe-register-products.ts`, `scripts/stripe-list-products.ts` — used only in the Manual key flow (Step 4); harmless/unused in Auto-provisioned mode.
 - **i18n dependencies** (automatic via skill-deps)
@@ -375,15 +376,23 @@ const [isDialogOpen, setIsDialogOpen] = useState(false);
 
 #### B2. Add Checkout Function
 
+**Call the installed `startTrackedCheckout()` helper — do NOT hand-write the `fetch`.** The helper fires the commerce-funnel events (`checkout_begin` → `checkout_redirect` / `checkout_error`), saves the funnel snapshot, and redirects to Stripe. Hand-writing the fetch would silently drop these events, so the enhanced page would not match the `Products.tsx` template (Option A).
+
 ```tsx
-const handleCheckout = async (priceId: string) => {
-  const res = await fetch('/api/stripe/create-checkout-session', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ priceId }),
-  });
-  const { url } = await res.json();
-  if (url) window.location.href = url;
+import { startTrackedCheckout } from '@/lib/analytics/checkout';
+
+const handleCheckout = async (product: Product) => {
+  const result = await startTrackedCheckout('products_buy_now', [{
+    productId: product.id,
+    name: product.name,
+    priceId: product.priceId,
+    amount: product.amount,   // smallest currency unit (e.g. 2999 = $29.99)
+    currency: product.currency,
+    quantity: 1,
+  }]);
+  if (!result.success) {
+    // Surface result.error via the page's existing error state, e.g. setError(result.error).
+  }
 };
 ```
 
@@ -407,7 +416,7 @@ const handleCheckout = async (priceId: string) => {
 #### B4. Add Buy/Subscribe Button
 
 ```tsx
-<button onClick={() => handleCheckout(product.priceId)}>Buy Now</button>
+<button onClick={() => handleCheckout(product)}>Buy Now</button>
 ```
 
 #### B5. Add Detail Modal (at end of component)
@@ -437,7 +446,7 @@ import { formatPrice } from '@/lib/stripe/format';
         <button
           onClick={() => {
             setIsDialogOpen(false);
-            handleCheckout(selectedProduct.priceId);
+            handleCheckout(selectedProduct);
           }}
           className="w-full py-3 bg-blue-600 text-white rounded-lg"
         >
@@ -455,7 +464,7 @@ import { formatPrice } from '@/lib/stripe/format';
 
 **If YES — full cart exists:**
 
-- Find existing checkout button → add Stripe checkout call
+- Wire the existing checkout button to `startTrackedCheckout('cart', items)` — map each existing cart entry to `{ productId, name, priceId, amount (smallest currency unit), currency, quantity }`. Do NOT hand-write the fetch/track; the helper emits `checkout_begin`/`checkout_redirect`/`checkout_error` and redirects.
 - Keep existing UI, don't create duplicates
 - **STILL ADD** success/cancel routes
 

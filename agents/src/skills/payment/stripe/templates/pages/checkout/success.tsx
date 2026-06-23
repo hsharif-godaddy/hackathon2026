@@ -10,10 +10,13 @@
  *   session.status: "open" | "complete" | "expired"
  *   session.payment_status: "paid" | "unpaid" | "no_payment_required"
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useSearchParams, Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
+
 import { useCart } from '@/contexts/use-cart';
+import { clearFunnelSession, getCheckoutSnapshot, getStripeMode } from '@/lib/analytics/funnel-session';
+import { track } from '@/lib/analytics/track';
 import { formatPrice } from '@/lib/stripe/format';
 
 interface SessionDetails {
@@ -35,11 +38,26 @@ export default function CheckoutSuccess() {
   const [details, setDetails] = useState<SessionDetails | null>(null);
   const [verification, setVerification] = useState<VerificationState>('verifying');
   const [errorMessage, setErrorMessage] = useState<string>('');
+  // Guard against React StrictMode double-invoking the effect in dev.
+  const firedRef = useRef(false);
 
   // MANDATORY: Verify payment status with Stripe before showing success
   useEffect(() => {
+    if (firedRef.current) return;
+
+    const snapshot = getCheckoutSnapshot();
+    const pagePath = window.location.pathname;
+
     // No session_id in URL
     if (!sessionId) {
+      firedRef.current = true;
+      track('airo.website.stripe.purchase_not_verified', 'action', 'purchase_not_verified', {
+        page_path: pagePath,
+        reason: 'no_session',
+        error_detail: 'no_session',
+        ...(snapshot ?? {}),
+      });
+      clearFunnelSession();
       setVerification('no_session');
       setErrorMessage('No payment session found. Please try again.');
       return;
@@ -47,60 +65,147 @@ export default function CheckoutSuccess() {
 
     // Validate session_id format (Stripe checkout sessions start with "cs_")
     if (!sessionId.startsWith('cs_')) {
+      firedRef.current = true;
+      track('airo.website.stripe.purchase_not_verified', 'action', 'purchase_not_verified', {
+        page_path: pagePath,
+        reason: 'failed',
+        error_detail: 'invalid_session_id_format',
+        stripe_mode: getStripeMode(sessionId),
+        ...(snapshot ?? {}),
+      });
+      clearFunnelSession();
       setVerification('failed');
       setErrorMessage('Invalid session format.');
       return;
     }
 
-    // Fetch session from backend (which calls Stripe API)
-    fetch(`/api/stripe/session/${sessionId}`)
-      .then((res) => {
+    const stripeMode = getStripeMode(sessionId);
+
+    const verify = async () => {
+      try {
+        const res = await fetch(`/api/stripe/session/${sessionId}`);
         if (!res.ok) {
-          throw new Error('Failed to retrieve session');
+          firedRef.current = true;
+          track('airo.website.stripe.purchase_not_verified', 'action', 'purchase_not_verified', {
+            page_path: pagePath,
+            reason: 'failed',
+            error_detail: `http_${res.status}`,
+            stripe_mode: stripeMode,
+            ...(snapshot ?? {}),
+          });
+          clearFunnelSession();
+          setVerification('failed');
+          setErrorMessage('Unable to verify payment. Please contact support if you were charged.');
+          return;
         }
-        return res.json();
-      })
-      .then((data) => {
+
+        const data = await res.json();
         if (!data?.success || !data?.session) {
-          throw new Error('Invalid session response');
+          firedRef.current = true;
+          track('airo.website.stripe.purchase_not_verified', 'action', 'purchase_not_verified', {
+            page_path: pagePath,
+            reason: 'failed',
+            error_detail: 'invalid_session_response',
+            stripe_mode: stripeMode,
+            ...(snapshot ?? {}),
+          });
+          clearFunnelSession();
+          setVerification('failed');
+          setErrorMessage('Unable to verify payment. Please contact support if you were charged.');
+          return;
         }
 
         const session = data.session;
         setDetails(session);
 
-        // ROBUST CHECK: Verify BOTH status AND payment_status per Stripe docs
-        // status: "complete" means checkout flow finished
-        // payment_status: "paid" means payment was successful
         const isComplete = session.status === 'complete';
         const isPaid = session.paymentStatus === 'paid';
 
         if (isComplete && isPaid) {
-          // Clear the cart now — only after a verified successful payment.
-          // We deliberately do NOT clear the cart at the cart-page redirect:
-          // if the user cancels at Stripe and lands on /checkout/cancel,
-          // the cart should still be there.
+          firedRef.current = true;
+          track('airo.website.stripe.purchase_verified', 'action', 'purchase_verified', {
+            page_path: pagePath,
+            stripe_mode: stripeMode,
+            currency: session.currency ?? snapshot?.currency,
+            amount_total: session.amountTotal,
+            amount_total_display: session.amountTotal != null && session.currency
+              ? formatPrice(session.amountTotal, session.currency)
+              : snapshot?.amount_total_display,
+            checkout_source: snapshot?.checkout_source,
+            line_count: snapshot?.line_count,
+            quantity_total: snapshot?.quantity_total,
+            line_items_json: snapshot?.line_items_json,
+            funnel_session_id: snapshot?.funnel_session_id,
+          });
+          clearFunnelSession();
           clearCart();
           setVerification('verified');
         } else if (session.paymentStatus === 'unpaid') {
+          firedRef.current = true;
+          track('airo.website.stripe.purchase_not_verified', 'action', 'purchase_not_verified', {
+            page_path: pagePath,
+            reason: 'failed',
+            error_detail: 'payment_status_unpaid',
+            stripe_mode: stripeMode,
+            ...(snapshot ?? {}),
+          });
+          clearFunnelSession();
           setVerification('failed');
           setErrorMessage('Payment was not completed. Please try again.');
         } else if (session.status === 'expired') {
+          firedRef.current = true;
+          track('airo.website.stripe.purchase_not_verified', 'action', 'purchase_not_verified', {
+            page_path: pagePath,
+            reason: 'failed',
+            error_detail: 'session_expired',
+            stripe_mode: stripeMode,
+            ...(snapshot ?? {}),
+          });
+          clearFunnelSession();
           setVerification('failed');
           setErrorMessage('Payment session expired. Please try again.');
         } else if (session.status === 'open') {
+          firedRef.current = true;
+          track('airo.website.stripe.purchase_not_verified', 'action', 'purchase_not_verified', {
+            page_path: pagePath,
+            reason: 'failed',
+            error_detail: 'session_open',
+            stripe_mode: stripeMode,
+            ...(snapshot ?? {}),
+          });
+          clearFunnelSession();
           setVerification('failed');
           setErrorMessage('Payment is still processing. Please wait or contact support.');
         } else {
-          // Fallback for any unexpected state
+          firedRef.current = true;
+          track('airo.website.stripe.purchase_not_verified', 'action', 'purchase_not_verified', {
+            page_path: pagePath,
+            reason: 'failed',
+            error_detail: 'unknown',
+            stripe_mode: stripeMode,
+            ...(snapshot ?? {}),
+          });
+          clearFunnelSession();
           setVerification('failed');
           setErrorMessage('Unable to verify payment. Please contact support.');
         }
-      })
-      .catch((error) => {
+      } catch (error) {
         console.error('Payment verification failed:', error);
+        firedRef.current = true;
+        track('airo.website.stripe.purchase_not_verified', 'action', 'purchase_not_verified', {
+          page_path: pagePath,
+          reason: 'failed',
+          error_detail: 'network_or_parse',
+          stripe_mode: stripeMode,
+          ...(snapshot ?? {}),
+        });
+        clearFunnelSession();
         setVerification('failed');
         setErrorMessage('Unable to verify payment. Please contact support if you were charged.');
-      });
+      }
+    };
+
+    verify();
   }, [sessionId, clearCart]);
 
   // VERIFYING STATE - Show loading spinner

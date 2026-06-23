@@ -6,11 +6,27 @@
  *
  * URL: /checkout/cancel
  */
+import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 
+import { clearFunnelSession, getCheckoutSnapshot } from '@/lib/analytics/funnel-session';
+import { track } from '@/lib/analytics/track';
+
 export default function CheckoutCancel() {
   const { t } = useTranslation();
+  const firedRef = useRef(false);
+
+  useEffect(() => {
+    if (firedRef.current) return;
+    firedRef.current = true;
+    const snapshot = getCheckoutSnapshot();
+    track('airo.website.stripe.checkout_cancel', 'action', 'checkout_cancel', {
+      page_path: window.location.pathname,
+      ...(snapshot ?? {}),
+    });
+    clearFunnelSession();
+  }, []);
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
       <div className="max-w-md w-full bg-white rounded-2xl shadow-lg p-8 text-center">
@@ -63,4 +79,3 @@ export default function CheckoutCancel() {
     </div>
   );
 }
-

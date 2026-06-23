@@ -10,8 +10,19 @@
  *
  * Example:
  *   const { cart, addToCart, removeFromCart, cartCount } = useCart();
+ *
+ * Analytics:
+ *   addToCart emits the airo.website.stripe.add_to_cart event (full cart
+ *   snapshot) via track() from @/lib/analytics/track. Other cart mutations
+ *   (remove/update/clear) are intentionally not tracked — the resulting cart
+ *   state is captured by the next snapshot-bearing event (add_to_cart or
+ *   checkout_begin).
  */
-import { createContext, useState, useEffect, useCallback, useMemo, ReactNode } from 'react';
+import { createContext, useState, useEffect, useCallback, useMemo, useRef, ReactNode } from 'react';
+
+import { getFunnelSessionId } from '@/lib/analytics/funnel-session';
+import { track } from '@/lib/analytics/track';
+import { formatPrice } from '@/lib/stripe/format';
 
 export interface CartItem {
   id: string;
@@ -73,11 +84,43 @@ export function CartProvider({ children }: { children: ReactNode }) {
   // clearCart() again. Infinite paid-API-call loop. useCallback gives
   // each mutator a stable identity tied to its actual dependencies.
 
-  const addToCart = useCallback((item: AddToCartInput): AddToCartResult => {
-    // Normalize id to string (handles both number and string inputs)
-    const normalizedId = String(item.id);
+  // Tracks the currency of the last add-to-cart for the analytics effect.
+  // Analytics fires from useEffect (after React commits the new cart state)
+  // so the payload always reflects the real committed cart — no reliance
+  // on React's eager-state optimization.
+  const pendingAddCurrencyRef = useRef<string | null>(null);
 
-    // Validate same currency (Stripe doesn't support multi-currency checkout)
+  useEffect(() => {
+    const currency = pendingAddCurrencyRef.current;
+    if (!currency || cart.length === 0) return;
+    pendingAddCurrencyRef.current = null;
+
+    const quantityTotal = cart.reduce((sum, i) => sum + i.quantity, 0);
+    const amountTotal = cart.reduce((sum, i) => sum + i.price * i.quantity, 0);
+
+    track('airo.website.stripe.add_to_cart', 'action', 'add_to_cart', {
+      page_path: typeof window !== 'undefined' ? window.location.pathname : '/',
+      currency,
+      line_count: cart.length,
+      quantity_total: quantityTotal,
+      amount_total: amountTotal,
+      amount_total_display: formatPrice(amountTotal, currency),
+      line_items_json: JSON.stringify(cart.map((i) => ({
+        product_id: i.id,
+        name: i.name,
+        price_id: i.priceId,
+        quantity: i.quantity,
+        unit_price_display: formatPrice(i.price, i.currency),
+        line_total_display: formatPrice(i.price * i.quantity, i.currency),
+      }))),
+      funnel_session_id: getFunnelSessionId(),
+    });
+  }, [cart]);
+
+  const addToCart = useCallback((item: AddToCartInput): AddToCartResult => {
+    const normalizedId = String(item.id);
+    const addQty = item.quantity ?? 1;
+
     if (cart.length > 0 && cart[0].currency !== item.currency) {
       return {
         success: false,
@@ -85,13 +128,12 @@ export function CartProvider({ children }: { children: ReactNode }) {
       };
     }
 
+    pendingAddCurrencyRef.current = item.currency;
     setCart((prev) => {
       const existing = prev.find((i) => i.id === normalizedId);
-      const addQty = item.quantity ?? 1;
-      if (existing) {
-        return prev.map((i) => (i.id === normalizedId ? { ...i, quantity: i.quantity + addQty } : i));
-      }
-      return [...prev, { ...item, id: normalizedId, quantity: addQty }];
+      return existing
+        ? prev.map((i) => (i.id === normalizedId ? { ...i, quantity: i.quantity + addQty } : i))
+        : [...prev, { ...item, id: normalizedId, quantity: addQty }];
     });
 
     return { success: true };

@@ -23,6 +23,7 @@ import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 
 import { useCart } from '../contexts/use-cart';
+import { startTrackedCheckout } from '../lib/analytics/checkout';
 import { formatPrice } from '../lib/stripe/format';
 
 const ENABLE_CART = true;
@@ -83,7 +84,6 @@ export default function Products() {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
 
-  // Use shared cart context (validation is centralized there)
   const { addToCart: addToCartContext, cartCount } = useCart();
 
   // Use embedded products (no API fetch needed)
@@ -112,24 +112,17 @@ export default function Products() {
     setCheckoutError(null);
     setCheckingOut(product.priceId);
 
-    try {
-      const response = await fetch('/api/stripe/create-checkout-session', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ priceId: product.priceId }),
-      });
+    const result = await startTrackedCheckout('products_buy_now', [{
+      productId: product.id,
+      name: product.name,
+      priceId: product.priceId,
+      amount: product.amount,
+      currency: product.currency,
+      quantity: 1,
+    }]);
 
-      const data = await response.json();
-
-      if (data.success && data.url) {
-        window.location.href = data.url;
-      } else {
-        setCheckoutError({ productId: product.id, message: data.error || 'Failed to create checkout session' });
-        setCheckingOut(null);
-      }
-    } catch (e) {
-      console.error('checkout failed', e);
-      setCheckoutError({ productId: product.id, message: 'Failed to create checkout session' });
+    if (!result.success) {
+      setCheckoutError({ productId: product.id, message: result.error ?? 'Failed to create checkout session' });
       setCheckingOut(null);
     }
   };

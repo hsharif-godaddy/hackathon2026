@@ -9,7 +9,9 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
+
 import { useCart } from '@/contexts/use-cart';
+import { startTrackedCheckout } from '@/lib/analytics/checkout';
 import { formatPrice } from '@/lib/stripe/format';
 
 export default function CartPage() {
@@ -24,32 +26,20 @@ export default function CartPage() {
     setCheckingOut(true);
     setError(null);
 
-    try {
-      const lineItems = cart.map((item) => ({
-        priceId: item.priceId,
-        quantity: item.quantity,
-      }));
+    // Cart is cleared on the verified-success page, NOT here. If we cleared
+    // before redirect and the user cancels at Stripe, /checkout/cancel would
+    // lie about "your cart items are still saved".
+    const result = await startTrackedCheckout('cart', cart.map((item) => ({
+      productId: item.id,
+      name: item.name,
+      priceId: item.priceId,
+      amount: item.price,
+      currency: item.currency,
+      quantity: item.quantity,
+    })));
 
-      const response = await fetch('/api/stripe/create-checkout-session', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ lineItems }),
-      });
-
-      const data = await response.json();
-
-      if (data.success && data.url) {
-        // Cart is cleared on the verified-success page, NOT here.
-        // If we cleared before redirect and the user cancels at Stripe,
-        // /checkout/cancel would lie about "your cart items are still saved".
-        window.location.href = data.url;
-      } else {
-        setError(data.error || 'Failed to create checkout session');
-        setCheckingOut(false);
-      }
-    } catch (e) {
-      console.error('checkout failed', e);
-      setError('Failed to create checkout session');
+    if (!result.success) {
+      setError(result.error ?? 'Failed to create checkout session');
       setCheckingOut(false);
     }
   };
