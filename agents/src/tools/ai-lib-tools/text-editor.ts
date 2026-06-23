@@ -28,6 +28,7 @@ import {
   resolveSourceFile,
   resolveFilePath
 } from '../file-edit-utils.js';
+import { markUploadsPlaced } from '../../services/renderers/upload-classification-persistence.js';
 import {
   handleView,
   handleStrReplace,
@@ -164,13 +165,26 @@ async function executeTextEditor(input: TextEditorInput, context: AgentContext |
 
   let resolvedFileText = file_text;
   let binaryCopied = false;
+  // uploadIdentity is set for the text/SVG branch of resolveSourceFile so we
+  // can call markUploadsPlaced AFTER handleCreate writes successfully.
+  let textUploadIdentity: { storedFilename: string; fileName: string } | null = null;
   if (command === 'create' && file_text !== undefined) {
     const resolvedFile = await resolveSourceFile(appId, path, file_text, files);
+    if (resolvedFile && 'skip' in resolvedFile) {
+      if (resolvedFile.reason === 'copy-error') {
+        // Transient I/O failure — file was preserved. Surface a retryable message
+        // so the agent knows to try again rather than treating this as final.
+        return `Could not copy the uploaded file to ${basename(path)} due to a temporary error — the existing file was preserved. Please try again.`;
+      }
+      // 'no-upload': file exists but there is no matching upload to fill it.
+      return `Left ${basename(path)} unchanged — it already exists and there is no matching upload to refresh it.`;
+    }
     if (resolvedFile) {
       if (resolvedFile.binaryCopied) {
         binaryCopied = true;
       } else {
         resolvedFileText = resolvedFile.content;
+        textUploadIdentity = resolvedFile.uploadIdentity ?? null;
       }
     }
   }
@@ -189,17 +203,31 @@ async function executeTextEditor(input: TextEditorInput, context: AgentContext |
         await handleStrReplace(files, path, old_str, new_str),
       );
 
-    case 'create':
+    case 'create': {
       if (binaryCopied) {
         return `Created ${basename(path)} (binary auto-resolved from uploads)`;
       }
       if (resolvedFileText == null) {
         throw new Error('create requires file_text');
       }
-      return await runPostEditHandlers(
+      const createResult = await runPostEditHandlers(
         { fullPath, filePath: path, appPath: app.path, appId, command },
         await handleCreate(files, path, resolvedFileText),
       );
+      // File is now on disk — mark placed after the write succeeds so the
+      // context manager stops re-injecting this upload as a pending action.
+      // This covers SVG logos and other non-binary uploads resolved via the
+      // text branch of resolveSourceFile (binary uploads are marked inside
+      // resolveSourceFile itself, immediately after files.upload).
+      if (textUploadIdentity && appId) {
+        await markUploadsPlaced({
+          appId,
+          storedFilename: textUploadIdentity.storedFilename,
+          fileName: textUploadIdentity.fileName,
+        }).catch(() => false);
+      }
+      return createResult;
+    }
 
     case 'insert':
       if (insert_line === undefined || !insert_text) {

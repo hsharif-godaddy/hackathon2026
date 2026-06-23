@@ -57,8 +57,11 @@ export function buildUploadHandlingGuidance(input: UploadHandlingInput): string 
 
   if (input.assetRole === 'logo') {
     lines.push(
-      '- User intent: **logo on the site** — copy to `public/assets/` via create-with-empty-file, then use `/assets/…` in code (not a media slot)',
-      '- Do NOT use `/files/uploads/` URLs in source code.',
+      '- User intent: **logo on the site** — place the UPLOADED file itself. Do NOT recreate, trace, or redraw it as inline SVG or canvas; the upload is the source of truth.',
+      `- Create it with empty content so the system fills it from your upload: \`str_replace_based_edit_tool({ command: "create", path: "public/assets/${fileName}", file_text: "" })\`, then reference it: \`<img src="/assets/${fileName}" alt="logo" />\`.`,
+      '- To show the logo in multiple places (e.g. header AND footer), reference the SAME `/assets/…` path in each — do not re-import or create a second copy.',
+      '- Keep the uploaded filename; if you must rename, the system still resolves an empty image file from your most recent upload, but the original name is most reliable.',
+      '- Use `/assets/…` (not a media slot) and never `/files/uploads/` URLs in source code.',
     )
     return lines.join('\n')
   }
@@ -70,8 +73,11 @@ export function buildUploadHandlingGuidance(input: UploadHandlingInput): string 
   // the per-position import_upload guidance below.
   if (input.slotUrl && (input.assetRole === 'hero_image' || input.assetRole === 'background')) {
     const role = input.assetRole === 'background' ? 'background' : 'hero'
+    // Sanitize the slot URL before interpolating into an agent-facing code span
+    // (it derives from a partly filename-based semantic path).
+    const slotUrl = sanitizeUploadFileNameForDisplay(input.slotUrl)
     lines.push(
-      `- User intent: **display on site** — this is the ${role} image; use slot URL \`${input.slotUrl}\` in code`,
+      `- User intent: **display on site** — this is the ${role} image; use slot URL \`${slotUrl}\` in code`,
       '- Do NOT copy to public/assets or use /files/uploads/ for this image.',
     )
     return lines.join('\n')

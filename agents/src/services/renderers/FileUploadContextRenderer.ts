@@ -376,8 +376,8 @@ export class FileUploadContextRenderer implements ContextAttachmentRenderer {
 
     // Persist every file's classification together so follow-up turns can
     // re-inject all of them — not just the last file processed in the loop.
-    if (classifications.length > 0) {
-      await persistClassifications(workspace, classifications, persisted)
+    if (classifications.length > 0 && appId) {
+      await persistClassifications(workspace, classifications, appId)
     }
 
     return {

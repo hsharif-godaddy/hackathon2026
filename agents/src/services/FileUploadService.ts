@@ -12,6 +12,7 @@ import { FileValidationError, SVGSanitizationError } from './errors/file-upload-
 import { getAgentConfig } from './features.js'
 import { createSafePathBuilder } from '../utils/safe-path.js'
 import { sanitizeSVG, isSVGFile } from '../utils/svg-sanitizer.js'
+import { IMAGE_FILE_REGEX } from '../utils/file-types.js'
 
 export interface UploadedFile {
   id: string
@@ -787,6 +788,55 @@ export class FileUploadService {
     if (!sourcePath) return null
 
     return { file: match, sourcePath }
+  }
+
+  /**
+   * The most-recently-uploaded RASTER image for this app. Rename-tolerant
+   * fallback for the empty-file auto-resolve path: agents frequently create the
+   * upload under a tidied name (e.g. `logo.png`) that no longer matches the
+   * original upload filename, so an exact-name lookup misses and the file is
+   * left empty → a broken `<img>`. When the created file is a raster image,
+   * resolving to the latest image upload restores the intended "fill this from
+   * the image I just uploaded" behaviour.
+   *
+   * Two safety rails so a rescue never produces the WRONG image:
+   *  - SVG uploads are excluded — they are XML, not raster bytes, and would
+   *    corrupt a `.png`/`.jpg` target written as binary.
+   *  - If 2+ images share the newest `uploadedAt` (they were uploaded in the
+   *    same batch — `uploadedAt` is per-batch), "latest" is ambiguous, so we
+   *    refuse rather than guess. A visibly-empty file is safer than a silently
+   *    wrong one; the agent should use the exact uploaded filename instead.
+   */
+  async findLatestImageUpload(appId: string): Promise<{ file: UploadedFile; sourcePath: string } | null> {
+    const uploadedFiles = await this.listUploadedFiles(appId)
+    const images = uploadedFiles
+      .filter(f => {
+        // IMAGE_FILE_REGEX already excludes svg by extension; the explicit svg
+        // mimeType guard is only load-bearing for files whose mime is image/svg+xml
+        // but whose extension doesn't end in .svg (rare but possible).
+        if (f.mimeType === 'image/svg+xml') return false
+        return Boolean(f.mimeType?.startsWith('image/')) || IMAGE_FILE_REGEX.test(f.originalName) || IMAGE_FILE_REGEX.test(f.filename)
+      })
+      .sort((a, b) => b.uploadedAt.localeCompare(a.uploadedAt))
+
+    const newest = images[0]
+    if (!newest) {
+      logger.debug('file-upload.latest-image.none', { appId, imageCount: images.length })
+      return null
+    }
+    // Ambiguous batch (tie on the newest timestamp) → don't risk the wrong image.
+    if (images[1] && images[1].uploadedAt === newest.uploadedAt) {
+      logger.debug('file-upload.latest-image.ambiguous', { appId, uploadedAt: newest.uploadedAt })
+      return null
+    }
+
+    const sourcePath = await this.findUploadedFilePath(appId, newest.filename)
+    if (!sourcePath) {
+      logger.debug('file-upload.latest-image.path-missing', { appId, filename: newest.filename })
+      return null
+    }
+
+    return { file: newest, sourcePath }
   }
 
   async listUploadedFiles(appId: string): Promise<UploadedFile[]> {

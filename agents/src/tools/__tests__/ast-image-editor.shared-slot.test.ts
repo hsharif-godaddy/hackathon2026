@@ -180,6 +180,58 @@ describe('ASTImageEditor - shared slot fork', function packageTests() {
     expect(phoLine).not.toMatch(new RegExp(`image: ['"]${imageSlotUrl(SLOT_PATH).replace(/\//g, '\\/')}['"]`));
   });
 
+  it('does NOT rewrite the wrong item when two records share the same alt — uses the occurrence index instead', async function ambiguousLabel() {
+    // Two collection items with identical alt text ("Pho King Good"). The user
+    // clicked the SECOND (occurrenceIndex 1). The labeled-record match is
+    // ambiguous, so it must NOT silently rewrite the first; the position-based
+    // occurrence index must place the fork on the second.
+    await writeFile(
+      join(appPath, DATA_FILE),
+      `export const trucks = [
+  { name: 'Pho King Good', image: '${imageSlotUrl(SLOT_PATH)}' },
+  { name: 'Pho King Good', image: '${imageSlotUrl(SLOT_PATH)}' },
+];
+`
+    );
+
+    const result = await editor.replaceSharedSlotReference(
+      appPath,
+      {
+        elementInfo: {
+          tagName: 'img',
+          className: 'truck-image',
+          id: '',
+          selector: 'li:nth-child(2) > img:nth-child(1)',
+          devContext: {
+            fileName: 'src/pages/trucks.tsx',
+            componentName: 'TrucksPage',
+            lineNumber: 48,
+          },
+        },
+        imageInfo: {
+          type: 'img',
+          currentUrl: imageSlotUrl(SLOT_PATH),
+          alt: 'Pho King Good',
+        },
+        newImageUrl: imageSlotUrl(`${SLOT_PATH}-fork`),
+        oldSlotPath: SLOT_PATH,
+        newSlotPath: `${SLOT_PATH}-fork`,
+        occurrenceIndex: 1,
+      },
+      'test-app'
+    );
+
+    expect(result.success).toBe(true);
+
+    const updated = await readFile(join(appPath, DATA_FILE), 'utf-8');
+    const lines = updated.split('\n');
+    // First record keeps the shared slot; the SECOND (clicked) record is forked.
+    const firstRecord = lines.find((line) => line.includes("name: 'Pho King Good'") && line.includes(imageSlotUrl(SLOT_PATH)) && !line.includes('-fork'));
+    expect(firstRecord).toBeDefined();
+    expect(updated.match(new RegExp(`["']${imageSlotUrl(`${SLOT_PATH}-fork`).replace(/\//g, '\\/')}["']`, 'g'))).toHaveLength(1);
+    expect(updated.match(new RegExp(`["']${imageSlotUrl(SLOT_PATH).replace(/\//g, '\\/')}["']`, 'g'))).toHaveLength(1);
+  });
+
   it('prefers src/data files over page components when matching by label', async function dataFileFirst() {
     await mkdir(join(appPath, 'src', 'pages'), { recursive: true });
     await writeFile(

@@ -121,38 +121,6 @@ function findSlotByAssetRole(
   return homeMatches.length === 1 ? homeMatches[0] : undefined
 }
 
-function findSlotByChatUploadFilename(
-  manifest: MediaManifest,
-  filename: string
-): string | undefined {
-  for (const [slotPath, slot] of Object.entries(manifest)) {
-    if (!slot.uploadSources) continue;
-    if (Object.values(slot.uploadSources).includes(filename)) {
-      return slotPath;
-    }
-  }
-  return undefined;
-}
-
-/**
- * Find a slot already backed by an upload with the given content hash.
- * Content hash (sha256 of the raw upload bytes) is the only stable identity
- * for "the same image": the stored filename embeds Date.now()+fileId, so a
- * re-upload of identical bytes gets a fresh filename and would otherwise be
- * treated as a new image — creating a duplicate slot (AIROBUILD-2364).
- */
-function findSlotByUploadContentHash(
-  manifest: MediaManifest,
-  contentHash: string
-): string | undefined {
-  for (const [slotPath, slot] of Object.entries(manifest)) {
-    if (slot.uploadContentHash && slot.uploadContentHash === contentHash) {
-      return slotPath;
-    }
-  }
-  return undefined;
-}
-
 
 /** Result of POST /media/:appId/slots/import (importSlot). Failures include HTTP status for the route. */
 export type ImportSlotResult =
@@ -1857,42 +1825,17 @@ export class MediaManifestService {
       // different value and must not be treated as equivalent.
       const contentHash = crypto.createHash('sha256').update(fileBuffer).digest('hex');
 
-      // Auto-register dedup: only when NO explicit slot was requested (renderer
-      // auto-register path). The agent's import_upload tool and the UI routes
-      // always pass an explicit slotName — those callers are NOT short-circuited
-      // here because the upload guidance already tells the agent about any
-      // existing slot (via existingSlotUrl from classifyAndGuideChatUploadImage),
-      // so intentional multi-slot placement remains possible. The apply-upload
-      // "use this image" flow passes createIfMissing:false and is also exempt.
-      if (!options.slotName) {
-        const byContentHash = findSlotByUploadContentHash(manifest, contentHash);
-        const existingByUpload = byContentHash ?? findSlotByChatUploadFilename(manifest, storedFilename);
-        if (existingByUpload) {
-          const existingSlot = manifest[existingByUpload]!;
-          const slotUrl =
-            existingSlot.mediaType === 'video'
-              ? `/airo-assets/videos/${existingByUpload}`
-              : `/airo-assets/images/${existingByUpload}`;
-          logger.info('media_manifest.import_chat_upload.deduped', {
-            appId,
-            slotPath: existingByUpload,
-            requestedSlot: options.slotName ?? null,
-            matchedBy: byContentHash ? 'contentHash' : 'filename',
-          });
-          return {
-            success: true,
-            slotPath: existingByUpload,
-            slotUrl,
-            uploadedUrl: existingSlot.currentUrl,
-            slot: existingSlot,
-          };
-        }
-      }
-
-      // When auto-registering a hero or background upload, prefer the
-      // established slot (e.g. pages/home/hero) over a freshly derived
-      // uploads/hero-... name. This keeps the agent's existing src references
-      // valid — no code change needed — and avoids orphaning the canonical slot.
+      // Slot resolution is driven by INTENT, never by byte identity. We do NOT
+      // short-circuit to an existing slot just because the same bytes/filename
+      // already back one — that conflated "same image" with "same placement"
+      // and let one upload hijack an unrelated slot (e.g. a QR code or a second
+      // section photo resolving onto the hero). Resolution order:
+      //   1. explicit slotName from the caller (agent import_upload, UI routes)
+      //   2. the canonical hero/background slot for an auto-registered role
+      //      (findSlotByAssetRole — keeps existing src references valid)
+      //   3. a freshly derived, unique slot path
+      // `contentHash` is still recorded on the slot below as stable identity
+      // metadata, but it never selects which slot an upload lands in.
       const slotName =
         options.slotName?.trim().replace(/^\/+|\/+$/g, '') ||
         (assetRole ? findSlotByAssetRole(manifest, assetRole) : undefined) ||
@@ -1954,6 +1897,12 @@ export class MediaManifestService {
         return { success: false, error: 'Invalid file path', httpStatus: 400 };
       }
 
+      // Whether this exact media file already existed (same slot + same output
+      // bytes ⇒ same deterministic filename). If it did, a prior successful
+      // import already references it — so on a later manifest-write failure we
+      // must NOT delete it as an "orphan", or we'd break that earlier slot.
+      const fileExistedBefore: boolean = await fs.stat(filePath).then(() => true).catch(() => false);
+
       const tempPath = `${filePath}.tmp.${Date.now()}`;
       await fs.writeFile(tempPath, outputBuffer);
       try {
@@ -1984,9 +1933,13 @@ export class MediaManifestService {
       try {
         await this.writeManifest(manifestPath, manifest);
       } catch (writeError) {
-        // The media file is already on disk but the manifest never recorded it.
-        // Remove the orphan so failed imports don't leak files into storage.
-        await fs.unlink(filePath).catch(() => {});
+        // The media file is on disk but the manifest never recorded it. Remove
+        // the orphan so failed imports don't leak — but ONLY if this import
+        // created the file. If it already existed, a prior successful import
+        // still references it; deleting it would 404 that slot.
+        if (!fileExistedBefore) {
+          await fs.unlink(filePath).catch(() => {});
+        }
         throw writeError;
       }
 

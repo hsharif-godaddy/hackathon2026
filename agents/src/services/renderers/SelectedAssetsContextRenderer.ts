@@ -31,6 +31,25 @@ interface SelectedAsset {
   height?: number
 }
 
+/**
+ * Pull the unique stored filename out of an agent upload URL
+ * (`/files/uploads/{appId}/{storedFilename}`, possibly signed). Returns null
+ * for non-upload URLs. The stored filename is globally unique (it embeds a
+ * timestamp + id), so it identifies the exact upload even when two assets share
+ * the same display name.
+ */
+export function extractStoredUploadFilename(imageUrl: string | undefined): string | null {
+  if (!imageUrl) return null
+  const cleanUrl: string = imageUrl.split('?')[0] ?? imageUrl
+  const match: RegExpMatchArray | null = cleanUrl.match(/\/files\/uploads\/[^/]+\/([^/]+)$/)
+  if (!match || !match[1]) return null
+  try {
+    return decodeURIComponent(match[1])
+  } catch {
+    return match[1]
+  }
+}
+
 export class SelectedAssetsContextRenderer implements ContextAttachmentRenderer<SelectedAsset[]> {
   canHandle(type: string): boolean {
     return type === 'selected_assets'
@@ -110,6 +129,12 @@ export class SelectedAssetsContextRenderer implements ContextAttachmentRenderer<
                   fileName: asset.filename,
                   buffer: inputBuffer,
                   userPrompt,
+                  // The asset's imageUrl encodes the UNIQUE stored filename
+                  // (/files/uploads/{appId}/{storedFilename}); pass it so the
+                  // stored filename isn't re-resolved by display name, which
+                  // would return the newest upload when two distinct assets
+                  // share a name (the same-name collision).
+                  storedFilename: extractStoredUploadFilename(asset.imageUrl),
                 })
                 guidance = result.guidance
                 if (result.classification) {
@@ -135,8 +160,8 @@ export class SelectedAssetsContextRenderer implements ContextAttachmentRenderer<
       // Persist newly-classified develop-chat uploads (merged) so follow-up
       // turns re-inject them and skip re-classifying — mirrors the file_upload
       // path and keeps both upload paths symmetric.
-      if (workspace && freshEntries.length > 0) {
-        await persistClassifications(workspace, freshEntries, persisted)
+      if (workspace && appId && freshEntries.length > 0) {
+        await persistClassifications(workspace, freshEntries, appId)
       }
 
       const formattedAssetPromises = assets.map(async (asset, index) => {
@@ -219,7 +244,7 @@ export class SelectedAssetsContextRenderer implements ContextAttachmentRenderer<
 
             parts.push('')
             parts.push('UPLOADED FILE - To use in project:')
-            parts.push(`- file_edit({ path: "${projectPath}", mode: "create", content: "" })`)
+            parts.push(`- str_replace_based_edit_tool({ command: "create", path: "${projectPath}", file_text: "" })`)
             parts.push(`- Target filename MUST exactly match "${filename}" for auto-resolution`)
             if (asset.mediaType === 'IMAGE') {
               parts.push(`- Reference: <img src="${refPath}" alt="description" />`)

@@ -25,12 +25,7 @@ export const SOURCE_FILE_EXTENSIONS = [
   'svelte'
 ] as const
 
-/**
- * Binary file extensions that cannot be processed as text
- *
- * Includes images, fonts, audio, video, and documents.
- * Used by file-edit.ts to detect binary files during auto-resolution.
- */
+/** Raster image extensions (excludes svg, which is text). Used by IMAGE_FILE_REGEX. */
 export const IMAGE_FILE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'ico'] as const
 export const DOCUMENT_FILE_EXTENSIONS = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'] as const
 export const OTHER_BINARY_EXTENSIONS = ['zip', 'tar', 'gz', 'rar', '7z', 'db', 'sqlite', 'sqlite3', 'bin', 'exe', 'dll', 'so'] as const
@@ -55,6 +50,13 @@ export const BINARY_FILE_EXTENSIONS = [
  * processed as binary rather than text.
  */
 export const BINARY_FILE_REGEX = new RegExp(`\\.(${BINARY_FILE_EXTENSIONS.join('|')})$`, 'i')
+
+/**
+ * Pre-compiled regex for detecting raster image files (excludes svg, which is
+ * text). Used by the upload auto-resolve fallback to decide whether an empty
+ * created file should be filled from a recent image upload.
+ */
+export const IMAGE_FILE_REGEX = new RegExp(`\\.(${IMAGE_FILE_EXTENSIONS.join('|')})$`, 'i')
 
 /**
  * Pre-compiled regex for detecting source code files

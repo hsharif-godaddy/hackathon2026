@@ -472,15 +472,15 @@ Context Notes: ${contextNotes}`
 
 This image has been uploaded and is ready to use. To copy it to the project:
 
-**CRITICAL**: Use file_edit with mode="create" and content="" (empty string)
-- The empty content is intentional - the system will automatically copy the uploaded file
+**CRITICAL**: Use str_replace_based_edit_tool with command="create" and file_text="" (empty string)
+- The empty file_text is intentional - the system will automatically copy the uploaded file
 - Choose a filename and path based on the user's request or use the suggestion below
 - The system will auto-resolve this file by matching the filename
 
-Suggested: file_edit({ path: "${projectPath}", mode: "create", content: "" })
+Suggested: str_replace_based_edit_tool({ command: "create", path: "${projectPath}", file_text: "" })
 Reference: <img src="${suggestedPath}" alt="description" />
 
-Example with custom name: file_edit({ path: "public/images/hero-bg.png", mode: "create", content: "" })`
+Example with custom name: str_replace_based_edit_tool({ command: "create", path: "public/images/hero-bg.png", file_text: "" })`
           }
 
           // For non-uploaded files (stock images, etc.), show URLs
@@ -526,12 +526,12 @@ Example with custom name: file_edit({ path: "public/images/hero-bg.png", mode: "
 
 This PDF has been uploaded and is ready to use. To copy it to the project:
 
-**CRITICAL**: Use file_edit with mode="create" and content="" (empty string)
-- The empty content is intentional - the system will automatically copy the uploaded file
+**CRITICAL**: Use str_replace_based_edit_tool with command="create" and file_text="" (empty string)
+- The empty file_text is intentional - the system will automatically copy the uploaded file
 - Choose a filename and path based on the user's request or use the suggestion below
 - The system will auto-resolve this file by matching the filename
 
-Suggested: file_edit({ path: "${projectPath}", mode: "create", content: "" })
+Suggested: str_replace_based_edit_tool({ command: "create", path: "${projectPath}", file_text: "" })
 Reference: <a href="${suggestedPath}">Download PDF</a>`
           }
 
@@ -597,7 +597,7 @@ ${hasUploadedFiles ? `⚠️ THESE ARE UPLOADED FILES - NEVER use the API URLs s
 
 MANDATORY WORKFLOW for uploaded files:
 
-1. **FIRST: Copy file to project** using file_edit with mode: "create":
+1. **FIRST: Copy file to project** using str_replace_based_edit_tool with command: "create":
    - Images: "public/assets/[filename]"
    - Fonts: "public/fonts/[filename]"
    - Data: "public/data/[filename]"
@@ -611,12 +611,12 @@ FORBIDDEN (will break in production):
 ❌ Any URL containing "/files/uploads/" - these are temporary upload URLs
 
 REQUIRED (correct approach):
-✅ file_edit({ path: "public/assets/logo.png", mode: "create", content: "" })
+✅ str_replace_based_edit_tool({ command: "create", path: "public/assets/logo.png", file_text: "" })
 ✅ <img src="/assets/logo.png" />
 
 Example complete workflow:
 - User uploads "hero-image.jpg"
-- You: file_edit({ path: "public/assets/hero-image.jpg", mode: "create", content: "" })
+- You: str_replace_based_edit_tool({ command: "create", path: "public/assets/hero-image.jpg", file_text: "" })
 - System: Automatically copies from uploads
 - You: Write code with <img src="/assets/hero-image.jpg" />
 ` : `These assets are available for use in the project. You can reference them by their URLs in your code.

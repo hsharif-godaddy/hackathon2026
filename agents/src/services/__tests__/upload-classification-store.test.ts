@@ -98,7 +98,20 @@ describe('recordUploadSlotUrl', () => {
     expect(ok).toBe(false)
   })
 
-  it('returns false (no rewrite) when the slotUrl is already current', async () => {
+  it('returns false (no rewrite) when already placed with the same slotUrl', async () => {
+    createForWorkspaceMock.mockReturnValue(
+      workspaceWith(JSON.stringify({
+        files: [{ fileName: 'p.jpg', storedUploadFilename: 'stored-p.jpg', slotUrl: '/airo-assets/images/p', placed: true }],
+      })),
+    )
+
+    const ok = await recordUploadSlotUrl({ appId: 'app-1', storedFilename: 'stored-p.jpg', slotUrl: '/airo-assets/images/p' })
+
+    expect(ok).toBe(false)
+    expect(writeMock).not.toHaveBeenCalled()
+  })
+
+  it('marks the upload placed (writes) even when the slotUrl is unchanged but placed was not yet set', async () => {
     createForWorkspaceMock.mockReturnValue(
       workspaceWith(JSON.stringify({
         files: [{ fileName: 'p.jpg', storedUploadFilename: 'stored-p.jpg', slotUrl: '/airo-assets/images/p' }],
@@ -107,7 +120,8 @@ describe('recordUploadSlotUrl', () => {
 
     const ok = await recordUploadSlotUrl({ appId: 'app-1', storedFilename: 'stored-p.jpg', slotUrl: '/airo-assets/images/p' })
 
-    expect(ok).toBe(false)
-    expect(writeMock).not.toHaveBeenCalled()
+    expect(ok).toBe(true)
+    const written = JSON.parse(writeMock.mock.calls[0][0].content)
+    expect(written.files[0].placed).toBe(true)
   })
 })

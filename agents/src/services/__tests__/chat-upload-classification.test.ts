@@ -95,4 +95,24 @@ describe('classifyAndGuideChatUploadImage', () => {
     expect(result.guidance).toContain('logo on the site')
   })
 
+  it('honors an explicit storedFilename (same-name collision fix) — does not resolve by display name', async () => {
+    // Two distinct assets share the display name "photo.jpg"; the unique stored
+    // filename is passed in (derived from the asset's imageUrl). It must be used
+    // verbatim, NOT re-resolved via findMatchingUpload (which returns the newest
+    // upload for that display name and would place the wrong file).
+    mockedClassify.mockResolvedValue(classification({ placementIntent: 'display_on_site', assetRole: null }))
+
+    const result = await classifyAndGuideChatUploadImage({
+      appId: 'a',
+      fileName: 'photo.jpg',
+      buffer,
+      userPrompt: 'add to the team section',
+      storedFilename: 'a_1781000000001_file_OLDER.jpg',
+    })
+
+    expect(mockedFindMatching).not.toHaveBeenCalled()
+    expect(result.storedUploadFilename).toBe('a_1781000000001_file_OLDER.jpg')
+    expect(result.guidance).toContain('a_1781000000001_file_OLDER.jpg')
+  })
+
 })

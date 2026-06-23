@@ -284,6 +284,8 @@ describe('FileUploadContextRenderer', () => {
         .mockResolvedValueOnce({ content: '{"files":[]}', lines: 1, size: 12, truncated: false })
         .mockResolvedValueOnce({ content: '# Brief\nPortfolio site.', lines: 2, size: 25, truncated: false })
         .mockResolvedValueOnce({ content: 'Brand colors: blue, green.', lines: 1, size: 26, truncated: false })
+        // Final view is persistClassifications re-reading under its write lock.
+        .mockResolvedValueOnce({ content: '{"files":[]}', lines: 1, size: 12, truncated: false })
 
       const result = await renderer.render(
         {
@@ -299,8 +301,8 @@ describe('FileUploadContextRenderer', () => {
         { appId: 'abc123', appPath: '/app' },
       )
 
-      // 1 persisted-classifications read + 2 file reads
-      expect(mockView).toHaveBeenCalledTimes(3)
+      // 1 persisted-classifications read + 2 file reads + 1 persist re-read (lock)
+      expect(mockView).toHaveBeenCalledTimes(4)
       expect(result).not.toBeNull()
       expect(result?.content).toContain('brief.md')
       expect(result?.content).toContain('brand.txt')

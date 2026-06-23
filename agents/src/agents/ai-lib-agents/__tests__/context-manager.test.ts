@@ -399,7 +399,7 @@ describe('AILibContextManager', () => {
       expect(workspaceFilesMock.view).toHaveBeenCalledWith({ path: 'docs/.upload-classification.json', limit: 65536 })
     })
 
-    it('points at the slot URL (not src/assets) when a persisted image is registered to a slot', async () => {
+    it('emits only a terse "already placed" note (no re-handling block) for an already-registered image', async () => {
       viewByPath({
         'docs/.upload-classifications.json': JSON.stringify({
           files: [
@@ -420,12 +420,86 @@ describe('AILibContextManager', () => {
         { includeTemplateDescription: false, includeAppContext: false }
       )
 
-      const classification = result.contextMessages.find((m) => m.content.includes('Upload Classification'))
-      expect(classification).toBeDefined()
-      // Location line points at the slot URL and explicitly steers away from src/assets.
-      expect(classification?.content).toContain('Registered media slot')
-      expect(classification?.content).toContain('/airo-assets/images/uploads/hero-hero')
-      expect(classification?.content).not.toContain('File location: `src/assets/hero.jpg`')
+      const note = result.contextMessages.find((m) => m.content.includes('hero.jpg'))
+      expect(note).toBeDefined()
+      // A placed upload is settled: it must NOT be re-surfaced as a pending task
+      // (no full "Upload handling" action block, no import_upload re-instruction),
+      // only a terse locator the agent can reference if the user asks.
+      expect(note?.content).toContain('already placed')
+      expect(note?.content).toContain('/airo-assets/images/uploads/hero-hero')
+      expect(note?.content).not.toContain('## Upload handling')
+      expect(note?.content).not.toContain('import_upload')
+      expect(note?.content).not.toContain('## Upload Classification')
+    })
+
+    it('does NOT re-handle a placed logo (placed:true, no slot) on a later turn', async () => {
+      // The logo-then-background trace: the logo was placed (asset file created,
+      // so placed=true but no media slot). On the next turn it must NOT be
+      // re-surfaced as a task, or the agent "swaps the logo" unprompted.
+      viewByPath({
+        'docs/.upload-classifications.json': JSON.stringify({
+          files: [
+            { fileName: 'logo.png', assetRole: 'logo', placementIntent: 'display_on_site', placed: true },
+          ],
+        }),
+      })
+
+      const cm = new AILibContextManager()
+      const result = await cm.buildContextMessages(
+        '',
+        { metadata: { appId: 'app-123' } },
+        { includeTemplateDescription: false, includeAppContext: false }
+      )
+
+      const note = result.contextMessages.find((m) => m.content.includes('logo.png'))
+      expect(note).toBeDefined()
+      expect(note?.content).toContain('already placed')
+      expect(note?.content).not.toContain('## Upload handling')
+      expect(note?.content).not.toContain('public/assets/')
+    })
+
+    it('does NOT re-handle a reference-only image on a later turn (style cue, already applied)', async () => {
+      viewByPath({
+        'docs/.upload-classifications.json': JSON.stringify({
+          files: [
+            { fileName: 'inspo.jpg', assetRole: null, placementIntent: 'reference_only' },
+          ],
+        }),
+      })
+
+      const cm = new AILibContextManager()
+      const result = await cm.buildContextMessages(
+        '',
+        { metadata: { appId: 'app-123' } },
+        { includeTemplateDescription: false, includeAppContext: false }
+      )
+
+      const note = result.contextMessages.find((m) => m.content.includes('inspo.jpg'))
+      expect(note).toBeDefined()
+      expect(note?.content).toContain('reference')
+      expect(note?.content).not.toContain('## Upload handling')
+      expect(note?.content).not.toContain('## Upload Classification')
+    })
+
+    it('STILL re-handles an unplaced upload (pending placement) with the full action block', async () => {
+      viewByPath({
+        'docs/.upload-classifications.json': JSON.stringify({
+          files: [
+            { fileName: 'product.jpg', assetRole: null, placementIntent: 'display_on_site', storedUploadFilename: 'app_1_product.jpg' },
+          ],
+        }),
+      })
+
+      const cm = new AILibContextManager()
+      const result = await cm.buildContextMessages(
+        '',
+        { metadata: { appId: 'app-123' } },
+        { includeTemplateDescription: false, includeAppContext: false }
+      )
+
+      const block = result.contextMessages.find((m) => m.content.includes('## Upload handling'))
+      expect(block).toBeDefined()
+      expect(block?.content).toContain('product.jpg')
     })
 
     it('propagates non-not-found errors from workspace.files.view (no silent fallback)', async () => {

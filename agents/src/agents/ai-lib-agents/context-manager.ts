@@ -28,10 +28,10 @@ import { isDevSupervisorNotFound } from '../../services/DevSupervisorClient.js'
 import {
   buildUploadHandlingGuidance,
   sanitizeUploadFileNameForDisplay,
-  type ChatUploadAssetRole,
   type UploadPlacementIntent,
 } from '../../services/upload-handling-guidance.js'
 import type { ViewResult } from '../../workspace/files.js'
+import type { PersistedUploadClassification } from '../../services/renderers/upload-classification-persistence.js'
 
 const swallowNotFound = <T>(fallback: T) => (err: unknown): T => {
     if (isDevSupervisorNotFound(err)) return fallback
@@ -199,15 +199,22 @@ export class AILibContextManager {
 
         // Prefer the combined multi-file classification ({ files: [...] }); fall
         // back to the legacy single-object file written by already-deployed apps.
-        const classificationEntries: Array<Record<string, unknown>> = []
+        // Typed as PersistedUploadClassification so the load-bearing `placed`
+        // flag (and the other fields read below) are compile-linked to the
+        // persisted shape — a field rename fails the build instead of silently
+        // resurrecting the re-injection bug.
+        const classificationEntries: PersistedUploadClassification[] = []
         try {
             if (combinedClassification) {
-                const parsed = JSON.parse(combinedClassification.content)
+                const parsed: { files?: PersistedUploadClassification[] } = JSON.parse(combinedClassification.content)
                 if (Array.isArray(parsed?.files)) {
                     classificationEntries.push(...parsed.files)
                 }
             } else if (legacyClassification) {
-                classificationEntries.push(JSON.parse(legacyClassification.content))
+                const legacyEntry: unknown = JSON.parse(legacyClassification.content)
+                if (legacyEntry !== null && typeof legacyEntry === 'object' && typeof (legacyEntry as PersistedUploadClassification).fileName === 'string') {
+                    classificationEntries.push(legacyEntry as PersistedUploadClassification)
+                }
             }
         } catch (err: unknown) {
             logger.warn('context.upload-classification.parse-failed', {
@@ -217,27 +224,51 @@ export class AILibContextManager {
         }
 
         for (const entry of classificationEntries) {
-            const fileName = (entry.fileName as string) || 'unknown'
-            const isImage = /\.(png|jpg|jpeg|gif|svg|webp)$/i.test(fileName)
-            const slotUrl = (entry.slotUrl as string | undefined) ?? null
-            const handling = buildUploadHandlingGuidance({
+            const fileName: string = entry.fileName || 'unknown'
+            const isImage: boolean = /\.(png|jpg|jpeg|gif|svg|webp)$/i.test(fileName)
+            const slotUrl: string | null = entry.slotUrl ?? null
+            const placementIntent: UploadPlacementIntent = entry.placementIntent ?? 'unclear'
+            // Sanitize before interpolating into agent-facing markdown (a
+            // backtick/newline could break the code span or inject a line into
+            // the instructions). slotUrl is sanitized too — it derives from a
+            // semantic, partly filename-based path.
+            const displayName: string = sanitizeUploadFileNameForDisplay(fileName)
+            const displaySlotUrl: string | null = slotUrl ? sanitizeUploadFileNameForDisplay(slotUrl) : null
+
+            // Re-inject the full "Upload handling" action block ONLY for uploads
+            // the agent has NOT yet placed. A placed upload (a slot was
+            // registered for it, or its bytes were written into an asset file) —
+            // or a reference-only image (a style cue, applied when first given) —
+            // is settled. Re-surfacing its action block every turn made the agent
+            // re-handle a finished upload (re-charging the user) and risked
+            // unrequested edits — e.g. "swap the logo" on a turn where the user
+            // only asked about a background (AIROBUILD-2364). For settled uploads
+            // we emit only a terse note so the agent still knows the file exists.
+            // `placed` is the explicit lifecycle flag; the slotUrl half is a
+            // legacy back-compat heuristic for entries written before `placed`
+            // existed (a recorded slot URL always meant the upload was placed).
+            const isPlaced: boolean = entry.placed === true || (isImage && !!slotUrl)
+            if (isPlaced || placementIntent === 'reference_only') {
+                const note: string = placementIntent === 'reference_only'
+                    ? `Uploaded \`${displayName}\` was provided as a style/inspiration reference and has already been applied — do not place it on the site unless the user explicitly asks.`
+                    : `Uploaded \`${displayName}\` is already placed on the site${displaySlotUrl ? ` (slot \`${displaySlotUrl}\`)` : ''}. No action needed unless the user explicitly asks to change it.`
+                conversationContextMessages.push({
+                    role: 'user',
+                    content: note,
+                    insertionOrder: 'after_history',
+                })
+                continue
+            }
+
+            const handling: string = buildUploadHandlingGuidance({
                 fileName,
-                assetRole: (entry.assetRole as ChatUploadAssetRole | null) ?? null,
-                placementIntent: (entry.placementIntent as UploadPlacementIntent) ?? 'unclear',
+                assetRole: entry.assetRole ?? null,
+                placementIntent,
                 slotUrl,
-                storedUploadFilename: (entry.storedUploadFilename as string | undefined) ?? null,
+                storedUploadFilename: entry.storedUploadFilename ?? null,
                 isImage,
             })
-            // When an image is already registered to a media slot, point the
-            // agent at the slot URL — not `src/assets/…`, which would contradict
-            // the Upload handling block and risk a non-publish-safe path in code.
-            // Sanitize the filename before interpolating into agent-facing
-            // markdown (a backtick/newline could break the code span or inject a
-            // line into the instructions).
-            const displayName = sanitizeUploadFileNameForDisplay(fileName)
-            const locationLine = isImage && slotUrl
-                ? `Registered media slot — use \`${slotUrl}\` in code (do NOT reference \`src/assets/${displayName}\`).`
-                : `File location: \`${isImage ? `src/assets/${displayName}` : `docs/${displayName}`}\``
+            const locationLine: string = `File location: \`${isImage ? `src/assets/${displayName}` : `docs/${displayName}`}\``
             conversationContextMessages.push({
                 role: 'user',
                 content: [

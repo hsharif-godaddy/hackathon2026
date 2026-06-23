@@ -33,6 +33,14 @@ export async function classifyAndGuideChatUploadImage(params: {
   fileName: string
   buffer: Buffer
   userPrompt: string
+  /**
+   * The unique stored filename when the caller already knows it (e.g. the
+   * selected_assets renderer derives it from the asset's imageUrl). Passing it
+   * avoids re-resolving by display name via findMatchingUpload, which returns
+   * the NEWEST upload for a duplicated display name (two distinct `photo.png`)
+   * and would otherwise place the wrong file — the same-name collision.
+   */
+  storedFilename?: string | null
 }): Promise<ChatUploadImageGuidance> {
   const { appId, fileName, buffer, userPrompt } = params
 
@@ -49,8 +57,8 @@ export async function classifyAndGuideChatUploadImage(params: {
     classification: classification.classification,
   })
 
-  const match = await fileUploadService.findMatchingUpload(appId, fileName)
-  const storedUploadFilename = match?.file.filename ?? null
+  const storedUploadFilename: string | null =
+    params.storedFilename ?? (await fileUploadService.findMatchingUpload(appId, fileName))?.file.filename ?? null
 
   const handlingInput = {
     fileName,

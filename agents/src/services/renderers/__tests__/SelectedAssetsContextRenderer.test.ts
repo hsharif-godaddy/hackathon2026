@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { SelectedAssetsContextRenderer } from '../SelectedAssetsContextRenderer.js'
+import { SelectedAssetsContextRenderer, extractStoredUploadFilename } from '../SelectedAssetsContextRenderer.js'
 import type { ContextAttachment } from '@airo/shared/context-attachment'
 
 vi.mock('../../helpers/ContextFormatter.js', () => ({
@@ -290,7 +290,7 @@ describe('SelectedAssetsContextRenderer', () => {
       const result = await renderer.render(attachment, 'use this image')
       expect(result).not.toBeNull()
       expect(result!.content).toContain('UPLOADED FILE - To use in project:')
-      expect(result!.content).toContain('file_edit')
+      expect(result!.content).toContain('str_replace_based_edit_tool')
       expect(result!.content).toContain('public/assets/hero.jpg')
       expect(result!.content).toContain('<img src="/assets/hero.jpg"')
       // Upload URLs should not appear as image sources (only in the "NEVER reference" instruction)
@@ -601,8 +601,38 @@ describe('SelectedAssetsContextRenderer', () => {
       await renderer.render(uploadedImageAttachment('hero.jpg'), 'use this as the hero', { appId: 'app123' })
 
       expect(mockedClassifyAndGuide).toHaveBeenCalledWith(
-        expect.objectContaining({ appId: 'app123', fileName: 'hero.jpg', userPrompt: 'use this as the hero' }),
+        expect.objectContaining({
+          appId: 'app123',
+          fileName: 'hero.jpg',
+          userPrompt: 'use this as the hero',
+          // The unique stored filename is derived from the imageUrl and passed
+          // so placement targets the exact asset (same-name collision fix #1).
+          storedFilename: 'x.jpg',
+        }),
       )
+    })
+
+    it('passes the UNIQUE stored filename per asset when two assets share a display name', async () => {
+      mockedClassifyAndGuide.mockResolvedValue({
+        classification: { placementIntent: 'display_on_site' } as never,
+        guidance: '## Upload handling',
+        slotUrl: null,
+        storedUploadFilename: null,
+      })
+
+      const attachment: ContextAttachment<any[]> = {
+        type: 'selected_assets',
+        data: [
+          { mediaType: 'IMAGE', sourceType: 'upload', imageUrl: 'http://localhost:4000/files/uploads/app123/app123_1_alice.jpg', filename: 'photo.jpg', contentType: 'image/jpeg', size: 10 },
+          { mediaType: 'IMAGE', sourceType: 'upload', imageUrl: 'http://localhost:4000/files/uploads/app123/app123_2_bob.jpg', filename: 'photo.jpg', contentType: 'image/jpeg', size: 10 },
+        ],
+      }
+
+      await renderer.render(attachment, 'add these to the team section', { appId: 'app123' })
+
+      const storedFilenames = mockedClassifyAndGuide.mock.calls.map((c) => (c[0] as { storedFilename?: string | null }).storedFilename)
+      expect(storedFilenames).toContain('app123_1_alice.jpg')
+      expect(storedFilenames).toContain('app123_2_bob.jpg')
     })
 
     it('injects display-intent guidance and drops the blanket public/assets steering', async () => {
@@ -675,5 +705,37 @@ describe('SelectedAssetsContextRenderer', () => {
       }
       expect(renderer.shouldPersist(attachment)).toBe(false)
     })
+  })
+})
+
+describe('extractStoredUploadFilename', () => {
+  it('extracts the stored filename from an agent upload URL', () => {
+    expect(extractStoredUploadFilename('http://localhost:4000/files/uploads/app123/app123_1_file.jpg'))
+      .toBe('app123_1_file.jpg')
+  })
+
+  it('strips query params (signed URLs)', () => {
+    expect(extractStoredUploadFilename('https://host/files/uploads/app123/app123_1_file.jpg?sig=abc&exp=123'))
+      .toBe('app123_1_file.jpg')
+  })
+
+  it('percent-decodes the filename', () => {
+    expect(extractStoredUploadFilename('https://host/files/uploads/app123/my%20photo%20(1).png'))
+      .toBe('my photo (1).png')
+  })
+
+  it('returns null for a non-upload URL', () => {
+    expect(extractStoredUploadFilename('https://cdn.example.com/images/hero.jpg')).toBeNull()
+    expect(extractStoredUploadFilename('/airo-assets/images/pages/home/hero')).toBeNull()
+  })
+
+  it('returns null for undefined / empty', () => {
+    expect(extractStoredUploadFilename(undefined)).toBeNull()
+    expect(extractStoredUploadFilename('')).toBeNull()
+  })
+
+  it('returns the raw capture group when the percent-sequence is malformed (never throws)', () => {
+    // decodeURIComponent('%GG') throws URIError; the guard falls back to raw.
+    expect(extractStoredUploadFilename('https://host/files/uploads/app/%GGphoto.jpg')).toBe('%GGphoto.jpg')
   })
 })

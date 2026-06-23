@@ -698,10 +698,15 @@ export class ASTImageEditor extends ASTEditorBase {
     },
     appId: string
   ): Promise<ImageReplaceResult> {
-    const oldUrl = imageSlotUrl(request.oldSlotPath);
-    const newUrl = imageSlotUrl(request.newSlotPath);
-    const collectionItemLabel = request.imageInfo.alt?.trim() || null;
+    const oldUrl: string = imageSlotUrl(request.oldSlotPath);
+    const newUrl: string = imageSlotUrl(request.newSlotPath);
+    const collectionItemLabel: string | null = request.imageInfo.alt?.trim() || null;
 
+    // Try the labeled-record match first — it is content-verified (matches the
+    // item's alt). It now BAILS when the label is ambiguous (two collection
+    // items share the same alt text), so it can no longer silently rewrite the
+    // WRONG item (the "AI picked the wrong picture" class). When it bails (or
+    // there is no label), the precise position-based occurrence index takes over.
     if (collectionItemLabel) {
       const labeledResult = await this.replaceSlotUrlInLabeledRecord(appPath, {
         label: collectionItemLabel,
@@ -829,14 +834,15 @@ export class ASTImageEditor extends ASTEditorBase {
         const fullPath = path.join(appPath, relativePath);
         const sourceCode = await readFile(fullPath, 'utf-8');
         const ast = this.parseAST(sourceCode);
-        let replaced = false;
+        // Collect EVERY record matching (label, oldUrl) before rewriting. If more
+        // than one matches, the label is ambiguous (two collection items share
+        // the same alt text) — rewriting the first would silently change the
+        // WRONG item, so we bail and let the position-based occurrence path or
+        // the JSX fallback handle it instead.
+        const matches: t.StringLiteral[] = [];
 
         this.traverse(ast, {
           ObjectExpression: (nodePath: { node: t.ObjectExpression }) => {
-            if (replaced) {
-              return;
-            }
-
             let hasLabel = false;
             let imageProperty: t.ObjectProperty | null = null;
 
@@ -868,15 +874,31 @@ export class ASTImageEditor extends ASTEditorBase {
             }
 
             if (hasLabel && imageProperty && this.t.isStringLiteral(imageProperty.value)) {
-              imageProperty.value.value = options.newUrl;
-              replaced = true;
+              matches.push(imageProperty.value);
             }
           },
         });
 
-        if (!replaced) {
+        if (matches.length === 0) {
           continue;
         }
+        if (matches.length > 1) {
+          // Ambiguous label in the highest-priority file that contains it — do
+          // NOT guess which item to rewrite, and do NOT fall through to a match
+          // in some other file (that would edit the wrong file). Fail here so
+          // the caller's position-based occurrence index resolves it instead.
+          logger.debug('ast.image-editor.labeled-record.ambiguous', {
+            label: options.label,
+            matchCount: matches.length,
+            file: relativePath,
+          });
+          return {
+            success: false,
+            filePath: '',
+            error: `Ambiguous label "${options.label}" — ${matches.length} records share it; deferring to occurrence index`,
+          };
+        }
+        matches[0]!.value = options.newUrl;
 
         const { files: workspaceFiles } = this.getWorkspace(appId);
         const { code: newContent } = this.generateCode(ast);

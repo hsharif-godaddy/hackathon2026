@@ -3,7 +3,8 @@ import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 
 // sha256 of the mocked upload bytes ('fake-image-bytes') — the content hash
-// importChatUploadToSlot computes for dedup.
+// importChatUploadToSlot records on a slot. Used here to prove it no longer
+// selects a slot (placement is intent-driven, not byte-identity-driven).
 const FAKE_IMAGE_CONTENT_HASH = crypto
   .createHash('sha256')
   .update(Buffer.from('fake-image-bytes'))
@@ -99,6 +100,8 @@ describe('MediaManifestService - importChatUploadToSlot', function importChatUpl
     vi.mocked(fs.writeFile).mockResolvedValue(undefined);
     vi.mocked(fs.rename).mockResolvedValue(undefined);
     vi.mocked(fs.unlink).mockResolvedValue(undefined);
+    // Default: the target media file does not pre-exist (new import).
+    vi.mocked(fs.stat).mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
     vi.mocked(fileUploadService.listUploadedFiles).mockResolvedValue([
       {
         filename: 'stored-hero.jpg',
@@ -248,7 +251,7 @@ describe('MediaManifestService - importChatUploadToSlot', function importChatUpl
       }
     });
 
-    it('returns existing slot when upload filename already registered', async function dedup() {
+    it('does NOT reuse a slot by upload filename — derives a fresh slot instead of hijacking', async function noFilenameReuse() {
       vi.mocked(fs.readFile).mockImplementation(async (filePath) => {
         if (String(filePath).endsWith('airo-media.json')) {
           return JSON.stringify({
@@ -274,18 +277,19 @@ describe('MediaManifestService - importChatUploadToSlot', function importChatUpl
 
       expect(result.success).toBe(true);
       if (result.success) {
-        expect(result.slotPath).toBe('uploads/existing-hero');
-        expect(result.slotUrl).toBe('/airo-assets/images/uploads/existing-hero');
+        // The same stored filename already backs uploads/existing-hero, but that
+        // no longer short-circuits placement — a fresh slot is derived rather
+        // than hijacking the existing one.
+        expect(result.slotPath).toBe('uploads/hero-stored-hero');
+        expect(result.slotPath).not.toBe('uploads/existing-hero');
       }
-      expect(imageProcessingService.processImage).not.toHaveBeenCalled();
     });
 
-    it('dedups by content hash on auto-register path (no slotName) — re-uploaded same image reuses existing slot', async function contentHashDedup() {
-      // The image already lives in "menu/latte-art-friends" with its hash.
-      // A re-upload of the SAME bytes under a fresh stored filename, with NO
-      // explicit slotName (auto-register path), must reuse the existing slot.
-      // Duplicate prevention via guidance (existingSlotUrl) handles the explicit
-      // import_upload path — the slot layer only dedups on auto-register.
+    it('does NOT hijack an unrelated slot by content hash on the auto-register path — derives a fresh slot', async function noContentHashHijack() {
+      // The SAME bytes already back "menu/latte-art-friends". A hero
+      // auto-register of those bytes must NOT resolve onto that menu slot (the
+      // QR-code / second-photo → hero hijack class) — placement is intent-driven,
+      // so a fresh hero slot is derived and the menu slot is left untouched.
       vi.mocked(fileUploadService.listUploadedFiles).mockResolvedValue([
         {
           filename: 'test-app_222_file_NEW.jpg',
@@ -327,11 +331,9 @@ describe('MediaManifestService - importChatUploadToSlot', function importChatUpl
 
       expect(result.success).toBe(true);
       if (result.success) {
-        expect(result.slotPath).toBe('menu/latte-art-friends');
-        expect(result.slotUrl).toBe('/airo-assets/images/menu/latte-art-friends');
+        expect(result.slotPath).not.toBe('menu/latte-art-friends');
+        expect(result.slotPath).toBe('uploads/hero-test-app-222-file-new');
       }
-      expect(imageProcessingService.processImage).not.toHaveBeenCalled();
-      expect(fs.writeFile).not.toHaveBeenCalled();
     });
 
     it('does NOT dedup-short-circuit when an explicit slotName is given (re-select an already-known upload)', async function explicitSlotReapplies() {
@@ -451,6 +453,27 @@ describe('MediaManifestService - importChatUploadToSlot', function importChatUpl
       expect(String(vi.mocked(fs.unlink).mock.calls[0][0])).toMatch(
         /\/tmp\/test-app\/public\/media\/uploads-hero-stored-hero-[0-9a-f]+\.jpg$/
       );
+    });
+
+    it('does NOT unlink the media file on manifest-write failure when it already existed (referenced by a prior import)', async function orphanGuard() {
+      // Same slot + same bytes ⇒ same deterministic filename, and the file is
+      // already on disk from an earlier successful import. A manifest-write
+      // failure now must NOT delete it, or the earlier slot 404s.
+      vi.mocked(fs.stat).mockResolvedValue({ isFile: () => true } as Awaited<ReturnType<typeof fs.stat>>);
+      vi.mocked(fs.rename).mockImplementation(async (_from, to) => {
+        if (String(to).endsWith('airo-media.json')) {
+          throw new Error('disk full');
+        }
+        return undefined;
+      });
+
+      const result = await service.importChatUploadToSlot('test-app', {
+        filename: 'stored-hero.jpg',
+        assetRole: 'hero_image',
+      });
+
+      expect(result.success).toBe(false);
+      expect(fs.unlink).not.toHaveBeenCalled();
     });
   });
 });
