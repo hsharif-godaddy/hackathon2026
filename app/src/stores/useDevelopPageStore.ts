@@ -224,6 +224,7 @@ interface DevelopPageStore {
   previewViewMode: PreviewViewMode
   selectedDeviceId: string
   isEditModeEnabled: boolean
+  isAnnotationModeEnabled: boolean
   isMultiSelectEnabled: boolean
   expandedPlan: boolean
   chatPaneWidth: number
@@ -369,6 +370,7 @@ interface DevelopPageStore {
   setPreviewViewMode: (mode: PreviewViewMode) => void
   setSelectedDeviceId: (deviceId: string) => void
   setIsEditModeEnabled: (enabled: boolean) => void
+  setIsAnnotationModeEnabled: (enabled: boolean) => void
   setIsMultiSelectEnabled: (enabled: boolean) => void
   setExpandedPlan: (expanded: boolean) => void
   setChatPaneWidth: (width: number) => void
@@ -504,6 +506,7 @@ interface DevelopPageStore {
 
   // UI helpers
   toggleEditMode: () => void
+  toggleAnnotationMode: () => void
   toggleExpandedPlan: () => void
   toggleChatPaneCollapse: () => void
   toggleVersionHistory: () => void
@@ -525,6 +528,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     previewViewMode: PreviewViewMode.DESKTOP,
     selectedDeviceId: DEFAULT_DESKTOP_DEVICE,
     isEditModeEnabled: true,
+    isAnnotationModeEnabled: false,
     isMultiSelectEnabled: false,
     expandedPlan: false,
     chatPaneWidth: DEFAULT_CHAT_PANE_WIDTH,
@@ -622,6 +626,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     }),
     setSelectedDeviceId: (deviceId) => set((state) => { state.selectedDeviceId = deviceId }),
     setIsEditModeEnabled: (enabled) => set((state) => { state.isEditModeEnabled = enabled }),
+    setIsAnnotationModeEnabled: (enabled) => set((state) => { state.isAnnotationModeEnabled = enabled }),
     setIsMultiSelectEnabled: (enabled) => set((state) => { state.isMultiSelectEnabled = enabled }),
     setExpandedPlan: (expanded) => set((state) => { state.expandedPlan = expanded }),
     setChatPaneWidth: (width) => set((state) => { state.chatPaneWidth = width }),
@@ -1239,7 +1244,11 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     // UI helpers
     toggleEditMode: () => {
       const newEditMode = !get().isEditModeEnabled
-      set((state) => { state.isEditModeEnabled = newEditMode })
+      const wasAnnotationEnabled = get().isAnnotationModeEnabled
+      set((state) => {
+        state.isEditModeEnabled = newEditMode
+        if (newEditMode) state.isAnnotationModeEnabled = false
+      })
 
       const iframe = document.getElementById('preview-iframe') as HTMLIFrameElement
       if (iframe) {
@@ -1250,6 +1259,35 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
         }
         if (get().isMultiSelectEnabled) {
           postMessageToIframe(iframe, { type: newEditMode ? 'MULTI_SELECT_ENABLED' : 'MULTI_SELECT_DISABLED' })
+        }
+        if (newEditMode && wasAnnotationEnabled) {
+          postMessageToIframe(iframe, { type: IframeMessageType.ANNOTATION_MODE_DISABLED })
+        }
+      }
+    },
+
+    toggleAnnotationMode: () => {
+      const wasAnnotationOn = get().isAnnotationModeEnabled
+      const wasEditOn = get().isEditModeEnabled
+      const newAnnotationMode = !wasAnnotationOn
+      const shouldRestoreEdit = !newAnnotationMode && get().viewMode === ViewMode.EDIT
+
+      set((state) => {
+        state.isAnnotationModeEnabled = newAnnotationMode
+        if (newAnnotationMode) {
+          state.isEditModeEnabled = false
+        } else if (shouldRestoreEdit) {
+          state.isEditModeEnabled = true
+        }
+      })
+
+      const iframe = document.getElementById('preview-iframe') as HTMLIFrameElement
+      if (iframe) {
+        postMessageToIframe(iframe, { type: newAnnotationMode ? IframeMessageType.ANNOTATION_MODE_ENABLED : IframeMessageType.ANNOTATION_MODE_DISABLED })
+        if (newAnnotationMode && wasEditOn) {
+          postMessageToIframe(iframe, { type: IframeMessageType.EDIT_MODE_DISABLED })
+        } else if (!newAnnotationMode && shouldRestoreEdit) {
+          postMessageToIframe(iframe, { type: IframeMessageType.EDIT_MODE_ENABLED })
         }
       }
     },
@@ -1279,8 +1317,13 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
 
       // Sync edit mode with view mode: EDIT enables it, anything else disables it
       const editModeEnabled = newMode === ViewMode.EDIT
-      if (get().isEditModeEnabled !== editModeEnabled) {
-        set((state) => { state.isEditModeEnabled = editModeEnabled })
+      const wasAnnotationOn = get().isAnnotationModeEnabled
+      const annotationShouldDisable = editModeEnabled && wasAnnotationOn
+      if (get().isEditModeEnabled !== editModeEnabled || annotationShouldDisable) {
+        set((state) => {
+          state.isEditModeEnabled = editModeEnabled
+          if (annotationShouldDisable) state.isAnnotationModeEnabled = false
+        })
         const iframe = document.getElementById('preview-iframe') as HTMLIFrameElement
         if (iframe) {
           if (editModeEnabled) {
@@ -1290,6 +1333,9 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
           }
           if (get().isMultiSelectEnabled) {
             postMessageToIframe(iframe, { type: editModeEnabled ? 'MULTI_SELECT_ENABLED' : 'MULTI_SELECT_DISABLED' })
+          }
+          if (annotationShouldDisable) {
+            postMessageToIframe(iframe, { type: IframeMessageType.ANNOTATION_MODE_DISABLED })
           }
         }
       }

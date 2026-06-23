@@ -5,6 +5,7 @@ import { captureAndResizeScreenshot, captureViewportScreenshot } from '../utils/
 import { showSelectionOverlay } from '../utils/selection-overlay'
 import { useEditMode } from "../hooks/useEditMode";
 import { useComplianceFieldEditor } from "../hooks/useComplianceFieldEditor";
+import AnnotationMode from "./AnnotationMode";
 import ElementHoverBar from "./ElementHoverBar";
 import { setTranslations } from "../utils/translations";
 import { resolveRouteForModule } from "../route-discovery";
@@ -15,6 +16,7 @@ export default function DevelopmentMode() {
   const [isEditModeActive, setIsEditModeActive] = useState(false); // off by default, parent enables via EDIT_MODE_ENABLED message
   const [cmsInlineEditEnabled, setCmsInlineEditEnabled] = useState(false); // off by default, parent sets via EDIT_MODE_ENABLED message payload
   const [isMultiSelectActive, setIsMultiSelectActive] = useState(false); // off by default, parent enables via MULTI_SELECT_ENABLED message
+  const [isAnnotationModeActive, setIsAnnotationModeActive] = useState(false); // off by default, parent enables via ANNOTATION_MODE_ENABLED message
   const [, setTranslationsLoaded] = useState(0); // counter that always changes to force re-render
   const [pathname, setPathname] = useState(() => window.location.pathname); // updated synchronously on SPA navigation (see onNavigate)
   const [hasManagedMarkup, setHasManagedMarkup] = useState(false); // true once compliance markup is detected on the page (see effect below)
@@ -1321,10 +1323,20 @@ export default function DevelopmentMode() {
         if (event.data && event.data.type === 'EDIT_MODE_ENABLED') {
           setCmsInlineEditEnabled(event.data.cmsInlineEditEnabled === true);
           setIsEditModeActive(true);
+          setIsAnnotationModeActive(false);
           return;
         }
         if (event.data && event.data.type === 'EDIT_MODE_DISABLED') {
           setIsEditModeActive(false);
+          return;
+        }
+        if (event.data && event.data.type === 'ANNOTATION_MODE_ENABLED') {
+          setIsAnnotationModeActive(true);
+          setIsEditModeActive(false);
+          return;
+        }
+        if (event.data && event.data.type === 'ANNOTATION_MODE_DISABLED') {
+          setIsAnnotationModeActive(false);
           return;
         }
         if (event.data && event.data.type === 'MULTI_SELECT_ENABLED') {
@@ -1556,6 +1568,7 @@ export default function DevelopmentMode() {
           onQuickEditModeChange={setQuickEditActive}
         />
       )}
+      <AnnotationMode isActive={isAnnotationModeActive} />
     </div>
   )
 }

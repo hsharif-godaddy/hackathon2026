@@ -1523,4 +1523,161 @@ describe('useDevelopPageStore', function useDevelopPageStoreTests() {
       expect(state.isEditModeEnabled).toBe(false);
     });
   });
+
+  describe('#toggleAnnotationMode', function toggleAnnotationModeTests() {
+    let postMessageSpy: ReturnType<typeof vi.spyOn>;
+    let mockIframe: HTMLIFrameElement;
+
+    beforeEach(function setup() {
+      act(function reset() {
+        useDevelopPageStore.setState({
+          isAnnotationModeEnabled: false,
+          isEditModeEnabled: false,
+          viewMode: ViewMode.PREVIEW,
+        });
+      });
+
+      mockIframe = document.createElement('iframe');
+      mockIframe.id = 'preview-iframe';
+      document.body.appendChild(mockIframe);
+
+      postMessageSpy = vi.spyOn(postMessageModule, 'postMessageToIframe');
+    });
+
+    afterEach(function cleanup() {
+      mockIframe.remove();
+      postMessageSpy.mockRestore();
+    });
+
+    it('toggles isAnnotationModeEnabled from false to true', function toggleOn() {
+      act(function toggle() {
+        useDevelopPageStore.getState().toggleAnnotationMode();
+      });
+
+      expect(useDevelopPageStore.getState().isAnnotationModeEnabled).toBe(true);
+    });
+
+    it('toggles isAnnotationModeEnabled from true to false', function toggleOff() {
+      act(function setup() {
+        useDevelopPageStore.setState({ isAnnotationModeEnabled: true });
+      });
+
+      act(function toggle() {
+        useDevelopPageStore.getState().toggleAnnotationMode();
+      });
+
+      expect(useDevelopPageStore.getState().isAnnotationModeEnabled).toBe(false);
+    });
+
+    it('posts ANNOTATION_MODE_ENABLED when activating', function postEnabled() {
+      act(function toggle() {
+        useDevelopPageStore.getState().toggleAnnotationMode();
+      });
+
+      expect(postMessageSpy).toHaveBeenCalledWith(mockIframe, { type: 'ANNOTATION_MODE_ENABLED' });
+    });
+
+    it('posts ANNOTATION_MODE_DISABLED when deactivating', function postDisabled() {
+      act(function setup() {
+        useDevelopPageStore.setState({ isAnnotationModeEnabled: true });
+      });
+
+      act(function toggle() {
+        useDevelopPageStore.getState().toggleAnnotationMode();
+      });
+
+      expect(postMessageSpy).toHaveBeenCalledWith(mockIframe, { type: 'ANNOTATION_MODE_DISABLED' });
+    });
+
+    it('disables edit mode and posts EDIT_MODE_DISABLED when activating with edit on', function exclusiveOnActivate() {
+      act(function setup() {
+        useDevelopPageStore.setState({ isEditModeEnabled: true, viewMode: ViewMode.EDIT });
+      });
+
+      act(function toggle() {
+        useDevelopPageStore.getState().toggleAnnotationMode();
+      });
+
+      const state = useDevelopPageStore.getState();
+      expect(state.isAnnotationModeEnabled).toBe(true);
+      expect(state.isEditModeEnabled).toBe(false);
+      expect(postMessageSpy).toHaveBeenCalledWith(mockIframe, { type: 'EDIT_MODE_DISABLED' });
+    });
+
+    it('restores edit mode when deactivating in EDIT view', function restoreEditOnDeactivate() {
+      act(function setup() {
+        useDevelopPageStore.setState({
+          isAnnotationModeEnabled: true,
+          isEditModeEnabled: false,
+          viewMode: ViewMode.EDIT,
+        });
+      });
+
+      act(function toggle() {
+        useDevelopPageStore.getState().toggleAnnotationMode();
+      });
+
+      const state = useDevelopPageStore.getState();
+      expect(state.isAnnotationModeEnabled).toBe(false);
+      expect(state.isEditModeEnabled).toBe(true);
+      expect(postMessageSpy).toHaveBeenCalledWith(mockIframe, { type: 'EDIT_MODE_ENABLED' });
+    });
+
+    it('does not restore edit mode when deactivating outside EDIT view', function noRestoreOutsideEdit() {
+      act(function setup() {
+        useDevelopPageStore.setState({
+          isAnnotationModeEnabled: true,
+          isEditModeEnabled: false,
+          viewMode: ViewMode.PREVIEW,
+        });
+      });
+
+      act(function toggle() {
+        useDevelopPageStore.getState().toggleAnnotationMode();
+      });
+
+      const state = useDevelopPageStore.getState();
+      expect(state.isAnnotationModeEnabled).toBe(false);
+      expect(state.isEditModeEnabled).toBe(false);
+      expect(postMessageSpy).not.toHaveBeenCalledWith(mockIframe, { type: 'EDIT_MODE_ENABLED' });
+    });
+
+    it('toggleEditMode disables annotation when activating edit', function editDisablesAnnotation() {
+      act(function setup() {
+        useDevelopPageStore.setState({
+          isAnnotationModeEnabled: true,
+          isEditModeEnabled: false,
+        });
+      });
+
+      act(function toggle() {
+        useDevelopPageStore.getState().toggleEditMode();
+      });
+
+      const state = useDevelopPageStore.getState();
+      expect(state.isEditModeEnabled).toBe(true);
+      expect(state.isAnnotationModeEnabled).toBe(false);
+      expect(postMessageSpy).toHaveBeenCalledWith(mockIframe, { type: 'ANNOTATION_MODE_DISABLED' });
+    });
+
+    it('handleViewModeChange to EDIT disables annotation', function viewChangeDisablesAnnotation() {
+      act(function setup() {
+        useDevelopPageStore.setState({
+          isAnnotationModeEnabled: true,
+          isEditModeEnabled: false,
+          viewMode: ViewMode.PREVIEW,
+        });
+      });
+
+      act(function changeView() {
+        useDevelopPageStore.getState().handleViewModeChange(ViewMode.EDIT, false);
+      });
+
+      const state = useDevelopPageStore.getState();
+      expect(state.viewMode).toBe(ViewMode.EDIT);
+      expect(state.isEditModeEnabled).toBe(true);
+      expect(state.isAnnotationModeEnabled).toBe(false);
+      expect(postMessageSpy).toHaveBeenCalledWith(mockIframe, { type: 'ANNOTATION_MODE_DISABLED' });
+    });
+  });
 });
