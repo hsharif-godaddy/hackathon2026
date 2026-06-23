@@ -6,6 +6,7 @@ import type { SkillToolDefinition } from '@airo/ai-skills';
 import { DocumentType, complianceService, complianceDocStatusMemoryKey } from '../../../services/ComplianceService.js';
 import { appRepository } from '../../../database/repositories/index.js';
 import { MemoryRepository } from '../../../database/repositories/MemoryRepository.js';
+import { readAppFqdn } from '../../../lib/app-fqdn.js';
 
 const memoryRepository = new MemoryRepository();
 
@@ -47,7 +48,7 @@ const PrivacyPolicyInputSchema = z.object({
 
 const TermsOfUseInputSchema = z.object({
   businessName: z.string().min(1).max(200).describe('Business or website name'),
-  domainName: z.string().min(1).max(200).describe('Website domain name (e.g., "example.com")'),
+  domainName: z.string().min(1).max(200).describe('Website domain name (e.g., "example.com"). Call get_purchased_domain first: if it returns a domain, pass that value here; otherwise ask the user for their domain and pass that.'),
   children: z.boolean().describe('Whether the site targets children under 13'),
   jurisdiction: z.enum(US_STATES).describe('US state where the business is based'),
 });
@@ -296,4 +297,34 @@ export const generateTermsOfUseTool: SkillToolDefinition = {
   },
 };
 
-export const tools: SkillToolDefinition[] = [generatePrivacyPolicyTool, generateTermsOfUseTool];
+export const getPurchasedDomainTool: SkillToolDefinition = {
+  name: 'get_purchased_domain',
+  description:
+    'Check whether a website domain is already on file for this app (e.g., carried in from a domain purchase). ' +
+    'Call this BEFORE generate_terms_of_use. If it returns a domain, pass that value as the generate_terms_of_use ' +
+    'domainName and skip asking the user. If it reports no domain, ask the user for their website domain.',
+
+  parameters: z.object({}),
+
+  async execute(_input: Record<string, never>, context?: unknown) {
+    const appId = (context as { metadata?: { appId?: string } })?.metadata?.appId;
+    const domainName = readAppFqdn(appId, context as { metadata?: Record<string, unknown> } | undefined);
+
+    if (domainName) {
+      logger.info('skills.compliance-docs.tools.get_purchased_domain.found', { appId });
+      return { available: true, domainName };
+    }
+
+    logger.info('skills.compliance-docs.tools.get_purchased_domain.none', { appId });
+    return {
+      available: false,
+      text: 'No domain is on file for this app. Ask the user for their website domain name.',
+    };
+  },
+};
+
+export const tools: SkillToolDefinition[] = [
+  generatePrivacyPolicyTool,
+  generateTermsOfUseTool,
+  getPurchasedDomainTool,
+];

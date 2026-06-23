@@ -26,15 +26,17 @@ Use `compliance-docs__generate_privacy_policy` to generate a privacy policy.
 
 Use `compliance-docs__generate_terms_of_use` to generate terms of use.
 
+Before gathering the domain, call `compliance-docs__get_purchased_domain` — it returns the domain already on file for this app (e.g. carried in from a domain purchase). Use that value if present; only ask the user for the domain when it reports none.
+
 **Required fields:**
 - `businessName` — the business or site name (check app context first — may be available from app title/plan)
-- `domainName` — the website domain (e.g., "example.com")
+- `domainName` — the website domain (e.g., "example.com"). **Mandatory.** First call `compliance-docs__get_purchased_domain`: if it returns a domain, pass that value as `domainName` and skip asking. If it reports none, ask the user for their domain and pass that.
 - `children` — whether the site targets children under 18
 - `jurisdiction` — the US state where the business is based
 
 ### Gathering Information
 
-You MUST explicitly ask the user for ALL required fields before calling the tool. Do not assume or infer any values — each field requires a direct answer from the user. Use the `askQuestion` tool to present these questions to the user as structured prompts — do not ask them as plain text in chat.
+You MUST explicitly ask the user for ALL required fields before calling the tool. Do not assume or infer any values — each field requires a direct answer from the user. Use the `askQuestion` tool to present these questions to the user as structured prompts — do not ask them as plain text in chat. (Exception: the Terms of Use `domainName` may come from `compliance-docs__get_purchased_domain` instead of the user — see below.)
 
 **Privacy Policy — ask these exact questions:**
 1. "What's the name of your business?"
@@ -43,7 +45,7 @@ You MUST explicitly ask the user for ALL required fields before calling the tool
 
 **Terms of Use — ask these exact questions:**
 1. "What's the name of your business?"
-2. "What's your website domain name?" (e.g., "example.com")
+2. Website domain — **first call `compliance-docs__get_purchased_domain`. If it returns a domain, use it and skip this question. Only if it reports no domain, ask: "What's your website domain name?" (e.g., "example.com").**
 3. "What U.S. state are you (or your business) located in? This helps us apply the correct laws."
 4. "Do you sell goods or services to children under the age of 18?"
 

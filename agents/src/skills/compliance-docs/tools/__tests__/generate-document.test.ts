@@ -40,7 +40,15 @@ vi.mock('fs/promises', () => ({
   mkdir: vi.fn().mockResolvedValue(undefined),
 }));
 
-import { generatePrivacyPolicyTool, generateTermsOfUseTool } from '../index.js';
+const { mockReadAppFqdn } = vi.hoisted(() => ({
+  mockReadAppFqdn: vi.fn(),
+}));
+
+vi.mock('../../../../lib/app-fqdn.js', () => ({
+  readAppFqdn: mockReadAppFqdn,
+}));
+
+import { generatePrivacyPolicyTool, generateTermsOfUseTool, getPurchasedDomainTool } from '../index.js';
 import { complianceService } from '../../../../services/ComplianceService.js';
 import { appRepository } from '../../../../database/repositories/index.js';
 import { writeFile } from 'fs/promises';
@@ -233,5 +241,37 @@ describe('generate_terms_of_use tool', () => {
     expect(result).toEqual({
       error: expect.stringContaining('Failed to generate terms of use'),
     });
+  });
+});
+
+describe('get_purchased_domain tool', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('returns the persisted domain when one is available', async () => {
+    mockReadAppFqdn.mockReturnValue('studiosketch.com');
+
+    const result = await getPurchasedDomainTool.execute(
+      {},
+      { metadata: { appId: 'app-123' } },
+    );
+
+    expect(mockReadAppFqdn).toHaveBeenCalledWith('app-123', { metadata: { appId: 'app-123' } });
+    expect(result).toEqual({ available: true, domainName: 'studiosketch.com' });
+  });
+
+  it('reports no domain available when none is on file', async () => {
+    mockReadAppFqdn.mockReturnValue(undefined);
+
+    const result = await getPurchasedDomainTool.execute(
+      {},
+      { metadata: { appId: 'app-123' } },
+    );
+
+    expect(result).toEqual(
+      expect.objectContaining({ available: false }),
+    );
+    expect(result).not.toHaveProperty('domainName');
   });
 });
