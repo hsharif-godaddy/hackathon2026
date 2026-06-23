@@ -6,6 +6,7 @@ import ChevronLeftIcon from '@ux/icon/chevron-left'
 import { ImageEditorPanel } from '@/app/[market]/develop/components/media/ImageEditorPanel'
 import { MediaSlotDetail } from '@/app/[market]/develop/components/media/MediaSlotDetail'
 import { MediaSlotsGrid } from '@/app/[market]/develop/components/media/MediaSlotsGrid'
+import { SourceImagesLibrary } from '@/app/[market]/develop/components/media/SourceImagesLibrary'
 import { ChatTab } from '@/app/[market]/develop/components/types'
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils'
 import { useChatTabs } from '@/hooks/useChatTabs'
@@ -249,6 +250,11 @@ export default function MediaPanel() {
         </button>
       )}
       <div className="flex-1 overflow-y-auto pr-1">
+        <SourceImagesLibrary
+          appId={appId}
+          mediaManifest={manifest}
+          refreshKey={thumbnailBustKey}
+        />
         <MediaSlotsGrid
           manifest={manifest}
           slotNames={slotNames}

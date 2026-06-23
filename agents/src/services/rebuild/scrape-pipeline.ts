@@ -26,7 +26,9 @@ import {
 import { isRebuildHomepage, normalizeRebuildPageKey, rebuildUrlToSlug } from '../../utils/rebuild-utils.js';
 import { AssetProcessingService } from '../AssetProcessingService.js';
 import { AtlasCrawlerAdapter, type AtlasCrawlOutput } from '../AtlasCrawlerAdapter.js';
+import type { FileUploadService } from '../FileUploadService.js';
 import { SitemapDiscoveryService, type SitemapDiscoveryResult } from '../SitemapDiscoveryService.js';
+import { registerCrawledImagesAsUploads } from './register-crawled-images.js';
 
 import { capDiscoveredPages, resolveMaxPagesToScrape } from './scope-estimates.js';
 
@@ -117,6 +119,12 @@ export function bucketAssetsForProcessing<T extends { url: string; sourceUrl: st
 
 export interface ScrapePipelineDeps {
   appPath: string;
+  /** Upload service (shared singleton) used to register crawled source images
+   *  as uploads so they surface in the Media tab. */
+  fileUploadService: FileUploadService;
+  /** Gate for surfacing crawled source images in the Media tab
+   *  (switchboard: appbuilder-rebuild-source-images). When false, skip registration. */
+  crawledImagesEnabled: boolean;
   /** From `RebuildOrchestrationOptions.useAtlasCrawler` resolved against env. */
   useAtlas: boolean;
   /** Reason string for the path-selected log line. */
@@ -153,10 +161,35 @@ export class ScrapePipeline {
       envOverride: this.deps.envOverride,
     });
 
-    if (this.deps.useAtlas) {
-      await this.runAtlas(appId, sourceUrl);
-    } else {
-      await this.runLegacy(appId, sourceUrl);
+    try {
+      if (this.deps.useAtlas) {
+        await this.runAtlas(appId, sourceUrl);
+      } else {
+        await this.runLegacy(appId, sourceUrl);
+      }
+    } finally {
+      // Surface crawled source images in the Media tab, gated by the
+      // appbuilder-rebuild-source-images Switchboard flag. Best-effort: runs
+      // even on a partial/failed scrape (no-op if the asset manifest is absent).
+      // Guarded here too so a registration failure can never replace an
+      // in-flight scrape error thrown from the try block above.
+      try {
+        // Records the value the scrape pipeline actually saw for the
+        // appbuilder-rebuild-source-images gate: false => flag never arrived as the
+        // orchestration option; true with no register_crawled_images.done => registration failed.
+        logger.info('rebuild_source_images.flag.gate', {
+          appId,
+          crawledImagesEnabled: this.deps.crawledImagesEnabled,
+        });
+        if (this.deps.crawledImagesEnabled) {
+          await registerCrawledImagesAsUploads(appId, this.deps.appPath, this.deps.fileUploadService);
+        }
+      } catch (error) {
+        logger.warn('rebuild-orchestration.register-crawled-images-failed', {
+          appId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
     }
   }
 

@@ -2396,6 +2396,29 @@ describe('MessageExecutionService', () => {
       expect(executionContext.metadata.userTimezone).toBe('Europe/Berlin')
     })
 
+    it('forwards rebuildSourceImagesEnabled into executionContext metadata for the rebuild tool (SSE parity with WS)', async () => {
+      deps = createMockDeps()
+      service = new MessageExecutionService(deps as any)
+
+      await service.execute({
+        ...DEFAULT_PARAMS,
+        lifecycleContext: { agentContext: { rebuildSourceImagesEnabled: true } },
+      })
+
+      const executionContext = deps.contextManager.loadContextMessages.mock.calls[0][0]
+      expect(executionContext.metadata.rebuildSourceImagesEnabled).toBe(true)
+    })
+
+    it('omits rebuildSourceImagesEnabled from executionContext metadata when the flag is off', async () => {
+      deps = createMockDeps()
+      service = new MessageExecutionService(deps as any)
+
+      await service.execute(DEFAULT_PARAMS)
+
+      const executionContext = deps.contextManager.loadContextMessages.mock.calls[0][0]
+      expect(executionContext.metadata.rebuildSourceImagesEnabled).toBeUndefined()
+    })
+
     it('omits userTimezone from metadata when not provided', async () => {
       deps = createMockDeps()
       service = new MessageExecutionService(deps as any)

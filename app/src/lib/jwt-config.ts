@@ -42,6 +42,7 @@ export interface JWTClaims {
   isOwner?: boolean; // When hosting returned owner id: JWT customer is app owner (multi-user)
   useAtlasCrawler?: boolean; // When true, route rebuild scraping through the Atlas REST API instead of the external web-scraper API (switchboard: appbuilder-atlas-crawler)
   rebuildIntakeFormEnabled?: boolean; // When true, show initial-rebuild intake form before scraping (switchboard: appbuilder-rebuild-intake-form)
+  rebuildSourceImagesEnabled?: boolean; // When true, register crawled source images into the Media tab during rebuild (switchboard: appbuilder-rebuild-source-images)
   debugStatsEnabled?: boolean; // When true, agents service emits per-LLM-call debug_turn_stats events to this client (switchboard: appbuilder-debug-drawer)
   market?: string; // User's resolved market locale (e.g. 'en-US', 'es-MX') from gasket visitor
   fqdn?: string; // Purchased domain carried in from the DPP handoff (SiteInfo.fqdn); readable by agent tools

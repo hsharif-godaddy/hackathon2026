@@ -58,6 +58,7 @@ export interface AgentContext {
   agentProfileSelectorEnabled?: boolean; // Allow per-project agent profile selection from frontend
   useAtlasCrawler?: boolean; // Route rebuild scraping through Atlas REST API instead of legacy WebsiteScraperDriver (switchboard: appbuilder-atlas-crawler)
   rebuildIntakeFormEnabled?: boolean; // Initial-rebuild intake form before scraping (switchboard: appbuilder-rebuild-intake-form)
+  rebuildSourceImagesEnabled?: boolean; // Register crawled source images into the Media tab during rebuild (switchboard: appbuilder-rebuild-source-images)
   debugStatsEnabled?: boolean; // Allow per-LLM-call debug stats events to flow to this client (switchboard: appbuilder-debug-drawer)
   marketingCampaignsEnabled?: boolean; // Enable Marketing Campaigns feature (switchboard: appbuilder-marketing-campaigns)
   logoBrandColorsEnabled?: boolean; // Send structured brand colors to the logo API (switchboard: appbuilder-logo-brand-colors)
@@ -106,6 +107,7 @@ export function buildAgentContext(raw: Record<string, unknown>): AgentContext {
     agentProfileSelectorEnabled: (raw.agentProfileSelectorEnabled as boolean) ?? false,
     useAtlasCrawler: (raw.useAtlasCrawler as boolean) ?? false,
     rebuildIntakeFormEnabled: (raw.rebuildIntakeFormEnabled as boolean) ?? false,
+    rebuildSourceImagesEnabled: (raw.rebuildSourceImagesEnabled as boolean) ?? false,
     debugStatsEnabled: (raw.debugStatsEnabled as boolean) ?? false,
     marketingCampaignsEnabled: (raw.marketingCampaignsEnabled as boolean) ?? false,
     logoBrandColorsEnabled: (raw.logoBrandColorsEnabled as boolean) ?? false,

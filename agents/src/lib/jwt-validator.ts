@@ -54,6 +54,7 @@ export interface JWTClaims {
   modelSelectorEnabled?: boolean;
   costAttributionDryRun?: boolean;
   useAtlasCrawler?: boolean;
+  rebuildSourceImagesEnabled?: boolean;
   debugStatsEnabled?: boolean;
   marketingCampaignsEnabled?: boolean;
   asmDualWriteEnabled?: boolean;

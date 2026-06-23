@@ -803,6 +803,7 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
           bmsBudgetId: agentContext?.bmsBudgetId,
           useAtlasCrawler: agentContext?.useAtlasCrawler,
           rebuildIntakeFormEnabled: agentContext?.rebuildIntakeFormEnabled,
+          rebuildSourceImagesEnabled: agentContext?.rebuildSourceImagesEnabled,
           debugStatsEnabled: agentContext?.debugStatsEnabled,
           market: agentContext?.market,
           fqdn: agentContext?.fqdn,

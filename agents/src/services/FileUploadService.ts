@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { existsSync, readdirSync } from 'fs'
-import { mkdir, writeFile, readFile, readdir, unlink, rm } from 'fs/promises'
-import { extname } from 'path'
+import { mkdir, writeFile, readFile, readdir, unlink, rm, copyFile, stat } from 'fs/promises'
+import { basename, extname } from 'path'
 import { nanoid } from 'nanoid'
 import { z } from 'zod'
 import { isSafeUploadFilename } from '@airo/shared/media'
@@ -24,6 +24,20 @@ export interface UploadedFile {
    *  before this field was added. Used for content-identity dedup so re-uploading
    *  the same image returns the original stored file. */
   contentHash?: string
+  /** Origin marker. Absent for normal user uploads; 'crawled' for source-site images imported during a rebuild. */
+  source?: 'crawled'
+}
+
+/** A pre-existing on-disk file to register as an upload (no multipart/Multer involved). */
+export interface LocalFileToRegister {
+  /** Absolute path to the source file on disk (trusted, internal). */
+  absoluteSourcePath: string
+  /** Human-friendly display name (e.g. derived from the source URL). */
+  originalName: string
+  /** MIME type; if null we derive it from the file extension. */
+  mimeType: string | null
+  /** Optional pre-known size in bytes; otherwise read via fs.stat. */
+  size?: number
 }
 
 export interface FailedFile {
@@ -78,6 +92,24 @@ const MAX_IMAGE_FILE_SIZE = 10 * 1024 * 1024 // 10MB for images and data files
 const MAX_VIDEO_FILE_SIZE = 50 * 1024 * 1024 // 50MB for videos
 const MAX_FILES_PER_UPLOAD = 5
 
+const EXTENSION_TO_MIME_TYPE: Record<string, string> = {
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.png': 'image/png',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+  '.avif': 'image/avif',
+  '.svg': 'image/svg+xml',
+  '.bmp': 'image/bmp',
+  '.ico': 'image/x-icon',
+  '.tif': 'image/tiff',
+  '.tiff': 'image/tiff'
+}
+
+function mimeTypeFromExtension(filename: string): string | null {
+  return EXTENSION_TO_MIME_TYPE[extname(filename).toLowerCase()] ?? null
+}
+
 // SECURITY: Zod schemas for metadata validation
 // Prevents type confusion, prototype pollution, and validates structure
 const UploadedFileSchema = z.object({
@@ -88,6 +120,7 @@ const UploadedFileSchema = z.object({
   mimeType: z.string().nullable(),
   uploadedAt: z.string(),
   contentHash: z.string().optional(),
+  source: z.enum(['crawled']).optional()
 })
 
 const MetadataSchema = z.object({
@@ -160,7 +193,12 @@ export class FileUploadService {
 
   private ensureUploadsDirectory(): void {
     if (!existsSync(this.uploadsDir)) {
-      mkdir(this.uploadsDir, { recursive: true }).then(() => {
+      // Fire-and-forget bootstrap from the constructor. The trailing catch is a
+      // safety net: this promise is never awaited, so any throw (including a
+      // logging-event emission failing — e.g. when logging is mocked in tests)
+      // would otherwise surface as an unhandled rejection and fail the whole
+      // run. Real directory-creation errors are already logged via directoryFailure.
+      void mkdir(this.uploadsDir, { recursive: true }).then(() => {
         fileUploadEvents.directoryCreated(logger, {
           appId: 'system',
           path: this.uploadsDir,
@@ -171,6 +209,8 @@ export class FileUploadService {
           appId: 'system',
           path: this.uploadsDir
         })
+      }).catch(() => {
+        // Never let directory-bootstrap (or its logging) become an unhandled rejection.
       })
     }
   }
@@ -203,28 +243,41 @@ export class FileUploadService {
     return uploadDir
   }
 
-  validateFile(file: Express.Multer.File): void {
-    const ext = extname(file.originalname).toLowerCase()
+  /**
+   * Core security/size checks for a candidate file, independent of how the bytes
+   * arrive (multipart upload vs. an on-disk file being registered). Throws
+   * FileValidationError on a blocked extension/mime type or oversize file.
+   */
+  private assertAllowedFile(params: { originalName: string; mimeType: string | null; size: number }): void {
+    const ext = extname(params.originalName).toLowerCase()
     if (BLOCKED_EXTENSIONS.has(ext)) {
       throw new FileValidationError(
         `File type '${ext}' is not allowed for security reasons. Please upload a different file type.`
       )
     }
 
-    if (BLOCKED_MIME_TYPES.has(file.mimetype)) {
+    if (params.mimeType && BLOCKED_MIME_TYPES.has(params.mimeType)) {
       throw new FileValidationError(
-        `File type '${file.mimetype}' is not allowed for security reasons. Please upload a different file type.`
+        `File type '${params.mimeType}' is not allowed for security reasons. Please upload a different file type.`
       )
     }
 
-    const isVideo = file.mimetype?.startsWith('video/') ?? false
+    const isVideo = params.mimeType?.startsWith('video/') ?? false
     const maxSize = isVideo ? MAX_VIDEO_FILE_SIZE : MAX_IMAGE_FILE_SIZE
-    if (file.size > maxSize) {
+    if (params.size > maxSize) {
       const limitMB = maxSize / (1024 * 1024)
       throw new FileValidationError(
-        `File size ${file.size} bytes exceeds maximum allowed size of ${limitMB}MB for ${isVideo ? 'videos' : 'images/data files'}`
+        `File size ${params.size} bytes exceeds maximum allowed size of ${limitMB}MB for ${isVideo ? 'videos' : 'images/data files'}`
       )
     }
+  }
+
+  validateFile(file: Express.Multer.File): void {
+    this.assertAllowedFile({
+      originalName: file.originalname,
+      mimeType: file.mimetype,
+      size: file.size
+    })
   }
 
   validateUpload(files: Express.Multer.File[]): void {
@@ -251,14 +304,29 @@ export class FileUploadService {
     appId: string,
     uploadId: string
   ): { buffer: Buffer; size: number } {
+    return this.sanitizeSvgContent(file.buffer.toString('utf-8'), file.originalname, file.size, appId, uploadId)
+  }
+
+  /**
+   * Sanitize raw SVG content and return the cleaned buffer. Shared by the
+   * multipart upload path and the local-file registration path.
+   * Throws SVGSanitizationError on failure so callers can skip the file.
+   */
+  private sanitizeSvgContent(
+    svgContent: string,
+    originalName: string,
+    originalSize: number,
+    appId: string,
+    uploadId: string
+  ): { buffer: Buffer; size: number } {
     try {
-      const result = sanitizeSVG(file.buffer.toString('utf-8'))
+      const result = sanitizeSVG(svgContent)
 
       if (result.hadDangerousContent) {
         logger.warn('file-upload.svg.sanitized', {
           appId,
           uploadId,
-          originalName: file.originalname,
+          originalName,
           detectedThreats: result.detectedThreats,
           message: `SVG contained dangerous content that was removed: ${result.detectedThreats.join(', ')}`
         }, { tags: ['security', 'svg-sanitization', 'xss-prevention'] })
@@ -273,8 +341,8 @@ export class FileUploadService {
       logger.info('file-upload.svg.processed', {
         appId,
         uploadId,
-        originalName: file.originalname,
-        originalSize: file.size,
+        originalName,
+        originalSize,
         sanitizedSize: buffer.length,
         hadThreats: result.hadDangerousContent,
         threats: result.detectedThreats
@@ -285,11 +353,146 @@ export class FileUploadService {
       logger.error('file-upload.svg.sanitization-failed', {
         appId,
         uploadId,
-        originalName: file.originalname,
+        originalName,
         error: error instanceof Error ? error.message : String(error)
       })
-      throw new SVGSanitizationError(file.originalname, error instanceof Error ? error.message : undefined)
+      throw new SVGSanitizationError(originalName, error instanceof Error ? error.message : undefined)
     }
+  }
+
+  /**
+   * Register pre-existing on-disk files as a synthetic upload batch so they
+   * surface in the Media tab and behave like uploaded media (listed, served via
+   * signed URLs, reusable into slots). Used by the rebuild flow to import
+   * crawled source-site images.
+   *
+   * Unlike processUpload (multipart/Multer, capped at MAX_FILES_PER_UPLOAD),
+   * this writes directly from disk and is uncapped. The batch is idempotent for
+   * a given uploadId: the upload dir is rebuilt from scratch on each call, and
+   * callers should pass stable (content-hash) filenames so URLs stay stable.
+   *
+   * Per-file failures (missing source, blocked type, oversize, bad SVG) are
+   * skipped and logged. Batch-level filesystem errors (the upfront rm /
+   * directory creation, or the final metadata.json write) still propagate.
+   */
+  async registerLocalFilesAsUpload(
+    appId: string,
+    files: LocalFileToRegister[],
+    opts: { uploadId: string; source?: 'crawled' }
+  ): Promise<UploadResult> {
+    const { uploadId, source } = opts
+    const uploadDir = this.pathBuilder.join(appId, uploadId)
+
+    // Rebuild the batch from scratch so a re-run reflects the current crawl.
+    if (existsSync(uploadDir)) {
+      await rm(uploadDir, { recursive: true, force: true })
+    }
+    await this.ensureUploadDirectory(appId, uploadId)
+
+    const uploadedFiles: UploadedFile[] = []
+    const failedFiles: FailedFile[] = []
+    const uploadedAt = new Date().toISOString()
+    const seenFilenames = new Set<string>()
+
+    for (const file of files) {
+      const filename = basename(file.absoluteSourcePath)
+      try {
+        if (!isSafeUploadFilename(filename)) {
+          throw new FileValidationError(`Unsafe filename: ${filename}`)
+        }
+        if (seenFilenames.has(filename)) {
+          continue // already registered this content-hashed file in this batch
+        }
+
+        const mimeType = file.mimeType ?? mimeTypeFromExtension(filename)
+        if (!mimeType) {
+          // No resolvable content type (unrecognized/missing extension). The media UI
+          // lists only image/* | video/*, so this file could never render — skip it
+          // instead of writing bytes that are invisible to every consumer.
+          throw new FileValidationError(`Unrecognized file type: ${filename}`)
+        }
+        const size = file.size ?? (await stat(file.absoluteSourcePath)).size
+        this.assertAllowedFile({ originalName: filename, mimeType, size })
+
+        const destPath = this.pathBuilder.join(appId, uploadId, filename)
+
+        if (isSVGFile(filename, mimeType ?? undefined)) {
+          const svgContent = await readFile(file.absoluteSourcePath, 'utf-8')
+          const sanitized = this.sanitizeSvgContent(svgContent, filename, size, appId, uploadId)
+          await writeFile(destPath, sanitized.buffer)
+          uploadedFiles.push({
+            id: `crawled_${filename}`,
+            originalName: file.originalName,
+            filename,
+            size: sanitized.size,
+            mimeType,
+            uploadedAt,
+            ...(source && { source })
+          })
+        } else {
+          await copyFile(file.absoluteSourcePath, destPath)
+          uploadedFiles.push({
+            id: `crawled_${filename}`,
+            originalName: file.originalName,
+            filename,
+            size,
+            mimeType,
+            uploadedAt,
+            ...(source && { source })
+          })
+        }
+
+        seenFilenames.add(filename)
+      } catch (fileError) {
+        failedFiles.push({
+          originalName: file.originalName,
+          error: fileError instanceof Error ? fileError.message : String(fileError)
+        })
+        logger.warn('file-upload.register-local.file-skipped', {
+          appId,
+          uploadId,
+          originalName: file.originalName,
+          sourcePath: file.absoluteSourcePath,
+          error: fileError instanceof Error ? fileError.message : String(fileError)
+        })
+      }
+    }
+
+    // Nothing usable — don't leave an empty batch dir behind.
+    if (uploadedFiles.length === 0) {
+      await rm(uploadDir, { recursive: true, force: true })
+      logger.info('file-upload.register-local.empty', {
+        appId,
+        uploadId,
+        candidateCount: files.length,
+        failedCount: failedFiles.length
+      })
+      return { uploadId, appId, files: [], failedFiles }
+    }
+
+    const metadata = {
+      uploadId,
+      appId,
+      uploadedAt,
+      fileCount: uploadedFiles.length,
+      files: uploadedFiles
+    }
+
+    await writeFile(
+      this.pathBuilder.join(appId, uploadId, 'metadata.json'),
+      JSON.stringify(metadata, null, 2)
+    )
+
+    logger.info('file-upload.register-local.success', {
+      appId,
+      uploadId,
+      source,
+      fileCount: uploadedFiles.length,
+      failedCount: failedFiles.length,
+      totalSize: uploadedFiles.reduce((sum, f) => sum + f.size, 0)
+    })
+
+    return { uploadId, appId, files: uploadedFiles, failedFiles }
   }
 
   async processUpload(appId: string, files: Express.Multer.File[]): Promise<UploadResult> {

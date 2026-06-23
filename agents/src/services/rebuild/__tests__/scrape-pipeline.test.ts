@@ -1,4 +1,8 @@
-import { describe, expect, it, vi } from 'vitest';
+import { existsSync } from 'node:fs';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
+import path from 'node:path';
+
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { SiteAnalyzerAgent } from '../../../agents/site-analyzer-agent.js';
 import type { PageScrapeResult } from '../../../tools/ai-lib-tools/drivers/website-scraper-driver.js';
@@ -6,6 +10,7 @@ import { WebsiteScraperDriver } from '../../../tools/ai-lib-tools/drivers/websit
 import type { RebuildWorkflowState, SitemapData, SitemapPage } from '../../../types/rebuild.js';
 import { AssetProcessingService } from '../../AssetProcessingService.js';
 import { AtlasCrawlerAdapter } from '../../AtlasCrawlerAdapter.js';
+import type { FileUploadService } from '../../FileUploadService.js';
 import { SitemapDiscoveryService } from '../../SitemapDiscoveryService.js';
 import { bucketAssetsForProcessing, ScrapePipeline } from '../scrape-pipeline.js';
 import { getScopeEstimate } from '../scope-estimates.js';
@@ -373,6 +378,9 @@ function setupAtlasPipeline(opts: SetupOpts) {
 
   const deps = {
     appPath: '/tmp/test-app',
+    // runAtlas tests bypass run(), so the upload service is never exercised here.
+    fileUploadService: { registerLocalFilesAsUpload: vi.fn() } as unknown as FileUploadService,
+    crawledImagesEnabled: true,
     useAtlas: true,
     scraperReason: 'env-override' as const,
     jwtFlag: false,
@@ -525,5 +533,91 @@ describe('ScrapePipeline.runAtlas — finding 4: homepage callback writes a home
     // homepage — inner pages have no JSON on disk yet during this phase.
     const firstSitemap = saveSitemap.mock.calls[0]?.[0] as SitemapData;
     expect(firstSitemap.pages.map(p => p.url)).toEqual(['https://example.com/']);
+  });
+});
+
+describe('ScrapePipeline.run — crawled image registration', () => {
+  const tmpRoot = '/tmp/test-scrape-pipeline-run';
+
+  function makeDeps(appPath: string, fileUploadService: FileUploadService, crawledImagesEnabled = true) {
+    return {
+      appPath,
+      fileUploadService,
+      crawledImagesEnabled,
+      useAtlas: true,
+      scraperReason: 'env-override' as const,
+      jwtFlag: false,
+      envOverride: true,
+      getStatus: vi.fn().mockImplementation(async () => baseState()),
+      saveState: vi.fn().mockResolvedValue(undefined),
+      saveSitemap: vi.fn().mockResolvedValue(undefined),
+      saveMetadata: vi.fn().mockResolvedValue(undefined),
+      persistScrapedPages: vi.fn().mockResolvedValue(undefined),
+    };
+  }
+
+  async function writeImageManifest(appPath: string): Promise<void> {
+    const imagesDir = path.join(appPath, '.source-site/assets/images');
+    await mkdir(imagesDir, { recursive: true });
+    await writeFile(path.join(imagesDir, 'h.png'), Buffer.from('png'));
+    await writeFile(
+      path.join(appPath, '.source-site/assets/manifest.json'),
+      JSON.stringify({
+        assets: [
+          { url: 'https://x.com/h.png', localPath: '.source-site/assets/images/h.png', type: 'image', sourcePages: [] },
+        ],
+        totalAssets: 1,
+        byType: { image: 1, font: 0, icon: 0, other: 0 },
+        generatedAt: '2026-01-01T00:00:00.000Z',
+      }),
+    );
+  }
+
+  afterEach(async () => {
+    if (existsSync(tmpRoot)) await rm(tmpRoot, { recursive: true, force: true });
+  });
+
+  it('registers crawled images after the scrape path completes', async () => {
+    const appPath = path.join(tmpRoot, 'ok');
+    await writeImageManifest(appPath);
+    const fileUploadService = {
+      registerLocalFilesAsUpload: vi.fn().mockResolvedValue({ uploadId: 'crawled-source', appId: 'app1', files: [], failedFiles: [] }),
+    } as unknown as FileUploadService;
+
+    const pipeline = new ScrapePipeline(makeDeps(appPath, fileUploadService));
+    vi.spyOn(pipeline as unknown as { runAtlas: () => Promise<void> }, 'runAtlas').mockResolvedValue(undefined);
+
+    await pipeline.run('app1', 'https://x.com');
+
+    expect((fileUploadService.registerLocalFilesAsUpload as ReturnType<typeof vi.fn>)).toHaveBeenCalledTimes(1);
+  });
+
+  it('still registers (best-effort) when the scrape path throws, and rethrows', async () => {
+    const appPath = path.join(tmpRoot, 'fail');
+    await writeImageManifest(appPath);
+    const fileUploadService = {
+      registerLocalFilesAsUpload: vi.fn().mockResolvedValue({ uploadId: 'crawled-source', appId: 'app1', files: [], failedFiles: [] }),
+    } as unknown as FileUploadService;
+
+    const pipeline = new ScrapePipeline(makeDeps(appPath, fileUploadService));
+    vi.spyOn(pipeline as unknown as { runAtlas: () => Promise<void> }, 'runAtlas').mockRejectedValue(new Error('scrape boom'));
+
+    await expect(pipeline.run('app1', 'https://x.com')).rejects.toThrow('scrape boom');
+    expect((fileUploadService.registerLocalFilesAsUpload as ReturnType<typeof vi.fn>)).toHaveBeenCalledTimes(1);
+  });
+
+  it('does NOT register crawled images when the flag is off (crawledImagesEnabled=false)', async () => {
+    const appPath = path.join(tmpRoot, 'flag-off');
+    await writeImageManifest(appPath);
+    const fileUploadService = {
+      registerLocalFilesAsUpload: vi.fn().mockResolvedValue({ uploadId: 'crawled-source', appId: 'app1', files: [], failedFiles: [] }),
+    } as unknown as FileUploadService;
+
+    const pipeline = new ScrapePipeline(makeDeps(appPath, fileUploadService, false));
+    vi.spyOn(pipeline as unknown as { runAtlas: () => Promise<void> }, 'runAtlas').mockResolvedValue(undefined);
+
+    await pipeline.run('app1', 'https://x.com');
+
+    expect((fileUploadService.registerLocalFilesAsUpload as ReturnType<typeof vi.fn>)).not.toHaveBeenCalled();
   });
 });

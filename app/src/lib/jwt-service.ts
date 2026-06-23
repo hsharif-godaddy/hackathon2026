@@ -38,6 +38,7 @@ export interface CreateTokenOptions {
   costAttributionDryRun?: boolean; // Log cost attribution results but skip BMS reconciliation (switchboard: appbuilder-cost-attribution-dry-run)
   useAtlasCrawler?: boolean; // Route rebuild scraping through the Atlas REST API instead of the external web-scraper API (switchboard: appbuilder-atlas-crawler)
   rebuildIntakeFormEnabled?: boolean; // Show initial-rebuild intake form before scraping (switchboard: appbuilder-rebuild-intake-form)
+  rebuildSourceImagesEnabled?: boolean; // Register crawled source images into the Media tab during rebuild (switchboard: appbuilder-rebuild-source-images)
   debugStatsEnabled?: boolean; // Agents service should emit per-LLM-call debug_turn_stats events to this client (switchboard: appbuilder-debug-drawer)
   isOwner?: boolean; // App owner vs collaborator when owner id is known from hosting
   market?: string; // User's resolved market locale (e.g. 'en-US', 'es-MX')
@@ -212,6 +213,7 @@ export class JWTService {
       ...(options.isOwner !== undefined && { isOwner: options.isOwner }),
       useAtlasCrawler: options.useAtlasCrawler ?? false,
       rebuildIntakeFormEnabled: options.rebuildIntakeFormEnabled ?? false,
+      rebuildSourceImagesEnabled: options.rebuildSourceImagesEnabled ?? false,
       debugStatsEnabled: options.debugStatsEnabled ?? false,
       ...(options.market && { market: options.market }),
       ...(options.fqdn && { fqdn: options.fqdn }),
@@ -281,7 +283,7 @@ export class JWTService {
    */
   private getCacheKey(options: CreateTokenOptions): string {
     const authType = options.authType || 'basic';
-    return `${options.siteId}:${options.customerId || ''}:${options.canDownload}:${options.canPublish}:${options.canPurchaseDomain ?? false}:${authType}:${options.useTestBudget ?? false}:${options.budgetServiceEnabled ?? false}:${options.subscriptionId || ''}:${options.enableAssessmentAgent ?? false}:${options.enableAssessmentOverride ?? false}:${options.assessmentClassifier || ''}:${options.product || 'AiroAppBuilder'}:${options.modelOverride || ''}:${options.modelSelectorEnabled ?? false}:${options.agentProfile || ''}:${options.agentProfileSelectorEnabled ?? false}:${options.costAttributionDryRun ?? false}:${options.bmsBudgetId || ''}:${options.useAtlasCrawler ?? false}:${options.rebuildIntakeFormEnabled ?? false}:${options.debugStatsEnabled ?? false}:${options.market || ''}:${options.fqdn || ''}:${options.marketingCampaignsEnabled ?? false}:${options.asmDualWriteEnabled ?? false}:${options.logoBrandColorsEnabled ?? false}:${options.purchaseIntentClassifierEnabled ?? false}:${options.skillSuggestionsEnabled ?? false}`;
+    return `${options.siteId}:${options.customerId || ''}:${options.canDownload}:${options.canPublish}:${options.canPurchaseDomain ?? false}:${authType}:${options.useTestBudget ?? false}:${options.budgetServiceEnabled ?? false}:${options.subscriptionId || ''}:${options.enableAssessmentAgent ?? false}:${options.enableAssessmentOverride ?? false}:${options.assessmentClassifier || ''}:${options.product || 'AiroAppBuilder'}:${options.modelOverride || ''}:${options.modelSelectorEnabled ?? false}:${options.agentProfile || ''}:${options.agentProfileSelectorEnabled ?? false}:${options.costAttributionDryRun ?? false}:${options.bmsBudgetId || ''}:${options.useAtlasCrawler ?? false}:${options.rebuildIntakeFormEnabled ?? false}:${options.rebuildSourceImagesEnabled ?? false}:${options.debugStatsEnabled ?? false}:${options.market || ''}:${options.fqdn || ''}:${options.marketingCampaignsEnabled ?? false}:${options.asmDualWriteEnabled ?? false}:${options.logoBrandColorsEnabled ?? false}:${options.purchaseIntentClassifierEnabled ?? false}:${options.skillSuggestionsEnabled ?? false}`;
   }
 
   /**

@@ -193,6 +193,7 @@ interface LifecycleContext {
     bmsBudgetId?: string
     useAtlasCrawler?: boolean
     rebuildIntakeFormEnabled?: boolean
+    rebuildSourceImagesEnabled?: boolean
     debugStatsEnabled?: boolean
     market?: string
     fqdn?: string
@@ -2096,6 +2097,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
         ...(agentCtx?.useTestBudget !== undefined && { useTestBudget: agentCtx.useTestBudget }),
         ...(agentCtx?.useAtlasCrawler && { useAtlasCrawler: true }),
         ...(agentCtx?.rebuildIntakeFormEnabled && { rebuildIntakeFormEnabled: true }),
+        ...(agentCtx?.rebuildSourceImagesEnabled && { rebuildSourceImagesEnabled: true }),
         ...(agentCtx?.skillSuggestionsEnabled && { skillSuggestionsEnabled: true }),
         ...(rebuildDesignDirection && { rebuildDesignDirection }),
         ...(rebuildBringOverChoice !== undefined && { rebuildBringOverChoice }),

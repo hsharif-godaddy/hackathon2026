@@ -16,6 +16,7 @@ import {
 import { defaultIntakeChoices } from './rebuild/intake-defaults.js';
 import { selectUpfrontBuildSlugs } from './rebuild/scope-estimates.js';
 import { rebuildUrlToSlug } from '../utils/rebuild-utils.js';
+import { fileUploadService } from './FileUploadService.js';
 import { extractNavigationFromHtml, PagePersistenceService, type SavePageInput } from './rebuild/page-persistence.js';
 import { RebuildPromptBuilder, type BuildPageResult } from './rebuild/prompt-builder.js';
 import { ScrapePipeline } from './rebuild/scrape-pipeline.js';
@@ -34,6 +35,8 @@ const logger = Logger.create({ component: 'rebuild-orchestration-service' });
  */
 export interface RebuildOrchestrationOptions {
   useAtlasCrawler?: boolean;
+  /** Register crawled source images into the Media tab after scrape (switchboard: appbuilder-rebuild-source-images). */
+  crawledImagesEnabled?: boolean;
 }
 
 export class RebuildOrchestrationService {
@@ -249,6 +252,8 @@ export class RebuildOrchestrationService {
     const { useAtlas, reason, jwtFlag, envOverride } = this.resolveScraperPath();
     return new ScrapePipeline({
       appPath: this.appPath,
+      fileUploadService,
+      crawledImagesEnabled: this.options.crawledImagesEnabled === true,
       useAtlas,
       scraperReason: reason,
       jwtFlag,

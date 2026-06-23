@@ -163,7 +163,8 @@ This tool starts the website rebuild process:
     })
 
     const useAtlasCrawler = context?.metadata?.useAtlasCrawler === true
-    const service = new RebuildOrchestrationService(app.path, { useAtlasCrawler })
+    const crawledImagesEnabled = context?.metadata?.rebuildSourceImagesEnabled === true
+    const service = new RebuildOrchestrationService(app.path, { useAtlasCrawler, crawledImagesEnabled })
 
     const initialState = rebuildIntakeFormEnabled
       ? await service.beginRebuild(appId, input.url)
