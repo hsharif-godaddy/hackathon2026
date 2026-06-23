@@ -61,6 +61,10 @@ For setup details (JFrog Artifactory, JWT minting, Postgres baseline, Makefile t
 
 Full reference — server, auth, database, HTTP, worker, outbox, OpenTelemetry — in [Configuration](docs/configuration.md).
 
+## Observability
+
+Structured JSON logs (stdout → Elastic/Kibana), prod and non-prod APM and analytics dashboards, OpenTelemetry metrics and traces, and `GOMEMLIMIT`-based memory alerting are documented in [Observability](docs/observability.md). For deploy, rollback, and incident response see [DevOps](docs/devops.md); for alarm rules and triage see [Alerts](docs/alerts.md).
+
 ## Layout
 
 ```
