@@ -575,8 +575,7 @@ jobs:
   # `uses:` must be a compile-time constant, so we need separate jobs
   # per environment to reference different HWA branches:
   #   prod → @main (stable, merged code)
-  #   test → @fix/e2e (integration branch — flip to a dedicated
-  #          integration branch or @main once the HWA PR merges)
+  #   test → @integration (latest test env changes)
 
   # --- prod: runs tests from main ---
   # Filter gate intentionally excludes 'regression': a prod release dispatches
@@ -606,12 +605,14 @@ jobs:
       contents: read
 
   # --- test: runs tests from integration branch ---
-  # KNOWN ISSUE: CI runners are not on VPN, so PaaS BFF API calls to
-  # host.beta.test-godaddy.com return 403 "RBAC: access denied" from
-  # the edge proxy. Re-enable once runners have VPN access or the
-  # beta-test environment is reachable from the CI network.
+  # Reaches the VPN-gated test env (host.beta.test-godaddy.com) via the
+  # airo-cicd-runners' TGW egress, now allowlisted in the PaaS test WAF
+  # (hosting-infra HPXPaasWebACLv2). Before that allowlist landed, BFF
+  # API calls were blocked with 403 "RBAC: access denied" at the edge.
   host-paas-e2e-test:
-    if: false # disabled until VPN access is resolved
+    if: >
+      ${{ (inputs.environment || 'prod') == 'test'
+          && contains(fromJSON('["e2e", "e2e-then-regression"]'), inputs.test_filter || 'e2e') }}
     name: E2E Tests (host-paas, test)
     uses: gdcorp-partners/hosting-web-apps/.github/workflows/e2e-playwright.yml@integration
     with:
