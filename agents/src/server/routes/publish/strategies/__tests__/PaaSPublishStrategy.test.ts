@@ -108,7 +108,6 @@ describe('PaaSPublishStrategy', () => {
   };
   let mockGitUtils: {
     createArchive: ReturnType<typeof vi.fn>;
-    commitFileIfChanged: ReturnType<typeof vi.fn>;
   };
   let createPaasConfigSpy: ReturnType<typeof vi.spyOn>;
   let mockLogger: {
@@ -132,12 +131,10 @@ describe('PaaSPublishStrategy', () => {
         path: '/dist/test-archive.tar.gz',
         commitHash: 'abc123',
       }),
-      commitFileIfChanged: vi.fn().mockResolvedValue(true),
     };
 
     // Stub the real fs-writing config writer. Reflect the write back into the
-    // exec router's mutable state so the subsequent preflight read sees it,
-    // matching the real working-tree round-trip.
+    // exec router's mutable state so the subsequent preflight read sees it.
     createPaasConfigSpy = vi
       .spyOn(appRestartService, 'createPaasConfig')
       .mockImplementation(async (_appPath, _bt, startCommand) => {
@@ -412,11 +409,6 @@ describe('PaaSPublishStrategy', () => {
         'scripts.dev',
         'test-app-id'
       );
-      expect(mockGitUtils.commitFileIfChanged).toHaveBeenCalledWith(
-        '/tmp/test-app',
-        '.airo/config.json',
-        expect.any(String)
-      );
       expect(mockLogger.error).not.toHaveBeenCalledWith(
         'route.publish.paas.preflight.missing-start-command',
         expect.anything()
@@ -485,7 +477,7 @@ describe('PaaSPublishStrategy', () => {
   });
 
   describe('start command persistence', () => {
-    it('commits an existing serve command without re-resolving (rescues uncommitted restart-path config)', async () => {
+    it('preserves an existing serve command without re-resolving', async () => {
       installExecRouter(mockTasks, {
         airoConfig: { runtime: { serve: { command: 'node dist/server.js' } } },
         packageJson: { scripts: {} },
@@ -495,15 +487,9 @@ describe('PaaSPublishStrategy', () => {
 
       // Existing serve command is preserved — never re-resolved/overwritten.
       expect(createPaasConfigSpy).not.toHaveBeenCalled();
-      // But still committed so an untracked config survives excludeUntracked.
-      expect(mockGitUtils.commitFileIfChanged).toHaveBeenCalledWith(
-        '/tmp/test-app',
-        '.airo/config.json',
-        expect.any(String)
-      );
     });
 
-    it('does not write or commit a config when package.json already defines scripts.start', async () => {
+    it('does not write a config when package.json already defines scripts.start', async () => {
       installExecRouter(mockTasks, {
         airoConfig: null,
         packageJson: { scripts: { start: 'node server.js' } },
@@ -511,26 +497,25 @@ describe('PaaSPublishStrategy', () => {
 
       await expect(strategy.prepareBuild(mockContext)).resolves.toBeDefined();
 
-      // scripts.start ships in the tracked package.json — nothing to persist,
-      // and no config file exists to `git add`.
+      // scripts.start ships in the tracked package.json — nothing to persist.
       expect(createPaasConfigSpy).not.toHaveBeenCalled();
-      expect(mockGitUtils.commitFileIfChanged).not.toHaveBeenCalled();
       expect(mockLogger.info).toHaveBeenCalledWith(
         'route.publish.paas.start-command.persisted',
-        expect.objectContaining({ reason: 'start-script-sufficient', committed: false })
+        expect.objectContaining({ reason: 'start-script-sufficient' })
       );
     });
 
-    it('runs persistence before the archive is built', async () => {
+    it('runs config write before the archive is built', async () => {
       installExecRouter(mockTasks, {
         airoConfig: null,
         packageJson: { scripts: { dev: 'vite' } },
       });
 
       const order: string[] = [];
-      mockGitUtils.commitFileIfChanged.mockImplementation(async () => {
-        order.push('commit');
-        return true;
+      createPaasConfigSpy.mockImplementation(async () => {
+        order.push('config');
+        // Simulate the config becoming visible after write
+        execState.airoConfig = { runtime: { serve: { command: 'NODE_ENV=development npm run dev' } } };
       });
       mockGitUtils.createArchive.mockImplementation(async () => {
         order.push('archive');
@@ -539,7 +524,7 @@ describe('PaaSPublishStrategy', () => {
 
       await strategy.prepareBuild(mockContext);
 
-      expect(order).toEqual(['commit', 'archive']);
+      expect(order).toEqual(['config', 'archive']);
     });
   });
 

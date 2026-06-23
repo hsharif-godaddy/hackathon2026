@@ -297,9 +297,8 @@ router.post(
  * - branch: string (optional) - Branch to pull (default: configured default branch)
  * - token: string (optional, required with repoUrl) - GitHub token for authentication
  * - repoUrl: string (optional, required with token) - Repository URL
- * - modifyViteConfig: boolean (optional) - Whether to modify vite config to set server.allowedHosts: true.
- *   Use this when pulling external projects that need proxy compatibility (e.g., projects not originally
- *   created in Airo). This is the same modification applied during zip import.
+ * - modifyViteConfig: boolean (DEPRECATED, ignored) - Previously modified vite config for proxy compatibility.
+ *   This parameter is accepted for backward compatibility but has no effect.
  *
  * Returns 202 Accepted with job ID for tracking
  */
@@ -316,8 +315,6 @@ router.post(
       token,
       repoUrl,
       modifyViteConfig,
-      // PaaS Node.js parameters
-      entryFile,
       installCommand,
       buildCommand,
       devCommand,
@@ -330,9 +327,12 @@ router.post(
       return;
     }
 
-    if (modifyViteConfig !== undefined && typeof modifyViteConfig !== 'boolean') {
-      res.status(400).json({ error: 'modifyViteConfig must be a boolean' });
-      return;
+    if (modifyViteConfig !== undefined) {
+      logger.warn('git-remote.pull.deprecated-param', {
+        appId,
+        param: 'modifyViteConfig',
+        message: 'modifyViteConfig is deprecated and has no effect on git pull',
+      });
     }
 
     if (clearWorkingTree !== undefined && typeof clearWorkingTree !== 'boolean') {
@@ -346,9 +346,6 @@ router.post(
       branch,
       token,
       repoUrl,
-      modifyViteConfig,
-      // PaaS Node.js parameters
-      entryFile,
       commands: (installCommand || buildCommand || devCommand || startCommand)
         ? { install: installCommand, build: buildCommand, dev: devCommand, start: startCommand }
         : undefined,

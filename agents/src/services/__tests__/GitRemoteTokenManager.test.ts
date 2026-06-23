@@ -194,6 +194,75 @@ describe('GitRemoteTokenManager', () => {
     });
   });
 
+  describe('writeCredentialFile', () => {
+    it('writes credential file to /tmp with workingDir /tmp', async () => {
+      await manager.writeCredentialFile('app-1', 'https://github.com/user/repo.git', 'ghp_token123');
+
+      expect(mockTasks.runCommandSync).toHaveBeenCalledTimes(1);
+      expect(mockTasks.runCommandSync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          workingDir: '/tmp',
+          timeoutSeconds: 30,
+        })
+      );
+    });
+
+    it('uses the same token resolution as configureGitCredentials', async () => {
+      vi.mocked(existsSync).mockReturnValue(true);
+      vi.mocked(readFileSync).mockReturnValue(JSON.stringify({
+        GITHUB_TOKEN: { VALUE: 'local-dev-token' },
+      }));
+
+      await manager.writeCredentialFile('app-1', 'https://github.com/user/repo.git');
+
+      const command = mockTasks.runCommandSync.mock.calls[0][0].command as string;
+      expect(command).toContain('local-dev-token');
+    });
+
+    it('prefers directly provided token over config sources', async () => {
+      vi.mocked(getNomadAllocConfig).mockReturnValue({
+        GITHUB_TOKEN: { VALUE: 'nomad-token' },
+      });
+
+      await manager.writeCredentialFile('app-1', 'https://github.com/user/repo.git', 'direct-token');
+
+      const command = mockTasks.runCommandSync.mock.calls[0][0].command as string;
+      expect(command).toContain('direct-token');
+      expect(command).not.toContain('nomad-token');
+    });
+
+    it('throws when no token is available', async () => {
+      vi.mocked(getNomadAllocConfig).mockReturnValue(null);
+      vi.mocked(existsSync).mockReturnValue(false);
+
+      await expect(
+        manager.writeCredentialFile('app-1', 'https://github.com/user/repo.git')
+      ).rejects.toThrow('GitHub token not provided');
+    });
+
+    it('throws when command fails', async () => {
+      mockTasks.runCommandSync.mockResolvedValue({
+        exitCode: 1,
+        stdout: '',
+        stderr: 'permission denied',
+        timedOut: false,
+        executionTimeMs: 10,
+        taskId: 'test-task',
+      });
+
+      await expect(
+        manager.writeCredentialFile('app-1', 'https://github.com/user/repo.git', 'ghp_token')
+      ).rejects.toThrow('Credential file write failed: permission denied');
+    });
+
+    it('does not run git config --local (no .git required)', async () => {
+      await manager.writeCredentialFile('app-1', 'https://github.com/user/repo.git', 'ghp_token');
+
+      const command = mockTasks.runCommandSync.mock.calls[0][0].command as string;
+      expect(command).not.toContain('git config');
+    });
+  });
+
   describe('isTokenExpired', function expiryTests() {
     afterEach(() => {
       delete process.env.NOMAD_ALLOC_DIR;

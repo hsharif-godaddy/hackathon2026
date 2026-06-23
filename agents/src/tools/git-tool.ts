@@ -1009,14 +1009,16 @@ export class GitTool {
   }
 
   /**
-   * Fetch the latest remote branch and hard-reset the local branch to match it.
+   * Initialise a fresh repo and check out a remote branch.
    *
-   * Used instead of `git pull` when the intent is to fully replace the local
-   * state with the remote (e.g. first git connect with clearWorkingTree).
-   * This avoids merge conflicts entirely — no merge occurs, the local branch
-   * pointer simply moves to the fetched remote HEAD.
+   * Used when clearWorkingTree=true (first git connect or repo switch).
+   * The caller must wipe /app files and empty .git contents before calling
+   * this (the .git directory itself is a separate mount and must be preserved).
+   *
+   * Flow: git init → remote add → fetch → checkout (DWIM tracking branch).
+   * Configures local git user and credential helper for future operations.
    */
-  async fetchAndResetToRemote(appPath: string, options: {
+  async cloneFreshFromRemote(appPath: string, options: {
     appId: string;
     remoteName: string;
     branch: string;
@@ -1026,24 +1028,65 @@ export class GitTool {
     return this.queueGitOperation(appPath, async () => {
       const { appId, remoteName, branch, token, repoUrl } = options;
 
-      this.logger.info('git-tool.fetch-reset.begin', {
+      this.logger.info('git-tool.clone-fresh.begin', {
         appId,
         appPath,
-        remoteName,
         branch,
       });
 
       if (!this.gitRemoteTokenManager) {
         return {
           success: false,
-          operation: 'fetch-reset',
+          operation: 'clone',
           error: 'Git remote token manager not available. Dev-supervisor is required.',
         };
       }
 
+      if (!this.tasks) {
+        return {
+          success: false,
+          operation: 'clone',
+          error: 'Workspace tasks not available.',
+        };
+      }
+
       try {
-        await this.ensureRemoteConfigured(appPath, remoteName, repoUrl);
-        await this.gitRemoteTokenManager.configureGitCredentials(appId, repoUrl, token);
+        const initResult = await this.gitUtils.initRepository(appPath);
+        if (!initResult.success) {
+          return {
+            success: false,
+            operation: 'clone',
+            error: `git init failed: ${initResult.stderr}`,
+          };
+        }
+
+        const addRemoteResult = await this.gitUtils.addRemote(appPath, remoteName, repoUrl);
+        if (!addRemoteResult.success) {
+          return {
+            success: false,
+            operation: 'clone',
+            error: `git remote add failed: ${addRemoteResult.stderr}`,
+          };
+        }
+
+        await this.gitRemoteTokenManager.writeCredentialFile(appId, repoUrl, token);
+
+        const configResult = await this.tasks.runCommandSync({
+          command: [
+            'git config --local user.name "GoDaddy NodeJS Hosting"',
+            'git config --local user.email "noreply@godaddy.com"',
+            `git config --local credential.helper "store --file=/tmp/.git-credentials"`,
+          ].join(' && '),
+          workingDir: '/app',
+          timeoutSeconds: 30,
+        });
+
+        if (configResult.exitCode !== 0) {
+          this.logger.warn('git-tool.clone-fresh.config.failed', {
+            appId,
+            stderr: configResult.stderr,
+          });
+        }
 
         const fetchResult = await this.gitUtils.fetch(appPath, remoteName);
         if (!fetchResult.success) {
@@ -1051,37 +1094,33 @@ export class GitTool {
           if (stderr.includes('authentication failed') || stderr.includes('403') || stderr.includes('401') || stderr.includes('invalid credentials')) {
             return {
               success: false,
-              operation: 'fetch-reset',
+              operation: 'clone',
               error: 'GitHub authentication failed. Token may be expired or invalid. Please reconfigure the GitHub token.',
               errorCode: 'AUTH_FAILED',
             };
           }
           return {
             success: false,
-            operation: 'fetch-reset',
+            operation: 'clone',
             error: `Fetch failed: ${fetchResult.stderr}`,
           };
         }
 
-        const resetResult = await this.gitUtils.reset(appPath, {
-          mode: 'hard',
-          target: `${remoteName}/${branch}`,
-        });
-
-        if (!resetResult.success) {
+        const checkoutResult = await this.gitUtils.switchBranch(appPath, branch);
+        if (!checkoutResult.success) {
           return {
             success: false,
-            operation: 'fetch-reset',
-            error: `Reset failed: ${resetResult.stderr}`,
+            operation: 'clone',
+            error: `Checkout failed: ${checkoutResult.stderr}`,
           };
         }
 
-        this.logger.info('git-tool.fetch-reset.success', { appId, remoteName, branch });
+        this.logger.info('git-tool.clone-fresh.success', { appId, branch });
 
         return {
           success: true,
-          operation: 'fetch-reset',
-          output: `Successfully fetched and reset to ${remoteName}/${branch}`,
+          operation: 'clone',
+          output: `Successfully cloned ${repoUrl} (branch: ${branch})`,
         };
       } finally {
         await this.gitRemoteTokenManager.cleanupGitCredentials(appId);

@@ -127,7 +127,7 @@ describe('GitOpsService', () => {
   };
   let mockGitTool: {
     executeGitOperation: Mock;
-    fetchAndResetToRemote: Mock;
+    cloneFreshFromRemote: Mock;
   };
   let mockGitRemoteConfigRepo: {
     findByAppId: Mock;
@@ -158,7 +158,7 @@ describe('GitOpsService', () => {
 
     mockGitTool = {
       executeGitOperation: vi.fn(),
-      fetchAndResetToRemote: vi.fn(),
+      cloneFreshFromRemote: vi.fn(),
     };
 
     mockGitRemoteConfigRepo = {
@@ -275,7 +275,7 @@ describe('GitOpsService', () => {
     });
   });
 
-  describe('executePullInBackground - commit after restart', () => {
+  describe('executePullInBackground - post restart', () => {
     beforeEach(() => {
       // Setup successful pull
       mockGitTool.executeGitOperation.mockResolvedValue({
@@ -290,15 +290,13 @@ describe('GitOpsService', () => {
       });
     });
 
-    it('should commit changes after successful restart', async () => {
-      // Start pull to trigger background execution
+    it('does not commit or modify source files after pull', async () => {
       await service.startPull({
         appId: testAppId,
         token: 'ghp_test_token',
         repoUrl: 'https://github.com/user/repo.git',
       });
 
-      // Run setImmediate callbacks
       await vi.runAllTimersAsync();
 
       expect(appRestartService.performFullRestartCycle).toHaveBeenCalledWith(
@@ -310,27 +308,19 @@ describe('GitOpsService', () => {
         })
       );
 
-      // Verify git operations were called
       const gitCalls = mockGitTool.executeGitOperation.mock.calls;
 
-      // Should have: pull, add, commit
-      expect(gitCalls.length).toBeGreaterThanOrEqual(3);
-
-      // Verify pull was called
+      // Only pull — no add/commit (source files must not be modified)
       const pullCall = gitCalls.find((call) => call[1].operation === 'pull');
       expect(pullCall).toBeDefined();
-      expect(pullCall[1].allowUnrelatedHistories).toBe(true);
-      expect(pullCall[1].noRebase).toBe(true);
 
-      // Verify add was called with '.'
       const addCall = gitCalls.find((call) => call[1].operation === 'add');
-      expect(addCall).toBeDefined();
-      expect(addCall[1].files).toEqual(['.']);
+      expect(addCall).toBeUndefined();
 
-      // Verify commit was called with correct message
       const commitCall = gitCalls.find((call) => call[1].operation === 'commit');
-      expect(commitCall).toBeDefined();
-      expect(commitCall[1].message).toBe('Post-pull state commit');
+      expect(commitCall).toBeUndefined();
+
+      expect(mockImportJobRepo.markCompleted).toHaveBeenCalledWith(testJobId);
     });
 
     it('calls detectAndLogInBackground after post-pull cleanup', async () => {
@@ -499,30 +489,6 @@ describe('GitOpsService', () => {
       expect(mockImportJobRepo.markCompleted).toHaveBeenCalledWith(testJobId);
     });
 
-    it('should handle git user configuration errors gracefully', async () => {
-      // Setup: pull succeeds, restart succeeds, add succeeds, commit fails with git config error
-      // This tests the scenario where git user.name/user.email is not configured in the container
-      mockGitTool.executeGitOperation
-        .mockResolvedValueOnce({ success: true, output: 'Pull successful' }) // pull
-        .mockResolvedValueOnce({ success: true, output: 'Add successful' }) // add
-        .mockResolvedValueOnce({
-          success: false,
-          error: "Author identity unknown: Please tell me who you are. Run git config --global user.email 'you@example.com' git config --global user.name 'Your Name'",
-        }); // commit fails with config error
-
-      await service.startPull({
-        appId: testAppId,
-        token: 'ghp_test_token',
-        repoUrl: 'https://github.com/user/repo.git',
-      });
-
-      await vi.runAllTimersAsync();
-
-      // Should still complete successfully - commit failure due to config is non-blocking
-      // The GitUtils.attemptGitRecovery handles this internally and the commit method
-      // in commitPostPulledChanges treats failures gracefully
-      expect(mockImportJobRepo.markCompleted).toHaveBeenCalledWith(testJobId);
-    });
 
     it('should rollback and fail when project is unsupported', async () => {
       vi.mocked(isSupportedProjectInContainer).mockResolvedValue({ supported: false });
@@ -677,17 +643,20 @@ describe('GitOpsService', () => {
 
     beforeEach(() => {
       mockRunCommandSync = vi.fn().mockResolvedValue({ exitCode: 0, stdout: '', stderr: '' });
-      vi.mocked(createForWorkspace).mockReturnValue({ tasks: { runCommandSync: mockRunCommandSync } } as any);
+      vi.mocked(createForWorkspace).mockReturnValue({
+        tasks: { runCommandSync: mockRunCommandSync },
+        files: { view: vi.fn().mockResolvedValue({ content: '{}' }) },
+      } as any);
 
       mockGitTool.executeGitOperation.mockResolvedValue({ success: true, output: 'Pull successful' });
-      mockGitTool.fetchAndResetToRemote.mockResolvedValue({ success: true, output: 'Fetched and reset' });
+      mockGitTool.cloneFreshFromRemote.mockResolvedValue({ success: true, output: 'Fetched and reset' });
       vi.mocked(appRestartService.performFullRestartCycle).mockResolvedValue({
         success: true,
         phases: { install: true, build: true, restart: true },
       });
     });
 
-    it('runs the wipe before pull when clearWorkingTree=true', async () => {
+    it('runs a total wipe and clone when clearWorkingTree=true', async () => {
       await service.startPull({
         appId: testAppId,
         token: 'ghp_test_token',
@@ -702,11 +671,9 @@ describe('GitOpsService', () => {
       );
       expect(wipeCall).toBeDefined();
       expect(wipeCall[0].command).toContain('! -name ".git"');
-      expect(wipeCall[0].command).toContain('! -name ".gitignore"');
-      expect(wipeCall[0].command).toContain('! -name ".is_ready"');
-      expect(wipeCall[0].command).toContain('! -name "public"');
+      expect(wipeCall[0].command).toContain('find "/app/.git" -mindepth 1 -maxdepth 1 -exec rm -rf {} +');
 
-      expect(mockGitTool.fetchAndResetToRemote).toHaveBeenCalledWith(
+      expect(mockGitTool.cloneFreshFromRemote).toHaveBeenCalledWith(
         testAppPath,
         expect.objectContaining({
           appId: testAppId,
@@ -766,7 +733,7 @@ describe('GitOpsService', () => {
 
       expect(mockImportJobRepo.markFailed).toHaveBeenCalledWith(
         testJobId,
-        expect.stringContaining('Pre-pull wipe failed'),
+        expect.stringContaining('Pre-clone wipe failed'),
         'pulling'
       );
 

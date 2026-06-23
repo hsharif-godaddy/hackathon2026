@@ -32,7 +32,9 @@ vi.mock('../../utils/git.js', () => ({
     restoreFromCommit: vi.fn().mockResolvedValue({ success: true, stdout: '', stderr: '' }),
     commit: vi.fn().mockResolvedValue({ success: true, stdout: '', stderr: '' }),
     reset: vi.fn().mockResolvedValue({ success: true, stdout: '', stderr: '' }),
-    getCommitHistory: vi.fn().mockResolvedValue([])
+    getCommitHistory: vi.fn().mockResolvedValue([]),
+    initRepository: vi.fn().mockResolvedValue({ success: true, stdout: '', stderr: '' }),
+    fetch: vi.fn().mockResolvedValue({ success: true, stdout: '', stderr: '' }),
   }; })
 }));
 
@@ -52,6 +54,7 @@ vi.mock('../../database/repositories/AppRepository.js', () => ({
 vi.mock('../../services/GitRemoteTokenManager.js', () => ({
   GitRemoteTokenManager: vi.fn().mockImplementation(function () { return {
     configureGitCredentials: vi.fn().mockResolvedValue(undefined),
+    writeCredentialFile: vi.fn().mockResolvedValue(undefined),
     cleanupGitCredentials: vi.fn().mockResolvedValue(undefined)
   }; })
 }));
@@ -692,6 +695,105 @@ describe('GitTool', () => {
       expect(result.output).toContain('Successfully restored files from commit abcdef1');
       expect(result.output).toContain('restored 3 files');
       expect(mockGitUtils.reset).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('cloneFreshFromRemote', () => {
+    const appPath = '/tmp/apps/test-app-id/app';
+    const cloneOptions = {
+      appId: 'test-app-id',
+      remoteName: 'origin',
+      branch: 'main',
+      token: 'ghp_test_token',
+      repoUrl: 'https://github.com/user/repo.git',
+    };
+
+    it('runs init → addRemote → writeCredentialFile → config → fetch → checkout', async () => {
+      const { GitUtils } = await import('../../utils/git.js');
+      const mockGitUtils = vi.mocked(GitUtils).mock.results[0]?.value;
+      const { GitRemoteTokenManager } = await import('../../services/GitRemoteTokenManager.js');
+      const mockTokenManager = vi.mocked(GitRemoteTokenManager).mock.results[0]?.value;
+
+      const result = await gitTool.cloneFreshFromRemote(appPath, cloneOptions);
+
+      expect(result.success).toBe(true);
+      expect(result.operation).toBe('clone');
+      expect(mockGitUtils.initRepository).toHaveBeenCalledWith(appPath);
+      expect(mockGitUtils.addRemote).toHaveBeenCalledWith(appPath, 'origin', 'https://github.com/user/repo.git');
+      expect(mockTokenManager.writeCredentialFile).toHaveBeenCalledWith('test-app-id', 'https://github.com/user/repo.git', 'ghp_test_token');
+      expect(mockGitUtils.fetch).toHaveBeenCalledWith(appPath, 'origin');
+      expect(mockGitUtils.switchBranch).toHaveBeenCalledWith(appPath, 'main');
+    });
+
+    it('always cleans up credentials even on failure', async () => {
+      const { GitUtils } = await import('../../utils/git.js');
+      const mockGitUtils = vi.mocked(GitUtils).mock.results[0]?.value;
+      const { GitRemoteTokenManager } = await import('../../services/GitRemoteTokenManager.js');
+      const mockTokenManager = vi.mocked(GitRemoteTokenManager).mock.results[0]?.value;
+
+      mockGitUtils.fetch.mockResolvedValue({ success: false, stderr: 'network error', stdout: '' });
+
+      const result = await gitTool.cloneFreshFromRemote(appPath, cloneOptions);
+
+      expect(result.success).toBe(false);
+      expect(mockTokenManager.cleanupGitCredentials).toHaveBeenCalledWith('test-app-id');
+    });
+
+    it('returns AUTH_FAILED errorCode on authentication errors', async () => {
+      const { GitUtils } = await import('../../utils/git.js');
+      const mockGitUtils = vi.mocked(GitUtils).mock.results[0]?.value;
+
+      mockGitUtils.fetch.mockResolvedValue({ success: false, stderr: 'Authentication failed for repo', stdout: '' });
+
+      const result = await gitTool.cloneFreshFromRemote(appPath, cloneOptions);
+
+      expect(result.success).toBe(false);
+      expect(result.errorCode).toBe('AUTH_FAILED');
+    });
+
+    it('fails when git init fails', async () => {
+      const { GitUtils } = await import('../../utils/git.js');
+      const mockGitUtils = vi.mocked(GitUtils).mock.results[0]?.value;
+
+      mockGitUtils.initRepository.mockResolvedValue({ success: false, stderr: 'permission denied', stdout: '' });
+
+      const result = await gitTool.cloneFreshFromRemote(appPath, cloneOptions);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('git init failed');
+    });
+
+    it('fails when addRemote fails', async () => {
+      const { GitUtils } = await import('../../utils/git.js');
+      const mockGitUtils = vi.mocked(GitUtils).mock.results[0]?.value;
+
+      mockGitUtils.addRemote.mockResolvedValue({ success: false, stderr: 'remote already exists', stdout: '' });
+
+      const result = await gitTool.cloneFreshFromRemote(appPath, cloneOptions);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('git remote add failed');
+    });
+
+    it('fails when checkout fails', async () => {
+      const { GitUtils } = await import('../../utils/git.js');
+      const mockGitUtils = vi.mocked(GitUtils).mock.results[0]?.value;
+
+      mockGitUtils.switchBranch.mockResolvedValue({ success: false, stderr: 'did not match any', stdout: '' });
+
+      const result = await gitTool.cloneFreshFromRemote(appPath, cloneOptions);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Checkout failed');
+    });
+
+    it('fails gracefully when token manager is not available', async () => {
+      const noTasksGitTool = new GitTool(undefined as any);
+
+      const result = await noTasksGitTool.cloneFreshFromRemote(appPath, cloneOptions);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('not available');
     });
   });
 });

@@ -15,9 +15,6 @@ import { createForWorkspace } from '../workspace/index.js';
 import { isSupportedProjectInContainer, SUPPORTED_BUILD_TOOLS, type PackageJsonDeps } from '../server/middleware/git-import-validation.js';
 import { appRestartService, type BuildToolType } from './AppRestartService.js';
 import type { WorkspaceTasks } from '../workspace/tasks.js';
-import { modifyViteConfig } from './ViteConfigModifier.js';
-import { injectPortHandling } from './ExpressPortInjector.js';
-import { codeSyncFileCleanupService } from './CodeSyncFileCleanupService.js';
 import { projectSourceDetectionService } from './ProjectSourceDetectionService.js';
 import { GitRemoteTokenManager } from './GitRemoteTokenManager.js';
 import { Logger } from '../logging/index.js';
@@ -61,32 +58,21 @@ export interface CommandOverrides {
 }
 
 /**
- * Parameters for git pull (extends base with vite config modification option)
+ * Parameters for git pull (extends base with clear/commands options)
  */
 export interface GitPullParams extends GitSyncParams {
-  /** Whether to modify vite config to set server.allowedHosts: true (for proxy compatibility) */
-  modifyViteConfig?: boolean;
-  /** Entry file for Node.js projects (e.g., 'src/server.ts') */
-  entryFile?: string;
   /** Custom commands to override defaults */
   commands?: CommandOverrides;
-  /** When true, wipe the /app working tree (preserving .git, .gitignore,
-   *  .is_ready, .import-*, public/assets) before pulling, so the customer's
-   *  repo replaces — rather than merges into — whatever is currently in /app.
+  /** When true, wipe /app completely and perform a fresh git clone so the
+   *  customer's repo replaces whatever is currently in /app.
    *
-   *  PaaS UI should set this on **any user-initiated repo bind or switch**:
+   *  Set this on any user-initiated repo bind or switch:
    *    - first git connect on app creation
    *    - switching the git repo from settings
    *    - binding git after an earlier zip import
    *
-   *  It is a no-op on a freshly-initialised PaaS workspace (only `.git/`
-   *  present), so callers don't need to distinguish "first connect on a
-   *  new app" from "switch / re-bind." Pre-this-PR PaaS apps still carry
-   *  the legacy AAB template scaffold and rely on this flag to clear it
-   *  on their first import.
-   *
-   *  AAB callers and ordinary subsequent pulls (routine sync) must leave
-   *  this unset, otherwise local-only commits get clobbered. */
+   *  Ordinary subsequent pulls (routine sync) must leave this unset,
+   *  otherwise local-only commits get clobbered. */
   clearWorkingTree?: boolean;
 }
 
@@ -393,13 +379,12 @@ export class GitOpsService {
    * @returns Result with job ID for status polling
    */
   async startPull(params: GitPullParams): Promise<GitOperationStartResult> {
-    const { appId, remoteName, branch, token, repoUrl, modifyViteConfig: shouldModifyViteConfig, clearWorkingTree } = params;
+    const { appId, remoteName, branch, token, repoUrl, clearWorkingTree } = params;
 
     logger.info('git-ops.pull.begin', {
       appId,
       remoteName: remoteName || 'origin',
       branch,
-      modifyViteConfig: shouldModifyViteConfig,
     });
 
     try {
@@ -461,8 +446,6 @@ export class GitOpsService {
           branch,
           token,
           repoUrl,
-          modifyViteConfig: shouldModifyViteConfig,
-          entryFile: params.entryFile,
           commands: params.commands,
           clearWorkingTree,
         });
@@ -499,8 +482,6 @@ export class GitOpsService {
       branch?: string;
       token?: string;
       repoUrl?: string;
-      modifyViteConfig?: boolean;
-      entryFile?: string;
       commands?: CommandOverrides;
       clearWorkingTree?: boolean;
     }
@@ -526,12 +507,9 @@ export class GitOpsService {
 
       const gitTool = new GitTool(workspace.tasks);
 
-      // Caller-driven tree clear. Used by the PaaS UI for "first git connect"
-      // (wipes the empty PaaS scaffold) and "switch git repo" (wipes the prior
-      // repo's contents). Ordinary subsequent pulls leave clearWorkingTree
-      // unset and behave as merges. Preserved paths match the zip-import
-      // wipe: .git (so the pull works), .gitignore, .is_ready, .import-*,
-      // public/assets.
+      // Caller-driven tree clear. Used for "first git connect" (wipes the
+      // scaffold) and "switch git repo" (wipes the prior repo). Empties
+      // .git (separate mount) and all app files, then init+fetch+checkout.
       if (options.clearWorkingTree) {
         const wipeResult = await this.wipeAppBeforePull(workspace.tasks, appId, jobId);
         if (!wipeResult.success) {
@@ -543,10 +521,7 @@ export class GitOpsService {
           return;
         }
 
-        // Use fetch + reset instead of pull to avoid merge conflicts with
-        // the initial local commit. This replaces the local branch entirely
-        // with the remote state — no merge, no conflict possible.
-        const result = await gitTool.fetchAndResetToRemote(appPath, {
+        const result = await gitTool.cloneFreshFromRemote(appPath, {
           appId,
           remoteName: options.remoteName,
           branch: options.branch || 'main',
@@ -555,7 +530,7 @@ export class GitOpsService {
         });
 
         if (!result.success) {
-          logger.error('git-ops.pull.fetch-reset.error', {
+          logger.error('git-ops.pull.clone.error', {
             appId,
             jobId,
             error: result.error,
@@ -563,7 +538,7 @@ export class GitOpsService {
 
           await this.importJobRepo.markFailed(
             jobId,
-            result.error || 'Git fetch and reset failed',
+            result.error || 'Git clone failed',
             'pulling'
           );
           return;
@@ -628,35 +603,38 @@ export class GitOpsService {
       if (!matchedTool) {
         logger.error('git-ops.pull.unsupported-project', { appId, jobId, supportedTools: supportedToolNames });
 
-        // Rollback the pull using ORIG_HEAD
-        const rollbackResult = await gitTool.executeGitOperation(appPath, {
-          operation: 'reset',
-          options: { mode: 'hard', hash: 'ORIG_HEAD' },
-        });
-
-        const rollbackFailed = !rollbackResult.success;
-        if (rollbackFailed) {
-          logger.error('git-ops.pull.rollback-failed', {
-            appId,
+        if (options.clearWorkingTree) {
+          // Fresh clone has no ORIG_HEAD — nothing to roll back to.
+          await this.importJobRepo.markFailed(
             jobId,
-            error: rollbackResult.error,
+            `Unsupported project (${supportedToolNames}). Repository does not use a supported build tool.`,
+            'pulling'
+          );
+        } else {
+          const rollbackResult = await gitTool.executeGitOperation(appPath, {
+            operation: 'reset',
+            options: { mode: 'hard', hash: 'ORIG_HEAD' },
           });
-        }
 
-        await this.importJobRepo.markFailed(
-          jobId,
-          rollbackFailed
-            ? `Unsupported project (${supportedToolNames}). Rollback failed - repository may be inconsistent.`
-            : `Unsupported project (${supportedToolNames}). Changes rolled back.`,
-          'pulling'
-        );
+          const rollbackFailed = !rollbackResult.success;
+          if (rollbackFailed) {
+            logger.error('git-ops.pull.rollback-failed', {
+              appId,
+              jobId,
+              error: rollbackResult.error,
+            });
+          }
+
+          await this.importJobRepo.markFailed(
+            jobId,
+            rollbackFailed
+              ? `Unsupported project (${supportedToolNames}). Rollback failed - repository may be inconsistent.`
+              : `Unsupported project (${supportedToolNames}). Changes rolled back.`,
+            'pulling'
+          );
+        }
         return;
       }
-
-      // Clean up junk/security-sensitive files after pull (single command, no scanning).
-      // Exclude .git/ — it must be preserved for subsequent pulls to work.
-      await codeSyncFileCleanupService.deleteCleanablePatterns(workspace.tasks, '/app', ['.git/']);
-      logger.info('git-ops.pull.cleanup-files.complete', { appId, jobId });
 
       projectSourceDetectionService.detectAndLogInBackground({
         appId,
@@ -667,70 +645,6 @@ export class GitOpsService {
 
       // Always use Node.js build tool type (Vite detection removed)
       const buildToolType: BuildToolType = 'nodejs';
-
-      // Modify vite config if requested (for proxy compatibility).
-      // Non-fatal: failures are logged as warnings but don't fail the job,
-      // matching zip import behavior. The app may still work without this modification.
-      if (options.modifyViteConfig) {
-        const viteConfigResult = await modifyViteConfig(workspace.tasks, '/app');
-        if (viteConfigResult.modified) {
-          logger.info('git-ops.pull.vite-config.modified', {
-            appId,
-            jobId,
-            configFile: viteConfigResult.configFile,
-          });
-        } else if (viteConfigResult.error) {
-          logger.warn('git-ops.pull.vite-config.warning', {
-            appId,
-            jobId,
-            error: viteConfigResult.error,
-          });
-        }
-      }
-
-      // For Node.js projects, inject PORT handling
-      if (buildToolType === 'nodejs') {
-        if (!options.entryFile) {
-          logger.warn('git-ops.pull.nodejs.no-entry-file', {
-            appId,
-            jobId,
-            message: 'Node.js project detected but no entryFile provided. Skipping PORT injection.',
-          });
-        } else {
-          logger.info('git-ops.pull.nodejs.port-injection.start', {
-            appId,
-            jobId,
-            entryFile: options.entryFile,
-          });
-
-          const portInjectionResult = await injectPortHandling(
-            workspace.tasks,
-            '/app',
-            options.entryFile
-          );
-
-          if (portInjectionResult.modified) {
-            logger.info('git-ops.pull.nodejs.port-injection.success', {
-              appId,
-              jobId,
-              entryFile: options.entryFile,
-            });
-          } else if (portInjectionResult.skipped) {
-            logger.info('git-ops.pull.nodejs.port-injection.skipped', {
-              appId,
-              jobId,
-              reason: portInjectionResult.reason,
-            });
-          } else if (portInjectionResult.error) {
-            logger.warn('git-ops.pull.nodejs.port-injection.failed', {
-              appId,
-              jobId,
-              error: portInjectionResult.error,
-            });
-            // Don't fail - the user might have already configured PORT handling
-          }
-        }
-      }
 
       // Perform restart cycle with custom commands and build tool type
       const restartResult = await appRestartService.performFullRestartCycle(appId, appPath, {
@@ -767,8 +681,6 @@ export class GitOpsService {
         appDirSizeMB: bytesToMB(metrics.appDirSizeBytes),
       });
 
-      // Commit pulled changes only after successful restart
-      void this.commitPostPulledChanges(gitTool, appPath, appId, jobId);
       logger.info('git-ops.pull.success', { appId, jobId });
       await this.importJobRepo.markCompleted(jobId);
     } catch (error) {
@@ -786,68 +698,6 @@ export class GitOpsService {
     }
   }
 
-  /**
-   * Commit pulled changes to local repository
-   *
-   * Stages all changes and commits them to ensure the local git state is clean.
-   * This is called after a successful restart to persist the pulled changes.
-   *
-   * @param gitTool - GitTool instance
-   * @param appPath - Path to the app
-   * @param appId - App ID for logging
-   * @param jobId - Job ID for logging
-   */
-  private async commitPostPulledChanges(
-    gitTool: GitTool,
-    appPath: string,
-    appId: string,
-    jobId: string
-  ): Promise<void> {
-    // This is a non-blocking step - failures should not affect the pull operation
-    try {
-      logger.info('git-ops.pull.committing', { appId, jobId });
-
-      // Stage all changes
-      const addResult = await gitTool.executeGitOperation(appPath, {
-        operation: 'add',
-        files: ['.'],
-      });
-
-      if (!addResult.success) {
-        logger.warn('git-ops.pull.add-failed', {
-          appId,
-          jobId,
-          error: addResult.error,
-        });
-        return;
-      }
-
-      // Commit the changes
-      const commitResult = await gitTool.executeGitOperation(appPath, {
-        operation: 'commit',
-        message: 'Post-pull state commit',
-      });
-
-      if (!commitResult.success) {
-        // Commit may fail if there are no changes to commit (already clean)
-        // This is not an error condition
-        logger.info('git-ops.pull.commit-skipped', {
-          appId,
-          jobId,
-          reason: commitResult.error,
-        });
-      } else {
-        logger.info('git-ops.pull.commit-success', { appId, jobId });
-      }
-    } catch (error) {
-      // Log and swallow any unexpected errors - commit is non-blocking
-      logger.warn('git-ops.pull.commit-error', {
-        appId,
-        jobId,
-        error: getErrorMessage(error),
-      });
-    }
-  }
 
   /**
    * Get status of a specific git sync job
@@ -906,12 +756,9 @@ export class GitOpsService {
   }
 
   /**
-   * Wipe /app contents before a git pull, preserving the same set of paths
-   * used by the zip-import flow so persistent mounts and platform files
-   * survive: .git (so the pull works), .gitignore, .is_ready, .import-*,
-   * public/assets.
-   *
-   * Mirrors ProjectImportService.copyFilesInContainer's wipe command.
+   * Wipe /app contents and empty the .git mount before a fresh init+fetch.
+   * Preserves the .git directory itself (separate filesystem mount) but
+   * removes all contents inside it so git init can repopulate it cleanly.
    */
   private async wipeAppBeforePull(
     tasks: WorkspaceTasks,
@@ -919,11 +766,10 @@ export class GitOpsService {
     jobId: string
   ): Promise<{ success: boolean; error?: string }> {
     const containerAppPath = '/app';
-    const wipeCommand =
-      `find "${containerAppPath}" -mindepth 1 -maxdepth 1 ` +
-      `! -name ".git" ! -name ".gitignore" ! -name ".is_ready" ! -name ".import-*" ! -name "public" ` +
-      `-exec rm -rf {} + && ` +
-      `{ [ -d "${containerAppPath}/public" ] && find "${containerAppPath}/public" -mindepth 1 -maxdepth 1 ! -name "assets" -exec rm -rf {} + || true; }`;
+    const wipeCommand = [
+      `find "${containerAppPath}" -mindepth 1 -maxdepth 1 ! -name ".git" -exec rm -rf {} +`,
+      `find "${containerAppPath}/.git" -mindepth 1 -maxdepth 1 -exec rm -rf {} + 2>/dev/null || true`,
+    ].join(' && ');
 
     const result = await tasks.runCommandSync({
       command: wipeCommand,
@@ -937,7 +783,7 @@ export class GitOpsService {
         stderr: result.stderr,
         exitCode: result.exitCode,
       });
-      return { success: false, error: `Pre-pull wipe failed: ${result.stderr}` };
+      return { success: false, error: `Pre-clone wipe failed: ${result.stderr}` };
     }
 
     logger.info('git-ops.pull.wipe.success', { appId, jobId });

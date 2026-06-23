@@ -47,29 +47,8 @@ export class GitRemoteTokenManager {
     });
 
     try {
-      // Token resolution order:
-      // 1. Directly provided (PaaS pattern / BFF manual push)
-      // 2. /alloc/config.json (Nomad production)
-      // 3. APPS_BASE_DIR/<appId>/local/preview/config.json (local dev)
-      let effectiveToken = token;
-      if (!effectiveToken) {
-        const nomadConfig = getNomadAllocConfig();
-        effectiveToken = nomadConfig?.GITHUB_TOKEN?.VALUE as string | undefined;
-      }
-      if (!effectiveToken && appId) {
-        effectiveToken = this.readLocalDevToken(appId);
-      }
-
-      if (!effectiveToken) {
-        throw new Error('GitHub token not provided in request and not found in config. Please provide token in request body or configure via secrets API.');
-      }
-
-      // Detect provider to get correct credential format
-      const provider = GitProviderFactory.getProvider(repoUrl);
-      const hostname = provider.getHostname(repoUrl);
-
-      // Build bash script with token
-      const script = this.buildCredentialScript(provider.name, hostname, effectiveToken);
+      const { credentialUrl, providerName } = this.resolveCredentialUrl(appId, repoUrl, token);
+      const script = this.buildCredentialScript(providerName, credentialUrl);
 
       const execResult = await this.tasks.runCommandSync({
         command: script,
@@ -85,10 +64,59 @@ export class GitRemoteTokenManager {
 
       this.logger.info('git-remote.credentials.configure.success', {
         appId,
-        provider: provider.name
+        provider: providerName
       });
     } catch (error) {
       this.logger.error('git-remote.credentials.configure.error', {
+        appId,
+        repoUrl,
+        error: getErrorMessage(error)
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Write credential file without configuring local git config.
+   *
+   * Use when .git doesn't exist yet (e.g., before git init).
+   * Writes /tmp/.git-credentials with provider-specific format.
+   * Call cleanupGitCredentials() in a finally block after the operation.
+   */
+  async writeCredentialFile(appId: string, repoUrl: string, token?: string): Promise<void> {
+    this.logger.info('git-remote.credentials.write-file.start', {
+      appId,
+      repoUrl,
+      tokenSource: token ? 'request' : 'config'
+    });
+
+    try {
+      const { credentialUrl, providerName } = this.resolveCredentialUrl(appId, repoUrl, token);
+
+      const script = `
+        set -e
+        echo "${credentialUrl}" > /tmp/.git-credentials
+        chmod 600 /tmp/.git-credentials
+      `;
+
+      const execResult = await this.tasks.runCommandSync({
+        command: script,
+        workingDir: '/tmp',
+        timeoutSeconds: 30,
+      });
+
+      if (execResult.exitCode !== 0) {
+        throw new Error(
+          `Credential file write failed: ${execResult.stderr || execResult.stdout || 'Unknown error'}`
+        );
+      }
+
+      this.logger.info('git-remote.credentials.write-file.success', {
+        appId,
+        provider: providerName
+      });
+    } catch (error) {
+      this.logger.error('git-remote.credentials.write-file.error', {
         appId,
         repoUrl,
         error: getErrorMessage(error)
@@ -192,63 +220,48 @@ export class GitRemoteTokenManager {
   }
 
   /**
-   * Build provider-specific credential configuration script
-   *
-   * @param providerName - Provider type (github, gitlab, bitbucket)
-   * @param hostname - Provider hostname (github.com, gitlab.com, etc.)
-   * @param token - Git authentication token
-   * @returns Bash script to execute inside container
+   * Resolve token from all sources and build the provider-specific credential URL.
+   * Shared by both configureGitCredentials and writeCredentialFile.
    */
-  private buildCredentialScript(
-    providerName: string,
-    hostname: string,
-    token: string
-  ): string {
-    // Get provider-specific credential URL
-    const credentialUrl = this.getProviderCredentialUrl(providerName, hostname, token);
+  private resolveCredentialUrl(appId: string, repoUrl: string, token?: string): { credentialUrl: string; providerName: string } {
+    let effectiveToken = token;
+    if (!effectiveToken) {
+      const nomadConfig = getNomadAllocConfig();
+      effectiveToken = nomadConfig?.GITHUB_TOKEN?.VALUE as string | undefined;
+    }
+    if (!effectiveToken && appId) {
+      effectiveToken = this.readLocalDevToken(appId);
+    }
 
+    if (!effectiveToken) {
+      throw new Error('GitHub token not provided in request and not found in config. Please provide token in request body or configure via secrets API.');
+    }
+
+    const provider = GitProviderFactory.getProvider(repoUrl);
+    const hostname = provider.getHostname(repoUrl);
+    const credentialUrl = this.buildCredentialUrl(provider.name, hostname, effectiveToken);
+
+    return { credentialUrl, providerName: provider.name };
+  }
+
+  private buildCredentialScript(providerName: string, credentialUrl: string): string {
     return `
-      set -e  # Exit on error
-
-      # Create credential file with provider-specific format
+      set -e
       echo "${credentialUrl}" > /tmp/.git-credentials
-
-      # Secure the credential file
       chmod 600 /tmp/.git-credentials
-
-      # Configure git to use credential helper
       git config --local credential.helper "store --file=/tmp/.git-credentials"
-
-      echo "Git credentials configured successfully"
+      echo "Git credentials configured for ${providerName}"
     `;
   }
 
-  /**
-   * Get provider-specific credential URL
-   *
-   * @param providerName - Provider type
-   * @param hostname - Provider hostname
-   * @param token - Authentication token
-   * @returns Credential URL with token embedded
-   */
-  private getProviderCredentialUrl(
-    providerName: string,
-    hostname: string,
-    token: string
-  ): string {
+  private buildCredentialUrl(providerName: string, hostname: string, token: string): string {
     switch (providerName) {
       case 'github':
-        // GitHub format: https://x-access-token:TOKEN@github.com
         return `https://x-access-token:${token}@${hostname}`;
-
       case 'gitlab':
-        // GitLab format: https://oauth2:TOKEN@gitlab.com
         return `https://oauth2:${token}@${hostname}`;
-
       case 'bitbucket':
-        // Bitbucket format: https://USERNAME:APP_PASSWORD@bitbucket.org
         return `https://${token}@${hostname}`;
-
       default:
         throw new Error(`Unsupported provider: ${providerName}`);
     }

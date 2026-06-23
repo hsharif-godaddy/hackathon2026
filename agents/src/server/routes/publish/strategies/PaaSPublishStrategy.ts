@@ -8,9 +8,6 @@ import {
   resolveStartCommand,
 } from '../../../../services/AppRestartService.js';
 
-/** Tracked path that carries the PaaS start command into the publish archive. */
-const PAAS_CONFIG_REPO_PATH = '.airo/config.json';
-
 // =============================================================================
 // PaaS Publish Recovery Configuration
 // =============================================================================
@@ -139,11 +136,11 @@ export class PaaSPublishStrategy implements PublishStrategy {
     // Step 0: Ensure preview is running before proceeding
     await this.ensurePreviewRunning(context);
 
-    // Step 0.4: Resolve and persist a start command into a *committed*
-    // .airo/config.json. Preview boots dev-only apps via the image-floor CMD
-    // (`npm run dev`) with no config, so apps that never went through the
-    // committed-import path arrive here with nothing for paas-run.sh to exec.
-    // This restores the invariant "if it starts in preview, it publishes".
+    // Step 0.4: Resolve and persist a start command into .airo/config.json.
+    // Preview boots dev-only apps via the image-floor CMD (`npm run dev`)
+    // with no config, so apps that never went through the import path arrive
+    // here with nothing for paas-run.sh to exec. The file is included in the
+    // archive even when untracked (getUntrackedExclusions preserves .airo/).
     await this.ensureStartCommandPersisted(context);
 
     // Step 0.5: Pre-flight — verify the archive will contain a usable start
@@ -242,27 +239,21 @@ export class PaaSPublishStrategy implements PublishStrategy {
   }
 
   /**
-   * Ensure the app carries a *committed* `.airo/config.json` with a
-   * `runtime.serve.command` before the archive is built.
+   * Ensure `.airo/config.json` has a `runtime.serve.command` before the
+   * archive is built.
    *
-   * The PaaS archive tars the `/app` working tree with `excludeUntracked`,
-   * which drops anything `git ls-files --others` reports — so an uncommitted
-   * config (e.g. one written by the dev-restart cycle, or none at all for a
-   * scaffolded dev-only app) would never reach the publish container even
-   * though preview ran fine. Here we:
+   * If no `serve.command` is present, resolve one via the shared fallback
+   * chain (user → scripts.start → scripts.dev → default — same logic as
+   * import and restart) and write it with `createPaasConfig`.
    *
-   *   1. If no `serve.command` is present, resolve one via the shared fallback
-   *      chain (user → scripts.start → scripts.dev → default — same logic as
-   *      import and restart) and write it with `createPaasConfig`.
-   *   2. Commit `.airo/config.json` (scoped) so it survives `excludeUntracked`
-   *      and ships in the tar.
+   * The file does not need to be committed — `getUntrackedExclusions`
+   * explicitly preserves `.airo/` in the archive even when untracked.
    *
-   * An existing `serve.command` is never overwritten — it is only committed if
-   * not already tracked. On an infrastructure read failure we skip and let the
-   * preflight handle reporting.
+   * An existing `serve.command` is never overwritten. On an infrastructure
+   * read failure we skip and let the preflight handle reporting.
    */
   private async ensureStartCommandPersisted(context: PublishContext): Promise<void> {
-    const { logger, tasks, gitUtils, appPath, appId } = context;
+    const { logger, tasks, appPath, appId } = context;
 
     const state = await this.readPaasStartState(context);
     if (!state) {
@@ -306,25 +297,13 @@ export class PaaSPublishStrategy implements PublishStrategy {
       logger.info(`route.publish.${this.key}.start-command.persisted`, {
         appId,
         reason: 'start-script-sufficient',
-        committed: false,
       });
       return;
     }
 
-    // At this point a `.airo/config.json` exists (pre-existing serve command, or
-    // one we just wrote). Commit it so it is tracked and survives the
-    // excludeUntracked archive filter — this also rescues a config written but
-    // never committed by the dev-restart cycle. No-op if already committed.
-    const committed = await gitUtils.commitFileIfChanged(
-      appPath,
-      PAAS_CONFIG_REPO_PATH,
-      'chore(paas): persist runtime serve command for publish',
-    );
-
     logger.info(`route.publish.${this.key}.start-command.persisted`, {
       appId,
       hadServeCommand: state.serveCommand !== null,
-      committed,
     });
   }
 
