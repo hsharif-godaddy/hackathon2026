@@ -8,6 +8,14 @@ on:
 
 permissions:
   pull-requests: write
+  # actions/stale lists PRs via the issues endpoint (PRs are issues in the
+  # REST API), so it needs the issues permission even though issue staling
+  # is disabled below. Read is enough since we never label/close issues.
+  issues: read
+  # The action persists a cursor in the Actions cache so each run resumes
+  # from the first unprocessed PR (see operations-per-run + ascending
+  # below). That state save requires actions: write.
+  actions: write
 
 concurrency:
   group: stale-prs
