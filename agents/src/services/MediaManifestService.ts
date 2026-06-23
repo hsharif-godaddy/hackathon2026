@@ -559,7 +559,14 @@ async function copyLocalFileToMedia(
   // assets/public/images/... (URL /assets/images/... → relative path images/...), not
   // assets/public/assets/images/... — try preview mirror, then persistent with and without
   // the leading "assets/" segment.
-  const sanitizedPath = localUrlPath.replace(/^\/+/, '');
+  const stripped = localUrlPath.replace(/^\/+/, '');
+  let sanitizedPath: string;
+  try {
+    sanitizedPath = decodeURIComponent(stripped);
+  } catch {
+    logger.error('media_manifest.copy_local.invalid_encoding', { localUrlPath });
+    return null;
+  }
   if (sanitizedPath.split('/').includes('..')) {
     logger.error('media_manifest.copy_local.path_traversal_blocked', { localUrlPath });
     return null;

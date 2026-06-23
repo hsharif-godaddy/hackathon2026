@@ -308,6 +308,76 @@ describe("MediaManifestService - importSlot", () => {
     expect(result.error).toMatch(/Could not read the image under public\//);
   });
 
+  it("decodes percent-encoded spaces in filenames before filesystem lookup", async () => {
+    const fakeImageBuffer = Buffer.from("fake-image-data");
+    vi.mocked(fs.readFile)
+      .mockResolvedValueOnce(JSON.stringify({}))
+      .mockResolvedValueOnce(fakeImageBuffer as any);
+    vi.mocked(fs.writeFile).mockResolvedValue(undefined);
+    vi.mocked(fs.rename).mockResolvedValue(undefined);
+    vi.mocked(fs.mkdir).mockResolvedValue(undefined);
+
+    vi.mocked(fs.stat).mockImplementation((p: string | Buffer | URL) => {
+      if (String(p) === "/tmp/test-app/public/assets/foo bar.jpeg") {
+        return Promise.resolve(fileStat);
+      }
+      return Promise.reject(Object.assign(new Error("ENOENT"), { code: "ENOENT" }));
+    });
+
+    const result = await service.importSlot("test-app", {
+      imageUrl: "https://localhost:5009/assets/foo%20bar.jpeg",
+      imageAlt: "Spaced",
+      devContext: {
+        fileName: "src/pages/index.tsx",
+        componentName: "unknown",
+        lineNumber: 10,
+      },
+    });
+
+    expect(result.success).toBe(true);
+    expect(fs.stat).toHaveBeenCalledWith("/tmp/test-app/public/assets/foo bar.jpeg");
+    expect(vi.mocked(fs.stat).mock.calls.every(([p]) => !String(p).includes("%20"))).toBe(true);
+  });
+
+  // Bare-path input here — full http(s) URLs would have `..` collapsed by URL.pathname before reaching the guard.
+  it("blocks percent-encoded path traversal after decoding", async () => {
+    vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify({}));
+    vi.mocked(fs.writeFile).mockResolvedValue(undefined);
+    vi.mocked(fs.rename).mockResolvedValue(undefined);
+
+    const result = await service.importSlot("test-app", {
+      imageUrl: "/assets/%2e%2e/secret.jpg",
+      imageAlt: "Traversal",
+      devContext: {
+        fileName: "src/pages/index.tsx",
+        componentName: "unknown",
+        lineNumber: 10,
+      },
+    });
+
+    expect(result).toMatchObject({ success: false, httpStatus: 400 });
+    expect(fs.stat).not.toHaveBeenCalled();
+  });
+
+  it("fails cleanly on malformed percent-encoding", async () => {
+    vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify({}));
+    vi.mocked(fs.writeFile).mockResolvedValue(undefined);
+    vi.mocked(fs.rename).mockResolvedValue(undefined);
+
+    const result = await service.importSlot("test-app", {
+      imageUrl: "/assets/foo%E0%A4%A.jpeg",
+      imageAlt: "Malformed",
+      devContext: {
+        fileName: "src/pages/index.tsx",
+        componentName: "unknown",
+        lineNumber: 10,
+      },
+    });
+
+    expect(result).toMatchObject({ success: false, httpStatus: 400 });
+    expect(fs.stat).not.toHaveBeenCalled();
+  });
+
   it("creates slot with correct MediaSlot shape", async () => {
     vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify({}));
     vi.mocked(fs.writeFile).mockResolvedValue(undefined);
