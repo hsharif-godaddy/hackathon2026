@@ -151,8 +151,8 @@ describe('ElementHoverBar - Commerce product image gating', () => {
 
     openToolbar(img);
 
-    expect(await screen.findByTitle('Replace image')).not.toBeNull();
-    expect(await screen.findByTitle('Modify image')).not.toBeNull();
+    expect(await screen.findByRole('button', { name: 'Replace' })).not.toBeNull();
+    expect(await screen.findByRole('button', { name: 'Modify' })).not.toBeNull();
   });
 
   it('hides Replace/Modify for Commerce product images (no data-dev-id, not a media slot)', () => {
@@ -164,8 +164,8 @@ describe('ElementHoverBar - Commerce product image gating', () => {
     renderHoverBar(hovered);
     openToolbar(img);
 
-    expect(screen.queryByTitle('Replace image')).toBeNull();
-    expect(screen.queryByTitle('Modify image')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Replace' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Modify' })).toBeNull();
   });
 
   it('shows Replace/Modify for Commerce app images that ARE media slots', async () => {
@@ -181,8 +181,8 @@ describe('ElementHoverBar - Commerce product image gating', () => {
     renderHoverBar(hovered);
     openToolbar(img);
 
-    expect(await screen.findByTitle('Replace image')).not.toBeNull();
-    expect(await screen.findByTitle('Modify image')).not.toBeNull();
+    expect(await screen.findByRole('button', { name: 'Replace' })).not.toBeNull();
+    expect(await screen.findByRole('button', { name: 'Modify' })).not.toBeNull();
   });
 
   it('shows Replace/Modify for Commerce app images with data-dev-id (user source code)', async () => {
@@ -196,11 +196,11 @@ describe('ElementHoverBar - Commerce product image gating', () => {
     renderHoverBar(hovered);
     openToolbar(img);
 
-    expect(await screen.findByTitle('Replace image')).not.toBeNull();
-    expect(await screen.findByTitle('Modify image')).not.toBeNull();
+    expect(await screen.findByRole('button', { name: 'Replace' })).not.toBeNull();
+    expect(await screen.findByRole('button', { name: 'Modify' })).not.toBeNull();
   });
 
-  it('still shows Reference and Edit with AI for Commerce product images', async () => {
+  it('still shows Reference but hides Edit with AI for Commerce product images', async () => {
     vi.stubEnv('VITE_GODADDY_STORE_ID', 'store-123');
 
     const img = makeImageElement();
@@ -209,8 +209,51 @@ describe('ElementHoverBar - Commerce product image gating', () => {
     renderHoverBar(hovered);
     openToolbar(img);
 
-    expect(await screen.findByTitle('Add as reference')).not.toBeNull();
-    expect(await screen.findByTitle('Edit with AI')).not.toBeNull();
+    expect(await screen.findByRole('button', { name: 'Add as reference' })).not.toBeNull();
+    expect(screen.queryByRole('button', { name: 'Edit with AI' })).toBeNull();
+  });
+
+  it('hides image mutation actions for direct-DOM Commerce product images', () => {
+    vi.stubEnv('VITE_GODADDY_STORE_ID', '');
+
+    const root = document.createElement('article');
+    root.setAttribute('data-dev-source-origin', 'commerce');
+    root.setAttribute('data-dev-commerce-product-id', 'sku-group-1');
+    const img = makeImageElement({ 'data-dev-id': 'src/pages/Product.tsx:15' });
+    root.appendChild(img);
+    document.body.appendChild(root);
+    const hovered = makeImageHover(img);
+
+    renderHoverBar(hovered);
+    openToolbar(img);
+
+    expect(screen.queryByRole('button', { name: 'Replace' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Modify' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Delete' })).toBeNull();
+  });
+});
+
+describe('ElementHoverBar - Commerce product text gating', () => {
+  it('hides Quick Edit for direct-DOM Commerce product text', async () => {
+    const detection = await import('../../utils/element-detection');
+    vi.mocked(detection.isTextElement).mockReturnValue(true);
+
+    const root = document.createElement('article');
+    root.setAttribute('data-dev-source-origin', 'commerce');
+    root.setAttribute('data-dev-commerce-product-id', 'sku-group-1');
+    const h2 = document.createElement('h2');
+    h2.textContent = 'Commerce product';
+    h2.getBoundingClientRect = vi.fn(() => ({
+      top: 100, left: 100, width: 200, height: 50, right: 300, bottom: 150, x: 100, y: 100, toJSON: () => {},
+    } as DOMRect));
+    root.appendChild(h2);
+    document.body.appendChild(root);
+
+    renderHoverBar({ type: 'content', element: h2 });
+    openToolbar(h2);
+
+    expect(await screen.findByRole('button', { name: 'Add as reference' })).not.toBeNull();
+    expect(screen.queryByRole('button', { name: 'Edit with AI' })).toBeNull();
   });
 });
 
@@ -306,7 +349,7 @@ describe('ElementHoverBar - bound text formatting gating', () => {
     renderHoverBar({ type: 'content', element: first });
     openToolbar(first);
 
-    expect(await screen.findByTitle('Add as reference')).not.toBeNull();
+    expect(await screen.findByRole('button', { name: 'Add as reference' })).not.toBeNull();
     expect(screen.queryByTitle('Bound format controls')).toBeNull();
   });
 });
@@ -358,7 +401,7 @@ describe('ElementHoverBar - tracking', () => {
     const hovered = makeImageHover(img, { imageUrl: 'https://x/y.jpg' });
     renderHoverBar(hovered);
     openToolbar(img);
-    fireEvent.click(screen.getByTitle('Replace image'));
+    fireEvent.click(screen.getByRole('button', { name: 'Replace' }));
     expect(findTrackCall('devtools.toolbar.replace_image')).toBeTruthy();
   });
 
@@ -368,7 +411,7 @@ describe('ElementHoverBar - tracking', () => {
     const hovered = makeImageHover(img, { imageUrl: 'https://x/y.jpg' });
     renderHoverBar(hovered);
     openToolbar(img);
-    fireEvent.click(screen.getByTitle('Modify image'));
+    fireEvent.click(screen.getByRole('button', { name: 'Modify' }));
     expect(findTrackCall('devtools.toolbar.modify_image')).toBeTruthy();
   });
 
@@ -378,7 +421,7 @@ describe('ElementHoverBar - tracking', () => {
     const hovered = makeImageHover(img, { imageUrl: 'https://x/y.jpg' });
     renderHoverBar(hovered);
     openToolbar(img);
-    fireEvent.click(screen.getByTitle('Add as reference'));
+    fireEvent.click(screen.getByRole('button', { name: 'Add as reference' }));
     expect(findTrackCall('devtools.toolbar.multi_select_add')).toBeTruthy();
   });
 
@@ -388,7 +431,7 @@ describe('ElementHoverBar - tracking', () => {
     const hovered = makeImageHover(img, { imageUrl: 'https://x/y.jpg' });
     renderHoverBar(hovered);
     openToolbar(img);
-    fireEvent.click(screen.getByTitle('Edit with AI'));
+    fireEvent.click(screen.getByRole('button', { name: 'Edit with AI' }));
     expect(findTrackCall('devtools.toolbar.sparkles')).toBeTruthy();
   });
 });

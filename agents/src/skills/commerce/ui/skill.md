@@ -106,6 +106,20 @@ For `/api/commerce/checkout` or `/api/commerce/order-status`, install `payment/g
 - A **cart** is a draft order. The app owns persistence of this, typically in `localStorage` keyed per store/channel.
 - After a SKU is selected, prefer SKU-level price/media over SKU-group-level price/media.
 - Prices are integers in the currency's smallest unit. A `value: 1999` on a USD price means `$19.99`.
+- When rendering product DOM directly, put `data-dev-source-origin="commerce"` and `data-dev-commerce-product-id={skuGroup.id}` on the top-most card/PDP product root. Add `data-dev-commerce-sku-id={sku.id}` when a variant is selected or uniquely resolved. Child name/price/description/image elements inherit this marker, so AAB dev-tools block inline/Fix/Quick Edit mutations for Commerce-owned fields.
+
+Commerce-related data-dev-* attributes placement; keep the app's normal product markup/styles and add Commerce markers to the outer product element:
+
+```tsx
+<article
+  {...productCardProps}
+  data-dev-source-origin="commerce"
+  data-dev-commerce-product-id={skuGroup.id ?? ''}
+  data-dev-commerce-sku-id={selectedSku?.id ?? undefined}
+>
+  {productContent}
+</article>
+```
 
 ## Common Flows
 

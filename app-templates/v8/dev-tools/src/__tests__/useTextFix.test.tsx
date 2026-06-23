@@ -98,6 +98,20 @@ describe('useTextFix', () => {
     expect(safePostMessage).not.toHaveBeenCalled();
   });
 
+  it('skips request for Commerce-managed product text', () => {
+    const { result } = renderHook(() => useTextFix());
+    const el = makeParagraph('Commerce product');
+    el.setAttribute('data-dev-source-origin', 'commerce');
+    el.setAttribute('data-dev-commerce-product-id', 'sku-group-1');
+
+    act(() => {
+      result.current.request(el);
+    });
+
+    expect(result.current.state.status).toBe('idle');
+    expect(safePostMessage).not.toHaveBeenCalled();
+  });
+
   it('transitions to preview on TEXT_FIX_RESULT with changed:true and a real diff', () => {
     const { result } = renderHook(() => useTextFix());
     const el = makeParagraph('teh quick fox');
@@ -245,6 +259,29 @@ describe('useTextFix', () => {
     const types = calls.map((c) => (c[1] as { type: string }).type);
     expect(types).toContain('TEXT_FIX_ACCEPTED');
     expect(types).toContain('TEXT_UPDATED');
+  });
+
+  it('accept() does not emit TEXT_UPDATED for Commerce-managed product text', () => {
+    const { result } = renderHook(() => useTextFix());
+    const el = makeParagraph('teh');
+
+    act(() => {
+      result.current.request(el);
+    });
+    act(() => {
+      replyFromParent('TEXT_FIX_RESULT', lastRequestId(), { newText: 'the', changed: true });
+    });
+
+    el.setAttribute('data-dev-source-origin', 'commerce');
+    el.setAttribute('data-dev-commerce-product-id', 'sku-group-1');
+    (safePostMessage as unknown as { mockClear: () => void }).mockClear();
+
+    act(() => {
+      result.current.accept(el);
+    });
+
+    expect(result.current.state.status).toBe('idle');
+    expect(safePostMessage).not.toHaveBeenCalled();
   });
 
   it('reject() emits TEXT_FIX_REJECTED when in preview state', () => {

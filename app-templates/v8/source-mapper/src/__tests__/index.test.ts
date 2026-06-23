@@ -108,6 +108,36 @@ describe('jsxSourceMapper — data-dev-dynamic', () => {
   });
 });
 
+describe('jsxSourceMapper — Commerce component ownership', () => {
+  it('wraps imported Commerce product components in a Commerce-owned dev marker', () => {
+    const output = transform(`
+      import { ProductDetails } from '@godaddy/react';
+      export default () => <ProductDetails productId="sku-group-1" />;
+    `);
+
+    expect(output).toContain('data-dev-source-origin="commerce"');
+    expect(output).toContain('data-dev-commerce-component="ProductDetails"');
+    expect(output).toContain('display: "contents"');
+  });
+
+  it('tags legacy direct-DOM Commerce fields when they read Commerce data', () => {
+    const output = transform(`
+      import { getPrimaryImageUrl } from '../lib/commerce/catalog-subgraph';
+      export default function ProductCard({ skuGroup }) {
+        return (
+          <article>
+            <img src={getPrimaryImageUrl(skuGroup) ?? ''} alt={skuGroup.label ?? ''} />
+            <h2>{skuGroup.label}</h2>
+            <p>{skuGroup.description}</p>
+          </article>
+        );
+      }
+    `);
+
+    expect(output.match(/data-dev-source-origin="commerce"/g)).toHaveLength(3);
+  });
+});
+
 describe('jsxSourceMapper — data-dev-content-key', () => {
   it('emits content-key for direct member access on a content binding', () => {
     const output = transform(`

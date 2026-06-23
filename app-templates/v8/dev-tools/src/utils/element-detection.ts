@@ -1,3 +1,5 @@
+import { isCommerceManagedContent } from "./commerce-managed-content";
+
 // ─── Tag sets (composed smallest → largest) ──────────────────────────────────
 
 export const HEADING_TAGS = new Set(["h1", "h2", "h3", "h4", "h5", "h6"]);
@@ -113,6 +115,8 @@ export function isBodyTextElement(element: HTMLElement): boolean {
 
 /** Check if an element is suitable for inline text editing */
 export function isTextEditable(element: HTMLElement, cmsInlineEditEnabled: boolean): boolean {
+  if (isCommerceManagedContent(element)) return false;
+
   // Content-layer elements are editable only when CMS inline-edit is enabled.
   // When the flag is off they are NOT editable AND must not fall through to the
   // AST heuristics below — editing a content-bound element via the JSX source

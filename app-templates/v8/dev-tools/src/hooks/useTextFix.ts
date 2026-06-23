@@ -3,6 +3,7 @@ import { send } from "../utils/eventBus";
 import { extractDevContext, generatePreciseSelector } from "../utils/element-helpers";
 import { mergeOriginalClasses } from "../utils/text-editing-helpers";
 import { htmlToJsxStructured } from "../utils/html-to-jsx";
+import { isCommerceManagedContent } from "../utils/commerce-managed-content";
 import {
   type FixState,
   htmlStringToDisplayText,
@@ -63,6 +64,8 @@ export function useTextFix(): UseTextFixResult {
   }, [cancelPending]);
 
   const request = useCallback((el: HTMLElement) => {
+    if (isCommerceManagedContent(el)) return;
+
     // We send the element's innerHTML to the proofreader so it has the full
     // structural picture — text + `<br>` + `<span>`/`<strong>`/`<a>` etc. The
     // agent prompt instructs strict tag/attribute preservation; only text
@@ -144,6 +147,11 @@ export function useTextFix(): UseTextFixResult {
   // (callers re-grab from `useTextFix()` each render anyway).
   const accept = useCallback((el: HTMLElement) => {
     if (state.status !== "preview") return;
+    if (isCommerceManagedContent(el)) {
+      setState({ status: "idle" });
+      return;
+    }
+
     const { oldHtml, newHtml } = state;
     const devContext = extractDevContext(el);
     const preciseSelector = generatePreciseSelector(el);

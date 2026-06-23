@@ -40,7 +40,7 @@ import FontFamilyButton from "./FontFamilyButton";
 import { nextOpenMenu, type HoverBarMenuId } from "../utils/popover-coordinator";
 import FormatOverrideControls from "./FormatOverrideControls";
 import { findFormatOverrideElement, isLoopRenderedElement } from "../utils/formatOverrideMessages";
-
+import { isCommerceManagedContent } from "../utils/commerce-managed-content";
 
 /**
  * Determine popover placement given available space.
@@ -130,7 +130,8 @@ export default function ElementHoverBar({
   // Commerce API — hide Replace/Modify for images without data-dev-id or media slot.
   const isCommerceIntegrated = !!import.meta.env.VITE_GODADDY_STORE_ID;
   const isUneditableImage = isImage && !element.getAttribute("data-dev-id") && !hoveredElement.isMediaSlot;
-  const showImageActions = isImage && !(isCommerceIntegrated && isUneditableImage);
+  const isCommerceMutationBlocked = isCommerceManagedContent(element) || (isCommerceIntegrated && isUneditableImage);
+  const showImageActions = isImage && !isCommerceMutationBlocked;
   // AIROBUILD-1556: foreground <img>/<picture>/<svg> only; backdrops excluded.
   const isForegroundImage = isImage && DIRECT_FOREGROUND_IMAGE_TAGS.has(element.tagName.toLowerCase());
   const isBackdrop = isForegroundImage && isBackdropImage(element);
@@ -541,11 +542,13 @@ export default function ElementHoverBar({
   // Sparkles: build context locally and open Quick Edit — no selection overlay,
   // no postMessage until the user submits the prompt
   const handleEditWithAI = useCallback(() => {
+    if (isCommerceMutationBlocked) return;
+
     trackEventBus.click("devtools.toolbar.sparkles");
     pendingContextRef.current = buildContextData();
     setToolbarMode(false);
     setQuickEditMode(true);
-  }, [buildContextData]);
+  }, [buildContextData, isCommerceMutationBlocked]);
 
   // AIROBUILD-1556: same context-capture pattern as Sparkles, opens popover.
   const handleEditClickAction = useCallback(() => {
@@ -625,8 +628,8 @@ export default function ElementHoverBar({
   // Suppress for loop-rendered elements (multiple DOM nodes from one source element).
   const isLoopRendered = isLoopRenderedElement(element);
   const boundFormatElement = !isImage ? findFormatOverrideElement(element) : null;
-  const isBoundTextFormatEligible = !!boundFormatElement && !!boundFormatElement.textContent?.trim();
-  const elementIsText = !isImage && !isLoopRendered && !isBoundTextFormatEligible && isTextElement(element) && !!element.textContent?.trim();
+  const isBoundTextFormatEligible = !isCommerceMutationBlocked && !!boundFormatElement && !!boundFormatElement.textContent?.trim();
+  const elementIsText = !isCommerceMutationBlocked && !isImage && !isLoopRendered && !isBoundTextFormatEligible && isTextElement(element) && !!element.textContent?.trim();
   const targetEl = toolbarElementRef.current || element;
   // Fix is available on any text element with non-trivial text content. The
   // agent prompt handles HTML preservation, and the commit always goes
@@ -740,17 +743,19 @@ export default function ElementHoverBar({
             {fixEligible && <TextFixButton state={fix.state} onFix={handleFix} />}
           </>
         )}
-        {!isLoopRendered && isListElement(element) && <ListTypeButton selectedElement={targetEl} {...menuController("list")} />}
+        {!isCommerceMutationBlocked && !isLoopRendered && isListElement(element) && <ListTypeButton selectedElement={targetEl} {...menuController("list")} />}
         <HoverBarButton
           onClick={handleReference}
           title={t("devtools_reference_title", "Add as reference")}
           icon={<Bookmark width={15} height={15} />}
         />
-        <HoverBarButton
-          onClick={handleEditWithAI}
-          title={t("devtools_edit_with_ai", "Edit with AI")}
-          icon={<Sparkles width={15} height={15} style={{ color: "var(--color-accent-purple)" }} />}
-        />
+        {!isCommerceMutationBlocked && (
+          <HoverBarButton
+            onClick={handleEditWithAI}
+            title={t("devtools_edit_with_ai", "Edit with AI")}
+            icon={<Sparkles width={15} height={15} style={{ color: "var(--color-accent-purple)" }} />}
+          />
+        )}
       </HoverBar>
       {followTarget && (
         <LinkFollowBar

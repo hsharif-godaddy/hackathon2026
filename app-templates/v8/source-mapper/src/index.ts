@@ -24,6 +24,9 @@ interface AncestorFrame {
 type PluginState = PluginPass & {
   opts?: PluginOptions;
   contentBindings: Set<string>;
+  commerceComponentLocals: Set<string>;
+  commerceComponentNamespaces: Set<string>;
+  hasCommerceDataUsage: boolean;
   mapStack: IterationFrame[];
   mapFrames: WeakMap<CallExpression, IterationFrame>;
   genericMapDepth: number;
@@ -39,6 +42,9 @@ interface IterationFrame {
 }
 
 const CONTENT_MODULE = 'virtual:content';
+const COMMERCE_MODULE = '@godaddy/react';
+const COMMERCE_COMPONENTS = new Set(['ProductGrid', 'ProductDetails', 'ProductCard', 'Cart']);
+const COMMERCE_DATA_ROOTS = new Set(['skuGroup', 'sku', 'product', 'node']);
 
 export function hashStructuralKey(key: string): string {
   let hash = 5381;
@@ -74,6 +80,92 @@ export default function jsxSourceMapper(babel: { types: typeof types }): PluginO
       return `${opening.name.namespace.name}:${opening.name.name.name}`;
     }
     return 'unknown';
+  }
+
+  function isCommerceComponentTagName(tagName: string, state: PluginState): boolean {
+    if (state.commerceComponentLocals.has(tagName)) return true;
+    const [namespace, component] = tagName.split('.');
+    return !!namespace &&
+      !!component &&
+      state.commerceComponentNamespaces.has(namespace) &&
+      COMMERCE_COMPONENTS.has(component);
+  }
+
+  function getJsxAttribute(
+    attrs: JSXElement['openingElement']['attributes'],
+    name: string,
+  ): types.JSXAttribute | null {
+    return attrs.find(
+      (attr): attr is types.JSXAttribute =>
+        t.isJSXAttribute(attr) && t.isJSXIdentifier(attr.name) && attr.name.name === name,
+    ) ?? null;
+  }
+
+  function buildCommerceWrapper(path: NodePath<JSXElement>, componentName: string): types.JSXElement {
+    const child = t.cloneNode(path.node, true);
+    const attrs = [
+      t.jsxAttribute(t.jsxIdentifier('data-dev-source-origin'), t.stringLiteral('commerce')),
+      t.jsxAttribute(t.jsxIdentifier('data-dev-commerce-component'), t.stringLiteral(componentName)),
+      t.jsxAttribute(
+        t.jsxIdentifier('style'),
+        t.jsxExpressionContainer(
+          t.objectExpression([
+            t.objectProperty(t.identifier('display'), t.stringLiteral('contents')),
+          ]),
+        ),
+      ),
+    ];
+    const productId = getJsxAttribute(child.openingElement.attributes, 'productId');
+    if (productId?.value) {
+      attrs.splice(2, 0, t.jsxAttribute(t.jsxIdentifier('data-dev-commerce-product-id'), productId.value));
+    }
+    return t.jsxElement(
+      t.jsxOpeningElement(t.jsxIdentifier('div'), attrs, false),
+      t.jsxClosingElement(t.jsxIdentifier('div')),
+      [child],
+      false,
+    );
+  }
+
+  function isCommerceHelperModule(source: string): boolean {
+    return source.includes('/lib/commerce/');
+  }
+
+  function expressionReferencesCommerceData(node: types.Node | null | undefined): boolean {
+    if (!node || t.isJSXEmptyExpression(node)) return false;
+    if (t.isIdentifier(node)) return COMMERCE_DATA_ROOTS.has(node.name);
+    if (t.isMemberExpression(node) || t.isOptionalMemberExpression(node)) {
+      return expressionReferencesCommerceData(node.object) ||
+        (node.computed && expressionReferencesCommerceData(node.property));
+    }
+    if (t.isCallExpression(node) || t.isOptionalCallExpression(node)) {
+      return expressionReferencesCommerceData(node.callee) ||
+        node.arguments.some((arg) => !t.isSpreadElement(arg) && expressionReferencesCommerceData(arg));
+    }
+    if (t.isLogicalExpression(node) || t.isBinaryExpression(node)) {
+      return expressionReferencesCommerceData(node.left) || expressionReferencesCommerceData(node.right);
+    }
+    if (t.isConditionalExpression(node)) {
+      return expressionReferencesCommerceData(node.test) ||
+        expressionReferencesCommerceData(node.consequent) ||
+        expressionReferencesCommerceData(node.alternate);
+    }
+    if (t.isTemplateLiteral(node)) {
+      return node.expressions.some((expr) => expressionReferencesCommerceData(expr));
+    }
+    return false;
+  }
+
+  function jsxElementOwnReferencesCommerceData(jsxElement: JSXElement): boolean {
+    return jsxElement.openingElement.attributes.some((attr) =>
+      t.isJSXAttribute(attr) &&
+      t.isJSXExpressionContainer(attr.value) &&
+      expressionReferencesCommerceData(attr.value.expression),
+    ) ||
+      jsxElement.children.some((child) =>
+        t.isJSXExpressionContainer(child) &&
+        expressionReferencesCommerceData(child.expression),
+      );
   }
 
   function normalizeFileName(raw: string): string {
@@ -342,6 +434,9 @@ export default function jsxSourceMapper(babel: { types: typeof types }): PluginO
       Program: {
         enter(_path: NodePath<Program>, state: PluginState) {
           state.contentBindings = new Set();
+          state.commerceComponentLocals = new Set();
+          state.commerceComponentNamespaces = new Set();
+          state.hasCommerceDataUsage = false;
           state.mapStack = [];
           state.mapFrames = new WeakMap();
           state.genericMapDepth = 0;
@@ -359,12 +454,33 @@ export default function jsxSourceMapper(babel: { types: typeof types }): PluginO
       },
 
       ImportDeclaration(path: NodePath<ImportDeclaration>, state: PluginState) {
-        if (path.node.source.value !== CONTENT_MODULE) return;
-        for (const spec of path.node.specifiers) {
-          if (t.isImportSpecifier(spec) && t.isIdentifier(spec.local)) {
-            state.contentBindings.add(spec.local.name);
-          } else if (t.isImportNamespaceSpecifier(spec) && t.isIdentifier(spec.local)) {
-            state.contentBindings.add(spec.local.name);
+        if (path.node.source.value === CONTENT_MODULE) {
+          for (const spec of path.node.specifiers) {
+            if (t.isImportSpecifier(spec) && t.isIdentifier(spec.local)) {
+              state.contentBindings.add(spec.local.name);
+            } else if (t.isImportNamespaceSpecifier(spec) && t.isIdentifier(spec.local)) {
+              state.contentBindings.add(spec.local.name);
+            }
+          }
+          return;
+        }
+
+        if (typeof path.node.source.value === 'string' && isCommerceHelperModule(path.node.source.value)) {
+          state.hasCommerceDataUsage = true;
+        }
+
+        if (path.node.source.value === COMMERCE_MODULE) {
+          for (const spec of path.node.specifiers) {
+            if (
+              t.isImportSpecifier(spec) &&
+              t.isIdentifier(spec.imported) &&
+              COMMERCE_COMPONENTS.has(spec.imported.name) &&
+              t.isIdentifier(spec.local)
+            ) {
+              state.commerceComponentLocals.add(spec.local.name);
+            } else if (t.isImportNamespaceSpecifier(spec) && t.isIdentifier(spec.local)) {
+              state.commerceComponentNamespaces.add(spec.local.name);
+            }
           }
         }
       },
@@ -403,6 +519,28 @@ export default function jsxSourceMapper(babel: { types: typeof types }): PluginO
           const openingElement = path.node.openingElement;
           const rawTagName = getJsxTagName(openingElement);
           const textTagName = getIntrinsicTextTagName(openingElement, t);
+
+          if (
+            isDevBuild &&
+            isCommerceComponentTagName(rawTagName, state) &&
+            !hasAttr(openingElement.attributes, 'data-dev-source-origin')
+          ) {
+            path.replaceWith(buildCommerceWrapper(path, rawTagName));
+            path.skip();
+            return;
+          }
+
+          if (
+            isDevBuild &&
+            state.hasCommerceDataUsage &&
+            isNativeTagParent(openingElement) &&
+            !hasAttr(openingElement.attributes, 'data-dev-source-origin') &&
+            jsxElementOwnReferencesCommerceData(path.node)
+          ) {
+            openingElement.attributes.push(
+              t.jsxAttribute(t.jsxIdentifier('data-dev-source-origin'), t.stringLiteral('commerce')),
+            );
+          }
 
           // Track this element in the ancestor stack for structural ID computation
           const parentFrame = state.ancestorStack[state.ancestorStack.length - 1];

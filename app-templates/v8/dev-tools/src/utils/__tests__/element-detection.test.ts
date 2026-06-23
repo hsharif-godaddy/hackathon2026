@@ -326,6 +326,15 @@ describe('element-detection', () => {
       expect(isTextEditable(el, false)).toBe(true);
       expect(isTextEditable(el, true)).toBe(true);
     });
+
+    it('rejects text inside a Commerce-managed product root', () => {
+      const root = buildElement(`
+        <article data-dev-source-origin="commerce" data-dev-commerce-product-id="sku-group-1">
+          <h2>Product name</h2>
+        </article>
+      `);
+      expect(isTextEditable(root.querySelector('h2') as HTMLElement, true)).toBe(false);
+    });
   });
 
   // ─── getMediaSlotPath ─────────────────────────────────────────────────────────
