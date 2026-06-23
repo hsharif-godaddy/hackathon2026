@@ -39,6 +39,7 @@ const PAAS_ALLOWED_ROUTES: RoutePattern[] = [
 
   // Publish
   { method: 'POST', path: '/apps/:id/publish' },
+  { method: 'GET', path: '/apps/:id/publish/status' },
   { method: 'POST', path: '/apps/:id/publish/restart' },
 
   // App lifecycle
