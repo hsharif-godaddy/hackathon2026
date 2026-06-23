@@ -522,7 +522,7 @@ export default function ProjectDomain() {
       data-testid="project-domain-edit-actions"
     >
       <Button
-        disabled={updateAppNameMutation.isPending}
+        disabled={isMutationBusy}
         design="secondary"
         size="sm"
         onClick={handleCancel}
@@ -531,14 +531,16 @@ export default function ProjectDomain() {
         className="shrink-0"
       />
       <Button
-        disabled={isSaveDisabled}
+        disabled={isSaveDisabled || isMutationBusy}
         design="primary"
         size="sm"
         onClick={handleUpdateAppName}
         data-eid={generateClickEID('settings.domains.project_domain_update')}
-        text={isValidatingDomain || (currentProjectName !== debouncedDomain)
-          ? t('builder_project_domain_button_checking')
-          : t('builder_project_domain_save', undefined, 'Save')
+        text={isMutationBusy
+          ? t('builder_project_domain_button_saving', undefined, 'Saving...')
+          : isValidatingDomain || (currentProjectName !== debouncedDomain)
+            ? t('builder_project_domain_button_checking')
+            : t('builder_project_domain_save', undefined, 'Save')
         }
         className="shrink-0"
       />
@@ -552,13 +554,15 @@ export default function ProjectDomain() {
         cancelText={t('builder_project_domain_button_cancel')}
         onConfirm={() => void handleUpdateAppName()}
         confirmText={
-          isValidatingDomain || (currentProjectName !== debouncedDomain)
-            ? t('builder_project_domain_button_checking')
-            : t('builder_project_domain_save', undefined, 'Save')
+          isMutationBusy
+            ? t('builder_project_domain_button_saving', undefined, 'Saving...')
+            : isValidatingDomain || (currentProjectName !== debouncedDomain)
+              ? t('builder_project_domain_button_checking')
+              : t('builder_project_domain_save', undefined, 'Save')
         }
-        confirmDisabled={isSaveDisabled}
-        cancelDisabled={updateAppNameMutation.isPending}
-        isLoading={updateAppNameMutation.isPending}
+        confirmDisabled={isSaveDisabled || isMutationBusy}
+        cancelDisabled={isMutationBusy}
+        isLoading={isMutationBusy}
         cancelEid={generateClickEID('settings.domains.project_domain_cancel')}
         confirmEid={generateClickEID('settings.domains.project_domain_update')}
       />
