@@ -3,8 +3,8 @@
 import { ReactNode } from 'react';
 import CalendarIcon from '@ux/icon/calendar';
 import CodeIcon from '@ux/icon/code';
+import CommentsIcon from '@ux/icon/comments';
 import ContentIcon from '@ux/icon/content';
-import ClipboardIcon from '@ux/icon/copy';
 import DatabaseIcon from '@ux/icon/database';
 import LockedIcon from '@ux/icon/locked';
 import MegaphoneIcon from '@ux/icon/megaphone';
@@ -149,7 +149,7 @@ export function useSettingsNavItems(): SettingsNavItem[] {
     {
       id: SettingsSection.FEEDBACK,
       label: t('builder_settings_nav_feedback'),
-      icon: <ClipboardIcon />,
+      icon: <CommentsIcon />,
       disabled: false,
       onClick: handleFeedbackClick,
       testId: 'settings-feedback-item',

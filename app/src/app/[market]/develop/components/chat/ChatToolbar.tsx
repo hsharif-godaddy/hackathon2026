@@ -3,8 +3,8 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { useEffect, useMemo, useRef } from 'react'
 import Box from '@ux/box'
+import ChatIcon from '@ux/icon/chat'
 import CodeIcon from '@ux/icon/code'
-import CommentsIcon from '@ux/icon/comments'
 import ConversationsIcon from '@ux/icon/conversations'
 import GraphIcon from '@ux/icon/graph'
 import HistoryIcon from '@ux/icon/history'
@@ -177,7 +177,7 @@ export default function ChatToolbar({
           >
             <ButtonGroup.Item
               value={ChatTab.CHAT}
-              icon={<CommentsIcon className="size-2.5 rtl:scale-x-[-1]" />}
+              icon={<ChatIcon className="size-2.5 rtl:scale-x-[-1]" />}
               label={t('builder_chat_toolbar_button_chat')}
             />
             <ButtonGroup.Item
