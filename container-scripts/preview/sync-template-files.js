@@ -84,7 +84,9 @@ const SYNC_MANIFEST = [
       '2791732d0b10bf8716d0cc70f3734497', // before AdSense runtime routes/head injection and per-host SEO gate
       '5487ff6fad6ab48607c498daa80cbc01', // before merging AdSense runtime injection with per-host SEO gate
       '12a5f4baadf6ce4963913fe37384e51e', // SEO: add must-revalidate to cache directives
-      '678c3a987122a8266df30b6c970f862b', // merged from main
+      '678c3a987122a8266df30b6c970f862b', // before /llms.txt route (RUBICON-365)
+      'be66082ac860f2e80a2c2282f78fc9c7', // RUBICON-365 branch tip (llms.txt, pre-AdSense) before main merge
+      'd91be310d9ced4697eea5b146201806e'  // main tip (AdSense, pre-llms.txt) before RUBICON-365 merge
     ],
     force: false,
   },
@@ -131,6 +133,29 @@ const SYNC_MANIFEST = [
     description: 'Agent-editable registry of public routes for sitemap.xml',
     known_hashes: [],
     force: false
+  },
+  {
+    file: 'src/lib/site-meta.ts',
+    description: 'Agent-editable business identity (name + summary) for /llms.txt',
+    known_hashes: [],
+    force: false
+  },
+  {
+    file: 'src/server/llms-txt.ts',
+    description: 'Pure renderer + handler for /llms.txt',
+    known_hashes: [
+      '40cfb22391daefe1b51dd9cc8fe2bb57', // RUBICON-365 T3 - add host-gated llmsTxtHandler
+    ],
+    force: false,
+  },
+  {
+    file: 'src/server/llms-txt.test.ts',
+    description: 'Unit tests for the /llms.txt renderer and handler',
+    known_hashes: [
+      'df34d9d248d6e4974bb8986d60c43782', // RUBICON-365 T3 - add handler tests
+      '8f7e8fb0083a5af0a10277b632aab0a5', // RUBICON-365 T3 - move imports to top of file
+    ],
+    force: false,
   },
   {
     file: 'src/lib/analytics-consent.ts',

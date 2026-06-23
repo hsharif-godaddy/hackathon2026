@@ -534,6 +534,10 @@ export const SSR_SKILL_TEMPLATE_PAIRS = [
     v8Path: 'app-templates/v8/src/server/entry.ts',
   },
   {
+    skillPath: 'agents/src/skills/ssr-migration/templates/server/llms-txt.ts',
+    v8Path: 'app-templates/v8/src/server/llms-txt.ts',
+  },
+  {
     skillPath: 'agents/src/skills/ssr-migration/templates/server/adsense-manifest.ts',
     v8Path: 'app-templates/v8/src/server/adsense-manifest.ts',
   },
@@ -552,6 +556,10 @@ export const SSR_SKILL_TEMPLATE_PAIRS = [
   {
     skillPath: 'agents/src/skills/ssr-migration/templates/lib/seo-routes.ts',
     v8Path: 'app-templates/v8/src/lib/seo-routes.ts',
+  },
+  {
+    skillPath: 'agents/src/skills/ssr-migration/templates/lib/site-meta.ts',
+    v8Path: 'app-templates/v8/src/lib/site-meta.ts',
   },
   {
     skillPath: 'agents/src/skills/ssr-migration/templates/components/Spinner.tsx',

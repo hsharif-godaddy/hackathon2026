@@ -13,6 +13,7 @@ import {
 	type AdSenseRuntimeConfig,
 } from "./adsense-manifest";
 import { isSystemHost } from "./seo-host";
+import { llmsTxtHandler } from "./llms-txt";
 
 export interface SsrRenderResult {
 	html: string;
@@ -149,6 +150,8 @@ app.get("/sitemap.xml", (req, res) => {
 	const body = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls}\n</urlset>\n`;
 	res.type("application/xml").set("Cache-Control", "public, max-age=60, must-revalidate").set("Vary", "Host").send(body);
 });
+
+app.get("/llms.txt", llmsTxtHandler);
 
 if (import.meta.env.PROD) {
 	const __dirname = dirname(fileURLToPath(import.meta.url));
