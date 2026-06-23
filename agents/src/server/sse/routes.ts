@@ -26,6 +26,7 @@ import apm from 'elastic-apm-node'
 import { sseSessionKey } from './session-key.js'
 import { asyncHandler } from '../middleware/async-handler.js'
 import { mapSegmentsToUI, mapToolCallsToUI } from '../tool-call-mapper.js'
+import { appRepository } from '../../database/repositories/index.js'
 
 const HEARTBEAT_INTERVAL_MS = 15_000
 const RETRY_MS = 1000
@@ -123,6 +124,17 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
       })
       const customerId = agentContext?.customerId
       const { conversation, isNew } = await deps.lifecycle.getOrCreateForApp(workspaceScopeFromAppId(appId, customerId), resolvedAgentId)
+
+      // Persist customerId/shopperId from JWT (immutable, no-op after first write)
+      if (agentContext?.shopperId || agentContext?.customerId) {
+        appRepository.registerOrUpdateApp({
+          siteId: appId,
+          customerId: agentContext.customerId,
+          shopperId: agentContext.shopperId,
+        }).catch(err => {
+          logger.warn('sse.conversation.persist_shopper_id_failed', { appId, ...errorFields(err) })
+        })
+      }
 
       res.status(200).json({
         conversationId: conversation.id,

@@ -19,7 +19,8 @@ export interface JWTClaims {
 
   // Custom claims
   siteId: string;          // Site ID
-  customerId?: string;      // GoDaddy Customer ID
+  customerId?: string;      // GoDaddy Customer ID (UUID)
+  shopperId?: string;       // GoDaddy Shopper ID from JWT claim (typically numeric in production)
   visitorId?: string;      // From `visitor` cookie at mint
   trafficSessionId?: string; // From `pathway` cookie at mint → Signals sessionId
   canDownload: boolean;    // Permission to download app files

@@ -759,6 +759,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
     const tokenOptions = {
       siteId: body.siteId,
       customerId: user.customerId,
+      shopperId: user.shopperId,
       ...(visitorIdFromCookie && { visitorId: visitorIdFromCookie }),
       ...(trafficSessionId && { trafficSessionId }),
       ...(market && { market }),

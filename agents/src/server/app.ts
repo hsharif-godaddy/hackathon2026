@@ -586,6 +586,10 @@ async function initialize() {
     validateConfiguration();
     logger.info('server.config.validate.success', {});
 
+    // Initialize Switchboard client (allows runtime feature flag reads)
+    const { initSwitchboard } = await import('../services/switchboard.js');
+    await initSwitchboard();
+
     // Initialize database
     logger.info('server.database.init.begin', {});
     getDatabase();
@@ -832,6 +836,13 @@ async function shutdown() {
         service: serviceName,
         error: error instanceof Error ? error.message : String(error),
       });
+    }
+
+    try {
+      const { destroySwitchboard } = await import('../services/switchboard.js');
+      destroySwitchboard();
+    } catch {
+      // best-effort cleanup
     }
 
     const { destroyAgentRuntime } = await import('./agent-runtime.js')

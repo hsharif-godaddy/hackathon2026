@@ -16,6 +16,7 @@ import { logger } from './request-context';
 export interface CreateTokenOptions {
   siteId: string;
   customerId?: string;
+  shopperId?: string;
   visitorId?: string;
   trafficSessionId?: string;
   canDownload: boolean;
@@ -190,6 +191,7 @@ export class JWTService {
       iat: now,
       siteId: options.siteId,
       customerId: options.customerId,
+      ...(options.shopperId && { shopperId: options.shopperId }),
       visitorId: options.visitorId,
       trafficSessionId: options.trafficSessionId,
       canDownload: options.canDownload,

@@ -36,7 +36,8 @@ function coerceClassifierMode(raw: string | undefined | null): ClassifierMode | 
 
 export interface AgentContext {
   siteId: string;          // Custom claim
-  customerId?: string;     // GoDaddy Customer ID
+  customerId?: string;     // GoDaddy Customer ID (UUID)
+  shopperId?: string;      // GoDaddy Shopper ID from JWT claim (typically numeric in production)
   visitorId?: string;
   trafficSessionId?: string;
   canDownload: boolean;    // Permission to download app files
@@ -83,6 +84,7 @@ export function buildAgentContext(raw: Record<string, unknown>): AgentContext {
   return {
     siteId: (raw.siteId as string) || '',
     customerId: raw.customerId as string | undefined,
+    shopperId: raw.shopperId as string | undefined,
     visitorId: typeof raw.visitorId === 'string' && raw.visitorId.length > 0 ? raw.visitorId : undefined,
     trafficSessionId:
       typeof raw.trafficSessionId === 'string' && raw.trafficSessionId.length > 0

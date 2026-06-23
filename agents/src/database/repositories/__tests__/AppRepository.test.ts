@@ -1111,6 +1111,180 @@ describe('AppRepository', () => {
     });
   });
 
+  describe('shopperId persistence', () => {
+    it('should store shopperId on INSERT when provided', async () => {
+      const mockGetStatement = {
+        get: vi.fn()
+          .mockReturnValueOnce(null)
+          .mockReturnValueOnce({
+            id: 'my-site',
+            name: 'App my-site',
+            path: '/tmp/airo-app-builder/my-site/preview',
+            port: 3000,
+            socket_path: null,
+            publish_supervisor_path: null,
+            preview_url: null,
+            initial_prompt: null,
+            template_version: null,
+            subscription_id: null,
+            customer_id: null,
+            shopper_id: '4367373',
+            status: 'created',
+            initial_build_complete: 0,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          }),
+      };
+
+      const mockInsertStatement = {
+        run: vi.fn().mockReturnValue({ changes: 1 }),
+      };
+
+      mockDb.prepare.mockImplementation(function (sql: string) {
+        if (sql.includes('INSERT')) {
+          return mockInsertStatement;
+        }
+        return mockGetStatement;
+      });
+
+      const result = await appRepository.registerOrUpdateApp({
+        siteId: 'my-site',
+        shopperId: '4367373',
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.created).toBe(true);
+      expect(mockInsertStatement.run).toHaveBeenCalled();
+      const insertArgs = mockInsertStatement.run.mock.calls[0] as unknown[];
+      expect(insertArgs[0]).toBe('my-site');
+      expect(insertArgs[10]).toBe('4367373');
+    });
+
+    it('should persist shopperId on UPDATE when not already set', async () => {
+      const existingRow = {
+        id: 'my-site',
+        name: 'Existing App',
+        path: '/tmp/apps/my-site',
+        port: 3000,
+        socket_path: null,
+        publish_supervisor_path: null,
+        preview_url: null,
+        initial_prompt: null,
+        template_version: null,
+        subscription_id: null,
+        customer_id: null,
+        shopper_id: null,
+        status: 'created',
+        initial_build_complete: 0,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+
+      const updatedRow = { ...existingRow, shopper_id: '4367373' };
+
+      const mockGetStatement = {
+        get: vi.fn()
+          .mockReturnValueOnce(existingRow)
+          .mockReturnValueOnce(updatedRow),
+      };
+
+      const mockUpdateStatement = {
+        run: vi.fn(),
+      };
+
+      mockDb.prepare.mockImplementation(function (sql: string) {
+        if (sql.includes('UPDATE')) {
+          return mockUpdateStatement;
+        }
+        return mockGetStatement;
+      });
+
+      const result = await appRepository.registerOrUpdateApp({
+        siteId: 'my-site',
+        shopperId: '4367373',
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.created).toBe(false);
+      expect(mockUpdateStatement.run).toHaveBeenCalled();
+      const updateArgs = mockUpdateStatement.run.mock.calls[0] as unknown[];
+      expect(updateArgs).toContain('4367373');
+    });
+
+    it('should not overwrite existing shopperId (immutable once stored)', async () => {
+      const existingRow = {
+        id: 'my-site',
+        name: 'Existing App',
+        path: '/tmp/apps/my-site',
+        port: 3000,
+        socket_path: null,
+        publish_supervisor_path: null,
+        preview_url: null,
+        initial_prompt: null,
+        template_version: null,
+        subscription_id: null,
+        customer_id: null,
+        shopper_id: '4367373',
+        status: 'created',
+        initial_build_complete: 0,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+
+      const mockGetStatement = {
+        get: vi.fn().mockReturnValue(existingRow),
+      };
+
+      mockDb.prepare.mockReturnValue(mockGetStatement);
+
+      const result = await appRepository.registerOrUpdateApp({
+        siteId: 'my-site',
+        shopperId: '9999999',
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.message).toBe('App already registered');
+      expect(mockLogger.warn).toHaveBeenCalledWith('app.register.shopper_id_change_rejected', expect.any(Object));
+    });
+
+    it('should return shopperId via getShopperId helper', () => {
+      const mockGetStatement = {
+        get: vi.fn().mockReturnValue({ shopper_id: '4367373' }),
+      };
+
+      mockDb.prepare.mockReturnValue(mockGetStatement);
+
+      const shopperId: string | undefined = appRepository.getShopperId('my-site');
+
+      expect(shopperId).toBe('4367373');
+      expect(mockGetStatement.get).toHaveBeenCalledWith('my-site');
+    });
+
+    it('should return undefined from getShopperId when not stored', () => {
+      const mockGetStatement = {
+        get: vi.fn().mockReturnValue({ shopper_id: null }),
+      };
+
+      mockDb.prepare.mockReturnValue(mockGetStatement);
+
+      const shopperId: string | undefined = appRepository.getShopperId('my-site');
+
+      expect(shopperId).toBeUndefined();
+    });
+
+    it('should return undefined from getShopperId when app not found', () => {
+      const mockGetStatement = {
+        get: vi.fn().mockReturnValue(undefined),
+      };
+
+      mockDb.prepare.mockReturnValue(mockGetStatement);
+
+      const shopperId: string | undefined = appRepository.getShopperId('nonexistent');
+
+      expect(shopperId).toBeUndefined();
+    });
+  });
+
   describe('Error Handling', () => {
     it('should handle database connection errors', async () => {
       const { getDatabase } = await import('../../connection.js');

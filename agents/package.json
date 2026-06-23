@@ -99,6 +99,7 @@
     "@opentelemetry/api": "catalog:",
     "@opentelemetry/sdk-node": "^0.217.0",
     "@signals/otel-sdk": "^0.2.2",
+    "@switchboard/client": "^2.7.0",
     "@types/multer": "catalog:",
     "ai": "catalog:",
     "archiver": "^7.0.1",

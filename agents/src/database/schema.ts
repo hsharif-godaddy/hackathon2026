@@ -29,7 +29,8 @@ export interface App {
   initialPrompt?: string;
   templateVersion?: string; // Template version (v8)
   subscriptionId?: string; // Subscription ID from main app
-  customerId?: string; // Customer ID from main app
+  customerId?: string; // Customer ID from main app (UUID)
+  shopperId?: string; // GoDaddy Shopper ID from JWT claim (typically numeric in production)
   status: 'creating' | 'created' | 'error';
   publishedUrl: string | null; // Published site URL (set after successful publish)
   initialBuildComplete?: boolean; // True when first git commit has been made
@@ -641,6 +642,7 @@ function createAppsTable(db: Database): void {
       template_version TEXT,
       subscription_id TEXT,
       customer_id TEXT,
+      shopper_id TEXT,
       status TEXT NOT NULL DEFAULT 'creating' CHECK(status IN ('creating', 'created', 'error')),
       initial_build_complete BOOLEAN DEFAULT FALSE,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -2137,6 +2139,13 @@ function applyMigrations(db: Database): void {
   // Add customer_id column if it doesn't exist (for existing databases)
   try {
     db.exec(`ALTER TABLE apps ADD COLUMN customer_id TEXT`);
+  } catch (err) {
+    // Column might already exist, that's fine
+  }
+
+  // Add shopper_id column if it doesn't exist (for Switchboard per-shopper targeting)
+  try {
+    db.exec(`ALTER TABLE apps ADD COLUMN shopper_id TEXT`);
   } catch (err) {
     // Column might already exist, that's fine
   }

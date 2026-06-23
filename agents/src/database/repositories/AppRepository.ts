@@ -20,7 +20,8 @@ export interface RegisterAppParams {
   socketPath?: string; // Preview supervisor connection path (TCP URL or Unix socket path)
   publishSupervisorPath?: string; // Publish supervisor connection path (TCP URL) for V4 unified job
   subscriptionId?: string; // Subscription ID from main app
-  customerId?: string; // Customer ID from main app
+  customerId?: string; // Customer ID from main app (UUID)
+  shopperId?: string; // GoDaddy Shopper ID from JWT claim (typically numeric in production)
 }
 
 /**
@@ -98,7 +99,7 @@ export class AppRepository {
    * ```
    */
   async registerOrUpdateApp(params: RegisterAppParams): Promise<RegisterAppResult> {
-    const { siteId, name, appPath, port, initialPrompt, previewUrl: rawPreviewUrl, socketPath, publishSupervisorPath, subscriptionId, customerId } = params;
+    const { siteId, name, appPath, port, initialPrompt, previewUrl: rawPreviewUrl, socketPath, publishSupervisorPath, subscriptionId, customerId, shopperId } = params;
     const previewUrl = rawPreviewUrl !== undefined ? stripShareToken(rawPreviewUrl) : undefined;
 
     const sanitizedSiteId = siteId.trim();
@@ -106,6 +107,7 @@ export class AppRepository {
     const sanitizedAppPath = appPath?.trim();
     const sanitizedSubscriptionId = subscriptionId?.trim();
     const sanitizedCustomerId = customerId?.trim();
+    const sanitizedShopperId = shopperId?.trim();
 
     if (process.env.SITE_ID && process.env.SITE_ID !== sanitizedSiteId) {
       throw new Error('Site ID mismatch: This agent is locked to a specific site and cannot register other sites');
@@ -130,6 +132,7 @@ export class AppRepository {
       hasPort: !!port,
       hasPreviewUrl: !!previewUrl,
       customerId: sanitizedCustomerId || 'not-provided',
+      shopperId: sanitizedShopperId || 'not-provided',
       subscriptionId: sanitizedSubscriptionId || 'not-provided'
     });
 
@@ -202,6 +205,19 @@ export class AppRepository {
           reason: 'Cannot change customer_id once set',
           existingCustomerId: existingApp.customerId,
           attemptedCustomerId: sanitizedCustomerId,
+        });
+      }
+
+      // Only set shopper_id if not already set (immutable once stored)
+      if (sanitizedShopperId && !existingApp.shopperId) {
+        updates.push('shopper_id = ?');
+        values.push(sanitizedShopperId);
+      } else if (existingApp.shopperId && sanitizedShopperId && sanitizedShopperId !== existingApp.shopperId) {
+        this.logger.warn('app.register.shopper_id_change_rejected', {
+          appId: sanitizedSiteId,
+          reason: 'Cannot change shopper_id once set',
+          existingShopperId: existingApp.shopperId,
+          attemptedShopperId: sanitizedShopperId,
         });
       }
 
@@ -286,12 +302,13 @@ export class AppRepository {
       socketPath: finalSocketPath,
       publishSupervisorPath: finalPublishSupervisorPath,
       customerId: sanitizedCustomerId || 'not-set',
+      shopperId: sanitizedShopperId || 'not-set',
       subscriptionId: sanitizedSubscriptionId || 'not-set'
     });
 
     const stmt = this.db.prepare(`
-      INSERT INTO apps (id, name, path, port, socket_path, publish_supervisor_path, preview_url, initial_prompt, subscription_id, customer_id, status, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO apps (id, name, path, port, socket_path, publish_supervisor_path, preview_url, initial_prompt, subscription_id, customer_id, shopper_id, status, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     stmt.run(
@@ -305,6 +322,7 @@ export class AppRepository {
       initialPrompt || null,
       sanitizedSubscriptionId || null,
       sanitizedCustomerId || null,
+      sanitizedShopperId || null,
       'created',
       now,
       now
@@ -405,7 +423,7 @@ export class AppRepository {
    */
   findById(id: string): App | null {
     const stmt = this.db.prepare(`
-      SELECT id, name, path, port, socket_path, publish_supervisor_path, preview_url, published_url, initial_prompt, template_version, subscription_id, customer_id, status, initial_build_complete, created_at, updated_at
+      SELECT id, name, path, port, socket_path, publish_supervisor_path, preview_url, published_url, initial_prompt, template_version, subscription_id, customer_id, shopper_id, status, initial_build_complete, created_at, updated_at
       FROM apps
       WHERE id = ?
     `);
@@ -426,6 +444,7 @@ export class AppRepository {
       templateVersion: row.template_version,
       subscriptionId: row.subscription_id,
       customerId: row.customer_id,
+      shopperId: row.shopper_id,
       status: row.status,
       initialBuildComplete: !!row.initial_build_complete,
       createdAt: new Date(row.created_at),
@@ -438,7 +457,7 @@ export class AppRepository {
    */
   findByPath(path: string): App | null {
     const stmt = this.db.prepare(`
-      SELECT id, name, path, port, socket_path, publish_supervisor_path, preview_url, published_url, initial_prompt, template_version, subscription_id, customer_id, status, initial_build_complete, created_at, updated_at
+      SELECT id, name, path, port, socket_path, publish_supervisor_path, preview_url, published_url, initial_prompt, template_version, subscription_id, customer_id, shopper_id, status, initial_build_complete, created_at, updated_at
       FROM apps
       WHERE path = ?
     `);
@@ -459,6 +478,7 @@ export class AppRepository {
       templateVersion: row.template_version,
       subscriptionId: row.subscription_id,
       customerId: row.customer_id,
+      shopperId: row.shopper_id,
       status: row.status,
       initialBuildComplete: !!row.initial_build_complete,
       createdAt: new Date(row.created_at),
@@ -471,7 +491,7 @@ export class AppRepository {
    */
   findAll(limit = 50, offset = 0): App[] {
     const stmt = this.db.prepare(`
-      SELECT id, name, path, port, socket_path, publish_supervisor_path, preview_url, published_url, initial_prompt, template_version, subscription_id, customer_id, status, initial_build_complete, created_at, updated_at
+      SELECT id, name, path, port, socket_path, publish_supervisor_path, preview_url, published_url, initial_prompt, template_version, subscription_id, customer_id, shopper_id, status, initial_build_complete, created_at, updated_at
       FROM apps
       ORDER BY created_at DESC
       LIMIT ? OFFSET ?
@@ -492,11 +512,21 @@ export class AppRepository {
       templateVersion: row.template_version,
       subscriptionId: row.subscription_id,
       customerId: row.customer_id,
+      shopperId: row.shopper_id,
       status: row.status,
       initialBuildComplete: !!row.initial_build_complete,
       createdAt: new Date(row.created_at),
       updatedAt: new Date(row.updated_at),
     }));
+  }
+
+  /**
+   * Get the stored shopperId for an app (for background jobs without JWT context).
+   */
+  getShopperId(appId: string): string | undefined {
+    const stmt = this.db.prepare(`SELECT shopper_id FROM apps WHERE id = ?`);
+    const row = stmt.get(appId) as { shopper_id: string | null } | undefined;
+    return row?.shopper_id ?? undefined;
   }
 
   /**
