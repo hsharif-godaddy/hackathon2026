@@ -131,6 +131,15 @@ describe('ChatToolbar', () => {
     expect(screen.getByLabelText('builder_chat_toolbar_button_history')).toBeInTheDocument();
   });
 
+  it('should hide history button on mobile tools mode', () => {
+    mockDevelopStore.isMobile = true;
+    mockDevelopStore.mobileMode = MobileMode.TOOLS;
+
+    renderWithProviders(<ChatToolbar {...defaultProps} />);
+
+    expect(screen.queryByLabelText('builder_chat_toolbar_button_history')).not.toBeInTheDocument();
+  });
+
   it('should render media button', () => {
     renderWithProviders(<ChatToolbar {...defaultProps} />);
 
@@ -200,7 +209,18 @@ describe('ChatToolbar', () => {
     expect(chatButton).toHaveAttribute('aria-checked', 'true');
   });
 
-  it('should mark history button as active when history tab selected', () => {
+  it('should mark settings button as active when history tab selected on mobile', () => {
+    mockDevelopStore.isMobile = true;
+    mockChatTabs.activeChatTab = ChatTab.HISTORY;
+
+    renderWithProviders(<ChatToolbar {...defaultProps} optimisticActiveTab={ChatTab.HISTORY} />);
+
+    const settingsButton = screen.getByRole('radio', { name: 'builder_chat_toolbar_button_settings' });
+    expect(settingsButton).toHaveAttribute('aria-checked', 'true');
+  });
+
+  it('should mark history button as active when history tab selected on desktop', () => {
+    mockDevelopStore.isMobile = false;
     mockChatTabs.activeChatTab = ChatTab.HISTORY;
 
     renderWithProviders(<ChatToolbar {...defaultProps} />);
@@ -235,13 +255,12 @@ describe('ChatToolbar', () => {
     expect(buttons.length).toBeGreaterThanOrEqual(3);
   });
 
-  it('should render settings menu on mobile when settings enabled', () => {
+  it('should render settings menu on mobile', () => {
     mockDevelopStore.isMobile = true;
 
-    const { container } = renderWithProviders(<ChatToolbar {...defaultProps} />);
+    renderWithProviders(<ChatToolbar {...defaultProps} />);
 
-    const settingsButton = screen.getByRole('radio', { name: 'builder_chat_toolbar_button_settings' });
-    expect(settingsButton).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: 'builder_chat_toolbar_button_settings' })).toBeInTheDocument();
   });
 
   it('should render settings menu control in mobile preview mode', () => {

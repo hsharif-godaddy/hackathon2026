@@ -929,6 +929,8 @@ export default function AppPublish({ location = 'develop' }: { location?: string
     });
   }
 
+  const isIconOnlyChatToolbarTrigger = isChatToolbar && !isMobile;
+
   const getTriggerButtonIcon = () => {
     if (isPublishingOrDeploying) {
       // Spinner's rotation animation causes it to overflow the icon only button bounds, increasing its size.
@@ -938,7 +940,7 @@ export default function AppPublish({ location = 'develop' }: { location?: string
         </div>
       );
     }
-    if (isChatToolbar) return <CloudUploadIcon className="!size-2.5" />;
+    if (isIconOnlyChatToolbarTrigger) return <CloudUploadIcon className="!size-2.5" />;
   };
 
   const lastDeployedTimeAgo = lastDeployedDate ? timeAgo(lastDeployedDate) : null;
@@ -969,7 +971,7 @@ export default function AppPublish({ location = 'develop' }: { location?: string
             size='sm'
             data-partial='componentAiro'
             icon={getTriggerButtonIcon()}
-            text={isChatToolbar || isPublishingOrDeploying ? undefined : getPublishButtonText()}
+            text={isPublishingOrDeploying || isIconOnlyChatToolbarTrigger ? undefined : getPublishButtonText()}
             aria-label={getPublishButtonText()}
             className="!rounded-xmd !pt-0 !pb-0 !pl-1.5 !pr-1.5 sm:!p-1 !border-none md:!border-solid"
           />

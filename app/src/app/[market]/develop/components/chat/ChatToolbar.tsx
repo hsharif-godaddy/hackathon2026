@@ -39,6 +39,12 @@ interface ChatToolbarProps {
   onPreviewRefresh?: () => void
 }
 
+const MOBILE_SETTINGS_MENU_TABS = new Set<ChatTab>([
+  ChatTab.HISTORY,
+  ChatTab.ANALYTICS,
+  ChatTab.SETTINGS,
+])
+
 export default function ChatToolbar({
     className = '',
     onBeforeTabChange,
@@ -154,6 +160,12 @@ export default function ChatToolbar({
   const showToolsMode = !isMobile || mobileMode === MobileMode.TOOLS;
   const showPreviewMode = isMobile && mobileMode === MobileMode.PREVIEW;
 
+  // Mobile bottom bar shows only Chat + Media; other tabs live in Settings menu.
+  const toolbarGroupValue =
+    isMobile && MOBILE_SETTINGS_MENU_TABS.has(displayActiveTab)
+      ? ChatTab.SETTINGS
+      : displayActiveTab;
+
   return (
     <div data-testid="chat-toolbar" className="min-w-0 w-full">
       <Box
@@ -164,11 +176,11 @@ export default function ChatToolbar({
         className={cn("pt-0 pb-1 md:pb-2 md:pb-0 px-1.5 sm:px-3 md:p-0", className)}
         style={isMobile ? { paddingBottom: `calc(0.25rem + env(safe-area-inset-bottom))` } : undefined}
       >
-      {/* TOOLS mode: Chat + History buttons */}
+      {/* TOOLS mode: Chat, Media, and Settings (History/Analytics on desktop only) */}
       {showToolsMode && (
         <>
           <ButtonGroup
-            value={displayActiveTab}
+            value={toolbarGroupValue}
             onChange={(value) => {
               const tab = value as ChatTab
               logTabToolbarClick(tab)
@@ -185,17 +197,21 @@ export default function ChatToolbar({
               icon={<ImageIcon />}
               label={t('builder_chat_toolbar_button_media')}
             />
-            <ButtonGroup.Item
-              value={ChatTab.HISTORY}
-              icon={<HistoryIcon className="size-2.5" />}
-              label={t('builder_chat_toolbar_button_history')}
-            />
-            {isAnalyticsEnabled && (
-              <ButtonGroup.Item
-                value={ChatTab.ANALYTICS}
-                icon={<GraphIcon className="size-2.5 rtl:scale-x-[-1]" />}
-                label={t('builder_settings_nav_analytics')}
-              />
+            {!isMobile && (
+              <>
+                <ButtonGroup.Item
+                  value={ChatTab.HISTORY}
+                  icon={<HistoryIcon className="size-2.5" />}
+                  label={t('builder_chat_toolbar_button_history')}
+                />
+                {isAnalyticsEnabled && (
+                  <ButtonGroup.Item
+                    value={ChatTab.ANALYTICS}
+                    icon={<GraphIcon className="size-2.5 rtl:scale-x-[-1]" />}
+                    label={t('builder_settings_nav_analytics')}
+                  />
+                )}
+              </>
             )}
             <SettingsMenu ref={settingsMenuRef} />
           </ButtonGroup>

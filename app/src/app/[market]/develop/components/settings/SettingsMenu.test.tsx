@@ -219,6 +219,111 @@ describe('SettingsMenu', () => {
     expect(trigger).toHaveAttribute('aria-label', 'builder_chat_toolbar_button_settings');
   });
 
+  it('should show history in settings menu on mobile', async () => {
+    mockDevelopStore.isMobile = true;
+
+    const { user, container } = renderWithProviders(<SettingsMenu />);
+
+    const trigger = container.querySelector('[data-testid="chat-toolbar-settings-button"]')!;
+    await user.click(trigger);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('settings-menu-history-item')).toBeInTheDocument();
+    });
+  });
+
+  it('should navigate to history from settings menu on mobile', async () => {
+    mockDevelopStore.isMobile = true;
+    const setActiveChatTab = vi.fn();
+    mockChatTabs.setActiveChatTab = setActiveChatTab;
+
+    const { user, container } = renderWithProviders(<SettingsMenu />);
+
+    const trigger = container.querySelector('[data-testid="chat-toolbar-settings-button"]')!;
+    await user.click(trigger);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('settings-menu-history-item')).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByTestId('settings-menu-history-item'));
+
+    await waitFor(() => {
+      expect(setActiveChatTab).toHaveBeenCalledWith(ChatTab.HISTORY);
+    });
+  });
+
+  it('should show analytics in settings menu on mobile when flag enabled', async () => {
+    mockDevelopStore.isMobile = true;
+    mockSwitchboardResults['appbuilder-analytics'] = true;
+
+    const { user, container } = renderWithProviders(<SettingsMenu />);
+
+    const trigger = container.querySelector('[data-testid="chat-toolbar-settings-button"]')!;
+    await user.click(trigger);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('settings-menu-analytics-item')).toBeInTheDocument();
+    });
+  });
+
+  it('should hide analytics in settings menu on mobile when flag disabled', async () => {
+    mockDevelopStore.isMobile = true;
+    mockSwitchboardResults['appbuilder-analytics'] = false;
+
+    const { user, container } = renderWithProviders(<SettingsMenu />);
+
+    const trigger = container.querySelector('[data-testid="chat-toolbar-settings-button"]')!;
+    await user.click(trigger);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('settings-menu-history-item')).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId('settings-menu-analytics-item')).not.toBeInTheDocument();
+  });
+
+  it('should mark analytics item as active when analytics tab selected on mobile', async () => {
+    mockDevelopStore.isMobile = true;
+    mockSwitchboardResults['appbuilder-analytics'] = true;
+    mockChatTabs.activeChatTab = ChatTab.ANALYTICS;
+
+    const { user, container } = renderWithProviders(<SettingsMenu />);
+
+    const trigger = container.querySelector('[data-testid="chat-toolbar-settings-button"]')!;
+    await user.click(trigger);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('settings-menu-analytics-item')).toHaveAttribute('aria-selected', 'true');
+    });
+    expect(screen.getByTestId('settings-menu-history-item')).toHaveAttribute('aria-selected', 'false');
+  });
+
+  it('should navigate to analytics from settings menu on mobile', async () => {
+    mockDevelopStore.isMobile = true;
+    mockSwitchboardResults['appbuilder-analytics'] = true;
+    const setActiveChatTab = vi.fn();
+    mockChatTabs.setActiveChatTab = setActiveChatTab;
+
+    const { user, container } = renderWithProviders(<SettingsMenu />);
+
+    const trigger = container.querySelector('[data-testid="chat-toolbar-settings-button"]')!;
+    await user.click(trigger);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('settings-menu-analytics-item')).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByTestId('settings-menu-analytics-item'));
+
+    await waitFor(() => {
+      expect(setActiveChatTab).toHaveBeenCalledWith(ChatTab.ANALYTICS);
+      expect(vi.mocked(logClickEvent)).toHaveBeenCalledWith(
+        'develop.settings_menu.analytics',
+        { appId: 'test-app-id' },
+      );
+    });
+  });
+
   it('should log click when settings nav item clicked', async () => {
     const { user, container } = renderWithProviders(<SettingsMenu />);
 

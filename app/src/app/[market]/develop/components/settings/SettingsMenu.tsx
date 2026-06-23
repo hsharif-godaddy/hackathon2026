@@ -3,6 +3,8 @@
 import clsx from 'clsx';
 import { forwardRef, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import Button from '@ux/button';
+import GraphIcon from '@ux/icon/graph';
+import HistoryIcon from '@ux/icon/history';
 import MenuIcon from '@ux/icon/menu';
 import Spinner from '@ux/spinner';
 import text from '@ux/text';
@@ -40,6 +42,7 @@ const SettingsMenu = forwardRef<SettingsMenuRef>((props, ref) => {
   const isMobile = useDevelopPageStore((state) => state.isMobile);
 
   const isSecurityScanUiEnabled = useSwitchboard('appbuilder-security-scan-ui') === true;
+  const isAnalyticsEnabled = useSwitchboard('appbuilder-analytics');
 
   // Background tasks owned by settings sub-tabs surface a spinner on the toolbar button.
   // For now only the security analysis triggers it; OR additional sources in here as they land.
@@ -115,6 +118,46 @@ const SettingsMenu = forwardRef<SettingsMenuRef>((props, ref) => {
         onEscapeKeyDown={() => setOpen(false)}
       >
         <div className="flex flex-col gap-0.5">
+          {isMobile && (
+            <>
+              <Button
+                design="option"
+                size="sm"
+                active={activeChatTab === ChatTab.HISTORY}
+                icon={<HistoryIcon />}
+                text={t('builder_chat_toolbar_button_history')}
+                className="!justify-start"
+                data-testid="settings-menu-history-item"
+                onClick={() => {
+                  logClickEvent('develop.settings_menu.history', clickContext)();
+                  setActiveChatTab(ChatTab.HISTORY);
+                  setOpen(false);
+                }}
+              />
+              {isAnalyticsEnabled && (
+                <Button
+                  design="option"
+                  size="sm"
+                  active={activeChatTab === ChatTab.ANALYTICS}
+                  icon={<GraphIcon className="rtl:scale-x-[-1]" />}
+                  text={t('builder_settings_nav_analytics')}
+                  className="!justify-start"
+                  data-testid="settings-menu-analytics-item"
+                  onClick={() => {
+                    logClickEvent('develop.settings_menu.analytics', clickContext)();
+                    setActiveChatTab(ChatTab.ANALYTICS);
+                    setOpen(false);
+                  }}
+                />
+              )}
+              {items.length > 0 && (
+                <div
+                  role="separator"
+                  className="my-1 h-px bg-intents-ux-box-borderColor"
+                />
+              )}
+            </>
+          )}
           {items.map((item) => (
             <div key={item.id} className="flex flex-col">
               <Button

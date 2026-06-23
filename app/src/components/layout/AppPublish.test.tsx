@@ -421,6 +421,23 @@ describe('AppPublish', () => {
     });
   });
 
+  it('should show publish label on mobile chat toolbar only', async function chatToolbarPublishLabel() {
+    mockDevelopStore.isMobile = true;
+
+    const { rerender } = renderWithProviders(<AppPublish location="develop.chat_toolbar" />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'builder_publish_button' })).toHaveTextContent('builder_publish_button');
+    });
+
+    mockDevelopStore.isMobile = false;
+    rerender(<AppPublish location="develop.chat_toolbar" />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'builder_publish_button' })).not.toHaveTextContent('builder_publish_button');
+    });
+  });
+
   it('should skip nonce opens for header instance on mobile', async function mobileSkipsHeaderNonce() {
     const { rerender } = renderWithProviders(<AppPublish location="develop" />);
 
