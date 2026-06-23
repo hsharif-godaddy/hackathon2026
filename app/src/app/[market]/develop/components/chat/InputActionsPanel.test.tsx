@@ -32,6 +32,9 @@ vi.mock('@/stores/useStreamingConversationStore', () => ({
   useIsActivelyStreaming: vi.fn(),
   useIsLoading: vi.fn(),
   useMessages: vi.fn(),
+  useStreamingConversationStore: vi.fn(function (selector: (state: { queuedMessages: unknown[] }) => boolean) {
+    return selector({ queuedMessages: [] })
+  }),
   useActiveStream: vi.fn(function () { return null; }),
   useActiveRunningToolName: vi.fn(function () { return null; }),
   useActiveAwaitAgentsCount: vi.fn(function () { return 0; }),
@@ -195,6 +198,9 @@ describe('InputActionsPanel', () => {
     vi.mocked(StreamingStore.useIsActivelyStreaming).mockReturnValue(false)
     vi.mocked(StreamingStore.useIsLoading).mockReturnValue(false)
     vi.mocked(StreamingStore.useMessages).mockReturnValue([])
+    vi.mocked(StreamingStore.useStreamingConversationStore).mockImplementation(function (selector: any) {
+      return selector({ queuedMessages: [] })
+    })
     vi.mocked(TodoListStore.useCurrentList).mockReturnValue(null)
     vi.mocked(TodoListStore.useViewState).mockReturnValue(null)
     vi.mocked(useLatestNBAsModule.useLatestNBAs).mockReturnValue(null)
@@ -283,6 +289,96 @@ describe('InputActionsPanel', () => {
       renderWithProviders(<InputActionsPanel />)
 
       expect(screen.getByTestId('thinking-tip')).toBeInTheDocument()
+    })
+
+    it('does not render ThinkingTip when plan is expanded (legacy)', async () => {
+      vi.mocked(DevelopPageStore.useDevelopPageStore).mockImplementation(function (selector: any) {
+        return selector({
+          viewMode: ViewMode.PREVIEW,
+          isMobile: false,
+          app: { id: 'test-app-id', initialBuildComplete: true },
+        })
+      })
+      vi.mocked(TodoListStore.useCurrentList).mockReturnValue({
+        id: 'list-1',
+        appId: 'test-app-id',
+        name: 'Build Website',
+        items: [{ id: 'item-1', listId: 'list-1', title: 'Task A', completed: false, order: 0, createdAt: new Date(), updatedAt: new Date() }],
+        createdAt: new Date('2024-01-01T00:00:00.000Z'),
+        updatedAt: new Date('2024-01-01T00:00:00.000Z'),
+      })
+
+      const { user } = renderWithProviders(<InputActionsPanel />)
+      await user.click(screen.getByRole('button', { name: 'builder_todo_view_plan' }))
+
+      expect(screen.queryByTestId('thinking-tip')).not.toBeInTheDocument()
+    })
+
+    it('does not render ThinkingTip when queue has messages (legacy)', () => {
+      vi.mocked(DevelopPageStore.useDevelopPageStore).mockImplementation(function (selector: any) {
+        return selector({
+          viewMode: ViewMode.PREVIEW,
+          isMobile: false,
+          app: { id: 'test-app-id', initialBuildComplete: true },
+        })
+      })
+      vi.mocked(StreamingStore.useStreamingConversationStore).mockImplementation(function (selector: any) {
+        return selector({ queuedMessages: [{ id: 'queued-1', content: 'queued' }] })
+      })
+
+      renderWithProviders(<InputActionsPanel />)
+
+      expect(screen.queryByTestId('thinking-tip')).not.toBeInTheDocument()
+    })
+
+    it('does not render ThinkingTip when plan is expanded (theme-selection)', async () => {
+      vi.mocked(Switchboard.useSwitchboard).mockImplementation(function (flag: string) {
+        if (flag === 'airo-builder-theme-selection-chat') return true
+        if (flag === 'airo-builder-font-selection-chat') return false
+        return false
+      })
+      vi.mocked(DevelopPageStore.useDevelopPageStore).mockImplementation(function (selector: any) {
+        return selector({
+          viewMode: ViewMode.PREVIEW,
+          isMobile: false,
+          app: { id: 'test-app-id', initialBuildComplete: true },
+        })
+      })
+      vi.mocked(TodoListStore.useCurrentList).mockReturnValue({
+        id: 'list-1',
+        appId: 'test-app-id',
+        name: 'Build Website',
+        items: [{ id: 'item-1', listId: 'list-1', title: 'Task A', completed: false, order: 0, createdAt: new Date(), updatedAt: new Date() }],
+        createdAt: new Date('2024-01-01T00:00:00.000Z'),
+        updatedAt: new Date('2024-01-01T00:00:00.000Z'),
+      })
+
+      const { user } = renderWithProviders(<InputActionsPanel />)
+      await user.click(screen.getByRole('button', { name: 'Build Website' }))
+
+      expect(screen.queryByTestId('thinking-tip')).not.toBeInTheDocument()
+    })
+
+    it('does not render ThinkingTip when queue has messages (theme-selection)', () => {
+      vi.mocked(Switchboard.useSwitchboard).mockImplementation(function (flag: string) {
+        if (flag === 'airo-builder-theme-selection-chat') return true
+        if (flag === 'airo-builder-font-selection-chat') return false
+        return false
+      })
+      vi.mocked(DevelopPageStore.useDevelopPageStore).mockImplementation(function (selector: any) {
+        return selector({
+          viewMode: ViewMode.PREVIEW,
+          isMobile: false,
+          app: { id: 'test-app-id', initialBuildComplete: true },
+        })
+      })
+      vi.mocked(StreamingStore.useStreamingConversationStore).mockImplementation(function (selector: any) {
+        return selector({ queuedMessages: [{ id: 'queued-1', content: 'queued' }] })
+      })
+
+      renderWithProviders(<InputActionsPanel />)
+
+      expect(screen.queryByTestId('thinking-tip')).not.toBeInTheDocument()
     })
   })
 

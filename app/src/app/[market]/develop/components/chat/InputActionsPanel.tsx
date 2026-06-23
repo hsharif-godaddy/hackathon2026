@@ -46,7 +46,7 @@ import { logger } from '@/lib/request-context'
 import { cn } from '@/lib/utils'
 import { todoListService } from '@/services/TodoListService'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
-import { useIsActivelyStreaming, useIsLoading, useMessages } from '@/stores/useStreamingConversationStore'
+import { useIsActivelyStreaming, useIsLoading, useMessages, useStreamingConversationStore } from '@/stores/useStreamingConversationStore'
 import type { TodoItem } from '@/stores/useTodoListStore'
 import { useCurrentList, useTodoListStore, useViewState } from '@/stores/useTodoListStore'
 import { useUpfrontRebuildBuildQueueStore } from '@/stores/useUpfrontRebuildBuildQueueStore'
@@ -186,6 +186,7 @@ function InputActionsPanelLegacy({
   const isLoading = useIsLoading()
   const isProcessing = isStreaming || isLoading
   const initialBuildComplete = useDevelopPageStore((state) => state.app?.initialBuildComplete)
+  const hasQueuedMessages = useStreamingConversationStore(state => (state.queuedMessages?.length ?? 0) > 0)
 
   const [fullPlanExpanded, setFullPlanExpanded] = useState(false)
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -445,7 +446,7 @@ function InputActionsPanelLegacy({
               </button>
             )}
           </div>
-          {initialBuildComplete && <ThinkingTip />}
+          {initialBuildComplete && !fullPlanExpanded && !hasQueuedMessages && <ThinkingTip />}
 
           <AnimatePresence initial={false}>
             {hasPlan && fullPlanExpanded && (
@@ -678,6 +679,7 @@ function InputActionsPanelThemeSelection({
   const viewMode = useDevelopPageStore((state) => state.viewMode)
   const isMobile = useDevelopPageStore((state) => state.isMobile)
   const initialBuildComplete = useDevelopPageStore((state) => state.app?.initialBuildComplete)
+  const hasQueuedMessages = useStreamingConversationStore(state => (state.queuedMessages?.length ?? 0) > 0)
   const appId = useAppIdFromParams()
 
   const nbaDataRaw = useLatestNBAs(feedbackActive)
@@ -1165,7 +1167,7 @@ function InputActionsPanelThemeSelection({
               </button>
             )}
           </div>
-          {initialBuildComplete && <ThinkingTip />}
+          {initialBuildComplete && !fullPlanExpanded && !hasQueuedMessages && <ThinkingTip />}
 
           <AnimatePresence initial={false}>
             {hasPlan && fullPlanExpanded && !showAnySuggest && (
