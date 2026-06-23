@@ -416,11 +416,11 @@ describe('DomainPanel', function domainPanelTests() {
 
       renderWithProviders(<DomainPanel />);
 
-      // ProjectDomain renders with specific content - verify component renders
       await waitFor(function waitForProjectDomain() {
-        // The component should render without upgrade/publish screens
         expect(screen.queryByText('builder_domain_upgrade_title')).not.toBeInTheDocument();
         expect(screen.queryByText('builder_domain_publish_required_title')).not.toBeInTheDocument();
+        expect(screen.getByTestId('project-domain-card')).toBeInTheDocument();
+        expect(screen.getByText('Project Domain')).toBeInTheDocument();
       });
     });
   });
@@ -545,42 +545,53 @@ describe('DomainPanel', function domainPanelTests() {
     });
   });
 
-  describe('appbuilder-domain-connect layout', function domainConnectLayoutTests() {
-    it('uses connect layout order, section divider, and larger gap when flag is on', async function connectLayoutOn() {
+  describe('project domain card layout', function projectDomainCardLayoutTests() {
+    it('renders page header, custom domains, and project domain card when project domain is enabled', async function projectDomainCardLayout() {
       await setupPublishedDomainPanel(domainConnectFlags(true));
 
       renderWithProviders(<DomainPanel />);
 
       await waitFor(function waitForSections() {
+        expect(screen.getByText('Domains')).toBeInTheDocument();
+        expect(
+          screen.getByText('Buy, connect and manage domains associated with your project'),
+        ).toBeInTheDocument();
         expect(screen.getByText('builder_domain_attach_main_title')).toBeInTheDocument();
-        expect(screen.getByText('builder_project_domain_title')).toBeInTheDocument();
+        expect(screen.getByText('Project Domain')).toBeInTheDocument();
+        expect(screen.getByTestId('project-domain-card')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Edit URL' })).toBeInTheDocument();
       });
 
-      expectSectionOrder('builder_domain_attach_main_title', 'builder_project_domain_title');
+      expectSectionOrder('builder_domain_attach_main_title', 'Project Domain');
       expect(
-        document.querySelector('.border-t.border-intents-ux-boxLowContrast-borderColor.pt-6'),
+        document.querySelector('.border-t.border-intents-ux-boxLowContrast-borderColor'),
+      ).not.toBeInTheDocument();
+      expect(
+        document.querySelector('.mb-\\[40px\\]'),
       ).toBeInTheDocument();
-      expect(domainPanelLayoutTestState.rootBoxGap).toBe('lg');
     });
 
-    it('preserves legacy section order and smaller gap when flag is off without active custom domain', async function connectLayoutOffNoCustomDomain() {
+    it('uses the same project domain card layout when domain connect is off', async function projectDomainCardWithoutConnect() {
       await setupPublishedDomainPanel(domainConnectFlags(false));
 
       renderWithProviders(<DomainPanel />);
 
       await waitFor(function waitForSections() {
+        expect(screen.getByText('Domains')).toBeInTheDocument();
+        expect(screen.getByText('Project Domain')).toBeInTheDocument();
         expect(screen.getByText('builder_custom_domain_title')).toBeInTheDocument();
-        expect(screen.getByText('builder_project_domain_title')).toBeInTheDocument();
       });
 
-      expectSectionOrder('builder_project_domain_title', 'builder_custom_domain_title');
+      expectSectionOrder('builder_custom_domain_title', 'Project Domain');
       expect(
-        document.querySelector('.border-t.border-intents-ux-boxLowContrast-borderColor.pt-6'),
+        document.querySelector('.border-t.border-intents-ux-boxLowContrast-borderColor'),
       ).not.toBeInTheDocument();
-      expect(domainPanelLayoutTestState.rootBoxGap).toBe('sm');
+      expect(
+        document.querySelector('.mb-\\[40px\\]'),
+      ).toBeInTheDocument();
     });
 
-    it('preserves legacy section order when flag is off and an active custom domain exists', async function connectLayoutOffWithCustomDomain() {
+    it('keeps custom domains above project domain when an active custom domain exists', async function projectDomainCardWithCustomDomain() {
       domainPanelLayoutTestState.appDetails = {
         domains: [{
           fqdn: 'custom.example.com',
@@ -594,15 +605,17 @@ describe('DomainPanel', function domainPanelTests() {
       renderWithProviders(<DomainPanel />);
 
       await waitFor(function waitForSections() {
+        expect(screen.getByText('Project Domain')).toBeInTheDocument();
         expect(screen.getByText('builder_custom_domain_title')).toBeInTheDocument();
-        expect(screen.getByText('builder_project_domain_title')).toBeInTheDocument();
       });
 
-      expectSectionOrder('builder_custom_domain_title', 'builder_project_domain_title');
+      expectSectionOrder('builder_custom_domain_title', 'Project Domain');
       expect(
-        document.querySelector('.border-t.border-intents-ux-boxLowContrast-borderColor.pt-6'),
+        document.querySelector('.border-t.border-intents-ux-boxLowContrast-borderColor'),
       ).not.toBeInTheDocument();
-      expect(domainPanelLayoutTestState.rootBoxGap).toBe('sm');
+      expect(
+        document.querySelector('.mb-\\[40px\\]'),
+      ).toBeInTheDocument();
     });
   });
 

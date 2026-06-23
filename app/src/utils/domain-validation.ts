@@ -111,6 +111,23 @@ const FQDN_ERROR_KEYS: Record<DomainValidationError, string> = {
 };
 
 /**
+ * Whether validation errors indicate the project prefix is already taken.
+ */
+export function isProjectPrefixTakenError(
+  errors: DomainValidationErrorObject[] | undefined,
+): boolean {
+  if (!errors?.length) {
+    return false;
+  }
+
+  const code = errors[0].code;
+  return (
+    code === DomainValidationError.DOMAIN_NOT_UNIQUE ||
+    code === DomainValidationError.DOMAIN_ALREADY_OWNED
+  );
+}
+
+/**
  * Get user-friendly error message for domain validation errors
  *
  * Maps mgmt-airo error codes to user-friendly messages.

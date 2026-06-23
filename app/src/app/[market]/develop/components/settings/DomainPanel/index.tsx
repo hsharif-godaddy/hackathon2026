@@ -17,7 +17,6 @@ import { useTranslations } from '@/hooks/useTranslations';
 import { DomainStatus, DomainType } from "@/lib/control-plane/types";
 import { shipAnalyticsLog } from '@/lib/logging';
 import { PAYWALL_ITC } from '@/lib/paywall/shared';
-import { cn } from '@/lib/utils';
 import { useDevelopPageStore } from "@/stores/useDevelopPageStore";
 import { usePaywallStore } from "@/stores/usePaywallStore";
 import { useSiteStore } from "@/stores/useSiteStore";
@@ -127,6 +126,38 @@ export default function DomainPanel() {
     );
   }
 
+  if (isProjectDomainEnabled) {
+    return (
+      <Box className="@container">
+        <Box orientation="vertical" className="mb-[40px] flex w-full flex-col gap-[8px]">
+          <h1
+            className="m-0 text-intents-ux-text-primaryColor"
+            style={{ fontSize: 28, fontWeight: 700, lineHeight: '28px' }}
+          >
+            {t('builder_domain_title', undefined, 'Domains')}
+          </h1>
+          <text.p className="!m-0 !text-[14px] leading-tight text-intents-ux-text-secondaryColor">
+            {t(
+              'builder_domain_page_description',
+              undefined,
+              'Buy, connect and manage domains associated with your project',
+            )}
+          </text.p>
+        </Box>
+
+        {isDomainAttachEnabled && (
+          <Box className="w-full min-w-0">
+            <DomainAttach appDetails={appDetails} isAppDetailsFetched={isAppDetailsFetched} />
+          </Box>
+        )}
+
+        <Box className={isDomainAttachEnabled ? 'mt-5 w-full min-w-0' : 'w-full min-w-0'}>
+          <ProjectDomain />
+        </Box>
+      </Box>
+    );
+  }
+
   return (
     <Box gap={isDomainConnectEnabled ? "lg" : "sm"} className="@container">
       {!isDomainAttachEnabled && !isProjectDomainEnabled && (
@@ -138,26 +169,13 @@ export default function DomainPanel() {
       {isDomainConnectEnabled ? (
         <>
           {isDomainAttachEnabled && <DomainAttach appDetails={appDetails} isAppDetailsFetched={isAppDetailsFetched} />}
-          {isProjectDomainEnabled && (
-            <Box
-              className={cn(
-                'w-full min-w-0',
-                isDomainAttachEnabled &&
-                  'border-t border-intents-ux-boxLowContrast-borderColor pt-6',
-              )}
-            >
-              <ProjectDomain />
-            </Box>
-          )}
         </>
       ) : hasActiveCustomDomain ? (
         <>
           {isDomainAttachEnabled && <DomainAttach appDetails={appDetails} isAppDetailsFetched={isAppDetailsFetched} />}
-          {isProjectDomainEnabled && <ProjectDomain />}
         </>
       ) : (
         <>
-          {isProjectDomainEnabled && <ProjectDomain />}
           {isDomainAttachEnabled && <DomainAttach appDetails={appDetails} isAppDetailsFetched={isAppDetailsFetched} />}
         </>
       )}

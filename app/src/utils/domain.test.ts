@@ -6,9 +6,12 @@ import {
   findCustomerDomain,
   getDnsRecords,
   hasExternalNameservers,
+  hasInvalidProjectDomainPrefixBounds,
+  hasInvalidProjectDomainPrefixCharacters,
   isAiroSubdomain,
   isBlockedAiroDomain,
   isCustomerDomain,
+  looksLikeCustomDomainPrefix,
   normalizeFqdn,
   parseDomain,
   resolveSiteFqdn,
@@ -54,6 +57,38 @@ describe('sanitizeDomainInput', () => {
 
   it('should handle complex input', () => {
     expect(sanitizeDomainInput('https://blog.example.com:8080/path?query=1')).toBe('blog.example.com');
+  });
+});
+
+describe('hasInvalidProjectDomainPrefixCharacters', () => {
+  it('should allow letters, numbers, periods, and hyphens', () => {
+    expect(hasInvalidProjectDomainPrefixCharacters('my-site.v2')).toBe(false);
+    expect(hasInvalidProjectDomainPrefixCharacters('example.com')).toBe(false);
+  });
+
+  it('should reject other special characters', () => {
+    expect(hasInvalidProjectDomainPrefixCharacters('my_site')).toBe(true);
+    expect(hasInvalidProjectDomainPrefixCharacters('hello world')).toBe(true);
+    expect(hasInvalidProjectDomainPrefixCharacters('name!')).toBe(true);
+  });
+});
+
+describe('hasInvalidProjectDomainPrefixBounds', () => {
+  it('should allow prefixes that start and end with a letter or number', () => {
+    expect(hasInvalidProjectDomainPrefixBounds('my-app')).toBe(false);
+    expect(hasInvalidProjectDomainPrefixBounds('app2')).toBe(false);
+    expect(hasInvalidProjectDomainPrefixBounds('a')).toBe(false);
+  });
+
+  it('should reject prefixes that start or end with a period or hyphen', () => {
+    expect(hasInvalidProjectDomainPrefixBounds('-myapp')).toBe(true);
+    expect(hasInvalidProjectDomainPrefixBounds('.myapp')).toBe(true);
+    expect(hasInvalidProjectDomainPrefixBounds('myapp-')).toBe(true);
+    expect(hasInvalidProjectDomainPrefixBounds('myapp.')).toBe(true);
+  });
+
+  it('should not flag empty input', () => {
+    expect(hasInvalidProjectDomainPrefixBounds('')).toBe(false);
   });
 });
 
@@ -662,6 +697,20 @@ describe('isBlockedAiroDomain', () => {
 
     it('should block own prefix domain in uppercase', () => {
       expect(isBlockedAiroDomain('97QCM6P74M.C37.AIROAPP.AI')).toBe(true);
+    });
+  });
+
+  describe('looksLikeCustomDomainPrefix', () => {
+    it('should detect common custom domains', () => {
+      expect(looksLikeCustomDomainPrefix('example.com')).toBe(true);
+      expect(looksLikeCustomDomainPrefix('example.in')).toBe(true);
+      expect(looksLikeCustomDomainPrefix('shop.example.co.uk')).toBe(true);
+    });
+
+    it('should not detect airo subdomain prefixes', () => {
+      expect(looksLikeCustomDomainPrefix('my-app')).toBe(false);
+      expect(looksLikeCustomDomainPrefix('my-app.airoapp.ai')).toBe(false);
+      expect(looksLikeCustomDomainPrefix('my-app.test-airoapp.ai')).toBe(false);
     });
   });
 });

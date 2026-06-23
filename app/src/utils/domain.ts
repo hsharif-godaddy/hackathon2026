@@ -38,6 +38,21 @@ export function isBlockedAiroDomain(domain: string): boolean {
 }
 
 /**
+ * Whether user input in the built-in URL prefix field looks like a custom domain
+ * (e.g. example.com, site.in) rather than an airo subdomain prefix.
+ */
+export function looksLikeCustomDomainPrefix(value: string): boolean {
+  const normalized = sanitizeDomainInput(value.toLowerCase());
+  if (!normalized.includes('.')) {
+    return false;
+  }
+  if (isBlockedAiroDomain(normalized)) {
+    return false;
+  }
+  return validateDomain(normalized).isValid;
+}
+
+/**
  * Resolve the public FQDN for a site with fallback priority:
  *  1. Custom domain (domainType !== prefix) — only if status is active
  *  2. Prefix domain (domainType === prefix) — only if status is active
@@ -114,6 +129,32 @@ export function sanitizeDomainInput(input: string): string {
   cleaned = cleaned.split(':')[0];
 
   return cleaned;
+}
+
+/**
+ * Whether built-in URL prefix input contains characters other than
+ * lowercase letters, numbers, periods, and hyphens.
+ */
+export function hasInvalidProjectDomainPrefixCharacters(input: string): boolean {
+  if (!input) {
+    return false;
+  }
+  return /[^a-z0-9.-]/i.test(input);
+}
+
+/**
+ * Whether built-in URL prefix input does not start and end with a letter or number.
+ */
+export function hasInvalidProjectDomainPrefixBounds(input: string): boolean {
+  if (!input) {
+    return false;
+  }
+
+  const firstCharacter = input[0];
+  const lastCharacter = input[input.length - 1];
+  const isAlphanumeric = (character: string) => /^[a-z0-9]$/i.test(character);
+
+  return !isAlphanumeric(firstCharacter) || !isAlphanumeric(lastCharacter);
 }
 
 /**
