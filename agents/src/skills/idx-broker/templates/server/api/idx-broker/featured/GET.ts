@@ -1,18 +1,22 @@
 import type { Request, Response } from 'express';
 import { getSecret } from '#airo/secrets';
 import type { IDXFeaturedResponse } from '../../../../lib/idx-broker/types';
+import { parseIDXListings } from '../../../../lib/idx-broker/types';
 
 /**
  * API Route: GET /api/idx-broker/featured
  *
- * Fetches featured property listings from IDX Broker API.
+ * Fetches featured property listings from IDX Broker API with pagination support.
  * Requires IDX_BROKER_API_KEY secret to be configured.
  *
+ * Query Parameters:
+ * - url (optional): Full IDX Broker pagination URL (e.g., from next/previous fields)
+ *
  * Response format:
- * - Success: { listings: IDXListing[] }
+ * - Success: { listings: IDXListing[], pagination: IDXPaginationMetadata }
  * - Error: { error: string }
  */
-export default async function handler(_req: Request, res: Response): Promise<void> {
+export default async function handler(req: Request, res: Response): Promise<void> {
   // Retrieve API key from secrets
   const apiKey = getSecret('IDX_BROKER_API_KEY');
 
@@ -23,9 +27,44 @@ export default async function handler(_req: Request, res: Response): Promise<voi
     return;
   }
 
+  // Get pagination URL from query parameter (optional)
+  const url = typeof req.query.url === 'string' ? req.query.url : undefined;
+  const defaultUrl = 'https://api.idxbroker.com/clients/featured';
+
+  // Validate pagination URL for security (SSRF prevention)
+  let requestUrl = defaultUrl;
+  if (url) {
+    try {
+      const parsedUrl = new URL(url);
+
+      // Only allow IDX Broker API domain
+      if (parsedUrl.hostname !== 'api.idxbroker.com') {
+        res.status(400).json({
+          error: 'Invalid pagination URL. Must be an IDX Broker API URL.',
+        });
+        return;
+      }
+
+      // Only allow /clients/featured endpoint
+      if (!parsedUrl.pathname.startsWith('/clients/featured')) {
+        res.status(400).json({
+          error: 'Invalid pagination URL. Must be a featured listings endpoint.',
+        });
+        return;
+      }
+
+      requestUrl = url;
+    } catch {
+      res.status(400).json({
+        error: 'Invalid URL format.',
+      });
+      return;
+    }
+  }
+
   try {
     // Fetch featured listings from IDX Broker API
-    const response = await fetch('https://api.idxbroker.com/clients/featured', {
+    const response = await fetch(requestUrl, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
@@ -55,25 +94,38 @@ export default async function handler(_req: Request, res: Response): Promise<voi
     // Handle empty response (no featured listings)
     const text = await response.text();
     if (!text || text.trim() === '') {
-      res.json({ listings: [] });
+      res.json({
+        listings: [],
+        pagination: {
+          total: 0,
+          first: defaultUrl,
+          last: defaultUrl,
+          next: null,
+          previous: null,
+        },
+      });
       return;
     }
 
     // Parse response
-    const data = JSON.parse(text) as IDXFeaturedResponse;
+    const apiResponse = JSON.parse(text) as IDXFeaturedResponse;
 
     // Transform response from object to array for easier frontend iteration
-    // IDX Broker returns an object with encoded keys (e.g., "a000!%5362657")
-    // Filter out null values
-    const listings = Object.values(data).filter((item) => item !== null);
+    // IDX Broker returns { total, first, last, next, previous, data: {...} }
+    // where data is an object with encoded keys (e.g., "a000!%M1422715")
+    const listings = parseIDXListings(apiResponse);
 
-    // Return empty array if no listings (instead of error)
-    if (listings.length === 0) {
-      res.json({ listings: [] });
-      return;
-    }
-
-    res.json({ listings });
+    // Return listings with pagination metadata
+    res.json({
+      listings,
+      pagination: {
+        total: apiResponse.total,
+        first: apiResponse.first,
+        last: apiResponse.last,
+        next: apiResponse.next,
+        previous: apiResponse.previous,
+      },
+    });
   } catch (error) {
     // Handle network errors, timeouts, etc.
     console.error('Error fetching IDX Broker listings:', error);

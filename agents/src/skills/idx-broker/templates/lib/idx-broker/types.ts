@@ -53,26 +53,39 @@ export interface IDXListing {
 }
 
 /**
- * Response from IDX Broker /clients/featured endpoint
- * Returns an OBJECT with encoded keys, NOT an array
+ * Data object from IDX Broker /clients/featured endpoint
+ * Object with encoded keys, NOT an array
  */
-export interface IDXFeaturedResponse {
-  [key: string]: IDXListing;     // Object with encoded keys like "a000!%5362657"
+export interface IDXFeaturedData {
+  [key: string]: IDXListing;     // Object with encoded keys like "a000!%M1422715"
 }
 
 /**
- * Helper function to convert IDX Broker response object to array
+ * Full response from IDX Broker /clients/featured endpoint
+ * Includes pagination metadata and data object
+ */
+export interface IDXFeaturedResponse {
+  total: number;
+  first: string;                 // URL to first page
+  last: string;                  // URL to last page
+  next: string | null;           // URL to next page, null if on last page
+  previous: string | null;       // URL to previous page, null if on first page
+  data: IDXFeaturedData;
+}
+
+/**
+ * Helper function to convert IDX Broker response to array
  *
  * @param response - Raw response from IDX Broker API
  * @returns Array of listings for easy iteration
  *
  * @example
- * const data = await response.json();
- * const listings = parseIDXListings(data);
+ * const apiResponse = await response.json();
+ * const listings = parseIDXListings(apiResponse);
  * listings.forEach(listing => console.log(listing.address));
  */
 export function parseIDXListings(response: IDXFeaturedResponse): IDXListing[] {
-  return Object.values(response);
+  return Object.values(response.data).filter((item) => item !== null);
 }
 
 /**
@@ -148,4 +161,24 @@ export function isActiveListing(listing: IDXListing): boolean {
     listing.propStatus.toLowerCase() === 'active' &&
     listing.idxStatus.toLowerCase() === 'active'
   );
+}
+
+/**
+ * Pagination metadata from IDX Broker API
+ * Used for navigating through featured listing pages
+ */
+export interface IDXPaginationMetadata {
+  total: number;              // Total number of listings
+  first: string;              // URL to first page
+  last: string;               // URL to last page
+  next: string | null;        // URL to next page, null if on last page
+  previous: string | null;    // URL to previous page, null if on first page
+}
+
+/**
+ * Response from /api/idx-broker/featured endpoint with pagination
+ */
+export interface IDXPaginatedResponse {
+  listings: IDXListing[];
+  pagination: IDXPaginationMetadata;
 }

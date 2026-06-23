@@ -1,43 +1,99 @@
-import { useState, useEffect } from 'react';
-import type { IDXListing } from '../lib/idx-broker/types';
+import { useState, useEffect, useCallback } from 'react';
+import type { IDXListing, IDXPaginationMetadata } from '../lib/idx-broker/types';
 import PropertyCard from '../components/PropertyCard';
+import PaginationControls from '../components/PaginationControls';
 
 export default function FeaturedListings() {
   const [listings, setListings] = useState<IDXListing[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [pagination, setPagination] = useState<IDXPaginationMetadata | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [isPageLoading, setIsPageLoading] = useState(false);
+  const [pageSize, setPageSize] = useState<number | null>(null);
 
-  useEffect(() => {
-    async function fetchListings() {
-      try {
+  const fetchListings = useCallback(async (url?: string, isPageChange = false) => {
+    try {
+      // Only show full-page loading on initial load, not during pagination
+      if (!isPageChange) {
         setLoading(true);
-        setError(null);
+      }
+      setError(null);
 
-        const response = await fetch('/api/idx-broker/featured');
+      const endpoint = url
+        ? `/api/idx-broker/featured?url=${encodeURIComponent(url)}`
+        : '/api/idx-broker/featured';
 
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          throw new Error(
-            errorData.error || `Failed to fetch listings (${response.status})`
-          );
-        }
+      const response = await fetch(endpoint);
 
-        const data = await response.json();
-        setListings(data.listings || []);
-      } catch (err) {
-        console.error('Error fetching IDX Broker listings:', err);
-        setError(
-          err instanceof Error
-            ? err.message
-            : 'An unexpected error occurred'
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(
+          errorData.error || `Failed to fetch listings (${response.status})`
         );
-      } finally {
+      }
+
+      const data = await response.json();
+      setListings(data.listings || []);
+      setPagination(data.pagination || null);
+
+      // Capture page size from the first page with listings (for accurate total pages calculation)
+      // Use functional updater to avoid recreating fetchListings when pageSize changes
+      if (data.listings && data.listings.length > 0) {
+        setPageSize((prev: number | null) => prev ?? data.listings.length);
+      }
+    } catch (err) {
+      console.error('Error fetching IDX Broker listings:', err);
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'An unexpected error occurred'
+      );
+    } finally {
+      if (!isPageChange) {
         setLoading(false);
       }
     }
+  }, []); // Empty deps - fetchListings is now stable across renders
 
+  useEffect(() => {
     fetchListings();
-  }, []);
+  }, [fetchListings]);
+
+  const handleNextPage = async () => {
+    if (!pagination?.next || isPageLoading) return;
+
+    setIsPageLoading(true);
+    setCurrentPage((prev: number) => prev + 1);
+
+    try {
+      await fetchListings(pagination.next, true); // Pass true for page change
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } finally {
+      setIsPageLoading(false);
+    }
+  };
+
+  const handlePreviousPage = async () => {
+    if (!pagination?.previous || isPageLoading) return;
+
+    setIsPageLoading(true);
+    setCurrentPage((prev: number) => Math.max(1, prev - 1));
+
+    try {
+      await fetchListings(pagination.previous, true); // Pass true for page change
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } finally {
+      setIsPageLoading(false);
+    }
+  };
+
+  // Calculate total pages for display
+  // Use consistent page size (not current page's count) to avoid jumps on last page
+  const listingsPerPage = pageSize || listings.length || 1;
+  const totalPages = pagination
+    ? Math.ceil(pagination.total / listingsPerPage)
+    : 1;
 
   return (
     <div className="container mx-auto px-4 py-12">
@@ -130,7 +186,8 @@ export default function FeaturedListings() {
       {!loading && !error && listings.length > 0 && (
         <>
           <p className="mb-6 text-muted-foreground">
-            Showing {listings.length} {listings.length === 1 ? 'property' : 'properties'}
+            Showing {listings.length} of {pagination?.total || listings.length} {listings.length === 1 ? 'property' : 'properties'}
+            {totalPages > 1 && ` (Page ${currentPage} of ${totalPages})`}
           </p>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
@@ -138,6 +195,19 @@ export default function FeaturedListings() {
               <PropertyCard key={listing.listingID} listing={listing} />
             ))}
           </div>
+
+          {/* Pagination Controls */}
+          {pagination && (pagination.next || pagination.previous) && (
+            <PaginationControls
+              currentPage={currentPage}
+              totalPages={totalPages}
+              hasNext={pagination.next !== null}
+              hasPrevious={pagination.previous !== null}
+              onNext={handleNextPage}
+              onPrevious={handlePreviousPage}
+              isLoading={isPageLoading}
+            />
+          )}
         </>
       )}
     </div>
