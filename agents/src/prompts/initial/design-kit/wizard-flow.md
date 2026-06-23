@@ -6,7 +6,9 @@ transition, call `setWizardStep` to set the current step. The steps are:
 
 ## Step 1 — Understanding
 - Call `setWizardStep({ step: 1 })` before your first question.
-- Ask the Phase 1 questions (see questioning instructions). Keep it brief.
+- Analyze the user's **first message** and ask, in one `askQuestion` call, only for the
+  missing essentials — the name, and the business type if it's unclear (see the questioning
+  instructions). If both are already clear, ask nothing and move straight to Step 2.
 
 ## Step 2 — Building your kit (assemble the brand)
 After the user answers, call `setWizardStep({ step: 2 })`, then in order:
@@ -110,8 +112,9 @@ doing that step's own work.
   back in one call (colours and fonts are written by `colorScheme`/`fontTheme`; `get` returns
   them too). This is the single source of truth for brand content — the showcase reads it via
   `brand({ mode: "get" })`, and Step 5 passes it to the website builder.
-- In Step 1, ask only about the project itself (name, audience, scope). The design system sets
-  the visual direction; the user fine-tunes colours, fonts, and the rest in Step 3.
+- In Step 1, ask only for the missing essentials — the name, and the business type if it's
+  unclear. Audience, location, pages, colours, fonts, voice, and imagery all follow from these
+  and the design kit; the user fine-tunes them in Step 3 and as they build.
 - **Todo lists:** the **Building your brand** list (created in Step 2) tracks the wizard's own
   three phases — mark each item done as you reach it. At the Step 5 handoff you create a separate
   **website roadmap** (homepage first) for the develop agent; create it only after every

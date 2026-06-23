@@ -1,38 +1,37 @@
-# Gather Project Information (Phase 1)
+# Gather Project Information
 
-Gathering happens in two phases. Each phase is one `askQuestion` call. Both phases are optional — skip if the required details are already provided.
+Before you assemble the brand, you need just two essentials: the **business / project name** and **what the business is** (its type / vertical). Everything else — audience, voice, imagery, colours, fonts, even the pages — follows from these two and the chosen design kit, and the user fine-tunes it live in Step 3 and beyond. So keep this opening light: ask only for the essentials you don't already have.
 
-## Phase 1 — Project Details
+## The questioning pass
+
+Read the user's **first message** and note which of the two essentials it already gives you. Then make a **single `askQuestion` call** for **only** the essentials that are missing. If the first message already supplies both the name and the type, **ask nothing** and go straight to building the kit.
 
 <rules>
-- **NO TEXT BEFORE OR AFTER TOOL CALLS** - Just call the tool, no explanatory text
-- **SKIP IF ALL KNOWN** - Skip Phase 1 entirely if name, audience, location (if applicable), and scope are all clear from the user's input
-- **UP TO 4 QUESTIONS** - Ask only what's missing:
-  - Company/project name (if missing) — 2-3 creative name ideas relevant to the business type, plus "I don't have a name yet" as the last option
-  - Target audience — 2-3 suggestions
-  - Location (if a business or event) — 2-3 suggestions tailored to the user's timezone region if available (e.g., America/Phoenix → Phoenix-area suggestions)
-  - 1-2 scope/feature clarification questions — 2-3 suggestions each
+- **NO TEXT BEFORE OR AFTER TOOL CALLS** — just call the tool, no explanatory text.
+- **ANALYZE FIRST, ASK ONLY WHAT'S MISSING** — from the first message, decide whether the name and the business type are already clear; ask only for the ones that are not.
+- **Name (core)** — if the user hasn't given one, ask for it with 2-3 creative ideas relevant to the business type, plus "I don't have a name yet" as the last option. Use only a name the user provides or picks — offer suggestions, never assume one.
+- **Business type (core, usually already known)** — ask only when the first message is too thin to tell what the business is. Most prompts ("a site for my bakery") already make it clear; when they do, don't ask.
+- **Everything else follows later** — audience, location, and the specific pages/features are choices the user shapes in Step 3 and as they build, and the design kit sets the visual direction. They don't change which kit fits or the first showcase, so leave them out of this pass.
+- **One or two questions at most** — usually just the name; often zero.
 
-✅ [Ask about name when missing with creative suggestions]
-✅ [Ask about audience when not obvious]
-✅ [Ask about location for businesses and events]
-✅ [Skip Phase 1 entirely for detailed inputs]
-✅ [Use only a name the user provides or picks — offer suggestions, never assume one]
+✅ [Ask for the name, with creative suggestions, when the user hasn't given one]
+✅ [Ask what the business is only when the first message is too vague to tell]
+✅ [Ask nothing and start building when the name and type are already clear]
+✅ [Let audience, location, voice, imagery, and pages be shaped later, not asked up front]
 </rules>
 
-**Phase 1 example** for "website for my bakery":
+**Example — "website for my bakery"** (type clear, name missing) → one question:
 ```json
 {
   "questions": [
-    { "question": "What's your bakery called?", "suggestions": [{"text": "Sweet Rise Bakery"}, {"text": "Golden Crust Co."}, {"text": "I don't have a name yet"}], "allowOther": true },
-    { "question": "Who are your main customers?", "suggestions": [{"text": "Local neighborhood families"}, {"text": "Foodies and brunch crowd"}, {"text": "Wedding and event clients"}], "allowOther": true },
-    { "question": "Where's your bakery located?", "suggestions": [{"text": "Downtown storefront"}, {"text": "Suburban neighborhood"}, {"text": "Online only"}], "allowOther": true },
-    { "question": "What's the main goal for your site?", "suggestions": [{"text": "Show menu and hours"}, {"text": "Take online orders"}, {"text": "Promote catering services"}], "allowOther": true }
+    { "question": "What's your bakery called?", "suggestions": [{"text": "Sweet Rise Bakery"}, {"text": "Golden Crust Co."}, {"text": "I don't have a name yet"}], "allowOther": true }
   ]
 }
 ```
 
-After the user responds to Phase 1, score the design system catalog using their answers and install the best match.
+**Example — "a site for my bakery Sweet Rise"** (name and type both clear) → ask nothing; start building the kit.
+
+After the user responds — or immediately, if nothing was missing — score the design system catalog with what you know and install the best match.
 
 ## askQuestion tool schema
 
@@ -40,7 +39,7 @@ After the user responds to Phase 1, score the design system catalog using their 
 {
   "questions": [
     {
-      "question": "What's your business name?",
+      "question": "What's your business called?",
       "suggestions": [{ "text": "Bright Spark Studio" }, { "text": "Nova Creative" }, { "text": "I don't have a name yet" }],
       "allowOther": true,
       "multiSelect": false
