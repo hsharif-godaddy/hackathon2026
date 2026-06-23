@@ -15,12 +15,14 @@ interface InboxConversationDetailProps {
   conversationId: IntString;
   brandId: UuidString;
   onBack: () => void;
+  consumeEntryRef: () => string | null;
 }
 
 export function InboxConversationDetail({
   conversationId,
   brandId,
   onBack,
+  consumeEntryRef,
 }: InboxConversationDetailProps) {
   const t = useTranslations();
   const [body, setBody] = useState('');
@@ -42,8 +44,12 @@ export function InboxConversationDetail({
   useEffect(() => {
     if (!conversation || detailViewedRef.current === conversationId) return;
     detailViewedRef.current = conversationId;
-    logImpressionEvent('inbox.detail.viewed', { channel: conversation.category.type })();
-  }, [conversation, conversationId]);
+    const entryRef = consumeEntryRef();
+    logImpressionEvent('inbox.detail.viewed', {
+      channel: conversation.category.type,
+      ...(entryRef ? { ref: entryRef } : {}),
+    })();
+  }, [conversation, conversationId, consumeEntryRef]);
 
   useEffect(
     function resetBodyOnConversationChange() {

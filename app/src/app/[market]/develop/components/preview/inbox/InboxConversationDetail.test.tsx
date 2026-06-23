@@ -13,6 +13,18 @@ vi.mock('@/lib/inbox/isGuideBotConversation', () => ({
   isGuideBotConversation: vi.fn(() => false),
 }));
 
+const instrumentation = vi.hoisted(() => ({
+  logImpressionEvent: vi.fn(() => vi.fn()),
+}));
+
+vi.mock('@/utils/instrumentation', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/utils/instrumentation')>();
+  return {
+    ...actual,
+    logImpressionEvent: instrumentation.logImpressionEvent,
+  };
+});
+
 const mockMutate = vi.fn();
 
 vi.mock('@/app/[market]/develop/hooks/useInbox', () => ({
@@ -59,6 +71,7 @@ describe('InboxConversationDetail', () => {
         conversationId="conv-1"
         brandId="brand-1"
         onBack={vi.fn()}
+        consumeEntryRef={() => null}
       />,
     );
 
@@ -85,6 +98,7 @@ describe('InboxConversationDetail', () => {
         conversationId="conv-1"
         brandId="brand-1"
         onBack={vi.fn()}
+        consumeEntryRef={() => null}
       />,
     );
 
@@ -108,6 +122,7 @@ describe('InboxConversationDetail', () => {
         conversationId="conv-1"
         brandId="brand-1"
         onBack={vi.fn()}
+        consumeEntryRef={() => null}
       />,
     );
 
@@ -127,6 +142,7 @@ describe('InboxConversationDetail', () => {
         conversationId="conv-1"
         brandId="brand-1"
         onBack={vi.fn()}
+        consumeEntryRef={() => null}
       />,
     );
 
@@ -138,6 +154,7 @@ describe('InboxConversationDetail', () => {
         conversationId="conv-2"
         brandId="brand-1"
         onBack={vi.fn()}
+        consumeEntryRef={() => null}
       />,
     );
 
@@ -152,9 +169,42 @@ describe('InboxConversationDetail', () => {
         conversationId="conv-1"
         brandId="brand-1"
         onBack={vi.fn()}
+        consumeEntryRef={() => null}
       />,
     );
 
     expect(screen.getByTestId('inbox-reply-input')).toBeDisabled();
+  });
+
+  it('attaches the consumed entry ref to the detail viewed impression', () => {
+    renderWithProviders(
+      <InboxConversationDetail
+        conversationId="conv-1"
+        brandId="brand-1"
+        onBack={vi.fn()}
+        consumeEntryRef={() => 'email'}
+      />,
+    );
+
+    expect(instrumentation.logImpressionEvent).toHaveBeenCalledWith(
+      'inbox.detail.viewed',
+      expect.objectContaining({ ref: 'email' }),
+    );
+  });
+
+  it('omits ref from the detail viewed impression when there is no entry ref', () => {
+    renderWithProviders(
+      <InboxConversationDetail
+        conversationId="conv-1"
+        brandId="brand-1"
+        onBack={vi.fn()}
+        consumeEntryRef={() => null}
+      />,
+    );
+
+    expect(instrumentation.logImpressionEvent).toHaveBeenCalledWith(
+      'inbox.detail.viewed',
+      expect.not.objectContaining({ ref: expect.anything() }),
+    );
   });
 });

@@ -25,11 +25,13 @@ const EMPTY_STATE_KEYS: Record<Exclude<InboxConversationStatusFilter, 'all'>, st
 interface InboxConversationListProps {
   brandId: UuidString;
   onConversationClick: (conversationId: IntString) => void;
+  consumeEntryRef: () => string | null;
 }
 
 export function InboxConversationList({
   brandId,
   onConversationClick,
+  consumeEntryRef,
 }: InboxConversationListProps) {
   const t = useTranslations();
   const [statusFilter, setStatusFilter] = useState<InboxConversationStatusFilter>('all');
@@ -68,8 +70,13 @@ export function InboxConversationList({
   useEffect(() => {
     if (isLoading || error || listViewedRef.current) return;
     listViewedRef.current = true;
-    logImpressionEvent('inbox.list.viewed', { conversationCount: conversations.length, statusFilter })();
-  }, [isLoading, error, conversations.length, statusFilter]);
+    const entryRef = consumeEntryRef();
+    logImpressionEvent('inbox.list.viewed', {
+      conversationCount: conversations.length,
+      statusFilter,
+      ...(entryRef ? { ref: entryRef } : {}),
+    })();
+  }, [isLoading, error, conversations.length, statusFilter, consumeEntryRef]);
 
   if (isLoading) {
     return (

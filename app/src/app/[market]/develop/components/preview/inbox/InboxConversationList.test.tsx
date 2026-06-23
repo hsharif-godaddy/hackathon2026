@@ -23,6 +23,18 @@ const hoisted = vi.hoisted(() => ({
   } as HookResult,
 }));
 
+const instrumentation = vi.hoisted(() => ({
+  logImpressionEvent: vi.fn(() => vi.fn()),
+}));
+
+vi.mock('@/utils/instrumentation', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/utils/instrumentation')>();
+  return {
+    ...actual,
+    logImpressionEvent: instrumentation.logImpressionEvent,
+  };
+});
+
 vi.mock('@/hooks/useTranslations', () => ({
   useTranslations: () => (key: string) => key,
 }));
@@ -92,7 +104,7 @@ describe('InboxConversationList', () => {
 
   it('renders the rich empty state with illustration for the "all" filter', () => {
     const { container } = render(
-      <InboxConversationList brandId={brandId} onConversationClick={vi.fn()} />,
+      <InboxConversationList brandId={brandId} onConversationClick={vi.fn()} consumeEntryRef={() => null} />,
     );
 
     expect(screen.getByText('builder_inbox_empty_all_title')).toBeInTheDocument();
@@ -101,7 +113,7 @@ describe('InboxConversationList', () => {
   });
 
   it('shows the single-line message for a non-"all" filter', () => {
-    render(<InboxConversationList brandId={brandId} onConversationClick={vi.fn()} />);
+    render(<InboxConversationList brandId={brandId} onConversationClick={vi.fn()} consumeEntryRef={() => null} />);
 
     fireEvent.click(screen.getByText('unresolved'));
 
@@ -110,13 +122,13 @@ describe('InboxConversationList', () => {
   });
 
   it('disables the status filters when the inbox is empty on the "all" filter', () => {
-    render(<InboxConversationList brandId={brandId} onConversationClick={vi.fn()} />);
+    render(<InboxConversationList brandId={brandId} onConversationClick={vi.fn()} consumeEntryRef={() => null} />);
 
     expect(screen.getByTestId('stub-filters')).toHaveAttribute('data-disabled', 'true');
   });
 
   it('keeps the status filters enabled once a non-"all" filter is active', () => {
-    render(<InboxConversationList brandId={brandId} onConversationClick={vi.fn()} />);
+    render(<InboxConversationList brandId={brandId} onConversationClick={vi.fn()} consumeEntryRef={() => null} />);
 
     fireEvent.click(screen.getByText('unresolved'));
 
@@ -130,10 +142,32 @@ describe('InboxConversationList', () => {
       droppedCount: 0,
     };
 
-    render(<InboxConversationList brandId={brandId} onConversationClick={vi.fn()} />);
+    render(<InboxConversationList brandId={brandId} onConversationClick={vi.fn()} consumeEntryRef={() => null} />);
 
     expect(screen.getAllByTestId('stub-row')).toHaveLength(2);
     expect(screen.queryByText('builder_inbox_empty_all_title')).not.toBeInTheDocument();
     expect(screen.getByTestId('stub-filters')).toHaveAttribute('data-disabled', 'false');
+  });
+
+  it('attaches the consumed entry ref to the list viewed impression', () => {
+    render(
+      <InboxConversationList brandId={brandId} onConversationClick={vi.fn()} consumeEntryRef={() => 'email'} />,
+    );
+
+    expect(instrumentation.logImpressionEvent).toHaveBeenCalledWith(
+      'inbox.list.viewed',
+      expect.objectContaining({ ref: 'email' }),
+    );
+  });
+
+  it('omits ref from the list viewed impression when there is no entry ref', () => {
+    render(
+      <InboxConversationList brandId={brandId} onConversationClick={vi.fn()} consumeEntryRef={() => null} />,
+    );
+
+    expect(instrumentation.logImpressionEvent).toHaveBeenCalledWith(
+      'inbox.list.viewed',
+      expect.not.objectContaining({ ref: expect.anything() }),
+    );
   });
 });
