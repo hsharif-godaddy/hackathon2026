@@ -7,32 +7,54 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { ServerManagementTool, HEALTH_POLL_INTERVAL_MS, HEALTH_POLL_MAX_ATTEMPTS } from '../server-management-tool.js';
-import { DevSupervisorClientFactory } from '../../utils/dev-supervisor-client-factory.js';
-import type { DevSupervisorClient } from '../../services/DevSupervisorClient.js';
+import { createForWorkspace } from '../../workspace/index.js';
+import { AppRepository } from '../../database/index.js';
 
-// Mock the dependencies
-vi.mock('../../utils/dev-supervisor-client-factory.js');
+// The tool now drives the workspace runtime API; mock the factory that binds it.
+vi.mock('../../workspace/index.js', () => ({
+  createForWorkspace: vi.fn(),
+}));
+
+// When createForWorkspace returns null, checkServerStatus consults the app
+// record to tell "app absent" (not_found) from "app exists, no bindable
+// supervisor" (benign stopped) — mock the repository it uses. `vi.hoisted`
+// keeps the spy reachable inside the hoisted mock factory.
+const { mockFindById } = vi.hoisted(() => ({ mockFindById: vi.fn() }));
+vi.mock('../../database/index.js', () => ({
+  // `function` (not arrow) so the tool's `new AppRepository()` can construct it.
+  AppRepository: vi.fn(function () {
+    return { findById: mockFindById };
+  }),
+}));
+
+// A complete RuntimeStatus snapshot — the real adapter always populates
+// `health` and `restarts`, so stubs must too (checkServerStatus reads them).
+const runtimeStatus = (over: Record<string, unknown> = {}) => ({
+  state: 'running',
+  pid: 12345,
+  health: { status: 'healthy', message: 'ok', consecutiveFailures: 0, consecutiveSuccesses: 1 },
+  restarts: { total: 0, recent: 0, windowSeconds: 60, maxRestarts: 5 },
+  ...over,
+});
 
 describe('ServerManagementTool Unit Tests', () => {
   let serverTool: ServerManagementTool;
-  let mockDevSupervisor: any;
+  let mockRuntime: { restart: ReturnType<typeof vi.fn>; status: ReturnType<typeof vi.fn> };
 
   beforeEach(() => {
     vi.clearAllMocks();
     vi.useFakeTimers();
 
-    // Mock DevSupervisorClient
-    mockDevSupervisor = {
-      getProcessStatus: vi.fn(),
-      restartProcess: vi.fn(),
+    // Mock the workspace runtime surface the tool uses.
+    mockRuntime = {
+      restart: vi.fn(),
+      status: vi.fn(),
     };
 
-    vi.mocked(DevSupervisorClientFactory.createForApp).mockReturnValue(mockDevSupervisor as unknown as DevSupervisorClient);
-    vi.mocked(DevSupervisorClientFactory.getAppInfo).mockReturnValue({
-      socketPath: '/tmp/test-app/dev-supervisor.sock',
-      port: 3000,
-      path: '/tmp/apps/test-app'
-    });
+    vi.mocked(createForWorkspace).mockReturnValue({ runtime: mockRuntime } as any);
+
+    // Default: the app record exists (only the null-bind tests vary this).
+    mockFindById.mockReturnValue({ id: 'test-app' });
 
     serverTool = new ServerManagementTool();
   });
@@ -45,12 +67,7 @@ describe('ServerManagementTool Unit Tests', () => {
   describe('AIROBUILD-178: Process state mapping during restarts', () => {
     it('should map "starting" state to "running" to prevent restart interference', async () => {
       // Simulate process in 'starting' state during restart
-      mockDevSupervisor.getProcessStatus.mockResolvedValue({
-        pid: 12345,
-        command: 'npm start',
-        state: 'starting',
-        start_time: new Date().toISOString(),
-      });
+      mockRuntime.status.mockResolvedValue(runtimeStatus({ state: 'starting' }));
 
       const result = await serverTool.checkServerStatus('test-app');
 
@@ -64,12 +81,7 @@ describe('ServerManagementTool Unit Tests', () => {
 
     it('should map "stopping" state to "running" to prevent restart interference', async () => {
       // Simulate process in 'stopping' state during shutdown
-      mockDevSupervisor.getProcessStatus.mockResolvedValue({
-        pid: 12345,
-        command: 'npm start',
-        state: 'stopping',
-        start_time: new Date().toISOString(),
-      });
+      mockRuntime.status.mockResolvedValue(runtimeStatus({ state: 'stopping' }));
 
       const result = await serverTool.checkServerStatus('test-app');
 
@@ -82,12 +94,7 @@ describe('ServerManagementTool Unit Tests', () => {
     });
 
     it('should map "running" state to "running"', async () => {
-      mockDevSupervisor.getProcessStatus.mockResolvedValue({
-        pid: 12345,
-        command: 'npm start',
-        state: 'running',
-        start_time: new Date().toISOString(),
-      });
+      mockRuntime.status.mockResolvedValue(runtimeStatus({ state: 'running' }));
 
       const result = await serverTool.checkServerStatus('test-app');
 
@@ -96,12 +103,7 @@ describe('ServerManagementTool Unit Tests', () => {
     });
 
     it('should map "stopped" state to "stopped"', async () => {
-      mockDevSupervisor.getProcessStatus.mockResolvedValue({
-        pid: 0,
-        command: '',
-        state: 'stopped',
-        start_time: '',
-      });
+      mockRuntime.status.mockResolvedValue(runtimeStatus({ state: 'stopped', pid: 0 }));
 
       const result = await serverTool.checkServerStatus('test-app');
 
@@ -110,13 +112,7 @@ describe('ServerManagementTool Unit Tests', () => {
     });
 
     it('should map "error" state to "error"', async () => {
-      mockDevSupervisor.getProcessStatus.mockResolvedValue({
-        pid: 0,
-        command: 'npm start',
-        state: 'error',
-        start_time: new Date().toISOString(),
-        error: 'Failed to start',
-      });
+      mockRuntime.status.mockResolvedValue(runtimeStatus({ state: 'error', pid: 0, lastError: 'Failed to start' }));
 
       const result = await serverTool.checkServerStatus('test-app');
 
@@ -127,12 +123,7 @@ describe('ServerManagementTool Unit Tests', () => {
 
   describe('checkServerStatus', () => {
     it('should return success when dev-supervisor is available and process is running', async () => {
-      mockDevSupervisor.getProcessStatus.mockResolvedValue({
-        pid: 12345,
-        command: 'npm start',
-        state: 'running',
-        start_time: new Date().toISOString(),
-      });
+      mockRuntime.status.mockResolvedValue(runtimeStatus({ state: 'running' }));
 
       const result = await serverTool.checkServerStatus('test-app');
 
@@ -143,8 +134,9 @@ describe('ServerManagementTool Unit Tests', () => {
       expect(result.message).toContain('PID: 12345');
     });
 
-    it('should return not_found when app info is not available', async () => {
-      vi.mocked(DevSupervisorClientFactory.getAppInfo).mockReturnValue(null);
+    it('should return not_found when the app record is absent', async () => {
+      vi.mocked(createForWorkspace).mockReturnValue(null);
+      mockFindById.mockReturnValue(null);
 
       const result = await serverTool.checkServerStatus('nonexistent-app');
 
@@ -153,8 +145,21 @@ describe('ServerManagementTool Unit Tests', () => {
       expect(result.error).toContain('App with ID nonexistent-app not found');
     });
 
+    it('should return stopped when the app exists but has no bindable supervisor', async () => {
+      // Regression guard: a cold-start preview (app record present, no socket
+      // registered yet) must surface as a benign STOPPED, not a thrown not_found.
+      vi.mocked(createForWorkspace).mockReturnValue(null);
+      mockFindById.mockReturnValue({ id: 'cold-app' });
+
+      const result = await serverTool.checkServerStatus('cold-app');
+
+      expect(result.success).toBe(true);
+      expect(result.status).toBe('stopped');
+      expect(result.message).toBe('Dev supervisor not available for this app');
+    });
+
     it('should handle dev-supervisor communication errors', async () => {
-      mockDevSupervisor.getProcessStatus.mockRejectedValue(new Error('Connection refused'));
+      mockRuntime.status.mockRejectedValue(new Error('Connection refused'));
 
       const result = await serverTool.checkServerStatus('test-app');
 
@@ -166,13 +171,8 @@ describe('ServerManagementTool Unit Tests', () => {
 
   describe('restartServer', () => {
     it('should successfully restart the server when process reaches running state', async () => {
-      mockDevSupervisor.restartProcess.mockResolvedValue({ success: true });
-      mockDevSupervisor.getProcessStatus.mockResolvedValue({
-        pid: 12345,
-        command: 'npm start',
-        state: 'running',
-        start_time: new Date().toISOString(),
-      });
+      mockRuntime.restart.mockResolvedValue(undefined);
+      mockRuntime.status.mockResolvedValue({ state: 'running', pid: 12345 });
 
       // First poll is immediate (no sleep), so no timer advance needed
       const result = await serverTool.restartServer({ reason: 'API changes' }, 'test-app');
@@ -180,15 +180,15 @@ describe('ServerManagementTool Unit Tests', () => {
       expect(result.success).toBe(true);
       expect(result.appId).toBe('test-app');
       expect(result.message).toContain('Server restarted successfully');
-      expect(mockDevSupervisor.restartProcess).toHaveBeenCalledWith({ graceful: true });
-      expect(mockDevSupervisor.getProcessStatus).toHaveBeenCalled();
+      expect(mockRuntime.restart).toHaveBeenCalledWith({ graceful: true });
+      expect(mockRuntime.status).toHaveBeenCalled();
     });
 
     it('should handle restart failures with detailed error', async () => {
-      mockDevSupervisor.restartProcess.mockResolvedValue({
-        success: false,
-        error: 'HTTP 400: restart_failed: port 3000 still in use',
-      });
+      // runtime.restart rejects on failure (vs. the old success:false result shape).
+      mockRuntime.restart.mockRejectedValue(
+        new Error('HTTP 400: restart_failed: port 3000 still in use'),
+      );
 
       const result = await serverTool.restartServer({ reason: 'Testing' }, 'test-app');
 
@@ -196,8 +196,8 @@ describe('ServerManagementTool Unit Tests', () => {
       expect(result.error).toBe('HTTP 400: restart_failed: port 3000 still in use');
     });
 
-    it('should return not_found when app info is not available', async () => {
-      vi.mocked(DevSupervisorClientFactory.getAppInfo).mockReturnValue(null);
+    it('should return not_found when the workspace cannot be bound', async () => {
+      vi.mocked(createForWorkspace).mockReturnValue(null);
 
       const result = await serverTool.restartServer({ reason: 'Testing' }, 'nonexistent-app');
 
@@ -206,7 +206,7 @@ describe('ServerManagementTool Unit Tests', () => {
     });
 
     it('should handle dev-supervisor communication errors during restart', async () => {
-      mockDevSupervisor.restartProcess.mockRejectedValue(new Error('Socket connection failed'));
+      mockRuntime.restart.mockRejectedValue(new Error('Socket connection failed'));
 
       const result = await serverTool.restartServer({ reason: 'Testing' }, 'test-app');
 
@@ -215,28 +215,26 @@ describe('ServerManagementTool Unit Tests', () => {
     });
 
     it('should wait for process to reach running state after polling through starting state', async () => {
-      mockDevSupervisor.restartProcess.mockResolvedValue({ success: true });
+      mockRuntime.restart.mockResolvedValue(undefined);
       // First poll (immediate): starting, second poll (after sleep): running
-      mockDevSupervisor.getProcessStatus
-        .mockResolvedValueOnce({ state: 'starting', pid: 0, command: 'npm start', start_time: '' })
-        .mockResolvedValueOnce({ state: 'running', pid: 99999, command: 'npm start', start_time: new Date().toISOString() });
+      mockRuntime.status
+        .mockResolvedValueOnce({ state: 'starting', pid: 0 })
+        .mockResolvedValueOnce({ state: 'running', pid: 99999 });
 
       const promise = serverTool.restartServer({ reason: 'Testing' }, 'test-app');
       await vi.advanceTimersByTimeAsync(HEALTH_POLL_INTERVAL_MS); // second poll after sleep
       const result = await promise;
 
       expect(result.success).toBe(true);
-      expect(mockDevSupervisor.getProcessStatus).toHaveBeenCalledTimes(2);
+      expect(mockRuntime.status).toHaveBeenCalledTimes(2);
     });
 
     it('should return failure if process enters error state after restart', async () => {
-      mockDevSupervisor.restartProcess.mockResolvedValue({ success: true });
-      mockDevSupervisor.getProcessStatus.mockResolvedValue({
+      mockRuntime.restart.mockResolvedValue(undefined);
+      mockRuntime.status.mockResolvedValue({
         state: 'error',
         pid: 0,
-        command: 'npm start',
-        start_time: '',
-        error: 'EADDRINUSE: port 3000 already in use',
+        lastError: 'EADDRINUSE: port 3000 already in use',
       });
 
       // First poll is immediate - returns error state right away
@@ -248,14 +246,9 @@ describe('ServerManagementTool Unit Tests', () => {
     });
 
     it('should return failure if health verification times out', async () => {
-      mockDevSupervisor.restartProcess.mockResolvedValue({ success: true });
+      mockRuntime.restart.mockResolvedValue(undefined);
       // Always return 'starting' - never reaches 'running'
-      mockDevSupervisor.getProcessStatus.mockResolvedValue({
-        state: 'starting',
-        pid: 0,
-        command: 'npm start',
-        start_time: '',
-      });
+      mockRuntime.status.mockResolvedValue({ state: 'starting', pid: 0 });
 
       const promise = serverTool.restartServer({ reason: 'Testing' }, 'test-app');
       // First poll is immediate, remaining (HEALTH_POLL_MAX_ATTEMPTS - 1) polls need timer advances
@@ -269,18 +262,18 @@ describe('ServerManagementTool Unit Tests', () => {
     });
 
     it('should tolerate transient poll errors and continue polling', async () => {
-      mockDevSupervisor.restartProcess.mockResolvedValue({ success: true });
+      mockRuntime.restart.mockResolvedValue(undefined);
       // First poll (immediate): transient error, second poll (after sleep): running
-      mockDevSupervisor.getProcessStatus
+      mockRuntime.status
         .mockRejectedValueOnce(new Error('Temporary connection error'))
-        .mockResolvedValueOnce({ state: 'running', pid: 12345, command: 'npm start', start_time: new Date().toISOString() });
+        .mockResolvedValueOnce({ state: 'running', pid: 12345 });
 
       const promise = serverTool.restartServer({ reason: 'Testing' }, 'test-app');
       await vi.advanceTimersByTimeAsync(HEALTH_POLL_INTERVAL_MS); // second poll after sleep
       const result = await promise;
 
       expect(result.success).toBe(true);
-      expect(mockDevSupervisor.getProcessStatus).toHaveBeenCalledTimes(2);
+      expect(mockRuntime.status).toHaveBeenCalledTimes(2);
     });
   });
 });

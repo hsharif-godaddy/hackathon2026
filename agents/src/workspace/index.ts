@@ -23,14 +23,18 @@ const createForWorkspaceLogger = Logger.create({ component: 'workspace.createFor
 /**
  * Bind a WorkspaceClient to a workspace + variant.
  *
- * Returns `null` for either failure mode (callers that need to distinguish
- * them should retry and surface their own error):
+ * Returns `null` for two distinct causes the caller must disambiguate itself
+ * if it cares (e.g. by consulting the app record):
  *   1. Unknown workspace — `DevSupervisorClientFactory.createForApp` throws
- *      (`App with ID ... not found`) when the app record is absent.
- *   2. Unreachable supervisor — `createForApp` returns a client whenever the
- *      app record has a `socketPath`, without probing reachability.
- *      Unreachability surfaces as a typed error on the first method call,
- *      not at bind time.
+ *      (`App with ID ... not found`) when the app record is absent; caught here.
+ *   2. No bindable supervisor — the app record exists but has no `socketPath`
+ *      (e.g. local TCP mode before the supervisor registers), so `createForApp`
+ *      returns null directly.
+ *
+ * A *bound-but-unreachable* supervisor is NOT a null result: `createForApp`
+ * returns a client whenever the record has a `socketPath`, without probing
+ * reachability, so unreachability surfaces as a typed error on the first method
+ * call, not at bind time.
  *
  * Unexpected errors (DB/IO failures) are logged and re-thrown so they are not
  * silently swallowed.

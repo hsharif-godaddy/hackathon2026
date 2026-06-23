@@ -18,7 +18,6 @@ export { ServerManagementTool } from './server-management-tool.js';
 export { ASTStyleEditor } from './ast-style-editor.js';
 export { AppPlanTool, appPlanTool } from './app-plan-tool.js';
 export { validateLucideIcons } from './icons-validator.js';
-export { DevSupervisorLogClient } from './dev-supervisor-log-client.js';
 export { ViewLogsTool } from './view-logs-tool.js';
 export { MemoryTool } from './memory-tool.js';
 export { SkillLoaderTool } from './skill-loader-tool.js';
@@ -123,11 +122,6 @@ export type {
   IconsValidatorOptions,
   IconsValidationResult
 } from './icons-validator.js';
-
-export type {
-  LogReaderOptions,
-  LogReaderResult
-} from './dev-supervisor-log-client.js';
 
 export type {
   DevLogsOptions,

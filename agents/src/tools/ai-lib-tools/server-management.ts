@@ -26,7 +26,7 @@ export const serverRestartAITool: Tool = createTool(
       throw new Error(result.error || 'Failed to restart server')
     }
 
-    return `✅ ${result.message}`
+    return result.message
   }
 )
 
@@ -49,7 +49,7 @@ export const serverStatusAITool: Tool = createTool(
       throw new Error(result.error || 'Failed to check server status')
     }
 
-    let response = `📊 Server Status for App ${appId}: ${result.status.toUpperCase()}`
+    let response = `Server Status for App ${appId}: ${result.status.toUpperCase()}`
     
     if (result.message) {
       response += `\n${result.message}`

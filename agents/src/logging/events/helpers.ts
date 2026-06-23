@@ -487,7 +487,7 @@ export const toolBuildEvents = {
  * Tool Server Health logging helpers
  */
 export const toolServerHealthEvents = {
-  check: (logger: ILogger, data: { toolName: string; appId: string; port: number }) => {
+  check: (logger: ILogger, data: { toolName: string; appId: string }) => {
     logger.debug(AppEvents.tool.serverHealth.check, data);
   },
 

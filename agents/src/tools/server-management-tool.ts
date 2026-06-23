@@ -1,7 +1,8 @@
 import { Logger } from '../logging/index.js';
 import { toolServerHealthEvents } from '../logging/events/index.js';
-import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-factory.js';
-import type { DevSupervisorClient } from '../services/DevSupervisorClient.js';
+import { createForWorkspace } from '../workspace/index.js';
+import type { WorkspaceRuntime } from '../workspace/runtime.js';
+import { AppRepository } from '../database/index.js';
 
 export const HEALTH_POLL_INTERVAL_MS = 2_000;
 export const HEALTH_POLL_MAX_ATTEMPTS = 15; // ~30s of polling; wall-clock may exceed this if individual status requests are slow
@@ -53,13 +54,31 @@ export class ServerManagementTool {
     toolServerHealthEvents.check(this.logger, {
       toolName: 'server-management-tool',
       appId,
-      port: 0, // Will be updated when we get app info
     });
 
     try {
-      // Get app info and create dev supervisor client
-      const appInfo = DevSupervisorClientFactory.getAppInfo(appId);
-      if (!appInfo) {
+      // Bind a workspace client for the app's preview supervisor. A null client
+      // has two distinct causes: the app record is absent, or it exists but has
+      // no bindable supervisor yet (e.g. local TCP mode before the socket is
+      // registered). Only the former is a hard error — an existing app whose
+      // supervisor isn't bindable is a benign STOPPED, matching the
+      // pre-migration `supervisor_unavailable` path. Collapsing both to
+      // not_found would surface a cold-start preview to the agent as a thrown
+      // tool error (the AI-lib wrapper throws on !success) instead of STOPPED.
+      // Unreachability of a *bound* supervisor surfaces as a thrown error on the
+      // first `runtime` call (handled by the inner catch below).
+      const workspace = createForWorkspace(appId, 'preview');
+      if (!workspace) {
+        const appExists: boolean = new AppRepository().findById(appId) !== null;
+        if (appExists) {
+          this.logger.info('server.status.supervisor_unavailable', { appId });
+          return {
+            success: true,
+            appId,
+            status: 'stopped',
+            message: 'Dev supervisor not available for this app',
+          };
+        }
         this.logger.error('server.status.app_not_found', {
           appId,
           error: `App with ID ${appId} not found`,
@@ -72,80 +91,64 @@ export class ServerManagementTool {
         };
       }
 
-      // Use dev supervisor to check process status if available
-      const devSupervisor = DevSupervisorClientFactory.createForApp(appId);
-      if (devSupervisor) {
-        try {
-          
-          // Use built-in process status API instead of exec with ps/grep
-          const processInfo = await devSupervisor.getProcessStatus();
+      try {
+        const processInfo = await workspace.runtime.status();
 
-          // Map dev-supervisor states to tool status
-          // CRITICAL FIX for AIROBUILD-178: Treat transition states ('starting', 'stopping')
-          // as 'running' to prevent the agent from interfering with in-progress restarts.
-          //
-          // Bug: If we map 'starting' → 'stopped', the agent thinks the server crashed
-          // mid-restart and tries to start it again. This causes the SAME Node.js process
-          // to call listen() twice → ERR_SERVER_ALREADY_LISTEN.
-          //
-          // Solution: Treat transition states as "don't intervene" by mapping to 'running'.
-          // These are temporary states that will eventually resolve to a terminal state
-          // (running, stopped, or error).
-          const status = processInfo.state === 'error' ? 'error' :
-                        processInfo.state === 'running' ? 'running' :
-                        processInfo.state === 'starting' ? 'running' : // In-progress start
-                        processInfo.state === 'stopping' ? 'running' : // In-progress stop
-                        'stopped';
+        // Map dev-supervisor states to tool status
+        // CRITICAL FIX for AIROBUILD-178: Treat transition states ('starting', 'stopping')
+        // as 'running' to prevent the agent from interfering with in-progress restarts.
+        //
+        // Bug: If we map 'starting' → 'stopped', the agent thinks the server crashed
+        // mid-restart and tries to start it again. This causes the SAME Node.js process
+        // to call listen() twice → ERR_SERVER_ALREADY_LISTEN.
+        //
+        // Solution: Treat transition states as "don't intervene" by mapping to 'running'.
+        // These are temporary states that will eventually resolve to a terminal state
+        // (running, stopped, or error).
+        const status = processInfo.state === 'error' ? 'error' :
+                      processInfo.state === 'running' ? 'running' :
+                      processInfo.state === 'starting' ? 'running' : // In-progress start
+                      processInfo.state === 'stopping' ? 'running' : // In-progress stop
+                      'stopped';
 
-          // Log health status based on the computed status (not raw state)
-          // This ensures transition states are logged as healthy, matching the returned status
-          if (status === 'running') {
-            toolServerHealthEvents.healthy(this.logger, {
-              toolName: 'server-management-tool',
-              appId,
-              port: appInfo.port,
-              isHealthy: true,
-            });
-          } else {
-            toolServerHealthEvents.unhealthy(this.logger, {
-              toolName: 'server-management-tool',
-              appId,
-              port: appInfo.port,
-              isHealthy: false,
-            });
-          }
-          
-          return {
-            success: true,
+        // Log health status based on the computed status (not raw state)
+        // This ensures transition states are logged as healthy, matching the returned status
+        if (status === 'running') {
+          toolServerHealthEvents.healthy(this.logger, {
+            toolName: 'server-management-tool',
             appId,
-            status,
-            message: `Process state: ${processInfo.state}${processInfo.pid ? ` (PID: ${processInfo.pid})` : ''}`,
-          };
-        } catch (error) {
-          this.logger.error('server.status.supervisor_error', {
-            appId,
-            socketPath: appInfo.socketPath,
-            error: error instanceof Error ? error.message : 'Unknown supervisor error',
+            isHealthy: true,
+            healthStatus: processInfo.health.status,
+            restarts: processInfo.restarts.recent,
           });
-          return {
-            success: true,
+        } else {
+          toolServerHealthEvents.unhealthy(this.logger, {
+            toolName: 'server-management-tool',
             appId,
-            status: 'error',
-            message: 'Cannot communicate with dev supervisor',
-            error: error instanceof Error ? error.message : 'Unknown supervisor error',
-          };
+            isHealthy: false,
+            healthStatus: processInfo.health.status,
+            restarts: processInfo.restarts.recent,
+            ...(processInfo.lastError && { lastError: processInfo.lastError }),
+          });
         }
-      } else {
-        this.logger.info('server.status.supervisor_unavailable', {
+
+        return {
+          success: true,
           appId,
-          socketPath: appInfo.socketPath,
-          socketExists: DevSupervisorClientFactory.isAvailableForApp(appId),
+          status,
+          message: `Process state: ${processInfo.state}${processInfo.pid ? ` (PID: ${processInfo.pid})` : ''}`,
+        };
+      } catch (error) {
+        this.logger.error('server.status.supervisor_error', {
+          appId,
+          error: error instanceof Error ? error.message : 'Unknown supervisor error',
         });
         return {
           success: true,
           appId,
-          status: 'stopped',
-          message: 'Dev supervisor not available for this app',
+          status: 'error',
+          message: 'Cannot communicate with dev supervisor',
+          error: error instanceof Error ? error.message : 'Unknown supervisor error',
         };
       }
     } catch (error) {
@@ -166,7 +169,7 @@ export class ServerManagementTool {
    * Poll dev supervisor until the process reaches a terminal state after restart.
    */
   private async waitForProcessRunning(
-    devSupervisor: DevSupervisorClient,
+    runtime: WorkspaceRuntime,
     appId: string,
   ): Promise<{ running: boolean; error?: string }> {
     for (let attempt = 0; attempt < HEALTH_POLL_MAX_ATTEMPTS; attempt++) {
@@ -175,7 +178,7 @@ export class ServerManagementTool {
       }
 
       try {
-        const processInfo = await devSupervisor.getProcessStatus();
+        const processInfo = await runtime.status();
 
         if (processInfo.state === 'running') {
           return { running: true };
@@ -186,11 +189,11 @@ export class ServerManagementTool {
             appId,
             attempt: attempt + 1,
             state: processInfo.state,
-            error: processInfo.error,
+            error: processInfo.lastError,
           });
           return {
             running: false,
-            error: processInfo.error || `Process entered ${processInfo.state} state after restart`,
+            error: processInfo.lastError || `Process entered ${processInfo.state} state after restart`,
           };
         }
 
@@ -226,9 +229,11 @@ export class ServerManagementTool {
     try {
       const { reason } = options;
 
-      // Get app info and create dev supervisor client
-      const appInfo = DevSupervisorClientFactory.getAppInfo(appId);
-      if (!appInfo) {
+      // Bind a workspace client for the app's preview supervisor. A null client
+      // means the app record can't be resolved; an unreachable supervisor
+      // surfaces as a thrown error from `runtime.restart` below.
+      const workspace = createForWorkspace(appId, 'preview');
+      if (!workspace) {
         this.logger.error('server.restart.app_not_found', {
           appId,
           error: `App with ID ${appId} not found`,
@@ -241,89 +246,58 @@ export class ServerManagementTool {
         };
       }
 
-      // Use dev supervisor directly for restart if available
-      const devSupervisor = DevSupervisorClientFactory.createForApp(appId);
-      if (devSupervisor) {
-        try {
-          const restartResult = await devSupervisor.restartProcess({ graceful: true });
+      try {
+        // runtime.restart resolves on success and throws on failure.
+        await workspace.runtime.restart({ graceful: true });
 
-          if (!restartResult.success) {
-            this.logger.error('server.restart.failed', {
-              appId,
-              reason,
-              error: restartResult.error,
-            });
-            return {
-              success: false,
-              appId,
-              message: `Failed to restart server for app ${appId}`,
-              error: restartResult.error || 'Server restart operation failed',
-            };
-          }
+        // Verify the process actually reaches running state
+        const health = await this.waitForProcessRunning(workspace.runtime, appId);
 
-          // Verify the process actually reaches running state
-          const health = await this.waitForProcessRunning(devSupervisor, appId);
-
-          if (!health.running) {
-            this.logger.error('server.restart.health_failed', {
-              appId,
-              reason,
-              error: health.error,
-            });
-            toolServerHealthEvents.restart(this.logger, {
-              toolName: 'server-management-tool',
-              appId,
-              port: appInfo.port,
-              isHealthy: false,
-            });
-            return {
-              success: false,
-              appId,
-              message: `Server restart initiated but process failed to become healthy for app ${appId}`,
-              error: health.error,
-            };
-          }
-
+        if (!health.running) {
+          this.logger.error('server.restart.health_failed', {
+            appId,
+            reason,
+            error: health.error,
+          });
           toolServerHealthEvents.restart(this.logger, {
             toolName: 'server-management-tool',
             appId,
-            port: appInfo.port,
-            isHealthy: true,
-          });
-          this.logger.info('server.restart.success', {
-            appId,
-            reason,
-            graceful: true,
-          });
-          return {
-            success: true,
-            appId,
-            message: `Server restarted successfully for app ${appId}`,
-          };
-        } catch (error) {
-          this.logger.error('server.restart.supervisor_error', {
-            appId,
-            socketPath: appInfo.socketPath,
-            error: error instanceof Error ? error.message : 'Unknown dev supervisor error',
+            isHealthy: false,
+            ...(health.error && { lastError: health.error }),
           });
           return {
             success: false,
             appId,
-            message: `Failed to restart server for app ${appId}`,
-            error: error instanceof Error ? error.message : 'Unknown dev supervisor error',
+            message: `Server restart initiated but process failed to become healthy for app ${appId}`,
+            error: health.error,
           };
         }
-      } else {
-        this.logger.error('server.restart.supervisor_unavailable', {
+
+        toolServerHealthEvents.restart(this.logger, {
+          toolName: 'server-management-tool',
           appId,
-          socketPath: appInfo.socketPath,
-          socketExists: DevSupervisorClientFactory.isAvailableForApp(appId),
+          isHealthy: true,
+        });
+        this.logger.info('server.restart.success', {
+          appId,
+          reason,
+          graceful: true,
+        });
+        return {
+          success: true,
+          appId,
+          message: `Server restarted successfully for app ${appId}`,
+        };
+      } catch (error) {
+        this.logger.error('server.restart.supervisor_error', {
+          appId,
+          error: error instanceof Error ? error.message : 'Unknown dev supervisor error',
         });
         return {
           success: false,
           appId,
           message: `Failed to restart server for app ${appId}`,
-          error: 'Dev supervisor not available for this app',
+          error: error instanceof Error ? error.message : 'Unknown dev supervisor error',
         };
       }
     } catch (error) {

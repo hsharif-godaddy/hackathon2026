@@ -1,9 +1,9 @@
-import { DevSupervisorLogClient } from './dev-supervisor-log-client.js';
 import { Logger } from '../logging/index.js';
 import { getErrorMessage } from '../utils/error.js';
 import { toolLogReaderEvents } from '../logging/events/index.js';
-import { AppRepository } from '../database/repositories/AppRepository.js';
-import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-factory.js';
+import { createForWorkspace } from '../workspace/index.js';
+import type { LogQuery } from '../workspace/diagnostics.js';
+import { formatLogs, formatLogSummary, summarizeLogs } from './log-formatting.js';
 
 export interface DevLogsOptions {
   /** Which app to read logs from: preview (default) or publish */
@@ -31,62 +31,18 @@ export interface DevLogsResult {
 
 /**
  * View Logs Tool
- * 
- * High-level agent tool for the 'view_logs' command.
- * Provides easy access to development server logs for debugging and monitoring.
- * Integrates with dev-supervisor to read real-time logs from running development processes.
+ *
+ * High-level agent tool for the 'view_logs' command. Reads development/publish
+ * server logs through the workspace client's `diagnostics.logs` API
+ * (dev-supervisor) — the agent process never touches the host filesystem or a
+ * raw supervisor socket. Presentation and summary aggregation live in
+ * `log-formatting.ts`, keeping the workspace API a thin data surface.
  */
 export class ViewLogsTool {
   private logger: Logger;
-  private logClient?: DevSupervisorLogClient;
-  private appRepository: AppRepository;
 
   constructor() {
     this.logger = Logger.create({ component: 'view-logs-tool' });
-    this.appRepository = new AppRepository();
-  }
-
-  /**
-   * Initialize the tool with the current app context
-   */
-  private initializeForApp(appId: string, target: 'preview' | 'publish' = 'preview'): boolean {
-    try {
-      if (target === 'publish') {
-        const app = this.appRepository.findById(appId);
-        if (!app?.publishSupervisorPath) {
-          this.logger.warn('dev_logs.init.failure', {
-            appId,
-            target,
-            error: 'No publishSupervisorPath configured'
-          });
-          return false;
-        }
-        this.logClient = new DevSupervisorLogClient(app.publishSupervisorPath);
-        return this.logClient.isAvailable();
-      }
-
-      // Preview (default): use the factory to get proper connection path
-      const appInfo = DevSupervisorClientFactory.getAppInfo(appId);
-
-      if (!appInfo || !appInfo.socketPath) {
-        this.logger.warn('dev_logs.init.failure', {
-          appId,
-          target,
-          error: 'App not found or connection path not configured'
-        });
-        return false;
-      }
-
-      this.logClient = new DevSupervisorLogClient(appInfo.socketPath);
-      return this.logClient.isAvailable();
-    } catch (error) {
-      this.logger.warn('dev_logs.init.failure', {
-        appId,
-        target,
-        error: getErrorMessage(error)
-      });
-      return false;
-    }
   }
 
   /**
@@ -94,10 +50,10 @@ export class ViewLogsTool {
    */
   async readLogs(appId: string, options: DevLogsOptions = {}): Promise<DevLogsResult> {
     const startTime = Date.now();
-    
+
     const target = options.target || 'preview';
 
-    const beginData: { toolName: string; appId?: string; target?: string; source?: 'stdout' | 'stderr'; lines?: number; since?: string; format?: boolean } = {
+    const beginData: { toolName: string; appId?: string; target?: string; source?: 'stdout' | 'stderr'; lines?: number; since?: string } = {
       toolName: 'dev-logs',
       appId,
       target,
@@ -110,128 +66,142 @@ export class ViewLogsTool {
     toolLogReaderEvents.readBegin(this.logger, beginData);
 
     try {
+      // `target` maps directly to the workspace variant; a null client means
+      // the supervisor isn't bindable (app not running / not configured).
+      const workspace = createForWorkspace(appId, target);
 
-      // Initialize log reader for this app
-      const initialized = this.initializeForApp(appId, target);
-
-      if (!initialized || !this.logClient) {
+      if (!workspace) {
         const label = target === 'publish' ? 'Publish' : 'Preview';
         return {
           success: false,
-          output: `🚫 **${label} logs not available**\n\nThe ${label.toLowerCase()} server may not be running, or log monitoring is not configured for this app.`,
-          error: `${label} supervisor not available for this app`
+          output: `**${label} logs not available**\n\nThe ${label.toLowerCase()} server may not be running, or log monitoring is not configured for this app.`,
+          error: `${label} supervisor not available for this app`,
         };
       }
 
-      // Handle summary request
+      // Summary request: pull all logs and aggregate stats. Re-emit the
+      // dedicated `log-reader` summary telemetry (summaryBegin/Success/Failure)
+      // the former DevSupervisorLogClient owned, alongside the generic dev-logs
+      // read events, so dashboards/alerts keyed on either stream keep working.
       if (options.summary) {
-        const summaryResult = await this.logClient.getLogSummary();
-        
-        if (!summaryResult.success) {
+        toolLogReaderEvents.summaryBegin(this.logger, { toolName: 'log-reader', appId });
+
+        try {
+          const logs = await workspace.diagnostics.logs({});
+          const summary = summarizeLogs(logs);
+          const output =
+            summary.totalLogs > 0
+              ? formatLogSummary(summary)
+              : '**No logs found** - The development server may have just started or logs may have been cleared.';
+
+          const executionTime = Date.now() - startTime;
+          const resultStats = {
+            success: true,
+            totalEntries: summary.totalLogs,
+            executionTime,
+          };
+          toolLogReaderEvents.summarySuccess(this.logger, {
+            toolName: 'log-reader',
+            appId,
+            operation: 'summary',
+            resultStats,
+          });
+          toolLogReaderEvents.readSuccess(this.logger, {
+            toolName: 'dev-logs',
+            appId,
+            target,
+            operation: 'read',
+            resultStats,
+          });
+
+          return {
+            success: true,
+            output,
+            totalLogs: summary.totalLogs,
+          };
+        } catch (error) {
+          const errorMessage = getErrorMessage(error);
+          toolLogReaderEvents.summaryFailure(
+            this.logger,
+            error instanceof Error ? error : new Error(errorMessage),
+            { toolName: 'log-reader', appId, operation: 'summary' },
+          );
           return {
             success: false,
-            output: `❌ **Failed to get log summary**: ${summaryResult.error}`,
-            error: summaryResult.error || 'Unknown error'
+            output: `**Failed to get log summary**: ${errorMessage}`,
+            error: errorMessage,
           };
         }
-
-        const output = summaryResult.summary 
-          ? this.logClient.formatLogSummary(summaryResult.summary)
-          : '📊 **No logs found** - The development server may have just started or logs may have been cleared.';
-
-        const executionTime = Date.now() - startTime;
-        
-        toolLogReaderEvents.readSuccess(this.logger, {
-          toolName: 'dev-logs',
-          appId,
-          target,
-          operation: 'read',
-          resultStats: {
-            success: true,
-            totalEntries: summaryResult.summary?.totalLogs || 0,
-            executionTime
-          }
-        });
-
-        return {
-          success: true,
-          output,
-          totalLogs: summaryResult.summary?.totalLogs || 0
-        };
       }
 
       // Default to recent logs with sensible defaults
       const lines = Math.min(options.lines || 50, 1000); // Default 50, max 1000
-      
-      const readOptions: any = {
-        lines,
-        format: true
-      };
-      
-      // Only add optional parameters if they have values
-      if (options.source) readOptions.source = options.source;
-      if (options.since) readOptions.since = options.since;
 
-      const result = await this.logClient.readLogs(readOptions);
-
-      if (!result.success) {
+      if (options.since && Number.isNaN(new Date(options.since).getTime())) {
         return {
           success: false,
-          output: `❌ **Failed to read logs**: ${result.error}`,
-          error: result.error || 'Unknown error'
+          output: '**Invalid since timestamp** - Use ISO 8601 format (e.g., 2024-01-01T00:00:00Z).',
+          error: 'Invalid since timestamp format. Use ISO 8601 format (e.g., 2024-01-01T00:00:00Z)',
         };
       }
 
+      const query: LogQuery = { lines };
+      if (options.source) query.source = options.source;
+      if (options.since) query.since = new Date(options.since);
+
+      const logs = await workspace.diagnostics.logs(query);
+
       // Use formatted output if available, otherwise create a simple message
-      let output = result.formatted || '📝 **No recent logs found**\n\nThe development server may have just started or there may be no recent activity.';
-      
+      let output =
+        logs.length > 0
+          ? formatLogs(logs, {
+              ...(options.source && { source: options.source }),
+              lines,
+              ...(options.since && { since: options.since }),
+            })
+          : '**No recent logs found**\n\nThe development server may have just started or there may be no recent activity.';
+
       // Add helpful context if no logs found
-      if (result.totalEntries === 0) {
-        output += '\n\n💡 **Tip**: Try using `source: "stderr"` to see error logs, or increase the `lines` parameter to see more history.';
+      if (logs.length === 0) {
+        output += '\n\n**Tip**: Try using `source: "stderr"` to see error logs, or increase the `lines` parameter to see more history.';
       }
 
       const executionTime = Date.now() - startTime;
-      
-      const successData: any = {
+
+      toolLogReaderEvents.readSuccess(this.logger, {
         toolName: 'dev-logs',
         appId,
         target,
         operation: 'read',
-        logOptions: readOptions,
         resultStats: {
           success: true,
-          totalEntries: result.totalEntries,
+          totalEntries: logs.length,
           linesRequested: lines,
-          executionTime
-        }
-      };
-      
-      // Only add defined values to resultStats
-      if (options.source) successData.resultStats.sourceFilter = options.source;
-      if (options.since) successData.resultStats.sinceFilter = options.since;
-      
-      toolLogReaderEvents.readSuccess(this.logger, successData);
+          executionTime,
+          ...(options.source && { sourceFilter: options.source }),
+          ...(options.since && { sinceFilter: options.since }),
+        },
+      });
 
       return {
         success: true,
         output,
-        totalLogs: result.totalEntries
+        totalLogs: logs.length,
       };
-
     } catch (error) {
       const errorMessage = getErrorMessage(error);
-      
+
       toolLogReaderEvents.readFailure(this.logger, error instanceof Error ? error : new Error(errorMessage), {
         toolName: 'dev-logs',
         appId,
         target,
-        operation: 'read'
+        operation: 'read',
       });
 
       return {
         success: false,
-        output: `❌ **Unexpected error reading logs**: ${errorMessage}`,
-        error: errorMessage
+        output: `**Unexpected error reading logs**: ${errorMessage}`,
+        error: errorMessage,
       };
     }
   }
@@ -245,7 +215,7 @@ export class ViewLogsTool {
     }
 
     let response = result.output;
-    
+
     // Add metadata for the agent
     if (result.totalLogs !== undefined) {
       response += `\n\n_Total log entries: ${result.totalLogs}_`;

@@ -244,9 +244,14 @@ export interface ToolBuildOperationData {
 export interface ToolServerHealthData {
   toolName: string;
   appId: string;
-  port: number;
   isHealthy?: boolean;
   responseStatus?: number;
+  /** Supervisor's own health verdict, when a runtime status snapshot is in hand. */
+  healthStatus?: 'healthy' | 'unhealthy' | 'starting' | 'disabled';
+  /** Recent restart count from the runtime status snapshot. */
+  restarts?: number;
+  /** Last process error reported by the supervisor, when present. */
+  lastError?: string;
 }
 
 export interface ToolDirectoryListingData {
