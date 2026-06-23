@@ -273,6 +273,21 @@ describe('contentPlugin — resolveId block for direct JSON imports', () => {
     await expect(callResolveId(plugin, abs)).resolves.toBeUndefined();
   });
 
+  it('does NOT throw for virtual-content.d.ts under src/content (type-only, never a runtime import)', async () => {
+    const plugin = await initPlugin(root);
+    // content_scaffold emits this .d.ts INTO src/content/ (#5338); the guard
+    // must let it pass — a type-declaration file is never a content-data import.
+    await expect(callResolveId(plugin, '/src/content/virtual-content.d.ts')).resolves.toBeUndefined();
+    const abs = path.join(root, 'src/content/virtual-content.d.ts');
+    await expect(callResolveId(plugin, abs)).resolves.toBeUndefined();
+  });
+
+  it('still throws for a non-.d.ts, non-schemas file under src/content (e.g. a stray .ts)', async () => {
+    const plugin = await initPlugin(root);
+    const abs = path.join(root, 'src/content/helpers.ts');
+    await expect(callResolveId(plugin, abs)).rejects.toThrow(/forbidden/);
+  });
+
   it('throws on a relative import from a page that resolves under src/content/', async () => {
     const plugin = await initPlugin(root);
     const importer = path.join(root, 'src/pages/index.tsx');

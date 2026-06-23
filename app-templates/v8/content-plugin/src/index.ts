@@ -127,7 +127,7 @@ export function contentPlugin(options: Options = {}): Plugin {
 
       if (
         (resolved === contentDir || resolved.startsWith(contentDir + path.sep)) &&
-        !isSchemasModule(resolved, contentDir)
+        !isContentMetaModule(resolved, contentDir)
       ) {
         throw directImportError(path.relative(path.dirname(contentDir), resolved));
       }
@@ -147,7 +147,7 @@ export function contentPlugin(options: Options = {}): Plugin {
       const cleanId = id.replace(/[?#].*$/, '');
       if (
         (cleanId === contentDir || cleanId.startsWith(contentDir + path.sep)) &&
-        !isSchemasModule(cleanId, contentDir)
+        !isContentMetaModule(cleanId, contentDir)
       ) {
         throw directImportError(path.relative(path.dirname(contentDir), cleanId));
       }
@@ -352,17 +352,20 @@ function resolveAbsolute(
 }
 
 /**
- * The schemas module is the ONE consumer allowed under contentDir — it holds
- * Zod schemas (meta), not content data, and both the virtual module and the
- * eager validator (`validateContentEager` via `ssrLoadModule`) import it. The
- * two hooks see it in different forms: `resolveId` gets the extensionless
- * project-root-relative path (`/src/content/schemas` → `<root>/src/content/schemas`),
- * while `load` gets the extension-resolved id (`.../schemas.ts`). Match both by
- * the contentDir-relative name so neither hook blocks the validator.
+ * Files under contentDir that are META, not content data, so the direct-import
+ * guard must let them through:
+ *  - the Zod `schemas` module — imported by the virtual module + the eager
+ *    validator (`validateContentEager` via `ssrLoadModule`). The two hooks see
+ *    it differently: `resolveId` gets the extensionless project-root-relative
+ *    path (`/src/content/schemas`), `load` gets the resolved id (`.../schemas.ts`).
+ *  - any type-declaration file (`*.d.ts`, e.g. the generated `virtual-content.d.ts`
+ *    that `content_scaffold` emits into contentDir) — type-only, never a runtime
+ *    import, so blocking it is always wrong.
+ * Match by the contentDir-relative name so neither hook blocks them.
  */
-function isSchemasModule(resolvedPath: string, contentDir: string): boolean {
+function isContentMetaModule(resolvedPath: string, contentDir: string): boolean {
   const rel = path.relative(contentDir, resolvedPath);
-  return rel === 'schemas' || rel === 'schemas.ts';
+  return rel === 'schemas' || rel === 'schemas.ts' || rel.endsWith('.d.ts');
 }
 
 async function exists(p: string): Promise<boolean> {
