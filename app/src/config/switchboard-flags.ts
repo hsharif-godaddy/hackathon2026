@@ -3,6 +3,8 @@
  * Register each flag in the airo-app-builder Switchboard app before relying on it in prod.
  */
 
+export const SWITCHBOARD_AIRO_BUILDER_PROJECTS_MODAL_INPUTFIELD =
+  'airo-builder-projects-modal-inputfield';
 export const SWITCHBOARD_AIRO_BUILDER_SECRETS_FORM = 'airo-builder-secrets-form';
 export const SWITCHBOARD_APPBUILDER_APP_DELETE_MODAL = 'appbuilder-app-delete-modal';
 export const SWITCHBOARD_APPBUILDER_APP_DELETE_MODAL_BUTTON =

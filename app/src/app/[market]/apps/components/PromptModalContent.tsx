@@ -1,15 +1,18 @@
 'use client'
 
+import { useEffect } from 'react'
 import Modal from '@ux/modal'
 
 import { type UploadedDesignFile } from '@/app/[market]/components/types'
 import { PromptErrorAlert } from '@/components/home/PromptErrorAlert'
 import { PromptInput } from '@/components/home/PromptInput'
 import ExamplesSection from '@/components/home-page/HeroExamples'
+import { SWITCHBOARD_AIRO_BUILDER_PROJECTS_MODAL_INPUTFIELD } from '@/config/switchboard-flags'
 import { useAnimatedPlaceholder } from '@/hooks/home/useAnimatedPlaceholder'
 import { useFileUploadState } from '@/hooks/home/useFileUploadState'
 import { useHeroPromptState } from '@/hooks/home/useHeroPromptState'
 import { useTextareaAutoResize } from '@/hooks/home/useTextareaAutoResize'
+import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 
 interface PromptModalContentProps {
@@ -30,6 +33,8 @@ interface PromptModalContentProps {
 
 export function PromptModalContent({ hp, onClose }: PromptModalContentProps) {
   const t = useTranslations()
+  const isModalInputAutoFocusEnabled =
+    useSwitchboard(SWITCHBOARD_AIRO_BUILDER_PROJECTS_MODAL_INPUTFIELD) === true
   const {
     isTyping,
     displayText,
@@ -62,6 +67,16 @@ export function PromptModalContent({ hp, onClose }: PromptModalContentProps) {
     processingFiles, setProcessingFiles,
     isProcessing, isFileDragOver, uploadedFilesRef, dragProps,
   } = useFileUploadState({ uploadedFiles: hp.uploadedFiles, onFilesChange: hp.setUploadedFiles, isLoading: hp.isLoading })
+
+  useEffect(function focusPromptInputOnOpen() {
+    if (!isModalInputAutoFocusEnabled) return
+    const id: number = window.setTimeout(() => {
+      promptTextareaRef.current?.focus({ preventScroll: true })
+    }, 0)
+    return function cleanupFocusPromptInputOnOpen() {
+      window.clearTimeout(id)
+    }
+  }, [isModalInputAutoFocusEnabled, promptTextareaRef])
 
   return (
     <Modal
