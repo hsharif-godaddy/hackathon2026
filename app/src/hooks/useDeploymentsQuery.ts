@@ -27,6 +27,7 @@ export interface UseDeploymentsQueryOptions {
   appId: string;
   limit?: number;
   includeJobData?: boolean;
+  dedupe?: boolean;
   enabled?: boolean;
   refetchInterval?: number | false;
   shouldPoll?: (data: AiroDeployment[] | undefined) => boolean;
@@ -50,6 +51,7 @@ export interface UseDeploymentsQueryOptions {
  * @param options.appId - App ID (required)
  * @param options.limit - Number of deployments to fetch (default: 20)
  * @param options.includeJobData - Whether to include job data (default: true)
+ * @param options.dedupe - Whether to deduplicate by gitHash (default: true)
  * @param options.enabled - Whether the query should be enabled (default: true)
  * @param options.refetchInterval - Polling interval in ms, or false to disable (default: false)
  * @param options.shouldPoll - Function that determines if polling should continue based on data.
@@ -77,6 +79,7 @@ export function useDeploymentsQuery({
   appId,
   limit = 20,
   includeJobData = true,
+  dedupe = true,
   enabled = true,
 }: UseDeploymentsQueryOptions) {
   // Track when polling started for progressive intervals
@@ -95,7 +98,7 @@ export function useDeploymentsQuery({
   const getSite = useSiteStore((state) => state.getSite);
 
   const query = useQuery({
-    queryKey: ['deployments', appId, limit, includeJobData],
+    queryKey: ['deployments', appId, limit, includeJobData, dedupe],
     queryFn: async (): Promise<AiroDeployment[]> => {
       if (!appId) {
         return [];
@@ -105,12 +108,16 @@ export function useDeploymentsQuery({
         limit: limit.toString(),
         includeJobData: includeJobData.toString(),
       });
+      if (!dedupe) {
+        queryParams.set('dedupe', 'false');
+      }
 
       logger.debug('deployments-query.fetch.start', {
         message: 'Fetching deployments via React Query',
         appId,
         limit,
         includeJobData,
+        dedupe,
       });
 
       // handle401 routes a 401 through resolveAuth's single-flight mutex so a

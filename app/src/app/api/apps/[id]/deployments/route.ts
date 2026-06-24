@@ -74,6 +74,7 @@ export const GET = withCustomerAuth(async (
     const searchParams = request.nextUrl.searchParams;
     const limit = parseInt(searchParams.get('limit') || '20', 10);
     const includeJobData = searchParams.get('includeJobData') !== 'false';
+    const dedupe = searchParams.get('dedupe') !== 'false';
 
     // JWT is provided by withCustomerAuth wrapper
     if (!authContext.jwt) {
@@ -88,7 +89,8 @@ export const GET = withCustomerAuth(async (
       subscriptionId: site.subscription_id,
       systemId: site.system_id,
       limit,
-      includeJobData
+      includeJobData,
+      dedupe
     });
 
     const response = await client.getDeployments(
@@ -96,7 +98,8 @@ export const GET = withCustomerAuth(async (
       site.system_id,
       siteId,
       limit,
-      includeJobData
+      includeJobData,
+      dedupe
     );
 
     logger.info('deployments.api.success', {

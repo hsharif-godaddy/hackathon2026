@@ -350,7 +350,8 @@ export default function AppPublish({ location = 'develop' }: { location?: string
     appId: currentAppId || '',
     enabled: queryEnabled,
     includeJobData: true,
-    limit: 6,
+    limit: 10,
+    dedupe: false,
   });
 
   const {

@@ -1043,6 +1043,7 @@ export class AiroMgmtClient {
    * @param appId - App ID
    * @param limit - Maximum number of deployments to return (default: 20)
    * @param includeJobData - Whether to include job data in response (default: true)
+   * @param dedupe - Whether to deduplicate by gitHash (default: true)
    * @returns Promise resolving to deployments response
    */
   async getDeployments(
@@ -1050,12 +1051,16 @@ export class AiroMgmtClient {
     systemId: string,
     appId: string,
     limit = 20,
-    includeJobData = true
+    includeJobData = true,
+    dedupe = true
   ): Promise<AiroDeploymentsResponse> {
     const params = new URLSearchParams({
       limit: limit.toString(),
-      includeJobData: includeJobData.toString()
+      includeJobData: includeJobData.toString(),
     });
+    if (!dedupe) {
+      params.set('dedupe', 'false');
+    }
 
     return this.request<AiroDeploymentsResponse>(
       'GET',
