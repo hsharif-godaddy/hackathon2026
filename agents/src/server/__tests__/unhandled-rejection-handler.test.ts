@@ -41,6 +41,7 @@ describe('handleUnhandledRejection', () => {
     handleUnhandledRejection(err, Promise.reject(err).catch(() => {}), deps);
 
     expect(deps.shutdown).toHaveBeenCalledOnce();
+    expect(deps.shutdown).toHaveBeenCalledWith('unhandledRejection');
     expect(deps.logger.error).toHaveBeenCalledWith(
       'server.unhandled.rejection',
       expect.any(Object)
@@ -53,5 +54,6 @@ describe('handleUnhandledRejection', () => {
     handleUnhandledRejection(undefined, Promise.resolve(), deps);
 
     expect(deps.shutdown).toHaveBeenCalledOnce();
+    expect(deps.shutdown).toHaveBeenCalledWith('unhandledRejection');
   });
 });

@@ -767,10 +767,11 @@ async function initialize() {
 /**
  * Graceful shutdown
  */
-async function shutdown() {
+async function shutdown(cause: string): Promise<void> {
   if (isShuttingDown) {
     logger.warn('server.shutdown.already_in_progress', {
       service: serviceName,
+      cause,
     });
     return;
   }
@@ -779,6 +780,7 @@ async function shutdown() {
 
   logger.info('server.shutdown.begin', {
     service: serviceName,
+    cause,
   });
 
   try {
@@ -862,9 +864,9 @@ async function shutdown() {
 
 // Handle shutdown signals
 if (!process.env.NOMAD_TASK_NAME) {
-  process.on('SIGINT', shutdown);
+  process.on('SIGINT', () => shutdown('SIGINT'));
 }
-process.on('SIGTERM', shutdown);
+process.on('SIGTERM', () => shutdown('SIGTERM'));
 
 // Handle uncaught exceptions
 process.on('uncaughtException', (error) => {
@@ -872,7 +874,7 @@ process.on('uncaughtException', (error) => {
     error: error.message,
     stack: error.stack,
   });
-  shutdown();
+  shutdown('uncaughtException');
 });
 
 process.on('unhandledRejection', (reason, promise) =>

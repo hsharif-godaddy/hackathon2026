@@ -9,7 +9,7 @@
  */
 export interface UnhandledRejectionDeps {
   logger: { warn: (event: string, meta?: unknown) => void; error: (event: string, meta?: unknown) => void };
-  shutdown: () => void;
+  shutdown: (cause: string) => void;
 }
 
 export function handleUnhandledRejection(
@@ -30,5 +30,5 @@ export function handleUnhandledRejection(
     reason: String(reason),
     promise: String(promise),
   });
-  deps.shutdown();
+  deps.shutdown('unhandledRejection');
 }
