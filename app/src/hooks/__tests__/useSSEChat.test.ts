@@ -1104,8 +1104,9 @@ describe('useSSEChat', () => {
       lastTransport.callbacks?.onEvent({ type: 'error', content: 'something went wrong', data: {} })
     })
 
+    // No errorType on the wire → not in the display-safe allowlist → generic copy.
     expect(mockMarkUpstreamError).toHaveBeenCalledWith(
-      expect.objectContaining({ message: 'something went wrong', type: 'UPSTREAM_ERROR' })
+      expect.objectContaining({ message: 'builder_common_error_generic', type: 'UPSTREAM_ERROR' })
     )
   })
 
@@ -1117,7 +1118,7 @@ describe('useSSEChat', () => {
     })
 
     expect(mockMarkUpstreamError).toHaveBeenCalledWith(
-      expect.objectContaining({ message: 'upstream failed' })
+      expect.objectContaining({ message: 'builder_common_error_generic' })
     )
   })
 
@@ -1427,7 +1428,7 @@ describe('useSSEChat', () => {
 
     expect(mockFlushStoreUpdateBufferImmediate).toHaveBeenCalled()
     expect(mockMarkUpstreamError).toHaveBeenCalledWith(
-      expect.objectContaining({ message: 'something broke', type: 'UPSTREAM_ERROR' })
+      expect.objectContaining({ message: 'builder_common_error_generic', type: 'UPSTREAM_ERROR' })
     )
     expect(mockFinalizeStream).toHaveBeenCalled()
   })
@@ -1637,6 +1638,69 @@ describe('useSSEChat', () => {
       uploadedFileName: 'logo.png',
       buildErrorContext: { error: 'build failed', details: 'stderr', exitCode: 1 },
     }))
+
+    vi.useRealTimers()
+  })
+
+  it('transient STREAM_TYPE_VALIDATION auto-resends once when no content has rendered', async () => {
+    const hook = await setupHook()
+
+    await act(async () => {
+      await hook.result.current.actions.send({ content: 'hello there' })
+    })
+
+    lastTransport.sendMessage.mockClear()
+    mockMarkUpstreamError.mockClear()
+    vi.useFakeTimers()
+
+    act(() => {
+      lastTransport.callbacks?.onEvent({
+        type: 'error',
+        content: 'The AI service returned an unexpected response. Please send your message again.',
+        data: { errorType: 'STREAM_TYPE_VALIDATION', statusCode: 502, isRetryable: true },
+      })
+    })
+
+    await act(async () => {
+      vi.advanceTimersByTime(1000)
+      await Promise.resolve()
+    })
+
+    expect(lastTransport.sendMessage).toHaveBeenCalledTimes(1)
+    expect(lastTransport.sendMessage).toHaveBeenCalledWith(expect.objectContaining({ content: 'hello there' }))
+    expect(mockMarkUpstreamError).not.toHaveBeenCalled()
+
+    vi.useRealTimers()
+  })
+
+  it('non-retryable STREAM_TYPE_VALIDATION surfaces the error instead of resending', async () => {
+    const hook = await setupHook()
+
+    await act(async () => {
+      await hook.result.current.actions.send({ content: 'hello there' })
+    })
+
+    lastTransport.sendMessage.mockClear()
+    mockMarkUpstreamError.mockClear()
+    vi.useFakeTimers()
+
+    act(() => {
+      lastTransport.callbacks?.onEvent({
+        type: 'error',
+        content: 'The AI service returned an unexpected response. Please send your message again.',
+        data: { errorType: 'STREAM_TYPE_VALIDATION', statusCode: 502, isRetryable: false },
+      })
+    })
+
+    await act(async () => {
+      vi.advanceTimersByTime(1000)
+      await Promise.resolve()
+    })
+
+    expect(lastTransport.sendMessage).not.toHaveBeenCalled()
+    expect(mockMarkUpstreamError).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'STREAM_TYPE_VALIDATION' })
+    )
 
     vi.useRealTimers()
   })

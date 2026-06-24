@@ -66,6 +66,42 @@ function isObject(val: unknown): val is Record<string, unknown> {
   return typeof val === 'object' && val !== null
 }
 
+/** Node/undici error codes that indicate a transient transport-level failure
+ * (connect/socket timeout, DNS, reset, broken pipe) worth retrying. The
+ * `UND_ERR_*` timeout codes are the ones an AI-SDK `APICallError` carries on its
+ * `.cause` when the gateway connect/headers/body phase times out — these were
+ * previously invisible to the APICallError branch, which trusted only
+ * `error.isRetryable`. */
+const TRANSIENT_NETWORK_CODES = new Set([
+  'ECONNREFUSED',
+  'ETIMEDOUT',
+  'ENOTFOUND',
+  'ECONNRESET',
+  'EPIPE',
+  'UND_ERR_CONNECT_TIMEOUT',
+  'UND_ERR_SOCKET',
+  'UND_ERR_HEADERS_TIMEOUT',
+  'UND_ERR_BODY_TIMEOUT',
+  'UND_ERR_REQUEST_TIMEOUT',
+])
+
+/** Message substrings (lower-cased match) that indicate a transient
+ * transport-level timeout/close. */
+const TRANSIENT_TIMEOUT_TEXT =
+  /timeout|timed out|socket hang up|\bterminated\b|other side closed|connect timeout|cannot connect/i
+
+/** True when an error's code, `.cause.code`, or message matches a transient
+ * network/timeout signature. Used for errors that lack an HTTP status code. */
+function hasTransientNetworkSignature(message: string, error: unknown): boolean {
+  if (TRANSIENT_TIMEOUT_TEXT.test(message)) return true
+  const code = isObject(error) && typeof error.code === 'string' ? error.code : undefined
+  const causeCode =
+    isObject(error) && isObject(error.cause) && typeof error.cause.code === 'string'
+      ? error.cause.code
+      : undefined
+  return (code !== undefined && TRANSIENT_NETWORK_CODES.has(code)) || (causeCode !== undefined && TRANSIENT_NETWORK_CODES.has(causeCode))
+}
+
 /**
  * Parse retry delay from HTTP response headers.
  * Supports standard `retry-after` (seconds or HTTP-date) and
@@ -160,13 +196,21 @@ function classify(error: unknown): RetryDecision {
       return { retryable: false, statusCode, message }
     }
 
-    // If no statusCode, honor the SDK's isRetryable flag (e.g., network errors)
-    // Otherwise treat as non-retryable
-    return {
-      retryable: statusCode === undefined ? error.isRetryable : false,
-      statusCode,
-      message
+    // No statusCode: a transport-level failure (connect/socket timeout, DNS,
+    // reset). The SDK's `isRetryable` is authoritative when it says retry, but
+    // it under-reports connect-timeouts, so also treat known network/timeout
+    // signatures as retryable instead of trusting the flag alone.
+    if (statusCode === undefined) {
+      const networkish = hasTransientNetworkSignature(messageLower, error)
+      return {
+        retryable: error.isRetryable || networkish,
+        ...(networkish && { category: 'transient' as const }),
+        statusCode,
+        message,
+      }
     }
+    // Other 4xx (non-retryable client errors handled above): not retryable.
+    return { retryable: false, statusCode, message }
   }
 
   // Fall back to manual extraction for non-SDK errors
@@ -198,11 +242,10 @@ function classify(error: unknown): RetryDecision {
     return { retryable: true, category: 'rate_limit', statusCode, message }
   }
 
-  const networkCodes = ['ECONNREFUSED', 'ETIMEDOUT', 'ENOTFOUND', 'ECONNRESET', 'EPIPE']
   const transientByName = /TimeoutError|ServiceUnavailableException|OverloadedException|GatewayTimeout|ModelTimeout/i.test(name)
-  const timeoutText = /timeout|timed out|socket hang up|\bterminated\b|other side closed/i.test(message)
+  const timeoutText = TRANSIENT_TIMEOUT_TEXT.test(message)
   const statusTransient = statusCode === 408 || (statusCode !== undefined && statusCode >= 500)
-  if ((errorCode && networkCodes.includes(errorCode)) || transientByName || timeoutText || statusTransient || messageLower.includes('service unavailable') || messageLower.includes('temporarily unavailable') || messageLower.includes('overloaded')) {
+  if ((errorCode && TRANSIENT_NETWORK_CODES.has(errorCode)) || transientByName || timeoutText || statusTransient || messageLower.includes('service unavailable') || messageLower.includes('temporarily unavailable') || messageLower.includes('overloaded')) {
     return { retryable: true, category: 'transient', statusCode, message }
   }
 

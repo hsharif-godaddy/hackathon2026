@@ -4783,7 +4783,12 @@ describe('MessageExecutionService', () => {
       [
         'retryable upstream',
         new APICallError({ message: 'svc unavailable', url: 'https://x', requestBodyValues: {}, statusCode: 503 }),
-        { statusCode: 503, _absent: ['errorType', 'retryAttempts', 'retryReason'] },
+        {
+          errorType: 'UPSTREAM_UNAVAILABLE',
+          statusCode: 503,
+          _error: 'The AI service is temporarily unavailable. Please send your message again.',
+          _absent: ['retryAttempts', 'retryReason'],
+        },
       ],
       [
         'generic upstream',
@@ -4809,10 +4814,10 @@ describe('MessageExecutionService', () => {
         ([, evt]: [string, any]) => evt.type === 'error'
       )
       expect(errorCall).toBeDefined()
-      const { _absent, ...positiveExpected } = expected as Record<string, unknown>
+      const { _absent, _error, ...positiveExpected } = expected as Record<string, unknown>
       expect(errorCall![1].data).toMatchObject({
         source: 'ai_response',
-        error: error instanceof Error ? error.message : String(error),
+        error: _error ?? (error instanceof Error ? error.message : String(error)),
         timestamp: expect.any(String),
         requestId: 'req_err_meta',
         ...positiveExpected,
@@ -4853,7 +4858,9 @@ describe('MessageExecutionService', () => {
 
       const log = errorCalls.find(c => c[0] === 'sse.execution.error')
       expect(log).toBeDefined()
-      expect(log?.[1]).toMatchObject({ statusCode: 502, errorType: 'STREAM_TYPE_VALIDATION' })
+      // internalServerException → transient STREAM_TYPE_VALIDATION → isRetryable
+      // logged so Loki can measure the retryable share of terminal errors.
+      expect(log?.[1]).toMatchObject({ statusCode: 502, errorType: 'STREAM_TYPE_VALIDATION', isRetryable: true })
       expect(log?.[1]).toHaveProperty('validationValue')
     })
   })

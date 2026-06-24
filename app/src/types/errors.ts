@@ -11,7 +11,21 @@ export interface StructuredError {
   /** Human-readable error message */
   message: string
   /** Structured error type for programmatic handling */
-  type?: 'BUDGET_EXCEEDED' | 'APP_NOT_FOUND' | 'UPSTREAM_ERROR' | 'RETRY_ERROR' | 'NETWORK_ERROR' | 'TOOL_VALIDATION_ERROR' | 'DATA_LOSS' | BudgetErrorType
+  type?:
+    | 'BUDGET_EXCEEDED'
+    | 'APP_NOT_FOUND'
+    | 'UPSTREAM_ERROR'
+    | 'RETRY_ERROR'
+    | 'NETWORK_ERROR'
+    | 'UPSTREAM_UNAVAILABLE'
+    | 'UPSTREAM_TIMEOUT'
+    | 'STREAM_TYPE_VALIDATION'
+    | 'CONTENT_FILTERED'
+    | 'TOOL_VALIDATION_ERROR'
+    | 'DATA_LOSS'
+    | BudgetErrorType
+  /** Whether the server indicated this error is retryable (wire hint). */
+  isRetryable?: boolean
   /** HTTP status code */
   statusCode?: number
   /** ISO timestamp of when the error occurred */

@@ -2822,6 +2822,9 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
           appId, conversationId, ...errorFields(err), ...(requestId && { requestId }),
           ...(logStatusCode !== undefined && { statusCode: logStatusCode }),
           ...(errorType !== undefined && { errorType }),
+          // Same value sent on the wire; logged so Loki can measure the
+          // retryable share of terminal errors per errorType.
+          isRetryable: classified.isRetryable,
           ...(terminalErrorInfo.responseBody !== undefined && { responseBody: terminalErrorInfo.responseBody }),
           ...(terminalErrorInfo.validationValue !== undefined && { validationValue: terminalErrorInfo.validationValue }),
           errorClass: terminalErrorInfo.type,
@@ -2851,6 +2854,11 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
             timestamp: new Date().toISOString(),
             ...(errorType !== undefined && { errorType }),
             ...(statusCode !== undefined && { statusCode }),
+            // Wire-level retry hint: lets the client auto-resend transient
+            // classes (e.g. a transient STREAM_TYPE_VALIDATION) that the server
+            // cannot retry itself because they surface in-band after the
+            // retryWithBackoff stream-open boundary.
+            isRetryable: classified.isRetryable,
             ...(retryAttempts !== undefined && { retryAttempts }),
             ...(retryReason !== undefined && { retryReason }),
             ...(activeAgentMessageId && { messageId: activeAgentMessageId }),

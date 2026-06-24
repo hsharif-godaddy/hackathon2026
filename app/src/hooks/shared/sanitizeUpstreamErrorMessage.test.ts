@@ -8,30 +8,25 @@ import {
 const t = (key: string) => key
 
 describe('sanitizeUpstreamErrorMessage', function sanitizeUpstreamErrorMessageTests() {
-  it('replaces gateway timeout with generic copy', function gatewayTimeout() {
-    expect(sanitizeUpstreamErrorMessage('Gateway Time-out', t)).toBe('builder_common_error_generic')
+  it('replaces raw text with generic copy when errorType is absent (allowlist)', function noErrorType() {
+    expect(sanitizeUpstreamErrorMessage('Cannot connect to API: Connect Timeout Error', undefined, t))
+      .toBe('builder_common_error_generic')
   })
 
-  it('replaces retry exhaustion signals with generic copy', function retryFailed() {
-    expect(sanitizeUpstreamErrorMessage('retry failed', t)).toBe('builder_common_error_generic')
-    expect(sanitizeUpstreamErrorMessage('maxRetriesExceeded', t)).toBe('builder_common_error_generic')
+  it('replaces raw text for non-allowlisted errorType (e.g. UPSTREAM_ERROR)', function unsafeType() {
+    expect(sanitizeUpstreamErrorMessage('socket hang up at 10.0.0.1:443', 'UPSTREAM_ERROR', t))
+      .toBe('builder_common_error_generic')
   })
 
-  it('preserves connection-dropped sentinel text for downstream UI mapping', function terminatedSentinel() {
-    expect(sanitizeUpstreamErrorMessage('terminated', t)).toBe('terminated')
+  it('preserves the server-curated message for an allowlisted errorType', function safeType() {
+    const curated = 'Budget service temporarily unavailable'
+    expect(sanitizeUpstreamErrorMessage(curated, 'BUDGET_SERVICE_UNAVAILABLE', t)).toBe(curated)
+    const network = 'A network error interrupted the connection. Please send your message again.'
+    expect(sanitizeUpstreamErrorMessage(network, 'NETWORK_ERROR', t)).toBe(network)
   })
 
-  it('replaces 408 timeout tokens with generic copy', function requestTimeout() {
-    expect(sanitizeUpstreamErrorMessage('408', t)).toBe('builder_common_error_generic')
-  })
-
-  it('preserves already-friendly server copy', function friendlyServerCopy() {
-    const friendly = 'The AI took too long to respond and the request timed out. Please send your message again.'
-    expect(sanitizeUpstreamErrorMessage(friendly, t)).toBe(friendly)
-  })
-
-  it('preserves plain-language errors that are not technical tokens', function plainLanguage() {
-    expect(sanitizeUpstreamErrorMessage('something went wrong', t)).toBe('something went wrong')
+  it('replaces an empty message with generic copy even for an allowlisted type', function emptySafe() {
+    expect(sanitizeUpstreamErrorMessage('   ', 'NETWORK_ERROR', t)).toBe('builder_common_error_generic')
   })
 })
 

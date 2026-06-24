@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { APICallError } from '@ai-sdk/provider'
 import { retryWithBackoff, DEFAULT_RETRY_CONFIG, hasRetryMetadata, getRetryMetadata, isRetryableError, classifyError } from '../retry-with-backoff.js'
 import { createNetworkError, createRateLimitError, createServerError, createAuthError, createBadRequestError, createServiceUnavailableError, createFailingFunction, createTransientBadRequestError, createToolValidationError, createAPICallErrorWithHeaders } from './test-helpers.js'
 
@@ -149,6 +150,31 @@ describe('retry-with-backoff simplified', () => {
     const otherSideClosedError = new Error('other side closed')
     expect(isRetryableError(otherSideClosedError)).toBe(true)
     expect(classifyError(otherSideClosedError).category).toBe('transient')
+  })
+
+  it('connect-timeout APICallError with no statusCode is retryable despite isRetryable=false', () => {
+    // undici connect-timeout wrapped as an APICallError: statusCode is
+    // undefined and the SDK's isRetryable under-reports it. The network/timeout
+    // signature (message text + cause code) must still mark it retryable.
+    const connectTimeout = new APICallError({
+      message: 'Cannot connect to API.',
+      url: 'https://litellm.example.com/v1/chat/completions',
+      requestBodyValues: {},
+      isRetryable: false,
+      cause: Object.assign(new Error('Connect Timeout Error'), { code: 'UND_ERR_CONNECT_TIMEOUT' }),
+    })
+    expect(isRetryableError(connectTimeout)).toBe(true)
+    expect(classifyError(connectTimeout).category).toBe('transient')
+  })
+
+  it('non-network APICallError with no statusCode and isRetryable=false stays non-retryable', () => {
+    const opaque = new APICallError({
+      message: 'something unexpected',
+      url: 'https://litellm.example.com/v1/chat/completions',
+      requestBodyValues: {},
+      isRetryable: false,
+    })
+    expect(isRetryableError(opaque)).toBe(false)
   })
 
   it('unterminated errors are NOT retryable (false positive prevention)', () => {

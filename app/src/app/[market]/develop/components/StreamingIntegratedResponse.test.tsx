@@ -500,6 +500,55 @@ describe('StreamingIntegratedResponse', function streamingIntegratedResponseTest
       expect(screen.getByText('builder_stream_error_message')).toBeInTheDocument();
       expect(screen.queryByText('builder_stream_error_title')).not.toBeInTheDocument();
     });
+
+    it('shows the stream-error (rephrase) banner for CONTENT_FILTERED', function contentFilteredError() {
+      renderWithProviders(
+        <StreamingIntegratedResponse
+          message={upstreamErrorMessage('CONTENT_FILTERED')}
+          streamingState="idle"
+        />
+      );
+
+      expect(screen.getByText('builder_common_error_title')).toBeInTheDocument();
+      expect(screen.getByText('builder_stream_error_message')).toBeInTheDocument();
+    });
+
+    it('shows timeout copy for UPSTREAM_TIMEOUT errorType', function upstreamTimeoutErrorType() {
+      renderWithProviders(
+        <StreamingIntegratedResponse
+          message={upstreamErrorMessage('UPSTREAM_TIMEOUT')}
+          streamingState="idle"
+        />
+      );
+
+      expect(screen.getByText('builder_common_error_title')).toBeInTheDocument();
+      expect(screen.getByText('builder_chat_error_timeout')).toBeInTheDocument();
+      expect(screen.queryByText('builder_common_error_generic')).not.toBeInTheDocument();
+    });
+
+    it('shows generic copy for NETWORK_ERROR', function networkError() {
+      renderWithProviders(
+        <StreamingIntegratedResponse
+          message={upstreamErrorMessage('NETWORK_ERROR')}
+          streamingState="idle"
+        />
+      );
+
+      expect(screen.getByText('builder_common_error_title')).toBeInTheDocument();
+      expect(screen.getByText('builder_common_error_generic')).toBeInTheDocument();
+    });
+
+    it('shows generic copy for UPSTREAM_UNAVAILABLE', function upstreamUnavailableError() {
+      renderWithProviders(
+        <StreamingIntegratedResponse
+          message={upstreamErrorMessage('UPSTREAM_UNAVAILABLE')}
+          streamingState="idle"
+        />
+      );
+
+      expect(screen.getByText('builder_common_error_title')).toBeInTheDocument();
+      expect(screen.getByText('builder_common_error_generic')).toBeInTheDocument();
+    });
   });
 
   describe('action grouping', function actionGroupingTests() {

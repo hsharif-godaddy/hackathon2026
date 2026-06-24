@@ -17,6 +17,7 @@ import {
 } from '@/hooks/shared/sanitizeUpstreamErrorMessage'
 import { getSwitchboardFlag } from '@/hooks/useSwitchboard'
 import { agentFetch, getAgentToken } from '@/lib/agent-fetch'
+import { shipAnalyticsLog } from '@/lib/logging'
 import { readDesignChoiceForCurrentApp } from '@/lib/rebuild-design-choice'
 import { logger } from '@/lib/request-context'
 import {
@@ -255,6 +256,17 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
     }
     appNotFoundRetryRef.current = { startTime: 0, count: 0, timer: null }
   }, [])
+  // A transient STREAM_TYPE_VALIDATION (the proxy leaked a transient Bedrock
+  // `internalServerException` envelope) cannot be retried server-side — it
+  // surfaces in-band after the retryWithBackoff stream-open boundary — so the
+  // client auto-resends once, gated on no content having rendered yet.
+  const streamValidationRetryRef = useRef<{ count: number; timer: ReturnType<typeof setTimeout> | null }>({ count: 0, timer: null })
+  const clearStreamValidationRetry = useCallback(() => {
+    if (streamValidationRetryRef.current.timer) {
+      clearTimeout(streamValidationRetryRef.current.timer)
+    }
+    streamValidationRetryRef.current = { count: 0, timer: null }
+  }, [])
 
   const isConnected = transportState === 'connected' || transportState === 'streaming'
 
@@ -480,6 +492,17 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
                 const agentNameRaw = (event.data as any)?.agentName
                 if (agentNameRaw) store.setCurrentAgentName(String(agentNameRaw))
                 clearAppNotFoundRetry()
+                // A step starting while a transient-stream-validation resend is
+                // in flight means the resend recovered the turn. Ship a success
+                // event (info, always-shipped) so the auto-resend success rate
+                // is measurable against the `.retry` attempts, not just inferred.
+                if (streamValidationRetryRef.current.count > 0) {
+                  shipAnalyticsLog('sse.stream_validation.retry_succeeded', {
+                    appId: currentAppId,
+                    retryCount: streamValidationRetryRef.current.count,
+                  })
+                }
+                clearStreamValidationRetry()
                 trackStepStart()
               } else if (type === 'step_complete') {
                 if ((event.data as any)?.maxStepsReached === true) {
@@ -704,8 +727,39 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
                   clearAppNotFoundRetry()
                 }
 
+                // Transient STREAM_TYPE_VALIDATION (proxy leaked a transient
+                // Bedrock exception): the server can't retry it, so auto-resend
+                // once — but only if nothing has rendered yet, to avoid
+                // duplicating partially-streamed content.
+                if (errorType === 'STREAM_TYPE_VALIDATION' && errData?.isRetryable === true && lastResolvedSendParamsRef.current) {
+                  const retry = streamValidationRetryRef.current
+                  const active = useStreamingConversationStore.getState().activeStream
+                  const hasRenderedContent =
+                    !!active && ((active.content?.length ?? 0) > 0 || (active.segments?.length ?? 0) > 0 || (active.toolCalls?.length ?? 0) > 0)
+                  if (retry.count < 1 && !hasRenderedContent) {
+                    retry.count += 1
+                    const pending = lastResolvedSendParamsRef.current
+                    logger.warn('sse.error.stream_validation.retry', { appId: currentAppId, retryCount: retry.count })
+                    if (retry.timer) clearTimeout(retry.timer)
+                    retry.timer = setTimeout(() => {
+                      const transport = transportRef.current
+                      if (!transport) {
+                        logger.warn('sse.error.stream_validation.resend_skipped', { appId: currentAppId, reason: 'transport_unavailable' })
+                        return
+                      }
+                      transport.sendMessage(pending).catch(err => {
+                        logger.warn('sse.error.stream_validation.resend_failed', {
+                          appId: currentAppId, error: err instanceof Error ? err.message : String(err),
+                        })
+                      })
+                    }, 1000)
+                    return
+                  }
+                  clearStreamValidationRetry()
+                }
+
                 const structuredError: StructuredError = {
-                  message: sanitizeUpstreamErrorMessage(errMsg, tRef.current),
+                  message: sanitizeUpstreamErrorMessage(errMsg, errorType, tRef.current),
                   type: (errorType as StructuredError['type']) ?? 'UPSTREAM_ERROR',
                   statusCode: resolveUpstreamErrorStatusCode(errMsg, errData?.statusCode),
                   timestamp: errData?.timestamp,
@@ -1246,6 +1300,7 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
     lastResolvedSendParamsRef.current = null
     currentStreamRequestIdRef.current = null
     clearAppNotFoundRetry()
+    clearStreamValidationRetry()
 
     try {
       const [defaults, fullStorySessionId] = await Promise.all([
@@ -1314,7 +1369,7 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
       s.setIsLoading(false)
       const errMessage: string = err instanceof Error ? err.message : 'Send failed'
       s.markUpstreamError({
-        message: sanitizeUpstreamErrorMessage(errMessage, tRef.current),
+        message: sanitizeUpstreamErrorMessage(errMessage, 'UPSTREAM_ERROR', tRef.current),
         type: 'UPSTREAM_ERROR',
         statusCode: resolveUpstreamErrorStatusCode(errMessage, (err as { statusCode?: number }).statusCode),
       })

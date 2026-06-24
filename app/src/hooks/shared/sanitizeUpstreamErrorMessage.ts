@@ -2,24 +2,25 @@ type Translate = (key: string, values?: Record<string, unknown>, defaultMessage?
 
 const GENERIC_FALLBACK = 'Something went wrong. Please try again.'
 
-function isTechnicalUpstreamMessage(message: string): boolean {
-  if (!message.trim() || message === 'Unknown error' || message === 'Send failed') {
-    return true
-  }
+/** errorTypes whose server-side `clientMessage` is curated and safe to show
+ * verbatim. Everything else (raw upstream/proxy strings, unknown classes) is
+ * replaced with generic copy — an allowlist, so a leaky upstream phrasing
+ * ("Cannot connect to API: Connect Timeout Error") can never reach the UI
+ * regardless of its wording. The display components render their own i18n copy
+ * for these types anyway; this only governs the stored fallback string. */
+const DISPLAY_SAFE_ERROR_TYPES: ReadonlySet<string> = new Set([
+  'BUDGET_SERVICE_UNAVAILABLE',
+  'BUDGET_SERVICE_ERROR',
+  'BUDGET_SERVICE_AUTH_ERROR',
+  'NETWORK_ERROR',
+  'UPSTREAM_UNAVAILABLE',
+  'UPSTREAM_TIMEOUT',
+  'STREAM_TYPE_VALIDATION',
+  'CONTENT_FILTERED',
+])
 
-  return (
-    /\bgateway time-?out\b/i.test(message)
-    || /\b504\b/.test(message)
-    || /\b408\b/.test(message)
-    || /\bmaxRetriesExceeded\b/.test(message)
-    || /^Chat request failed:/i.test(message)
-    || /failed to fetch/i.test(message)
-    || /^retry failed/i.test(message)
-  )
-}
-
-export function sanitizeUpstreamErrorMessage(message: string, t: Translate): string {
-  if (!isTechnicalUpstreamMessage(message)) {
+export function sanitizeUpstreamErrorMessage(message: string, errorType: string | undefined, t: Translate): string {
+  if (errorType !== undefined && DISPLAY_SAFE_ERROR_TYPES.has(errorType) && message.trim()) {
     return message
   }
 

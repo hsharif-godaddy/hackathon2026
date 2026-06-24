@@ -2,7 +2,7 @@ import { APICallError, RetryError, TypeValidationError } from 'ai'
 import { BudgetExceededError } from '@airo/ai-common'
 import { isBudgetServiceError, mapBudgetErrorToResponse, type BudgetErrorType } from '@airo/shared/budget'
 import { AgentNotFoundError } from './agent-execution-loop.js'
-import { isUpstreamTimeoutError } from './analyze-stream-error.js'
+import { isNetworkError, isUpstreamTimeoutError } from './analyze-stream-error.js'
 
 /** Canonical set of errorType strings `classifyTurnError` can return.
  * Narrowed over `string` so consumers that branch on the errorType
@@ -13,7 +13,53 @@ export type TurnErrorType =
   | 'BUDGET_EXCEEDED'
   | 'RETRY_ERROR'
   | 'STREAM_TYPE_VALIDATION'
+  | 'CONTENT_FILTERED'
+  | 'NETWORK_ERROR'
+  | 'UPSTREAM_UNAVAILABLE'
+  | 'UPSTREAM_TIMEOUT'
   | BudgetErrorType
+
+/** User-facing fallback messages for upstream-class errors. The client renders
+ * its own i18n copy keyed off `errorType`; these are the wire-level fallback
+ * (and the value stored as the message's `error` string), so they must already
+ * be safe to show — never a raw upstream/proxy string. */
+const UPSTREAM_TIMEOUT_MESSAGE =
+  'The AI took too long to respond and the request timed out. Please send your message again.'
+const NETWORK_ERROR_MESSAGE =
+  'A network error interrupted the connection. Please send your message again.'
+const UPSTREAM_UNAVAILABLE_MESSAGE =
+  'The AI service is temporarily unavailable. Please send your message again.'
+const STREAM_VALIDATION_MESSAGE =
+  'The AI service returned an unexpected response. Please send your message again.'
+const CONTENT_FILTERED_MESSAGE =
+  'The AI service could not process this request. Please rephrase your message and try again.'
+
+/** Classify the offending stream chunk behind an AI-SDK `TypeValidationError`.
+ * The GoCode/LiteLLM proxy leaks Bedrock exception envelopes as non-Anthropic
+ * stream chunks; the dominant shape is a transient `internalServerException`
+ * ("Try your request again"), the minority a `validationException` (a content
+ * guardrail / request-validation rejection that will not change on retry).
+ * Matched against the JSON-serialized value rather than an exact shape so it
+ * survives envelope-format drift. */
+function describeValidationChunk(value: unknown): 'transient' | 'content' | 'unknown' {
+  let serialized: string
+  try {
+    serialized = (JSON.stringify(value) ?? '').toLowerCase()
+  } catch {
+    return 'unknown'
+  }
+  if (serialized.includes('validationexception')) return 'content'
+  if (
+    serialized.includes('internalserverexception') ||
+    serialized.includes('serviceunavailable') ||
+    serialized.includes('service unavailable') ||
+    serialized.includes('throttlingexception') ||
+    serialized.includes('try your request again')
+  ) {
+    return 'transient'
+  }
+  return 'unknown'
+}
 
 /** Result of classifying a turn-terminating error. `isRetryable` is always
  * derivable; other fields are error-class specific. `clientMessage` is
@@ -78,13 +124,34 @@ export function classifyTurnError(error: unknown): ClassifiedTurnError {
 
   if (APICallError.isInstance(error)) {
     const statusCode = error.statusCode
+    // Upstream proxy enforced its own request-timeout: 408/504. Non-retryable
+    // at this point (retryWithBackoff already exhausted), but carries a friendly
+    // timeout message and a distinct errorType so the client renders timeout copy.
+    if (isUpstreamTimeoutError(error)) {
+      return { errorType: 'UPSTREAM_TIMEOUT', ...(statusCode !== undefined && { statusCode }), isRetryable: false, clientMessage: UPSTREAM_TIMEOUT_MESSAGE }
+    }
+    // 5xx other than 504 (e.g. 500/502/503, including the Akamai-edge 503): the
+    // upstream gateway is unavailable. Genuinely retryable.
+    if (statusCode !== undefined && statusCode >= 500) {
+      return { errorType: 'UPSTREAM_UNAVAILABLE', statusCode, isRetryable: true, clientMessage: UPSTREAM_UNAVAILABLE_MESSAGE }
+    }
+    // Transport-level failure with no HTTP status (connect/socket timeout, DNS,
+    // reset). Surface as NETWORK_ERROR so the client renders connection copy.
+    if (statusCode === undefined && isNetworkError(error)) {
+      return { errorType: 'NETWORK_ERROR', isRetryable: true, clientMessage: NETWORK_ERROR_MESSAGE }
+    }
     return {
       ...(statusCode !== undefined && { statusCode }),
-      isRetryable: statusCode === 503 || statusCode === 429,
-      ...(isUpstreamTimeoutError(error) && {
-        clientMessage: 'The AI took too long to respond and the request timed out. Please send your message again.',
-      }),
+      isRetryable: statusCode === 429,
     }
+  }
+
+  // Non-SDK network/socket failure (e.g. a raw undici `TypeError: terminated`
+  // or a `UND_ERR_CONNECT_TIMEOUT` that never got wrapped as an APICallError).
+  // Without this branch it falls through to a blank-status `{ isRetryable:
+  // false }` terminal error with no errorType.
+  if (isNetworkError(error)) {
+    return { errorType: 'NETWORK_ERROR', isRetryable: true, clientMessage: NETWORK_ERROR_MESSAGE }
   }
 
   // In-band stream validation failure from the AI SDK provider parser
@@ -95,12 +162,20 @@ export function classifyTurnError(error: unknown): ClassifiedTurnError {
   // so without this branch it falls through to a blank-status terminal error.
   // The offending chunk is logged separately via `analyzeStreamError`'s
   // `validationValue`. 502 = upstream/proxy returned a response we can't parse.
+  // We sub-classify the leaked Bedrock envelope: a transient
+  // `internalServerException` is retryable (the client auto-resends), whereas a
+  // content-guardrail `validationException` is not — retrying re-trips the
+  // filter, so the user is asked to rephrase instead.
   if (TypeValidationError.isInstance(error)) {
+    const chunkKind: 'transient' | 'content' | 'unknown' = describeValidationChunk(error.value)
+    if (chunkKind === 'content') {
+      return { errorType: 'CONTENT_FILTERED', statusCode: 502, isRetryable: false, clientMessage: CONTENT_FILTERED_MESSAGE }
+    }
     return {
       errorType: 'STREAM_TYPE_VALIDATION',
       statusCode: 502,
-      isRetryable: false,
-      clientMessage: 'The AI service returned an unexpected response. Please send your message again.',
+      isRetryable: chunkKind === 'transient',
+      clientMessage: STREAM_VALIDATION_MESSAGE,
     }
   }
 

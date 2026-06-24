@@ -287,24 +287,15 @@ export default function StreamingIntegratedResponse({
       {/* Budget exceeded error notification — hidden for e2s/e2s2s employee sessions */}
       {!isImpersonating && message.budgetExceeded && <BudgetExceededBanner />}
 
-      {/* Upstream service error notification */}
+      {/* Upstream service error notification. Branches map each structured
+          errorType to user-facing copy; the raw upstream message is never
+          shown (sanitized to a safe string at store-write time). NETWORK_ERROR,
+          UPSTREAM_UNAVAILABLE, and RETRY_ERROR currently share the generic
+          "try again" copy — dedicated copy for those needs new i18n keys. */}
       {message.upstreamError && !message.budgetExceeded && (
         <>
-          {message.errorType === 'RETRY_ERROR' ? (
-            <StreamingAlertMessage
-              type="Critical"
-              title={t('builder_common_error_title', undefined, 'Something went wrong')}
-              message={t('builder_common_error_generic', undefined, 'Something went wrong. Please try again.')}
-            />
-          ) : message.errorType === 'NETWORK_ERROR' ? (
-            /* Network error - prompt to check connection */
-            <StreamingAlertMessage
-              type="Critical"
-              title="Network Error"
-              message="Unable to reach the service. Please check your internet connection and try again."
-            />
-          ) : message.errorType === 'STREAM_TYPE_VALIDATION' ? (
-            /* Malformed upstream stream chunk (AI SDK TypeValidationError) */
+          {message.errorType === 'STREAM_TYPE_VALIDATION' || message.errorType === 'CONTENT_FILTERED' ? (
+            /* Malformed/filtered upstream stream chunk (AI SDK TypeValidationError) */
             <StreamingAlertMessage
               type="Critical"
               title={t('builder_common_error_title', undefined, 'Something went wrong')}
@@ -312,6 +303,16 @@ export default function StreamingIntegratedResponse({
                 'builder_stream_error_message',
                 undefined,
                 'Airo couldn\'t process the reply. Send your message again, or try to rephrase it.',
+              )}
+            />
+          ) : message.errorType === 'UPSTREAM_TIMEOUT' || message.errorCode === 408 || message.errorCode === 504 ? (
+            <StreamingAlertMessage
+              type="Critical"
+              title={t('builder_common_error_title', undefined, 'Something went wrong')}
+              message={t(
+                'builder_chat_error_timeout',
+                undefined,
+                'Airo took too long to respond. Please send your message again.',
               )}
             />
           ) : /\bterminated\b/i.test(message.error ?? '') && !(hasSegments || chronologicalContent.length > 0) ? (
@@ -324,18 +325,9 @@ export default function StreamingIntegratedResponse({
                 'This happens occasionally and isn\'t caused by anything you did. Type "continue" and I\'ll pick up right where I left off.'
               )}
             />
-          ) : message.errorCode === 408 || message.errorCode === 504 ? (
-            <StreamingAlertMessage
-              type="Critical"
-              title={t('builder_common_error_title', undefined, 'Something went wrong')}
-              message={t(
-                'builder_chat_error_timeout',
-                undefined,
-                'Airo took too long to respond. Please send your message again.',
-              )}
-            />
           ) : (
-            /* Generic upstream error for all other types */
+            /* RETRY_ERROR, NETWORK_ERROR, UPSTREAM_UNAVAILABLE, and any other
+               upstream error: generic "try again" copy. */
             <StreamingAlertMessage
               type="Critical"
               title={t('builder_common_error_title', undefined, 'Something went wrong')}

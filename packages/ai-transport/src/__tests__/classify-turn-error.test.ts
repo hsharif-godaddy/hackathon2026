@@ -51,12 +51,29 @@ describe('classifyTurnError', () => {
     })
   })
 
-  it('classifies APICallError: 503 is retryable', () => {
+  it('classifies APICallError: 503 as UPSTREAM_UNAVAILABLE, retryable', () => {
     const err = new APICallError({ message: 'svc unavailable', url: 'https://x', requestBodyValues: {}, statusCode: 503 })
-    expect(classifyTurnError(err)).toEqual({ statusCode: 503, isRetryable: true })
+    expect(classifyTurnError(err)).toEqual({
+      errorType: 'UPSTREAM_UNAVAILABLE',
+      statusCode: 503,
+      isRetryable: true,
+      clientMessage: 'The AI service is temporarily unavailable. Please send your message again.',
+    })
   })
 
-  it('classifies APICallError: 429 is retryable', () => {
+  it('classifies APICallError: 500/502 as UPSTREAM_UNAVAILABLE, retryable', () => {
+    for (const statusCode of [500, 502]) {
+      const err = new APICallError({ message: 'boom', url: 'https://x', requestBodyValues: {}, statusCode })
+      expect(classifyTurnError(err)).toEqual({
+        errorType: 'UPSTREAM_UNAVAILABLE',
+        statusCode,
+        isRetryable: true,
+        clientMessage: 'The AI service is temporarily unavailable. Please send your message again.',
+      })
+    }
+  })
+
+  it('classifies APICallError: 429 is retryable (no errorType)', () => {
     const err = new APICallError({ message: 'rate limit', url: 'https://x', requestBodyValues: {}, statusCode: 429 })
     expect(classifyTurnError(err)).toEqual({ statusCode: 429, isRetryable: true })
   })
@@ -66,33 +83,83 @@ describe('classifyTurnError', () => {
     expect(classifyTurnError(err)).toEqual({ statusCode: 400, isRetryable: false })
   })
 
-  it('classifies APICallError: 408 is not retryable but carries a friendly timeout message', () => {
+  it('classifies APICallError: 408 as UPSTREAM_TIMEOUT, not retryable, friendly message', () => {
     const err = new APICallError({ message: 'Request Timeout', url: 'https://x', requestBodyValues: {}, statusCode: 408 })
     expect(classifyTurnError(err)).toEqual({
+      errorType: 'UPSTREAM_TIMEOUT',
       statusCode: 408,
       isRetryable: false,
       clientMessage: 'The AI took too long to respond and the request timed out. Please send your message again.',
     })
   })
 
-  it('classifies APICallError: 504 carries the friendly timeout message', () => {
+  it('classifies APICallError: 504 as UPSTREAM_TIMEOUT with the friendly timeout message', () => {
     const err = new APICallError({ message: 'Gateway Timeout', url: 'https://x', requestBodyValues: {}, statusCode: 504 })
     expect(classifyTurnError(err)).toEqual({
+      errorType: 'UPSTREAM_TIMEOUT',
       statusCode: 504,
       isRetryable: false,
       clientMessage: 'The AI took too long to respond and the request timed out. Please send your message again.',
     })
   })
 
-  it('classifies TypeValidationError (malformed upstream stream chunk) with a 502 + friendly resend message', () => {
+  it('classifies a connect-timeout APICallError (no statusCode) as NETWORK_ERROR, retryable', () => {
+    const err = new APICallError({
+      message: 'Cannot connect to API.',
+      url: 'https://x',
+      requestBodyValues: {},
+      cause: Object.assign(new Error('Connect Timeout Error'), { code: 'UND_ERR_CONNECT_TIMEOUT' }),
+    })
+    expect(classifyTurnError(err)).toEqual({
+      errorType: 'NETWORK_ERROR',
+      isRetryable: true,
+      clientMessage: 'A network error interrupted the connection. Please send your message again.',
+    })
+  })
+
+  it('classifies a raw undici "terminated" TypeError as NETWORK_ERROR, retryable', () => {
+    const err = new TypeError('terminated')
+    expect(classifyTurnError(err)).toEqual({
+      errorType: 'NETWORK_ERROR',
+      isRetryable: true,
+      clientMessage: 'A network error interrupted the connection. Please send your message again.',
+    })
+  })
+
+  it('classifies a transient TypeValidationError (internalServerException) as STREAM_TYPE_VALIDATION, retryable', () => {
     // The @ai-sdk/anthropic stream parser emits this in-band when a chunk
     // fails its `discriminatedUnion("type", ...)` validation ("No matching
-    // discriminator") — e.g. a Bedrock exception/guardrail envelope leaked by
-    // the GoCode/LiteLLM proxy, or a content-block type newer than the pinned
-    // provider knows. Without this branch it falls through to a blank-status
-    // terminal error (no statusCode, no errorType).
+    // discriminator") — here a transient Bedrock `internalServerException`
+    // envelope leaked by the GoCode/LiteLLM proxy. Transient → retryable so the
+    // client auto-resends.
     const err = new TypeValidationError({
-      value: { type: 'internalServerException', message: 'boom' },
+      value: { type: 'internalServerException', message: 'Try your request again.' },
+      cause: new Error('No matching discriminator'),
+    })
+    expect(classifyTurnError(err)).toEqual({
+      errorType: 'STREAM_TYPE_VALIDATION',
+      statusCode: 502,
+      isRetryable: true,
+      clientMessage: 'The AI service returned an unexpected response. Please send your message again.',
+    })
+  })
+
+  it('classifies a content-filter TypeValidationError (validationException) as CONTENT_FILTERED, not retryable', () => {
+    const err = new TypeValidationError({
+      value: { type: 'validationException', message: 'blocked by guardrail' },
+      cause: new Error('No matching discriminator'),
+    })
+    expect(classifyTurnError(err)).toEqual({
+      errorType: 'CONTENT_FILTERED',
+      statusCode: 502,
+      isRetryable: false,
+      clientMessage: 'The AI service could not process this request. Please rephrase your message and try again.',
+    })
+  })
+
+  it('classifies an unrecognized TypeValidationError chunk as STREAM_TYPE_VALIDATION, not retryable', () => {
+    const err = new TypeValidationError({
+      value: { type: 'some_future_block', data: 'x' },
       cause: new Error('No matching discriminator'),
     })
     expect(classifyTurnError(err)).toEqual({
