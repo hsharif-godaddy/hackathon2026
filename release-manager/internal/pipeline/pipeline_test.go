@@ -1826,6 +1826,10 @@ func TestFetchReleaseNotesBadImageTag(t *testing.T) {
 	}
 }
 
+// A Compare failure (e.g. an ambiguous 7-char ext-hash base that GitHub's API
+// rejects) must NOT block the release — release notes are best-effort and
+// degrade to empty, mirroring the TUI. values["commit"] stays pinned (it's set
+// before the compare), so the rest of the pipeline is unaffected.
 func TestFetchReleaseNotesCompareError(t *testing.T) {
 	runner := &mockRunner{
 		compareFn: func(_ context.Context, _, _, _ string) (*gh.CompareResult, error) {
@@ -1846,9 +1850,17 @@ func TestFetchReleaseNotesCompareError(t *testing.T) {
 	p := New(cfg, runner, false, "main", nil)
 	p.Snapshot.AgentImageTag = "pi-abc-ext-def"
 
-	_, _, err := p.FetchReleaseNotes(context.Background())
-	if err == nil {
-		t.Fatal("expected error from Compare failure")
+	notes, htmlURL, err := p.FetchReleaseNotes(context.Background())
+	if err != nil {
+		t.Fatalf("a Compare failure must degrade to no notes, not error; got: %v", err)
+	}
+	if len(notes) != 0 || htmlURL != "" {
+		t.Errorf("expected empty notes on compare failure, got notes=%+v url=%q", notes, htmlURL)
+	}
+	// commit is pinned in the head-resolution step before the compare, so the
+	// rest of the pipeline still has the build commit despite degraded notes.
+	if got := p.Values()["commit"]; got != "main" {
+		t.Errorf("values[commit] = %q, want %q (pinned before the compare)", got, "main")
 	}
 }
 

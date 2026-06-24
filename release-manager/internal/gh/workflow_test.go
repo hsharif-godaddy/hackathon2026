@@ -660,3 +660,44 @@ func TestVerifyPush(t *testing.T) {
 		})
 	}
 }
+
+func TestIsShortHexSHA(t *testing.T) {
+	tests := []struct {
+		in   string
+		want bool
+	}{
+		{"94c3700", true},    // 7-char ext-hash — the real case
+		{"abcd", true},       // 4 chars (min)
+		{"94c370083f", true}, // 10 chars
+		{"94c370083f3fbb875b5db4dfc988dc9a9fd4489", true},   // 39 chars
+		{"94c370083f3fbb875b5db4dfc988dc9a9fd44893", false}, // 40 chars — already full
+		{"abc", false},    // too short
+		{"main", false},   // branch name (g/n not hex)
+		{"v1.2.3", false}, // tag
+		{"", false},
+	}
+	for _, tt := range tests {
+		if got := isShortHexSHA(tt.in); got != tt.want {
+			t.Errorf("isShortHexSHA(%q) = %v, want %v", tt.in, got, tt.want)
+		}
+	}
+}
+
+func TestFirstSHAWithPrefix(t *testing.T) {
+	// head's ancestor SHAs (commits only — no tree, so the ambiguous prefix
+	// resolves to the one commit).
+	shas := []string{
+		"c1fa50738ea6a55ea10837e1b44d3087a07efa7a",
+		"94c370083f3fbb875b5db4dfc988dc9a9fd44893", // Media Canvas — matches 94c3700
+		"deadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+	}
+	if got := firstSHAWithPrefix(shas, "94c3700"); got != "94c370083f3fbb875b5db4dfc988dc9a9fd44893" {
+		t.Errorf("firstSHAWithPrefix(94c3700) = %q, want the full Media Canvas SHA", got)
+	}
+	if got := firstSHAWithPrefix(shas, "94C3700"); got != "94c370083f3fbb875b5db4dfc988dc9a9fd44893" {
+		t.Errorf("prefix match must be case-insensitive, got %q", got)
+	}
+	if got := firstSHAWithPrefix(shas, "feedbee"); got != "" {
+		t.Errorf("no ancestor matches feedbee, want \"\", got %q", got)
+	}
+}

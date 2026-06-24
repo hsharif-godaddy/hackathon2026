@@ -236,6 +236,32 @@ func (r *LiveRunner) ListRuns(ctx context.Context, repo, workflow, status string
 }
 
 func (r *LiveRunner) Compare(ctx context.Context, repo, base, head string) (*CompareResult, error) {
+	result, err := r.compareOnce(ctx, repo, base, head)
+	if err == nil {
+		return result, nil
+	}
+	// The base may be a short, AMBIGUOUS commit abbreviation that GitHub's
+	// compare API rejects — e.g. a 7-char ext-hash from a prod image tag whose
+	// prefix collides with another git object (a tree). We can't expand it via
+	// the commits API (it 422s on ambiguous refs too), but head's ancestor list
+	// contains only commits, so a prefix match there yields the unambiguous full
+	// SHA. Expand and retry ONCE with full chars before giving up; the caller
+	// (release notes) degrades gracefully if this still can't compare.
+	if full := r.expandAncestorSHA(ctx, repo, head, base); full != "" && full != base {
+		retry, rerr := r.compareOnce(ctx, repo, full, head)
+		if rerr == nil {
+			return retry, nil
+		}
+		// Expanded the ambiguous base but the retry still failed. Keep the
+		// original error (%w preserves it for the caller) but note the recovery
+		// attempt so it's observable in the caller's WARNING instead of silent.
+		return nil, fmt.Errorf("%w (also tried expanded base %s, which failed: %v)", err, full, rerr)
+	}
+	return nil, err
+}
+
+// compareOnce performs a single GitHub compare (base...head) with no retry.
+func (r *LiveRunner) compareOnce(ctx context.Context, repo, base, head string) (*CompareResult, error) {
 	output, err := r.executeRepo(ctx, repo, "api", fmt.Sprintf("repos/%s/compare/%s...%s", repo, base, head))
 	if err != nil {
 		return nil, fmt.Errorf("comparing %s...%s in %s: %w", base, head, repo, err)
@@ -259,6 +285,51 @@ func (r *LiveRunner) Compare(ctx context.Context, repo, base, head string) (*Com
 		})
 	}
 	return result, nil
+}
+
+// expandAncestorSHA resolves a short hex commit abbreviation `prefix` to a full
+// SHA by matching it against head's most recent ancestors (one page, newest
+// first). The commits listing contains only commit objects, so a prefix that is
+// ambiguous in the full object DB (commit vs. tree) resolves cleanly here.
+// Returns "" when prefix isn't a short hex abbreviation, the listing fails, or
+// no recent ancestor matches (e.g. the base is >100 commits back).
+func (r *LiveRunner) expandAncestorSHA(ctx context.Context, repo, head, prefix string) string {
+	if !isShortHexSHA(prefix) {
+		return ""
+	}
+	output, err := r.executeRepo(ctx, repo, "api",
+		fmt.Sprintf("repos/%s/commits?sha=%s&per_page=100", repo, head), "--jq", ".[].sha")
+	if err != nil {
+		return ""
+	}
+	return firstSHAWithPrefix(strings.Fields(output), prefix)
+}
+
+// firstSHAWithPrefix returns the first sha that has prefix (case-insensitive), or "".
+func firstSHAWithPrefix(shas []string, prefix string) string {
+	p := strings.ToLower(prefix)
+	for _, sha := range shas {
+		if strings.HasPrefix(strings.ToLower(sha), p) {
+			return sha
+		}
+	}
+	return ""
+}
+
+// isShortHexSHA reports whether s is a 4..39-char hex abbreviation — worth
+// trying to expand. A full 40-char SHA or a branch/tag name is not.
+func isShortHexSHA(s string) bool {
+	if len(s) < 4 || len(s) >= 40 {
+		return false
+	}
+	for _, c := range s {
+		switch {
+		case c >= '0' && c <= '9', c >= 'a' && c <= 'f', c >= 'A' && c <= 'F':
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 func (r *LiveRunner) Version(ctx context.Context) (string, error) {

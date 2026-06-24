@@ -1042,7 +1042,17 @@ func (p *Pipeline) FetchReleaseNotes(ctx context.Context) ([]ReleaseNote, string
 
 	result, err := p.Runner.Compare(ctx, repo, base, head)
 	if err != nil {
-		return nil, "", err
+		// Release notes are best-effort and must never block a release. The most
+		// common failure is a base we can't compare: the prod image tag truncates
+		// the ext-hash to 7 chars upstream, and a 7-char prefix that collides with
+		// another git object (e.g. a tree) makes GitHub's compare API reject it
+		// (422/404) even though the commit exists. Degrade to "no notes" with a
+		// WARNING instead of failing the phase — mirrors the TUI, which already
+		// continues on a notes error. values["commit"] is pinned above, so the
+		// rest of the pipeline is unaffected; pass --base-commit to force a full
+		// SHA when correct notes are needed.
+		logger.Log("release-notes: WARNING compare %s...%s in %s failed: %s — continuing without release notes", base, head, repo, err)
+		return nil, "", nil
 	}
 
 	logger.Log("release-notes: comparing %s...%s in %s — %d commits", base, head, repo, len(result.Commits))
