@@ -3,6 +3,7 @@ export * from './panel-chrome';
 export * from './floating-panel';
 export * from './floating-footer';
 export * from './fullscreen-dialog';
+export * from './bottom-sheet';
 export * from './builder-header';
 export * from './builder-chat-footer';
 export * from './canvas';

@@ -1,8 +1,9 @@
 import Button from '@ux/button';
 import AsyncIcon from '@ux/icon/async-icon.js';
-import { Menu, MenuButton, MenuItem, MenuList } from '@ux/menu';
 import classnames from 'classnames';
 import { type HTMLAttributes, useCallback, useId, useState } from 'react';
+
+import { ResponsiveMenu } from '../../input/responsive-menu';
 
 const DEFAULT_THUMBS_UP_LABEL = 'Good response';
 const DEFAULT_THUMBS_DOWN_LABEL = 'Bad response';
@@ -153,24 +154,25 @@ export function MilestoneFeedback({
       />
 
       {hasReasons ? (
-        <Menu id={reasonsMenuId}>
-          <MenuButton
-            design="inline"
-            size="small"
-            className="airo-chat-milestone-feedback__button airo-chat-milestone-feedback__button--down"
-            aria-pressed={value === 'down'}
-            aria-label={thumbsDownLabel ?? DEFAULT_THUMBS_DOWN_LABEL}
-            onClick={handleDownToggle}
-            icon={<AsyncIcon icon="thumbs-down" />}
-          />
-          <MenuList>
-            {reasons.map((reason) => (
-              <MenuItem key={reason.id} onSelect={() => handleReasonSelect(reason)}>
-                {reason.label}
-              </MenuItem>
-            ))}
-          </MenuList>
-        </Menu>
+        <ResponsiveMenu
+          id={reasonsMenuId}
+          trigger={{
+            design: 'inline',
+            size: 'small',
+            className:
+              'airo-chat-milestone-feedback__button airo-chat-milestone-feedback__button--down',
+            'aria-pressed': value === 'down',
+            'aria-label': thumbsDownLabel ?? DEFAULT_THUMBS_DOWN_LABEL,
+            onClick: handleDownToggle,
+            icon: <AsyncIcon icon="thumbs-down" />,
+          }}
+          sheetTitle={thumbsDownLabel ?? DEFAULT_THUMBS_DOWN_LABEL}
+          items={reasons.map((reason) => ({
+            id: reason.id,
+            label: reason.label,
+            onClick: () => handleReasonSelect(reason),
+          }))}
+        />
       ) : (
         <Button
           design="inline"

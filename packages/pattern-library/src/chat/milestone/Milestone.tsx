@@ -1,7 +1,6 @@
 import Box from '@ux/box';
 import Button from '@ux/button';
 import AsyncIcon from '@ux/icon/async-icon.js';
-import { Menu, MenuButton, MenuItem, MenuList } from '@ux/menu';
 import TextLockup from '@ux/text-lockup';
 import classnames from 'classnames';
 import {
@@ -15,6 +14,7 @@ import {
   useState,
 } from 'react';
 
+import { ResponsiveMenu } from '../../input/responsive-menu';
 import { MilestoneFeedback, type MilestoneFeedbackProps } from './MilestoneFeedback';
 
 const DEFAULT_SHOW_DETAILS_LABEL = 'Show details';
@@ -218,25 +218,22 @@ function MilestoneRoot({
               {feedback ? <MilestoneFeedback {...feedback} /> : null}
 
               {hasMenu ? (
-                <Menu id={menuId}>
-                  <MenuButton
-                    design="inline"
-                    size="small"
-                    aria-label={menuLabel ?? DEFAULT_MENU_LABEL}
-                    icon={<AsyncIcon icon="ellipsis" />}
-                  />
-                  <MenuList>
-                    {menuActions.map((action) => (
-                      <MenuItem
-                        key={action.id}
-                        disabled={action.disabled}
-                        onSelect={() => action.onSelect()}
-                      >
-                        {action.label}
-                      </MenuItem>
-                    ))}
-                  </MenuList>
-                </Menu>
+                <ResponsiveMenu
+                  id={menuId}
+                  trigger={{
+                    design: 'inline',
+                    size: 'small',
+                    'aria-label': menuLabel ?? DEFAULT_MENU_LABEL,
+                    icon: <AsyncIcon icon="ellipsis" />,
+                  }}
+                  sheetTitle={menuLabel ?? DEFAULT_MENU_LABEL}
+                  items={menuActions.map((action) => ({
+                    id: action.id,
+                    label: action.label,
+                    disabled: action.disabled,
+                    onClick: () => action.onSelect(),
+                  }))}
+                />
               ) : null}
             </Box>
           ) : null}

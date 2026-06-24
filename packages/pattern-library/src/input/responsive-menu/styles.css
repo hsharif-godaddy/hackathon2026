@@ -1,0 +1,99 @@
+@tailwind utilities;
+
+/* --------------------------------------------------------------------------
+ * ResponsiveMenu — the MOBILE action-list rendering only. On desktop the
+ * component delegates entirely to `@ux/menu` (no styles needed here); on mobile
+ * it renders these full-width tappable rows inside a `BottomSheet`.
+ *
+ *   import '@airo-ux/pattern-library/input/responsive-menu/styles';
+ *   import '@airo-ux/pattern-library/surfaces/bottom-sheet/styles';
+ *
+ * Class names use the `airo-input-responsive-menu__<part>` BEM prefix. Colors
+ * come from @ux/postcss-intents intent() calls; the row uses the same
+ * `actionOption` intent family as the desktop menu/option rows so the two
+ * surfaces read as the same control.
+ * ----------------------------------------------------------------------- */
+
+.airo-input-responsive-menu__list {
+  display: flex;
+  flex-direction: column;
+  /* Inset chosen so a row's leading content lines up with the sheet title's
+   * left margin: the title sits at the header's inline-start padding
+   * (density * 2); the list adds `density` here and each row adds another
+   * `density` of inline padding, summing to the same density * 2. Keeps the
+   * label flush under the title in the icon-less case and the icon column
+   * aligned with it when icons are present. */
+  padding-inline: intent('ux.box.density');
+}
+
+.airo-input-responsive-menu__row {
+  display: flex;
+  align-items: center;
+  inline-size: 100%;
+  /* Normalize the font across row types: link rows (`<a>`, items with `href`)
+   * inherit the document's font-size, but button rows (`<button>`) otherwise
+   * fall back to the UA stylesheet's smaller control font-size. The leading
+   * icon slot is sized in `em`, so that mismatch renders icons at two different
+   * sizes (links larger than buttons). Inheriting the font gives every row the
+   * same em basis, so all icons render at one size. */
+  font: inherit;
+  /* 40px floor matches the UXCore small-control height so the custom mobile
+   * rows read at the same scale as a `size="sm"` button/menu item. */
+  min-block-size: 2.5rem;
+  padding-block: calc(intent('ux.box.density') * 0.75);
+  padding-inline: intent('ux.box.density');
+  border: 0;
+  border-radius: intent('ux.action.borderRadius');
+  background: transparent;
+  color: intent('ux.box.foregroundColor');
+  text-align: start;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+/* Skip the disabled rows: a disabled `<button>` still matches `:hover`, and a
+ * hover highlight would undercut the disabled affordance. */
+.airo-input-responsive-menu__row:not(.airo-input-responsive-menu__row--disabled):hover {
+  background: intent('ux.actionOptionHovered.backgroundColor');
+  color: intent('ux.actionOptionHovered.foregroundColor');
+}
+
+.airo-input-responsive-menu__row:focus-visible {
+  outline: intent('ux.box.borderWidth') solid intent('ux.actionFocused.outlineColor');
+  outline-offset: calc(intent('ux.box.borderWidth') * -1);
+}
+
+/* Fixed-size leading slot so rows with and without an icon align their labels.
+ * `1.5em` matches `@ux/icon`'s default render size and `@ux/button`'s icon box
+ * (both font-size * 1.5), so the icon sits at its natural UXCore size without
+ * being flex-shrunk and the empty placeholder reserves exactly that footprint.
+ * Sizing only the slot — not the glyph — keeps icon sizing owned by UXCore. */
+.airo-input-responsive-menu__icon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  inline-size: 1.5em;
+  block-size: 1.5em;
+}
+
+/* Critical icons inherit the same feedback color the critical label uses; the
+ * @ux/icon SVG paints with `currentColor`, so coloring the slot is enough. */
+.airo-input-responsive-menu__icon--critical {
+  color: intent('ux.feedbackHighContrastCritical.feedbackColor');
+}
+
+.airo-input-responsive-menu__row--disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* Critical rows take their color from the `emphasis="critical"` @ux/text spans
+ * in the row body, so the row itself only needs the shared layout rules. */
+
+.airo-input-responsive-menu__separator {
+  block-size: intent('ux.box.borderWidth');
+  margin-block: calc(intent('ux.box.density') * 0.5);
+  margin-inline: intent('ux.box.density');
+  background: intent('ux.box.borderColor');
+}

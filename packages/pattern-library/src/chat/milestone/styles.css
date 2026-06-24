@@ -1,3 +1,11 @@
+/* Milestone's overflow menu and feedback reason picker compose `ResponsiveMenu`,
+ * which renders a `BottomSheet` on mobile. Bundle both stylesheets here (the
+ * same way `panel/styles.css` pulls in `panel-chrome/styles.css`) so a single
+ * `@airo-ux/pattern-library/chat/milestone/styles` import gives consumers the
+ * mobile sheet styling without a separate, easy-to-forget import. */
+@import '../../input/responsive-menu/styles.css';
+@import '../../surfaces/bottom-sheet/styles.css';
+
 @tailwind utilities;
 
 /* --------------------------------------------------------------------------

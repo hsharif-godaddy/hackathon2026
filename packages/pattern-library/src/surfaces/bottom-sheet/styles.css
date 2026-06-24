@@ -1,0 +1,132 @@
+/* BottomSheet renders the decorative grab-handle pill via the DragHandle
+ * primitive, whose size/color/opacity live in primitives/drag-handle/styles.css.
+ * Bundle it here (like milestone/styles.css bundles this sheet's styles) so a
+ * single bottom-sheet styles import renders a visible handle — no consumer
+ * needs to remember a separate drag-handle import. */
+@import '../../primitives/drag-handle/styles.css';
+
+@tailwind utilities;
+
+/* --------------------------------------------------------------------------
+ * BottomSheet — mobile overlay surface anchored to the viewport's bottom edge.
+ * Composes on @ux/disrupt for the scrim / focus-lock / portal primitives;
+ * owns its own slide-up animation. The inner UI (drag handle, optional title,
+ * scrollable body) is owned directly by this component — it deliberately does
+ * NOT use PanelChrome, whose expand/collapse + corner-action chrome is wrong
+ * for a sheet.
+ *
+ * Class names use the `airo-surfaces-bottom-sheet__<part>` BEM prefix so they
+ * cannot collide with consumer app styles. All colors and typography flow
+ * through @ux/postcss-intents intent() calls (resolved at build time) or the
+ * @ux/text component; spacing/radius derive from the box density token.
+ *
+ *   import '@airo-ux/pattern-library/surfaces/bottom-sheet/styles';
+ * ----------------------------------------------------------------------- */
+
+/* Scrim — sibling of the sheet inside the Disrupt content wrapper. Disrupt's
+ * `fullScreenChildren` mode strips its own backdrop styling, so we render this
+ * element to provide the dim-and-fade-in backdrop and a tap-to-close target.
+ * Rendered as a non-interactive `<div role="presentation">` — keyboard users
+ * dismiss via Escape (handled by BottomSheet's document-level keydown). */
+.airo-surfaces-bottom-sheet__scrim {
+  position: fixed;
+  inset: 0;
+  background: intent('ux.boxHighContrastOverlay.backgroundColor');
+  opacity: 0;
+  transition: opacity 0.2s cubic-bezier(0.2, 0, 0, 1);
+  z-index: 0;
+  will-change: opacity;
+}
+
+.airo-surfaces-bottom-sheet__scrim--open {
+  opacity: 1;
+}
+
+.airo-surfaces-bottom-sheet__sheet {
+  /* Overlay-elevation drop shadow, cast upward from the bottom edge. Mirrors
+   * the three-layer UXCore2 overlay shadow used by Panel, with the vertical
+   * offset negated so the shadow rises above the sheet rather than below it.
+   * Literal px geometry is allowed for shadows (UXCore2 does not tokenize
+   * shadow geometry); the color stays black-with-alpha. */
+  --airo-surfaces-bottom-sheet-shadow: 0 -3px 8px rgba(0, 0, 0, 0.15), 0 -4px 4px
+    rgba(0, 0, 0, 0.1), 0 0 0.5px rgba(0, 0, 0, 0.2);
+
+  position: fixed;
+  inset-inline: 0;
+  inset-block-end: 0;
+  display: flex;
+  flex-direction: column;
+  /* Cap the height so a long action list scrolls inside the sheet rather than
+   * pushing it off the top of the viewport. `dvh` accounts for mobile browser
+   * chrome; `vh` is the fallback for browsers without dynamic viewport units. */
+  max-block-size: 85vh;
+  max-block-size: 85dvh;
+  background-color: intent('ux.box.backgroundColor');
+  box-shadow: var(--airo-surfaces-bottom-sheet-shadow);
+  border-start-start-radius: calc(intent('ux.box.density') * 2);
+  border-start-end-radius: calc(intent('ux.box.density') * 2);
+  /* Keep content clear of the home-indicator / notch safe area on devices
+   * that expose it; resolves to 0 elsewhere. */
+  padding-block-end: env(safe-area-inset-bottom, 0px);
+  transform: translateY(100%);
+  transition: transform 0.25s cubic-bezier(0.2, 0, 0, 1);
+  will-change: transform;
+  z-index: 1;
+}
+
+.airo-surfaces-bottom-sheet__sheet--open {
+  transform: translateY(0);
+}
+
+/* Decorative grab-handle pill — centered on the sheet's top edge. The pill
+ * geometry/color live in primitives/drag-handle/styles.css (bundled via the
+ * @import above); these rules only place it: `align-self` centers it on the
+ * cross axis of the column-flex sheet, and the block margin tucks it just
+ * above the header. */
+.airo-surfaces-bottom-sheet__drag-handle {
+  flex: 0 0 auto;
+  align-self: center;
+  margin-block-start: calc(intent('ux.box.density') * 0.75);
+}
+
+/* Header — optional title (left) + always-present dismiss action (right).
+ * `position: relative` anchors @ux/corner-actions, whose action container is
+ * absolutely positioned into the top-right corner of its nearest positioned
+ * ancestor. 12px block padding; trailing inline padding reserves room so a
+ * title never runs under the X. */
+.airo-surfaces-bottom-sheet__header {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: intent('ux.box.density');
+  flex: 0 0 auto;
+  padding-block: calc(intent('ux.box.density') * 1.5);
+  padding-inline-start: calc(intent('ux.box.density') * 2);
+  padding-inline-end: calc(intent('ux.box.density') * 6);
+}
+
+/* Title (text-lockup) takes the remaining width and truncates. */
+.airo-surfaces-bottom-sheet__header > :first-child {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+}
+
+/* Scrollable body — owns the overflow so the header stays pinned. */
+.airo-surfaces-bottom-sheet__body {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-block-end: calc(intent('ux.box.density') * 0.5);
+  flex: 1 1 auto;
+}
+
+/* --------------------------------------------------------------------------
+ * Reduced motion — honor the user's OS preference. We still swap the transform
+ * end-state so the sheet lands in position, but drop the transitions so there
+ * is no slide animation.
+ * ----------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  .airo-surfaces-bottom-sheet__scrim,
+  .airo-surfaces-bottom-sheet__sheet {
+    transition: none;
+  }
+}
