@@ -52,10 +52,10 @@ function SpinnerLoader() {
 // `permissions[].relations: []` (confirmed via GET /v2/roles). Sourced from
 // AUTHZ_FGA_RELATIONS so this stays in lockstep with BFF gating.
 //
-// KEPT INTENTIONALLY (not dead code): the `permissionsToInclude` prop below is
-// temporarily commented out (the bundle currently defaults to the venture's full
-// relation set), but these keys are retained on purpose so re-enabling the prop
-// stays in lockstep with AUTHZ_FGA_RELATIONS / BFF gating. Do not remove.
+// Passed via `permissionsToInclude` below, gated by the
+// `aab-multiuser-default-permissions` Switchboard flag (flag true → omit, so the
+// bundle uses the venture's default relation set; flag false/unset → pass these).
+// Kept in lockstep with AUTHZ_FGA_RELATIONS / BFF gating. Do not remove.
 const AAB_TEAM_PERMISSION_KEYS = [
   AUTHZ_FGA_RELATIONS.canBuild,         // airo_app_build
   AUTHZ_FGA_RELATIONS.canPublish,       // airo_app_publish
@@ -79,6 +79,11 @@ export default function TeamPanel() {
   const { getUserInfo } = useAuth()
   const multiUser = useSwitchboard('aab-multi-user')
   const teamLegacy = useSwitchboard('appbuilder-settings-team')
+  // Kill switch for the AAB-curated permission filter. When true, we DON'T pass
+  // `permissionsToInclude`, so the multiusersEsm bundle falls back to the
+  // venture's default relation set (use this if a bundle version drops our keys
+  // and the selector renders empty). When false/unset, we pass the curated set.
+  const useDefaultPermissions = useSwitchboard('aab-multiuser-default-permissions')
   const rootDomain = getRootDomain() || 'godaddy.com'
   const delegationUrl = `https://sso.${rootDomain}/access`
 
@@ -377,7 +382,14 @@ export default function TeamPanel() {
               design="ANTARES"
               loaderMode="esm"
               locale={gasketData?.intl?.locale || 'en-US'}
-              //permissionsToInclude={[...AAB_TEAM_PERMISSION_KEYS]}
+              // Gated by `aab-multiuser-default-permissions`: flag true → omit the
+              // prop so the bundle uses the venture's default relation set; flag
+              // false/unset → pass the curated AAB keys. Conditional spread so the
+              // prop is fully ABSENT when defaulting (passing undefined is not the
+              // same as not passing it to the bundle's validator).
+              {...(useDefaultPermissions === true
+                ? {}
+                : { permissionsToInclude: [...AAB_TEAM_PERMISSION_KEYS] })}
               resourceId={ventureId}
               resourceType="venture"
               routePrefix=""

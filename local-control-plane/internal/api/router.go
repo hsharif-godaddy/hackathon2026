@@ -78,6 +78,8 @@ func NewRouter(db *store.DB, jwtService *auth.JWTService, ssoMW *auth.SSOMiddlew
 	v1.HandleFunc("/customers/me", srv.GetCustomer).Methods("GET")
 	v1.HandleFunc("/customers/me/apps", srv.GetAllApps).Methods("GET")
 	v1.HandleFunc("/customers/me/tree", srv.GetCustomerTree).Methods("GET")
+	// Multi-user invitee-pull reconcile (no-op stub locally; real path needs local:test)
+	v1.HandleFunc("/customers/me/reconcile-shared", srv.ReconcileShared).Methods("POST")
 
 	// Subscriptions
 	v1.HandleFunc("/subscriptions", srv.ListSubscriptions).Methods("GET")
@@ -93,6 +95,8 @@ func NewRouter(db *store.DB, jwtService *auth.JWTService, ssoMW *auth.SSOMiddlew
 	// Systems
 	v1.HandleFunc("/subscriptions/{subId}/systems", srv.ListSystems).Methods("GET")
 	v1.HandleFunc("/subscriptions/{subId}/apps", srv.GetAppsForSubscription).Methods("GET")
+	// Multi-user venture mapping write at provisioning (no-op stub locally)
+	v1.HandleFunc("/subscriptions/{subId}/apps/{appId}/venture", srv.SetAppVenture).Methods("POST")
 
 	// Apps CRUD
 	v1.HandleFunc("/subscriptions/{subId}/systems/{sysId}/apps", srv.ListApps).Methods("GET")

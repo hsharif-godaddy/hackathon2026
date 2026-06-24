@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { ensureAppTeamVenture } from '@/lib/authz-fga/ensure-app-venture';
 import { AUTHZ_FGA_RELATIONS } from '@/lib/authz-fga/relations';
 import { SubscriptionPlan } from '@/types/credits';
 import { POST } from '../route';
@@ -349,6 +350,32 @@ describe('agent-token', function packageTests() {
           customerId: 'customer-789',
           isOwner: true,
         })
+      );
+    });
+
+    // Regression: the mapping backstop inside ensureAppTeamVenture is what lets
+    // invitee-pull resolve an already-provisioned venture. agent-token must call
+    // it on EVERY owner open, not only when the venture is missing — otherwise a
+    // shared app whose venture already exists never gets its venture->app mapping
+    // re-asserted and invited collaborators stay invisible.
+    it('calls ensureAppTeamVenture even when team_venture_id already exists', async function ventureExists() {
+      mockAuthenticateCustomer.mockResolvedValue({
+        isAuthenticated: true,
+        user: MOCK_USER,
+        jwt: 'user-jwt-token',
+      });
+      mockControlPlaneAdapter.getSite.mockResolvedValue({
+        id: MOCK_SITE_ID,
+        subscription_id: 'sub-123',
+        owner_customer_id: MOCK_USER.customerId,
+        team_venture_id: 'venture-already-here',
+      });
+
+      const request = createMockRequest({ siteId: MOCK_SITE_ID });
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+      expect(ensureAppTeamVenture).toHaveBeenCalledWith(
+        expect.objectContaining({ siteId: MOCK_SITE_ID, customerId: MOCK_USER.customerId }),
       );
     });
 

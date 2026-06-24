@@ -701,19 +701,26 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
     // Resolve (or lazily create) the app's team venture WITHOUT mutating the
     // shared siteInfo — build a copy so downstream reads (FGA enforce, isOwner)
     // see the venture without an in-place mutation crossing this boundary.
-    const createdVentureId =
-      siteInfo?.team_venture_id
-        ? undefined
-        : await ensureAppTeamVenture({
-            request,
-            siteId: body.siteId,
-            customerId: user.customerId,
-            jwt: authContext.jwt || '',
-            siteInfo,
-          });
+    //
+    // Always invoked — even when team_venture_id already exists — so the
+    // venture->app mapping backstop inside ensureAppTeamVenture runs on every
+    // owner open. That is the reliable trigger that lets invitee-pull resolve
+    // this venture; short-circuiting here when the venture exists (the old
+    // behavior) meant the mapping was never (re)written for already-provisioned
+    // apps, so invited collaborators stayed invisible until the owner reopened
+    // the Team panel. When the venture exists the function re-asserts the mapping
+    // (best-effort, owner-only) and returns the existing id; otherwise it lazily
+    // creates the venture as before.
+    const resolvedVentureId = await ensureAppTeamVenture({
+      multiUserEnabled,
+      siteId: body.siteId,
+      customerId: user.customerId,
+      jwt: authContext.jwt || '',
+      siteInfo,
+    });
     const resolvedSiteInfo =
-      createdVentureId && siteInfo
-        ? { ...siteInfo, team_venture_id: createdVentureId }
+      resolvedVentureId && siteInfo
+        ? { ...siteInfo, team_venture_id: resolvedVentureId }
         : siteInfo;
 
     const fgaDeny = await enforceAabMultiUserCanBuild({

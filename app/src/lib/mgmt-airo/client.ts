@@ -77,6 +77,15 @@ import {
 const MGMT_AIRO_AUTH_SCHEME = 'sso-jwt';
 
 /**
+ * Result of a self-scoped collaborator reconcile (invitee-pull): how many shared
+ * apps were granted to the caller and how many were skipped (already present).
+ */
+export interface ReconcileSharedResult {
+  granted: number;
+  skipped: number;
+}
+
+/**
  * Low-level HTTP client for mgmt-airo API
  *
  * Handles:
@@ -1513,6 +1522,42 @@ export class AiroMgmtClient {
       `/api/airo/v1/subscriptions/${subscriptionId}/apps/${appId}/collaborators`,
       payload,
       { logEvent: 'mgmt-airo.grant-collaborator' }
+    );
+  }
+
+  /**
+   * Record the OpenFGA venture an app's multi-user team is provisioned on, so a
+   * later self-scoped reconcile can resolve venture -> (app, subscription).
+   * Owner-authorized + idempotent; called by the BFF at venture provisioning.
+   * POST (not PUT) to match the collaborator routes' gateway-forwarded verb.
+   *
+   * POST /api/airo/v1/subscriptions/:subscriptionId/apps/:appId/venture
+   */
+  async setAppVenture(subscriptionId: string, appId: string, ventureId: string): Promise<void> {
+    await this.request<unknown>(
+      'POST',
+      `/api/airo/v1/subscriptions/${subscriptionId}/apps/${appId}/venture`,
+      { ventureId },
+      { logEvent: 'mgmt-airo.set-app-venture' }
+    );
+  }
+
+  /**
+   * Self-scoped collaborator reconcile (invitee-pull). The authenticated caller's
+   * own collaborator rows are ensured for every supplied venture they map to a
+   * known app. The customer is taken server-side from the forwarded sso-jwt (this
+   * client is constructed with the caller's jwt); we only pass the venture ids the
+   * BFF resolved from FGA. Grant-only, never downgrades — safe to call on every
+   * apps-list load.
+   *
+   * POST /api/airo/v1/customers/me/reconcile-shared
+   */
+  async reconcileSharedFromVentures(ventureIds: string[]): Promise<ReconcileSharedResult> {
+    return this.request<ReconcileSharedResult>(
+      'POST',
+      `/api/airo/v1/customers/me/reconcile-shared`,
+      { ventureIds },
+      { logEvent: 'mgmt-airo.reconcile-shared' }
     );
   }
 

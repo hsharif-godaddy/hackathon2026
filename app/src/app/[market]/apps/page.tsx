@@ -68,6 +68,25 @@ function SitesPageContent() {
     refreshSites()
   }, [refreshSites])
 
+  // Refresh the list when the tab becomes visible again. The GET /api/sites it
+  // triggers runs the server-side invitee-pull (reconciles the caller's shared
+  // apps from their FGA membership), so an invite accepted while this tab sat idle
+  // surfaces on the next glance without a manual reload. The pull is throttled
+  // server-side, so frequent visibility events don't hammer it. We listen only to
+  // visibilitychange (not window focus) because switching back to a tab fires both
+  // and we want a single refresh per return, not two back-to-back.
+  useEffect(() => {
+    const refreshOnVisible = () => {
+      if (document.visibilityState === 'visible') {
+        refreshSites()
+      }
+    }
+    document.addEventListener('visibilitychange', refreshOnVisible)
+    return () => {
+      document.removeEventListener('visibilitychange', refreshOnVisible)
+    }
+  }, [refreshSites])
+
   const handleAdminStopAll = async () => {
     if (runningCount === 0) return
 

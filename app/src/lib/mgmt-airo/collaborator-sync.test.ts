@@ -9,6 +9,7 @@ const mockGetAuthzFgaConfig = vi.fn();
 const mockGetAuthzFgaAccessToken = vi.fn();
 const mockListObjects = vi.fn();
 const mockListUsers = vi.fn();
+const mockSetAppVentureMapping = vi.fn();
 
 vi.mock('@/lib/mgmt-airo', () => ({
   AiroMgmtClient: class {
@@ -37,6 +38,9 @@ vi.mock('@/lib/authz-fga/list-users', () => ({
 }));
 vi.mock('@/lib/request-context', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+}));
+vi.mock('@/lib/mgmt-airo/set-venture-mapping', () => ({
+  setAppVentureMappingBestEffort: (...args: unknown[]) => mockSetAppVentureMapping(...args),
 }));
 
 import { reconcileCollaboratorsFromFga, syncCollaboratorsToMgmtAiro } from './collaborator-sync';
@@ -106,6 +110,19 @@ describe('syncCollaboratorsToMgmtAiro', () => {
     expect(mockGrantCollaborator).toHaveBeenCalledWith('sub-1', 'app-1', { collaboratorCustomerId: 'c2', role: 'view' });
     expect(mockRevokeCollaborator).not.toHaveBeenCalled();
     expect(result).toEqual({ grantFailures: 0, granted: 2 });
+    // The venture->app mapping is recorded so invitee-pull resolves this venture
+    // even after the owner goes offline.
+    expect(mockSetAppVentureMapping).toHaveBeenCalledWith({
+      jwt: 'owner-jwt',
+      appId: 'app-1',
+      subscriptionId: 'sub-1',
+      ventureId: 'ven-1',
+    });
+  });
+
+  it('does NOT write the mapping when there is nothing to sync', async () => {
+    await syncCollaboratorsToMgmtAiro({ ...base, writes: [], deletes: [] });
+    expect(mockSetAppVentureMapping).not.toHaveBeenCalled();
   });
 
   it('derives the exact capability set from venture FGA permissions', async () => {
@@ -206,6 +223,14 @@ describe('reconcileCollaboratorsFromFga', () => {
     expect(mockGrantCollaborator).toHaveBeenCalledWith('sub-1', 'app-1', { collaboratorCustomerId: 'c1', role: 'view' });
     expect(mockGrantCollaborator).toHaveBeenCalledWith('sub-1', 'app-1', { collaboratorCustomerId: 'c2', role: 'view' });
     expect(result).toEqual({ members: 2, granted: 2, grantFailures: 0, revoked: 0, revokeFailures: 0, grantErrors: [], revokeErrors: [] });
+    // The owner-side reconcile is the real invite bridge, so it also records the
+    // venture->app mapping for invitee-pull.
+    expect(mockSetAppVentureMapping).toHaveBeenCalledWith({
+      jwt: 'owner-jwt',
+      appId: 'app-1',
+      subscriptionId: 'sub-1',
+      ventureId: 'ven-1',
+    });
   });
 
   it('writes the FGA-derived capability set on each reconciled member', async () => {

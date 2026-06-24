@@ -1,11 +1,6 @@
-import { NextRequest } from 'next/server';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ensureAppTeamVenture } from '@/lib/authz-fga/ensure-app-venture';
-
-vi.mock('@/lib/switchboard/server', () => ({
-  checkSwitchboardFlag: vi.fn(),
-}));
 
 vi.mock('@/lib/utils/jwt-utils', () => ({
   extractShopperId: vi.fn(),
@@ -48,18 +43,23 @@ vi.mock('@/lib/request-context', () => ({
   },
 }));
 
+vi.mock('@/lib/mgmt-airo/set-venture-mapping', () => ({
+  setAppVentureMappingBestEffort: vi.fn(),
+}));
+
 import { getAuthzFgaConfig } from '@/lib/authz-fga/config';
 import { getAuthzFgaAccessToken } from '@/lib/authz-fga/oauth-token';
 import { writeFgaTuples } from '@/lib/authz-fga/write';
 import type { SiteInfo } from '@/lib/control-plane/types';
 import { V2ControlPlaneAdapter } from '@/lib/control-plane/v2-control-plane-adapter';
-import { checkSwitchboardFlag } from '@/lib/switchboard/server';
+import { setAppVentureMappingBestEffort } from '@/lib/mgmt-airo/set-venture-mapping';
 import { extractShopperId } from '@/lib/utils/jwt-utils';
 import { VentureService } from '@/lib/venture-service';
 
 describe('authz-fga/ensure-app-venture', function ensureAppVentureTests() {
   const baseSite: Partial<SiteInfo> = {
     owner_customer_id: 'owner-1',
+    subscription_id: 'sub-1',
   };
 
   // Cache and stub the Product Graph cert env vars. ensureAppTeamVenture has
@@ -75,7 +75,6 @@ describe('authz-fga/ensure-app-venture', function ensureAppVentureTests() {
     process.env.GRAPHQL_CLIENT_CERT_PATH = '/tmp/test-cert.pem';
     process.env.GRAPHQL_CLIENT_KEY_PATH = '/tmp/test-key.pem';
 
-    vi.mocked(checkSwitchboardFlag).mockResolvedValue(true);
     vi.mocked(extractShopperId).mockReturnValue('shopper-1');
 
     const mockCreateVenture = vi.fn().mockResolvedValue('venture-abc');
@@ -107,24 +106,58 @@ describe('authz-fga/ensure-app-venture', function ensureAppVentureTests() {
     }
   });
 
-  it('returns existing venture ID when already set', async function alreadySet() {
-    const req = new NextRequest('https://example.com/api/test');
+  it('returns existing venture ID and backfills the venture->app mapping for the owner', async function alreadySetOwner() {
+    // An app whose venture already exists may be missing its mgmt-airo mapping
+    // (created before this write existed). The owner opening the app re-asserts it
+    // as a backstop so invitee-pull can resolve the venture even with the owner
+    // later offline. No re-mint.
     const result = await ensureAppTeamVenture({
-      request: req,
+      multiUserEnabled: true,
       siteId: 's1',
       customerId: 'owner-1',
       jwt: 'tok',
       siteInfo: { ...baseSite, team_venture_id: 'existing-v' } as SiteInfo,
     });
     expect(result).toBe('existing-v');
-    expect(checkSwitchboardFlag).not.toHaveBeenCalled();
+    expect(VentureService).not.toHaveBeenCalled();
+    expect(setAppVentureMappingBestEffort).toHaveBeenCalledWith({
+      jwt: 'tok',
+      appId: 's1',
+      subscriptionId: 'sub-1',
+      ventureId: 'existing-v',
+    });
+  });
+
+  it('does NOT backfill the mapping for a non-owner opening an existing-venture app', async function alreadySetNonOwner() {
+    // mgmt-airo's SetVenture is owner-only, so writing as a collaborator would just
+    // 403. The early return stays cheap for non-owners (short-circuits at the
+    // owner check before the flag is even considered).
+    const result = await ensureAppTeamVenture({
+      multiUserEnabled: true,
+      siteId: 's1',
+      customerId: 'collaborator-1',
+      jwt: 'tok',
+      siteInfo: { ...baseSite, team_venture_id: 'existing-v' } as SiteInfo,
+    });
+    expect(result).toBe('existing-v');
+    expect(setAppVentureMappingBestEffort).not.toHaveBeenCalled();
+  });
+
+  it('does NOT backfill the mapping when aab-multi-user is off', async function alreadySetFlagOff() {
+    const result = await ensureAppTeamVenture({
+      multiUserEnabled: false,
+      siteId: 's1',
+      customerId: 'owner-1',
+      jwt: 'tok',
+      siteInfo: { ...baseSite, team_venture_id: 'existing-v' } as SiteInfo,
+    });
+    expect(result).toBe('existing-v');
+    expect(setAppVentureMappingBestEffort).not.toHaveBeenCalled();
   });
 
   it('returns null when aab-multi-user flag is off', async function flagOff() {
-    vi.mocked(checkSwitchboardFlag).mockResolvedValue(false);
-    const req = new NextRequest('https://example.com/api/test');
     const result = await ensureAppTeamVenture({
-      request: req,
+      multiUserEnabled: false,
       siteId: 's1',
       customerId: 'owner-1',
       jwt: 'tok',
@@ -135,9 +168,8 @@ describe('authz-fga/ensure-app-venture', function ensureAppVentureTests() {
   });
 
   it('returns null for non-owner customer', async function nonOwner() {
-    const req = new NextRequest('https://example.com/api/test');
     const result = await ensureAppTeamVenture({
-      request: req,
+      multiUserEnabled: true,
       siteId: 's1',
       customerId: 'collaborator-1',
       jwt: 'tok',
@@ -149,9 +181,8 @@ describe('authz-fga/ensure-app-venture', function ensureAppVentureTests() {
 
   it('returns null when shopperId cannot be extracted', async function noShopper() {
     vi.mocked(extractShopperId).mockReturnValue(null);
-    const req = new NextRequest('https://example.com/api/test');
     const result = await ensureAppTeamVenture({
-      request: req,
+      multiUserEnabled: true,
       siteId: 's1',
       customerId: 'owner-1',
       jwt: 'tok',
@@ -162,9 +193,8 @@ describe('authz-fga/ensure-app-venture', function ensureAppVentureTests() {
   });
 
   it('creates venture and writes back to control plane for owner', async function creates() {
-    const req = new NextRequest('https://example.com/api/test');
     const result = await ensureAppTeamVenture({
-      request: req,
+      multiUserEnabled: true,
       siteId: 's1',
       customerId: 'owner-1',
       jwt: 'tok',
@@ -181,6 +211,15 @@ describe('authz-fga/ensure-app-venture', function ensureAppVentureTests() {
       { aabTeamVentureId: 'venture-abc' },
       'tok',
     );
+
+    // The venture->app mapping is recorded on creation so invitee-pull can resolve
+    // the freshly minted venture without waiting for the owner to reopen the app.
+    expect(setAppVentureMappingBestEffort).toHaveBeenCalledWith({
+      jwt: 'tok',
+      appId: 's1',
+      subscriptionId: 'sub-1',
+      ventureId: 'venture-abc',
+    });
   });
 
   it('writes the owner FGA tuple before persisting the venture id (survives an updateSiteVariables failure)', async function tupleBeforePersist() {
@@ -202,9 +241,8 @@ describe('authz-fga/ensure-app-venture', function ensureAppVentureTests() {
       return { updateSiteVariables: mockUpdateVars } as unknown as V2ControlPlaneAdapter;
     });
 
-    const req = new NextRequest('https://example.com/api/test');
     const result = await ensureAppTeamVenture({
-      request: req,
+      multiUserEnabled: true,
       siteId: 's1',
       customerId: 'owner-1',
       jwt: 'tok',
@@ -237,9 +275,8 @@ describe('authz-fga/ensure-app-venture', function ensureAppVentureTests() {
       } as unknown as VentureService;
     });
 
-    const req = new NextRequest('https://example.com/api/test');
     const result = await ensureAppTeamVenture({
-      request: req,
+      multiUserEnabled: true,
       siteId: 's1',
       customerId: 'owner-1',
       jwt: 'tok',
@@ -261,9 +298,8 @@ describe('authz-fga/ensure-app-venture', function ensureAppVentureTests() {
       } as unknown as VentureService;
     });
 
-    const req = new NextRequest('https://example.com/api/test');
     const result = await ensureAppTeamVenture({
-      request: req,
+      multiUserEnabled: true,
       siteId: 's1',
       customerId: 'any-user',
       jwt: 'tok',

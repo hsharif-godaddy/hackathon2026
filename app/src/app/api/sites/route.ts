@@ -12,6 +12,7 @@ import {
   customerHasAccount,
   withCustomerAuth} from '@/lib/customer-auth';
 import { resolveMarketId } from '@/lib/market/resolve-market';
+import { reconcileInviteeShared } from '@/lib/mgmt-airo/invitee-pull';
 import { logger } from '@/lib/request-context';
 import { injectShareTokenIntoPreviewUrl } from '@/lib/share/inject-preview-token';
 
@@ -61,6 +62,15 @@ async function handleGetSites(request: NextRequest, jwt: string) {
       return NextResponse.json({ ...site, preview_url: previewUrl });
     }
     return NextResponse.json(site);
+  }
+
+  // Invitee-pull: before listing, mirror the caller's current FGA venture
+  // membership into their collaborator rows so a just-accepted shared app
+  // appears on THIS load — no owner session or background worker needed.
+  // Throttled per customer + best-effort, and only when aab-multi-user is on
+  // (it drives shared-app discovery anyway, so it's inert for the GA population).
+  if (multiUserEnabled) {
+    await reconcileInviteeShared(jwt);
   }
 
   // List all sites — return the control-plane payload as-is. A list GET

@@ -3,8 +3,8 @@ import { getAuthzFgaAccessToken } from '@/lib/authz-fga/oauth-token';
 import { writeFgaTuples } from '@/lib/authz-fga/write';
 import type { SiteInfo } from '@/lib/control-plane/types';
 import { V2ControlPlaneAdapter } from '@/lib/control-plane/v2-control-plane-adapter';
+import { setAppVentureMappingBestEffort } from '@/lib/mgmt-airo/set-venture-mapping';
 import { logger } from '@/lib/request-context';
-import { checkSwitchboardFlag, type SwitchboardRequest } from '@/lib/switchboard/server';
 import { extractShopperId } from '@/lib/utils/jwt-utils';
 import { VentureService } from '@/lib/venture-service';
 
@@ -65,18 +65,41 @@ function hasProductGraphCert(): boolean {
 }
 
 export async function ensureAppTeamVenture(options: {
-  request: SwitchboardRequest;
+  // The caller resolves the aab-multi-user flag once (soft — Switchboard outage
+  // treated as off) and threads it in. We must NOT read Switchboard here: this
+  // runs on the agent-token hot path, and a throwing flag read would turn an
+  // outage into a 500 for every provisioned-app owner instead of degrading.
+  multiUserEnabled: boolean;
   siteId: string;
   customerId: string;
   jwt: string;
   siteInfo: SiteInfo | null;
 }): Promise<string | null> {
   if (options.siteInfo?.team_venture_id) {
+    // Venture already exists — don't re-mint. But the mgmt-airo venture->app
+    // mapping may be missing (the venture predates this write, or was created by
+    // a path that didn't record it), which silently breaks invitee-pull. Re-assert
+    // it as a backstop whenever the OWNER opens the app (the hottest, most reliable
+    // owner-side trigger). Owner-only + multi-user-gated to avoid needless calls
+    // and the 403 a non-owner would get from mgmt-airo's owner-only SetVenture.
+    // Fire-and-forget: this is a self-healing backstop, not on the response's
+    // critical path, and the helper never throws (no unhandled rejection).
+    if (
+      options.siteInfo.owner_customer_id &&
+      options.customerId === options.siteInfo.owner_customer_id &&
+      options.multiUserEnabled
+    ) {
+      void setAppVentureMappingBestEffort({
+        jwt: options.jwt,
+        appId: options.siteId,
+        subscriptionId: options.siteInfo.subscription_id,
+        ventureId: options.siteInfo.team_venture_id,
+      });
+    }
     return options.siteInfo.team_venture_id;
   }
 
-  const multiUser = await checkSwitchboardFlag('aab-multi-user', options.request);
-  if (!multiUser) {
+  if (!options.multiUserEnabled) {
     return null;
   }
 
@@ -174,9 +197,16 @@ export async function ensureAppTeamVenture(options: {
       customerId: options.customerId,
     });
 
-    // Note: the shared-app listing for invited users is now served by
-    // mgmt-airo `GET /customers/me/shared-apps` (backed by airo_app_collaborators),
-    // so there is no longer a BFF-side venture→app index to seed here.
+    // Record the venture->app mapping in mgmt-airo so a later self-scoped
+    // collaborator reconcile (invitee-pull) can resolve this venture back to the
+    // app + subscription and write the invitee's collaborator row. Awaited here
+    // (not a hot path — runs at most once per app, on venture creation).
+    await setAppVentureMappingBestEffort({
+      jwt: options.jwt,
+      appId: options.siteId,
+      subscriptionId: options.siteInfo.subscription_id,
+      ventureId,
+    });
 
     return ventureId;
   } catch (error) {

@@ -32,6 +32,7 @@ import { listUsers } from '@/lib/authz-fga/list-users';
 import { getAuthzFgaAccessToken } from '@/lib/authz-fga/oauth-token';
 import { AUTHZ_FGA_RELATIONS } from '@/lib/authz-fga/relations';
 import { AiroMgmtClient } from '@/lib/mgmt-airo';
+import { setAppVentureMappingBestEffort } from '@/lib/mgmt-airo/set-venture-mapping';
 import { logger } from '@/lib/request-context';
 
 export interface CollaboratorSyncParams {
@@ -172,6 +173,12 @@ export async function syncCollaboratorsToMgmtAiro(
     });
     return { grantFailures: grantIds.length, granted: 0 };
   }
+
+  // Record the venture->app mapping so invitee-pull can resolve this venture even
+  // if the owner goes offline before any panel-close reconcile fires. Best-effort:
+  // independent of the grant result below (a mapping failure must not fail the
+  // invite, which the direct grants already satisfy for online collaborators).
+  await setAppVentureMappingBestEffort({ jwt, appId, subscriptionId, ventureId: teamVentureId });
 
   // Derive each grantee's capability set from the venture's FGA permissions so
   // mgmt-airo can enforce it per-route. When FGA isn't configured the whole
@@ -342,6 +349,12 @@ export async function reconcileCollaboratorsFromFga(
     logger.warn('collaborator.reconcile.no_fga_config', { appId });
     return empty;
   }
+
+  // This is the real owner-side invite bridge (the Team panel writes FGA tuples
+  // directly and triggers this, not fga-write). Record the venture->app mapping
+  // here too so invitee-pull can resolve the venture after the owner is offline.
+  // Best-effort — must not affect the grant/revoke reconcile below.
+  await setAppVentureMappingBestEffort({ jwt, appId, subscriptionId, ventureId: teamVentureId });
 
   let memberCustomerIds: string[];
   let capabilitiesFor: (customerId: string) => string;
