@@ -707,6 +707,35 @@ describe('DomainAttachWidget', function domainAttachWidgetTests() {
     expect(document.getElementById('external-domain-input')).not.toBeDisabled();
   });
 
+  it('does not render DNS instructions when a non-prefix domain is in DELETING status', async function hideDnsWhileDeleting() {
+    const { useAppDetails } = await import('@/hooks/useAppDetails');
+
+    const deletingDomain: AppDomain = {
+      fqdn: 'deleting.com',
+      isPrimary: false,
+      status: DomainStatus.DELETING,
+      domainType: 'custom',
+    };
+
+    vi.mocked(useAppDetails).mockReturnValue({
+      data: {
+        id: 'test-app-123',
+        name: 'Test App',
+        status: 'running',
+        domains: [deletingDomain],
+      },
+      isFetched: true,
+    } as any);
+
+    renderWithProviders(<DomainAttachWidget appId="test-app-123" />);
+
+    await waitFor(function waitForExternalInput() {
+      expect(document.getElementById('external-domain-input')).toBeInTheDocument();
+    });
+
+    expect(screen.queryByText('builder_domain_attach_dns_title')).not.toBeInTheDocument();
+  });
+
   describe('feature flag gating', function featureFlagTests() {
     it('should return null when domain attach feature flag is disabled', async function disabled() {
       const { useSwitchboard } = await import('@/hooks/useSwitchboard');

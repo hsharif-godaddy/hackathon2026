@@ -249,8 +249,8 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
       // Exclude customer domains (including subdomains of customer domains)
       if (isCustomerDomain(d.fqdn, allCustomerDomains)) return false;
 
-      // ERROR/FAILED/INACTIVE are terminal, and no-status means we don't yet know — don't show DNS instructions for either.
-      return d.status === DomainStatus.PENDING || d.status === DomainStatus.DELETING;
+      // Only PENDING is mid-connect and may still need DNS setup; every other status (DELETING mid-disconnect, ACTIVE, or any terminal/unknown state) must not show DNS instructions.
+      return d.status === DomainStatus.PENDING;
     });
 
     return pending ? pending.fqdn : null;

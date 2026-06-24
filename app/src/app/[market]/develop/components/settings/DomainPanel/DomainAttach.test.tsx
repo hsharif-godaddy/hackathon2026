@@ -1375,6 +1375,42 @@ describe('DomainAttach', function domainAttachTests() {
     expect(screen.getByRole('button', { name: 'builder_domain_button_connect' })).toBeEnabled();
   });
 
+  it('does not render DNS instructions when a non-prefix domain is in DELETING status', async function hideDnsWhileDeleting() {
+    const { useDomainsQuery } = await import('@/hooks/useDomainsQuery');
+
+    vi.mocked(useDomainsQuery).mockReturnValue({
+      data: [{ domain: 'available.com', name: 'available.com' }],
+      isLoading: false,
+      error: null,
+      isFetched: true,
+    } as any);
+
+    const deletingDomain: AppDomain = {
+      fqdn: 'deleting.com',
+      isPrimary: false,
+      status: DomainStatus.DELETING,
+      domainType: 'custom',
+    };
+
+    renderWithProviders(
+      <DomainAttach
+        appDetails={{
+          id: 'test-app-123',
+          name: 'Test App',
+          status: 'running',
+          domains: [deletingDomain],
+        } as any}
+        isAppDetailsFetched={true}
+      />
+    );
+
+    await waitFor(function waitForDomainList() {
+      expect(screen.getByLabelText('available.com')).toBeInTheDocument();
+    });
+
+    expect(screen.queryByText('builder_domain_dns_instructions')).not.toBeInTheDocument();
+  });
+
   it('disables Connect Domain without a radio selection', async function connectSelectedDisabledWithoutSelection() {
     const { useDomainsQuery } = await import('@/hooks/useDomainsQuery');
 
