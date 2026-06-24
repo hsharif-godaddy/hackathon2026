@@ -32,6 +32,7 @@ import {
   logIngestionError,
   recomputeDailyStats,
 } from '@/lib/supportplane/db/feedback-db';
+import { getSpEnv } from '@/lib/supportplane/store/config';
 
 // ── Config from env ───────────────────────────────────────────────
 
@@ -46,7 +47,7 @@ function envOr(value: string | undefined, fallback: string): string {
 }
 
 function cfg() {
-  const feedbackEnv = (process.env.FEEDBACK_ENV ?? process.env.ENVIRONMENT_NAME ?? 'dev') as 'dev' | 'prod';
+  const feedbackEnv = getSpEnv() as 'dev' | 'prod';
   const isProd = feedbackEnv === 'prod';
   // S3 bucket/prefix vars are split by env so both can coexist in .env.local.
   // Falls back to the legacy FEEDBACK_S3_BUCKET/PREFIX, then a hard default, when

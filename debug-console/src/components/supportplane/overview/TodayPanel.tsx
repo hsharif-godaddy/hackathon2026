@@ -61,7 +61,11 @@ function KpiCard({ label, value, delta, alert, loading, error }: {
 
 function SentimentBar({ positive, neutral, negative }: { positive: number; neutral: number; negative: number }) {
   const total: number = positive + neutral + negative;
-  if (total === 0) return <div className={sp.sentimentBar}><div style={{ width: '100%', background: '#555' }} /></div>;
+  if (total === 0) return (
+    <div style={{ fontSize: 11, color: 'var(--sp-txm)', padding: '6px 0', fontStyle: 'italic' }}>
+      No feedback received today
+    </div>
+  );
   return (
     <div className={sp.sentimentBar}>
       <div style={{ width: `${(positive / total) * 100}%`, background: '#10b981' }} title={`Positive: ${positive}`} />

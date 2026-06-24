@@ -8,6 +8,7 @@ import { getJiraApiBase, isJiraConfigured, jiraFetch } from '@/lib/jira-client';
 import { getS2SToken, isS2SAuthEnabled } from '@airo/ai-lib';
 import { logger } from '@/lib/logger';
 import { SP_MASK, spLog } from '@/lib/supportplane/sp-logger';
+import { getSpEnv } from '@/lib/supportplane/store/config';
 
 export const dynamic = 'force-dynamic';
 
@@ -220,7 +221,7 @@ async function checkFeedbackS3(): Promise<ServiceHealth> {
     const profile = process.env.AWS_PROFILE ?? '';
     const keyId   = process.env.AWS_ACCESS_KEY_ID ?? '';
     const secret  = process.env.AWS_SECRET_ACCESS_KEY ?? '';
-    const env     = (process.env.FEEDBACK_ENV ?? 'dev') as 'dev' | 'prod';
+    const env     = getSpEnv();
     const bucket  = env === 'prod'
         ? (process.env.S3_FEEDBACK_BUCKET_PROD ?? 'airo-builder-feedback-prod')
         : (process.env.S3_FEEDBACK_BUCKET_DEV  ?? 'airo-builder-feedback-dev');
@@ -254,7 +255,7 @@ async function checkFeedbackS3(): Promise<ServiceHealth> {
                 ? `SSO session expired — run: aws sso login --profile ${profile}`
                 : isNoCredentials
                     ? `No AWS credentials — set AWS_PROFILE in .env.local`
-                    : `S3 error: ${msg.slice(0, 120)}`,
+                    : `S3 error: ${msg.slice(0, 300)}`,
         };
     }
 }

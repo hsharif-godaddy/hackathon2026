@@ -2,9 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { withAuth } from '@/lib/api-auth';
 import { logger } from '@/lib/logger';
-import { queryTranscripts, type TranscriptRow } from '@/lib/supportplane/db/l1-transcript-db';
 import { getRecentFeedback, type FeedbackRow } from '@/lib/supportplane/db/feedback-db';
+import { queryTranscripts, type TranscriptRow } from '@/lib/supportplane/db/l1-transcript-db';
 import { listTickets, type Ticket } from '@/lib/supportplane/db/support-db';
+import { getSpEnv } from '@/lib/supportplane/store/config';
 
 export const dynamic = 'force-dynamic';
 
@@ -72,7 +73,7 @@ async function safeTickets(): Promise<{ rows: Ticket[]; error?: string }> {
 export const GET = withAuth(async function todayStats(_request: NextRequest) {
   const today: string = new Date().toISOString().split('T')[0]!;
   const yesterday: string = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().split('T')[0]!;
-  const env: string = process.env.FEEDBACK_ENV ?? process.env.SP_ENV ?? 'dev';
+  const env: string = getSpEnv();
 
   const [transcriptResult, feedbackResult, ticketResult] = await Promise.all([
     safeQueryTranscripts(`${yesterday}T00:00:00.000Z`, `${today}T23:59:59.999Z`),

@@ -3,10 +3,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { withAuth } from '@/lib/api-auth';
 import { logger } from '@/lib/logger';
 import { getFeedbackTrends } from '@/lib/supportplane/db/feedback-db';
+import { getSpEnv } from '@/lib/supportplane/store/config';
 
 export const GET = withAuth(async (req: NextRequest) => {
     try {
-        const env = req.nextUrl.searchParams.get('env') ?? (process.env.FEEDBACK_ENV ?? 'dev');
+        const env = req.nextUrl.searchParams.get('env') ?? getSpEnv();
         const granularity = (req.nextUrl.searchParams.get('granularity') ?? 'day') as 'day' | 'week' | 'month';
         const days = parseInt(req.nextUrl.searchParams.get('days') ?? '30', 10);
         const trends = await getFeedbackTrends(env, granularity, days);

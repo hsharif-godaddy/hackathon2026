@@ -3,10 +3,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { withAuth } from '@/lib/api-auth';
 import { logger } from '@/lib/logger';
 import { getWoWComparison, getMoMComparison } from '@/lib/supportplane/db/feedback-db';
+import { getSpEnv } from '@/lib/supportplane/store/config';
 
 export const GET = withAuth(async (req: NextRequest) => {
     try {
-        const env = req.nextUrl.searchParams.get('env') ?? (process.env.FEEDBACK_ENV ?? 'dev');
+        const env = req.nextUrl.searchParams.get('env') ?? getSpEnv();
         const [wow, mom] = await Promise.all([getWoWComparison(env), getMoMComparison(env)]);
         return NextResponse.json({ wow, mom });
     } catch (error) {

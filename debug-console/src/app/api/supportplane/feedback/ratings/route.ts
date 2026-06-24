@@ -3,10 +3,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { withAuth } from '@/lib/api-auth';
 import { logger } from '@/lib/logger';
 import { getRatingDistribution, getCategoryBreakdown } from '@/lib/supportplane/db/feedback-db';
+import { getSpEnv } from '@/lib/supportplane/store/config';
 
 export const GET = withAuth(async (req: NextRequest) => {
     try {
-        const env = req.nextUrl.searchParams.get('env') ?? (process.env.FEEDBACK_ENV ?? 'dev');
+        const env = req.nextUrl.searchParams.get('env') ?? getSpEnv();
         const appId = req.nextUrl.searchParams.get('app_id') ?? undefined;
         const ratings = await getRatingDistribution(env, appId);
         const categories = await getCategoryBreakdown(env);

@@ -4,6 +4,7 @@ import { withAuth } from '@/lib/api-auth';
 import { logger } from '@/lib/logger';
 import { getFeedbackIngestionStatus, getDataCoverage, getIngestionLog } from '@/lib/supportplane/db/feedback-db';
 import type { IngestionStatus, DataCoverage, IngestionLogEntry } from '@/lib/supportplane/db/feedback-db';
+import { getSpEnv } from '@/lib/supportplane/store/config';
 
 export const POST = withAuth(async (req: NextRequest) => {
     try {
@@ -23,7 +24,7 @@ export const POST = withAuth(async (req: NextRequest) => {
 });
 
 export const GET = withAuth(async (req: NextRequest) => {
-    const env: string = req.nextUrl.searchParams.get('env') ?? (process.env.FEEDBACK_ENV ?? 'dev');
+    const env: string = req.nextUrl.searchParams.get('env') ?? getSpEnv();
 
     const [statusResult, coverageResult, logResult] = await Promise.all([
         getFeedbackIngestionStatus().then((v: IngestionStatus) => ({ ok: true as const, value: v })).catch((e: unknown) => ({ ok: false as const, error: e instanceof Error ? e.message : String(e) })),

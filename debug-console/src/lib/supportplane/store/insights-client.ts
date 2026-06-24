@@ -13,7 +13,7 @@ import { NodeHttpHandler } from '@smithy/node-http-handler';
 import https from 'node:https';
 
 import { logger } from '@/lib/logger';
-import { buildDynamoClient } from '@/lib/supportplane/store/config';
+import { buildDynamoClient, getSpEnv } from '@/lib/supportplane/store/config';
 
 export interface InsightRow {
   insight_key: string; // PK: "BUG#logo_auth_001" | "FEATURE#commerce_001" | "PATTERN#billing_001"
@@ -111,8 +111,7 @@ function getClient(): DynamoDBDocumentClient {
 }
 
 function getInsightsTableName(): string {
-  const env: string = process.env.SP_ENV || process.env.ENVIRONMENT_NAME || 'dev';
-  return `airo-builde-supportplane-insights-${env}`;
+  return `airo-builde-supportplane-insights-${getSpEnv()}`;
 }
 
 function getCacheKey(key: string): string {

@@ -3,11 +3,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { withAuth } from '@/lib/api-auth';
 import { logger } from '@/lib/logger';
 import { getRecentFeedback } from '@/lib/supportplane/db/feedback-db';
+import { getSpEnv } from '@/lib/supportplane/store/config';
 
 export const GET = withAuth(async (req: NextRequest) => {
     try {
         const { searchParams } = req.nextUrl;
-        const env = searchParams.get('env') ?? (process.env.FEEDBACK_ENV ?? 'dev');
+        const env = searchParams.get('env') ?? getSpEnv();
         const limit = parseInt(searchParams.get('limit') ?? '50', 10);
         const offset = parseInt(searchParams.get('offset') ?? '0', 10);
         const filters = {
