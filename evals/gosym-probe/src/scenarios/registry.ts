@@ -39,6 +39,14 @@ import {
   noRecipientFallbackScenario,
   emailOrderConfirmationScenario,
 } from './skills/email/index.js';
+import {
+  addMetaTagsScenario,
+  seoAuditFlowScenario,
+  noDuplicateTitlesScenario,
+  followExistingPatternScenario,
+  addStructuredDataScenario,
+  registerNewRouteScenario,
+} from './skills/seo/index.js';
 import type { IGocodeClient } from '../clients/gocode-client.js';
 import type {
   AABCtrlPlaneClient,
@@ -81,5 +89,11 @@ export function createAllScenarios(
     emailWithAttachmentScenario(gocode, ctrlPlane),
     noRecipientFallbackScenario(gocode, ctrlPlane),
     emailOrderConfirmationScenario(gocode, ctrlPlane),
+    addMetaTagsScenario(gocode, ctrlPlane),
+    seoAuditFlowScenario(gocode, ctrlPlane),
+    noDuplicateTitlesScenario(gocode, ctrlPlane),
+    followExistingPatternScenario(gocode, ctrlPlane),
+    addStructuredDataScenario(gocode, ctrlPlane),
+    registerNewRouteScenario(gocode, ctrlPlane),
   ];
 }

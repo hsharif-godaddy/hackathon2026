@@ -18,6 +18,7 @@ function readFile(relPath: string): string {
 const primer = readFile('prompts/develop/seo.md');
 const primerLower = primer.toLowerCase();
 const skill = readFile('skills/seo/skill.md');
+const skillRef = readFile('skills/seo/references/v8-template-seo.md');
 const coreRaw = readFile('prompts/develop/core.md');
 const core = coreRaw.toLowerCase();
 
@@ -131,32 +132,28 @@ describe('SEO generation eval (static prompt assertions)', () => {
   });
 
   describe('seo skill — identity & auto-load preserved', () => {
-    it('keeps the description, whenToUse, and intents identical to main', () => {
-      // Skill identity/auto-load markers are unchanged; only the JSON-LD
-      // schema section is intentionally synced to the triad/@id baseline
-      // (asserted below). The skill is loaded on-demand during develop/SEO
-      // sessions, so its schema guidance must match the always-loaded primer.
+    it('keeps the description, whenToUse, and intents covering key triggers', () => {
       expect(skill).toContain(
         'description: SEO analysis, optimization, and v8 implementation patterns',
       );
       expect(skill).toContain(
-        'ALSO load this skill when adding a new page/route to a v8 app',
+        'Also load when adding a new page/route to ensure head tags and seo-routes.ts registration',
       );
-      expect(skill).toContain('# SEO Analysis & Optimization Skill');
-      expect(skill).toContain('Implementing SEO in the v8 Template');
+      expect(skill).toContain('# SEO Analysis & Optimization');
+      expect(skill).toContain('seo/references/v8-template-seo');
     });
   });
 
   describe('seo skill — schema section synced to the triad/@id baseline', () => {
     it('teaches the homepage WebSite/Organization/WebPage @graph and @id entity references', () => {
-      // Prevents drift from the develop primer: if the skill reverts to the old
-      // single-@type-per-page pattern, the on-demand SEO/audit path would
-      // contradict what the primer generates at create.
-      expect(skill).toContain('@graph');
-      expect(skill).toContain('WebSite');
-      expect(skill).toContain('WebPage');
-      expect(skill).toContain('isPartOf');
-      expect(skill).toContain('rather than re-declaring them');
+      // Content lives in references/v8-template-seo.md (Layer 3) — loaded on
+      // demand. The skill body points to it; the reference must stay in sync
+      // with the develop primer's triad/@id baseline.
+      expect(skillRef).toContain('@graph');
+      expect(skillRef).toContain('WebSite');
+      expect(skillRef).toContain('WebPage');
+      expect(skillRef).toContain('isPartOf');
+      expect(skillRef).toContain('rather than re-declaring them');
     });
   });
 
