@@ -660,6 +660,9 @@ importers:
       '@gasket/react-intl':
         specifier: ^7.7.2
         version: 7.7.2(@gasket/plugin-intl@7.6.5)
+      '@godaddy/antares':
+        specifier: ^0.1.0
+        version: 0.1.1(@react-spring/web@10.1.0(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@godaddy/browserslist-config':
         specifier: ^3.1.0
         version: 3.1.0

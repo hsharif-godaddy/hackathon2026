@@ -1,18 +1,14 @@
-import { useId } from 'react'
-import type { PieLabelRenderProps } from 'recharts'
-import {
-  Cell,
-  Pie,
-  PieChart,
-  ResponsiveContainer,
-  Tooltip
-} from 'recharts'
-import text from '@ux/text'
+import { DonutChart } from '@godaddy/antares'
 
 import { AnalyticsCard } from '@/components/analytics/AnalyticsCard'
+import { formatChartValue } from '@/components/analytics/ChartTooltip'
 import { InfoTooltip } from '@/components/ui/InfoTooltip'
 import { useTranslations } from '@/hooks/useTranslations'
-import { ChartTooltip } from './ChartTooltip'
+
+function formatDonutLegendLabel(name: string, value: number, total: number): string {
+  const pct = total > 0 ? Math.round((value / total) * 100) : 0
+  return `${pct}% ${name}`
+}
 
 interface ChartDataPoint {
   date: string
@@ -22,27 +18,35 @@ interface ChartDataPoint {
 interface AnalyticsPieChartProps {
   data: ChartDataPoint[]
   label?: string
+  /** Center donut sublabel (e.g. "Sessions") */
+  subLabel?: string
   /** Optional tooltip shown on info icon next to title */
   tooltip?: string
   fetched?: boolean
 }
 
-const COLORS = ['var(--color-ai)', 'var(--color-ai-light)', 'var(--color-chart-blue)', 'var(--color-chart-green)', 'var(--color-chart-amber)', 'var(--color-chart-pink)', 'var(--color-chart-cyan)', 'var(--color-chart-violet)']
-
 /**
- * Pie/Donut chart component for displaying analytics distribution
- *
- * Renders a donut chart with colored segments.
- * Uses Recharts library for maintainable and feature-rich charting.
- *
- * @param data - Array of data points with date and value
- * @param label - Chart label
+ * Donut chart component for displaying analytics distribution.
  */
-export function AnalyticsPieChart({ data, label = 'Distribution', tooltip, fetched = false }: AnalyticsPieChartProps) {
-  const chartId = useId().replace(/:/g, '')
+export function AnalyticsPieChart({ data, label = 'Distribution', subLabel, tooltip, fetched = false }: AnalyticsPieChartProps) {
   const t = useTranslations()
 
-  if (!data || data.length === 0) {
+  const total = (data ?? []).reduce(function sum(acc, d) {
+    return acc + d.value
+  }, 0)
+  const slices = (data ?? [])
+    .filter(function positiveValue(d) {
+      return d.value > 0
+    })
+    .map(function mapSlice(d, index) {
+      return {
+        id: `slice-${index}`,
+        name: formatDonutLegendLabel(d.date, d.value, total),
+        value: d.value,
+      }
+    })
+
+  if (!data || data.length === 0 || slices.length === 0) {
     return (
       <AnalyticsCard
         title={<>
@@ -54,32 +58,6 @@ export function AnalyticsPieChart({ data, label = 'Distribution', tooltip, fetch
     )
   }
 
-  // Convert time-series data to pie segments
-  const pieData = data.map(d => ({
-    name: d.date,
-    value: d.value
-  }))
-
-  const RADIAN = Math.PI / 180
-  const renderLabel = (props: PieLabelRenderProps) => {
-    const { cx: cxProp, cy: cyProp, midAngle: midAngleProp, outerRadius: orProp, name, percent } = props
-    const cx = Number(cxProp ?? 0)
-    const cy = Number(cyProp ?? 0)
-    const midAngle = Number(midAngleProp ?? 0)
-    const or = Number(orProp ?? 0)
-    const radius = or + 10
-    const x = cx + radius * Math.cos(-midAngle * RADIAN)
-    const y = cy + radius * Math.sin(-midAngle * RADIAN)
-    const pct = `${((percent ?? 0) * 100).toFixed(0)}%`
-    const truncatedName = name && String(name).length > 6 ? `${String(name).slice(0, 6)}…` : (name ?? '')
-    const labelText = truncatedName ? `${truncatedName} ${pct}` : pct
-    return (
-      <text x={x} y={y} fill="currentColor" className="text-[10px] @[16rem]/chart:text-xs" textAnchor={x > cx ? 'start' : 'end'} dominantBaseline="central">
-        {labelText}
-      </text>
-    )
-  }
-
   return (
     <AnalyticsCard
       data-slot="chart"
@@ -88,37 +66,19 @@ export function AnalyticsPieChart({ data, label = 'Distribution', tooltip, fetch
         {tooltip && (<InfoTooltip content={tooltip}/>)}
       </>}
     >
-      <ResponsiveContainer
-        width="100%"
-        height="100%"
-        minHeight={140}
-        className="@container/chart size-full"
-      >
-        <PieChart>
-          <Pie
-            data={pieData}
-            cx="50%"
-            cy="50%"
-            innerRadius="45%"
-            outerRadius="65%"
-            paddingAngle={3}
-            dataKey="value"
-            nameKey="name"
-            label={renderLabel}
-            labelLine={{ stroke: 'hsl(var(--muted-foreground))' }}
-          >
-            {pieData.map((_, index) => (
-              <Cell
-                key={`cell-${chartId}-${index}`}
-                fill={COLORS[index % COLORS.length]}
-                stroke="hsl(var(--background))"
-                strokeWidth={2}
-              />
-            ))}
-          </Pie>
-          <Tooltip content={<ChartTooltip valueName={label} titleFrom="name" />} />
-        </PieChart>
-      </ResponsiveContainer>
+      <div className="flex flex-grow items-center justify-center">
+        <DonutChart
+          data={slices}
+          label={formatChartValue(total)}
+          subLabel={subLabel}
+          formatValue={formatChartValue}
+          legend="right"
+          gap="sm"
+          aria-label={label}
+          // Using font-size override to match surrounding typography
+          className="w-full min-w-0 max-w-[300px] [&_[role='listitem']]:!text-xs"
+        />
+      </div>
     </AnalyticsCard>
   )
 }

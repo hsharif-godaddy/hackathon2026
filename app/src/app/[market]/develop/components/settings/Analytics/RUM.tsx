@@ -741,7 +741,13 @@ export default function RUM() {
           >
             <CollapsibleContent>
               <div className="grid grid-cols-1 @xl:grid-cols-2 gap-2 [&>*]:min-w-0">
-                <AnalyticsPieChart data={sessionsByDeviceData} label={t('builder_analytics_sessions_by_device')} tooltip={t('builder_analytics_tooltip_device_breakdown')} fetched={analyticsFetched} />
+                <AnalyticsPieChart
+                  data={sessionsByDeviceData}
+                  label={t('builder_analytics_sessions_by_device')}
+                  subLabel={t('builder_analytics_sessions')}
+                  tooltip={t('builder_analytics_tooltip_device_breakdown')}
+                  fetched={analyticsFetched}
+                />
                 <StatProgressList
                   items={referrerProgressItems}
                   title={t('builder_analytics_top_referrers')}
