@@ -107,6 +107,7 @@ pipeline:
           inputs:
             environment: test
             test_filter: e2e
+            run_host_paas_e2e: true
 
         - id: regression-test
           name: Regression Tests
