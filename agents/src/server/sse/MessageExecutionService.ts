@@ -1280,10 +1280,15 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
       if (outcome.kind !== 'finalize') return false
       chunkTimeoutFinishReason = outcome.finishReason
       prematureCloseError = err
+      const closeTiming: StreamTimingData = tracker.finalize()
       logger.warn('sse.stream.premature_close.soft_commit', {
         appId, conversationId, agentName, finishReason: outcome.finishReason,
         trigger: upstreamTimeout ? 'upstream_timeout' : 'network_close',
         statusCode: (err as { statusCode?: number }).statusCode,
+        streamDurationMs: closeTiming.streamDurationMs,
+        maxChunkGapMs: closeTiming.maxChunkGapMs,
+        timeToFirstTextChunkMs: closeTiming.timeToFirstTextChunkMs,
+        chunksRead: closeTiming.chunksRead,
         ...errorFields(err),
       })
       return true
@@ -1573,6 +1578,10 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
               appId, conversationId,
               trigger: upstreamTimeout ? 'upstream_timeout' : 'network_close',
               statusCode: (err as { statusCode?: number }).statusCode,
+              streamDurationMs: timingData.streamDurationMs,
+              maxChunkGapMs: timingData.maxChunkGapMs,
+              timeToFirstTextChunkMs: timingData.timeToFirstTextChunkMs,
+              chunksRead: timingData.chunksRead,
               ...errorFields(err),
             })
             finishReason = 'incomplete'
