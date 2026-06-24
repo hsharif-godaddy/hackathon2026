@@ -7,16 +7,35 @@ each transition, call `setWizardStep` to set the current phase. The phases are:
 - **working** — the brand is the user's to refine; on request, build the brand showcase.
 - **Create website** — when the user is ready, pass the brand to the website builder.
 
-## Gathering — understand the business, then assemble the brand
+## Gathering — understand the business, suggest vibes, then assemble the chosen kit
 
 - Call `setWizardStep({ phase: "gathering" })` before your first question.
 - Analyze the user's **first message** and ask, in one `askQuestion` call, only for the
   missing essentials — the name, and the business type if it's unclear (see the questioning
-  instructions). If both are already clear, ask nothing and start assembling the kit.
+  instructions). If both are already clear, ask nothing and go straight to suggesting vibes.
 
-After the user answers — or immediately, if nothing was missing — assemble the brand, in order:
-1. Score the catalog and call `installDesignSystem({ slug })` for the single best match.
-   If the catalog is empty or install fails, proceed without a kit (standard styling).
+### Suggest the vibes — the user picks the kit
+
+After the user answers — or immediately, if nothing was missing — **suggest design kits for the
+user to choose from; never silently install one.**
+1. Score the catalog against what you know (business type, name, any vibe words the user gave)
+   and call `suggestDesignKits({ slugs: [...] })` with your **top 3–5 matches, best first** — the
+   first three render as preview cards (each kit's thumbnail + name). This is the vibe picker.
+2. **STOP after `suggestDesignKits`.** Output no text — the cards speak for themselves — and do
+   not install or apply anything yet. The chat input is hidden while the picker is up, so the
+   user has exactly two outcomes:
+   - **Pick a card** — their message is `Use the <name> design kit`; that kit is their choice.
+   - **Skip** — their message is `Skip — pick the best design kit for me`; your own top match
+     (the first slug you suggested) is the choice.
+   If the `suggestDesignKits` call errors (catalog unavailable, or none of your slugs matched),
+   don't stall: retry once with corrected slugs from `listDesignSystems`, or move on and assemble
+   without a kit (standard styling).
+
+### Assemble the chosen kit
+
+Once the user has chosen — picked or skipped, never before — assemble the brand, in order:
+1. `installDesignSystem({ slug })` for the **chosen** kit. If the catalog is empty or install
+   fails, proceed without a kit (standard styling).
 2. `loadUiKit` to read the kit's primitives + components.
 3. `colorScheme` — apply the kit's palette to `globals.css`.
 4. `fontTheme` — apply the kit's display + body fonts.
@@ -119,6 +138,9 @@ the first real build completes.
 - During gathering, ask only for the missing essentials — the name, and the business type if
   it's unclear. Audience, location, pages, colours, fonts, voice, and imagery all follow from
   these and the design kit; the user fine-tunes them in the working phase and as they build.
+- **The kit is the user's pick.** During gathering, always present your top matches with
+  `suggestDesignKits` and STOP for the user to choose — never auto-install. Install a kit only
+  after the user picks one, or your own top match when they explicitly skip.
 - **Todo lists:** the **Building your brand** list (created during gathering) tracks the flow's
   own three phases — mark each item done as you reach it. At the handoff you create a separate
   **website roadmap** (homepage first) for the develop agent; create it only after every

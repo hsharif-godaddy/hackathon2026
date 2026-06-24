@@ -43,7 +43,9 @@ import StreamingMessageList from '@/app/[market]/develop/components/StreamingMes
 import { ChatTab } from '@/app/[market]/develop/components/types';
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils';
 import { isColorSuggestPanelVisible } from '@/app/[market]/develop/components/utils/colorSuggestPanelVisibility';
+import { isDesignKitSuggestPanelVisible } from '@/app/[market]/develop/components/utils/designKitSuggestPanelVisibility';
 import { findLatestColorSchemeSuggest } from '@/app/[market]/develop/components/utils/findLatestColorSchemeSuggest';
+import { findLatestDesignKitSuggest } from '@/app/[market]/develop/components/utils/findLatestDesignKitSuggest';
 import { findLatestFontThemeSuggest } from '@/app/[market]/develop/components/utils/findLatestFontThemeSuggest';
 import { isFontSuggestPanelVisible } from '@/app/[market]/develop/components/utils/fontSuggestPanelVisibility';
 import { useUpfrontRebuildBuildQueue } from '@/app/[market]/develop/hooks/useUpfrontRebuildBuildQueue';
@@ -605,6 +607,16 @@ function ChatPaneInner({
     if (ifont > ic) return { activeColorSchemeSuggest: null, activeFontThemeSuggest: fontNonNull };
     return { activeColorSchemeSuggest: colorNonNull, activeFontThemeSuggest: null };
   }, [activeColorSchemeSuggestCandidate, activeFontThemeSuggestCandidate, visibleMessages]);
+
+  // Design-kit vibe picker (AIROBUILD-2854): the latest completed `suggestDesignKits`
+  // result, shown until the user picks/skips/types. Only the design-kit agent emits
+  // this tool, so no extra profile gate is needed.
+  const activeDesignKitSuggest = useMemo(() => {
+    const raw = findLatestDesignKitSuggest(visibleMessages);
+    if (!raw) return null;
+    if (!isDesignKitSuggestPanelVisible(visibleMessages, raw)) return null;
+    return raw;
+  }, [visibleMessages]);
   const safeInputValue = currentAppId === appId ? inputValue || '' : '';
   const safeAiEditContext = currentAppId === appId ? aiEditContext : null;
   const safeAiEditContexts = currentAppId === appId ? aiEditContexts : [];
@@ -1809,6 +1821,7 @@ function ChatPaneInner({
             secretsComposer={showSecretsComposer ? activeSecretsRequest : null}
             secretsComposerConversationId={secretsComposerConversationId ?? undefined}
             composerSlots={commanderComposerSlots}
+            designKitSuggest={activeDesignKitSuggest}
           />
           {isCommanderChatEnabled && (
             <CommanderChatRow appId={appId} onPreviewRefresh={onPreviewRefresh} />
@@ -1960,6 +1973,7 @@ function ChatPaneInner({
               secretsComposer={showSecretsComposer ? activeSecretsRequest : null}
               secretsComposerConversationId={secretsComposerConversationId ?? undefined}
               composerSlots={commanderComposerSlots}
+              designKitSuggest={activeDesignKitSuggest}
             />
           </div>
           <DebugStatsPanel />

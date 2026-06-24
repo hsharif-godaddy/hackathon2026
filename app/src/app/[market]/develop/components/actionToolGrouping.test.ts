@@ -40,6 +40,11 @@ describe('actionToolGrouping', () => {
     expect(isSystemHiddenToolCall(createToolCall({ name: 'setWizardStep' }))).toBe(true)
     // snake_case variants canonicalize to the same camelCase name
     expect(isSystemHiddenToolCall(createToolCall({ name: 'set_wizard_step' }))).toBe(true)
+    // design-kit preflight + vibe picker rows are hidden (AIROBUILD-2854): their
+    // output drives the picker/agent, not a transcript row.
+    expect(isSystemHiddenToolCall(createToolCall({ name: 'listDesignSystems' }))).toBe(true)
+    expect(isSystemHiddenToolCall(createToolCall({ name: 'suggestDesignKits' }))).toBe(true)
+    expect(isSystemHiddenToolCall(createToolCall({ name: 'suggest_design_kits' }))).toBe(true)
     expect(isSystemHiddenToolCall(createToolCall({ name: 'viewLogs' }))).toBe(false)
     expect(isSystemHiddenToolCall(createToolCall({ name: 'todoList' }))).toBe(false)
     expect(isSystemHiddenToolCall(undefined)).toBe(false)

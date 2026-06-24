@@ -55,6 +55,7 @@ export { brandAITool } from './brand.js';
 export { httpCheckAITool } from './http-check.js';
 export { listDesignSystemsAITool } from './list-design-systems.js'
 export { installDesignSystemAITool } from './install-design-system.js'
+export { suggestDesignKitsAITool } from './suggest-design-kits.js'
 export { showDocAITool } from './show-doc.js';
 export { runAgentAITool, awaitAgentsAITool } from './run-agent.js'
 export { returnToParentAITool } from './return-to-parent.js';
@@ -109,6 +110,7 @@ import { brandAITool } from './brand.js';
 import { httpCheckAITool } from './http-check.js';
 import { listDesignSystemsAITool } from './list-design-systems.js';
 import { installDesignSystemAITool } from './install-design-system.js';
+import { suggestDesignKitsAITool } from './suggest-design-kits.js';
 import { showDocAITool } from './show-doc.js';
 import { runAgentAITool, awaitAgentsAITool } from './run-agent.js'
 import { returnToParentAITool } from './return-to-parent.js';
@@ -187,6 +189,7 @@ export const allAILibTools: Record<string, Tool> = {
   httpCheck: httpCheckAITool,
   listDesignSystems: listDesignSystemsAITool,
   installDesignSystem: installDesignSystemAITool,
+  suggestDesignKits: suggestDesignKitsAITool,
   showDoc: showDocAITool,
   runAgent: runAgentAITool,
   awaitAgents: awaitAgentsAITool,

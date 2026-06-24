@@ -58,12 +58,17 @@ export function isMediaSlotTool(name?: string): boolean {
 // todoList operations whose renderer returns null
 const TODO_LIST_HIDDEN_OPS = new Set(['mark_done', 'mark_undone', 'mark_in_progress', 'show_list'])
 
-// System/internal tools the agent calls purely to drive builder UI state —
-// e.g. setWizardStep advances the design-kit wizard stepper. They carry no
-// user-facing meaning and must never render in the chat transcript.
+// System/internal tools that must never render as a chat-transcript row: they
+// drive builder UI state (setWizardStep advances the design-kit wizard stepper),
+// run as preflight (listDesignSystems loads the kit catalog), or surface their
+// output through a dedicated widget rather than the transcript (suggestDesignKits
+// drives the vibe picker — DesignKitSelectorPanel). The tool result still reaches
+// the agent and the widget; only the noisy transcript row is suppressed.
 // camelCase canonical form (matches toCamelCase normalization).
 const SYSTEM_HIDDEN_TOOL_NAMES = new Set([
   'setWizardStep',
+  'listDesignSystems',
+  'suggestDesignKits',
 ])
 
 /**

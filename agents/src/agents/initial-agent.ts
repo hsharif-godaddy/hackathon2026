@@ -371,6 +371,9 @@ export async function createInitialAgent(
   if (isDesignKitVariant) {
     tools.listDesignSystems = allAILibTools.listDesignSystems
     tools.installDesignSystem = allAILibTools.installDesignSystem
+    // Vibe picker: present the top-3 kit matches as preview cards for the user to
+    // choose, instead of silently auto-installing (AIROBUILD-2854).
+    tools.suggestDesignKits = allAILibTools.suggestDesignKits
     tools.loadUiKit = allAILibTools.loadUiKit
     tools.colorScheme = allAILibTools.colorScheme
     tools.fontTheme = allAILibTools.fontTheme
@@ -456,6 +459,11 @@ export async function createInitialAgent(
     stopAfterTools: [
       ...(handoffTool ? ['handoff'] : []),
       ...(templateId !== 'logo-designer' && !isDesignKitVariant ? ['websiteRebuild'] : []),
+      // Vibe picker (AIROBUILD-2854): suggestDesignKits presents kit cards and must
+      // yield to the user to pick/skip/type. Without this the assembly turn (which is
+      // designed to fire many tools in sequence) would barrel past the cards and
+      // auto-install, defeating the picker.
+      ...(isDesignKitVariant ? ['suggestDesignKits'] : []),
       'askQuestion',
     ],
 

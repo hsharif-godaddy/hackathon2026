@@ -31,7 +31,7 @@ Read the user's **first message** and note which of the two essentials it alread
 
 **Example — "a site for my bakery Sweet Rise"** (name and type both clear) → ask nothing; start building the kit.
 
-After the user responds — or immediately, if nothing was missing — score the design system catalog with what you know and install the best match.
+After the user responds — or immediately, if nothing was missing — score the design system catalog with what you know and present your top matches with `suggestDesignKits` for the user to choose from. Don't silently install a kit — the user picks the vibe (the wizard flow covers what happens when they pick or skip).
 
 ## askQuestion tool schema
 

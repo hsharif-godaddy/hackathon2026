@@ -55,6 +55,17 @@ export const DesignSystemCatalogEntrySchema = z.object({
   // entries (and slug-style kits) may not carry it; the install still succeeds,
   // it just falls back to the markdown-only flow with no deterministic apply.
   design: DesignKitDesignSchema.optional(),
+  // Preview imagery the live catalog surfaces per kit, as paths relative to the
+  // brand-kit base URL (e.g. `thumbnails/<id>/<hash>.webp`). The entry schema strips
+  // unknown keys, so these must be declared to survive parsing — the vibe picker
+  // (AIROBUILD-2854) renders them. Optional: older/slug-style kits may omit them.
+  // Resolve to absolute URLs with `resolveDesignSystemAssetUrl` (catalog.ts).
+  thumbnail: z.string().min(1).optional(),
+  images: z.object({
+    thumbnail: z.string().optional(),
+    preview: z.string().optional(),
+    original: z.string().optional(),
+  }).passthrough().optional(),
 })
 
 // Type source only — parsing goes through parseCatalog() (catalog.ts), which

@@ -47,6 +47,27 @@ describe('design-system/catalog', () => {
     expect(resolveDesignSystemBaseUrl()).toBe('http://localhost:9000/brand-kits')
   })
 
+  it('resolveDesignSystemAssetUrl: passes through absolute URLs, resolves relative paths, normalizes slashes', async () => {
+    const { resolveDesignSystemAssetUrl } = await import('../catalog.js')
+    // absolute → unchanged
+    expect(resolveDesignSystemAssetUrl('https://cdn.example/x.webp')).toBe('https://cdn.example/x.webp')
+    expect(resolveDesignSystemAssetUrl('http://cdn.example/x.webp')).toBe('http://cdn.example/x.webp')
+    // relative → joined to the brand-kit base
+    expect(resolveDesignSystemAssetUrl('thumbnails/a/b.webp')).toBe(
+      'https://blobby.wsimg.com/brand-kits/thumbnails/a/b.webp'
+    )
+    // leading slash → not doubled against the base
+    expect(resolveDesignSystemAssetUrl('/thumbnails/a/b.webp')).toBe(
+      'https://blobby.wsimg.com/brand-kits/thumbnails/a/b.webp'
+    )
+  })
+
+  it('resolveDesignSystemAssetUrl honors BRAND_KIT_BASE_URL for relative paths', async () => {
+    process.env.BRAND_KIT_BASE_URL = 'http://localhost:9000/brand-kits'
+    const { resolveDesignSystemAssetUrl } = await import('../catalog.js')
+    expect(resolveDesignSystemAssetUrl('thumbnails/a.webp')).toBe('http://localhost:9000/brand-kits/thumbnails/a.webp')
+  })
+
   it('fetchDesignSystemCatalog parses, caches in memory, persists to disk', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
@@ -192,6 +213,29 @@ describe('design-system/catalog', () => {
     const result = await mod.fetchDesignSystemCatalog({ cachePath, ttlMs: 0 })
     expect(result.kits[0]?.id).toBe('98f856d5-5851-4d96-ac29-7e4f65273540')
     expect(result.kits[0]?.kitId).toBe('1ad2586d-f5bf-4ef5-8ac6-f7e5f5c5c3d9')
+  })
+
+  it('preserves thumbnail + images through parse (the vibe picker reads them)', async () => {
+    const withThumb = {
+      version: 1,
+      generatedAt: 'x',
+      kits: [{
+        ...SAMPLE.kits[0],
+        thumbnail: 'thumbnails/modern-bento/abc.webp',
+        images: { thumbnail: 'thumbnails/modern-bento/abc.webp', preview: 'previews/modern-bento/abc.webp' },
+      }],
+    }
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => withThumb } as Response)
+    vi.stubGlobal('fetch', fetchMock)
+    const cachePath = join(tmp, 'cat.json')
+    const { fetchDesignSystemCatalog, _resetCacheForTest } = await import('../catalog.js')
+    _resetCacheForTest()
+
+    const result = await fetchDesignSystemCatalog({ cachePath, ttlMs: 1000 })
+    // The entry schema strips unknown keys, so these only survive because they're declared.
+    expect(result.kits[0]?.thumbnail).toBe('thumbnails/modern-bento/abc.webp')
+    expect(result.kits[0]?.images?.thumbnail).toBe('thumbnails/modern-bento/abc.webp')
+    expect(result.kits[0]?.images?.preview).toBe('previews/modern-bento/abc.webp')
   })
 
   it('rejects payload that fails zod validation', async () => {

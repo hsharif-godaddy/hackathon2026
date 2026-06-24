@@ -5,8 +5,10 @@ import { type ComponentProps, useMemo } from 'react'
 import { FloatingFooter } from '@airo-ux/pattern-library/surfaces/floating-footer'
 
 import ChatInput from '@/app/[market]/develop/components/chat/ChatInput'
+import DesignKitSelectorPanel from '@/app/[market]/develop/components/chat/DesignKitSelectorPanel'
 import type { ActiveSecretsRequest } from '@/app/[market]/develop/components/chat/secrets/types'
 import SecretsComposerSurface from '@/app/[market]/develop/components/chat/SecretsComposerSurface'
+import type { ActiveDesignKitSuggest } from '@/app/[market]/develop/components/utils/findLatestDesignKitSuggest'
 import { cn } from '@/lib/utils'
 
 const COMPOSER_SLOT_EASE = [0.4, 0, 0.2, 1] as const
@@ -14,11 +16,16 @@ const COMPOSER_SLOT_EASE = [0.4, 0, 0.2, 1] as const
 export interface ChatComposerSlotProps extends ComponentProps<typeof ChatInput> {
   secretsComposer: ActiveSecretsRequest | null
   secretsComposerConversationId?: string
+  /** Design-kit vibe picker (AIROBUILD-2854). When set, the picker takes over the
+   *  composer — hiding the chat input the same way an askQuestion does — so the turn
+   *  reads as a stop-to-ask. */
+  designKitSuggest: ActiveDesignKitSuggest | null
 }
 
 export default function ChatComposerSlot({
   secretsComposer,
   secretsComposerConversationId,
+  designKitSuggest,
   ...chatInputProps
 }: ChatComposerSlotProps) {
   const prefersReducedMotion = useReducedMotion()
@@ -59,6 +66,15 @@ export default function ChatComposerSlot({
                 />
               </FloatingFooter>
             </div>
+          </div>
+        </motion.div>
+      ) : designKitSuggest ? (
+        <motion.div key="design-kit-picker" className="w-full" {...composerSlotMotion}>
+          <div className="px-2 sm:px-3 md:px-0 mt-1 mt-auto pb-1">
+            <DesignKitSelectorPanel
+              toolCallId={designKitSuggest.toolCallId}
+              kits={designKitSuggest.kits}
+            />
           </div>
         </motion.div>
       ) : (

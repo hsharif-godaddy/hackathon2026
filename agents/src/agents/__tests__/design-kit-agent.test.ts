@@ -78,6 +78,8 @@ describe('createInitialAgent (design-kit wizard variant)', () => {
 
     expect(cfg.tools).toHaveProperty('listDesignSystems')
     expect(cfg.tools).toHaveProperty('installDesignSystem')
+    // Vibe picker (AIROBUILD-2854): presents the top kit matches as preview cards.
+    expect(cfg.tools).toHaveProperty('suggestDesignKits')
     expect(cfg.tools).toHaveProperty('loadUiKit')
     expect(cfg.tools).toHaveProperty('colorScheme')
     expect(cfg.tools).toHaveProperty('fontTheme')
@@ -101,10 +103,20 @@ describe('createInitialAgent (design-kit wizard variant)', () => {
     expect(cfg.tools).not.toHaveProperty('websiteRebuild')
   })
 
-  it('does not wire the wizard stepper for the default variant', async () => {
+  it('stops after suggestDesignKits so the agent yields to the vibe picker', async () => {
+    const cfg = await createInitialAgent(undefined, undefined, 'design-kit')
+
+    // Without this, the assembly turn (designed to fire many tools in sequence)
+    // would barrel past the kit cards and auto-install, defeating the picker.
+    expect(cfg.stopAfterTools).toContain('suggestDesignKits')
+  })
+
+  it('does not wire the wizard stepper or suggestDesignKits for the default variant', async () => {
     const cfg = await createInitialAgent()
 
     expect(cfg.id).toBe('initial')
     expect(cfg.tools).not.toHaveProperty('setWizardStep')
+    expect(cfg.tools).not.toHaveProperty('suggestDesignKits')
+    expect(cfg.stopAfterTools ?? []).not.toContain('suggestDesignKits')
   })
 })

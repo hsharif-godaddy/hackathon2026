@@ -21,6 +21,17 @@ export function resolveDesignSystemBaseUrl(): string {
   return 'https://blobby.wsimg.com/brand-kits'
 }
 
+/**
+ * Resolve a catalog thumbnail/image path to an absolute URL. The live catalog stores
+ * these relative to the brand-kit base (e.g. `thumbnails/<id>/<hash>.webp`); an
+ * already-absolute URL is returned unchanged.
+ */
+export function resolveDesignSystemAssetUrl(path: string): string {
+  if (/^https?:\/\//i.test(path)) return path
+  const base = resolveDesignSystemBaseUrl().replace(/\/+$/, '')
+  return `${base}/${path.replace(/^\/+/, '')}`
+}
+
 export interface FetchOptions {
   cachePath?: string
   ttlMs?: number
