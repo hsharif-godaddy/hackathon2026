@@ -344,6 +344,7 @@ export default function ProjectCard({
         aria-label={t('builder_common_edit')}
         data-eid={generateClickEID('projects.card.edit')}
         data-testid="project-card-edit-button"
+        data-app-id={site.id}
       />
       <Menu id={`project-card-menu-${site.id}`} size="sm" closeOnSelect onSelect={markMenuClosed}>
         <MenuButton

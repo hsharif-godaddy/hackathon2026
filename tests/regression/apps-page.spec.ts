@@ -229,17 +229,17 @@ test.describe('Apps Page & Navigation', () => {
     const countBefore = await page.getByTestId('project-card-edit-button').count();
     console.log(`  Apps before delete: ${countBefore}`);
 
-    // The apps grid paginates at APPS_GRID_PAGE_SIZE (11 in app code). When the
-    // account holds more apps than the page size, the visible card count stays
-    // flat after delete because the next app shifts in from page 2 — so a
-    // count-based assertion can never go below the page size. Identify the
-    // specific card we're about to delete via its aria-label so the assertion
-    // is pagination-independent.
-    const deletedCardLabel = await page.getByTestId('project-card-edit-button').first().getAttribute('aria-label');
-    expect(deletedCardLabel, 'expected first app card to expose an aria-label so we can verify it disappears').toBeTruthy();
-    const escapedLabel = deletedCardLabel!.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-    const deletedCardLocator = page.locator(`[data-testid="project-card-edit-button"][aria-label="${escapedLabel}"]`);
-    const matchingBefore = await deletedCardLocator.count();
+    // The apps grid paginates at APPS_GRID_PAGE_SIZE. When the account holds
+    // more apps than the page size, the visible card count stays flat after a
+    // delete because the next app shifts in from page 2 — so a count-based
+    // assertion can never go below the page size. Identify the specific card
+    // we're about to delete via its unique per-app `data-app-id` (the edit
+    // button's aria-label is the generic "Edit" string, shared by every card,
+    // so it can't single out one card). The deleted app's id never refills
+    // from page 2, so asserting its card count drops to 0 is pagination-safe.
+    const deletedAppId = await page.getByTestId('project-card-edit-button').first().getAttribute('data-app-id');
+    expect(deletedAppId, 'expected first app card to expose a data-app-id so we can verify it disappears').toBeTruthy();
+    const deletedCardLocator = page.locator(`[data-testid="project-card-edit-button"][data-app-id="${deletedAppId}"]`);
 
     // The /apps page renders ProjectCard which always shows
     // DeleteProjectConfirmationModal regardless of the appbuilder-app-delete-modal
@@ -266,8 +266,8 @@ test.describe('Apps Page & Navigation', () => {
 
     // Verify deletion
     await expect(page.getByTestId(confirmationTestId)).not.toBeVisible();
-    await expect(deletedCardLocator).toHaveCount(matchingBefore - 1, { timeout: 10000 });
-    console.log(`  ✓ App deleted (card "${deletedCardLabel}" removed from grid)`);
+    await expect(deletedCardLocator).toHaveCount(0, { timeout: 10000 });
+    console.log(`  ✓ App deleted (card for app "${deletedAppId}" removed from grid)`);
 
     console.log('🎉 All apps page tests passed!');
   });
