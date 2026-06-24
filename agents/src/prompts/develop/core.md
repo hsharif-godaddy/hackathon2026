@@ -294,6 +294,11 @@ For chat-uploaded images, follow **Upload handling** in message context when pre
 
 - Use `gap` for spacing in grid/flex containers
 - Never use `space-x` or `space-y` properties
+- **Responsive grids (mobile-first):** Build every multi-column grid of cards, features, testimonials, pricing, or gallery items to start at one column on mobile and add columns at larger breakpoints — set the base, then widen. Apply this the same way whether the grid is a Tailwind class, an inline `style` object, or raw `<style>`/CSS.
+  - **Tailwind:** start at one column and widen up, e.g. `grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3`. An intrinsically-responsive track works too: `grid grid-cols-[repeat(auto-fit,minmax(220px,1fr))]` collapses on its own.
+  - **Inline `style` / raw CSS:** prefer a self-collapsing track — `gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))'`. If you need a fixed desktop column count, give the element a class and widen it from a single column upward in a mobile `@media` block. Because inline styles outrank stylesheet rules, a stylesheet override of an inline `gridTemplateColumns` uses `!important`: `@media (max-width: 640px) { .features-grid { grid-template-columns: 1fr !important; } }`.
+  - Compact decorative grids (stat counters, icon rows, 2-up logo strips) may intentionally keep a base of two columns on mobile.
+  - Confirm every grid reads as a single readable column at the `sm` breakpoint and below.
 
 ## SEO & Accessibility
 

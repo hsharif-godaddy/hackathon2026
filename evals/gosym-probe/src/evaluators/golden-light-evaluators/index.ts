@@ -10,6 +10,7 @@ import { semanticDensitySpec } from './specs/semantic-density.js';
 import { accessibilityCoverageSpec } from './specs/accessibility-coverage.js';
 import { linkQualitySpec } from './specs/link-quality.js';
 import { responsiveReadinessSpec } from './specs/responsive-readiness.js';
+import { responsiveGridCollapseSpec } from './specs/responsive-grid-collapse.js';
 import { inlineStyleRatioSpec } from './specs/inline-style-ratio.js';
 import { componentDecompositionSpec } from './specs/component-decomposition.js';
 
@@ -19,6 +20,7 @@ const DETERMINISTIC_SPECS = [
   accessibilityCoverageSpec,
   linkQualitySpec,
   responsiveReadinessSpec,
+  responsiveGridCollapseSpec,
   inlineStyleRatioSpec,
   componentDecompositionSpec,
 ];
