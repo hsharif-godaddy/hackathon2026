@@ -239,6 +239,7 @@ Configured in `.env` (copy from `.env.example`).
 | Variable             | Required | Default | Description                                                                                                                                                                                                         |
 | -------------------- | -------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `SOCKET_DIAGNOSTICS` | No       | —       | Set to `true` in AAB to gate the SSE diagnostic events `token_usage_summary`, `stream_timing_summary`, `stream_chunk_slow_gap`, and `stream_chunk_timeout` (emitted by the SSE path), consumed by `LatencyEvaluator` and the token-usage collector. When unset, no diagnostic events are emitted. |
+| `ENABLE_AI_DEVTOOLS` | No       | —       | Set to `false` when running evals. `@ai-sdk/devtools` registers a process-level middleware that accumulates every AI SDK event in memory with no eviction. Across a graduation run (20 trials × tool call volume per scenario), the shared in-memory store exhausts the V8 heap after ~80–100 cumulative LLM calls, crashing the agents process mid-run. The variable has no effect unless the devtools package is wired into the SDK initialization; leaving it unset defaults to enabled if the package is present. |
 
 ---
 

@@ -76,18 +76,22 @@ session (step 1) — no static GoCode key required. If you have a stale
 
 ## 4. Start airo-app-builder (AAB) Locally
 
-> **Important:** Start the agents service with `AUTH_TYPE=mock` and
-> `SOCKET_DIAGNOSTICS=true`. The default JWT mode requires AWS Secrets
-> Manager access that is not available locally. Socket diagnostics
-> enables timing events used by the latency evaluator.
+> **Important:** Start the agents service with `AUTH_TYPE=mock`,
+> `SOCKET_DIAGNOSTICS=true`, and `ENABLE_AI_DEVTOOLS=false`. The default
+> JWT mode requires AWS Secrets Manager access that is not available
+> locally. Socket diagnostics enables timing events used by the latency
+> evaluator. Disabling AI devtools is required for graduation runs —
+> the devtools middleware accumulates all AI SDK events in a single
+> process-level store with no eviction; across 20 trials it exhausts
+> the V8 heap and crashes the agents process mid-run.
 
 From the repo root:
 
 ```bash
-SOCKET_DIAGNOSTICS=true AUTH_TYPE=mock pnpm run dev
+SOCKET_DIAGNOSTICS=true AUTH_TYPE=mock ENABLE_AI_DEVTOOLS=false pnpm run dev
 ```
 
-Or add both variables to `agents/.env` so they persist across restarts.
+Or add all three variables to `agents/.env` so they persist across restarts.
 
 Wait until both services are ready before running the harness.
 
@@ -173,7 +177,7 @@ behavior on a known-good branch:
 
 ```bash
 # repo root, on the control branch (e.g. main)
-SOCKET_DIAGNOSTICS=true AUTH_TYPE=mock pnpm run dev
+SOCKET_DIAGNOSTICS=true AUTH_TYPE=mock ENABLE_AI_DEVTOOLS=false pnpm run dev
 
 # graduate to lock in the new baseline
 pnpm run eval --graduate-suite golden-light --fan-out

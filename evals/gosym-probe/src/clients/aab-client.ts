@@ -277,12 +277,18 @@ export class AABClient implements AgentClient {
     });
 
     on('complete', (data) => {
-      const inner = data.data as Record<string, unknown> | undefined;
-      const hasData = !!inner && Object.keys(inner).length > 0;
+      // SSE spreads all fields at the top level — extract known evaluator fields.
+      const evalData: Record<string, unknown> = {};
+      if (data.totalSteps !== undefined) evalData.totalSteps = data.totalSteps;
+      if (data.duration !== undefined) evalData.duration = data.duration;
+      if (data.finishReason !== undefined) evalData.finishReason = data.finishReason;
+      if (data.commitHash !== undefined) evalData.commitHash = data.commitHash;
+      if (data.agentId !== undefined) evalData.agentId = data.agentId;
+      const hasData = Object.keys(evalData).length > 0;
       this.dispatch({
         type: 'complete',
         content: (data.content as string) || this.accumulatedChunks,
-        ...(hasData ? { data: inner } : {}),
+        ...(hasData ? { data: evalData } : {}),
       });
       this.accumulatedChunks = '';
     });
@@ -326,12 +332,9 @@ export class AABClient implements AgentClient {
     });
 
     on('step_complete', (data) => {
-      const inner = data.data as Record<string, unknown> | undefined;
-      const hasData = !!inner && Object.keys(inner).length > 0;
       this.dispatch({
         type: 'step_complete',
         content: data.content as string,
-        ...(hasData ? { data: inner } : {}),
       });
     });
 

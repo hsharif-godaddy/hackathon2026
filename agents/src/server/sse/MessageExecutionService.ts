@@ -2666,6 +2666,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
             agentId: finalAgentName,
             finishReason,
             totalSteps: lastTurnResult?.currentStep ?? 1,
+            duration: `${Date.now() - turnStartMs}ms`,
             commitHash,
             usedFreeGrants,
             ...(activeAgentMessageId && { messageId: activeAgentMessageId }),

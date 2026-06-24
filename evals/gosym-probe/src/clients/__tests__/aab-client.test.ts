@@ -323,10 +323,11 @@ describe('AABClient (SSE)', () => {
       });
     });
 
-    it('passes nested data through on complete when non-empty', () => {
+    it('collects commitHash and agentId from top-level complete payload', () => {
       source.dispatch('complete', {
         content: 'done',
-        data: { commitHash: 'abc123', agentId: 'develop' },
+        commitHash: 'abc123',
+        agentId: 'develop',
       });
       expect(received[0]).toEqual({
         type: 'complete',
@@ -335,8 +336,22 @@ describe('AABClient (SSE)', () => {
       });
     });
 
-    it('omits data on complete when nested data is empty', () => {
-      source.dispatch('complete', { content: 'done', data: {} });
+    it('collects totalSteps, finishReason, and duration from top-level complete payload', () => {
+      source.dispatch('complete', {
+        content: 'done',
+        totalSteps: 12,
+        finishReason: 'end_turn',
+        duration: '4321ms',
+      });
+      expect(received[0]).toEqual({
+        type: 'complete',
+        content: 'done',
+        data: { totalSteps: 12, finishReason: 'end_turn', duration: '4321ms' },
+      });
+    });
+
+    it('omits data on complete when no evaluator fields are present', () => {
+      source.dispatch('complete', { content: 'done' });
       expect(received[0]).toEqual({ type: 'complete', content: 'done' });
     });
 
@@ -458,15 +473,11 @@ describe('AABClient (SSE)', () => {
       expect(received[0]).toEqual({ type: 'step_start', agentName: '' });
     });
 
-    it('maps step_complete with content and data', () => {
-      source.dispatch('step_complete', {
-        content: 'Agent response here',
-        data: { agentId: 'develop', stepIndex: 1 },
-      });
+    it('maps step_complete with content only (no data forwarded)', () => {
+      source.dispatch('step_complete', { content: 'Agent response here' });
       expect(received[0]).toEqual({
         type: 'step_complete',
         content: 'Agent response here',
-        data: { agentId: 'develop', stepIndex: 1 },
       });
     });
 
