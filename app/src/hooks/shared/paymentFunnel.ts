@@ -16,12 +16,20 @@ import { logImpressionEvent } from '@/utils/instrumentation';
 
 export type PaymentProvider = 'godaddy_payments' | 'stripe' | 'unknown';
 export type PaymentFlow = 'auto_provisioned' | 'manual_keys';
+export type PaymentFailureDetails = {
+  errorCode?: number | string;
+  errorType?: string;
+  flow?: PaymentFlow;
+  toolName: string;
+};
 
 interface ProviderState {
   intentLogged: boolean;
   setupStarted: boolean;
   setupCompleted: boolean;
+  setupFailed: boolean;
   setupVerified: boolean;
+  setupVerifyFailed: boolean;
   setupStartedAt: number | null;
 }
 
@@ -35,7 +43,9 @@ function ensureProviderState(provider: PaymentProvider): ProviderState {
       intentLogged: false,
       setupStarted: false,
       setupCompleted: false,
+      setupFailed: false,
       setupVerified: false,
+      setupVerifyFailed: false,
       setupStartedAt: null,
     };
     providerState.set(provider, state);
@@ -143,6 +153,38 @@ export function trackPaymentSetupCompleted(
   })();
 }
 
+export function trackPaymentSetupFailed(
+  appId: string | null,
+  provider: PaymentProvider,
+  details: PaymentFailureDetails
+): void {
+  ensureAppScope(appId);
+  const state = ensureProviderState(provider);
+  if (state.setupFailed) return;
+  state.setupFailed = true;
+
+  const durationMs = state.setupStartedAt ? Date.now() - state.setupStartedAt : undefined;
+  const payload = {
+    appId,
+    provider,
+    toolName: details.toolName,
+    ...(details.flow && { flow: details.flow }),
+    ...(details.errorType && { errorType: details.errorType }),
+    ...(details.errorCode !== undefined && { errorCode: details.errorCode }),
+    ...(durationMs !== undefined && { durationMs }),
+  };
+  shipAnalyticsLog('payment.setup.failed', payload);
+  logImpressionEvent('develop.payment.setup_failed', {
+    appId: appId ?? '',
+    provider,
+    toolName: details.toolName,
+    ...(details.flow && { flow: details.flow }),
+    ...(details.errorType && { errorType: details.errorType }),
+    ...(details.errorCode !== undefined && { errorCode: details.errorCode }),
+    ...(durationMs !== undefined && { durationMs }),
+  })();
+}
+
 export function trackPaymentSetupVerified(
   appId: string | null,
   provider: PaymentProvider,
@@ -165,6 +207,38 @@ export function trackPaymentSetupVerified(
     appId: appId ?? '',
     provider,
     ...(flow && { flow }),
+    ...(durationMs !== undefined && { durationMs }),
+  })();
+}
+
+export function trackPaymentSetupVerifyFailed(
+  appId: string | null,
+  provider: PaymentProvider,
+  details: PaymentFailureDetails
+): void {
+  ensureAppScope(appId);
+  const state = ensureProviderState(provider);
+  if (state.setupVerifyFailed) return;
+  state.setupVerifyFailed = true;
+
+  const durationMs = state.setupStartedAt ? Date.now() - state.setupStartedAt : undefined;
+  const payload = {
+    appId,
+    provider,
+    toolName: details.toolName,
+    ...(details.flow && { flow: details.flow }),
+    ...(details.errorType && { errorType: details.errorType }),
+    ...(details.errorCode !== undefined && { errorCode: details.errorCode }),
+    ...(durationMs !== undefined && { durationMs }),
+  };
+  shipAnalyticsLog('payment.setup.verify_failed', payload);
+  logImpressionEvent('develop.payment.setup_verify_failed', {
+    appId: appId ?? '',
+    provider,
+    toolName: details.toolName,
+    ...(details.flow && { flow: details.flow }),
+    ...(details.errorType && { errorType: details.errorType }),
+    ...(details.errorCode !== undefined && { errorCode: details.errorCode }),
     ...(durationMs !== undefined && { durationMs }),
   })();
 }

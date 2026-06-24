@@ -18,8 +18,10 @@ import {
   isPaymentRelatedSkill,
   trackPaymentIntent,
   trackPaymentSetupCompleted,
+  trackPaymentSetupFailed,
   trackPaymentSetupStarted,
   trackPaymentSetupVerified,
+  trackPaymentSetupVerifyFailed,
   trackPaymentSkillInvoked,
 } from '@/hooks/shared/paymentFunnel';
 import { BRAND_DATA_UPDATED_EVENT } from '@/hooks/useBrandData';
@@ -102,6 +104,83 @@ function getOperationType(toolName: string, input?: any): FileOperationType | nu
   if (toolName === 'write_file' || toolName === 'create_file') return 'create';
   if (toolName === 'delete_file') return 'delete';
   return null;
+}
+
+function getPaymentErrorDetails(tool: { error?: any; output?: any; result?: any }): {
+  errorCode?: number | string;
+  errorType?: string;
+} {
+  const raw = tool.output ?? tool.result;
+  const parsed =
+    typeof raw === 'string'
+      ? (() => {
+          try {
+            return JSON.parse(raw);
+          } catch {
+            return undefined;
+          }
+        })()
+      : raw;
+
+  const candidate = tool.error ?? parsed?.error ?? parsed?.data?.error;
+  const errorType =
+    typeof candidate?.errorType === 'string'
+      ? candidate.errorType
+      : typeof candidate?.type === 'string'
+        ? candidate.type
+        : 'TOOL_ERROR';
+  const errorCode =
+    typeof candidate?.errorCode === 'string' || typeof candidate?.errorCode === 'number'
+      ? candidate.errorCode
+      : typeof candidate?.code === 'string' || typeof candidate?.code === 'number'
+        ? candidate.code
+        : undefined;
+
+  return { errorCode, errorType };
+}
+
+function trackPaymentFailure(
+  tool: {
+    name: string;
+    error?: any;
+    output?: any;
+    result?: any;
+  },
+  appId: string | null
+): void {
+  const details = {
+    toolName: tool.name,
+    ...getPaymentErrorDetails(tool),
+  };
+
+  if (tool.name === 'stripe__setup') {
+    trackPaymentSetupFailed(appId, 'stripe', details);
+    return;
+  }
+
+  if (tool.name === 'godaddy-payments__setup' || tool.name === 'commerce__commerce_store_setup') {
+    trackPaymentSetupFailed(appId, 'godaddy_payments', details);
+    return;
+  }
+
+  if (
+    tool.name === 'godaddy-payments__store_channel_ensure' ||
+    tool.name === 'commerce__commerce_store_channel_ensure'
+  ) {
+    trackPaymentSetupVerifyFailed(appId, 'godaddy_payments', details);
+    return;
+  }
+
+  if (
+    tool.name.startsWith('stripe__') &&
+    tool.name !== 'stripe__setup' &&
+    tool.name !== 'stripe__status'
+  ) {
+    trackPaymentSetupVerifyFailed(appId, 'stripe', {
+      ...details,
+      flow: 'manual_keys',
+    });
+  }
 }
 
 /**
@@ -276,6 +355,16 @@ export async function handleToolResultSideEffects(
         error: err instanceof Error ? err.message : String(err),
       });
     }
+  } else {
+    try {
+      trackPaymentFailure(tool, appId);
+    } catch (err) {
+      logger.warn('toolSideEffects.payment.toolResult.failureAnalytics.failed', {
+        appId,
+        toolName: tool.name,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 
   // File operation tracking
@@ -407,7 +496,9 @@ export async function handleToolResultSideEffects(
           });
         });
       }
-    } catch { /* inbox sync is best-effort */ }
+    } catch {
+      /* inbox sync is best-effort */
+    }
   }
 
   // Brand data refresh (Brand Book UI)
