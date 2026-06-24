@@ -381,13 +381,17 @@ describe('AILibContextManager', () => {
       expect(anchor).toBeUndefined()
     })
 
-    it('injects upload classification when docs/.upload-classification.json exists', async () => {
+    it('injects the full action block for a legacy single-object classification when the file is attached this turn', async () => {
       viewByPath({ 'docs/.upload-classification.json': JSON.stringify({ fileName: 'logo.png' }) })
+      mockedRegistryRender.mockResolvedValue(null)
 
       const cm = new AILibContextManager()
       const result = await cm.buildContextMessages(
         '',
-        { metadata: { appId: 'app-123' } },
+        {
+          metadata: { appId: 'app-123' },
+          contextAttachments: [{ type: 'file_upload', data: { name: 'logo.png', isImage: true } }],
+        } as any,
         { includeTemplateDescription: false, includeAppContext: false }
       )
 
@@ -481,7 +485,60 @@ describe('AILibContextManager', () => {
       expect(note?.content).not.toContain('## Upload Classification')
     })
 
-    it('STILL re-handles an unplaced upload (pending placement) with the full action block', async () => {
+    it('re-handles an unplaced upload with the full action block when the file IS attached this turn', async () => {
+      viewByPath({
+        'docs/.upload-classifications.json': JSON.stringify({
+          files: [
+            { fileName: 'product.jpg', assetRole: null, placementIntent: 'display_on_site', storedUploadFilename: 'app_1_product.jpg' },
+          ],
+        }),
+      })
+      mockedRegistryRender.mockResolvedValue(null)
+
+      const cm = new AILibContextManager()
+      const result = await cm.buildContextMessages(
+        '',
+        {
+          metadata: { appId: 'app-123' },
+          contextAttachments: [{ type: 'file_upload', data: { name: 'product.jpg', isImage: true } }],
+        } as any,
+        { includeTemplateDescription: false, includeAppContext: false }
+      )
+
+      const block = result.contextMessages.find((m) => m.content.includes('## Upload handling'))
+      expect(block).toBeDefined()
+      expect(block?.content).toContain('product.jpg')
+    })
+
+    it('treats a selected_assets (array) attachment as attached-this-turn — imperative kept', async () => {
+      viewByPath({
+        'docs/.upload-classifications.json': JSON.stringify({
+          files: [
+            { fileName: 'banner.jpg', assetRole: null, placementIntent: 'display_on_site' },
+          ],
+        }),
+      })
+      mockedRegistryRender.mockResolvedValue(null)
+
+      const cm = new AILibContextManager()
+      const result = await cm.buildContextMessages(
+        '',
+        {
+          metadata: { appId: 'app-123' },
+          contextAttachments: [{ type: 'selected_assets', data: [{ filename: 'banner.jpg', mediaType: 'IMAGE', sourceType: 'upload' }] }],
+        } as any,
+        { includeTemplateDescription: false, includeAppContext: false }
+      )
+
+      const block = result.contextMessages.find((m) => m.content.includes('## Upload handling'))
+      expect(block).toBeDefined()
+      expect(block?.content).toContain('banner.jpg')
+    })
+
+    it('emits a passive availability note (NOT the action block) for an unplaced upload NOT attached this turn', async () => {
+      // The ghost case: an upload classified on an earlier turn/session, never
+      // placed, and not re-attached now. It must NOT re-issue an imperative —
+      // doing so placed a stale upload on an unrelated turn (AIROBUILD-2364).
       viewByPath({
         'docs/.upload-classifications.json': JSON.stringify({
           files: [
@@ -497,9 +554,44 @@ describe('AILibContextManager', () => {
         { includeTemplateDescription: false, includeAppContext: false }
       )
 
-      const block = result.contextMessages.find((m) => m.content.includes('## Upload handling'))
-      expect(block).toBeDefined()
-      expect(block?.content).toContain('product.jpg')
+      const note = result.contextMessages.find((m) => m.content.includes('product.jpg'))
+      expect(note).toBeDefined()
+      expect(note?.content).toContain('has not been placed')
+      expect(note?.content).toContain('src/assets/product.jpg')
+      expect(note?.content).not.toContain('## Upload handling')
+      expect(note?.content).not.toContain('## Upload Classification')
+    })
+
+    it('does not place a leftover upload on an unrelated turn (prod repro: placed SVG + ghost PNG)', async () => {
+      // Prod trace: a logo SVG placed on a prior turn, plus a coffee-cup PNG
+      // uploaded earlier but never placed. On a turn whose prompt is unrelated
+      // ("fix this runtime error") and re-attaches nothing, the PNG must surface
+      // only as passive availability — no imperative to place it anywhere.
+      viewByPath({
+        'docs/.upload-classifications.json': JSON.stringify({
+          files: [
+            { fileName: 'coffee-shop-logo-concept.svg', assetRole: 'logo', placementIntent: 'display_on_site', placed: true },
+            { fileName: 'coffee-cup.png', assetRole: null, placementIntent: 'display_on_site', storedUploadFilename: 'app_1_coffee-cup.png' },
+          ],
+        }),
+      })
+
+      const cm = new AILibContextManager()
+      const result = await cm.buildContextMessages(
+        '',
+        { metadata: { appId: 'app-123', _userMessage: 'Please analyze and fix this runtime error.' } },
+        { includeTemplateDescription: false, includeAppContext: false }
+      )
+
+      const svgNote = result.contextMessages.find((m) => m.content.includes('coffee-shop-logo-concept.svg'))
+      expect(svgNote?.content).toContain('already placed')
+
+      const pngNote = result.contextMessages.find((m) => m.content.includes('coffee-cup.png'))
+      expect(pngNote).toBeDefined()
+      expect(pngNote?.content).toContain('has not been placed')
+
+      const anyActionBlock = result.contextMessages.find((m) => m.content.includes('## Upload handling'))
+      expect(anyActionBlock).toBeUndefined()
     })
 
     it('propagates non-not-found errors from workspace.files.view (no silent fallback)', async () => {

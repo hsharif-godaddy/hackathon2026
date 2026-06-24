@@ -47,6 +47,56 @@ type AttachmentContextMessage = {
 }
 
 /**
+ * Pull a file name from one attachment item. The two upload attachment shapes
+ * key it differently — `selected_assets` items carry `filename`, `file_upload`
+ * items carry `name` — so accept either. Anything else yields null.
+ */
+function extractAttachmentFileName(item: unknown): string | null {
+  if (!item || typeof item !== 'object') return null
+  const record: Record<string, unknown> = item as Record<string, unknown>
+  const candidate: unknown = record.filename ?? record.name
+  return typeof candidate === 'string' && candidate.length > 0 ? candidate : null
+}
+
+/**
+ * File names the user is engaging on the CURRENT turn, drawn from the live
+ * context attachments. Used to decide whether a persisted upload classification
+ * should re-inject its imperative "place this" guidance (only when the file is
+ * attached this turn) or a passive availability note (a leftover from an
+ * earlier turn/session). Handles every upload attachment shape: an array of
+ * assets (`selected_assets`), `{ files: [...] }`, or a single `{ name }`
+ * (`file_upload`). Unrecognised shapes simply contribute no names — the entry
+ * then falls through to the passive branch, which is the safe default.
+ */
+function collectAttachedUploadFileNames(attachments: ContextAttachment[] | undefined): Set<string> {
+  const names: Set<string> = new Set<string>()
+  if (!attachments) return names
+  for (const attachment of attachments) {
+    const data: unknown = attachment.data
+    if (Array.isArray(data)) {
+      for (const item of data) {
+        const name: string | null = extractAttachmentFileName(item)
+        if (name) names.add(name)
+      }
+      continue
+    }
+    if (data && typeof data === 'object') {
+      const files: unknown = (data as { files?: unknown }).files
+      if (Array.isArray(files)) {
+        for (const item of files) {
+          const name: string | null = extractAttachmentFileName(item)
+          if (name) names.add(name)
+        }
+        continue
+      }
+      const name: string | null = extractAttachmentFileName(data)
+      if (name) names.add(name)
+    }
+  }
+  return names
+}
+
+/**
  * AI-Lib Context Manager
  * Bridges the gap between ai-lib agents and the rich context system
  */
@@ -223,6 +273,11 @@ export class AILibContextManager {
             })
         }
 
+        // File names the user is engaging this turn. An unplaced upload gets its
+        // imperative "place this" guidance re-injected ONLY when it is attached
+        // this turn; otherwise it is a leftover and gets a passive note (below).
+        const attachedUploadNames: Set<string> = collectAttachedUploadFileNames(context.contextAttachments)
+
         for (const entry of classificationEntries) {
             const fileName: string = entry.fileName || 'unknown'
             const isImage: boolean = /\.(png|jpg|jpeg|gif|svg|webp)$/i.test(fileName)
@@ -255,6 +310,27 @@ export class AILibContextManager {
                 conversationContextMessages.push({
                     role: 'user',
                     content: note,
+                    insertionOrder: 'after_history',
+                })
+                continue
+            }
+
+            // Imperative "place this" guidance is reserved for an upload the user
+            // is engaging THIS turn — the file is in the current attachments. The
+            // arrival turn's guidance comes from the upload renderers directly;
+            // this loop carries it across the continuation/handoff iterations of
+            // that SAME message (where the file_upload renderer skips re-classify
+            // and relies on re-injection). An unplaced upload that is NOT attached
+            // this turn is a leftover from an earlier turn/session — re-issuing an
+            // imperative for it made the agent place a stale upload on an
+            // unrelated turn (e.g. "fix this runtime error" → also swap the logo),
+            // AIROBUILD-2364. Emit only a passive availability note for those.
+            const attachedThisTurn: boolean = attachedUploadNames.has(fileName)
+            if (!attachedThisTurn) {
+                const locationHint: string = isImage ? `src/assets/${displayName}` : `docs/${displayName}`
+                conversationContextMessages.push({
+                    role: 'user',
+                    content: `Uploaded \`${displayName}\` is available on disk (\`${locationHint}\`) but has not been placed on the site. Do not place it unless the user explicitly asks.`,
                     insertionOrder: 'after_history',
                 })
                 continue
