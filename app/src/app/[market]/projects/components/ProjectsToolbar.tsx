@@ -40,7 +40,7 @@ export default function ProjectsToolbar({
 }: ProjectsToolbarProps) {
   const t = useTranslations()
 
-  const sortOptions = SORT_OPTIONS.map((o) => ({ id: o.id, label: t(o.labelKey, undefined, o.fallback) }))
+  const sortOptions = SORT_OPTIONS.map((o) => ({ id: o.id, label: t(o.labelKey) }))
 
   const searchPlaceholder = t('builder_projects_search_placeholder')
   const showSearch = section === 'all' || section === 'search'
