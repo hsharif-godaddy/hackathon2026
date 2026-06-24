@@ -195,8 +195,13 @@ test.describe('E2E v2 - Project Domain card', () => {
     const domainInput = page.locator('#project-domain-name');
     await expect(domainInput).toBeVisible({ timeout: DEFAULT_TIMEOUT });
 
-    // Type a valid new prefix (different from current) to enable Save
-    await domainInput.fill('e2e-save-test-prefix');
+    // Type a valid new prefix (different from current) to enable Save.
+    // Triple-click selects the existing value; pressSequentially fires per-keystroke
+    // input events so React's controlled onChange actually receives each character.
+    // fill() sets the DOM value directly and bypasses @ux/text-input's synthetic
+    // onChange, leaving currentProjectName unchanged and Save permanently disabled.
+    await domainInput.click({ clickCount: 3 });
+    await domainInput.pressSequentially('e2e-save-test-prefix');
 
     // Wait for Save to become enabled (debounce + validation response)
     const editActions = page.getByTestId('project-domain-edit-actions');
@@ -235,8 +240,10 @@ test.describe('E2E v2 - Project Domain card', () => {
     const domainInput = page.locator('#project-domain-name');
     await expect(domainInput).toBeVisible({ timeout: DEFAULT_TIMEOUT });
 
-    // Clear and type a value that's too short (< 5 chars)
-    await domainInput.fill('ab');
+    // Clear and type a value that's too short (< 5 chars).
+    // See "Save disables Cancel" test for why pressSequentially is required here.
+    await domainInput.click({ clickCount: 3 });
+    await domainInput.pressSequentially('ab');
 
     // Error message about minimum length should appear
     await expect(
@@ -271,8 +278,13 @@ test.describe('E2E v2 - Project Domain card', () => {
     const domainInput = page.locator('#project-domain-name');
     await expect(domainInput).toBeVisible({ timeout: DEFAULT_TIMEOUT });
 
-    // Type invalid characters (underscores, spaces)
-    await domainInput.fill('my_invalid domain!');
+    // Type invalid characters (underscores). Input must start and end with
+    // alphanumeric so only hasInvalidCharacters fires; if the last character
+    // were non-alphanumeric (e.g. '!'), hasInvalidBounds would trigger first
+    // and the wrong error message would appear (bounds is checked before chars).
+    // See "Save disables Cancel" test for why pressSequentially is required here.
+    await domainInput.click({ clickCount: 3 });
+    await domainInput.pressSequentially('my_invalid_domain');
 
     // Error about invalid characters
     await expect(
@@ -307,8 +319,10 @@ test.describe('E2E v2 - Project Domain card', () => {
     const domainInput = page.locator('#project-domain-name');
     await expect(domainInput).toBeVisible({ timeout: DEFAULT_TIMEOUT });
 
-    // Type a value starting with a hyphen (invalid bounds)
-    await domainInput.fill('-invalid-start');
+    // Type a value starting with a hyphen (invalid bounds).
+    // See "Save disables Cancel" test for why pressSequentially is required here.
+    await domainInput.click({ clickCount: 3 });
+    await domainInput.pressSequentially('-invalid-start');
 
     // Error about invalid bounds
     await expect(
