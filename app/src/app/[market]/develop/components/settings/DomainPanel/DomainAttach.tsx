@@ -198,7 +198,7 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
     isFetched: isDomainsFetched,
   } = useDomainsQuery({
     enabled: isAuthenticated && !authLoading,
-    filter: { domainStates: ['ACTIVE'], hasInternalDNS: true },
+    filter: { domainStates: ['DCC_ACTIVE_REGISTERED_DOMAINS'] },
   });
 
   // Unfiltered list — used for domain classification (useCustomerDomainAttach,
