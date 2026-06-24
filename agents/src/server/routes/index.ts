@@ -24,7 +24,6 @@ export { conversationsRouter } from './conversations.js';
 export { default as gitRemoteRouter } from './git-remote.js';
 export { default as dkimRouter } from './dkim.js';
 export { default as socialRouter } from './social.js';
-export { default as blogPostsRouter } from './blog-posts.js';
 export { customerLogsRouter } from './customer-logs.js';
 export { default as diagnoseRouter } from './diagnose.js';
 export { default as autoFixRouter } from './auto-fix.js';

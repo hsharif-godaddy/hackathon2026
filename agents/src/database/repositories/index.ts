@@ -9,16 +9,12 @@ import { AppRepository } from './AppRepository.js';
 import { SocialAssociationRepository } from './SocialAssociationRepository.js';
 import { SocialPostRepository } from './SocialPostRepository.js';
 import { ShareTokenRepository } from './ShareTokenRepository.js';
-import { RouteRepository } from './RouteRepository.js';
-import { BlogPostRepository } from './BlogPostRepository.js';
 import { AppCommerceBindingRepository } from './AppCommerceBindingRepository.js';
 import { SimpleCampaignRepository } from './SimpleCampaignRepository.js';
 import { MarketingUtmRepository } from './MarketingUtmRepository.js';
 
 // Create singleton instances
 export const appRepository = new AppRepository();
-export const routeRepository = new RouteRepository();
-export const blogPostRepository = new BlogPostRepository();
 
 export const oauthTokenRepository = new OAuthTokenRepository();
 export const importJobRepository = new ImportJobRepository();
@@ -39,8 +35,6 @@ export { ImportJobRepository } from './ImportJobRepository.js';
 export { SocialAssociationRepository } from './SocialAssociationRepository.js';
 export { SocialPostRepository } from './SocialPostRepository.js';
 export { ShareTokenRepository } from './ShareTokenRepository.js';
-export { RouteRepository } from './RouteRepository.js';
-export { BlogPostRepository } from './BlogPostRepository.js';
 export { AppCommerceBindingRepository } from './AppCommerceBindingRepository.js';
 export { SimpleCampaignRepository } from './SimpleCampaignRepository.js';
 export { MarketingUtmRepository } from './MarketingUtmRepository.js';

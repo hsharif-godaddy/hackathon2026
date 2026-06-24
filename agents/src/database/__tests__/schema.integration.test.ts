@@ -49,7 +49,6 @@ describe('Database Schema Integration Tests', () => {
         'app_commerce_bindings',
         'app_metadata',
         'apps',
-        'blog_posts',
         'conversation_messages',
         'conversation_summaries',
         'conversations',
@@ -61,7 +60,6 @@ describe('Database Schema Integration Tests', () => {
         'marketing_utm',
         'memory',
         'oauth_tokens',
-        'routes',
         'running_processes',
         'seo_quality_scores',
         'share_tokens',
@@ -353,7 +351,7 @@ describe('Database Schema Integration Tests', () => {
         ORDER BY name
       `).all() as { name: string }[];
 
-      expect(tables).toHaveLength(24); // core tables incl. main's app_commerce_* + dkim_onboarding and our campaign tables
+      expect(tables).toHaveLength(22); // core tables incl. main's app_commerce_* + dkim_onboarding and our campaign tables
     });
 
     it('backfills share_tokens.purpose to "user" on a pre-existing populated table', () => {

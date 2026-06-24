@@ -183,6 +183,28 @@ Continue building value...
 Wrap up with key takeaways and call-to-action...
 ```
 
+### Step 4: Register the post in `posts.json`
+
+The blog reads `src/content/blog/posts.json` — a manifest that gives each post a **stable `id`**. This `id` is what a marketing campaign references (it never changes, even if the slug/title does). Add an entry for the new post:
+
+```json
+[
+  {
+    "id": "post-7k2m9x1qab3d",                 // opaque stable id (see format below); campaigns reference this
+    "slug": "morning-workout-benefits",        // must match the .md filename (without .md)
+    "markdownPath": "./morning-workout-benefits.md",
+    "publishedAt": "2024-12-08T10:00:00Z",     // authoritative for scheduling/reveal
+    "status": "published",                      // "published" | "scheduled" | "draft"
+    "campaignId": "camp-abc123"                 // omit unless the post belongs to a campaign
+  }
+]
+```
+
+- **`id` format:** `post-` followed by 12 random lowercase letters/digits, e.g. `post-7k2m9x1qab3d` — the SAME format as social post ids (`post-<nanoid>`). It is an opaque, permanent handle: do NOT derive it from the slug/title, and never change it (campaigns reference it via `contentRefId`).
+- **Campaign posts MUST be registered here** — the campaign's `contentRefId` points at this `id`.
+- For a standalone post you may skip the manifest entry (the loader falls back to the `.md` file with `id = slug`), but registering it is recommended so it has a stable id.
+- Keep `slug`/`markdownPath` in sync with the `.md` filename; set `publishedAt` to the same value as the frontmatter.
+
 ---
 
 ## Frontmatter Field Requirements

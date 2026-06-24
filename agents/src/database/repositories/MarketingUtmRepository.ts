@@ -11,7 +11,7 @@ const nanoid = customAlphabet('0123456789abcdefghijklmnopqrstuvwxyz', 12);
 const logger = Logger.create({ component: 'marketing-utm-repository' });
 
 export interface CreateUTMAttributionParams {
-  /** Id of the target content row (social_posts.id, blog_posts.id, …). */
+  /** Id of the target content row (social_posts.id, …). */
   contentRefId: string;
   utmSource?: UtmSource;
   utmMedium?: UtmMedium;

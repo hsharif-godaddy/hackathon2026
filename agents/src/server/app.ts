@@ -184,7 +184,7 @@ import compression from 'compression';
 
 import { create as createServer } from './server-factory.js';
 import { corsMiddleware, timingAllowOriginMiddleware, errorHandler, notFoundHandler, requestLogger, jwtAuthMiddleware, validateProductAccess } from './middleware/index.js';
-import { agentsRouter, appsRouter, chatRouter, healthRouter, diagnosticsRouter, gitRouter, debugRouter, filesRouter, filesPublicRouter, publishRouter, downloadRouter, dbRouter, dbImportRouter, todoListRouter, securityMisconfigScanRouter, vulnerabilityScanRouter, securityReportRouter, secretsScanRouter, videoRouter, conversationsRouter, qaAnalyzeRouter, gitRemoteRouter, goLiveRouter, adsenseRouter, complianceRouter, socialRouter, blogPostsRouter, customerLogsRouter, diagnoseRouter, autoFixRouter, zipImportRouter, uiKitRouter, shareRouter, mediaRouter, modelsRouter, profilesRouter, transferValidateRouter, runtimeErrorsRouter, formatOverridesRouter, brandDataRouter, designKitRouter, rebuildRouter, nextActionsRouter, captureScreenshotRouter, feedbackRouter, inboxAccountRouter, seoQualityRouter, campaignsRouter, appMetadataRouter, commerceRouter, dkimRouter } from './routes/index.js';
+import { agentsRouter, appsRouter, chatRouter, healthRouter, diagnosticsRouter, gitRouter, debugRouter, filesRouter, filesPublicRouter, publishRouter, downloadRouter, dbRouter, dbImportRouter, todoListRouter, securityMisconfigScanRouter, vulnerabilityScanRouter, securityReportRouter, secretsScanRouter, videoRouter, conversationsRouter, qaAnalyzeRouter, gitRemoteRouter, goLiveRouter, adsenseRouter, complianceRouter, socialRouter, customerLogsRouter, diagnoseRouter, autoFixRouter, zipImportRouter, uiKitRouter, shareRouter, mediaRouter, modelsRouter, profilesRouter, transferValidateRouter, runtimeErrorsRouter, formatOverridesRouter, brandDataRouter, designKitRouter, rebuildRouter, nextActionsRouter, captureScreenshotRouter, feedbackRouter, inboxAccountRouter, seoQualityRouter, campaignsRouter, appMetadataRouter, commerceRouter, dkimRouter } from './routes/index.js';
 import { initAgentRuntime, getEventChannel, getAgentFactory, getMessageLifecycleDeps } from './agent-runtime.js';
 import { EventStreamRegistry } from './sse/EventStreamRegistry.js';
 import { initSSERegistry } from './sse/registry-singleton.js';
@@ -461,7 +461,6 @@ protectedRouter.use('/', adsenseRouter);
 protectedRouter.use('/apps', complianceRouter);
 protectedRouter.use('/', conversationsRouter);
 protectedRouter.use('/', socialRouter);
-protectedRouter.use('/', blogPostsRouter);
 protectedRouter.use('/media', mediaRouter);
 protectedRouter.use('/', transferValidateRouter);
 protectedRouter.use('/', modelsRouter);

@@ -4,6 +4,8 @@
  * Defines the structure for blog posts in the application.
  */
 export interface BlogPost {
+  /** Stable id from posts.json (format: `post-<nanoid>`, same as social post ids) — the handle a marketing campaign references. Falls back to slug for un-manifested posts. */
+  id?: string;
   /** URL-friendly identifier */
   slug: string;
   /** Post title */
@@ -30,6 +32,8 @@ export interface BlogPost {
   seoDescription?: string;
   /** Whether post is published or draft */
   published: boolean;
+  /** Lifecycle status from posts.json (published | scheduled | draft) */
+  status?: 'published' | 'scheduled' | 'draft';
 }
 
 /**
@@ -83,6 +87,19 @@ export function getBlogPosts(): BlogPost[] {
 export function getPostBySlug(slug: string): BlogPost | null {
   const now = new Date();
   return blogPosts.find(post => post.slug === slug && post.published && new Date(post.publishedAt) <= now) || null;
+}
+
+/**
+ * Get a blog post by its stable manifest id (posts.json `id`)
+ * This is how a marketing campaign resolves the blog asset it references
+ * (simple_campaign_content.contentRefId). Unlike slug lookups it ignores the
+ * publish-date gate so a campaign can resolve scheduled/future posts too.
+ *
+ * @param id - Stable post id from posts.json
+ * @returns Blog post or null if not found
+ */
+export function getPostById(id: string): BlogPost | null {
+  return blogPosts.find(post => post.id === id) || null;
 }
 
 /**

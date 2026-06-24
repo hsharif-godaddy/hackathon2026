@@ -102,7 +102,7 @@ skill({
 1. **Components:** BlogCard.tsx, BlogGrid.tsx, BlogHero.tsx, BlogPost.tsx
 2. **Pages:** Blog.tsx, BlogPostPage.tsx
 3. **Utilities:** blog.ts, frontmatter.ts
-4. **Content Setup:** index.ts, README.md
+4. **Content Setup:** index.ts, posts.json (post manifest — stable ids/scheduling), README.md
 
 **Important:** The install action handles all file copying automatically - you don't need to use str_replace_based_edit_tool!
 
