@@ -2,6 +2,7 @@ version: "1.0"
 
 suite:
   name: "website"
+  agentId: "643efd2d-2dbe-461a-9d2e-188baab483a0"
   description: "Production trace evaluators for the Website (airo-app-builder) product area"
   evaluatorIds:
     - "airo-batch-skill-authentication"
