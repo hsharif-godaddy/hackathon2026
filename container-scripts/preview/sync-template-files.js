@@ -522,6 +522,7 @@ const SYNC_MANIFEST = [
     known_hashes: [
       'af484ed6d3e61e6f1292a3417163f57a', // before vitest 4.x + tsx/esbuild/babel security upgrades
       '779ae8d66e49a0ff908bd31689c8be67', // merge main into domains-page-spacing-fix — pre-main v8 package-lock.json
+      'abb2e6d76e9d7665f6244f3ffb51df05', // before undici 7.28.0 security upgrade (GHSA-vmh5-mc38-953g)
     ],
     force: false
   }
