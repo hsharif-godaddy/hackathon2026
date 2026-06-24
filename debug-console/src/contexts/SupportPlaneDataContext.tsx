@@ -96,62 +96,70 @@ export function SupportPlaneDataProvider({ children, startDate, endDate }: Props
   const fetchAll = useCallback(async () => {
     setData(prev => ({ ...prev, loading: true, error: null }));
 
+    // Each fetch gets an independent 90s timeout. Promise.allSettled ensures
+    // that a slow or failed scan yields null rather than blocking loading: true forever.
+    const t = (url: string): Promise<Response> =>
+      fetch(url, { signal: AbortSignal.timeout(90_000) });
+
+    async function safeJson<T>(result: PromiseSettledResult<Response>, fallback: T): Promise<T> {
+      if (result.status === 'rejected') return fallback;
+      const res: Response = result.value;
+      if (!res.ok) return fallback;
+      return res.json().catch(() => fallback) as Promise<T>;
+    }
+
     try {
-      // Get current month/year for calendar
       const now: Date = new Date();
       const year: number = now.getFullYear();
       const month: number = now.getMonth() + 1;
 
-      // Default: fetch insights from last 30 days (matches DerivedInsightsPanel and Raw Analytics defaults)
       const defaultInsightsDays: number = 30;
       const cutoffDate: Date = new Date();
       cutoffDate.setDate(cutoffDate.getDate() - defaultInsightsDays);
       const createdAfter: string = cutoffDate.toISOString();
 
-      // Build URL params for transcript analytics (default: last 30 days to match AnalysisPanel)
       const defaultAnalyticsDays: number = 30;
       const analyticsStartDate: Date = new Date();
       analyticsStartDate.setDate(analyticsStartDate.getDate() - defaultAnalyticsDays);
-      const defaultStartDate: string = analyticsStartDate.toISOString().split('T')[0];
-      const defaultEndDate: string = new Date().toISOString().split('T')[0];
+      const defaultStartDate: string = analyticsStartDate.toISOString().split('T')[0]!;
+      const defaultEndDate: string = new Date().toISOString().split('T')[0]!;
 
       const dateParams: URLSearchParams = new URLSearchParams();
       dateParams.append('start_date', startDate || defaultStartDate);
       dateParams.append('end_date', endDate || defaultEndDate);
       const dateQueryString: string = dateParams.toString();
 
-      // Fetch all data in parallel
       const [
-        calendarRes,
-        analyticsRes,
-        bugsRes,
-        featuresRes,
-        patternsRes,
-        browseRes,
-      ] = await Promise.all([
-        fetch(`/api/supportplane/transcripts/calendar?year=${year}&month=${month}`),
-        fetch(`/api/supportplane/transcripts/analytics${dateQueryString ? `?${dateQueryString}` : ''}`),
-        fetch(`/api/supportplane/insights/bugs?created_after=${createdAfter}`),
-        fetch(`/api/supportplane/insights/features?created_after=${createdAfter}`),
-        fetch(`/api/supportplane/insights/patterns?created_after=${createdAfter}`),
-        fetch('/api/supportplane/transcripts/browse?limit=50&offset=0'),
+        calendarResult,
+        analyticsResult,
+        bugsResult,
+        featuresResult,
+        patternsResult,
+        browseResult,
+      ] = await Promise.allSettled([
+        t(`/api/supportplane/transcripts/calendar?year=${year}&month=${month}`),
+        t(`/api/supportplane/transcripts/analytics${dateQueryString ? `?${dateQueryString}` : ''}`),
+        t(`/api/supportplane/insights/bugs?created_after=${createdAfter}`),
+        t(`/api/supportplane/insights/features?created_after=${createdAfter}`),
+        t(`/api/supportplane/insights/patterns?created_after=${createdAfter}`),
+        t('/api/supportplane/transcripts/browse?limit=50&offset=0'),
       ]);
 
       const [calendarData, analyticsData, bugsData, featuresData, patternsData, browseData] = await Promise.all([
-        calendarRes.ok ? calendarRes.json() : null,
-        analyticsRes.ok ? analyticsRes.json() : null,
-        bugsRes.ok ? bugsRes.json() : { bugs: [] },
-        featuresRes.ok ? featuresRes.json() : { features: [] },
-        patternsRes.ok ? patternsRes.json() : { patterns: [] },
-        browseRes.ok ? browseRes.json() : null,
+        safeJson(calendarResult, null),
+        safeJson(analyticsResult, null),
+        safeJson(bugsResult, { bugs: [] as unknown[] }),
+        safeJson(featuresResult, { features: [] as unknown[] }),
+        safeJson(patternsResult, { patterns: [] as unknown[] }),
+        safeJson(browseResult, null),
       ]);
 
       setData({
         calendar: calendarData,
-        analytics: analyticsData?.analytics || null,
-        bugs: bugsData.bugs || [],
-        features: featuresData.features || [],
-        patterns: patternsData.patterns || [],
+        analytics: (analyticsData as { analytics?: AnalyticsData } | null)?.analytics ?? null,
+        bugs: (bugsData as { bugs?: InsightRow[] } | null)?.bugs ?? [],
+        features: (featuresData as { features?: InsightRow[] } | null)?.features ?? [],
+        patterns: (patternsData as { patterns?: InsightRow[] } | null)?.patterns ?? [],
         browse: browseData,
         loading: false,
         error: null,

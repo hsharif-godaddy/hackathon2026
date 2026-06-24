@@ -789,3 +789,7 @@
 .emptyTitle { font-size: 14px; font-weight: 600; color: var(--sp-tx2); }
 .emptySub   { font-size: 12px; }
 
+/* ── Missing classes from refactor ────────────────────────── */
+.panelBody  { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+.markdown   { font-size: 13px; line-height: 1.6; color: var(--sp-tx1); }
+

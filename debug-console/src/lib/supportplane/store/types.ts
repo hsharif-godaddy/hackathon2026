@@ -34,6 +34,7 @@ export interface UploadUpdate {
 }
 
 export interface SupportplaneStore {
+  hasTranscripts(): Promise<boolean>;
   insertTranscript(row: TranscriptRow): Promise<boolean>;
   bulkInsertTranscripts(rows: TranscriptRow[]): Promise<{ inserted: number; skipped: number }>;
   queryTranscripts(filter: TranscriptFilter): Promise<TranscriptRow[]>;

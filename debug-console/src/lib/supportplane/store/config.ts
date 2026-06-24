@@ -1,5 +1,6 @@
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
+import { NodeHttpHandler } from '@smithy/node-http-handler';
 import { fromIni } from '@aws-sdk/credential-providers';
 
 export interface SupportplaneStoreConfig {
@@ -59,6 +60,9 @@ export function buildDynamoClient(
 
   const base = new DynamoDBClient({
     region,
+    // 8s connect + 8s socket timeout; maxAttempts=2 halves retry overhead on VPN-degraded connections
+    requestHandler: new NodeHttpHandler({ connectionTimeout: 8000, socketTimeout: 8000 }),
+    maxAttempts: 2,
     ...(credentials ? { credentials } : {}),
     ...clientOptions,
   });

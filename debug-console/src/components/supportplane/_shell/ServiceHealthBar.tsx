@@ -32,7 +32,7 @@ export default function ServiceHealthBar() {
             return;
         }
 
-        fetch('/api/supportplane/services/health')
+        fetch('/api/supportplane/services/health', { signal: AbortSignal.timeout(15_000) })
             .then(r => r.ok ? r.json() as Promise<ServiceHealth[]> : null)
             .then(data => {
                 if (data) {

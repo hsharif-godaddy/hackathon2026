@@ -31,9 +31,10 @@ storybook-static/
 # Turborepo
 .turbo/
 
-# Log directories (but not internal/logs/ source code)
+# Log directories (but not internal/logs/ or supportplane/logs/ source code)
 logs/
 !**/internal/logs/
+!**/supportplane/logs/
 
 # Log files
 agent.log

@@ -2,11 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { withAuth } from '@/lib/api-auth';
 import { logger } from '@/lib/logger';
-import { queryTranscripts } from '@/lib/supportplane/db/l1-transcript-db';
+import { getAllTranscriptsCached } from '@/lib/supportplane/db/transcript-cache';
+import type { TranscriptRow } from '@/lib/supportplane/db/l1-transcript-db';
 
 export const GET = withAuth(async (_req: NextRequest) => {
     try {
-        const all = await queryTranscripts({});
+        const all: TranscriptRow[] = await getAllTranscriptsCached();
         const nowMs = Date.now();
         const days7Ms = 7 * 24 * 60 * 60 * 1000;
         const days14Ms = 14 * 24 * 60 * 60 * 1000;

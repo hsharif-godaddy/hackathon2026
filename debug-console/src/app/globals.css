@@ -39,3 +39,9 @@ body {
     transform: translateX(400%);
   }
 }
+
+/* Material wave-bounce loader — matches the 5-dot Lottie animation */
+@keyframes sp-wave-bounce {
+  0%, 100% { transform: translateY(0); animation-timing-function: cubic-bezier(0.333, 0, 0.667, 1); }
+  50%       { transform: translateY(-8px); animation-timing-function: cubic-bezier(0.333, 0, 0.667, 1); }
+}

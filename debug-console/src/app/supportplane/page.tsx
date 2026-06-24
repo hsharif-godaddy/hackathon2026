@@ -20,6 +20,7 @@ import FunnelPanel from '@/components/supportplane/analysis/FunnelPanel';
 import Header from '@/components/supportplane/_shell/Header';
 import HeatmapPanel from '@/components/supportplane/analysis/HeatmapPanel';
 import LeadershipPanel from '@/components/supportplane/overview/LeadershipPanel';
+import LogsPanel from '@/components/supportplane/logs/LogsPanel';
 import OpsPanel from '@/components/supportplane/overview/OpsPanel';
 import RefundAuditPanel from '@/components/supportplane/overview/RefundAuditPanel';
 import Sidebar from '@/components/supportplane/_shell/Sidebar';
@@ -191,6 +192,9 @@ function SupportPlaneAppContent({
                     {/* Deep Dives */}
                     {panel === 'cannibalization' && <CannibalizationPanel />}
                     {panel === 'refund'          && <RefundAuditPanel />}
+
+                    {/* System */}
+                    {panel === 'app-logs' && <LogsPanel />}
 
                     {/* Legacy panels */}
                     {panel === 'dashboard'  && <DashboardPanel onNav={setPanel} />}

@@ -3,6 +3,15 @@ import { withAuth } from '@/lib/api-auth';
 import { logger } from '@/lib/logger';
 import { browsePage, countTranscripts, isTaggingActive, queryTranscripts, QueryFilters } from '@/lib/supportplane/db/l1-transcript-db';
 
+// 5-minute server-side cache for no-filter browse (matches fullScanCache / candidateCache TTL)
+interface BrowseCache {
+  expiresAt: number;
+  response: unknown;
+  inFlight: Promise<unknown> | null;
+}
+const browseCache: BrowseCache = { expiresAt: 0, response: null, inFlight: null };
+const BROWSE_CACHE_TTL_MS = 300_000;
+
 async function handler(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -35,6 +44,44 @@ async function handler(request: NextRequest) {
       filters.interaction_status || filters.sub_intent || filters.friction_point ||
       filters.tags?.length || filters.text_search || filters.start_date || filters.end_date
     );
+
+    // No-filter browse at offset 0: serve from 30s cache to absorb polling
+    if (!hasSearchFilter && pageOffset === 0) {
+      if (browseCache.expiresAt > Date.now() && browseCache.response !== null) {
+        return NextResponse.json(browseCache.response);
+      }
+      if (browseCache.inFlight) {
+        return NextResponse.json(await browseCache.inFlight);
+      }
+      const inFlight: Promise<unknown> = (async (): Promise<unknown> => {
+        const rows = await browsePage(pageLimit + 1, 0);
+        const hasMoreRows: boolean = rows.length > pageLimit;
+        const transcriptSlice: QueryFilters[] = rows.slice(0, pageLimit).map(({ full_transcript: _ft, conversation_summary: _cs, ...summary }) => summary) as unknown as QueryFilters[];
+        const taggingActiveFlag: boolean = await isTaggingActive();
+        const payload: unknown = {
+          transcripts: transcriptSlice,
+          tagging_active: taggingActiveFlag,
+          pagination: { total: transcriptSlice.length + (hasMoreRows ? 1 : 0), total_is_estimate: true, limit: pageLimit, offset: 0, has_more: hasMoreRows },
+          filters: { app_id: null, shopper_id: null, customer_id: null, domain: null, tags: null, text_search: null, start_date: null, end_date: null },
+        };
+        browseCache.response = payload;
+        browseCache.expiresAt = Date.now() + BROWSE_CACHE_TTL_MS;
+        return payload;
+      })()
+        .then((payload: unknown) => {
+          // Clear inFlight on success so the next miss re-queries; expiresAt above keeps the warm cache.
+          browseCache.inFlight = null;
+          return payload;
+        })
+        .catch((err: unknown) => {
+          // Clear inFlight on failure too, otherwise a transient scan error stays cached as a
+          // rejected promise and every later no-filter browse returns 500 until restart.
+          browseCache.inFlight = null;
+          throw err;
+        });
+      browseCache.inFlight = inFlight;
+      return NextResponse.json(await inFlight);
+    }
 
     let transcripts: QueryFilters[];
     let hasMore: boolean;

@@ -103,7 +103,7 @@ export default function TranscriptsBrowsePanel({ onUpload }: { onUpload: () => v
                     pollRef.current = setInterval(() => {
                         void fetchTranscripts(true);
                         void fetchUntaggedCount();
-                    }, 10000);
+                    }, 60000);
                 } else if (!stillActive && pollRef.current) {
                     clearInterval(pollRef.current);
                     pollRef.current = null;
@@ -151,7 +151,11 @@ export default function TranscriptsBrowsePanel({ onUpload }: { onUpload: () => v
     useEffect(() => {
         const fetchFilters = async () => {
             try {
-                const response = await fetch('/api/supportplane/transcripts/filters');
+                // 60s timeout — warm-cache responses are <1ms; cold-cache (first load after server restart)
+                // varies 14-30s over VPN. 60s covers worst-case plus auth/Next.js overhead.
+                const response = await fetch('/api/supportplane/transcripts/filters', {
+                    signal: AbortSignal.timeout(60_000),
+                });
                 const data = await response.json();
                 if (response.ok) {
                     setFilterOptions(data.filters);

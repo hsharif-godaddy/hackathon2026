@@ -228,9 +228,13 @@ async function runAthenaQuery(
   db: string,
   outputBucket: string
 ): Promise<Record<string, unknown>[]> {
+  // If already has s3:// scheme, use as-is; if has a prefix (bucket/key), just add scheme;
+  // if bare bucket name, append /athena-results/ so Athena can write results.
   const outputLocation = outputBucket.startsWith('s3://')
     ? outputBucket
-    : `s3://${outputBucket}/athena-results/`;
+    : outputBucket.includes('/')
+      ? `s3://${outputBucket}/`
+      : `s3://${outputBucket}/athena-results/`;
 
   const start = await athena.send(
     new StartQueryExecutionCommand({
@@ -512,7 +516,7 @@ export async function runFeedbackIngestion(
         const msg = (err as Error).message;
         await logIngestionError(key, 'athena', msg);
         progress.errors++;
-        logger.warn('feedback-ingest.athena.error', { ym, error: msg });
+        logger.warn('feedback-ingest.athena.error', { ym, db: c.athenaDb, table: c.athenaTable, output: c.athenaOutput, error: msg });
         emit({ message: `Athena ${ym} error: ${msg.slice(0, 120)}` });
       }
     }
@@ -550,7 +554,8 @@ export async function runFeedbackIngestion(
   progress.skipped += allS3Files.length - s3ToProcess.length;
 
   emit({
-    totalFiles: progress.processed + s3ToProcess.length,
+    // totalFiles = Athena (processed + skipped) + S3 new to process; S3 already-done is in progress.skipped
+    totalFiles: progress.processed + progress.skipped + s3ToProcess.length,
     skipped: progress.skipped,
     phase: 'ingesting',
     message: `S3: ${s3ToProcess.length} new files`,

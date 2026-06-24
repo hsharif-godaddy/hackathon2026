@@ -8,6 +8,7 @@ import {
 
 import { buildDynamoClient, getConfig } from '@/lib/supportplane/store/config';
 import { logger } from '@/lib/logger';
+import { SP_MASK, spLog } from '@/lib/supportplane/sp-logger';
 
 let client: DynamoDBDocumentClient | null = null;
 
@@ -17,24 +18,51 @@ function getClient(): DynamoDBDocumentClient {
   return client;
 }
 
+// 5-minute module-level cache for the full feedback table scan.
+// All analytics queries share this single scan result — eliminates N redundant
+// full-table reads per page load. 15 min matches the L1 transcript fullScanCache.
+const FEEDBACK_SCAN_CACHE_TTL_MS = 900_000;
+// Hard wall-clock cap on a single scan attempt. On bad VPN the SDK can stall
+// indefinitely — this breaks the inFlight promise so background retries don't queue.
+const FEEDBACK_SCAN_TIMEOUT_MS = 90_000;
+interface FeedbackScanCache {
+  rows: Record<string, unknown>[];
+  expiresAt: number;
+  // true once at least one scan has succeeded — used to distinguish stale vs cold cache
+  hasData: boolean;
+  inFlight: Promise<Record<string, unknown>[]> | null;
+}
+const feedbackScanCache: FeedbackScanCache = { rows: [], expiresAt: 0, hasData: false, inFlight: null };
+
+function invalidateFeedbackScanCache(): void {
+  feedbackScanCache.expiresAt = 0;
+  // Keep hasData true — stale rows are still usable until the next scan completes
+}
+
 async function getTableKeyNames(tableName: string): Promise<string[]> {
   const res = await getClient().send(new DescribeTableCommand({ TableName: tableName }));
   return (res.Table?.KeySchema ?? []).map((k) => k.AttributeName!);
 }
 
-async function scanAll(tableName: string): Promise<Record<string, unknown>[]> {
+async function scanSegment(tableName: string, segment: number, totalSegments: number): Promise<Record<string, unknown>[]> {
   const rows: Record<string, unknown>[] = [];
   let start: Record<string, unknown> | undefined;
   do {
     const page = await getClient().send(
-      new ScanCommand({ TableName: tableName, ExclusiveStartKey: start })
+      new ScanCommand({ TableName: tableName, Segment: segment, TotalSegments: totalSegments, ExclusiveStartKey: start })
     );
-    for (const item of page.Items || []) {
-      rows.push(item as Record<string, unknown>);
-    }
+    for (const item of page.Items ?? []) rows.push(item as Record<string, unknown>);
     start = page.LastEvaluatedKey as Record<string, unknown> | undefined;
   } while (start);
   return rows;
+}
+
+async function scanAll(tableName: string, parallelSegments = 1): Promise<Record<string, unknown>[]> {
+  if (parallelSegments <= 1) return scanSegment(tableName, 0, 1);
+  const results = await Promise.all(
+    Array.from({ length: parallelSegments }, (_, i) => scanSegment(tableName, i, parallelSegments))
+  );
+  return results.flat();
 }
 
 // ── Positional param index maps ───────────────────────────────────
@@ -135,9 +163,66 @@ export class FeedbackStore {
   private statsTable(): string { return getConfig().feedbackStatsTable; }
   private ingestTable(): string { return getConfig().feedbackIngestTable; }
 
+  // Starts a full-table scan and stores it in feedbackScanCache.inFlight.
+  // Returns the inFlight promise so callers can optionally await it.
+  // Safe to call multiple times — no-ops if a scan is already running.
+  private _startScan(): Promise<Record<string, unknown>[]> {
+    if (feedbackScanCache.inFlight) return feedbackScanCache.inFlight;
+
+    spLog(SP_MASK.INFO, 'feedback-store', `Full table scan start — ${this.feedbackTable()}`);
+
+    const scanPromise: Promise<Record<string, unknown>[]> = scanAll(this.feedbackTable(), 4)
+      .then((rows) => {
+        feedbackScanCache.rows = rows;
+        feedbackScanCache.expiresAt = Date.now() + FEEDBACK_SCAN_CACHE_TTL_MS;
+        feedbackScanCache.hasData = true;
+        feedbackScanCache.inFlight = null;
+        spLog(SP_MASK.INFO, 'feedback-store', `Scan complete — ${rows.length} rows cached for ${FEEDBACK_SCAN_CACHE_TTL_MS / 60_000}m`);
+        return rows;
+      })
+      .catch((err: unknown) => {
+        feedbackScanCache.inFlight = null;
+        spLog(SP_MASK.ERROR, 'feedback-store', `Scan error: ${(err as Error).message}`);
+        throw err;
+      });
+
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => {
+        feedbackScanCache.inFlight = null;
+        const msg = `Feedback scan timed out after ${FEEDBACK_SCAN_TIMEOUT_MS / 1000}s — DynamoDB slow over VPN`;
+        spLog(SP_MASK.WARN, 'feedback-store', msg);
+        reject(new Error(msg));
+      }, FEEDBACK_SCAN_TIMEOUT_MS)
+    );
+
+    feedbackScanCache.inFlight = Promise.race([scanPromise, timeoutPromise]);
+    return feedbackScanCache.inFlight;
+  }
+
   async scanFeedback(env?: string): Promise<Record<string, unknown>[]> {
-    const items = await scanAll(this.feedbackTable());
-    return env ? items.filter((i) => i['env'] === env) : items;
+    let all: Record<string, unknown>[];
+
+    if (Date.now() < feedbackScanCache.expiresAt) {
+      // Fresh cache hit — instant
+      spLog(SP_MASK.DEBUG, 'feedback-store', `Cache hit — ${feedbackScanCache.rows.length} rows`);
+      all = feedbackScanCache.rows;
+    } else if (feedbackScanCache.hasData) {
+      // Stale-while-revalidate: return old rows immediately, refresh in background.
+      // Prevents the timeout retry-storm: a timed-out background scan doesn't block
+      // the next caller — they get stale data and another background scan is queued.
+      spLog(SP_MASK.DEBUG, 'feedback-store', `Stale cache (${feedbackScanCache.rows.length} rows) — serving stale, refreshing in background`);
+      void this._startScan(); // fire-and-forget; updates cache when complete
+      all = feedbackScanCache.rows;
+    } else if (feedbackScanCache.inFlight) {
+      // Cold cache (first load) — another request already started the scan, join it
+      spLog(SP_MASK.DEBUG, 'feedback-store', 'Cold cache — joining in-flight scan');
+      all = await feedbackScanCache.inFlight;
+    } else {
+      // Cold cache, no scan running — start one and wait (first request after restart)
+      all = await this._startScan();
+    }
+
+    return env ? all.filter((i) => i['env'] === env) : all;
   }
 
   // ── Ingest writes ────────────────────────────────────────────────
@@ -270,6 +355,7 @@ export class FeedbackStore {
         logger.warn('feedback-store.clear.ingest.unprocessed', { unprocessed: res.UnprocessedItems });
       }
     }
+    invalidateFeedbackScanCache();
     logger.info('feedback-store.clear.done', { env });
   }
 

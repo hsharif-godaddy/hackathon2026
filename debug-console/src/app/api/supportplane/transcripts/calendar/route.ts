@@ -7,7 +7,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withAuth } from '@/lib/api-auth';
 import { logger } from '@/lib/logger';
-import { queryTranscripts } from '@/lib/supportplane/db/l1-transcript-db';
+import { getAllTranscriptsCached } from '@/lib/supportplane/db/transcript-cache';
+import type { TranscriptRow } from '@/lib/supportplane/db/l1-transcript-db';
 
 interface CalendarDay {
   date: string;
@@ -20,7 +21,7 @@ async function handler(request: NextRequest) {
     const year = parseInt(searchParams.get('year') || new Date().getFullYear().toString(), 10);
     const month = parseInt(searchParams.get('month') || (new Date().getMonth() + 1).toString(), 10);
 
-    const allRows = await queryTranscripts({});
+    const allRows: TranscriptRow[] = await getAllTranscriptsCached();
     const targetMonth = month.toString().padStart(2, '0');
     const dayMap = new Map<string, number>();
 

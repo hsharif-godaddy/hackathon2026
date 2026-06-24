@@ -4,9 +4,10 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
     AlertCircle, ArrowDown, ArrowUp, ArrowUpDown, CheckCircle, ChevronDown,
     ChevronLeft, ChevronRight, ChevronUp, CloudDownload, Columns, Database,
-    ExternalLink, Info, RefreshCw, Volume2, XCircle,
+    ExternalLink, RefreshCw, Volume2, XCircle,
 } from 'lucide-react';
 import sp from '@/components/supportplane/sp.module.css';
+import { WaveDots } from '@/components/supportplane/WaveDots';
 
 // ── Types ──────────────────────────────────────────────────────────
 
@@ -193,12 +194,15 @@ function playSuccessBeep(): void {
 
 // ── Sub-components ─────────────────────────────────────────────────
 
-function KpiTile({ value, label, sub, color }: { value: string; label: string; sub: string; color: string }) {
+function KpiTile({ value, label, sub, color, loading }: { value: string; label: string; sub: string; color: string; loading?: boolean }) {
     return (
         <div className={sp.kpiCard}>
-            <div className={sp.kpiValue} style={{ color }}>{value}</div>
+            {loading
+                ? <div style={{ marginBottom: 4 }}><WaveDots size={8} gap={5} /></div>
+                : <div className={sp.kpiValue} style={{ color }}>{value}</div>
+            }
             <div className={sp.kpiLabel}>{label}</div>
-            <div className={sp.kpiSub}>{sub}</div>
+            <div className={sp.kpiSub}>{loading ? '…' : sub}</div>
         </div>
     );
 }
@@ -230,6 +234,7 @@ export default function FeedbackBrowsePanel({ syncTrigger = 0 }: { syncTrigger?:
 
     // ── Log panel ──
     const [logOpen, setLogOpen] = useState(false);
+    const [logTab, setLogTab] = useState<'all' | 'errors'>('all');
 
     // ── Browse state ──
     const [rows,    setRows]    = useState<FeedbackRow[]>([]);
@@ -330,8 +335,11 @@ export default function FeedbackBrowsePanel({ syncTrigger = 0 }: { syncTrigger?:
 
     const startPoll = useCallback(() => {
         stopPoll();
+        let pollInFlight = false;
         pollRef.current = setInterval(async () => {
             if (!syncingRef.current) { stopPoll(); return; }
+            if (pollInFlight) return;
+            pollInFlight = true;
             try {
                 const res = await fetch('/api/supportplane/feedback/sync');
                 if (!res.ok) return;
@@ -339,8 +347,10 @@ export default function FeedbackBrowsePanel({ syncTrigger = 0 }: { syncTrigger?:
                 setStatus(d.status);
                 setCoverage(d.coverage);
                 if (!forceResyncRef.current) setLog(d.log ?? []);
-            } catch { /* ignore poll errors */ }
-        }, 5000);
+            } catch { /* ignore poll errors */ } finally {
+                pollInFlight = false;
+            }
+        }, 15000);
     }, [stopPoll]);
 
     const runStream = useCallback(async (url: string): Promise<'done' | 'dropped' | 'error'> => {
@@ -378,6 +388,10 @@ export default function FeedbackBrowsePanel({ syncTrigger = 0 }: { syncTrigger?:
                             return 'error';
                         }
                         setSyncProgress(p);
+                        // Once clear is confirmed via SSE, re-enable poll so log count updates live
+                        if (forceResyncRef.current && p.message?.includes('data cleared')) {
+                            forceResyncRef.current = false;
+                        }
                     } catch { /* malformed SSE line */ }
                 }
             }
@@ -404,6 +418,9 @@ export default function FeedbackBrowsePanel({ syncTrigger = 0 }: { syncTrigger?:
             ? '/api/supportplane/feedback/sync/stream?force=true'
             : '/api/supportplane/feedback/sync/stream';
 
+        // Start poll immediately so log count updates every 5s even while stream is active
+        startPoll();
+
         try {
             let attempt = 0;
             while (syncingRef.current) {
@@ -412,9 +429,10 @@ export default function FeedbackBrowsePanel({ syncTrigger = 0 }: { syncTrigger?:
 
                 attempt++;
                 setStreamDropped(true);
-                if (attempt === 1) startPoll();
 
-                await new Promise<void>(r => setTimeout(r, 3000));
+                // Exponential backoff: 5s, 10s, 20s, cap at 30s — gives server time to recover
+                const backoffMs = Math.min(5000 * Math.pow(2, attempt - 1), 30000);
+                await new Promise<void>(r => setTimeout(r, backoffMs));
                 if (!syncingRef.current) break;
             }
         } finally {
@@ -434,6 +452,9 @@ export default function FeedbackBrowsePanel({ syncTrigger = 0 }: { syncTrigger?:
     }, [stopPoll]);
 
     // ── Computed ───────────────────────────────────────────────────
+
+    const logErrorEntries: LogEntry[] = log.filter((e: LogEntry) => e.status !== 'success');
+    const logVisibleEntries: LogEntry[] = logTab === 'errors' ? logErrorEntries : log;
 
     const totalPages = Math.ceil(total / pageSize);
     const progressPct = syncProgress && syncProgress.totalFiles > 0
@@ -493,36 +514,42 @@ export default function FeedbackBrowsePanel({ syncTrigger = 0 }: { syncTrigger?:
             {/* ── KPI tiles — 6 tiles: coverage + source breakdown ── */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0,1fr))', gap: 8, marginBottom: 14 }}>
                 <KpiTile
+                    loading={statusLoading}
                     value={coverage?.totalRows.toLocaleString() ?? '—'}
                     label="Total Records"
                     sub={`${status ? `${status.successFiles} files ingested` : '—'}`}
                     color="var(--blue)"
                 />
                 <KpiTile
+                    loading={statusLoading}
                     value={fmtDate(coverage?.earliest ?? null)}
                     label="Earliest Record"
                     sub="start of data range"
                     color="var(--sp-tx2)"
                 />
                 <KpiTile
+                    loading={statusLoading}
                     value={fmtDate(coverage?.latest ?? null)}
                     label="Latest Record"
                     sub={status?.lastSync ? `Synced ${fmtDate(status.lastSync)}` : 'not yet synced'}
                     color="var(--green)"
                 />
                 <KpiTile
+                    loading={statusLoading}
                     value={coverage?.athenaRows.toLocaleString() ?? '—'}
                     label="Athena Rows"
                     sub={coverage ? `${coverage.bothRows.toLocaleString()} enriched by S3` : 'includes enriched'}
                     color="#7c3aed"
                 />
                 <KpiTile
+                    loading={statusLoading}
                     value={coverage?.s3OnlyRows.toLocaleString() ?? '—'}
                     label="S3-Only Rows"
                     sub="not in Athena CLN"
                     color="#0891b2"
                 />
                 <KpiTile
+                    loading={statusLoading}
                     value={coverage?.bothRows.toLocaleString() ?? '—'}
                     label="Enriched (Both)"
                     sub="Athena + S3 merged"
@@ -562,7 +589,7 @@ export default function FeedbackBrowsePanel({ syncTrigger = 0 }: { syncTrigger?:
                             <div style={{ fontWeight: 600 }}>No feedback data in DynamoDB</div>
                             <div style={{ fontSize: 12, color: 'var(--sp-txm)', marginTop: 6, maxWidth: 400, lineHeight: 1.6 }}>
                                 Click <strong>Sync Data</strong> to pull from Athena + S3.<br />
-                                Set <code>ATHENA_OUTPUT_BUCKET</code> in <code>.env.local</code> to enable Athena (Apr 1–27 data). Ensure <code>aws sso login --profile GD-AiroBuilder-Prod-Ops</code> is active.
+                                If sync returns nothing, Athena/SSO may not be configured — see the SupportPlane runbook.
                             </div>
                         </div>
                     )}
@@ -656,70 +683,118 @@ export default function FeedbackBrowsePanel({ syncTrigger = 0 }: { syncTrigger?:
 
                     {/* Ingestion log */}
                     {log.length > 0 && (
-                        <div className={sp.card} style={{ padding: 0, overflow: 'hidden' }}>
-                            <button
-                                onClick={() => setLogOpen(o => !o)}
-                                style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--sp-tx1)' }}
-                            >
-                                <span className={sp.cardLabel} style={{ margin: 0 }}>
-                                    <Database size={12} />
-                                    Ingestion log — {log.length} entries
-                                    {(status?.errorFiles ?? 0) > 0 && (
-                                        <span style={{ marginLeft: 8, color: 'var(--red)', fontSize: 10 }}>
-                                            {status!.errorFiles} errors
+                            <div className={sp.card} style={{ padding: 0, overflow: 'hidden' }}>
+                                {/* Header row */}
+                                <button
+                                    onClick={() => setLogOpen(o => !o)}
+                                    style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--sp-tx1)' }}
+                                >
+                                    <span className={sp.cardLabel} style={{ margin: 0 }}>
+                                        <Database size={12} />
+                                        Ingestion Log
+                                    </span>
+                                    <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                        <span style={{ fontSize: 10, color: 'var(--sp-txm)', fontFamily: 'var(--mono)' }}>
+                                            {log.length} entries
                                         </span>
-                                    )}
-                                </span>
-                                {logOpen ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
-                            </button>
+                                        {logErrorEntries.length > 0 && (
+                                            <span style={{ fontSize: 10, color: 'var(--red)', fontFamily: 'var(--mono)', fontWeight: 600 }}>
+                                                · {logErrorEntries.length} errors
+                                            </span>
+                                        )}
+                                        {logOpen ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                                    </span>
+                                </button>
 
-                            {logOpen && (
-                                <div style={{ overflowX: 'auto', borderTop: '1px solid var(--sp-border)' }}>
-                                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
-                                        <thead>
-                                            <tr style={{ background: 'var(--sp-s2)' }}>
-                                                {['Source', 'File / Key', 'Rows', 'Status', 'Ingested At'].map(h => (
-                                                    <th key={h} style={{ textAlign: 'left', padding: '7px 10px', color: 'var(--sp-txm)', fontWeight: 500, whiteSpace: 'nowrap', borderBottom: '1px solid var(--sp-border)' }}>
-                                                        {h}
-                                                    </th>
-                                                ))}
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {log.map(entry => (
-                                                <tr key={entry.id} className={sp.tableRow}>
-                                                    <td style={{ padding: '6px 10px', whiteSpace: 'nowrap' }}>
-                                                        <span style={{
-                                                            background: entry.source === 'athena' ? '#7c3aed18' : '#0891b218',
-                                                            color: entry.source === 'athena' ? '#7c3aed' : '#0891b2',
-                                                            border: `1px solid ${entry.source === 'athena' ? '#7c3aed40' : '#0891b240'}`,
-                                                            borderRadius: 4, padding: '1px 6px', fontSize: 10,
-                                                        }}>
-                                                            {entry.source}
-                                                        </span>
-                                                    </td>
-                                                    <td style={{ padding: '6px 10px', fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--sp-txm)', maxWidth: 360, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                                                        title={entry.s3_url}>
-                                                        {shortUrl(entry.s3_url)}
-                                                    </td>
-                                                    <td style={{ padding: '6px 10px', fontFamily: 'var(--mono)', color: 'var(--sp-tx2)', textAlign: 'right', whiteSpace: 'nowrap' }}>
-                                                        {entry.rows_written ?? 0}
-                                                    </td>
-                                                    <td style={{ padding: '6px 10px', whiteSpace: 'nowrap' }}>
-                                                        {entry.status === 'success'
-                                                            ? <CheckCircle size={12} style={{ color: 'var(--green)' }} />
-                                                            : <span title={entry.error_msg ?? ''}><XCircle size={12} style={{ color: 'var(--red)' }} /></span>}
-                                                    </td>
-                                                    <td style={{ padding: '6px 10px', fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--sp-txm)', whiteSpace: 'nowrap' }}>
-                                                        {fmtTs(entry.ingested_at)}
-                                                    </td>
-                                                </tr>
+                                {logOpen && (
+                                    <>
+                                        {/* Tab bar */}
+                                        <div style={{ display: 'flex', gap: 0, borderTop: '1px solid var(--sp-border)', borderBottom: '1px solid var(--sp-border)', background: 'var(--sp-s2)' }}>
+                                            {(['all', 'errors'] as const).map(tab => (
+                                                <button
+                                                    key={tab}
+                                                    onClick={() => setLogTab(tab)}
+                                                    style={{
+                                                        padding: '6px 14px', border: 'none', cursor: 'pointer', fontSize: 11, fontWeight: 600,
+                                                        background: logTab === tab ? 'var(--sp-s1)' : 'transparent',
+                                                        color: tab === 'errors' && logErrorEntries.length > 0
+                                                            ? (logTab === tab ? 'var(--red)' : '#ef444490')
+                                                            : (logTab === tab ? 'var(--sp-tx1)' : 'var(--sp-txm)'),
+                                                        borderBottom: logTab === tab ? '2px solid var(--sp-accent)' : '2px solid transparent',
+                                                    }}
+                                                >
+                                                    {tab === 'all'
+                                                        ? `All (${log.length})`
+                                                        : `Errors (${logErrorEntries.length})`}
+                                                </button>
                                             ))}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            )}
-                        </div>
+                                        </div>
+
+                                        {/* Scrollable table */}
+                                        <div style={{ maxHeight: 320, overflowY: 'auto', overflowX: 'auto' }}>
+                                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+                                                <thead style={{ position: 'sticky', top: 0, zIndex: 1 }}>
+                                                    <tr style={{ background: 'var(--sp-s2)' }}>
+                                                        {(logTab === 'errors'
+                                                            ? ['Source', 'File / Key', 'Error', 'Ingested At']
+                                                            : ['Source', 'File / Key', 'Rows', 'Status', 'Ingested At']
+                                                        ).map(h => (
+                                                            <th key={h} style={{ textAlign: 'left', padding: '7px 10px', color: 'var(--sp-txm)', fontWeight: 500, whiteSpace: 'nowrap', borderBottom: '1px solid var(--sp-border)' }}>
+                                                                {h}
+                                                            </th>
+                                                        ))}
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {logVisibleEntries.length === 0 ? (
+                                                        <tr>
+                                                            <td colSpan={5} style={{ padding: '20px', textAlign: 'center', color: 'var(--sp-txm)', fontSize: 11 }}>
+                                                                No errors
+                                                            </td>
+                                                        </tr>
+                                                    ) : logVisibleEntries.map(entry => (
+                                                        <tr key={entry.id} className={sp.tableRow}>
+                                                            <td style={{ padding: '6px 10px', whiteSpace: 'nowrap' }}>
+                                                                <span style={{
+                                                                    background: entry.source === 'athena' ? '#7c3aed18' : '#0891b218',
+                                                                    color: entry.source === 'athena' ? '#7c3aed' : '#0891b2',
+                                                                    border: `1px solid ${entry.source === 'athena' ? '#7c3aed40' : '#0891b240'}`,
+                                                                    borderRadius: 4, padding: '1px 6px', fontSize: 10,
+                                                                }}>
+                                                                    {entry.source}
+                                                                </span>
+                                                            </td>
+                                                            <td style={{ padding: '6px 10px', fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--sp-txm)', maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                                                                title={entry.s3_url}>
+                                                                {shortUrl(entry.s3_url)}
+                                                            </td>
+                                                            {logTab === 'errors' ? (
+                                                                <td style={{ padding: '6px 10px', fontSize: 10, color: 'var(--red)', maxWidth: 340, wordBreak: 'break-word' }}>
+                                                                    {entry.error_msg ?? '—'}
+                                                                </td>
+                                                            ) : (
+                                                                <>
+                                                                    <td style={{ padding: '6px 10px', fontFamily: 'var(--mono)', color: 'var(--sp-tx2)', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                                                                        {entry.rows_written ?? 0}
+                                                                    </td>
+                                                                    <td style={{ padding: '6px 10px', whiteSpace: 'nowrap' }}>
+                                                                        {entry.status === 'success'
+                                                                            ? <CheckCircle size={12} style={{ color: 'var(--green)' }} />
+                                                                            : <span title={entry.error_msg ?? ''}><XCircle size={12} style={{ color: 'var(--red)' }} /></span>}
+                                                                    </td>
+                                                                </>
+                                                            )}
+                                                            <td style={{ padding: '6px 10px', fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--sp-txm)', whiteSpace: 'nowrap' }}>
+                                                                {fmtTs(entry.ingested_at)}
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </>
+                                )}
+                            </div>
                     )}
                 </>
             )}
@@ -729,18 +804,6 @@ export default function FeedbackBrowsePanel({ syncTrigger = 0 }: { syncTrigger?:
             ════════════════════════════════════════════════════ */}
             {activeTab === 'browse' && (
                 <>
-                    {/* Athena gap notice — shown when data starts after Apr 15 */}
-                    {coverage?.earliest && coverage.earliest > '2026-04-15' && (
-                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '8px 12px', background: 'var(--sp-warning-bg, #78350f18)', border: '1px solid var(--sp-warning-bd, #78350f40)', borderRadius: 6, marginBottom: 10, fontSize: 11, color: 'var(--sp-warning, #d97706)' }}>
-                            <Info size={13} style={{ flexShrink: 0, marginTop: 1 }} />
-                            <span>
-                                <strong>Apr 1–27 data missing.</strong> S3 parquet starts Apr 28. To fill the gap, set{' '}
-                                <code style={{ fontSize: 10 }}>ATHENA_OUTPUT_BUCKET</code> in <code style={{ fontSize: 10 }}>.env.local</code> and re-sync.
-                                Suggested bucket: <code style={{ fontSize: 10 }}>airo-builder-feedback-prod/athena-results</code>
-                            </span>
-                        </div>
-                    )}
-
                     {/* Sticky filter bar + column chooser */}
                     <div className={sp.stickyFilters}>
                         <select value={filterDays} onChange={e => setFilterDays(e.target.value)} className={sp.select}>
@@ -872,7 +935,7 @@ export default function FeedbackBrowsePanel({ syncTrigger = 0 }: { syncTrigger?:
                                     </thead>
                                     <tbody>
                                         {browseLoading ? (
-                                            <tr><td colSpan={colCount} style={{ textAlign: 'center', padding: 32, color: 'var(--sp-txm)' }}>Loading…</td></tr>
+                                            <tr><td colSpan={colCount} style={{ textAlign: 'center', padding: 32 }}><WaveDots size={9} gap={6} /></td></tr>
                                         ) : rows.length === 0 ? (
                                             <tr>
                                                 <td colSpan={colCount} style={{ textAlign: 'center', padding: 32, color: 'var(--sp-txm)' }}>

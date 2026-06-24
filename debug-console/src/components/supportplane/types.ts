@@ -15,6 +15,8 @@ export type PanelId =
     | 'ciec' | 'aabsp'
     // ── Deep Dives ───────────────────────────────────────────────
     | 'cannibalization' | 'refund'
+    // ── System ───────────────────────────────────────────────────
+    | 'app-logs'
     // ── Legacy (keep routing working) ───────────────────────────
     | 'dashboard' | 'ops' | 'leadership' | 'chat'
     | 'trends' | 'heatmap' | 'tagcloud' | 'funnel';
@@ -74,6 +76,8 @@ export const PANEL_LABELS: Record<PanelId, string> = {
     // Deep Dives
     cannibalization: 'Deep Dives — Cannibalization',
     refund:          'Deep Dives — Refund Audit',
+    // System
+    'app-logs': 'System — App Logs',
     // Legacy
     dashboard:  'Dashboards — Support Dashboard',
     ops:        'Dashboards — Ops Overview',

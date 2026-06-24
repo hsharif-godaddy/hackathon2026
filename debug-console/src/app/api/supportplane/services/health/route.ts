@@ -4,6 +4,7 @@ import { fromIni } from '@aws-sdk/credential-providers';
 
 import { withAuth } from '@/lib/api-auth';
 import { logger } from '@/lib/logger';
+import { SP_MASK, spLog } from '@/lib/supportplane/sp-logger';
 
 export const dynamic = 'force-dynamic';
 
@@ -210,20 +211,44 @@ async function checkSharePoint(): Promise<ServiceHealth> {
     }
 }
 
-// ── DynamoDB · Transcripts — row count from DynamoDB store ───────────
+// ── DynamoDB · Transcripts — fast connectivity check ─────────────────
+// Uses hasTranscripts() (1-item scan, ~1-3s) instead of a full scan so the
+// health bar is accurate on cold start. Full scan takes 18-90s over VPN;
+// a 10s timeout always fired red even when DynamoDB was perfectly healthy.
+// If the full-scan cache is warm we also show the cached row count for free.
 
 async function checkTranscriptsDynamo(): Promise<ServiceHealth> {
     try {
-        const { getStore } = await import('@/lib/supportplane/store');
-        const store = getStore();
-        const count = await store.countAllTranscripts();
+        const [{ getStore }, { getCachedTranscriptCount }] = await Promise.all([
+            import('@/lib/supportplane/store'),
+            import('@/lib/supportplane/db/transcript-cache'),
+        ]);
+
+        const hasRows: boolean = await Promise.race([
+            getStore().hasTranscripts(),
+            new Promise<never>((_, reject) =>
+                setTimeout(() => reject(new Error('connectivity timeout')), 10_000)
+            ),
+        ]);
+
+        const cachedCount: number | null = getCachedTranscriptCount();
+        const detail: string = cachedCount !== null
+            ? `${cachedCount.toLocaleString()} transcripts · DynamoDB`
+            : hasRows
+                ? 'Connected · data present'
+                : 'No transcripts — sync from SharePoint';
+
+        return { name: 'DynamoDB · Transcripts', ok: hasRows, detail };
+    } catch (err) {
+        const msg = (err as Error).message ?? '';
+        const isTimeout = msg.includes('connectivity timeout');
         return {
             name: 'DynamoDB · Transcripts',
-            ok: count > 0,
-            detail: count > 0 ? `${count.toLocaleString()} transcripts in DynamoDB` : 'No transcripts — sync from SharePoint',
+            ok: false,
+            detail: isTimeout
+                ? 'DynamoDB unreachable — VPN or credentials issue'
+                : `DynamoDB error: ${msg.slice(0, 100)}`,
         };
-    } catch (err) {
-        return { name: 'DynamoDB · Transcripts', ok: false, detail: `DynamoDB error: ${(err as Error).message.slice(0, 100)}` };
     }
 }
 
@@ -294,8 +319,17 @@ export const GET = withAuth(async () => {
             feedbackS3,
         ];
 
+        for (const svc of results) {
+            spLog(
+                svc.ok ? SP_MASK.INFO : SP_MASK.WARN,
+                'health',
+                `${svc.name}: ${svc.ok ? '✓' : '✗'} — ${svc.detail}`,
+            );
+        }
+
         return NextResponse.json(results);
     } catch (err) {
+        spLog(SP_MASK.ERROR, 'health', `Health check failed: ${String(err)}`);
         logger.error('supportplane.services.health.error', { error: String(err) });
         return NextResponse.json([], { status: 500 });
     }

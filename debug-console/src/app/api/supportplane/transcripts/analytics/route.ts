@@ -1,211 +1,197 @@
 /**
  * /api/supportplane/transcripts/analytics
- * Get analytics and aggregated stats for L1 transcripts
+ * Get analytics and aggregated stats for L1 transcripts.
+ *
+ * Uses getAllTranscriptsCached() so every route shares the same module-level
+ * full-scan cache (15-min TTL, in-flight dedup). Date filtering is done in JS
+ * rather than as a DynamoDB FilterExpression — this avoids bypassing the cache.
+ *
+ * A second result-level cache stores the computed aggregations per date window
+ * for another 5 minutes, making repeated dashboard loads instant.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { withAuth } from '@/lib/api-auth';
 import { logger } from '@/lib/logger';
-import { queryTranscripts } from '@/lib/supportplane/db/l1-transcript-db';
+import { getAllTranscriptsCached } from '@/lib/supportplane/db/transcript-cache';
+import type { TranscriptRow } from '@/lib/supportplane/db/l1-transcript-db';
 
-async function handler(request: NextRequest) {
+// ── Result-level cache (keyed by start_date|end_date) ────────────────
+const RESULT_CACHE_TTL_MS = 300_000; // 5 min
+
+interface ResultCacheEntry {
+  expiresAt: number;
+  data: unknown;
+}
+
+const resultCache = new Map<string, ResultCacheEntry>();
+
+// ── Helper types ──────────────────────────────────────────────────────
+
+type RawDataObj = Record<string, unknown>;
+
+function parseRawData(row: TranscriptRow): RawDataObj | null {
   try {
-    if (request.method !== 'GET') {
-      return NextResponse.json({ error: 'Method not allowed' }, { status: 405 });
-    }
+    if (!row.raw_data) return null;
+    return (typeof row.raw_data === 'string' ? JSON.parse(row.raw_data) : row.raw_data) as RawDataObj;
+  } catch {
+    return null;
+  }
+}
 
-    const { searchParams } = new URL(request.url);
-    const startDate = searchParams.get('start_date') || undefined;
-    const endDate = searchParams.get('end_date') || undefined;
-    const rows = await queryTranscripts({
-      end_date: endDate,
-      start_date: startDate,
+function str(v: unknown): string {
+  if (!v || v === 'N/A' || v === '') return '';
+  return String(v);
+}
+
+function increment(map: Record<string, number>, key: string): void {
+  if (!key) return;
+  map[key] = (map[key] ?? 0) + 1;
+}
+
+function buildHeatmap(
+  rows: Array<{ category: string; raw: RawDataObj }>,
+  rowField: string,
+  colField: string,
+): Array<{ row_label: string; by_column: Record<string, number> }> {
+  const matrix: Record<string, Record<string, number>> = {};
+  for (const { category, raw } of rows) {
+    const rv: string = str(rowField === 'category' ? category : raw[rowField]);
+    const cv: string = str(colField === 'category' ? category : raw[colField]);
+    if (!rv || !cv) continue;
+    (matrix[rv] ??= {})[cv] = ((matrix[rv]?.[cv]) ?? 0) + 1;
+  }
+  return Object.entries(matrix).map(([row_label, by_column]) => ({ row_label, by_column }));
+}
+
+// ── Route handler ─────────────────────────────────────────────────────
+
+async function handler(request: NextRequest): Promise<NextResponse> {
+  if (request.method !== 'GET') {
+    return NextResponse.json({ error: 'Method not allowed' }, { status: 405 });
+  }
+
+  const { searchParams } = new URL(request.url);
+  const startDate: string | undefined = searchParams.get('start_date') ?? undefined;
+  const endDate: string | undefined = searchParams.get('end_date') ?? undefined;
+
+  const cacheKey = `${startDate ?? ''}|${endDate ?? ''}`;
+  const cached = resultCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) {
+    return NextResponse.json(cached.data);
+  }
+
+  try {
+    // Use the shared module-level full-scan cache — avoids a FilterExpression
+    // that would bypass caching and trigger a fresh 6-minute scan each call.
+    const allRows: TranscriptRow[] = await getAllTranscriptsCached();
+
+    // Apply date filter in JS
+    const rows: TranscriptRow[] = allRows.filter((row: TranscriptRow) => {
+      const ts: string = row.created_at ?? '';
+      if (startDate && ts < startDate) return false;
+      if (endDate && ts > endDate) return false;
+      return true;
     });
-    const total = rows.length;
+
+    const total: number = rows.length;
 
     const categoryCounts: Record<string, number> = {};
     const sentimentCounts: Record<string, number> = {};
-    const allRowsForHeatmaps: Array<{ category: string; raw_data: unknown }> = [];
-    const issueResolutionCounts: Record<string, number> = {};
-    const frictionPointCounts: Record<string, number> = {};
-    const inboundDriverCounts: Record<string, number> = {};
-    const productLineCounts: Record<string, number> = {};
-    const subIntentCounts: Record<string, number> = {};
-
     const tagCounts: Record<string, number> = {};
-    rows.forEach(row => {
-      if (row.category) {
-        categoryCounts[row.category] = (categoryCounts[row.category] || 0) + 1;
-      }
+    const resolutionMap: Record<string, number> = {};
+    const subIntentCounts: Record<string, number> = {};
+    const frictionPointCounts: Record<string, number> = {};
+    const productLineCounts: Record<string, number> = {};
+    const issueResolutionCounts: Record<string, number> = {};
+    const inboundDriverCounts: Record<string, number> = {};
+    const timelineMap: Record<string, number> = {};
+    const heatmapRows: Array<{ category: string; raw: RawDataObj }> = [];
+
+    for (const row of rows) {
+      increment(categoryCounts, str(row.category));
 
       if (typeof row.sentiment_score === 'number') {
-        const sentiment = row.sentiment_score >= 0.7 ? 'Positive' : row.sentiment_score >= 0.4 ? 'Neutral' : 'Negative';
-        sentimentCounts[sentiment] = (sentimentCounts[sentiment] || 0) + 1;
+        const bucket: string = row.sentiment_score >= 0.7 ? 'Positive' : row.sentiment_score >= 0.4 ? 'Neutral' : 'Negative';
+        sentimentCounts[bucket] = (sentimentCounts[bucket] ?? 0) + 1;
       }
 
       try {
-        const tags = Array.isArray(row.tags)
+        const tags: unknown[] = Array.isArray(row.tags)
           ? row.tags
           : typeof row.tags === 'string'
-            ? (JSON.parse(row.tags) as string[])
+            ? (JSON.parse(row.tags) as unknown[])
             : [];
-        tags.forEach(tag => {
-          tagCounts[tag] = (tagCounts[tag] || 0) + 1;
-        });
-      } catch {
-        // Skip invalid JSON
-      }
-
-      try {
-        const data =
-          typeof row.raw_data === 'string' ? JSON.parse(row.raw_data) : row.raw_data;
-        if (!data || typeof data !== 'object') {
-          return;
+        for (const tag of tags) {
+          increment(tagCounts, str(tag));
         }
+      } catch { /* ignore */ }
 
-        if (row.category) {
-          allRowsForHeatmaps.push({ category: row.category, raw_data: data });
-        }
-
-        if ((data as any).sub_intent && (data as any).sub_intent !== 'N/A' && (data as any).sub_intent !== '') {
-          subIntentCounts[(data as any).sub_intent] = (subIntentCounts[(data as any).sub_intent] || 0) + 1;
-        }
-
-        if ((data as any).friction_point && (data as any).friction_point !== 'N/A' && (data as any).friction_point !== '') {
-          frictionPointCounts[(data as any).friction_point] = (frictionPointCounts[(data as any).friction_point] || 0) + 1;
-        }
-
-        if ((data as any).airo_product_line && (data as any).airo_product_line !== 'N/A' && (data as any).airo_product_line !== '') {
-          productLineCounts[(data as any).airo_product_line] = (productLineCounts[(data as any).airo_product_line] || 0) + 1;
-        }
-
-        if ((data as any).issue_resolution && (data as any).issue_resolution !== 'N/A' && (data as any).issue_resolution !== '') {
-          issueResolutionCounts[(data as any).issue_resolution] = (issueResolutionCounts[(data as any).issue_resolution] || 0) + 1;
-        }
-
-        if ((data as any).inbound_volume_driver && (data as any).inbound_volume_driver !== 'N/A' && (data as any).inbound_volume_driver !== '') {
-          inboundDriverCounts[(data as any).inbound_volume_driver] = (inboundDriverCounts[(data as any).inbound_volume_driver] || 0) + 1;
-        }
-      } catch {
-        // Skip invalid JSON
-      }
-    });
-
-    const categoryStats = Object.entries(categoryCounts)
-      .sort(([, a], [, b]) => b - a)
-      .slice(0, 10)
-      .map(([category, count]) => ({ category, count }));
-    const sentimentStats = Object.entries(sentimentCounts).map(([sentiment, count]) => ({ sentiment, count }));
-    const topTags = Object.entries(tagCounts)
-      .sort(([, a], [, b]) => b - a)
-      .slice(0, 15)
-      .map(([tag, count]) => ({ tag, count }));
-
-    const timelineRows = startDate || endDate
-      ? rows
-      : rows.filter((row) => Boolean(row.created_at) && new Date(row.created_at as string).getTime() >= Date.now() - (30 * 24 * 60 * 60 * 1000));
-    const timelineMap: Record<string, number> = {};
-    timelineRows.forEach((row) => {
-      if (!row.created_at) return;
-      const date = row.created_at.slice(0, 10);
-      timelineMap[date] = (timelineMap[date] || 0) + 1;
-    });
-    const timeline = Object.entries(timelineMap)
-      .map(([date, count]) => ({ date, count }))
-      .sort((left, right) => left.date.localeCompare(right.date));
-
-    const resolutionMap: Record<string, number> = {};
-    rows.forEach((row) => {
       if (row.interaction_status) {
-        resolutionMap[row.interaction_status] = (resolutionMap[row.interaction_status] || 0) + 1;
+        increment(resolutionMap, row.interaction_status);
       }
-    });
-    const resolutionStats = Object.entries(resolutionMap)
-      .map(([interaction_status, count]) => ({ interaction_status, count }));
 
-    const topSubIntents = Object.entries(subIntentCounts)
-      .sort(([, a], [, b]) => b - a)
-      .slice(0, 10)
-      .map(([name, count]) => ({ name, count }));
+      if (row.created_at) {
+        increment(timelineMap, row.created_at.slice(0, 10));
+      }
 
-    const topFrictionPoints = Object.entries(frictionPointCounts)
-      .sort(([, a], [, b]) => b - a)
-      .slice(0, 10)
-      .map(([name, count]) => ({ name, count }));
-
-    const productLines = Object.entries(productLineCounts)
-      .sort(([, a], [, b]) => b - a)
-      .map(([name, count]) => ({ name, count }));
-
-    const issueResolutions = Object.entries(issueResolutionCounts)
-      .sort(([, a], [, b]) => b - a)
-      .map(([name, count]) => ({ name, count }));
-
-    const inboundDrivers = Object.entries(inboundDriverCounts)
-      .sort(([, a], [, b]) => b - a)
-      .slice(0, 10)
-      .map(([name, count]) => ({ name, count }));
-
-    // Cross-dimensional heatmaps
-    // Helper to build heatmap matrix
-    const buildHeatmap = (rows: Array<{ category: string; raw_data: unknown }>, rowField: string, colField: string) => {
-      const matrix: Record<string, Record<string, number>> = {};
-      rows.forEach(row => {
-        try {
-          const data = typeof row.raw_data === 'string' ? JSON.parse(row.raw_data) : row.raw_data;
-          const rowValue = rowField === 'category' ? row.category : data[rowField];
-          const colValue = colField === 'category' ? row.category : data[colField];
-
-          if (rowValue && rowValue !== 'N/A' && rowValue !== '' &&
-              colValue && colValue !== 'N/A' && colValue !== '') {
-            if (!matrix[rowValue]) {
-              matrix[rowValue] = {};
-            }
-            matrix[rowValue][colValue] = (matrix[rowValue][colValue] || 0) + 1;
-          }
-        } catch {
-          // Skip invalid JSON
+      const raw: RawDataObj | null = parseRawData(row);
+      if (raw) {
+        increment(subIntentCounts, str(raw['sub_intent']));
+        increment(frictionPointCounts, str(raw['friction_point']));
+        increment(productLineCounts, str(raw['airo_product_line']));
+        increment(issueResolutionCounts, str(raw['issue_resolution']));
+        increment(inboundDriverCounts, str(raw['inbound_volume_driver']));
+        if (row.category) {
+          heatmapRows.push({ category: row.category, raw });
         }
-      });
-      return Object.entries(matrix).map(([row, cols]) => ({ row_label: row, by_column: cols }));
+      }
+    }
+
+    const topN = <T extends { count: number }>(arr: T[], n: number): T[] =>
+      arr.sort((a: T, b: T) => b.count - a.count).slice(0, n);
+
+    const analytics = {
+      total,
+      by_category: topN(
+        Object.entries(categoryCounts).map(([category, count]) => ({ category, count })), 10,
+      ),
+      by_sentiment: Object.entries(sentimentCounts).map(([sentiment, count]) => ({ sentiment, count })),
+      top_tags: topN(
+        Object.entries(tagCounts).map(([tag, count]) => ({ tag, count })), 15,
+      ),
+      timeline: Object.entries(timelineMap)
+        .map(([date, count]) => ({ date, count }))
+        .sort((a, b) => a.date.localeCompare(b.date)),
+      by_resolution: Object.entries(resolutionMap).map(([interaction_status, count]) => ({ interaction_status, count })),
+      by_sub_intent: topN(
+        Object.entries(subIntentCounts).map(([name, count]) => ({ name, count })), 10,
+      ),
+      by_friction_point: topN(
+        Object.entries(frictionPointCounts).map(([name, count]) => ({ name, count })), 10,
+      ),
+      by_product_line: Object.entries(productLineCounts)
+        .map(([name, count]) => ({ name, count }))
+        .sort((a, b) => b.count - a.count),
+      by_issue_resolution: Object.entries(issueResolutionCounts)
+        .map(([name, count]) => ({ name, count }))
+        .sort((a, b) => b.count - a.count),
+      by_inbound_driver: topN(
+        Object.entries(inboundDriverCounts).map(([name, count]) => ({ name, count })), 10,
+      ),
+      friction_category_heatmap: buildHeatmap(heatmapRows, 'friction_point', 'category'),
+      friction_resolution_heatmap: buildHeatmap(heatmapRows, 'friction_point', 'issue_resolution'),
+      friction_intent_heatmap: buildHeatmap(heatmapRows, 'friction_point', 'sub_intent'),
     };
 
-    // Friction Point × Category
-    const frictionCategoryHeatmap = buildHeatmap(allRowsForHeatmaps, 'friction_point', 'category');
-
-    // Friction Point × Resolution
-    const frictionResolutionHeatmap = buildHeatmap(allRowsForHeatmaps, 'friction_point', 'issue_resolution');
-
-    // Friction Point × Intent
-    const frictionIntentHeatmap = buildHeatmap(allRowsForHeatmaps, 'friction_point', 'sub_intent');
-
-    return NextResponse.json({
-      success: true,
-      analytics: {
-        total,
-        by_category: categoryStats,
-        by_sentiment: sentimentStats,
-        top_tags: topTags,
-        timeline,
-        by_resolution: resolutionStats,
-        by_sub_intent: topSubIntents,
-        by_friction_point: topFrictionPoints,
-        by_product_line: productLines,
-        by_issue_resolution: issueResolutions,
-        by_inbound_driver: inboundDrivers,
-        friction_category_heatmap: frictionCategoryHeatmap,
-        friction_resolution_heatmap: frictionResolutionHeatmap,
-        friction_intent_heatmap: frictionIntentHeatmap,
-      },
-    });
-  } catch (error) {
+    const result = { success: true, analytics };
+    resultCache.set(cacheKey, { expiresAt: Date.now() + RESULT_CACHE_TTL_MS, data: result });
+    return NextResponse.json(result);
+  } catch (error: unknown) {
     logger.error('supportplane.transcripts.analytics.error', { error: String(error) });
     return NextResponse.json(
-      {
-        error: 'Failed to fetch analytics',
-        message: error instanceof Error ? error.message : 'Unknown error',
-      },
-      { status: 500 }
+      { error: 'Failed to fetch analytics', message: error instanceof Error ? error.message : 'Unknown error' },
+      { status: 500 },
     );
   }
 }

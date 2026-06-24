@@ -3,7 +3,7 @@
 import {
     BarChart2, BarChart3, Calendar, ChevronLeft, ChevronRight, CreditCard,
     ExternalLink, FileText, Filter, Gauge, HeartHandshake, LayoutDashboard,
-    Layers, MessageSquare, Star, Sun, Tag, ThumbsUp, Ticket, TrendingUp, Upload,
+    Layers, MessageSquare, ScrollText, Star, Sun, Tag, ThumbsUp, Ticket, TrendingUp, Upload,
 } from 'lucide-react';
 
 import sp from '@/components/supportplane/sp.module.css';
@@ -40,6 +40,9 @@ const NAV_GROUPS: NavGroup[] = [
     { label: '🔬 Deep Dives', items: [
         { id: 'cannibalization', label: 'Cannibalization', icon: <Layers size={16} /> },
         { id: 'refund',          label: 'Refund Audit',    icon: <CreditCard size={16} /> },
+    ]},
+    { label: '⚙ System', items: [
+        { id: 'app-logs', label: 'App Logs', icon: <ScrollText size={16} /> },
     ]},
 ];
 

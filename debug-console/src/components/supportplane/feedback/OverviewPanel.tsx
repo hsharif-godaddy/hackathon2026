@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { RefreshCw, AlertCircle, CloudDownload, Zap } from 'lucide-react';
 
 import sp from '@/components/supportplane/sp.module.css';
+import { WaveDots } from '@/components/supportplane/WaveDots';
 import type { PanelId } from '@/components/supportplane/types';
 
 interface Summary {
@@ -26,6 +27,12 @@ interface Ingestion {
     lastSync: string | null;
     totalRows: number;
     dbPath: string;
+}
+
+interface Coverage {
+    earliest: string | null;
+    latest: string | null;
+    totalRows: number;
 }
 
 interface TrendPoint {
@@ -56,6 +63,7 @@ const RATING_COLORS = ['#ef4444', '#f97316', '#f59e0b', '#3b82f6', '#22c55e', '#
 export default function FeedbackOverviewPanel({ onNav, onSync }: { onNav?: (id: PanelId) => void; onSync?: () => void }) {
     const [summary, setSummary] = useState<Summary | null>(null);
     const [ingestion, setIngestion] = useState<Ingestion | null>(null);
+    const [coverage, setCoverage] = useState<Coverage | null>(null);
     const [ratings, setRatings] = useState<{ rating: number; count: number; pct: number }[]>([]);
     const [trends, setTrends] = useState<TrendPoint[]>([]);
     const [loading, setLoading] = useState(true);
@@ -63,16 +71,19 @@ export default function FeedbackOverviewPanel({ onNav, onSync }: { onNav?: (id: 
 
     async function load() {
         setLoading(true); setError(null);
+        const controller = new AbortController();
+        const timerId = setTimeout(() => controller.abort(), 100_000);
         try {
             const [sumRes, ratRes, trendRes] = await Promise.all([
-                fetch('/api/supportplane/feedback/summary?days=30'),
-                fetch('/api/supportplane/feedback/ratings'),
-                fetch('/api/supportplane/feedback/trends?granularity=day&days=30'),
+                fetch('/api/supportplane/feedback/summary?days=30', { signal: controller.signal }),
+                fetch('/api/supportplane/feedback/ratings', { signal: controller.signal }),
+                fetch('/api/supportplane/feedback/trends?granularity=day&days=30', { signal: controller.signal }),
             ]);
             if (sumRes.ok) {
                 const d = await sumRes.json();
                 setSummary(d.summary);
                 setIngestion(d.ingestion);
+                setCoverage(d.coverage ?? null);
             }
             if (ratRes.ok) {
                 const d = await ratRes.json();
@@ -82,9 +93,13 @@ export default function FeedbackOverviewPanel({ onNav, onSync }: { onNav?: (id: 
                 const d = await trendRes.json();
                 setTrends(d.trends ?? []);
             }
-        } catch {
-            setError('Failed to load feedback data');
+        } catch (err: unknown) {
+            const isAbort = err instanceof Error && err.name === 'AbortError';
+            setError(isAbort
+                ? 'Timed out loading feedback data — DynamoDB scan is slow (VPN or cold start). Try refreshing in a minute.'
+                : 'Failed to load feedback data');
         } finally {
+            clearTimeout(timerId);
             setLoading(false);
         }
     }
@@ -110,10 +125,11 @@ export default function FeedbackOverviewPanel({ onNav, onSync }: { onNav?: (id: 
                         {summary && summary.totalFeedback > 0 ? (
                             <>
                                 <span style={{ color: 'var(--green)', fontWeight: 600 }}>
-                                    Data available: {formatDate(summary.dateRange.from)} → {formatDate(summary.dateRange.to)}
+                                    Data available: {formatDate(coverage?.earliest ?? null)} → {formatDate(coverage?.latest ?? null)}
                                 </span>
-                                {' '}· {ingestion?.totalRows?.toLocaleString()} rows ·
+                                {' '}· {(coverage?.totalRows ?? ingestion?.totalRows)?.toLocaleString()} rows ·
                                 Last sync: {ingestion?.lastSync ? formatDate(ingestion.lastSync) : 'never'}
+                                {' '}· Showing last 30 days
                             </>
                         ) : (
                             <>S3 + Athena · Last sync: {ingestion?.lastSync ? formatDate(ingestion.lastSync) : 'Never'}</>
@@ -137,7 +153,10 @@ export default function FeedbackOverviewPanel({ onNav, onSync }: { onNav?: (id: 
             {error && <div className={sp.alertError}>{error}</div>}
 
             {loading ? (
-                <div className={sp.emptyState}>Loading feedback data…</div>
+                <div className={sp.emptyState} style={{ flexDirection: 'column', gap: 12 }}>
+                    <WaveDots size={10} gap={7} />
+                    <span style={{ fontSize: 12, color: 'var(--sp-txm)' }}>Loading feedback data…</span>
+                </div>
             ) : summary?.totalFeedback === 0 ? (
                 <div className={sp.emptyState}>
                     <CloudDownload size={32} style={{ marginBottom: 8, color: 'var(--t3)' }} />

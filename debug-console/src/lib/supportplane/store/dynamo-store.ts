@@ -9,6 +9,7 @@ import { NodeHttpHandler } from '@smithy/node-http-handler';
 import https from 'node:https';
 
 import { logger } from '@/lib/logger';
+import { SP_MASK, spLog } from '@/lib/supportplane/sp-logger';
 import type {
   QueryGroupResult,
   SupportplaneStore,
@@ -25,9 +26,11 @@ const GROUP_FIELDS = {
   sentiment: 'sentiment_score',
 } as const;
 
-const CANDIDATE_CACHE_TTL_MS = 300000;
+const CANDIDATE_CACHE_TTL_MS = 900000;
+const FULL_SCAN_CACHE_TTL_MS = 900000;
 
 let client: DynamoDBDocumentClient | null = null;
+let fullScanCache: { expiresAt: number; rows: TranscriptRow[] } | null = null;
 let fullScanInFlight: Promise<TranscriptRow[]> | null = null;
 const candidateCache = new Map<string, { expiresAt: number; rows: TranscriptRow[] }>();
 const candidateInFlight = new Map<string, Promise<TranscriptRow[]>>();
@@ -455,12 +458,22 @@ async function scanTranscripts(options: ScanOptions = {}): Promise<TranscriptRow
   };
 
   if (scanCanUseCache(options)) {
+    const cached = fullScanCache;
+    if (cached && cached.expiresAt > Date.now()) {
+      spLog(SP_MASK.DEBUG, 'dynamo-store', `Full-scan cache hit — ${cached.rows.length} transcripts`);
+      return cached.rows;
+    }
     if (fullScanInFlight) {
+      spLog(SP_MASK.DEBUG, 'dynamo-store', 'Joining in-flight transcript scan');
       return fullScanInFlight;
     }
+    spLog(SP_MASK.INFO, 'dynamo-store', `Full transcript scan start — ${transcriptsTable()}`);
     fullScanInFlight = execute();
     try {
-      return await fullScanInFlight;
+      const rows = await fullScanInFlight;
+      fullScanCache = { expiresAt: Date.now() + FULL_SCAN_CACHE_TTL_MS, rows };
+      spLog(SP_MASK.INFO, 'dynamo-store', `Transcript scan complete — ${rows.length} rows cached for 15m`);
+      return rows;
     } finally {
       fullScanInFlight = null;
     }
@@ -894,10 +907,9 @@ export class DynamoStore implements SupportplaneStore {
     friction_points: string[];
     tags: string[];
   }> {
-    const rows = await scanTranscripts({
-      projection: ['category', 'interaction_status', 'tags', 'raw_data'],
-      bypassCache: true,
-    });
+    // No projection — reuses the 15-min fullScanCache so this is instant on warm cache.
+    // Projecting only 4 fields bypasses the shared cache and forces a 2-min fresh scan.
+    const rows = await scanTranscripts({});
     const categories = new Set<string>();
     const statuses = new Set<string>();
     const tagsSet = new Set<string>();

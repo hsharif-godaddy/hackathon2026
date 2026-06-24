@@ -8,7 +8,9 @@ import { withAuth } from '@/lib/api-auth';
 import { logger } from '@/lib/logger';
 import { getStore } from '@/lib/supportplane/store';
 
-const FILTERS_CACHE_TTL_MS = 60000;
+// 14 min — just under the 15-min fullScanCache so filter values stay consistent.
+// Previously 60s, which expired every minute and triggered a fresh 2.2-min DynamoDB scan.
+const FILTERS_CACHE_TTL_MS = 840_000;
 let filtersCache:
   | {
       expiresAt: number;

@@ -7,7 +7,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withAuth } from '@/lib/api-auth';
 import { logger } from '@/lib/logger';
-import { queryTranscripts } from '@/lib/supportplane/db/l1-transcript-db';
+import { getAllTranscriptsCached } from '@/lib/supportplane/db/transcript-cache';
+import type { TranscriptRow } from '@/lib/supportplane/db/l1-transcript-db';
 
 interface TagResolutionData {
   tag: string;
@@ -25,8 +26,8 @@ async function handler(request: NextRequest) {
     const minCount = parseInt(searchParams.get('min_count') || '3', 10);
 
     const cutoff = Date.now() - daysBack * 24 * 60 * 60 * 1000;
-    const rows = (await queryTranscripts({}))
-      .filter((row) => Boolean(row.created_at) && new Date(row.created_at as string).getTime() >= cutoff);
+    const rows: TranscriptRow[] = (await getAllTranscriptsCached())
+      .filter((row: TranscriptRow) => Boolean(row.created_at) && new Date(row.created_at as string).getTime() >= cutoff);
 
     const buckets = new Map<string, { resolved: number; unresolved: number; unknown: number; total: number }>();
 
