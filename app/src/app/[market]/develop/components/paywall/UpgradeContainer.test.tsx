@@ -66,6 +66,14 @@ vi.mock('./PaywallErrorModal', () => ({
   ),
 }));
 
+vi.mock('./PaywallSuspendedModal', () => ({
+  PaywallSuspendedModal: ({ onClose, builderEntitlementId }: any) => (
+    <div data-testid="paywall-suspended-modal" data-entitlement={builderEntitlementId}>
+      <button data-testid="suspended-close" onClick={onClose}>Close</button>
+    </div>
+  ),
+}));
+
 vi.mock('@/utils/focus', () => ({
   resetFocusOnModalClose: vi.fn(),
 }));
@@ -303,5 +311,50 @@ describe('UpgradeContainer', function upgradeContainerTests() {
     expect(container.querySelector('[data-testid="direct-to-paid"]')).not.toBeInTheDocument();
 
     vi.useRealTimers();
+  });
+
+  describe('Suspension guard', function suspensionGuardTests() {
+    it('renders PaywallSuspendedModal when subscription is suspended and flag is on', async function renderSuspendedModal() {
+      const { useSwitchboard } = await import('@/hooks/useSwitchboard');
+      vi.mocked(useSwitchboard).mockReturnValue(true);
+      vi.mocked(useSubscription).mockReturnValue({
+        data: { id: 'sub-123', builderEntitlementId: 'ent-123', plan: 'free', status: 'suspended', reason: 'NON_PAYMENT' } as any,
+        subscriptions: [],
+        isLoading: false,
+        isError: false,
+        error: null,
+        refetch: vi.fn(),
+      });
+
+      const { container } = renderWithProviders(
+        <UpgradeContainer source="test" onClose={vi.fn()} />
+      );
+
+      const modal = container.querySelector('[data-testid="paywall-suspended-modal"]');
+      expect(modal).toBeInTheDocument();
+      expect(modal).toHaveAttribute('data-entitlement', 'ent-123');
+      expect(container.querySelector('[data-testid="higher-plans-upgrade"]')).not.toBeInTheDocument();
+      expect(container.querySelector('[data-testid="direct-to-paid"]')).not.toBeInTheDocument();
+    });
+
+    it('falls through to normal flow when subscription is suspended but flag is off', async function fallThroughWhenFlagOff() {
+      const { useSwitchboard } = await import('@/hooks/useSwitchboard');
+      vi.mocked(useSwitchboard).mockReturnValue(false);
+      vi.mocked(useSubscription).mockReturnValue({
+        data: { id: 'sub-123', builderEntitlementId: 'ent-123', status: 'suspended', reason: 'NON_PAYMENT' } as any,
+        subscriptions: [],
+        isLoading: false,
+        isError: false,
+        error: null,
+        refetch: vi.fn(),
+      });
+
+      const { container } = renderWithProviders(
+        <UpgradeContainer source="test" onClose={vi.fn()} />
+      );
+
+      expect(container.querySelector('[data-testid="paywall-error-modal"]')).not.toBeInTheDocument();
+      expect(container.querySelector('[data-testid="higher-plans-upgrade"]')).toBeInTheDocument();
+    });
   });
 });

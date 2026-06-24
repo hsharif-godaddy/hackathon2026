@@ -5,7 +5,9 @@ import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from
 import { EXPERIMENT_IDS } from '@/config/experiments'
 import { useIsInCohort } from '@/hooks/useHivemind'
 import { useSubscription } from '@/hooks/useSubscription'
+import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { shipAnalyticsLog } from '@/lib/logging'
+import { isSubscriptionSuspendedForNonPayment } from '@/lib/subscription'
 import { usePaywallStore } from '@/stores/usePaywallStore'
 import { SubscriptionPlan } from '@/types/credits'
 import { resetFocusOnModalClose } from '@/utils/focus'
@@ -14,6 +16,7 @@ import DirectToPaidContainer from './DirectToPaidContainer'
 import HigherPlansUpgradeContainer from './HigherPlansUpgradeContainer'
 import { PaywallErrorModal } from './PaywallErrorModal'
 import { PaywallLoadingModal, PaywallLoadingModalVariant } from './PaywallLoadingModal'
+import { PaywallSuspendedModal } from './PaywallSuspendedModal'
 
 interface UpgradeContainerProps {
   onClose: () => void
@@ -30,6 +33,7 @@ export default React.memo(function UpgradeContainer(props: UpgradeContainerProps
   const paywallLoading = usePaywallStore((state) => state.paywallLoading)
   const setPaywallLoading = usePaywallStore((state) => state.setPaywallLoading)
 
+  const suspendedNonPaymentEnabled = useSwitchboard('appbuilder-suspended-nonpayment-banner') ?? false
   const isInTreatment = useIsInCohort(EXPERIMENT_IDS.recommendedPlan, 'treatment')
   const recommendedPlan = isInTreatment ? SubscriptionPlan.Ultimate : SubscriptionPlan.Professional;
 
@@ -88,6 +92,11 @@ export default React.memo(function UpgradeContainer(props: UpgradeContainerProps
 
   if (paywallTimedOut) {
     return <PaywallErrorModal onClose={handleClose} />
+  }
+
+  if (!subscriptionLoading && suspendedNonPaymentEnabled && isSubscriptionSuspendedForNonPayment(subscription)) {
+    if (paywallLoading) setPaywallLoading(false)
+    return <PaywallSuspendedModal onClose={handleClose} builderEntitlementId={subscription?.builderEntitlementId} />
   }
 
   return (
