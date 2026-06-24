@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/mail"
 	"slices"
 	"strings"
 	"sync"
@@ -1129,5 +1130,205 @@ func TestGateway_DefaultsForwardWhenNil(t *testing.T) {
 	}
 	if !bytes.Contains(body, []byte("failed to connect to destination SMTP server")) {
 		t.Errorf("error body should include real ForwardSMTP wrap:\n%s", body)
+	}
+}
+
+func TestGateway_FromNameWithOmittedFrom(t *testing.T) {
+	t.Parallel()
+	rec := &recordingForward{}
+	url, cleanup := startGateway(t, fixedIdentity(defaultIdentity()), rec.fn)
+	defer cleanup()
+
+	resp, body := postJSON(t, url, map[string]any{
+		"fromName": "Acme Bakery",
+		"to":       []string{"user@example.com"},
+		"subject":  "Order confirmation",
+		"text":     "Your order is ready.",
+	})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", resp.StatusCode, body)
+	}
+
+	calls := rec.snapshot()
+	if len(calls) != 1 {
+		t.Fatalf("forward calls = %d, want 1", len(calls))
+	}
+	c := calls[0]
+	if c.envelopeFrom != "abc123@acme.com" {
+		t.Errorf("envelopeFrom = %q, want bare addr-spec abc123@acme.com", c.envelopeFrom)
+	}
+	if !bytes.Contains(c.body, []byte(`From: "Acme Bakery" <abc123@acme.com>`)) {
+		t.Errorf("From header should contain display name:\n%s", c.body)
+	}
+}
+
+func TestGateway_FromNameWithExplicitFrom(t *testing.T) {
+	t.Parallel()
+	rec := &recordingForward{}
+	url, cleanup := startGateway(t, fixedIdentity(defaultIdentity()), rec.fn)
+	defer cleanup()
+
+	resp, body := postJSON(t, url, map[string]any{
+		"from":     "support@acme.com",
+		"fromName": "Acme Support",
+		"to":       []string{"user@example.com"},
+		"subject":  "hi",
+		"text":     "hello",
+	})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", resp.StatusCode, body)
+	}
+
+	calls := rec.snapshot()
+	if len(calls) != 1 {
+		t.Fatalf("forward calls = %d, want 1", len(calls))
+	}
+	c := calls[0]
+	if c.envelopeFrom != "support@acme.com" {
+		t.Errorf("envelopeFrom = %q, want support@acme.com", c.envelopeFrom)
+	}
+	if !bytes.Contains(c.body, []byte(`From: "Acme Support" <support@acme.com>`)) {
+		t.Errorf("From header should contain display name:\n%s", c.body)
+	}
+}
+
+func TestGateway_FromNameOmittedUnchangedBehavior(t *testing.T) {
+	t.Parallel()
+	rec := &recordingForward{}
+	url, cleanup := startGateway(t, fixedIdentity(defaultIdentity()), rec.fn)
+	defer cleanup()
+
+	resp, body := postJSON(t, url, map[string]any{
+		"to":      []string{"user@example.com"},
+		"subject": "hi",
+		"text":    "hello",
+	})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", resp.StatusCode, body)
+	}
+
+	calls := rec.snapshot()
+	if len(calls) != 1 {
+		t.Fatalf("forward calls = %d, want 1", len(calls))
+	}
+	if !bytes.Contains(calls[0].body, []byte("From: abc123@acme.com")) {
+		t.Errorf("From header should be bare addr-spec when fromName omitted:\n%s", calls[0].body)
+	}
+}
+
+func TestGateway_FromNameNonASCII(t *testing.T) {
+	t.Parallel()
+	rec := &recordingForward{}
+	url, cleanup := startGateway(t, fixedIdentity(defaultIdentity()), rec.fn)
+	defer cleanup()
+
+	resp, body := postJSON(t, url, map[string]any{
+		"fromName": "Café Münch",
+		"to":       []string{"user@example.com"},
+		"subject":  "hi",
+		"text":     "hello",
+	})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", resp.StatusCode, body)
+	}
+
+	calls := rec.snapshot()
+	if len(calls) != 1 {
+		t.Fatalf("forward calls = %d, want 1", len(calls))
+	}
+	wantFrom := "From: =?utf-8?q?Caf=C3=A9_M=C3=BCnch?= <abc123@acme.com>"
+	if !bytes.Contains(calls[0].body, []byte(wantFrom)) {
+		t.Errorf("From header mismatch.\nwant: %s\nbody:\n%s", wantFrom, calls[0].body)
+	}
+
+	parsed, err := mail.ParseAddress("=?utf-8?q?Caf=C3=A9_M=C3=BCnch?= <abc123@acme.com>")
+	if err != nil {
+		t.Fatalf("ParseAddress round-trip failed: %v", err)
+	}
+	if parsed.Name != "Café Münch" {
+		t.Errorf("round-trip name = %q, want %q", parsed.Name, "Café Münch")
+	}
+	if parsed.Address != "abc123@acme.com" {
+		t.Errorf("round-trip address = %q, want %q", parsed.Address, "abc123@acme.com")
+	}
+}
+
+func TestGateway_FromNameWithSameDomainFallback(t *testing.T) {
+	t.Parallel()
+	rec := &recordingForward{}
+	url, cleanup := startGateway(t, fixedIdentity(defaultIdentity()), rec.fn)
+	defer cleanup()
+
+	resp, body := postJSON(t, url, map[string]any{
+		"from":     "support@acme.com",
+		"fromName": "Acme Store",
+		"to":       []string{"john@acme.com"},
+		"subject":  "Your order",
+		"text":     "Thanks for your order.",
+	})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", resp.StatusCode, body)
+	}
+
+	calls := rec.snapshot()
+	if len(calls) != 1 {
+		t.Fatalf("forward calls = %d, want 1", len(calls))
+	}
+	c := calls[0]
+	if c.envelopeFrom != "abc123@airoapp.ai" {
+		t.Errorf("envelopeFrom = %q, want abc123@airoapp.ai (same-domain fallback)", c.envelopeFrom)
+	}
+	wantFrom := `From: "Acme Store" <abc123@airoapp.ai>`
+	if !bytes.Contains(c.body, []byte(wantFrom)) {
+		t.Errorf("fromName should attach to the fallback address.\nwant: %s\nbody:\n%s", wantFrom, c.body)
+	}
+}
+
+func TestGateway_FromNameValidation(t *testing.T) {
+	t.Parallel()
+	rec := &recordingForward{}
+	url, cleanup := startGateway(t, fixedIdentity(defaultIdentity()), rec.fn)
+	t.Cleanup(cleanup)
+
+	tests := []struct {
+		name     string
+		fromName string
+		wantCode int
+	}{
+		{
+			name:     "CR injection rejected",
+			fromName: "Evil\rName",
+			wantCode: http.StatusBadRequest,
+		},
+		{
+			name:     "LF injection rejected",
+			fromName: "Evil\nName",
+			wantCode: http.StatusBadRequest,
+		},
+		{
+			name:     "too long rejected",
+			fromName: strings.Repeat("A", 129),
+			wantCode: http.StatusBadRequest,
+		},
+		{
+			name:     "max length accepted",
+			fromName: strings.Repeat("A", 128),
+			wantCode: http.StatusOK,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			resp, body := postJSON(t, url, map[string]any{
+				"fromName": tt.fromName,
+				"to":       []string{"user@example.com"},
+				"subject":  "hi",
+				"text":     "hello",
+			})
+			if resp.StatusCode != tt.wantCode {
+				t.Errorf("status = %d, want %d; body=%s", resp.StatusCode, tt.wantCode, body)
+			}
+		})
 	}
 }

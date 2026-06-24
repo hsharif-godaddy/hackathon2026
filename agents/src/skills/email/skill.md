@@ -39,6 +39,23 @@ import { sendEmail } from '@/server/email';
 
 ## Critical Security Rules
 
+### Sender Display Name (`fromName`) — Always Set
+
+Set `fromName` to the website or business name. When set, the gateway uses it as the From display name.
+
+```typescript
+await sendEmail({
+  fromName: 'Acme Bakery',
+  to: recipient,
+  subject: 'Order confirmation',
+  html: body,
+});
+```
+
+- It must be a hardcoded string literal in source. Never read it from form input, request bodies, query parameters, headers, or environment variables.
+
+Why hardcoded: prevents end-users of the built app from social-engineering the sender display name.
+
 ### Sender Address (`from`) — Default to OMITTING
 
 Omit `from` by default. The gateway picks the canonical sender per app — typically `<appId>@<defaultDomain>`, or `<appId>@<verifiedCustomDomain>` when the customer has attached and verified one. The gateway always knows the right answer; the app does not.
@@ -111,6 +128,7 @@ Do not use relative paths like `'../../email.js'` — they break when files move
 import { sendEmail } from '@/server/email';
 
 await sendEmail({
+  fromName: 'Acme Bakery',
   to: 'customer@example.com',
   subject: 'Welcome',
   text: 'Thanks for signing up!',
@@ -133,6 +151,7 @@ import { sendEmail } from '@/server/email';
 
 export async function sendWelcomeEmail(userEmail: string, name: string) {
   await sendEmail({
+    fromName: 'Our App',
     to: userEmail,
     subject: 'Welcome to Our App',
     text: `Hi ${name}, thanks for signing up!`,
@@ -141,7 +160,7 @@ export async function sendWelcomeEmail(userEmail: string, name: string) {
 }
 ```
 
-Notice: no `from` field — the gateway picks the correct sender. The recipient is the user's own email (dynamic, from your app data).
+Notice: no `from` field — the gateway picks the correct sender address. `fromName` sets the display name recipients see in their inbox. The recipient is the user's own email (dynamic, from your app data).
 
 ### Email With Attachment
 
@@ -155,6 +174,7 @@ export async function sendAppointmentConfirmation(
   icsContent: string,
 ) {
   await sendEmail({
+    fromName: 'Acme Scheduling',
     to: customerEmail,
     subject: 'Your appointment is confirmed',
     html: '<p>See attached calendar invite.</p>',
@@ -177,6 +197,7 @@ import { sendEmail } from '@/server/email';
 
 const pdf = await readFile('/tmp/receipt.pdf');
 await sendEmail({
+  fromName: 'Acme Store',
   to: customerEmail,
   subject: 'Your receipt',
   text: 'Receipt attached.',
@@ -209,6 +230,7 @@ try {
 | --- | --- | --- |
 | `process.env.X \|\| 'a@b.com'` or `?? 'a@b.com'` | Hardcodes email in source; defeats requestSecrets | Early-return with 500 if env var unset |
 | `from: req.body.email` | Sender spoofing — lets visitors forge the From header | Use `replyTo: req.body.email` instead |
+| `fromName: req.body.name` | Social engineering — lets visitors forge the display name | Hardcode `fromName` to the business name |
 | `import nodemailer from 'nodemailer'` | Bypasses the gateway; won't work at runtime | Use `sendEmail` from `@/server/email` |
 | Generating 100+ line HTML email templates | Over-engineers the initial implementation | Start simple; elaborate only if asked |
 | `import { sendEmail } from '../../email.js'` | Relative import breaks when files move | Always `import from '@/server/email'` |

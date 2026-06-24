@@ -56,6 +56,12 @@ export type SendEmailInput = {
 	 * rejects unverified senders with a 400.
 	 */
 	from?: string;
+	/**
+	 * Display name shown in the recipient's inbox (e.g. "Acme Bakery").
+	 * Combined with the resolved sender address to produce an RFC 5322
+	 * From header like: "Acme Bakery" <sender@domain>.
+	 */
+	fromName?: string;
 	/** Up to 10 attachments, each ≤ 2 MB decoded. */
 	attachments?: EmailAttachment[];
 };
@@ -74,6 +80,7 @@ type GatewayPayload = {
 	html?: string;
 	replyTo?: string;
 	from?: string;
+	fromName?: string;
 	attachments?: { filename: string; content: string; contentType?: string }[];
 };
 
@@ -131,6 +138,7 @@ function buildPayload(input: SendEmailInput): GatewayPayload {
 	if (input.html) payload.html = input.html;
 	if (input.replyTo) payload.replyTo = input.replyTo;
 	if (input.from) payload.from = input.from;
+	if (input.fromName) payload.fromName = input.fromName;
 	if (input.attachments && input.attachments.length > 0) {
 		payload.attachments = input.attachments.map(encodeAttachment);
 	}

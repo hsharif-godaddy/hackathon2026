@@ -81,6 +81,7 @@ const (
 	maxSubjectBytes  = 998 // RFC 5322 line length minus "Subject: "
 	maxBodyFieldSize = 1 * 1024 * 1024
 	maxAddressBytes  = 254 // RFC 5321 §4.5.3.1.3
+	maxFromNameBytes = 128 // raw UTF-8 byte cap on display name; RFC 2047 encoded form may be longer but mail.Address.String() handles folding
 
 	// Attachment caps. maxAttachmentBytes is the decoded size; the
 	// base64 inflation (~4/3) plus the maxBodyBytes cap means a caller
@@ -106,12 +107,20 @@ const (
 // before anything is sent). Omitting From defaults to the canonical
 // "<AppID>@<PrimaryDomain>" so apps without a custom domain still send.
 //
+// FromName is an optional display name placed in the From header's
+// RFC 5322 name-addr form. When set, the final From header becomes
+// "FromName" <resolved-addr>. When omitted, the From header contains
+// the bare addr-spec as before. FromName itself is validated (length
+// ≤ maxFromNameBytes, no CR/LF) but has no effect on sender-identity
+// policy — that checks only the addr-spec.
+//
 // ReplyTo is just Reply-To: it sets the Reply-To header verbatim. No
 // domain-matching, no promotion, no special cases. To control the
 // sender's local-part, attach the relevant domain and pass From.
 type SendRequest struct {
 	To          []string     `json:"to"`
 	From        string       `json:"from,omitempty"`
+	FromName    string       `json:"fromName,omitempty"`
 	CC          []string     `json:"cc,omitempty"`
 	BCC         []string     `json:"bcc,omitempty"`
 	Subject     string       `json:"subject"`
@@ -439,6 +448,11 @@ func (g *Gateway) handleSend(w http.ResponseWriter, r *http.Request) {
 		fromSource = "same_domain_fallback"
 	}
 
+	if req.FromName != "" {
+		bare, _ := addrSpec(from)
+		from = (&mail.Address{Name: req.FromName, Address: bare}).String()
+	}
+
 	attachments, err := decodeAttachments(req.Attachments)
 	if err != nil {
 		// Decode failures are caller-fixable (malformed base64 or oversized
@@ -618,6 +632,14 @@ func (r SendRequest) validate() error {
 		}
 		if _, err := mail.ParseAddress(r.From); err != nil {
 			return fmt.Errorf("invalid from %q: %w", r.From, err)
+		}
+	}
+	if r.FromName != "" {
+		if len(r.FromName) > maxFromNameBytes {
+			return fmt.Errorf("fromName too long: %d > %d", len(r.FromName), maxFromNameBytes)
+		}
+		if strings.ContainsAny(r.FromName, "\r\n") {
+			return errors.New("fromName contains forbidden characters")
 		}
 	}
 	if len(r.Attachments) > maxAttachments {
