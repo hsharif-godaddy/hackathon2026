@@ -48,6 +48,7 @@ export interface JWTClaims {
   market?: string; // User's resolved market locale (e.g. 'en-US', 'es-MX') from gasket visitor
   fqdn?: string; // Purchased domain carried in from the DPP handoff (SiteInfo.fqdn); readable by agent tools
   marketingCampaignsEnabled?: boolean; // When true, enable Marketing Campaigns feature (switchboard: appbuilder-marketing-campaigns)
+  googleBusinessProfileSyncEnabled?: boolean; // When true, enable Google Business Profile sync skill (switchboard: appbuilder-google-business-profile-sync)
   asmDualWriteEnabled?: boolean; // When true, agents service mirrors SQLite conversation writes to ASM (switchboard: appbuilder-asm-dual-write)
   logoBrandColorsEnabled?: boolean; // When true, send structured brand colors to the logo API (switchboard: appbuilder-logo-brand-colors)
   purchaseIntentClassifierEnabled?: boolean; // When true, enable LLM purchase-intent classifier on credit=0 402 path (switchboard: appbuilder-purchase-intent-classifier)

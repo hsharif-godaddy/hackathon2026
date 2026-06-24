@@ -184,6 +184,31 @@ describe('skillAITool hooks', () => {
         expect.objectContaining({ skill: 'marketing-campaigns' })
       );
     });
+
+    it('should reject google-business-profile-sync load when googleBusinessProfileSyncEnabled is false/absent', async () => {
+      const offResult = await executeTool(
+        { action: 'load', skill: 'google-business-profile-sync' },
+        { metadata: { conversationId: 'conv-123', appId: 'app-456', googleBusinessProfileSyncEnabled: false } }
+      );
+      expect(offResult).toEqual(expect.objectContaining({ success: false }));
+
+      const absentResult = await executeTool({ action: 'load', skill: 'google-business-profile-sync' }, mockContext);
+      expect(absentResult).toEqual(expect.objectContaining({ success: false }));
+
+      expect(mockLoadSkill).not.toHaveBeenCalled();
+    });
+
+    it('should allow google-business-profile-sync load when googleBusinessProfileSyncEnabled is true', async () => {
+      const context = {
+        metadata: { conversationId: 'conv-123', appId: 'app-456', googleBusinessProfileSyncEnabled: true }
+      };
+
+      await executeTool({ action: 'load', skill: 'google-business-profile-sync' }, context);
+
+      expect(mockLoadSkill).toHaveBeenCalledWith(
+        expect.objectContaining({ skill: 'google-business-profile-sync' })
+      );
+    });
   });
 
   describe('unload action', () => {

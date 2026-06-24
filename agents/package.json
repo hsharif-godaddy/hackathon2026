@@ -117,6 +117,7 @@
     "jose": "catalog:",
     "jsdom": "^24.0.0",
     "jszip": "catalog:",
+    "libphonenumber-js": "^1.13.0",
     "multer": "catalog:",
     "mysql2": "^3.22.3",
     "nanoid": "^5.1.11",

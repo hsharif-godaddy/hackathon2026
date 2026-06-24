@@ -62,6 +62,7 @@ export interface AgentContext {
   rebuildSourceImagesEnabled?: boolean; // Register crawled source images into the Media tab during rebuild (switchboard: appbuilder-rebuild-source-images)
   debugStatsEnabled?: boolean; // Allow per-LLM-call debug stats events to flow to this client (switchboard: appbuilder-debug-drawer)
   marketingCampaignsEnabled?: boolean; // Enable Marketing Campaigns feature (switchboard: appbuilder-marketing-campaigns)
+  googleBusinessProfileSyncEnabled?: boolean; // Enable Google Business Profile sync skill (switchboard: appbuilder-google-business-profile-sync)
   logoBrandColorsEnabled?: boolean; // Send structured brand colors to the logo API (switchboard: appbuilder-logo-brand-colors)
   market?: string; // BCP-47 market/locale from token mint (BFF-resolved from URL)
   fqdn?: string; // Purchased domain carried in from the DPP handoff (SiteInfo.fqdn); readable by agent tools
@@ -112,6 +113,7 @@ export function buildAgentContext(raw: Record<string, unknown>): AgentContext {
     rebuildSourceImagesEnabled: (raw.rebuildSourceImagesEnabled as boolean) ?? false,
     debugStatsEnabled: (raw.debugStatsEnabled as boolean) ?? false,
     marketingCampaignsEnabled: (raw.marketingCampaignsEnabled as boolean) ?? false,
+    googleBusinessProfileSyncEnabled: (raw.googleBusinessProfileSyncEnabled as boolean) ?? false,
     logoBrandColorsEnabled: (raw.logoBrandColorsEnabled as boolean) ?? false,
     market: typeof raw.market === 'string' && raw.market.length > 0 ? raw.market : undefined,
     fqdn: typeof raw.fqdn === 'string' && raw.fqdn.length > 0 ? raw.fqdn : undefined,
@@ -212,6 +214,7 @@ export class JWTAuthMiddleware {
           skillSuggestionsEnabled: true,
           agentProfile: tokenClaims.agentProfile as string | undefined,
           asmDualWriteEnabled: (tokenClaims.asmDualWriteEnabled as boolean) ?? false,
+          googleBusinessProfileSyncEnabled: (tokenClaims.googleBusinessProfileSyncEnabled as boolean) ?? false,
           exp: now + 3600,
           iat: now
         };

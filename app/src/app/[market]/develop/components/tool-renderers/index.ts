@@ -22,6 +22,7 @@ import DomainToolRenderer from './DomainToolRenderer'
 import EndConversationToolRenderer from './EndConversationToolRenderer'
 import FileEditToolRenderer from './FileEditToolRenderer'
 import FontThemeToolRenderer from './FontThemeToolRenderer'
+import GbpSyncToolRenderer from './GbpSyncToolRenderer'
 import GitRestoreDiffRenderer from './GitRestoreDiffRenderer.tsx'
 import GoogleReviewsToolRenderer from './GoogleReviewsToolRenderer'
 import GrepSearchToolRenderer from './GrepSearchToolRenderer'
@@ -101,6 +102,8 @@ export const toolRendererRegistry = {
   end_conversation: EndConversationToolRenderer,
   googleReviews: GoogleReviewsToolRenderer, // Legacy global tool (backwards compatibility)
   'google-reviews__fetchReviews': GoogleReviewsToolRenderer, // New skill-specific tool
+  'google-business-profile-sync__getGbpProfile': GbpSyncToolRenderer,
+  'google-business-profile-sync__syncField': GbpSyncToolRenderer,
   grepSearch: GrepSearchToolRenderer,
   handoff: HandoffToolRenderer,
   readFile: ReadFileToolRenderer,
@@ -190,6 +193,7 @@ export {
   EndConversationToolRenderer,
   FileEditToolRenderer,
   FontThemeToolRenderer,
+  GbpSyncToolRenderer,
   GitRestoreDiffRenderer,
   GoogleReviewsToolRenderer,
   GrepSearchToolRenderer,

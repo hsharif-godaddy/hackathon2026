@@ -95,6 +95,18 @@ export const skillAITool: Tool = createTool(
         };
       }
 
+      if (input.skill === 'google-business-profile-sync') {
+        const gbpEnabled = context?.metadata?.googleBusinessProfileSyncEnabled === true;
+        logger.info('skill.load.gbp-sync.gate', { enabled: gbpEnabled });
+        if (!gbpEnabled) {
+          logger.info('skill.load.gbp-sync.blocked', {});
+          return {
+            success: false,
+            error: "Google Business Profile sync is not enabled for this account. Tell the user this feature isn't available yet and do NOT attempt to read or change their listing manually. Stop here.",
+          };
+        }
+      }
+
       const contextMetadata = context?.metadata as Record<string, unknown> | undefined;
       const result = await skillLoader.loadSkill({ skill: input.skill, market, contextMetadata });
 

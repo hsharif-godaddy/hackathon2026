@@ -17,6 +17,7 @@ import type { GoogleReview } from '@airo/shared/social';
 import { SocialPlatform, GOOGLE_REVIEWS_READY } from '../../../types/social.js';
 import { SocialAssociationRepository } from '../../../database/repositories/SocialAssociationRepository.js';
 import { Logger } from '../../../logging/index.js';
+import { createGbpConnectionCheckTool } from '../../../services/social-connection-check.js';
 
 const logger = Logger.create({ component: 'google-reviews-skill' });
 const socialAssociationRepo = new SocialAssociationRepository();
@@ -26,14 +27,6 @@ interface GoogleReviewsReadyData {
   averageRating?: number;
   totalReviewCount?: number;
 }
-
-/**
- * CheckConnection tool output shapes
- */
-type CheckConnectionOutput =
-  | { success: false; error: string; recoverable: boolean }
-  | { action: 'requiresConnection'; success: false; workflowPending: true; message: string }
-  | { connected: true; success: true; socialId: string; locationCount: number };
 
 /**
  * FetchReviews tool output shapes
@@ -49,123 +42,26 @@ type FetchReviewsOutput =
  * Checks if Google Business Profile is connected. If not, returns a signal
  * instructing the LLM to call social-platform__socialConnect directly.
  *
+ * Built from the shared connection-check factory
+ * (agents/src/services/social-connection-check.ts) — the lookup logic is
+ * shared with google-business-profile-sync; only the workflow-state `nextStep`
+ * strings differ.
+ *
  * computeState tracks:
  * - pending-gbp-connection: OAuth initiated, waiting for user to complete
  * - connected: GBP connected, ready to fetch reviews
  * - connection-check-failed: Error occurred, can retry
  */
-export const checkConnectionTool: SkillToolDefinition = {
-  name: 'checkConnection',
+export const checkConnectionTool: SkillToolDefinition = createGbpConnectionCheckTool({
+  loggerComponent: 'google-reviews-skill',
+  logEventPrefix: 'google-reviews',
   description:
     'Check if Google Business Profile is connected. If not connected, returns ' +
     'a signal to initiate OAuth via social-platform__socialConnect. ' +
     'Call this first before attempting to fetch reviews.',
-
-  parameters: z.object({}),
-
-  async execute(_input, context) {
-    const agentContext = context as AgentsAppContext;
-    const appId = agentContext?.metadata?.appId as string;
-
-    if (!appId) {
-      const error = 'App ID is required';
-      logger.error('google-reviews.checkConnection.missing-app-id', {});
-      return {
-        success: false,
-        error,
-        recoverable: false,
-      };
-    }
-
-    try {
-      // Check for existing GBP connection
-      const associations = socialAssociationRepo.findByAppAndPlatform(
-        appId,
-        SocialPlatform.GOOGLE_BUSINESS_PROFILE
-      );
-
-      if (associations.length === 0) {
-        logger.info('google-reviews.checkConnection.not-connected', { appId });
-        return {
-          action: 'requiresConnection',
-          success: false,
-          workflowPending: true,
-          message:
-            'No Google Business Profile connection found. ' +
-            'Call social-platform__socialConnect({ platform: "GOOGLE_BUSINESS_PROFILE" }) ' +
-            'to initiate OAuth, then wait for user to complete authentication.',
-        };
-      }
-
-      const association = associations[0]!;
-
-      if (associations.length > 1) {
-        logger.warn('google-reviews.checkConnection.multi-location', {
-          appId,
-          count: associations.length,
-          chosenSocialId: association.socialId,
-        });
-      }
-
-      logger.info('google-reviews.checkConnection.connected', {
-        appId,
-        socialId: association.socialId,
-      });
-
-      return {
-        connected: true,
-        success: true,
-        socialId: association.socialId,
-        locationCount: associations.length,
-      };
-    } catch (err: unknown) {
-      const error = err instanceof Error ? err.message : 'Unknown error';
-      logger.error('google-reviews.checkConnection.error', { appId, error });
-      return {
-        success: false,
-        error,
-        recoverable: true,
-      };
-    }
-  },
-
-  // Always update state, even on errors
-  computeState(_input: unknown, output: CheckConnectionOutput) {
-    // Error case - track for retry
-    if ('error' in output) {
-      return {
-        workflowState: 'connection-check-failed',
-        lastError: output.error,
-        nextStep: 'retry-connection-check',
-        updatedAt: new Date().toISOString(),
-      };
-    }
-
-    // Not connected - OAuth needed
-    if ('workflowPending' in output) {
-      return {
-        workflowState: 'pending-gbp-connection',
-        nextStep: 'fetch-reviews-and-install',
-        lastError: null, // Clear any previous error
-        updatedAt: new Date().toISOString(),
-      };
-    }
-
-    // Connected successfully
-    if ('connected' in output) {
-      return {
-        workflowState: 'connected',
-        socialId: output.socialId,
-        locationCount: output.locationCount,
-        nextStep: 'fetch-reviews',
-        lastError: null, // Clear any previous error
-        updatedAt: new Date().toISOString(),
-      };
-    }
-
-    return null;
-  },
-};
+  nextStepWhenConnected: 'fetch-reviews',
+  nextStepWhenPending: 'fetch-reviews-and-install',
+});
 
 /**
  * Tool 2: fetchReviews

@@ -15,6 +15,7 @@ export interface AgentsAppContext extends BaseAgentsAppContext {
     budgetServiceEnabled?: boolean
     subscriptionId?: string
     marketingCampaignsEnabled?: boolean
+    googleBusinessProfileSyncEnabled?: boolean
     asmDualWriteEnabled?: boolean
     purchaseIntentClassifierEnabled?: boolean
   }

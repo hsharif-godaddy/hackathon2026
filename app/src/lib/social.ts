@@ -1,5 +1,5 @@
 import { logger } from '@/lib/request-context'
-import type { GoogleReview, SocialConnection, SocialPublishResult } from '@/types/social'
+import type { GoogleBusinessProfile, GoogleReview, SocialConnection, SocialPublishResult } from '@/types/social'
 import { FacebookMediaType, SocialPlatform, SocialPlatformKey } from '@/types/social'
 import { getRootDomain } from '@/utils/getRootDomain'
 import { validatePlatformScheduleTime } from '@/utils/social/scheduling'
@@ -137,6 +137,152 @@ export interface YelpBusiness {
   categories?: Array<{ alias: string; title: string }>
   rating?: number
   review_count?: number
+}
+
+/**
+ * Normalize an address into GBP's google.type.PostalAddress shape
+ * (regionCode / administrativeArea / locality / addressLines), accepting either
+ * that shape or a schema.org PostalAddress (streetAddress / addressRegion /
+ * addressLocality / addressCountry — what the site read yields). Without this,
+ * GBP rejects the update: "Unknown name 'streetAddress' at
+ * 'location.storefront_address': Cannot find field." `regionCode` must be a CLDR
+ * region code (e.g. "US"); a full country name would still be rejected by GBP.
+ */
+const COUNTRY_NAME_TO_CLDR: Record<string, string> = {
+  'united states': 'US',
+  'united states of america': 'US',
+  usa: 'US',
+  america: 'US',
+  'united kingdom': 'GB',
+  uk: 'GB',
+  'great britain': 'GB',
+  england: 'GB',
+  canada: 'CA',
+  australia: 'AU',
+  'new zealand': 'NZ',
+  ireland: 'IE',
+}
+
+/**
+ * Coerce a region/country value to a CLDR region code for GBP. JSON-LD may give a
+ * string ("US", "United States") or an object ({'@type':'Country', name:'United States'}).
+ * Returns a 2-letter code uppercased, maps common country names, else passes the string
+ * through (GBP returns a clear error rather than us silently dropping the country).
+ */
+function toRegionCode(value: unknown): string | undefined {
+  const raw =
+    value && typeof value === 'object'
+      ? ((value as { name?: unknown; identifier?: unknown }).name ?? (value as { identifier?: unknown }).identifier)
+      : value
+  if (typeof raw !== 'string') return undefined
+  const trimmed = raw.trim()
+  if (!trimmed) return undefined
+  if (/^[A-Za-z]{2}$/.test(trimmed)) return trimmed.toUpperCase()
+  return COUNTRY_NAME_TO_CLDR[trimmed.toLowerCase()] ?? trimmed
+}
+
+export function toGbpPostalAddress(input: unknown): Record<string, unknown> {
+  const a = (input ?? {}) as Record<string, unknown>
+  const out: Record<string, unknown> = {}
+  // GBP-native fields pass straight through.
+  if (a.languageCode != null) out.languageCode = a.languageCode
+  if (a.postalCode != null) out.postalCode = a.postalCode
+  if (a.administrativeArea != null) out.administrativeArea = a.administrativeArea
+  if (a.locality != null) out.locality = a.locality
+  // An empty addressLines [] must NOT count as "present": it would both block the streetAddress
+  // fallback below and, on a read-then-merge write, replace the current street with nothing.
+  const hasAddressLines = Array.isArray(a.addressLines) ? a.addressLines.length > 0 : a.addressLines != null
+  if (hasAddressLines) out.addressLines = Array.isArray(a.addressLines) ? a.addressLines : [a.addressLines]
+  // GBP-native regionCode wins; fall back to schema.org addressCountry. Both are coerced
+  // to a CLDR code (and the object-valued JSON-LD country shape is unwrapped).
+  const regionCode = toRegionCode(a.regionCode) ?? toRegionCode(a.addressCountry)
+  if (regionCode != null) out.regionCode = regionCode
+  // schema.org PostalAddress → GBP, only where the GBP field isn't already set.
+  if (out.addressLines == null && a.streetAddress != null) out.addressLines = [a.streetAddress]
+  if (out.locality == null && a.addressLocality != null) out.locality = a.addressLocality
+  if (out.administrativeArea == null && a.addressRegion != null) out.administrativeArea = a.addressRegion
+  return out
+}
+
+const GBP_DAYS = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY']
+
+/** Day label (any case, full/abbrev, or schema.org URL) → GBP DayOfWeek enum. */
+function toGbpDay(value: unknown): string | null {
+  if (typeof value !== 'string' || !value.trim()) return null
+  const seg = (value.split('/').pop() ?? value).trim().toUpperCase()
+  return GBP_DAYS.find((d) => d === seg || d.startsWith(seg.slice(0, 3))) ?? null
+}
+
+/** "11:00" / "11:00 PM" / {hours,minutes} → GBP TimeOfDay {hours, minutes}. */
+function toGbpTimeOfDay(value: unknown): { hours: number; minutes: number } | null {
+  if (value && typeof value === 'object') {
+    const t = value as { hours?: number; minutes?: number }
+    if (typeof t.hours === 'number') return { hours: t.hours, minutes: t.minutes ?? 0 }
+    return null
+  }
+  if (typeof value === 'string') {
+    const m = value.match(/(\d{1,2}):(\d{2})/)
+    if (!m) return null
+    let hours = Number(m[1])
+    const minutes = Number(m[2])
+    if (/pm/i.test(value) && hours < 12) hours += 12
+    if (/am/i.test(value) && hours === 12) hours = 0
+    return { hours, minutes }
+  }
+  return null
+}
+
+interface GbpPeriod {
+  openDay: string
+  openTime: { hours: number; minutes: number }
+  closeDay: string
+  closeTime: { hours: number; minutes: number }
+}
+
+/**
+ * Normalize hours into GBP's regularHours { periods: [...] } shape. GBP rejects
+ * the day-keyed shape the agent tends to produce ({ monday: { openTime, closeTime } })
+ * and schema.org openingHoursSpecification arrays — both must become periods with
+ * openDay/openTime{hours,minutes}. Accepts those two shapes plus GBP-native periods;
+ * closed/unparseable days are dropped (GBP treats a missing day as closed).
+ */
+export function toGbpRegularHours(input: unknown): { periods: GbpPeriod[] } {
+  const periods: GbpPeriod[] = []
+  const a = input as Record<string, unknown> & { periods?: unknown[] }
+
+  const push = (dayKey: unknown, open: unknown, close: unknown, closeDayKey?: unknown): void => {
+    const openDay = toGbpDay(dayKey)
+    const openTime = toGbpTimeOfDay(open)
+    const closeTime = toGbpTimeOfDay(close)
+    if (!openDay || !openTime || !closeTime) return
+    const explicitCloseDay = toGbpDay(closeDayKey)
+    // Overnight period (closes at/before it opens, e.g. 22:00→02:00) rolls to the next
+    // day; without this the period would be a backwards same-day Mon→Mon.
+    const overnight = closeTime.hours * 60 + closeTime.minutes <= openTime.hours * 60 + openTime.minutes
+    const closeDay = explicitCloseDay ?? (overnight ? GBP_DAYS[(GBP_DAYS.indexOf(openDay) + 1) % 7]! : openDay)
+    periods.push({ openDay, openTime, closeDay, closeTime })
+  }
+
+  if (a && Array.isArray(a.periods)) {
+    for (const p of a.periods as Array<Record<string, unknown>>) {
+      push(p.openDay, p.openTime, p.closeTime, p.closeDay)
+    }
+  } else if (Array.isArray(input)) {
+    // schema.org openingHoursSpecification
+    for (const spec of input as Array<Record<string, unknown>>) {
+      const days = Array.isArray(spec.dayOfWeek) ? spec.dayOfWeek : [spec.dayOfWeek]
+      for (const d of days) push(d, spec.opens, spec.closes)
+    }
+  } else if (a && typeof a === 'object') {
+    // day-keyed: { monday: { openTime, closeTime } | { open, close } }
+    for (const [day, val] of Object.entries(a)) {
+      if (!val || typeof val !== 'object') continue
+      const v = val as Record<string, unknown>
+      push(day, v.openTime ?? v.opens ?? v.open, v.closeTime ?? v.closes ?? v.close)
+    }
+  }
+
+  return { periods }
 }
 
 export class SocialV2Client {
@@ -345,6 +491,188 @@ export class SocialV2Client {
       throw new Error(`Unexpected response shape from Google reviews API: missing reviews array`)
     }
     return data.reviews
+  }
+
+  /**
+   * Read the editable Google Business Profile listing (name, address, phone,
+   * hours, website) via the GBP Business Information API. Unlike
+   * getGoogleLocations (which lists limited fields under accounts), this reads
+   * the full editable subset for a single location. The v1 location resource is
+   * keyed by locationId alone — no accountId required.
+   */
+  async getGoogleBusinessProfile(userTokenId: string, locationId: string): Promise<GoogleBusinessProfile> {
+    const readMask = 'title,storefrontAddress,phoneNumbers,regularHours,websiteUri,profile'
+    const url = `${SOCIAL_V2_BASE_URL}/google/proxy/mybusinessbusinessinformation/v1/locations/${locationId}?readMask=${readMask}`
+
+    const response = await fetch(url, {
+      credentials: 'include',
+      headers: {
+        'X-Token-Id': userTokenId,
+        'Accept': 'application/json',
+      },
+    })
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch Google Business Profile: ${response.status}`)
+    }
+
+    // Explicit shape for the readMask response (no `any` across the GBP API trust boundary).
+    const location = (await response.json()) as {
+      title?: string
+      storefrontAddress?: GoogleBusinessProfile['storefrontAddress']
+      phoneNumbers?: { primaryPhone?: string }
+      regularHours?: GoogleBusinessProfile['regularHours']
+      websiteUri?: string
+      profile?: { description?: string }
+    }
+    return {
+      name: location.title ?? '',
+      storefrontAddress: location.storefrontAddress,
+      primaryPhone: location.phoneNumbers?.primaryPhone,
+      regularHours: location.regularHours,
+      websiteUri: location.websiteUri,
+      description: location.profile?.description,
+    }
+  }
+
+  /**
+   * Read raw location fields (GBP-native shape) for merge-before-write. Unlike
+   * getGoogleBusinessProfile, this returns the untouched resource so callers can
+   * preserve subfields a whole-field updateMask would otherwise clear (e.g.
+   * phoneNumbers.additionalPhones).
+   */
+  private async readLocationFields(
+    userTokenId: string,
+    locationId: string,
+    readMask: string,
+  ): Promise<Record<string, unknown>> {
+    const url = `${SOCIAL_V2_BASE_URL}/google/proxy/mybusinessbusinessinformation/v1/locations/${locationId}?readMask=${readMask}`
+    const response = await fetch(url, {
+      credentials: 'include',
+      headers: {
+        'X-Token-Id': userTokenId,
+        'Accept': 'application/json',
+      },
+    })
+    if (!response.ok) {
+      throw new Error(`Failed to read current Google Business Profile before update: ${response.status}`)
+    }
+    return (await response.json()) as Record<string, unknown>
+  }
+
+  /**
+   * Write a subset of fields back to the Google Business Profile listing via the
+   * Business Information API. Keyed by locationId (no accountId). `updates` uses
+   * the GoogleBusinessProfile field names; this maps them to the GBP location
+   * field paths and PATCHes only the changed fields via `updateMask`.
+   *
+   * @returns the GoogleBusinessProfile field keys that were sent.
+   */
+  async updateGoogleBusinessProfile(
+    userTokenId: string,
+    locationId: string,
+    updates: Partial<GoogleBusinessProfile>,
+  ): Promise<{ updated: string[] }> {
+    const body: Record<string, unknown> = {}
+    const maskPaths: string[] = []
+
+    // Normalize/validate the structured fields up front so bad input fails fast,
+    // before the read-then-merge network round-trip below.
+    const normalizedAddress = updates.storefrontAddress !== undefined ? toGbpPostalAddress(updates.storefrontAddress) : undefined
+    if (normalizedAddress && Object.keys(normalizedAddress).length === 0) {
+      // Nothing in the input mapped to a GBP address field; merging would no-op and
+      // an unmerged PATCH would clear the address. Fail loudly so the agent re-shapes.
+      throw new Error(
+        'Could not map the address to a Google Business Profile address. Provide addressLines, ' +
+          'locality, administrativeArea, postalCode, and/or regionCode (a CLDR country code like "US") ' +
+          '— or the schema.org streetAddress/addressLocality/addressRegion/addressCountry equivalents.',
+      )
+    }
+    const normalizedHours = updates.regularHours !== undefined ? toGbpRegularHours(updates.regularHours) : undefined
+    if (normalizedHours && normalizedHours.periods.length === 0) {
+      throw new Error(
+        'Could not map the hours to Google Business Profile regular hours. Provide day-keyed hours ' +
+          '({ monday: { openTime: "09:00", closeTime: "17:00" }, … }), a schema.org ' +
+          'openingHoursSpecification array, or GBP periods — with parseable open/close times.',
+      )
+    }
+
+    // Treat empty/whitespace strings as no-ops, not field clears: a PATCH with title/
+    // websiteUri/primaryPhone = "" would wipe the value on the live listing.
+    const nonEmpty = (value: unknown): string | undefined =>
+      typeof value === 'string' && value.trim() !== '' ? value : undefined
+    const name = nonEmpty(updates.name)
+    const primaryPhone = nonEmpty(updates.primaryPhone)
+    const websiteUri = nonEmpty(updates.websiteUri)
+    const description = nonEmpty(updates.description)
+
+    // phoneNumbers and storefrontAddress are masked as whole fields, so a PATCH
+    // REPLACES the entire field — any subfield we don't send (additionalPhones, the
+    // address lines a partial update omits) would be wiped. Read the current values
+    // first and merge our changes onto them.
+    const phoneFields = primaryPhone !== undefined ? ['phoneNumbers'] : []
+    const addressFields = normalizedAddress ? ['storefrontAddress'] : []
+    const mergeReadMask = [...phoneFields, ...addressFields].join(',')
+    const current = mergeReadMask ? await this.readLocationFields(userTokenId, locationId, mergeReadMask) : {}
+
+    if (name !== undefined) {
+      body.title = name
+      maskPaths.push('title')
+    }
+    if (primaryPhone !== undefined) {
+      // GBP rejects masking `phoneNumbers.primaryPhone` alone ("primary or additional
+      // phone numbers cannot be updated independently"), so mask the whole field and
+      // merge to preserve any additionalPhones.
+      const currentPhones = (current.phoneNumbers ?? {}) as Record<string, unknown>
+      body.phoneNumbers = { ...currentPhones, primaryPhone }
+      maskPaths.push('phoneNumbers')
+    }
+    if (normalizedAddress) {
+      // Merge onto the current address so a partial update (e.g. only locality) keeps
+      // the untouched lines; incoming subfields win.
+      const currentAddress = (current.storefrontAddress ?? {}) as Record<string, unknown>
+      body.storefrontAddress = { ...currentAddress, ...normalizedAddress }
+      maskPaths.push('storefrontAddress')
+    }
+    if (normalizedHours) {
+      // regularHours is a complete weekly schedule, so a whole-field replace is correct.
+      body.regularHours = normalizedHours
+      maskPaths.push('regularHours')
+    }
+    if (websiteUri !== undefined) {
+      body.websiteUri = websiteUri
+      maskPaths.push('websiteUri')
+    }
+    if (description !== undefined) {
+      // GBP nests the business description under `profile`. (GBP rejects URLs and text
+      // over ~750 chars — surfaced as a 400 the caller relays.)
+      body.profile = { description }
+      maskPaths.push('profile.description')
+    }
+
+    if (maskPaths.length === 0) {
+      throw new Error('No Google Business Profile fields to update')
+    }
+
+    const url = `${SOCIAL_V2_BASE_URL}/google/proxy/mybusinessbusinessinformation/v1/locations/${locationId}?updateMask=${encodeURIComponent(maskPaths.join(','))}`
+
+    const response = await fetch(url, {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: {
+        'X-Token-Id': userTokenId,
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      throw new Error(`Failed to update Google Business Profile: ${response.status} - ${errorText}`)
+    }
+
+    return { updated: Object.keys(updates) }
   }
 
   async getYelpBusiness(userTokenId: string, businessId: string): Promise<YelpBusiness> {

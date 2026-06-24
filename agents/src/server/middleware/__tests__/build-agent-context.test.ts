@@ -54,6 +54,7 @@ describe('buildAgentContext', function suite() {
       rebuildSourceImagesEnabled: false,
       debugStatsEnabled: false,
       marketingCampaignsEnabled: false,
+      googleBusinessProfileSyncEnabled: false,
       market: undefined,
       asmDualWriteEnabled: false,
       logoBrandColorsEnabled: false,
@@ -179,7 +180,10 @@ describe('buildAgentContext', function suite() {
       'useAtlasCrawler',
       'rebuildIntakeFormEnabled',
       'rebuildSourceImagesEnabled',
+      'marketingCampaignsEnabled',
+      'googleBusinessProfileSyncEnabled',
       'asmDualWriteEnabled',
+      'logoBrandColorsEnabled',
       'purchaseIntentClassifierEnabled',
       'skillSuggestionsEnabled',
     ] as const;

@@ -820,6 +820,7 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
           market: agentContext?.market,
           fqdn: agentContext?.fqdn,
           marketingCampaignsEnabled: agentContext?.marketingCampaignsEnabled,
+          googleBusinessProfileSyncEnabled: agentContext?.googleBusinessProfileSyncEnabled,
           skillSuggestionsEnabled: agentContext?.skillSuggestionsEnabled,
         },
         isInitialPrompt,

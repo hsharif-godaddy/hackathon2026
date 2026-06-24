@@ -1,7 +1,7 @@
 ---
 name: google-reviews
 description: Display Google Business Profile reviews on the site
-whenToUse: User wants to show Google reviews, customer testimonials from Google, or star ratings from their Google Business Profile.
+whenToUse: User wants to show Google reviews, customer testimonials from Google, or star ratings from their Google Business Profile on their site. Do NOT use for connecting/syncing the listing or correcting business info (name, address, phone, hours, website, description), or for matching the site to the listing — that is google-business-profile-sync.
 intents:
   - Google reviews/star ratings/Google Business Profile reviews
 ---

@@ -1,0 +1,82 @@
+metadata:
+  name: Skill Loader - Google Business Profile Sync
+  version: 1.0.0
+
+cases:
+  # --- Positive: google-business-profile-sync should load ---
+
+  - id: sync-listing-explicit
+    prompt: 'Sync my Google Business listing with my site'
+    expectedSkill: google-business-profile-sync
+    tags: [positive]
+    rationale: Direct sync request — clearest signal to load the sync skill
+
+  - id: does-listing-match
+    prompt: 'Does my Google Business Profile match my website?'
+    expectedSkill: google-business-profile-sync
+    tags: [positive]
+    rationale: Compare listing vs site — the diff half of the sync flow
+
+  - id: gbp-address-wrong
+    prompt: 'My Google listing address is wrong, can you fix it to match my site?'
+    expectedSkill: google-business-profile-sync
+    tags: [positive]
+    rationale: Reconcile a specific business-info field between GBP and the site
+
+  - id: update-gbp-phone
+    prompt: "Update my Google Business Profile phone number to match what's on my site"
+    expectedSkill: google-business-profile-sync
+    tags: [positive]
+    rationale: Field-level site→GBP sync intent
+
+  - id: gbp-hours-out-of-date
+    prompt: 'My hours on Google are out of date compared to my website'
+    expectedSkill: google-business-profile-sync
+    tags: [positive]
+    rationale: Hours mismatch between listing and site — sync intent
+
+  - id: connect-and-sync
+    prompt: 'Connect my Google Business Profile and check it against my site'
+    expectedSkill: google-business-profile-sync
+    tags: [positive]
+    rationale: Connect + compare — the entry point of the sync flow
+
+  - id: gbp-minimal-phrasing
+    prompt: 'my google listing doesnt match my site'
+    expectedSkill: google-business-profile-sync
+    tags: [positive, regression]
+    rationale: Minimal, lowercase phrasing — must still route to the sync skill
+
+  # --- Negative: reviews belong to google-reviews, NOT this skill ---
+
+  - id: show-google-reviews
+    prompt: 'Add my Google reviews to the site'
+    expectedSkill: google-reviews
+    tags: [negative, hard]
+    rationale: Review embedding is google-reviews, not business-info sync
+
+  - id: star-ratings
+    prompt: 'Show my Google star ratings on the homepage'
+    expectedSkill: google-reviews
+    tags: [negative, hard]
+    rationale: Star ratings/testimonials → google-reviews, not the sync skill
+
+  # --- Negative: no skill should load ---
+
+  - id: change-color-scheme
+    prompt: 'Change the color scheme to something more professional'
+    expectedSkill: null
+    tags: [negative]
+    rationale: Design change — no GBP/sync intent
+
+  - id: add-hero-section
+    prompt: 'Add a hero section with a background image to my homepage'
+    expectedSkill: null
+    tags: [negative]
+    rationale: Pure UI feature — no GBP/sync intent
+
+  - id: business-hours-section-ui
+    prompt: 'Add a business hours section to my contact page'
+    expectedSkill: null
+    tags: [negative, hard]
+    rationale: Building a hours UI section on the site is a content edit, not syncing the GBP listing

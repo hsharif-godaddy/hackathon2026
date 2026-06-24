@@ -425,6 +425,61 @@ describe('SocialV2Client', () => {
     })
   })
 
+  describe('getGoogleBusinessProfile', () => {
+    const MOCK_LOCATION_ID = 'loc-67890'
+
+    it('maps a fully-populated location to the GoogleBusinessProfile shape', async () => {
+      vi.mocked(fetch).mockResolvedValueOnce(
+        mockResponse({
+          title: 'Acme Plumbing',
+          storefrontAddress: { addressLines: ['123 Main St'], locality: 'Phoenix' },
+          phoneNumbers: { primaryPhone: '(555) 123-4567' },
+          regularHours: { periods: [{ openDay: 'MONDAY' }] },
+          websiteUri: 'https://acme.example',
+          profile: { description: 'Family-owned since 1990' },
+        })
+      )
+
+      const result = await client.getGoogleBusinessProfile(MOCK_TOKENS.user, MOCK_LOCATION_ID)
+
+      expect(result).toEqual({
+        name: 'Acme Plumbing',
+        storefrontAddress: { addressLines: ['123 Main St'], locality: 'Phoenix' },
+        primaryPhone: '(555) 123-4567',
+        regularHours: { periods: [{ openDay: 'MONDAY' }] },
+        websiteUri: 'https://acme.example',
+        description: 'Family-owned since 1990',
+      })
+    })
+
+    it('reads the single-location Business Information endpoint by locationId', async () => {
+      vi.mocked(fetch).mockResolvedValueOnce(mockResponse({ title: 'X' }))
+
+      await client.getGoogleBusinessProfile(MOCK_TOKENS.user, MOCK_LOCATION_ID)
+
+      expect(getLastFetchUrl()).toContain(`/mybusinessbusinessinformation/v1/locations/${MOCK_LOCATION_ID}`)
+    })
+
+    it('defaults missing title to "" and yields undefined for missing phoneNumbers/profile (no throw)', async () => {
+      vi.mocked(fetch).mockResolvedValueOnce(mockResponse({ websiteUri: 'https://x.example' }))
+
+      const result = await client.getGoogleBusinessProfile(MOCK_TOKENS.user, MOCK_LOCATION_ID)
+
+      expect(result.name).toBe('')
+      expect(result.primaryPhone).toBeUndefined()
+      expect(result.description).toBeUndefined()
+      expect(result.websiteUri).toBe('https://x.example')
+    })
+
+    it('throws on non-ok response', async () => {
+      vi.mocked(fetch).mockResolvedValueOnce(mockFailedResponse(503))
+
+      await expect(
+        client.getGoogleBusinessProfile(MOCK_TOKENS.user, MOCK_LOCATION_ID)
+      ).rejects.toThrow('Failed to fetch Google Business Profile: 503')
+    })
+  })
+
   describe('regression: Facebook Photo permalink_url error', () => {
     it('does NOT request permalink_url for photos', async () => {
       vi.mocked(fetch).mockResolvedValueOnce(mockResponse({ link: MOCK_URLS.facebookPhoto }))

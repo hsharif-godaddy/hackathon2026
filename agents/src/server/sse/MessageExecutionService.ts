@@ -198,6 +198,7 @@ interface LifecycleContext {
     market?: string
     fqdn?: string
     marketingCampaignsEnabled?: boolean
+    googleBusinessProfileSyncEnabled?: boolean
     skillSuggestionsEnabled?: boolean
   }
   isInitialPrompt?: boolean
@@ -2103,6 +2104,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
         isE2S: agentCtx?.isE2S ?? false,
         authType,
         marketingCampaignsEnabled: agentCtx?.marketingCampaignsEnabled ?? false,
+        googleBusinessProfileSyncEnabled: agentCtx?.googleBusinessProfileSyncEnabled ?? false,
         ...(agentCtx?.useTestBudget !== undefined && { useTestBudget: agentCtx.useTestBudget }),
         ...(agentCtx?.useAtlasCrawler && { useAtlasCrawler: true }),
         ...(agentCtx?.rebuildIntakeFormEnabled && { rebuildIntakeFormEnabled: true }),

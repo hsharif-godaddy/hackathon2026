@@ -4,8 +4,8 @@
  * frontend-specific (lowercase values vs agents' uppercase).
  */
 
-export type { GoogleReview } from '@airo/shared/social'
-export { CONNECT_REQUEST_FROM_PUBLISH, GOOGLE_REVIEWS_READY } from '@airo/shared/social'
+export type { GoogleBusinessProfile, GoogleReview } from '@airo/shared/social'
+export { CONNECT_REQUEST_FROM_PUBLISH, GBP_PROFILE_READY, GBP_UPDATE_DONE, GOOGLE_REVIEWS_READY } from '@airo/shared/social'
 
 export enum SocialPlatform {
   FACEBOOK = 'facebook',
