@@ -12,6 +12,8 @@
 
 import type { Tool } from 'ai';
 import type { ResolveToolMetadata } from '@airo/ai-transport';
+import { createSkillAction } from '@godaddy/agent-observability-events';
+import { emitSkillAction } from '@godaddy/agent-otel-sdk';
 import { logger } from '../logging/index.js';
 import { ConversationSkillState, buildAllSkillTools, buildSkillToolName, type SkillToolRegistry, type SkillHooks, type SkillHookContext, type SkillSessionAnnouncements } from '@airo/ai-skills';
 import { join } from 'path';
@@ -130,7 +132,21 @@ export class SkillToolManager {
           if (!appId) return;
           const appPath = appRepository.findById(appId)?.path;
           if (!appPath) return;
-          await appliedSkillsRegistry.mergeSkillState(skillName, appPath, statePatch);
+          const stateSnapshot = await appliedSkillsRegistry.mergeSkillState(skillName, appPath, statePatch);
+          if (stateSnapshot) {
+            try {
+              emitSkillAction({
+                eventData: createSkillAction({
+                  skillName,
+                  skillAction: 'updateState',
+                  stateSnapshot,
+                  statePatch,
+                }),
+              });
+            } catch (err) {
+              logger.warn('skill.otel.emit_failed', { skillName, skillAction: 'updateState', error: err });
+            }
+          }
         },
         onStateError: (skillName, toolName, error) => {
           logger.warn('skill.state.write_failed', {

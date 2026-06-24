@@ -1,5 +1,7 @@
 import { createTool, type Tool, type AgentContext } from '@airo/ai-lib';
 import { addSkillNameToSpan } from '@airo/ai-transport';
+import { createSkillAction } from '@godaddy/agent-observability-events';
+import { emitSkillAction } from '@godaddy/agent-otel-sdk';
 import { z } from 'zod';
 import { AppRepository } from '../../database/repositories/AppRepository.js';
 import { appliedSkillsRegistry } from '../applied-skills-registry.js';
@@ -7,19 +9,36 @@ import { logger } from '../../logging/index.js';
 import { SkillLoaderTool } from '../skill-loader-tool.js';
 import { skillToolManager } from '../skill-tool-manager.js';
 
+type LifecycleAction = 'load' | 'unload' | 'install' | 'complete';
+
+// Guarded wrapper: a throw from createSkillAction/emitSkillAction must not
+// convert an already-successful action into an error for the caller.
+function safeEmitEvent(skillName: string, skillAction: LifecycleAction): void {
+  try {
+    emitSkillAction({ eventData: createSkillAction({ skillName, skillAction }) });
+  } catch (err) {
+    logger.warn('skill.otel.emit_failed', { skillName, skillAction, error: err });
+  }
+}
+
 /**
  * Unified Skill Management Tool for AI-Lib
  *
- * Provides three actions for managing skills:
+ * Actions:
  * - list: Show all available skills with descriptions from YAML frontmatter
  * - load: Load skill instructions into context (without templates)
- * - install: Directly copy skill template files to app directory
+ * - unload: Remove a skill from the active conversation context
+ * - pin: Keep a skill loaded for the entire conversation (mode-style skills)
+ * - unpin: Remove a pinned skill
+ * - install: Copy skill template files into the app directory
+ * - complete: Signal that a skill's full workflow has been executed
+ * - loadReference: Load a specific skill reference section by path
  */
 export const skillAITool: Tool = createTool(
-  'Manage skills - list, load, unload, pin, unpin, install, or loadReference. Skills provide specialized knowledge and tools. Pinning keeps a skill loaded for the entire conversation and injects its instructions into every turn (used for mode-style skills like deep-build).',
+  'Manage skills - list, load, unload, pin, unpin, install, complete, or loadReference. Skills provide specialized knowledge and tools. Pinning keeps a skill loaded for the entire conversation and injects its instructions into every turn (used for mode-style skills like deep-build).',
   z.object({
-    action: z.enum(['list', 'load', 'unload', 'pin', 'unpin', 'install', 'loadReference']).describe('Action to perform'),
-    skill: z.string().optional().describe('Skill name — use for load/unload/pin/unpin/install. Short identifier like "blog" or "payment/stripe". NOT for loadReference.'),
+    action: z.enum(['list', 'load', 'unload', 'pin', 'unpin', 'install', 'complete', 'loadReference']).describe('Action to perform'),
+    skill: z.string().optional().describe('Skill name — use for load/unload/pin/unpin/install/complete. Short identifier like "blog" or "payment/stripe". NOT for loadReference.'),
     path: z.string().optional().describe('Reference file path — use ONLY for loadReference. Full path from skills root without .md extension, e.g. "connecting-calendars/sections/02a-google-setup". NOT for load/install.'),
   }),
   async (input, context?: AgentContext) => {
@@ -94,6 +113,8 @@ export const skillAITool: Tool = createTool(
         appPath: app?.path,
         appId
       });
+
+      safeEmitEvent(input.skill, 'load');
 
       if (conversationId) {
         const stamped = addSkillNameToSpan(conversationId, input.skill);
@@ -220,6 +241,8 @@ export const skillAITool: Tool = createTool(
         skillName: input.skill,
         appId
       });
+
+      safeEmitEvent(input.skill, 'unload');
 
       return {
         success: true,
@@ -363,7 +386,33 @@ export const skillAITool: Tool = createTool(
 
       appliedSkillsRegistry.recordInstall(input.skill, app.path);
 
+      safeEmitEvent(input.skill, 'install');
+
       return response;
+    }
+
+    // Complete action - signal that a skill's full workflow has been executed
+    if (input.action === 'complete') {
+      const appId = context?.metadata?.appId as string | undefined;
+
+      if (!appId) {
+        throw new Error('App ID not found in context. Complete action requires app context.');
+      }
+
+      const app = appRepo.findById(appId);
+      if (!app) {
+        throw new Error(`App not found: ${appId}`);
+      }
+
+      appliedSkillsRegistry.recordComplete(input.skill, app.path);
+
+      safeEmitEvent(input.skill, 'complete');
+
+      return {
+        success: true,
+        skill: input.skill,
+        message: `Skill '${input.skill}' marked as complete.`
+      };
     }
 
     throw new Error(`Unknown action: ${input.action}`);

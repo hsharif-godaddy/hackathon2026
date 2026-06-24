@@ -46,6 +46,7 @@ export async function buildAppliedSkillsContextMessage(
       try {
         const attrs: string[] = [`name="${name}"`];
         if (entry.installedAt) attrs.push(`installed_at="${entry.installedAt}"`);
+        if (entry.completedAt) attrs.push(`completed_at="${entry.completedAt}"`);
 
         const currentState = await appliedSkillsRegistry.readSkillState(name, appPath);
         const body = currentState

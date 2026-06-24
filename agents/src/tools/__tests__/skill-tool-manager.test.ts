@@ -17,10 +17,25 @@ vi.mock('../../workspace/index.js', () => ({
 
 vi.mock('../../logging/index.js');
 
-// Mock hook handlers for testing (hoisted so vi.mock factory can reference them)
-const { mockOnInstallHook, mockOnLoadHook } = vi.hoisted(() => ({
+// Mock hook handlers and observability for testing (hoisted so vi.mock factory can reference them)
+const { mockOnInstallHook, mockOnLoadHook, mockEmitSkillAction, mockCreateSkillAction, mockMergeSkillState } = vi.hoisted(() => ({
   mockOnInstallHook: vi.fn(),
-  mockOnLoadHook: vi.fn()
+  mockOnLoadHook: vi.fn(),
+  mockEmitSkillAction: vi.fn(),
+  mockCreateSkillAction: vi.fn().mockReturnValue({ schemaId: 'test-schema', data: {} }),
+  mockMergeSkillState: vi.fn().mockResolvedValue({ provisioned: true }),
+}));
+
+vi.mock('@godaddy/agent-otel-sdk', () => ({
+  emitSkillAction: mockEmitSkillAction,
+}));
+
+vi.mock('@godaddy/agent-observability-events', () => ({
+  createSkillAction: mockCreateSkillAction,
+}));
+
+vi.mock('../applied-skills-registry.js', () => ({
+  appliedSkillsRegistry: { mergeSkillState: mockMergeSkillState },
 }));
 
 // Mock buildAllSkillTools from ai-skills
@@ -380,6 +395,71 @@ describe('SkillToolManager', () => {
 
     it('returns undefined for an unregistered prefixed-shaped name', () => {
       expect(manager.getSkillNameForTool('unknownSkill__unknownTool')).toBeUndefined();
+    });
+  });
+
+  describe('onStateComputed — updateState emission', () => {
+    it('emits updateState event with stateSnapshot and statePatch after mergeSkillState', async function emitUpdateState() {
+      const { appRepository } = await import('../../database/repositories/index.js');
+      vi.mocked(appRepository.findById).mockReturnValueOnce({ path: '/tmp/app' } as any);
+
+      const snapshot = { provisioned: true, accountId: 'acc-123' };
+      mockMergeSkillState.mockResolvedValueOnce(snapshot);
+      mockCreateSkillAction.mockReturnValueOnce({ schemaId: 'urn:skill-action', data: snapshot });
+
+      const calls = vi.mocked(buildAllSkillTools).mock.calls;
+      const options = calls[calls.length - 1]?.[1];
+
+      await options?.onStateComputed?.('stripe', 'app-abc', { accountId: 'acc-123' });
+
+      expect(mockMergeSkillState).toHaveBeenCalledWith('stripe', '/tmp/app', { accountId: 'acc-123' });
+      expect(mockCreateSkillAction).toHaveBeenCalledWith(
+        expect.objectContaining({
+          skillName: 'stripe',
+          skillAction: 'updateState',
+          stateSnapshot: snapshot,
+          statePatch: { accountId: 'acc-123' },
+        })
+      );
+      expect(mockEmitSkillAction).toHaveBeenCalledWith(
+        expect.objectContaining({ eventData: { schemaId: 'urn:skill-action', data: snapshot } })
+      );
+    });
+
+    it('does not emit updateState when mergeSkillState returns undefined (error path)', async function noEmitOnError() {
+      const { appRepository } = await import('../../database/repositories/index.js');
+      vi.mocked(appRepository.findById).mockReturnValueOnce({ path: '/tmp/app' } as any);
+
+      mockMergeSkillState.mockResolvedValueOnce(undefined);
+
+      const calls = vi.mocked(buildAllSkillTools).mock.calls;
+      const options = calls[calls.length - 1]?.[1];
+
+      await options?.onStateComputed?.('stripe', 'app-abc', { accountId: 'acc-123' });
+
+      expect(mockEmitSkillAction).not.toHaveBeenCalled();
+    });
+
+    it('does not emit updateState when appId is missing', async function noEmitWithoutApp() {
+      const calls = vi.mocked(buildAllSkillTools).mock.calls;
+      const options = calls[calls.length - 1]?.[1];
+
+      await options?.onStateComputed?.(undefined as any, undefined, { accountId: 'acc-123' });
+
+      expect(mockEmitSkillAction).not.toHaveBeenCalled();
+    });
+
+    it('does not throw when emitSkillAction throws on updateState', async function guardUpdateState() {
+      const { appRepository } = await import('../../database/repositories/index.js');
+      vi.mocked(appRepository.findById).mockReturnValueOnce({ path: '/tmp/app' } as any);
+      mockMergeSkillState.mockResolvedValueOnce({ provisioned: true });
+      mockEmitSkillAction.mockImplementationOnce(() => { throw new Error('OTel unavailable'); });
+
+      const calls = vi.mocked(buildAllSkillTools).mock.calls;
+      const options = calls[calls.length - 1]?.[1];
+
+      await expect(options?.onStateComputed?.('stripe', 'app-abc', { provisioned: true }))
+        .resolves.toBeUndefined();
     });
   });
 });

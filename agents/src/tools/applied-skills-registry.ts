@@ -35,6 +35,8 @@ const REGISTRY_FILE_VERSION = 1;
 export interface AppliedSkillEntry {
   /** ISO timestamp of the first `skill install` call for this skill in this app. */
   installedAt?: string;
+  /** ISO timestamp of the first `skill complete` call for this skill in this app. */
+  completedAt?: string;
 }
 
 interface AppliedSkillsFile {
@@ -51,7 +53,7 @@ export class AppliedSkillsRegistry {
    * Serializes concurrent mergeSkillState calls per (appPath, skillName).
    * Key: `${appPath}::${skillName}`
    */
-  private stateWriteChain = new Map<string, Promise<void>>();
+  private stateWriteChain = new Map<string, Promise<Record<string, unknown> | undefined>>();
 
   /**
    * Record that a skill's templates were installed into the app.
@@ -66,6 +68,21 @@ export class AppliedSkillsRegistry {
     });
     this.schedulePersist(appPath);
     logger.info('applied_skills.install.recorded', { skillName, appPath });
+  }
+
+  /**
+   * Record that a skill's full workflow has been completed in the app.
+   * Idempotent: the completedAt timestamp is set only on the first call.
+   */
+  recordComplete(skillName: string, appPath: string): void {
+    const skills = this.getOrCreate(appPath);
+    const existing = skills.get(skillName) ?? {};
+    skills.set(skillName, {
+      ...existing,
+      completedAt: existing.completedAt ?? new Date().toISOString(),
+    });
+    this.schedulePersist(appPath);
+    logger.info('applied_skills.complete.recorded', { skillName, appPath });
   }
 
   /** Return all installed skill entries for an app. */
@@ -115,10 +132,10 @@ export class AppliedSkillsRegistry {
    * method guarantees those fields are shallow-merged without dropping keys
    * written by other tools of the same skill.
    */
-  mergeSkillState(skillName: string, appPath: string, patch: Record<string, unknown>): Promise<void> {
+  mergeSkillState(skillName: string, appPath: string, patch: Record<string, unknown>): Promise<Record<string, unknown> | undefined> {
     const key = `${appPath}::${skillName}`;
-    const prev = this.stateWriteChain.get(key) ?? Promise.resolve();
-    const next = prev.then(() => this.applyStatePatch(skillName, appPath, patch)).catch(() => {});
+    const prev = this.stateWriteChain.get(key) ?? Promise.resolve(undefined);
+    const next = prev.then(() => this.applyStatePatch(skillName, appPath, patch)).catch(() => undefined);
     this.stateWriteChain.set(key, next);
     return next;
   }
@@ -127,7 +144,7 @@ export class AppliedSkillsRegistry {
     skillName: string,
     appPath: string,
     patch: Record<string, unknown>
-  ): Promise<void> {
+  ): Promise<Record<string, unknown>> {
     // Guarantee a registry entry exists so the skill surfaces in the applied-skills
     // context message even if it was never explicitly installed via `skill install`.
     // Guidance-only skills (e.g. online-conferencing) define computeState tools but
@@ -137,7 +154,9 @@ export class AppliedSkillsRegistry {
       this.recordInstall(skillName, appPath);
     }
     const existing = await this.readSkillState(skillName, appPath) ?? {};
-    await writeSkillState(skillName, appPath, { ...existing, ...patch });
+    const merged = { ...existing, ...patch };
+    await writeSkillState(skillName, appPath, merged);
+    return merged;
   }
 
   /**
@@ -204,6 +223,7 @@ export class AppliedSkillsRegistry {
       const e = entry as Record<string, unknown>;
       map.set(skillName, {
         ...(typeof e.installedAt === 'string' && { installedAt: e.installedAt }),
+        ...(typeof e.completedAt === 'string' && { completedAt: e.completedAt }),
       });
     }
     logger.info('applied_skills.hydrated', { appPath, skillCount: map.size });

@@ -51,6 +51,43 @@ describe('applied-skills-registry', () => {
     });
   });
 
+  describe('#recordComplete', () => {
+    it('records a completedAt timestamp on first call', function record() {
+      registry.recordComplete('authentication', appPath);
+      const skills = registry.getInstalledSkills(appPath);
+      expect(skills.has('authentication')).toBe(true);
+      expect(typeof skills.get('authentication')?.completedAt).toBe('string');
+    });
+
+    it('is idempotent — second call does not overwrite completedAt', function idempotent() {
+      registry.recordComplete('authentication', appPath);
+      const firstTimestamp = registry.getInstalledSkills(appPath).get('authentication')?.completedAt;
+
+      registry.recordComplete('authentication', appPath);
+      const secondTimestamp = registry.getInstalledSkills(appPath).get('authentication')?.completedAt;
+
+      expect(firstTimestamp).toBe(secondTimestamp);
+    });
+
+    it('does not overwrite an existing installedAt when recording complete', function preserveInstall() {
+      registry.recordInstall('authentication', appPath);
+      const installedAt = registry.getInstalledSkills(appPath).get('authentication')?.installedAt;
+
+      registry.recordComplete('authentication', appPath);
+
+      expect(registry.getInstalledSkills(appPath).get('authentication')?.installedAt).toBe(installedAt);
+      expect(registry.getInstalledSkills(appPath).get('authentication')?.completedAt).toBeDefined();
+    });
+
+    it('can record install and complete on the same skill', function both() {
+      registry.recordInstall('authentication', appPath);
+      registry.recordComplete('authentication', appPath);
+      const entry = registry.getInstalledSkills(appPath).get('authentication');
+      expect(entry?.installedAt).toBeDefined();
+      expect(entry?.completedAt).toBeDefined();
+    });
+  });
+
   describe('#getInstalledSkills', () => {
     it('returns an empty map for an app with nothing recorded', function empty() {
       const skills = registry.getInstalledSkills('/some/unknown/path');
@@ -80,6 +117,25 @@ describe('applied-skills-registry', () => {
       expect(skills.size).toBe(2);
       expect(skills.get('stripe-v2')?.installedAt).toBe('2024-01-01T00:00:00.000Z');
       expect(skills.get('conversations')?.installedAt).toBe('2024-01-02T00:00:00.000Z');
+    });
+
+    it('reads completedAt from the registry file', async function readCompletedAt() {
+      const payload = {
+        version: 1,
+        skills: {
+          'authentication': {
+            installedAt: '2024-01-01T00:00:00.000Z',
+            completedAt: '2024-01-02T00:00:00.000Z',
+          },
+        },
+      };
+      await writeFile(join(appPath, '.airo', 'applied-skills.json'), JSON.stringify(payload));
+
+      await registry.hydrateFromAppPath(appPath);
+
+      const entry = registry.getInstalledSkills(appPath).get('authentication');
+      expect(entry?.installedAt).toBe('2024-01-01T00:00:00.000Z');
+      expect(entry?.completedAt).toBe('2024-01-02T00:00:00.000Z');
     });
 
     it('ignores files with unknown version numbers', async function unknownVersion() {
@@ -167,6 +223,23 @@ describe('applied-skills-registry', () => {
 
       const after = registry.getInstalledSkills(appPath).get('stripe-v2')?.installedAt;
       expect(after).toBe(before);
+    });
+
+    it('returns the merged state snapshot', async function returnsSnapshot() {
+      await writeSkillState('compliance-docs', appPath, { privacyPolicy: { generated: true } });
+      const snapshot = await registry.mergeSkillState('compliance-docs', appPath, { termsOfUse: { generated: true } });
+      expect(snapshot).toEqual({
+        privacyPolicy: { generated: true },
+        termsOfUse: { generated: true },
+      });
+    });
+
+    it('still returns the in-memory merged state even when disk write fails silently', async function returnsMergedOnWriteError() {
+      // writeSkillState catches errors internally, so applyStatePatch still returns
+      // the merged object regardless of whether the file was persisted.
+      const badPath = '/this/path/definitely/does/not/exist/on/this/system';
+      const snapshot = await registry.mergeSkillState('compliance-docs', badPath, { x: 1 });
+      expect(snapshot).toEqual({ x: 1 });
     });
 
     it('persists the auto-registered skill to applied-skills.json on disk', async function diskPersist() {
