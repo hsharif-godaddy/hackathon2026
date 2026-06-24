@@ -38,6 +38,8 @@ export interface BudgetReportContext {
   wasUserAborted?: boolean
   /** Original subscriptionId for override detection (care agent, test accounts) */
   subscriptionId?: string
+  /** True if post-stream-validator fired a continuation (agent self-repair) */
+  hadSelfRepair?: boolean
 }
 
 export interface BudgetReportResult {
@@ -65,7 +67,7 @@ export interface BudgetReportResult {
  * 5. Default (no failures, no overrides, no infrastructure) -> 100% Customer
  */
 export function processBudgetReport(context: BudgetReportContext): BudgetReportResult {
-  const { budgetId, sessionId, totalCost, sessionItems, steps, assessmentOutcome, wasUserAborted, subscriptionId } = context
+  const { budgetId, sessionId, totalCost, sessionItems, steps, assessmentOutcome, wasUserAborted, subscriptionId, hadSelfRepair } = context
 
   // Override sessions (care agents, test accounts): 100% GoDaddy attribution
   // Only CareAgent and TestAccounts trigger BMS override attribution - other BudgetOverride
@@ -134,6 +136,36 @@ export function processBudgetReport(context: BudgetReportContext): BudgetReportR
       executionData: emptyExecutionData(),
       sessionWasFree: true,
       attributionPath: 'fix_intent',
+      labels: [label],
+    }
+  }
+
+  // Self-repair: post-stream-validator fired a continuation (agent fixing its own errors).
+  // Attribute to GoDaddy only when the original task was not billable (publish/domain).
+  // Require assessmentOutcome to exist: if the classifier timed out we don't know the task
+  // type and must not grant free attribution for potentially-billable work.
+  const originalTaskType: AssessmentTaskType | undefined = assessmentOutcome?.result?.taskType
+  const isBillableTask: boolean = originalTaskType === AssessmentTaskType.Publish || originalTaskType === AssessmentTaskType.Domain
+  if (hadSelfRepair && !wasUserAborted && assessmentOutcome?.result && !isBillableTask) {
+    const label = ReportLabel.FixTask
+
+    logger.info('budget.report.self_repair_override', {
+      budgetId,
+      sessionId,
+      totalCost,
+      originalTaskType,
+      reason: 'Post-stream-validator continuation detected - agent self-repair',
+    })
+
+    return {
+      reportItems: [{
+        budgetCost: '0',
+        productCost: totalCost.toString(),
+        label,
+      }],
+      executionData: emptyExecutionData(),
+      sessionWasFree: true,
+      attributionPath: 'self_repair',
       labels: [label],
     }
   }

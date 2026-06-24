@@ -454,6 +454,8 @@ export interface AttributionResult {
  * - `default`: fall-through → 100% Customer.
  * - `attribution_failed`: attribution code threw; degraded to safe fallback (bug indicator).
  * - `override_session`: care agent or test account session → 100% GoDaddy.
+ * - `fix_intent`: system-initiated fix prompt (build error, seo regression, etc.) → 100% GoDaddy.
+ * - `self_repair`: post-stream-validator auto-continuation on non-billable task → 100% GoDaddy.
  */
 export type AttributionPath =
   | 'per_call'
@@ -463,6 +465,7 @@ export type AttributionPath =
   | 'attribution_failed'
   | 'override_session'
   | 'fix_intent'
+  | 'self_repair'
 
 // CONTEXT TYPES
 

@@ -5,6 +5,8 @@
  */
 
 import { Router, Request, Response } from 'express';
+import * as fs from 'node:fs/promises';
+import * as path from 'node:path';
 import { z } from 'zod';
 
 import { AppRepository } from '../../database/repositories/AppRepository.js';
@@ -67,6 +69,17 @@ router.post('/qa-analyze', requirePermission('canDownload'), async (req: Request
       errors: result.report?.summary?.errors,
       warnings: result.report?.summary?.warnings,
     });
+
+    if (app.path && result.report) {
+      const airoDir: string = path.join(app.path, '.airo');
+      const reportPath: string = path.join(airoDir, 'qa-report.json');
+      try {
+        await fs.mkdir(airoDir, { recursive: true });
+        await fs.writeFile(reportPath, JSON.stringify({ scannedAt: new Date().toISOString(), report: result.report }, null, 2), 'utf-8');
+      } catch (err) {
+        logger.warn('qa-analyze.report.save.failure', { appId, error: err instanceof Error ? err.message : String(err) });
+      }
+    }
 
     return res.json({
       success: true,

@@ -1261,6 +1261,131 @@ describe('processBudgetReport', () => {
   })
 })
 
+describe('self-repair attribution (hadSelfRepair)', () => {
+  it('routes to GoDaddy when hadSelfRepair is true and classifier said general', () => {
+    const result = processBudgetReport({
+      budgetId: 'b-1',
+      sessionId: 'sess-1',
+      totalCost: 3.5,
+      sessionItems: [{ callRequestId: 'req-1', cost: 3.5 }],
+      assessmentOutcome: {
+        result: { taskType: 'general' as any, confidence: 95 },
+        overrideApplied: false,
+        completedInTime: true,
+        durationMs: 100,
+        reason: 'embedding_completed' as any,
+      },
+      hadSelfRepair: true,
+    })
+
+    expect(result.attributionPath).toBe('self_repair')
+    expect(result.sessionWasFree).toBe(true)
+    expect(result.reportItems[0]?.budgetCost).toBe('0')
+    expect(result.reportItems[0]?.productCost).toBe('3.5')
+  })
+
+  it('fix_intent takes precedence over self_repair (no double-free)', () => {
+    const result = processBudgetReport({
+      budgetId: 'b-1',
+      sessionId: 'sess-1',
+      totalCost: 2.0,
+      sessionItems: [{ callRequestId: 'req-1', cost: 2.0 }],
+      assessmentOutcome: {
+        result: { taskType: 'fix' as any, confidence: 99 },
+        overrideApplied: true,
+        appliedBudget: 'airo-builder:fix-task',
+        completedInTime: true,
+        durationMs: 50,
+        reason: 'fix_intent_bypass' as any,
+      },
+      hadSelfRepair: true,
+    })
+
+    expect(result.attributionPath).toBe('fix_intent')
+    expect(result.sessionWasFree).toBe(true)
+  })
+
+  it('does not fire when original task is billable (publish)', () => {
+    const result = processBudgetReport({
+      budgetId: 'b-1',
+      sessionId: 'sess-1',
+      totalCost: 4.0,
+      sessionItems: [{ callRequestId: 'req-1', cost: 4.0 }],
+      assessmentOutcome: {
+        result: { taskType: 'publish' as any, confidence: 90 },
+        overrideApplied: false,
+        completedInTime: true,
+        durationMs: 80,
+        reason: 'embedding_completed' as any,
+      },
+      hadSelfRepair: true,
+    })
+
+    expect(result.attributionPath).not.toBe('self_repair')
+    expect(result.sessionWasFree).toBe(false)
+  })
+
+  it('does not fire when original task is billable (domain)', () => {
+    const result = processBudgetReport({
+      budgetId: 'b-1',
+      sessionId: 'sess-1',
+      totalCost: 2.5,
+      sessionItems: [{ callRequestId: 'req-1', cost: 2.5 }],
+      assessmentOutcome: {
+        result: { taskType: 'domain' as any, confidence: 88 },
+        overrideApplied: false,
+        completedInTime: true,
+        durationMs: 60,
+        reason: 'embedding_completed' as any,
+      },
+      hadSelfRepair: true,
+    })
+
+    expect(result.attributionPath).not.toBe('self_repair')
+    expect(result.sessionWasFree).toBe(false)
+  })
+
+  it('user abort overrides self_repair (customer pays)', () => {
+    const result = processBudgetReport({
+      budgetId: 'b-1',
+      sessionId: 'sess-1',
+      totalCost: 1.0,
+      sessionItems: [],
+      hadSelfRepair: true,
+      wasUserAborted: true,
+    })
+
+    expect(result.attributionPath).not.toBe('self_repair')
+    expect(result.sessionWasFree).toBe(false)
+  })
+
+  it('does not fire when hadSelfRepair is false', () => {
+    const result = processBudgetReport({
+      budgetId: 'b-1',
+      sessionId: 'sess-1',
+      totalCost: 5.0,
+      sessionItems: [{ callRequestId: 'req-1', cost: 5.0 }],
+      hadSelfRepair: false,
+    })
+
+    expect(result.attributionPath).toBe('default')
+    expect(result.sessionWasFree).toBe(false)
+  })
+
+  it('does not fire when assessmentOutcome is undefined (classifier timeout)', () => {
+    const result = processBudgetReport({
+      budgetId: 'b-1',
+      sessionId: 'sess-1',
+      totalCost: 3.0,
+      sessionItems: [{ callRequestId: 'req-1', cost: 3.0 }],
+      hadSelfRepair: true,
+    })
+
+    expect(result.attributionPath).not.toBe('self_repair')
+    expect(result.sessionWasFree).toBe(false)
+  })
+})
+
 describe('attributionFailedFallback', () => {
   it('charges customer 100% with [General] on the attribution_failed path', () => {
     const result = attributionFailedFallback(7.25)

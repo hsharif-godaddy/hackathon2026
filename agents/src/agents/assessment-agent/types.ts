@@ -18,6 +18,7 @@ export enum AssessmentReason {
   BelowThreshold = 'below_threshold',
   Disabled = 'disabled',
   EmptyPrompt = 'empty_prompt',
+  FixIntentBypass = 'fix_intent_bypass',
 }
 
 export const AssessmentResultSchema = z.object({

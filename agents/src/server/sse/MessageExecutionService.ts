@@ -36,7 +36,7 @@ import {
 } from '@airo/ai-transport'
 import type { ResponseMetadata, ResolveToolMetadata } from '@airo/ai-transport'
 import { BudgetExceededError, classifyError } from '@airo/ai-common'
-import { grantSessionManager } from '@airo/ai-grants'
+import { grantSessionManager, BudgetOverride } from '@airo/ai-grants'
 import { createGrantBudgetRecoveryCallback } from '../grant-budget-recovery-callback.js'
 import { context as otelContext, trace } from '@opentelemetry/api'
 import type { AgentsMessagePersistence } from '../conversation-persistence.js'
@@ -66,7 +66,8 @@ import { parseChunkTimeoutMs, runWithModelOverride, buildTokenUsage, calculateCo
 import { resolveProfile, runWithProfile } from '../../profiles/index.js'
 import { guardAllowedOverrideModel, resolveOverride } from '../model-override.js'
 import type { AssessmentOutcome } from '../../agents/assessment-agent/index.js'
-import { ClassifierMode, AssessmentReason } from '../../agents/assessment-agent/index.js'
+import { AssessmentTaskType, ClassifierMode, AssessmentReason } from '../../agents/assessment-agent/index.js'
+import { isFixIntentContext, corroborateFixIntent } from '../fix-intent-types.js'
 import { PARALLEL_ASSESSMENT_TIMEOUT_MS } from '../assessment-executor.js'
 import { createAgentContext, emitConversationStart } from '@godaddy/agent-otel-sdk'
 import { getBusinessContext, setBusinessContext } from '@signals/otel-sdk'
@@ -323,6 +324,15 @@ export function pickForcedInstallAgent<A>(opts: {
 // remote budget report follows it, so if the bound ever elapses the dropped
 // work is the (idempotent, GoDaddy-absorbs-the-cost) report, not the turn output.
 const SSE_SHUTDOWN_FINALIZE_TIMEOUT_MS = 5_000
+
+interface StreamAgentTurnResult {
+  accumulatedContent: string
+  currentStep: number
+  finalResult: any
+  finishReason: string
+  responseMetadata: ResponseMetadata
+  steps: ExecutionStep[]
+}
 
 export class MessageExecutionService implements SubscriberLifecycleListener {
   private deps: ExecutionDeps
@@ -638,8 +648,9 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
     assessmentOutcome?: AssessmentOutcome
     wasUserAborted: boolean
     subscriptionId?: string
+    hadSelfRepair?: boolean
   }): Promise<{ filed: boolean; sessionWasFree?: boolean }> {
-    const { appId, conversationId, budgetId, sessionId, streamState, steps, assessmentOutcome, wasUserAborted, subscriptionId } = opts
+    const { appId, conversationId, budgetId, sessionId, streamState, steps, assessmentOutcome, wasUserAborted, subscriptionId, hadSelfRepair } = opts
     let sessionWasFreeForRefresh: boolean | undefined
 
     const publishBudgetEvent = async (event: Parameters<typeof this.deps.eventChannel.publish>[1]): Promise<void> => {
@@ -702,6 +713,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
           assessmentOutcome,
           wasUserAborted,
           subscriptionId,
+          hadSelfRepair,
         },
         { budgetId, sessionId },
       )
@@ -1960,18 +1972,45 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
     // non-blocking and await it right before runMessageEndHooks / safeProcessBudgetReport.
     let assessmentOutcome: AssessmentOutcome | undefined
     let assessmentHandle: ParallelAssessmentHandle | undefined
+    let hadSelfRepair: boolean = false
     if (this.deps.lifecycle) {
-      // Fire the classifier first so it overlaps the git hook's branch creation.
-      assessmentHandle = startParallelAssessment(this.deps.lifecycle, {
-        appId,
-        sessionKey: sseSocketId,
-        message: content,
-        customerId: agentCtx?.customerId,
-        isInitialPrompt: !!lifecycleContext?.isInitialPrompt,
-        enableAssessmentAgent,
-        enableAssessmentOverride,
-        classifierMode: effectiveClassifierMode,
-      })
+      const corroboration = isFixIntentContext(customContext)
+        ? corroborateFixIntent(appId, customContext!.type!)
+        : undefined
+      if (corroboration?.verified) {
+        assessmentOutcome = {
+          result: { taskType: AssessmentTaskType.Fix, confidence: 100 },
+          overrideApplied: true,
+          appliedBudget: BudgetOverride.FixTask,
+          completedInTime: true,
+          durationMs: 0,
+          reason: AssessmentReason.FixIntentBypass,
+        }
+        logger.info('assessment_agent.fix_intent_bypass', {
+          appId,
+          customContextType: customContext!.type,
+          corroborationReason: corroboration.reason,
+        })
+      } else {
+        // Fire the classifier so it overlaps the git hook's branch creation.
+        assessmentHandle = startParallelAssessment(this.deps.lifecycle, {
+          appId,
+          sessionKey: sseSocketId,
+          message: content,
+          customerId: agentCtx?.customerId,
+          isInitialPrompt: !!lifecycleContext?.isInitialPrompt,
+          enableAssessmentAgent,
+          enableAssessmentOverride,
+          classifierMode: effectiveClassifierMode,
+        })
+        if (corroboration) {
+          logger.info('assessment_agent.fix_intent_corroboration_failed', {
+            appId,
+            customContextType: customContext!.type,
+            reason: corroboration.reason,
+          })
+        }
+      }
       await runStartGitHook(this.deps.lifecycle, {
         appId, conversationId, sessionKey: sseSocketId, message: content,
       })
@@ -2175,7 +2214,17 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
       ? createGrantBudgetRecoveryCallback({ logger })
       : undefined
     if (useGrantRecovery) {
-      if (enableAssessmentOverride && assessmentHandle) {
+      if (assessmentOutcome?.overrideApplied && assessmentOutcome.appliedBudget) {
+        // Fix-intent bypass already determined the outcome. Apply the override
+        // to the grant path the same way the classifier outcome would be applied.
+        const meta = executionContext.metadata as Record<string, unknown>
+        meta.subscriptionId = assessmentOutcome.appliedBudget
+        logger.info('grants.assessment.fix_intent_bypass_override', {
+          appId,
+          socketId: sseSocketId,
+          appliedBudget: assessmentOutcome.appliedBudget,
+        })
+      } else if (enableAssessmentOverride && assessmentHandle) {
         // awaitOutcome is designed never to throw (swallowed classifier
         // rejection + withTimeout), so a throw here is a contract violation
         // in startParallelAssessment — guard to match the post-turn error path
@@ -2252,7 +2301,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
     const forcedInstallThisTurn = forcedKitMessages.length > 0
 
     try {
-      let lastTurnResult: Awaited<ReturnType<typeof this.streamAgentTurn>> | undefined
+      let lastTurnResult: StreamAgentTurnResult | undefined
       let currentIteration = 0
 
       // Deterministic rebuild "Build Page" (AIROBUILD-2104): substitute the
@@ -2495,6 +2544,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
               meta.__autoContinue = true
               meta.__continuationPrompt = result.continuationPrompt
               executionContext.metadata = meta
+              hadSelfRepair = true
             }
           },
         }),
@@ -2628,6 +2678,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
           assessmentOutcome,
           wasUserAborted: loopAborted,
           subscriptionId,
+          hadSelfRepair,
         })
         budgetReportFiled = budgetReport.filed
         // BMS mode: reconciliation is the source of truth for free-task billing.
@@ -2759,6 +2810,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
           assessmentOutcome,
           wasUserAborted: abortController.signal.aborted && !chunkTimeoutAborted,
           subscriptionId,
+          hadSelfRepair,
         })
         budgetReportFiled = errorBudgetReport.filed
       } else if (bmsBudgetId && budgetSessionId) {
@@ -2912,6 +2964,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
             wasUserAborted: abortController.signal.aborted
               && abortController.signal.reason !== 'chunk_timeout',
             subscriptionId,
+            hadSelfRepair,
           })
           if (!fallbackResult.filed) {
             logger.error('budget.report.fallback_also_failed', {
