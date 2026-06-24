@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { withAuth } from '@/lib/api-auth';
 import { callGoCode, isGoCodeConfigured } from '@/lib/gocode-client';
+import { getJiraApiBase, isJiraConfigured, jiraFetch } from '@/lib/jira-client';
 import { logger } from '@/lib/logger';
 import { queryTranscripts as queryTranscriptRows } from '@/lib/supportplane/db/l1-transcript-db';
 
@@ -151,7 +152,7 @@ Do not label, explain, or mention this line. It must be the final line of your r
 `;
 
 // OpenAI-compatible tool definitions (function calling format)
-const TOOLS = [
+const ALL_TOOLS = [
   {
     type: 'function' as const,
     function: {
@@ -300,102 +301,11 @@ const TOOLS = [
   },
 ];
 
-// ── Jira OAuth 2.0 (NSA client_credentials — same as fanout-lambda) ────────
-// Auth flow: POST clientId+clientSecret to auth.atlassian.com → 60-min Bearer.
-// Then hit api.atlassian.com/ex/jira/<cloudId>/rest/api/3/... (NOT the tenant URL).
-// Secret shape matches fanout: JIRA_CLIENT_ID + JIRA_CLIENT_SECRET env vars.
-
-const JIRA_TOKEN_URL = process.env.JIRA_OAUTH_TOKEN_URL ?? 'https://auth.atlassian.com/oauth/token';
-const JIRA_EXPIRY_MARGIN_MS = 60_000;
-
-let jiraToken: string | null = null;
-let jiraTokenExpiresAt = 0;
-
-async function getJiraToken(): Promise<string> {
-  if (jiraToken && jiraTokenExpiresAt - Date.now() > JIRA_EXPIRY_MARGIN_MS) {
-    return jiraToken;
-  }
-
-  const clientId = process.env.JIRA_CLIENT_ID ?? '';
-  const clientSecret = process.env.JIRA_CLIENT_SECRET ?? '';
-
-  if (!clientId || !clientSecret) {
-    throw new Error('Jira not configured. Set JIRA_CLIENT_ID and JIRA_CLIENT_SECRET.');
-  }
-
-  const res = await fetch(JIRA_TOKEN_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
-    body: new URLSearchParams({
-      grant_type: 'client_credentials',
-      client_id: clientId,
-      client_secret: clientSecret,
-    }),
-    signal: AbortSignal.timeout(15_000),
-  });
-
-  if (!res.ok) {
-    throw new Error(`Jira OAuth ${res.status}: ${(await res.text()).slice(0, 200)}`);
-  }
-
-  const data = await res.json() as { access_token?: string; expires_in?: number };
-  if (!data.access_token) throw new Error('Jira OAuth response missing access_token');
-
-  const expiresInMs = (typeof data.expires_in === 'number' ? data.expires_in : 3600) * 1000;
-  jiraToken = data.access_token;
-  jiraTokenExpiresAt = Date.now() + expiresInMs;
-  return jiraToken;
-}
-
-function jiraBase(): string {
-  const cloudId = process.env.JIRA_CLOUD_ID ?? '';
-  if (cloudId) return `https://api.atlassian.com/ex/jira/${cloudId}`;
-  // Fallback: direct tenant URL with Basic Auth (personal API token path)
-  return process.env.JIRA_BASE_URL ?? 'https://godaddy-corp.atlassian.net';
-}
-
-async function jiraFetch(url: string): Promise<Response> {
-  const cloudId = process.env.JIRA_CLOUD_ID ?? '';
-
-  if (cloudId) {
-    // NSA OAuth2 path (service account — same as fanout)
-    let token: string;
-    try { token = await getJiraToken(); } catch { throw new Error('Jira NSA token fetch failed. Check JIRA_CLIENT_ID / JIRA_CLIENT_SECRET.'); }
-    const res = await fetch(url, {
-      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
-      signal: AbortSignal.timeout(15_000),
-    });
-    // Single 401 re-mint, matching fanout pattern
-    if (res.status === 401) {
-      jiraToken = null;
-      jiraTokenExpiresAt = 0;
-      const fresh = await getJiraToken();
-      return fetch(url, {
-        headers: { Authorization: `Bearer ${fresh}`, Accept: 'application/json' },
-        signal: AbortSignal.timeout(15_000),
-      });
-    }
-    return res;
-  }
-
-  // Personal API token path (Basic Auth) — used when JIRA_CLOUD_ID not set
-  const email = process.env.JIRA_EMAIL ?? '';
-  const apiToken = process.env.JIRA_API_TOKEN ?? '';
-  if (!email || !apiToken) throw new Error('Jira not configured. Set JIRA_CLOUD_ID+JIRA_CLIENT_ID+JIRA_CLIENT_SECRET (NSA) or JIRA_EMAIL+JIRA_API_TOKEN (personal token).');
-  return fetch(url, {
-    headers: {
-      Authorization: `Basic ${Buffer.from(`${email}:${apiToken}`).toString('base64')}`,
-      Accept: 'application/json',
-    },
-    signal: AbortSignal.timeout(15_000),
-  });
-}
-
 // ── Tool implementations ───────────────────────────────────────────────────
 
 async function searchJiraTickets(jql?: string, limit = 10): Promise<string> {
   const effectiveJql = jql ?? 'project in (CIEC, AABSP) AND statusCategory != Done ORDER BY updated DESC';
-  const url = `${jiraBase()}/rest/api/3/search/jql?jql=${encodeURIComponent(effectiveJql)}&maxResults=${Math.min(limit, 25)}&fields=summary,status,priority,assignee,created,updated,project,labels`;
+  const url = `${getJiraApiBase()}/rest/api/3/search/jql?jql=${encodeURIComponent(effectiveJql)}&maxResults=${Math.min(limit, 25)}&fields=summary,status,priority,assignee,created,updated,project,labels`;
 
   const res = await jiraFetch(url);
   if (!res.ok) throw new Error(`Jira search ${res.status}: ${(await res.text()).slice(0, 200)}`);
@@ -405,7 +315,7 @@ async function searchJiraTickets(jql?: string, limit = 10): Promise<string> {
 }
 
 async function getJiraTicket(key: string): Promise<string> {
-  const url = `${jiraBase()}/rest/api/3/issue/${encodeURIComponent(key)}`;
+  const url = `${getJiraApiBase()}/rest/api/3/issue/${encodeURIComponent(key)}`;
   const res = await jiraFetch(url);
   if (!res.ok) throw new Error(`Jira ticket ${res.status}: ${(await res.text()).slice(0, 200)}`);
   return JSON.stringify(await res.json(), null, 2);
@@ -582,12 +492,16 @@ export const POST = withAuth(async function supportplaneAsk(request: NextRequest
 
       try {
         while (true) {
+          const jiraTools = new Set(['search_jira_tickets', 'get_jira_ticket']);
+          const tools = isJiraConfigured()
+            ? ALL_TOOLS
+            : ALL_TOOLS.filter(t => !jiraTools.has(t.function.name));
           const resp = await callGoCode({
             messages: messages as any,
             model: MODEL,
             max_tokens: 2048,
             temperature: 0.7,
-            tools: TOOLS,
+            tools,
           }) as OaiResponse;
           const choice = resp.choices[0];
           if (!choice) break;

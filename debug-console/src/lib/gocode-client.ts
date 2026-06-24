@@ -10,7 +10,7 @@
 
 import { getDefaultGoCodeEndpoint, getS2SToken, isS2SAuthEnabled } from '@airo/ai-lib';
 
-function getGoCaasBaseUrl(): string {
+export function getGoCaasBaseUrl(): string {
   if (process.env.OPENAI_BASE_URL) return process.env.OPENAI_BASE_URL;
 
   if (isS2SAuthEnabled()) {

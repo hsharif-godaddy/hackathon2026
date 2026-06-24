@@ -35,17 +35,28 @@ import {
 
 // ── Config from env ───────────────────────────────────────────────
 
+// Treat empty/whitespace env values as unset. A blank `FOO=` line in .env still
+// produces '' in process.env, and the `??` operator does NOT fall through on '',
+// so it would poison the default (e.g. an empty FEEDBACK_S3_BUCKET= yields a
+// `Bucket: ''` request that the AWS SDK rejects). Use this for any var that has
+// a meaningful default.
+function envOr(value: string | undefined, fallback: string): string {
+  const trimmed: string = value?.trim() ?? '';
+  return trimmed === '' ? fallback : trimmed;
+}
+
 function cfg() {
   const feedbackEnv = (process.env.FEEDBACK_ENV ?? process.env.ENVIRONMENT_NAME ?? 'dev') as 'dev' | 'prod';
   const isProd = feedbackEnv === 'prod';
   // S3 bucket/prefix vars are split by env so both can coexist in .env.local.
-  // Falls back to the legacy FEEDBACK_S3_BUCKET/PREFIX if the split vars are absent.
+  // Falls back to the legacy FEEDBACK_S3_BUCKET/PREFIX, then a hard default, when
+  // the split vars are absent OR set to an empty string.
   const s3Bucket = isProd
-    ? (process.env.S3_FEEDBACK_BUCKET_PROD ?? process.env.FEEDBACK_S3_BUCKET ?? 'airo-builder-feedback-prod')
-    : (process.env.S3_FEEDBACK_BUCKET_DEV  ?? process.env.FEEDBACK_S3_BUCKET ?? 'airo-builder-feedback-dev');
+    ? envOr(process.env.S3_FEEDBACK_BUCKET_PROD, envOr(process.env.FEEDBACK_S3_BUCKET, 'airo-builder-feedback-prod'))
+    : envOr(process.env.S3_FEEDBACK_BUCKET_DEV,  envOr(process.env.FEEDBACK_S3_BUCKET, 'airo-builder-feedback-dev'));
   const s3Prefix = isProd
-    ? (process.env.S3_FEEDBACK_TABLE_PROD ?? process.env.FEEDBACK_S3_PREFIX ?? 'airo_builder_feedback_cln/')
-    : (process.env.S3_FEEDBACK_TABLE_DEV  ?? process.env.FEEDBACK_S3_PREFIX ?? 'airo_builder_feedback_cln_laketest/');
+    ? envOr(process.env.S3_FEEDBACK_TABLE_PROD, envOr(process.env.FEEDBACK_S3_PREFIX, 'airo_builder_feedback_cln/'))
+    : envOr(process.env.S3_FEEDBACK_TABLE_DEV,  envOr(process.env.FEEDBACK_S3_PREFIX, 'airo_builder_feedback_cln_laketest/'));
   return {
     env: feedbackEnv,
     startDate: process.env.FEEDBACK_START_DATE ?? '2026-04-01',
@@ -438,13 +449,10 @@ export async function runFeedbackIngestion(
 
   logger.info('feedback-ingest.start', { env, startDate: c.startDate, force: opts.force ?? false });
 
-  // Warn early if no AWS credentials are configured — prevents silent 0-row ingest.
+  // No explicit credentials configured — deployed environments use IAM instance roles,
+  // which the SDK picks up automatically. Only warn; let the SDK try and fail meaningfully.
   if (!c.awsKeyId && !c.awsProfile) {
-    const msg =
-      'No AWS credentials configured (set AWS_PROFILE or AWS_ACCESS_KEY_ID in .env.local)';
-    logger.warn('feedback-ingest.no-credentials', {});
-    emit({ phase: 'error', message: msg, currentSource: undefined });
-    return { ...progress, phase: 'error', message: msg };
+    logger.info('feedback-ingest.no-explicit-credentials', { note: 'will attempt SDK default chain (instance role)' });
   }
 
   // Force resync: wipe all source data and ingestion history so everything is re-fetched.

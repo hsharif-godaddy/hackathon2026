@@ -157,9 +157,17 @@ export function resetJiraAuthCache(): void {
     inflightMint = null;
 }
 
+// ── Public URL helper ─────────────────────────────────────────────────────────
+
+export function getJiraApiBase(): string {
+    const cloudId = process.env.JIRA_CLOUD_ID ?? '';
+    if (cloudId) return `${JIRA_API_BASE}/${cloudId}`;
+    return process.env.JIRA_BASE_URL ?? 'https://godaddy-corp.atlassian.net';
+}
+
 // ── Authenticated fetch with 401 re-mint ─────────────────────────────────────
 
-async function jiraFetch(url: string): Promise<Response> {
+export async function jiraFetch(url: string): Promise<Response> {
     const attempt = async (): Promise<Response> => {
         const token = await getToken();
         return fetch(url, {

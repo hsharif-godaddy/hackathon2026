@@ -462,7 +462,7 @@ export default function FeedbackBrowsePanel({ syncTrigger = 0 }: { syncTrigger?:
         : (syncProgress?.phase === 'aggregating' ? 95 : syncProgress?.phase === 'done' ? 100 : 0);
 
     const hasData = (coverage?.totalRows ?? 0) > 0;
-    const showSyncPanel = syncing || (syncProgress && !syncCollapsed);
+    const showSyncPanel = syncing || (!syncCollapsed && (syncProgress !== null || syncError !== null));
 
     return (
         <div className={sp.panelRoot}>

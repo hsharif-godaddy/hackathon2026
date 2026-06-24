@@ -3,6 +3,9 @@ import { S3Client, ListObjectsV2Command } from '@aws-sdk/client-s3';
 import { fromIni } from '@aws-sdk/credential-providers';
 
 import { withAuth } from '@/lib/api-auth';
+import { getGoCaasBaseUrl, isGoCodeConfigured } from '@/lib/gocode-client';
+import { getJiraApiBase, isJiraConfigured, jiraFetch } from '@/lib/jira-client';
+import { getS2SToken, isS2SAuthEnabled } from '@airo/ai-lib';
 import { logger } from '@/lib/logger';
 import { SP_MASK, spLog } from '@/lib/supportplane/sp-logger';
 
@@ -23,30 +26,27 @@ function abortAfter(ms: number): AbortSignal {
 // ── GoCaaS (AI) — hit /v1/models; fast, no token consumed ────────────
 
 async function checkGoCaaS(): Promise<ServiceHealth> {
-    const key = process.env.OPENAI_API_KEY ?? '';
-    const base = process.env.OPENAI_BASE_URL
-        ?? (process.env.ANTHROPIC_AUTH_TOKEN ? 'https://api.anthropic.com' : '');
-
-    if (!base) {
-        return { name: 'GoCaaS (AI)', ok: false, detail: 'OPENAI_BASE_URL not set' };
+    if (!isGoCodeConfigured()) {
+        return { name: 'GoCaaS (AI)', ok: false, detail: 'No API key — set OPENAI_API_KEY in .env.local' };
     }
 
+    const base = getGoCaasBaseUrl();
+
     try {
-        // In production with s2s auth, the key might be provided via platform mechanisms
-        // (e.g., service tokens), so attempt the request even without explicit OPENAI_API_KEY
-        const headers: Record<string, string> = {};
-        if (key) {
-            headers.Authorization = `Bearer ${key}`;
+        let authHeader: string;
+        if (isS2SAuthEnabled()) {
+            authHeader = `sso-jwt ${await getS2SToken()}`;
+        } else {
+            const key = process.env.OPENAI_API_KEY ?? process.env.ANTHROPIC_AUTH_TOKEN ?? '';
+            authHeader = `Bearer ${key}`;
         }
 
         const res = await fetch(`${base.replace(/\/$/, '')}/v1/models`, {
-            headers,
+            headers: { Authorization: authHeader },
             signal: abortAfter(TIMEOUT_MS),
         });
         if (res.ok || res.status === 404) {
-            // 404 means endpoint exists but /v1/models not supported — still connectable
-            const host = new URL(base).hostname;
-            return { name: 'GoCaaS (AI)', ok: true, detail: `Connected · ${host}` };
+            return { name: 'GoCaaS (AI)', ok: true, detail: `Connected · ${new URL(base).hostname}` };
         }
         return { name: 'GoCaaS (AI)', ok: false, detail: `HTTP ${res.status} from ${new URL(base).hostname}` };
     } catch (err) {
@@ -54,59 +54,21 @@ async function checkGoCaaS(): Promise<ServiceHealth> {
     }
 }
 
-// ── Jira — myself endpoint (returns current user JSON) ───────────────
+// ── Jira — /project?maxResults=1 probe via shared jira-client ────────
 
 async function checkJira(): Promise<ServiceHealth> {
-    const clientId     = process.env.JIRA_CLIENT_ID ?? '';
-    const clientSecret = process.env.JIRA_CLIENT_SECRET ?? '';
-    const email        = process.env.JIRA_EMAIL ?? '';
-    const apiToken     = process.env.JIRA_API_TOKEN ?? '';
-    const base         = process.env.JIRA_BASE_URL ?? 'https://godaddy-corp.atlassian.net';
-    const tokenUrl     = process.env.JIRA_OAUTH_TOKEN_URL ?? 'https://auth.atlassian.com/oauth/token';
-    const cloudId      = process.env.JIRA_CLOUD_ID ?? '';
-
-    const hasOAuth  = !!(clientId && clientSecret);
-    const hasBasic  = !!(email && apiToken);
-
-    if (!hasOAuth && !hasBasic) {
-        return { name: 'Jira', ok: false, detail: 'No credentials — set JIRA_CLIENT_ID/SECRET or JIRA_EMAIL/API_TOKEN' };
+    if (!isJiraConfigured()) {
+        return { name: 'Jira', ok: false, detail: 'No credentials — set JIRA_CLIENT_ID/SECRET + JIRA_CLOUD_ID (dev) or JIRA_OAUTH_SECRET_ARN (prod)' };
     }
 
     try {
-        let authHeader: string;
+        const probeUrl = `${getJiraApiBase()}/rest/api/3/project?maxResults=1`;
+        const probeRes = await jiraFetch(probeUrl);
 
-        if (hasOAuth) {
-            const tokenRes = await fetch(tokenUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ grant_type: 'client_credentials', client_id: clientId, client_secret: clientSecret }),
-                signal: abortAfter(TIMEOUT_MS),
-            });
-            if (!tokenRes.ok) {
-                const txt = await tokenRes.text().catch(() => '');
-                return { name: 'Jira', ok: false, detail: `OAuth token fetch failed (${tokenRes.status}): ${txt.slice(0, 100)}` };
-            }
-            const { access_token } = await tokenRes.json() as { access_token: string };
-            authHeader = `Bearer ${access_token}`;
-        } else {
-            authHeader = `Basic ${Buffer.from(`${email}:${apiToken}`).toString('base64')}`;
+        if (probeRes.ok) {
+            return { name: 'Jira', ok: true, detail: `Connected · ${process.env.JIRA_CLOUD_ID ?? process.env.JIRA_BASE_URL ?? 'godaddy-corp.atlassian.net'}` };
         }
-
-        const meUrl = cloudId
-            ? `https://api.atlassian.com/ex/jira/${cloudId}/rest/api/3/myself`
-            : `${base.replace(/\/$/, '')}/rest/api/3/myself`;
-
-        const meRes = await fetch(meUrl, {
-            headers: { Authorization: authHeader, Accept: 'application/json' },
-            signal: abortAfter(TIMEOUT_MS),
-        });
-
-        if (meRes.ok) {
-            const me = await meRes.json() as { displayName?: string; emailAddress?: string };
-            const who = me.displayName ?? me.emailAddress ?? 'authenticated';
-            return { name: 'Jira', ok: true, detail: `Connected · ${who}` };
-        }
-        return { name: 'Jira', ok: false, detail: `HTTP ${meRes.status} — check credentials` };
+        return { name: 'Jira', ok: false, detail: `HTTP ${probeRes.status} — check credentials` };
     } catch (err) {
         return { name: 'Jira', ok: false, detail: `Unreachable: ${(err as Error).message.slice(0, 100)}` };
     }

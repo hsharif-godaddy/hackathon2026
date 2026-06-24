@@ -1,6 +1,6 @@
 import { createTool, type Tool } from '@airo/ai-lib'
 import { z } from 'zod'
-import { DirectoryListingTool, DirectoryListingOptions } from '../directory-listing.js'
+import { DirectoryListingTool, DirectoryListingNotFoundError, DirectoryListingOptions } from '../directory-listing.js'
 import { createForWorkspace } from '../../workspace/index.js'
 
 /**
@@ -29,7 +29,14 @@ export const directoryListingAITool: Tool = createTool(
     }
 
     const tool = new DirectoryListingTool(workspace.files)
-    const result = await tool.listDirectory(input as DirectoryListingOptions, { appId })
-    return tool.formatAsTree(result)
+    try {
+      const result = await tool.listDirectory(input as DirectoryListingOptions, { appId })
+      return tool.formatAsTree(result)
+    } catch (error) {
+      if (error instanceof DirectoryListingNotFoundError) {
+        return `Directory not found: ${input.path || '.'}`
+      }
+      throw error
+    }
   }
 )

@@ -628,7 +628,9 @@ export default function PreviewPane({
       // Check if the current iframe URL matches the saved URL
       try {
         const currentUrl = new URL(iframeRef.current.src)
-        const savedUrl = pendingStateRestore.url ? new URL(pendingStateRestore.url) : null
+        // savedUrl may be a preview-app relative path (e.g. "/page/home") — resolve it
+        // against the iframe origin so isSamePreviewRoute's pathname comparison works.
+        const savedUrl = pendingStateRestore.url ? new URL(pendingStateRestore.url, currentUrl.origin) : null
 
         // Only restore if URLs match (same pathname and search params,
         // ignoring the bootstrap airoShareToken on the iframe src).
@@ -662,7 +664,7 @@ export default function PreviewPane({
     // Double-check URL match before restoration
     try {
       const currentUrl = new URL(iframeRef.current.src)
-      const savedUrl = pendingStateRestore.url ? new URL(pendingStateRestore.url) : null
+      const savedUrl = pendingStateRestore.url ? new URL(pendingStateRestore.url, currentUrl.origin) : null
 
       if (!savedUrl || !isSamePreviewRoute(currentUrl, savedUrl)) {
         logger.debug('preview-pane.state-restore.abort', { message: 'URL mismatch during restoration, aborting' })
