@@ -1,100 +1,33 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { useCallback } from 'react'
 import Box from '@ux/box'
 import Button from '@ux/button'
 import MegaphoneIcon from '@ux/icon/megaphone'
+import text from '@ux/text'
 
 import CampaignCard from '@/app/[market]/develop/components/settings/Campaigns/CampaignCard'
-import CampaignDetailModal from '@/app/[market]/develop/components/settings/Campaigns/CampaignDetailModal'
 import { CAMPAIGN_KEYS, translateCampaignKey } from '@/app/[market]/develop/components/settings/Campaigns/copy'
-import type { Campaign } from '@/app/[market]/develop/components/settings/Campaigns/types'
+import { focusChatWithCreateCampaignPrompt } from '@/app/[market]/develop/components/settings/Campaigns/createCampaignInChat'
+import { useCampaigns } from '@/app/[market]/develop/components/settings/Campaigns/useCampaigns'
+import { useOpenMarketingCampaign } from '@/app/[market]/develop/components/settings/Campaigns/useOpenMarketingCampaign'
 import { SettingsLoadingState } from '@/app/[market]/develop/components/settings/components/SettingsLoadingState'
 import SettingsSection from '@/app/[market]/develop/components/settings/SettingsSection'
-import { ChatTab } from '@/app/[market]/develop/components/types'
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils'
 import EmptyStateCard from '@/components/layout/EmptyStateCard'
-import { buildDynamicAgentUrl } from '@/config/dynamic-api'
 import { useTranslations } from '@/hooks/useTranslations'
-import { agentFetch } from '@/lib/agent-fetch'
-import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 
 export default function CampaignsPanel() {
   const t = useTranslations()
+  const router = useRouter()
   const appId = useAppIdFromParams()
-  const [campaigns, setCampaigns] = useState<Campaign[]>([])
-  const [loading, setLoading] = useState(true)
-  const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null)
-  const { setActiveChatTab } = useDevelopPageStore()
+  const { campaigns, loading, error, fetchCampaigns } = useCampaigns(appId)
+  const { openDetail, openList } = useOpenMarketingCampaign()
 
-  const fetchCampaigns = useCallback(async () => {
-    if (!appId) return
-    try {
-      setLoading(true)
-      const url = await buildDynamicAgentUrl(`campaigns/${appId}`, appId)
-      const response = await agentFetch(url, { siteId: appId })
-      if (response.ok) {
-        const data = await response.json()
-        const campaignList: Campaign[] = data.campaigns || []
-        const assetUpdates = await Promise.all(
-          campaignList.map(async function fetchDetail(campaign) {
-            try {
-              const detailUrl = await buildDynamicAgentUrl(`campaigns/${appId}/${campaign.id}`, appId)
-              const detailResp = await agentFetch(detailUrl, { siteId: appId })
-              if (!detailResp.ok) return null
-              const detail = await detailResp.json()
-              if (!detail?.campaign?.assets) return null
-              return { id: campaign.id, assets: detail.campaign.assets as Campaign['assets'] }
-            } catch (error) {
-              console.warn('campaigns.fetchDetail.failed', { campaignId: campaign.id, error })
-              return null
-            }
-          }),
-        )
-        const assetsById = new Map(
-          assetUpdates.filter((update): update is { id: string; assets: NonNullable<Campaign['assets']> } => !!update)
-            .map((update) => [update.id, update.assets]),
-        )
-        setCampaigns(campaignList.map((campaign) =>
-          assetsById.has(campaign.id) ? { ...campaign, assets: assetsById.get(campaign.id) } : campaign,
-        ))
-      }
-    } catch (error) {
-      console.warn('campaigns.fetch.failed', { appId, error })
-    } finally {
-      setLoading(false)
-    }
-  }, [appId])
-
-  useEffect(() => {
-    fetchCampaigns()
-  }, [fetchCampaigns])
-
-  const handleDeleteCampaign = useCallback(async (campaignId: string) => {
-    if (!appId) return
-    try {
-      const url = await buildDynamicAgentUrl(`campaigns/${appId}/${campaignId}`, appId)
-      const response = await agentFetch(url, { siteId: appId, method: 'DELETE' })
-      if (response.ok) {
-        setCampaigns(prev => prev.filter(c => c.id !== campaignId))
-      }
-    } catch (error) {
-      console.warn('campaigns.delete.failed', { appId, campaignId, error })
-    }
-  }, [appId])
-
-  const handleCreateCampaign = () => {
-    setActiveChatTab(ChatTab.CHAT)
-    const input = document.querySelector<HTMLTextAreaElement>('[data-testid="chat-input"]')
-    if (input) {
-      const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
-        window.HTMLTextAreaElement.prototype, 'value'
-      )?.set
-      nativeInputValueSetter?.call(input, translateCampaignKey(t, CAMPAIGN_KEYS.campaignsCreatePrompt))
-      input.dispatchEvent(new Event('input', { bubbles: true }))
-      input.focus()
-    }
-  }
+  const handleCreateCampaign = useCallback(() => {
+    focusChatWithCreateCampaignPrompt(t)
+  }, [t])
 
   if (!appId) {
     return (
@@ -104,7 +37,7 @@ export default function CampaignsPanel() {
           title={translateCampaignKey(t, CAMPAIGN_KEYS.campaignsNoAppTitle)}
           description={translateCampaignKey(t, CAMPAIGN_KEYS.campaignsNoAppDescription)}
           ctaLabel={translateCampaignKey(t, CAMPAIGN_KEYS.campaignsGoToApps)}
-          onCtaClick={() => { window.location.href = '/' }}
+          onCtaClick={() => router.push('/')}
         />
       </Box>
     )
@@ -114,6 +47,20 @@ export default function CampaignsPanel() {
     return <SettingsLoadingState fullPage title={translateCampaignKey(t, CAMPAIGN_KEYS.campaignsLoading)} />
   }
 
+  if (error) {
+    return (
+      <Box gap="md" inlineAlignChildren="center" blockPadding="lg" inlinePadding="lg">
+        <text.p>{translateCampaignKey(t, CAMPAIGN_KEYS.fetchError)}</text.p>
+        <Button
+          design="primary"
+          size="small"
+          text={translateCampaignKey(t, CAMPAIGN_KEYS.retry)}
+          onClick={() => { void fetchCampaigns() }}
+        />
+      </Box>
+    )
+  }
+
   return (
     <Box className="@container">
       <SettingsSection
@@ -121,9 +68,10 @@ export default function CampaignsPanel() {
         description={translateCampaignKey(t, CAMPAIGN_KEYS.campaignsDescription)}
         className="min-w-[340px]"
       >
-        <div className="flex justify-end mb-2">
+        <Box orientation="horizontal" inlineAlignChildren="end" gap="sm">
+          <Button design="secondary" size="small" onClick={openList} text={translateCampaignKey(t, CAMPAIGN_KEYS.marketingTab)} />
           <Button design="primary" size="small" onClick={handleCreateCampaign} text={translateCampaignKey(t, CAMPAIGN_KEYS.campaignsCreate)} />
-        </div>
+        </Box>
 
         {campaigns.length === 0 ? (
           <EmptyStateCard
@@ -134,29 +82,18 @@ export default function CampaignsPanel() {
             onCtaClick={handleCreateCampaign}
           />
         ) : (
-          <div className="flex flex-col gap-3">
+          <Box gap="md">
             {campaigns.map((campaign) => (
               <CampaignCard
                 key={campaign.id}
                 campaign={campaign}
-                onDetails={() => setSelectedCampaign(campaign)}
+                showLabels
+                onDetails={() => openDetail(campaign.id)}
               />
             ))}
-          </div>
+          </Box>
         )}
       </SettingsSection>
-
-      {selectedCampaign && (
-        <CampaignDetailModal
-          campaign={selectedCampaign}
-          isOpen={!!selectedCampaign}
-          onClose={() => setSelectedCampaign(null)}
-          onDelete={() => {
-            handleDeleteCampaign(selectedCampaign.id)
-            setSelectedCampaign(null)
-          }}
-        />
-      )}
     </Box>
   )
 }

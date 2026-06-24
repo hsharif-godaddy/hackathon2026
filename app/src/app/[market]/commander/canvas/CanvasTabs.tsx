@@ -37,8 +37,9 @@ export function CanvasTabs({ clickContext }: CanvasTabsProps) {
     <div className="flex items-center gap-0.5" data-testid="commander-canvas-tabs">
       {tabs.map((descriptor) => {
         const isActive = descriptor.id === activeCanvasId
-        const label = descriptor.labelKey
-          ? t(descriptor.labelKey) || descriptor.fallbackLabel
+        const translatedLabel = descriptor.labelKey ? t(descriptor.labelKey) : null
+        const label = translatedLabel && translatedLabel !== descriptor.labelKey
+          ? translatedLabel
           : descriptor.fallbackLabel
         return (
           <CanvasTab

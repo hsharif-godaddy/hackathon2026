@@ -1614,6 +1614,73 @@ describe('useDevelopPageStore', function useDevelopPageStoreTests() {
     });
   });
 
+  describe('marketing canvas navigation', function marketingNavigationTests() {
+    beforeEach(function resetMarketing() {
+      act(function reset() {
+        useDevelopPageStore.setState({
+          viewMode: ViewMode.PREVIEW,
+          marketingView: 'list',
+          selectedCampaignId: null,
+          isEditModeEnabled: false,
+        });
+      });
+    });
+
+    it('openMarketingList switches to marketing list and clears selection', function openList() {
+      act(function run() {
+        useDevelopPageStore.getState().openMarketingList();
+      });
+
+      const state = useDevelopPageStore.getState();
+      expect(state.viewMode).toBe(ViewMode.MARKETING);
+      expect(state.marketingView).toBe('list');
+      expect(state.selectedCampaignId).toBeNull();
+    });
+
+    it('openMarketingDetail switches to detail view with campaign id', function openDetail() {
+      act(function run() {
+        useDevelopPageStore.getState().openMarketingDetail('camp-123');
+      });
+
+      const state = useDevelopPageStore.getState();
+      expect(state.viewMode).toBe(ViewMode.MARKETING);
+      expect(state.marketingView).toBe('detail');
+      expect(state.selectedCampaignId).toBe('camp-123');
+    });
+
+    it('showMarketingList returns to list and clears selected campaign', function showList() {
+      act(function setup() {
+        useDevelopPageStore.setState({
+          marketingView: 'detail',
+          selectedCampaignId: 'camp-123',
+        });
+      });
+
+      act(function run() {
+        useDevelopPageStore.getState().showMarketingList();
+      });
+
+      const state = useDevelopPageStore.getState();
+      expect(state.marketingView).toBe('list');
+      expect(state.selectedCampaignId).toBeNull();
+    });
+
+    it('openMarketingList disables edit mode when leaving edit view', function disableEditOnMarketing() {
+      act(function setup() {
+        useDevelopPageStore.setState({
+          viewMode: ViewMode.EDIT,
+          isEditModeEnabled: true,
+        });
+      });
+
+      act(function run() {
+        useDevelopPageStore.getState().openMarketingList();
+      });
+
+      expect(useDevelopPageStore.getState().isEditModeEnabled).toBe(false);
+    });
+  });
+
   describe('#toggleAnnotationMode', function toggleAnnotationModeTests() {
     let postMessageSpy: ReturnType<typeof vi.spyOn>;
     let mockIframe: HTMLIFrameElement;

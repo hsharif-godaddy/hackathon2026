@@ -29,6 +29,16 @@ vi.mock('@/lib/agent-fetch', () => ({
   })),
 }))
 
+const mockOpenDetail = vi.fn()
+
+vi.mock('@/app/[market]/develop/components/settings/Campaigns/useOpenMarketingCampaign', () => ({
+  useOpenMarketingCampaign: () => ({
+    openDetail: mockOpenDetail,
+    openList: vi.fn(),
+    isEnabled: true,
+  }),
+}))
+
 const mockCampaign = {
   id: 'camp-1',
   appId: 'test-app-id',
@@ -85,5 +95,22 @@ describe('CampaignPlanToolRenderer', function rendererTests() {
     )
 
     expect(screen.getByText(CAMPAIGN_DEFAULT_MESSAGES[CAMPAIGN_KEYS.creatingPlan])).toBeInTheDocument()
+  })
+
+  it('opens marketing canvas when See details is clicked', async function detailsOpensCanvas() {
+    renderWithProviders(
+      <CampaignPlanToolRenderer
+        toolName="campaignPlanCreate"
+        toolStatus="completed"
+        result={{ campaign: mockCampaign }}
+      />
+    )
+
+    await waitFor(function assertCard() {
+      expect(screen.getByRole('button', { name: CAMPAIGN_DEFAULT_MESSAGES[CAMPAIGN_KEYS.seeDetails] })).toBeInTheDocument()
+    })
+
+    screen.getByRole('button', { name: CAMPAIGN_DEFAULT_MESSAGES[CAMPAIGN_KEYS.seeDetails] }).click()
+    expect(mockOpenDetail).toHaveBeenCalledWith('camp-1')
   })
 })

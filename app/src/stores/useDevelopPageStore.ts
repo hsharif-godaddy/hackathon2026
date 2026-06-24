@@ -4,7 +4,7 @@ import { immer } from 'zustand/middleware/immer'
 
 import { isDesignKitWizardProfile } from '@/app/[market]/develop/components/preview/design-kit-wizard/isDesignKitWizardProfile'
 import { DEFAULT_DESKTOP_DEVICE, DEFAULT_MOBILE_DEVICE, DEFAULT_TABLET_DEVICE } from '@/app/[market]/develop/components/preview/devicePresets'
-import { buildEditModeEnabledMessage, ChatTab, IframeMessageType, MobileMode, PreviewViewMode, SettingsSection, ViewMode } from '@/app/[market]/develop/components/types'
+import { buildEditModeEnabledMessage, ChatTab, IframeMessageType, type MarketingView, MobileMode, PreviewViewMode, SettingsSection, ViewMode } from '@/app/[market]/develop/components/types'
 import type { LogoSessionLogo } from '@/app/[market]/develop/components/widgets/logo-utils'
 import type { FeedbackCategory } from '@/components/feedback/types'
 import { SWITCHBOARD_APPBUILDER_CMS_INLINE_EDIT } from '@/config/switchboard-flags'
@@ -296,6 +296,10 @@ interface DevelopPageStore {
   inboxBrandId: string | null
   inboxAccountId: string | null
 
+  // Marketing campaigns canvas
+  marketingView: MarketingView
+  selectedCampaignId: string | null
+
   // Version history UI
   isVersionHistoryOpen: boolean
 
@@ -415,6 +419,10 @@ interface DevelopPageStore {
   setSelectedModel: (model: string | null) => void
   setConversationsBrandId: (brandId: string | null) => void
   setInboxBrandId: (brandId: string | null) => void
+  openMarketingList: () => void
+  openMarketingDetail: (campaignId: string) => void
+  showMarketingList: () => void
+  showMarketingDetail: (campaignId: string) => void
   setInboxAccountId: (accountId: string | null) => void
   setIsMobile: (isMobile: boolean) => void
   setIsVersionHistoryOpen: (open: boolean) => void
@@ -555,6 +563,36 @@ interface DevelopPageStore {
   initializeMobileDetection: () => () => void
 }
 
+function syncEditModeForViewMode(
+  get: () => DevelopPageStore,
+  set: (recipe: (state: DevelopPageStore) => void) => void,
+  newMode: ViewMode,
+) {
+  const editModeEnabled = newMode === ViewMode.EDIT
+  const wasAnnotationOn = get().isAnnotationModeEnabled
+  const annotationShouldDisable = editModeEnabled && wasAnnotationOn
+  if (get().isEditModeEnabled !== editModeEnabled || annotationShouldDisable) {
+    set((state) => {
+      state.isEditModeEnabled = editModeEnabled
+      if (annotationShouldDisable) state.isAnnotationModeEnabled = false
+    })
+    const iframe = document.getElementById('preview-iframe') as HTMLIFrameElement
+    if (iframe) {
+      if (editModeEnabled) {
+        postEditModeEnabled(iframe)
+      } else {
+        postMessageToIframe(iframe, { type: IframeMessageType.EDIT_MODE_DISABLED })
+      }
+      if (get().isMultiSelectEnabled) {
+        postMessageToIframe(iframe, { type: editModeEnabled ? 'MULTI_SELECT_ENABLED' : 'MULTI_SELECT_DISABLED' })
+      }
+      if (annotationShouldDisable) {
+        postMessageToIframe(iframe, { type: IframeMessageType.ANNOTATION_MODE_DISABLED })
+      }
+    }
+  }
+}
+
 export const useDevelopPageStore = create<DevelopPageStore>()(
   devtools(
     persist(immer((set, get) => ({
@@ -583,6 +621,8 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     modelByAppId: {},
     conversationsBrandId: null,
     inboxBrandId: null,
+    marketingView: 'list' as MarketingView,
+    selectedCampaignId: null,
     inboxAccountId: null,
     isVersionHistoryOpen: false,
 
@@ -689,6 +729,30 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     }),
     setConversationsBrandId: (brandId) => set((state) => { state.conversationsBrandId = brandId }),
     setInboxBrandId: (brandId) => set((state) => { state.inboxBrandId = brandId }),
+    openMarketingList: () => {
+      syncEditModeForViewMode(get, set, ViewMode.MARKETING)
+      set((state) => {
+        state.viewMode = ViewMode.MARKETING
+        state.marketingView = 'list'
+        state.selectedCampaignId = null
+      })
+    },
+    openMarketingDetail: (campaignId) => {
+      syncEditModeForViewMode(get, set, ViewMode.MARKETING)
+      set((state) => {
+        state.viewMode = ViewMode.MARKETING
+        state.marketingView = 'detail'
+        state.selectedCampaignId = campaignId
+      })
+    },
+    showMarketingList: () => set((state) => {
+      state.marketingView = 'list'
+      state.selectedCampaignId = null
+    }),
+    showMarketingDetail: (campaignId) => set((state) => {
+      state.marketingView = 'detail'
+      state.selectedCampaignId = campaignId
+    }),
     setInboxAccountId: (accountId) => set((state) => { state.inboxAccountId = accountId }),
     setIsMobile: (isMobile) => {
       const { isMobile: wasMobile, viewMode } = get()
@@ -1373,29 +1437,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
       }
 
       // Sync edit mode with view mode: EDIT enables it, anything else disables it
-      const editModeEnabled = newMode === ViewMode.EDIT
-      const wasAnnotationOn = get().isAnnotationModeEnabled
-      const annotationShouldDisable = editModeEnabled && wasAnnotationOn
-      if (get().isEditModeEnabled !== editModeEnabled || annotationShouldDisable) {
-        set((state) => {
-          state.isEditModeEnabled = editModeEnabled
-          if (annotationShouldDisable) state.isAnnotationModeEnabled = false
-        })
-        const iframe = document.getElementById('preview-iframe') as HTMLIFrameElement
-        if (iframe) {
-          if (editModeEnabled) {
-            postEditModeEnabled(iframe)
-          } else {
-            postMessageToIframe(iframe, { type: IframeMessageType.EDIT_MODE_DISABLED })
-          }
-          if (get().isMultiSelectEnabled) {
-            postMessageToIframe(iframe, { type: editModeEnabled ? 'MULTI_SELECT_ENABLED' : 'MULTI_SELECT_DISABLED' })
-          }
-          if (annotationShouldDisable) {
-            postMessageToIframe(iframe, { type: IframeMessageType.ANNOTATION_MODE_DISABLED })
-          }
-        }
-      }
+      syncEditModeForViewMode(get, set, newMode)
 
       set((state) => { state.viewMode = newMode })
     },

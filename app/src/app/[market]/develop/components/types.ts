@@ -71,9 +71,12 @@ export enum ViewMode {
   BRAND = 'brand',
   DOMAIN = 'domain',
   INBOX = 'inbox',
+  MARKETING = 'marketing',
   DOCS = 'docs',
   MEDIA = 'media'
 }
+
+export type MarketingView = 'list' | 'detail'
 
 /** Message types sent to the preview iframe via postMessage */
 export enum IframeMessageType {

@@ -8,8 +8,8 @@ interface EmptyStateCardProps {
   icon?: React.ReactNode;
   title: string;
   description: string;
-  ctaLabel: string;
-  onCtaClick: () => void;
+  ctaLabel?: string;
+  onCtaClick?: () => void;
   ctaDisabled?: boolean;
   ctaIcon?: React.ReactNode;
   secondaryCtaLabel?: string;
@@ -79,14 +79,16 @@ export default function EmptyStateCard(props: EmptyStateCardProps) {
         orientation="horizontal"
         gap="md"
       >
-        <Button
-          size='sm'
-          design="primary"
-          text={ctaLabel}
-          onClick={onCtaClick}
-          disabled={ctaDisabled}
-          icon={ctaIcon}
-        />
+        {ctaLabel && onCtaClick && (
+          <Button
+            size='sm'
+            design="primary"
+            text={ctaLabel}
+            onClick={onCtaClick}
+            disabled={ctaDisabled}
+            icon={ctaIcon}
+          />
+        )}
 
         {secondaryCtaLabel && onSecondaryCtaClick && (
           <Button

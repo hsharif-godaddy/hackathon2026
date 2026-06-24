@@ -52,6 +52,11 @@ const DomainPanel = dynamic(
   { ssr: false, loading: () => <PreviewSkeleton testId="domain-panel-skeleton" /> },
 )
 
+const MarketingCanvasPane = dynamic(
+  () => import('@/app/[market]/develop/components/settings/Campaigns/MarketingCanvasPane'),
+  { ssr: false, loading: () => <PreviewSkeleton testId="marketing-canvas-skeleton" /> },
+)
+
 // Minutes shown by the first-build time-estimate pill.
 const FIRST_BUILD_ESTIMATE_MINUTES: number = 5
 
@@ -267,6 +272,7 @@ export default function PreviewPane({
   const isDomainBarEnabled = useSwitchboard('appbuilder-domain-bar');
   const isTopLevelDomainEnabled = useSwitchboard('appbuilder-domain-top-level');
   const isInboxEnabled = useSwitchboard('app-builder-inbox-button');
+  const isMarketingCampaignsEnabled = useSwitchboard('appbuilder-marketing-campaigns') === true;
   const isBrandBookEnabled = useSwitchboard('appbuilder-brandbook') === true;
   const isCanvasTabsEnabled = useCommanderCanvasTabsEnabled();
   /** Switchboard: translucent creation overlay + edit chip behavior. */
@@ -407,9 +413,11 @@ export default function PreviewPane({
   const hasMountedBrandRef = useRef(false)
   const hasMountedDomainRef = useRef(false)
   const hasMountedInboxRef = useRef(false)
+  const hasMountedMarketingRef = useRef(false)
   if (viewMode === ViewMode.BRAND) hasMountedBrandRef.current = true
   if (viewMode === ViewMode.DOMAIN) hasMountedDomainRef.current = true
   if (viewMode === ViewMode.INBOX) hasMountedInboxRef.current = true
+  if (viewMode === ViewMode.MARKETING) hasMountedMarketingRef.current = true
 
   // State preservation for iframe navigation and scroll position
   const [pendingStateRestore, setPendingStateRestore] = useState<{
@@ -517,9 +525,14 @@ export default function PreviewPane({
 
     if (previous === current) return
 
-    // Brand uses an overlay (server ready) or early return (not ready) -- snap opacities
-    if (current === ViewMode.BRAND || previous === ViewMode.BRAND) {
-      previewOpacity.set(current !== ViewMode.CODE && current !== ViewMode.BRAND ? 1 : 0)
+    // Brand/Marketing use overlays (server ready) or early return (not ready) -- snap opacities
+    if (
+      current === ViewMode.BRAND || previous === ViewMode.BRAND
+      || current === ViewMode.MARKETING || previous === ViewMode.MARKETING
+    ) {
+      previewOpacity.set(
+        current !== ViewMode.CODE && current !== ViewMode.BRAND && current !== ViewMode.MARKETING ? 1 : 0,
+      )
       codeOpacity.set(current === ViewMode.CODE ? 1 : 0)
       previousViewModeRef.current = current
       return
@@ -1273,7 +1286,7 @@ export default function PreviewPane({
   }
 
   // Show error state when resume failed
-  if (resumeFailed && viewMode !== ViewMode.BRAND && viewMode !== ViewMode.DOMAIN && viewMode !== ViewMode.INBOX && viewMode !== ViewMode.DOCS) {
+  if (resumeFailed && viewMode !== ViewMode.BRAND && viewMode !== ViewMode.DOMAIN && viewMode !== ViewMode.INBOX && viewMode !== ViewMode.MARKETING && viewMode !== ViewMode.DOCS) {
     return (
       <PreviewError
         title={t('builder_preview_resume_failed_title')}
@@ -1296,11 +1309,11 @@ export default function PreviewPane({
   }
 
   // Show restarting message when app is hibernated or resuming
-  if ((isHibernated || isResuming) && viewMode !== ViewMode.BRAND && viewMode !== ViewMode.DOMAIN && viewMode !== ViewMode.INBOX && viewMode !== ViewMode.DOCS) {
+  if ((isHibernated || isResuming) && viewMode !== ViewMode.BRAND && viewMode !== ViewMode.DOMAIN && viewMode !== ViewMode.INBOX && viewMode !== ViewMode.MARKETING && viewMode !== ViewMode.DOCS) {
     return <PreviewLoadingState message={t('builder_preview_resuming_message')} isMobile={isMobile} />
   }
 
-  if (imageReloadFailed && viewMode !== ViewMode.BRAND && viewMode !== ViewMode.DOMAIN && viewMode !== ViewMode.INBOX && viewMode !== ViewMode.DOCS) {
+  if (imageReloadFailed && viewMode !== ViewMode.BRAND && viewMode !== ViewMode.DOMAIN && viewMode !== ViewMode.INBOX && viewMode !== ViewMode.MARKETING && viewMode !== ViewMode.DOCS) {
     return (
       <PreviewError
         title={t('builder_preview_image_reload_failed_title')}
@@ -1311,7 +1324,7 @@ export default function PreviewPane({
     )
   }
 
-  if (isImageReloading && viewMode !== ViewMode.BRAND && viewMode !== ViewMode.DOMAIN && viewMode !== ViewMode.INBOX && viewMode !== ViewMode.DOCS) {
+  if (isImageReloading && viewMode !== ViewMode.BRAND && viewMode !== ViewMode.DOMAIN && viewMode !== ViewMode.INBOX && viewMode !== ViewMode.MARKETING && viewMode !== ViewMode.DOCS) {
     return <PreviewLoadingState message={t('builder_preview_image_reloading_message')} isMobile={isMobile} />
   }
 
@@ -1349,6 +1362,16 @@ export default function PreviewPane({
             </ErrorBoundary>
           </div>
         </div>
+      </div>
+    )
+  }
+
+  if (isMarketingCampaignsEnabled && viewMode === ViewMode.MARKETING && !canvasTabsOverlayMode) {
+    return (
+      <div className="h-full flex flex-col">
+        <ErrorBoundary>
+          <MarketingCanvasPane />
+        </ErrorBoundary>
       </div>
     )
   }
@@ -1479,7 +1502,7 @@ export default function PreviewPane({
 
   // Success state - show the preview
   if (previewUrl && serverState?.isReady) {
-    const isPreviewSurfaceVisible = viewMode !== ViewMode.CODE && viewMode !== ViewMode.BRAND
+    const isPreviewSurfaceVisible = viewMode !== ViewMode.CODE && viewMode !== ViewMode.BRAND && viewMode !== ViewMode.MARKETING
     // Storage Access fallback: only activate when all three conditions hold:
     // 1. iframe never signalled IFRAME_READY after retries exhausted
     // 2. We're on WebKit (Safari ITP is the only browser that blocks this way)
@@ -1552,12 +1575,29 @@ export default function PreviewPane({
                   </div>
                 )}
 
+                {isCanvasTabsEnabled && isMarketingCampaignsEnabled && hasMountedMarketingRef.current && (
+                  <div
+                    aria-hidden={viewMode !== ViewMode.MARKETING}
+                    inert={viewMode !== ViewMode.MARKETING || undefined}
+                    className={clsx(
+                      'absolute inset-0 w-full h-full z-10 rounded-lg md:rounded-b-none overflow-auto bg-intents-ux-box-backgroundColor border transition-opacity duration-200',
+                      viewMode === ViewMode.MARKETING
+                        ? 'opacity-100 pointer-events-auto'
+                        : 'opacity-0 pointer-events-none',
+                    )}
+                  >
+                    <ErrorBoundary>
+                      <MarketingCanvasPane />
+                    </ErrorBoundary>
+                  </div>
+                )}
+
                 {/* Preview View (DomainBar + iframe) */}
                 <motion.div
                   className="absolute inset-0 w-full h-full flex flex-col"
                   style={{
                     opacity: previewOpacity,
-                    pointerEvents: viewMode === ViewMode.CODE || viewMode === ViewMode.BRAND ? 'none' : 'auto'
+                    pointerEvents: viewMode === ViewMode.CODE || viewMode === ViewMode.BRAND || viewMode === ViewMode.MARKETING ? 'none' : 'auto'
                   }}
                 >
                   {/* Domain Bar - only show in Preview mode when no alert banner is visible */}
@@ -1595,9 +1635,9 @@ export default function PreviewPane({
                         sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups allow-top-navigation-by-user-activation allow-storage-access-by-user-activation"
                         allow={PREVIEW_IFRAME_ALLOW}
                         title={t('builder_preview_preview_for', { appId })}
-                        aria-hidden={viewMode === ViewMode.CODE || viewMode === ViewMode.BRAND || showBuildingOverlay ? 'true' : undefined}
-                        tabIndex={viewMode === ViewMode.CODE || viewMode === ViewMode.BRAND || showBuildingOverlay ? -1 : undefined}
-                        inert={viewMode === ViewMode.CODE || viewMode === ViewMode.BRAND || showBuildingOverlay ? true : undefined}
+                        aria-hidden={viewMode === ViewMode.CODE || viewMode === ViewMode.BRAND || viewMode === ViewMode.MARKETING || showBuildingOverlay ? 'true' : undefined}
+                        tabIndex={viewMode === ViewMode.CODE || viewMode === ViewMode.BRAND || viewMode === ViewMode.MARKETING || showBuildingOverlay ? -1 : undefined}
+                        inert={viewMode === ViewMode.CODE || viewMode === ViewMode.BRAND || viewMode === ViewMode.MARKETING || showBuildingOverlay ? true : undefined}
                       />
                       {/* Shimmering accent frame for Edit mode. A masked gradient ring whose
                           color is driven by currentColor (Proud Purple 200 via

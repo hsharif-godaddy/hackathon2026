@@ -1,4 +1,4 @@
-import type { CampaignAssetType, CampaignStatus } from '@/app/[market]/develop/components/settings/Campaigns/types'
+import type { CampaignAssetStatus, CampaignAssetType, CampaignStatus } from '@/app/[market]/develop/components/settings/Campaigns/types'
 import type { useTranslations } from '@/hooks/useTranslations'
 import { defaultMessageForCampaignKey } from '@/lib/translations/campaign-defaults'
 
@@ -36,13 +36,47 @@ export const CAMPAIGN_KEYS = {
   campaignsCreatePrompt: 'builder_campaigns_create_prompt',
   goal: 'builder_campaign_goal',
   landingPage: 'builder_campaign_landing_page',
+  status: 'builder_campaign_status',
   noContent: 'builder_campaign_no_content',
   delete: 'builder_campaign_delete',
+  deleteConfirmTitle: 'builder_campaign_delete_confirm_title',
+  deleteConfirmDescription: 'builder_campaign_delete_confirm_description',
+  deleteConfirmCancel: 'builder_campaign_delete_confirm_cancel',
   close: 'builder_campaign_close',
+  schedule: 'builder_campaign_schedule',
+  marketingHubBack: 'builder_campaign_marketing_hub_back',
+  listBack: 'builder_campaign_list_back',
+  listPageDescription: 'builder_campaign_list_page_description',
+  createNew: 'builder_campaign_create_new',
+  reviewHeading: 'builder_campaign_review_heading',
+  approveLaunch: 'builder_campaign_approve_launch',
+  editAsset: 'builder_campaign_edit_asset',
+  marketingTab: 'builder_campaign_marketing_tab',
+  assetStatus: {
+    draft: 'builder_campaign_asset_status_draft',
+    scheduled: 'builder_campaign_asset_status_scheduled',
+    published: 'builder_campaign_asset_status_published',
+    sent: 'builder_campaign_asset_status_sent',
+  } as Record<CampaignAssetStatus, string>,
+  dateRange: 'builder_campaign_date_range',
+  dateAt: 'builder_campaign_date_at',
+  fetchError: 'builder_campaign_fetch_error',
+  retry: 'builder_campaign_retry',
+  notFound: 'builder_campaign_not_found',
+  deleteFailed: 'builder_campaign_delete_failed',
+  comingSoon: 'builder_campaign_coming_soon',
+  disabledForAccount: 'builder_campaign_disabled_for_account',
+  progress: 'builder_campaign_progress',
+  summary: 'builder_campaign_summary',
+  leadsGenerated: 'builder_campaign_leads_generated',
 } as const
 
 function campaignT(t: Translate, key: string, values?: Record<string, unknown>): string {
-  return t(key, values, defaultMessageForCampaignKey(key))
+  const fallback = defaultMessageForCampaignKey(key)
+  if (fallback !== undefined) {
+    return t(key, values, fallback)
+  }
+  return t(key, values)
 }
 
 export function statusBadgeLabel(t: Translate, status: CampaignStatus): string {
@@ -60,6 +94,12 @@ export function assetTypeLabel(t: Translate, assetType: CampaignAssetType | stri
   const key = CAMPAIGN_KEYS.assetType[assetType as CampaignAssetType]
   if (key) return campaignT(t, key)
   return assetType
+}
+
+export function assetStatusLabel(t: Translate, status: CampaignAssetStatus): string {
+  const key = CAMPAIGN_KEYS.assetStatus[status]
+  if (key) return campaignT(t, key).toUpperCase()
+  return status.toUpperCase()
 }
 
 export function translateCampaignKey(

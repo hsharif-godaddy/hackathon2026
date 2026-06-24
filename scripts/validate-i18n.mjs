@@ -25,8 +25,18 @@ const REBUILD_INTAKE_DEFAULTS_PATH = new URL(
   import.meta.url,
 );
 
+const CAMPAIGN_DEFAULTS_PATH = new URL(
+  "../app/src/lib/translations/campaign-defaults.ts",
+  import.meta.url,
+);
+
 const CANVAS_STATUS_DEFAULTS_PATH = new URL(
   "../app/src/lib/translations/canvas-status-defaults.ts",
+  import.meta.url,
+);
+
+const DISPLAY_ADS_DEFAULTS_PATH = new URL(
+  "../app/src/lib/translations/display-ads-defaults.ts",
   import.meta.url,
 );
 
@@ -57,6 +67,14 @@ function loadRebuildIntakeFallbackKeys() {
 
 function loadCanvasStatusFallbackKeys() {
   return loadFallbackKeysFromDefaultsFile(CANVAS_STATUS_DEFAULTS_PATH, "canvas-status-defaults.ts");
+}
+
+function loadCampaignFallbackKeys() {
+  return loadFallbackKeysFromDefaultsFile(CAMPAIGN_DEFAULTS_PATH, "campaign-defaults.ts");
+}
+
+function loadDisplayAdsFallbackKeys() {
+  return loadFallbackKeysFromDefaultsFile(DISPLAY_ADS_DEFAULTS_PATH, "display-ads-defaults.ts");
 }
 
 /**
@@ -362,6 +380,14 @@ async function main() {
   }
 
   for (const key of loadCanvasStatusFallbackKeys()) {
+    availableKeys.add(key);
+  }
+
+  for (const key of loadCampaignFallbackKeys()) {
+    availableKeys.add(key);
+  }
+
+  for (const key of loadDisplayAdsFallbackKeys()) {
     availableKeys.add(key);
   }
 

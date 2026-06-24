@@ -52,6 +52,7 @@ const mockDevelopStore = {
   isChatPaneCollapsed: false,
   isVersionHistoryOpen: false,
   handleViewModeChange: vi.fn(),
+  openMarketingList: vi.fn(),
   handleMobileModeChange: vi.fn(),
   toggleChatPaneCollapse: vi.fn(),
 };
@@ -494,5 +495,34 @@ describe('DevelopHeader', () => {
       );
       expect(mockRedoAction.clearError).toHaveBeenCalledOnce();
     });
+  });
+
+  it('renders Marketing button', () => {
+    renderWithProviders(<DevelopHeader onPreviewRefresh={vi.fn()} />);
+
+    expect(screen.getByLabelText('Marketing')).toBeInTheDocument();
+  });
+
+  it('opens marketing list when Marketing button is clicked and feature flag is enabled', () => {
+    mockSwitchboardResults['appbuilder-marketing-campaigns'] = true;
+
+    renderWithProviders(<DevelopHeader onPreviewRefresh={vi.fn()} />);
+
+    screen.getByLabelText('Marketing').click();
+
+    expect(mockDevelopStore.openMarketingList).toHaveBeenCalledOnce();
+  });
+
+  it('shows growl instead of opening marketing when feature flag is disabled', () => {
+    mockSwitchboardResults['appbuilder-marketing-campaigns'] = false;
+
+    renderWithProviders(<DevelopHeader onPreviewRefresh={vi.fn()} />);
+
+    screen.getByLabelText('Marketing').click();
+
+    expect(mockDevelopStore.openMarketingList).not.toHaveBeenCalled();
+    expect(mockAddGrowlMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'marketing-campaigns-disabled', emphasis: 'warning' }),
+    );
   });
 });

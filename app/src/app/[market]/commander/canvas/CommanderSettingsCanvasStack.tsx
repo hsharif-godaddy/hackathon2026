@@ -1,6 +1,5 @@
 'use client'
 
-import clsx from 'clsx'
 import dynamic from 'next/dynamic'
 import { type ComponentType, useMemo } from 'react'
 
@@ -112,29 +111,15 @@ export function CommanderSettingsCanvasStack({
       .filter((e): e is SettingsCanvasEntry => Boolean(e))
   }, [openCanvasIds])
 
-  if (entries.length === 0) return null
+  const activeEntry = entries.find(({ canvasId }) => canvasId === activeCanvasId)
+  if (!activeEntry) return null
 
+  const { canvasId, Component } = activeEntry
   return (
-    <div className="relative h-full w-full">
-      {entries.map(({ canvasId, Component }) => {
-        const isActive = canvasId === activeCanvasId
-        return (
-          <div
-            key={canvasId}
-            aria-hidden={!isActive}
-            inert={!isActive || undefined}
-            className={clsx(
-              'absolute inset-0 h-full overflow-y-auto w-full px-1.5 pb-2 md:px-0.5 md:max-w-7xl mx-auto',
-              'transition-opacity duration-150 ease-out',
-              isActive ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none',
-            )}
-          >
-            <ErrorBoundary>
-              <Component appId={appId} />
-            </ErrorBoundary>
-          </div>
-        )
-      })}
+    <div key={canvasId} className="h-full overflow-y-auto w-full px-1.5 pb-2 md:px-0.5 md:max-w-7xl mx-auto">
+      <ErrorBoundary>
+        <Component appId={appId} />
+      </ErrorBoundary>
     </div>
   )
 }

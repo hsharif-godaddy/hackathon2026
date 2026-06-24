@@ -12,6 +12,7 @@ import ColorPaletteIcon from '@ux/icon/color-palette'
 import ConversationsIcon from '@ux/icon/conversations'
 import ImageIcon from '@ux/icon/image'
 import InlineEditIcon from '@ux/icon/inline-edit'
+import MegaphoneIcon from '@ux/icon/megaphone'
 import MobilePhoneIcon from '@ux/icon/mobile-phone'
 import RefreshIcon from '@ux/icon/refresh'
 import SidebarCollapseIcon from '@ux/icon/sidebar-collapse'
@@ -29,6 +30,8 @@ import ShareAccess from '@/app/[market]/develop/components/layout/ShareAccess';
 import ShareLink from '@/app/[market]/develop/components/layout/ShareLink';
 import { useIsDesignKitWizardProfile } from '@/app/[market]/develop/components/preview/design-kit-wizard/isDesignKitWizardProfile'
 import DeviceSelector from '@/app/[market]/develop/components/preview/DeviceSelector'
+import { CAMPAIGN_KEYS, translateCampaignKey } from '@/app/[market]/develop/components/settings/Campaigns/copy';
+import { useOpenMarketingCampaign } from '@/app/[market]/develop/components/settings/Campaigns/useOpenMarketingCampaign';
 import { MobileMode, ViewMode } from '@/app/[market]/develop/components/types'
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils'
 import { useEditNudgeTooltip } from '@/app/[market]/develop/hooks/useEditNudgeTooltip'
@@ -99,10 +102,16 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
   const isChatPaneCollapsed = useDevelopPageStore((state) => state.isChatPaneCollapsed)
   const isVersionHistoryOpen = useDevelopPageStore((state) => state.isVersionHistoryOpen)
   const handleViewModeChange = useDevelopPageStore((state) => state.handleViewModeChange)
+  const { openList: openMarketingList } = useOpenMarketingCampaign()
   const handleMobileModeChange = useDevelopPageStore((state) => state.handleMobileModeChange)
   const toggleChatPaneCollapse = useDevelopPageStore((state) => state.toggleChatPaneCollapse)
 
   const handleViewModeButtonChange = (value: string) => {
+    if (value === ViewMode.MARKETING) {
+      openMarketingList()
+      if (VIEW_MODE_EID_MAP[value]) logClickEvent(VIEW_MODE_EID_MAP[value], clickContext)()
+      return
+    }
     if (value === ViewMode.CODE) {
       void checkAndShowPaywall(async () => {
         handleViewModeChange(value as ViewMode, hasUnsavedChanges)
@@ -270,6 +279,12 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
                     }
                   />
                 )}
+                <ButtonGroup.Item
+                  value={ViewMode.MARKETING}
+                  icon={<MegaphoneIcon className="size-2.5" />}
+                  label={translateCampaignKey(t, CAMPAIGN_KEYS.marketingTab)}
+                  disabled={isVersionHistoryOpen}
+                />
               </ButtonGroup>
             </Box>
 

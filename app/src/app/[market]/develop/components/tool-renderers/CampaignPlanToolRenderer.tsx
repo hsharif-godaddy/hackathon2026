@@ -4,9 +4,9 @@ import { useEffect, useRef, useState } from 'react'
 import MegaphoneIcon from '@ux/icon/megaphone'
 
 import CampaignCard from '@/app/[market]/develop/components/settings/Campaigns/CampaignCard'
-import CampaignDetailModal from '@/app/[market]/develop/components/settings/Campaigns/CampaignDetailModal'
 import { CAMPAIGN_KEYS, translateCampaignKey } from '@/app/[market]/develop/components/settings/Campaigns/copy'
 import type { Campaign } from '@/app/[market]/develop/components/settings/Campaigns/types'
+import { useOpenMarketingCampaign } from '@/app/[market]/develop/components/settings/Campaigns/useOpenMarketingCampaign'
 import type { DefaultToolRendererProps } from '@/app/[market]/develop/components/tool-renderers/DefaultToolRenderer'
 import DefaultToolRenderer from '@/app/[market]/develop/components/tool-renderers/DefaultToolRenderer'
 import ToolHeader from '@/app/[market]/develop/components/tool-renderers/ToolHeader'
@@ -14,6 +14,7 @@ import { useAppIdFromParams } from '@/app/[market]/develop/components/utils'
 import { buildDynamicAgentUrl } from '@/config/dynamic-api'
 import { useTranslations } from '@/hooks/useTranslations'
 import { agentFetch } from '@/lib/agent-fetch'
+import { logger } from '@/lib/request-context'
 
 export default function CampaignPlanToolRenderer({
   toolName,
@@ -25,8 +26,8 @@ export default function CampaignPlanToolRenderer({
 }: DefaultToolRendererProps) {
   const t = useTranslations()
   const appId = useAppIdFromParams()
+  const { openDetail } = useOpenMarketingCampaign()
   const [campaign, setCampaign] = useState<Campaign | null>(null)
-  const [isModalOpen, setIsModalOpen] = useState(false)
   const initializedRef = useRef(false)
 
   useEffect(() => {
@@ -65,7 +66,7 @@ export default function CampaignPlanToolRenderer({
         }
       } catch (error) {
         if (active) {
-          console.warn('campaigns.liveStatus.failed', { appId, campaignId: campaign.id, error })
+          logger.warn('campaigns.liveStatus.failed', { appId, campaignId: campaign.id, error })
         }
       }
     }
@@ -93,17 +94,10 @@ export default function CampaignPlanToolRenderer({
   }
 
   return (
-    <>
-      <CampaignCard
-        campaign={campaign}
-        onDetails={() => setIsModalOpen(true)}
-        className="mt-2"
-      />
-      <CampaignDetailModal
-        campaign={campaign}
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-      />
-    </>
+    <CampaignCard
+      campaign={campaign}
+      onDetails={() => openDetail(campaign.id)}
+      className="mt-2"
+    />
   )
 }
