@@ -11,16 +11,12 @@ export const dynamic = 'force-dynamic';
 export const POST = withCustomerAuth(async (
   request: NextRequest,
   authContext: CustomerAuthContext,
+  { params }: { params: Promise<{ id: string }> },
 ): Promise<NextResponse> => {
   const gateResponse = await enforce(request);
   if (gateResponse) return gateResponse;
 
-  const body = await request.json().catch(() => ({})) as Record<string, unknown>;
-  const appId = body.appId as string | undefined;
-
-  if (!appId) {
-    return NextResponse.json({ error: 'appId is required' }, { status: 400 });
-  }
+  const { id: appId } = await params;
 
   if (!authContext.jwt) {
     return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
@@ -29,7 +25,8 @@ export const POST = withCustomerAuth(async (
   try {
     const tokenData = await loadTokens(appId, authContext.jwt);
 
-    // Best-effort revocation on GitHub
+    // Best-effort: revoke the GitHub token so it can't be reused.
+    // Non-fatal — disconnect succeeds even if revocation fails.
     if (tokenData?.accessToken) {
       const config = getConfig();
       try {
@@ -52,7 +49,8 @@ export const POST = withCustomerAuth(async (
 
     await removeTokens(appId, authContext.jwt);
 
-    // Remove git remote config from agent database
+    // Best-effort: tell the agent to clear its git remote config.
+    // Non-fatal — disconnect succeeds even if agent cleanup fails.
     try {
       const adapter = getControlPlaneAdapter();
       const site = await adapter.getSite(appId, authContext.jwt);

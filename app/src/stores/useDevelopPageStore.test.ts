@@ -1388,6 +1388,96 @@ describe('useDevelopPageStore', function useDevelopPageStoreTests() {
     });
   });
 
+  describe('#showGitHubSyncSettingsSavedSnackbarTemporarily', function syncSnackbarTests() {
+    beforeEach(function useFakeTimers() {
+      vi.useFakeTimers();
+    });
+
+    afterEach(function useRealTimers() {
+      vi.useRealTimers();
+    });
+
+    it('should show the snackbar immediately with the correct message', function showSnackbar() {
+      act(function show() {
+        useDevelopPageStore.getState().showGitHubSyncSettingsSavedSnackbarTemporarily('sync_started');
+      });
+
+      const state = useDevelopPageStore.getState();
+      expect(state.showGitHubSyncSettingsSavedSnackbar).toBe(true);
+      expect(state.githubSyncSettingsSnackbarMessage).toBe('sync_started');
+    });
+
+    it('should default to settings_saved when no message is provided', function defaultMessage() {
+      act(function show() {
+        useDevelopPageStore.getState().showGitHubSyncSettingsSavedSnackbarTemporarily();
+      });
+
+      expect(useDevelopPageStore.getState().githubSyncSettingsSnackbarMessage).toBe('settings_saved');
+    });
+
+    it('should auto-hide the snackbar after 3 seconds and clear the message', function autoHide() {
+      act(function show() {
+        useDevelopPageStore.getState().showGitHubSyncSettingsSavedSnackbarTemporarily('sync_started');
+      });
+
+      act(function advance() {
+        vi.advanceTimersByTime(3000);
+      });
+
+      const state = useDevelopPageStore.getState();
+      expect(state.showGitHubSyncSettingsSavedSnackbar).toBe(false);
+      expect(state.githubSyncSettingsSnackbarMessage).toBeNull();
+    });
+
+    it('should reset the auto-hide timer when called again', function resetTimer() {
+      act(function show() {
+        useDevelopPageStore.getState().showGitHubSyncSettingsSavedSnackbarTemporarily('settings_saved');
+      });
+
+      act(function advancePartial() {
+        vi.advanceTimersByTime(2000);
+      });
+
+      act(function showAgain() {
+        useDevelopPageStore.getState().showGitHubSyncSettingsSavedSnackbarTemporarily('sync_started');
+      });
+
+      act(function advanceBeforeExpiry() {
+        vi.advanceTimersByTime(2000);
+      });
+
+      expect(useDevelopPageStore.getState().showGitHubSyncSettingsSavedSnackbar).toBe(true);
+      expect(useDevelopPageStore.getState().githubSyncSettingsSnackbarMessage).toBe('sync_started');
+
+      act(function advanceToExpiry() {
+        vi.advanceTimersByTime(1000);
+      });
+
+      expect(useDevelopPageStore.getState().showGitHubSyncSettingsSavedSnackbar).toBe(false);
+      expect(useDevelopPageStore.getState().githubSyncSettingsSnackbarMessage).toBeNull();
+    });
+
+    it('should clear the pending timer when dismissed', function dismissClearsTimer() {
+      act(function show() {
+        useDevelopPageStore.getState().showGitHubSyncSettingsSavedSnackbarTemporarily('settings_saved');
+      });
+
+      act(function dismiss() {
+        useDevelopPageStore.getState().dismissGitHubSyncSettingsSavedSnackbar();
+      });
+
+      const state = useDevelopPageStore.getState();
+      expect(state.showGitHubSyncSettingsSavedSnackbar).toBe(false);
+      expect(state.githubSyncSettingsSnackbarMessage).toBeNull();
+
+      act(function advance() {
+        vi.advanceTimersByTime(3000);
+      });
+
+      expect(useDevelopPageStore.getState().showGitHubSyncSettingsSavedSnackbar).toBe(false);
+    });
+  });
+
   describe('setSeoRegressionAlert / dismissSeoRegressionAlert', function seoRegressionAlertTests() {
     const appId = 'seoapp0001';
     const alert = {

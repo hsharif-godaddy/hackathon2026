@@ -39,6 +39,7 @@ import PanelSkeleton from '@/app/[market]/develop/components/PanelSkeleton';
 import PersistentTodoList from '@/app/[market]/develop/components/PersistentTodoList';
 import PlanTracker from '@/app/[market]/develop/components/PlanTracker';
 import { SettingsLoadingState } from '@/app/[market]/develop/components/settings/components/SettingsLoadingState';
+import GitHubSyncSettingsSavedSnackbar from '@/app/[market]/develop/components/settings/GitHubPanel/GitHubSyncSettingsSavedSnackbar';
 import StreamingMessageList from '@/app/[market]/develop/components/StreamingMessageList';
 import { ChatTab } from '@/app/[market]/develop/components/types';
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils';
@@ -1842,6 +1843,7 @@ function ChatPaneInner({
           'md:pb-1': isCommanderChatEnabled,
         })}
       >
+        <GitHubSyncSettingsSavedSnackbar placement="chat-pane" />
         <div ref={planTrackerWrapperRef} className="shrink-0">
           <PlanTracker
             developmentPlan={developmentPlan}

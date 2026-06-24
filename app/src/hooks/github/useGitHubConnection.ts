@@ -9,7 +9,7 @@ export function useGitHubConnection(appId: string, options?: { pollInterval?: nu
   return useQuery({
     queryKey: ['github', 'connection', appId],
     queryFn: async (): Promise<GitHubConnectionStatus> => {
-      const res = await appFetch(`/api/github/status?appId=${appId}`);
+      const res = await appFetch(`/api/apps/${appId}/github/status`);
       if (!res.ok) throw new Error('Failed to check GitHub connection');
       return res.json();
     },

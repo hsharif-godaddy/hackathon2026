@@ -12,7 +12,7 @@ export function useGitHubBranches(appId: string, repo: string, enabled = true) {
     queryKey: ['github', 'branches', appId, repo],
     queryFn: async (): Promise<GitHubBranch[]> => {
       const res = await appFetch(
-        `/api/github/branches?appId=${appId}&repo=${encodeURIComponent(repo)}`,
+        `/api/apps/${appId}/github/branches?repo=${encodeURIComponent(repo)}`,
       );
       if (!res.ok) throw new Error('Failed to fetch branches');
       return res.json();

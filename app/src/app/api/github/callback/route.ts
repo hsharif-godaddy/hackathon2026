@@ -12,6 +12,7 @@ import {
   saveTokens,
   validateReturnTo,
 } from '@/lib/github';
+import { AiroHttpError } from '@/lib/mgmt-airo';
 import { logger } from '@/lib/request-context';
 
 function safeReturnTo(raw: string | undefined): string {
@@ -41,11 +42,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 }
 
 function handleInstallCallback(request: NextRequest): NextResponse {
-  const { searchParams } = new URL(request.url);
-  const stateParam = searchParams.get('state');
-  const state = stateParam ? decodeState(stateParam) : null;
-
-  const response = NextResponse.redirect(new URL(safeReturnTo(state?.returnTo), publicOrigin(request)));
+  // Unprefixed path — NextResponse.redirect issues a 307 to the browser,
+  // which re-enters through middleware where the market prefix is prepended.
+  const response = NextResponse.redirect(new URL('/github/install-complete', publicOrigin(request)));
   response.headers.append('Set-Cookie', clearOAuthCookie('gh_oauth_nonce'));
   return response;
 }
@@ -97,31 +96,43 @@ const handleOAuthCallback = withCustomerAuth(async (
 
   const redirectUri = callbackUrl(request);
 
+  function redirectWithCookies(url: URL): NextResponse {
+    const resp = NextResponse.redirect(url.toString());
+    resp.headers.append('Set-Cookie', clearOAuthCookie('gh_oauth_nonce'));
+    resp.headers.append('Set-Cookie', clearOAuthCookie('gh_pkce_verifier'));
+    return resp;
+  }
+
   try {
     const tokens = await exchangeCodeForTokens(code, codeVerifier, redirectUri);
 
-    await saveTokens(state.appId, authContext.jwt!, {
-      accessToken: tokens.access_token,
-      refreshToken: tokens.refresh_token,
-      expiresAt: Math.floor(Date.now() / 1000) + tokens.expires_in,
-    });
+    try {
+      await saveTokens(state.appId, authContext.jwt!, {
+        accessToken: tokens.access_token,
+        refreshToken: tokens.refresh_token,
+        expiresAt: Math.floor(Date.now() / 1000) + tokens.expires_in,
+      });
+      logger.info('github.callback.success', { appId: state.appId });
+    } catch (err: unknown) {
+      const is401 = err instanceof AiroHttpError && err.status === 401;
+      logger.error('github.callback.token-save.failed', {
+        appId: state.appId,
+        is401,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      const returnUrl = new URL(safeReturnTo(state.returnTo), publicOrigin(request));
+      returnUrl.searchParams.set('github_error', is401 ? 'session_expired' : 'token_save_failed');
+      return redirectWithCookies(returnUrl);
+    }
 
-    logger.info('github.callback.success', { appId: state.appId });
-  } catch (err) {
+    return redirectWithCookies(new URL(safeReturnTo(state.returnTo), publicOrigin(request)));
+  } catch (err: unknown) {
     logger.error('github.callback.token-exchange.failed', {
       appId: state.appId,
       error: err instanceof Error ? err.message : String(err),
     });
     const returnUrl = new URL(safeReturnTo(state.returnTo), publicOrigin(request));
     returnUrl.searchParams.set('github_error', 'token_exchange_failed');
-    const response = NextResponse.redirect(returnUrl.toString());
-    response.headers.append('Set-Cookie', clearOAuthCookie('gh_oauth_nonce'));
-    response.headers.append('Set-Cookie', clearOAuthCookie('gh_pkce_verifier'));
-    return response;
+    return redirectWithCookies(returnUrl);
   }
-
-  const response = NextResponse.redirect(new URL(safeReturnTo(state.returnTo), publicOrigin(request)));
-  response.headers.append('Set-Cookie', clearOAuthCookie('gh_oauth_nonce'));
-  response.headers.append('Set-Cookie', clearOAuthCookie('gh_pkce_verifier'));
-  return response;
 });

@@ -8,10 +8,8 @@ export function useGitHubDisconnect() {
 
   return useMutation({
     mutationFn: async (appId: string) => {
-      const res = await appFetch('/api/github/disconnect', {
+      const res = await appFetch(`/api/apps/${appId}/github/disconnect`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ appId }),
       });
       if (!res.ok) throw new Error('Failed to disconnect GitHub');
       return res.json();

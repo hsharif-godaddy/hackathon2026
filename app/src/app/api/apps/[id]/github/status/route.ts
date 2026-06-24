@@ -9,14 +9,12 @@ export const dynamic = 'force-dynamic';
 export const GET = withCustomerAuth(async (
   request: NextRequest,
   authContext: CustomerAuthContext,
+  { params }: { params: Promise<{ id: string }> },
 ): Promise<NextResponse> => {
   const gateResponse = await enforce(request);
   if (gateResponse) return gateResponse;
 
-  const appId = new URL(request.url).searchParams.get('appId');
-  if (!appId) {
-    return NextResponse.json({ error: 'appId is required' }, { status: 400 });
-  }
+  const { id: appId } = await params;
 
   if (!authContext.jwt) {
     return NextResponse.json({ error: 'Authentication required' }, { status: 401 });

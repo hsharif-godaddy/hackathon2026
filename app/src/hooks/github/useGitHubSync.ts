@@ -12,11 +12,6 @@ interface ConfigureParams {
   syncStrategy: SyncStrategy;
 }
 
-interface UpdateStrategyParams {
-  appId: string;
-  syncStrategy: SyncStrategy;
-}
-
 export function useGitHubConfigure() {
   const queryClient = useQueryClient();
 
@@ -33,23 +28,7 @@ export function useGitHubConfigure() {
     onSuccess: (_data, variables) => {
       cacheSyncStrategy(variables.appId, variables.syncStrategy);
       queryClient.invalidateQueries({ queryKey: ['github', 'connection', variables.appId] });
-    },
-  });
-}
-
-export function useGitHubUpdateStrategy() {
-  return useMutation({
-    mutationFn: async ({ appId, syncStrategy }: UpdateStrategyParams) => {
-      const res = await appFetch(`/api/apps/${appId}/github/configure`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ syncStrategy }),
-      });
-      if (!res.ok) throw new Error('Failed to update sync strategy');
-      return res.json();
-    },
-    onSuccess: (_data, variables) => {
-      cacheSyncStrategy(variables.appId, variables.syncStrategy);
+      queryClient.invalidateQueries({ queryKey: ['github', 'remote-config', variables.appId] });
     },
   });
 }

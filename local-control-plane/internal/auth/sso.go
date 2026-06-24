@@ -55,6 +55,8 @@ func activeHighWith12HrHbi() gdhttp.Requirement {
 // highRiskRoutes maps "METHOD /path/template" to true for routes classified as
 // HIGH RISK per the mhp-airo Management API Auth Classification. These require
 // SecurityLevelHigh (HBI-based, 12h) instead of the default SecurityLevelLow.
+// Secrets GET+POST are both HBI so a stale JWT surfaces 401 at read time,
+// triggering SSO re-auth before any token-refresh burns a single-use token.
 var highRiskRoutes = map[string]bool{
 	"POST /api/airo/v1/subscriptions/{subId}/systems/{sysId}/apps":                       true,
 	"PATCH /api/airo/v1/subscriptions/{subId}/systems/{sysId}/apps/{appId}":              true,
@@ -62,7 +64,10 @@ var highRiskRoutes = map[string]bool{
 	"PUT /api/airo/v1/subscriptions/{subId}/systems/{sysId}/apps/{appId}/deploy":         true,
 	"PUT /api/airo/v1/subscriptions/{subId}/systems/{sysId}/apps/{appId}/publish":        true,
 	"POST /api/airo/v1/subscriptions/{subId}/systems/{sysId}/apps/{appId}/unpublish":     true,
+	"GET /api/airo/v1/subscriptions/{subId}/systems/{sysId}/apps/{appId}/secrets":        true,
 	"POST /api/airo/v1/subscriptions/{subId}/systems/{sysId}/apps/{appId}/secrets":       true,
+	"GET /hosting/v1/apps/{appId}/secrets":                                               true,
+	"POST /hosting/v1/apps/{appId}/secrets":                                              true,
 	"POST /api/airo/v1/subscriptions/{subId}/systems/{sysId}/apps/{appId}/reload":        true,
 	"POST /api/airo/v1/subscriptions/{subId}/systems/{sysId}/apps/{appId}/exports":       true,
 	"PUT /api/airo/v1/subscriptions/{subId}/systems/{sysId}/apps/{appId}/project-domain": true,

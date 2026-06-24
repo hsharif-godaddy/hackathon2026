@@ -16,7 +16,7 @@ export function useGitHubRepos(appId: string, enabled = true) {
   return useQuery({
     queryKey: ['github', 'repos', appId],
     queryFn: async (): Promise<GitHubRepo[]> => {
-      const res = await appFetch(`/api/github/repos?appId=${appId}&per_page=100`);
+      const res = await appFetch(`/api/apps/${appId}/github/repos?per_page=100`);
       if (!res.ok) throw new Error('Failed to fetch repos');
       return res.json();
     },

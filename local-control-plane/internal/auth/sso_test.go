@@ -148,7 +148,10 @@ func TestHighRiskRoutes_Coverage(t *testing.T) {
 		{"PUT", "/api/airo/v1/subscriptions/{subId}/systems/{sysId}/apps/{appId}/deploy"},
 		{"PUT", "/api/airo/v1/subscriptions/{subId}/systems/{sysId}/apps/{appId}/publish"},
 		{"POST", "/api/airo/v1/subscriptions/{subId}/systems/{sysId}/apps/{appId}/unpublish"},
+		{"GET", "/api/airo/v1/subscriptions/{subId}/systems/{sysId}/apps/{appId}/secrets"},
 		{"POST", "/api/airo/v1/subscriptions/{subId}/systems/{sysId}/apps/{appId}/secrets"},
+		{"GET", "/hosting/v1/apps/{appId}/secrets"},
+		{"POST", "/hosting/v1/apps/{appId}/secrets"},
 		{"POST", "/api/airo/v1/subscriptions/{subId}/systems/{sysId}/apps/{appId}/reload"},
 		{"POST", "/api/airo/v1/subscriptions/{subId}/systems/{sysId}/apps/{appId}/exports"},
 		{"PUT", "/api/airo/v1/subscriptions/{subId}/systems/{sysId}/apps/{appId}/project-domain"},
@@ -184,7 +187,6 @@ func TestHighRiskRoutes_ReadOnlyNotIncluded(t *testing.T) {
 		"GET /api/airo/v1/subscriptions/{subId}/systems/{sysId}/apps/{appId}/domain-job",
 		"GET /api/airo/v1/subscriptions/{subId}/systems/{sysId}/apps/{appId}/domain-dns-ownership",
 		"GET /api/airo/v1/jobs/{jobId}",
-		"GET /api/airo/v1/subscriptions/{subId}/systems/{sysId}/apps/{appId}/secrets",
 	}
 
 	for _, key := range readOnlyRoutes {

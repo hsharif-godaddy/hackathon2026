@@ -18,18 +18,15 @@ export const dynamic = 'force-dynamic';
 export const GET = withCustomerAuth(async (
   request: NextRequest,
   _authContext: CustomerAuthContext,
+  { params }: { params: Promise<{ id: string }> },
 ): Promise<NextResponse> => {
   const gateResponse = await enforce(request);
   if (gateResponse) return gateResponse;
 
+  const { id: appId } = await params;
   const { searchParams } = new URL(request.url);
-  const appId = searchParams.get('appId');
   const returnTo = searchParams.get('returnTo') ?? '/';
   const action = searchParams.get('action');
-
-  if (!appId) {
-    return NextResponse.json({ error: 'appId is required' }, { status: 400 });
-  }
 
   if (!validateReturnTo(returnTo)) {
     return NextResponse.json({ error: 'Invalid returnTo path' }, { status: 400 });
@@ -42,9 +39,9 @@ export const GET = withCustomerAuth(async (
 
   const redirectUri = callbackUrl(request);
 
+  // GitHub App installs use the configured Setup URL (not a redirect_uri);
+  // only the state query param is forwarded by GitHub.
   if (action === 'install') {
-    // GitHub App installations redirect to the "Setup URL" configured in the
-    // App settings, not to a redirect_uri param. Only state is forwarded.
     const installUrl = new URL(config.installUrl);
     installUrl.searchParams.set('state', state);
 

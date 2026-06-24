@@ -4,6 +4,7 @@ import dynamic from 'next/dynamic'
 
 import PanelSkeleton from '@/app/[market]/develop/components/PanelSkeleton'
 import { SettingsLoadingState } from '@/app/[market]/develop/components/settings/components/SettingsLoadingState'
+import GitHubSyncSettingsSavedSnackbar from '@/app/[market]/develop/components/settings/GitHubPanel/GitHubSyncSettingsSavedSnackbar'
 import { ChatTab, SettingsSection } from '@/app/[market]/develop/components/types'
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils'
 import { useChatTabs } from '@/hooks/useChatTabs'
@@ -98,6 +99,7 @@ export default function SettingsView() {
 
   return (
     <div className={`h-full flex flex-col overflow-y-auto w-full px-1.5 pb-2 md:px-0.5 md:max-w-7xl mx-auto`}>
+      <GitHubSyncSettingsSavedSnackbar placement="settings-view" />
       {renderSection()}
     </div>
   )

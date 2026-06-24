@@ -18,6 +18,39 @@ import type { BusMediaDeletePayload, BusUnsupportedFeature } from '@/utils/event
 import { logImpressionEvent } from '@/utils/instrumentation'
 import { postMessageToIframe } from '@/utils/postMessage'
 
+type ImmerSet = (fn: (state: DevelopPageStore) => void) => void
+
+export type GitHubSyncSnackbarMessage = 'settings_saved' | 'sync_started'
+
+const TIMED_BANNER_MS = 3000
+
+function showTimed(
+  set: ImmerSet,
+  onShow: (state: DevelopPageStore) => void,
+  onHide: (state: DevelopPageStore) => void,
+  storeTimeoutId: (state: DevelopPageStore, id: ReturnType<typeof setTimeout>) => void,
+  getTimeoutId: (state: DevelopPageStore) => ReturnType<typeof setTimeout> | null,
+): void {
+  set((state) => {
+    const existing = getTimeoutId(state)
+    if (existing !== null) clearTimeout(existing)
+    onShow(state)
+    storeTimeoutId(state, setTimeout(() => set(onHide), TIMED_BANNER_MS))
+  })
+}
+
+function dismissTimed(
+  set: ImmerSet,
+  getTimeoutId: (state: DevelopPageStore) => ReturnType<typeof setTimeout> | null,
+  onDismiss: (state: DevelopPageStore) => void,
+): void {
+  set((state) => {
+    const existing = getTimeoutId(state)
+    if (existing !== null) clearTimeout(existing)
+    onDismiss(state)
+  })
+}
+
 /** Post EDIT_MODE_ENABLED to the preview iframe, carrying the current CMS
  * inline-edit flag so dev-tools knows whether content-bound elements are
  * editable. Reads the flag at call time (the value is stable per session). */
@@ -275,6 +308,9 @@ interface DevelopPageStore {
   showFeedbackBanner: boolean
   showResponseFeedbackThanksBanner: boolean
   responseFeedbackThanksBannerTimeoutId: ReturnType<typeof setTimeout> | null
+  showGitHubSyncSettingsSavedSnackbar: boolean
+  githubSyncSettingsSnackbarMessage: GitHubSyncSnackbarMessage | null
+  githubSyncSettingsSavedSnackbarTimeoutId: ReturnType<typeof setTimeout> | null
 
   // App-generation feedback (thumbs up/down on first app generation)
   /** Updated on every WS 'complete' event so the trigger can snapshot the latest IDs. */
@@ -398,6 +434,10 @@ interface DevelopPageStore {
   setShowFeedbackBanner: (show: boolean) => void
   showResponseFeedbackThanksBannerTemporarily: () => void
   dismissResponseFeedbackThanksBanner: () => void
+  showGitHubSyncSettingsSavedSnackbarTemporarily: (
+    message?: GitHubSyncSnackbarMessage,
+  ) => void
+  dismissGitHubSyncSettingsSavedSnackbar: () => void
 
   // App-generation feedback actions
   setLastCompleteTraceIds: (ids: TraceIds | null) => void
@@ -561,6 +601,9 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     showFeedbackBanner: false,
     showResponseFeedbackThanksBanner: false,
     responseFeedbackThanksBannerTimeoutId: null,
+    showGitHubSyncSettingsSavedSnackbar: false,
+    githubSyncSettingsSnackbarMessage: null,
+    githubSyncSettingsSavedSnackbarTimeoutId: null,
 
     // App-generation feedback state
     lastCompleteTraceIds: null,
@@ -829,33 +872,47 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
       state.showFeedbackBanner = show
     }),
     showResponseFeedbackThanksBannerTemporarily: () => {
-      set((state) => {
-        if (state.responseFeedbackThanksBannerTimeoutId !== null) {
-          clearTimeout(state.responseFeedbackThanksBannerTimeoutId)
-          state.responseFeedbackThanksBannerTimeoutId = null
-        }
+      showTimed(set, (state) => {
         state.showResponseFeedbackThanksBanner = true
-      })
-
-      const timeoutId = setTimeout(() => {
-        set((state) => {
-          state.showResponseFeedbackThanksBanner = false
-          state.responseFeedbackThanksBannerTimeoutId = null
-        })
-      }, 3000)
-
-      set((state) => {
-        state.responseFeedbackThanksBannerTimeoutId = timeoutId
-      })
+      }, (state) => {
+        state.showResponseFeedbackThanksBanner = false
+        state.responseFeedbackThanksBannerTimeoutId = null
+      }, (state, id) => {
+        state.responseFeedbackThanksBannerTimeoutId = id
+      }, (state) => state.responseFeedbackThanksBannerTimeoutId)
     },
     dismissResponseFeedbackThanksBanner: () => {
-      set((state) => {
-        if (state.responseFeedbackThanksBannerTimeoutId !== null) {
-          clearTimeout(state.responseFeedbackThanksBannerTimeoutId)
+      dismissTimed(set,
+        (state) => state.responseFeedbackThanksBannerTimeoutId,
+        (state) => {
           state.responseFeedbackThanksBannerTimeoutId = null
-        }
-        state.showResponseFeedbackThanksBanner = false
-      })
+          state.showResponseFeedbackThanksBanner = false
+        },
+      )
+    },
+    showGitHubSyncSettingsSavedSnackbarTemporarily: (
+      message: GitHubSyncSnackbarMessage = 'settings_saved',
+    ) => {
+      showTimed(set, (state) => {
+        state.showGitHubSyncSettingsSavedSnackbar = true
+        state.githubSyncSettingsSnackbarMessage = message
+      }, (state) => {
+        state.showGitHubSyncSettingsSavedSnackbar = false
+        state.githubSyncSettingsSnackbarMessage = null
+        state.githubSyncSettingsSavedSnackbarTimeoutId = null
+      }, (state, id) => {
+        state.githubSyncSettingsSavedSnackbarTimeoutId = id
+      }, (state) => state.githubSyncSettingsSavedSnackbarTimeoutId)
+    },
+    dismissGitHubSyncSettingsSavedSnackbar: () => {
+      dismissTimed(set,
+        (state) => state.githubSyncSettingsSavedSnackbarTimeoutId,
+        (state) => {
+          state.githubSyncSettingsSavedSnackbarTimeoutId = null
+          state.showGitHubSyncSettingsSavedSnackbar = false
+          state.githubSyncSettingsSnackbarMessage = null
+        },
+      )
     },
 
     // App-generation feedback actions
