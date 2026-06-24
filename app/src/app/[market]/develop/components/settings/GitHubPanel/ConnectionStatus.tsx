@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { type SyntheticEvent, useCallback, useState } from 'react';
 import Box from '@ux/box';
@@ -7,12 +8,11 @@ import Button from '@ux/button';
 import MenuIcon from '@ux/icon/menu';
 import text from '@ux/text';
 
-import githubMarkImage from '@/assets/github-mark.png';
 import type { GitHubConnectionStatus } from '@/hooks/github/useGitHubConnection';
 import { useTranslations } from '@/hooks/useTranslations';
 import { Popover, PopoverContent, PopoverTrigger } from '@/lib/shadcn/popover';
 
-const GITHUB_LOGO = githubMarkImage.src;
+const GITHUB_LOGO = '/images/github-mark.png';
 
 function ConnectedAccountBar({
   avatarUrl,
@@ -169,12 +169,12 @@ export default function ConnectionStatus({
         inlineAlignChildren="center"
         className="w-full max-w-sm mx-auto px-2"
       >
-        {/* eslint-disable-next-line @next/next/no-img-element -- bundled static GitHub logo */}
-        <img
+        <Image
           src={GITHUB_LOGO}
           alt=""
-          width={githubMarkImage.width}
-          height={githubMarkImage.height}
+          width={72}
+          height={72}
+          unoptimized
           className="size-[72px]"
         />
         <Box gap="sm" blockAlignChildren="center" className="w-full">
