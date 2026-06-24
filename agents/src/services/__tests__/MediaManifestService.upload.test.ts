@@ -20,6 +20,13 @@ vi.mock('../../utils/dev-supervisor-client-factory.js', () => ({
   DevSupervisorClientFactory: { createForApp: vi.fn().mockReturnValue(null) },
 }));
 
+const { gitAddFiles, gitGetStatus, gitCommit, gitGetLastCommit } = vi.hoisted(() => ({
+  gitAddFiles: vi.fn(),
+  gitGetStatus: vi.fn(),
+  gitCommit: vi.fn(),
+  gitGetLastCommit: vi.fn(),
+}));
+
 vi.mock('../../utils/git.js', () => ({
   GitUtils: vi.fn(),
 }));
@@ -44,6 +51,7 @@ vi.mock('../GettyUploadService.js', () => ({
   gettyUploadService: { uploadAndReport: vi.fn().mockResolvedValue([]), reportUsage: vi.fn() },
 }));
 
+import { GitUtils } from '../../utils/git.js';
 import { MediaManifestService, classifyOrientation, type MediaManifest } from '../MediaManifestService.js';
 
 const AI_TRANSPARENT = 'https://logos.example.com/old-transparent.png';
@@ -106,6 +114,40 @@ describe('updateSlotWithUpload — logo variant-map clearing & sibling propagati
     service = new MediaManifestService();
     vi.mocked(fs.writeFile).mockResolvedValue(undefined);
     vi.mocked(fs.rename).mockResolvedValue(undefined);
+    gitAddFiles.mockResolvedValue({ success: true });
+    gitGetStatus.mockResolvedValue({ stagedFiles: 2 });
+    gitCommit.mockResolvedValue({ success: true });
+    gitGetLastCommit.mockResolvedValue({ hash: 'abc1234' });
+    // Assign to `this` (constructor pattern) so `new GitUtils()` carries the spies.
+    vi.mocked(GitUtils).mockImplementation(function (this: Record<string, unknown>) {
+      this.addFiles = gitAddFiles;
+      this.getStatus = gitGetStatus;
+      this.commit = gitCommit;
+      this.getLastCommit = gitGetLastCommit;
+    } as unknown as () => GitUtils);
+  });
+
+  it('stages caller-written media bytes (stagedMediaPaths) in the SAME commit as the manifest', async () => {
+    vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify({ 'pages/home/hero': makeAiHorizontalLogo() }));
+
+    await service.updateSlotWithUpload('test-app', 'pages/home/hero', UPLOAD_URL, {
+      sourceFilename: 'my-photo.png',
+      stagedMediaPaths: ['public/assets/media/hero-abcd1234.png'],
+    });
+
+    expect(gitAddFiles).toHaveBeenCalledTimes(1);
+    const stagedFiles = gitAddFiles.mock.calls[0]![1];
+    expect(stagedFiles).toContain('airo-media.json');
+    expect(stagedFiles).toContain('public/assets/media/hero-abcd1234.png');
+  });
+
+  it('commits manifest only when no stagedMediaPaths given (remote/CDN URL)', async () => {
+    vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify({ 'pages/home/hero': makeAiHorizontalLogo() }));
+
+    await service.updateSlotWithUpload('test-app', 'pages/home/hero', 'https://cdn.example.com/x.jpg');
+
+    expect(gitAddFiles).toHaveBeenCalledTimes(1);
+    expect(gitAddFiles.mock.calls[0]![1]).toEqual(['airo-media.json']);
   });
 
   it('clears stale variant maps and sets naturalOrientation when a square upload lands in logo/horizontal', async () => {

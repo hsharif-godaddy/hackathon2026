@@ -1366,7 +1366,7 @@ router.post(
         appId,
         slotName,
         uploadedUrl,
-        { sourceFilename: filename, isVideo, dimensions }
+        { sourceFilename: filename, isVideo, dimensions, stagedMediaPaths: [mediaPath] }
       );
 
       if (!updateResult.success) {
@@ -1864,7 +1864,7 @@ router.post(
         appId,
         slotName,
         uploadedUrl,
-        { sourceFilename: chatUploadFilename, isVideo: isVideoUpload, dimensions: processedDimensions }
+        { sourceFilename: chatUploadFilename, isVideo: isVideoUpload, dimensions: processedDimensions, stagedMediaPaths: [mediaPath] }
       );
 
       if (!updateResult.success) {

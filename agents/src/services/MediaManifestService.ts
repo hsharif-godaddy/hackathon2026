@@ -520,7 +520,7 @@ async function copyLocalFileToMedia(
   appPath: string,
   localUrlPath: string,
   slotPath: string
-): Promise<string | null> {
+): Promise<{ url: string; destPath: string } | null> {
   // Resolve local URL path to a filesystem path.
   // Vite serves public/ at root, so /assets/images/x.png → {app}/public/assets/images/x.png
   // getPersistentPublicDir(appPath) (.../assets/public/). Host layout stores files at
@@ -603,7 +603,32 @@ async function copyLocalFileToMedia(
     dest: filename,
   });
 
-  return `${AIRO_ASSET_UPLOADS_URL_PREFIX}${filename}`;
+  return { url: `${AIRO_ASSET_UPLOADS_URL_PREFIX}${filename}`, destPath };
+}
+
+/**
+ * Return a written media file's path RELATIVE to the app repo so it can be
+ * staged in the SAME git commit as the manifest.
+ *
+ * Why this matters: import writes the processed bytes under public/ (chat
+ * uploads → public/assets/media, "use this image" → public/media) and commits
+ * the manifest, but historically left the file untracked — it only entered git
+ * via the lazy end-of-session `git add .`. If that never ran (crash, abnormal
+ * disconnect) or the preview workspace was reconstructed from git before it
+ * did, the manifest came back pointing at a file that was never committed, so
+ * the slot 404s ("file not found") while the picker still works from the
+ * durable agent upload store.
+ *
+ * Returns null when the file is OUTSIDE the repo — the SHARED_STORAGE_DIR
+ * layout keeps media on a CephFS mount that persists independently — so we
+ * never try to `git add` a path that isn't in the working tree.
+ */
+function repoRelativeMediaPath(appPath: string, absFilePath: string): string | null {
+  const rel: string = path.relative(appPath, absFilePath);
+  if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) {
+    return null;
+  }
+  return rel;
 }
 
 /**
@@ -834,9 +859,10 @@ export class MediaManifestService {
         slotPath,
         normalizedUrl,
       });
+      let copiedMediaDestPath: string | null = null;
       if (normalizedUrl.startsWith('/') && !normalizedUrl.startsWith('/airo-assets/')) {
-        const uploadUrl = await copyLocalFileToMedia(app.path, normalizedUrl, slotPath);
-        if (!uploadUrl) {
+        const copyResult = await copyLocalFileToMedia(app.path, normalizedUrl, slotPath);
+        if (!copyResult) {
           logger.error('media_manifest.import_slot.copy_local_failed', {
             appId,
             slotPath,
@@ -849,7 +875,8 @@ export class MediaManifestService {
             httpStatus: 400,
           };
         }
-        normalizedUrl = uploadUrl;
+        normalizedUrl = copyResult.url;
+        copiedMediaDestPath = copyResult.destPath;
       }
 
       const now = new Date().toISOString();
@@ -956,6 +983,14 @@ export class MediaManifestService {
       }
       if (rewrittenSourceFile) {
         filesToStage.add(rewrittenSourceFile);
+      }
+      // Stage the copied media bytes in the SAME commit as the manifest so a
+      // workspace recycle can't drop the file while the manifest still points at it.
+      if (copiedMediaDestPath) {
+        const copiedMediaPath: string | null = repoRelativeMediaPath(app.path, copiedMediaDestPath);
+        if (copiedMediaPath) {
+          filesToStage.add(copiedMediaPath);
+        }
       }
       const additionalFiles = filesToStage.size > 0 ? [...filesToStage] : undefined;
       try {
@@ -1598,9 +1633,17 @@ export class MediaManifestService {
       isVideo?: boolean;
       /** Natural pixel dimensions; when provided for a logo, co-populates the layout-matching sibling slot. */
       dimensions?: { width: number; height: number };
+      /**
+       * Repo-relative media file paths the CALLER wrote into the workspace
+       * (e.g. public/assets/media/<file>). Staged in the SAME commit as the
+       * manifest so a workspace recycle can't drop the bytes while keeping the
+       * manifest entry that points at them. Omit when the bytes live outside the
+       * repo (CDN/Getty URL, or shared-storage mount that persists on its own).
+       */
+      stagedMediaPaths?: string[];
     }
   ): Promise<ManifestOperationResult> {
-    const { sourceFilename, isVideo, dimensions } = options || {};
+    const { sourceFilename, isVideo, dimensions, stagedMediaPaths } = options || {};
     const app = this.appRepository.findById(appId);
     if (!app) {
       return {
@@ -1728,10 +1771,12 @@ export class MediaManifestService {
       // Write manifest and versions file atomically
       await this.writeManifest(manifestPath, manifest);
 
-      // Commit manifest to git (media file is in persistent storage, not the workspace)
+      // Commit manifest + any caller-written media bytes together, so the slot
+      // can't end up referencing a committed manifest entry whose file was
+      // never committed (untracked file dropped on a workspace recycle → 404).
       let commitHash: string | undefined;
       try {
-        commitHash = await this.commitManifestChange(appId, slotName, 'update');
+        commitHash = await this.commitManifestChange(appId, slotName, 'update', stagedMediaPaths);
       } catch (gitError) {
         logger.warn('media_manifest.upload_slot.git_commit_failed', {
           ...logContext,
@@ -1945,10 +1990,16 @@ export class MediaManifestService {
 
       let commitHash: string | undefined;
       try {
+        // Stage the processed media bytes (just written to filePath) in the SAME
+        // commit as the manifest, so a workspace recycle can't drop the file
+        // while keeping the manifest entry that points at it. null when the file
+        // lives outside the repo (SHARED_STORAGE_DIR / CephFS mount).
+        const stagedMediaPath: string | null = repoRelativeMediaPath(app.path, filePath);
         commitHash = await this.commitManifestChange(
           appId,
           slotName,
-          existingSlot ? 'update' : 'create'
+          existingSlot ? 'update' : 'create',
+          stagedMediaPath ? [stagedMediaPath] : undefined,
         );
       } catch (gitError) {
         logger.warn('media_manifest.import_chat_upload.git_commit_failed', {

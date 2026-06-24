@@ -32,6 +32,13 @@ vi.mock("../../utils/dev-supervisor-client-factory.js", () => ({
   DevSupervisorClientFactory: { createForApp: vi.fn().mockReturnValue(null) },
 }));
 
+const { gitAddFiles, gitGetStatus, gitCommit, gitGetLastCommit } = vi.hoisted(() => ({
+  gitAddFiles: vi.fn(),
+  gitGetStatus: vi.fn(),
+  gitCommit: vi.fn(),
+  gitGetLastCommit: vi.fn(),
+}));
+
 vi.mock("../../utils/git.js", () => ({
   GitUtils: vi.fn(),
 }));
@@ -64,6 +71,7 @@ vi.mock("../GettyUploadService.js", () => ({
 
 import { AppRepository } from "../../database/repositories/AppRepository.js";
 import { astImageEditor } from "../../tools/ast-image-editor.js";
+import { GitUtils } from "../../utils/git.js";
 import { MediaManifestService } from "../MediaManifestService.js";
 
 const fileStat = { isFile: () => true } as Awaited<ReturnType<typeof fs.stat>>;
@@ -78,6 +86,18 @@ describe("MediaManifestService - importSlot", () => {
 
     vi.mocked(fs.stat).mockRejectedValue(Object.assign(new Error("ENOENT"), { code: "ENOENT" }));
     vi.mocked(fs.mkdir).mockResolvedValue(undefined);
+    gitAddFiles.mockResolvedValue({ success: true });
+    gitGetStatus.mockResolvedValue({ stagedFiles: 2 });
+    gitCommit.mockResolvedValue({ success: true });
+    gitGetLastCommit.mockResolvedValue({ hash: "abc1234" });
+    // Re-apply after clearAllMocks. Assign to `this` (constructor pattern) so
+    // `new GitUtils()` yields an instance carrying the spies.
+    vi.mocked(GitUtils).mockImplementation(function (this: Record<string, unknown>) {
+      this.addFiles = gitAddFiles;
+      this.getStatus = gitGetStatus;
+      this.commit = gitCommit;
+      this.getLastCommit = gitGetLastCommit;
+    } as unknown as () => GitUtils);
   });
 
   it("derives slot name from image alt text", async () => {
@@ -177,6 +197,38 @@ describe("MediaManifestService - importSlot", () => {
     expect(slot).toBeDefined();
     expect(slot.currentUrl).toMatch(/^\/airo-assets\/uploads\/pages-home-test-photo-[a-f0-9]+\.jpg$/);
     expect(slot.alternatives[0]).toBe(slot.currentUrl);
+  });
+
+  it("stages the copied public/media file in the SAME commit as the manifest", async () => {
+    // Regression guard: a local image copied into public/media must be committed
+    // alongside the manifest. Otherwise the untracked file is dropped on a
+    // workspace recycle and the slot 404s while the manifest still points at it.
+    const fakeImageBuffer = Buffer.from("fake-image-data");
+    vi.mocked(fs.readFile)
+      .mockResolvedValueOnce(JSON.stringify({}))
+      .mockResolvedValueOnce(fakeImageBuffer as any);
+    vi.mocked(fs.writeFile).mockResolvedValue(undefined);
+    vi.mocked(fs.rename).mockResolvedValue(undefined);
+    vi.mocked(fs.stat).mockResolvedValue(fileStat);
+
+    await service.importSlot("test-app", {
+      imageUrl: "https://localhost:5009/assets/photo.jpg",
+      imageAlt: "Test photo",
+      devContext: {
+        fileName: "src/pages/index.tsx",
+        componentName: "unknown",
+        lineNumber: 10,
+      },
+    });
+
+    expect(gitAddFiles).toHaveBeenCalledTimes(1);
+    const stagedFiles = gitAddFiles.mock.calls[0]![1];
+    expect(stagedFiles).toContain("airo-media.json");
+    expect(stagedFiles).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(/^public\/media\/pages-home-test-photo-[a-f0-9]+\.jpg$/),
+      ]),
+    );
   });
 
   it("copies test preview host image using pathname like localhost", async () => {

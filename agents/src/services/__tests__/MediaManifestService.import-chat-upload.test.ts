@@ -33,6 +33,13 @@ vi.mock('../../utils/dev-supervisor-client-factory.js', () => ({
   DevSupervisorClientFactory: { createForApp: vi.fn().mockReturnValue(null) },
 }));
 
+const { gitAddFiles, gitGetStatus, gitCommit, gitGetLastCommit } = vi.hoisted(() => ({
+  gitAddFiles: vi.fn(),
+  gitGetStatus: vi.fn(),
+  gitCommit: vi.fn(),
+  gitGetLastCommit: vi.fn(),
+}));
+
 vi.mock('../../utils/git.js', () => ({
   GitUtils: vi.fn(),
 }));
@@ -79,6 +86,7 @@ vi.mock('../../utils/persistent-assets.js', () => ({
 
 import { fileUploadService } from '../FileUploadService.js';
 import { imageProcessingService } from '../ImageProcessingService.js';
+import { GitUtils } from '../../utils/git.js';
 import {
   deriveChatUploadSlotPath,
   MediaManifestService,
@@ -123,6 +131,18 @@ describe('MediaManifestService - importChatUploadToSlot', function importChatUpl
       originalWidth: 800,
       originalHeight: 600,
     });
+    gitAddFiles.mockResolvedValue({ success: true });
+    gitGetStatus.mockResolvedValue({ stagedFiles: 2 });
+    gitCommit.mockResolvedValue({ success: true });
+    gitGetLastCommit.mockResolvedValue({ hash: 'abc1234' });
+    // Re-apply after clearAllMocks. Assign to `this` (constructor pattern) so
+    // `new GitUtils()` yields an instance carrying the spies.
+    vi.mocked(GitUtils).mockImplementation(function (this: Record<string, unknown>) {
+      this.addFiles = gitAddFiles;
+      this.getStatus = gitGetStatus;
+      this.commit = gitCommit;
+      this.getLastCommit = gitGetLastCommit;
+    } as unknown as () => GitUtils);
   });
 
   describe('#deriveChatUploadSlotPath', function derivePathTests() {
@@ -172,6 +192,27 @@ describe('MediaManifestService - importChatUploadToSlot', function importChatUpl
         expect(result.slotUrl).toBe('/airo-assets/images/uploads/hero-stored-hero');
         expect(result.uploadedUrl).toMatch(/^\/airo-assets\/uploads\//);
       }
+    });
+
+    it('stages the processed media file in the SAME commit as the manifest', async function commitsMediaBytes() {
+      // Regression guard: the manifest must never be committed without the media
+      // file it points at. Otherwise a workspace recycle drops the untracked file
+      // and the slot 404s ("file not found") while the manifest survives.
+      const result = await service.importChatUploadToSlot('test-app', {
+        filename: 'stored-hero.jpg',
+        assetRole: 'hero_image',
+      });
+
+      expect(result.success).toBe(true);
+      expect(gitAddFiles).toHaveBeenCalledTimes(1);
+      const [stagedAppPath, stagedFiles] = gitAddFiles.mock.calls[0]!;
+      expect(stagedAppPath).toBe('/tmp/test-app');
+      // Manifest AND the processed media file under public/media (the test's
+      // getPersistentPublicDir mock returns <appPath>/public).
+      expect(stagedFiles).toContain('airo-media.json');
+      expect(stagedFiles).toEqual(
+        expect.arrayContaining([expect.stringMatching(/^public\/media\/.+\.jpg$/)]),
+      );
     });
 
     it('updates existing hero slot (pages/home/hero) instead of creating uploads/hero-... (AIROBUILD-2364)', async function useExistingRoleSlot() {
