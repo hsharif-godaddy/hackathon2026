@@ -5,6 +5,8 @@
  * The client (browser) makes the authenticated API call to trigger deployment.
  */
 
+import { PUBLISH_CLIENT_ACTION_TIMEOUT_MS } from '@airo/shared/publish'
+
 import { logger } from '../logging/index.js'
 import type { IClientActionService } from '../services/ClientActionService.js'
 
@@ -51,15 +53,14 @@ export async function executePublish(
       },
       // Initial budget for the human-in-the-loop approval/think-time window. The
       // browser shows an approval modal first (up to PUBLISH_CONFIRMATION_TIMEOUT_MS
-      // = 300s in publishAction.ts) and, on APPROVAL, emits client_action_reset_timeout
+      // in publishAction.ts) and, on APPROVAL, emits client_action_reset_timeout
       // which resets this pending action's timeout to a fresh window for the actual
-      // publish work (archive/build + wait for mgmt-airo terminal deployment, up to 5m).
-      // INVARIANT: this must be >= the browser confirmation timeout so the agent never
-      // times out during approval before the reset arrives. If the browser/agent is old
-      // and no reset arrives, this single window degrades to the prior (shared-deadline)
-      // behavior. The reset carries no client-chosen duration, so the work phase reuses
-      // this same server-owned 420s.
-      timeoutMs: 420000,
+      // publish work (archive/build + wait for mgmt-airo terminal deployment).
+      // INVARIANT: PUBLISH_CLIENT_ACTION_TIMEOUT_MS must be >= confirmation timeout
+      // so the agent never times out during approval before the reset arrives.
+      // The publish skill tool race uses PUBLISH_SKILL_TOOL_TIMEOUT_MS (shared) to
+      // cover approval + work + post-timeout reconcile poll.
+      timeoutMs: PUBLISH_CLIENT_ACTION_TIMEOUT_MS,
     })
 
     if (!clientResult.success) {

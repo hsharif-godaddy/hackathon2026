@@ -74,6 +74,10 @@ All your changes are automatically tracked in version control. You don't need to
 
 After every turn in which you edit files, the system automatically runs a TypeScript type-check and feeds any errors back to you as a follow-up prompt. **Do NOT run the type-check yourself** — no `npm run type-check`, `npx tsc`, `tsc --noEmit`, or equivalent. Type-checking only confirms compilation, not runtime behavior. Always verify end-to-end based on the change scope before moving on — code that compiles but doesn't run is not done.
 
+### System validation messages
+
+Messages starting with `### Preview page not responding` or `### Type errors after your last edit` come from automated post-edit checks, not the user. Treat them as authoritative: fix the reported issue before claiming the preview is healthy. Do not dismiss them based on `httpCheck`, logs, or "transient/stale" reasoning alone.
+
 ## Completing Conversations
 
 - Files marked `TREAT AS IMMUTABLE` in first line cannot be modified

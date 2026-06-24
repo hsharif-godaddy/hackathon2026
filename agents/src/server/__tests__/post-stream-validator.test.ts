@@ -81,7 +81,7 @@ function makeDeps(overrides: {
    */
   waitForCycleAdvance?: WaitForCycleAdvanceFn;
   restartBeaconWaitMs?: number;
-  healthCheckPreview?: (appId: string) => Promise<boolean>;
+  healthCheckPreview?: (appId: string, appBaseUrl?: string) => Promise<boolean>;
   /** Content-rules: app path returned by resolveAppPath. null = app not found. */
   contentRulesAppPath?: string | null;
   crRetryCount?: number;
@@ -1391,12 +1391,29 @@ describe('createPostStreamValidator', () => {
         continuationPrompt: expect.stringContaining('not responding'),
         message: expect.stringContaining('not responding')
       });
-      expect(mocks.healthCheckPreview).toHaveBeenCalledWith(APP_ID);
+      expect(mocks.healthCheckPreview).toHaveBeenCalledWith(APP_ID, undefined);
       expect(mocks.logger.warn).toHaveBeenCalledWith(
         'agent.runtime_errors.pass.health_check_failed',
         expect.objectContaining({ appId: APP_ID, socketId: SOCKET_ID })
       );
       expect(mocks.rtCounters.get(SOCKET_ID)).toBe(1);
+    });
+
+    it('passes context appBaseUrl to healthCheckPreview when set', async () => {
+      const previewUrl = 'https://abc.preview.c39.airoapp.ai/?airoShareToken=tok';
+      const healthCheckPreview = vi.fn(async () => true);
+      const { deps } = makeDeps({
+        cycleEstablished: false,
+        healthCheckPreview,
+      });
+      const validator = createPostStreamValidator(deps);
+      await validator(makeArgs({
+        context: {
+          metadata: { appId: APP_ID, appBaseUrl: previewUrl },
+          conversation: { conversationId: CONVERSATION_ID },
+        },
+      }));
+      expect(healthCheckPreview).toHaveBeenCalledWith(APP_ID, previewUrl);
     });
 
     it('returns clean when health check reports healthy despite no cycle', async () => {
@@ -1407,7 +1424,7 @@ describe('createPostStreamValidator', () => {
       const validator = createPostStreamValidator(deps);
       const result = await validator(makeArgs());
       expect(result).toBeUndefined();
-      expect(mocks.healthCheckPreview).toHaveBeenCalledWith(APP_ID);
+      expect(mocks.healthCheckPreview).toHaveBeenCalledWith(APP_ID, undefined);
       expect(mocks.logger.warn).not.toHaveBeenCalledWith(
         'agent.runtime_errors.pass.health_check_failed',
         expect.any(Object)

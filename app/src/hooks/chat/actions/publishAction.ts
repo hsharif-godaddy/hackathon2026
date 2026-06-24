@@ -5,7 +5,7 @@
  * This is triggered by agents when the user requests to publish their site.
  */
 
-import { PublishDenialReason, PublishUpgradeRequiredError } from '@airo/shared/publish'
+import { PUBLISH_CONFIRMATION_TIMEOUT_MS,PublishDenialReason, PublishUpgradeRequiredError } from '@airo/shared/publish'
 
 import { getQueryClient } from '@/components/providers/QueryClientProvider'
 import { dynamicApiConfigService } from '@/config/dynamic-api'
@@ -40,10 +40,9 @@ import type { ClientActionExecutor } from './types'
 // This budgets the human think-time window only. On APPROVAL the browser signals
 // the agent (via context.resetActionTimeout) to reset the pending publish action's
 // timeout, so the actual publish work gets a fresh full window rather than sharing
-// the agent's deadline with think-time. INVARIANT: this must stay <= the agent-side
-// executeAction timeout (420s in publish-client-tool.ts) so the agent never times
-// out during approval before the reset arrives.
-const PUBLISH_CONFIRMATION_TIMEOUT_MS = 5 * 60 * 1000;
+// the agent's deadline with think-time. INVARIANT: {@link PUBLISH_CONFIRMATION_TIMEOUT_MS}
+// must stay <= PUBLISH_CLIENT_ACTION_TIMEOUT_MS (@airo/shared/publish) so the agent
+// never times out during approval before the reset arrives.
 
 /**
  * Human-in-the-loop gate for agent-initiated publishes.

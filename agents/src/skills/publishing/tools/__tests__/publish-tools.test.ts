@@ -26,6 +26,11 @@ vi.mock('../../../../tools/publish-client-tool.js', () => ({
   executePublish: vi.fn(),
 }))
 
+vi.mock('../../publish-timeout-reconcile.js', () => ({
+  isPublishTimeoutError: vi.fn((error: string) => error.toLowerCase().includes('timeout')),
+  reconcilePublishAfterTimeout: vi.fn(),
+}))
+
 vi.mock('../../../../tools/memory-tool.js', () => ({
   MemoryTool: vi.fn().mockImplementation(function () { return {
     readMemory: vi.fn(),
@@ -61,6 +66,7 @@ import { publishTool, statusTool } from '../index.js'
 import { AppRepository } from '../../../../database/repositories/AppRepository.js'
 import { getActionService } from '../../../../server/agent-runtime.js'
 import { executePublish } from '../../../../tools/publish-client-tool.js'
+import { reconcilePublishAfterTimeout } from '../../publish-timeout-reconcile.js'
 import { MemoryTool } from '../../../../tools/memory-tool.js'
 import { DevSupervisorClientFactory } from '../../../../utils/dev-supervisor-client-factory.js'
 import { validateDomainName } from '../../../../utils/domain-validation.js'
@@ -226,6 +232,52 @@ describe('publishing skill publish-tools', () => {
         })
         expect(result.requiresUpgrade).toBeUndefined()
         expect(result.message).toContain('did not approve')
+      })
+
+      it('reconciles verified production deploy after publish timeout', async () => {
+        vi.mocked(executePublish).mockResolvedValue({
+          success: false,
+          error: 'Request timeout after 420000ms',
+        } as any)
+        vi.mocked(reconcilePublishAfterTimeout).mockResolvedValue({
+          verified: true,
+          commitHash: 'deadbeef1234567890abcdef1234567890abcd',
+        })
+        mockClientActionService.executeAction.mockResolvedValue({
+          success: true,
+          result: { publishedUrl: 'https://app-1.c4.airoapp.ai', domains: [] },
+        })
+
+        const context = {
+          metadata: { appId: 'app-1', permissions: { canPublish: true } },
+          socketId: 'sock-1',
+        }
+
+        const result = await runPublishTool({}, { experimental_context: context })
+
+        expect(reconcilePublishAfterTimeout).toHaveBeenCalledWith({ appId: 'app-1' })
+        expect(result.success).toBe(true)
+        expect(result.message).toContain('timed out, but production is verified')
+      })
+
+      it('throws when publish timeout cannot be verified in production', async () => {
+        vi.mocked(executePublish).mockResolvedValue({
+          success: false,
+          error: 'Tool publishing__publish execution timeout',
+        } as any)
+        vi.mocked(reconcilePublishAfterTimeout).mockResolvedValue({
+          verified: false,
+          reason: 'Production did not become healthy',
+        })
+
+        const context = {
+          metadata: { appId: 'app-1', permissions: { canPublish: true } },
+          socketId: 'sock-1',
+        }
+
+        await expect(runPublishTool({}, { experimental_context: context })).rejects.toThrow(
+          'Do NOT tell the user the site is live'
+        )
       })
 
       it('should proceed to executePublish when canPublish is true', async () => {

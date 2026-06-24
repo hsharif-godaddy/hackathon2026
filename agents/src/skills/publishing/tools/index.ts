@@ -7,10 +7,15 @@ import { MemoryRepository } from '../../../database/repositories/MemoryRepositor
 import { logger } from '../../../logging/index.js';
 import { customerIdFromContext } from '../../../memory/interfaces/scope.js';
 import { getActionService } from '../../../server/agent-runtime.js';
-import { createForWorkspace } from '../../../workspace/index.js';
-import { validateDomainName } from '../../../utils/domain-validation.js';
 import { MemoryTool } from '../../../tools/memory-tool.js';
 import { executePublish } from '../../../tools/publish-client-tool.js';
+import { validateDomainName } from '../../../utils/domain-validation.js';
+import { createForWorkspace } from '../../../workspace/index.js';
+import {
+  isPublishTimeoutError,
+  reconcilePublishAfterTimeout,
+} from '../publish-timeout-reconcile.js';
+import { PUBLISH_SKILL_TOOL_TIMEOUT_MS } from '../publish-timeouts.js';
 
 const memoryTool = new MemoryTool();
 const appRepo = new AppRepository();
@@ -68,7 +73,8 @@ export const publishTool: SkillToolDefinition = {
     if (input.commitHash) {
       publishOptions.commitHash = input.commitHash;
     }
-    const result = await executePublish(publishOptions, clientActionService);
+    let result = await executePublish(publishOptions, clientActionService);
+    let timeoutReconciled = false;
 
     if (!result.success) {
       if (result.cancelled) {
@@ -95,29 +101,53 @@ export const publishTool: SkillToolDefinition = {
         };
       }
 
-      let errorMessage = `Publish failed: ${result.error || 'Unknown error'}`;
-
-      if (result.errorDetails) {
-        errorMessage += `\n\nDetails:\n${result.errorDetails}`;
-      }
-
-      if (result.logs && result.logs.length > 0) {
-        errorMessage += '\n\nLogs:\n';
-        for (const log of result.logs) {
-          const timestamp = log.timestamp ? `[${log.timestamp}] ` : '';
-          errorMessage += `${timestamp}${log.message}\n`;
+      if (isPublishTimeoutError(result.error ?? '')) {
+        const reconcile = await reconcilePublishAfterTimeout({
+          appId,
+          ...(input.commitHash && { expectedCommitHash: input.commitHash }),
+        });
+        if (reconcile.verified) {
+          result = {
+            success: true,
+            commitHash: reconcile.commitHash,
+          };
+          timeoutReconciled = true;
+        } else {
+          throw new Error(
+            `Publish timed out and deployment could not be verified (${reconcile.reason}). ` +
+            'Do NOT tell the user the site is live. Do NOT call publishing__status — ' +
+            'it reflects the previous deployment, not a failed build.'
+          );
         }
       }
 
-      if (result.exitCode !== undefined) {
-        errorMessage += `\nExit: ${result.exitCode}`;
-      }
+      if (!result.success) {
+        let errorMessage = `Publish failed: ${result.error || 'Unknown error'}`;
 
-      throw new Error(errorMessage);
+        if (result.errorDetails) {
+          errorMessage += `\n\nDetails:\n${result.errorDetails}`;
+        }
+
+        if (result.logs && result.logs.length > 0) {
+          errorMessage += '\n\nLogs:\n';
+          for (const log of result.logs) {
+            const timestamp = log.timestamp ? `[${log.timestamp}] ` : '';
+            errorMessage += `${timestamp}${log.message}\n`;
+          }
+        }
+
+        if (result.exitCode !== undefined) {
+          errorMessage += `\nExit: ${result.exitCode}`;
+        }
+
+        throw new Error(errorMessage);
+      }
     }
 
     const commitInfo = result.commitHash ? result.commitHash.substring(0, 7) : 'HEAD';
-    let message = `Published commit ${commitInfo}.`;
+    let message = timeoutReconciled
+      ? `Publish confirmation timed out, but production is verified running commit ${commitInfo}.`
+      : `Published commit ${commitInfo}.`;
 
     if (result.deploymentId) {
       message += `\nDeployment: ${result.deploymentId}`;
@@ -339,7 +369,7 @@ export const publishTool: SkillToolDefinition = {
   },
 
   config: {
-    timeout: 420000,
+    timeout: PUBLISH_SKILL_TOOL_TIMEOUT_MS,
     requiresApp: true,
   },
 };

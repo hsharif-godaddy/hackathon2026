@@ -43,6 +43,7 @@ import { GitUtils } from '../utils/git.js';
 import { AppRepository } from '../database/repositories/AppRepository.js';
 import { createForWorkspace } from '../workspace/index.js';
 import { checkPreviewHealth } from '../utils/preview-health-check.js';
+import { resolveAppBaseUrl } from '../utils/share-token.js';
 import { turnEndedWithStopAfterTool } from '@airo/ai-transport';
 import {
   checkContentRulesForFile,
@@ -221,11 +222,13 @@ export interface RuntimeErrorPhaseDeps {
    * Optional. When provided, performs an HTTP health check against the
    * preview when runtime errors report clean but no cycle was ever
    * established (the beacon pipeline may be broken or the page crashed
-   * before error-client.ts loaded). Returns true if the preview is
-   * responding (status < 500), false otherwise. Fail-open: if this
-   * callback throws, the phase treats the preview as healthy.
+   * before error-client.ts loaded). Prefers `appBaseUrlFromContext`
+   * (same URL as agent `httpCheck`), falling back to the app record
+   * preview URL and port. Returns true if the preview is responding
+   * (status < 500), false otherwise. Fail-open: if this callback throws
+   * or no probe target can be resolved, the phase treats the preview as healthy.
    */
-  healthCheckPreview?: (appId: string) => Promise<boolean>;
+  healthCheckPreview?: (appId: string, appBaseUrl?: string) => Promise<boolean>;
   logger: PhaseLogger;
 }
 
@@ -816,8 +819,10 @@ export async function runRuntimeErrorPhase(
       // page is actually broken.
       if (deps.healthCheckPreview) {
         let isHealthy: boolean;
+        const appBaseUrl = (args.context as { metadata?: { appBaseUrl?: string } })
+          ?.metadata?.appBaseUrl;
         try {
-          isHealthy = await deps.healthCheckPreview(appId);
+          isHealthy = await deps.healthCheckPreview(appId, appBaseUrl);
         } catch {
           isHealthy = true;
         }
@@ -1296,10 +1301,23 @@ export function buildSharedPostStreamValidator(logger: PhaseLogger): {
           return { success: false, error: err instanceof Error ? err.message : String(err) }
         }
       },
-      healthCheckPreview: async (appId: string): Promise<boolean> => {
+      healthCheckPreview: async (appId: string, appBaseUrlFromContext?: string): Promise<boolean> => {
         const app = appRepo.findById(appId)
-        if (!app?.port) return true
-        return checkPreviewHealth(app.port)
+        const appBaseUrl = appBaseUrlFromContext
+          ?? (app?.previewUrl ? resolveAppBaseUrl(app.previewUrl, appId) : undefined)
+        if (appBaseUrl || app?.port) {
+          return checkPreviewHealth({
+            ...(appBaseUrl && { appBaseUrl }),
+            ...(app?.port !== undefined && { port: app.port }),
+            onUnparseableAppBaseUrl: (unparseable) => {
+              logger.warn('agent.preview.health_check.url_unparseable', {
+                appId,
+                appBaseUrl: unparseable,
+              })
+            },
+          })
+        }
+        return true
       },
       logger,
     },
