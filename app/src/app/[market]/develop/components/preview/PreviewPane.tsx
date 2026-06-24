@@ -18,6 +18,7 @@ import { useThinkerLabel } from '@/app/[market]/develop/components/chat/useThink
 import DomainBar from '@/app/[market]/develop/components/layout/DomainBar'
 import { getDevicePreset, isFullWidthDevice } from '@/app/[market]/develop/components/preview/devicePresets'
 import Inbox from '@/app/[market]/develop/components/preview/inbox/Inbox'
+import { MediaCanvas } from '@/app/[market]/develop/components/preview/media-canvas/MediaCanvas'
 import { useCanvasStatusLabel } from '@/app/[market]/develop/components/preview/useCanvasStatusLabel'
 const DocsView = lazy(() => import('@/app/[market]/develop/components/preview/DocsView'))
 import PreviewCode from '@/app/[market]/develop/components/preview/PreviewCode'
@@ -1324,6 +1325,10 @@ export default function PreviewPane({
         </div>
       </div>
     )
+  }
+
+  if (viewMode === ViewMode.MEDIA) {
+    return <MediaCanvas />
   }
 
   // With canvas-tabs flag on AND the preview server ready, skip the DOMAIN/INBOX

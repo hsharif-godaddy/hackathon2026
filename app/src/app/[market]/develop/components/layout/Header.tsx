@@ -10,6 +10,7 @@ import Apps2Icon from '@ux/icon/apps2'
 import CodeIcon from '@ux/icon/code'
 import ColorPaletteIcon from '@ux/icon/color-palette'
 import ConversationsIcon from '@ux/icon/conversations'
+import ImageIcon from '@ux/icon/image'
 import InlineEditIcon from '@ux/icon/inline-edit'
 import MobilePhoneIcon from '@ux/icon/mobile-phone'
 import RefreshIcon from '@ux/icon/refresh'
@@ -38,6 +39,7 @@ import AppPublish from '@/components/layout/AppPublish';
 import HeaderUpgradeButton from '@/components/layout/HeaderUpgradeButton';
 import IframeCloseButton from '@/components/layout/IframeCloseButton';
 import UserMenu from '@/components/layout/UserMenu';
+import { SWITCHBOARD_APPBUILDER_MEDIA_CANVAS } from '@/config/switchboard-flags';
 import { useHeadUndoAction } from '@/hooks/useHeadUndoAction';
 import { usePaywallModal } from '@/hooks/usePaywallModal';
 import { usePublishUpsellEligibility } from '@/hooks/usePublishUpsellEligibility';
@@ -73,6 +75,7 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
   const showDesignKitWizard = useIsDesignKitWizardProfile();
   const isTopLevelDomainEnabled = useSwitchboard('appbuilder-domain-top-level');
   const isInboxEnabled = useSwitchboard('app-builder-inbox-button');
+  const isMediaCanvasEnabled = useSwitchboard(SWITCHBOARD_APPBUILDER_MEDIA_CANVAS) === true;
   const location = 'develop';
   const appId = useAppIdFromParams();
   const clickContext = useMemo(() => (appId ? { appId } : undefined), [appId]);
@@ -246,6 +249,14 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
                     value={ViewMode.BRAND}
                     icon={<ColorPaletteIcon className="size-2.5" />}
                     label="Logo & Brand"
+                    disabled={isVersionHistoryOpen}
+                  />
+                )}
+                {isMediaCanvasEnabled && (
+                  <ButtonGroup.Item
+                    value={ViewMode.MEDIA}
+                    icon={<ImageIcon className="size-2.5" />}
+                    label="Media"
                     disabled={isVersionHistoryOpen}
                   />
                 )}

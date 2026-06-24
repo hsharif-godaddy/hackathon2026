@@ -22,6 +22,7 @@ import { ChatTab, MobileMode, ViewMode } from '@/app/[market]/develop/components
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils'
 import { useEditNudgeTooltip } from '@/app/[market]/develop/hooks/useEditNudgeTooltip'
 import AppPublish from '@/components/layout/AppPublish'
+import { SWITCHBOARD_APPBUILDER_MEDIA_CANVAS } from '@/config/switchboard-flags'
 import { useChatTabs } from '@/hooks/useChatTabs'
 import { useGitHistoryQuery } from '@/hooks/useGitHistory'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
@@ -74,6 +75,7 @@ export default function ChatToolbar({
   const isEditModeCueEnabled = useSwitchboard('appbuilder-edit-mode-cue') === true;
   const isMobileInlineEditEnabled = useSwitchboard('airo-builder-mobile-inline-edit');
   const isInboxEnabled = useSwitchboard('app-builder-inbox-button');
+  const isMediaCanvasEnabled = useSwitchboard(SWITCHBOARD_APPBUILDER_MEDIA_CANVAS) === true;
   const mobileEditButtonRef = useRef<HTMLDivElement>(null);
   const { visible: editNudgeVisible, dismissForever: dismissEditNudge } = useEditNudgeTooltip();
 
@@ -192,11 +194,13 @@ export default function ChatToolbar({
               icon={<ChatIcon className="size-2.5 rtl:scale-x-[-1]" />}
               label={t('builder_chat_toolbar_button_chat')}
             />
-            <ButtonGroup.Item
-              value={ChatTab.MEDIAS}
-              icon={<ImageIcon />}
-              label={t('builder_chat_toolbar_button_media')}
-            />
+            {!isMediaCanvasEnabled && (
+              <ButtonGroup.Item
+                value={ChatTab.MEDIAS}
+                icon={<ImageIcon />}
+                label={t('builder_chat_toolbar_button_media')}
+              />
+            )}
             {!isMobile && (
               <>
                 <ButtonGroup.Item

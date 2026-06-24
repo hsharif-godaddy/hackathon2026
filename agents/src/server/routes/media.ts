@@ -20,6 +20,7 @@ import {
   isSafeUploadFilename,
 } from '@airo/shared/media';
 import { mediaManifestService } from '../../services/MediaManifestService.js';
+import { AppRepository } from '../../database/repositories/AppRepository.js';
 import { imageProcessingService } from '../../services/ImageProcessingService.js';
 import { fileUploadService } from '../../services/FileUploadService.js';
 import {
@@ -277,6 +278,218 @@ router.get('/:appId/manifest', async (req: Request, res: Response) => {
     });
   }
 });
+
+// ─── Media Folders ──────────────────────────────────────────────────────────────
+
+const FOLDERS_FILENAME = 'airo-media-folders.json';
+
+interface MediaFolder {
+  id: string;
+  name: string;
+  createdAt: string;
+  slots: string[];
+}
+
+// Per-app mutex for folder file read-modify-write. Single entry in prod (one agent per app).
+const folderLocks = new Map<string, Promise<void>>();
+function withFolderLock<T>(appPath: string, fn: () => Promise<T>): Promise<T> {
+  const prev = folderLocks.get(appPath) ?? Promise.resolve();
+  const next = prev.then(fn, fn);
+  const settled = next.then(() => {}, () => {});
+  folderLocks.set(appPath, settled);
+  settled.then(() => { if (folderLocks.get(appPath) === settled) folderLocks.delete(appPath); });
+  return next;
+}
+
+async function readFolders(appPath: string): Promise<MediaFolder[]> {
+  const foldersPath = `${appPath}/${FOLDERS_FILENAME}`;
+  try {
+    const content = await fs.readFile(foldersPath, 'utf-8');
+    return JSON.parse(content) as MediaFolder[];
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      return [];
+    }
+    throw error;
+  }
+}
+
+async function writeFolders(appPath: string, folders: MediaFolder[]): Promise<void> {
+  const foldersPath = `${appPath}/${FOLDERS_FILENAME}`;
+  const tempPath = `${foldersPath}.tmp`;
+  await fs.writeFile(tempPath, JSON.stringify(folders, null, 2));
+  await fs.rename(tempPath, foldersPath);
+}
+
+/**
+ * GET /media/:appId/folders
+ * List all media folders for an app
+ */
+router.get('/:appId/folders', async (req: Request, res: Response) => {
+  try {
+    const appId = req.params.appId as string;
+    const appRepository = new AppRepository();
+    const app = appRepository.findById(appId);
+    if (!app) {
+      return res.status(404).json({ success: false, error: 'App not found' });
+    }
+    const folders = await readFolders(app.path);
+    return res.json({ success: true, folders });
+  } catch (error) {
+    logger.error('route.media.get_folders.error', {
+      appId: req.params.appId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return res.status(500).json({ success: false, error: 'Failed to get folders' });
+  }
+});
+
+/**
+ * POST /media/:appId/folders
+ * Create a new media folder
+ */
+router.post('/:appId/folders', async (req: Request, res: Response) => {
+  try {
+    const appId = req.params.appId as string;
+    const { name } = req.body;
+
+    if (!name || typeof name !== 'string' || name.trim().length === 0) {
+      return res.status(400).json({ success: false, error: 'Folder name is required' });
+    }
+
+    const sanitizedName = name.trim().slice(0, 100);
+
+    const appRepository = new AppRepository();
+    const app = appRepository.findById(appId);
+    if (!app) {
+      return res.status(404).json({ success: false, error: 'App not found' });
+    }
+
+    const result = await withFolderLock(app.path, async () => {
+      const folders = await readFolders(app.path);
+
+      if (folders.some((f) => f.name.toLowerCase() === sanitizedName.toLowerCase())) {
+        return { status: 409, body: { success: false, error: 'A folder with that name already exists' } } as const;
+      }
+
+      const newFolder: MediaFolder = {
+        id: crypto.randomUUID(),
+        name: sanitizedName,
+        createdAt: new Date().toISOString(),
+        slots: [],
+      };
+
+      folders.push(newFolder);
+      await writeFolders(app.path, folders);
+
+      logger.info('route.media.create_folder.success', { appId, folderId: newFolder.id, folderName: newFolder.name });
+      return { status: 201, body: { success: true, folder: newFolder } } as const;
+    });
+
+    return res.status(result.status).json(result.body);
+  } catch (error) {
+    logger.error('route.media.create_folder.error', {
+      appId: req.params.appId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return res.status(500).json({ success: false, error: 'Failed to create folder' });
+  }
+});
+
+/**
+ * DELETE /media/:appId/folders/:folderId
+ * Delete a media folder
+ */
+router.delete('/:appId/folders/:folderId', async (req: Request, res: Response) => {
+  try {
+    const appId = req.params.appId as string;
+    const folderId = req.params.folderId as string;
+
+    const appRepository = new AppRepository();
+    const app = appRepository.findById(appId);
+    if (!app) {
+      return res.status(404).json({ success: false, error: 'App not found' });
+    }
+
+    const result = await withFolderLock(app.path, async () => {
+      const folders = await readFolders(app.path);
+      const index = folders.findIndex((f) => f.id === folderId);
+      if (index === -1) {
+        return { status: 404, body: { success: false, error: 'Folder not found' } } as const;
+      }
+
+      folders.splice(index, 1);
+      await writeFolders(app.path, folders);
+
+      logger.info('route.media.delete_folder.success', { appId, folderId });
+      return { status: 200, body: { success: true } } as const;
+    });
+
+    return res.status(result.status).json(result.body);
+  } catch (error) {
+    logger.error('route.media.delete_folder.error', {
+      appId: req.params.appId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return res.status(500).json({ success: false, error: 'Failed to delete folder' });
+  }
+});
+
+/**
+ * POST /media/:appId/folders/:folderId/move
+ * Move a media slot into a folder
+ */
+router.post('/:appId/folders/:folderId/move', async (req: Request, res: Response) => {
+  try {
+    const appId = req.params.appId as string;
+    const folderId = req.params.folderId as string;
+    const { slotName } = req.body;
+
+    if (!slotName || typeof slotName !== 'string') {
+      return res.status(400).json({ success: false, error: 'slotName is required' });
+    }
+
+    const appRepository = new AppRepository();
+    const app = appRepository.findById(appId);
+    if (!app) {
+      return res.status(404).json({ success: false, error: 'App not found' });
+    }
+
+    const result = await withFolderLock(app.path, async () => {
+      const folders = await readFolders(app.path);
+      const folder = folders.find((f) => f.id === folderId);
+      if (!folder) {
+        return { status: 404, body: { success: false, error: 'Folder not found' } } as const;
+      }
+
+      // Remove from any other folder first
+      for (const f of folders) {
+        f.slots = (f.slots || []).filter((s) => s !== slotName);
+      }
+
+      // Add to target folder
+      folder.slots = folder.slots || [];
+      if (!folder.slots.includes(slotName)) {
+        folder.slots.push(slotName);
+      }
+
+      await writeFolders(app.path, folders);
+
+      logger.info('route.media.move_to_folder.success', { appId, folderId, slotName });
+      return { status: 200, body: { success: true, folder } } as const;
+    });
+
+    return res.status(result.status).json(result.body);
+  } catch (error) {
+    logger.error('route.media.move_to_folder.error', {
+      appId: req.params.appId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return res.status(500).json({ success: false, error: 'Failed to move media' });
+  }
+});
+
+// ─── End Media Folders ──────────────────────────────────────────────────────────
 
 /**
  * POST /media/:appId/slots/import
@@ -885,7 +1098,7 @@ router.put('/:appId/slots/:slotName(*)', async (req: Request, res: Response) => 
       });
     }
 
-    const { newUrl, alternativeIndex, allowExternalUrl, gettyId, searchQuery, isVideo, forkContext, occurrenceIndex } = req.body;
+    const { newUrl, alternativeIndex, allowExternalUrl, gettyId, searchQuery, isVideo, forkContext, occurrenceIndex, skipFork } = req.body;
 
     if (!newUrl && alternativeIndex === undefined) {
       return res.status(400).json({
@@ -917,23 +1130,31 @@ router.put('/:appId/slots/:slotName(*)', async (req: Request, res: Response) => 
       await cancelPendingLogoJob(appId, slotName, pendingJobId);
     }
 
-    const result = await mediaManifestService.updateSlotOrFork(appId, slotName, {
-      newUrl: newUrl || '',
-      updateOptions: {
-        alternativeIndex,
-        markUserModified: true,
-        allowExternalUrl: allowExternalUrl === true,
-        gettyAsset: typeof gettyId === 'string'
-          ? { id: gettyId, mediaType: isVideo === true ? 'video' : 'image' }
-          : undefined,
-        mediaTypeHint: typeof gettyId !== 'string' && typeof isVideo === 'boolean'
-          ? (isVideo ? 'video' : 'image')
-          : undefined,
-        searchQuery: typeof searchQuery === 'string' && searchQuery.trim() ? searchQuery.trim() : undefined,
-      },
-      forkContext: forkContext ?? null,
-      occurrenceIndex: Number.isFinite(parsedOccurrenceIndex) ? parsedOccurrenceIndex : null,
-    });
+    const updateOptions = {
+      alternativeIndex,
+      markUserModified: true,
+      allowExternalUrl: allowExternalUrl === true,
+      gettyAsset: typeof gettyId === 'string'
+        ? { id: gettyId, mediaType: isVideo === true ? 'video' as const : 'image' as const }
+        : undefined,
+      mediaTypeHint: typeof gettyId !== 'string' && typeof isVideo === 'boolean'
+        ? (isVideo ? 'video' as const : 'image' as const)
+        : undefined,
+      searchQuery: typeof searchQuery === 'string' && searchQuery.trim() ? searchQuery.trim() : undefined,
+    };
+
+    // skipFork: when true, bypass shared-slot fork logic and update in-place.
+    // Used by the Media Library replace panel after a page refresh where fork
+    // context (devContext, occurrenceIndex) is lost.
+    const result = skipFork
+      ? await mediaManifestService.updateSlot(appId, slotName, { newUrl: newUrl || '', ...updateOptions })
+        .then((r) => ({ ...r, forked: false as const }))
+      : await mediaManifestService.updateSlotOrFork(appId, slotName, {
+          newUrl: newUrl || '',
+          updateOptions,
+          forkContext: forkContext ?? null,
+          occurrenceIndex: Number.isFinite(parsedOccurrenceIndex) ? parsedOccurrenceIndex : null,
+        });
 
     if (!result.success) {
       return res.status(400).json({
@@ -972,7 +1193,7 @@ router.put('/:appId/slots/:slotName(*)', async (req: Request, res: Response) => 
       commitHash: result.commitHash,
       forked: result.forked === true,
       slotPath: result.forked ? result.slotPath : slotName,
-      originalSlotPath: result.originalSlotPath,
+      originalSlotPath: 'originalSlotPath' in result ? result.originalSlotPath : undefined,
     });
   } catch (error) {
     logger.error('route.media.update_slot.error', {

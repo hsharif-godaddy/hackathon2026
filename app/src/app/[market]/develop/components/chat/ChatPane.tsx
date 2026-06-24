@@ -48,7 +48,7 @@ import { findLatestFontThemeSuggest } from '@/app/[market]/develop/components/ut
 import { isFontSuggestPanelVisible } from '@/app/[market]/develop/components/utils/fontSuggestPanelVisibility';
 import { useUpfrontRebuildBuildQueue } from '@/app/[market]/develop/hooks/useUpfrontRebuildBuildQueue';
 import { useAuthContext } from '@/components/providers/AuthProvider';
-import { SWITCHBOARD_APPBUILDER_GO_LIVE_FEATURE, SWITCHBOARD_APPBUILDER_PURCHASE_INTENT_CLASSIFIER } from '@/config/switchboard-flags';
+import { SWITCHBOARD_APPBUILDER_GO_LIVE_FEATURE, SWITCHBOARD_APPBUILDER_MEDIA_CANVAS, SWITCHBOARD_APPBUILDER_PURCHASE_INTENT_CLASSIFIER } from '@/config/switchboard-flags';
 import { getConversationIdFromCookie } from '@/hooks/chat/useChatHelpers';
 import { trackPostInteraction } from '@/hooks/shared/initialBuildFunnel';
 import { useAotPreload } from '@/hooks/useAotPreload';
@@ -113,6 +113,9 @@ const AnalyticsPanel = dynamic(
   { loading: () => <SettingsLoadingState fullPage /> }
 );
 const MediaPanel = dynamic(() => import('@/app/[market]/develop/components/media/MediaPanel'), {
+  loading: () => <PanelSkeleton panelType={ChatTab.MEDIAS} />,
+});
+const MediaReplacePanel = dynamic(() => import('@/app/[market]/develop/components/media/MediaReplacePanel').then(m => ({ default: m.MediaReplacePanel })), {
   loading: () => <PanelSkeleton panelType={ChatTab.MEDIAS} />,
 });
 const VersionHistory = dynamic(() => import('@/app/[market]/develop/components/VersionHistory'), {
@@ -310,7 +313,12 @@ function ChatPaneInner({
   const isPurchaseIntentClassifierEnabled = useSwitchboard(SWITCHBOARD_APPBUILDER_PURCHASE_INTENT_CLASSIFIER) === true;
   const isCommanderChatFlagEnabled = useSwitchboard('appbuilder-commander-chat') === true;
   const isCommanderChatEnabled = layout === BuilderLayout.Commander && isCommanderChatFlagEnabled;
+  const isMediaCanvasEnabled = useSwitchboard(SWITCHBOARD_APPBUILDER_MEDIA_CANVAS) === true;
   const mediaCurrentSlotName = useMediaSlotDialogStore((state) => state.currentSlotName);
+  const mediaPanelSlotName = useMediaSlotDialogStore((state) => state.panelSlotName);
+  const mediaReturnTab = useMediaSlotDialogStore((state) => state.mediaReturnTab);
+  const clearPanelSlot = useMediaSlotDialogStore((state) => state.clearPanelSlot);
+  const navigateToSlot = useMediaSlotDialogStore((state) => state.navigateToSlot);
 
   // Unified grants fetch - works for both BMS and legacy paths
   const { data: grants, isFetching: isGrantsFetching } = useCreditGrants({
@@ -365,6 +373,40 @@ function ChatPaneInner({
   const setIsVersionHistoryOpen = useDevelopPageStore((state) => state.setIsVersionHistoryOpen);
   const { activeChatTab, setActiveChatTab } = useChatTabs();
   const visitedTabs = useVisitedTabs(activeChatTab);
+
+  // When media canvas FF is on, redirect away from the hidden MEDIAS tab
+  useEffect(() => {
+    if (isMediaCanvasEnabled && activeChatTab === ChatTab.MEDIAS && !mediaPanelSlotName) {
+      setActiveChatTab(ChatTab.CHAT)
+    }
+  }, [isMediaCanvasEnabled, activeChatTab, mediaPanelSlotName, setActiveChatTab])
+
+  // Restore replace panel from ?slot= URL param on initial mount only.
+  // Intentionally excludes mediaPanelSlotName and navigateToSlot from deps —
+  // this must run once on mount to restore deep-linked state, not re-run when
+  // the panel state changes (which would create an infinite loop).
+  useEffect(() => {
+    if (!isMediaCanvasEnabled || mediaPanelSlotName) return
+    const params = new URLSearchParams(window.location.search)
+    const slotParam = params.get('slot')
+    if (slotParam) {
+      navigateToSlot(slotParam)
+    }
+  }, [isMediaCanvasEnabled])  
+
+  // Sync ?slot= URL param when replace panel opens/closes
+  useEffect(() => {
+    if (!isMediaCanvasEnabled) return
+    const params = new URLSearchParams(window.location.search)
+    if (mediaPanelSlotName && mediaPanelSlotName !== '__GRID__') {
+      params.set('slot', mediaPanelSlotName)
+    } else {
+      params.delete('slot')
+    }
+    const query = params.toString()
+    const newUrl = query ? `${window.location.pathname}?${query}` : window.location.pathname
+    window.history.replaceState(null, '', newUrl)
+  }, [isMediaCanvasEnabled, mediaPanelSlotName])
 
   const appId = useAppIdFromParams();
 
@@ -1938,7 +1980,8 @@ function ChatPaneInner({
         )}
 
         {/* Media Tab - Mount on first visit, then CSS-hide to preserve state */}
-        {(activeChatTab === ChatTab.MEDIAS || visitedTabs.has(ChatTab.MEDIAS)) && (
+        {/* Media Tab - Mount on first visit, then CSS-hide to preserve state (hidden when media canvas FF is on) */}
+        {!isMediaCanvasEnabled && (activeChatTab === ChatTab.MEDIAS || visitedTabs.has(ChatTab.MEDIAS)) && (
           <div
             className="flex flex-col flex-1 min-h-0"
             style={{ display: activeChatTab === ChatTab.MEDIAS ? 'flex' : 'none' }}
@@ -1947,6 +1990,17 @@ function ChatPaneInner({
               <CommanderTabBackButton appId={appId} fromTab={ChatTab.MEDIAS} />
             )}
             <MediaPanel />
+          </div>
+        )}
+
+        {/* Media Replace Panel — full takeover when FF is on and a slot replace is requested */}
+        {isMediaCanvasEnabled && mediaPanelSlotName && mediaPanelSlotName !== '__GRID__' && (
+          <div className="absolute inset-0 z-20 flex flex-col bg-intents-ux-box-backgroundColor">
+            <MediaReplacePanel slotName={mediaPanelSlotName} onClose={() => {
+              clearPanelSlot()
+              const returnTab = mediaReturnTab === ChatTab.MEDIAS ? ChatTab.CHAT : (mediaReturnTab ?? ChatTab.CHAT)
+              setActiveChatTab(returnTab)
+            }} />
           </div>
         )}
 

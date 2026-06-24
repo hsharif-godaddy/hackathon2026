@@ -1,0 +1,103 @@
+/* Media Canvas grid overrides */
+.media-canvas .media-grid {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)) !important;
+  gap: 8px !important;
+  flex-wrap: nowrap !important;
+}
+
+.media-canvas .media-grid > * {
+  width: 100% !important;
+  height: auto !important;
+  aspect-ratio: 1 / 1;
+}
+
+/* Compact folder pills in canvas */
+.media-canvas section button[class*="rounded-[8px]"] {
+  max-height: 32px !important;
+  padding: 4px 10px !important;
+  font-size: 13px !important;
+}
+
+.media-canvas section button[class*="rounded-[8px]"] svg {
+  width: 12px !important;
+  height: 12px !important;
+}
+
+/* Media Replace Panel grid overrides */
+.media-replace-panel .media-grid {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)) !important;
+  gap: 8px !important;
+  flex-wrap: nowrap !important;
+}
+
+.media-replace-panel .media-grid > * {
+  width: 100% !important;
+  height: auto !important;
+  aspect-ratio: 1 / 1;
+}
+
+/* Tighter spacing in replace panel */
+.media-replace-panel section {
+  margin-bottom: 12px !important;
+}
+
+.media-replace-panel section > h2 {
+  margin-bottom: 8px !important;
+}
+
+.media-replace-panel nav {
+  margin-bottom: 8px !important;
+}
+
+.media-replace-panel .flex.gap-2.mb-4 {
+  margin-bottom: 8px !important;
+}
+
+/* Compact folder pills in replace panel */
+.media-replace-panel section button[class*="rounded-[8px]"] {
+  max-height: 32px !important;
+  padding: 4px 10px !important;
+  font-size: 13px !important;
+}
+
+.media-replace-panel section button[class*="rounded-[8px]"] svg {
+  width: 12px !important;
+  height: 12px !important;
+}
+
+/* Responsive search bar stacking in narrow replace panel */
+
+/* Compact 3-dot dropdown menu items */
+.media-canvas .shadow-lg button,
+.media-canvas .shadow-lg span,
+.media-replace-panel .shadow-lg button,
+.media-replace-panel .shadow-lg span {
+  max-height: 32px !important;
+  box-sizing: border-box !important;
+}
+
+.media-canvas .shadow-lg button svg,
+.media-canvas .shadow-lg span svg,
+.media-replace-panel .shadow-lg button svg,
+.media-replace-panel .shadow-lg span svg {
+  width: 14px !important;
+  height: 14px !important;
+}
+
+@container (max-width: 379px) {
+  .media-replace-panel .flex.gap-2.mb-4 {
+    flex-wrap: wrap !important;
+    height: auto !important;
+  }
+
+  .media-replace-panel .flex.gap-2.mb-4 > * {
+    width: 100% !important;
+    flex: none !important;
+  }
+
+  .media-replace-panel .flex.gap-2.mb-4 select {
+    width: 100% !important;
+  }
+}

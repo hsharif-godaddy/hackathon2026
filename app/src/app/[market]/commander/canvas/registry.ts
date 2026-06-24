@@ -8,6 +8,7 @@ import ContentIcon from '@ux/icon/content'
 import ConversationsIcon from '@ux/icon/conversations'
 import DatabaseIcon from '@ux/icon/database'
 import GraphIcon from '@ux/icon/graph'
+import ImageIcon from '@ux/icon/image'
 import LockedIcon from '@ux/icon/locked'
 import MegaphoneIcon from '@ux/icon/megaphone'
 import RevertIcon from '@ux/icon/revert'
@@ -38,6 +39,7 @@ export enum CanvasId {
   SettingsMarketing = 'settings.marketing',
   SettingsCampaigns = 'settings.campaigns',
   SettingsGitHub = 'settings.github',
+  Media = 'media',
 }
 
 export interface CanvasActivation {
@@ -232,6 +234,16 @@ export const CANVAS_REGISTRY: Record<CanvasId, CanvasDescriptor> = {
     defaultOpen: false,
     activation: { settingsSection: SettingsSection.GITHUB },
     switchboardFlag: 'appbuilder-github-sync',
+  },
+  [CanvasId.Media]: {
+    id: CanvasId.Media,
+    labelKey: 'builder_canvas_media',
+    fallbackLabel: 'Media',
+    Icon: ImageIcon,
+    dismissible: true,
+    defaultOpen: false,
+    activation: { viewMode: ViewMode.MEDIA },
+    switchboardFlag: 'appbuilder-media-library',
   },
 }
 
