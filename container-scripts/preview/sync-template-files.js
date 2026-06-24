@@ -130,8 +130,10 @@ const SYNC_MANIFEST = [
   },
   {
     file: 'src/lib/seo-routes.ts',
-    description: 'Agent-editable registry of public routes for sitemap.xml',
-    known_hashes: [],
+    description: 'Auto-synced registry of public routes for sitemap.xml',
+    known_hashes: [
+      'eacbf6e9cf660572afa5514c83eb6960'  // before doc-comment fix (auto-synced, not hand-edited)
+    ],
     force: false
   },
   {

@@ -55,6 +55,7 @@ RUN pnpm exec turbo run build --filter=@airo/agents
 
 RUN cp -r /workspace/agents/src/prompts /workspace/agents/dist/
 RUN cp -r /workspace/agents/src/skills /workspace/agents/dist/
+RUN cp -r /workspace/agents/src/reference /workspace/agents/dist/
 RUN cp -r /workspace/agents/src/utils/lucide-icons-map.js /workspace/agents/dist/utils/lucide-icons-map.js
 
 # Create a self-contained deployment with production deps only

@@ -273,17 +273,20 @@ function renderRoute(route: SeoRoute): string {
 
 function renderSeoRoutes(routes: SeoRoute[]): string {
   return `/**
- * Agent-editable registry of publicly-crawlable routes. Consumed by the
+ * Auto-synced registry of publicly-crawlable routes. Consumed by the
  * /sitemap.xml handler in src/server/entry.ts.
  *
- * Guidelines for maintaining this file:
- * - Static public paths are synced automatically from src/routes.tsx.
- * - Do not include dynamic-param routes like "/products/:id" directly.
- *   Instead, enumerate real values (e.g. "/products/desk-pro") or skip.
- * - \`path\` MUST start with "/".
- * - Priorities are between 0.0 and 1.0. Home = 1.0, main sections = 0.8,
- *   deep pages = 0.5.
- * - Dev-only or auth-required routes MUST NOT be listed.
+ * DO NOT add or remove paths by hand. Static paths are mirrored here from
+ * src/routes.tsx automatically whenever that file is edited (any manual
+ * path edit would be overwritten on the next routes.tsx change). For sync
+ * to pick up a route, its \`path\` must be a literal string starting with "/";
+ * template literals and identifier refs are skipped, and dynamic-param routes
+ * like "/products/:id" are excluded.
+ *
+ * The only fields safe to hand-edit are the per-entry metadata below, after a
+ * sync:
+ * - \`priority\` (0.0–1.0): Home = 1.0, main sections = 0.8, deep pages = 0.5.
+ * - \`changefreq\` and \`lastmod\`.
  */
 
 export interface SeoRoute {

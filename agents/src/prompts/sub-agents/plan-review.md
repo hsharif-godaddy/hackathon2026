@@ -31,7 +31,7 @@ Remove or rewrite any criteria requiring tools unavailable in-container:
 ### 3. Tech Stack Accuracy
 
 - Cross-reference with `package.json` — are the libraries mentioned actually installed?
-- Cross-reference with `docs/reference/` files if they exist — does the plan contradict existing infrastructure?
+- Cross-reference with the reference docs via the `reference` tool (`reference({ operation: 'list' })`, then `reference({ operation: 'read', path: '<doc>.md' })`) — does the plan contradict existing infrastructure?
 - Check that design token references match what's in `docs/design.md`
 
 ### 4. Build Order

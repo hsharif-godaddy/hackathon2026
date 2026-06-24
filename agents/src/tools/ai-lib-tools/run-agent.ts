@@ -62,7 +62,7 @@ Available agents: discovery (research/scraping), planning (write implementation 
     }
     const registry = subAgentJobRegistry.get(conversationId)
 
-    const subAgentConfig = await getSubAgentConfig(agent as BackgroundAgentName, appPath)
+    const subAgentConfig = await getSubAgentConfig(agent as BackgroundAgentName)
     const runner = new SubAgentRunner(subAgentConfig)
 
     const emitEvent = (event: SubAgentEvent): void => {

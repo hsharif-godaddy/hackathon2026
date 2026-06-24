@@ -364,9 +364,6 @@ export async function createDevelopAgent(options?: { appPath?: string }): Promis
 
     // Secrets management (for API keys, credentials)
     requestSecrets: allAILibTools.requestSecrets,
-
-    // Campaign persistence (called after building campaign assets received via marketing handoff)
-    campaignCreate: allAILibTools.campaignCreate,
   }
 
   return {

@@ -60,6 +60,7 @@ export { showDocAITool } from './show-doc.js';
 export { runAgentAITool, awaitAgentsAITool } from './run-agent.js'
 export { returnToParentAITool } from './return-to-parent.js';
 export { setWizardStepAITool } from './set-wizard-step.js';
+export { referenceAITool } from './reference.js';
 
 // Re-import for registry
 import { textEditorAITool } from './text-editor.js';
@@ -115,6 +116,7 @@ import { showDocAITool } from './show-doc.js';
 import { runAgentAITool, awaitAgentsAITool } from './run-agent.js'
 import { returnToParentAITool } from './return-to-parent.js';
 import { setWizardStepAITool } from './set-wizard-step.js';
+import { referenceAITool } from './reference.js';
 import { screenshotAITool } from './screenshot.js';
 import { crawlPagesAITool } from './crawl-pages.js';
 import { registerPostEditHandler } from './post-edit-handlers.js';
@@ -141,7 +143,7 @@ todoListTool.setSeoGapsChecker(getPageSeoGaps);
  * Complete registry of all AI-Lib converted tools
  * Use this for agents that need access to all tools
  */
-export const allAILibTools: Record<string, Tool> = {
+export const allAILibTools = {
   str_replace_based_edit_tool: textEditorAITool,  // Native Anthropic text_editor_20250728
   directoryListing: directoryListingAITool,
   terminalCommand: terminalCommandAITool,
@@ -197,7 +199,11 @@ export const allAILibTools: Record<string, Tool> = {
   setWizardStep: setWizardStepAITool,
   screenshot: screenshotAITool,
   crawlPages: crawlPagesAITool,
-};
+  reference: referenceAITool,
+} satisfies Record<string, Tool>;
+
+/** Valid tool names in {@link allAILibTools}. Use for compile-time-checked tool selection. */
+export type ToolName = keyof typeof allAILibTools;
 
 /**
  * Grouped tool sets for specific use cases

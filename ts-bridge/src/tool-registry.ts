@@ -1,7 +1,7 @@
 import { asSchema } from 'ai';
 import { allAILibTools } from '@airo/agents/tools';
 
-type Tool = (typeof allAILibTools)[string];
+type Tool = (typeof allAILibTools)[keyof typeof allAILibTools];
 
 // Tools already implemented natively in the Go agent — exclude from bridge
 // Tools already implemented natively in the Go agent — exclude from bridge.
@@ -51,7 +51,9 @@ export function getToolDescriptors(): ToolDescriptor[] {
 }
 
 export function getTool(name: string): Tool | undefined {
-  return allAILibTools[name] as Tool | undefined;
+  // Cast to a string-indexable view: allAILibTools now has literal keys (no string
+  // index signature), but this is a runtime lookup by an arbitrary caller-supplied name.
+  return (allAILibTools as Record<string, Tool>)[name];
 }
 
 export function getToolNames(): string[] {
