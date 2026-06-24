@@ -559,6 +559,69 @@ describe('useSSEChat', () => {
     }
   )
 
+  it('does not re-open the stream from a straggler chunk after a user stop', async () => {
+    const hook = await setupHook()
+
+    // User clicks Stop. The real finalizeStream nulls activeStream; the mock
+    // leaves storeState.activeStream at its null default, matching the
+    // post-stop state where the action button has flipped back to Send.
+    act(() => {
+      hook.result.current.actions.stop()
+    })
+
+    vi.mocked(logger.info).mockClear()
+
+    // The still-running backend emits a straggler chunk after the stop (the
+    // provider hasn't honored the abort yet). It must NOT re-open the stream —
+    // that would flip the UI back to the Stop affordance (AIROBUILD-1235).
+    act(() => {
+      lastTransport.callbacks?.onEvent({
+        type: 'chunk',
+        content: 'late straggler',
+        conversationId: 'conv-created-123',
+        data: { conversationId: 'conv-created-123' },
+      })
+    })
+
+    expect(storeState.activeStream ?? null).toBeNull()
+    expect(storeState.streamingState).not.toBe('streaming')
+    expect(logger.info).not.toHaveBeenCalledWith(
+      'sse.stream.active_stream.created',
+      expect.anything(),
+    )
+  })
+
+  it('re-opens the stream for a chunk after a new send following a stop', async () => {
+    const hook = await setupHook()
+
+    act(() => {
+      hook.result.current.actions.stop()
+    })
+
+    // A genuine new send clears the post-stop suppression so the next turn
+    // streams normally.
+    await act(async () => {
+      await hook.result.current.actions.send({ content: 'do it again' })
+    })
+
+    vi.mocked(logger.info).mockClear()
+
+    act(() => {
+      lastTransport.callbacks?.onEvent({
+        type: 'chunk',
+        content: 'hello',
+        conversationId: 'conv-created-123',
+        data: { conversationId: 'conv-created-123' },
+      })
+    })
+
+    expect(storeState.activeStream).toEqual(expect.objectContaining({
+      id: expect.stringMatching(/^sse_recovered_/),
+      metadata: expect.objectContaining({ source: 'sse_recovery' }),
+    }))
+    expect(storeState.streamingState).toBe('streaming')
+  })
+
   it('does not replace an existing active stream when an SSE chunk arrives', async () => {
     await setupHook()
     const existingStream = {

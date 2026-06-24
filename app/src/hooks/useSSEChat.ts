@@ -192,6 +192,13 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
   // in that case the HTTP history result, not replay_complete, owns completion.
   const recoveryHistoryFallbackPendingRef = useRef(false)
   const currentStreamRequestIdRef = useRef<string | null>(null)
+  // Set when the user clicks Stop; cleared on the next genuine send. While set,
+  // a live chunk/tool event with no active stream must NOT auto-re-open the
+  // stream — after a stop those events are backend stragglers (the provider
+  // hasn't honored the abort yet) and re-opening would flip the composer back
+  // to the Stop affordance (AIROBUILD-1235). Recovery/reconnect re-open uses a
+  // separate path and is intentionally left unguarded.
+  const suppressStreamReopenRef = useRef(false)
 
   const currentAppId = useCurrentAppId()
   const { tokenAuthType } = useAuthContext()
@@ -435,6 +442,13 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
                 replayDedupRef.current.seen.add(event.sequence)
               }
               if (STREAM_UPDATE_EVENTS.has(type)) {
+                // Drop post-stop stragglers instead of re-opening the stream.
+                if (suppressStreamReopenRef.current && !useStreamingConversationStore.getState().activeStream) {
+                  logger.debug('sse.stream.reopen_suppressed_after_stop', {
+                    appId: store.currentAppId, eventType: type,
+                  })
+                  return
+                }
                 monitorRef.current?.markFirstResponse()
                 if (eventRequestId) currentStreamRequestIdRef.current = eventRequestId
                 ensureSSEActiveStream(type, event.conversationId)
@@ -1175,6 +1189,10 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
       referencedFiles: options.customContext?.referencedFiles,
     })) return
 
+    // A genuine new turn — lift any post-stop re-open suppression so this
+    // stream and its chunks are honored.
+    suppressStreamReopenRef.current = false
+
     if (!activeAppId) {
       logger.error('sse.send_message.no_app_id', {})
       return
@@ -1306,6 +1324,8 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
 
   const stop = useCallback(async (): Promise<void> => {
     monitorRef.current?.clearSend()
+    // Block straggler-driven re-opens until the next send (see ref comment).
+    suppressStreamReopenRef.current = true
     const ack = transportRef.current?.stopGeneration().catch(err => {
       const appId = useStreamingConversationStore.getState().currentAppId
       logger.warn('sse.stop.failed', {
