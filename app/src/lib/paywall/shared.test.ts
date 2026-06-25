@@ -221,6 +221,9 @@ describe('paywall/shared', function paywallSharedTests() {
       expect(PAYWALL_ITC.UPGRADE).toBe('upp_airo_ai_builder_upgrade');
       expect(PAYWALL_ITC.CREDITS).toBe('upp_airo_ai_Builder_credit');
       expect(PAYWALL_ITC.DOMAIN_PURCHASE).toBe('airo_ai_builder_domain_purchase');
+      expect(PAYWALL_ITC.DOMAIN_EXPEDITE_PURCHASE).toBe(
+        'airo_ai_builder_domain_expedite_purchase',
+      );
       expect(PAYWALL_ITC.ATTACH_DOMAIN).toBe('airo_ai_builder_attach_domain');
     });
   });

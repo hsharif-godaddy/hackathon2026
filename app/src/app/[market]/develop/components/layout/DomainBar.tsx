@@ -244,7 +244,7 @@ export default function DomainBar() {
           fqdn: suggestedDomain,
           apiKey: apiKeyName,
           plid: '1',
-          itemTrackingCode: PAYWALL_ITC.DOMAIN_PURCHASE,
+          itemTrackingCode: PAYWALL_ITC.DOMAIN_EXPEDITE_PURCHASE,
           basketId: crypto.randomUUID(),
         },
         getRootDomain() ?? 'godaddy.com',

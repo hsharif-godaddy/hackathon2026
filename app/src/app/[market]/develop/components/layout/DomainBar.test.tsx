@@ -71,7 +71,7 @@ vi.mock('@/hooks/useModifyDomains', () => ({ useModifyDomains: () => ({ mutateAs
 vi.mock('@site/buttons/lib/services/DomainServices', () => ({ postToSapi: mockPostToSapi }));
 vi.mock('@ux/growl', () => ({ default: { addGrowlMessage: mockAddGrowl } }));
 vi.mock('@/utils/getRootDomain', () => ({ getRootDomain: () => 'godaddy.com' }));
-vi.mock('@/lib/paywall/shared', () => ({ PAYWALL_ITC: { DOMAIN_PURCHASE: 'itc-domain' } }));
+vi.mock('@/lib/paywall/shared', () => ({ PAYWALL_ITC: { DOMAIN_PURCHASE: 'itc-domain', DOMAIN_EXPEDITE_PURCHASE: 'itc-domain-expedite-purchase' } }));
 vi.mock('@/lib/gasket-config', () => ({ appFetch: vi.fn() }));
 vi.mock('@/app/[market]/develop/components/widgets/DomainCheckoutModal', () => ({
   default: ({ basketId, onPurchaseSuccess, onError }: any) => (
@@ -487,7 +487,7 @@ describe('DomainBar', () => {
       fireEvent.click(screen.getByText('testapp.com'));
 
       await waitFor(() => expect(mockPostToSapi).toHaveBeenCalledTimes(1));
-      expect(mockPostToSapi.mock.calls[0][0]).toMatchObject({ fqdn: 'testapp.com', apiKey: 'test-key' });
+      expect(mockPostToSapi.mock.calls[0][0]).toMatchObject({ fqdn: 'testapp.com', apiKey: 'test-key', itemTrackingCode: 'itc-domain-expedite-purchase' });
 
       await screen.findByTestId('checkout-modal');
       expect(screen.getByTestId('checkout-modal')).toHaveTextContent('basket-1');
