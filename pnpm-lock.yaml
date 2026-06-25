@@ -673,11 +673,11 @@ importers:
         specifier: ^3.1.0
         version: 3.1.0
       '@godaddy/gasket-auth':
-        specifier: ^3.5.1
-        version: 3.5.1(@godaddy/gasket-plugin-auth@3.8.0(@godaddy/gasket-plugin-visitor@3.9.0)(encoding@0.1.13))(encoding@0.1.13)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+        specifier: ^3.5.3
+        version: 3.5.3(@godaddy/gasket-plugin-auth@3.8.0(@godaddy/gasket-plugin-visitor@3.9.0)(encoding@0.1.13))(encoding@0.1.13)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@godaddy/gasket-next':
         specifier: ^3.7.5
-        version: 3.7.5(@gasket/react-intl@7.7.2(@gasket/plugin-intl@7.6.5))(@godaddy/gasket-auth@3.5.1(@godaddy/gasket-plugin-auth@3.8.0(@godaddy/gasket-plugin-visitor@3.9.0)(encoding@0.1.13))(encoding@0.1.13)(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(@types/react@19.2.14)(next@16.2.6(@babel/core@7.29.7)(@opentelemetry/api@1.9.1)(@playwright/test@1.59.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(sass@1.99.0))(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+        version: 3.7.5(@gasket/react-intl@7.7.2(@gasket/plugin-intl@7.6.5))(@godaddy/gasket-auth@3.5.3(@godaddy/gasket-plugin-auth@3.8.0(@godaddy/gasket-plugin-visitor@3.9.0)(encoding@0.1.13))(encoding@0.1.13)(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(@types/react@19.2.14)(next@16.2.6(@babel/core@7.29.7)(@opentelemetry/api@1.9.1)(@playwright/test@1.59.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(sass@1.99.0))(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@godaddy/gasket-otel':
         specifier: ^3.5.2
         version: 3.5.2(@opentelemetry/core@2.8.0(@opentelemetry/api@1.9.1))
@@ -3766,8 +3766,8 @@ packages:
   '@godaddy/fetch@1.0.4':
     resolution: {integrity: sha512-tkE7sUx193snbM6atNHLPv4KDgRtysGb+xeVQTQESdgnAPyZGzk+zEOqBOUr2zFKMYbj7auPuC3FIKVopDXa2g==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@godaddy/fetch/-/@godaddy/fetch-1.0.4.tgz}
 
-  '@godaddy/gasket-auth@3.5.1':
-    resolution: {integrity: sha512-idwImhdLhcgSQAcxrfuQN5SNZMqD6g2ezJhlcC7k7M5b2trA9nzaLzHg1cJq6ws4OUfa1tHnW+a95qyxwEuqbw==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@godaddy/gasket-auth/-/@godaddy/gasket-auth-3.5.1.tgz}
+  '@godaddy/gasket-auth@3.5.3':
+    resolution: {integrity: sha512-CXN/jwPyl134z+z0bWOEgeICRRhWCeB3cnJytmn8nIz4y53SOiNovZvDGz6RmkWzNJRZL5dYm5umEGBRn5HrHQ==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@godaddy/gasket-auth/-/@godaddy/gasket-auth-3.5.3.tgz}
     peerDependencies:
       '@godaddy/gasket-plugin-auth': ^3.3.9
       react: 19.1.0
@@ -17500,7 +17500,7 @@ snapshots:
     transitivePeerDependencies:
       - encoding
 
-  '@godaddy/gasket-auth@3.5.1(@godaddy/gasket-plugin-auth@3.8.0(@godaddy/gasket-plugin-visitor@3.9.0)(encoding@0.1.13))(encoding@0.1.13)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
+  '@godaddy/gasket-auth@3.5.3(@godaddy/gasket-plugin-auth@3.8.0(@godaddy/gasket-plugin-visitor@3.9.0)(encoding@0.1.13))(encoding@0.1.13)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
       '@gasket/data': 7.5.5
       '@gasket/fetch': 7.4.0(encoding@0.1.13)
@@ -17517,13 +17517,13 @@ snapshots:
       - encoding
       - supports-color
 
-  '@godaddy/gasket-next@3.7.5(@gasket/react-intl@7.7.2(@gasket/plugin-intl@7.6.5))(@godaddy/gasket-auth@3.5.1(@godaddy/gasket-plugin-auth@3.8.0(@godaddy/gasket-plugin-visitor@3.9.0)(encoding@0.1.13))(encoding@0.1.13)(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(@types/react@19.2.14)(next@16.2.6(@babel/core@7.29.7)(@opentelemetry/api@1.9.1)(@playwright/test@1.59.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(sass@1.99.0))(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
+  '@godaddy/gasket-next@3.7.5(@gasket/react-intl@7.7.2(@gasket/plugin-intl@7.6.5))(@godaddy/gasket-auth@3.5.3(@godaddy/gasket-plugin-auth@3.8.0(@godaddy/gasket-plugin-visitor@3.9.0)(encoding@0.1.13))(encoding@0.1.13)(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(@types/react@19.2.14)(next@16.2.6(@babel/core@7.29.7)(@opentelemetry/api@1.9.1)(@playwright/test@1.59.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(sass@1.99.0))(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
       '@gasket/data': 7.5.5
       '@gasket/nextjs': 7.6.10(next@16.2.6(@babel/core@7.29.7)(@opentelemetry/api@1.9.1)(@playwright/test@1.59.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(sass@1.99.0))(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@gasket/react-intl': 7.7.2(@gasket/plugin-intl@7.6.5)
       '@godaddy/atlas': 1.2.3
-      '@godaddy/gasket-auth': 3.5.1(@godaddy/gasket-plugin-auth@3.8.0(@godaddy/gasket-plugin-visitor@3.9.0)(encoding@0.1.13))(encoding@0.1.13)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@godaddy/gasket-auth': 3.5.3(@godaddy/gasket-plugin-auth@3.8.0(@godaddy/gasket-plugin-visitor@3.9.0)(encoding@0.1.13))(encoding@0.1.13)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       html-entities: 2.6.0
       html-react-parser: 5.2.17(@types/react@19.2.14)(react@19.1.0)
       next: 16.2.6(@babel/core@7.29.7)(@opentelemetry/api@1.9.1)(@playwright/test@1.59.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(sass@1.99.0)
