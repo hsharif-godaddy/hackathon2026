@@ -148,7 +148,7 @@ export function ComponentLoader({
 
   const loader = (
     <div ref={containerRef} className={containerClassName} data-testid="cds-loader-root">
-      <CdsComponentLoader source={source} onError={handleError} {...props} {...(props.loaderMode === 'esm' && { deps: depsEsm })} />
+      <CdsComponentLoader source={source} logToApi={true} onError={handleError} {...props} {...(props.loaderMode === 'esm' && { deps: depsEsm })} />
     </div>
   )
 

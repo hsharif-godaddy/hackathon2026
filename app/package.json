@@ -140,7 +140,7 @@
     "@ux/tooltip": "^2500.11.1",
     "@ux/tooltip-legacy": "^2400.19.2",
     "@ux/util": "catalog:",
-    "@venture/cds-loader": "0.0.86",
+    "@venture/cds-loader": "0.0.90",
     "@venture/cds-utils": "0.0.34",
     "@venture/gasket-plugin-cds": "0.0.26",
     "@vercel/otel": "^2.1.2",

@@ -910,8 +910,8 @@ importers:
         specifier: 'catalog:'
         version: 2400.11.0(encoding@0.1.13)
       '@venture/cds-loader':
-        specifier: 0.0.86
-        version: 0.0.86(@rspack/core@1.6.5(@swc/helpers@0.5.21))(bufferutil@4.1.0)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(typescript@5.9.3)(webpack@5.106.2(lightningcss@1.32.0)(postcss@8.5.14))
+        specifier: 0.0.90
+        version: 0.0.90(@rspack/core@1.6.5(@swc/helpers@0.5.21))(bufferutil@4.1.0)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(typescript@5.9.3)(webpack@5.106.2(lightningcss@1.32.0)(postcss@8.5.14))
       '@venture/cds-utils':
         specifier: 0.0.34
         version: 0.0.34
@@ -7893,8 +7893,8 @@ packages:
   '@ux/webpack-config@2300.2.6':
     resolution: {integrity: sha512-tExbn9clVCLZ4Zlxg3DqVcDnL8QB/ErNK6WkvahaHvQKbSYwc3+kXSR5oDaSOny/KZL/B4IlKTk4YBFVcihVVw==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@ux/webpack-config/-/@ux/webpack-config-2300.2.6.tgz}
 
-  '@venture/cds-loader@0.0.86':
-    resolution: {integrity: sha512-KyaiDarlPMacdhNKX1Q9KUXVVGq0Q+0ufu3QH85BLwPGQdkZ5rGQLlFLFreJANvTSJoEiKdHwipnpbv2yPfw8g==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@venture/cds-loader/-/@venture/cds-loader-0.0.86.tgz}
+  '@venture/cds-loader@0.0.90':
+    resolution: {integrity: sha512-4eMkENVSd4l6FDErhNubkHvOCA6Y5YC/0oqIqOt1ZePFvYOawtOu2u9PGXFJVfzlwovw3/fnUJnvlFwnl3Yx2w==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@venture/cds-loader/-/@venture/cds-loader-0.0.90.tgz}
     peerDependencies:
       prop-types: ^15.8.1
       react: 19.1.0
@@ -17400,7 +17400,7 @@ snapshots:
       deepmerge: 4.3.1
       diagnostics: 2.0.2
       is-plain-object: 5.0.0
-      semver: 7.8.0
+      semver: 7.8.1
 
   '@gd-asm/asm-client@1.9.0(@types/react@19.2.14)(encoding@0.1.13)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
@@ -21358,7 +21358,7 @@ snapshots:
       '@typescript-eslint/visitor-keys': 8.59.2
       debug: 4.4.3(supports-color@8.1.1)
       minimatch: 10.2.5
-      semver: 7.8.0
+      semver: 7.8.1
       tinyglobby: 0.2.16
       ts-api-utils: 2.5.0(typescript@5.9.3)
       typescript: 5.9.3
@@ -21606,7 +21606,7 @@ snapshots:
 
   '@ux/data-version@2500.9.0':
     dependencies:
-      semver: 7.8.0
+      semver: 7.8.1
 
   '@ux/date-input@2500.11.3(@types/react@19.2.14)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
@@ -21636,7 +21636,7 @@ snapshots:
       is-glob: 4.0.3
       mime: 3.0.0
       minimist: 1.2.8
-      semver: 7.8.0
+      semver: 7.8.1
       url-join: 4.0.1
 
   '@ux/dialog@2500.11.3(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
@@ -22291,7 +22291,7 @@ snapshots:
       mkdirp: 1.0.4
       try-require: 1.2.1
 
-  '@venture/cds-loader@0.0.86(@rspack/core@1.6.5(@swc/helpers@0.5.21))(bufferutil@4.1.0)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(typescript@5.9.3)(webpack@5.106.2(lightningcss@1.32.0)(postcss@8.5.14))':
+  '@venture/cds-loader@0.0.90(@rspack/core@1.6.5(@swc/helpers@0.5.21))(bufferutil@4.1.0)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(typescript@5.9.3)(webpack@5.106.2(lightningcss@1.32.0)(postcss@8.5.14))':
     dependencies:
       '@elastic/apm-rum': 5.17.4
       '@elastic/apm-rum-core': 5.25.2
@@ -22308,7 +22308,7 @@ snapshots:
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
       react-error-boundary: 4.1.2(react@19.1.0)
-      semver: 7.8.0
+      semver: 7.8.1
     transitivePeerDependencies:
       - '@rspack/core'
       - bufferutil
@@ -22876,7 +22876,7 @@ snapshots:
 
   '@wsb/modal-loader-utils@5.1.3':
     dependencies:
-      semver: 7.8.0
+      semver: 7.8.1
 
   '@wsb/modal-loader@5.1.2(@ux/intents@2500.9.0)(@ux/modal@2500.11.1(@types/react@19.2.14)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(@ux/spinner@2500.9.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react-intl@7.1.14(react@19.1.0)(typescript@5.9.3))(react-transition-group@4.4.5(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(react@19.1.0)':
     dependencies:
@@ -25157,7 +25157,7 @@ snapshots:
       process-warning: 5.0.0
       rfdc: 1.4.1
       secure-json-parse: 4.1.0
-      semver: 7.8.0
+      semver: 7.8.1
       toad-cache: 3.7.0
 
   fastq@1.20.1:
@@ -26039,7 +26039,7 @@ snapshots:
 
   is-core-module@2.16.2:
     dependencies:
-      hasown: 2.0.3
+      hasown: 2.0.4
 
   is-data-view@1.0.2:
     dependencies:
@@ -27371,7 +27371,7 @@ snapshots:
 
   node-abi@3.92.0:
     dependencies:
-      semver: 7.8.0
+      semver: 7.8.1
 
   node-addon-api@7.1.1:
     optional: true
