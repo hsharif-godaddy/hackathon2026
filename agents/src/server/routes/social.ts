@@ -8,13 +8,14 @@ import { SocialPlatform, PostState, getAllPlatforms, getAllPostStates } from '..
 import { Logger, log } from '../../logging/index.js';
 import { validateAppOwnership } from '../middleware/app-ownership.js';
 import { asyncHandler } from '../middleware/async-handler.js';
+import { createForWorkspace } from '../../workspace/index.js';
+import { GitUtils } from '../../utils/git.js';
 
 const router: IRouter = Router();
 const appRepo = new AppRepository();
 const socialAssociationRepo = new SocialAssociationRepository();
 const socialPostRepo = new SocialPostRepository();
 const logger = Logger.create({ component: 'social-routes' });
-
 // ============================================================================
 // Middleware & Helpers
 // ============================================================================
@@ -368,6 +369,84 @@ router.put('/apps/:id/social/posts/:postId', withApp, asyncHandler(async (req: R
   logger.info('route.social.posts.update.success', { appId, postId, state: updatedPost.state });
 
   return res.json({ post: updatedPost });
+}));
+
+// ============================================================================
+// SEO Routes
+// ============================================================================
+
+/**
+ * POST /apps/:id/seo/verification-tag
+ * Body: { verificationToken: string }
+ *
+ * Injects a <meta name="google-site-verification"> tag into index.html
+ * and commits the change to git, so it survives the next publish/build.
+ */
+router.post('/apps/:id/seo/verification-tag', withApp, asyncHandler(async (req: Request, res: Response) => {
+  const appId = getAppId(res);
+  const { verificationToken } = req.body as { verificationToken?: unknown };
+
+  if (!verificationToken || typeof verificationToken !== 'string' || verificationToken.trim().length === 0) {
+    return res.status(400).json({ error: 'verificationToken must be a non-empty string' });
+  }
+
+  const app = appRepo.findById(appId);
+  if (!app?.path) {
+    logger.warn('route.social.gsc-verification-tag.no-app-path', { appId });
+    return res.status(404).json({ error: 'App workspace path not found' });
+  }
+
+  const workspace = createForWorkspace(appId, 'preview');
+  if (!workspace) {
+    logger.warn('route.social.gsc-verification-tag.no-workspace', { appId });
+    return res.status(503).json({ error: 'Workspace unavailable' });
+  }
+
+  logger.info('route.social.gsc-verification-tag.begin', { appId });
+
+  const viewResult = await workspace.files.view({ path: 'index.html' });
+  const original = viewResult.content;
+
+  const metaTag = `<meta name="google-site-verification" content="${verificationToken}">`;
+  const MARKER = '<!--app-head-->';
+  const existingTagLineRe = /<meta\s+name="google-site-verification"/i;
+
+  let updated: string;
+  if (existingTagLineRe.test(original)) {
+    // Replace the entire line — handles malformed content values (e.g. nested meta tag) cleanly
+    updated = original.split('\n')
+      .map((line: string) => existingTagLineRe.test(line) ? `    ${metaTag}` : line)
+      .join('\n');
+  } else if (original.includes(MARKER)) {
+    updated = original.replace(MARKER, `${metaTag}\n    ${MARKER}`);
+  } else {
+    const headClose = '</head>';
+    if (!original.includes(headClose)) {
+      logger.warn('route.social.gsc-verification-tag.no-insertion-point', { appId });
+      return res.status(422).json({ error: 'Cannot inject verification tag: no suitable insertion point in index.html' });
+    }
+    updated = original.replace(headClose, `    ${metaTag}\n  ${headClose}`);
+  }
+
+  await workspace.files.write({ path: 'index.html', content: updated });
+
+  const gitUtils = new GitUtils(workspace.tasks);
+  const addResult = await gitUtils.addFiles(app.path, ['index.html']);
+  if (!addResult.success) {
+    logger.error('route.social.gsc-verification-tag.add-failed', { appId, error: addResult.stderr });
+    return res.status(500).json({ error: 'Failed to stage verification tag' });
+  }
+
+  const commitResult = await gitUtils.commit(app.path, 'Add Google Search Console verification tag');
+  const nothingToCommit = !commitResult.success &&
+    (commitResult.stdout.includes('nothing to commit') || commitResult.stderr.includes('nothing to commit'));
+  if (!commitResult.success && !nothingToCommit) {
+    logger.error('route.social.gsc-verification-tag.commit-failed', { appId, error: commitResult.stderr });
+    return res.status(500).json({ error: 'Failed to commit verification tag' });
+  }
+
+  logger.info('route.social.gsc-verification-tag.success', { appId });
+  return res.status(200).json({ success: true });
 }));
 
 // Apply error handler

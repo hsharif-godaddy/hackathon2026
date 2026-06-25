@@ -15,6 +15,7 @@ import WorldIcon from '@ux/icon/world';
 
 import { SettingsSection } from '@/app/[market]/develop/components/types';
 import { FEEDBACK_ID } from '@/components/feedback/utils';
+import { useSeoSettingsEnabled } from '@/hooks/useSeoSettingsEnabled';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
@@ -56,6 +57,7 @@ export function useSettingsNavItems(): SettingsNavItem[] {
   const secrets = useSwitchboard('appbuilder-settings-secrets');
   const social = useSwitchboard('appbuilder-settings-social');
   const marketing = useSwitchboard('appbuilder-settings-marketing');
+  const seo = useSeoSettingsEnabled();
   const displayAds = useSwitchboard('appbuilder-settings-display-ads');
   const githubSync = useSwitchboard('appbuilder-github-sync');
   const campaigns = useSwitchboard('appbuilder-marketing-campaigns');
@@ -167,6 +169,12 @@ export function useSettingsNavItems(): SettingsNavItem[] {
       id: SettingsSection.CAMPAIGNS,
       label: t('builder_campaigns_title', undefined, 'Marketing Campaigns'),
       icon: <MegaphoneIcon />,
+      disabled: false,
+    }] : []),
+    ...(seo ? [{
+      id: SettingsSection.SEO,
+      label: 'SEO',
+      icon: <WorldIcon />,
       disabled: false,
     }] : []),
     {

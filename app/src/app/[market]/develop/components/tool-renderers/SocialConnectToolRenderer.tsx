@@ -1,12 +1,15 @@
 'use client'
 
 import { memo, useCallback, useEffect, useRef, useState } from 'react'
+import Box from '@ux/box'
 import LinkIcon from '@ux/icon/link'
+import text from '@ux/text'
 
 import SocialConnectFlow from '@/app/[market]/develop/components/social/connect-flow/SocialConnectFlow'
 import { SocialConnectionStatus, SocialConnectionStatusMessage } from '@/app/[market]/develop/components/social/shared/SocialConnectionStatusMessage'
 import type { DefaultToolRendererProps } from '@/app/[market]/develop/components/tool-renderers/DefaultToolRenderer'
 import DefaultToolRenderer from '@/app/[market]/develop/components/tool-renderers/DefaultToolRenderer'
+import { GscChatConnectWidget } from '@/app/[market]/develop/components/tool-renderers/GscChatConnectWidget'
 import ToolHeader from '@/app/[market]/develop/components/tool-renderers/ToolHeader'
 import { useChatContext } from '@/contexts/ChatContext'
 import { useToolResultSync } from '@/hooks/useToolResultSync'
@@ -14,11 +17,11 @@ import { useTranslations } from '@/hooks/useTranslations'
 import { logger } from '@/lib/request-context'
 import { PLATFORM_TRANSFORMS } from '@/lib/social-platforms'
 import { useStreamingConversationStore } from '@/stores/useStreamingConversationStore'
-import { CONNECT_REQUEST_FROM_PUBLISH, isMultiPlatformPublish, type MultiPlatformPendingPublish, type PendingPublishData } from '@/types/social'
+import { CONNECT_REQUEST_FROM_PUBLISH, isMultiPlatformPublish, type MultiPlatformPendingPublish, type PendingPublishData,SocialPlatform } from '@/types/social'
 import type { SocialPostData } from '@/types/social-posts'
 import { formatPlatformName } from '@/utils/social/format'
 
-type ConnectStatus = 'pending' | 'connected' | 'error'
+type ConnectStatus = 'pending' | 'connected' | 'tag-injected' | 'error'
 
 const noop = () => {}
 
@@ -65,7 +68,7 @@ function SocialConnectToolRenderer({
   const hasSyncedRef = useRef(false)
 
   useEffect(() => {
-    const isTerminalState = connectStatus === 'connected' || connectStatus === 'error'
+    const isTerminalState = connectStatus === 'connected' || connectStatus === 'tag-injected' || connectStatus === 'error'
 
     if (isTerminalState && !isFromHistory && r && !hasSyncedRef.current) {
       hasSyncedRef.current = true
@@ -175,10 +178,28 @@ function SocialConnectToolRenderer({
 
   if (r?.action === 'connect' && r.platform && r.appId) {
     const platformName = formatPlatformName(r.platform as string)
+    const isGsc = (r.platform as string).toLowerCase() === SocialPlatform.GOOGLE_SEARCH_CONSOLE
 
     // Determine which view to show
     let content
-    if (isFromHistory || connectStatus !== 'pending') {
+    if (connectStatus === 'tag-injected') {
+      content = (
+        <Box gap="sm">
+          <text.p>
+            {t('builder_seo_gsc_pending_description', undefined, "A Google verification tag has been added to your site. Publish your site so Google can confirm ownership, then click 'Verify with Google' in Settings → SEO.")}
+          </text.p>
+        </Box>
+      )
+    } else if (isGsc && !isFromHistory && connectStatus === 'pending') {
+      content = (
+        <GscChatConnectWidget
+          appId={r.appId as string}
+          isActive={Boolean(isLastAssistantMessage)}
+          onTagInjected={() => { setConnectStatus('tag-injected') }}
+          onError={() => { setConnectStatus('error') }}
+        />
+      )
+    } else if (isFromHistory || connectStatus !== 'pending') {
       content = (
         <SocialConnectionStatusMessage
           status={

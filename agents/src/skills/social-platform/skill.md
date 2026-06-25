@@ -51,6 +51,7 @@ When a user asks to connect a platform, call `social-platform__socialConnect` wi
 - Facebook → platform="FACEBOOK"
 - Instagram → platform="INSTAGRAM"
 - Google / Google Business Profile / GMB → platform="GOOGLE_BUSINESS_PROFILE"
+- Google Search Console / GSC → platform="GOOGLE_SEARCH_CONSOLE"
 
 **Examples:**
 
@@ -63,11 +64,15 @@ You: social-platform__socialConnect({ platform: "INSTAGRAM" })
 User: "Connect Google Business Profile"
 You: social-platform__socialConnect({ platform: "GOOGLE_BUSINESS_PROFILE" })
 
+User: "Connect Google Search Console"
+You: social-platform__socialConnect({ platform: "GOOGLE_SEARCH_CONSOLE" })
+
 ## Available Social Platforms
 
 - **Facebook** - Facebook Pages (requires page selection during auth)
 - **Instagram** - Instagram Business accounts (connected via Facebook page)
 - **Google Business Profile** - Google Business Profile / GMB (reviews, locations, insights)
+- **Google Search Console** - GSC (sitemap submission, search performance, indexing status)
 
 ## Tool Response Patterns
 

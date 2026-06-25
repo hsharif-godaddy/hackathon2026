@@ -40,6 +40,18 @@ vi.mock('@/app/[market]/develop/components/social/connect-flow/SocialConnectFlow
   )
 }))
 
+vi.mock('@/app/[market]/develop/components/tool-renderers/GscChatConnectWidget', () => ({
+  GscChatConnectWidget: ({ isActive }: { isActive: boolean }) => (
+    <div data-testid="gsc-chat-connect-widget" data-active={isActive}>
+      GSC Connect Widget
+    </div>
+  )
+}))
+
+vi.mock('@/utils/social/format', () => ({
+  formatPlatformName: (platform: string) => platform.charAt(0).toUpperCase() + platform.slice(1),
+}))
+
 describe('SocialConnectToolRenderer', () => {
   const baseProps = {
     toolStatus: 'completed' as const,
@@ -185,6 +197,72 @@ describe('SocialConnectToolRenderer', () => {
       // Should show incomplete status, NOT the flow component
       expect(screen.getByText('builder_social_connection_incomplete_platform')).toBeInTheDocument()
       expect(screen.queryByTestId('social-connect-flow')).not.toBeInTheDocument()
+    })
+  })
+
+  describe('GSC Flow', () => {
+    it('renders GscChatConnectWidget for active GSC connection request', () => {
+      const result = {
+        action: 'connect',
+        platform: 'GOOGLE_SEARCH_CONSOLE',
+        appId: 'test-app-id',
+        state: 'test-state',
+      }
+
+      renderWithProviders(
+        <SocialConnectToolRenderer
+          {...baseProps}
+          result={result}
+          isLastAssistantMessage={true}
+        />
+      )
+
+      expect(screen.getByTestId('gsc-chat-connect-widget')).toBeInTheDocument()
+      expect(screen.getByTestId('gsc-chat-connect-widget')).toHaveAttribute('data-active', 'true')
+      expect(screen.queryByTestId('social-connect-flow')).not.toBeInTheDocument()
+    })
+
+    it('renders status message for GSC loaded from history', () => {
+      const result = {
+        action: 'connect',
+        platform: 'GOOGLE_SEARCH_CONSOLE',
+        appId: 'test-app-id',
+        state: 'test-state',
+        connectStatus: 'pending',
+      }
+
+      renderWithProviders(
+        <SocialConnectToolRenderer
+          {...baseProps}
+          result={result}
+          isLastAssistantMessage={false}
+        />
+      )
+
+      expect(screen.queryByTestId('gsc-chat-connect-widget')).not.toBeInTheDocument()
+      expect(screen.queryByTestId('social-connect-flow')).not.toBeInTheDocument()
+      expect(screen.getByText('builder_social_connection_incomplete_platform')).toBeInTheDocument()
+    })
+
+    it('renders tag-injected message after successful GSC tag injection', () => {
+      const result = {
+        action: 'connect',
+        platform: 'GOOGLE_SEARCH_CONSOLE',
+        appId: 'test-app-id',
+        state: 'test-state',
+        connectStatus: 'tag-injected',
+      }
+
+      renderWithProviders(
+        <SocialConnectToolRenderer
+          {...baseProps}
+          result={result}
+          isLastAssistantMessage={false}
+        />
+      )
+
+      expect(screen.queryByTestId('gsc-chat-connect-widget')).not.toBeInTheDocument()
+      expect(screen.getByText(/Google verification tag has been added/)).toBeInTheDocument()
     })
   })
 

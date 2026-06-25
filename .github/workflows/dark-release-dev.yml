@@ -35,7 +35,7 @@ on:
         type: string
         default: 'main'
       publish_image:
-        description: 'Push built images to the registry. false = build only (the commit''s images must already be in the registry, e.g. from CI); set true to dark-release a branch CI has not built, else step 3 binds tags absent from ECR.'
+        description: "Push built images to the registry. false = build only (the commit's images must already be in the registry, e.g. from CI); set true to dark-release a branch CI has not built, else step 3 binds tags absent from ECR."
         type: boolean
         default: false
       app_environment:

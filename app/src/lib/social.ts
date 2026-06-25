@@ -1010,6 +1010,7 @@ export class SocialV2Client {
 
     return publishData
   }
+
 }
 
 export const socialV2Client = new SocialV2Client()

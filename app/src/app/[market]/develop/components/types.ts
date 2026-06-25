@@ -146,6 +146,7 @@ export enum SettingsSection {
   LOGS = 'logs',
   INBOX = 'inbox',
   GITHUB = 'github',
+  SEO = 'seo',
   SSO = 'sso',
   FEEDBACK = 'feedback'
 }

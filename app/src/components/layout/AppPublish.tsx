@@ -33,6 +33,7 @@ import { useChatTabs } from '@/hooks/useChatTabs';
 import { useDeploymentsQuery } from '@/hooks/useDeploymentsQuery';
 import { useDnsConflictGate } from '@/hooks/useDnsConflictGate';
 import { useGitHistoryQuery } from '@/hooks/useGitHistory';
+import { useGscSitemapOnPublish } from '@/hooks/useGscSitemapOnPublish';
 import { useIsHistoryDisabled } from '@/hooks/useIsHistoryDisabled';
 import { usePaywallEligibility } from '@/hooks/usePaywallEligibility';
 import { usePaywallModal } from '@/hooks/usePaywallModal';
@@ -41,6 +42,7 @@ import { usePublishComplianceGate } from '@/hooks/usePublishComplianceGate';
 import { usePublishUpsellEligibility } from '@/hooks/usePublishUpsellEligibility';
 import { useSecretsDiff } from '@/hooks/useSecretsDiff';
 import { useSeoQualityCheck } from '@/hooks/useSeoQualityCheck';
+import { useSeoSettingsEnabled } from '@/hooks/useSeoSettingsEnabled';
 import { useSubscription } from '@/hooks/useSubscription';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
@@ -163,6 +165,7 @@ export default function AppPublish({ location = 'develop' }: { location?: string
   const isGoLiveFeatureEnabled = useSwitchboard(SWITCHBOARD_APPBUILDER_GO_LIVE_FEATURE) === true;
   const isTopLevelDomainEnabled = useSwitchboard('appbuilder-domain-top-level');
   const isSecurityScanUiEnabled = useSwitchboard('appbuilder-security-scan-ui') === true;
+  const isGscEnabled = useSeoSettingsEnabled() === true;
 
   const isChatToolbar = location === 'develop.chat_toolbar';
   // Exactly one mounted AppPublish drives the publish popover per viewport: desktop -> header,
@@ -317,6 +320,7 @@ export default function AppPublish({ location = 'develop' }: { location?: string
   const dismissSeoRegressionAlert = useDevelopPageStore((state) => state.dismissSeoRegressionAlert);
 
   useSeoQualityCheck(currentAppId);
+  useGscSitemapOnPublish(currentAppId, isGscEnabled);
   const prevBuildErrorDetailsRef = useRef(buildErrorDetails);
   const showFirstPublishCongrats = useDevelopPageStore(
     (state) =>

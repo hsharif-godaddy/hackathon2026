@@ -27,6 +27,7 @@ AVAILABLE PLATFORMS:
 - Facebook (Facebook Pages)
 - Instagram (Instagram Business accounts via Facebook page)
 - Google Business Profile / GMB (reviews, locations, insights)
+- Google Search Console / GSC (site ownership verification, sitemap submission)
 
 USAGE WORKFLOW:
 1. When user asks to connect, call this tool with { platform }

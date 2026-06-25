@@ -8,6 +8,7 @@ import GitHubSyncSettingsSavedSnackbar from '@/app/[market]/develop/components/s
 import { ChatTab, SettingsSection } from '@/app/[market]/develop/components/types'
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils'
 import { useChatTabs } from '@/hooks/useChatTabs'
+import { useSeoSettingsEnabled } from '@/hooks/useSeoSettingsEnabled'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 
 // Only one panel renders at a time, so lazy-load each to keep the initial
@@ -26,6 +27,7 @@ const CampaignsPanel = dynamic(() => import('@/app/[market]/develop/components/s
 // Uses default skeleton as its matching the structure
 const SecurityPanel = dynamic(() => import('@/app/[market]/develop/components/settings/SecurityPanel'), { loading: () => <PanelSkeleton /> })
 const SocialPanel = dynamic(() => import('@/app/[market]/develop/components/settings/social/SocialPanel'), { loading: () => <PanelSkeleton /> })
+const SeoPanel = dynamic(() => import('@/app/[market]/develop/components/settings/SeoPanel'), { loading: () => <PanelSkeleton /> })
 const GitHubPanel = dynamic(() => import('@/app/[market]/develop/components/settings/GitHubPanel'), { loading: () => <PanelSkeleton /> })
 const SsoPanel = dynamic(() => import('@/app/[market]/develop/components/settings/SsoPanel'), { loading: () => <PanelSkeleton /> })
 const VisualScanPanel = dynamic(() => import('@/app/[market]/develop/components/settings/VisualScanPanel'), { loading: () => <PanelSkeleton /> })
@@ -46,6 +48,7 @@ export default function SettingsView() {
   const isDisplayAdsEnabled = useSwitchboard('appbuilder-settings-display-ads');
   const isGitHubEnabled = useSwitchboard('appbuilder-github-sync');
   const isCampaignsEnabled = useSwitchboard('appbuilder-marketing-campaigns');
+  const isSeoEnabled = useSeoSettingsEnabled();
   const isAnalyticsEnabled = useSwitchboard('appbuilder-analytics');
 
   const sectionSkeleton = <PanelSkeleton panelType={ChatTab.SETTINGS} settingsSection={activeSettingsSection} />
@@ -94,6 +97,9 @@ export default function SettingsView() {
       case SettingsSection.CAMPAIGNS:
         if (isCampaignsEnabled === undefined) return sectionSkeleton;
         return isCampaignsEnabled ? <CampaignsPanel /> : null;
+      case SettingsSection.SEO:
+        if (isSeoEnabled === undefined) return sectionSkeleton;
+        return isSeoEnabled ? <SeoPanel siteId={appId} /> : null;
       case SettingsSection.ANALYTICS:
         if (isAnalyticsEnabled === undefined) return sectionSkeleton;
         return isAnalyticsEnabled ? <AnalyticsPanel /> : null;

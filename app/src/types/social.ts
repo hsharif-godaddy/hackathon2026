@@ -11,6 +11,7 @@ export enum SocialPlatform {
   FACEBOOK = 'facebook',
   INSTAGRAM = 'instagram',
   GOOGLE = 'google',
+  GOOGLE_SEARCH_CONSOLE = 'google_search_console',
   TIKTOK = 'tiktok',
   YELP = 'yelp',
   WHATSAPP = 'whatsapp',
@@ -20,6 +21,7 @@ export enum SocialPlatformKey {
   FACEBOOK = 'FACEBOOK',
   INSTAGRAM = 'INSTAGRAM',
   GOOGLE_BUSINESS_PROFILE = 'GOOGLE_BUSINESS_PROFILE',
+  GOOGLE_SEARCH_CONSOLE = 'GOOGLE_SEARCH_CONSOLE',
   TIKTOK = 'TIKTOK',
   YELP = 'YELP',
   WHATSAPP = 'WHATSAPP',
@@ -75,6 +77,15 @@ export interface GoogleConnection extends BaseSocialConnection {
 }
 
 /**
+ * Google Search Console connection
+ */
+export interface GoogleSearchConsoleConnection extends BaseSocialConnection {
+  platform: SocialPlatformKey.GOOGLE_SEARCH_CONSOLE
+  userId: string
+  userTokenId?: string
+}
+
+/**
  * TikTok Shop connection
  */
 export interface TikTokConnection extends BaseSocialConnection {
@@ -108,6 +119,7 @@ export type SocialConnection =
   | FacebookConnection
   | InstagramConnection
   | GoogleConnection
+  | GoogleSearchConsoleConnection
   | TikTokConnection
   | YelpConnection
   | WhatsAppConnection

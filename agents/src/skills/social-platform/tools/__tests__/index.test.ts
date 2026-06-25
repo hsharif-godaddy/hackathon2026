@@ -89,6 +89,21 @@ describe('socialConnectTool', () => {
     })
   })
 
+  it('returns connect signal for Google Search Console', async () => {
+    const result = await runTool(
+      { platform: 'GOOGLE_SEARCH_CONSOLE' },
+      { metadata: { appId: 'app-gsc-01' } }
+    )
+
+    expect(result).toMatchObject({
+      action: 'connect',
+      success: true,
+      platform: 'GOOGLE_SEARCH_CONSOLE',
+      appId: 'app-gsc-01',
+    })
+    expect(result.state).toMatch(/^GOOGLE_SEARCH_CONSOLE-\d+-[a-z0-9]+$/)
+  })
+
   it('includes pending publish data from context attachments', async () => {
     const pendingPublish = { message: 'Hello world', imageUrls: [] }
     const postData = { styleLabel: 'casual' }

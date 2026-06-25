@@ -30,6 +30,7 @@ export const ALL_PLATFORM_CONFIG: Record<SocialPlatform, PlatformConfig> = {
   [SocialPlatform.FACEBOOK]: { name: 'Facebook', Icon: FacebookIcon },
   [SocialPlatform.INSTAGRAM]: { name: 'Instagram', Icon: InstagramIcon },
   [SocialPlatform.GOOGLE]: { name: 'Google', Icon: GoogleIcon },
+  [SocialPlatform.GOOGLE_SEARCH_CONSOLE]: { name: 'Google Search Console', Icon: GoogleIcon },
   [SocialPlatform.TIKTOK]: { name: 'TikTok Shop', Icon: TiktokIcon },
   [SocialPlatform.YELP]: { name: 'Yelp', Icon: YelpIcon },
   [SocialPlatform.WHATSAPP]: { name: 'WhatsApp', Icon: WhatsappIcon },
@@ -39,6 +40,7 @@ export const PLATFORM_KEY_MAP: Record<string, SocialPlatform> = {
   facebook: SocialPlatform.FACEBOOK,
   instagram: SocialPlatform.INSTAGRAM,
   google: SocialPlatform.GOOGLE,
+  google_search_console: SocialPlatform.GOOGLE_SEARCH_CONSOLE,
   tiktok: SocialPlatform.TIKTOK,
   yelp: SocialPlatform.YELP,
   whatsapp: SocialPlatform.WHATSAPP
@@ -77,6 +79,7 @@ export const PLATFORM_TRANSFORMS = {
   toApiEnum: (platform: string): SocialPlatformKey => {
     const map: Record<string, SocialPlatformKey> = {
       [SocialPlatform.GOOGLE]: SocialPlatformKey.GOOGLE_BUSINESS_PROFILE,
+      [SocialPlatform.GOOGLE_SEARCH_CONSOLE]: SocialPlatformKey.GOOGLE_SEARCH_CONSOLE,
       [SocialPlatform.FACEBOOK]: SocialPlatformKey.FACEBOOK,
       [SocialPlatform.TIKTOK]: SocialPlatformKey.TIKTOK,
       [SocialPlatform.YELP]: SocialPlatformKey.YELP,
@@ -230,6 +233,10 @@ export const PLATFORM_STRATEGIES: Record<SocialPlatform, PlatformStrategy> = {
   [SocialPlatform.GOOGLE]: {
     provider: SocialPlatform.GOOGLE,
     requiresPageSelection: true,
+  },
+  [SocialPlatform.GOOGLE_SEARCH_CONSOLE]: {
+    provider: SocialPlatform.GOOGLE,
+    requiresPageSelection: false,
   },
   [SocialPlatform.TIKTOK]: {
     provider: SocialPlatform.TIKTOK,

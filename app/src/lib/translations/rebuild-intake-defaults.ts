@@ -41,6 +41,36 @@ export const REBUILD_INTAKE_DEFAULT_MESSAGES: Record<string, string> = {
   builder_rebuild_bring_over_fonts: 'Keep fonts',
 };
 
+export const SEO_GSC_DEFAULT_MESSAGES: Record<string, string> = {
+  builder_seo_gsc_title: 'Google Search Console',
+  builder_seo_gsc_connected_label: 'Connected to Google Search Console',
+  builder_seo_gsc_site_label: 'Site: {url}',
+  builder_seo_gsc_last_submitted: 'Sitemap last submitted: {date}',
+  builder_seo_gsc_dashboard_link: 'View in Google Search Console',
+  builder_seo_gsc_resubmit_button: 'Re-submit sitemap',
+  builder_seo_gsc_pending_description:
+    'A Google verification tag has been added to your site. Publish your site so Google can confirm ownership, then click "Verify with Google" below.',
+  builder_seo_gsc_verifying_label: 'Verifying with Google...',
+  builder_seo_gsc_verify_button: 'Verify with Google',
+  builder_seo_gsc_unpublished_description:
+    'Publish your site first to connect Google Search Console. Once your site is live, you can submit your sitemap to help Google discover and index your pages faster.',
+  builder_seo_gsc_connect_description:
+    'Connect Google Search Console to automatically submit your sitemap when you publish, helping Google discover and index your pages faster.',
+  builder_seo_gsc_connecting_label: 'Connecting to Google Search Console...',
+  builder_seo_gsc_cancel_button: 'Cancel',
+  builder_seo_gsc_connect_button: 'Connect Google Search Console',
+  builder_seo_gsc_error_no_published_url: 'Publish your site first so Google can verify it.',
+  builder_seo_gsc_error_connect_failed: 'Failed to set up verification. Please try again.',
+  builder_seo_gsc_error_auth_failed: 'Authentication failed. Please try again.',
+  builder_seo_gsc_error_verify_failed:
+    'Verification failed. Make sure you published your site and try again.',
+};
+
+export const DISPLAY_ADS_DEFAULT_MESSAGES: Record<string, string> = {
+  builder_settings_display_ads_save_field_errors: "Couldn't save. Check the highlighted fields.",
+  builder_settings_display_ads_saved: 'Saved!',
+};
+
 export function defaultMessageForRebuildIntakeKey(key: string): string | undefined {
   return REBUILD_INTAKE_DEFAULT_MESSAGES[key];
 }

@@ -86,6 +86,12 @@ export const GOOGLE_SCOPES = {
   searchConsole: [
     'https://www.googleapis.com/auth/webmasters',
   ],
+
+  userInfo: [
+    'openid',
+    'https://www.googleapis.com/auth/userinfo.email',
+    'https://www.googleapis.com/auth/userinfo.profile',
+  ],
 }
 
 export const WHATSAPP_SCOPES = {
@@ -159,6 +165,7 @@ export const SOCIAL_SCOPES: Record<string, string[]> = {
   facebook: FACEBOOK_SCOPES.social,
   instagram: INSTAGRAM_SCOPES.social,
   google: GOOGLE_SCOPES.businessManagement,
+  google_search_console: [...GOOGLE_SCOPES.searchConsole, ...GOOGLE_SCOPES.siteVerification, ...GOOGLE_SCOPES.userInfo],
   whatsapp: WHATSAPP_SCOPES.management,
   yelp: [...YELP_SCOPES.base, ...YELP_SCOPES.businesses],
   tiktok: TIKTOK_SCOPES.shop,

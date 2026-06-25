@@ -1005,7 +1005,7 @@ function createSocialAssociationsTable(db: Database): void {
       id TEXT PRIMARY KEY,
       app_id TEXT NOT NULL,
       social_id TEXT NOT NULL,
-      platform TEXT NOT NULL CHECK(platform IN ('FACEBOOK', 'INSTAGRAM', 'GOOGLE_BUSINESS_PROFILE', 'TIKTOK', 'YELP', 'WHATSAPP')),
+      platform TEXT NOT NULL CHECK(platform IN ('FACEBOOK', 'INSTAGRAM', 'GOOGLE_BUSINESS_PROFILE', 'GOOGLE_SEARCH_CONSOLE', 'TIKTOK', 'YELP', 'WHATSAPP')),
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       UNIQUE(app_id, social_id),
       FOREIGN KEY (app_id) REFERENCES apps(id) ON DELETE CASCADE
@@ -2011,6 +2011,36 @@ function applyMigrations(db: Database): void {
 
   // Create social_associations table if it doesn't exist
   createSocialAssociationsTable(db);
+
+  // Expand social_associations.platform CHECK to include GOOGLE_SEARCH_CONSOLE.
+  // SQLite cannot ALTER a CHECK in place, so we rebuild the table when the
+  // stored DDL is missing the new value. Idempotent: no-op on fresh or already-migrated DBs.
+  // Wrapped in db.transaction() so any mid-migration failure auto-rolls-back — a hand-rolled
+  // BEGIN/COMMIT would leave an orphan transaction on failure (SQLITE_LOCKED on every write).
+  const socialAssocRow = db.prepare<[], { sql: string }>(
+    `SELECT sql FROM sqlite_master WHERE type='table' AND name='social_associations'`
+  ).get();
+  if (socialAssocRow && !socialAssocRow.sql.includes('GOOGLE_SEARCH_CONSOLE')) {
+    db.exec(`PRAGMA foreign_keys = OFF`);
+    db.transaction(() => {
+      db.exec(`ALTER TABLE social_associations RENAME TO social_associations_pre_gsc`);
+      db.exec(`
+        CREATE TABLE social_associations (
+          id TEXT PRIMARY KEY,
+          app_id TEXT NOT NULL,
+          social_id TEXT NOT NULL,
+          platform TEXT NOT NULL CHECK(platform IN ('FACEBOOK', 'INSTAGRAM', 'GOOGLE_BUSINESS_PROFILE', 'GOOGLE_SEARCH_CONSOLE', 'TIKTOK', 'YELP', 'WHATSAPP')),
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE(app_id, social_id),
+          FOREIGN KEY (app_id) REFERENCES apps(id) ON DELETE CASCADE
+        )
+      `);
+      db.exec(`INSERT INTO social_associations SELECT * FROM social_associations_pre_gsc`);
+      db.exec(`DROP TABLE social_associations_pre_gsc`);
+    })();
+    db.exec(`PRAGMA foreign_keys = ON`);
+    logger.info('database.migration.social-associations.expand-platform-check', {});
+  }
 
   // Create social_posts table if it doesn't exist
   createSocialPostsTable(db);
