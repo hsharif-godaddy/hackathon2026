@@ -104,8 +104,8 @@ erDiagram
         TEXT simple_campaign_id FK "→ simple_campaign.id (SET NULL), nullable"
         TEXT utm_source "nullable — platform slug (app-validated; dynamic seo-offsite family)"
         TEXT utm_medium "nullable — channel class (app-validated enum)"
-        TEXT utm_campaign "nullable — HMAC of simple_campaign_id with global UTM_SALT"
-        TEXT utm_content "nullable"
+        TEXT utm_campaign "nullable — cmp_<hash> token of simple_campaign_id (global UTM_SALT)"
+        TEXT utm_content "nullable — act_<hash> token of content_ref_id (one per carrier; always set on new rows, nullable for legacy)"
         TEXT utm_term "nullable"
         DATETIME created_at "app-set (no DB default)"
         DATETIME updated_at "app-set (no DB default)"
@@ -208,25 +208,40 @@ platform / `social_posts` row). `utm_medium` is an app-validated enum (closed ch
 vocabulary); `utm_source` is looser (the `seo-offsite-<placement>` family is dynamic). FK
 `simple_campaign_id → simple_campaign(id) ON DELETE SET NULL`.
 
-#### Salting (`utm_campaign`)
-The raw `simple_campaign_id` is an internal primary key and must not leak into outbound URLs.
-The public **`utm_campaign`** is an HMAC of it, computed by `utils/campaign-utm-signer.ts`
-(`hashWithSalt`) — reusing the same **HMAC-SHA256 + `getEncryptionKey()`** primitive already
-used by `file-url-signer.ts` (the key is `GODADDY_OAUTH_ENCRYPTION_KEY`):
+#### Prefixed tokens (`utm_campaign` / `utm_content`) — RUBICON-500
+The raw `simple_campaign_id` / content id are internal primary keys and must not leak into
+outbound URLs. The public values are **prefixed salted-hash tokens**, computed by
+`utils/campaign-utm-signer.ts` — reusing the same **HMAC-SHA256 + `getEncryptionKey()`**
+primitive already used by `file-url-signer.ts` (the key is `GODADDY_OAUTH_ENCRYPTION_KEY`):
 
 ```
-utm_campaign = HMAC_SHA256(key = getEncryptionKey(), message = `${simple_campaign_id}:${UTM_SALT}`)  // base64url
+hash         = HMAC_SHA256(key = getEncryptionKey(), message = `${id}:${UTM_SALT}`)  // base64url
+utm_campaign = `cmp_${hash(simple_campaign_id)}`   // buildCampaignToken — one per campaign
+utm_content  = `act_${hash(content_ref_id)}`       // buildContentToken  — one per carrier
 ```
+
+The prefix namespaces the dimension (`cmp_` campaign vs. `act_` content/activation) so a
+`(utm_source, utm_medium, utm_campaign)` row is unambiguous. **M1 is one creative per
+activation**, so `utm_content` carries the `act_` token only — the `cr_` creative dimension
+is deferred to a future milestone.
 
 `UTM_SALT` is a **single global static salt** (offline-generated, hardcoded). The HMAC key
 provides the cryptographic strength; the salt only domain-separates this use and is not
-secret. Because it is deterministic, every row of a campaign resolves to **one stable
-`utm_campaign`** with no per-row salt to store — the value the attribution warehouse
-aggregates on (composite key `(utm_source, utm_medium, utm_campaign)`). Reverse lookup never
-inverts the HMAC: we query `marketing_utm` by `utm_campaign`/`simple_campaign_id`, and the
-analytics system reproduces the hash with the same shared salt. (Earlier drafts stored a
-per-campaign `salt_id`; it was dropped — a plaintext per-row salt added no secrecy over a
-global one, and the global salt lets analytics reverse-look-up without reading our per-app DBs.)
+secret. Because the hash is deterministic, every row of a campaign resolves to **one stable
+`utm_campaign`** (and each carrier to one stable `utm_content`) with no per-row salt to store
+— the value the attribution warehouse aggregates on (composite key
+`(utm_source, utm_medium, utm_campaign)`) and that the **Customer Stats API** call reproduces
+to retrieve metrics. Reverse lookup never inverts the HMAC: we query `marketing_utm` via
+`findByComposite`/`findByUtmCampaign`, and the analytics system reproduces the hash with the
+same shared salt. (Earlier drafts stored a per-campaign `salt_id`; it was dropped — a
+plaintext per-row salt added no secrecy over a global one, and the global salt lets analytics
+reverse-look-up without reading our per-app DBs.)
+
+**No migration/backfill.** The tokens are minted at row creation (`MarketingUtmRepository.create`),
+so every new row carries the `cmp_`/`act_` values. No data-preserving migration of pre-existing
+rows is performed: `marketing_utm` is not yet populated (the carrier-persistence wiring lands
+with RUBICON-499/501), and the schema predates GA, so per the clean-start convention the columns
+live only in the `CREATE TABLE` definition — no `ALTER TABLE`/backfill scripts to carry forward.
 
 ### Related (owned elsewhere)
 - **`blog_posts`** — `campaign_id` FKs back to `simple_campaign` with `ON DELETE SET NULL`.
@@ -262,9 +277,10 @@ global one, and the global salt lets analytics reverse-look-up without reading o
   object with no read-back. Lifecycle moves (`transition`, `launch`) are guarded UPDATEs
   (`… WHERE id = ? AND status IN (<valid prev>)`) that enforce the FSM without a
   read-before-write.
-- **`utm_campaign` is an HMAC with a single global static salt** — keeps the raw id out of
-  URLs, stays deterministic (one stable value per campaign, no per-row `salt_id`), and lets
-  the analytics system reverse-look-up by reproducing the hash with the same shared salt.
+- **`utm_campaign`/`utm_content` are prefixed salted-hash tokens** (`cmp_<hash>` / `act_<hash>`,
+  single global static salt) — keeps the raw id out of URLs, stays deterministic (one stable
+  value per campaign / per carrier, no per-row `salt_id`), and lets the analytics system and
+  Customer Stats API reverse-look-up by reproducing the hash with the same shared salt.
 - **`created_by` / `updated_by`** on `simple_campaign` (and `created_by` on
   `simple_campaign_content`) record whether an artifact came from the customer (`user`) or
   the agent (`agent`) — campaign content can originate either way. Nullable (a new
@@ -276,12 +292,12 @@ global one, and the global salt lets analytics reverse-look-up without reading o
 - **Content resolver.** A function mapping `(asset_type, content_ref_id)` → the live content
   row (`blog_posts` / `social_posts` / app source / future ad/email) is the natural next
   piece. It belongs at the launch/orchestration layer and is not built here.
-- **Global ID uniqueness.** `simple_campaign.id` is `camp_<nanoid(12)>`, unique only within
-  a customer's DB. For `utm_campaign` to be a safe global warehouse key the underlying id
-  should become a **`cmp_<ulid>`** (the salted HMAC partly mitigates this, but a ULID is the
-  proper fix).
-- **Population wiring.** Writing `marketing_utm` rows at **Launch** (and stamping decorated
-  URLs at publish time) is the link-decoration work — the table + repository + signer exist;
-  the orchestrator wiring lands with the generation/launch tickets.
-- **`utm_content` / `utm_term`** — columns exist (activation+creative / keyword-segment-topic)
-  but their population mapping for our channels is still TBD.
+- **Global ID uniqueness.** `simple_campaign.id` stays `camp_<nanoid(12)>` (internal PK,
+  unique within a customer's DB). The published key is the salted-hash token, not the raw id,
+  so the warehouse key is opaque and global without changing the PK (the earlier "switch PK
+  to `cmp_<ulid>`" idea was rejected — it would have exposed the internal id).
+- **`utm_content`** is now minted as the `act_<hash>` token of the content id (RUBICON-500).
+  `utm_term` (keyword/segment/topic) population mapping per channel lands with RUBICON-499/501.
+- **Population wiring.** Writing decorated URLs into generated content (and the full
+  generator) lands with RUBICON-499 (URL generator) and RUBICON-501 (apply CTAs at generate);
+  the table + repository + token builders exist here.

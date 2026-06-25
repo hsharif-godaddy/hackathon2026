@@ -10,6 +10,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import Database from 'better-sqlite3';
 import { initializeSchema, UtmSource, UtmMedium } from '../../schema.js';
+import type { UTMAttributionParams } from '../../schema.js';
 
 vi.mock('../../../services/token-crypto.js', () => ({
   getEncryptionKey: () => Buffer.alloc(32, 9),
@@ -44,21 +45,37 @@ describe('MarketingUtmRepository Integration Tests', () => {
     db.close();
   });
 
-  it('leaves campaign columns null for non-campaign content', () => {
-    const row = repo.create({ contentRefId: 'sp_solo', utmSource: UtmSource.Instagram, utmMedium: UtmMedium.OrganicSocial });
+  it('leaves campaign columns null for non-campaign content but still mints an act_ content token', () => {
+    const row: UTMAttributionParams = repo.create({ contentRefId: 'sp_solo', utmSource: UtmSource.Instagram, utmMedium: UtmMedium.OrganicSocial });
     expect(row.utmSource).toBe('instagram');
     expect(row.utmMedium).toBe('organic_social');
     expect(row.simpleCampaignId).toBeNull();
     expect(row.utmCampaign).toBeNull();
+    expect(row.utmContent).toMatch(/^act_/); // content token minted from contentRefId
+    expect(row.utmContent).not.toContain('sp_solo');
   });
 
-  it('derives one stable utm_campaign per campaign from the global salt', () => {
-    const a = repo.create({ contentRefId: 'sp_a', simpleCampaignId: CAMPAIGN_ID, utmSource: UtmSource.Instagram, utmMedium: UtmMedium.OrganicSocial });
-    const b = repo.create({ contentRefId: 'bp_b', simpleCampaignId: CAMPAIGN_ID, utmSource: UtmSource.BlogAab, utmMedium: UtmMedium.Blog });
+  it('derives one stable cmp_ utm_campaign per campaign from the global salt', () => {
+    const a: UTMAttributionParams = repo.create({ contentRefId: 'sp_a', simpleCampaignId: CAMPAIGN_ID, utmSource: UtmSource.Instagram, utmMedium: UtmMedium.OrganicSocial });
+    const b: UTMAttributionParams = repo.create({ contentRefId: 'bp_b', simpleCampaignId: CAMPAIGN_ID, utmSource: UtmSource.BlogAab, utmMedium: UtmMedium.Blog });
 
-    expect(a.utmCampaign).toBeTruthy();
+    expect(a.utmCampaign).toMatch(/^cmp_/);
     expect(a.utmCampaign).toBe(b.utmCampaign); // same campaign id + global salt → one stable value
     expect(a.utmCampaign).not.toContain(CAMPAIGN_ID); // obfuscated, not the raw id
+  });
+
+  it('mints a per-carrier act_ utm_content token, distinct per content id', () => {
+    const a: UTMAttributionParams = repo.create({ contentRefId: 'sp_a', simpleCampaignId: CAMPAIGN_ID, utmSource: UtmSource.Facebook, utmMedium: UtmMedium.OrganicSocial });
+    const b: UTMAttributionParams = repo.create({ contentRefId: 'bp_b', simpleCampaignId: CAMPAIGN_ID, utmSource: UtmSource.BlogAab, utmMedium: UtmMedium.Blog });
+
+    expect(a.utmContent).toMatch(/^act_/);
+    expect(a.utmContent).not.toBe(b.utmContent); // one token per carrier
+    expect(a.utmContent).not.toContain('sp_a');
+  });
+
+  it('honors an explicitly provided utm_content over the derived token', () => {
+    const row: UTMAttributionParams = repo.create({ contentRefId: 'sp_o', simpleCampaignId: CAMPAIGN_ID, utmContent: 'act_custom__cr_xyz', utmSource: UtmSource.Facebook, utmMedium: UtmMedium.OrganicSocial });
+    expect(row.utmContent).toBe('act_custom__cr_xyz');
   });
 
   it('rejects an unknown utm_medium (app-layer enum validation)', () => {
@@ -68,8 +85,16 @@ describe('MarketingUtmRepository Integration Tests', () => {
   });
 
   it('reverse-looks-up by utm_campaign', () => {
-    const a = repo.create({ contentRefId: 'sp_x', simpleCampaignId: CAMPAIGN_ID, utmSource: UtmSource.Facebook, utmMedium: UtmMedium.OrganicSocial });
-    const found = repo.findByUtmCampaign(a.utmCampaign!);
-    expect(found.map((r) => r.contentRefId)).toContain('sp_x');
+    const a: UTMAttributionParams = repo.create({ contentRefId: 'sp_x', simpleCampaignId: CAMPAIGN_ID, utmSource: UtmSource.Facebook, utmMedium: UtmMedium.OrganicSocial });
+    const found: UTMAttributionParams[] = repo.findByUtmCampaign(a.utmCampaign!);
+    expect(found.map((r: UTMAttributionParams): string => r.contentRefId)).toContain('sp_x');
+  });
+
+  it('reverse-looks-up by the composite (utm_source, utm_medium, utm_campaign)', () => {
+    const fb: UTMAttributionParams = repo.create({ contentRefId: 'sp_fb', simpleCampaignId: CAMPAIGN_ID, utmSource: UtmSource.Facebook, utmMedium: UtmMedium.OrganicSocial });
+    repo.create({ contentRefId: 'bp_blog', simpleCampaignId: CAMPAIGN_ID, utmSource: UtmSource.BlogAab, utmMedium: UtmMedium.Blog });
+
+    const found: UTMAttributionParams[] = repo.findByComposite(UtmSource.Facebook, UtmMedium.OrganicSocial, fb.utmCampaign!);
+    expect(found.map((r: UTMAttributionParams): string => r.contentRefId)).toEqual(['sp_fb']); // only the matching source/medium row
   });
 });

@@ -490,8 +490,10 @@ export interface SimpleCampaignContent {
 // marketing_utm records the UTM attribution for one published target (a blog post,
 // a per-platform social post, a future ad/email). It exists independent of campaigns
 // — utm_campaign/simple_campaign_id are only populated when the target is part of a
-// campaign. utm_campaign is the HMAC of simpleCampaignId hashed with the global
-// UTM_SALT (see campaign-utm-signer) — one stable value per campaign, no per-row salt.
+// campaign. utm_campaign is the opaque `cmp_<hash>` token of simpleCampaignId, and
+// utm_content the opaque `act_<hash>` token of the target content id, both hashed with
+// the global UTM_SALT (see campaign-utm-signer) — stable, deterministic, no per-row
+// salt, so the clickstream warehouse and Customer Stats API can reproduce them.
 export interface UTMAttributionParams {
   id: string;
   contentRefId: string; // references the target content row id (social_posts.id, …)
@@ -1189,9 +1191,10 @@ function createSimpleCampaignContentTable(db: Database): void {
  * marketing_utm holds UTM attribution per published target (a blog post, a
  * per-platform social post, a future ad/email). It is independent of campaigns:
  * utm_source/utm_medium are always set, while simple_campaign_id/utm_campaign are
- * populated only when the target belongs to a campaign. utm_campaign is the HMAC of
- * simpleCampaignId hashed with the global UTM_SALT (see utils/campaign-utm-signer) —
- * one stable value per campaign, with no per-row salt to store. content_ref_id is a
+ * populated only when the target belongs to a campaign. utm_campaign is the opaque
+ * `cmp_<hash>` token of simpleCampaignId and utm_content the `act_<hash>` token of the
+ * content id, both hashed with the global UTM_SALT (see utils/campaign-utm-signer) —
+ * one stable value per campaign/carrier, no per-row salt to store. content_ref_id is a
  * polymorphic reference to the target content row (social_posts.id, …)
  * — not a hard FK since it spans tables. utm_source/utm_medium are plain TEXT validated
  * in the app layer (utm_medium against the enum; utm_source's seo-offsite-<placement>

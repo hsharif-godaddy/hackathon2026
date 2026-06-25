@@ -5,7 +5,14 @@ vi.mock('../../services/token-crypto.js', () => ({
   getEncryptionKey: () => Buffer.alloc(32, 7),
 }));
 
-import { hashWithSalt, UTM_SALT } from '../campaign-utm-signer.js';
+import {
+  hashWithSalt,
+  UTM_SALT,
+  buildCampaignToken,
+  buildContentToken,
+  UTM_CAMPAIGN_PREFIX,
+  UTM_CONTENT_PREFIX,
+} from '../campaign-utm-signer.js';
 
 describe('campaign-utm-signer', () => {
   it('exposes a non-empty static global salt', () => {
@@ -25,5 +32,26 @@ describe('campaign-utm-signer', () => {
 
   it('does not leak the raw value', () => {
     expect(hashWithSalt('camp_secret', UTM_SALT)).not.toContain('camp_secret');
+  });
+
+  it('buildCampaignToken prefixes the hash with cmp_ and never leaks the raw id', () => {
+    const token: string = buildCampaignToken('camp_abc123');
+    expect(token.startsWith(UTM_CAMPAIGN_PREFIX)).toBe(true);
+    expect(token).toBe(`${UTM_CAMPAIGN_PREFIX}${hashWithSalt('camp_abc123', UTM_SALT)}`);
+    expect(token).not.toContain('camp_abc123');
+  });
+
+  it('buildContentToken prefixes the hash with act_ and never leaks the raw id', () => {
+    const token: string = buildContentToken('sp_xyz789');
+    expect(token.startsWith(UTM_CONTENT_PREFIX)).toBe(true);
+    expect(token).toBe(`${UTM_CONTENT_PREFIX}${hashWithSalt('sp_xyz789', UTM_SALT)}`);
+    expect(token).not.toContain('sp_xyz789');
+  });
+
+  it('tokens are deterministic and distinct per id', () => {
+    expect(buildCampaignToken('camp_1')).toBe(buildCampaignToken('camp_1'));
+    expect(buildCampaignToken('camp_1')).not.toBe(buildCampaignToken('camp_2'));
+    expect(buildContentToken('sp_1')).toBe(buildContentToken('sp_1'));
+    expect(buildContentToken('sp_1')).not.toBe(buildContentToken('sp_2'));
   });
 });

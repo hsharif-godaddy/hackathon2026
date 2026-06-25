@@ -4,7 +4,7 @@ import { UtmMedium } from '../schema.js';
 import type { UTMAttributionParams, UtmSource } from '../schema.js';
 import { Logger } from '../../logging/index.js';
 import { customAlphabet } from 'nanoid';
-import { hashWithSalt, UTM_SALT } from '../../utils/campaign-utm-signer.js';
+import { buildCampaignToken, buildContentToken } from '../../utils/campaign-utm-signer.js';
 import { assertEnumValue } from '../../utils/enum-guard.js';
 
 const nanoid = customAlphabet('0123456789abcdefghijklmnopqrstuvwxyz', 12);
@@ -44,10 +44,14 @@ export class MarketingUtmRepository {
 
   /**
    * Record UTM attribution for a target. When simpleCampaignId is provided, utm_campaign
-   * is the campaign id hashed with the global UTM_SALT — so every row of the same
-   * campaign resolves to one stable utm_campaign (what the warehouse aggregates on, and
-   * what analytics can reproduce for reverse lookups). Without a simpleCampaignId,
-   * utm_campaign stays null.
+   * is the opaque `cmp_<hash>` token (campaign id hashed with the global UTM_SALT) — so
+   * every row of the same campaign resolves to one stable utm_campaign (what the
+   * warehouse aggregates on, and what the Customer Stats API call reproduces for
+   * reverse lookups). Without a simpleCampaignId, utm_campaign stays null.
+   *
+   * utm_content is the opaque `act_<hash>` token of the target content id — one stable
+   * token per carrier (RUBICON-500). It is derived here by default; a caller may pass an
+   * explicit utmContent to override (e.g. a richer act_/cr_ form in a future milestone).
    *
    * The row is constructed in memory and returned directly: id/timestamps live in the
    * app layer and run().changes is the authoritative success check — no read-back.
@@ -61,8 +65,9 @@ export class MarketingUtmRepository {
     const id: string = `mutm_${nanoid()}`;
     const now: string = new Date().toISOString();
     const utmCampaign: string | null = params.simpleCampaignId
-      ? hashWithSalt(params.simpleCampaignId, UTM_SALT)
+      ? buildCampaignToken(params.simpleCampaignId)
       : null;
+    const utmContent: string = params.utmContent ?? buildContentToken(params.contentRefId);
 
     const utm: UTMAttributionParams = {
       id,
@@ -71,7 +76,7 @@ export class MarketingUtmRepository {
       utmSource: params.utmSource ?? null,
       utmMedium: params.utmMedium ?? null,
       utmCampaign,
-      utmContent: params.utmContent ?? null,
+      utmContent,
       utmTerm: params.utmTerm ?? null,
       createdAt: now,
       updatedAt: now,
@@ -130,7 +135,28 @@ export class MarketingUtmRepository {
     return rows.map((row: UTMAttributionParamsRow): UTMAttributionParams => this.mapRow(row));
   }
 
-  /** Reverse lookup from the public salted value back to its row(s). */
+  /**
+   * Canonical reverse lookup for attribution. utm_campaign alone is NOT unique across
+   * platforms — the same campaign fans out to many (utm_source, utm_medium) pairs — so
+   * the warehouse join key is the composite (utm_source, utm_medium, utm_campaign).
+   */
+  findByComposite(utmSource: UtmSource, utmMedium: UtmMedium, utmCampaign: string): UTMAttributionParams[] {
+    const rows: UTMAttributionParamsRow[] = this.db
+      .prepare(
+        `SELECT * FROM marketing_utm
+         WHERE utm_source = ? AND utm_medium = ? AND utm_campaign = ?
+         ORDER BY created_at DESC`,
+      )
+      .all(utmSource, utmMedium, utmCampaign) as UTMAttributionParamsRow[];
+
+    return rows.map((row: UTMAttributionParamsRow): UTMAttributionParams => this.mapRow(row));
+  }
+
+  /**
+   * Reverse lookup by utm_campaign alone. Retained for callers that only have the
+   * campaign token; prefer findByComposite where source/medium are known, since
+   * utm_campaign is not unique across platforms.
+   */
   findByUtmCampaign(utmCampaign: string): UTMAttributionParams[] {
     const rows: UTMAttributionParamsRow[] = this.db
       .prepare(`SELECT * FROM marketing_utm WHERE utm_campaign = ? ORDER BY created_at DESC`)
