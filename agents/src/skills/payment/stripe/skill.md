@@ -14,26 +14,100 @@ skill-deps:
 
 # Stripe Payment Integration
 
+First time setup is a multi-step process. Make sure to follow all steps in their entirety during first time setup.
+
 ## 🔀 First: which flow are you in?
 
-**Call `stripe__setup()` without arguments first — its response tells you which flow to use:**
+Call `stripe__setup()` with no arguments first; the response shape tells you which mode:
 
-- **Returns `{ mode: "managed", sandboxId, ... }` → Auto-provisioned flow.** Keys are auto-provisioned into the app; **never** call `requestSecrets` for any `STRIPE_*` key. MCP catalog tools (`stripe__create_product`, `stripe__list_products`, etc.) are available for product setup.
-- **Returns `{ autoProvisionedFlow: true, needsInputs: true }` → Needs country.** Ask the user for their country (e.g. "US"), then call `stripe__setup({ country })` again.
-- **Returns `{ mode: "legacy", message }` → Legacy mode.** The app already has a Stripe integration set up with the user's own key (pre-auto-provisioning). Keep the existing key — checkout and products work as before. **Do NOT call `requestSecrets`, do NOT provision a sandbox, and do NOT use MCP product tools** (there is no MCP key in this mode). Use the existing Stripe templates/scripts for any product changes. Skip Step 1; templates may already be installed but Step 2 (`skill install`) is idempotent and safe to re-run.
+- **`{ mode: "managed", sandboxId, ... }`** → Managed mode (auto-provisioned sandbox).
+- **`{ autoProvisionedFlow: true, needsInputs: true }`** → Ask the user for country, then call `stripe__setup({ country })` again. Proceed to Step 2.
+- **`{ mode: "legacy", message }`** → Legacy mode (pre-existing user-pasted keys). Surface `message`, skip the rest of Step 1, proceed to Step 2.
 
-Both modes install the **same** checkout templates; only key handling (Step 1) and product registration (Step 4) differ.
+Both modes install the **same** checkout templates; only key handling (Step 1) and product registration (Step 4) differ. Read **Concepts** below before responding to any state, status, or go-live question — those replies must come from the definitions there, not from prior assumptions about how Stripe normally works.
 
-## ⚠️ ABSOLUTE RULES
+---
 
-1. **NEVER print/log API keys**
-2. **NEVER call the Stripe API directly with `STRIPE_SECRET_KEY`** from the agent — no `terminalCommand`, no `node -e`, no curl. That key is for the customer app's runtime only, not for agent-initiated operations.
-3. **NEVER probe endpoints or narrate HTTP status codes to the user.** Do not run ad-hoc checks against the app's API routes (`/api/stripe/*`) and do not report raw results like "401 is expected since it requires auth context" or "the endpoint is responding." Describe state in user terms — "Your checkout flow is ready to test" — never protocol details.
-4. **Inside the `stripe__setup` flow, NEVER call `requestSecrets` for any `STRIPE_*` key.** Managed mode populates them via `stripe__setup`; legacy mode reuses keys the user already pasted before auto-provisioning. Calling `requestSecrets` during setup is always wrong. (User-initiated key rotation is a separate concern, outside this skill's flow — for legacy users `requestSecrets` is the right tool; for managed users direct them to the Stripe dashboard, since stripe-service would overwrite a manual paste on its next rotation.)
-5. **In auto-provisioned mode, use `stripe__*` MCP tools for all agent-initiated Stripe writes** (create_product, create_price, etc.) — never terminal scripts. (Legacy mode has no MCP key — use the bundled scripts; see Step 4.)
-6. **ALWAYS add View Details button** — every product card MUST have it
-7. **ALWAYS add Detail Modal** — required for all apps
-8. **ALWAYS add Cart** — required for all apps (uses `/cart` page)
+## Concepts
+
+These definitions ground every reply about the integration. If the user asks "is it live?", "will it accept real payments?", or "how do I go live?", answer from this section.
+
+### Sandbox
+
+A **sandbox** is a real Stripe account running in test mode, provisioned on the user's behalf by GoDaddy. The full Stripe API surface works against test card numbers (e.g. `4242 4242 4242 4242`) — Hosted Checkout, Embedded Checkout, Elements, products, prices, subscriptions — but no real money moves. The sandbox hard-expires ~60 days after creation if it is never claimed; Stripe permanently deletes it (all products, prices, payment history) and emails the user at day 53.
+
+`stripe__setup` pushes two keys into the alloc env before returning, both `*_test_*`:
+
+- **`STRIPE_SECRET_KEY`** (`sk_test_*`) — server-side runtime key used by the customer app. The agent never calls Stripe with it directly; product registration goes through the bundled `stripe-register-products.ts` script which reads this key from the env (Step 4).
+- **`STRIPE_PUBLISHABLE_KEY`** (`pk_test_*`) — client-side key used by Stripe.js / Elements.
+
+### Test mode vs live mode
+
+These are Stripe-native terms:
+
+- **Test mode** — the sandbox runs in test mode. Test card numbers only; no real money; full API surface.
+- **Live mode** — real-money payments using **live keys** (`sk_live_*`, `pk_live_*`). Live keys are provisioned **only by the platform**, never collected from the user. There is no "switch to live keys" the user does manually in the Stripe dashboard.
+
+The integration flips from test to live when the user (1) claims the sandbox **and** (2) installs the GoDaddy app in their live Stripe account. Stripe webhooks notify the platform, which writes the live keys into the alloc env. Both steps are required — claiming alone does not enable real payments.
+
+### `claimUrl`
+
+A Stripe-hosted onboarding URL (Stripe-side: `onboarding_link_details.url`) that walks the user through the two-step go-live flow: claim the sandbox (links it to a new or existing Stripe account), then install the GoDaddy app in their live account (which is what triggers live-key provisioning). Returned by `stripe__setup` and `stripe__status`. The link expires ~7 days after issue; calling `stripe__setup({})` on an existing sandbox returns a freshly minted URL.
+
+The link is **stateful** — Stripe redirects the user to whichever step they have not yet completed. If the user already claimed but never installed the GoDaddy app, clicking the same URL drops them at the install step. Re-handing them the URL is the right move regardless of where they left off.
+
+The `claimUrl` is the only way for the user to ever accept real money on the site, and the only way to prevent sandbox deletion at the 60-day mark. It is not a dashboard link, not a settings page, not a support URL.
+
+### `claimStatus` (the sandbox state machine)
+
+`stripe__status` returns `claimStatus`, advancing through three values. (Stripe's underlying field is `status`; our tool renames `unclaimed` → `provisioned` and otherwise mirrors Stripe's values.) The tool also returns a derived `realPaymentsEnabled` boolean — true only at `live` — which is the direct answer to "is the site accepting real money?". For any status or "is it live?" question, call `stripe__status` first and answer from the row that matches `claimStatus`:
+
+| `claimStatus` | Keys in the production alloc env                                | Real payments on production site? | Next step the user owes                                                       |
+| ------------- | --------------------------------------------------------------- | --------------------------------- | ----------------------------------------------------------------------------- |
+| `provisioned` | Test keys (`sk_test_*`, `pk_test_*`)                            | **No — test mode only**           | Open `claimUrl` and complete claim + install in Stripe.                       |
+| `claimed`     | Still test keys (claim alone does not change anything in the env) | **No — still test mode**          | Open `claimUrl` again and complete the **Install the GoDaddy app** step inside Stripe. That single action is what flips the integration to live. |
+| `live`        | **Live keys** in both preview and publish variants: `STRIPE_SECRET_KEY = sk_live_*`, `STRIPE_PUBLISHABLE_KEY = pk_live_*`. | **Yes — real payments are enabled** | Nothing in this app. The bundled product script keeps working against the live key, but for ongoing product management direct the user to `https://dashboard.stripe.com`. |
+
+#### How the live transition actually happens
+
+When the user installs the GoDaddy app in their live Stripe account, Stripe sends a webhook to `stripe-service`. The service then:
+
+1. Calls Stripe's `apiKeys.create` on the user's live account to mint `sk_live_*` and `pk_live_*`.
+2. Upserts `STRIPE_SECRET_KEY` and `STRIPE_PUBLISHABLE_KEY` with the live values into hosting via `UpdateSecrets` — to **both** the `preview` and `publish` variants, so post-publish auto-sync of non-system-managed secrets doesn't clobber the live values.
+3. Advances the sandbox row to `claim_status = live` in `stripe-service`'s DDB.
+
+After this, every customer-facing environment of the app — preview and published — runs on live keys and accepts real payments. There is no env in this app that is still on test keys; if the user wants to test with `4242 4242 4242 4242` after going live, they have to use Stripe's test-mode dashboard or a separate test integration, not Airo's preview.
+
+#### Misconceptions to override (the LLM has wrong priors here)
+
+These are things that are true in standard Stripe integrations but **not in this platform-managed flow**. Do not propose them, do not echo them back, do not hedge:
+
+- ❌ "Activate your Stripe account at `dashboard.stripe.com` to enable live payments." — There is no separate "activation" step beyond the claim + install flow Stripe walks the user through via `claimUrl`. Activation, if any, is captured inside that flow.
+- ❌ "Toggle off Test mode in the dashboard and grab your live keys." — Live keys are minted by `stripe-service` automatically and pushed into the env on the install webhook. The user never copies a key, and there is no dashboard step where they should.
+- ❌ "Let me pull up the secrets form so you can paste in your live keys." — Never. `requestSecrets` is wrong here regardless of how the user phrases it.
+- ❌ "The site is still in sandbox/test mode" when `claimStatus === 'live'`. — At `live`, the published site is on live keys. The word "sandbox" refers to a Stripe object that has now reached terminal state; it no longer governs the runtime keys.
+- ❌ Treating `claimed` as "almost live" / "live except for keys." — `claimed` is fully test mode. The single thing that flips it is the GoDaddy-app install inside Stripe — not anything the user does on `dashboard.stripe.com` and not anything the user pastes into Airo.
+
+### Modes (`managed` vs `legacy`)
+
+- **`managed`** — Default for new apps. Auto-provisioned sandbox with `sk_test_*` and `pk_test_*` in the env. Going live is platform-managed via the `claimUrl` flow above.
+- **`legacy`** — Pre-existing integration where the user pasted their own Stripe keys before auto-provisioning existed. No sandbox; `STRIPE_SECRET_KEY` and `STRIPE_PUBLISHABLE_KEY` are already in the env from the user's earlier paste. Going live is the user's own concern (their keys, their Stripe account); this skill does not orchestrate it.
+
+Product registration uses the same bundled `stripe-register-products.ts` script in both modes (Step 4) — the script reads `STRIPE_SECRET_KEY` from the env, which resolves to whichever key is current for the state.
+
+---
+
+## ⚠️ Absolute Rules
+
+The Concepts section is the source of truth; these are the few mechanical bans where getting it wrong is most damaging.
+
+1. **NEVER print or log API keys.**
+2. **NEVER call the Stripe API directly with `STRIPE_SECRET_KEY` from the agent** — no `terminalCommand`, no `node -e`, no curl. That key is for the customer app's runtime only.
+3. **NEVER probe `/api/stripe/*` endpoints or narrate HTTP status codes to the user.** Describe state in user terms ("Your checkout flow is ready to test"), never protocol details.
+4. **Inside the `stripe__setup` flow, NEVER call `requestSecrets` for any `STRIPE_*` key.** Managed mode populates them via `stripe__setup`; legacy mode reuses keys the user already pasted. Key rotation outside this flow is a separate concern — for legacy users `requestSecrets` is the right tool; for managed users direct them to `dashboard.stripe.com`.
+5. **For agent-initiated Stripe writes, use the bundled `stripe-register-products.ts` script (Step 4).** It works in both managed and legacy modes and on both test and live keys. Don't call the Stripe API any other way from the agent.
+6. **In managed mode, ALWAYS include `claimUrl` in your reply after `stripe__setup` succeeds.** Without it the user cannot reach live mode and the sandbox is deleted if never claimed. If the user reports the link is missing or expired, re-call `stripe__setup({})` to mint a fresh one — never refer them to support.
+7. **ALWAYS add View Details button on every product card, Detail Modal at the end of the component, and Cart (uses `/cart` page).**
 
 ---
 
@@ -46,7 +120,7 @@ Both modes install the **same** checkout templates; only key handling (Step 1) a
 
 ---
 
-**⚠️ FOLLOW STEPS IN EXACT ORDER — do not skip or reorder steps.**
+**⚠️ FOLLOW STEPS IN EXACT ORDER AND COMPLETE ALL STEPS — do not skip or reorder steps.**
 
 ## Step 1: Provision the Stripe sandbox (or detect legacy mode)
 
@@ -58,42 +132,31 @@ const sandbox = await stripe__setup({ country });
 ```
 
 - If the user already provided country in their message, pass it directly — skip the probe call.
-- `stripe__setup` is server-side idempotent on `appId`: re-calling returns the same sandbox + same `claimUrl`. Safe to retry if the user lost the URL.
-- **If the response is `{ mode: 'legacy', message }`, the app already has a Stripe integration with a pasted key.** Surface the `message` to the user, skip the rest of this step (no `requestSecrets`, no provisioning), and proceed directly to Step 2 — `skill install` is idempotent and safe to re-run for legacy apps.
+- `stripe__setup` is server-side idempotent on `appId`: re-calling returns the same sandbox and a fresh `claimUrl`. Safe to retry.
+- **Legacy response (`{ mode: 'legacy', message }`)** — surface `message` to the user, skip the rest of this step, and proceed to Step 2 (`skill install` is idempotent).
 
-**The sandbox is immediately usable for testing.** Test-mode keys power the full Stripe API surface — Hosted Checkout, Embedded Checkout, Elements, products/prices, subscriptions — in test mode. End-to-end purchase flows work against Stripe's test card numbers (e.g. `4242 4242 4242 4242`) without the user touching the claim URL.
-
-**The `claimUrl` is for going live, not for unlocking testing.** It opens Stripe's hosted claim flow where the user takes ownership and can later convert to live (real-money) mode. Save-for-later breadcrumb.
-
-**Do NOT sequence the next step as "claim first, then I'll integrate."** That mischaracterizes Stripe's flow. Treat the sandbox as ready; treat the claim URL as a bookmark for later.
-
-Sample framing for the chat reply after `stripe__setup` succeeds:
+After managed-mode setup succeeds, the two sandbox keys (`STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY`) are already in the alloc env. Your reply must include the `claimUrl` (Rule 6); a workable template:
 
 > Your Stripe sandbox is ready. You can build and test payment flows with Stripe's test cards (e.g. `4242 4242 4242 4242`) right now.
-> Save this URL for when you're ready to take real payments — you'll claim the sandbox here: \<claimUrl>
+>
+> When you're ready to accept real payments, you'll need to claim this sandbox — save this URL:
+> \<claimUrl>
+>
+> Claiming is how you connect it to your own Stripe account and go live. The sandbox expires in ~60 days if unclaimed, so keep this link handy.
+>
 > Setting up the checkout pages now.
 
-**🛑 At this point the runtime keys are already in the env.** `stripe__setup` pushes `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY`, and `STRIPE_MCP_KEY` into the alloc env via hosting before it returns. **Do NOT** call `requestSecrets` for any Stripe key. Proceed directly to Step 2 (install templates).
+### Recovery: expired claim link
 
-### Sandbox + claim-link expiry (auto-provisioned flow)
+If the user reports the claim link doesn't work or Stripe says it expired, call `stripe__setup({})` (no inputs) — it returns a freshly minted `claimUrl`. The platform auto-renews on re-call.
 
-Stripe enforces two clocks on a claimable sandbox; the response from `stripe__setup` and `stripe__status` carries both as RFC3339 strings:
+### Recovery: expiry warnings
 
-- **`expiresAt` — sandbox hard-expiry, ~60 days from creation.** Stripe deletes the sandbox if the user never claims it. Stripe also emails the user at day 53 (7 days before expiry). Mention this proactively only when there are ≤14 days left — earlier mentions are noise. Sample: "Your Stripe sandbox expires on \<date>; if you want to take real payments you'll need to complete the claim at \<claimUrl> before then."
-- **`claimUrlExpiresAt` — onboarding-link expiry, ~7 days from creation/last refresh.** The platform auto-renews the URL when you re-call `stripe__setup` on an existing sandbox. **If the user reports "the claim link doesn't work" or "Stripe says my link expired"**, call `stripe__setup({})` (no inputs) — it will return a freshly minted `claimUrl` you can hand back. If the user clicked the expired link before returning to Airo, Stripe redirects them back to the main Airo page — they just need to open a chat and ask for a new link.
-- **Don't act on `undefined` for either field.** Sandboxes provisioned before this schema landed have neither — treat as "unknown, no warning needed."
-
-### MCP-tool access ends 7 days after claim
-
-The `STRIPE_MCP_KEY` Stripe issues with the sandbox is valid until **7 days after the user *claims* the sandbox** (or until they complete the full claim+install→live transition, whichever comes first). After that, MCP tools (`stripe__create_product`, `stripe__list_products`, etc.) will start returning 401 errors.
-
-- The happy path is fast: claim → install → live in one session, and at that point the platform deletes `STRIPE_MCP_KEY` deliberately (MCP is sandbox-only) and the agent directs the user to the Stripe dashboard for product management.
-- The hazardous window is **claimed-but-not-installed for >7 days**: the merchant clicked the claim link, completed identity verification, but never finished installing the GoDaddy app in their live account. MCP tool calls will start 401-ing.
-- **If a `stripe__*` MCP call fails with an auth/key error** (the tool surfaces a structured `{ error: 'stripe_mcp_key_expired' }` response), tell the user: "Your Stripe authentication has expired. Please finish setting up your live account at \<claimUrl> — once that's complete I can manage products again." Do **not** retry the MCP call until the user confirms.
+`stripe__setup` / `stripe__status` carry `expiresAt` (sandbox hard-expiry, ~60 days) and `claimUrlExpiresAt` (~7 days) as RFC3339 strings. Surface `expiresAt` proactively only when there are ≤14 days left — earlier is noise. Treat `undefined` for either field as "unknown, no warning needed" (pre-schema sandboxes).
 
 ### Graceful degradation
 
-If `stripe__setup` returns `{stripeProvisioningUnavailable: true}` with a `message`, the upstream Stripe API is unavailable — usually because the platform Stripe API isn't enabled for this project yet. Tell the user the literal `message`. **Do not** retry within the same conversation; suggest they try again later.
+If `stripe__setup` returns `{ stripeProvisioningUnavailable: true }` with a `message`, the upstream Stripe API isn't enabled for this project. Tell the user the literal `message` and don't retry in the same conversation.
 
 ---
 
@@ -110,7 +173,7 @@ const result = await skill({ action: 'install', skill: 'payment/stripe' });
 - Contexts: `contexts/cart-context.tsx`, `contexts/use-cart.ts`
 - Analytics: `lib/analytics/track.ts`, `lib/analytics/funnel-session.ts`, `lib/analytics/checkout.ts` — commerce-funnel instrumentation. `startTrackedCheckout()` (from `checkout.ts`) is the single source of truth for the checkout flow + events; the page templates call it, and so must any hand-enhanced page (Step 5 Option B).
 - Library: `lib/stripe/format.ts` (browser-safe) + `lib/stripe/stripe.ts` (server SDK helper, used by legacy mode)
-- Legacy-mode scripts: `scripts/stripe-register-products.ts`, `scripts/stripe-list-products.ts` — used only in legacy mode (Step 4); harmless/unused in auto-provisioned mode.
+- Product scripts: `scripts/stripe-register-products.ts`, `scripts/stripe-list-products.ts` — the product-registration path for both managed and legacy modes (Step 4). Both read `STRIPE_SECRET_KEY` from the env.
 - **i18n dependencies** (automatic via skill-deps)
 
 **⚠️ Templates use `t('stripe.*')` — you MUST add translations in Step 3.**
@@ -222,27 +285,28 @@ Files created:
 
 ## Step 4: Populate Products
 
-**Both modes end the same way: edit the embedded `PRODUCTS` array in `src/pages/Products.tsx`.** Only *how you obtain* each product's `priceId` differs:
-
-- **Auto-provisioned mode:** use the MCP tools (`stripe__create_product` / `stripe__create_price` / `stripe__list_products`) — Option 1/2 below.
-- **Legacy mode (no MCP tools):** register via the bundled scripts instead — see "Legacy mode: register via scripts" at the end of this step — then paste the returned `priceId`s into `PRODUCTS` exactly as below.
-
-When the sandbox is provisioned and the agent has `STRIPE_MCP_KEY` in its environment, Stripe MCP tools auto-load: `stripe__create_product`, `stripe__create_price`, `stripe__list_products`, etc. Check your active tool list — if those tools are present, use them directly for all Stripe writes.
+Both modes — managed and legacy — register products the same way: run the bundled `stripe-register-products.ts` script, then edit the embedded `PRODUCTS` array in `src/pages/Products.tsx` with the values it returns. The script reads `STRIPE_SECRET_KEY` from the env, so it works whether that key is `sk_test_*` (provisioned / claimed) or `sk_live_*` (live).
 
 **🛑 MANDATORY — ask the user how to set up products:**
 
 > "How should I set up products?
 >
-> 1. **Register new products** → I'll create products and prices in your Stripe sandbox.
-> 2. **Use existing Stripe products** → I'll list what's already in your sandbox."
+> 1. **Register new products** → I'll create products and prices in your Stripe account.
+> 2. **Use existing Stripe products** → I'll list what's already there and wire them up."
 
 **🛑 Mandatory STOP — wait for answer.**
 
 ### Option 1: Register new products
 
-For each product the user names, call `stripe__create_product` then `stripe__create_price`. For subscriptions, set `recurring: { interval: 'month' }` (or `'year'`, etc.) on the price.
+Invoke the script — **one product per invocation**:
 
-**🚨 PRICE FORMAT:** prices use the smallest currency unit (cents for USD, yen as integer for JPY, etc.). MCP tool inputs document the expected shape — follow them. The customer-app's `formatPrice` helper handles display conversion.
+```bash
+cd /app && npx tsx src/scripts/stripe-register-products.ts '{"name":"Pro Plan","description":"Full access to all features","price":29.99,"currency":"usd"}'
+# subscription: add recurring
+cd /app && npx tsx src/scripts/stripe-register-products.ts '{"name":"Monthly","price":9.99,"currency":"usd","recurring":{"interval":"month"}}'
+```
+
+**🚨 PRICE FORMAT:** pass the price **as displayed** (`29.99`, not `2999`). The script converts to the smallest unit Stripe expects. Each call returns `{ product: { productId, priceId, name, price, currency, recurring? } }` where `price` is the smallest-unit integer (cents for USD, yen as integer for JPY, etc.). The customer-app's `formatPrice` helper handles display conversion.
 
 **✅ RECOMMENDED: Skip images in Stripe registration.** Keep the app's existing product images (any URL — local, relative, data URL). Use Stripe only for checkout via `priceId`.
 
@@ -252,8 +316,8 @@ After each successful create, **edit `src/pages/Products.tsx`** and append to th
 const PRODUCTS: Product[] = [
   // ... existing entries ...
   {
-    id: 'prod_xxx',                                    // Stripe product ID returned by stripe__create_product
-    priceId: 'price_xxx',                              // Stripe price ID returned by stripe__create_price
+    id: 'prod_xxx',                                    // Stripe product ID returned by the script (productId field)
+    priceId: 'price_xxx',                              // Stripe price ID returned by the script (priceId field)
     name: 'Pro Plan',
     description: 'Full access to all features',         // string | null
     images: ['/images/pro.png'],                        // string[] — array, even if empty: []
@@ -276,21 +340,15 @@ Field-name pitfalls: it's `id` (not omitted), `images` (array, not `image`), `am
 
 **🚫 Do NOT show priceIds to the user** — they're internal and meaningless to merchants.
 
-### Option 2: Use existing products
+### Option 2: Use existing Stripe products
 
-Call the list-shape MCP tool (e.g. `stripe__list_products` — verify the exact name in your tool list). Map each returned product to the `Product` interface declared at the top of `pages/Products.tsx` and embed it into the `PRODUCTS` array — same field names as Option 1 (`id`, `priceId`, `name`, `description`, `images: string[]`, `amount` (smallest currency unit), `currency`, `recurring: { interval, intervalCount } | null`). Use the price value Stripe returns, not any user-typed value.
-
-### Legacy mode: register via scripts (`stripe__*` MCP tools absent)
-
-In legacy mode there is no MCP key, so the `stripe__*` MCP tools are not available. Register products with the bundled script — **one product per invocation**:
+List what's already in the account, then wire each entry into `PRODUCTS`:
 
 ```bash
-cd /app && npx tsx src/scripts/stripe-register-products.ts '{"name":"Pro Plan","description":"...","price":29.99,"currency":"usd"}'
-# subscriptions: add recurring
-cd /app && npx tsx src/scripts/stripe-register-products.ts '{"name":"Monthly","price":9.99,"currency":"usd","recurring":{"interval":"month"}}'
+cd /app && npx tsx src/scripts/stripe-list-products.ts
 ```
 
-**🚨 PRICE FORMAT for the script:** pass the price **as displayed** (`29.99`, not `2999`) — the script converts to the smallest unit. Each call returns `{ product: { priceId, price, currency } }` where `price` is in the smallest unit. To list what's already in the account, run `npx tsx src/scripts/stripe-list-products.ts`. Then edit `src/pages/Products.tsx` and append to `PRODUCTS` using the **same `Product` interface as Option 1** (`id`, `priceId`, `images: string[]`, `amount` = the returned smallest-unit `price`, `currency`, `recurring`).
+Map each returned product to the `Product` interface above. Use the price values Stripe returns (smallest-unit integer for `amount`), not any user-typed value.
 
 ---
 
@@ -532,16 +590,11 @@ const { cartCount } = useCart();
 
 ---
 
-## Reference: when MCP tools are absent
+## Reference: Stripe Dashboard for live-mode product management
 
-If only `stripe__setup` and `stripe__status` show in your tool list (no create/list/etc.):
-
-1. If sandbox isn't provisioned yet, call `stripe__setup` first.
-2. If it is and MCP tools are still missing, tell the user the Stripe MCP tools aren't available in this session and ask them to start a new conversation. The agent process picks up `STRIPE_MCP_KEY` on restart and `onLoad` will re-fetch the tools.
-3. **Do NOT** attempt to create products, prices, or any Stripe objects via terminal commands, `node -e` scripts, or curl. Wait for the user.
-4. **MCP tools are sandbox-only.** When `stripe__status` returns `claimStatus: 'live'`, the MCP product/price tools are no longer available — the account has moved to live mode and MCP access has been removed to keep the live account secure. If the user asks to create or manage products/prices in live mode, guide them to their Stripe Dashboard: `https://dashboard.stripe.com/products`. The checkout integration continues to work normally; only agent-initiated product creation via MCP is unavailable.
+Once `claimStatus: 'live'`, the customer's real Stripe account is in the loop. The bundled `stripe-register-products.ts` script keeps working against the live key, but ongoing product management (price updates, deactivations, inventory, etc.) is usually easier in the user's own Stripe Dashboard: `https://dashboard.stripe.com/products`. The checkout integration continues to work normally regardless of where products are managed.
 
 ## Reference: status and idempotency
 
 - **`stripe__setup`** — idempotent on `appId`. Re-running returns the same sandbox + claim URL. Safe if the user lost the URL.
-- **`stripe__status`** — read-only. Returns `{hasStripe: false}` when no sandbox, or `{hasStripe: true, sandboxId, claimStatus, liveAccountId?}`. `claimStatus` advances `provisioned` → `claimed` → `live`.
+- **`stripe__status`** — read-only. Returns `{hasStripe: false}` when no sandbox, or `{hasStripe: true, sandboxId, claimStatus, realPaymentsEnabled, liveAccountId?, expiresAt?, claimUrlExpiresAt?}`. `claimStatus` advances `provisioned` → `claimed` → `live`. `realPaymentsEnabled` is true only at `live`. `expiresAt` and `claimUrlExpiresAt` are only returned at `provisioned` (Stripe nulls `expires_at` on claim; neither field applies once the sandbox is live).

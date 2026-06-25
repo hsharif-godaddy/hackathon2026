@@ -11,6 +11,9 @@
  * without a legacy row get a freshly provisioned sandbox.
  */
 
+import node_fs from 'node:fs';
+import node_path from 'node:path';
+
 import { z } from 'zod';
 import type { SkillToolDefinition } from '@airo/ai-skills';
 
@@ -18,6 +21,33 @@ import { logger } from '../../../../logging/index.js';
 import { stripeService, StripeServiceError } from '../../../../services/StripeService.js';
 import { loadStripeMcpTools } from '../../../../services/mcp/stripe-mcp-client.js';
 import { skillToolManager } from '../../../../tools/skill-tool-manager.js';
+
+/**
+ * Returns true when the Stripe skill templates have already been installed into
+ * the app — specifically, checks for the product-registration script which is
+ * only present after `skill install` has run. Used to conditionally include the
+ * `nextStep` hint in the setupTool response so re-calls (e.g. to refresh a
+ * claimUrl) don't spuriously instruct the agent to reinstall.
+ */
+function areStripeTemplatesInstalled(appId: string): boolean {
+  // Mirror AppRepository's path resolution: CUSTOMER_APP_DIR is set in production
+  // and points directly to the preview root (/app). Fall back to the local-dev
+  // structure so the guard also fires correctly in local dev.
+  const appRoot =
+    process.env.CUSTOMER_APP_DIR ||
+    (process.env.APPS_BASE_DIR
+      ? node_path.join(process.env.APPS_BASE_DIR, appId, 'preview')
+      : node_path.join('/tmp/airo-app-builder', appId, 'preview'));
+  const scriptPath = node_path.join(appRoot, 'src', 'scripts', 'stripe-register-products.ts');
+  return node_fs.existsSync(scriptPath);
+}
+
+/**
+ * Master switch for the Stripe MCP catalog tools (`stripe__create_product`,
+ * `stripe__list_products`, etc.). Re-exported by index.ts so the onLoad hook
+ * can guard on the same flag. See index.ts for the rationale.
+ */
+export const MCP_TOOLS_ENABLED = false;
 
 /** The skill's full namespaced name — matches the key used in the registry. */
 export const SKILL_NAME = 'payment/stripe';
@@ -144,6 +174,12 @@ function logSkillError(event: string, appId: string, err: unknown): void {
  * Returns whether the tools were registered.
  */
 export async function reloadMcpToolsAfterSetup(appId: string, deadlineMs: number): Promise<boolean> {
+  if (!MCP_TOOLS_ENABLED) {
+    // MCP catalog tools are intentionally disabled — return false without
+    // attempting a load so the rest of setup proceeds cleanly. See
+    // MCP_TOOLS_ENABLED above for the rationale.
+    return false;
+  }
   let sawError = false;
   for (const [attempt, delayMs] of MCP_RELOAD_DELAYS_MS.entries()) {
     if (Date.now() + delayMs > deadlineMs) {
@@ -197,7 +233,7 @@ export const setupTool: SkillToolDefinition = {
     'country is optional — call without it first; if a country is needed the response will say so. ' +
     '(1) Returns { mode: "managed", sandboxId, accountId, claimUrl } → auto-provisioned flow: keys are in the env, never call requestSecrets. ' +
     '(2) Returns { autoProvisionedFlow: true, needsInputs: true } → country required — ask the user and call again. ' +
-    '(3) Returns { mode: "legacy", message } → app already has a pasted Stripe key: surface the message, keep existing key, do NOT provision or use MCP product tools. ' +
+    '(3) Returns { mode: "legacy", message } → app already has a pasted Stripe key: surface the message, keep existing key, do NOT provision or call requestSecrets. ' +
     '(4) Returns { stripeProvisioningUnavailable: true, message } → Stripe API unavailable: surface the message verbatim, do not retry this conversation. ' +
     'Idempotent: repeated calls for the same app return the same sandbox.',
   parameters: z.object({
@@ -260,20 +296,19 @@ export const setupTool: SkillToolDefinition = {
           mode: 'legacy' as const,
           message:
             "This app already has a Stripe integration set up with the user's own key. " +
-            'Keep using it — checkout and products work as before. Do NOT call requestSecrets, ' +
-            'do NOT provision a sandbox, and do NOT use MCP product tools (there is no MCP key). ' +
-            'Use the existing Stripe templates/scripts for product changes.',
+            'Keep using it — checkout and products work as before. Do NOT call requestSecrets ' +
+            'and do NOT provision a sandbox. Use the bundled stripe-register-products.ts script ' +
+            'for any product changes.',
         };
       }
 
       logger.info('skill.stripe.setup.success', { appId, sandboxId: sandbox.sandboxId });
 
-      // Provisioning just pushed STRIPE_MCP_KEY into the alloc. Register the
-      // Stripe MCP catalog tools (create_product, list_products, …) so they're
-      // callable on the agent's NEXT turn — no new conversation needed. Not
-      // same-turn: the executable tool map for this turn was snapshotted before
-      // setup ran (see reloadMcpToolsAfterSetup). Best-effort.
-      const mcpToolsReadyNextTurn = await reloadMcpToolsAfterSetup(
+      // Best-effort MCP-tool registration (no-op while MCP_TOOLS_ENABLED is
+      // false). Kept in place so re-enabling MCP is a one-flag flip; the call
+      // returns immediately when the flag is off. See MCP_TOOLS_ENABLED in
+      // index.ts for the rationale.
+      await reloadMcpToolsAfterSetup(
         appId,
         setupStart + SETUP_TIMEOUT_MS - MCP_RELOAD_BUDGET_MARGIN_MS,
       );
@@ -284,6 +319,13 @@ export const setupTool: SkillToolDefinition = {
         sandboxId: sandbox.sandboxId,
         accountId: sandbox.accountId,
         claimUrl: sandbox.claimUrl,
+        // Only include nextStep when templates aren't installed yet. Omitting it
+        // on idempotent re-calls (e.g. claimUrl refresh) prevents the agent from
+        // spuriously reinstalling an already-built app.
+        ...(!areStripeTemplatesInstalled(appId) && {
+          nextStep:
+            'Call skill({action: "install", skill: "payment/stripe"}) now, before asking the user anything. The checkout templates must be installed before any product or page work.',
+        }),
         // Surface expiries so the LLM can warn the user when either is
         // close. expiresAt: sandbox-level 60-day expiry (unclaimed
         // sandboxes are deleted at this time); claimUrlExpiresAt:
@@ -294,9 +336,6 @@ export const setupTool: SkillToolDefinition = {
         // act on undefined.
         ...(sandbox.expiresAt && { expiresAt: sandbox.expiresAt }),
         ...(sandbox.claimUrlExpiresAt && { claimUrlExpiresAt: sandbox.claimUrlExpiresAt }),
-        // Named to signal next-turn availability so the model doesn't attempt a
-        // same-turn MCP call (which would silently no-op against the snapshot).
-        mcpToolsReadyNextTurn,
       };
     } catch (err) {
       if (isProvisioningUnavailable(err)) {
@@ -315,12 +354,14 @@ export const setupTool: SkillToolDefinition = {
 export const statusTool: SkillToolDefinition = {
   name: 'status',
   description:
-    'Read the current Stripe sandbox claim state for this app. ' +
-    'Returns {hasStripe: false} when no sandbox has been provisioned yet, otherwise ' +
-    '{hasStripe: true, sandboxId, claimStatus, liveAccountId?, expiresAt?, claimUrlExpiresAt?}. ' +
-    'claimStatus advances: provisioned → claimed → live. expiresAt is the sandbox 60-day expiry ' +
-    '(deleted by Stripe if unclaimed); claimUrlExpiresAt is the 7-day onboarding-link expiry ' +
-    '(both RFC3339 UTC; absent for sandboxes provisioned before this schema). Read-only and safe to call any time.',
+    'Read current Stripe integration state for this app. ' +
+    'Returns {hasStripe: false} when no integration exists, otherwise ' +
+    '{hasStripe: true, claimStatus, realPaymentsEnabled, sandboxId, liveAccountId?, expiresAt?, claimUrlExpiresAt?}. ' +
+    'claimStatus advances provisioned → claimed → live. realPaymentsEnabled is the direct answer to "is the site accepting real money?" — true only at live. ' +
+    'At claimStatus="live": real payments are enabled on both preview and published environments; the env runs on sk_live_*/pk_live_*; the sandbox is in terminal state. Do not mention sandbox expiry, test mode, "still in test", or any switch-to-live-keys step — none of that applies. For product management going forward, direct the user to https://dashboard.stripe.com. ' +
+    'At claimStatus="claimed": the user linked their Stripe account but has not yet installed the GoDaddy app, so the env still runs on test keys; the only step left is finishing the install at claimUrl (re-call setup to mint a fresh one). ' +
+    'At claimStatus="provisioned": sandbox is unclaimed; expiresAt (60-day sandbox hard-expiry) and claimUrlExpiresAt (7-day onboarding-link expiry) are present. Both are RFC3339 UTC. ' +
+    'expiresAt and claimUrlExpiresAt are only returned at provisioned — Stripe nulls expires_at on claim, and neither field applies once the sandbox is live. Read-only and safe to call any time.',
   parameters: z.object({}),
   config: {
     requiresApp: true,
@@ -351,15 +392,21 @@ export const statusTool: SkillToolDefinition = {
         sandboxId: status.sandboxId,
         claimStatus: status.claimStatus,
       });
+      const isProvisioned: boolean = status.claimStatus === 'provisioned';
       return {
         success: true,
         hasStripe: true,
         sandboxId: status.sandboxId,
         claimStatus: status.claimStatus,
+        realPaymentsEnabled: status.claimStatus === 'live',
         ...(status.liveAccountId && { liveAccountId: status.liveAccountId }),
-        // Surface expiries — see setupTool for context on these fields.
-        ...(status.expiresAt && { expiresAt: status.expiresAt }),
-        ...(status.claimUrlExpiresAt && { claimUrlExpiresAt: status.claimUrlExpiresAt }),
+        // Expiry fields only apply pre-claim. Stripe nulls expires_at when the
+        // sandbox is claimed; both fields are meaningless once claimStatus is
+        // live (sandbox is in terminal state). Filtering here so the agent
+        // can't echo a stale "sandbox expires <date>" / "still in test mode"
+        // narrative for claimed or live integrations.
+        ...(isProvisioned && status.expiresAt && { expiresAt: status.expiresAt }),
+        ...(isProvisioned && status.claimUrlExpiresAt && { claimUrlExpiresAt: status.claimUrlExpiresAt }),
       };
     } catch (err) {
       // /v1/status doesn't call Stripe so STRIPE_CREATE_FAILED shouldn't

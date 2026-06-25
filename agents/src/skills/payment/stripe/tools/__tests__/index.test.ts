@@ -30,6 +30,13 @@ vi.mock('../../../../../services/mcp/stripe-mcp-client.js', () => ({
   loadStripeMcpTools: mockLoadStripeMcpTools,
 }));
 
+const mockFsExistsSync = vi.fn();
+
+vi.mock('node:fs', () => ({
+  default: { existsSync: mockFsExistsSync },
+  existsSync: mockFsExistsSync,
+}));
+
 const mockRegisterDynamicTools = vi.fn();
 
 vi.mock('../../../../../tools/skill-tool-manager.js', () => ({
@@ -65,18 +72,16 @@ describe('stripe skill tools', () => {
     // Default: MCP key not yet propagated. Tests that need MCP tools loaded
     // immediately override this in their own setup.
     mockLoadStripeMcpTools.mockResolvedValue({});
+    // Default: templates not yet installed — nextStep should be included.
+    mockFsExistsSync.mockReturnValue(false);
   });
 
   describe('setupTool (platform-managed)', () => {
-    it('forwards input to createSandbox and returns the sandbox shape + next-turn flag', async () => {
+    it('forwards input to createSandbox and returns the sandbox shape (no MCP fields)', async () => {
       mockCreateSandbox.mockResolvedValueOnce({
         sandboxId: 'cbsbx_fake_X',
         accountId: 'acct_fake_X',
         claimUrl: 'https://dashboard.stripe.com/fake-claim/cbsbx_fake_X',
-      });
-      // MCP tools already present → registered on the first (0ms) attempt.
-      mockLoadStripeMcpTools.mockResolvedValue({
-        products_create: { description: 'create a product', execute: vi.fn() },
       });
 
       const result = await setupTool.execute({ country: 'US' }, APP);
@@ -88,11 +93,11 @@ describe('stripe skill tools', () => {
         sandboxId: 'cbsbx_fake_X',
         accountId: 'acct_fake_X',
         claimUrl: 'https://dashboard.stripe.com/fake-claim/cbsbx_fake_X',
-        mcpToolsReadyNextTurn: true,
+        nextStep: expect.stringContaining('skill({action: "install"'),
       });
-      expect(mockRegisterDynamicTools).toHaveBeenCalledWith('payment/stripe', {
-        products_create: expect.anything(),
-      });
+      // MCP catalog tools are disabled — loader and dynamic registration must not fire.
+      expect(mockLoadStripeMcpTools).not.toHaveBeenCalled();
+      expect(mockRegisterDynamicTools).not.toHaveBeenCalled();
     });
 
     it('returns a graceful-degrade shape on STRIPE_CREATE_FAILED and logs at WARN (not ERROR)', async () => {
@@ -145,90 +150,61 @@ describe('stripe skill tools', () => {
       expect(mockCreateSandbox).not.toHaveBeenCalled();
     });
 
-    it('registers MCP tools on a later attempt when the key propagates late (backoff)', async () => {
-      vi.useFakeTimers();
-      try {
-        mockCreateSandbox.mockResolvedValueOnce({ sandboxId: 's', accountId: 'a', claimUrl: 'u' });
-        const fakeTool = { description: 'create a product', execute: vi.fn() };
-        mockLoadStripeMcpTools.mockResolvedValueOnce({}); // attempt 0: not propagated
-        mockLoadStripeMcpTools.mockResolvedValueOnce({ products_create: fakeTool }); // attempt 1
+    it('omits nextStep when templates are already installed (idempotent re-call)', async () => {
+      mockFsExistsSync.mockReturnValue(true); // templates present
+      mockCreateSandbox.mockResolvedValueOnce({ sandboxId: 's', accountId: 'a', claimUrl: 'u' });
 
-        const pending = setupTool.execute({ country: 'US' }, APP);
-        await vi.advanceTimersByTimeAsync(0);
-        expect(mockLoadStripeMcpTools).toHaveBeenCalledTimes(1);
-        await vi.advanceTimersByTimeAsync(1999);
-        expect(mockLoadStripeMcpTools).toHaveBeenCalledTimes(1); // backoff: no 2nd load yet
-        await vi.advanceTimersByTimeAsync(1);
-        expect(mockLoadStripeMcpTools).toHaveBeenCalledTimes(2);
+      const result = await setupTool.execute({ country: 'US' }, APP);
 
-        const result = await pending;
-        expect(mockRegisterDynamicTools).toHaveBeenCalledWith('payment/stripe', { products_create: fakeTool });
-        expect(mockLoggerInfo).toHaveBeenCalledWith(
-          'skill.stripe.setup.mcp_tools_registered',
-          expect.objectContaining({ appId: 'app-1', attempt: 1 }),
-        );
-        expect(result).toMatchObject({ success: true, mcpToolsReadyNextTurn: true });
-      } finally {
-        vi.useRealTimers();
-      }
+      expect(result).not.toHaveProperty('nextStep');
+      expect(result).toMatchObject({ success: true, mode: 'managed' });
     });
 
-    it('returns mcpToolsReadyNextTurn:false with a key_not_propagated reason when the key never lands', async () => {
-      vi.useFakeTimers();
-      try {
-        mockCreateSandbox.mockResolvedValueOnce({ sandboxId: 's', accountId: 'a', claimUrl: 'u' });
-        mockLoadStripeMcpTools.mockResolvedValue({});
+    it('resolves template path via CUSTOMER_APP_DIR in production', async () => {
+      const original = process.env.CUSTOMER_APP_DIR;
+      process.env.CUSTOMER_APP_DIR = '/app';
+      mockFsExistsSync.mockReturnValue(true);
+      mockCreateSandbox.mockResolvedValueOnce({ sandboxId: 's', accountId: 'a', claimUrl: 'u' });
 
-        const pending = setupTool.execute({ country: 'US' }, APP);
-        await vi.runAllTimersAsync();
-        const result = await pending;
+      const result = await setupTool.execute({ country: 'US' }, APP);
 
-        expect(mockLoadStripeMcpTools).toHaveBeenCalledTimes(3);
-        expect(mockRegisterDynamicTools).not.toHaveBeenCalled();
-        expect(mockLoggerInfo).toHaveBeenCalledWith(
-          'skill.stripe.setup.mcp_tools_not_ready',
-          expect.objectContaining({ appId: 'app-1', reason: 'key_not_propagated' }),
-        );
-        expect(result).toMatchObject({ success: true, mcpToolsReadyNextTurn: false });
-      } finally {
-        vi.useRealTimers();
-      }
+      // CUSTOMER_APP_DIR is set → existsSync was called with the production path
+      expect(mockFsExistsSync).toHaveBeenCalledWith(
+        expect.stringContaining('/app/src/scripts/stripe-register-products.ts'),
+      );
+      expect(result).not.toHaveProperty('nextStep');
+
+      process.env.CUSTOMER_APP_DIR = original;
     });
 
-    it('bails early when the remaining setup-timeout budget is exhausted', async () => {
-      vi.useFakeTimers();
-      try {
-        mockCreateSandbox.mockResolvedValueOnce({ sandboxId: 's', accountId: 'a', claimUrl: 'u' });
-        mockLoadStripeMcpTools.mockResolvedValue({});
+    it('never attempts MCP loading from setup (MCP catalog tools are disabled)', async () => {
+      mockCreateSandbox.mockResolvedValueOnce({ sandboxId: 's', accountId: 'a', claimUrl: 'u' });
+      // Even if the loader would succeed, the disabled flag must short-circuit it.
+      mockLoadStripeMcpTools.mockResolvedValue({
+        products_create: { description: 'p', execute: vi.fn() },
+      });
 
-        // setupStart records Date.now() at the beginning of execute. Advance the
-        // clock by 29s first so the deadline (start + 30000 - 2000 = start + 28000)
-        // is already past when reloadMcpToolsAfterSetup runs.
-        const pending = setupTool.execute({ country: 'US' }, APP);
-        vi.advanceTimersByTime(29000);
-        await vi.runAllTimersAsync();
-        const result = await pending;
+      const result = await setupTool.execute({ country: 'US' }, APP);
 
-        // First attempt (0ms delay): Date.now() + 0 > deadline → bail immediately.
-        expect(mockLoadStripeMcpTools).not.toHaveBeenCalled();
-        expect(mockRegisterDynamicTools).not.toHaveBeenCalled();
-        expect(mockLoggerInfo).toHaveBeenCalledWith(
-          'skill.stripe.setup.mcp_reload_budget_exhausted',
-          expect.objectContaining({ appId: 'app-1', attempt: 0 }),
-        );
-        expect(result).toMatchObject({ success: true, mcpToolsReadyNextTurn: false });
-      } finally {
-        vi.useRealTimers();
-      }
+      expect(mockLoadStripeMcpTools).not.toHaveBeenCalled();
+      expect(mockRegisterDynamicTools).not.toHaveBeenCalled();
+      expect(result).not.toHaveProperty('mcpToolsReadyNextTurn');
+      expect(result).toMatchObject({ success: true, mode: 'managed' });
     });
   });
 
   describe('statusTool', () => {
-    it('returns hasStripe:true with the sandbox state', async () => {
+    it('returns hasStripe:true with the sandbox state at provisioned', async () => {
       mockGetStatus.mockResolvedValueOnce({ sandboxId: 'cbsbx_fake_X', claimStatus: 'provisioned' });
       const result = await statusTool.execute({}, APP);
       expect(mockGetStatus).toHaveBeenCalledWith('app-1');
-      expect(result).toEqual({ success: true, hasStripe: true, sandboxId: 'cbsbx_fake_X', claimStatus: 'provisioned' });
+      expect(result).toEqual({
+        success: true,
+        hasStripe: true,
+        sandboxId: 'cbsbx_fake_X',
+        claimStatus: 'provisioned',
+        realPaymentsEnabled: false,
+      });
     });
 
     it('returns hasStripe:false when no sandbox exists', async () => {
@@ -237,14 +213,80 @@ describe('stripe skill tools', () => {
       expect(result).toEqual({ success: true, hasStripe: false });
     });
 
-    it('includes liveAccountId in the response when present', async () => {
+    it('includes liveAccountId and realPaymentsEnabled:true at live', async () => {
       mockGetStatus.mockResolvedValueOnce({
         sandboxId: 'cbsbx_fake_X',
         claimStatus: 'live',
         liveAccountId: 'acct_live_real',
       });
       const result = await statusTool.execute({}, APP);
-      expect(result).toMatchObject({ success: true, hasStripe: true, liveAccountId: 'acct_live_real' });
+      expect(result).toEqual({
+        success: true,
+        hasStripe: true,
+        sandboxId: 'cbsbx_fake_X',
+        claimStatus: 'live',
+        realPaymentsEnabled: true,
+        liveAccountId: 'acct_live_real',
+      });
+    });
+
+    it('returns realPaymentsEnabled:false at claimed', async () => {
+      mockGetStatus.mockResolvedValueOnce({
+        sandboxId: 'cbsbx_fake_X',
+        claimStatus: 'claimed',
+      });
+      const result = await statusTool.execute({}, APP);
+      expect(result).toEqual({
+        success: true,
+        hasStripe: true,
+        sandboxId: 'cbsbx_fake_X',
+        claimStatus: 'claimed',
+        realPaymentsEnabled: false,
+      });
+    });
+
+    it('surfaces expiresAt and claimUrlExpiresAt only at provisioned', async () => {
+      mockGetStatus.mockResolvedValueOnce({
+        sandboxId: 'cbsbx_fake_X',
+        claimStatus: 'provisioned',
+        expiresAt: '2026-08-22T00:00:00Z',
+        claimUrlExpiresAt: '2026-06-30T00:00:00Z',
+      });
+      const result = await statusTool.execute({}, APP);
+      expect(result).toEqual({
+        success: true,
+        hasStripe: true,
+        sandboxId: 'cbsbx_fake_X',
+        claimStatus: 'provisioned',
+        realPaymentsEnabled: false,
+        expiresAt: '2026-08-22T00:00:00Z',
+        claimUrlExpiresAt: '2026-06-30T00:00:00Z',
+      });
+    });
+
+    it('suppresses expiresAt and claimUrlExpiresAt at claimed (Stripe nulls them on claim)', async () => {
+      mockGetStatus.mockResolvedValueOnce({
+        sandboxId: 'cbsbx_fake_X',
+        claimStatus: 'claimed',
+        expiresAt: '2026-08-22T00:00:00Z',
+        claimUrlExpiresAt: '2026-06-30T00:00:00Z',
+      });
+      const result = await statusTool.execute({}, APP);
+      expect(result).not.toHaveProperty('expiresAt');
+      expect(result).not.toHaveProperty('claimUrlExpiresAt');
+    });
+
+    it('suppresses expiresAt and claimUrlExpiresAt at live (sandbox in terminal state)', async () => {
+      mockGetStatus.mockResolvedValueOnce({
+        sandboxId: 'cbsbx_fake_X',
+        claimStatus: 'live',
+        liveAccountId: 'acct_live_real',
+        expiresAt: '2026-08-22T00:00:00Z',
+        claimUrlExpiresAt: '2026-06-30T00:00:00Z',
+      });
+      const result = await statusTool.execute({}, APP);
+      expect(result).not.toHaveProperty('expiresAt');
+      expect(result).not.toHaveProperty('claimUrlExpiresAt');
     });
 
     it('returns a missing-appId error without calling stripeService', async () => {
@@ -375,33 +417,17 @@ describe('stripe skill tools', () => {
     });
   });
 
-  describe('hooks.onLoad (MCP catalog tools only)', () => {
-    it('registers MCP tools when available', async () => {
-      mockLoadStripeMcpTools.mockResolvedValue({ products_create: { description: 'p', execute: vi.fn() } });
+  describe('hooks.onLoad (no-op while MCP_TOOLS_ENABLED=false)', () => {
+    it('does not attempt to load or register MCP tools', async () => {
+      // Even if the loader would resolve to a non-empty map, hooks.onLoad must
+      // short-circuit on the disabled flag and skip both calls.
+      mockLoadStripeMcpTools.mockResolvedValue({
+        products_create: { description: 'p', execute: vi.fn() },
+      });
 
       await hooks.onLoad?.({ skillName: 'payment/stripe', appId: 'app-1' });
 
-      expect(mockLoadStripeMcpTools).toHaveBeenCalledWith('app-1');
-      expect(mockRegisterDynamicTools).toHaveBeenCalledWith('payment/stripe', expect.objectContaining({ products_create: expect.anything() }));
-    });
-
-    it('skips registerDynamicTools when no MCP tools yet (pre-provisioning)', async () => {
-      mockLoadStripeMcpTools.mockResolvedValue({});
-
-      await hooks.onLoad?.({ skillName: 'payment/stripe', appId: 'app-1' });
-
-      expect(mockRegisterDynamicTools).not.toHaveBeenCalled();
-    });
-
-    it('logs warn and skips when MCP load throws (non-fatal)', async () => {
-      mockLoadStripeMcpTools.mockRejectedValueOnce(new Error('mcp unreachable'));
-
-      await expect(hooks.onLoad?.({ skillName: 'payment/stripe', appId: 'app-1' })).resolves.toBeUndefined();
-
-      expect(mockLoggerWarn).toHaveBeenCalledWith(
-        'skill.stripe.onload.mcp_load_failed',
-        expect.objectContaining({ appId: 'app-1' }),
-      );
+      expect(mockLoadStripeMcpTools).not.toHaveBeenCalled();
       expect(mockRegisterDynamicTools).not.toHaveBeenCalled();
     });
   });
