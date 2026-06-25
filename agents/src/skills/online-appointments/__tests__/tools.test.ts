@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-vi.mock('@opentelemetry/api', () => ({
-  trace: { getActiveSpan: vi.fn(() => null) },
+vi.mock('node:fs/promises', () => ({
+  readFile: vi.fn(),
+  readdir: vi.fn(),
 }));
 
 vi.mock('../../../logging/index.js', () => ({
@@ -15,55 +16,66 @@ vi.mock('../../../services/vite-dedupe.js', () => ({
   ensureViteResolveDedupe: vi.fn(),
 }));
 
+const { readFile, readdir } = await import('node:fs/promises');
 const { ensureViteResolveDedupe } = await import('../../../services/vite-dedupe.js');
-const { getBookingConfigTool, hooks } = await import('../tools/index.js');
+const { listSectionsTool, hooks } = await import('../tools/index.js');
 
-describe('getBookingConfigTool', () => {
+describe('listSectionsTool', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
   describe('execute', () => {
-    it('returns config when appId is present', async () => {
-      const result = await getBookingConfigTool.execute(
+    it('returns sections table of contents when appId is present', async () => {
+      vi.mocked(readdir).mockResolvedValue([
+        '01-discovery-questions.md',
+        '02-configuration-examples.md',
+      ] as never);
+      vi.mocked(readFile)
+        .mockResolvedValueOnce('## § Discovery Questions\nSome content.' as never)
+        .mockResolvedValueOnce('## § Configuration Examples\nMore content.' as never);
+
+      const result = await listSectionsTool.execute(
         {},
-        { metadata: { appId: 'testapp123' } }
+        { metadata: { appId: 'testapp123' } },
       );
-      expect(result).toMatchObject({
-        paymentProvider: 'godaddy-commerce',
-        message: expect.stringContaining('GoDaddy Commerce'),
+
+      expect(result).toEqual({
+        sections: [
+          { slug: '01-discovery-questions', title: 'Discovery Questions' },
+          { slug: '02-configuration-examples', title: 'Configuration Examples' },
+        ],
       });
-      expect(result).not.toHaveProperty('error');
     });
 
-    it('still returns config when appId is absent', async () => {
-      const result = await getBookingConfigTool.execute({}, {});
-      expect(result).toMatchObject({
-        paymentProvider: 'godaddy-commerce',
-        message: expect.stringContaining('GoDaddy Commerce'),
-      });
-      expect(result).not.toHaveProperty('error');
-    });
-  });
+    it('returns sections when appId is absent', async () => {
+      vi.mocked(readdir).mockResolvedValue(['01-discovery-questions.md'] as never);
+      vi.mocked(readFile).mockResolvedValue('## § Discovery Questions\n...' as never);
 
-  describe('computeState', () => {
-    it('returns state with paymentProvider and queriedAt', () => {
-      const state = getBookingConfigTool.computeState!(
-        {},
-        { paymentProvider: 'godaddy-commerce', message: 'test' }
+      const result = await listSectionsTool.execute({}, {});
+
+      expect(result).toEqual({
+        sections: [{ slug: '01-discovery-questions', title: 'Discovery Questions' }],
+      });
+    });
+
+    it('returns empty title when file has no heading', async () => {
+      vi.mocked(readdir).mockResolvedValue(['01-discovery-questions.md'] as never);
+      vi.mocked(readFile).mockResolvedValue('no heading here' as never);
+
+      const result = await listSectionsTool.execute({}, {});
+
+      expect(result).toEqual({
+        sections: [{ slug: '01-discovery-questions', title: '' }],
+      });
+    });
+
+    it('propagates readdir errors', async () => {
+      vi.mocked(readdir).mockRejectedValue(new Error('ENOENT: directory not found'));
+
+      await expect(listSectionsTool.execute({}, {})).rejects.toThrow(
+        'ENOENT: directory not found',
       );
-      expect(state).toMatchObject({
-        paymentProvider: 'godaddy-commerce',
-        queriedAt: expect.any(String),
-      });
-    });
-
-    it('returns null when output has no paymentProvider', () => {
-      expect(getBookingConfigTool.computeState!({}, {})).toBeNull();
-    });
-
-    it('returns null when output is null', () => {
-      expect(getBookingConfigTool.computeState!({}, null)).toBeNull();
     });
   });
 });
@@ -81,9 +93,11 @@ describe('hooks.onInstall', () => {
 
   it('rethrows when ensureViteResolveDedupe throws', async () => {
     const error = new Error('dedupe failed');
-    vi.mocked(ensureViteResolveDedupe).mockImplementation(() => { throw error; });
+    vi.mocked(ensureViteResolveDedupe).mockImplementation(() => {
+      throw error;
+    });
     await expect(
-      hooks.onInstall!({ skillName: 'online-appointments', appPath: '/app/path' })
+      hooks.onInstall!({ skillName: 'online-appointments', appPath: '/app/path' }),
     ).rejects.toThrow('dedupe failed');
   });
 

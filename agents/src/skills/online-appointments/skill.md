@@ -104,8 +104,13 @@ Confirm), and only after the customer says yes do you start touching files.
 
 ## How to load detailed sections
 
-Detailed implementation lives in `sections/`. Each section is a separate file named
-`NN-slug.md`. Load only the section you need:
+Detailed implementation lives in `sections/`. Use the `listSections` tool and `loadReference`
+together as follows:
+
+1. **Collect user requirements** — ask the user about their booking intent before touching any sections.
+2. **Call `listSections`** — returns a table of contents (slug + title) of every available section.
+3. **Choose relevant sections** — based on the user's requirements, identify which sections apply (e.g. payment sections only if the user wants paid bookings).
+4. **Load each relevant section** via `loadReference`:
 
 ```typescript
 skill({ action: 'loadReference', path: 'online-appointments/sections/NN-slug' })
@@ -125,6 +130,7 @@ Customer Portal (conditional).
 ## Step 1: Discovery ✓
 
 **For full conversational scripts:**
+Call `listSections` to see all available sections, then:
 ```typescript
 skill({ action: 'loadReference', path: 'online-appointments/sections/01-discovery-questions' })
 ```

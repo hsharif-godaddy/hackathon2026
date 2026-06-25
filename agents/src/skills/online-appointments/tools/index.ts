@@ -1,6 +1,8 @@
+import { readFile, readdir } from 'node:fs/promises';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 import type { SkillToolDefinition, SkillHooks, SkillSessionAnnouncements } from '@airo/ai-skills';
-import { trace } from '@opentelemetry/api';
 import { Logger } from '../../../logging/index.js';
 import { ensureViteResolveDedupe } from '../../../services/vite-dedupe.js';
 import { AppRepository } from '../../../database/repositories/AppRepository.js';
@@ -13,8 +15,6 @@ import {
   type OlaFeature,
 } from './feature-catalog.js';
 
-//module-level logger — all OLA log events carry component: "online-appointments.skill"
-// and are queryable in Loki via {job="airo-agents"} | json | component="online-appointments.skill"
 const logger = Logger.create({ component: 'online-appointments.skill' });
 
 type ToolContext = { metadata?: { appId?: string } };
@@ -23,54 +23,59 @@ function getAppId(ctx?: ToolContext): string | undefined {
   return ctx?.metadata?.appId;
 }
 
-export const getBookingConfigTool: SkillToolDefinition = {
-  name: 'getBookingConfig',
+const sectionsDir: string = join(dirname(fileURLToPath(import.meta.url)), '..', 'sections');
+
+interface SectionEntry {
+  slug: string;
+  title: string;
+}
+
+/** First-line heading in each section file: `## § Title` */
+function extractSectionTitle(content: string): string {
+  const firstLine = content.split('\n')[0]?.trim() ?? '';
+  const match = firstLine.match(/^##\s+§\s+(.+)$/);
+  return match ? match[1]!.trim() : '';
+}
+
+export const listSectionsTool: SkillToolDefinition = {
+  name: 'listSections',
   description:
-    'Returns the payment provider configuration for the online-appointments skill. ' +
-    'Load commerce for store/catalog/cart setup, then payment/godaddy-payments for checkout. ' +
-    'Do NOT load stripe.',
+    'Lists all available implementation sections for the online-appointments skill as a table of contents. ' +
+    'Returns each section\'s slug and title so you can identify which sections are relevant ' +
+    'before loading them with skill({ action: "loadReference", ... }).',
   parameters: z.object({}),
 
-  async execute(_input, context) {
-    const appId = getAppId(context as ToolContext);
+  async execute(
+    _input: Record<string, never>,
+    context?: ToolContext,
+  ): Promise<{ sections: SectionEntry[] }> {
+    const appId: string | undefined = getAppId(context);
 
-    if (appId) {
-      logger.info('online-appointments.skill.getBookingConfig.called', { appId });
-    } else {
-      logger.warn('online-appointments.skill.getBookingConfig.missing_app_id', {});
-    }
+    logger.info('online-appointments.skill.listSections.begin', {
+      appId: appId ?? null,
+    });
 
-    const result = {
-      paymentProvider: 'godaddy-commerce',
-      message:
-        'Online appointments uses GoDaddy Commerce for store/catalog/cart setup and GoDaddy Payments checkout. ' +
-        'Load commerce first, then payment/godaddy-payments. Do NOT load stripe.',
-    };
+    const entries: string[] = await readdir(sectionsDir);
+    const mdFiles: string[] = entries.filter((f: string) => f.endsWith('.md')).sort();
 
-    if (appId) {
-      logger.info('online-appointments.skill.getBookingConfig.returned', {
-        appId,
-        paymentProvider: result.paymentProvider,
-      });
-    }
+    const sections: SectionEntry[] = await Promise.all(
+      mdFiles.map(async (filename: string): Promise<SectionEntry> => {
+        const slug: string = filename.replace(/\.md$/, '');
+        const fileContent: string = await readFile(join(sectionsDir, filename), 'utf8');
+        const title: string = extractSectionTitle(fileContent);
+        return { slug, title };
+      }),
+    );
 
-    return result;
+    logger.info('online-appointments.skill.listSections.success', {
+      appId: appId ?? null,
+      sectionCount: sections.length,
+    });
+
+    return { sections };
   },
 
-  // persists paymentProvider to .airo/skills/online-appointments/state.json and
-  // registers the skill in applied-skills.json on first successful call, eliminating
-  // skill amnesia across conversation summarisation and multi-day session gaps.
-  computeState(_input: unknown, output: unknown) {
-    const o = output as { paymentProvider?: string } | null;
-    if (!o?.paymentProvider) return null;
-    return {
-      paymentProvider: o.paymentProvider,
-      queriedAt: new Date().toISOString(),
-    };
-  },
-
-  // timeout enforced by the framework as Promise.race — prevents indefinite hangs.
-  config: { requiresApp: true, timeout: 240_000 },
+  config: { timeout: 10_000 },
 };
 
 // The appointments UI renders React components (date picker, booking form).
