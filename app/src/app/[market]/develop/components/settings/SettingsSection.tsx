@@ -35,22 +35,30 @@ export default function SettingsSection({
   defaultOpen = true,
   useDomainConnectLayout = false,
 }: SettingsSectionProps) {
-  const titleLine = (
+  const showStatus = status && !hideStatus
+  const titleWithStatus = (title || showStatus) ? (
     <Box
       gap="md"
       orientation="horizontal"
       blockAlignChildren="spaceBetween"
-      className={cn(useDomainConnectLayout && "w-full")}
+      className={cn(useDomainConnectLayout && 'w-full')}
     >
       {title && <text.h3 as="title">{title}</text.h3>}
-      {status && !hideStatus && <SettingsSectionStatus status={status} />}
+      {showStatus && <SettingsSectionStatus status={status} />}
     </Box>
-  )
+  ) : null
+
+  const header = (titleWithStatus || description) ? (
+    <div className={cn('flex flex-col gap-1 min-w-0', useDomainConnectLayout && 'w-full')}>
+      {titleWithStatus}
+      {description && <text.p>{description}</text.p>}
+    </div>
+  ) : null
 
   const content = (
     <div className="min-w-0">
       <Box gap="md">
-        {description && <text.p>{description}</text.p>}
+        {isCollapsible && description && <text.p>{description}</text.p>}
         {button && (
           <Box gap="md" inlineAlignChildren="end" blockAlignChildren="end" className="w-full">
             {button}
@@ -66,7 +74,7 @@ export default function SettingsSection({
       <Box gap="lg" className={cn(className, "min-w-0")}>
         <Collapsible
           id={title?.toLowerCase().replace(/\s+/g, '-') ?? 'settings-section'}
-          title={titleLine}
+          title={titleWithStatus}
           defaultOpen={defaultOpen}
           size="sm"
         >
@@ -79,11 +87,11 @@ export default function SettingsSection({
   return (
     <Box gap="md" className={cn(className, 'min-w-0', useDomainConnectLayout && 'w-full')}>
       {useDomainConnectLayout ? (
-        titleLine
+        header
       ) : (
         <div className="flex flex-col flex-1 @md:flex-row justify-between items-center @md:items-start gap-3 -mb-0.5">
           <Box className="flex-1 w-full">
-            {titleLine}
+            {header}
           </Box>
         </div>
       )}

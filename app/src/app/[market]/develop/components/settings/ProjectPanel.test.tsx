@@ -67,14 +67,14 @@ describe('ProjectPanel', () => {
   it('should render without crashing', () => {
     renderWithProviders(<ProjectPanel />);
 
-    expect(screen.getByRole('button', { name: /builder_settings_project_download_button/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /builder_settings_project_download_cta/i })).toBeInTheDocument();
   });
 
   describe('Download button tracking', () => {
     it('should have correct EID attribute on download button', () => {
       renderWithProviders(<ProjectPanel />);
 
-      const downloadButton = screen.getByRole('button', { name: /builder_settings_project_download_button/i });
+      const downloadButton = screen.getByRole('button', { name: /builder_settings_project_download_cta/i });
       expect(downloadButton).toHaveAttribute('data-eid', 'appbuilder.settings.project.app_download.click');
     });
 
@@ -105,7 +105,7 @@ describe('ProjectPanel', () => {
 
       renderWithProviders(<ProjectPanel />);
 
-      const downloadButton = screen.getByRole('button', { name: /builder_settings_project_download_button/i });
+      const downloadButton = screen.getByRole('button', { name: /builder_settings_project_download_cta/i });
       await user.click(downloadButton);
 
       await waitFor(() => {
@@ -139,7 +139,7 @@ describe('ProjectPanel', () => {
 
       renderWithProviders(<ProjectPanel />);
 
-      const downloadButton = screen.getByRole('button', { name: /builder_settings_project_download_button/i });
+      const downloadButton = screen.getByRole('button', { name: /builder_settings_project_download_cta/i });
       await user.click(downloadButton);
 
       await waitFor(() => {
@@ -179,7 +179,7 @@ describe('ProjectPanel', () => {
 
       renderWithProviders(<ProjectPanel />);
 
-      const downloadButton = screen.getByRole('button', { name: /builder_settings_project_download_button/i });
+      const downloadButton = screen.getByRole('button', { name: /builder_settings_project_download_cta/i });
       expect(downloadButton).not.toBeDisabled();
     });
   });
@@ -188,13 +188,13 @@ describe('ProjectPanel', () => {
     it('should render purge cache button', () => {
       renderWithProviders(<ProjectPanel />);
 
-      expect(screen.getByRole('button', { name: /Purge Cache/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /builder_settings_project_purge_cta/i })).toBeInTheDocument();
     });
 
     it('should have correct EID attribute on purge cache button', () => {
       renderWithProviders(<ProjectPanel />);
 
-      const purgeButton = screen.getByRole('button', { name: /Purge Cache/i });
+      const purgeButton = screen.getByRole('button', { name: /builder_settings_project_purge_cta/i });
       expect(purgeButton).toHaveAttribute('data-eid', 'appbuilder.settings.project.purge_cache.click');
     });
 
@@ -210,7 +210,7 @@ describe('ProjectPanel', () => {
 
       renderWithProviders(<ProjectPanel />);
 
-      await user.click(screen.getByRole('button', { name: /Purge Cache/i }));
+      await user.click(screen.getByRole('button', { name: /builder_settings_project_purge_cta/i }));
 
       await waitFor(() => {
         expect(mockTrigger).toHaveBeenCalled();
@@ -222,7 +222,7 @@ describe('ProjectPanel', () => {
 
       renderWithProviders(<ProjectPanel />);
 
-      await user.click(screen.getByRole('button', { name: /Purge Cache/i }));
+      await user.click(screen.getByRole('button', { name: /builder_settings_project_purge_cta/i }));
 
       await waitFor(() => {
         expect(logAiroHQEvent).toHaveBeenCalledWith({
