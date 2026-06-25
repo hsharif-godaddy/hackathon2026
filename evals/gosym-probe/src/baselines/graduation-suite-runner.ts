@@ -22,6 +22,7 @@ import type { RunMetadata } from '../store/types.js';
 import type { ScenarioResult, TrialResult } from '../runner/types.js';
 import type { TrialLifecycle } from '../clients/trial-lifecycle.js';
 import type { IGocodeClient } from '../clients/gocode-client.js';
+import type { ProgressReporter } from '../util/progress-reporter.js';
 import { downloadLogoSnapshots } from '../util/download-logo-snapshots.js';
 
 export interface GraduationSuiteRunResult {
@@ -83,6 +84,8 @@ export interface GraduationSuiteRunnerOptions {
    */
   trialIndicesByScenario?: Map<string, number[]>;
   gocode?: IGocodeClient;
+  verbose?: boolean;
+  progressReporter?: ProgressReporter | null;
 }
 
 export class GraduationSuiteRunner {
@@ -213,6 +216,8 @@ export class GraduationSuiteRunner {
       onTrialEvaluated: onTrialEvaluatedWithPersistence,
       existingTrialsByScenario,
       trialIndicesByScenario,
+      verbose: this.options.verbose,
+      progressReporter: this.options.progressReporter,
       getTrialOutputDir: (scenarioName, trialIndex) =>
         store.ensureTrialDir(sharedDirName, scenarioName, trialIndex),
       writePartialTrial: async (scenarioName, trialIndex, transcript, setupCtx) => {
@@ -309,6 +314,8 @@ export class GraduationSuiteRunner {
       dirName: sharedDirName,
       skipFinalize: true,
       log: this.log,
+      verbose: this.options.verbose,
+      progressReporter: this.options.progressReporter,
     });
     return runner.run(runId);
   }

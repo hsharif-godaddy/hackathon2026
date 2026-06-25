@@ -3,6 +3,11 @@ import type { EvalResult } from '../evaluators/evaluator.js';
 import type { StabilityLevel } from '../scenarios/types.js';
 import type { RegressionResult } from '../baselines/types.js';
 
+export type DiagnosticLogFn = (
+  msg: string,
+  data?: Record<string, unknown>,
+) => void;
+
 export interface TrialResult {
   trialIndex: number;
   transcript: Transcript;

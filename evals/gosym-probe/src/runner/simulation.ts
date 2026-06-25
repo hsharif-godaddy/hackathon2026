@@ -10,6 +10,7 @@ import { GoalTracker } from './goal-tracker.js';
 import type { SyntheticUserAgent } from './synthetic-user.js';
 import type { Transcript, ToolCall, Turn } from './transcript.js';
 import { TranscriptBuilder } from './transcript.js';
+import type { DiagnosticLogFn } from './types.js';
 import { classifyCaptureError } from '../clients/site-capture/timeout-class.js';
 import { warnLine } from '../util/warn-line.js';
 
@@ -99,6 +100,18 @@ export interface SimulationOptions {
     partialTranscript: Transcript,
     setupContext: SetupContext,
   ) => Promise<void>;
+  /**
+   * When true, capture diagnostic events (capture.conversation.complete,
+   * capture.phase.complete, capture.phase.failed, capture.turn.timeout)
+   * are emitted. When false or absent, they are suppressed entirely.
+   */
+  verbose?: boolean;
+  /**
+   * Bar-aware log callback. When verbose is true, capture diagnostics are
+   * emitted via this callback if provided, otherwise via warnLine.
+   * Signature matches warnLine so the two are interchangeable.
+   */
+  log?: DiagnosticLogFn;
 }
 
 interface RunState {
@@ -115,6 +128,17 @@ interface RunState {
 
 export class Simulation {
   constructor(private readonly options: SimulationOptions) {}
+
+  /**
+   * Emits a capture diagnostic event when verbose mode is on.
+   * Routes to the caller-supplied log callback first, falling back to warnLine.
+   * No-ops when verbose is false or absent.
+   */
+  private captureLog(msg: string, data?: Record<string, unknown>): void {
+    if (!this.options.verbose) return;
+    const emit = this.options.log ?? warnLine;
+    emit(msg, data);
+  }
 
   async run(trialIndex: number): Promise<Transcript> {
     const { scenario, config } = this.options;
@@ -197,7 +221,7 @@ export class Simulation {
         assistantTurnCount++;
       }
 
-      warnLine('capture.conversation.complete', {
+      this.captureLog('capture.conversation.complete', {
         scenario: scenario.name,
         trialIndex,
         conversationMs: Date.now() - conversationStartMs,
@@ -374,7 +398,7 @@ export class Simulation {
     const { scenario } = this.options;
     const hardTimer = setTimeout(
       () => {
-        warnLine('capture.turn.timeout', {
+        this.captureLog('capture.turn.timeout', {
           scenario: scenario.name,
           turnCount: turnCount + 1,
           kind: 'hard',
@@ -397,7 +421,7 @@ export class Simulation {
         const guard = new InactivityGuard(
           inactivityMs,
           () => {
-            warnLine('capture.turn.timeout', {
+            this.captureLog('capture.turn.timeout', {
               scenario: scenario.name,
               turnCount: turnCount + 1,
               kind: 'inactivity',
@@ -454,7 +478,7 @@ export class Simulation {
       );
       builder.addSnapshot(result.snapshot);
       builder.addCapturedSite(result.capturedSite);
-      warnLine('capture.phase.complete', {
+      this.captureLog('capture.phase.complete', {
         scenario: this.options.scenario.name,
         trialIndex,
         captureMs: Date.now() - captureStartMs,
@@ -481,7 +505,7 @@ export class Simulation {
       if (err instanceof CaptureError) {
         builder.addCaptureDiagnostics(err.diagnostics);
       }
-      warnLine('capture.phase.failed', {
+      this.captureLog('capture.phase.failed', {
         scenario: this.options.scenario.name,
         trialIndex,
         captureMs: Date.now() - captureStartMs,

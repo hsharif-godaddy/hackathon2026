@@ -5,7 +5,7 @@ import { TrialAggregator } from './trial-aggregator.js';
 import { RegressionComparator } from '../baselines/regression-comparator.js';
 import { enrichScoreModePassRates } from '../baselines/score-mode-enricher.js';
 import type { Scenario, SetupContext } from '../scenarios/types.js';
-import type { ScenarioResult, TrialResult } from './types.js';
+import type { DiagnosticLogFn, ScenarioResult, TrialResult } from './types.js';
 import type { ResolvedConfig } from '../../config/index.js';
 import type { AgentClient } from '../clients/agent-client.js';
 import type { SyntheticUserAgent } from './synthetic-user.js';
@@ -20,6 +20,7 @@ import { sleep } from '../util/sleep.js';
 import { warnLine } from '../util/warn-line.js';
 import { staggeredRun, computeStaggerDelay } from '../util/stagger.js';
 import type { TrialLifecycle } from '../clients/trial-lifecycle.js';
+import type { ProgressReporter } from '../util/progress-reporter.js';
 
 // Fallback wait when the server omits Retry-After. Promote to config
 // if per-environment tuning becomes necessary (e.g. CI wants fewer retries).
@@ -157,6 +158,18 @@ export interface SuiteRunnerOptions {
    * finally block.
    */
   trialLifecycle?: TrialLifecycle;
+  /**
+   * When true, capture diagnostic events (capture.conversation.complete,
+   * capture.phase.complete, capture.phase.failed, capture.turn.timeout)
+   * are emitted by each Simulation. When false or absent, they are suppressed.
+   */
+  verbose?: boolean;
+  /**
+   * Progress reporter whose log() method is used to emit capture diagnostics
+   * while keeping the bar visible. When absent, diagnostics fall back to
+   * warnLine (which clears the bar but does not redraw it).
+   */
+  progressReporter?: ProgressReporter | null;
 }
 
 export class SuiteRunner {
@@ -164,6 +177,12 @@ export class SuiteRunner {
   private readonly comparator = new RegressionComparator();
 
   constructor(private readonly options: SuiteRunnerOptions) {}
+
+  private makeDiagnosticLog(fallback?: DiagnosticLogFn): DiagnosticLogFn | undefined {
+    const { progressReporter } = this.options;
+    if (!progressReporter) return fallback;
+    return (msg, data) => progressReporter.log(msg, data);
+  }
 
   /**
    * Execute all scenarios and return aggregated results.
@@ -540,6 +559,8 @@ export class SuiteRunner {
             }
           }
         : undefined;
+      const { verbose } = this.options;
+      const captureLog = this.makeDiagnosticLog();
       const transcript = await new Simulation({
         scenario,
         agentClient: client,
@@ -549,6 +570,8 @@ export class SuiteRunner {
         maxTurnsOverride: this.options.maxTurnsOverride,
         firstTurnInactivityMsOverride,
         onConversationComplete,
+        verbose,
+        log: captureLog,
       }).run(trialIndex);
       // Clear stale entries from prior retry attempts so a successful
       // retry does not inherit afterSimulation failures from earlier.
@@ -623,6 +646,7 @@ export class SuiteRunner {
     let inactivityAttempts = 0;
     let rateLimitAttempts = 0;
     let nextInactivityMsOverride: number | undefined;
+    const log = this.makeDiagnosticLog(warnLine)!;
     // Independent budgets: inactivity (AAB unresponsive) and rate-limit
     // (GoCode throttled) are orthogonal failure modes. Each gets its own
     // counter so one transient issue doesn't eat the other's budget.
@@ -644,7 +668,7 @@ export class SuiteRunner {
             retrySchedule[inactivityAttempts]
             ?? config.eval.firstTurnInactivityMs;
           inactivityAttempts++;
-          warnLine(
+          log(
             'Trial retry: first-turn inactivity timeout.',
             {
               scenarioName: scenario.name,
@@ -663,7 +687,7 @@ export class SuiteRunner {
         ) {
           rateLimitAttempts++;
           const waitMs = parseRetryAfterMs(err.headers) ?? RATE_LIMIT_WAIT_MS;
-          warnLine(
+          log(
             'Trial retry: rate limit (429).',
             {
               scenarioName: scenario.name,
@@ -678,7 +702,7 @@ export class SuiteRunner {
           continue;
         }
         if (err instanceof RateLimitError) {
-          warnLine(
+          log(
             'Trial failed: rate-limit retry budget exhausted.',
             {
               scenarioName: scenario.name,
@@ -688,7 +712,7 @@ export class SuiteRunner {
           );
         }
         if (err instanceof InactivityTimeoutError) {
-          warnLine(
+          log(
             'Trial failed: first-turn inactivity retry budget exhausted.',
             {
               scenarioName: scenario.name,

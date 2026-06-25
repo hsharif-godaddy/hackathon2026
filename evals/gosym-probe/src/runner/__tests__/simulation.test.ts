@@ -415,7 +415,7 @@ describe('Simulation', () => {
     },
   );
 
-  it('emits capture.conversation.complete and capture.phase.complete diagnostics', async () => {
+  it('emits capture.conversation.complete and capture.phase.complete diagnostics when verbose: true', async () => {
     const scenario = makeScenario({ name: 'diag-scenario' });
     const syntheticUser: SyntheticUserAgent = {
       nextMessage: vi
@@ -442,6 +442,7 @@ describe('Simulation', () => {
       syntheticUser,
       captureContext,
       config: mockConfig,
+      verbose: true,
     }).run(0);
 
     const events = mockWarnLine.mock.calls.map((c) => c[0]);
@@ -459,7 +460,7 @@ describe('Simulation', () => {
     expect(typeof phaseCall?.[1].captureMs).toBe('number');
   });
 
-  it('emits capture.phase.failed with a timeoutClass when capture throws', async () => {
+  it('emits capture.phase.failed with a timeoutClass when capture throws (verbose: true)', async () => {
     const scenario = makeScenario({ name: 'diag-fail' });
     const syntheticUser: SyntheticUserAgent = {
       nextMessage: vi
@@ -485,6 +486,7 @@ describe('Simulation', () => {
       syntheticUser,
       captureContext,
       config: mockConfig,
+      verbose: true,
     }).run(0);
 
     const failCall = mockWarnLine.mock.calls.find(
@@ -1716,6 +1718,158 @@ describe('Simulation', () => {
     expect(assistantTurns[0].toolCalls).toHaveLength(1);
     // Second turn had no tool events — toolCalls should be empty
     expect(assistantTurns[1].toolCalls).toHaveLength(0);
+  });
+});
+
+describe('capture diagnostic verbosity', () => {
+  it('suppresses all capture.* warnLine calls when verbose is false', async () => {
+    const scenario = makeScenario({ name: 'quiet-scenario' });
+    const syntheticUser: SyntheticUserAgent = {
+      nextMessage: vi
+        .fn()
+        .mockResolvedValueOnce('hello')
+        .mockResolvedValue(null),
+    };
+    const mockSiteCapture = {
+      capture: vi.fn().mockResolvedValue({
+        snapshot: makeSnapshotMeta(),
+        capturedSite: { routes: [{ path: '/' }] },
+      }),
+    };
+    const agent = makeAutoAgent();
+    const captureContext: SimulationCaptureContext = {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      siteCapture: mockSiteCapture as any,
+      getTrialOutputDir: vi.fn().mockResolvedValue('/tmp/trials/0'),
+    };
+
+    await new Simulation({
+      scenario,
+      agentClient: agent,
+      syntheticUser,
+      captureContext,
+      config: mockConfig,
+      verbose: false,
+    }).run(0);
+
+    const captureEvents = mockWarnLine.mock.calls.filter(
+      (c) => typeof c[0] === 'string' && (c[0] as string).startsWith('capture.'),
+    );
+    expect(captureEvents).toHaveLength(0);
+  });
+
+  it('suppresses all capture.* warnLine calls when verbose is absent', async () => {
+    const scenario = makeScenario({ name: 'quiet-default' });
+    const syntheticUser: SyntheticUserAgent = {
+      nextMessage: vi
+        .fn()
+        .mockResolvedValueOnce('hello')
+        .mockResolvedValue(null),
+    };
+    const mockSiteCapture = {
+      capture: vi.fn().mockResolvedValue({
+        snapshot: makeSnapshotMeta(),
+        capturedSite: { routes: [] },
+      }),
+    };
+    const agent = makeAutoAgent();
+    const captureContext: SimulationCaptureContext = {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      siteCapture: mockSiteCapture as any,
+      getTrialOutputDir: vi.fn().mockResolvedValue('/tmp/trials/0'),
+    };
+
+    await new Simulation({
+      scenario,
+      agentClient: agent,
+      syntheticUser,
+      captureContext,
+      config: mockConfig,
+    }).run(0);
+
+    const captureEvents = mockWarnLine.mock.calls.filter(
+      (c) => typeof c[0] === 'string' && (c[0] as string).startsWith('capture.'),
+    );
+    expect(captureEvents).toHaveLength(0);
+  });
+
+  it('routes capture diagnostics to log callback instead of warnLine when verbose: true and log provided', async () => {
+    const scenario = makeScenario({ name: 'log-cb-scenario' });
+    const syntheticUser: SyntheticUserAgent = {
+      nextMessage: vi
+        .fn()
+        .mockResolvedValueOnce('hello')
+        .mockResolvedValue(null),
+    };
+    const mockSiteCapture = {
+      capture: vi.fn().mockResolvedValue({
+        snapshot: makeSnapshotMeta(),
+        capturedSite: { routes: [{ path: '/' }] },
+      }),
+    };
+    const agent = makeAutoAgent();
+    const captureContext: SimulationCaptureContext = {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      siteCapture: mockSiteCapture as any,
+      getTrialOutputDir: vi.fn().mockResolvedValue('/tmp/trials/0'),
+    };
+    const mockLog = vi.fn();
+
+    await new Simulation({
+      scenario,
+      agentClient: agent,
+      syntheticUser,
+      captureContext,
+      config: mockConfig,
+      verbose: true,
+      log: mockLog,
+    }).run(0);
+
+    // log callback gets the capture events, not warnLine
+    const logEvents = mockLog.mock.calls.map((c) => c[0]);
+    expect(logEvents).toContain('capture.conversation.complete');
+    expect(logEvents).toContain('capture.phase.complete');
+
+    // warnLine must NOT receive capture.* events when log is provided
+    const warnCaptureEvents = mockWarnLine.mock.calls.filter(
+      (c) => typeof c[0] === 'string' && (c[0] as string).startsWith('capture.'),
+    );
+    expect(warnCaptureEvents).toHaveLength(0);
+  });
+
+  it('falls back to warnLine for capture diagnostics when verbose: true but no log provided', async () => {
+    const scenario = makeScenario({ name: 'warn-fallback' });
+    const syntheticUser: SyntheticUserAgent = {
+      nextMessage: vi
+        .fn()
+        .mockResolvedValueOnce('hello')
+        .mockResolvedValue(null),
+    };
+    const mockSiteCapture = {
+      capture: vi.fn().mockResolvedValue({
+        snapshot: makeSnapshotMeta(),
+        capturedSite: { routes: [] },
+      }),
+    };
+    const agent = makeAutoAgent();
+    const captureContext: SimulationCaptureContext = {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      siteCapture: mockSiteCapture as any,
+      getTrialOutputDir: vi.fn().mockResolvedValue('/tmp/trials/0'),
+    };
+
+    await new Simulation({
+      scenario,
+      agentClient: agent,
+      syntheticUser,
+      captureContext,
+      config: mockConfig,
+      verbose: true,
+    }).run(0);
+
+    const warnEvents = mockWarnLine.mock.calls.map((c) => c[0]);
+    expect(warnEvents).toContain('capture.conversation.complete');
+    expect(warnEvents).toContain('capture.phase.complete');
   });
 });
 

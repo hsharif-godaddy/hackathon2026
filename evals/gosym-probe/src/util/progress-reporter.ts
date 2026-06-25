@@ -65,6 +65,47 @@ export class ProgressReporter {
     }
   }
 
+  /**
+   * Prints a message to the stream while keeping the progress bar visible.
+   *
+   * On a real TTY: clears the bar line, writes the message, then re-renders
+   * the bar so it stays at the bottom.
+   * In forcedPiped mode: writes the message only (bar re-rendering is
+   * per-trial in that mode).
+   * On non-TTY: writes the message with no ANSI sequences or bar.
+   * When disabled: no-op.
+   */
+  log(message: string, data?: Record<string, unknown>): void {
+    if (this.disabled) return;
+
+    const line =
+      data !== undefined
+        ? `${message} ${JSON.stringify(data)}\n`
+        : `${message}\n`;
+
+    if (this.forcedPiped || !this.isTTY) {
+      this.write(line);
+      return;
+    }
+
+    if (this.barRendered) {
+      this.write('\r\x1B[K');
+    }
+    this.write(line);
+    this.renderBar();
+  }
+
+  /**
+   * Re-renders the current bar state without incrementing progress.
+   * Useful after an external write that may have displaced the bar.
+   * No-op when disabled or on non-TTY streams.
+   */
+  redraw(): void {
+    if (this.disabled) return;
+    if (!this.isTTY) return;
+    this.renderBar();
+  }
+
   finish(): void {
     if (this.disabled) return;
     if (this.forcedPiped) {

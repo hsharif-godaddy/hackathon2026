@@ -85,6 +85,7 @@ async function main(): Promise<void> {
       'capture-concurrency': { type: 'string' },
       'max-routes':       { type: 'string' },
       'max-turns':        { type: 'string' },
+      verbose:            { type: 'boolean' },
       'skip-baseline':    { type: 'boolean' },
       baseline:           { type: 'string' },
       'fan-out':          { type: 'boolean' },
@@ -341,6 +342,8 @@ async function main(): Promise<void> {
         existingTrialsByScenario: gradResumeState?.existingTrialsByScenario,
         trialIndicesByScenario: gradResumeState?.trialIndicesByScenario,
         gocode: narrativeGocodeClient,
+        verbose: values.verbose ?? false,
+        progressReporter: suiteReporter,
       });
 
       // Double-release (finally + catch) is safe: removeLockDir swallows ENOENT
@@ -459,6 +462,8 @@ async function main(): Promise<void> {
       onTrialEvaluated: makeProgressCallback(gradReporter),
       store: singleGradStore,
       gocode: narrativeGocodeClient,
+      verbose: values.verbose ?? false,
+      progressReporter: gradReporter,
     });
 
     console.log(
@@ -603,6 +608,8 @@ async function main(): Promise<void> {
     suiteMode: fanOut ? 'parallel' : undefined,
     existingTrialsByScenario,
     trialIndicesByScenario,
+    verbose: values.verbose ?? false,
+    progressReporter: evalReporter,
     getTrialOutputDir: (scenarioName, trialIndex) =>
       store.ensureTrialDir(dirName, scenarioName, trialIndex),
     writePartialTrial: async (scenarioName, trialIndex, transcript, setupCtx) => {

@@ -58,6 +58,7 @@ pnpm run eval          # headless eval with flags
 --capture-concurrency <n> Cap concurrent Playwright captures, independent of trial concurrency (default 2; clamped to capture.maxConcurrency, default 8). Lets you raise --concurrency without overlapping captures thrashing the backend.
 --max-routes <n>         Cap routes captured per trial (default 20). Lower it to trade capture depth for speed.
 --max-turns <n>          Override max turns per simulation
+--verbose                Print capture diagnostic events (capture.conversation.complete, capture.phase.complete, capture.phase.failed, capture.turn.timeout); suppressed by default
 --skip-baseline          Skip baseline comparison
 --baseline <run-id>      Compare against a specific baseline run instead of the most recent
 --fan-out                Dispatch trials round-robin across a worker pool (capped by maxConcurrency); workers stay busy until the queue drains

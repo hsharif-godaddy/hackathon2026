@@ -1923,6 +1923,80 @@ describe('rate limit (429) retry', () => {
   });
 });
 
+describe('retry warning routing with progressReporter', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('routes inactivity retry warning to progressReporter.log when provided', async () => {
+    const { InactivityTimeoutError } = await import('../simulation.js');
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(function () {});
+    const logSpy = vi.fn();
+    const progressReporter = { log: logSpy } as unknown as import('../../util/progress-reporter.js').ProgressReporter;
+
+    mockSimulationRun
+      .mockRejectedValueOnce(new InactivityTimeoutError(600_000))
+      .mockResolvedValue(makeTranscript());
+
+    const config: ResolvedConfig = {
+      ...mockConfig,
+      eval: { ...mockConfig.eval, maxFirstTurnRetries: 1 },
+    };
+    const scenario = makeScenario({ trials: 1 });
+
+    await new SuiteRunner({
+      scenarios: [scenario],
+      config,
+      makeAgentClient,
+      syntheticUser: mockSyntheticUser,
+      progressReporter,
+    }).run();
+
+    expect(logSpy).toHaveBeenCalledOnce();
+    expect(logSpy).toHaveBeenCalledWith(
+      'Trial retry: first-turn inactivity timeout.',
+      expect.objectContaining({ scenarioName: 'test-scenario' }),
+    );
+    expect(warnSpy).not.toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+
+  it('routes rate-limit retry warning to progressReporter.log when provided', async () => {
+    const { RateLimitError } = await import('openai');
+    const rateLimitErr = new RateLimitError(
+      429,
+      { message: 'Too many tokens', type: 'throttling_error' },
+      'Too many tokens, please wait before trying again.',
+      new Headers(),
+    );
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(function () {});
+    const logSpy = vi.fn();
+    const progressReporter = { log: logSpy } as unknown as import('../../util/progress-reporter.js').ProgressReporter;
+
+    mockSimulationRun
+      .mockRejectedValueOnce(rateLimitErr)
+      .mockResolvedValue(makeTranscript());
+
+    const scenario = makeScenario({ trials: 1 });
+
+    await new SuiteRunner({
+      scenarios: [scenario],
+      config: mockConfig,
+      makeAgentClient,
+      syntheticUser: mockSyntheticUser,
+      progressReporter,
+    }).run();
+
+    expect(logSpy).toHaveBeenCalledOnce();
+    expect(logSpy).toHaveBeenCalledWith(
+      'Trial retry: rate limit (429).',
+      expect.objectContaining({ scenarioName: 'test-scenario' }),
+    );
+    expect(warnSpy).not.toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+});
+
 describe('SuiteRunner — staggered init', () => {
   beforeEach(() => {
     vi.clearAllMocks();

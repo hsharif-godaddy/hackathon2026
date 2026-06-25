@@ -468,3 +468,162 @@ describe('ProgressReporter offset core behavior', () => {
     expect(output).toContain('s: trial 5/5 complete');
   });
 });
+
+// -- log() behavior ------------------------------------------------------------
+
+describe('ProgressReporter log()', () => {
+  it('clears bar, writes message+newline, re-renders bar when TTY and bar rendered', () => {
+    const stream = makeStream(true);
+    const reporter = new ProgressReporter({
+      total: 3,
+      scenarioTrialCounts: new Map([['s', 3]]),
+      stream,
+    });
+    (stream.write as ReturnType<typeof vi.fn>).mockClear();
+    reporter.log('warn: something happened');
+    const calls = (stream.write as ReturnType<typeof vi.fn>).mock.calls.map(
+      (c: unknown[]) => c[0] as string,
+    );
+    expect(calls[0]).toBe('\r\x1B[K');
+    expect(calls[1]).toBe('warn: something happened\n');
+    expect(calls[2]).toContain('Progress:');
+  });
+
+  it('includes data as inline JSON in the output line when data is provided', () => {
+    const stream = makeStream(true);
+    const reporter = new ProgressReporter({
+      total: 3,
+      scenarioTrialCounts: new Map([['s', 3]]),
+      stream,
+    });
+    (stream.write as ReturnType<typeof vi.fn>).mockClear();
+    reporter.log('capture.phase.complete', { trialIndex: 0, captureMs: 1234 });
+    const output = (stream.write as ReturnType<typeof vi.fn>).mock.calls
+      .map((c: unknown[]) => c[0] as string)
+      .join('');
+    expect(output).toContain('capture.phase.complete');
+    expect(output).toContain('trialIndex');
+    expect(output).toContain('1234');
+  });
+
+  it('skips clear and re-renders bar when barRendered is false after finish()', () => {
+    const stream = makeStream(true);
+    const reporter = new ProgressReporter({
+      total: 3,
+      scenarioTrialCounts: new Map([['s', 3]]),
+      stream,
+    });
+    reporter.finish();
+    (stream.write as ReturnType<typeof vi.fn>).mockClear();
+    reporter.log('warn: retry attempt');
+    const calls = (stream.write as ReturnType<typeof vi.fn>).mock.calls.map(
+      (c: unknown[]) => c[0] as string,
+    );
+    expect(calls[0]).toBe('warn: retry attempt\n');
+    expect(calls[1]).toContain('Progress:');
+  });
+
+  it('writes message+newline without ANSI on non-TTY', () => {
+    const stream = makeStream(false);
+    const reporter = new ProgressReporter({
+      total: 3,
+      scenarioTrialCounts: new Map([['s', 3]]),
+      stream,
+    });
+    reporter.log('warn: capture failed');
+    const output = (stream.write as ReturnType<typeof vi.fn>).mock.calls
+      .map((c: unknown[]) => c[0] as string)
+      .join('');
+    expect(output).toContain('warn: capture failed\n');
+    expect(output).not.toContain('\x1B');
+    expect(output).not.toContain('Progress:');
+  });
+
+  it('is a no-op when disabled', () => {
+    const stream = makeStream(true);
+    (stream.write as ReturnType<typeof vi.fn>).mockImplementation(function () {
+      throw new Error('EPIPE');
+    });
+    const reporter = new ProgressReporter({
+      total: 3,
+      scenarioTrialCounts: new Map([['s', 3]]),
+      stream,
+    });
+    const callsAfterDisable = (stream.write as ReturnType<typeof vi.fn>).mock
+      .calls.length;
+    reporter.log('should not appear');
+    expect(
+      (stream.write as ReturnType<typeof vi.fn>).mock.calls.length,
+    ).toBe(callsAfterDisable);
+  });
+
+  it('writes message+newline in forcedPiped mode without re-rendering bar', () => {
+    vi.stubEnv('FORCE_PROGRESS', '1');
+    const stream = makeStream(false);
+    const reporter = new ProgressReporter({
+      total: 3,
+      scenarioTrialCounts: new Map([['s', 3]]),
+      stream,
+    });
+    (stream.write as ReturnType<typeof vi.fn>).mockClear();
+    reporter.log('warn: capture timeout');
+    const calls = (stream.write as ReturnType<typeof vi.fn>).mock.calls.map(
+      (c: unknown[]) => c[0] as string,
+    );
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toBe('warn: capture timeout\n');
+    vi.unstubAllEnvs();
+  });
+});
+
+// -- redraw() behavior ---------------------------------------------------------
+
+describe('ProgressReporter redraw()', () => {
+  it('re-renders current bar state on TTY', () => {
+    const stream = makeStream(true);
+    const reporter = new ProgressReporter({
+      total: 3,
+      scenarioTrialCounts: new Map([['s', 3]]),
+      stream,
+    });
+    reporter.trialCompleted('s', 0);
+    (stream.write as ReturnType<typeof vi.fn>).mockClear();
+    reporter.redraw();
+    const output = (stream.write as ReturnType<typeof vi.fn>).mock.calls
+      .map((c: unknown[]) => c[0] as string)
+      .join('');
+    expect(output).toContain('Progress:');
+    expect(output).toContain('1/3');
+  });
+
+  it('is a no-op when disabled', () => {
+    const stream = makeStream(true);
+    (stream.write as ReturnType<typeof vi.fn>).mockImplementation(function () {
+      throw new Error('EPIPE');
+    });
+    const reporter = new ProgressReporter({
+      total: 3,
+      scenarioTrialCounts: new Map([['s', 3]]),
+      stream,
+    });
+    const callsAfterDisable = (stream.write as ReturnType<typeof vi.fn>).mock
+      .calls.length;
+    reporter.redraw();
+    expect(
+      (stream.write as ReturnType<typeof vi.fn>).mock.calls.length,
+    ).toBe(callsAfterDisable);
+  });
+
+  it('is a no-op on non-TTY', () => {
+    const stream = makeStream(false);
+    const reporter = new ProgressReporter({
+      total: 3,
+      scenarioTrialCounts: new Map([['s', 3]]),
+      stream,
+    });
+    reporter.trialCompleted('s', 0);
+    (stream.write as ReturnType<typeof vi.fn>).mockClear();
+    reporter.redraw();
+    expect(stream.write).not.toHaveBeenCalled();
+  });
+});
