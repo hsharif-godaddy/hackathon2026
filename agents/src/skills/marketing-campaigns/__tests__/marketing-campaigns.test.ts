@@ -18,8 +18,40 @@ vi.mock('../../../memory/interfaces/scope.js', () => ({
 }))
 vi.mock('../../../workspace/index.js', () => ({ createForWorkspace: vi.fn() }))
 
+// Mock the social-association repo so the deterministic social-connection check in
+// campaignPlanCreate is driven by the test, not by real DB rows.
+const { mockSocialFindByAppId } = vi.hoisted(() => ({ mockSocialFindByAppId: vi.fn() }))
+vi.mock('../../../database/repositories/SocialAssociationRepository.js', () => ({
+  SocialAssociationRepository: class {
+    findByAppId(...args: unknown[]): unknown {
+      return mockSocialFindByAppId(...args)
+    }
+  },
+}))
+
+// Mock the campaign repo too so campaignPlanCreate's persistence path doesn't hit
+// the real SQLite (which has an apps FK the unit test doesn't seed). This keeps the
+// test focused on the deterministic social-connection logic.
+const { mockCampaignFindByAppId, mockCampaignCreate, mockCampaignTransition, mockCampaignAddContent, mockCampaignDelete } = vi.hoisted(() => ({
+  mockCampaignFindByAppId: vi.fn((): unknown[] => []),
+  mockCampaignCreate: vi.fn((): unknown => ({ id: 'camp_test' })),
+  mockCampaignTransition: vi.fn((id: string): unknown => ({ id, status: 'ready' })),
+  mockCampaignAddContent: vi.fn((): unknown => ({})),
+  mockCampaignDelete: vi.fn(),
+}))
+vi.mock('../../../database/repositories/SimpleCampaignRepository.js', () => ({
+  SimpleCampaignRepository: class {
+    findByAppId(...args: unknown[]): unknown { return mockCampaignFindByAppId(...args) }
+    create(...args: unknown[]): unknown { return mockCampaignCreate(...args) }
+    transition(...args: unknown[]): unknown { return mockCampaignTransition(...args) }
+    addContent(...args: unknown[]): unknown { return mockCampaignAddContent(...args) }
+    delete(...args: unknown[]): unknown { return mockCampaignDelete(...args) }
+  },
+}))
+
 import { tools, campaignPlanPropose, campaignPlanCreate, campaignCreate, campaignScaffoldPage, sanitizeSlug, buildLandingPage } from '../tools/index.js'
 import { createForWorkspace } from '../../../workspace/index.js'
+import { SocialPlatform } from '../../../types/social.js'
 
 const skillRoot = join(dirname(fileURLToPath(import.meta.url)), '..')
 const readSection = (relativePath: string): string => readFileSync(join(skillRoot, relativePath), 'utf8')
@@ -349,10 +381,80 @@ describe('marketing-campaigns orchestration contract', () => {
     expect(skill).toMatch(/built and ready to launch/i)
   })
 
+  it('skill.md (the only model-visible file) carries the concrete VERIFY prereq checks before generation', () => {
+    const skill = readSection('skill.md')
+    // The model only ever sees skill.md — section files like 03-verify.md are never surfaced.
+    // The executable prereq checks must therefore live in skill.md, not only in the section file.
+    expect(skill).toMatch(/VERIFY — check prerequisites BEFORE generating/i)
+    expect(skill).toMatch(/socialRead\(\{ platform: 'FACEBOOK' \}\)/)
+    expect(skill).toMatch(/socialRead\(\{ platform: 'INSTAGRAM' \}\)/)
+    expect(skill).toMatch(/directoryListing\(\{ path: 'src\/content\/blog' \}\)/)
+    // customer-only (social connect) vs agent-doable (blog setup) distinction must be explicit
+    expect(skill).toMatch(/CUSTOMER action/)
+    expect(skill).toMatch(/AGENT.*task/i)
+    // never block generation; carry pending actions into SUMMARY
+    expect(skill).toMatch(/pending customer action/i)
+  })
+
+  it('marketing-campaigns is pinned to the marketing agent (skill relies on marketing-only tools)', () => {
+    const skill = readSection('skill.md')
+    // allowedAgents keeps the skill off DevelopAgent's menu so it is never half-loaded
+    // without socialPostCreate; campaign requests route to marketing via develop/handoff.md.
+    expect(skill).toMatch(/allowedAgents:\s*\[marketing\]/)
+  })
+
   it('all five phase sections exist', () => {
     for (const section of ['01-clarify', '02-plan', '03-verify', '04-generate', '05-summary']) {
       expect(() => readSection(`templates/sections/${section}.md`)).not.toThrow()
     }
+  })
+})
+
+describe('campaignPlanCreate social-connection prerequisite (deterministic)', () => {
+  beforeEach(() => {
+    mockSocialFindByAppId.mockReset()
+  })
+
+  const planWithAssets = (assets: Array<Record<string, unknown>>): Record<string, unknown> => ({
+    name: 'Summer Sale',
+    offer: '20% off',
+    startDate: '2026-07-01',
+    endDate: '2026-07-07',
+    plannedContent: assets,
+  })
+
+  it('no social assets → socialConnected undefined, no pendingActions, repo never queried', async () => {
+    const result = await run(
+      campaignPlanCreate,
+      planWithAssets([{ assetType: 'blog', title: 'Buyer guide', imageUrl: 'https://example.com/img.png' }]),
+      enabledContext,
+    )
+    expect(result.socialConnected).toBeUndefined()
+    expect(result.pendingActions).toEqual([])
+    expect(mockSocialFindByAppId).not.toHaveBeenCalled()
+  })
+
+  it('social asset + a connected platform → socialConnected true, no pendingActions', async () => {
+    mockSocialFindByAppId.mockReturnValue([{ platform: SocialPlatform.FACEBOOK }])
+    const result = await run(
+      campaignPlanCreate,
+      planWithAssets([{ assetType: 'social', title: 'Teaser post', imageUrl: 'https://example.com/img.png' }]),
+      enabledContext,
+    )
+    expect(result.socialConnected).toBe(true)
+    expect(result.pendingActions).toEqual([])
+  })
+
+  it('social asset + no connection → socialConnected false, one connect pendingAction', async () => {
+    mockSocialFindByAppId.mockReturnValue([])
+    const result = await run(
+      campaignPlanCreate,
+      planWithAssets([{ assetType: 'social', title: 'Teaser post', imageUrl: 'https://example.com/img.png' }]),
+      enabledContext,
+    )
+    expect(result.socialConnected).toBe(false)
+    expect(result.pendingActions).toHaveLength(1)
+    expect(result.pendingActions[0]).toMatch(/Connect Facebook\/Instagram/)
   })
 })
 

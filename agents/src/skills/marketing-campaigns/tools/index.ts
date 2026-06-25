@@ -5,7 +5,9 @@ import { Logger } from '../../../logging/index.js'
 import { SimpleCampaignRepository } from '../../../database/repositories/SimpleCampaignRepository.js'
 import type { CreateSimpleCampaignParams, CreateSimpleCampaignContentParams } from '../../../database/repositories/SimpleCampaignRepository.js'
 import { SimpleCampaignStatus } from '../../../database/schema.js'
-import type { SimpleCampaignContentType, SimpleCampaignContentStatus } from '../../../database/schema.js'
+import type { SimpleCampaignContentType, SimpleCampaignContentStatus, SocialAssociation } from '../../../database/schema.js'
+import { SocialAssociationRepository } from '../../../database/repositories/SocialAssociationRepository.js'
+import { SocialPlatform } from '../../../types/social.js'
 import { MediaSearchTool } from '../../../tools/media-search-tool.js'
 import { mergeBrandIdentity, MEMORY_KEY, type BrandIdentity } from '../../../tools/ai-lib-tools/brand-identity.js'
 import { getKvMemoryStore } from '../../../memory/adapters/index.js'
@@ -18,6 +20,7 @@ import path from 'node:path'
 const logger = Logger.create({ component: 'marketing-campaigns-tools' })
 
 const campaignRepo = new SimpleCampaignRepository()
+const socialAssociationRepo = new SocialAssociationRepository()
 const mediaSearch = new MediaSearchTool()
 const kvMemory = getKvMemoryStore()
 
@@ -319,6 +322,25 @@ CRITICAL TIMING: Call this tool ONLY in SUMMARY, after the build handoff has com
       campaignRepo.addContent(assetInput)
     }
 
+    // Deterministically check social-connection prerequisite (local SQLite read,
+    // no API call). Social posts are saved as drafts and can only publish once a
+    // platform is connected, so surface this as a pending action the agent must
+    // relay — rather than relying on the model to call socialRead during VERIFY.
+    const hasSocialAssets: boolean = args.plannedContent.some((item: { assetType: string }): boolean => item.assetType === 'social')
+    const connectedPlatforms: Set<string> = hasSocialAssets
+      ? new Set(socialAssociationRepo.findByAppId(appId).map((association: SocialAssociation): string => association.platform))
+      : new Set<string>()
+    const socialConnected: boolean | undefined = hasSocialAssets
+      ? connectedPlatforms.has(SocialPlatform.FACEBOOK) || connectedPlatforms.has(SocialPlatform.INSTAGRAM)
+      : undefined
+    const pendingActions: string[] =
+      socialConnected === false
+        ? ['Connect Facebook/Instagram so the social posts can publish — they are saved as drafts until a platform is connected.']
+        : []
+
+    const statusSummary: string =
+      'Built and ready to launch. Nothing is public yet: the landing page and blog go live only when the site is published, and social posts publish only once connected and posted. Do NOT describe the campaign or any asset as "live", "launched", or "published".'
+
     return {
       success: true,
       widget: {
@@ -326,6 +348,9 @@ CRITICAL TIMING: Call this tool ONLY in SUMMARY, after the build handoff has com
         widgetData: { campaign: readyCampaign },
       },
       campaign: readyCampaign,
+      socialConnected,
+      pendingActions,
+      statusSummary,
     }
   }
 }

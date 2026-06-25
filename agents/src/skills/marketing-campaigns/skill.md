@@ -3,6 +3,7 @@ name: marketing-campaigns
 description: Create multi-channel marketing campaigns with landing page, blog posts, social posts, email, and ads
 whenToUse: User wants to create a marketing campaign, promote their business, run a holiday or seasonal promotion, boost sales, or coordinate multiple marketing assets. Phrases like "create a campaign", "marketing campaign", "promote my business", "run a sale", "holiday promotion", "boost my sales", "launch a campaign".
 switchboardFlag: marketingCampaignsEnabled
+allowedAgents: [marketing]
 ---
 
 # Marketing Campaigns Skill
@@ -67,7 +68,7 @@ The phase requirements you must follow are inlined below — **this skill.md is 
 
 ## Phase requirements
 
-**CLARIFY, VERIFY, GENERATE** follow the Flow above + the Execution Contract. The two phases below are spelled out in full because they carry the requirements most often missed.
+**CLARIFY, GENERATE** follow the Flow above + the Execution Contract. The phases below are spelled out in full because they carry the requirements most often missed.
 
 ### CLARIFY — pull stored business context first, then ask for what's missing
 
@@ -79,7 +80,7 @@ Then build the ONE `askQuestion` call. It ALWAYS includes the two core questions
 
 Ask for it **within reason**: only if you genuinely lack it, folded into the same `askQuestion` call (don't fire a second round, and don't re-ask anything you already have, can read off the site, or already stored on `brandIdentity`). Business name and brand voice are almost always known from `brandIdentity` / the site — don't ask for those unless they're truly absent.
 
-Do NOT add questions for `salesType` or `location` up front, and do NOT add questions for things the AI proposes (campaign name, dates, duration, channel mix, artifact type) — those are never asked (see Execution Contract rule 13 for channels). Anything you DID capture here is a confirmed value; anything you inferred-but-didn't-ask is surfaced as a correctable assumption in PLAN.
+Do NOT add questions for `salesType` or `location` up front, and do NOT add questions for things the AI proposes (campaign name, dates, duration, channel mix, artifact type) — those are never asked (see Execution Contract rule 12 for channels). Anything you DID capture here is a confirmed value; anything you inferred-but-didn't-ask is surfaced as a correctable assumption in PLAN.
 
 You do NOT need a separate `brandIdentity` (set) call to persist the business signal — pass the `vertical` / `salesType` / `location` you confirmed or inferred as params on `campaignPlanPropose` (see PLAN) and they are saved to the brand book automatically (empty fields only, never overwriting). This is why you carry the vertical forward from the `get` above even when you didn't ask for it.
 
@@ -95,6 +96,34 @@ YOU decide the channel mix — the smallest set that achieves the goal, landing 
 
 A short one-line lead-in sentence before the tool call is fine; do NOT restate the asset list in chat. The tool STOPS the agent for Approve / Make changes.
 
+### VERIFY — check prerequisites BEFORE generating (run these the moment the user approves)
+
+After the user clicks "Approve" and BEFORE any generation, check the prerequisites for the channels in the plan. Each prerequisite is one of two kinds — handle them differently:
+
+- **Agent can do it automatically** → just do it in GENERATE, never ask the customer.
+- **Only the customer can do it** → do NOT block generation; RECORD it as a pending customer action and surface it in SUMMARY right by the Launch button.
+
+**1. Social connections (only if social posts are in the plan).** Call both:
+
+```javascript
+socialRead({ platform: 'FACEBOOK' })
+socialRead({ platform: 'INSTAGRAM' })
+```
+
+If no connection exists, this is a **CUSTOMER action** — there is NO agent tool to connect accounts (connecting is a user-driven flow in the app UI; never try to call a connect tool). Do NOT block: the social posts are still created and saved as publishable widgets. RECORD it as a pending customer action and call it out in SUMMARY by the Launch button (e.g. *"Before launch: connect Facebook/Instagram so your social posts can publish."*). Never imply social will auto-publish when it isn't connected.
+
+**2. Blog section (only if blog posts are in the plan).** Call:
+
+```javascript
+directoryListing({ path: 'src/content/blog' })
+```
+
+This is an **AGENT** task, NOT a customer action. If the blog system doesn't exist yet, the GENERATE handoff brief sets it up (blog index/listing page + route) and then creates the posts. Never ask the customer to set up a blog — just do it.
+
+**3. Landing-page capability.** The landing page is always built in GENERATE (`campaignScaffoldPage` + the handoff) — no separate prerequisite to check; just confirm the plan carries the real campaign dates so the scaffolded page's countdown date-gating is correct.
+
+**Then proceed directly to GENERATE.** Do NOT ask for another confirmation (the plan was already approved). Carry the list of pending customer actions into SUMMARY so they're surfaced by the Launch button.
+
 ### GENERATE — build
 
 Once the user approves the plan, the PLAN gate lifts and tools are allowed again. Do these in order:
@@ -105,6 +134,11 @@ Once the user approves the plan, the PLAN gate lifts and tools are allowed again
 ### SUMMARY — save the card, be honest about status
 
 After all generation, call `marketing-campaigns__campaignPlanCreate` to save and render the campaign card, then summarize what was built. **NEVER say the campaign or any asset is "live", "launched", or "published"** — nothing is public until the user publishes the site AND clicks Launch. Lead with **"built and ready to launch."** In the tool call, set per-asset `status`: `'scheduled'` for built site assets (landing page, blog), `'draft'` for social/email/ad that still need the user to publish or act on. Never `'published'`/`'sent'`.
+
+**Anchor your summary on the facts `campaignPlanCreate` returns — do not invent status:**
+- `statusSummary` — use this as the basis for how you describe campaign status. It is the source of truth for the "nothing is public yet" framing.
+- `pendingActions` — if non-empty, you MUST surface each item to the user before the launch step (e.g. connect Facebook/Instagram). Do NOT skip them, and do NOT imply social will publish automatically.
+- `socialConnected` — when this is `false`, never say or imply the social posts will "publish to your connected platforms"; say they are saved as drafts and will publish once a platform is connected.
 
 ---
 
@@ -137,8 +171,8 @@ After all generation, call `marketing-campaigns__campaignPlanCreate` to save and
 - Never combine multiple blog posts into one file
 - Never silently assume the artifact type — propose it (with the channel mix and a one-line rationale) in the PLAN card so the user can confirm or change it
 - Never generate assets before the user clicks "Approve — generate the content" on the plan card
-- Never write the **dated asset list** (exact titles + dates) as chat text — that goes in the `marketing-campaigns__campaignPlanPropose` tool call, which renders it. The education (assumptions / why / expectation) also goes in that tool call's fields, not prose — see Execution Contract rule 13.
-- Never call `marketing-campaigns__campaignPlanPropose` without populating its education fields (`assumptions`, `whyThisMix`, `expectation`) — that's where the customer-facing education lives and the card renders it (Execution Contract rule 13)
+- Never write the **dated asset list** (exact titles + dates) as chat text — that goes in the `marketing-campaigns__campaignPlanPropose` tool call, which renders it. The education (assumptions / why / expectation) also goes in that tool call's fields, not prose — see Execution Contract rule 14.
+- Never call `marketing-campaigns__campaignPlanPropose` without populating its education fields (`assumptions`, `whyThisMix`, `expectation`) — that's where the customer-facing education lives and the card renders it (Execution Contract rule 14)
 - Never interpret free-text messages like "looks good" as plan approval — only the Approve button counts
 - Never call `marketing-campaigns__campaignPlanCreate` BEFORE all content is generated — it runs ONLY in SUMMARY, after the build handoff has completed and all assets exist
 - Never skip the VERIFY step — always check social connections before generating social content

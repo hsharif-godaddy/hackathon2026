@@ -73,8 +73,6 @@ export default function CampaignPlanProposeToolRenderer({
     const selected = Array.isArray(sel) ? sel[0] : sel
     if (selected === '1') {
       sendUserMessage('Approve — generate the content', { isActionRequest: true })
-    } else if (selected === '2') {
-      sendUserMessage('I want to make changes to the plan', { isActionRequest: true })
     } else {
       sendUserMessage(selected, { isActionRequest: true })
     }
@@ -141,7 +139,6 @@ export default function CampaignPlanProposeToolRenderer({
             selectionMode="single"
           >
             <ChoiceList.Item value="1">{t('builder_marketing_campaign_plan_approve_option')}</ChoiceList.Item>
-            <ChoiceList.Item value="2">{t('builder_marketing_campaign_plan_change_option')}</ChoiceList.Item>
           </ChoiceList.Step>
         </ChoiceList>
       )}
