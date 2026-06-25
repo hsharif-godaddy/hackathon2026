@@ -31,6 +31,7 @@ catalog:
   '@smithy/node-http-handler': ^4.8.0
 
   # Shared runtime
+  '@airo-care/client': 1.0.2
   '@babel/generator': ^7.29.1
   '@babel/parser': ^7.29.3
   '@babel/traverse': ^7.29.0

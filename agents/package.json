@@ -86,6 +86,7 @@
     "@airo/ai-skills": "workspace:*",
     "@airo/ai-transport": "workspace:*",
     "@airo/shared": "workspace:*",
+    "@airo-care/client": "catalog:",
     "@babel/generator": "catalog:",
     "@babel/parser": "catalog:",
     "@babel/traverse": "catalog:",

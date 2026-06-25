@@ -133,3 +133,6 @@ cds-workspace/
 
 .temporary
 .screenshots
+
+# Personal, per-developer companion to root CLAUDE.md
+CLAUDE.local.md

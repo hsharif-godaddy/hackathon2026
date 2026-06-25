@@ -158,6 +158,28 @@ interface ExecutionDeps {
    * frames. Shared with the WS transport; see `resolveSkillToolMetadata`.
    */
   resolveToolMetadata?: ResolveToolMetadata
+  /**
+   * Optional Care bridge. When set and `effectiveAgentId === 'support'`,
+   * the message-execution branches to `executeSupportUnderTrace` and
+   * forwards Care's NDJSON stream to the event channel. Null in dev
+   * environments without `AIRO_CARE_BASE_URL`; the support path emits
+   * a "Care not configured" inline error chunk in that case.
+   */
+  careBridge?: import('../../care/index.js').CareBridge | null
+  /**
+   * Optional kill-switch reader for the Care integration. Returning false
+   * gates `executeSupportUnderTrace` before the bridge is invoked, emitting
+   * a "temporarily unavailable" inline error chunk. Undefined leaves the
+   * support path ungated (treated as enabled). Read once per support turn.
+   *
+   * Why fail-open by default: a Switchboard outage or absent flag must not
+   * take down working support. The kill-switch is an explicit ops action
+   * (flag = false), not the absence of one. The Switchboard reader
+   * (`getSwitchboardFlag`) already returns its `defaultValue` when the
+   * client is uninitialized or throws, so passing `true` as the default
+   * preserves the fail-open contract end-to-end.
+   */
+  isCareEnabled?: () => boolean
 }
 
 /**
@@ -402,6 +424,36 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
     event: Parameters<typeof this.deps.eventChannel.publish>[1],
   ): Promise<void> {
     return this.guardedPublish(appId, conversationId, event, 'sse.execution.stream_publish_failed', 'warn')
+  }
+
+  /** Publish a single error chunk + complete to the event channel, then persist
+   * both events via completeConversation. Shared by all guard paths in
+   * executeSupportUnderTrace so the agent message in the DB always has segments
+   * matching what the live SSE client saw — avoids the NaN% reduction log and
+   * the empty-agent-message reload bug. */
+  private async emitGuardPathFailure(
+    appId: string,
+    conversationId: string,
+    chunkContent: string,
+    persistenceContext: SSEPersistenceContext,
+  ): Promise<void> {
+    await this.publishNonTerminal(appId, conversationId, {
+      type: 'chunk', content: chunkContent, data: {},
+      agentName: 'support', conversationId,
+    })
+    await this.publishTerminal(appId, conversationId, {
+      type: 'complete', content: '', data: { finishReason: 'error' },
+      agentName: 'support', conversationId,
+    })
+    const persistenceEvents: PersistenceStreamingEvent[] = [
+      { type: 'chunk', content: chunkContent, data: {}, timestamp: new Date() },
+      { type: 'complete', content: '', data: { finishReason: 'error' }, timestamp: new Date() },
+    ]
+    await this.deps.conversationPersistence.completeConversation(
+      conversationId, persistenceEvents, { finishReason: 'error' }, persistenceContext
+    ).catch((persistErr: unknown) => {
+      logger.error('sse.execution.support.complete_failed', { appId, conversationId, ...errorFields(persistErr) })
+    })
   }
 
   private markApmTransactionEnded(transaction: ActiveStream['apmTransaction']): void {
@@ -1926,6 +1978,29 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
     return { forcedKitMessages, useAttachedVariant, effectiveAgentId }
   }
 
+  private setupStreamState(opts: {
+    conversationId: string
+    appId: string
+    agentNameForApm: string
+    requestId?: string
+    apmTransaction?: ActiveStream['apmTransaction']
+  }): ActiveStream {
+    const { conversationId, appId, agentNameForApm, requestId, apmTransaction } = opts
+    const streamState: ActiveStream = {
+      appId, convId: conversationId, subscriberIds: new Set(),
+      ...(requestId && { requestId }),
+      apmTransaction,
+    }
+    this.activeStreams.set(conversationId, streamState)
+    if (apmTransaction) apmTransaction.setLabel('agent_name', agentNameForApm)
+    const sseSubscribers = this.deps.sseRegistry.getSubscribers(conversationId)
+    for (const sub of sseSubscribers) {
+      this.deps.eventChannel.subscribe(conversationId, sub)
+      streamState.subscriberIds.add(sub.id)
+    }
+    return streamState
+  }
+
   private async executeUnderTrace(params: ExecuteParams, turnSnapshot: TurnSnapshotState): Promise<TurnExecutionResult> {
     // Start of message handling — anchors the stream_timing_summary diagnostic's
     // timeToStreamStartMs (agent init + LLM-connect time before the first stream
@@ -1942,6 +2017,9 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
     } = params
 
     const resolvedAgentId = agentId
+    if (resolvedAgentId === 'support') {
+      return this.executeSupportUnderTrace(params, turnSnapshot)
+    }
     let turnResult: TurnExecutionResult = { success: false }
     const sseSocketId = sseSessionKey(conversationId)
     const agentCtx = lifecycleContext?.agentContext
@@ -2054,14 +2132,10 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
     // Bridge sseRegistry → eventChannel BEFORE pre-turn persistence runs. If we
     // bridge after, a persistence failure publishes terminal events to an empty
     // eventChannel and the /stream client hangs forever.
-    const streamState: ActiveStream = { appId, convId: conversationId, subscriberIds: new Set(), ...(requestId && { requestId }), apmTransaction }
-    this.activeStreams.set(conversationId, streamState)
-    if (apmTransaction) apmTransaction.setLabel('agent_name', resolvedAgentId)
-    const sseSubscribers = this.deps.sseRegistry.getSubscribers(conversationId)
-    for (const sub of sseSubscribers) {
-      this.deps.eventChannel.subscribe(conversationId, sub)
-      streamState.subscriberIds.add(sub.id)
-    }
+    const streamState = this.setupStreamState({
+      conversationId, appId, agentNameForApm: resolvedAgentId,
+      requestId, apmTransaction,
+    })
 
     this.emitConversationStartIfFirstTurn(lifecycleContext, conversationId, resolvedAgentId)
 
@@ -3027,5 +3101,163 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
       }
     }
     return turnResult
+  }
+
+  private async executeSupportUnderTrace(
+    params: ExecuteParams,
+    // _turnSnapshot intentionally unused — kept for signature parity with executeUnderTrace.
+    _turnSnapshot: TurnSnapshotState,
+  ): Promise<TurnExecutionResult> {
+    const {
+      appId, conversationId, content, siteId, authType,
+      lifecycleContext, requestId, apmTransaction,
+    } = params
+    const agentCtx = lifecycleContext?.agentContext
+    const sseSocketId = sseSessionKey(conversationId)
+
+    // Cancel any in-flight prior turn for this conversation.
+    this.abortControllers.get(conversationId)?.abort()
+    const abortController = new AbortController()
+    this.abortControllers.set(conversationId, abortController)
+
+    // Bridge sseRegistry → eventChannel. Capture streamState for subscriber
+    // cleanup and ownership-guarded activeStreams.delete in finally.
+    const streamState = this.setupStreamState({
+      conversationId, appId, agentNameForApm: 'support',
+      requestId, apmTransaction,
+    })
+
+    // Persist user message + open agent-turn slot.
+    const persistenceContext: SSEPersistenceContext = {
+      socketId: sseSocketId, agentName: 'support', appId, siteId,
+      conversation: { conversationId },
+      metadata: {
+        authType,
+        ...(agentCtx?.customerId && { customerId: agentCtx.customerId }),
+      },
+    }
+
+    let turnResult: TurnExecutionResult = { success: false }
+
+    // Single outer try/finally ensures cleanup (unsubscribe, activeStreams.delete,
+    // abortControllers.delete, APM end) runs on ALL exit paths — persist failure,
+    // guard paths, happy path, and thrown exceptions.
+    try {
+      // Persist user message + open agent-turn slot.
+      try {
+        await this.deps.conversationPersistence.continueConversation(conversationId, content, persistenceContext)
+        await this.deps.conversationPersistence.startAgentTurn(conversationId, persistenceContext)
+      } catch (err) {
+        logger.error('sse.execution.support.persist_failed', { appId, conversationId, ...errorFields(err) })
+        await this.emitGuardPathFailure(
+          appId, conversationId,
+          'Sorry, something went wrong. Try again in a moment.',
+          persistenceContext,
+        )
+        return { success: false }
+      }
+
+      this.emitConversationStartIfFirstTurn(lifecycleContext, conversationId, 'support')
+
+      // Guard 0: Switchboard kill-switch. Read once per turn; defaults to
+      // enabled when the dep is unwired (tests, dev) so the support path is
+      // never accidentally shut off. Sits above guards 1 & 2 so an ops-driven
+      // disable wins over visitor / bridge configuration.
+      if (this.deps.isCareEnabled && !this.deps.isCareEnabled()) {
+        logger.warn('sse.execution.support.flag_disabled', { appId, conversationId })
+        await this.emitGuardPathFailure(
+          appId, conversationId,
+          'Support is temporarily unavailable. Please try again shortly.',
+          persistenceContext,
+        )
+        return { success: false }
+      }
+
+      // Guard 1: missing visitorId. Guards publish to the event channel, so
+      // setupStreamState must have run before reaching this point.
+      if (!agentCtx?.visitorId) {
+        logger.warn('sse.execution.support.visitor_missing', { appId, conversationId })
+        await this.emitGuardPathFailure(
+          appId, conversationId,
+          'Sorry, support is unavailable — visitor session missing. Reload and try again.',
+          persistenceContext,
+        )
+        return { success: false }
+      }
+
+      // Guard 2: bridge not configured. Fires when AIRO_CARE_BASE_URL is
+      // unset — the local-dev default points at the Care dev environment, so
+      // this is now reached only when a dev explicitly clears the var or in
+      // an environment that intentionally disables Care.
+      const careBridge = this.deps.careBridge
+      if (!careBridge) {
+        logger.warn('sse.execution.support.bridge_disabled', { appId, conversationId })
+        await this.emitGuardPathFailure(
+          appId, conversationId,
+          'Support is not configured on this server.',
+          persistenceContext,
+        )
+        return { success: false }
+      }
+
+      // Drain the bridge → publish to event channel. Bridge guarantees exactly
+      // one terminal `complete` at the end; we use publishTerminal for it,
+      // publishNonTerminal for everything else. Accumulate events for persistence.
+      const accumulatedEvents: PersistenceStreamingEvent[] = []
+      let sawTerminal: boolean = false
+      let finishReason: 'stop' | 'error' = 'stop'
+      for await (const event of careBridge.streamSupportTurn({
+        aabConversationId: conversationId,
+        visitorId: agentCtx.visitorId,
+        message: content,
+        abortSignal: abortController.signal,
+      })) {
+        accumulatedEvents.push({ type: event.type, content: event.content, data: event.data, timestamp: new Date() })
+        if (event.type === 'complete') {
+          sawTerminal = true
+          const reason = (event.data as { finishReason?: string } | undefined)?.finishReason
+          finishReason = reason === 'error' ? 'error' : 'stop'
+          await this.publishTerminal(appId, conversationId, event)
+        } else {
+          await this.publishNonTerminal(appId, conversationId, event)
+        }
+      }
+      if (!sawTerminal) {
+        // Defensive: bridge should always end with complete. If it didn't,
+        // emit one ourselves so the client doesn't hang.
+        logger.warn('sse.execution.support.no_terminal', { appId, conversationId })
+        const defensiveComplete = {
+          type: 'complete' as const, content: '', data: { finishReason: 'stop' },
+          agentName: 'support', conversationId,
+        }
+        accumulatedEvents.push({ type: defensiveComplete.type, content: defensiveComplete.content, data: defensiveComplete.data, timestamp: new Date() })
+        await this.publishTerminal(appId, conversationId, defensiveComplete)
+      }
+      await this.deps.conversationPersistence.completeConversation(
+        conversationId, accumulatedEvents, { finishReason }, persistenceContext
+      ).catch((persistErr: unknown) => {
+        logger.error('sse.execution.support.complete_failed', { appId, conversationId, ...errorFields(persistErr) })
+      })
+      turnResult = { success: finishReason === 'stop' }
+      return turnResult
+    } finally {
+      if (this.abortControllers.get(conversationId) === abortController) {
+        this.abortControllers.delete(conversationId)
+      }
+      // Unsubscribe all event channel subscribers registered for this turn.
+      if (this.activeStreams.get(conversationId) === streamState) {
+        for (const subId of streamState.subscriberIds) {
+          this.deps.eventChannel.unsubscribe(conversationId, subId)
+        }
+        this.activeStreams.delete(conversationId)
+      }
+      // End the APM transaction to match the build path lifecycle.
+      if (apmTransaction && !this.isApmTransactionEnded(apmTransaction)) {
+        apmTransaction.result = turnResult.success ? 'success' : 'error'
+        apmTransaction.setOutcome(turnResult.success ? 'success' : 'failure')
+        apmTransaction.end()
+        this.markApmTransactionEnded(apmTransaction)
+      }
+    }
   }
 }

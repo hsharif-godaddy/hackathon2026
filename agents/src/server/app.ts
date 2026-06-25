@@ -206,6 +206,8 @@ import { workspaceScopeFromAppId } from '../memory/interfaces/scope.js';
 import { ConversationContextManager } from '../services/ConversationContextManager.js';
 import { getTemplateIds } from '../agents/template-registry.js';
 import { createAgentRouter } from './agent-router.js';
+import { createCareBridge } from '../care/index.js';
+import { getSwitchboardFlag } from '../services/switchboard.js';
 import { getPersistedAgentIdForApp } from './persisted-agent.js';
 import { persistHandoffAgent } from './develop-variant.js';
 import { getModelOverride } from '../utils/model-selection.js';
@@ -231,6 +233,8 @@ const sseConversationContextManager = new ConversationContextManager(getMessageS
 
 // Lazy SSE execution service — created on first request after init completes
 let sseExecutionService: MessageExecutionService | null = null
+// Care bridge instance — created alongside sseExecutionService; disposed on shutdown.
+let careBridgeInstance: import('../care/index.js').CareBridge | null = null
 
 const { validator: ssePostStreamValidator, resetRetries: sseResetPostStreamRetries } =
   buildSharedPostStreamValidator(logger)
@@ -252,6 +256,11 @@ function getOrCreateSSEExecutionService(): MessageExecutionService | null {
 
   const contextMgr = new AILibContextManager()
   const sseAppRepo = new AppRepository()
+  const careBridge = createCareBridge({
+    baseURL: process.env.AIRO_CARE_BASE_URL ?? '',
+    executor: process.env.AIRO_CARE_EXECUTOR ?? 'v1/orchestrator-test',
+  })
+  careBridgeInstance = careBridge
 
   sseExecutionService = new MessageExecutionService({
     getAgent: (agentId?: string) => agentFactory.agents.get((agentId ?? 'develop') as any),
@@ -314,6 +323,11 @@ function getOrCreateSSEExecutionService(): MessageExecutionService | null {
     resetPostStreamRetries: sseResetPostStreamRetries,
     lifecycle: getMessageLifecycleDeps(),
     resolveToolMetadata: resolveSkillToolMetadata,
+    careBridge,
+    // Default true so a Switchboard outage / missing flag keeps support live.
+    // Flip to false from Switchboard to gate; takes effect on the next turn
+    // (in-process cache refresh ~2 min).
+    isCareEnabled: () => getSwitchboardFlag('airo-builder-care-agent-enabled', true),
   })
   sseRegistry.setListener(sseExecutionService)
   return sseExecutionService
@@ -807,6 +821,11 @@ async function shutdown(cause: string): Promise<void> {
       } finally {
         sseExecutionService = null;
       }
+    }
+
+    if (careBridgeInstance) {
+      careBridgeInstance.dispose();
+      careBridgeInstance = null;
     }
 
     const SERVER_CLOSE_TIMEOUT_MS = 20000; // 20 seconds
