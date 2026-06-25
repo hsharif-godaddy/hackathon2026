@@ -150,7 +150,7 @@ function shouldLoadBehavior(modelName: string | undefined, behavior: BehaviorPro
 async function buildDevelopSystemPrompt(
   _appPath?: string,
   modelName?: string,
-  options?: { market?: string },
+  options?: { contextMetadata?: Record<string, unknown> },
 ): Promise<string> {
   const promptBuilder = createPromptBuilder();
 
@@ -186,7 +186,8 @@ async function buildDevelopSystemPrompt(
 
   // Get available skills list with whenToUse guidance
   const skillLoader = new SkillLoaderTool();
-  const skillsResult = await skillLoader.listSkills({ market: options?.market, agentId: 'develop' });
+  const market: string | undefined = typeof options?.contextMetadata?.market === 'string' ? options.contextMetadata.market : undefined;
+  const skillsResult = await skillLoader.listSkills({ market, agentId: 'develop', contextMetadata: options?.contextMetadata });
   const skillsSection = skillsResult.success && skillsResult.skills?.length
     ? buildSkillsPromptSection(skillsResult.skills)
     : '';
@@ -375,7 +376,7 @@ export async function createDevelopAgent(options?: { appPath?: string }): Promis
     id: 'develop',
     name: 'AI Developer',
     system: async (ctx: ResolverContext): Promise<string> =>
-      buildDevelopSystemPrompt(appPath, modelName, { market: ctx.market }),
+      buildDevelopSystemPrompt(appPath, modelName, { contextMetadata: ctx.contextMetadata }),
     model,
     modelName,
     tools: baseTools,
@@ -423,7 +424,7 @@ export async function createDevelopAgent(options?: { appPath?: string }): Promis
 
     metadata: {
       systemForModel: (nextModelName: string, ctx?: ResolverContext) =>
-        buildDevelopSystemPrompt(appPath, nextModelName, { market: ctx?.market }),
+        buildDevelopSystemPrompt(appPath, nextModelName, { contextMetadata: ctx?.contextMetadata }),
       contextPreferences: {
         includeAppContext: true,
         includeVisualContext: true,

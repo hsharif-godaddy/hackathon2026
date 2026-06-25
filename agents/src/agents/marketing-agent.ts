@@ -17,12 +17,13 @@ import { SkillLoaderTool, buildSkillsPromptSection } from '../tools/skill-loader
 
 const logger = Logger.create({ component: 'marketing-agent' })
 
-async function buildMarketingSystemPrompt(options?: { market?: string }): Promise<string> {
+async function buildMarketingSystemPrompt(options?: { contextMetadata?: Record<string, unknown> }): Promise<string> {
   const promptBuilder = createPromptBuilder()
   const paths = getModularPromptPaths(import.meta.url)
 
+  const market: string | undefined = typeof options?.contextMetadata?.market === 'string' ? options.contextMetadata.market : undefined;
   const skillLoader = new SkillLoaderTool()
-  const skillsResult = await skillLoader.listSkills({ market: options?.market, agentId: 'marketing' })
+  const skillsResult = await skillLoader.listSkills({ market, agentId: 'marketing', contextMetadata: options?.contextMetadata })
   const skillsSection = skillsResult.success && skillsResult.skills?.length
     ? buildSkillsPromptSection(skillsResult.skills)
     : ''
@@ -67,7 +68,7 @@ export async function createMarketingAgent(): Promise<AgentConfig> {
     id: 'marketing',
     name: 'Airo Marketer',
     system: async (ctx: ResolverContext): Promise<string> =>
-      buildMarketingSystemPrompt({ market: ctx.market }),
+      buildMarketingSystemPrompt({ contextMetadata: ctx.contextMetadata }),
     model,
     modelName,
     tools: {

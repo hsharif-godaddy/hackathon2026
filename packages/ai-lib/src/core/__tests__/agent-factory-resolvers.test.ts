@@ -88,9 +88,9 @@ describe('AgentWrapper resolver-callable system and activeTools', () => {
     expect(resolver).toHaveBeenCalledTimes(1)
     expect(capturedCtx?.profileName).toBe('experimental')
     expect(capturedCtx?.market).toBe('en-US')
-    // ResolverContext intentionally does NOT carry the executionContext.metadata
-    // bag — only the promoted profileName + market. Adding fields here is a
-    // contract change and should be done deliberately in types.ts.
+    expect(capturedCtx?.contextMetadata).toEqual({ profileName: 'experimental', market: 'en-US', conversationId: 'c1' })
+    // ResolverContext does NOT carry a raw `metadata` alias — access is via
+    // the typed fields (profileName, market) and the contextMetadata bag.
     expect((capturedCtx as Record<string, unknown>)?.metadata).toBeUndefined()
   })
 

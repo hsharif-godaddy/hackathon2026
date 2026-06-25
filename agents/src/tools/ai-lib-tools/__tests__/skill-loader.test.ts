@@ -155,25 +155,7 @@ describe('skillAITool hooks', () => {
       );
     });
 
-    it('should reject marketing-campaigns load when marketingCampaignsEnabled is false', async () => {
-      const context = {
-        metadata: { conversationId: 'conv-123', appId: 'app-456', marketingCampaignsEnabled: false }
-      };
-
-      const result = await executeTool({ action: 'load', skill: 'marketing-campaigns' }, context);
-
-      expect(result).toEqual(expect.objectContaining({ success: false }));
-      expect(mockLoadSkill).not.toHaveBeenCalled();
-    });
-
-    it('should reject marketing-campaigns load when marketingCampaignsEnabled is absent', async () => {
-      const result = await executeTool({ action: 'load', skill: 'marketing-campaigns' }, mockContext);
-
-      expect(result).toEqual(expect.objectContaining({ success: false }));
-      expect(mockLoadSkill).not.toHaveBeenCalled();
-    });
-
-    it('should allow marketing-campaigns load when marketingCampaignsEnabled is true', async () => {
+    it('should pass contextMetadata to loadSkill for switchboard gating', async () => {
       const context = {
         metadata: { conversationId: 'conv-123', appId: 'app-456', marketingCampaignsEnabled: true }
       };
@@ -181,24 +163,25 @@ describe('skillAITool hooks', () => {
       await executeTool({ action: 'load', skill: 'marketing-campaigns' }, context);
 
       expect(mockLoadSkill).toHaveBeenCalledWith(
-        expect.objectContaining({ skill: 'marketing-campaigns' })
+        expect.objectContaining({
+          skill: 'marketing-campaigns',
+          contextMetadata: expect.objectContaining({ marketingCampaignsEnabled: true }),
+        })
       );
     });
 
-    it('should reject google-business-profile-sync load when googleBusinessProfileSyncEnabled is false/absent', async () => {
-      const offResult = await executeTool(
-        { action: 'load', skill: 'google-business-profile-sync' },
-        { metadata: { conversationId: 'conv-123', appId: 'app-456', googleBusinessProfileSyncEnabled: false } }
-      );
-      expect(offResult).toEqual(expect.objectContaining({ success: false }));
+    it('should propagate loadSkill failure when switchboard flag blocks', async () => {
+      mockLoadSkill.mockResolvedValueOnce({ success: false, skill: 'marketing-campaigns', error: "Skill 'marketing-campaigns' is not available." });
 
-      const absentResult = await executeTool({ action: 'load', skill: 'google-business-profile-sync' }, mockContext);
-      expect(absentResult).toEqual(expect.objectContaining({ success: false }));
+      const context = {
+        metadata: { conversationId: 'conv-123', appId: 'app-456', marketingCampaignsEnabled: false }
+      };
 
-      expect(mockLoadSkill).not.toHaveBeenCalled();
+      await expect(executeTool({ action: 'load', skill: 'marketing-campaigns' }, context))
+        .rejects.toThrow('not available');
     });
 
-    it('should allow google-business-profile-sync load when googleBusinessProfileSyncEnabled is true', async () => {
+    it('should pass contextMetadata to loadSkill for google-business-profile-sync switchboard gating', async () => {
       const context = {
         metadata: { conversationId: 'conv-123', appId: 'app-456', googleBusinessProfileSyncEnabled: true }
       };
@@ -206,7 +189,10 @@ describe('skillAITool hooks', () => {
       await executeTool({ action: 'load', skill: 'google-business-profile-sync' }, context);
 
       expect(mockLoadSkill).toHaveBeenCalledWith(
-        expect.objectContaining({ skill: 'google-business-profile-sync' })
+        expect.objectContaining({
+          skill: 'google-business-profile-sync',
+          contextMetadata: expect.objectContaining({ googleBusinessProfileSyncEnabled: true }),
+        })
       );
     });
   });

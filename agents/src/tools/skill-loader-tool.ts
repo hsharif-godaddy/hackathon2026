@@ -489,7 +489,7 @@ export class SkillLoaderTool {
         return {
           success: false,
           skill,
-          error: `Skill '${skill}' is not available.`
+          error: `Skill '${skill}' is not available for this account. Tell the user this feature isn't available yet and do not attempt this task manually. Stop here.`
         };
       }
 

@@ -220,6 +220,7 @@ export class AgentWrapper {
           const resolverCtx: ResolverContext = {
             ...(typeof metadata?.profileName === 'string' ? { profileName: metadata.profileName } : {}),
             ...(typeof metadata?.market === 'string' ? { market: metadata.market } : {}),
+            ...(metadata ? { contextMetadata: metadata as Record<string, unknown> } : {}),
           }
           if (typeof this.config.system === 'function') {
             try {

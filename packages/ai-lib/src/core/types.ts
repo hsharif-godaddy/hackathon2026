@@ -79,6 +79,8 @@ export interface ResolverContext {
   readonly profileName?: string
   /** BCP-47 market/locale carried on the request, when set. */
   readonly market?: string
+  /** Per-request metadata from executionContext (switchboard flags, etc.). */
+  readonly contextMetadata?: Record<string, unknown>
 }
 
 /**

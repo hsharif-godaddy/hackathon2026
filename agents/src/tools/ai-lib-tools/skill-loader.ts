@@ -88,25 +88,6 @@ export const skillAITool: Tool = createTool(
 
     // Load action - load instructions AND activate skill tools
     if (input.action === 'load') {
-      if (input.skill === 'marketing-campaigns' && !context?.metadata?.marketingCampaignsEnabled) {
-        return {
-          success: false,
-          error: "Marketing campaigns feature is not enabled for this account. Tell the user this feature isn't available yet and do NOT attempt to create a campaign manually. Stop here.",
-        };
-      }
-
-      if (input.skill === 'google-business-profile-sync') {
-        const gbpEnabled = context?.metadata?.googleBusinessProfileSyncEnabled === true;
-        logger.info('skill.load.gbp-sync.gate', { enabled: gbpEnabled });
-        if (!gbpEnabled) {
-          logger.info('skill.load.gbp-sync.blocked', {});
-          return {
-            success: false,
-            error: "Google Business Profile sync is not enabled for this account. Tell the user this feature isn't available yet and do NOT attempt to read or change their listing manually. Stop here.",
-          };
-        }
-      }
-
       const contextMetadata = context?.metadata as Record<string, unknown> | undefined;
       const result = await skillLoader.loadSkill({ skill: input.skill, market, contextMetadata });
 

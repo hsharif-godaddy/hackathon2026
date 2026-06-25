@@ -3,6 +3,7 @@ name: google-business-profile-sync
 description: Connect a Google Business Profile and sync business info between the listing and the website.
 whenToUse: |
   When the customer wants to connect their Google Business Profile, sync their website with their Google Business Profile, check whether their listing matches their site, or fix mismatches in business info — name, address, phone, hours, website URL, or description — between the listing and the site. This is the ONLY skill for syncing or correcting business info in either direction. Do NOT use for reviews, ratings, or testimonials — that is handled by google-reviews.
+switchboardFlag: googleBusinessProfileSyncEnabled
 intents:
   - Connect Google Business Profile
   - Sync my website with my Google Business Profile
