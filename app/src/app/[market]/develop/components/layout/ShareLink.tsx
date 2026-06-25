@@ -69,6 +69,18 @@ function resolveShareUrl(
   return token.shareUrl ?? `${origin}?airoShareToken=${token.token}`;
 }
 
+/**
+ * Whether a token is the one the popover should surface: an unexpired,
+ * user-purpose share link. agents returns all purposes for an app newest-first,
+ * so without this filter a freshly-minted 15-min `archive_snapshot` hosting
+ * token (mhp-core screenshot capture) would sort ahead of the owner's 7-day
+ * link and be displayed with a near-immediate expiry (AIROBUILD-2785). An
+ * absent purpose defaults to 'user' (the agents schema default).
+ */
+function isActiveUserToken(token: ShareToken, now: number = Date.now()): boolean {
+  return (token.purpose ?? 'user') === 'user' && token.expiresAt > now;
+}
+
 interface StatusTextProps {
   children: string;
   centered?: boolean;
@@ -423,7 +435,7 @@ export function ShareLinkContent({ appId, site, isMobile, open, location }: Shar
   const activeToken = useMemo(
     () => {
       if (tokenExpired) return undefined;
-      return tokens.find((token) => token.expiresAt > Date.now());
+      return tokens.find((token) => isActiveUserToken(token));
     },
     [tokens, tokenExpired]
   );
@@ -502,7 +514,7 @@ export function ShareLinkContent({ appId, site, isMobile, open, location }: Shar
           // refetching instead of surfacing an error.
           try {
             const { data } = await refetchTokens();
-            if (mountedRef.current && !data?.some((tk) => tk.expiresAt > Date.now())) {
+            if (mountedRef.current && !data?.some((tk) => isActiveUserToken(tk))) {
               setCreateError(true);
             }
           } catch {

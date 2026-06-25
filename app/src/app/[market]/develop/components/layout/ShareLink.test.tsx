@@ -497,6 +497,76 @@ describe('ShareLink', () => {
       });
     });
 
+    it('surfaces the user token, not a newer short-lived archive_snapshot token (AIROBUILD-2785)', async () => {
+      mockUseShareTokens.mockReturnValue({
+        // agents returns tokens newest-first. A 15-min archive_snapshot token
+        // (mhp-core screenshot capture) was minted most recently, so it sorts
+        // ahead of the owner's 7-day link — the popover must still show the
+        // user link, not the ~7-min hosting credential.
+        data: [
+          {
+            token: 'archive-snap-token',
+            appId: 'app-123',
+            shareUrl: 'https://share.example.com/archive-snap',
+            expiresAt: Date.now() + 7 * 60 * 1000,
+            createdAt: new Date().toISOString(),
+            purpose: 'archive_snapshot',
+          },
+          {
+            token: 'user-token',
+            appId: 'app-123',
+            shareUrl: 'https://share.example.com/user-link',
+            expiresAt: FUTURE,
+            createdAt: new Date(Date.now() - 60_000).toISOString(),
+            purpose: 'user',
+          },
+        ],
+        isLoading: false,
+        isError: false,
+        refetch: vi.fn(),
+      });
+
+      renderWithProviders(<ShareLink />);
+      await openPopover();
+
+      await waitFor(() => {
+        expect(getShareInput()).toHaveValue('https://share.example.com/user-link');
+      });
+    });
+
+    it('shows the loading state and auto-creates a user link instead of a short-lived archive_snapshot token (AIROBUILD-2785)', async () => {
+      mockUseShareTokens.mockReturnValue({
+        // Only a 15-min archive_snapshot token exists (e.g. opened during the
+        // screenshot-capture window before the user link is minted). It must be
+        // filtered out so the popover shows loading and mints a real 7-day link.
+        data: [
+          {
+            token: 'archive-snap-token',
+            appId: 'app-123',
+            shareUrl: 'https://share.example.com/archive-snap',
+            expiresAt: Date.now() + 7 * 60 * 1000,
+            createdAt: new Date().toISOString(),
+            purpose: 'archive_snapshot',
+          },
+        ],
+        isLoading: false,
+        isError: false,
+        refetch: vi.fn().mockResolvedValue(undefined),
+      });
+
+      renderWithProviders(<ShareLink />);
+      await openPopover();
+
+      await waitFor(() => {
+        expect(screen.getByTestId('share-link-preview-loading')).toBeInTheDocument();
+      });
+      await waitFor(() => {
+        expect(mockMutateAsync).toHaveBeenCalledWith(
+          expect.objectContaining({ appId: 'app-123', expiresInDays: 7 })
+        );
+      });
+    });
+
     it('shows loading spinner when no active token yet', async () => {
       mockUseShareTokens.mockReturnValue({
         data: [],

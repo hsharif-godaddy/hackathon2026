@@ -28,6 +28,21 @@ export const shareTokenKeys = {
 };
 
 /**
+ * Token purpose, mirroring the agents-side `ShareTokenPurpose`:
+ * - 'user': the owner-issued public preview/share link (1h–7d TTL, default 7d).
+ * - 'archive_snapshot': a short-lived (15-min) hosting credential minted by
+ *   mhp-core for pre-archive screenshot capture. These ride the same per-app
+ *   token list but must never be surfaced as the user's share link
+ *   (AIROBUILD-2785).
+ *
+ * Optional and defaulted defensively: agents backfills every row to 'user'
+ * (the NOT NULL DEFAULT 'user' column), so listed tokens always carry a
+ * purpose in practice — but the create-token response omits it and we tolerate
+ * any path that does, treating an absent purpose as 'user'.
+ */
+export type ShareTokenPurpose = 'user' | 'archive_snapshot';
+
+/**
  * Share token data structure
  */
 export interface ShareToken {
@@ -37,6 +52,7 @@ export interface ShareToken {
   expiresAt: number; // Unix timestamp in milliseconds
   createdAt: string; // ISO timestamp
   firstUsedAt?: string | null; // ISO timestamp
+  purpose?: ShareTokenPurpose; // Absent purpose defaults to 'user' (schema default)
 }
 
 /**
