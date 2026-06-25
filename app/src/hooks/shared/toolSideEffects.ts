@@ -319,13 +319,20 @@ export async function handleToolResultSideEffects(
           : undefined) as T | undefined;
 
       if (tool.name === 'stripe__setup') {
-        if (pick('sandboxId')) {
-          // Auto-provisioned flow: keys pushed to env in this same call → completed AND verified.
+        const mode: string | undefined = pick('mode');
+        if (mode === 'managed') {
+          // Auto-provisioned: keys pushed to env in this same call → completed AND verified.
           trackPaymentSetupCompleted(appId, 'stripe', 'auto_provisioned');
           trackPaymentSetupVerified(appId, 'stripe', 'auto_provisioned');
-        } else if (pick('autoProvisioningUnavailable')) {
-          // Manual flow: setup is "done" once the user is routed to requestSecrets.
+        } else if (mode === 'legacy') {
+          // Pre-platform-managed app: keys are already live in the alloc and
+          // were proven by prior production traffic → completed AND verified.
+          // Reuse the manual_keys flow tag so analytics queries that already
+          // segment on it keep working — the cohort is the same (apps whose
+          // Stripe keys weren't auto-provisioned), only the gating moved
+          // server-side.
           trackPaymentSetupCompleted(appId, 'stripe', 'manual_keys');
+          trackPaymentSetupVerified(appId, 'stripe', 'manual_keys');
         }
         // needsInputs === true is a probe; no event.
       } else if (
@@ -340,13 +347,6 @@ export async function handleToolResultSideEffects(
         tool.name === 'commerce__commerce_store_channel_ensure'
       ) {
         trackPaymentSetupVerified(appId, 'godaddy_payments');
-      } else if (
-        tool.name.startsWith('stripe__') &&
-        tool.name !== 'stripe__setup' &&
-        tool.name !== 'stripe__status'
-      ) {
-        // Manual-flow verification: any further Stripe MCP call succeeding proves the keys are live.
-        trackPaymentSetupVerified(appId, 'stripe', 'manual_keys');
       }
     } catch (err) {
       logger.warn('toolSideEffects.payment.toolResult.analytics.failed', {

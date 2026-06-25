@@ -232,13 +232,10 @@ function parseEnvironmentFeatures(): FeatureConfig {
     },
 
     // Skill enablement configuration. Add skills here as they are created.
-    // The `stripe` skill is always available. Its v2 platform-managed tools
-    // (setup/status + MCP) are gated at invocation time by the
-    // `skill.stripe-v2.enabled` profile flag — read inside `setupTool.execute` (provisioning-tools.ts),
-    // not in `onLoad` (which only loads MCP catalog tools) — so only shoppers whose `appbuilder-agent-profile` switchboard
-    // rule maps them to a profile that sets `skill.stripe-v2.enabled: true`
-    // (currently the experimental profile for internal QA) get the v2 flow;
-    // everyone else gets the legacy key-paste flow within the same skill.
+    // The `stripe` skill is always available. Apps already integrated via the
+    // pre-auto-provisioning paste-key flow are detected server-side (legacy
+    // row in stripe-service) and surfaced via `mode: 'legacy'` so the agent
+    // keeps the existing key instead of provisioning over it.
     enabledSkills: {
       social: process.env.ENABLE_SOCIAL === 'true',
       connectingCalendars: process.env.ENABLE_CONNECTING_CALENDARS !== 'false',
@@ -351,11 +348,6 @@ export const profileGatedSkills: Set<string> = new Set([
   // Add skill enablementIds here as they adopt profile-based gating.
   'complianceDocs',
   'ssrMigration',
-  // Note: the `stripe` skill is NOT gated at the skill level — it always loads.
-  // Its v2 platform-managed tools are gated by the `skill.stripe-v2.enabled`
-  // profile flag, read inside `setupTool.execute` (provisioning-tools.ts) at
-  // call time. `onLoad` only loads MCP catalog tools. Flag key keeps the
-  // `stripe-v2` name for switchboard/profile continuity.
 ]);
 
 /**

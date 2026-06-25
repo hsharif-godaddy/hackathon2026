@@ -8,7 +8,6 @@
     "context.maxHistoryMessages": 50,
     "skill.complianceDocs.enabled": true,
     "skill.inbox.enabled": true,
-    "skill.stripe-v2.enabled": true,
     "skill.ssrMigration.enabled": true
   }
 }

@@ -145,6 +145,7 @@ vi.mock('@/lib/request-context', () => ({
   },
 }));
 
+import { resetPaymentFunnel } from '@/hooks/shared/paymentFunnel';
 import {
   detectRebuildIntent,
   handleToolCallSideEffects,
@@ -155,6 +156,7 @@ let dispatchEventSpy: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
   vi.clearAllMocks();
+  resetPaymentFunnel();
   mockGetSelectedCommitHash.mockReturnValue(null);
   mockReadIntentCategoryFromSession.mockReturnValue(undefined);
   mockLogImpressionEvent.mockReturnValue(mockLogImpressionEventInner);
@@ -597,6 +599,93 @@ describe('handleToolResultSideEffects — logo-generated event', () => {
     expect(mockLoggerWarn).toHaveBeenCalledWith(
       'toolSideEffects.logoTool.resultParseFailed',
       expect.objectContaining({ appId: 'app-1', toolName: 'media-logo__generate_logo' })
+    );
+  });
+});
+
+describe('handleToolResultSideEffects — stripe__setup payment funnel', () => {
+  it('fires completed + verified with auto_provisioned for mode:managed', async () => {
+    await handleToolResultSideEffects(
+      {
+        name: 'stripe__setup',
+        output: JSON.stringify({ success: true, mode: 'managed', sandboxId: 's1' }),
+      },
+      'app-1'
+    );
+
+    expect(mockShipAnalyticsLog).toHaveBeenCalledWith(
+      'payment.setup.completed',
+      expect.objectContaining({
+        appId: 'app-1',
+        provider: 'stripe',
+        flow: 'auto_provisioned',
+      })
+    );
+    expect(mockShipAnalyticsLog).toHaveBeenCalledWith(
+      'payment.setup.verified',
+      expect.objectContaining({
+        appId: 'app-1',
+        provider: 'stripe',
+        flow: 'auto_provisioned',
+      })
+    );
+  });
+
+  // Pre-PR this cohort returned `autoProvisioningUnavailable` and fired
+  // `manual_keys` completion; post-PR the same apps return `mode:'legacy'`
+  // from stripe__setup. The flow tag stays `manual_keys` so existing
+  // analytics queries that segment on it keep working — the cohort is the
+  // same, only the gating moved server-side.
+  it('fires completed + verified with manual_keys for mode:legacy', async () => {
+    await handleToolResultSideEffects(
+      {
+        name: 'stripe__setup',
+        output: JSON.stringify({ success: true, mode: 'legacy', message: 'keep using your key' }),
+      },
+      'app-1'
+    );
+
+    expect(mockShipAnalyticsLog).toHaveBeenCalledWith(
+      'payment.setup.completed',
+      expect.objectContaining({ appId: 'app-1', provider: 'stripe', flow: 'manual_keys' })
+    );
+    expect(mockShipAnalyticsLog).toHaveBeenCalledWith(
+      'payment.setup.verified',
+      expect.objectContaining({ appId: 'app-1', provider: 'stripe', flow: 'manual_keys' })
+    );
+  });
+
+  it('reads mode through the MCP-wrapped data envelope', async () => {
+    await handleToolResultSideEffects(
+      {
+        name: 'stripe__setup',
+        output: JSON.stringify({ data: { success: true, mode: 'managed', sandboxId: 's1' } }),
+      },
+      'app-1'
+    );
+
+    expect(mockShipAnalyticsLog).toHaveBeenCalledWith(
+      'payment.setup.completed',
+      expect.objectContaining({ flow: 'auto_provisioned' })
+    );
+  });
+
+  it('does not fire completed/verified for the needsInputs probe', async () => {
+    await handleToolResultSideEffects(
+      {
+        name: 'stripe__setup',
+        output: JSON.stringify({ autoProvisionedFlow: true, needsInputs: true }),
+      },
+      'app-1'
+    );
+
+    expect(mockShipAnalyticsLog).not.toHaveBeenCalledWith(
+      'payment.setup.completed',
+      expect.anything()
+    );
+    expect(mockShipAnalyticsLog).not.toHaveBeenCalledWith(
+      'payment.setup.verified',
+      expect.anything()
     );
   });
 });

@@ -412,32 +412,19 @@ describe("features", () => {
   });
 
   // Pin: the `stripe` skill is always available (static enabledSkills). It is
-  // NOT gated at the skill level — its v2 platform-managed tools (setup/status
-  // + MCP) are gated at invocation by the `skill.stripe-v2.enabled` profile
-  // flag, read in the skill's onLoad hook (agents/src/skills/stripe/tools/index.ts),
-  // not here. Everyone else gets the legacy key-paste flow within the same skill.
+  // NOT gated at the skill level. Apps that pre-date auto-provisioning are
+  // detected server-side (legacy row in stripe-service) and surfaced via
+  // `mode: 'legacy'` from setupTool.
   describe("stripe enablement", () => {
     it("stripe is always enabled (static config)", async () => {
       const { skills } = await import("../features.js");
       expect(skills.isEnabled("stripe")).toBe(true);
     });
 
-    it("stripe-v2 is no longer a gated skill (folded into stripe; tools gated in onLoad)", async () => {
+    it("stripe-v2 is not a known or gated skill (folded into stripe)", async () => {
       const { skills } = await import("../features.js");
-      // The separate stripe-v2 skill was removed. Its tools are now registered
-      // dynamically by the stripe skill's onLoad based on the profile flag, so
-      // stripe-v2 is neither a known enablement nor profile-gated here.
       expect(skills.isProfileGated("stripe-v2")).toBe(false);
       expect(skills.isEnabled("stripe-v2")).toBe(false);
-    });
-
-    // Pin: experimental.json must keep `skill.stripe-v2.enabled: true` so the
-    // stripe skill's onLoad registers the v2 platform tools for QA shoppers.
-    // The flag key retains the `stripe-v2` name for switchboard/profile
-    // continuity even though the skill is now `stripe`.
-    it("experimental profile keeps skill.stripe-v2.enabled=true (regression pin)", async () => {
-      const experimental = (await import("../../profiles/experimental.json", { with: { type: "json" } })).default;
-      expect(experimental.properties["skill.stripe-v2.enabled"]).toBe(true);
     });
   });
 

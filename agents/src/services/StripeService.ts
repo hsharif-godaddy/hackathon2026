@@ -232,41 +232,6 @@ class StripeService {
   }
 
   /**
-   * Record `appId` as a pre-stripe-v2 ("paste your secret key") integration.
-   * Writes a metadata-only `legacy` row in stripe-service so that PR2's
-   * postSandboxes short-circuit refuses to provision over the merchant's
-   * pasted key. Idempotent on appId: re-calling for the same app rewrites the
-   * same synthetic `legacy#<appId>` row and is harmless.
-   *
-   * Best-effort by design — callers should treat failures as non-fatal and
-   * continue. The backfill job is the safety net; missing a self-mark just
-   * means that app must be in the next backfill cohort.
-   */
-  async markLegacy(appId: string): Promise<void> {
-    const url = `${getStripeServiceBaseUrl()}/v1/legacy`;
-
-    logger.info('stripe_service.mark_legacy.begin', { appId, url });
-
-    try {
-      const headers = await this.buildHeaders();
-      const response = await fetch(url, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ appId }),
-        signal: AbortSignal.timeout(5_000),
-      });
-
-      if (!response.ok) {
-        await this.handleErrorResponse(response, 'mark_legacy', appId);
-      }
-
-      logger.info('stripe_service.mark_legacy.success', { appId });
-    } catch (error) {
-      this.handleCatchError(error, 'mark_legacy', appId);
-    }
-  }
-
-  /**
    * Read the current claim state for an app's sandbox. Returns `null`
    * when stripe-service has no record of a sandbox for this app (HTTP
    * 404). All other non-2xx responses throw `StripeServiceError`.

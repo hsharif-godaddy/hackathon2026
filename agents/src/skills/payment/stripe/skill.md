@@ -19,25 +19,21 @@ skill-deps:
 **Call `stripe__setup()` without arguments first — its response tells you which flow to use:**
 
 - **Returns `{ mode: "managed", sandboxId, ... }` → Auto-provisioned flow.** Keys are auto-provisioned into the app; **never** call `requestSecrets` for any `STRIPE_*` key. MCP catalog tools (`stripe__create_product`, `stripe__list_products`, etc.) are available for product setup.
-- **Returns `{ autoProvisionedFlow: true, needsInputs: true }` → Auto-provisioned, but needs country.** Ask the user for their country (e.g. "US"), then call `stripe__setup({ country })` again.
+- **Returns `{ autoProvisionedFlow: true, needsInputs: true }` → Needs country.** Ask the user for their country (e.g. "US"), then call `stripe__setup({ country })` again.
 - **Returns `{ mode: "legacy", message }` → Legacy mode.** The app already has a Stripe integration set up with the user's own key (pre-auto-provisioning). Keep the existing key — checkout and products work as before. **Do NOT call `requestSecrets`, do NOT provision a sandbox, and do NOT use MCP product tools** (there is no MCP key in this mode). Use the existing Stripe templates/scripts for any product changes. Skip Step 1; templates may already be installed but Step 2 (`skill install`) is idempotent and safe to re-run.
-- **Returns `{ autoProvisioningUnavailable: true }` → Manual key flow.** Platform provisioning is not enabled for this shopper. Collect their Stripe keys via `requestSecrets`.
 
-Both flows install the **same** checkout templates; only key acquisition (Step 1) and product registration (Step 4) differ.
+Both modes install the **same** checkout templates; only key handling (Step 1) and product registration (Step 4) differ.
 
-## ⚠️ ABSOLUTE RULES (both flows)
+## ⚠️ ABSOLUTE RULES
 
 1. **NEVER print/log API keys**
 2. **NEVER call the Stripe API directly with `STRIPE_SECRET_KEY`** from the agent — no `terminalCommand`, no `node -e`, no curl. That key is for the customer app's runtime only, not for agent-initiated operations.
 3. **NEVER probe endpoints or narrate HTTP status codes to the user.** Do not run ad-hoc checks against the app's API routes (`/api/stripe/*`) and do not report raw results like "401 is expected since it requires auth context" or "the endpoint is responding." Describe state in user terms — "Your checkout flow is ready to test" — never protocol details.
-4. **ALWAYS add View Details button** — every product card MUST have it
-5. **ALWAYS add Detail Modal** — required for all apps
-6. **ALWAYS add Cart** — required for all apps (uses `/cart` page)
-
-## ⚠️ ABSOLUTE RULES (Auto-provisioned flow only — when `stripe__setup` returned `sandboxId`)
-
-7. **NEVER call `requestSecrets` for any `STRIPE_*` key** — keys are already in the env, pushed by `stripe__setup`. Calling `requestSecrets` here is always wrong.
-8. **Use `stripe__*` MCP tools for all agent-initiated Stripe writes** (create_product, create_price, etc.) — never terminal scripts.
+4. **Inside the `stripe__setup` flow, NEVER call `requestSecrets` for any `STRIPE_*` key.** Managed mode populates them via `stripe__setup`; legacy mode reuses keys the user already pasted before auto-provisioning. Calling `requestSecrets` during setup is always wrong. (User-initiated key rotation is a separate concern, outside this skill's flow — for legacy users `requestSecrets` is the right tool; for managed users direct them to the Stripe dashboard, since stripe-service would overwrite a manual paste on its next rotation.)
+5. **In auto-provisioned mode, use `stripe__*` MCP tools for all agent-initiated Stripe writes** (create_product, create_price, etc.) — never terminal scripts. (Legacy mode has no MCP key — use the bundled scripts; see Step 4.)
+6. **ALWAYS add View Details button** — every product card MUST have it
+7. **ALWAYS add Detail Modal** — required for all apps
+8. **ALWAYS add Cart** — required for all apps (uses `/cart` page)
 
 ---
 
@@ -52,9 +48,7 @@ Both flows install the **same** checkout templates; only key acquisition (Step 1
 
 **⚠️ FOLLOW STEPS IN EXACT ORDER — do not skip or reorder steps.**
 
-## Step 1: Get Stripe keys into the app
-
-### Auto-provisioned branch (`stripe__setup` returned `sandboxId`)
+## Step 1: Provision the Stripe sandbox (or detect legacy mode)
 
 ```typescript
 // Step 1a: call without inputs to determine flow
@@ -65,6 +59,7 @@ const sandbox = await stripe__setup({ country });
 
 - If the user already provided country in their message, pass it directly — skip the probe call.
 - `stripe__setup` is server-side idempotent on `appId`: re-calling returns the same sandbox + same `claimUrl`. Safe to retry if the user lost the URL.
+- **If the response is `{ mode: 'legacy', message }`, the app already has a Stripe integration with a pasted key.** Surface the `message` to the user, skip the rest of this step (no `requestSecrets`, no provisioning), and proceed directly to Step 2 — `skill install` is idempotent and safe to re-run for legacy apps.
 
 **The sandbox is immediately usable for testing.** Test-mode keys power the full Stripe API surface — Hosted Checkout, Embedded Checkout, Elements, products/prices, subscriptions — in test mode. End-to-end purchase flows work against Stripe's test card numbers (e.g. `4242 4242 4242 4242`) without the user touching the claim URL.
 
@@ -100,24 +95,6 @@ The `STRIPE_MCP_KEY` Stripe issues with the sandbox is valid until **7 days afte
 
 If `stripe__setup` returns `{stripeProvisioningUnavailable: true}` with a `message`, the upstream Stripe API is unavailable — usually because the platform Stripe API isn't enabled for this project yet. Tell the user the literal `message`. **Do not** retry within the same conversation; suggest they try again later.
 
-### Manual key branch (`stripe__setup` returned `autoProvisioningUnavailable: true`)
-
-Collect the user's own Stripe keys — this is the only flow where `requestSecrets` for Stripe keys is correct:
-
-```typescript
-requestSecrets({
-  title: 'Stripe API Keys',
-  description: 'Get your keys from dashboard.stripe.com/apikeys. Use test keys (sk_test_, pk_test_) for now.',
-  secrets: [
-    { name: 'STRIPE_SECRET_KEY', required: true },
-    { name: 'STRIPE_PUBLISHABLE_KEY', required: true },
-  ],
-  mode: 'add',
-});
-```
-
-**🛑 MANDATORY STOP — wait for the user to confirm they saved the keys**, then continue to Step 2. Everything after Step 1 is identical to the Auto-provisioned branch — the checkout templates read `STRIPE_SECRET_KEY` / `STRIPE_PUBLISHABLE_KEY` from the env regardless of how they got there.
-
 ---
 
 ## Step 2: Install Templates
@@ -132,13 +109,13 @@ const result = await skill({ action: 'install', skill: 'payment/stripe' });
 - Pages: `pages/Products.tsx`, `pages/cart.tsx`, `pages/checkout/success.tsx`, `pages/checkout/cancel.tsx`
 - Contexts: `contexts/cart-context.tsx`, `contexts/use-cart.ts`
 - Analytics: `lib/analytics/track.ts`, `lib/analytics/funnel-session.ts`, `lib/analytics/checkout.ts` — commerce-funnel instrumentation. `startTrackedCheckout()` (from `checkout.ts`) is the single source of truth for the checkout flow + events; the page templates call it, and so must any hand-enhanced page (Step 5 Option B).
-- Library: `lib/stripe/format.ts` (browser-safe) + `lib/stripe/stripe.ts` (server SDK helper, legacy flow)
-- Manual key scripts: `scripts/stripe-register-products.ts`, `scripts/stripe-list-products.ts` — used only in the Manual key flow (Step 4); harmless/unused in Auto-provisioned mode.
+- Library: `lib/stripe/format.ts` (browser-safe) + `lib/stripe/stripe.ts` (server SDK helper, used by legacy mode)
+- Legacy-mode scripts: `scripts/stripe-register-products.ts`, `scripts/stripe-list-products.ts` — used only in legacy mode (Step 4); harmless/unused in auto-provisioned mode.
 - **i18n dependencies** (automatic via skill-deps)
 
 **⚠️ Templates use `t('stripe.*')` — you MUST add translations in Step 3.**
 
-Templates read `STRIPE_SECRET_KEY` (server-only) and `STRIPE_PUBLISHABLE_KEY` (client) from the alloc env via `getSecret`. Those values are present from Step 1 — auto-provisioned or supplied by the user via `requestSecrets` (Legacy).
+Templates read `STRIPE_SECRET_KEY` (server-only) and `STRIPE_PUBLISHABLE_KEY` (client) from the alloc env via `getSecret`. Those values are present from Step 1 — pushed by `stripe__setup` in auto-provisioned mode, or already in the env from the user's pre-existing paste in legacy mode.
 
 ---
 
@@ -245,10 +222,10 @@ Files created:
 
 ## Step 4: Populate Products
 
-**Both flows end the same way: edit the embedded `PRODUCTS` array in `src/pages/Products.tsx`.** Only *how you obtain* each product's `priceId` differs:
+**Both modes end the same way: edit the embedded `PRODUCTS` array in `src/pages/Products.tsx`.** Only *how you obtain* each product's `priceId` differs:
 
-- **Auto-provisioned:** use the MCP tools (`stripe__create_product` / `stripe__create_price` / `stripe__list_products`) — Option 1/2 below.
-- **Manual key (no MCP tools):** register via the bundled scripts instead — see "Manual key: register via scripts" at the end of this step — then paste the returned `priceId`s into `PRODUCTS` exactly as below.
+- **Auto-provisioned mode:** use the MCP tools (`stripe__create_product` / `stripe__create_price` / `stripe__list_products`) — Option 1/2 below.
+- **Legacy mode (no MCP tools):** register via the bundled scripts instead — see "Legacy mode: register via scripts" at the end of this step — then paste the returned `priceId`s into `PRODUCTS` exactly as below.
 
 When the sandbox is provisioned and the agent has `STRIPE_MCP_KEY` in its environment, Stripe MCP tools auto-load: `stripe__create_product`, `stripe__create_price`, `stripe__list_products`, etc. Check your active tool list — if those tools are present, use them directly for all Stripe writes.
 
@@ -303,9 +280,9 @@ Field-name pitfalls: it's `id` (not omitted), `images` (array, not `image`), `am
 
 Call the list-shape MCP tool (e.g. `stripe__list_products` — verify the exact name in your tool list). Map each returned product to the `Product` interface declared at the top of `pages/Products.tsx` and embed it into the `PRODUCTS` array — same field names as Option 1 (`id`, `priceId`, `name`, `description`, `images: string[]`, `amount` (smallest currency unit), `currency`, `recurring: { interval, intervalCount } | null`). Use the price value Stripe returns, not any user-typed value.
 
-### Manual key: register via scripts (`stripe__*` MCP tools absent)
+### Legacy mode: register via scripts (`stripe__*` MCP tools absent)
 
-When provisioning isn't enabled there are no MCP tools. Register products with the bundled script — **one product per invocation**:
+In legacy mode there is no MCP key, so the `stripe__*` MCP tools are not available. Register products with the bundled script — **one product per invocation**:
 
 ```bash
 cd /app && npx tsx src/scripts/stripe-register-products.ts '{"name":"Pro Plan","description":"...","price":29.99,"currency":"usd"}'

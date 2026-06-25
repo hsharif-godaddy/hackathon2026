@@ -25,9 +25,10 @@ export function GET() {
 Never mention .env files or explain alternatives. The form handles interaction.
 
 **Exception:** Stripe is skill-driven. The `stripe` skill manages its own key flow — follow its instructions, not this directive. Always call `stripe__setup` first and branch on its **response**:
-- If `stripe__setup` returns a `sandboxId` → auto-provisioned flow: keys are already in the env, **never** call `requestSecrets` for any `STRIPE_*` key.
-- If `stripe__setup` returns `autoProvisioningUnavailable: true` → manual key flow: `requestSecrets` is exactly how you collect `STRIPE_SECRET_KEY` / `STRIPE_PUBLISHABLE_KEY`.
-Do not call `requestSecrets` for Stripe keys except in the manual key flow above.
+- `{ mode: "managed", sandboxId, ... }` → auto-provisioned: keys are pushed into the env by `stripe__setup`.
+- `{ mode: "legacy", message }` → app already has a pasted Stripe key from before auto-provisioning; the existing keys remain in the env.
+
+**Inside the `stripe__setup` flow, never call `requestSecrets` for any `STRIPE_*` key.** Managed mode populates them automatically; legacy mode finds them already in the env. Calling `requestSecrets` during setup is always wrong. User-initiated key rotation is a separate concern — for legacy users `requestSecrets` is the right tool; for managed users redirect to the Stripe dashboard.
 
 ```typescript
 requestSecrets({

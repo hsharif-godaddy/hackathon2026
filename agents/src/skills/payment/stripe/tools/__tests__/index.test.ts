@@ -15,13 +15,11 @@ class MockStripeServiceError extends Error {
 
 const mockCreateSandbox = vi.fn();
 const mockGetStatus = vi.fn();
-const mockMarkLegacy = vi.fn();
 
 vi.mock('../../../../../services/StripeService.js', () => ({
   stripeService: {
     createSandbox: mockCreateSandbox,
     getStatus: mockGetStatus,
-    markLegacy: mockMarkLegacy,
   },
   StripeServiceError: MockStripeServiceError,
 }));
@@ -38,12 +36,6 @@ vi.mock('../../../../../tools/skill-tool-manager.js', () => ({
   skillToolManager: {
     registerDynamicTools: mockRegisterDynamicTools,
   },
-}));
-
-const mockProfileFlag = vi.fn();
-
-vi.mock('../../../../../profiles/profile-accessor.js', () => ({
-  profileFlag: mockProfileFlag,
 }));
 
 const mockLoggerInfo = vi.fn();
@@ -70,9 +62,8 @@ describe('stripe skill tools', () => {
     // one test can't leak its implementation into a later test that forgot to
     // stub the loader — which would otherwise hit real backoff timers.
     vi.resetAllMocks();
-    // Default: platform flag ON, MCP key not yet propagated.
-    // Tests that exercise the flag-OFF path override mockProfileFlag explicitly.
-    mockProfileFlag.mockReturnValue(true);
+    // Default: MCP key not yet propagated. Tests that need MCP tools loaded
+    // immediately override this in their own setup.
     mockLoadStripeMcpTools.mockResolvedValue({});
   });
 
@@ -286,54 +277,17 @@ describe('stripe skill tools', () => {
     });
   });
 
-  describe('setupTool — flag-gated execute', () => {
-    it('returns autoProvisioningUnavailable (no inputs needed) when the flag is OFF', async () => {
-      mockProfileFlag.mockReturnValue(false);
-      mockMarkLegacy.mockResolvedValueOnce(undefined);
-
-      const result = await setupTool.execute({ country: 'US' }, APP);
-
-      expect(result).toMatchObject({ autoProvisioningUnavailable: true });
-      expect((result as { message: string }).message).toContain('Manual key flow');
-      expect(mockCreateSandbox).not.toHaveBeenCalled();
-    });
-
-    it('self-marks the app as legacy when the flag is OFF', async () => {
-      mockProfileFlag.mockReturnValue(false);
-      mockMarkLegacy.mockResolvedValueOnce(undefined);
-
-      await setupTool.execute({ country: 'US' }, APP);
-
-      expect(mockMarkLegacy).toHaveBeenCalledTimes(1);
-      expect(mockMarkLegacy).toHaveBeenCalledWith('app-1');
-    });
-
-    it('still returns autoProvisioningUnavailable when markLegacy fails (best-effort)', async () => {
-      mockProfileFlag.mockReturnValue(false);
-      mockMarkLegacy.mockRejectedValueOnce(new Error('stripe-service down'));
-
-      const result = await setupTool.execute({ country: 'US' }, APP);
-
-      expect(result).toMatchObject({ autoProvisioningUnavailable: true });
-      expect(mockLoggerWarn).toHaveBeenCalledWith(
-        'skill.stripe.setup.mark_legacy_failed',
-        expect.objectContaining({ appId: 'app-1', error: 'stripe-service down' }),
-      );
-    });
-
-    it('returns needsInputs when flag is ON but country omitted', async () => {
-      mockProfileFlag.mockReturnValue(true);
-
+  describe('setupTool — execute', () => {
+    it('returns needsInputs when country omitted', async () => {
       const result = await setupTool.execute({}, APP);
 
       expect(result).toMatchObject({ autoProvisionedFlow: true, needsInputs: true });
       expect(mockCreateSandbox).not.toHaveBeenCalled();
     });
 
-    it('provisions when flag is ON and country is provided', async () => {
+    it('provisions when country is provided', async () => {
       vi.useFakeTimers();
       try {
-        mockProfileFlag.mockReturnValue(true);
         mockCreateSandbox.mockResolvedValueOnce({ sandboxId: 's', accountId: 'a', claimUrl: 'u' });
         mockLoadStripeMcpTools.mockResolvedValue({});
 
@@ -349,7 +303,6 @@ describe('stripe skill tools', () => {
     });
 
     it('returns mode:legacy when stripe-service short-circuits with legacy:true', async () => {
-      mockProfileFlag.mockReturnValue(true);
       mockCreateSandbox.mockResolvedValueOnce({
         sandboxId: '',
         accountId: '',

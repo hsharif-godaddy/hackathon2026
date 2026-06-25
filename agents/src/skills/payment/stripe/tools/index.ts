@@ -6,16 +6,16 @@
  * critical design choice that makes `stripe__setup` callable in the same turn
  * the skill loads, with no multi-turn workaround.
  *
- * The platform-managed (v2) vs legacy (v1) gate lives inside `setupTool.execute`
- * itself: it calls profileFlag at execution time (request-scoped, profile
- * readable) and returns `{ platformManagedUnavailable: true }` when the flag is
- * off. The skill.md flow selector branches on the *result* of calling setup, not
- * on whether the tool is present or absent. All stripe shoppers see the tool;
- * the flag determines what it does.
+ * Auto-provisioning is the only flow. `setupTool.execute` calls stripe-service
+ * `createSandbox`, which returns either `{mode: 'managed', sandbox...}` for new
+ * apps or `{mode: 'legacy', message}` for apps that already had a pasted key
+ * before auto-provisioning existed (detected server-side via a `legacy` row).
+ * skill.md branches on the response shape; both modes share Step 2 onward.
  *
  * MCP catalog tools (create_product, list_products, …) remain dynamic via
- * onLoad — they're only available after a sandbox is provisioned, so the
- * next-turn delay there is natural and expected.
+ * onLoad — they're only available after a sandbox is provisioned (managed
+ * mode), so the next-turn delay there is natural and expected. Legacy mode
+ * has no MCP key; it uses the bundled scripts instead (see skill.md Step 4).
  */
 
 import type { SkillHooks } from '@airo/ai-skills';

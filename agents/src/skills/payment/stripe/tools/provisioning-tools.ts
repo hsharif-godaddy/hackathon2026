@@ -5,30 +5,22 @@
  * startup — they appear in prepareCall from turn 1, so `stripe__setup` is
  * callable in the same turn the skill loads.
  *
- * The platform-managed (v2) gate lives inside `setupTool.execute`: it reads
- * `profileFlag('skill.stripe-v2.enabled')` at call time and returns
- * `{ autoProvisioningUnavailable: true }` when the flag is off. The skill.md
- * flow selector branches on this result rather than tool presence, keeping the
- * v1/v2 decision entirely in the response and out of the tool registry.
+ * Auto-provisioning is the only flow. Apps that already have a pre-platform-
+ * managed pasted Stripe key are detected by stripe-service (legacy row) and
+ * surfaced via `mode: 'legacy'` so the agent keeps the existing key. Apps
+ * without a legacy row get a freshly provisioned sandbox.
  */
 
 import { z } from 'zod';
 import type { SkillToolDefinition } from '@airo/ai-skills';
 
 import { logger } from '../../../../logging/index.js';
-import { profileFlag } from '../../../../profiles/profile-accessor.js';
 import { stripeService, StripeServiceError } from '../../../../services/StripeService.js';
 import { loadStripeMcpTools } from '../../../../services/mcp/stripe-mcp-client.js';
 import { skillToolManager } from '../../../../tools/skill-tool-manager.js';
 
 /** The skill's full namespaced name — matches the key used in the registry. */
 export const SKILL_NAME = 'payment/stripe';
-
-/**
- * Per-shopper gate for the v2 platform-managed Stripe flow. Keeps the
- * `stripe-v2` key for switchboard/profile continuity.
- */
-const PLATFORM_MANAGED_FLAG = 'skill.stripe-v2.enabled';
 
 const STRIPE_PROVISIONING_RETRY_SECONDS = 30;
 
@@ -202,12 +194,11 @@ export const setupTool: SkillToolDefinition = {
   name: 'setup',
   description:
     'Provision (or fetch the existing) Stripe sandbox for this app. ' +
-    'country is optional — call without it first to check flow availability, then provide it when the auto-provisioned flow is active. ' +
+    'country is optional — call without it first; if a country is needed the response will say so. ' +
     '(1) Returns { mode: "managed", sandboxId, accountId, claimUrl } → auto-provisioned flow: keys are in the env, never call requestSecrets. ' +
-    '(2) Returns { autoProvisionedFlow: true, needsInputs: true } → auto-provisioned flow confirmed but country required — ask the user and call again. ' +
+    '(2) Returns { autoProvisionedFlow: true, needsInputs: true } → country required — ask the user and call again. ' +
     '(3) Returns { mode: "legacy", message } → app already has a pasted Stripe key: surface the message, keep existing key, do NOT provision or use MCP product tools. ' +
-    '(4) Returns { autoProvisioningUnavailable: true } → manual key flow: collect keys via requestSecrets. ' +
-    '(5) Returns { stripeProvisioningUnavailable: true, message } → Stripe API unavailable: surface the message verbatim, do not retry this conversation. ' +
+    '(4) Returns { stripeProvisioningUnavailable: true, message } → Stripe API unavailable: surface the message verbatim, do not retry this conversation. ' +
     'Idempotent: repeated calls for the same app return the same sandbox.',
   parameters: z.object({
     country: z
@@ -237,34 +228,6 @@ export const setupTool: SkillToolDefinition = {
       return { error: 'App ID is required. Pass context.metadata.appId.' };
     }
 
-    // Gate: check the per-shopper flag at call time (request-scoped, profile
-    // readable). country is optional so the agent can call without it to
-    // determine which flow applies first — no upfront questions for manual-key
-    // users.
-    if (!profileFlag(PLATFORM_MANAGED_FLAG, false)) {
-      logger.info('skill.stripe.setup.platform_managed_unavailable', { appId });
-      // Self-mark on every entry to the flag-OFF branch (idempotent — PutLegacy
-      // rewrites the same row). Closes the ongoing gap so postSandboxes
-      // short-circuit refuses to provision over a pasted key once
-      // auto-provisioning is enabled. Best-effort: errors are logged and
-      // swallowed; the backfill job catches anyone this misses.
-      try {
-        await stripeService.markLegacy(appId);
-      } catch (error) {
-        logger.warn('skill.stripe.setup.mark_legacy_failed', {
-          appId,
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
-      return {
-        autoProvisioningUnavailable: true,
-        message:
-          'Platform-managed Stripe provisioning is not enabled for this account. ' +
-          'Use the Manual key flow: collect STRIPE_SECRET_KEY and STRIPE_PUBLISHABLE_KEY ' +
-          'from the user via requestSecrets, then proceed with template installation.',
-      };
-    }
-
     // Country is required for Stripe's SandboxPrefill — ask the user if not provided.
     if (!input.country) {
       logger.info('skill.stripe.setup.inputs_needed', { appId });
@@ -272,7 +235,6 @@ export const setupTool: SkillToolDefinition = {
         autoProvisionedFlow: true,
         needsInputs: true,
         message:
-          'Auto-provisioned Stripe is available for this account. ' +
           'Ask the user for their country (uppercase ISO-3166-1 alpha-2, e.g. "US"), ' +
           'then call stripe__setup again with that value.',
       };
