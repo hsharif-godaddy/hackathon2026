@@ -46,28 +46,28 @@ export interface TipsVariantPackage {
  * the single "Package of card copy" in the experiment design.
  */
 const TREATMENT_TIP_IDS = [
-  'start_big_picture_v2',
-  'get_into_details',
-  'show_examples_v2',
-  'ask_one_change',
+  'credits_ai_actions_only',
+  'credits_purchased_twelve_months',
+  'credits_plan_monthly_reset',
+  'credits_varies_by_task'
 ]
 
 const TREATMENT_TIP_COPY: Record<string, TipCardDefault> = {
-  start_big_picture_v2: {
-    title: 'Start with the big picture',
-    description: 'I’ll build the first version of your project based on what you’ve already told me.',
+  credits_ai_actions_only: {
+    title: 'Credits only power AI actions',
+    description: 'Chatting with Airo, generating images, and creating copy use credits.​ Manual edits, publishing, and domain tasks do not.​',
   },
-  get_into_details: {
-    title: 'Get into the details',
-    description: 'You can make tweaks to refine your idea once the first draft is complete.',
+  credits_purchased_twelve_months: {
+    title: 'Purchased credits last a full year',
+    description: 'Need more credits? Any you buy last for 12 months — and we always use the ones closest to expiring first, so nothing goes to waste.​',
   },
-  show_examples_v2: {
-    title: 'Show visual examples',
-    description: 'After your draft is complete, upload an image or file so Airo can match your vision.',
+  credits_plan_monthly_reset: {
+    title: 'Plan credits reset every month',
+    description: 'Credits included with your paid plan refresh on your billing date.​ Unused credits don’t carry over, so use them before your next reset.​',
   },
-  ask_one_change: {
-    title: 'Ask for one change at a time',
-    description: 'Focus on one change at a time to guide your draft to a strong finished product.',
+  credits_varies_by_task: {
+    title: 'Credit usage varies by task',
+    description: 'Some actions use more than others.​ A detailed prompt helps Airo work efficiently — so you get better results with fewer credits.​',
   },
 }
 
