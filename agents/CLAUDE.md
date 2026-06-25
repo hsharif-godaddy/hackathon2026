@@ -79,6 +79,18 @@ When modifying skills, run the matching eval suite if one exists. See [SKILL-EVA
 
 Key methods: `addFiles`, `removeFiles`, `writeTree`, `commitTree`, `reset`, `push`, `commit`, `getStatus`.
 
+## Workspace File I/O (Customer App Files)
+
+**All I/O against the customer app workspace — the files shared with the preview/publish containers — MUST go through the Workspace API in `src/workspace/`, never direct `node:fs`/`node:fs/promises`.** The API gives us sandboxing, host→container path translation, and AAB/PaaS/local parity; a raw `fs` call against `app.path` / `CUSTOMER_APP_DIR` / the preview or publish tree bypasses all three.
+
+Entry point: `createForWorkspace(workspaceId, variant)` (`src/workspace/index.ts`) → `WorkspaceClient | null` (`variant` is `'preview'` or `'publish'`). File ops live on `client.files` (`WorkspaceFiles`): `tree`, `stat`, `view`, `search`, `write`, `edit`, `insert`, `delete`, `move`, `upload`, `download`, `archive`. A `null` result means the workspace/supervisor isn't bound yet — surface it, **do not** fall back to `fs`.
+
+**`node:fs` stays correct for agent-local files** — anything NOT in the customer workspace: the SQLite DB (`agents/data/`), prompt fragments (`src/prompts/`), skill templates/markdown, logging config, temp/scratch, evals. The rule is about *which tree* you touch, not a ban on `fs`.
+
+**Sanctioned exception:** prod persistent media bytes (`MediaManifestService`, `persistent-assets.ts`) still write via `node:fs` because they live outside `/app` and the API confines to `/app` today. The branching is `getPersistentPublicDir` / `getPersistentPrivateDir` in `src/utils/persistent-assets.ts`, which switch on `appPath === '/app'`. Named storage roots (AIROBUILD-2907/2908) migrate these — don't convert them to the API before that capability lands.
+
+**New tool/service:** read `appId` from `context.metadata.appId`, call `createForWorkspace(appId, 'preview')`, then use `workspace.files.*` (or the domain wrappers — `ReadFileTool` in `src/tools/read-file.ts` takes `workspace.files`; for text-editor operations use the exported functions `handleView` / `handleStrReplace` / `handleCreate` / `handleInsert` in `src/tools/text-editor-workspace.ts`, each accepting `WorkspaceFiles`). Reference pattern: `src/tools/ai-lib-tools/read-file.ts`.
+
 ## ai-lib & Shared Types
 
 `packages/ai-lib/` is consumed by agents. It wraps Vercel AI SDK and provides:
