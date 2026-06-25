@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -39,7 +40,7 @@ type WorkspaceBuildCheck struct{}
 func (c *WorkspaceBuildCheck) Name() string     { return "Workspace Build" }
 func (c *WorkspaceBuildCheck) Category() string { return preflight.CategoryEnvironment }
 
-func (c *WorkspaceBuildCheck) Run(_ context.Context, projectRoot string) preflight.CheckResult {
+func (c *WorkspaceBuildCheck) Run(ctx context.Context, projectRoot string) preflight.CheckResult {
 	missing, err := UnbuiltDistPackages(projectRoot)
 	if err != nil {
 		return preflight.CheckResult{
@@ -61,11 +62,34 @@ func (c *WorkspaceBuildCheck) Run(_ context.Context, projectRoot string) preflig
 		}
 	}
 
+	stale, err := StaleDistPackages(ctx, projectRoot)
+	if err != nil {
+		// Turbo dry-run is best-effort; if it fails (e.g. node_modules absent),
+		// fall back to the presence check which already passed above.
+		return preflight.CheckResult{
+			Status:   preflight.StatusPass,
+			Name:     c.Name(),
+			Category: c.Category(),
+			Message:  "all required workspace libraries built (staleness check skipped: " + err.Error() + ")",
+		}
+	}
+
+	if len(stale) > 0 {
+		return preflight.CheckResult{
+			Status:       preflight.StatusFail,
+			Name:         c.Name(),
+			Category:     c.Category(),
+			FixAvailable: true,
+			Message:      "stale built output: " + strings.Join(stale, ", "),
+			InstallHint:  "Run the fixer to rebuild (pnpm exec turbo run build --filter=…)",
+		}
+	}
+
 	return preflight.CheckResult{
 		Status:   preflight.StatusPass,
 		Name:     c.Name(),
 		Category: c.Category(),
-		Message:  "all required workspace libraries built",
+		Message:  "all required workspace libraries built and up to date",
 	}
 }
 
@@ -271,4 +295,89 @@ func distPopulated(distDir string) bool {
 	defer f.Close()
 	entries, err := f.ReadDir(1)
 	return err == nil && len(entries) > 0
+}
+
+// StaleDistPackages returns the names of dev-required library packages whose
+// dist/ exists but is outdated according to Turbo's content-hash cache. It
+// runs `pnpm exec turbo run build --dry=json` and reports packages with a
+// cache MISS. Returns an error if turbo cannot run (e.g. node_modules absent).
+func StaleDistPackages(ctx context.Context, projectRoot string) ([]string, error) {
+	pkgs, err := DevDistPackageNames(projectRoot)
+	if err != nil {
+		return nil, err
+	}
+	if len(pkgs) == 0 {
+		return nil, nil
+	}
+
+	// Turbo requires node_modules to resolve; bail if absent.
+	if _, statErr := os.Stat(filepath.Join(projectRoot, "node_modules")); statErr != nil {
+		return nil, fmt.Errorf("node_modules not found")
+	}
+
+	args := []string{"exec", "turbo", "run", "build", "--dry=json"}
+	for _, name := range pkgs {
+		args = append(args, "--filter="+name)
+	}
+
+	out, err := runCommandStdout(ctx, projectRoot, "pnpm", args...)
+	if err != nil {
+		return nil, fmt.Errorf("turbo dry-run: %w", err)
+	}
+
+	var result turboDryRun
+	if err := json.Unmarshal([]byte(out), &result); err != nil {
+		return nil, fmt.Errorf("parsing turbo dry-run output: %w", err)
+	}
+
+	// Build a set of the packages we care about (the dev closure) so we can
+	// ignore transitive deps outside the closure that turbo may include.
+	devPkgSet := make(map[string]bool, len(pkgs))
+	for _, name := range pkgs {
+		devPkgSet[name] = true
+	}
+
+	var stale []string
+	seen := make(map[string]bool)
+	for _, task := range result.Tasks {
+		if task.Task != "build" {
+			continue
+		}
+		if !devPkgSet[task.Package] {
+			continue
+		}
+		if task.Cache.Status == "HIT" {
+			continue
+		}
+		if !seen[task.Package] {
+			seen[task.Package] = true
+			stale = append(stale, task.Package)
+		}
+	}
+	sort.Strings(stale)
+	return stale, nil
+}
+
+// turboDryRun is the minimal subset of turbo's --dry=json output we parse.
+type turboDryRun struct {
+	Tasks []turboDryRunTask `json:"tasks"`
+}
+
+type turboDryRunTask struct {
+	Package string           `json:"package"`
+	Task    string           `json:"task"`
+	Cache   turboDryRunCache `json:"cache"`
+}
+
+type turboDryRunCache struct {
+	Status string `json:"status"`
+}
+
+// runCommandStdout executes a command and returns only its stdout output.
+func runCommandStdout(ctx context.Context, dir string, name string, args ...string) (string, error) {
+	cmd := exec.CommandContext(ctx, name, args...) //nolint:gosec
+	cmd.Dir = dir
+	cmd.Env = os.Environ()
+	out, err := cmd.Output()
+	return strings.TrimSpace(string(out)), err
 }

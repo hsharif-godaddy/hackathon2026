@@ -290,6 +290,59 @@ func TestWorkspaceBuildCheck_NoPackagesDirNoOp(t *testing.T) {
 	}
 }
 
+// TestStaleDistPackages_NoNodeModules confirms graceful degradation when
+// node_modules is absent (turbo cannot run).
+func TestStaleDistPackages_NoNodeModules(t *testing.T) {
+	w := newFakeWorkspace(t)
+	w.writePkg("app", appManifest)
+	w.writePkg("agents", agentsManifest)
+	w.writePkg("packages/shared", fmtLib("@airo/shared"))
+	w.populateDist("packages/shared")
+
+	_, err := StaleDistPackages(context.Background(), w.root)
+	if err == nil {
+		t.Error("expected error when node_modules absent")
+	}
+}
+
+// TestStaleDistPackages_NoPkgs confirms empty result when no packages need checking.
+func TestStaleDistPackages_NoPkgs(t *testing.T) {
+	w := newFakeWorkspace(t)
+	w.writePkg("app", `{"name": "website"}`)
+	w.writePkg("agents", `{"name": "@airo/agents"}`)
+
+	stale, err := StaleDistPackages(context.Background(), w.root)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(stale) != 0 {
+		t.Errorf("expected no stale packages; got %v", stale)
+	}
+}
+
+// TestWorkspaceBuildCheck_StalenessSkippedGracefully confirms the check passes
+// (with a note) when turbo cannot run but dist/ is present.
+func TestWorkspaceBuildCheck_StalenessSkippedGracefully(t *testing.T) {
+	w := newFakeWorkspace(t)
+	w.writePkg("app", appManifest)
+	w.writePkg("agents", agentsManifest)
+	w.writePkg("packages/pattern-library", fmtLib("@airo-ux/pattern-library"))
+	w.writePkg("packages/shared", fmtLib("@airo/shared"))
+	w.writePkg("packages/ai-lib", fmtLib("@airo/ai-lib"))
+	for _, rel := range []string{"packages/pattern-library", "packages/shared", "packages/ai-lib"} {
+		w.populateDist(rel)
+	}
+	// No node_modules — turbo cannot run, check should still pass.
+
+	res := (&WorkspaceBuildCheck{}).Run(context.Background(), w.root)
+	if res.Status != preflight.StatusPass {
+		t.Errorf("expected pass (staleness skipped); got %v: %s", res.Status, res.Message)
+	}
+	if !strings.Contains(res.Message, "staleness check skipped") {
+		t.Errorf("expected skip note in message; got: %s", res.Message)
+	}
+}
+
 // helpers — keep test bodies readable.
 
 func fmtLib(name string) string {
