@@ -366,6 +366,7 @@ export class SSETransport implements ChatTransport {
         subscriptionId: params.subscriptionId,
         buildErrorContext: params.buildErrorContext,
         uploadedFileName: params.uploadedFileName,
+        automationId: params.automationId,
         market: params.market,
         fullStorySessionId: params.fullStorySessionId,
         ...(params.isEmbedded !== undefined && { isEmbedded: params.isEmbedded }),

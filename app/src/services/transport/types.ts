@@ -41,6 +41,7 @@ export interface SendMessageParams {
   subscriptionId?: string
   buildErrorContext?: { error: string; details: string; exitCode?: number } | null
   uploadedFileName?: string
+  automationId?: string
   market?: string
   fullStorySessionId?: string
   isEmbedded?: boolean

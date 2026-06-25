@@ -64,6 +64,9 @@ import {
 import { checkCorrelationIdRace, safeProcessBudgetReport } from '../budget-report-handler.js'
 import { parseChunkTimeoutMs, runWithModelOverride, buildTokenUsage, calculateCostEstimate } from '@airo/ai-lib'
 import { resolveProfile, runWithProfile } from '../../profiles/index.js'
+import matter from 'gray-matter'
+import { runWithAutomations } from '../../agents/automations-context.js'
+import { getShopperFlag } from '../../services/switchboard.js'
 import { guardAllowedOverrideModel, resolveOverride } from '../model-override.js'
 import type { AssessmentOutcome } from '../../agents/assessment-agent/index.js'
 import { AssessmentTaskType, ClassifierMode, AssessmentReason } from '../../agents/assessment-agent/index.js'
@@ -96,6 +99,7 @@ import { interactiveSubAgentManager } from '../../agents/interactive-sub-agent-m
 import { subAgentJobRegistry } from '../../agents/sub-agent-job-registry.js'
 import { AppRepository } from '../../database/repositories/index.js'
 import { enrichWithForcedDesignKit } from '../../services/design-system/forced-install.js'
+import { createForWorkspace } from '../../workspace/index.js'
 import { buildAppliedSkillsContextMessage } from '../applied-skills-context.js'
 
 /** Short timeout for awaiting the classifier on an errored turn — the user is
@@ -108,6 +112,10 @@ const ERRORED_TURN_ASSESSMENT_TIMEOUT_MS = 500
  *  StreamTimingTracker gates its own socket.emit on the same env var internally. */
 function isDiagnosticsEnabled(): boolean {
   return process.env.SOCKET_DIAGNOSTICS === 'true'
+}
+
+function generateRunSummary(output: string): string {
+  return output.slice(-1000)
 }
 
 interface ExecutionDeps {
@@ -223,6 +231,7 @@ interface LifecycleContext {
     marketingCampaignsEnabled?: boolean
     googleBusinessProfileSyncEnabled?: boolean
     skillSuggestionsEnabled?: boolean
+    shopperId?: string
   }
   isInitialPrompt?: boolean
 }
@@ -254,6 +263,7 @@ interface ExecuteParams {
   /** Full bring-over choice from the homepage modal (four toggles). */
   rebuildBringOverChoice?: unknown
   uploadedFileName?: string
+  automationId?: string
   bmsBudgetId?: string
   budgetSessionId?: string
   /** Original subscriptionId for override detection (care agent, test accounts) */
@@ -2012,7 +2022,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
       visualContext, aiEditContext, aiEditContexts, selectedAssets,
       todoListContext, isActionRequest, customContext, buildErrorContext,
       bmsBudgetId, budgetSessionId, subscriptionId, authType,
-      lifecycleContext, uploadedFileName, market, userTimezone, requestId, apmTransaction,
+      lifecycleContext, uploadedFileName, automationId, market, userTimezone, requestId, apmTransaction,
       designKitSlug, isEmbedded,
     } = params
 
@@ -2667,9 +2677,10 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
         ? () => otelContext.with(extendedCtx, runWithOverride)
         : runWithOverride
 
+      const automationsEnabled = getShopperFlag('appbuilder-automations', agentCtx?.shopperId)
       const loopResult = profile
-        ? await runWithProfile(profile, runner)
-        : await runner()
+        ? await runWithProfile(profile, () => runWithAutomations(automationsEnabled, runner, automationId))
+        : await runWithAutomations(automationsEnabled, runner, automationId)
 
       const finalAgentName = loopResult.finalAgentName
       // A chunk_timeout soft-commit aborts the controller but is NOT a turn
@@ -2683,6 +2694,32 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
         (loopResult.termination === 'aborted' || abortController.signal.aborted)
         && !chunkTimeoutSoftCommit
       const finishReason = loopAborted ? 'aborted' : (lastTurnResult?.finishReason ?? 'complete')
+
+      if (automationId && automationsEnabled) {
+        const status = loopAborted ? 'failed' : 'completed'
+        const now = new Date()
+        const summaryBody = generateRunSummary(turnOutputText())
+        const timestamp = now.toISOString().replace(/:/g, '-')
+        const runPath = `.airo/jobs/${automationId}/runs/${timestamp}_${conversationId}_summary.md`
+        const fileContent = matter.stringify(summaryBody, {
+          automationId,
+          conversationId,
+          timestamp: now.toISOString(),
+          status,
+        })
+        const workspace = createForWorkspace(appId, 'preview')
+        if (workspace) {
+          try {
+            await workspace.files.write({ path: runPath, content: fileContent })
+          } catch (err: unknown) {
+            logger.warn('automation.run-summary.write-failed', {
+              appId,
+              automationId,
+              message: err instanceof Error ? err.message : String(err),
+            })
+          }
+        }
+      }
 
       if (loopResult.termination === 'max_handoffs') {
         logger.warn('agent.loop.max_handoffs_reached', {

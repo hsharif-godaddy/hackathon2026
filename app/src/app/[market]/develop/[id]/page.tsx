@@ -1483,6 +1483,7 @@ function DevelopPageContent({ layout = BuilderLayout.Develop }: { layout?: Build
                 isMobile={isMobile}
                 onPublishSnapshot={handlePublishSnapshot}
                 onAskAiroToFix={sendPreviewFixRequest}
+                chatLoadingMessage={chatLoadingMessage}
               />
             }
           />
@@ -1597,6 +1598,7 @@ function DevelopPageContent({ layout = BuilderLayout.Develop }: { layout?: Build
                     isMobile={false}
                     onPublishSnapshot={handlePublishSnapshot}
                     onAskAiroToFix={sendPreviewFixRequest}
+                    chatLoadingMessage={chatLoadingMessage}
                   />
                 </div>
                 {/* Brand overlay (Brand Book, or the design-kit wizard when the app is on
@@ -1702,6 +1704,7 @@ function DevelopPageContent({ layout = BuilderLayout.Develop }: { layout?: Build
                         isMobile={true}
                         onPublishSnapshot={handlePublishSnapshot}
                         onAskAiroToFix={sendPreviewFixRequest}
+                        chatLoadingMessage={chatLoadingMessage}
                       />
                     </div>
 

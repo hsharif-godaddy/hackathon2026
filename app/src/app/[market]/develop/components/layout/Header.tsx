@@ -17,6 +17,7 @@ import MobilePhoneIcon from '@ux/icon/mobile-phone'
 import RefreshIcon from '@ux/icon/refresh'
 import SidebarCollapseIcon from '@ux/icon/sidebar-collapse'
 import SidebarExpandIcon from '@ux/icon/sidebar-expand'
+import SparklesIcon from '@ux/icon/sparkles'
 import WebsiteFilledIcon from '@ux/icon/website-filled'
 import WorldIcon from '@ux/icon/world'
 import Tag from '@ux/tag';
@@ -78,6 +79,7 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
   const showDesignKitWizard = useIsDesignKitWizardProfile();
   const isTopLevelDomainEnabled = useSwitchboard('appbuilder-domain-top-level');
   const isInboxEnabled = useSwitchboard('app-builder-inbox-button');
+  const isAutomationsEnabled = useSwitchboard('appbuilder-automations');
   const isMediaCanvasEnabled = useSwitchboard(SWITCHBOARD_APPBUILDER_MEDIA_CANVAS) === true;
   const location = 'develop';
   const appId = useAppIdFromParams();
@@ -277,6 +279,13 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
                     cornerBadge={
                       inboxUnresolvedCount > 0 ? <InboxUnresolvedBadge count={inboxUnresolvedCount} /> : undefined
                     }
+                  />
+                )}
+                {isAutomationsEnabled && (
+                  <ButtonGroup.Item
+                    value={ViewMode.AUTOMATIONS}
+                    icon={<SparklesIcon className="size-2.5" />}
+                    label={t('builder_header_button_automations', undefined, 'Automations')}
                   />
                 )}
                 <ButtonGroup.Item

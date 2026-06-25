@@ -1342,6 +1342,7 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
         subscriptionId: subscriptionIdRef.current,
         buildErrorContext: store.buildErrorContext,
         uploadedFileName: options.uploadedFileName,
+        automationId: options.automationId,
         ...(fullStorySessionId && { fullStorySessionId }),
         isEmbedded: typeof window !== 'undefined' && window.self !== window.top,
       }

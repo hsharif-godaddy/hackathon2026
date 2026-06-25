@@ -58,4 +58,7 @@ export interface SendMessageOptions {
 
   /** Name of file uploaded via HTTP to the agent (displayed below message) */
   uploadedFileName?: string
+
+  /** Automation job ID when this message is an automation run — agent writes a run summary on completion */
+  automationId?: string
 }

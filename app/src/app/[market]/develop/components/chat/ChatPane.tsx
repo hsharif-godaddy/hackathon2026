@@ -363,6 +363,8 @@ function ChatPaneInner({
 
   const hasLoggedFirstUserMessageRef = useRef(false);
   const lastInjectedPreLaunchNonceRef = useRef<number | null>(null);
+  const loadingMessageRef = useRef(loadingMessage);
+  loadingMessageRef.current = loadingMessage;
 
   const expandedPlan = useDevelopPageStore((state) => state.expandedPlan);
   const toggleExpandedPlan = useDevelopPageStore((state) => state.toggleExpandedPlan);
@@ -1744,6 +1746,32 @@ function ChatPaneInner({
     handleClearSelectedAsset,
     handleClearBuildErrorContext,
   ]);
+
+  // Listen for automation run requests from AutomationsPanel
+  useEffect(() => {
+    const handleAutomationRun = (event: CustomEvent<{ appId: string; prompt: string; automationId?: string }>) => {
+      if (event.detail.appId !== appId) return
+      // Read live store state at dispatch time to avoid stale-closure double-send.
+      const { isLoading, streamingState, activeStream } = useStreamingConversationStore.getState()
+      const liveIsProcessing = isLoading || (streamingState === 'streaming' && !!activeStream) || !!loadingMessageRef.current
+      if (liveIsProcessing) return
+      sendMessage({
+        content: event.detail.prompt,
+        aiEditContext: null,
+        ...(event.detail.automationId && { automationId: event.detail.automationId }),
+      }).catch(function onSendError(err: unknown) {
+        logger.error('chat.automation-run.send-failed', {
+          appId,
+          message: err instanceof Error ? err.message : String(err),
+        });
+      });
+    };
+
+    window.addEventListener('airo-automation-run', handleAutomationRun as EventListener);
+    return () => {
+      window.removeEventListener('airo-automation-run', handleAutomationRun as EventListener);
+    };
+  }, [appId, sendMessage]);
 
   if (isMobile) {
     return (

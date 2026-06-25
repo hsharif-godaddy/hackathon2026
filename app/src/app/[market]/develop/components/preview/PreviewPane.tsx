@@ -12,6 +12,7 @@ import { Canvas } from '@airo-ux/pattern-library/surfaces/canvas'
 import Button from '@ux/button'
 import Growl from '@ux/growl'
 
+import AutomationsPanel from '@/app/[market]/develop/components/automations/AutomationsPanel'
 import { useLatestNBAs } from '@/app/[market]/develop/components/chat/useLatestNBAs'
 import { useThinkerIndicator } from '@/app/[market]/develop/components/chat/useThinkerIndicator'
 import { useThinkerLabel } from '@/app/[market]/develop/components/chat/useThinkerLabel'
@@ -56,6 +57,18 @@ const MarketingCanvasPane = dynamic(
   () => import('@/app/[market]/develop/components/settings/Campaigns/MarketingCanvasPane'),
   { ssr: false, loading: () => <PreviewSkeleton testId="marketing-canvas-skeleton" /> },
 )
+
+// View modes that render their own full-pane surface — preview-layer early
+// returns (hibernated, resume-failed, image-reload, etc.) should not short-
+// circuit while one of these is active.
+const NON_PREVIEW_MODES = new Set([
+  ViewMode.BRAND,
+  ViewMode.DOMAIN,
+  ViewMode.INBOX,
+  ViewMode.DOCS,
+  ViewMode.AUTOMATIONS,
+  ViewMode.MARKETING,
+])
 
 // Minutes shown by the first-build time-estimate pill.
 const FIRST_BUILD_ESTIMATE_MINUTES: number = 5
@@ -241,6 +254,7 @@ interface PreviewPaneProps {
   onRetryImageReload?: () => void
   onPublishSnapshot?: (screenshotDataUrl: string, detail: PublishSnapshotRequestDetail) => void
   onAskAiroToFix?: () => void
+  chatLoadingMessage?: string | null
 }
 
 export default function PreviewPane({
@@ -263,6 +277,7 @@ export default function PreviewPane({
   onRetryImageReload,
   onPublishSnapshot,
   onAskAiroToFix,
+  chatLoadingMessage = null,
 }: PreviewPaneProps) {
   const t = useTranslations();
   const thinkerLabel = useThinkerLabel()
@@ -272,6 +287,7 @@ export default function PreviewPane({
   const isDomainBarEnabled = useSwitchboard('appbuilder-domain-bar');
   const isTopLevelDomainEnabled = useSwitchboard('appbuilder-domain-top-level');
   const isInboxEnabled = useSwitchboard('app-builder-inbox-button');
+  const isAutomationsEnabled = useSwitchboard('appbuilder-automations');
   const isMarketingCampaignsEnabled = useSwitchboard('appbuilder-marketing-campaigns') === true;
   const isBrandBookEnabled = useSwitchboard('appbuilder-brandbook') === true;
   const isCanvasTabsEnabled = useCommanderCanvasTabsEnabled();
@@ -1286,7 +1302,7 @@ export default function PreviewPane({
   }
 
   // Show error state when resume failed
-  if (resumeFailed && viewMode !== ViewMode.BRAND && viewMode !== ViewMode.DOMAIN && viewMode !== ViewMode.INBOX && viewMode !== ViewMode.MARKETING && viewMode !== ViewMode.DOCS) {
+  if (resumeFailed && !NON_PREVIEW_MODES.has(viewMode)) {
     return (
       <PreviewError
         title={t('builder_preview_resume_failed_title')}
@@ -1309,11 +1325,11 @@ export default function PreviewPane({
   }
 
   // Show restarting message when app is hibernated or resuming
-  if ((isHibernated || isResuming) && viewMode !== ViewMode.BRAND && viewMode !== ViewMode.DOMAIN && viewMode !== ViewMode.INBOX && viewMode !== ViewMode.MARKETING && viewMode !== ViewMode.DOCS) {
+  if ((isHibernated || isResuming) && !NON_PREVIEW_MODES.has(viewMode)) {
     return <PreviewLoadingState message={t('builder_preview_resuming_message')} isMobile={isMobile} />
   }
 
-  if (imageReloadFailed && viewMode !== ViewMode.BRAND && viewMode !== ViewMode.DOMAIN && viewMode !== ViewMode.INBOX && viewMode !== ViewMode.MARKETING && viewMode !== ViewMode.DOCS) {
+  if (imageReloadFailed && !NON_PREVIEW_MODES.has(viewMode)) {
     return (
       <PreviewError
         title={t('builder_preview_image_reload_failed_title')}
@@ -1324,7 +1340,7 @@ export default function PreviewPane({
     )
   }
 
-  if (isImageReloading && viewMode !== ViewMode.BRAND && viewMode !== ViewMode.DOMAIN && viewMode !== ViewMode.INBOX && viewMode !== ViewMode.MARKETING && viewMode !== ViewMode.DOCS) {
+  if (isImageReloading && !NON_PREVIEW_MODES.has(viewMode)) {
     return <PreviewLoadingState message={t('builder_preview_image_reloading_message')} isMobile={isMobile} />
   }
 
@@ -1381,6 +1397,16 @@ export default function PreviewPane({
       <div className="h-full flex flex-col pr-1 md:pr-2.5 pl-1">
         <div className="relative h-full overflow-auto rounded-lg md:rounded-b-none border bg-intents-ux-box-backgroundColor">
           <Inbox brandId={inboxBrandId} />
+        </div>
+      </div>
+    )
+  }
+
+  if (isAutomationsEnabled && viewMode === ViewMode.AUTOMATIONS) {
+    return (
+      <div className="h-full flex flex-col pr-1 md:pr-2.5 pl-1">
+        <div className="relative h-full overflow-auto rounded-lg md:rounded-b-none border bg-intents-ux-box-backgroundColor">
+          <AutomationsPanel chatLoadingMessage={chatLoadingMessage} />
         </div>
       </div>
     )

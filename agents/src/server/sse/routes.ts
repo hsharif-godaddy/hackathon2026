@@ -27,6 +27,7 @@ import { sseSessionKey } from './session-key.js'
 import { asyncHandler } from '../middleware/async-handler.js'
 import { mapSegmentsToUI, mapToolCallsToUI } from '../tool-call-mapper.js'
 import { appRepository } from '../../database/repositories/index.js'
+import { isUUID } from '../../utils/uuid.js'
 
 const HEARTBEAT_INTERVAL_MS = 15_000
 const RETRY_MS = 1000
@@ -495,7 +496,7 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
       templateId, modelOverride, rebuildBuildPageSlug, rebuildDesignDirection, rebuildBringOverChoice,
       visualContext, aiEditContext, aiEditContexts, selectedAssets,
       todoListContext, isActionRequest, customContext, buildErrorContext,
-      uploadedFileName,
+      uploadedFileName, automationId,
       market,
       userTimezone,
       designKitSlug,
@@ -781,6 +782,7 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
       rebuildBringOverChoice,
       buildErrorContext,
       uploadedFileName,
+      automationId: isUUID(automationId) ? automationId : undefined,
       bmsBudgetId,
       budgetSessionId,
       subscriptionId: effectiveSubscriptionId,
@@ -822,6 +824,7 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
           marketingCampaignsEnabled: agentContext?.marketingCampaignsEnabled,
           googleBusinessProfileSyncEnabled: agentContext?.googleBusinessProfileSyncEnabled,
           skillSuggestionsEnabled: agentContext?.skillSuggestionsEnabled,
+          shopperId: agentContext?.shopperId,
         },
         isInitialPrompt,
       },

@@ -6,12 +6,13 @@ import Button from '@ux/button';
 import GraphIcon from '@ux/icon/graph';
 import HistoryIcon from '@ux/icon/history';
 import MenuIcon from '@ux/icon/menu';
+import SparklesIcon from '@ux/icon/sparkles';
 import Spinner from '@ux/spinner';
 import text from '@ux/text';
 
 import { ButtonGroup } from '@/app/[market]/develop/components/ButtonGroup';
 import { useSettingsNavItems } from '@/app/[market]/develop/components/settings/useSettingsNavItems';
-import { ChatTab, SettingsSection } from '@/app/[market]/develop/components/types';
+import { ChatTab, MobileMode, SettingsSection, ViewMode } from '@/app/[market]/develop/components/types';
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils';
 import { useChatTabs } from '@/hooks/useChatTabs';
 import { useSettingsNotifications } from '@/hooks/useSettingsNotifications';
@@ -40,8 +41,12 @@ const SettingsMenu = forwardRef<SettingsMenuRef>((props, ref) => {
   const [open, setOpen] = useState(false);
   const anchorRef = useRef<HTMLButtonElement>(null);
   const isMobile = useDevelopPageStore((state) => state.isMobile);
+  const hasUnsavedChanges = useDevelopPageStore((state) => state.hasUnsavedChanges);
+  const handleViewModeChange = useDevelopPageStore((state) => state.handleViewModeChange);
+  const handleMobileModeChange = useDevelopPageStore((state) => state.handleMobileModeChange);
 
   const isSecurityScanUiEnabled = useSwitchboard('appbuilder-security-scan-ui') === true;
+  const isAutomationsEnabled = useSwitchboard('appbuilder-automations');
   const isAnalyticsEnabled = useSwitchboard('appbuilder-analytics');
 
   // Background tasks owned by settings sub-tabs surface a spinner on the toolbar button.
@@ -72,6 +77,12 @@ const SettingsMenu = forwardRef<SettingsMenuRef>((props, ref) => {
     togglePopover: () => setOpen(prev => !prev),
     isOpen: () => open,
   }));
+
+  const handleAutomationsClick = () => {
+    handleMobileModeChange(MobileMode.PREVIEW);
+    handleViewModeChange(ViewMode.AUTOMATIONS, hasUnsavedChanges);
+    setOpen(false);
+  };
 
   const handleNavigate = (id: SettingsSection) => {
     setActiveSettingsSection(id);
@@ -120,6 +131,17 @@ const SettingsMenu = forwardRef<SettingsMenuRef>((props, ref) => {
         <div className="flex flex-col gap-0.5">
           {isMobile && (
             <>
+              {isAutomationsEnabled && (
+                <Button
+                  design="option"
+                  size="sm"
+                  icon={<SparklesIcon />}
+                  text={t('builder_header_button_automations', undefined, 'Automations')}
+                  className="!justify-start"
+                  data-testid="settings-automations-item"
+                  onClick={handleAutomationsClick}
+                />
+              )}
               <Button
                 design="option"
                 size="sm"

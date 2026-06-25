@@ -7,6 +7,7 @@ export const VIEW_MODE_EID_MAP: Record<string, string> = {
   [ViewMode.BRAND]: 'develop.header.brand_book',
   [ViewMode.DOMAIN]: 'develop.header.domain_view',
   [ViewMode.INBOX]: 'develop.header.inbox',
+  [ViewMode.AUTOMATIONS]: 'develop.header.automations',
   [ViewMode.MARKETING]: 'develop.header.marketing',
 }
 

@@ -73,6 +73,7 @@ export enum ViewMode {
   INBOX = 'inbox',
   MARKETING = 'marketing',
   DOCS = 'docs',
+  AUTOMATIONS = 'automations',
   MEDIA = 'media'
 }
 

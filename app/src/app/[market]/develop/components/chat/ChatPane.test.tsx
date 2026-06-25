@@ -230,6 +230,9 @@ vi.mock('@/stores/useStreamingConversationStore', () => {
       ...queueState,
       aiEditContext: mockStreamingStore.aiEditContext,
       currentAppId: mockStreamingStore.currentAppId,
+      isLoading: mockStreamingStore.isLoading,
+      streamingState: mockStreamingStore.isActivelyStreaming ? 'streaming' : mockStreamingStore.streamingState,
+      activeStream: mockStreamingStore.isActivelyStreaming ? ({} as any) : mockStreamingStore.activeStream,
       persistHistory: mockPersistHistory,
       resolvedSecretsComposerToolCallIds: mockResolvedSecretsComposerToolCallIds,
     }
@@ -338,7 +341,7 @@ vi.mock('framer-motion', () => ({
 }));
 
 describe('ChatPane', () => {
-  const mockSendMessage = vi.fn();
+  const mockSendMessage = vi.fn().mockResolvedValue(undefined);
   const mockStopGeneration = vi.fn();
 
   beforeEach(() => {
@@ -660,6 +663,105 @@ describe('ChatPane', () => {
       act(() => {
         window.dispatchEvent(
           new CustomEvent('airo-error-fix', { detail: { appId: 'test-app-123' } })
+        )
+      })
+
+      expect(sendMessage).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('airo-automation-run event', () => {
+    it('should send automation prompt when event fires with matching appId', () => {
+      const sendMessage = vi.fn().mockResolvedValue(undefined)
+
+      renderWithProviders(<ChatPane sendMessage={sendMessage} stopGeneration={vi.fn()} />)
+
+      act(() => {
+        window.dispatchEvent(
+          new CustomEvent('airo-automation-run', { detail: { appId: 'test-app-123', prompt: 'Check broken links' } })
+        )
+      })
+
+      expect(sendMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          content: expect.stringContaining('Check broken links'),
+          aiEditContext: null,
+        })
+      )
+    })
+
+    it('should send the prompt as-is without appending any suffix', () => {
+      const sendMessage = vi.fn().mockResolvedValue(undefined)
+
+      renderWithProviders(<ChatPane sendMessage={sendMessage} stopGeneration={vi.fn()} />)
+
+      act(() => {
+        window.dispatchEvent(
+          new CustomEvent('airo-automation-run', { detail: { appId: 'test-app-123', prompt: 'Audit images' } })
+        )
+      })
+
+      expect(sendMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          content: 'Audit images',
+        })
+      )
+    })
+
+    it('should not send message when isLoading is true', () => {
+      mockStreamingStore.isLoading = true
+      const sendMessage = vi.fn().mockResolvedValue(undefined)
+
+      renderWithProviders(<ChatPane sendMessage={sendMessage} stopGeneration={vi.fn()} />)
+
+      act(() => {
+        window.dispatchEvent(
+          new CustomEvent('airo-automation-run', { detail: { appId: 'test-app-123', prompt: 'Check broken links' } })
+        )
+      })
+
+      expect(sendMessage).not.toHaveBeenCalled()
+    })
+
+    it('should not send message when isStreaming is true', () => {
+      mockStreamingStore.isActivelyStreaming = true
+      const sendMessage = vi.fn().mockResolvedValue(undefined)
+
+      renderWithProviders(<ChatPane sendMessage={sendMessage} stopGeneration={vi.fn()} />)
+
+      act(() => {
+        window.dispatchEvent(
+          new CustomEvent('airo-automation-run', { detail: { appId: 'test-app-123', prompt: 'Check broken links' } })
+        )
+      })
+
+      expect(sendMessage).not.toHaveBeenCalled()
+    })
+
+    it('should not send message when loadingMessage is set', () => {
+      const sendMessage = vi.fn().mockResolvedValue(undefined)
+
+      renderWithProviders(
+        <ChatPane sendMessage={sendMessage} stopGeneration={vi.fn()} loadingMessage="Resuming app..." />
+      )
+
+      act(() => {
+        window.dispatchEvent(
+          new CustomEvent('airo-automation-run', { detail: { appId: 'test-app-123', prompt: 'Check broken links' } })
+        )
+      })
+
+      expect(sendMessage).not.toHaveBeenCalled()
+    })
+
+    it('should not send message when appId does not match', () => {
+      const sendMessage = vi.fn().mockResolvedValue(undefined)
+
+      renderWithProviders(<ChatPane sendMessage={sendMessage} stopGeneration={vi.fn()} />)
+
+      act(() => {
+        window.dispatchEvent(
+          new CustomEvent('airo-automation-run', { detail: { appId: 'different-app', prompt: 'Check links' } })
         )
       })
 

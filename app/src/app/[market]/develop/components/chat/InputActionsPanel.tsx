@@ -953,6 +953,16 @@ function InputActionsPanelThemeSelection({
     }
   }, [isProcessing])
 
+  // Collapse when an automation is triggered from the AutomationsPanel
+  useEffect(() => {
+    const collapse = () => {
+      setContinueBuildingExpanded(false)
+      setFullPlanExpanded(false)
+    }
+    window.addEventListener('airo-automation-run', collapse)
+    return () => window.removeEventListener('airo-automation-run', collapse)
+  }, [])
+
   // Auto-expand plan when first created (new list ID) or when an item is
   // checked off (viewState === 'update'). Auto-collapse after 5s.
   // First null→id transition (async load on mount) sets baseline without expanding.
