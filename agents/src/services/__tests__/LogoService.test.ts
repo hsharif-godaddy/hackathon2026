@@ -212,6 +212,39 @@ describe('LogoService', () => {
     })
   })
 
+  it('includes referenceMode in the body when sent alongside referenceUrl', async () => {
+    fetchMock.mockResolvedValueOnce(apiResponse({ id: 's', sessionId: 's', logos: [{ ...SQUARE_API_LOGO }] }))
+
+    await logoService.generate({
+      prompt: 'a vintage badge',
+      layout: ['square'],
+      referenceUrl: 'https://app-1.agent.c4.test-airoapp.ai/files/uploads/foo.png?sig=x',
+      referenceMode: 'inspiration',
+      appId: 'a',
+      customerId: 'c',
+      budgetUserId: 'b',
+    })
+
+    const [, opts] = fetchMock.mock.calls[0]
+    expect(JSON.parse(opts.body)).toMatchObject({ referenceMode: 'inspiration' })
+  })
+
+  it('omits referenceMode when there is no referenceUrl', async () => {
+    fetchMock.mockResolvedValueOnce(apiResponse({ id: 's', sessionId: 's', logos: [{ ...SQUARE_API_LOGO }] }))
+
+    await logoService.generate({
+      prompt: 'a fresh logo',
+      layout: ['square'],
+      referenceMode: 'edit',
+      appId: 'a',
+      customerId: 'c',
+      budgetUserId: 'b',
+    })
+
+    const [, opts] = fetchMock.mock.calls[0]
+    expect(JSON.parse(opts.body)).not.toHaveProperty('referenceMode')
+  })
+
   it('includes structured colors in the body when provided', async () => {
     fetchMock.mockResolvedValueOnce(
       apiResponse({ id: 's', sessionId: 's', logos: [{ ...SQUARE_API_LOGO }] }),

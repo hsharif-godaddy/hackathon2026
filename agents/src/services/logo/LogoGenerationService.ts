@@ -16,6 +16,10 @@ export interface StartLogoParams {
   prompt: string
   layouts: LogoLayout[]
   referenceUrl?: string
+  /** How the logo API should use referenceUrl: 'inspiration' (new logo in the
+   *  reference's style, runs the brief) or 'edit' (refine the saved logo,
+   *  preserving identity). Ignored when referenceUrl is absent. */
+  referenceMode?: 'inspiration' | 'edit'
   colors?: import('../LogoService.js').LogoColors
   customerId: string
   budgetUserId: string
@@ -267,6 +271,7 @@ class LogoGenerationService {
           prompt: ctx.prompt,
           layout: ctx.layouts,
           ...(ctx.referenceUrl ? { referenceUrl: ctx.referenceUrl } : {}),
+          ...(ctx.referenceMode ? { referenceMode: ctx.referenceMode } : {}),
           ...(ctx.colors ? { colors: ctx.colors } : {}),
           appId,
           customerId: ctx.customerId,

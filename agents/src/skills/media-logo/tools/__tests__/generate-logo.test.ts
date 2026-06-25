@@ -349,6 +349,7 @@ describe('media-logo generate_logo tool', () => {
       expect(mockStart).toHaveBeenCalledWith(
         expect.objectContaining({
           referenceUrl: 'https://app-1.agent.c4.test-airoapp.ai/files/uploads/app-1/foo.png?sig=x',
+          referenceMode: 'inspiration',
         }),
       );
     });
@@ -378,7 +379,10 @@ describe('media-logo generate_logo tool', () => {
       );
 
       expect(mockStart).toHaveBeenCalledWith(
-        expect.objectContaining({ referenceUrl: '/airo-assets/uploads/existing-logo.png' }),
+        expect.objectContaining({
+          referenceUrl: '/airo-assets/uploads/existing-logo.png',
+          referenceMode: 'edit',
+        }),
       );
     });
 
@@ -481,6 +485,7 @@ describe('media-logo generate_logo tool', () => {
 
       const callArg = mockStart.mock.calls[0][0];
       expect(callArg.referenceUrl).toBeUndefined();
+      expect(callArg.referenceMode).toBeUndefined();
     });
 
     it('rejects an http (non-https) referenceUrl', async () => {

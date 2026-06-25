@@ -351,6 +351,16 @@ export const generateLogoTool: SkillToolDefinition = {
     const reference = await resolveReferenceUrl(appId, input.referenceUrl, layouts);
     const referenceUrl = reference.url;
 
+    // Tell the logo API how to use the reference: a caller-supplied URL is an
+    // uploaded inspiration image (generate a new logo in that style, with the
+    // brand brief); an auto-resolved slot URL is the saved logo being iterated on
+    // (preserve identity, skip the brief). Omitted when there's no reference.
+    const referenceMode: 'inspiration' | 'edit' | undefined = input.referenceUrl
+      ? 'inspiration'
+      : referenceUrl !== undefined
+        ? 'edit'
+        : undefined;
+
     // The caller omitted a reference and we couldn't resolve one from an
     // existing slot — an intended "make it blue"-style edit will produce a
     // fresh design instead. Surface it so it isn't silently misleading.
@@ -366,6 +376,7 @@ export const generateLogoTool: SkillToolDefinition = {
       prompt: finalPrompt,
       layouts,
       ...(referenceUrl !== undefined ? { referenceUrl } : {}),
+      ...(referenceMode !== undefined ? { referenceMode } : {}),
       ...(colors !== undefined ? { colors } : {}),
       customerId,
       budgetUserId,

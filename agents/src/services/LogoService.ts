@@ -49,6 +49,10 @@ export interface GenerateLogoInput {
   prompt: string
   layout: LogoLayout[]
   referenceUrl?: string
+  /** How the logo API should use referenceUrl: 'inspiration' (new logo in the
+   *  reference's style, runs the brief) or 'edit' (refine the saved logo,
+   *  preserving identity). Ignored by the API when referenceUrl is absent. */
+  referenceMode?: 'inspiration' | 'edit'
   colors?: LogoColors
   appId: string
   customerId: string
@@ -182,6 +186,7 @@ class LogoService {
       prompt: input.prompt,
       layout: input.layout,
       ...(input.referenceUrl && { referenceUrl: input.referenceUrl }),
+      ...(input.referenceUrl && input.referenceMode && { referenceMode: input.referenceMode }),
       ...(hasColors && { colors: input.colors }),
     }
 
@@ -192,6 +197,7 @@ class LogoService {
       promptLength: input.prompt.length,
       layouts: input.layout,
       hasReference: Boolean(input.referenceUrl),
+      referenceMode: input.referenceUrl ? input.referenceMode : undefined,
       hasColors,
     })
 
