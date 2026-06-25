@@ -44,6 +44,8 @@ if (observabilityEnabled || langfuseConfigured) {
             },
           },
         },
+        // Override default 10 min TTL to 30 min for slow AAB agent responses
+        trackedSpanTtlMs: Number(process.env.TRACKED_SPAN_TTL_MS ?? 1_800_000),
         logger: toPinoLogger(logger),
       }));
     }
