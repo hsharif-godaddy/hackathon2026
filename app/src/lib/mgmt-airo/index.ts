@@ -14,6 +14,7 @@ export type {
   AiroArchiveRestoreResponse,
   AiroArchiveStatusResponse,
   AiroAttribute,
+  AiroCaaRemediationPayload,
   AiroCollaborator,
   AiroCreateAppPayload,
   AiroCreateAppResponse,

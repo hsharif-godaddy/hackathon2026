@@ -9,6 +9,8 @@ import { fireEvent, screen, waitFor } from '@testing-library/react';
 import DomainItem from '@/app/[market]/develop/components/settings/components/DomainItem';
 import type { AppDomain } from '@/hooks/useAppDetails';
 import type { Domain } from '@/hooks/useDomainsQuery';
+import { DomainMutationError } from '@/hooks/useModifyDomains';
+import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { DomainStatus } from '@/lib/control-plane/types';
 import type { AiroDomainErrorResponse } from '@/lib/mgmt-airo';
 import { CdnStatus } from '@/lib/mgmt-airo/types';
@@ -18,9 +20,12 @@ import { renderWithProviders } from '@/tests/test-utils';
 import { logImpressionEvent } from '@/utils/instrumentation';
 
 const SUPPORT_URL = 'https://support.test/contact';
-const { mockUseDomainJobPolling, mockUseDomainConflictCheck } = vi.hoisted(() => ({
+const { mockUseDomainJobPolling, mockUseDomainConflictCheck, mockCaaMutate, mockCaaReset, mockCaaError } = vi.hoisted(() => ({
   mockUseDomainJobPolling: vi.fn(),
   mockUseDomainConflictCheck: vi.fn().mockReturnValue({ hasDnsDrift: false }),
+  mockCaaMutate: vi.fn(),
+  mockCaaReset: vi.fn(),
+  mockCaaError: { value: null as Error | null },
 }));
 
 vi.mock('@/hooks/useGasketConfig', () => ({
@@ -61,6 +66,22 @@ vi.mock('@/lib/request-context', () => ({
 
 vi.mock('@/utils/domain-validation', () => ({
   translateDomainApiError: vi.fn((_code: string, _t: unknown, fallback?: string) => fallback ?? 'Translated error'),
+  CAA_REMEDIATION_NOT_GD_MANAGED: 'DOMAIN_NOT_GD_MANAGED',
+  caaVariantForCode: (code?: string) =>
+    code === 'CLOUDFLARE_CAA_INTERNAL_MISMATCH'
+      ? 'consent'
+      : code === 'CLOUDFLARE_CAA_MISMATCH'
+        ? 'selfService'
+        : null,
+}));
+
+vi.mock('@/hooks/useCaaRemediation', () => ({
+  useCaaRemediation: () => ({
+    mutate: mockCaaMutate,
+    reset: mockCaaReset,
+    isPending: false,
+    error: mockCaaError.value,
+  }),
 }));
 
 const baseDomain: Domain = {
@@ -112,6 +133,8 @@ describe('DomainItem', () => {
       error: null,
     });
     mockUseDomainConflictCheck.mockReturnValue({ hasDnsDrift: false });
+    vi.mocked(useSwitchboard).mockReturnValue(true);
+    mockCaaError.value = null;
     useDevelopPageStore.setState({ domainJobsInProgress: {} });
   });
 
@@ -222,6 +245,154 @@ describe('DomainItem', () => {
       await waitFor(() => {
         expect(screen.getByText(/builder_domain_error_please_retry/)).toBeInTheDocument();
       });
+    });
+  });
+
+  describe('CAA remediation', () => {
+    const errorAppDomain: AppDomain = {
+      fqdn: 'example.com',
+      isPrimary: true,
+      status: DomainStatus.FAILED,
+    };
+
+    function buildCaaErrorResponse(code: string): AiroDomainErrorResponse {
+      return {
+        appId: 'app-1',
+        fqdn: 'example.com',
+        jobId: 'job-1',
+        status: 'failed',
+        error: { code, message: 'CAA mismatch', action: 'SELF_SERVICE', canRetry: false },
+        affectedDomains: ['example.com'],
+        failedStep: 'cert_issue',
+        completedAt: '2025-01-01T00:00:00Z',
+      };
+    }
+
+    it('shows the inline consent banner (not the generic error) for an internal CAA mismatch', async () => {
+      mockFetchDomainError(buildCaaErrorResponse('CLOUDFLARE_CAA_INTERNAL_MISMATCH'));
+
+      renderWithProviders(<DomainItem {...defaultProps} appDomain={errorAppDomain} />);
+
+      await waitFor(() => {
+        expect(screen.getByText(/Action required to connect your app to example.com/)).toBeInTheDocument();
+      });
+      expect(screen.getByText('Would you like us to remove them?')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Approve' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Reject' })).toBeInTheDocument();
+      expect(screen.queryByText('builder_common_contact_support')).not.toBeInTheDocument();
+    });
+
+    it('falls back to self-service instructions when remediation returns DOMAIN_NOT_GD_MANAGED', async () => {
+      mockCaaError.value = new DomainMutationError({
+        code: 'CAA_REMEDIATION_FAILED',
+        message: 'CAA remediation is only available for GoDaddy-managed domains',
+        nestedCode: 'DOMAIN_NOT_GD_MANAGED',
+      });
+      mockFetchDomainError(buildCaaErrorResponse('CLOUDFLARE_CAA_INTERNAL_MISMATCH'));
+
+      renderWithProviders(<DomainItem {...defaultProps} appDomain={errorAppDomain} />);
+
+      // Self-service instructions render instead of the consent prompt or raw error
+      await waitFor(() => {
+        expect(screen.getByText('How to fix this:')).toBeInTheDocument();
+      });
+      expect(screen.getByRole('button', { name: 'Retry connection' })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Approve' })).not.toBeInTheDocument();
+      expect(screen.queryByText(/DOMAIN_NOT_GD_MANAGED/)).not.toBeInTheDocument();
+    });
+
+    it('fires caa_banner_shown once per domain + variant', async () => {
+      mockFetchDomainError(buildCaaErrorResponse('CLOUDFLARE_CAA_INTERNAL_MISMATCH'));
+
+      const { rerender } = renderWithProviders(
+        <DomainItem {...defaultProps} appDomain={errorAppDomain} />,
+      );
+
+      await waitFor(() => {
+        expect(logImpressionEvent).toHaveBeenCalledWith('settings.domains.caa_banner_shown', {
+          variant: 'consent',
+        });
+      });
+
+      // Re-render with identical inputs — the ref guard must prevent a duplicate fire
+      rerender(<DomainItem {...defaultProps} appDomain={errorAppDomain} />);
+
+      await waitFor(() => {
+        const bannerCalls = vi.mocked(logImpressionEvent).mock.calls.filter(
+          ([eid]) => eid === 'settings.domains.caa_banner_shown',
+        );
+        expect(bannerCalls).toHaveLength(1);
+      });
+    });
+
+    it('calls remediation when the inline Approve button is clicked', async () => {
+      mockFetchDomainError(buildCaaErrorResponse('CLOUDFLARE_CAA_INTERNAL_MISMATCH'));
+
+      renderWithProviders(<DomainItem {...defaultProps} appDomain={errorAppDomain} />);
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: 'Approve' })).toBeInTheDocument();
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+
+      expect(mockCaaMutate).toHaveBeenCalledWith({
+        siteId: 'site-123',
+        payload: {
+          domainsToCreate: [{ fqdn: 'example.com', primary: false }],
+          createCdn: true,
+          consent: true,
+        },
+      });
+    });
+
+    it('disconnects the domain when Reject is clicked', async () => {
+      const onDisconnect = vi.fn();
+      mockFetchDomainError(buildCaaErrorResponse('CLOUDFLARE_CAA_INTERNAL_MISMATCH'));
+
+      renderWithProviders(
+        <DomainItem {...defaultProps} appDomain={errorAppDomain} onDisconnect={onDisconnect} />,
+      );
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: 'Reject' })).toBeInTheDocument();
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Reject' }));
+
+      expect(onDisconnect).toHaveBeenCalledWith('example.com');
+    });
+
+    it('shows the inline self-service banner for an external CAA mismatch and retries via onConnect', async () => {
+      const onConnect = vi.fn();
+      mockFetchDomainError(buildCaaErrorResponse('CLOUDFLARE_CAA_MISMATCH'));
+
+      renderWithProviders(
+        <DomainItem {...defaultProps} appDomain={errorAppDomain} onConnect={onConnect} />,
+      );
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: 'Retry connection' })).toBeInTheDocument();
+      });
+      expect(screen.getByText('How to fix this:')).toBeInTheDocument();
+      expect(screen.getByText("Log in to your domain's DNS provider.")).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Retry connection' }));
+
+      expect(onConnect).toHaveBeenCalledWith('example.com');
+    });
+
+    it('hides the CAA banner and shows the generic error when the flag is off', async () => {
+      vi.mocked(useSwitchboard).mockImplementation(
+        (flag: string) => flag !== 'appbuilder-domain-caa-remediation',
+      );
+      mockFetchDomainError(buildCaaErrorResponse('CLOUDFLARE_CAA_INTERNAL_MISMATCH'));
+
+      renderWithProviders(<DomainItem {...defaultProps} appDomain={errorAppDomain} />);
+
+      await waitFor(() => {
+        expect(screen.getByText(/builder_domain_disconnect_and_reconnect/)).toBeInTheDocument();
+      });
+      expect(screen.queryByRole('button', { name: 'Approve' })).not.toBeInTheDocument();
+      expect(screen.queryByText('Would you like us to remove them?')).not.toBeInTheDocument();
     });
   });
 

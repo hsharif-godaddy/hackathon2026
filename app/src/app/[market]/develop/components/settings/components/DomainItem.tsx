@@ -12,6 +12,7 @@ import Tag from "@ux/tag";
 import text from "@ux/text";
 
 import type { AppDomain } from '@/hooks/useAppDetails';
+import { useCaaRemediation } from '@/hooks/useCaaRemediation';
 import { useDomainConflictCheck } from '@/hooks/useDomainConflictCheck';
 import { domainJobQueryKey, useDomainJobPolling } from '@/hooks/useDomainJobPolling';
 import type { Domain } from '@/hooks/useDomainsQuery';
@@ -26,7 +27,7 @@ import { logger } from '@/lib/request-context';
 import { Popover, PopoverContent, PopoverTrigger } from "@/lib/shadcn/popover"
 import { defaultMessageForDomainJobLabelKey } from '@/lib/translations/domain-job-label-defaults';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
-import { translateDomainApiError } from '@/utils/domain-validation';
+import { CAA_REMEDIATION_NOT_GD_MANAGED, caaVariantForCode, translateDomainApiError } from '@/utils/domain-validation';
 import { generateClickEID, logClickEvent, logImpressionEvent } from '@/utils/instrumentation';
 import { DkimStatusBadge } from './DkimStatusBadge';
 import DomainConnectConfirmation from './DomainConnectConfirmation';
@@ -104,14 +105,17 @@ export default function DomainItem({
 }) {
   const t = useTranslations();
   const isDomainConnectEnabled = useSwitchboard('appbuilder-domain-connect');
+  const isCaaRemediationEnabled = useSwitchboard('appbuilder-domain-caa-remediation');
   const queryClient = useQueryClient();
   const { config } = useGasketConfig();
+  const caaRemediation = useCaaRemediation();
   const [open, setOpen] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [domainError, setDomainError] = useState<AiroDomainErrorResponse | null>(null);
   const errorShownRef = useRef<string | null>(null); // keyed on domainName + errorCode
   const mutationErrorShownRef = useRef<string | null>(null); // keyed on domainName
   const statusShownRef = useRef<string | null>(null); // keyed on domainName + status
+  const caaBannerShownRef = useRef<string | null>(null); // keyed on domainName + variant
   const domainName = domain.domain || domain.name || '';
   /** True when app details include this domain (any status: PENDING, ACTIVE, …). Not the same as “ACTIVE only”. */
   const isConnected = !!appDomain;
@@ -292,6 +296,52 @@ export default function DomainItem({
     ? translateDomainApiError(domainError.error.code, t, domainError.error.message)
     : domainError?.error?.message;
 
+  // A consent-variant Approve can come back DOMAIN_NOT_GD_MANAGED (the /domain-errors
+  // classification and the remediation ownership check disagreed). Fall back to the
+  // self-service manual instructions instead of surfacing the raw backend error.
+  const remediationNotGdManaged =
+    caaRemediation.error instanceof DomainMutationError &&
+    (caaRemediation.error.details.code === CAA_REMEDIATION_NOT_GD_MANAGED ||
+      caaRemediation.error.details.nestedCode === CAA_REMEDIATION_NOT_GD_MANAGED);
+
+  // Single gating chokepoint: null (flag off or non-CAA code) falls back to the
+  // generic error block; the banner and its actions all hang off caaVariant.
+  const caaVariant = !isCaaRemediationEnabled
+    ? null
+    : remediationNotGdManaged
+      ? 'selfService'
+      : caaVariantForCode(domainError?.error?.code);
+
+  const handleCaaReject = () => {
+    logClickEvent('settings.domains.caa_reject')();
+    setOpen(false);
+    onDisconnect(domainName);
+  };
+
+  const handleCaaApprove = () => {
+    logClickEvent('settings.domains.caa_approve')();
+    caaRemediation.mutate({
+      siteId,
+      payload: {
+        domainsToCreate: [{ fqdn: domainName, primary: false }],
+        createCdn: true,
+        consent: true,
+      },
+    });
+  };
+
+  const handleCaaRetry = () => {
+    logClickEvent('settings.domains.caa_retry')();
+    onConnect(domainName);
+  };
+
+  // Suppress the raw remediation error in the not-GD-managed case — the UI has
+  // already switched to the self-service instructions for that path.
+  const caaRemediationErrorMessage =
+    !remediationNotGdManaged && caaRemediation.error instanceof Error
+      ? caaRemediation.error.message
+      : null;
+
   // CSP impression: domain-error panel shown (FAILED/ERROR/CDN error → /domain-errors).
   // Keyed per domain + error code so a re-render with the same error doesn't re-fire.
   useEffect(() => {
@@ -305,6 +355,16 @@ export default function DomainItem({
       action: domainError?.error?.action ?? '',
     })();
   }, [domainErrorMessage, domainName, domainError?.error?.code, domainError?.error?.action]);
+
+  // CSP impression: CAA remediation banner shown (consent or self-service).
+  // Keyed per domain + variant so a re-render with the same state doesn't re-fire.
+  useEffect(() => {
+    if (!caaVariant) return;
+    const key = `${domainName}:${caaVariant}`;
+    if (caaBannerShownRef.current === key) return;
+    caaBannerShownRef.current = key;
+    logImpressionEvent('settings.domains.caa_banner_shown', { variant: caaVariant })();
+  }, [caaVariant, domainName]);
 
   // CSP impression: per-domain mutation error shown inline after a failed connect.
   useEffect(() => {
@@ -489,7 +549,108 @@ export default function DomainItem({
           <text.p className="ux-text ux-text-caption ux-text-feedback-critical">{domainSpecificErrorMsg}</text.p>
         </Box>
       )}
-      {!domainSpecificErrorMsg && domainErrorMessage && (
+      {!domainSpecificErrorMsg && caaVariant && (
+        <Box className="mt-2" gap="md" inlineAlignChildren="start">
+          <text.p className="ux-text ux-text-caption ux-text-feedback-critical">
+            {t(
+              'builder_domain_caa_action_required_title',
+              { domain: domainName },
+              'Action required to connect your app to {domain}',
+            )}
+          </text.p>
+          {caaVariant === 'consent' ? (
+            <>
+              <text.p>
+                {t(
+                  'builder_domain_caa_internal_body',
+                  {},
+                  'Your domain has CAA DNS records that are preventing us from issuing the SSL certificate needed to connect your app to this domain. We can automatically remove the conflicting CAA records for you.',
+                )}
+              </text.p>
+              <text.p className="font-semibold">
+                {t('builder_domain_caa_internal_question', {}, 'Would you like us to remove them?')}
+              </text.p>
+              {caaRemediationErrorMessage && (
+                <text.p className="ux-text ux-text-caption ux-text-feedback-critical">
+                  {caaRemediationErrorMessage}
+                </text.p>
+              )}
+              <Box orientation="horizontal" gap="md">
+                <Button
+                  design="primary"
+                  size="sm"
+                  text={caaRemediation.isPending
+                    ? t('builder_domain_caa_approving', {}, 'Approving…')
+                    : t('builder_domain_caa_approve', {}, 'Approve')}
+                  onClick={handleCaaApprove}
+                  disabled={caaRemediation.isPending}
+                  data-eid={generateClickEID('settings.domains.caa_approve')}
+                />
+                <Button
+                  design="secondary"
+                  size="sm"
+                  text={t('builder_domain_caa_reject', {}, 'Reject')}
+                  onClick={handleCaaReject}
+                  disabled={caaRemediation.isPending}
+                  data-eid={generateClickEID('settings.domains.caa_reject')}
+                />
+              </Box>
+            </>
+          ) : (
+            <>
+              <text.p>
+                {t(
+                  'builder_domain_caa_external_body',
+                  {},
+                  "Your domain has CAA DNS records that are preventing us from issuing the SSL certificate needed to connect your app to this domain. Since this domain's DNS is managed outside of our platform, you'll need to remove the conflicting CAA records yourself.",
+                )}
+              </text.p>
+              <text.p className="font-semibold">
+                {t('builder_domain_caa_external_steps_title', {}, 'How to fix this:')}
+              </text.p>
+              <ol className="list-decimal ps-5">
+                <li>
+                  <text.span>
+                    {t('builder_domain_caa_external_step_1', {}, "Log in to your domain's DNS provider.")}
+                  </text.span>
+                </li>
+                <li>
+                  <text.span>
+                    {t('builder_domain_caa_external_step_2', {}, "Remove any existing CAA records that don't include our certificate issuers.")}
+                  </text.span>
+                </li>
+                <li>
+                  <text.span>
+                    {t('builder_domain_caa_external_step_3', {}, 'Come back here and retry the connection.')}
+                  </text.span>
+                </li>
+              </ol>
+              <text.p className="ux-text ux-text-caption">
+                {t('builder_domain_caa_external_footer', {}, "Until this is resolved, we won't be able to complete the domain setup.")}
+              </text.p>
+              <Box orientation="horizontal" gap="md">
+                <Button
+                  design="primary"
+                  size="sm"
+                  text={t('builder_domain_caa_retry', {}, 'Retry connection')}
+                  onClick={handleCaaRetry}
+                  data-eid={generateClickEID('settings.domains.caa_retry')}
+                />
+                <Button
+                  design="secondary"
+                  size="sm"
+                  as="external"
+                  href={config?.supportUrl}
+                  external
+                  text={t('builder_common_contact_support', {}, 'Contact us')}
+                  data-eid={generateClickEID('settings.domains.caa_contact_support')}
+                />
+              </Box>
+            </>
+          )}
+        </Box>
+      )}
+      {!domainSpecificErrorMsg && !caaVariant && domainErrorMessage && (
         <Box className="mt-2">
           <text.p className="ux-text ux-text-caption">
             {domainError?.error?.action === 'CONTACT_SUPPORT' ? (
@@ -497,7 +658,7 @@ export default function DomainItem({
                 <Button
                   className="ux-text ux-text-caption ux-text-link"
                   design="inline"
-                  href={config.supportUrl}
+                  href={config?.supportUrl}
                   external
                   text={t('builder_common_contact_support')}
                 />
@@ -509,7 +670,7 @@ export default function DomainItem({
                 <Button
                   className="ux-text ux-text-caption ux-text-link"
                   design="inline"
-                  href={config.supportUrl}
+                  href={config?.supportUrl}
                   external
                   text={t('builder_common_contact_support')}
                 />
@@ -520,7 +681,7 @@ export default function DomainItem({
                 <Button
                   className="ux-text ux-text-caption ux-text-link"
                   design="inline"
-                  href={config.supportUrl}
+                  href={config?.supportUrl}
                   external
                   text={t('builder_common_contact_support')}
                 />

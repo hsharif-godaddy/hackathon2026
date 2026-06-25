@@ -476,6 +476,18 @@ export interface AiroModifyDomainsResponse {
 }
 
 /**
+ * CAA remediation payload: the attach payload plus explicit `consent`. Requires
+ * at least one of domainsToCreate/fqdnsToCreate; backend re-runs the attach.
+ */
+export interface AiroCaaRemediationPayload {
+  domainsToCreate?: DomainToCreate[];
+  fqdnsToCreate?: string[];
+  createCdn?: boolean;
+  consent: boolean;
+  issuer?: string;
+}
+
+/**
  * Domain error details
  */
 export interface AiroDomainError {

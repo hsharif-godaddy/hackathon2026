@@ -132,6 +132,7 @@ vi.mock('@/utils/site', () => ({
 vi.mock('@/utils/domain-validation', () => ({
   getDomainErrorMessage: vi.fn(function () { return undefined; }),
   translateDomainApiError: vi.fn(function () { return 'Translated error'; }),
+  caaVariantForCode: vi.fn(function () { return null; }),
 }));
 
 vi.mock('@/utils/instrumentation', () => ({

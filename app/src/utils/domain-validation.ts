@@ -17,6 +17,41 @@ export enum DomainApiErrorCode {
   DOMAIN_ALREADY_IN_USE = 'DOMAIN_ALREADY_IN_USE',
   DOMAIN_MODIFY_FAILED = 'DOMAIN_MODIFY_FAILED',
   TLD_NOT_SUPPORTED = 'TLD_NOT_SUPPORTED',
+  CONSENT_REQUIRED = 'CONSENT_REQUIRED',
+  CAA_REMEDIATION_FAILED = 'CAA_REMEDIATION_FAILED',
+}
+
+/**
+ * CAA-mismatch error codes returned by the domain-error endpoint
+ * (`AiroDomainError.code`). These gate the CAA remediation UI:
+ *
+ * - INTERNAL_MISMATCH: domain is GoDaddy-managed — we can fix the conflicting
+ *   CAA records automatically with the customer's consent (consent modal).
+ * - EXTERNAL_MISMATCH: domain DNS is managed off-platform — the customer must
+ *   remove the conflicting CAA records themselves (self-service instructions).
+ */
+export const CloudflareCaaErrorCode = {
+  INTERNAL_MISMATCH: 'CLOUDFLARE_CAA_INTERNAL_MISMATCH',
+  EXTERNAL_MISMATCH: 'CLOUDFLARE_CAA_MISMATCH',
+} as const;
+
+/**
+ * Returned by the caa-remediation endpoint when the domain turns out not to be
+ * GoDaddy-managed (the consent flow's classification and the remediation
+ * ownership check disagreed). The UI falls back to the self-service variant.
+ */
+export const CAA_REMEDIATION_NOT_GD_MANAGED = 'DOMAIN_NOT_GD_MANAGED';
+
+export type CaaModalVariant = 'consent' | 'selfService';
+
+/**
+ * Map a domain-error code to the CAA modal variant it should drive, or null
+ * when the code is not a CAA-mismatch error.
+ */
+export function caaVariantForCode(code: string | undefined): CaaModalVariant | null {
+  if (code === CloudflareCaaErrorCode.INTERNAL_MISMATCH) return 'consent';
+  if (code === CloudflareCaaErrorCode.EXTERNAL_MISMATCH) return 'selfService';
+  return null;
 }
 
 const DOMAIN_API_ERROR_KEYS: Record<string, string> = {
@@ -30,11 +65,15 @@ const DOMAIN_API_ERROR_KEYS: Record<string, string> = {
   [DomainApiErrorCode.DOMAIN_ALREADY_IN_USE]: 'builder_domain_api_error_already_in_use',
   [DomainApiErrorCode.DOMAIN_MODIFY_FAILED]: 'builder_domain_api_error_modify_failed',
   [DomainApiErrorCode.TLD_NOT_SUPPORTED]: 'builder_domain_error_tld_not_supported',
+  [DomainApiErrorCode.CONSENT_REQUIRED]: 'builder_domain_api_error_consent_required',
+  [DomainApiErrorCode.CAA_REMEDIATION_FAILED]: 'builder_domain_api_error_caa_remediation_failed',
 };
 
 const DOMAIN_API_ERROR_DEFAULT_MESSAGES: Partial<Record<DomainApiErrorCode, string>> = {
   [DomainApiErrorCode.INVALID_TRANSFER_FROM]: 'Invalid domain transfer request.',
   [DomainApiErrorCode.TLD_NOT_SUPPORTED]: 'The top-level domain is not supported.',
+  [DomainApiErrorCode.CONSENT_REQUIRED]: 'Your consent is required to continue.',
+  [DomainApiErrorCode.CAA_REMEDIATION_FAILED]: 'We could not update the CAA records. Please try again.',
 };
 
 /**

@@ -12,6 +12,7 @@ import {
   type AiroArchiveStatusResponse,
   type AiroAttribute,
   type AiroBulkAppsResponse,
+  type AiroCaaRemediationPayload,
   type AiroCollaborator,
   type AiroCreateAppPayload,
   type AiroCreateAppResponse,
@@ -792,6 +793,34 @@ export class AiroMgmtClient {
       `/api/airo/v1/subscriptions/${subscriptionId}/systems/${systemId}/apps/${appId}/domains`,
       payload,
       { logEvent: 'mgmt-airo.modify-domains' }
+    );
+  }
+
+  /**
+   * Trigger consent-gated CAA remediation for a GoDaddy-managed domain.
+   *
+   * POST /api/airo/v1/subscriptions/:subscriptionId/systems/:systemId/apps/:appId/domains/caa-remediation
+   *
+   * Additively authorizes a supported issuer on the domain's existing CAA RRset
+   * and re-runs the attach. Returns the same status-job shape as modifyDomains.
+   *
+   * @param subscriptionId - Subscription ID
+   * @param systemId - System ID
+   * @param appId - App ID
+   * @param payload - Same create-side payload as the attach call, plus explicit consent
+   * @returns Promise resolving to domain modification job information with status tracking ID
+   */
+  async caaRemediation(
+    subscriptionId: string,
+    systemId: string,
+    appId: string,
+    payload: AiroCaaRemediationPayload
+  ): Promise<AiroModifyDomainsResponse> {
+    return this.request<AiroModifyDomainsResponse>(
+      'POST',
+      `/api/airo/v1/subscriptions/${subscriptionId}/systems/${systemId}/apps/${appId}/domains/caa-remediation`,
+      payload,
+      { logEvent: 'mgmt-airo.caa-remediation' }
     );
   }
 
