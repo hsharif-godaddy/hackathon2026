@@ -1,0 +1,297 @@
+name: Dark Release (dev)
+
+# One-click dev tool that reproduces the manual "Release Group Dark Release"
+# steps in a single dispatch (NOT part of the automatic release pipeline):
+#   1. Build agent/preview/publish images   (pioneer-infra combined-airo-app-build.yml,
+#      preprov-management-action="Do Nothing" so it never touches the fleet / release train)
+#   2. Katana dark release of the builder app at 0% traffic (in-repo aws-deploy-app.yml, dark_release)
+#   3. Create + bind a cohort-less Release Group to the build (pioneer-infra release-group-simple.yml)
+# action=Rollback tears the Release Group down again.
+#
+# Pure GHA: it dispatches the three building-block workflows (two live in
+# gdcorp-commerce/pioneer-infra) and waits on each. The cross-repo dispatch/read
+# uses PIONEER_INFRA_TOKEN (the same secret the release pipeline routes to
+# gdcorp-commerce/*). No release-manager code is involved.
+#
+# The katanaSelector (the x-katana-version a browser sends to reach the dark
+# stack) is the dark-released commit SHA — aws-deploy-app tags the artifact
+# `app:<sha>` and the release pipeline already binds with that commit — so we
+# DERIVE it from the resolved SHA rather than scrape aws-deploy-app's summary
+# (the selector is written only to $GITHUB_STEP_SUMMARY, which `gh run view
+# --log` does not include).
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Create + Reload (build + dark-release + bind) or Rollback (tear the RG down)'
+        type: choice
+        options:
+          - 'Create + Reload'
+          - 'Rollback'
+        default: 'Create + Reload'
+      branch:
+        description: 'airo-app-builder branch or tag NAME to build + dark-release (not a raw SHA — it is used as the dispatch ref)'
+        type: string
+        default: 'main'
+      publish_image:
+        description: 'Push built images to the registry. false = build only (the commit''s images must already be in the registry, e.g. from CI); set true to dark-release a branch CI has not built, else step 3 binds tags absent from ECR.'
+        type: boolean
+        default: false
+      app_environment:
+        description: 'Katana environment for the dark release (step 2)'
+        type: choice
+        options:
+          - 'pre-test'
+          - 'dev-private-ecs'
+          - 'test'
+        default: 'pre-test'
+      mgmt_environment:
+        description: 'Management environment for the Release Group bind (step 3 / Rollback)'
+        type: string
+        default: 'mgmt-dev-private-us-west-2'
+      composition_id:
+        description: 'Composition ID'
+        type: string
+        default: 'ai-builder'
+      composition_version:
+        description: 'Composition version'
+        type: string
+        default: 'v4'
+      release_group_id:
+        description: 'Release Group ID to roll back (REQUIRED when action=Rollback)'
+        type: string
+        default: ''
+
+run-name: 'Dark Release (dev) — ${{ inputs.action }} | branch: ${{ inputs.branch }} | actor: ${{ github.actor }}'
+
+permissions:
+  contents: read
+  actions: write # dispatch the in-repo aws-deploy-app.yml
+
+# Serialize dispatches of this workflow. discover_run (below) claims the newest
+# workflow_dispatch run of a child workflow created after a timestamp, so two
+# overlapping runs of THIS workflow could race to adopt each other's child run.
+# A single static group (not per-branch) is deliberate: the child workflows
+# (combined-airo-app-build, release-group-simple) are shared, so the race is
+# independent of branch. cancel-in-progress=false — never kill a run that may
+# have already created a Release Group, which would orphan it.
+concurrency:
+  group: dark-release-dev
+  cancel-in-progress: false
+
+env:
+  AGENT_REPO: gdcorp-partners/airo-app-builder
+  PIONEER_REPO: gdcorp-commerce/pioneer-infra
+  BUILD_WF: combined-airo-app-build.yml
+  DARK_WF: aws-deploy-app.yml
+  RG_WF: release-group-simple.yml
+
+jobs:
+  dark-release:
+    name: '${{ inputs.action }}'
+    runs-on:
+      labels:
+        - airo-cicd-runners
+        - self-hosted
+    steps:
+      - name: 'Dark release (${{ inputs.action }})'
+        env:
+          PIONEER_INFRA_TOKEN: ${{ secrets.PIONEER_INFRA_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }} # in-repo dispatch + commit resolve
+          ACTION: ${{ inputs.action }}
+          BRANCH: ${{ inputs.branch }}
+          APP_ENV: ${{ inputs.app_environment }}
+          MGMT_ENV: ${{ inputs.mgmt_environment }}
+          COMPOSITION_ID: ${{ inputs.composition_id }}
+          COMPOSITION_VERSION: ${{ inputs.composition_version }}
+          PUBLISH_IMAGE: ${{ inputs.publish_image }}
+          RG_ID_INPUT: ${{ inputs.release_group_id }}
+        run: |
+          set -euo pipefail
+
+          # ts_since — a UTC timestamp ~30s in the past, used as the lower bound for
+          # discover_run. The cushion absorbs small clock skew between this runner
+          # (which stamps the bound) and GitHub (which stamps run.createdAt): were the
+          # runner a few seconds ahead, an exact-now bound could exclude the run we
+          # just dispatched and surface as a spurious "could not find the run". The
+          # concurrency group serializes this workflow, so a wider window cannot
+          # mis-select one of our own overlapping runs.
+          ts_since() { date -u -d '30 seconds ago' +%Y-%m-%dT%H:%M:%SZ; }
+
+          # discover_run TOKEN REPO WORKFLOW SINCE_TS — echo the id of the newest
+          # workflow_dispatch run created at/after SINCE_TS (gh workflow run does not
+          # return the dispatched run id, so we poll for it). Each caller prints the
+          # run link for manual recovery.
+          discover_run() {
+            local tok=$1 repo=$2 wf=$3 since=$4 rid=""
+            for _ in $(seq 1 30); do
+              sleep 6
+              rid=$(GH_TOKEN="$tok" gh run list --repo "$repo" --workflow "$wf" \
+                --event workflow_dispatch --json databaseId,createdAt \
+                --jq "[.[] | select(.createdAt >= \"$since\")] | sort_by(.createdAt) | last | .databaseId" || true)
+              [ -n "$rid" ] && [ "$rid" != "null" ] && { echo "$rid"; return 0; }
+            done
+            return 1
+          }
+
+          # watch_run TOKEN REPO RID — wait for a run and REQUIRE success. Shared by
+          # the Rollback and Create paths. `gh run watch --exit-status` fails on
+          # failure/cancel but treats a SKIPPED run as success, so we also assert
+          # conclusion == success — e.g. aws-deploy-app skips its job when its
+          # branch/env guard isn't met, and a skipped run must not let the RG bind a
+          # never-deployed stack (nor let a skipped Rollback report green).
+          watch_run() {
+            local tok=$1 repo=$2 rid=$3 concl=""
+            GH_TOKEN="$tok" gh run watch "$rid" --repo "$repo" --exit-status --interval 20
+            concl=$(GH_TOKEN="$tok" gh run view "$rid" --repo "$repo" --json conclusion --jq '.conclusion' || true)
+            if [ "$concl" != "success" ]; then
+              echo "::error::$repo run $rid concluded '$concl' (expected success)"; return 1
+            fi
+          }
+
+          # ===== Rollback: tear the Release Group down, then stop. =====
+          if [ "$ACTION" = "Rollback" ]; then
+            if [ -z "$RG_ID_INPUT" ]; then
+              echo "::error::release_group_id is required for action=Rollback"; exit 1
+            fi
+            # Mirror pioneer-infra's own releaseGroupId validation
+            # (release-group-simple.yml: ^[A-Za-z0-9_-]{1,64}$) so a malformed or
+            # truncated id fails here with a clear message instead of dispatching a
+            # rollback that quietly tears down nothing.
+            if ! printf '%s' "$RG_ID_INPUT" | grep -qE '^[A-Za-z0-9_-]{1,64}$'; then
+              echo "::error::release_group_id '$RG_ID_INPUT' is not a valid Release Group id"; exit 1
+            fi
+            before=$(ts_since)
+            GH_TOKEN="$PIONEER_INFRA_TOKEN" gh workflow run "$RG_WF" --repo "$PIONEER_REPO" \
+              -f action='Rollback' -f environment="$MGMT_ENV" -f releaseGroupId="$RG_ID_INPUT"
+            rollback_rid=$(discover_run "$PIONEER_INFRA_TOKEN" "$PIONEER_REPO" "$RG_WF" "$before") \
+              || { echo "::error::could not find the dispatched $RG_WF (Rollback) run"; exit 1; }
+            echo "Rollback run: https://github.com/$PIONEER_REPO/actions/runs/$rollback_rid" >> "$GITHUB_STEP_SUMMARY"
+            watch_run "$PIONEER_INFRA_TOKEN" "$PIONEER_REPO" "$rollback_rid"
+            echo "✅ Release Group \`$RG_ID_INPUT\` rolled back." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          # ===== Create + Reload: build → dark-release → bind, in one shot. =====
+
+          # Resolve the branch to a full SHA so the build target and the
+          # katanaSelector reference exactly the same commit.
+          SHA=$(gh api "repos/$AGENT_REPO/commits/$BRANCH" --jq '.sha' || true)
+          if [ -z "${SHA:-}" ]; then
+            echo "::error::could not resolve branch/tag '$BRANCH' to a commit SHA in $AGENT_REPO"; exit 1
+          fi
+          echo "Resolved $BRANCH → $SHA"
+
+          # 1) Build the images. Per the dark-release runbook: build-image=true,
+          # preprov-management-action "Do Nothing" (leave the fleet/release train
+          # untouched). publish-image is the registry push: default false (build
+          # only — the commit's images must already be in the registry from CI);
+          # set the publish_image input true to dark-release a branch CI has not
+          # built, else step 3 binds tags absent from ECR. The build still emits
+          # the immutable tag we scrape + bind below regardless.
+          echo "::group::1/3 build images ($BUILD_WF, publish-image=$PUBLISH_IMAGE)"
+          before=$(ts_since)
+          GH_TOKEN="$PIONEER_INFRA_TOKEN" gh workflow run "$BUILD_WF" --repo "$PIONEER_REPO" \
+            -f environment=c1-dev-private-us-west-2 \
+            -f airo-app-builder-branch="$SHA" \
+            -f node-version=22 \
+            -f build-image=true \
+            -f publish-image="$PUBLISH_IMAGE" \
+            -f preprov-management-action='Do Nothing' \
+            -f preprov-variant=preview
+          build_rid=$(discover_run "$PIONEER_INFRA_TOKEN" "$PIONEER_REPO" "$BUILD_WF" "$before") \
+            || { echo "::error::could not find the dispatched $BUILD_WF run"; exit 1; }
+          echo "build run: https://github.com/$PIONEER_REPO/actions/runs/$build_rid"
+          watch_run "$PIONEER_INFRA_TOKEN" "$PIONEER_REPO" "$build_rid"
+          # Fetch the log first (a real gh failure surfaces under set -e), THEN grep
+          # — so an auth/network/log-purge error is not silently read as a no-match.
+          build_log=$(GH_TOKEN="$PIONEER_INFRA_TOKEN" gh run view "$build_rid" --repo "$PIONEER_REPO" --log)
+          IMAGE_TAG=$(printf '%s' "$build_log" \
+            | grep -oE 'MOST_SPECIFIC_IMMUTABLE_TAG_SUFFIX=pi-[a-f0-9]+-ext-[a-f0-9]+' | head -1 | cut -d= -f2 || true)
+          if [ -z "${IMAGE_TAG:-}" ]; then
+            echo "::error::could not scrape the image tag (pi-…-ext-…) from the build run $build_rid"; exit 1
+          fi
+          echo "image tag: $IMAGE_TAG"
+          echo "::endgroup::"
+
+          # 2) Katana dark release of the builder app at 0% traffic. Dispatch ref is
+          # the BRANCH (workflow_dispatch rejects a raw SHA, and aws-deploy-app's job
+          # guard reads github.ref_name); the build target is pinned via -f sha.
+          # watch_run requires conclusion=success, so a guard-skipped deploy fails
+          # here instead of letting the RG bind a never-deployed stack.
+          echo "::group::2/3 katana dark release ($DARK_WF)"
+          before=$(ts_since)
+          gh workflow run "$DARK_WF" --repo "$AGENT_REPO" --ref "$BRANCH" \
+            -f DEPLOY_TO_ENV="$APP_ENV" -f sha="$SHA" -f strategy=dark_release
+          dark_rid=$(discover_run "$GH_TOKEN" "$AGENT_REPO" "$DARK_WF" "$before") \
+            || { echo "::error::could not find the dispatched $DARK_WF run"; exit 1; }
+          echo "dark-release run: https://github.com/$AGENT_REPO/actions/runs/$dark_rid"
+          watch_run "$GH_TOKEN" "$AGENT_REPO" "$dark_rid"
+          echo "::endgroup::"
+
+          # 3) Create + bind the cohort-less Release Group (katanaSelector = the dark-released SHA).
+          echo "::group::3/3 create + bind release group ($RG_WF)"
+          before=$(ts_since)
+          GH_TOKEN="$PIONEER_INFRA_TOKEN" gh workflow run "$RG_WF" --repo "$PIONEER_REPO" \
+            -f action='Create + Reload' \
+            -f environment="$MGMT_ENV" \
+            -f katanaSelector="$SHA" \
+            -f agentImageTag="$IMAGE_TAG" \
+            -f previewImageTag="$IMAGE_TAG" \
+            -f publishImageTag="$IMAGE_TAG" \
+            -f compositionId="$COMPOSITION_ID" \
+            -f compositionVersion="$COMPOSITION_VERSION"
+          rg_rid=$(discover_run "$PIONEER_INFRA_TOKEN" "$PIONEER_REPO" "$RG_WF" "$before") \
+            || { echo "::error::could not find the dispatched $RG_WF run"; exit 1; }
+          echo "release-group run: https://github.com/$PIONEER_REPO/actions/runs/$rg_rid"
+          # Breadcrumb to the summary BEFORE we watch: if watch_run fails after the RG
+          # was already created, this is where the dev finds the run (and thus the id)
+          # to roll back — otherwise the report below never prints on the failure path.
+          echo "Release Group run (find the id here if this run failed): https://github.com/$PIONEER_REPO/actions/runs/$rg_rid" >> "$GITHUB_STEP_SUMMARY"
+          watch_run "$PIONEER_INFRA_TOKEN" "$PIONEER_REPO" "$rg_rid"
+          rg_log=$(GH_TOKEN="$PIONEER_INFRA_TOKEN" gh run view "$rg_rid" --repo "$PIONEER_REPO" --log)
+          # Match the id value, not \S+: \S+ also slurped the script-source line
+          # (echo "RELEASE_GROUP_ID=$RG_ID") and its trailing ANSI reset. pioneer-infra
+          # validates the id as ^[A-Za-z0-9_-]{1,64}$ (release-group-simple.yml), so it
+          # can contain - or _ — [A-Za-z0-9_-]+ captures it in full (a narrower class
+          # would truncate a dashed id and the Rollback hint would target the wrong RG)
+          # while still stopping before the literal-$ source line and the ESC of a reset.
+          RG_ID=$(printf '%s' "$rg_log" | grep -oE 'RELEASE_GROUP_ID=[A-Za-z0-9_-]+' | head -1 | cut -d= -f2 || true)
+          echo "::endgroup::"
+
+          # The dark build is reachable on the builder host for the env we deployed
+          # to (step 2's APP_ENV), via the x-katana-version selector. Hosts mirror
+          # playwright-e2e.yml's env→base_url map.
+          case "$APP_ENV" in
+            prod)            DARK_HOST=airo-builder.godaddy.com ;;
+            test)            DARK_HOST=airo-builder.test-godaddy.com ;;
+            pre-test)        DARK_HOST=pre-test-airo-builder.test-godaddy.com ;;
+            dev-private-ecs) DARK_HOST=airo-builder.dev-godaddy.com ;;
+            *)               DARK_HOST=airo-builder.test-godaddy.com ;;
+          esac
+
+          # Report.
+          {
+            echo "## 🌑 Dark release bound"
+            echo
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Commit (katanaSelector) | \`$SHA\` |"
+            echo "| Image tag (agent/preview/publish) | \`$IMAGE_TAG\` |"
+            echo "| Release Group ID | \`${RG_ID:-<not found — see release-group run>}\` |"
+            echo "| Dark URL ($APP_ENV) | https://$DARK_HOST?x-katana-version=$SHA&cookie=1 |"
+            echo
+            echo "Runs: [build](https://github.com/$PIONEER_REPO/actions/runs/$build_rid) · [dark-release](https://github.com/$AGENT_REPO/actions/runs/$dark_rid) · [release-group](https://github.com/$PIONEER_REPO/actions/runs/$rg_rid)"
+            echo
+            if [ "$PUBLISH_IMAGE" != "true" ]; then
+              echo "> ℹ️ \`publish_image\` was false — the build did not push to the registry, so this assumes the images for \`$SHA\` are already in ECR (e.g. from CI). If the dark URL 404s / shows the old build, re-run with \`publish_image: true\`."
+              echo
+            fi
+            if [ -n "${RG_ID:-}" ]; then
+              echo "**Roll back** when done: re-run this workflow with \`action: Rollback\` and \`release_group_id: $RG_ID\`."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ -z "${RG_ID:-}" ]; then
+            echo "::warning::Release Group dispatched + completed but RELEASE_GROUP_ID was not found in the run log — check the release-group run linked above."
+          fi
