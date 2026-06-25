@@ -14,8 +14,16 @@ vi.mock('@/hooks/useTranslations', () => ({
   useTranslations: () => (key: string, _params: unknown, defaultMsg?: string) => defaultMsg ?? key,
 }))
 
+// Unique app id per test so the per-app tick store starts fresh (no cross-test resume).
+const hoisted = vi.hoisted(() => ({ appId: 'init', counter: 0 }))
+vi.mock('@/app/[market]/develop/components/utils', () => ({
+  useAppIdFromParams: () => hoisted.appId,
+}))
+
 describe('BuildProgressTracker', function trackerTests() {
   beforeEach(function setup() {
+    hoisted.counter += 1
+    hoisted.appId = `test-app-${hoisted.counter}`
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
   })
 

@@ -6,11 +6,19 @@ import { act, renderHook } from '@testing-library/react'
 
 import { STAGE_DURATION_MS, useProgressTracker } from './useProgressTracker'
 
+// Unique app id per test so the per-app tick store starts fresh (no cross-test resume).
+const hoisted = vi.hoisted(() => ({ appId: 'init', counter: 0 }))
+vi.mock('@/app/[market]/develop/components/utils', () => ({
+  useAppIdFromParams: () => hoisted.appId,
+}))
+
 const STAGE_COUNT = 5
 const INTRO_DELAY_MS = 800
 
 describe('useProgressTracker', function hookTests() {
   beforeEach(function setup() {
+    hoisted.counter += 1
+    hoisted.appId = `test-app-${hoisted.counter}`
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
   })
 
@@ -39,6 +47,18 @@ describe('useProgressTracker', function hookTests() {
     act(() => { vi.advanceTimersByTime(INTRO_DELAY_MS + STAGE_DURATION_MS) })
 
     expect(result.current.activeStage).toBe(1)
+  })
+
+  it('resumes from the stored progress after an ask-question remount', function resumes() {
+    const first = renderHook(() => useProgressTracker(STAGE_COUNT))
+    act(() => { vi.advanceTimersByTime(INTRO_DELAY_MS + STAGE_DURATION_MS) })
+    expect(first.result.current.activeStage).toBe(1)
+    first.unmount()
+
+    // Remount with the same app id (the overlay unmounts/remounts across a
+    // question) — it should pick up at stage 1, not restart at -1/0.
+    const second = renderHook(() => useProgressTracker(STAGE_COUNT))
+    expect(second.result.current.activeStage).toBe(1)
   })
 
   it('clamps at the final stage and never exceeds it', function clamps() {

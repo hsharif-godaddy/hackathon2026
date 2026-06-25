@@ -34,6 +34,7 @@ import ErrorBoundary from '@/components/ErrorBoundary'
 import { buildDynamicApiUrl } from '@/config/dynamic-api'
 import { EXPERIMENT_IDS, INITIAL_AGENT_V3_COHORT } from '@/config/experiments'
 import { useAabProgressTracker } from '@/experiments/aab-progress-tracker/useAabProgressTracker'
+import { useProgressTrackerExposure } from '@/experiments/aab-progress-tracker/useProgressTrackerExposure'
 import { useBuildingTipsVariant } from '@/experiments/building-tips-variant/useBuildingTipsVariant'
 import { isInitialBuildComplete, isInitialBuildFunnelActive } from '@/hooks/shared/initialBuildFunnel'
 import { useHivemind } from '@/hooks/useHivemind'
@@ -385,6 +386,7 @@ export default function PreviewPane({
   const buildingTipsVariant = useBuildingTipsVariant()
   const aabProgressTrackerEnabled = useAabProgressTracker()
   const showProgressTracker = isFirstBuildScreen && aabProgressTrackerEnabled
+  useProgressTrackerExposure(appId, isFirstBuildScreen)
 
   useEffect(() => {
     if (isMobile) {

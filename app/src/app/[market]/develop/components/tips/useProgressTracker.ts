@@ -1,6 +1,8 @@
 import { useReducedMotion } from 'framer-motion'
 import { useEffect, useState } from 'react'
 
+import { useAppIdFromParams } from '@/app/[market]/develop/components/utils'
+
 /** Smoke-and-mirrors timer: each stage advances after this duration. */
 export const STAGE_DURATION_MS = 60_000
 
@@ -14,6 +16,14 @@ const TICKS_PER_STAGE = STAGE_DURATION_MS / TICK_MS
 const TRAILING_MAX_FILL = 0.9
 /** Creep time constant in ticks (larger = slower). 600 ticks ≈ 2 min. */
 const TRAILING_TAU_TICKS = 600
+
+/**
+ * Elapsed ticks per app, kept at module scope so the tracker resumes where it
+ * left off instead of restarting. The first-build overlay unmounts this hook
+ * during an ask-question turn and remounts it afterward; the unmount acts as a
+ * pause, and the stored tick count lets the remount pick back up.
+ */
+const trackerTicksByApp = new Map<string, number>()
 
 export interface ProgressTrackerState {
   /** Index of the active stage, or -1 during the intro delay. */
@@ -35,13 +45,19 @@ export function useProgressTracker(stageCount: number): ProgressTrackerState {
   // Respect OS "reduce motion": stages still advance (discrete), but we drop
   // the continuous within-stage fill and the trailing creep animation.
   const reduceMotion: boolean | null = useReducedMotion()
-  // Single tick counter drives all state — avoids chained effects.
-  const [ticks, setTicks] = useState<number>(0)
+  const appId: string = useAppIdFromParams()
+  // Single tick counter drives all state — avoids chained effects. Seeded from
+  // the per-app store so an ask-question remount resumes instead of restarting.
+  const [ticks, setTicks] = useState<number>(() => trackerTicksByApp.get(appId) ?? 0)
 
   useEffect(function startTicker() {
-    const id = setInterval(() => setTicks((n) => n + 1), TICK_MS)
+    const id = setInterval(() => setTicks((previousTicks) => {
+      const nextTicks = previousTicks + 1
+      trackerTicksByApp.set(appId, nextTicks)
+      return nextTicks
+    }), TICK_MS)
     return () => clearInterval(id)
-  }, [])
+  }, [appId])
 
   // effectiveTick < 0: pre-start (nothing lit); >= 0: counting into stages.
   const effectiveTick: number = ticks - INTRO_TICKS

@@ -1,5 +1,7 @@
 'use client'
 
+import { useAppIdFromParams } from '@/app/[market]/develop/components/utils'
+import { useProgressTrackerImpression } from '@/experiments/aab-progress-tracker/useProgressTrackerImpression'
 import { useTranslations } from '@/hooks/useTranslations'
 import { ProgressLabel } from './ProgressLabel'
 import { AI_COLOR, CAP_PX, CONNECTOR_MUTED, CONNECTOR_PX } from './progressTrackerConstants'
@@ -31,6 +33,8 @@ const STAGES: StageConfig[] = [
  */
 export default function BuildProgressTracker() {
   const t = useTranslations()
+  const appId: string = useAppIdFromParams()
+  useProgressTrackerImpression(appId)
   const { activeStage, subProgress, trailingProgress } = useProgressTracker(STAGES.length)
 
   return (

@@ -206,6 +206,9 @@ vi.mock('@/utils/site', () => ({
 
 vi.mock('@/utils/instrumentation', () => ({
   generateClickEID: vi.fn(function (id) { return id; }),
+  logClickEvent: vi.fn(() => () => {}),
+  logActionEvent: vi.fn(() => () => {}),
+  logImpressionEvent: vi.fn(() => () => {}),
 }));
 
 vi.mock('@/lib/logging', () => ({

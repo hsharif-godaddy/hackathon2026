@@ -28,7 +28,10 @@ import {
   maxNaturalTipHeightsPx,
   verticalLazyInnerFloorPx,
 } from '@/app/[market]/develop/components/tips/tips-stack-measures'
+import { useAppIdFromParams } from '@/app/[market]/develop/components/utils'
+import { EXPERIMENT_IDS } from '@/config/experiments'
 import { useBuildingTipsVariant } from '@/experiments/building-tips-variant/useBuildingTipsVariant'
+import { useAnalytics } from '@/hooks/useAnalytics'
 import { useBreakpoints } from '@/hooks/useBreakpoints'
 import { useTranslations } from '@/hooks/useTranslations'
 import { logger } from '@/lib/request-context'
@@ -75,6 +78,8 @@ export default function Tips({
   const reduceMotion = useReducedMotion()
   const isHorizontalStack = !isMdBreakpoint
   const { tipIds, tipCopyDefaults } = useBuildingTipsVariant()
+  const appId: string = useAppIdFromParams()
+  const { logAnalytics } = useAnalytics({ experimentId: EXPERIMENT_IDS.aabProgressTracker })
   const [orderedTips, setOrderedTips] = useState(() => shuffleArray(tipIds))
 
   function tipTitle(id: string | undefined) {
@@ -333,6 +338,11 @@ export default function Tips({
   }, [exitingTip, reduceMotion, complete])
 
   const rotateNext = useCallback(function next() {
+    logAnalytics(
+      'progressTracker.tipNav',
+      { appId, direction: 'next' },
+      { kind: 'click', eid: 'develop.progressTracker.tipNext' },
+    )
     if (exitingTipRef.current) return
     if (orderedTipsRef.current.length < 2) return
     if (rotationTimeoutRef.current) {
@@ -343,9 +353,14 @@ export default function Tips({
       current.length < 2 ? current : [...current.slice(1), current[0]!],
     )
     scheduleNextRotation()
-  }, [scheduleNextRotation])
+  }, [scheduleNextRotation, logAnalytics, appId])
 
   const rotatePrev = useCallback(function prev() {
+    logAnalytics(
+      'progressTracker.tipNav',
+      { appId, direction: 'prev' },
+      { kind: 'click', eid: 'develop.progressTracker.tipPrev' },
+    )
     if (exitingTipRef.current) return
     if (orderedTipsRef.current.length < 2) return
     if (rotationTimeoutRef.current) {
@@ -356,7 +371,7 @@ export default function Tips({
       current.length < 2 ? current : [current[current.length - 1]!, ...current.slice(0, -1)],
     )
     scheduleNextRotation()
-  }, [scheduleNextRotation])
+  }, [scheduleNextRotation, logAnalytics, appId])
 
   const loaderTitle = buildingMessage ?? t('builder_tips_message')
 

@@ -35,6 +35,11 @@ vi.mock('@/experiments/building-tips-variant/useBuildingTipsVariant', () => ({
   useBuildingTipsVariant: () => mockVariantPackage,
 }))
 
+const { mockLogAnalytics } = vi.hoisted(() => ({ mockLogAnalytics: vi.fn() }))
+vi.mock('@/hooks/useAnalytics', () => ({
+  useAnalytics: () => ({ cohort: 'on', logAnalytics: mockLogAnalytics }),
+}))
+
 let mockIsMdBreakpoint = true
 let mockShuffleStrategy: 'identity' | 'reverse' = 'identity'
 
@@ -783,6 +788,28 @@ describe('Tips', () => {
 
       expect(screen.getAllByText(`builder_tips_${tips[1]}_title`).length).toBeGreaterThan(0)
       expect(screen.queryByText(`builder_tips_${tips[0]}_title`)).not.toBeInTheDocument()
+    })
+
+    it('logs a click analytics event for each tip-nav arrow', () => {
+      renderWithProviders(<Tips showProgressTracker />)
+
+      act(() => {
+        fireEvent.click(screen.getByRole('button', { name: 'Next tip' }))
+      })
+      expect(mockLogAnalytics).toHaveBeenCalledWith(
+        'progressTracker.tipNav',
+        expect.objectContaining({ direction: 'next' }),
+        expect.objectContaining({ kind: 'click', eid: 'develop.progressTracker.tipNext' }),
+      )
+
+      act(() => {
+        fireEvent.click(screen.getByRole('button', { name: 'Previous tip' }))
+      })
+      expect(mockLogAnalytics).toHaveBeenCalledWith(
+        'progressTracker.tipNav',
+        expect.objectContaining({ direction: 'prev' }),
+        expect.objectContaining({ kind: 'click', eid: 'develop.progressTracker.tipPrev' }),
+      )
     })
   })
 })
