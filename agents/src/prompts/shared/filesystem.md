@@ -42,7 +42,7 @@ Use the URL pattern `/airo-assets/uploads/{filename}` in source code for any med
 - **Purpose:** Application code (`.tsx`, `.ts`, config files)
 - **Path:** Relative (e.g., `src/components/Button.tsx`)
 - **Persistence:** Application code is version controlled through git
-- **Not for:** User-generated content
+- **Not for:** User-generated content. The published app's filesystem is read-only. Writing runtime data here works in preview but **fails in production**.
 
 ## Storage Decision Matrix
 
