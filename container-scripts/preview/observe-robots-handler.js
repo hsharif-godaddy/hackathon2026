@@ -67,7 +67,7 @@ function bodyLoggingEnabled() {
   return process.env.LOG_ROBOTS_HANDLER_BODY === '1';
 }
 
-function findGetCallExpression(ast, routePath) {
+export function findGetCallExpression(ast, routePath) {
   let foundPath = null;
   traverse(ast, {
     CallExpression(path) {
@@ -90,7 +90,7 @@ function findGetCallExpression(ast, routePath) {
   return foundPath;
 }
 
-function generateNodeSrc(node, source) {
+export function generateNodeSrc(node, source) {
   // Normalized round-trip through the generator so two semantically equal
   // handler bodies hash to the same value regardless of original whitespace.
   return generate(node, { comments: false, compact: false }, source).code;
@@ -100,7 +100,7 @@ function md5(s) {
   return createHash('md5').update(s).digest('hex');
 }
 
-function classifyHandler(handlerBodySrc, fullSource) {
+export function classifyHandler(handlerBodySrc, fullSource) {
   if (fullSource.includes(SHAPE_E_FINGERPRINT)) return 'E';
   if (handlerBodySrc.includes('isSystemHost')) return 'D';
   if (handlerBodySrc.includes('isCanonicalHost')) return 'C';

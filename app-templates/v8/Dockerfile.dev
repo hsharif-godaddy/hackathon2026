@@ -187,6 +187,7 @@ COPY --from=container-scripts --chown=agent:agent preview/package-lock.json /man
 COPY --from=container-scripts --chown=agent:agent preview/sync-package-additions.js /management-scripts/sync-package-additions.js
 COPY --from=container-scripts --chown=agent:agent preview/sync-template-files.js /management-scripts/sync-template-files.js
 COPY --from=container-scripts --chown=agent:agent preview/observe-robots-handler.js /management-scripts/observe-robots-handler.js
+COPY --from=container-scripts --chown=agent:agent preview/rewrite-robots-handler.js /management-scripts/rewrite-robots-handler.js
 COPY --from=container-scripts --chown=agent:agent preview/nomad_setup.sh /management-scripts/nomad_setup.sh
 
 # Install management-scripts own dependencies (babel etc. for sync-template-files.js

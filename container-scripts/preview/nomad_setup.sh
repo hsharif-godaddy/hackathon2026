@@ -207,6 +207,25 @@ if [ -f "$CUSTOMER_APP_DIR/.git/config" ]; then
         log_step "Skipping /robots.txt handler telemetry (DISABLE_ROBOTS_HANDLER_TELEMETRY=1)"
     fi
 
+    # RUBICON-374 — opt-in AST rewrite of Shape A /robots.txt handlers to
+    # the canonical Shape D (`isSystemHost` + ./seo-host) form. No-op on
+    # every other shape and on a dirty tree. Runs only when
+    # REWRITE_ROBOTS_HANDLER=1 is explicitly set; default is off so a flag flip
+    # is the only thing that gates the migration. /sitemap.xml is intentionally
+    # untouched — tracked separately in RUBICON-519.
+    if [ "${REWRITE_ROBOTS_HANDLER}" = "1" ]; then
+        log_step "Rewriting Shape A /robots.txt handler if applicable..."
+        if node /management-scripts/rewrite-robots-handler.js "$CUSTOMER_APP_DIR"; then
+            [ -f src/server/entry.ts ] && git add src/server/entry.ts || true
+            [ -f src/server/seo-host.ts ] && git add src/server/seo-host.ts || true
+            git diff --cached --quiet || \
+                git commit -m "Sync upstream robots.txt $(date +%s)" || \
+                log_step "robots.txt rewrite committed to disk but git commit FAILED — workspace left dirty, migration not persisted"
+        else
+            log_step "Skipping robots.txt commit — rewriter reported failure"
+        fi
+    fi
+
     if [ ! -d "$CUSTOMER_APP_DIR/node_modules" ]; then
         # Dependencies missing (ephemeral disk wiped node_modules)
         log_step "Installing dependencies with npm install (this may take a few minutes)..."
