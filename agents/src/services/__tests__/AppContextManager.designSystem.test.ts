@@ -216,10 +216,42 @@ describe('AppContextManager design system', () => {
       expect(result).toBeNull();
     });
 
-    it('should return null on error', async () => {
-      mockExecute.mockRejectedValue(new Error('db error'));
+    it('should propagate errors from appPlanTool.execute', async () => {
+      mockExecute.mockRejectedValue(new Error('connection refused'));
 
-      const result = await callGet(manager, 'test');
+      await expect(callGet(manager, 'test')).rejects.toThrow('connection refused');
+    });
+
+    it('should propagate non-not-found errors from KV memory store', async () => {
+      mockExecute.mockResolvedValue({ success: false });
+
+      const mockKvStore = {
+        get: vi.fn().mockRejectedValue(new Error('supervisor unavailable')),
+        set: vi.fn(),
+        delete: vi.fn(),
+        list: vi.fn(),
+      };
+      const managerWithKv = new AppContextManager(mockKvStore as any);
+      const callGetKv = async (mgr: any, appId: string) => mgr.getDesignSystemInfo(appId);
+
+      await expect(callGetKv(managerWithKv, 'test')).rejects.toThrow('supervisor unavailable');
+    });
+
+    it('should return null when KV store throws DevSupervisorError not_found', async () => {
+      mockExecute.mockResolvedValue({ success: false });
+
+      const { DevSupervisorError } = await import('../../services/DevSupervisorClient.js');
+      const notFoundErr = new DevSupervisorError('not_found', 404, 'not found');
+      const mockKvStore = {
+        get: vi.fn().mockRejectedValue(notFoundErr),
+        set: vi.fn(),
+        delete: vi.fn(),
+        list: vi.fn(),
+      };
+      const managerWithKv = new AppContextManager(mockKvStore as any);
+      const callGetKv = async (mgr: any, appId: string) => mgr.getDesignSystemInfo(appId);
+
+      const result = await callGetKv(managerWithKv, 'test');
       expect(result).toBeNull();
     });
   });

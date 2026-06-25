@@ -679,6 +679,15 @@ describe('AppRestartService', () => {
         })
       );
     });
+
+    it('should propagate non-SyntaxError transport errors', async () => {
+      const mockTasks = {
+        runCommandSync: vi.fn().mockRejectedValueOnce(new Error('connection refused')),
+      };
+
+      await expect(readPackageJsonScripts(mockTasks as any, '/app', testAppId))
+        .rejects.toThrow('connection refused');
+    });
   });
 
   describe('performFullRestartCycle', () => {
@@ -1039,13 +1048,20 @@ describe('AppRestartService', () => {
       });
 
       it('should fall back to npm when runCommandSync throws during PM detection', async () => {
-        mockRunCommandSync.mockRejectedValue(new Error('Container unreachable'));
+        mockRunCommandSync.mockImplementation(({ command }: { command: string }) => {
+          if (command.includes('cat')) {
+            return Promise.resolve(makeRunCommandResult({
+              stdout: JSON.stringify({ scripts: {} }),
+            }));
+          }
+          return Promise.reject(new Error('Container unreachable'));
+        });
 
         await service.performFullRestartCycle(testAppId, testAppPath);
 
         const terminalCalls = mockTerminalTool.executeCommand.mock.calls;
-        expect(terminalCalls[0][1].command).toBe('npm install --include=dev');
         expect(terminalCalls.length).toBe(1);
+        expect(terminalCalls[0][1].command).toBe('npm install --include=dev');
       });
 
       it('should use custom install command over detected PM', async () => {

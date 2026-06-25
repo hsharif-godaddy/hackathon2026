@@ -48,6 +48,7 @@ import { createForWorkspace } from '../../../workspace/index.js'
 import { generateText } from 'ai'
 import { fileUploadService } from '../../../services/FileUploadService.js'
 import { mediaManifestService } from '../../../services/MediaManifestService.js'
+import { logger } from '../../../logging/index.js'
 
 describe('FileUploadContextRenderer', () => {
   let renderer: FileUploadContextRenderer
@@ -252,6 +253,38 @@ describe('FileUploadContextRenderer', () => {
     expect(result?.content).toContain('not found')
   })
 
+  it('logs per-file failure and skips when non-404 image error occurs', async () => {
+    mockDownload.mockRejectedValue(new Error('connection refused'))
+
+    const result = await renderer.render(
+      { type: 'file_upload', data: { name: 'logo.png', isImage: true } },
+      'use this',
+      { appId: 'abc123', appPath: '/app' },
+    )
+
+    expect(result?.content ?? '').not.toContain('not found on disk')
+    expect(logger.warn).toHaveBeenCalledWith(
+      'context.renderer.file_upload.render_single_failed',
+      expect.objectContaining({ appId: 'abc123', fileName: 'logo.png' }),
+    )
+  })
+
+  it('logs per-file failure and skips when non-404 text error occurs', async () => {
+    mockView.mockRejectedValue(new Error('connection refused'))
+
+    const result = await renderer.render(
+      { type: 'file_upload', data: { name: 'doc.md', isImage: false } },
+      'use this',
+      { appId: 'abc123', appPath: '/app' },
+    )
+
+    expect(result?.content ?? '').not.toContain('not found on disk')
+    expect(logger.warn).toHaveBeenCalledWith(
+      'context.renderer.file_upload.render_single_failed',
+      expect.objectContaining({ appId: 'abc123', fileName: 'doc.md' }),
+    )
+  })
+
   it('returns unavailable message when workspace is null for image', async () => {
     ;(createForWorkspace as ReturnType<typeof vi.fn>).mockReturnValue(null)
 
@@ -339,9 +372,9 @@ describe('FileUploadContextRenderer', () => {
           content: JSON.stringify({ files: [{ fileName: 'mood.jpg', placementIntent: 'reference_only' }] }),
           lines: 1, size: 60, truncated: false,
         })
-      // Image download fails → short-circuits to the not-found fallback, which
-      // still proves the file was NOT skipped (a skipped file returns null).
-      mockDownload.mockRejectedValueOnce(Object.assign(new Error('not found'), { code: 'ENOENT' }))
+      // Image download fails with DevSupervisorError not_found → short-circuits
+      // to the not-found fallback, proving the file was NOT skipped.
+      mockDownload.mockRejectedValueOnce(new DevSupervisorError('not_found', 404, 'src/assets/mood.jpg'))
 
       const result = await renderer.render(
         { type: 'file_upload', data: { files: [{ name: 'mood.jpg', isImage: true }] } },
@@ -355,8 +388,10 @@ describe('FileUploadContextRenderer', () => {
 
     it('handles data.files array with mixed image and text', async () => {
       const pngData = Buffer.from([0x89, 0x50, 0x4e, 0x47])
+      mockView
+        .mockResolvedValueOnce({ content: '{"files":[]}', lines: 1, size: 12, truncated: false })
+        .mockResolvedValueOnce({ content: '# Notes', lines: 1, size: 7, truncated: false })
       mockDownload.mockResolvedValueOnce({ data: pngData, contentType: 'image/png' })
-      mockView.mockResolvedValueOnce({ content: '# Notes', lines: 1, size: 7, truncated: false })
 
       const result = await renderer.render(
         {
@@ -380,7 +415,9 @@ describe('FileUploadContextRenderer', () => {
     })
 
     it('falls back to legacy data.name format', async () => {
-      mockView.mockResolvedValueOnce({ content: '# Old format', lines: 1, size: 12, truncated: false })
+      mockView
+        .mockResolvedValueOnce({ content: '{"files":[]}', lines: 1, size: 12, truncated: false })
+        .mockResolvedValueOnce({ content: '# Old format', lines: 1, size: 12, truncated: false })
 
       const result = await renderer.render(
         { type: 'file_upload', data: { name: 'legacy.md', isImage: false } },
@@ -404,7 +441,8 @@ describe('FileUploadContextRenderer', () => {
 
     it('skips individual files that fail and includes successes', async () => {
       mockView
-        .mockRejectedValueOnce(new Error('not found'))
+        .mockResolvedValueOnce({ content: '{"files":[]}', lines: 1, size: 12, truncated: false })
+        .mockRejectedValueOnce(new DevSupervisorError('not_found', 404, 'docs/missing.md'))
         .mockResolvedValueOnce({ content: '# Good file', lines: 1, size: 11, truncated: false })
 
       const result = await renderer.render(

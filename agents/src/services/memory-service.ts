@@ -121,9 +121,8 @@ export class MemoryService {
         if (prefix && !entry.fullKey.startsWith(prefix)) continue;
         entries.push(entry);
       } catch (err: unknown) {
-        if (!(err instanceof DevSupervisorError && err.code === 'not_found')) {
-          logger.warn('memory.list.read_entry_error', { appId, filePath, error: err instanceof Error ? err.message : String(err) });
-        }
+        if (err instanceof DevSupervisorError && err.code === 'not_found') continue;
+        throw err;
       }
     }
 

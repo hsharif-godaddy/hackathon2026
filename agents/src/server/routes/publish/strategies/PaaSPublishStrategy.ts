@@ -249,8 +249,8 @@ export class PaaSPublishStrategy implements PublishStrategy {
    * The file does not need to be committed — `getUntrackedExclusions`
    * explicitly preserves `.airo/` in the archive even when untracked.
    *
-   * An existing `serve.command` is never overwritten. On an infrastructure
-   * read failure we skip and let the preflight handle reporting.
+   * An existing `serve.command` is never overwritten. On a JSON parse failure
+   * (SyntaxError) we skip; other transport errors propagate.
    */
   private async ensureStartCommandPersisted(context: PublishContext): Promise<void> {
     const { logger, tasks, appPath, appId } = context;

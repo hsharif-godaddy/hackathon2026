@@ -156,15 +156,11 @@ export async function readPackageJsonScripts(
 
     return { hasBuildScript, hasStartScript, hasDevScript };
   } catch (error) {
-    const reason: PackageScriptsReadFailureReason =
-      error instanceof SyntaxError ? 'parse_failed' : 'exec_error';
-    warnPackageScriptsReadFailed(
-      appId,
-      projectRoot,
-      reason,
-      error instanceof Error ? error.message : String(error)
-    );
-    return empty;
+    if (error instanceof SyntaxError) {
+      warnPackageScriptsReadFailed(appId, projectRoot, 'parse_failed', error.message);
+      return empty;
+    }
+    throw error;
   }
 }
 

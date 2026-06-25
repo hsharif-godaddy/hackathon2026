@@ -344,4 +344,26 @@ describe('AppContextManager publish state', () => {
       expect(result).toBe(false);
     });
   });
+
+  describe('getMediaSlotsInfo error handling', () => {
+    it('should propagate non-not-found errors from mediaManifestService', async () => {
+      const { mediaManifestService } = await import('../MediaManifestService.js');
+      vi.mocked(mediaManifestService.getManifest).mockRejectedValueOnce(
+        new Error('connection refused')
+      );
+
+      await expect((manager as any).getMediaSlotsInfo('app-123'))
+        .rejects.toThrow('connection refused');
+    });
+
+    it('should return null when mediaManifestService throws DevSupervisorError not_found', async () => {
+      const { mediaManifestService } = await import('../MediaManifestService.js');
+      vi.mocked(mediaManifestService.getManifest).mockRejectedValueOnce(
+        new DevSupervisorError('not_found', 404, 'not found')
+      );
+
+      const result = await (manager as any).getMediaSlotsInfo('app-123');
+      expect(result).toBeNull();
+    });
+  });
 });

@@ -14,6 +14,7 @@ import {
 } from '../../services/upload-handling-guidance.js'
 import { mediaManifestService } from '../../services/MediaManifestService.js'
 import { resizeForVision } from '../../utils/image-resize.js'
+import { isDevSupervisorNotFound } from '../../services/DevSupervisorClient.js'
 import { createForWorkspace } from '../../workspace/index.js'
 import {
   readPersistedClassifications,
@@ -421,14 +422,16 @@ export class FileUploadContextRenderer implements ContextAttachmentRenderer {
         const downloadResult = await workspace.files.download({ path: `src/assets/${fileName}` })
         buffer = downloadResult.data
       } catch (err) {
-        logger.warn('context.renderer.file_upload.image_not_found', {
-          appId,
-          fileName,
-          error: err instanceof Error ? err.message : String(err),
-        })
-        return {
-          content: `Image file "${displayName}" was uploaded but not found on disk.`,
+        if (isDevSupervisorNotFound(err)) {
+          logger.warn('context.renderer.file_upload.image_not_found', {
+            appId,
+            fileName,
+          })
+          return {
+            content: `Image file "${displayName}" was uploaded but not found on disk.`,
+          }
         }
+        throw err
       }
 
       const result = await classifyImage(buffer, fileName, userPrompt)
@@ -518,14 +521,16 @@ export class FileUploadContextRenderer implements ContextAttachmentRenderer {
       const viewResult = await workspace.files.view({ path: `docs/${fileName}`, limit: 10000 })
       content = viewResult.content
     } catch (err) {
-      logger.warn('context.renderer.file_upload.text_not_found', {
-        appId,
-        fileName,
-        error: err instanceof Error ? err.message : String(err),
-      })
-      return {
-        content: `File "${displayName}" was uploaded but not found on disk at \`docs/${displayName}\`.`,
+      if (isDevSupervisorNotFound(err)) {
+        logger.warn('context.renderer.file_upload.text_not_found', {
+          appId,
+          fileName,
+        })
+        return {
+          content: `File "${displayName}" was uploaded but not found on disk at \`docs/${displayName}\`.`,
+        }
       }
+      throw err
     }
     const classification = await classifyText(content, fileName, userPrompt)
 

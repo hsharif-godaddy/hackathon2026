@@ -279,20 +279,20 @@ export class AppContextManager {
    * @returns Design system info or null
    */
   private async getDesignSystemInfo(appId: string, customerId?: string): Promise<{ colorPalette: ColorPalette | null; fontTheme: FontTheme | null } | null> {
+    const result = await appPlanTool.execute({
+      appId,
+      operation: 'get'
+    });
+
+    if (result.success && (result.data?.colorPalette || result.data?.fontTheme)) {
+      return {
+        colorPalette: result.data.colorPalette || null,
+        fontTheme: result.data.fontTheme || null
+      };
+    }
+
+    // Fallback: read from memory table (persisted by brand tools)
     try {
-      const result = await appPlanTool.execute({
-        appId,
-        operation: 'get'
-      });
-
-      if (result.success && (result.data?.colorPalette || result.data?.fontTheme)) {
-        return {
-          colorPalette: result.data.colorPalette || null,
-          fontTheme: result.data.fontTheme || null
-        };
-      }
-
-      // Fallback: read from memory table (persisted by brand tools)
       const scope = workspaceScopeFromAppId(appId, customerId);
       const [paletteResult, typographyResult] = await Promise.all([
         this.kvMemoryStore.get(scope, 'brand.colors.palette'),
@@ -309,12 +309,9 @@ export class AppContextManager {
       }
 
       return null;
-    } catch (error) {
-      logger.warn('app.context.designSystem.failure', {
-        appId,
-        error: error instanceof Error ? error.message : String(error)
-      });
-      return null;
+    } catch (err) {
+      if (isDevSupervisorNotFound(err)) return null;
+      throw err;
     }
   }
 
@@ -357,7 +354,6 @@ export class AppContextManager {
         return null;
       }
 
-      // Return a map of slot name to media type
       const slotMap = new Map<string, string>();
       for (const [slotName, slot] of slots) {
         slotMap.set(slotName, (slot as MediaSlot).mediaType || 'image');
@@ -369,12 +365,9 @@ export class AppContextManager {
       });
 
       return slotMap;
-    } catch (error) {
-      logger.warn('app.context.media_slots.failure', {
-        appId,
-        error: error instanceof Error ? error.message : String(error)
-      });
-      return null;
+    } catch (err) {
+      if (isDevSupervisorNotFound(err)) return null;
+      throw err;
     }
   }
 
