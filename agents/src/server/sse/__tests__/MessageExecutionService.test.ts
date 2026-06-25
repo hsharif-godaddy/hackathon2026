@@ -443,6 +443,30 @@ describe('MessageExecutionService', () => {
       expect(deps.stateManager.switchAgent).not.toHaveBeenCalledWith(expect.any(String), attached)
     })
 
+    it('keeps the base gallery variant when the forced install fails on the initial prompt (AIROBUILD-2845)', async () => {
+      // AIROBUILD-2845: when the kit install fails (enrich returns [] AND no kit-meta
+      // on disk), the turn must stay on the tool-bearing base variant — never strand on
+      // the tool-less -attached fork asserting a kit that isn't installed.
+      const stat = mockKitMetaStat(false)
+      mockEnrichWithForcedDesignKit.mockResolvedValueOnce([])
+      const base = 'initial-design-system-homepage-build'
+      const attached = `${base}-attached`
+      const agents = createDesignKitAgents([base, attached])
+      wireAgents(agents)
+
+      await service.execute({
+        ...DEFAULT_PARAMS,
+        agentId: base,
+        designKitSlug: 'modern-bento',
+        lifecycleContext: { isInitialPrompt: true },
+      })
+
+      expect(stat).toHaveBeenCalledWith({ paths: ['docs/ui-kit/kit-meta.json'] })
+      expect(agents[base]!.streamGenerate).toHaveBeenCalledTimes(1)
+      expect(agents[attached]!.streamGenerate).not.toHaveBeenCalled()
+      expect(deps.persistAgentId).not.toHaveBeenCalledWith('conv_1', attached)
+    })
+
     it('keeps the base gallery variant when kit-meta is absent', async () => {
       // AIROBUILD-2696 AC2: no artifact means no per-turn swap and no stranded -attached state.
       const stat = mockKitMetaStat(false)

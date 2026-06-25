@@ -16,6 +16,29 @@ import type { BrandKitTokens } from '@airo/shared/brand-data'
 
 const UPLOAD_CONCURRENCY = 8
 
+/** AIROBUILD-2845: bound the transient-install retry to one extra attempt on the
+ *  turn-1 critical path; a short backoff covers the workspace-bind / download race
+ *  without hurting time-to-first-token. */
+const MAX_INSTALL_ATTEMPTS = 2
+const INSTALL_RETRY_BACKOFF_MS = 300
+
+/** A transient tarball-download failure thrown by installDesignSystem — an HTTP
+ *  status response (`design-system download <status>`) or a normalized socket-level
+ *  rejection (`design-system download network: …`). Both are retryable. The
+ *  deterministic `design-system hash mismatch …` throw deliberately does NOT match
+ *  this prefix, and upload failures (different message) are likewise excluded. */
+function isTransientDownloadError(err: unknown): boolean {
+  return err instanceof Error && /^design-system download /.test(err.message)
+}
+
+/** Internal marker so the download try/catch can tell a non-OK HTTP response
+ *  apart from a socket-level rejection and normalize each to its own message. */
+class HttpStatusError extends Error {
+  constructor(readonly status: number) {
+    super(`http status ${status}`)
+  }
+}
+
 export interface InstallDesignSystemInput {
   workspace: WorkspaceClient
   entry: DesignSystemCatalogEntry
@@ -107,38 +130,79 @@ export async function installDesignKitForApp(appId: string, slug: string): Promi
     logger.warn('design_system.install.ambiguous_match', { needle, matchedIds, chosenId: entry.id })
   }
 
-  const workspace = createForWorkspace(appId, 'preview')
-  if (!workspace) return { error: 'workspace_unavailable' }
-
-  const result = await installDesignSystem({ workspace, entry, baseUrl: resolveDesignSystemBaseUrl() })
-
-  try {
-    // Record the matched catalog entry's stable identity (id + displayName),
-    // plus kitId when the kit has one. This is the single source of truth for
-    // the chosen kit: the brand-data route reads `designKit` to surface the
-    // wizard's "Design kit" row, and it doubles as provenance/instrumentation.
-    const designKit: DesignKitRef = {
-      source: 'catalog',
-      id: entry.id,
-      displayName: entry.displayName,
-      ...(entry.kitId ? { kitId: entry.kitId } : {}),
+  // Bounded retry for TRANSIENT install failures only (AIROBUILD-2845): the
+  // workspace bind races dev-supervisor registration (`workspace_unavailable`),
+  // and the tarball download can hit a transient 5xx or socket-level blip. Both
+  // clear on a quick retry. Deterministic failures — `slug_not_found` (handled
+  // above, never reaches here) and a tarball hash mismatch (a real integrity/config
+  // bug) — are NOT retried: retrying only burns turn-1 latency/budget. The retried
+  // section (resolve workspace → installDesignSystem) is idempotent: it runs before
+  // any token-apply/metadata side effects, and a re-upload overwrites prior files.
+  for (let attempt = 1; attempt <= MAX_INSTALL_ATTEMPTS; attempt++) {
+    const isLastAttempt = attempt === MAX_INSTALL_ATTEMPTS
+    const workspace = createForWorkspace(appId, 'preview')
+    if (!workspace) {
+      if (isLastAttempt) return { error: 'workspace_unavailable' }
+      logger.warn('design_system.install.retry', { reason: 'workspace_unavailable', appId, attempt })
+      await new Promise<void>((done: () => void) => setTimeout(done, INSTALL_RETRY_BACKOFF_MS))
+      continue
     }
-    new AppMetadataRepository().merge(appId, { designKit })
-  } catch (metaErr) {
-    // Metadata is best-effort instrumentation — never fail the install over it.
-    logger.warn('design_system.install.metadata_failed', { appId, slug: result.slug, err: String(metaErr) })
+
+    let result: InstallDesignSystemResult
+    try {
+      result = await installDesignSystem({ workspace, entry, baseUrl: resolveDesignSystemBaseUrl() })
+    } catch (err) {
+      if (isTransientDownloadError(err) && !isLastAttempt) {
+        logger.warn('design_system.install.retry', { reason: 'download_failed', appId, attempt, err: String(err) })
+        await new Promise<void>((done: () => void) => setTimeout(done, INSTALL_RETRY_BACKOFF_MS))
+        continue
+      }
+      throw err
+    }
+
+    try {
+      // Record the matched catalog entry's stable identity (id + displayName),
+      // plus kitId when the kit has one. This is the single source of truth for
+      // the chosen kit: the brand-data route reads `designKit` to surface the
+      // wizard's "Design kit" row, and it doubles as provenance/instrumentation.
+      const designKit: DesignKitRef = {
+        source: 'catalog',
+        id: entry.id,
+        displayName: entry.displayName,
+        ...(entry.kitId ? { kitId: entry.kitId } : {}),
+      }
+      new AppMetadataRepository().merge(appId, { designKit })
+    } catch (metaErr) {
+      // Metadata is best-effort instrumentation — never fail the install over it.
+      logger.warn('design_system.install.metadata_failed', { appId, slug: result.slug, err: String(metaErr) })
+    }
+
+    const message = `Installed design system \`${result.slug}\` (${result.written} files extracted to docs/ui-kit/). Call \`loadUiKit\` next to read the design system primitives and components.`
+    return { slug: result.slug, written: result.written, message, displayName: entry.displayName, design: entry.design, questions: entry.questions ?? [] }
   }
 
-  const message = `Installed design system \`${result.slug}\` (${result.written} files extracted to docs/ui-kit/). Call \`loadUiKit\` next to read the design system primitives and components.`
-  return { slug: result.slug, written: result.written, message, displayName: entry.displayName, design: entry.design, questions: entry.questions ?? [] }
+  // Unreachable: the final attempt always returns or throws inside the loop. Satisfies
+  // the type checker's fall-through analysis without a live code path.
+  return { error: 'workspace_unavailable' }
 }
 
 export async function installDesignSystem(input: InstallDesignSystemInput): Promise<InstallDesignSystemResult> {
   const { workspace, entry, baseUrl } = input
   const url = `${baseUrl.replace(/\/$/, '')}/${entry.tarball}`
-  const response = await fetch(url)
-  if (!response.ok) throw new Error(`design-system download ${response.status}`)
-  const buf = Buffer.from(await response.arrayBuffer())
+  let buf: Buffer
+  try {
+    const response = await fetch(url)
+    if (!response.ok) throw new HttpStatusError(response.status)
+    buf = Buffer.from(await response.arrayBuffer())
+  } catch (err) {
+    // A non-OK HTTP response is a status failure (retryable, e.g. 503). Anything
+    // else thrown here is a socket-level failure during connect OR body streaming
+    // (DNS / connection reset / TLS / "terminated") — fetch / arrayBuffer reject
+    // with a TypeError carrying no HTTP status. Normalize BOTH to the download-error
+    // shape so the transient-retry classifier recognizes them (AIROBUILD-2845).
+    if (err instanceof HttpStatusError) throw new Error(`design-system download ${err.status}`)
+    throw new Error(`design-system download network: ${err instanceof Error ? err.message : String(err)}`)
+  }
 
   const expected = entry.tarballHash.replace(/^sha256-/i, '').toLowerCase()
   const actual = createHash('sha256').update(buf).digest('hex').toLowerCase()
@@ -206,14 +270,22 @@ export async function installDesignSystem(input: InstallDesignSystemInput): Prom
     }
 
     // Upload assembled files to workspace via dev-supervisor.
-    // Note: unlike the old atomic cpSync, per-file upload means a mid-way failure
-    // leaves docs/ui-kit/ partially written. The tool surfaces the error so the
-    // agent won't call loadUiKit, and a retry overwrites existing files.
-    const filePaths = collectFiles(assembledDir)
-    await withConcurrency(filePaths, UPLOAD_CONCURRENCY, async (relPath) => {
+    // kit-meta.json is the per-turn "kit installed" signal the swap gate stats
+    // (MessageExecutionService.prepareForcedDesignKit). Upload every content file
+    // FIRST, then write kit-meta.json LAST as a completeness barrier: a mid-way
+    // content-upload failure throws before kit-meta lands, so kitMetaExists stays
+    // false and the agent keeps the tool-bearing base variant instead of swapping
+    // to the tool-less -attached variant on a partial kit (AIROBUILD-2845).
+    const allPaths = collectFiles(assembledDir)
+    const KIT_META = 'kit-meta.json'
+    const contentPaths = allPaths.filter(p => p !== KIT_META)
+    await withConcurrency(contentPaths, UPLOAD_CONCURRENCY, async (relPath) => {
       const data = readFileSync(join(assembledDir, relPath))
       await workspace.files.upload({ path: `docs/ui-kit/${relPath}`, data })
     })
+    if (allPaths.includes(KIT_META)) {
+      await workspace.files.upload({ path: `docs/ui-kit/${KIT_META}`, data: readFileSync(join(assembledDir, KIT_META)) })
+    }
 
     // Parse the kit's anchor.json (if present) into compact element shape tokens
     // for the wizard's Elements preview. Best-effort + non-fatal.
@@ -227,7 +299,7 @@ export async function installDesignSystem(input: InstallDesignSystemInput): Prom
       logger.warn('design_system.install.anchor_parse_failed', { slug: entry.slug, err: String(err) })
     }
 
-    return { slug: entry.slug, written: filePaths.length, tokens }
+    return { slug: entry.slug, written: allPaths.length, tokens }
   } finally {
     rmSync(stage, { recursive: true, force: true })
   }

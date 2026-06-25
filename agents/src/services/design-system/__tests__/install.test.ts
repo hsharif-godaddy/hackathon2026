@@ -59,6 +59,87 @@ describe('installDesignKitForApp', () => {
     expect(result).toEqual({ error: 'workspace_unavailable' })
   })
 
+  // --- AIROBUILD-2845 I2: bounded retry for TRANSIENT install failures ---
+  it('retries once when the workspace is briefly unavailable, then succeeds (transient race)', async () => {
+    await primeRealInstall()
+    // First bind returns null (supervisor not registered yet); the retry binds successfully.
+    mockCreateForWorkspace.mockReturnValueOnce(null)
+    const { installDesignKitForApp } = await import('../install.js')
+    const result = await installDesignKitForApp('app1', 'modern-bento')
+    expect('error' in result).toBe(false)
+    expect(mockCreateForWorkspace).toHaveBeenCalledTimes(2)
+    // Side effects must run exactly once across the retry (no double metadata stamp).
+    expect(mockMerge).toHaveBeenCalledTimes(1)
+  })
+
+  it('retries once on a transient download failure (5xx), then succeeds', async () => {
+    const tarPath = join(tmpdir(), `dl-retry-${Date.now()}.tar.gz`)
+    const tarBuf = await makeTarball(tarPath, { 'colors.md': '# palette' })
+    rmSync(tarPath, { force: true })
+    const hash = createHash('sha256').update(tarBuf).digest('hex')
+    mockFetchCatalog.mockResolvedValue({ version: 1, generatedAt: '', kits: [{ ...ENTRY, tarballHash: `sha256-${hash}` }] })
+    const okResponse = { ok: true, arrayBuffer: async () => tarBuf.buffer.slice(tarBuf.byteOffset, tarBuf.byteOffset + tarBuf.byteLength) } as unknown as Response
+    const fetchSpy = vi.fn().mockResolvedValueOnce({ ok: false, status: 503 } as unknown as Response).mockResolvedValue(okResponse)
+    vi.stubGlobal('fetch', fetchSpy)
+    const { installDesignKitForApp } = await import('../install.js')
+    const result = await installDesignKitForApp('app1', 'modern-bento')
+    expect('error' in result).toBe(false)
+    expect(fetchSpy).toHaveBeenCalledTimes(2)
+  })
+
+  it('retries once on a transient network failure (fetch rejects with no HTTP status), then succeeds', async () => {
+    const tarPath = join(tmpdir(), `net-retry-${Date.now()}.tar.gz`)
+    const tarBuf = await makeTarball(tarPath, { 'colors.md': '# palette' })
+    rmSync(tarPath, { force: true })
+    const hash = createHash('sha256').update(tarBuf).digest('hex')
+    mockFetchCatalog.mockResolvedValue({ version: 1, generatedAt: '', kits: [{ ...ENTRY, tarballHash: `sha256-${hash}` }] })
+    const okResponse = { ok: true, arrayBuffer: async () => tarBuf.buffer.slice(tarBuf.byteOffset, tarBuf.byteOffset + tarBuf.byteLength) } as unknown as Response
+    // First call: a socket-level rejection (DNS/reset/TLS) — a TypeError with no status. Second: success.
+    const fetchSpy = vi.fn().mockRejectedValueOnce(new TypeError('fetch failed')).mockResolvedValue(okResponse)
+    vi.stubGlobal('fetch', fetchSpy)
+    const { installDesignKitForApp } = await import('../install.js')
+    const result = await installDesignKitForApp('app1', 'modern-bento')
+    expect('error' in result).toBe(false)
+    expect(fetchSpy).toHaveBeenCalledTimes(2)
+  })
+
+  it('retries once when the body stream is reset mid-download (arrayBuffer rejects), then succeeds', async () => {
+    const tarPath = join(tmpdir(), `body-retry-${Date.now()}.tar.gz`)
+    const tarBuf = await makeTarball(tarPath, { 'colors.md': '# palette' })
+    rmSync(tarPath, { force: true })
+    const hash = createHash('sha256').update(tarBuf).digest('hex')
+    mockFetchCatalog.mockResolvedValue({ version: 1, generatedAt: '', kits: [{ ...ENTRY, tarballHash: `sha256-${hash}` }] })
+    // First response: headers OK but the body read rejects (undici "terminated"). Second: clean.
+    const brokenBody = { ok: true, arrayBuffer: async () => { throw new TypeError('terminated') } } as unknown as Response
+    const okResponse = { ok: true, arrayBuffer: async () => tarBuf.buffer.slice(tarBuf.byteOffset, tarBuf.byteOffset + tarBuf.byteLength) } as unknown as Response
+    const fetchSpy = vi.fn().mockResolvedValueOnce(brokenBody).mockResolvedValue(okResponse)
+    vi.stubGlobal('fetch', fetchSpy)
+    const { installDesignKitForApp } = await import('../install.js')
+    const result = await installDesignKitForApp('app1', 'modern-bento')
+    expect('error' in result).toBe(false)
+    expect(fetchSpy).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not retry slug_not_found (deterministic; never touches the workspace)', async () => {
+    const { installDesignKitForApp } = await import('../install.js')
+    const result = await installDesignKitForApp('app1', 'nonexistent-slug')
+    expect(result).toEqual({ error: 'slug_not_found' })
+    expect(mockCreateForWorkspace).not.toHaveBeenCalled()
+  })
+
+  it('does not retry a deterministic hash mismatch (fetches exactly once)', async () => {
+    const tarPath = join(tmpdir(), `hash-${Date.now()}.tar.gz`)
+    const tarBuf = await makeTarball(tarPath, { 'colors.md': '# palette' })
+    rmSync(tarPath, { force: true })
+    mockFetchCatalog.mockResolvedValue({ version: 1, generatedAt: '', kits: [{ ...ENTRY, tarballHash: `sha256-${'f'.repeat(64)}` }] })
+    const okResponse = { ok: true, arrayBuffer: async () => tarBuf.buffer.slice(tarBuf.byteOffset, tarBuf.byteOffset + tarBuf.byteLength) } as unknown as Response
+    const fetchSpy = vi.fn().mockResolvedValue(okResponse)
+    vi.stubGlobal('fetch', fetchSpy)
+    const { installDesignKitForApp } = await import('../install.js')
+    await expect(installDesignKitForApp('app1', 'modern-bento')).rejects.toThrow(/hash mismatch/i)
+    expect(fetchSpy).toHaveBeenCalledTimes(1)
+  })
+
   it('happy path: returns slug, written, and the canonical success message', async () => {
     await primeRealInstall()
     const { installDesignKitForApp } = await import('../install.js')
@@ -428,5 +509,45 @@ describe('design-system/install', () => {
     expect(uploads.has('docs/ui-kit/kit-meta.json')).toBe(true)
     // Should NOT have the kits/ nesting
     expect([...uploads.keys()].some(k => k.includes('kits/'))).toBe(false)
+  })
+
+  // --- AIROBUILD-2845 I1: kit-meta.json is a completeness barrier (upload last) ---
+  it('does not upload kit-meta.json when a content-file upload fails (no partial-kit signal)', async () => {
+    // Class C: kit-meta.json is the per-turn "kit installed" signal the swap gate trusts. If
+    // content files fail to upload, kit-meta must NOT land — otherwise the agent swaps to the
+    // tool-less -attached variant on an empty/partial kit. Reproduce by failing primitives/*
+    // uploads while letting every other upload (incl. kit-meta) succeed.
+    const tarPath = join(tmp, 'partial.tar.gz')
+    const buf = await makeTarball(tarPath, {
+      'primitives/colors.md': '# palette',
+      'components/button.md': '# button',
+    })
+    const hash = createHash('sha256').update(buf).digest('hex')
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      arrayBuffer: async () => buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength),
+    } as unknown as Response))
+
+    const uploads = new Map<string, Buffer>()
+    const workspace = {
+      workspaceId: 'test-workspace',
+      variant: 'preview' as const,
+      files: {
+        upload: vi.fn().mockImplementation(async (opts: { path: string; data: Buffer }) => {
+          if (opts.path.includes('/primitives/')) throw new Error('upload failed (simulated transient)')
+          uploads.set(opts.path, opts.data)
+          return { bytesWritten: opts.data.length }
+        }),
+      },
+    } as unknown as WorkspaceClient
+
+    const { installDesignSystem } = await import('../install.js')
+    await expect(installDesignSystem({
+      workspace,
+      entry: { id: 'kit-x', slug: 'modern-bento', displayName: 'Modern Bento', whenToUse: '', tags: [], questions: [], tarball: 'partial.tar.gz', tarballHash: `sha256-${hash}` },
+      baseUrl: 'http://example/brand-kits',
+    })).rejects.toThrow()
+    // The barrier: kit-meta.json must not have been written when content upload failed.
+    expect(uploads.has('docs/ui-kit/kit-meta.json')).toBe(false)
   })
 })
