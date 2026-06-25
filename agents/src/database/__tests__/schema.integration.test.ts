@@ -488,6 +488,29 @@ describe('Database Schema Integration Tests', () => {
       expect(tableNames).not.toContain('simple_campaigns');
       expect(tableNames).not.toContain('simple_campaign_assets');
     });
+
+    it('adds the plan_rationale column to a pre-existing simple_campaign table (RUBICON-504), preserving rows', () => {
+      initializeSchema(testDb);
+      testDb.prepare(`INSERT INTO apps (id, name, path, port) VALUES (?, ?, ?, ?)`).run('app-r', 'App', '/tmp', 5000);
+      testDb.prepare(`INSERT INTO simple_campaign (id, app_id, name, status, created_at, updated_at) VALUES (?, ?, 'C', 'draft', 't', 't')`).run('camp_r', 'app-r');
+
+      // Mangle → drop the column to simulate a pre-504 table.
+      testDb.exec(`ALTER TABLE simple_campaign DROP COLUMN plan_rationale`);
+
+      // Re-run twice → triggers the ADD COLUMN migration, then proves idempotency.
+      initializeSchema(testDb);
+      initializeSchema(testDb);
+
+      const campCols: string[] = (testDb.prepare(`PRAGMA table_info(simple_campaign)`).all() as { name: string }[]).map(
+        (c: { name: string }): string => c.name,
+      );
+      expect(campCols).toContain('plan_rationale');
+
+      const row: { id: string; plan_rationale: string | null } = testDb
+        .prepare(`SELECT id, plan_rationale FROM simple_campaign WHERE id = ?`)
+        .get('camp_r') as { id: string; plan_rationale: string | null };
+      expect(row).toEqual({ id: 'camp_r', plan_rationale: null }); // row preserved, new column null
+    });
   });
 
   describe('Schema Metadata', () => {

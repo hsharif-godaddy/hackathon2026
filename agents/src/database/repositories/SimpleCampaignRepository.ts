@@ -4,6 +4,7 @@ import { SimpleCampaignStatus, SimpleCampaignContentStatus, SimpleCampaignConten
 import type { SimpleCampaign, SimpleCampaignContent, CampaignActor } from '../schema.js';
 import { Logger } from '../../logging/index.js';
 import { assertEnumValue } from '../../utils/enum-guard.js';
+import { serializePlanRationale, parsePlanRationale, type PlanRationale } from '../plan-rationale.js';
 import { customAlphabet } from 'nanoid';
 
 const nanoid = customAlphabet('0123456789abcdefghijklmnopqrstuvwxyz', 12);
@@ -23,6 +24,8 @@ export interface CreateSimpleCampaignParams {
   name: string;
   offer?: string;
   goal?: string;
+  /** Campaign-level plan rationale (one per campaign) for the feedback loop. */
+  planRationale?: PlanRationale;
   startDate?: string;
   endDate?: string;
   /** Who created the campaign — a customer action or the agent. */
@@ -33,6 +36,8 @@ export interface UpdateSimpleCampaignParams {
   name?: string;
   offer?: string;
   goal?: string;
+  /** Campaign-level plan rationale (one per campaign) for the feedback loop. */
+  planRationale?: PlanRationale;
   startDate?: string;
   endDate?: string;
   /** Who made this update — a customer action or the agent. */
@@ -69,6 +74,7 @@ interface SimpleCampaignRow {
   status: string;
   offer: string | null;
   goal: string | null;
+  plan_rationale: string | null;
   start_date: string | null;
   end_date: string | null;
   launched_at: string | null;
@@ -112,6 +118,7 @@ export class SimpleCampaignRepository {
       status: SimpleCampaignStatus.Draft,
       offer: params.offer ?? null,
       goal: params.goal ?? null,
+      planRationale: params.planRationale ?? null,
       startDate: params.startDate ?? null,
       endDate: params.endDate ?? null,
       launchedAt: null,
@@ -124,8 +131,8 @@ export class SimpleCampaignRepository {
 
     const info: Database.RunResult = this.db
       .prepare(
-        `INSERT INTO simple_campaign (id, app_id, marketing_plan_id, name, status, offer, goal, start_date, end_date, launched_at, completed_at, created_by, updated_by, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO simple_campaign (id, app_id, marketing_plan_id, name, status, offer, goal, plan_rationale, start_date, end_date, launched_at, completed_at, created_by, updated_by, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         campaign.id,
@@ -135,6 +142,7 @@ export class SimpleCampaignRepository {
         campaign.status,
         campaign.offer,
         campaign.goal,
+        campaign.planRationale ? serializePlanRationale(campaign.planRationale) : null,
         campaign.startDate,
         campaign.endDate,
         campaign.launchedAt,
@@ -196,6 +204,7 @@ export class SimpleCampaignRepository {
     if (params.name !== undefined) { fields.push('name = ?'); values.push(params.name); }
     if (params.offer !== undefined) { fields.push('offer = ?'); values.push(params.offer); }
     if (params.goal !== undefined) { fields.push('goal = ?'); values.push(params.goal); }
+    if (params.planRationale !== undefined) { fields.push('plan_rationale = ?'); values.push(serializePlanRationale(params.planRationale)); }
     if (params.startDate !== undefined) { fields.push('start_date = ?'); values.push(params.startDate); }
     if (params.endDate !== undefined) { fields.push('end_date = ?'); values.push(params.endDate); }
     if (params.updatedBy !== undefined) { fields.push('updated_by = ?'); values.push(params.updatedBy); }
@@ -429,6 +438,7 @@ export class SimpleCampaignRepository {
       status: row.status as SimpleCampaignStatus,
       offer: row.offer,
       goal: row.goal,
+      planRationale: parsePlanRationale(row.plan_rationale),
       startDate: row.start_date,
       endDate: row.end_date,
       launchedAt: row.launched_at,

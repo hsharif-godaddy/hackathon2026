@@ -73,6 +73,7 @@ erDiagram
         TEXT status "draft|ready|scheduled|active|completed|archived (app-validated enum)"
         TEXT offer "nullable"
         TEXT goal "nullable"
+        TEXT plan_rationale "nullable — JSON {assumptions[], mixRationale, expectedOutcome}; campaign-level plan reasoning for the feedback loop"
         DATETIME start_date "nullable"
         DATETIME end_date "nullable"
         DATETIME launched_at "nullable"

@@ -12,6 +12,8 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import Database from 'better-sqlite3';
 import { SimpleCampaignRepository } from '../SimpleCampaignRepository.js';
 import { initializeSchema, SimpleCampaignStatus } from '../../schema.js';
+import type { SimpleCampaign } from '../../schema.js';
+import type { PlanRationale } from '../../plan-rationale.js';
 
 const APP_ID = 'app1234567';
 
@@ -108,6 +110,42 @@ describe('SimpleCampaignRepository Integration Tests', () => {
 
     // No app→campaign cascade by design: the SQLite DB is per-app, so deleting the app
     // drops the whole file. The app_id FK is plain (no ON DELETE action).
+  });
+
+  describe('plan rationale (RUBICON-504)', () => {
+    const rationale: PlanRationale = {
+      assumptions: ['Owners want more local foot traffic', 'Audience skews local + mobile'],
+      mixRationale: 'Landing page converts, blog builds SEO, social reaches followers',
+      expectedOutcome: 'A small first wave of visitors and a handful of early sales',
+    };
+
+    it('persists the plan_rationale JSON object on create and round-trips it through SQLite', () => {
+      const campaign: SimpleCampaign = repo.create({ appId: APP_ID, name: 'Rationale', planRationale: rationale });
+      expect(campaign.planRationale).toEqual(rationale);
+
+      const reloaded: SimpleCampaign | null = repo.findById(campaign.id);
+      expect(reloaded?.planRationale).toEqual(rationale); // parsed back from the JSON column
+      expect(reloaded?.planRationale?.assumptions).toHaveLength(2); // array preserved natively
+    });
+
+    it('defaults plan_rationale to null when not provided', () => {
+      const campaign: SimpleCampaign = repo.create({ appId: APP_ID, name: 'No Rationale' });
+      expect(campaign.planRationale).toBeNull();
+      expect(repo.findById(campaign.id)?.planRationale).toBeNull();
+    });
+
+    it('updates plan_rationale independently of other columns', () => {
+      const campaign: SimpleCampaign = repo.create({ appId: APP_ID, name: 'To Update' });
+      const updated: SimpleCampaign = repo.update(campaign.id, { planRationale: rationale });
+      expect(updated.planRationale).toEqual(rationale);
+      expect(updated.name).toBe('To Update');
+    });
+
+    it('treats a malformed stored blob as null rather than failing the campaign load', () => {
+      const campaign: SimpleCampaign = repo.create({ appId: APP_ID, name: 'Corrupt' });
+      db.prepare(`UPDATE simple_campaign SET plan_rationale = ? WHERE id = ?`).run('{not valid json', campaign.id);
+      expect(repo.findById(campaign.id)?.planRationale).toBeNull();
+    });
   });
 
   describe('app-layer enum validation', () => {

@@ -24,6 +24,7 @@ function makeCampaignRow(overrides: Record<string, unknown> = {}): Record<string
     status: 'draft',
     offer: null,
     goal: null,
+    plan_rationale: null,
     start_date: null,
     end_date: null,
     launched_at: null,

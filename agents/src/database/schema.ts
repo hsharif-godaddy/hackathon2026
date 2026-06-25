@@ -9,6 +9,7 @@ import type { Database } from 'better-sqlite3';
 import { Logger } from '../logging/index.js';
 import type { SyncStrategy } from '../types/git-remote.js';
 import { SocialPlatform, PostState } from '../types/social.js';
+import type { PlanRationale } from './plan-rationale.js';
 
 export type { SyncStrategy };
 
@@ -454,6 +455,10 @@ export interface SimpleCampaign {
   status: SimpleCampaignStatus;
   offer: string | null;
   goal: string | null;
+  // Campaign-level plan rationale (one per campaign) — the agent's reasoning behind the
+  // plan, captured for the feedback loop. Stored as a single JSON column (see PlanRationale)
+  // so the shape can evolve without a migration; null until a plan is generated.
+  planRationale: PlanRationale | null;
   startDate: string | null;
   endDate: string | null;
   launchedAt: string | null;
@@ -1069,6 +1074,12 @@ function migrateCampaignTablesToCurrentSchema(db: Database): void {
       db.exec(`ALTER TABLE simple_campaign ADD COLUMN marketing_plan_id TEXT`);
       logger.info('database.migration.campaign-schema.add-marketing-plan-id', {});
     }
+    // RUBICON-504: campaign-level plan rationale, stored as a single JSON column (nullable,
+    // no backfill). Existing TLA campaign DBs gain the column here without a reset.
+    if (!cols.includes('plan_rationale')) {
+      db.exec(`ALTER TABLE simple_campaign ADD COLUMN plan_rationale TEXT`);
+      logger.info('database.migration.campaign-schema.add-plan-rationale', {});
+    }
   }
 
   // simple_campaign_content: rename old columns to the current names (rows preserved).
@@ -1128,6 +1139,7 @@ function createSimpleCampaignTable(db: Database): void {
       status TEXT NOT NULL,
       offer TEXT,
       goal TEXT,
+      plan_rationale TEXT,
       start_date DATETIME,
       end_date DATETIME,
       launched_at DATETIME,
