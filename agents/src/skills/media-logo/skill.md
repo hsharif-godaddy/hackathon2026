@@ -1,28 +1,56 @@
 ---
 name: media-logo
-description: AI logo generation. Load when user wants to generate, redesign, or edit a logo.
+description: AI logo generation and editing. Load when user wants to generate, redesign, or edit a logo.
 whenToUse: User wants to create, generate, or edit a logo. Phrases like "make a logo", "edit the logo", "make the logo more X", "make a logo from this image", "redesign the logo".
 ---
 
+## Tool Selection
+
+Pick the right tool based on whether a logo already exists:
+
+| Situation | Tool |
+|-----------|------|
+| No logo exists yet, user wants one from scratch | `generate_logo` |
+| No logo exists yet, user uploads image(s): "make me a logo like this" | `generate_logo` |
+| Logo exists, user wants to change it ("make it blue", "remove the tagline") | `edit_logo` |
+| Logo exists, user uploads image(s): "make it more like this one" | `edit_logo` |
+
+**When in doubt:** If the user has a saved logo and is asking for a modification, use `edit_logo`. If they want something completely new or there's no existing logo, use `generate_logo`.
+
+**Inspiration images are handled automatically.** If the user uploaded images in the current message, both tools detect them from context and use them as style references — you do not need to pass any URLs.
+
 ## Authoring the prompt
 
-Write a complete, plain-English description of the logo you want — subject, style, mood, composition, level of detail. The tool appends the brand color palette to your prompt automatically, so **do not list hex values yourself**. Don't repeat colors that are already in the palette.
+### For `generate_logo`
+
+Write a complete, plain-English description of the logo — subject, style, mood, composition, level of detail. The tool appends the brand color palette automatically, so **do not list hex values yourself**.
+
+**Never include taglines, slogans, or descriptive phrases** in your prompt unless the user explicitly asked for one. The logo should contain only the brand name as text.
 
 Good prompt:
 > A minimalist line-art glyph of a coffee cup with steam curling above it and a small sunrise behind, monoline strokes, generous padding, suitable for a cozy neighborhood cafe.
 
-Bad prompt (lists colors the tool will add anyway, and is too vague about composition):
+Bad prompt:
 > Coffee cup logo, primary #B96B3C, secondary #2A4D3E, friendly.
 
-## Reference images
+### For `edit_logo`
 
-The tool's `referenceUrl` parameter has two intended uses:
+Describe the **change** relative to what exists. Be specific about what to modify and what to keep. The tool retrieves the current logo automatically.
 
-1. **User uploaded an inspiration image** ("make a logo like this", "use this style"). Pass the upload's signed URL — visible in conversation context as a `https://<app-id>.agent.<cluster>.airoapp.ai/files/uploads/...` URL. The tool fetches the image and seeds the generation from it.
+Good prompt:
+> Recolor the dots to deep navy blue, keeping all other design elements and composition unchanged.
 
-2. **Iterating on the saved logo** ("make it blue", "remove the tagline", "make the icon larger"). **Omit** `referenceUrl` — the tool resolves the current saved logo from the slot system automatically. Don't manually supply the slot URL; let auto-resolution handle it.
+Bad prompt:
+> Make it blue.
 
-If neither applies — the user wants a fresh logo from scratch — omit `referenceUrl`.
+## Inspiration images
+
+Both tools automatically detect uploaded images from the current message's context. You do not need to pass URLs.
+
+- **`generate_logo` + uploaded images:** "Make me a logo in this style" — generates a NEW logo influenced by the uploaded images
+- **`edit_logo` + uploaded images:** "Make my logo more like this" — edits the existing logo, also influenced by the uploaded images
+
+Multiple uploaded images are all used as inspiration.
 
 ## Layouts
 
@@ -33,17 +61,17 @@ One layout per call (or `all` for the full kit):
 - `vertical` (1024x1536) — sidebar, hero, mobile, signage
 - `all` — generates all three orientations in one call
 
-If the user names a placement ("add it to the header"), generate the matching layout. If they don't, **always default to `horizontal`**. Never generate `square`, `vertical`, or `all` unless the user explicitly asks for those layouts.
+If the user names a placement ("add it to the header"), generate the matching layout. If they don't, **always default to `horizontal`**. Never generate `square`, `vertical`, or `all` unless the user explicitly asks.
 
 ## Async generation (background by default)
 
-`generate_logo` runs in the background by default. It returns immediately with animated placeholder slots (status `queued`) while the real logo is generated; the finished logo overwrites the placeholders automatically when it is ready. You can reference the logo slots in source code right away — they update in place, so no rebuild is needed.
+Both tools run in the background by default. They return immediately with animated placeholder slots (status `queued`) while the real logo is generated; the finished logo overwrites the placeholders automatically.
 
-While a job is `queued` or `generating`, do **not** tell the user the logo is finished, ready, or done. It's fine to say the logo is being generated in the background and will appear automatically — just don't claim a result you don't have yet.
+While a job is `queued` or `generating`, do **not** tell the user the logo is finished. Say it's being generated and will appear automatically.
 
-Pass `background: false` only when your very next step depends on the finished logo — for example, you're about to ask the user to react to it or act on it in the same turn. In that mode the tool WAITS and returns the completed (or failed) outcome before you continue.
+Pass `background: false` only when your very next step depends on the finished logo.
 
-`set_venture_logo` is async-aware: if you call it while a logo job is still in flight, it returns a pending result and applies the logo to the venture dashboard automatically once generation completes — you don't need to poll or re-call it.
+`set_venture_logo` is async-aware: if called while a logo job is in flight, it applies automatically once generation completes.
 
 ## Slot URL placement in source code
 
@@ -51,28 +79,28 @@ Generated logos auto-save to per-orientation media slots. **Use the slot URL in 
 
 ```tsx
 // Header / navbar — horizontal slot
-<img src="/airo-assets/images/logo/horizontal" alt="Sunrise Cafe logo" />
+<img src="/airo-assets/images/logo/horizontal" alt="Logo" />
 
 // Hero / sidebar — vertical slot
-<img src="/airo-assets/images/logo/vertical" alt="Sunrise Cafe logo" />
+<img src="/airo-assets/images/logo/vertical" alt="Logo" />
 
 // Favicon / app icon — square slot
-<img src="/airo-assets/images/logo/primary" alt="Sunrise Cafe logo" />
+<img src="/airo-assets/images/logo/primary" alt="Logo" />
 ```
 
 ## Placement decision
 
 After generation, decide based on context:
 
-1. **Place immediately** when the conversation implies it ("build a site with a logo", or you're following a handoff that includes building pages).
-2. **Present and wait** when the user only asked to generate or redesign a logo. Show the result and let them browse. Place when asked later.
+1. **Place immediately** when the conversation implies it ("build a site with a logo", or following a handoff that includes building pages).
+2. **Present and wait** when the user only asked to generate or edit a logo. Show the result and let them browse. Place when asked later.
 
 ## Examples
 
 <example>
 User: "Make me a logo for Sunrise Cafe — a cozy neighborhood coffee shop."
 
-Correct — descriptive prompt, layout matches a natural first-fit (header), let the tool inject the palette:
+Correct — descriptive prompt, default horizontal layout:
 
 ```typescript
 media-logo__generate_logo({
@@ -80,50 +108,43 @@ media-logo__generate_logo({
   layout: 'horizontal',
 });
 ```
+</example>
 
-Wrong — agent restates the palette the tool will add anyway, and the prompt is too generic:
+<example>
+User: "Make the dots blue."
+
+Correct — edit_logo with specific change description:
 
 ```typescript
-media-logo__generate_logo({
-  prompt: 'Coffee shop logo. Primary #B96B3C, secondary #2A4D3E, accent #F2C94C. Friendly.',
+media-logo__edit_logo({
+  prompt: 'Recolor the dots to deep navy blue, keeping all other design elements unchanged.',
   layout: 'horizontal',
 });
 ```
 </example>
 
 <example>
-User: "Make the logo blue."
+User uploads 2 images: "Make me a logo combining the style of these"
 
-Correct — referenceUrl omitted; tool auto-resolves the current saved logo:
-
-```typescript
-media-logo__generate_logo({
-  prompt: 'Recolor the existing logo to a deep navy blue, keeping all other design elements unchanged.',
-  layout: 'horizontal',
-});
-```
-
-Wrong — agent passes the slot URL manually, defeats auto-resolution and adds noise:
+Correct — generate_logo (uploaded images are picked up automatically from context):
 
 ```typescript
 media-logo__generate_logo({
-  prompt: 'Make it blue.',
+  prompt: 'A logo for Sunrise Cafe combining the vintage badge style and hand-lettering aesthetic of the uploaded reference images, warm earth tones, ornate border detail.',
   layout: 'horizontal',
-  referenceUrl: '/airo-assets/images/logo/horizontal',
 });
 ```
 </example>
 
 <example>
-User uploaded an image of a vintage badge. "Make me a logo like this for my brewery."
+User has a logo, uploads an image: "Make my logo more like this vintage style"
 
-Correct — pass the signed upload URL as referenceUrl:
+Correct — edit_logo (existing logo auto-resolved from slot, uploaded image auto-detected from context):
 
 ```typescript
-media-logo__generate_logo({
-  prompt: 'A vintage-style brewery badge in the same illustrated style as the reference image — central crest, banner ribbon, ornate border, warm earth tones.',
-  layout: 'all',
-  referenceUrl: 'https://app-1.agent.c4.test-airoapp.ai/files/uploads/app-1/vintage-badge.png?sig=...&exp=...',
+media-logo__edit_logo({
+  prompt: 'Restyle the existing logo with a vintage distressed texture and aged color palette inspired by the uploaded reference image, preserving the current icon and brand name.',
+  layout: 'horizontal',
 });
 ```
 </example>

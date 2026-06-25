@@ -68,7 +68,6 @@ describe('media-logo generate_logo tool', () => {
     mockAppPlanExecute.mockResolvedValue({ success: false });
     mockMemoryGet.mockResolvedValue({ success: true, exists: false });
 
-    mockGetSlot.mockResolvedValue({ success: false });
     mockSetSlot.mockResolvedValue({ success: true });
 
     mockStart.mockResolvedValue({
@@ -333,171 +332,75 @@ describe('media-logo generate_logo tool', () => {
     });
   });
 
-  describe('referenceUrl resolution', () => {
-    it('passes caller-provided referenceUrl through unchanged', async () => {
+  describe('inspiration from context attachments', () => {
+    const contextWithUploads = {
+      ...baseContext,
+      contextAttachments: [{
+        type: 'selected_assets',
+        data: [
+          { mediaType: 'IMAGE', sourceType: 'upload', imageUrl: 'https://app-1.agent.c4.test-airoapp.ai/files/uploads/app-1/badge.png?sig=x' },
+          { mediaType: 'IMAGE', sourceType: 'upload', imageUrl: 'https://app-1.agent.c4.test-airoapp.ai/files/uploads/app-1/lettering.png?sig=y' },
+        ],
+      }],
+    };
+
+    it('resolves uploaded images from context and passes as references.inspiration', async () => {
       const { generateLogoTool } = await import('../index.js');
 
       await generateLogoTool.execute(
-        {
-          prompt: 'iterate',
-          layout: 'horizontal',
-          referenceUrl: 'https://app-1.agent.c4.test-airoapp.ai/files/uploads/app-1/foo.png?sig=x',
-        },
-        baseContext,
+        { prompt: 'a logo', layout: 'horizontal' },
+        contextWithUploads,
       );
 
       expect(mockStart).toHaveBeenCalledWith(
         expect.objectContaining({
-          referenceUrl: 'https://app-1.agent.c4.test-airoapp.ai/files/uploads/app-1/foo.png?sig=x',
-          referenceMode: 'inspiration',
-        }),
-      );
-    });
-
-    it('auto-resolves referenceUrl from the saved logo slot when omitted', async () => {
-      mockGetSlot.mockResolvedValue({
-        success: true,
-        slot: {
-          mediaType: 'logo',
-          currentUrl: '/airo-assets/uploads/existing-logo.png',
-          alternatives: [],
-          searchQuery: '',
-          userModified: false,
-          createdAt: '',
-          lastUpdated: '',
-          logoSourceMap: {
-            '/airo-assets/uploads/existing-logo.png': { sessionId: 'old-sess', logoId: 'old-logo' },
+          references: {
+            inspiration: [
+              'https://app-1.agent.c4.test-airoapp.ai/files/uploads/app-1/badge.png?sig=x',
+              'https://app-1.agent.c4.test-airoapp.ai/files/uploads/app-1/lettering.png?sig=y',
+            ],
           },
-        },
-      });
-
-      const { generateLogoTool } = await import('../index.js');
-
-      await generateLogoTool.execute(
-        { prompt: 'make it blue', layout: 'horizontal' },
-        baseContext,
-      );
-
-      expect(mockStart).toHaveBeenCalledWith(
-        expect.objectContaining({
-          referenceUrl: '/airo-assets/uploads/existing-logo.png',
-          referenceMode: 'edit',
         }),
       );
     });
 
-    it('falls back to the horizontal logo when reformatting to square and no square slot exists yet', async () => {
-      // "Set as my logo" flow: the user has only generated a horizontal logo
-      // (slot logo/horizontal). The square slot (logo/primary) is still empty.
-      // Reformatting to square must seed from the existing horizontal logo.
-      mockGetSlot.mockImplementation(async (_appId: string, path: string) => {
-        if (path === 'logo/horizontal') {
-          return {
-            success: true,
-            slot: {
-              mediaType: 'logo',
-              currentUrl: '/airo-assets/uploads/horizontal-logo.png',
-              alternatives: [],
-              searchQuery: '',
-              userModified: false,
-              createdAt: '',
-              lastUpdated: '',
-              logoSourceMap: {
-                '/airo-assets/uploads/horizontal-logo.png': { sessionId: 'h-sess', logoId: 'h-logo' },
-              },
-            },
-          };
-        }
-        // square (logo/primary) and vertical slots have not been generated yet
-        return { success: false };
-      });
+    it('does not set references when no uploads in context', async () => {
+      const { generateLogoTool } = await import('../index.js');
+
+      await generateLogoTool.execute(
+        { prompt: 'a logo', layout: 'horizontal' },
+        baseContext,
+      );
+
+      const callArg: Record<string, unknown> = mockStart.mock.calls[0][0];
+      expect(callArg).not.toHaveProperty('references');
+    });
+
+    it('ignores non-IMAGE and non-upload assets', async () => {
+      const contextWithMixed = {
+        ...baseContext,
+        contextAttachments: [{
+          type: 'selected_assets',
+          data: [
+            { mediaType: 'IMAGE', sourceType: 'upload', imageUrl: 'https://example.com/real.png' },
+            { mediaType: 'PDF', sourceType: 'upload', imageUrl: 'https://example.com/doc.pdf' },
+            { mediaType: 'IMAGE', sourceType: 'stock', imageUrl: 'https://example.com/stock.png' },
+          ],
+        }],
+      };
 
       const { generateLogoTool } = await import('../index.js');
 
       await generateLogoTool.execute(
-        {
-          prompt: 'Reformat for a square layout, preserving the existing icon design and arranging the text as required',
-          layout: 'square',
-        },
-        baseContext,
+        { prompt: 'a logo', layout: 'horizontal' },
+        contextWithMixed,
       );
 
       expect(mockStart).toHaveBeenCalledWith(
-        expect.objectContaining({ referenceUrl: '/airo-assets/uploads/horizontal-logo.png' }),
+        expect.objectContaining({
+          references: { inspiration: ['https://example.com/real.png'] },
+        }),
       );
-    });
-
-    it('prefers the horizontal slot over other orientations as the cross-layout fallback', async () => {
-      // Square requested, square slot empty, but BOTH horizontal and vertical
-      // logos exist. The canonical (horizontal) logo should win.
-      const makeSlot = (currentUrl: string) => ({
-        success: true,
-        slot: {
-          mediaType: 'logo',
-          currentUrl,
-          alternatives: [],
-          searchQuery: '',
-          userModified: false,
-          createdAt: '',
-          lastUpdated: '',
-          logoSourceMap: { [currentUrl]: { sessionId: 's', logoId: 'l' } },
-        },
-      });
-      mockGetSlot.mockImplementation(async (_appId: string, path: string) => {
-        if (path === 'logo/horizontal') return makeSlot('/airo-assets/uploads/horizontal-logo.png');
-        if (path === 'logo/vertical') return makeSlot('/airo-assets/uploads/vertical-logo.png');
-        return { success: false }; // square (logo/primary) empty
-      });
-
-      const { generateLogoTool } = await import('../index.js');
-
-      await generateLogoTool.execute(
-        { prompt: 'Reformat for a square layout', layout: 'square' },
-        baseContext,
-      );
-
-      expect(mockStart).toHaveBeenCalledWith(
-        expect.objectContaining({ referenceUrl: '/airo-assets/uploads/horizontal-logo.png' }),
-      );
-    });
-
-    it('falls through to no referenceUrl when slot has no logoSourceMap entry', async () => {
-      mockGetSlot.mockResolvedValue({
-        success: true,
-        slot: {
-          mediaType: 'logo',
-          currentUrl: '/airo-assets/uploads/orphan.png',
-          alternatives: [],
-          searchQuery: '',
-          userModified: false,
-          createdAt: '',
-          lastUpdated: '',
-          // logoSourceMap absent
-        },
-      });
-
-      const { generateLogoTool } = await import('../index.js');
-
-      await generateLogoTool.execute(
-        { prompt: 'logo', layout: 'horizontal' },
-        baseContext,
-      );
-
-      const callArg = mockStart.mock.calls[0][0];
-      expect(callArg.referenceUrl).toBeUndefined();
-      expect(callArg.referenceMode).toBeUndefined();
-    });
-
-    it('rejects an http (non-https) referenceUrl', async () => {
-      const { generateLogoTool } = await import('../index.js');
-
-      const result = await generateLogoTool.execute(
-        { prompt: 'logo', layout: 'horizontal', referenceUrl: 'http://example.com/x.png' },
-        baseContext,
-      );
-
-      expect(result.error).toMatch(/https/);
-      expect(mockStart).not.toHaveBeenCalled();
     });
   });
 

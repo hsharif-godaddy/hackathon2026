@@ -186,7 +186,7 @@ describe('LogoService', () => {
     expect(result.logo.urls.horizontal).toBeUndefined()
   })
 
-  it('passes referenceUrl through verbatim when editing', async () => {
+  it('passes references through verbatim when editing', async () => {
     fetchMock.mockResolvedValueOnce(
       apiResponse({
         id: 's',
@@ -198,7 +198,7 @@ describe('LogoService', () => {
     await logoService.generate({
       prompt: 'make it blue',
       layout: ['square'],
-      referenceUrl: 'https://app-1.agent.c4.test-airoapp.ai/files/uploads/foo.png?sig=x',
+      references: { logo: 'https://app-1.agent.c4.test-airoapp.ai/files/uploads/foo.png?sig=x' },
       appId: 'a',
       customerId: 'c',
       budgetUserId: 'b',
@@ -208,41 +208,41 @@ describe('LogoService', () => {
     expect(JSON.parse(opts.body)).toEqual({
       prompt: 'make it blue',
       layout: ['square'],
-      referenceUrl: 'https://app-1.agent.c4.test-airoapp.ai/files/uploads/foo.png?sig=x',
+      references: { logo: 'https://app-1.agent.c4.test-airoapp.ai/files/uploads/foo.png?sig=x' },
     })
   })
 
-  it('includes referenceMode in the body when sent alongside referenceUrl', async () => {
+  it('includes references in the body when provided', async () => {
     fetchMock.mockResolvedValueOnce(apiResponse({ id: 's', sessionId: 's', logos: [{ ...SQUARE_API_LOGO }] }))
 
     await logoService.generate({
       prompt: 'a vintage badge',
       layout: ['square'],
-      referenceUrl: 'https://app-1.agent.c4.test-airoapp.ai/files/uploads/foo.png?sig=x',
-      referenceMode: 'inspiration',
+      references: { logo: '/airo-assets/uploads/existing.png', inspiration: ['https://example.com/ref.png'] },
       appId: 'a',
       customerId: 'c',
       budgetUserId: 'b',
     })
 
     const [, opts] = fetchMock.mock.calls[0]
-    expect(JSON.parse(opts.body)).toMatchObject({ referenceMode: 'inspiration' })
+    expect(JSON.parse(opts.body)).toMatchObject({
+      references: { logo: '/airo-assets/uploads/existing.png', inspiration: ['https://example.com/ref.png'] },
+    })
   })
 
-  it('omits referenceMode when there is no referenceUrl', async () => {
+  it('omits references from the body when not provided', async () => {
     fetchMock.mockResolvedValueOnce(apiResponse({ id: 's', sessionId: 's', logos: [{ ...SQUARE_API_LOGO }] }))
 
     await logoService.generate({
       prompt: 'a fresh logo',
       layout: ['square'],
-      referenceMode: 'edit',
       appId: 'a',
       customerId: 'c',
       budgetUserId: 'b',
     })
 
     const [, opts] = fetchMock.mock.calls[0]
-    expect(JSON.parse(opts.body)).not.toHaveProperty('referenceMode')
+    expect(JSON.parse(opts.body)).not.toHaveProperty('references')
   })
 
   it('includes structured colors in the body when provided', async () => {

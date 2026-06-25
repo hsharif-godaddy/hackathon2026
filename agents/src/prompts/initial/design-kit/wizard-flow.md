@@ -85,7 +85,7 @@ own, do not wait for the user to click anything.
   (`todoList({ operation: "mark_done", itemIds: [...] })`).
 - If the user sends a message to refine any piece (colours, fonts, the logo, the imagery,
   voice, summary, or the showcase), make the change — edit `public/brand-showcase.html`
-  directly for showcase changes, or re-run `generate_logo` with `layout: "square"` for the
+  directly for showcase changes, or re-run `edit_logo` with `layout: "square"` for the
   logo. Otherwise, proceed on your own to create the website.
 
 ## Create website (handoff)

@@ -15,7 +15,7 @@ export interface LogoJob {
   layouts: LogoLayout[]
   /** Slot paths this job owns (derived from layouts, e.g. ['logo/horizontal']). */
   slots: string[]
-  referenceUrl?: string
+  references?: { logo?: string; inspiration?: string[] }
   /** True when any target slot already held a real logo (snapshot taken). */
   isRegeneration: boolean
   /** Full prior slot snapshot, keyed by slot path, for cancel/failure revert. */

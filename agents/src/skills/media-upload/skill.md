@@ -53,6 +53,6 @@ Describe what changed in plain language — "your photo is now the hero image", 
 
 ## Related skills
 
-- **media-logo** — generate or regenerate an AI logo (optionally using an upload as `referenceUrl` for inspiration)
+- **media-logo** — generate a new AI logo (uploads are auto-resolved as inspiration from context) or edit the existing logo via `edit_logo`
 - **media-image** — AI-generate or edit images into slots
 - **media** (search) — stock Getty photos/videos, not user uploads

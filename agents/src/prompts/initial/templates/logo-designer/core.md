@@ -227,7 +227,7 @@ media-logo__generate_logo({
 
 A focused first logo is better than a grid of options the user has to sort through. If the user explicitly asks to see several different styles up front ("show me a few options", "give me some variations"), make separate `generate_logo` calls with distinct prompts — each call yields one logo.
 
-Requests to edit or refine the current logo ("make it bolder", "try it in blue") also go through `media-logo__generate_logo` — see Logo Editing below. Omit `referenceUrl` and the tool resolves the current saved logo from the slot automatically.
+Requests to edit or refine the current logo ("make it bolder", "try it in blue") go through `media-logo__edit_logo` — see Logo Editing below. The tool auto-resolves the current saved logo from the slot.
 
 The generated logo auto-saves to the media slot (`/airo-assets/images/logo/horizontal`).
 
@@ -251,13 +251,13 @@ askQuestion({
 
 Wait for the user's response:
 
-- **Edit or refine this logo** → use `media-logo__generate_logo` with `referenceUrl` omitted (see Logo Editing below)
+- **Edit or refine this logo** → use `media-logo__edit_logo` (see Logo Editing below)
 - **Try a different logo style** → use `media-logo__generate_logo` with a new prompt, then ask again
 - **Build a website with this logo** → hand off to the `initial` agent to build a website that uses the current brand identity and logo
 - **Set as my logo** (only available in some contexts) → run the venture-sync sequence:
-  1. First, post a brief user-facing message so they know what's happening: "Generating a square version of your logo so it works in any layout…" Send this BEFORE the `generate_logo` call so the user has context during the wait.
-  2. Call `media-logo__generate_logo({ prompt: "Reformat for a square layout, preserving the existing icon design and arranging the text as required", layout: "square", background: false })` to produce a square companion of the current logo.
-  3. If `generate_logo` returns an `error`, surface it to the user and offer to retry. Do NOT call `set_venture_logo` in that case.
+  1. First, post a brief user-facing message so they know what's happening: "Generating a square version of your logo so it works in any layout…" Send this BEFORE the `edit_logo` call so the user has context during the wait.
+  2. Call `media-logo__edit_logo({ prompt: "Reformat for a square layout, preserving the existing icon design and arranging the text as required", layout: "square", background: false })` to produce a square companion of the current logo.
+  3. If `edit_logo` returns an `error`, surface it to the user and offer to retry. Do NOT call `set_venture_logo` in that case.
   4. On success, call `media-logo__set_venture_logo({})`.
   5. Reply with a short confirmation: "Done — your logo is set! Your dashboard will now show the new logo."
   6. Then ask again using `logoCompletionSuggestions({ excludeSetAsLogo: true })` — this excludes "Set as my logo" since it was just set. If the user subsequently edits or restyles the logo, call `logoCompletionSuggestions({})` (without `excludeSetAsLogo`) to get the full options again.
@@ -266,10 +266,10 @@ Wait for the user's response:
 
 ### Logo Editing
 
-When the user wants to modify an existing logo, call `media-logo__generate_logo` with a `prompt` describing the change and **`referenceUrl` omitted**. The tool auto-resolves the current saved logo from the slot system, so you don't need to provide a source URL or id — just describe the edit and keep the same `layout`.
+When the user wants to modify an existing logo, call `media-logo__edit_logo` with a `prompt` describing the change. The tool auto-resolves the current saved logo from the slot system — just describe the edit and keep the same `layout`.
 
 ```
-media-logo__generate_logo({
+media-logo__edit_logo({
   prompt: "<what the user wants to change, e.g. 'recolor to deep navy, keep all other elements unchanged'>",
   layout: "horizontal",
   background: false

@@ -48,12 +48,12 @@ export interface LogoColors {
 export interface GenerateLogoInput {
   prompt: string
   layout: LogoLayout[]
-  referenceUrl?: string
-  /** How the logo API should use referenceUrl: 'inspiration' (new logo in the
-   *  reference's style, runs the brief) or 'edit' (refine the saved logo,
-   *  preserving identity). Ignored by the API when referenceUrl is absent. */
-  referenceMode?: 'inspiration' | 'edit'
+  references?: {
+    logo?: string
+    inspiration?: string[]
+  }
   colors?: LogoColors
+  brandName?: string
   appId: string
   customerId: string
   budgetUserId: string
@@ -182,12 +182,15 @@ class LogoService {
   async generate(input: GenerateLogoInput): Promise<LogoSessionResponse> {
     const url = `${getLogoApiBaseUrl().replace(/\/$/, '')}/api/logo/create`
     const hasColors = Boolean(input.colors && Object.keys(input.colors).length > 0)
+    const hasReferences = Boolean(
+      input.references && (input.references.logo || (input.references.inspiration && input.references.inspiration.length > 0))
+    )
     const body: Record<string, unknown> = {
       prompt: input.prompt,
       layout: input.layout,
-      ...(input.referenceUrl && { referenceUrl: input.referenceUrl }),
-      ...(input.referenceUrl && input.referenceMode && { referenceMode: input.referenceMode }),
+      ...(hasReferences && { references: input.references }),
       ...(hasColors && { colors: input.colors }),
+      ...(input.brandName && { brandName: input.brandName }),
     }
 
     logger.info('logo.generate.begin', {
@@ -196,8 +199,8 @@ class LogoService {
       budgetUserId: input.budgetUserId,
       promptLength: input.prompt.length,
       layouts: input.layout,
-      hasReference: Boolean(input.referenceUrl),
-      referenceMode: input.referenceUrl ? input.referenceMode : undefined,
+      hasReferenceLogo: Boolean(input.references?.logo),
+      inspirationCount: input.references?.inspiration?.length ?? 0,
       hasColors,
     })
 

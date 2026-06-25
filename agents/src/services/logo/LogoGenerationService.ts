@@ -15,12 +15,12 @@ export interface StartLogoParams {
   appId: string
   prompt: string
   layouts: LogoLayout[]
-  referenceUrl?: string
-  /** How the logo API should use referenceUrl: 'inspiration' (new logo in the
-   *  reference's style, runs the brief) or 'edit' (refine the saved logo,
-   *  preserving identity). Ignored when referenceUrl is absent. */
-  referenceMode?: 'inspiration' | 'edit'
+  references?: {
+    logo?: string
+    inspiration?: string[]
+  }
   colors?: import('../LogoService.js').LogoColors
+  brandName?: string
   customerId: string
   budgetUserId: string
   searchQuery: string
@@ -165,7 +165,7 @@ class LogoGenerationService {
         prompt: params.prompt,
         layouts,
         slots,
-        ...(params.referenceUrl ? { referenceUrl: params.referenceUrl } : {}),
+        ...(params.references ? { references: params.references } : {}),
         isRegeneration,
         previousSlots,
         attempt: 0,
@@ -184,7 +184,7 @@ class LogoGenerationService {
     const controller = new AbortController()
     this.inFlight.set(appId, { jobId, controller, slots, previousSlots, workspace })
     logger.info('logo.async.kickoff', {
-      appId, jobId, layouts, slots, hasReference: !!params.referenceUrl, isRegeneration,
+      appId, jobId, layouts, slots, hasReferenceLogo: !!params.references?.logo, inspirationCount: params.references?.inspiration?.length ?? 0, isRegeneration,
     })
 
     // Detach the run onto the next macrotask so start() returns with the job
@@ -270,9 +270,9 @@ class LogoGenerationService {
         response = await logoService.generate({
           prompt: ctx.prompt,
           layout: ctx.layouts,
-          ...(ctx.referenceUrl ? { referenceUrl: ctx.referenceUrl } : {}),
-          ...(ctx.referenceMode ? { referenceMode: ctx.referenceMode } : {}),
+          ...(ctx.references ? { references: ctx.references } : {}),
           ...(ctx.colors ? { colors: ctx.colors } : {}),
+          ...(ctx.brandName ? { brandName: ctx.brandName } : {}),
           appId,
           customerId: ctx.customerId,
           budgetUserId: ctx.budgetUserId,
