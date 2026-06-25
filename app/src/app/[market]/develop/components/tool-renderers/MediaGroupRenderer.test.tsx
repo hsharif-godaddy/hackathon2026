@@ -204,4 +204,49 @@ describe('MediaGroupRenderer', () => {
 
     expect(screen.getByText('builder_common_options_count')).toBeInTheDocument()
   })
+
+  it('does not show NaN when alternativeCount is undefined and alternatives is undefined', () => {
+    const toolCalls = [makeToolCall({
+      id: 'tc-1',
+      result: JSON.stringify({
+        success: true,
+        slot: 'pages/home/hero',
+        slotUrl: '/airo-assets/images/pages/home/hero',
+        mediaType: 'image',
+        searchQuery: 'dog grooming',
+        resolvedUrl: 'https://media.gettyimages.com/test.jpg',
+        // alternativeCount and alternatives both undefined
+      }),
+    })]
+
+    renderWithProviders(
+      <MediaGroupRenderer toolCalls={toolCalls} />
+    )
+
+    expect(screen.queryByText(/NaN/i)).not.toBeInTheDocument()
+    expect(screen.queryByText('builder_common_options_count')).not.toBeInTheDocument()
+  })
+
+  it('does not show NaN when alternativeCount is null and alternatives is undefined', () => {
+    const toolCalls = [makeToolCall({
+      id: 'tc-1',
+      result: JSON.stringify({
+        success: true,
+        slot: 'pages/home/hero',
+        slotUrl: '/airo-assets/images/pages/home/hero',
+        mediaType: 'image',
+        searchQuery: 'dog grooming',
+        resolvedUrl: 'https://media.gettyimages.com/test.jpg',
+        alternativeCount: null,
+        // alternatives undefined
+      }),
+    })]
+
+    renderWithProviders(
+      <MediaGroupRenderer toolCalls={toolCalls} />
+    )
+
+    expect(screen.queryByText(/NaN/i)).not.toBeInTheDocument()
+    expect(screen.queryByText('builder_common_options_count')).not.toBeInTheDocument()
+  })
 })

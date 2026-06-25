@@ -184,16 +184,15 @@ export default function MediaGroupRenderer({
                 <img
                   src={getSlotImageUrl(slot.result!.slot, previewUrl || '', previewBaseUrl, slot.result!.mediaType)}
                   alt={slot.result!.searchQuery}
-                  className="w-full h-full object-cover rounded-md transition-transform"
+                  className="w-full h-full object-cover rounded-md transition-all duration-300 group-hover:opacity-20"
                 />
-                {/* Overlay that expands on hover */}
-                <div className="absolute bottom-0.5 right-0.5 w-4 h-4 rounded-md bg-intents-ux-box-backgroundColor shadow-md transition-all duration-300 ease-in-out origin-bottom-right group-hover:w-full group-hover:h-full group-hover:bottom-0 group-hover:right-0 group-hover:rounded-md group-hover:backdrop-blur-sm flex flex-col items-center justify-center">
-                  <PlusIcon className="size-2 transition-all duration-300 ease-in-out group-hover:-mt-1" />
-                  {/* Show alternatives count on hover */}
+                {/* Centered text on hover */}
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 pointer-events-none">
+                  <PlusIcon className="size-3 opacity-0 transition-all duration-300 ease-in-out group-hover:opacity-100" />
                   {(slot.result!.alternativeCount || slot.result!.alternatives?.length || 0) > 0 && (
-                    <span className="absolute top-1/2 scale-0 text-xs text-intents-ux-text-textColor font-medium transition-all duration-300 ease-in-out group-hover:scale-100 group-hover:mt-1">
+                    <span className="text-sm text-black font-medium opacity-0 transition-all duration-300 ease-in-out group-hover:opacity-100">
                       {t('builder_common_options_count', {
-                        count: slot.result!.alternativeCount || slot.result!.alternatives!.length
+                        count: slot.result!.alternativeCount || slot.result!.alternatives?.length || 0
                       })}
                     </span>
                   )}
@@ -208,11 +207,15 @@ export default function MediaGroupRenderer({
           <button
             type="button"
             onClick={handleSeeAllClick}
-            className="flex-shrink-0 w-8 cursor-pointer group justify-center items-center text-center"
+            className="flex-shrink-0 cursor-pointer"
             data-eid={generateClickEID("develop.media_group.all")}
           >
-            <div className="w-8 h-12 flex items-center justify-center">
-              <ChevronRightIcon className="w-4 h-4 mx-auto" />
+            <div
+              className="w-8 h-12 flex justify-center items-center rounded-md transition-colors duration-200"
+              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(0, 0, 0, 0.1)'}
+              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+            >
+              <ChevronRightIcon className="w-4 h-4" />
             </div>
           </button>
         )}
