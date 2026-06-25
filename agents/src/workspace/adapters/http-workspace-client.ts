@@ -17,6 +17,7 @@ import type { WorkspaceImports } from '../imports.js';
 import type { WorkspaceDeployments } from '../deployments.js';
 import type { WorkspaceVersionControl } from '../version-control.js';
 import type { WorkspaceConfig } from '../config.js';
+import type { WorkspaceSetup } from '../setup.js';
 import { WorkspaceNotImplementedError } from '../errors.js';
 import { HttpFiles } from './http-files.js';
 import { HttpTasks } from './http-tasks.js';
@@ -27,6 +28,7 @@ import { HttpImports } from './http-imports.js';
 import { HttpDeployments } from './http-deployments.js';
 import { HttpVersionControl } from './http-version-control.js';
 import { HttpConfig } from './http-config.js';
+import { HttpSetup } from './http-setup.js';
 
 const BASE_VERSIONS: Record<WorkspaceNamespaceKey, string> = {
   runtime: '1-partial',
@@ -38,6 +40,7 @@ const BASE_VERSIONS: Record<WorkspaceNamespaceKey, string> = {
   deployments: '0-partial',
   versionControl: '0-stubbed',
   config: '0-stubbed',
+  setup: '1-live',
 };
 
 const COMMON_METHODS = {
@@ -69,6 +72,8 @@ const COMMON_METHODS = {
   'artifacts.upload': 'stubbed',
   'artifacts.get': 'stubbed',
   'artifacts.download': 'stubbed',
+  'setup.getStatus': 'live',
+  'setup.execute': 'live',
   summary: 'stubbed',
   capabilities: 'live',
 } as const satisfies Partial<Record<WorkspaceMethodKey, MethodAvailability>>;
@@ -137,6 +142,7 @@ export class HttpWorkspaceClient implements WorkspaceClient {
   readonly deployments: WorkspaceDeployments;
   readonly versionControl: WorkspaceVersionControl;
   readonly config: WorkspaceConfig;
+  readonly setup: WorkspaceSetup;
 
   constructor(
     public readonly workspaceId: string,
@@ -152,6 +158,7 @@ export class HttpWorkspaceClient implements WorkspaceClient {
     this.deployments = new HttpDeployments(client, variant);
     this.versionControl = new HttpVersionControl(variant);
     this.config = new HttpConfig(variant);
+    this.setup = new HttpSetup(client);
   }
 
   async summary(): Promise<WorkspaceSummary> {

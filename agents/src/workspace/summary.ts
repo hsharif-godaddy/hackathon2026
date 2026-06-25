@@ -80,6 +80,8 @@ export type WorkspaceMethodKey =
   | 'config.listSecrets'
   | 'config.upsertSecrets'
   | 'config.removeSecrets'
+  | 'setup.getStatus'
+  | 'setup.execute'
   | 'summary'
   | 'capabilities';
 
@@ -92,7 +94,8 @@ export type WorkspaceNamespaceKey =
   | 'imports'
   | 'deployments'
   | 'versionControl'
-  | 'config';
+  | 'config'
+  | 'setup';
 
 export interface WorkspaceCapabilities {
   methods: Record<WorkspaceMethodKey, MethodAvailability>;

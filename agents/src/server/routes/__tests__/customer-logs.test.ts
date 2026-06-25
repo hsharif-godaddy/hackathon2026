@@ -5,7 +5,8 @@ import { customerLogsRouter, _setDependencies, _resetDependencies } from '../cus
 import { CustomerLogsService } from '../../../services/customer-logs-service.js';
 import { LogSanitizer } from '../../../services/log-sanitizer.js';
 import type { AppRepository } from '../../../database/repositories/AppRepository.js';
-import type { DevSupervisorClient } from '../../../services/DevSupervisorClient.js';
+import type { WorkspaceClient, CreateForWorkspace } from '../../../workspace/index.js';
+import type { LogEntry as WorkspaceLogEntry } from '../../../workspace/diagnostics.js';
 
 const mockApp = {
   id: 'test-app-123',
@@ -19,9 +20,9 @@ const mockApp = {
   updatedAt: new Date()
 };
 
-const mockLogs = [
-  { timestamp: '2025-01-22T10:00:00Z', source: 'stdout', message: 'Build started', level: 'info' },
-  { timestamp: '2025-01-22T10:01:00Z', source: 'stdout', message: 'Dependencies installed', level: 'info' }
+const mockLogs: WorkspaceLogEntry[] = [
+  { timestamp: new Date('2025-01-22T10:00:00Z'), source: 'stdout', message: 'Build started', level: 'info' },
+  { timestamp: new Date('2025-01-22T10:01:00Z'), source: 'stdout', message: 'Dependencies installed', level: 'info' }
 ];
 
 // Default query string with required params only (target is required)
@@ -37,10 +38,11 @@ const createTestApp = () => {
 
 describe('GET /apps/:appId/customer-logs', () => {
   let app: express.Express;
-  let mockAppRepo: Partial<AppRepository>;
-  let mockDevSupervisor: Partial<DevSupervisorClient>;
+  let mockAppRepo: { findById: ReturnType<typeof vi.fn> };
+  let mockDiagnostics: { logs: ReturnType<typeof vi.fn> };
   let logSanitizer: LogSanitizer;
   let customerLogsService: CustomerLogsService;
+  let mockWorkspaceFactory: CreateForWorkspace;
 
   beforeAll(() => {
     app = createTestApp();
@@ -50,10 +52,11 @@ describe('GET /apps/:appId/customer-logs', () => {
     vi.clearAllMocks();
     _resetDependencies();
 
-    // Setup mock DevSupervisorClient
-    mockDevSupervisor = {
-      isAvailable: vi.fn().mockReturnValue(true),
-      getLogs: vi.fn().mockResolvedValue(mockLogs)
+    // Setup mock workspace diagnostics
+    mockDiagnostics = {
+      logs: vi.fn().mockImplementation((opts: { source?: string } = {}) =>
+        Promise.resolve(opts.source ? mockLogs.filter(l => l.source === opts.source) : mockLogs)
+      )
     };
 
     // Setup mock AppRepository
@@ -61,13 +64,17 @@ describe('GET /apps/:appId/customer-logs', () => {
       findById: vi.fn().mockReturnValue(mockApp)
     };
 
+    // Workspace factory returns a workspace with mock diagnostics
+    mockWorkspaceFactory = () => ({
+      diagnostics: mockDiagnostics,
+    }) as unknown as WorkspaceClient;
+
     // Create real LogSanitizer and CustomerLogsService with mocked dependencies
     logSanitizer = new LogSanitizer();
     customerLogsService = new CustomerLogsService(
       mockAppRepo as AppRepository,
       logSanitizer,
-      // Factory that returns mock DevSupervisorClient
-      (_socketPath: string) => mockDevSupervisor as DevSupervisorClient
+      mockWorkspaceFactory
     );
 
     // Inject dependencies
@@ -241,19 +248,14 @@ describe('GET /apps/:appId/customer-logs', () => {
   });
 
   describe('error handling', () => {
-    it('should return 503 if supervisor unavailable', async () => {
-      mockDevSupervisor.isAvailable.mockReturnValue(false);
-
-      const response = await request(app)
-        .get(`/apps/test-app-123/customer-logs?${defaultQuery}`)
-        .expect(503);
-
-      expect(response.body.error).toContain('unavailable');
-      expect(response.body.code).toBe('SUPERVISOR_UNAVAILABLE');
-    });
-
-    it('should return 503 if supervisor path not configured', async () => {
-      mockAppRepo.findById.mockReturnValue({ ...mockApp, socketPath: undefined });
+    it('should return 503 if preview workspace not configured', async () => {
+      const nullFactory = vi.fn().mockReturnValue(null) as unknown as CreateForWorkspace;
+      const svc = new CustomerLogsService(
+        mockAppRepo as AppRepository,
+        logSanitizer,
+        nullFactory
+      );
+      _setDependencies(mockAppRepo as AppRepository, svc);
 
       const response = await request(app)
         .get(`/apps/test-app-123/customer-logs?${defaultQuery}`)
@@ -261,10 +263,41 @@ describe('GET /apps/:appId/customer-logs', () => {
 
       expect(response.body.error).toContain('not configured');
       expect(response.body.code).toBe('SUPERVISOR_NOT_CONFIGURED');
+      expect(nullFactory).toHaveBeenCalledWith('test-app-123', 'preview');
     });
 
-    it('should return 500 on internal errors', async () => {
-      mockDevSupervisor.getLogs.mockRejectedValue(new Error('Connection failed'));
+    it('should return 503 if publish workspace not configured', async () => {
+      const nullFactory = vi.fn().mockReturnValue(null) as unknown as CreateForWorkspace;
+      const svc = new CustomerLogsService(
+        mockAppRepo as AppRepository,
+        logSanitizer,
+        nullFactory
+      );
+      _setDependencies(mockAppRepo as AppRepository, svc);
+
+      const response = await request(app)
+        .get('/apps/test-app-123/customer-logs?target=publish')
+        .expect(503);
+
+      expect(response.body.error).toContain('not configured');
+      expect(response.body.code).toBe('SUPERVISOR_NOT_CONFIGURED');
+      expect(nullFactory).toHaveBeenCalledWith('test-app-123', 'publish');
+    });
+
+    it('should return 503 if supervisor is configured but unreachable', async () => {
+      const connErr = Object.assign(new Error('connect ECONNREFUSED'), { code: 'ECONNREFUSED' });
+      mockDiagnostics.logs = vi.fn().mockRejectedValue(connErr);
+
+      const response = await request(app)
+        .get(`/apps/test-app-123/customer-logs?${defaultQuery}`)
+        .expect(503);
+
+      expect(response.body.code).toBe('SUPERVISOR_UNAVAILABLE');
+      expect(response.body.error).toContain('unavailable');
+    });
+
+    it('should return 500 on non-connection errors', async () => {
+      mockDiagnostics.logs = vi.fn().mockRejectedValue(new Error('Unexpected parse failure'));
 
       const response = await request(app)
         .get(`/apps/test-app-123/customer-logs?${defaultQuery}`)
@@ -275,7 +308,7 @@ describe('GET /apps/:appId/customer-logs', () => {
     });
 
     it('should not expose internal error details', async () => {
-      mockDevSupervisor.getLogs.mockRejectedValue(new Error('Internal database connection string: mysql://user:password@host'));
+      mockDiagnostics.logs = vi.fn().mockRejectedValue(new Error('Internal database connection string: mysql://user:password@host'));
 
       const response = await request(app)
         .get(`/apps/test-app-123/customer-logs?${defaultQuery}`)
@@ -306,8 +339,8 @@ describe('GET /apps/:appId/customer-logs', () => {
     });
 
     it('should return sanitized logs (no secrets)', async () => {
-      mockDevSupervisor.getLogs.mockResolvedValue([
-        { timestamp: '2025-01-22T10:00:00Z', source: 'stdout', message: 'OPENAI_API_KEY=sk-secret123', level: 'info' }
+      mockDiagnostics.logs = vi.fn().mockResolvedValue([
+        { timestamp: new Date('2025-01-22T10:00:00Z'), source: 'stdout', message: 'OPENAI_API_KEY=sk-secret123', level: 'info' }
       ]);
 
       const response = await request(app)

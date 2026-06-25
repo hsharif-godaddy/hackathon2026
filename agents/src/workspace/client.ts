@@ -8,6 +8,7 @@ import type { WorkspaceImports } from './imports.js';
 import type { WorkspaceDeployments } from './deployments.js';
 import type { WorkspaceVersionControl } from './version-control.js';
 import type { WorkspaceConfig } from './config.js';
+import type { WorkspaceSetup } from './setup.js';
 import type { WorkspaceSummary, WorkspaceCapabilities } from './summary.js';
 
 export interface WorkspaceClient {
@@ -26,6 +27,7 @@ export interface WorkspaceClient {
   readonly deployments: WorkspaceDeployments;
   readonly versionControl: WorkspaceVersionControl;
   readonly config: WorkspaceConfig;
+  readonly setup: WorkspaceSetup;
 }
 
 export type CreateForWorkspace = (

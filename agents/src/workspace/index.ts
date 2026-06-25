@@ -11,6 +11,7 @@ export * from './imports.js';
 export * from './deployments.js';
 export * from './version-control.js';
 export * from './config.js';
+export * from './setup.js';
 
 import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-factory.js';
 import { Logger } from '../logging/index.js';

@@ -1,5 +1,4 @@
 import { AppRepository } from '../database/repositories/AppRepository.js';
-import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-factory.js';
 import { createForWorkspace } from '../workspace/index.js';
 import { GitUtils } from '../utils/git.js';
 import { logger } from '../logging/index.js';
@@ -117,9 +116,9 @@ export class GitHookService {
         return;
       }
 
-      const devSupervisor = DevSupervisorClientFactory.createForApp(appId);
-      if (!devSupervisor) {
-        this.logGitError(appId, 'handleMessageStart', 'DevSupervisor not available');
+      const workspace = createForWorkspace(appId, 'preview');
+      if (!workspace) {
+        this.logGitError(appId, 'handleMessageStart', 'Workspace not available');
         return;
       }
 
@@ -128,19 +127,17 @@ export class GitHookService {
       // Fire-and-forget: trigger setup but don't block (npm install can take minutes).
       // Skip git ops for this message; subsequent messages will find setup complete.
       try {
-        const setupStatus = await devSupervisor.getSetupStatus();
-        if (setupStatus.setup_deferred && !setupStatus.setup_executed) {
-          if (setupStatus.setup_error) {
-            // Setup failed permanently — don't retry, let user diagnose
+        const setupStatus = await workspace.setup.getStatus();
+        if (setupStatus.deferred && !setupStatus.executed) {
+          if (setupStatus.error) {
             logger.warn('git_hook.message_start.setup_failed', {
-              appId, error: setupStatus.setup_error
+              appId, error: setupStatus.error
             });
-          } else if (!setupStatus.setup_running) {
-            // Trigger setup but don't block — npm install can take minutes.
+          } else if (!setupStatus.running) {
             // executeSetup() is synchronous on the Go side (blocks until script
             // completes or 5-min mutex timeout). The detached promise keeps the
             // HTTP request open in the background; Go-side timeout bounds it.
-            devSupervisor.executeSetup().catch(err =>
+            workspace.setup.execute().catch(err =>
               logger.warn('git_hook.setup.trigger_failed', {
                 appId,
                 error: err instanceof Error ? err.message : String(err)
@@ -153,21 +150,14 @@ export class GitHookService {
           return;
         }
 
-        if (setupStatus.setup_deferred && setupStatus.setup_executed) {
+        if (setupStatus.deferred && setupStatus.executed) {
           logger.debug('git_hook.message_start.setup_complete', { appId });
         }
       } catch (setupError) {
-        // getSetupStatus failed (e.g., dev-supervisor not reachable).
-        // Log and continue — this is non-fatal. Without dev-supervisor,
-        // git operations will also fail, but handleMessageStart's outer
-        // try/catch handles that gracefully.
+        // setup.getStatus() failed (e.g., supervisor not reachable).
+        // Non-fatal — git operations will also fail downstream and the
+        // outer try/catch handles that gracefully.
         this.logGitError(appId, 'setupCoordination', setupError as Error);
-      }
-
-      const workspace = createForWorkspace(appId, 'preview');
-      if (!workspace) {
-        this.logGitError(appId, 'handleMessageStart', 'Workspace not available');
-        return;
       }
 
       const gitUtils = new GitUtils(workspace.tasks);

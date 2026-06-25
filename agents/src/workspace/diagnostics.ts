@@ -1,12 +1,12 @@
 export interface LogEntry {
   timestamp: Date;
-  source: 'stdout' | 'stderr' | 'system';
+  source: 'stdout' | 'stderr' | 'exec' | 'system';
   level?: string;
   message: string;
 }
 
 export interface LogQuery {
-  source?: 'stdout' | 'stderr';
+  source?: 'stdout' | 'stderr' | 'exec';
   lines?: number;
   since?: Date;
   until?: Date;

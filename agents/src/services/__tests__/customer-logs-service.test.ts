@@ -3,18 +3,13 @@ import { CustomerLogsService } from '../customer-logs-service.js';
 import { LogSanitizer } from '../log-sanitizer.js';
 import type { AppRepository } from '../../database/repositories/AppRepository.js';
 import type { App } from '../../database/schema.js';
-import type { DevSupervisorClient, LogEntry } from '../DevSupervisorClient.js';
-
-// Mock DevSupervisorClient
-vi.mock('../DevSupervisorClient.js', () => ({
-  DevSupervisorClient: vi.fn(),
-  createDevSupervisorClient: vi.fn()
-}));
+import type { WorkspaceClient, CreateForWorkspace } from '../../workspace/index.js';
+import type { LogEntry as WorkspaceLogEntry } from '../../workspace/diagnostics.js';
 
 describe('CustomerLogsService', () => {
   let service: CustomerLogsService;
   let mockAppRepository: Partial<AppRepository>;
-  let mockDevSupervisorClient: Partial<DevSupervisorClient>;
+  let mockDiagnostics: { logs: ReturnType<typeof vi.fn> };
   let logSanitizer: LogSanitizer;
 
   const mockApp: App = {
@@ -29,13 +24,12 @@ describe('CustomerLogsService', () => {
     updatedAt: new Date()
   };
 
-  const mockLogs: LogEntry[] = [
-    { timestamp: '2025-01-22T10:00:00Z', source: 'stdout', message: 'Build started', level: 'info' },
-    { timestamp: '2025-01-22T10:01:00Z', source: 'stdout', message: 'Dependencies installed', level: 'info' },
-    { timestamp: '2025-01-22T10:02:00Z', source: 'stderr', message: 'Warning: deprecated API', level: 'warn' }
+  const mockLogs: WorkspaceLogEntry[] = [
+    { timestamp: new Date('2025-01-22T10:00:00Z'), source: 'stdout', message: 'Build started', level: 'info' },
+    { timestamp: new Date('2025-01-22T10:01:00Z'), source: 'stdout', message: 'Dependencies installed', level: 'info' },
+    { timestamp: new Date('2025-01-22T10:02:00Z'), source: 'stderr', message: 'Warning: deprecated API', level: 'warn' }
   ];
 
-  // Default required params for tests
   const defaultParams = {
     appId: 'test-app-123',
     target: 'preview' as const
@@ -44,14 +38,12 @@ describe('CustomerLogsService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
 
-    mockDevSupervisorClient = {
-      isAvailable: vi.fn().mockReturnValue(true),
-      // Mirror the real supervisor's server-side source filter so callers
-      // that request `source: 'stdout'` only get stdout entries — matters
-      // now that CustomerLogsService defaults to filtered-per-source
-      // requests instead of one unfiltered call.
-      getLogs: vi.fn().mockImplementation(function (opts: { source?: string } = {}) { return Promise.resolve(opts.source ? mockLogs.filter((l) => l.source === opts.source) : mockLogs); }
-      )
+    mockDiagnostics = {
+      logs: vi.fn().mockImplementation(function (opts: { source?: string } = {}) {
+        return Promise.resolve(
+          opts.source ? mockLogs.filter((l) => l.source === opts.source) : mockLogs
+        );
+      })
     };
 
     mockAppRepository = {
@@ -60,16 +52,19 @@ describe('CustomerLogsService', () => {
 
     logSanitizer = new LogSanitizer();
 
+    const mockWorkspaceFactory: CreateForWorkspace = () => ({
+      diagnostics: mockDiagnostics,
+    }) as unknown as WorkspaceClient;
+
     service = new CustomerLogsService(
       mockAppRepository as AppRepository,
       logSanitizer,
-      // Factory function to create mock DevSupervisorClient
-      (_socketPath: string) => mockDevSupervisorClient as DevSupervisorClient
+      mockWorkspaceFactory
     );
   });
 
   describe('getLogs', () => {
-    it('should fetch logs from preview supervisor', async () => {
+    it('should fetch logs from preview workspace', async () => {
       const result = await service.getLogs({ ...defaultParams });
 
       expect(result.success).toBe(true);
@@ -77,7 +72,7 @@ describe('CustomerLogsService', () => {
       expect(mockAppRepository.findById).toHaveBeenCalledWith('test-app-123');
     });
 
-    it('should fetch logs from publish supervisor when target is publish', async () => {
+    it('should fetch logs from publish workspace when target is publish', async () => {
       const result = await service.getLogs({ ...defaultParams, target: 'publish' });
 
       expect(result.success).toBe(true);
@@ -94,40 +89,39 @@ describe('CustomerLogsService', () => {
       expect(result.logs).toEqual([]);
     });
 
-    it('should return error if socketPath not configured for preview', async () => {
-      const appWithoutSocket = { ...mockApp, socketPath: undefined };
-      mockAppRepository.findById = vi.fn().mockReturnValue(appWithoutSocket);
+    it('should return error if workspace not configured', async () => {
+      const nullFactory: CreateForWorkspace = () => null;
+      const svc = new CustomerLogsService(
+        mockAppRepository as AppRepository,
+        logSanitizer,
+        nullFactory
+      );
 
-      const result = await service.getLogs({ ...defaultParams, target: 'preview' });
-
-      expect(result.success).toBe(false);
-      expect(result.error).toContain('not configured');
-    });
-
-    it('should return error if publishSupervisorPath not configured for publish', async () => {
-      const appWithoutPublish = { ...mockApp, publishSupervisorPath: undefined };
-      mockAppRepository.findById = vi.fn().mockReturnValue(appWithoutPublish);
-
-      const result = await service.getLogs({ ...defaultParams, target: 'publish' });
+      const result = await svc.getLogs({ ...defaultParams, target: 'preview' });
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('not configured');
     });
 
-    it('should return error if supervisor unavailable', async () => {
-      mockDevSupervisorClient.isAvailable = vi.fn().mockReturnValue(false);
+    it('should return error if publish workspace not configured', async () => {
+      const nullFactory: CreateForWorkspace = () => null;
+      const svc = new CustomerLogsService(
+        mockAppRepository as AppRepository,
+        logSanitizer,
+        nullFactory
+      );
 
-      const result = await service.getLogs({ ...defaultParams });
+      const result = await svc.getLogs({ ...defaultParams, target: 'publish' });
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain('unavailable');
+      expect(result.error).toContain('not configured');
     });
 
     it('should apply log sanitization', async () => {
-      const logsWithSecrets: LogEntry[] = [
-        { timestamp: '2025-01-22T10:00:00Z', source: 'stdout', message: 'Using OPENAI_API_KEY=sk-secret123', level: 'info' }
+      const logsWithSecrets: WorkspaceLogEntry[] = [
+        { timestamp: new Date('2025-01-22T10:00:00Z'), source: 'stdout', message: 'Using OPENAI_API_KEY=sk-secret123', level: 'info' }
       ];
-      mockDevSupervisorClient.getLogs = vi.fn().mockResolvedValue(logsWithSecrets);
+      mockDiagnostics.logs.mockResolvedValue(logsWithSecrets);
 
       const result = await service.getLogs({ ...defaultParams });
 
@@ -140,7 +134,7 @@ describe('CustomerLogsService', () => {
       const result = await service.getLogs({ ...defaultParams, lines: 50 });
 
       expect(result.success).toBe(true);
-      expect(mockDevSupervisorClient.getLogs).toHaveBeenCalledWith(
+      expect(mockDiagnostics.logs).toHaveBeenCalledWith(
         expect.objectContaining({ lines: 50 })
       );
     });
@@ -154,22 +148,14 @@ describe('CustomerLogsService', () => {
     });
 
     it('defaults to stdout+stderr and never forwards source="exec" or an unfiltered request', async () => {
-      // Leak guard: when no `sources` is provided, CustomerLogsService must
-      // restrict the upstream request to managed-process streams so /exec
-      // orchestration output (Source="exec" in the supervisor ring buffer)
-      // doesn't reach customer-facing surfaces or the agent LLM tool.
-      const getLogsSpy = vi.fn().mockResolvedValue([]);
-      mockDevSupervisorClient.getLogs = getLogsSpy;
+      const logsSpy = vi.fn().mockResolvedValue([]);
+      mockDiagnostics.logs = logsSpy;
 
       await service.getLogs({ ...defaultParams });
 
-      const sources = getLogsSpy.mock.calls.map(([opts]) => opts.source);
-      // Every upstream call must specify a source — never an unfiltered
-      // (empty/undefined) request.
-      expect(sources.every((s) => s === 'stdout' || s === 'stderr')).toBe(true);
-      // And the set of sources covers both managed-process streams.
+      const sources = logsSpy.mock.calls.map(([opts]) => opts.source);
+      expect(sources.every((s: string) => s === 'stdout' || s === 'stderr')).toBe(true);
       expect(new Set(sources)).toEqual(new Set(['stdout', 'stderr']));
-      // Specifically, "exec" must not appear.
       expect(sources).not.toContain('exec');
     });
 
@@ -177,7 +163,7 @@ describe('CustomerLogsService', () => {
       const result = await service.getLogs({ ...defaultParams, sources: ['stdout'] });
 
       expect(result.success).toBe(true);
-      expect(mockDevSupervisorClient.getLogs).toHaveBeenCalledWith(
+      expect(mockDiagnostics.logs).toHaveBeenCalledWith(
         expect.objectContaining({ source: 'stdout' })
       );
     });
@@ -186,7 +172,7 @@ describe('CustomerLogsService', () => {
       const result = await service.getLogs({ ...defaultParams, sources: ['stderr'] });
 
       expect(result.success).toBe(true);
-      expect(mockDevSupervisorClient.getLogs).toHaveBeenCalledWith(
+      expect(mockDiagnostics.logs).toHaveBeenCalledWith(
         expect.objectContaining({ source: 'stderr' })
       );
     });
@@ -196,8 +182,8 @@ describe('CustomerLogsService', () => {
       const result = await service.getLogs({ ...defaultParams, since });
 
       expect(result.success).toBe(true);
-      expect(mockDevSupervisorClient.getLogs).toHaveBeenCalledWith(
-        expect.objectContaining({ since })
+      expect(mockDiagnostics.logs).toHaveBeenCalledWith(
+        expect.objectContaining({ since: new Date(since) })
       );
     });
 
@@ -205,7 +191,7 @@ describe('CustomerLogsService', () => {
       const result = await service.getLogs({ ...defaultParams });
 
       expect(result.success).toBe(true);
-      expect(mockDevSupervisorClient.getLogs).toHaveBeenCalled();
+      expect(mockDiagnostics.logs).toHaveBeenCalled();
     });
 
     it('should return error for invalid since timestamp', async () => {
@@ -215,13 +201,35 @@ describe('CustomerLogsService', () => {
       expect(result.error).toContain('timestamp');
     });
 
-    it('should handle supervisor getLogs errors gracefully', async () => {
-      mockDevSupervisorClient.getLogs = vi.fn().mockRejectedValue(new Error('Connection refused'));
+    it('should return SUPERVISOR_UNAVAILABLE on connection errors', async () => {
+      const connErr = Object.assign(new Error('connect ECONNREFUSED 127.0.0.1:8080'), { code: 'ECONNREFUSED' });
+      mockDiagnostics.logs = vi.fn().mockRejectedValue(connErr);
 
       const result = await service.getLogs({ ...defaultParams });
 
       expect(result.success).toBe(false);
-      expect(result.error).toBeDefined();
+      expect(result.code).toBe('SUPERVISOR_UNAVAILABLE');
+      expect(result.error).toContain('unavailable');
+      expect(result.logs).toEqual([]);
+    });
+
+    it('should return SUPERVISOR_UNAVAILABLE when socket not found', async () => {
+      const socketErr = Object.assign(new Error('dev-supervisor not available at /tmp/test.sock'), { code: 'ENOENT' });
+      mockDiagnostics.logs = vi.fn().mockRejectedValue(socketErr);
+
+      const result = await service.getLogs({ ...defaultParams });
+
+      expect(result.success).toBe(false);
+      expect(result.code).toBe('SUPERVISOR_UNAVAILABLE');
+    });
+
+    it('should return FETCH_ERROR on non-connection errors', async () => {
+      mockDiagnostics.logs = vi.fn().mockRejectedValue(new Error('Unexpected JSON parse failure'));
+
+      const result = await service.getLogs({ ...defaultParams });
+
+      expect(result.success).toBe(false);
+      expect(result.code).toBe('FETCH_ERROR');
       expect(result.logs).toEqual([]);
     });
 
@@ -233,12 +241,15 @@ describe('CustomerLogsService', () => {
     });
 
     it('should filter out DEBUG level logs', async () => {
-      const logsWithDebug: LogEntry[] = [
-        { timestamp: '2025-01-22T10:00:00Z', source: 'stdout', message: 'Info log', level: 'info' },
-        { timestamp: '2025-01-22T10:01:00Z', source: 'stdout', message: 'Debug log', level: 'debug' }
+      const logsWithDebug: WorkspaceLogEntry[] = [
+        { timestamp: new Date('2025-01-22T10:00:00Z'), source: 'stdout', message: 'Info log', level: 'info' },
+        { timestamp: new Date('2025-01-22T10:01:00Z'), source: 'stdout', message: 'Debug log', level: 'debug' }
       ];
-      mockDevSupervisorClient.getLogs = vi.fn().mockImplementation(function (opts: { source?: string } = {}) { return Promise.resolve(opts.source ? logsWithDebug.filter((l) => l.source === opts.source) : logsWithDebug); }
-      );
+      mockDiagnostics.logs.mockImplementation(function (opts: { source?: string } = {}) {
+        return Promise.resolve(
+          opts.source ? logsWithDebug.filter((l) => l.source === opts.source) : logsWithDebug
+        );
+      });
 
       const result = await service.getLogs({ ...defaultParams });
 
@@ -248,61 +259,54 @@ describe('CustomerLogsService', () => {
     });
 
     it('should support multiple sources via sources array', async () => {
-      const stdoutLogs: LogEntry[] = [
-        { timestamp: '2025-01-22T10:00:00Z', source: 'stdout', message: 'stdout log', level: 'info' }
+      const stdoutLogs: WorkspaceLogEntry[] = [
+        { timestamp: new Date('2025-01-22T10:00:00Z'), source: 'stdout', message: 'stdout log', level: 'info' }
       ];
-      const stderrLogs: LogEntry[] = [
-        { timestamp: '2025-01-22T10:01:00Z', source: 'stderr', message: 'stderr log', level: 'error' }
+      const stderrLogs: WorkspaceLogEntry[] = [
+        { timestamp: new Date('2025-01-22T10:01:00Z'), source: 'stderr', message: 'stderr log', level: 'error' }
       ];
-      mockDevSupervisorClient.getLogs = vi.fn()
+      mockDiagnostics.logs = vi.fn()
         .mockResolvedValueOnce(stdoutLogs)
         .mockResolvedValueOnce(stderrLogs);
 
       const result = await service.getLogs({ ...defaultParams, sources: ['stdout', 'stderr'] });
 
       expect(result.success).toBe(true);
-      expect(mockDevSupervisorClient.getLogs).toHaveBeenCalledTimes(2);
+      expect(mockDiagnostics.logs).toHaveBeenCalledTimes(2);
       expect(result.logs).toHaveLength(2);
     });
 
     it('should sort merged logs by timestamp when using multiple sources', async () => {
-      const stdoutLogs: LogEntry[] = [
-        { timestamp: '2025-01-22T10:02:00Z', source: 'stdout', message: 'later stdout', level: 'info' }
+      const stdoutLogs: WorkspaceLogEntry[] = [
+        { timestamp: new Date('2025-01-22T10:02:00Z'), source: 'stdout', message: 'later stdout', level: 'info' }
       ];
-      const stderrLogs: LogEntry[] = [
-        { timestamp: '2025-01-22T10:01:00Z', source: 'stderr', message: 'earlier stderr', level: 'error' }
+      const stderrLogs: WorkspaceLogEntry[] = [
+        { timestamp: new Date('2025-01-22T10:01:00Z'), source: 'stderr', message: 'earlier stderr', level: 'error' }
       ];
-      mockDevSupervisorClient.getLogs = vi.fn()
+      mockDiagnostics.logs = vi.fn()
         .mockResolvedValueOnce(stdoutLogs)
         .mockResolvedValueOnce(stderrLogs);
 
       const result = await service.getLogs({ ...defaultParams, sources: ['stdout', 'stderr'] });
 
       expect(result.success).toBe(true);
-      // Should be sorted by timestamp
       expect(result.logs[0].message).toContain('earlier stderr');
       expect(result.logs[1].message).toContain('later stdout');
     });
 
     it('returns the newest N sanitized entries, not the oldest, when total exceeds lines', async () => {
-      // Regression: fan-out across sources means each per-source call
-      // returns up to `lines` entries, and naive slice(0, lines) on the
-      // merged array discards the newest entries — where failure signals
-      // (build errors, stack traces, exit messages) actually live.
-      //
-      // Construct two sources whose merged timeline has 5 entries, request
-      // lines=2, and assert we get the last two (newest) — not the first two.
-      const stdoutLogs: LogEntry[] = [
-        { timestamp: '2025-01-22T10:00:00Z', source: 'stdout', message: 'oldest-stdout', level: 'info' },
-        { timestamp: '2025-01-22T10:02:00Z', source: 'stdout', message: 'middle-stdout', level: 'info' },
-        { timestamp: '2025-01-22T10:04:00Z', source: 'stdout', message: 'newest-stdout', level: 'info' }
+      const stdoutLogs: WorkspaceLogEntry[] = [
+        { timestamp: new Date('2025-01-22T10:00:00Z'), source: 'stdout', message: 'oldest-stdout', level: 'info' },
+        { timestamp: new Date('2025-01-22T10:02:00Z'), source: 'stdout', message: 'middle-stdout', level: 'info' },
+        { timestamp: new Date('2025-01-22T10:04:00Z'), source: 'stdout', message: 'newest-stdout', level: 'info' }
       ];
-      const stderrLogs: LogEntry[] = [
-        { timestamp: '2025-01-22T10:01:00Z', source: 'stderr', message: 'oldest-stderr', level: 'error' },
-        { timestamp: '2025-01-22T10:03:00Z', source: 'stderr', message: 'newest-stderr', level: 'error' }
+      const stderrLogs: WorkspaceLogEntry[] = [
+        { timestamp: new Date('2025-01-22T10:01:00Z'), source: 'stderr', message: 'oldest-stderr', level: 'error' },
+        { timestamp: new Date('2025-01-22T10:03:00Z'), source: 'stderr', message: 'newest-stderr', level: 'error' }
       ];
-      mockDevSupervisorClient.getLogs = vi.fn().mockImplementation(function (opts: { source?: string } = {}) { return Promise.resolve(opts.source === 'stderr' ? stderrLogs : stdoutLogs); }
-      );
+      mockDiagnostics.logs.mockImplementation(function (opts: { source?: string } = {}) {
+        return Promise.resolve(opts.source === 'stderr' ? stderrLogs : stdoutLogs);
+      });
 
       const result = await service.getLogs({ ...defaultParams, lines: 2, sources: ['stdout', 'stderr'] });
 
@@ -315,10 +319,10 @@ describe('CustomerLogsService', () => {
       const result = await service.getLogs({ ...defaultParams, sources: ['stdout'] });
 
       expect(result.success).toBe(true);
-      expect(mockDevSupervisorClient.getLogs).toHaveBeenCalledWith(
+      expect(mockDiagnostics.logs).toHaveBeenCalledWith(
         expect.objectContaining({ source: 'stdout' })
       );
-      expect(mockDevSupervisorClient.getLogs).toHaveBeenCalledTimes(1);
+      expect(mockDiagnostics.logs).toHaveBeenCalledTimes(1);
     });
 
     it('should return error when target is missing', async () => {
@@ -328,14 +332,10 @@ describe('CustomerLogsService', () => {
       expect(result.error).toContain('target is required');
       expect(result.code).toBe('MISSING_TARGET');
     });
-
-    // NOTE: the former test "should return all sources when sources is not
-    // provided" was removed — it documented the leak we're now fixing. The
-    // new behavior is covered by the "defaults to stdout+stderr" test above.
   });
 
   describe('getPreviewLogs', () => {
-    it('should fetch logs from preview supervisor', async () => {
+    it('should fetch logs from preview workspace', async () => {
       const result = await service.getPreviewLogs('test-app-123', {});
 
       expect(result.success).toBe(true);
@@ -346,14 +346,14 @@ describe('CustomerLogsService', () => {
       const result = await service.getPreviewLogs('test-app-123', { lines: 50, sources: ['stderr'], since: '2025-01-22T00:00:00Z' });
 
       expect(result.success).toBe(true);
-      expect(mockDevSupervisorClient.getLogs).toHaveBeenCalledWith(
+      expect(mockDiagnostics.logs).toHaveBeenCalledWith(
         expect.objectContaining({ lines: 50, source: 'stderr' })
       );
     });
   });
 
   describe('getPublishLogs', () => {
-    it('should fetch logs from publish supervisor', async () => {
+    it('should fetch logs from publish workspace', async () => {
       const result = await service.getPublishLogs('test-app-123', {});
 
       expect(result.success).toBe(true);
@@ -364,7 +364,7 @@ describe('CustomerLogsService', () => {
       const result = await service.getPublishLogs('test-app-123', { lines: 100, sources: ['stdout'], since: '2025-01-22T00:00:00Z' });
 
       expect(result.success).toBe(true);
-      expect(mockDevSupervisorClient.getLogs).toHaveBeenCalledWith(
+      expect(mockDiagnostics.logs).toHaveBeenCalledWith(
         expect.objectContaining({ lines: 100 })
       );
     });

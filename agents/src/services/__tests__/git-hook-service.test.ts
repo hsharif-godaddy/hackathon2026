@@ -7,12 +7,6 @@ vi.mock('../../database/repositories/AppRepository.js', () => ({
   }; }),
 }));
 
-vi.mock('../../utils/dev-supervisor-client-factory.js', () => ({
-  DevSupervisorClientFactory: {
-    createForApp: vi.fn(),
-  },
-}));
-
 vi.mock('../../utils/git.js', () => ({
   GitUtils: vi.fn().mockImplementation(function () { return {
     isGitRepository: vi.fn(),
@@ -43,14 +37,18 @@ vi.mock('../../logging/index.js', () => ({
   },
 }));
 
+const mockSetup = {
+  getStatus: vi.fn(),
+  execute: vi.fn(),
+};
+
 vi.mock('../../workspace/index.js', () => ({
-  createForWorkspace: () => ({ tasks: {} }),
+  createForWorkspace: () => ({ tasks: {}, setup: mockSetup }),
 }));
 
 // Import after mocks
 import { GitHookService } from '../git-hook-service.js';
 import { AppRepository } from '../../database/repositories/AppRepository.js';
-import { DevSupervisorClientFactory } from '../../utils/dev-supervisor-client-factory.js';
 import { GitUtils } from '../../utils/git.js';
 
 const TEST_APP_ID = 'test-app-1';
@@ -69,36 +67,18 @@ describe('GitHookService', () => {
     appRepoMock = vi.mocked(AppRepository).mock.results.at(-1)?.value as typeof appRepoMock;
     appRepoMock.findById.mockReturnValue(TEST_APP);
 
-    // Set up DevSupervisorClientFactory mock
     // Default: setup already complete (most tests don't care about setup coordination)
-    vi.mocked(DevSupervisorClientFactory.createForApp).mockReturnValue({
-      getSetupStatus: vi.fn().mockResolvedValue({
-        setup_configured: true,
-        setup_deferred: false,
-        setup_executed: true,
-        setup_running: false,
-        setup_error: null,
-      }),
-      executeSetup: vi.fn().mockResolvedValue({ status: 'already_executed' }),
-    } as never);
+    mockSetup.getStatus.mockResolvedValue({
+      configured: true,
+      deferred: false,
+      executed: true,
+      running: false,
+      error: null,
+    });
+    mockSetup.execute.mockResolvedValue('already_executed');
   });
 
   describe('branch safety check', () => {
-    function createDevSupervisorMock() {
-      const mock = {
-        getSetupStatus: vi.fn().mockResolvedValue({
-          setup_configured: true,
-          setup_deferred: false,
-          setup_executed: true,
-          setup_running: false,
-          setup_error: null,
-        }),
-        executeSetup: vi.fn().mockResolvedValue({ status: 'already_executed' }),
-      };
-      vi.mocked(DevSupervisorClientFactory.createForApp).mockReturnValue(mock as never);
-      return mock;
-    }
-
     function createGitMock(currentBranch: string) {
       const mockImpl = {
         isGitRepository: vi.fn().mockResolvedValue(true),
@@ -119,7 +99,6 @@ describe('GitHookService', () => {
     }
 
     it('switches to main when on unexpected branch', async () => {
-      createDevSupervisorMock();
       const gitMock = createGitMock('some-leftover-branch');
 
       await service.handleMessageStart(TEST_APP_ID);
@@ -134,7 +113,6 @@ describe('GitHookService', () => {
     });
 
     it('resets working tree before switching from unexpected branch', async () => {
-      createDevSupervisorMock();
       const gitMock = createGitMock('some-leftover-branch');
 
       await service.handleMessageStart(TEST_APP_ID);
@@ -150,7 +128,6 @@ describe('GitHookService', () => {
     });
 
     it('does not switch when already on main', async () => {
-      createDevSupervisorMock();
       const gitMock = createGitMock('main');
 
       await service.handleMessageStart(TEST_APP_ID);
@@ -162,7 +139,6 @@ describe('GitHookService', () => {
     });
 
     it('continues on tracked feature branch without switching', async () => {
-      createDevSupervisorMock();
       const gitMock = createGitMock('main');
 
       // First call: creates feature branch
@@ -184,25 +160,21 @@ describe('GitHookService', () => {
   });
 
   describe('setup coordination', () => {
-    function createDevSupervisorMock(setupStatus: {
-      setup_configured?: boolean;
-      setup_deferred?: boolean;
-      setup_executed?: boolean;
-      setup_running?: boolean;
-      setup_error?: string | null;
+    function configureSetup(setupStatus: {
+      configured?: boolean;
+      deferred?: boolean;
+      executed?: boolean;
+      running?: boolean;
+      error?: string | null;
     }) {
-      const mock = {
-        getSetupStatus: vi.fn().mockResolvedValue({
-          setup_configured: setupStatus.setup_configured ?? true,
-          setup_deferred: setupStatus.setup_deferred ?? false,
-          setup_executed: setupStatus.setup_executed ?? true,
-          setup_running: setupStatus.setup_running ?? false,
-          setup_error: setupStatus.setup_error ?? null,
-        }),
-        executeSetup: vi.fn().mockResolvedValue({ status: 'executed' }),
-      };
-      vi.mocked(DevSupervisorClientFactory.createForApp).mockReturnValue(mock as never);
-      return mock;
+      mockSetup.getStatus.mockResolvedValue({
+        configured: setupStatus.configured ?? true,
+        deferred: setupStatus.deferred ?? false,
+        executed: setupStatus.executed ?? true,
+        running: setupStatus.running ?? false,
+        error: setupStatus.error ?? null,
+      });
+      mockSetup.execute.mockResolvedValue('executed');
     }
 
     function createGitMock(currentBranch = 'main') {
@@ -229,57 +201,57 @@ describe('GitHookService', () => {
     }
 
     it('triggers setup and skips git ops when setup is deferred and not executed', async () => {
-      const dsMock = createDevSupervisorMock({
-        setup_deferred: true,
-        setup_executed: false,
+      configureSetup({
+        deferred: true,
+        executed: false,
       });
       const gitMock = createGitMock();
 
       await service.handleMessageStart(TEST_APP_ID);
 
-      expect(dsMock.getSetupStatus).toHaveBeenCalled();
-      expect(dsMock.executeSetup).toHaveBeenCalled();
+      expect(mockSetup.getStatus).toHaveBeenCalled();
+      expect(mockSetup.execute).toHaveBeenCalled();
       // Git ops should be skipped
       expect(gitMock.isGitRepository).not.toHaveBeenCalled();
       expect(gitMock.createBranch).not.toHaveBeenCalled();
     });
 
     it('skips triggering setup when setup is already running', async () => {
-      const dsMock = createDevSupervisorMock({
-        setup_deferred: true,
-        setup_executed: false,
-        setup_running: true,
+      configureSetup({
+        deferred: true,
+        executed: false,
+        running: true,
       });
       const gitMock = createGitMock();
 
       await service.handleMessageStart(TEST_APP_ID);
 
-      expect(dsMock.getSetupStatus).toHaveBeenCalled();
-      expect(dsMock.executeSetup).not.toHaveBeenCalled();
+      expect(mockSetup.getStatus).toHaveBeenCalled();
+      expect(mockSetup.execute).not.toHaveBeenCalled();
       // Git ops should still be skipped
       expect(gitMock.isGitRepository).not.toHaveBeenCalled();
     });
 
-    it('does not retry setup when setup_error is set', async () => {
-      const dsMock = createDevSupervisorMock({
-        setup_deferred: true,
-        setup_executed: false,
-        setup_error: 'npm install failed',
+    it('does not retry setup when error is set', async () => {
+      configureSetup({
+        deferred: true,
+        executed: false,
+        error: 'npm install failed',
       });
       const gitMock = createGitMock();
 
       await service.handleMessageStart(TEST_APP_ID);
 
-      expect(dsMock.getSetupStatus).toHaveBeenCalled();
-      expect(dsMock.executeSetup).not.toHaveBeenCalled();
+      expect(mockSetup.getStatus).toHaveBeenCalled();
+      expect(mockSetup.execute).not.toHaveBeenCalled();
       // Git ops should still be skipped
       expect(gitMock.isGitRepository).not.toHaveBeenCalled();
     });
 
     it('proceeds with git ops when setup is not deferred', async () => {
-      createDevSupervisorMock({
-        setup_deferred: false,
-        setup_executed: true,
+      configureSetup({
+        deferred: false,
+        executed: true,
       });
       const gitMock = createGitMock();
 
@@ -290,9 +262,9 @@ describe('GitHookService', () => {
     });
 
     it('proceeds with git ops when deferred setup has already executed', async () => {
-      createDevSupervisorMock({
-        setup_deferred: true,
-        setup_executed: true,
+      configureSetup({
+        deferred: true,
+        executed: true,
       });
       const gitMock = createGitMock();
 
@@ -303,10 +275,10 @@ describe('GitHookService', () => {
     });
 
     it('proceeds with git ops when setup is not configured', async () => {
-      createDevSupervisorMock({
-        setup_configured: false,
-        setup_deferred: false,
-        setup_executed: false,
+      configureSetup({
+        configured: false,
+        deferred: false,
+        executed: false,
       });
       const gitMock = createGitMock();
 
@@ -316,46 +288,23 @@ describe('GitHookService', () => {
       expect(gitMock.createBranch).toHaveBeenCalled();
     });
 
-    it('falls through to git ops if getSetupStatus throws', async () => {
-      const mock = {
-        getSetupStatus: vi.fn().mockRejectedValue(new Error('connection refused')),
-        executeSetup: vi.fn(),
-      };
-      vi.mocked(DevSupervisorClientFactory.createForApp).mockReturnValue(mock as never);
+    it('falls through to git ops if getStatus throws', async () => {
+      mockSetup.getStatus.mockRejectedValue(new Error('connection refused'));
       const gitMock = createGitMock();
 
       await service.handleMessageStart(TEST_APP_ID);
 
-      // Inner try/catch around getSetupStatus catches the error and falls through.
+      // Inner try/catch around getStatus catches the error and falls through.
       // Git ops should proceed normally.
-      expect(mock.executeSetup).not.toHaveBeenCalled();
+      expect(mockSetup.execute).not.toHaveBeenCalled();
       expect(gitMock.isGitRepository).toHaveBeenCalled();
     });
   });
 
   describe('publish interaction', () => {
-    // These tests verify that GitHookService recovers correctly when
-    // DefaultPublishStrategy.ensureMainBranch() switches to main, merges,
-    // and deletes the feature branch WITHOUT notifying GitHookService.
-
     afterEach(() => {
       vi.useRealTimers();
     });
-
-    function createDevSupervisorMock() {
-      const mock = {
-        getSetupStatus: vi.fn().mockResolvedValue({
-          setup_configured: true,
-          setup_deferred: false,
-          setup_executed: true,
-          setup_running: false,
-          setup_error: null,
-        }),
-        executeSetup: vi.fn().mockResolvedValue({ status: 'already_executed' }),
-      };
-      vi.mocked(DevSupervisorClientFactory.createForApp).mockReturnValue(mock as never);
-      return mock;
-    }
 
     function createGitMock(currentBranch = 'main') {
       const mockImpl = {
@@ -378,7 +327,6 @@ describe('GitHookService', () => {
 
     it('creates new branch after publish switches to main during active conversation', async () => {
       vi.useFakeTimers();
-      createDevSupervisorMock();
       const gitMock = createGitMock('main');
 
       // Conversation starts: creates feature branch A
@@ -404,7 +352,6 @@ describe('GitHookService', () => {
     });
 
     it('handleConnectionEnd returns null when publish already moved to main', async () => {
-      createDevSupervisorMock();
       // Start on main so handleMessageStart creates a feature branch
       const gitMock = createGitMock('main');
 
@@ -431,7 +378,6 @@ describe('GitHookService', () => {
 
     it('full cycle: conversation → merge → publish → new conversation works', async () => {
       vi.useFakeTimers();
-      createDevSupervisorMock();
       const gitMock = createGitMock('main');
 
       // === Conversation 1 ===
@@ -477,7 +423,6 @@ describe('GitHookService', () => {
 
     it('new branch creation works after publish deleted the previous feature branch', async () => {
       vi.useFakeTimers();
-      createDevSupervisorMock();
       const gitMock = createGitMock('main');
 
       // Create feature branch A
@@ -515,7 +460,6 @@ describe('GitHookService', () => {
 
     it('edits after publish in same conversation get committed on new branch', async () => {
       vi.useFakeTimers();
-      createDevSupervisorMock();
       const gitMock = createGitMock('main');
 
       // Conversation starts, creates branch A
@@ -553,7 +497,6 @@ describe('GitHookService', () => {
     });
 
     it('clearBranchTracking removes stale tracking after publish', async () => {
-      createDevSupervisorMock();
       const gitMock = createGitMock('main');
 
       // Create feature branch

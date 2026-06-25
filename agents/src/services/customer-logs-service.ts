@@ -1,5 +1,7 @@
 import type { AppRepository } from '../database/repositories/AppRepository.js';
-import { DevSupervisorClient, type LogOptions, type LogEntry } from './DevSupervisorClient.js';
+import { createForWorkspace, type WorkspaceClient, type CreateForWorkspace } from '../workspace/index.js';
+import type { LogEntry as WorkspaceLogEntry } from '../workspace/diagnostics.js';
+import type { LogEntry as WireLogEntry } from './DevSupervisorClient.js';
 import { LogSanitizer, type SanitizedLogEntry } from './log-sanitizer.js';
 import { Logger } from '../logging/index.js';
 import { getErrorMessage } from '../utils/error.js';
@@ -8,15 +10,10 @@ import { getErrorMessage } from '../utils/error.js';
  * Request parameters for fetching customer logs
  */
 export interface CustomerLogsRequest {
-  /** App ID to fetch logs for (required) */
   appId: string;
-  /** Target environment: preview or publish (required) */
   target: 'preview' | 'publish';
-  /** Fetch logs since this ISO 8601 timestamp (optional - if not provided, returns latest logs) */
   since?: string;
-  /** Number of log lines to fetch (optional, default: 100, max: configurable) */
   lines?: number;
-  /** Filter by output sources - supports multiple values. If not provided, returns all sources */
   /**
    * Restrict upstream log fetch to specific sources. `stdout`/`stderr` are
    * the managed dev-server's streams; `exec` is output from one-shot
@@ -32,23 +29,16 @@ export interface CustomerLogsRequest {
  * Response containing sanitized logs
  */
 export interface CustomerLogsResponse {
-  /** Whether the request succeeded */
   success: boolean;
-  /** Sanitized log entries */
   logs: SanitizedLogEntry[];
-  /** Total number of logs returned */
   total: number;
-  /** Error message if request failed */
   error?: string;
-  /** Error code for programmatic handling */
   code?: string;
 }
 
 /** Options for getPreviewLogs/getPublishLogs convenience methods */
 export interface LogFetchOptions {
-  /** Fetch logs since this ISO 8601 timestamp (optional - if not provided, returns latest logs) */
   since?: string;
-  /** Filter by output sources - supports multiple values. If not provided, returns all sources */
   /**
    * Restrict upstream log fetch to specific sources. `stdout`/`stderr` are
    * the managed dev-server's streams; `exec` is output from one-shot
@@ -58,11 +48,9 @@ export interface LogFetchOptions {
    * container to catch build failures.
    */
   sources?: Array<'stdout' | 'stderr' | 'exec'>;
-  /** Number of log lines to fetch (optional) */
   lines?: number;
 }
 
-// Configurable via ENV var, default 500 - exported for route layer to use
 export const DEFAULT_MAX_LINES = 500;
 export const MAX_LINES = parseInt(process.env.CUSTOMER_LOGS_MAX_LINES || '', 10) || DEFAULT_MAX_LINES;
 const DEFAULT_LINES = 100;
@@ -72,37 +60,25 @@ const VALID_SOURCES = ['stdout', 'stderr', 'exec'] as const;
  * Default `sources` for getLogs when the caller does not specify one.
  * Restricts the upstream request to the managed-process streams so
  * /exec orchestration output (dev-supervisor Source="exec") stays out
- * of customer-facing surfaces and agent LLM tool context. Callers that
- * need exec/system entries (e.g. diagnose triaging a failed build) must
- * opt in by passing `sources` explicitly.
+ * of customer-facing surfaces and agent LLM tool context.
  */
 const DEFAULT_CUSTOMER_SOURCES: Array<'stdout' | 'stderr'> = ['stdout', 'stderr'];
 
-/** Factory function type for creating DevSupervisorClient instances */
-type DevSupervisorClientFactory = (socketPath: string) => DevSupervisorClient;
-
-/**
- * Service for fetching and sanitizing customer-facing deployment logs
- *
- * This service provides logs from preview and publish containers
- * with proper sanitization to remove sensitive information.
- */
 export class CustomerLogsService {
   private logger = Logger.create({ component: 'customer-logs-service' });
+  private createWorkspace: CreateForWorkspace;
 
   constructor(
     private appRepository: AppRepository,
     private logSanitizer: LogSanitizer,
-    private clientFactory?: DevSupervisorClientFactory
-  ) {}
+    workspaceFactory?: CreateForWorkspace
+  ) {
+    this.createWorkspace = workspaceFactory ?? createForWorkspace;
+  }
 
-  /**
-   * Fetch logs for a customer app
-   */
   async getLogs(request: CustomerLogsRequest): Promise<CustomerLogsResponse> {
     const startTime = Date.now();
 
-    // Validate request
     const validationError = this.validateRequest(request);
     if (validationError) {
       return validationError;
@@ -113,46 +89,31 @@ export class CustomerLogsService {
     this.logger.info('customer_logs.fetch.begin', { appId, target, lines, sources });
 
     try {
-      // Find the app
       const app = this.appRepository.findById(appId);
       if (!app) {
         return this.errorResponse('App not found', 'APP_NOT_FOUND');
       }
 
-      // Get the appropriate supervisor path
-      const supervisorPath = target === 'publish' ? app.publishSupervisorPath : app.socketPath;
-      if (!supervisorPath) {
+      const workspace: WorkspaceClient | null = this.createWorkspace(appId, target);
+      if (!workspace) {
         return this.errorResponse(
           `${target === 'publish' ? 'Publish' : 'Preview'} supervisor not configured for this app`,
           'SUPERVISOR_NOT_CONFIGURED'
         );
       }
 
-      // Create DevSupervisor client
-      const client = this.createClient(supervisorPath);
-      if (!client.isAvailable()) {
-        return this.errorResponse(
-          `${target === 'publish' ? 'Publish' : 'Preview'} supervisor unavailable`,
-          'SUPERVISOR_UNAVAILABLE'
-        );
-      }
-
-      // Build log options
-      const logOptions: LogOptions = {
-        lines: Math.min(lines, MAX_LINES),
-      };
-
-      if (since) {
-        logOptions.since = since;
-      }
-
-      const { rawLogs, sanitizedLogs } = await this.getSanitizedLogs(client, logOptions, sources);
+      const { rawCount, sanitizedLogs } = await this.getSanitizedLogs(
+        workspace,
+        lines,
+        since,
+        sources
+      );
 
       const executionTime = Date.now() - startTime;
       this.logger.info('customer_logs.fetch.success', {
         appId,
         target,
-        rawCount: rawLogs.length,
+        rawCount,
         sanitizedCount: sanitizedLogs.length,
         executionTime
       });
@@ -171,48 +132,53 @@ export class CustomerLogsService {
         executionTime
       });
 
+      if (isConnectionError(error)) {
+        return this.errorResponse(
+          `${target === 'publish' ? 'Publish' : 'Preview'} supervisor unavailable`,
+          'SUPERVISOR_UNAVAILABLE'
+        );
+      }
       return this.errorResponse('Failed to fetch logs', 'FETCH_ERROR');
     }
   }
 
   /**
    * Fan out log fetches across an explicit source list, merge, sort,
-   * sanitize, and tail-keep the requested line count.
-   *
-   * Always scope to an explicit source list — never an unfiltered
-   * request — so orchestration output (dev-supervisor Source="exec")
-   * and health-monitor entries never leak into the customer-facing
-   * response. When the caller omits `sources`, fall back to the
-   * managed-process defaults; callers that need other sources
-   * (diagnose for /exec triage) must opt in explicitly.
+   * tail-keep the requested line count, then sanitize.
    *
    * Trims with slice(-lines), not slice(0, lines): failure signals
-   * (build errors, stack traces, exit messages) cluster at the end of
-   * long runs, so preserving the newest entries after merging across
-   * sources is what callers actually need.
+   * cluster at the end of long runs, so preserving the newest entries
+   * after merging across sources is what callers actually need.
    */
   private async getSanitizedLogs(
-    client: DevSupervisorClient,
-    logOptions: LogOptions,
+    workspace: WorkspaceClient,
+    lines: number,
+    since?: string,
     sources?: Array<'stdout' | 'stderr' | 'exec'>
-  ): Promise<{ rawLogs: LogEntry[]; sanitizedLogs: SanitizedLogEntry[] }> {
+  ): Promise<{ rawCount: number; sanitizedLogs: SanitizedLogEntry[] }> {
     const effectiveSources = sources && sources.length > 0 ? sources : DEFAULT_CUSTOMER_SOURCES;
+    const cappedLines: number = Math.min(lines, MAX_LINES);
+    const sinceDate: Date | undefined = since ? new Date(since) : undefined;
+
     const logPromises = effectiveSources.map(src =>
-      client.getLogs({ ...logOptions, source: src })
+      workspace.diagnostics.logs({ source: src, lines: cappedLines, since: sinceDate })
     );
     const logsArrays = await Promise.all(logPromises);
-    const rawLogs: LogEntry[] = logsArrays.flat();
-    rawLogs.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+    const rawLogs: WorkspaceLogEntry[] = logsArrays.flat();
+    rawLogs.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
 
-    const sanitized = this.logSanitizer.sanitizeLogs(rawLogs);
-    const sanitizedLogs = logOptions.lines ? sanitized.slice(-logOptions.lines) : sanitized;
+    const trimmed: WorkspaceLogEntry[] = rawLogs.slice(-cappedLines);
+    const wireEntries: WireLogEntry[] = trimmed.map(entry => ({
+      timestamp: entry.timestamp.toISOString(),
+      source: entry.source,
+      level: entry.level,
+      message: entry.message,
+    }));
+    const sanitizedLogs: SanitizedLogEntry[] = this.logSanitizer.sanitizeLogs(wireEntries);
 
-    return { rawLogs, sanitizedLogs };
+    return { rawCount: rawLogs.length, sanitizedLogs };
   }
 
-  /**
-   * Convenience method to fetch preview logs
-   */
   async getPreviewLogs(appId: string, options: LogFetchOptions = {}): Promise<CustomerLogsResponse> {
     return this.getLogs({
       appId,
@@ -223,9 +189,6 @@ export class CustomerLogsService {
     });
   }
 
-  /**
-   * Convenience method to fetch publish logs
-   */
   async getPublishLogs(appId: string, options: LogFetchOptions = {}): Promise<CustomerLogsResponse> {
     return this.getLogs({
       appId,
@@ -236,13 +199,9 @@ export class CustomerLogsService {
     });
   }
 
-  /**
-   * Validate the request parameters
-   */
   private validateRequest(request: CustomerLogsRequest): CustomerLogsResponse | null {
     const { appId, target, sources, since, lines } = request;
 
-    // Validate required parameters
     if (!appId || appId.trim() === '') {
       return this.errorResponse('appId is required', 'INVALID_APP_ID');
     }
@@ -261,7 +220,6 @@ export class CustomerLogsService {
       );
     }
 
-    // Validate sources array if provided
     if (sources) {
       const invalidSources = sources.filter(s => !VALID_SOURCES.includes(s as typeof VALID_SOURCES[number]));
       if (invalidSources.length > 0) {
@@ -283,7 +241,6 @@ export class CustomerLogsService {
       );
     }
 
-    // Validate since timestamp format if provided
     if (since) {
       const date = new Date(since);
       if (isNaN(date.getTime())) {
@@ -297,19 +254,6 @@ export class CustomerLogsService {
     return null;
   }
 
-  /**
-   * Create a DevSupervisorClient for the given path
-   */
-  private createClient(socketPath: string): DevSupervisorClient {
-    if (this.clientFactory) {
-      return this.clientFactory(socketPath);
-    }
-    return new DevSupervisorClient(socketPath);
-  }
-
-  /**
-   * Create an error response
-   */
   private errorResponse(error: string, code: string): CustomerLogsResponse {
     return {
       success: false,
@@ -319,4 +263,14 @@ export class CustomerLogsService {
       code
     };
   }
+}
+
+const CONNECTION_CODES: ReadonlySet<string> = new Set(['ECONNREFUSED', 'ENOENT', 'ECONNRESET', 'ETIMEDOUT']);
+
+function isConnectionError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false;
+  const code: unknown = (err as Record<string, unknown>).code;
+  if (typeof code === 'string' && CONNECTION_CODES.has(code)) return true;
+  const msg: string = err instanceof Error ? err.message : '';
+  return msg.includes('not available at') || msg.includes('connection refused');
 }
