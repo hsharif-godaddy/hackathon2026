@@ -1,6 +1,6 @@
 'use client'
 
-import { motion } from 'framer-motion'
+import { AnimatePresence, motion } from 'framer-motion'
 import dynamic from 'next/dynamic'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
@@ -1604,16 +1604,25 @@ function DevelopPageContent({ layout = BuilderLayout.Develop }: { layout?: Build
                     PreviewPane so it is NOT torn down and re-mounted when PreviewPane flips
                     between its preview-server readiness branches mid-generation. PreviewPane
                     keeps the underlying preview/code mounted-but-inert while BRAND is active. */}
-                {viewMode === ViewMode.BRAND && (
-                  <div
-                    className="absolute inset-0 z-20 overflow-hidden rounded-lg md:rounded-b-none"
-                    data-testid="brand-book-overlay"
-                  >
-                    {showDesignKitWizard
-                      ? <DesignKitWizard appId={appId} />
-                      : <BrandBookView appId={appId} />}
-                  </div>
-                )}
+                {/* When we leave BRAND (e.g. the design-kit reveal flips to Preview),
+                    fade the overlay out so the finished site underneath is revealed with
+                    a soft crossfade rather than a hard cut. `initial={false}` keeps the
+                    entrance unchanged — only the exit animates. */}
+                <AnimatePresence>
+                  {viewMode === ViewMode.BRAND && (
+                    <motion.div
+                      className="absolute inset-0 z-20 overflow-hidden rounded-lg md:rounded-b-none"
+                      data-testid="brand-book-overlay"
+                      initial={false}
+                      exit={{ opacity: 0 }}
+                      transition={{ duration: 0.45, ease: 'easeOut' }}
+                    >
+                      {showDesignKitWizard
+                        ? <DesignKitWizard appId={appId} />
+                        : <BrandBookView appId={appId} />}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
             </motion.div>
           </div>

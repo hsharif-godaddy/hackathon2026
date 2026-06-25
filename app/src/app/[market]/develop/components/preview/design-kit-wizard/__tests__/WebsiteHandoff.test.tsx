@@ -36,7 +36,7 @@ vi.mock('@/app/[market]/develop/components/media/MediaSlotDetail', () => ({
   getSlotImageUrl: (slot: string, url: string): string => url,
 }));
 
-import { WebsiteHandoff, WebsiteHandoffDone } from '../WebsiteHandoff';
+import { WebsiteHandoff, WebsiteHandoffDone, WebsiteReadyCelebration } from '../WebsiteHandoff';
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -50,62 +50,45 @@ afterEach(() => {
 
 describe('WebsiteHandoff (blueprint build)', () => {
   it('renders the finalizing blueprint with the brand wordmark and opening caption', () => {
-    render(<WebsiteHandoff appId="app1" onComplete={vi.fn()} />);
+    render(<WebsiteHandoff appId="app1" />);
     expect(screen.getByTestId('design-kit-finalizing')).toBeInTheDocument();
-    expect(screen.getByText('Applying your colours')).toBeInTheDocument();
+    expect(screen.getByText('Applying your design kit')).toBeInTheDocument();
     expect(screen.getByText('Soleil Studio')).toBeInTheDocument();
     expect(screen.getByText('Timeless pieces, quietly made.')).toBeInTheDocument();
   });
 
-  it('advances the caption through the build phases', () => {
-    render(<WebsiteHandoff appId="app1" onComplete={vi.fn()} />);
+  it('advances the caption from the design kit through each beat, then holds', () => {
+    render(<WebsiteHandoff appId="app1" />);
+    expect(screen.getByText('Applying your design kit')).toBeInTheDocument();
+
+    act(() => { vi.advanceTimersByTime(2100); }); // > BEAT.colours (2000)
     expect(screen.getByText('Applying your colours')).toBeInTheDocument();
 
-    act(() => { vi.advanceTimersByTime(3100); });
+    act(() => { vi.advanceTimersByTime(2500); }); // > BEAT.logo (4500)
+    expect(screen.getByText('Placing your logo')).toBeInTheDocument();
+
+    act(() => { vi.advanceTimersByTime(2500); }); // > BEAT.type (7000)
     expect(screen.getByText('Setting your type')).toBeInTheDocument();
 
-    act(() => { vi.advanceTimersByTime(2800); });
+    act(() => { vi.advanceTimersByTime(2500); }); // > BEAT.imagery (9500)
     expect(screen.getByText('Adding your imagery')).toBeInTheDocument();
 
-    act(() => { vi.advanceTimersByTime(2600); });
+    act(() => { vi.advanceTimersByTime(2500); }); // > BEAT.building (12000)
+    expect(screen.getByText('Building your website…')).toBeInTheDocument();
+
+    // It holds on the final caption — no timer-driven hand-off (the wizard reveals
+    // the finished site from the real build-completion signal, not a timer).
+    act(() => { vi.advanceTimersByTime(20000); });
     expect(screen.getByText('Building your website…')).toBeInTheDocument();
   });
 
-  it('fires onComplete exactly once after the full run', () => {
-    const onComplete = vi.fn();
-    render(<WebsiteHandoff appId="app1" onComplete={onComplete} />);
-
-    act(() => { vi.advanceTimersByTime(10000); }); // before TOTAL_MS (11000)
-    expect(onComplete).not.toHaveBeenCalled();
-
-    act(() => { vi.advanceTimersByTime(1500); }); // past 11000
-    expect(onComplete).toHaveBeenCalledTimes(1);
-
-    act(() => { vi.advanceTimersByTime(5000); });
-    expect(onComplete).toHaveBeenCalledTimes(1);
-  });
-
-  it('does not re-fire onComplete when the parent re-renders with a new closure', () => {
-    const first = vi.fn();
-    const { rerender } = render(<WebsiteHandoff appId="app1" onComplete={first} />);
-    const second = vi.fn();
-    rerender(<WebsiteHandoff appId="app1" onComplete={second} />);
-
-    act(() => { vi.advanceTimersByTime(11500); });
-    expect(second).toHaveBeenCalledTimes(1);
-    expect(first).not.toHaveBeenCalled();
-  });
-
-  it('reduced motion: shows the building caption immediately and hands off after a brief beat', () => {
+  it('reduced motion: shows the building caption immediately and holds', () => {
     mockReducedMotion = true;
-    const onComplete = vi.fn();
-    render(<WebsiteHandoff appId="app1" onComplete={onComplete} />);
+    render(<WebsiteHandoff appId="app1" />);
 
     expect(screen.getByText('Building your website…')).toBeInTheDocument();
-    expect(onComplete).not.toHaveBeenCalled();
-
-    act(() => { vi.advanceTimersByTime(1600); }); // past REDUCED_MS (1500)
-    expect(onComplete).toHaveBeenCalledTimes(1);
+    act(() => { vi.advanceTimersByTime(20000); });
+    expect(screen.getByText('Building your website…')).toBeInTheDocument();
   });
 });
 
@@ -117,5 +100,24 @@ describe('WebsiteHandoffDone', () => {
     expect(screen.getByTestId('design-kit-finalizing')).toBeInTheDocument();
     act(() => { screen.getByTestId('design-kit-watch-build').click(); });
     expect(onGo).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('WebsiteReadyCelebration', () => {
+  it('full motion: shows the payoff copy and fires the sparkle burst', () => {
+    render(<WebsiteReadyCelebration />);
+
+    expect(screen.getByTestId('design-kit-website-ready')).toBeInTheDocument();
+    expect(screen.getByText('Your website is ready!')).toBeInTheDocument();
+    expect(screen.getAllByTestId('design-kit-celebration-spark')).toHaveLength(10);
+  });
+
+  it('reduced motion: keeps the copy but omits the decorative sparkle burst', () => {
+    mockReducedMotion = true;
+    render(<WebsiteReadyCelebration />);
+
+    expect(screen.getByTestId('design-kit-website-ready')).toBeInTheDocument();
+    expect(screen.getByText('Your website is ready!')).toBeInTheDocument();
+    expect(screen.queryAllByTestId('design-kit-celebration-spark')).toHaveLength(0);
   });
 });

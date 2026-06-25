@@ -1,7 +1,7 @@
 'use client';
 
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
-import { type JSX, useRef } from 'react';
+import { type JSX, useEffect, useRef } from 'react';
 import WandIcon from '@ux/icon/wand';
 import text from '@ux/text';
 
@@ -9,11 +9,17 @@ import { ViewMode } from '@/app/[market]/develop/components/types';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { AssemblingKit } from './AssemblingKit';
 import { useWizardPhase } from './useWizardPhase';
-import { WebsiteHandoff, WebsiteHandoffDone } from './WebsiteHandoff';
+import { WebsiteHandoff, WebsiteHandoffDone, WebsiteReadyCelebration } from './WebsiteHandoff';
 
 // The wizard chrome is Airo-branded (`--color-ai`), not the user's generated
 // brand colour — those appear only once the site is built.
 const AIRO = 'var(--color-ai)';
+
+// How long the "your website is ready" celebration holds before we reveal the
+// finished site on the Preview tab.
+const CELEBRATE_MS = 2600;
+
+type WizardVisual = 'building-brand' | 'building-website' | 'celebrating' | 'resume-done';
 
 /**
  * Design Kit Wizard shell (AIROBUILD-2679 Phase 2; AIROBUILD-2855 immersive flow).
@@ -24,12 +30,15 @@ const AIRO = 'var(--color-ai)';
  *   assembling view as a fallback.
  * - `brand`: chat docks left and the "Building Your Brand" progress panel fills as
  *   the agent assembles the kit (AssemblingKit in steady `progress` mode — no seal).
- * - `website`: the agent has handed off; the website is building (chat still left).
- * - `ready`: the build has completed; play the launch send-off once, then flip to
- *   the Edit tab so the build overlay takes over.
+ * - `website`: the agent has handed off; the website-assembly animation plays while
+ *   the build runs (chat still docked left).
+ * - build complete: a brief "your website is ready" celebration, then we reveal the
+ *   finished site on the Preview tab (chrome returns as the view leaves BRAND).
+ * - resume: returning to an already-finished build shows a calm "watch it build"
+ *   panel instead of replaying the assembly.
  *
- * `ready` is driven by the real build-completion signal
- * (`useDevelopPageStore.app.initialBuildComplete`) — the agent never emits it.
+ * The reveal is driven by the real build-completion signal
+ * (`useDevelopPageStore.app.initialBuildComplete`) — the agent never emits `ready`.
  */
 export function DesignKitWizard({
   appId,
@@ -39,49 +48,50 @@ export function DesignKitWizard({
   const { phase } = useWizardPhase(appId);
   const reduce = useReducedMotion();
 
-  // The `ready` phase hands off to the build: the launch sequence plays, then we
-  // flip the view to the Edit tab so the build overlay takes over.
   const setViewMode = useDevelopPageStore((s) => s.setViewMode);
-  const handleHandoffComplete = (): void => {
-    setViewMode(ViewMode.EDIT);
-  };
 
-  // Drive the hand-off from the real build-completion signal — the agent never
-  // emits `ready`. Scope to this app so a stale store entry for another app can't
-  // flip us. The hand-off shows when the build is done OR the persisted phase is
-  // already `ready`, so the reveal does not wait on the setPhase round-trip below.
+  // Drive the reveal from the real build-completion signal — the agent never emits
+  // `ready`. Scope to this app so a stale store entry for another app can't flip us.
   const initialBuildComplete = useDevelopPageStore(
     (s) => (s.app?.id === appId ? (s.app?.initialBuildComplete ?? false) : false),
   );
   const inHandoff = phase === 'ready' || initialBuildComplete;
 
-  // Distinguish the live build (mounted while gathering/brand/website, then reached
-  // the hand-off) from resuming straight into it: only the former replays the launch
-  // animation. Captured once on first render.
+  // Distinguish a live build (mounted while gathering/brand/website, then the build
+  // completed) from resuming straight into a finished build: only the latter shows
+  // the calm "watch it build" panel. Captured once on first render.
   const startedAtReadyRef = useRef<boolean | null>(null);
   if (startedAtReadyRef.current === null) startedAtReadyRef.current = inHandoff;
 
-  // Which visual to render. `ready` (hand-off) renders its own full-screen send-off.
-  const visual: 'building-brand' | 'building-website' | 'handoff' =
-    inHandoff ? 'handoff' : phase === 'website' ? 'building-website' : 'building-brand';
+  // The website-assembly animation plays *during* the build (the `website` phase).
+  // When the real build completes we play a brief "your website is ready" beat, then
+  // reveal the finished site on the Preview tab — PreviewPane's build overlay carries
+  // any remaining loading there. Resuming into a finished build shows the calm panel
+  // and waits for the user, so only auto-reveal for a live build.
+  useEffect(() => {
+    if (!(inHandoff && startedAtReadyRef.current === false)) return undefined;
+    const t = window.setTimeout(() => setViewMode(ViewMode.PREVIEW), CELEBRATE_MS);
+    return () => window.clearTimeout(t);
+  }, [inHandoff, setViewMode]);
 
-  const title: string =
-    phase === 'website' ? 'Building your website.' : 'Building your brand.';
-  const subtitle: JSX.Element =
-    phase === 'website' ? (
-      <>Airo is assembling your site from this brand — almost there.</>
-    ) : (
-      <>Airo is crafting your brand — about <span className="font-semibold" style={{ color: AIRO }}>4–6 minutes</span>.</>
-    );
+  // Which visual to render. The website-assembly animation plays during the build;
+  // the moment it completes we celebrate, then (via the effect above) reveal the
+  // finished site. Resuming into a finished build shows the calm "watch it build" panel.
+  const visual: WizardVisual = ((): WizardVisual => {
+    if (startedAtReadyRef.current) return 'resume-done';
+    if (inHandoff) return 'celebrating';
+    if (phase === 'website') return 'building-website';
+    return 'building-brand';
+  })();
 
   return (
     <div
       className="flex h-full w-full flex-col overflow-auto bg-intents-ux-boxLowContrast-backgroundColor"
       data-testid="design-kit-wizard"
     >
-      {/* The hand-off (ready) renders its own full-screen send-off, so suppress the
-          compact wizard header during it. */}
-      {visual !== 'handoff' && (
+      {/* The compact header only frames the brand phase; the website-assembly
+          animation and the resume panel carry their own captions. */}
+      {visual === 'building-brand' && (
         <div className="mb-4 w-full px-4 pt-4">
           {/* Compact header: Airo wand + title inline, phase subtitle below */}
           <div className="mb-3 flex flex-col items-center text-center">
@@ -95,9 +105,11 @@ export function DesignKitWizard({
               >
                 <WandIcon className="h-4 w-4" />
               </motion.span>
-              <h1 className="text-xl font-semibold tracking-tight text-intents-ux-box-foregroundColor">{title}</h1>
+              <h1 className="text-xl font-semibold tracking-tight text-intents-ux-box-foregroundColor">Building your brand.</h1>
             </div>
-            <text.p as="caption" emphasis="passive" className="mt-1.5">{subtitle}</text.p>
+            <text.p as="caption" emphasis="passive" className="mt-1.5">
+              Airo is crafting your brand — about <span className="font-semibold" style={{ color: AIRO }}>4–6 minutes</span>.
+            </text.p>
           </div>
         </div>
       )}
@@ -118,24 +130,20 @@ export function DesignKitWizard({
             )}
 
             {visual === 'building-website' && (
-              // Stage c (AIROBUILD-2856) replaces this with the website-assembly
-              // animation. ponytail: a calm spinner panel until then.
-              <div
-                data-testid="design-kit-building-website"
-                className="mx-auto flex min-h-[44vh] w-full max-w-3xl flex-col items-center justify-center gap-4 text-center"
-              >
-                <span
-                  className="h-9 w-9 animate-spin rounded-full border-2 border-[color-mix(in_srgb,var(--color-ai)_25%,transparent)] border-t-[color-mix(in_srgb,var(--color-ai)_90%,transparent)]"
-                  aria-hidden
-                />
-                <text.span as="caption" emphasis="passive">Assembling your site from this brand…</text.span>
-              </div>
+              // Stage c (AIROBUILD-2856): the website-assembly animation plays during
+              // the build, holding until the real build completes.
+              <WebsiteHandoff appId={appId} />
             )}
 
-            {visual === 'handoff' && (
-              startedAtReadyRef.current
-                ? <WebsiteHandoffDone onGo={() => setViewMode(ViewMode.EDIT)} />
-                : <WebsiteHandoff appId={appId} onComplete={handleHandoffComplete} />
+            {visual === 'celebrating' && (
+              // Build done: a short "your website is ready" payoff before the reveal.
+              <WebsiteReadyCelebration />
+            )}
+
+            {visual === 'resume-done' && (
+              // Resuming straight into a finished build: a calm panel back to the
+              // build, rather than replaying the assembly.
+              <WebsiteHandoffDone onGo={() => setViewMode(ViewMode.PREVIEW)} />
             )}
           </motion.div>
         </AnimatePresence>

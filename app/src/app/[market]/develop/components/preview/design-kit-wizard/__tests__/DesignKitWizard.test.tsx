@@ -129,17 +129,19 @@ describe('DesignKitWizard — website phase ("Building your website")', () => {
     setPhase.mockClear();
   });
 
-  it('renders a website-building panel and no editing actions', () => {
+  it('plays the website-assembly animation during the build, with no editing actions', () => {
     render(<DesignKitWizard appId="app1234567" />);
 
-    // The calm website-building panel (stage c enriches the animation).
-    expect(screen.getByTestId('design-kit-building-website')).toBeInTheDocument();
+    // Stage c: the website-assembly animation (not a plain spinner) plays during
+    // the build, opening on the design-kit beat.
+    expect(screen.getByTestId('design-kit-finalizing')).toBeInTheDocument();
+    expect(screen.getByText('Applying your design kit')).toBeInTheDocument();
     expect(screen.queryByTestId('design-kit-build')).not.toBeInTheDocument();
     expect(screen.queryByTestId('design-kit-panels')).not.toBeInTheDocument();
   });
 });
 
-describe('DesignKitWizard — ready phase → Edit hand-off', () => {
+describe('DesignKitWizard — build reveal → celebration → Preview tab', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     // Reduced motion off so the full launch sequence (not the instant path) runs.
@@ -168,59 +170,48 @@ describe('DesignKitWizard — ready phase → Edit hand-off', () => {
     vi.useRealTimers();
   });
 
-  it('plays the launch sequence then flips the view to EDIT', () => {
-    // Mount mid-flow (brand) so the live transition into the hand-off replays the
-    // launch animation — a fresh mount already at the hand-off shows the calm
-    // "watch it build" panel instead (startedAtReadyRef).
-    mockPhase = 'brand';
-    useWizardStore.setState({ phaseByApp: { app1234567: 'brand' } });
+  it('plays the animation during the build, then celebrates and reveals the Preview tab', () => {
+    // Mount mid-build (website phase, build not yet complete): the assembly
+    // animation plays and the view stays on the Logo & Brand (BRAND) tab.
+    mockPhase = 'website';
+    useWizardStore.setState({ phaseByApp: { app1234567: 'website' } });
+    useDevelopPageStore.setState({
+      viewMode: ViewMode.BRAND,
+      app: { id: 'app1234567', initialBuildComplete: false },
+    } as Parameters<typeof useDevelopPageStore.setState>[0]);
     const { rerender } = render(<DesignKitWizard appId="app1234567" />);
 
-    // The build completes: the phase advances to ready.
-    act(() => {
-      mockPhase = 'ready';
-      useWizardStore.setState({ phaseByApp: { app1234567: 'ready' } });
-      rerender(<DesignKitWizard appId="app1234567" />);
-    });
-
-    // The hand-off send-off is showing; the view hasn't switched yet.
     expect(screen.getByTestId('design-kit-finalizing')).toBeInTheDocument();
     expect(useDevelopPageStore.getState().viewMode).toBe(ViewMode.BRAND);
 
+    // The build completes (initialBuildComplete) — even with no `ready` phase event,
+    // the celebration shows and the view has not switched yet.
     act(() => {
-      vi.advanceTimersByTime(11200); // past the full hand-off sequence (TOTAL_MS = 11000)
+      useDevelopPageStore.setState({
+        app: { id: 'app1234567', initialBuildComplete: true },
+      } as Parameters<typeof useDevelopPageStore.setState>[0]);
+      rerender(<DesignKitWizard appId="app1234567" />);
     });
+    expect(screen.getByTestId('design-kit-website-ready')).toBeInTheDocument();
+    expect(useDevelopPageStore.getState().viewMode).toBe(ViewMode.BRAND);
 
-    expect(useDevelopPageStore.getState().viewMode).toBe(ViewMode.EDIT);
+    // After the celebration beat we reveal the finished site on the Preview tab.
+    act(() => { vi.advanceTimersByTime(2700); }); // > CELEBRATE_MS (2600)
+    expect(useDevelopPageStore.getState().viewMode).toBe(ViewMode.PREVIEW);
   });
 
-  it('reveals the hand-off when the build completes (initialBuildComplete) even before a ready phase event', () => {
-    mockPhase = 'brand';
-    useWizardStore.setState({ phaseByApp: { app1234567: 'brand' } });
-    useDevelopPageStore.setState({
-      viewMode: ViewMode.BRAND,
-      app: { id: 'app1234567', initialBuildComplete: true },
-    } as Parameters<typeof useDevelopPageStore.setState>[0]);
-
-    render(<DesignKitWizard appId="app1234567" />);
-
-    // The build is done, so the UI flips to the ready hand-off regardless of phase.
-    expect(screen.getByTestId('design-kit-finalizing')).toBeInTheDocument();
-    expect(screen.queryByTestId('design-kit-panels')).not.toBeInTheDocument();
-  });
-
-  it('resuming directly into ready shows the watch-build panel, does not auto-switch, and the button goes to Edit', () => {
+  it('resuming directly into a finished build shows the watch-build panel, does not auto-switch, and the button goes to Preview', () => {
     // beforeEach set mockPhase='ready' → startedAtReadyRef is true at mount, so the
-    // calm WebsiteHandoffDone panel renders instead of replaying the launch.
+    // calm WebsiteHandoffDone panel renders instead of replaying the assembly.
     render(<DesignKitWizard appId="app1234567" />);
     expect(screen.getByTestId('design-kit-watch-build')).toBeInTheDocument();
 
-    // It must NOT auto-flip to EDIT, even past when the launch timer would elapse.
-    act(() => { vi.advanceTimersByTime(11200); });
+    // It must NOT auto-flip, even past when the celebration timer would elapse.
+    act(() => { vi.advanceTimersByTime(5000); });
     expect(useDevelopPageStore.getState().viewMode).toBe(ViewMode.BRAND);
 
-    // The button manually switches to the Edit tab.
+    // The button manually switches to the Preview tab.
     act(() => { screen.getByTestId('design-kit-watch-build').click(); });
-    expect(useDevelopPageStore.getState().viewMode).toBe(ViewMode.EDIT);
+    expect(useDevelopPageStore.getState().viewMode).toBe(ViewMode.PREVIEW);
   });
 });
