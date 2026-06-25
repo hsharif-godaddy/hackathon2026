@@ -16,17 +16,16 @@ export interface ChatUploadImageGuidance {
   slotUrl: string | null
   /** Internal stored filename (for import_upload), if the upload was matched. */
   storedUploadFilename: string | null
+  /** True when the AIROBUILD-2789 guard fired and the upload was routed to a fresh slot instead of the canonical hero/background. Callers persisting this entry must carry the flag forward so continuation turns rebuild the same describe-before-replace guidance. */
+  deflectedFromCanonical: boolean
 }
 
 /**
  * Classify an uploaded chat image's placement intent and produce the per-file
  * "Upload handling" guidance, auto-registering hero/background uploads into a
- * media slot when the intent is display_on_site.
- *
- * Shared by both upload context renderers — the `file_upload` path (initial
- * build / auto-send) and the `selected_assets` path (mid-conversation develop
- * chat) — so intent classification behaves identically regardless of how the
- * image reached the agent.
+ * media slot when the intent is display_on_site. Used by the selected-assets
+ * renderer (mid-conversation develop chat). The file-upload renderer has its
+ * own auto-register path via registerChatUploadSlot.
  */
 export async function classifyAndGuideChatUploadImage(params: {
   appId: string
@@ -46,7 +45,7 @@ export async function classifyAndGuideChatUploadImage(params: {
 
   const classification = await classifyUploadImage(buffer, fileName, userPrompt)
   if (!classification) {
-    return { classification: null, guidance: null, slotUrl: null, storedUploadFilename: null }
+    return { classification: null, guidance: null, slotUrl: null, storedUploadFilename: null, deflectedFromCanonical: false }
   }
 
   logger.info('chat_upload.classify_guide.classified', {
@@ -71,6 +70,7 @@ export async function classifyAndGuideChatUploadImage(params: {
   }
 
   let slotUrl: string | null = null
+  let deflectedFromCanonical: boolean = false
   if (shouldAutoRegisterUpload(handlingInput) && storedUploadFilename) {
     try {
       const result = await mediaManifestService.importChatUploadToSlot(appId, {
@@ -80,10 +80,12 @@ export async function classifyAndGuideChatUploadImage(params: {
       })
       if (result.success) {
         slotUrl = result.slotUrl
+        deflectedFromCanonical = result.deflectedFromCanonical ?? false
         logger.info('chat_upload.classify_guide.slot_registered', {
           appId,
           storedUploadFilename,
           slotPath: result.slotPath,
+          deflectedFromCanonical,
         })
       } else {
         logger.warn('chat_upload.classify_guide.slot_register_failed', {
@@ -101,6 +103,6 @@ export async function classifyAndGuideChatUploadImage(params: {
     }
   }
 
-  const guidance = buildUploadHandlingGuidance({ ...handlingInput, slotUrl })
-  return { classification, guidance, slotUrl, storedUploadFilename }
+  const guidance = buildUploadHandlingGuidance({ ...handlingInput, slotUrl, deflectedFromCanonical })
+  return { classification, guidance, slotUrl, storedUploadFilename, deflectedFromCanonical }
 }

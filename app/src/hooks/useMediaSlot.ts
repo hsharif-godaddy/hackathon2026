@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { GetSlotResponse, MediaSlot } from '@/app/[market]/develop/components/media/types';
 import { dynamicApiConfigService } from '@/config/dynamic-api';
 import {
+  MediaFetchHttpError,
   mediaFetchRetry,
   mediaFetchRetryDelay,
   resolveBaseAgentUrl,
@@ -27,8 +28,10 @@ interface UseMediaSlotResult {
   isLoading: boolean;
   /** Whether a fetch (including background retry) is in progress */
   isFetching: boolean;
-  /** Error message if fetch failed */
+  /** Error message if fetch failed for any non-404 reason; 404 is signalled via `notFound`. */
   error: string | null;
+  /** True when the per-slot fetch 404'd — slot was removed from the manifest between list-load and detail-fetch; caller should refetch manifest + bounce to grid. */
+  notFound: boolean;
   /** Refetch the slot data */
   refetch: () => Promise<void>;
   /** Update the cached slot data directly (avoids redundant network refetch) */
@@ -115,11 +118,14 @@ export function useMediaSlot({
     retryDelay: mediaFetchRetryDelay,
   });
 
+  const isNotFound: boolean = query.error instanceof MediaFetchHttpError && query.error.status === 404;
+
   return {
     slot: query.data ?? null,
     isLoading: query.isLoading,
     isFetching: query.isFetching,
-    error: query.error instanceof Error ? query.error.message : null,
+    error: isNotFound ? null : query.error instanceof Error ? query.error.message : null,
+    notFound: isNotFound,
     refetch: async () => {
       await query.refetch();
     },

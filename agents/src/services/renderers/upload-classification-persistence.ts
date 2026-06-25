@@ -9,14 +9,10 @@ export type PersistedUploadClassification = UploadClassification & {
   fileName: string
   slotUrl?: string
   storedUploadFilename?: string
-  /**
-   * Set once the agent has actually PLACED this upload — a media slot was
-   * registered for it (import_upload) or its bytes were written into an asset
-   * file (logo / `public/assets/…`). The context manager re-injects the full
-   * "Upload handling" action block only for uploads that are NOT yet placed, so
-   * a placed upload stops being re-handled (and re-charged) on every later turn.
-   */
+  /** Set once the agent has actually PLACED this upload — see context-manager re-injection logic. */
   placed?: boolean
+  /** Carried forward so continuation turns rebuild describe-before-replace guidance (AIROBUILD-2789). */
+  deflectedFromCanonical?: boolean
 }
 
 /**

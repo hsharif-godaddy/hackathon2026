@@ -91,7 +91,8 @@ describe('useMediaSlot', function useMediaSlotTests() {
     expect(global.fetch).not.toHaveBeenCalled();
   });
 
-  it('surfaces plain-text HTTP error bodies', async function httpErrorBody() {
+  it('signals notFound (not error) when the per-slot fetch returns 404 — slot was removed from the manifest', async function httpNotFound() {
+    // AIROBUILD-2789 Layer 1: 404 = slot gone from manifest (TOCTOU) → notFound, not panel error.
     (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       ok: false,
       status: 404,
@@ -99,7 +100,7 @@ describe('useMediaSlot', function useMediaSlotTests() {
     });
 
     const { result } = renderHook(
-      function useTestMediaSlotHttpError() {
+      function useTestMediaSlotNotFound() {
         return useMediaSlot({ appId: mockAppId, slotName: mockSlotName });
       },
       { wrapper: createWrapper() },
@@ -110,6 +111,30 @@ describe('useMediaSlot', function useMediaSlotTests() {
     });
 
     expect(result.current.slot).toBeNull();
-    expect(result.current.error).toBe('Slot not found: pages/home/hero');
+    expect(result.current.notFound).toBe(true);
+    expect(result.current.error).toBeNull();
+  });
+
+  it('surfaces non-404 HTTP error bodies as error (notFound stays false)', async function httpServerError() {
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      ok: false,
+      status: 500,
+      text: async () => 'Internal server error',
+    });
+
+    const { result } = renderHook(
+      function useTestMediaSlotServerError() {
+        return useMediaSlot({ appId: mockAppId, slotName: mockSlotName });
+      },
+      { wrapper: createWrapper() },
+    );
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    expect(result.current.slot).toBeNull();
+    expect(result.current.notFound).toBe(false);
+    expect(result.current.error).toBe('Internal server error');
   });
 });

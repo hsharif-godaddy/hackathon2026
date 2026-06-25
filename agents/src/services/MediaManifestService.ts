@@ -42,6 +42,8 @@ export type ImportChatUploadResult =
       uploadedUrl: string;
       slot: MediaSlot;
       commitHash?: string;
+      /** True when the AIROBUILD-2789 guard fired: the canonical role slot was user-customized and the upload was routed to a fresh `uploads/<role>-<slug>` slot instead. The caller uses this to adjust agent guidance so the rendered hero/background isn't silently displaced. */
+      deflectedFromCanonical?: boolean;
     }
   | { success: false; error: string; httpStatus?: number };
 
@@ -101,6 +103,8 @@ const ASSET_ROLE_SUFFIXES: Record<string, string[]> = {
  * home slot matches do we return it. Otherwise we return undefined so the
  * caller derives a fresh slot rather than silently overwriting the wrong one
  * (the wrong-slot failure mode behind AIROBUILD-2364).
+ *
+ * Caller must check the returned slot is untouched scaffold before overwriting (AIROBUILD-2789).
  */
 function findSlotByAssetRole(
   manifest: MediaManifest,
@@ -1870,20 +1874,35 @@ export class MediaManifestService {
       // different value and must not be treated as equivalent.
       const contentHash = crypto.createHash('sha256').update(fileBuffer).digest('hex');
 
-      // Slot resolution is driven by INTENT, never by byte identity. We do NOT
-      // short-circuit to an existing slot just because the same bytes/filename
-      // already back one — that conflated "same image" with "same placement"
-      // and let one upload hijack an unrelated slot (e.g. a QR code or a second
-      // section photo resolving onto the hero). Resolution order:
-      //   1. explicit slotName from the caller (agent import_upload, UI routes)
-      //   2. the canonical hero/background slot for an auto-registered role
-      //      (findSlotByAssetRole — keeps existing src references valid)
-      //   3. a freshly derived, unique slot path
-      // `contentHash` is still recorded on the slot below as stable identity
-      // metadata, but it never selects which slot an upload lands in.
-      const slotName =
+      // Intent-driven resolution: explicit slotName → scaffold role slot → fresh path (AIROBUILD-2789).
+      const roleCandidate: string | undefined =
+        !options.slotName && assetRole
+          ? findSlotByAssetRole(manifest, assetRole)
+          : undefined;
+      const roleCandidateSlot: MediaSlot | undefined = roleCandidate
+        ? manifest[roleCandidate]
+        : undefined;
+      const roleCandidateIsScaffold: boolean =
+        roleCandidateSlot !== undefined &&
+        roleCandidateSlot.userModified === false &&
+        Object.keys(roleCandidateSlot.uploadSources ?? {}).length === 0 &&
+        (roleCandidateSlot.aiGeneratedUrls?.length ?? 0) === 0;
+      const deflectedFromCanonical: boolean = !!roleCandidate && !roleCandidateIsScaffold;
+      if (deflectedFromCanonical) {
+        logger.info('media_manifest.import_chat_upload.role_slot_skipped', {
+          appId,
+          slotPath: roleCandidate,
+          assetRole,
+          reason: roleCandidateSlot?.userModified
+            ? 'userModified'
+            : (roleCandidateSlot?.aiGeneratedUrls?.length ?? 0) > 0
+              ? 'hasAiGeneratedUrls'
+              : 'hasUploadSources',
+        });
+      }
+      const slotName: string =
         options.slotName?.trim().replace(/^\/+|\/+$/g, '') ||
-        (assetRole ? findSlotByAssetRole(manifest, assetRole) : undefined) ||
+        (roleCandidate && roleCandidateIsScaffold ? roleCandidate : undefined) ||
         deriveChatUploadSlotPath(manifest, { filename, assetRole });
 
       if (slotName.includes('..') || slotName.startsWith('/') || slotName.includes('\0')) {
@@ -2028,6 +2047,7 @@ export class MediaManifestService {
         uploadedUrl,
         slot: updatedSlot,
         commitHash,
+        deflectedFromCanonical,
       };
     } catch (error) {
       logger.error('media_manifest.import_chat_upload.error', {

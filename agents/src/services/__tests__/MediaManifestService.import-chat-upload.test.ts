@@ -516,5 +516,279 @@ describe('MediaManifestService - importChatUploadToSlot', function importChatUpl
       expect(result.success).toBe(false);
       expect(fs.unlink).not.toHaveBeenCalled();
     });
+
+    // AIROBUILD-2789 — auto-register must NOT overwrite a user-customized canonical role slot.
+    describe('auto-register guard against clobbering user-customized canonical slots (AIROBUILD-2789)', function airobuild2789Tests() {
+      it('does NOT overwrite a user-modified canonical hero slot (Getty pick the user accepted)', async function preserveUserAcceptedStockHero(): Promise<void> {
+        // Pre: userModified=true Getty pick. A later unrelated hero-tagged upload must not displace it.
+        vi.mocked(fs.readFile).mockImplementation(async (filePath: fs.FileHandle | string | Buffer | URL): Promise<string | Buffer> => {
+          if (String(filePath).endsWith('airo-media.json')) {
+            return JSON.stringify({
+              'pages/home/hero': {
+                mediaType: 'image',
+                currentUrl: 'https://isteam.dev-wsimg.com/getty/user-accepted-coffee',
+                searchQuery: 'coffee shop interior',
+                alternatives: [],
+                userModified: true,
+                gettyId: 'user-accepted-coffee',
+                createdAt: '2026-06-22T00:00:00.000Z',
+                lastUpdated: '2026-06-22T00:00:00.000Z',
+              },
+            });
+          }
+          return Buffer.from('fake-image-bytes');
+        });
+
+        const result = await service.importChatUploadToSlot('test-app', {
+          filename: 'stored-hero.jpg',
+          assetRole: 'hero_image',
+          createIfMissing: true,
+        });
+
+        expect(result.success).toBe(true);
+        if (result.success) {
+          expect(result.slotPath).not.toBe('pages/home/hero');
+          expect(result.slotPath).toMatch(/^uploads\/hero-/);
+          expect(result.slotUrl).toMatch(/^\/airo-assets\/images\/uploads\/hero-/);
+          expect(result.slot.currentUrl).toMatch(/^\/airo-assets\/uploads\//);
+        }
+      });
+
+      it('does NOT overwrite a hero slot already backed by a prior user upload', async function preserveExistingUploadHero(): Promise<void> {
+        // Pre: hero backed by a prior user upload (uploadSources populated). A subsequent unrelated hero-tagged upload must land in a fresh slot.
+        vi.mocked(fs.readFile).mockImplementation(async (filePath: fs.FileHandle | string | Buffer | URL): Promise<string | Buffer> => {
+          if (String(filePath).endsWith('airo-media.json')) {
+            return JSON.stringify({
+              'pages/home/hero': {
+                mediaType: 'image',
+                currentUrl: '/airo-assets/uploads/pages-home-hero-prevhash.jpg',
+                searchQuery: '',
+                alternatives: [],
+                userModified: true,
+                uploadSources: {
+                  '/airo-assets/uploads/pages-home-hero-prevhash.jpg': 'previous-user-upload.jpg',
+                },
+                uploadContentHash: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+                createdAt: '2026-06-22T00:00:00.000Z',
+                lastUpdated: '2026-06-22T00:00:00.000Z',
+              },
+            });
+          }
+          return Buffer.from('fake-image-bytes');
+        });
+
+        const result = await service.importChatUploadToSlot('test-app', {
+          filename: 'stored-hero.jpg',
+          assetRole: 'hero_image',
+          createIfMissing: true,
+        });
+
+        expect(result.success).toBe(true);
+        if (result.success) {
+          expect(result.slotPath).not.toBe('pages/home/hero');
+          expect(result.slotPath).toMatch(/^uploads\/hero-/);
+        }
+      });
+
+      it('does NOT overwrite a user-modified canonical background slot', async function preserveUserBackground(): Promise<void> {
+        vi.mocked(fs.readFile).mockImplementation(async (filePath: fs.FileHandle | string | Buffer | URL): Promise<string | Buffer> => {
+          if (String(filePath).endsWith('airo-media.json')) {
+            return JSON.stringify({
+              'pages/home/background': {
+                mediaType: 'image',
+                currentUrl: 'https://isteam.dev-wsimg.com/getty/user-accepted-bg',
+                searchQuery: 'pattern',
+                alternatives: [],
+                userModified: true,
+                gettyId: 'user-accepted-bg',
+                createdAt: '2026-06-22T00:00:00.000Z',
+                lastUpdated: '2026-06-22T00:00:00.000Z',
+              },
+            });
+          }
+          return Buffer.from('fake-image-bytes');
+        });
+
+        const result = await service.importChatUploadToSlot('test-app', {
+          filename: 'stored-hero.jpg',
+          assetRole: 'background',
+          createIfMissing: true,
+        });
+
+        expect(result.success).toBe(true);
+        if (result.success) {
+          expect(result.slotPath).not.toBe('pages/home/background');
+          expect(result.slotPath).toMatch(/^uploads\/background-/);
+        }
+      });
+
+      it('STILL replaces the initial AI scaffold hero (userModified=false, no uploadSources) — AIROBUILD-2364 stays green', async function scaffoldReplacementUnchanged(): Promise<void> {
+        // AIROBUILD-2364 contract: untouched scaffold is still a legitimate replace target.
+        vi.mocked(fs.readFile).mockImplementation(async (filePath: fs.FileHandle | string | Buffer | URL): Promise<string | Buffer> => {
+          if (String(filePath).endsWith('airo-media.json')) {
+            return JSON.stringify({
+              'pages/home/hero': {
+                mediaType: 'image',
+                currentUrl: 'https://isteam.dev-wsimg.com/getty/initial-scaffold',
+                searchQuery: 'coffee shop',
+                alternatives: [],
+                userModified: false,
+                gettyId: 'initial-scaffold',
+                createdAt: '2026-06-22T00:00:00.000Z',
+                lastUpdated: '2026-06-22T00:00:00.000Z',
+              },
+            });
+          }
+          return Buffer.from('fake-image-bytes');
+        });
+
+        const result = await service.importChatUploadToSlot('test-app', {
+          filename: 'stored-hero.jpg',
+          assetRole: 'hero_image',
+          createIfMissing: true,
+        });
+
+        expect(result.success).toBe(true);
+        if (result.success) {
+          expect(result.slotPath).toBe('pages/home/hero');
+          expect(result.slot.currentUrl).toMatch(/^\/airo-assets\/uploads\//);
+        }
+      });
+
+      it('explicit slotName from the agent still replaces in place even when the existing slot is user-modified', async function explicitSlotStillReplaces(): Promise<void> {
+        // Explicit slotName = explicit user intent; replacement-in-place is preserved.
+        vi.mocked(fs.readFile).mockImplementation(async (filePath: fs.FileHandle | string | Buffer | URL): Promise<string | Buffer> => {
+          if (String(filePath).endsWith('airo-media.json')) {
+            return JSON.stringify({
+              'pages/home/hero': {
+                mediaType: 'image',
+                currentUrl: 'https://isteam.dev-wsimg.com/getty/user-accepted-coffee',
+                searchQuery: 'coffee shop',
+                alternatives: [],
+                userModified: true,
+                gettyId: 'user-accepted-coffee',
+                createdAt: '2026-06-22T00:00:00.000Z',
+                lastUpdated: '2026-06-22T00:00:00.000Z',
+              },
+            });
+          }
+          return Buffer.from('fake-image-bytes');
+        });
+
+        const result = await service.importChatUploadToSlot('test-app', {
+          filename: 'stored-hero.jpg',
+          slotName: 'pages/home/hero',
+          createIfMissing: false,
+        });
+
+        expect(result.success).toBe(true);
+        if (result.success) {
+          expect(result.slotPath).toBe('pages/home/hero');
+          expect(result.slot.currentUrl).toMatch(/^\/airo-assets\/uploads\//);
+          expect(result.slot.alternatives).toContain('https://isteam.dev-wsimg.com/getty/user-accepted-coffee');
+        }
+      });
+
+      it('does NOT overwrite a hero slot backed by aiGeneratedUrls (AI-generated hero counts as user-meaningful, not scaffold) — review finding #4', async function preserveAiGeneratedHero(): Promise<void> {
+        // aiGeneratedUrls counts as user-meaningful — AI hero must not be silently clobbered.
+        vi.mocked(fs.readFile).mockImplementation(async (filePath: fs.FileHandle | string | Buffer | URL): Promise<string | Buffer> => {
+          if (String(filePath).endsWith('airo-media.json')) {
+            return JSON.stringify({
+              'pages/home/hero': {
+                mediaType: 'image',
+                currentUrl: '/airo-assets/uploads/pages-home-hero-ai-gen.jpg',
+                searchQuery: '',
+                alternatives: [],
+                userModified: false,
+                aiGeneratedUrls: ['/airo-assets/uploads/pages-home-hero-ai-gen.jpg'],
+                createdAt: '2026-06-22T00:00:00.000Z',
+                lastUpdated: '2026-06-22T00:00:00.000Z',
+              },
+            });
+          }
+          return Buffer.from('fake-image-bytes');
+        });
+
+        const result = await service.importChatUploadToSlot('test-app', {
+          filename: 'stored-hero.jpg',
+          assetRole: 'hero_image',
+          createIfMissing: true,
+        });
+
+        expect(result.success).toBe(true);
+        if (result.success) {
+          expect(result.slotPath).not.toBe('pages/home/hero');
+          expect(result.slotPath).toMatch(/^uploads\/hero-/);
+          expect(result.deflectedFromCanonical).toBe(true);
+        }
+      });
+
+      it('sets deflectedFromCanonical:true when the guard fires; false when scaffold is reused — review finding #1 plumbing', async function deflectedFlag(): Promise<void> {
+        vi.mocked(fs.readFile).mockImplementation(async (filePath: fs.FileHandle | string | Buffer | URL): Promise<string | Buffer> => {
+          if (String(filePath).endsWith('airo-media.json')) {
+            return JSON.stringify({
+              'pages/home/hero': {
+                mediaType: 'image',
+                currentUrl: 'https://isteam.dev-wsimg.com/getty/initial-scaffold',
+                searchQuery: 'coffee shop',
+                alternatives: [],
+                userModified: false,
+                gettyId: 'initial-scaffold',
+                createdAt: '2026-06-22T00:00:00.000Z',
+                lastUpdated: '2026-06-22T00:00:00.000Z',
+              },
+            });
+          }
+          return Buffer.from('fake-image-bytes');
+        });
+
+        const scaffoldResult = await service.importChatUploadToSlot('test-app', {
+          filename: 'stored-hero.jpg',
+          assetRole: 'hero_image',
+          createIfMissing: true,
+        });
+        expect(scaffoldResult.success).toBe(true);
+        if (scaffoldResult.success) {
+          expect(scaffoldResult.slotPath).toBe('pages/home/hero');
+          expect(scaffoldResult.deflectedFromCanonical).toBe(false);
+        }
+      });
+
+      it('same bytes re-uploaded against a user-customized hero still lands in a fresh slot (intent-driven, no byte-identity short-circuit)', async function sameBytesIntoFreshSlot(): Promise<void> {
+        // Intent-driven (no byte-identity short-circuit): same bytes against a user-customized hero still routes to a fresh slot via the AIROBUILD-2789 guard.
+        vi.mocked(fs.readFile).mockImplementation(async (filePath: fs.FileHandle | string | Buffer | URL): Promise<string | Buffer> => {
+          if (String(filePath).endsWith('airo-media.json')) {
+            return JSON.stringify({
+              'pages/home/hero': {
+                mediaType: 'image',
+                currentUrl: '/airo-assets/uploads/pages-home-hero-prevhash.jpg',
+                searchQuery: '',
+                alternatives: [],
+                userModified: true,
+                uploadSources: {
+                  '/airo-assets/uploads/pages-home-hero-prevhash.jpg': 'previous-user-upload.jpg',
+                },
+                uploadContentHash: FAKE_IMAGE_CONTENT_HASH,
+                createdAt: '2026-06-22T00:00:00.000Z',
+                lastUpdated: '2026-06-22T00:00:00.000Z',
+              },
+            });
+          }
+          return Buffer.from('fake-image-bytes');
+        });
+
+        const result = await service.importChatUploadToSlot('test-app', {
+          filename: 'stored-hero.jpg',
+          assetRole: 'hero_image',
+          createIfMissing: true,
+        });
+
+        expect(result.success).toBe(true);
+        if (result.success) {
+          expect(result.slotPath).not.toBe('pages/home/hero');
+          expect(result.slotPath).toMatch(/^uploads\/hero-/);
+        }
+      });
+    });
   });
 });

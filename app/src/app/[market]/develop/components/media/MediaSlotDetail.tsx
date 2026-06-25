@@ -3,6 +3,7 @@
 import clsx from 'clsx'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { FormattedMessage } from 'react-intl'
+import { useQueryClient } from '@tanstack/react-query'
 import Button from '@ux/button'
 import ChevronDownIcon from '@ux/icon/chevron-down'
 import ChevronUpIcon from '@ux/icon/chevron-up'
@@ -134,17 +135,37 @@ export function MediaSlotDetail({
   // which cache-busts upload thumbnails that were overwritten in-place.
   const [cacheBustTs] = useState(() => Date.now())
 
-  const { slot: fetchedSlot, isLoading, isFetching, error, refetch, setSlotData } = useMediaSlot({
+  const { slot: fetchedSlot, isLoading, isFetching, error, notFound, refetch, setSlotData } = useMediaSlot({
     appId,
     slotName,
     enabled,
   })
 
   const { manifest, isLoading: isManifestLoading, refetch: refetchManifest } = useMediaManifest({ appId, enabled })
+  const queryClient = useQueryClient()
 
   const slot = fetchedSlot ?? manifest?.[slotName] ?? null
   const showLoading = (isLoading || isFetching || isManifestLoading) && !slot
   const showLoadError = Boolean(error && !slot && !isLoading && !isFetching && !isManifestLoading)
+
+  // Bounce only on first-open 404; mid-edit refetch 404s must NOT yank the user (review #3).
+  // Slot-keyed so in-place slotName changes (preview Replace handoff) invalidate the flag automatically.
+  const hasShownSlotForRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (fetchedSlot) hasShownSlotForRef.current = slotName
+  }, [fetchedSlot, slotName])
+  useEffect(() => {
+    if (!notFound || hasShownSlotForRef.current === slotName) return
+    // Optimistic cache drop so grid doesn't flash the stale entry before refetch settles (review #8).
+    queryClient.setQueryData<Record<string, unknown> | null>(['mediaManifest', appId], (old) => {
+      if (!old) return old
+      const next: Record<string, unknown> = { ...old }
+      delete next[slotName]
+      return next
+    })
+    void refetchManifest()
+    onDone?.()
+  }, [notFound, refetchManifest, onDone, queryClient, appId, slotName])
 
   const mediaScrollTotalMatches = useMediaSlotDialogStore((s) => s.mediaScrollTotalMatches)
   const mediaScrollCurrentIndex = useMediaSlotDialogStore((s) => s.mediaScrollCurrentIndex)

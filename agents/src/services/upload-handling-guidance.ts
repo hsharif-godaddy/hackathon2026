@@ -15,6 +15,8 @@ export interface UploadHandlingInput {
   slotUrl?: string | null
   storedUploadFilename?: string | null
   isImage?: boolean
+  /** True when auto-register routed to a fresh `uploads/<role>-<slug>` instead of the canonical role slot (AIROBUILD-2789 guard fired). Adjusts hero/background guidance so the agent doesn't silently swap the rendered hero. */
+  deflectedFromCanonical?: boolean
 }
 
 export function shouldAutoRegisterUpload(input: UploadHandlingInput): boolean {
@@ -76,6 +78,16 @@ export function buildUploadHandlingGuidance(input: UploadHandlingInput): string 
     // Sanitize the slot URL before interpolating into an agent-facing code span
     // (it derives from a partly filename-based semantic path).
     const slotUrl = sanitizeUploadFileNameForDisplay(input.slotUrl)
+    if (input.deflectedFromCanonical) {
+      // Deflected by AIROBUILD-2789 guard — require describe-before-replace, don't claim it's THE hero.
+      lines.push(
+        `- User intent: **display on site** — the upload was registered to a NEW slot \`${slotUrl}\`. The canonical ${role} still has the user's previously accepted image.`,
+        `- Do NOT swap the rendered ${role} silently. FIRST describe the current ${role} in plain language ("Your current ${role} is the coffee photo") and ask whether to replace it with this new upload. Only after explicit "yes, replace it" do you edit the ${role} element's \`<img src>\` / CSS background to point at \`${slotUrl}\`.`,
+        `- If the user prefers to keep both, use \`${slotUrl}\` for a new section/element rather than the canonical ${role}.`,
+        '- Do NOT copy to public/assets or use /files/uploads/ for this image.',
+      )
+      return lines.join('\n')
+    }
     lines.push(
       `- User intent: **display on site** — this is the ${role} image; use slot URL \`${slotUrl}\` in code`,
       '- Do NOT copy to public/assets or use /files/uploads/ for this image.',
@@ -88,7 +100,7 @@ export function buildUploadHandlingGuidance(input: UploadHandlingInput): string 
     lines.push(
       '- User intent: **display on site** — register a media slot for THIS placement:',
       `\`media({ action: "import_upload", slot: "<semantic-name>", filename: "${filename}" })\``,
-      '- Each position on the site is its own slot. ADDING a new element (e.g. another card) → use a NEW slot name. REPLACING an existing element → pass that element\'s exact existing slot path. The same uploaded file can back multiple slots and they update independently — do NOT reuse another element\'s slot URL just because the image is the same.',
+      '- Each position on the site is its own slot. ADDING a new element (e.g. another card) → use a NEW slot name. REPLACING an existing element → FIRST describe the current contents in plain language ("Your current hero is the coffee photo — want me to replace it with this one?") and wait for an explicit "yes, replace it" before passing that element\'s slot path to `import_upload`. Do NOT replace silently. If the user prefers to keep both, register to a NEW slot name instead. The same uploaded file can back multiple slots and they update independently.',
       '- Use the returned `slotUrl` in `<img src="…">` or CSS background-image.',
     )
     return lines.join('\n')
@@ -98,9 +110,12 @@ export function buildUploadHandlingGuidance(input: UploadHandlingInput): string 
   lines.push(
     '- User intent: **unclear** — the user uploaded this but has not said where it should go.',
     '- Ask where they want it before placing it. Do NOT place it on the site until the user tells you where.',
-    '- The moment the user confirms a location — in THIS turn or a later reply such as "yes" / "the hero" / "on the homepage" — register it immediately, do NOT re-ask:',
+    '- IMPORTANT — vague positive sentiment is NOT a placement instruction: "I like this", "nice photo", "looks great", "love it", "perfect", "cool". A bare "yes" is also not placement unless it directly answers a yes/no placement question you asked in your previous message (e.g. you asked "should I use this as the hero?" → "yes" is confirmation).',
+    '- Once the user names an explicit location, register the upload:',
+    '  - ADDING a new element → use a NEW semantic slot name.',
+    '  - REPLACING an existing element → FIRST describe the current contents in plain language ("Your current hero is the coffee photo — want me to replace it with this one?") and wait for an explicit "yes, replace it" before calling `import_upload` against that slot path. Do NOT replace silently. If the user prefers to keep both, register to a NEW slot name like `uploads/hero-<descriptor>` instead.',
     `\`media({ action: "import_upload", slot: "<semantic-name>", filename: "${unclearFilename}" })\``,
-    '- REPLACING an existing image (e.g. "use this for the hero", "swap the about photo") → pass that element\'s EXACT existing slot path so the image updates in place; do NOT invent a new slot. ADDING a brand-new element → use a new semantic slot name.',
+    '- REPLACING an existing image — pass that element\'s EXACT existing slot path so the image updates in place; do NOT invent a new slot. ADDING a brand-new element — use a new semantic slot name.',
     '- Then use the returned `slotUrl` in `<img src="…">` or CSS background-image. Do NOT copy to public/assets or use /files/uploads/ for this image.',
   )
   return lines.join('\n')

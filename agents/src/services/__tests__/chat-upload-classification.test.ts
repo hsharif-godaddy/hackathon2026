@@ -51,7 +51,7 @@ describe('classifyAndGuideChatUploadImage', () => {
   it('returns all-null when classification fails', async () => {
     mockedClassify.mockResolvedValue(null)
     const result = await classifyAndGuideChatUploadImage({ appId: 'a', fileName: 'hero.jpg', buffer, userPrompt: 'x' })
-    expect(result).toEqual({ classification: null, guidance: null, slotUrl: null, storedUploadFilename: null })
+    expect(result).toEqual({ classification: null, guidance: null, slotUrl: null, storedUploadFilename: null, deflectedFromCanonical: false })
     expect(mockedImport).not.toHaveBeenCalled()
   })
 
@@ -78,6 +78,40 @@ describe('classifyAndGuideChatUploadImage', () => {
     expect(mockedImport).toHaveBeenCalledWith('a', { filename: 'stored.jpg', assetRole: 'hero_image', createIfMissing: true })
     expect(result.slotUrl).toBe('/airo-assets/images/uploads/hero-x')
     expect(result.guidance).toContain('/airo-assets/images/uploads/hero-x')
+  })
+
+  it('returns deflectedFromCanonical on the result so persisted classifications + other renderers can rebuild describe-before-replace guidance', async () => {
+    mockedClassify.mockResolvedValue(classification({ placementIntent: 'display_on_site', assetRole: 'hero_image' }))
+    mockedImport.mockResolvedValue({
+      success: true,
+      slotPath: 'uploads/hero-x',
+      slotUrl: '/airo-assets/images/uploads/hero-x',
+      uploadedUrl: '/airo-assets/uploads/x.jpg',
+      slot: { mediaType: 'image', currentUrl: '/airo-assets/uploads/x.jpg', searchQuery: '', alternatives: [], userModified: true },
+      deflectedFromCanonical: true,
+    } as never)
+
+    const result = await classifyAndGuideChatUploadImage({ appId: 'a', fileName: 'hero.jpg', buffer, userPrompt: 'use as hero' })
+
+    expect(result.deflectedFromCanonical).toBe(true)
+  })
+
+  it('plumbs deflectedFromCanonical through to the guidance — deflected hero must NOT be framed as THE hero (review finding #1)', async () => {
+    mockedClassify.mockResolvedValue(classification({ placementIntent: 'display_on_site', assetRole: 'hero_image' }))
+    mockedImport.mockResolvedValue({
+      success: true,
+      slotPath: 'uploads/hero-coffee-beans',
+      slotUrl: '/airo-assets/images/uploads/hero-coffee-beans',
+      uploadedUrl: '/airo-assets/uploads/coffee-beans.jpg',
+      slot: { mediaType: 'image', currentUrl: '/airo-assets/uploads/coffee-beans.jpg', searchQuery: '', alternatives: [], userModified: true },
+      deflectedFromCanonical: true,
+    } as never)
+
+    const result = await classifyAndGuideChatUploadImage({ appId: 'a', fileName: 'beans.jpg', buffer, userPrompt: 'use as hero' })
+
+    expect(result.guidance).not.toMatch(/this is the hero image/)
+    expect(result.guidance).toContain('FIRST describe')
+    expect(result.guidance).toContain('previously accepted')
   })
 
   it('display_on_site + null role (generic photo) → guidance to import_upload, no auto-register', async () => {

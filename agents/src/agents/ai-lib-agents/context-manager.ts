@@ -345,6 +345,7 @@ export class AILibContextManager {
                 slotUrl,
                 storedUploadFilename: entry.storedUploadFilename ?? null,
                 isImage,
+                deflectedFromCanonical: entry.deflectedFromCanonical ?? false,
             })
             const locationLine: string = `File location: \`${isImage ? `src/assets/${displayName}` : `docs/${displayName}`}\``
             conversationContextMessages.push({

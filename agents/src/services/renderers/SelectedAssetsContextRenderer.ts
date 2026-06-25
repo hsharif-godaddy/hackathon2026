@@ -122,6 +122,7 @@ export class SelectedAssetsContextRenderer implements ContextAttachmentRenderer<
                   slotUrl: priorEntry.slotUrl ?? null,
                   storedUploadFilename: priorEntry.storedUploadFilename ?? null,
                   isImage: true,
+                  deflectedFromCanonical: priorEntry.deflectedFromCanonical ?? false,
                 })
               } else {
                 const result = await classifyAndGuideChatUploadImage({
@@ -143,6 +144,7 @@ export class SelectedAssetsContextRenderer implements ContextAttachmentRenderer<
                     fileName: asset.filename,
                     ...(result.slotUrl ? { slotUrl: result.slotUrl } : {}),
                     ...(result.storedUploadFilename ? { storedUploadFilename: result.storedUploadFilename } : {}),
+                    ...(result.deflectedFromCanonical ? { deflectedFromCanonical: true } : {}),
                   })
                 }
               }

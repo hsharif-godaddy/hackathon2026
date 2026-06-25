@@ -95,6 +95,35 @@ describe('buildUploadHandlingGuidance', () => {
     expect(out).toContain('Do NOT copy to public/assets');
   });
 
+  it('deflected hero upload (Surface 1 routed to a side slot) → guidance must NOT claim it is the hero; describe-before-replace required', () => {
+    // Review #1: deflected hero must NOT be framed as "the hero" (agent would still swap displayed hero).
+    const out: string = buildUploadHandlingGuidance(
+      input({
+        placementIntent: 'display_on_site',
+        assetRole: 'hero_image',
+        slotUrl: '/airo-assets/images/uploads/hero-coffee-beans',
+        deflectedFromCanonical: true,
+      }),
+    );
+    expect(out).not.toMatch(/this is the hero image/);
+    expect(out).toContain('NEW slot');
+    expect(out).toContain('previously accepted');
+    expect(out).toContain('FIRST describe');
+    expect(out).toMatch(/yes, replace it/);
+    expect(out).toContain('/airo-assets/images/uploads/hero-coffee-beans');
+  });
+
+  it('display_on_site without slotUrl → describe-before-replace required for the REPLACING branch (review finding #2)', () => {
+    // Review #2: display_on_site path bypasses Surface 1 guard via explicit slotName — needs the same safeguard.
+    const out: string = buildUploadHandlingGuidance(
+      input({ placementIntent: 'display_on_site', assetRole: null, storedUploadFilename: 'photo-1.jpg' }),
+    );
+    expect(out).toContain('FIRST describe');
+    expect(out).toMatch(/yes, replace it/);
+    expect(out).toContain('REPLACING');
+    expect(out).toContain('NEW slot');
+  });
+
   it('display_on_site without a slot → instruct import_upload with the stored filename (no skill name)', () => {
     const out = buildUploadHandlingGuidance(
       input({ placementIntent: 'display_on_site', assetRole: null, storedUploadFilename: 'stored-x.jpg' }),
@@ -131,5 +160,42 @@ describe('buildUploadHandlingGuidance', () => {
   it('non-image documents are labelled as document', () => {
     const out = buildUploadHandlingGuidance(input({ fileName: 'spec.pdf', isImage: false }));
     expect(out).toContain('File type: document');
+  });
+
+  // AIROBUILD-2789 Surface 2 — unclear-branch guidance must stop the agent inferring placement from vague sentiment and require describe-before-replace.
+  describe('unclear branch — Surface 2 safeguards', () => {
+    it('lists vague positive sentiment as NOT a placement instruction (with explicit examples)', () => {
+      const out: string = buildUploadHandlingGuidance(input({ placementIntent: 'unclear' }));
+      expect(out).toContain('vague positive sentiment');
+      expect(out).toContain('NOT a placement instruction');
+      expect(out).toContain('I like this');
+      expect(out).toContain('nice photo');
+    });
+
+    it('narrows "yes" — bare yes counts only when answering a yes/no placement question the agent just asked', () => {
+      const out: string = buildUploadHandlingGuidance(input({ placementIntent: 'unclear' }));
+      expect(out).toMatch(/bare ['"]?yes['"]?/i);
+      expect(out).toContain('yes/no placement question');
+    });
+
+    it('describe-before-replace: before clobbering an existing element\'s slot, agent must describe current contents and wait for explicit confirmation', () => {
+      const out: string = buildUploadHandlingGuidance(input({ placementIntent: 'unclear' }));
+      expect(out).toContain('FIRST describe');
+      expect(out).toMatch(/wait for (an )?explicit/i);
+    });
+
+    it('offers a non-destructive alternative — keep both by registering to a new slot name', () => {
+      const out: string = buildUploadHandlingGuidance(input({ placementIntent: 'unclear' }));
+      expect(out).toMatch(/uploads\/hero-/);
+      expect(out).toMatch(/keep both|new slot/i);
+    });
+
+    it('still tells the agent the import_upload call shape so an explicit confirmation remains actionable', () => {
+      const out: string = buildUploadHandlingGuidance(
+        input({ placementIntent: 'unclear', storedUploadFilename: 'app123_456_photo.jpg' }),
+      );
+      expect(out).toContain('import_upload');
+      expect(out).toContain('app123_456_photo.jpg');
+    });
   });
 });

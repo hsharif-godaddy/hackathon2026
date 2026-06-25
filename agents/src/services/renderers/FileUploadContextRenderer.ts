@@ -222,11 +222,16 @@ async function classifyText(content: string, fileName: string, userPrompt: strin
   }
 }
 
+interface RegisterChatUploadSlotResult {
+  slotUrl: string | null
+  deflectedFromCanonical: boolean
+}
+
 async function registerChatUploadSlot(
   appId: string,
   storedUploadFilename: string,
   assetRole: SlotEligibleAssetRole
-): Promise<string | null> {
+): Promise<RegisterChatUploadSlotResult> {
   try {
     const result = await mediaManifestService.importChatUploadToSlot(appId, {
       filename: storedUploadFilename,
@@ -241,7 +246,7 @@ async function registerChatUploadSlot(
         assetRole,
         error: result.error,
       })
-      return null
+      return { slotUrl: null, deflectedFromCanonical: false }
     }
 
     logger.info('context.renderer.file_upload.slot_registered', {
@@ -249,9 +254,10 @@ async function registerChatUploadSlot(
       storedUploadFilename,
       assetRole,
       slotPath: result.slotPath,
+      deflectedFromCanonical: result.deflectedFromCanonical ?? false,
     })
 
-    return result.slotUrl
+    return { slotUrl: result.slotUrl, deflectedFromCanonical: result.deflectedFromCanonical ?? false }
   } catch (error) {
     logger.warn('context.renderer.file_upload.slot_register_error', {
       appId,
@@ -259,7 +265,7 @@ async function registerChatUploadSlot(
       assetRole,
       error: error instanceof Error ? error.message : String(error),
     })
-    return null
+    return { slotUrl: null, deflectedFromCanonical: false }
   }
 }
 
@@ -368,6 +374,7 @@ export class FileUploadContextRenderer implements ContextAttachmentRenderer {
           fileName: file.name,
           ...(result.slotUrl ? { slotUrl: result.slotUrl } : {}),
           ...(result.storedUploadFilename ? { storedUploadFilename: result.storedUploadFilename } : {}),
+          ...(result.deflectedFromCanonical ? { deflectedFromCanonical: true } : {}),
         })
       }
     }
@@ -399,6 +406,7 @@ export class FileUploadContextRenderer implements ContextAttachmentRenderer {
     classification?: UploadClassification
     slotUrl?: string
     storedUploadFilename?: string
+    deflectedFromCanonical?: boolean
   } | null> {
     const fileName = file.name
     // Display-safe variant for agent-facing markdown; raw fileName is still
@@ -446,12 +454,15 @@ export class FileUploadContextRenderer implements ContextAttachmentRenderer {
         // takes a per-app lock, de-duplicates by upload filename (re-renders of
         // the same turn are idempotent), and failures are non-fatal — a null
         // slotUrl just falls back to the import_upload guidance below.
+        let deflectedFromCanonical: boolean = false
         if (shouldAutoRegisterUpload(handlingInput) && storedUploadFilename) {
-          slotUrl = await registerChatUploadSlot(
+          const registered = await registerChatUploadSlot(
             appId,
             storedUploadFilename,
             result.classification.assetRole as SlotEligibleAssetRole
           )
+          slotUrl = registered.slotUrl
+          deflectedFromCanonical = registered.deflectedFromCanonical
         }
 
         const sections = [
@@ -463,7 +474,7 @@ export class FileUploadContextRenderer implements ContextAttachmentRenderer {
           '',
           `Image uploaded to: \`src/assets/${displayName}\``,
           '',
-          buildUploadHandlingGuidance({ ...handlingInput, slotUrl }),
+          buildUploadHandlingGuidance({ ...handlingInput, slotUrl, deflectedFromCanonical }),
         ]
 
         logger.info('context.renderer.file_upload.image_classified', {
@@ -477,6 +488,7 @@ export class FileUploadContextRenderer implements ContextAttachmentRenderer {
           classification: result.classification,
           ...(slotUrl ? { slotUrl } : {}),
           ...(storedUploadFilename ? { storedUploadFilename } : {}),
+          ...(deflectedFromCanonical ? { deflectedFromCanonical: true } : {}),
         }
       }
 

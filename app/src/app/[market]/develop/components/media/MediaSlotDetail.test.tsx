@@ -4,6 +4,7 @@
 import '@testing-library/jest-dom';
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { QueryClient } from '@tanstack/react-query';
 import { screen, waitFor } from '@testing-library/react';
 
 import { getParentOrigin } from '@/components/security/allowed-frame-ancestors';
@@ -147,6 +148,7 @@ describe('MediaSlotDetail', () => {
       isLoading: false,
       isFetching: false,
       error: 'Failed to fetch',
+      notFound: false,
       refetch: mockRefetch,
     } as unknown as ReturnType<typeof useMediaSlot>);
 
@@ -164,6 +166,177 @@ describe('MediaSlotDetail', () => {
     await user.click(screen.getByRole('button', { name: 'builder_common_retry' }));
     expect(mockRefetch).toHaveBeenCalled();
     expect(mockRefetchManifest).toHaveBeenCalled();
+  });
+
+  it('bounces to grid (refetch manifest + onDone) when the per-slot fetch returns 404 — AIROBUILD-2789 Media Library Layer 1', async () => {
+    // TOCTOU bounce: slot gone from manifest by detail-fetch time → refresh manifest + onDone, no panel-wide error.
+    vi.mocked(useMediaSlot).mockReturnValue({
+      slot: null,
+      isLoading: false,
+      isFetching: false,
+      error: null,
+      notFound: true,
+      refetch: mockRefetch,
+    } as unknown as ReturnType<typeof useMediaSlot>);
+
+    vi.mocked(useMediaManifest).mockReturnValue({
+      manifest: null,
+      isLoading: false,
+      refetch: mockRefetchManifest,
+    } as unknown as ReturnType<typeof useMediaManifest>);
+
+    renderWithProviders(<MediaSlotDetail appId={mockAppId} slotName={mockSlotName} onDone={mockOnDone} />);
+
+    await waitFor(() => {
+      expect(mockOnDone).toHaveBeenCalledTimes(1);
+      expect(mockRefetchManifest).toHaveBeenCalledTimes(1);
+    });
+
+    // Panel-wide error must NOT flash during the silent bounce.
+    expect(screen.queryByText('builder_mediaslot_error_fail_title')).not.toBeInTheDocument();
+  });
+
+  it('resets hasShownSlot on in-place slot change — first-open 404 on a new slot still bounces after viewing a different slot', async () => {
+    // Component is rendered without a `key`, so slotName changes re-render in place.
+    // Without resetting hasShownSlotRef inside resetStateOnSlotChange, navigating
+    // from a slot you saw (e.g. preview Replace handoff) to a slot that 404s
+    // would leave the user stranded on an empty panel.
+    vi.mocked(useMediaSlot).mockReturnValue({
+      slot: { currentUrl: '/a.jpg', alternatives: [], mediaType: 'image', searchQuery: '' },
+      isLoading: false,
+      isFetching: false,
+      error: null,
+      notFound: false,
+      refetch: mockRefetch,
+    } as unknown as ReturnType<typeof useMediaSlot>);
+
+    vi.mocked(useMediaManifest).mockReturnValue({
+      manifest: null,
+      isLoading: false,
+      refetch: mockRefetchManifest,
+    } as unknown as ReturnType<typeof useMediaManifest>);
+
+    const { rerender } = renderWithProviders(
+      <MediaSlotDetail appId={mockAppId} slotName="pages/home/a" onDone={mockOnDone} />,
+    );
+    expect(mockOnDone).not.toHaveBeenCalled();
+
+    vi.mocked(useMediaSlot).mockReturnValue({
+      slot: null,
+      isLoading: false,
+      isFetching: false,
+      error: null,
+      notFound: true,
+      refetch: mockRefetch,
+    } as unknown as ReturnType<typeof useMediaSlot>);
+
+    rerender(
+      <MediaSlotDetail appId={mockAppId} slotName="pages/home/b" onDone={mockOnDone} />,
+    );
+
+    await waitFor(() => {
+      expect(mockOnDone).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it('still bounces when the manifest cache has a stale entry for the slot (live first-open scenario)', async () => {
+    // Live regression: grid cache holds the (now-stale) slot, so manifest?.[slotName] resolves to a fallback object.
+    // The hasShownSlot ref must track fetchedSlot only — manifest fallback doesn't count as "user saw the slot".
+    vi.mocked(useMediaSlot).mockReturnValue({
+      slot: null,
+      isLoading: false,
+      isFetching: false,
+      error: null,
+      notFound: true,
+      refetch: mockRefetch,
+    } as unknown as ReturnType<typeof useMediaSlot>);
+
+    vi.mocked(useMediaManifest).mockReturnValue({
+      manifest: { 'hero/image': { currentUrl: '/stale.jpg', alternatives: [] } },
+      isLoading: false,
+      refetch: mockRefetchManifest,
+    } as unknown as ReturnType<typeof useMediaManifest>);
+
+    renderWithProviders(<MediaSlotDetail appId={mockAppId} slotName={mockSlotName} onDone={mockOnDone} />);
+
+    await waitFor(() => {
+      expect(mockOnDone).toHaveBeenCalledTimes(1);
+      expect(mockRefetchManifest).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it('does NOT bounce when notFound flips AFTER the slot was already shown (mid-edit refetch 404) — review finding #3', async () => {
+    // Mid-edit refetch 404 must NOT bounce — would destroy in-progress state. MediaLoadError path stays.
+    vi.mocked(useMediaSlot).mockReturnValue({
+      slot: { currentUrl: '/img1.jpg', alternatives: [], mediaType: 'image', searchQuery: '' },
+      isLoading: false,
+      isFetching: false,
+      error: null,
+      notFound: false,
+      refetch: mockRefetch,
+    } as unknown as ReturnType<typeof useMediaSlot>);
+
+    vi.mocked(useMediaManifest).mockReturnValue({
+      manifest: { 'hero/image': { currentUrl: '/img1.jpg', alternatives: [] } },
+      isLoading: false,
+      refetch: mockRefetchManifest,
+    } as unknown as ReturnType<typeof useMediaManifest>);
+
+    const { rerender } = renderWithProviders(
+      <MediaSlotDetail appId={mockAppId} slotName={mockSlotName} onDone={mockOnDone} />,
+    );
+
+    expect(mockOnDone).not.toHaveBeenCalled();
+
+    vi.mocked(useMediaSlot).mockReturnValue({
+      slot: null,
+      isLoading: false,
+      isFetching: false,
+      error: null,
+      notFound: true,
+      refetch: mockRefetch,
+    } as unknown as ReturnType<typeof useMediaSlot>);
+
+    rerender(<MediaSlotDetail appId={mockAppId} slotName={mockSlotName} onDone={mockOnDone} />);
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(mockOnDone).not.toHaveBeenCalled();
+  });
+
+  it('on first-open 404 bounce, optimistically removes the slot from the manifest cache before refetch settles — review finding #8', async () => {
+    vi.mocked(useMediaSlot).mockReturnValue({
+      slot: null,
+      isLoading: false,
+      isFetching: false,
+      error: null,
+      notFound: true,
+      refetch: mockRefetch,
+    } as unknown as ReturnType<typeof useMediaSlot>);
+
+    vi.mocked(useMediaManifest).mockReturnValue({
+      manifest: null,
+      isLoading: false,
+      refetch: mockRefetchManifest,
+    } as unknown as ReturnType<typeof useMediaManifest>);
+
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
+    queryClient.setQueryData(['mediaManifest', mockAppId], {
+      'hero/image': { currentUrl: '/img1.jpg', alternatives: [] },
+      'other/slot': { currentUrl: '/img2.jpg', alternatives: [] },
+    });
+
+    renderWithProviders(
+      <MediaSlotDetail appId={mockAppId} slotName={mockSlotName} onDone={mockOnDone} />,
+      { queryClient },
+    );
+
+    await waitFor(() => {
+      expect(mockOnDone).toHaveBeenCalledTimes(1);
+    });
+
+    const cachedManifest = queryClient.getQueryData<Record<string, unknown>>(['mediaManifest', mockAppId]);
+    expect(cachedManifest).not.toHaveProperty('hero/image');
+    expect(cachedManifest).toHaveProperty('other/slot');
   });
 
   it('uses manifest slot data when per-slot fetch fails', () => {
