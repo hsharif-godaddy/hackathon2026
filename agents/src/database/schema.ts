@@ -437,6 +437,7 @@ export enum UtmSource {
   TikTok = 'tiktok',
   YouTube = 'youtube',
   Pinterest = 'pinterest',
+  GoogleBusinessProfile = 'google-business-profile',
   GemEmail = 'gem-email',
   BlogWm = 'blog-wm',
   BlogMwp = 'blog-mwp',
