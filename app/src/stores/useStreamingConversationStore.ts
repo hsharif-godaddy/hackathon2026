@@ -706,6 +706,25 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
       })
     }
 
+    // Surfaced upstream error carrying the server's (#5427) classification, logged
+    // alongside the sibling finalize outcomes so the SSE Errors dashboard can break
+    // failures down by errorType — which finishReason alone cannot distinguish.
+    // errorType holds the full StructuredError['type'] union (app/src/types/errors.ts);
+    // common values include UPSTREAM_ERROR (the default), UPSTREAM_UNAVAILABLE,
+    // UPSTREAM_TIMEOUT, NETWORK_ERROR, STREAM_TYPE_VALIDATION, CONTENT_FILTERED,
+    // APP_NOT_FOUND. statusCode mirrors the server wire field / Loki
+    // `sse.execution.error` (not the persisted message's `errorCode`) so a future
+    // client/agent join lands on one key name.
+    if (activeStream.upstreamError) {
+      logger.warn('streaming-store.stream.finalize.upstream_error', {
+        messageId: activeStream.id,
+        errorType: activeStream.errorType ?? 'UPSTREAM_ERROR',
+        ...(activeStream.errorCode !== undefined && { statusCode: activeStream.errorCode }),
+        ...(activeStream.retryAttempts !== undefined && { retryAttempts: activeStream.retryAttempts }),
+        ...(activeStream.retryReason && { retryReason: activeStream.retryReason }),
+      })
+    }
+
     if (userStopped) {
       logger.info('streaming-store.stream.finalize.user_stopped', {
         messageId: activeStream.id,

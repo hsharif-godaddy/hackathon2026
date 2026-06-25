@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  */
 import { act } from '@testing-library/react';
 
+import { logger } from '@/lib/request-context';
 import {
   type ChatMessage,
   useStreamingConversationStore,
@@ -547,6 +548,96 @@ describe('useStreamingConversationStore', function packageTests() {
 
       const assistantMsg = useStreamingConversationStore.getState().messages.find(m => m.role === 'assistant');
       expect(assistantMsg?.connectionLost).toBe(true);
+    });
+
+    it('emits finalize.upstream_error with errorType and statusCode on a marked upstream error', function upstreamErrorEmit() {
+      const store = useStreamingConversationStore.getState();
+
+      act(() => {
+        store.setCurrentAppId('app-1');
+        store.startNewStream('Build a todo app');
+        useStreamingConversationStore.getState().markUpstreamError({
+          message: 'The AI service is temporarily unavailable.',
+          type: 'UPSTREAM_UNAVAILABLE',
+          statusCode: 500,
+        });
+      });
+
+      act(() => {
+        useStreamingConversationStore.getState().finalizeStream();
+      });
+
+      expect(logger.warn).toHaveBeenCalledWith(
+        'streaming-store.stream.finalize.upstream_error',
+        expect.objectContaining({ errorType: 'UPSTREAM_UNAVAILABLE', statusCode: 500 }),
+      );
+    });
+
+    it('does not emit finalize.upstream_error on a clean finalize', function noUpstreamError() {
+      const store = useStreamingConversationStore.getState();
+
+      act(() => {
+        store.setCurrentAppId('app-1');
+        store.startNewStream('Build a todo app');
+      });
+
+      act(() => {
+        useStreamingConversationStore.getState().finalizeStream({ finishReason: 'stop' });
+      });
+
+      expect(logger.warn).not.toHaveBeenCalledWith(
+        'streaming-store.stream.finalize.upstream_error',
+        expect.anything(),
+      );
+    });
+
+    it('defaults errorType to UPSTREAM_ERROR and omits absent fields on a typeless upstream error', function upstreamErrorDefaults() {
+      const store = useStreamingConversationStore.getState();
+
+      act(() => {
+        store.setCurrentAppId('app-1');
+        store.startNewStream('Build a todo app');
+        useStreamingConversationStore.getState().markUpstreamError({ message: 'something failed' });
+      });
+
+      act(() => {
+        useStreamingConversationStore.getState().finalizeStream();
+      });
+
+      const call = vi.mocked(logger.warn).mock.calls.find(
+        ([event]) => event === 'streaming-store.stream.finalize.upstream_error',
+      );
+      // Exact match: default errorType, and no statusCode/retry keys (absent-spread branches).
+      expect(call?.[1]).toEqual({ messageId: expect.any(String), errorType: 'UPSTREAM_ERROR' });
+    });
+
+    it('includes retryAttempts and retryReason on the upstream_error emit when present', function upstreamErrorRetryMeta() {
+      const store = useStreamingConversationStore.getState();
+
+      act(() => {
+        store.setCurrentAppId('app-1');
+        store.startNewStream('Build a todo app');
+        useStreamingConversationStore.getState().markUpstreamError({
+          message: 'retries exhausted',
+          type: 'RETRY_ERROR',
+          retryAttempts: 3,
+          retryReason: 'maxRetriesExceeded',
+        });
+      });
+
+      act(() => {
+        useStreamingConversationStore.getState().finalizeStream();
+      });
+
+      const call = vi.mocked(logger.warn).mock.calls.find(
+        ([event]) => event === 'streaming-store.stream.finalize.upstream_error',
+      );
+      expect(call?.[1]).toEqual({
+        messageId: expect.any(String),
+        errorType: 'RETRY_ERROR',
+        retryAttempts: 3,
+        retryReason: 'maxRetriesExceeded',
+      });
     });
 
     it('should not set connectionLost when finishReason is not aborted', function noConnectionLost() {
