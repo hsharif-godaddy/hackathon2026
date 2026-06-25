@@ -5,6 +5,18 @@ export enum BuilderLayout {
 
 export enum CommanderPosition {
   LeftDock = 'left-dock',
-  Collapsed = 'collapsed',
   Floating = 'floating',
+}
+
+export enum FloatingAnchor {
+  BottomLeft = 'bottom-left',
+  BottomCenter = 'bottom-center',
+  BottomRight = 'bottom-right',
+}
+
+export enum SnapTarget {
+  LeftDock = 'left-dock',
+  BottomLeft = 'bottom-left',
+  BottomCenter = 'bottom-center',
+  BottomRight = 'bottom-right',
 }

@@ -8,18 +8,36 @@ import {
   DEFAULT_OPEN_CANVAS_IDS,
   PINNED_CANVAS_ID,
 } from '@/app/[market]/commander/canvas/registry'
-import { CommanderPosition } from '@/app/[market]/commander/types'
+import { CommanderPosition, FloatingAnchor } from '@/app/[market]/commander/types'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 
 const POSITION_ORDER: readonly CommanderPosition[] = [
   CommanderPosition.LeftDock,
-  CommanderPosition.Collapsed,
   CommanderPosition.Floating,
 ] as const
 
 export const PILL_MIN_HEIGHT = 144
 export const PILL_MAX_HEIGHT = 800
 export const PILL_DEFAULT_HEIGHT = 420
+
+export const FLOATING_SIDE_DEFAULT_WIDTH = 406
+export const FLOATING_CENTER_DEFAULT_WIDTH = 680
+
+const FLOATING_ANCHOR_ORDER: readonly FloatingAnchor[] = [
+  FloatingAnchor.BottomLeft,
+  FloatingAnchor.BottomCenter,
+  FloatingAnchor.BottomRight,
+] as const
+
+const VALID_FLOATING_ANCHORS: ReadonlySet<FloatingAnchor> = new Set(FLOATING_ANCHOR_ORDER)
+
+export type FloatingWidthByAnchor = Record<FloatingAnchor, number>
+
+export const DEFAULT_FLOATING_WIDTH_BY_ANCHOR: FloatingWidthByAnchor = {
+  [FloatingAnchor.BottomLeft]: FLOATING_SIDE_DEFAULT_WIDTH,
+  [FloatingAnchor.BottomCenter]: FLOATING_CENTER_DEFAULT_WIDTH,
+  [FloatingAnchor.BottomRight]: FLOATING_SIDE_DEFAULT_WIDTH,
+}
 
 export const clampPillHeight = (h: number): number =>
   Math.max(PILL_MIN_HEIGHT, Math.min(PILL_MAX_HEIGHT, h))
@@ -49,6 +67,8 @@ interface CommanderStore {
   position: CommanderPosition
   pillHeight: number
   isCollapsed: boolean
+  floatingAnchor: FloatingAnchor
+  floatingWidthByAnchor: FloatingWidthByAnchor
   isCanvasSettingsOpen: boolean
   openCanvasIds: CanvasId[]
   activeCanvasId: CanvasId
@@ -56,6 +76,9 @@ interface CommanderStore {
   cyclePosition: () => void
   setPillHeight: (height: number) => void
   setIsCollapsed: (value: boolean) => void
+  setFloatingAnchor: (anchor: FloatingAnchor) => void
+  setFloatingWidth: (anchor: FloatingAnchor, width: number) => void
+  resetFloatingWidth: (anchor: FloatingAnchor) => void
   openCanvasSettings: () => void
   closeCanvasSettings: () => void
   openCanvas: (canvasId: CanvasId) => void
@@ -82,10 +105,40 @@ export const sanitizePillHeight = (height: unknown): number =>
     ? clampPillHeight(height)
     : PILL_DEFAULT_HEIGHT
 
-export const sanitizePosition = (position: unknown): CommanderPosition =>
-  VALID_POSITIONS.has(position as CommanderPosition)
+// Legacy CommanderPosition.Collapsed has been removed; persisted users on that
+// value migrate to Floating so the chat surface stays available.
+const LEGACY_COLLAPSED_POSITION = 'collapsed'
+
+export const sanitizePosition = (position: unknown): CommanderPosition => {
+  if (position === LEGACY_COLLAPSED_POSITION) return CommanderPosition.Floating
+  return VALID_POSITIONS.has(position as CommanderPosition)
     ? (position as CommanderPosition)
     : CommanderPosition.LeftDock
+}
+
+export const sanitizeFloatingAnchor = (anchor: unknown): FloatingAnchor =>
+  VALID_FLOATING_ANCHORS.has(anchor as FloatingAnchor)
+    ? (anchor as FloatingAnchor)
+    : FloatingAnchor.BottomCenter
+
+export const clampFloatingWidth = (width: number, minWidth: number, maxWidth: number): number => {
+  const max = Math.max(minWidth, maxWidth)
+  return Math.max(minWidth, Math.min(max, width))
+}
+
+export const sanitizeFloatingWidthByAnchor = (raw: unknown): FloatingWidthByAnchor => {
+  const fallback = { ...DEFAULT_FLOATING_WIDTH_BY_ANCHOR }
+  if (!raw || typeof raw !== 'object') return fallback
+  const source = raw as Partial<Record<FloatingAnchor, unknown>>
+  for (const anchor of FLOATING_ANCHOR_ORDER) {
+    const value = source[anchor]
+    const minForAnchor = DEFAULT_FLOATING_WIDTH_BY_ANCHOR[anchor]
+    if (typeof value === 'number' && Number.isFinite(value) && value >= minForAnchor) {
+      fallback[anchor] = value
+    }
+  }
+  return fallback
+}
 
 export const useCommanderStore = create<CommanderStore>()(
   persist(
@@ -93,6 +146,8 @@ export const useCommanderStore = create<CommanderStore>()(
       position: CommanderPosition.LeftDock,
       pillHeight: PILL_DEFAULT_HEIGHT,
       isCollapsed: false,
+      floatingAnchor: FloatingAnchor.BottomCenter,
+      floatingWidthByAnchor: { ...DEFAULT_FLOATING_WIDTH_BY_ANCHOR },
       isCanvasSettingsOpen: false,
       openCanvasIds: [...DEFAULT_OPEN_CANVAS_IDS],
       activeCanvasId: PINNED_CANVAS_ID,
@@ -104,6 +159,16 @@ export const useCommanderStore = create<CommanderStore>()(
       },
       setPillHeight: (height) => set({ pillHeight: clampPillHeight(height) }),
       setIsCollapsed: (value) => set({ isCollapsed: value }),
+      setFloatingAnchor: (anchor) => set({ floatingAnchor: anchor }),
+      setFloatingWidth: (anchor, width) => set((state) => ({
+        floatingWidthByAnchor: { ...state.floatingWidthByAnchor, [anchor]: width },
+      })),
+      resetFloatingWidth: (anchor) => set((state) => ({
+        floatingWidthByAnchor: {
+          ...state.floatingWidthByAnchor,
+          [anchor]: DEFAULT_FLOATING_WIDTH_BY_ANCHOR[anchor],
+        },
+      })),
       openCanvasSettings: () => set({ isCanvasSettingsOpen: true }),
       closeCanvasSettings: () => set({ isCanvasSettingsOpen: false }),
       openCanvas: (canvasId) => set((state) => {
@@ -136,6 +201,8 @@ export const useCommanderStore = create<CommanderStore>()(
         position: state.position,
         pillHeight: state.pillHeight,
         isCollapsed: state.isCollapsed,
+        floatingAnchor: state.floatingAnchor,
+        floatingWidthByAnchor: state.floatingWidthByAnchor,
         openCanvasIds: state.openCanvasIds,
         activeCanvasId: state.activeCanvasId,
       }),
@@ -152,6 +219,8 @@ export const useCommanderStore = create<CommanderStore>()(
           position: sanitizePosition(persistedShape.position),
           pillHeight: sanitizePillHeight(persistedShape.pillHeight),
           isCollapsed: persistedShape.isCollapsed === true,
+          floatingAnchor: sanitizeFloatingAnchor(persistedShape.floatingAnchor),
+          floatingWidthByAnchor: sanitizeFloatingWidthByAnchor(persistedShape.floatingWidthByAnchor),
           openCanvasIds: sanitizedOpen,
           activeCanvasId,
         } as CommanderStore

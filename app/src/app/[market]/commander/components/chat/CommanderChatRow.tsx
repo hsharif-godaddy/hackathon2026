@@ -122,7 +122,6 @@ export default function CommanderChatRow({ appId, onPreviewRefresh }: CommanderC
 
   const POSITION_ITEMS: ReadonlyArray<{ value: CommanderPosition; labelKey: string }> = [
     { value: CommanderPosition.LeftDock, labelKey: 'builder_commander_position_sidebar' },
-    { value: CommanderPosition.Collapsed, labelKey: 'builder_commander_position_collapsed' },
     { value: CommanderPosition.Floating, labelKey: 'builder_commander_position_floating' },
   ]
 
@@ -290,18 +289,15 @@ export default function CommanderChatRow({ appId, onPreviewRefresh }: CommanderC
             >
               <div className="flex flex-col gap-0.5 min-w-[160px]">
                 {POSITION_ITEMS.map((item) => (
-                  <button
+                  <Button
                     key={item.value}
-                    type="button"
+                    design="option"
+                    size="sm"
+                    active={commanderPosition === item.value}
+                    text={t(item.labelKey)}
+                    className="!justify-start"
                     onClick={() => handlePositionSelect(item.value)}
-                    className={`text-left text-sm px-2 py-1 rounded-md hover:bg-intents-ux-box-backgroundColor ${
-                      commanderPosition === item.value
-                        ? 'bg-intents-ux-box-backgroundColor font-semibold'
-                        : ''
-                    }`}
-                  >
-                    {t(item.labelKey)}
-                  </button>
+                  />
                 ))}
               </div>
             </PopoverContent>

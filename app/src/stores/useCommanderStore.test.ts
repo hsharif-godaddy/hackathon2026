@@ -5,12 +5,18 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { act } from '@testing-library/react'
 
 import { CanvasId, DEFAULT_OPEN_CANVAS_IDS, PINNED_CANVAS_ID } from '@/app/[market]/commander/canvas/registry'
-import { CommanderPosition } from '@/app/[market]/commander/types'
+import { CommanderPosition, FloatingAnchor } from '@/app/[market]/commander/types'
 import {
+  clampFloatingWidth,
+  DEFAULT_FLOATING_WIDTH_BY_ANCHOR,
+  FLOATING_CENTER_DEFAULT_WIDTH,
+  FLOATING_SIDE_DEFAULT_WIDTH,
   PILL_DEFAULT_HEIGHT,
   PILL_MAX_HEIGHT,
   PILL_MIN_HEIGHT,
   sanitizeCanvasIds,
+  sanitizeFloatingAnchor,
+  sanitizeFloatingWidthByAnchor,
   sanitizePillHeight,
   sanitizePosition,
   useCommanderStore,
@@ -209,8 +215,12 @@ describe('useCommanderStore persist sanitizers', () => {
     })
 
     it('passes through valid CommanderPosition values', () => {
+      expect(sanitizePosition(CommanderPosition.LeftDock)).toBe(CommanderPosition.LeftDock)
       expect(sanitizePosition(CommanderPosition.Floating)).toBe(CommanderPosition.Floating)
-      expect(sanitizePosition(CommanderPosition.Collapsed)).toBe(CommanderPosition.Collapsed)
+    })
+
+    it('migrates legacy "collapsed" position to Floating', () => {
+      expect(sanitizePosition('collapsed')).toBe(CommanderPosition.Floating)
     })
   })
 })
@@ -283,5 +293,182 @@ describe('useCommanderStore persist rehydration', () => {
     seedStorage({ activeCanvasId: PINNED_CANVAS_ID })
     await useCommanderStore.persist.rehydrate()
     expect(useCommanderStore.getState().isCollapsed).toBe(false)
+  })
+
+  it('migrates legacy persisted "collapsed" position to Floating on rehydrate', async () => {
+    seedStorage({ position: 'collapsed', activeCanvasId: PINNED_CANVAS_ID })
+    await useCommanderStore.persist.rehydrate()
+    expect(useCommanderStore.getState().position).toBe(CommanderPosition.Floating)
+  })
+
+  it('rehydrates a persisted floatingAnchor', async () => {
+    seedStorage({ floatingAnchor: FloatingAnchor.BottomLeft, activeCanvasId: PINNED_CANVAS_ID })
+    await useCommanderStore.persist.rehydrate()
+    expect(useCommanderStore.getState().floatingAnchor).toBe(FloatingAnchor.BottomLeft)
+  })
+
+  it('defaults floatingAnchor to BottomCenter when persisted value is invalid', async () => {
+    seedStorage({ floatingAnchor: 'top-galactic', activeCanvasId: PINNED_CANVAS_ID })
+    await useCommanderStore.persist.rehydrate()
+    expect(useCommanderStore.getState().floatingAnchor).toBe(FloatingAnchor.BottomCenter)
+  })
+
+  it('rehydrates persisted floatingWidthByAnchor entries', async () => {
+    seedStorage({
+      floatingWidthByAnchor: {
+        [FloatingAnchor.BottomLeft]: 500,
+        [FloatingAnchor.BottomCenter]: 900,
+        [FloatingAnchor.BottomRight]: 480,
+      },
+      activeCanvasId: PINNED_CANVAS_ID,
+    })
+    await useCommanderStore.persist.rehydrate()
+    const widths = useCommanderStore.getState().floatingWidthByAnchor
+    expect(widths[FloatingAnchor.BottomLeft]).toBe(500)
+    expect(widths[FloatingAnchor.BottomCenter]).toBe(900)
+    expect(widths[FloatingAnchor.BottomRight]).toBe(480)
+  })
+
+  it('falls back to per-anchor defaults when persisted floatingWidthByAnchor is missing', async () => {
+    seedStorage({ activeCanvasId: PINNED_CANVAS_ID })
+    await useCommanderStore.persist.rehydrate()
+    expect(useCommanderStore.getState().floatingWidthByAnchor).toEqual(DEFAULT_FLOATING_WIDTH_BY_ANCHOR)
+  })
+
+  it('drops below-minimum and non-finite floatingWidthByAnchor entries to per-anchor defaults', async () => {
+    seedStorage({
+      floatingWidthByAnchor: {
+        [FloatingAnchor.BottomLeft]: 10,
+        [FloatingAnchor.BottomCenter]: 'wide',
+        [FloatingAnchor.BottomRight]: 480,
+      },
+      activeCanvasId: PINNED_CANVAS_ID,
+    })
+    await useCommanderStore.persist.rehydrate()
+    const widths = useCommanderStore.getState().floatingWidthByAnchor
+    expect(widths[FloatingAnchor.BottomLeft]).toBe(FLOATING_SIDE_DEFAULT_WIDTH)
+    expect(widths[FloatingAnchor.BottomCenter]).toBe(FLOATING_CENTER_DEFAULT_WIDTH)
+    expect(widths[FloatingAnchor.BottomRight]).toBe(480)
+  })
+})
+
+describe('useCommanderStore floating-anchor state and actions', () => {
+  beforeEach(() => {
+    act(() => {
+      useCommanderStore.setState({
+        position: CommanderPosition.LeftDock,
+        floatingAnchor: FloatingAnchor.BottomCenter,
+        floatingWidthByAnchor: { ...DEFAULT_FLOATING_WIDTH_BY_ANCHOR },
+      })
+    })
+  })
+
+  it('initializes floatingAnchor to BottomCenter and widths to per-anchor defaults', () => {
+    const state = useCommanderStore.getState()
+    expect(state.floatingAnchor).toBe(FloatingAnchor.BottomCenter)
+    expect(state.floatingWidthByAnchor).toEqual(DEFAULT_FLOATING_WIDTH_BY_ANCHOR)
+  })
+
+  it('setFloatingAnchor updates the anchor without touching widths', () => {
+    act(() => {
+      useCommanderStore.getState().setFloatingAnchor(FloatingAnchor.BottomLeft)
+    })
+    const state = useCommanderStore.getState()
+    expect(state.floatingAnchor).toBe(FloatingAnchor.BottomLeft)
+    expect(state.floatingWidthByAnchor).toEqual(DEFAULT_FLOATING_WIDTH_BY_ANCHOR)
+  })
+
+  it('setFloatingWidth only updates the width for the target anchor', () => {
+    act(() => {
+      useCommanderStore.getState().setFloatingWidth(FloatingAnchor.BottomLeft, 555)
+    })
+    const widths = useCommanderStore.getState().floatingWidthByAnchor
+    expect(widths[FloatingAnchor.BottomLeft]).toBe(555)
+    expect(widths[FloatingAnchor.BottomCenter]).toBe(FLOATING_CENTER_DEFAULT_WIDTH)
+    expect(widths[FloatingAnchor.BottomRight]).toBe(FLOATING_SIDE_DEFAULT_WIDTH)
+  })
+
+  it('resetFloatingWidth restores only the target anchor to its default', () => {
+    act(() => {
+      useCommanderStore.getState().setFloatingWidth(FloatingAnchor.BottomCenter, 999)
+      useCommanderStore.getState().setFloatingWidth(FloatingAnchor.BottomLeft, 500)
+      useCommanderStore.getState().resetFloatingWidth(FloatingAnchor.BottomCenter)
+    })
+    const widths = useCommanderStore.getState().floatingWidthByAnchor
+    expect(widths[FloatingAnchor.BottomCenter]).toBe(FLOATING_CENTER_DEFAULT_WIDTH)
+    expect(widths[FloatingAnchor.BottomLeft]).toBe(500)
+  })
+
+  it('cyclePosition toggles between LeftDock and Floating only', () => {
+    expect(useCommanderStore.getState().position).toBe(CommanderPosition.LeftDock)
+    act(() => useCommanderStore.getState().cyclePosition())
+    expect(useCommanderStore.getState().position).toBe(CommanderPosition.Floating)
+    act(() => useCommanderStore.getState().cyclePosition())
+    expect(useCommanderStore.getState().position).toBe(CommanderPosition.LeftDock)
+  })
+})
+
+describe('useCommanderStore floating sanitizers', () => {
+  describe('sanitizeFloatingAnchor', () => {
+    it('passes through valid FloatingAnchor values', () => {
+      expect(sanitizeFloatingAnchor(FloatingAnchor.BottomLeft)).toBe(FloatingAnchor.BottomLeft)
+      expect(sanitizeFloatingAnchor(FloatingAnchor.BottomCenter)).toBe(FloatingAnchor.BottomCenter)
+      expect(sanitizeFloatingAnchor(FloatingAnchor.BottomRight)).toBe(FloatingAnchor.BottomRight)
+    })
+
+    it('falls back to BottomCenter for invalid values', () => {
+      expect(sanitizeFloatingAnchor('top-left')).toBe(FloatingAnchor.BottomCenter)
+      expect(sanitizeFloatingAnchor(undefined)).toBe(FloatingAnchor.BottomCenter)
+      expect(sanitizeFloatingAnchor(42)).toBe(FloatingAnchor.BottomCenter)
+    })
+  })
+
+  describe('sanitizeFloatingWidthByAnchor', () => {
+    it('returns defaults when input is missing or non-object', () => {
+      expect(sanitizeFloatingWidthByAnchor(null)).toEqual(DEFAULT_FLOATING_WIDTH_BY_ANCHOR)
+      expect(sanitizeFloatingWidthByAnchor(undefined)).toEqual(DEFAULT_FLOATING_WIDTH_BY_ANCHOR)
+      expect(sanitizeFloatingWidthByAnchor('width')).toEqual(DEFAULT_FLOATING_WIDTH_BY_ANCHOR)
+    })
+
+    it('keeps valid per-anchor entries and replaces invalid ones with defaults', () => {
+      const result = sanitizeFloatingWidthByAnchor({
+        [FloatingAnchor.BottomLeft]: 500,
+        [FloatingAnchor.BottomCenter]: 'too wide',
+        [FloatingAnchor.BottomRight]: -50,
+      })
+      expect(result[FloatingAnchor.BottomLeft]).toBe(500)
+      expect(result[FloatingAnchor.BottomCenter]).toBe(FLOATING_CENTER_DEFAULT_WIDTH)
+      expect(result[FloatingAnchor.BottomRight]).toBe(FLOATING_SIDE_DEFAULT_WIDTH)
+    })
+
+    it('rejects widths below the anchor-specific default', () => {
+      // 500 is above the 406 side default but below the 680 center default
+      const result = sanitizeFloatingWidthByAnchor({
+        [FloatingAnchor.BottomLeft]: 500,
+        [FloatingAnchor.BottomCenter]: 500,
+        [FloatingAnchor.BottomRight]: 500,
+      })
+      expect(result[FloatingAnchor.BottomLeft]).toBe(500)
+      expect(result[FloatingAnchor.BottomCenter]).toBe(FLOATING_CENTER_DEFAULT_WIDTH)
+      expect(result[FloatingAnchor.BottomRight]).toBe(500)
+    })
+  })
+
+  describe('clampFloatingWidth', () => {
+    it('returns the width unchanged when within range', () => {
+      expect(clampFloatingWidth(500, 406, 1200)).toBe(500)
+    })
+
+    it('clamps to the provided minWidth when below', () => {
+      expect(clampFloatingWidth(100, 406, 1200)).toBe(406)
+    })
+
+    it('clamps to the provided maxWidth when above', () => {
+      expect(clampFloatingWidth(2000, 406, 800)).toBe(800)
+    })
+
+    it('honors minWidth even when maxWidth is below it', () => {
+      expect(clampFloatingWidth(2000, 406, 100)).toBe(406)
+    })
   })
 })

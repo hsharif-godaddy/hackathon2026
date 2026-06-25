@@ -2,11 +2,19 @@
 
 import { animate, AnimatePresence, motion, type Transition, useMotionValue, useTransform } from 'framer-motion'
 import { type PointerEvent as ReactPointerEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import GrabVertIcon from '@ux/icon/grab-vert'
 
-import { CommanderPosition } from '@/app/[market]/commander/types'
-import { PILL_MAX_HEIGHT, useCommanderStore, useEffectiveCommanderPosition } from '@/stores/useCommanderStore'
+import { CommanderPosition, FloatingAnchor, SnapTarget } from '@/app/[market]/commander/types'
+import {
+  clampFloatingWidth,
+  DEFAULT_FLOATING_WIDTH_BY_ANCHOR,
+  PILL_MAX_HEIGHT,
+  useCommanderStore,
+  useEffectiveCommanderPosition,
+} from '@/stores/useCommanderStore'
 import { CommanderLayoutContext, type CommanderLayoutContextValue } from './CommanderLayoutContext'
 import { CommanderLogo } from './CommanderLogo'
+import { CommanderSnapOverlay } from './CommanderSnapOverlay'
 
 const POSITION_TRANSITION: Transition = {
   type: 'spring',
@@ -15,11 +23,11 @@ const POSITION_TRANSITION: Transition = {
   mass: 0.9,
 }
 
+const INSTANT_TRANSITION: Transition = { duration: 0 }
+
 export const COMMANDER_LAYOUT_METRICS = {
   LEFT_DOCK_WIDTH: 406,
   FLOATING_INSET: 8,
-  FLOATING_WIDTH: 380,
-  FLOATING_WIDTH_LARGE: 680,
 }
 
 const VERTICAL_INSET = 8
@@ -28,10 +36,61 @@ const PILL_BORDER_HEIGHT = 2
 const PILL_HALO_INSET = 16
 const PILL_INNER_BORDER_RADIUS = 16
 const PILL_OUTER_BORDER_RADIUS = PILL_INNER_BORDER_RADIUS + PILL_HALO_INSET
+const DRAG_HANDLE_HIT_AREA = 32
+const HORIZONTAL_RESIZE_HANDLE_WIDTH = 8
+const DOCK_ZONE_WIDTH = 80
 
 interface CommanderProps {
   appId: string | null
   chatPane: ReactNode
+}
+
+interface DragStart {
+  rect: DOMRect
+  clientX: number
+  clientY: number
+}
+
+interface HorizontalResizeStart {
+  edge: 'left' | 'right'
+  clientX: number
+  startWidth: number
+}
+
+function floatingAnchorToSnapTarget(anchor: FloatingAnchor): SnapTarget {
+  switch (anchor) {
+    case FloatingAnchor.BottomLeft: return SnapTarget.BottomLeft
+    case FloatingAnchor.BottomCenter: return SnapTarget.BottomCenter
+    case FloatingAnchor.BottomRight: return SnapTarget.BottomRight
+  }
+}
+
+function snapTargetToFloatingAnchor(target: SnapTarget): FloatingAnchor | null {
+  switch (target) {
+    case SnapTarget.LeftDock: return null
+    case SnapTarget.BottomLeft: return FloatingAnchor.BottomLeft
+    case SnapTarget.BottomCenter: return FloatingAnchor.BottomCenter
+    case SnapTarget.BottomRight: return FloatingAnchor.BottomRight
+  }
+}
+
+function nearestSnapTarget(
+  clientX: number,
+  viewportWidth: number,
+  sideZoneOuterWidth: number,
+  dockZoneWidth: number,
+): SnapTarget {
+  if (clientX <= dockZoneWidth) return SnapTarget.LeftDock
+  const inset = COMMANDER_LAYOUT_METRICS.FLOATING_INSET
+  const leftCenter = inset + sideZoneOuterWidth / 2
+  const centerCenter = viewportWidth / 2
+  const rightCenter = viewportWidth - inset - sideZoneOuterWidth / 2
+  const distances: ReadonlyArray<{ target: SnapTarget; d: number }> = [
+    { target: SnapTarget.BottomLeft, d: Math.abs(clientX - leftCenter) },
+    { target: SnapTarget.BottomCenter, d: Math.abs(clientX - centerCenter) },
+    { target: SnapTarget.BottomRight, d: Math.abs(clientX - rightCenter) },
+  ]
+  return distances.reduce((best, cur) => (cur.d < best.d ? cur : best)).target
 }
 
 export function Commander({ appId, chatPane }: CommanderProps) {
@@ -40,6 +99,12 @@ export function Commander({ appId, chatPane }: CommanderProps) {
   const setPillHeight = useCommanderStore((state) => state.setPillHeight)
   const isCollapsed = useCommanderStore((state) => state.isCollapsed)
   const setIsCollapsed = useCommanderStore((state) => state.setIsCollapsed)
+  const floatingAnchor = useCommanderStore((state) => state.floatingAnchor)
+  const setFloatingAnchor = useCommanderStore((state) => state.setFloatingAnchor)
+  const floatingWidthByAnchor = useCommanderStore((state) => state.floatingWidthByAnchor)
+  const setFloatingWidth = useCommanderStore((state) => state.setFloatingWidth)
+  const resetFloatingWidth = useCommanderStore((state) => state.resetFloatingWidth)
+  const setPosition = useCommanderStore((state) => state.setPosition)
 
   const isLeftDock = position === CommanderPosition.LeftDock
   const isFloating = position === CommanderPosition.Floating
@@ -59,12 +124,10 @@ export function Commander({ appId, chatPane }: CommanderProps) {
   const [nonMessagesHeight, setNonMessagesHeight] = useState(0)
   const [isResizing, setIsResizing] = useState(false)
   const collapsedTarget = Math.min(
-    nonMessagesHeight + PILL_TOP_PADDING + PILL_BORDER_HEIGHT - 1, // otherwise we see a tiny bit of content overlap
+    nonMessagesHeight + PILL_TOP_PADDING + PILL_BORDER_HEIGHT - 1,
     dockHeight,
   )
   const expandedTarget = Math.min(Math.max(pillHeight, collapsedTarget), dockHeight)
-  // setNonMessagesHeight is stable (useState setter), so the context value's identity
-  // never changes — ChatPane's ResizeObserver effect won't re-attach on every render.
   const layoutContext = useMemo<CommanderLayoutContextValue>(
     () => ({ reportNonMessagesHeight: setNonMessagesHeight }),
     [],
@@ -76,10 +139,13 @@ export function Commander({ appId, chatPane }: CommanderProps) {
       ? collapsedTarget
       : expandedTarget
 
-  const floatingWidth = Math.min(
-    COMMANDER_LAYOUT_METRICS.FLOATING_WIDTH_LARGE,
+  const minFloatingWidth = DEFAULT_FLOATING_WIDTH_BY_ANCHOR[floatingAnchor]
+  const maxFloatingWidth = Math.max(
+    minFloatingWidth,
     viewport.width - 2 * COMMANDER_LAYOUT_METRICS.FLOATING_INSET - 2 * PILL_HALO_INSET,
   )
+  const persistedFloatingWidth = floatingWidthByAnchor[floatingAnchor]
+  const floatingWidth = clampFloatingWidth(persistedFloatingWidth, minFloatingWidth, maxFloatingWidth)
 
   const heightMv = useMotionValue(targetHeight)
   const outerHeightMv = useTransform(heightMv, (height) =>
@@ -124,13 +190,11 @@ export function Commander({ appId, chatPane }: CommanderProps) {
     try {
       e.currentTarget.releasePointerCapture(e.pointerId)
     } catch {
-      // Pointer may already be released (NotFoundError); commit the snap anyway.
+      // Pointer may already be released; commit the snap anyway.
     }
     const currentHeight = heightMv.get()
     const startedCollapsed = dragStartedCollapsedRef.current
     if (startedCollapsed) {
-      // From collapsed: any upward movement = intent to expand. Tap with no movement = stay collapsed.
-      // Don't overwrite pillHeight — animate back to the user's saved expanded preference.
       if (currentHeight > collapsedTarget) {
         setIsCollapsed(false)
       } else {
@@ -149,35 +213,184 @@ export function Commander({ appId, chatPane }: CommanderProps) {
     setIsResizing(false)
   }, [heightMv, collapsedTarget, expandedTarget, setIsCollapsed, setPillHeight])
 
-  const animateProps = isLeftDock
-    ? {
+  const pillRef = useRef<HTMLElement | null>(null)
+  const dragStartRef = useRef<DragStart | null>(null)
+  const [isDraggingPill, setIsDraggingPill] = useState(false)
+  const [dragOffset, setDragOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
+  const [pendingTarget, setPendingTarget] = useState<SnapTarget>(
+    floatingAnchorToSnapTarget(floatingAnchor),
+  )
+
+  const handleDragPointerDown = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    e.stopPropagation()
+    const pill = pillRef.current
+    if (!pill) return
+    const realRect = pill.getBoundingClientRect()
+    const startedInDock = isLeftDock
+    const floatingOuterWidth = floatingWidth + PILL_HALO_INSET * 2
+    const floatingOuterHeight = expandedTarget + PILL_HALO_INSET * 2
+    const rect = startedInDock
+      ? new DOMRect(realRect.left, realRect.top, floatingOuterWidth, floatingOuterHeight)
+      : realRect
+    dragStartRef.current = {
+      rect,
+      clientX: e.clientX,
+      clientY: e.clientY,
+    }
+    setIsDraggingPill(true)
+    setDragOffset({ x: 0, y: 0 })
+    setPendingTarget(startedInDock ? SnapTarget.LeftDock : floatingAnchorToSnapTarget(floatingAnchor))
+    if (startedInDock) setPosition(CommanderPosition.Floating)
+    e.currentTarget.setPointerCapture(e.pointerId)
+  }, [isLeftDock, floatingAnchor, floatingWidth, expandedTarget, setPosition])
+
+  const sideZoneOuterWidth =
+    DEFAULT_FLOATING_WIDTH_BY_ANCHOR[FloatingAnchor.BottomLeft] + PILL_HALO_INSET * 2
+  const centerZoneOuterWidth =
+    DEFAULT_FLOATING_WIDTH_BY_ANCHOR[FloatingAnchor.BottomCenter] + PILL_HALO_INSET * 2
+
+  const handleDragPointerMove = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
+    const start = dragStartRef.current
+    if (!start) return
+    setDragOffset({ x: e.clientX - start.clientX, y: e.clientY - start.clientY })
+    setPendingTarget(nearestSnapTarget(e.clientX, viewport.width, sideZoneOuterWidth, DOCK_ZONE_WIDTH))
+  }, [viewport.width, sideZoneOuterWidth])
+
+  const handleDragPointerUp = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
+    if (!dragStartRef.current) return
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId)
+    } catch {
+      // pointer may already be released
+    }
+    const previousAnchor = floatingAnchor
+    dragStartRef.current = null
+    setIsDraggingPill(false)
+    setDragOffset({ x: 0, y: 0 })
+    if (pendingTarget === SnapTarget.LeftDock) {
+      if (!isLeftDock) setPosition(CommanderPosition.LeftDock)
+    } else {
+      const newAnchor = snapTargetToFloatingAnchor(pendingTarget)
+      if (newAnchor) {
+        if (isLeftDock) setPosition(CommanderPosition.Floating)
+        if (newAnchor !== previousAnchor) {
+          setFloatingAnchor(newAnchor)
+          resetFloatingWidth(newAnchor)
+        }
+      }
+    }
+  }, [isLeftDock, floatingAnchor, pendingTarget, setFloatingAnchor, resetFloatingWidth, setPosition])
+
+  const horizontalResizeRef = useRef<HorizontalResizeStart | null>(null)
+  const [isHResizing, setIsHResizing] = useState(false)
+
+  const handleHResizePointerDown = useCallback(
+    (edge: 'left' | 'right') => (e: ReactPointerEvent<HTMLDivElement>) => {
+      e.preventDefault()
+      e.stopPropagation()
+      horizontalResizeRef.current = {
+        edge,
+        clientX: e.clientX,
+        startWidth: floatingWidth,
+      }
+      setIsHResizing(true)
+      e.currentTarget.setPointerCapture(e.pointerId)
+    },
+    [floatingWidth],
+  )
+
+  const handleHResizePointerMove = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
+    const r = horizontalResizeRef.current
+    if (!r) return
+    const delta = e.clientX - r.clientX
+    let widthDelta: number
+    if (floatingAnchor === FloatingAnchor.BottomCenter) {
+      widthDelta = r.edge === 'right' ? delta * 2 : -delta * 2
+    } else if (floatingAnchor === FloatingAnchor.BottomLeft) {
+      widthDelta = delta
+    } else {
+      widthDelta = -delta
+    }
+    const next = clampFloatingWidth(r.startWidth + widthDelta, minFloatingWidth, maxFloatingWidth)
+    setFloatingWidth(floatingAnchor, next)
+  }, [floatingAnchor, minFloatingWidth, maxFloatingWidth, setFloatingWidth])
+
+  const handleHResizePointerUp = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
+    if (!horizontalResizeRef.current) return
+    horizontalResizeRef.current = null
+    setIsHResizing(false)
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId)
+    } catch {
+      // pointer may already be released
+    }
+  }, [])
+
+  const animateProps = (() => {
+    if (isDraggingPill && dragStartRef.current) {
+      const { rect } = dragStartRef.current
+      return {
+        bottom: 'auto' as const,
+        right: 'auto' as const,
+        top: rect.top + dragOffset.y,
+        left: rect.left + dragOffset.x,
+        x: 0,
+        width: rect.width,
+        borderRadius: PILL_OUTER_BORDER_RADIUS,
+        boxShadow: '0 12px 40px -8px rgba(15, 23, 42, 0.35)',
+      }
+    }
+    if (isLeftDock) {
+      return {
+        top: 'auto' as const,
         bottom: VERTICAL_INSET,
         left: VERTICAL_INSET,
-        right: 'auto',
+        right: 'auto' as const,
         x: 0,
         width: COMMANDER_LAYOUT_METRICS.LEFT_DOCK_WIDTH,
         borderRadius: 16,
         boxShadow: '0 12px 40px -8px rgba(15, 23, 42, 0.35)',
       }
-    : isFloating
-      ? {
-          bottom: COMMANDER_LAYOUT_METRICS.FLOATING_INSET,
-          left: '50%',
-          right: 'auto',
-          x: '-50%',
-          width: floatingWidth + PILL_HALO_INSET * 2,
-          borderRadius: PILL_OUTER_BORDER_RADIUS,
-          boxShadow: '0 12px 40px -8px rgba(15, 23, 42, 0.35)',
-        }
-      : {
-          bottom: COMMANDER_LAYOUT_METRICS.FLOATING_INSET,
-          left: COMMANDER_LAYOUT_METRICS.FLOATING_INSET,
-          right: 'auto',
-          x: 0,
-          width: COMMANDER_LAYOUT_METRICS.FLOATING_WIDTH + PILL_HALO_INSET * 2,
-          borderRadius: PILL_OUTER_BORDER_RADIUS,
-          boxShadow: '0 12px 40px -8px rgba(15, 23, 42, 0.35)',
-        }
+    }
+    const outerWidth = floatingWidth + PILL_HALO_INSET * 2
+    if (floatingAnchor === FloatingAnchor.BottomCenter) {
+      return {
+        top: 'auto' as const,
+        bottom: COMMANDER_LAYOUT_METRICS.FLOATING_INSET,
+        left: '50%',
+        right: 'auto' as const,
+        x: '-50%',
+        width: outerWidth,
+        borderRadius: PILL_OUTER_BORDER_RADIUS,
+        boxShadow: '0 12px 40px -8px rgba(15, 23, 42, 0.35)',
+      }
+    }
+    if (floatingAnchor === FloatingAnchor.BottomLeft) {
+      return {
+        top: 'auto' as const,
+        bottom: COMMANDER_LAYOUT_METRICS.FLOATING_INSET,
+        left: COMMANDER_LAYOUT_METRICS.FLOATING_INSET,
+        right: 'auto' as const,
+        x: 0,
+        width: outerWidth,
+        borderRadius: PILL_OUTER_BORDER_RADIUS,
+        boxShadow: '0 12px 40px -8px rgba(15, 23, 42, 0.35)',
+      }
+    }
+    return {
+      top: 'auto' as const,
+      bottom: COMMANDER_LAYOUT_METRICS.FLOATING_INSET,
+      left: 'auto' as const,
+      right: COMMANDER_LAYOUT_METRICS.FLOATING_INSET,
+      x: 0,
+      width: outerWidth,
+      borderRadius: PILL_OUTER_BORDER_RADIUS,
+      boxShadow: '0 12px 40px -8px rgba(15, 23, 42, 0.35)',
+    }
+  })()
+
+  const transitionProp = isDraggingPill || isHResizing ? INSTANT_TRANSITION : POSITION_TRANSITION
 
   const asideSurfaceClass = isPill
     ? 'pointer-events-none overflow-hidden bg-intents-ux-boxLowContrastOverlay-backgroundColor/60 backdrop-blur-[12px] p-2'
@@ -187,17 +400,35 @@ export function Commander({ appId, chatPane }: CommanderProps) {
     ? 'pointer-events-auto bg-intents-ux-boxLowContrast-backgroundColor border border-intents-ux-boxLowContrast-borderColor'
     : ''
 
+  const showLeftHResizeHandle =
+    isFloating &&
+    (floatingAnchor === FloatingAnchor.BottomCenter || floatingAnchor === FloatingAnchor.BottomRight)
+  const showRightHResizeHandle =
+    isFloating &&
+    (floatingAnchor === FloatingAnchor.BottomCenter || floatingAnchor === FloatingAnchor.BottomLeft)
+
   return (
     <CommanderLayoutContext.Provider value={layoutContext}>
+      <CommanderSnapOverlay
+        active={isDraggingPill}
+        target={pendingTarget}
+        pillHeight={dragStartRef.current?.rect.height ?? targetHeight + PILL_HALO_INSET * 2}
+        inset={COMMANDER_LAYOUT_METRICS.FLOATING_INSET}
+        sideWidth={sideZoneOuterWidth}
+        centerWidth={centerZoneOuterWidth}
+        dockZoneWidth={DOCK_ZONE_WIDTH}
+      />
       <motion.aside
+        ref={pillRef}
         data-testid="commander-panel"
         data-position={position}
+        data-floating-anchor={isFloating ? floatingAnchor : undefined}
         aria-label="Commander"
         className={`absolute flex flex-col ${asideSurfaceClass}`}
         initial={false}
         animate={animateProps}
-        transition={POSITION_TRANSITION}
-        style={{ top: 'auto', height: isPill ? outerHeightMv : heightMv }}
+        transition={transitionProp}
+        style={{ height: isPill ? outerHeightMv : heightMv }}
       >
         <div
           className={`relative flex flex-col min-h-0 overflow-hidden h-full w-full ${innerSurfaceClass}`}
@@ -207,7 +438,8 @@ export function Commander({ appId, chatPane }: CommanderProps) {
             <div
               data-testid="commander-resize-handle"
               aria-label="Resize Commander"
-              className="absolute top-0 left-0 right-0 h-2.5 z-10 cursor-ns-resize touch-none select-none flex items-start justify-center"
+              className="absolute top-0 left-0 z-10 cursor-ns-resize touch-none select-none flex items-start justify-center"
+              style={{ right: DRAG_HANDLE_HIT_AREA, height: 10 }}
               onPointerDown={handleResizePointerDown}
               onPointerMove={handleResizePointerMove}
               onPointerUp={handleResizePointerUp}
@@ -215,6 +447,43 @@ export function Commander({ appId, chatPane }: CommanderProps) {
             >
               <div className="mt-1.5 w-4 h-1 rounded-full bg-intents-ux-boxLowContrast-borderColor" />
             </div>
+          )}
+          <div
+            data-testid="commander-drag-handle"
+            aria-label="Drag Commander to reposition"
+            role="button"
+            className="absolute top-0 right-0 z-20 cursor-grab active:cursor-grabbing touch-none select-none flex items-center justify-center text-intents-ux-textSubtle-textColor hover:text-intents-ux-text-textColor"
+            style={{ width: DRAG_HANDLE_HIT_AREA, height: DRAG_HANDLE_HIT_AREA }}
+            onPointerDown={handleDragPointerDown}
+            onPointerMove={handleDragPointerMove}
+            onPointerUp={handleDragPointerUp}
+            onPointerCancel={handleDragPointerUp}
+          >
+            <GrabVertIcon className="size-2!" />
+          </div>
+          {showLeftHResizeHandle && (
+            <div
+              data-testid="commander-h-resize-handle-left"
+              aria-label="Resize Commander width"
+              className="absolute top-0 bottom-0 z-10 cursor-ew-resize touch-none select-none"
+              style={{ left: 0, width: HORIZONTAL_RESIZE_HANDLE_WIDTH }}
+              onPointerDown={handleHResizePointerDown('left')}
+              onPointerMove={handleHResizePointerMove}
+              onPointerUp={handleHResizePointerUp}
+              onPointerCancel={handleHResizePointerUp}
+            />
+          )}
+          {showRightHResizeHandle && (
+            <div
+              data-testid="commander-h-resize-handle-right"
+              aria-label="Resize Commander width"
+              className="absolute top-0 bottom-0 z-10 cursor-ew-resize touch-none select-none"
+              style={{ right: 0, width: HORIZONTAL_RESIZE_HANDLE_WIDTH }}
+              onPointerDown={handleHResizePointerDown('right')}
+              onPointerMove={handleHResizePointerMove}
+              onPointerUp={handleHResizePointerUp}
+              onPointerCancel={handleHResizePointerUp}
+            />
           )}
           <AnimatePresence initial={false}>
             {isLeftDock && (
