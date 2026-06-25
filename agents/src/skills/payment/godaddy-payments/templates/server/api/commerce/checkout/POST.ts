@@ -30,6 +30,8 @@
  * never from the request body, so the client cannot choose which store to charge.
  *
  * Response: { url, id, draftOrderId } from the created checkout session.
+ * Browser callers should redirect to `response.url`; this route does not
+ * return a `redirectUrl` field.
  */
 import type { Request, Response } from 'express';
 

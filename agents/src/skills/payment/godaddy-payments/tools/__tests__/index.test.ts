@@ -1,17 +1,45 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { mockExecuteAction, mockGetActionService } = vi.hoisted(() => ({
+const {
+  mockExecuteAction,
+  mockFindBindingByAppId,
+  mockCreateForWorkspace,
+  mockGetActionService,
+  mockUpsertBinding,
+  mockWorkspaceWrite,
+  mockWorkspaceView,
+} = vi.hoisted(() => ({
   mockExecuteAction: vi.fn(),
+  mockFindBindingByAppId: vi.fn(),
+  mockCreateForWorkspace: vi.fn(),
   mockGetActionService: vi.fn(),
+  mockUpsertBinding: vi.fn(),
+  mockWorkspaceWrite: vi.fn(),
+  mockWorkspaceView: vi.fn(),
 }));
 
 vi.mock('../../../../../server/agent-runtime.js', () => ({
   getActionService: mockGetActionService,
 }));
 
+vi.mock('../../../../../database/repositories/AppCommerceBindingRepository.js', () => ({
+  AppCommerceBindingRepository: vi.fn().mockImplementation(function () {
+    return {
+      findByAppId: mockFindBindingByAppId,
+      upsert: mockUpsertBinding,
+    };
+  }),
+}));
+
+vi.mock('../../../../../workspace/index.js', () => ({
+  createForWorkspace: mockCreateForWorkspace,
+}));
+
 const {
-  setupTool,
-  storeChannelEnsureTool,
+  provisionTool,
   storeChannelsGetTool,
   storeGetTool,
   storeListTool,
@@ -31,188 +59,377 @@ function runTool(
 describe('GoDaddy Payments skill MCP tools', () => {
   beforeEach(() => {
     mockExecuteAction.mockReset();
+    mockFindBindingByAppId.mockReset();
     mockGetActionService.mockReset();
+    mockUpsertBinding.mockReset();
     mockGetActionService.mockReturnValue({
       executeAction: mockExecuteAction,
     });
+    mockCreateForWorkspace.mockReturnValue({
+      files: {
+        view: mockWorkspaceView,
+        write: mockWorkspaceWrite,
+      },
+    });
+    mockWorkspaceWrite.mockResolvedValue({ bytesWritten: 100 });
+    mockWorkspaceView.mockResolvedValue({
+      content: '',
+      encoding: 'utf-8',
+      lines: 0,
+      size: 0,
+      truncated: false,
+      path: '.env',
+    });
+    process.env.GODADDY_API_BASE_URL = 'https://api.dev-godaddy.com';
+    mockFindBindingByAppId.mockReturnValue(null);
+    mockUpsertBinding.mockImplementation((params) => ({
+      appId: params.appId,
+      businessId: params.businessId ?? null,
+      businessName: params.businessName ?? null,
+      storeId: params.storeId ?? null,
+      storeName: params.storeName ?? null,
+      storeUrl: params.storeUrl ?? null,
+      channelId: params.channelId ?? null,
+      channelName: params.channelName ?? null,
+      defaultLocationId: params.defaultLocationId ?? null,
+      status: params.status,
+      source: params.source,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }));
   });
 
-  it('exports payment setup and store/channel tools only', () => {
+  it('exports payment provision and read-only store diagnostics', () => {
     expect(tools.map((tool) => tool.name).sort()).toEqual([
-      'setup',
-      'store_channel_ensure',
+      'provision',
       'store_channels_get',
       'store_get',
       'store_list',
     ]);
   });
 
-  it('calls Commerce store setup through the GoDaddy Payments setup tool', async () => {
-    const setupData = {
-      storeId: 'store-1',
-      paymentsManualSetupRequired: false,
-    };
-    mockExecuteAction.mockResolvedValueOnce({
-      success: true,
-      result: {
-        structuredContent: {
-          data: setupData,
-          trace: [],
-        },
-      },
+  describe('#provisionTool', () => {
+    it('documents non-catalog checkout as lineItemData-only after provisioning', () => {
+      expect(provisionTool.description).toContain('non-catalog payments');
+      expect(provisionTool.description).toContain('lineItemData');
+      expect(provisionTool.description).toContain('priceData');
+      expect(provisionTool.description).toContain('unitPrice');
+      expect(provisionTool.description).toContain('data.url');
+      expect(provisionTool.description).toContain('data.redirectUrl');
+      expect(provisionTool.description).toContain('Do not create products/SKUs');
+      expect(provisionTool.description).toContain('commerce/ui');
     });
 
-    const result = await runTool(setupTool, {
-      storeName: 'Paint Studio',
-      storePreference: 'new',
+    it('installs server config templates that do not depend on import.meta.env for store routing', () => {
+      const configPaths = [
+        'src/skills/payment/godaddy-payments/templates/lib/commerce/config.ts',
+        'src/skills/commerce/ui/templates/lib/commerce/config.ts',
+      ];
+
+      for (const configPath of configPaths) {
+        const config = readFileSync(resolve(process.cwd(), configPath), 'utf-8');
+
+        expect(config).toContain("readRuntimeValue('GODADDY_STORE_ID', 'VITE_GODADDY_STORE_ID')");
+        expect(config).toContain(
+          "readRuntimeValue('GODADDY_CHANNEL_ID', 'VITE_GODADDY_CHANNEL_ID')"
+        );
+        expect(config).not.toContain('import.meta.env.VITE_GODADDY_STORE_ID');
+        expect(config).not.toContain('import.meta.env.VITE_GODADDY_CHANNEL_ID');
+      }
     });
 
-    expect(result).toEqual(setupData);
-    expect(mockGetActionService).toHaveBeenCalledWith('socket-1');
-    expect(mockExecuteAction).toHaveBeenCalledWith(
-      expect.objectContaining({
-        action: 'mcp_call',
-        params: {
-          serverId: 'commerce',
-          request: expect.objectContaining({
-            jsonrpc: '2.0',
-            method: 'tools/call',
-            params: {
-              name: 'commerce_store_setup',
-              arguments: {
-                storeName: 'Paint Studio',
-                storePreference: 'new',
-              },
+    it('documents cart checkout redirect behavior', () => {
+      const skill = readFileSync(
+        resolve(process.cwd(), 'src/skills/payment/godaddy-payments/skill.md'),
+        'utf-8'
+      );
+
+      expect(skill).toContain('### Cart Checkout');
+      expect(skill).toContain('draftOrderId');
+      expect(skill).toContain('The response is `{ url, id, draftOrderId }`');
+      expect(skill).toContain('data.url');
+      expect(skill).toContain('do not render a replacement shipping/payment checkout page');
+      expect(skill).toContain('data.redirectUrl');
+    });
+
+    it('resumes from an existing Commerce channel_ready binding instead of asking for store setup again', async () => {
+      const savedBinding = {
+        appId: 'app-1',
+        businessId: 'business-1',
+        storeId: 'store-1',
+        channelId: 'channel-1',
+        status: 'channel_ready',
+        source: 'tool_channel_ensure',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+      mockFindBindingByAppId.mockReturnValue(savedBinding);
+      mockExecuteAction.mockResolvedValueOnce({
+        success: true,
+        result: {
+          structuredContent: {
+            data: {
+              storeId: 'store-1',
+              displayName: 'Shop',
+              paymentsManualSetupRequired: false,
             },
-          }),
-        },
-      })
-    );
-  });
-
-  it('ensures the Airo App Builder channel with trusted context fields', async () => {
-    const channel = {
-      channelId: 'channel-1',
-      type: 'ONLINE',
-      subType: 'airo.ai.builder',
-      airo_app_id: 'app-1',
-    };
-    mockExecuteAction.mockResolvedValueOnce({
-      success: true,
-      result: { structuredContent: { data: channel } },
-    });
-
-    const result = await runTool(
-      storeChannelEnsureTool,
-      { storeId: 'store-1', channelName: 'Airo Shop' },
-      { socketId: 'socket-1', metadata: { appId: 'app-1' } }
-    );
-
-    expect(result).toEqual(expect.objectContaining({
-      ...channel,
-      paymentSetupReady: true,
-      NEXT_STEP: expect.stringContaining("skill({ action: 'install', skill: 'payment/godaddy-payments' })"),
-      requiredNextActions: expect.arrayContaining([
-        expect.stringContaining("skill({ action: 'install', skill: 'payment/godaddy-payments' })"),
-      ]),
-      forbiddenActions: expect.arrayContaining([
-        expect.stringContaining('Do not create src/server/api/commerce/checkout/POST.ts manually.'),
-        expect.stringContaining('Do not create src/server/api/commerce/order-status/GET.ts manually.'),
-      ]),
-    }));
-    expect(mockExecuteAction).toHaveBeenCalledWith(
-      expect.objectContaining({
-        action: 'mcp_call',
-        params: {
-          serverId: 'commerce',
-          request: expect.objectContaining({
-            method: 'tools/call',
-            params: {
-              name: 'commerce_app_channel_ensure',
-              arguments: {
-                storeId: 'store-1',
-                channelType: 'ONLINE',
-                channelSubType: 'airo.ai.builder',
-                channelName: 'Airo Shop',
-                channelProviderId: '30373c02-3ab0-4f31-87e6-9c8e99ce83e2',
-                externalApp: {
-                  id: 'app-1',
-                  name: 'Airo Shop',
-                  source: 'airo-app-builder',
-                },
-              },
-            },
-          }),
-        },
-      })
-    );
-  });
-
-  it('accepts deployed Commerce MCP ensure summaries that omit channel subtype', async () => {
-    const channel = {
-      storeId: 'store-1',
-      source: 'airo-app-builder',
-      externalAppId: 'app-1',
-      externalChannelId: 'app-1',
-      channelId: 'channel-1',
-      channelType: 'ONLINE',
-      channelName: 'Airo App Builder',
-      action: 'created',
-      created: true,
-      linkedStore: true,
-      updated: false,
-      registrationStatus: 'ENABLED',
-      isDefault: false,
-    };
-    mockExecuteAction.mockResolvedValueOnce({
-      success: true,
-      result: { structuredContent: { data: channel } },
-    });
-
-    const result = await runTool(
-      storeChannelEnsureTool,
-      { storeId: 'store-1' },
-      { socketId: 'socket-1', metadata: { appId: 'app-1' } }
-    );
-
-    expect(result).toEqual(expect.objectContaining({
-      ...channel,
-      paymentSetupReady: true,
-      NEXT_STEP: expect.stringContaining("skill({ action: 'install', skill: 'payment/godaddy-payments' })"),
-    }));
-  });
-
-  it('rejects an invalid Airo channel response', async () => {
-    mockExecuteAction.mockResolvedValueOnce({
-      success: true,
-      result: {
-        structuredContent: {
-          data: {
-            channelId: 'default-channel',
-            type: 'DEFAULT',
-            subType: 'airo.ai.builder',
-            airo_app_id: 'app-1',
           },
         },
-      },
+      });
+
+      const result = await runTool(
+        provisionTool,
+        {},
+        { socketId: 'socket-1', metadata: { appId: 'app-1' } }
+      );
+
+      expect(mockExecuteAction).toHaveBeenCalledTimes(1);
+      expect(mockExecuteAction).toHaveBeenCalledWith(
+        expect.objectContaining({
+          params: expect.objectContaining({
+            request: expect.objectContaining({
+              params: {
+                name: 'commerce_store_setup',
+                arguments: {
+                  businessId: 'business-1',
+                  storeId: 'store-1',
+                },
+              },
+            }),
+          }),
+        })
+      );
+      expect(mockWorkspaceWrite).toHaveBeenCalledWith(
+        expect.objectContaining({
+          path: '.env',
+          content: expect.stringContaining('VITE_GODADDY_STORE_ID=store-1'),
+        })
+      );
+      expect(mockWorkspaceWrite).toHaveBeenCalledWith(
+        expect.objectContaining({
+          path: '.env',
+          content: expect.stringContaining('GODADDY_STORE_ID=store-1'),
+        })
+      );
+      expect(result).toEqual(
+        expect.objectContaining({
+          status: 'ready',
+          storeId: 'store-1',
+          channelId: 'channel-1',
+          paymentSetupReady: true,
+          requiredNextActions: expect.arrayContaining([
+            expect.stringContaining('lineItemData'),
+            expect.stringContaining('data.url'),
+            expect.stringContaining('redirectUrl'),
+          ]),
+          forbiddenActions: expect.arrayContaining([
+            expect.stringContaining('Do not create catalog products or SKUs'),
+          ]),
+        })
+      );
     });
 
-    const result = await runTool(
-      storeChannelEnsureTool,
-      { storeId: 'store-1' },
-      { socketId: 'socket-1', metadata: { appId: 'app-1' } }
-    );
+    it('returns payments_manual_required from the existing binding verification path', async () => {
+      const savedBinding = {
+        appId: 'app-1',
+        storeId: 'store-1',
+        channelId: 'channel-1',
+        status: 'channel_ready',
+        source: 'tool_channel_ensure',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+      mockFindBindingByAppId.mockReturnValue(savedBinding);
+      mockExecuteAction.mockResolvedValueOnce({
+        success: true,
+        result: {
+          structuredContent: {
+            data: {
+              storeId: 'store-1',
+              paymentsManualSetupRequired: true,
+              manageUrl: 'https://commerce.godaddy.com/manage',
+            },
+          },
+        },
+      });
 
-    expect(result).toMatch(/did not return a valid Airo App Builder channel/);
-    expect(result).not.toMatch(/install', skill: 'payment\/godaddy-payments'/);
-    expect(mockExecuteAction).toHaveBeenCalledTimes(1);
-  });
+      const result = await runTool(
+        provisionTool,
+        {},
+        { socketId: 'socket-1', metadata: { appId: 'app-1' } }
+      );
 
-  it('requires App Builder runtime app context before ensuring a channel', async () => {
-    const result = await runTool(storeChannelEnsureTool, { storeId: 'store-1' });
+      expect(result).toEqual(
+        expect.objectContaining({
+          status: 'payments_manual_required',
+          manageUrl: 'https://commerce.godaddy.com/manage',
+        })
+      );
+      expect(mockWorkspaceWrite).not.toHaveBeenCalledWith(
+        expect.objectContaining({ path: '.env' })
+      );
+    });
 
-    expect(result).toMatch(/App ID required/);
-    expect(mockExecuteAction).not.toHaveBeenCalled();
+    it('resumes from an existing Commerce store_bound binding by ensuring the channel', async () => {
+      const savedBinding = {
+        appId: 'app-1',
+        storeId: 'store-1',
+        status: 'store_bound',
+        source: 'tool_setup',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+      mockFindBindingByAppId
+        .mockReturnValueOnce(savedBinding)
+        .mockReturnValue({ ...savedBinding, channelId: 'channel-1', status: 'channel_ready' });
+      mockExecuteAction.mockResolvedValueOnce({
+        success: true,
+        result: {
+          structuredContent: {
+            data: {
+              channelId: 'channel-1',
+              type: 'ONLINE',
+              subType: 'airo.ai.builder',
+              airo_app_id: 'app-1',
+            },
+          },
+        },
+      });
+
+      const result = await runTool(
+        provisionTool,
+        {},
+        { socketId: 'socket-1', metadata: { appId: 'app-1' } }
+      );
+
+      expect(mockExecuteAction).toHaveBeenCalledTimes(1);
+      expect(mockExecuteAction).toHaveBeenCalledWith(
+        expect.objectContaining({
+          params: expect.objectContaining({
+            request: expect.objectContaining({
+              params: expect.objectContaining({
+                name: 'commerce_app_channel_ensure',
+              }),
+            }),
+          }),
+        })
+      );
+      expect(result).toEqual(
+        expect.objectContaining({
+          status: 'ready',
+          storeId: 'store-1',
+          channelId: 'channel-1',
+          paymentSetupReady: true,
+        })
+      );
+    });
+
+    it('returns store choices when new-store setup returns a 409 conflict', async () => {
+      const stores = [{ storeId: 'store-1', displayName: 'Existing Shop' }];
+      mockExecuteAction
+        .mockResolvedValueOnce({
+          success: true,
+          result: {
+            isError: true,
+            structuredContent: {
+              data: null,
+              errors: [
+                {
+                  code: 'tool_error',
+                  message: 'Tool execution failed.',
+                  metadata: {
+                    data: { errorType: 'RestDataSourceError', statusCode: 409 },
+                  },
+                },
+              ],
+            },
+          },
+        })
+        .mockResolvedValueOnce({
+          success: true,
+          result: { structuredContent: { data: { stores } } },
+        });
+
+      const result = await runTool(
+        provisionTool,
+        { storeName: 'Existing Shop', storePreference: 'new' },
+        { socketId: 'socket-1', metadata: { appId: 'app-1' } }
+      );
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          status: 'needs_store_choice',
+          conflict: 'store_creation_conflict',
+          stores,
+        })
+      );
+      expect(mockExecuteAction).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({
+          params: expect.objectContaining({
+            request: expect.objectContaining({
+              params: { name: 'commerce_store_list', arguments: {} },
+            }),
+          }),
+        })
+      );
+      expect(mockWorkspaceWrite).not.toHaveBeenCalled();
+    });
+
+    it('strips stale store identifiers but preserves business scope for new stores', async () => {
+      mockExecuteAction
+        .mockResolvedValueOnce({
+          success: true,
+          result: {
+            structuredContent: {
+              data: { storeId: 'new-store-id', paymentsManualSetupRequired: false },
+            },
+          },
+        })
+        .mockResolvedValueOnce({
+          success: true,
+          result: {
+            structuredContent: {
+              data: {
+                channelId: 'channel-1',
+                type: 'ONLINE',
+                subType: 'airo.ai.builder',
+                airo_app_id: 'app-1',
+              },
+            },
+          },
+        });
+
+      await runTool(
+        provisionTool,
+        {
+          businessId: 'business-1',
+          storeName: 'Paint Studio Annex',
+          storePreference: 'new',
+          storeId: 'stale-store-id',
+          storeUrl: 'https://commerce.godaddy.com/stores/stale-store-id',
+        },
+        { socketId: 'socket-1', metadata: { appId: 'app-1' } }
+      );
+
+      expect(mockExecuteAction).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({
+          params: expect.objectContaining({
+            request: expect.objectContaining({
+              params: {
+                name: 'commerce_store_setup',
+                arguments: {
+                  businessId: 'business-1',
+                  storeName: 'Paint Studio Annex',
+                  storePreference: 'new',
+                },
+              },
+            }),
+          }),
+        })
+      );
+    });
   });
 
   it('calls store read tools directly', async () => {
@@ -272,8 +489,8 @@ describe('GoDaddy Payments skill MCP tools', () => {
   it('returns a string error when no websocket client action service exists', async () => {
     mockGetActionService.mockReturnValueOnce(undefined);
 
-    const result = await runTool(setupTool, {});
+    const result = await runTool(storeListTool, {});
 
-    expect(result).toMatch(/godaddy-payments__setup error: .*client action service/);
+    expect(result).toMatch(/godaddy-payments__store_list error: .*client action service/);
   });
 });

@@ -714,7 +714,7 @@ Note: This is the current project context including dependencies and design syst
     if (commerceInfo.lastVerifiedAt) {
       parts.push(`- Last verified: ${commerceInfo.lastVerifiedAt.toISOString()}`);
     }
-    parts.push('- Continuity context only. Use commerce_store_setup for the authoritative selectedCommerceResources tool result before Commerce mutations.');
+    parts.push('- Continuity context only. Use commerce__provision for the authoritative selectedCommerceResources tool result before Commerce mutations.');
 
     return parts.join('\n');
   }

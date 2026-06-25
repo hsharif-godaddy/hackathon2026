@@ -1,48 +1,35 @@
 ---
 name: ui
 description: Internal Commerce UI/routes implementation pack for product catalog UI, product detail pages, and cart management. The commerce router decides when to load and install it.
-whenToUse: Do not load directly for user intent. Load `commerce` first for store/catalog/cart requests; `commerce` loads and installs this pack only after store/channel setup. For checkout/payment intent, load `payment`.
-post-install-notes: 'Commerce catalog/cart routes and helpers are included in the templates. Do NOT create replacement src/server/api/commerce/products, src/server/api/commerce/cart, useProducts, or cart proxy files manually. Build UI against the installed routes/helpers. Checkout routes are not included; install payment/godaddy-payments when checkout is needed.'
+whenToUse: Do not load directly for user intent. Load `commerce` first for store/catalog/cart requests; `commerce` loads and installs this pack only after store/channel setup.
+post-install-notes: 'Commerce catalog/cart routes and helpers are included in the templates. Do NOT create replacement src/server/api/commerce/products, src/server/api/commerce/cart, useProducts, or cart proxy files manually. Build UI against the installed routes/helpers. Checkout routes are not included in this pack; cart checkout requires payment/godaddy-payments provisioning plus template install.'
 ---
 
 # Commerce UI Template Pack
 
 Internal implementation pack for Commerce-backed catalog, product detail, and cart UI. This skill is **not a public router**. Load `commerce` for Commerce user intent; `commerce` owns setup/data work and decides when to load and install this pack.
 
-Hosted checkout, order-status polling, non-catalog payments, buy buttons, and cart checkout handoff are owned by `payment/godaddy-payments`.
-
-## Ownership Boundary
-
-| Skill | Purpose |
-| --- | --- |
-| `commerce` | Store/catalog/product/inventory/channel/order operations through Commerce MCP |
-| `commerce/ui` | Catalog grid, product detail page, cart/draft-order routes, and cart UI |
-| `payment/godaddy-payments` | Hosted checkout route, order-status route, non-catalog checkout, SKU buy buttons, and cart checkout handoff |
-
-If a catalog/cart app needs a Checkout button, install this skill for catalog/cart and install `payment/godaddy-payments` for `/api/commerce/checkout` and `/api/commerce/order-status`.
-
 ## Direct-Load Guardrail
 
-If this skill was loaded directly from first-message/user intent, stop and load `commerce` instead. Do not proceed from this template pack until `commerce` or `payment/godaddy-payments` has resolved the store/channel context.
+If this skill was loaded directly from first-message/user intent, stop and load `commerce` instead. Do not proceed from this template pack until `commerce` has resolved the store/channel context.
 
-Generic activation workflows may say to load and then install template skills. For `commerce/ui`, only follow that order after `commerce` or `payment/godaddy-payments` has resolved store/channel context and env values. This pack depends on that setup.
+Generic activation workflows may say to load and then install template skills. For `commerce/ui`, only follow that order after `commerce__provision` has returned `status: 'ready'` and env values are written. This pack depends on that setup.
 
 ## Required Pre-Step — Commerce Setup Must Be Complete
 
 **Hard blocker. Do not write a single line of commerce UI until this is done.**
 
-1. If this skill was loaded after `payment/godaddy-payments` completed setup, reuse that resolved store/channel context.
-2. Otherwise, run `skill({ action: 'load', skill: 'commerce' })` and follow the Commerce router.
-3. Use the Commerce MCP tools surfaced by `commerce` to choose or create a store and ensure the Airo App Builder channel.
-4. Capture the resulting `storeId`, `channelId`, API environment, and currency to:
-   - `VITE_GODADDY_STORE_ID`
-   - `VITE_GODADDY_CHANNEL_ID`
-   - `GODADDY_API_BASE_URL`
-   - `VITE_GODADDY_CURRENCY_CODE`
+`commerce__provision` must have returned `status: 'ready'` before proceeding. If it hasn't been called, load `commerce` and call it first.
 
 Symptoms of skipping setup: catalog renders empty, add-to-cart fails because there is no SKU to reference, and cart routes 4xx/500 because store/channel env vars are missing or wrong.
 
-If the catalog is empty after running `commerce`, stop and ask the user whether to run the Commerce product/catalog management flow before continuing. Exception: if the intent is a non-catalog payment such as an appointment deposit, donation, event ticket, custom invoice, tip, or user-entered amount, do not use `commerce/ui`; load `payment/godaddy-payments` and use `lineItemData`.
+If the catalog is empty after setup, stop and ask what the user wants to do before continuing:
+
+- Create starter products with the agent.
+- Manage products in Commerce Home, then return when the catalog is ready.
+- Continue with an empty catalog.
+
+Include the Commerce Home link from `commerce__provision`'s `commerceHomeUrl`, or `selectedCommerceResources.storeUrl`, when available. If the user chooses starter products or provided concrete product details, return to `commerce` and use `commerce__search_tools` plus `commerce__execute_tool` for product/catalog/inventory/media work. Do not tell the user to manage products in Commerce Home as the only path forward.
 
 ## Required Pre-Step — Install the `commerce/ui` Templates
 
@@ -53,8 +40,6 @@ skill({ action: 'install', skill: 'commerce/ui' });
 ```
 
 Templates are fully wired into the route table. Files under `templates/server/api/commerce/**/*.ts` are copied into `src/server/api/commerce/**/*.ts` and auto-registered in `src/server/entry.ts` by the skill loader. Do not wire routes manually.
-
-After install, write `GODADDY_API_BASE_URL` to the app's env configuration. Copy the value verbatim from `GODADDY_API_BASE_URL` in the current agents runtime, e.g. `https://api.dev-godaddy.com`. There is no fallback default.
 
 After install, read the route docblocks for the endpoints you plan to call. Each route file documents its body/query/response shape. Do not guess at shapes.
 
@@ -77,7 +62,7 @@ The only "really good reasons" to deviate:
 
 If you think you have found another exception, ask the user before bypassing the proxy.
 
-`clientSecret` lives in `/local/config.json` and is read server-side via `readCommerceConfig()` from `lib/commerce/config.ts`. Never re-read the file by hand and never cast entries to `string`.
+`clientSecret` lives in `/local/config.json` and is read server-side via `readCommerceConfig()` from `lib/commerce/config.ts`. Store ID, Channel ID, API base URL, and currency are read by the same config reader from runtime env or the app `.env` file written by `commerce__provision`; server route code must not rely on `import.meta.env` for those values. Never re-read the file by hand, never cast config entries to `string`, and never hardcode known Commerce IDs into source as fallbacks.
 
 ## Installed Routes
 
@@ -97,7 +82,7 @@ All cart routes return the same response shape: `{ cart: CartOrder | null }`. Th
 | `DELETE` | `/api/commerce/cart/:id/items/:itemId` | Remove a line item | `{ cart: CartOrder \| null }` | `templates/server/api/commerce/cart/[id]/items/[itemId]/DELETE.ts` |
 | `POST` | `/api/commerce/cart/:id/discounts` | Apply promo codes to the cart | `{ cart: CartOrder \| null }` | `templates/server/api/commerce/cart/[id]/discounts/POST.ts` |
 
-For `/api/commerce/checkout` or `/api/commerce/order-status`, install `payment/godaddy-payments`.
+This skill does not include `/api/commerce/checkout` or `/api/commerce/order-status` routes. It also does not expose or compute a hosted checkout URL from the cart. Hosted checkout URL creation comes from the `payment/godaddy-payments` templates.
 
 ## Domain Concepts
 
@@ -162,15 +147,6 @@ Every cart route returns `{ cart: CartOrder | null }`. Always read `data.cart` a
 - Promo codes: `POST /api/commerce/cart/:id/discounts` with `{ discountCodes: string[] }`.
 - There is no delete-cart route. Clear cart by deleting every line item or abandoning the cart.
 
-## Checkout Handoff
-
-This skill can build the cart UI and produce a `draftOrderId`. It does not install hosted checkout. To complete payment:
-
-1. Install `payment/godaddy-payments`.
-2. Call `POST /api/commerce/checkout` with `{ draftOrderId, returnUrl, successUrl }`.
-3. Embed `draftOrderId` into `successUrl` before sending, e.g. `${origin}/checkout/success?orderId=${draftOrderId}`.
-4. On the success page, verify paid status server-side using `getOrderStatus(orderId)` before fulfilling the order.
-
 ## UI Defaults
 
 Override any of these if the user's prompt is explicit; otherwise these are the defaults.
@@ -179,20 +155,44 @@ Override any of these if the user's prompt is explicit; otherwise these are the 
 - **Product catalog page** — responsive grid of product cards (image, name, price/price range), with pagination controls and a search input that filters by name. Clicking a card navigates to the product details page.
 - **Product details page** — single-product view: large primary image with a thumbnail strip if multiple media exist, name, price, description, variant/attribute selectors when applicable, quantity stepper, and an Add to cart button.
 
-## Configuration
+## Checkout Handoff
 
-Server-only values are read by `readCommerceConfig()` in `/lib/commerce/config.ts`. The browser never sees them.
+This skill does not install checkout routes. If the user asked for cart checkout, buy buttons, "checkout", "place order", order confirmation, or a complete shop, the required sequence is:
 
-| Key | Source | Notes |
-| --- | --- | --- |
-| `GODADDY_OAUTH_CLIENT_ID` | `/local/config.json` only | Public OAuth client id. |
-| `GODADDY_OAUTH_CLIENT_SECRET` | `/local/config.json` only | Never prompt the user. Never add to `.env.example`. |
-| `VITE_GODADDY_STORE_ID` | env | From Commerce or GoDaddy Payments setup. |
-| `VITE_GODADDY_CHANNEL_ID` | env | Required so admin order numbers sequence correctly. |
-| `GODADDY_API_BASE_URL` | env | Full URL including scheme. Server-only; no `VITE_` prefix. |
-| `VITE_GODADDY_CURRENCY_CODE` | env | ISO 4217. Defaults to `USD`. |
+1. Finish the catalog/PDP/cart UI using this pack's installed routes.
+2. Load `payment/godaddy-payments`:
 
-If any required value is missing, `readCommerceConfig()` throws with an actionable message.
+```ts
+skill({ action: 'load', skill: 'payment/godaddy-payments' });
+```
+
+3. Call `godaddy-payments__provision`; it will reuse the Commerce binding for this app and verify payment readiness.
+4. When provision returns `status: "ready"`, install `payment/godaddy-payments` templates before writing checkout UI, checkout buttons, checkout pages, order-status code, or checkout server routes:
+
+```ts
+skill({ action: 'install', skill: 'payment/godaddy-payments' });
+```
+
+5. Wire the cart checkout button to `POST /api/commerce/checkout` with the cart's `draftOrderId`, `returnUrl`, and `successUrl`, then redirect to `data.url`.
+6. Run `commerce__validate_checkout` before reporting checkout as complete. Fix every finding first.
+
+Do not stop after loading the payment skill. Do not assume Commerce cart has a native checkout URL. Do not build replacement `/api/commerce/checkout`, shipping-update, place-order, or order-status routes by hand. The installed GoDaddy Payments templates own hosted checkout session creation and order-status verification.
+
+Cart checkout request shape after `payment/godaddy-payments` is installed:
+
+```ts
+const data = await fetch('/api/commerce/checkout', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    draftOrderId: cart.id,
+    returnUrl: `${origin}/cart`,
+    successUrl: `${origin}/checkout/success?orderId=${encodeURIComponent(cart.id)}`,
+  }),
+}).then((response) => response.json());
+
+window.location.assign(data.url);
+```
 
 ## Common Mistakes
 
@@ -202,4 +202,7 @@ If any required value is missing, `readCommerceConfig()` throws with an actionab
 4. Omitting `name` from add-to-cart input. It is required for readable order history.
 5. Passing SKU-based `lineItems` directly to `addDraftOrder`. The shipped route creates an empty cart, then calls `addLineItemBySkuId`.
 6. Reading wrong response keys. Cart proxy routes expose `{ cart }`, not upstream GraphQL field names.
-7. Expecting checkout routes from this skill. Install `payment/godaddy-payments` for checkout and order status.
+7. Expecting checkout routes from this skill. Checkout and order status routes are not included.
+8. Loading `payment/godaddy-payments` but forgetting to call `godaddy-payments__provision` and install its templates before building checkout.
+9. Inventing a Commerce native checkout URL from the cart. The cart is a draft order; hosted checkout URL creation comes from `/api/commerce/checkout` installed by `payment/godaddy-payments`.
+10. Building custom checkout, shipping, place-order, or order-status routes by hand instead of installing `payment/godaddy-payments`.

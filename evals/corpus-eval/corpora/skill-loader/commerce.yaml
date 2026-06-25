@@ -1,0 +1,120 @@
+metadata:
+  name: Skill Loader - Commerce
+  version: 1.0.0
+
+cases:
+  # --- Positive: commerce skill should load ---
+
+  - id: online-store-products
+    prompt: 'Build an online store for my handmade candles with product pages and a cart'
+    expectedSkill: commerce
+    tags: [positive]
+    rationale: Online store plus product pages and cart is a Commerce catalog/storefront request
+
+  - id: product-catalog
+    prompt: 'Create a product catalog with product detail pages for my apparel store'
+    expectedSkill: commerce
+    tags: [positive]
+    rationale: Product catalog and PDP are direct Commerce intents
+
+  - id: inventory-management
+    prompt: 'I need to manage products, prices, and inventory for my online store'
+    expectedSkill: commerce
+    tags: [positive]
+    rationale: Product, price, and inventory management belong to Commerce
+
+  - id: shop-page-commerce-catalog
+    prompt: 'Add a shop page that loads my GoDaddy Commerce catalog'
+    expectedSkill: commerce
+    tags: [positive]
+    rationale: Loading the GoDaddy Commerce catalog is explicit Commerce usage
+
+  - id: storefront-with-checkout
+    prompt: 'Build a storefront where customers can browse products, add them to a cart, and check out'
+    expectedSkill: commerce
+    tags: [positive, regression]
+    rationale: A complete shop with product browsing, cart, and checkout should start with Commerce, then use the checkout checklist
+
+  - id: catalog-cart-checkout
+    prompt: 'Wire the cart to checkout for the products in my Commerce catalog'
+    expectedSkill: commerce
+    tags: [positive, regression]
+    rationale: Catalog-backed cart checkout is owned by the Commerce flow before payment templates are installed
+
+  - id: sku-buy-button
+    prompt: 'Add buy buttons for the SKUs in my product catalog'
+    expectedSkill: commerce
+    tags: [positive]
+    rationale: SKU-backed product purchase flow requires Commerce catalog context
+
+  - id: product-inventory-status
+    prompt: 'Show inventory availability on each product page'
+    expectedSkill: commerce
+    tags: [positive]
+    rationale: Product inventory status is Commerce catalog data
+
+  # --- Positive: harder cases (no literal "commerce" or "catalog") ---
+
+  - id: watch-store
+    prompt: 'Let customers browse my watches, choose variants, add them to a bag, and buy online'
+    expectedSkill: commerce
+    tags: [positive, hard]
+    rationale: Browsable physical goods, variants, cart, and buying online imply Commerce
+
+  - id: bakery-order-store
+    prompt: 'Turn this bakery site into a store with items people can order online'
+    expectedSkill: commerce
+    tags: [positive, hard]
+    rationale: Store items ordered online implies product/catalog Commerce, even without exact keywords
+
+  - id: merch-stock
+    prompt: 'I need a merch shop with item pages and stock levels'
+    expectedSkill: commerce
+    tags: [positive, hard]
+    rationale: Merch shop, item pages, and stock levels map to storefront and inventory
+
+  - id: existing-store-cart
+    prompt: 'Can you connect the cart for my existing store items to checkout?'
+    expectedSkill: commerce
+    tags: [positive, hard, regression]
+    rationale: Existing store items plus cart checkout is catalog-backed checkout, not a generic payment page
+
+  # --- Negative: non-catalog payments should route to payment, not commerce ---
+
+  - id: donation-page
+    prompt: 'Add a donate page where visitors can make a one-time gift'
+    expectedSkill: payment
+    tags: [negative, regression]
+    rationale: Donations are non-catalog payments and should use the payment router
+
+  - id: service-deposit
+    prompt: 'Add a standalone service deposit payment page for consulting clients'
+    expectedSkill: payment
+    tags: [negative, hard]
+    rationale: Service deposits are non-catalog payments, not product catalog checkout
+
+  - id: event-registration-fee
+    prompt: 'Add registration payments for my weekend workshop'
+    expectedSkill: payment
+    tags: [negative]
+    rationale: Registration fees are non-catalog payments
+
+  - id: custom-invoice
+    prompt: 'Create a page where clients can pay a custom invoice amount'
+    expectedSkill: payment
+    tags: [negative]
+    rationale: Custom invoice amounts use direct payment checkout with lineItemData, not Commerce catalog products
+
+  # --- Negative: unrelated work should not load commerce ---
+
+  - id: static-pricing-page
+    prompt: 'Create a pricing page that shows my three service packages'
+    expectedSkill: null
+    tags: [negative]
+    rationale: Static pricing display is UI/content work, not product catalog or checkout integration
+
+  - id: contact-form-data
+    prompt: 'Save contact form submissions so I can review them later'
+    expectedSkill: database
+    tags: [negative]
+    rationale: Persisting contact submissions is a database concern, not Commerce

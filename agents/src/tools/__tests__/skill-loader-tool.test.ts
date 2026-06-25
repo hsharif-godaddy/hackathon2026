@@ -850,9 +850,9 @@ intents:
         // these the LLM may build storefront or payment UI before
         // Commerce MCP has verified/setup store data, producing UI wired to
         // an unconfigured store.
-        'storefront UI/shop page/product detail page/PDP',
-        'build/update shop page/product catalog/product grid/load products from API',
-        'product detail page/product page/PDP/product route',
+        'storefront UI/shop page',
+        'product catalog UI/product detail page/PDP/product grid',
+        'build/update shop page/product catalog/load products from API',
       ];
       for (const phrase of phrases) {
         expect(section).toContain(phrase);

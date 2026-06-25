@@ -16,6 +16,7 @@
 import { readFileSync } from 'node:fs';
 
 const CONFIG_PATHS = ['/local/config.json', '/alloc/config.json'] as const;
+const DOTENV_PATHS = ['.env', '.env.local'] as const;
 
 interface PlatformManagedEntry {
   SYSTEM_MANAGED?: boolean;
@@ -40,6 +41,7 @@ export interface CommerceConfig {
 }
 
 let cachedConfigJson: ConfigJson | null = null;
+let cachedDotEnv: Record<string, string> | null = null;
 
 function readConfigJson(): ConfigJson {
   if (cachedConfigJson) return cachedConfigJson;
@@ -71,6 +73,40 @@ function readConfigValue(key: string): string | undefined {
   return unwrapConfigEntry(readConfigJson()[key]);
 }
 
+function readDotEnv(): Record<string, string> {
+  if (cachedDotEnv) return cachedDotEnv;
+
+  const values: Record<string, string> = {};
+  for (const path of DOTENV_PATHS) {
+    try {
+      const raw = readFileSync(path, 'utf-8');
+      for (const line of raw.split('\n')) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith('#')) continue;
+        const eqIdx = line.indexOf('=');
+        if (eqIdx <= 0) continue;
+        const key = line.slice(0, eqIdx).trim();
+        const value = line.slice(eqIdx + 1).trim().replace(/^['"]|['"]$/g, '');
+        values[key] = value;
+      }
+    } catch {
+      // Missing local env files are fine; provision writes .env when Commerce is ready.
+    }
+  }
+
+  cachedDotEnv = values;
+  return cachedDotEnv;
+}
+
+function readRuntimeValue(...keys: string[]): string | undefined {
+  const dotEnv = readDotEnv();
+  for (const key of keys) {
+    const value = process.env[key] ?? dotEnv[key] ?? readConfigValue(key);
+    if (value?.trim()) return value;
+  }
+  return undefined;
+}
+
 function requireValue(value: string | undefined, label: string, fix: string): string {
   const trimmed = value?.trim();
   if (!trimmed) {
@@ -98,26 +134,27 @@ export function readCommerceConfig(): CommerceConfig {
   );
 
   const storeId = requireValue(
-    import.meta.env.VITE_GODADDY_STORE_ID,
+    readRuntimeValue('GODADDY_STORE_ID', 'VITE_GODADDY_STORE_ID'),
     'GODADDY_STORE_ID',
-    'Add VITE_GODADDY_STORE_ID to your .env file.'
+    'Run Commerce or GoDaddy Payments provisioning so the store id is written to .env. Do not hardcode store ids in source files.'
   );
 
   const channelId = requireValue(
-    import.meta.env.VITE_GODADDY_CHANNEL_ID,
+    readRuntimeValue('GODADDY_CHANNEL_ID', 'VITE_GODADDY_CHANNEL_ID'),
     'GODADDY_CHANNEL_ID',
-    'Add VITE_GODADDY_CHANNEL_ID to your .env file.'
+    'Run Commerce or GoDaddy Payments provisioning so the channel id is written to .env. Do not hardcode channel ids in source files.'
   );
 
   const apiBaseUrl = new URL(
     requireValue(
-      process.env.GODADDY_API_BASE_URL,
+      readRuntimeValue('GODADDY_API_BASE_URL', 'VITE_GODADDY_API_BASE_URL'),
       'GODADDY_API_BASE_URL',
       'Add GODADDY_API_BASE_URL to your .env file (full URL with scheme, e.g. https://api.dev-godaddy.com).'
     )
   ).origin;
 
-  const currencyCode = (import.meta.env.VITE_GODADDY_CURRENCY_CODE ?? 'USD').trim();
+  const currencyCode =
+    (readRuntimeValue('GODADDY_CURRENCY_CODE', 'VITE_GODADDY_CURRENCY_CODE') ?? 'USD').trim();
 
   return { clientId, clientSecret, storeId, channelId, apiBaseUrl, currencyCode };
 }

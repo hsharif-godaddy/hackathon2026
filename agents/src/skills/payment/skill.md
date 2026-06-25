@@ -1,9 +1,10 @@
 ---
 name: payment
 description: Help user choose and integrate the right payment solution for their app.
-whenToUse: Trigger for any payment-related request — accept payments, checkout, buy now, charge customers, Stripe, subscriptions, payment page.
+whenToUse: Trigger for any payment-related request — accept payments, checkout, buy now, charge customers, Stripe, subscriptions, payment page, donations, tips, event tickets, deposits, registrations, custom fees, or other non-catalog payments.
 intents:
   - accept payments / payment page / buy now / checkout / one-time payment / charge customers
+  - donate / donation page / tip jar / event tickets / registration fee / appointment deposit / service deposit / custom invoice / pay what you want
   - GoDaddy Payments / GoDaddy checkout / GoDaddy payment page
   - Stripe / Stripe checkout / Stripe payments / Stripe subscription
 ---
