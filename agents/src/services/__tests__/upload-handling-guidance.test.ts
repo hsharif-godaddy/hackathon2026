@@ -198,4 +198,82 @@ describe('buildUploadHandlingGuidance', () => {
       expect(out).toContain('app123_456_photo.jpg');
     });
   });
+
+  // Placement hygiene — stop the wrong-image correction loop from minting new
+  // slots, reusing stale uploads, or assigning multi-image batches by order.
+  describe('placement hygiene (wrong-image loop guards)', () => {
+    it('display_on_site: reuse the existing slot on a correction, never mint -v2/-v3 variants', () => {
+      const out: string = buildUploadHandlingGuidance(input({ placementIntent: 'display_on_site' }));
+      expect(out).toContain('SAME slot path');
+      expect(out).toMatch(/NEVER create a new slot variant/i);
+      expect(out).toContain('-v2');
+    });
+
+    it('unclear: also carries the correction + current-turn + multi-image hygiene', () => {
+      const out: string = buildUploadHandlingGuidance(input({ placementIntent: 'unclear' }));
+      expect(out).toMatch(/NEVER create a new slot variant/i);
+      expect(out).toContain('THIS turn');
+      expect(out).toContain('MULTIPLE IMAGES AT ONCE');
+    });
+
+    it('warns against assigning multiple look-alike images by upload order', () => {
+      const out: string = buildUploadHandlingGuidance(input({ placementIntent: 'display_on_site' }));
+      expect(out).toMatch(/do NOT assign them by upload order/i);
+      expect(out).toMatch(/swapped/i);
+    });
+
+    it('does NOT inject placement hygiene into reference_only or logo branches', () => {
+      const ref: string = buildUploadHandlingGuidance(input({ placementIntent: 'reference_only' }));
+      const logo: string = buildUploadHandlingGuidance(input({ assetRole: 'logo', placementIntent: 'display_on_site' }));
+      expect(ref).not.toContain('SAME slot path');
+      expect(logo).not.toContain('SAME slot path');
+    });
+  });
+
+  describe('use-uploaded-not-stock guardrail (no Getty search on a "place this file" turn)', () => {
+    it('canonical hero/background placement forbids stock search / generated substitutes', () => {
+      const out: string = buildUploadHandlingGuidance(
+        input({ placementIntent: 'display_on_site', assetRole: 'hero_image', slotUrl: '/airo-assets/images/pages/home/hero' }),
+      );
+      expect(out).toMatch(/Do NOT run a Getty\/stock `search`/i);
+      expect(out).toMatch(/source of truth/i);
+    });
+
+    it('generic display placement forbids stock search', () => {
+      const out: string = buildUploadHandlingGuidance(
+        input({ placementIntent: 'display_on_site', assetRole: null, storedUploadFilename: 'stored-x.jpg' }),
+      );
+      expect(out).toMatch(/Do NOT run a Getty\/stock `search`/i);
+    });
+
+    it('unclear branch carries the no-stock guardrail for once-placed', () => {
+      const out: string = buildUploadHandlingGuidance(input({ placementIntent: 'unclear' }));
+      expect(out).toMatch(/Do NOT run a Getty\/stock `search`/i);
+    });
+
+    it('reference_only and logo branches do NOT carry the no-stock guardrail (they legitimately generate/derive)', () => {
+      const ref: string = buildUploadHandlingGuidance(input({ placementIntent: 'reference_only' }));
+      const logo: string = buildUploadHandlingGuidance(input({ assetRole: 'logo', placementIntent: 'display_on_site' }));
+      expect(ref).not.toMatch(/Do NOT run a Getty\/stock `search`/i);
+      expect(logo).not.toMatch(/Do NOT run a Getty\/stock `search`/i);
+    });
+  });
+
+  describe('storedUploadFilename sanitization (it reaches an agent-facing code span)', () => {
+    it('strips backticks/newlines from the stored filename in the display_on_site import_upload span', () => {
+      const out: string = buildUploadHandlingGuidance(
+        input({ placementIntent: 'display_on_site', assetRole: null, storedUploadFilename: 'evil`\n.jpg' }),
+      );
+      expect(out).toContain('filename: "evil__.jpg"');
+      expect(out).not.toContain('evil`');
+    });
+
+    it('strips backticks/newlines from the stored filename in the unclear import_upload span', () => {
+      const out: string = buildUploadHandlingGuidance(
+        input({ placementIntent: 'unclear', storedUploadFilename: 'evil`\n.jpg' }),
+      );
+      expect(out).toContain('filename: "evil__.jpg"');
+      expect(out).not.toContain('evil`');
+    });
+  });
 });

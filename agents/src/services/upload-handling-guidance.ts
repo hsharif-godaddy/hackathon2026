@@ -37,6 +37,40 @@ export function sanitizeUploadFileNameForDisplay(name: string): string {
   return name.replace(/[\n\r\t\0`]/g, '_').slice(0, 200)
 }
 
+/**
+ * Hard guardrail for "place this image" turns. The user handed over their own
+ * file, so a stock/Getty search or an AI-generated substitute for that same
+ * spot is wrong work — it burns credits and lands an image the user did not
+ * ask for. Steering to `import_upload` alone was not enough: the agent could
+ * still fall back to its general media instinct (other prompts even encourage
+ * stock search) and search anyway. Appended to every branch where the upload
+ * IS meant to go on the site (display / hero / background / unclear-then-placed),
+ * but NOT to reference_only (which intentionally generates/derives assets) or
+ * logo (which already declares the upload the source of truth).
+ */
+const USE_UPLOADED_NOT_STOCK: string =
+  '- This is the user\'s OWN uploaded file and is the source of truth for THIS placement. Place that file (via `import_upload`, or the slot URL above). Do NOT run a Getty/stock `search` and do NOT generate a substitute image for this spot — the user already gave you the exact image they want here. Only search for stock when the user explicitly asks for a DIFFERENT, additional image you were not given.'
+
+/**
+ * Placement-hygiene rules appended to every "place this on the site" branch
+ * (display_on_site + unclear). These target the failure modes that turn a
+ * one-turn placement into a 10-50 turn credit-burning loop, observed across
+ * real sessions:
+ *
+ *  - "wrong image again" → the agent mints a NEW slot (`-v2`, `-v3`, `-final`)
+ *    instead of updating the slot already wired into the page, so the page
+ *    never changes and the user keeps seeing the old image.
+ *  - On a correction turn the agent re-imports a PRIOR turn's stored filename
+ *    (a stale upload) rather than the file the user just attached.
+ *  - Several look-alike images uploaded together get assigned by upload order
+ *    (a guess) and land swapped.
+ */
+const PLACEMENT_HYGIENE: readonly string[] = [
+  '- CORRECTING A WRONG/SWAPPED IMAGE: if the user says the image you placed is wrong, swapped, or "still wrong", the slot is ALREADY wired into the page code. Re-run `import_upload` with the SAME slot path already in the code — NEVER create a new slot variant (`-v2`, `-v3`, `-final`, `-fixed`). A new slot name is not referenced by the page, so nothing visibly changes and the user keeps seeing the old image. To swap two images that landed in the wrong slots, re-import each correct file into its existing slot path.',
+  '- ALWAYS import the file the user attached THIS turn, not a filename from an earlier turn. Do not reuse a previously-uploaded stored filename on a correction turn — that re-places the old (wrong) image.',
+  '- MULTIPLE IMAGES AT ONCE: when several images are uploaded together for distinct positions (e.g. front / back / label views, or near-identical product photos), do NOT assign them by upload order — that is a guess and usually lands them swapped. State which image you believe goes where in plain language and confirm before importing if there is any ambiguity.',
+]
+
 export function buildUploadHandlingGuidance(input: UploadHandlingInput): string {
   const fileKind = input.isImage === false ? 'document' : 'image'
   const fileName = sanitizeUploadFileNameForDisplay(input.fileName)
@@ -85,28 +119,36 @@ export function buildUploadHandlingGuidance(input: UploadHandlingInput): string 
         `- Do NOT swap the rendered ${role} silently. FIRST describe the current ${role} in plain language ("Your current ${role} is the coffee photo") and ask whether to replace it with this new upload. Only after explicit "yes, replace it" do you edit the ${role} element's \`<img src>\` / CSS background to point at \`${slotUrl}\`.`,
         `- If the user prefers to keep both, use \`${slotUrl}\` for a new section/element rather than the canonical ${role}.`,
         '- Do NOT copy to public/assets or use /files/uploads/ for this image.',
+        USE_UPLOADED_NOT_STOCK,
       )
       return lines.join('\n')
     }
     lines.push(
       `- User intent: **display on site** — this is the ${role} image; use slot URL \`${slotUrl}\` in code`,
       '- Do NOT copy to public/assets or use /files/uploads/ for this image.',
+      USE_UPLOADED_NOT_STOCK,
     )
     return lines.join('\n')
   }
 
   if (input.placementIntent === 'display_on_site') {
-    const filename = input.storedUploadFilename ?? '<stored-upload-filename-from-listUploadedFiles>'
+    const filename = input.storedUploadFilename
+      ? sanitizeUploadFileNameForDisplay(input.storedUploadFilename)
+      : '<stored-upload-filename-from-listUploadedFiles>'
     lines.push(
       '- User intent: **display on site** — register a media slot for THIS placement:',
       `\`media({ action: "import_upload", slot: "<semantic-name>", filename: "${filename}" })\``,
       '- Each position on the site is its own slot. ADDING a new element (e.g. another card) → use a NEW slot name. REPLACING an existing element → FIRST describe the current contents in plain language ("Your current hero is the coffee photo — want me to replace it with this one?") and wait for an explicit "yes, replace it" before passing that element\'s slot path to `import_upload`. Do NOT replace silently. If the user prefers to keep both, register to a NEW slot name instead. The same uploaded file can back multiple slots and they update independently.',
       '- Use the returned `slotUrl` in `<img src="…">` or CSS background-image.',
+      USE_UPLOADED_NOT_STOCK,
+      ...PLACEMENT_HYGIENE,
     )
     return lines.join('\n')
   }
 
-  const unclearFilename = input.storedUploadFilename ?? '<stored-upload-filename-from-listUploadedFiles>'
+  const unclearFilename = input.storedUploadFilename
+    ? sanitizeUploadFileNameForDisplay(input.storedUploadFilename)
+    : '<stored-upload-filename-from-listUploadedFiles>'
   lines.push(
     '- User intent: **unclear** — the user uploaded this but has not said where it should go.',
     '- Ask where they want it before placing it. Do NOT place it on the site until the user tells you where.',
@@ -117,6 +159,8 @@ export function buildUploadHandlingGuidance(input: UploadHandlingInput): string 
     `\`media({ action: "import_upload", slot: "<semantic-name>", filename: "${unclearFilename}" })\``,
     '- REPLACING an existing image — pass that element\'s EXACT existing slot path so the image updates in place; do NOT invent a new slot. ADDING a brand-new element — use a new semantic slot name.',
     '- Then use the returned `slotUrl` in `<img src="…">` or CSS background-image. Do NOT copy to public/assets or use /files/uploads/ for this image.',
+    USE_UPLOADED_NOT_STOCK,
+    ...PLACEMENT_HYGIENE,
   )
   return lines.join('\n')
 }

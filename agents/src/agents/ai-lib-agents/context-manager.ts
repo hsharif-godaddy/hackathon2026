@@ -25,6 +25,7 @@ import { fileURLToPath } from 'url'
 import { contextAttachmentRegistry } from '../../services/ContextAttachmentRegistry.js'
 import type { ContextAttachment } from '@airo/shared/context-attachment'
 import { createForWorkspace } from '../../workspace/index.js'
+import { extractStoredUploadFilename } from '../../services/upload-stored-filename.js'
 import { isDevSupervisorNotFound } from '../../services/DevSupervisorClient.js'
 import {
   buildUploadHandlingGuidance,
@@ -95,6 +96,37 @@ function collectAttachedUploadFileNames(attachments: ContextAttachment[] | undef
     }
   }
   return names
+}
+
+/**
+ * Map of display name → CURRENT-turn stored filename, drawn from the live
+ * `selected_assets` attachments (each asset's `imageUrl` carries the unique
+ * stored filename). Used to override a persisted classification's possibly
+ * STALE `storedUploadFilename`: the persisted loop reads the pre-turn JSON
+ * (this turn's re-classify/persist runs later), so on a re-upload/correction
+ * turn its `storedUploadFilename` points at the PRIOR upload. Surfacing that in
+ * the imperative `import_upload` block let the agent re-place the old (wrong)
+ * image. When the file is attached this turn we have its fresh stored filename
+ * here and prefer it. `file_upload` attachments carry no per-item URL, so they
+ * contribute nothing and fall back to the persisted value (unchanged).
+ */
+export function collectAttachedUploadStoredFilenames(attachments: ContextAttachment[] | undefined): Map<string, string> {
+  const byName: Map<string, string> = new Map<string, string>()
+  if (!attachments) return byName
+  for (const attachment of attachments) {
+    const data: unknown = attachment.data
+    if (!Array.isArray(data)) continue
+    for (const item of data) {
+      if (!item || typeof item !== 'object') continue
+      const record: { filename?: unknown; imageUrl?: unknown } = item as { filename?: unknown; imageUrl?: unknown }
+      const fileName: string | null = typeof record.filename === 'string' && record.filename.length > 0 ? record.filename : null
+      const imageUrl: string | null = typeof record.imageUrl === 'string' && record.imageUrl.length > 0 ? record.imageUrl : null
+      if (!fileName || !imageUrl) continue
+      const stored: string | null = extractStoredUploadFilename(imageUrl)
+      if (stored) byName.set(fileName, stored)
+    }
+  }
+  return byName
 }
 
 /**
@@ -279,6 +311,9 @@ export class AILibContextManager {
         // imperative "place this" guidance re-injected ONLY when it is attached
         // this turn; otherwise it is a leftover and gets a passive note (below).
         const attachedUploadNames: Set<string> = collectAttachedUploadFileNames(context.contextAttachments)
+        // Fresh stored filename per display name for files attached THIS turn —
+        // overrides the persisted (possibly stale) storedUploadFilename below.
+        const attachedStoredFilenames: Map<string, string> = collectAttachedUploadStoredFilenames(context.contextAttachments)
 
         for (const entry of classificationEntries) {
             const fileName: string = entry.fileName || 'unknown'
@@ -338,20 +373,37 @@ export class AILibContextManager {
                 continue
             }
 
+            // Prefer THIS turn's stored filename (from the live attachment URL)
+            // over the persisted one. The persisted loop reads the pre-turn JSON,
+            // so on a re-upload/correction turn entry.storedUploadFilename is the
+            // PRIOR upload — using it would re-place the old (wrong) image.
+            const freshStoredFilename: string | null = attachedStoredFilenames.get(fileName) ?? null
             const handling: string = buildUploadHandlingGuidance({
                 fileName,
                 assetRole: entry.assetRole ?? null,
                 placementIntent,
                 slotUrl,
-                storedUploadFilename: entry.storedUploadFilename ?? null,
+                storedUploadFilename: freshStoredFilename ?? entry.storedUploadFilename ?? null,
                 isImage,
                 deflectedFromCanonical: entry.deflectedFromCanonical ?? false,
             })
             const locationLine: string = `File location: \`${isImage ? `src/assets/${displayName}` : `docs/${displayName}`}\``
+            // Dump the entry with the fresh stored filename too, so the agent
+            // can't pick the stale one out of the raw JSON either. fileName and
+            // summary (the latter is LLM vision output over a user image) are
+            // run through the same backtick/control-char stripper as every other
+            // agent-facing sink — JSON.stringify already neutralizes structural
+            // fence-breakout, so this is defense-in-depth/consistency only.
+            const displayedEntry: PersistedUploadClassification = {
+                ...entry,
+                ...(freshStoredFilename ? { storedUploadFilename: freshStoredFilename } : {}),
+                fileName: sanitizeUploadFileNameForDisplay(entry.fileName),
+                ...(entry.summary ? { summary: sanitizeUploadFileNameForDisplay(entry.summary) } : {}),
+            }
             conversationContextMessages.push({
                 role: 'user',
                 content: [
-                    `## Upload Classification\n\n\`\`\`json\n${JSON.stringify(entry, null, 2)}\n\`\`\``,
+                    `## Upload Classification\n\n\`\`\`json\n${JSON.stringify(displayedEntry, null, 2)}\n\`\`\``,
                     '',
                     locationLine,
                     '',

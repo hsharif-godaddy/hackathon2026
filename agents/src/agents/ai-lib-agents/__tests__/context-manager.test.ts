@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { AILibContextManager } from '../context-manager.js'
+import { AILibContextManager, collectAttachedUploadStoredFilenames } from '../context-manager.js'
+import type { ContextAttachment } from '@airo/shared/context-attachment'
 import { UI_KIT_COPY_GUARDRAIL } from '../../../prompts/ui-kit-guardrail.js'
 
 const { latestSummary, getMessageById, summaryStore, pinnedSummaryId } = vi.hoisted(() => ({
@@ -513,6 +514,39 @@ describe('AILibContextManager', () => {
       expect(block?.content).toContain('product.jpg')
     })
 
+    it('overrides a STALE persisted storedUploadFilename with THIS turn\'s stored filename (from the asset URL)', async () => {
+      // Persisted entry has the PRIOR upload's stored filename. The user
+      // re-uploaded the same display name this turn (new stored filename in the
+      // asset imageUrl). The injected guidance + JSON must use the NEW filename,
+      // never the stale persisted one — else the agent re-places the old image.
+      viewByPath({
+        'docs/.upload-classifications.json': JSON.stringify({
+          files: [
+            { fileName: 'product.jpg', assetRole: null, placementIntent: 'display_on_site', storedUploadFilename: 'app-123_1111_OLD.jpg' },
+          ],
+        }),
+      })
+      mockedRegistryRender.mockResolvedValue(null)
+
+      const cm = new AILibContextManager()
+      const result = await cm.buildContextMessages(
+        '',
+        {
+          metadata: { appId: 'app-123' },
+          contextAttachments: [{
+            type: 'selected_assets',
+            data: [{ filename: 'product.jpg', mediaType: 'IMAGE', sourceType: 'upload', imageUrl: 'http://localhost:4000/files/uploads/app-123/app-123_2222_NEW.jpg' }],
+          }],
+        } as any,
+        { includeTemplateDescription: false, includeAppContext: false }
+      )
+
+      const block = result.contextMessages.find((m) => m.content.includes('## Upload handling'))
+      expect(block).toBeDefined()
+      expect(block?.content).toContain('app-123_2222_NEW.jpg')
+      expect(block?.content).not.toContain('app-123_1111_OLD.jpg')
+    })
+
     it('treats a selected_assets (array) attachment as attached-this-turn — imperative kept', async () => {
       viewByPath({
         'docs/.upload-classifications.json': JSON.stringify({
@@ -752,5 +786,50 @@ describe('AILibContextManager', () => {
       )
       expect(stableMsg).toBeUndefined()
     })
+  })
+})
+
+describe('collectAttachedUploadStoredFilenames', () => {
+  it('maps each selected_assets display name to its current-turn stored filename', () => {
+    const attachments: ContextAttachment[] = [{
+      type: 'selected_assets',
+      data: [
+        { filename: 'mug.jpg', imageUrl: 'http://h/files/uploads/app1/app1_2_mug.jpg' },
+        { filename: 'logo.png', imageUrl: 'http://h/files/uploads/app1/app1_3_logo.png?sig=x' },
+      ],
+    } as never]
+    const map: Map<string, string> = collectAttachedUploadStoredFilenames(attachments)
+    expect(map.get('mug.jpg')).toBe('app1_2_mug.jpg')
+    expect(map.get('logo.png')).toBe('app1_3_logo.png')
+  })
+
+  it('last write wins when the same display name appears twice (newest attachment)', () => {
+    const attachments: ContextAttachment[] = [{
+      type: 'selected_assets',
+      data: [
+        { filename: 'photo.jpg', imageUrl: 'http://h/files/uploads/app1/app1_1_OLD.jpg' },
+        { filename: 'photo.jpg', imageUrl: 'http://h/files/uploads/app1/app1_9_NEW.jpg' },
+      ],
+    } as never]
+    expect(collectAttachedUploadStoredFilenames(attachments).get('photo.jpg')).toBe('app1_9_NEW.jpg')
+  })
+
+  it('contributes nothing for file_upload attachments (no per-item imageUrl) — persisted value is preserved upstream', () => {
+    const attachments: ContextAttachment[] = [{
+      type: 'file_upload',
+      data: { files: [{ name: 'doc.pdf' }] },
+    } as never]
+    expect(collectAttachedUploadStoredFilenames(attachments).size).toBe(0)
+  })
+
+  it('skips assets missing a filename or a parseable upload URL', () => {
+    const attachments: ContextAttachment[] = [{
+      type: 'selected_assets',
+      data: [
+        { imageUrl: 'http://h/files/uploads/app1/app1_1_noname.jpg' },
+        { filename: 'stock.jpg', imageUrl: 'https://cdn.example.com/stock.jpg' },
+      ],
+    } as never]
+    expect(collectAttachedUploadStoredFilenames(attachments).size).toBe(0)
   })
 })

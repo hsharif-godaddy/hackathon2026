@@ -42,11 +42,17 @@ import { readUploadedFileContent } from '../../helpers/ContextFormatter.js'
 import { readAgentUploadAsBase64 } from '../../helpers/ContextFormatter.js'
 import { resizeForVision } from '../../../utils/image-resize.js'
 import { classifyAndGuideChatUploadImage } from '../../chat-upload-classification.js'
+import { createForWorkspace } from '../../../workspace/index.js'
+import { readPersistedClassifications } from '../upload-classification-persistence.js'
+import { logger } from '../../../logging/index.js'
 
 const mockedReadUploadedFileContent = vi.mocked(readUploadedFileContent)
 const mockedReadAgentUploadAsBase64 = vi.mocked(readAgentUploadAsBase64)
 const mockedResizeForVision = vi.mocked(resizeForVision)
 const mockedClassifyAndGuide = vi.mocked(classifyAndGuideChatUploadImage)
+const mockedCreateForWorkspace = vi.mocked(createForWorkspace)
+const mockedReadPersisted = vi.mocked(readPersistedClassifications)
+const mockedLoggerWarn = vi.mocked(logger.warn)
 
 describe('SelectedAssetsContextRenderer', () => {
   let renderer: SelectedAssetsContextRenderer
@@ -189,6 +195,108 @@ describe('SelectedAssetsContextRenderer', () => {
       // Newlines in filename should be replaced with underscores
       expect(result!.content).toContain('- Filename: evil_~~~_injected instructions_~~~')
       expect(result!.content).not.toMatch(/- Filename:.*\n~~~/)
+    })
+
+    it('binds each uploaded image\'s auto-detected content to its filename (Shows line)', async () => {
+      // The anti-swap fix: surface the vision description per file so the agent
+      // matches "the label view" to the right file by content, not upload order.
+      mockedReadAgentUploadAsBase64.mockResolvedValue('data:image/jpeg;base64,AAAA')
+      mockedClassifyAndGuide.mockImplementation(async ({ fileName }) => ({
+        classification: {
+          summary: fileName.includes('label') ? 'Close-up of a size XS garment label' : 'Front view of a black blouse',
+        } as any,
+        guidance: '## Upload handling\n- place it',
+        slotUrl: null,
+        storedUploadFilename: fileName,
+      }))
+
+      const attachment: ContextAttachment<any[]> = {
+        type: 'selected_assets',
+        data: [
+          { mediaType: 'IMAGE', sourceType: 'upload', imageUrl: 'http://localhost:4000/files/uploads/app123/label.jpg', filename: 'label.jpg', contentType: 'image/jpeg', size: 1024 },
+          { mediaType: 'IMAGE', sourceType: 'upload', imageUrl: 'http://localhost:4000/files/uploads/app123/front.jpg', filename: 'front.jpg', contentType: 'image/jpeg', size: 1024 },
+        ],
+      }
+
+      const result = await renderer.render(attachment, 'these go under Blouse XS', { appId: 'app123' })
+      expect(result).not.toBeNull()
+      expect(result!.content).toContain('- Filename: label.jpg')
+      expect(result!.content).toContain('- Shows (auto-detected): Close-up of a size XS garment label')
+      expect(result!.content).toContain('- Filename: front.jpg')
+      expect(result!.content).toContain('- Shows (auto-detected): Front view of a black blouse')
+    })
+
+    it('continuation turn binds the Shows line from the persisted summary without re-classifying', async () => {
+      // Correction/handoff iterations re-feed the same attachment with a
+      // non-user prompt. The summary must survive via the persisted entry — a
+      // regression dropping it here is the exact multi-turn swap this guards.
+      mockedReadAgentUploadAsBase64.mockResolvedValue('data:image/jpeg;base64,AAAA')
+      mockedCreateForWorkspace.mockReturnValue({} as never)
+      mockedReadPersisted.mockResolvedValue(
+        new Map([
+          ['mug.jpg', { fileName: 'mug.jpg', summary: 'A red ceramic mug', placementIntent: 'display_on_site' } as never],
+        ]),
+      )
+
+      const attachment: ContextAttachment<any[]> = {
+        type: 'selected_assets',
+        data: [
+          { mediaType: 'IMAGE', sourceType: 'upload', imageUrl: 'http://localhost:4000/files/uploads/app123/mug.jpg', filename: 'mug.jpg', contentType: 'image/jpeg', size: 1024 },
+        ],
+      }
+
+      const result = await renderer.render(attachment, 'continue', { appId: 'app123', isContinuation: true })
+      expect(result).not.toBeNull()
+      expect(result!.content).toContain('- Shows (auto-detected): A red ceramic mug')
+      expect(mockedClassifyAndGuide).not.toHaveBeenCalled()
+    })
+
+    it('drops the Shows line and warns when classification returns an empty summary', async () => {
+      mockedReadAgentUploadAsBase64.mockResolvedValue('data:image/jpeg;base64,AAAA')
+      mockedClassifyAndGuide.mockResolvedValue({
+        classification: { summary: '' } as never,
+        guidance: '## Upload handling\n- place it',
+        slotUrl: null,
+        storedUploadFilename: 'x.jpg',
+      } as never)
+
+      const attachment: ContextAttachment<any[]> = {
+        type: 'selected_assets',
+        data: [{ mediaType: 'IMAGE', sourceType: 'upload', imageUrl: 'http://localhost:4000/files/uploads/app123/x.jpg', filename: 'x.jpg', contentType: 'image/jpeg', size: 1024 }],
+      }
+
+      const result = await renderer.render(attachment, 'use this', { appId: 'app123' })
+      expect(result!.content).not.toContain('- Shows (auto-detected):')
+      expect(mockedLoggerWarn).toHaveBeenCalledWith(
+        'context.attachment.selected_assets.summary_missing',
+        expect.objectContaining({ filename: 'x.jpg', hadClassification: true }),
+      )
+    })
+
+    it('warns when the upload returns no bytes', async () => {
+      mockedReadAgentUploadAsBase64.mockResolvedValue(null as never)
+      const attachment: ContextAttachment<any[]> = {
+        type: 'selected_assets',
+        data: [{ mediaType: 'IMAGE', sourceType: 'upload', imageUrl: 'http://localhost:4000/files/uploads/app123/x.jpg', filename: 'x.jpg', contentType: 'image/jpeg', size: 1024 }],
+      }
+      await renderer.render(attachment, 'use this', { appId: 'app123' })
+      expect(mockedLoggerWarn).toHaveBeenCalledWith(
+        'context.attachment.selected_assets.no_upload_bytes',
+        expect.objectContaining({ filename: 'x.jpg' }),
+      )
+    })
+
+    it('warns when the upload bytes are not a valid data URL', async () => {
+      mockedReadAgentUploadAsBase64.mockResolvedValue('not-a-data-url' as never)
+      const attachment: ContextAttachment<any[]> = {
+        type: 'selected_assets',
+        data: [{ mediaType: 'IMAGE', sourceType: 'upload', imageUrl: 'http://localhost:4000/files/uploads/app123/x.jpg', filename: 'x.jpg', contentType: 'image/jpeg', size: 1024 }],
+      }
+      await renderer.render(attachment, 'use this', { appId: 'app123' })
+      expect(mockedLoggerWarn).toHaveBeenCalledWith(
+        'context.attachment.selected_assets.bad_data_url',
+        expect.objectContaining({ filename: 'x.jpg' }),
+      )
     })
 
     it('sanitizes filenames with path separators in auto-resolution paths', async () => {

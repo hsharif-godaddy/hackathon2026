@@ -5,6 +5,7 @@ import { resizeForVision } from '../../utils/image-resize.js'
 import { classifyAndGuideChatUploadImage } from '../chat-upload-classification.js'
 import { buildUploadHandlingGuidance } from '../upload-handling-guidance.js'
 import { createForWorkspace } from '../../workspace/index.js'
+import { extractStoredUploadFilename } from '../upload-stored-filename.js'
 import {
   readPersistedClassifications,
   persistClassifications,
@@ -31,24 +32,9 @@ interface SelectedAsset {
   height?: number
 }
 
-/**
- * Pull the unique stored filename out of an agent upload URL
- * (`/files/uploads/{appId}/{storedFilename}`, possibly signed). Returns null
- * for non-upload URLs. The stored filename is globally unique (it embeds a
- * timestamp + id), so it identifies the exact upload even when two assets share
- * the same display name.
- */
-export function extractStoredUploadFilename(imageUrl: string | undefined): string | null {
-  if (!imageUrl) return null
-  const cleanUrl: string = imageUrl.split('?')[0] ?? imageUrl
-  const match: RegExpMatchArray | null = cleanUrl.match(/\/files\/uploads\/[^/]+\/([^/]+)$/)
-  if (!match || !match[1]) return null
-  try {
-    return decodeURIComponent(match[1])
-  } catch {
-    return match[1]
-  }
-}
+// Re-exported so existing importers (and tests) keep a stable import path
+// while the parser itself lives in the shared module imported above.
+export { extractStoredUploadFilename }
 
 export class SelectedAssetsContextRenderer implements ContextAttachmentRenderer<SelectedAsset[]> {
   canHandle(type: string): boolean {
@@ -90,7 +76,7 @@ export class SelectedAssetsContextRenderer implements ContextAttachmentRenderer<
       // the vision inputs below. This is the develop-chat counterpart to the
       // file_upload renderer — without it, mid-conversation uploads get no
       // intent classification and reference images get wrongly embedded.
-      const uploadedImageData = new Map<number, { visionDataUrl: string; guidance: string | null }>()
+      const uploadedImageData = new Map<number, { visionDataUrl: string; guidance: string | null; summary: string | null }>()
       await Promise.all(
         assets.map(async (asset, index) => {
           if (
@@ -103,14 +89,29 @@ export class SelectedAssetsContextRenderer implements ContextAttachmentRenderer<
           }
           try {
             const dataUrl = await readAgentUploadAsBase64(asset.imageUrl)
-            if (!dataUrl) return
+            if (!dataUrl) {
+              // No bytes → no vision summary → the agent falls back to
+              // upload-order guessing (the swap this renderer exists to avoid).
+              // Log so that failure is observable rather than silent.
+              logger.warn('context.attachment.selected_assets.no_upload_bytes', { filename: asset.filename })
+              return
+            }
             const match = dataUrl.match(/^data:([^;]+);base64,(.+)$/)
-            if (!match || !match[1] || !match[2]) return
+            if (!match || !match[1] || !match[2]) {
+              logger.warn('context.attachment.selected_assets.bad_data_url', { filename: asset.filename })
+              return
+            }
             const inputBuffer = Buffer.from(match[2], 'base64')
             const { buffer: resized, mimeType: outputMime } = await resizeForVision(inputBuffer, match[1])
             const visionDataUrl = `data:${outputMime};base64,${resized.toString('base64')}`
 
             let guidance: string | null = null
+            // Vision-derived content description for THIS image, bound to its
+            // filename below. Lets the agent match the user's words ("the label
+            // view", "the front") to the correct file by content instead of
+            // guessing by upload order — the swap that lands look-alike photos
+            // in the wrong slots.
+            let summary: string | null = null
             if (appId && asset.filename) {
               const priorEntry = persisted.get(asset.filename)
               if (priorEntry && reusePersisted) {
@@ -124,6 +125,16 @@ export class SelectedAssetsContextRenderer implements ContextAttachmentRenderer<
                   isImage: true,
                   deflectedFromCanonical: priorEntry.deflectedFromCanonical ?? false,
                 })
+                summary = priorEntry.summary ?? null
+                if (!summary) {
+                  // A persisted entry from before content-binding existed (or one
+                  // that classified without a summary) drops the "Shows
+                  // (auto-detected)" line on this continuation turn — the agent
+                  // is back to guessing by order. Surface it.
+                  logger.warn('context.attachment.selected_assets.persisted_summary_missing', {
+                    filename: asset.filename,
+                  })
+                }
               } else {
                 const result = await classifyAndGuideChatUploadImage({
                   appId,
@@ -138,6 +149,18 @@ export class SelectedAssetsContextRenderer implements ContextAttachmentRenderer<
                   storedFilename: extractStoredUploadFilename(asset.imageUrl),
                 })
                 guidance = result.guidance
+                summary = result.classification?.summary ?? null
+                if (!summary) {
+                  // No content summary for this image — either the classify
+                  // returned a classification without one, or returned none at
+                  // all (hadClassification disambiguates). Either way the "Shows
+                  // (auto-detected)" binding is dropped and the agent must guess
+                  // placement by order. Surface it.
+                  logger.warn('context.attachment.selected_assets.summary_missing', {
+                    filename: asset.filename,
+                    hadClassification: !!result.classification,
+                  })
+                }
                 if (result.classification) {
                   freshEntries.push({
                     ...result.classification,
@@ -148,8 +171,17 @@ export class SelectedAssetsContextRenderer implements ContextAttachmentRenderer<
                   })
                 }
               }
+            } else {
+              // The pre-pass above already narrowed to image uploads we want to
+              // bind, so a missing appId/filename here is a real degrade — no
+              // classification runs, the "Shows (auto-detected)" line is
+              // dropped, and the agent falls back to order-guessing.
+              logger.warn('context.attachment.selected_assets.binding_skipped', {
+                hasAppId: !!appId,
+                hasFilename: !!asset.filename,
+              })
             }
-            uploadedImageData.set(index, { visionDataUrl, guidance })
+            uploadedImageData.set(index, { visionDataUrl, guidance, summary })
           } catch (err) {
             logger.warn('context.attachment.selected_assets.image_fetch_failed', {
               filename: asset.filename,
@@ -175,6 +207,14 @@ export class SelectedAssetsContextRenderer implements ContextAttachmentRenderer<
           // Sanitize filename for display: strip newlines and control chars to prevent structure injection
           const displayFilename = asset.filename.replace(/[\n\r\t\0]/g, '_').substring(0, 200)
           parts.push(`- Filename: ${displayFilename}`)
+          // Bind this file's auto-detected content to its filename so the agent
+          // picks the right file by what it SHOWS, not by upload order. Critical
+          // when multiple look-alike images arrive together (front/back/label).
+          const summary: string | null | undefined = uploadedImageData.get(index)?.summary
+          if (summary) {
+            const safeSummary: string = summary.replace(/[\n\r\t\0]/g, ' ').substring(0, 300)
+            parts.push(`- Shows (auto-detected): ${safeSummary}`)
+          }
         }
 
         if (asset.sourceType) {
