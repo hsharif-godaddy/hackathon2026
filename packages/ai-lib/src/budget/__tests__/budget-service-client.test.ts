@@ -788,3 +788,142 @@ describe('BudgetServiceClient', () => {
     })
   })
 })
+
+describe('deductCredits', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('returns BudgetResponse on 200 and POSTs the expected body', async () => {
+    const mockResponse = JSON.stringify({
+      budgetId: 'b-1',
+      productKey: 'pk',
+      creditsTotal: '100.000000',
+      creditsUsed: '30.000000',
+      creditsPending: '0.000000',
+      items: [],
+    })
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: vi.fn().mockResolvedValue(mockResponse),
+    }) as unknown as typeof globalThis.fetch
+    const client = new BudgetServiceClient({ ...TEST_CONFIG, fetch: mockFetch })
+
+    const result = await client.deductCredits('b-1', { credits: '30', idempotencyKey: 'k1', reason: 'deploy' })
+
+    expect(result.creditsUsed).toBe('30.000000')
+    expect(result.budgetId).toBe('b-1')
+    const callArgs = (mockFetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0]
+    expect(callArgs[0]).toBe('https://budget.example.com/api/v1/budgets/b-1/deduct')
+    expect(callArgs[1].method).toBe('POST')
+    const sentBody = JSON.parse(callArgs[1].body as string)
+    expect(sentBody).toEqual({ credits: '30', idempotencyKey: 'k1', reason: 'deploy' })
+  })
+
+  it('coerces numeric credits to a string in the request body', async () => {
+    const mockResponse = JSON.stringify({
+      budgetId: 'b-1', productKey: 'pk',
+      creditsTotal: '100.000000', creditsUsed: '0.000000', creditsPending: '0.000000', items: [],
+    })
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true, status: 200, text: vi.fn().mockResolvedValue(mockResponse),
+    }) as unknown as typeof globalThis.fetch
+    const client = new BudgetServiceClient({ ...TEST_CONFIG, fetch: mockFetch })
+
+    await client.deductCredits('b-1', { credits: 25, idempotencyKey: 'k2' })
+
+    const callArgs = (mockFetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0]
+    const sentBody = JSON.parse(callArgs[1].body as string)
+    expect(sentBody.credits).toBe('25')
+  })
+
+  it('throws BudgetInsufficientCreditsError on 400 INSUFFICIENT_CREDITS', async () => {
+    const { BudgetInsufficientCreditsError } = await import('../errors.js')
+    const errorBody = JSON.stringify({
+      code: 'INSUFFICIENT_CREDITS',
+      error: 'insufficient credits',
+      requested: '50.000000',
+      available: '20.000000',
+    })
+    const mockFetch = mockFetchWithText(false, 400, errorBody)
+    const client = new BudgetServiceClient({ ...TEST_CONFIG, fetch: mockFetch })
+
+    await expect(client.deductCredits('b-1', { credits: '50', idempotencyKey: 'k3' })).rejects.toBeInstanceOf(
+      BudgetInsufficientCreditsError
+    )
+    try {
+      await client.deductCredits('b-1', { credits: '50', idempotencyKey: 'k3' })
+    } catch (e) {
+      expect(e).toBeInstanceOf(BudgetInsufficientCreditsError)
+      const err = e as InstanceType<typeof BudgetInsufficientCreditsError>
+      expect(err.requested).toBe('50.000000')
+      expect(err.available).toBe('20.000000')
+      expect(err.code).toBe('INSUFFICIENT_CREDITS')
+    }
+  })
+
+  it('throws BudgetServiceConflictError on 409 IDEMPOTENCY_KEY_CONFLICT', async () => {
+    const errorBody = JSON.stringify({ code: 'IDEMPOTENCY_KEY_CONFLICT', error: 'idempotency key already used for a different budget' })
+    const client = clientWith(mockFetchWithText(false, 409, errorBody))
+    await expect(client.deductCredits('b-1', { credits: '10', idempotencyKey: 'shared' })).rejects.toBeInstanceOf(
+      BudgetServiceConflictError
+    )
+  })
+
+  it('throws BudgetNotFoundError on 404', async () => {
+    const client = clientWith(mockFetchWithText(false, 404, '{"code":"NOT_FOUND","error":"budget not found"}'))
+    await expect(client.deductCredits('missing', { credits: '10', idempotencyKey: 'k4' })).rejects.toBeInstanceOf(
+      BudgetNotFoundError
+    )
+  })
+
+  it('falls through to generic 4xx error when 400 body is not INSUFFICIENT_CREDITS', async () => {
+    const errorBody = JSON.stringify({ code: 'BAD_REQUEST', error: 'credits must be positive' })
+    const client = clientWith(mockFetchWithText(false, 400, errorBody))
+    await expect(client.deductCredits('b-1', { credits: '0', idempotencyKey: 'k5' })).rejects.toBeInstanceOf(
+      BudgetServiceError
+    )
+  })
+})
+
+describe('availableCredits', () => {
+  it('sums remaining (total - used) across items, ignoring creditsPending', async () => {
+    const { availableCredits } = await import('../available-credits.js')
+    const budget = {
+      budgetId: 'b', productKey: 'p',
+      creditsTotal: '100.000000', creditsUsed: '30.000000',
+      creditsPending: '10.000000', // must NOT be subtracted (the deduct gate ignores it)
+      items: [
+        { budgetItemId: 'i1', creditsTotal: '70.000000', creditsUsed: '20.000000', expiresAt: null },
+        { budgetItemId: 'i2', creditsTotal: '30.000000', creditsUsed: '10.000000', expiresAt: null },
+      ],
+    }
+    // (70-20) + (30-10) = 70 — pending of 10 is intentionally not deducted.
+    expect(availableCredits(budget as unknown as Parameters<typeof availableCredits>[0])).toBe('70.000000')
+  })
+
+  it('excludes expired items (matches the deduct consumable gate)', async () => {
+    const { availableCredits } = await import('../available-credits.js')
+    const budget = {
+      budgetId: 'b', productKey: 'p',
+      creditsTotal: '100.000000', creditsUsed: '0.000000', creditsPending: '0.000000',
+      items: [
+        { budgetItemId: 'active', creditsTotal: '40.000000', creditsUsed: '0.000000', expiresAt: null },
+        // expired in the past → not consumable, must be excluded
+        { budgetItemId: 'expired', creditsTotal: '60.000000', creditsUsed: '0.000000', expiresAt: '2000-01-01T00:00:00.000Z' },
+      ],
+    }
+    expect(availableCredits(budget as unknown as Parameters<typeof availableCredits>[0])).toBe('40.000000')
+  })
+
+  it('floors at zero and ignores fully-consumed items', async () => {
+    const { availableCredits } = await import('../available-credits.js')
+    const budget = {
+      budgetId: 'b', productKey: 'p',
+      creditsTotal: '10.000000', creditsUsed: '10.000000', creditsPending: '0.000000',
+      items: [{ budgetItemId: 'i1', creditsTotal: '10.000000', creditsUsed: '10.000000', expiresAt: null }],
+    }
+    expect(availableCredits(budget as unknown as Parameters<typeof availableCredits>[0])).toBe('0.000000')
+  })
+})

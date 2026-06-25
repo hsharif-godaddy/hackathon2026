@@ -647,3 +647,177 @@ func TestPostBudgetSessionWithMetadata(t *testing.T) {
 		t.Fatalf("missing metadata in response: %s", rec.Body.String())
 	}
 }
+
+// TestPostBudgetDeduct_Success deducts a flat credit amount and returns the post-deduction budget shape.
+func TestPostBudgetDeduct_Success(t *testing.T) {
+	ctx := context.Background()
+	st := testStore(t)
+
+	pk := "deduct-success-" + uuid.NewString()[:8]
+	if _, err := st.CreateProduct(ctx, pk); err != nil {
+		t.Fatal(err)
+	}
+	budgetID := uuid.NewString()
+	if err := st.CreateBudget(ctx, budgetID, pk, []store.ItemInput{
+		{CreditsTotal: "100.000000", CostCreditRatio: "0.100000"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	router := newTestRouter(st)
+	body := `{"credits":"30","idempotencyKey":"` + uuid.NewString() + `","reason":"deploy"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/budgets/"+budgetID+"/deduct", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v body %s", err, rec.Body.String())
+	}
+	if resp["creditsUsed"] != "30.000000" {
+		t.Fatalf("expected creditsUsed=30.000000, got %v", resp["creditsUsed"])
+	}
+	if resp["budgetId"] != budgetID {
+		t.Fatalf("expected budgetId=%s, got %v", budgetID, resp["budgetId"])
+	}
+}
+
+// TestPostBudgetDeduct_InsufficientCredits returns 400 INSUFFICIENT_CREDITS with requested+available, and writes nothing.
+func TestPostBudgetDeduct_InsufficientCredits(t *testing.T) {
+	ctx := context.Background()
+	st := testStore(t)
+
+	pk := "deduct-insuf-" + uuid.NewString()[:8]
+	if _, err := st.CreateProduct(ctx, pk); err != nil {
+		t.Fatal(err)
+	}
+	budgetID := uuid.NewString()
+	if err := st.CreateBudget(ctx, budgetID, pk, []store.ItemInput{
+		{CreditsTotal: "20.000000", CostCreditRatio: "0.100000"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	router := newTestRouter(st)
+	body := `{"credits":"50","idempotencyKey":"` + uuid.NewString() + `"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/budgets/"+budgetID+"/deduct", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v body %s", err, rec.Body.String())
+	}
+	if resp["code"] != "INSUFFICIENT_CREDITS" {
+		t.Fatalf("expected code INSUFFICIENT_CREDITS, got %v", resp["code"])
+	}
+	if resp["requested"] != "50.000000" || resp["available"] != "20.000000" {
+		t.Fatalf("wanted req=50 avail=20, got req=%v avail=%v", resp["requested"], resp["available"])
+	}
+	d, err := st.GetBudget(ctx, budgetID, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.CreditsUsed != "0.000000" {
+		t.Fatalf("nothing should be deducted on insufficient, got creditsUsed=%s", d.CreditsUsed)
+	}
+}
+
+// TestPostBudgetDeduct_Idempotent verifies that a repeat with the same key does not double-deduct.
+func TestPostBudgetDeduct_Idempotent(t *testing.T) {
+	ctx := context.Background()
+	st := testStore(t)
+
+	pk := "deduct-idemp-" + uuid.NewString()[:8]
+	if _, err := st.CreateProduct(ctx, pk); err != nil {
+		t.Fatal(err)
+	}
+	budgetID := uuid.NewString()
+	if err := st.CreateBudget(ctx, budgetID, pk, []store.ItemInput{
+		{CreditsTotal: "100.000000", CostCreditRatio: "0.100000"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	router := newTestRouter(st)
+	key := uuid.NewString()
+	body := `{"credits":"25","idempotencyKey":"` + key + `","reason":"image-gen"}`
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/budgets/"+budgetID+"/deduct", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("first call: status %d, body %s", rec.Code, rec.Body.String())
+	}
+
+	req2 := httptest.NewRequest(http.MethodPost, "/api/v1/budgets/"+budgetID+"/deduct", strings.NewReader(body))
+	req2.Header.Set("Content-Type", "application/json")
+	rec2 := httptest.NewRecorder()
+	router.ServeHTTP(rec2, req2)
+	if rec2.Code != http.StatusOK {
+		t.Fatalf("replay: status %d, body %s", rec2.Code, rec2.Body.String())
+	}
+	var resp map[string]any
+	if err := json.Unmarshal(rec2.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode replay: %v body %s", err, rec2.Body.String())
+	}
+	if resp["creditsUsed"] != "25.000000" {
+		t.Fatalf("double-deduct? expected creditsUsed=25.000000, got %v", resp["creditsUsed"])
+	}
+}
+
+// TestPostBudgetDeduct_KeyConflict returns 409 IDEMPOTENCY_KEY_CONFLICT when the same key is used on two different budgets.
+func TestPostBudgetDeduct_KeyConflict(t *testing.T) {
+	ctx := context.Background()
+	st := testStore(t)
+
+	pkA := "deduct-conf-a-" + uuid.NewString()[:8]
+	pkB := "deduct-conf-b-" + uuid.NewString()[:8]
+	if _, err := st.CreateProduct(ctx, pkA); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.CreateProduct(ctx, pkB); err != nil {
+		t.Fatal(err)
+	}
+	budgetA := uuid.NewString()
+	budgetB := uuid.NewString()
+	if err := st.CreateBudget(ctx, budgetA, pkA, []store.ItemInput{
+		{CreditsTotal: "100.000000", CostCreditRatio: "0.100000"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.CreateBudget(ctx, budgetB, pkB, []store.ItemInput{
+		{CreditsTotal: "100.000000", CostCreditRatio: "0.100000"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	router := newTestRouter(st)
+	sharedKey := uuid.NewString()
+	body := `{"credits":"10","idempotencyKey":"` + sharedKey + `"}`
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/budgets/"+budgetA+"/deduct", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("first deduct on A: status %d, body %s", rec.Code, rec.Body.String())
+	}
+
+	req2 := httptest.NewRequest(http.MethodPost, "/api/v1/budgets/"+budgetB+"/deduct", strings.NewReader(body))
+	req2.Header.Set("Content-Type", "application/json")
+	rec2 := httptest.NewRecorder()
+	router.ServeHTTP(rec2, req2)
+	if rec2.Code != http.StatusConflict {
+		t.Fatalf("expected 409 on B, got %d body %s", rec2.Code, rec2.Body.String())
+	}
+}

@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { mockMemorySet } = vi.hoisted(() => ({
+const { mockMemorySet, mockCharge } = vi.hoisted(() => ({
   mockMemorySet: vi.fn().mockResolvedValue({ success: true }),
+  mockCharge: vi.fn().mockResolvedValue({ ok: true }),
 }));
 
 vi.mock('../../../../logging/index.js', () => ({
@@ -18,9 +19,14 @@ vi.mock('../../../../services/ComplianceService.js', () => ({
     TermsOfUse: 'terms-of-use',
   },
   complianceDocStatusMemoryKey: (documentType: string) => `compliance.document.${documentType}.generated`,
+  complianceDocChargedMemoryKey: (documentType: string) => `compliance.document.${documentType}.charged`,
   complianceService: {
     generateDocument: vi.fn(),
   },
+}));
+
+vi.mock('../../charge.js', () => ({
+  chargeForComplianceDoc: mockCharge,
 }));
 
 vi.mock('../../../../database/repositories/index.js', () => ({
@@ -60,6 +66,7 @@ const mockWriteFile = vi.mocked(writeFile);
 describe('generate_privacy_policy tool', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockCharge.mockResolvedValue({ ok: true });
   });
 
   it('returns error when no customerId can be resolved', async () => {
@@ -146,11 +153,55 @@ describe('generate_privacy_policy tool', () => {
       error: expect.stringContaining('Failed to generate privacy policy'),
     });
   });
+
+  it('blocks generation and returns the charge error when the credit charge fails', async () => {
+    mockFindById.mockReturnValue({ customerId: 'cust-abc', path: '/tmp/apps/app-123' } as any);
+    mockCharge.mockResolvedValue({ ok: false, error: 'Not enough credits to generate this document.' });
+
+    const result = await generatePrivacyPolicyTool.execute(
+      {
+        businessName: 'Test Biz',
+        email: 'test@example.com',
+        children: false,
+      },
+      { metadata: { appId: 'app-123', bmsBudgetId: 'budget-xyz' } },
+    );
+
+    expect(result).toEqual({ error: 'Not enough credits to generate this document.' });
+    expect(mockGenerateDocument).not.toHaveBeenCalled();
+    expect(mockWriteFile).not.toHaveBeenCalled();
+  });
+
+  it('charges with the budget id from context metadata and the privacy-policy type before generating', async () => {
+    mockFindById.mockReturnValue({ customerId: 'cust-abc', path: '/tmp/apps/app-123' } as any);
+    mockGenerateDocument.mockResolvedValue({
+      documentType: 'privacy-policy',
+      markdown: '# Privacy Policy\n\nContent here.',
+    });
+
+    const result = await generatePrivacyPolicyTool.execute(
+      {
+        businessName: 'Test Biz',
+        email: 'test@example.com',
+        children: false,
+      },
+      { metadata: { appId: 'app-123', bmsBudgetId: 'budget-xyz' } },
+    );
+
+    expect(mockCharge).toHaveBeenCalledWith({
+      bmsBudgetId: 'budget-xyz',
+      appId: 'app-123',
+      documentType: 'privacy-policy',
+    });
+    expect(mockGenerateDocument).toHaveBeenCalledTimes(1);
+    expect(result).toMatchObject({ documentType: 'privacy-policy', filePath: 'src/pages/privacy.tsx' });
+  });
 });
 
 describe('generate_terms_of_use tool', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockCharge.mockResolvedValue({ ok: true });
   });
 
   it('returns error when no customerId can be resolved', async () => {
@@ -241,6 +292,51 @@ describe('generate_terms_of_use tool', () => {
     expect(result).toEqual({
       error: expect.stringContaining('Failed to generate terms of use'),
     });
+  });
+
+  it('blocks generation and returns the charge error when the credit charge fails', async () => {
+    mockFindById.mockReturnValue({ customerId: 'cust-abc', path: '/tmp/apps/app-123' } as any);
+    mockCharge.mockResolvedValue({ ok: false, error: 'Not enough credits to generate this document.' });
+
+    const result = await generateTermsOfUseTool.execute(
+      {
+        businessName: 'Test Biz',
+        domainName: 'testbiz.com',
+        children: false,
+        jurisdiction: 'Texas',
+      },
+      { metadata: { appId: 'app-123', bmsBudgetId: 'budget-xyz' } },
+    );
+
+    expect(result).toEqual({ error: 'Not enough credits to generate this document.' });
+    expect(mockGenerateDocument).not.toHaveBeenCalled();
+    expect(mockWriteFile).not.toHaveBeenCalled();
+  });
+
+  it('charges with the budget id from context metadata and the terms-of-use type before generating', async () => {
+    mockFindById.mockReturnValue({ customerId: 'cust-abc', path: '/tmp/apps/app-123' } as any);
+    mockGenerateDocument.mockResolvedValue({
+      documentType: 'terms-of-use',
+      markdown: '# Terms of Use\n\nContent here.',
+    });
+
+    const result = await generateTermsOfUseTool.execute(
+      {
+        businessName: 'Test Biz',
+        domainName: 'testbiz.com',
+        children: false,
+        jurisdiction: 'Texas',
+      },
+      { metadata: { appId: 'app-123', bmsBudgetId: 'budget-xyz' } },
+    );
+
+    expect(mockCharge).toHaveBeenCalledWith({
+      bmsBudgetId: 'budget-xyz',
+      appId: 'app-123',
+      documentType: 'terms-of-use',
+    });
+    expect(mockGenerateDocument).toHaveBeenCalledTimes(1);
+    expect(result).toMatchObject({ documentType: 'terms-of-use', filePath: 'src/pages/terms.tsx' });
   });
 });
 

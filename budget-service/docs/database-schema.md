@@ -103,11 +103,12 @@ flowchart TB
 
 - **PK:** `id` (uuid). **FK:** `budget_item_id` → `budget_items` **ON DELETE CASCADE**.
 - **Optional FK:** `report_item_id` → `budget_session_report_items` **ON DELETE SET NULL** (set for `session_spend` from reconciliation).
-- **`entry_kind`:** `initial_spend` | `session_spend` | `periodic_reset` | `reimbursement` | `upgrade` | `downgrade`.
+- **`entry_kind`:** `initial_spend` | `session_spend` | `periodic_reset` | `reimbursement` | `upgrade` | `downgrade` | `deduct`.
 - **`credits_delta`:** signed movement applied to the item's cached `credits_used` via trigger:
-  - `session_spend` | `initial_spend` → **must be > 0**
+  - `session_spend` | `initial_spend` | `deduct` → **must be > 0**
   - `periodic_reset` | `reimbursement` → **must be < 0**
   - `upgrade` | `downgrade` → **any non-zero value** (positive or negative; these are reason labels for plan-tier changes, not direction indicators)
+  - `deduct` is written by `POST /budgets/{budgetId}/deduct` (generic, credit-denominated, idempotent via [`budget_deductions`](#budget_deductions)).
 - **CHECK:** `credits_delta ≠ 0`.
 - **Contract:** **Append-only.** Do not `UPDATE` or `DELETE` ledger rows; if you do, `budget_items.credits_used` will **diverge** from `SUM(credits_delta)` for that item. Table comment in SQL states this.
 
@@ -122,6 +123,22 @@ flowchart TB
 - **PK:** `id` (uuid). **No FKs** to other tables (decoupled for asynchronous delivery).
 - **Columns:** `event_type`, `product_key`, `payload` (jsonb), `status` (`pending` | `processing` | `completed` | `failed`, default `pending`), `attempt_count` (default 0), `last_attempt_at`, `next_attempt_at` (default `now()`), `last_error`, `idempotency_key` (text, **UNIQUE**, e.g. `reset:{itemId}:{resetsAt}`), `created_at`, `processed_at`.
 - **Purpose:** Durable queue for outbound webhook delivery (payload, retries, status). See [Webhooks](webhooks.md).
+
+### `budget_deductions`
+
+Idempotency + audit table for generic credit deductions via `POST /budgets/{budgetId}/deduct`.
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | uuid PK | Default `gen_random_uuid()` |
+| `budget_id` | uuid FK → `budgets(id)` | |
+| `idempotency_key` | text UNIQUE | 1–256 chars; caller-supplied dedupe key |
+| `credits` | numeric(20,6) | Amount deducted (> 0) |
+| `reason` | text | Nullable, ≤ 256 chars |
+| `metadata` | jsonb | Nullable |
+| `created_at` | timestamptz | Default `now()` |
+
+**Indexes:** `idx_budget_deductions_budget_id` (budget_id).
 
 ### `budget_items_history`
 

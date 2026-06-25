@@ -1495,6 +1495,108 @@ func (s *Server) getReportsAggregate(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (s *Server) postBudgetDeduct(w http.ResponseWriter, r *http.Request) {
+	budgetID := strings.TrimSpace(mux.Vars(r)["budgetId"])
+	if !requireUUIDParam(w, budgetID, "budgetId") {
+		return
+	}
+
+	var payload struct {
+		Credits        flexAmount      `json:"credits"`
+		IdempotencyKey string          `json:"idempotencyKey"`
+		Reason         string          `json:"reason"`
+		Metadata       json.RawMessage `json:"metadata"`
+	}
+	if !decodeJSONBody(w, r, &payload, false) {
+		return
+	}
+
+	creditsStr := strings.TrimSpace(string(payload.Credits))
+	if creditsStr == "" {
+		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "credits is required")
+		return
+	}
+	creditsVal, err := credits.ParsePositiveRatio(creditsStr)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "credits must be a positive NUMERIC(20,6) value")
+		return
+	}
+
+	key := strings.TrimSpace(payload.IdempotencyKey)
+	if key == "" {
+		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "idempotencyKey is required (1-256 chars)")
+		return
+	}
+	if msg := validateIdentifier(key); msg != "" {
+		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "idempotencyKey "+msg)
+		return
+	}
+
+	reason := strings.TrimSpace(payload.Reason)
+	if len(reason) > maxFieldLen {
+		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "reason exceeds maximum length (256)")
+		return
+	}
+
+	var metaBytes []byte
+	if len(payload.Metadata) > 0 && !bytes.Equal(payload.Metadata, []byte("null")) {
+		if len(payload.Metadata) > maxSessionMetadataBytes {
+			writeError(w, http.StatusBadRequest, "BAD_REQUEST", "metadata exceeds maximum size")
+			return
+		}
+		if !json.Valid(payload.Metadata) {
+			writeError(w, http.StatusBadRequest, "BAD_REQUEST", "metadata must be valid JSON")
+			return
+		}
+		depth, err := jsonDepth(payload.Metadata)
+		if err != nil || depth > maxMetadataDepth {
+			writeError(w, http.StatusBadRequest, "BAD_REQUEST", "metadata exceeds maximum nesting depth")
+			return
+		}
+		metaBytes = payload.Metadata
+	}
+
+	if !s.requireStore(w) {
+		return
+	}
+
+	_, err = s.Store.DeductCredits(r.Context(), store.DeductInput{
+		BudgetID:       budgetID,
+		Credits:        creditsVal,
+		IdempotencyKey: key,
+		Reason:         reason,
+		Metadata:       metaBytes,
+	})
+	if err != nil {
+		switch {
+		case errors.Is(err, store.ErrInsufficientCredits):
+			available := "0.000000"
+			var insufficient *store.InsufficientCreditsError
+			if errors.As(err, &insufficient) {
+				available = credits.Format(insufficient.Available)
+			}
+			writeJSON(w, http.StatusBadRequest, map[string]string{
+				"code":      "INSUFFICIENT_CREDITS",
+				"error":     "insufficient credits",
+				"requested": credits.Format(creditsVal),
+				"available": available,
+			})
+		case errors.Is(err, store.ErrIdempotencyKeyConflict):
+			writeError(w, http.StatusConflict, "IDEMPOTENCY_KEY_CONFLICT", "idempotency key already used for a different budget")
+		default:
+			writeBudgetStoreError(w, "budget.post_deduct", err)
+		}
+		return
+	}
+
+	d, err := s.Store.GetBudget(r.Context(), budgetID, false)
+	if err != nil {
+		writeInternalError(w, "budget.post_deduct_get", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, budgetToResponse(d))
+}
+
 func (s *Server) getBudgetSessionReport(w http.ResponseWriter, r *http.Request) {
 	sessionID := strings.TrimSpace(mux.Vars(r)["sessionId"])
 	reportID := strings.TrimSpace(mux.Vars(r)["reportId"])

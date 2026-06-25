@@ -316,6 +316,21 @@ func mapSessionCallRequestUnique(err error) error {
 	return err
 }
 
+const deductIdempotencyUniqueConstraint = "budget_deductions_idempotency_key_unique"
+
+// mapDeductIdempotencyUnique maps the UNIQUE(idempotency_key) violation to
+// ErrIdempotencyKeyConflict. The pre-INSERT SELECT only catches a key already
+// committed for this budget; two concurrent first-time requests reusing one key
+// against different budgets take different advisory locks, both pass the SELECT,
+// and the loser hits this constraint — surface it as 409, not 500.
+func mapDeductIdempotencyUnique(err error) error {
+	var pqErr *pq.Error
+	if errors.As(err, &pqErr) && pqErr.Code == "23505" && pqErr.Constraint == deductIdempotencyUniqueConstraint {
+		return ErrIdempotencyKeyConflict
+	}
+	return err
+}
+
 // applyDueResetsForBudgetTx is called from both synchronous writers (holding the advisory
 // lock on this budget) and the reset worker (not holding it, but taking FOR UPDATE SKIP
 // LOCKED on budget_items inside the SQL function). The function advances resets_at
@@ -2162,4 +2177,161 @@ func (s *Store) ProcessDueExpirationsWithOutbox(ctx context.Context, batchSize i
 		return 0, err
 	}
 	return len(items), nil
+}
+
+// DeductInput is the input for a generic credit deduction (POST /budgets/{budgetId}/deduct).
+type DeductInput struct {
+	BudgetID       string
+	Credits        decimal.Decimal
+	IdempotencyKey string
+	Reason         string
+	Metadata       []byte
+}
+
+// DeductResult is the output of DeductCredits. Replayed=true when the idempotency key matched
+// a prior successful deduction on this budget; the caller should still re-fetch the budget for
+// the response shape, but no new ledger rows were written.
+type DeductResult struct {
+	Replayed bool
+}
+
+// DeductCredits performs an atomic, idempotent credit deduction across the budget's items in
+// canonical consumption order. Strict: returns ErrInsufficientCredits when the requested amount
+// exceeds available credits — no ledger rows are written. Idempotent: a repeat with the same
+// idempotency_key on the same budget returns Replayed=true without double-deducting; reuse on a
+// different budget returns ErrIdempotencyKeyConflict.
+func (s *Store) DeductCredits(ctx context.Context, input DeductInput) (*DeductResult, error) {
+	if _, err := uuid.Parse(input.BudgetID); err != nil {
+		return nil, err
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var deletedAt sql.NullTime
+	var productKey sql.NullString
+	err = tx.QueryRowContext(ctx, `SELECT deleted_at, product_key FROM budgets WHERE id = $1`, input.BudgetID).Scan(&deletedAt, &productKey)
+	if err != nil {
+		return nil, mapNotFound(err)
+	}
+	if deletedAt.Valid {
+		return nil, ErrNotFound
+	}
+
+	if err := lockBudgetTx(ctx, tx, input.BudgetID); err != nil {
+		return nil, err
+	}
+
+	var existingBudgetID string
+	err = tx.QueryRowContext(ctx,
+		`SELECT budget_id FROM budget_deductions WHERE idempotency_key = $1`,
+		input.IdempotencyKey,
+	).Scan(&existingBudgetID)
+	if err == nil {
+		if existingBudgetID != input.BudgetID {
+			return nil, ErrIdempotencyKeyConflict
+		}
+		if err := tx.Commit(); err != nil {
+			return nil, err
+		}
+		return &DeductResult{Replayed: true}, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
+	}
+
+	if err := applyDueResetsForBudgetTx(ctx, tx, input.BudgetID); err != nil {
+		return nil, err
+	}
+
+	states, err := loadBudgetConsumptionStatesTx(ctx, tx, input.BudgetID)
+	if err != nil {
+		return nil, err
+	}
+
+	now := time.Now()
+	chunks, err := consumeCredits(input.Credits, states, now)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, chunk := range chunks {
+		_, err = tx.ExecContext(ctx, `
+			INSERT INTO budget_item_credit_ledger (id, budget_item_id, entry_kind, credits_delta)
+			VALUES ($1, $2, 'deduct', $3)
+		`, uuid.NewString(), chunk.budgetItemID, credits.Format(chunk.credits))
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	var reasonVal any
+	if input.Reason != "" {
+		reasonVal = input.Reason
+	}
+	var metaVal any
+	if len(input.Metadata) > 0 {
+		metaVal = input.Metadata
+	}
+	deductionID := uuid.NewString()
+	_, err = tx.ExecContext(ctx, `
+		INSERT INTO budget_deductions (id, budget_id, idempotency_key, credits, reason, metadata)
+		VALUES ($1, $2, $3, $4, $5, $6)
+	`, deductionID, input.BudgetID, input.IdempotencyKey,
+		credits.Format(input.Credits), reasonVal, metaVal)
+	if err != nil {
+		return nil, mapDeductIdempotencyUnique(err)
+	}
+
+	// Emit report.created so the control plane advances grant spend (and thus Ecomm
+	// deferred-revenue reporting) for credits spent via deduct — same outbox path the
+	// session-report flow uses. A deduct is credit-only and has no session/report, so
+	// sessionId is a sentinel and reportId is the deduction id; the consumer ignores
+	// both and the USD totals, keying on budgetId + per-item creditsUsed. Atomic with
+	// the deduct: no spend is committed without its sync event enqueued. Skipped when
+	// the budget has no product_key (parity with CreateSessionReport).
+	if productKey.Valid && productKey.String != "" {
+		label := input.Reason
+		if label == "" {
+			label = "deduct"
+		}
+		allocations := make([]ReportItemAllocationPayload, len(chunks))
+		for i, chunk := range chunks {
+			allocations[i] = ReportItemAllocationPayload{
+				BudgetItemID: chunk.budgetItemID,
+				CreditsUsed:  credits.Format(chunk.credits),
+			}
+		}
+		var creditsAvailable decimal.Decimal
+		for _, item := range filterConsumableItems(states, now) {
+			creditsAvailable = creditsAvailable.Add(item.total.Sub(item.used))
+		}
+		if err := insertReportOutboxEvents(ctx, tx, reportOutboxInput{
+			productKey:       productKey.String,
+			budgetID:         input.BudgetID,
+			sessionID:        "deduct",
+			reportID:         deductionID,
+			budgetCostTotal:  decimal.Zero,
+			productCostTotal: decimal.Zero,
+			creditsAvailable: creditsAvailable,
+			reportItems: []ReportItemPayload{{
+				ReportItemID: uuid.NewString(),
+				BudgetCost:   "0",
+				ProductCost:  "0",
+				Label:        label,
+				CreatedAt:    now,
+				BudgetItems:  allocations,
+			}},
+		}); err != nil {
+			return nil, err
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return &DeductResult{Replayed: false}, nil
 }

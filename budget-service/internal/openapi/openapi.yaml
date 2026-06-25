@@ -517,6 +517,52 @@ paths:
         '409':
           $ref: '#/components/responses/Error'
 
+  /api/v1/budgets/{budgetId}/deduct:
+    post:
+      tags: [v1]
+      summary: Deduct credits from budget (idempotent, strict)
+      description: |
+        Deducts a flat credit amount from budget items in canonical consumption order.
+        Strict: rejects with **400** `INSUFFICIENT_CREDITS` if the requested amount
+        exceeds available credits — nothing is deducted. Idempotent: a repeat with the
+        same `idempotencyKey` on the same budget returns **200** without double-deducting;
+        reuse on a different budget returns **409** `IDEMPOTENCY_KEY_CONFLICT`.
+        Returns the same body shape as `GET /api/v1/budgets/{budgetId}` reflecting
+        post-deduction totals. On success (not on an idempotent replay) emits a
+        `report.created` webhook so the deducted spend reaches the control plane —
+        see `docs/webhooks.md`.
+      parameters:
+        - $ref: '#/components/parameters/budgetIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeductRequest'
+      responses:
+        '200':
+          description: Deduction successful (or idempotent replay). Returns current budget state.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Budget'
+        '400':
+          description: Validation error or insufficient credits
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/ErrorBody'
+                  - $ref: '#/components/schemas/InsufficientCreditsError'
+        '402':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+        '503':
+          $ref: '#/components/responses/Error'
+
   /api/v1/budgets/{budgetId}/budget-items:
     post:
       tags: [v1]
@@ -880,6 +926,44 @@ components:
           example: BAD_REQUEST
         error:
           type: string
+
+    DeductRequest:
+      type: object
+      required: [credits, idempotencyKey]
+      properties:
+        credits:
+          oneOf:
+            - type: string
+            - type: number
+          description: Credit amount to deduct (> 0, NUMERIC(20,6))
+        idempotencyKey:
+          type: string
+          minLength: 1
+          maxLength: 256
+          description: Caller-supplied dedupe key. Same key on the same budget replays without double-deducting; same key on a different budget returns 409.
+        reason:
+          type: string
+          maxLength: 256
+          description: Optional audit label
+        metadata:
+          type: object
+          description: Optional JSON metadata (same size and depth limits as session metadata)
+
+    InsufficientCreditsError:
+      type: object
+      required: [code, error, requested, available]
+      properties:
+        code:
+          type: string
+          example: INSUFFICIENT_CREDITS
+        error:
+          type: string
+        requested:
+          type: string
+          description: Credits requested (6 decimal places)
+        available:
+          type: string
+          description: Credits available (6 decimal places)
 
     HealthResponse:
       type: object

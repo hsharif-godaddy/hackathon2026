@@ -151,3 +151,20 @@ export class BudgetServiceConflictError extends BudgetServiceError {
     this.name = 'BudgetServiceConflictError'
   }
 }
+
+/**
+ * Thrown when POST /budgets/{budgetId}/deduct returns 400 INSUFFICIENT_CREDITS.
+ * Carries the strings returned by BMS so callers can render exact amounts (6 decimal places).
+ */
+export class BudgetInsufficientCreditsError extends BudgetServiceError {
+  readonly code = 'INSUFFICIENT_CREDITS' as const
+  readonly requested: string
+  readonly available: string
+
+  constructor(requested: string, available: string, responseBody: string = '') {
+    super(`Insufficient credits: requested ${requested}, available ${available}`, 400, responseBody)
+    this.name = 'BudgetInsufficientCreditsError'
+    this.requested = requested
+    this.available = available
+  }
+}

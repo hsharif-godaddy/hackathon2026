@@ -12,7 +12,9 @@ export {
   BudgetNotFoundError,
   BudgetNoCapacityError,
   BudgetServiceConflictError,
+  BudgetInsufficientCreditsError,
 } from './errors.js'
+export { availableCredits } from './available-credits.js'
 export type {
   ReportItemRequest,
   CreateReportRequest,

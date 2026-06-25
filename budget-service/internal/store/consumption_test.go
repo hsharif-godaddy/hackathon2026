@@ -116,6 +116,107 @@ func TestConsumeBudgetCostUSDSessionEmptyPoolStoresZeroCredits(t *testing.T) {
 	}
 }
 
+func TestConsumeCredits_SingleItem(t *testing.T) {
+	t.Parallel()
+	items := []budgetConsumptionState{{
+		id: "item-1", total: decimal.NewFromInt(100), used: decimal.NewFromInt(20),
+		csr: decimal.NewFromFloat(0.1), createdAt: time.Now(),
+	}}
+	chunks, err := consumeCredits(decimal.NewFromInt(50), items, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(chunks) != 1 {
+		t.Fatalf("expected 1 chunk, got %d", len(chunks))
+	}
+	if chunks[0].budgetItemID != "item-1" {
+		t.Fatalf("expected item-1, got %s", chunks[0].budgetItemID)
+	}
+	if !chunks[0].credits.Equal(decimal.NewFromInt(50)) {
+		t.Fatalf("expected 50, got %s", chunks[0].credits)
+	}
+	if !items[0].used.Equal(decimal.NewFromInt(70)) {
+		t.Fatalf("expected used=70, got %s", items[0].used)
+	}
+}
+
+func TestConsumeCredits_MultiItem_WalkOrder(t *testing.T) {
+	t.Parallel()
+	now := time.Now()
+	exp1 := now.Add(1 * time.Hour)
+	exp2 := now.Add(2 * time.Hour)
+	items := []budgetConsumptionState{
+		{id: "no-reset", total: decimal.NewFromInt(100), used: decimal.Zero, csr: decimal.NewFromFloat(0.1), createdAt: now},
+		{id: "resetting", total: decimal.NewFromInt(50), used: decimal.Zero, csr: decimal.NewFromFloat(0.1), resetInt: strPtr("MONTH"), createdAt: now},
+		{id: "expires-soon", total: decimal.NewFromInt(30), used: decimal.Zero, csr: decimal.NewFromFloat(0.1), expiresAt: &exp1, createdAt: now},
+		{id: "expires-later", total: decimal.NewFromInt(30), used: decimal.Zero, csr: decimal.NewFromFloat(0.1), expiresAt: &exp2, createdAt: now},
+	}
+	chunks, err := consumeCredits(decimal.NewFromInt(90), items, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(chunks) != 3 {
+		t.Fatalf("expected 3 chunks, got %d", len(chunks))
+	}
+	if chunks[0].budgetItemID != "resetting" || !chunks[0].credits.Equal(decimal.NewFromInt(50)) {
+		t.Fatalf("chunk[0] wrong: %+v", chunks[0])
+	}
+	if chunks[1].budgetItemID != "expires-soon" || !chunks[1].credits.Equal(decimal.NewFromInt(30)) {
+		t.Fatalf("chunk[1] wrong: %+v", chunks[1])
+	}
+	if chunks[2].budgetItemID != "expires-later" || !chunks[2].credits.Equal(decimal.NewFromInt(10)) {
+		t.Fatalf("chunk[2] wrong: %+v", chunks[2])
+	}
+}
+
+func TestConsumeCredits_Insufficient(t *testing.T) {
+	t.Parallel()
+	items := []budgetConsumptionState{{
+		id: "item-1", total: decimal.NewFromInt(30), used: decimal.NewFromInt(10),
+		csr: decimal.NewFromFloat(0.1), createdAt: time.Now(),
+	}}
+	original := items[0].used
+	_, err := consumeCredits(decimal.NewFromInt(50), items, time.Now())
+	if !errors.Is(err, ErrInsufficientCredits) {
+		t.Fatalf("expected ErrInsufficientCredits, got %v", err)
+	}
+	if !items[0].used.Equal(original) {
+		t.Fatalf("items mutated on failure: used=%s", items[0].used)
+	}
+}
+
+func TestConsumeCredits_ExactFill(t *testing.T) {
+	t.Parallel()
+	items := []budgetConsumptionState{{
+		id: "item-1", total: decimal.NewFromInt(50), used: decimal.NewFromInt(30),
+		csr: decimal.NewFromFloat(0.1), createdAt: time.Now(),
+	}}
+	chunks, err := consumeCredits(decimal.NewFromInt(20), items, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !chunks[0].credits.Equal(decimal.NewFromInt(20)) {
+		t.Fatalf("expected 20, got %s", chunks[0].credits)
+	}
+}
+
+func TestConsumeCredits_SkipsExpired(t *testing.T) {
+	t.Parallel()
+	now := time.Now()
+	expired := now.Add(-1 * time.Hour)
+	items := []budgetConsumptionState{
+		{id: "expired", total: decimal.NewFromInt(100), used: decimal.Zero, csr: decimal.NewFromFloat(0.1), expiresAt: &expired, createdAt: now},
+		{id: "active", total: decimal.NewFromInt(50), used: decimal.Zero, csr: decimal.NewFromFloat(0.1), createdAt: now},
+	}
+	chunks, err := consumeCredits(decimal.NewFromInt(30), items, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(chunks) != 1 || chunks[0].budgetItemID != "active" {
+		t.Fatalf("expected only active item, got %+v", chunks)
+	}
+}
+
 func TestBudgetHasConsumableCapacity(t *testing.T) {
 	z := decimal.Zero
 	t1000 := decimal.RequireFromString("1000")

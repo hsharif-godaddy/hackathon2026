@@ -1,6 +1,10 @@
 package store
 
-import "errors"
+import (
+	"errors"
+
+	"github.com/shopspring/decimal"
+)
 
 var (
 	// ErrNotFound is returned when a budget, item, or session row is missing.
@@ -36,4 +40,17 @@ var (
 	ErrCreditsUsedNegative = errors.New("creditsUsed cannot be negative")
 	// ErrReimbursementRequiresReduction is returned when a reimbursement entry does not reduce creditsUsed.
 	ErrReimbursementRequiresReduction = errors.New("reimbursement requires a reduction in creditsUsed")
+	// ErrIdempotencyKeyConflict is returned when a deduct request reuses an idempotency key against a different budget.
+	ErrIdempotencyKeyConflict = errors.New("idempotency key used for a different budget")
 )
+
+// InsufficientCreditsError carries the credits actually available at the point a strict
+// credit consumption was rejected, so callers can report the figure without recomputing it
+// (the consumption walk already knows it). Unwraps to ErrInsufficientCredits, so existing
+// errors.Is(err, ErrInsufficientCredits) checks keep working.
+type InsufficientCreditsError struct {
+	Available decimal.Decimal
+}
+
+func (e *InsufficientCreditsError) Error() string { return ErrInsufficientCredits.Error() }
+func (e *InsufficientCreditsError) Unwrap() error { return ErrInsufficientCredits }

@@ -186,6 +186,69 @@ func budgetHasConsumableCapacity(items []budgetConsumptionState, now time.Time) 
 	return false
 }
 
+// creditDeductChunk is one slice of a credit deduction from a single budget_item.
+// Unlike budgetCreditChunk, there is no USD side: the input is already credits, so cost_credit_ratio is ignored.
+type creditDeductChunk struct {
+	budgetItemID string
+	credits      decimal.Decimal
+}
+
+// consumeCredits allocates raw credits (no USD conversion) across items in canonical priority order.
+// Strict: returns ErrInsufficientCredits if requested credits exceed available pool; on failure the
+// items slice is not mutated. On success, items[].used is updated to reflect the new balance.
+func consumeCredits(amount decimal.Decimal, items []budgetConsumptionState, now time.Time) ([]creditDeductChunk, error) {
+	if !amount.IsPositive() {
+		return nil, nil
+	}
+
+	sorted := make([]budgetConsumptionState, len(items))
+	copy(sorted, items)
+	sortConsumptionItems(sorted)
+	consumable := filterConsumableItems(sorted, now)
+
+	var totalAvail decimal.Decimal
+	for i := range consumable {
+		totalAvail = totalAvail.Add(consumable[i].total.Sub(consumable[i].used))
+	}
+	if totalAvail.LessThan(amount) {
+		return nil, &InsufficientCreditsError{Available: totalAvail}
+	}
+
+	var out []creditDeductChunk
+	rem := amount
+	for i := range consumable {
+		if !rem.IsPositive() {
+			break
+		}
+		avail := consumable[i].total.Sub(consumable[i].used)
+		if !avail.IsPositive() {
+			continue
+		}
+		chunk := rem
+		if avail.LessThan(chunk) {
+			chunk = avail
+		}
+		out = append(out, creditDeductChunk{
+			budgetItemID: consumable[i].id,
+			credits:      chunk,
+		})
+		consumable[i].used = consumable[i].used.Add(chunk)
+		rem = rem.Sub(chunk)
+	}
+
+	usedByID := make(map[string]decimal.Decimal, len(consumable))
+	for i := range consumable {
+		usedByID[consumable[i].id] = consumable[i].used
+	}
+	for i := range items {
+		if used, ok := usedByID[items[i].id]; ok {
+			items[i].used = used
+		}
+	}
+
+	return out, nil
+}
+
 // loadBudgetConsumptionStatesTx returns rows in consumption priority: reset interval lines first
 // (reset_interval set), then soonest expires_at, then created_at, then id.
 // Mutation callers hold the per-budget advisory lock (lockBudgetTx), so no row-level FOR UPDATE is needed.

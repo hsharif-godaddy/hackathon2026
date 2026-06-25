@@ -4849,3 +4849,37 @@ func TestPatchBudgetBatchMixedAdjustments(t *testing.T) {
 		t.Fatalf("item 1 should have no adjustment ledger entries, got %d", count)
 	}
 }
+
+// TestPostBudgetDeduct_Validation rejects missing/invalid credits and idempotencyKey before touching the store.
+func TestPostBudgetDeduct_Validation(t *testing.T) {
+	t.Parallel()
+	s := &Server{}
+	r := mux.NewRouter()
+	r.HandleFunc("/api/v1/budgets/{budgetId}/deduct", s.postBudgetDeduct).Methods(http.MethodPost)
+
+	cases := []struct {
+		name string
+		body string
+		want string
+	}{
+		{"missing credits", `{"idempotencyKey":"k"}`, "credits is required"},
+		{"zero credits", `{"credits":"0","idempotencyKey":"k"}`, "positive"},
+		{"negative credits", `{"credits":"-5","idempotencyKey":"k"}`, "positive"},
+		{"missing key", `{"credits":"10"}`, "idempotencyKey is required"},
+		{"invalid key chars", `{"credits":"10","idempotencyKey":"<bad>"}`, "invalid characters"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, "/api/v1/budgets/"+uuid.NewString()+"/deduct", strings.NewReader(tc.body))
+			req.Header.Set("Content-Type", "application/json")
+			rec := httptest.NewRecorder()
+			r.ServeHTTP(rec, req)
+			if rec.Code != http.StatusBadRequest {
+				t.Fatalf("status %d, body %s", rec.Code, rec.Body.String())
+			}
+			if !strings.Contains(rec.Body.String(), tc.want) {
+				t.Fatalf("expected %q in %s", tc.want, rec.Body.String())
+			}
+		})
+	}
+}

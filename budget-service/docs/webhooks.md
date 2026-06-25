@@ -25,7 +25,7 @@ Authorization: sso-jwt <token>
 
 | Event                   | Trigger                                    | Source                   |
 | ----------------------- | ------------------------------------------ | ------------------------ |
-| `report.created`        | Session report created (reconciliation)    | API handler (via outbox) |
+| `report.created`        | Session report created (reconciliation), or a credit deduction via `POST /budgets/{budgetId}/deduct` | API handler (via outbox) |
 | `budget-item.reset`     | Credits reset to zero (periodic renewal)   | Background worker        |
 | `budget-item.expired`   | Item's `expiresAt` timestamp passed        | Background worker        |
 | `budget-item.exhausted` | Item's `creditsUsed` equals `creditsTotal` | API handler (via outbox) |
@@ -47,7 +47,9 @@ Webhooks share a common envelope:
 
 ### `report.created`
 
-Fired after a session report is created and credits are allocated.
+Fired after a session report is created and credits are allocated, and also after a successful credit deduction (`POST /budgets/{budgetId}/deduct`) so deduct spend reaches the control plane through the same channel.
+
+For a deduct-sourced event the payload is credit-only: `sessionId` is the sentinel `"deduct"`, `reportId` is the deduction id, `budgetCostTotal`/`productCostTotal` are `"0.000000"` (a deduct has no USD cost), and `reportItems` is a single item whose `budgetItems[].creditsUsed` are the per-budget-item credits deducted. Consumers should key on `budgetId` and the per-item `creditsUsed` deltas, not on `sessionId`/`reportId`.
 
 ```json
 {

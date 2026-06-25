@@ -6,4 +6,5 @@ export {
   BudgetNotFoundError,
   BudgetNoCapacityError,
   BudgetServiceConflictError,
+  BudgetInsufficientCreditsError,
 } from '@airo/shared/budget'

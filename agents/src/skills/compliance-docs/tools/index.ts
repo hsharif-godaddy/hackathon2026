@@ -7,6 +7,7 @@ import { DocumentType, complianceService, complianceDocStatusMemoryKey } from '.
 import { appRepository } from '../../../database/repositories/index.js';
 import { MemoryRepository } from '../../../database/repositories/MemoryRepository.js';
 import { readAppFqdn } from '../../../lib/app-fqdn.js';
+import { chargeForComplianceDoc } from '../charge.js';
 
 const memoryRepository = new MemoryRepository();
 
@@ -144,6 +145,19 @@ export const generatePrivacyPolicyTool: SkillToolDefinition = {
       return { error: 'Unable to determine app path for file creation' };
     }
 
+    // Charge 1 credit before producing the document (idempotent per app+type, so
+    // a regeneration replays the original charge). Block generation if the
+    // budget cannot cover it.
+    const bmsBudgetId = (context as { metadata?: { bmsBudgetId?: string } })?.metadata?.bmsBudgetId;
+    const charge = await chargeForComplianceDoc({
+      bmsBudgetId,
+      appId,
+      documentType: DocumentType.PrivacyPolicy,
+    });
+    if (!charge.ok) {
+      return { error: charge.error };
+    }
+
     try {
       const result = await complianceService.generateDocument({
         documentType: DocumentType.PrivacyPolicy,
@@ -237,6 +251,19 @@ export const generateTermsOfUseTool: SkillToolDefinition = {
     if (!appPath) {
       logger.error('skills.compliance-docs.tools.generate_terms_of_use.noAppPath', { appId });
       return { error: 'Unable to determine app path for file creation' };
+    }
+
+    // Charge 1 credit before producing the document (idempotent per app+type, so
+    // a regeneration replays the original charge). Block generation if the
+    // budget cannot cover it.
+    const bmsBudgetId = (context as { metadata?: { bmsBudgetId?: string } })?.metadata?.bmsBudgetId;
+    const charge = await chargeForComplianceDoc({
+      bmsBudgetId,
+      appId,
+      documentType: DocumentType.TermsOfUse,
+    });
+    if (!charge.ok) {
+      return { error: charge.error };
     }
 
     try {

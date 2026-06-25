@@ -21,6 +21,19 @@ export function complianceDocStatusMemoryKey(documentType: DocumentType): string
   return `compliance.document.${documentType}.generated`;
 }
 
+/**
+ * Memory (per-app KV) key marking that the 1-credit charge for a compliance
+ * document of the given type has already been committed for an app. Set after a
+ * successful charge and read before charging, this is a local short-circuit that
+ * stops the BMS deduct call from even being made on a regeneration — a layer of
+ * defense in depth on top of the budget-service's own idempotency (the
+ * deterministic idempotency key), not a replacement for it. Distinct from the
+ * `.generated` marker because the charge precedes generation.
+ */
+export function complianceDocChargedMemoryKey(documentType: DocumentType): string {
+  return `compliance.document.${documentType}.charged`;
+}
+
 export interface PrivacyPolicyInput {
   documentType: DocumentType.PrivacyPolicy;
   businessName: string;

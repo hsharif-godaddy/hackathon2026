@@ -30,6 +30,7 @@ import {
   BudgetNotFoundError,
   BudgetNoCapacityError,
   BudgetServiceConflictError,
+  BudgetInsufficientCreditsError,
 } from './errors.js'
 
 // ── Config ──
@@ -298,6 +299,37 @@ export class BudgetServiceClient {
     )
   }
 
+  /**
+   * Deduct a flat credit amount from a budget. Idempotent via `idempotencyKey`:
+   * a repeat with the same key on the same budget returns the current budget state
+   * without double-deducting; reuse on a different budget throws BudgetServiceConflictError.
+   *
+   * @throws BudgetInsufficientCreditsError - 400 INSUFFICIENT_CREDITS (carries requested/available)
+   * @throws BudgetServiceConflictError - 409 IDEMPOTENCY_KEY_CONFLICT (key reused on a different budget)
+   * @throws BudgetNotFoundError - 404 (budget missing or soft-deleted)
+   */
+  async deductCredits(
+    budgetId: string,
+    opts: {
+      credits: string | number
+      idempotencyKey: string
+      reason?: string
+      metadata?: Record<string, unknown>
+    }
+  ): Promise<BudgetResponse> {
+    const body: Record<string, unknown> = {
+      credits: String(opts.credits),
+      idempotencyKey: opts.idempotencyKey,
+    }
+    if (opts.reason) body.reason = opts.reason
+    if (opts.metadata) body.metadata = opts.metadata
+
+    const path = `/api/v1/budgets/${encodeURIComponent(budgetId)}/deduct`
+    return this.requestAndValidate(
+      'POST', path, BudgetResponseSchema, 'BudgetResponse', body, this.getBudgetTimeoutMs
+    )
+  }
+
   // ── Internal ──
 
   private async requestAndValidate<T>(
@@ -383,6 +415,21 @@ export class BudgetServiceClient {
           response.status,
           text
         )
+      }
+      if (response.status === 400) {
+        try {
+          const parsed = JSON.parse(rawText) as { code?: unknown; requested?: unknown; available?: unknown }
+          if (parsed && parsed.code === 'INSUFFICIENT_CREDITS') {
+            throw new BudgetInsufficientCreditsError(
+              typeof parsed.requested === 'string' ? parsed.requested : '0.000000',
+              typeof parsed.available === 'string' ? parsed.available : '0.000000',
+              text
+            )
+          }
+        } catch (e) {
+          if (e instanceof BudgetInsufficientCreditsError) throw e
+          // JSON.parse failed or body isn't INSUFFICIENT_CREDITS — fall through to generic 4xx handling.
+        }
       }
       if (response.status === 402) {
         throw new BudgetNoCapacityError(

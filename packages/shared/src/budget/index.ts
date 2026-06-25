@@ -23,6 +23,7 @@ export {
   mapBudgetErrorToResponse,
   isBudgetServiceError,
   BudgetServiceConflictError,
+  BudgetInsufficientCreditsError,
 } from './errors.js'
 
 export type { BudgetErrorResponse } from './errors.js'

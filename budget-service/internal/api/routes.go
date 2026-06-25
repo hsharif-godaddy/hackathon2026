@@ -78,6 +78,7 @@ func NewRouter(s *Server, authMW *auth.Middleware) http.Handler {
 	v1.Handle("/budgets/{budgetId}/budget-items", serviceAuth(http.HandlerFunc(s.postBudgetItem))).Methods(http.MethodPost)
 	// GET /budgets/{budgetId} accepts a Shopper JWT in addition to service tokens.
 	// PATCH and DELETE on the same path remain service-only.
+	v1.Handle("/budgets/{budgetId}/deduct", serviceAuth(http.HandlerFunc(s.postBudgetDeduct))).Methods(http.MethodPost)
 	v1.Handle("/budgets/{budgetId}", shopperOrServiceAuth(http.HandlerFunc(s.getBudget))).Methods(http.MethodGet)
 	v1.Handle("/budgets/{budgetId}", serviceAuth(http.HandlerFunc(s.patchBudget))).Methods(http.MethodPatch)
 	v1.Handle("/budgets/{budgetId}", serviceAuth(http.HandlerFunc(s.deleteBudget))).Methods(http.MethodDelete)
