@@ -111,7 +111,7 @@ export class StripeServiceError extends Error {
 const stripeServiceUrls = {
   dev: 'https://airo-builder-stripe.frontdoor.dev-godaddy.com',
   test: 'https://airo-builder-stripe.frontdoor.test-godaddy.com',
-  prod: 'https://airo-builder-stripe.frontdoor.godaddy.com',
+  prod: 'https://airo-stripe.api.godaddy.com',
 } as const;
 
 function getStripeServiceBaseUrl(): string {
