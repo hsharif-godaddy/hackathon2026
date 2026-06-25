@@ -1046,6 +1046,11 @@ describe('AskQuestionToolRenderer', () => {
         expect.objectContaining({ flowId: expect.any(String) }),
         1,
       )
+      expect(mockTrackNavigatorClicked).toHaveBeenCalledWith(
+        expect.objectContaining({ flowId: expect.any(String) }),
+        1,
+        'forward',
+      )
       expect(mockTrackQuestionSkipped).not.toHaveBeenCalled()
     })
 
@@ -1060,6 +1065,7 @@ describe('AskQuestionToolRenderer', () => {
         expect.objectContaining({ flowId: expect.any(String) }),
         1,
       )
+      expect(mockTrackNavigatorClicked).not.toHaveBeenCalled()
     })
 
     it('fires navigator_clicked back when Back is clicked on question 2', () => {
@@ -1074,6 +1080,46 @@ describe('AskQuestionToolRenderer', () => {
         expect.objectContaining({ flowId: expect.any(String) }),
         2,
         'back',
+      )
+    })
+
+    it('fires navigator_clicked forward when the forward chevron advances a multi-select question', () => {
+      const result = makeResult([
+        {
+          question: 'What goals?',
+          type: 'chips_multi',
+          suggestions: [{ text: 'Show menus' }, { text: 'Share location' }],
+        },
+        makeQuestion('Q2?', [{ text: 'C' }, { text: 'D' }]),
+      ])
+      render(<AskQuestionToolRenderer {...defaultProps} result={result} />)
+      fireEvent.click(screen.getByRole('checkbox', { name: /Show menus/i })) // enable submit on Q1 (position 1)
+      fireEvent.click(screen.getByTestId('ask-question-submit'))
+      expect(mockTrackNavigatorClicked).toHaveBeenCalledWith(
+        expect.objectContaining({ flowId: expect.any(String) }),
+        1,
+        'forward',
+      )
+    })
+
+    it('fires navigator_clicked forward when a text-step answer is submitted', () => {
+      const result = makeResult([
+        {
+          question: 'Your brand name?',
+          type: 'text' as const,
+          placeholder: 'Your answer...',
+          suggestions: [],
+        },
+        makeQuestion('Q2?', [{ text: 'C' }, { text: 'D' }]),
+      ])
+      render(<AskQuestionToolRenderer {...defaultProps} result={result} />)
+      const input = screen.getByPlaceholderText('Your answer...')
+      fireEvent.change(input, { target: { value: 'Sweet Rise' } })
+      fireEvent.keyDown(input, { key: 'Enter' })
+      expect(mockTrackNavigatorClicked).toHaveBeenCalledWith(
+        expect.objectContaining({ flowId: expect.any(String) }),
+        1,
+        'forward',
       )
     })
 

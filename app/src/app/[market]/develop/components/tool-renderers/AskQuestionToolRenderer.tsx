@@ -324,6 +324,7 @@ export default function AskQuestionToolRenderer({
         onStepChange={handleStepChange}
         onActiveStepChange={handleActiveStepChange}
         onNavigateBack={(fromIndex) => trackNavigatorClicked(flowContext, fromIndex + 1, 'back')}
+        onNavigateForward={(fromIndex) => trackNavigatorClicked(flowContext, fromIndex + 1, 'forward')}
         onStepProgressChange={onStepProgressChange}
         onComplete={handleCompleteSelections}
         backLabel={t('builder_common_back')}

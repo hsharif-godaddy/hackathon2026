@@ -71,6 +71,17 @@ describe('askQuestionAnalytics', () => {
     })
   })
 
+  it('navigator_clicked carries the forward direction', () => {
+    trackNavigatorClicked(ctx, 1, 'forward')
+    expect(mockShip).toHaveBeenCalledWith('ask_question.navigator_clicked', {
+      flow_id: 'flow-1',
+      app_creation: true,
+      endgame_cohort: 'initial_agent_v3',
+      position: 1,
+      direction: 'forward',
+    })
+  })
+
   it('flow_completed carries only base props', () => {
     trackFlowCompleted(ctx)
     expect(mockShip).toHaveBeenCalledWith('ask_question.flow_completed', {
