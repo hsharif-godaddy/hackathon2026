@@ -1,4 +1,5 @@
 export * from './choice-list';
+export * from './command-palette';
 export * from './cta-button';
 export * from './prompt-box';
 export * from './prompt-stage';

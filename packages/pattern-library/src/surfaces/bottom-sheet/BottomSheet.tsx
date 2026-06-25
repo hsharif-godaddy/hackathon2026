@@ -45,6 +45,16 @@ interface BottomSheetBaseProps
    */
   closeLabel?: string;
   /**
+   * Show the header dismiss (X) button.
+   *
+   * Set to `false` for a chromeless sheet dismissed by tapping the scrim or
+   * pressing Escape (e.g. a command palette). When `false` and no `title` is
+   * given, the header is omitted entirely — leaving only the decorative drag
+   * handle, which signals dismissibility but is not itself interactive.
+   * @default true
+   */
+  showCloseButton?: boolean;
+  /**
    * Scrollable body content.
    */
   children?: ReactNode;
@@ -107,6 +117,7 @@ export function BottomSheet({
   onClose,
   title,
   closeLabel = 'Close',
+  showCloseButton = true,
   portalElem,
   className,
   children,
@@ -204,25 +215,27 @@ export function BottomSheet({
           orientation="horizontal"
           className="airo-surfaces-bottom-sheet__drag-handle"
         />
-        {/* Header: optional title (text-lockup, Small) + always-present corner X.
+        {/* Header: optional title (text-lockup, Small) + optional corner X.
             `position: relative` (see styles) anchors the absolutely-positioned
-            corner action to the sheet's top edge. */}
-        <div className="airo-surfaces-bottom-sheet__header">
-          {title != null ? (
-            <TextLockup id={titleId} size="sm" title={title} />
-          ) : (
-            <span />
-          )}
-          <CornerActions space="md">
-            <Button
-              design="control"
-              size="small"
-              icon={<AsyncIcon icon="x" />}
-              aria-label={closeLabel}
-              onClick={handleClose}
-            />
-          </CornerActions>
-        </div>
+            corner action to the sheet's top edge. Omitted entirely when there is
+            neither a title nor a dismiss button — the drag handle above is then
+            the only header affordance (scrim tap / Escape still dismiss). */}
+        {title != null || showCloseButton ? (
+          <div className="airo-surfaces-bottom-sheet__header">
+            {title != null ? <TextLockup id={titleId} size="sm" title={title} /> : <span />}
+            {showCloseButton ? (
+              <CornerActions space="md">
+                <Button
+                  design="control"
+                  size="small"
+                  icon={<AsyncIcon icon="x" />}
+                  aria-label={closeLabel}
+                  onClick={handleClose}
+                />
+              </CornerActions>
+            ) : null}
+          </div>
+        ) : null}
         <div className="airo-surfaces-bottom-sheet__body">{children}</div>
       </div>
     </Disrupt>

@@ -1,0 +1,110 @@
+@tailwind utilities;
+
+/* --------------------------------------------------------------------------
+ * ActionCard — low-contrast icon-over-title quick-action tile.
+ *
+ * BEM prefix: airo-primitives-action-card
+ *
+ *   import '@airo-ux/pattern-library/primitives/action-card/styles';
+ *
+ * Visual model:
+ *   • A rounded control surface bound to the `actionControl` intent family
+ *     (the same family as control/secondary buttons): icon stacked above a
+ *     centered title.
+ *   • `:hover` → the matched `actionControlHovered` pair.
+ *   • `--active` (the parent's roving keyboard highlight) → the matched
+ *     `actionControlChosen` pair, so the highlighted card reads as the current
+ *     selection, visually distinct from a plain hover.
+ *   • `:focus-visible` adds an inset ring via `actionControlFocused.outlineColor`.
+ *
+ * Colors, spacing, and radius come from @ux/postcss-intents `intent()` calls.
+ * ----------------------------------------------------------------------- */
+
+.airo-primitives-action-card {
+  --airo-primitives-action-card-density: intent('ux.box.density');
+
+  /* Reset native button chrome; color/background/border reapplied below. */
+  appearance: none;
+  box-sizing: border-box;
+  cursor: pointer;
+  font: inherit;
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--airo-primitives-action-card-density);
+  inline-size: 100%;
+  /* 40px small-control floor; real height comes from the block padding below. */
+  min-block-size: 2.5rem;
+  padding-block: calc(var(--airo-primitives-action-card-density) * 2);
+  padding-inline: calc(var(--airo-primitives-action-card-density) * 1.5);
+
+  /* Full `actionControl` treatment — surface, text, and border — so the
+   * hover/active states (which the control family conveys partly via the
+   * border) read correctly. Slightly softer corner than a button's. */
+  border: intent('ux.actionControl.borderWidth') solid intent('ux.actionControl.borderColor');
+  border-radius: calc(intent('ux.action.borderRadius') * 1.5);
+  background: intent('ux.actionControl.backgroundColor');
+  color: intent('ux.actionControl.foregroundColor');
+  text-align: center;
+}
+
+/* Hover → the `actionControlHovered` pair. Two exclusions: disabled cards opt
+ * out (a disabled `<button>` still matches `:hover`, and a highlight would
+ * undercut the disabled affordance), and `--active` cards opt out so the chosen
+ * state below always wins for the current selection — rather than relying on
+ * source order, since this `:hover` selector is more specific than `--active`. */
+.airo-primitives-action-card:not(:disabled):not(.airo-primitives-action-card--active):hover {
+  background: intent('ux.actionControlHovered.backgroundColor');
+  color: intent('ux.actionControlHovered.foregroundColor');
+  border-color: intent('ux.actionControlHovered.borderColor');
+}
+
+/* Active → the `actionControlChosen` pair. The `--active` modifier is driven by
+ * a parent's roving focus, so a card reads as the current selection without
+ * holding DOM focus. The hover rule excludes active cards, so an active card
+ * shows the chosen state whether or not it is also hovered. */
+.airo-primitives-action-card--active {
+  background: intent('ux.actionControlChosen.backgroundColor');
+  color: intent('ux.actionControlChosen.foregroundColor');
+  border-color: intent('ux.actionControlChosen.borderColor');
+}
+
+.airo-primitives-action-card:focus-visible {
+  outline: intent('ux.actionControl.borderWidth') solid intent('ux.actionControlFocused.outlineColor');
+  outline-offset: calc(intent('ux.actionControl.borderWidth') * -1);
+}
+
+.airo-primitives-action-card:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* Prominent 32px icon — the card's focal element above the title caption. The
+ * box is pinned to 2rem and the glyph forced to fill it, overriding @ux/icon's
+ * default 1.5em render size. */
+.airo-primitives-action-card__icon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  inline-size: 2rem;
+  block-size: 2rem;
+  line-height: 0;
+}
+
+.airo-primitives-action-card__icon svg {
+  inline-size: 2rem;
+  block-size: 2rem;
+}
+
+.airo-primitives-action-card__title {
+  /* Label size -2 (~12px) — a compact tile caption. Fallback keeps it sensible
+   * without @ux/text loaded. */
+  font-size: var(--uxText--fontSize-2, 0.75rem);
+  /* Wrap only at whitespace — never mid-word — so a single-word title like
+   * "Screenshot" stays on one line; multi-word titles wrap between words. */
+  overflow-wrap: normal;
+  word-break: normal;
+}

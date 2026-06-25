@@ -1,0 +1,216 @@
+@tailwind utilities;
+
+/* --------------------------------------------------------------------------
+ * CommandPalette — responsive command-palette popover.
+ *
+ * BEM prefix: airo-input-command-palette
+ *
+ *   import '@airo-ux/pattern-library/input/command-palette/styles';
+ *   import '@airo-ux/pattern-library/surfaces/bottom-sheet/styles';   // mobile
+ *   import '@airo-ux/pattern-library/primitives/action-card/styles';  // cards
+ *
+ * Layout model: a vertical stack of a fixed search header over a scrollable
+ * results listbox (cards row + grouped item rows). The desktop popover width is
+ * set on the Flyout shell; on mobile the BottomSheet body owns the width.
+ *
+ * Filtering hides — never unmounts — non-matching options, so they stay
+ * registered and reappear when the query changes. The single `[hidden]` rule
+ * below reinstates `display: none` (UA `[hidden]` is otherwise overridden by
+ * the flex `display` on the option/group/cards rules) at a higher specificity.
+ *
+ * Colors/spacing/radius come from @ux/postcss-intents `intent()` calls; the
+ * `actionOption` interactive family matches the rest of the library's rows.
+ * ----------------------------------------------------------------------- */
+
+.airo-input-command-palette {
+  --airo-input-command-palette-density: intent('ux.box.density');
+  display: flex;
+  flex-direction: column;
+  inline-size: 100%;
+  min-inline-size: 0;
+  color: intent('ux.box.foregroundColor');
+}
+
+/* Inline wrapper around the trigger button so the desktop Flyout has a stable
+ * DOM element to anchor to (independent of @ux/button's ref shape). */
+.airo-input-command-palette__trigger {
+  display: inline-flex;
+}
+
+/* Desktop popover shell — width lives here (not via Flyout `stretch`, which
+ * would shrink the popover to the small trigger's width). */
+.airo-input-command-palette__flyout {
+  inline-size: min(92vw, 22rem);
+}
+
+/* ── Search box (top) ───────────────────────────────────────────────────── */
+
+/* Top `@ux/box`: owns its own padding (the shell adds none) and carries the
+ * full-width divider on its bottom edge — the border spans the box's border-box
+ * (edge to edge of the popover), while the content stays inset by the padding.
+ * The divider is a static separator, never a focus indicator. */
+.airo-input-command-palette__search-box {
+  display: block;
+  padding-block: var(--airo-input-command-palette-density);
+  padding-inline: calc(var(--airo-input-command-palette-density) * 1.5);
+  border-block-end: intent('ux.box.borderWidth') solid intent('ux.box.borderColor');
+}
+
+/* Borderless search row: leading magnifier, input, optional trailing hint. The
+ * field has no frame of its own — the box above is the only chrome. */
+.airo-input-command-palette__search {
+  display: flex;
+  align-items: center;
+  gap: var(--airo-input-command-palette-density);
+  inline-size: 100%;
+}
+
+/* Leading magnifier + trailing hotkey hint: de-emphasized with the passive
+ * feedback color — the library's muted gray for text/icons, and the same token
+ * `@ux/text emphasis="passive"` resolves to. */
+.airo-input-command-palette__search-icon,
+.airo-input-command-palette__search-hint {
+  flex: none;
+  color: intent('ux.feedbackHighContrastPassive.feedbackColor');
+}
+
+.airo-input-command-palette__search-hint {
+  display: inline-flex;
+  align-items: center;
+}
+
+/* Magnifier glyph (an @ux/icon svg). */
+.airo-input-command-palette__search-icon {
+  inline-size: 1.25rem;
+  block-size: 1.25rem;
+}
+
+/* Borderless editable surface — focus is the caret; no frame, no ring. */
+.airo-input-command-palette__search-input {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  /* 40px small-control floor so the field reads at the library's control scale. */
+  min-block-size: 2.5rem;
+  outline: none;
+}
+
+.airo-input-command-palette__search-input::placeholder {
+  color: intent('ux.feedbackHighContrastPassive.feedbackColor');
+  opacity: 1;
+}
+
+/* ── Results box (bottom) ───────────────────────────────────────────────── */
+
+/* Bottom `@ux/box`: owns its own padding; stacks the cards row and groups. */
+.airo-input-command-palette__results {
+  display: flex;
+  flex-direction: column;
+  gap: var(--airo-input-command-palette-density);
+  padding: calc(var(--airo-input-command-palette-density) * 1.5);
+  overflow-y: auto;
+  max-block-size: 24rem;
+}
+
+/* Reinstate display:none for filtered-out options/groups/cards. Higher
+ * specificity (`.results [hidden]`) than the flex `display` rules below. */
+.airo-input-command-palette__results [hidden] {
+  display: none;
+}
+
+/* ── Cards row ──────────────────────────────────────────────────────────── */
+
+.airo-input-command-palette__cards {
+  display: flex;
+  gap: var(--airo-input-command-palette-density);
+}
+
+/* Equal-width cards; `min-inline-size: 0` lets a long title shrink rather than
+ * blow out the track. Targets the ActionCard button rendered by CommandPalette.Card. */
+.airo-input-command-palette__cards > .airo-primitives-action-card {
+  flex: 1 1 0;
+  min-inline-size: 0;
+}
+
+/* ── Groups ─────────────────────────────────────────────────────────────── */
+
+.airo-input-command-palette__group {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Heading aligns with the item icon column (same inline-start padding as a
+ * row), and reads slightly smaller/de-emphasized than the rows. */
+.airo-input-command-palette__group-heading {
+  padding-block: calc(var(--airo-input-command-palette-density) * 0.5);
+  padding-inline: var(--airo-input-command-palette-density);
+  font-size: var(--uxText--fontSize-1, 0.875rem);
+  color: intent('ux.feedbackHighContrastPassive.feedbackColor');
+}
+
+/* ── Item rows ──────────────────────────────────────────────────────────── */
+
+.airo-input-command-palette__item {
+  display: flex;
+  align-items: center;
+  gap: var(--airo-input-command-palette-density);
+  inline-size: 100%;
+  /* 40px floor matches the UXCore small-control height. */
+  min-block-size: 2.5rem;
+  padding-block: calc(var(--airo-input-command-palette-density) * 0.75);
+  padding-inline: var(--airo-input-command-palette-density);
+  border-radius: intent('ux.action.borderRadius');
+  color: intent('ux.box.foregroundColor');
+  cursor: pointer;
+}
+
+/* Hover and keyboard highlight (aria-selected) share the actionOption family.
+ * Disabled rows opt out of the hover highlight. */
+.airo-input-command-palette__item:not(.airo-input-command-palette__item--disabled):hover,
+.airo-input-command-palette__item[aria-selected='true'] {
+  background: intent('ux.actionOptionHovered.backgroundColor');
+  color: intent('ux.actionOptionHovered.foregroundColor');
+}
+
+.airo-input-command-palette__item--disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* Fixed leading slot so rows align whether or not an item defines an icon.
+ * 1.5em matches @ux/icon's render size; sizing the slot (not the glyph) keeps
+ * icon sizing owned by @ux/icon. */
+.airo-input-command-palette__item-icon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  inline-size: 1.5em;
+  block-size: 1.5em;
+}
+
+.airo-input-command-palette__item-label {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+}
+
+/* Right-aligned shortcut hint — de-emphasized; never shrinks. */
+.airo-input-command-palette__item-hotkey {
+  flex: none;
+  margin-inline-start: auto;
+  color: intent('ux.feedbackHighContrastPassive.feedbackColor');
+  font-size: var(--uxText--fontSize-1, 0.875rem);
+}
+
+/* ── Empty state ────────────────────────────────────────────────────────── */
+
+.airo-input-command-palette__empty {
+  padding-block: calc(var(--airo-input-command-palette-density) * 1.5);
+  padding-inline: var(--airo-input-command-palette-density);
+  text-align: center;
+  color: intent('ux.feedbackHighContrastPassive.feedbackColor');
+}

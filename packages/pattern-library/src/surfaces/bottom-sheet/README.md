@@ -2,9 +2,12 @@
 
 A mobile overlay surface anchored to the viewport's bottom edge. Built on
 `@ux/disrupt` (scrim + focus-lock + portal) and slides up with rounded top
-corners, a decorative grab-handle pill, and a header (optional
+corners, a decorative grab-handle pill, and an optional header (a
 `@ux/text-lockup` title + an `@ux/corner-actions` dismiss X). Closes on the X,
-scrim tap, or Escape.
+scrim tap, or Escape. Set `showCloseButton={false}` (and omit `title`) for a
+chromeless sheet dismissed by the scrim or Escape — the header is then omitted
+entirely, leaving the decorative drag handle (a dismissibility affordance, not
+itself interactive).
 
 ```tsx
 import { BottomSheet } from '@airo-ux/pattern-library/surfaces/bottom-sheet';
@@ -36,9 +39,11 @@ const [open, setOpen] = useState(false);
 - Renders `role="dialog"` + `aria-modal="true"`. A string `title` is wired to
   `aria-labelledby`; otherwise supply `aria-label` or `aria-labelledby` (the
   prop types enforce that one is present).
-- `@ux/disrupt` traps focus while open and restores it on close; Escape closes.
-- The header's dismiss button is a real `@ux/button` (`design="control"`) with
-  an `aria-label` (`closeLabel`, default `"Close"`) — a keyboard-reachable close.
+- `@ux/disrupt` traps focus while open and restores it on close; Escape closes
+  regardless of `showCloseButton`, so the sheet always has a keyboard dismissal.
+- When shown, the header's dismiss button is a real `@ux/button`
+  (`design="control"`) with an `aria-label` (`closeLabel`, default `"Close"`).
+  With `showCloseButton={false}`, Escape remains the keyboard dismissal.
 - Honors `prefers-reduced-motion` — the slide transition is dropped.
 
 ## Gotchas

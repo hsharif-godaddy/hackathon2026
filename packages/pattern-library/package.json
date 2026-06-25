@@ -29,6 +29,12 @@
       "require": "./dist/input/choice-list/index.cjs"
     },
     "./input/choice-list/styles": "./dist/input/choice-list/styles.css",
+    "./input/command-palette": {
+      "types": "./dist/input/command-palette/index.d.ts",
+      "import": "./dist/input/command-palette/index.js",
+      "require": "./dist/input/command-palette/index.cjs"
+    },
+    "./input/command-palette/styles": "./dist/input/command-palette/styles.css",
     "./input/cta-button": {
       "types": "./dist/input/cta-button/index.d.ts",
       "import": "./dist/input/cta-button/index.js",
@@ -131,6 +137,12 @@
       "require": "./dist/surfaces/builder-chat-footer/index.cjs"
     },
     "./surfaces/builder-chat-footer/styles": "./dist/surfaces/builder-chat-footer/styles.css",
+    "./primitives/action-card": {
+      "types": "./dist/primitives/action-card/index.d.ts",
+      "import": "./dist/primitives/action-card/index.js",
+      "require": "./dist/primitives/action-card/index.cjs"
+    },
+    "./primitives/action-card/styles": "./dist/primitives/action-card/styles.css",
     "./primitives/chiclet": {
       "types": "./dist/primitives/chiclet/index.d.ts",
       "import": "./dist/primitives/chiclet/index.js",

@@ -1,3 +1,4 @@
+export * from './action-card';
 export * from './chiclet';
 export * from './color-swatch';
 export * from './color-swatch-group';
