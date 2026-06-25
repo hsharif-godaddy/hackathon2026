@@ -375,4 +375,50 @@ describe('sendPendingAutoSendMessage', () => {
 
     expect(onUploadsFailed).toHaveBeenCalledWith(['a.txt', 'b.png'])
   })
+
+  it('preserves deep-build templateId and emits deep_build_doc context type for doc uploads', async () => {
+    const send = vi.fn<(options: SendMessageOptions) => Promise<void>>().mockResolvedValue()
+    mockRetrieveAndUploadFiles.mockResolvedValueOnce({
+      uploaded: [{ fileName: 'brief-yoga.md', isDesignMd: false, isImage: false }],
+      failed: [],
+    })
+
+    await sendPendingAutoSendMessage(
+      buildOptions({
+        send,
+        templateId: 'deep-build',
+        uploadedFiles: [{ name: 'brief-yoga.md', content: '# Brief', isDesignMd: false }],
+      }),
+    )
+
+    expect(send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        templateId: 'deep-build',
+        customContext: expect.objectContaining({ type: 'deep_build_doc' }),
+      }),
+    )
+  })
+
+  it('falls through to file_upload when deep-build uploads are image-only', async () => {
+    const send = vi.fn<(options: SendMessageOptions) => Promise<void>>().mockResolvedValue()
+    mockRetrieveAndUploadFiles.mockResolvedValueOnce({
+      uploaded: [{ fileName: 'logo.png', isDesignMd: false, isImage: true }],
+      failed: [],
+    })
+
+    await sendPendingAutoSendMessage(
+      buildOptions({
+        send,
+        templateId: 'deep-build',
+        uploadedFiles: [{ name: 'logo.png', content: '', isDesignMd: false, isImage: true }],
+      }),
+    )
+
+    expect(send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        templateId: 'deep-build',
+        customContext: expect.objectContaining({ type: 'file_upload' }),
+      }),
+    )
+  })
 })

@@ -21,6 +21,10 @@ function computeTemplateId(
   uploaded: StoredFileEntry[],
   fallbackTemplateId: string | null,
 ): string | undefined {
+  // Deep Build reuses uploaded docs (brief.md, business-details.md) to seed a
+  // session. Attaching a file must NOT downgrade the template to 'file-upload' —
+  // the deep-build orchestrator must stay engaged so it can skip seeded stages.
+  if (fallbackTemplateId === 'deep-build') return 'deep-build'
   if (uploaded.length === 0) return fallbackTemplateId ?? undefined
   if (uploaded.some(f => f.isUiKit)) return 'ui-kit-import'
   if (uploaded.some(f => f.isAppImport)) return 'zip-import'
@@ -29,7 +33,11 @@ function computeTemplateId(
   return fallbackTemplateId ?? undefined
 }
 
-function computeContextType(uploaded: StoredFileEntry[]): string {
+function computeContextType(uploaded: StoredFileEntry[], templateId: string | null): string {
+  // In Deep Build mode, non-image uploads are prior-session docs routed to
+  // canonical paths by DeepBuildDocContextRenderer. Images still flow through
+  // the adaptive file_upload renderer for vision/classification.
+  if (templateId === 'deep-build' && uploaded.some(f => !f.isImage)) return 'deep_build_doc'
   if (uploaded.some(f => f.isUiKit)) return 'ui_kit_upload'
   if (uploaded.some(f => f.isAppImport)) return 'app_import_upload'
   if (uploaded.some(f => f.isZip)) return 'zip_upload'
@@ -91,7 +99,7 @@ export async function sendPendingAutoSendMessage(
     }
 
     const effectiveTemplateId = computeTemplateId(uploaded, templateId)
-    const contextType = computeContextType(uploaded)
+    const contextType = computeContextType(uploaded, templateId)
 
     if (designKitSlug) {
       logger.info('develop-page.auto-send.designKit', { appId, designKitSlug })

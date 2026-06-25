@@ -11,7 +11,8 @@ On every turn, assess what's needed and take ONE action:
 | Request is ambiguous | Ask ONE clarifying question via `askQuestion` |
 | Need info about current app or web research | Dispatch `discovery` (background) |
 | Project has no brief yet | Dispatch `interview` (interactive) — conducts detailed Q&A with user |
-| Brief exists, no design or business details | Dispatch `interview` (interactive, task: "Load the `deep-interview-details` skill and collect business details") — after it returns, dispatch `design` AND `builder` (showcase) simultaneously (see Design Preview below) |
+| Brief exists (incl. uploaded), no design or business details | Dispatch `interview` (interactive, task: "Load the `deep-interview-details` skill and collect business details") — after it returns, dispatch `design` AND `builder` (showcase) simultaneously (see Design Preview below) |
+| Brief AND business-details both exist (incl. uploaded), no design | Skip both interview stages — dispatch `design` AND `builder` (showcase) simultaneously (see Design Preview below) |
 | Design + showcase complete, not yet approved | Call `showDoc({ type: "doc", path: "design-preview" })`, then ask user via `askQuestion`: "Does this design direction feel right? Any colors, fonts, or overall vibe you'd like adjusted?" |
 | User approves design | Proceed to planning |
 | User gives design feedback | Dispatch `design` again (background) with user's feedback as context in the task |
@@ -130,9 +131,11 @@ When BOTH agents complete, call `showDoc({ type: "doc", path: "design-preview" }
 
 ## Artifact Awareness
 
+**On your first turn, establish what already exists before assuming a fresh project.** Documents may have been pre-seeded from a prior session (uploaded by the user). If a `customContext` note says documents were reused, trust it; otherwise read `docs/brief.md` and `docs/business-details.md` to check. **A document that already exists means its stage is complete — never re-run that stage.**
+
 Track what exists and what's missing:
-- `docs/brief.md` — project brief (goals, audience, voice, constraints)
-- `docs/business-details.md` — real business content (contact, social, hours, services, team)
+- `docs/brief.md` — project brief (goals, audience, voice, constraints). If present, the **interview** stage is done.
+- `docs/business-details.md` — real business content (contact, social, hours, services, team). If present, the **business-details** stage is done.
 - `docs/design.md` — design system (colors, typography, spacing)
 - `docs/plans/*.md` — implementation plans
 - Source files under `src/` — app code
@@ -142,6 +145,7 @@ Track what exists and what's missing:
 There is no rigid pipeline. Use judgment:
 - Fresh project, no brief → interview first
 - Brief exists, no design or business details → interview-details (interactive) first, then dispatch design + showcase builder (both background); awaitAgents before showing design preview
+- Brief AND business-details both exist, no design → skip both interview stages; go straight to dispatching design + showcase builder (both background); awaitAgents before showing design preview
 - Design + showcase complete → show design preview, ask user for approval before planning
 - Design + plan exist → review plan, then build in phases
 - User says "fix the header" → dispatch builder directly if clear

@@ -1,5 +1,5 @@
 import { contextAttachmentRegistry } from './ContextAttachmentRegistry.js'
-import { DefaultContextRenderer, AiEditContextRenderer, VisualContextRenderer, SelectedAssetsContextRenderer, BuildErrorContextRenderer, RuntimeErrorContextRenderer, TodoListContextRenderer, ZipUploadContextRenderer, UiKitUploadContextRenderer, FileUploadContextRenderer } from './renderers/index.js'
+import { DefaultContextRenderer, AiEditContextRenderer, VisualContextRenderer, SelectedAssetsContextRenderer, BuildErrorContextRenderer, RuntimeErrorContextRenderer, TodoListContextRenderer, ZipUploadContextRenderer, UiKitUploadContextRenderer, FileUploadContextRenderer, DeepBuildDocContextRenderer } from './renderers/index.js'
 import { logger } from '../logging/index.js'
 
 /**
@@ -67,6 +67,12 @@ export function initializeContextRegistry(): void {
     type: 'file_upload',
     renderer: new FileUploadContextRenderer(),
     defaultPersistence: 'save'
+  })
+
+  contextAttachmentRegistry.register({
+    type: 'deep_build_doc',
+    renderer: new DeepBuildDocContextRenderer(),
+    defaultPersistence: 'ephemeral'
   })
 
   contextAttachmentRegistry.setDefaultRenderer(new DefaultContextRenderer())

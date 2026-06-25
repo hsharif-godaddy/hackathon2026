@@ -7,7 +7,6 @@ whenToUse: >-
   is being generated. Collects the real-world details needed to fill out
   pages with actual content rather than placeholders.
 ---
-allowedAgents: [deep-build]
 
 # Business Details Interview
 

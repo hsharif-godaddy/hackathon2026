@@ -8,7 +8,6 @@ whenToUse: >-
   "update the brief", "interview me about the brand"). Do not load
   outside Deep Build Mode — the normal InitialAgent flow covers first-time scaffolding.
 ---
-allowedAgents: [deep-build]
 
 # Deep Interview
 
@@ -160,7 +159,6 @@ The raw Q&A, in order. Header:
 **Topic:** <topic>
 
 ---
-allowedAgents: [deep-build]
 ```
 
 Then each exchange:
