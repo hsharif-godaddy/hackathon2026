@@ -3,15 +3,16 @@
  */
 import '@testing-library/jest-dom';
 
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { screen } from '@testing-library/react';
 
+import { useAuthContext } from '@/components/providers/AuthProvider';
 import { mockAuthContext, mockParams, mockSearchParams } from '@/tests/mocks';
 import { renderWithProviders } from '@/tests/test-utils';
 import Header from './Header';
 
 vi.mock('next/navigation', () => ({
-  useRouter: () => ({ push: vi.fn() }),
+  useRouter: () => ({ push: vi.fn(), prefetch: vi.fn() }),
   useSearchParams: () => mockSearchParams(),
   useParams: () => mockParams(),
   usePathname: () => '/',
@@ -21,7 +22,10 @@ vi.mock('@/utils/instrumentation', () => ({
   logImpressionEvent: vi.fn(function () { return vi.fn(); }),
 }));
 vi.mock('@/components/providers/AuthProvider', () => ({
-  useAuthContext: () => mockAuthContext({ isAuthenticated: false }),
+  useAuthContext: vi.fn(() => mockAuthContext({ isAuthenticated: false })),
+}));
+vi.mock('@site/notifications', () => ({
+  default: ({ id }: { id: string }) => <div data-testid={id} />,
 }));
 vi.mock('@/stores/useSitesStore', () => ({
   useSites: () => ({ sites: [], isLoading: false }),
@@ -47,6 +51,10 @@ vi.mock('@/stores/useDevelopPageStore', () => ({
 }));
 
 describe('Header', () => {
+  beforeEach(() => {
+    vi.mocked(useAuthContext).mockReturnValue(mockAuthContext({ isAuthenticated: false }));
+  });
+
   it('should render without crashing', () => {
     renderWithProviders(<Header />);
 
@@ -119,5 +127,18 @@ describe('Header', () => {
     renderWithProviders(<Header />);
 
     expect(screen.queryByTestId('custom-action')).not.toBeInTheDocument();
+  });
+
+  it('should render Notifications on homepage when authenticated', () => {
+    vi.mocked(useAuthContext).mockReturnValue(mockAuthContext({ isAuthenticated: true }));
+    renderWithProviders(<Header location="homepage" />);
+
+    expect(screen.getByTestId('site-notifications-homepage')).toBeInTheDocument();
+  });
+
+  it('should not render Notifications on homepage when not authenticated', () => {
+    renderWithProviders(<Header location="homepage" />);
+
+    expect(screen.queryByTestId('site-notifications-homepage')).not.toBeInTheDocument();
   });
 });

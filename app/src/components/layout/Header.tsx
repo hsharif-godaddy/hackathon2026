@@ -3,6 +3,7 @@
 import clsx from 'clsx';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import Notifications from '@site/notifications';
 import Box from '@ux/box';
 import Tag from '@ux/tag';
 
@@ -22,6 +23,11 @@ import { useTranslations } from '@/hooks/useTranslations';
 import { isBuilderPagePath } from '@/lib/builder-route';
 import { generateClickEID } from '@/utils/instrumentation';
 
+const BELL_APP_KEYS: Record<string, string | undefined> = {
+  homepage: 'airoAppBuilderLanding',
+  sites: 'airoAppBuilderSites',
+};
+
 export default function Header({ actions, onShowMockLogin, location = 'unknown', className }: HeaderProps) {
   const t = useTranslations();
   const { isAuthenticated, isLoading } = useAuthContext();
@@ -32,11 +38,10 @@ export default function Header({ actions, onShowMockLogin, location = 'unknown',
   // Only show authenticated UI components when auth is confirmed (not loading) and user is authenticated
   // This prevents authenticated API calls from being made
   const showAuthenticatedUI = !isLoading && isAuthenticated;
-
   const isHomepage = location === 'homepage';
   const isMarketingPage = isHomepage || location.startsWith('landing');
   const godaddyUrl = 'https://www.godaddy.com';
-
+  const bellAppKey = BELL_APP_KEYS[location];
   return (
     <header data-testid="airo-header" className={clsx(
       "text-intents-ux-boxHighContrast-foregroundColor",
@@ -64,9 +69,12 @@ export default function Header({ actions, onShowMockLogin, location = 'unknown',
           </div>
           <Box orientation="horizontal" className={isBelowSmBreakpoint ? 'gap-1 ml-2' : 'gap-2'}>
             {actions && actions}
-            <Box orientation="horizontal" className={isBelowSmBreakpoint ? 'gap-0.5' : 'gap-1'}>
+            <Box orientation="horizontal" inlineAlignChildren="center" className={isBelowSmBreakpoint ? 'gap-0.5' : 'gap-1'}>
               {showAuthenticatedUI && !isDevelopPage && <InviteFriends location={location} />}
               {!isDevelopPage && <DiscordLink location={location} />}
+              {showAuthenticatedUI && bellAppKey && (
+                <Notifications id={`site-notifications-${location}`} appKey={bellAppKey} />
+              )}
               <UserMenu
                 onShowMockLogin={onShowMockLogin}
                 location={location}

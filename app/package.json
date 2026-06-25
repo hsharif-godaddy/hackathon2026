@@ -89,6 +89,7 @@
     "@radix-ui/react-separator": "^1.1.8",
     "@site/buttons": "^6.3.27",
     "@site/domain-services": "^4.7.7",
+    "@site/notifications": "3.0.8",
     "@social/social-flows": "^0.17.3",
     "@sso/deck": "^2.1.4",
     "@switchboard/client": "^2.7.0",
