@@ -43,6 +43,10 @@
       "types": "./dist/json/index.d.ts",
       "import": "./dist/json/index.js"
     },
+    "./errors": {
+      "types": "./dist/errors/index.d.ts",
+      "import": "./dist/errors/index.js"
+    },
     "./media": {
       "types": "./dist/media/index.d.ts",
       "import": "./dist/media/index.js"
@@ -105,6 +109,9 @@
       ],
       "json": [
         "dist/json/index.d.ts"
+      ],
+      "errors": [
+        "dist/errors/index.d.ts"
       ],
       "media": [
         "dist/media/index.d.ts"

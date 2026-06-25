@@ -7,6 +7,7 @@ setLoggerFactory((moduleName) => Logger.create({ component: `ai-lib.${moduleName
 
 // Initialize OpenTelemetry with Langfuse (imported from instrumentation.ts)
 import './instrumentation.js';
+import { describeError } from '@airo/shared/errors';
 import { handleUnhandledRejection } from './unhandled-rejection-handler.js';
 
 // Initialize Elastic APM
@@ -872,7 +873,7 @@ process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('uncaughtException', (error) => {
   logger.error('server.uncaught.exception', {
     error: error.message,
-    stack: error.stack,
+    ...describeError(error),
   });
   shutdown('uncaughtException');
 });

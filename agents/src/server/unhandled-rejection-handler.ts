@@ -7,6 +7,8 @@
  * cancellation leaking through a lazy SDK promise is not an invariant
  * violation). Everything else triggers `shutdown()` as before.
  */
+import { describeError } from '@airo/shared/errors';
+
 export interface UnhandledRejectionDeps {
   logger: { warn: (event: string, meta?: unknown) => void; error: (event: string, meta?: unknown) => void };
   shutdown: (cause: string) => void;
@@ -22,12 +24,14 @@ export function handleUnhandledRejection(
   if (isAbort) {
     deps.logger.warn('server.unhandled.rejection.abort', {
       reason: String(reason),
+      ...describeError(reason),
       promise: String(promise),
     });
     return;
   }
   deps.logger.error('server.unhandled.rejection', {
     reason: String(reason),
+    ...describeError(reason),
     promise: String(promise),
   });
   deps.shutdown('unhandledRejection');

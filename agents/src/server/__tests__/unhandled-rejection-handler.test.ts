@@ -20,7 +20,7 @@ describe('handleUnhandledRejection', () => {
     expect(deps.shutdown).not.toHaveBeenCalled();
     expect(deps.logger.warn).toHaveBeenCalledWith(
       'server.unhandled.rejection.abort',
-      expect.any(Object)
+      expect.objectContaining({ name: 'AbortError', stack: err.stack })
     );
   });
 
@@ -44,7 +44,30 @@ describe('handleUnhandledRejection', () => {
     expect(deps.shutdown).toHaveBeenCalledWith('unhandledRejection');
     expect(deps.logger.error).toHaveBeenCalledWith(
       'server.unhandled.rejection',
-      expect.any(Object)
+      expect.objectContaining({
+        reason: 'Error: boom',
+        name: 'Error',
+        stack: err.stack,
+        promise: expect.any(String),
+      })
+    );
+  });
+
+  it('logs stack, system code, and nested cause for root-cause triage', () => {
+    const deps = makeDeps();
+    const cause = Object.assign(new Error('connect timeout'), { code: 'UND_ERR_CONNECT_TIMEOUT' });
+    const err = Object.assign(new Error('fetch failed'), { code: 'ECONNRESET', cause });
+
+    handleUnhandledRejection(err, Promise.reject(err).catch(() => {}), deps);
+
+    expect(deps.logger.error).toHaveBeenCalledWith(
+      'server.unhandled.rejection',
+      expect.objectContaining({
+        stack: err.stack,
+        code: 'ECONNRESET',
+        cause: expect.stringContaining('connect timeout'),
+        causeCode: 'UND_ERR_CONNECT_TIMEOUT',
+      })
     );
   });
 

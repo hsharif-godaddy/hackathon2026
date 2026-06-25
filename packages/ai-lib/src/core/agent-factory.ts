@@ -22,6 +22,7 @@ import { createDefaultPipeline } from './context-normalization.js'
 import { createDuplicateResponseStopCondition } from './duplicate-detection.js'
 import { getModelInfo, mergeProviderOptions } from '../utils/model-normalization.js'
 import { createLogger, serializeError, isBudgetExceededAPIError, BudgetExceededError, retryWithBackoff, type RetryContext } from '@airo/ai-common'
+import { describeError } from '@airo/shared/errors'
 import { addCacheControlToSystemPrompt, logCachingStats } from '../utils/prompt-caching.js'
 import { getModel, llmMetadataContext } from '../providers/unified-provider.js'
 import { getActiveModelOverride } from './model-override-context.js'
@@ -1290,15 +1291,27 @@ Please retry your tool call with corrected input formatting.`
     // trip the agents service's global handler. Transports are expected to
     // consume this promise non-blockingly (see
     // `@airo/ai-transport` → `captureResponseMetadata`); this catch is the
-    // backstop. Abort-triggered rejections are silent; everything else is
-    // logged at warn so HTTP-layer failures that surface only through
-    // `response` (ECONNRESET, TLS, 502 before body) remain diagnosable.
+    // backstop, kept so the rejection can't crash the agent (PR #3514).
+    //
+    // Gate on OUR abort signal, not the error shape: if this turn's controller
+    // was aborted, the rejection is the expected fallout of a deliberate abort
+    // — Stop ('user_stopped'), supersession (bare .abort()), shutdown
+    // ('server_shutdown'), chunk-timeout — however the SDK surfaces it (an
+    // AbortError or the raw reason value). Those go to debug so Stop clicks
+    // don't spam warn. Anything else is a genuine HTTP-layer failure (ECONNRESET,
+    // TLS, 502 before body) or a stray abort we didn't initiate — both worth a
+    // warn. Both carry `describeError` detail (stack/code/cause) for triage.
     void Promise.resolve(responsePromise).catch((err: unknown) => {
-      const e = err as { name?: string; code?: string } | null | undefined
-      const isAbort = e?.name === 'AbortError' || e?.code === 'ABORT_ERR'
-      if (isAbort) return
+      if (options?.abortSignal?.aborted) {
+        logger.debug('agent.stream.response_promise.rejected.aborted', {
+          reason: String(options.abortSignal.reason),
+          ...describeError(err),
+        })
+        return
+      }
       logger.warn('agent.stream.response_promise.rejected', {
         error: err instanceof Error ? err.message : String(err),
+        ...describeError(err),
       })
     })
     const baseStream = (streamResult as any).baseStream
