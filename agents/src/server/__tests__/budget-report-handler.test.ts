@@ -9,6 +9,7 @@ import {
 import type { AssessmentOutcome } from '../../agents/assessment-agent/index.js'
 import { logger } from '../../logging/index.js'
 import { ReportLabel, type ExecutionStep } from '@airo/ai-lib/budget'
+import { BudgetOverride } from '@airo/ai-grants'
 
 // Mock the logger to prevent console output during tests.
 // Logger (class) is also mocked because importing AssessmentTaskType as a value
@@ -1261,8 +1262,8 @@ describe('processBudgetReport', () => {
   })
 })
 
-describe('self-repair attribution (hadSelfRepair)', () => {
-  it('routes to GoDaddy when hadSelfRepair is true and classifier said general', () => {
+describe('hadSelfRepair falls through to default attribution', () => {
+  it('hadSelfRepair true + general classifier routes to default (customer pays)', () => {
     const result = processBudgetReport({
       budgetId: 'b-1',
       sessionId: 'sess-1',
@@ -1278,13 +1279,13 @@ describe('self-repair attribution (hadSelfRepair)', () => {
       hadSelfRepair: true,
     })
 
-    expect(result.attributionPath).toBe('self_repair')
-    expect(result.sessionWasFree).toBe(true)
-    expect(result.reportItems[0]?.budgetCost).toBe('0')
-    expect(result.reportItems[0]?.productCost).toBe('3.5')
+    expect(result.attributionPath).toBe('default')
+    expect(result.sessionWasFree).toBe(false)
+    expect(result.reportItems[0]?.budgetCost).toBe('3.5')
+    expect(result.reportItems[0]?.productCost).toBe('0')
   })
 
-  it('fix_intent takes precedence over self_repair (no double-free)', () => {
+  it('fix_intent still takes precedence when hadSelfRepair is true', () => {
     const result = processBudgetReport({
       budgetId: 'b-1',
       sessionId: 'sess-1',
@@ -1305,47 +1306,7 @@ describe('self-repair attribution (hadSelfRepair)', () => {
     expect(result.sessionWasFree).toBe(true)
   })
 
-  it('does not fire when original task is billable (publish)', () => {
-    const result = processBudgetReport({
-      budgetId: 'b-1',
-      sessionId: 'sess-1',
-      totalCost: 4.0,
-      sessionItems: [{ callRequestId: 'req-1', cost: 4.0 }],
-      assessmentOutcome: {
-        result: { taskType: 'publish' as any, confidence: 90 },
-        overrideApplied: false,
-        completedInTime: true,
-        durationMs: 80,
-        reason: 'embedding_completed' as any,
-      },
-      hadSelfRepair: true,
-    })
-
-    expect(result.attributionPath).not.toBe('self_repair')
-    expect(result.sessionWasFree).toBe(false)
-  })
-
-  it('does not fire when original task is billable (domain)', () => {
-    const result = processBudgetReport({
-      budgetId: 'b-1',
-      sessionId: 'sess-1',
-      totalCost: 2.5,
-      sessionItems: [{ callRequestId: 'req-1', cost: 2.5 }],
-      assessmentOutcome: {
-        result: { taskType: 'domain' as any, confidence: 88 },
-        overrideApplied: false,
-        completedInTime: true,
-        durationMs: 60,
-        reason: 'embedding_completed' as any,
-      },
-      hadSelfRepair: true,
-    })
-
-    expect(result.attributionPath).not.toBe('self_repair')
-    expect(result.sessionWasFree).toBe(false)
-  })
-
-  it('user abort overrides self_repair (customer pays)', () => {
+  it('user abort still routes to user_aborted when hadSelfRepair is true', () => {
     const result = processBudgetReport({
       budgetId: 'b-1',
       sessionId: 'sess-1',
@@ -1355,34 +1316,22 @@ describe('self-repair attribution (hadSelfRepair)', () => {
       wasUserAborted: true,
     })
 
-    expect(result.attributionPath).not.toBe('self_repair')
+    expect(result.attributionPath).toBe('user_aborted')
     expect(result.sessionWasFree).toBe(false)
   })
 
-  it('does not fire when hadSelfRepair is false', () => {
+  it('override session still routes to override_session when hadSelfRepair is true', () => {
     const result = processBudgetReport({
       budgetId: 'b-1',
       sessionId: 'sess-1',
-      totalCost: 5.0,
-      sessionItems: [{ callRequestId: 'req-1', cost: 5.0 }],
-      hadSelfRepair: false,
-    })
-
-    expect(result.attributionPath).toBe('default')
-    expect(result.sessionWasFree).toBe(false)
-  })
-
-  it('does not fire when assessmentOutcome is undefined (classifier timeout)', () => {
-    const result = processBudgetReport({
-      budgetId: 'b-1',
-      sessionId: 'sess-1',
-      totalCost: 3.0,
-      sessionItems: [{ callRequestId: 'req-1', cost: 3.0 }],
+      totalCost: 2.0,
+      sessionItems: [{ callRequestId: 'req-1', cost: 2.0 }],
+      subscriptionId: BudgetOverride.CareAgent,
       hadSelfRepair: true,
     })
 
-    expect(result.attributionPath).not.toBe('self_repair')
-    expect(result.sessionWasFree).toBe(false)
+    expect(result.attributionPath).toBe('override_session')
+    expect(result.sessionWasFree).toBe(true)
   })
 })
 
