@@ -1,11 +1,13 @@
-import fs from 'node:fs/promises';
 import path from 'node:path';
 
 import { AppRepository } from '../database/repositories/AppRepository.js';
 import type { App } from '../database/schema.js';
 import { logger } from '../logging/index.js';
 import { type GitCommandResult, GitUtils } from '../utils/git.js';
+import type { CreateForWorkspace, WorkspaceClient } from '../workspace/client.js';
+import { WorkspaceUnavailableError } from '../workspace/errors.js';
 import { createForWorkspace } from '../workspace/index.js';
+import { isDevSupervisorNotFound } from './DevSupervisorClient.js';
 
 export type FormatOverrideSourceKind = 'bound-expression' | 'content-key' | 'content-key-template';
 
@@ -76,6 +78,11 @@ interface FormatOverrideScope {
 
 type AppRepositoryReader = Pick<AppRepository, 'findById'>;
 
+interface FormatOverrideServiceDeps {
+  appRepository?: AppRepositoryReader;
+  workspaceFactory?: CreateForWorkspace;
+}
+
 const SIDECAR_DIRNAME = 'format-overrides';
 const SOURCE_KINDS = new Set<FormatOverrideSourceKind>(['bound-expression', 'content-key', 'content-key-template']);
 const EXPRESSION_HASH_PATTERN = /^sha256:[0-9a-f]{64}$/;
@@ -124,7 +131,7 @@ function requireString(value: unknown, field: string): string {
 }
 
 function requireDevId(value: unknown): string {
-  const devId = requireString(value, 'devId');
+  const devId: string = requireString(value, 'devId');
   if (!DEV_ID_PATTERN.test(devId)) {
     throw new FormatOverrideValidationError('devId must be a 6-character hex id');
   }
@@ -134,7 +141,7 @@ function requireDevId(value: unknown): string {
 function normalizeNullableString(value: unknown): string | null {
   if (value === null || value === undefined) return null;
   if (typeof value !== 'string') return null;
-  const trimmed = value.trim();
+  const trimmed: string = value.trim();
   return trimmed.length > 0 ? trimmed : null;
 }
 
@@ -147,8 +154,8 @@ function normalizeColor(value: unknown): string | null {
 }
 
 function normalizeSourceFile(file: string): string {
-  const normalized = file.replace(/\\/g, '/');
-  const srcIndex = normalized.indexOf('/src/');
+  const normalized: string = file.replace(/\\/g, '/');
+  const srcIndex: number = normalized.indexOf('/src/');
   if (srcIndex !== -1) return normalized.slice(srcIndex + 1);
   return normalized.replace(/^\/+/, '');
 }
@@ -161,8 +168,8 @@ function parseSourceKind(value: unknown): FormatOverrideSourceKind {
 }
 
 function normalizeTarget(value: unknown): NormalizedFormatOverrideTarget {
-  const target = requireRecord(value, 'target');
-  const sourceKind = parseSourceKind(target.sourceKind);
+  const target: Record<string, unknown> = requireRecord(value, 'target');
+  const sourceKind: FormatOverrideSourceKind = parseSourceKind(target.sourceKind);
   const normalized: NormalizedFormatOverrideTarget = {
     file: normalizeSourceFile(requireString(target.file, 'target.file')),
     tagName: requireString(target.tagName, 'target.tagName').toLowerCase(),
@@ -189,7 +196,7 @@ function normalizeTarget(value: unknown): NormalizedFormatOverrideTarget {
 }
 
 function normalizeMarks(value: unknown): NormalizedFormatOverrideMarks {
-  const marks = requireRecord(value, 'marks');
+  const marks: Record<string, unknown> = requireRecord(value, 'marks');
   for (const key of Object.keys(marks)) {
     if (!SUPPORTED_MARKS.has(key)) {
       throw new FormatOverrideValidationError(`marks.${key} is not supported`);
@@ -210,7 +217,7 @@ function normalizeMarks(value: unknown): NormalizedFormatOverrideMarks {
 }
 
 function normalizeRequest(value: unknown): NormalizedFormatOverrideUpdateRequest {
-  const request = requireRecord(value, 'request');
+  const request: Record<string, unknown> = requireRecord(value, 'request');
   return {
     devId: requireDevId(request.devId),
     target: normalizeTarget(request.target),
@@ -223,7 +230,7 @@ function hasMarks(marks: NormalizedFormatOverrideMarks): boolean {
 }
 
 function toSafePagePath(rawPagePath: string): string | null {
-  const segments = rawPagePath.split('/');
+  const segments: string[] = rawPagePath.split('/');
   if (segments.some((segment) => !/^[a-zA-Z0-9_-]+$/.test(segment))) return null;
 
   return segments.map((segment) => segment.toLowerCase()).join('/');
@@ -232,13 +239,13 @@ function toSafePagePath(rawPagePath: string): string | null {
 function deriveFormatOverrideScope(file: string): FormatOverrideScope {
   // Keep this scope derivation in sync with app-templates/v8/src/lib/format-overrides.ts.
   // The server writes by target.file and the runtime reads by the same derived scope key.
-  const normalized = normalizeSourceFile(file);
-  const pageMatch = /^src\/pages\/(.+)\.[jt]sx?$/.exec(normalized);
+  const normalized: string = normalizeSourceFile(file);
+  const pageMatch: RegExpExecArray | null = /^src\/pages\/(.+)\.[jt]sx?$/.exec(normalized);
   if (!pageMatch?.[1]) {
     return { key: 'shared', relativePath: path.posix.join(SIDECAR_DIRNAME, 'shared.json') };
   }
 
-  const pagePath = toSafePagePath(pageMatch[1]);
+  const pagePath: string | null = toSafePagePath(pageMatch[1]);
   if (!pagePath) {
     return { key: 'shared', relativePath: path.posix.join(SIDECAR_DIRNAME, 'shared.json') };
   }
@@ -279,12 +286,12 @@ function createEmptySidecar(): FormatOverrideSidecar {
 }
 
 async function runWithSidecarLock<T>(key: string, task: () => Promise<T>): Promise<T> {
-  const previous = sidecarLocks.get(key) ?? Promise.resolve();
+  const previous: Promise<void> = sidecarLocks.get(key) ?? Promise.resolve();
   let release!: () => void;
-  const current = new Promise<void>((resolve) => {
+  const current: Promise<void> = new Promise<void>((resolve) => {
     release = resolve;
   });
-  const tail = previous.catch(() => undefined).then(() => current);
+  const tail: Promise<void> = previous.catch(() => undefined).then(() => current);
   sidecarLocks.set(key, tail);
 
   await previous.catch(() => undefined);
@@ -302,9 +309,9 @@ function parseStoredEntry(value: unknown): FormatOverrideEntry | null {
   if (!isRecord(value) || typeof value.updatedAt !== 'string') return null;
 
   try {
-    const target = normalizeTarget(value.target);
-    const marks = normalizeMarks(value.marks);
-    const entry = { target, marks, updatedAt: value.updatedAt };
+    const target: NormalizedFormatOverrideTarget = normalizeTarget(value.target);
+    const marks: NormalizedFormatOverrideMarks = normalizeMarks(value.marks);
+    const entry: FormatOverrideEntry = { target, marks, updatedAt: value.updatedAt };
 
     // Stored sidecars should already be in the explicit normalized v1 shape
     // written by this service. If not, treat the whole sidecar as stale input.
@@ -318,7 +325,7 @@ function parseStoredOverrides(overrides: Record<string, unknown>): Record<string
   const parsedEntries: Array<[string, FormatOverrideEntry]> = [];
   for (const [devId, entry] of Object.entries(overrides)) {
     if (!DEV_ID_PATTERN.test(devId)) return null;
-    const parsedEntry = parseStoredEntry(entry);
+    const parsedEntry: FormatOverrideEntry | null = parseStoredEntry(entry);
     if (!parsedEntry) return null;
     parsedEntries.push([devId, parsedEntry]);
   }
@@ -344,12 +351,18 @@ function logGitCommandFailure(
 }
 
 export class FormatOverrideService {
-  constructor(private readonly appRepository: AppRepositoryReader = new AppRepository()) {}
+  private readonly appRepository: AppRepositoryReader;
+  private readonly workspaceFactory: CreateForWorkspace;
+
+  constructor(deps: FormatOverrideServiceDeps = {}) {
+    this.appRepository = deps.appRepository ?? new AppRepository();
+    this.workspaceFactory = deps.workspaceFactory ?? createForWorkspace;
+  }
 
   async update(appId: string, rawRequest: unknown): Promise<FormatOverrideUpdateResponse> {
-    const app = this.resolveApp(appId);
-    const request = normalizeRequest(rawRequest);
-    const scope = deriveFormatOverrideScope(request.target.file);
+    const app: App = this.resolveApp(appId);
+    const request: NormalizedFormatOverrideUpdateRequest = normalizeRequest(rawRequest);
+    const scope: FormatOverrideScope = deriveFormatOverrideScope(request.target.file);
     return runWithSidecarLock(`${appId}:${scope.relativePath}`, () => this.applyUpdate(app, request, scope));
   }
 
@@ -358,10 +371,14 @@ export class FormatOverrideService {
     request: NormalizedFormatOverrideUpdateRequest,
     scope: FormatOverrideScope,
   ): Promise<FormatOverrideUpdateResponse> {
-    const sidecarPath = path.join(app.path, scope.relativePath);
-    const sidecar = await this.readSidecar(sidecarPath);
-    const existingEntry = sidecar.overrides[request.devId];
-    const shouldWriteEntry = hasMarks(request.marks);
+    const workspace: WorkspaceClient | null = this.workspaceFactory(app.id, 'preview');
+    if (!workspace) {
+      throw new WorkspaceUnavailableError(app.id, 'preview');
+    }
+
+    const sidecar: FormatOverrideSidecar = await this.readSidecar(workspace, scope.relativePath);
+    const existingEntry: FormatOverrideEntry | undefined = sidecar.overrides[request.devId];
+    const shouldWriteEntry: boolean = hasMarks(request.marks);
 
     if (shouldWriteEntry) {
       if (normalizedPayloadMatches(existingEntry, request.target, request.marks)) {
@@ -380,8 +397,8 @@ export class FormatOverrideService {
       delete sidecar.overrides[request.devId];
     }
 
-    await this.writeSidecar(sidecarPath, sidecar);
-    const commitHash = await this.commitSidecar(app.id, app.path, [scope.relativePath]);
+    await this.writeSidecar(workspace, scope.relativePath, sidecar);
+    const commitHash: string | undefined = await this.commitSidecar(workspace, app.id, app.path, [scope.relativePath]);
 
     return {
       success: true,
@@ -391,16 +408,16 @@ export class FormatOverrideService {
   }
 
   private resolveApp(appId: string): App {
-    const app = this.appRepository.findById(appId);
+    const app: App | null = this.appRepository.findById(appId);
     if (!app) {
       throw new FormatOverrideNotFoundError('App not found');
     }
     return app;
   }
 
-  private async readSidecar(sidecarPath: string): Promise<FormatOverrideSidecar> {
+  private async readSidecar(workspace: WorkspaceClient, sidecarPath: string): Promise<FormatOverrideSidecar> {
     try {
-      const parsed = JSON.parse(await fs.readFile(sidecarPath, 'utf-8')) as unknown;
+      const parsed: unknown = JSON.parse((await workspace.files.view({ path: sidecarPath })).content);
       if (!isRecord(parsed) || parsed.version !== 1 || !isRecord(parsed.overrides)) {
         logger.warn('formatOverrides.sidecar.invalid', {
           sidecarPath,
@@ -409,7 +426,7 @@ export class FormatOverrideService {
         throw new FormatOverrideSidecarReadError();
       }
 
-      const overrides = parseStoredOverrides(parsed.overrides);
+      const overrides: Record<string, FormatOverrideEntry> | null = parseStoredOverrides(parsed.overrides);
       if (!overrides) {
         logger.warn('formatOverrides.sidecar.invalid', {
           sidecarPath,
@@ -420,7 +437,7 @@ export class FormatOverrideService {
 
       return { version: 1, overrides };
     } catch (error) {
-      if ((error as { code?: string }).code === 'ENOENT') {
+      if (isDevSupervisorNotFound(error)) {
         return createEmptySidecar();
       }
       if (error instanceof SyntaxError) {
@@ -435,41 +452,47 @@ export class FormatOverrideService {
     }
   }
 
-  private async writeSidecar(sidecarPath: string, sidecar: FormatOverrideSidecar): Promise<void> {
+  private async writeSidecar(
+    workspace: WorkspaceClient,
+    sidecarPath: string,
+    sidecar: FormatOverrideSidecar,
+  ): Promise<void> {
     if (Object.keys(sidecar.overrides).length === 0) {
-      await fs.rm(sidecarPath, { force: true });
+      // Swallow not-found for parity with the old fs.rm(force) semantics: the
+      // per-scope lock serializes this service's updates, but not external
+      // removal of the sidecar between read and delete.
+      try {
+        await workspace.files.delete({ path: sidecarPath });
+      } catch (error) {
+        if (!isDevSupervisorNotFound(error)) throw error;
+      }
       return;
     }
 
-    const sidecarDir = path.dirname(sidecarPath);
-    const tempPath = path.join(
-      sidecarDir,
-      `.${path.basename(sidecarPath)}.${process.pid}.${Date.now()}.${Math.random().toString(16).slice(2)}.tmp`,
-    );
-
-    await fs.mkdir(sidecarDir, { recursive: true });
-    try {
-      await fs.writeFile(tempPath, stableStringify({ version: 1, overrides: sidecar.overrides }));
-      await fs.rename(tempPath, sidecarPath);
-    } catch (error) {
-      await fs.rm(tempPath, { force: true });
-      throw error;
-    }
+    // The dev-supervisor write endpoint auto-creates parent dirs and writes
+    // atomically (tmp + same-dir rename) server-side, so a single write() is
+    // sufficient — no client-side mkdir, temp file, or rename dance.
+    await workspace.files.write({
+      path: sidecarPath,
+      content: stableStringify({ version: 1, overrides: sidecar.overrides }),
+    });
   }
 
-  private async commitSidecar(appId: string, appPath: string, relativeFiles: string[]): Promise<string | undefined> {
+  private async commitSidecar(
+    workspace: WorkspaceClient,
+    appId: string,
+    appPath: string,
+    relativeFiles: string[],
+  ): Promise<string | undefined> {
     try {
-      const workspace = createForWorkspace(appId, 'preview');
-      if (!workspace) return undefined;
-
-      const gitUtils = new GitUtils(workspace.tasks);
-      const addResult = await gitUtils.addFiles(appPath, relativeFiles);
+      const gitUtils: GitUtils = new GitUtils(workspace.tasks);
+      const addResult: GitCommandResult = await gitUtils.addFiles(appPath, relativeFiles);
       if (!addResult.success) {
         logGitCommandFailure(appId, 'add', addResult, relativeFiles);
         return undefined;
       }
 
-      const commitResult = await gitUtils.commitFiles(appPath, 'Update format overrides', relativeFiles);
+      const commitResult: GitCommandResult = await gitUtils.commitFiles(appPath, 'Update format overrides', relativeFiles);
       if (!commitResult.success) {
         logGitCommandFailure(appId, 'commit', commitResult, relativeFiles);
         return undefined;
