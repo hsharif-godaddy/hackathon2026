@@ -55,6 +55,24 @@ Canonical 10-user baseline dataset for Airo agent regression testing. Contains s
 
 **Type:** YAML dataset (no package.json)
 
+### llm-bench
+
+LLM hardware load-test and replay harness. Replays a real captured mitmproxy LLM
+workload (the agent's own `chat/completions` traffic) against an
+OpenAI-compatible endpoint at ramping concurrency to find the level at which
+candidate GPU hardware degrades. Reports time-to-first-token, decode and
+end-to-end tokens/sec, request rate, and error rate per step, plus a comparison
+against the baseline recorded in the dump.
+
+**Type:** Rust (standalone Cargo crate, outside the pnpm/Turborepo workspace)
+
+```bash
+cd evals/llm-bench
+cargo run --release -- --dump-only workload.flow          # inspect a capture
+cargo run --release -- --ramp --ramp-start 1 --ramp-end 32 --ramp-step 4 \
+  --ramp-step-duration 60 --target http://<gpu-host>:8000 workload.flow
+```
+
 ## Architecture
 
 ```
@@ -64,4 +82,5 @@ evals/
   corpus-eval/          Classification accuracy testing (corpora)
   goarena/              Synthia platform eval configs (YAML)
   gosym-probe/          End-to-end agent eval harness (local)
+  llm-bench/            LLM hardware load-test & replay harness (Rust)
 ```
