@@ -4,13 +4,13 @@ import clsx from 'clsx';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Undo2 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import Button from '@ux/button';
 import Growl from '@ux/growl';
 import CheckIcon from '@ux/icon/checkmark';
 import ClipboardIcon from '@ux/icon/copy';
 import OkIcon from '@ux/icon/ok';
 import RevertIcon from '@ux/icon/revert';
 
+import ResponseMetadataActionButton from '@/app/[market]/develop/components/ResponseMetadataActionButton';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
 import type { InvocationFeedbackTraceIds, SubmitFeedbackResult } from '@/lib/feedback-client';
@@ -19,7 +19,6 @@ import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { generateClickEID, logClickEvent } from '@/utils/instrumentation';
 import {
   invocationFeedbackActionIconClass,
-  invocationFeedbackCompactButtonClass,
   InvocationFeedbackControls,
   InvocationFeedbackPanel,
   InvocationFeedbackProvider,
@@ -204,14 +203,9 @@ export default function ResponseMetadata({
           <div className="flex h-4 shrink-0 items-center gap-0">
             {enablePerMessageFeedback && <InvocationFeedbackControls />}
             <AnimatePresence>
-              <Button
+              <ResponseMetadataActionButton
                 key="copy"
-                type="button"
-                design="stateless"
-                size="small"
-                className={invocationFeedbackCompactButtonClass}
-                aria-label={t('builder_common_copy_clipboard')}
-                title={t('builder_chat_copy_clipboard')}
+                label={copiedToClipboard ? t('builder_chat_response_copied') : t('builder_chat_copy_clipboard')}
                 data-eid={generateClickEID('chat.response_metadata.copy')}
                 onClick={handleCopyResponse}
                 icon={
@@ -231,24 +225,14 @@ export default function ResponseMetadata({
               />
             </AnimatePresence>
             {onUndo ? (
-              <Button
-                type="button"
-                design="stateless"
-                size="small"
-                className={invocationFeedbackCompactButtonClass}
-                title={t('builder_chat_undo', undefined, 'Undo')}
-                aria-label={t('builder_chat_undo', undefined, 'Undo')}
+              <ResponseMetadataActionButton
+                label={t('builder_chat_undo', undefined, 'Undo')}
                 onClick={onUndo}
                 icon={<Undo2 className={invocationFeedbackActionIconClass} />}
               />
             ) : onRestore ? (
-              <Button
-                type="button"
-                design="stateless"
-                size="small"
-                className={invocationFeedbackCompactButtonClass}
-                title={t('builder_chat_restore', undefined, 'Restore')}
-                aria-label={t('builder_chat_restore', undefined, 'Restore')}
+              <ResponseMetadataActionButton
+                label={t('builder_chat_restore', undefined, 'Restore')}
                 onClick={onRestore}
                 icon={<RevertIcon className={invocationFeedbackActionIconClass} />}
               />

@@ -124,7 +124,7 @@ function getThumbsDownButton() {
 }
 
 function getCopyButton() {
-  return screen.getByRole('button', { name: /builder_common_copy_clipboard/i });
+  return screen.getByRole('button', { name: /builder_chat_copy_clipboard/i });
 }
 
 function getActionButtonsRow() {
@@ -282,19 +282,17 @@ describe('ResponseMetadata', function responseMetadataTests() {
 
       for (const button of [getThumbsUpButton(), getThumbsDownButton(), getCopyButton()]) {
         expect(button.className).toMatch(/!size-4/);
-        expect(button.className).toMatch(/!p-0/);
-        expect(button.className).toMatch(/!min-w-4/);
-        expect(button.className).toMatch(/!max-w-4/);
+        expect(button.className).toMatch(/ux-button-square/);
       }
     });
   });
 
   describe('copy action', function copyActionTests() {
-    it('should render copy button with clipboard title', function copyButton() {
+    it('should render copy button with clipboard label', function copyButton() {
       renderMetadata();
 
       expect(getCopyButton()).toBeInTheDocument();
-      expect(getCopyButton()).toHaveAttribute('title', 'builder_chat_copy_clipboard');
+      expect(getCopyButton()).toHaveAttribute('aria-label', 'builder_chat_copy_clipboard');
       expect(getCopyButton()).toHaveAttribute('data-eid', 'chat.response_metadata.copy');
     });
 
@@ -663,20 +661,20 @@ describe('ResponseMetadata', function responseMetadataTests() {
     it('should not render a restore button when onRestore is not provided', function noRestoreButton() {
       renderMetadata();
 
-      expect(screen.queryByTitle('Restore')).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Restore/i })).not.toBeInTheDocument();
     });
 
     it('should render the restore button when onRestore is provided', function restoreButton() {
       renderMetadata({ onRestore: vi.fn() });
 
-      expect(screen.getByTitle('Restore')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Restore/i })).toBeInTheDocument();
     });
 
     it('should invoke onRestore when the restore button is clicked', async function restoreClick() {
       const onRestore = vi.fn();
       const { user } = renderMetadata({ onRestore });
 
-      await user.click(screen.getByTitle('Restore'));
+      await user.click(screen.getByRole('button', { name: /Restore/i }));
       expect(onRestore).toHaveBeenCalledTimes(1);
     });
   });
@@ -685,22 +683,22 @@ describe('ResponseMetadata', function responseMetadataTests() {
     it('should render the undo button when onUndo is provided', function undoButton() {
       renderMetadata({ onUndo: vi.fn() });
 
-      expect(screen.getByTitle('Undo')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Undo/i })).toBeInTheDocument();
     });
 
     it('should invoke onUndo when the undo button is clicked', async function undoClick() {
       const onUndo = vi.fn();
       const { user } = renderMetadata({ onUndo });
 
-      await user.click(screen.getByTitle('Undo'));
+      await user.click(screen.getByRole('button', { name: /Undo/i }));
       expect(onUndo).toHaveBeenCalledTimes(1);
     });
 
     it('should render only the undo button when both onUndo and onRestore are provided', function undoPrecedence() {
       renderMetadata({ onUndo: vi.fn(), onRestore: vi.fn() });
 
-      expect(screen.getByTitle('Undo')).toBeInTheDocument();
-      expect(screen.queryByTitle('Restore')).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Undo/i })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Restore/i })).not.toBeInTheDocument();
     });
   });
 

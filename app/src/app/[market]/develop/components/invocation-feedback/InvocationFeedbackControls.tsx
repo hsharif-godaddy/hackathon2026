@@ -2,17 +2,14 @@
 
 import clsx from 'clsx';
 import { AnimatePresence, motion } from 'framer-motion';
-import Button from '@ux/button';
 import ThumbsDownIcon from '@ux/icon/thumbs-down';
 import ThumbsUpIcon from '@ux/icon/thumbs-up';
 import ThumbsUpFilledIcon from '@ux/icon/thumbs-up-filled';
 
+import ResponseMetadataActionButton from '@/app/[market]/develop/components/ResponseMetadataActionButton';
 import { useTranslations } from '@/hooks/useTranslations';
 import { generateClickEID } from '@/utils/instrumentation';
-import {
-  invocationFeedbackActionIconClass,
-  invocationFeedbackCompactButtonClass,
-} from './constants';
+import { invocationFeedbackActionIconClass } from './constants';
 import { useInvocationFeedback } from './InvocationFeedbackContext';
 
 export default function InvocationFeedbackControls() {
@@ -22,18 +19,9 @@ export default function InvocationFeedbackControls() {
   return (
     <AnimatePresence>
       {feedback !== 'negative' && (
-        <Button
+        <ResponseMetadataActionButton
           key="thumbs-up"
-          type="button"
-          design="stateless"
-          size="small"
-          className={invocationFeedbackCompactButtonClass}
-          aria-label={t(
-            'builder_chat_response_feedback_positive',
-            undefined,
-            'This response was helpful'
-          )}
-          title={t(
+          label={t(
             'builder_chat_response_feedback_positive',
             undefined,
             'This response was helpful'
@@ -67,14 +55,9 @@ export default function InvocationFeedbackControls() {
         />
       )}
       {feedback !== 'positive' && (
-        <Button
+        <ResponseMetadataActionButton
           key="thumbs-down"
-          type="button"
-          design="stateless"
-          size="small"
-          className={invocationFeedbackCompactButtonClass}
-          aria-label={t('builder_chat_response_feedback_negative')}
-          title={t('builder_chat_response_feedback_negative')}
+          label={t('builder_chat_response_feedback_negative')}
           data-eid={generateClickEID('chat.response_metadata.thumbs_down')}
           onClick={toggleNegative}
           icon={

@@ -1,6 +1,5 @@
 export {
   invocationFeedbackActionIconClass,
-  invocationFeedbackCompactButtonClass,
   invocationFeedbackIconClass,
 } from './constants';
 export type {
