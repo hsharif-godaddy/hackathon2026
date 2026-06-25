@@ -49,7 +49,7 @@ export function CanvasTabs({ clickContext }: CanvasTabsProps) {
             label={label}
             active={isActive}
             dismissible={descriptor.dismissible}
-            collapseLabel={collapseLabels && !isActive}
+            collapseLabel={collapseLabels}
             closeLabel={closeLabel}
             testId={`commander-canvas-tab-${descriptor.id}`}
             onActivate={() => {

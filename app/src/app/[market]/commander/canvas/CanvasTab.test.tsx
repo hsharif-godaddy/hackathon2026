@@ -4,7 +4,7 @@
 import '@testing-library/jest-dom'
 
 import { describe, expect, it, vi } from 'vitest'
-import { screen } from '@testing-library/react'
+import { fireEvent, screen } from '@testing-library/react'
 
 import { renderWithProviders } from '@/tests/test-utils'
 import { CanvasTab } from './CanvasTab'
@@ -39,11 +39,18 @@ describe('CanvasTab', () => {
     expect(screen.queryByRole('button', { name: 'Close tab' })).not.toBeInTheDocument()
   })
 
-  it('renders a close button on dismissible tabs that fires onClose without bubbling', async () => {
+  it('does not render a close button on inactive dismissible tabs', () => {
+    renderWithProviders(
+      <CanvasTab {...baseProps} onClose={vi.fn()} />,
+    )
+    expect(screen.queryByRole('button', { name: 'Close tab' })).not.toBeInTheDocument()
+  })
+
+  it('renders a close button on active dismissible tabs that fires onClose without bubbling', async () => {
     const onActivate = vi.fn()
     const onClose = vi.fn()
     const { user } = renderWithProviders(
-      <CanvasTab {...baseProps} onActivate={onActivate} onClose={onClose} />,
+      <CanvasTab {...baseProps} active onActivate={onActivate} onClose={onClose} />,
     )
     const closeButton = screen.getByRole('button', { name: 'Close tab' })
     await user.click(closeButton)
@@ -51,18 +58,72 @@ describe('CanvasTab', () => {
     expect(onActivate).not.toHaveBeenCalled()
   })
 
-  it('renders the close button outside the icon hit area when collapseLabel is true', async () => {
+  it('reveals the close button on hover for active tabs but not on tab keyboard focus alone', () => {
+    renderWithProviders(<CanvasTab {...baseProps} active onClose={vi.fn()} />)
+    const closeButton = screen.getByRole('button', { name: 'Close tab' })
+    expect(closeButton.className).toContain('group-hover:opacity-100')
+    expect(closeButton.className).not.toContain('group-focus-within:opacity-100')
+    expect(closeButton.className).toContain('focus-visible:opacity-100')
+  })
+
+  it('closes the tab from the keyboard without activating it', async () => {
     const onActivate = vi.fn()
     const onClose = vi.fn()
     const { user } = renderWithProviders(
-      <CanvasTab {...baseProps} collapseLabel onActivate={onActivate} onClose={onClose} />,
+      <CanvasTab {...baseProps} active onActivate={onActivate} onClose={onClose} />,
     )
     const closeButton = screen.getByRole('button', { name: 'Close tab' })
-    const iconSpan = screen.getByTestId('canvas-icon').parentElement?.parentElement
-    expect(iconSpan).not.toBeNull()
-    expect(iconSpan?.contains(closeButton)).toBe(false)
-    await user.click(closeButton)
+
+    closeButton.focus()
+    expect(closeButton).toHaveFocus()
+    await user.keyboard('{Enter}')
+
     expect(onClose).toHaveBeenCalledTimes(1)
     expect(onActivate).not.toHaveBeenCalled()
+  })
+
+  it('keeps the tab icon visible when an active tab receives keyboard focus', () => {
+    renderWithProviders(<CanvasTab {...baseProps} active onClose={vi.fn()} />)
+    const tab = screen.getByRole('tab', { name: 'Brand & Logo' })
+    tab.focus()
+    expect(tab).toHaveFocus()
+    expect(screen.getByTestId('canvas-icon')).toBeInTheDocument()
+    const iconWrapper = screen.getByTestId('canvas-icon').parentElement
+    expect(iconWrapper?.className).toContain('group-hover:opacity-0')
+    expect(iconWrapper?.className).toContain('group-has-[button:focus-visible]:opacity-0')
+  })
+
+  it('does not render a close button on inactive tabs when collapseLabel is true', () => {
+    renderWithProviders(
+      <CanvasTab {...baseProps} collapseLabel onClose={vi.fn()} />,
+    )
+    expect(screen.queryByRole('button', { name: 'Close tab' })).not.toBeInTheDocument()
+  })
+
+  it('renders a hover close button on active tabs when collapseLabel is true', () => {
+    renderWithProviders(
+      <CanvasTab {...baseProps} active collapseLabel onClose={vi.fn()} />,
+    )
+    const closeButton = screen.getByRole('button', { name: 'Close tab' })
+    expect(closeButton.className).toContain('group-hover:opacity-100')
+    expect(closeButton.className).not.toContain('group-focus-within:opacity-100')
+  })
+
+  it('does not reveal the label on hover when collapseLabel is true', () => {
+    renderWithProviders(<CanvasTab {...baseProps} collapseLabel />)
+    const tab = screen.getByRole('tab', { name: 'Brand & Logo' })
+    fireEvent.mouseEnter(tab)
+    const labelSpan = screen.getByText('Brand & Logo')
+    expect(labelSpan).toHaveAttribute('aria-hidden', 'true')
+    expect(labelSpan).toHaveClass('max-w-0')
+  })
+
+  it('keeps the label collapsed when the tab is active and collapseLabel is true', () => {
+    renderWithProviders(
+      <CanvasTab {...baseProps} active collapseLabel onActivate={vi.fn()} />,
+    )
+    const labelSpan = screen.getByText('Brand & Logo')
+    expect(labelSpan).toHaveAttribute('aria-hidden', 'true')
+    expect(labelSpan).toHaveClass('max-w-0')
   })
 })

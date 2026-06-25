@@ -1,7 +1,7 @@
 'use client'
 
 import clsx from 'clsx'
-import { type ReactNode, useState } from 'react'
+import { type ReactNode } from 'react'
 import XIcon from '@ux/icon/x'
 
 import type { CanvasId } from './registry'
@@ -13,7 +13,7 @@ interface CanvasTabProps {
   active: boolean
   /** When false, the close affordance never renders (e.g. pinned Preview tab). */
   dismissible: boolean
-  /** When true, the label collapses to icon-only at rest and reveals on hover. */
+  /** When true, the label stays icon-only regardless of active state. */
   collapseLabel: boolean
   closeLabel: string
   onActivate: () => void
@@ -33,11 +33,8 @@ export function CanvasTab({
   onClose,
   testId,
 }: CanvasTabProps) {
-  const [isHovered, setIsHovered] = useState(false)
-
-  const showLabel = active || !collapseLabel || isHovered
-  const showCloseOnIcon = !collapseLabel && dismissible && isHovered
-  const showCloseAtEnd = collapseLabel && dismissible && isHovered
+  const showLabel = !collapseLabel
+  const showCloseOnIcon = dismissible && active
 
   const handleClose = (e: React.MouseEvent) => {
     e.stopPropagation()
@@ -52,47 +49,53 @@ export function CanvasTab({
       tabIndex={0}
       onClick={onActivate}
       onKeyDown={(e) => {
+        if (e.target !== e.currentTarget) return
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault()
           onActivate()
         }
       }}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
       data-testid={testId}
       data-canvas-id={canvasId}
       className={clsx(
-        'relative flex items-center p-1 leading-none rounded-lg',
+        'group relative flex items-center p-1 leading-none rounded-lg',
         'transition-[background-color,color] duration-200',
-        'hover:cursor-pointer focus:outline-none focus-visible:ring-1 focus-visible:ring-intents-ux-action-borderColor',
+        'focus:outline-none focus-visible:ring-1 focus-visible:ring-intents-ux-action-borderColor',
         {
           'bg-intents-ux-boxHighContrast-backgroundColor text-intents-ux-boxHighContrast-foregroundColor':
             active,
-          'bg-transparent hover:bg-intents-ux-actionHovered-backgroundColor': !active,
+          'bg-transparent hover:cursor-pointer hover:bg-intents-ux-actionHovered-backgroundColor':
+            !active,
         },
       )}
     >
       <span className="relative inline-flex shrink-0 items-center justify-center size-2.5">
         <span
-          aria-hidden={showCloseOnIcon}
+          aria-hidden="true"
           className={clsx(
             'absolute inset-0 flex items-center justify-center transition-opacity duration-150',
-            showCloseOnIcon ? 'opacity-0' : 'opacity-100',
+            showCloseOnIcon &&
+              (active
+                ? 'opacity-100 group-hover:opacity-0 group-has-[button:focus-visible]:opacity-0'
+                : 'opacity-100 group-hover:opacity-0 group-focus-within:opacity-0'),
           )}
         >
           {icon}
         </span>
-        {dismissible && !collapseLabel && (
+        {showCloseOnIcon && (
           <button
             type="button"
             aria-label={closeLabel}
             onClick={handleClose}
             data-testid={testId ? `${testId}-close` : undefined}
-            tabIndex={showCloseOnIcon ? 0 : -1}
             className={clsx(
               'absolute inset-0 flex items-center justify-center transition-opacity duration-150',
               'cursor-pointer bg-transparent border-0 p-0',
-              showCloseOnIcon ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none',
+              'opacity-0 pointer-events-none',
+              'group-hover:opacity-100 group-hover:pointer-events-auto',
+              'focus-visible:opacity-100 focus-visible:pointer-events-auto',
+              !active &&
+                'group-focus-within:opacity-100 group-focus-within:pointer-events-auto',
             )}
           >
             <XIcon className="size-2.5" />
@@ -110,26 +113,6 @@ export function CanvasTab({
       >
         {label}
       </span>
-
-      {dismissible && collapseLabel && (
-        <button
-          type="button"
-          aria-label={closeLabel}
-          onClick={handleClose}
-          data-testid={testId ? `${testId}-close` : undefined}
-          tabIndex={showCloseAtEnd ? 0 : -1}
-          className={clsx(
-            'inline-flex shrink-0 items-center justify-center overflow-hidden size-2.5',
-            'cursor-pointer bg-transparent border-0 p-0 ml-0.5',
-            'transition-[max-width,opacity,margin] duration-150 ease-out',
-            showCloseAtEnd
-              ? 'max-w-[0.625rem] opacity-100 mr-0.5 pointer-events-auto'
-              : 'max-w-0 opacity-0 mr-0 pointer-events-none',
-          )}
-        >
-          <XIcon className="size-2.5" />
-        </button>
-      )}
     </div>
   )
 }
