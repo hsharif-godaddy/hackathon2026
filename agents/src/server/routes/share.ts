@@ -230,6 +230,21 @@ router.post('/apps/:id/share', async (req: Request, res: Response) => {
       return res.status(403).json({ error: 'Forbidden' });
     }
 
+    // Auth-at-Edge defense-in-depth — block user-share-link mints for ent
+    // apps where SSO is required. archive_snapshot stays open (cert2s
+    // system path; not user-shareable). Mirrors the BFF gate; canonical
+    // authority is hosting's gate. ssoRequired is read from the JWT claim
+    // baked at agent-token mint time.
+    if (purpose === 'user' && authReq.agentContext?.ssoRequired === true) {
+      logger.warn('share.create.blockedSsoRequired', { appId });
+      return res.status(403).json({
+        error: 'sso_share_disabled',
+        details:
+          'Share links are disabled for apps in this organization because SSO is required. ' +
+          'Publish the app and use the published URL behind your IdP instead.',
+      });
+    }
+
     const ttl = PURPOSE_TTL_BOUNDS[purpose];
     const expiresIn = req.body.expiresIn ?? ttl.defaultSec;
     // archive_snapshot bypasses the one-active guard so hosting can re-mint

@@ -7,6 +7,7 @@ import { MemoryRepository } from '../../../database/repositories/MemoryRepositor
 import { logger } from '../../../logging/index.js';
 import { customerIdFromContext } from '../../../memory/interfaces/scope.js';
 import { getActionService } from '../../../server/agent-runtime.js';
+import { isEnterpriseManagedApp } from '../../../server/middleware/enterprise-managed.js';
 import { MemoryTool } from '../../../tools/memory-tool.js';
 import { executePublish } from '../../../tools/publish-client-tool.js';
 import { validateDomainName } from '../../../utils/domain-validation.js';
@@ -89,10 +90,23 @@ export const publishTool: SkillToolDefinition = {
 
       if (result.requiresUpgrade) {
         const reason = result.reason || PublishDenialReason.NoSubscription;
-        logger.info('skill.publishing.publish.requires-upgrade', { appId, reason });
-        const message = reason === PublishDenialReason.PublishLimitReached
-          ? 'You\'ve reached your publish limit. Upgrade your plan or unpublish an existing app to continue. The upgrade options have been shown.'
-          : 'A paid subscription is required to publish. The upgrade options have been shown to the user.';
+        // Enterprise-managed apps cannot self-serve plan upgrades — the
+        // enterprise admin owns the subscription. Suppress upgrade copy
+        // for these, since suggesting "upgrade your plan" would dead-end
+        // at a paywall the user has no permission to clear.
+        const ownerProduct: string | undefined = ((context as { agentContext?: { ownerProduct?: string } } | undefined)?.agentContext)?.ownerProduct;
+        const isEnt: boolean = isEnterpriseManagedApp(ownerProduct);
+        logger.info('skill.publishing.publish.requires-upgrade', { appId, reason, isEnt });
+        let message: string;
+        if (isEnt) {
+          message = reason === PublishDenialReason.PublishLimitReached
+            ? 'This app has reached its publish limit, and plan upgrades for enterprise-managed apps are owned by your enterprise admin. Ask the user to contact their enterprise admin to request a plan change, or to unpublish an existing app to continue.'
+            : 'Publishing requires a paid subscription, and plan changes for enterprise-managed apps are owned by your enterprise admin. Ask the user to contact their enterprise admin to request access.';
+        } else {
+          message = reason === PublishDenialReason.PublishLimitReached
+            ? 'You\'ve reached your publish limit. Upgrade your plan or unpublish an existing app to continue. The upgrade options have been shown.'
+            : 'A paid subscription is required to publish. The upgrade options have been shown to the user.';
+        }
         return {
           success: false,
           message,

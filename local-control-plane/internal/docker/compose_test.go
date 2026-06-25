@@ -193,6 +193,55 @@ func TestGeneratePublishEnvironmentNoPorts(t *testing.T) {
 	}
 }
 
+func TestGeneratePublishEnvironmentNoIDPEnv(t *testing.T) {
+	// Auth-at-Edge enforcement is secret-driven per mhp-core §3.5.1
+	// (`AuthAtEdge-PerAppSecrets-AuthClassification.md`): production renders
+	// NO `IDP_*` / `AUTH_SECRETS_PATH` / `SSO_OAUTH_CONFIG_SECRET` env vars.
+	// dev-supervisor probes `${NOMAD_SECRETS_DIR}/hosting/auth.json` and
+	// derives the redirect URI per-request from the inbound `Host` header.
+	//
+	// Regression guard: LCP must not drift back to the superseded env-var
+	// draft. None of those vars should appear in the publish env, in ANY
+	// persona — `required`, `optional` (override on/off), or unset.
+	forbidden := []string{
+		"IDP_SSO_ENABLED",
+		"IDP_SSO_CONFIG_ID",
+		"IDP_TYPE",
+		"IDP_ISSUER",
+		"IDP_EXPECTED_AUDIENCE",
+		"IDP_LOCAL_DEV",
+		"IDP_REDIRECT_URI",
+		"AUTH_SECRETS_PATH",
+		"SSO_OAUTH_CONFIG_SECRET",
+	}
+	personas := []struct {
+		name     string
+		policy   string
+		override string
+	}{
+		{"non-ent", "", ""},
+		{"ent-required", "required", ""},
+		{"ent-optional-no-override", "optional", ""},
+		{"ent-optional-with-override", "optional", "true"},
+		{"ent-optional-default-on", "optional_default_on", ""},
+	}
+	for _, p := range personas {
+		t.Run(p.name, func(t *testing.T) {
+			t.Setenv("AAB_DEV_SUBSCRIPTION_POLICY", p.policy)
+			t.Setenv("AAB_DEV_SSO_OVERRIDE", p.override)
+			t.Setenv("PROJECT_ROOT", t.TempDir())
+
+			env := generatePublishEnvironment(&store.App{ID: "any-app"})
+
+			for _, k := range forbidden {
+				if _, ok := env[k]; ok {
+					t.Errorf("expected no %q in publish env (prod contract: secret-driven, no IDP_*); got %q", k, env[k])
+				}
+			}
+		})
+	}
+}
+
 func TestGenerateEnvironmentGoDaddyCommerceConfig(t *testing.T) {
 	app := &store.App{ID: "test123"}
 	isolateProjectEnv := func(t *testing.T) {

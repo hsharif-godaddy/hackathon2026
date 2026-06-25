@@ -32,7 +32,8 @@ const { mockJWTService, mockAuthenticateCustomer, mockControlPlaneAdapter, mockC
     mockCheckSwitchboardValue: vi.fn(),
     mockMgmtClient: {
       getSubscription: vi.fn(),
-      getApps: vi.fn()
+      getApps: vi.fn(),
+      getSecrets: vi.fn()
     },
     mockEnforceAabMultiUserCanBuild: vi.fn().mockResolvedValue(null),
     mockGetExperimentCohorts: vi.fn(),
@@ -40,6 +41,11 @@ const { mockJWTService, mockAuthenticateCustomer, mockControlPlaneAdapter, mockC
     mockFgaListObjects: vi.fn()
   };
 });
+
+// Helper: build an auth-group secrets response with the given pointer names.
+function authSecretsResponse(names: string[]): { auth: { secrets: { name: string; systemManaged: boolean }[] } } {
+  return { auth: { secrets: names.map((name) => ({ name, systemManaged: false })) } };
+}
 
 vi.mock('@/lib/authz-fga/enforce-can-build', function mockEnforceCanBuild() {
   return {
@@ -250,6 +256,11 @@ describe('agent-token', function packageTests() {
         expires: MOCK_TOKEN_EXPIRES
       });
       mockEnforceAabMultiUserCanBuild.mockResolvedValue(null);
+      // SSO presence check defaults to "not configured" (auth group empty).
+      // Every existing test uses the default site (no ssoRequired flag), so
+      // the BFF skips the auth-group GET entirely. SSO-specific tests below
+      // override the site fixture to trigger the call.
+      mockMgmtClient.getSecrets.mockResolvedValue({ auth: { secrets: [] } });
     });
 
     it('should create agent token for authenticated user with valid site', async function createToken() {
@@ -307,6 +318,8 @@ describe('agent-token', function packageTests() {
         logoBrandColorsEnabled: false,
         purchaseIntentClassifierEnabled: false,
         skillSuggestionsEnabled: false,
+        ssoRequired: false,
+        ssoConfigured: false,
       });
     });
 
@@ -573,7 +586,7 @@ describe('agent-token', function packageTests() {
         expect(response.status).toBe(200);
         expect(data.expiresInSeconds).toBe(expiresInSeconds);
         expect(mockJWTService.createToken).toHaveBeenCalledWith(
-          { shopperId: 'shopper-789', siteId: MOCK_SITE_ID, customerId: 'customer-789', market: 'en-US', canDownload: false, canPublish: false, canPurchaseDomain: false, authType: 'basic', isE2S: false, useTestBudget: false, budgetServiceEnabled: false, subscriptionId: undefined, bmsBudgetId: undefined, enableAssessmentAgent: false, enableAssessmentOverride: false, assessmentClassifier: undefined, product: 'AiroAppBuilder', modelSelectorEnabled: false, modelOverride: undefined, agentProfileSelectorEnabled: false, agentProfile: undefined, costAttributionDryRun: false, useAtlasCrawler: false, rebuildIntakeFormEnabled: false, rebuildSourceImagesEnabled: false, debugStatsEnabled: false, marketingCampaignsEnabled: false, googleBusinessProfileSyncEnabled: false, asmDualWriteEnabled: false, logoBrandColorsEnabled: false, purchaseIntentClassifierEnabled: false, skillSuggestionsEnabled: false },
+          { shopperId: 'shopper-789', siteId: MOCK_SITE_ID, customerId: 'customer-789', market: 'en-US', canDownload: false, canPublish: false, canPurchaseDomain: false, authType: 'basic', isE2S: false, useTestBudget: false, budgetServiceEnabled: false, subscriptionId: undefined, bmsBudgetId: undefined, enableAssessmentAgent: false, enableAssessmentOverride: false, assessmentClassifier: undefined, product: 'AiroAppBuilder', modelSelectorEnabled: false, modelOverride: undefined, agentProfileSelectorEnabled: false, agentProfile: undefined, costAttributionDryRun: false, useAtlasCrawler: false, rebuildIntakeFormEnabled: false, rebuildSourceImagesEnabled: false, debugStatsEnabled: false, marketingCampaignsEnabled: false, googleBusinessProfileSyncEnabled: false, asmDualWriteEnabled: false, logoBrandColorsEnabled: false, purchaseIntentClassifierEnabled: false, skillSuggestionsEnabled: false, ssoRequired: false, ssoConfigured: false },
           expiresInSeconds
         );
         expect(mockJWTService.getToken).not.toHaveBeenCalled();
@@ -672,6 +685,8 @@ describe('agent-token', function packageTests() {
           logoBrandColorsEnabled: false,
           purchaseIntentClassifierEnabled: false,
           skillSuggestionsEnabled: false,
+        ssoRequired: false,
+        ssoConfigured: false,
         });
       });
 
@@ -725,6 +740,8 @@ describe('agent-token', function packageTests() {
           logoBrandColorsEnabled: false,
           purchaseIntentClassifierEnabled: false,
           skillSuggestionsEnabled: false,
+        ssoRequired: false,
+        ssoConfigured: false,
         });
       });
     });
@@ -1554,6 +1571,119 @@ describe('agent-token', function packageTests() {
         expect(mockJWTService.getToken).toHaveBeenCalledWith(
           expect.objectContaining({ budgetServiceEnabled: true, bmsBudgetId: 'budget-123' })
         );
+      });
+    });
+
+    describe('Auth-at-Edge SSO claims', function ssoClaimsTests() {
+      it('bakes ssoRequired:false + ssoConfigured:false for non-ent apps and skips the hosting GET', async () => {
+        // Non-ent app: site has no ssoRequired flag (or false). The BFF
+        // must not call the customer-proxy auth-group GET at all — keeps
+        // the per-mint cost zero for normal customers.
+        mockAuthenticateCustomer.mockResolvedValue({
+          isAuthenticated: true,
+          user: MOCK_USER,
+          jwt: 'user-jwt',
+        });
+        mockControlPlaneAdapter.getSite.mockResolvedValue({
+          owner_customer_id: 'cust-1',
+          // ssoRequired absent (or false) — same effect on the gate
+        });
+
+        const req = createMockRequest({ siteId: MOCK_SITE_ID });
+        await POST(req);
+
+        expect(mockJWTService.getToken).toHaveBeenCalledWith(
+          expect.objectContaining({ ssoRequired: false, ssoConfigured: false })
+        );
+        expect(mockMgmtClient.getSecrets).not.toHaveBeenCalled();
+      });
+
+      it('bakes ssoRequired:true + ssoConfigured:true when both pointer rows are in the auth group', async () => {
+        mockAuthenticateCustomer.mockResolvedValue({
+          isAuthenticated: true,
+          user: MOCK_USER,
+          jwt: 'user-jwt',
+        });
+        mockControlPlaneAdapter.getSite.mockResolvedValue({
+          owner_customer_id: 'cust-1',
+          ssoRequired: true,
+          ssoConfigId: 'cfg-godaddy-shopper',
+          subscription_id: 'sub-1',
+          system_id: 'sys-1',
+          clientIdSecretName: 'GD_SSO_OAUTH_CLIENT_ID',
+          clientSecretSecretName: 'GD_SSO_OAUTH_CLIENT_SECRET',
+        });
+        mockMgmtClient.getSecrets.mockResolvedValue(
+          authSecretsResponse(['GD_SSO_OAUTH_CLIENT_ID', 'GD_SSO_OAUTH_CLIENT_SECRET']),
+        );
+
+        const req = createMockRequest({ siteId: MOCK_SITE_ID });
+        await POST(req);
+
+        // Customer-proxy GET is called with (subId, sysId, appId) — no
+        // pointer-name argument; presence is computed from the response.
+        expect(mockMgmtClient.getSecrets).toHaveBeenCalledWith('sub-1', 'sys-1', MOCK_SITE_ID);
+        expect(mockJWTService.getToken).toHaveBeenCalledWith(
+          expect.objectContaining({ ssoRequired: true, ssoConfigured: true })
+        );
+      });
+
+      it('bakes ssoRequired:true + ssoConfigured:false when the auth group is missing a pointer row', async () => {
+        mockAuthenticateCustomer.mockResolvedValue({
+          isAuthenticated: true,
+          user: MOCK_USER,
+          jwt: 'user-jwt',
+        });
+        mockControlPlaneAdapter.getSite.mockResolvedValue({
+          owner_customer_id: 'cust-1',
+          ssoRequired: true,
+          ssoConfigId: 'cfg-godaddy-shopper',
+          subscription_id: 'sub-1',
+          system_id: 'sys-1',
+        });
+        // Half-saved state — only one row present.
+        mockMgmtClient.getSecrets.mockResolvedValue(
+          authSecretsResponse(['GD_SSO_OAUTH_CLIENT_ID']),
+        );
+
+        const req = createMockRequest({ siteId: MOCK_SITE_ID });
+        await POST(req);
+
+        expect(mockJWTService.getToken).toHaveBeenCalledWith(
+          expect.objectContaining({ ssoRequired: true, ssoConfigured: false })
+        );
+      });
+
+      it('fail-safes ssoConfigured to false when the auth-group GET throws', async () => {
+        // If airo-go is unreachable at mint time, the agents/ middleware
+        // would falsely permit publish if we left ssoConfigured undefined.
+        // Behavior: ssoRequired stays true (we know that from the app GET),
+        // ssoConfigured defaults to false → middleware blocks publish.
+        // Restored once the next mint succeeds.
+        mockAuthenticateCustomer.mockResolvedValue({
+          isAuthenticated: true,
+          user: MOCK_USER,
+          jwt: 'user-jwt',
+        });
+        mockControlPlaneAdapter.getSite.mockResolvedValue({
+          owner_customer_id: 'cust-1',
+          ssoRequired: true,
+          ssoConfigId: 'cfg-godaddy-shopper',
+          subscription_id: 'sub-1',
+          system_id: 'sys-1',
+        });
+        mockMgmtClient.getSecrets.mockRejectedValue(new Error('upstream timeout'));
+
+        const req = createMockRequest({ siteId: MOCK_SITE_ID });
+        await POST(req);
+
+        expect(mockJWTService.getToken).toHaveBeenCalledWith(
+          expect.objectContaining({ ssoRequired: true, ssoConfigured: false })
+        );
+        const warnCall = mockLogger.warn.mock.calls.find(
+          ([event]: [string]) => event === 'agent-token.sso-config-presence.fetch-failed',
+        );
+        expect(warnCall).toBeDefined();
       });
     });
 

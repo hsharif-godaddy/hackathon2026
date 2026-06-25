@@ -124,6 +124,13 @@ type Config struct {
 	EnableShareTokens bool   // Enable share token validation (default: false)
 	AgentsBaseURL     string // Base URL for agents API (for share token validation)
 
+	// IDP OAuth authentication configuration (for published enterprise apps)
+	// Uses OAuth 2.0 Authorization Code flow with PKCE.
+	// Mutually exclusive with JWT auth — IDP auth is for publish containers,
+	// JWT auth is for preview containers.
+	// All IDP credentials and metadata are read from auth.json at runtime.
+	// The file path is derived from NOMAD_SECRETS_DIR (no config field needed).
+
 	// StatusPage, when non-nil, serves a fallback HTML page in place of the
 	// reverse proxy whenever it reports Active() (suspended site or no
 	// publish archive present). Nil disables the fallback.

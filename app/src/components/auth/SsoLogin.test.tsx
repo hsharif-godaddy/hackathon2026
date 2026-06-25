@@ -24,6 +24,7 @@ let latestOnAuth: ((data?: unknown) => void) | null = null;
 let latestPageToLoadParams: Record<string, unknown> | null = null;
 let latestPageToLoad: string | null = null;
 let latestConsumingPath: string | null = null;
+let latestEnableCheckoutLite: boolean | undefined = undefined;
 
 function overrideWindowLocation(urlString: string) {
   const url = new URL(urlString);
@@ -55,8 +56,14 @@ vi.mock('next/dynamic', () => ({
     latestPageToLoadParams = props.pageToLoadParams;
     latestPageToLoad = props.pageToLoad;
     latestConsumingPath = props.consumingPath;
+    latestEnableCheckoutLite = props.enableCheckoutLite;
     return <div data-testid="sso-deck" />;
   },
+}));
+
+const mockSwitchboardFlags: Record<string, boolean> = {};
+vi.mock('@/hooks/useSwitchboard', () => ({
+  useSwitchboard: (flag: string) => mockSwitchboardFlags[flag],
 }));
 
 vi.mock('@ux/modal', () => ({
@@ -162,6 +169,7 @@ describe('SsoLogin redirect handling', function ssoLoginRedirectTests() {
     latestPageToLoadParams = null;
     latestPageToLoad = null;
     latestConsumingPath = null;
+    latestEnableCheckoutLite = undefined;
     mockAuthUIState.redirectUrl = null;
     mockAuthUIState.ssoAuthReason = null;
     mockAuthUIState.inFlightReauth = false;
@@ -373,6 +381,7 @@ describe('SsoLogin authReason routing', function ssoLoginAuthReasonTests() {
     latestPageToLoadParams = null;
     latestPageToLoad = null;
     latestConsumingPath = null;
+    latestEnableCheckoutLite = undefined;
     mockAuthUIState.redirectUrl = null;
     mockAuthUIState.ssoAuthReason = null;
     mockAuthUIState.inFlightReauth = false;
@@ -479,6 +488,7 @@ describe('SsoLogin in-flight reauth', function inFlightReauthTests() {
     latestPageToLoadParams = null;
     latestPageToLoad = null;
     latestConsumingPath = null;
+    latestEnableCheckoutLite = undefined;
     mockAuthUIState.redirectUrl = null;
     mockAuthUIState.ssoAuthReason = null;
     mockAuthUIState.inFlightReauth = false;
@@ -515,5 +525,82 @@ describe('SsoLogin in-flight reauth', function inFlightReauthTests() {
     expect(assignSpy).toHaveBeenCalledWith('https://airo-builder.test/develop/abc123');
     expect(mockAuthUIState.closeSsoLogin).not.toHaveBeenCalled();
     assignSpy.mockRestore();
+  });
+});
+
+describe('SsoLogin SSO Lite flag wiring', function ssoLiteFlagTests() {
+  beforeAll(function stubLocation() {
+    overrideWindowLocation('https://airo-builder.test/');
+  });
+
+  afterAll(function restoreLocation() {
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: originalLocation,
+    });
+  });
+
+  beforeEach(function resetMocks() {
+    vi.clearAllMocks();
+    overrideWindowLocation('https://airo-builder.test/');
+    latestOnAuth = null;
+    latestPageToLoadParams = null;
+    latestPageToLoad = null;
+    latestConsumingPath = null;
+    latestEnableCheckoutLite = undefined;
+    mockAuthUIState.redirectUrl = null;
+    mockAuthUIState.ssoAuthReason = null;
+    mockAuthUIState.inFlightReauth = false;
+    delete mockSwitchboardFlags['appbuilder-sso-lite'];
+  });
+
+  it('passes enableCheckoutLite and routes to /login/progressive when flag is on', async function flagOnPassesProps() {
+    mockSwitchboardFlags['appbuilder-sso-lite'] = true;
+
+    renderWithProviders(<SsoLogin />);
+
+    await waitFor(() => {
+      expect(latestPageToLoad).toBeTruthy();
+    });
+
+    expect(latestPageToLoad).toBe('/login/progressive');
+    expect(latestEnableCheckoutLite).toBe(true);
+  });
+
+  it('does not pass enableCheckoutLite when flag is off', async function flagOffNoProps() {
+    mockSwitchboardFlags['appbuilder-sso-lite'] = false;
+
+    renderWithProviders(<SsoLogin />);
+
+    await waitFor(() => {
+      expect(latestPageToLoad).toBeTruthy();
+    });
+
+    expect(latestPageToLoad).toBe('/account/create');
+    expect(latestEnableCheckoutLite).toBeUndefined();
+  });
+
+  it('does not pass enableCheckoutLite when flag is undefined (Switchboard unavailable)', async function flagUndefinedNoProps() {
+    renderWithProviders(<SsoLogin />);
+
+    await waitFor(() => {
+      expect(latestPageToLoad).toBeTruthy();
+    });
+
+    expect(latestPageToLoad).toBe('/account/create');
+    expect(latestEnableCheckoutLite).toBeUndefined();
+  });
+
+  it('still routes to /hbi for HBI even when flag is on', async function hbiUnaffectedByFlag() {
+    mockSwitchboardFlags['appbuilder-sso-lite'] = true;
+    mockAuthUIState.ssoAuthReason = AUTH_CODE.HBI;
+
+    renderWithProviders(<SsoLogin />);
+
+    await waitFor(() => {
+      expect(latestPageToLoad).toBeTruthy();
+    });
+
+    expect(latestPageToLoad).toBe('/hbi');
   });
 });

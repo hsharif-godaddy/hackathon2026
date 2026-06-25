@@ -42,4 +42,24 @@ describe('getSsoPageToLoad', () => {
     expect(getSsoPageToLoad(99, false)).toBe('/login');
     expect(getSsoPageToLoad(99, true)).toBe('/login');
   });
+
+  describe('SSO Lite (progressive login)', () => {
+    it('routes to /login/progressive for new user when SSO Lite enabled', () => {
+      expect(getSsoPageToLoad(null, false, true)).toBe('/login/progressive');
+    });
+
+    it('routes to /login/progressive for returning user when SSO Lite enabled', () => {
+      expect(getSsoPageToLoad(null, true, true)).toBe('/login/progressive');
+    });
+
+    it('routes to /login/progressive on session expiry when SSO Lite enabled', () => {
+      expect(getSsoPageToLoad(AUTH_CODE.LOGIN, false, true)).toBe('/login/progressive');
+      expect(getSsoPageToLoad(AUTH_CODE.VAT, true, true)).toBe('/login/progressive');
+    });
+
+    it('still routes to /hbi for HBI even when SSO Lite enabled', () => {
+      expect(getSsoPageToLoad(AUTH_CODE.HBI, false, true)).toBe('/hbi');
+      expect(getSsoPageToLoad(AUTH_CODE.HBI, true, true)).toBe('/hbi');
+    });
+  });
 });

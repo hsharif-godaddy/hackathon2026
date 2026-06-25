@@ -9,6 +9,8 @@ import InfoIcon from '@ux/icon/information';
 import Modal from '@ux/modal';
 import text from '@ux/text';
 
+import { EnterpriseUpgradeNotice } from '@/components/upgrade/EnterpriseUpgradeNotice';
+import { useEnterpriseManaged } from '@/hooks/useEnterpriseManaged';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
 import type { SiteInfo } from '@/lib/control-plane/types';
@@ -39,6 +41,7 @@ export default function PublishLimitModal({
   const t = useTranslations();
   const router = useRouter();
   const isUnpublishEnabled = useSwitchboard('appbuilder-unpublish');
+  const { isEnterpriseManaged } = useEnterpriseManaged();
   const planName = plan ? t(getPlanDisplayLabelKey(plan)) : '';
 
   useEffect(() => {
@@ -103,7 +106,25 @@ export default function PublishLimitModal({
           </text.p>
         ) : null}
 
-        {plan !== SubscriptionPlan.Ultimate && onUpgrade ? (
+        {/* Enterprise-managed apps cannot self-serve an upgrade — replace
+            the upgrade CTA with the admin-contact notice. Falls through to
+            the unpublish path so the customer still has a self-serve route
+            to free up a publish slot (deleting old apps is in-bounds even
+            on ent plans; only PLAN upgrades require enterprise admin). */}
+        {isEnterpriseManaged ? (
+          <>
+            <EnterpriseUpgradeNotice testId="publish-limit-enterprise-upgrade-notice" />
+            {isUnpublishEnabled ? (
+              <Button
+                design="secondary"
+                data-partial="componentAiro"
+                data-eid={generateClickEID('publish_limit.buttons.manage_apps')}
+                text={t('builder_publish_limit_manage_apps')}
+                onClick={handleManageApps}
+              />
+            ) : null}
+          </>
+        ) : plan !== SubscriptionPlan.Ultimate && onUpgrade ? (
           <Button
             design="primary"
             data-partial="componentAiro"

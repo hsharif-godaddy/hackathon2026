@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/airo-ai-builder/local-control-plane/internal/projectenv"
 	"github.com/airo-ai-builder/local-control-plane/internal/setup"
@@ -30,9 +31,13 @@ func (s *Server) GetSecrets(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Group secrets by variant for the mgmt-airo / hosting response format.
-	// The "protected" group mirrors hosting's GetSecretsResponse.
+	// The "protected" group mirrors hosting's GetSecretsResponse; "auth"
+	// mirrors the new Auth-at-Edge classification (mhp-core §3.1) — the BFF
+	// reads this group to know whether SSO_OAUTH_CONFIG has been saved for
+	// publish-gate purposes.
 	shared := make([]map[string]any, 0)
 	protected := make([]map[string]any, 0)
+	authSecrets := make([]map[string]any, 0)
 	variantSecrets := map[string][]map[string]any{
 		"preview": {},
 		"publish": {},
@@ -50,6 +55,11 @@ func (s *Server) GetSecrets(w http.ResponseWriter, r *http.Request) {
 			shared = append(shared, entry)
 		case "protected":
 			protected = append(protected, entry)
+		case "auth":
+			// Mirror hosting: reads never return secret VALUES for any class.
+			// Strip value before exposing; surface only name + presence.
+			delete(entry, "value")
+			authSecrets = append(authSecrets, entry)
 		default:
 			variantSecrets[sec.Variant] = append(variantSecrets[sec.Variant], entry)
 		}
@@ -63,6 +73,9 @@ func (s *Server) GetSecrets(w http.ResponseWriter, r *http.Request) {
 		"protected": map[string]any{
 			"secrets": protected,
 		},
+		"auth": map[string]any{
+			"secrets": authSecrets,
+		},
 		"variants": map[string]any{
 			"preview": map[string]any{
 				"secrets": variantSecrets["preview"],
@@ -72,6 +85,75 @@ func (s *Server) GetSecrets(w http.ResponseWriter, r *http.Request) {
 			},
 		},
 	})
+}
+
+// ReservedSecretSSOOAuthConfig is the fixed NAME (not a value) of the
+// Auth-at-Edge SSO CACHE ROW — auto-seeded by mhp-core's airo-go SFN tasks.
+// AAB never writes this; the customer writes the two pointer rows below.
+//
+//nolint:gosec // G101 false positive: this is the reserved secret NAME, not a credential value.
+const ReservedSecretSSOOAuthConfig = "SSO_OAUTH_CONFIG"
+
+// DefaultClientIDPointerName / DefaultClientSecretPointerName are the names
+// mhp-core's `airo_enterprise_sso_configs.client_id_secret_name` /
+// `…_client_secret_name` columns default to. LCP hardcodes them for Phase 1
+// (matches AAB's default-name assumption) — when AAB writes the pointer
+// rows, LCP validates the names against these defaults.
+//
+//nolint:gosec // G101 false positive: these are reserved secret NAMES, not credential values.
+const (
+	DefaultClientIDPointerName     = "GD_SSO_OAUTH_CLIENT_ID"
+	DefaultClientSecretPointerName = "GD_SSO_OAUTH_CLIENT_SECRET"
+)
+
+// isPointerName reports whether `name` matches one of the pointer-key
+// defaults (case-insensitive, mirroring mhp-core's `strings.EqualFold` on
+// the cache-row pointer keys). Phase 1.5 will replace this with a dynamic
+// read of the cache row's `clientIdKey` / `clientSecretKey` JSON fields.
+func isPointerName(name string) bool {
+	return strings.EqualFold(name, DefaultClientIDPointerName) ||
+		strings.EqualFold(name, DefaultClientSecretPointerName)
+}
+
+// validateAuthClassWrite mirrors mhp-core's ValidateAuthClassWrite +
+// validateUpsert reserved-name rules for the local-dev path. Returns nil
+// when the secret op is acceptable, or a structured error when it must be
+// rejected. Extracted from UpdateSecrets to keep the handler's
+// cyclomatic complexity within the project's golangci-lint budget.
+//
+// Rules (caller-agnostic — LCP doesn't enforce mTLS):
+//
+//  1. Reserved name SSO_OAUTH_CONFIG (CACHE ROW): MUST carry
+//     auth=true && systemManaged=true.
+//  2. Pointer-named auth:true row: MUST NOT carry systemManaged=true
+//     (would self-wedge subsequent customer writes).
+//  3. auth=true on any other name: rejected (self-wedge — present but
+//     unreachable by dev-supervisor).
+//
+// Non-auth ops always pass.
+func validateAuthClassOp(appID string, name string, isAuth, systemManaged bool) error {
+	if name == ReservedSecretSSOOAuthConfig {
+		if !isAuth || !systemManaged {
+			slog.Warn("secret.reserved_name.invalid_flags",
+				"app_id", appID, "name", name,
+				"auth", isAuth, "system_managed", systemManaged)
+			return fmt.Errorf("reserved_name.invalid_flags")
+		}
+		return nil
+	}
+	if !isAuth {
+		return nil
+	}
+	if !isPointerName(name) {
+		slog.Warn("secret.auth_flag_on_non_pointer_name", "app_id", appID, "name", name)
+		return fmt.Errorf("auth_flag_on_non_pointer_name")
+	}
+	if systemManaged {
+		slog.Warn("secret.pointer_row_system_managed_disallowed",
+			"app_id", appID, "name", name)
+		return fmt.Errorf("pointer_row_system_managed_disallowed")
+	}
+	return nil
 }
 
 func (s *Server) UpdateSecrets(w http.ResponseWriter, r *http.Request) {
@@ -91,6 +173,12 @@ func (s *Server) UpdateSecrets(w http.ResponseWriter, r *http.Request) {
 				// protectedSecretsTargets). Locally stored under the
 				// sentinel variant "protected".
 				Protected *bool `json:"protected,omitempty"`
+				// Auth is the Auth-at-Edge classification. Routes to a
+				// dedicated `auth.json` file that dev-supervisor reads at
+				// runtime; customer apps cannot read it (Landlock-enforced
+				// in production). Locally stored under the sentinel variant
+				// "auth". See validation rules below.
+				Auth *bool `json:"auth,omitempty"`
 			} `json:"secret"`
 		} `json:"operations"`
 		WorkflowName string `json:"workflowName"`
@@ -104,8 +192,20 @@ func (s *Server) UpdateSecrets(w http.ResponseWriter, r *http.Request) {
 	succeeded, failed := 0, 0
 
 	for _, op := range body.Operations {
+		// Auth-class validation extracted to keep the handler within
+		// gocyclo's complexity budget. See validateAuthClassOp for the
+		// full rule set (mirrors mhp-core's ValidateAuthClassWrite +
+		// ValidateCustomerAuthRestrictions).
+		isAuth := op.Secret.Auth != nil && *op.Secret.Auth
+		if err := validateAuthClassOp(appID, op.Secret.Name, isAuth, op.Secret.SystemManaged); err != nil {
+			failed++
+			continue
+		}
+
 		variant := "shared"
 		switch {
+		case isAuth:
+			variant = "auth"
 		case op.Secret.Protected != nil && *op.Secret.Protected:
 			variant = "protected"
 		case len(op.Secret.Variants) > 0:

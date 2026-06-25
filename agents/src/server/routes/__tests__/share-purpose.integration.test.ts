@@ -90,11 +90,11 @@ function appOf(previewUrl: string | null) {
  * authType seen by the route. Without this, every request would default to
  * `basic` and we couldn't exercise the cert2s code path.
  */
-async function mountShareAppWithAuth(authType: string): Promise<express.Application> {
+async function mountShareAppWithAuth(authType: string, ssoRequired = false): Promise<express.Application> {
   const app = express();
   app.use(express.json());
   app.use((req: any, _res, next) => {
-    req.agentContext = { siteId: TEST_APP_ID, authType };
+    req.agentContext = { siteId: TEST_APP_ID, authType, ssoRequired };
     next();
   });
   const { default: router } = await import('../share.js');
@@ -293,6 +293,52 @@ describe('POST /apps/:id/share — purpose gating', () => {
 
       expect(res.status).toBe(400);
       expect(mockShareTokenRepo.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Auth-at-Edge SSO gate', () => {
+    // Inline gate at routes/share.ts:238 blocks purpose:'user' when the agent
+    // JWT carries ssoRequired:true. archive_snapshot (cert2s) intentionally
+    // bypasses — hosting needs to keep capturing screenshots regardless of
+    // SSO state.
+    it('rejects purpose:"user" with 403 sso_share_disabled when ssoRequired is true', async () => {
+      const app = await mountShareAppWithAuth('basic', /* ssoRequired */ true);
+      const res = await request(app)
+        .post(`/apps/${TEST_APP_ID}/share`)
+        .send({ purpose: 'user', expiresIn: 3600 });
+
+      expect(res.status).toBe(403);
+      expect(res.body.error).toBe('sso_share_disabled');
+      expect(mockShareTokenRepo.create).not.toHaveBeenCalled();
+    });
+
+    it('allows purpose:"archive_snapshot" with cert2s + ssoRequired:true (system bypass preserved)', async () => {
+      // cert2s is the trusted system path used by hosting for archive
+      // screenshots. SSO does not gate it — blocking would break archive
+      // captures on ent apps.
+      const app = await mountShareAppWithAuth('cert2s', /* ssoRequired */ true);
+      const res = await request(app)
+        .post(`/apps/${TEST_APP_ID}/share`)
+        .send({ purpose: 'archive_snapshot' });
+
+      expect(res.status).toBe(201);
+      expect(mockShareTokenRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ purpose: 'archive_snapshot' }),
+      );
+    });
+
+    it('allows purpose:"user" when ssoRequired is false (non-ent unaffected)', async () => {
+      // Regression guard: an inverted gate would break every existing AAB
+      // customer. Non-ent traffic must keep working unchanged.
+      const app = await mountShareAppWithAuth('basic', /* ssoRequired */ false);
+      const res = await request(app)
+        .post(`/apps/${TEST_APP_ID}/share`)
+        .send({ purpose: 'user', expiresIn: 3600 });
+
+      expect(res.status).toBe(201);
+      expect(mockShareTokenRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ purpose: 'user' }),
+      );
     });
   });
 });

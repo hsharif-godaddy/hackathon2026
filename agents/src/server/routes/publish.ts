@@ -11,6 +11,7 @@ import { Router } from 'express';
 import type { AuthenticatedRequest } from '../middleware/jwt-auth.js';
 import type { DevSupervisorClient, PublishRequest, PublishSuccessResponse, UnpublishResponse } from '../../services/DevSupervisorClient.js';
 import { requirePermission } from '../middleware/require-permission.js';
+import { requireSsoConfigured } from '../middleware/require-sso-configured.js';
 import { validateAppOwnership } from '../middleware/app-ownership.js';
 import { getPublishStrategy, BuildError, PreviewNotRunningError, MissingStartCommandError } from './publish/strategies/index.js';
 import type { PublishContext } from './publish/strategies/index.js';
@@ -282,7 +283,7 @@ router.use('/apps/:id', validateAppOwnership);
  *   }
  * }
  */
-router.post('/apps/:id/publish', requirePermission('canPublish'), async (req, res) => {
+router.post('/apps/:id/publish', requirePermission('canPublish'), requireSsoConfigured, async (req, res) => {
   try {
     const { id } = req.params;
     const { deploymentStrategy } = req.body;
@@ -648,6 +649,14 @@ router.post('/apps/:id/publish', requirePermission('canPublish'), async (req, re
  * @throws {404} If app is not found
  * @throws {500} If publish supervisor is unavailable or unpublish fails
  */
+// requireSsoConfigured is deliberately NOT applied here.
+// Unpublishing tears down the deployed instance; it does not expose any SSO
+// credentials and creates no end-user-facing surface that the IdP gate would
+// otherwise protect. Gating it would trap a customer whose admin flipped
+// `sso_required=true` on an unconfigured app: they could not remove their own
+// published deployment until they configured SSO. Defense posture: every path
+// that DEPLOYS an ent app is gated (UI button, BFF, agents/, hosting); paths
+// that TEAR DOWN are intentionally open.
 router.post('/apps/:id/unpublish', requirePermission('canPublish'), async (req, res) => {
   try {
     const { id } = req.params;
@@ -729,7 +738,7 @@ interface PublishStateUpdateBody {
  * Both fields are optional — callers can update just publishedUrl, just domains, or both.
  * Omitted fields are left unchanged in the DB.
  */
-router.post('/apps/:id/publish-state', requirePermission('canPublish'), async (req, res) => {
+router.post('/apps/:id/publish-state', requirePermission('canPublish'), requireSsoConfigured, async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -792,7 +801,7 @@ router.post('/apps/:id/publish-state', requirePermission('canPublish'), async (r
  * Mirrors the preview restart endpoint (POST /apps/:id/restart) but targets
  * the publish container.
  */
-router.post('/apps/:id/publish/restart', requirePermission('canPublish'), async (req, res) => {
+router.post('/apps/:id/publish/restart', requirePermission('canPublish'), requireSsoConfigured, async (req, res) => {
   const { id } = req.params;
 
   if (!id) {

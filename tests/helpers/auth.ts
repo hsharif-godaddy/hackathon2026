@@ -319,8 +319,33 @@ export function isSignInUIResult(
  * `autocomplete` attributes instead — they are stable, browser-standard hooks
  * (password managers rely on them) and are present on both old and new SSO
  * dialogs. We fall back to the role-by-name strategy for very old surfaces.
+ *
+ * SSO Lite (progressive login): when the `appbuilder-sso-lite` Switchboard
+ * flag is on, the sign-in page shows an email-first "Welcome" form with a
+ * "Continue" button and no password field. E2E tests use username/password
+ * credentials, so we detect the progressive page and click the "username or
+ * customer #?" fallback link to reach the standard form.
  */
 async function fillCredentials(context: Page | FrameLocator, username: string, password: string): Promise<void> {
+  // Detect SSO Lite progressive login page (email-only + "Continue" button,
+  // no password field). If found, click the fallback link to reach the
+  // standard username/password form that E2E tests can automate.
+  // Race the password field against the progressive fallback link — whichever
+  // appears first determines which page loaded, regardless of load speed.
+  const passwordField = context.locator('input[type="password"]').first();
+  const progressiveFallbackLink = context.getByRole('link', { name: /username or customer/i }).first();
+
+  const formType = await Promise.race([
+    passwordField.waitFor({ state: 'attached', timeout: DEFAULT_TIMEOUT }).then(() => 'standard' as const).catch(() => null),
+    progressiveFallbackLink.waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT }).then(() => 'progressive' as const).catch(() => null),
+  ]);
+
+  if (formType === 'progressive') {
+    console.log('  Progressive login detected — switching to username/password form');
+    await progressiveFallbackLink.click();
+    await passwordField.waitFor({ state: 'attached', timeout: DEFAULT_TIMEOUT });
+  }
+
   const usernameByAutocomplete = context.locator(
     'input[autocomplete="username"], input[autocomplete="email"], input[autocomplete="username webauthn"]',
   ).first();

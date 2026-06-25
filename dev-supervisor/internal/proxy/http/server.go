@@ -20,6 +20,7 @@ import (
 	"golang.org/x/net/netutil"
 
 	"github.com/airo-ai-builder/dev-supervisor/internal/auth"
+	"github.com/airo-ai-builder/dev-supervisor/internal/config"
 	"github.com/airo-ai-builder/dev-supervisor/internal/email/signing"
 	"github.com/airo-ai-builder/dev-supervisor/internal/middleware"
 )
@@ -50,6 +51,16 @@ type HTTPProxy struct {
 	// operator can tell the difference between "feature off" and
 	// "keys missing." Wired by SetSigner from main.go after Load().
 	signer *signing.Signer
+	// idpMiddleware handles IDP OAuth Authorization Code flow for enterprise
+	// published apps. The middleware lazy-loads auth.json on every request
+	// via its embedded SecretsLoader (TTL-cached), so it works correctly when
+	// dev-supervisor PID 1 starts BEFORE the hosting secrets-tar extracts
+	// /alloc/auth.json — the file appearing at second N takes effect on the
+	// next request, no container restart.
+	//
+	// Always wired (not gated on auth.json existence at boot). When auth.json
+	// is missing or ssoRequired=false, the middleware is a passthrough.
+	idpMiddleware *auth.IDPAuthMiddleware
 }
 
 // SetSigner installs the JWS signer the /airo/jws-debug endpoint
@@ -163,6 +174,16 @@ func (p *HTTPProxy) Start() error {
 	// Add auth-check endpoint (behind JWT middleware - NOT excluded)
 	// Used by builder to verify cookie was stored after auth bootstrap
 	mux.HandleFunc("/airo/auth-check", handlerWithName("auth-check", handleAuthCheck))
+
+	// IDP OAuth callback endpoint (excluded from middleware enforcement —
+	// the user isn't authenticated yet by definition). Handles the redirect
+	// back from the IDP carrying ?code=&state=. The OAuth handler is
+	// resolved lazily from the middleware's secrets loader, so this route
+	// works whether or not auth.json was present when dev-supervisor booted.
+	mux.HandleFunc(
+		"/airo/idp/callback",
+		handlerWithName("idp-callback", p.handleIDPCallback),
+	)
 
 	// Email test-send proxy. Inert by default — returns 404 when
 	// DEV_SUPERVISOR_SIGN_DEBUG_ENABLED != "true" so a misconfigured
@@ -281,6 +302,20 @@ func (p *HTTPProxy) Start() error {
 	// Wraps response writer to intercept Hijack() calls
 	handler = middleware.ConnectionTracking(handler, p.procMgr)
 
+	// Edge-auth mode selection. JWT is for preview containers (builder
+	// customer JWT); IDP OAuth is for published enterprise apps (end-user
+	// SSO at the customer's IdP). The two modes are mutually exclusive by
+	// container type — physically different Nomad tasks — and the wiring
+	// below enforces that exclusivity using the canonical preview signal
+	// already used elsewhere in this repo (`config.ShouldStartSMTPProxy`,
+	// `allocconfig/migrate.go`): NOMAD_TASK_NAME == "preview" → JWT only,
+	// IDP skipped; otherwise → IDP wired. The previous boot-time
+	// os.Stat-on-auth.json guard false-positived when a preview alloc
+	// happened to ship a stale or unrelated file; the task-name gate
+	// replaces it without that brittleness.
+	authSecretsPath := auth.DefaultAuthSecretsPath()
+	isPreviewTask := os.Getenv("NOMAD_TASK_NAME") == config.PreviewTaskName
+
 	// JWT middleware (if enabled)
 	if p.config.JWTEnabled {
 		if p.config.JWKSUrl == "" {
@@ -322,6 +357,35 @@ func (p *HTTPProxy) Start() error {
 		slog.Info("JWT authentication enabled (hybrid mode)",
 			"jwksURL", p.config.JWKSUrl,
 			"excludedPaths", p.config.JWTExcludedPaths)
+	}
+
+	// IDP OAuth authentication middleware (for published enterprise apps).
+	// Skipped entirely on preview tasks — JWT and IDP are mutually
+	// exclusive by container type, enforced here so a preview alloc that
+	// happens to ship an auth.json never activates the IDP path.
+	//
+	// When wired, the middleware lazy-loads auth.json on every request
+	// via its SecretsLoader (TTL-cached). When the file is absent or
+	// ssoRequired=false the middleware is a passthrough; only when the
+	// cache row says ssoRequired=true does enforcement activate. This
+	// closes the boot-time race where dev-supervisor (PID 1) starts
+	// before the hosting secrets-tar extracts /alloc/auth.json — the
+	// file appearing at second N takes effect on the next request, no
+	// container restart required.
+	if !isPreviewTask {
+		idpLoader := auth.NewSecretsLoader(authSecretsPath)
+		p.idpMiddleware = auth.NewIDPAuthMiddleware(auth.IDPAuthMiddlewareConfig{
+			Enabled:       true,
+			AuthLoader:    idpLoader,
+			ExcludedPaths: p.config.JWTExcludedPaths,
+		})
+		handler = p.idpMiddleware.Wrap(handler)
+		slog.Info("IDP OAuth middleware wired (lazy)",
+			"path", authSecretsPath,
+			"excludedPaths", p.config.JWTExcludedPaths)
+	} else {
+		slog.Info("IDP OAuth middleware skipped (preview task)",
+			"reason", "JWT and IDP are mutually exclusive by container type")
 	}
 
 	// Per-IP concurrency limiting. Placed OUTSIDE JWT (wraps the JWT handler, so
@@ -491,6 +555,26 @@ func (p *HTTPProxy) Stop() error {
 
 	slog.Info("HTTP proxy stopped")
 	return nil
+}
+
+// handleIDPCallback proxies the OAuth callback to the IDP handler.
+// The handler is resolved lazily from the middleware so the route works
+// even when auth.json wasn't present at dev-supervisor boot. Returns
+// 503 when SSO is not required for the app, when auth.json isn't on
+// disk yet, or when the OAuth handler cannot be constructed.
+func (p *HTTPProxy) handleIDPCallback(w http.ResponseWriter, r *http.Request) {
+	if p.idpMiddleware == nil {
+		http.Error(w, "IDP OAuth not configured", http.StatusServiceUnavailable)
+		return
+	}
+	oauthHandler, err := p.idpMiddleware.GetOAuthHandler()
+	if err != nil {
+		slog.WarnContext(r.Context(), "idp.callback.handler_unavailable",
+			"error", err.Error())
+		http.Error(w, "Service Unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	oauthHandler.HandleCallback(w, r)
 }
 
 // GetStatus returns the current status of the HTTP proxy.

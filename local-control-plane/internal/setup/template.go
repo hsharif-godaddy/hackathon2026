@@ -115,6 +115,11 @@ func (t *TemplateSetup) Provision(appID string, previewPort, publishPort, superv
 		return fmt.Errorf("write config files: %w", err)
 	}
 
+	// Write auth.json for IDP OAuth credentials (if configured)
+	if err := t.writeAuthFile(base); err != nil {
+		slog.Warn("setup.auth_file.failed", "app_id", appID, "error", err)
+	}
+
 	slog.Info("setup.provision.complete", "app_id", appID)
 	return nil
 }
@@ -272,6 +277,80 @@ func (t *TemplateSetup) writeConfigFiles(basePath, appID string, dbCreds *DBCred
 		}
 	}
 
+	return nil
+}
+
+// writeAuthFile writes auth.json to the alloc directory for IDP OAuth credentials.
+// Mirrors the production auth.json three-row format from backends/hosting:
+//   - SSO_OAUTH_CONFIG — cache row with IDP metadata, deployment config, and pointer keys
+//   - <clientIdKey>    — row whose VALUE is the raw client ID
+//   - <clientSecretKey> — row whose VALUE is the raw client secret
+//
+// All IDP-related config (issuer, redirectUri, credentials) lives in this file. dev-supervisor reads everything from auth.json — no separate
+// env vars needed for IDP config.
+//
+// Only written when DEV_SUPERVISOR_IDP_CLIENT_ID is set in the environment.
+func (t *TemplateSetup) writeAuthFile(basePath string) error {
+	clientID := os.Getenv("DEV_SUPERVISOR_IDP_CLIENT_ID")
+	if clientID == "" {
+		return nil // IDP auth not configured — skip
+	}
+
+	clientSecret := os.Getenv("DEV_SUPERVISOR_IDP_CLIENT_SECRET")
+	issuer := os.Getenv("DEV_SUPERVISOR_IDP_ISSUER")
+	if issuer == "" {
+		issuer = "https://godaddy.okta.com"
+	}
+
+	// Pointer key names — match the convention used by airo-go's SSOOAuthConfigMirror.
+	clientIDKey := "SSO_CLIENT_ID_local"
+	clientSecretKey := "SSO_CLIENT_SECRET_local" //nolint:gosec // JSON key name, not a credential
+
+	authConfig := map[string]any{
+		// Cache row: IDP metadata, deployment config, and pointer keys to the credential rows below.
+		"SSO_OAUTH_CONFIG": map[string]any{
+			"SYSTEM_MANAGED": true,
+			"AUTH":           true,
+			"VALUE": map[string]any{
+				"idpType":          "godaddy_employee",
+				"issuer":           issuer,
+				"jwksUrl":          issuer + "/oauth2/v1/keys",
+				"expectedAudience": clientID,
+				"ssoRequired":      true,
+				"clientIdKey":      clientIDKey,
+				"clientSecretKey":  clientSecretKey,
+			},
+		},
+		// Client ID row (customer-writable in production).
+		clientIDKey: map[string]any{
+			"SYSTEM_MANAGED": false,
+			"AUTH":           true,
+			"VALUE":          clientID,
+		},
+		// Client secret row (customer-writable in production).
+		clientSecretKey: map[string]any{
+			"SYSTEM_MANAGED": false,
+			"AUTH":           true,
+			"VALUE":          clientSecret,
+		},
+	}
+
+	data, err := json.MarshalIndent(authConfig, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal auth config: %w", err)
+	}
+
+	authDir := filepath.Join(basePath, "alloc", "hosting")
+	if err := os.MkdirAll(authDir, 0o755); err != nil {
+		return fmt.Errorf("create hosting dir %s: %w", authDir, err)
+	}
+
+	authPath := filepath.Join(authDir, "auth.json")
+	if err := os.WriteFile(authPath, data, 0o600); err != nil {
+		return fmt.Errorf("write %s: %w", authPath, err)
+	}
+
+	slog.Info("setup.auth_file.written", "path", authPath, "issuer", issuer)
 	return nil
 }
 

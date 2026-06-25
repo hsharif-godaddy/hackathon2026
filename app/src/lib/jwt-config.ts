@@ -53,6 +53,27 @@ export interface JWTClaims {
   logoBrandColorsEnabled?: boolean; // When true, send structured brand colors to the logo API (switchboard: appbuilder-logo-brand-colors)
   purchaseIntentClassifierEnabled?: boolean; // When true, enable LLM purchase-intent classifier on credit=0 402 path (switchboard: appbuilder-purchase-intent-classifier)
   skillSuggestionsEnabled?: boolean; // When true, merge skill-reported pending capabilities into "Continue building" next-actions (switchboard: appbuilder-skill-suggestions)
+  // Auth-at-Edge SSO defense-in-depth claims (Phase 1).
+  // ssoRequired = the app's `apps.sso_required` flag from mhp-core (admin-controlled).
+  // ssoConfigured = BFF's UX check that BOTH credential pointer rows
+  //   (e.g. `GD_SSO_OAUTH_CLIENT_ID` / `GD_SSO_OAUTH_CLIENT_SECRET` —
+  //   resolved per-config from `SiteInfo.clientIdSecretName` /
+  //   `clientSecretSecretName`) are present in airo-go's customer-proxy
+  //   auth-group GET. NOT a check on the `SSO_OAUTH_CONFIG` cache row
+  //   itself, and NOT a mirror of mhp-core's authoritative publish gate
+  //   (that lives at hosting + dev-supervisor at request time). Used by
+  //   the agents/ requireSsoConfigured middleware to close the direct-
+  //   agents-JWT publish-bypass surface without re-reading upstream state
+  //   per request. Staleness bounded by token TTL; the LCP/mhp-core publish
+  //   gate remains the canonical runtime authority.
+  ssoRequired?: boolean;
+  ssoConfigured?: boolean;
+  // Raw `ownerProduct` from SiteInfo (e.g. 'aab-ent-v1', 'aab-v1',
+  // 'paas-nodejs-v1'). Carried into the agent JWT so the agent can detect
+  // enterprise-managed apps and suppress upgrade-plan copy in chat — those
+  // apps have subscription/plan changes owned by the enterprise admin, not
+  // the customer. Empty string when SiteInfo omitted it (non-V2 sites).
+  ownerProduct?: string;
 }
 
 /**

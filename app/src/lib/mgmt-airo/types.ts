@@ -769,6 +769,12 @@ export interface AiroRawSecret {
 
 /**
  * Raw secrets response from control plane API (actual API structure)
+ *
+ * The `auth` group is the Auth-at-Edge classification (mhp-core PR #738).
+ * Hosting's GET returns it for every caller regardless of context —
+ * presence (name + `systemManaged`) only, values stripped unless the
+ * caller is admin-context AND requests `includeValues`. AAB uses the
+ * presence list to gate publish + agent-token mint.
  */
 export interface AiroRawSecretsResponse {
   appId: string;
@@ -785,6 +791,9 @@ export interface AiroRawSecretsResponse {
     };
   };
   protected?: {
+    secrets: AiroRawSecret[];
+  };
+  auth?: {
     secrets: AiroRawSecret[];
   };
   metadata?: any;
@@ -810,6 +819,15 @@ export interface AiroSecretOperation {
     variants: string[];
     systemManaged?: boolean;
     protected?: boolean;
+    /**
+     * Auth-at-Edge classification flag. Forwarded by airo-go to hosting
+     * (mhp-core PR #738) so the customer's SSO credential pointer rows
+     * land as `auth:true` and clear hosting's `ValidateAuthClassWrite`.
+     * Hosting's `ValidateCustomerAuthRestrictions` gates by NAME — the
+     * customer may set `auth:true` only on names matching the bound SSO
+     * config's `clientIdSecretName` / `clientSecretSecretName` columns.
+     */
+    auth?: boolean;
   };
 }
 
@@ -837,6 +855,24 @@ export interface AiroUpdateSecretsResponse {
   contentHash?: string;
   artifactId?: string;
   statusJobId?: string;
+}
+
+/**
+ * Response from setting the per-app SSO override.
+ * `PUT /api/airo/v1/subscriptions/:subscriptionId/apps/:appId/sso-required`
+ *
+ * `ssoRequired` is the RESOLVED bool after airo-go applies the admin tier;
+ * `ssoRequiredOverride` is the raw per-app value that was just persisted
+ * (null when cleared). `ssoOverrideAllowed` echoes the admin tier so the UI
+ * can stay in sync without re-fetching the app.
+ */
+export interface AiroSetSsoRequiredResponse {
+  appId: string;
+  ssoConfigId: string;
+  ssoRequired: boolean;
+  ssoRequiredOverride: boolean | null;
+  ssoOverrideAllowed: boolean;
+  cacheWriteStatus?: string;
 }
 
 /**

@@ -22,6 +22,7 @@ import TextEntry from '@ux/text-entry';
 
 import IconButton from '@/app/[market]/develop/components/IconButton';
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils';
+import { useAppSsoStatus } from '@/hooks/useAppSsoStatus';
 import { usePublishSyncState } from '@/hooks/usePublishSyncState';
 import type { ShareToken } from '@/hooks/useShareTokens';
 import { ShareTokenError, useCreateShareToken, useShareTokens } from '@/hooks/useShareTokens';
@@ -454,6 +455,13 @@ export function ShareLinkContent({ appId, site, isMobile, open, location }: Shar
       enabled: !!appId && isPublished && open,
     });
 
+  // Auth-at-Edge: share links bypass the customer's IdP by design (anyone
+  // with the URL can view the preview without signing in). For ent apps
+  // where SSO is required, that contradicts the policy. The gate is on
+  // `ssoRequired` itself — NOT on `!ssoConfigured` — because even a fully
+  // configured SSO setup doesn't justify a no-auth share link.
+  const sso = useAppSsoStatus(appId);
+  const isDisabled = (!previewUrl && !isPublished) || sso.ssoRequired;
   const isPreviewError = isTokensError || createError;
   const isPreviewLoading = isShareLinksEnabled && !!appId && !isPreviewError && !activeToken;
 
@@ -691,7 +699,11 @@ export default function ShareLink({ location = 'develop' }: ShareLinkProps) {
   const isMobile = useDevelopPageStore((state) => state.isMobile);
   const previewUrl = site?.preview_url;
   const isPublished = hasBeenPublished(site);
-  const isDisabled = !previewUrl && !isPublished;
+  // Auth-at-Edge: same gate as the inner ShareLinkContent component — share
+  // links bypass the IdP by design, so ent apps where SSO is required must
+  // disable mints regardless of preview/publish state.
+  const sso = useAppSsoStatus(appId);
+  const isDisabled = (!previewUrl && !isPublished) || sso.ssoRequired;
 
   const logOpen = () => {
     try {
@@ -709,7 +721,9 @@ export default function ShareLink({ location = 'develop' }: ShareLinkProps) {
       <PopoverTrigger asChild>
         <IconButton
           icon={<LinkIcon className="size-2.5 rtl:scale-x-[-1]" />}
-          label={t('builder_share_link_tooltip')}
+          label={sso.ssoRequired
+            ? t('builder_share_link_disabled_sso_required')
+            : t('builder_share_link_tooltip')}
           showLabelWhenActive={false}
           type="button"
           onClick={() => {

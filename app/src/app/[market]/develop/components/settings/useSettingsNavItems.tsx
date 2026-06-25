@@ -63,6 +63,19 @@ export function useSettingsNavItems(): SettingsNavItem[] {
   // Show on mobile (no header tab there), or on desktop when the tab flag is off or unresolved —
   // fail open so users aren't locked out while Switchboard loads or if the flag is missing.
   const showDomainSettingsItem = isMobile || !isTopLevelDomainEnabled;
+
+  // Auth-at-Edge SSO entry visibility — driven entirely by the per-app
+  // `ssoRequired` flag from the upstream app GET (admin-controlled in
+  // mhp-core). No Switchboard guard: gate is data-driven per app, not a
+  // platform-wide rollout. Non-ent / non-required apps see no SSO entry.
+  // Show the SSO nav entry when SSO is either currently enforced (admin
+  // lock or customer-enabled override) OR the admin has explicitly enabled
+  // the customer-facing override (so the customer can flip it on). When
+  // neither is true, the panel has nothing to show and the nav entry stays
+  // hidden — non-ent apps render the same nav as today.
+  const isSsoNavVisible = useDevelopPageStore(
+    (state) => !!state.site?.ssoRequired || !!state.site?.ssoOverrideAllowed,
+  );
   // NOTE: the team / "Users" management UI was moved out of Settings into the
   // develop-header "Share access" popover (see ShareAccess.tsx). It is no longer
   // a Settings nav item — gating for it now lives in that component.
@@ -138,6 +151,16 @@ export function useSettingsNavItems(): SettingsNavItem[] {
       id: SettingsSection.GITHUB,
       label: t('builder_settings_nav_github'),
       icon: <CodeIcon />,
+      disabled: false,
+    }] : []),
+    // Auth-at-Edge SSO entry — visible when SSO is enforced or when the
+    // admin tier is 'optional' and the customer can flip the override.
+    // Non-ent apps render zero SSO surface (both flags absent), keeping
+    // the nav byte-identical to today.
+    ...(isSsoNavVisible ? [{
+      id: SettingsSection.SSO,
+      label: t('builder_settings_nav_sso'),
+      icon: <LockedIcon />,
       disabled: false,
     }] : []),
     ...(campaigns ? [{

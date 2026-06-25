@@ -344,7 +344,36 @@ func generatePublishEnvironment(app *store.App) map[string]string {
 		env["DEV_SUPERVISOR_PROXY_KEY_PATH"] = "/app/.ssl/key.pem"
 		env["DEV_SUPERVISOR_PUBLISH_SERVE_STATIC"] = "false"
 		env["DEV_SUPERVISOR_PUBLISH_INTERNAL_PORT"] = fmt.Sprintf("%d", publishInternalPort)
+
+		// IDP OAuth authentication for published enterprise apps.
+		// Uses OAuth 2.0 Authorization Code flow with PKCE.
+		// All IDP credentials and metadata are read from auth.json at the fixed
+		// convention path /alloc/hosting/auth.json (written by template.go at
+		// provisioning time). dev-supervisor probes this path unconditionally —
+		// no env var needed. Cookie encryption key is derived from client_secret.
+		idpClientID := getEnvOrDefault("DEV_SUPERVISOR_IDP_CLIENT_ID", "")
+		if idpClientID != "" {
+			env["DEV_SUPERVISOR_JWT_EXCLUDED_PATHS"] = "/airo/health,/airo/idp/callback"
+		}
 	}
+
+	// Auth-at-Edge SSO: no `IDP_*` env rendered here, matching the
+	// production contract per mhp-core
+	// `backends/hosting/docs/AuthAtEdge-PerAppSecrets-AuthClassification.md`
+	// §3.5.1 ("Chosen path — secret-driven enforcement, three rows, no
+	// template wiring"). Enforcement is secret-driven: dev-supervisor
+	// probes `${NOMAD_SECRETS_DIR}/hosting/auth.json` unconditionally,
+	// parses the `SSO_OAUTH_CONFIG` cache row (idpType, issuer, jwksUrl,
+	// expectedAudience, ssoRequired, clientIdKey, clientSecretKey), and
+	// derives the redirect URI per-request from the inbound `Host` header.
+	// Custom domains are handled by the same Host-header derivation — no
+	// per-app render-config plumbing needed.
+	//
+	// LCP previously rendered IDP_SSO_ENABLED / IDP_SSO_CONFIG_ID /
+	// IDP_TYPE / IDP_ISSUER / IDP_EXPECTED_AUDIENCE / IDP_LOCAL_DEV /
+	// AUTH_SECRETS_PATH / SSO_OAUTH_CONFIG_SECRET to match an earlier draft
+	// (§3.5) that was superseded. Those env vars are gone now so LCP doesn't
+	// drift from the production contract.
 
 	return env
 }

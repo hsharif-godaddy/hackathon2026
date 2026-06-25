@@ -34,6 +34,109 @@ const (
 	registerOverallTimeout = 3 * time.Minute
 )
 
+// SSOContext mirrors the four Auth-at-Edge fields mhp-core's airo-go surfaces
+// on the app GET response:
+//
+//	ssoRequired         — resolved bool (admin tier + per-app override collapsed)
+//	ssoConfigId         — bound enterprise SSO config row id
+//	ssoRequiredOverride — raw per-app override (true / false / null) — drives
+//	                      the customer-facing toggle's checked state
+//	ssoOverrideAllowed  — true iff admin tier is "optional" (customer can flip)
+type SSOContext struct {
+	Required         bool
+	ConfigID         string
+	RequiredOverride *bool
+	OverrideAllowed  bool
+}
+
+// resolveSSOContext is LCP's shim for what mhp-core's airo-go computes from
+// the three-tier admin lock (`'true' | 'false' | 'optional'` on the sub's
+// enterprise SSO config) + per-app `airo_apps.sso_required` override.
+//
+// Local dev knobs (AAB_DEV_SUBSCRIPTION_POLICY env):
+//   - "required"          → admin tier `'true'`: enforced, no toggle.
+//   - "optional"          → admin tier `'optional'`: customer toggle. Defaults
+//     to disabled; AAB_DEV_SSO_OVERRIDE=true|false can pre-set the override.
+//   - "optional_default_on" → same admin tier, but per-app override defaults
+//     to true. Useful for quickly testing the "customer enabled SSO" path.
+//   - "false" / "off" / "" → no SSO surface at all (non-ent persona).
+//
+// `ssoConfigId` is synthesized as a single deterministic value matching the
+// GD-internal `godaddy_shopper` config when SSO is in play.
+func resolveSSOContext() SSOContext {
+	const localConfigID = "local-sso-cfg-godaddy-shopper"
+
+	policy := os.Getenv("AAB_DEV_SUBSCRIPTION_POLICY")
+	switch policy {
+	case "required":
+		return SSOContext{Required: true, ConfigID: localConfigID, OverrideAllowed: false}
+	case "optional", "optional_default_off":
+		override := parseOptionalEnvBool(os.Getenv("AAB_DEV_SSO_OVERRIDE"))
+		// Resolved bool when admin tier is 'optional': honor the per-app
+		// override; NULL → false (the empty/cleared state). Matches
+		// airo-go's `ResolveSSORequired`.
+		required := override != nil && *override
+		return SSOContext{
+			Required:         required,
+			ConfigID:         localConfigID,
+			RequiredOverride: override,
+			OverrideAllowed:  true,
+		}
+	case "optional_default_on":
+		trueVal := true
+		return SSOContext{
+			Required:         true,
+			ConfigID:         localConfigID,
+			RequiredOverride: &trueVal,
+			OverrideAllowed:  true,
+		}
+	default:
+		return SSOContext{}
+	}
+}
+
+// parseOptionalEnvBool returns nil for missing/empty env (deferred), &true
+// for "true"/"1", &false for "false"/"0". Any other value returns nil so
+// invalid inputs fail closed rather than silently defaulting.
+func parseOptionalEnvBool(s string) *bool {
+	switch s {
+	case "true", "1":
+		t := true
+		return &t
+	case "false", "0":
+		f := false
+		return &f
+	default:
+		return nil
+	}
+}
+
+// resolveLocalOwnerProduct picks the `ownerProduct` value LCP emits on the
+// fake mgmt-airo app GET response. Mirrors what mhp-core puts on the
+// `system.ownerProduct` field — the AAB BFF lifts it to
+// `SiteInfo.ownerProduct` and the `useEnterpriseManaged()` hook keys off
+// the `'aab-ent-v1'` sentinel.
+//
+// Resolution order:
+//
+//  1. `AAB_DEV_OWNER_PRODUCT` env (explicit override; any string).
+//  2. If `AAB_DEV_SUBSCRIPTION_POLICY` is set (Phase-1 ent-persona
+//     simulator), default to `aab-ent-v1` — every ent surface that gates
+//     on `ssoRequired` should also see the ent product, otherwise the
+//     upgrade-button-hide logic stays dormant while SSO + share-gate +
+//     publish-gate fire.
+//  3. Otherwise: `AiroAppBuilder` (non-ent default, byte-identical to
+//     pre-ent local-dev behavior).
+func resolveLocalOwnerProduct() string {
+	if override := os.Getenv("AAB_DEV_OWNER_PRODUCT"); override != "" {
+		return override
+	}
+	if os.Getenv("AAB_DEV_SUBSCRIPTION_POLICY") != "" {
+		return "aab-ent-v1"
+	}
+	return "AiroAppBuilder"
+}
+
 var previewReadyHTTPClient = &http.Client{
 	Timeout: 2 * time.Second,
 	Transport: &http.Transport{
@@ -90,6 +193,12 @@ func appToResponse(app *store.App) map[string]any {
 		topLifecycleState = lifecycleState // local computation
 	}
 
+	// Auth-at-Edge SSO context. The four fields mirror mhp-core's
+	// airo-go-enriched app GET response. AAB UI gates Settings → SSO panel +
+	// publish/share UX off `ssoRequired`; the customer-facing override
+	// toggle is gated on `ssoOverrideAllowed`.
+	ssoCtx := resolveSSOContext()
+
 	resp := map[string]any{
 		"id":                    app.ID,
 		"subscriptionId":        app.SubscriptionID,
@@ -108,9 +217,24 @@ func appToResponse(app *store.App) map[string]any {
 		// The asymmetry mirrors the model: lifecycle has a meaningful default, digest doesn't.
 		"lifecycleState": topLifecycleState,
 		"system": map[string]any{
-			"ownerProduct": "AiroAppBuilder",
+			// Local-dev ent simulator. `AAB_DEV_OWNER_PRODUCT` is the explicit
+			// override; absent that, ent-persona testing (any value in
+			// `AAB_DEV_SUBSCRIPTION_POLICY`, which is how Phase-1 ent is
+			// simulated locally) flips the product to `aab-ent-v1` so the BFF's
+			// `useEnterpriseManaged()` hook and the agent-side
+			// `isEnterpriseManagedApp()` helper both see the ent sentinel.
+			// Without this shim, the upgrade-button-hide logic stays dormant
+			// in local dev even when the rest of the ent UI surfaces (SSO
+			// panel, share-link gate, publish-button SSO gate) are active.
+			"ownerProduct": resolveLocalOwnerProduct(),
 			"productId":    store.DefaultProductID,
 		},
+		"ssoRequired":        ssoCtx.Required,
+		"ssoConfigId":        ssoCtx.ConfigID,
+		"ssoOverrideAllowed": ssoCtx.OverrideAllowed,
+		// ssoRequiredOverride is tri-state — emit even when null so the BFF
+		// can distinguish "field present, no override" from "field absent."
+		"ssoRequiredOverride": ssoCtx.RequiredOverride,
 	}
 	if app.ImageDigest != "" {
 		resp["imageDigest"] = app.ImageDigest
@@ -902,4 +1026,113 @@ func (s *Server) attemptRegister(ctx context.Context, client *http.Client, url s
 	}
 
 	return nil
+}
+
+// PutAppSSORequired handles the Phase-2 customer-facing per-app SSO toggle.
+//
+// `PUT /api/airo/v1/subscriptions/:subId/apps/:appId/sso-required`
+//
+// Mirrors airo-go's `PutSSORequiredCustomer` (`backends/airo-go/internal/
+// presentation/http/handlers/app_handler_sso.go`):
+//
+//   - body: { ssoRequired: true | false | null } — tri-state. Missing key → 400.
+//   - admin tier must be `'optional'` for the override to apply. If LCP's
+//     `AAB_DEV_SUBSCRIPTION_POLICY` env is NOT `optional`/`optional_default_on`,
+//     return 409 OVERRIDE_LOCKED with `configSsoRequired` describing the lock.
+//   - on success, persist the new override into LCP env so subsequent app
+//     GETs reflect it without a process restart.
+//
+// LCP's persistence is process-memory only (no SQLite column for per-app
+// override). The override is propagated into a process-scoped env override
+// keyed by appID so subsequent calls to `resolveSSOContext` see the new
+// value. Restart → reverts to the env default.
+func (s *Server) PutAppSSORequired(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	subID := vars["subId"]
+	appID := vars["appId"]
+
+	var body struct {
+		// Encoded as `*bool`: nil for explicit JSON null, true/false otherwise.
+		// We use a raw json.RawMessage to distinguish missing key from null
+		// (Go's *bool decoder cannot tell those apart from an empty body).
+		SSORequired json.RawMessage `json:"ssoRequired"`
+	}
+	if err := readJSON(r, &body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if len(body.SSORequired) == 0 {
+		writeError(w, http.StatusBadRequest, "ssoRequired field is required")
+		return
+	}
+	var requested *bool
+	switch string(body.SSORequired) {
+	case "true":
+		t := true
+		requested = &t
+	case "false":
+		f := false
+		requested = &f
+	case "null":
+		requested = nil
+	default:
+		writeError(w, http.StatusBadRequest, "ssoRequired must be true, false, or null")
+		return
+	}
+
+	// Admin-tier lock check. Mirrors airo-go's 409 OVERRIDE_LOCKED response
+	// when admin has hard-locked SSO on/off and the customer tries to flip.
+	currentCtx := resolveSSOContext()
+	if !currentCtx.OverrideAllowed {
+		slog.Warn("sso-required.toggle-rejected.locked",
+			"app_id", appID, "sub_id", subID)
+		writeJSON(w, http.StatusConflict, map[string]any{
+			"error":             "OVERRIDE_LOCKED",
+			"configSsoRequired": adminTierForResponse(currentCtx),
+		})
+		return
+	}
+
+	// Persist override. LCP stores it as a process-env override keyed by
+	// the AAB_DEV_SSO_OVERRIDE env so a follow-on resolveSSOContext sees
+	// the new value. This is process-scoped — restart clears it. For
+	// per-app overrides on multiple apps we'd need a real store column;
+	// Phase 1 only exercises one ent app at a time.
+	switch {
+	case requested == nil:
+		_ = os.Unsetenv("AAB_DEV_SSO_OVERRIDE")
+	case *requested:
+		_ = os.Setenv("AAB_DEV_SSO_OVERRIDE", "true")
+	default:
+		_ = os.Setenv("AAB_DEV_SSO_OVERRIDE", "false")
+	}
+
+	newCtx := resolveSSOContext()
+	slog.Info("sso-required.toggle.success",
+		"app_id", appID,
+		"sub_id", subID,
+		"sso_config_id", newCtx.ConfigID,
+		"resolved", newCtx.Required,
+	)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"appId":               appID,
+		"ssoConfigId":         newCtx.ConfigID,
+		"ssoRequired":         newCtx.Required,
+		"ssoRequiredOverride": newCtx.RequiredOverride,
+		"ssoOverrideAllowed":  newCtx.OverrideAllowed,
+	})
+}
+
+// adminTierForResponse describes the admin lock in the 409 OVERRIDE_LOCKED
+// payload. AAB doesn't branch on this, but the airo-go contract surfaces it
+// for admin debugging.
+func adminTierForResponse(ctx SSOContext) string {
+	switch {
+	case ctx.OverrideAllowed:
+		return "optional"
+	case ctx.Required:
+		return "true"
+	default:
+		return "false"
+	}
 }

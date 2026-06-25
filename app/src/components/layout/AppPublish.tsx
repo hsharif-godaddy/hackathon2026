@@ -28,6 +28,7 @@ import { FEEDBACK_ID } from '@/components/feedback/utils';
 import PublishUpsellPopover from '@/components/layout/PublishUpsellPopover';
 import SeoQualityRegressionAlert from '@/components/layout/SeoQualityRegressionAlert';
 import { SWITCHBOARD_APPBUILDER_GO_LIVE_FEATURE } from '@/config/switchboard-flags';
+import { useAppSsoStatus } from '@/hooks/useAppSsoStatus';
 import { useChatTabs } from '@/hooks/useChatTabs';
 import { useDeploymentsQuery } from '@/hooks/useDeploymentsQuery';
 import { useDnsConflictGate } from '@/hooks/useDnsConflictGate';
@@ -332,6 +333,12 @@ export default function AppPublish({ location = 'develop' }: { location?: string
   const site = useSiteStore((state) => currentAppId ? state.getSite(currentAppId) : null);
   const { isBlocked: isPublishComplianceBlocked, blockReason: publishComplianceBlockReason } =
     usePublishComplianceGate(site, { enabled: publishFlagsEnabled });
+  // Auth-at-Edge SSO publish gate. Disables Publish for SSO-required apps
+  // until the customer has saved Client ID + Client Secret. UX layer only —
+  // hosting's publish prerequisite is the canonical authority. Hidden for
+  // non-ent / non-required apps (ssoRequired === false → not blocked).
+  const sso = useAppSsoStatus(currentAppId);
+  const isSsoBlocked = sso.ssoRequired && !sso.ssoConfigured;
   const fqdn = resolveSiteFqdn(site) || '';
   const { modal: dnsConflictModal, runGate } = useDnsConflictGate({ appId: currentAppId, site });
 
@@ -874,7 +881,8 @@ export default function AppPublish({ location = 'develop' }: { location?: string
     !isPublishButtonEnabled ||
     !currentAppId ||
     !site?.agent_url ||
-    isPublishComplianceBlocked;
+    isPublishComplianceBlocked ||
+    isSsoBlocked;
 
   // Determine which status alert to show (priority order)
   const getPublishStatusAlert = () => {
@@ -892,6 +900,14 @@ export default function AppPublish({ location = 'develop' }: { location?: string
           {publishComplianceBlockReason === PublishComplianceBlockReason.SiteSuspended
             ? t('builder_manageplan_apps_publish_blocked_suspended')
             : t('builder_manageplan_apps_publish_blocked_subscription')}
+        </Alert>
+      );
+    }
+
+    if (isSsoBlocked) {
+      return (
+        <Alert emphasis="critical">
+          {t('builder_publish_sso_required_blocked')}
         </Alert>
       );
     }
@@ -914,6 +930,15 @@ export default function AppPublish({ location = 'develop' }: { location?: string
       setPublishResult(null);
       return;
     }
+    // No early-return on `isSsoBlocked` here — by design, the popover MUST
+    // be allowed to open so `getPublishStatusAlert()` (line ~894) can render
+    // the "SSO required → configure in Settings → SSO" alert that tells the
+    // customer WHY publish is blocked. Same pattern as
+    // `isPublishComplianceBlocked` above: the gate is in the disabled state
+    // of the inner button and the alert inside the popover, not in a
+    // handler short-circuit. Server-side enforcement comes from the BFF +
+    // agents/ middleware + hosting publish prerequisite; a programmatic
+    // bypass of this UI handler still can't trigger an actual publish.
 
     logClickEvent(
       publishTriggerClickEid(location, isFirstTimePublishing),
@@ -968,6 +993,7 @@ export default function AppPublish({ location = 'develop' }: { location?: string
         <PopoverTrigger asChild>
           <Button
             id="tour-publish-button"
+            data-testid="publish-trigger-button"
             design='primary'
             size='sm'
             data-partial='componentAiro'

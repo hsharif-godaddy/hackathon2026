@@ -46,6 +46,7 @@ import {
   type AiroPurgeCacheResponse,
   type AiroRawSecretsResponse,
   type AiroReloadImagesResponse,
+  type AiroSetSsoRequiredResponse,
   type AiroSignupPayload,
   type AiroSignupResponse,
   type AiroSubscription,
@@ -1267,6 +1268,38 @@ export class AiroMgmtClient {
       `/api/airo/v1/subscriptions/${subscriptionId}/systems/${systemId}/apps/${appId}/secrets`,
       payload,
       { logEvent: 'mgmt-airo.update-secrets' }
+    );
+  }
+
+  /**
+   * Set the per-app Auth-at-Edge SSO override.
+   *
+   * `PUT /api/airo/v1/subscriptions/:subscriptionId/apps/:appId/sso-required`
+   *
+   * Honored only when the bound SSO config's admin tier is `'optional'`. The
+   * server enforces this and returns 409 OVERRIDE_LOCKED when the admin has
+   * hard-locked SSO on or off — AAB BFF maps that to its own 409 response.
+   *
+   * Note: this endpoint is OUTSIDE the `/systems/:sysId/apps/` namespace —
+   * airo-go derives the sub-to-app mapping via `airo_apps.sso_config_id ->
+   * airo_enterprise_sso_configs.subscription_id`, NOT through the airo_apps
+   * column (apps don't carry a direct subscriptionId column).
+   *
+   * @param subscriptionId - The customer's enterprise subscription id.
+   * @param appId          - The app to toggle SSO on/off for.
+   * @param ssoRequired    - `true` / `false` to set the override, `null` to
+   *                         clear it (defer to admin tier default).
+   */
+  async setAppSsoRequired(
+    subscriptionId: string,
+    appId: string,
+    ssoRequired: boolean | null,
+  ): Promise<AiroSetSsoRequiredResponse> {
+    return this.request<AiroSetSsoRequiredResponse>(
+      'PUT',
+      `/api/airo/v1/subscriptions/${subscriptionId}/apps/${appId}/sso-required`,
+      { ssoRequired },
+      { logEvent: 'mgmt-airo.set-app-sso-required' },
     );
   }
 

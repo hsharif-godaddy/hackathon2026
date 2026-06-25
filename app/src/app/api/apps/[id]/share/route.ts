@@ -177,9 +177,16 @@ export const GET = withCustomerAuth(async (
       ? (data.tokens as AgentsTokenEntry[])
       : [];
     const now = Date.now();
-    const scan = scanForRotation(tokenList, now);
+    // Auth-at-Edge: skip auto-rotation for ent apps where SSO is required.
+    // Existing tokens are still listed (revoke/history UI works), but no
+    // new tokens are minted via the silent rotation path. Explicit POST
+    // mints are blocked by the gate above.
+    const ssoRequired = site.ssoRequired === true;
+    const scan = ssoRequired ? { kind: 'sso_required' as const } : scanForRotation(tokenList, now);
     let rotated: RotatedToken | undefined;
-    if (scan.kind === 'noParseableCreatedAt') {
+    if (scan.kind === 'sso_required') {
+      logger.info('share.api.list.rotation.skippedSsoRequired', { appId });
+    } else if (scan.kind === 'noParseableCreatedAt') {
       // Active tokens exist but none have a usable createdAt — silent
       // rotation-disable scenario (older agents binary, schema drift,
       // proxy stripped the field). Without this log, rotation could
@@ -381,6 +388,25 @@ export const POST = withCustomerAuth(async (
 
     if (!site.agent_url) {
       return NextResponse.json({ error: 'App agent not available' }, { status: 503 });
+    }
+
+    // Auth-at-Edge SSO gate. Share links are public-by-design (anyone with
+    // the URL bypasses the IdP), which contradicts apps.sso_required. Block
+    // the mint here so we don't waste a round-trip to agents/, and the agent
+    // route's parallel gate is the defense-in-depth backstop. The check is
+    // on ssoRequired itself, not on configured/not — even fully configured
+    // SSO doesn't justify a no-auth share link.
+    if (site.ssoRequired === true) {
+      logger.info('share.api.create.blocked.sso_required', { appId });
+      return NextResponse.json(
+        {
+          error: 'sso_share_disabled',
+          details:
+            'Share links are disabled for apps in this organization because SSO is required. ' +
+            'Publish the app and use the published URL behind your IdP instead.',
+        },
+        { status: 403 },
+      );
     }
 
     logger.info('share.api.create.start', {

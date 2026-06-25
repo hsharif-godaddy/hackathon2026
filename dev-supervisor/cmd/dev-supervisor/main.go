@@ -453,6 +453,9 @@ func (s *Server) startHTTPProxyIfEnabled() error {
 		EnableShareTokens: s.config.EnableShareTokens,
 		AgentsBaseURL:     s.config.AgentsBaseURL,
 
+		// IDP OAuth authentication configuration (for published enterprise apps)
+		// IDP OAuth: auth.json path derived from NOMAD_SECRETS_DIR at runtime.
+
 		// Publish-container fallback HTML; nil in preview mode.
 		StatusPage: s.statusPage,
 	}

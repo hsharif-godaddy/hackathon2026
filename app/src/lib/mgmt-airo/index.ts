@@ -52,6 +52,7 @@ export type {
   AiroPublishAppResponse,
   AiroPurgeCacheResponse,
   AiroReloadImagesResponse,
+  AiroSetSsoRequiredResponse,
   AiroSignupPayload,
   AiroSignupResponse,
   AiroSubscription,

@@ -27,6 +27,7 @@ const CampaignsPanel = dynamic(() => import('@/app/[market]/develop/components/s
 const SecurityPanel = dynamic(() => import('@/app/[market]/develop/components/settings/SecurityPanel'), { loading: () => <PanelSkeleton /> })
 const SocialPanel = dynamic(() => import('@/app/[market]/develop/components/settings/social/SocialPanel'), { loading: () => <PanelSkeleton /> })
 const GitHubPanel = dynamic(() => import('@/app/[market]/develop/components/settings/GitHubPanel'), { loading: () => <PanelSkeleton /> })
+const SsoPanel = dynamic(() => import('@/app/[market]/develop/components/settings/SsoPanel'), { loading: () => <PanelSkeleton /> })
 const VisualScanPanel = dynamic(() => import('@/app/[market]/develop/components/settings/VisualScanPanel'), { loading: () => <PanelSkeleton /> })
 const AnalyticsPanel = dynamic(() => import('@/app/[market]/develop/components/settings/Analytics/AnalyticsPanel'), { loading: () => <SettingsLoadingState fullPage /> })
 
@@ -84,6 +85,12 @@ export default function SettingsView() {
       case SettingsSection.GITHUB:
         if (isGitHubEnabled === undefined) return sectionSkeleton;
         return isGitHubEnabled ? <GitHubPanel /> : null;
+      case SettingsSection.SSO:
+        // No switchboard guard — visibility is purely admin-controlled per app
+        // via mhp-core's `apps.sso_required` (Phase 1). The SsoPanel itself
+        // returns null when ssoRequired is false, so wiring it here is safe
+        // for non-ent apps too.
+        return <SsoPanel />;
       case SettingsSection.CAMPAIGNS:
         if (isCampaignsEnabled === undefined) return sectionSkeleton;
         return isCampaignsEnabled ? <CampaignsPanel /> : null;

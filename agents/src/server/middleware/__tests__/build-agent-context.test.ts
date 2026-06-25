@@ -60,9 +60,43 @@ describe('buildAgentContext', function suite() {
       logoBrandColorsEnabled: false,
       purchaseIntentClassifierEnabled: false,
       skillSuggestionsEnabled: false,
+      ssoRequired: false,
+      ssoConfigured: false,
+      // ownerProduct defaults to '' when the JWT mints without a SiteInfo
+      // ownerProduct value (non-V2 sites or test fixtures that omit it).
+      // The agent treats empty as "unknown" — same fail-open semantics as
+      // ssoRequired=false.
+      ownerProduct: '',
       exp: 1700000000,
       iat: 1699999000,
     });
+  });
+
+  it('maps the SSO claims when they arrive as true (positive case for Auth-at-Edge)', function ssoPositive() {
+    // The `fullClaims` happy-path test above omits the SSO keys, so the
+    // resulting context defaults them to false. Without this positive case,
+    // a regression that hard-coded ssoRequired/ssoConfigured to false would
+    // not be caught — the publish + share gates would silently no-op for
+    // every ent app.
+    const ctx = buildAgentContext({
+      ...fullClaims,
+      ssoRequired: true,
+      ssoConfigured: true,
+    });
+    expect(ctx.ssoRequired).toBe(true);
+    expect(ctx.ssoConfigured).toBe(true);
+  });
+
+  it('maps ownerProduct when present (positive case for enterprise-managed apps)', function ownerProductPositive() {
+    // Same defense-in-depth logic as the SSO positive case above. A
+    // regression that hard-coded ownerProduct to '' would not be caught,
+    // and the publish-tool's enterprise-managed branch would silently
+    // suggest "upgrade your plan" to every ent customer.
+    const ctx = buildAgentContext({
+      ...fullClaims,
+      ownerProduct: 'aab-ent-v1',
+    });
+    expect(ctx.ownerProduct).toBe('aab-ent-v1');
   });
 
   it('maps string visitorId and trafficSessionId', function trafficClaims() {

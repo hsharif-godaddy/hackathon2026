@@ -33,6 +33,7 @@ import { checkPaywallEligibility, PaywallAction } from '@/lib/paywall/core';
 import { ServerPaywallProvider } from '@/lib/paywall/server-provider';
 import { isPaidPlanForGrants, PaywallDenialReason } from '@/lib/paywall/shared';
 import { logger } from '@/lib/request-context';
+import { resolveSsoPointerNames } from '@/lib/sso/pointer-names';
 import { checkSwitchboardFlag, checkSwitchboardValue } from '@/lib/switchboard/server';
 import { getPlanFromSubscription } from '@/utils/credits';
 import { trafficPathwaySessionId } from '@/utils/traffic-signals';
@@ -738,6 +739,42 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       return fgaDeny;
     }
 
+    // Auth-at-Edge SSO claims — bake at mint time so the agents/ middleware
+    // can refuse direct publishes without a per-request HTTP call.
+    //   ssoRequired = the app's apps.sso_required flag from mhp-core (admin-
+    //                 controlled). Read from resolvedSiteInfo (already in
+    //                 hand from the cache-hit/cache-miss paths above).
+    //   ssoConfigured = both credential pointer rows present in hosting's
+    //                   auth-class group. Looked up via airo-go's customer-
+    //                   proxy GET secrets (mhp-core PR #738 confirmed the
+    //                   auth group surfaces via passthrough). Skipped when
+    //                   ssoRequired is false (no value to gate on).
+    // Both fail safe to false on any error — keeps non-ent flows unaffected
+    // and matches the canonical hosting publish gate's defense posture.
+    const ssoRequired = resolvedSiteInfo?.ssoRequired === true;
+    let ssoConfigured = false;
+    if (ssoRequired && resolvedSiteInfo?.subscription_id && resolvedSiteInfo?.system_id) {
+      try {
+        const { clientIdSecretName, clientSecretSecretName } = resolveSsoPointerNames(resolvedSiteInfo);
+        const baseUrl = process.env.MGMT_AIRO_BASE_URL || 'https://mgmt.nstk.net';
+        const mgmtClient = new AiroMgmtClient({ baseUrl, jwt: authContext.jwt || '' });
+        const raw = await mgmtClient.getSecrets(resolvedSiteInfo.subscription_id, resolvedSiteInfo.system_id, body.siteId);
+        const authSecrets = raw.auth?.secrets ?? [];
+        const names = new Set<string>(
+          authSecrets
+            .map((s) => (typeof s.name === 'string' ? s.name.toLowerCase() : undefined))
+            .filter((n): n is string => typeof n === 'string'),
+        );
+        ssoConfigured = names.has(clientIdSecretName.toLowerCase()) && names.has(clientSecretSecretName.toLowerCase());
+      } catch (err) {
+        logger.warn('agent-token.sso-config-presence.fetch-failed', {
+          siteId: body.siteId,
+          customerId: user.customerId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
     const jwtStart = Date.now();
     const jwtService = getJWTService();
     const product = body.owningProduct || AIRO_OWNER_PRODUCTS.AIRO_APP_BUILDER;
@@ -807,6 +844,12 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       logoBrandColorsEnabled,
       purchaseIntentClassifierEnabled,
       skillSuggestionsEnabled,
+      ssoRequired,
+      ssoConfigured,
+      // Carry SiteInfo.ownerProduct into the agent JWT so the agent can
+      // detect enterprise-managed apps (`aab-ent-v1`) and suppress
+      // upgrade-plan copy in chat. Empty when SiteInfo omitted it.
+      ownerProduct: resolvedSiteInfo?.ownerProduct,
     };
 
     const result = body.expiresInSeconds

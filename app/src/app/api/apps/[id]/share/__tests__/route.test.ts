@@ -1220,3 +1220,104 @@ describe('GET /api/apps/[id]/share — upstream parse failures', () => {
     expect(parseErrCall![1]).toMatchObject({ appId: APP_ID, status: 200 });
   });
 });
+
+describe('Auth-at-Edge SSO gates', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    __clearRotationCooldownForTesting();
+    mockCheckSwitchboardFlag.mockResolvedValue(true);
+  });
+
+  it('POST returns 403 sso_share_disabled for ent apps and never calls agents', async () => {
+    // Share links bypass the IdP entirely — for ent apps where SSO is
+    // required, that contradicts the policy. The BFF must reject before
+    // any agent-fetch happens (which would mint a public token).
+    mockGetSite.mockResolvedValue({
+      agent_url: 'https://agent.test',
+      ssoRequired: true,
+    });
+
+    const res = await POST(
+      makeRequest('POST', JSON.stringify({ expiresInDays: 7 })),
+      { params },
+    );
+
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body.error).toBe('sso_share_disabled');
+    expect(mockAgentFetch).not.toHaveBeenCalled();
+    const blockedLog = mockLogger.info.mock.calls.find(
+      ([event]) => event === 'share.api.create.blocked.sso_required',
+    );
+    expect(blockedLog).toBeDefined();
+  });
+
+  it('GET skips auto-rotation for ent apps but still lists existing tokens', async () => {
+    // For ent apps, the BFF must still return previously-minted tokens (the
+    // UI may surface a revoke / history affordance) but must NOT silently
+    // mint new ones via the freshness-rotation path, since each mint is a
+    // 7-day no-auth bearer.
+    mockGetSite.mockResolvedValue({
+      agent_url: 'https://agent.test',
+      ssoRequired: true,
+    });
+    const existingToken = {
+      token: 'tok-existing',
+      appId: APP_ID,
+      shareUrl: 'https://share/old',
+      createdAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000 + 60_000).toISOString(),
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      firstUsedAt: null,
+    };
+    mockAgentFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ tokens: [existingToken] }),
+    });
+
+    const res = await GET(makeRequest('GET'), { params });
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.tokens).toHaveLength(1);
+    expect(body.tokens[0].token).toBe('tok-existing');
+
+    // Critical: rotation must NOT fire. There should be exactly ONE call to
+    // agents — the GET list. A second call would be the silent rotation POST.
+    expect(mockAgentFetch).toHaveBeenCalledTimes(1);
+    const skipLog = mockLogger.info.mock.calls.find(
+      ([event]) => event === 'share.api.list.rotation.skippedSsoRequired',
+    );
+    expect(skipLog).toBeDefined();
+  });
+
+  it('POST allows non-ent apps to mint share tokens normally (regression guard)', async () => {
+    // Belt-and-suspenders: confirm the SSO gate doesn't accidentally fire
+    // for non-ent apps (ssoRequired absent / false). A refactor that
+    // inverted the check would break every existing AAB customer.
+    mockGetSite.mockResolvedValue({
+      agent_url: 'https://agent.test',
+      ssoRequired: false,
+    });
+    const newToken = {
+      token: 'tok-new',
+      appId: APP_ID,
+      shareUrl: 'https://share/new',
+      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+    };
+    mockAgentFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => newToken,
+    });
+
+    const res = await POST(
+      makeRequest('POST', JSON.stringify({ expiresInDays: 7 })),
+      { params },
+    );
+
+    // Non-ent: BFF must NOT short-circuit; agent-fetch IS called.
+    expect(res.status).toBeLessThan(400);
+    expect(mockAgentFetch).toHaveBeenCalledTimes(1);
+  });
+});

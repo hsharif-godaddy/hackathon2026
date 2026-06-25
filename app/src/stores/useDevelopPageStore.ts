@@ -427,6 +427,18 @@ interface DevelopPageStore {
   setIsMobile: (isMobile: boolean) => void
   setIsVersionHistoryOpen: (open: boolean) => void
   setIsPreviewVisible: (visible: boolean) => void
+  /**
+   * Patch only the per-app SSO fields on `site` after a successful toggle
+   * PUT or admin-side change. Keeps every other field intact (much
+   * narrower than a full site re-fetch and avoids losing in-progress UI
+   * state). No-op when `site` is null. Used by `SsoPanel` after the
+   * customer flips the Phase-2 override.
+   */
+  patchSiteSsoFields: (fields: {
+    ssoRequired?: boolean;
+    ssoRequiredOverride?: boolean | null;
+    ssoOverrideAllowed?: boolean;
+  }) => void
   toggleMobileInlineEdit: () => void
   // Tab setters
   setActiveChatTab: (tab: ChatTab) => void
@@ -786,6 +798,19 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
       }
     },
     setIsPreviewVisible: (visible) => set((state) => { state.isPreviewVisible = visible }),
+
+    patchSiteSsoFields: (fields) => set((state) => {
+      if (!state.site) return;
+      if (Object.prototype.hasOwnProperty.call(fields, 'ssoRequired')) {
+        state.site.ssoRequired = fields.ssoRequired;
+      }
+      if (Object.prototype.hasOwnProperty.call(fields, 'ssoRequiredOverride')) {
+        state.site.ssoRequiredOverride = fields.ssoRequiredOverride;
+      }
+      if (Object.prototype.hasOwnProperty.call(fields, 'ssoOverrideAllowed')) {
+        state.site.ssoOverrideAllowed = fields.ssoOverrideAllowed;
+      }
+    }),
 
     toggleMobileInlineEdit: () => {
       const newState = !get().isMobileInlineEditActive

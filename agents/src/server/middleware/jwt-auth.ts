@@ -69,6 +69,18 @@ export interface AgentContext {
   asmDualWriteEnabled?: boolean; // Mirror SQLite writes to ASM (switchboard: appbuilder-asm-dual-write)
   purchaseIntentClassifierEnabled?: boolean; // Enable LLM purchase-intent classifier on credit=0 402 path (switchboard: appbuilder-purchase-intent-classifier)
   skillSuggestionsEnabled?: boolean; // Merge skill-reported pending capabilities into "Continue building" next-actions (switchboard: appbuilder-skill-suggestions)
+  ssoRequired?: boolean; // Auth-at-Edge: app's apps.sso_required flag (admin-controlled in mhp-core)
+  // BFF UX gate: both credential pointer rows present in airo-go's customer-proxy auth group
+  // (names resolved per-config from SiteInfo.clientIdSecretName/clientSecretSecretName, mhp-core PR #738).
+  // NOT a check on the SSO_OAUTH_CONFIG cache row; NOT the canonical publish gate.
+  // See agents/src/server/middleware/require-sso-configured.ts for the full contract.
+  ssoConfigured?: boolean;
+  // Raw `ownerProduct` from SiteInfo. Agent uses this to decide whether
+  // upgrade-plan suggestions are actionable: enterprise-managed apps
+  // (`ownerProduct === 'aab-ent-v1'`) have plan changes owned by the
+  // enterprise admin, not the customer chatting with the agent. Empty
+  // string when unknown.
+  ownerProduct?: string;
   exp: number;
   iat: number;
 }
@@ -120,6 +132,9 @@ export function buildAgentContext(raw: Record<string, unknown>): AgentContext {
     asmDualWriteEnabled: (raw.asmDualWriteEnabled as boolean) ?? false,
     purchaseIntentClassifierEnabled: (raw.purchaseIntentClassifierEnabled as boolean) ?? false,
     skillSuggestionsEnabled: (raw.skillSuggestionsEnabled as boolean) ?? false,
+    ssoRequired: (raw.ssoRequired as boolean) ?? false,
+    ssoConfigured: (raw.ssoConfigured as boolean) ?? false,
+    ownerProduct: (raw.ownerProduct as string) || '',
     exp: (raw.exp as number) || 0,
     iat: (raw.iat as number) || 0,
   };

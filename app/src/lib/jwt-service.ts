@@ -50,6 +50,20 @@ export interface CreateTokenOptions {
   logoBrandColorsEnabled?: boolean; // Send structured brand colors to the logo API (switchboard: appbuilder-logo-brand-colors)
   purchaseIntentClassifierEnabled?: boolean; // Enable LLM purchase-intent classifier on credit=0 402 path (switchboard: appbuilder-purchase-intent-classifier)
   skillSuggestionsEnabled?: boolean; // Merge skill-reported pending capabilities into "Continue building" next-actions (switchboard: appbuilder-skill-suggestions)
+  ssoRequired?: boolean; // Auth-at-Edge: app's apps.sso_required flag (admin-controlled in mhp-core)
+  // BFF UX gate: both credential pointer rows present in airo-go's customer-proxy auth group
+  // (names resolved per-config from SiteInfo.clientIdSecretName/clientSecretSecretName, mhp-core PR #738).
+  // NOT a check on the SSO_OAUTH_CONFIG cache row; NOT the canonical publish gate (that lives
+  // at hosting + dev-supervisor at request time). See app/src/lib/jwt-config.ts for the full contract.
+  ssoConfigured?: boolean;
+  // Raw `ownerProduct` from SiteInfo. The agent uses this to decide whether
+  // upgrade-plan suggestions are actionable: enterprise-managed apps
+  // (`ownerProduct === 'aab-ent-v1'`) have plan changes owned by the
+  // enterprise admin, not the customer chatting with the agent. When set
+  // to the ent value, the agent must replace "upgrade your plan" copy
+  // with "contact your enterprise admin" guidance. See
+  // `agents/src/server/middleware/jwt-auth.ts` for the agent-side mirror.
+  ownerProduct?: string;
 }
 
 export interface TokenResult {
@@ -226,6 +240,12 @@ export class JWTService {
       logoBrandColorsEnabled: options.logoBrandColorsEnabled ?? false,
       purchaseIntentClassifierEnabled: options.purchaseIntentClassifierEnabled ?? false,
       skillSuggestionsEnabled: options.skillSuggestionsEnabled ?? false,
+      ssoRequired: options.ssoRequired ?? false,
+      ssoConfigured: options.ssoConfigured ?? false,
+      // Empty string when unknown (non-V2 site, or upstream omitted it).
+      // Agent reads the literal "aab-ent-v1" sentinel to suppress upgrade-
+      // plan copy in chat.
+      ownerProduct: options.ownerProduct ?? '',
     };
 
     const headerBase64 = Buffer.from(JSON.stringify(header)).toString('base64url');
@@ -287,7 +307,7 @@ export class JWTService {
    */
   private getCacheKey(options: CreateTokenOptions): string {
     const authType = options.authType || 'basic';
-    return `${options.siteId}:${options.customerId || ''}:${options.canDownload}:${options.canPublish}:${options.canPurchaseDomain ?? false}:${authType}:${options.useTestBudget ?? false}:${options.budgetServiceEnabled ?? false}:${options.subscriptionId || ''}:${options.enableAssessmentAgent ?? false}:${options.enableAssessmentOverride ?? false}:${options.assessmentClassifier || ''}:${options.product || 'AiroAppBuilder'}:${options.modelOverride || ''}:${options.modelSelectorEnabled ?? false}:${options.agentProfile || ''}:${options.agentProfileSelectorEnabled ?? false}:${options.costAttributionDryRun ?? false}:${options.bmsBudgetId || ''}:${options.useAtlasCrawler ?? false}:${options.rebuildIntakeFormEnabled ?? false}:${options.rebuildSourceImagesEnabled ?? false}:${options.debugStatsEnabled ?? false}:${options.market || ''}:${options.fqdn || ''}:${options.marketingCampaignsEnabled ?? false}:${options.googleBusinessProfileSyncEnabled ?? false}:${options.asmDualWriteEnabled ?? false}:${options.logoBrandColorsEnabled ?? false}:${options.purchaseIntentClassifierEnabled ?? false}:${options.skillSuggestionsEnabled ?? false}`;
+    return `${options.siteId}:${options.customerId || ''}:${options.canDownload}:${options.canPublish}:${options.canPurchaseDomain ?? false}:${authType}:${options.useTestBudget ?? false}:${options.budgetServiceEnabled ?? false}:${options.subscriptionId || ''}:${options.enableAssessmentAgent ?? false}:${options.enableAssessmentOverride ?? false}:${options.assessmentClassifier || ''}:${options.product || 'AiroAppBuilder'}:${options.modelOverride || ''}:${options.modelSelectorEnabled ?? false}:${options.agentProfile || ''}:${options.agentProfileSelectorEnabled ?? false}:${options.costAttributionDryRun ?? false}:${options.bmsBudgetId || ''}:${options.useAtlasCrawler ?? false}:${options.rebuildIntakeFormEnabled ?? false}:${options.rebuildSourceImagesEnabled ?? false}:${options.debugStatsEnabled ?? false}:${options.market || ''}:${options.fqdn || ''}:${options.marketingCampaignsEnabled ?? false}:${options.googleBusinessProfileSyncEnabled ?? false}:${options.asmDualWriteEnabled ?? false}:${options.logoBrandColorsEnabled ?? false}:${options.purchaseIntentClassifierEnabled ?? false}:${options.skillSuggestionsEnabled ?? false}:${options.ssoRequired ?? false}:${options.ssoConfigured ?? false}:${options.ownerProduct ?? ''}`;
   }
 
   /**

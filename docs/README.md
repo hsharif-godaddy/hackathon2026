@@ -26,6 +26,7 @@
 - [oauth-architecture.md](oauth-architecture.md) — OAuth PKCE and client credentials flows
 - [ui-agents-authentication-architecture.md](ui-agents-authentication-architecture.md) — JWT auth between UI and agents
 - [authz-options.md](authz-options.md) — PaaS product-level authorization options
+- [airo-enterprise/](airo-enterprise/README.md) — Enterprise feature set: per-app SSO, member identity, quotas
 
 ## Operations
 

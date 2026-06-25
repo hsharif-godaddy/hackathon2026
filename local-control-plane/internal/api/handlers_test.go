@@ -329,6 +329,221 @@ func TestUpdateSecretsHandler(t *testing.T) {
 	}
 }
 
+func TestUpdateSecretsAuthClassWritesToAuthVariant(t *testing.T) {
+	// SSO_OAUTH_CONFIG with auth: true + systemManaged: true is the
+	// reserved-name path for Auth-at-Edge per-app OAuth credentials.
+	// Routes to the "auth" sentinel variant — read by dev-supervisor in
+	// production, never injected into the customer app's environment.
+	srv := newTestServer(t)
+	authTrue := true
+	body, _ := json.Marshal(map[string]any{
+		"operations": []map[string]any{
+			{
+				"type": "upsert",
+				"secret": map[string]any{
+					"name":          "SSO_OAUTH_CONFIG",
+					"systemManaged": true,
+					"auth":          authTrue,
+					"value": map[string]any{
+						"local-sso-cfg-godaddy-shopper": map[string]any{
+							"clientId":     "0oa1ab2cd3ef4",
+							"clientSecret": "very-secret",
+						},
+					},
+				},
+			},
+		},
+	})
+
+	req := httptest.NewRequest("POST", "/apps/app1/secrets", bytes.NewReader(body))
+	req = setMuxVars(req, map[string]string{"appId": "app1"})
+	w := httptest.NewRecorder()
+	srv.UpdateSecrets(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	authVariant := "auth"
+	secrets, err := srv.DB.GetSecrets("app1", &authVariant)
+	if err != nil {
+		t.Fatalf("get auth secrets: %v", err)
+	}
+	if len(secrets) != 1 || secrets[0].Name != "SSO_OAUTH_CONFIG" {
+		t.Fatalf("expected SSO_OAUTH_CONFIG in auth variant, got %+v", secrets)
+	}
+}
+
+func TestUpdateSecretsAuthClassRejectsNonReservedNonPointerName(t *testing.T) {
+	// auth: true on a name that is neither the SSO_OAUTH_CONFIG cache row
+	// NOR a known pointer key (GD_SSO_OAUTH_CLIENT_ID/SECRET) is rejected.
+	// Mirrors mhp-core's ValidateAuthClassWrite — would otherwise be a
+	// "self-wedge" (present in auth.json but unreachable by dev-supervisor
+	// since no cache-row pointer references it).
+	srv := newTestServer(t)
+	authTrue := true
+	body, _ := json.Marshal(map[string]any{
+		"operations": []map[string]any{
+			{
+				"type": "upsert",
+				"secret": map[string]any{
+					"name":          "MY_FAKE_AUTH",
+					"systemManaged": true,
+					"auth":          authTrue,
+					"value":         "x",
+				},
+			},
+		},
+	})
+	req := httptest.NewRequest("POST", "/apps/app1/secrets", bytes.NewReader(body))
+	req = setMuxVars(req, map[string]string{"appId": "app1"})
+	w := httptest.NewRecorder()
+	srv.UpdateSecrets(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500 (all ops failed), got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestUpdateSecretsAuthClassAcceptsPointerRowWrite(t *testing.T) {
+	// The Phase-1 AAB BFF write path: two pointer-named rows
+	// (GD_SSO_OAUTH_CLIENT_ID / GD_SSO_OAUTH_CLIENT_SECRET) with
+	// auth:true and systemManaged:false. Each value is a bare string
+	// (the customer's credential), NOT a JSON blob.
+	srv := newTestServer(t)
+	authTrue := true
+	body, _ := json.Marshal(map[string]any{
+		"operations": []map[string]any{
+			{
+				"type": "upsert",
+				"secret": map[string]any{
+					"name":          "GD_SSO_OAUTH_CLIENT_ID",
+					"auth":          authTrue,
+					"systemManaged": false,
+					"value":         "0oa1ab2cd3ef4",
+				},
+			},
+			{
+				"type": "upsert",
+				"secret": map[string]any{
+					"name":          "GD_SSO_OAUTH_CLIENT_SECRET",
+					"auth":          authTrue,
+					"systemManaged": false,
+					"value":         "very-secret",
+				},
+			},
+		},
+	})
+	req := httptest.NewRequest("POST", "/apps/app1/secrets", bytes.NewReader(body))
+	req = setMuxVars(req, map[string]string{"appId": "app1"})
+	w := httptest.NewRecorder()
+	srv.UpdateSecrets(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	authVariant := "auth"
+	secrets, err := srv.DB.GetSecrets("app1", &authVariant)
+	if err != nil {
+		t.Fatalf("get auth secrets: %v", err)
+	}
+	if len(secrets) != 2 {
+		t.Fatalf("expected 2 auth secrets, got %d", len(secrets))
+	}
+}
+
+func TestUpdateSecretsAuthClassRejectsPointerRowSystemManaged(t *testing.T) {
+	// Pointer-named rows MUST NOT carry systemManaged:true — mirrors
+	// mhp-core's ValidateCustomerAuthRestrictions. A systemManaged:true
+	// pointer row would self-wedge: subsequent customer writes would
+	// mismatch on the systemManaged flag.
+	srv := newTestServer(t)
+	authTrue := true
+	body, _ := json.Marshal(map[string]any{
+		"operations": []map[string]any{
+			{
+				"type": "upsert",
+				"secret": map[string]any{
+					"name":          "GD_SSO_OAUTH_CLIENT_ID",
+					"auth":          authTrue,
+					"systemManaged": true,
+					"value":         "should-be-rejected",
+				},
+			},
+		},
+	})
+	req := httptest.NewRequest("POST", "/apps/app1/secrets", bytes.NewReader(body))
+	req = setMuxVars(req, map[string]string{"appId": "app1"})
+	w := httptest.NewRecorder()
+	srv.UpdateSecrets(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500 (all ops failed), got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestUpdateSecretsAuthClassRequiresSystemManaged(t *testing.T) {
+	// SSO_OAUTH_CONFIG must carry systemManaged: true; without it the
+	// reserved-name guard rejects the write.
+	srv := newTestServer(t)
+	authTrue := true
+	body, _ := json.Marshal(map[string]any{
+		"operations": []map[string]any{
+			{
+				"type": "upsert",
+				"secret": map[string]any{
+					"name":  "SSO_OAUTH_CONFIG",
+					"auth":  authTrue,
+					"value": map[string]any{"k": "v"},
+				},
+			},
+		},
+	})
+	req := httptest.NewRequest("POST", "/apps/app1/secrets", bytes.NewReader(body))
+	req = setMuxVars(req, map[string]string{"appId": "app1"})
+	w := httptest.NewRecorder()
+	srv.UpdateSecrets(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestGetSecretsExposesAuthGroupWithoutValue(t *testing.T) {
+	// Auth-class reads must NOT return secret VALUES — mirrors hosting's
+	// invariant. The BFF only needs presence (name) to resolve the publish
+	// gate's ssoConfigured claim.
+	srv := newTestServer(t)
+	srv.DB.UpsertSecret("app1", "auth", "SSO_OAUTH_CONFIG", `{"x":"y"}`, true)
+
+	req := httptest.NewRequest("GET", "/apps/app1/secrets", nil)
+	req = setMuxVars(req, map[string]string{"appId": "app1"})
+	w := httptest.NewRecorder()
+	srv.GetSecrets(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var resp map[string]any
+	decodeJSON(t, w, &resp)
+	authGrp, ok := resp["auth"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected auth group in response, got %v", resp)
+	}
+	secrets, _ := authGrp["secrets"].([]any)
+	if len(secrets) != 1 {
+		t.Fatalf("expected 1 auth secret, got %d", len(secrets))
+	}
+	entry := secrets[0].(map[string]any)
+	if entry["name"] != "SSO_OAUTH_CONFIG" {
+		t.Errorf("wrong name: %v", entry["name"])
+	}
+	if _, hasValue := entry["value"]; hasValue {
+		t.Error("auth-class GET response must not include value")
+	}
+}
+
 func TestUpdateSecretsHandlerDelete(t *testing.T) {
 	srv := newTestServer(t)
 
@@ -1095,6 +1310,161 @@ func TestAppToResponse(t *testing.T) {
 	system := resp["system"].(map[string]any)
 	if system["productId"] != store.DefaultProductID {
 		t.Errorf("expected productId %s, got %v", store.DefaultProductID, system["productId"])
+	}
+}
+
+// Pins the Auth-at-Edge SSO surface on the app GET response. With
+// AAB_DEV_SUBSCRIPTION_POLICY=required, appToResponse emits ssoRequired:true
+// + a stable ssoConfigId so the BFF can light up the SSO panel + JWT claims.
+// The env-driven path lets a single dev process pivot between ent and
+// non-ent personas without a code change.
+func TestAppToResponse_SSORequiredFromEnv(t *testing.T) {
+	t.Setenv("AAB_DEV_SUBSCRIPTION_POLICY", "required")
+	app := &store.App{ID: "test-app", Status: "active"}
+
+	resp := appToResponse(app)
+
+	if resp["ssoRequired"] != true {
+		t.Errorf("ssoRequired: want true, got %v", resp["ssoRequired"])
+	}
+	cfgID, _ := resp["ssoConfigId"].(string)
+	if cfgID == "" {
+		t.Errorf("ssoConfigId: want non-empty string, got %v", resp["ssoConfigId"])
+	}
+}
+
+// Default (env unset) must keep the response shape byte-identical to the
+// pre-SSO contract for non-ent customers. A regression here would break
+// every existing AAB customer.
+func TestAppToResponse_SSORequiredDefault(t *testing.T) {
+	t.Setenv("AAB_DEV_SUBSCRIPTION_POLICY", "")
+	app := &store.App{ID: "test-app", Status: "active"}
+
+	resp := appToResponse(app)
+
+	if got := resp["ssoRequired"]; got != false {
+		t.Errorf("ssoRequired: want false, got %v", got)
+	}
+	if got, _ := resp["ssoConfigId"].(string); got != "" {
+		t.Errorf("ssoConfigId: want empty string, got %v", got)
+	}
+	if got := resp["ssoOverrideAllowed"]; got != false {
+		t.Errorf("ssoOverrideAllowed: want false, got %v", got)
+	}
+}
+
+// Phase-2: admin tier 'optional' surfaces ssoOverrideAllowed=true and starts
+// with ssoRequired=false (override absent → defer to admin default, which
+// for 'optional' resolves to false unless the customer opts in).
+func TestAppToResponse_SSOOptionalPersona(t *testing.T) {
+	t.Setenv("AAB_DEV_SUBSCRIPTION_POLICY", "optional")
+	t.Setenv("AAB_DEV_SSO_OVERRIDE", "")
+	app := &store.App{ID: "test-app", Status: "active"}
+
+	resp := appToResponse(app)
+
+	if got := resp["ssoOverrideAllowed"]; got != true {
+		t.Errorf("ssoOverrideAllowed: want true, got %v", got)
+	}
+	if got := resp["ssoRequired"]; got != false {
+		t.Errorf("ssoRequired: want false (no override yet), got %v", got)
+	}
+	// `*bool(nil)` boxed into an `any` compares != bare nil under Go's
+	// interface rules, so cast back to the underlying type for the check.
+	overridePtr, _ := resp["ssoRequiredOverride"].(*bool)
+	if overridePtr != nil {
+		t.Errorf("ssoRequiredOverride: want typed nil (cleared override), got %v", *overridePtr)
+	}
+}
+
+// Phase-2: customer enables the override via AAB_DEV_SSO_OVERRIDE=true.
+// Resolved ssoRequired flips to true.
+func TestAppToResponse_SSOOptionalWithCustomerOverride(t *testing.T) {
+	t.Setenv("AAB_DEV_SUBSCRIPTION_POLICY", "optional")
+	t.Setenv("AAB_DEV_SSO_OVERRIDE", "true")
+	app := &store.App{ID: "test-app", Status: "active"}
+
+	resp := appToResponse(app)
+
+	if got := resp["ssoOverrideAllowed"]; got != true {
+		t.Errorf("ssoOverrideAllowed: want true, got %v", got)
+	}
+	if got := resp["ssoRequired"]; got != true {
+		t.Errorf("ssoRequired: want true (override enabled), got %v", got)
+	}
+	overridePtr, _ := resp["ssoRequiredOverride"].(*bool)
+	if overridePtr == nil || *overridePtr != true {
+		t.Errorf("ssoRequiredOverride: want &true, got %v", resp["ssoRequiredOverride"])
+	}
+}
+
+// The customer-facing toggle: PutAppSSORequired accepts the tri-state body
+// and flips the resolved SSO requirement.
+func TestPutAppSSORequired_FlipsOverride(t *testing.T) {
+	t.Setenv("AAB_DEV_SUBSCRIPTION_POLICY", "optional")
+	t.Setenv("AAB_DEV_SSO_OVERRIDE", "")
+	srv := newTestServer(t)
+
+	body, _ := json.Marshal(map[string]any{"ssoRequired": true})
+	req := httptest.NewRequest("PUT",
+		"/api/airo/v1/subscriptions/sub-1/apps/app-1/sso-required",
+		bytes.NewReader(body))
+	req = setMuxVars(req, map[string]string{"subId": "sub-1", "appId": "app-1"})
+	w := httptest.NewRecorder()
+	srv.PutAppSSORequired(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var resp map[string]any
+	decodeJSON(t, w, &resp)
+	if resp["ssoRequired"] != true {
+		t.Errorf("ssoRequired: want true, got %v", resp["ssoRequired"])
+	}
+	if resp["ssoOverrideAllowed"] != true {
+		t.Errorf("ssoOverrideAllowed: want true, got %v", resp["ssoOverrideAllowed"])
+	}
+}
+
+// Admin tier 'required' (locked) — customer toggle returns 409 OVERRIDE_LOCKED.
+func TestPutAppSSORequired_RejectsLockedTier(t *testing.T) {
+	t.Setenv("AAB_DEV_SUBSCRIPTION_POLICY", "required")
+	srv := newTestServer(t)
+
+	body, _ := json.Marshal(map[string]any{"ssoRequired": false})
+	req := httptest.NewRequest("PUT",
+		"/api/airo/v1/subscriptions/sub-1/apps/app-1/sso-required",
+		bytes.NewReader(body))
+	req = setMuxVars(req, map[string]string{"subId": "sub-1", "appId": "app-1"})
+	w := httptest.NewRecorder()
+	srv.PutAppSSORequired(w, req)
+
+	if w.Code != http.StatusConflict {
+		t.Fatalf("expected 409 (admin-locked), got %d: %s", w.Code, w.Body.String())
+	}
+	var resp map[string]any
+	decodeJSON(t, w, &resp)
+	if resp["error"] != "OVERRIDE_LOCKED" {
+		t.Errorf("error: want OVERRIDE_LOCKED, got %v", resp["error"])
+	}
+}
+
+// Body validation: missing ssoRequired field returns 400 (mirrors airo-go's
+// "ssoRequired field is required" response).
+func TestPutAppSSORequired_RequiresField(t *testing.T) {
+	t.Setenv("AAB_DEV_SUBSCRIPTION_POLICY", "optional")
+	srv := newTestServer(t)
+
+	body, _ := json.Marshal(map[string]any{})
+	req := httptest.NewRequest("PUT",
+		"/api/airo/v1/subscriptions/sub-1/apps/app-1/sso-required",
+		bytes.NewReader(body))
+	req = setMuxVars(req, map[string]string{"subId": "sub-1", "appId": "app-1"})
+	w := httptest.NewRecorder()
+	srv.PutAppSSORequired(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 (missing field), got %d: %s", w.Code, w.Body.String())
 	}
 }
 
@@ -2322,12 +2692,15 @@ func TestHostingRouteAlias_ReachesUpdateSecrets(t *testing.T) {
 	}
 }
 
-// Pins that the hosting alias is registered INSIDE the JWT-guarded
-// subrouter. A future refactor that registers the alias above ssoMW.Authenticate
-// would let unauthenticated POSTs through in production (AUTH_TYPE=jwt).
-// The companion test above runs with auth disabled (the local-dev default),
-// so this test is the only thing pinning the auth posture.
-func TestHostingRouteAlias_RequiresAuth_WhenSSOEnabled(t *testing.T) {
+// Pins that the /hosting/v1/... subrouter is NOT gated by gd-auth SSO,
+// even when SSO is enabled (AUTH_TYPE=jwt). In production, mhp-core's
+// hosting routes authenticate callers via mTLS client cert (service-context)
+// or X-On-Behalf-Of (customer-proxy) — neither of which carries a gd-auth
+// cookie. The AAB BFF's auth-class secret writes (SSO_OAUTH_CONFIG) arrive
+// over mTLS without a gd-auth cookie. If a future refactor wraps these
+// routes in ssoMW.Authenticate, the BFF service-context call will 401
+// locally even though the same call would succeed in production.
+func TestHostingRouteAlias_BypassesSSOGate(t *testing.T) {
 	t.Setenv("APPS_BASE_DIR", t.TempDir())
 	mw, err := auth.NewSSOMiddleware("jwt", "sso.dev-godaddy.com")
 	if err != nil {
@@ -2344,12 +2717,12 @@ func TestHostingRouteAlias_RequiresAuth_WhenSSOEnabled(t *testing.T) {
 		},
 	})
 	req := httptest.NewRequest(http.MethodPost,
-		"/hosting/v1/apps/app-no-auth/secrets", bytes.NewReader(body))
+		"/hosting/v1/apps/app-no-gd-auth/secrets", bytes.NewReader(body))
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
-	if w.Code != http.StatusUnauthorized {
-		t.Fatalf("unauthenticated hosting alias POST should be 401; got %d (body=%q)",
+	if w.Code == http.StatusUnauthorized {
+		t.Fatalf("hosting alias POST should NOT 401 without gd-auth cookie; got %d (body=%q)",
 			w.Code, w.Body.String())
 	}
 }

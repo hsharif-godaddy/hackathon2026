@@ -62,6 +62,15 @@ type Config struct {
 	SiteID            string   // Site ID for smart redirects (from SITE_ID env var)
 	JWTExcludedPaths  []string // Paths to exclude from JWT validation
 
+	// IDP OAuth authentication configuration (for published enterprise apps)
+	// Uses OAuth 2.0 Authorization Code flow with PKCE for authentication.
+	// Browser requests without a valid session get redirected to the IDP for login.
+	// API/JSON requests get 401 Unauthorized.
+	//
+	// All IDP credentials and metadata (issuer, client_id, client_secret) are read
+	// from auth.json at runtime. The file path is derived from NOMAD_SECRETS_DIR
+	// (production) or defaults to /alloc/auth.json (local dev).
+
 	// Share token configuration (for public preview links)
 	EnableShareTokens bool   // Enable share token validation (default: false)
 	AgentsBaseURL     string // Base URL for agents API (for share token validation)
@@ -162,18 +171,23 @@ func LoadConfig() *Config {
 		//       redirects to an authenticated app path on success.
 		//   /airo-assets/                      - <img>/<video> tags can't send auth headers
 		//   /assets/                           - persistent assets from the CephFS mount
+		//   /airo/idp/callback                 - IDP OAuth callback (user isn't authenticated yet)
 		for _, systemPath := range []string{
 			"/airo/health",
 			"/airo/canary_checks",
 			"/airo/storage-access",
 			"/airo-assets/",
 			"/assets/",
+			"/airo/idp/callback",
 		} {
 			if !slices.Contains(config.JWTExcludedPaths, systemPath) {
 				config.JWTExcludedPaths = append(config.JWTExcludedPaths, systemPath)
 			}
 		}
 	}
+
+	// IDP OAuth authentication configuration (for published enterprise apps).
+	// auth.json path is derived from NOMAD_SECRETS_DIR — no env var needed.
 
 	// Share token configuration (for public preview links)
 	config.EnableShareTokens = GetEnvBoolWithDefault("DEV_SUPERVISOR_ENABLE_SHARE_TOKENS", false)

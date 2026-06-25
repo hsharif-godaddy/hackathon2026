@@ -7,7 +7,9 @@ import Modal from '@ux/modal';
 import Spinner from '@ux/spinner';
 
 import { useAuthContext } from '@/components/providers/AuthProvider';
+import { SWITCHBOARD_APPBUILDER_SSO_LITE } from '@/config/switchboard-flags';
 import { useBreakpoints } from '@/hooks/useBreakpoints';
+import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { logger } from '@/lib/request-context';
 import { isReturningUser } from '@/lib/returningUser';
 import { getSsoPageToLoad } from '@/lib/ssoPageRoute';
@@ -32,6 +34,7 @@ interface SsoDeckComponentProps {
   onAuth: (data?: unknown) => void;
   onLoad?: () => void;
   autoResize?: boolean;
+  enableCheckoutLite?: boolean;
 }
 
 /**
@@ -73,6 +76,7 @@ export default function SsoLogin() {
   const { isSsoLoginOpen, isSsoLoading, closeSsoLogin, setSsoLoaded, redirectUrl, setRedirectUrl, ssoAuthReason, inFlightReauth } = useAuthUIStore();
   const clearRequiresAuth = useSitesStore((state) => state.clearRequiresAuth);
   const { authState } = useAuthContext();
+  const ssoLiteEnabled = useSwitchboard(SWITCHBOARD_APPBUILDER_SSO_LITE) ?? false;
   // Prefer preflight-set reason (store) over Gasket authState, since preflight
   // may detect a 401 before Gasket's next validation cycle updates authState.
   // Gasket spreads the /api/auth/validate response onto authState; authReason
@@ -337,7 +341,7 @@ export default function SsoLogin() {
     return null;
   }
 
-  const pageToLoad = getSsoPageToLoad(authReason, isReturningUser());
+  const pageToLoad = getSsoPageToLoad(authReason, isReturningUser(), ssoLiteEnabled);
 
   logger.info('sso-login.auth-reason', {
     message: `SSO routing to ${pageToLoad}`,
@@ -385,6 +389,7 @@ export default function SsoLogin() {
               onAuth={handleAuth}
               onLoad={handleLoad}
               autoResize
+              {...(ssoLiteEnabled && { enableCheckoutLite: true })}
             />
           )}
         </div>

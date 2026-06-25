@@ -7,6 +7,7 @@ import text from '@ux/text'
 
 import StreamingAlertMessage from '@/app/[market]/develop/components/StreamingAlertMessage'
 import { useCreditGrants } from '@/hooks/useCreditGrants'
+import { useEnterpriseManaged } from '@/hooks/useEnterpriseManaged'
 import { useSubscription } from '@/hooks/useSubscription'
 import { useTranslations } from '@/hooks/useTranslations'
 import { DomainStatus, DomainType } from '@/lib/control-plane/types'
@@ -33,6 +34,7 @@ export default function BudgetExceededBanner({ onClose }: BudgetExceededBannerPr
   const intl = useIntl()
   const openUpgradeModal = usePaywallStore((state) => state.openUpgradeModal)
   const openCreditsModal = usePaywallStore((state) => state.openCreditsModal)
+  const { isEnterpriseManaged } = useEnterpriseManaged()
 
   const { data: subscription, isLoading: isSubscriptionLoading } = useSubscription()
 
@@ -82,6 +84,14 @@ export default function BudgetExceededBanner({ onClose }: BudgetExceededBannerPr
       />
     )
 
+    // Enterprise-managed apps cannot self-serve upgrades — buy-credits
+    // remains available (credit purchases are usually self-serve even on
+    // ent plans) but the Upgrade Plan CTA is replaced by an admin-contact
+    // message. Plain return so the layout collapses around the missing
+    // button rather than leaving a visual gap where it was.
+    if (isEnterpriseManaged) {
+      return buyCreditsButton
+    }
     return isNotUltimatePlan ? (
       <>
         <Button
@@ -94,7 +104,7 @@ export default function BudgetExceededBanner({ onClose }: BudgetExceededBannerPr
         {buyCreditsButton}
       </>
     ) : buyCreditsButton
-  }, [isNotUltimatePlan, isPurchaseDisabled, t, openUpgradeModal, openCreditsModal])
+  }, [isEnterpriseManaged, isNotUltimatePlan, isPurchaseDisabled, t, openUpgradeModal, openCreditsModal])
 
   return (
     <StreamingAlertMessage

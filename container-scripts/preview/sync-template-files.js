@@ -514,7 +514,7 @@ const SYNC_MANIFEST = [
     description: 'Template dependency manifest — synced to push security patches to customer apps',
     known_hashes: [
       '9c795a81d30c266ae7c54b58df716ba5', // before vitest 4.x + tsx/esbuild/babel security upgrades
-      'e35c659efb87610eee8eafde2bb49963', // merge main into domains-page-spacing-fix — pre-main v8 package.json
+      'e35c659efb87610eee8eafde2bb49963', // pre-main v8 package.json (merged via PR #5197 + domains-page-spacing-fix)
     ],
     force: false
   },
@@ -523,7 +523,7 @@ const SYNC_MANIFEST = [
     description: 'Lockfile for template dependencies — synced alongside package.json for security patches',
     known_hashes: [
       'af484ed6d3e61e6f1292a3417163f57a', // before vitest 4.x + tsx/esbuild/babel security upgrades
-      '779ae8d66e49a0ff908bd31689c8be67', // merge main into domains-page-spacing-fix — pre-main v8 package-lock.json
+      '779ae8d66e49a0ff908bd31689c8be67', // pre-main v8 package-lock.json (merged via PR #5197 + domains-page-spacing-fix)
       'abb2e6d76e9d7665f6244f3ffb51df05', // before undici 7.28.0 security upgrade (GHSA-vmh5-mc38-953g)
     ],
     force: false

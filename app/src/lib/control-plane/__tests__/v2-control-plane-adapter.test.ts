@@ -1067,6 +1067,126 @@ describe('V2ControlPlaneAdapter', () => {
     });
   });
 
+  describe('getSite - Auth-at-Edge SSO field passthrough', () => {
+    // SSO fields on SiteInfo are the trust root for every security gate in
+    // this product: BFF IDOR/owner checks (sso-config + sso-required + status),
+    // the agent-token JWT claim (ssoRequired/ssoConfigured), both share-link
+    // gates (BFF + agents inline), and the publish-button UX gate. If
+    // mapAppToSiteInfo silently drops one of these, every gate degrades to
+    // fail-open and the regression is invisible to existing tests (the route
+    // tests construct SiteInfo directly). This block pins the passthrough.
+    const ssoFixture = (overrides: Record<string, unknown> = {}): Record<string, unknown> => ({
+      id: MOCK_APP_ID,
+      status: 'active',
+      systemId: MOCK_SYSTEM_ID,
+      subscriptionId: 'sub-123',
+      cellId: 'c4-dev-sxb1-eu-central-1',
+      variables: { title: 'SSO App', initialPrompt: MOCK_PROMPT },
+      createdAt: '2025-10-02T10:30:00Z',
+      updatedAt: '2025-10-02T10:35:00Z',
+      ...overrides,
+    });
+
+    it('carries ssoRequired, ssoConfigId, ssoOverrideAllowed, ssoRequiredOverride through mapAppToSiteInfo', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          apps: [
+            ssoFixture({
+              ssoRequired: true,
+              ssoConfigId: 'cfg-godaddy-shopper',
+              ssoOverrideAllowed: true,
+              ssoRequiredOverride: true,
+            }),
+          ],
+        }),
+      });
+      const site = await adapter.getSite(MOCK_JOB_ID, MOCK_JWT);
+      expect(site?.ssoRequired).toBe(true);
+      expect(site?.ssoConfigId).toBe('cfg-godaddy-shopper');
+      expect(site?.ssoOverrideAllowed).toBe(true);
+      expect(site?.ssoRequiredOverride).toBe(true);
+    });
+
+    it('carries clientIdSecretName + clientSecretSecretName through mapAppToSiteInfo (mhp-core PR #738)', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          apps: [
+            ssoFixture({
+              ssoConfigId: 'cfg-godaddy-shopper',
+              ssoRequired: true,
+              clientIdSecretName: 'GD_SSO_OAUTH_CLIENT_ID',
+              clientSecretSecretName: 'GD_SSO_OAUTH_CLIENT_SECRET',
+            }),
+          ],
+        }),
+      });
+      const site = await adapter.getSite(MOCK_JOB_ID, MOCK_JWT);
+      expect(site?.clientIdSecretName).toBe('GD_SSO_OAUTH_CLIENT_ID');
+      expect(site?.clientSecretSecretName).toBe('GD_SSO_OAUTH_CLIENT_SECRET');
+    });
+
+    it('preserves admin-overridden pointer names (per-IdP custom config) without rewriting', async () => {
+      // Phase-1.5 scenario: a future enterprise admin overrides the pointer
+      // column defaults. The adapter must carry the names verbatim — the
+      // BFF resolver picks the dynamic values over the GD defaults.
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          apps: [
+            ssoFixture({
+              ssoConfigId: 'cfg-custom-okta',
+              ssoRequired: true,
+              clientIdSecretName: 'CUSTOM_OKTA_CID',
+              clientSecretSecretName: 'CUSTOM_OKTA_CSECRET',
+            }),
+          ],
+        }),
+      });
+      const site = await adapter.getSite(MOCK_JOB_ID, MOCK_JWT);
+      expect(site?.clientIdSecretName).toBe('CUSTOM_OKTA_CID');
+      expect(site?.clientSecretSecretName).toBe('CUSTOM_OKTA_CSECRET');
+    });
+
+    it('leaves all SSO fields undefined when mgmt-airo omits them (non-ent app)', async () => {
+      // Default path for non-ent customers — the upstream response carries
+      // no SSO context at all. Every BFF gate must read these as falsy and
+      // pass through to the non-ent flow with no SSO surface.
+      mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ apps: [ssoFixture()] }) });
+      const site = await adapter.getSite(MOCK_JOB_ID, MOCK_JWT);
+      expect(site?.ssoRequired).toBeUndefined();
+      expect(site?.ssoConfigId).toBeUndefined();
+      expect(site?.ssoOverrideAllowed).toBeUndefined();
+      expect(site?.ssoRequiredOverride).toBeUndefined();
+      expect(site?.clientIdSecretName).toBeUndefined();
+      expect(site?.clientSecretSecretName).toBeUndefined();
+    });
+
+    it('carries ssoRequiredOverride=null verbatim (raw per-app value, not collapsed)', async () => {
+      // ssoRequiredOverride is tri-state: true / false / null. The toggle
+      // UI distinguishes "explicit false" from "no override; defer to admin
+      // tier" — null must NOT be normalized to undefined or false.
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          apps: [
+            ssoFixture({
+              ssoConfigId: 'cfg-godaddy-shopper',
+              ssoRequired: false,
+              ssoOverrideAllowed: true,
+              ssoRequiredOverride: null,
+            }),
+          ],
+        }),
+      });
+      const site = await adapter.getSite(MOCK_JOB_ID, MOCK_JWT);
+      expect(site?.ssoRequiredOverride).toBeNull();
+      expect(site?.ssoOverrideAllowed).toBe(true);
+      expect(site?.ssoRequired).toBe(false);
+    });
+  });
+
   describe('getSite - Job ID Polling', () => {
     it('should handle in-progress job (no apps yet)', async () => {
       // Mock job endpoint - workflow in progress

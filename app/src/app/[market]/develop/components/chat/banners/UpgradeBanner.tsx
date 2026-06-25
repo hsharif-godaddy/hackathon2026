@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { FormattedMessage } from 'react-intl'
 
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils'
+import { useEnterpriseManaged } from '@/hooks/useEnterpriseManaged'
 import { usePaywallEligibility } from '@/hooks/usePaywallEligibility'
 import { useSubscription } from '@/hooks/useSubscription'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
@@ -43,6 +44,7 @@ export default function UpgradeBanner({ onDismiss }: UpgradeBannerProps) {
   const openUpgradeModal = usePaywallStore((state) => state.openUpgradeModal)
   const appId = useAppIdFromParams()
   const isSharedWithMe = useSiteStore((state) => (appId ? state.getSite(appId)?.sharedWithMe : false))
+  const { isEnterpriseManaged } = useEnterpriseManaged()
   // Pass appId so an invited collaborator (owner-pays) bypasses the paywall.
   const { showPaywall, isLoading: isPaywallLoading } = usePaywallEligibility(appId)
   const { data: subscription } = useSubscription()
@@ -72,7 +74,13 @@ export default function UpgradeBanner({ onDismiss }: UpgradeBannerProps) {
   // `isSharedWithMe` must gate the actual render (not just the impression log above): the
   // canUpgradePlan branch can still be true for an invitee on a free plan, so without this an
   // invitee would see the banner even though showPaywall is bypassed.
-  if (!mounted || isPaywallLoading || !featureEnabled || isDismissed || isSharedWithMe ||
+  //
+  // Enterprise-managed apps (`ownerProduct === 'aab-ent-v1'`) suppress the
+  // banner entirely — the customer cannot self-serve a plan upgrade, so a
+  // CTA to "Upgrade now" would dead-end. The contact-your-admin guidance
+  // is surfaced via inline notices on the paywall touchpoints (Domain
+  // panel, publish-limit modal, etc.) where it's contextually actionable.
+  if (!mounted || isPaywallLoading || !featureEnabled || isDismissed || isSharedWithMe || isEnterpriseManaged ||
       (!showPaywall && !canUpgradePlan(currentPlan))) return null
 
   const handleClose = () => {

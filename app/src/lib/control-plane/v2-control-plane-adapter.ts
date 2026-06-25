@@ -125,6 +125,27 @@ interface MgmtAppRecord extends AiroApp {
   customerId?: string;
   ownerCustomerId?: string;
   accountId?: string;
+  // Auth-at-Edge SSO fields (mhp-core extending existing app GET).
+  //   ssoRequired             — resolved bool (admin-tier + per-app collapsed)
+  //   ssoConfigId             — bound enterprise SSO config row id
+  //   ssoRequiredOverride     — raw per-app override (true/false/null) — only
+  //                             the customer-toggle UI consumes this
+  //   ssoOverrideAllowed      — true iff admin tier is 'optional' (customer
+  //                             can flip the override)
+  //   clientIdSecretName      — pointer-key NAME for the customer's IdP
+  //                             client_id row (from the bound SSO config;
+  //                             nil when unbound). Used by the BFF when
+  //                             writing/reading the credential pointer rows
+  //                             so AAB doesn't hardcode GD_SSO_OAUTH_*.
+  //   clientSecretSecretName  — same for client_secret
+  // All optional — absent on apps where the upstream response doesn't carry
+  // them yet, in which case the UI gate stays hidden.
+  ssoRequired?: boolean;
+  ssoConfigId?: string;
+  ssoRequiredOverride?: boolean | null;
+  ssoOverrideAllowed?: boolean;
+  clientIdSecretName?: string | null;
+  clientSecretSecretName?: string | null;
 }
 
 export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
@@ -1673,6 +1694,18 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
       cellId: app.cellId,
       screenshots: app.screenshots, // Pre-rendered screenshot URLs from mgmt-hosting (preview/publish × desktop/mobile)
       published: app.published, // Authoritative publish state from mgmt-airo; see getAppScreenshotUrl
+      // Auth-at-Edge SSO context — resolved enforcement bool + raw override
+      // (used by the customer-toggle UI when override is permitted) + the
+      // capability flag derived from the admin tier + per-config credential
+      // pointer-key names (used by the BFF for the credential write/read so
+      // AAB no longer hardcodes GD_SSO_OAUTH_* defaults). All optional and
+      // gracefully absent on apps where mhp-core hasn't surfaced them yet.
+      ssoRequired: app.ssoRequired,
+      ssoConfigId: app.ssoConfigId,
+      ssoRequiredOverride: app.ssoRequiredOverride,
+      ssoOverrideAllowed: app.ssoOverrideAllowed,
+      clientIdSecretName: app.clientIdSecretName,
+      clientSecretSecretName: app.clientSecretSecretName,
     };
   }
 

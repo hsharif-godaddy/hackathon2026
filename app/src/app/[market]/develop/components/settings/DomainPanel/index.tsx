@@ -10,7 +10,9 @@ import ProjectDomain from "@/app/[market]/develop/components/settings/DomainPane
 import { ChatTab, SettingsSection } from "@/app/[market]/develop/components/types";
 import { useAppIdFromParams } from "@/app/[market]/develop/components/utils";
 import EmptyStateCard from '@/components/layout/EmptyStateCard';
+import { EnterpriseUpgradeNotice } from '@/components/upgrade/EnterpriseUpgradeNotice';
 import { useDomainPolling } from '@/hooks/useDomainPolling';
+import { useEnterpriseManaged } from '@/hooks/useEnterpriseManaged';
 import { usePaywallEligibility } from '@/hooks/usePaywallEligibility';
 import { useSwitchboard } from "@/hooks/useSwitchboard";
 import { useTranslations } from '@/hooks/useTranslations';
@@ -55,6 +57,7 @@ export default function DomainPanel() {
   // Pass appId so an invited collaborator (owner-pays) bypasses the paywall.
   const { showPaywall, isLoading: isPaywallLoading } = usePaywallEligibility(currentAppId);
   const openUpgradeModal = usePaywallStore((state) => state.openUpgradeModal);
+  const { isEnterpriseManaged } = useEnterpriseManaged();
 
   const { handlePublish, isPublishDisabled, publishState } = usePublishForDomain(currentAppId, site);
   const canManageDomains = canAccessDomainManagement(site);
@@ -91,13 +94,17 @@ export default function DomainPanel() {
             {t('builder_domain_upgrade_description')}
           </text.p>
           <div className="mt-2">
-            <Button
-              text={t('builder_upgrade_button')}
-              design="primary"
-              size="sm"
-              onClick={() => openUpgradeModal('domains.upgrade', PAYWALL_ITC.UPGRADE)}
-              data-eid={generateClickEID(`settings.domains.upgrade`)}
-            />
+            {isEnterpriseManaged ? (
+              <EnterpriseUpgradeNotice testId="domain-panel-enterprise-upgrade-notice" />
+            ) : (
+              <Button
+                text={t('builder_upgrade_button')}
+                design="primary"
+                size="sm"
+                onClick={() => openUpgradeModal('domains.upgrade', PAYWALL_ITC.UPGRADE)}
+                data-eid={generateClickEID(`settings.domains.upgrade`)}
+              />
+            )}
           </div>
         </Box>
         <div className="flex-shrink-0 hidden md:block">

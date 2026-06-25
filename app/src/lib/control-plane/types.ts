@@ -187,6 +187,61 @@ export interface SiteInfo {
   /** App owner's GoDaddy customer id when returned by mgmt-hosting (owner vs collaborator / FGA bypass). */
   owner_customer_id?: string;
   /**
+   * Auth-at-Edge SSO RESOLVED requirement flag. mhp-core's airo-go service
+   * collapses the three-tier admin lock (`'true'` / `'false'` / `'optional'`
+   * on the sub's enterprise SSO config) and the per-app boolean override
+   * into a single resolved `ssoRequired` boolean before exposing here. AAB
+   * never sees `'optional'` directly — see `ssoOverrideAllowed` /
+   * `ssoRequiredOverride` for the unresolved view needed by the customer-
+   * facing toggle.
+   *
+   * `true` means: customer must register OAuth credentials in Settings →
+   * SSO before publish; published app gates end users behind the customer's
+   * IdP. UI gating only; hosting's actual enforcement keys off the
+   * credential pointer rows (see `auth-at-edge-sso.md`).
+   */
+  ssoRequired?: boolean;
+  /**
+   * Active enterprise SSO config id bound to this app, used by the UI to
+   * cross-reference the config. The pointer-key NAMES (for the credential
+   * rows AAB writes) come from `clientIdSecretName` / `clientSecretSecretName`
+   * below — surfaced per-config by airo-go's `mergeAiroAppRow` (mhp-core
+   * PR #738) so AAB no longer hardcodes the `GD_SSO_OAUTH_*` defaults.
+   */
+  ssoConfigId?: string;
+  /**
+   * Pointer-key NAME for the customer's IdP `client_id` row. Surfaced from
+   * the bound `airo_enterprise_sso_configs.client_id_secret_name` column.
+   * `null` (or absent) when no SSO config is bound. AAB never accepts this
+   * value from the client payload — it's always server-authoritative.
+   * Phase 1 default = `GD_SSO_OAUTH_CLIENT_ID`.
+   */
+  clientIdSecretName?: string | null;
+  /**
+   * Pointer-key NAME for the customer's IdP `client_secret` row. Surfaced
+   * from the bound `airo_enterprise_sso_configs.client_secret_secret_name`.
+   * `null` (or absent) when no SSO config is bound. AAB never accepts this
+   * value from the client. Phase 1 default = `GD_SSO_OAUTH_CLIENT_SECRET`.
+   */
+  clientSecretSecretName?: string | null;
+  /**
+   * The raw per-app `airo_apps.sso_required` value (NOT collapsed by
+   * airo-go's `ResolveSSORequired`). `true` / `false` / `null` (NULL means
+   * "no per-app override; defer to admin tier"). Only meaningful for the
+   * customer-facing toggle UI — when `ssoOverrideAllowed` is true, the
+   * toggle's checked state reflects this field.
+   */
+  ssoRequiredOverride?: boolean | null;
+  /**
+   * `true` iff the bound SSO config's admin lock is `'optional'` — i.e. the
+   * customer (the app's owner) is permitted to flip the per-app override
+   * via `PUT /v1/subscriptions/:subId/apps/:appId/sso-required`. When
+   * `false`, the admin has hard-locked SSO on or off for every app under
+   * the sub and the customer can't change it. UI: render the toggle when
+   * true, render a locked indicator when false.
+   */
+  ssoOverrideAllowed?: boolean;
+  /**
    * Set when this `SiteInfo` represents an app the caller doesn't own but has
    * been invited to via the multi-user FGA flow. The owned-app listing
    * (mgmt-airo `/customers/me/apps`) never marks this; only the

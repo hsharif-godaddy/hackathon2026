@@ -112,11 +112,25 @@ func NewRouter(db *store.DB, jwtService *auth.JWTService, ssoMW *auth.SSOMiddlew
 	v1.HandleFunc("/subscriptions/{subId}/systems/{sysId}/apps/{appId}/secrets", srv.GetSecrets).Methods("GET")
 	v1.HandleFunc("/subscriptions/{subId}/systems/{sysId}/apps/{appId}/secrets", srv.UpdateSecrets).Methods("POST")
 
+	// Per-app SSO override toggle. Phase 2 customer-facing endpoint.
+	// Path is INTENTIONALLY outside the `/systems/:sysId/apps/` namespace —
+	// airo-go derives the sub-to-app mapping via `airo_apps.sso_config_id ->
+	// airo_enterprise_sso_configs.subscription_id`, not through a direct
+	// app→sub column. LCP mirrors that contract.
+	v1.HandleFunc("/subscriptions/{subId}/apps/{appId}/sso-required",
+		srv.PutAppSSORequired).Methods("PUT")
+
 	// Hosting service mock (mhp-core/backends/hosting): flat appId-keyed
 	// secrets path, separate from airo's subscription-scoped routes above.
 	// Handler is shared with the v1 routes — request/response shape matches.
+	//
+	// NO SSO MIDDLEWARE: in production, hosting authenticates callers via
+	// mTLS client cert (service-context, no gd-auth) or X-On-Behalf-Of
+	// (customer-proxy, also no gd-auth). The BFF's auth-class secret writes
+	// arrive over mTLS without a gd-auth cookie. LCP doesn't enforce mTLS
+	// locally, so we leave these routes unauthenticated to mirror the prod
+	// "no gd-auth gate" shape.
 	hosting := r.PathPrefix("/hosting/v1").Subrouter()
-	hosting.Use(ssoMW.Authenticate)
 	hosting.HandleFunc("/apps/{appId}/secrets", srv.GetSecrets).Methods("GET")
 	hosting.HandleFunc("/apps/{appId}/secrets", srv.UpdateSecrets).Methods("POST")
 	v1.HandleFunc("/subscriptions/{subId}/systems/{sysId}/apps/{appId}/image-status", srv.GetImageStatus).Methods("GET")
