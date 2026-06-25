@@ -3,14 +3,15 @@
  *
  * Used by the SSE client path (`useSSEChat`) so a phase transition produces the
  * same outcome — a wizard store update — regardless of caller. The agent emits
- * `gathering` at session start and `working` once the kit is assembled; the
- * `ready` phase is driven client-side from the real build-completion signal.
+ * `gathering` at session start, `brand` once the kit is assembled, and `website`
+ * at the website handoff; the `ready` phase is driven client-side from the real
+ * build-completion signal.
  */
 
 import { logger } from '@/lib/request-context'
 import { useWizardStore, type WizardPhase } from '@/stores/useWizardStore'
 
-const VALID_PHASES: readonly WizardPhase[] = ['gathering', 'working', 'ready']
+const VALID_PHASES: readonly WizardPhase[] = ['gathering', 'brand', 'website', 'ready']
 
 function isWizardPhase(value: unknown): value is WizardPhase {
   return typeof value === 'string' && (VALID_PHASES as readonly string[]).includes(value)

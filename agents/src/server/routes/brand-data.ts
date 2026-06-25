@@ -156,7 +156,7 @@ router.get('/apps/:id/brand-data', validateAppOwnership, async (req: Request, re
         // Validate the opaque memory value before trusting it as a phase (mirrors
         // the SSE/route guards); an unknown value degrades to no wizard field.
         const phase = wizardResult.exists ? (wizardResult.value as { phase?: unknown }).phase : undefined;
-        return phase === 'gathering' || phase === 'working' || phase === 'ready' ? { phase } : undefined;
+        return phase === 'gathering' || phase === 'brand' || phase === 'website' || phase === 'ready' ? { phase } : undefined;
       })(),
       kit: designKit?.displayName ? { name: designKit.displayName } : undefined,
     };

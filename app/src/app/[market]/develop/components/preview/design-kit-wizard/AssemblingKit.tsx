@@ -2,15 +2,21 @@
 
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import type { JSX, ReactNode } from 'react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import CheckmarkIcon from '@ux/icon/checkmark';
 import SparklesIcon from '@ux/icon/sparkles';
 import text from '@ux/text';
 
 import { getSlotImageUrl } from '@/app/[market]/develop/components/media/MediaSlotDetail';
+import { getLogoDisplayUrl, type LogoData } from '@/app/[market]/develop/components/widgets/logo-utils';
 import { BRAND_DATA_UPDATED_EVENT } from '@/hooks/useBrandData';
+import { useMediaManifest } from '@/hooks/useMediaManifest';
 import { useServerPollingStore } from '@/stores/useServerPollingStore';
 import { useBrandData } from './useBrandData';
+
+// The design-kit wizard generates a single square logo (slot `logo/primary`);
+// the other slots are the fallback order the brand book / LogoPanel also use.
+const LOGO_SLOT_NAMES = ['logo/primary', 'logo/horizontal', 'logo/vertical'] as const;
 
 /**
  * Step-2 "assembling the kit" — the juicy moment.
@@ -38,7 +44,9 @@ const AIRO = 'var(--color-ai)';
 const SEAL_MS = 2200;
 const SEAL_MS_REDUCED = 400;
 
-type AssetKey = 'kit' | 'colors' | 'fonts' | 'logo' | 'imagery' | 'voice' | 'summary';
+// Order mirrors the agent's assembly sequence (wizard-flow.md) so the rows check
+// off top-to-bottom: kit → colors → fonts → imagery → voice → summary → logo.
+type AssetKey = 'kit' | 'colors' | 'fonts' | 'imagery' | 'voice' | 'summary' | 'logo';
 
 interface Asset {
   key: AssetKey;
@@ -52,18 +60,33 @@ export function AssemblingKit({
   appId,
   step,
   onAssembled,
+  mode = 'payoff',
 }: {
   appId: string;
   step: number;
   /** Fires once the kit is fully assembled AND the packaging animation has
    *  finished (or immediately if the wizard advanced with nothing to package).
-   *  DesignKitWizard waits for this before transitioning to step 3. */
+   *  DesignKitWizard waits for this before transitioning to step 3.
+   *  Never fires in `progress` mode. */
   onAssembled?: () => void;
+  /**
+   * `payoff` (default): once the kit is complete and the agent has advanced, play
+   * the seal/packaging payoff (rows collapse into the "kit ready" box) then fire
+   * `onAssembled`. `progress` (AIROBUILD-2855 "Building Your Brand" panel): a steady
+   * progress panel — the bar + 7 rows fill as data lands, but the seal never plays
+   * and `onAssembled` never fires.
+   */
+  mode?: 'progress' | 'payoff';
 }): JSX.Element {
   const { data, refetch } = useBrandData(appId);
+  const { manifest } = useMediaManifest({ appId });
   const previewBaseUrl = useServerPollingStore((state) => state.getServerState(appId))?.url ?? null;
   const reduce = useReducedMotion();
   const [logoReady, setLogoReady] = useState(false);
+  // The `logo-generated` event carries an absolute logo URL; capture it so the
+  // thumbnail shows the instant the logo lands, without waiting for a manifest
+  // refetch. Falls back to the persisted manifest slot (robust on remount).
+  const [eventLogoUrl, setEventLogoUrl] = useState<string | null>(null);
   // `sealing` drives the packaging payoff: rows converge to the centre and fade
   // behind the "kit ready" box that rises in front. `collapseYs` holds each
   // row's measured offset to the rows' centre so they collapse INTO the box.
@@ -80,8 +103,12 @@ export function AssemblingKit({
       if (!detail?.appId || detail.appId === appId) void refetch?.();
     };
     const onLogo = (e: Event): void => {
-      const detail = (e as CustomEvent).detail as { appId?: string } | undefined;
-      if (!detail?.appId || detail.appId === appId) setLogoReady(true);
+      // The logo event detail is a LogoData (absolute CDN urls, no appId), so it
+      // can't be app-scoped here — the manifest lookup below is the scoped source.
+      const detail = (e as CustomEvent).detail as LogoData | undefined;
+      const url = detail ? getLogoDisplayUrl(detail) : undefined;
+      if (url) setEventLogoUrl(url);
+      setLogoReady(true);
       onUpdate(e);
     };
     window.addEventListener(BRAND_DATA_UPDATED_EVENT, onUpdate);
@@ -108,10 +135,20 @@ export function AssemblingKit({
   const fontFamilies = headingFamily && bodyFamily && headingFamily !== bodyFamily
     ? `${headingFamily} / ${bodyFamily}`
     : headingFamily;
-  const keyword = data?.imagery?.keyword;
   const moodImages = data?.imagery?.moodImages ?? [];
   const voiceWords = (data?.voice?.weAre ?? []).filter(Boolean).slice(0, 4);
   const summaryText = data?.summary?.text;
+  // Render the logo on its intended brand background so a light-on-transparent
+  // (or dark-on-transparent) mark stays visible in the thumbnail.
+  const logoBg = data?.palette?.background ?? '#ffffff';
+  const logoUrl = useMemo(() => {
+    if (eventLogoUrl) return eventLogoUrl;
+    for (const slot of LOGO_SLOT_NAMES) {
+      const url = manifest?.[slot]?.currentUrl;
+      if (url) return getSlotImageUrl(slot, url, previewBaseUrl);
+    }
+    return null;
+  }, [eventLogoUrl, manifest, previewBaseUrl]);
 
   const assets: Asset[] = [
     {
@@ -162,27 +199,13 @@ export function AssemblingKit({
       ),
     },
     {
-      key: 'logo',
-      label: 'Logo',
-      filled: logoReady,
-      icon: <IconLogo />,
-      content: (
-        <div className="flex items-center gap-2">
-          <span className="flex h-6 w-6 items-center justify-center rounded-md text-[10px] font-bold text-white" style={{ background: AIRO }}>
-            {(projectName ?? 'A').trim().charAt(0).toUpperCase() || 'A'}
-          </span>
-          <text.span as="caption" emphasis="passive">Logo ready</text.span>
-        </div>
-      ),
-    },
-    {
       key: 'imagery',
-      // Only complete once BOTH the descriptor keyword and the searched mood
-      // images are in — they arrive from separate tool calls (brand + media).
+      // Complete once the mood images are in — the descriptor keyword arrives
+      // later (the brand tool) and isn't needed to mark imagery done.
       label: 'Imagery',
-      filled: moodImages.length > 0 && !!keyword,
+      filled: moodImages.length > 0,
       icon: <IconImagery />,
-      content: moodImages.length > 0 ? (
+      content: (
         <div className="flex min-w-0 items-center gap-1.5">
           {moodImages.slice(0, 4).map((img, i) => (
             <motion.img
@@ -195,11 +218,6 @@ export function AssemblingKit({
               className="h-9 w-9 shrink-0 rounded-md border border-intents-ux-box-borderColor object-cover"
             />
           ))}
-          {keyword && <text.span as="caption" emphasis="passive" className="truncate italic">“{keyword}”</text.span>}
-        </div>
-      ) : (
-        <div className="min-w-0 truncate">
-          <text.span as="caption" emphasis="passive" className="italic">“{keyword}”</text.span>
         </div>
       ),
     },
@@ -235,6 +253,38 @@ export function AssemblingKit({
         </div>
       ),
     },
+    {
+      key: 'logo',
+      label: 'Logo',
+      // Generated last (often in parallel with imagery); ready once the event or
+      // the manifest yields a logo URL.
+      filled: !!logoUrl || logoReady,
+      icon: <IconLogo />,
+      content: (
+        <div className="flex items-center gap-2">
+          {logoUrl ? (
+            <span
+              className="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-md border border-intents-ux-box-borderColor"
+              style={{ background: logoBg }}
+            >
+              <motion.img
+                initial={reduce ? false : { scale: 0, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ type: 'spring', stiffness: 420, damping: 20 }}
+                src={logoUrl}
+                alt=""
+                className="h-full w-full object-contain"
+              />
+            </span>
+          ) : (
+            <span className="flex h-6 w-6 items-center justify-center rounded-md text-[10px] font-bold text-white" style={{ background: AIRO }}>
+              {(projectName ?? 'A').trim().charAt(0).toUpperCase() || 'A'}
+            </span>
+          )}
+          <text.span as="caption" emphasis="passive">Logo ready</text.span>
+        </div>
+      ),
+    },
   ];
 
   const collected = assets.filter((a) => a.filled).length;
@@ -257,7 +307,7 @@ export function AssemblingKit({
   // transition, never finishing early and stalling with nothing to switch to.
   // Once started it runs to completion (sealStartedRef guards re-entry).
   useEffect(() => {
-    if (!allDone || step < 3 || sealStartedRef.current) return undefined;
+    if (mode === 'progress' || !allDone || step < 3 || sealStartedRef.current) return undefined;
     sealStartedRef.current = true;
     // Measure while the rows are still at rest: how far each must travel to reach
     // the rows' vertical centre (where the ready box rises). Done before flipping
@@ -280,16 +330,16 @@ export function AssemblingKit({
       onAssembledRef.current?.();
     }, reduce ? SEAL_MS_REDUCED : SEAL_MS);
     return () => clearTimeout(t);
-  }, [allDone, step, reduce]);
+  }, [allDone, step, reduce, mode]);
 
   // Fallback: the agent advanced to step 3+ with nothing left to package — don't
   // strand the wizard on the assembling view, release it immediately.
   useEffect(() => {
-    if (step >= 3 && !allDone && !assembledFiredRef.current) {
+    if (mode !== 'progress' && step >= 3 && !allDone && !assembledFiredRef.current) {
       assembledFiredRef.current = true;
       onAssembledRef.current?.();
     }
-  }, [step, allDone]);
+  }, [step, allDone, mode]);
 
   return (
     <div data-testid="design-kit-assembling" className="relative w-full">

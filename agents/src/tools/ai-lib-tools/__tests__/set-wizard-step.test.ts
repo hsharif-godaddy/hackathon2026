@@ -26,7 +26,7 @@ vi.mock('../../../server/agent-runtime.js', () => ({
   getEventChannel: () => ({ publish: publishMock }),
 }))
 
-// Entering the working phase syncs public/brand-tokens.css for the showcase via the workspace.
+// Entering the brand phase syncs public/brand-tokens.css for the showcase via the workspace.
 vi.mock('../../../workspace/index.js', () => ({
   createForWorkspace: createForWorkspaceMock,
 }))
@@ -69,8 +69,8 @@ describe('setWizardStepAITool execution', () => {
     setMock.mockResolvedValue({ success: true })
   })
 
-  it('syncs public/brand-tokens.css when advancing to the working phase (showcase reveal)', async () => {
-    await setWizardStepAITool.execute({ phase: 'working' }, createContext('app1234567') as never)
+  it('syncs public/brand-tokens.css when advancing to the brand phase (showcase reveal)', async () => {
+    await setWizardStepAITool.execute({ phase: 'brand' }, createContext('app1234567') as never)
 
     expect(syncBrandTokensCssMock).toHaveBeenCalledTimes(1)
     expect(syncBrandTokensCssMock).toHaveBeenCalledWith('app1234567', 'cust1', expect.anything())
@@ -82,9 +82,15 @@ describe('setWizardStepAITool execution', () => {
     expect(syncBrandTokensCssMock).not.toHaveBeenCalled()
   })
 
+  it('does not sync brand-tokens.css for the website phase', async () => {
+    await setWizardStepAITool.execute({ phase: 'website' }, createContext('app1234567') as never)
+
+    expect(syncBrandTokensCssMock).not.toHaveBeenCalled()
+  })
+
   it('persists brand.wizard.phase under the workspace scope and emits a build_phase event', async () => {
     const result = await setWizardStepAITool.execute(
-      { phase: 'working' },
+      { phase: 'brand' },
       createContext('app1234567') as never,
     )
 
@@ -92,7 +98,7 @@ describe('setWizardStepAITool execution', () => {
     expect(setMock).toHaveBeenCalledWith(
       expect.objectContaining({ appId: 'app1234567', customerId: 'cust1' }),
       'brand.wizard.phase',
-      { phase: 'working' },
+      { phase: 'brand' },
     )
 
     expect(publishMock).toHaveBeenCalledWith(
@@ -100,12 +106,12 @@ describe('setWizardStepAITool execution', () => {
       expect.objectContaining({
         conversationId: 'conv-1',
         type: 'build_phase',
-        data: expect.objectContaining({ phase: 'working', appId: 'app1234567' }),
+        data: expect.objectContaining({ phase: 'brand', appId: 'app1234567' }),
       }),
     )
 
     expect(typeof result).toBe('string')
-    expect(result).toContain('working')
+    expect(result).toContain('brand')
   })
 
   it('returns an error and does not persist or emit when appId is missing', async () => {
@@ -124,7 +130,7 @@ describe('setWizardStepAITool execution', () => {
     setMock.mockResolvedValueOnce({ success: false, error: 'Write failed' })
 
     const result = await setWizardStepAITool.execute(
-      { phase: 'working' },
+      { phase: 'brand' },
       createContext('app1234567') as never,
     )
 
@@ -151,10 +157,15 @@ describe('setWizardStepAITool execution', () => {
 })
 
 describe('StepSchema (phase) bounds', () => {
-  it('accepts the three valid phases', () => {
+  it('accepts the four valid phases', () => {
     expect(StepSchema.safeParse({ phase: 'gathering' }).success).toBe(true)
-    expect(StepSchema.safeParse({ phase: 'working' }).success).toBe(true)
+    expect(StepSchema.safeParse({ phase: 'brand' }).success).toBe(true)
+    expect(StepSchema.safeParse({ phase: 'website' }).success).toBe(true)
     expect(StepSchema.safeParse({ phase: 'ready' }).success).toBe(true)
+  })
+
+  it('rejects the renamed legacy "working" phase', () => {
+    expect(StepSchema.safeParse({ phase: 'working' }).success).toBe(false)
   })
 
   it('rejects an unknown phase', () => {

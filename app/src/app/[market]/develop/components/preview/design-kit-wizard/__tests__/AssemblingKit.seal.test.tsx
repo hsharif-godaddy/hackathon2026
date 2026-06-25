@@ -24,6 +24,12 @@ vi.mock('../useBrandData', () => ({
   }),
 }));
 
+// AssemblingKit resolves the logo via useMediaManifest (react-query); mock it so
+// the component renders without a QueryClientProvider. No slot → logo arrives via the event.
+vi.mock('@/hooks/useMediaManifest', () => ({
+  useMediaManifest: () => ({ manifest: undefined, slotNames: [], isLoading: false, error: null, refetch: vi.fn() }),
+}));
+
 describe('AssemblingKit — packaging payoff', () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());

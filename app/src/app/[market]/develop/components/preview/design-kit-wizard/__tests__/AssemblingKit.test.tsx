@@ -24,6 +24,12 @@ vi.mock('../useBrandData', () => ({
   }),
 }));
 
+// AssemblingKit resolves the logo via useMediaManifest (react-query); mock it so
+// the component renders without a QueryClientProvider. No logo slot → logo tile stays empty.
+vi.mock('@/hooks/useMediaManifest', () => ({
+  useMediaManifest: () => ({ manifest: undefined, slotNames: [], isLoading: false, error: null, refetch: vi.fn() }),
+}));
+
 describe('AssemblingKit', () => {
   it('fills the colors and fonts tiles when palette + typography are present', () => {
     render(<AssemblingKit appId="app1234567" step={2} />);
@@ -88,5 +94,43 @@ describe('AssemblingKit', () => {
     const onAssembled = vi.fn();
     render(<AssemblingKit appId="app1234567" step={2} onAssembled={onAssembled} />);
     expect(onAssembled).not.toHaveBeenCalled();
+  });
+});
+
+describe('AssemblingKit — progress mode', () => {
+  it('renders all 7 step rows in the assembling container', () => {
+    render(<AssemblingKit appId="app1234567" step={2} mode="progress" />);
+
+    expect(screen.getByTestId('design-kit-assembling')).toBeInTheDocument();
+    for (const key of ['kit', 'colors', 'fonts', 'logo', 'imagery', 'voice', 'summary']) {
+      expect(screen.getByTestId(`assemble-tile-${key}`)).toBeInTheDocument();
+    }
+  });
+
+  it('renders the progress counter as collected/7 (3 of 7 filled from the mocked brand data)', () => {
+    // Mocked brand data fills colors (palette), fonts (typography) and summary.
+    render(<AssemblingKit appId="app1234567" step={2} mode="progress" />);
+
+    expect(screen.getByText('3/7')).toBeInTheDocument();
+  });
+
+  it('never plays the seal payoff or fires onAssembled in progress mode, even at step 3', () => {
+    vi.useFakeTimers();
+    const onAssembled = vi.fn();
+    try {
+      render(<AssemblingKit appId="app1234567" step={3} mode="progress" onAssembled={onAssembled} />);
+
+      // No "kit ready" seal box.
+      expect(screen.queryByText('Your brand kit is ready')).not.toBeInTheDocument();
+
+      // The fallback/seal release is suppressed in progress mode — even after the
+      // seal timer window would have elapsed.
+      act(() => {
+        vi.advanceTimersByTime(3000);
+      });
+      expect(onAssembled).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

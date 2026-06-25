@@ -6,7 +6,7 @@ import path from 'node:path'
 /**
  * Guards the design-kit questioning gate: the opening pass asks only for the core missing
  * essentials (business name; business type when unclear) and defers everything else to the
- * working phase — not the old "up to 4 questions (name, audience, location, scope)" pass.
+ * brand phase — not the old "up to 4 questions (name, audience, location, scope)" pass.
  * Reads the real prompt fragments from disk (the agent test mocks the prompt builder, so the
  * composed prompt is otherwise untested).
  */

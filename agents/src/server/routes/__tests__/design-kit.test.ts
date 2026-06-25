@@ -227,13 +227,13 @@ describe('design-kit direct-edit routes', () => {
 
     const res = await request(makeApp())
       .put('/apps/app1234567/design-kit/wizard-step')
-      .send({ phase: 'working' });
+      .send({ phase: 'brand' });
 
     expect(res.status).toBe(200);
-    expect(setMock).toHaveBeenCalledWith(expect.anything(), 'brand.wizard.phase', { phase: 'working' });
+    expect(setMock).toHaveBeenCalledWith(expect.anything(), 'brand.wizard.phase', { phase: 'brand' });
     expect(ssePublish).toHaveBeenCalledWith(
       'conv-a',
-      expect.objectContaining({ type: 'build_phase', data: expect.objectContaining({ phase: 'working', appId: 'app1234567' }) }),
+      expect.objectContaining({ type: 'build_phase', data: expect.objectContaining({ phase: 'brand', appId: 'app1234567' }) }),
     );
   });
 
@@ -242,7 +242,7 @@ describe('design-kit direct-edit routes', () => {
 
     const res = await request(makeApp())
       .put('/apps/app1234567/design-kit/wizard-step')
-      .send({ phase: 'working' });
+      .send({ phase: 'website' });
 
     expect(res.status).toBe(200);
     // SSE path: one publish per active conversation for this app.
@@ -253,7 +253,7 @@ describe('design-kit direct-edit routes', () => {
       expect.objectContaining({
         conversationId: 'conv-a',
         type: 'build_phase',
-        data: expect.objectContaining({ phase: 'working', appId: 'app1234567' }),
+        data: expect.objectContaining({ phase: 'website', appId: 'app1234567' }),
       }),
     );
     expect(ssePublish).toHaveBeenCalledWith(

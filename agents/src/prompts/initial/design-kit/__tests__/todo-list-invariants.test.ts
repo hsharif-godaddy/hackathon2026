@@ -22,18 +22,21 @@ describe('design-kit prompt todo-list invariants', () => {
     expect(manifest.files.some((f) => f.file === 'feature-list.md')).toBe(false)
   })
 
-  it('wizard-flow gathering creates the brand-journey list with the three phase items', () => {
+  it('wizard-flow brand phase creates the brand-journey list with the three phase items (before the handoff)', () => {
     const wf = read('wizard-flow.md')
-    const gatheringIdx = wf.indexOf('## Gathering')
-    const workingIdx = wf.indexOf('## Working')
-    expect(gatheringIdx).toBeGreaterThan(0)
-    expect(workingIdx).toBeGreaterThan(gatheringIdx)
-    const gathering = wf.slice(gatheringIdx, workingIdx)
-    expect(gathering).toContain('create_list')
-    expect(gathering).toContain('Building your brand')
-    expect(gathering).toContain('Build your brand kit')
-    expect(gathering).toContain('Create your brand showcase')
-    expect(gathering).toContain('Build your website')
+    // The brand-journey list is created during kit assembly, which now runs in the
+    // brand phase (the panel fills live as the agent works). It must still be created
+    // before the Create-website handoff (where the separate website roadmap is built).
+    const brandIdx = wf.indexOf('## Brand')
+    const handoffIdx = wf.indexOf('## Create website')
+    expect(brandIdx).toBeGreaterThan(0)
+    expect(handoffIdx).toBeGreaterThan(brandIdx)
+    const brand = wf.slice(brandIdx, handoffIdx)
+    expect(brand).toContain('create_list')
+    expect(brand).toContain('Building your brand')
+    expect(brand).toContain('Build your brand kit')
+    expect(brand).toContain('Create your brand showcase')
+    expect(brand).toContain('Build your website')
   })
 
   it('the website roadmap (Homepage) is created ONLY at the Create website handoff, never before', () => {

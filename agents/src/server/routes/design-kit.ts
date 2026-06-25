@@ -201,13 +201,13 @@ router.put('/apps/:id/design-kit/imagery', validateAppOwnership, async (req: Req
 });
 
 // PUT /apps/:id/design-kit/wizard-step  { phase }  (user jumping back to the working phase, etc.)
-const WIZARD_PHASES = ['gathering', 'working', 'ready'] as const;
+const WIZARD_PHASES = ['gathering', 'brand', 'website', 'ready'] as const;
 
 router.put('/apps/:id/design-kit/wizard-step', validateAppOwnership, async (req: Request, res: Response): Promise<void> => {
   const { appId, customerId } = ctx(req);
   try {
     const phase: unknown = req.body?.phase;
-    if (typeof phase !== 'string' || !(WIZARD_PHASES as readonly string[]).includes(phase)) { res.status(400).json({ error: 'phase must be gathering, working, or ready' }); return; }
+    if (typeof phase !== 'string' || !(WIZARD_PHASES as readonly string[]).includes(phase)) { res.status(400).json({ error: 'phase must be gathering, brand, website, or ready' }); return; }
     const writeResult = await memory.set(workspaceScopeFromAppId(appId, customerId), 'brand.wizard.phase', { phase });
     if (!writeResult.success) {
       log.forApp(appId).error('designKit.wizardStep.persist_failed', { appId, error: writeResult.error });

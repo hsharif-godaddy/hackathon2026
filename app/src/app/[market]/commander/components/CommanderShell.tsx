@@ -17,7 +17,6 @@ import {
   useEffectiveCommanderPosition,
 } from '@/stores/useCommanderStore'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
-import { useServerPollingStore } from '@/stores/useServerPollingStore'
 import { Commander, COMMANDER_LAYOUT_METRICS } from './Commander'
 import { CommanderCanvasSettingsOverlay } from './CommanderCanvasSettingsOverlay'
 import CommanderHeader from './CommanderHeader'
@@ -47,10 +46,6 @@ export function CommanderShell({
   const activeCanvasId = useCommanderStore((state) => state.activeCanvasId)
   const isCanvasSettingsOpen = useCommanderStore((state) => state.isCanvasSettingsOpen)
   const showDesignKitWizard = useIsDesignKitWizardProfile()
-  const designKitPreviewUrl = useServerPollingStore((state) => {
-    const server = appId ? state.servers.get(appId)?.server : null
-    return server?.isReady ? server.url : null
-  })
   useCanvasSync()
 
   // In canvas-tabs mode the active canvas drives what's visible in the right pane,
@@ -66,7 +61,7 @@ export function CommanderShell({
   const brandOverlayContent =
     appId &&
     (showDesignKitWizard
-      ? <DesignKitWizard appId={appId} previewUrl={designKitPreviewUrl ?? undefined} />
+      ? <DesignKitWizard appId={appId} />
       : <BrandBookView appId={appId} />)
 
   if (isMobile) {

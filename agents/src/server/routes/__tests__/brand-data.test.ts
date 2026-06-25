@@ -292,7 +292,7 @@ describe('Brand Data Route', () => {
     it('surfaces brand.summary, brand.imagery, and brand.wizard.phase', async () => {
       const summary = { text: 'A calm, considered brand.' };
       const imagery = { keyword: 'minimal neutral, airy whites' };
-      const wizard = { phase: 'working' };
+      const wizard = { phase: 'brand' };
 
       mockMemoryGet.mockImplementation(function (_scope: unknown, key: string) {
         const map: Record<string, unknown> = {

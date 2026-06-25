@@ -1,6 +1,6 @@
 # Gather Project Information
 
-Before you assemble the brand, you need just two essentials: the **business / project name** and **what the business is** (its type / vertical). Everything else — audience, voice, imagery, colours, fonts, even the pages — follows from these two and the chosen design kit, and the user fine-tunes it live in the working phase and beyond. So keep this opening light: ask only for the essentials you don't already have.
+Before you assemble the brand, you need just two essentials: the **business / project name** and **what the business is** (its type / vertical). Everything else — audience, voice, imagery, colours, fonts, even the pages — follows from these two and the chosen design kit, and the user fine-tunes it live in the brand phase and beyond. So keep this opening light: ask only for the essentials you don't already have.
 
 ## The questioning pass
 
@@ -11,7 +11,7 @@ Read the user's **first message** and note which of the two essentials it alread
 - **ANALYZE FIRST, ASK ONLY WHAT'S MISSING** — from the first message, decide whether the name and the business type are already clear; ask only for the ones that are not.
 - **Name (core)** — if the user hasn't given one, ask for it with 2-3 creative ideas relevant to the business type, plus "I don't have a name yet" as the last option. Use only a name the user provides or picks — offer suggestions, never assume one.
 - **Business type (core, usually already known)** — ask only when the first message is too thin to tell what the business is. Most prompts ("a site for my bakery") already make it clear; when they do, don't ask.
-- **Everything else follows later** — audience, location, and the specific pages/features are choices the user shapes in the working phase and as they build, and the design kit sets the visual direction. They don't change which kit fits or the first showcase, so leave them out of this pass.
+- **Everything else follows later** — audience, location, and the specific pages/features are choices the user shapes in the brand phase and as they build, and the design kit sets the visual direction. They don't change which kit fits or the first showcase, so leave them out of this pass.
 - **One or two questions at most** — usually just the name; often zero.
 
 ✅ [Ask for the name, with creative suggestions, when the user hasn't given one]

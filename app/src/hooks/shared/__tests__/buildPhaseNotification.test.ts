@@ -19,7 +19,7 @@ describe('handleBuildPhaseNotification', () => {
     setPhase.mockClear()
   })
 
-  it.each(['gathering', 'working', 'ready'] as const)(
+  it.each(['gathering', 'brand', 'website', 'ready'] as const)(
     'sets the wizard phase to %s for a matching, non-empty appId',
     (phase) => {
       handleBuildPhaseNotification({
@@ -51,7 +51,7 @@ describe('handleBuildPhaseNotification', () => {
 
   it('does not write to the store when both the payload and client appId are empty', () => {
     handleBuildPhaseNotification({
-      raw: { appId: '', phase: 'working' },
+      raw: { appId: '', phase: 'brand' },
       clientAppId: '',
       logPrefix: 'sse.build_phase',
     })
@@ -60,7 +60,7 @@ describe('handleBuildPhaseNotification', () => {
 
   it('does not write to the store when the client appId is empty and the payload has no appId', () => {
     handleBuildPhaseNotification({
-      raw: { phase: 'working' },
+      raw: { phase: 'brand' },
       clientAppId: '',
       logPrefix: 'sse.build_phase',
     })
@@ -69,7 +69,7 @@ describe('handleBuildPhaseNotification', () => {
 
   it('ignores events whose appId does not match the client app', () => {
     handleBuildPhaseNotification({
-      raw: { appId: 'other', phase: 'working' },
+      raw: { appId: 'other', phase: 'brand' },
       clientAppId: 'app1',
       logPrefix: 'sse.build_phase',
     })

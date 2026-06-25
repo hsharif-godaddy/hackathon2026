@@ -12,8 +12,8 @@ vi.mock('../useBrandData', () => ({
   useBrandData: (
     appId: string,
   ): { data: { wizard?: { phase: string } }; isLoading: boolean } => ({
-    // 'appNoData' exercises the no-persisted-phase default; any other id hydrates 'working'.
-    data: appId === 'appNoData' ? {} : { wizard: { phase: 'working' } },
+    // 'appNoData' exercises the no-persisted-phase default; any other id hydrates 'brand'.
+    data: appId === 'appNoData' ? {} : { wizard: { phase: 'brand' } },
     isLoading: false,
   }),
 }));
@@ -34,8 +34,8 @@ describe('useWizardPhase', () => {
   it('hydrates the phase from brand-data then reflects live store updates', async () => {
     const { result } = renderHook(() => useWizardPhase('app1234567'));
 
-    // Hydrated from the mocked brand-data (brand.wizard.phase = 'working').
-    await waitFor(() => expect(result.current.phase).toBe('working'));
+    // Hydrated from the mocked brand-data (brand.wizard.phase = 'brand').
+    await waitFor(() => expect(result.current.phase).toBe('brand'));
 
     // BuildPhaseHandler updates the store; the hook reflects it live.
     act(() => {
@@ -68,7 +68,7 @@ describe('useWizardPhase', () => {
   });
 
   it('reverts the store to the previous phase when the PUT returns a non-ok response', async () => {
-    useWizardStore.setState({ phaseByApp: { app1234567: 'working' } });
+    useWizardStore.setState({ phaseByApp: { app1234567: 'brand' } });
     fetchMock.mockResolvedValueOnce(new Response('nope', { status: 500 }));
     const errorSpy = vi.spyOn(logger, 'error').mockImplementation(() => {});
     const { result } = renderHook(() => useWizardPhase('app1234567'));
@@ -78,13 +78,13 @@ describe('useWizardPhase', () => {
     });
 
     // Optimistic update was rolled back to the previously persisted phase.
-    expect(useWizardStore.getState().getPhase('app1234567')).toBe('working');
+    expect(useWizardStore.getState().getPhase('app1234567')).toBe('brand');
     expect(errorSpy).toHaveBeenCalled();
     errorSpy.mockRestore();
   });
 
   it('reverts the store to the previous phase when fetch rejects (and never throws)', async () => {
-    useWizardStore.setState({ phaseByApp: { app1234567: 'working' } });
+    useWizardStore.setState({ phaseByApp: { app1234567: 'brand' } });
     fetchMock.mockRejectedValueOnce(new Error('network down'));
     const errorSpy = vi.spyOn(logger, 'error').mockImplementation(() => {});
     const { result } = renderHook(() => useWizardPhase('app1234567'));
@@ -94,7 +94,7 @@ describe('useWizardPhase', () => {
       await expect(result.current.setPhase('ready')).resolves.toBeUndefined();
     });
 
-    expect(useWizardStore.getState().getPhase('app1234567')).toBe('working');
+    expect(useWizardStore.getState().getPhase('app1234567')).toBe('brand');
     expect(errorSpy).toHaveBeenCalled();
     errorSpy.mockRestore();
   });

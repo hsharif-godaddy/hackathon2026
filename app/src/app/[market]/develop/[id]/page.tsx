@@ -214,21 +214,10 @@ function DevelopPageContent({ layout = BuilderLayout.Develop }: { layout?: Build
   // the wizard's own file writes (showcase HTML, brand-tokens.css).
   const showDesignKitWizard = useIsDesignKitWizardProfile()
 
-  // Chat-only design-kit flow: the 5-step wizard is replaced by a
-  // 2-phase chat-driven flow. Pre-reveal (phase gathering/working) we hide the
-  // develop-page chrome so only the chat + wizard overlay show; we reveal at 'ready'.
+  // Immersive design-kit flow (AIROBUILD-2855): a chat-driven phase machine
+  // (gathering → brand → website → ready). Pre-reveal (any phase but 'ready') we
+  // hide the develop-page chrome so only the chat + wizard overlay show.
   const wizardPhase = useWizardStore((s) => s.phaseByApp[appId])
-
-  // previewUrl for the design-kit wizard's working-phase showcase iframe
-  // (`${previewUrl}/brand-showcase.html`). Sourced from the same server-polling
-  // store PreviewPane reads, via a reactive primitive selector so this re-renders
-  // when the ready URL changes; null until the preview server is ready. The wizard
-  // renders in the BRAND overlay below (a stable parent), not inside PreviewPane,
-  // so previewUrl is resolved here rather than passed down through PreviewPane.
-  const designKitPreviewUrl = useServerPollingStore((state) => {
-    const server = appId ? state.servers.get(appId)?.server : null
-    return server?.isReady ? server.url : null
-  })
 
   // Logo-designer handoff → website build: switch Brand → Preview when the
   // first page file edit lands. localStorage-gated per appId so a reload after
@@ -414,9 +403,13 @@ function DevelopPageContent({ layout = BuilderLayout.Develop }: { layout?: Build
   ])
 
   const viewMode = useDevelopPageStore((state) => state.viewMode)
-  // Hide develop chrome (header + divider, full-width chat) while the chat-only design-kit
-  // flow is gathering/working in the BRAND tab; reveal normally once phase is 'ready'.
+  // Hide develop chrome (header + divider, full-width chat) while the immersive
+  // design-kit flow runs in the BRAND tab; reveal normally once phase is 'ready'.
   const hideDevelopChrome = showDesignKitWizard && viewMode === ViewMode.BRAND && wizardPhase !== 'ready'
+  // Once a vibe is chosen the chat docks to a left sidebar and the wizard panel
+  // ("Building Your Brand" / "Building your website") animates in on the right.
+  // `gathering` keeps the centered immersive chat (chat is full-width, no panel).
+  const chatDockedLeft = hideDevelopChrome && (wizardPhase === 'brand' || wizardPhase === 'website')
   const chatPaneWidth = useDevelopPageStore((state) => state.chatPaneWidth)
   const hasUnsavedChanges = useDevelopPageStore((state) => state.hasUnsavedChanges)
   const isChatPaneCollapsed = useDevelopPageStore((state) => state.isChatPaneCollapsed)
@@ -1512,7 +1505,10 @@ function DevelopPageContent({ layout = BuilderLayout.Develop }: { layout?: Build
                 x: !hideDevelopChrome && isChatPaneCollapsed
                   ? (isLayoutRtl ? chatPaneWidth + 16 : -(chatPaneWidth + 16))
                   : 0,
-                width: hideDevelopChrome ? '100%' : chatPaneWidth
+                // gathering: chat fills the row (centered below). Once docked (brand/
+                // website) it narrows to the sidebar width so the wizard panel takes
+                // the rest of the row.
+                width: hideDevelopChrome && !chatDockedLeft ? '100%' : chatPaneWidth
               }}
               transition={{
                 duration: 0.3,
@@ -1522,9 +1518,12 @@ function DevelopPageContent({ layout = BuilderLayout.Develop }: { layout?: Build
                 pointerEvents: !hideDevelopChrome && isChatPaneCollapsed ? 'none' : 'auto'
               }}
             >
-              {/* Centered, constrained column for the immersive chat-only mode; the
-                  always-present wrapper keeps ChatPane mounted across phase changes. */}
-              <div className={cn('h-full w-full', hideDevelopChrome && 'mx-auto max-w-3xl')}>
+              {/* Centered, constrained column for the gathering (full-width) immersive
+                  chat; once docked left the chat fills the narrow sidebar with its own
+                  horizontal padding (ChatPane drops `md:ps-2` when its toolbar is hidden,
+                  so add it back here). The always-present wrapper keeps ChatPane mounted
+                  across phase changes. */}
+              <div className={cn('h-full w-full', hideDevelopChrome && !chatDockedLeft && 'mx-auto max-w-3xl', chatDockedLeft && 'px-3')}>
                 <ChatPane
                   sendMessage={ws.actions.send}
                   stopGeneration={ws.actions.stop}
@@ -1552,15 +1551,18 @@ function DevelopPageContent({ layout = BuilderLayout.Develop }: { layout?: Build
               />
             )}
 
-            {/* Content (Preview, Settings, Code). When the chat-only design-kit flow hides
-                the chrome, the chat pane goes full-width and this content area collapses to
-                zero width — PreviewPane stays MOUNTED (its polling yields designKitPreviewUrl),
-                just off-screen, until the flow reveals at phase 'ready'. */}
+            {/* Content (Preview, Settings, Code, and the BRAND wizard overlay). During
+                `gathering` the chat is full-width and this area is pushed fully off-screen
+                (insetInlineStart 100%). Once a vibe is chosen (brand/website) it animates
+                in beside the docked chat to render the wizard panel. PreviewPane stays
+                MOUNTED throughout, just off-screen, until the flow reveals at 'ready'. */}
             <motion.div
               className="absolute top-0 end-0 bottom-0 flex flex-col"
               initial={false}
               animate={{
-                insetInlineStart: hideDevelopChrome ? '100%' : isChatPaneCollapsed ? 8 : chatPaneWidth + 16
+                insetInlineStart: hideDevelopChrome
+                  ? (chatDockedLeft ? chatPaneWidth + 16 : '100%')
+                  : isChatPaneCollapsed ? 8 : chatPaneWidth + 16
               }}
               transition={{
                 duration: 0.3,
@@ -1608,7 +1610,7 @@ function DevelopPageContent({ layout = BuilderLayout.Develop }: { layout?: Build
                     data-testid="brand-book-overlay"
                   >
                     {showDesignKitWizard
-                      ? <DesignKitWizard appId={appId} previewUrl={designKitPreviewUrl ?? undefined} />
+                      ? <DesignKitWizard appId={appId} />
                       : <BrandBookView appId={appId} />}
                   </div>
                 )}

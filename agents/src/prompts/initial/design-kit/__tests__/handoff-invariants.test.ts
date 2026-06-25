@@ -42,15 +42,16 @@ describe('design-kit prompt handoff invariants', () => {
     expect(HANDOFF_RE.test(wf.slice(handoffIdx)), 'Create website section must contain the handoff').toBe(true)
   })
 
-  it('Create website section gates the handoff on the real UI trigger, not co-located with the showcase trigger', () => {
+  it('Create website section drives the handoff itself (agent-driven) and is not co-located with a manual showcase trigger', () => {
     const wf = read('wizard-flow.md')
     const handoff = wf.slice(wf.indexOf('## Create website'))
-    // The literal message the UI sends from the "Create my website" / "Skip to my
-    // website" buttons (DesignKitWizard handleCreateWebsite). Gating on anything else
-    // (e.g. "Create website") would never fire and convert the bug into a never-handoff.
-    expect(handoff).toContain('Create my website')
-    // The showcase trigger must not sit beside the handoff (priming + the guard would
-    // otherwise risk matching/blocking the wrong message).
+    // AIROBUILD-2855: the flow is now agent-driven — there are no manual "Create my
+    // website" / "Build my brand showcase" buttons. The agent proceeds on its own from
+    // brand → showcase → website, emitting the website phase at the handoff.
+    expect(handoff).toContain('setWizardStep({ phase: "website" })')
+    expect(handoff).toContain('handoff')
+    // The removed button messages must not reappear (they'd re-introduce the manual flow).
+    expect(handoff).not.toContain('Create my website')
     expect(handoff).not.toContain('Build my brand showcase')
   })
 

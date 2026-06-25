@@ -13,13 +13,13 @@ const memoryStore = getKvMemoryStore()
 const MEMORY_KEY = 'brand.wizard.phase'
 
 export const StepSchema = z.object({
-  phase: z.enum(['gathering', 'working', 'ready']).describe(
-    'Active design-kit wizard phase: gathering=asking core questions and assembling the kit (kit/colors/fonts/keywords/logo); working=brand showcase and build buttons are shown; ready=the website build has completed and the full builder is revealed.',
+  phase: z.enum(['gathering', 'brand', 'website', 'ready']).describe(
+    'Active design-kit wizard phase: gathering=asking core questions and assembling the kit (kit/colors/fonts/keywords/logo); brand=the kit is assembled/finalized and the "Building Your Brand" progress panel is shown; website=the website build is in progress; ready=the website build has completed and the full builder is revealed.',
   ),
 })
 
 export const setWizardStepAITool: Tool = createTool(
-  'Advance the Design Kit Wizard to a phase and notify the UI. Call this at each transition: "gathering" when you start asking the core questions and assembling the kit; "working" once the kit is assembled (colours, fonts, imagery, logo) so the editing panels and the Build / Create-website buttons appear — the user builds the brand showcase from there. Do not emit "ready" — the UI reveals the full builder on its own when the website build completes.',
+  'Advance the Design Kit Wizard to a phase and notify the UI. Call this at each transition: "gathering" when you start asking the core questions and assembling the kit; "brand" once the kit is assembled (colours, fonts, imagery, logo) so the "Building Your Brand" progress panel appears while you finalize the brand and build its showcase; "website" when you start creating the website (at the handoff to develop) so the UI shows the "Building your website" state. Do not emit "ready" — the UI reveals the full builder on its own when the website build completes.',
   StepSchema,
   async (input, context) => {
     const appId = context?.metadata?.appId as string | undefined
@@ -36,7 +36,7 @@ export const setWizardStepAITool: Tool = createTool(
       return '**Error:** Failed to save wizard phase. Please try again.'
     }
 
-    // Entering the working phase: make sure public/brand-tokens.css exists
+    // Entering the brand phase: make sure public/brand-tokens.css exists
     // and reflects the current palette + fonts. The showcase links it for its CSS
     // variables (--primary, --background, --font-heading, …); the agent's
     // colorScheme/fontTheme write those to memory but never emit the file, so without
@@ -45,7 +45,7 @@ export const setWizardStepAITool: Tool = createTool(
     // the file is in place the moment the iframe loads. Best-effort — never block the
     // phase transition. (User edits via the design-kit panels sync it through their own
     // route; this covers the agent-assembled first load.)
-    if (input.phase === 'working') {
+    if (input.phase === 'brand') {
       try {
         const workspace = createForWorkspace(appId, 'preview')
         if (workspace) {
