@@ -22,10 +22,10 @@ export type ProcessFileError = {
 }
 
 const MEGABYTE = 1024 * 1024
-const MAX_TEXT_SIZE = 1 * MEGABYTE   // 1 MB
-const MAX_IMAGE_SIZE = 20 * MEGABYTE // 20 MB
-const MAX_ZIP_SIZE = 10 * MEGABYTE   // 10 MB
-const MAX_TOTAL_BYTES = 50 * MEGABYTE // 50 MB
+const MAX_TEXT_SIZE = 25 * MEGABYTE   // 25 MB
+const MAX_IMAGE_SIZE = 25 * MEGABYTE  // 25 MB
+const MAX_ZIP_SIZE = 25 * MEGABYTE    // 25 MB
+const MAX_TOTAL_BYTES = 125 * MEGABYTE // 125 MB (5 files × 25 MB)
 const MAX_FILES = 5
 
 function formatSizeLabel(bytes: number): string {

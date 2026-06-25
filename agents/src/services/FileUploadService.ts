@@ -89,7 +89,7 @@ const BLOCKED_MIME_TYPES = new Set([
   'application/java-archive'
 ])
 
-const MAX_IMAGE_FILE_SIZE = 10 * 1024 * 1024 // 10MB for images and data files
+const MAX_IMAGE_FILE_SIZE = 25 * 1024 * 1024 // 25MB for images and data files
 const MAX_VIDEO_FILE_SIZE = 50 * 1024 * 1024 // 50MB for videos
 const MAX_FILES_PER_UPLOAD = 5
 

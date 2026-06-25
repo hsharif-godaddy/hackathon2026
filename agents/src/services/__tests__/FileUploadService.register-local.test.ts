@@ -120,9 +120,9 @@ describe('FileUploadService.registerLocalFilesAsUpload', () => {
     const src = await writeSource('huge.jpg', Buffer.from('small on disk; size is forced below'))
     const result = await service.registerLocalFilesAsUpload(
       'app1',
-      // Pass an explicit size over the 10MB image cap so we exercise the
+      // Pass an explicit size over the 25MB image cap so we exercise the
       // oversize-skip path without writing a multi-MB fixture.
-      [{ absoluteSourcePath: src, originalName: 'huge.jpg', mimeType: 'image/jpeg', size: 11 * 1024 * 1024 }],
+      [{ absoluteSourcePath: src, originalName: 'huge.jpg', mimeType: 'image/jpeg', size: 26 * 1024 * 1024 }],
       { uploadId: 'crawled-source', source: 'crawled' }
     )
     expect(result.files).toHaveLength(0)

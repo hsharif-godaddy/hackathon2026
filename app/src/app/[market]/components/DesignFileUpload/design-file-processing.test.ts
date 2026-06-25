@@ -55,7 +55,7 @@ function createImageFile(name: string, sizeBytes: number): File {
 // arrayBuffer() and we never trigger a multi-MB jsdom FileReader read.
 function createOversizedImage(name: string): File {
   const file = new File([new ArrayBuffer(1)], name)
-  Object.defineProperty(file, 'size', { value: 21 * 1024 * 1024 })
+  Object.defineProperty(file, 'size', { value: 26 * 1024 * 1024 })
   return file
 }
 
@@ -98,7 +98,7 @@ describe('processDesignFile', () => {
   })
 
   it('throws FileTooLargeError for oversized text files', async () => {
-    const file = createFile('big.txt', 'x', 2 * 1024 * 1024)
+    const file = createFile('big.txt', 'x', 26 * 1024 * 1024)
     await expect(processDesignFile(file)).rejects.toThrow(FileTooLargeError)
   })
 
@@ -133,7 +133,7 @@ describe('processDesignFile', () => {
 
   it('throws FileTooLargeError for oversized zip files', async () => {
     const zipFile = new File([new ArrayBuffer(1)], 'huge.zip')
-    Object.defineProperty(zipFile, 'size', { value: 11 * 1024 * 1024 })
+    Object.defineProperty(zipFile, 'size', { value: 26 * 1024 * 1024 })
     await expect(processDesignFile(zipFile)).rejects.toThrow(FileTooLargeError)
   })
 
@@ -208,12 +208,13 @@ describe('processDesignFiles', () => {
     expect(result.errors[0].error).toBe(ProcessFileErrorReason.MaxFiles)
   })
 
-  it('rejects a file that would exceed the internal 50 MB total default', async () => {
+  it('rejects a file that would exceed the internal 125 MB total default', async () => {
     const current: UploadedDesignFile[] = [{
       name: 'big.png', content: '', isDesignMd: false, isImage: true,
       zipRaw: new ArrayBuffer(40 * 1024 * 1024),
     }]
-    const largeFile = createImageFile('another.png', 15 * 1024 * 1024)
+    // 90 MB size override (no real allocation) → 40 + 90 > 125 MB total default.
+    const largeFile = createImageFile('another.png', 90 * 1024 * 1024)
     const result = await processDesignFiles([largeFile], current)
     expect(result.processed).toHaveLength(0)
     expect(result.errors[0].error).toBe(ProcessFileErrorReason.TotalSize)
@@ -242,8 +243,8 @@ describe('processDesignFiles', () => {
 
   it('collects errors from individually failing files without stopping', async () => {
     const good = createFile('ok.txt', 'fine')
-    const tooBig = createFile('bad.txt', 'x', 2 * 1024 * 1024)
-    const result = await processDesignFiles([tooBig, good], [], { maxFiles: 5, maxTotalBytes: 20 * 1024 * 1024 })
+    const tooBig = createFile('bad.txt', 'x', 26 * 1024 * 1024)
+    const result = await processDesignFiles([tooBig, good], [], { maxFiles: 5, maxTotalBytes: 125 * 1024 * 1024 })
     expect(result.processed).toHaveLength(1)
     expect(result.processed[0].name).toBe('ok.txt')
     expect(result.errors).toHaveLength(1)
@@ -274,8 +275,8 @@ describe('processDesignFiles', () => {
   })
 
   it('does not produce MaliciousContent error for non-malicious errors', async () => {
-    const tooBig = createFile('big.txt', 'x', 2 * 1024 * 1024)
-    const result = await processDesignFiles([tooBig], [], { maxFiles: 5, maxTotalBytes: 20 * 1024 * 1024 })
+    const tooBig = createFile('big.txt', 'x', 26 * 1024 * 1024)
+    const result = await processDesignFiles([tooBig], [], { maxFiles: 5, maxTotalBytes: 125 * 1024 * 1024 })
     expect(result.errors).toHaveLength(1)
     expect(result.errors[0].error).not.toBe(ProcessFileErrorReason.MaliciousContent)
   })
