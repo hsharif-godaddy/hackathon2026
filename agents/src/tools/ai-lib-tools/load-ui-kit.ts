@@ -4,6 +4,7 @@ import { createForWorkspace } from '../../workspace/index.js'
 import { isDevSupervisorNotFound } from '../../services/DevSupervisorClient.js'
 import { logger } from '../../logging/index.js'
 import type { WorkspaceFiles } from '../../workspace/files.js'
+import { UI_KIT_COPY_GUARDRAIL } from '../../prompts/ui-kit-guardrail.js'
 
 const AUTO_LOAD_DIRS = ['primitives', 'components']
 const LIST_ONLY_DIRS = ['layouts', 'showcase']
@@ -118,7 +119,9 @@ export const loadUiKitAITool: Tool = createTool(
     const hasIncludes = input.include && input.include.length > 0
 
     if (hasIncludes) {
-      // Include mode: only load the requested files (primitives/components already in context)
+      // Include mode: only load the requested files (primitives/components already in context).
+      // No copy guardrail is injected here on purpose: include mode is a follow-up fetch within
+      // a turn whose per-turn anchor (context-manager) already carries UI_KIT_COPY_GUARDRAIL.
       sections.push('# UI Kit — Requested References')
       sections.push('')
 
@@ -160,6 +163,8 @@ export const loadUiKitAITool: Tool = createTool(
     } else {
       // Default mode: load primitives + components, list everything else.
       sections.push('# UI Kit — Design System')
+      sections.push('')
+      sections.push(UI_KIT_COPY_GUARDRAIL)
       sections.push('')
 
       const autoLoadFiles = (

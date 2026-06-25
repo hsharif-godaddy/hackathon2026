@@ -3,6 +3,7 @@ import { join, relative } from 'path'
 import type { ContextAttachment, ContextAttachmentRenderer, RenderedContext } from '@airo/shared/context-attachment'
 import { AppRepository } from '../../database/repositories/AppRepository.js'
 import { logger } from '../../logging/index.js'
+import { UI_KIT_COPY_GUARDRAIL } from '../../prompts/ui-kit-guardrail.js'
 
 const appRepo = new AppRepository()
 
@@ -52,6 +53,8 @@ export class UiKitUploadContextRenderer implements ContextAttachmentRenderer {
     sections.push('# UI Kit — Design System Reference')
     sections.push('')
     sections.push('The UI kit has been written to `docs/ui-kit/` on disk. This kit is your design language — the components and primitives below define the visual vocabulary for everything you build. Default to these building blocks for every UI need. When you need something not explicitly covered, compose or extend these pieces in a way that matches their style and tokens.')
+    sections.push('')
+    sections.push(UI_KIT_COPY_GUARDRAIL)
     sections.push('')
 
     // Load full content for primitives and components

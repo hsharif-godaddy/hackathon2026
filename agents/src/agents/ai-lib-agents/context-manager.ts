@@ -10,6 +10,7 @@ import type { KvMemoryStore, MessageStore, SummaryStore } from '../../memory/int
 import { customerIdFromContext, workspaceScopeFromAppId } from '../../memory/interfaces/scope.js'
 import type { EnhancedAgentContext, ContextMessage, ContextGenerationConfig, AgentContextPreferences } from './types.js'
 import { DEFAULT_CONTEXT_CONFIG } from './types.js'
+import { UI_KIT_COPY_GUARDRAIL } from '../../prompts/ui-kit-guardrail.js'
 import { logger, log } from '../../logging/index.js'
 import { getAgentConfig } from '../../services/features.js'
 import type { FormattedContext } from '../../services/helpers/ContextFormatter.js'
@@ -240,6 +241,7 @@ export class AILibContextManager {
                     '- Use the kit\'s color tokens, spacing scale, typography, border radii, and motion patterns in all code you write.',
                     '- When you need something the kit doesn\'t explicitly provide, compose existing kit components or extend them in a way that matches the kit\'s style and tokens.',
                     '- Never contradict the kit — don\'t override its colors, introduce fonts it doesn\'t define, or break its component patterns.',
+                    `- ${UI_KIT_COPY_GUARDRAIL}`,
                     '',
                     'The kit is your anchor. Everything you produce should look like it belongs to this design system.',
                 ].join('\n'),

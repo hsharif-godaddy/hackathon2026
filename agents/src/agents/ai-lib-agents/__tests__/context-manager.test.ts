@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { AILibContextManager } from '../context-manager.js'
+import { UI_KIT_COPY_GUARDRAIL } from '../../../prompts/ui-kit-guardrail.js'
 
 const { latestSummary, getMessageById, summaryStore, pinnedSummaryId } = vi.hoisted(() => ({
   latestSummary: { value: null as any },
@@ -363,6 +364,8 @@ describe('AILibContextManager', () => {
 
       const anchor = result.contextMessages.find((m) => m.content.includes('UI kit design system'))
       expect(anchor).toBeDefined()
+      // Copy-reuse guardrail injected verbatim from the single shared source.
+      expect(anchor!.content).toContain(UI_KIT_COPY_GUARDRAIL)
       expect(workspaceFilesMock.stat).toHaveBeenCalledWith({
         paths: ['docs/ui-kit/kit-meta.json'],
       })

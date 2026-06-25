@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { Tool } from '@airo/ai-lib'
+import { UI_KIT_COPY_GUARDRAIL } from '../../../prompts/ui-kit-guardrail.js'
 
 const { workspaceFilesMock, workspaceMockState, MockDevSupervisorError, mockLogger } = vi.hoisted(() => {
   class _Err extends Error {
@@ -189,6 +190,9 @@ describe('loadUiKitAITool', () => {
       expect(out).not.toContain('.DS_Store')
       expect(out).toContain('## Additional References')
       expect(out).toContain('- `layouts/recipe-editorial.md`')
+
+      // Copy-reuse guardrail injected verbatim from the single shared source.
+      expect(out).toContain(UI_KIT_COPY_GUARDRAIL)
 
       const viewedPaths = workspaceFilesMock.view.mock.calls.map(
         (c) => (c[0] as { path: string }).path,
