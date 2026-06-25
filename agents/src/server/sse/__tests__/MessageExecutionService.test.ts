@@ -59,6 +59,7 @@ import { APICallError, RetryError, TypeValidationError } from 'ai'
 // `actionServiceMap` is module-local so tests can assert registry state
 // without touching the production actionServices map.
 const actionServiceMap = new Map<string, { cleanup: () => void }>()
+const mockGetAgentFactory = vi.hoisted(() => vi.fn())
 vi.mock('../../agent-runtime.js', () => ({
   registerActionService: vi.fn(function (key: string, service: any) {
     actionServiceMap.set(key, service)
@@ -68,6 +69,7 @@ vi.mock('../../agent-runtime.js', () => ({
     if (s) { s.cleanup(); actionServiceMap.delete(key) }
   }),
   getActionService: vi.fn(function (key: string) { return actionServiceMap.get(key) ?? null; }),
+  getAgentFactory: mockGetAgentFactory,
 }))
 
 // Mock message-lifecycle helpers so the lifecycle-deps test can assert
@@ -94,8 +96,17 @@ vi.mock('../../rebuild-build-page-message.js', () => ({
 // initial kit turn; never on follow-ups or without a slug) is observable without
 // hitting the real catalog/workspace.
 const mockEnrichWithForcedDesignKit = vi.hoisted(() => vi.fn().mockResolvedValue([]))
+const mockCreateForWorkspace = vi.hoisted(() => vi.fn())
 vi.mock('../../../services/design-system/forced-install.js', () => ({
   enrichWithForcedDesignKit: (...args: any[]) => mockEnrichWithForcedDesignKit(...args),
+  isDesignSystemVariant: (agentConfig: { id?: string; metadata?: { preflightTools?: unknown } } | undefined): boolean => {
+    const preflightTools = agentConfig?.metadata?.preflightTools
+    return (Array.isArray(preflightTools) && preflightTools.includes('listDesignSystems'))
+      || !!agentConfig?.id?.startsWith('initial-design-system')
+  },
+}))
+vi.mock('../../../workspace/index.js', () => ({
+  createForWorkspace: mockCreateForWorkspace,
 }))
 vi.mock('../../../services/budget-service-instance.js', () => ({
   getBudgetServiceClient: mockGetBudgetServiceClient,
@@ -280,6 +291,13 @@ describe('MessageExecutionService', () => {
     mockCreateAgentInvocationSpan.mockClear()
     mockSpanSetAttribute.mockClear()
     mockEmitConversationStart.mockClear()
+    mockGetAgentFactory.mockReset()
+    mockCreateForWorkspace.mockReset()
+    mockCreateForWorkspace.mockReturnValue({
+      files: {
+        stat: vi.fn().mockResolvedValue({ entries: [{ path: 'docs/ui-kit/kit-meta.json', error: 'not_found' }] }),
+      },
+    })
     deps = createMockDeps()
     service = new MessageExecutionService(deps as any)
   })
@@ -368,129 +386,168 @@ describe('MessageExecutionService', () => {
       )
     })
 
-    it('recovers to the base variant when frozen to -attached but the install produced nothing', async () => {
-      // The route freezes to -attached before the install runs; if the install yields
-      // no messages (failure), the turn must fall back to the base variant — which has
-      // the select/install tools — instead of building on a missing kit.
-      const agentWithConfig = {
+    function mockKitMetaStat(exists: boolean): ReturnType<typeof vi.fn> {
+      const stat = vi.fn().mockResolvedValue({
+        entries: [{
+          path: 'docs/ui-kit/kit-meta.json',
+          ...(exists ? { kind: 'file' } : { error: 'not_found' }),
+        }],
+      })
+      mockCreateForWorkspace.mockReturnValue({ files: { stat } })
+      return stat
+    }
+
+    function createDesignKitAgents(ids: string[]): Record<string, { streamGenerate: ReturnType<typeof vi.fn>; getName: ReturnType<typeof vi.fn>; getConfig: ReturnType<typeof vi.fn> }> {
+      return Object.fromEntries(ids.map((id) => [id, {
         streamGenerate: vi.fn().mockResolvedValue({
           textStream: (async function* () {})(),
           baseStream: makeReadableStream([]),
         }),
-        getName: vi.fn().mockReturnValue('AI Developer'),
-        getConfig: vi.fn().mockReturnValue({ id: 'x', tools: { loadUiKit: {} }, metadata: {} }),
-      }
-      const known: Record<string, unknown> = {
-        'initial-design-system-homepage-build': agentWithConfig,
-        'initial-design-system-homepage-build-attached': agentWithConfig,
-      }
-      deps.getAgent.mockImplementation((id: string) => {
-        if (!(id in known)) throw new Error(`Agent config not found for id: ${id}`)
-        return known[id]
-      })
-      mockEnrichWithForcedDesignKit.mockResolvedValueOnce([]) // install produced nothing
-
-      await service.execute({
-        ...DEFAULT_PARAMS,
-        agentId: 'initial-design-system-homepage-build-attached',
-        designKitSlug: 'modern-bento',
-        lifecycleContext: { isInitialPrompt: true },
-      })
-
-      // The turn ran the BASE variant (only requested on the recovery path), not the
-      // frozen -attached one.
-      expect(deps.getAgent).toHaveBeenCalledWith('initial-design-system-homepage-build')
-      // And the revert is written to BOTH caches the freeze wrote to, or it's shadowed:
-      // the persisted store AND the warm session cache (which the agent router reads
-      // first). Without the session reset, turn 2+ resurrects the frozen -attached.
-      expect(deps.persistAgentId).toHaveBeenCalledWith('conv_1', 'initial-design-system-homepage-build')
-      expect(deps.stateManager.switchAgent).toHaveBeenCalledWith(expect.any(String), 'initial-design-system-homepage-build')
-    })
-
-    it('does not persist any agent revert on the happy path (install produced messages)', async () => {
-      const agentWithConfig = {
-        streamGenerate: vi.fn().mockResolvedValue({
-          textStream: (async function* () {})(),
-          baseStream: makeReadableStream([]),
+        getName: vi.fn().mockReturnValue(id),
+        getConfig: vi.fn().mockReturnValue({
+          id,
+          tools: { loadUiKit: {} },
+          metadata: { preflightTools: id === 'develop' ? [] : ['listDesignSystems'] },
         }),
-        getName: vi.fn().mockReturnValue('AI Developer'),
-        getConfig: vi.fn().mockReturnValue({ id: 'x', tools: { loadUiKit: {} }, metadata: {} }),
-      }
-      const known: Record<string, unknown> = {
-        'initial-design-system-homepage-build': agentWithConfig,
-        'initial-design-system-homepage-build-attached': agentWithConfig,
-      }
+      }]))
+    }
+
+    function wireAgents(agents: Record<string, unknown>): void {
       deps.getAgent.mockImplementation((id: string) => {
-        if (!(id in known)) throw new Error(`Agent config not found for id: ${id}`)
-        return known[id]
+        if (!(id in agents)) throw new Error(`Agent config not found for id: ${id}`)
+        return agents[id]
       })
-      mockEnrichWithForcedDesignKit.mockResolvedValueOnce([{ role: 'user', content: 'installed' }]) // success
+      mockGetAgentFactory.mockReturnValue({ agents: { has: (id: string) => id in agents } })
+    }
 
-      await service.execute({
-        ...DEFAULT_PARAMS,
-        agentId: 'initial-design-system-homepage-build-attached',
-        designKitSlug: 'modern-bento',
-        lifecycleContext: { isInitialPrompt: true },
-      })
-
-      expect(deps.persistAgentId).not.toHaveBeenCalled()
-      expect(deps.stateManager.switchAgent).not.toHaveBeenCalled()
-    })
-
-    it('multi-turn: a failed install on turn 1 does not resurrect the frozen -attached variant on turn 2', async () => {
-      // Models the REAL turn-2 resolution: the agent router (agent-router.ts step 1)
-      // reads the warm SESSION cache BEFORE the persisted store and returns it verbatim.
-      // So turn 2's agent must be resolved from the session cache, not the store map —
-      // otherwise the test can't catch a revert that updates only the store. The route
-      // freeze dual-wrote both caches to -attached at create; recovery must reset both.
-      const BASE = 'initial-design-system-homepage-build'
-      const ATTACHED = 'initial-design-system-homepage-build-attached'
-      const store: Record<string, string> = { conv_1: ATTACHED }
-      let sessionAgent = ATTACHED // warm session cache — what the router consults FIRST
-
-      const agentWithConfig = {
-        streamGenerate: vi.fn().mockResolvedValue({
-          textStream: (async function* () {})(),
-          baseStream: makeReadableStream([]),
-        }),
-        getName: vi.fn().mockReturnValue('AI Developer'),
-        getConfig: vi.fn().mockReturnValue({ id: 'x', tools: { loadUiKit: {} }, metadata: {} }),
-      }
-      const known: Record<string, unknown> = { [BASE]: agentWithConfig, [ATTACHED]: agentWithConfig }
-      deps.getAgent.mockImplementation((id: string) => {
-        if (!(id in known)) throw new Error(`Agent config not found for id: ${id}`)
-        return known[id]
-      })
-      deps.persistAgentId.mockImplementation(async (convId: string, id: string) => { store[convId] = id })
-      deps.stateManager.switchAgent.mockImplementation(async (_sessionId: string, id: string) => { sessionAgent = id })
-
-      // --- Turn 1: initial build, forced install produces nothing ---
+    it('derives the -attached turn instance from kit-meta while persisting the base gallery variant', async () => {
+      // AIROBUILD-2696 AC1: base gallery variant + kit-meta present ⇒ run the
+      // -attached instance for this turn; never persist/switch the conversation to -attached.
+      mockKitMetaStat(true)
       mockEnrichWithForcedDesignKit.mockResolvedValueOnce([])
+      const base = 'initial-design-system-homepage-build'
+      const attached = `${base}-attached`
+      const agents = createDesignKitAgents([base, attached])
+      wireAgents(agents)
+
       await service.execute({
         ...DEFAULT_PARAMS,
-        agentId: sessionAgent, // router resolved -attached from the warm session cache
+        agentId: base,
         designKitSlug: 'modern-bento',
         lifecycleContext: { isInitialPrompt: true },
       })
-      // Recovery reverted BOTH caches to base — the store AND the session cache.
-      expect(store.conv_1).toBe(BASE)
-      expect(sessionAgent).toBe(BASE)
 
-      // --- Turn 2: user answers the parked interview (follow-up, not initial) ---
-      deps.getAgent.mockClear()
-      mockEnrichWithForcedDesignKit.mockClear()
+      expect(agents[attached]!.streamGenerate).toHaveBeenCalledTimes(1)
+      expect(agents[base]!.streamGenerate).not.toHaveBeenCalled()
+      expect(deps.persistAgentId).not.toHaveBeenCalledWith('conv_1', attached)
+      expect(deps.stateManager.switchAgent).not.toHaveBeenCalledWith(expect.any(String), attached)
+    })
+
+    it('keeps the base gallery variant when kit-meta is absent', async () => {
+      // AIROBUILD-2696 AC2: no artifact means no per-turn swap and no stranded -attached state.
+      const stat = mockKitMetaStat(false)
+      const base = 'initial-design-system-homepage-build'
+      const attached = `${base}-attached`
+      const agents = createDesignKitAgents([base, attached])
+      wireAgents(agents)
+
       await service.execute({
         ...DEFAULT_PARAMS,
-        agentId: sessionAgent, // router precedence: resolve from the session cache (now BASE)
-        designKitSlug: 'modern-bento',
+        agentId: base,
         lifecycleContext: { isInitialPrompt: false },
       })
 
-      // Turn 2 runs the base variant and never touches the stranded -attached one,
-      // and does not re-attempt the forced install.
-      expect(deps.getAgent).toHaveBeenCalledWith(BASE)
-      expect(deps.getAgent).not.toHaveBeenCalledWith(ATTACHED)
-      expect(mockEnrichWithForcedDesignKit).not.toHaveBeenCalled()
+      expect(stat).toHaveBeenCalledWith({ paths: ['docs/ui-kit/kit-meta.json'] })
+      expect(agents[base]!.streamGenerate).toHaveBeenCalledTimes(1)
+      expect(agents[attached]!.streamGenerate).not.toHaveBeenCalled()
+    })
+
+    it('treats a kit-meta stat failure as no-kit: stays on the base variant without crashing the turn', async () => {
+      // AIROBUILD-2696 AC2: a thrown workspace stat (transport failure, not a
+      // per-path not_found) must default kitMetaExists=false and fall through to
+      // the base variant — never reject the turn.
+      const stat = vi.fn().mockRejectedValue(new Error('dev-supervisor unreachable'))
+      mockCreateForWorkspace.mockReturnValue({ files: { stat } })
+      const base = 'initial-design-system-homepage-build'
+      const attached = `${base}-attached`
+      const agents = createDesignKitAgents([base, attached])
+      wireAgents(agents)
+
+      await service.execute({
+        ...DEFAULT_PARAMS,
+        agentId: base,
+        lifecycleContext: { isInitialPrompt: false },
+      })
+
+      expect(stat).toHaveBeenCalledWith({ paths: ['docs/ui-kit/kit-meta.json'] })
+      expect(agents[base]!.streamGenerate).toHaveBeenCalledTimes(1)
+      expect(agents[attached]!.streamGenerate).not.toHaveBeenCalled()
+    })
+
+    it('keeps resolving the -attached instance across parked interview answer and build turns', async () => {
+      // AIROBUILD-2696 GATE 2: turn 1 parks on askQuestion (no handoff); answer
+      // and later build turns resolve base from the router, then derive -attached from the artifact.
+      mockKitMetaStat(true)
+      mockEnrichWithForcedDesignKit.mockResolvedValue([{ role: 'user', content: 'installed' }])
+      const base = 'initial-design-system-homepage-build'
+      const attached = `${base}-attached`
+      const agents = createDesignKitAgents([base, attached])
+      agents[attached]!.streamGenerate.mockResolvedValue({
+        textStream: (async function* () {})(),
+        baseStream: makeReadableStream([{ type: 'tool-call', id: 'ask-1', toolName: 'askQuestion', input: { question: 'What tone?' } }]),
+      })
+      wireAgents(agents)
+
+      await service.execute({ ...DEFAULT_PARAMS, agentId: base, designKitSlug: 'modern-bento', lifecycleContext: { isInitialPrompt: true } })
+      expect(deps.onAgentChanged).not.toHaveBeenCalled()
+      expect(agents[attached]!.streamGenerate).toHaveBeenCalledTimes(1)
+
+      await service.execute({ ...DEFAULT_PARAMS, content: 'Warm and modern', agentId: base, lifecycleContext: { isInitialPrompt: false } })
+      await service.execute({ ...DEFAULT_PARAMS, content: 'Build now', agentId: base, lifecycleContext: { isInitialPrompt: false } })
+
+      expect(agents[attached]!.streamGenerate).toHaveBeenCalledTimes(3)
+      expect(agents[base]!.streamGenerate).not.toHaveBeenCalled()
+      expect(mockEnrichWithForcedDesignKit).toHaveBeenCalledTimes(1)
+    })
+
+    it('does not stat or swap after handoff persists develop', async () => {
+      // AIROBUILD-2696 AC4: once the router resolves develop, the design-system
+      // capability gate must exit before workspace stat or `develop-attached` probing.
+      const stat = mockKitMetaStat(true)
+      const agents = createDesignKitAgents(['develop'])
+      wireAgents(agents)
+
+      await service.execute({
+        ...DEFAULT_PARAMS,
+        agentId: 'develop',
+        lifecycleContext: { isInitialPrompt: false },
+      })
+
+      expect(stat).not.toHaveBeenCalled()
+      expect(deps.getAgent).not.toHaveBeenCalledWith('develop-attached')
+      expect(agents.develop!.streamGenerate).toHaveBeenCalledTimes(1)
+    })
+
+    it.each([
+      ['develop', ['develop']],
+      ['initial-design-kit', ['initial-design-kit']],
+      ['initial-design-system', ['initial-design-system']],
+      ['initial-design-system-homepage-build-attached', ['initial-design-system-homepage-build-attached']],
+    ])('does not probe or double-suffix missing attached sibling for %s', async (agentId: string, ids: string[]) => {
+      // AIROBUILD-2696 AC5: sibling guard. Kit-meta may exist for wizard/plain
+      // design-system agents after install.ts synthesis; only registered siblings may swap.
+      mockKitMetaStat(true)
+      const agents = createDesignKitAgents(ids)
+      wireAgents(agents)
+
+      await service.execute({
+        ...DEFAULT_PARAMS,
+        agentId,
+        lifecycleContext: { isInitialPrompt: false },
+      })
+
+      expect(deps.getAgent).not.toHaveBeenCalledWith(`${agentId}-attached`)
+      expect(agents[agentId]!.streamGenerate).toHaveBeenCalledTimes(1)
     })
   })
 

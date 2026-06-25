@@ -1135,12 +1135,9 @@ describe('SSE routes', () => {
       expect(mockExecute).toHaveBeenCalledWith(expect.objectContaining({ agentId: 'initial-design-system' }))
     })
 
-    it('finalizes a design-system app to the -attached fork on the initial prompt when a kit is attached', async () => {
-      // A user-attached kit must run the whole initial build on the -attached
-      // fork (no auto-select, no re-install). SSE freezes on the base
-      // design-system variant at create; the first message carries designKitSlug
-      // and must re-freeze to the -attached variant so later turns can't
-      // auto-select a different kit.
+    it('keeps a design-system app on the base agent when a kit is attached on the initial prompt', async () => {
+      // AIROBUILD-2696 AC1: routes must not persist the derived -attached fork;
+      // MessageExecutionService derives the turn instance from docs/ui-kit/kit-meta.json.
       vi.mocked(getAgentFactory).mockReturnValue({ agents: { has: () => true } } as any)
       const mockExecute = vi.fn().mockResolvedValue(undefined)
       const depsWithService = {
@@ -1160,8 +1157,9 @@ describe('SSE routes', () => {
       for (let i = 0; i < 50 && mockExecute.mock.calls.length === 0; i++) {
         await new Promise(r => setTimeout(r, 5))
       }
-      expect(depsWithService.lifecycle.updateAgentId).toHaveBeenCalledWith('conv_1', 'initial-design-system-homepage-build-attached')
-      expect(mockExecute).toHaveBeenCalledWith(expect.objectContaining({ agentId: 'initial-design-system-homepage-build-attached' }))
+      expect(depsWithService.lifecycle.updateAgentId).not.toHaveBeenCalledWith('conv_1', 'initial-design-system-homepage-build-attached')
+      expect(depsWithService.lifecycle.updateAgentId).not.toHaveBeenCalled()
+      expect(mockExecute).toHaveBeenCalledWith(expect.objectContaining({ agentId: 'initial-design-system-homepage-build' }))
       vi.mocked(getAgentFactory).mockReturnValue(null)
     })
 

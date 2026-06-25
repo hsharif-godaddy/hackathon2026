@@ -32,4 +32,26 @@ describe('resolveTurnAgent', () => {
     expect(agent).toEqual({ id: RESOLVED })
     expect(getAgent).not.toHaveBeenCalledWith(ATTACHED)
   })
+
+  it('runs an already-attached legacy persisted agent directly without double-suffixing', () => {
+    // AIROBUILD-2696 AC5: legacy rows may already store `...-attached`; they must
+    // not try to resolve `...-attached-attached` when the per-turn gate is true.
+    const getAgent = vi.fn(makeRegistry([ATTACHED]))
+    const agent = resolveTurnAgent({ name: ATTACHED, resolvedAgentId: ATTACHED, useAttachedVariant: true, getAgent })
+    expect(agent).toEqual({ id: ATTACHED })
+    expect(getAgent).not.toHaveBeenCalledWith(`${ATTACHED}-attached`)
+  })
+
+  it('falls back to the resolved agent when useAttachedVariant leaks true but no sibling exists', () => {
+    // AIROBUILD-2696 AC5: missing-sibling guard should prevent this call shape;
+    // resolveTurnAgent also stays defensive so wizard/plain design-system turns do not crash.
+    const getAgent = vi.fn(makeRegistry(['initial-design-system']))
+    const agent = resolveTurnAgent({
+      name: 'initial-design-system',
+      resolvedAgentId: 'initial-design-system',
+      useAttachedVariant: true,
+      getAgent,
+    })
+    expect(agent).toEqual({ id: 'initial-design-system' })
+  })
 })

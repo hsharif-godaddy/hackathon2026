@@ -66,10 +66,19 @@ describe('installDesignKitForApp', () => {
     expect('error' in result).toBe(false)
     if ('error' in result) return
     expect(result.slug).toBe('modern-bento')
-    expect(result.written).toBe(2)
+    expect(result.written).toBe(3)
     expect(result.message).toContain('modern-bento')
     expect(result.message).toContain('loadUiKit')
-    expect(result.message).toContain('2 files extracted')
+    expect(result.message).toContain('3 files extracted')
+    const metaUpload = mockWorkspaceObj.files.upload.mock.calls.find(
+      ([opts]: [{ path: string; data: Buffer }]) => opts.path === 'docs/ui-kit/kit-meta.json',
+    )
+    expect(metaUpload).toBeDefined()
+    expect(JSON.parse(metaUpload![0].data.toString('utf-8'))).toEqual({
+      id: '3e4848a8-912b-44e9-81ba-1cfaf058d458',
+      slug: 'modern-bento',
+      displayName: 'Modern Bento',
+    })
   })
 
   // Resolution is case-insensitive across id/slug/displayName — `slug` casing now
@@ -255,7 +264,9 @@ describe('design-system/install', () => {
     const result = await installDesignSystem({
       workspace,
       entry: {
+        id: 'kit-modern-bento',
         slug: 'modern-bento',
+        displayName: 'Modern Bento',
         whenToUse: '',
         tags: [],
         questions: ['Q1?'],
@@ -268,8 +279,51 @@ describe('design-system/install', () => {
     expect(result.slug).toBe('modern-bento')
     expect(result.written).toBe(2)
     expect(uploads.has('docs/ui-kit/kit-meta.json')).toBe(true)
+    expect(uploads.get('docs/ui-kit/kit-meta.json')?.toString()).toBe('{"slug":"modern-bento"}')
     expect(uploads.has('docs/ui-kit/primitives/colors.md')).toBe(true)
     expect(uploads.get('docs/ui-kit/primitives/colors.md')?.toString()).toBe('# colors')
+  })
+
+  it('synthesizes kit-meta.json from the catalog entry when the tarball omits it', async () => {
+    // AIROBUILD-2696 AC8: docs/ui-kit/kit-meta.json is the per-turn artifact signal;
+    // catalog installs must guarantee it even when the tarball lacks the file.
+    const tarPath = join(tmp, 'kit-no-meta.tar.gz')
+    const buf = await makeTarball(tarPath, {
+      'primitives/colors.md': '# colors',
+      'components/button.md': '# button',
+    })
+    const hash = createHash('sha256').update(buf).digest('hex')
+
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      arrayBuffer: async () => buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength),
+    } as unknown as Response))
+
+    const { workspace, uploads } = createMockWorkspace()
+
+    const { installDesignSystem } = await import('../install.js')
+    const result = await installDesignSystem({
+      workspace,
+      entry: {
+        id: 'kit-id-123',
+        slug: 'modern-bento',
+        displayName: 'Modern Bento',
+        whenToUse: '',
+        tags: [],
+        questions: [],
+        tarball: 'kit-no-meta.tar.gz',
+        tarballHash: `sha256-${hash}`,
+      },
+      baseUrl: 'http://example/brand-kits',
+    })
+
+    expect(result.written).toBe(3)
+    expect(uploads.get('docs/ui-kit/kit-meta.json')).toBeDefined()
+    expect(JSON.parse(uploads.get('docs/ui-kit/kit-meta.json')!.toString('utf-8'))).toEqual({
+      id: 'kit-id-123',
+      slug: 'modern-bento',
+      displayName: 'Modern Bento',
+    })
   })
 
   it('rejects on hash mismatch', async () => {
@@ -286,7 +340,7 @@ describe('design-system/install', () => {
     await expect(installDesignSystem({
       workspace,
       entry: {
-        slug: 'x', whenToUse: '', tags: [], questions: [],
+        id: 'kit-x', slug: 'x', displayName: 'X', whenToUse: '', tags: [], questions: [],
         tarball: 'kit.tar.gz', tarballHash: 'sha256-deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef',
       },
       baseUrl: 'http://example/brand-kits',
@@ -312,10 +366,10 @@ describe('design-system/install', () => {
     const { installDesignSystem } = await import('../install.js')
     const r = await installDesignSystem({
       workspace,
-      entry: { slug: 's', whenToUse: '', tags: [], tarball: 'traversal.tar.gz', tarballHash: `sha256-${hash}` },
+      entry: { id: 'kit-s', slug: 's', displayName: 'S', whenToUse: '', tags: [], questions: [], tarball: 'traversal.tar.gz', tarballHash: `sha256-${hash}` },
       baseUrl: 'http://example/brand-kits',
     })
-    expect(r.written).toBe(1)
+    expect(r.written).toBe(2)
     expect(uploads.has('docs/ui-kit/safe.md')).toBe(true)
     // Traversal entry should NOT have been uploaded
     expect([...uploads.keys()].some(k => k.includes('escape'))).toBe(false)
@@ -339,10 +393,10 @@ describe('design-system/install', () => {
     const { installDesignSystem } = await import('../install.js')
     const r = await installDesignSystem({
       workspace,
-      entry: { slug: 's', whenToUse: '', tags: [], tarball: 'nested-traversal.tar.gz', tarballHash: `sha256-${hash}` },
+      entry: { id: 'kit-s', slug: 's', displayName: 'S', whenToUse: '', tags: [], questions: [], tarball: 'nested-traversal.tar.gz', tarballHash: `sha256-${hash}` },
       baseUrl: 'http://example/brand-kits',
     })
-    expect(r.written).toBe(1)
+    expect(r.written).toBe(2)
     expect(uploads.has('docs/ui-kit/ok.md')).toBe(true)
   })
 
@@ -365,7 +419,7 @@ describe('design-system/install', () => {
     const { installDesignSystem } = await import('../install.js')
     const r = await installDesignSystem({
       workspace,
-      entry: { slug: 'test', whenToUse: '', tags: [], tarball: 'nested.tar.gz', tarballHash: `sha256-${hash}` },
+      entry: { id: 'kit-test', slug: 'test', displayName: 'Test', whenToUse: '', tags: [], questions: [], tarball: 'nested.tar.gz', tarballHash: `sha256-${hash}` },
       baseUrl: 'http://example/brand-kits',
     })
     expect(r.written).toBe(3)

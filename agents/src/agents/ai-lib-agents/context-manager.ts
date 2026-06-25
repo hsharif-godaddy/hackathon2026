@@ -240,13 +240,13 @@ export class AILibContextManager {
         // Reads run in parallel because they're independent; this is hot-path code.
         const workspaceAppId = context.metadata?.appId as string | undefined
         const workspaceForApp = workspaceAppId ? createForWorkspace(workspaceAppId, 'preview') : null
+        const stashedKitMetaExists = typeof context.metadata?.kitMetaExists === 'boolean'
+            ? context.metadata.kitMetaExists
+            : undefined
 
         const [kitMetaExists, combinedClassification, legacyClassification] = workspaceForApp
             ? await Promise.all([
-                // stat() returns per-path inline errors — not_found does not throw,
-                // so a missing UI kit just yields entry.error = 'not_found'. Any
-                // other failure (transport, etc.) propagates through Promise.all.
-                workspaceForApp.files.stat({ paths: ['docs/ui-kit/kit-meta.json'] })
+                stashedKitMetaExists ?? workspaceForApp.files.stat({ paths: ['docs/ui-kit/kit-meta.json'] })
                     .then((s) => {
                         const entry = s.entries[0]
                         return !!entry && entry.error === undefined && entry.kind === 'file'
@@ -258,7 +258,7 @@ export class AILibContextManager {
                 workspaceForApp.files.view({ path: 'docs/.upload-classification.json', limit: 65536 })
                     .catch(swallowNotFound<ViewResult | null>(null)),
             ])
-            : [false, null, null]
+            : [stashedKitMetaExists ?? false, null, null]
 
         if (kitMetaExists) {
             conversationContextMessages.push({

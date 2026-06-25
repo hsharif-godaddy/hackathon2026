@@ -726,42 +726,6 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
       }
     }
 
-    // Persist the kit-attached design-system fork for the WHOLE initial build.
-    // When the user attached a kit from the gallery, the build must run on the
-    // `-attached` variant (kit is fixed; no catalog scoring; no re-install) on
-    // EVERY turn — not just turn 1. SSE freezes the agent at create on the BASE
-    // design-system variant; without persisting the fork here, later build turns
-    // fall back to its auto-select prompt and install a *different* kit (observed:
-    // attached Obsidian, a later turn auto-selected Terra and built to it). The
-    // `-attached` prompt has no select/install tools and applies nothing itself —
-    // the kit's tokens are written in code at install (apply-kit-design.ts) — so
-    // freezing it here is what makes the chosen kit actually stick. Mirrors the
-    // template-finalize above; initial prompt only, scoped to the design-system
-    // base variant, and skips anything already handed off or already -attached.
-    if (isInitialPrompt
-      && typeof designKitSlug === 'string' && designKitSlug.trim()
-      && resolvedAgentId.startsWith('initial-design-system')
-      && !resolvedAgentId.endsWith('-attached')) {
-      const attachedAgentId = `${resolvedAgentId}-attached`
-      if (getAgentFactory()?.agents.has(attachedAgentId)) {
-        const previousAgentId = resolvedAgentId
-        try {
-          await deps.lifecycle.updateAgentId(conversationId, attachedAgentId)
-          resolvedAgentId = attachedAgentId
-          logger.info('sse.initial_prompt.design_kit_finalized', {
-            appId, conversationId, from: previousAgentId, to: attachedAgentId, designKitSlug,
-          })
-          try {
-            await stateManager?.switchAgent(sseSocketId, attachedAgentId)
-          } catch (sessionErr) {
-            logger.warn('sse.initial_prompt.design_kit_finalize_session_warn', { appId, conversationId, ...errorFields(sessionErr) })
-          }
-        } catch (err) {
-          logger.warn('sse.initial_prompt.design_kit_finalize_failed', { appId, conversationId, ...errorFields(err) })
-        }
-      }
-    }
-
     deps.executionService.execute({
       appId,
       conversationId,

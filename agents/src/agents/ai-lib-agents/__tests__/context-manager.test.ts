@@ -372,6 +372,35 @@ describe('AILibContextManager', () => {
       })
     })
 
+    it('reuses stashed kitMetaExists=true instead of statting kit-meta again', async () => {
+      // AIROBUILD-2696 AC7: MessageExecutionService stats once and stashes the result;
+      // context-manager must consume that value to avoid a second dev-supervisor round trip.
+      const cm = new AILibContextManager()
+      const result = await cm.buildContextMessages(
+        '',
+        { metadata: { appId: 'app-123', kitMetaExists: true } },
+        { includeTemplateDescription: false, includeAppContext: false }
+      )
+
+      const anchor = result.contextMessages.find((m) => m.content.includes('UI kit design system'))
+      expect(anchor).toBeDefined()
+      expect(workspaceFilesMock.stat).not.toHaveBeenCalled()
+    })
+
+    it('falls back to workspace stat when kitMetaExists is not stashed', async () => {
+      // AIROBUILD-2696 AC7: non-design turns still use context-manager's existing stat path.
+      statHasFile('docs/ui-kit/kit-meta.json')
+
+      const cm = new AILibContextManager()
+      await cm.buildContextMessages(
+        '',
+        { metadata: { appId: 'app-123' } },
+        { includeTemplateDescription: false, includeAppContext: false }
+      )
+
+      expect(workspaceFilesMock.stat).toHaveBeenCalledWith({ paths: ['docs/ui-kit/kit-meta.json'] })
+    })
+
     it('does not inject UI-kit anchor when kit-meta.json is missing (not_found)', async () => {
       // beforeEach already wires every stat → not_found per-path
       const cm = new AILibContextManager()

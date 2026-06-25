@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { createSessionStateManager } from '@airo/ai-lib'
 import * as profiles from '../../profiles/index.js'
 import { createAgentRouter } from '../agent-router.js'
 import { setRegisteredInitialNamedVariantIds } from '../../agents/registered-initial-named-variant-ids.js'
@@ -465,6 +466,42 @@ describe('agent-router', function agentRouterTests() {
       const id = await resolve({ appId, session: { sessionId: 'sock-warm', stateManager } })
       expect(id).toBe('initial')
       expect(getPersistedAgentForApp).not.toHaveBeenCalled()
+    })
+
+
+    it('keeps warm session and store on the base design-system agent across install timing', async function designKitWarmRaceInvariant() {
+      // AIROBUILD-2696 GATE 1: drive the real SessionStateManager + router precedence.
+      // The per-turn -attached choice is derived later; router warm cache and store remain base.
+      const baseAgentId = 'initial-design-system-homepage-build'
+      const persistedAgent = baseAgentId
+      const getPersistedAgentForApp = vi.fn(async () => persistedAgent)
+      const resolve = createAgentRouter({
+        hasMessagesForApp: () => true,
+        getTemplateIds: () => [],
+        getPersistedAgentForApp,
+      })
+      const stateManager = createSessionStateManager({ defaultAgentId: 'initial' })
+      const session = { sessionId: 'sock-design-kit', stateManager }
+
+      try {
+        const coldResolved = await resolve({ appId, session })
+        expect(coldResolved).toBe(baseAgentId)
+        await Promise.resolve()
+        expect(stateManager.getCurrentAgent(session.sessionId)).toBe(baseAgentId)
+        expect(stateManager.getSessionMetadata(session.sessionId)).toEqual(expect.objectContaining({ appId }))
+
+        // Simulate the install completing between turns. The invariant is that neither
+        // the durable store nor the warm session is rewritten to the derived -attached id.
+        expect(persistedAgent).toBe(baseAgentId)
+
+        const warmResolved = await resolve({ appId, session })
+        expect(warmResolved).toBe(baseAgentId)
+        expect(getPersistedAgentForApp).toHaveBeenCalledTimes(1)
+        expect(stateManager.getCurrentAgent(session.sessionId)).toBe(baseAgentId)
+        expect(persistedAgent).toBe(baseAgentId)
+      } finally {
+        stateManager.stopCleanup()
+      }
     })
   })
 

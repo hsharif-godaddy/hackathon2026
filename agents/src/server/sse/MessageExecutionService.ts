@@ -42,7 +42,7 @@ import { context as otelContext, trace } from '@opentelemetry/api'
 import type { AgentsMessagePersistence } from '../conversation-persistence.js'
 import type { EventStreamRegistry, SubscriberLifecycleListener } from './EventStreamRegistry.js'
 import { SSEClientActionService } from './SSEClientActionService.js'
-import { registerActionService, cleanupActionService, getActionService } from '../agent-runtime.js'
+import { registerActionService, cleanupActionService, getActionService, getAgentFactory } from '../agent-runtime.js'
 import { sseSessionKey } from './session-key.js'
 import { resolveRebuildBuildPagePrompt } from '../rebuild-build-page-message.js'
 import { emitRebuildBuildPageToolLifecycle } from '../rebuild-build-page-tool-events.js'
@@ -98,7 +98,7 @@ import { withTimeout } from '../../utils/promise-utils.js'
 import { interactiveSubAgentManager } from '../../agents/interactive-sub-agent-manager.js'
 import { subAgentJobRegistry } from '../../agents/sub-agent-job-registry.js'
 import { AppRepository } from '../../database/repositories/index.js'
-import { enrichWithForcedDesignKit } from '../../services/design-system/forced-install.js'
+import { enrichWithForcedDesignKit, isDesignSystemVariant } from '../../services/design-system/forced-install.js'
 import { createForWorkspace } from '../../workspace/index.js'
 import { buildAppliedSkillsContextMessage } from '../applied-skills-context.js'
 
@@ -132,18 +132,8 @@ interface ExecutionDeps {
     setSessionMetadata: (sessionId: string, metadata: Record<string, unknown>) => void
     getSelectedTodoList: (sessionId: string) => string | undefined
     setSelectedTodoList: (sessionId: string, listId: string) => void
-    /** Reset the warm session cache's current agent (handoff-state-manager.switchAgent).
-     *  The agent router consults this cache BEFORE the persisted store, so the forced-kit
-     *  recovery must reset it too — mirroring the route freeze's store+session dual-write.
-     *  Optional. */
-    switchAgent?: (sessionId: string, agentId: string) => Promise<unknown> | unknown
   }
   onAgentChanged?: (conversationId: string, oldAgent: string, newAgent: string, appId?: string) => Promise<void>
-  /** Persist the conversation's frozen agent id (ConversationLifecycleStore.updateAgentId).
-   *  Used by the forced-design-kit recovery to revert a failed `-attached` freeze to the
-   *  base variant so later turns don't resurrect it. Optional; recovery still fixes the
-   *  current turn without it. */
-  persistAgentId?: (conversationId: string, agentId: string) => Promise<void>
   backgroundSummarizer?: {
     checkAndSummarize(appId: string, triggerTokenCount?: number, budgetOverride?: string, customerId?: string): Promise<void>
     getMaxPromptTokens(): number
@@ -313,8 +303,8 @@ export function resolveTurnAgent<A>(opts: {
   getAgent: (id: string) => A | undefined
 }): A | undefined {
   const { name, resolvedAgentId, useAttachedVariant, getAgent } = opts
-  if (useAttachedVariant && name === resolvedAgentId) {
-    return getAgent(`${resolvedAgentId}-attached`)
+  if (useAttachedVariant && name === resolvedAgentId && !resolvedAgentId.endsWith('-attached')) {
+    return getAgent(`${resolvedAgentId}-attached`) ?? getAgent(name)
   }
   return getAgent(name)
 }
@@ -1893,11 +1883,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
 
   /**
    * Run the forced design-kit install once before the agent loop and decide
-   * whether to stream the tool-less `-attached` variant. We only swap to it when
-   * the install actually produced messages — on install failure (or when no
-   * `-attached` sibling is registered) the normal variant runs, which can still
-   * auto-select rather than being stranded with a "kit already installed" prompt
-   * and no recovery tools. Returns the install messages to prepend on turn 1.
+   * whether to stream the tool-less `-attached` variant for this turn.
    */
   private async prepareForcedDesignKit(opts: {
     resolvedAgentId: string
@@ -1905,87 +1891,71 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
     appId: string
     conversationId: string
     isInitialPrompt: boolean
+    executionContext: Record<string, unknown>
     customerId?: string
-  }): Promise<{ forcedKitMessages: Array<{ role: string; content: unknown }>; useAttachedVariant: boolean; effectiveAgentId: string }> {
-    const { resolvedAgentId, designKitSlug, appId, conversationId, isInitialPrompt, customerId } = opts
-    if (!isInitialPrompt || !designKitSlug) return { forcedKitMessages: [], useAttachedVariant: false, effectiveAgentId: resolvedAgentId }
-
-    // Resolve the agent whose toolset/config drives the install. Safe against the
-    // factory's throw-on-unknown-id, and against the resolved agent already being
-    // the `-attached` variant (frozen there for the whole build — see the
-    // design-kit finalize in sse/routes.ts), which must not be double-suffixed.
-    const { agent: installAgent, hasAttachedSibling } = pickForcedInstallAgent({
-      resolvedAgentId, getAgent: (id) => this.deps.getAgent(id),
-    })
-    const installConfig = installAgent?.getConfig?.()
+  }): Promise<{ forcedKitMessages: Array<{ role: string; content: unknown }>; useAttachedVariant: boolean }> {
+    const { resolvedAgentId, designKitSlug, appId, isInitialPrompt, executionContext, customerId } = opts
     let forcedKitMessages: Array<{ role: string; content: unknown }> = []
-    if (installConfig) {
-      try {
-        forcedKitMessages = await enrichWithForcedDesignKit({
-          designKitSlug, appId, agentConfig: installConfig, transport: 'sse', logger, customerId,
-        })
-      } catch (error) {
-        logger.warn('design_kit.forced_install.skipped', { reason: 'unexpected error', designKitSlug, appId, ...errorFields(error) })
+
+    if (isInitialPrompt && designKitSlug) {
+      // Resolve the agent whose toolset/config drives the install. Safe against
+      // the factory's throw-on-unknown-id and legacy already-attached ids.
+      const { agent: installAgent } = pickForcedInstallAgent({
+        resolvedAgentId, getAgent: (id) => this.deps.getAgent(id),
+      })
+      const installConfig = installAgent?.getConfig?.()
+      if (installConfig) {
+        try {
+          forcedKitMessages = await enrichWithForcedDesignKit({
+            designKitSlug, appId, agentConfig: installConfig, transport: 'sse', logger, customerId,
+          })
+        } catch (error) {
+          logger.warn('design_kit.forced_install.skipped', { reason: 'unexpected error', designKitSlug, appId, ...errorFields(error) })
+        }
       }
     }
-    // Only swap the turn agent when a SIBLING -attached variant exists (resolved
-    // agent was the base variant). When already frozen on -attached, no swap.
-    const useAttachedVariant = hasAttachedSibling && forcedKitMessages.length > 0
+
+    let resolvedAgentConfig: { id?: string; metadata?: Record<string, unknown> } | undefined
+    try {
+      resolvedAgentConfig = this.deps.getAgent(resolvedAgentId)?.getConfig?.()
+    } catch {
+      resolvedAgentConfig = undefined
+    }
+    const isDesignSystemResolved: boolean = isDesignSystemVariant(resolvedAgentConfig)
+    const hasAttachedSibling: boolean = isDesignSystemResolved
+      && !resolvedAgentId.endsWith('-attached')
+      && !!getAgentFactory()?.agents.has(`${resolvedAgentId}-attached`)
+    let kitMetaExists = false
+    if (hasAttachedSibling) {
+      if (forcedKitMessages.length > 0) {
+        kitMetaExists = true
+      } else {
+        const workspace = createForWorkspace(appId, 'preview')
+        if (workspace) {
+          try {
+            const statResult = await workspace.files.stat({ paths: ['docs/ui-kit/kit-meta.json'] })
+            const entry = statResult.entries[0]
+            kitMetaExists = !!entry && entry.error === undefined && entry.kind === 'file'
+          } catch (error) {
+            logger.warn('design_kit.kit_meta_stat.failed', { reason: 'stat threw', appId, ...errorFields(error) })
+            kitMetaExists = false
+          }
+        }
+      }
+      const metadata = executionContext.metadata as Record<string, unknown> | undefined
+      if (metadata) {
+        metadata.kitMetaExists = kitMetaExists
+      }
+    }
+
+    const useAttachedVariant: boolean = isDesignSystemResolved
+      && hasAttachedSibling
+      && kitMetaExists
     if (useAttachedVariant) {
       logger.info('design_kit.attached_variant.substituted', { resolvedAgentId, appId, transport: 'sse' })
     }
 
-    // Recovery: SSE freezes the conversation to the `-attached` variant at create
-    // (sse/routes.ts) BEFORE this install runs, and the freeze is not gated on
-    // install success. If the forced install then produced nothing (slug not found /
-    // workspace unavailable / threw), the frozen `-attached` variant has no
-    // select/install tools and a prompt asserting a kit is installed — it would build
-    // on a false premise. Fall back to the BASE variant for THIS turn so it can
-    // auto-select instead of being stranded, and PERSIST the revert so later turns
-    // don't resurrect the frozen variant: the base variant parks at the Phase-1
-    // interview (no handoff), and turn 2+ early-returns above (isInitialPrompt=false),
-    // so without persistence it would run the stale `-attached` with no kit on disk.
-    // See AIROBUILD-2072.
-    let effectiveAgentId = resolvedAgentId
-    if (resolvedAgentId.endsWith('-attached') && forcedKitMessages.length === 0) {
-      const baseAgentId = resolvedAgentId.slice(0, -'-attached'.length)
-      let baseExists = false
-      try { baseExists = !!this.deps.getAgent(baseAgentId) } catch { baseExists = false }
-      if (baseExists) {
-        effectiveAgentId = baseAgentId
-        // Revert BOTH stores the route freeze wrote to, or the revert is shadowed:
-        //  - persistAgentId → ConversationLifecycleStore (the persisted agent)
-        //  - stateManager.switchAgent → the warm session cache, which the agent
-        //    router consults FIRST (agent-router.ts step 1, before the store). Without
-        //    this, turn 2+ resolves the stale -attached from the session cache.
-        // Best-effort: a failed write still recovers the current turn via effectiveAgentId.
-        try {
-          await this.deps.persistAgentId?.(conversationId, baseAgentId)
-        } catch (persistErr) {
-          logger.warn('design_kit.forced_install.revert_persist_failed', {
-            appId, conversationId, baseAgentId, ...errorFields(persistErr),
-          })
-        }
-        try {
-          await this.deps.stateManager.switchAgent?.(sseSessionKey(conversationId), baseAgentId)
-        } catch (sessionErr) {
-          logger.warn('design_kit.forced_install.revert_session_failed', {
-            appId, conversationId, baseAgentId, ...errorFields(sessionErr),
-          })
-        }
-        logger.error('design_kit.forced_install.recovered_to_base', {
-          appId, conversationId, designKitSlug, frozenAgentId: resolvedAgentId, fallbackAgentId: baseAgentId,
-          reason: 'forced install produced no messages; reverted to base variant (current turn + persisted) so it can auto-select instead of building on a missing kit',
-        })
-      } else {
-        logger.error('design_kit.forced_install.stranded', {
-          appId, conversationId, designKitSlug, frozenAgentId: resolvedAgentId,
-          reason: 'forced install produced no messages and base variant unavailable; build proceeds on -attached with no installed kit',
-        })
-      }
-    }
-
-    return { forcedKitMessages, useAttachedVariant, effectiveAgentId }
+    return { forcedKitMessages, useAttachedVariant }
   }
 
   private setupStreamState(opts: {
@@ -2372,8 +2342,9 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
     // loop, so the `-attached` variant swap can be gated on the install actually
     // succeeding. Extracted to a method because an inline `if` here trips tsc on
     // the `typeof this.streamAgentTurn` query below (see emitConversationStartIfFirstTurn).
-    const { forcedKitMessages, useAttachedVariant, effectiveAgentId } = await this.prepareForcedDesignKit({
+    const { forcedKitMessages, useAttachedVariant } = await this.prepareForcedDesignKit({
       resolvedAgentId, designKitSlug, appId, conversationId, isInitialPrompt: lifecycleContext?.isInitialPrompt ?? false,
+      executionContext,
       customerId: agentCtx?.customerId,
     })
     // The forced kit install ran THIS turn iff it produced synthesized
@@ -2409,12 +2380,9 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
         })
       }
 
-      // effectiveAgentId differs from resolvedAgentId only on the forced-install
-      // recovery path (frozen to -attached but install produced nothing): run the
-      // base variant this turn so it can auto-select. Normally they are identical.
-      const runLoop = () => executeAgentLoop(effectiveAgentId, agentContent, {
+      const runLoop = () => executeAgentLoop(resolvedAgentId, agentContent, {
         getAgent: (name) => resolveTurnAgent({
-          name, resolvedAgentId: effectiveAgentId, useAttachedVariant, getAgent: (id) => this.deps.getAgent(id),
+          name, resolvedAgentId, useAttachedVariant, getAgent: (id) => this.deps.getAgent(id),
         }),
         streamAgentTurn: async (agent, agentName, message, iteration) => {
           currentIteration = iteration

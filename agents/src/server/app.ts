@@ -305,7 +305,6 @@ function getOrCreateSSEExecutionService(): MessageExecutionService | null {
       setSessionMetadata: (id: string, meta: Record<string, unknown>) => agentFactory.stateManager.setSessionMetadata?.(id, meta),
       getSelectedTodoList: (id: string) => agentFactory.stateManager.getSelectedTodoList(id),
       setSelectedTodoList: (id: string, listId: string) => agentFactory.stateManager.setSelectedTodoList(id, listId),
-      switchAgent: (id: string, agentId: string) => agentFactory.stateManager.switchAgent?.(id, agentId),
     },
     onAgentChanged: async (convId: string, _oldAgent: string, newAgent: string) => {
       // Maps base develop -> develop-<profile> for the active profile and persists
@@ -313,9 +312,6 @@ function getOrCreateSSEExecutionService(): MessageExecutionService | null {
       // must propagate to abort the turn per the ai-transport contract.
       await persistHandoffAgent(getConversationLifecycleStore(), convId, newAgent)
     },
-    // Used by the forced-design-kit recovery to persist a revert of a failed
-    // `-attached` freeze back to the base variant (see prepareForcedDesignKit).
-    persistAgentId: (convId: string, agentId: string) => getConversationLifecycleStore().updateAgentId(convId, agentId),
     get backgroundSummarizer() {
       return getBackgroundSummarizer()
     },

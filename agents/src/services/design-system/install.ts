@@ -196,6 +196,15 @@ export async function installDesignSystem(input: InstallDesignSystemInput): Prom
       cpSync(src, dest, { recursive: true })
     }
 
+    const kitMetaPath = join(assembledDir, 'kit-meta.json')
+    if (!existsSync(kitMetaPath)) {
+      writeFileSync(kitMetaPath, JSON.stringify({
+        id: entry.id,
+        slug: entry.slug,
+        displayName: entry.displayName,
+      }))
+    }
+
     // Upload assembled files to workspace via dev-supervisor.
     // Note: unlike the old atomic cpSync, per-file upload means a mid-way failure
     // leaves docs/ui-kit/ partially written. The tool surfaces the error so the
