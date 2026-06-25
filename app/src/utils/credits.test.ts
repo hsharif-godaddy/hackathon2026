@@ -667,6 +667,36 @@ describe('credits', function creditsTests() {
 
       expect(result).toBe(SubscriptionPlan.None);
     });
+
+    it('should return Ultimate for an aab-ent-v1 subscription with no plan field', function entFallback() {
+      // Post-mhp-core#749, enterprise subs may surface to the BFF without a
+      // `plan` field. Map them to Ultimate so plan-aware UI treats the
+      // member as on the top tier: `isPaidPlanForGrants(Ultimate)` is true
+      // and `canUpgradePlan(Ultimate)` is false. The enterprise-aware UI
+      // gates (`useEnterpriseManaged`, `useIsEnterpriseUser`) still take
+      // precedence; this mapping is the safe fallback for code that reads
+      // the plan directly.
+      const result = getPlanFromSubscription({
+        productId: 'aab-ent-v1',
+        isTrial: false,
+        hadAiroPlus: false,
+      });
+
+      expect(result).toBe(SubscriptionPlan.Ultimate);
+    });
+
+    it('should honor an explicit plan field on an aab-ent-v1 subscription', function entWithExplicitPlan() {
+      // The early-return on `subscription.plan` wins — the ent fallback
+      // never fires when the backend has set a plan.
+      const result = getPlanFromSubscription({
+        productId: 'aab-ent-v1',
+        plan: SubscriptionPlan.Professional,
+        isTrial: false,
+        hadAiroPlus: false,
+      });
+
+      expect(result).toBe(SubscriptionPlan.Professional);
+    });
   });
 
   describe('#getPlanDisplayLabelKey', function getPlanDisplayLabelKeyTests() {

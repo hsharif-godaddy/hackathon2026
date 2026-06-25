@@ -15,10 +15,40 @@ import { useAppIdFromParams } from '@/app/[market]/develop/components/utils';
 import { useAppSsoStatus } from '@/hooks/useAppSsoStatus';
 import { useTranslations } from '@/hooks/useTranslations';
 import { DomainStatus, type SiteDomain } from '@/lib/control-plane/types';
+import { appFetch } from '@/lib/gasket-config';
 import { logger } from '@/lib/request-context';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 
 const IDP_CALLBACK_PATH: string = '/airo/idp/callback';
+
+/**
+ * Parse a URL string and return its hostname, or null when the value is
+ * undefined, empty, or malformed. Callers handle null by falling through
+ * to the next source — never throwing into render.
+ */
+function safeHostname(url: string | undefined): string | null {
+  if (!url) return null;
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Derive the cell-default app host from a `preview_url` or `agent_url` by
+ * stripping the `.preview.` or `.agent.` infix. The URL templates are
+ * stable across cells (`<appId>.preview.<cell>.airoapp.ai`,
+ * `<appId>.agent.<cell>.airoapp.ai`); the served app hostname drops the
+ * label segment. Returns null when the input is missing, malformed, or
+ * doesn't contain the infix (i.e. nothing to strip).
+ */
+function deriveCellDefaultHost(url: string | undefined): string | null {
+  const host = safeHostname(url);
+  if (!host) return null;
+  const stripped = host.replace(/\.(?:preview|agent)\./, '.');
+  return stripped !== host ? stripped : null;
+}
 
 /**
  * Resolve every host the customer must register at their IdP as a redirect
@@ -28,40 +58,46 @@ const IDP_CALLBACK_PATH: string = '/airo/idp/callback';
  * appear in the IdP's allow-list, otherwise that host's OAuth round-trip
  * fails with `redirect_uri_mismatch`.
  *
- * Source-of-truth ordering:
+ * Source-of-truth ordering (return as soon as any source yields a host):
  *   1. `site.domains[]` — every active FQDN (prefix + custom). When mgmt-
  *      hosting has provisioned the prefix domain, it appears here alongside
  *      any custom domains the customer attached.
- *   2. `site.published_url` host — backstop used during early provisioning,
- *      before mgmt-hosting has populated `domains[]`. Optimistic URL
- *      construction in the adapter guarantees this is set as soon as the
- *      app exists, so the panel never has to show a `<host>` placeholder
- *      on a real app.
+ *   2. `site.published_url` host — backstop. The adapter (`mapAppToSiteInfo`)
+ *      constructs this unconditionally from the moment the app exists, so
+ *      the panel sees it even before first publish.
+ *   3. Derived from `site.preview_url` — defence in depth if (2) is missing.
+ *   4. Derived from `site.agent_url` — final backstop.
  *
  * Pending / inactive / failed domains are excluded — registering them
  * would only confuse customers since they're not serving traffic yet.
+ *
+ * The literal `<host>` placeholder remains in the JSX as a final fallback
+ * for the (now-unreachable in practice) case where every source is empty.
  */
-function resolveSsoRedirectHosts(
+export function resolveSsoRedirectHosts(
   domains: SiteDomain[] | undefined,
   publishedURL: string | undefined,
+  previewURL: string | undefined,
+  agentURL: string | undefined,
 ): string[] {
-  const hosts: Set<string> = new Set<string>();
+  const fromDomains: Set<string> = new Set<string>();
   for (const d of domains ?? []) {
     if (d.status === DomainStatus.ACTIVE && d.fqdn) {
-      hosts.add(d.fqdn);
+      fromDomains.add(d.fqdn);
     }
   }
-  if (hosts.size === 0 && publishedURL) {
-    try {
-      const parsed: URL = new URL(publishedURL);
-      if (parsed.hostname) hosts.add(parsed.hostname);
-    } catch {
-      // Malformed URL on the site object — fall through; the UI will show
-      // the literal `<host>` placeholder so the customer at least sees the
-      // pattern they need to construct manually.
-    }
-  }
-  return Array.from(hosts).sort();
+  if (fromDomains.size > 0) return Array.from(fromDomains).sort();
+
+  const fromPublished: string | null = safeHostname(publishedURL);
+  if (fromPublished) return [fromPublished];
+
+  const fromPreview: string | null = deriveCellDefaultHost(previewURL);
+  if (fromPreview) return [fromPreview];
+
+  const fromAgent: string | null = deriveCellDefaultHost(agentURL);
+  if (fromAgent) return [fromAgent];
+
+  return [];
 }
 
 /**
@@ -101,9 +137,11 @@ export default function SsoPanel() {
   // surface needs the host inventory.
   const siteDomains: SiteDomain[] | undefined = useDevelopPageStore((s) => s.site?.domains);
   const sitePublishedURL: string | undefined = useDevelopPageStore((s) => s.site?.published_url);
+  const sitePreviewURL: string | undefined = useDevelopPageStore((s) => s.site?.preview_url);
+  const siteAgentURL: string | undefined = useDevelopPageStore((s) => s.site?.agent_url);
   const redirectHosts: string[] = useMemo(
-    () => resolveSsoRedirectHosts(siteDomains, sitePublishedURL),
-    [siteDomains, sitePublishedURL],
+    () => resolveSsoRedirectHosts(siteDomains, sitePublishedURL, sitePreviewURL, siteAgentURL),
+    [siteDomains, sitePublishedURL, sitePreviewURL, siteAgentURL],
   );
 
   const [clientId, setClientId] = useState('');
@@ -129,7 +167,12 @@ export default function SsoPanel() {
     setSuccess(null);
     setIsTogglingOverride(true);
     try {
-      const res = await fetch(`/api/apps/${appId}/sso-required`, {
+      // appFetch is the canonical wrapper for BFF calls (consistent auth
+      // headers + cookie handling). The route is standard customer auth
+      // (HBI step-up removed by product decision), so no `authLevel`
+      // option needed — the save proceeds with the user's existing
+      // session.
+      const res = await appFetch(`/api/apps/${appId}/sso-required`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -185,7 +228,10 @@ export default function SsoPanel() {
     }
     setIsSaving(true);
     try {
-      const res = await fetch(`/api/apps/${appId}/sso-config`, {
+      // appFetch is the canonical wrapper for BFF calls (see comment on
+      // the toggle handler above). No `authLevel` option — the route is
+      // standard customer auth.
+      const res = await appFetch(`/api/apps/${appId}/sso-config`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',

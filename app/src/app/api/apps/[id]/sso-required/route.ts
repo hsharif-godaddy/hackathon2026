@@ -19,8 +19,10 @@
  *   3. The body is tri-state: `true`, `false`, or `null` (clear override —
  *      defer to admin tier). Any other value is rejected as 400.
  *
- *   4. Level-3 auth: this mutates the app's policy → stricter HBI-based
- *      expiration, matching other policy-changing routes.
+ *   4. Auth: standard customer auth (default level). HBI step-up was
+ *      removed by product decision so the toggle doesn't trigger
+ *      re-authentication; airo-go's `EntityOwner` middleware still
+ *      enforces owner-only on this write.
  *
  *   5. Server-authoritative response: AAB returns the resolved + raw values
  *      from airo-go (NOT the client-sent value), so a follow-on read
@@ -192,5 +194,4 @@ export const PUT = withCustomerAuth(
       return NextResponse.json({ error: 'Failed to update SSO setting' }, { status: 502 });
     }
   },
-  { level: 3 },
 );

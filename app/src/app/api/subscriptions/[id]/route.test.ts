@@ -106,6 +106,57 @@ describe('GET /api/subscriptions/[id]', function describeRoute() {
       expect(response.status).toBe(403);
       expect(data.error).toBe('Forbidden: Subscription does not belong to your account');
     });
+
+    it('does NOT 403 for an aab-ent-v1 subscription when subscription.customerId differs from the caller', async function entBypassByProductId() {
+      // Enterprise carve-out: airo-go's SubscriptionReadAuthorization
+      // already enforces entMode upstream and would not return the sub if
+      // the caller weren't authorized. The BFF re-check would always fail
+      // for ent members (sub.customerId is the enterprise customer; the
+      // caller's customerId is their personal one). Skip the check for
+      // ent subs.
+      const request = createRequest();
+      const authContext = createAuthContext('jwt-token');
+      const params = Promise.resolve({ id: 'sub-ent' });
+
+      mockClient.getSubscription.mockResolvedValue({
+        id: 'sub-ent',
+        productId: 'aab-ent-v1',
+        status: 'active',
+        isTrial: false,
+        customerId: 'enterprise-customer-999',
+        entitlementId: 'ent-ent-1',
+        createdAt: '2024-01-01T00:00:00Z',
+        updatedAt: '2024-01-01T00:00:00Z',
+      });
+
+      const response = await GET(request, authContext, { params });
+
+      expect(response.status).toBe(200);
+    });
+
+    it('does NOT 403 for an ent subscription identified by ownerProduct', async function entBypassByOwnerProduct() {
+      // Defence in depth: even if a future airo-go change starts surfacing
+      // the ent classification on `ownerProduct` instead of (or in addition
+      // to) `productId`, the BFF still recognises and bypasses correctly.
+      const request = createRequest();
+      const authContext = createAuthContext('jwt-token');
+      const params = Promise.resolve({ id: 'sub-ent-2' });
+
+      mockClient.getSubscription.mockResolvedValue({
+        id: 'sub-ent-2',
+        productId: 'aab-v1', // unusual: ent on aab-v1 productId
+        ownerProduct: 'aab-ent-v1',
+        status: 'active',
+        isTrial: false,
+        customerId: 'enterprise-customer-999',
+        createdAt: '2024-01-01T00:00:00Z',
+        updatedAt: '2024-01-01T00:00:00Z',
+      });
+
+      const response = await GET(request, authContext, { params });
+
+      expect(response.status).toBe(200);
+    });
   });
 
   describe('Include attributes', function includeAttrs() {

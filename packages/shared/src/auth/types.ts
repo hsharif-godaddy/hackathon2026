@@ -64,6 +64,17 @@ export type AuthType = 'basic' | 'e2s' | 's2s' | 'cert2s'
 export const AIRO_PRODUCT_IDS = {
   /** AI App Builder v1 */
   AAB_V1: 'aab-v1',
+  /**
+   * AI App Builder Enterprise v1. Distinct productId for the
+   * enterprise-tier AAB subscription. NOT a queryable ownerProduct family —
+   * mhp-airo's `?ownerProduct=aab-ent-v1` filter is invalid (returns
+   * CUSTOMER_NOT_REGISTERED). Use this only for productId comparisons on
+   * already-returned subscriptions; do NOT add it to AIRO_OWNER_PRODUCTS.
+   * Surfaced to the BFF by mhp-core#749's entMode override on
+   * SubscriptionHandler.List, which ignores the ownerProduct filter when
+   * the caller is an enterprise member.
+   */
+  AAB_ENT_V1: 'aab-ent-v1',
   /** PaaS Node.js v1 */
   PAAS_NODEJS_V1: 'paas-nodejs-v1',
 } as const

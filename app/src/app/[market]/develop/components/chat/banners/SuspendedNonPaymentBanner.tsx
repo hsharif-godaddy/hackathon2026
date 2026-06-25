@@ -7,6 +7,7 @@ import text from '@ux/text'
 
 import { useEcommSubscriptionAutoRenewStatus } from '@/hooks/useEcommSubscriptionAutoRenewStatus'
 import { useGasketData } from '@/hooks/useGasketData'
+import { useIsEnterpriseUser } from '@/hooks/useIsEnterpriseUser'
 import { useSubscriptionRenewal } from '@/hooks/useSubscriptionRenewal'
 import { useTranslations } from '@/hooks/useTranslations'
 import ChatBanner from '@/lib/ChatBanner'
@@ -37,8 +38,14 @@ export default function SuspendedNonPaymentBanner({
   const { intl } = useGasketData()
   const [isDismissed, setIsDismissed] = useState(false)
   const hasLoggedImpressionRef = useRef(false)
+  const isEnterpriseUser: boolean = useIsEnterpriseUser()
   const { renewSubscription, isRenewing, error: renewalError, resetError } = useSubscriptionRenewal()
-  const { data: autoRenewStatus } = useEcommSubscriptionAutoRenewStatus(builderEntitlementId)
+  // Skip the ecomm subscription fetch for enterprise members — billing is
+  // centrally managed and the BFF would 404 (no per-member ecomm
+  // subscription tied to the personal customerId). Hook respects the null
+  // via its existing `enabled: !!builderEntitlementId` guard.
+  const entitlementForLookup: string | null = isEnterpriseUser ? null : (builderEntitlementId ?? null)
+  const { data: autoRenewStatus } = useEcommSubscriptionAutoRenewStatus(entitlementForLookup)
 
   useEffect(() => {
     if (!isDismissed && !hasLoggedImpressionRef.current) {
@@ -50,6 +57,10 @@ export default function SuspendedNonPaymentBanner({
   const formattedUnpublishDate = getFormattedUnpublishDate(renewsAt, intl?.locale)
 
   if (isDismissed) return null
+  // Non-payment is a self-serve billing state that doesn't apply to ent
+  // members — their subscription is admin-managed and the renew button has
+  // no actionable target. Suppress the banner entirely.
+  if (isEnterpriseUser) return null
 
   const handleClose = () => {
     logClickEvent('chat.suspendedNonPaymentBanner.close')()

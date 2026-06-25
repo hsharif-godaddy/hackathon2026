@@ -155,6 +155,33 @@ describe('GET /api/subscriptions', function describeRoute() {
       expect(data.data.subscriptions).toEqual([]);
       expect(data.data.active).toBe(null);
     });
+
+    it('selects an aab-ent-v1 subscription as `active` for enterprise members', async function entActive() {
+      // Simulates the post-mhp-core#749 world where airo-go's entMode
+      // override returns the ent sub from `getSubscriptions(AiroAppBuilder)`.
+      // Without the productId filter broadening this would fall through to
+      // `active: null` and downstream consumers would treat the ent member
+      // as having no plan.
+      const request = new NextRequest('http://localhost/api/subscriptions');
+      const authContext = createAuthContext('jwt-token');
+
+      mockClient.getSubscriptions.mockResolvedValue([
+        createSubscription({
+          id: 'sub-ent',
+          productId: 'aab-ent-v1',
+          status: SubscriptionStatus.Active,
+          plan: SubscriptionPlan.Ultimate,
+        }),
+      ]);
+
+      const response = await GET(request, authContext);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.data.subscriptions).toHaveLength(1);
+      expect(data.data.active.id).toBe('sub-ent');
+      expect(data.data.active.productId).toBe('aab-ent-v1');
+    });
   });
 
   describe('Error handling', function errors() {

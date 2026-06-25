@@ -56,6 +56,11 @@ vi.mock('@/hooks/useEcommSubscriptionAutoRenewStatus', () => ({
   }),
 }))
 
+let mockIsEnterpriseUser = false
+vi.mock('@/hooks/useIsEnterpriseUser', () => ({
+  useIsEnterpriseUser: () => mockIsEnterpriseUser,
+}))
+
 vi.mock('@/hooks/useTranslations', () => ({
   useTranslations: () => (key: string) => {
     const translations: Record<string, string> = {
@@ -76,6 +81,7 @@ function resetMocks(): void {
   mockIsRenewing = false
   mockError = null
   mockAutoRenewData = { subscriptionId: 'sub-123' }
+  mockIsEnterpriseUser = false
 }
 
 describe('PaywallSuspendedModal', function paywallSuspendedModalTests() {
@@ -86,6 +92,19 @@ describe('PaywallSuspendedModal', function paywallSuspendedModalTests() {
 
     expect(screen.getByTestId('text-h2')).toHaveTextContent('Subscription Suspended')
     expect(screen.getByTestId('text-p')).toHaveTextContent('Your subscription is suspended. Renew to continue.')
+  })
+
+  it('renders nothing for enterprise members (admin-managed billing)', function entHidesModal() {
+    // Enterprise billing is centrally managed — there is no per-member
+    // ecomm subscription / auto-renew for ent customers. Suppress the
+    // entire modal so we don't show a renew button with no actionable
+    // target (and so we don't fire the BFF call that would 404).
+    resetMocks()
+    mockIsEnterpriseUser = true
+    const onClose = vi.fn()
+    const { container } = render(<PaywallSuspendedModal onClose={onClose} builderEntitlementId="ent-1" />)
+
+    expect(container).toBeEmptyDOMElement()
   })
 
   it('renders renew button enabled when subscriptionId is available', function renewEnabled() {

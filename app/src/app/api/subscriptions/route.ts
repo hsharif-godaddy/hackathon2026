@@ -59,9 +59,17 @@ export const GET = withCustomerAuth(async (
       plan: getPlanFromSubscription(sub)
     }));
 
-    // Find the aab-v1 subscription, preferring active over suspended
+    // Find AAB subscriptions, preferring active over suspended. Accept both
+    // the self-serve `aab-v1` productId and the enterprise `aab-ent-v1`
+    // productId so enterprise members get a non-null `active` once
+    // mhp-core#749 (airo-go SubscriptionHandler.List entMode override)
+    // surfaces their enterprise sub. Until that ships, only `aab-v1` is
+    // ever returned for ent members (their personal sub) and the existing
+    // selection logic is unchanged; once #749 deploys, the ent sub appears
+    // in `subscriptions` and is preferred below if active.
     const aabSubscriptions = subscriptionsWithPlan.filter(
-      sub => sub.productId === AIRO_PRODUCT_IDS.AAB_V1
+      sub => sub.productId === AIRO_PRODUCT_IDS.AAB_V1 ||
+             sub.productId === AIRO_PRODUCT_IDS.AAB_ENT_V1
     );
 
     // Prefer active, then suspended, then any other status

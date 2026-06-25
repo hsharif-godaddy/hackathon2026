@@ -7,6 +7,7 @@ import Modal from '@ux/modal'
 import text from '@ux/text'
 
 import { useEcommSubscriptionAutoRenewStatus } from '@/hooks/useEcommSubscriptionAutoRenewStatus'
+import { useIsEnterpriseUser } from '@/hooks/useIsEnterpriseUser'
 import { useSubscriptionRenewal } from '@/hooks/useSubscriptionRenewal'
 import { useTranslations } from '@/hooks/useTranslations'
 
@@ -17,8 +18,18 @@ interface PaywallSuspendedModalProps {
 
 export function PaywallSuspendedModal({ onClose, builderEntitlementId }: PaywallSuspendedModalProps) {
   const t = useTranslations()
+  const isEnterpriseUser: boolean = useIsEnterpriseUser()
   const { renewSubscription, isRenewing, error: renewalError, resetError } = useSubscriptionRenewal()
-  const { data: autoRenewStatus } = useEcommSubscriptionAutoRenewStatus(builderEntitlementId)
+  // Skip the ecomm subscription fetch for enterprise members — their
+  // billing is centrally managed and there is no per-member ecomm
+  // subscription / auto-renew to read. Calling the BFF would 404
+  // (subscriptions-shim can't resolve a builder entitlement against the
+  // member's personal customerId). Pass null to short-circuit the hook's
+  // `enabled` guard so no request is fired. The component-level
+  // early-return below ensures we never render the suspended-renewal UI
+  // for an ent member; this hook-level guard prevents needless 404s.
+  const entitlementForLookup: string | null = isEnterpriseUser ? null : (builderEntitlementId ?? null)
+  const { data: autoRenewStatus } = useEcommSubscriptionAutoRenewStatus(entitlementForLookup)
 
   const canRenew = !!autoRenewStatus?.subscriptionId
 
@@ -32,6 +43,16 @@ export function PaywallSuspendedModal({ onClose, builderEntitlementId }: Paywall
     resetError()
     await handleRenew()
   }, [resetError, handleRenew])
+
+  // Enterprise members never see the self-serve renewal modal — there's no
+  // actionable renewal flow for them (the enterprise admin owns billing).
+  // The early-return must follow all hook calls above to satisfy
+  // react-hooks/rules-of-hooks; the hooks short-circuit cheaply when
+  // `isEnterpriseUser` is true (entitlementForLookup=null disables the
+  // network fetch).
+  if (isEnterpriseUser) {
+    return null
+  }
 
   return (
     <Modal title="" onClose={onClose} centered aria-labelledby="paywall-suspended-title">

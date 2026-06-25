@@ -199,6 +199,20 @@ export function getPlanFromSubscription(
     return subscription.isTrial ? SubscriptionPlan.None : SubscriptionPlan.AiroPlus;
   }
 
+  // Enterprise (`aab-ent-v1`) subscription with no `plan` field. Map to
+  // Ultimate so plan-aware UI treats the ent customer as on the top tier:
+  // - `isPaidPlanForGrants(Ultimate)` is true → no plan-tier paywall
+  // - `canUpgradePlan(Ultimate)` is false → no Upgrade pill / banner
+  // The enterprise-aware UI gates (`useEnterpriseManaged`, `useIsEnterpriseUser`)
+  // still take precedence and replace upgrade CTAs with the admin-contact
+  // notice; this mapping is just the safe fallback for surfaces that read
+  // the plan directly. Activates only post-mhp-core#749 + the
+  // AAB_ENT_V1-aware filter in /api/subscriptions, after which the ent sub
+  // can appear in `active`.
+  if (subscription?.productId === 'aab-ent-v1') {
+    return SubscriptionPlan.Ultimate;
+  }
+
   return SubscriptionPlan.None;
 }
 

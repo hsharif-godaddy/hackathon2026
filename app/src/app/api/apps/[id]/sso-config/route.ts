@@ -43,8 +43,12 @@
  *   4. Server-authoritative sso_config_id. If the client sends one, it must
  *      match `site.ssoConfigId`. Mismatched value → 400, no write fires.
  *
- *   5. Level-3 auth: the route writes credentials, which is sensitive →
- *      stricter HBI-based expiration.
+ *   5. Auth: standard customer auth (default level). HBI step-up was
+ *      removed by product decision so the panel save flow doesn't
+ *      require re-authentication; airo-go still enforces ShopperJwt
+ *      + EntityOwner authorization on the customer-proxy secrets write,
+ *      which remains the canonical authority for credential-write
+ *      access control.
  *
  *   6. Observable failures: missing-server-config-id (409), upstream
  *      airo-go write failure (502). Customer-facing copy is generic; full
@@ -289,7 +293,6 @@ export const POST = withCustomerAuth(
       return NextResponse.json({ error: 'Failed to save SSO config' }, { status: 502 });
     }
   },
-  { level: 3 },
 );
 
 /**

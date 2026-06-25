@@ -62,6 +62,11 @@ vi.mock('@/hooks/useGasketData', () => ({
   useGasketData: () => ({ intl: { locale: 'en-US' } }),
 }));
 
+let mockIsEnterpriseUser = false;
+vi.mock('@/hooks/useIsEnterpriseUser', () => ({
+  useIsEnterpriseUser: () => mockIsEnterpriseUser,
+}));
+
 const defaultProps = {
   builderEntitlementId: 'ent-123',
   renewsAt: '2027-01-29T07:00:00Z',
@@ -70,6 +75,19 @@ const defaultProps = {
 describe('SuspendedNonPaymentBanner', function SuspendedNonPaymentBannerTests() {
   beforeEach(function setup() {
     vi.clearAllMocks();
+    mockIsEnterpriseUser = false;
+  });
+
+  describe('enterprise members', function entSuppression() {
+    it('renders nothing for enterprise members', function entHidesBanner() {
+      // Non-payment suspension is a self-serve billing state that doesn't
+      // apply to ent members — billing is admin-managed and the renew
+      // button has no actionable target. Suppress the banner entirely
+      // (this also prevents the ecomm BFF call that would 404).
+      mockIsEnterpriseUser = true;
+      const { container } = renderWithProviders(<SuspendedNonPaymentBanner {...defaultProps} />);
+      expect(container).toBeEmptyDOMElement();
+    });
   });
 
   describe('renders correctly', function renderTests() {

@@ -51,8 +51,22 @@ export const GET = withCustomerAuth(async (
       ...(includeAttributes ? { noCache: true } : {}),
     });
 
-    // Verify subscription belongs to the authenticated customer
-    if (subscription.customerId !== authContext.user.customerId) {
+    // Verify subscription belongs to the authenticated customer.
+    //
+    // Enterprise carve-out: for ent subscriptions (productId === 'aab-ent-v1'),
+    // the subscription's `customerId` is the ENTERPRISE customer, not the
+    // member's personal customerId. Comparing them would always 403 for ent
+    // members. airo-go's `SubscriptionReadAuthorization` already enforces an
+    // `entMode` bypass server-side (mhp-core entity_owner.go:277-280) and
+    // would not return the subscription if the caller weren't authorized to
+    // read it — so this BFF re-check is redundant for ent subs and is the
+    // only thing producing the 403.
+    //
+    // The check is preserved for non-ent (`aab-v1`) subs as defence in depth.
+    const isEnterpriseSubscription: boolean =
+      subscription.productId === 'aab-ent-v1' ||
+      subscription.ownerProduct === 'aab-ent-v1';
+    if (!isEnterpriseSubscription && subscription.customerId !== authContext.user.customerId) {
       logger.warn('subscription.api.get-by-id.forbidden', {
         subscriptionId,
         subscriptionCustomerId: subscription.customerId,
