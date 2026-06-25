@@ -54,15 +54,10 @@ export class DevSupervisorClientFactory {
    */
   static createForSocketPath(socketPath: string, appId?: string): DevSupervisorClient | null {
     try {
-      const client = createDevSupervisorClient(socketPath);
-      
-      if (client) {
-        this.logger.info('dev_supervisor.client.create.success', {
-          appId
-        });
-      }
-
-      return client;
+      // No success log: a client binds per file operation once the
+      // WorkspaceClient migration (AIROBUILD-1807) routes file ops through here,
+      // so a per-bind success line is pure noise. Failures still log below.
+      return createDevSupervisorClient(socketPath);
     } catch (error) {
       this.logger.error('dev_supervisor.client.create.failure', {
         appId,

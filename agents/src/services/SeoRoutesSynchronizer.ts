@@ -1,7 +1,16 @@
 import { parse } from '@babel/parser';
 import * as t from '@babel/types';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+
+import { isDevSupervisorNotFound } from './DevSupervisorClient.js';
+import type { CreateForWorkspace } from '../workspace/client.js';
+import { WorkspaceUnavailableError } from '../workspace/errors.js';
+import type { WorkspaceFiles } from '../workspace/files.js';
+import { createForWorkspace } from '../workspace/index.js';
+
+/** Workspace-relative path of the v8 route registry the agent edits. */
+const ROUTES_PATH = 'src/routes.tsx';
+/** Workspace-relative path of the generated SEO sitemap registry. */
+const SEO_ROUTES_PATH = 'src/lib/seo-routes.ts';
 
 export type SeoRouteChangefreq =
   | 'always'
@@ -22,6 +31,7 @@ export interface SeoRoute {
 export type SeoRoutesSyncResult =
   | {
       status: 'synced';
+      /** Workspace-relative path of the written registry (not an absolute host path). */
       filePath: string;
       routes: SeoRoute[];
       warnings: string[];
@@ -36,6 +46,11 @@ export type SeoRoutesSyncResult =
 interface RoutesArrayResult {
   array: t.ArrayExpression | null;
   reason: string | null;
+}
+
+export interface SeoRoutesSyncDeps {
+  /** Override the workspace binding (tests inject an in-memory client). */
+  workspaceFactory?: CreateForWorkspace;
 }
 
 const CHANGEFREQ_VALUES = new Set<SeoRouteChangefreq>([
@@ -219,21 +234,21 @@ function getExportedSeoRoutesArray(ast: t.File): t.ArrayExpression | null {
   return null;
 }
 
-async function readExistingMetadata(filePath: string): Promise<{
+async function readExistingMetadata(files: WorkspaceFiles): Promise<{
   metadata: Map<string, SeoRoute>;
   warnings: string[];
 }> {
   let source: string;
   try {
-    source = await readFile(filePath, 'utf-8');
+    const result = await files.view({ path: SEO_ROUTES_PATH });
+    source = result.content;
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+    // First sync (no registry yet) is the only swallowed case. Any other
+    // transport failure propagates rather than silently dropping metadata.
+    if (isDevSupervisorNotFound(error)) {
       return { metadata: new Map(), warnings: [] };
     }
-    return {
-      metadata: new Map(),
-      warnings: [`could not read existing seo-routes.ts: ${error instanceof Error ? error.message : String(error)}`],
-    };
+    throw error;
   }
 
   // Parse failure separated from read failure so a malformed customer-edited
@@ -309,20 +324,33 @@ ${routes.map(renderRoute).join('\n')}
 `;
 }
 
-export async function synchronizeSeoRoutes(appPath: string): Promise<SeoRoutesSyncResult> {
-  const routesPath = join(appPath, 'src', 'routes.tsx');
-  const seoRoutesPath = join(appPath, 'src', 'lib', 'seo-routes.ts');
+export async function synchronizeSeoRoutes(
+  appId: string,
+  deps: SeoRoutesSyncDeps = {},
+): Promise<SeoRoutesSyncResult> {
+  const workspaceFactory: CreateForWorkspace = deps.workspaceFactory ?? createForWorkspace;
+  const workspace = workspaceFactory(appId, 'preview');
+  if (!workspace) {
+    throw new WorkspaceUnavailableError(appId, 'preview');
+  }
+  const files: WorkspaceFiles = workspace.files;
 
   let source: string;
   try {
-    source = await readFile(routesPath, 'utf-8');
+    const result = await files.view({ path: ROUTES_PATH });
+    source = result.content;
   } catch (error) {
-    return {
-      status: 'skipped',
-      reason: `could not read routes.tsx: ${error instanceof Error ? error.message : String(error)}`,
-      routes: [],
-      warnings: [],
-    };
+    // A missing routes.tsx is a legitimate skip; any other transport failure
+    // propagates so it is not masked as a benign skip.
+    if (isDevSupervisorNotFound(error)) {
+      return {
+        status: 'skipped',
+        reason: 'could not read routes.tsx: not found',
+        routes: [],
+        warnings: [],
+      };
+    }
+    throw error;
   }
 
   let ast: t.File;
@@ -348,7 +376,7 @@ export async function synchronizeSeoRoutes(appPath: string): Promise<SeoRoutesSy
   }
 
   const paths = uniquePaths(collectRoutePaths(routesArray.array));
-  const { metadata, warnings } = await readExistingMetadata(seoRoutesPath);
+  const { metadata, warnings } = await readExistingMetadata(files);
 
   // Refuse to overwrite an existing curated seo-routes.ts with an empty array.
   // This guards against transient routes.tsx states (mid-edit, all-non-literal
@@ -365,12 +393,13 @@ export async function synchronizeSeoRoutes(appPath: string): Promise<SeoRoutesSy
 
   const routes = buildRoutes(paths, metadata);
 
-  await mkdir(dirname(seoRoutesPath), { recursive: true });
-  await writeFile(seoRoutesPath, renderSeoRoutes(routes), 'utf-8');
+  // workspace.files.write creates parent dirs and writes atomically
+  // (tmp + same-dir rename) server-side, so no client-side mkdir is needed.
+  await files.write({ path: SEO_ROUTES_PATH, content: renderSeoRoutes(routes) });
 
   return {
     status: 'synced',
-    filePath: seoRoutesPath,
+    filePath: SEO_ROUTES_PATH,
     routes,
     warnings,
   };

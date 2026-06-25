@@ -33,17 +33,19 @@ export const seoRoutesPostEditHandler: PostEditHandler = {
   },
 
   async run(context: PostEditContext, result: string): Promise<string> {
-    const { appPath, filePath } = context;
+    const { appPath, appId, filePath } = context;
 
     let syncResult: Awaited<ReturnType<typeof synchronizeSeoRoutes>>;
     try {
-      syncResult = await synchronizeSeoRoutes(appPath);
+      syncResult = await synchronizeSeoRoutes(appId);
     } catch (error) {
       // synchronizeSeoRoutes returns status:'skipped' for parse / non-literal-routes
-      // cases, so anything that throws here is a real I/O failure (write, mkdir,
-      // unexpected). Log at error level — these need investigation, unlike skips.
+      // cases, so anything that throws here is a real failure — a workspace that
+      // can't be bound, or a non-not_found transport error re-thrown from a
+      // file op. Log at error level — these need investigation, unlike skips.
       logger.error('seo.routes.sync.error', {
         appPath,
+        appId,
         filePath,
         error: error instanceof Error ? error.message : String(error),
       });
@@ -52,6 +54,7 @@ export const seoRoutesPostEditHandler: PostEditHandler = {
 
     logger.info(`seo.routes.sync.${syncResult.status}`, {
       appPath,
+      appId,
       filePath,
       reason: syncResult.status === 'skipped' ? syncResult.reason : undefined,
       routeCount: syncResult.routes.length,

@@ -44,10 +44,10 @@ vi.mock('../DevSupervisorClient.js', () => ({
   DevSupervisorError: MockDevSupervisorError,
 }));
 
+import { WorkspaceUnavailableError } from '../../workspace/errors.js';
 import {
   AdSenseSettingsFileService,
   AdSenseSettingsValidationError,
-  AdSenseWorkspaceUnavailableError,
 } from '../AdSenseSettingsFileService.js';
 
 const appId = 'app1234567';
@@ -217,8 +217,8 @@ describe('AdSenseSettingsFileService', () => {
   it('surfaces workspace unavailable instead of returning disabled defaults', async () => {
     mockCreateForWorkspace.mockReturnValue(null);
 
-    await expect(createService().readSettings(appId)).rejects.toBeInstanceOf(AdSenseWorkspaceUnavailableError);
-    await expect(createService().saveSettings(appId, { enabled: false })).rejects.toBeInstanceOf(AdSenseWorkspaceUnavailableError);
+    await expect(createService().readSettings(appId)).rejects.toBeInstanceOf(WorkspaceUnavailableError);
+    await expect(createService().saveSettings(appId, { enabled: false })).rejects.toBeInstanceOf(WorkspaceUnavailableError);
   });
 
   it('surfaces workspace transport failures instead of returning disabled defaults', async () => {

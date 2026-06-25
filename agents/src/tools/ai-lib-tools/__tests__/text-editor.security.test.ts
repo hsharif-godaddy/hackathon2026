@@ -323,7 +323,7 @@ describe('textEditorAITool — blocked path wiring', function textEditorSecurity
       ),
     ).resolves.toContain('SEO: synced static routes into src/lib/seo-routes.ts');
 
-    expect(mockSynchronizeSeoRoutes).toHaveBeenCalledWith(appPath);
+    expect(mockSynchronizeSeoRoutes).toHaveBeenCalledWith(appId);
   });
 
   it('appends a sync-failure note to the original edit result and logs the failure', async function syncFailure() {
@@ -345,6 +345,7 @@ describe('textEditorAITool — blocked path wiring', function textEditorSecurity
 
     expect(mockLoggerError).toHaveBeenCalledWith('seo.routes.sync.error', {
       appPath,
+      appId,
       filePath: 'src/routes.tsx',
       error: 'sync failed',
     });
@@ -364,7 +365,7 @@ describe('textEditorAITool — blocked path wiring', function textEditorSecurity
       ),
     ).resolves.toContain('SEO: synced static routes into src/lib/seo-routes.ts');
 
-    expect(mockSynchronizeSeoRoutes).toHaveBeenCalledWith(appPath);
+    expect(mockSynchronizeSeoRoutes).toHaveBeenCalledWith(appId);
   });
 
   it('matches routes.tsx with a leading "./" path prefix', async function syncDotSlash() {
@@ -382,7 +383,7 @@ describe('textEditorAITool — blocked path wiring', function textEditorSecurity
       ),
     ).resolves.toContain('SEO: synced static routes into src/lib/seo-routes.ts');
 
-    expect(mockSynchronizeSeoRoutes).toHaveBeenCalledWith(appPath);
+    expect(mockSynchronizeSeoRoutes).toHaveBeenCalledWith(appId);
   });
 
   it('matches routes.tsx with a Docker-container "/app/" absolute prefix', async function syncDockerPath() {
@@ -405,7 +406,7 @@ describe('textEditorAITool — blocked path wiring', function textEditorSecurity
       ),
     ).resolves.toContain('SEO: synced static routes into src/lib/seo-routes.ts');
 
-    expect(mockSynchronizeSeoRoutes).toHaveBeenCalledWith(appPath);
+    expect(mockSynchronizeSeoRoutes).toHaveBeenCalledWith(appId);
   });
 
   it('surfaces skip reason to the agent when sync is skipped', async function syncSkippedSurfaced() {

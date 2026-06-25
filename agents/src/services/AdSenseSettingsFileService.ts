@@ -11,6 +11,7 @@ import { Logger, type ILogger } from '../logging/index.js';
 import { DevSupervisorError } from './DevSupervisorClient.js';
 import { createForWorkspace } from '../workspace/index.js';
 import type { CreateForWorkspace } from '../workspace/client.js';
+import { WorkspaceUnavailableError } from '../workspace/errors.js';
 
 const DEFAULT_ADSENSE_SETTINGS: AdSenseSettings = {
   enabled: false,
@@ -34,13 +35,6 @@ export class AdSenseSettingsValidationError extends Error {
   }
 }
 
-export class AdSenseWorkspaceUnavailableError extends Error {
-  constructor(public readonly appId: string) {
-    super(`Workspace unavailable for app ${appId}`);
-    this.name = 'AdSenseWorkspaceUnavailableError';
-  }
-}
-
 export class AdSenseSettingsFileService {
   private readonly workspaceFactory: CreateForWorkspace;
   private readonly logger: ILogger;
@@ -55,7 +49,7 @@ export class AdSenseSettingsFileService {
   async readSettings(appId: string): Promise<AdSenseSettings> {
     const workspace = this.workspaceFactory(appId, 'preview');
     if (!workspace) {
-      throw new AdSenseWorkspaceUnavailableError(appId);
+      throw new WorkspaceUnavailableError(appId, 'preview');
     }
 
     try {
@@ -103,7 +97,7 @@ export class AdSenseSettingsFileService {
   async saveSettings(appId: string, input: AdSenseSettingsInput): Promise<AdSenseSettings> {
     const workspace = this.workspaceFactory(appId, 'preview');
     if (!workspace) {
-      throw new AdSenseWorkspaceUnavailableError(appId);
+      throw new WorkspaceUnavailableError(appId, 'preview');
     }
 
     const normalized = normalizeAdSenseSettingsInput(input);

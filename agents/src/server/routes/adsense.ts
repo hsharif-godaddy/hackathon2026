@@ -3,9 +3,9 @@ import { Router, type Request, type Response } from 'express';
 import {
   AdSenseSettingsFileService,
   AdSenseSettingsValidationError,
-  AdSenseWorkspaceUnavailableError,
 } from '../../services/AdSenseSettingsFileService.js';
 import { Logger } from '../../logging/index.js';
+import { WorkspaceUnavailableError } from '../../workspace/errors.js';
 import { validateAppOwnership } from '../middleware/app-ownership.js';
 import { asyncHandler } from '../middleware/async-handler.js';
 
@@ -66,7 +66,7 @@ function handleAdSenseRouteError(
     });
   }
 
-  if (error instanceof AdSenseWorkspaceUnavailableError) {
+  if (error instanceof WorkspaceUnavailableError) {
     logger.warn(`adsense.settings.${operation}.workspace_unavailable`, { appId });
     return res.status(404).json({ error: 'App not found' });
   }

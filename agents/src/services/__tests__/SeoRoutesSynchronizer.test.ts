@@ -1,10 +1,14 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
-import { tmpdir } from 'node:os';
-import { afterEach, describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { parse as parseTs } from '@babel/parser';
 
+import type { CreateForWorkspace } from '../../workspace/client.js';
+import { WorkspaceUnavailableError } from '../../workspace/errors.js';
+import { DevSupervisorError } from '../DevSupervisorClient.js';
 import { synchronizeSeoRoutes } from '../SeoRoutesSynchronizer.js';
+
+const appId = 'app1234567';
+const ROUTES_PATH = 'src/routes.tsx';
+const SEO_ROUTES_PATH = 'src/lib/seo-routes.ts';
 
 function expectValidTypeScript(source: string): void {
   expect(() =>
@@ -12,33 +16,42 @@ function expectValidTypeScript(source: string): void {
   ).not.toThrow();
 }
 
-const tempDirs: string[] = [];
-
-async function createApp(routesSource: string, seoRoutesSource?: string): Promise<string> {
-  const appPath = await mkdtemp(join(tmpdir(), 'seo-routes-sync-'));
-  tempDirs.push(appPath);
-
-  await mkdir(join(appPath, 'src', 'lib'), { recursive: true });
-  await writeFile(join(appPath, 'src', 'routes.tsx'), routesSource, 'utf-8');
-
-  if (seoRoutesSource) {
-    await writeFile(join(appPath, 'src', 'lib', 'seo-routes.ts'), seoRoutesSource, 'utf-8');
-  }
-
-  return appPath;
+interface MockWorkspace {
+  store: Map<string, string>;
+  view: ReturnType<typeof vi.fn>;
+  write: ReturnType<typeof vi.fn>;
+  factory: CreateForWorkspace;
 }
 
-async function readSeoRoutes(appPath: string): Promise<string> {
-  return await readFile(join(appPath, 'src', 'lib', 'seo-routes.ts'), 'utf-8');
+// In-memory Map-backed workspace (PR #4345 convention): view/write round-trip
+// through a path->content Map so the byte-level content assertions survive the
+// node:fs -> workspace.files migration without touching disk.
+function makeWorkspace(seed: Record<string, string>): MockWorkspace {
+  const store = new Map<string, string>(Object.entries(seed));
+  const view = vi.fn(async ({ path }: { path: string }) => {
+    const content = store.get(path);
+    if (content === undefined) {
+      throw new DevSupervisorError('not_found', 404, `${path}: no such file`);
+    }
+    return { path, content, encoding: 'utf-8', lines: 0, size: content.length, truncated: false };
+  });
+  const write = vi.fn(async ({ path, content }: { path: string; content: string }) => {
+    store.set(path, content);
+    return { bytesWritten: Buffer.byteLength(content) };
+  });
+  const factory = vi.fn(() => ({ files: { view, write } })) as unknown as CreateForWorkspace;
+  return { store, view, write, factory };
+}
+
+function setup(routesSource: string, seoRoutesSource?: string): MockWorkspace {
+  const seed: Record<string, string> = { [ROUTES_PATH]: routesSource };
+  if (seoRoutesSource !== undefined) seed[SEO_ROUTES_PATH] = seoRoutesSource;
+  return makeWorkspace(seed);
 }
 
 describe('SeoRoutesSynchronizer', function syncTests() {
-  afterEach(async function cleanup() {
-    await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
-  });
-
   it('writes static public routes to seo-routes.ts', async function writeStaticRoutes() {
-    const appPath = await createApp(`
+    const ws = setup(`
 import type { RouteObject } from 'react-router-dom';
 
 export const routes: RouteObject[] = [
@@ -50,19 +63,28 @@ export const routes: RouteObject[] = [
 ];
 `);
 
-    const result = await synchronizeSeoRoutes(appPath);
+    const result = await synchronizeSeoRoutes(appId, { workspaceFactory: ws.factory });
 
     expect(result.status).toBe('synced');
+    expect(result.warnings).toEqual([]);
     expect(result.routes.map((route) => route.path)).toEqual([
       '/',
       '/about',
       '/services/web-design',
     ]);
-    await expect(readSeoRoutes(appPath)).resolves.toContain('{ path: "/about", changefreq: "monthly", priority: 0.8 },');
+    expect(ws.factory).toHaveBeenCalledWith(appId, 'preview');
+    // Assert the exact write payload (path + content, no stray encoding/createOnly).
+    expect(ws.write).toHaveBeenCalledWith({
+      path: SEO_ROUTES_PATH,
+      content: ws.store.get(SEO_ROUTES_PATH),
+    });
+    expect(ws.store.get(SEO_ROUTES_PATH)).toContain(
+      '{ path: "/about", changefreq: "monthly", priority: 0.8 },',
+    );
   });
 
   it('preserves existing metadata for routes that remain', async function preserveMetadata() {
-    const appPath = await createApp(
+    const ws = setup(
       `
 export const routes = [
   { path: '/', element: <HomePage /> },
@@ -77,7 +99,7 @@ export const seoRoutes = [
 `,
     );
 
-    const result = await synchronizeSeoRoutes(appPath);
+    const result = await synchronizeSeoRoutes(appId, { workspaceFactory: ws.factory });
 
     expect(result.status).toBe('synced');
     expect(result.routes).toContainEqual({
@@ -86,28 +108,29 @@ export const seoRoutes = [
       priority: 0.9,
       lastmod: '2026-05-01',
     });
-    await expect(readSeoRoutes(appPath)).resolves.toContain(
+    expect(ws.store.get(SEO_ROUTES_PATH)).toContain(
       '{ path: "/about", changefreq: "weekly", priority: 0.9, lastmod: "2026-05-01" },',
     );
   });
 
   it('skips non-literal routes exports without writing seo-routes.ts', async function skipNonLiteral() {
-    const appPath = await createApp(`
+    const ws = setup(`
 export const routes = createRoutes();
 `);
 
-    const result = await synchronizeSeoRoutes(appPath);
+    const result = await synchronizeSeoRoutes(appId, { workspaceFactory: ws.factory });
 
     expect(result).toMatchObject({
       status: 'skipped',
       reason: 'routes export is not a literal array',
       routes: [],
     });
-    await expect(readSeoRoutes(appPath)).rejects.toThrow();
+    expect(ws.write).not.toHaveBeenCalled();
+    expect(ws.store.has(SEO_ROUTES_PATH)).toBe(false);
   });
 
   it('removes metadata for routes that no longer exist', async function removeDeletedRoutes() {
-    const appPath = await createApp(
+    const ws = setup(
       `
 export const routes = [
   { path: '/', element: <HomePage /> },
@@ -121,9 +144,9 @@ export const seoRoutes = [
 `,
     );
 
-    await synchronizeSeoRoutes(appPath);
+    await synchronizeSeoRoutes(appId, { workspaceFactory: ws.factory });
 
-    const updated = await readSeoRoutes(appPath);
+    const updated = ws.store.get(SEO_ROUTES_PATH) ?? '';
     expect(updated).not.toContain('/old');
     expect(updated).toContain('{ path: "/", changefreq: "weekly", priority: 1.0 },');
     // Guard against a regression that wipes the whole array or emits invalid TS.
@@ -131,7 +154,7 @@ export const seoRoutes = [
   });
 
   it('flattens nested children, with absolute child paths overriding parent', async function nestedChildren() {
-    const appPath = await createApp(`
+    const ws = setup(`
 export const routes = [
   { path: '/dashboard', element: <Dashboard />, children: [
     { path: 'analytics', element: <Analytics /> },
@@ -140,7 +163,7 @@ export const routes = [
 ];
 `);
 
-    const result = await synchronizeSeoRoutes(appPath);
+    const result = await synchronizeSeoRoutes(appId, { workspaceFactory: ws.factory });
 
     expect(result.status).toBe('synced');
     expect(result.routes.map((r) => r.path).sort()).toEqual([
@@ -152,7 +175,7 @@ export const routes = [
 
   it('skips and returns reason when routes.tsx fails to parse', async function skipParseFailure() {
     // Intentionally broken: unmatched brace + dangling comma + bad JSX
-    const appPath = await createApp(`
+    const ws = setup(`
 import type { RouteObject } from 'react-router-dom';
 
 export const routes: RouteObject[] = [
@@ -161,21 +184,22 @@ export const routes: RouteObject[] = [
 ];
 `);
 
-    const result = await synchronizeSeoRoutes(appPath);
+    const result = await synchronizeSeoRoutes(appId, { workspaceFactory: ws.factory });
 
     expect(result.status).toBe('skipped');
     if (result.status === 'skipped') {
       expect(result.reason).toMatch(/^could not parse routes\.tsx:/);
     }
     expect(result.routes).toEqual([]);
-    // seo-routes.ts must not exist (we never created one in this test) and must not be created
-    await expect(readSeoRoutes(appPath)).rejects.toThrow();
+    // seo-routes.ts must not be written when routes.tsx cannot be parsed.
+    expect(ws.write).not.toHaveBeenCalled();
+    expect(ws.store.has(SEO_ROUTES_PATH)).toBe(false);
   });
 
   it('drops template-literal path values silently (cannot statically resolve)', async function templateLiteralPaths() {
     // Mixed literal + template-literal: template-literal paths are dropped,
     // literal paths still sync. Documents the intentional behavior.
-    const appPath = await createApp(`
+    const ws = setup(`
 export const routes = [
   { path: '/', element: <HomePage /> },
   { path: \`/blog/\${slug}\`, element: <BlogPost /> },
@@ -183,14 +207,14 @@ export const routes = [
 ];
 `);
 
-    const result = await synchronizeSeoRoutes(appPath);
+    const result = await synchronizeSeoRoutes(appId, { workspaceFactory: ws.factory });
 
     expect(result.status).toBe('synced');
     expect(result.routes.map((r) => r.path).sort()).toEqual(['/', '/about']);
   });
 
   it('clamps out-of-range priority and drops malformed lastmod', async function validateMetadata() {
-    const appPath = await createApp(
+    const ws = setup(
       `
 export const routes = [
   { path: '/', element: <Home /> },
@@ -207,7 +231,7 @@ export const seoRoutes = [
 `,
     );
 
-    const result = await synchronizeSeoRoutes(appPath);
+    const result = await synchronizeSeoRoutes(appId, { workspaceFactory: ws.factory });
 
     expect(result.status).toBe('synced');
     if (result.status === 'synced') {
@@ -227,7 +251,7 @@ export const seoRoutes = [
     // routes.tsx parses cleanly but every path is a non-literal (e.g. const ref or
     // template literal). Without the guard, this would overwrite seo-routes.ts
     // with an empty array and silently drop priority/changefreq/lastmod.
-    const appPath = await createApp(
+    const ws = setup(
       `
 const HOME = '/';
 export const routes = [
@@ -243,15 +267,69 @@ export const seoRoutes = [
 `,
     );
 
-    const result = await synchronizeSeoRoutes(appPath);
+    const result = await synchronizeSeoRoutes(appId, { workspaceFactory: ws.factory });
 
     expect(result.status).toBe('skipped');
     if (result.status === 'skipped') {
       expect(result.reason).toMatch(/preserving existing seo-routes\.ts/);
     }
-    // The existing curated metadata must survive byte-for-byte
-    const after = await readSeoRoutes(appPath);
+    // No write happened, so the curated metadata survives byte-for-byte.
+    expect(ws.write).not.toHaveBeenCalled();
+    const after = ws.store.get(SEO_ROUTES_PATH) ?? '';
     expect(after).toContain('{ path: "/", changefreq: "weekly", priority: 1.0 }');
     expect(after).toContain('{ path: "/about", changefreq: "monthly", priority: 0.8 }');
+  });
+
+  it('skips when routes.tsx does not exist', async function missingRoutes() {
+    const ws = makeWorkspace({});
+
+    const result = await synchronizeSeoRoutes(appId, { workspaceFactory: ws.factory });
+
+    expect(result.status).toBe('skipped');
+    if (result.status === 'skipped') {
+      expect(result.reason).toBe('could not read routes.tsx: not found');
+    }
+    expect(ws.write).not.toHaveBeenCalled();
+  });
+
+  it('propagates non-not_found transport failures reading routes.tsx', async function routesTransportFailure() {
+    const ws = setup('export const routes = [];');
+    ws.view.mockRejectedValueOnce(
+      new DevSupervisorError('permission_denied', 403, `${ROUTES_PATH}: permission denied`),
+    );
+
+    await expect(
+      synchronizeSeoRoutes(appId, { workspaceFactory: ws.factory }),
+    ).rejects.toThrow('permission denied');
+    expect(ws.write).not.toHaveBeenCalled();
+  });
+
+  it('propagates non-not_found transport failures reading existing seo-routes.ts', async function existingTransportFailure() {
+    const routesSource = `
+export const routes = [
+  { path: '/', element: <Home /> },
+];
+`;
+    const view = vi.fn(async ({ path }: { path: string }) => {
+      if (path === ROUTES_PATH) {
+        return { path, content: routesSource, encoding: 'utf-8', lines: 0, size: 0, truncated: false };
+      }
+      throw new DevSupervisorError('permission_denied', 403, `${path}: permission denied`);
+    });
+    const write = vi.fn();
+    const factory = vi.fn(() => ({ files: { view, write } })) as unknown as CreateForWorkspace;
+
+    await expect(
+      synchronizeSeoRoutes(appId, { workspaceFactory: factory }),
+    ).rejects.toThrow('permission denied');
+    expect(write).not.toHaveBeenCalled();
+  });
+
+  it('throws when no workspace can be bound for the app', async function workspaceUnavailable() {
+    const factory = vi.fn(() => null) as unknown as CreateForWorkspace;
+
+    await expect(
+      synchronizeSeoRoutes(appId, { workspaceFactory: factory }),
+    ).rejects.toBeInstanceOf(WorkspaceUnavailableError);
   });
 });

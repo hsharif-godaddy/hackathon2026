@@ -25,12 +25,6 @@ vi.mock('../../../services/AdSenseSettingsFileService.js', () => ({
       this.name = 'AdSenseSettingsValidationError';
     }
   },
-  AdSenseWorkspaceUnavailableError: class AdSenseWorkspaceUnavailableError extends Error {
-    constructor() {
-      super('Workspace unavailable');
-      this.name = 'AdSenseWorkspaceUnavailableError';
-    }
-  },
 }));
 
 vi.mock('../../middleware/app-ownership.js', () => ({
@@ -38,7 +32,8 @@ vi.mock('../../middleware/app-ownership.js', () => ({
 }));
 
 import adsenseRouter from '../adsense.js';
-import { AdSenseSettingsValidationError, AdSenseWorkspaceUnavailableError } from '../../../services/AdSenseSettingsFileService.js';
+import { AdSenseSettingsValidationError } from '../../../services/AdSenseSettingsFileService.js';
+import { WorkspaceUnavailableError } from '../../../workspace/errors.js';
 
 const appId = 'abc123def4';
 const settings = {
@@ -125,7 +120,7 @@ describe('adsense routes', () => {
   });
 
   it('returns 404 when the preview workspace is unavailable', async () => {
-    mockReadSettings.mockRejectedValue(new AdSenseWorkspaceUnavailableError());
+    mockReadSettings.mockRejectedValue(new WorkspaceUnavailableError(appId, 'preview'));
 
     const res = await request(createTestApp()).get(`/apps/${appId}/adsense`);
 
