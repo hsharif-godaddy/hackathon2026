@@ -1,131 +1,82 @@
 # Blog Posts
 
-This directory contains blog post content for your site.
+This directory is a placeholder. Your blog posts live elsewhere — see below.
 
-**Your blog starts empty.** Posts will be created here when you ask the AI agent to write blog content.
+## Where posts live
 
-## How Blog Posts Work
+Posts are stored at `src/content/data/blog/<slug>.{md,json}`.
 
-Blog posts are stored as **Markdown files** (`.md`) with frontmatter (YAML metadata at the top). This provides:
+Each file is self-describing: the filename becomes the slug for routing, and the file
+carries a stable `id` field (format: `post-<nanoid>`) used by marketing campaigns to
+reference a specific post regardless of slug changes.
 
-- Native markdown editing experience
-- Clean separation of metadata and content
-- Better readability and maintainability
-- Standard format used by most blog systems
-- **Automatic loading** - no manual registration needed!
-
-## Creating a Blog Post
-
-Create a new file in this directory (e.g., `my-first-post.md`) with the following structure:
+Example markdown post (`src/content/data/blog/my-first-post.md`):
 
 ```markdown
 ---
-title: 'My First Blog Post'
-excerpt: 'A brief description that hooks the reader'
-author: 'Your Name'
+id: post-abc123
+slug: my-first-post
+title: 'My First Post'
+excerpt: 'A brief description'
+featuredImage: 'https://media.gettyimages.com/id/1234567/photo/example.jpg'
 publishedAt: '2025-01-15T10:00:00Z'
-category: 'General'
-tags: ['tutorial', 'getting-started']
-featuredImage: '/images/blog/my-first-post.jpg'
-seoTitle: 'My First Blog Post | My Site'
-seoDescription: 'Learn about creating your first blog post'
 published: true
 ---
 
-# My First Post
-
-This is the full content of the blog post. You can use **markdown** formatting naturally!
-
-## Why This Matters
-
-Connect with your reader's goal or pain point. Use "you" language to make it personal.
-
-- **Key benefit #1**: Explain the value
-- **Key benefit #2**: Make it tangible
-- **Key benefit #3**: Show the outcome
-
-## Main Content
-
-Break content into digestible chunks. Keep paragraphs short (2-4 sentences).
-
-### Subsection
-
-Give readers actionable information:
-
-1. **First step**: Clear instruction
-2. **Second step**: What to do next
-3. **Third step**: Expected result
-
-> **Pro Tip**: Use blockquotes for important callouts and expert advice.
-
-## Key Takeaways
-
-- First major insight
-- Second important lesson
-- Third actionable takeaway
-
-## Conclusion
-
-End with a clear next step. Make readers feel empowered!
+Full post body in markdown.
 ```
 
-## Frontmatter Properties
+Example JSON post (`src/content/data/blog/my-first-post.json`):
+
+```json
+{
+  "id": "post-abc123",
+  "slug": "my-first-post",
+  "title": "My First Post",
+  "excerpt": "A brief description",
+  "featuredImage": "https://media.gettyimages.com/id/1234567/photo/example.jpg",
+  "publishedAt": "2025-01-15T10:00:00Z",
+  "published": true,
+  "content": "Full post body."
+}
+```
+
+## How posts are consumed
+
+Posts are consumed via `virtual:content`, a Vite virtual module provided by the
+airo-content plugin at build time. `lib/blog.ts` reads `content.blog` — an array of
+all posts sorted by filename — and exposes getter utilities (`getBlogPosts`,
+`getPostBySlug`, etc.) to the rest of the blog UI.
+
+There is **no `posts.json` manifest** and no separate glob loader. The plugin discovers
+every `.md` and `.json` file under `src/content/data/blog/` automatically.
+
+## Frontmatter fields
 
 **Required:**
 
-- **title**: Post title displayed on the page
-- **excerpt**: Short description (160 chars max recommended)
-- **publishedAt**: Publication date (ISO 8601 format: `"2025-01-15T10:00:00Z"`)
-- **published**: Whether post is live (`true`) or draft (`false`)
+- `id` — stable `post-<nanoid>` identifier (stays constant even if slug changes)
+- `title` — post title
+- `excerpt` — short description (160 chars max recommended)
+- `publishedAt` — ISO 8601 publication date
+- `published` — `true` for live, `false` for draft
+
+**Recommended:**
+
+- `featuredImage` — image URL (the blog-writing flow supplies a Getty URL). Rendered as the
+  post's card image and hero; a post without it falls back to a blank/placeholder, so the
+  authoring flow treats it as required even though the schema permits its absence.
+- `slug` — defaults to the filename (`my-first-post.md` → `my-first-post`); include only to override.
 
 **Optional:**
 
-- **author**: Author name
-- **updatedAt**: Last updated date (ISO 8601 format)
-- **category**: Post category for filtering
-- **tags**: Array of tags for filtering (e.g., `["tutorial", "beginner"]`)
-- **featuredImage**: Featured image URL or path (highly recommended!)
-- **seoTitle**: SEO-optimized title (60 chars max recommended)
-- **seoDescription**: SEO meta description (160 chars max recommended)
+- `author`, `updatedAt`, `category`, `tags`
+- `seoTitle`, `seoDescription`, `status` (`published | scheduled | draft`)
 
-**Note**: The filename becomes the slug (e.g., `my-first-post.md` → `/blog/my-first-post`)
+## Getting started
 
-## Automatic Loading
+Ask the AI agent to create posts:
 
-Posts are **loaded on the fly** - no build step needed!
-
-How it works:
-
-1. Vite's `import.meta.glob` loads all `.md` files as raw strings
-2. Lightweight frontmatter parser extracts YAML metadata
-3. react-markdown renders the content
-4. Everything happens automatically when you import the blog index
-
-Just create a `.md` file and it's instantly available - no restart needed!
-
-## Content Writing Tips
-
-- **Keep paragraphs short** (2-4 sentences)
-- **Use headings** to break up content (##, ###)
-- **Add lists** every few paragraphs for scannability
-- **Bold key terms** for emphasis
-- **Use blockquotes** (>) for tips and callouts
-- **Include code blocks** with proper language tags
-- **Add images** inline with `![alt text](image-path)`
-- **Write conversationally** - address readers directly
-
-## Getting Started
-
-Your site has a complete blog system built-in, but it starts with no posts. To get started:
-
-1. **Activate the blog**: Ask the AI agent "Add a blog to my site" (adds navigation link)
-2. **Create your first post**: Ask "Create a blog post about [topic]"
-
-## Getting Help
-
-Ask the AI agent to:
-
-- "Add a blog to my site" - Adds blog link to navigation
-- "Create a blog post about [topic]" - Writes and publishes a new post
-- "Write 5 blog posts about [topics]" - Creates multiple posts at once
-- "Update the blog post about [topic]" - Edits an existing post
+- "Create a blog post about [topic]"
+- "Write 5 blog posts about [topics]"
+- "Update the blog post about [topic]"

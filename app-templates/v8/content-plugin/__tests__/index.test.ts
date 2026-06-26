@@ -517,6 +517,191 @@ describe('contentPlugin — layout validator', () => {
   });
 });
 
+async function evalModule(code: string): Promise<Record<string, unknown>> {
+  const dataUrl: string = 'data:text/javascript;base64,' + Buffer.from(code).toString('base64');
+  return import(dataUrl) as Promise<Record<string, unknown>>;
+}
+
+describe('collection-directory discovery', () => {
+  async function makeRoot(): Promise<string> {
+    return fs.mkdtemp(path.join(os.tmpdir(), 'airo-collection-'));
+  }
+  // loadVirtual + initPlugin helpers already exist in this file; reuse them.
+
+  it('emits a directory under data/ as an array keyed by the directory name', async () => {
+    const root: string = await makeRoot();
+    await fs.mkdir(path.join(root, 'src/content/data/blog'), { recursive: true });
+    await fs.writeFile(path.join(root, 'src/content/data/blog/b.json'), `{ "slug": "b", "title": "B" }`);
+    await fs.writeFile(path.join(root, 'src/content/data/blog/a.json'), `{ "slug": "a", "title": "A" }`);
+    const plugin = await initPlugin(root);
+    const mod: string = await loadVirtual(plugin);
+    // deterministic filename order: a before b
+    expect(mod).toContain('export const blog =');
+    const blog = (await evalModule(mod)).blog as Array<{ slug: string }>;
+    expect(blog.map((p) => p.slug)).toEqual(['a', 'b']);
+  });
+
+  it('throws on a directory name that is not a valid identifier', async () => {
+    const root: string = await makeRoot();
+    await fs.mkdir(path.join(root, 'src/content/data/blog-posts'), { recursive: true });
+    await fs.writeFile(path.join(root, 'src/content/data/blog-posts/a.json'), `{ "slug": "a" }`);
+    const plugin = await initPlugin(root);
+    await expect(loadVirtual(plugin)).rejects.toThrow(/invalid content key/);
+  });
+
+  it('throws when a file and a directory both claim the same key', async () => {
+    const root: string = await makeRoot();
+    await fs.mkdir(path.join(root, 'src/content/data/blog'), { recursive: true });
+    await fs.writeFile(path.join(root, 'src/content/data/blog/a.json'), `{ "slug": "a" }`);
+    await fs.writeFile(path.join(root, 'src/content/data/blog.json'), `[]`);
+    const plugin = await initPlugin(root);
+    await expect(loadVirtual(plugin)).rejects.toThrow(/duplicate content key "blog"/);
+  });
+
+  it('normalizes .md items to { ...frontmatter, content }', async () => {
+    const root: string = await fs.mkdtemp(path.join(os.tmpdir(), 'airo-collection-md-'));
+    await fs.mkdir(path.join(root, 'src/content/data/blog'), { recursive: true });
+    await fs.writeFile(
+      path.join(root, 'src/content/data/blog/post.md'),
+      `---\nslug: post\ntitle: Post\n---\n\n## Body\nhi`,
+    );
+    const plugin = await initPlugin(root);
+    const blog = (await evalModule(await loadVirtual(plugin))).blog as Array<Record<string, unknown>>;
+    expect(blog[0]).toEqual({ slug: 'post', title: 'Post', content: '## Body\nhi' });
+  });
+
+  it('supports a mix of .md and .json items in one collection', async () => {
+    const root: string = await fs.mkdtemp(path.join(os.tmpdir(), 'airo-collection-mix-'));
+    await fs.mkdir(path.join(root, 'src/content/data/blog'), { recursive: true });
+    await fs.writeFile(path.join(root, 'src/content/data/blog/1-md.md'), `---\nslug: md\n---\nbody`);
+    await fs.writeFile(path.join(root, 'src/content/data/blog/2-json.json'), `{ "slug": "json", "content": "c" }`);
+    const plugin = await initPlugin(root);
+    const blog = (await evalModule(await loadVirtual(plugin))).blog as Array<{ slug: string }>;
+    expect(blog.map((p) => p.slug)).toEqual(['md', 'json']);
+  });
+
+  it('emits an existing-but-empty collection dir as []', async () => {
+    const root: string = await fs.mkdtemp(path.join(os.tmpdir(), 'airo-collection-empty-'));
+    await fs.mkdir(path.join(root, 'src/content/data/blog'), { recursive: true });
+    const plugin = await initPlugin(root);
+    const blog = (await evalModule(await loadVirtual(plugin))).blog;
+    expect(blog).toEqual([]);
+  });
+
+  it('emits the blog collection shape lib/blog.ts consumes (id, slug, content, sorted by filename)', async () => {
+    const root: string = await fs.mkdtemp(path.join(os.tmpdir(), 'airo-blog-contract-'));
+    await fs.mkdir(path.join(root, 'src/content/data/blog'), { recursive: true });
+    await fs.writeFile(
+      path.join(root, 'src/content/data/blog/morning-workout-benefits.md'),
+      `---\nid: post-aaa\nslug: morning-workout-benefits\ntitle: Morning Workout\nexcerpt: e\npublishedAt: '2026-06-20T10:00:00Z'\npublished: true\n---\n\nBody copy.`,
+    );
+    await fs.writeFile(
+      path.join(root, 'src/content/data/blog/another-post.json'),
+      `{ "id": "post-bbb", "slug": "another-post", "title": "Another", "excerpt": "e", "publishedAt": "2026-06-21T10:00:00Z", "published": true, "content": "C" }`,
+    );
+    const plugin = await initPlugin(root);
+    const blog = (await evalModule(await loadVirtual(plugin))).blog as Array<Record<string, unknown>>;
+    expect(blog.map((p) => p.slug)).toEqual(['another-post', 'morning-workout-benefits']); // filename sort
+    expect(blog.find((p) => p.slug === 'morning-workout-benefits')).toMatchObject({
+      id: 'post-aaa', title: 'Morning Workout', content: 'Body copy.',
+    });
+  });
+
+  it('derives slug from filename for a .md item with no slug in frontmatter', async () => {
+    const root: string = await fs.mkdtemp(path.join(os.tmpdir(), 'airo-slug-md-'));
+    await fs.mkdir(path.join(root, 'src/content/data/blog'), { recursive: true });
+    await fs.writeFile(
+      path.join(root, 'src/content/data/blog/morning-workout.md'),
+      `---\ntitle: Morning Workout\n---\n\nBody.`,
+    );
+    const plugin = await initPlugin(root);
+    const blog = (await evalModule(await loadVirtual(plugin))).blog as Array<Record<string, unknown>>;
+    expect(blog[0]?.slug).toBe('morning-workout');
+  });
+
+  it('derives slug from filename for a .json item with no slug field', async () => {
+    const root: string = await fs.mkdtemp(path.join(os.tmpdir(), 'airo-slug-json-'));
+    await fs.mkdir(path.join(root, 'src/content/data/blog'), { recursive: true });
+    await fs.writeFile(
+      path.join(root, 'src/content/data/blog/my-post.json'),
+      `{ "title": "My Post" }`,
+    );
+    const plugin = await initPlugin(root);
+    const blog = (await evalModule(await loadVirtual(plugin))).blog as Array<Record<string, unknown>>;
+    expect(blog[0]?.slug).toBe('my-post');
+  });
+
+  it('explicit slug in frontmatter/JSON overrides the filename-derived slug', async () => {
+    const root: string = await fs.mkdtemp(path.join(os.tmpdir(), 'airo-slug-override-'));
+    await fs.mkdir(path.join(root, 'src/content/data/blog'), { recursive: true });
+    await fs.writeFile(
+      path.join(root, 'src/content/data/blog/2026-01-post.md'),
+      `---\nslug: custom-slug\ntitle: Post\n---\n\nBody.`,
+    );
+    await fs.writeFile(
+      path.join(root, 'src/content/data/blog/2026-02-post.json'),
+      `{ "slug": "another-custom", "title": "Post 2" }`,
+    );
+    const plugin = await initPlugin(root);
+    const blog = (await evalModule(await loadVirtual(plugin))).blog as Array<Record<string, unknown>>;
+    expect(blog.find((p) => (p as Record<string, unknown>).title === 'Post')?.slug).toBe('custom-slug');
+    expect(blog.find((p) => (p as Record<string, unknown>).title === 'Post 2')?.slug).toBe('another-custom');
+  });
+});
+
+describe('self-review fixes', () => {
+  it('Test A — pages/ subdir is ignored (no collection created, no throw)', async () => {
+    const root: string = await fs.mkdtemp(path.join(os.tmpdir(), 'airo-sr-a-'));
+    try {
+      await fs.mkdir(path.join(root, 'src/content/pages/widgets'), { recursive: true });
+      await fs.writeFile(path.join(root, 'src/content/pages/widgets/a.json'), `{"name":"a"}`);
+      const plugin: Plugin = await initPlugin(root);
+      const mod: string = await loadVirtual(plugin);
+      const exports: Record<string, unknown> = await evalModule(mod);
+      expect(exports.widgets).toBeUndefined();
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('Test B — README.md and dotfiles are excluded inside a data/ collection', async () => {
+    const root: string = await fs.mkdtemp(path.join(os.tmpdir(), 'airo-sr-b-'));
+    try {
+      await fs.mkdir(path.join(root, 'src/content/data/blog'), { recursive: true });
+      await fs.writeFile(
+        path.join(root, 'src/content/data/blog/post.md'),
+        `---\nid: post-abc\nslug: post\ntitle: Real Post\nexcerpt: e\npublishedAt: '2026-01-01T00:00:00Z'\npublished: true\n---\n\nBody.`,
+      );
+      await fs.writeFile(path.join(root, 'src/content/data/blog/README.md'), `# ignore me`);
+      await fs.writeFile(path.join(root, 'src/content/data/blog/.draft.md'), `draft content`);
+      const plugin: Plugin = await initPlugin(root);
+      const mod: string = await loadVirtual(plugin);
+      const blog = (await evalModule(mod)).blog as Array<Record<string, unknown>>;
+      expect(blog).toHaveLength(1);
+      expect(blog[0]?.title).toBe('Real Post');
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('Test C — value-with-colon frontmatter (URL colons are preserved)', async () => {
+    const root: string = await fs.mkdtemp(path.join(os.tmpdir(), 'airo-sr-c-'));
+    try {
+      await fs.mkdir(path.join(root, 'src/content/data/blog'), { recursive: true });
+      await fs.writeFile(
+        path.join(root, 'src/content/data/blog/post.md'),
+        `---\nid: post-xyz\nslug: post\ntitle: Colon Test\nexcerpt: e\npublishedAt: '2026-01-01T00:00:00Z'\npublished: true\nfeaturedImage: https://media.gettyimages.com/id/123/photo.jpg\n---\n\nBody.`,
+      );
+      const plugin: Plugin = await initPlugin(root);
+      const mod: string = await loadVirtual(plugin);
+      const blog = (await evalModule(mod)).blog as Array<Record<string, unknown>>;
+      expect(blog[0]?.featuredImage).toBe('https://media.gettyimages.com/id/123/photo.jpg');
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+});
+
 describe('validateContentEager', () => {
   let root: string;
   let contentDir: string;
@@ -613,5 +798,31 @@ describe('validateContentEager', () => {
     await expect(
       validateContentEager(server, contentDir, schemasImportPath),
     ).resolves.toBeUndefined();
+  });
+
+  describe('collection schema validation', () => {
+    it('validates a collection array against schemas.<key> = z.array(...)', async () => {
+      await fs.mkdir(path.join(contentDir, 'data/blog'), { recursive: true });
+      await writeFile(path.join(contentDir, 'schemas.ts'), `export const schemas = {};`);
+      await writeFile(path.join(contentDir, 'data/blog/a.json'), `{ "slug": "a", "title": "A" }`);
+      const server = fakeServer({
+        blog: z.array(z.object({ slug: z.string(), title: z.string() })),
+      });
+      await expect(
+        validateContentEager(server, contentDir, schemasImportPath),
+      ).resolves.toBeUndefined();
+    });
+
+    it('throws with the collection key when an item violates the schema', async () => {
+      await fs.mkdir(path.join(contentDir, 'data/blog'), { recursive: true });
+      await writeFile(path.join(contentDir, 'schemas.ts'), `export const schemas = {};`);
+      await writeFile(path.join(contentDir, 'data/blog/a.json'), `{ "slug": 123 }`);
+      const server = fakeServer({
+        blog: z.array(z.object({ slug: z.string() })),
+      });
+      await expect(
+        validateContentEager(server, contentDir, schemasImportPath),
+      ).rejects.toThrow(/schemas\.blog/);
+    });
   });
 });

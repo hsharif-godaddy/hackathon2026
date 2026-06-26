@@ -26,9 +26,9 @@ interface ContentFrontmatter {
 }
 
 // Embedded at build time by Vite. Resolves relative to the installed
-// location (src/server/rss.ts → src/content/blog/*.md).
+// location (src/server/rss.ts → src/content/data/blog/*.md).
 const markdownFiles: Record<string, string> = import.meta.glob(
-  "../content/blog/*.md",
+  "../content/data/blog/*.md",
   { eager: true, query: "?raw", import: "default" }
 );
 

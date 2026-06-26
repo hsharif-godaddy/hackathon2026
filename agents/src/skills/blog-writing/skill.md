@@ -146,10 +146,11 @@ Based on the user's request and site context:
 
 ### Step 3: Create Markdown File
 
-Create `/src/content/blog/post-slug.md` with this EXACT frontmatter structure:
+Create `src/content/data/blog/<slug>.md` (or `.json` for structured data) with this EXACT frontmatter structure:
 
 ```markdown
 ---
+id: 'post-7k2m9x1qab3d'
 title: 'Compelling Post Title (60 chars max for SEO)'
 excerpt: 'One-sentence summary that hooks the reader (160 chars max)'
 author: '[Author Name or Site Team]'
@@ -183,44 +184,32 @@ Continue building value...
 Wrap up with key takeaways and call-to-action...
 ```
 
-### Step 4: Register the post in `posts.json`
+Note: `slug` is derived from the filename (`<slug>.md`); add an explicit `slug:` field only to override it.
 
-The blog reads `src/content/blog/posts.json` — a manifest that gives each post a **stable `id`**. This `id` is what a marketing campaign references (it never changes, even if the slug/title does). Add an entry for the new post:
+**`id` field (REQUIRED):**
 
-```json
-[
-  {
-    "id": "post-7k2m9x1qab3d",                 // opaque stable id (see format below); campaigns reference this
-    "slug": "morning-workout-benefits",        // must match the .md filename (without .md)
-    "markdownPath": "./morning-workout-benefits.md",
-    "publishedAt": "2024-12-08T10:00:00Z",     // authoritative for scheduling/reveal
-    "status": "published",                      // "published" | "scheduled" | "draft"
-    "campaignId": "camp-abc123"                 // omit unless the post belongs to a campaign
-  }
-]
-```
-
-- **`id` format:** `post-` followed by 12 random lowercase letters/digits, e.g. `post-7k2m9x1qab3d` — the SAME format as social post ids (`post-<nanoid>`). It is an opaque, permanent handle: do NOT derive it from the slug/title, and never change it (campaigns reference it via `contentRefId`).
-- **Campaign posts MUST be registered here** — the campaign's `contentRefId` points at this `id`.
-- For a standalone post you may skip the manifest entry (the loader falls back to the `.md` file with `id = slug`), but registering it is recommended so it has a stable id.
-- Keep `slug`/`markdownPath` in sync with the `.md` filename; set `publishedAt` to the same value as the frontmatter.
+- **Format:** `post-` followed by 12 random lowercase letters/digits, e.g. `post-7k2m9x1qab3d` (same format as social post ids).
+- Generate a fresh random id for every new post — do NOT derive it from the slug or title, and **never change it** (campaigns reference it via `contentRefId`).
+- The `id` lives **inside the post file** (frontmatter or JSON field). There is no separate manifest — the content-plugin reads `id` directly from each file in `src/content/data/blog/`.
+- For a campaign post, the campaign's `contentRefId` equals this `id`.
 
 ---
 
 ## Frontmatter Field Requirements
 
-| Field            | Type    | Required       | Format               | Example                                  | Notes                              |
-| ---------------- | ------- | -------------- | -------------------- | ---------------------------------------- | ---------------------------------- | --- |
-| `title`          | string  | Yes (Required) | Plain text, 60 chars | `"The Ultimate Guide to..."`             |                                    |
-| `excerpt`        | string  | Yes (Required) | 160 chars max        | `"Discover the secrets to..."`           |                                    |
-| `author`         | string  | Yes (Required) | Name or team         | `"FitFlow Studio Team"`                  |                                    |
-| `publishedAt`    | string  | Yes (Required) | **ISO 8601**         | `'2024-12-08T10:00:00Z'`                 | Use future date to schedule        |
-| `category`       | string  | Recommended    | Single category      | `"Fitness Tips"`                         |                                    |
-| `tags`           | array   | Recommended    | 3-5 tags             | `['fitness', 'health']`                  |                                    |
-| `featuredImage`  | string  | Yes (Required) | **Full Getty URL**   | `'https://media.gettyimages.com/id/...'` |                                    |
-| `seoTitle`       | string  | Recommended    | 60 chars             | `"Ultimate Guide                         | Brand"`                            |     |
-| `seoDescription` | string  | Recommended    | 160 chars            | `"Learn the top 10..."`                  |                                    |
-| `published`      | boolean | Yes (Required) | `true` or `false`    | `true`                                   | Must be `true` for scheduled posts |
+| Field            | Type    | Required       | Format               | Example                                  | Notes                                         |
+| ---------------- | ------- | -------------- | -------------------- | ---------------------------------------- | --------------------------------------------- |
+| `id`             | string  | Yes (Required) | `post-<12 chars>`    | `'post-7k2m9x1qab3d'`                    | Stable opaque handle; campaigns use this      |
+| `title`          | string  | Yes (Required) | Plain text, 60 chars | `"The Ultimate Guide to..."`             |                                               |
+| `excerpt`        | string  | Yes (Required) | 160 chars max        | `"Discover the secrets to..."`           |                                               |
+| `author`         | string  | Recommended    | Name or team         | `"FitFlow Studio Team"`                  |                                               |
+| `publishedAt`    | string  | Yes (Required) | **ISO 8601**         | `'2024-12-08T10:00:00Z'`                 | Use future date to schedule                   |
+| `category`       | string  | Recommended    | Single category      | `"Fitness Tips"`                         |                                               |
+| `tags`           | array   | Recommended    | 3-5 tags             | `['fitness', 'health']`                  |                                               |
+| `featuredImage`  | string  | Yes (Required) | **Full Getty URL**   | `'https://media.gettyimages.com/id/...'` |                                               |
+| `seoTitle`       | string  | Recommended    | 60 chars             | `"Ultimate Guide \| Brand"`              |                                               |
+| `seoDescription` | string  | Recommended    | 160 chars            | `"Learn the top 10..."`                  |                                               |
+| `published`      | boolean | Yes (Required) | `true` or `false`    | `true`                                   | Must be `true` for scheduled posts            |
 
 ---
 
@@ -379,9 +368,10 @@ User: "Write a blog post about morning workouts"
 1. media({ slot: "blog/morning-workout", query: "woman morning workout sunrise fitness", count: 3 })
    → Returns Getty URLs, pick best one
 
-2. Create /src/content/blog/morning-workout-benefits.md:
+2. Create `src/content/data/blog/morning-workout-benefits.md`:
 
 ---
+id: 'post-a1b2c3d4e5f6'
 title: "Why Morning Workouts Are a Game-Changer for Your Fitness Journey"
 excerpt: "Discover the science-backed benefits of early morning exercise and how it can transform your day, boost your metabolism, and help you achieve your fitness goals faster."
 author: "FitFlow Studio Team"
@@ -408,6 +398,8 @@ Before creating each blog post, verify:
 - [ ] Checked system prompt for today's actual date
 - [ ] Checked system prompt for user's timezone (if user specified a time)
 - [ ] Called `media` and got the slot URL
+- [ ] File path is `src/content/data/blog/<slug>.md` (NOT `src/content/blog/`)
+- [ ] `id` field set to `post-<12 random chars>` in the frontmatter
 - [ ] Using `publishedAt` (NOT `date`)
 - [ ] Date is ISO 8601 format with time: `'2024-12-08T10:00:00Z'`
 - [ ] Set appropriate publish date (current for immediate, future for scheduled)

@@ -130,19 +130,25 @@ Also add a site-wide dismissible announcement banner (coupon code + end date) in
 === BLOG SYSTEM + POSTS ===
 
 FIRST, make the blog discoverable:
-- Check how THIS app handles blog content (markdown in src/content/blog/, OR page components such as src/pages/blog/). Match the app's existing convention.
+- Check how THIS app handles blog content (markdown in src/content/data/blog/, OR page components such as src/pages/blog/). Match the app's existing convention.
 - If the app has NO blog system yet (common on a brand-new site), CREATE one: a blog index/listing page AND its route, plus a link from the main nav/header — so posts are listed and reachable, not orphaned.
 
 THEN create [N] blog post(s):
-- Preferred convention: markdown files at src/content/blog/[slug].md so the marketing calendar can read their frontmatter. If the app is page-based, create the post page AND make sure it appears on the blog index.
+- Write markdown files to `src/content/data/blog/[slug].md`. If the app is page-based, create the post page AND make sure it appears on the blog index.
 - Required frontmatter for markdown posts (EXACT format — the marketing calendar reads these fields):
 ---
+id: 'post-<12 random lowercase chars>'
 title: '[title]'
 publishedAt: '[YYYY-MM-DDTHH:MM:SSZ]'
 published: true
 tags: ['tag1', 'tag2']
 excerpt: '[1-2 sentence summary]'
+campaignId: '[campaign id]'
 ---
+- `slug` is derived from the filename (`<slug>.md`); add an explicit `slug:` field only to override it.
+- **`id` field:** generate a fresh `post-<nanoid>` for every post (12 random lowercase letters/digits). This is the stable handle — `contentRefId` in the campaign plan equals this `id`. Never derive the id from the slug/title; never change it after creation.
+- **`campaignId`:** set to the campaign's id so posts can be filtered by campaign.
+- No separate `posts.json` registration — the content-plugin discovers all files in `src/content/data/blog/` automatically.
 - Each post: 400-600 words, headings, tips, CTA linking to the campaign landing page.
 - One file per post — never combine posts into one file, never skip a post.
 

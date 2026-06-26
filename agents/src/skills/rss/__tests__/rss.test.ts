@@ -91,13 +91,13 @@ describe("rssHandler", () => {
 
   it("generates correct items sorted newest-first for published posts", () => {
     const content: Record<string, string> = {
-      "../content/blog/older-post.md": makePost({
+      "../content/data/blog/older-post.md": makePost({
         title: "Older Post",
         excerpt: "An older post",
         publishedAt: "2024-01-01",
         slug: "older-post",
       }),
-      "../content/blog/newer-post.md": makePost({
+      "../content/data/blog/newer-post.md": makePost({
         title: "Newer Post",
         excerpt: "A newer post",
         publishedAt: "2024-06-15",
@@ -127,14 +127,14 @@ describe("rssHandler", () => {
 
   it("excludes draft posts with published: false", () => {
     const content: Record<string, string> = {
-      "../content/blog/published-post.md": makePost({
+      "../content/data/blog/published-post.md": makePost({
         title: "Published Post",
         excerpt: "A published post",
         published: true,
         publishedAt: "2024-03-01",
         slug: "published-post",
       }),
-      "../content/blog/draft-post.md": makePost({
+      "../content/data/blog/draft-post.md": makePost({
         title: "Draft Post",
         excerpt: "A draft",
         published: false,
@@ -154,7 +154,7 @@ describe("rssHandler", () => {
 
   it("includes posts with missing published field (defaults to true)", () => {
     const content: Record<string, string> = {
-      "../content/blog/no-published-field.md": [
+      "../content/data/blog/no-published-field.md": [
         "---",
         "title: No Published Field",
         "excerpt: Missing published key",
@@ -175,13 +175,13 @@ describe("rssHandler", () => {
 
   it("excludes future-dated posts", () => {
     const content: Record<string, string> = {
-      "../content/blog/past-post.md": makePost({
+      "../content/data/blog/past-post.md": makePost({
         title: "Past Post",
         excerpt: "Already published",
         publishedAt: "2024-01-15",
         slug: "past-post",
       }),
-      "../content/blog/future-post.md": makePost({
+      "../content/data/blog/future-post.md": makePost({
         title: "Future Post",
         excerpt: "Coming soon",
         publishedAt: "2099-12-31",
@@ -200,13 +200,13 @@ describe("rssHandler", () => {
 
   it("excludes posts with invalid publishedAt dates", () => {
     const content: Record<string, string> = {
-      "../content/blog/valid-post.md": makePost({
+      "../content/data/blog/valid-post.md": makePost({
         title: "Valid Post",
         excerpt: "Has a real date",
         publishedAt: "2024-05-01",
         slug: "valid-post",
       }),
-      "../content/blog/invalid-date.md": makePost({
+      "../content/data/blog/invalid-date.md": makePost({
         title: "Invalid Date Post",
         excerpt: "Not a date",
         publishedAt: "not-a-date",
@@ -226,7 +226,7 @@ describe("rssHandler", () => {
 
   it("escapes special XML characters in content", () => {
     const content: Record<string, string> = {
-      "../content/blog/special-chars.md": [
+      "../content/data/blog/special-chars.md": [
         "---",
         'title: Tom & Jerry\'s "Great" <Adventure>',
         "excerpt: A post with & < > symbols",
@@ -262,7 +262,7 @@ describe("rssHandler", () => {
     const content: Record<string, string> = {};
     for (let i = 0; i < 105; i++) {
       const date = new Date(2024, 0, i + 1).toISOString().split("T")[0];
-      content[`../content/blog/post-${i}.md`] = makePost({
+      content[`../content/data/blog/post-${i}.md`] = makePost({
         title: `Post ${i}`,
         excerpt: `Excerpt ${i}`,
         publishedAt: date,
@@ -286,7 +286,7 @@ describe("rssHandler", () => {
     process.env.PUBLIC_URL = "https://my-custom-domain.com";
 
     const content: Record<string, string> = {
-      "../content/blog/test-post.md": makePost({
+      "../content/data/blog/test-post.md": makePost({
         title: "Test Post",
         excerpt: "A test",
         publishedAt: "2024-04-01",
@@ -308,7 +308,7 @@ describe("rssHandler", () => {
 
   it("derives slug from filename when frontmatter slug is missing", () => {
     const content: Record<string, string> = {
-      "../content/blog/my-great-article.md": [
+      "../content/data/blog/my-great-article.md": [
         "---",
         "title: My Great Article",
         "excerpt: No slug field here",

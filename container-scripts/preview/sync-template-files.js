@@ -334,6 +334,12 @@ const SYNC_MANIFEST = [
     force: true,
   },
   {
+    file: 'content-plugin/src/frontmatter.ts',
+    description: 'content-plugin lightweight YAML frontmatter parser — no deps',
+    known_hashes: [],
+    force: true,
+  },
+  {
     file: 'content-lib/src/index.ts',
     description: 'content-lib barrel (ContentListContext) — content-layer runtime',
     known_hashes: [],

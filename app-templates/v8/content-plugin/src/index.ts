@@ -1,6 +1,7 @@
 import type { Plugin } from 'vite';
 import { promises as fs, existsSync } from 'node:fs';
 import path from 'node:path';
+import { parseFrontmatter, type ParsedMarkdown } from './frontmatter';
 import { parseJson } from './parse';
 
 const VIRTUAL_ID = 'virtual:content';
@@ -20,10 +21,9 @@ interface Options {
   contentDir?: string;
 }
 
-interface Entry {
-  key: string;
-  absPath: string;
-}
+type Entry =
+  | { key: string; kind: 'file'; absPath: string }
+  | { key: string; kind: 'collection'; itemPaths: string[] };
 
 /**
  * Emits a virtual `virtual:content` module whose exports are the parsed content
@@ -183,19 +183,31 @@ async function discover(contentDir: string): Promise<Entry[]> {
     }
   }
 
-  const site = path.join(contentDir, 'site.json');
+  const site: string = path.join(contentDir, 'site.json');
   if (await exists(site)) {
-    entries.push({ key: 'site', absPath: site });
+    entries.push({ key: 'site', kind: 'file', absPath: site });
   }
 
   for (const subdir of ['pages', 'data']) {
-    const dir = path.join(contentDir, subdir);
+    const dir: string = path.join(contentDir, subdir);
     if (!(await exists(dir))) continue;
-    for (const file of await fs.readdir(dir)) {
-      if (!file.endsWith('.json')) continue;
-      const key = file.replace(/\.json$/, '');
-      assertSafeKey(key, file);
-      entries.push({ key, absPath: path.join(dir, file) });
+    for (const dirent of await fs.readdir(dir, { withFileTypes: true })) {
+      if (dirent.isFile() && dirent.name.endsWith('.json')) {
+        const key: string = dirent.name.replace(/\.json$/, '');
+        assertSafeKey(key, dirent.name);
+        entries.push({ key, kind: 'file', absPath: path.join(dir, dirent.name) });
+      } else if (dirent.isDirectory() && subdir === 'data') {
+        // Collections are data/-only; pages/ holds singular page objects
+        const key: string = dirent.name;
+        assertSafeKey(key, dirent.name);
+        const collectionDir: string = path.join(dir, dirent.name);
+        const itemPaths: string[] = (await fs.readdir(collectionDir))
+          .filter((f: string): boolean =>
+            (f.endsWith('.json') || f.endsWith('.md')) && !f.startsWith('.') && f !== 'README.md')
+          .sort()
+          .map((f: string): string => path.join(collectionDir, f));
+        entries.push({ key, kind: 'collection', itemPaths });
+      }
     }
   }
 
@@ -208,6 +220,32 @@ async function discover(contentDir: string): Promise<Entry[]> {
   }
 
   return entries;
+}
+
+function normalizeItem(absPath: string, raw: string): unknown {
+  const slugFromFile: string = path.basename(absPath).replace(/\.(md|json)$/, '');
+  if (absPath.endsWith('.md')) {
+    const { data, content }: ParsedMarkdown = parseFrontmatter(raw);
+    return { slug: slugFromFile, ...data, content };
+  }
+  return { slug: slugFromFile, ...(parseJson(raw) as Record<string, unknown>) };
+}
+
+async function readEntryValue(entry: Entry): Promise<unknown> {
+  if (entry.kind === 'file') {
+    const raw: string = await fs.readFile(entry.absPath, 'utf8');
+    return parseJson(raw);
+  }
+  return Promise.all(
+    entry.itemPaths.map(async (p: string): Promise<unknown> => {
+      const raw: string = await fs.readFile(p, 'utf8');
+      return normalizeItem(p, raw);
+    }),
+  );
+}
+
+function entryLocation(entry: Entry): string {
+  return entry.kind === 'file' ? entry.absPath : `collection ${entry.key}`;
 }
 
 async function emitVirtualModule(
@@ -225,16 +263,15 @@ async function emitVirtualModule(
   lines.push('');
 
   for (const entry of entries) {
-    const raw = await fs.readFile(entry.absPath, 'utf8');
     let value: unknown;
     try {
-      value = parseJson(raw);
+      value = await readEntryValue(entry);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      throw new Error(`[airo-content] failed to parse ${entry.absPath}: ${msg}`);
+      const msg: string = err instanceof Error ? err.message : String(err);
+      throw new Error(`[airo-content] failed to parse ${entryLocation(entry)}: ${msg}`);
     }
 
-    const literal = JSON.stringify(value, null, 2);
+    const literal: string = JSON.stringify(value, null, 2);
     if (hasSchemas) {
       lines.push(`export const ${entry.key} = (schemas.${entry.key} ?? identity).parse(${literal});`);
     } else {
@@ -285,20 +322,19 @@ export async function validateContentEager(
     return;
   }
 
-  const entries = await discover(contentDir);
+  const entries: Entry[] = await discover(contentDir);
   for (const entry of entries) {
-    const raw = await fs.readFile(entry.absPath, 'utf8');
+    const where: string = entryLocation(entry);
     let value: unknown;
     try {
-      value = parseJson(raw);
+      value = await readEntryValue(entry);
     } catch (err) {
       throw new Error(
-        `[airo-content] failed to parse ${entry.absPath}: ` +
-        `${err instanceof Error ? err.message : String(err)}`,
+        `[airo-content] failed to parse ${where}: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
 
-    const schema = schemas[entry.key];
+    const schema: { parse: (v: unknown) => unknown } | undefined = schemas[entry.key];
     if (!schema) continue; // unregistered key — pass-through
     if (typeof schema.parse !== 'function') continue; // non-Zod export — skip silently
 
@@ -306,7 +342,7 @@ export async function validateContentEager(
       schema.parse(value);
     } catch (err) {
       throw new Error(
-        `[airo-content] content in ${entry.absPath} does not match schemas.${entry.key}:\n` +
+        `[airo-content] content in ${where} does not match schemas.${entry.key}:\n` +
         (err instanceof Error ? err.message : String(err)),
       );
     }

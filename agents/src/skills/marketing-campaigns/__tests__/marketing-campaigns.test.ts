@@ -388,7 +388,7 @@ describe('marketing-campaigns orchestration contract', () => {
     expect(skill).toMatch(/VERIFY — check prerequisites BEFORE generating/i)
     expect(skill).toMatch(/socialRead\(\{ platform: 'FACEBOOK' \}\)/)
     expect(skill).toMatch(/socialRead\(\{ platform: 'INSTAGRAM' \}\)/)
-    expect(skill).toMatch(/directoryListing\(\{ path: 'src\/content\/blog' \}\)/)
+    expect(skill).toMatch(/directoryListing\(\{ path: 'src\/content\/data\/blog' \}\)/)
     // customer-only (social connect) vs agent-doable (blog setup) distinction must be explicit
     expect(skill).toMatch(/CUSTOMER action/)
     expect(skill).toMatch(/AGENT.*task/i)

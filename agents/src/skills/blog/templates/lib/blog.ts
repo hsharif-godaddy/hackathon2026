@@ -4,8 +4,8 @@
  * Defines the structure for blog posts in the application.
  */
 export interface BlogPost {
-  /** Stable id from posts.json (format: `post-<nanoid>`, same as social post ids) — the handle a marketing campaign references. Falls back to slug for un-manifested posts. */
-  id?: string;
+  /** Stable id (format: post-<nanoid>) carried in each post file's frontmatter */
+  id: string;
   /** URL-friendly identifier */
   slug: string;
   /** Post title */
@@ -32,37 +32,15 @@ export interface BlogPost {
   seoDescription?: string;
   /** Whether post is published or draft */
   published: boolean;
-  /** Lifecycle status from posts.json (published | scheduled | draft) */
+  /** Lifecycle status carried in the post file's frontmatter (published | scheduled | draft) */
   status?: 'published' | 'scheduled' | 'draft';
 }
 
-/**
- * Blog posts data storage
- * Posts are loaded from markdown files with frontmatter
- */
-let blogPosts: BlogPost[] = [];
+// virtual:content is provided by the airo-content Vite plugin at build time.
+// Namespace import tolerates an absent `blog` export (skill installed, no posts yet).
+import * as content from 'virtual:content';
 
-/**
- * Initialize blog posts from markdown files
- * Loads all .md files from /src/content/blog/ directory
- *
- * @returns Array of blog posts
- */
-export function initializeBlogPosts(): BlogPost[] {
-  // This will be populated by the agent when creating blog posts
-  // Posts are stored as markdown files in /src/content/blog/
-  return blogPosts;
-}
-
-/**
- * Set blog posts data
- * Used by the loader to populate blog posts from markdown files
- *
- * @param posts - Array of blog posts to set
- */
-export function setBlogPosts(posts: BlogPost[]): void {
-  blogPosts = posts;
-}
+const blogPosts: BlogPost[] = ((content as { blog?: BlogPost[] }).blog) ?? [];
 
 /**
  * Get all published blog posts, sorted by date (newest first)
@@ -90,12 +68,12 @@ export function getPostBySlug(slug: string): BlogPost | null {
 }
 
 /**
- * Get a blog post by its stable manifest id (posts.json `id`)
+ * Get a blog post by its stable `id` (carried in each post file's frontmatter)
  * This is how a marketing campaign resolves the blog asset it references
  * (simple_campaign_content.contentRefId). Unlike slug lookups it ignores the
  * publish-date gate so a campaign can resolve scheduled/future posts too.
  *
- * @param id - Stable post id from posts.json
+ * @param id - Stable post id from the post file
  * @returns Blog post or null if not found
  */
 export function getPostById(id: string): BlogPost | null {

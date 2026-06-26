@@ -35,7 +35,8 @@ intents:
 - ✅ Installs blog templates (components, pages, utilities)
 - ✅ Adds blog routes to routing system
 - ✅ Adds blog navigation links
-- ✅ Sets up empty blog content directory
+- ✅ Sets up empty blog content directory (`src/content/data/blog/`)
+- ✅ Creates or merges `src/content/schemas.ts` with the `blog` collection schema
 
 **What this skill does NOT do:**
 
@@ -60,13 +61,14 @@ User says: **"Create a blog"** or **"Add a blog"**
 **Your response:**
 
 1. ✅ Copy blog templates from skill (components, pages, lib, content)
-2. ✅ Add import to `/src/main.tsx`
-3. ✅ Add blog routes to `/src/routes.tsx`
-4. ✅ Add blog link to navigation in `/src/App.tsx`
-5. ✅ Customize BlogHero to match site brand
-6. ❌ **DO NOT create any blog post files**
-7. ❌ **DO NOT create sample content**
-8. ❌ **DO NOT write blog articles**
+2. ✅ Create `src/content/data/blog/` (empty collection directory)
+3. ✅ Create or merge `src/content/schemas.ts` with the `blog` collection schema
+4. ✅ Add blog routes to `/src/routes.tsx`
+5. ✅ Add blog link to navigation in `/src/App.tsx`
+6. ✅ Customize BlogHero to match site brand
+7. ❌ **DO NOT create any blog post files**
+8. ❌ **DO NOT create sample content**
+9. ❌ **DO NOT write blog articles**
 
 Confirm: "Blog activated at `/blog`! It's empty right now - would you like me to create some blog posts?"
 
@@ -95,26 +97,59 @@ skill({
   - `components/*.tsx` → `src/components/blog/*.tsx`
   - `pages/*.tsx` → `src/pages/*.tsx`
   - `lib/*.ts` → `src/lib/*.ts`
-  - `content/*` → `src/content/blog/*`
 
 **Template files installed:**
 
 1. **Components:** BlogCard.tsx, BlogGrid.tsx, BlogHero.tsx, BlogPost.tsx
 2. **Pages:** Blog.tsx, BlogPostPage.tsx
-3. **Utilities:** blog.ts, frontmatter.ts
-4. **Content Setup:** index.ts, posts.json (post manifest — stable ids/scheduling), README.md
+3. **Utilities:** blog.ts
 
 **Important:** The install action handles all file copying automatically - you don't need to use str_replace_based_edit_tool!
 
-### Step 1: Add Import to `/src/main.tsx`
+### Step 1: Create content directory and schema
 
-After copying templates, add the blog content loader import:
+After installing templates, set up the content collection:
 
-```typescript
-import './content/blog'; // Initialize blog posts
+1. Create the empty collection directory: `src/content/data/blog/` (no files yet — posts are added by the `blog-writing` skill)
+
+2. Create or merge `src/content/schemas.ts` to add the `blog` schema. If the file already exists, add the `blogPostSchema` and `blog` entry without overwriting other schemas. Use this exact content:
+
+```ts
+// src/content/schemas.ts
+import { z } from 'zod';
+
+export const blogPostSchema = z.object({
+  id: z.string(),
+  slug: z.string().min(1),
+  title: z.string(),
+  excerpt: z.string(),
+  content: z.string(),
+  author: z.string().optional(),
+  publishedAt: z.string(),
+  updatedAt: z.string().optional(),
+  category: z.string().optional(),
+  tags: z.array(z.string()).optional(),
+  featuredImage: z.string().optional(),
+  seoTitle: z.string().optional(),
+  seoDescription: z.string().optional(),
+  published: z.boolean(),
+  status: z.enum(['published', 'scheduled', 'draft']).optional(),
+});
+
+export const schemas = {
+  blog: z.array(blogPostSchema).superRefine((posts, ctx) => {
+    const seen = new Set<string>();
+    posts.forEach((p, i) => {
+      if (seen.has(p.slug)) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: `duplicate blog slug "${p.slug}"`, path: [i, 'slug'] });
+      }
+      seen.add(p.slug);
+    });
+  }),
+};
 ```
 
-This should be added near the top of the file with other imports.
+(Slug uniqueness is enforced here in the schema — not in the plugin core.)
 
 ### Step 2: Add Routes to `/src/routes.tsx`
 
@@ -271,7 +306,8 @@ Once the blog system is activated:
 
 - ✅ Blog is accessible at `/blog` route
 - ✅ Blog link appears in site navigation
-- ✅ Content directory ready at `/src/content/blog/`
+- ✅ Content directory ready at `src/content/data/blog/`
+- ✅ `src/content/schemas.ts` contains the `blog` collection schema
 - ✅ All blog components and pages are installed
 - ✅ RSS feed available at `/feed.xml`
 - ⚠️ Blog is currently empty (0 posts)
@@ -300,10 +336,11 @@ Tell them: "Blog system is set up! Would you like me to create some blog posts? 
 
 **What this skill does:**
 
-- ✅ Installs blog system templates (components, pages, lib, content setup)
+- ✅ Installs blog system templates (components, pages, lib)
+- ✅ Creates empty collection directory `src/content/data/blog/`
+- ✅ Creates or merges `src/content/schemas.ts` with the `blog` schema
 - ✅ Adds blog routes to application
 - ✅ Adds blog navigation links
-- ✅ Creates empty content directory
 
 **What this skill does NOT do:**
 
