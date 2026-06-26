@@ -1494,6 +1494,30 @@ describe('ChatPane', () => {
       });
     });
 
+    it('should clear uploadError when attachment count drops below the limit after removing some files', async function clearWhenBelowLimit() {
+      const { user } = renderWithProviders(<ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />);
+
+      // Stage MAX_TOTAL_ASSETS files to hit the limit
+      for (let i = 0; i < MAX_TOTAL_ASSETS; i++) {
+        await user.click(screen.getByTestId('simulate-stage-file'));
+      }
+      expect(screen.getAllByTestId('staged-file')).toHaveLength(MAX_TOTAL_ASSETS);
+
+      // Trigger the error as if an 11th file was rejected
+      await user.click(screen.getByTestId('simulate-attachment-error'));
+      expect(screen.getByTestId('chat-attachment-limit-error')).toBeInTheDocument();
+
+      // Remove 2 staged files (drops from 10 to 8, still > 0)
+      await user.click(screen.getAllByTestId(/^clear-staged-/)[0]);
+      await user.click(screen.getAllByTestId(/^clear-staged-/)[0]);
+      expect(screen.getAllByTestId('staged-file')).toHaveLength(MAX_TOTAL_ASSETS - 2);
+
+      // Error should clear since count (8) < maxAssets (10)
+      await waitFor(function assertCleared() {
+        expect(screen.queryByTestId('chat-attachment-limit-error')).not.toBeInTheDocument();
+      });
+    });
+
     it('should clear a stale uploadError after successfully staging a valid file', async function clearOnSuccessfulStage() {
       const { user } = renderWithProviders(<ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />);
 

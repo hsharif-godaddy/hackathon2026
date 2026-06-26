@@ -653,16 +653,16 @@ function ChatPaneInner({
     setUploadError(null);
   }, [appId]);
 
-  // Clear stale attachment errors when the user removes all composer attachments.
-  // Only on >0 → 0 transitions so rejected adds (validation failures with no staged files) keep their alert.
+  // Clear stale attachment errors when the user removes files to drop below the limit.
+  // Only on >0 → <maxAssets transitions so rejected adds (validation failures with no staged files) keep their alert.
   const prevAttachmentCountRef = useRef(0);
   useEffect(() => {
     const attachmentCount = selectedAssets.length + stagedFiles.length;
-    if (prevAttachmentCountRef.current > 0 && attachmentCount === 0) {
+    if (prevAttachmentCountRef.current > 0 && attachmentCount < maxAssets) {
       setUploadError(null);
     }
     prevAttachmentCountRef.current = attachmentCount;
-  }, [selectedAssets.length, stagedFiles.length]);
+  }, [selectedAssets.length, stagedFiles.length, maxAssets]);
 
   // Debug current state (only log when there's a significant change)
   const prevDebugRef = useRef<string>('');
