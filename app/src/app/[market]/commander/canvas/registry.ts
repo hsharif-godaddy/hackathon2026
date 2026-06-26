@@ -13,11 +13,13 @@ import LockedIcon from '@ux/icon/locked'
 import MegaphoneIcon from '@ux/icon/megaphone'
 import RevertIcon from '@ux/icon/revert'
 import SettingsIcon from '@ux/icon/settings'
+import ShieldIcon from '@ux/icon/shield'
 import SocialIcon from '@ux/icon/social'
 import WebsiteFilledIcon from '@ux/icon/website-filled'
 import WorldIcon from '@ux/icon/world'
 
 import { SettingsSection, ViewMode } from '@/app/[market]/develop/components/types'
+import GitHubIcon from '@/components/icons/GitHubIcon'
 
 export type CanvasIconComponent = ComponentType<SVGProps<SVGSVGElement> & { className?: string }>
 
@@ -150,7 +152,7 @@ export const CANVAS_REGISTRY: Record<CanvasId, CanvasDescriptor> = {
     id: CanvasId.SettingsSecurity,
     labelKey: 'builder_settings_nav_security',
     fallbackLabel: 'Security',
-    Icon: LockedIcon,
+    Icon: ShieldIcon,
     dismissible: true,
     defaultOpen: false,
     activation: { settingsSection: SettingsSection.SECURITY },
@@ -229,7 +231,7 @@ export const CANVAS_REGISTRY: Record<CanvasId, CanvasDescriptor> = {
     id: CanvasId.SettingsGitHub,
     labelKey: 'builder_settings_nav_github',
     fallbackLabel: 'GitHub',
-    Icon: CodeIcon,
+    Icon: GitHubIcon,
     dismissible: true,
     defaultOpen: false,
     activation: { settingsSection: SettingsSection.GITHUB },

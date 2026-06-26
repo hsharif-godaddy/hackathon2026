@@ -2,18 +2,19 @@
 
 import { ReactNode } from 'react';
 import CalendarIcon from '@ux/icon/calendar';
-import CodeIcon from '@ux/icon/code';
 import CommentsIcon from '@ux/icon/comments';
 import ContentIcon from '@ux/icon/content';
 import DatabaseIcon from '@ux/icon/database';
 import LockedIcon from '@ux/icon/locked';
 import RevertIcon from '@ux/icon/revert';
 import SettingsIcon from '@ux/icon/settings';
+import ShieldIcon from '@ux/icon/shield';
 import SocialIcon from '@ux/icon/social';
 import WorldIcon from '@ux/icon/world';
 
 import { SettingsSection } from '@/app/[market]/develop/components/types';
 import { FEEDBACK_ID } from '@/components/feedback/utils';
+import GitHubIcon from '@/components/icons/GitHubIcon';
 import { useSeoSettingsEnabled } from '@/hooks/useSeoSettingsEnabled';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
@@ -107,7 +108,7 @@ export function useSettingsNavItems(): SettingsNavItem[] {
     {
       id: SettingsSection.SECURITY,
       label: t('builder_settings_nav_security'),
-      icon: <LockedIcon />,
+      icon: <ShieldIcon />,
       disabled: security !== true,
       loadingLabel: isSecurityScanRunning ? t('builder_security_scan_running_status') : undefined,
     },
@@ -150,7 +151,7 @@ export function useSettingsNavItems(): SettingsNavItem[] {
     ...(githubSync ? [{
       id: SettingsSection.GITHUB,
       label: t('builder_settings_nav_github'),
-      icon: <CodeIcon />,
+      icon: <GitHubIcon />,
       disabled: false,
     }] : []),
     // Auth-at-Edge SSO entry — visible when SSO is enforced or when the
