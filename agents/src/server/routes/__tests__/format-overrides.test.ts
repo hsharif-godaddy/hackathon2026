@@ -19,6 +19,7 @@ vi.mock('../../middleware/app-ownership.js', () => ({
 }));
 
 import formatOverridesRouter from '../format-overrides.js';
+import { WorkspaceUnavailableError } from '../../../workspace/errors.js';
 
 function createTestApp() {
   const app = express();
@@ -83,6 +84,17 @@ describe('format override routes', () => {
       .expect(404);
 
     expect(response.body).toEqual({ success: false, error: 'App not found' });
+  });
+
+  it('returns 503 when the workspace is unavailable', async () => {
+    mockUpdate.mockRejectedValueOnce(new WorkspaceUnavailableError('app1234567', 'preview'));
+
+    const response = await request(createTestApp())
+      .post('/apps/app1234567/format-overrides')
+      .send({ devId: 'abc123', target: {}, marks: {} })
+      .expect(503);
+
+    expect(response.body).toEqual({ success: false, error: 'Workspace unavailable' });
   });
 
   it('returns a generic 500 for unexpected service failures', async () => {

@@ -3,6 +3,7 @@ import { parse as parseTs } from '@babel/parser';
 
 import type { CreateForWorkspace } from '../../workspace/client.js';
 import { WorkspaceUnavailableError } from '../../workspace/errors.js';
+import { createMockWorkspaceFiles, type MockWorkspaceFiles } from '../../workspace/__tests__/mock-helpers.js';
 import { DevSupervisorError } from '../DevSupervisorClient.js';
 import { synchronizeSeoRoutes } from '../SeoRoutesSynchronizer.js';
 
@@ -23,30 +24,12 @@ interface MockWorkspace {
   factory: CreateForWorkspace;
 }
 
-// In-memory Map-backed workspace (PR #4345 convention): view/write round-trip
-// through a path->content Map so the byte-level content assertions survive the
-// node:fs -> workspace.files migration without touching disk.
-function makeWorkspace(seed: Record<string, string>): MockWorkspace {
-  const store = new Map<string, string>(Object.entries(seed));
-  const view = vi.fn(async ({ path }: { path: string }) => {
-    const content = store.get(path);
-    if (content === undefined) {
-      throw new DevSupervisorError('not_found', 404, `${path}: no such file`);
-    }
-    return { path, content, encoding: 'utf-8', lines: 0, size: content.length, truncated: false };
-  });
-  const write = vi.fn(async ({ path, content }: { path: string; content: string }) => {
-    store.set(path, content);
-    return { bytesWritten: Buffer.byteLength(content) };
-  });
-  const factory = vi.fn(() => ({ files: { view, write } })) as unknown as CreateForWorkspace;
-  return { store, view, write, factory };
-}
-
 function setup(routesSource: string, seoRoutesSource?: string): MockWorkspace {
   const seed: Record<string, string> = { [ROUTES_PATH]: routesSource };
   if (seoRoutesSource !== undefined) seed[SEO_ROUTES_PATH] = seoRoutesSource;
-  return makeWorkspace(seed);
+  const mock: MockWorkspaceFiles = createMockWorkspaceFiles(seed);
+  const factory = vi.fn(() => ({ files: mock.files })) as unknown as CreateForWorkspace;
+  return { store: mock.store, view: mock.spies.view, write: mock.spies.write, factory };
 }
 
 describe('SeoRoutesSynchronizer', function syncTests() {
@@ -281,7 +264,9 @@ export const seoRoutes = [
   });
 
   it('skips when routes.tsx does not exist', async function missingRoutes() {
-    const ws = makeWorkspace({});
+    const mock: MockWorkspaceFiles = createMockWorkspaceFiles({});
+    const factory = vi.fn(() => ({ files: mock.files })) as unknown as CreateForWorkspace;
+    const ws = { store: mock.store, view: mock.spies.view, write: mock.spies.write, factory };
 
     const result = await synchronizeSeoRoutes(appId, { workspaceFactory: ws.factory });
 

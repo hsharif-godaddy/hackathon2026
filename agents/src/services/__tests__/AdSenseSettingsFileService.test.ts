@@ -36,7 +36,8 @@ const { MockDevSupervisorError } = vi.hoisted(() => {
   return { MockDevSupervisorError: DevSupervisorError };
 });
 
-vi.mock('../../workspace/index.js', () => ({
+vi.mock('../../workspace/index.js', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../../workspace/index.js')>(),
   createForWorkspace: mockCreateForWorkspace,
 }));
 

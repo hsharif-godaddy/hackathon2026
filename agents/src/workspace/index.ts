@@ -11,6 +11,8 @@ export * from './imports.js';
 export * from './deployments.js';
 export * from './version-control.js';
 export * from './config.js';
+export * from './resolve.js';
+export * from './json-sidecar.js';
 export * from './setup.js';
 
 import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-factory.js';

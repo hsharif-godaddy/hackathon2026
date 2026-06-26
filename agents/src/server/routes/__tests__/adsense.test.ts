@@ -119,13 +119,13 @@ describe('adsense routes', () => {
     expect(mockValidateAppOwnership.mock.calls.map(([req]) => (req as Request).method)).toEqual(['GET', 'PUT']);
   });
 
-  it('returns 404 when the preview workspace is unavailable', async () => {
+  it('returns 503 when the preview workspace is unavailable', async () => {
     mockReadSettings.mockRejectedValue(new WorkspaceUnavailableError(appId, 'preview'));
 
     const res = await request(createTestApp()).get(`/apps/${appId}/adsense`);
 
-    expect(res.status).toBe(404);
-    expect(res.body).toEqual({ error: 'App not found' });
+    expect(res.status).toBe(503);
+    expect(res.body).toEqual({ error: 'Workspace unavailable' });
   });
 
   it('forwards transport failures to the error handler', async () => {

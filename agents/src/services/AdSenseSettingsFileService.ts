@@ -9,9 +9,8 @@ import {
 
 import { Logger, type ILogger } from '../logging/index.js';
 import { DevSupervisorError } from './DevSupervisorClient.js';
-import { createForWorkspace } from '../workspace/index.js';
 import type { CreateForWorkspace } from '../workspace/client.js';
-import { WorkspaceUnavailableError } from '../workspace/errors.js';
+import { createForWorkspace, resolveWorkspaceFiles } from '../workspace/index.js';
 
 const DEFAULT_ADSENSE_SETTINGS: AdSenseSettings = {
   enabled: false,
@@ -47,15 +46,12 @@ export class AdSenseSettingsFileService {
   }
 
   async readSettings(appId: string): Promise<AdSenseSettings> {
-    const workspace = this.workspaceFactory(appId, 'preview');
-    if (!workspace) {
-      throw new WorkspaceUnavailableError(appId, 'preview');
-    }
+    const files = resolveWorkspaceFiles(appId, 'preview', this.workspaceFactory);
 
     try {
-      const result = await workspace.files.view({ path: ADSENSE_AUTHORING_CONFIG_PATH });
+      const result = await files.view({ path: ADSENSE_AUTHORING_CONFIG_PATH });
       const parsed = JSON.parse(result.content) as unknown;
-      const settings = this.normalizeStoredSettings(parsed);
+      const settings: AdSenseSettings | null = this.normalizeStoredSettings(parsed);
 
       if (!settings) {
         return this.disabledDefaultsWithWarning(appId, 'adsense.settings.read.invalid', {
@@ -95,10 +91,7 @@ export class AdSenseSettingsFileService {
   }
 
   async saveSettings(appId: string, input: AdSenseSettingsInput): Promise<AdSenseSettings> {
-    const workspace = this.workspaceFactory(appId, 'preview');
-    if (!workspace) {
-      throw new WorkspaceUnavailableError(appId, 'preview');
-    }
+    const files = resolveWorkspaceFiles(appId, 'preview', this.workspaceFactory);
 
     const normalized = normalizeAdSenseSettingsInput(input);
     if (!normalized.ok) {
@@ -111,7 +104,7 @@ export class AdSenseSettingsFileService {
     };
 
     try {
-      await workspace.files.write({
+      await files.write({
         path: ADSENSE_AUTHORING_CONFIG_PATH,
         content: `${JSON.stringify(settings, null, 2)}\n`,
       });

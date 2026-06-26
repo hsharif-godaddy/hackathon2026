@@ -6,6 +6,7 @@ import {
   FormatOverrideService,
   FormatOverrideValidationError,
 } from '../../services/FormatOverrideService.js';
+import { WorkspaceUnavailableError } from '../../workspace/errors.js';
 import { validateAppOwnership } from '../middleware/app-ownership.js';
 
 const router: Router = Router();
@@ -15,12 +16,16 @@ const service = new FormatOverrideService();
 function statusForError(error: unknown): number {
   if (error instanceof FormatOverrideNotFoundError) return 404;
   if (error instanceof FormatOverrideValidationError) return 400;
+  if (error instanceof WorkspaceUnavailableError) return 503;
   return 500;
 }
 
 function responseMessageForError(error: unknown): string {
   if (error instanceof FormatOverrideNotFoundError || error instanceof FormatOverrideValidationError) {
     return error.message;
+  }
+  if (error instanceof WorkspaceUnavailableError) {
+    return 'Workspace unavailable';
   }
   return 'Internal server error';
 }

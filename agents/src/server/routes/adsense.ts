@@ -68,7 +68,7 @@ function handleAdSenseRouteError(
 
   if (error instanceof WorkspaceUnavailableError) {
     logger.warn(`adsense.settings.${operation}.workspace_unavailable`, { appId });
-    return res.status(404).json({ error: 'App not found' });
+    return res.status(503).json({ error: 'Workspace unavailable' });
   }
 
   logger.error(`adsense.settings.${operation}.failed`, {

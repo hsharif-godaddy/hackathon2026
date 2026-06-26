@@ -4,14 +4,7 @@ import type { AppRepository } from '../../database/repositories/AppRepository.js
 import { logger } from '../../logging/index.js';
 import { GitUtils } from '../../utils/git.js';
 import { WorkspaceUnavailableError } from '../../workspace/index.js';
-import type {
-  CreateForWorkspace,
-  DeleteOptions,
-  ViewOptions,
-  ViewResult,
-  WriteOptions,
-  WriteResult,
-} from '../../workspace/index.js';
+import { createMockWorkspaceFiles, type MockWorkspaceFiles } from '../../workspace/__tests__/mock-helpers.js';
 import { DevSupervisorError } from '../DevSupervisorClient.js';
 import { FormatOverrideService } from '../FormatOverrideService.js';
 
@@ -28,36 +21,6 @@ vi.mock('../../utils/git.js', () => ({
   }),
 }));
 
-interface WorkspaceFilesStub {
-  view: ReturnType<typeof vi.fn>;
-  write: ReturnType<typeof vi.fn>;
-  delete: ReturnType<typeof vi.fn>;
-}
-
-function createWorkspaceStub(store: Map<string, string>): WorkspaceFilesStub {
-  const view = vi.fn(async (options: ViewOptions): Promise<ViewResult> => {
-    const content: string | undefined = store.get(options.path);
-    if (content === undefined) {
-      throw new DevSupervisorError('not_found', 404, `${options.path}: no such file`);
-    }
-    return {
-      path: options.path,
-      content,
-      encoding: 'utf-8',
-      lines: 0,
-      size: content.length,
-      truncated: false,
-    };
-  });
-  const write = vi.fn(async (options: WriteOptions): Promise<WriteResult> => {
-    store.set(options.path, options.content);
-    return { bytesWritten: options.content.length };
-  });
-  const del = vi.fn(async (options: DeleteOptions): Promise<void> => {
-    store.delete(options.path);
-  });
-  return { view, write, delete: del };
-}
 
 describe('FormatOverrideService', () => {
   const appId = 'app1234567';
@@ -68,7 +31,8 @@ describe('FormatOverrideService', () => {
   const sharedSidecarPath = 'format-overrides/shared.json';
 
   let store: Map<string, string>;
-  let files: WorkspaceFilesStub;
+  let mock: MockWorkspaceFiles;
+  let files: MockWorkspaceFiles['spies'];
   let workspaceFactory: ReturnType<typeof vi.fn>;
   let service: FormatOverrideService;
   let appRepository: Pick<AppRepository, 'findById'>;
@@ -83,9 +47,10 @@ describe('FormatOverrideService', () => {
     vi.useRealTimers();
     vi.mocked(GitUtils).mockClear();
 
-    store = new Map<string, string>();
-    files = createWorkspaceStub(store);
-    workspaceFactory = vi.fn(() => ({ files, tasks: {} }));
+    mock = createMockWorkspaceFiles();
+    store = mock.store;
+    files = mock.spies;
+    workspaceFactory = vi.fn(() => ({ files: mock.files, tasks: {} }));
     appRepository = {
       findById: vi.fn().mockReturnValue({
         id: appId,

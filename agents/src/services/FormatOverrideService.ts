@@ -5,8 +5,7 @@ import type { App } from '../database/schema.js';
 import { logger } from '../logging/index.js';
 import { type GitCommandResult, GitUtils } from '../utils/git.js';
 import type { CreateForWorkspace, WorkspaceClient } from '../workspace/client.js';
-import { WorkspaceUnavailableError } from '../workspace/errors.js';
-import { createForWorkspace } from '../workspace/index.js';
+import { createForWorkspace, readJsonSidecar, resolveWorkspace } from '../workspace/index.js';
 import { isDevSupervisorNotFound } from './DevSupervisorClient.js';
 
 export type FormatOverrideSourceKind = 'bound-expression' | 'content-key' | 'content-key-template';
@@ -371,10 +370,7 @@ export class FormatOverrideService {
     request: NormalizedFormatOverrideUpdateRequest,
     scope: FormatOverrideScope,
   ): Promise<FormatOverrideUpdateResponse> {
-    const workspace: WorkspaceClient | null = this.workspaceFactory(app.id, 'preview');
-    if (!workspace) {
-      throw new WorkspaceUnavailableError(app.id, 'preview');
-    }
+    const workspace: WorkspaceClient = resolveWorkspace(app.id, 'preview', this.workspaceFactory);
 
     const sidecar: FormatOverrideSidecar = await this.readSidecar(workspace, scope.relativePath);
     const existingEntry: FormatOverrideEntry | undefined = sidecar.overrides[request.devId];
@@ -416,40 +412,36 @@ export class FormatOverrideService {
   }
 
   private async readSidecar(workspace: WorkspaceClient, sidecarPath: string): Promise<FormatOverrideSidecar> {
-    try {
-      const parsed: unknown = JSON.parse((await workspace.files.view({ path: sidecarPath })).content);
-      if (!isRecord(parsed) || parsed.version !== 1 || !isRecord(parsed.overrides)) {
-        logger.warn('formatOverrides.sidecar.invalid', {
-          sidecarPath,
-          version: isRecord(parsed) ? parsed.version : undefined,
-        });
-        throw new FormatOverrideSidecarReadError();
-      }
-
-      const overrides: Record<string, FormatOverrideEntry> | null = parseStoredOverrides(parsed.overrides);
-      if (!overrides) {
-        logger.warn('formatOverrides.sidecar.invalid', {
-          sidecarPath,
-          version: parsed.version,
-        });
-        throw new FormatOverrideSidecarReadError();
-      }
-
-      return { version: 1, overrides };
-    } catch (error) {
-      if (isDevSupervisorNotFound(error)) {
-        return createEmptySidecar();
-      }
-      if (error instanceof SyntaxError) {
+    return readJsonSidecar<FormatOverrideSidecar>({
+      files: workspace.files,
+      path: sidecarPath,
+      fallback: createEmptySidecar(),
+      validate: (parsed: unknown): FormatOverrideSidecar | null => {
+        if (!isRecord(parsed) || parsed.version !== 1 || !isRecord(parsed.overrides)) {
+          logger.warn('formatOverrides.sidecar.invalid', {
+            sidecarPath,
+            version: isRecord(parsed) ? parsed.version : undefined,
+          });
+          throw new FormatOverrideSidecarReadError();
+        }
+        const overrides: Record<string, FormatOverrideEntry> | null = parseStoredOverrides(parsed.overrides);
+        if (!overrides) {
+          logger.warn('formatOverrides.sidecar.invalid', {
+            sidecarPath,
+            version: parsed.version,
+          });
+          throw new FormatOverrideSidecarReadError();
+        }
+        return { version: 1, overrides };
+      },
+      onMalformed: (error: SyntaxError): never => {
         logger.warn('formatOverrides.sidecar.readFailed', {
           sidecarPath,
           error: error.message,
         });
         throw new FormatOverrideSidecarReadError();
-      }
-
-      throw error;
-    }
+      },
+    });
   }
 
   private async writeSidecar(

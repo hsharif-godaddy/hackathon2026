@@ -3,9 +3,8 @@ import * as t from '@babel/types';
 
 import { isDevSupervisorNotFound } from './DevSupervisorClient.js';
 import type { CreateForWorkspace } from '../workspace/client.js';
-import { WorkspaceUnavailableError } from '../workspace/errors.js';
 import type { WorkspaceFiles } from '../workspace/files.js';
-import { createForWorkspace } from '../workspace/index.js';
+import { createForWorkspace, resolveWorkspaceFiles } from '../workspace/index.js';
 
 /** Workspace-relative path of the v8 route registry the agent edits. */
 const ROUTES_PATH = 'src/routes.tsx';
@@ -329,11 +328,7 @@ export async function synchronizeSeoRoutes(
   deps: SeoRoutesSyncDeps = {},
 ): Promise<SeoRoutesSyncResult> {
   const workspaceFactory: CreateForWorkspace = deps.workspaceFactory ?? createForWorkspace;
-  const workspace = workspaceFactory(appId, 'preview');
-  if (!workspace) {
-    throw new WorkspaceUnavailableError(appId, 'preview');
-  }
-  const files: WorkspaceFiles = workspace.files;
+  const files: WorkspaceFiles = resolveWorkspaceFiles(appId, 'preview', workspaceFactory);
 
   let source: string;
   try {
