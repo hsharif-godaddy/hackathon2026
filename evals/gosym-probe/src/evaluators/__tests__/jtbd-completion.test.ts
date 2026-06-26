@@ -226,7 +226,7 @@ describe('JTBDCompletionEvaluator', () => {
       const snapshot = makeSnapshot({ html: '<html><body>hello</body></html>' });
       const result = await evaluator.evaluate(makeTranscript(), scenario, snapshot);
       const prompt = mockGocode.complete.mock.calls[0][0][0].content as string;
-      expect(prompt).toContain('Preview body HTML:');
+      expect(prompt).toContain('Preview body HTML (sanitized):');
       expect(prompt).not.toContain('truncated to');
       expect(prompt).toContain('hello');
       expect(prompt).not.toContain('<html>');
@@ -242,7 +242,7 @@ describe('JTBDCompletionEvaluator', () => {
       const result = await evaluator.evaluate(makeTranscript(), scenario, snapshot);
       expect(vi.mocked(readFile)).toHaveBeenCalledWith('/tmp/page.html', 'utf-8');
       const prompt = mockGocode.complete.mock.calls[0][0][0].content as string;
-      expect(prompt).toContain('Preview body HTML:');
+      expect(prompt).toContain('Preview body HTML (sanitized):');
       expect(prompt).not.toContain('truncated to');
       expect(prompt).toContain('from-file');
       expect(prompt).not.toContain('<html>');
@@ -260,18 +260,30 @@ describe('JTBDCompletionEvaluator', () => {
       expect(prompt).not.toContain('h'.repeat(100));
     });
 
-    it('truncates body HTML longer than 8000 chars to 8000 + "... [truncated]"', async () => {
+    it('strips presentational attributes from body HTML without truncation', async () => {
       mockGocode.complete.mockResolvedValue('pass');
-      const longBody = 'x'.repeat(10_000);
+      const html = '<html><body class="bg-white" style="margin:0"><p class="text-lg">Real content</p></body></html>';
+      const snapshot = makeSnapshot({ html });
+      await evaluator.evaluate(makeTranscript(), scenario, snapshot);
+      const prompt = mockGocode.complete.mock.calls[0][0][0].content as string;
+      expect(prompt).toContain('Preview body HTML (sanitized):');
+      expect(prompt).toContain('Real content');
+      expect(prompt).not.toContain('class=');
+      expect(prompt).not.toContain('style=');
+      expect(prompt).not.toContain('... [truncated]');
+    });
+
+    it('strips SVG elements from body HTML in prompt', async () => {
+      mockGocode.complete.mockResolvedValue('pass');
+      const svg = '<svg xmlns="http://www.w3.org/2000/svg"><rect x="0" y="0" width="100"/></svg>';
       const snapshot = makeSnapshot({
-        html: `<html><body>${longBody}</body></html>`,
+        html: `<html><body><main>${svg}<p>Real content</p></main></body></html>`,
       });
       await evaluator.evaluate(makeTranscript(), scenario, snapshot);
       const prompt = mockGocode.complete.mock.calls[0][0][0].content as string;
-      expect(prompt).toContain('x'.repeat(8_000));
-      expect(prompt).toContain('... [truncated]');
-      expect(prompt).not.toContain('x'.repeat(8_001));
-      expect(prompt).toContain('Preview body HTML (truncated to 8000 chars):');
+      expect(prompt).toContain('Real content');
+      expect(prompt).not.toContain('<svg');
+      expect(prompt).not.toContain('<rect');
     });
 
     it('omits HTML section when snapshot is undefined', async () => {

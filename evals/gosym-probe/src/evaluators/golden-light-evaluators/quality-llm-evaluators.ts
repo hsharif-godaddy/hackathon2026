@@ -7,7 +7,7 @@ import {
   JudgeNumericalSchema,
   type JudgeNumerical,
 } from '../llm-json-evaluator.js';
-import { extractBodyHtml, htmlToText, truncate, readSnapshotHtml, LLM_PROMPT_HTML_MAX_CHARS } from '../shared.js';
+import { extractBodyHtml, extractBodyHtmlFull, sanitizeHtmlForEval, htmlToText, truncate, readSnapshotHtml, LLM_PROMPT_HTML_MAX_CHARS, LLM_PROMPT_SANITIZED_HTML_MAX_CHARS } from '../shared.js';
 
 async function buildHtmlEvidence(scenario: Scenario, snapshot?: DOMSnapshot): Promise<string> {
   const html = await readSnapshotHtml(snapshot);
@@ -21,6 +21,25 @@ async function buildHtmlEvidence(scenario: Scenario, snapshot?: DOMSnapshot): Pr
     '',
     'BODY_HTML:',
     truncate(bodyHtml, LLM_PROMPT_HTML_MAX_CHARS) || '(empty)',
+    '',
+    'BODY_TEXT:',
+    bodyText || '(empty)',
+  ].join('\n');
+}
+
+async function buildSanitizedHtmlEvidence(scenario: Scenario, snapshot?: DOMSnapshot): Promise<string> {
+  const html = await readSnapshotHtml(snapshot);
+  const bodyHtml = extractBodyHtmlFull(html);
+  const sanitizedHtml = truncate(sanitizeHtmlForEval(bodyHtml), LLM_PROMPT_SANITIZED_HTML_MAX_CHARS);
+  const bodyText = htmlToText(sanitizedHtml);
+  const goals = scenario.goals.map((g) => g.description).join('; ');
+
+  return [
+    `SCENARIO: ${scenario.name}`,
+    `GOALS: ${goals || '(none)'}`,
+    '',
+    'BODY_HTML (sanitized):',
+    sanitizedHtml || '(empty)',
     '',
     'BODY_TEXT:',
     bodyText || '(empty)',
@@ -85,7 +104,7 @@ async function contentSubstancePrompt(
     '- 0.0-0.3: predominantly placeholder, generic, or missing content',
     '- unknown: no text content to evaluate',
     '',
-    await buildHtmlEvidence(scenario, snapshot),
+    await buildSanitizedHtmlEvidence(scenario, snapshot),
   ].join('\n');
 }
 
@@ -106,12 +125,12 @@ export function createQualityLLMEvaluators(gocode: IGocodeClient): Evaluator[] {
 
   const contentSubstance = new LLMJsonEvaluator(gocode, {
     name: 'content-substance',
-    evalVersion: '1.0',
+    evalVersion: '1.1',
     schema: JudgeNumericalSchema,
     canEvaluate: (_transcript, _scenario, snapshot) => Boolean(snapshot?.htmlPath || snapshot?.html),
     validateEvidence: async (_transcript, _scenario, snapshot) => {
       const html = await readSnapshotHtml(snapshot);
-      const body = extractBodyHtml(html);
+      const body = extractBodyHtmlFull(html);
       return body.trim().length > 0;
     },
     prompt: contentSubstancePrompt,

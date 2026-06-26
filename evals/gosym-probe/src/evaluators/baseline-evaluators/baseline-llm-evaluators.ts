@@ -18,7 +18,7 @@ import {
   JudgeCategoricalSchema,
   JudgeNumericalSchema,
 } from './llm-json-evaluator.js';
-import { buildEvidence, clamp01, extractBodyHtml, htmlToText, lastSnapshotSection, truncate } from './shared.js';
+import { buildEvidence, clamp01, extractBodyHtml, htmlToText, lastSnapshotSectionSanitized, truncate } from './shared.js';
 import { readSnapshotHtml } from '../shared.js';
 
 type ScoreType = 'numerical' | 'boolean' | 'categorical';
@@ -88,7 +88,7 @@ function version(spec: BaselineEvaluatorSpec): string {
         categoricalPrompt: String(categoricalPrompt),
         buildEvidence: String(buildEvidence),
         truncate: String(truncate),
-        lastSnapshotSection: String(lastSnapshotSection),
+        lastSnapshotSectionSanitized: String(lastSnapshotSectionSanitized),
         readSnapshotHtml: String(readSnapshotHtml),
         extractBodyHtml: String(extractBodyHtml),
         htmlToText: String(htmlToText),

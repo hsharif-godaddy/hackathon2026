@@ -3,10 +3,11 @@ import type { DOMSnapshot, Transcript } from '../runner/transcript.js';
 import type { Scenario } from '../scenarios/types.js';
 import type { IGocodeClient } from '../clients/gocode-client.js';
 import {
-  extractBodyHtml,
-  LLM_PROMPT_HTML_MAX_CHARS,
-  readSnapshotHtml,
+  extractBodyHtmlFull,
+  sanitizeHtmlForEval,
   truncate,
+  LLM_PROMPT_SANITIZED_HTML_MAX_CHARS,
+  readSnapshotHtml,
 } from './shared.js';
 
 function buildTranscriptText(transcript: Transcript): string {
@@ -42,12 +43,9 @@ function verdictToScore(verdict: EvalResult['verdict']): number {
 }
 
 function buildHtmlSection(rawHtml: string): string {
-  const bodyHtml = extractBodyHtml(rawHtml);
-  const htmlContent = truncate(bodyHtml, LLM_PROMPT_HTML_MAX_CHARS);
-  const htmlLabel = bodyHtml.length > LLM_PROMPT_HTML_MAX_CHARS
-    ? `Preview body HTML (truncated to ${LLM_PROMPT_HTML_MAX_CHARS} chars):`
-    : 'Preview body HTML:';
-  return `\n${htmlLabel}\n${htmlContent}\n`;
+  const bodyHtml = extractBodyHtmlFull(rawHtml);
+  const sanitized = truncate(sanitizeHtmlForEval(bodyHtml), LLM_PROMPT_SANITIZED_HTML_MAX_CHARS);
+  return `\nPreview body HTML (sanitized):\n${sanitized || '(empty)'}\n`;
 }
 
 function parseVerdict(response: string): EvalResult['verdict'] {

@@ -3,7 +3,7 @@ import type { Scenario } from '../../scenarios/types.js';
 import {
   buildConversationText,
   summarizeToolCalls,
-  lastSnapshotSection,
+  lastSnapshotSectionSanitized,
   truncate,
 } from '../shared.js';
 
@@ -17,7 +17,7 @@ export async function buildAlignmentEvidence(
   const toolCalls = transcript.turns.flatMap((t) => t.toolCalls);
   const conversation = buildConversationText(transcript.turns);
   const tools = summarizeToolCalls(toolCalls);
-  const finalSite = await lastSnapshotSection(snapshot);
+  const finalSite = await lastSnapshotSectionSanitized(snapshot);
   const totalToolCalls = toolCalls.length;
 
   return [

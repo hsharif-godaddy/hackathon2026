@@ -12,6 +12,14 @@ const MAX_HTML_CHARS = 20_000;
  */
 export const LLM_PROMPT_HTML_MAX_CHARS = 8_000;
 
+/**
+ * Cap for sanitized HTML injected into LLM evaluator prompts.
+ * Higher than LLM_PROMPT_HTML_MAX_CHARS because sanitization already strips
+ * presentational noise, yielding denser semantic signal per character.
+ * ~12.5K tokens at ~4 chars/token, well within 200K context budgets.
+ */
+export const LLM_PROMPT_SANITIZED_HTML_MAX_CHARS = 50_000;
+
 const BODY_RE = /<body[^>]*>([\s\S]*)<\/body>/i;
 
 export function clamp01(x: number): number {
@@ -55,6 +63,44 @@ export function extractBodyHtml(html: string): string {
   const match = BODY_RE.exec(html);
   const body = match ? match[1] : html;
   return truncate(body, MAX_HTML_CHARS);
+}
+
+/** Extracts body innerHTML without applying any character truncation. */
+export function extractBodyHtmlFull(html: string): string {
+  const match = BODY_RE.exec(html);
+  return match ? match[1] : html;
+}
+
+const SVG_RE = /<svg[\s\S]*?<\/svg>/gi;
+const ORPHAN_SVG_TAG_RE = /<\/?svg[^>]*>/gi;
+const STYLE_ELEMENT_RE = /<style[\s\S]*?<\/style>/gi;
+const SCRIPT_ELEMENT_RE = /<script[\s\S]*?<\/script>/gi;
+const CLASS_ATTR_RE = /\s+class=(?:"[^"]*"|'[^']*'|[^\s>]*)/g;
+const STYLE_ATTR_RE = /\s+style=(?:"[^"]*"|'[^']*'|[^\s>]*)/g;
+const DATA_DEV_ATTR_RE = /\s+data-dev-[a-z0-9-]+=(?:"[^"]*"|'[^']*'|[^\s>]*)/gi;
+const DATA_DISCOVER_ATTR_RE = /\s+data-discover=(?:"[^"]*"|'[^']*'|[^\s>]*)/gi;
+const INTER_TAG_WHITESPACE_RE = />\s+</g;
+
+/**
+ * Strips presentational noise from body HTML, preserving semantic structure.
+ * Strips: <svg>, <style>, <script>, class=, style=, data-dev-*, data-discover=.
+ * Collapses inter-tag whitespace.
+ * Preserves: href, src, alt, action, id, aria-*, role attributes and all text content.
+ * @param bodyHtml - raw innerHTML of <body> (not full document HTML)
+ * @returns sanitized HTML string (may be empty if body was purely presentational)
+ */
+export function sanitizeHtmlForEval(bodyHtml: string): string {
+  return bodyHtml
+    .replace(SVG_RE, '')
+    .replace(ORPHAN_SVG_TAG_RE, '')
+    .replace(STYLE_ELEMENT_RE, '')
+    .replace(SCRIPT_ELEMENT_RE, '')
+    .replace(CLASS_ATTR_RE, '')
+    .replace(STYLE_ATTR_RE, '')
+    .replace(DATA_DEV_ATTR_RE, '')
+    .replace(DATA_DISCOVER_ATTR_RE, '')
+    .replace(INTER_TAG_WHITESPACE_RE, '><')
+    .trim();
 }
 
 export function escapeRegExp(str: string): string {
@@ -152,6 +198,34 @@ export async function lastSnapshotSection(snapshot?: DOMSnapshot): Promise<strin
     '',
     'BODY_HTML:',
     body || '(empty)',
+    '',
+    'BODY_TEXT:',
+    text || '(empty)',
+    '',
+    'CONSOLE_LOGS (tail):',
+    consoleLogs || '(none)',
+  ].join('\n');
+}
+
+/** Builds FINAL_SITE evidence using sanitized HTML (truncated to 50K chars). */
+export async function lastSnapshotSectionSanitized(snapshot?: DOMSnapshot): Promise<string> {
+  if (!snapshot) return '(no snapshot)';
+
+  const rawHtml = await readSnapshotHtml(snapshot);
+  const body = extractBodyHtmlFull(rawHtml);
+  const sanitized = truncate(sanitizeHtmlForEval(body), LLM_PROMPT_SANITIZED_HTML_MAX_CHARS);
+  const text = htmlToText(sanitized);
+  const consoleLogs = (snapshot.consoleLogs ?? [])
+    .slice(-CONSOLE_LOG_TAIL)
+    .map((log) => `${log.type}: ${log.text}`)
+    .join('\n');
+
+  return [
+    `URL: ${snapshot.url}`,
+    snapshot.htmlPath ? `HTML_PATH: ${snapshot.htmlPath}` : '',
+    '',
+    'BODY_HTML (sanitized):',
+    sanitized || '(empty)',
     '',
     'BODY_TEXT:',
     text || '(empty)',

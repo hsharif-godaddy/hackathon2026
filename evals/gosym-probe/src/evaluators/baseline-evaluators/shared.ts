@@ -8,9 +8,10 @@ export {
   buildConversationText,
   summarizeToolCalls,
   lastSnapshotSection,
+  lastSnapshotSectionSanitized,
 } from '../shared.js';
 
-import { buildConversationText, summarizeToolCalls, lastSnapshotSection } from '../shared.js';
+import { buildConversationText, summarizeToolCalls, lastSnapshotSectionSanitized } from '../shared.js';
 
 export async function buildEvidence(
   transcript: Transcript,
@@ -25,7 +26,7 @@ export async function buildEvidence(
   return {
     conversation: buildConversationText(transcript.turns),
     tools: summarizeToolCalls(toolCalls),
-    finalSite: await lastSnapshotSection(snapshot),
+    finalSite: await lastSnapshotSectionSanitized(snapshot),
     totalToolCalls: toolCalls.length,
   };
 }

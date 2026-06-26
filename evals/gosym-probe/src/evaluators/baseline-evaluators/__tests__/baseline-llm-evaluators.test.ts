@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { GocodeClient } from '../../../clients/gocode-client.js';
-import type { Transcript } from '../../../runner/transcript.js';
+import type { DOMSnapshot, Transcript } from '../../../runner/transcript.js';
 import type { Scenario } from '../../../scenarios/types.js';
 import {
   createBaselineLLMEvaluators,
@@ -167,6 +167,33 @@ describe('baseline LLM evaluators', function baselineTests() {
       expect(evs).toHaveLength(15);
       expect(evs.map((e) => e.name)).toEqual(allNames);
     });
+  });
+
+  it('strips SVG from FINAL_SITE snapshot in prompt (seam: buildEvidence uses sanitized path)', async function sanitizedFinalSite() {
+    let capturedPrompt = '';
+    const gocode = {
+      complete: async (messages: Array<{ content: string }>) => {
+        capturedPrompt = messages[0]?.content ?? '';
+        return JSON.stringify({ score: 0.8, verdict: 'pass', reason: 'ok' });
+      },
+    } as unknown as GocodeClient;
+
+    const snapshot: DOMSnapshot = {
+      url: 'https://example.test',
+      htmlPath: '',
+      screenshotPath: '',
+      timestamp: new Date().toISOString(),
+      consoleLogs: [],
+      html: '<html><body><svg><path d="M0 0"/></svg><p>Contact: 555-1234</p></body></html>',
+    };
+
+    const evs = createBaselineLLMEvaluators(gocode);
+    const ev = evs.find((e) => e.name === 'intent-to-output-alignment')!;
+    await ev.evaluate(makeTranscript(), scenario, snapshot);
+
+    expect(capturedPrompt).toContain('FINAL_SITE (last snapshot):');
+    expect(capturedPrompt).toContain('Contact: 555-1234');
+    expect(capturedPrompt).not.toContain('<svg');
   });
 
   it('instructs judges not to penalize publish failures in local harness', async function publishBoundary() {

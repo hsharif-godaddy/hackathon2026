@@ -182,6 +182,44 @@ describe('content-substance evaluator', function contentSubstanceTests() {
   });
 });
 
+describe('prompt content verification', function promptContentTests() {
+  function makeCapturingGocode(): { gocode: GocodeClient; getPrompt: () => string } {
+    let capturedPrompt = '';
+    const gocode = {
+      complete: async (messages: Array<{ role: string; content: string }>) => {
+        capturedPrompt = messages[0]?.content ?? '';
+        return JSON.stringify({ score: 0.8, verdict: 'pass', reason: 'ok' });
+      },
+    } as unknown as GocodeClient;
+    return { gocode, getPrompt: () => capturedPrompt };
+  }
+
+  it('content-substance prompt includes BODY_HTML (sanitized) label and strips SVG', async function sanitizedLabel() {
+    const { gocode, getPrompt } = makeCapturingGocode();
+    const evs = createQualityLLMEvaluators(gocode);
+    const ev = evs.find((e) => e.name === 'content-substance')!;
+    const snapshot = await makeSnapshot(
+      '<html><body><svg><path d="M0 0"/></svg><p>Real content</p></body></html>',
+    );
+    await ev.evaluate(makeTranscript(), scenario, snapshot);
+    const prompt = getPrompt();
+    expect(prompt).toContain('BODY_HTML (sanitized):');
+    expect(prompt).not.toContain('<svg');
+    expect(prompt).toContain('Real content');
+  });
+
+  it('visual-coherence prompt includes plain BODY_HTML label without sanitized', async function plainLabel() {
+    const { gocode, getPrompt } = makeCapturingGocode();
+    const evs = createQualityLLMEvaluators(gocode);
+    const ev = evs.find((e) => e.name === 'visual-coherence')!;
+    const snapshot = await makeSnapshot('<html><body><h1>Test</h1></body></html>');
+    await ev.evaluate(makeTranscript(), scenario, snapshot);
+    const prompt = getPrompt();
+    expect(prompt).toContain('BODY_HTML:');
+    expect(prompt).not.toContain('BODY_HTML (sanitized):');
+  });
+});
+
 describe('inline snapshot.html support (no htmlPath)', function inlineHtmlTests() {
   it('visual-coherence evaluates inline html snapshot', async function inlineVisual() {
     const evs = createQualityLLMEvaluators(

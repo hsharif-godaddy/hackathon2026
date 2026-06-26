@@ -268,4 +268,13 @@ describe('buildAlignmentEvidence', () => {
     expect(result).toContain('FINAL_SITE (last snapshot):');
     expect(result).toContain('(no snapshot)');
   });
+
+  it('strips SVG from FINAL_SITE snapshot body (seam: uses sanitized path)', async () => {
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg"><rect x="0" y="0"/></svg>';
+    const snapshot = makeInlineSnapshot(`<html><body>${svg}<p>Contact us</p></body></html>`);
+    const result = await buildAlignmentEvidence(makeTranscript(), makeScenario(), snapshot);
+    expect(result).toContain('Contact us');
+    expect(result).not.toContain('<svg');
+    expect(result).not.toContain('<rect');
+  });
 });
