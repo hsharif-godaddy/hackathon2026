@@ -1053,20 +1053,32 @@ export default function AppPublish({ location = 'develop' }: { location?: string
             {/* Domain Editing */}
             {fqdn && (
               <div className='flex flex-col gap-0.5'>
-                <text.label size={-1} htmlFor='AppPublishDomainEdit' as='label'>
+                <text.label size={-1} htmlFor={isFirstTimePublishing ? undefined : 'AppPublishDomainEdit'} as='label'>
                   {t('builder_domain_title')}
                 </text.label>
-                <div className='relative'>
-                  <TextInput
-                    label={null}
-                    id='AppPublishDomainEdit'
-                    value={fqdn.replace(/^https?:\/\//, '')}
-                    visualSize='sm'
-                    readOnly
-                    disabled={isFirstTimePublishing}
-                    className='[&_#AppPublishDomainEdit]:!pe-[80px] [&_#AppPublishDomainEdit]:truncate'
-                  />
-                  {!isFirstTimePublishing && (
+                {isFirstTimePublishing ? (
+                  <Box
+                    orientation='horizontal'
+                    inlineAlignChildren='center'
+                    blockAlignChildren='center'
+                    inlinePadding='md'
+                    blockPadding='sm'
+                    className='rounded-md bg-intents-ux-boxLowContrast-backgroundColor'
+                  >
+                    <text.span size={0} className='min-w-0 flex-1 truncate'>
+                      {fqdn.replace(/^https?:\/\//, '')}
+                    </text.span>
+                  </Box>
+                ) : (
+                  <div className='relative'>
+                    <TextInput
+                      label={null}
+                      id='AppPublishDomainEdit'
+                      value={fqdn.replace(/^https?:\/\//, '')}
+                      visualSize='sm'
+                      readOnly
+                      className='[&_.ux-text-entry-field]:!pe-[80px] [&_.ux-text-entry-field]:truncate'
+                    />
                     <div className='absolute end-[5px] top-1/2 -translate-y-1/2 flex gap-0.5 items-center'>
                       <IconButton
                         icon={<InlineEditIcon className='size-2' />}
@@ -1088,8 +1100,8 @@ export default function AppPublish({ location = 'develop' }: { location?: string
                         showLabelWhenActive={false}
                       />
                     </div>
-                  )}
-                </div>
+                  </div>
+                )}
               </div>
             )}
 

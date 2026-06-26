@@ -621,6 +621,7 @@ describe('AppPublish', () => {
       createMockSite({
         id: 'app-123',
         agent_url: 'https://app-123.agent.test',
+        published_url: 'https://app-123.c4.test-airoapp.ai',
         variants: [],
       })
     );
@@ -632,6 +633,7 @@ describe('AppPublish', () => {
 
     await waitFor(() => {
       expect(screen.getByText('builder_publish_unpublished_domain_info')).toBeInTheDocument();
+      expect(screen.getByText('app-123.c4.test-airoapp.ai')).toBeInTheDocument();
     });
   });
 
