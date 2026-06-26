@@ -10,24 +10,31 @@
  * recording) is done via callbacks (`getStatus` / `saveState`) supplied by
  * the orchestrator — the pipeline doesn't own the workflow-state file.
  */
+import { readFile } from 'node:fs/promises';
+
 import { SiteAnalyzerAgent } from '../../agents/site-analyzer-agent.js';
 import { Logger } from '../../logging/index.js';
 import type { PageScrapeResult } from '../../tools/ai-lib-tools/drivers/website-scraper-driver.js';
 import { WebsiteScraperDriver } from '../../tools/ai-lib-tools/drivers/website-scraper-driver.js';
 import {
   asRebuildError,
+  type AssetInfo,
   createRebuildError,
   type NavigationItem,
   type RebuildWorkflowState,
+  type SiteFavicon,
   type SiteMetadata,
   type SitemapData,
   WEBSITE_REBUILD_IMPORT_FAILED_USER_MESSAGE,
 } from '../../types/rebuild.js';
 import { isRebuildHomepage, normalizeRebuildPageKey, rebuildUrlToSlug } from '../../utils/rebuild-utils.js';
+import type { WorkspaceClient } from '../../workspace/client.js';
+import { createForWorkspace } from '../../workspace/index.js';
 import { AssetProcessingService } from '../AssetProcessingService.js';
 import { AtlasCrawlerAdapter, type AtlasCrawlOutput } from '../AtlasCrawlerAdapter.js';
 import type { FileUploadService } from '../FileUploadService.js';
 import { SitemapDiscoveryService, type SitemapDiscoveryResult } from '../SitemapDiscoveryService.js';
+import { selfHostFavicon } from './favicon-selfhost.js';
 import { registerCrawledImagesAsUploads } from './register-crawled-images.js';
 
 import { capDiscoveredPages, resolveMaxPagesToScrape } from './scope-estimates.js';
@@ -697,8 +704,10 @@ export class ScrapePipeline {
   private async processHomepageAssets(appId: string, homePage: PageScrapeResult, output: AtlasCrawlOutput): Promise<void> {
     const assetService = new AssetProcessingService(this.deps.appPath);
     const { assetMap, homeAssets } = bucketAssetsForProcessing(output.assets, homePage.url);
+    let homeAssetInfos: ReadonlyArray<AssetInfo> = [];
     if (homeAssets.length > 0) {
       const manifest = await assetService.process(homeAssets, assetMap, { merge: false });
+      homeAssetInfos = manifest.assets;
       try {
         await assetService.analyzePageAssets(homePage.url, manifest);
       } catch (error) {
@@ -707,6 +716,64 @@ export class ScrapePipeline {
           error: error instanceof Error ? error.message : String(error),
         });
       }
+    }
+    await this.selfHostHomepageFavicon(appId, output.favicon, homeAssetInfos);
+  }
+
+  /**
+   * Overwrite the placeholder `public/favicon.ico` with the cloned site's real
+   * favicon so the stock `<link rel="icon" href="/favicon.ico">` serves it on
+   * the published site. The agent-emitted favicon `<link>` carries the source's
+   * `rel` (often `apple-touch-icon`) and never reliably reaches the browser tab
+   * — this code-enforced write is what actually fixes the tab favicon. Best
+   * effort: a favicon failure must never fail the rebuild.
+   */
+  private async selfHostHomepageFavicon(
+    appId: string,
+    favicon: SiteFavicon | undefined,
+    assets: ReadonlyArray<AssetInfo>,
+  ): Promise<void> {
+    if (!favicon) return;
+
+    const workspace: WorkspaceClient | null = createForWorkspace(appId, 'preview');
+    if (!workspace) {
+      logger.warn('rebuild.favicon.selfhost-skipped', { appId, reason: 'workspace_unavailable' });
+      return;
+    }
+
+    try {
+      const result = await selfHostFavicon({
+        favicon,
+        assets,
+        appPath: this.deps.appPath,
+        readFaviconBytes: (absPath: string): Promise<Buffer> => readFile(absPath),
+        readWorkspaceText: async (workspaceRelPath: string): Promise<string | null> => {
+          try {
+            const view = await workspace.files.view({ path: workspaceRelPath });
+            return view.content;
+          } catch {
+            return null;
+          }
+        },
+        writeWorkspaceFile: async (
+          workspaceRelPath: string,
+          content: string,
+          encoding: 'utf-8' | 'base64',
+        ): Promise<void> => {
+          await workspace.files.write({ path: workspaceRelPath, content, encoding });
+        },
+      });
+      logger.info('rebuild.favicon.selfhost', {
+        appId,
+        faviconWritten: result.faviconWritten,
+        linkTypeUpdated: result.linkTypeUpdated,
+        reason: result.reason,
+      });
+    } catch (error) {
+      logger.warn('rebuild.favicon.selfhost-failed', {
+        appId,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
