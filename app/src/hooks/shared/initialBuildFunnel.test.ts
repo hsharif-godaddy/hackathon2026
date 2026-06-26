@@ -18,6 +18,7 @@ import {
   isInitialBuildFunnelActive,
   resetInitialBuildFunnel,
   trackBuildComplete,
+  trackFirstView,
   trackHandoff,
   trackPostInteraction,
   trackQuestionReceived,
@@ -113,6 +114,46 @@ describe('trackHandoff', () => {
 
     expect(mockShip).toHaveBeenCalledTimes(1)
     expect(mockShip).toHaveBeenCalledWith('funnel.initial_build.handoff', { appId: 'app-1' })
+  })
+})
+
+describe('trackFirstView', () => {
+  it('no-ops and returns null when funnel inactive', () => {
+    expect(trackFirstView()).toBeNull()
+    expect(mockShip).not.toHaveBeenCalled()
+  })
+
+  it('fires exactly once, returns a numeric msToFirstView, then null on repeat', () => {
+    activateInitialBuildFunnel('app-1')
+    mockShip.mockClear()
+
+    const firstResult: number | null = trackFirstView()
+    const secondResult: number | null = trackFirstView()
+
+    expect(firstResult).toEqual(expect.any(Number))
+    expect(secondResult).toBeNull()
+    expect(mockShip).toHaveBeenCalledTimes(1)
+    expect(mockShip).toHaveBeenCalledWith('funnel.initial_build.first_view', {
+      appId: 'app-1',
+      msToFirstView: expect.any(Number),
+    })
+  })
+
+  it('re-arms after navigating to a different app', () => {
+    activateInitialBuildFunnel('app-1')
+    trackFirstView()
+    mockShip.mockClear()
+
+    activateInitialBuildFunnel('app-2')
+    mockShip.mockClear()
+
+    trackFirstView()
+
+    expect(mockShip).toHaveBeenCalledTimes(1)
+    expect(mockShip).toHaveBeenCalledWith('funnel.initial_build.first_view', {
+      appId: 'app-2',
+      msToFirstView: expect.any(Number),
+    })
   })
 })
 

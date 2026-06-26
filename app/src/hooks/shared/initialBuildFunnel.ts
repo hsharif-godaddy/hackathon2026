@@ -12,9 +12,11 @@ import { logActionEvent, logImpressionEvent, setInstrumentationIntentCategory } 
 let active = false
 let questionReceived = false
 let handoffSeen = false
+let firstViewLogged = false
 let buildComplete = false
 let postInteractionLogged = false
 let funnelAppId: string | null = null
+let buildStartedAt: number | null = null
 
 export function activateInitialBuildFunnel(appId: string): void {
   if (active && funnelAppId === appId) return
@@ -23,6 +25,7 @@ export function activateInitialBuildFunnel(appId: string): void {
   }
   active = true
   funnelAppId = appId
+  buildStartedAt = Date.now()
 
   shipAnalyticsLog('funnel.initial_build.started', { appId })
   logImpressionEvent('develop.initialBuild.start', { appId })()
@@ -41,6 +44,15 @@ export function trackHandoff(): void {
 
   shipAnalyticsLog('funnel.initial_build.handoff', { appId: funnelAppId })
   logImpressionEvent('develop.generation.triggered', { appId: funnelAppId ?? '' })()
+}
+
+export function trackFirstView(): number | null {
+  if (!active || firstViewLogged) return null
+  firstViewLogged = true
+
+  const msToFirstView: number | null = buildStartedAt !== null ? Date.now() - buildStartedAt : null
+  shipAnalyticsLog('funnel.initial_build.first_view', { appId: funnelAppId, msToFirstView })
+  return msToFirstView
 }
 
 export function trackBuildComplete(commitHash: string): void {
@@ -81,7 +93,9 @@ export function resetInitialBuildFunnel(): void {
   active = false
   questionReceived = false
   handoffSeen = false
+  firstViewLogged = false
   buildComplete = false
   postInteractionLogged = false
   funnelAppId = null
+  buildStartedAt = null
 }

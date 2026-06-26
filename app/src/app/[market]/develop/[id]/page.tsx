@@ -50,7 +50,7 @@ import { EXPERIMENT_IDS } from '@/config/experiments'
 import { SWITCHBOARD_APPBUILDER_CMS_INLINE_EDIT, SWITCHBOARD_APPBUILDER_COMMANDER } from '@/config/switchboard-flags'
 import { ChatProvider } from '@/contexts/ChatContext'
 import { prefetchGitRemoteConfig } from '@/hooks/github/useGitRemoteConfig'
-import { activateInitialBuildFunnel } from '@/hooks/shared/initialBuildFunnel'
+import { activateInitialBuildFunnel, trackFirstView } from '@/hooks/shared/initialBuildFunnel'
 import { useAotPreload } from '@/hooks/useAotPreload'
 import { useAppArchiveRestore } from '@/hooks/useAppArchiveRestore'
 import { useAppDetails } from '@/hooks/useAppDetails'
@@ -1216,7 +1216,8 @@ function DevelopPageContent({ layout: layoutProp }: { layout?: BuilderLayout }) 
 
         if (!previewMilestoneTrackedRef.current) {
           previewMilestoneTrackedRef.current = true
-          JourneyTracker.current()?.trackMilestone('preview_generated', { appId })
+          const msToFirstView: number | null = trackFirstView()
+          JourneyTracker.current()?.trackMilestone('preview_generated', { appId, msToFirstView })
         }
 
         init.actions.markFirstFileEditSeen()
