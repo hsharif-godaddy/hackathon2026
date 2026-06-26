@@ -197,6 +197,7 @@ export default makeGasket({
     },
     // Deployed environments
     'development': {
+      hostname: 'airo-builder.dev-godaddy.com',
       insightsApiUrl: 'https://uip.api.int.test-godaddy.com/v1/insights/graphql',
       insightsSsoHost: 'sso.test-godaddy.com',
       switchboard: {
@@ -209,6 +210,7 @@ export default makeGasket({
       },
     },
     'test': {
+      hostname: process.env.APP_HOSTNAME || 'airo-builder.test-godaddy.com',
       airoAppDomain: 'test-airoapp.ai',
       insightsApiUrl: 'https://uip.api.int.test-godaddy.com/v1/insights/graphql',
       insightsSsoHost: 'sso.test-godaddy.com',
@@ -222,6 +224,7 @@ export default makeGasket({
       },
     },
     'production': {
+      hostname: 'airo-builder.godaddy.com',
       airoAppDomain: 'airoapp.ai',
       insightsApiUrl: 'https://uip.api.int.godaddy.com/v1/insights/graphql',
       insightsSsoHost: 'sso.godaddy.com',
@@ -392,7 +395,7 @@ export default makeGasket({
     ],
     appName: 'airo-app-builder',
     enabledRoutes: ['/', '/page', '/develop', '/develop/*'],
-    proxyLogPath: '/cds-log',
+    proxyLogPath: '/api/cds-log',
     depsPath: 'cds'
   },
   switchboard: {

@@ -5,6 +5,8 @@ import { withApmRoute } from '@/lib/apm-context';
 import { logger } from '@/lib/request-context';
 import gasket from '../../../../gasket.ts';
 
+const CDS_LOG_LEVELS: Record<string, 'error' | 'warn' | 'info'> = { error: 'error', warning: 'warn', warn: 'warn', info: 'info', debug: 'info' };
+
 /**
  * CDS logging endpoint - forwards logs to CDS API
  *
@@ -14,7 +16,6 @@ import gasket from '../../../../gasket.ts';
 export const POST = withApmRoute(async (request: NextRequest) => {
   const cds = (gasket.config as any).cds;
 
- // TODO: Add a check to see if the log has been processed by CDS. If not, log an error, but still return a 200
   if (!cds || !cds.api || !cds.api.baseUrl || !cds.api.logPath) {
     return NextResponse.json({
       status: 'ok',
@@ -27,15 +28,23 @@ export const POST = withApmRoute(async (request: NextRequest) => {
 
   try {
     const body = await request.json();
-    
-    await fetch(cdsApiLogPath, {
+    const serializedBody: string = JSON.stringify(body);
+
+    const level: string = body?.level ?? 'info';
+    const method = CDS_LOG_LEVELS[level] ?? 'info';
+    logger[method](`cds.app.${level}`, { cdsApiLogPath, body: serializedBody });
+
+    const response = await fetch(cdsApiLogPath, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
+      body: serializedBody,
       signal: AbortSignal.timeout(3000)
     });
 
-    // TODO: Add a check to see if the log has been processed by CDS. If not, log an error, but still return a 200
+    if (!response.ok) {
+      logger.error('cds.app.error.apiRejected', { cdsApiLogPath, status: response.status });
+    }
+
     return NextResponse.json({ status: 'ok' }, { status: 200 });
   } catch (error) {
     logger.error('cds.log.forward.failed', {
