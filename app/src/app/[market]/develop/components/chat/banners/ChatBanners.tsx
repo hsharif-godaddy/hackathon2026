@@ -1,13 +1,13 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
 import { isEmployeeAuthType } from '@airo/shared/auth';
 
 import { useAuthContext } from '@/components/providers/AuthProvider';
 import { useCreditThresholdEvents } from '@/hooks/useCreditThresholdEvents';
-import { usePaywallEligibility } from '@/hooks/usePaywallEligibility';
 import { useSubscription } from '@/hooks/useSubscription';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
+import { useUpgradeBannerExperiment } from '@/hooks/useUpgradeBannerExperiment';
 import { useUsage } from '@/hooks/useUsage';
 import {
   isPublishBlockedByComplianceRules,
@@ -28,16 +28,6 @@ interface ChatBannersProps {
   appId: string | null;
 }
 
-const UPGRADE_BANNER_STORAGE_KEY = 'airoplus_upgrade_banner_dismissed';
-
-function getLocalDateString(): string {
-  return new Date().toLocaleDateString('en-CA');
-}
-
-function isUpgradeBannerDismissedToday(): boolean {
-  return localStorage.getItem(UPGRADE_BANNER_STORAGE_KEY) === getLocalDateString();
-}
-
 /**
  * Container component that manages which chat banner to display.
  * Only one banner shows at a time, with priority order:
@@ -45,7 +35,7 @@ function isUpgradeBannerDismissedToday(): boolean {
  * 1. SuspendedComplianceBanner (site suspended or account subscription non-compliant; Switchboard-gated)
  * 2. SuspendedNonPaymentBanner (subscription suspended for non-payment)
  * 3. UsageWarningBanner (remaining credits within warning threshold)
- * 4. UpgradeBanner (no Airo Plus subscription)
+ * 4. UpgradeBanner (free users, control cohort only — treatment sees preview bar)
  * 5. FeedbackBanner (session-based NPS prompt)
  * 6. AppGenerationFeedbackBanner (thumbs up/down after first app generation; Switchboard-gated upstream in useAppGenerationFeedbackTrigger)
  * 7. AgentWorkFeedbackBanner (thumbs up/down after first file edit; gated in useAgentWorkFeedbackTrigger)
@@ -55,12 +45,10 @@ export default function ChatBanners({ appId }: ChatBannersProps) {
   const isImpersonating = isEmployeeAuthType(tokenAuthType);
   const { isWarningBannerActive } = useUsage({ appId, enabled: !!appId });
   useCreditThresholdEvents();
-  const upgradeBannerEnabled = useSwitchboard('appbuilder-airoplus-upgrade-banner');
+  const { showChatBanner: isUpgradeBannerActive, dismiss: dismissUpgradeBanner } = useUpgradeBannerExperiment(appId);
   const feedbackBannerEnabled = useSwitchboard('appbuilder-feedback-banner');
   const suspendedComplianceBannerEnabled = useSwitchboard('appbuilder-suspended-compliance-banner');
   const suspendedNonPaymentBannerEnabled = useSwitchboard('appbuilder-suspended-nonpayment-banner');
-  // Pass appId so an invited collaborator (owner-pays) bypasses the paywall.
-  const { showPaywall, isLoading: isPaywallLoading } = usePaywallEligibility(appId ?? undefined);
   const { data: subscription } = useSubscription();
   const showFeedbackBannerFromStore = useDevelopPageStore((state) => state.showFeedbackBanner);
   const showAppGenerationFeedbackBanner = useDevelopPageStore(
@@ -70,19 +58,6 @@ export default function ChatBanners({ appId }: ChatBannersProps) {
     (state) => state.showAgentWorkFeedbackBanner
   );
   const [isImpersonationBannerDismissed, setIsImpersonationBannerDismissed] = useState(false);
-  const [isUpgradeBannerDismissed, setIsUpgradeBannerDismissed] = useState(true);
-  const [mounted, setMounted] = useState(false);
-
-  // Check localStorage only after client-side mount to prevent hydration mismatch
-  useEffect(() => {
-    setIsUpgradeBannerDismissed(isUpgradeBannerDismissedToday());
-    setMounted(true);
-  }, []);
-
-  // Handle upgrade banner dismissal and update local state
-  const handleUpgradeBannerDismiss = useCallback(() => {
-    setIsUpgradeBannerDismissed(true);
-  }, []);
 
   const currentSite = useSiteStore((state) => (appId ? state.getSite(appId) : null));
 
@@ -93,16 +68,8 @@ export default function ChatBanners({ appId }: ChatBannersProps) {
   const isSuspendedForNonPayment =
     suspendedNonPaymentBannerEnabled && isSubscriptionSuspendedForNonPayment(subscription);
 
-  // Determine if upgrade banner should be shown
-  const isUpgradeBannerActive =
-    mounted &&
-    !isPaywallLoading &&
-    upgradeBannerEnabled &&
-    !isUpgradeBannerDismissed &&
-    showPaywall;
-
   // Determine if feedback banner should be shown (feature flag AND store state)
-  const showFeedbackBanner = mounted && feedbackBannerEnabled && showFeedbackBannerFromStore;
+  const showFeedbackBanner: boolean = feedbackBannerEnabled === true && showFeedbackBannerFromStore;
 
   // Priority 0: Impersonation banner (highest priority during e2s/e2s2s sessions, dismissible)
   if (isImpersonating && !isImpersonationBannerDismissed) {
@@ -129,9 +96,9 @@ export default function ChatBanners({ appId }: ChatBannersProps) {
     return <UsageWarningBanner appId={appId} />;
   }
 
-  // Priority 4: Upgrade banner
+  // Priority 4: Upgrade banner (control cohort only — treatment sees preview bar)
   if (isUpgradeBannerActive) {
-    return <UpgradeBanner onDismiss={handleUpgradeBannerDismiss} />;
+    return <UpgradeBanner onDismiss={dismissUpgradeBanner} />;
   }
 
   // Priority 5: Feedback banner (only if feature flag is enabled)
@@ -142,13 +109,13 @@ export default function ChatBanners({ appId }: ChatBannersProps) {
   // Priority 6: App-generation feedback (thumbs up/down after first app generation).
   // Switchboard gating is upstream in useAppGenerationFeedbackTrigger — if the flag
   // is off, showAppGenerationFeedbackBanner never flips to true, so no render check here.
-  if (mounted && showAppGenerationFeedbackBanner) {
+  if (showAppGenerationFeedbackBanner) {
     return <AppGenerationFeedbackBanner />;
   }
 
   // Priority 7: Agent-work feedback (how did the agent perform?).
   // Switchboard gating is upstream in useAgentWorkFeedbackTrigger.
-  if (mounted && showAgentWorkFeedbackBanner) {
+  if (showAgentWorkFeedbackBanner) {
     return <AgentWorkFeedbackBanner />;
   }
 

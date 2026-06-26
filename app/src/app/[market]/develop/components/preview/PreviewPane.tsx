@@ -16,11 +16,11 @@ import AutomationsPanel from '@/app/[market]/develop/components/automations/Auto
 import { useLatestNBAs } from '@/app/[market]/develop/components/chat/useLatestNBAs'
 import { useThinkerIndicator } from '@/app/[market]/develop/components/chat/useThinkerIndicator'
 import { useThinkerLabel } from '@/app/[market]/develop/components/chat/useThinkerLabel'
-import DomainBar from '@/app/[market]/develop/components/layout/DomainBar'
 import { getDevicePreset, isFullWidthDevice } from '@/app/[market]/develop/components/preview/devicePresets'
 import Inbox from '@/app/[market]/develop/components/preview/inbox/Inbox'
 import { MediaCanvas } from '@/app/[market]/develop/components/preview/media-canvas/MediaCanvas'
 import { useCanvasStatusLabel } from '@/app/[market]/develop/components/preview/useCanvasStatusLabel'
+import PreviewBanners from '@/app/[market]/develop/components/preview-banners/PreviewBanners'
 const DocsView = lazy(() => import('@/app/[market]/develop/components/preview/DocsView'))
 import PreviewCode from '@/app/[market]/develop/components/preview/PreviewCode'
 import PreviewError from '@/app/[market]/develop/components/preview/PreviewError'
@@ -285,7 +285,6 @@ export default function PreviewPane({
   const canvasStatusLabel = useCanvasStatusLabel(isMutatingFiles, isProcessing)
   const thinkerIndicator = useThinkerIndicator()
   const intl = useIntl();
-  const isDomainBarEnabled = useSwitchboard('appbuilder-domain-bar');
   const isTopLevelDomainEnabled = useSwitchboard('appbuilder-domain-top-level');
   const isInboxEnabled = useSwitchboard('app-builder-inbox-button');
   const isAutomationsEnabled = useSwitchboard('appbuilder-automations');
@@ -1628,13 +1627,7 @@ export default function PreviewPane({
                     pointerEvents: viewMode === ViewMode.CODE || viewMode === ViewMode.BRAND || viewMode === ViewMode.MARKETING ? 'none' : 'auto'
                   }}
                 >
-                  {/* Domain Bar - only show in Preview mode when no alert banner is visible */}
-                  {isDomainBarEnabled && (
-                    <div className="px-1 md:px-2">
-                      <DomainBar />
-                    </div>
-                  )}
-
+                  <PreviewBanners />
                   <div className="flex-1 flex items-center justify-center pb-1 md:pb-0 px-1 md:px-0">
                     <div
                       ref={previewShellRef}

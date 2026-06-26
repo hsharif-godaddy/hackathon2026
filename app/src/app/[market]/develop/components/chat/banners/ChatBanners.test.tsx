@@ -94,9 +94,23 @@ vi.mock('@/utils/instrumentation', () => ({
   generateClickEID: (id: string) => id,
 }));
 
+vi.mock('@/hooks/useCreditThresholdEvents', () => ({
+  useCreditThresholdEvents: vi.fn(),
+}));
+
+const mockDismiss = vi.fn();
+vi.mock('@/hooks/useUpgradeBannerExperiment', () => ({
+  useUpgradeBannerExperiment: vi.fn(function () {
+    return { showChatBanner: false, showPreviewBar: false, dismiss: mockDismiss };
+  }),
+}));
+
 describe('ChatBanners', function chatBannersTests() {
-  beforeEach(function setup() {
+  beforeEach(async function setup() {
     vi.clearAllMocks();
+    // Reset the hook mock to default (no banner) — prevents leakage from tests that override it
+    const { useUpgradeBannerExperiment } = await import('@/hooks/useUpgradeBannerExperiment');
+    vi.mocked(useUpgradeBannerExperiment).mockReturnValue({ showChatBanner: false, showPreviewBar: false, dismiss: mockDismiss });
     mockIsEmployeeAuthType.mockReturnValue(false);
     // Reset store state
     mockStoreState.showFeedbackBanner = false;
@@ -214,8 +228,7 @@ describe('ChatBanners', function chatBannersTests() {
 
     it('should show UpgradeBanner when usage warning is not active and user should see paywall', async function showUpgradeBanner() {
       const { useUsage } = await import('@/hooks/useUsage');
-      const { useSwitchboard } = await import('@/hooks/useSwitchboard');
-      const { usePaywallEligibility } = await import('@/hooks/usePaywallEligibility');
+      const { useUpgradeBannerExperiment } = await import('@/hooks/useUpgradeBannerExperiment');
 
       vi.mocked(useUsage).mockReturnValue({
         isWarningBannerActive: false,
@@ -224,8 +237,7 @@ describe('ChatBanners', function chatBannersTests() {
         warningLevel: WarningLevel.CAUTION,
         isLoading: false,
       });
-      vi.mocked(useSwitchboard).mockReturnValue(true);
-      vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false, isError: false, error: null });
+      vi.mocked(useUpgradeBannerExperiment).mockReturnValue({ showChatBanner: true, showPreviewBar: false, dismiss: mockDismiss });
 
       renderWithProviders(<ChatBanners appId="test-app" />);
 

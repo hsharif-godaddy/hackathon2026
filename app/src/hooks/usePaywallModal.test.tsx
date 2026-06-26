@@ -10,7 +10,7 @@ import { usePaywallModal } from './usePaywallModal';
 
 // Stable mock references to avoid destabilizing useMemo dependencies
 const mockOpenUpgradeModal = vi.fn();
-const mockGetSite = vi.fn(function () { return { name: 'Test Site' }; });
+const mockGetSite = vi.fn(function (): { name?: string; sharedWithMe?: boolean } | null { return { name: 'Test Site' }; });
 
 // Mock dependencies
 vi.mock('@/lib/logging', () => ({

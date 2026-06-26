@@ -366,14 +366,14 @@ describe('DomainBar', () => {
     it('should render dismiss button when domain suggestion is available', () => {
       const { container } = renderWithProviders(<DomainBar />);
 
-      const dismissButton = container.querySelector('button[aria-label="Dismiss domain suggestion"]');
+      const dismissButton = container.querySelector('button[aria-label="builder_preview_bar_dismiss"]');
       expect(dismissButton).toBeInTheDocument();
     });
 
     it('should hide DomainBar when dismiss button is clicked', async () => {
       const { container } = renderWithProviders(<DomainBar />);
 
-      const dismissButton = container.querySelector('button[aria-label="Dismiss domain suggestion"]');
+      const dismissButton = container.querySelector('button[aria-label="builder_preview_bar_dismiss"]');
       expect(dismissButton).toBeInTheDocument();
 
       fireEvent.click(dismissButton!);
@@ -387,7 +387,7 @@ describe('DomainBar', () => {
     it('should store dismissal state in sessionStorage', () => {
       const { container } = renderWithProviders(<DomainBar />);
 
-      const dismissButton = container.querySelector('button[aria-label="Dismiss domain suggestion"]');
+      const dismissButton = container.querySelector('button[aria-label="builder_preview_bar_dismiss"]');
       fireEvent.click(dismissButton!);
 
       expect(sessionStorage.getItem('domainbar_dismissed')).toBe('true');
@@ -396,7 +396,7 @@ describe('DomainBar', () => {
     it('should log analytics event when dismissed', () => {
       const { container } = renderWithProviders(<DomainBar />);
 
-      const dismissButton = container.querySelector('button[aria-label="Dismiss domain suggestion"]');
+      const dismissButton = container.querySelector('button[aria-label="builder_preview_bar_dismiss"]');
       fireEvent.click(dismissButton!);
 
       expect(shipAnalyticsLog).toHaveBeenCalledWith('domain.suggestion.dismissed', {

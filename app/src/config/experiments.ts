@@ -18,6 +18,8 @@ export const EXPERIMENT_IDS = {
   aabProgressTracker: 'aab_progress_tracker',
   /** Combine Upgrade + Publish into a single Publish button with an educational upsell popup. */
   combineUpgradeWithPublish: 'aab_combine_upgrade_with_publish',
+  /** Upgrade banner placement: chat panel (off) vs preview bar (on). Free users only. */
+  upgradeBannerPlacement: 'aab-upgrade-banner-placement',
 } as const
 
 /**

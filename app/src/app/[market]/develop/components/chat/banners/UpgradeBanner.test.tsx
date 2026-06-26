@@ -11,10 +11,8 @@ import userEvent from '@testing-library/user-event';
 
 import { PAYWALL_ITC } from '@/lib/paywall/shared';
 import { renderWithProviders } from '@/tests/test-utils';
-import { SubscriptionPlan } from '@/types/credits';
 import UpgradeBanner from './UpgradeBanner';
 
-// Custom render with i18n messages for testing link interactions
 function renderWithMessages(ui: React.ReactElement) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -36,44 +34,16 @@ function renderWithMessages(ui: React.ReactElement) {
 }
 
 const mockOpenUpgradeModal = vi.fn();
-
-vi.mock('@/hooks/usePaywallEligibility', () => ({
-  usePaywallEligibility: vi.fn(function () { return { showPaywall: true, isLoading: false, isError: false, error: null }; }),
-}));
-
-// Default: a non-shared app, so existing render cases are unaffected. The
-// invitee test overrides useSiteStore to return sharedWithMe: true.
-vi.mock('@/app/[market]/develop/components/utils', () => ({
-  useAppIdFromParams: vi.fn(function () { return 'app-1'; }),
-}));
-
-vi.mock('@/stores/useSiteStore', () => ({
-  useSiteStore: vi.fn(function (selector: any) {
-    return selector({ getSite: function () { return { sharedWithMe: false }; } });
-  }),
-}));
-
-vi.mock('@/hooks/useSwitchboard', () => ({
-  useSwitchboard: vi.fn(function () { return true; }),
-}));
-
-vi.mock('@/hooks/useSubscription', () => ({
-  useSubscription: vi.fn(function () { return {
-    data: null,
-    subscriptions: [],
-    isLoading: false,
-    isError: false,
-    error: null,
-    refetch: vi.fn(),
-  }; }),
-}));
+const mockOnDismiss = vi.fn();
 
 vi.mock('@/stores/usePaywallStore', () => ({
   usePaywallStore: (selector: any) => selector({ openUpgradeModal: mockOpenUpgradeModal }),
 }));
 
-vi.mock('@/lib/logging', () => ({
-  shipAnalyticsLog: vi.fn(),
+vi.mock('@/hooks/useTranslations', () => ({
+  useTranslations: vi.fn(function () {
+    return function (key: string, _values?: any, fallback?: string) { return fallback ?? key; };
+  }),
 }));
 
 const mockLogImpressionEvent = vi.fn(function (_eid: string) { return vi.fn(); });
@@ -85,156 +55,35 @@ vi.mock('@/utils/instrumentation', () => ({
 }));
 
 describe('UpgradeBanner', function upgradeBannerTests() {
-  beforeEach(async function setup() {
+  beforeEach(function setup() {
     vi.clearAllMocks();
-    localStorage.clear();
-    mockLogImpressionEvent.mockClear();
-    mockLogClickEvent.mockClear();
-    // clearAllMocks does not reset implementations — re-establish the default
-    // non-shared site so the invitee test's override doesn't leak to others.
-    const { useSiteStore } = await import('@/stores/useSiteStore');
-    vi.mocked(useSiteStore).mockImplementation(function (selector: any) {
-      return selector({ getSite: function () { return { sharedWithMe: false }; } });
-    });
   });
 
   describe('rendering', function renderingTests() {
-    it('should render when user does not have Airo Plus', async function renderWithoutAiroPlus() {
-      const { usePaywallEligibility } = await import('@/hooks/usePaywallEligibility');
-      const { useSwitchboard } = await import('@/hooks/useSwitchboard');
-
-      vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false, isError: false, error: null });
-      vi.mocked(useSwitchboard).mockReturnValue(true);
-
-      const { container } = renderWithProviders(<UpgradeBanner />);
-
-      await waitFor(function waitForBanner() {
-        expect(container.querySelector('.bg-intents-ux-feedbackInfo-feedbackColor')).toBeInTheDocument();
-      });
-    });
-
-    it('should not render for an invited collaborator (sharedWithMe) even when showPaywall is true', async function noRenderForInvitee() {
-      const { usePaywallEligibility } = await import('@/hooks/usePaywallEligibility');
-      const { useSwitchboard } = await import('@/hooks/useSwitchboard');
-      const { useSiteStore } = await import('@/stores/useSiteStore');
-
-      // showPaywall true would normally render the banner — the sharedWithMe
-      // render guard must suppress it for owner-pays invitees.
-      vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false, isError: false, error: null });
-      vi.mocked(useSwitchboard).mockReturnValue(true);
-      vi.mocked(useSiteStore).mockImplementation(function (selector: any) {
-        return selector({ getSite: function () { return { sharedWithMe: true }; } });
-      });
-
-      const { container } = renderWithProviders(<UpgradeBanner />);
-
-      expect(container.querySelector('.bg-intents-ux-feedbackInfo-feedbackColor')).not.toBeInTheDocument();
-    });
-
-    it('should not render when user has Ultimate plan', async function noRenderWithUltimate() {
-      const { usePaywallEligibility } = await import('@/hooks/usePaywallEligibility');
-      const { useSwitchboard } = await import('@/hooks/useSwitchboard');
-      const { useSubscription } = await import('@/hooks/useSubscription');
-
-      vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: false, isLoading: false, isError: false, error: null });
-      vi.mocked(useSwitchboard).mockReturnValue(true);
-      // Mock subscription with Ultimate plan - should not show upgrade for Ultimate users
-      vi.mocked(useSubscription).mockReturnValue({
-        data: {
-          id: 'sub-123',
-          productId: 'aab-v1',
-          customerId: 'cust-123',
-          plan: SubscriptionPlan.Ultimate,
-          status: 'active',
-          isTrial: false,
-          createdAt: '2026-01-01T00:00:00Z',
-          updatedAt: '2026-01-01T00:00:00Z',
-        },
-        subscriptions: [],
-        isLoading: false,
-        isError: false,
-        error: null,
-        refetch: vi.fn(),
-      });
-
-      const { container } = renderWithProviders(<UpgradeBanner />);
-
-      expect(container.querySelector('.bg-intents-ux-feedbackInfo-feedbackColor')).not.toBeInTheDocument();
-    });
-
-    it('should not render when feature flag is disabled', async function noRenderWhenFlagDisabled() {
-      const { usePaywallEligibility } = await import('@/hooks/usePaywallEligibility');
-      const { useSwitchboard } = await import('@/hooks/useSwitchboard');
-
-      vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false, isError: false, error: null });
-      vi.mocked(useSwitchboard).mockReturnValue(false);
-
-      const { container } = renderWithProviders(<UpgradeBanner />);
-
-      expect(container.querySelector('.bg-intents-ux-feedbackInfo-feedbackColor')).not.toBeInTheDocument();
-    });
-
-    it('should not render when already dismissed today', async function noRenderWhenDismissedToday() {
-      const { usePaywallEligibility } = await import('@/hooks/usePaywallEligibility');
-      const { useSwitchboard } = await import('@/hooks/useSwitchboard');
-
-      vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false, isError: false, error: null });
-      vi.mocked(useSwitchboard).mockReturnValue(true);
-
-      // Mark as dismissed today (using same format as component: local date in YYYY-MM-DD)
-      const today = new Date().toLocaleDateString('en-CA');
-      localStorage.setItem('airoplus_upgrade_banner_dismissed', today);
-
-      const { container } = renderWithProviders(<UpgradeBanner />);
-
-      expect(container.querySelector('.bg-intents-ux-feedbackInfo-feedbackColor')).not.toBeInTheDocument();
-    });
-
-    it('should render upgrade message', async function renderMessage() {
-      const { usePaywallEligibility } = await import('@/hooks/usePaywallEligibility');
-      const { useSwitchboard } = await import('@/hooks/useSwitchboard');
-
-      vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false, isError: false, error: null });
-      vi.mocked(useSwitchboard).mockReturnValue(true);
-
+    it('should render the upgrade message', function renderMessage() {
       renderWithProviders(<UpgradeBanner />);
 
-      await waitFor(function waitForMessage() {
-        // FormattedMessage renders the message ID when no translations are provided
-        expect(screen.getByText('builder_airoplus_upgrade_message')).toBeInTheDocument();
-      });
+      expect(screen.getByText('builder_airoplus_upgrade_message')).toBeInTheDocument();
+    });
+
+    it('should render with info variant styling', function renderInfoVariant() {
+      const { container } = renderWithProviders(<UpgradeBanner />);
+
+      expect(container.querySelector('.bg-intents-ux-feedbackInfo-feedbackColor')).toBeInTheDocument();
     });
   });
 
   describe('interactions', function interactionTests() {
-    it('should dismiss when close button is clicked', async function dismissOnClose() {
-      const { usePaywallEligibility } = await import('@/hooks/usePaywallEligibility');
-      const { useSwitchboard } = await import('@/hooks/useSwitchboard');
-
-      vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false, isError: false, error: null });
-      vi.mocked(useSwitchboard).mockReturnValue(true);
-
-      const { user, container } = renderWithProviders(<UpgradeBanner />);
-
-      await waitFor(function waitForBanner() {
-        expect(container.querySelector('.bg-intents-ux-feedbackInfo-feedbackColor')).toBeInTheDocument();
-      });
+    it('should call onDismiss when close button is clicked', async function dismissOnClose() {
+      const { user } = renderWithProviders(<UpgradeBanner onDismiss={mockOnDismiss} />);
 
       const closeButton = screen.getByRole('button');
       await user.click(closeButton);
 
-      await waitFor(function waitForDismiss() {
-        expect(container.querySelector('.bg-intents-ux-feedbackInfo-feedbackColor')).not.toBeInTheDocument();
-      });
+      expect(mockOnDismiss).toHaveBeenCalled();
     });
 
     it('should call openUpgradeModal when upgrade link is clicked', async function clickUpgradeLink() {
-      const { usePaywallEligibility } = await import('@/hooks/usePaywallEligibility');
-      const { useSwitchboard } = await import('@/hooks/useSwitchboard');
-
-      vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false, isError: false, error: null });
-      vi.mocked(useSwitchboard).mockReturnValue(true);
-
       const { user } = renderWithMessages(<UpgradeBanner />);
 
       await waitFor(function waitForLink() {
@@ -248,34 +97,14 @@ describe('UpgradeBanner', function upgradeBannerTests() {
   });
 
   describe('analytics', function analyticsTests() {
-    it('should log impression event when banner is shown', async function logImpressionOnShow() {
-      const { usePaywallEligibility } = await import('@/hooks/usePaywallEligibility');
-      const { useSwitchboard } = await import('@/hooks/useSwitchboard');
-
-      vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false, isError: false, error: null });
-      vi.mocked(useSwitchboard).mockReturnValue(true);
-
-      const { container } = renderWithProviders(<UpgradeBanner />);
-
-      await waitFor(function waitForBanner() {
-        expect(container.querySelector('.bg-intents-ux-feedbackInfo-feedbackColor')).toBeInTheDocument();
-      });
+    it('should log impression event on mount', function logImpressionOnMount() {
+      renderWithProviders(<UpgradeBanner />);
 
       expect(mockLogImpressionEvent).toHaveBeenCalledWith('chat.upgradeBanner.view');
     });
 
     it('should log click event when close button is clicked', async function logClickOnClose() {
-      const { usePaywallEligibility } = await import('@/hooks/usePaywallEligibility');
-      const { useSwitchboard } = await import('@/hooks/useSwitchboard');
-
-      vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false, isError: false, error: null });
-      vi.mocked(useSwitchboard).mockReturnValue(true);
-
-      const { user, container } = renderWithProviders(<UpgradeBanner />);
-
-      await waitFor(function waitForBanner() {
-        expect(container.querySelector('.bg-intents-ux-feedbackInfo-feedbackColor')).toBeInTheDocument();
-      });
+      const { user } = renderWithProviders(<UpgradeBanner onDismiss={mockOnDismiss} />);
 
       const closeButton = screen.getByRole('button');
       await user.click(closeButton);
@@ -284,12 +113,6 @@ describe('UpgradeBanner', function upgradeBannerTests() {
     });
 
     it('should log click event when upgrade link is clicked', async function logClickOnUpgrade() {
-      const { usePaywallEligibility } = await import('@/hooks/usePaywallEligibility');
-      const { useSwitchboard } = await import('@/hooks/useSwitchboard');
-
-      vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false, isError: false, error: null });
-      vi.mocked(useSwitchboard).mockReturnValue(true);
-
       const { user } = renderWithMessages(<UpgradeBanner />);
 
       await waitFor(function waitForLink() {

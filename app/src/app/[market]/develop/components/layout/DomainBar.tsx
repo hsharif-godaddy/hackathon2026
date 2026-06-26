@@ -5,10 +5,10 @@ import { postToSapi } from '@site/buttons/lib/services/DomainServices'
 import { useQuery } from '@tanstack/react-query'
 import Button from '@ux/button'
 import Growl from '@ux/growl'
-import XIcon from '@ux/icon/x'
 import Spinner from '@ux/spinner'
 import text from '@ux/text'
 
+import PreviewBar from '@/app/[market]/develop/components/preview-banners/PreviewBar'
 import { ChatTab } from '@/app/[market]/develop/components/types'
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils'
 import DomainCheckoutModal from '@/app/[market]/develop/components/widgets/DomainCheckoutModal'
@@ -352,42 +352,31 @@ export default function DomainBar() {
           onClose={handleCheckoutClose}
         />
       )}
-      <div
-      className="mx-2 px-1 py-0.5 rounded-t-lg leading-none bg-ai text-intents-ux-boxHighContrast-foregroundColor flex items-center justify-between gap-2"
-    >
-      <text.div size={-1} className="truncate grow text-center">
-        <FormattedMessage
-          id="builder_custom_domain_suggestion_available_domain"
-          values={{
-            domain: (
-              <Button
-                design="inline"
-                size="sm"
-                text={suggestedDomain}
-                onClick={handleSuggestedDomainClick}
-                disabled={isAddingToCart}
-                data-eid={generateClickEID('develop.preview.suggested_domain_connect')}
-                className="!text-intents-ux-boxHighContrast-foregroundColor"
-              />
-            ),
-            strong: (chunks) => <text.strong>{chunks}</text.strong>,
-            passive: (chunks) => <text.span emphasis="passive">{chunks}</text.span>,
-          }}
-        />
-      </text.div>
-      {isAddingToCart && (
-        <Spinner size="sm" className="shrink-0" aria-label="Adding domain to cart" />
-      )}
-      <Button
-        design="inline"
-        size="sm"
-        onClick={handleDismiss}
-        icon={<XIcon className="!size-2" />}
-        data-eid={generateClickEID('develop.preview.domain_bar_dismiss')}
-        aria-label="Dismiss domain suggestion"
-        className="!text-intents-ux-boxHighContrast-foregroundColor shrink-0"
-      />
-      </div>
+      <PreviewBar onClose={handleDismiss} closeEid={generateClickEID('develop.preview.domain_bar_dismiss')}>
+        <text.div size={-1} className="truncate grow text-center">
+          <FormattedMessage
+            id="builder_custom_domain_suggestion_available_domain"
+            values={{
+              domain: (
+                <Button
+                  design="inline"
+                  size="sm"
+                  text={suggestedDomain}
+                  onClick={handleSuggestedDomainClick}
+                  disabled={isAddingToCart}
+                  data-eid={generateClickEID('develop.preview.suggested_domain_connect')}
+                  className="!text-intents-ux-boxHighContrast-foregroundColor"
+                />
+              ),
+              strong: (chunks) => <text.strong>{chunks}</text.strong>,
+              passive: (chunks) => <text.span emphasis="passive">{chunks}</text.span>,
+            }}
+          />
+        </text.div>
+        {isAddingToCart && (
+          <Spinner size="sm" className="shrink-0" aria-label="Adding domain to cart" />
+        )}
+      </PreviewBar>
     </>
   )
 }
