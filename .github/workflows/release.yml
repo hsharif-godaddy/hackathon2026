@@ -26,7 +26,10 @@ run-name: '${{ inputs.dry_run && ''[DRY] '' || '''' }}Release #${{ github.run_nu
 
 on:
   schedule:
-    - cron: '0 0,6,12,18 * * 1-5' # 00/06/12/18 UTC, Mon–Fri
+    # 00/06/12/18/21 UTC, Mon–Fri. The 21:00 train splits the US-afternoon merge
+    # peak (18→00 UTC window) off the 00:00 train, which carried ~2× every other
+    # train's PR load. Trains are 6h apart except the 18→21→00 stretch (3h each).
+    - cron: '0 0,6,12,18,21 * * 1-5'
   workflow_dispatch:
     inputs:
       branch:

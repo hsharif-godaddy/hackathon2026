@@ -4,7 +4,7 @@ The automated release pipeline runs the Go `release-manager` binary in **headles
 
 ## TL;DR
 
-- **Cadence:** every 6h on weekdays (00/06/12/18 UTC, Mon–Fri). The `preflight` job skips cleanly when there are no commits since the last GitHub release.
+- **Cadence:** 5×/weekday at **00/06/12/18/21 UTC** (Mon–Fri). The 21:00 train was added to split the US-afternoon merge peak (the 18→00 UTC window) off the 00:00 train, which otherwise shipped ~2× every other train's PR load; trains are 6h apart except the 18→21→00 stretch (3h each), so an un-approved release is now superseded within ~3h there rather than 6h. The `preflight` job skips cleanly when there are no commits since the last GitHub release.
 - **Two headless invocations with an approval gate between them:**
   `preflight → test-phase → approve-prod → prod-phase` (+ a `slack-failure` backstop).
   The test phase runs to completion and **exits**; the pipeline pauses at the `approve-prod` GitHub Environment. A reviewer approves in the browser and can **close the tab** — the prod phase runs unattended.

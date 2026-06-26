@@ -17,7 +17,7 @@ name: Release Supersede
 
 on:
   schedule:
-    - cron: '0 0,6,12,18 * * 1-5' # same ticks as release.yml
+    - cron: '0 0,6,12,18,21 * * 1-5' # same ticks as release.yml (incl. the 21:00 train)
   workflow_dispatch:
     inputs:
       min_age_minutes:
