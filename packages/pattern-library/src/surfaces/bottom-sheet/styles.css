@@ -23,6 +23,32 @@
  *   import '@airo-ux/pattern-library/surfaces/bottom-sheet/styles';
  * ----------------------------------------------------------------------- */
 
+/* Top-layer host — promoted to the browser top layer via the Popover API
+ * (`popover="manual"` + `showPopover()` in BottomSheet.tsx). The top layer
+ * paints above all positively-stacked page content (e.g. a docked panel at
+ * z-index:200) WITHOUT a z-index of our own, which is the only reliable way to
+ * escape an arbitrary stacking order — @ux/disrupt's portal-to-<body> relies on
+ * DOM order and loses to positive z-indexes. This element is a transparent,
+ * layout-neutral wrapper; the scrim and sheet inside own their own fixed
+ * positioning, and their paint order is DOM order (scrim, then sheet). The UA
+ * popover box and ::backdrop are reset since we render our own scrim. */
+.airo-surfaces-bottom-sheet__layer {
+  position: fixed;
+  inset: 0;
+  margin: 0;
+  border: 0;
+  padding: 0;
+  max-inline-size: none;
+  max-block-size: none;
+  overflow: visible;
+  background: none;
+  pointer-events: none;
+}
+
+.airo-surfaces-bottom-sheet__layer::backdrop {
+  background: none;
+}
+
 /* Scrim — sibling of the sheet inside the Disrupt content wrapper. Disrupt's
  * `fullScreenChildren` mode strips its own backdrop styling, so we render this
  * element to provide the dim-and-fade-in backdrop and a tap-to-close target.
@@ -34,7 +60,7 @@
   background: intent('ux.boxHighContrastOverlay.backgroundColor');
   opacity: 0;
   transition: opacity 0.2s cubic-bezier(0.2, 0, 0, 1);
-  z-index: 0;
+  pointer-events: auto;
   will-change: opacity;
 }
 
@@ -71,7 +97,7 @@
   transform: translateY(100%);
   transition: transform 0.25s cubic-bezier(0.2, 0, 0, 1);
   will-change: transform;
-  z-index: 1;
+  pointer-events: auto;
 }
 
 .airo-surfaces-bottom-sheet__sheet--open {

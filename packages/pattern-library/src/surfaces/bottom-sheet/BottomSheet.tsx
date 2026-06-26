@@ -4,7 +4,7 @@ import Disrupt from '@ux/disrupt';
 import AsyncIcon from '@ux/icon/async-icon.js';
 import TextLockup from '@ux/text-lockup';
 import classnames from 'classnames';
-import { type HTMLAttributes, type ReactNode, useCallback, useEffect, useId, useState } from 'react';
+import { type HTMLAttributes, type ReactNode, useCallback, useEffect, useId, useRef, useState } from 'react';
 
 import { DragHandle } from '../../primitives/drag-handle';
 
@@ -45,12 +45,12 @@ interface BottomSheetBaseProps
    */
   closeLabel?: string;
   /**
-   * Show the header dismiss (X) button.
-   *
-   * Set to `false` for a chromeless sheet dismissed by tapping the scrim or
-   * pressing Escape (e.g. a command palette). When `false` and no `title` is
-   * given, the header is omitted entirely — leaving only the decorative drag
-   * handle, which signals dismissibility but is not itself interactive.
+   * Whether to render the header's dismiss (X) button. Disable it for a
+   * chromeless sheet dismissed by scrim tap, Escape, or the drag-handle
+   * affordance — e.g. a command palette, or a sheet whose body carries its own
+   * primary action. Escape-to-close still works when hidden. When `false` and
+   * no `title` is given, the header bar is omitted entirely, leaving just the
+   * decorative drag handle (which signals dismissibility but isn't interactive).
    * @default true
    */
   showCloseButton?: boolean;
@@ -146,6 +146,27 @@ export function BottomSheet({
     return () => cancelAnimationFrame(raf);
   }, [isOpen]);
 
+  // Top-layer promotion. `@ux/disrupt` portals to <body> and uses NO z-index —
+  // it relies on being the last positioned subtree in the DOM. That loses to
+  // any page element with a positive z-index (e.g. a docked `FloatingPanel` at
+  // z-index:200), which paints over the portal regardless of DOM order. The
+  // browser top layer is the only way to sit above arbitrary positive z-indexes
+  // without picking a z-index of our own: promote the scrim+sheet wrapper via
+  // the Popover API. Closing unmounts the wrapper, which removes it from the
+  // top layer; `showPopover` is feature-detected so jsdom (no Popover API) and
+  // SSR are no-ops.
+  const layerRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!isOpen) return;
+    const layer = layerRef.current;
+    if (!layer || typeof layer.showPopover !== 'function') return;
+    try {
+      layer.showPopover();
+    } catch {
+      // Already open or not yet connected — safe to ignore.
+    }
+  }, [isOpen]);
+
   // Escape-to-close. `@ux/disrupt` only fires its own Escape handler when focus
   // sits inside the locked region; we open with `autoFocus: false` (no forced
   // focus jump on a tap-opened sheet), so we wire Escape explicitly at the
@@ -186,28 +207,34 @@ export function BottomSheet({
       onClose={handleClose}
       fullScreenChildren
     >
-      {/* Scrim — sibling of the sheet. Disrupt's `fullScreenChildren` strips its
-          own backdrop styling, so we render this dim-and-fade-in tap target.
-          Keyboard users dismiss via Escape (the document-level handler above). */}
-      {/* biome-ignore lint/a11y/useKeyWithClickEvents: role="presentation" is intentionally non-interactive for keyboard users; Escape-to-close is handled by the document-level keydown handler above */}
-      <div
-        role="presentation"
-        className={classnames('airo-surfaces-bottom-sheet__scrim', {
-          'airo-surfaces-bottom-sheet__scrim--open': sheetOpen,
-        })}
-        onClick={handleClose}
-      />
-      <div
-        {...rest}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={labelledById}
-        className={classnames(
-          'airo-surfaces-bottom-sheet__sheet',
-          { 'airo-surfaces-bottom-sheet__sheet--open': sheetOpen },
-          className,
-        )}
-      >
+      {/* Top-layer host. `popover="manual"` + `showPopover()` (see effect above)
+          lifts the scrim + sheet into the browser top layer so they paint above
+          positively-stacked page content without a z-index. Transparent and
+          layout-neutral — the scrim and sheet inside own their own fixed
+          positioning. */}
+      <div ref={layerRef} popover="manual" className="airo-surfaces-bottom-sheet__layer">
+        {/* Scrim — sibling of the sheet. Disrupt's `fullScreenChildren` strips its
+            own backdrop styling, so we render this dim-and-fade-in tap target.
+            Keyboard users dismiss via Escape (the document-level handler above). */}
+        {/* biome-ignore lint/a11y/useKeyWithClickEvents: role="presentation" is intentionally non-interactive for keyboard users; Escape-to-close is handled by the document-level keydown handler above */}
+        <div
+          role="presentation"
+          className={classnames('airo-surfaces-bottom-sheet__scrim', {
+            'airo-surfaces-bottom-sheet__scrim--open': sheetOpen,
+          })}
+          onClick={handleClose}
+        />
+        <div
+          {...rest}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby={labelledById}
+          className={classnames(
+            'airo-surfaces-bottom-sheet__sheet',
+            { 'airo-surfaces-bottom-sheet__sheet--open': sheetOpen },
+            className,
+          )}
+        >
         {/* Decorative grab-handle pill, centered at the top edge. The sheet is
             not itself draggable; the handle is the familiar affordance that this
             surface is dismissible (scrim tap / Escape / X). `aria-hidden`. */}
@@ -236,7 +263,8 @@ export function BottomSheet({
             ) : null}
           </div>
         ) : null}
-        <div className="airo-surfaces-bottom-sheet__body">{children}</div>
+          <div className="airo-surfaces-bottom-sheet__body">{children}</div>
+        </div>
       </div>
     </Disrupt>
   );

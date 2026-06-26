@@ -3,6 +3,7 @@
 import { usePathname } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FormattedMessage } from 'react-intl';
+import { ResponsivePopover } from '@airo-ux/pattern-library/surfaces/responsive-popover';
 import Alert from '@ux/alert';
 import Box from '@ux/box';
 import Button from '@ux/button';
@@ -63,7 +64,6 @@ import { openPostPublishFeatureSelectionInChat } from '@/lib/post-publish-featur
 import { getPublishLimit } from '@/lib/publish-limit';
 import { logger } from '@/lib/request-context';
 import { markSettingsNotification } from '@/lib/settings-notifications-storage';
-import { Popover, PopoverContent, PopoverTrigger } from '@/lib/shadcn/popover';
 import { Separator } from '@/lib/shadcn/separator';
 import { PublishComplianceBlockReason } from '@/lib/subscription';
 import { cn } from '@/lib/utils';
@@ -1094,8 +1094,16 @@ export default function AppPublish({ location = 'develop' }: { location?: string
       )}
       {paywallModal}
       {dnsConflictModal}
-      <Popover open={open} onOpenChange={handlePublish}>
-        <PopoverTrigger asChild>
+      <ResponsivePopover
+        open={open}
+        onOpenChange={handlePublish}
+        isMobile={isMobile}
+        placement='bottom-end'
+        popoverClassName={showDomainSelector ? 'w-[400px]' : 'w-[350px]'}
+        showSheetCloseButton={false}
+        aria-label={t('builder_publish_popover_title')}
+        data-testid='publish-popover'
+        renderTrigger={(triggerProps) => (
           <Button
             id="tour-publish-button"
             data-testid="publish-trigger-button"
@@ -1105,21 +1113,17 @@ export default function AppPublish({ location = 'develop' }: { location?: string
             icon={getTriggerButtonIcon()}
             text={isPublishingOrDeploying || isIconOnlyChatToolbarTrigger ? undefined : getPublishButtonText()}
             aria-label={getPublishButtonText()}
+            aria-haspopup={triggerProps['aria-haspopup']}
+            aria-expanded={triggerProps['aria-expanded']}
+            onClick={triggerProps.onClick}
             className="!rounded-xmd !pt-0 !pb-0 !pl-1.5 !pr-1.5 sm:!p-1 !border-none md:!border-solid"
           />
-        </PopoverTrigger>
-        <PopoverContent
-          align='end'
-          className={cn(
-            'p-3',
-            showDomainSelector ? 'w-[400px]' : 'w-[350px]',
-          )}
-        >
-          <div className='flex flex-col gap-1'>
+        )}
+      >
+          <Box orientation='vertical' displayType='flex' inlinePadding='lg' blockPadding='lg' gap='md'>
             <TextLockup
               title={t('builder_publish_popover_title')}
               size='sm'
-              className='mb-1'
             >
               {isFirstTimePublishing && publishLimit !== null && publishLimit > 0 && (
                 <FormattedMessage
@@ -1225,7 +1229,7 @@ export default function AppPublish({ location = 'develop' }: { location?: string
 
             {/* Explanation that domain connect/edit relies on publishing */}
             {isFirstTimePublishing && (
-              <text.p as='caption' size={-1} className='mt-1'>
+              <text.p as='caption' size={-1}>
                 {t('builder_publish_unpublished_domain_info')}
               </text.p>
             )}
@@ -1321,7 +1325,7 @@ export default function AppPublish({ location = 'develop' }: { location?: string
             {isSecurityScanUiEnabled && !securityFooterDismissed && (isPublishingOrDeploying || isSecurityAnalysisRunning || securityAnalysisResult !== null) && (
               <>
                 <Separator />
-                <div className='-mx-3 -mb-3 px-3 py-3 bg-intents-ux-boxLowContrast-backgroundColor rounded-b-md flex items-start gap-2'>
+                <div className='-mx-5 -mb-5 px-5 py-3 bg-intents-ux-boxLowContrast-backgroundColor rounded-b-md flex items-start gap-2'>
                   <div className='shrink-0 mt-0.5'>
                     {securityFooterVariant === 'running' ? (
                       <Spinner size='sm' data-partial='componentAiro' />
@@ -1356,9 +1360,8 @@ export default function AppPublish({ location = 'develop' }: { location?: string
                 </div>
               </>
             )}
-          </div>
-        </PopoverContent>
-      </Popover>
+          </Box>
+      </ResponsivePopover>
     </>
   )
 }

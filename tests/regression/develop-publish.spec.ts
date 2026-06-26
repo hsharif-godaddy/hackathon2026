@@ -418,9 +418,11 @@ test.describe('Publish Flow', () => {
 
     console.log('🧪 Step 3: Publish with DNS checkbox unchecked should send dnsUpdateConsent=false...');
     await publishTrigger.click();
-    // The publish UI is a Popover, not a dialog — scope to the open popover
-    // content pane, not getByRole('dialog') which matches nothing here.
-    const publishPopover = page.locator('[data-slot="popover-content"][data-state="open"]');
+    // The publish UI is a ResponsivePopover (an @ux/flyout pane on desktop, a
+    // bottom sheet on mobile); scope to its stable test id rather than the old
+    // shadcn `data-slot="popover-content"`, which the flyout does not emit. The
+    // element only renders while open, so no `[data-state="open"]` is needed.
+    const publishPopover = page.locator('[data-testid="publish-popover"]');
     await expect(publishPopover.getByText(/builder_publish_popover_title|Publish your (app|project)/i)).toBeVisible({
       timeout: DEFAULT_TIMEOUT,
     });

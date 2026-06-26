@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 
 /**
- * Internal media-query breakpoint for `ResponsiveMenu`'s desktop↔mobile swap.
- * Matches the consuming app's `sm` breakpoint (< 640px ⇒ mobile).
+ * Internal media-query breakpoint for the package's desktop↔mobile surface
+ * swaps (e.g. `ResponsiveMenu`, `ResponsivePopover`). Matches the consuming
+ * app's `sm` breakpoint (< 640px ⇒ mobile).
  */
 const MOBILE_QUERY = '(max-width: 639px)';
 
@@ -13,7 +14,8 @@ const MOBILE_QUERY = '(max-width: 639px)';
  *
  * Kept self-contained inside the package — pattern-library components must not
  * import from the consuming app. Consumers with their own breakpoint source
- * can bypass this entirely via `ResponsiveMenu`'s `isMobile` prop.
+ * can bypass this entirely via the `isMobile` prop on the components that use
+ * it (`ResponsiveMenu`, `ResponsivePopover`).
  */
 export function useIsMobile(): boolean {
   const [isMobile, setIsMobile] = useState(false);

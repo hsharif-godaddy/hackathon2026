@@ -8,6 +8,9 @@
 @import '@airo-ux/pattern-library/input/secrets-form/styles';
 @import '@airo-ux/pattern-library/input/prompt-stage/styles';
 @import '@airo-ux/pattern-library/surfaces/floating-footer/styles';
+/* ResponsivePopover (AppPublish publish popover) renders a BottomSheet on mobile, so both stylesheets are required */
+@import '@airo-ux/pattern-library/surfaces/responsive-popover/styles';
+@import '@airo-ux/pattern-library/surfaces/bottom-sheet/styles';
 /* FloatingPanel (debug stats drawer) requires BOTH its own styles and panel-chrome styles */
 @import '@airo-ux/pattern-library/surfaces/floating-panel/styles';
 @import '@airo-ux/pattern-library/surfaces/panel-chrome/styles';

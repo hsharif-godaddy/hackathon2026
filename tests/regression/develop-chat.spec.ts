@@ -181,9 +181,10 @@ test.describe('Develop Page', () => {
     await headerPublishButton.click({ force: true });
 
     // Anchor "popover opened" on the popover container + its publish button
-    // (role-based) rather than the localized title text — the title copy regex
-    // was a flaky selector and the title still lacks a stable test id.
-    const publishPopover = page.locator('[data-slot="popover-content"][data-state="open"]');
+    // (role-based) rather than the localized title text. The publish UI is now a
+    // ResponsivePopover (@ux/flyout on desktop), so scope to its stable test id
+    // rather than the old shadcn `data-slot="popover-content"` it no longer emits.
+    const publishPopover = page.locator('[data-testid="publish-popover"]');
     await expect(publishPopover).toBeVisible({ timeout: DEFAULT_TIMEOUT });
 
     const popoverPublishButton = publishPopover.getByRole('button', {

@@ -119,6 +119,12 @@
       "require": "./dist/surfaces/bottom-sheet/index.cjs"
     },
     "./surfaces/bottom-sheet/styles": "./dist/surfaces/bottom-sheet/styles.css",
+    "./surfaces/responsive-popover": {
+      "types": "./dist/surfaces/responsive-popover/index.d.ts",
+      "import": "./dist/surfaces/responsive-popover/index.js",
+      "require": "./dist/surfaces/responsive-popover/index.cjs"
+    },
+    "./surfaces/responsive-popover/styles": "./dist/surfaces/responsive-popover/styles.css",
     "./input/responsive-menu": {
       "types": "./dist/input/responsive-menu/index.d.ts",
       "import": "./dist/input/responsive-menu/index.js",

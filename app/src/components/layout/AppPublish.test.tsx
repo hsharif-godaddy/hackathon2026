@@ -19,6 +19,17 @@ vi.mock('react-intl', async (importOriginal) => {
   };
 });
 
+// On mobile the publish popover renders via ResponsivePopover → BottomSheet,
+// whose `@ux/disrupt` overlay does not render under the React 19 peers in
+// jsdom. Mock it as a passthrough so the mobile-viewport tests below can
+// exercise the popover content. (Matches the BottomSheet/ResponsiveMenu suites.)
+vi.mock('@ux/disrupt', () => ({
+  default: ({ children }: { children?: ReactNode }) => <>{children}</>,
+}));
+vi.mock('@ux/icon/async-icon.js', () => ({
+  default: ({ icon }: { icon: string }) => <svg data-testid={`icon-${icon}`} />,
+}));
+
 import { ChatTab, MobileMode, SettingsSection, ViewMode } from '@/app/[market]/develop/components/types';
 import AppPublish from '@/components/layout/AppPublish';
 import { shipAnalyticsLog } from '@/lib/logging';
@@ -436,6 +447,40 @@ describe('AppPublish', () => {
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'builder_publish_button' })).not.toHaveTextContent('builder_publish_button');
     });
+  });
+
+  it('should render the publish popover inside a bottom sheet on mobile', async function mobileRendersBottomSheet() {
+    const { rerender } = renderWithProviders(<AppPublish location="develop.chat_toolbar" />);
+
+    mockDevelopStore.isMobile = true;
+    mockDevelopStore.publishStates['app-123'] = { publishPopoverRequestNonce: 1 };
+    rerender(<AppPublish location="develop.chat_toolbar" />);
+
+    await waitFor(() => {
+      expect(screen.getByText('builder_publish_popover_title')).toBeInTheDocument();
+    });
+    expect(document.body.querySelector('.airo-surfaces-bottom-sheet__sheet')).not.toBeNull();
+    expect(document.body.querySelector('.airo-surfaces-responsive-popover__flyout')).toBeNull();
+    // E2E regression specs scope the publish popover by this test id; keep it
+    // present on the mobile sheet (the shadcn data-slot is gone post-flyout).
+    expect(document.body.querySelector('[data-testid="publish-popover"]')).not.toBeNull();
+  });
+
+  it('should render the publish popover as an anchored flyout (not a sheet) on desktop', async function desktopRendersFlyout() {
+    const { rerender } = renderWithProviders(<AppPublish location="develop" />);
+
+    mockDevelopStore.isMobile = false;
+    mockDevelopStore.publishStates['app-123'] = { publishPopoverRequestNonce: 1 };
+    rerender(<AppPublish location="develop" />);
+
+    await waitFor(() => {
+      expect(screen.getByText('builder_publish_popover_title')).toBeInTheDocument();
+    });
+    expect(document.body.querySelector('.airo-surfaces-responsive-popover__flyout')).not.toBeNull();
+    expect(document.body.querySelector('.airo-surfaces-bottom-sheet__sheet')).toBeNull();
+    // E2E regression specs scope the publish popover by this test id; keep it
+    // present on the desktop flyout (replaces the removed shadcn data-slot).
+    expect(document.body.querySelector('[data-testid="publish-popover"]')).not.toBeNull();
   });
 
   it('should skip nonce opens for header instance on mobile', async function mobileSkipsHeaderNonce() {

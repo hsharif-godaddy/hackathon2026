@@ -155,6 +155,44 @@ describe('BottomSheet', () => {
       expect(onClose).toHaveBeenCalledTimes(1);
     });
 
+    it('omits the dismiss (X) button when showCloseButton is false', () => {
+      render(
+        <BottomSheet defaultShow title="Actions" showCloseButton={false}>
+          body
+        </BottomSheet>,
+      );
+      expect(screen.queryByRole('button', { name: 'Close' })).toBeNull();
+      // Escape still closes — the sheet stays dismissible without the X.
+      expect(querySheet()).not.toBeNull();
+      fireEvent.keyDown(document, { key: 'Escape' });
+      expect(querySheet()).toBeNull();
+    });
+
+    it('omits the header entirely when there is no title and no close button', () => {
+      render(
+        <BottomSheet defaultShow aria-label="Publish" showCloseButton={false}>
+          <span data-testid="sheet-body">body</span>
+        </BottomSheet>,
+      );
+      expect(document.body.querySelector('.airo-surfaces-bottom-sheet__header')).toBeNull();
+      // The sheet + body still render; the drag handle remains as the affordance.
+      expect(querySheet()).not.toBeNull();
+      expect(screen.getByTestId('sheet-body')).toBeInTheDocument();
+      expect(
+        document.body.querySelector('.airo-surfaces-bottom-sheet__drag-handle'),
+      ).not.toBeNull();
+    });
+
+    it('still renders the header when a title is present but the close button is hidden', () => {
+      render(
+        <BottomSheet defaultShow title="Publish" showCloseButton={false}>
+          body
+        </BottomSheet>,
+      );
+      expect(document.body.querySelector('.airo-surfaces-bottom-sheet__header')).not.toBeNull();
+      expect(screen.queryByRole('button', { name: 'Close' })).toBeNull();
+    });
+
     it('renders a decorative (aria-hidden) drag handle', () => {
       render(
         <BottomSheet defaultShow title="Actions">

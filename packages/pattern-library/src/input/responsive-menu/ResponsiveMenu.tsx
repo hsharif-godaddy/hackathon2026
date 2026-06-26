@@ -14,7 +14,7 @@ import {
 } from 'react';
 
 import { BottomSheet } from '../../surfaces/bottom-sheet';
-import { useIsMobile } from './use-is-mobile';
+import { useIsMobile } from '../../utils/use-is-mobile';
 
 // ─── Item + trigger model ───────────────────────────────────────────────────
 

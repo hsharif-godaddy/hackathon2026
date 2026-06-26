@@ -1,0 +1,30 @@
+/* --------------------------------------------------------------------------
+ * ResponsivePopover — anchored popover (desktop) / bottom sheet (mobile) that
+ * renders the same content in either surface.
+ *
+ * The desktop surface chrome (background, border, shadow, rounding, arrow-less
+ * positioning) is owned by `@ux/flyout`; the mobile surface is owned by
+ * `BottomSheet`. This stylesheet only adds the thin glue this composition
+ * needs: an inline anchor wrapper that the flyout attaches to without
+ * disturbing trigger layout. Width/padding of the desktop content live on the
+ * consumer-supplied `popoverClassName`, so no fixed geometry is hardcoded here.
+ *
+ * Class names use the `airo-surfaces-responsive-popover__<part>` BEM prefix so
+ * they cannot collide with consumer app styles.
+ *
+ *   import '@airo-ux/pattern-library/surfaces/responsive-popover/styles';
+ * ----------------------------------------------------------------------- */
+
+/* Anchor wrapper — the flyout positions against this element. `inline-flex`
+ * keeps it shrink-wrapped to the trigger so it does not change inline layout
+ * or introduce extra line-box height around the trigger button. */
+.airo-surfaces-responsive-popover__anchor {
+  display: inline-flex;
+}
+
+/* Desktop content wrapper inside the flyout. Layout-only: the consumer's
+ * `popoverClassName` supplies width and padding; this rule just lets that
+ * content own the block axis cleanly. */
+.airo-surfaces-responsive-popover__content {
+  display: block;
+}

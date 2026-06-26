@@ -4,6 +4,8 @@ import Button from '@ux/button';
 import Growl from '@ux/growl';
 import '@ux/growl/styles';
 import AsyncIcon from '@ux/icon/async-icon.js';
+import text from '@ux/text';
+import TextInput from '@ux/text-input';
 import TextLockup from '@ux/text-lockup';
 import {
   type CSSProperties,
@@ -42,6 +44,9 @@ import '../canvas/styles.css';
 import { FloatingFooter } from '../floating-footer';
 import '../floating-footer/styles.css';
 import '../panel-chrome/styles.css';
+import { ResponsivePopover } from '../responsive-popover';
+import '../responsive-popover/styles.css';
+import '../bottom-sheet/styles.css';
 import type { FloatingPanelDockedTo } from './FloatingPanel';
 import { FloatingPanel } from './index';
 import './styles.css';
@@ -203,6 +208,65 @@ function FloatingChatHeader({ title, onClose }: { title: string; onClose: () => 
   );
 }
 
+// ── Publish popover body ──────────────────────────────────────────────────
+
+/**
+ * The Airo Builder publish popover, recomposed from its UXCore parts — the
+ * title lockup, a "last publish" shortcut, the read-only domain field with
+ * edit / open-in-new-tab actions, and the primary publish action. This mirrors
+ * the app's `AppPublish` body with literal copy (the pattern library is
+ * i18n-agnostic). Hosted in a `ResponsivePopover`, it renders as the anchored
+ * flyout on desktop and the bottom sheet under 640px.
+ */
+function PublishPopoverBody({ onPublish }: { onPublish: () => void }) {
+  return (
+    <Box orientation="vertical" blockPadding="lg" inlinePadding="lg" gap="md">
+      <TextLockup title="Publish your changes" size="sm">
+        Your Personal plan includes 5 publishes.
+      </TextLockup>
+
+      <Button
+        design="secondary"
+        size="sm"
+        stretch
+        icon={<AsyncIcon icon="history" />}
+        text="Last publish • 2 hours ago"
+      />
+
+      <Box orientation="vertical" gap="sm">
+        <text.label size={-1} as="label" htmlFor="builder-publish-domain">
+          Domain
+        </text.label>
+        <Box orientation="horizontal" gap="sm" inlineAlignChildren="center">
+          <div style={{ flex: '1 1 auto', minInlineSize: 0 } as CSSProperties}>
+            <TextInput
+              id="builder-publish-domain"
+              label={null}
+              value="mysite.example.com"
+              visualSize="sm"
+              readOnly
+            />
+          </div>
+          <Button
+            design="control"
+            size="small"
+            icon={<AsyncIcon icon="inline-edit" />}
+            aria-label="Edit domain"
+          />
+          <Button
+            design="control"
+            size="small"
+            icon={<AsyncIcon icon="window-new" />}
+            aria-label="Open site in a new tab"
+          />
+        </Box>
+      </Box>
+
+      <Button design="primary" size="sm" stretch text="Publish" onClick={onPublish} />
+    </Box>
+  );
+}
+
 // ── Main demo ─────────────────────────────────────────────────────────────
 
 function BuilderSplitDemo({ initialShow = false }: { initialShow?: boolean }) {
@@ -210,6 +274,7 @@ function BuilderSplitDemo({ initialShow = false }: { initialShow?: boolean }) {
   const rightSidebarRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const [show, setShow] = useState(initialShow);
+  const [publishOpen, setPublishOpen] = useState(false);
   const [dockedTo, setDockedTo] = useState<FloatingPanelDockedTo>(null);
   const [items, setItems] = useState<ChatItem[]>(INITIAL_ITEMS);
   const [pending, setPending] = useState(false);
@@ -757,17 +822,45 @@ function BuilderSplitDemo({ initialShow = false }: { initialShow?: boolean }) {
           />
         }
         trailing={
-          <BuilderHeader.Actions
-            onPublish={() =>
-              Growl.addGrowlMessage({
-                id: `builder-publish-${Date.now()}`,
-                title: 'Publish',
-                children: 'Would open the publish flow.',
-                emphasis: 'info',
-                lifetime: 3500,
-              })
-            }
-            onShare={() =>
+          <Box displayType="flex" orientation="horizontal" gap="sm" inlineAlignChildren="center">
+            {/* Publish opens the real publish popover (ResponsivePopover): an
+             * anchored flyout on desktop, a bottom sheet under 640px. The
+             * header's own publish button is suppressed (`showPublish={false}`)
+             * so this popover-driven trigger takes its place. */}
+            <ResponsivePopover
+              open={publishOpen}
+              onOpenChange={setPublishOpen}
+              aria-label="Publish your changes"
+              placement="bottom-end"
+              popoverClassName="gdai-cmp-w-[350px]"
+              showSheetCloseButton={false}
+              renderTrigger={(tp) => (
+                <Button
+                  design="primary"
+                  size="sm"
+                  text="Publish"
+                  aria-haspopup={tp['aria-haspopup']}
+                  aria-expanded={tp['aria-expanded']}
+                  onClick={tp.onClick}
+                />
+              )}
+            >
+              <PublishPopoverBody
+                onPublish={() => {
+                  setPublishOpen(false);
+                  Growl.addGrowlMessage({
+                    id: `builder-publish-${Date.now()}`,
+                    title: 'Publish',
+                    children: 'Would start the publish flow.',
+                    emphasis: 'info',
+                    lifetime: 3500,
+                  });
+                }}
+              />
+            </ResponsivePopover>
+            <BuilderHeader.Actions
+              showPublish={false}
+              onShare={() =>
               Growl.addGrowlMessage({
                 id: `builder-share-${Date.now()}`,
                 title: 'Share',
@@ -794,7 +887,8 @@ function BuilderSplitDemo({ initialShow = false }: { initialShow?: boolean }) {
                 lifetime: 3500,
               })
             }
-          />
+            />
+          </Box>
         }
       />
 
