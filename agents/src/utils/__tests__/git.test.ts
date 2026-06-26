@@ -575,11 +575,12 @@ describe('GitUtils', () => {
     it('should create archive when dist/ folder exists (no manifest)', async () => {
       const commitHash = 'abc1234';
 
-      // Flow: dist check -> manifest check (not found) -> mkdir -> tar
+      // Flow: dist check -> manifest check (not found) -> contact-form check (not found) -> mkdir -> tar
       // Note: Using explicit includeSource: false to skip auto-detect
       mockTasks.runCommandSync
         .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // dist/ check
         .mockResolvedValueOnce({ exitCode: 1, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' }) // airo-media.json check (not found)
+        .mockResolvedValueOnce({ exitCode: 1, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' }) // contact-form.config.json check (not found)
         .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // mkdir output dir
         .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' }); // tar
 
@@ -590,16 +591,57 @@ describe('GitUtils', () => {
         commitHash
       });
 
-      // Verify 4 calls: dist check, manifest check, mkdir, tar
-      expect(mockTasks.runCommandSync).toHaveBeenCalledTimes(4);
+      // Verify 5 calls: dist check, manifest check, contact-form check, mkdir, tar
+      expect(mockTasks.runCommandSync).toHaveBeenCalledTimes(5);
 
       // Verify tar archives the entire dist/ directory. Runtime artifacts that
       // already exist under dist, including dist/airo-adsense.json, are included
       // without an artifact-specific copy path.
-      const tarCallArgs = mockTasks.runCommandSync.mock.calls[3][0];
+      const tarCallArgs = mockTasks.runCommandSync.mock.calls[4][0];
       expect(tarCallArgs.command).toContain('tar');
       expect(tarCallArgs.command).toContain("'-C' '/app' 'dist'");
       expect(tarCallArgs.command).not.toContain('airo-adsense');
+    });
+
+    it('should copy contact-form.config.json into dist/ when it exists in source', async () => {
+      const commitHash = 'abc1234';
+
+      // Flow: dist check -> manifest check (not found) -> contact-form check (found) -> cp config -> mkdir -> tar
+      mockTasks.runCommandSync
+        .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // dist/ check
+        .mockResolvedValueOnce({ exitCode: 1, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' }) // airo-media.json check (not found)
+        .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' }) // contact-form.config.json check (found)
+        .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' }) // cp contact-form config
+        .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // mkdir output dir
+        .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' }); // tar
+
+      const result = await gitUtils.createArchive('/app', commitHash, undefined, { includeSource: false });
+
+      expect(result).toEqual({
+        path: expect.stringContaining(`${commitHash}.tar.gz`),
+        commitHash
+      });
+
+      expect(mockTasks.runCommandSync).toHaveBeenCalledTimes(6);
+
+      // Verify contact-form config was copied to dist/
+      const cpCallArgs = mockTasks.runCommandSync.mock.calls[3][0];
+      expect(cpCallArgs.command).toContain('cp');
+      expect(cpCallArgs.command).toContain('src/lib/contact-form.config.json');
+      expect(cpCallArgs.command).toContain('dist/contact-form.config.json');
+    });
+
+    it('should throw when contact-form.config.json copy fails', async () => {
+      // Flow: dist check -> manifest check (not found) -> contact-form check (found) -> cp fails
+      mockTasks.runCommandSync
+        .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // dist/ check
+        .mockResolvedValueOnce({ exitCode: 1, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' }) // airo-media.json check (not found)
+        .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' }) // contact-form.config.json check (found)
+        .mockResolvedValueOnce({ exitCode: 1, stdout: '', stderr: 'Permission denied', timedOut: false, executionTimeMs: 0, taskId: 't' }); // cp fails
+
+      await expect(
+        gitUtils.createArchive('/app', 'abc1234', undefined, { includeSource: false })
+      ).rejects.toThrow('Failed to copy contact-form.config.json to dist/: Permission denied');
     });
 
     it('should copy airo-media.json into dist/ when it exists', async () => {
@@ -607,7 +649,7 @@ describe('GitUtils', () => {
 
       // Flow: dist check -> manifest check (found) -> cp manifest dist/ -> cp manifest
       // dist/client/ -> 4 media copies (public/media + public/assets/media, each ->
-      // dist + dist/client) -> mkdir -> tar
+      // dist + dist/client) -> contact-form check (not found) -> mkdir -> tar
       // Note: Using explicit includeSource: false to skip auto-detect
       mockTasks.runCommandSync
         .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // dist/ check
@@ -618,6 +660,7 @@ describe('GitUtils', () => {
         .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // cp public/media dist/client/media
         .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // cp public/assets/media dist/assets/media
         .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // cp public/assets/media dist/client/assets/media
+        .mockResolvedValueOnce({ exitCode: 1, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // contact-form.config.json check (not found)
         .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // mkdir output dir
         .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' }); // tar
 
@@ -628,8 +671,8 @@ describe('GitUtils', () => {
         commitHash
       });
 
-      // Verify 10 calls including manifest + media copies
-      expect(mockTasks.runCommandSync).toHaveBeenCalledTimes(10);
+      // Verify 11 calls including manifest + media copies + contact-form check
+      expect(mockTasks.runCommandSync).toHaveBeenCalledTimes(11);
 
       // Verify manifest was copied to dist/
       const copyCallArgs = mockTasks.runCommandSync.mock.calls[2][0];
@@ -642,7 +685,7 @@ describe('GitUtils', () => {
       expect(clientCopyArgs.command).toContain('dist/client');
 
       // Verify final tar only archives dist/
-      const tarCallArgs = mockTasks.runCommandSync.mock.calls[9][0];
+      const tarCallArgs = mockTasks.runCommandSync.mock.calls[10][0];
       expect(tarCallArgs.command).toContain('tar');
       expect(tarCallArgs.command).toContain('dist');
     });
@@ -651,7 +694,7 @@ describe('GitUtils', () => {
       const commitHash = 'a1b2c3d';
 
       // Flow: dist check -> manifest check (found) -> cp to dist/ -> cp to dist/client/ ->
-      // 4 media copies -> mkdir -> tar
+      // 4 media copies -> contact-form check (not found) -> mkdir -> tar
       mockTasks.runCommandSync
         .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // dist/ check
         .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // airo-media.json check (found)
@@ -661,6 +704,7 @@ describe('GitUtils', () => {
         .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // cp public/media dist/client/media
         .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // cp public/assets/media dist/assets/media
         .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // cp public/assets/media dist/client/assets/media
+        .mockResolvedValueOnce({ exitCode: 1, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // contact-form.config.json check (not found)
         .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // mkdir output dir
         .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' }); // tar
 
@@ -760,11 +804,12 @@ describe('GitUtils', () => {
     });
 
     it('should throw error when mkdir fails', async () => {
-      // Flow: dist check -> manifest check (not found) -> mkdir fails
+      // Flow: dist check -> manifest check (not found) -> contact-form check (not found) -> mkdir fails
       // Note: Using explicit includeSource: false to skip auto-detect
       mockTasks.runCommandSync
         .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // dist/ check
         .mockResolvedValueOnce({ exitCode: 1, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' }) // airo-media.json check
+        .mockResolvedValueOnce({ exitCode: 1, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' }) // contact-form.config.json check (not found)
         .mockResolvedValueOnce({ exitCode: 1, stdout: '', stderr: 'Permission denied', timedOut: false, executionTimeMs: 0, taskId: 't' }); // mkdir fails
 
       await expect(
@@ -773,11 +818,12 @@ describe('GitUtils', () => {
     });
 
     it('should throw error when tar command fails', async () => {
-      // Flow: dist check -> manifest check (not found) -> mkdir -> tar fails
+      // Flow: dist check -> manifest check (not found) -> contact-form check (not found) -> mkdir -> tar fails
       // Note: Using explicit includeSource: false to skip auto-detect
       mockTasks.runCommandSync
         .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // dist/ check
         .mockResolvedValueOnce({ exitCode: 1, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' }) // airo-media.json check
+        .mockResolvedValueOnce({ exitCode: 1, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' }) // contact-form.config.json check (not found)
         .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // mkdir succeeds
         .mockResolvedValueOnce({ exitCode: 1, stdout: '', stderr: 'No space left on device', timedOut: false, executionTimeMs: 0, taskId: 't' }); // tar fails
 
@@ -791,12 +837,13 @@ describe('GitUtils', () => {
         it('should auto-detect dist-only when dist/server.bundle.mjs exists', async () => {
           const commitHash = 'abc1234';
 
-          // Flow: bundle check (exists) -> dist check -> manifest check -> mkdir -> tar (dist only)
+          // Flow: bundle check (exists) -> dist check -> manifest check -> contact-form check -> mkdir -> tar (dist only)
           // Note: bundle check happens first (in shouldIncludeSource), then dist check for dist-only archives
           mockTasks.runCommandSync
             .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // bundle check (exists)
             .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // dist/ check
             .mockResolvedValueOnce({ exitCode: 1, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' }) // airo-media.json check (not found)
+            .mockResolvedValueOnce({ exitCode: 1, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' }) // contact-form.config.json check (not found)
             .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // mkdir output dir
             .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' }); // tar
 
@@ -807,7 +854,7 @@ describe('GitUtils', () => {
           expect(bundleCheckCall.command).toContain('server.bundle.mjs');
 
           // Verify tar only archives dist/ (no exclusions)
-          const tarCallArgs = mockTasks.runCommandSync.mock.calls[4][0];
+          const tarCallArgs = mockTasks.runCommandSync.mock.calls[5][0];
           expect(tarCallArgs.command).toContain('dist');
           expect(tarCallArgs.command).not.toContain('--exclude');
         });
@@ -870,11 +917,12 @@ describe('GitUtils', () => {
         it('should use dist-only when includeSource is explicitly false (skip auto-detect)', async () => {
           const commitHash = 'abc1234';
 
-          // Flow: dist check -> manifest check (not found) -> mkdir -> tar
+          // Flow: dist check -> manifest check (not found) -> contact-form check (not found) -> mkdir -> tar
           // Note: No bundle check because includeSource is explicit
           mockTasks.runCommandSync
             .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // dist/ check
             .mockResolvedValueOnce({ exitCode: 1, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' }) // airo-media.json check (not found)
+            .mockResolvedValueOnce({ exitCode: 1, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' }) // contact-form.config.json check (not found)
             .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // mkdir output dir
             .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' }); // tar
 
@@ -885,7 +933,7 @@ describe('GitUtils', () => {
           expect(secondCall.command).not.toContain('server.bundle.mjs');
 
           // Verify tar only archives dist/
-          const tarCallArgs = mockTasks.runCommandSync.mock.calls[3][0];
+          const tarCallArgs = mockTasks.runCommandSync.mock.calls[4][0];
           expect(tarCallArgs.command).toContain('dist');
           expect(tarCallArgs.command).not.toContain('--exclude');
         });

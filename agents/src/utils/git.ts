@@ -1028,6 +1028,26 @@ export class GitUtils {
       }
     }
 
+    // Copy contact-form.config.json into dist/ if it exists in source.
+    // The inbox skill writes this at form-setup time, but the file can be lost
+    // if dist/ is rebuilt. Copying here mirrors the airo-media.json pattern and
+    // ensures the published server can always find the config at cwd (dist/).
+    const contactFormConfigCheck = await this.tasks!.runCommandSync({
+      command: buildShellCommand(['test', '-f', 'src/lib/contact-form.config.json']),
+      workingDir: '/app',
+      timeoutSeconds: 5,
+    });
+    if (contactFormConfigCheck.exitCode === 0) {
+      const contactFormCopy = await this.tasks!.runCommandSync({
+        command: buildShellCommand(['cp', 'src/lib/contact-form.config.json', 'dist/contact-form.config.json']),
+        workingDir: '/app',
+        timeoutSeconds: 5,
+      });
+      if (contactFormCopy.exitCode !== 0) {
+        throw new Error(`Failed to copy contact-form.config.json to dist/: ${contactFormCopy.stderr || 'Unknown error'}`);
+      }
+    }
+
     // Create output directory
     const mkdirResult = await this.tasks!.runCommandSync({
       command: buildShellCommand(['mkdir', '-p', outputDir]),
