@@ -25,6 +25,8 @@
     --sp-danger:      #ef4444;
     --sp-violet:      #7c3aed;
     --sp-indigo:      #4f46e5;
+    --sp-enriched:    #0e9f6e;
+    --sp-row:         #5b7fa6;
 
     /* Aliases used by new panel components (inline styles) */
     --blue:     #0891b2;
@@ -65,12 +67,14 @@
     --sp-txm:         #5c6e85;
 
     /* Slightly brighter aliases in dark mode */
-    --blue:   #22d3ee;
-    --green:  #34d399;
-    --red:    #f87171;
-    --amber:  #fbbf24;
-    --purple: #a78bfa;
-    --teal:   #2dd4bf;
+    --blue:         #22d3ee;
+    --green:        #34d399;
+    --red:          #f87171;
+    --amber:        #fbbf24;
+    --purple:       #a78bfa;
+    --teal:         #2dd4bf;
+    --sp-enriched:  #34d399;
+    --sp-row:       #7ea8cc;
 }
 
 /* Scrollbars */
@@ -537,9 +541,17 @@
     transition: box-shadow 0.15s;
 }
 .kpiCard:hover { box-shadow: 0 4px 16px rgba(0,0,0,.07); }
-.kpiValue  { font-size: 28px; font-weight: 800; line-height: 1; letter-spacing: -0.02em; }
-.kpiLabel  { font-size: 12px; font-weight: 600; color: var(--sp-tx2); margin-top: 5px; }
-.kpiSub    { font-size: 11px; color: var(--sp-txm); margin-top: 3px; }
+.kpiValue  { font-size: 32px; font-weight: 700; line-height: 1; letter-spacing: -0.01em; font-variant-numeric: tabular-nums lining-nums; }
+.kpiLabel  { font-size: 11px; font-weight: 600; color: var(--sp-tx2); margin-top: 6px; text-transform: uppercase; letter-spacing: 0.06em; }
+.kpiSub    { font-size: 11px; color: var(--sp-txm); margin-top: 2px; }
+
+/* ── Date KPI tile ───────────────────────────────────────── */
+.kpiDateRow   { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+.kpiDay       { font-size: 42px; font-weight: 800; line-height: 1; letter-spacing: -0.03em; font-variant-numeric: tabular-nums lining-nums; }
+.kpiSep       { width: 1.5px; height: 36px; background: var(--sp-tx1); opacity: 0.25; flex-shrink: 0; }
+.kpiMonthYear { display: flex; flex-direction: column; justify-content: center; gap: 2px; }
+.kpiMonth     { font-size: 18px; font-weight: 700; line-height: 1; letter-spacing: 0.01em; color: var(--sp-tx1); }
+.kpiYear      { font-size: 10px; font-weight: 500; color: var(--sp-txm); letter-spacing: 0.22em; }
 
 /* ── Generic card ────────────────────────────────────────── */
 .card {

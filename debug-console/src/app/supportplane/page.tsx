@@ -14,7 +14,6 @@ import FeedbackChatPanel from '@/components/supportplane/feedback/ChatPanel';
 import FeedbackDashboard from '@/components/supportplane/feedback/Dashboard';
 import FeedbackOverviewPanel from '@/components/supportplane/feedback/OverviewPanel';
 import FeedbackRatingsPanel from '@/components/supportplane/feedback/RatingsPanel';
-import FeedbackTopicsPanel from '@/components/supportplane/feedback/TopicsPanel';
 import FeedbackTrendsPanel from '@/components/supportplane/feedback/TrendsPanel';
 import FunnelPanel from '@/components/supportplane/analysis/FunnelPanel';
 import Header from '@/components/supportplane/_shell/Header';
@@ -178,12 +177,11 @@ function SupportPlaneAppContent({
                     {panel === 'transcript-chat' && <TranscriptChatPanel />}
 
                     {/* Feedback section (S3 / Athena) */}
-                    {panel === 'feedback-overview' && <FeedbackOverviewPanel onNav={setPanel} onSync={goToSync} />}
-                    {panel === 'feedback-trends'   && <FeedbackTrendsPanel />}
-                    {panel === 'feedback-ratings'  && <FeedbackRatingsPanel />}
-                    {panel === 'feedback-topics'   && <FeedbackTopicsPanel />}
-                    {panel === 'feedback-browse'   && <FeedbackBrowsePanel syncTrigger={syncTrigger} />}
-                    {panel === 'feedback-chat'     && <FeedbackChatPanel />}
+                    {panel === 'feedback-overview'   && <FeedbackOverviewPanel onNav={setPanel} onSync={goToSync} />}
+                    {panel === 'feedback-trends'     && <FeedbackTrendsPanel />}
+                    {panel === 'feedback-ratings'    && <FeedbackRatingsPanel />}
+                    {panel === 'feedback-browse'     && <FeedbackBrowsePanel syncTrigger={syncTrigger} />}
+                    {panel === 'feedback-chat'       && <FeedbackChatPanel />}
 
                     {/* Support Tickets */}
                     {panel === 'ciec'  && <CIECPanel />}

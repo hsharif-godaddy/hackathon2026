@@ -3,12 +3,20 @@ import {
   BatchWriteCommand,
   DynamoDBDocumentClient,
   PutCommand,
+  QueryCommand,
   ScanCommand,
+  UpdateCommand,
 } from '@aws-sdk/lib-dynamodb';
 
 import { buildDynamoClient, getConfig } from '@/lib/supportplane/store/config';
 import { logger } from '@/lib/logger';
 import { SP_MASK, spLog } from '@/lib/supportplane/sp-logger';
+
+// A single DynamoDB BatchWriteItem request — either a Put or a Delete. Matches
+// the shape DynamoDB echoes back in UnprocessedItems so leftovers can be re-sent.
+type BatchWriteRequest =
+  | { PutRequest: { Item: Record<string, unknown> } }
+  | { DeleteRequest: { Key: Record<string, unknown> } };
 
 let client: DynamoDBDocumentClient | null = null;
 
@@ -33,10 +41,13 @@ interface FeedbackScanCache {
   inFlight: Promise<Record<string, unknown>[]> | null;
 }
 const feedbackScanCache: FeedbackScanCache = { rows: [], expiresAt: 0, hasData: false, inFlight: null };
+// Separate cache for the enriched table (rebuilt after each upload).
+const enrichedScanCache: FeedbackScanCache = { rows: [], expiresAt: 0, hasData: false, inFlight: null };
 
 function invalidateFeedbackScanCache(): void {
   feedbackScanCache.expiresAt = 0;
-  // Keep hasData true — stale rows are still usable until the next scan completes
+  enrichedScanCache.expiresAt = 0;
+  enrichedScanCache.hasData = false;
 }
 
 async function getTableKeyNames(tableName: string): Promise<string[]> {
@@ -63,6 +74,24 @@ async function scanAll(tableName: string, parallelSegments = 1): Promise<Record<
     Array.from({ length: parallelSegments }, (_, i) => scanSegment(tableName, i, parallelSegments))
   );
   return results.flat();
+}
+
+async function countEnvInRange(tableName: string, env: string, startDate: string): Promise<number> {
+  let total = 0;
+  let cursor: Record<string, unknown> | undefined;
+  do {
+    const page = await getClient().send(new ScanCommand({
+      TableName: tableName,
+      Select: 'COUNT',
+      FilterExpression: '#e = :e AND feedback_utc_ts >= :sd',
+      ExpressionAttributeNames: { '#e': 'env' },
+      ExpressionAttributeValues: { ':e': env, ':sd': startDate },
+      ExclusiveStartKey: cursor,
+    }));
+    total += page.Count ?? 0;
+    cursor = page.LastEvaluatedKey as Record<string, unknown> | undefined;
+  } while (cursor);
+  return total;
 }
 
 // ── Positional param index maps ───────────────────────────────────
@@ -104,6 +133,21 @@ function paramsToItem(
   return item;
 }
 
+// Guarantees the DynamoDB sort key `created_at` is present on every row written
+// to the raw-s3 / raw-athena / enriched tables (all keyed by <partition> +
+// created_at). Direct ingest writes already set it via paramsToItem; legacy
+// feedback rows migrated into the raw tables may lack it, so derive it from
+// feedback_utc_ts when available, else stamp the current time.
+function ensureCreatedAt(item: Record<string, unknown>): Record<string, unknown> {
+  const existing: unknown = item['created_at'];
+  if (typeof existing === 'string' && existing.length > 0) return item;
+  const ts: unknown = item['feedback_utc_ts'];
+  return {
+    ...item,
+    created_at: typeof ts === 'string' && ts.length > 0 ? ts : new Date().toISOString(),
+  };
+}
+
 // ── Helpers ───────────────────────────────────────────────────────
 
 function num(v: unknown): number | null {
@@ -117,14 +161,19 @@ function str(v: unknown): string | null {
   return s === '' ? null : s;
 }
 
+// Accepts ISO "YYYY-MM-DDT..." and Athena " YYYY-MM-DD ..." but rejects phone numbers, free text, etc.
+const DATE_PREFIX_RE = /^20\d{2}[-\s]/;
+
 function dateSlice(ts: unknown): string | null {
   const s = str(ts);
-  return s ? s.slice(0, 10) : null;
+  if (!s || !DATE_PREFIX_RE.test(s)) return null;
+  return s.slice(0, 10);
 }
 
 function monthSlice(ts: unknown): string | null {
   const s = str(ts);
-  return s ? s.slice(0, 7) : null;
+  if (!s || !DATE_PREFIX_RE.test(s)) return null;
+  return s.slice(0, 7);
 }
 
 function isoWeek(ts: unknown): string | null {
@@ -160,8 +209,269 @@ function parseTopics(val: unknown): string[] {
 
 export class FeedbackStore {
   private feedbackTable(): string { return getConfig().feedbackTable; }
+  private rawS3Table(): string { return getConfig().feedbackRawS3Table; }
+  private rawAthenaTable(): string { return getConfig().feedbackRawAthenaTable; }
+  private enrichedTable(): string { return getConfig().feedbackEnrichedTable; }
   private statsTable(): string { return getConfig().feedbackStatsTable; }
   private ingestTable(): string { return getConfig().feedbackIngestTable; }
+
+  // ── Batch write/delete helpers ────────────────────────────────────
+
+  // A single DynamoDB BatchWriteItem write request (Put or Delete).
+  // Shared shape for both _batchWrite (PutRequest) and _batchDeleteByKey (DeleteRequest).
+
+  // Sends WriteRequests in chunks of 25 (the BatchWriteItem cap) and retries any
+  // UnprocessedItems with exponential backoff. DynamoDB returns UnprocessedItems
+  // (rather than failing) when a batch is throttled or exceeds capacity; dropping
+  // them silently loses writes/deletes, so we re-submit only the leftovers and
+  // throw if any remain after MAX_BATCH_ATTEMPTS so the caller surfaces the failure.
+  private async _sendBatch(tableName: string, requests: BatchWriteRequest[]): Promise<void> {
+    const MAX_BATCH_ATTEMPTS = 5;
+    for (let i = 0; i < requests.length; i += 25) {
+      let pending: BatchWriteRequest[] = requests.slice(i, i + 25);
+      for (let attempt = 0; pending.length > 0 && attempt < MAX_BATCH_ATTEMPTS; attempt++) {
+        if (attempt > 0) {
+          const backoffMs: number = 50 * 2 ** (attempt - 1);
+          await new Promise<void>((resolve) => setTimeout(resolve, backoffMs));
+        }
+        const res = await getClient().send(
+          new BatchWriteCommand({ RequestItems: { [tableName]: pending } })
+        );
+        pending = (res.UnprocessedItems?.[tableName] ?? []) as BatchWriteRequest[];
+      }
+      if (pending.length > 0) {
+        throw new Error(
+          `BatchWrite to ${tableName} left ${pending.length} unprocessed items after ${MAX_BATCH_ATTEMPTS} attempts`
+        );
+      }
+    }
+  }
+
+  // Only ever targets the raw-s3 / raw-athena / enriched tables, all of which use
+  // created_at as their sort key — ensureCreatedAt() guarantees it is set so the
+  // PutRequest is never rejected for a missing key attribute.
+  private async _batchWrite(tableName: string, items: Record<string, unknown>[]): Promise<void> {
+    const requests: BatchWriteRequest[] = items.map((item) => ({
+      PutRequest: { Item: ensureCreatedAt(item) },
+    }));
+    await this._sendBatch(tableName, requests);
+  }
+
+  private async _batchDeleteByKey(
+    tableName: string,
+    keyField: string,
+    items: Record<string, unknown>[]
+  ): Promise<void> {
+    const requests: BatchWriteRequest[] = items.map((item) => {
+      // The raw-s3 / raw-athena / enriched tables use created_at as their sort
+      // key, so the delete Key must carry both the partition key and created_at —
+      // otherwise DynamoDB rejects it with a ValidationException. Items always
+      // originate from a full-table scan, so created_at is present.
+      const key: Record<string, unknown> = { [keyField]: item[keyField] };
+      if (item['created_at'] !== undefined) key['created_at'] = item['created_at'];
+      return { DeleteRequest: { Key: key } };
+    });
+    await this._sendBatch(tableName, requests);
+  }
+
+  // ── Enriched table scan (with stale-while-revalidate cache) ──────
+
+  private _startEnrichedScan(): Promise<Record<string, unknown>[]> {
+    if (enrichedScanCache.inFlight) return enrichedScanCache.inFlight;
+
+    spLog(SP_MASK.INFO, 'feedback-store', `Enriched scan start — ${this.enrichedTable()}`);
+
+    const scanPromise: Promise<Record<string, unknown>[]> = scanAll(this.enrichedTable(), 4)
+      .then((rows) => {
+        enrichedScanCache.rows = rows;
+        enrichedScanCache.expiresAt = Date.now() + FEEDBACK_SCAN_CACHE_TTL_MS;
+        enrichedScanCache.hasData = true;
+        enrichedScanCache.inFlight = null;
+        spLog(SP_MASK.INFO, 'feedback-store', `Enriched scan complete — ${rows.length} rows`);
+        return rows;
+      })
+      .catch((err: unknown) => {
+        enrichedScanCache.inFlight = null;
+        spLog(SP_MASK.ERROR, 'feedback-store', `Enriched scan error: ${(err as Error).message}`);
+        throw err;
+      });
+
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => {
+        enrichedScanCache.inFlight = null;
+        reject(new Error(`Enriched scan timed out after ${FEEDBACK_SCAN_TIMEOUT_MS / 1000}s`));
+      }, FEEDBACK_SCAN_TIMEOUT_MS)
+    );
+
+    enrichedScanCache.inFlight = Promise.race([scanPromise, timeoutPromise]);
+    return enrichedScanCache.inFlight;
+  }
+
+  async scanEnriched(env?: string): Promise<Record<string, unknown>[]> {
+    let all: Record<string, unknown>[];
+
+    if (Date.now() < enrichedScanCache.expiresAt) {
+      all = enrichedScanCache.rows;
+    } else if (enrichedScanCache.hasData) {
+      void this._startEnrichedScan();
+      all = enrichedScanCache.rows;
+    } else if (enrichedScanCache.inFlight) {
+      all = await enrichedScanCache.inFlight;
+    } else {
+      // Enriched table is the single source of truth — never fall back to the legacy
+      // table for counts or statistics. If the enriched table hasn't been built yet
+      // (tables just provisioned), return empty so the UI shows "Rebuild needed"
+      // rather than serving stale/mixed counts from the legacy table.
+      try {
+        all = await this._startEnrichedScan();
+      } catch {
+        spLog(SP_MASK.WARN, 'feedback-store', 'Enriched table unavailable — returning empty (rebuild needed)');
+        all = [];
+      }
+    }
+
+    return env ? all.filter((i) => i['env'] === env) : all;
+  }
+
+  // ── Enriched table rebuild ────────────────────────────────────────
+  // Dedup key: {env}#{customer_id}#{date} — one enriched record per customer per day.
+  // S3 wins: existing S3 field values are never overwritten by Athena values.
+  // Auto-migration: on first call, if raw tables are empty, migrates existing
+  // legacy feedback table rows into the appropriate raw tables first.
+
+  async rebuildEnrichedTable(env: string): Promise<number> {
+    spLog(SP_MASK.INFO, 'feedback-store', `rebuildEnrichedTable start — env=${env}`);
+
+    // The rebuild is destructive: it deletes every enriched row for this env and
+    // rewrites them from the raw scans below. Swallowing a scan failure into an
+    // empty array (the old `.catch(() => [])`) would rebuild from a partial set —
+    // silently dropping the unread source's rows, or emptying the enriched table
+    // outright if both scans failed. Use allSettled so a rejection of one scan does
+    // not leave the other's promise unhandled, then abort BEFORE any delete if
+    // either raw scan failed, so the caller surfaces the failure instead of losing data.
+    const [s3Settled, athenaSettled] = await Promise.allSettled([
+      scanAll(this.rawS3Table()),
+      scanAll(this.rawAthenaTable()),
+    ]);
+    const scanFailures: string[] = [];
+    if (s3Settled.status === 'rejected') {
+      scanFailures.push(`${this.rawS3Table()}: ${(s3Settled.reason as Error).message}`);
+    }
+    if (athenaSettled.status === 'rejected') {
+      scanFailures.push(`${this.rawAthenaTable()}: ${(athenaSettled.reason as Error).message}`);
+    }
+    if (scanFailures.length > 0) {
+      const msg = `rebuildEnrichedTable aborted (env=${env}): raw-table scan failed — ${scanFailures.join('; ')}. Refusing to rebuild from a partial set, which would delete existing enriched rows.`;
+      spLog(SP_MASK.ERROR, 'feedback-store', msg);
+      throw new Error(msg);
+    }
+    // Both are fulfilled here — the throw above covers every rejected case; the
+    // empty fallbacks are unreachable and exist only to narrow the settled union.
+    const rawS3All: Record<string, unknown>[] = s3Settled.status === 'fulfilled' ? s3Settled.value : [];
+    const rawAthenaAll: Record<string, unknown>[] = athenaSettled.status === 'fulfilled' ? athenaSettled.value : [];
+
+    let s3Items = rawS3All.filter((i) => str(i['env']) === env);
+    let athenaItems = rawAthenaAll.filter((i) => str(i['env']) === env);
+
+    // Auto-migrate each raw table independently from the legacy feedback table.
+    // raw-s3 may be empty even when raw-athena already has rows from a prior upload,
+    // so the two sources are checked separately.
+    if (s3Items.length === 0 || athenaItems.length === 0) {
+      const legacy = await this.scanFeedback(env);
+
+      if (s3Items.length === 0) {
+        const legacyS3 = legacy.filter((i) => {
+          const src = str(i['data_source']);
+          return src === 's3' || src === 'both';
+        });
+        if (legacyS3.length > 0) {
+          spLog(SP_MASK.INFO, 'feedback-store', `Migrating ${legacyS3.length} S3 rows from legacy → raw-s3`);
+          await this._batchWrite(this.rawS3Table(), legacyS3.map((i) => ({ ...i, data_source: 's3' })));
+          s3Items = legacyS3;
+        }
+      }
+
+      if (athenaItems.length === 0) {
+        const legacyAthena = legacy.filter((i) => {
+          const src = str(i['data_source']);
+          return src === 'athena' || src === 'both';
+        });
+        if (legacyAthena.length > 0) {
+          spLog(SP_MASK.INFO, 'feedback-store', `Migrating ${legacyAthena.length} Athena rows from legacy → raw-athena`);
+          await this._batchWrite(this.rawAthenaTable(), legacyAthena.map((i) => ({ ...i, data_source: 'athena' })));
+          athenaItems = legacyAthena;
+        }
+      }
+    }
+
+    // Drop rows before the configured enriched-data start date (default 2026-04-01).
+    // These rows stay in the raw tables but are never promoted to the enriched table.
+    const { feedbackStartDate } = getConfig();
+    const inWindow = (item: Record<string, unknown>): boolean => {
+      const d = dateSlice(item['feedback_utc_ts']) ?? dateSlice(item['created_at']);
+      return d !== null && d >= feedbackStartDate;
+    };
+    const s3Eligible = s3Items.filter(inWindow);
+    const athenaEligible = athenaItems.filter(inWindow);
+    spLog(SP_MASK.INFO, 'feedback-store',
+      `rebuildEnrichedTable window=${feedbackStartDate}→today — s3=${s3Items.length}→${s3Eligible.length} athena=${athenaItems.length}→${athenaEligible.length}`);
+
+    // Build dedup map: key = env#customer_id#date
+    const enrichedMap = new Map<string, Record<string, unknown>>();
+
+    for (const item of s3Eligible) {
+      const custId = str(item['customer_id']) ?? 'unknown';
+      const date = dateSlice(item['feedback_utc_ts']) ?? dateSlice(item['created_at']) ?? 'unknown';
+      const key = `${env}#${custId}#${date}`;
+      enrichedMap.set(key, { ...item, enrich_key: key, data_source: 's3' });
+    }
+
+    for (const item of athenaEligible) {
+      const custId = str(item['customer_id']) ?? 'unknown';
+      const date = dateSlice(item['feedback_utc_ts']) ?? dateSlice(item['created_at']) ?? 'unknown';
+      const key = `${env}#${custId}#${date}`;
+      const existing = enrichedMap.get(key);
+      if (existing) {
+        // S3 wins: start from Athena, then overwrite with all non-null S3 fields
+        const merged: Record<string, unknown> = { ...item };
+        for (const [k, v] of Object.entries(existing)) {
+          if (v !== null && v !== undefined && v !== '') merged[k] = v;
+        }
+        merged['enrich_key'] = key;
+        merged['data_source'] = 'both';
+        enrichedMap.set(key, merged);
+      } else {
+        enrichedMap.set(key, { ...item, enrich_key: key, data_source: 'athena' });
+      }
+    }
+
+    // Delete existing enriched rows for this env, then write new ones. A transient
+    // failure scanning the enriched table must abort too: swallowing it into an empty
+    // array would skip the cleanup delete and leave stale rows mixed with the rewrite.
+    // Abort here (before the delete) so the table is left untouched on failure.
+    let existingEnriched: Record<string, unknown>[];
+    try {
+      existingEnriched = await scanAll(this.enrichedTable());
+    } catch (err) {
+      const msg = `rebuildEnrichedTable aborted (env=${env}): scan of enriched table ${this.enrichedTable()} failed — ${(err as Error).message}. Not deleting or rewriting enriched rows.`;
+      spLog(SP_MASK.ERROR, 'feedback-store', msg);
+      throw new Error(msg);
+    }
+    const toDelete = existingEnriched.filter((i) => str(i['env']) === env);
+    if (toDelete.length > 0) {
+      await this._batchDeleteByKey(this.enrichedTable(), 'enrich_key', toDelete);
+    }
+
+    const newItems = [...enrichedMap.values()];
+    if (newItems.length > 0) {
+      await this._batchWrite(this.enrichedTable(), newItems);
+    }
+
+    enrichedScanCache.expiresAt = 0;
+    enrichedScanCache.hasData = false;
+    spLog(SP_MASK.INFO, 'feedback-store', `rebuildEnrichedTable done — ${newItems.length} enriched rows`);
+    return newItems.length;
+  }
 
   // Starts a full-table scan and stores it in feedbackScanCache.inFlight.
   // Returns the inFlight promise so callers can optionally await it.
@@ -225,31 +535,64 @@ export class FeedbackStore {
     return env ? all.filter((i) => i['env'] === env) : all;
   }
 
-  // ── Ingest writes ────────────────────────────────────────────────
-
-  async insertFeedbackAthenaRow(params: unknown[]): Promise<number> {
-    const item = paramsToItem(params, ATHENA_FIELDS, 'athena');
-    if (!item['feedback_id']) return 0;
+  // Fast GSI query: uses env-ts-index (PK=env, SK=feedback_utc_ts) to avoid a
+  // full scan for date-bounded browse requests. Returns null if the GSI doesn't
+  // exist yet (caller falls back to scanFeedback).
+  private async queryByGsi(
+    env: string,
+    fromDate?: string
+  ): Promise<Record<string, unknown>[] | null> {
     try {
-      await getClient().send(
-        new PutCommand({
-          TableName: this.feedbackTable(),
-          Item: item,
-          ConditionExpression: 'attribute_not_exists(feedback_id)',
-        })
-      );
-      return 1;
+      const rows: Record<string, unknown>[] = [];
+      let lastKey: Record<string, unknown> | undefined;
+      const keyCondition: string = fromDate
+        ? '#env = :env AND #ts >= :cutoff'
+        : '#env = :env';
+      const values: Record<string, unknown> = { ':env': env };
+      if (fromDate) values[':cutoff'] = fromDate;
+      do {
+        const page = await getClient().send(
+          new QueryCommand({
+            TableName: this.feedbackTable(),
+            IndexName: 'env-ts-index',
+            KeyConditionExpression: keyCondition,
+            ExpressionAttributeNames: { '#env': 'env', '#ts': 'feedback_utc_ts' },
+            ExpressionAttributeValues: values,
+            ExclusiveStartKey: lastKey,
+          })
+        );
+        for (const item of page.Items ?? []) rows.push(item as Record<string, unknown>);
+        lastKey = page.LastEvaluatedKey as Record<string, unknown> | undefined;
+      } while (lastKey);
+      return rows;
     } catch (err) {
-      if (err instanceof Error && err.name === 'ConditionalCheckFailedException') return 0;
+      const msg = (err as Error).message ?? '';
+      // GSI not yet provisioned — fall through to scan
+      if (msg.includes('index') || msg.includes('ValidationException')) return null;
       throw err;
     }
   }
 
+  // ── Ingest writes ────────────────────────────────────────────────
+
+  // Athena CSV rows go to the raw-athena table. The enriched table is rebuilt
+  // separately by rebuildEnrichedTable() after the full upload completes.
+  // merge param is kept for API compat but no longer affects anything here.
+  async insertFeedbackAthenaRow(params: unknown[], _merge = false): Promise<number> {
+    const item = paramsToItem(params, ATHENA_FIELDS, 'athena');
+    if (!item['feedback_id']) return 0;
+    await getClient().send(
+      new PutCommand({ TableName: this.rawAthenaTable(), Item: item })
+    );
+    return 1;
+  }
+
+  // S3 rows go to the raw-s3 table.
   async insertFeedbackS3Row(params: unknown[]): Promise<number> {
     const item = paramsToItem(params, S3_FIELDS, 's3');
     if (!item['feedback_id']) return 0;
     await getClient().send(
-      new PutCommand({ TableName: this.feedbackTable(), Item: item })
+      new PutCommand({ TableName: this.rawS3Table(), Item: item })
     );
     return 1;
   }
@@ -299,74 +642,114 @@ export class FeedbackStore {
   }
 
   async clearFeedbackData(env: string): Promise<void> {
-    // Discover actual key schema from DynamoDB before deleting — avoids hardcoding key names
-    // that may differ between provisioned environments.
-    const [feedbackKeys, ingestKeys] = await Promise.all([
-      getTableKeyNames(this.feedbackTable()),
+    logger.info('feedback-store.clear.start', { env });
+
+    // Clear raw-s3, raw-athena, and enriched tables for this env
+    const [s3Items, athenaItems, enrichedItems, ingestKeys] = await Promise.all([
+      scanAll(this.rawS3Table()).catch(() => [] as Record<string, unknown>[]),
+      scanAll(this.rawAthenaTable()).catch(() => [] as Record<string, unknown>[]),
+      scanAll(this.enrichedTable()).catch(() => [] as Record<string, unknown>[]),
       getTableKeyNames(this.ingestTable()),
     ]);
-    logger.info('feedback-store.clear.schemas', {
-      env,
-      feedbackTable: this.feedbackTable(),
-      feedbackKeys,
-      ingestTable: this.ingestTable(),
-      ingestKeys,
-    });
 
-    const items = await this.scanFeedback(env);
-    logger.info('feedback-store.clear.feedback', { env, count: items.length });
-    const chunks: (typeof items)[] = [];
-    for (let i = 0; i < items.length; i += 25) chunks.push(items.slice(i, i + 25));
-    for (const chunk of chunks) {
-      const res = await getClient().send(
-        new BatchWriteCommand({
-          RequestItems: {
-            [this.feedbackTable()]: chunk.map((item) => ({
-              DeleteRequest: {
-                Key: Object.fromEntries(feedbackKeys.map((k) => [k, item[k]])),
-              },
-            })),
-          },
-        })
-      );
-      if (res.UnprocessedItems && Object.keys(res.UnprocessedItems).length > 0) {
-        logger.warn('feedback-store.clear.feedback.unprocessed', { unprocessed: res.UnprocessedItems });
-      }
-    }
+    const s3ForEnv = s3Items.filter((i) => str(i['env']) === env);
+    const athenaForEnv = athenaItems.filter((i) => str(i['env']) === env);
+    const enrichedForEnv = enrichedItems.filter((i) => str(i['env']) === env);
 
-    // Clear entire ingest log (no env filter on ingest table)
+    await Promise.all([
+      this._batchDeleteByKey(this.rawS3Table(), 'feedback_id', s3ForEnv),
+      this._batchDeleteByKey(this.rawAthenaTable(), 'feedback_id', athenaForEnv),
+      this._batchDeleteByKey(this.enrichedTable(), 'enrich_key', enrichedForEnv),
+    ]);
+
+    // Clear ingest log (no env filter)
     const ingestItems = await scanAll(this.ingestTable());
-    logger.info('feedback-store.clear.ingest', { count: ingestItems.length });
-    const iChunks: (typeof ingestItems)[] = [];
-    for (let i = 0; i < ingestItems.length; i += 25) iChunks.push(ingestItems.slice(i, i + 25));
-    for (const chunk of iChunks) {
-      const res = await getClient().send(
+    for (let i = 0; i < ingestItems.length; i += 25) {
+      await getClient().send(
         new BatchWriteCommand({
           RequestItems: {
-            [this.ingestTable()]: chunk.map((item) => ({
-              DeleteRequest: {
-                Key: Object.fromEntries(ingestKeys.map((k) => [k, item[k]])),
-              },
+            [this.ingestTable()]: ingestItems.slice(i, i + 25).map((item) => ({
+              DeleteRequest: { Key: Object.fromEntries(ingestKeys.map((k) => [k, item[k]])) },
             })),
           },
         })
       );
-      if (res.UnprocessedItems && Object.keys(res.UnprocessedItems).length > 0) {
-        logger.warn('feedback-store.clear.ingest.unprocessed', { unprocessed: res.UnprocessedItems });
-      }
     }
+
     invalidateFeedbackScanCache();
-    logger.info('feedback-store.clear.done', { env });
+    logger.info('feedback-store.clear.done', {
+      env,
+      s3: s3ForEnv.length, athena: athenaForEnv.length, enriched: enrichedForEnv.length,
+    });
   }
 
-  // DynamoDB writes composite rows directly; no separate rebuild step.
+  // ── One-time migration: legacy → raw tables → enriched ───────────────────
+  // Copies S3 and Athena rows from the legacy feedback table into their
+  // respective raw tables (skips rows already present — PutCommand overwrites
+  // with identical data so it is idempotent), then rebuilds the enriched table.
+  // Returns row counts for each table written.
+
+  async migrateLegacyToRawTables(env: string): Promise<{
+    legacyTotal: number;
+    s3Written: number;
+    athenaWritten: number;
+    enrichedTotal: number;
+    alreadyPopulated: boolean;
+  }> {
+    spLog(SP_MASK.INFO, 'feedback-store', `migrateLegacyToRawTables start — env=${env}`);
+
+    // Check if raw tables already have data — still run to pick up any gaps,
+    // but flag it so the UI can show "already populated" context.
+    const [existingS3, existingAthena] = await Promise.all([
+      scanAll(this.rawS3Table()).catch(() => [] as Record<string, unknown>[]),
+      scanAll(this.rawAthenaTable()).catch(() => [] as Record<string, unknown>[]),
+    ]);
+    const alreadyPopulated: boolean =
+      existingS3.filter((i) => str(i['env']) === env).length > 0 ||
+      existingAthena.filter((i) => str(i['env']) === env).length > 0;
+
+    const legacy = await this.scanFeedback(env);
+    spLog(SP_MASK.INFO, 'feedback-store', `Legacy scan: ${legacy.length} rows for env=${env}`);
+
+    const s3Rows = legacy.filter((i) => {
+      const src = str(i['data_source']);
+      return src === 's3' || src === 'both';
+    }).map((i) => ({ ...i, data_source: 's3' }));
+
+    const athenaRows = legacy.filter((i) => {
+      const src = str(i['data_source']);
+      return src === 'athena' || src === 'both';
+    }).map((i) => ({ ...i, data_source: 'athena' }));
+
+    await Promise.all([
+      s3Rows.length > 0
+        ? this._batchWrite(this.rawS3Table(), s3Rows)
+        : Promise.resolve(),
+      athenaRows.length > 0
+        ? this._batchWrite(this.rawAthenaTable(), athenaRows)
+        : Promise.resolve(),
+    ]);
+
+    const enrichedTotal = await this.rebuildEnrichedTable(env);
+    invalidateFeedbackScanCache();
+
+    spLog(SP_MASK.INFO, 'feedback-store', `migrateLegacyToRawTables done — s3=${s3Rows.length} athena=${athenaRows.length} enriched=${enrichedTotal}`);
+    return {
+      legacyTotal: legacy.length,
+      s3Written: s3Rows.length,
+      athenaWritten: athenaRows.length,
+      enrichedTotal,
+      alreadyPopulated,
+    };
+  }
+
+  // Rebuilds the enriched table from raw S3 + Athena tables.
   async rebuildFeedbackComposite(env: string): Promise<number> {
-    const items = await this.scanFeedback(env);
-    return items.length;
+    return this.rebuildEnrichedTable(env);
   }
 
   async recomputeDailyStats(env: string, dates?: string[]): Promise<void> {
-    const items = await this.scanFeedback(env);
+    const items = await this.scanEnriched(env);
     const filtered = dates?.length
       ? items.filter((i) => dates.includes(dateSlice(i['feedback_utc_ts']) ?? ''))
       : items;
@@ -439,7 +822,7 @@ export class FeedbackStore {
     positiveCount: number; negativeCount: number; neutralCount: number;
     dateRange: { from: string | null; to: string | null };
   }> {
-    let items = await this.scanFeedback(env);
+    let items = await this.scanEnriched(env);
     if (days) {
       const cutoff = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
       items = items.filter((i) => (dateSlice(i['feedback_utc_ts']) ?? '') >= cutoff);
@@ -488,7 +871,7 @@ export class FeedbackStore {
     issueCount: number; supportCount: number; feedbackCount: number;
   }>> {
     const cutoff = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
-    const items = (await this.scanFeedback(env)).filter(
+    const items = (await this.scanEnriched(env)).filter(
       (i) => (dateSlice(i['feedback_utc_ts']) ?? '') >= cutoff
     );
 
@@ -524,7 +907,7 @@ export class FeedbackStore {
     env: string,
     appId?: string
   ): Promise<Array<{ rating: number; count: number; pct: number }>> {
-    let items = await this.scanFeedback(env);
+    let items = await this.scanEnriched(env);
     if (appId) items = items.filter((i) => i['app_id'] === appId);
     const counts = new Map<number, number>();
     for (const item of items) {
@@ -541,7 +924,7 @@ export class FeedbackStore {
   async getCategoryBreakdown(
     env: string
   ): Promise<Array<{ category: string; count: number; pct: number }>> {
-    const items = await this.scanFeedback(env);
+    const items = await this.scanEnriched(env);
     const counts = new Map<string, number>();
     for (const item of items) {
       const cat = str(item['feedback_category']) ?? 'unknown';
@@ -557,7 +940,7 @@ export class FeedbackStore {
     env: string,
     topN = 20
   ): Promise<Array<{ topic: string; count: number; pct: number }>> {
-    const items = await this.scanFeedback(env);
+    const items = await this.scanEnriched(env);
     const counts = new Map<string, number>();
     for (const item of items) {
       for (const topic of parseTopics(item['feedback_topic_list'])) {
@@ -573,15 +956,27 @@ export class FeedbackStore {
   async getAppLeaderboard(
     env: string,
     limit = 20
-  ): Promise<Array<{ appId: string; count: number; avgRating: number | null; issueCount: number; issueRate: number | null }>> {
-    const items = await this.scanFeedback(env);
-    const buckets = new Map<string, { count: number; ratingSum: number; ratingCount: number; issues: number }>();
+  ): Promise<Array<{
+    appId: string; count: number; avgRating: number | null;
+    issueCount: number; issueRate: number | null;
+    negativeCount: number; passiveCount: number; positiveCount: number;
+  }>> {
+    const items = await this.scanEnriched(env);
+    const buckets = new Map<string, {
+      count: number; ratingSum: number; ratingCount: number; issues: number;
+      negative: number; passive: number; positive: number;
+    }>();
     for (const item of items) {
       const appId = str(item['app_id']) ?? '__unknown__';
-      const b = buckets.get(appId) ?? { count: 0, ratingSum: 0, ratingCount: 0, issues: 0 };
+      const b = buckets.get(appId) ?? { count: 0, ratingSum: 0, ratingCount: 0, issues: 0, negative: 0, passive: 0, positive: 0 };
       b.count++;
       const r = num(item['rating']);
-      if (r !== null) { b.ratingSum += r; b.ratingCount++; }
+      if (r !== null) {
+        b.ratingSum += r; b.ratingCount++;
+        if (r <= 3) b.negative++;
+        else if (r <= 5) b.passive++;
+        else b.positive++;
+      }
       if (str(item['feedback_category']) === 'issue') b.issues++;
       buckets.set(appId, b);
     }
@@ -593,6 +988,7 @@ export class FeedbackStore {
         avgRating: b.ratingCount ? Math.round((b.ratingSum / b.ratingCount) * 10) / 10 : null,
         issueCount: b.issues,
         issueRate: pct(b.issues, b.count) || null,
+        negativeCount: b.negative, passiveCount: b.passive, positiveCount: b.positive,
       }));
   }
 
@@ -600,7 +996,7 @@ export class FeedbackStore {
     env: string,
     type: 'hour-of-day' | 'day-of-week' = 'hour-of-day'
   ): Promise<Array<{ x: string; y: number; value: number }>> {
-    const items = (await this.scanFeedback(env)).filter((i) => i['feedback_utc_ts']);
+    const items = (await this.scanEnriched(env)).filter((i) => i['feedback_utc_ts']);
     if (type === 'hour-of-day') {
       const counts = new Map<number, number>();
       for (const item of items) {
@@ -625,7 +1021,7 @@ export class FeedbackStore {
   private async periodStats(
     env: string, from: string, to: string, label: string
   ): Promise<{ label: string; count: number; avgRating: number | null; issueCount: number; issueRate: number | null }> {
-    const items = (await this.scanFeedback(env)).filter((i) => {
+    const items = (await this.scanEnriched(env)).filter((i) => {
       const d = dateSlice(i['feedback_utc_ts']) ?? '';
       return d >= from && d <= to;
     });
@@ -710,14 +1106,16 @@ export class FeedbackStore {
     filters?: { category?: string; rating?: number; appId?: string; days?: number },
     sort?: { col: string; dir: 'asc' | 'desc' }
   ): Promise<{ rows: Record<string, unknown>[]; total: number }> {
-    let items = await this.scanFeedback(env);
+    const cutoff: string | undefined = filters?.days
+      ? new Date(Date.now() - filters.days * 86400000).toISOString().slice(0, 10)
+      : undefined;
+    let items = await this.scanEnriched(env);
+    if (cutoff) {
+      items = items.filter((i) => (dateSlice(i['feedback_utc_ts']) ?? '') >= cutoff);
+    }
     if (filters?.category) items = items.filter((i) => i['feedback_category'] === filters.category);
     if (filters?.rating !== undefined) items = items.filter((i) => num(i['rating']) === filters.rating);
     if (filters?.appId) items = items.filter((i) => i['app_id'] === filters.appId);
-    if (filters?.days) {
-      const cutoff = new Date(Date.now() - filters.days * 86400000).toISOString().slice(0, 10);
-      items = items.filter((i) => (dateSlice(i['feedback_utc_ts']) ?? '') >= cutoff);
-    }
 
     const SORTABLE = new Set([
       'feedback_utc_ts', 'rating', 'app_id', 'plan_type_name',
@@ -761,15 +1159,24 @@ export class FeedbackStore {
   async getDataCoverage(env: string): Promise<{
     earliest: string | null; latest: string | null; totalRows: number;
     monthsCovered: string[]; athenaRows: number; s3OnlyRows: number; bothRows: number;
+    rawS3Total: number; rawAthenaTotal: number;
   }> {
-    const items = await this.scanFeedback(env);
-    let earliest: string | null = null, latest: string | null = null;
+    const { feedbackStartDate } = getConfig();
+    const [items, rawS3Total, rawAthenaTotal] = await Promise.all([
+      this.scanEnriched(env),
+      countEnvInRange(this.rawS3Table(), env, feedbackStartDate).catch(() => 0),
+      countEnvInRange(this.rawAthenaTable(), env, feedbackStartDate).catch(() => 0),
+    ]);
+    // Only report a window start when the env actually has enriched rows —
+    // otherwise the UI would render a non-empty "from → to" range for an empty
+    // dataset (latest is already null in that case).
+    const earliest: string | null = items.length > 0 ? feedbackStartDate : null;
+    let latest: string | null = null;
     let athena = 0, s3Only = 0, both = 0;
     const months = new Set<string>();
     for (const item of items) {
       const ts = str(item['feedback_utc_ts']);
-      if (ts) {
-        if (!earliest || ts < earliest) earliest = ts;
+      if (ts && DATE_PREFIX_RE.test(ts)) {
         if (!latest || ts > latest) latest = ts;
         const m = monthSlice(ts);
         if (m) months.add(m);
@@ -782,7 +1189,8 @@ export class FeedbackStore {
     return {
       earliest, latest, totalRows: items.length,
       monthsCovered: [...months].sort(),
-      athenaRows: athena + both, s3OnlyRows: s3Only, bothRows: both,
+      athenaRows: athena, s3OnlyRows: s3Only, bothRows: both,
+      rawS3Total, rawAthenaTotal,
     };
   }
 

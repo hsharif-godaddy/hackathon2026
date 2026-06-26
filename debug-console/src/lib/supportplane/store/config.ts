@@ -8,10 +8,14 @@ export interface SupportplaneStoreConfig {
   transcriptsTable: string;
   uploadsTable: string;
   analyticsTable?: string;
-  feedbackTable: string;
+  feedbackTable: string; // legacy combined table (still used as migration source)
+  feedbackRawS3Table: string; // raw S3 records
+  feedbackRawAthenaTable: string; // raw Athena CSV records
+  feedbackEnrichedTable: string; // deduped merge of S3 + Athena; all reads use this
   feedbackStatsTable: string;
   feedbackIngestTable: string;
   ticketsTable: string;
+  feedbackStartDate: string; // YYYY-MM-DD — shared cutoff: ingest + enriched table filter
 }
 
 // Determines the environment tag used for both DynamoDB table selection (reads) and as the value
@@ -20,7 +24,7 @@ export interface SupportplaneStoreConfig {
 // FEEDBACK_ENV remains for backward compatibility with .env.local setups; this ensures
 // both readers and writers use the same environment without risk of divergence.
 export function getSpEnv(): string {
-  return process.env.ENVIRONMENT_NAME || process.env.SP_ENV || process.env.FEEDBACK_ENV || 'dev';
+  return process.env.ENVIRONMENT_NAME ?? process.env.SP_ENV ?? process.env.FEEDBACK_ENV ?? 'dev';
 }
 
 type DynamoClientOptions = Omit<
@@ -86,10 +90,20 @@ export function getConfig(): SupportplaneStoreConfig {
       process.env.SP_L1_TRANSCRIPTS_TABLE || `airo-builde-supportplane-l1-transcript-${env}`,
     uploadsTable: process.env.SP_L1_UPLOADS_TABLE || `airo-builde-supportplane-l1-upload-${env}`,
     feedbackTable: process.env.SP_FEEDBACK_TABLE || `airo-builde-supportplane-feedback-${env}`,
+    feedbackRawS3Table:
+      process.env.SP_FEEDBACK_RAW_S3_TABLE || `airo-builde-supportplane-feedback-raw-s3-${env}`,
+    feedbackRawAthenaTable:
+      process.env.SP_FEEDBACK_RAW_ATHENA_TABLE ||
+      `airo-builde-supportplane-feedback-raw-athena-${env}`,
+    feedbackEnrichedTable:
+      process.env.SP_FEEDBACK_ENRICHED_TABLE || `airo-builde-supportplane-feedback-enriched-${env}`,
     feedbackStatsTable:
       process.env.SP_FEEDBACK_STATS_TABLE || `airo-builde-supportplane-feedback-stats-${env}`,
     feedbackIngestTable:
       process.env.SP_FEEDBACK_INGEST_TABLE || `airo-builde-supportplane-feedback-ingest-${env}`,
     ticketsTable: process.env.SP_TICKETS_TABLE || `airo-builde-supportplane-tickets-${env}`,
+    // Single cutoff for both ingest (feedback-ingest.ts) and enriched-table filtering.
+    // Set FEEDBACK_START_DATE=YYYY-MM-DD in .env.local to change.
+    feedbackStartDate: process.env.FEEDBACK_START_DATE || '2026-04-01',
   };
 }

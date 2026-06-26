@@ -4,14 +4,14 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
     AlertCircle, ArrowDown, ArrowUp, ArrowUpDown, CheckCircle, ChevronDown,
     ChevronLeft, ChevronRight, ChevronUp, CloudDownload, Columns, Database,
-    ExternalLink, RefreshCw, Volume2, XCircle,
+    ExternalLink, FileText, RefreshCw, Upload, Volume2, XCircle,
 } from 'lucide-react';
 import sp from '@/components/supportplane/sp.module.css';
 import { WaveDots } from '@/components/supportplane/WaveDots';
 
 // ── Types ──────────────────────────────────────────────────────────
 
-type ActiveTab = 'ops' | 'browse';
+type ActiveTab = 's3' | 'athena' | 'browse' | 'compare';
 
 interface SyncProgress {
     phase: 'scanning' | 'ingesting' | 'aggregating' | 'done' | 'error';
@@ -42,6 +42,8 @@ interface DataCoverage {
     athenaRows: number;
     s3OnlyRows: number;
     bothRows: number;
+    rawS3Total: number;
+    rawAthenaTotal: number;
 }
 
 interface LogEntry {
@@ -122,20 +124,31 @@ function saveVisibleCols(cols: Set<OptColKey>): void {
 const PAGE_SIZES = [100, 250, 500, 1000] as const;
 const DEFAULT_PAGE_SIZE = 250;
 
+// Athena exports timestamps as "2026-04-01 12:34:56.000" (space, no T).
+// Normalize to ISO before parsing so new Date() doesn't return Invalid Date.
+function normTs(raw: string): Date {
+    return new Date(raw.trim().replace(' ', 'T'));
+}
+
 function fmtDate(iso: string | null): string {
     if (!iso) return '—';
-    try { return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }); }
-    catch { return iso; }
+    try {
+        const d = normTs(iso);
+        if (isNaN(d.getTime())) return '—';
+        return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
+    } catch { return '—'; }
 }
 
 function fmtTs(ts: string | null): string {
     if (!ts) return '—';
     try {
-        return new Date(ts).toLocaleString('en-US', {
+        const d = normTs(ts);
+        if (isNaN(d.getTime())) return '—';
+        return d.toLocaleString('en-US', {
             month: 'short', day: 'numeric', year: 'numeric',
             hour: '2-digit', minute: '2-digit',
         });
-    } catch { return ts; }
+    } catch { return '—'; }
 }
 
 function ratingColor(r: number | null): string {
@@ -207,11 +220,84 @@ function KpiTile({ value, label, sub, color, loading }: { value: string; label: 
     );
 }
 
+function parseDateParts(iso: string | null): { day: string; month: string; year: string } | null {
+    if (!iso) return null;
+    try {
+        const d = normTs(iso);
+        if (isNaN(d.getTime())) return null;
+        return {
+            day: String(d.getUTCDate()).padStart(2, '0'),
+            month: d.toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' }),
+            year: String(d.getUTCFullYear()),
+        };
+    } catch { return null; }
+}
+
+function DateKpiTile({ iso, label, sub, loading }: { iso: string | null; label: string; sub: string; loading?: boolean }) {
+    const parts = parseDateParts(iso);
+    return (
+        <div className={sp.kpiCard}>
+            {loading
+                ? <div style={{ marginBottom: 4 }}><WaveDots size={8} gap={5} /></div>
+                : parts
+                    ? (
+                        <div className={sp.kpiDateRow}>
+                            <span className={sp.kpiDay}>{parts.day}</span>
+                            <div className={sp.kpiSep} />
+                            <div className={sp.kpiMonthYear}>
+                                <span className={sp.kpiMonth}>{parts.month}</span>
+                                <span className={sp.kpiYear}>{parts.year}</span>
+                            </div>
+                        </div>
+                    )
+                    : <div className={sp.kpiValue} style={{ color: 'var(--sp-txm)' }}>—</div>
+            }
+            <div className={sp.kpiLabel}>{label}</div>
+            <div className={sp.kpiSub}>{loading ? '…' : sub}</div>
+        </div>
+    );
+}
+
+function DateBlock({ parts }: { parts: ReturnType<typeof parseDateParts> }) {
+    if (!parts) return <div className={sp.kpiValue} style={{ color: 'var(--sp-txm)' }}>—</div>;
+    return (
+        <div className={sp.kpiDateRow}>
+            <span className={sp.kpiDay}>{parts.day}</span>
+            <div className={sp.kpiSep} />
+            <div className={sp.kpiMonthYear}>
+                <span className={sp.kpiMonth}>{parts.month}</span>
+                <span className={sp.kpiYear}>{parts.year}</span>
+            </div>
+        </div>
+    );
+}
+
+function DateRangeTile({ from, to, loading }: { from: string | null; to: string | null; loading?: boolean }) {
+    const f = parseDateParts(from);
+    const t = parseDateParts(to);
+    return (
+        <div className={sp.kpiCard} style={{ gridColumn: 'span 2' }}>
+            {loading
+                ? <div style={{ marginBottom: 4 }}><WaveDots size={8} gap={5} /></div>
+                : (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                        <DateBlock parts={f} />
+                        <span style={{ fontSize: 20, color: 'var(--sp-txm)', flexShrink: 0, lineHeight: 1 }}>→</span>
+                        <DateBlock parts={t} />
+                    </div>
+                )
+            }
+            <div className={sp.kpiLabel}>Data Range</div>
+            <div className={sp.kpiSub}>{loading ? '…' : 'earliest → latest feedback'}</div>
+        </div>
+    );
+}
+
 // ── Main component ─────────────────────────────────────────────────
 
 export default function FeedbackBrowsePanel({ syncTrigger = 0 }: { syncTrigger?: number }) {
     // ── Tab state ──
-    const [activeTab, setActiveTab] = useState<ActiveTab>('ops');
+    const [activeTab, setActiveTab] = useState<ActiveTab>('s3');
 
     // ── Data source state ──
     const [status,   setStatus]   = useState<IngestionStatus | null>(null);
@@ -222,15 +308,33 @@ export default function FeedbackBrowsePanel({ syncTrigger = 0 }: { syncTrigger?:
 
     // ── Sync state ──
     const [syncing,         setSyncing]         = useState(false);
+    const [syncSource,      setSyncSource]      = useState<'s3' | 'athena' | 'both'>('both');
     const [syncProgress,    setSyncProgress]    = useState<SyncProgress | null>(null);
     const [syncDone,        setSyncDone]        = useState<string | null>(null);
     const [syncError,       setSyncError]       = useState<string | null>(null);
     const [syncCollapsed,   setSyncCollapsed]   = useState(false);
     const [streamDropped,   setStreamDropped]   = useState(false);
-    const readerRef   = useRef<ReadableStreamDefaultReader<Uint8Array> | null>(null);
-    const pollRef     = useRef<ReturnType<typeof setInterval> | null>(null);
-    const syncingRef  = useRef(false);
+    const readerRef      = useRef<ReadableStreamDefaultReader<Uint8Array> | null>(null);
+    const pollRef        = useRef<ReturnType<typeof setInterval> | null>(null);
+    const syncingRef     = useRef(false);
     const forceResyncRef = useRef(false);
+    // Timestamp of last manual log clear (or sync start). Poll/loadStatus filter
+    // out entries older than this so clearing sticks until the next sync.
+    const logClearedAtRef = useRef<number>(0);
+
+    // ── Athena CSV upload state ──
+    const [uploadFile,     setUploadFile]     = useState<File | null>(null);
+    const [uploading,      setUploading]      = useState(false);
+    const [uploadProgress, setUploadProgress] = useState<{ phase: string; processed: number; total: number; newRows: number; skipped: number; errors: number } | null>(null);
+    const [uploadResult,   setUploadResult]   = useState<{ message: string; warnings?: string[]; errors?: number } | null>(null);
+    const [uploadError,    setUploadError]    = useState<string | null>(null);
+    const [dragging,       setDragging]       = useState(false);
+    const uploadInputRef = useRef<HTMLInputElement>(null);
+
+    // ── Legacy migration state ──
+    const [migrating,      setMigrating]      = useState(false);
+    const [migrateResult,  setMigrateResult]  = useState<{ legacyTotal: number; s3Written: number; athenaWritten: number; enrichedTotal: number; alreadyPopulated: boolean } | null>(null);
+    const [migrateError,   setMigrateError]   = useState<string | null>(null);
 
     // ── Log panel ──
     const [logOpen, setLogOpen] = useState(false);
@@ -247,7 +351,7 @@ export default function FeedbackBrowsePanel({ syncTrigger = 0 }: { syncTrigger?:
     const [filterCat,    setFilterCat]    = useState('');
     const [filterRating, setFilterRating] = useState('');
     const [filterApp,    setFilterApp]    = useState('');
-    const [filterDays,   setFilterDays]   = useState('90');
+    const [filterDays,   setFilterDays]   = useState('');
 
     // ── Sort state ──
     const [sortCol, setSortCol] = useState<string>('feedback_utc_ts');
@@ -283,7 +387,9 @@ export default function FeedbackBrowsePanel({ syncTrigger = 0 }: { syncTrigger?:
             const d = await res.json() as { status: IngestionStatus; coverage: DataCoverage; log: LogEntry[] };
             setStatus(d.status);
             setCoverage(d.coverage);
-            setLog(d.log ?? []);
+            const cutoff = logClearedAtRef.current;
+            const entries = (d.log ?? []) as LogEntry[];
+            setLog(cutoff > 0 ? entries.filter((e: LogEntry) => new Date(e.ingested_at).getTime() >= cutoff - 5000) : entries);
         } catch (e) {
             setStatusError((e as Error).message);
         } finally {
@@ -298,8 +404,8 @@ export default function FeedbackBrowsePanel({ syncTrigger = 0 }: { syncTrigger?:
     useEffect(() => {
         if (syncTrigger > 0 && syncTrigger !== prevTriggerRef.current) {
             prevTriggerRef.current = syncTrigger;
-            setActiveTab('ops');
-            void startSync();
+            setActiveTab('s3');
+            void startSync(false, 's3');
         }
     // startSync is stable (useCallback with no deps that change); syncTrigger is the only signal.
     }, [syncTrigger]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -346,7 +452,11 @@ export default function FeedbackBrowsePanel({ syncTrigger = 0 }: { syncTrigger?:
                 const d = await res.json() as { status: IngestionStatus; coverage: DataCoverage; log: LogEntry[] };
                 setStatus(d.status);
                 setCoverage(d.coverage);
-                if (!forceResyncRef.current) setLog(d.log ?? []);
+                if (!forceResyncRef.current) {
+                    const cutoff = logClearedAtRef.current;
+                    const entries = (d.log ?? []) as LogEntry[];
+                    setLog(cutoff > 0 ? entries.filter((e: LogEntry) => new Date(e.ingested_at).getTime() >= cutoff - 5000) : entries);
+                }
             } catch { /* ignore poll errors */ } finally {
                 pollInFlight = false;
             }
@@ -403,20 +513,23 @@ export default function FeedbackBrowsePanel({ syncTrigger = 0 }: { syncTrigger?:
         }
     }, []);
 
-    const startSync = useCallback(async (force = false) => {
+    const startSync = useCallback(async (force = false, source: 's3' | 'athena' | 'both' = 'both') => {
         if (syncing) return;
         setSyncing(true);
+        setSyncSource(source);
         syncingRef.current = true;
         setSyncProgress(null);
         setSyncDone(null);
         setSyncError(null);
         setSyncCollapsed(false);
         setStreamDropped(false);
-        if (force) { setLog([]); forceResyncRef.current = true; }
+        setLog([]);
+        logClearedAtRef.current = Date.now();
+        if (force) { forceResyncRef.current = true; }
 
-        const baseUrl = force
-            ? '/api/supportplane/feedback/sync/stream?force=true'
-            : '/api/supportplane/feedback/sync/stream';
+        const params: string[] = [`sources=${source}`];
+        if (force) params.push('force=true');
+        const baseUrl = `/api/supportplane/feedback/sync/stream?${params.join('&')}`;
 
         // Start poll immediately so log count updates every 5s even while stream is active
         startPoll();
@@ -451,10 +564,101 @@ export default function FeedbackBrowsePanel({ syncTrigger = 0 }: { syncTrigger?:
         stopPoll();
     }, [stopPoll]);
 
+    const migrateLegacy = useCallback(async () => {
+        if (migrating) return;
+        setMigrating(true);
+        setMigrateResult(null);
+        setMigrateError(null);
+        try {
+            const res = await fetch('/api/supportplane/feedback/sync/migrate-legacy', { method: 'POST' });
+            const body = await res.json() as { success: boolean; error?: string; legacyTotal?: number; s3Written?: number; athenaWritten?: number; enrichedTotal?: number; alreadyPopulated?: boolean };
+            if (!body.success) {
+                setMigrateError(body.error ?? 'Migration failed');
+            } else {
+                setMigrateResult({
+                    legacyTotal: body.legacyTotal ?? 0,
+                    s3Written: body.s3Written ?? 0,
+                    athenaWritten: body.athenaWritten ?? 0,
+                    enrichedTotal: body.enrichedTotal ?? 0,
+                    alreadyPopulated: body.alreadyPopulated ?? false,
+                });
+                void loadStatus();
+                void loadBrowse(0);
+            }
+        } catch (err) {
+            setMigrateError(err instanceof Error ? err.message : 'Network error');
+        } finally {
+            setMigrating(false);
+        }
+    }, [migrating, loadStatus, loadBrowse]);
+
+    const uploadAthenaCSV = useCallback(async () => {
+        if (!uploadFile || uploading) return;
+        setUploading(true);
+        setUploadResult(null);
+        setUploadError(null);
+        setUploadProgress(null);
+        logClearedAtRef.current = Date.now();
+        const form = new FormData();
+        form.append('file', uploadFile);
+        try {
+            const res = await fetch('/api/supportplane/feedback/sync/athena-upload', { method: 'POST', body: form });
+            if (!res.ok || !res.body) {
+                const body = await res.json() as { error?: string };
+                setUploadError(body.error ?? `Upload failed (${res.status})`);
+                return;
+            }
+            const reader = res.body.getReader();
+            const decoder = new TextDecoder();
+            let buf = '';
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                buf += decoder.decode(value, { stream: true });
+                const lines = buf.split('\n');
+                buf = lines.pop() ?? '';
+                for (const line of lines) {
+                    if (!line.startsWith('data: ')) continue;
+                    try {
+                        const p = JSON.parse(line.slice(6)) as {
+                            phase: string; processed?: number; total?: number;
+                            newRows?: number; skipped?: number; errors?: number;
+                            message?: string; warnings?: string[];
+                        };
+                        if (p.phase === 'processing' || p.phase === 'aggregating') {
+                            setUploadProgress({ phase: p.phase, processed: p.processed ?? 0, total: p.total ?? 0, newRows: p.newRows ?? 0, skipped: p.skipped ?? 0, errors: p.errors ?? 0 });
+                        } else if (p.phase === 'done' || p.phase === 'done_with_errors' || p.phase === 'error') {
+                            setUploadProgress({ phase: p.phase, processed: p.total ?? 0, total: p.total ?? 0, newRows: p.newRows ?? 0, skipped: p.skipped ?? 0, errors: p.errors ?? 0 });
+                            if (p.phase === 'error') {
+                                setUploadError(p.message ?? 'Upload failed');
+                            } else {
+                                setUploadResult({ message: p.message ?? 'Upload complete', warnings: p.warnings, errors: p.errors ?? 0 });
+                            }
+                            setUploadFile(null);
+                            if (uploadInputRef.current) uploadInputRef.current.value = '';
+                            void loadStatus();
+                            void loadBrowse(0);
+                        }
+                    } catch { /* malformed SSE line */ }
+                }
+            }
+        } catch (err) {
+            setUploadError((err as Error).message);
+        } finally {
+            setUploading(false);
+        }
+    }, [uploadFile, uploading, loadStatus, loadBrowse]);
+
     // ── Computed ───────────────────────────────────────────────────
 
-    const logErrorEntries: LogEntry[] = log.filter((e: LogEntry) => e.status !== 'success');
-    const logVisibleEntries: LogEntry[] = logTab === 'errors' ? logErrorEntries : log;
+    const s3Log: LogEntry[]     = log.filter((e: LogEntry) => e.source !== 'athena');
+    const athenaLog: LogEntry[] = log.filter((e: LogEntry) => e.source === 'athena');
+
+    const s3LogErrors: LogEntry[]     = s3Log.filter((e: LogEntry) => e.status !== 'success');
+    const athenaLogErrors: LogEntry[] = athenaLog.filter((e: LogEntry) => e.status !== 'success');
+
+    const s3LogVisible: LogEntry[]     = logTab === 'errors' ? s3LogErrors     : s3Log;
+    const athenaLogVisible: LogEntry[] = logTab === 'errors' ? athenaLogErrors : athenaLog;
 
     const totalPages = Math.ceil(total / pageSize);
     const progressPct = syncProgress && syncProgress.totalFiles > 0
@@ -462,7 +666,164 @@ export default function FeedbackBrowsePanel({ syncTrigger = 0 }: { syncTrigger?:
         : (syncProgress?.phase === 'aggregating' ? 95 : syncProgress?.phase === 'done' ? 100 : 0);
 
     const hasData = (coverage?.totalRows ?? 0) > 0;
-    const showSyncPanel = syncing || (!syncCollapsed && (syncProgress !== null || syncError !== null));
+
+    // Per-source sync panel visibility — progress shows in the tab that triggered it
+    const showS3SyncPanel     = (syncing && syncSource === 's3')
+        || (!syncCollapsed && syncSource === 's3'     && (syncProgress !== null || syncError !== null));
+    const showAthenaSyncPanel = (syncing && syncSource === 'athena')
+        || (!syncCollapsed && syncSource === 'athena' && (syncProgress !== null || syncError !== null));
+
+    // ── Sync progress card (reused in both source tabs) ───────────────
+    const SyncProgressCard = (): React.ReactElement => (
+        <div className={sp.card} style={{ marginBottom: 14 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                <span className={sp.cardLabel} style={{ margin: 0 }}>
+                    <RefreshCw size={12} className={syncing ? sp.spin : ''} />
+                    {streamDropped
+                        ? 'Reconnecting to sync stream…'
+                        : `${syncSource === 's3' ? 'S3' : 'Athena'} sync in progress`}
+                    {syncProgress && !streamDropped && (
+                        <span style={{ marginLeft: 8, fontFamily: 'var(--mono)', fontWeight: 400, color: 'var(--sp-txm)' }}>
+                            {syncProgress.processed + syncProgress.skipped}/{syncProgress.totalFiles} files ·{' '}
+                            {syncProgress.newRows} new · {syncProgress.skipped} skipped
+                            {syncProgress.errors > 0 && <span style={{ color: 'var(--red)' }}> · {syncProgress.errors} errors</span>}
+                        </span>
+                    )}
+                    {streamDropped && coverage && (
+                        <span style={{ marginLeft: 8, fontFamily: 'var(--mono)', fontWeight: 400, color: 'var(--sp-txm)' }}>
+                            {coverage.totalRows.toLocaleString()} rows so far
+                        </span>
+                    )}
+                </span>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    {syncing && (
+                        <button className={sp.btnSecondary} onClick={abortSync} style={{ fontSize: 11 }}>
+                            <XCircle size={11} /> Abort
+                        </button>
+                    )}
+                    {!syncing && (
+                        <button className={sp.btnSecondary} onClick={() => setSyncCollapsed(true)} style={{ fontSize: 11, padding: '2px 8px' }}>
+                            <ChevronUp size={11} />
+                        </button>
+                    )}
+                </div>
+            </div>
+
+            {/* Progress bar */}
+            <div style={{ height: 4, borderRadius: 2, background: 'var(--sp-s3)', overflow: 'hidden', marginBottom: 8 }}>
+                <div style={{ height: '100%', width: `${progressPct}%`, background: 'var(--sp-accent)', borderRadius: 2, transition: 'width 0.4s ease' }} />
+            </div>
+
+            {/* Phase label */}
+            {syncProgress && (
+                <div style={{ fontSize: 11, color: 'var(--sp-txm)', fontFamily: 'var(--mono)' }}>
+                    {phaseLabel(syncProgress)}
+                    {syncProgress.currentFile && (
+                        <span style={{ marginLeft: 8, opacity: 0.7 }}>{shortUrl(syncProgress.currentFile)}</span>
+                    )}
+                </div>
+            )}
+
+            {/* Done */}
+            {syncDone && !syncing && (
+                <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 6, color: 'var(--green)', fontSize: 12 }}>
+                    <CheckCircle size={12} /> {syncDone}
+                </div>
+            )}
+
+            {/* Error */}
+            {syncError && (
+                <div className={sp.alertError} style={{ marginTop: 8, whiteSpace: 'pre-wrap' }}>
+                    <AlertCircle size={11} /> {syncError}
+                </div>
+            )}
+        </div>
+    );
+
+    // ── Ingestion log card (reused in both source tabs) ───────────────
+    const IngestionLogCard = ({ entries, errorEntries, visibleEntries }: {
+        entries: LogEntry[];
+        errorEntries: LogEntry[];
+        visibleEntries: LogEntry[];
+    }): React.ReactElement | null => {
+        if (entries.length === 0) return null;
+        return (
+            <div className={sp.card} style={{ padding: 0, overflow: 'hidden' }}>
+                <button
+                    onClick={() => setLogOpen(o => !o)}
+                    style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--sp-tx1)' }}
+                >
+                    <span className={sp.cardLabel} style={{ margin: 0 }}>
+                        <Database size={12} /> Ingestion Log
+                    </span>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ fontSize: 10, color: 'var(--sp-txm)', fontFamily: 'var(--mono)' }}>{entries.length} entries</span>
+                        {errorEntries.length > 0 && (
+                            <span style={{ fontSize: 10, color: 'var(--red)', fontFamily: 'var(--mono)', fontWeight: 600 }}>· {errorEntries.length} errors</span>
+                        )}
+                        <span
+                            role="button"
+                            onClick={(e) => { e.stopPropagation(); logClearedAtRef.current = Date.now(); setLog([]); }}
+                            style={{ fontSize: 10, color: 'var(--sp-txm)', cursor: 'pointer', padding: '1px 6px', borderRadius: 4, border: '1px solid var(--sp-border)' }}
+                        >
+                            Clear
+                        </span>
+                        {logOpen ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                    </span>
+                </button>
+                {logOpen && (
+                    <>
+                        <div style={{ display: 'flex', gap: 0, borderTop: '1px solid var(--sp-border)', borderBottom: '1px solid var(--sp-border)', background: 'var(--sp-s2)' }}>
+                            {(['all', 'errors'] as const).map(tab => (
+                                <button key={tab} onClick={() => setLogTab(tab)} style={{
+                                    padding: '6px 14px', border: 'none', cursor: 'pointer', fontSize: 11, fontWeight: 600,
+                                    background: logTab === tab ? 'var(--sp-s1)' : 'transparent',
+                                    color: tab === 'errors' && errorEntries.length > 0
+                                        ? (logTab === tab ? 'var(--red)' : '#ef444490')
+                                        : (logTab === tab ? 'var(--sp-tx1)' : 'var(--sp-txm)'),
+                                    borderBottom: logTab === tab ? '2px solid var(--sp-accent)' : '2px solid transparent',
+                                }}>
+                                    {tab === 'all' ? `All (${entries.length})` : `Errors (${errorEntries.length})`}
+                                </button>
+                            ))}
+                        </div>
+                        <div style={{ maxHeight: 260, overflowY: 'auto' }}>
+                            <table style={{ width: '100%', fontSize: 11, borderCollapse: 'collapse' }}>
+                                <thead>
+                                    <tr style={{ background: 'var(--sp-s2)', position: 'sticky', top: 0 }}>
+                                        <th style={{ padding: '6px 10px', textAlign: 'left', color: 'var(--sp-txm)', fontWeight: 600 }}>Source / Key</th>
+                                        <th style={{ padding: '6px 10px', textAlign: 'left', color: 'var(--sp-txm)', fontWeight: 600 }}>Status</th>
+                                        <th style={{ padding: '6px 10px', textAlign: 'right', color: 'var(--sp-txm)', fontWeight: 600 }}>Rows</th>
+                                        <th style={{ padding: '6px 10px', textAlign: 'left', color: 'var(--sp-txm)', fontWeight: 600 }}>Ingested At</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {visibleEntries.map((entry: LogEntry) => (
+                                        <tr key={entry.id} style={{ borderTop: '1px solid var(--sp-s3)' }}>
+                                            <td style={{ padding: '6px 10px', maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                <span style={{
+                                                    display: 'inline-block', marginRight: 6, padding: '1px 5px', borderRadius: 3, fontSize: 10, fontWeight: 600,
+                                                    background: entry.source === 'athena' ? '#7c3aed18' : '#0891b218',
+                                                    color: entry.source === 'athena' ? '#7c3aed' : '#0891b2',
+                                                    border: `1px solid ${entry.source === 'athena' ? '#7c3aed40' : '#0891b240'}`,
+                                                }}>
+                                                    {entry.source}
+                                                </span>
+                                                {shortUrl(entry.s3_url)}
+                                            </td>
+                                            <td style={{ padding: '6px 10px', color: entry.status === 'success' ? 'var(--green)' : 'var(--red)', fontWeight: 500 }}>{entry.status}</td>
+                                            <td style={{ padding: '6px 10px', textAlign: 'right', fontFamily: 'var(--mono)', color: 'var(--sp-tx2)' }}>{entry.rows_written}</td>
+                                            <td style={{ padding: '6px 10px', color: 'var(--sp-txm)', whiteSpace: 'nowrap' }}>{fmtTs(entry.ingested_at)}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </>
+                )}
+            </div>
+        );
+    };
 
     return (
         <div className={sp.panelRoot}>
@@ -470,37 +831,22 @@ export default function FeedbackBrowsePanel({ syncTrigger = 0 }: { syncTrigger?:
             {/* ── Header ── */}
             <div className={sp.panelHeader}>
                 <div>
-                    <div className={sp.panelTitle}>Data Source — Feedback</div>
+                    <div className={sp.panelTitle}>Feedback Analytics</div>
                     <div className={sp.panelSub}>
-                        Athena + S3 → DynamoDB ·
+                        S3 + Athena → DynamoDB ·
                         {hasData
                             ? ` ${coverage!.totalRows.toLocaleString()} rows · ${fmtDate(coverage!.earliest)} – ${fmtDate(coverage!.latest)}`
                             : ' No data loaded yet'}
                     </div>
                 </div>
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                     <button className={sp.btnSecondary} onClick={loadStatus} disabled={statusLoading} title="Refresh status">
                         <RefreshCw size={13} className={statusLoading ? sp.spin : ''} />
                     </button>
-                    {syncing ? (
-                        <button className={sp.btnSecondary} onClick={abortSync}>
-                            <XCircle size={13} /> Abort
+                    {syncing && (
+                        <button className={sp.btnSecondary} onClick={abortSync} title="Stop the current sync">
+                            <XCircle size={13} /> Abort {syncSource.toUpperCase()}
                         </button>
-                    ) : (
-                        <>
-                            <button
-                                className={sp.btnSecondary}
-                                onClick={() => { if (confirm('Drop all local data and re-fetch everything from Athena + S3?')) startSync(true); }}
-                                title="Wipe local data and re-ingest everything from scratch"
-                                style={{ fontSize: 11 }}
-                            >
-                                <RefreshCw size={12} /> Full Resync
-                            </button>
-                            <button className={sp.btnPrimary} onClick={() => startSync(false)}>
-                                <CloudDownload size={13} />
-                                {syncDone ? 'Re-sync' : 'Sync Data'}
-                            </button>
-                        </>
                     )}
                 </div>
             </div>
@@ -511,53 +857,28 @@ export default function FeedbackBrowsePanel({ syncTrigger = 0 }: { syncTrigger?:
                 </div>
             )}
 
-            {/* ── KPI tiles — 6 tiles: coverage + source breakdown ── */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0,1fr))', gap: 8, marginBottom: 14 }}>
+            {/* ── KPI tiles ── */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0,1fr))', gap: 8, marginBottom: 14 }}>
                 <KpiTile
                     loading={statusLoading}
-                    value={coverage?.totalRows.toLocaleString() ?? '—'}
-                    label="Total Records"
-                    sub={`${status ? `${status.successFiles} files ingested` : '—'}`}
-                    color="var(--blue)"
+                    value={coverage?.rawS3Total.toLocaleString() ?? '—'}
+                    label="Rows — S3"
+                    sub={coverage ? `${coverage.s3OnlyRows.toLocaleString()} rows w/o Athena match` : '…'}
+                    color="var(--sp-row)"
                 />
                 <KpiTile
                     loading={statusLoading}
-                    value={fmtDate(coverage?.earliest ?? null)}
-                    label="Earliest Record"
-                    sub="start of data range"
-                    color="var(--sp-tx2)"
+                    value={coverage?.rawAthenaTotal.toLocaleString() ?? '—'}
+                    label="Rows — Athena"
+                    sub={coverage ? `${coverage.athenaRows.toLocaleString()} rows w/o S3 match` : '…'}
+                    color="var(--sp-row)"
                 />
-                <KpiTile
-                    loading={statusLoading}
-                    value={fmtDate(coverage?.latest ?? null)}
-                    label="Latest Record"
-                    sub={status?.lastSync ? `Synced ${fmtDate(status.lastSync)}` : 'not yet synced'}
-                    color="var(--green)"
-                />
-                <KpiTile
-                    loading={statusLoading}
-                    value={coverage?.athenaRows.toLocaleString() ?? '—'}
-                    label="Athena Rows"
-                    sub={coverage ? `${coverage.bothRows.toLocaleString()} enriched by S3` : 'includes enriched'}
-                    color="#7c3aed"
-                />
-                <KpiTile
-                    loading={statusLoading}
-                    value={coverage?.s3OnlyRows.toLocaleString() ?? '—'}
-                    label="S3-Only Rows"
-                    sub="not in Athena CLN"
-                    color="#0891b2"
-                />
-                <KpiTile
-                    loading={statusLoading}
-                    value={coverage?.bothRows.toLocaleString() ?? '—'}
-                    label="Enriched (Both)"
-                    sub="Athena + S3 merged"
-                    color="#059669"
-                />
+                <KpiTile loading={statusLoading} value={coverage?.totalRows.toLocaleString() ?? '—'} label="Enriched Records" sub="S3 ∪ Athena · no duplicates" color="var(--sp-enriched)" />
+                <DateKpiTile loading={statusLoading} iso={coverage?.earliest ?? null} label="From" sub="earliest feedback" />
+                <DateKpiTile loading={statusLoading} iso={coverage?.latest ?? null} label="To" sub="latest feedback" />
             </div>
 
-            {/* ── Sync collapsed bar (click to re-expand) ── */}
+            {/* ── Sync done bar ── */}
             {!syncing && syncCollapsed && syncDone && (
                 <div className={sp.syncCollapsedBar} onClick={() => setSyncCollapsed(false)}>
                     <CheckCircle size={13} style={{ color: 'var(--green)', flexShrink: 0 }} />
@@ -567,235 +888,293 @@ export default function FeedbackBrowsePanel({ syncTrigger = 0 }: { syncTrigger?:
                 </div>
             )}
 
+            {/* ── Migrate from Legacy — shown when enriched table is empty ── */}
+            {!statusLoading && !hasData && !migrating && !migrateResult && (
+                <div className={sp.card} style={{ marginBottom: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                    <div>
+                        <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 2 }}>Populate from Legacy Table</div>
+                        <div style={{ fontSize: 12, color: 'var(--sp-txm)' }}>
+                            Copy S3 + Athena rows from the existing <code style={{ fontSize: 11 }}>feedback</code> table into the new raw tables and rebuild the enriched view. One-time operation — safe to re-run.
+                        </div>
+                    </div>
+                    <button
+                        className={sp.btnPrimary}
+                        onClick={() => void migrateLegacy()}
+                        style={{ whiteSpace: 'nowrap', flexShrink: 0 }}
+                    >
+                        <Database size={12} /> Migrate from Legacy
+                    </button>
+                </div>
+            )}
+
+            {migrating && (
+                <div className={sp.card} style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 10, color: 'var(--sp-txm)', fontSize: 13 }}>
+                    <svg width="14" height="14" viewBox="0 0 14 14" style={{ animation: 'spin 1s linear infinite', flexShrink: 0 }}>
+                        <circle cx="7" cy="7" r="5.5" fill="none" stroke="currentColor" strokeWidth="2" strokeDasharray="20 14" />
+                    </svg>
+                    Copying rows from legacy table and rebuilding enriched view…
+                </div>
+            )}
+
+            {migrateResult && (
+                <div className={sp.alertSuccess} style={{ marginBottom: 12 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, marginBottom: 4 }}>
+                        <CheckCircle size={13} /> Migration complete{migrateResult.alreadyPopulated ? ' (topped up)' : ''}
+                    </div>
+                    <div style={{ fontSize: 12 }}>
+                        Legacy: {migrateResult.legacyTotal.toLocaleString()} rows →
+                        S3: {migrateResult.s3Written.toLocaleString()} · Athena: {migrateResult.athenaWritten.toLocaleString()} · Enriched: {migrateResult.enrichedTotal.toLocaleString()} unique records
+                    </div>
+                </div>
+            )}
+
+            {migrateError && (
+                <div className={sp.alertError} style={{ marginBottom: 12 }}>
+                    <AlertCircle size={12} /> Migration failed: {migrateError}
+                </div>
+            )}
+
             {/* ── Tab bar ── */}
             <div className={sp.tabBar}>
-                <button className={`${sp.tab} ${activeTab === 'ops' ? sp.tabActive : ''}`} onClick={() => setActiveTab('ops')}>
-                    Data Ops
+                <button className={`${sp.tab} ${activeTab === 's3' ? sp.tabActive : ''}`} onClick={() => setActiveTab('s3')}>
+                    <CloudDownload size={11} /> S3{s3Log.length > 0 && <span style={{ marginLeft: 4, fontSize: 10, opacity: 0.6 }}>({s3Log.length})</span>}
+                </button>
+                <button className={`${sp.tab} ${activeTab === 'athena' ? sp.tabActive : ''}`} onClick={() => setActiveTab('athena')}>
+                    <Database size={11} /> Athena{athenaLog.length > 0 && <span style={{ marginLeft: 4, fontSize: 10, opacity: 0.6 }}>({athenaLog.length})</span>}
                 </button>
                 <button className={`${sp.tab} ${activeTab === 'browse' ? sp.tabActive : ''}`} onClick={() => setActiveTab('browse')}>
                     Browse Data {hasData && <span style={{ marginLeft: 4, fontSize: 10, opacity: 0.7 }}>({coverage!.totalRows.toLocaleString()})</span>}
                 </button>
+                <button className={`${sp.tab} ${activeTab === 'compare' ? sp.tabActive : ''}`} onClick={() => setActiveTab('compare')}>
+                    S3 ↔ Athena
+                </button>
             </div>
 
             {/* ════════════════════════════════════════════════════
-                TAB: DATA OPS
+                TAB: S3
             ════════════════════════════════════════════════════ */}
-            {activeTab === 'ops' && (
+            {activeTab === 's3' && (
                 <>
-                    {/* No-data empty state */}
-                    {!statusLoading && !hasData && (
-                        <div className={sp.emptyState} style={{ marginBottom: 14 }}>
-                            <CloudDownload size={28} style={{ marginBottom: 8, color: 'var(--sp-txm)' }} />
-                            <div style={{ fontWeight: 600 }}>No feedback data in DynamoDB</div>
-                            <div style={{ fontSize: 12, color: 'var(--sp-txm)', marginTop: 6, maxWidth: 400, lineHeight: 1.6 }}>
-                                Click <strong>Sync Data</strong> to pull from Athena + S3.<br />
-                                If sync returns nothing, Athena/SSO may not be configured — see the SupportPlane runbook.
-                            </div>
+                    {/* Sync progress (S3) */}
+                    {showS3SyncPanel && <SyncProgressCard />}
+
+                    {/* S3 action card */}
+                    <div className={sp.card} style={{ marginBottom: 14 }}>
+                        <div className={sp.cardLabel}><CloudDownload size={12} /> S3 Parquet Sync</div>
+                        <div style={{ fontSize: 12, color: 'var(--sp-txm)', marginBottom: 12, lineHeight: 1.6 }}>
+                            Incrementally reads new parquet files from S3 (<code style={{ fontSize: 11 }}>{process.env.NEXT_PUBLIC_S3_FEEDBACK_BUCKET ?? 'airo-builder-feedback-prod'}</code>).
+                            Already-ingested files are skipped; use <strong>Force Resync</strong> to re-read everything.
                         </div>
-                    )}
-
-                    {/* Sync progress panel */}
-                    {showSyncPanel && (
-                        <div className={sp.card} style={{ marginBottom: 14 }}>
-                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                                <span className={sp.cardLabel} style={{ margin: 0 }}>
-                                    <RefreshCw size={12} className={syncing ? sp.spin : ''} />
-                                    {streamDropped ? 'Reconnecting to sync stream…' : 'Sync in progress'}
-                                    {syncProgress && !streamDropped && (
-                                        <span style={{ marginLeft: 8, fontFamily: 'var(--mono)', fontWeight: 400, color: 'var(--sp-txm)' }}>
-                                            {syncProgress.processed + syncProgress.skipped}/{syncProgress.totalFiles} files ·{' '}
-                                            {syncProgress.newRows} new · {syncProgress.skipped} skipped
-                                            {syncProgress.errors > 0 && <span style={{ color: 'var(--red)' }}> · {syncProgress.errors} errors</span>}
-                                        </span>
-                                    )}
-                                    {streamDropped && coverage && (
-                                        <span style={{ marginLeft: 8, fontFamily: 'var(--mono)', fontWeight: 400, color: 'var(--sp-txm)' }}>
-                                            {coverage.totalRows.toLocaleString()} rows so far
-                                        </span>
-                                    )}
-                                </span>
-                                {!syncing && (
-                                    <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--sp-txm)', padding: 2 }}
-                                        onClick={() => setSyncCollapsed(true)} title="Collapse">
-                                        <ChevronUp size={13} />
-                                    </button>
-                                )}
-                                {syncing && (
-                                    <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--sp-txm)', padding: 2, fontSize: 10 }}
-                                        onClick={abortSync} title="Stop sync">
-                                        <XCircle size={13} />
-                                    </button>
-                                )}
+                        {!syncing && (
+                            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                                <button className={sp.btnPrimary} onClick={() => void startSync(false, 's3')}>
+                                    <CloudDownload size={13} /> S3 Sync
+                                </button>
+                                <button
+                                    className={sp.btnSecondary}
+                                    style={{ fontSize: 11 }}
+                                    onClick={() => { if (confirm('Drop all S3 ingest history and re-read every parquet file from scratch? This may take several minutes.')) void startSync(true, 's3'); }}
+                                    title="Wipes the ingest log and re-processes all S3 files"
+                                >
+                                    <RefreshCw size={11} /> Force Resync
+                                </button>
                             </div>
+                        )}
+                        {syncing && syncSource === 's3' && (
+                            <div style={{ fontSize: 12, color: 'var(--sp-txm)', fontStyle: 'italic' }}>S3 sync running — see progress above</div>
+                        )}
+                    </div>
 
-                            <div style={{ background: 'var(--sp-s3)', borderRadius: 4, height: 6, overflow: 'hidden', marginBottom: 8 }}>
-                                <div style={{
-                                    width: streamDropped ? '100%' : `${progressPct}%`,
-                                    height: 6, borderRadius: 4,
-                                    background: syncProgress?.phase === 'error'
-                                        ? 'var(--red)'
-                                        : streamDropped
-                                            ? 'var(--sp-txm)'
-                                            : 'var(--blue)',
-                                    transition: streamDropped ? 'none' : 'width .3s ease',
-                                    opacity: streamDropped ? 0.4 : 1,
-                                    backgroundImage: streamDropped
-                                        ? 'repeating-linear-gradient(90deg,transparent,transparent 8px,rgba(255,255,255,.15) 8px,rgba(255,255,255,.15) 16px)'
-                                        : 'none',
-                                }} />
-                            </div>
-
-                            {!streamDropped && (
-                                <div style={{ fontSize: 11, color: 'var(--sp-tx2)', display: 'flex', justifyContent: 'space-between' }}>
-                                    <span>{syncProgress ? phaseLabel(syncProgress) : 'Starting…'}</span>
-                                    <span style={{ fontFamily: 'var(--mono)', color: 'var(--sp-txm)' }}>{progressPct}%</span>
-                                </div>
-                            )}
-
-                            {streamDropped && (
-                                <div style={{ fontSize: 11, color: 'var(--sp-txm)', display: 'flex', alignItems: 'center', gap: 5 }}>
-                                    <AlertCircle size={11} style={{ flexShrink: 0 }} />
-                                    Stream disconnected — sync is still running on the server. Reconnecting automatically… Row count updates every 5 s.
-                                </div>
-                            )}
-
-                            {syncProgress?.currentFile && !streamDropped && (
-                                <div style={{ fontSize: 10, fontFamily: 'var(--mono)', color: 'var(--sp-txm)', marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                    {shortUrl(syncProgress.currentFile)}
-                                </div>
-                            )}
-
-                            {syncDone && <div className={sp.alertSuccess} style={{ marginTop: 8 }}><CheckCircle size={11} /> {syncDone}</div>}
-                            {syncError && (
-                                <div className={sp.alertError} style={{ marginTop: 8, whiteSpace: 'pre-wrap' }}>
-                                    <AlertCircle size={11} /> {syncError}
-                                </div>
-                            )}
-                        </div>
-                    )}
-
-                    {/* Non-syncing idle error/done when panel is collapsed */}
-                    {!syncing && syncCollapsed && syncError && (
+                    {/* Non-syncing idle error when collapsed */}
+                    {!syncing && syncCollapsed && syncError && syncSource === 's3' && (
                         <div className={sp.alertError} style={{ marginBottom: 12, whiteSpace: 'pre-wrap' }}>
                             <AlertCircle size={11} /> {syncError}
                         </div>
                     )}
 
-                    {/* Ingestion log */}
-                    {log.length > 0 && (
-                            <div className={sp.card} style={{ padding: 0, overflow: 'hidden' }}>
-                                {/* Header row */}
+                    {/* S3 ingestion log */}
+                    <IngestionLogCard entries={s3Log} errorEntries={s3LogErrors} visibleEntries={s3LogVisible} />
+                </>
+            )}
+
+            {/* ════════════════════════════════════════════════════
+                TAB: ATHENA
+            ════════════════════════════════════════════════════ */}
+            {activeTab === 'athena' && (
+                <>
+                    {/* Tab subheader */}
+                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 16 }}>
+                        <div>
+                            <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--sp-tx1)' }}>Upload Athena CSV</div>
+                            <div className={sp.panelSubtitle}>Export from Athena console · upload here · merged into DynamoDB without overwriting S3 fields</div>
+                        </div>
+                        {syncing && syncSource === 'athena' ? (
+                            <button className={sp.btnSecondary} onClick={abortSync} style={{ flexShrink: 0 }}>
+                                <XCircle size={12} /> Abort
+                            </button>
+                        ) : (
+                            <button
+                                className={sp.btnSecondary}
+                                onClick={() => void startSync(false, 'athena')}
+                                disabled={syncing}
+                                style={{ flexShrink: 0 }}
+                                title="Run a live SQL query against Athena and write results to DynamoDB"
+                            >
+                                <Database size={12} /> Athena Sync
+                            </button>
+                        )}
+                    </div>
+
+                    {/* Sync progress (Athena) */}
+                    {showAthenaSyncPanel && <SyncProgressCard />}
+
+                    {/* Drop zone — hidden once file selected or uploading */}
+                    {!uploadFile && !uploading && !uploadResult && (
+                        <div
+                            className={`${sp.uploadZone} ${dragging ? sp.uploadZoneActive : ''}`}
+                            onDragOver={(e: React.DragEvent) => { e.preventDefault(); setDragging(true); }}
+                            onDragLeave={() => setDragging(false)}
+                            onDrop={(e: React.DragEvent) => {
+                                e.preventDefault();
+                                setDragging(false);
+                                const f: File | undefined = e.dataTransfer.files[0];
+                                if (f) { setUploadFile(f); setUploadResult(null); setUploadError(null); }
+                            }}
+                            onClick={() => uploadInputRef.current?.click()}
+                        >
+                            <div className={sp.uploadIcon}><Upload size={32} /></div>
+                            <div className={sp.uploadTitle}>Drop file here or click to browse</div>
+                            <div className={sp.uploadSub}>Supports .csv</div>
+                            <input
+                                ref={uploadInputRef}
+                                type="file"
+                                accept=".csv,text/csv"
+                                style={{ display: 'none' }}
+                                onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                                    const f: File | undefined = e.target.files?.[0];
+                                    if (f) { setUploadFile(f); setUploadResult(null); setUploadError(null); }
+                                }}
+                            />
+                        </div>
+                    )}
+
+                    {/* Selected file row — shown before upload starts */}
+                    {uploadFile && !uploading && !uploadResult && (
+                        <div className={sp.fileList}>
+                            <div className={sp.fileRow}>
+                                <FileText size={15} style={{ color: 'var(--sp-txm)', flexShrink: 0 }} />
+                                <span className={sp.fileName}>{uploadFile.name}</span>
+                                <span className={sp.fileSize}>{(uploadFile.size / 1024).toFixed(1)} KB</span>
                                 <button
-                                    onClick={() => setLogOpen(o => !o)}
-                                    style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--sp-tx1)' }}
+                                    className={`${sp.btn} ${sp.btnPrimary}`}
+                                    onClick={() => void uploadAthenaCSV()}
                                 >
-                                    <span className={sp.cardLabel} style={{ margin: 0 }}>
-                                        <Database size={12} />
-                                        Ingestion Log
-                                    </span>
-                                    <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                        <span style={{ fontSize: 10, color: 'var(--sp-txm)', fontFamily: 'var(--mono)' }}>
-                                            {log.length} entries
-                                        </span>
-                                        {logErrorEntries.length > 0 && (
-                                            <span style={{ fontSize: 10, color: 'var(--red)', fontFamily: 'var(--mono)', fontWeight: 600 }}>
-                                                · {logErrorEntries.length} errors
-                                            </span>
-                                        )}
-                                        {logOpen ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
-                                    </span>
+                                    Upload
                                 </button>
+                                <button
+                                    className={sp.btnSecondary}
+                                    onClick={() => { setUploadFile(null); if (uploadInputRef.current) uploadInputRef.current.value = ''; }}
+                                    style={{ marginLeft: 4 }}
+                                >
+                                    Cancel
+                                </button>
+                            </div>
+                        </div>
+                    )}
 
-                                {logOpen && (
-                                    <>
-                                        {/* Tab bar */}
-                                        <div style={{ display: 'flex', gap: 0, borderTop: '1px solid var(--sp-border)', borderBottom: '1px solid var(--sp-border)', background: 'var(--sp-s2)' }}>
-                                            {(['all', 'errors'] as const).map(tab => (
-                                                <button
-                                                    key={tab}
-                                                    onClick={() => setLogTab(tab)}
-                                                    style={{
-                                                        padding: '6px 14px', border: 'none', cursor: 'pointer', fontSize: 11, fontWeight: 600,
-                                                        background: logTab === tab ? 'var(--sp-s1)' : 'transparent',
-                                                        color: tab === 'errors' && logErrorEntries.length > 0
-                                                            ? (logTab === tab ? 'var(--red)' : '#ef444490')
-                                                            : (logTab === tab ? 'var(--sp-tx1)' : 'var(--sp-txm)'),
-                                                        borderBottom: logTab === tab ? '2px solid var(--sp-accent)' : '2px solid transparent',
-                                                    }}
-                                                >
-                                                    {tab === 'all'
-                                                        ? `All (${log.length})`
-                                                        : `Errors (${logErrorEntries.length})`}
-                                                </button>
-                                            ))}
-                                        </div>
-
-                                        {/* Scrollable table */}
-                                        <div style={{ maxHeight: 320, overflowY: 'auto', overflowX: 'auto' }}>
-                                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
-                                                <thead style={{ position: 'sticky', top: 0, zIndex: 1 }}>
-                                                    <tr style={{ background: 'var(--sp-s2)' }}>
-                                                        {(logTab === 'errors'
-                                                            ? ['Source', 'File / Key', 'Error', 'Ingested At']
-                                                            : ['Source', 'File / Key', 'Rows', 'Status', 'Ingested At']
-                                                        ).map(h => (
-                                                            <th key={h} style={{ textAlign: 'left', padding: '7px 10px', color: 'var(--sp-txm)', fontWeight: 500, whiteSpace: 'nowrap', borderBottom: '1px solid var(--sp-border)' }}>
-                                                                {h}
-                                                            </th>
-                                                        ))}
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                    {logVisibleEntries.length === 0 ? (
-                                                        <tr>
-                                                            <td colSpan={5} style={{ padding: '20px', textAlign: 'center', color: 'var(--sp-txm)', fontSize: 11 }}>
-                                                                No errors
-                                                            </td>
-                                                        </tr>
-                                                    ) : logVisibleEntries.map(entry => (
-                                                        <tr key={entry.id} className={sp.tableRow}>
-                                                            <td style={{ padding: '6px 10px', whiteSpace: 'nowrap' }}>
-                                                                <span style={{
-                                                                    background: entry.source === 'athena' ? '#7c3aed18' : '#0891b218',
-                                                                    color: entry.source === 'athena' ? '#7c3aed' : '#0891b2',
-                                                                    border: `1px solid ${entry.source === 'athena' ? '#7c3aed40' : '#0891b240'}`,
-                                                                    borderRadius: 4, padding: '1px 6px', fontSize: 10,
-                                                                }}>
-                                                                    {entry.source}
-                                                                </span>
-                                                            </td>
-                                                            <td style={{ padding: '6px 10px', fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--sp-txm)', maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                                                                title={entry.s3_url}>
-                                                                {shortUrl(entry.s3_url)}
-                                                            </td>
-                                                            {logTab === 'errors' ? (
-                                                                <td style={{ padding: '6px 10px', fontSize: 10, color: 'var(--red)', maxWidth: 340, wordBreak: 'break-word' }}>
-                                                                    {entry.error_msg ?? '—'}
-                                                                </td>
-                                                            ) : (
-                                                                <>
-                                                                    <td style={{ padding: '6px 10px', fontFamily: 'var(--mono)', color: 'var(--sp-tx2)', textAlign: 'right', whiteSpace: 'nowrap' }}>
-                                                                        {entry.rows_written ?? 0}
-                                                                    </td>
-                                                                    <td style={{ padding: '6px 10px', whiteSpace: 'nowrap' }}>
-                                                                        {entry.status === 'success'
-                                                                            ? <CheckCircle size={12} style={{ color: 'var(--green)' }} />
-                                                                            : <span title={entry.error_msg ?? ''}><XCircle size={12} style={{ color: 'var(--red)' }} /></span>}
-                                                                    </td>
-                                                                </>
-                                                            )}
-                                                            <td style={{ padding: '6px 10px', fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--sp-txm)', whiteSpace: 'nowrap' }}>
-                                                                {fmtTs(entry.ingested_at)}
-                                                            </td>
-                                                        </tr>
-                                                    ))}
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                    </>
+                    {/* Upload in-progress with live progress bar */}
+                    {uploading && (
+                        <div className={sp.card} style={{ marginTop: 8 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                                <span className={sp.cardLabel} style={{ margin: 0 }}>
+                                    <RefreshCw size={12} className={sp.spin} />
+                                    {uploadProgress?.phase === 'aggregating' ? 'Rebuilding stats…' : 'Uploading rows…'}
+                                    {uploadProgress && (
+                                        <span style={{ marginLeft: 8, fontFamily: 'var(--mono)', fontWeight: 400, color: 'var(--sp-txm)' }}>
+                                            {uploadProgress.newRows} new · {uploadProgress.skipped} skipped
+                                            {uploadProgress.errors > 0 && <span style={{ color: 'var(--red)' }}> · {uploadProgress.errors} errors</span>}
+                                        </span>
+                                    )}
+                                </span>
+                                {uploadProgress && (
+                                    <span style={{ fontSize: 11, color: 'var(--sp-txm)', fontFamily: 'var(--mono)' }}>
+                                        {uploadProgress.processed.toLocaleString()} / {uploadProgress.total.toLocaleString()}
+                                    </span>
                                 )}
                             </div>
+                            <div style={{ height: 4, background: 'var(--sp-s3)', borderRadius: 2, overflow: 'hidden' }}>
+                                <div style={{
+                                    height: '100%',
+                                    width: uploadProgress && uploadProgress.total > 0
+                                        ? `${Math.round((uploadProgress.processed / uploadProgress.total) * 100)}%`
+                                        : '5%',
+                                    background: 'var(--sp-accent)',
+                                    borderRadius: 2,
+                                    transition: 'width 0.4s ease',
+                                }} />
+                            </div>
+                        </div>
                     )}
+
+                    {/* Upload result */}
+                    {uploadResult && (
+                        <div
+                            className={uploadResult.errors && uploadResult.errors > 0 ? sp.alertError : sp.alertSuccess}
+                            style={{ marginTop: 12 }}
+                        >
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, marginBottom: 4 }}>
+                                {uploadResult.errors && uploadResult.errors > 0
+                                    ? <AlertCircle size={13} />
+                                    : <CheckCircle size={13} />}
+                                {uploadResult.errors && uploadResult.errors > 0 ? 'Upload completed with errors' : 'Upload complete'}
+                            </div>
+                            <div style={{ fontSize: 12 }}>{uploadResult.message}</div>
+                            {uploadResult.warnings && uploadResult.warnings.length > 0 && (
+                                <div style={{ marginTop: 6 }}>
+                                    {uploadResult.warnings.map((w: string, i: number) => (
+                                        <div key={i} style={{ fontSize: 11, color: 'var(--sp-txm)', fontFamily: 'var(--mono)', marginTop: 2 }}>⚠ {w}</div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* Upload error */}
+                    {uploadError && (
+                        <div className={sp.alertError} style={{ marginTop: 12 }}>
+                            <AlertCircle size={12} /> {uploadError}
+                        </div>
+                    )}
+
+                    {/* Non-syncing idle error when collapsed */}
+                    {!syncing && syncCollapsed && syncError && syncSource === 'athena' && (
+                        <div className={sp.alertError} style={{ marginTop: 12, whiteSpace: 'pre-wrap' }}>
+                            <AlertCircle size={11} /> {syncError}
+                        </div>
+                    )}
+
+                    {/* Instructions — hidden while file is selected, uploading, or result shown */}
+                    {!uploadFile && !uploading && !uploadResult && (
+                        <div className={sp.card} style={{ marginTop: 20 }}>
+                            <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>📋 Instructions</div>
+                            <ul style={{ fontSize: 12, color: 'var(--sp-tx2)', paddingLeft: 20, lineHeight: 1.6, margin: 0 }}>
+                                <li>In the Athena console, run: <code style={{ fontSize: 11 }}>SELECT * FROM airo_builder_cln.airo_builder_feedback_cln</code></li>
+                                <li>Download the result as CSV and upload it here</li>
+                                <li>Supports the standard 17-column Athena export format</li>
+                                <li>Rows are merged — existing S3 fields are never overwritten</li>
+                                <li>Duplicate uploads are safe — rows are upserted by <code style={{ fontSize: 11 }}>feedback_id</code></li>
+                                <li>Use <strong>Athena Sync</strong> (top-right) for a live query if Lake Formation access is available</li>
+                            </ul>
+                        </div>
+                    )}
+
+                    {/* Athena ingestion log */}
+                    {athenaLog.length === 0 && (
+                        <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--sp-txm)', fontSize: 12 }}>
+                            No Athena ingest history yet — upload a CSV or run Athena Sync.
+                        </div>
+                    )}
+                    <IngestionLogCard entries={athenaLog} errorEntries={athenaLogErrors} visibleEntries={athenaLogVisible} />
                 </>
             )}
 
@@ -1085,6 +1464,152 @@ export default function FeedbackBrowsePanel({ syncTrigger = 0 }: { syncTrigger?:
                         </div>
                     )}
                 </>
+            )}
+
+            {/* ════════════════════════════════════════════════════
+                TAB: S3 ↔ ATHENA COMPARE
+            ════════════════════════════════════════════════════ */}
+            {activeTab === 'compare' && coverage && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+                    {/* Match summary */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+                        {[
+                            { label: 'Matched (Both)', value: coverage.bothRows, sub: 'S3 row found its Athena counterpart', color: 'var(--sp-enriched)' },
+                            { label: 'S3 Only', value: coverage.s3OnlyRows, sub: 'in S3 raw table, no Athena row', color: 'var(--sp-row)' },
+                            { label: 'Athena Only', value: coverage.athenaRows, sub: 'in Athena raw table, no S3 row', color: 'var(--sp-row)' },
+                        ].map(({ label, value, sub, color }) => (
+                            <div key={label} className={sp.card} style={{ padding: '12px 16px' }}>
+                                <div style={{ fontSize: 28, fontWeight: 700, color, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
+                                    {value.toLocaleString()}
+                                </div>
+                                <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--sp-tx2)', marginTop: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</div>
+                                <div style={{ fontSize: 11, color: 'var(--sp-txm)', marginTop: 2 }}>{sub}</div>
+                            </div>
+                        ))}
+                    </div>
+
+                    {/* Field schema diff */}
+                    <div className={sp.card}>
+                        <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 10 }}>Schema Comparison — fields per source</div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                            {/* S3 fields */}
+                            <div>
+                                <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--sp-row)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>
+                                    S3 — 29 fields (superset)
+                                </div>
+                                {[
+                                    { field: 'feedback_id', both: true },
+                                    { field: 'env', both: true },
+                                    { field: 'app_id', both: true },
+                                    { field: 'customer_id', both: true },
+                                    { field: 'feedback_utc_ts', both: true },
+                                    { field: 'rating', both: true },
+                                    { field: 'feedback_text', both: true },
+                                    { field: 'consent_flag', both: true },
+                                    { field: 'plan_type_name', both: true },
+                                    { field: 'subscription_id', both: true },
+                                    { field: 'subscription_status', both: true },
+                                    { field: 'total_credit_cnt', both: true },
+                                    { field: 'available_credit_cnt', both: true },
+                                    { field: 'feedback_topic_list', both: true },
+                                    { field: 'feedback_origin_name', both: true },
+                                    { field: 'feedback_category', both: false },
+                                    { field: 'app_publish_flag', both: true },
+                                    { field: 'full_story_url', both: false },
+                                    { field: 'shopper_id', both: false },
+                                    { field: 'experiments_line', both: false },
+                                    { field: 'publish_url', both: true },
+                                    { field: 'cln_create_utc_ts', both: true },
+                                    { field: 's3_url', both: false },
+                                    { field: 'device_type', both: false },
+                                    { field: 'browser_type', both: false },
+                                    { field: 'page_url', both: false },
+                                    { field: 'session_id', both: false },
+                                    { field: 'app_name', both: false },
+                                    { field: 'app_version', both: false },
+                                ].map(({ field, both }) => (
+                                    <div key={field} style={{
+                                        display: 'flex', alignItems: 'center', gap: 6,
+                                        padding: '2px 0', fontSize: 11,
+                                        color: both ? 'var(--sp-tx1)' : 'var(--sp-enriched)',
+                                        fontFamily: 'var(--mono)',
+                                    }}>
+                                        <span style={{ opacity: 0.4, fontSize: 10 }}>{both ? '●' : '★'}</span>
+                                        {field}
+                                        {!both && <span style={{ fontSize: 9, fontFamily: 'system-ui', color: 'var(--sp-enriched)', opacity: 0.8 }}>S3 only</span>}
+                                    </div>
+                                ))}
+                            </div>
+                            {/* Athena fields */}
+                            <div>
+                                <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--sp-row)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>
+                                    Athena — 18 fields (subset)
+                                </div>
+                                {[
+                                    'feedback_id', 'env', 'app_id', 'customer_id', 'feedback_utc_ts',
+                                    'rating', 'feedback_text', 'consent_flag', 'plan_type_name',
+                                    'subscription_id', 'subscription_status', 'total_credit_cnt',
+                                    'available_credit_cnt', 'feedback_topic_list', 'feedback_origin_name',
+                                    'app_publish_flag', 'publish_url', 'cln_create_utc_ts',
+                                ].map((field) => (
+                                    <div key={field} style={{
+                                        display: 'flex', alignItems: 'center', gap: 6,
+                                        padding: '2px 0', fontSize: 11,
+                                        color: 'var(--sp-tx1)',
+                                        fontFamily: 'var(--mono)',
+                                    }}>
+                                        <span style={{ opacity: 0.4, fontSize: 10 }}>●</span>
+                                        {field}
+                                    </div>
+                                ))}
+                                <div style={{ marginTop: 8, fontSize: 11, color: 'var(--sp-txm)', fontStyle: 'italic' }}>
+                                    11 fields absent: feedback_category, full_story_url, shopper_id, experiments_line, s3_url, device_type, browser_type, page_url, session_id, app_name, app_version
+                                </div>
+                            </div>
+                        </div>
+                        <div style={{ marginTop: 10, fontSize: 11, color: 'var(--sp-txm)', borderTop: '1px solid var(--sp-border)', paddingTop: 8 }}>
+                            <strong style={{ color: 'var(--sp-tx2)' }}>Merge rule:</strong> S3 is authoritative — Athena is used as base, then all non-null S3 fields overwrite it. S3 has 29 fields (superset) vs Athena 18; S3 wins on every shared field. Athena fills rows absent from S3.
+                        </div>
+                    </div>
+
+                    {/* Raw vs enriched counts */}
+                    <div className={sp.card}>
+                        <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 10 }}>Row counts across tables</div>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                            <thead>
+                                <tr style={{ borderBottom: '1px solid var(--sp-border)' }}>
+                                    {['Table', 'Total rows', 'Matched', 'Unmatched', 'Note'].map(h => (
+                                        <th key={h} style={{ textAlign: 'left', padding: '4px 8px', fontSize: 10, fontWeight: 600, color: 'var(--sp-tx2)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{h}</th>
+                                    ))}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr style={{ borderBottom: '1px solid var(--sp-border)' }}>
+                                    <td style={{ padding: '6px 8px', fontFamily: 'var(--mono)', fontSize: 11 }}>raw-s3</td>
+                                    <td style={{ padding: '6px 8px', fontWeight: 600 }}>{coverage.rawS3Total.toLocaleString()}</td>
+                                    <td style={{ padding: '6px 8px', color: 'var(--sp-enriched)' }}>{coverage.bothRows.toLocaleString()}</td>
+                                    <td style={{ padding: '6px 8px', color: coverage.s3OnlyRows > 0 ? 'var(--sp-warning)' : 'var(--sp-txm)' }}>{coverage.s3OnlyRows.toLocaleString()}</td>
+                                    <td style={{ padding: '6px 8px', fontSize: 11, color: 'var(--sp-txm)' }}>deduplicated by enrich_key</td>
+                                </tr>
+                                <tr style={{ borderBottom: '1px solid var(--sp-border)' }}>
+                                    <td style={{ padding: '6px 8px', fontFamily: 'var(--mono)', fontSize: 11 }}>raw-athena</td>
+                                    <td style={{ padding: '6px 8px', fontWeight: 600 }}>{coverage.rawAthenaTotal.toLocaleString()}</td>
+                                    <td style={{ padding: '6px 8px', color: 'var(--sp-enriched)' }}>{coverage.bothRows.toLocaleString()}</td>
+                                    <td style={{ padding: '6px 8px', color: coverage.athenaRows > 0 ? 'var(--sp-warning)' : 'var(--sp-txm)' }}>{coverage.athenaRows.toLocaleString()}</td>
+                                    <td style={{ padding: '6px 8px', fontSize: 11, color: 'var(--sp-txm)' }}>18 fields, older legacy rows</td>
+                                </tr>
+                                <tr>
+                                    <td style={{ padding: '6px 8px', fontFamily: 'var(--mono)', fontSize: 11 }}>enriched</td>
+                                    <td style={{ padding: '6px 8px', fontWeight: 600, color: 'var(--sp-enriched)' }}>{coverage.totalRows.toLocaleString()}</td>
+                                    <td style={{ padding: '6px 8px', color: 'var(--sp-txm)' }}>—</td>
+                                    <td style={{ padding: '6px 8px', color: 'var(--sp-txm)' }}>—</td>
+                                    <td style={{ padding: '6px 8px', fontSize: 11, color: 'var(--sp-txm)' }}>FEEDBACK_START_DATE onward · S3 wins on overlap</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
             )}
         </div>
     );

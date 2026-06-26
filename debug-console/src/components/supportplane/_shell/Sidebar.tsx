@@ -3,7 +3,7 @@
 import {
     BarChart2, BarChart3, Calendar, ChevronLeft, ChevronRight, CreditCard,
     ExternalLink, FileText, Filter, Gauge, HeartHandshake, LayoutDashboard,
-    Layers, MessageSquare, ScrollText, Star, Sun, Tag, ThumbsUp, Ticket, TrendingUp, Upload,
+    Layers, MessageSquare, ScrollText, Star, Sun, ThumbsUp, Ticket, TrendingUp, Upload,
 } from 'lucide-react';
 
 import sp from '@/components/supportplane/sp.module.css';
@@ -26,12 +26,11 @@ const NAV_GROUPS: NavGroup[] = [
         { id: 'transcript-chat',  label: 'AI Chat',       icon: <MessageSquare size={16} /> },
     ]},
     { label: '⭐ Feedback', items: [
-        { id: 'feedback-overview', label: 'Overview',          icon: <Gauge size={16} /> },
-        { id: 'feedback-trends',   label: 'Trends (WoW/MoM)', icon: <TrendingUp size={16} /> },
-        { id: 'feedback-ratings',  label: 'Rating Analysis',   icon: <Star size={16} /> },
-        { id: 'feedback-topics',   label: 'Topic Analysis',    icon: <Tag size={16} /> },
-        { id: 'feedback-browse',   label: 'Browse Data',       icon: <Filter size={16} /> },
-        { id: 'feedback-chat',     label: 'AI Chat',           icon: <MessageSquare size={16} /> },
+        { id: 'feedback-overview',  label: 'Overview',                icon: <Gauge size={16} /> },
+        { id: 'feedback-trends',    label: 'Trends',                  icon: <TrendingUp size={16} /> },
+        { id: 'feedback-ratings',   label: 'Deep Dive', icon: <Star size={16} /> },
+        { id: 'feedback-browse',    label: 'Upload / Sync & Browse',  icon: <Filter size={16} /> },
+        { id: 'feedback-chat',      label: 'AI Chat',                 icon: <MessageSquare size={16} /> },
     ]},
     { label: '🎫 Support Tickets', items: [
         { id: 'ciec',  label: 'CIEC Board',  icon: <Ticket size={16} /> },

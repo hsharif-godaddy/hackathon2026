@@ -37,7 +37,7 @@ export const GET = withAuth(async (req: NextRequest) => {
     if (!logResult.ok) logger.warn('supportplane.feedback.log.error', { error: logResult.error });
 
     const defaultStatus: IngestionStatus = { totalFiles: 0, successFiles: 0, errorFiles: 0, lastSync: null, totalRows: 0, dbPath: '' };
-    const defaultCoverage: DataCoverage = { earliest: null, latest: null, totalRows: 0, monthsCovered: [], athenaRows: 0, s3OnlyRows: 0, bothRows: 0 };
+    const defaultCoverage: DataCoverage = { earliest: null, latest: null, totalRows: 0, monthsCovered: [], athenaRows: 0, s3OnlyRows: 0, bothRows: 0, rawS3Total: 0, rawAthenaTotal: 0 };
 
     return NextResponse.json({
         status: statusResult.ok ? statusResult.value : defaultStatus,

@@ -195,11 +195,12 @@ async function checkTranscriptsDynamo(): Promise<ServiceHealth> {
         ]);
 
         const cachedCount: number | null = getCachedTranscriptCount();
-        const detail: string = cachedCount !== null
+        const detail: string =
+          cachedCount !== null
             ? `${cachedCount.toLocaleString()} transcripts · DynamoDB`
             : hasRows
-                ? 'Connected · data present'
-                : 'No transcripts — sync from SharePoint';
+              ? `Connected · DynamoDB`
+              : `No transcripts · DynamoDB`;
 
         return { name: 'DynamoDB · Transcripts', ok: hasRows, detail };
     } catch (err) {

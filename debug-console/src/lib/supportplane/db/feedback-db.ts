@@ -51,6 +51,9 @@ export interface AppEntry {
   avgRating: number | null;
   issueCount: number;
   issueRate: number | null;
+  negativeCount: number;
+  passiveCount: number;
+  positiveCount: number;
 }
 
 export interface HeatmapCell {
@@ -124,6 +127,8 @@ export interface DataCoverage {
   athenaRows: number;
   s3OnlyRows: number;
   bothRows: number;
+  rawS3Total: number;
+  rawAthenaTotal: number;
 }
 
 export interface IngestionLogEntry {
@@ -206,8 +211,8 @@ export async function getIngestionLog(limit = 100): Promise<IngestionLogEntry[]>
 
 // ── Ingest writes ─────────────────────────────────────────────────
 
-export async function insertFeedbackAthenaRow(params: unknown[]): Promise<number> {
-  return getFeedbackStore().insertFeedbackAthenaRow(params);
+export async function insertFeedbackAthenaRow(params: unknown[], merge = false): Promise<number> {
+  return getFeedbackStore().insertFeedbackAthenaRow(params, merge);
 }
 
 export async function insertFeedbackS3Row(params: unknown[]): Promise<number> {

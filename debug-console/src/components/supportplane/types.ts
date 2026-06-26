@@ -9,8 +9,9 @@ export type PanelId =
     // ── L1 Transcripts section ───────────────────────────────────
     | 'transcripts' | 'upload' | 'analysis' | 'transcript-chat' | 'derived-insights'
     // ── Feedback section (S3 / Athena) ───────────────────────────
-    | 'feedback-overview' | 'feedback-trends' | 'feedback-ratings'
-    | 'feedback-topics' | 'feedback-browse' | 'feedback-chat'
+    | 'feedback-overview'
+    | 'feedback-trends' | 'feedback-trends-wow' | 'feedback-trends-mom'
+    | 'feedback-ratings' | 'feedback-browse' | 'feedback-chat'
     // ── Support Tickets section (Jira) ───────────────────────────
     | 'ciec' | 'aabsp'
     // ── Deep Dives ───────────────────────────────────────────────
@@ -64,11 +65,12 @@ export const PANEL_LABELS: Record<PanelId, string> = {
     'transcript-chat':  'L1 Transcripts — AI Chat',
     'derived-insights': 'L1 Transcripts — Derived Insights (ML)',
     // Feedback
-    'feedback-overview': 'Feedback — Overview',
-    'feedback-trends':   'Feedback — Trends (WoW / MoM)',
-    'feedback-ratings':  'Feedback — Rating Distribution',
-    'feedback-topics':   'Feedback — Topic Analysis',
-    'feedback-browse':   'Feedback — Browse Data',
+    'feedback-overview':    'Feedback — Overview',
+    'feedback-trends':      'Feedback — Trends (WoW / MoM)',
+    'feedback-trends-wow':  'Feedback — Trends Week-over-Week',
+    'feedback-trends-mom':  'Feedback — Trends Month-over-Month',
+    'feedback-ratings':     'Feedback — Deep Dive',
+    'feedback-browse':      'Feedback — Browse Data',
     'feedback-chat':     'Feedback — AI Chat',
     // Support Tickets
     ciec:  'Support Tickets — CIEC Board',

@@ -221,15 +221,15 @@ export default function FeedbackDashboard({ onNav }: { onNav?: (id: PanelId) => 
                             Explore feedback
                         </div>
                         <div style={{ display: 'flex', gap: 8, paddingTop: 10, flexWrap: 'wrap' }}>
-                            {[
-                                { id: 'feedback-overview' as PanelId,  label: '📊 Overview',       sub: 'Full summary' },
-                                { id: 'feedback-trends' as PanelId,    label: '📈 Trends',          sub: 'WoW / MoM' },
-                                { id: 'feedback-ratings' as PanelId,   label: '⭐ Ratings',          sub: 'Distribution' },
-                                { id: 'feedback-topics' as PanelId,    label: '🏷 Topics',           sub: 'Tag analysis' },
-                                { id: 'feedback-browse' as PanelId,    label: '🔍 Browse',           sub: 'Browse data' },
-                                { id: 'feedback-chat' as PanelId,      label: '💬 AI Chat',          sub: 'NLP queries' },
-                            ].map(a => (
-                                <button key={a.id} onClick={() => onNav?.(a.id)}
+                            {([
+                                { id: 'feedback-overview', label: '📊 Overview',  sub: 'Full summary' },
+                                { id: 'feedback-trends',   label: '📈 Trends',    sub: 'WoW / MoM' },
+                                { id: 'feedback-ratings',  label: '⭐ Ratings',    sub: 'Distribution' },
+                                { id: 'feedback-ratings',  label: '🔬 Analytics', sub: 'Deep Dive' },
+                                { id: 'feedback-browse',   label: '🔍 Browse',    sub: 'Browse data' },
+                                { id: 'feedback-chat',     label: '💬 AI Chat',   sub: 'NLP queries' },
+                            ] satisfies { id: PanelId; label: string; sub: string }[]).map(a => (
+                                <button key={a.label} onClick={() => onNav?.(a.id)}
                                     style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 14px', cursor: 'pointer', textAlign: 'left' }}>
                                     <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--t1)' }}>{a.label}</div>
                                     <div style={{ fontSize: 10, color: 'var(--t3)', marginTop: 2 }}>{a.sub}</div>
