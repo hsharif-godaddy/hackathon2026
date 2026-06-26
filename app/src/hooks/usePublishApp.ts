@@ -489,13 +489,18 @@ export function usePublishApp() {
         // be held for up to 5 minutes.
         void waitForDeploymentComplete(variables.appId, data.result.deployment.deploymentId)
           .then(function dispatchSnapshot(succeeded) {
-            if (succeeded && typeof window !== 'undefined') {
+            if (typeof window === 'undefined') return
+            if (succeeded) {
               window.dispatchEvent(new CustomEvent('publish-snapshot-request', {
                 detail: {
                   appId: variables.appId,
                   deploymentId: data.result.deployment.deploymentId,
                   commitHash: data.result.commitHash || data.commitHash,
                 },
+              }));
+            } else {
+              window.dispatchEvent(new CustomEvent('publish-snapshot-failed', {
+                detail: { appId: variables.appId },
               }));
             }
           });

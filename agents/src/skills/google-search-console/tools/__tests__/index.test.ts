@@ -93,7 +93,7 @@ describe('google-search-console tools', () => {
           success: false,
           workflowPending: true,
         });
-        expect(result.message).toContain('Settings → SEO');
+        expect(result.message).toContain('chat widget');
       });
 
       it('does not return pendingVerification when token is empty string', async () => {
@@ -171,7 +171,7 @@ describe('google-search-console tools', () => {
 
         expect(state).toMatchObject({
           workflowState: 'pending-verification',
-          nextStep: 'guide-verify-in-settings',
+          nextStep: 'guide-verify-in-chat',
           lastError: null,
         });
         expect(state?.updatedAt).toBeDefined();

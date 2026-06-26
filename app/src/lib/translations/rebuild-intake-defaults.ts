@@ -64,6 +64,14 @@ export const SEO_GSC_DEFAULT_MESSAGES: Record<string, string> = {
   builder_seo_gsc_error_auth_failed: 'Authentication failed. Please try again.',
   builder_seo_gsc_error_verify_failed:
     'Verification failed. Make sure you published your site and try again.',
+  builder_seo_gsc_error_publish_failed: 'Publish failed. Please try again.',
+  builder_seo_gsc_retry_button: 'Try again',
+  builder_seo_gsc_publish_button: 'Publish site',
+  builder_seo_gsc_publishing_label: 'Publishing...',
+  builder_seo_gsc_chat_publish_description:
+    'Verification tag added. Publish your site so Google can find it, then verify ownership.',
+  builder_seo_gsc_property_list_warning:
+    'Your site is verified but could not be added to the Google Search Console property list. You may need to add it manually at search.google.com/search-console.',
 };
 
 export const DISPLAY_ADS_DEFAULT_MESSAGES: Record<string, string> = {

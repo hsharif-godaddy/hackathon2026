@@ -9,7 +9,7 @@ import SocialConnectFlow from '@/app/[market]/develop/components/social/connect-
 import { SocialConnectionStatus, SocialConnectionStatusMessage } from '@/app/[market]/develop/components/social/shared/SocialConnectionStatusMessage'
 import type { DefaultToolRendererProps } from '@/app/[market]/develop/components/tool-renderers/DefaultToolRenderer'
 import DefaultToolRenderer from '@/app/[market]/develop/components/tool-renderers/DefaultToolRenderer'
-import { GscChatConnectWidget } from '@/app/[market]/develop/components/tool-renderers/GscChatConnectWidget'
+import { GscChatFlowWidget } from '@/app/[market]/develop/components/tool-renderers/GscChatFlowWidget'
 import ToolHeader from '@/app/[market]/develop/components/tool-renderers/ToolHeader'
 import { useChatContext } from '@/contexts/ChatContext'
 import { useToolResultSync } from '@/hooks/useToolResultSync'
@@ -21,7 +21,7 @@ import { CONNECT_REQUEST_FROM_PUBLISH, isMultiPlatformPublish, type MultiPlatfor
 import type { SocialPostData } from '@/types/social-posts'
 import { formatPlatformName } from '@/utils/social/format'
 
-type ConnectStatus = 'pending' | 'connected' | 'tag-injected' | 'error'
+type ConnectStatus = 'pending' | 'connected' | 'tag-injected' | 'verified' | 'error'
 
 const noop = () => {}
 
@@ -68,7 +68,7 @@ function SocialConnectToolRenderer({
   const hasSyncedRef = useRef(false)
 
   useEffect(() => {
-    const isTerminalState = connectStatus === 'connected' || connectStatus === 'tag-injected' || connectStatus === 'error'
+    const isTerminalState = connectStatus === 'connected' || connectStatus === 'tag-injected' || connectStatus === 'verified' || connectStatus === 'error'
 
     if (isTerminalState && !isFromHistory && r && !hasSyncedRef.current) {
       hasSyncedRef.current = true
@@ -182,22 +182,26 @@ function SocialConnectToolRenderer({
 
     // Determine which view to show
     let content
-    if (connectStatus === 'tag-injected') {
+    if (isGsc && (connectStatus === 'tag-injected' || (!isFromHistory && connectStatus === 'pending'))) {
+      content = (
+        <GscChatFlowWidget
+          appId={r.appId as string}
+          isActive={connectStatus === 'tag-injected' || Boolean(isLastAssistantMessage)}
+          initialPhase={connectStatus === 'tag-injected' ? 'tag-injected' : 'connect'}
+          onTagInjected={() => { setConnectStatus('tag-injected') }}
+          onComplete={() => { setConnectStatus('verified') }}
+          onError={() => { setConnectStatus('error') }}
+        />
+      )
+    } else if (connectStatus === 'tag-injected' || connectStatus === 'verified') {
       content = (
         <Box gap="sm">
           <text.p>
-            {t('builder_seo_gsc_pending_description', undefined, "A Google verification tag has been added to your site. Publish your site so Google can confirm ownership, then click 'Verify with Google' in Settings → SEO.")}
+            {connectStatus === 'verified'
+              ? t('builder_seo_gsc_connected_label', undefined, 'Connected to Google Search Console')
+              : t('builder_seo_gsc_pending_description', undefined, 'A Google verification tag has been added to your site. Publish your site so Google can confirm ownership, then click "Verify with Google" below.')}
           </text.p>
         </Box>
-      )
-    } else if (isGsc && !isFromHistory && connectStatus === 'pending') {
-      content = (
-        <GscChatConnectWidget
-          appId={r.appId as string}
-          isActive={Boolean(isLastAssistantMessage)}
-          onTagInjected={() => { setConnectStatus('tag-injected') }}
-          onError={() => { setConnectStatus('error') }}
-        />
       )
     } else if (isFromHistory || connectStatus !== 'pending') {
       content = (

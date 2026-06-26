@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import Alert from '@ux/alert'
 import Box from '@ux/box'
 import Button from '@ux/button'
@@ -14,15 +14,14 @@ import SettingsSection from '@/app/[market]/develop/components/settings/Settings
 import { usePublishedUrl } from '@/app/[market]/develop/hooks/usePublishedUrl'
 import { buildDynamicApiUrl } from '@/config/dynamic-api'
 import { AuthStatus, useAuthPopup } from '@/hooks/social/connect-flow/useAuthPopup'
-import { useLinkConnection } from '@/hooks/social/mutations/useLinkConnection'
 import { useSocialAuthUrl } from '@/hooks/social/queries/useSocialAuthUrl'
-import { useCreateSocialConnection, useSocialConnections } from '@/hooks/social/queries/useSocialV2'
+import { useSocialConnections } from '@/hooks/social/queries/useSocialV2'
+import { useGscConnectFlow } from '@/hooks/social/useGscConnectFlow'
 import { useSiteAssociations } from '@/hooks/useSocial'
 import { useTranslations } from '@/hooks/useTranslations'
 import { agentFetch } from '@/lib/agent-fetch'
 import { logger } from '@/lib/request-context'
 import { gscClient } from '@/lib/social-gsc'
-import { parseUserId } from '@/lib/social-utils'
 import type { GoogleSearchConsoleConnection } from '@/types/social'
 import { SocialPlatform, SocialPlatformKey } from '@/types/social'
 import { SOCIAL_SCOPES } from '@/types/social-scopes'
@@ -40,7 +39,7 @@ interface SeoPanelProps {
 export default function SeoPanel({ siteId }: SeoPanelProps) {
   const t = useTranslations()
   const publishedUrl = usePublishedUrl()
-  const queryClient = useQueryClient()
+  const { setupVerificationAfterAuth, verifyAndLink, isLinking } = useGscConnectFlow(siteId)
   const [isConnecting, setIsConnecting] = useState(false)
   const [isVerifying, setIsVerifying] = useState(false)
   const [oauthState, setOauthState] = useState<string>('')
@@ -60,31 +59,6 @@ export default function SeoPanel({ siteId }: SeoPanelProps) {
       if (!response.ok) throw new Error(`Failed to fetch metadata: ${response.status}`)
       const data = await response.json() as { metadata: GscVerificationMetadata }
       return data.metadata
-    },
-  })
-
-  const patchMetadata = useMutation({
-    mutationFn: async (patch: Partial<GscVerificationMetadata>): Promise<void> => {
-      const apiUrl = await buildDynamicApiUrl('metadata', siteId)
-      const response = await agentFetch(apiUrl, {
-        siteId,
-        method: 'PATCH',
-        body: JSON.stringify(patch),
-      })
-      if (!response.ok) throw new Error(`Failed to update metadata: ${response.status}`)
-    },
-    onSuccess: () => { void queryClient.invalidateQueries({ queryKey: ['app-metadata', siteId] }) },
-  })
-
-  const injectVerificationTag = useMutation({
-    mutationFn: async (token: string): Promise<void> => {
-      const apiUrl = await buildDynamicApiUrl('seo/verification-tag', siteId)
-      const response = await agentFetch(apiUrl, {
-        siteId,
-        method: 'POST',
-        body: JSON.stringify({ verificationToken: token }),
-      })
-      if (!response.ok) throw new Error(`Failed to inject verification tag: ${response.status}`)
     },
   })
 
@@ -109,9 +83,6 @@ export default function SeoPanel({ siteId }: SeoPanelProps) {
       : null
   )
 
-  const createConnection = useCreateSocialConnection()
-  const linkConnection = useLinkConnection()
-
   const handleAuthSuccess = useCallback(
     async (data: Record<string, unknown>): Promise<void> => {
       const tokenId = data.user_token as string
@@ -122,23 +93,21 @@ export default function SeoPanel({ siteId }: SeoPanelProps) {
       }
       setConnectError(null)
       try {
-        const verificationToken = await gscClient.getGscVerificationToken(publishedUrl, tokenId)
-        await injectVerificationTag.mutateAsync(verificationToken)
-        await patchMetadata.mutateAsync({
-          googleVerificationToken: verificationToken,
-          googleVerificationSiteUrl: publishedUrl,
-          googleVerificationUserTokenId: tokenId,
+        await setupVerificationAfterAuth(publishedUrl, tokenId)
+      } catch (error) {
+        logger.error('gsc.connect.setup-failed', {
+          appId: siteId,
+          error: error instanceof Error ? error.message : error,
         })
-      } catch {
         setConnectError(t('builder_seo_gsc_error_connect_failed', undefined, 'Failed to set up verification. Please try again.'))
       } finally {
         setIsConnecting(false)
       }
     },
-    [publishedUrl, injectVerificationTag, patchMetadata]
+    [publishedUrl, setupVerificationAfterAuth, siteId, t]
   )
 
-  const { authStatus, errorMessage, openPopup } = useAuthPopup(
+  const { authStatus, errorMessage } = useAuthPopup(
     authUrlQuery.data?.url ?? '',
     SocialPlatform.GOOGLE,
     oauthState,
@@ -169,45 +138,27 @@ export default function SeoPanel({ siteId }: SeoPanelProps) {
     setVerifyError(null)
     setIsVerifying(true)
     try {
-      await gscClient.verifyGscSite(pendingSiteUrl, pendingUserTokenId)
-
-      const siteAdded: boolean = await gscClient.addGscSite(pendingSiteUrl, pendingUserTokenId)
+      const { siteAdded } = await verifyAndLink(pendingSiteUrl, pendingUserTokenId)
       if (!siteAdded) {
-        logger.warn('gsc.add-site.exhausted-after-retries', { siteUrl: pendingSiteUrl })
         setPropertyListWarning(true)
       }
-
-      const userId = parseUserId(pendingUserTokenId)
-      const { socialId } = await createConnection.mutateAsync({
-        platform: SocialPlatformKey.GOOGLE_SEARCH_CONSOLE,
-        userTokenId: pendingUserTokenId,
-        userId,
-      })
-      await linkConnection.mutateAsync({
-        siteId,
-        socialId,
-        platform: SocialPlatform.GOOGLE_SEARCH_CONSOLE,
-      })
-
       if (siteAdded) {
-        await gscClient.submitGscSitemap(pendingSiteUrl, pendingUserTokenId)
         setLastSubmittedAt(new Date().toISOString())
       }
-
-      await patchMetadata.mutateAsync({
-        googleVerificationToken: null,
-        googleVerificationSiteUrl: null,
-        googleVerificationUserTokenId: null,
+    } catch (error) {
+      logger.error('gsc.verify.failed', {
+        appId: siteId,
+        siteUrl: pendingSiteUrl,
+        error: error instanceof Error ? error.message : error,
       })
-    } catch {
       setVerifyError(t('builder_seo_gsc_error_verify_failed', undefined, 'Verification failed. Make sure you published your site and try again.'))
     } finally {
       setIsVerifying(false)
     }
-  }, [pendingToken, pendingUserTokenId, pendingSiteUrl, createConnection, linkConnection, siteId, patchMetadata])
+  }, [pendingToken, pendingUserTokenId, pendingSiteUrl, verifyAndLink, siteId, t])
 
   const isLoading = isAssociationsLoading || isConnectionsLoading || isMetadataLoading
-  const isProcessing = isConnecting || createConnection.isPending || linkConnection.isPending
+  const isProcessing = isConnecting || isLinking
 
   if (isLoading) return <SettingsLoadingState />
 

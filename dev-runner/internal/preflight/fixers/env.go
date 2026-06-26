@@ -212,7 +212,7 @@ DEFAULT_PROVIDER=anthropic
 
 APP_TEMPLATE_DIR=app-templates/v8
 
-ENABLE_SOCIAL=false
+ENABLE_SOCIAL=true
 
 MYSQL_ROOT_HOST=localhost
 MYSQL_ROOT_PORT=3306
@@ -250,7 +250,7 @@ ANTHROPIC_BASE_URL="%s"
 
 APP_TEMPLATE_DIR=app-templates/v8
 
-ENABLE_SOCIAL=false
+ENABLE_SOCIAL=true
 
 MYSQL_ROOT_HOST=localhost
 MYSQL_ROOT_PORT=3306
@@ -289,7 +289,7 @@ BUDGET_SERVICE_URL=https://budget-service.api.int.dev-godaddy.com
 		{"AWS_PROFILE", v.AWSProfile, false},
 		{"DEFAULT_PROVIDER", "anthropic", false},
 		{"APP_TEMPLATE_DIR", "app-templates/v8", false},
-		{"ENABLE_SOCIAL", "false", false},
+		{"ENABLE_SOCIAL", "true", false},
 		{"MYSQL_ROOT_HOST", "localhost", false},
 		{"MYSQL_ROOT_PORT", "3306", false},
 		{"MYSQL_ROOT_USER", "root", false},

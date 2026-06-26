@@ -71,7 +71,7 @@ export const checkGscConnectionTool: SkillToolDefinition = {
             workflowPending: true,
             message:
               'Google verification tag has been added to your site but ownership is not yet confirmed. ' +
-              'The user needs to publish their site and then click "Verify with Google" in Settings → SEO to complete the connection.',
+              'The user needs to click "Publish site" then "Verify with Google" in the chat widget to complete the connection.',
           };
         }
 
@@ -83,7 +83,7 @@ export const checkGscConnectionTool: SkillToolDefinition = {
           message:
             'No Google Search Console connection found. ' +
             'Call social-platform__socialConnect({ platform: "GOOGLE_SEARCH_CONSOLE" }) ' +
-            'to initiate OAuth, then guide the user to publish their site and verify in Settings → SEO.',
+            'to initiate OAuth. The chat widget handles publish and verify — stay silent after calling.',
         };
       }
 
@@ -122,7 +122,7 @@ export const checkGscConnectionTool: SkillToolDefinition = {
     if ('action' in output && output.action === 'pendingVerification') {
       return {
         workflowState: 'pending-verification',
-        nextStep: 'guide-verify-in-settings',
+        nextStep: 'guide-verify-in-chat',
         lastError: null,
         updatedAt: new Date().toISOString(),
       };

@@ -10,7 +10,7 @@ intents:
 
 **Purpose:** Connect Google Search Console so the user's sitemap is automatically submitted to Google on every publish, helping Google discover and index their pages faster.
 
-> **Current scope:** The agent triggers OAuth via `social-platform__socialConnect`. The chat widget handles OAuth and tag injection automatically. The user then needs to **publish their site** and click **"Verify with Google" in Settings → SEO** to complete ownership verification.
+> **Current scope:** The agent triggers OAuth via `social-platform__socialConnect`. The chat widget shows a **Connect Google Search Console** button (user click opens OAuth), injects the verification tag, then shows **Publish** and **Verify with Google** buttons in chat — no Settings visit required.
 
 ---
 
@@ -37,7 +37,7 @@ Call `google-search-console__checkGscConnection()` to verify GSC is already conn
 
 - **Connected** (`connected: true`) → Tell the user GSC is active and their sitemap is submitted automatically on publish. Offer to open Settings → SEO for the dashboard link.
 - **Not connected** (`action: 'requiresConnection'`) → Proceed to Step 2
-- **Pending verification** (`action: 'pendingVerification'`) → Tag was injected but Google hasn't verified yet. Tell user: publish the site, then click "Verify with Google" in Settings → SEO.
+- **Pending verification** (`action: 'pendingVerification'`) → Tag was injected but Google hasn't verified yet. Tell user to click **Publish site** then **Verify with Google** in the chat widget.
 - **Error** (`error: string`) → Relay error to user, suggest retry
 
 ### Step 2: Initiate OAuth (not connected path)
@@ -58,25 +58,21 @@ social-platform__socialConnect({ platform: 'GOOGLE_SEARCH_CONSOLE' })
 
 ### Step 3: After OAuth completes
 
-The chat widget automatically injects the Google verification tag into the site's HTML after OAuth. Once the widget confirms the tag was injected, tell the user:
+The chat widget automatically injects the Google verification tag after OAuth. Once the widget confirms the tag was injected, tell the user:
 
-> "The Google verification tag has been added to your site! To finish:
-> 1. **Publish your site** — makes the tag live so Google can find it
-> 2. **Click 'Verify with Google' in Settings → SEO**
->
-> Once verified, your sitemap will be submitted to Google automatically every time you publish."
+> "Google is ready to verify your site. Click **Publish site** in chat to make the verification tag live, then click **Verify with Google**."
 
 ### Step 4: Resume after interruption
 
 **If this skill loads with `current_state` showing:**
 
 - `workflowState: "pending-gsc-connection"` with `nextStep: "guide-publish-and-verify"`
-  → OAuth was initiated; user may have authorized but not yet finished in Settings → SEO
-  → Call `checkGscConnection` — if it returns `pendingVerification`, remind user to open Settings → SEO and publish
+  → OAuth was initiated; user may have authorized but not yet published
+  → Call `checkGscConnection` — if it returns `pendingVerification`, remind user to use the chat widget buttons
 
-- `workflowState: "pending-verification"` with `nextStep: "guide-verify-in-settings"`
+- `workflowState: "pending-verification"` with `nextStep: "guide-verify-in-chat"`
   → Tag has been injected but Google hasn't verified yet
-  → Tell user: open Settings → SEO, publish the site, then click "Verify with Google"
+  → Tell user: click **Publish site** then **Verify with Google** in the chat widget
 
 - `workflowState: "connection-check-failed"` with `nextStep: "retry-connection-check"`
   → Previous check failed
@@ -90,8 +86,8 @@ The chat widget automatically injects the Google verification tag into the site'
 
 | State | Next Step | Action |
 |-------|-----------|--------|
-| `pending-gsc-connection` | `guide-publish-and-verify` | OAuth initiated → tell user to open Settings → SEO, publish, then verify |
-| `pending-verification` | `guide-verify-in-settings` | Tag injected, waiting for publish + verify → remind user to go to Settings → SEO |
+| `pending-gsc-connection` | `guide-publish-and-verify` | OAuth initiated → tell user to publish then verify in chat |
+| `pending-verification` | `guide-verify-in-chat` | Tag injected, waiting for publish + verify → remind user to use chat widget |
 | `connection-check-failed` | `retry-connection-check` | Check failed → retry |
 | `connected` | `inform-user` | Already connected → tell user |
 
@@ -100,6 +96,6 @@ The chat widget automatically injects the Google verification tag into the site'
 ## Important Notes
 
 - After OAuth, the user **must publish their site** before Google can verify ownership (the tag needs to be live)
-- After publishing, the user **must click 'Verify with Google' in Settings → SEO** to complete the connection
+- After publishing, the user **must click 'Verify with Google' in the chat widget** to complete the connection
 - Once verified, sitemaps are submitted **automatically on every publish** — no ongoing action needed
 - The Google Search Console dashboard link is available in Settings → SEO once connected
