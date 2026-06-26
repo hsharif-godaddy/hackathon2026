@@ -103,7 +103,7 @@ export const PlatformItem = memo(function PlatformItem({
             {overallStatus === Status.NotConnected && (
               <Button
                 size="sm"
-                design="primary"
+                design="secondary"
                 onClick={() => onConnectPlatform(platform)}
                 data-eid={generateClickEID('social.settings.connect')}
                 text={t('builder_social_connect')}
@@ -112,7 +112,7 @@ export const PlatformItem = memo(function PlatformItem({
             {overallStatus === Status.NotLinked && (
               <Button
                 size="sm"
-                design="primary"
+                design="secondary"
                 onClick={() => onSelectConnection(platform)}
                 data-eid={generateClickEID('social.settings.link_account')}
                 text={t('builder_social_link_account')}

@@ -93,7 +93,7 @@ export function VideoGenerationSection({ siteId }: VideoGenerationSectionProps) 
       isCollapsible
       button={videoUrl && !isGeneratingVideo ? (
         <Button
-          design="primary"
+          design="secondary"
           size="sm"
           icon={<RevertIcon />}
           disabled={isGeneratingVideo}
@@ -102,7 +102,7 @@ export function VideoGenerationSection({ siteId }: VideoGenerationSectionProps) 
         />
       ) : (
         <Button
-          design="primary"
+          design="secondary"
           size="sm"
           text={isGeneratingVideo ? t('builder_common_generating') : t('builder_video_generate_title')}
           disabled={isGeneratingVideo}
