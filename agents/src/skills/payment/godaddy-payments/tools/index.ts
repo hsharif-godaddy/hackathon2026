@@ -34,7 +34,7 @@ RETURNS one of:
 - { status: 'ready', storeId, channelId } — env vars written and GoDaddy Payments can install checkout templates.
 - { status: 'needs_store_choice', stores, resumeInput? } — askQuestion (multiSelect: false, format each as "Store Name (Business Name)", plus a "Create a new store" option unless conflict is 'store_creation_conflict'). Re-call provision with the chosen { storeId } or, when no conflict is present, { storePreference: 'new' }, merged with resumeInput when provided.
 - { status: 'needs_business_choice', businesses } — askQuestion (multiSelect: false, one option per business). Re-call with the chosen { businessId }.
-- { status: 'needs_identity', resumeInput? } — askQuestion for first name, last name, and email (do NOT show raw field names). Re-call with { firstName, lastName, email } merged with resumeInput when provided.
+- { status: 'needs_identity', resumeInput? } — askQuestion with 3 type:"text" questions: "First name", "Last name", "Email address". Re-call with { firstName, lastName, email } merged with resumeInput when provided.
 - { status: 'payments_manual_required', manageUrl } — GoDaddy Payments onboarding is incomplete; direct the user to complete setup at manageUrl.
 - { status: 'provisioning_in_progress' } — setup still running; do not re-call yet.
 

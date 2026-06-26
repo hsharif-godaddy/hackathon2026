@@ -280,7 +280,7 @@ RETURNS one of:
 - { status: 'ready', storeId, channelId } — env vars written, Commerce is configured. Classify intent and proceed to catalog tools or template installation.
 - { status: 'needs_store_choice', stores, resumeInput? } — askQuestion (multiSelect: false, format each as "Store Name (Business Name)", plus a "Create a new store" option unless conflict is 'store_creation_conflict'). Re-call provision with the chosen { storeId } or, when no conflict is present, { storePreference: 'new' }, merged with resumeInput when provided.
 - { status: 'needs_business_choice', businesses } — askQuestion (multiSelect: false, one option per business). Re-call with the chosen { businessId }.
-- { status: 'needs_identity', resumeInput? } — askQuestion for first name, last name, and email (do NOT show raw field names). Re-call with { firstName, lastName, email } merged with resumeInput when provided.
+- { status: 'needs_identity', resumeInput? } — askQuestion with 3 type:"text" questions: "First name", "Last name", "Email address". Re-call with { firstName, lastName, email } merged with resumeInput when provided.
 - { status: 'provisioning_in_progress' } — setup still running; do not re-call yet.
 
 IDEMPOTENT: Re-calling with the same or additional inputs resumes from the last persisted state. Once a Commerce binding is channel_ready, this tool returns ready without asking the user to choose a store again unless explicit switch/create inputs are provided.`,
