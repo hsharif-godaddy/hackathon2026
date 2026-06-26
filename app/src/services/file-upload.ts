@@ -6,20 +6,35 @@ const ALLOWED_IMAGE_TYPES = new Set([
   'image/jpeg',
   'image/png',
   'image/gif',
-  'image/webp'
+  'image/webp',
+  'image/svg+xml',
+  'image/avif',
 ])
 
-const MAX_FILE_SIZE = 10 * 1024 * 1024
+const ALLOWED_VIDEO_TYPES = new Set([
+  'video/mp4',
+  'video/webm',
+  'video/quicktime',
+])
+
+const ALLOWED_TYPES = new Set([...ALLOWED_IMAGE_TYPES, ...ALLOWED_VIDEO_TYPES])
+
+const MAX_IMAGE_FILE_SIZE = 25 * 1024 * 1024 // 25 MB
+const MAX_VIDEO_FILE_SIZE = 50 * 1024 * 1024 // 50 MB
 const MAX_FILES = 5
 
 export function validateImageFile(file: File): string | null {
-  if (!ALLOWED_IMAGE_TYPES.has(file.type)) {
-    return `File type ${file.type} not allowed. Supported types: JPEG, PNG, GIF, WebP`
+  if (!ALLOWED_TYPES.has(file.type)) {
+    return `File type ${file.type} not allowed. Supported: JPEG, PNG, GIF, WebP, SVG, AVIF, MP4, WebM, MOV`
   }
 
-  if (file.size > MAX_FILE_SIZE) {
+  const isVideo = file.type.startsWith('video/')
+  const maxSize = isVideo ? MAX_VIDEO_FILE_SIZE : MAX_IMAGE_FILE_SIZE
+
+  if (file.size > maxSize) {
     const sizeMB = (file.size / (1024 * 1024)).toFixed(2)
-    return `File size ${sizeMB}MB exceeds maximum of 10MB`
+    const limitMB = maxSize / (1024 * 1024)
+    return `File size ${sizeMB}MB exceeds maximum of ${limitMB}MB`
   }
 
   return null
@@ -59,19 +74,39 @@ export async function uploadImages(
     totalSize: files.reduce((sum, f) => sum + f.size, 0)
   })
 
-  const errors = validateImageFiles(files)
-  if (errors.length > 0) {
-    logger.warn('file-upload.validation.failed', {
-      message: 'File validation failed',
-      errors
+  // Separate valid files from invalid — upload what we can, report what we can't
+  const validFiles: File[] = []
+  const skippedErrors: UploadError[] = []
+
+  if (files.length === 0) {
+    throw new Error('No files selected')
+  }
+
+  for (const file of files) {
+    const error = validateImageFile(file)
+    if (error) {
+      skippedErrors.push({ file: file.name, error })
+    } else {
+      validFiles.push(file)
+    }
+  }
+
+  if (validFiles.length === 0) {
+    throw new Error(skippedErrors.map(e => `${e.file}: ${e.error}`).join('; '))
+  }
+
+  if (skippedErrors.length > 0) {
+    logger.warn('file-upload.validation.partial', {
+      message: 'Some files skipped due to validation errors',
+      skipped: skippedErrors,
+      validCount: validFiles.length,
     })
-    throw new Error(errors.map(e => `${e.file}: ${e.error}`).join('; '))
   }
 
   const formData = new FormData()
   formData.append('appId', appId)
 
-  for (const file of files) {
+  for (const file of validFiles) {
     formData.append('files', file)
   }
 

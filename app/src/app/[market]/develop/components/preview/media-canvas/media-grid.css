@@ -1,103 +1,85 @@
-/* Media Canvas grid overrides */
-.media-canvas .media-grid {
-  display: grid !important;
-  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)) !important;
-  gap: 8px !important;
-  flex-wrap: nowrap !important;
-}
+/* ─── Media Grid Layout ─────────────────────────────────────────────────────── */
 
-.media-canvas .media-grid > * {
-  width: 100% !important;
-  height: auto !important;
-  aspect-ratio: 1 / 1;
-}
-
-/* Compact folder pills in canvas */
-.media-canvas section button[class*="rounded-[8px]"] {
-  max-height: 32px !important;
-  padding: 4px 10px !important;
-  font-size: 13px !important;
-}
-
-.media-canvas section button[class*="rounded-[8px]"] svg {
-  width: 12px !important;
-  height: 12px !important;
-}
-
-/* Media Replace Panel grid overrides */
+.media-canvas .media-grid,
 .media-replace-panel .media-grid {
-  display: grid !important;
-  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)) !important;
-  gap: 8px !important;
-  flex-wrap: nowrap !important;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  gap: 8px;
+  flex-wrap: nowrap;
 }
 
+.media-canvas .media-grid > *,
 .media-replace-panel .media-grid > * {
-  width: 100% !important;
-  height: auto !important;
+  width: 100%;
+  height: auto;
   aspect-ratio: 1 / 1;
 }
 
-/* Tighter spacing in replace panel */
+/* ─── Compact Folder Pills ─────────────────────────────────────────────────── */
+
+.media-canvas .media-folder-pill,
+.media-replace-panel .media-folder-pill {
+  max-height: 32px;
+  padding: 4px 10px;
+  font-size: 13px;
+}
+
+.media-canvas .media-folder-pill svg,
+.media-replace-panel .media-folder-pill svg {
+  width: 12px;
+  height: 12px;
+}
+
+/* ─── Replace Panel Spacing ────────────────────────────────────────────────── */
+
 .media-replace-panel section {
-  margin-bottom: 12px !important;
+  margin-bottom: 12px;
 }
 
 .media-replace-panel section > h2 {
-  margin-bottom: 8px !important;
+  margin-bottom: 8px;
 }
 
 .media-replace-panel nav {
-  margin-bottom: 8px !important;
+  margin-bottom: 8px;
 }
 
-.media-replace-panel .flex.gap-2.mb-4 {
-  margin-bottom: 8px !important;
+.media-replace-panel .media-search-row {
+  margin-bottom: 8px;
 }
 
-/* Compact folder pills in replace panel */
-.media-replace-panel section button[class*="rounded-[8px]"] {
-  max-height: 32px !important;
-  padding: 4px 10px !important;
-  font-size: 13px !important;
+/* ─── 3-dot Dropdown Menu Items ────────────────────────────────────────────── */
+
+.media-canvas [data-media-dropdown] button,
+.media-canvas [data-media-dropdown] span,
+.media-replace-panel [data-media-dropdown] button,
+.media-replace-panel [data-media-dropdown] span {
+  max-height: 32px;
+  box-sizing: border-box;
 }
 
-.media-replace-panel section button[class*="rounded-[8px]"] svg {
-  width: 12px !important;
-  height: 12px !important;
+.media-canvas [data-media-dropdown] button svg,
+.media-canvas [data-media-dropdown] span svg,
+.media-replace-panel [data-media-dropdown] button svg,
+.media-replace-panel [data-media-dropdown] span svg {
+  width: 14px;
+  height: 14px;
 }
 
-/* Responsive search bar stacking in narrow replace panel */
-
-/* Compact 3-dot dropdown menu items */
-.media-canvas .shadow-lg button,
-.media-canvas .shadow-lg span,
-.media-replace-panel .shadow-lg button,
-.media-replace-panel .shadow-lg span {
-  max-height: 32px !important;
-  box-sizing: border-box !important;
-}
-
-.media-canvas .shadow-lg button svg,
-.media-canvas .shadow-lg span svg,
-.media-replace-panel .shadow-lg button svg,
-.media-replace-panel .shadow-lg span svg {
-  width: 14px !important;
-  height: 14px !important;
-}
+/* ─── Responsive Search Bar (narrow replace panel) ─────────────────────────── */
 
 @container (max-width: 379px) {
-  .media-replace-panel .flex.gap-2.mb-4 {
-    flex-wrap: wrap !important;
-    height: auto !important;
+  .media-replace-panel .media-search-row {
+    flex-wrap: wrap;
+    height: auto;
   }
 
-  .media-replace-panel .flex.gap-2.mb-4 > * {
-    width: 100% !important;
-    flex: none !important;
+  .media-replace-panel .media-search-row > * {
+    width: 100%;
+    flex: none;
   }
 
-  .media-replace-panel .flex.gap-2.mb-4 select {
-    width: 100% !important;
+  .media-replace-panel .media-search-row select {
+    width: 100%;
   }
 }

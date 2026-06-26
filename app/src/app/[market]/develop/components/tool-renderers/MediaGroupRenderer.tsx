@@ -11,7 +11,7 @@ import { ChatTab } from '@/app/[market]/develop/components/types'
 import { useChatTabs } from '@/hooks/useChatTabs'
 import { useTranslations } from '@/hooks/useTranslations'
 import { logger } from '@/lib/request-context'
-import { useMediaSlotDialogStore } from '@/stores/useMediaSlotDialogStore'
+import { MEDIA_GRID_VIEW, useMediaSlotDialogStore } from '@/stores/useMediaSlotDialogStore'
 import { useServerPollingStore } from '@/stores/useServerPollingStore'
 import type { ToolCall } from '@/stores/useStreamingConversationStore'
 import { generateClickEID } from '@/utils/instrumentation'
@@ -150,7 +150,7 @@ export default function MediaGroupRenderer({
 
   const handleSeeAllClick = () => {
     if (appId) {
-      navigateToSlot('__GRID__')
+      navigateToSlot(MEDIA_GRID_VIEW)
       setActiveChatTab(ChatTab.MEDIAS)
     }
   }

@@ -81,7 +81,7 @@ const GETTY_LOAD_MORE_COUNT = 9
 type SearchOrientation = 'horizontal' | 'vertical' | null
 
 /** Small cycling control shown when a media slot appears in multiple places in the preview */
-function MediaSlotInstanceCycler({ slotName }: { slotName: string }) {
+export function MediaSlotInstanceCycler({ slotName }: { slotName: string }) {
   const totalMatches = useMediaSlotDialogStore((s) => s.mediaScrollTotalMatches)
   const currentIndex = useMediaSlotDialogStore((s) => s.mediaScrollCurrentIndex)
 

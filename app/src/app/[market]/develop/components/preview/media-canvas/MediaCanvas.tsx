@@ -2,7 +2,7 @@
 
 import '@/app/[market]/develop/components/preview/media-canvas/media-grid.css'
 
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import Button from '@ux/button'
 import PlusIcon from '@ux/icon/plus'
 import SearchIcon from '@ux/icon/search'
@@ -18,28 +18,19 @@ import {
   RecentUploadsSection,
   UploadCard,
 } from '@/app/[market]/develop/components/preview/media-canvas/shared'
-import {
-  ALL_MEDIA_FORMATS,
-  getCategoryForMime,
-  IMAGE_FORMATS,
-  MAX_FILES_PER_UPLOAD,
-  MAX_SIZE_BY_CATEGORY,
-  MediaCategory,
-  VIDEO_FORMATS,
-} from '@/app/[market]/develop/components/preview/media-canvas/types'
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils'
 import { dynamicApiConfigService } from '@/config/dynamic-api'
+import { useImportAsSlot } from '@/hooks/useImportAsSlot'
 import type { MediaFolder } from '@/hooks/useMediaFolders'
 import { SITE_FILES_FOLDER, useMediaFolders } from '@/hooks/useMediaFolders'
 import { useMediaManifest } from '@/hooks/useMediaManifest'
+import { useMediaUpload } from '@/hooks/useMediaUpload'
 import { useRecentUploads } from '@/hooks/useRecentUploads'
 import { regenerateToken } from '@/lib/jwt-regeneration'
 import { logger } from '@/lib/request-context'
-import { uploadImages } from '@/services/file-upload'
+import { useMediaSlotDialogStore } from '@/stores/useMediaSlotDialogStore'
 import { useServerPollingStore } from '@/stores/useServerPollingStore'
-import { compressImageFiles } from '@/utils/image-compression'
 
-const ACCEPT_STRING = ALL_MEDIA_FORMATS.join(',')
 const RECENT_UPLOADS_LIMIT = 30
 
 interface RecentFileEntry {
@@ -51,15 +42,59 @@ export function MediaCanvas() {
   const appId = useAppIdFromParams()
   const { manifest, slotNames, isLoading, refetch } = useMediaManifest({ appId: appId || null })
   const { uploads: recentUploads, isLoading: uploadsLoading, refetch: refetchUploads } = useRecentUploads({ appId: appId || null })
-  const { folders, createFolder, isCreating, moveToFolder } = useMediaFolders({ appId: appId || null })
+  const { folders, createFolder, isCreating, moveToFolder, removeFromFolder } = useMediaFolders({ appId: appId || null })
   const previewBaseUrl = useServerPollingStore((state) => state.getServerState(appId || ''))?.url || null
-  const [uploadError, setUploadError] = useState<string | null>(null)
-  const [isUploading, setIsUploading] = useState(false)
+  const navigateToSlot = useMediaSlotDialogStore((state) => state.navigateToSlot)
   const [activeFolder, setActiveFolder] = useState<MediaFolder | null>(null)
   const [isNewFolderModalOpen, setIsNewFolderModalOpen] = useState(false)
   const [showAllUploads, setShowAllUploads] = useState(false)
-  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [selectedSlotName, setSelectedSlotName] = useState<string | null>(null)
+  const [selectedUploadId, setSelectedUploadId] = useState<string | null>(null)
+  const [selectedGettyUrl, setSelectedGettyUrl] = useState<string | null>(null)
+  const isSiteFilesActive = activeFolder?.id === SITE_FILES_FOLDER.id
+  const importAsSlot = useImportAsSlot(appId || null)
+  const { isUploading, uploadError, setUploadError, fileInputRef, triggerFileInput, handleFileSelect, acceptString } = useMediaUpload({
+    appId: appId || null,
+    onSuccess: async (): Promise<void> => { await Promise.all([refetch(), refetchUploads()]) },
+    onFilesUploaded: async (filenames: string[]): Promise<void> => {
+      if (!activeFolder || isSiteFilesActive) return
+      for (const filename of filenames) {
+        try {
+          const slotPath: string = await importAsSlot({ filename })
+          await moveToFolder({ folderId: activeFolder.id, slotName: slotPath })
+        } catch (err) {
+          logger.warn('media_canvas.upload_to_folder.failed', {
+            appId,
+            filename,
+            folderId: activeFolder.id,
+            error: err instanceof Error ? err.message : String(err),
+          })
+          setUploadError(err instanceof Error ? err.message : 'Failed to add upload to folder')
+        }
+      }
+      await refetch()
+    },
+    logPrefix: 'media_canvas',
+  })
   const gettySearch = useGettySearch({ appId: appId || '', imagePageSize: 17, videoPageSize: 3, singleModePageSize: 20 })
+
+  const handleMoveUploadToFolder = useCallback(async (filename: string, folderId: string): Promise<void> => {
+    try {
+      const slotPath: string = await importAsSlot({ filename })
+      await refetch()
+      if (folderId !== SITE_FILES_FOLDER.id) {
+        await moveToFolder({ folderId, slotName: slotPath })
+      }
+    } catch (err) {
+      logger.warn('media_canvas.move_upload_to_folder.failed', {
+        appId,
+        filename,
+        folderId,
+        error: err instanceof Error ? err.message : String(err),
+      })
+      setUploadError(err instanceof Error ? err.message : 'Failed to move upload to folder')
+    }
+  }, [appId, importAsSlot, moveToFolder, refetch, setUploadError])
 
   // All manifest slots sorted by lastUpdated (for Site Files folder)
   const allSiteFiles = useMemo((): RecentFileEntry[] => {
@@ -73,11 +108,13 @@ export function MediaCanvas() {
   // Virtual "Site Files" folder always first
   const allFolders = useMemo(() => [SITE_FILES_FOLDER, ...folders], [folders])
 
-  const isSiteFilesActive = activeFolder?.id === SITE_FILES_FOLDER.id
-
-  const handleUploadClick = useCallback(() => {
-    fileInputRef.current?.click()
-  }, [])
+  // Get fresh folder data from the hook (activeFolder state is a stale snapshot)
+  const currentFolderSlots = useMemo(() => {
+    if (!activeFolder) return []
+    if (isSiteFilesActive) return []
+    const fresh = allFolders.find((f) => f.id === activeFolder.id)
+    return fresh?.slots ?? []
+  }, [activeFolder, isSiteFilesActive, allFolders])
 
   const handleCreateFolder = useCallback(async (name: string) => {
     try {
@@ -87,72 +124,6 @@ export function MediaCanvas() {
       // Error handled by the hook
     }
   }, [createFolder])
-
-  const handleFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files
-    if (!files || files.length === 0 || !appId) return
-
-    const fileList = Array.from(files)
-
-    if (fileList.length > MAX_FILES_PER_UPLOAD) {
-      setUploadError(`Maximum ${MAX_FILES_PER_UPLOAD} files allowed at a time`)
-      e.target.value = ''
-      return
-    }
-
-    const invalidFile = fileList.find((f) => !getCategoryForMime(f.type))
-    if (invalidFile) {
-      const category = invalidFile.type.startsWith('video/') ? MediaCategory.Video : MediaCategory.Image
-      const formats = category === MediaCategory.Video
-        ? VIDEO_FORMATS.map(t => t.replace('video/', '').toUpperCase()).join(', ')
-        : IMAGE_FORMATS.map(t => t.replace('image/', '').toUpperCase()).join(', ')
-      setUploadError(`Only ${formats} files are supported`)
-      e.target.value = ''
-      return
-    }
-
-    const oversizedFile = fileList.find((f) => {
-      const category = getCategoryForMime(f.type)
-      const maxSize = category ? MAX_SIZE_BY_CATEGORY[category] : MAX_SIZE_BY_CATEGORY[MediaCategory.Image]
-      return f.size > maxSize
-    })
-    if (oversizedFile) {
-      const category = getCategoryForMime(oversizedFile.type) ?? MediaCategory.Image
-      const limitMB = MAX_SIZE_BY_CATEGORY[category] / (1024 * 1024)
-      const label = category === MediaCategory.Video ? 'Video' : category === MediaCategory.Audio ? 'Audio' : 'Image'
-      setUploadError(`${label} must be under ${limitMB}MB`)
-      e.target.value = ''
-      return
-    }
-
-    setUploadError(null)
-    setIsUploading(true)
-
-    try {
-      const imageFiles = fileList.filter((f) => f.type.startsWith('image/'))
-      const videoFiles = fileList.filter((f) => f.type.startsWith('video/'))
-      const compressed = await compressImageFiles(imageFiles)
-      const allFiles = [...compressed, ...videoFiles]
-
-      // Upload in chunks of 5 (API limit per request)
-      for (let i = 0; i < allFiles.length; i += 5) {
-        const chunk = allFiles.slice(i, i + 5)
-        await uploadImages(appId, chunk)
-      }
-
-      logger.info('media_canvas.upload.success', { appId, fileCount: allFiles.length })
-      await Promise.all([refetch(), refetchUploads()])
-    } catch (err) {
-      logger.error('media_canvas.upload.error', {
-        appId,
-        error: err instanceof Error ? err.message : String(err),
-      })
-      setUploadError(err instanceof Error ? err.message : 'Upload failed')
-    } finally {
-      setIsUploading(false)
-      e.target.value = ''
-    }
-  }, [appId, refetch, refetchUploads])
 
   return (
     <div className="h-full flex flex-col pr-1 md:pr-2.5 pl-1 media-canvas">
@@ -185,7 +156,7 @@ export function MediaCanvas() {
               <Button design="secondary" size="small" onClick={() => setIsNewFolderModalOpen(true)} disabled={isCreating} className="!h-[38px]">
                 New Folder
               </Button>
-              <Button design="primary" size="small" onClick={handleUploadClick} disabled={isUploading} className="!h-[38px] !px-3" icon={<PlusIcon className="size-2.5" />} text="Upload" />
+              <Button design="primary" size="small" onClick={triggerFileInput} disabled={isUploading} className="!h-[38px] !px-3" icon={<PlusIcon className="size-2.5" />} text="Upload" />
             </div>
           </div>
 
@@ -223,11 +194,17 @@ export function MediaCanvas() {
           {/* Content */}
           {activeFolder ? (
             <section>
-              <div className="flex flex-wrap gap-[12px]">
-                <UploadCard onClick={handleUploadClick} isUploading={isUploading} />
-                {(isSiteFilesActive ? allSiteFiles : allSiteFiles.filter(({ name }) => (activeFolder.slots || []).includes(name)))
+              <div className="flex flex-wrap gap-[12px] media-grid">
+                <UploadCard onClick={triggerFileInput} isUploading={isUploading} />
+                {(isSiteFilesActive ? allSiteFiles : allSiteFiles.filter(({ name }) => currentFolderSlots.includes(name)))
                   .map(({ name, slot }) => (
-                    <MediaThumbnail key={name} name={name} slot={slot} previewBaseUrl={previewBaseUrl} folders={allFolders} onMoveToFolder={(slotName, folderId) => { void moveToFolder({ folderId, slotName }) }} />
+                    <MediaThumbnail key={name} name={name} slot={slot} previewBaseUrl={previewBaseUrl} folders={allFolders} onMoveToFolder={(slotName, folderId) => {
+                      if (folderId === SITE_FILES_FOLDER.id) {
+                        if (activeFolder && !isSiteFilesActive) void removeFromFolder({ folderId: activeFolder.id, slotName })
+                        return
+                      }
+                      void moveToFolder({ folderId, slotName })
+                    }} onModify={(slotName) => navigateToSlot(slotName, { openEditor: true })} onSelect={(n) => { setSelectedSlotName(n); setSelectedUploadId(null); setSelectedGettyUrl(null) }} isSelected={selectedSlotName === name} isInsideFolder={!isSiteFilesActive} onRemoveFromFolder={(slotName) => { if (activeFolder) void removeFromFolder({ folderId: activeFolder.id, slotName }) }} />
                   ))}
               </div>
             </section>
@@ -235,12 +212,31 @@ export function MediaCanvas() {
             <RecentUploadsSection
               uploads={recentUploads}
               isLoading={uploadsLoading}
-              onUploadClick={handleUploadClick}
+              onUploadClick={triggerFileInput}
               isUploading={isUploading}
               limit={showAllUploads ? undefined : RECENT_UPLOADS_LIMIT}
               onShowMore={() => setShowAllUploads(true)}
               hasMore={!showAllUploads && recentUploads.length > RECENT_UPLOADS_LIMIT}
               folders={allFolders}
+              onMoveUploadToFolder={(filename, folderId) => { void handleMoveUploadToFolder(filename, folderId) }}
+              onModifyUpload={(file) => {
+                void (async () => {
+                  try {
+                    const slotPath: string = await importAsSlot({ filename: file.filename })
+                    await refetch()
+                    navigateToSlot(slotPath, { openEditor: true })
+                  } catch (err) {
+                    logger.warn('media_canvas.modify_upload.failed', {
+                      appId,
+                      filename: file.filename,
+                      error: err instanceof Error ? err.message : String(err),
+                    })
+                    setUploadError('Failed to open editor')
+                  }
+                })()
+              }}
+              onSelectUpload={(file) => { setSelectedUploadId(file.id); setSelectedSlotName(null); setSelectedGettyUrl(null) }}
+              selectedUploadId={selectedUploadId}
               onDeleteUpload={async (filename) => {
                 if (!appId) return
                 try {
@@ -248,12 +244,18 @@ export function MediaCanvas() {
                   if (!apiConfig.agentUrl) throw new Error('Agent URL not available')
                   const baseAgentUrl = apiConfig.agentUrl.replace(`/apps/${appId}`, '')
                   const tokenResult = await regenerateToken({ siteId: appId, force: true })
-                  const response = await fetch(`${baseAgentUrl}/media/${appId}/uploads/${encodeURIComponent(filename)}`, {
+                  const response = await fetch(`${baseAgentUrl}/media/${appId}/uploads/${encodeURIComponent(filename)}?preserveSlotMedia=true`, {
                     method: 'DELETE',
                     headers: { Authorization: `Bearer ${tokenResult.token}` },
                   })
-                  if (!response.ok) throw new Error('Failed to delete upload')
-                  await refetchUploads()
+                  if (!response.ok) {
+                    if (response.status === 409) {
+                      throw new Error('This media is currently in use. Make sure media is not in use before retrying delete.')
+                    }
+                    const data = await response.json().catch(() => ({ error: 'Failed to delete upload' }))
+                    throw new Error(data.error || 'Failed to delete upload')
+                  }
+                  await Promise.all([refetch(), refetchUploads()])
                 } catch (err) {
                   logger.error('media_canvas.delete_upload.error', { appId, filename, error: err instanceof Error ? err.message : String(err) })
                   setUploadError(err instanceof Error ? err.message : 'Failed to delete upload')
@@ -262,22 +264,21 @@ export function MediaCanvas() {
             />
           )}
 
-          {/* Getty Results — below uploads at root level */}
-          {appId && !activeFolder && (
+          {/* Getty Results — shown after user searches, regardless of folder context */}
+          {appId && gettySearch.hasSearched && (
             <section className="mb-3">
-              <h2 className="text-lg font-semibold mb-2">Recommendations by Getty Images</h2>
+              <h2 className="text-lg font-semibold mb-2">Recommendations by <span className="font-bold">getty</span>images</h2>
               <GettyResultsGrid
                 results={gettySearch.results}
                 gettyIds={gettySearch.gettyIds}
                 videoUrls={gettySearch.videoUrls}
                 isSearching={gettySearch.isSearching}
                 hasSearched={gettySearch.hasSearched}
-                onSelectResult={() => {}}
-                selectedUrl={null}
+                onSelectResult={(result) => { setSelectedGettyUrl(result.url); setSelectedSlotName(null); setSelectedUploadId(null) }}
+                selectedUrl={selectedGettyUrl}
                 hasMore={gettySearch.hasMore}
                 isLoadingMore={gettySearch.isLoadingMore}
                 onLoadMore={() => { void gettySearch.loadMore() }}
-                folders={allFolders}
               />
             </section>
           )}
@@ -285,7 +286,7 @@ export function MediaCanvas() {
           <input
             type="file"
             ref={fileInputRef}
-            accept={ACCEPT_STRING}
+            accept={acceptString}
             multiple
             onChange={handleFileSelect}
             className="hidden"

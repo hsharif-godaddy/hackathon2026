@@ -41,7 +41,7 @@ import PlanTracker from '@/app/[market]/develop/components/PlanTracker';
 import { SettingsLoadingState } from '@/app/[market]/develop/components/settings/components/SettingsLoadingState';
 import GitHubSyncSettingsSavedSnackbar from '@/app/[market]/develop/components/settings/GitHubPanel/GitHubSyncSettingsSavedSnackbar';
 import StreamingMessageList from '@/app/[market]/develop/components/StreamingMessageList';
-import { ChatTab } from '@/app/[market]/develop/components/types';
+import { ChatTab, MobileMode, ViewMode } from '@/app/[market]/develop/components/types';
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils';
 import { isColorSuggestPanelVisible } from '@/app/[market]/develop/components/utils/colorSuggestPanelVisibility';
 import { isDesignKitSuggestPanelVisible } from '@/app/[market]/develop/components/utils/designKitSuggestPanelVisibility';
@@ -76,7 +76,7 @@ import { hasComposerSendPayload } from '@/services/transport/composerAttachments
 import type { SendMessageOptions } from '@/services/transport/messageTypes';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { useGitStore } from '@/stores/useGitStore'
-import { useMediaSlotDialogStore } from '@/stores/useMediaSlotDialogStore';
+import { MEDIA_GRID_VIEW, useMediaSlotDialogStore } from '@/stores/useMediaSlotDialogStore';
 import { useSiteStore } from '@/stores/useSiteStore';
 import {
   QUEUE_MAX,
@@ -369,6 +369,15 @@ function ChatPaneInner({
   const expandedPlan = useDevelopPageStore((state) => state.expandedPlan);
   const toggleExpandedPlan = useDevelopPageStore((state) => state.toggleExpandedPlan);
   const isMobile = useDevelopPageStore((state) => state.isMobile);
+  const setViewMode = useDevelopPageStore((state) => state.setViewMode);
+  const handleMobileModeChange = useDevelopPageStore((state) => state.handleMobileModeChange);
+  const handleOpenMediaLibrary = useCallback((): void => {
+    navigateToSlot(MEDIA_GRID_VIEW);
+    setViewMode(ViewMode.MEDIA);
+    if (isMobile) {
+      handleMobileModeChange(MobileMode.PREVIEW);
+    }
+  }, [handleMobileModeChange, isMobile, navigateToSlot, setViewMode]);
   const showResponseFeedbackThanksBanner = useDevelopPageStore(
     (state) => state.showResponseFeedbackThanksBanner
   );
@@ -386,10 +395,7 @@ function ChatPaneInner({
     }
   }, [isMediaCanvasEnabled, activeChatTab, mediaPanelSlotName, setActiveChatTab])
 
-  // Restore replace panel from ?slot= URL param on initial mount only.
-  // Intentionally excludes mediaPanelSlotName and navigateToSlot from deps —
-  // this must run once on mount to restore deep-linked state, not re-run when
-  // the panel state changes (which would create an infinite loop).
+  // Deps intentionally exclude mediaPanelSlotName/navigateToSlot
   useEffect(() => {
     if (!isMediaCanvasEnabled || mediaPanelSlotName) return
     const params = new URLSearchParams(window.location.search)
@@ -397,13 +403,13 @@ function ChatPaneInner({
     if (slotParam) {
       navigateToSlot(slotParam)
     }
-  }, [isMediaCanvasEnabled])  
+  }, [isMediaCanvasEnabled])
 
   // Sync ?slot= URL param when replace panel opens/closes
   useEffect(() => {
     if (!isMediaCanvasEnabled) return
     const params = new URLSearchParams(window.location.search)
-    if (mediaPanelSlotName && mediaPanelSlotName !== '__GRID__') {
+    if (mediaPanelSlotName && mediaPanelSlotName !== MEDIA_GRID_VIEW) {
       params.set('slot', mediaPanelSlotName)
     } else {
       params.delete('slot')
@@ -1682,6 +1688,7 @@ function ChatPaneInner({
               onStageFiles={handleStageFiles}
               onScreenshotCaptured={handleScreenshotCaptured}
               onFileReferencesSelected={handleFileReferencesSelected}
+              onMediaLibrary={handleOpenMediaLibrary}
               onUploadError={handleAttachmentMenuError}
               disabled={isProcessing || budgetExceeded}
             />
@@ -1696,6 +1703,7 @@ function ChatPaneInner({
     handleStageFiles,
     handleScreenshotCaptured,
     handleFileReferencesSelected,
+    handleOpenMediaLibrary,
     handleAttachmentMenuError,
     isProcessing,
     budgetExceeded,
@@ -1836,6 +1844,7 @@ function ChatPaneInner({
             onRemoveStagedFile={handleRemoveStagedFile}
             onScreenshotCaptured={handleScreenshotCaptured}
             onFileReferencesSelected={handleFileReferencesSelected}
+            onMediaLibrary={handleOpenMediaLibrary}
             onUploadError={handleAttachmentMenuError}
             uploadingStagedFileIds={uploadingStagedFileIds}
             referencedFiles={referencedFiles}
@@ -1986,6 +1995,7 @@ function ChatPaneInner({
               onRemoveStagedFile={handleRemoveStagedFile}
               onScreenshotCaptured={handleScreenshotCaptured}
               onFileReferencesSelected={handleFileReferencesSelected}
+              onMediaLibrary={handleOpenMediaLibrary}
               onUploadError={handleAttachmentMenuError}
               uploadingStagedFileIds={uploadingStagedFileIds}
               referencedFiles={referencedFiles}
@@ -2038,7 +2048,7 @@ function ChatPaneInner({
         )}
 
         {/* Media Replace Panel — full takeover when FF is on and a slot replace is requested */}
-        {isMediaCanvasEnabled && mediaPanelSlotName && mediaPanelSlotName !== '__GRID__' && (
+        {isMediaCanvasEnabled && mediaPanelSlotName && mediaPanelSlotName !== MEDIA_GRID_VIEW && (
           <div className="absolute inset-0 z-20 flex flex-col bg-intents-ux-box-backgroundColor">
             <MediaReplacePanel slotName={mediaPanelSlotName} onClose={() => {
               clearPanelSlot()

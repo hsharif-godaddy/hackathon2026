@@ -82,6 +82,9 @@ describe("MediaManifestService - importSlot", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(AppRepository).mockImplementation(function () { return {
+      findById: vi.fn().mockReturnValue({ id: "test-app", path: "/tmp/test-app" }),
+    }; });
     service = new MediaManifestService();
 
     vi.mocked(fs.stat).mockRejectedValue(Object.assign(new Error("ENOENT"), { code: "ENOENT" }));
@@ -98,6 +101,24 @@ describe("MediaManifestService - importSlot", () => {
       this.commit = gitCommit;
       this.getLastCommit = gitGetLastCommit;
     } as unknown as () => GitUtils);
+  });
+
+  it("returns 404 when the app does not exist", async () => {
+    vi.mocked(AppRepository).mockImplementation(function () { return {
+      findById: vi.fn().mockReturnValue(null),
+    }; });
+    service = new MediaManifestService();
+
+    const result = await service.importSlot("missing-app", {
+      imageUrl: "https://example.com/photo.jpg",
+    });
+
+    expect(result).toEqual({
+      success: false,
+      error: "App not found: missing-app",
+      httpStatus: 404,
+    });
+    expect(fs.readFile).not.toHaveBeenCalled();
   });
 
   it("derives slot name from image alt text", async () => {

@@ -965,6 +965,44 @@ describe('DELETE /media/:appId/uploads/:filename', () => {
     expect(mediaManifestService.removeUploadedUrls).not.toHaveBeenCalled();
   });
 
+  it('deletes only the chat upload when preserving imported slot media', async () => {
+    const { mediaManifestService } = await import('../../../services/MediaManifestService.js');
+    const { fileUploadService } = await import('../../../services/FileUploadService.js');
+    const { deletePersistentUploadFiles } = await import('../../../services/media-upload-deletion.js');
+
+    vi.mocked(mediaManifestService.getManifest).mockResolvedValue({
+      success: true,
+      manifest: {
+        gallery: makeSlot('/airo-assets/uploads/gallery-copy.jpg', {
+          '/airo-assets/uploads/gallery-copy.jpg': 'chat-upload.jpg',
+        }),
+      },
+    });
+    vi.mocked(fileUploadService.deleteUploadedFile).mockResolvedValue({
+      deleted: true,
+      uploadId: 'upload_123',
+    });
+
+    const response = await request(app).delete(
+      '/media/test-app/uploads/chat-upload.jpg?preserveSlotMedia=true'
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      success: true,
+      affectedSlots: [],
+      removedUrls: [],
+      chatUploadDeleted: true,
+      uploadId: 'upload_123',
+    });
+    expect(mediaManifestService.removeUploadedUrls).not.toHaveBeenCalled();
+    expect(deletePersistentUploadFiles).not.toHaveBeenCalled();
+    expect(fileUploadService.deleteUploadedFile).toHaveBeenCalledWith(
+      'test-app',
+      'chat-upload.jpg'
+    );
+  });
+
   it('rejects unsafe filenames', async () => {
     const { mediaManifestService } = await import('../../../services/MediaManifestService.js');
     const { fileUploadService } = await import('../../../services/FileUploadService.js');

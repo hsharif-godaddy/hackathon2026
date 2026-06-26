@@ -113,6 +113,35 @@ export function useMediaFolders({ appId }: UseMediaFoldersOptions) {
     },
   })
 
+  const removeFromFolderMutation = useMutation({
+    mutationFn: async ({ folderId, slotName }: { folderId: string; slotName: string }): Promise<void> => {
+      if (!appId) throw new Error('App ID required')
+      const tokenResult = await regenerateToken({ siteId: appId, force: true })
+      const baseAgentUrl = await resolveBaseAgentUrl(appId)
+      const response = await fetch(`${baseAgentUrl}/media/${appId}/folders/${folderId}/remove`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${tokenResult.token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ slotName }),
+      })
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({ error: 'Failed to remove from folder' }))
+        throw new Error(data.error || 'Failed to remove from folder')
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['mediaFolders', appId] })
+    },
+    onError: (error) => {
+      logger.error('media_folders.remove.error', {
+        appId,
+        error: error instanceof Error ? error.message : String(error),
+      })
+    },
+  })
+
   return {
     folders,
     isLoading: query.isLoading,
@@ -121,6 +150,7 @@ export function useMediaFolders({ appId }: UseMediaFoldersOptions) {
     isCreating: createMutation.isPending,
     createError: createMutation.error instanceof Error ? createMutation.error.message : null,
     moveToFolder: moveMutation.mutateAsync,
+    removeFromFolder: removeFromFolderMutation.mutateAsync,
     isMoving: moveMutation.isPending,
   }
 }

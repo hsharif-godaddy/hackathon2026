@@ -489,6 +489,50 @@ router.post('/:appId/folders/:folderId/move', async (req: Request, res: Response
   }
 });
 
+/**
+ * POST /media/:appId/folders/:folderId/remove
+ * Remove a slot from a folder (does not delete the file)
+ */
+router.post('/:appId/folders/:folderId/remove', async (req: Request, res: Response) => {
+  try {
+    const appId = req.params.appId as string;
+    const folderId = req.params.folderId as string;
+    const { slotName } = req.body;
+
+    if (!slotName || typeof slotName !== 'string') {
+      return res.status(400).json({ success: false, error: 'slotName is required' });
+    }
+
+    const appRepository = new AppRepository();
+    const app = appRepository.findById(appId);
+    if (!app) {
+      return res.status(404).json({ success: false, error: 'App not found' });
+    }
+
+    const result = await withFolderLock(app.path, async () => {
+      const folders = await readFolders(app.path);
+      const folder = folders.find((f) => f.id === folderId);
+      if (!folder) {
+        return { status: 404, body: { success: false, error: 'Folder not found' } } as const;
+      }
+
+      folder.slots = (folder.slots || []).filter((s) => s !== slotName);
+
+      await writeFolders(app.path, folders);
+      logger.info('route.media.remove_from_folder.success', { appId, folderId, slotName });
+      return { status: 200, body: { success: true } } as const;
+    });
+
+    return res.status(result.status).json(result.body);
+  } catch (error) {
+    logger.error('route.media.remove_from_folder.error', {
+      appId: req.params.appId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return res.status(500).json({ success: false, error: 'Failed to remove from folder' });
+  }
+});
+
 // ─── End Media Folders ──────────────────────────────────────────────────────────
 
 /**
@@ -844,6 +888,34 @@ router.delete('/:appId/uploads/:filename', async (req: Request, res: Response) =
   }
 
   try {
+    const preserveSlotMedia = req.query.preserveSlotMedia === 'true';
+    if (preserveSlotMedia) {
+      const chatDeleteResult = await fileUploadService.deleteUploadedFile(appId, filename);
+      if (!chatDeleteResult.deleted) {
+        return res.status(404).json({
+          success: false,
+          error: 'Upload file not found',
+        });
+      }
+
+      logger.info('route.media.delete_upload.chat_only_success', {
+        appId,
+        filename,
+        chatUploadDeleted: chatDeleteResult.deleted,
+        uploadId: chatDeleteResult.uploadId,
+      });
+
+      return res.json({
+        success: true,
+        affectedSlots: [],
+        removedUrls: [],
+        chatUploadDeleted: chatDeleteResult.deleted,
+        uploadId: chatDeleteResult.uploadId,
+        deletedPersistentUrls: [],
+        failedPersistentUrls: [],
+      });
+    }
+
     const manifestResult = await mediaManifestService.getManifest(appId);
     if (!manifestResult.success) {
       return res.status(500).json({

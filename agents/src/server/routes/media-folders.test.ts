@@ -195,4 +195,36 @@ describe('Media Folder Routes', () => {
       expect(updatedA.slots).not.toContain('hero/banner');
     });
   });
+
+  describe('POST /media/:appId/folders/:folderId/remove', () => {
+    it('removes a slot from a folder', async () => {
+      const createRes = await request(app).post('/media/test-app/folders').send({ name: 'RemSlot' });
+      const folderId = createRes.body.folder.id;
+      await request(app).post(`/media/test-app/folders/${folderId}/move`).send({ slotName: 'hero/img' });
+
+      const res = await request(app)
+        .post(`/media/test-app/folders/${folderId}/remove`)
+        .send({ slotName: 'hero/img' });
+      expect(res.status).toBe(200);
+
+      const foldersRes = await request(app).get('/media/test-app/folders');
+      const updated = foldersRes.body.folders.find((f: any) => f.id === folderId);
+      expect(updated.slots).not.toContain('hero/img');
+    });
+
+    it('rejects missing slotName', async () => {
+      const createRes = await request(app).post('/media/test-app/folders').send({ name: 'RemBad' });
+      const res = await request(app)
+        .post(`/media/test-app/folders/${createRes.body.folder.id}/remove`)
+        .send({});
+      expect(res.status).toBe(400);
+    });
+
+    it('returns 404 for unknown folder', async () => {
+      const res = await request(app)
+        .post('/media/test-app/folders/nonexistent/remove')
+        .send({ slotName: 'x' });
+      expect(res.status).toBe(404);
+    });
+  });
 });

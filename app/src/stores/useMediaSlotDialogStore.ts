@@ -4,6 +4,9 @@ import { ChatTab, MobileMode } from '@/app/[market]/develop/components/types';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import type { BusMediaSlotForkContext } from '@/utils/eventBus';
 
+/** Sentinel value passed to navigateToSlot to open the media grid view (no specific slot selected) */
+export const MEDIA_GRID_VIEW = '__GRID__';
+
 interface MediaSlotDialogState {
   /**
    * Panel navigation: slot to navigate to in the Media tab panel.
@@ -113,7 +116,7 @@ export const useMediaSlotDialogStore = create<MediaSlotDialogState>((set) => ({
       mediaReturnTab: develop.activeChatTab,
       mediaReturnMobileMode: develop.mobileMode,
       openEditorForSlot:
-        slotName !== '__GRID__' && options?.openEditor ? slotName : null,
+        slotName !== MEDIA_GRID_VIEW && options?.openEditor ? slotName : null,
       mediaScrollTotalMatches: 0,
       mediaScrollCurrentIndex: 0,
     });

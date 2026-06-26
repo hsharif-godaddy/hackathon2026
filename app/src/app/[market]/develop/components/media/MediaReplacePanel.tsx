@@ -2,10 +2,11 @@
 
 import '@/app/[market]/develop/components/preview/media-canvas/media-grid.css'
 
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Button from '@ux/button'
 import RefreshIcon from '@ux/icon/refresh'
 
+import { ImageEditorPanel } from '@/app/[market]/develop/components/media/ImageEditorPanel'
 import type { MediaSlot } from '@/app/[market]/develop/components/media/types'
 import type { GettySearchResult, MediaFormatFilter } from '@/app/[market]/develop/components/preview/media-canvas/GettySearchSection'
 import { GettyResultsGrid, MediaSearchBar, useGettySearch } from '@/app/[market]/develop/components/preview/media-canvas/GettySearchSection'
@@ -29,6 +30,7 @@ import {
 } from '@/app/[market]/develop/components/preview/media-canvas/types'
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils'
 import { dynamicApiConfigService } from '@/config/dynamic-api'
+import { useImportAsSlot } from '@/hooks/useImportAsSlot'
 import type { MediaFolder } from '@/hooks/useMediaFolders'
 import { SITE_FILES_FOLDER, useMediaFolders } from '@/hooks/useMediaFolders'
 import { useMediaManifest } from '@/hooks/useMediaManifest'
@@ -52,11 +54,13 @@ export function MediaReplacePanel({ slotName, onClose }: MediaReplacePanelProps)
   const appId = useAppIdFromParams()
   const { manifest, slotNames, refetch } = useMediaManifest({ appId: appId || null })
   const { uploads: recentUploads, isLoading: uploadsLoading, refetch: refetchUploads } = useRecentUploads({ appId: appId || null })
-  const { folders, createFolder, isCreating } = useMediaFolders({ appId: appId || null })
+  const { folders, createFolder, isCreating, moveToFolder, removeFromFolder } = useMediaFolders({ appId: appId || null })
   const previewBaseUrl = useServerPollingStore((state) => state.getServerState(appId || ''))?.url || null
-  const panelSlotForkContext = useMediaSlotDialogStore((state) => state.panelSlotForkContext)
-  const panelSlotOccurrenceIndex = useMediaSlotDialogStore((state) => state.panelSlotOccurrenceIndex)
+  const openEditorForSlot = useMediaSlotDialogStore((state) => state.openEditorForSlot)
+  const clearEditorSlot = useMediaSlotDialogStore((state) => state.clearEditorSlot)
 
+  const [isEditorOpen, setIsEditorOpen] = useState(false)
+  const [editorSlotName, setEditorSlotName] = useState<string>(slotName)
   const [activeFolder, setActiveFolder] = useState<MediaFolder | null>(null)
   const [isNewFolderModalOpen, setIsNewFolderModalOpen] = useState(false)
   const [showAllUploads, setShowAllUploads] = useState(false)
@@ -64,13 +68,25 @@ export function MediaReplacePanel({ slotName, onClose }: MediaReplacePanelProps)
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [isSwapping, setIsSwapping] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const gettyResultsRef = useRef<HTMLElement>(null)
+  const prevIsSearchingRef = useRef(false)
 
   // Selection state
   const [selectedSlotName, setSelectedSlotName] = useState<string | null>(null)
   const [selectedUpload, setSelectedUpload] = useState<RecentUploadFile | null>(null)
   const [selectedGettyResult, setSelectedGettyResult] = useState<GettySearchResult | null>(null)
+  const importAsSlot = useImportAsSlot(appId || null)
 
   const slot = manifest?.[slotName] ?? null
+
+  // Auto-open editor when navigated with openEditor flag
+  useEffect(() => {
+    if (openEditorForSlot === slotName) {
+      setEditorSlotName(slotName)
+      setIsEditorOpen(true)
+      clearEditorSlot()
+    }
+  }, [openEditorForSlot, slotName, clearEditorSlot])
 
   // Determine default format from the slot being replaced
   const defaultFormat: MediaFormatFilter = slot?.mediaType === 'video' ? 'videos' : slot?.mediaType === 'image' ? 'images' : 'all'
@@ -79,6 +95,14 @@ export function MediaReplacePanel({ slotName, onClose }: MediaReplacePanelProps)
     initialQuery: slot?.searchQuery || slot?.caption || undefined,
     defaultFormat,
   })
+
+  // Scroll Getty results into view only when a search completes
+  useEffect(() => {
+    if (prevIsSearchingRef.current && !gettySearch.isSearching && gettySearch.hasSearched) {
+      gettyResultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    }
+    prevIsSearchingRef.current = gettySearch.isSearching
+  }, [gettySearch.isSearching, gettySearch.hasSearched])
 
   // All manifest slots for Site Files folder
   const allSiteFiles = useMemo(() => {
@@ -91,6 +115,11 @@ export function MediaReplacePanel({ slotName, onClose }: MediaReplacePanelProps)
 
   const allFolders = useMemo(() => [SITE_FILES_FOLDER, ...folders], [folders])
   const isSiteFilesActive = activeFolder?.id === SITE_FILES_FOLDER.id
+  const currentFolderSlots = useMemo(() => {
+    if (!activeFolder || isSiteFilesActive) return []
+    const fresh = allFolders.find((f) => f.id === activeFolder.id)
+    return fresh?.slots ?? []
+  }, [activeFolder, isSiteFilesActive, allFolders])
 
   const hasSelection = !!(selectedSlotName || selectedUpload || selectedGettyResult)
 
@@ -123,37 +152,68 @@ export function MediaReplacePanel({ slotName, onClose }: MediaReplacePanelProps)
     setSelectedUpload(null)
   }, [])
 
+  const handleModifyGetty = useCallback(async (result: GettySearchResult) => {
+    try {
+      const slotPath: string = await importAsSlot({ imageUrl: result.url })
+      await refetch()
+      setEditorSlotName(slotPath)
+      setIsEditorOpen(true)
+    } catch (err) {
+      logger.error('media_replace_panel.modify_getty.error', {
+        appId,
+        imageUrl: result.url,
+        error: err instanceof Error ? err.message : String(err),
+      })
+      setUploadError(err instanceof Error ? err.message : 'Failed to import media')
+    }
+  }, [appId, importAsSlot, refetch])
+
+  const handleModifyUpload = useCallback(async (file: RecentUploadFile) => {
+    try {
+      const slotPath: string = await importAsSlot({ filename: file.filename })
+      await refetch()
+      setEditorSlotName(slotPath)
+      setIsEditorOpen(true)
+    } catch (err) {
+      logger.error('media_replace_panel.modify_upload.error', {
+        appId,
+        filename: file.filename,
+        error: err instanceof Error ? err.message : String(err),
+      })
+      setUploadError(err instanceof Error ? err.message : 'Failed to import media')
+    }
+  }, [appId, importAsSlot, refetch])
+
+  const handleMoveGettyToFolder = useCallback(async (result: GettySearchResult, folderId: string) => {
+    try {
+      const slotPath: string = await importAsSlot({ imageUrl: result.url })
+      await refetch()
+      if (folderId !== SITE_FILES_FOLDER.id) {
+        await moveToFolder({ folderId, slotName: slotPath })
+      }
+    } catch (err) {
+      logger.error('media_replace_panel.move_getty_to_folder.error', {
+        appId,
+        folderId,
+        imageUrl: result.url,
+        error: err instanceof Error ? err.message : String(err),
+      })
+      setUploadError(err instanceof Error ? err.message : 'Failed to move media to folder')
+    }
+  }, [appId, importAsSlot, refetch, moveToFolder])
+
+  // Create new folder and move item into it
+  const handleCreateFolderAndMove = useCallback(async (folderName: string, moveItem: (folderId: string) => Promise<void>) => {
+    const newFolder = await createFolder(folderName)
+    if (newFolder?.id) {
+      await moveItem(newFolder.id)
+    }
+  }, [createFolder])
+
   const handleUseImage = useCallback(async () => {
     if (!appId || !slot) return
 
-    // Build fork context for shared slots — only when we have actual context
-    // (not available after page refresh since the store is non-persistent)
-    const forkBody: Record<string, unknown> = {}
-    const hasForkContext = panelSlotForkContext && (
-      panelSlotForkContext.devContext?.fileName?.startsWith('src/') ||
-      panelSlotForkContext.devContext?.fileName?.startsWith('app/')
-    )
-    if (typeof panelSlotOccurrenceIndex === 'number' && panelSlotOccurrenceIndex >= 0) {
-      forkBody.occurrenceIndex = panelSlotOccurrenceIndex
-    }
-    if (hasForkContext) {
-      forkBody.forkContext = {
-        selector: panelSlotForkContext.selector,
-        devContext: panelSlotForkContext.devContext,
-        elementInfo: {
-          tagName: panelSlotForkContext.elementInfo.tagName,
-          className: panelSlotForkContext.elementInfo.className,
-          id: panelSlotForkContext.elementInfo.id ?? '',
-          selector: panelSlotForkContext.selector,
-          devContext: panelSlotForkContext.devContext,
-        },
-        imageInfo: panelSlotForkContext.imageInfo,
-      }
-    } else {
-      // No fork context (e.g., after page refresh) — tell the backend to
-      // skip shared-slot fork logic and update in-place
-      forkBody.skipFork = true
-    }
+    const forkBody: Record<string, unknown> = { skipFork: true }
 
     setIsSwapping(true)
     try {
@@ -243,6 +303,7 @@ export function MediaReplacePanel({ slotName, onClose }: MediaReplacePanelProps)
       }
 
       logger.info('media_replace_panel.swap.success', { appId, slotName })
+      await refetch()
       setSelectedSlotName(null)
       setSelectedUpload(null)
       setSelectedGettyResult(null)
@@ -256,7 +317,7 @@ export function MediaReplacePanel({ slotName, onClose }: MediaReplacePanelProps)
     } finally {
       setIsSwapping(false)
     }
-  }, [appId, slotName, slot, selectedUpload, selectedGettyResult, selectedSlotName, manifest, panelSlotForkContext, panelSlotOccurrenceIndex])
+  }, [appId, slotName, slot, selectedUpload, selectedGettyResult, selectedSlotName, manifest])
 
   const handleFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
@@ -270,37 +331,41 @@ export function MediaReplacePanel({ slotName, onClose }: MediaReplacePanelProps)
       return
     }
 
-    const invalidFile = fileList.find((f) => !getCategoryForMime(f.type))
-    if (invalidFile) {
-      const category = invalidFile.type.startsWith('video/') ? MediaCategory.Video : MediaCategory.Image
-      const formats = category === MediaCategory.Video
-        ? VIDEO_FORMATS.map(t => t.replace('video/', '').toUpperCase()).join(', ')
-        : IMAGE_FORMATS.map(t => t.replace('image/', '').toUpperCase()).join(', ')
-      setUploadError(`Only ${formats} files are supported`)
-      e.target.value = ''
-      return
-    }
+    // Filter out invalid files — upload what we can
+    const validFiles: File[] = []
+    const skippedNames: string[] = []
 
-    const oversizedFile = fileList.find((f) => {
+    for (const f of fileList) {
       const category = getCategoryForMime(f.type)
-      const maxSize = category ? MAX_SIZE_BY_CATEGORY[category] : MAX_SIZE_BY_CATEGORY[MediaCategory.Image]
-      return f.size > maxSize
-    })
-    if (oversizedFile) {
-      const category = getCategoryForMime(oversizedFile.type) ?? MediaCategory.Image
-      const limitMB = MAX_SIZE_BY_CATEGORY[category] / (1024 * 1024)
-      const label = category === MediaCategory.Video ? 'Video' : category === MediaCategory.Audio ? 'Audio' : 'Image'
-      setUploadError(`${label} must be under ${limitMB}MB`)
+      if (!category) {
+        skippedNames.push(f.name)
+        continue
+      }
+      const maxSize = MAX_SIZE_BY_CATEGORY[category]
+      if (f.size > maxSize) {
+        skippedNames.push(f.name)
+        continue
+      }
+      validFiles.push(f)
+    }
+
+    if (validFiles.length === 0) {
+      setUploadError(`No valid files to upload. Skipped: ${skippedNames.join(', ')}`)
       e.target.value = ''
       return
     }
 
-    setUploadError(null)
+    if (skippedNames.length > 0) {
+      setUploadError(`Skipped ${skippedNames.length} file(s): ${skippedNames.join(', ')}`)
+    } else {
+      setUploadError(null)
+    }
+
     setIsUploading(true)
 
     try {
-      const imageFiles = fileList.filter((f) => f.type.startsWith('image/'))
-      const videoFiles = fileList.filter((f) => f.type.startsWith('video/'))
+      const imageFiles = validFiles.filter((f) => f.type.startsWith('image/'))
+      const videoFiles = validFiles.filter((f) => f.type.startsWith('video/'))
       const compressed = await compressImageFiles(imageFiles)
       const allFiles = [...compressed, ...videoFiles]
 
@@ -310,13 +375,38 @@ export function MediaReplacePanel({ slotName, onClose }: MediaReplacePanelProps)
       }
 
       await Promise.all([refetch(), refetchUploads()])
+
+      // If inside a non-virtual folder, import as slots and move into folder
+      if (activeFolder && !isSiteFilesActive && appId) {
+        for (const file of allFiles) {
+          const slotPath: string = await importAsSlot({ filename: file.name })
+          await moveToFolder({ folderId: activeFolder.id, slotName: slotPath })
+        }
+      }
     } catch (err) {
+      logger.error('media_replace_panel.upload.error', {
+        appId,
+        error: err instanceof Error ? err.message : String(err),
+      })
       setUploadError(err instanceof Error ? err.message : 'Upload failed')
     } finally {
       setIsUploading(false)
       e.target.value = ''
     }
-  }, [appId, refetch, refetchUploads])
+  }, [appId, refetch, refetchUploads, activeFolder, isSiteFilesActive, importAsSlot, moveToFolder])
+
+  if (isEditorOpen && appId) {
+    return (
+      <div className="flex flex-col h-full">
+        <ImageEditorPanel
+          appId={appId}
+          slotName={editorSlotName}
+          onDone={() => { setIsEditorOpen(false); void Promise.all([refetch(), refetchUploads()]) }}
+          onCancel={() => setIsEditorOpen(false)}
+        />
+      </div>
+    )
+  }
 
   return (
     <div className="flex flex-col h-full media-replace-panel" style={{ containerType: 'inline-size' }}>
@@ -367,15 +457,31 @@ export function MediaReplacePanel({ slotName, onClose }: MediaReplacePanelProps)
         {activeFolder ? (
           <div className="flex flex-wrap gap-[12px] media-grid mb-6">
             <UploadCard onClick={handleUploadClick} isUploading={isUploading} />
-            {(isSiteFilesActive ? allSiteFiles : allSiteFiles.filter(({ name }) => (activeFolder.slots || []).includes(name)))
+            {(isSiteFilesActive ? allSiteFiles : allSiteFiles.filter(({ name }) => currentFolderSlots.includes(name)))
               .map(({ name, slot: s }) => (
                 <MediaThumbnail
                   key={name}
                   name={name}
                   slot={s}
                   previewBaseUrl={previewBaseUrl}
+                  folders={allFolders}
+                  onMoveToFolder={(slotName, folderId) => {
+                    if (folderId === SITE_FILES_FOLDER.id) {
+                      if (activeFolder && !isSiteFilesActive) void removeFromFolder({ folderId: activeFolder.id, slotName })
+                      return
+                    }
+                    void moveToFolder({ folderId, slotName })
+                  }}
+                  onCreateFolder={async (slotName, folderName) => {
+                    await handleCreateFolderAndMove(folderName, async (folderId) => {
+                      void moveToFolder({ folderId, slotName })
+                    })
+                  }}
+                  onModify={(slotToEdit) => { setEditorSlotName(slotToEdit); setIsEditorOpen(true) }}
                   onSelect={handleSelectSlot}
                   isSelected={selectedSlotName === name}
+                  isInsideFolder={!isSiteFilesActive && !!activeFolder}
+                  onRemoveFromFolder={(slotName) => { if (activeFolder) void removeFromFolder({ folderId: activeFolder.id, slotName }) }}
                 />
               ))}
           </div>
@@ -390,13 +496,75 @@ export function MediaReplacePanel({ slotName, onClose }: MediaReplacePanelProps)
             hasMore={!showAllUploads && recentUploads.length > 5}
             onSelectUpload={handleSelectUpload}
             selectedUploadId={selectedUpload?.id ?? null}
+            folders={allFolders}
+            onModifyUpload={(file) => { void handleModifyUpload(file) }}
+            onMoveUploadToFolder={(filename, folderId) => {
+              void (async () => {
+                try {
+                  const slotPath: string = await importAsSlot({ filename })
+                  await refetch()
+                  if (folderId !== SITE_FILES_FOLDER.id) {
+                    await moveToFolder({ folderId, slotName: slotPath })
+                  }
+                } catch (err) {
+                  logger.error('media_replace_panel.move_upload_to_folder.error', {
+                    appId,
+                    filename,
+                    folderId,
+                    error: err instanceof Error ? err.message : String(err),
+                  })
+                  setUploadError(err instanceof Error ? err.message : 'Failed to move upload to folder')
+                }
+              })()
+            }}
+            onCreateFolderForUpload={async (filename, folderName) => {
+              try {
+                await handleCreateFolderAndMove(folderName, async (folderId) => {
+                  const slotPath: string = await importAsSlot({ filename })
+                  await moveToFolder({ folderId, slotName: slotPath })
+                })
+              } catch (err) {
+                logger.error('media_replace_panel.create_folder_for_upload.error', {
+                  appId,
+                  filename,
+                  folderName,
+                  error: err instanceof Error ? err.message : String(err),
+                })
+                setUploadError(err instanceof Error ? err.message : 'Failed to move upload to folder')
+              }
+            }}
+            onDeleteUpload={async (filename) => {
+              if (!appId) return
+              try {
+                const tokenResult = await regenerateToken({ siteId: appId, force: true })
+                const apiConfig = await dynamicApiConfigService.getConfigForSite(appId)
+                if (!apiConfig.agentUrl) return
+                const baseAgentUrl = apiConfig.agentUrl.replace(`/apps/${appId}`, '')
+                const response = await fetch(`${baseAgentUrl}/media/${appId}/uploads/${encodeURIComponent(filename)}?preserveSlotMedia=true`, {
+                  method: 'DELETE',
+                  headers: { Authorization: `Bearer ${tokenResult.token}` },
+                })
+                if (!response.ok) {
+                  if (response.status === 409) {
+                    setUploadError('This media is currently in use. Make sure media is not used before retrying delete.')
+                    return
+                  }
+                  const data = await response.json().catch(() => ({ error: 'Failed to delete upload' }))
+                  setUploadError(data.error || 'Failed to delete upload')
+                  return
+                }
+                await Promise.all([refetch(), refetchUploads()])
+              } catch (err) {
+                setUploadError(err instanceof Error ? err.message : 'Failed to delete upload')
+              }
+            }}
           />
         )}
 
-        {/* Recommendations by Getty Images */}
-        {appId && !activeFolder && (
-          <section className="mb-6">
-            <h2 className="text-lg font-semibold mb-3">Recommendations by Getty Images</h2>
+        {/* Recommendations by Getty Images — shown when searched, even inside folders */}
+        {appId && gettySearch.hasSearched && (
+          <section className="mb-6" ref={gettyResultsRef}>
+            <h2 className="text-lg font-semibold mb-3">Recommendations by <span className="font-bold">getty</span>images</h2>
             <GettyResultsGrid
               results={gettySearch.results}
               gettyIds={gettySearch.gettyIds}
@@ -408,6 +576,24 @@ export function MediaReplacePanel({ slotName, onClose }: MediaReplacePanelProps)
               hasMore={gettySearch.hasMore}
               isLoadingMore={gettySearch.isLoadingMore}
               onLoadMore={() => { void gettySearch.loadMore() }}
+              folders={allFolders}
+              onModifyResult={(result) => { void handleModifyGetty(result) }}
+              onMoveResultToFolder={(result, folderId) => { void handleMoveGettyToFolder(result, folderId) }}
+              onCreateFolderForResult={async (result, folderName) => {
+                try {
+                  await handleCreateFolderAndMove(folderName, async (folderId) => {
+                    await handleMoveGettyToFolder(result, folderId)
+                  })
+                } catch (err) {
+                  logger.error('media_replace_panel.create_folder_for_result.error', {
+                    appId,
+                    folderName,
+                    imageUrl: result.url,
+                    error: err instanceof Error ? err.message : String(err),
+                  })
+                  setUploadError(err instanceof Error ? err.message : 'Failed to move media to folder')
+                }
+              }}
             />
           </section>
         )}

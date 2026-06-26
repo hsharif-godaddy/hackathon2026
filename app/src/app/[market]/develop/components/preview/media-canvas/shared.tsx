@@ -1,9 +1,10 @@
 'use client'
 
 import { Play } from 'lucide-react'
-import { useRef, useState } from 'react'
+import { type ReactElement, useCallback, useEffect, useRef, useState } from 'react'
 import Box from '@ux/box'
 import Button from '@ux/button'
+import CheckmarkIcon from '@ux/icon/checkmark'
 import ChevronRightIcon from '@ux/icon/chevron-right'
 import EditIcon from '@ux/icon/edit'
 import FolderIcon from '@ux/icon/folder'
@@ -16,6 +17,280 @@ import { getPreviewOrigin } from '@/app/[market]/develop/components/media/slotIm
 import type { MediaSlot } from '@/app/[market]/develop/components/media/types'
 import { LogoShimmer, logoShimmerOrientation, LogoShimmerOverlay } from '@/app/[market]/develop/components/preview/brand-book/LogoShimmer'
 import type { MediaFolder } from '@/hooks/useMediaFolders'
+import { useTranslations } from '@/hooks/useTranslations'
+
+// ─── Selected Checkmark ─────────────────────────────────────────────────────────
+
+const THUMBNAIL_MENU_CLOSE_DELAY_MS: number = 120
+const THUMBNAIL_MENU_MIN_WIDTH_PX: number = 160
+
+interface HorizontalBounds {
+  left: number
+  right: number
+}
+
+function getMenuClipBounds(element: HTMLElement): HorizontalBounds {
+  let current: HTMLElement | null = element.parentElement
+  while (current) {
+    const style: CSSStyleDeclaration = window.getComputedStyle(current)
+    if (style.overflowX !== 'visible' || style.overflowY !== 'visible') {
+      const rect: DOMRect = current.getBoundingClientRect()
+      return { left: rect.left, right: rect.right }
+    }
+    current = current.parentElement
+  }
+  return { left: 0, right: window.innerWidth }
+}
+
+export function SelectedCheckmark(): ReactElement {
+  return (
+    <div className="absolute bottom-1 right-1 z-10 w-[24px] h-[24px] rounded-full flex items-center justify-center" style={{ backgroundColor: '#000' }}>
+      <CheckmarkIcon className="size-3.5 text-intents-ux-box-backgroundColor" />
+    </div>
+  )
+}
+
+// ─── Thumbnail Menu (shared 3-dot dropdown) ─────────────────────────────────────
+
+interface ThumbnailMenuProps {
+  showModify?: boolean
+  onModify?: () => void
+  folders?: MediaFolder[]
+  /** When provided, folder items are clickable (slot-based move) */
+  onMoveToFolder?: (folderId: string) => void
+  /** Label for the folder action button (default uses media library translation) */
+  folderLabel?: string
+  /** When provided, shows "New Folder" at the end of the folder submenu. Called with folder name; parent should create folder and move item. */
+  onCreateFolder?: (name: string) => void | Promise<void>
+  showDelete?: boolean
+  onDelete?: () => void
+  isDeleting?: boolean
+  /** Show "Remove from Folder" instead of Delete (used when inside a folder) */
+  showRemoveFromFolder?: boolean
+  onRemoveFromFolder?: () => void
+}
+
+export function ThumbnailMenu({ showModify, onModify, folders, onMoveToFolder, folderLabel, onCreateFolder, showDelete, onDelete, isDeleting, showRemoveFromFolder, onRemoveFromFolder }: ThumbnailMenuProps) {
+  const t = useTranslations()
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [folderSubmenuOpen, setFolderSubmenuOpen] = useState(false)
+  const [isCreatingFolder, setIsCreatingFolder] = useState(false)
+  const [newFolderName, setNewFolderName] = useState('')
+  const [isMenuAlignedLeft, setIsMenuAlignedLeft] = useState(false)
+  const menuContainerRef = useRef<HTMLDivElement | null>(null)
+  const closeMenuTimerRef = useRef<number | null>(null)
+
+  const allFolderItems = folders ?? []
+  const moveToFolderLabel: string = folderLabel ?? t('builder_media_canvas_move_to_folder', undefined, 'Move to Folder')
+  const modifyLabel: string = t('builder_mediaslot_modify', undefined, 'Modify')
+  const folderNamePlaceholder: string = t('builder_media_canvas_folder_name_placeholder', undefined, 'Folder name')
+  const newFolderLabel: string = t('builder_media_canvas_new_folder', undefined, 'New Folder')
+  const deleteLabel: string = t('builder_common_delete', undefined, 'Delete')
+  const deletingLabel: string = t('builder_common_deleting', undefined, 'Deleting...')
+  const removeFromFolderLabel: string = t('builder_media_canvas_remove_from_folder', undefined, 'Remove from Folder')
+  const optionsLabel: string = t('builder_common_options', undefined, 'Options')
+
+  const clearCloseMenuTimer = useCallback((): void => {
+    if (closeMenuTimerRef.current === null) return
+    window.clearTimeout(closeMenuTimerRef.current)
+    closeMenuTimerRef.current = null
+  }, [])
+
+  const resetMenuState = useCallback((): void => {
+    setMenuOpen(false)
+    setFolderSubmenuOpen(false)
+    setIsCreatingFolder(false)
+    setNewFolderName('')
+  }, [])
+
+  const closeMenu = useCallback((): void => {
+    clearCloseMenuTimer()
+    resetMenuState()
+  }, [clearCloseMenuTimer, resetMenuState])
+
+  const scheduleCloseMenu = useCallback((): void => {
+    clearCloseMenuTimer()
+    closeMenuTimerRef.current = window.setTimeout((): void => {
+      closeMenuTimerRef.current = null
+      resetMenuState()
+    }, THUMBNAIL_MENU_CLOSE_DELAY_MS)
+  }, [clearCloseMenuTimer, resetMenuState])
+
+  const updateMenuPlacement = useCallback((): void => {
+    if (!menuContainerRef.current) return
+    const triggerRect: DOMRect = menuContainerRef.current.getBoundingClientRect()
+    const clipBounds: HorizontalBounds = getMenuClipBounds(menuContainerRef.current)
+    const alignMenuLeft: boolean = triggerRect.right - THUMBNAIL_MENU_MIN_WIDTH_PX < clipBounds.left
+    setIsMenuAlignedLeft(alignMenuLeft)
+  }, [])
+
+  useEffect((): (() => void) => {
+    return () => clearCloseMenuTimer()
+  }, [clearCloseMenuTimer])
+
+  return (
+    <div
+      ref={menuContainerRef}
+      className="absolute top-0.5 right-0.5 z-20"
+      onMouseEnter={clearCloseMenuTimer}
+      onMouseLeave={scheduleCloseMenu}
+    >
+      <button
+        type="button"
+        aria-label={optionsLabel}
+        onClick={(e) => {
+          e.stopPropagation()
+          if (menuOpen) {
+            closeMenu()
+            return
+          }
+          clearCloseMenuTimer()
+          updateMenuPlacement()
+          setMenuOpen(true)
+        }}
+        className="w-[36px] h-[36px] rounded-md items-center justify-center cursor-pointer hidden group-hover:flex border border-gray-200 shadow-sm"
+        style={{ backgroundColor: '#fff' }}
+      >
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="#000">
+          <circle cx="9" cy="3.5" r="1.5" />
+          <circle cx="9" cy="9" r="1.5" />
+          <circle cx="9" cy="14.5" r="1.5" />
+        </svg>
+      </button>
+
+      {menuOpen && (
+        <div data-media-dropdown className={`absolute top-full ${isMenuAlignedLeft ? 'left-0' : 'right-0'} z-30 w-[220px] max-w-[calc(100vw-24px)] rounded-md border border-intents-ux-box-borderColor bg-intents-ux-box-backgroundColor shadow-lg py-1`}>
+          {showModify && (
+            <button
+              type="button"
+              onClick={() => { onModify?.(); closeMenu() }}
+              className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left whitespace-nowrap overflow-hidden"
+              style={{ backgroundColor: 'transparent' }}
+              onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(0,0,0,0.06)' }}
+              onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent' }}
+            >
+              <EditIcon className="size-3.5 text-intents-ux-textSubtle-textColor shrink-0" />
+              <span className="min-w-0 truncate">{modifyLabel}</span>
+            </button>
+          )}
+          {(allFolderItems.length > 0 || onCreateFolder) && (
+            <div className="relative">
+              <button
+                type="button"
+                aria-expanded={folderSubmenuOpen}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  clearCloseMenuTimer()
+                  setIsCreatingFolder(false)
+                  setNewFolderName('')
+                  setFolderSubmenuOpen((open) => !open)
+                }}
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left whitespace-nowrap overflow-hidden"
+                style={{ backgroundColor: 'transparent' }}
+                onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(0,0,0,0.06)' }}
+                onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent' }}
+              >
+                <FolderIcon className="size-3.5 text-intents-ux-textSubtle-textColor shrink-0" />
+                <span className="min-w-0 truncate">{moveToFolderLabel}</span>
+                <ChevronRightIcon className={`size-3 ml-auto text-intents-ux-textSubtle-textColor shrink-0 transition-transform ${folderSubmenuOpen ? 'rotate-90' : ''}`} />
+              </button>
+              {folderSubmenuOpen && (
+                <div className="mt-1 border-t border-intents-ux-box-borderColor py-1">
+                  {allFolderItems.map((folder) => (
+                    onMoveToFolder ? (
+                      <button
+                        key={folder.id}
+                        type="button"
+                        onClick={() => { onMoveToFolder(folder.id); closeMenu() }}
+                        className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left whitespace-nowrap overflow-hidden"
+                        style={{ backgroundColor: 'transparent' }}
+                        onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(0,0,0,0.06)' }}
+                        onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent' }}
+                      >
+                        <span className="min-w-0 truncate">{folder.name}</span>
+                      </button>
+                    ) : (
+                      <span
+                        key={folder.id}
+                        className="block px-3 py-1.5 text-sm text-intents-ux-textSubtle-textColor cursor-default whitespace-nowrap overflow-hidden text-ellipsis"
+                      >
+                        {folder.name}
+                      </span>
+                    )
+                  ))}
+                  {onCreateFolder && (
+                    <>
+                      {allFolderItems.length > 0 && <div className="border-t border-intents-ux-box-borderColor my-1" />}
+                      {isCreatingFolder ? (
+                        <div className="px-3 py-1.5">
+                          <input
+                            type="text"
+                            value={newFolderName}
+                            onChange={(e) => setNewFolderName(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' && newFolderName.trim()) {
+                                void Promise.resolve(onCreateFolder(newFolderName.trim())).then(() => {
+                                  closeMenu()
+                                })
+                              }
+                            }}
+                            placeholder={folderNamePlaceholder}
+                            className="w-full min-w-0 text-sm border border-intents-ux-box-borderColor rounded px-1.5 py-0.5"
+                            autoFocus
+                            onClick={(e) => e.stopPropagation()}
+                          />
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); clearCloseMenuTimer(); setIsCreatingFolder(true) }}
+                          className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left whitespace-nowrap overflow-hidden"
+                          style={{ backgroundColor: 'transparent' }}
+                          onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(0,0,0,0.06)' }}
+                          onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent' }}
+                        >
+                          <PlusIcon className="size-3.5 text-intents-ux-textSubtle-textColor shrink-0" />
+                          <span className="min-w-0 truncate">{newFolderLabel}</span>
+                        </button>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+          {showDelete && (
+            <button
+              type="button"
+              onClick={() => { onDelete?.(); closeMenu() }}
+              disabled={isDeleting}
+              className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left text-red-600 disabled:opacity-50 whitespace-nowrap overflow-hidden"
+              style={{ backgroundColor: 'transparent' }}
+              onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(0,0,0,0.06)' }}
+              onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent' }}
+            >
+              <TrashIcon className="size-3.5 shrink-0" />
+              <span className="min-w-0 truncate">{isDeleting ? deletingLabel : deleteLabel}</span>
+            </button>
+          )}
+          {showRemoveFromFolder && (
+            <button
+              type="button"
+              onClick={() => { onRemoveFromFolder?.(); closeMenu() }}
+              className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left whitespace-nowrap overflow-hidden"
+              style={{ backgroundColor: 'transparent' }}
+              onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(0,0,0,0.06)' }}
+              onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent' }}
+            >
+              <FolderIcon className="size-3.5 text-intents-ux-textSubtle-textColor shrink-0" />
+              <span className="min-w-0 truncate">{removeFromFolderLabel}</span>
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
 
 // ─── Folders Section ────────────────────────────────────────────────────────────
 
@@ -34,7 +309,7 @@ export function FoldersSection({ folders, onSelectFolder }: FoldersSectionProps)
             key={folder.id}
             type="button"
             onClick={() => onSelectFolder(folder)}
-            className="inline-flex items-center gap-[8px] px-3 py-1.5 rounded-[8px] transition-colors text-sm shrink-0 cursor-pointer"
+            className="media-folder-pill inline-flex items-center gap-[8px] px-3 py-1.5 rounded-[8px] transition-colors text-sm shrink-0 cursor-pointer"
             style={{ backgroundColor: 'rgba(230, 233, 236, 1)' }}
           >
             <FolderIcon className="size-3.5 text-intents-ux-textSubtle-textColor" />
@@ -89,7 +364,7 @@ export function UploadCard({ onClick, isUploading }: UploadCardProps) {
       type="button"
       onClick={onClick}
       disabled={isUploading}
-      className="w-[160px] h-[160px] rounded-[10px] bg-intents-ux-box-backgroundColor hover:bg-intents-ux-box-backgroundColor/80 transition-colors flex flex-col items-center justify-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
+      className="w-[160px] h-[160px] rounded-[10px] bg-intents-ux-boxLowContrast-backgroundColor hover:bg-intents-ux-box-borderColor active:bg-intents-ux-box-borderColor transition-colors flex flex-col items-center justify-center gap-1 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
       style={{ border: '2px dashed #9ca3af' }}
     >
       {isUploading ? (
@@ -112,15 +387,17 @@ interface MediaThumbnailProps {
   previewBaseUrl: string | null
   folders?: MediaFolder[]
   onMoveToFolder?: (slotName: string, folderId: string) => void
+  onCreateFolder?: (slotName: string, folderName: string) => void | Promise<void>
+  onModify?: (slotName: string) => void
+  onDelete?: (slotName: string) => void
   onSelect?: (name: string) => void
   isSelected?: boolean
+  /** When true, shows "Remove from Folder" instead of Delete */
+  isInsideFolder?: boolean
+  onRemoveFromFolder?: (slotName: string) => void
 }
 
-export function MediaThumbnail({ name, slot, previewBaseUrl, folders, onMoveToFolder, onSelect, isSelected }: MediaThumbnailProps) {
-  const [menuOpen, setMenuOpen] = useState(false)
-  const [folderSubmenuOpen, setFolderSubmenuOpen] = useState(false)
-  const menuRef = useRef<HTMLDivElement>(null)
-
+export function MediaThumbnail({ name, slot, previewBaseUrl, folders, onMoveToFolder, onCreateFolder, onModify, onDelete, onSelect, isSelected, isInsideFolder, onRemoveFromFolder }: MediaThumbnailProps) {
   const isPending = !!slot.pendingJobId
   const priorLogoUrl =
     isPending && slot.currentUrl &&
@@ -146,9 +423,9 @@ export function MediaThumbnail({ name, slot, previewBaseUrl, folders, onMoveToFo
       <div
         onClick={() => onSelect?.(name)}
         className={`w-full h-full overflow-hidden rounded-[10px] bg-intents-ux-box-backgroundColor border transition-colors cursor-pointer ${
-          isSelected ? 'border-2' : 'border-intents-ux-box-borderColor hover:border-intents-ux-ring-borderColor'
+          isSelected ? 'border-transparent' : 'border-intents-ux-box-borderColor hover:border-intents-ux-ring-borderColor'
         }`}
-        style={isSelected ? { borderColor: '#000' } : undefined}
+        style={isSelected ? { outline: '2px solid #000', outlineOffset: '1px' } : undefined}
       >
         {isPending ? (
           priorLogoUrl ? (
@@ -195,83 +472,21 @@ export function MediaThumbnail({ name, slot, previewBaseUrl, folders, onMoveToFo
         )}
       </div>
 
-      {/* 3-dot menu wrapper */}
-      {(folders && onMoveToFolder) && (
-        <div
-          className="absolute top-0.5 right-0.5 z-20"
-          onMouseLeave={() => { setMenuOpen(false); setFolderSubmenuOpen(false) }}
-        >
-          <button
-            type="button"
-            onClick={(e) => { e.stopPropagation(); setMenuOpen(!menuOpen) }}
-            className="w-[36px] h-[36px] rounded-md items-center justify-center cursor-pointer hidden group-hover:flex border border-gray-200 shadow-sm"
-            style={{ backgroundColor: '#fff' }}
-          >
-            <svg width="18" height="18" viewBox="0 0 18 18" fill="#000">
-              <circle cx="9" cy="3.5" r="1.5" />
-              <circle cx="9" cy="9" r="1.5" />
-              <circle cx="9" cy="14.5" r="1.5" />
-            </svg>
-          </button>
+      {isSelected && <SelectedCheckmark />}
 
-          {menuOpen && (
-            <div
-              ref={menuRef}
-              className="absolute top-full right-0 z-30 min-w-[160px] rounded-md border border-intents-ux-box-borderColor bg-intents-ux-box-backgroundColor shadow-lg py-1"
-            >
-              {isImage && (
-                <button
-                  type="button"
-                  onClick={() => { setMenuOpen(false) }}
-                  className="w-full flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-intents-ux-boxLowContrast-backgroundColor text-left"
-                >
-                  <EditIcon className="size-3.5 text-intents-ux-textSubtle-textColor" />
-                  Modify
-                </button>
-              )}
-              <div
-                className="relative"
-                onMouseEnter={() => setFolderSubmenuOpen(true)}
-                onMouseLeave={() => setFolderSubmenuOpen(false)}
-              >
-                <button
-                  type="button"
-                  className="w-full flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-intents-ux-boxLowContrast-backgroundColor text-left"
-                >
-                  <FolderIcon className="size-3.5 text-intents-ux-textSubtle-textColor" />
-                  Move to Folder
-                  <ChevronRightIcon className="size-3 ml-auto text-intents-ux-textSubtle-textColor" />
-                </button>
-                {folderSubmenuOpen && (
-                  <div className="absolute left-full top-0 min-w-[140px] rounded-md border border-intents-ux-box-borderColor bg-intents-ux-box-backgroundColor shadow-lg py-1">
-                    {folders.length === 0 ? (
-                      <span className="block px-3 py-1.5 text-sm text-intents-ux-textSubtle-textColor">No folders</span>
-                    ) : (
-                      folders.filter((f) => !f.isVirtual).map((folder) => (
-                        <button
-                          key={folder.id}
-                          type="button"
-                          onClick={() => { onMoveToFolder(name, folder.id); setMenuOpen(false); setFolderSubmenuOpen(false) }}
-                          className="w-full flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-intents-ux-boxLowContrast-backgroundColor text-left"
-                        >
-                          {folder.name}
-                        </button>
-                      ))
-                    )}
-                  </div>
-                )}
-              </div>
-              <button
-                type="button"
-                onClick={() => { setMenuOpen(false) }}
-                className="w-full flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-intents-ux-boxLowContrast-backgroundColor text-left text-red-600"
-              >
-                <TrashIcon className="size-3.5" />
-                Delete
-              </button>
-            </div>
-          )}
-        </div>
+      {/* 3-dot menu */}
+      {(folders && onMoveToFolder) && (
+        <ThumbnailMenu
+          showModify={isImage}
+          onModify={() => onModify?.(name)}
+          folders={folders}
+          onMoveToFolder={(folderId) => onMoveToFolder(name, folderId)}
+          onCreateFolder={onCreateFolder ? (folderName) => onCreateFolder(name, folderName) : undefined}
+          showDelete={!isInsideFolder && !!onDelete}
+          onDelete={() => onDelete?.(name)}
+          showRemoveFromFolder={isInsideFolder}
+          onRemoveFromFolder={() => onRemoveFromFolder?.(name)}
+        />
       )}
     </div>
   )
@@ -284,12 +499,13 @@ interface UploadThumbnailProps {
   isSelected: boolean
   onSelect?: (file: RecentUploadFile) => void
   folders?: MediaFolder[]
+  onMoveToFolder?: (filename: string, folderId: string) => void
+  onCreateFolder?: (filename: string, folderName: string) => void | Promise<void>
+  onModify?: (file: RecentUploadFile) => void
   onDelete?: (filename: string) => Promise<void>
 }
 
-function UploadThumbnail({ file, isSelected, onSelect, folders, onDelete }: UploadThumbnailProps) {
-  const [menuOpen, setMenuOpen] = useState(false)
-  const [folderSubmenuOpen, setFolderSubmenuOpen] = useState(false)
+function UploadThumbnail({ file, isSelected, onSelect, folders, onMoveToFolder, onCreateFolder, onModify, onDelete }: UploadThumbnailProps) {
   const [isDeleting, setIsDeleting] = useState(false)
 
   const handleDelete = async () => {
@@ -299,7 +515,6 @@ function UploadThumbnail({ file, isSelected, onSelect, folders, onDelete }: Uplo
       await onDelete(file.filename)
     } finally {
       setIsDeleting(false)
-      setMenuOpen(false)
     }
   }
 
@@ -308,9 +523,9 @@ function UploadThumbnail({ file, isSelected, onSelect, folders, onDelete }: Uplo
       <div
         onClick={() => onSelect?.(file)}
         className={`w-full h-full overflow-hidden rounded-[10px] bg-intents-ux-box-backgroundColor border transition-colors cursor-pointer ${
-          isSelected ? 'border-2' : 'border-intents-ux-box-borderColor hover:border-intents-ux-ring-borderColor'
+          isSelected ? 'border-transparent' : 'border-intents-ux-box-borderColor hover:border-intents-ux-ring-borderColor'
         }`}
-        style={isSelected ? { borderColor: '#000' } : undefined}
+        style={isSelected ? { outline: '2px solid #000', outlineOffset: '1px' } : undefined}
       >
         {file.fullSignedUrl ? (
           file.mimeType?.startsWith('video/') ? (
@@ -326,76 +541,18 @@ function UploadThumbnail({ file, isSelected, onSelect, folders, onDelete }: Uplo
         )}
       </div>
 
-      {/* 3-dot menu */}
-      <div
-        className="absolute top-0.5 right-0.5 z-20"
-        onMouseLeave={() => { setMenuOpen(false); setFolderSubmenuOpen(false) }}
-      >
-        <button
-          type="button"
-          onClick={(e) => { e.stopPropagation(); setMenuOpen(!menuOpen) }}
-          className="w-[36px] h-[36px] rounded-md items-center justify-center cursor-pointer hidden group-hover:flex border border-gray-200 shadow-sm"
-          style={{ backgroundColor: '#fff' }}
-        >
-          <svg width="18" height="18" viewBox="0 0 18 18" fill="#000">
-            <circle cx="9" cy="3.5" r="1.5" />
-            <circle cx="9" cy="9" r="1.5" />
-            <circle cx="9" cy="14.5" r="1.5" />
-          </svg>
-        </button>
+      {isSelected && <SelectedCheckmark />}
 
-        {menuOpen && (
-          <div className="absolute top-full right-0 z-30 min-w-[160px] rounded-md border border-intents-ux-box-borderColor bg-intents-ux-box-backgroundColor shadow-lg py-1">
-            {!file.mimeType?.startsWith('video/') && (
-              <button
-                type="button"
-                onClick={() => { setMenuOpen(false) }}
-                className="w-full flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-intents-ux-boxLowContrast-backgroundColor text-left"
-              >
-                <EditIcon className="size-3.5 text-intents-ux-textSubtle-textColor" />
-                Modify
-              </button>
-            )}
-            {folders && folders.length > 0 && (
-              <div
-                className="relative"
-                onMouseEnter={() => setFolderSubmenuOpen(true)}
-                onMouseLeave={() => setFolderSubmenuOpen(false)}
-              >
-                <button
-                  type="button"
-                  className="w-full flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-intents-ux-boxLowContrast-backgroundColor text-left"
-                >
-                  <FolderIcon className="size-3.5 text-intents-ux-textSubtle-textColor" />
-                  Move to Folder
-                  <ChevronRightIcon className="size-3 ml-auto text-intents-ux-textSubtle-textColor" />
-                </button>
-                {folderSubmenuOpen && (
-                  <div className="absolute left-full top-0 min-w-[140px] rounded-md border border-intents-ux-box-borderColor bg-intents-ux-box-backgroundColor shadow-lg py-1">
-                    {folders.filter((f) => !f.isVirtual).map((folder) => (
-                      <span
-                        key={folder.id}
-                        className="block px-3 py-1.5 text-sm text-intents-ux-textSubtle-textColor cursor-default"
-                      >
-                        {folder.name}
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-            <button
-              type="button"
-              onClick={() => { void handleDelete() }}
-              disabled={isDeleting}
-              className="w-full flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-intents-ux-boxLowContrast-backgroundColor text-left text-red-600 disabled:opacity-50"
-            >
-              <TrashIcon className="size-3.5" />
-              {isDeleting ? 'Deleting...' : 'Delete'}
-            </button>
-          </div>
-        )}
-      </div>
+      <ThumbnailMenu
+        showModify={!file.mimeType?.startsWith('video/') && !!onModify}
+        onModify={() => onModify?.(file)}
+        folders={folders}
+        onMoveToFolder={onMoveToFolder ? (folderId) => onMoveToFolder(file.filename, folderId) : undefined}
+        onCreateFolder={onCreateFolder ? (folderName) => onCreateFolder(file.filename, folderName) : undefined}
+        showDelete
+        onDelete={() => { void handleDelete() }}
+        isDeleting={isDeleting}
+      />
     </div>
   )
 }
@@ -421,10 +578,13 @@ interface RecentUploadsSectionProps {
   onSelectUpload?: (file: RecentUploadFile) => void
   selectedUploadId?: string | null
   folders?: MediaFolder[]
+  onMoveUploadToFolder?: (filename: string, folderId: string) => void
+  onCreateFolderForUpload?: (filename: string, folderName: string) => void | Promise<void>
+  onModifyUpload?: (file: RecentUploadFile) => void
   onDeleteUpload?: (filename: string) => Promise<void>
 }
 
-export function RecentUploadsSection({ uploads, isLoading, onUploadClick, isUploading, limit, onShowMore, hasMore, onSelectUpload, selectedUploadId, folders, onDeleteUpload }: RecentUploadsSectionProps) {
+export function RecentUploadsSection({ uploads, isLoading, onUploadClick, isUploading, limit, onShowMore, hasMore, onSelectUpload, selectedUploadId, folders, onMoveUploadToFolder, onCreateFolderForUpload, onModifyUpload, onDeleteUpload }: RecentUploadsSectionProps) {
   if (isLoading) {
     return (
       <section>
@@ -452,6 +612,9 @@ export function RecentUploadsSection({ uploads, isLoading, onUploadClick, isUplo
             isSelected={selectedUploadId === file.id}
             onSelect={onSelectUpload}
             folders={folders}
+            onMoveToFolder={onMoveUploadToFolder}
+            onCreateFolder={onCreateFolderForUpload}
+            onModify={onModifyUpload}
             onDelete={onDeleteUpload}
           />
         ))}
@@ -479,7 +642,13 @@ interface NewFolderModalProps {
 }
 
 export function NewFolderModal({ isOpen, onClose, onSave, isCreating }: NewFolderModalProps) {
+  const t = useTranslations()
   const [folderName, setFolderName] = useState('')
+  const title: string = t('builder_media_canvas_create_new_folder', undefined, 'Create New Folder')
+  const cancelLabel: string = t('builder_common_cancel', undefined, 'Cancel')
+  const saveLabel: string = t('builder_common_save', undefined, 'Save')
+  const folderNameLabel: string = t('builder_media_canvas_folder_name_label', undefined, 'Folder Name')
+  const folderNameExample: string = t('builder_media_canvas_folder_name_example', undefined, 'e.g. Site Files')
 
   const handleSave = () => {
     if (!folderName.trim()) return
@@ -496,26 +665,26 @@ export function NewFolderModal({ isOpen, onClose, onSave, isCreating }: NewFolde
 
   return (
     <Modal
-      title="Create New Folder"
+      title={title}
       onClose={handleClose}
       centered
       actions={
         <Box orientation="horizontal" gap="md">
-          <Button design="secondary" text="Cancel" onClick={handleClose} disabled={isCreating} />
-          <Button design="primary" text="Save" onClick={handleSave} disabled={!folderName.trim() || isCreating} />
+          <Button design="secondary" text={cancelLabel} onClick={handleClose} disabled={isCreating} />
+          <Button design="primary" text={saveLabel} onClick={handleSave} disabled={!folderName.trim() || isCreating} />
         </Box>
       }
     >
       <div className="space-y-2">
         <label htmlFor="folder-name" className="text-sm font-medium">
-          Folder Name
+          {folderNameLabel}
         </label>
         <input
           id="folder-name"
           type="text"
           value={folderName}
           onChange={(e) => setFolderName(e.target.value)}
-          placeholder="e.g. Site Files"
+          placeholder={folderNameExample}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && folderName.trim()) handleSave()
           }}

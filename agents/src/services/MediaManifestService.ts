@@ -770,7 +770,7 @@ export class MediaManifestService {
         return {
           success: false,
           error: result.error || 'Failed to read manifest',
-          httpStatus: 500,
+          httpStatus: result.error?.startsWith('App not found:') ? 404 : 500,
         };
       }
 

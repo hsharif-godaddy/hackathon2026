@@ -3,15 +3,14 @@
 import { Play } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Button from '@ux/button'
-import ChevronRightIcon from '@ux/icon/chevron-right'
-import EditIcon from '@ux/icon/edit'
-import FolderIcon from '@ux/icon/folder'
 import RefreshIcon from '@ux/icon/refresh'
 import SearchIcon from '@ux/icon/search'
 import Search from '@ux/search'
 
+import { SelectedCheckmark, ThumbnailMenu } from '@/app/[market]/develop/components/preview/media-canvas/shared'
 import { dynamicApiConfigService } from '@/config/dynamic-api'
 import type { MediaFolder } from '@/hooks/useMediaFolders'
+import { useTranslations } from '@/hooks/useTranslations'
 import { agentFetch } from '@/lib/agent-fetch'
 import { logger } from '@/lib/request-context'
 
@@ -40,7 +39,7 @@ interface MediaSearchBarProps {
 
 export function MediaSearchBar({ query, onQueryChange, onSearch, isSearching, formatFilter, onFormatChange }: MediaSearchBarProps) {
   return (
-    <div className="flex gap-2 mb-4 h-[38px]">
+    <div className="media-search-row flex gap-2 mb-4 h-[38px]">
       <div className="flex-1 h-full">
         <Search
           id="media-search-bar"
@@ -241,11 +240,15 @@ interface GettyThumbnailProps {
   isSelected: boolean
   onSelect: (result: GettySearchResult) => void
   folders?: MediaFolder[]
+  onModify?: (result: GettySearchResult) => void
+  onMoveToFolder?: (result: GettySearchResult, folderId: string) => void
+  onCreateFolder?: (result: GettySearchResult, folderName: string) => void | Promise<void>
 }
 
-function GettyThumbnail({ url, isVideo, videoUrl, gettyId, isSelected, onSelect, folders }: GettyThumbnailProps) {
-  const [menuOpen, setMenuOpen] = useState(false)
-  const [folderSubmenuOpen, setFolderSubmenuOpen] = useState(false)
+function GettyThumbnail({ url, isVideo, videoUrl, gettyId, isSelected, onSelect, folders, onModify, onMoveToFolder, onCreateFolder }: GettyThumbnailProps) {
+  const t = useTranslations()
+  const result: GettySearchResult = { url: isVideo && videoUrl ? videoUrl : url, gettyId, videoUrl }
+  const addToFolderLabel: string = t('builder_media_canvas_add_to_folder', undefined, 'Add to Folder')
 
   return (
     <div className="relative w-[160px] h-[160px] group overflow-visible">
@@ -256,9 +259,9 @@ function GettyThumbnail({ url, isVideo, videoUrl, gettyId, isSelected, onSelect,
           videoUrl,
         })}
         className={`w-full h-full overflow-hidden rounded-[10px] bg-intents-ux-box-backgroundColor border transition-colors cursor-pointer ${
-          isSelected ? 'border-2' : 'border-intents-ux-box-borderColor hover:border-intents-ux-ring-borderColor'
+          isSelected ? 'border-transparent' : 'border-intents-ux-box-borderColor hover:border-intents-ux-ring-borderColor'
         }`}
-        style={isSelected ? { borderColor: '#000' } : undefined}
+        style={isSelected ? { outline: '2px solid #000', outlineOffset: '1px' } : undefined}
       >
         {isVideo && videoUrl ? (
           <div className="relative w-full h-full">
@@ -290,67 +293,16 @@ function GettyThumbnail({ url, isVideo, videoUrl, gettyId, isSelected, onSelect,
         )}
       </div>
 
-      {/* 3-dot menu */}
-      <div
-        className="absolute top-0.5 right-0.5 z-20"
-        onMouseLeave={() => { setMenuOpen(false); setFolderSubmenuOpen(false) }}
-      >
-        <button
-          type="button"
-          onClick={(e) => { e.stopPropagation(); setMenuOpen(!menuOpen) }}
-          className="w-[36px] h-[36px] rounded-md items-center justify-center cursor-pointer hidden group-hover:flex border border-gray-200 shadow-sm"
-          style={{ backgroundColor: '#fff' }}
-        >
-          <svg width="18" height="18" viewBox="0 0 18 18" fill="#000">
-            <circle cx="9" cy="3.5" r="1.5" />
-            <circle cx="9" cy="9" r="1.5" />
-            <circle cx="9" cy="14.5" r="1.5" />
-          </svg>
-        </button>
+      {isSelected && <SelectedCheckmark />}
 
-        {menuOpen && (
-          <div className="absolute top-full right-0 z-30 min-w-[160px] rounded-md border border-intents-ux-box-borderColor bg-intents-ux-box-backgroundColor shadow-lg py-1">
-            {!isVideo && (
-              <button
-                type="button"
-                onClick={() => { setMenuOpen(false) }}
-                className="w-full flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-intents-ux-boxLowContrast-backgroundColor text-left"
-              >
-                <EditIcon className="size-3.5 text-intents-ux-textSubtle-textColor" />
-                Modify
-              </button>
-            )}
-            {folders && folders.length > 0 && (
-              <div
-                className="relative"
-                onMouseEnter={() => setFolderSubmenuOpen(true)}
-                onMouseLeave={() => setFolderSubmenuOpen(false)}
-              >
-                <button
-                  type="button"
-                  className="w-full flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-intents-ux-boxLowContrast-backgroundColor text-left"
-                >
-                  <FolderIcon className="size-3.5 text-intents-ux-textSubtle-textColor" />
-                  Move to Folder
-                  <ChevronRightIcon className="size-3 ml-auto text-intents-ux-textSubtle-textColor" />
-                </button>
-                {folderSubmenuOpen && (
-                  <div className="absolute left-full top-0 min-w-[140px] rounded-md border border-intents-ux-box-borderColor bg-intents-ux-box-backgroundColor shadow-lg py-1">
-                    {folders.filter((f) => !f.isVirtual).map((folder) => (
-                      <span
-                        key={folder.id}
-                        className="block px-3 py-1.5 text-sm text-intents-ux-textSubtle-textColor cursor-default"
-                      >
-                        {folder.name}
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
+      <ThumbnailMenu
+        showModify={!isVideo && !!onModify}
+        onModify={() => onModify?.(result)}
+        folders={folders}
+        onMoveToFolder={onMoveToFolder ? (folderId) => onMoveToFolder(result, folderId) : undefined}
+        onCreateFolder={onCreateFolder ? (folderName) => onCreateFolder(result, folderName) : undefined}
+        folderLabel={addToFolderLabel}
+      />
     </div>
   )
 }
@@ -369,9 +321,12 @@ interface GettyResultsGridProps {
   isLoadingMore?: boolean
   onLoadMore?: () => void
   folders?: MediaFolder[]
+  onModifyResult?: (result: GettySearchResult) => void
+  onMoveResultToFolder?: (result: GettySearchResult, folderId: string) => void
+  onCreateFolderForResult?: (result: GettySearchResult, folderName: string) => void | Promise<void>
 }
 
-export function GettyResultsGrid({ results, gettyIds, videoUrls, isSearching, hasSearched, onSelectResult, selectedUrl, hasMore, isLoadingMore, onLoadMore, folders }: GettyResultsGridProps) {
+export function GettyResultsGrid({ results, gettyIds, videoUrls, isSearching, hasSearched, onSelectResult, selectedUrl, hasMore, isLoadingMore, onLoadMore, folders, onModifyResult, onMoveResultToFolder, onCreateFolderForResult }: GettyResultsGridProps) {
   if (isSearching) {
     return (
       <div className="flex flex-wrap gap-[12px] media-grid">
@@ -398,6 +353,9 @@ export function GettyResultsGrid({ results, gettyIds, videoUrls, isSearching, ha
               isSelected={isSelected}
               onSelect={onSelectResult}
               folders={folders}
+              onModify={onModifyResult}
+              onMoveToFolder={onMoveResultToFolder}
+              onCreateFolder={onCreateFolderForResult}
             />
           )
         })}
@@ -448,7 +406,7 @@ export function GettySearchSection({ appId, initialQuery, onSelectResult, select
 
   return (
     <section className="mb-6">
-      <h2 className="text-lg font-semibold mb-3">Recommendations by Getty Images</h2>
+      <h2 className="text-lg font-semibold mb-3">Recommendations by <span className="font-bold">getty</span>images</h2>
       <MediaSearchBar
         query={search.searchQuery}
         onQueryChange={search.setSearchQuery}
