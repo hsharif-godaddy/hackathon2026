@@ -7,7 +7,6 @@ import CommentsIcon from '@ux/icon/comments';
 import ContentIcon from '@ux/icon/content';
 import DatabaseIcon from '@ux/icon/database';
 import LockedIcon from '@ux/icon/locked';
-import MegaphoneIcon from '@ux/icon/megaphone';
 import RevertIcon from '@ux/icon/revert';
 import SettingsIcon from '@ux/icon/settings';
 import SocialIcon from '@ux/icon/social';
@@ -60,7 +59,6 @@ export function useSettingsNavItems(): SettingsNavItem[] {
   const seo = useSeoSettingsEnabled();
   const displayAds = useSwitchboard('appbuilder-settings-display-ads');
   const githubSync = useSwitchboard('appbuilder-github-sync');
-  const campaigns = useSwitchboard('appbuilder-marketing-campaigns');
   const isTopLevelDomainEnabled = useSwitchboard('appbuilder-domain-top-level');
   // Show on mobile (no header tab there), or on desktop when the tab flag is off or unresolved —
   // fail open so users aren't locked out while Switchboard loads or if the flag is missing.
@@ -163,12 +161,6 @@ export function useSettingsNavItems(): SettingsNavItem[] {
       id: SettingsSection.SSO,
       label: t('builder_settings_nav_sso'),
       icon: <LockedIcon />,
-      disabled: false,
-    }] : []),
-    ...(campaigns ? [{
-      id: SettingsSection.CAMPAIGNS,
-      label: t('builder_campaigns_title', undefined, 'Marketing Campaigns'),
-      icon: <MegaphoneIcon />,
       disabled: false,
     }] : []),
     ...(seo ? [{
