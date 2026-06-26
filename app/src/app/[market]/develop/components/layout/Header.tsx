@@ -80,6 +80,7 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
   const isTopLevelDomainEnabled = useSwitchboard('appbuilder-domain-top-level');
   const isInboxEnabled = useSwitchboard('app-builder-inbox-button');
   const isAutomationsEnabled = useSwitchboard('appbuilder-automations');
+  const isMarketingCampaignsEnabled = useSwitchboard('appbuilder-marketing-campaigns') === true;
   const isMediaCanvasEnabled = useSwitchboard(SWITCHBOARD_APPBUILDER_MEDIA_CANVAS) === true;
   const location = 'develop';
   const appId = useAppIdFromParams();
@@ -288,12 +289,14 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
                     label={t('builder_header_button_automations', undefined, 'Automations')}
                   />
                 )}
-                <ButtonGroup.Item
-                  value={ViewMode.MARKETING}
-                  icon={<MegaphoneIcon className="size-2.5" />}
-                  label={translateCampaignKey(t, CAMPAIGN_KEYS.marketingTab)}
-                  disabled={isVersionHistoryOpen}
-                />
+                {isMarketingCampaignsEnabled && (
+                  <ButtonGroup.Item
+                    value={ViewMode.MARKETING}
+                    icon={<MegaphoneIcon className="size-2.5" />}
+                    label={translateCampaignKey(t, CAMPAIGN_KEYS.marketingTab)}
+                    disabled={isVersionHistoryOpen}
+                  />
+                )}
               </ButtonGroup>
             </Box>
 

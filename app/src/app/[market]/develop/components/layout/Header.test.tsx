@@ -497,7 +497,9 @@ describe('DevelopHeader', () => {
     });
   });
 
-  it('renders Marketing button', () => {
+  it('renders the Marketing button when the campaigns feature flag is enabled', () => {
+    mockSwitchboardResults['appbuilder-marketing-campaigns'] = true;
+
     renderWithProviders(<DevelopHeader onPreviewRefresh={vi.fn()} />);
 
     expect(screen.getByLabelText('Marketing')).toBeInTheDocument();
@@ -513,16 +515,13 @@ describe('DevelopHeader', () => {
     expect(mockDevelopStore.openMarketingList).toHaveBeenCalledOnce();
   });
 
-  it('shows growl instead of opening marketing when feature flag is disabled', () => {
+  it('hides the Marketing button when the campaigns feature flag is disabled (RUBICON-534)', () => {
     mockSwitchboardResults['appbuilder-marketing-campaigns'] = false;
 
     renderWithProviders(<DevelopHeader onPreviewRefresh={vi.fn()} />);
 
-    screen.getByLabelText('Marketing').click();
-
+    // The button is gated, so it must not render at all — never shown-then-error.
+    expect(screen.queryByLabelText('Marketing')).not.toBeInTheDocument();
     expect(mockDevelopStore.openMarketingList).not.toHaveBeenCalled();
-    expect(mockAddGrowlMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ id: 'marketing-campaigns-disabled', emphasis: 'warning' }),
-    );
   });
 });
