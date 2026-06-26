@@ -126,18 +126,51 @@ describe('GscClient', () => {
   })
 
   describe('addGscSite', () => {
-    it('calls PUT with encoded site URL', async () => {
+    it('calls PUT with trailing-slash-normalized encoded site URL', async () => {
       vi.mocked(fetch).mockResolvedValueOnce(okResponse())
-      await client.addGscSite(SITE_URL, TOKEN_ID)
+      const result = await client.addGscSite(SITE_URL, TOKEN_ID)
       const [url, opts] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit]
-      expect(url).toContain(encodeURIComponent(SITE_URL))
+      expect(url).toContain(encodeURIComponent(SITE_URL_TRAILING))
       expect(opts.method).toBe('PUT')
+      expect(result).toBe(true)
     })
 
-    it('throws and logs on failure', async () => {
-      vi.mocked(fetch).mockResolvedValueOnce(failResponse(403))
-      await expect(client.addGscSite(SITE_URL, TOKEN_ID)).rejects.toThrow('Failed to add site to GSC')
-      expect(mockLogger.warn).toHaveBeenCalledWith('gsc.add-site.failed', { status: 403 })
+    it('normalizes siteUrl to include trailing slash', async () => {
+      vi.mocked(fetch).mockResolvedValueOnce(okResponse())
+      await client.addGscSite(SITE_URL, TOKEN_ID)
+      const [url] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit]
+      expect(url).toContain(encodeURIComponent(SITE_URL_TRAILING))
+      expect(url).not.toContain(encodeURIComponent(SITE_URL + '/extra'))
+    })
+
+    it('returns false and logs after exhausting all retries', async () => {
+      vi.useFakeTimers()
+      vi.mocked(fetch).mockResolvedValue(failResponse(403))
+
+      const promise = client.addGscSite(SITE_URL, TOKEN_ID)
+      await vi.advanceTimersByTimeAsync(10000)
+      const result = await promise
+
+      expect(result).toBe(false)
+      expect(fetch).toHaveBeenCalledTimes(3)
+      expect(mockLogger.warn).toHaveBeenCalledWith('gsc.add-site.attempt-failed', expect.objectContaining({ attempt: 1, status: 403 }))
+      expect(mockLogger.warn).toHaveBeenCalledWith('gsc.add-site.attempt-failed', expect.objectContaining({ attempt: 3, status: 403 }))
+      expect(mockLogger.warn).toHaveBeenCalledWith('gsc.add-site.exhausted', expect.objectContaining({ siteUrl: SITE_URL_TRAILING }))
+    })
+
+    it('retries on failure and returns true on second attempt', async () => {
+      vi.useFakeTimers()
+      vi.mocked(fetch)
+        .mockResolvedValueOnce(failResponse(503))
+        .mockResolvedValueOnce(okResponse())
+
+      const promise = client.addGscSite(SITE_URL, TOKEN_ID)
+      await vi.advanceTimersByTimeAsync(3000)
+      const result = await promise
+
+      expect(result).toBe(true)
+      expect(fetch).toHaveBeenCalledTimes(2)
+      expect(mockLogger.info).toHaveBeenCalledWith('gsc.add-site.success', { attempt: 2 })
     })
   })
 

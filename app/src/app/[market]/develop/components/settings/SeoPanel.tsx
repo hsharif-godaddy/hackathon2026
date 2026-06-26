@@ -20,6 +20,7 @@ import { useCreateSocialConnection, useSocialConnections } from '@/hooks/social/
 import { useSiteAssociations } from '@/hooks/useSocial'
 import { useTranslations } from '@/hooks/useTranslations'
 import { agentFetch } from '@/lib/agent-fetch'
+import { logger } from '@/lib/request-context'
 import { gscClient } from '@/lib/social-gsc'
 import { parseUserId } from '@/lib/social-utils'
 import type { GoogleSearchConsoleConnection } from '@/types/social'
@@ -46,6 +47,7 @@ export default function SeoPanel({ siteId }: SeoPanelProps) {
   const [connectError, setConnectError] = useState<string | null>(null)
   const [verifyError, setVerifyError] = useState<string | null>(null)
   const [lastSubmittedAt, setLastSubmittedAt] = useState<string | null>(null)
+  const [propertyListWarning, setPropertyListWarning] = useState<boolean>(false)
 
   const { data: associationsData, isLoading: isAssociationsLoading } = useSiteAssociations(siteId)
   const { data: connections, isLoading: isConnectionsLoading } = useSocialConnections()
@@ -168,7 +170,12 @@ export default function SeoPanel({ siteId }: SeoPanelProps) {
     setIsVerifying(true)
     try {
       await gscClient.verifyGscSite(pendingSiteUrl, pendingUserTokenId)
-      await gscClient.addGscSite(pendingSiteUrl, pendingUserTokenId)
+
+      const siteAdded: boolean = await gscClient.addGscSite(pendingSiteUrl, pendingUserTokenId)
+      if (!siteAdded) {
+        logger.warn('gsc.add-site.exhausted-after-retries', { siteUrl: pendingSiteUrl })
+        setPropertyListWarning(true)
+      }
 
       const userId = parseUserId(pendingUserTokenId)
       const { socialId } = await createConnection.mutateAsync({
@@ -181,8 +188,11 @@ export default function SeoPanel({ siteId }: SeoPanelProps) {
         socialId,
         platform: SocialPlatform.GOOGLE_SEARCH_CONSOLE,
       })
-      await gscClient.submitGscSitemap(pendingSiteUrl, pendingUserTokenId)
-      setLastSubmittedAt(new Date().toISOString())
+
+      if (siteAdded) {
+        await gscClient.submitGscSitemap(pendingSiteUrl, pendingUserTokenId)
+        setLastSubmittedAt(new Date().toISOString())
+      }
 
       await patchMetadata.mutateAsync({
         googleVerificationToken: null,
@@ -209,6 +219,11 @@ export default function SeoPanel({ siteId }: SeoPanelProps) {
             <GoogleIcon />
             <text.p>{t('builder_seo_gsc_connected_label', undefined, 'Connected to Google Search Console')}</text.p>
           </Box>
+          {propertyListWarning && (
+            <Alert emphasis="warning">
+              {t('builder_seo_gsc_property_list_warning', undefined, 'Your site is verified but could not be added to the Google Search Console property list. You may need to add it manually at search.google.com/search-console.')}
+            </Alert>
+          )}
           {publishedUrl && <text.p>{t('builder_seo_gsc_site_label', { url: publishedUrl }, 'Site: {url}')}</text.p>}
           {lastSubmittedAt && (
             <text.p>{t('builder_seo_gsc_last_submitted', { date: new Date(lastSubmittedAt).toLocaleString() }, 'Sitemap last submitted: {date}')}</text.p>
