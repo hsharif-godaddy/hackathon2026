@@ -9,6 +9,7 @@ import { skills } from '../../services/features.js'
 import { Logger } from '../../logging/index.js'
 import type { AuthenticatedRequest } from '../middleware/jwt-auth.js'
 import { validateAppOwnership } from '../middleware/app-ownership.js'
+import { buildCampaignToken } from '../../utils/campaign-utm-signer.js'
 
 const router: IRouter = Router()
 const campaignRepo = new SimpleCampaignRepository()
@@ -118,12 +119,24 @@ function resolveSocialDraftForEdit(campaign: SimpleCampaign, req: Request, res: 
 }
 
 /**
+ * Stamp the public campaign reference on a campaign for the front-of-site performance view.
+ * `campaignRefId` is the campaign's `utm_campaign` token — a deterministic HMAC of the
+ * internal id (the same `buildCampaignToken` the marketing_utm writer uses), so it is
+ * computed on read with no marketing_utm lookup and is present even before any content is
+ * published. The consumer pairs it with `appId` (already on the campaign) to query the
+ * Customer Stats API for leads/sources.
+ */
+function withCampaignRefId<T extends SimpleCampaign>(campaign: T): T & { campaignRefId: string } {
+  return { ...campaign, campaignRefId: buildCampaignToken(campaign.id) }
+}
+
+/**
  * GET /campaigns/:id - List campaigns for an app
  */
 router.get('/:id', (req: Request, res: Response): void => {
   try {
     const appId = req.params.id as string
-    const campaigns = campaignRepo.findByAppId(appId)
+    const campaigns = campaignRepo.findByAppId(appId).map(withCampaignRefId)
     res.json({ campaigns })
   } catch (error) {
     logger.error('campaigns.list.error', { error: error instanceof Error ? error.message : String(error) })
@@ -137,7 +150,7 @@ router.get('/:id', (req: Request, res: Response): void => {
  * so map that field across. Content stays the system of record; this is just the
  * read-projection the detail modal renders.
  */
-function withAssets(campaign: SimpleCampaign): SimpleCampaign & { assets: unknown[] } {
+function withAssets(campaign: SimpleCampaign): SimpleCampaign & { campaignRefId: string; assets: unknown[] } {
   const assets: unknown[] = campaignRepo.getContent(campaign.id).map((content: SimpleCampaignContent) => ({
     id: content.id,
     assetType: content.assetType,
@@ -149,7 +162,7 @@ function withAssets(campaign: SimpleCampaign): SimpleCampaign & { assets: unknow
     imageUrl: content.imageUrl ?? undefined,
     rawContent: content.rawContent ?? undefined,
   }))
-  return { ...campaign, assets }
+  return { ...withCampaignRefId(campaign), assets }
 }
 
 /**

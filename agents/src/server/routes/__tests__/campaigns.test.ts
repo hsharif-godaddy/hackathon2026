@@ -52,6 +52,12 @@ vi.mock('../../../database/repositories/MarketingUtmRepository.js', () => ({
   }),
 }))
 
+// campaignRefId is buildCampaignToken(campaign.id). Stub it so the route test asserts the
+// field is wired deterministically without depending on the real HMAC key (getEncryptionKey).
+vi.mock('../../../utils/campaign-utm-signer.js', () => ({
+  buildCampaignToken: (id: string): string => `cmp_ref_${id}`,
+}))
+
 // editSocialDraft/deleteSocialDraft wrap their cascade in getDatabase().transaction(); stub
 // it as a synchronous pass-through so the route stays a unit (no real DB), while a throw
 // inside the cascade still propagates as it would after a real rollback.
@@ -183,6 +189,19 @@ describe('campaigns routes', () => {
       expect(res.body.campaigns).toHaveLength(1)
       expect(mockCampaignRepo.findByAppId).toHaveBeenCalledWith(APP_ID)
     })
+
+    it('exposes campaignRefId (utm_campaign token) alongside appId for stats-API lookups', async () => {
+      const app = buildApp()
+      mockCampaignRepo.findByAppId.mockReturnValue([mockCampaign])
+
+      const res = await request(app).get(`/${APP_ID}`)
+
+      expect(res.body.campaigns[0]).toMatchObject({
+        id: mockCampaign.id,
+        appId: APP_ID,
+        campaignRefId: `cmp_ref_${mockCampaign.id}`,
+      })
+    })
   })
 
   describe('GET /:id/:campaignId (detail)', () => {
@@ -194,7 +213,7 @@ describe('campaigns routes', () => {
       const res = await request(app).get(`/${APP_ID}/${mockCampaign.id}`)
 
       expect(res.status).toBe(200)
-      expect(res.body.campaign).toMatchObject({ id: mockCampaign.id, status: 'ready' })
+      expect(res.body.campaign).toMatchObject({ id: mockCampaign.id, status: 'ready', campaignRefId: `cmp_ref_${mockCampaign.id}` })
       expect(mockCampaignRepo.getContent).toHaveBeenCalledWith(mockCampaign.id)
       expect(res.body.campaign.assets).toEqual([
         expect.objectContaining({
