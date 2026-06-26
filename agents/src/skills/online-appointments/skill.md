@@ -1,13 +1,17 @@
 ---
 name: online-appointments
 description: Full-featured appointment/booking system for service businesses. Includes date/time selection with availability checking, customer intake form, optional GoDaddy Commerce payment integration (free or paid appointments), email confirmations with calendar invites, admin dashboard for appointment management, and customer portal. Supports single pricing (e.g., "$100 consultation") or multiple pricing tiers (e.g., 30min/$50, 60min/$90, 90min/$120). Handles business hours, working days, timezone-aware scheduling, buffer time between appointments, and customizable appointment durations.
-whenToUse: Load IMMEDIATELY for ANY new booking, appointment, scheduling, or reservation intent — do not evaluate fit or gaps. The skill itself will determine whether to use its templates or recommend custom implementation. Do NOT load for bug fixes, modifications, or integrating external products. Keywords - "booking", "appointment", "schedule", "reservation", "calendar", "time slot", "class booking". Covers services, classes, consultations, rentals, class credits or any time-slot reservations.
+whenToUse: Load IMMEDIATELY for ANY new booking, appointment, scheduling, or reservation intent — do not evaluate fit or gaps. The skill itself will determine whether to use its templates or recommend custom implementation. Also load for troubleshooting existing booking systems (calendar not showing, slots not available, booking form broken). Keywords - "booking", "appointment", "schedule", "reservation", "calendar", "time slot", "class booking", "availability", "slots". Covers services, classes, consultations, rentals, class credits or any time-slot reservations.
 dependencies:
   - date-fns
   - date-fns-tz
   - zod
 intents:
   - booking/appointments/scheduling/reservation/time slots/class booking/book a spot/waitlist/classes
+  - clinic scheduling/salon booking/consultation calendar/availability system/appointment calendar
+  - spa booking/therapy sessions/coaching sessions/personal training/tutoring schedule
+  - booking not working/appointments broken/calendar not showing/slots not available/booking page error
+  - schedule appointments/book online/online scheduling/appointment system/reservation system
 ---
 
 # Online Appointments Skill
