@@ -2,8 +2,10 @@ name: Dark Release (dev)
 
 # One-click dev tool that reproduces the manual "Release Group Dark Release"
 # steps in a single dispatch (NOT part of the automatic release pipeline):
-#   1. Build agent/preview/publish images   (pioneer-infra combined-airo-app-build.yml,
-#      preprov-management-action="Do Nothing" so it never touches the fleet / release train)
+#   1. Build agent/preview/publish images   (pioneer-infra per-component
+#      docker-airo-app-builder-{agent,preview,publish}.yml — pure build workflows with
+#      no preprov-management-action, so they never touch the fleet / release train, and
+#      each emits its own immutable pi-<sha>-ext-<sha> tag in its own run log)
 #   2. Katana dark release of the builder app at 0% traffic (in-repo aws-deploy-app.yml, dark_release)
 #   3. Create + bind a cohort-less Release Group to the build (pioneer-infra release-group-simple.yml)
 # action=Rollback tears the Release Group down again.
@@ -35,9 +37,9 @@ on:
         type: string
         default: 'main'
       publish_image:
-        description: "Push built images to the registry. false = build only (the commit's images must already be in the registry, e.g. from CI); set true to dark-release a branch CI has not built, else step 3 binds tags absent from ECR."
+        description: "Push built images to the registry (default). true guarantees step 3's tags exist in ECR; set false to build only when the commit's images are already in the registry (e.g. from CI), else step 3 binds tags absent from ECR."
         type: boolean
-        default: false
+        default: true
       app_environment:
         description: 'Katana environment for the dark release (step 2)'
         type: choice
@@ -73,7 +75,7 @@ permissions:
 # workflow_dispatch run of a child workflow created after a timestamp, so two
 # overlapping runs of THIS workflow could race to adopt each other's child run.
 # A single static group (not per-branch) is deliberate: the child workflows
-# (combined-airo-app-build, release-group-simple) are shared, so the race is
+# (docker-airo-app-builder-*, release-group-simple) are shared, so the race is
 # independent of branch. cancel-in-progress=false — never kill a run that may
 # have already created a Release Group, which would orphan it.
 concurrency:
@@ -83,7 +85,9 @@ concurrency:
 env:
   AGENT_REPO: gdcorp-partners/airo-app-builder
   PIONEER_REPO: gdcorp-commerce/pioneer-infra
-  BUILD_WF: combined-airo-app-build.yml
+  AGENT_WF: docker-airo-app-builder-agent.yml
+  PREVIEW_WF: docker-airo-app-builder-preview.yml
+  PUBLISH_WF: docker-airo-app-builder-publish.yml
   DARK_WF: aws-deploy-app.yml
   RG_WF: release-group-simple.yml
 
@@ -183,36 +187,60 @@ jobs:
           fi
           echo "Resolved $BRANCH → $SHA"
 
-          # 1) Build the images. Per the dark-release runbook: build-image=true,
-          # preprov-management-action "Do Nothing" (leave the fleet/release train
-          # untouched). publish-image is the registry push: default false (build
-          # only — the commit's images must already be in the registry from CI);
-          # set the publish_image input true to dark-release a branch CI has not
-          # built, else step 3 binds tags absent from ECR. The build still emits
-          # the immutable tag we scrape + bind below regardless.
-          echo "::group::1/3 build images ($BUILD_WF, publish-image=$PUBLISH_IMAGE)"
-          before=$(ts_since)
-          GH_TOKEN="$PIONEER_INFRA_TOKEN" gh workflow run "$BUILD_WF" --repo "$PIONEER_REPO" \
-            -f environment=c1-dev-private-us-west-2 \
-            -f airo-app-builder-branch="$SHA" \
-            -f node-version=22 \
-            -f build-image=true \
-            -f publish-image="$PUBLISH_IMAGE" \
-            -f preprov-management-action='Do Nothing' \
-            -f preprov-variant=preview
-          build_rid=$(discover_run "$PIONEER_INFRA_TOKEN" "$PIONEER_REPO" "$BUILD_WF" "$before") \
-            || { echo "::error::could not find the dispatched $BUILD_WF run"; exit 1; }
-          echo "build run: https://github.com/$PIONEER_REPO/actions/runs/$build_rid"
-          watch_run "$PIONEER_INFRA_TOKEN" "$PIONEER_REPO" "$build_rid"
-          # Fetch the log first (a real gh failure surfaces under set -e), THEN grep
-          # — so an auth/network/log-purge error is not silently read as a no-match.
-          build_log=$(GH_TOKEN="$PIONEER_INFRA_TOKEN" gh run view "$build_rid" --repo "$PIONEER_REPO" --log)
-          IMAGE_TAG=$(printf '%s' "$build_log" \
-            | grep -oE 'MOST_SPECIFIC_IMMUTABLE_TAG_SUFFIX=pi-[a-f0-9]+-ext-[a-f0-9]+' | head -1 | cut -d= -f2 || true)
-          if [ -z "${IMAGE_TAG:-}" ]; then
-            echo "::error::could not scrape the image tag (pi-…-ext-…) from the build run $build_rid"; exit 1
-          fi
-          echo "image tag: $IMAGE_TAG"
+          # 1) Build agent/preview/publish via their own per-component workflows.
+          # Each is a pure build (no preprov-management-action ⇒ never touches the
+          # fleet) and emits its OWN immutable tag in its OWN run log — one marker per
+          # log, an unambiguous scrape (combined interleaves all three in one log).
+          # publish-image is the registry push: true (default) always pushes so step 3's
+          # tags exist in ECR; false builds only and assumes the commit's images are
+          # already in ECR (e.g. from CI), else step 3 binds tags absent from ECR.
+          echo "::group::1/3 build images (agent + preview + publish; publish-image=$PUBLISH_IMAGE)"
+          sha7=${SHA:0:7}
+          declare -A BUILD_WF=( [agent]="$AGENT_WF" [preview]="$PREVIEW_WF" [publish]="$PUBLISH_WF" )
+          declare -A BUILD_RID BUILD_TAG
+          # Dispatch all three (they build concurrently on pioneer-infra, runner capacity
+          # permitting), discovering + breadcrumbing each run id to the summary as we go —
+          # so if a later dispatch fails under set -e, the builds already running still
+          # have a trail (mirrors the pre-watch RG breadcrumb below).
+          for comp in agent preview publish; do
+            before=$(ts_since)
+            GH_TOKEN="$PIONEER_INFRA_TOKEN" gh workflow run "${BUILD_WF[$comp]}" --repo "$PIONEER_REPO" \
+              -f environment=c1-dev-private-us-west-2 \
+              -f node-version=22 \
+              -f airo-app-builder-branch="$SHA" \
+              -f build-image=true \
+              -f publish-image="$PUBLISH_IMAGE"
+            rid=$(discover_run "$PIONEER_INFRA_TOKEN" "$PIONEER_REPO" "${BUILD_WF[$comp]}" "$before") \
+              || { echo "::error::could not find the dispatched ${BUILD_WF[$comp]} run"; exit 1; }
+            BUILD_RID[$comp]=$rid
+            echo "$comp build run: https://github.com/$PIONEER_REPO/actions/runs/$rid"
+            echo "- $comp build run: https://github.com/$PIONEER_REPO/actions/runs/$rid" >> "$GITHUB_STEP_SUMMARY"
+          done
+          # Now wait on each (concurrent builds ⇒ ~the slowest, not the sum), scrape that
+          # run's own immutable tag, and assert its -ext-<sha7> is OUR commit — which also
+          # catches a discover_run mis-selection of a concurrent build of a different
+          # commit. The tag shape (pi-<pioneer-sha7>-ext-<airo-sha7>) is emitted via `tee`
+          # to stdout — so it lands in `gh run view --log` — by pioneer-infra's
+          # reusable-docker-build-multiplatform.yml, which owns the format.
+          for comp in agent preview publish; do
+            watch_run "$PIONEER_INFRA_TOKEN" "$PIONEER_REPO" "${BUILD_RID[$comp]}"
+            # Fetch the log before grep (a real gh error aborts under set -e rather than
+            # reading as a no-match).
+            comp_log=$(GH_TOKEN="$PIONEER_INFRA_TOKEN" gh run view "${BUILD_RID[$comp]}" --repo "$PIONEER_REPO" --log)
+            tag=$(printf '%s' "$comp_log" \
+              | grep -oE 'MOST_SPECIFIC_IMMUTABLE_TAG_SUFFIX=pi-[a-f0-9]+-ext-[a-f0-9]+' | head -1 | cut -d= -f2 || true)
+            if [ -z "$tag" ]; then
+              echo "::error::could not scrape the image tag (pi-…-ext-…) from the $comp build run ${BUILD_RID[$comp]}"; exit 1
+            fi
+            # The marker carries only the 7-char ext prefix (reusable-docker-build emits
+            # ${EXTERNAL_REPO_SHA:0:7}), so compare against sha7 — not the full $SHA, which
+            # would never match.
+            if [ "${tag##*-ext-}" != "$sha7" ]; then
+              echo "::error::$comp build tag '$tag' is not for commit $sha7 (expected -ext-$sha7) — wrong run scraped?"; exit 1
+            fi
+            BUILD_TAG[$comp]=$tag
+            echo "$comp image tag: $tag"
+          done
           echo "::endgroup::"
 
           # 2) Katana dark release of the builder app at 0% traffic. Dispatch ref is
@@ -237,9 +265,9 @@ jobs:
             -f action='Create + Reload' \
             -f environment="$MGMT_ENV" \
             -f katanaSelector="$SHA" \
-            -f agentImageTag="$IMAGE_TAG" \
-            -f previewImageTag="$IMAGE_TAG" \
-            -f publishImageTag="$IMAGE_TAG" \
+            -f agentImageTag="${BUILD_TAG[agent]}" \
+            -f previewImageTag="${BUILD_TAG[preview]}" \
+            -f publishImageTag="${BUILD_TAG[publish]}" \
             -f compositionId="$COMPOSITION_ID" \
             -f compositionVersion="$COMPOSITION_VERSION"
           rg_rid=$(discover_run "$PIONEER_INFRA_TOKEN" "$PIONEER_REPO" "$RG_WF" "$before") \
@@ -278,11 +306,13 @@ jobs:
             echo "| | |"
             echo "|---|---|"
             echo "| Commit (katanaSelector) | \`$SHA\` |"
-            echo "| Image tag (agent/preview/publish) | \`$IMAGE_TAG\` |"
+            echo "| Agent image tag | \`${BUILD_TAG[agent]}\` |"
+            echo "| Preview image tag | \`${BUILD_TAG[preview]}\` |"
+            echo "| Publish image tag | \`${BUILD_TAG[publish]}\` |"
             echo "| Release Group ID | \`${RG_ID:-<not found — see release-group run>}\` |"
             echo "| Dark URL ($APP_ENV) | https://$DARK_HOST?x-katana-version=$SHA&cookie=1 |"
             echo
-            echo "Runs: [build](https://github.com/$PIONEER_REPO/actions/runs/$build_rid) · [dark-release](https://github.com/$AGENT_REPO/actions/runs/$dark_rid) · [release-group](https://github.com/$PIONEER_REPO/actions/runs/$rg_rid)"
+            echo "Runs: build [agent](https://github.com/$PIONEER_REPO/actions/runs/${BUILD_RID[agent]}) · [preview](https://github.com/$PIONEER_REPO/actions/runs/${BUILD_RID[preview]}) · [publish](https://github.com/$PIONEER_REPO/actions/runs/${BUILD_RID[publish]}) · [dark-release](https://github.com/$AGENT_REPO/actions/runs/$dark_rid) · [release-group](https://github.com/$PIONEER_REPO/actions/runs/$rg_rid)"
             echo
             if [ "$PUBLISH_IMAGE" != "true" ]; then
               echo "> ℹ️ \`publish_image\` was false — the build did not push to the registry, so this assumes the images for \`$SHA\` are already in ECR (e.g. from CI). If the dark URL 404s / shows the old build, re-run with \`publish_image: true\`."
