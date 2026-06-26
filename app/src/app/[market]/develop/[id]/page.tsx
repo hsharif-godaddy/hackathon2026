@@ -47,7 +47,7 @@ import { FEEDBACK_ID } from '@/components/feedback/utils'
 import { UpgradeModal } from '@/components/upgrade/UpgradeModal'
 import { buildDynamicApiUrl, dynamicApiConfigService } from '@/config/dynamic-api'
 import { EXPERIMENT_IDS } from '@/config/experiments'
-import { SWITCHBOARD_APPBUILDER_CMS_INLINE_EDIT } from '@/config/switchboard-flags'
+import { SWITCHBOARD_APPBUILDER_CMS_INLINE_EDIT, SWITCHBOARD_APPBUILDER_COMMANDER } from '@/config/switchboard-flags'
 import { ChatProvider } from '@/contexts/ChatContext'
 import { prefetchGitRemoteConfig } from '@/hooks/github/useGitRemoteConfig'
 import { activateInitialBuildFunnel } from '@/hooks/shared/initialBuildFunnel'
@@ -147,8 +147,10 @@ const SettingsView = dynamic(importSettingsView, { loading: () => <SettingsLoadi
 
 const aotImports = [importFeedback, importFirstPublishCongratsModal, importPublishLimitModal, importSettingsView]
 
-function DevelopPageContent({ layout = BuilderLayout.Develop }: { layout?: BuilderLayout }) {
+function DevelopPageContent({ layout: layoutProp }: { layout?: BuilderLayout }) {
   const t = useTranslations();
+  const commanderEnabled: boolean | undefined = useSwitchboard(SWITCHBOARD_APPBUILDER_COMMANDER)
+  const layout: BuilderLayout = layoutProp ?? (commanderEnabled ? BuilderLayout.Commander : BuilderLayout.Develop)
   const searchParams = useSearchParams()
   const todoListIdParam = searchParams.get('todoListId')
   const router = useRouter()
@@ -1903,7 +1905,7 @@ function DevelopPageContent({ layout = BuilderLayout.Develop }: { layout?: Build
   )
 }
 
-export default function Develop({ layout = BuilderLayout.Develop }: { layout?: BuilderLayout } = {}) {
+export default function Develop({ layout }: { layout?: BuilderLayout } = {}) {
   return (
     <ProtectedRoute loadingFallback={<DevelopSkeleton isFallback={true} />}>
       <Suspense fallback={<DevelopSkeleton isFallback={true} />}>

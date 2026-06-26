@@ -17,10 +17,9 @@ import { redirect } from 'next/navigation'
 
 import { BuilderLayout } from '@/app/[market]/commander/types'
 import DevelopPage from '@/app/[market]/develop/[id]/page'
+import { SWITCHBOARD_APPBUILDER_COMMANDER } from '@/config/switchboard-flags'
 import { logger } from '@/lib/request-context'
 import { checkSwitchboardFlag } from '@/lib/switchboard/server'
-
-const COMMANDER_FLAG = 'appbuilder-commander'
 
 interface CommanderPageProps {
   params: Promise<{ market: string; id: string }>
@@ -49,10 +48,10 @@ export default async function CommanderPage(props: CommanderPageProps) {
 
   let enabled = false
   try {
-    enabled = await checkSwitchboardFlag(COMMANDER_FLAG, { headers: reqHeaders })
+    enabled = await checkSwitchboardFlag(SWITCHBOARD_APPBUILDER_COMMANDER, { headers: reqHeaders })
   } catch (error) {
     logger.warn('commander.flag.lookup-failed', {
-      flag: COMMANDER_FLAG,
+      flag: SWITCHBOARD_APPBUILDER_COMMANDER,
       error: error instanceof Error ? error.message : String(error),
     })
   }

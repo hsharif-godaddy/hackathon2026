@@ -19,3 +19,4 @@ export const SWITCHBOARD_APPBUILDER_FIRST_BUILD_FEEDBACK =
 export const SWITCHBOARD_APPBUILDER_SSO_LITE = 'appbuilder-sso-lite';
 export const SWITCHBOARD_APPBUILDER_MEDIA_CANVAS = 'appbuilder-media-library';
 export const SWITCHBOARD_APPBUILDER_CMS_INLINE_EDIT = 'appbuilder-cms-inline-edit';
+export const SWITCHBOARD_APPBUILDER_COMMANDER = 'appbuilder-commander';
