@@ -71,15 +71,16 @@ permissions:
   contents: read
   actions: write # dispatch the in-repo aws-deploy-app.yml
 
-# Serialize dispatches of this workflow. discover_run (below) claims the newest
-# workflow_dispatch run of a child workflow created after a timestamp, so two
-# overlapping runs of THIS workflow could race to adopt each other's child run.
-# A single static group (not per-branch) is deliberate: the child workflows
-# (docker-airo-app-builder-*, release-group-simple) are shared, so the race is
-# independent of branch. cancel-in-progress=false — never kill a run that may
-# have already created a Release Group, which would orphan it.
+# Serialize per-branch, not globally. discover_run (below) claims the newest
+# workflow_dispatch run of a child workflow after a timestamp, so two overlapping
+# runs could race to adopt each other's child run. Scoping the group to the branch
+# lets different branches (⇒ different commits) run concurrently — where the build
+# step's -ext-<sha7> assertion already rejects a cross-selected build of another
+# commit — while still serializing same-branch runs, the one case those commit-based
+# guards can't tell apart (same commit ⇒ identical tags). cancel-in-progress=false:
+# never kill a run that may have already created a Release Group (it would orphan it).
 concurrency:
-  group: dark-release-dev
+  group: dark-release-dev-${{ inputs.branch }}
   cancel-in-progress: false
 
 env:
