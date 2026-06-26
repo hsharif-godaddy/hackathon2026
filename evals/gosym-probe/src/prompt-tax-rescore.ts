@@ -15,12 +15,12 @@ import type { Scenario } from './scenarios/types.js';
 /**
  * prompt-tax-rescore — score each prompt-tax treatment arm against the CONTROL
  * arm as a baseline, through the real TOST RegressionComparator (the gating path
- * PR #4583's minMargin floor lives in).
+ * PR #4583's margin floor lives in, since made relative).
  *
  * This is a DIFFERENT analysis from prompt-tax-compare (a co-run Welch t-test).
  * It exists to exercise #4583: many prompt-tax quality metrics (e.g. bug-hit-rate)
  * are flat 1.00 → zero-variance baselines. Pre-#4583 those false-flagged any
- * deviation via strict uniform-match; with the minMargin floor they become proper
+ * deviation via strict uniform-match; with the relative floor they become proper
  * TOST passes that carry a `Pass (margin-floored)` warning. This script
  * reconstructs ScenarioResults from the stored 140-trial run and reports each
  * arm's gate (pass/warning/fail) + which evaluators were margin-floored.
@@ -150,9 +150,9 @@ async function main(): Promise<void> {
   lines.push('');
   lines.push(
     `Each arm scored against **${controlName}** as a baseline through the ` +
-      `RegressionComparator (TOST), with PR #4583's minMargin floor ` +
-      `(\`${config.regression.minMargin}\`). Gate: pass / warning / fail. ` +
-      `\`floored\` = evaluators rescued by the minMargin floor (zero-variance baseline).`,
+      `RegressionComparator (TOST), with PR #4583's relative-floor margin ` +
+      `(\`max(k·SD, ${config.regression.minMarginFraction}·mean)\`). Gate: pass / warning / fail. ` +
+      `\`floored\` = evaluators where the fractional floor exceeded k·SD (low-variance baseline).`,
   );
   lines.push('');
   lines.push('| Arm | Gate | Margin-floored evaluators | Exceeded (regressions) |');

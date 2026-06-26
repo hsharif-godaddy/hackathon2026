@@ -86,15 +86,32 @@ by more than `margin`?" If the answer is yes (the CI lower bound clears
 
 ### The margin
 
-The margin is data-driven, derived from the baseline's own noise:
+The margin is data-driven, derived from the baseline's own noise, with a
+relative floor:
 
 ```
-margin = k × SD(baseline_trialScores)
+margin = max(k × SD(baseline_trialScores), frac × max(mean, 0))
 ```
 
 `SD` is the population standard deviation of the per-trial scores saved
 when the baseline was graduated. `k` controls how many "wobbles" of
-baseline noise are tolerated.
+baseline noise are tolerated. `frac` (`minMarginFraction`, default `0.05`)
+is the **relative floor**: a fraction of the baseline mean that the margin
+never drops below.
+
+**Why the floor is relative.** Score-mode evaluators store raw measurements
+(turns, seconds, steps) whose scales differ by orders of magnitude, so a
+fixed absolute floor is meaningless across metrics. A fractional floor is
+dimensionless: `frac = 0.05` means "tolerate 5% of the baseline mean" for
+every metric. When baseline variance is near-zero, `k × SD` is too tight for
+TOST to prove non-inferiority at small sample sizes; the floor supplies a
+minimum tolerance so sub-5% jitter is not flagged as a regression. The
+margin is reported as `marginFloored: true` when the floor term strictly
+exceeded `k × SD`.
+
+A non-finite baseline mean (raw scores are unclamped post-#5369) forces the
+floor term to 0, so a stray `Infinity` cannot inflate the margin into an
+always-pass gate.
 
 **What k means in practice:**
 
@@ -109,14 +126,28 @@ current run has more room to vary without triggering a failure. A stable
 baseline (low variance) produces a tight margin, demanding the current run
 stay close.
 
-**SD=0 (zero-variance baseline):** When all baseline trials score
-identically (e.g., always 1.0 or always 0.0), `margin = 0`. TOST cannot
-prove non-inferiority with a zero margin, so the comparator bypasses it
-and uses a strict uniform-match check instead: the current run passes only
-if every trial score equals the baseline constant. Any deviation from the
-constant value is a failure. This ensures perfectly stable evaluators
-demand perfect consistency without producing false failures on identical
-results.
+**The four regimes** (with `frac > 0`):
+
+| Baseline | Margin | Behavior |
+|----------|--------|----------|
+| mean>0, SD>0 | `max(k·SD, frac·mean)` | Floor inert when `k·SD ≥ frac·mean`; else the floor engages and `marginFloored` is set. |
+| mean>0, SD=0 | `frac·mean` (floored) | `k·SD` is 0, so the relative floor sets the margin. TOST runs against `frac·mean`. |
+| mean=0, SD>0 | `k·SD` | Floor term is 0 (`frac·0`), so the noise term governs. |
+| mean=0, SD=0 | `0` | Only here does the margin reach 0 and route to strict uniform-match. |
+
+**SD=0 with a positive mean** (e.g., a metric that is always 300s) no longer
+collapses to `margin = 0`. The relative floor gives it `frac·mean` (e.g.,
+15s at `frac=0.05`), so TOST tolerates sub-5% jitter instead of demanding
+perfect consistency. This is the case the absolute-`0.05` floor silently
+failed on raw measurements.
+
+**Constant-zero baseline (mean=0 AND SD=0):** Only when every baseline trial
+is exactly 0 does `margin = 0`. TOST cannot prove non-inferiority with a zero
+margin, so the comparator bypasses it and uses a strict uniform-match check
+instead: the current run passes only if every trial score equals the baseline
+constant (0). Any positive deviation is a failure. With the relative floor
+this is now a live production path (the absolute floor never produced a zero
+margin in prod).
 
 ### Which test is used
 
@@ -287,6 +318,7 @@ The `regression` block in each environment config (`config/environments/`):
 regression: {
   alpha: 0.05,               // significance level for TOST (default: 0.05)
   k: 2.0,                    // SD multiplier for margin (default: 2.0)
+  minMarginFraction: 0.05,   // relative floor: fraction of baseline mean (default: 0.05)
   evaluatorKOverrides: {     // optional: per-evaluator k overrides
     'latency': 3.0,
     'llm-cost': 3.0,
@@ -323,6 +355,19 @@ Rules of thumb:
 - `k=3`: use for high-variance evaluators where the SD itself is large
 
 Default: `2.0`.
+
+### `minMarginFraction`
+
+The relative floor as a fraction of the baseline mean. The margin never drops
+below `minMarginFraction × max(mean, 0)`, regardless of how small `k × SD` is.
+
+This is global (not per-evaluator) on purpose: the floor is dimensionless, so
+5% is universal across metrics with different units. Per-metric tolerance is
+handled by `evaluatorKOverrides` (the `k` term), not the floor.
+
+Set to `0` to disable the floor entirely (margin reverts to pure `k × SD`).
+
+Default: `0.05`.
 
 ### `evaluatorKOverrides`
 

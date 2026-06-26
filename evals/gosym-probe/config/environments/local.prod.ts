@@ -35,7 +35,6 @@ export function createConfig(): Config {
       ...REGRESSION_DEFAULTS,
       fallbackThresholds: {
         thresholds: {
-          'prompt-efficiency': 0.15,
           'turn-duration': 1.5,
           'token-usage': 1.5,
           'llm-cost': 1.5,

@@ -127,7 +127,7 @@ describe('createGoldenLightScenario', () => {
     expect(scenario.evaluators.map((e: Evaluator) => e.name)).toContain('bug-hit-rate');
   });
 
-  it('includes agent-steps evaluator with sigmoid-normalized score', async () => {
+  it('includes agent-steps evaluator with raw step count score', async () => {
     const scenario = createGoldenLightScenario(
       makeBaseConfig(),
       gocode,
@@ -153,11 +153,10 @@ describe('createGoldenLightScenario', () => {
       snapshots: [],
       errors: [],
       captureErrors: [],
-      
     };
     const result = await agentStepsEval!.evaluate(transcript, scenario);
-    const expectedScore = 1 / (1 + Math.exp(0.2 * (5 - 15)));
-    expect(result.score).toBeCloseTo(expectedScore, 10);
+    expect(result.score).toBe(5);
+    expect(result.verdict).toBe('observed');
   });
 
   describe('config validation', () => {

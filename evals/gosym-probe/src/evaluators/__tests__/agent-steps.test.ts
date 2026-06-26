@@ -4,10 +4,6 @@ import type { Transcript, Turn } from '../../runner/transcript.js';
 import type { Scenario } from '../../scenarios/types.js';
 import type { Persona } from '../../personas/types.js';
 
-function expectedSigmoid(count: number): number {
-  return 1 / (1 + Math.exp(0.2 * (count - 15)));
-}
-
 const mockPersona: Persona = {
   name: 'test',
   description: '',
@@ -69,23 +65,23 @@ describe('AgentStepsEvaluator', () => {
     expect(result.verdict).toBe('unknown');
   });
 
-  it('returns high score when totalSteps sums to 0', async () => {
+  it('returns score of 0 for totalSteps=0', async () => {
     const evaluator = new AgentStepsEvaluator();
     const result = await evaluator.evaluate(
       makeTranscript([makeAssistantTurn(0)]),
       makeScenario(),
     );
-    expect(result.score).toBeCloseTo(expectedSigmoid(0), 10);
+    expect(result.score).toBe(0);
     expect(result.verdict).toBe('observed');
   });
 
-  it('applies sigmoid normalization to step count', async () => {
+  it('returns raw step count', async () => {
     const evaluator = new AgentStepsEvaluator();
     const result = await evaluator.evaluate(
       makeTranscript([makeAssistantTurn(4)]),
       makeScenario(),
     );
-    expect(result.score).toBeCloseTo(expectedSigmoid(4), 10);
+    expect(result.score).toBe(4);
     expect(result.verdict).toBe('observed');
   });
 
@@ -95,7 +91,7 @@ describe('AgentStepsEvaluator', () => {
       makeTranscript([makeAssistantTurn(3), makeAssistantTurn(5)]),
       makeScenario(),
     );
-    expect(result.score).toBeCloseTo(expectedSigmoid(8), 10);
+    expect(result.score).toBe(8);
     expect(result.verdict).toBe('observed');
   });
 
@@ -105,7 +101,7 @@ describe('AgentStepsEvaluator', () => {
       makeTranscript([makeAssistantTurn(4), makeUserTurn()]),
       makeScenario(),
     );
-    expect(result.score).toBeCloseTo(expectedSigmoid(4), 10);
+    expect(result.score).toBe(4);
   });
 
   it('details contains totalSteps', async () => {
@@ -123,7 +119,7 @@ describe('AgentStepsEvaluator', () => {
       makeTranscript([makeAssistantTurn(5)]),
       makeScenario(),
     );
-    expect(result.evalVersion).toBe('1.0');
+    expect(result.evalVersion).toBe('2.0');
   });
 
   it("returns 'unknown' when totalSteps sum is NaN", async () => {
@@ -134,14 +130,24 @@ describe('AgentStepsEvaluator', () => {
     );
     expect(result.verdict).toBe('unknown');
     expect(result.reason).toContain('Invalid totalSteps');
-    expect(result.evalVersion).toBe('1.0');
+    expect(result.evalVersion).toBe('2.0');
+  });
+
+  it('returns score of 1000 for large step count (unclamped)', async () => {
+    const evaluator = new AgentStepsEvaluator();
+    const result = await evaluator.evaluate(
+      makeTranscript([makeAssistantTurn(1000)]),
+      makeScenario(),
+    );
+    expect(result.score).toBe(1000);
+    expect(result.verdict).toBe('observed');
   });
 
   it('has correct name and properties', () => {
     const evaluator = new AgentStepsEvaluator();
     expect(evaluator.name).toBe('agent-steps');
     expect(evaluator.regressionMode).toBe('score');
-    expect(evaluator.evalVersion).toBe('1.0');
-    expect(evaluator.lowerIsBetter).toBe(false);
+    expect(evaluator.evalVersion).toBe('2.0');
+    expect(evaluator.lowerIsBetter).toBe(true);
   });
 });

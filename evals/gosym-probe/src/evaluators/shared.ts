@@ -26,34 +26,6 @@ export function clamp01(x: number): number {
   return Math.max(0, Math.min(1, x));
 }
 
-/**
- * Shared sigmoid curve parameters for raw-count evaluators.
- * All evaluators share the same curve shape for cross-scenario comparability.
- */
-export const SIGMOID_MIDPOINT = 15;
-export const SIGMOID_STEEPNESS = 0.2;
-
-/**
- * Maps a raw count (agent steps, user turns) to a (0, 1) score via sigmoid.
- * Fewer steps/turns produce higher scores.
- * @param count Non-negative finite number. Throws RangeError if NaN or negative.
- * @param midpoint Count at which the score equals 0.5. Must be finite.
- * @param steepness Controls how sharply the curve transitions around the midpoint. Must be finite and positive.
- */
-export function sigmoidScore(count: number, midpoint: number, steepness: number): number {
-  if (!Number.isFinite(midpoint) || !Number.isFinite(steepness) || steepness <= 0) {
-    throw new RangeError(
-      `sigmoidScore: midpoint and steepness must be finite positive numbers, got midpoint=${midpoint}, steepness=${steepness}`,
-    );
-  }
-  if (!Number.isFinite(count) || count < 0) {
-    throw new RangeError(
-      `sigmoidScore: count must be a non-negative finite number, got ${count}`,
-    );
-  }
-  return 1 / (1 + Math.exp(steepness * (count - midpoint)));
-}
-
 export function truncate(text: string, maxChars: number): string {
   if (text.length <= maxChars) return text;
   return `${text.slice(0, maxChars)}... [truncated]`;

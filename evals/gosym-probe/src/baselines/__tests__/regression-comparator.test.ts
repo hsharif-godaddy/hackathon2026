@@ -11,7 +11,7 @@ import type { StatisticalRegressionConfig } from '../../../config/environments/t
 const THRESHOLDS: StatisticalRegressionConfig = {
   alpha: 0.05,
   k: 2.0,
-  minMargin: 0.05,
+  minMarginFraction: 0.05,
   seed: 42,
   fallbackThresholds: {
     thresholds: {
@@ -954,7 +954,8 @@ describe('RegressionComparator', () => {
       // tostProportions (Wilson CI) cannot prove non-inferiority for p=1.0, n=5 against a 0.05
       // margin because the Wilson CI lower bound (~-0.74) falls well below -margin.
       // With tostPermutation, identical distributions prove non-inferiority trivially.
-      // SD=0, k*SD=0 < minMargin(0.05) → margin floored to 0.05, marginFloored=true.
+      // SD=0 so k*SD=0; relative floor = frac(0.05) * mean(0.5) = 0.025 lifts the
+      // margin → marginFloored=true.
       const baselineTrialScores = [0.5, 0.5, 0.5, 0.5, 0.5];
       const trials = [0, 1, 2, 3, 4].map((i) =>
         makeTrialResult(i, 'jtbd-completion', 0.5, 'pass'),
@@ -969,17 +970,17 @@ describe('RegressionComparator', () => {
 
       expect(r.gate).toBe('pass');
       expect(e?.statistical?.marginFloored).toBe(true);
-      expect(e?.statistical?.margin).toBe(0.05);
+      expect(e?.statistical?.margin).toBeCloseTo(0.025, 10);
     });
 
     it('floor flips a verdict from fail to pass with wide minMargin', () => {
       const WIDE_FLOOR_CONFIG: StatisticalRegressionConfig = {
         ...THRESHOLDS,
-        minMargin: 0.5,
+        minMarginFraction: 0.5,
       };
       const NO_FLOOR_CONFIG: StatisticalRegressionConfig = {
         ...THRESHOLDS,
-        minMargin: 0,
+        minMarginFraction: 0,
       };
 
       // Non-binary baseline (0.5s, SD=0). Current: 0.4s (mean drop = 0.1).
@@ -1005,6 +1006,157 @@ describe('RegressionComparator', () => {
       const eFloor = rFloor.evaluators.find((x) => x.evaluator === 'jtbd-completion') as ComparedRegressionEvalResult | undefined;
       expect(eFloor?.exceeded).toBe(false);
       expect(eFloor?.statistical?.marginFloored).toBe(true);
+    });
+  });
+
+  // ── Relative-floor comparator integration (Phase 4) ───────────────────────
+  //
+  // These verify the relative floor end-to-end through compare(), on the
+  // lowerIsBetter score-mode path (the post-#5369 raw-measurement evaluators:
+  // total-time-taken, agent-steps, prompt-efficiency). They assert behavior
+  // confirmed against the live permutation TOST, NOT a naive mean-delta: the
+  // permutation CI upper bound is roughly twice the observed mean difference,
+  // so the effective flag boundary sits well below frac·mean.
+
+  describe('relative-floor comparator integration', () => {
+    function makeScoreModeTrials(name: string, scores: number[]): TrialResult[] {
+      return scores.map((s, i) => makeTrialResult(i, name, s, 'observed'));
+    }
+
+    function makeLowerIsBetterResult(name: string, currentScores: number[]): ScenarioResult {
+      const mean = currentScores.reduce((sum, s) => sum + s, 0) / currentScores.length;
+      return makeResult(
+        { [name]: { ...makeScoreAgg(mean), lowerIsBetter: true } },
+        makeScoreModeTrials(name, currentScores),
+      );
+    }
+
+    function makeScoreModeBaseline(name: string, trialScores: number[]): BaselineScores {
+      const mean = trialScores.reduce((sum, s) => sum + s, 0) / trialScores.length;
+      return {
+        scenarioName: 'test-scenario',
+        runId: 'baseline-run',
+        createdAt: '2026-04-01T00:00:00.000Z',
+        scores: {
+          [name]: {
+            passAtK: false,
+            passToTheK: false,
+            passingTrials: 0,
+            totalTrials: trialScores.length,
+            aggregateScore: mean,
+            trialScores,
+          },
+        },
+      };
+    }
+
+    it('(seam — #5369) low-variance baseline: floor passes a small drift the dead floor flagged', () => {
+      // total-time-taken style: baseline ≈300s, SD≈0.5 (k·SD=1). Current ≈306s
+      // (≈2% slower) — exactly the sub-5% jitter the relative floor must absorb
+      // and the absolute-0.05 floor (now dead) silently flagged.
+      const baselineTrialScores = [299.5, 300.5, 299.5, 300.5, 299.5, 300.5];
+      const currentScores = [305.5, 306.5, 305.5, 306.5, 305.5, 306.5];
+      const result = makeLowerIsBetterResult('total-time-taken', currentScores);
+      const baseline = makeScoreModeBaseline('total-time-taken', baselineTrialScores);
+
+      // Floor ON (frac=0.05): margin = max(k·SD=1, 0.05·300=15) = 15 → drift within tolerance.
+      const rFloor = comparator.compare(result, baseline, THRESHOLDS);
+      const eFloor = rFloor.evaluators.find((x) => x.evaluator === 'total-time-taken') as ComparedRegressionEvalResult | undefined;
+      expect(rFloor.gate).toBe('pass');
+      expect(eFloor?.exceeded).toBe(false);
+      expect(eFloor?.statistical?.margin).toBeCloseTo(15, 10);
+      expect(eFloor?.statistical?.marginFloored).toBe(true);
+
+      // Floor OFF (frac=0): margin collapses to k·SD=1 — the dead-floor bug — and
+      // the same 2% jitter is flagged as a regression.
+      const noFloorConfig: StatisticalRegressionConfig = { ...THRESHOLDS, minMarginFraction: 0 };
+      const rNoFloor = comparator.compare(result, baseline, noFloorConfig);
+      const eNoFloor = rNoFloor.evaluators.find((x) => x.evaluator === 'total-time-taken') as ComparedRegressionEvalResult | undefined;
+      expect(eNoFloor?.exceeded).toBe(true);
+      expect(eNoFloor?.statistical?.margin).toBeCloseTo(1, 10);
+    });
+
+    it('(seam — #5369) low-variance baseline: genuine ~7% degradation still flags with floor on', () => {
+      // Same baseline, current ≈321s (≈7% slower) — beyond the 5% floor, so the
+      // permutation CI lower bound clears the margin and the gate fails.
+      const baselineTrialScores = [299.5, 300.5, 299.5, 300.5, 299.5, 300.5];
+      const currentScores = [320.5, 321.5, 320.5, 321.5, 320.5, 321.5];
+      const result = makeLowerIsBetterResult('total-time-taken', currentScores);
+      const baseline = makeScoreModeBaseline('total-time-taken', baselineTrialScores);
+
+      const r = comparator.compare(result, baseline, THRESHOLDS);
+      const e = r.evaluators.find((x) => x.evaluator === 'total-time-taken') as ComparedRegressionEvalResult | undefined;
+      expect(r.gate).toBe('fail');
+      expect(e?.exceeded).toBe(true);
+      expect(e?.statistical?.margin).toBeCloseTo(15, 10);
+    });
+
+    it('(error path — new prod path) constant-zero baseline routes to uniform-match', () => {
+      // mean=0 AND SD=0 → margin=0 → strict uniform-match (a live prod path now
+      // that the floor is relative; the absolute 0.05 floor never reached it).
+      const baselineTrialScores = [0, 0, 0, 0, 0];
+      const baseline = makeScoreModeBaseline('agent-steps', baselineTrialScores);
+
+      // All-zero current matches the constant exactly → passes.
+      const allZero = comparator.compare(
+        makeLowerIsBetterResult('agent-steps', [0, 0, 0, 0, 0]),
+        baseline,
+        THRESHOLDS,
+      );
+      const eZero = allZero.evaluators.find((x) => x.evaluator === 'agent-steps') as ComparedRegressionEvalResult | undefined;
+      expect(allZero.gate).toBe('pass');
+      expect(eZero?.exceeded).toBe(false);
+      expect(eZero?.statistical?.method).toBe('uniform-match');
+      expect(eZero?.statistical?.margin).toBe(0);
+
+      // A single positive trial breaks the uniform match → flags.
+      const positive = comparator.compare(
+        makeLowerIsBetterResult('agent-steps', [0, 0, 1, 0, 0]),
+        baseline,
+        THRESHOLDS,
+      );
+      const ePositive = positive.evaluators.find((x) => x.evaluator === 'agent-steps') as ComparedRegressionEvalResult | undefined;
+      expect(positive.gate).toBe('fail');
+      expect(ePositive?.exceeded).toBe(true);
+      expect(ePositive?.statistical?.method).toBe('uniform-match');
+    });
+
+    it('(edge — policy boundary) zero-variance integer baseline tolerates no upward deviation', () => {
+      // Baseline [4,4,4,4,4]: SD=0 so k·SD=0; floor = 0.05·4 = 0.2, below integer
+      // granularity. The relative floor cannot supply real tolerance here, so the
+      // gate flags any upward step — the irreducible policy guess for a
+      // zero-variance small-integer baseline (no noise estimate available).
+      const baselineTrialScores = [4, 4, 4, 4, 4];
+      const baseline = makeScoreModeBaseline('agent-steps', baselineTrialScores);
+
+      const allFour = comparator.compare(
+        makeLowerIsBetterResult('agent-steps', [4, 4, 4, 4, 4]),
+        baseline,
+        THRESHOLDS,
+      );
+      const eAllFour = allFour.evaluators.find((x) => x.evaluator === 'agent-steps') as ComparedRegressionEvalResult | undefined;
+      expect(allFour.gate).toBe('pass');
+      expect(eAllFour?.exceeded).toBe(false);
+      expect(eAllFour?.statistical?.margin).toBeCloseTo(0.2, 10);
+      expect(eAllFour?.statistical?.marginFloored).toBe(true);
+
+      const oneFive = comparator.compare(
+        makeLowerIsBetterResult('agent-steps', [4, 4, 4, 4, 5]),
+        baseline,
+        THRESHOLDS,
+      );
+      const eOneFive = oneFive.evaluators.find((x) => x.evaluator === 'agent-steps') as ComparedRegressionEvalResult | undefined;
+      expect(oneFive.gate).toBe('fail');
+      expect(eOneFive?.exceeded).toBe(true);
+
+      const twoFives = comparator.compare(
+        makeLowerIsBetterResult('agent-steps', [4, 4, 4, 5, 5]),
+        baseline,
+        THRESHOLDS,
+      );
+      const eTwoFives = twoFives.evaluators.find((x) => x.evaluator === 'agent-steps') as ComparedRegressionEvalResult | undefined;
+      expect(twoFives.gate).toBe('fail');
+      expect(eTwoFives?.exceeded).toBe(true);
     });
   });
 });

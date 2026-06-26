@@ -12,10 +12,8 @@ export interface EvalResult {
   /**
    * Evaluator-specific numeric score.
    * - Non-observed-verdict evaluators: normalized to [0.0, 1.0].
-   * - Observed-verdict evaluators (regressionMode: 'score'): either a
-   *   normalized (0,1) value (e.g. sigmoid-mapped counts) or an
-   *   unclamped raw measurement (e.g. token count, USD cost),
-   *   depending on the evaluator.
+   * - Observed-verdict evaluators (regressionMode: 'score'): unclamped
+   *   raw measurement (e.g. step count, turn count, token count, seconds).
    */
   score: number;
   verdict: 'pass' | 'partial' | 'fail' | 'unknown' | 'observed';

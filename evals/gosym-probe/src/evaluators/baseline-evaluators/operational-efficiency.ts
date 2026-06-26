@@ -1,11 +1,6 @@
 import type { EvalResult, Evaluator } from '../evaluator.js';
 import type { DOMSnapshot, Transcript } from '../../runner/transcript.js';
 import type { Scenario } from '../../scenarios/types.js';
-import { clamp01 } from './shared.js';
-
-// Tuned for ~30-turn conversations: perfect at <=108s, zero at >=720s.
-const PERFECT_SECONDS = 108;
-const ZERO_SECONDS = 720;
 
 function parseIsoMs(value: string | undefined): number | null {
   if (!value) return null;
@@ -31,26 +26,12 @@ function lastSnapshotMs(snapshot?: DOMSnapshot): number | null {
   return parseIsoMs(snapshot?.timestamp);
 }
 
-function mapDurationToScore(seconds: number): number {
-  if (seconds <= PERFECT_SECONDS) return 1.0;
-  if (seconds >= ZERO_SECONDS) return 0.0;
-  return clamp01(
-    1 - (
-      (seconds - PERFECT_SECONDS)
-      / (ZERO_SECONDS - PERFECT_SECONDS)
-    ),
-  );
-}
-
-function verdictFromScore(score: number): EvalResult['verdict'] {
-  if (score >= 0.7) return 'pass';
-  if (score >= 0.4) return 'partial';
-  return 'fail';
-}
-
+// Emits raw session duration in seconds (lower is better) for score-mode regression.
 export class TotalTimeTakenEvaluator implements Evaluator {
   readonly name = 'total-time-taken';
-  readonly evalVersion = '1.1';
+  readonly evalVersion = '2.0';
+  readonly regressionMode = 'score' as const;
+  readonly lowerIsBetter = true;
 
   async evaluate(
     transcript: Transcript,
@@ -74,12 +55,11 @@ export class TotalTimeTakenEvaluator implements Evaluator {
 
     const ms = end - start;
     const seconds = ms / 1000;
-    const score = mapDurationToScore(seconds);
 
     return {
       evaluator: this.name,
-      score,
-      verdict: verdictFromScore(score),
+      score: seconds,
+      verdict: 'observed',
       reason: `Total session time: ${seconds.toFixed(1)}s`,
       evalVersion: this.evalVersion,
       details: {
@@ -88,8 +68,6 @@ export class TotalTimeTakenEvaluator implements Evaluator {
         ms,
         startMs: start,
         endMs: end,
-        perfectSeconds: PERFECT_SECONDS,
-        zeroSeconds: ZERO_SECONDS,
       },
     };
   }

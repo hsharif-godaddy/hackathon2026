@@ -9,12 +9,17 @@ export interface StatisticalRegressionConfig {
   /** Per-evaluator k overrides. Keys are evaluator names. */
   evaluatorKOverrides?: Record<string, number>;
   /**
-   * Minimum non-inferiority margin floor. When baseline SD is near-zero,
-   * k * SD produces a margin too tight for TOST to prove non-inferiority.
-   * This floor ensures a minimum tolerance so trivial deviations from a
-   * zero-variance baseline are not flagged as regressions. Default: 0.05.
+   * Non-inferiority margin floor as a fraction of the baseline mean:
+   * floorTerm = minMarginFraction * max(mean, 0), and
+   * margin = max(k * SD(baseline), floorTerm). When baseline SD is near-zero,
+   * k * SD produces a margin too tight for TOST to prove non-inferiority; the
+   * fractional floor supplies a minimum tolerance (e.g. 5% of the baseline
+   * mean) so sub-threshold jitter is not flagged as a regression. Being a
+   * fraction makes it dimensionless and valid across raw-measurement metrics
+   * (turns, seconds, steps) whose scales differ by orders of magnitude.
+   * Default: 0.05.
    */
-  minMargin: number;
+  minMarginFraction: number;
   /** Integer PRNG seed for Monte Carlo / bootstrap determinism. */
   seed?: number;
   /** Fallback thresholds used when baseline lacks trialScores (legacy baselines). */

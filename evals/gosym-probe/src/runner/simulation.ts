@@ -145,8 +145,8 @@ export class Simulation {
     const builder = new TranscriptBuilder(scenario.name, trialIndex);
     const tracker = new GoalTracker(scenario.goals);
     // All scenarios share the global turn ceiling (default 30). Per-scenario
-    // maxTurns was removed intentionally: sigmoid scoring makes budgets
-    // unnecessary, and a uniform ceiling simplifies cross-scenario comparison.
+    // maxTurns was removed intentionally: a uniform ceiling simplifies
+    // cross-scenario comparison.
     const maxTurns = this.options.maxTurnsOverride ?? config.eval.maxTurns;
     const history: Turn[] = [];
 

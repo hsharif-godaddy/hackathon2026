@@ -82,9 +82,11 @@ export class RegressionComparator {
       const currentTrialScores = extractTrialScoresForEvaluator(name, trials);
       if (currentTrialScores.length > 0) {
         const k = this.resolveK(name, config);
-        const { margin, floored } = computeMargin(baselineTrialScores, k, config.minMargin);
+        const { margin, floored } = computeMargin(baselineTrialScores, k, config.minMarginFraction);
 
-        // Only reachable when minMargin is 0 (disables floor, restores strict uniform-match mode).
+        // margin === 0 only when both k*SD and the fractional floor are 0, i.e. a
+        // constant-zero baseline (mean=0 AND SD=0). The relative floor cannot lift a
+        // zero mean, so such baselines route to a strict uniform-match check.
         if (margin === 0) {
           const baselineConstant = baselineTrialScores[0];
           const allMatch = currentTrialScores.every((s) => s === baselineConstant);
@@ -179,9 +181,11 @@ export class RegressionComparator {
       const currentTrialScores = extractTrialScoresForEvaluator(name, trials);
       if (currentTrialScores.length > 0) {
         const k = this.resolveK(name, config);
-        const { margin, floored } = computeMargin(baselineTrialScores, k, config.minMargin);
+        const { margin, floored } = computeMargin(baselineTrialScores, k, config.minMarginFraction);
 
-        // Only reachable when minMargin is 0 (disables floor, restores strict uniform-match mode).
+        // margin === 0 only when both k*SD and the fractional floor are 0, i.e. a
+        // constant-zero baseline (mean=0 AND SD=0). The relative floor cannot lift a
+        // zero mean, so such baselines route to a strict uniform-match check.
         if (margin === 0) {
           const baselineConstant = baselineTrialScores[0];
           const allMatch = currentTrialScores.every((s) => s === baselineConstant);

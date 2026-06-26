@@ -37,38 +37,34 @@ function makeScenario(overrides: Partial<Scenario> = {}): Scenario {
   };
 }
 
-function expectedSigmoid(count: number): number {
-  return 1 / (1 + Math.exp(0.2 * (count - 15)));
-}
-
 describe('PromptEfficiencyEvaluator', () => {
   const evaluator = new PromptEfficiencyEvaluator();
 
-  it('returns sigmoid score for zero user turns', async () => {
+  it('returns score of 0 for zero user turns', async () => {
     const result = await evaluator.evaluate(
       makeTranscript({ turns: [] }),
       makeScenario(),
     );
-    expect(result.score).toBeCloseTo(expectedSigmoid(0), 10);
+    expect(result.score).toBe(0);
     expect(result.verdict).toBe('observed');
   });
 
-  it('applies sigmoid normalization to single turn', async () => {
+  it('returns raw user turn count for single turn', async () => {
     const result = await evaluator.evaluate(
       makeTranscript({ turns: [makeTurn('user')] }),
       makeScenario(),
     );
-    expect(result.score).toBeCloseTo(expectedSigmoid(1), 10);
+    expect(result.score).toBe(1);
     expect(result.verdict).toBe('observed');
   });
 
-  it('applies sigmoid normalization to multiple turns', async () => {
+  it('returns raw user turn count for multiple turns', async () => {
     const turns = [makeTurn('user'), makeTurn('user')];
     const result = await evaluator.evaluate(
       makeTranscript({ turns }),
       makeScenario(),
     );
-    expect(result.score).toBeCloseTo(expectedSigmoid(2), 10);
+    expect(result.score).toBe(2);
     expect(result.verdict).toBe('observed');
   });
 
@@ -81,7 +77,7 @@ describe('PromptEfficiencyEvaluator', () => {
       makeTranscript({ turns }),
       makeScenario(),
     );
-    expect(result.score).toBeCloseTo(expectedSigmoid(2), 10);
+    expect(result.score).toBe(2);
     expect(result.verdict).toBe('observed');
   });
 
@@ -99,13 +95,13 @@ describe('PromptEfficiencyEvaluator', () => {
       makeTranscript({ turns: [makeTurn('user')] }),
       makeScenario(),
     );
-    expect(result.evalVersion).toBe('1.0');
+    expect(result.evalVersion).toBe('2.0');
   });
 
   it('has correct properties', () => {
     expect(evaluator.name).toBe('prompt-efficiency');
     expect(evaluator.regressionMode).toBe('score');
-    expect(evaluator.evalVersion).toBe('1.0');
-    expect(evaluator.lowerIsBetter).toBe(false);
+    expect(evaluator.evalVersion).toBe('2.0');
+    expect(evaluator.lowerIsBetter).toBe(true);
   });
 });

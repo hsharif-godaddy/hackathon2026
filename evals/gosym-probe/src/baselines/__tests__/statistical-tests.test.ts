@@ -55,37 +55,100 @@ describe('computeMargin', () => {
     });
   });
 
-  describe('boundary: minMargin floor', () => {
-    it('applies floor when SD=0 and minMargin > 0', () => {
-      // All identical scores → SD=0, raw margin=0, but floor lifts it
-      expect(computeMargin([0, 0, 0, 0, 0], 2, 0.05)).toEqual({ margin: 0.05, floored: true });
-    });
+  describe('boundary: relative floor (fraction of baseline mean)', () => {
+    // Floor term = minMarginFraction * max(mean, 0). margin = max(k*SD, floorTerm).
 
-    it('applies floor when k*SD < minMargin', () => {
-      // [0, 0, 0, 0, 0.1]: SD≈0.04, k=2 → raw≈0.08 < 0.1 floor
-      const result = computeMargin([0, 0, 0, 0, 0.1], 2, 0.1);
-      expect(result.margin).toBe(0.1);
-      expect(result.floored).toBe(true);
-    });
-
-    it('does not apply floor when k*SD > minMargin', () => {
-      // [0, 1]: SD=0.5, k=2 → raw=1.0 > 0.05 floor
+    it('mean>0, SD>0: floor inert when k*SD exceeds frac*mean (floored=false)', () => {
+      // [0, 1]: mean=0.5, SD=0.5, k=2 → raw=1.0. frac floor = 0.05*0.5 = 0.025 < 1.0.
       const result = computeMargin([0, 1], 2, 0.05);
       expect(result.margin).toBeCloseTo(1.0, 10);
       expect(result.floored).toBe(false);
     });
 
-    it('does not apply floor when minMargin=0 (default)', () => {
-      expect(computeMargin([0, 0, 0], 2, 0)).toEqual({ margin: 0, floored: false });
+    it('mean>0, SD=0: floor engages at frac*mean ([4,4,4,4] → 0.2, floored=true)', () => {
+      // All identical → SD=0, raw=0. floor = 0.05*4 = 0.2 lifts the margin.
+      const result = computeMargin([4, 4, 4, 4], 2, 0.05);
+      expect(result.margin).toBeCloseTo(0.2, 10);
+      expect(result.floored).toBe(true);
     });
 
-    it('returns floored=false when raw equals minMargin exactly', () => {
-      // Edge: raw margin equals floor exactly (not lifted)
-      // [0, 0.05]: SD=0.025, k=2 → raw=0.05 = minMargin
-      const result = computeMargin([0, 0.05], 2, 0.05);
-      expect(result.margin).toBeCloseTo(0.05, 10);
+    it('mean=0, SD=0: floor term is 0, margin=0 ([0,0,0] → 0)', () => {
+      // Constant-zero baseline: floor = 0.05*0 = 0, raw = 0 → margin 0 (uniform-match).
+      expect(computeMargin([0, 0, 0], 2, 0.05)).toEqual({ margin: 0, floored: false });
+    });
+
+    it('mean=0, SD>0: floor term is 0, margin falls back to k*SD ([-1,0,1] → k*SD)', () => {
+      // mean=0 → floor 0. pop SD of [-1,0,1] = sqrt(2/3), k=2 → raw = 2*sqrt(2/3).
+      const result = computeMargin([-1, 0, 1], 2, 0.05);
+      expect(result.margin).toBeCloseTo(2 * Math.sqrt(2 / 3), 10);
       expect(result.floored).toBe(false);
     });
+
+    it('negative mean: max(mean,0) clamps floor to 0, margin=k*SD ([-5,-5] → 0)', () => {
+      // mean=-5 clamped to 0 → floor 0. SD=0 → raw 0 → margin 0.
+      const result = computeMargin([-5, -5], 2, 0.05);
+      expect(result.margin).toBe(0);
+      expect(result.floored).toBe(false);
+    });
+
+    it('does not apply floor when minMarginFraction=0 (default)', () => {
+      expect(computeMargin([4, 4, 4], 2, 0)).toEqual({ margin: 0, floored: false });
+    });
+
+    it('empty array: margin 0 regardless of fraction', () => {
+      expect(computeMargin([], 2, 0.05)).toEqual({ margin: 0, floored: false });
+    });
+
+    it('single value: margin 0 (no variance, but floor engages on mean)', () => {
+      // Single element → populationSD returns 0; floor = 0.05*10 = 0.5 lifts it.
+      const result = computeMargin([10], 2, 0.05);
+      expect(result.margin).toBeCloseTo(0.5, 10);
+      expect(result.floored).toBe(true);
+    });
+  });
+
+  describe('error path: non-finite scores cannot inflate the margin', () => {
+    it('Infinity in array: floor term is 0, margin is not Infinity', () => {
+      // mean is Infinity → finiteness guard forces floor term to 0, so the
+      // floor cannot turn the gate into an always-pass. raw (k*SD) is NaN here
+      // (pre-existing, out of scope), so margin is NaN — never +Infinity.
+      const result = computeMargin([1, 2, Infinity], 2, 0.05);
+      expect(result.margin).not.toBe(Infinity);
+      expect(result.floored).toBe(false);
+    });
+  });
+});
+
+// ── computeMargin × TOST equivalence (scale invariance) ─────────────────────────
+
+describe('relative floor scale invariance (ratio-space == raw-space)', () => {
+  it('gate verdict is identical for a raw fixture and the same fixture scaled', () => {
+    // Low-variance baseline in raw units (seconds), so the relative floor engages.
+    const baselineRaw: readonly number[] = [300, 300.5, 299.5, 300, 300];
+    const currentRaw: readonly number[] = [304, 303.5, 304.5, 304, 304];
+
+    const scale: number = 1 / 300;
+    const baselineScaled: readonly number[] = baselineRaw.map((x) => x * scale);
+    const currentScaled: readonly number[] = currentRaw.map((x) => x * scale);
+
+    const marginRaw: number = computeMargin(baselineRaw, 2, 0.05).margin;
+    const marginScaled: number = computeMargin(baselineScaled, 2, 0.05).margin;
+
+    // Margin scales linearly with the data: frac*mean and k*SD both scale by `scale`.
+    expect(marginScaled).toBeCloseTo(marginRaw * scale, 10);
+
+    const rawResult = tostPermutation(baselineRaw, currentRaw, {
+      alpha: 0.05,
+      margin: marginRaw,
+      lowerIsBetter: true,
+    });
+    const scaledResult = tostPermutation(baselineScaled, currentScaled, {
+      alpha: 0.05,
+      margin: marginScaled,
+      lowerIsBetter: true,
+    });
+
+    expect(scaledResult.nonInferiorityProven).toBe(rawResult.nonInferiorityProven);
   });
 });
 

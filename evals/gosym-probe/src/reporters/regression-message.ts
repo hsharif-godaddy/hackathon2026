@@ -45,7 +45,7 @@ function formatEvaluatorBlock(
 /**
  * Returns a warning message when the gate passes but one or more evaluators
  * had their margin floored (baseline SD was near-zero). This indicates the
- * baseline is fragile and the pass was rescued by the minMargin floor.
+ * baseline is fragile and the pass was rescued by the relative floor (frac·mean).
  */
 export function formatMarginFloorWarning(r: RegressionResult): string | null {
   if (r.gate === 'fail') return null;

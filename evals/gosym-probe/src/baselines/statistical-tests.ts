@@ -154,35 +154,56 @@ export interface TOSTResult {
 export interface MarginResult {
   /** The effective non-inferiority margin (after floor). */
   margin: number;
-  /** True when the minMargin floor was applied (raw < minMargin). */
+  /** True when the fractional floor strictly exceeded k × SD (raw < floorTerm). */
   floored: boolean;
 }
 
 /**
- * Non-inferiority margin = max(k × populationSD(trialScores), minMargin).
+ * Non-inferiority margin = max(k × populationSD(trialScores), floorTerm),
+ * where floorTerm = minMarginFraction × max(mean, 0).
  *
- * Returns { margin: 0, floored: false } for empty, single-element, or
- * zero-variance arrays when minMargin is 0.
+ * **Relative floor.** The floor is a *fraction of the baseline mean*, not an
+ * absolute constant. Score-mode evaluators store raw measurements (turns,
+ * seconds, steps) whose scales differ by orders of magnitude, so a fixed
+ * absolute floor is meaningless across metrics. A fractional floor is
+ * dimensionless: `minMarginFraction = 0.05` means "tolerate 5% of the baseline
+ * mean" for every metric. When baseline variance is near-zero, k × SD is too
+ * tight for TOST to prove non-inferiority at small sample sizes; the floor
+ * supplies a minimum tolerance so sub-5% jitter is not flagged as a regression.
+ * `floored` is true iff the floor term strictly exceeded k × SD.
  *
- * **minMargin floor:** When baseline variance is zero or near-zero,
- * k * SD produces a margin too tight for TOST to prove non-inferiority
- * with small sample sizes. The `minMargin` floor ensures a minimum
- * tolerance so trivial deviations are not flagged as regressions.
- * When the floor is applied, `floored: true` signals that the result
- * should carry a warning annotation.
+ * **Four regimes** (with minMarginFraction > 0):
+ * - mean>0, SD>0: floor inert when k·SD ≥ frac·mean; else floor engages.
+ * - mean>0, SD=0: raw is 0, margin = frac·mean (floored).
+ * - mean=0, SD>0: floor term is 0, margin = k·SD.
+ * - mean=0, SD=0: margin = 0 → caller routes to strict uniform-match.
  *
- * **Caller responsibility:** When margin=0 (SD=0 and minMargin=0),
- * callers must bypass TOST and use a strict uniform-match check
- * instead: the current run passes only if every trial score equals
- * the baseline constant.
+ * **Finiteness guard.** Raw scores are unclamped (post-#5369), so a non-finite
+ * score can reach this function. If `mean` is not finite, the floor term is
+ * forced to 0 — otherwise `frac × Infinity = Infinity` would inflate the margin
+ * into an always-pass gate (a regression detector that can never fail). The raw
+ * k·SD term may still be NaN on such input (pre-existing, handled at the
+ * `isValidTrialScore` boundary as a separate follow-up), but the floor never
+ * turns the gate trivially permissive.
+ *
+ * **Caller responsibility:** When margin=0 (mean=0 AND SD=0), callers must
+ * bypass TOST and use a strict uniform-match check instead: the current run
+ * passes only if every trial score equals the baseline constant.
  */
 export function computeMargin(
   trialScores: readonly number[],
   k: number,
-  minMargin: number = 0,
+  minMarginFraction: number = 0,
 ): MarginResult {
-  const raw = k * populationSD(trialScores);
-  const margin = Math.max(raw, minMargin);
+  const raw: number = k * populationSD(trialScores);
+  const mean: number =
+    trialScores.length > 0
+      ? trialScores.reduce((s, x) => s + x, 0) / trialScores.length
+      : 0;
+  const floorTerm: number = Number.isFinite(mean)
+    ? minMarginFraction * Math.max(mean, 0)
+    : 0;
+  const margin: number = Math.max(raw, floorTerm);
   return { margin, floored: margin > raw };
 }
 

@@ -1,18 +1,16 @@
 import type { EvalResult, Evaluator } from './evaluator.js';
 import type { DOMSnapshot, Transcript } from '../runner/transcript.js';
 import type { Scenario } from '../scenarios/types.js';
-import { SIGMOID_MIDPOINT, SIGMOID_STEEPNESS, sigmoidScore } from './shared.js';
 
 /**
  * Measures total agent steps across a conversation.
- * Scoring uses sigmoid normalization (midpoint=15, steepness=0.2)
- * tuned for discrimination in the 3-30 step range.
+ * Emits the raw step count (lower is better) for score-mode regression.
  */
 export class AgentStepsEvaluator implements Evaluator {
   readonly name = 'agent-steps';
-  readonly evalVersion = '1.0';
+  readonly evalVersion = '2.0';
   readonly regressionMode = 'score' as const;
-  readonly lowerIsBetter = false;
+  readonly lowerIsBetter = true;
 
   async evaluate(
     transcript: Transcript,
@@ -55,7 +53,7 @@ export class AgentStepsEvaluator implements Evaluator {
 
     return {
       evaluator: this.name,
-      score: sigmoidScore(totalSteps, SIGMOID_MIDPOINT, SIGMOID_STEEPNESS),
+      score: totalSteps,
       verdict: 'observed',
       reason: `${totalSteps} agent steps`,
       details: { totalSteps },

@@ -124,7 +124,7 @@ Observed metrics (no pass/fail gate; tracked for regression via score-mode basel
 
 | Evaluator | What it measures |
 |---|---|
-| `prompt-efficiency` | User turn count, normalised via sigmoid; inflation signals looping or over-questioning |
+| `prompt-efficiency` | Raw user turn count (lower is better); inflation signals looping or over-questioning |
 | `agent-steps` | Total agent reasoning steps; inflation signals inefficiency |
 | `tool-parallelism` | Fraction of concurrent tool calls; decline signals serialisation regressions |
 | `tool-batching-efficiency` | Successful tool calls per productive turn (log2-normalised density); rewards batching independent ops |

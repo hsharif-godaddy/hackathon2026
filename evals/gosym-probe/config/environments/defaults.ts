@@ -4,10 +4,10 @@ import type { StatisticalRegressionConfig } from './types.js';
  * Statistical parameters shared across all environments.
  * Spread into per-env regression configs; individual fields can be overridden.
  */
-export const REGRESSION_DEFAULTS: Pick<StatisticalRegressionConfig, 'alpha' | 'k' | 'minMargin'> = {
+export const REGRESSION_DEFAULTS: Pick<StatisticalRegressionConfig, 'alpha' | 'k' | 'minMarginFraction'> = {
   alpha: 0.05,
   k: 2.0,
-  minMargin: 0.05,
+  minMarginFraction: 0.05,
 };
 
 /**
@@ -19,7 +19,6 @@ export const DEV_FALLBACK_THRESHOLDS: StatisticalRegressionConfig['fallbackThres
     'bug-hit-rate': 0.1,
     'jtbd-completion': 0.1,
     'tool-call-verification': 0.1,
-    'prompt-efficiency': 0.2,
     'token-usage': 1.5,
     'tool-failure-rate': 1.5,
     'intent-to-output-alignment': 0.15,

@@ -79,7 +79,7 @@ function makeConfig(overrides: Partial<Config> = {}): Config {
       turnTimeoutMs: 5000,
     },
     playwright: { ignoreHttpsErrors: false },
-    regression: { alpha: 0.05, k: 2.0, minMargin: 0.05, fallbackThresholds: { thresholds: {}, defaultThreshold: 0.1 } },
+    regression: { alpha: 0.05, k: 2.0, minMarginFraction: 0.05, fallbackThresholds: { thresholds: {}, defaultThreshold: 0.1 } },
     ...overrides,
   };
 }
@@ -135,7 +135,7 @@ describe('sanitizeConfig', () => {
     expect(result.regression).toEqual({
       alpha: 0.05,
       k: 2.0,
-      minMargin: 0.05,
+      minMarginFraction: 0.05,
       fallbackThresholds: { thresholds: {}, defaultThreshold: 0.1 },
     });
   });
