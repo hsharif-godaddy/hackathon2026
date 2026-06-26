@@ -40,6 +40,14 @@ The BFF is Next.js App Router API routes at `src/app/api/`. It does NOT just pro
 
 **Control Plane Adapter** (`src/lib/control-plane/`): Routes requests to mgmt-airo (production) or local-control-plane (local dev) via V2ControlPlaneAdapter.
 
+**Agents base URL resolution.** A handful of BFF routes need to call the agents service directly (commerce binding, transfer, transfer validate). They use `resolveAgentsBaseUrl(site)` from `src/lib/agents-base-url.ts`, which honors this precedence:
+
+1. `site.agent_url` — what the control plane sets per-app; the only correct value in production.
+2. `AGENTS_SERVICE_URL` — full URL env override.
+3. `http://localhost:${AGENTS_PORT|4000}` — last-resort local fallback.
+
+For local dev port overrides (e.g., dodging macOS Messages on `:4000`), set `AGENTS_PORT=4040` in the shell before `pnpm run dev`. That single env var shifts the whole stack: the agents server resolves its listener as `PORT || AGENTS_PORT || 4000` (`agents/src/server/app.ts`), and dev-runner exports `AGENTS_PORT` into the child process environments so `local-control-plane` builds `site.agent_url` from it (via `internal/agentsurl/agentsurl.go`), gosym-probe targets it, and this BFF fallback uses it. No change needed in `agents/.env`. Reach for `AGENTS_SERVICE_URL` only when the host needs to change too, not just the port.
+
 ### Key BFF Routes
 
 | Route                            | Purpose                | Downstream                          |

@@ -10,6 +10,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { agentFetch } from '@/lib/agent-fetch';
+import { resolveAgentsBaseUrl } from '@/lib/agents-base-url';
 import { getControlPlaneAdapter } from '@/lib/control-plane';
 import { type CustomerAuthContext, withCustomerAuth } from '@/lib/customer-auth';
 import { logger } from '@/lib/request-context';
@@ -38,7 +39,7 @@ export const GET = withCustomerAuth(async (
       return NextResponse.json({ error: 'Site not found' }, { status: 404 });
     }
 
-    const agentBaseUrl = site.agent_url || process.env.AGENTS_SERVICE_URL || 'http://localhost:4000';
+    const agentBaseUrl: string = resolveAgentsBaseUrl(site);
     const response = await agentFetch(
       `${agentBaseUrl}/apps/${appId}/transfer/validate`,
       { siteId: appId }

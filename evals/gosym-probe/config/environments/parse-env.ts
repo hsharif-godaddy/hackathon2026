@@ -54,3 +54,13 @@ export function parseMaxCaptureConcurrency(fallback: number): number {
 export function parseMaxRoutes(fallback: number): number {
   return parsePositiveIntEnv('MAX_ROUTES', fallback);
 }
+
+/**
+ * Read AGENTS_PORT (port the AAB agents server is listening on) from the
+ * environment. Mirrors the agents service's own `process.env.PORT || 4000`
+ * so a local override (e.g. AGENTS_PORT=4040) keeps both sides in sync.
+ * Returns {@link fallback} when unset, empty, non-numeric, or < 1.
+ */
+export function parseAgentsPort(fallback: number): number {
+  return parsePositiveIntEnv('AGENTS_PORT', fallback);
+}

@@ -6,6 +6,7 @@ import {
   afterEach,
 } from 'vitest';
 import {
+  parseAgentsPort,
   parseMaxConcurrency,
   parseMaxTurns,
   parseCaptureConcurrency,
@@ -169,5 +170,50 @@ describe('parseMaxRoutes', () => {
   it('returns fallback when env var is negative', () => {
     process.env.MAX_ROUTES = '-1';
     expect(parseMaxRoutes(20)).toBe(20);
+  });
+});
+
+describe('parseAgentsPort', () => {
+  const saved = process.env.AGENTS_PORT;
+
+  beforeEach(() => {
+    delete process.env.AGENTS_PORT;
+  });
+
+  afterEach(() => {
+    if (saved === undefined) {
+      delete process.env.AGENTS_PORT;
+    } else {
+      process.env.AGENTS_PORT = saved;
+    }
+  });
+
+  it('returns fallback when env var is unset', () => {
+    expect(parseAgentsPort(4000)).toBe(4000);
+  });
+
+  it('returns fallback when env var is empty', () => {
+    process.env.AGENTS_PORT = '';
+    expect(parseAgentsPort(4000)).toBe(4000);
+  });
+
+  it('returns parsed integer when valid', () => {
+    process.env.AGENTS_PORT = '4040';
+    expect(parseAgentsPort(4000)).toBe(4040);
+  });
+
+  it('returns fallback when env var is non-numeric', () => {
+    process.env.AGENTS_PORT = 'abc';
+    expect(parseAgentsPort(4000)).toBe(4000);
+  });
+
+  it('returns fallback when env var is zero', () => {
+    process.env.AGENTS_PORT = '0';
+    expect(parseAgentsPort(4000)).toBe(4000);
+  });
+
+  it('returns fallback when env var is negative', () => {
+    process.env.AGENTS_PORT = '-1';
+    expect(parseAgentsPort(4000)).toBe(4000);
   });
 });

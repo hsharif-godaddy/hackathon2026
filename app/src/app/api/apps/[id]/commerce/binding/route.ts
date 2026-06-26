@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { agentFetch } from '@/lib/agent-fetch';
+import { resolveAgentsBaseUrl } from '@/lib/agents-base-url';
 import { getControlPlaneAdapter } from '@/lib/control-plane';
 import { type CustomerAuthContext, withCustomerAuth } from '@/lib/customer-auth';
 import { logger } from '@/lib/request-context';
@@ -15,7 +16,7 @@ async function getAgentBindingUrl(appId: string, jwt: string): Promise<string | 
     return NextResponse.json({ error: 'App not found' }, { status: 404 });
   }
 
-  const agentBaseUrl = site.agent_url || process.env.AGENTS_SERVICE_URL || 'http://localhost:4000';
+  const agentBaseUrl: string = resolveAgentsBaseUrl(site);
   return `${agentBaseUrl}/apps/${appId}/commerce/binding`;
 }
 

@@ -19,15 +19,17 @@ make check          # All checks (fmt, vet, lint, test)
 
 ## Configuration
 
-| Variable           | Default                  | Description                            |
-| ------------------ | ------------------------ | -------------------------------------- |
-| `PORT`             | `4100`                   | HTTP server port                       |
-| `APPS_BASE_DIR`    | `/tmp/airo-app-builder`  | Base directory for app workspaces      |
-| `APP_TEMPLATE_DIR` | `../app-templates/v8`    | Path to app template                   |
-| `DB_PATH`          | `local-control-plane.db` | SQLite database path                   |
-| `PROJECT_ROOT`     | `..`                     | Project root for Docker build contexts |
-| `AUTH_TYPE`        | `none`                   | `jwt` to enable SSO JWT validation     |
-| `SSO_HOST`         | `sso.dev-godaddy.com`    | GoDaddy SSO host for token validation  |
+| Variable            | Default                                  | Description                                                                                                                                                                                                                                            |
+| ------------------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `PORT`              | `4100`                                   | HTTP server port (this binary's own listener — not the agents service)                                                                                                                                                                                 |
+| `APPS_BASE_DIR`     | `/tmp/airo-app-builder`                  | Base directory for app workspaces                                                                                                                                                                                                                      |
+| `APP_TEMPLATE_DIR`  | `../app-templates/v8`                    | Path to app template                                                                                                                                                                                                                                   |
+| `DB_PATH`           | `local-control-plane.db`                 | SQLite database path                                                                                                                                                                                                                                   |
+| `PROJECT_ROOT`      | `..`                                     | Project root for Docker build contexts                                                                                                                                                                                                                 |
+| `AUTH_TYPE`         | `none`                                   | `jwt` to enable SSO JWT validation                                                                                                                                                                                                                     |
+| `SSO_HOST`          | `sso.dev-godaddy.com`                    | GoDaddy SSO host for token validation                                                                                                                                                                                                                  |
+| `AGENTS_BASE_URL`   | `https://local.gasket.dev-godaddy.com:${AGENTS_PORT\|4000}` | Full URL of the agents service. Returned as `site.agent_url` to the BFF/UI and used internally for `registerWithAgent` + supervisor wiring. Set this for non-localhost agents (CI, remote). Resolved via `internal/agentsurl/agentsurl.go`. |
+| `AGENTS_PORT`       | `4000`                                   | Port-only override for the agents service. Loses to `AGENTS_BASE_URL`. The agents server itself reads this as a fallback (`PORT \|\| AGENTS_PORT \|\| 4000` in `agents/src/server/app.ts`), and dev-runner exports it to every child, so a single `AGENTS_PORT=4040` in the shell before `pnpm run dev` shifts the whole stack — no per-service `.env` edits required.    |
 
 ## Architecture
 

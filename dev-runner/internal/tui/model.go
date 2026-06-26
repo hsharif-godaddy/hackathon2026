@@ -437,11 +437,15 @@ func (m Model) Init() tea.Cmd {
 
 // buildPreflightRunner creates a Runner with all standard checks grouped by category.
 func buildPreflightRunner(projectRoot string) *preflight.Runner {
+	// The agents port is overridable via AGENTS_PORT — keep the preflight
+	// gate aligned with the port the agents server actually binds to, otherwise
+	// the user gets a 4000-in-use error for a port nothing on this branch tries
+	// to claim (and AGENTS_PORT=4040 was the whole point of the override).
 	requiredPorts := map[int]string{
-		3000: "App",
-		4000: "Agents",
-		4100: "Control Plane",
-		8443: "App HTTPS",
+		3000:                       "App",
+		config.AgentsPortInt(4000): "Agents",
+		4100:                       "Control Plane",
+		8443:                       "App HTTPS",
 	}
 
 	// Shared SSO token cache so KnowB and Design RAG fixers authenticate only once.

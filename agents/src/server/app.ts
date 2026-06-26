@@ -217,7 +217,12 @@ import { AppRepository } from '../database/repositories/AppRepository.js';
 import { resolveAppBaseUrl } from '../utils/share-token.js';
 
 const app: Express = express();
-const port = process.env.PORT || 4000;
+// PORT keeps Node-convention priority; AGENTS_PORT is the cross-process knob
+// the local-control-plane, BFF helpers, and gosym-probe all read, so a single
+// `AGENTS_PORT=4040` in the shell shifts the whole stack without setting PORT
+// (which would also retarget unrelated services that follow Node convention —
+// local-control-plane's own listener, Next.js dev, etc.).
+const port = process.env.PORT || process.env.AGENTS_PORT || 4000;
 
 // Create HTTP(S) server for the Express app.
 const { server, secure } = createServer(app);

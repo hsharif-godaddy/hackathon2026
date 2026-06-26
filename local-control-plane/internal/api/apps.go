@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/airo-ai-builder/local-control-plane/internal/agentsurl"
 	"github.com/airo-ai-builder/local-control-plane/internal/docker"
 	"github.com/airo-ai-builder/local-control-plane/internal/setup"
 	"github.com/airo-ai-builder/local-control-plane/internal/store"
@@ -240,9 +241,10 @@ func appToResponse(app *store.App) map[string]any {
 		resp["imageDigest"] = app.ImageDigest
 	}
 
+	agentsURL := agentsurl.Default()
 	urls := map[string]string{
-		"agent":   "https://local.gasket.dev-godaddy.com:4000",
-		"backend": "https://local.gasket.dev-godaddy.com:4000",
+		"agent":   agentsURL,
+		"backend": agentsURL,
 	}
 	if app.PreviewPort > 0 {
 		urls["preview"] = fmt.Sprintf("https://local.gasket.dev-godaddy.com:%d", app.PreviewPort)
@@ -902,10 +904,7 @@ func (s *Server) registerWithAgent(app *store.App) error {
 	ctx, cancel := context.WithTimeout(context.Background(), registerOverallTimeout)
 	defer cancel()
 
-	agentsURL := os.Getenv("AGENTS_BASE_URL")
-	if agentsURL == "" {
-		agentsURL = "https://local.gasket.dev-godaddy.com:4000"
-	}
+	agentsURL := agentsurl.Default()
 
 	// EVAL_CUSTOMER_ID overrides the customer identity sent to the agents service
 	// during registration. This may differ from the customer ID stored in the

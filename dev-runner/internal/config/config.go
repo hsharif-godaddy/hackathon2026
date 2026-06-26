@@ -41,6 +41,9 @@ type HookConfig struct {
 }
 
 func Load(path string, projectRoot string) (*Config, error) {
+	// Ensure AGENTS_PORT is populated before any field-level expansion runs.
+	_ = AgentsPort()
+
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("reading config file %s: %w", path, err)
@@ -49,6 +52,19 @@ func Load(path string, projectRoot string) (*Config, error) {
 	var cfg Config
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return nil, fmt.Errorf("parsing config file: %w", err)
+	}
+
+	// Scope env-var expansion to the URL fields where it is actually needed
+	// (currently only HealthCheck.URL). A blanket `os.ExpandEnv` over the
+	// whole YAML would also expand `$VAR` references inside ProcessConfig and
+	// HookConfig command strings — including in dev-runner.local.yml overrides,
+	// where literal `$HOME`, `$(...)`, or `FOO=$BAR pnpm ...` are reasonable.
+	// Per-field expansion keeps command lines untouched and undefined-var
+	// silent-collapse to empty string contained to known URL slots.
+	for i, p := range cfg.Processes {
+		if p.HealthCheck != nil {
+			cfg.Processes[i].HealthCheck.URL = expandAgentsPort(p.HealthCheck.URL)
+		}
 	}
 
 	if err := cfg.validate(projectRoot); err != nil {

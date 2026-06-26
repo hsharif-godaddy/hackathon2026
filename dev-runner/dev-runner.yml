@@ -20,7 +20,10 @@ processes:
       - "UnhandledPromiseRejection"
       - "EADDRINUSE"
     healthCheck:
-      url: https://local.gasket.dev-godaddy.com:4000/health
+      # ${AGENTS_PORT} is expanded by config.Load (defaults to 4000 if unset),
+      # so the health probe targets whatever port the agents server actually
+      # binds to under PORT || AGENTS_PORT || 4000.
+      url: https://local.gasket.dev-godaddy.com:${AGENTS_PORT}/health
       unhealthyInterval: 10s
       healthyInterval: 60s
 

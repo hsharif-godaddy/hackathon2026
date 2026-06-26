@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { agentFetch } from '@/lib/agent-fetch';
+import { resolveAgentsBaseUrl } from '@/lib/agents-base-url';
 import { enforceAabMultiUserVentureRelation } from '@/lib/authz-fga/enforce-venture-relation';
 import { resolveMultiUserFlag } from '@/lib/authz-fga/multi-user-flag';
 import { AUTHZ_FGA_RELATIONS } from '@/lib/authz-fga/relations';
@@ -30,7 +31,7 @@ async function unpublishAfterTransfer(
   authContext: CustomerAuthContext
 ) {
   const { id } = site;
-  const agentBaseUrl = site.agent_url || process.env.AGENTS_SERVICE_URL || 'http://localhost:4000';
+  const agentBaseUrl: string = resolveAgentsBaseUrl(site);
 
   try {
     const { user } = authContext;
@@ -126,7 +127,7 @@ export const POST = withCustomerAuth(async (
       return transferDeny;
     }
 
-    const agentBaseUrl = site.agent_url || process.env.AGENTS_SERVICE_URL || 'http://localhost:4000';
+    const agentBaseUrl: string = resolveAgentsBaseUrl(site);
 
     try {
       const validateResponse = await agentFetch(

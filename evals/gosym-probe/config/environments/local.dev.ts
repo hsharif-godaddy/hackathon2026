@@ -1,17 +1,20 @@
 import type { Config } from './types.js';
 import {
+  parseAgentsPort,
   parseMaxConcurrency,
   parseMaxTurns,
 } from './parse-env.js';
 import { REGRESSION_DEFAULTS, DEV_FALLBACK_THRESHOLDS } from './defaults.js';
 
 export function createConfig(): Config {
+  const agentsPort: number = parseAgentsPort(4000);
   return {
     env: 'local.dev',
     aab: {
       // HTTP base URL of the agents server. The AAB client drives chat over SSE
-      // (POST conversation + GET stream).
-      agentsUrl: 'https://local.gasket.dev-godaddy.com:4000',
+      // (POST conversation + GET stream). Port is overridable via AGENTS_PORT
+      // to mirror the agents service's `process.env.PORT || 4000`.
+      agentsUrl: `https://local.gasket.dev-godaddy.com:${agentsPort}`,
       bffUrl: 'https://local.gasket.dev-godaddy.com:8443',
       controlPlaneUrl: 'http://localhost:4100',
     },

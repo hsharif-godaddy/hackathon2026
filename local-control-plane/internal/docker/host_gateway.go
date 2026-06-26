@@ -5,6 +5,8 @@ import (
 	"net"
 	"os"
 	"strings"
+
+	"github.com/airo-ai-builder/local-control-plane/internal/agentsurl"
 )
 
 // resolveContainerHostIP returns the IP address preview/publish containers should
@@ -96,11 +98,11 @@ func formatExtraHosts(appURL string) string {
 	return "    extra_hosts:\n" + strings.Join(lines, "\n")
 }
 
+// defaultAgentsBaseURL is a thin local-package alias for agentsurl.Default.
+// Kept so callers in this package (and the existing host_gateway_test.go
+// assertions) don't have to update import paths in one go.
 func defaultAgentsBaseURL() string {
-	if v := os.Getenv("AGENTS_BASE_URL"); v != "" {
-		return v
-	}
-	return "https://local.gasket.dev-godaddy.com:4000"
+	return agentsurl.Default()
 }
 
 func defaultSMTPDestination() string {
