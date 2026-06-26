@@ -106,10 +106,12 @@ interface ApiProcessedLogo {
   horizontalTransparentUrl?: string
   horizontalSolidUrl?: string
   horizontalMockupUrl?: string
+  horizontalLandscapeMockupUrl?: string
   // Vertical
   verticalTransparentUrl?: string
   verticalSolidUrl?: string
   verticalMockupUrl?: string
+  verticalLandscapeMockupUrl?: string
 }
 
 interface ApiResponse {
@@ -137,19 +139,33 @@ function pickUrls(logo: ApiProcessedLogo, layout: LogoLayout): LayoutUrls | unde
   }
   if (layout === 'horizontal') {
     if (!logo.horizontalTransparentUrl) return undefined
+    // Prefer the per-layout field. The single-field reconstruction
+    // (landscapeMockupUrl is this layout's only when no higher-priority layout
+    // is present) is a fallback for the gap before gai-logo-agent's per-layout
+    // fields are deployed.
+    // TODO(GAI-1634): drop the single-field reconstruction once gai-logo-agent
+    // per-layout landscape fields are deployed everywhere.
+    const landscape: string | undefined =
+      logo.horizontalLandscapeMockupUrl ?? (logo.transparentUrl ? undefined : logo.landscapeMockupUrl)
     return {
       transparent: logo.horizontalTransparentUrl,
       solid: logo.horizontalSolidUrl ?? logo.horizontalTransparentUrl,
       mockup: logo.horizontalMockupUrl ?? logo.horizontalTransparentUrl,
-      landscapeMockup: logo.horizontalMockupUrl ?? logo.horizontalTransparentUrl,
+      landscapeMockup: landscape ?? logo.horizontalMockupUrl ?? logo.horizontalTransparentUrl,
     }
   }
   if (!logo.verticalTransparentUrl) return undefined
+  // Prefer the per-layout field; same deploy-gap fallback as horizontal
+  // (see TODO(GAI-1634) above) — vertical claims the single landscapeMockupUrl
+  // only when neither square nor horizontal is present.
+  const landscape: string | undefined =
+    logo.verticalLandscapeMockupUrl ??
+    (logo.transparentUrl || logo.horizontalTransparentUrl ? undefined : logo.landscapeMockupUrl)
   return {
     transparent: logo.verticalTransparentUrl,
     solid: logo.verticalSolidUrl ?? logo.verticalTransparentUrl,
     mockup: logo.verticalMockupUrl ?? logo.verticalTransparentUrl,
-    landscapeMockup: logo.verticalMockupUrl ?? logo.verticalTransparentUrl,
+    landscapeMockup: landscape ?? logo.verticalMockupUrl ?? logo.verticalTransparentUrl,
   }
 }
 

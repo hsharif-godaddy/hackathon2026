@@ -131,6 +131,160 @@ describe('LogoService', () => {
     })
   })
 
+  it('routes the single landscapeMockupUrl to a horizontal-only logo', async () => {
+    fetchMock.mockResolvedValueOnce(
+      apiResponse({
+        id: 's',
+        sessionId: 's',
+        logos: [{ id: 'logo-1', ...HORIZONTAL_VARIANTS, landscapeMockupUrl: `${HORIZONTAL_BASE}-landscape.png` }],
+      }),
+    )
+
+    const result = await logoService.generate({
+      prompt: 'logo',
+      layout: ['horizontal'],
+      appId: 'a',
+      customerId: 'c',
+      budgetUserId: 'b',
+    })
+
+    expect(result.logo.urls.horizontal!.landscapeMockup).toBe(`${HORIZONTAL_BASE}-landscape.png`)
+  })
+
+  it('does not give horizontal the landscapeMockupUrl when square is also present', async () => {
+    fetchMock.mockResolvedValueOnce(
+      apiResponse({
+        id: 's',
+        sessionId: 's',
+        logos: [{ ...SQUARE_API_LOGO, ...HORIZONTAL_VARIANTS }],
+      }),
+    )
+
+    const result = await logoService.generate({
+      prompt: 'logo',
+      layout: ['square', 'horizontal'],
+      appId: 'a',
+      customerId: 'c',
+      budgetUserId: 'b',
+    })
+
+    expect(result.logo.urls.square!.landscapeMockup).toBe(SQUARE_API_LOGO.landscapeMockupUrl)
+    expect(result.logo.urls.horizontal!.landscapeMockup).toBe(HORIZONTAL_VARIANTS.horizontalMockupUrl)
+  })
+
+  it('prefers per-layout landscape fields when the API exposes them', async () => {
+    fetchMock.mockResolvedValueOnce(
+      apiResponse({
+        id: 's',
+        sessionId: 's',
+        logos: [
+          {
+            ...SQUARE_API_LOGO,
+            ...HORIZONTAL_VARIANTS,
+            horizontalLandscapeMockupUrl: `${HORIZONTAL_BASE}-landscape.png`,
+          },
+        ],
+      }),
+    )
+
+    const result = await logoService.generate({
+      prompt: 'logo',
+      layout: ['square', 'horizontal'],
+      appId: 'a',
+      customerId: 'c',
+      budgetUserId: 'b',
+    })
+
+    // square keeps its own landscape; horizontal now gets its own, not the plain mockup
+    expect(result.logo.urls.square!.landscapeMockup).toBe(SQUARE_API_LOGO.landscapeMockupUrl)
+    expect(result.logo.urls.horizontal!.landscapeMockup).toBe(`${HORIZONTAL_BASE}-landscape.png`)
+  })
+
+  it('routes the single landscapeMockupUrl to a vertical-only logo', async () => {
+    fetchMock.mockResolvedValueOnce(
+      apiResponse({
+        id: 's',
+        sessionId: 's',
+        logos: [
+          {
+            id: 'logo-1',
+            verticalTransparentUrl: 'https://cdn.example/logo-vertical-transparent.png',
+            verticalMockupUrl: 'https://cdn.example/logo-vertical-mockup.png',
+            landscapeMockupUrl: 'https://cdn.example/logo-vertical-landscape.png',
+          },
+        ],
+      }),
+    )
+
+    const result = await logoService.generate({
+      prompt: 'logo',
+      layout: ['vertical'],
+      appId: 'a',
+      customerId: 'c',
+      budgetUserId: 'b',
+    })
+
+    expect(result.logo.urls.vertical!.landscapeMockup).toBe('https://cdn.example/logo-vertical-landscape.png')
+  })
+
+  it('does not give vertical the single landscapeMockupUrl when horizontal is present (no square)', async () => {
+    fetchMock.mockResolvedValueOnce(
+      apiResponse({
+        id: 's',
+        sessionId: 's',
+        logos: [
+          {
+            id: 'logo-1',
+            ...HORIZONTAL_VARIANTS,
+            verticalTransparentUrl: 'https://cdn.example/logo-vertical-transparent.png',
+            verticalMockupUrl: 'https://cdn.example/logo-vertical-mockup.png',
+            // upstream priority winner is horizontal (no square), so the single field is horizontal's
+            landscapeMockupUrl: `${HORIZONTAL_BASE}-landscape.png`,
+          },
+        ],
+      }),
+    )
+
+    const result = await logoService.generate({
+      prompt: 'logo',
+      layout: ['horizontal', 'vertical'],
+      appId: 'a',
+      customerId: 'c',
+      budgetUserId: 'b',
+    })
+
+    expect(result.logo.urls.horizontal!.landscapeMockup).toBe(`${HORIZONTAL_BASE}-landscape.png`)
+    expect(result.logo.urls.vertical!.landscapeMockup).toBe('https://cdn.example/logo-vertical-mockup.png')
+  })
+
+  it('prefers verticalLandscapeMockupUrl over the single field', async () => {
+    fetchMock.mockResolvedValueOnce(
+      apiResponse({
+        id: 's',
+        sessionId: 's',
+        logos: [
+          {
+            id: 'logo-1',
+            verticalTransparentUrl: 'https://cdn.example/logo-vertical-transparent.png',
+            verticalMockupUrl: 'https://cdn.example/logo-vertical-mockup.png',
+            verticalLandscapeMockupUrl: 'https://cdn.example/logo-vertical-perlayout.png',
+            landscapeMockupUrl: 'https://cdn.example/logo-single-landscape.png',
+          },
+        ],
+      }),
+    )
+
+    const result = await logoService.generate({
+      prompt: 'logo',
+      layout: ['vertical'],
+      appId: 'a',
+      customerId: 'c',
+      budgetUserId: 'b',
+    })
+
+    expect(result.logo.urls.vertical!.landscapeMockup).toBe('https://cdn.example/logo-vertical-perlayout.png')
+  })
+
   it('falls back to transparent for missing variants on a layout', async () => {
     fetchMock.mockResolvedValueOnce(
       apiResponse({
