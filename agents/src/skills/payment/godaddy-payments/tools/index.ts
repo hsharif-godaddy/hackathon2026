@@ -91,21 +91,6 @@ IDEMPOTENT: If commerce__provision already created a channel_ready binding for t
         ...result,
         NEXT_STEP:
           `GoDaddy Payments is configured and env vars have been written. Immediately call ${PAYMENT_TEMPLATE_INSTALL_ACTION} before writing any payment UI or server code. Do not create checkout or order-status routes manually.`,
-        requiredNextActions: [
-          `Call ${PAYMENT_TEMPLATE_INSTALL_ACTION} before creating payment UI, checkout buttons, success pages, or server handlers.`,
-          'When reporting readiness to the user, include the full Store ID, Channel ID, and Business ID when available. Do not abbreviate or truncate UUIDs.',
-          'After install, call the installed /api/commerce/checkout and /api/commerce/order-status routes or import the installed server helpers.',
-          'When frontend code calls /api/commerce/checkout, redirect to the response url field with data.url. Do not check redirectUrl; the route does not return that field.',
-          'For non-catalog payments, call /api/commerce/checkout with lineItemData: { name, priceData: { unitAmount, currencyCode } }. Do not create products/SKUs or install commerce/ui. Do not send unitPrice/amount/description as price fields.',
-        ],
-        forbiddenActions: [
-          'Do not create src/server/api/commerce/checkout/POST.ts manually.',
-          'Do not create src/server/api/commerce/order-status/GET.ts manually.',
-          'Do not hand-roll Commerce checkout session helpers.',
-          'Do not create catalog products or SKUs for non-catalog payments.',
-          'Do not install commerce/ui for non-catalog payments.',
-          'Do not implement payment UI against missing env vars or uninstalled templates.',
-        ],
       };
     } catch (err) {
       logDispatchError('provision', err);

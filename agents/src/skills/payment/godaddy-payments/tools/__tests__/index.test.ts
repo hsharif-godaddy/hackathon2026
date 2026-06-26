@@ -217,16 +217,11 @@ describe('GoDaddy Payments skill MCP tools', () => {
           storeId: 'store-1',
           channelId: 'channel-1',
           paymentSetupReady: true,
-          requiredNextActions: expect.arrayContaining([
-            expect.stringContaining('lineItemData'),
-            expect.stringContaining('data.url'),
-            expect.stringContaining('redirectUrl'),
-          ]),
-          forbiddenActions: expect.arrayContaining([
-            expect.stringContaining('Do not create catalog products or SKUs'),
-          ]),
+          NEXT_STEP: expect.stringContaining("skill({ action: 'install', skill: 'payment/godaddy-payments' })"),
         })
       );
+      expect(result).not.toHaveProperty('requiredNextActions');
+      expect(result).not.toHaveProperty('forbiddenActions');
     });
 
     it('returns payments_manual_required from the existing binding verification path', async () => {

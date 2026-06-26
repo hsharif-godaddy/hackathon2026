@@ -678,34 +678,13 @@ describe('commerce skill MCP tools', () => {
             }),
           ]),
         }),
-        requiredCapabilities: expect.arrayContaining([
-          expect.objectContaining({ checklist: 'capabilityChecklists.fullShopWithCheckout' }),
-        ]),
-        requiredNextActions: expect.arrayContaining([
-          expect.stringContaining("skill({ action: 'install', skill: 'commerce/ui' })"),
-          expect.stringContaining('create starter products'),
-          expect.stringContaining('Commerce Home'),
-          expect.stringContaining('godaddy-payments__provision'),
-          expect.stringContaining('data.url'),
-        ]),
-        catalogDataDecision: expect.objectContaining({
-          commerceHomeUrl,
-          whenCatalogIsEmpty: expect.stringContaining('create starter products'),
-          agentCatalogWork: expect.stringContaining('commerce__search_tools'),
-          commerceHomeOption: expect.stringContaining('Commerce Home'),
-        }),
-        commerceUiTemplatePack: expect.objectContaining({ skill: 'commerce/ui' }),
-        routingChoices: expect.objectContaining({
-          catalogOrCartUi: expect.stringContaining('commerce__search_tools'),
-          nonCatalogPayment: expect.stringContaining('godaddy-payments__provision'),
-          fullShopWithCheckout: expect.stringContaining('godaddy-payments__provision'),
-        }),
-        forbiddenActions: expect.arrayContaining([
-          expect.stringContaining('Do not create'),
-          expect.stringContaining('replacement checkout'),
-          expect.stringContaining('native hosted checkout URL'),
-        ]),
       }));
+      expect(result).not.toHaveProperty('requiredCapabilities');
+      expect(result).not.toHaveProperty('requiredNextActions');
+      expect(result).not.toHaveProperty('catalogDataDecision');
+      expect(result).not.toHaveProperty('commerceUiTemplatePack');
+      expect(result).not.toHaveProperty('routingChoices');
+      expect(result).not.toHaveProperty('forbiddenActions');
     });
 
     it('ensure-phase guard: DEFAULT channel type is rejected and channel_ready binding is not persisted', async function invalidChannelType() {
