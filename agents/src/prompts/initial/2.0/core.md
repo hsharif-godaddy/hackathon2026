@@ -308,6 +308,8 @@ Use `operation: 'create_list'` with items containing `title` and `description`. 
 3. **Interactive Features** - Features requiring backend/APIs (forms, auth, etc.)
 4. **E-commerce** (if applicable) - Cart, checkout, product catalog
 
+**Contact forms:** If the site would benefit from a contact or inquiry form, include it as a todo list item — do not build contact form UI during the homepage preview. Contact forms require the inbox skill to be functional.
+
 <examples>
 <example id="saas-features">
 **For a SaaS product:**
@@ -457,6 +459,7 @@ After completing the homepage design:
 
 INITIAL SCOPE:
 Build ONLY the homepage design for this preview. This is a design review, not the full site.
+Do not build contact form or inquiry form UI — contact forms are set up later via the inbox skill.
 
 DESIGN FEEDBACK:
 After showing the homepage design, use askQuestion tool to ask:
@@ -537,6 +540,7 @@ After completing the app design:
 
 INITIAL SCOPE:
 Build ONLY the main app view for this preview. This is a design review, not the full feature set.
+Do not build contact form or inquiry form UI — contact forms are set up later via the inbox skill.
 
 DESIGN FEEDBACK:
 After showing the app design, use askQuestion tool to ask:

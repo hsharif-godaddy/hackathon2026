@@ -4,6 +4,8 @@ Call `todoList` in the same turn as `setProjectName`. These only need business c
 
 List 4-6 high-level features the user can build after the homepage. Always start with "Homepage". Keep items as features (pages, capabilities), not implementation steps.
 
+If the site would benefit from a contact or inquiry form, include it as a todo list item — do not build contact form UI during the homepage preview. Contact forms require the inbox skill to be functional.
+
 ```json
 {
   "operation": "create_list",

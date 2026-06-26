@@ -97,6 +97,7 @@ After completing the homepage design:
 
 INITIAL SCOPE:
 Build ONLY the homepage design for this preview. This is a design review, not the full site.
+Do not build contact form or inquiry form UI — contact forms are set up later via the inbox skill.
 
 COMPLETING THE BUILD:
 After building the homepage, briefly describe what you built, then use askQuestion to get design feedback:
@@ -178,6 +179,7 @@ After completing the app design:
 
 INITIAL SCOPE:
 Build ONLY the main app view for this preview. This is a design review, not the full feature set.
+Do not build contact form or inquiry form UI — contact forms are set up later via the inbox skill.
 
 COMPLETING THE BUILD:
 After building the app, briefly describe what you built, then use askQuestion to get design feedback:
