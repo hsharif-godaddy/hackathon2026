@@ -12,6 +12,7 @@ import { AppMetadataRepository } from '../../database/index.js'
 import type { DesignKitRef } from '../../types/design-kit.js'
 import type { DesignSystemCatalogEntry, DesignKitDesign } from './types.js'
 import { extractKitTokens } from './kit-tokens.js'
+import { updateCssRadius } from './radius-css.js'
 import type { BrandKitTokens } from '@airo/shared/brand-data'
 
 const UPLOAD_CONCURRENCY = 8
@@ -175,6 +176,17 @@ export async function installDesignKitForApp(appId: string, slug: string): Promi
     } catch (metaErr) {
       // Metadata is best-effort instrumentation — never fail the install over it.
       logger.warn('design_system.install.metadata_failed', { appId, slug: result.slug, err: String(metaErr) })
+    }
+
+    // Deterministically write the kit's base radius into the app's --radius CSS
+    // variable: the v8 template derives every shadcn lg/md/sm border-radius from
+    // --radius, so this one write carries the kit's roundedness into the build.
+    // The model otherwise leaves --radius at the template default — the kit's
+    // radius never reached the generated app (AIROBUILD-2976). updateCssRadius is
+    // best-effort (never throws). This runs for BOTH the forced-attach and agent
+    // auto-select paths, since both route through installDesignKitForApp.
+    if (result.tokens?.radiusBase !== undefined) {
+      await updateCssRadius(workspace.files, result.tokens.radiusBase)
     }
 
     const message = `Installed design system \`${result.slug}\` (${result.written} files extracted to docs/ui-kit/). Call \`loadUiKit\` next to read the design system primitives and components.`

@@ -14,6 +14,7 @@ const mockCreateForWorkspace = vi.hoisted(() => vi.fn())
 const mockInstallDesignSystem = vi.hoisted(() => vi.fn())
 const mockResolveBaseUrl = vi.hoisted(() => vi.fn(() => 'https://blobby.wsimg.com/brand-kits'))
 const mockMerge = vi.hoisted(() => vi.fn())
+const mockUpdateCssRadius = vi.hoisted(() => vi.fn())
 
 vi.mock('../catalog.js', () => ({
   fetchDesignSystemCatalog: mockFetchCatalog,
@@ -24,6 +25,9 @@ vi.mock('../../../workspace/index.js', () => ({
 }))
 vi.mock('../../../database/index.js', () => ({
   AppMetadataRepository: class { merge = mockMerge },
+}))
+vi.mock('../radius-css.js', () => ({
+  updateCssRadius: mockUpdateCssRadius,
 }))
 
 const ENTRY = {
@@ -57,6 +61,36 @@ describe('installDesignKitForApp', () => {
     const { installDesignKitForApp } = await import('../install.js')
     const result = await installDesignKitForApp('app1', 'modern-bento')
     expect(result).toEqual({ error: 'workspace_unavailable' })
+  })
+
+  // --- AIROBUILD-2976: deterministic kit radius → --radius ---
+  it('writes the kit radius into globals.css when anchor.json carries radius.base', async () => {
+    await primeRealInstallWithFiles({
+      'colors.md': '# palette',
+      'anchor.json': JSON.stringify({ radius: { base: 18 } }),
+    })
+    const { installDesignKitForApp } = await import('../install.js')
+    const result = await installDesignKitForApp('app1', 'modern-bento')
+    expect('error' in result).toBe(false)
+    expect(mockUpdateCssRadius).toHaveBeenCalledWith(mockWorkspaceObj.files, 18)
+  })
+
+  it('writes radius for a flat kit (radius.base 0) — the guard is !== undefined, not truthiness', async () => {
+    await primeRealInstallWithFiles({
+      'colors.md': '# palette',
+      'anchor.json': JSON.stringify({ radius: { base: 0 } }),
+    })
+    const { installDesignKitForApp } = await import('../install.js')
+    const result = await installDesignKitForApp('app1', 'modern-bento')
+    expect('error' in result).toBe(false)
+    expect(mockUpdateCssRadius).toHaveBeenCalledWith(mockWorkspaceObj.files, 0)
+  })
+
+  it('does not write radius when the kit ships no anchor radius', async () => {
+    await primeRealInstall() // tarball has no anchor.json
+    const { installDesignKitForApp } = await import('../install.js')
+    await installDesignKitForApp('app1', 'modern-bento')
+    expect(mockUpdateCssRadius).not.toHaveBeenCalled()
   })
 
   // --- AIROBUILD-2845 I2: bounded retry for TRANSIENT install failures ---
@@ -286,6 +320,22 @@ async function primeRealInstall(
   const extras = extraKits.map(k => ({ ...ENTRY, ...k, tarball: 'kit.tar.gz', tarballHash: `sha256-${hash}` }))
   mockFetchCatalog.mockResolvedValue({ version: 1, generatedAt: '', kits: [...extras, entry] })
   return entry
+}
+
+/** Like primeRealInstall but with a caller-supplied file set (e.g. to inject an anchor.json). */
+async function primeRealInstallWithFiles(files: Record<string, string>): Promise<void> {
+  const tmpDir = mkdtempSync(join(tmpdir(), 'install-kit-files-'))
+  const tarPath = join(tmpDir, 'kit.tar.gz')
+  const tarBuf = await makeTarball(tarPath, files)
+  const hash = createHash('sha256').update(tarBuf).digest('hex')
+  rmSync(tmpDir, { recursive: true, force: true })
+
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+    ok: true,
+    arrayBuffer: async () => tarBuf.buffer.slice(tarBuf.byteOffset, tarBuf.byteOffset + tarBuf.byteLength),
+  } as unknown as Response))
+
+  mockFetchCatalog.mockResolvedValue({ version: 1, generatedAt: '', kits: [{ ...ENTRY, tarballHash: `sha256-${hash}` }] })
 }
 
 async function makeTarball(targetTar: string, files: Record<string, string>): Promise<Buffer> {
