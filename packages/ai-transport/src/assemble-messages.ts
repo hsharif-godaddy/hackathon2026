@@ -1,5 +1,3 @@
-import { stripLeadingOrphanTools } from './strip-orphan-tools.js'
-
 /**
  * Extract the textual content of a message for prompt comparison. Returns the
  * string directly, or concatenates the `text` of AI SDK content parts.
@@ -91,19 +89,20 @@ export interface AssembleMessagesResult {
   afterHistory: Array<{ role: string; content: unknown; cachePoint?: { type: 'ephemeral' }; insertionOrder: 'after_history' }>
   /** Assembled conversation array — history + preflight only (the stable, cacheable prefix). */
   messages: Array<{ role: string; content: unknown; cachePoint?: { type: 'ephemeral' }; tool_calls?: unknown[] }>
-  /** Leading tool messages that were stripped (includes tool_call_id for logging). */
-  strippedOrphanTools: Array<{ role: string; tool_call_id?: string; [k: string]: unknown }>
 }
 
 /**
- * Assemble the final message arrays for an LLM call. Shared between WS and SSE
- * transports to ensure identical message ordering and validation.
+ * Assemble the final message arrays for an LLM call on the SSE transport path.
+ * Ensures consistent message ordering before the model receives history.
  *
  * `messages` holds ONLY the stable conversation prefix (history + preflight) so the
  * cache breakpoint lands on the last history message. All volatile after-history
  * content (context after_history + extraAfterHistory) is returned separately in
  * `afterHistory`, tagged so the pipeline appends it AFTER the breakpoint. Final wire
  * order (reconstructed downstream) stays: before, history, preflight, after, user.
+ *
+ * Orphaned tool call/result pairs are stripped upstream by
+ * ConversationHistoryLoader.formatMessagesForAISDK before history reaches assembly.
  */
 export function assembleMessages(input: AssembleMessagesInput): AssembleMessagesResult {
   const { contextMessages, conversationHistory, extraAfterHistory, preflightMessages, currentPrompt } = input
@@ -159,7 +158,5 @@ export function assembleMessages(input: AssembleMessagesInput): AssembleMessages
     }
   }
 
-  const strippedOrphanTools = stripLeadingOrphanTools(messages)
-
-  return { beforeHistory, afterHistory, messages, strippedOrphanTools }
+  return { beforeHistory, afterHistory, messages }
 }

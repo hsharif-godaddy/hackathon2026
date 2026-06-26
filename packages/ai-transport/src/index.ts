@@ -66,8 +66,6 @@ export type { ResponseMetadata } from './response-metadata-capture.js'
 // Message Assembly (shared by WS + SSE)
 export { assembleMessages, dropTrailingPrompt } from './assemble-messages.js'
 export type { AssembleMessagesInput, AssembleMessagesResult, ContextMessage, HistoryMessage, MessageRole, InsertionOrder } from './assemble-messages.js'
-export { stripLeadingOrphanTools } from './strip-orphan-tools.js'
-export type { StrippedToolMessage } from './strip-orphan-tools.js'
 
 // Text Stream Fallback (shared by WS + SSE)
 export { readTextStreamFallback } from './text-stream-fallback.js'
