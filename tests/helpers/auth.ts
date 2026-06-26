@@ -1,7 +1,7 @@
 import type { Page, BrowserContext, FrameLocator } from '@playwright/test';
 import { expect } from '@playwright/test';
 
-import { getCredentials, getEnvConfig, DEFAULT_TIMEOUT, SSO_TIMEOUT, SHORT_TIMEOUT } from './constants';
+import { getCredentials, getEnvConfig, DEFAULT_TIMEOUT, SSO_TIMEOUT, SSO_POST_LOAD_DRAIN_MS, SHORT_TIMEOUT } from './constants';
 import type { Environment } from './constants';
 
 /**
@@ -47,6 +47,13 @@ export async function loginViaSsoDirect(page: Page, timeout: number = SSO_TIMEOU
     .catch(() => false);
   if (!formPresent) {
     console.log('  SSO direct: no login form (already authenticated), continuing');
+    const urlOnReturn: string = page.url();
+    try {
+      await page.waitForURL((url: URL) => url.toString() !== urlOnReturn, { timeout: SSO_POST_LOAD_DRAIN_MS, waitUntil: 'commit' });
+      await page.waitForLoadState('load');
+    } catch {
+      // no post-load redirect — proceed
+    }
     return;
   }
 
@@ -61,11 +68,26 @@ export async function loginViaSsoDirect(page: Page, timeout: number = SSO_TIMEOU
   // Do NOT wait for 'networkidle' here: the post-login landing page
   // (e.g. www.<env>godaddy.com) has continuous background polling, so
   // networkidle never fires and the helper hangs (the rest of the suite
-  // avoids networkidle for the same reason). 'domcontentloaded' is bounded
-  // and fires once the landing page's document is ready — by which point the
-  // redirect's auth cookie has been processed.
+  // avoids networkidle for the same reason).
+  //
+  // Two-stage settle after the post-login redirect lands:
+  // 1. Wait for 'load' on the SSO redirect landing page (e.g. www.godaddy.com).
+  // 2. Drain any JS-initiated redirect the landing page fires AFTER 'load'
+  //    (observed: www.godaddy.com → account.godaddy.com). A caller's page.goto('/')
+  //    racing that second navigation receives ERR_ABORTED. SSO_POST_LOAD_DRAIN_MS
+  //    covers only the URL-change detection; the subsequent load wait is unbounded
+  //    so a slow second navigation doesn't hit the same race. The try/catch handles
+  //    the common case where no second redirect fires.
+  // Note: only drains one post-load hop; a third hop would still race.
   await usernameInput.waitFor({ state: 'detached', timeout }).catch(() => {});
-  await page.waitForLoadState('domcontentloaded').catch(() => {});
+  await page.waitForLoadState('load').catch(() => {});
+  const urlAfterLoad: string = page.url();
+  try {
+    await page.waitForURL((url: URL) => url.toString() !== urlAfterLoad, { timeout: SSO_POST_LOAD_DRAIN_MS, waitUntil: 'commit' });
+    await page.waitForLoadState('load');
+  } catch {
+    // no post-load redirect within SSO_POST_LOAD_DRAIN_MS — proceed
+  }
   console.log(`  SSO direct: signed in at ${ssoBase} (now on ${new URL(page.url()).host})`);
 }
 

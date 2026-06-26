@@ -26,6 +26,8 @@ export const CHAT_INPUT_TIMEOUT = 120000;
 export const SHORT_TIMEOUT = 2000;
 /** SSO authentication timeout - 30 seconds for login flow */
 export const SSO_TIMEOUT = 30000;
+/** How long to wait for a JS-initiated post-load redirect after SSO login before assuming none will fire */
+export const SSO_POST_LOAD_DRAIN_MS = 3000;
 /** Go Live modal wait time - 20 seconds after publish */
 export const GO_LIVE_MODAL_TIMEOUT = 20000;
 

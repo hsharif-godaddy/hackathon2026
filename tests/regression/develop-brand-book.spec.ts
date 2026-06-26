@@ -24,12 +24,6 @@ test.describe('Brand Book Tab', () => {
   test.beforeEach(async ({ page }, testInfo) => {
     logTestStart(testInfo);
     await loginViaSsoDirect(page);
-    // loginViaSsoDirect already awaits domcontentloaded, but the SSO host may
-    // still be running a post-login client-side redirect when we return. A best-
-    // effort 'load' wait lets that redirect settle so the subsequent page.goto('/')
-    // doesn't race it and get ERR_ABORTED. Safe to swallow: auth is already set
-    // and page.goto('/') will navigate correctly regardless.
-    await page.waitForLoadState('load').catch(() => {});
     if (!E2E_NO_DELETE) {
       await page.goto('/');
       await evictOldestE2eAppsToFitLimit(page).catch(() => {});
