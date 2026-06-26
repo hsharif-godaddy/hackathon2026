@@ -124,6 +124,9 @@ export class RebuildPromptBuilder {
     // Observability for the logo/images bring-over levers — mirrors the asset
     // filter buildUserPrompt applies internally (kept pure there; logged here).
     const selectedAssets = selectPromptAssets(pageAssetManifest.assets, state.stylePreferences);
+    const logoAssets = selectedAssets.filter(isLikelyLogo);
+    const logoIncluded = logoAssets.length > 0;
+
     logger.info('rebuild-orchestration.assets-selected', {
       appId,
       pageSlug,
@@ -132,7 +135,8 @@ export class RebuildPromptBuilder {
       keepSourceImages: state.stylePreferences.keepSourceImages,
       totalAssets: pageAssetManifest.assets.length,
       keptAssets: selectedAssets.length,
-      logoIncluded: selectedAssets.some(isLikelyLogo),
+      logoIncluded,
+      logoCount: logoAssets.length,
     });
 
     const typographyResult = await applyRebuildTypography(

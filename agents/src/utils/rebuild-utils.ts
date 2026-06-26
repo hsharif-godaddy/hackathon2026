@@ -83,3 +83,27 @@ export const UNTITLED_PAGE_TITLE = 'Untitled Page';
 export function resolvePageTitle(extractedTitle: string | undefined, slug: string): string {
   return (extractedTitle && extractedTitle !== UNTITLED_PAGE_TITLE) ? extractedTitle : slugToTitle(slug);
 }
+
+/**
+ * Normalizes logo URLs by removing size suffixes, query parameters, and fragments.
+ * Used by both AtlasCrawlerAdapter and RebuildOrchestrationService to ensure
+ * consistent URL matching when finding higher-resolution logo variants.
+ *
+ * Examples:
+ * - "https://img1.wsimg.com/isteam/ip/abc/logo.png/:/rs=w:16,h:16,m" → "https://img1.wsimg.com/isteam/ip/abc/logo.png"
+ * - "https://img1.wsimg.com/isteam/ip/abc/logo.png/:/cr=t:12.5%25,l:0%25,w:100%25,h:75%25" → "https://img1.wsimg.com/isteam/ip/abc/logo.png"
+ * - "https://example.com/logo.png?v=123#section" → "https://example.com/logo.png"
+ */
+export function normalizeLogoUrl(url: string): string {
+  // Remove size suffix pattern: /:/rs=w:X,h:Y,m or /:/cr=... (case-insensitive)
+  // Use [^/]+ to match parameters within the segment, not across path separators
+  let normalized: string = url.replace(/\/:\/(rs|cr)=[^/]+$/i, '');
+
+  // Remove query parameters
+  normalized = normalized.split('?')[0] ?? normalized;
+
+  // Remove fragment identifiers
+  normalized = normalized.split('#')[0] ?? normalized;
+
+  return normalized;
+}

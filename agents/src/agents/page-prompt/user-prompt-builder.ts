@@ -394,8 +394,14 @@ export function buildContactBlock(contact: SiteContactInfo): string {
  */
 export function isLikelyLogo(asset: AssetInfo): boolean {
   if (asset.type !== 'image') return false;
+
+  // Priority 1: Header placement
   if (asset.placement?.inHeader) return true;
+
+  // Priority 2: Size & aspect ratio
   if (getSizeCategory(asset.dimensions) === 'logo-suitable') return true;
+
+  // Priority 3: Text matching
   const haystack = `${asset.altText ?? ''} ${asset.localPath ?? ''} ${asset.description ?? ''}`.toLowerCase();
   return haystack.includes('logo');
 }

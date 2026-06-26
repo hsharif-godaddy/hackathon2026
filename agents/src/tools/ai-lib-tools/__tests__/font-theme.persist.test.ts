@@ -50,7 +50,8 @@ vi.mock('@airo/ai-lib', () => ({
   createPromptBuilder: vi.fn(function () { return {
     file: vi.fn().mockReturnThis(),
     build: vi.fn().mockResolvedValue('test prompt')
-  }; })
+  }; }),
+  isS2SAuthV2Enabled: vi.fn(() => false),
 }))
 vi.mock('@airo/ai-common', () => ({
   llmMetadataContext: { getStore: vi.fn(), run: vi.fn(function (_meta: any, fn: any) { return fn(); }) }

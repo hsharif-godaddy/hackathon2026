@@ -142,6 +142,11 @@ export interface SiteMetadata {
   contact?: SiteContactInfo;
   /** Primary site favicon chosen by Atlas. Atlas-only; absent on AI-fallback manifests. */
   favicon?: SiteFavicon;
+  /** Logo identification result from Atlas crawler. */
+  identifiedLogo?: {
+    url: string;
+    detectionMethod: 'favicon' | 'header-placement' | 'hero-placement' | 'homepage-link' | 'size-heuristic' | 'text-match';
+  };
   /** Footer nav. Site-wide; populated from Atlas navigation.footer when present. */
   footerNavigation?: NavigationItem[];
   scrapedAt: string;

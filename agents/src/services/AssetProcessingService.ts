@@ -253,7 +253,7 @@ export class AssetProcessingService {
         localPath: downloadResult.localPath,
         type: asset.type,
         ...(asset.altText ? { altText: asset.altText } : {}),
-        sourcePages
+        sourcePages,
       };
 
       if (asset.type === 'image') {

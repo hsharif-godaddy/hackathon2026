@@ -1,7 +1,7 @@
 import { getS2SToken } from '@airo/ai-lib';
 
 import { Logger } from '../logging/index.js';
-import { detectBlogPage, isRebuildHomepage, rebuildUrlToSlug } from '../utils/rebuild-utils.js';
+import { detectBlogPage, isRebuildHomepage, normalizeLogoUrl, rebuildUrlToSlug } from '../utils/rebuild-utils.js';
 import {
   AtlasCrawlResultSchema,
   AtlasJobStatusResponseSchema,
@@ -96,6 +96,8 @@ export interface AtlasCrawlOutput {
   contact?: SiteContactInfo;
   /** Primary site favicon chosen by Atlas (rel/sizes/mimeType when known). */
   favicon?: SiteMetadata['favicon'];
+  /** Logo identification result from Atlas crawler output. */
+  identifiedLogo?: SiteMetadata['identifiedLogo'];
   homepageScreenshotBase64?: string;
   /** True when Atlas advertised a screenshot URL, regardless of fetch success. Lets the orchestrator log fetch-failure as a regression. */
   atlasReportedScreenshot: boolean;
@@ -317,6 +319,7 @@ export class AtlasCrawlerAdapter {
     const footerNavigation = this.mapFooterNavigation(result);
     const contact = this.mapContact(result);
     const favicon = this.mapFavicon(result);
+    const identifiedLogo = this.identifyLogoImage(result);
     const atlasReportedScreenshot = !!result.screenshots?.[0]?.url;
 
     let homepageScreenshotBase64: string | undefined;
@@ -343,6 +346,7 @@ export class AtlasCrawlerAdapter {
       footerNavigation,
       contact,
       ...(favicon ? { favicon } : {}),
+      ...(identifiedLogo ? { identifiedLogo } : {}),
       homepageScreenshotBase64,
       atlasReportedScreenshot,
       ...(homepageScreenshotFailureReason ? { homepageScreenshotFailureReason } : {}),
@@ -1060,5 +1064,203 @@ export class AtlasCrawlerAdapter {
 
   private dedupe(arr: string[]): string[] {
     return [...new Set(arr)];
+  }
+
+
+  /**
+   * Checks if image dimensions are logo-suitable
+   */
+  private isLogoSized(width: number, height: number): boolean {
+    const minDim: number = Math.min(width, height);
+    const maxDim: number = Math.max(width, height);
+    const aspectRatio: number = maxDim / minDim;
+
+    return (
+      minDim >= 50 &&
+      minDim <= 400 &&
+      maxDim >= 80 &&
+      maxDim < 600 &&
+      aspectRatio >= 0.5 &&
+      aspectRatio <= 3.0
+    );
+  }
+
+  /**
+   * Selects best logo candidate from multiple options using tiebreakers
+   */
+  private selectBestLogoCandidate(
+    candidates: Array<{ url: string; width?: number; height?: number; inHeader?: boolean }>
+  ): string {
+    if (candidates.length === 0) {
+      throw new Error('selectBestLogoCandidate called with empty array');
+    }
+
+    const firstCandidate: { url: string; width?: number; height?: number; inHeader?: boolean } | undefined = candidates[0];
+    if (!firstCandidate) {
+      throw new Error('selectBestLogoCandidate: candidates[0] is undefined');
+    }
+
+    if (candidates.length === 1) {
+      return firstCandidate.url;
+    }
+
+    // Tiebreaker 1: Prefer images in header
+    const headerCandidates: Array<{ url: string; width?: number; height?: number; inHeader?: boolean }> = candidates.filter(c => c.inHeader);
+    const firstHeaderCandidate: { url: string; width?: number; height?: number; inHeader?: boolean } | undefined = headerCandidates[0];
+    if (headerCandidates.length === 1 && firstHeaderCandidate) {
+      return firstHeaderCandidate.url;
+    }
+    const pool: Array<{ url: string; width?: number; height?: number; inHeader?: boolean }> = headerCandidates.length > 0 ? headerCandidates : candidates;
+
+    // Tiebreaker 2: Prefer larger dimensions (within logo range)
+    const withDimensions: Array<{ url: string; width: number; height: number; inHeader?: boolean }> = pool.filter((c): c is { url: string; width: number; height: number; inHeader?: boolean } => c.width !== undefined && c.height !== undefined);
+    if (withDimensions.length > 0) {
+      const sorted: Array<{ url: string; width: number; height: number; inHeader?: boolean }> = [...withDimensions].sort((a, b) => {
+        const aArea: number = a.width * a.height;
+        const bArea: number = b.width * b.height;
+        return bArea - aArea; // Descending
+      });
+      const firstSorted: { url: string; width: number; height: number; inHeader?: boolean } | undefined = sorted[0];
+      if (!firstSorted) {
+        throw new Error('selectBestLogoCandidate: sorted[0] is undefined');
+      }
+      return firstSorted.url;
+    }
+
+    // Fallback: First in array (DOM order)
+    const firstPool: { url: string; width?: number; height?: number; inHeader?: boolean } | undefined = pool[0];
+    if (!firstPool) {
+      throw new Error('selectBestLogoCandidate: pool[0] is undefined');
+    }
+    return firstPool.url;
+  }
+
+  /**
+   * Identifies the site logo using prioritized signals
+   * Returns normalized logo URL or null if not found
+   */
+  private identifyLogoImage(result: AtlasCrawlResult): {
+    url: string;
+    detectionMethod: 'favicon' | 'header-placement' | 'hero-placement' | 'homepage-link' | 'size-heuristic' | 'text-match';
+  } | null {
+    // Priority 1: Header placement
+    // Header placement is a strong visual signal - if an image appears in the header element,
+    // it's very likely the site's logo. This is prioritized over favicon because many sites
+    // intentionally use separate files for favicon (16×16 .ico) vs logo (higher resolution PNG/SVG).
+    if (result.images && result.images.length > 0) {
+      const headerImages: (typeof result.images) = result.images.filter(img => img.inHeader);
+      if (headerImages.length > 0) {
+        const bestUrl: string = this.selectBestLogoCandidate(headerImages);
+        logger.info('atlas-crawler-adapter.logo-identified-header', {
+          url: bestUrl,
+          candidateCount: headerImages.length,
+        });
+        return { url: bestUrl, detectionMethod: 'header-placement' };
+      }
+    }
+
+    // Priority 2: Favicon-based identification
+    if (result.favicon?.primary?.url) {
+      const normalizedUrl: string = normalizeLogoUrl(result.favicon.primary.url);
+      logger.info('atlas-crawler-adapter.logo-identified-favicon', {
+        originalUrl: result.favicon.primary.url,
+        normalizedUrl,
+      });
+      return { url: normalizedUrl, detectionMethod: 'favicon' };
+    }
+
+    // Fallback to first candidate if primary missing
+    if (result.favicon?.candidates && result.favicon.candidates.length > 0) {
+      const firstCandidate = result.favicon.candidates[0];
+      if (firstCandidate?.url) {
+        const normalizedUrl: string = normalizeLogoUrl(firstCandidate.url);
+        logger.info('atlas-crawler-adapter.logo-identified-favicon-candidate', {
+          originalUrl: firstCandidate.url,
+          normalizedUrl,
+        });
+        return { url: normalizedUrl, detectionMethod: 'favicon' };
+      }
+    }
+
+    // Priority 3: Placement signals continued (if images array exists)
+    if (result.images && result.images.length > 0) {
+      // 3a. Hero + logo-sized near H1
+      const heroLogos: (typeof result.images) = result.images.filter(
+        img => img.nearH1 && img.width && img.height && this.isLogoSized(img.width, img.height)
+      );
+      if (heroLogos.length > 0) {
+        const bestUrl: string = this.selectBestLogoCandidate(heroLogos);
+        logger.info('atlas-crawler-adapter.logo-identified-hero', {
+          url: bestUrl,
+          candidateCount: heroLogos.length,
+        });
+        return { url: bestUrl, detectionMethod: 'hero-placement' };
+      }
+
+      // 3b. Links to homepage + logo-sized
+      const linkedLogos: (typeof result.images) = result.images.filter(
+        img =>
+          img.linkedTo === result.baseUrl &&
+          img.width &&
+          img.height &&
+          this.isLogoSized(img.width, img.height)
+      );
+      if (linkedLogos.length > 0) {
+        const bestUrl: string = this.selectBestLogoCandidate(linkedLogos);
+        logger.info('atlas-crawler-adapter.logo-identified-homepage-link', {
+          url: bestUrl,
+          candidateCount: linkedLogos.length,
+        });
+        return { url: bestUrl, detectionMethod: 'homepage-link' };
+      }
+    }
+
+    // Priority 4: Size heuristics on image-type assets
+    // Note: Dimensions come from imageSignalMap if available
+    const imageAssets: (typeof result.assets) = result.assets.filter(a => a.type === 'image');
+    const logoSizedAssets: Array<{ url: string; width: number; height: number }> = [];
+
+    if (result.images) {
+      for (const asset of imageAssets) {
+        // Check if we have dimensions from result.images
+        const imgData = result.images.find(img => img.url === asset.url);
+        if (imgData?.width && imgData?.height && this.isLogoSized(imgData.width, imgData.height)) {
+          logoSizedAssets.push({ url: asset.url, width: imgData.width, height: imgData.height });
+        }
+      }
+    }
+
+    if (logoSizedAssets.length > 0) {
+      const bestUrl: string = this.selectBestLogoCandidate(logoSizedAssets);
+      logger.info('atlas-crawler-adapter.logo-identified-size', {
+        url: bestUrl,
+        candidateCount: logoSizedAssets.length,
+      });
+      return { url: bestUrl, detectionMethod: 'size-heuristic' };
+    }
+
+    // Priority 5: Text matching in URL
+    const textMatchAssets: (typeof result.assets) = imageAssets.filter(asset => {
+      const urlLower: string = asset.url.toLowerCase();
+      return urlLower.includes('logo') || urlLower.includes('brand');
+    });
+
+    if (textMatchAssets.length > 0) {
+      const bestUrl: string = this.selectBestLogoCandidate(
+        textMatchAssets.map(a => ({ url: a.url }))
+      );
+      logger.info('atlas-crawler-adapter.logo-identified-text', {
+        url: bestUrl,
+        candidateCount: textMatchAssets.length,
+      });
+      return { url: bestUrl, detectionMethod: 'text-match' };
+    }
+
+    logger.warn('atlas-crawler-adapter.logo-not-identified', {
+      assetCount: result.assets.length,
+      imagesCount: result.images?.length ?? 0,
+      hasFavicon: !!result.favicon,
+    });
+    return null;
   }
 }

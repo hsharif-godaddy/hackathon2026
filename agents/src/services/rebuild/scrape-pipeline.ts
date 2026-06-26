@@ -698,6 +698,7 @@ export class ScrapePipeline {
       ...(output.contact ? { contact: output.contact } : {}),
       ...(output.footerNavigation.length > 0 ? { footerNavigation: output.footerNavigation } : {}),
       ...(output.favicon ? { favicon: output.favicon } : {}),
+      ...(output.identifiedLogo ? { identifiedLogo: output.identifiedLogo } : {}),
     };
   }
 

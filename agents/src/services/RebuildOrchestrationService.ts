@@ -15,12 +15,14 @@ import {
 } from '../types/rebuild.js';
 import { defaultIntakeChoices } from './rebuild/intake-defaults.js';
 import { selectUpfrontBuildSlugs } from './rebuild/scope-estimates.js';
-import { rebuildUrlToSlug } from '../utils/rebuild-utils.js';
+import { normalizeLogoUrl, rebuildUrlToSlug } from '../utils/rebuild-utils.js';
+import { toServableSlotUrl } from '../tools/rebuild-source-media.js';
 import { fileUploadService } from './FileUploadService.js';
 import { extractNavigationFromHtml, PagePersistenceService, type SavePageInput } from './rebuild/page-persistence.js';
 import { RebuildPromptBuilder, type BuildPageResult } from './rebuild/prompt-builder.js';
 import { ScrapePipeline } from './rebuild/scrape-pipeline.js';
 import { SitemapDiscoveryService } from './SitemapDiscoveryService.js';
+import { mediaManifestService, type MediaSlot } from './MediaManifestService.js';
 
 const logger = Logger.create({ component: 'rebuild-orchestration-service' });
 
@@ -283,6 +285,177 @@ export class RebuildOrchestrationService {
     return this.buildScrapePipeline().runAtlas(appId, sourceUrl);
   }
 
+  /**
+   * Writes the identified logo to brand slot if it was detected during scrape.
+   * Called after stylePreferences are submitted, when both logo and preferences exist.
+   *
+   * Process:
+   * 1. Loads source site data to check if logo was identified
+   * 2. Finds the highest-resolution version of the same logo in asset manifest
+   * 3. Checks user preferences (keepLogo) and existing logo state (userModified)
+   * 4. Writes logo to media manifest if all checks pass
+   */
+  private async writeIdentifiedLogoIfPresent(
+    appId: string,
+    stylePreferences: StylePreferences
+  ): Promise<void> {
+    try {
+      // Load source site data to check if logo was identified during scrape
+      const sourceSiteData: SourceSiteData = await this.loadSourceSiteData();
+
+      if (!sourceSiteData.metadata.identifiedLogo) {
+        logger.info('rebuild-orchestration.no-logo-to-write', {
+          appId,
+          message: 'No logo was identified from source site during scrape.',
+        });
+        return;
+      }
+
+      // Find the best quality version of the logo in the asset manifest.
+      // The identified logo (typically favicon) is low-res, but the asset manifest
+      // may contain higher-resolution versions of the same logo image.
+      const bestLogoUrl: string = this.findBestQualityLogo(
+        sourceSiteData.metadata.identifiedLogo.url,
+        sourceSiteData.assets
+      );
+
+      const usingHigherRes: boolean = bestLogoUrl !== sourceSiteData.metadata.identifiedLogo.url;
+
+      logger.info('rebuild-orchestration.logo-resolution-selection', {
+        appId,
+        originalUrl: sourceSiteData.metadata.identifiedLogo.url,
+        selectedUrl: bestLogoUrl,
+        upgradedResolution: usingHigherRes,
+      });
+
+      // Check user preference
+      if (!stylePreferences.keepLogo) {
+        logger.info('rebuild-orchestration.skip-brand-logo-write', {
+          appId,
+          reason: 'keepLogo preference is false',
+          logoUrl: bestLogoUrl,
+        });
+        return;
+      }
+
+      // Check if slot already has a user-uploaded logo
+      const existingResult = await mediaManifestService.getSlot(appId, 'logo/horizontal');
+
+      // Fail-safe: if we can't read the manifest (corrupt JSON, EACCES, etc.),
+      // refuse to overwrite. Distinguish manifest read failure from normal
+      // "slot not found" case (fresh rebuild where slot hasn't been created yet).
+      if (!existingResult.success && existingResult.error?.startsWith('Failed to read manifest')) {
+        logger.warn('rebuild-orchestration.skip-brand-logo-write', {
+          appId,
+          reason: 'Cannot read existing manifest - refusing to overwrite',
+          error: existingResult.error,
+          logoUrl: bestLogoUrl,
+        });
+        return;
+      }
+
+      if (existingResult.success && existingResult.slot?.userModified === true) {
+        logger.info('rebuild-orchestration.skip-brand-logo-write', {
+          appId,
+          reason: 'User has already uploaded a logo',
+          logoUrl: bestLogoUrl,
+          existingUrl: existingResult.slot.currentUrl,
+        });
+        return;
+      }
+
+      // Resolve bestLogoUrl to local asset path (or hotlink fallback if not downloaded)
+      const match = sourceSiteData.assets.assets.find(a => a.url === bestLogoUrl);
+      const slotUrl: string = match
+        ? toServableSlotUrl(match.localPath)
+        : bestLogoUrl; // hotlink fallback only when no downloaded asset matched
+
+      const usedLocalAsset: boolean = slotUrl !== bestLogoUrl;
+
+      // Write logo to brand slot
+      const now: string = new Date().toISOString();
+      const slot: MediaSlot = {
+        mediaType: 'logo',
+        currentUrl: slotUrl,
+        searchQuery: `Rebuild source logo (${sourceSiteData.metadata.identifiedLogo.detectionMethod})`,
+        alternatives: [],
+        userModified: false, // Allows AI to replace it if user generates a new logo
+        createdAt: now,
+        lastUpdated: now,
+      };
+
+      const result = await mediaManifestService.setSlot(appId, 'logo/horizontal', slot, false);
+
+      if (result.success) {
+        logger.info('rebuild-orchestration.brand-logo-written', {
+          appId,
+          logoUrl: slotUrl,
+          sourceUrl: bestLogoUrl,
+          detectionMethod: sourceSiteData.metadata.identifiedLogo.detectionMethod,
+          slot: 'logo/horizontal',
+          upgradedResolution: usingHigherRes,
+          usedLocalAsset,
+        });
+      } else {
+        logger.warn('rebuild-orchestration.brand-logo-write-failed', {
+          appId,
+          logoUrl: slotUrl,
+          sourceUrl: bestLogoUrl,
+          detectionMethod: sourceSiteData.metadata.identifiedLogo.detectionMethod,
+          error: result.error,
+        });
+      }
+    } catch (error) {
+      logger.warn('rebuild-orchestration.write-identified-logo-error', {
+        appId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      // Don't throw - logo write failure shouldn't block the rebuild
+    }
+  }
+
+  /**
+   * Find the highest resolution version of the same logo in the asset manifest.
+   * Matches by filename/path similarity - only upgrades if confident it's the same image.
+   * Falls back to the original URL if no better version is found.
+   *
+   * Strategy:
+   * 1. Strip size suffixes and query params from the identified logo URL
+   * 2. Find all assets with matching base path
+   * 3. Sort by resolution (dimensions.width * dimensions.height)
+   * 4. Return the highest-res variant
+   *
+   * Examples:
+   * - Input: "logo.png/:/rs=w:16,h:16,m" → Match: "logo.png" (original)
+   * - Input: "New%20Logo.png/:/rs=w:16,h:16,m" → Match: "New%20Logo.png" (original)
+   */
+  private findBestQualityLogo(identifiedLogoUrl: string, assetManifest: AssetManifest): string {
+    // Normalize the identified logo URL (strip size suffixes and query params)
+    const normalizedIdentified: string = normalizeLogoUrl(identifiedLogoUrl);
+
+    // Find all assets that match the same normalized path
+    const matchingAssets = assetManifest.assets.filter((asset) => {
+      if (asset.type !== 'image' && asset.type !== 'icon') return false;
+      const normalizedAsset: string = normalizeLogoUrl(asset.url);
+      return normalizedAsset === normalizedIdentified;
+    });
+
+    if (matchingAssets.length === 0) {
+      // No matches - use original
+      return identifiedLogoUrl;
+    }
+
+    // Sort by resolution (descending) - prefer highest resolution
+    // Assets without dimensions go to the end (treated as 0x0)
+    const sorted = matchingAssets.sort((a, b) => {
+      const aPixels: number = (a.dimensions?.width ?? 0) * (a.dimensions?.height ?? 0);
+      const bPixels: number = (b.dimensions?.width ?? 0) * (b.dimensions?.height ?? 0);
+      return bPixels - aPixels;
+    });
+
+    // Return the highest resolution variant (guaranteed to exist since matchingAssets.length > 0)
+    return sorted[0]!.url;
+  }
 
   /**
    * Submit style preferences
@@ -312,6 +485,9 @@ export class RebuildOrchestrationService {
         layoutApproach: preferences.layoutApproach,
         hasDesignIntent: !!preferences.designIntent,
       });
+
+      // Write identified logo to brand slot if one was detected during scrape
+      await this.writeIdentifiedLogoIfPresent(appId, preferences);
 
       return state;
     } catch (error) {

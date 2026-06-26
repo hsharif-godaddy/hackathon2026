@@ -19,6 +19,7 @@ vi.mock('../../logging/index.js', () => ({
   Logger: {
     create: () => mockLogger,
   },
+  logger: mockLogger,
 }));
 
 describe('RebuildOrchestrationService upfront build', () => {
