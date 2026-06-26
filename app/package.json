@@ -61,7 +61,7 @@
     "@gasket/react-intl": "^7.7.2",
     "@godaddy/antares": "^0.1.0",
     "@godaddy/browserslist-config": "^3.1.0",
-    "@godaddy/gasket-auth": "^3.5.3",
+    "@godaddy/gasket-auth": "^3.5.4",
     "@godaddy/gasket-next": "^3.7.5",
     "@godaddy/gasket-otel": "^3.5.2",
     "@godaddy/gasket-plugin-atlas": "^3.2.0",
