@@ -8,7 +8,6 @@ import {
 
 import sp from '@/components/supportplane/sp.module.css';
 import { useSupportPlaneData } from '@/contexts/SupportPlaneDataContext';
-import TagClusterVisualization from './TagClusterVisualization';
 import TranscriptCalendar from '@/components/supportplane/transcripts/Calendar';
 import DerivedInsightsPanel from './DerivedInsightsPanel';
 
@@ -381,7 +380,7 @@ export default function AnalysisPanel() {
     // Use context for initial analytics data
     const { analytics: contextAnalytics, loading: contextLoading } = useSupportPlaneData();
 
-    const [activeTab, setActiveTab] = useState<'analysis' | 'derived-insights'>('analysis');
+    const [activeTab, setActiveTab] = useState<'analysis' | 'derived-insights'>('derived-insights');
     const [analytics, setAnalytics] = useState<any>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -545,23 +544,6 @@ export default function AnalysisPanel() {
                 gap:4
             }}>
                 <button
-                    onClick={() => setActiveTab('analysis')}
-                    style={{
-                        padding:'8px 16px',
-                        background:activeTab === 'analysis' ? 'var(--sp-s2)' : 'transparent',
-                        border:'none',
-                        borderBottom:activeTab === 'analysis' ? '2px solid var(--sp-primary)' : '2px solid transparent',
-                        color:activeTab === 'analysis' ? 'var(--sp-primary)' : 'var(--sp-txm)',
-                        cursor:'pointer',
-                        fontSize:13,
-                        fontWeight:600,
-                        marginBottom:-2,
-                        transition:'all 0.2s'
-                    }}
-                >
-                    Raw Analytics
-                </button>
-                <button
                     onClick={() => setActiveTab('derived-insights')}
                     style={{
                         padding:'8px 16px',
@@ -578,99 +560,84 @@ export default function AnalysisPanel() {
                 >
                     Derived Insights
                 </button>
+                <button
+                    onClick={() => setActiveTab('analysis')}
+                    style={{
+                        padding:'8px 16px',
+                        background:activeTab === 'analysis' ? 'var(--sp-s2)' : 'transparent',
+                        border:'none',
+                        borderBottom:activeTab === 'analysis' ? '2px solid var(--sp-primary)' : '2px solid transparent',
+                        color:activeTab === 'analysis' ? 'var(--sp-primary)' : 'var(--sp-txm)',
+                        cursor:'pointer',
+                        fontSize:13,
+                        fontWeight:600,
+                        marginBottom:-2,
+                        transition:'all 0.2s'
+                    }}
+                >
+                    Raw Analytics
+                </button>
             </div>
 
-            {/* Date Range Selector & Calendar (side by side, only for Raw Analytics) */}
+            {/* Date Range Selector (only for Raw Analytics) */}
             {activeTab === 'analysis' && (
-                <div style={{display:'flex',marginBottom:16,alignItems:'center'}}>
-                    {/* Left column: Date Range + Stats */}
-                    <div style={{display:'flex',flexDirection:'column',gap:8,flex:1,flexShrink:0,alignItems:'center'}}>
-                        {/* Date Range Selector */}
-                        <div className={sp.card} style={{padding:14,width:480}}>
-                            <div style={{fontSize:13,fontWeight:600,marginBottom:10,color:'var(--sp-tx1)'}}>
-                                Date Range
-                            </div>
-                            <div style={{display:'flex',alignItems:'center',gap:8}}>
-                                <input
-                                    type="date"
-                                    value={inputStartDate}
-                                    onChange={(e) => setInputStartDate(e.target.value)}
-                                    style={{
-                                        padding:'6px 10px',
-                                        fontSize:13,
-                                        border:'1px solid var(--sp-border)',
-                                        borderRadius:4,
-                                        background:'var(--sp-s2)',
-                                        color:'var(--sp-tx1)',
-                                        cursor:'pointer',
-                                        flex:1,
-                                    }}
-                                />
-                                <span style={{color:'var(--sp-txm)',fontSize:13}}>to</span>
-                                <input
-                                    type="date"
-                                    value={inputEndDate}
-                                    onChange={(e) => setInputEndDate(e.target.value)}
-                                    style={{
-                                        padding:'6px 10px',
-                                        fontSize:13,
-                                        border:'1px solid var(--sp-border)',
-                                        borderRadius:4,
-                                        background:'var(--sp-s2)',
-                                        color:'var(--sp-tx1)',
-                                        cursor:'pointer',
-                                        flex:1,
-                                    }}
-                                />
-                                <button
-                                    onClick={handleApplyDateRange}
-                                    className={`${sp.btn} ${sp.btnPrimary}`}
-                                    style={{
-                                        padding:'6px 14px',
-                                        fontSize:13,
-                                        fontWeight:600,
-                                    }}
-                                >
-                                    Apply
-                                </button>
-                                <span style={{fontSize:12,color:'var(--sp-txm)',whiteSpace:'nowrap'}}>
-                                    ({days}d)
-                                </span>
-                            </div>
-                        </div>
-
-                        {/* Stats cards - vertical layout */}
-                        <div className={sp.statCard} style={{width:480,padding:'14px 18px'}}>
-                            <div className={sp.statLabel} style={{fontSize:14}}>Total Transcripts</div>
-                            <div className={sp.statNum} style={{fontSize:28}}>{analytics?.total.toLocaleString() || 0}</div>
-                        </div>
-                        <div className={sp.statCard} style={{width:480,padding:'14px 18px'}}>
-                            <div className={sp.statLabel} style={{fontSize:14}}>Unique Tags</div>
-                            <div className={sp.statNum} style={{fontSize:28}}>{analytics?.top_tags.length || 0}</div>
-                        </div>
-                        <div className={sp.statCard} style={{width:480,padding:'14px 18px'}}>
-                            <div className={sp.statLabel} style={{fontSize:14}}>Categories</div>
-                            <div className={sp.statNum} style={{fontSize:28}}>{analytics?.by_category.length || 0}</div>
-                        </div>
-                        <div className={sp.statCard} style={{width:480,padding:'14px 18px'}}>
-                            <div className={sp.statLabel} style={{fontSize:14}}>Days of Data</div>
-                            <div className={sp.statNum} style={{fontSize:28}}>{analytics?.timeline.length || 0}</div>
-                        </div>
+                <div className={sp.card} style={{marginBottom:16,padding:14}}>
+                    <div style={{fontSize:13,fontWeight:600,marginBottom:10,color:'var(--sp-tx1)'}}>
+                        Date Range
                     </div>
-
-                    {/* Data Coverage Calendar - Right aligned */}
-                    <div className={sp.card} style={{padding:12,width:400,flexShrink:0,marginLeft:'auto'}}>
-                        <div style={{fontSize:11,fontWeight:600,marginBottom:8,color:'var(--sp-tx1)'}}>
-                            Data Coverage Calendar
-                        </div>
-                        <TranscriptCalendar onDateClick={(date) => console.log('Selected date:', date)} />
+                    <div style={{display:'flex',alignItems:'center',gap:8}}>
+                        <input
+                            type="date"
+                            value={inputStartDate}
+                            onChange={(e) => setInputStartDate(e.target.value)}
+                            style={{
+                                padding:'6px 10px',
+                                fontSize:13,
+                                border:'1px solid var(--sp-border)',
+                                borderRadius:4,
+                                background:'var(--sp-s2)',
+                                color:'var(--sp-tx1)',
+                                cursor:'pointer',
+                                flex:1,
+                            }}
+                        />
+                        <span style={{color:'var(--sp-txm)',fontSize:13}}>to</span>
+                        <input
+                            type="date"
+                            value={inputEndDate}
+                            onChange={(e) => setInputEndDate(e.target.value)}
+                            style={{
+                                padding:'6px 10px',
+                                fontSize:13,
+                                border:'1px solid var(--sp-border)',
+                                borderRadius:4,
+                                background:'var(--sp-s2)',
+                                color:'var(--sp-tx1)',
+                                cursor:'pointer',
+                                flex:1,
+                            }}
+                        />
+                        <button
+                            onClick={handleApplyDateRange}
+                            className={`${sp.btn} ${sp.btnPrimary}`}
+                            style={{
+                                padding:'6px 14px',
+                                fontSize:13,
+                                fontWeight:600,
+                            }}
+                        >
+                            Apply
+                        </button>
+                        <span style={{fontSize:12,color:'var(--sp-txm)',whiteSpace:'nowrap'}}>
+                            ({days}d)
+                        </span>
                     </div>
                 </div>
             )}
 
             {/* Render content based on active tab */}
             {activeTab === 'derived-insights' ? (
-                <DerivedInsightsPanel days={days} />
+                <DerivedInsightsPanel days={days} analytics={analytics} />
             ) : (
                 <>
                 {/* Loading state for Raw Analytics */}
@@ -698,67 +665,7 @@ export default function AnalysisPanel() {
 
                 {!loading && analytics && analytics.total > 0 && (
                     <>
-            {/* Top Tags and Friction Points */}
-            <div style={{display:'grid',gridTemplateColumns:'repeat(2,1fr)',gap:12,marginBottom:24}}>
-                <div className={sp.card}>
-                    <div style={{fontSize:13,fontWeight:600,marginBottom:10}}>Top 15 AI-Generated Tags</div>
-                    <div style={{display:'flex',flexWrap:'wrap',gap:6,maxHeight:180,overflowY:'auto'}}>
-                        {analytics.top_tags.slice(0, 15).map((item: {tag: string; count: number}) => (
-                            <div key={item.tag} style={{
-                                padding:'4px 10px',
-                                background:'#0891b21a',
-                                border:'1px solid #0891b230',
-                                borderRadius:4,
-                                fontSize:11,
-                            }}>
-                                <span style={{color:'#0891b2',fontWeight:600}}>#{item.tag}</span>
-                                <span style={{color:'var(--sp-txm)',marginLeft:4}}>({item.count})</span>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-
-                <div className={sp.card}>
-                    <div style={{fontSize:13,fontWeight:600,marginBottom:10}}>Top 15 Friction Points</div>
-                    <div style={{display:'flex',flexWrap:'wrap',gap:6,maxHeight:180,overflowY:'auto'}}>
-                        {analytics.by_friction_point.slice(0, 15).map((item: {name: string; count: number}) => (
-                            <div key={item.name} style={{
-                                padding:'4px 10px',
-                                background:'#ef44441a',
-                                border:'1px solid #ef444430',
-                                borderRadius:4,
-                                fontSize:11,
-                            }}>
-                                <span style={{color:'#ef4444',fontWeight:600}}>{item.name}</span>
-                                <span style={{color:'var(--sp-txm)',marginLeft:4}}>({item.count})</span>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            </div>
-
             <div style={{display:'grid',gridTemplateColumns:'repeat(2,1fr)',gap:20}}>
-                <div className={sp.chartCard}>
-                    <div className={sp.chartTitle}>Transcript Volume Over Time</div>
-                    <ResponsiveContainer width="100%" height={250}>
-                        <AreaChart data={analytics.timeline} margin={{top:20,right:8,left:-20,bottom:0}}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="var(--sp-s3)" />
-                            <XAxis dataKey="date" tick={{fontSize:11,fill:'var(--sp-txm)'}} />
-                            <YAxis tick={{fontSize:11,fill:'var(--sp-txm)'}} />
-                            <Tooltip contentStyle={{background:'var(--sp-s1)',border:'1px solid var(--sp-border)',borderRadius:4,fontSize:12}} />
-                            <Area
-                                type="monotone"
-                                dataKey="count"
-                                stroke="#0891b2"
-                                fill="#0891b21a"
-                                strokeWidth={2}
-                                dot={{fill:'#0891b2',strokeWidth:2,r:4,stroke:'#fff'}}
-                                label={{position:'top',fill:'#0891b2',fontSize:11,fontWeight:600}}
-                            />
-                        </AreaChart>
-                    </ResponsiveContainer>
-                </div>
-
                 <div className={sp.chartCard}>
                     <div className={sp.chartTitle}>Top Categories</div>
                     <ResponsiveContainer width="100%" height={250}>
@@ -768,19 +675,6 @@ export default function AnalysisPanel() {
                             <YAxis tick={{fontSize:11,fill:'var(--sp-txm)'}} />
                             <Tooltip contentStyle={{background:'var(--sp-s1)',border:'1px solid var(--sp-border)',borderRadius:4,fontSize:12}} />
                             <Bar dataKey="count" fill="#10b981" radius={[4,4,0,0]} />
-                        </BarChart>
-                    </ResponsiveContainer>
-                </div>
-
-                <div className={sp.chartCard}>
-                    <div className={sp.chartTitle}>Sentiment Distribution</div>
-                    <ResponsiveContainer width="100%" height={200}>
-                        <BarChart data={analytics.by_sentiment} margin={{top:8,right:8,left:-20,bottom:0}}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="var(--sp-s3)" />
-                            <XAxis dataKey="sentiment" tick={{fontSize:11,fill:'var(--sp-txm)'}} />
-                            <YAxis tick={{fontSize:11,fill:'var(--sp-txm)'}} />
-                            <Tooltip contentStyle={{background:'var(--sp-s1)',border:'1px solid var(--sp-border)',borderRadius:4,fontSize:12}} />
-                            <Bar dataKey="count" fill="#7c3aed" radius={[4,4,0,0]} />
                         </BarChart>
                     </ResponsiveContainer>
                 </div>
@@ -797,6 +691,7 @@ export default function AnalysisPanel() {
                         </BarChart>
                     </ResponsiveContainer>
                 </div>
+
             </div>
 
             <div style={{marginTop:24,display:'grid',gridTemplateColumns:'repeat(2,1fr)',gap:20}}>
@@ -878,16 +773,6 @@ export default function AnalysisPanel() {
 
             <DynamicHeatmap key={`heatmap-${refreshKey}`} startDate={startDate} endDate={endDate} />
             <ThreeWayFlow key={`flow-${refreshKey}`} startDate={startDate} endDate={endDate} />
-
-            <div style={{marginTop:24}}>
-                <TagClusterVisualization
-                    key={`cluster-${refreshKey}`}
-                    daysBack={days}
-                    onTagClick={(tag) => {
-                        console.log('Tag clicked:', tag);
-                    }}
-                />
-            </div>
                     </>
                 )}
                 </>

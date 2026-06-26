@@ -7,7 +7,7 @@ import { logger } from '@/lib/logger';
 import { getStore } from '@/lib/supportplane/store';
 import type { TranscriptRow } from '@/lib/supportplane/db/l1-transcript-db';
 import { clusterBySimilarity, generateClusterId } from './clustering';
-import { synthesizeBugTitle, synthesizeBugDescription } from './llm-synthesis';
+import { synthesizeBugTitle, synthesizeBugDescription, synthesizeWhereAiroWentWrong } from './llm-synthesis';
 import { InsightsClient, type InsightRow } from '../supportplane/store/insights-client';
 
 /**
@@ -196,6 +196,7 @@ export async function generateBugInsights(dateRangeDays: number): Promise<void> 
       // LLM synthesis
       const title: string = await synthesizeBugTitle(cluster);
       const description: string = await synthesizeBugDescription(cluster);
+      const whereAiroWentWrong = await synthesizeWhereAiroWentWrong(cluster, 'BUG');
 
       // Calculate metrics
       const occurrenceCount: number = cluster.items.length;
@@ -258,6 +259,11 @@ export async function generateBugInsights(dateRangeDays: number): Promise<void> 
         cluster_keywords: cluster.keywords,
         sample_transcript_ids: cluster.items.slice(0, 5).map(t => t.interaction_id),
         updated_at: new Date().toISOString(),
+        // Where Airo went wrong analysis
+        where_airo_went_wrong: whereAiroWentWrong?.what_airo_did_wrong,
+        where_airo_went_wrong_platform_area: whereAiroWentWrong?.platform_area,
+        where_airo_went_wrong_codebase_locations: whereAiroWentWrong?.codebase_locations,
+        where_airo_went_wrong_technical_details: whereAiroWentWrong?.technical_details,
       };
 
       insights.push(insight);

@@ -6,8 +6,9 @@
 import { logger } from '@/lib/logger';
 import { getStore } from '@/lib/supportplane/store';
 import type { TranscriptRow } from '@/lib/supportplane/db/l1-transcript-db';
-import { generateClusterId } from './clustering';
+import { generateClusterId, type Cluster } from './clustering';
 import { InsightsClient, type InsightRow } from '../supportplane/store/insights-client';
+import { synthesizePatternAnalysis } from './llm-synthesis';
 
 /**
  * Extract raw_data JSON from transcript
@@ -193,6 +194,15 @@ export async function generateFrictionPatterns(dateRangeDays: number): Promise<v
         item_count: items.length,
       });
 
+      // Generate pattern analysis (convert to cluster format)
+      const cluster: Cluster<TranscriptRow> = {
+        id: slugify(category),
+        items,
+        keywords: [category],
+        centroid: [], // Not used for patterns
+      };
+      const patternAnalysis = await synthesizePatternAnalysis(cluster);
+
       // Weekly counts
       const weekGroups = groupByWeek(items);
       const weeklyCounts: Record<string, number> = {};
@@ -264,7 +274,7 @@ export async function generateFrictionPatterns(dateRangeDays: number): Promise<v
         created_at: new Date().toISOString(),
         insight_type: 'PATTERN',
         insight_title: `${category} Pattern`,
-        insight_description: `Friction pattern for ${category} across ${occurrenceCount} interactions`,
+        insight_description: patternAnalysis?.summary || `Friction pattern for ${category} across ${occurrenceCount} interactions`,
         occurrence_count: occurrenceCount,
         first_seen: firstSeen,
         last_seen: lastSeen,
@@ -286,6 +296,9 @@ export async function generateFrictionPatterns(dateRangeDays: number): Promise<v
         common_friction_points: topVerbiage,
         top_preventative_actions: topActions,
         top_improvement_opportunities: topOpportunities,
+        // Where things went wrong (user + Airo agent)
+        what_went_wrong: patternAnalysis?.what_went_wrong,
+        where_things_went_wrong_platform_area: patternAnalysis?.platform_area,
       };
 
       insights.push(insight);

@@ -7,7 +7,7 @@ import { logger } from '@/lib/logger';
 import { getStore } from '@/lib/supportplane/store';
 import type { TranscriptRow } from '@/lib/supportplane/db/l1-transcript-db';
 import { clusterBySimilarity, generateClusterId } from './clustering';
-import { synthesizeFeatureTitle, synthesizeFeatureDescription, synthesizeBusinessCase } from './llm-synthesis';
+import { synthesizeFeatureTitle, synthesizeFeatureDescription, synthesizeBusinessCase, synthesizeRootCause } from './llm-synthesis';
 import { InsightsClient, type InsightRow } from '../supportplane/store/insights-client';
 
 /**
@@ -208,6 +208,7 @@ export async function generateFeatureInsights(dateRangeDays: number): Promise<vo
       const title: string = await synthesizeFeatureTitle(cluster);
       const description: string = await synthesizeFeatureDescription(cluster);
       const businessCase: string = await synthesizeBusinessCase(cluster);
+      const rootCauseAnalysis = await synthesizeRootCause(cluster, 'FEATURE');
 
       // Calculate metrics
       const occurrenceCount: number = cluster.items.length;
@@ -280,6 +281,16 @@ export async function generateFeatureInsights(dateRangeDays: number): Promise<vo
         conversion_signal_rate: conversionSignalRate,
         sample_customer_quotes: sampleQuotes,
         business_case: businessCase,
+        root_cause_analysis: rootCauseAnalysis ? {
+          causes: rootCauseAnalysis.what_airo_did_wrong.map(item => ({
+            cause: item.issue,
+            description: item.description,
+            confidence: item.confidence,
+          })),
+          platform_area: rootCauseAnalysis.platform_area,
+          codebase_locations: rootCauseAnalysis.codebase_locations,
+          technical_details: rootCauseAnalysis.technical_details,
+        } : undefined,
       };
 
       insights.push(insight);

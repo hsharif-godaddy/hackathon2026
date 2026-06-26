@@ -83,11 +83,31 @@ Database schema (DynamoDB):
 
 Note: The following fields do NOT exist in DynamoDB: updated_at, ingested_at, subcategory.
 
-When asked about trends, friction points, or statistics, USE YOUR TOOLS to query the database.
-Focus on AI-generated tags which represent customer pain points with Airo App Builder.
-The raw_data field contains rich structured information about each interaction.
+Available tools:
 
-Be concise and data-driven. Always cite exact numbers from tool results.`;
+**Transcript tools (raw L1 data):**
+1. query_transcripts — aggregate stats grouped by field (category, tags, sentiment, etc.)
+2. get_friction_points — top pain points from AI tags
+3. get_transcript_stats — overall counts, averages, resolution metrics
+4. search_transcripts — find specific transcripts by text, category, tags, friction_point, or date range
+5. get_transcript_detail — get the FULL transcript text and all metadata for a specific interaction_id
+
+**Insights tools (AI-derived analysis — bugs, features, patterns):**
+6. query_insights — query derived bugs, features, or patterns sorted by occurrence, impact, or recency
+7. get_top_impact_insights — get the highest business-impact bugs/features/patterns for prioritization
+
+Strategy:
+- For aggregate transcript questions (trends, top categories, stats) → query_transcripts or get_transcript_stats
+- For specific topic search ("show me billing issues") → search_transcripts
+- To read a full conversation → get_transcript_detail (after search_transcripts)
+- For pain points and friction → get_friction_points
+- For known bugs, feature requests, or usage patterns → query_insights
+- For "what should we prioritize?" or "top issues" → get_top_impact_insights
+- To trace a bug/feature back to real conversations → use sample_transcript_ids from insights with get_transcript_detail
+
+Always USE YOUR TOOLS to query the database. Do not guess or hallucinate data.
+Be concise and data-driven. Always cite exact numbers from tool results.
+When showing results, include identifiers (interaction_id, insight_key) so the user can look them up.`;
       tools = TRANSCRIPT_TOOLS;
     } else if (context === 'feedback') {
       systemPrompt = `You are a Product Feedback Intelligence assistant for the GoDaddy Airo App Builder team.

@@ -7,6 +7,38 @@ import type { Cluster } from './clustering';
 import type { TranscriptRow } from '@/lib/supportplane/db/l1-transcript-db';
 import { callGoCode } from '../gocode-client';
 
+// Airo Builder platform context for insight generation
+const AIRO_BUILDER_CONTEXT = `
+# Airo Builder Platform Context
+
+Airo Builder is GoDaddy's AI-powered website builder. Key platform areas:
+
+**Frontend (app/)**: Next.js BFF + builder UI
+- Chat interface with AI agent
+- Visual editor for site customization
+- Domain management and connection flow
+- Publish flow UI
+
+**Backend (agents/)**: Express API + AI agents
+- AI agent skills and prompts (agents/src/skills/)
+- SQLite database for app metadata
+- SSE streaming for real-time chat
+
+**Publishing (container-scripts/)**: Site deployment
+- Domain configuration and DNS setup
+- SSL certificate provisioning
+- Deploy status and rollback
+
+**Common Pain Points**:
+- Agent understanding: AI misinterpreting user intent, generating wrong content
+- Editing UX: Confusion between edit mode vs chat mode, unclear how to modify elements
+- Publishing: Domain connection errors, DNS propagation delays, SSL issues
+- Error handling: Vague error messages, no clear recovery paths
+- Performance: Slow generation, timeouts, page load issues
+
+Focus on PLATFORM issues (what's broken in Airo Builder itself), NOT issues with individual customer websites.`;
+
+
 function extractRawData(transcript: TranscriptRow): Record<string, any> {
   if (!transcript.raw_data) return {};
 
@@ -35,11 +67,13 @@ export async function synthesizeBugTitle(cluster: Cluster<TranscriptRow>): Promi
     return cluster.keywords.slice(0, 5).join(' ');
   }
 
-  const prompt = `Generate a concise bug title (5-7 words) for an Airo App Builder PLATFORM issue from these customer friction points:
+  const prompt = `${AIRO_BUILDER_CONTEXT}
+
+Generate a concise bug title (5-7 words) for an Airo Builder PLATFORM bug from these customer friction points:
 
 ${sampleVerbiage.map((v, i) => `${i + 1}. "${v}"`).join('\n')}
 
-Focus on bugs in the Airo App Builder editor, publishing system, authentication, or platform features - NOT bugs in customers' websites.
+Consider which platform area is affected (agent skills, frontend UI, publishing flow, error handling, performance).
 Return only the title, nothing else.`;
 
   const response = await callGoCode({
@@ -66,12 +100,17 @@ export async function synthesizeBugDescription(cluster: Cluster<TranscriptRow>):
     return 'No description available';
   }
 
-  const prompt = `Synthesize a bug description (2-3 sentences) for an Airo App Builder PLATFORM issue from these customer reports:
+  const prompt = `${AIRO_BUILDER_CONTEXT}
+
+Synthesize a bug description (2-3 sentences) for an Airo Builder PLATFORM bug from these customer reports:
 
 ${sampleVerbiage.map((v, i) => `${i + 1}. "${v}"`).join('\n')}
 
-Focus on what's broken in the Airo App Builder platform (editor, publishing, auth, AI features) - NOT issues with customers' individual websites.
-Explain what's broken in the platform and how it impacts users building sites.
+Explain:
+1. What's broken in the platform (which area: agents, app UI, publishing, etc.)
+2. How it impacts users building sites
+3. Potential codebase area (e.g., agents/src/skills/, app/src/, container-scripts/)
+
 Return only the description, nothing else.`;
 
   const response = await callGoCode({
@@ -97,11 +136,13 @@ export async function synthesizeFeatureTitle(cluster: Cluster<TranscriptRow>): P
     return cluster.keywords.slice(0, 5).join(' ');
   }
 
-  const prompt = `Generate a concise feature request title (5-7 words) for Airo App Builder PLATFORM from these customer requests:
+  const prompt = `${AIRO_BUILDER_CONTEXT}
+
+Generate a concise feature request title (5-7 words) for Airo Builder PLATFORM from these customer requests:
 
 ${sampleVerbiage.map((v, i) => `${i + 1}. "${v}"`).join('\n')}
 
-Focus on features customers want in the Airo App Builder platform itself (editor improvements, new AI capabilities, publishing features) - NOT features for their individual websites.
+Consider which platform area this feature would enhance (agent capabilities, editor UI, publishing workflow, domain management).
 Return only the title, nothing else.`;
 
   const response = await callGoCode({
@@ -128,12 +169,17 @@ export async function synthesizeFeatureDescription(cluster: Cluster<TranscriptRo
     return 'No description available';
   }
 
-  const prompt = `Synthesize a feature request description (2-3 sentences) for Airo App Builder PLATFORM from these customer requests:
+  const prompt = `${AIRO_BUILDER_CONTEXT}
+
+Synthesize a feature request description (2-3 sentences) for Airo Builder PLATFORM from these customer requests:
 
 ${sampleVerbiage.map((v, i) => `${i + 1}. "${v}"`).join('\n')}
 
-Focus on what customers want added to the Airo App Builder platform itself (editor features, AI capabilities, publishing improvements) - NOT features for their individual websites.
-Explain what platform feature is being requested and why it would help users.
+Explain:
+1. What platform capability customers are requesting
+2. Why it would improve the site-building experience
+3. Which platform area it relates to (agents, editor, publishing)
+
 Return only the description, nothing else.`;
 
   const response = await callGoCode({
@@ -180,3 +226,209 @@ Return only the business case, nothing else.`;
 
   return response.choices[0]?.message?.content?.trim() || 'Unable to generate business case';
 }
+
+/**
+ * Generate "where things went wrong" analysis for PATTERN insights
+ * Focuses on both user behavior AND Airo agent behavior
+ */
+export async function synthesizePatternAnalysis(
+  cluster: Cluster<TranscriptRow>
+): Promise<{
+  summary: string;
+  what_went_wrong: Array<{
+    issue: string;
+    description: string;
+    who: 'user' | 'airo-agent' | 'both';
+  }>;
+  platform_area: string;
+} | null> {
+  const sampleVerbiage: string[] = cluster.items
+    .slice(0, 8)
+    .map(t => extractRawData(t).friction_point_verbiage)
+    .filter(Boolean);
+
+  const sampleCategories: string[] = cluster.items
+    .slice(0, 8)
+    .map(t => extractRawData(t).category)
+    .filter(Boolean);
+
+  if (sampleVerbiage.length === 0) {
+    return null;
+  }
+
+  const prompt = `${AIRO_BUILDER_CONTEXT}
+
+This is a PATTERN - a recurring friction point across multiple support contacts.
+
+Analyze these customer support transcripts:
+
+${sampleVerbiage.map((v, i) => `${i + 1}. "${v}"`).join('\n')}
+
+Categories: ${[...new Set(sampleCategories)].join(', ')}
+
+Identify 1-3 things that went wrong focusing on BOTH user behavior AND Airo agent behavior:
+
+**User side**: Did users misunderstand how to use Airo Builder? Did they expect something that doesn't exist?
+**Airo agent side**: Did the AI agent misinterpret user intent? Did it give unclear guidance? Did it generate wrong content?
+**Both**: Was there a mismatch between what users expected and what Airo delivered?
+
+For each issue, identify:
+- What went wrong (short title)
+- Detailed explanation (1-2 sentences)
+- Who's at fault: "user" (user expectation/understanding issue), "airo-agent" (AI agent behavior issue), or "both" (mismatch)
+
+Return ONLY a JSON object (no markdown, no backticks):
+{
+  "summary": "2-3 sentence overview of the pattern",
+  "what_went_wrong": [
+    {
+      "issue": "Short title (5-7 words)",
+      "description": "What went wrong and why (1-2 sentences)",
+      "who": "user|airo-agent|both"
+    }
+  ],
+  "platform_area": "one of: agents|app-ui|publish-flow|error-handling|domain-config|onboarding"
+}`;
+
+  try {
+    const response = await callGoCode({
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.3,
+      max_tokens: 400,
+      timeout_ms: 15000,
+    });
+
+    const responseText: string = response.choices[0]?.message?.content?.trim() || '';
+    if (!responseText) {
+      return null;
+    }
+
+    const analysis = JSON.parse(responseText);
+
+    if (!analysis.what_went_wrong || !Array.isArray(analysis.what_went_wrong)) {
+      return null;
+    }
+
+    return analysis;
+  } catch (error) {
+    console.error('[synthesizePatternAnalysis] Failed:', error);
+    return null;
+  }
+}
+
+/**
+ * Generate "where Airo went wrong" analysis for BUG insights
+ * Focuses on what the Airo platform/agent did wrong based on actual code and capabilities
+ */
+export async function synthesizeWhereAiroWentWrong(
+  cluster: Cluster<TranscriptRow>,
+  insightType: 'BUG' | 'FEATURE'
+): Promise<{
+  what_airo_did_wrong: Array<{
+    issue: string;
+    description: string;
+    confidence: 'high' | 'medium' | 'low';
+  }>;
+  platform_area: string;
+  codebase_locations: string[];
+  technical_details?: string;
+} | null> {
+  const sampleVerbiage: string[] = cluster.items
+    .slice(0, 8)
+    .map(t => extractRawData(t).friction_point_verbiage)
+    .filter(Boolean);
+
+  const sampleCategories: string[] = cluster.items
+    .slice(0, 8)
+    .map(t => extractRawData(t).category)
+    .filter(Boolean);
+
+  const sampleSubIntents: string[] = cluster.items
+    .slice(0, 8)
+    .map(t => extractRawData(t).sub_intent)
+    .filter(Boolean);
+
+  if (sampleVerbiage.length === 0) {
+    return null;
+  }
+
+  const typeContext: string = insightType === 'BUG'
+    ? 'This is a BUG - something in Airo Builder is broken or not working as intended.'
+    : 'This is a FEATURE REQUEST - users want a capability that doesn\'t exist yet in Airo Builder.';
+
+  const prompt = `${AIRO_BUILDER_CONTEXT}
+
+${typeContext}
+
+Analyze these customer support transcripts to identify WHERE AIRO WENT WRONG:
+
+${sampleVerbiage.map((v, i) => `${i + 1}. "${v}"`).join('\n')}
+
+Categories: ${[...new Set(sampleCategories)].join(', ')}
+Sub-intents: ${[...new Set(sampleSubIntents)].join(', ')}
+
+Focus on what THE AIRO PLATFORM AND AI AGENT did wrong:
+- Did the AI agent misinterpret user intent? (e.g., user asked to edit text but agent regenerated entire page)
+- Did the agent generate incorrect content? (e.g., wrong color, bad layout, broken code)
+- Did the platform fail? (e.g., publish failed, domain connection broke, error without recovery)
+- Did the UI confuse users? (e.g., unclear buttons, hidden features, bad error messages)
+- Did agent skills have bugs? (e.g., edit-website skill broke existing content, prompts lacking context)
+
+Identify 1-3 things Airo did wrong:
+- What Airo did wrong (short title)
+- How Airo's behavior caused the problem (1-2 sentences, simple technical language)
+- Likely codebase location where the bug lives (e.g., agents/src/skills/edit-website.ts, app/src/pages/editor/page.tsx)
+- Technical details: what's broken in the code (e.g., "edit-website prompt doesn't preserve existing CSS classes when modifying elements")
+
+Confidence level:
+- HIGH: Clear pattern across multiple transcripts pointing to same Airo failure
+- MEDIUM: Likely Airo issue based on symptoms, but needs code verification
+- LOW: Possible Airo issue, could be user error or external factor
+
+Return ONLY a JSON object (no markdown, no backticks):
+{
+  "what_airo_did_wrong": [
+    {
+      "issue": "Short title (5-7 words) - what Airo did wrong",
+      "description": "How Airo's behavior caused the problem (1-2 sentences)",
+      "confidence": "high|medium|low"
+    }
+  ],
+  "platform_area": "one of: agents|app-ui|publish-flow|error-handling|domain-config|database|infrastructure",
+  "codebase_locations": ["specific paths like agents/src/skills/edit-website.ts or app/src/pages/publish/index.tsx"],
+  "technical_details": "What's broken in the code (e.g., missing validation, agent prompt lacks context, API timeout not handled)"
+}`;
+
+  try {
+    const response = await callGoCode({
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.2, // Lower temperature for more focused technical analysis
+      max_tokens: 600,
+      timeout_ms: 15000,
+    });
+
+    const responseText: string = response.choices[0]?.message?.content?.trim() || '';
+    if (!responseText) {
+      return null;
+    }
+
+    // Parse JSON response
+    const analysis = JSON.parse(responseText);
+
+    // Validate structure
+    if (
+      !analysis.what_airo_did_wrong ||
+      !Array.isArray(analysis.what_airo_did_wrong) ||
+      analysis.what_airo_did_wrong.length === 0
+    ) {
+      return null;
+    }
+
+    return analysis;
+  } catch (error) {
+    console.error('[synthesizeRootCause] Failed:', error);
+    return null;
+  }
+}
+
+export const synthesizeRootCause = synthesizeWhereAiroWentWrong;

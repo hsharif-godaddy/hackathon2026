@@ -1,6 +1,6 @@
 'use client';
 
-import { ComponentRef, useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import * as echarts from 'echarts/core';
 import { BarChart, LineChart } from 'echarts/charts';
 import { DataZoomComponent, GridComponent, LegendComponent, MarkAreaComponent, MarkLineComponent, TooltipComponent } from 'echarts/components';
@@ -116,7 +116,7 @@ export function EChartsMiniChart({
   markAverage, weekendIndices, areaMode, size = 'small',
   zoomStart, zoomEnd, onZoomChange,
 }: EChartsMiniChartProps) {
-  const chartRef = useRef<ComponentRef<typeof ReactECharts>>(null);
+  const chartRef = useRef<InstanceType<typeof ReactECharts> | null>(null);
   const showZoom = data.length > DATA_ZOOM_MIN_POINTS;
 
   const option = useMemo<echarts.EChartsCoreOption>(() => {

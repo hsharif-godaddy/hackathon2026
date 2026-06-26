@@ -8,12 +8,12 @@ import sp from '@/components/supportplane/sp.module.css';
 interface Msg { role: 'user' | 'assistant'; text: string; ts: Date; }
 
 const SUGGESTIONS = [
-    'What are the most common intents in transcripts this week?',
-    'Show me transcripts where customers mentioned billing issues',
-    'How many transcripts were uploaded in the last 7 days?',
-    'Which agents handled the most escalations?',
-    'What are the top 5 issue categories from last month?',
-    'Find transcripts with negative sentiment and unresolved issues',
+    'What are the top bugs by business impact?',
+    'Show me the most requested features',
+    'Find transcripts about publish failures',
+    'What patterns are increasing in frequency?',
+    'What are the top friction points this week?',
+    'Which bugs are most preventable?',
 ];
 
 async function askChat(lastUserMessage: string): Promise<string> {

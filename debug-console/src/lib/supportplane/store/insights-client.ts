@@ -61,6 +61,36 @@ export interface InsightRow {
   common_friction_points?: string[];
   top_preventative_actions?: string[];
   top_improvement_opportunities?: string[];
+
+  // Root cause analysis
+  root_cause_analysis?: {
+    causes: Array<{
+      cause: string;
+      description: string;
+      confidence: 'high' | 'medium' | 'low';
+    }>;
+    platform_area: string;
+    codebase_locations: string[];
+    technical_details?: string;
+  };
+
+  // Bug-specific: where Airo went wrong
+  where_airo_went_wrong?: Array<{
+    issue: string;
+    description: string;
+    confidence: 'high' | 'medium' | 'low';
+  }>;
+  where_airo_went_wrong_platform_area?: string;
+  where_airo_went_wrong_codebase_locations?: string[];
+  where_airo_went_wrong_technical_details?: string;
+
+  // Pattern-specific: what went wrong (user + agent)
+  what_went_wrong?: Array<{
+    issue: string;
+    description: string;
+    who: 'user' | 'airo-agent' | 'both';
+  }>;
+  where_things_went_wrong_platform_area?: string;
 }
 
 export interface QueryInsightOptions {
@@ -152,7 +182,44 @@ export class InsightsClient {
         latestByKey.set(row.insight_key, row);
       }
     }
-    return Array.from(latestByKey.values());
+    return this.dedupeByTitle(Array.from(latestByKey.values()));
+  }
+
+  /**
+   * Second-pass dedup: collapse insights with identical or near-identical titles.
+   *
+   * k-means clustering is non-deterministic across runs — the same logical bug
+   * or pattern can produce different insight_keys when keywords shift. The LLM
+   * often gives them the same title. Additionally, source friction_point values
+   * may have minor textual variations ("Billing or plan confusion" vs
+   * "Billing/plan confusion") that produce distinct keys but visually identical
+   * cards. This pass normalizes titles and keeps the highest-occurrence entry.
+   */
+  private dedupeByTitle(rows: InsightRow[]): InsightRow[] {
+    const byNormalizedTitle: Map<string, InsightRow> = new Map<string, InsightRow>();
+
+    for (const row of rows) {
+      const normalized: string = row.insight_title
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, ' ')
+        .trim();
+
+      const existing: InsightRow | undefined = byNormalizedTitle.get(normalized);
+      if (!existing) {
+        byNormalizedTitle.set(normalized, row);
+        continue;
+      }
+
+      // Keep the entry with higher occurrence count; tie-break by most recent
+      if (
+        row.occurrence_count > existing.occurrence_count ||
+        (row.occurrence_count === existing.occurrence_count && row.created_at > existing.created_at)
+      ) {
+        byNormalizedTitle.set(normalized, row);
+      }
+    }
+
+    return Array.from(byNormalizedTitle.values());
   }
 
   /**

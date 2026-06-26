@@ -3,6 +3,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { withAuth } from '@/lib/api-auth';
 import { getTranscriptById, updateTranscriptTags } from '@/lib/supportplane/db/l1-transcript-db';
 import { extractTagsFromTranscript } from '@/lib/l1-transcript-ai-tagging';
 import { logger } from '@/lib/logger';
@@ -10,7 +11,7 @@ import { logger } from '@/lib/logger';
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
-export async function POST(request: NextRequest): Promise<NextResponse> {
+async function handler(request: NextRequest): Promise<NextResponse> {
   try {
     const body = await request.json();
     const { interaction_id } = body;
@@ -63,3 +64,5 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     );
   }
 }
+
+export const POST = withAuth(handler);

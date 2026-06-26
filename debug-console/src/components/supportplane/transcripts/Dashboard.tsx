@@ -4,7 +4,6 @@ import React, { useEffect, useState } from 'react';
 import { RefreshCw, FileText, TrendingUp, Calendar, Upload, BarChart2 } from 'lucide-react';
 import sp from '@/components/supportplane/sp.module.css';
 import type { PanelId } from '@/components/supportplane/types';
-import TagClusterVisualization from '@/components/supportplane/analysis/TagClusterVisualization';
 import PatternSeverityChart from '@/components/supportplane/transcripts/PatternSeverityChart';
 
 interface Stats {
@@ -140,17 +139,8 @@ export default function TranscriptsDashboard({ onNav }: { onNav?: (id: PanelId) 
                 </div>
             </div>
 
-            {/* Tag Cluster Visualization + Pattern Severity */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
-                <TagClusterVisualization
-                    onTagClick={(tag) => {
-                        // Navigate to browse panel with tag filter
-                        if (onNav) {
-                            onNav('transcripts' as PanelId);
-                            // Tag will be applied via URL params or state management
-                        }
-                    }}
-                />
+            {/* Pattern Severity */}
+            <div style={{ marginBottom: 14 }}>
                 <PatternSeverityChart daysBack={30} />
             </div>
 
