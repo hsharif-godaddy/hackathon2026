@@ -200,6 +200,19 @@ describe('POST /api/inbox', () => {
       expect(url).toContain('/staff/7');
     });
 
+    it('resolves update_brand to PUT /brands/{brandId}', async () => {
+      mockFetch.mockResolvedValue(new Response(JSON.stringify({}), { status: 200 }));
+      const request = makeRequest(
+        { operation: 'update_brand', brandId: '550e8400-e29b-41d4-a716-446655440000', body: {} },
+        'local.gasket.dev-godaddy.com:8443',
+      );
+      await POST(request, createAuthContext('jwt-token'));
+      const url = mockFetch.mock.calls[0][0] as string;
+      const method = mockFetch.mock.calls[0][1]?.method as string;
+      expect(url).toContain('/brands/550e8400-e29b-41d4-a716-446655440000');
+      expect(method).toBe('PUT');
+    });
+
     it('uses BFF path for activate_account', async () => {
       mockFetch.mockResolvedValue(new Response(JSON.stringify({}), { status: 200 }));
       const request = makeRequest(

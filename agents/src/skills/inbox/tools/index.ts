@@ -43,6 +43,9 @@ import {
 import { readWidgetConfig, writeWidgetConfig } from './widget-config.js';
 import { createForWorkspace } from '../../../workspace/index.js';
 import { regenerateEntryApiRegistrations } from '../../../utils/entry-api-sync.js';
+import { syncAppLogoToInboxAvatar, updateInboxAvatar } from '../../../services/inbox-avatar-sync.js';
+import { mediaManifestService } from '../../../services/MediaManifestService.js';
+import { parseImageSlotPath } from '../../../utils/slot-reference-utils.js';
 
 const logger = Logger.create({ component: 'inbox.skill' });
 const memoryRepo = new MemoryRepository();
@@ -156,6 +159,8 @@ export const discoverAccountTool: SkillToolDefinition = {
         if (app?.name) {
           syncAccountName(client, appId, existingBrand.value as string, existingAccount.value as string, app.name);
         }
+        syncAppLogoToInboxAvatar(client, appId, existingBrand.value as string)
+          .catch((err: unknown) => { logger.warn('inbox.skill.discover_account.avatar_sync_failed', { appId, error: err instanceof Error ? err.message : String(err) }); });
       }
       return { alreadyConfigured: true, accountId: existingBrand.value as string };
     }
@@ -185,6 +190,8 @@ export const discoverAccountTool: SkillToolDefinition = {
       if (app?.name) {
         syncAccountName(client, appId, linkedToThisApp.brandUrl, linkedToThisApp.accountUrl, app.name);
       }
+      syncAppLogoToInboxAvatar(client, appId, linkedToThisApp.brandUrl)
+        .catch((err: unknown) => { logger.warn('inbox.skill.discover_account.avatar_sync_failed', { appId, error: err instanceof Error ? err.message : String(err) }); });
 
       logger.info('inbox.skill.discover_account.found_linked', { appId, accountUrl: linkedToThisApp.accountUrl, brandUrl: linkedToThisApp.brandUrl });
       return { alreadyConfigured: true, accountId: linkedToThisApp.brandUrl };
@@ -206,6 +213,8 @@ export const discoverAccountTool: SkillToolDefinition = {
       }
       await memoryRepo.set(appId, MEM_ACCOUNT_ID, accountUrl);
       await memoryRepo.set(appId, MEM_BRAND_ID, brandUrl);
+      syncAppLogoToInboxAvatar(client, appId, brandUrl)
+        .catch((err: unknown) => { logger.warn('inbox.skill.discover_account.avatar_sync_failed', { appId, error: err instanceof Error ? err.message : String(err) }); });
       logger.info('inbox.skill.discover_account.auto_created', { appId, accountUrl, brandUrl });
       return { accountCreated: true, accountId: brandUrl };
     }
@@ -384,7 +393,7 @@ export const setupWidgetTool: SkillToolDefinition = {
 export const updateWidgetConfigTool: SkillToolDefinition = {
   name: 'update_widget_config',
   description:
-    'Update widget settings: syncs to the backend and writes the config file. ' +
+    'Update widget settings (color, position, label, avatar): syncs to the backend and writes the config file. ' +
     'Requires inbox__setup_widget to have run first. Omit a field to leave it unchanged.',
   parameters: z.object({
     color: z
@@ -400,12 +409,19 @@ export const updateWidgetConfigTool: SkillToolDefinition = {
       .string()
       .optional()
       .describe('Greeting text shown in the chat bubble (e.g. "Chat with us!")'),
+    avatarUrl: z
+      .string()
+      .url()
+      .or(z.literal(''))
+      .optional()
+      .describe('URL for the chat widget avatar/logo image. Pass "" to reset to default.'),
   }),
   execute: async (
     input: {
       color?: string;
       position?: 'bottom-right' | 'bottom-left';
       labelText?: string;
+      avatarUrl?: string;
     },
     context?: ToolContext,
   ) => {
@@ -444,14 +460,19 @@ export const updateWidgetConfigTool: SkillToolDefinition = {
     if (input.position) embeddablePatch.shoutbox_position = input.position;
     if (input.labelText) embeddablePatch.shoutbox_label = input.labelText;
 
-    if (Object.keys(embeddablePatch).length === 0) {
+    if (Object.keys(embeddablePatch).length === 0 && input.avatarUrl === undefined) {
       return { message: 'No fields provided; nothing updated.' };
     }
 
-    const result = await updateEmbeddable(client, appId, brandId, embeddableId, embeddablePatch);
-    if (!result.success) return { error: `Failed to update embeddable: ${result.error}` };
+    const updated: string[] = [];
 
-    // Write the config file — always restore account from memory in case the file was deleted
+    if (Object.keys(embeddablePatch).length > 0) {
+      const result = await updateEmbeddable(client, appId, brandId, embeddableId, embeddablePatch);
+      if (!result.success) return { error: `Failed to update embeddable: ${result.error}` };
+      updated.push(...Object.keys(embeddablePatch));
+    }
+
+    // Write the config file for any embeddable changes before attempting avatar update
     const configPath = join(app.path, 'src', 'lib', 'inboxChat.config.json');
     const config = await readWidgetConfig(configPath);
     config._support.account = brandId;
@@ -460,17 +481,41 @@ export const updateWidgetConfigTool: SkillToolDefinition = {
     if (input.labelText) config._support.ui.widget.label = { text: input.labelText };
     await writeWidgetConfig(configPath, config);
 
-    logger.info('inbox.skill.update.success', { appId, brandId, embeddableId, updated: Object.keys(embeddablePatch) });
-    return { brandId, embeddableId, updated: Object.keys(embeddablePatch), configWritten: configPath };
+    if (input.avatarUrl !== undefined) {
+      let resolvedAvatarUrl: string | null = input.avatarUrl || null;
+      if (resolvedAvatarUrl) {
+        const slotPath: string | null = parseImageSlotPath(resolvedAvatarUrl);
+        if (slotPath) {
+          const slotResult = await mediaManifestService.getSlot(appId, slotPath);
+          if (!slotResult.success || !slotResult.slot?.currentUrl) {
+            return { error: `Could not resolve media slot "${slotPath}" to a persistent URL` };
+          }
+          resolvedAvatarUrl = slotResult.slot.currentUrl;
+        } else if (!resolvedAvatarUrl.startsWith('https://')) {
+          return { error: 'avatarUrl must be an https:// URL or an airo-assets slot reference' };
+        }
+      }
+
+      const avatarResult = await updateInboxAvatar(client, appId, brandId, resolvedAvatarUrl);
+      if (!avatarResult.success) {
+        return { error: `Failed to update avatar: ${avatarResult.error}` };
+      }
+      updated.push('avatarUrl');
+    }
+
+    logger.info('inbox.skill.update.success', { appId, brandId, embeddableId, updated });
+    return { brandId, embeddableId, updated, configWritten: configPath };
   },
   computeState(input: any, output: any) {
     if (!output?.brandId) return null;
     return {
       ...(input.color && { color: input.color }),
       ...(input.position && { position: input.position }),
+      ...(input.labelText && { labelText: input.labelText }),
+      ...(input.avatarUrl !== undefined && { avatarUrl: input.avatarUrl || null }),
     };
   },
-  config: { requiresApp: true, timeout: 15_000 },
+  config: { requiresApp: true, timeout: 30_000 },
 };
 
 // ============================================================================

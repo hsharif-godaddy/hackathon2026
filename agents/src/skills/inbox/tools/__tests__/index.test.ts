@@ -37,6 +37,7 @@ const mockListCategories = vi.fn();
 const mockCreateCategory = vi.fn();
 const mockGetStaff = vi.fn();
 const mockUpdateStaff = vi.fn();
+const mockUpdateBrand = vi.fn();
 vi.mock('../../../../services/inbox-client.js', () => ({
   listAccounts: (...args: unknown[]) => mockListAccounts(...args),
   activateAccount: (...args: unknown[]) => mockActivateAccount(...args),
@@ -48,6 +49,7 @@ vi.mock('../../../../services/inbox-client.js', () => ({
   createCategory: (...args: unknown[]) => mockCreateCategory(...args),
   getStaff: (...args: unknown[]) => mockGetStaff(...args),
   updateStaff: (...args: unknown[]) => mockUpdateStaff(...args),
+  updateBrand: (...args: unknown[]) => mockUpdateBrand(...args),
 }));
 
 const mockAccess = vi.fn();
@@ -78,6 +80,20 @@ vi.mock('../../../../workspace/index.js', () => ({
 const mockRegenerateEntryApiRegistrations = vi.fn();
 vi.mock('../../../../utils/entry-api-sync.js', () => ({
   regenerateEntryApiRegistrations: (...args: unknown[]) => mockRegenerateEntryApiRegistrations(...args),
+}));
+
+const mockSyncAppLogoToInboxAvatar = vi.fn().mockResolvedValue(undefined);
+const mockUpdateInboxAvatar = vi.fn().mockResolvedValue({ success: true, data: undefined });
+vi.mock('../../../../services/inbox-avatar-sync.js', () => ({
+  syncAppLogoToInboxAvatar: (...args: unknown[]) => mockSyncAppLogoToInboxAvatar(...args),
+  updateInboxAvatar: (...args: unknown[]) => mockUpdateInboxAvatar(...args),
+}));
+
+const mockGetSlot = vi.fn();
+vi.mock('../../../../services/MediaManifestService.js', () => ({
+  mediaManifestService: {
+    getSlot: (...args: unknown[]) => mockGetSlot(...args),
+  },
 }));
 
 const { discoverAccountTool, setupWidgetTool, updateWidgetConfigTool, removeWidgetTool, setupFormTool, setFormEmailTool, removeFormTool, listFormsTool, getStaffSettingsTool, updateStaffSettingsTool } =
@@ -134,6 +150,8 @@ describe('inbox skill tools', () => {
       expect(result.accountId).toBe('a1b2c3d4-0000-4000-8000-000000000001');
       // Should not call listAccounts when both are cached
       expect(mockListAccounts).not.toHaveBeenCalled();
+      // Should sync logo to staff avatar
+      expect(mockSyncAppLogoToInboxAvatar).toHaveBeenCalledWith(mockClient, 'app-123', 'a1b2c3d4-0000-4000-8000-000000000001');
     });
 
     it('backfills accountId from linkedToThisApp when only brand exists in memory', async () => {
@@ -678,6 +696,83 @@ describe('inbox skill tools', () => {
       const result = await updateWidgetConfigTool.execute({ color: '#aabbcc' }, context);
 
       expect(result.error).toContain('ClientActionService not available');
+    });
+
+    it('updates staff and brand avatar when avatarUrl is provided', async () => {
+      mockUpdateInboxAvatar.mockResolvedValue({ success: true, data: undefined });
+
+      const result = await updateWidgetConfigTool.execute({ avatarUrl: 'https://cdn.example.com/logo.png' }, context);
+
+      expect(mockUpdateInboxAvatar).toHaveBeenCalledWith(mockClient, 'app-123', 'a1b2c3d4-0000-4000-8000-000000000001', 'https://cdn.example.com/logo.png');
+      expect(result.updated).toContain('avatarUrl');
+    });
+
+    it('does not call updateEmbeddable when only avatarUrl is provided', async () => {
+      mockUpdateInboxAvatar.mockResolvedValue({ success: true, data: undefined });
+
+      await updateWidgetConfigTool.execute({ avatarUrl: 'https://cdn.example.com/logo.png' }, context);
+
+      expect(mockUpdateEmbeddable).not.toHaveBeenCalled();
+    });
+
+    it('returns error when avatar update fails', async () => {
+      mockUpdateInboxAvatar.mockResolvedValue({ success: false, error: 'staff: unauthorized' });
+
+      const result = await updateWidgetConfigTool.execute({ avatarUrl: 'https://cdn.example.com/logo.png' }, context);
+
+      expect(result.error).toContain('Failed to update avatar');
+    });
+
+    it('resolves airo-assets URL to persistent CDN URL from manifest', async () => {
+      mockGetSlot.mockResolvedValue({ success: true, slot: { currentUrl: 'https://isteam.wsimg.com/logo/primary.png' } });
+      mockUpdateInboxAvatar.mockResolvedValue({ success: true, data: undefined });
+
+      const result = await updateWidgetConfigTool.execute({ avatarUrl: 'https://local.gasket.dev-godaddy.com:5001/airo-assets/images/logo/primary' }, context);
+
+      expect(mockGetSlot).toHaveBeenCalledWith('app-123', 'logo/primary');
+      expect(mockUpdateInboxAvatar).toHaveBeenCalledWith(mockClient, 'app-123', 'a1b2c3d4-0000-4000-8000-000000000001', 'https://isteam.wsimg.com/logo/primary.png');
+      expect(result.updated).toContain('avatarUrl');
+    });
+
+    it('returns error when airo-assets slot cannot be resolved', async () => {
+      mockGetSlot.mockResolvedValue({ success: false, error: 'not found' });
+
+      const result = await updateWidgetConfigTool.execute({ avatarUrl: 'https://local.gasket.dev-godaddy.com:5001/airo-assets/images/logo/primary' }, context);
+
+      expect(result.error).toContain('Could not resolve media slot');
+    });
+
+    it('passes external URL directly without calling getSlot', async () => {
+      mockUpdateInboxAvatar.mockResolvedValue({ success: true, data: undefined });
+
+      const result = await updateWidgetConfigTool.execute({ avatarUrl: 'https://cdn.example.com/my-logo.png' }, context);
+
+      expect(mockGetSlot).not.toHaveBeenCalled();
+      expect(mockUpdateInboxAvatar).toHaveBeenCalledWith(mockClient, 'app-123', 'a1b2c3d4-0000-4000-8000-000000000001', 'https://cdn.example.com/my-logo.png');
+      expect(result.updated).toContain('avatarUrl');
+    });
+
+    it('resets avatar to null when avatarUrl is empty string', async () => {
+      mockUpdateInboxAvatar.mockResolvedValue({ success: true, data: undefined });
+
+      const result = await updateWidgetConfigTool.execute({ avatarUrl: '' }, context);
+
+      expect(mockUpdateInboxAvatar).toHaveBeenCalledWith(mockClient, 'app-123', 'a1b2c3d4-0000-4000-8000-000000000001', null);
+      expect(result.updated).toContain('avatarUrl');
+    });
+
+    it('rejects non-https avatarUrl that is not an airo-assets slot', async () => {
+      const result = await updateWidgetConfigTool.execute({ avatarUrl: 'http://evil.com/track.png' }, context);
+
+      expect(result.error).toContain('https://');
+      expect(mockUpdateInboxAvatar).not.toHaveBeenCalled();
+    });
+
+    it('rejects data: URI avatarUrl', async () => {
+      const result = await updateWidgetConfigTool.execute({ avatarUrl: 'data:image/png;base64,abc' }, context);
+
+      expect(result.error).toContain('https://');
+      expect(mockUpdateInboxAvatar).not.toHaveBeenCalled();
     });
   });
 

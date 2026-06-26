@@ -34,6 +34,7 @@ type InboxOperation =
   | 'list_accounts'
   | 'activate_account'
   | 'update_account'
+  | 'update_brand'
   | 'list_embeddables'
   | 'create_embeddable'
   | 'update_embeddable'
@@ -67,6 +68,11 @@ function resolveRequest(req: InboxRequest): { method: 'GET' | 'POST' | 'PUT'; pa
       }
       return { method: 'PUT', path: `/accounts/${accountUrl}` };
     }
+    case 'update_brand':
+      if (!req.brandId || !UUID_RE.test(req.brandId)) {
+        return { error: 'brandId (UUID) is required for update_brand' };
+      }
+      return { method: 'PUT', path: `/brands/${req.brandId}` };
     case 'list_embeddables':
       return { method: 'GET', path: '/embeddables' };
     case 'create_embeddable':

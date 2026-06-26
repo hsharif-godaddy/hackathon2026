@@ -58,6 +58,7 @@ type Operation =
   | 'list_accounts'
   | 'activate_account'
   | 'update_account'
+  | 'update_brand'
   | 'list_embeddables'
   | 'create_embeddable'
   | 'update_embeddable'
@@ -336,10 +337,12 @@ export async function createCategory(
 export interface Staff {
   id: number;
   notification_email: string | null;
+  avatar_url?: string | null;
 }
 
 export interface UpdateStaffInput {
   notification_email?: string;
+  avatar_url?: string | null;
 }
 
 // ----------------------------------------------------------------------------
@@ -384,5 +387,27 @@ export async function updateStaff(
     return { success: false, error: 'Inbox response missing staff.id' };
   }
   return { success: true, data: staff };
+}
+
+// ----------------------------------------------------------------------------
+// Brand operations
+// ----------------------------------------------------------------------------
+
+export interface UpdateBrandInput {
+  avatar_url?: string | null;
+}
+
+export async function updateBrand(
+  client: IClientActionService,
+  appId: string,
+  brandId: string,
+  fields: UpdateBrandInput,
+): Promise<InboxResult<unknown>> {
+  return dispatch<unknown>(client, {
+    operation: 'update_brand',
+    appId,
+    brandId,
+    body: { brand: fields },
+  });
 }
 

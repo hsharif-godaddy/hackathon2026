@@ -7,7 +7,7 @@ vi.mock('../../logging/index.js', () => ({
 const mockExecuteAction = vi.fn();
 const mockClient = { executeAction: mockExecuteAction } as any;
 
-const { listEmbeddables, createEmbeddable, updateEmbeddable, listAccounts, activateAccount, listCategories, createCategory, getStaff, updateStaff } =
+const { listEmbeddables, createEmbeddable, updateEmbeddable, listAccounts, activateAccount, listCategories, createCategory, getStaff, updateStaff, updateBrand } =
   await import('../inbox-client.js');
 
 describe('inbox-client', () => {
@@ -663,6 +663,66 @@ describe('inbox-client', () => {
       if (!result.success) {
         expect(result.error).toContain('missing staff.id');
       }
+    });
+
+    it('passes avatar_url in body', async () => {
+      mockExecuteAction.mockResolvedValue({
+        success: true,
+        result: { status: 200, data: { staff: { id: 7, notification_email: null, avatar_url: 'https://example.com/logo.png' } } },
+      });
+
+      const result = await updateStaff(mockClient, 'app-1', 'brand-1', 7, { avatar_url: 'https://example.com/logo.png' });
+
+      expect(mockExecuteAction).toHaveBeenCalledWith(
+        expect.objectContaining({
+          params: expect.objectContaining({
+            body: { avatar_url: 'https://example.com/logo.png' },
+          }),
+        }),
+      );
+      expect(result.success).toBe(true);
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // updateBrand
+  // --------------------------------------------------------------------------
+
+  describe('updateBrand', () => {
+    it('wraps fields in { brand: fields } envelope', async () => {
+      mockExecuteAction.mockResolvedValue({
+        success: true,
+        result: { status: 200, data: { brand: { id: 'brand-1' } } },
+      });
+
+      await updateBrand(mockClient, 'app-1', 'brand-1', { avatar_url: 'https://example.com/logo.png' });
+
+      expect(mockExecuteAction).toHaveBeenCalledWith(
+        expect.objectContaining({
+          params: expect.objectContaining({
+            operation: 'update_brand',
+            brandId: 'brand-1',
+            body: { brand: { avatar_url: 'https://example.com/logo.png' } },
+          }),
+        }),
+      );
+    });
+
+    it('passes null avatar_url to clear the avatar', async () => {
+      mockExecuteAction.mockResolvedValue({
+        success: true,
+        result: { status: 200, data: { brand: { id: 'brand-1' } } },
+      });
+
+      await updateBrand(mockClient, 'app-1', 'brand-1', { avatar_url: null });
+
+      expect(mockExecuteAction).toHaveBeenCalledWith(
+        expect.objectContaining({
+          params: expect.objectContaining({
+            body: { brand: { avatar_url: null } },
+          }),
+        }),
+      );
     });
   });
 });

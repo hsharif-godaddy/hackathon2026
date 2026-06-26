@@ -7,7 +7,7 @@ whenToUse: >-
   Only route to ai-agent if the user explicitly needs a custom AI-powered solution with their
   own API key or tool-calling capabilities.
 intents:
-  - chat widget/live chat/customer messaging/support chat/chatbot/chat feature/messaging/contact widget/chat bubble/inbox
+  - chat widget/live chat/customer messaging/support chat/chatbot/chat feature/messaging/contact widget/chat bubble/inbox/chat avatar/widget avatar/widget logo
   - contact form/contact us/inquiry form/message form/feedback form/get in touch form
   - notification email/change notification email/update notification email/inbox email/email notifications settings/check notification email/staff settings
   - remove chat widget/delete chat/uninstall chat/disable chat widget/remove inbox widget
