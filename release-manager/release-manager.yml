@@ -100,6 +100,7 @@ pipeline:
           group: validate
           advisory: true # surfaced for the reviewer; does not block the prod gate
           test_summary: true # render per-suite counts + failed tests from the run's e2e-summary artifact
+          host_paas: true # this run also fans out host-paas e2e → split Slack into "AAB e2e" + "PaaS e2e"
           repo: gdcorp-partners/airo-app-builder
           workflow: playwright-e2e.yml
           active_run_check: false

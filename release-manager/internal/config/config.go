@@ -89,7 +89,14 @@ type Stage struct {
 	// artifact and rendering a per-suite test breakdown (counts + failed test
 	// names) beneath the stage line in Slack. Best-effort: a missing/unparseable
 	// artifact is ignored. Set on the e2e / regression validate stages.
-	TestSummary   bool              `yaml:"test_summary"`
+	TestSummary bool `yaml:"test_summary"`
+	// HostPaas marks a test_summary stage that ALSO runs the cross-repo host-paas
+	// e2e suite (run_host_paas_e2e). The Slack render splits such a stage into two
+	// peer top-level lines — "AAB e2e" (with its per-test failures) and "PaaS e2e"
+	// (pass/fail only; its per-test failures live in the hosting-web-apps jobs of
+	// the same run, reached via View Run) — instead of one combined stage line.
+	// Set on e2e-test.
+	HostPaas      bool              `yaml:"host_paas"`
 	Inputs        map[string]string `yaml:"inputs"`
 	Outputs       map[string]Output `yaml:"outputs"`
 	Matrix        []MatrixEntry     `yaml:"matrix"`

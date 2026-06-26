@@ -193,6 +193,14 @@ func Message(s State) string {
 }
 
 func writeStage(sb *strings.Builder, sr *pipeline.StageRun) {
+	// A host_paas e2e stage renders as two peer top-level lines (AAB e2e + PaaS
+	// e2e) rather than one combined stage line — but only once its summary is in
+	// hand; without it (dry-run / fetch failed) fall through to the normal line.
+	if sr.Stage.HostPaas && sr.TestReport != nil {
+		writeProductSplit(sb, sr)
+		return
+	}
+
 	emoji := Emoji(sr.State)
 	line := fmt.Sprintf("%s%s %s", Nbsp, emoji, sr.Stage.Name)
 
@@ -231,8 +239,8 @@ func writeStage(sb *strings.Builder, sr *pipeline.StageRun) {
 // writeTestReport renders the per-suite e2e/regression breakdown beneath a
 // stage line when the stage opted into test_summary and a summary was fetched.
 // Each suite gets a counts line (indented one level past the stage), with
-// failed test names bulleted a further level in; the external host-paas job is
-// reported pass/fail only. No-op when tr is nil.
+// failed test names bulleted a further level in. No-op when tr is nil.
+// (host_paas stages don't use this path — see writeProductSplit.)
 func writeTestReport(sb *strings.Builder, tr *testreport.Summary) {
 	if tr == nil {
 		return
@@ -253,13 +261,72 @@ func writeTestReport(sb *strings.Builder, tr *testreport.Summary) {
 		}
 	}
 
-	if tr.HostPaas.Present {
-		sb.WriteString(fmt.Sprintf("%s%s Host-PaaS e2e — %s\n", Nbspx2, suiteEmoji(tr.HostPaas.Status), tr.HostPaas.Status))
-	}
-
 	// Only meaningful when there were no per-suite results to show.
 	if tr.InfraFailure && len(tr.Suites) == 0 {
 		sb.WriteString(Nbspx2 + ":x: run failed before tests produced results (setup/infra)\n")
+	}
+}
+
+// writeProductSplit renders a host_paas e2e stage as TWO peer top-level lines
+// instead of one "E2E Tests" stage line: the AAB suite(s) — with full per-test
+// failures, since those reports are local to this repo — and a "PaaS e2e" line
+// that is pass/fail only (the host-paas suite runs in the hosting-web-apps jobs
+// of this same run, so its per-test failures are one click away via View Run,
+// not in our summary). Both lines link to the same dispatched run.
+func writeProductSplit(sb *strings.Builder, sr *pipeline.StageRun) {
+	runLink := ""
+	if sr.RunURL != "" && !strings.HasPrefix(sr.RunURL, "[DRY RUN]") {
+		runLink = fmt.Sprintf(" — [View Run](%s)", sr.RunURL)
+	}
+
+	tr := sr.TestReport
+	// AAB product: one top-level line per parsed suite, failures bulleted beneath.
+	// If the run produced no suites (infra failure before results), fall back to
+	// the stage's own state so the AAB line isn't dropped entirely.
+	if len(tr.Suites) == 0 {
+		line := fmt.Sprintf("%s%s AAB e2e%s", Nbsp, Emoji(sr.State), runLink)
+		if sr.Error != "" {
+			line += " — " + sr.Error
+		} else if tr.InfraFailure {
+			line += " — run failed before tests produced results (setup/infra)"
+		}
+		sb.WriteString(line + "\n")
+	}
+	for _, s := range tr.Suites {
+		line := fmt.Sprintf("%s%s %s — %s", Nbsp, suiteEmoji(s.Status), s.Label, suiteCounts(s))
+		if len(s.FailedShards) > 0 {
+			line += " · failed shard(s): " + joinInts(s.FailedShards)
+		}
+		line += runLink
+		sb.WriteString(line + "\n")
+
+		for _, t := range s.FailedTests {
+			sb.WriteString(Nbspx2 + "• " + t + "\n")
+		}
+		if s.FailedTestsOverflow > 0 {
+			sb.WriteString(fmt.Sprintf("%s• …and %d more\n", Nbspx2, s.FailedTestsOverflow))
+		}
+	}
+
+	// PaaS product: pass/fail only (its per-test detail lives in the linked run).
+	paasStatus := tr.HostPaas.Status
+	if paasStatus == "" {
+		paasStatus = "skipped"
+	}
+	sb.WriteString(fmt.Sprintf("%s%s PaaS e2e — %s%s\n", Nbsp, paasEmoji(paasStatus), paasStatus, runLink))
+}
+
+// paasEmoji maps the host-paas pass/fail/skipped status to its Slack emoji.
+// Unlike suiteEmoji it distinguishes "skipped" (the suite is opt-in and may not
+// have run) from a pass, so a skipped PaaS line isn't shown with a green check.
+func paasEmoji(status string) string {
+	switch status {
+	case "failed":
+		return ":x:"
+	case "passed":
+		return ":white_check_mark:"
+	default:
+		return ":fast_forward:"
 	}
 }
 

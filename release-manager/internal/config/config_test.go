@@ -798,6 +798,31 @@ func TestValidateStagesAdvisoryActualConfig(t *testing.T) {
 	}
 }
 
+func TestHostPaasStageActualConfig(t *testing.T) {
+	cfg, err := Load("../../release-manager.yml")
+	if err != nil {
+		t.Skipf("skipping actual config test: %v", err)
+	}
+
+	hostPaas := map[string]bool{}
+	for _, env := range cfg.Pipeline.Environments {
+		for _, s := range env.Stages {
+			hostPaas[s.ID] = s.HostPaas
+		}
+	}
+
+	// Only the test-phase e2e stage fans out host-paas e2e, so only it splits the
+	// Slack report into peer "AAB e2e" + "PaaS e2e" lines.
+	if !hostPaas["e2e-test"] {
+		t.Error("e2e-test must set host_paas:true (it dispatches run_host_paas_e2e)")
+	}
+	for _, id := range []string{"regression-test", "e2e-prod", "regression-prod"} {
+		if hostPaas[id] {
+			t.Errorf("%q must NOT set host_paas (it does not run the host-paas suite)", id)
+		}
+	}
+}
+
 func TestLoadActualConfig(t *testing.T) {
 	cfg, err := Load("../../release-manager.yml")
 	if err != nil {

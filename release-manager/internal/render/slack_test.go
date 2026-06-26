@@ -239,7 +239,6 @@ func TestMessageTestReportBreakdown(t *testing.T) {
 				FailedShards: []int{6},
 				FailedTests:  []string{"develop-media.spec.ts › uploads an image"}},
 		},
-		HostPaas: testreport.HostPaas{Present: true, Status: "failed"},
 	}
 
 	out := Message(State{
@@ -251,7 +250,6 @@ func TestMessageTestReportBreakdown(t *testing.T) {
 	for _, want := range []string{
 		Nbspx2 + ":x: AAB regression — 1 failed, 27 passed, 2 skipped (30 total) · failed shard(s): 6\n",
 		Nbspx3 + "• develop-media.spec.ts › uploads an image\n",
-		Nbspx2 + ":x: Host-PaaS e2e — failed\n",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("rendered message missing %q:\n%s", want, out)
@@ -264,21 +262,77 @@ func TestMessageTestReportBreakdown(t *testing.T) {
 }
 
 func TestMessageTestReportPassedCounts(t *testing.T) {
-	sr := stage("test", "E2E Tests", pipeline.StateSuccess, 7*time.Minute, "https://x/runs/1")
+	sr := stage("test", "Regression Tests", pipeline.StateSuccess, 7*time.Minute, "https://x/runs/1")
 	sr.TestReport = &testreport.Summary{
 		Overall: "success",
 		Suites: []testreport.Suite{
-			{Key: "e2e", Label: "AAB e2e", Status: "passed", Total: 1, Passed: 1},
+			{Key: "regression", Label: "AAB regression", Status: "passed", Total: 1, Passed: 1},
+		},
+	}
+
+	out := Message(State{Operator: "alice", Branch: "main", EnvOrder: []string{"test"}, Stages: []*pipeline.StageRun{sr}})
+	if !strings.Contains(out, Nbspx2+":white_check_mark: AAB regression — 1 passed (1 total)\n") {
+		t.Errorf("missing passed-suite counts line:\n%s", out)
+	}
+}
+
+func TestMessageE2EProductSplit(t *testing.T) {
+	// A host_paas e2e stage renders as TWO peer top-level lines (AAB e2e + PaaS
+	// e2e), not one "E2E Tests" stage line. AAB carries its per-test failures;
+	// PaaS is pass/fail only. Both link to the same dispatched run.
+	sr := stage("test", "E2E Tests", pipeline.StateFailed, 24*time.Minute, "https://x/runs/42")
+	sr.Stage.HostPaas = true
+	sr.Error = "run concluded with failure"
+	sr.TestReport = &testreport.Summary{
+		Overall: "failure",
+		Suites: []testreport.Suite{
+			{Key: "e2e", Label: "AAB e2e", Status: "failed", Total: 2, Passed: 1, Failed: 1,
+				FailedTests: []string{"develop.spec.ts › creates an app"}},
 		},
 		HostPaas: testreport.HostPaas{Present: true, Status: "passed"},
 	}
 
 	out := Message(State{Operator: "alice", Branch: "main", EnvOrder: []string{"test"}, Stages: []*pipeline.StageRun{sr}})
-	if !strings.Contains(out, Nbspx2+":white_check_mark: AAB e2e — 1 passed (1 total)\n") {
-		t.Errorf("missing passed-suite counts line:\n%s", out)
+
+	for _, want := range []string{
+		// AAB e2e: top-level (Nbsp), with the run link…
+		Nbsp + ":x: AAB e2e — 1 failed, 1 passed, 0 skipped (2 total) — [View Run](https://x/runs/42)\n",
+		// …its failed test bulleted one level in…
+		Nbspx2 + "• develop.spec.ts › creates an app\n",
+		// …and PaaS e2e as a SECOND top-level line, pass/fail only, same link.
+		Nbsp + ":white_check_mark: PaaS e2e — passed — [View Run](https://x/runs/42)\n",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("split render missing %q:\n%s", want, out)
+		}
 	}
-	if !strings.Contains(out, Nbspx2+":white_check_mark: Host-PaaS e2e — passed\n") {
-		t.Errorf("missing host-paas passed line:\n%s", out)
+	// The combined "E2E Tests" stage header is replaced, so it must not appear.
+	if strings.Contains(out, "E2E Tests") {
+		t.Errorf("a host_paas stage must not render a combined stage line:\n%s", out)
+	}
+	// Generic stage error suppressed — the AAB breakdown carries the detail.
+	if strings.Contains(out, "run concluded with failure") {
+		t.Errorf("generic error should be suppressed in the split render:\n%s", out)
+	}
+}
+
+func TestMessageE2EProductSplitPaasSkipped(t *testing.T) {
+	// host-paas is opt-in; when it didn't run the PaaS line still shows — as
+	// "skipped" with a neutral emoji, never a misleading green check.
+	sr := stage("test", "E2E Tests", pipeline.StateSuccess, time.Minute, "https://x/runs/7")
+	sr.Stage.HostPaas = true
+	sr.TestReport = &testreport.Summary{
+		Overall:  "success",
+		Suites:   []testreport.Suite{{Key: "e2e", Label: "AAB e2e", Status: "passed", Total: 1, Passed: 1}},
+		HostPaas: testreport.HostPaas{Present: false, Status: "skipped"},
+	}
+
+	out := Message(State{Operator: "alice", Branch: "main", EnvOrder: []string{"test"}, Stages: []*pipeline.StageRun{sr}})
+	if !strings.Contains(out, Nbsp+":fast_forward: PaaS e2e — skipped — [View Run](https://x/runs/7)\n") {
+		t.Errorf("expected a skipped PaaS line with a neutral emoji:\n%s", out)
+	}
+	if !strings.Contains(out, Nbsp+":white_check_mark: AAB e2e — 1 passed (1 total) — [View Run](https://x/runs/7)\n") {
+		t.Errorf("expected AAB e2e as a top-level line:\n%s", out)
 	}
 }
 
