@@ -35,7 +35,7 @@ describe('fetchQuickCreate', () => {
       expect.objectContaining({
         body: expect.any(String),
       }),
-      undefined,
+      { handle401: { level: 3 } },
     )
     const body = JSON.parse(mockAppFetch.mock.calls[0][1].body)
     expect(body.initialPrompt).toBe('build me a site')
@@ -57,6 +57,18 @@ describe('fetchQuickCreate', () => {
 
     const body = JSON.parse(mockAppFetch.mock.calls[0][1].body)
     expect(body).not.toHaveProperty('itc')
+  })
+
+  it('enables level-3 reactive auth recovery by default', async () => {
+    mockGetItcOverride.mockReturnValue(null)
+
+    await fetchQuickCreate('test')
+
+    expect(mockAppFetch).toHaveBeenCalledWith(
+      '/api/sites/quick-create',
+      expect.any(Object),
+      { handle401: { level: 3 } },
+    )
   })
 
   it('passes fetchOptions to appFetch', async () => {

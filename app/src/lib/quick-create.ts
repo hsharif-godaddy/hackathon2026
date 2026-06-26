@@ -18,7 +18,7 @@ interface FetchQuickCreateOptions {
   source?: string
 }
 
-export async function fetchQuickCreate(prompt: string, fetchOptions?: AppFetchOptions, options?: FetchQuickCreateOptions) {
+export async function fetchQuickCreate(prompt: string, fetchOptions?: AppFetchOptions, options?: FetchQuickCreateOptions): Promise<Response> {
   return appFetch('/api/sites/quick-create', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -29,7 +29,7 @@ export async function fetchQuickCreate(prompt: string, fetchOptions?: AppFetchOp
       ...(options?.fqdn && { fqdn: options.fqdn }),
       ...(options?.source && { source: options.source }),
     }),
-  }, fetchOptions)
+  }, fetchOptions ?? { handle401: { level: 3 } })
 }
 
 interface ApiErrorData {

@@ -18,6 +18,7 @@ import { useTranslations } from '@/hooks/useTranslations'
 import type { DesignKit } from '@/lib/design-kits'
 import { validateDomainName } from '@/lib/domain-validation'
 import { getErrorMessage } from '@/lib/errors'
+import { AuthDismissedError } from '@/lib/gasket-config'
 import { shipAnalyticsLog } from '@/lib/logging'
 import { buildDevelopUrl, extractApiError, fetchQuickCreate, type QuickCreateResponse, setQuickCreateSessionFlags, storeUploadedFiles } from '@/lib/quick-create'
 import { promotePendingDesignChoice } from '@/lib/rebuild-design-choice'
@@ -398,6 +399,13 @@ export function useHomepageSubmission(options?: HomepageSubmissionOptions) {
       pendingHomepageErrorRef.current = null
       router.push(redirectUrl)
     } catch (error) {
+      if (error instanceof AuthDismissedError) {
+        logger.info('homepage.auth-dismissed', { phase: 'quick-create', submitSource })
+        setIsLoading(false)
+        setIsRedirecting(false)
+        return
+      }
+
       const errorMsg = error instanceof Error ? error.message : String(error)
       logger.error('homepage.start_building.failed', { error: errorMsg, details: error instanceof Error ? (error as any).details : undefined })
       logAnalytics('homepage.submit.error', { submitSource, errorMessage: errorMsg.substring(0, 200) })

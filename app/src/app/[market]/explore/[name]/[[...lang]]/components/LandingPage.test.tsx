@@ -8,10 +8,18 @@ import userEvent from '@testing-library/user-event'
 
 import { useAuthContext } from '@/components/providers/AuthProvider'
 import { fetchQuickCreate } from '@/lib/quick-create'
+import { logger } from '@/lib/request-context'
 import { useAuthUIStore } from '@/stores/useAuthUIStore'
 import { logImpressionEvent } from '@/utils/instrumentation'
 import LandingPage from './LandingPage'
 import type { LandingPageData } from './types'
+
+const MockAuthDismissedError = vi.hoisted(() => class AuthDismissedError extends Error {
+  constructor() {
+    super('Authentication dismissed')
+    this.name = 'AuthDismissedError'
+  }
+})
 
 vi.mock('next/navigation', () => ({
   useRouter: vi.fn(),
@@ -28,6 +36,8 @@ vi.mock('@/lib/quick-create', () => ({
   setQuickCreateSessionFlags: vi.fn(),
   extractApiError: (e: unknown) => e,
 }))
+
+vi.mock('@/lib/gasket-config', () => ({ AuthDismissedError: MockAuthDismissedError }))
 
 vi.mock('@/stores/useAuthUIStore', () => ({
   useAuthUIStore: vi.fn(),
@@ -172,6 +182,23 @@ describe('LandingPage', () => {
       'homepage.redirect.develop',
       expect.anything()
     )
+    expect(mockRouter.push).not.toHaveBeenCalled()
+  })
+
+  it('resets loading without logging an error when auth recovery is dismissed', async () => {
+    ;(fetchQuickCreate as any).mockRejectedValue(new MockAuthDismissedError())
+
+    const { getByTestId } = render(<LandingPage data={MINIMAL_DATA} />)
+
+    await userEvent.click(getByTestId('set-prompt'))
+    await userEvent.click(getByTestId('submit-btn'))
+
+    await waitFor(() => {
+      expect(fetchQuickCreate).toHaveBeenCalled()
+    })
+
+    expect(logger.info).toHaveBeenCalledWith('landing.auth-dismissed', expect.objectContaining({ landingSlug: 'games' }))
+    expect(logger.error).not.toHaveBeenCalledWith('landing.start_building.failed', expect.any(Object))
     expect(mockRouter.push).not.toHaveBeenCalled()
   })
 })

@@ -15,6 +15,7 @@ import { useSubscription } from '@/hooks/useSubscription'
 import { useTranslations } from '@/hooks/useTranslations'
 import { getErrorMessage } from '@/lib/errors'
 import { isFeatureEnabled } from '@/lib/features'
+import { AuthDismissedError } from '@/lib/gasket-config'
 import { setItcOverride } from '@/lib/itc'
 import { landingItc } from '@/lib/paywall/shared'
 import { buildDevelopUrl, extractApiError, fetchQuickCreate, type QuickCreateResponse, setQuickCreateSessionFlags } from '@/lib/quick-create'
@@ -188,6 +189,13 @@ function LandingPageContent({ data }: LandingPageProps) {
       logImpressionEvent('homepage.redirect.develop', { entry_point: entryPoint })()
       router.push(buildDevelopUrl(siteData.id, siteData.type))
     } catch (err) {
+      if (err instanceof AuthDismissedError) {
+        logger.info('landing.auth-dismissed', { phase: 'quick-create', landingSlug: slug })
+        setIsLoading(false)
+        setIsRedirecting(false)
+        return
+      }
+
       logger.error('landing.start_building.failed', {
         error: err instanceof Error ? err.message : String(err),
         landingSlug: slug

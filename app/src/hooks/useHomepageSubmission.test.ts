@@ -12,6 +12,7 @@ import {
   readDesignChoiceForId,
   readPendingDesignChoice,
 } from '@/lib/rebuild-design-choice'
+import { logger } from '@/lib/request-context'
 import { logImpressionEvent } from '@/utils/instrumentation'
 import { useHomepageSubmission } from './useHomepageSubmission'
 
@@ -21,6 +22,12 @@ const mockFetchQuickCreate = vi.hoisted(() => vi.fn())
 const mockRouterPush = vi.hoisted(() => vi.fn())
 const mockT = vi.hoisted(() => vi.fn((key: string) => key))
 const mockLogAnalytics = vi.hoisted(() => vi.fn())
+const MockAuthDismissedError = vi.hoisted(() => class AuthDismissedError extends Error {
+  constructor() {
+    super('Authentication dismissed')
+    this.name = 'AuthDismissedError'
+  }
+})
 
 // Mutable messages map + locale the mocked useIntl returns; tests set these per-case.
 const mockIntlMessages = vi.hoisted(() => ({ value: {} as Record<string, string> }))
@@ -45,6 +52,7 @@ vi.mock('@/lib/request-context', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }))
 vi.mock('@/lib/errors', () => ({ getErrorMessage: (e: unknown) => String(e) }))
+vi.mock('@/lib/gasket-config', () => ({ AuthDismissedError: MockAuthDismissedError }))
 vi.mock('@/lib/domain-validation', () => ({ validateDomainName: () => ({ valid: true }) }))
 vi.mock('@/lib/waf-validation', () => ({
   validateAndClampPrompt: (text: string) => ({ text, wasClipped: false, charLength: text.length, byteLength: text.length }),
@@ -219,6 +227,20 @@ describe('useHomepageSubmission', () => {
       expect(payload).toHaveProperty('submitSource')
       expect(payload).toHaveProperty('promptLength')
       expect(payload).toHaveProperty('msFromPageLoad')
+    })
+  })
+
+  describe('auth recovery dismissal', () => {
+    it('resets loading without surfacing an error when the SSO modal is dismissed', async () => {
+      mockFetchQuickCreate.mockRejectedValue(new MockAuthDismissedError())
+
+      const { result } = renderHook(() => useHomepageSubmission())
+      await act(async () => { await result.current.handleStartBuilding('build me a site') })
+
+      expect(result.current.isLoading).toBe(false)
+      expect(result.current.error).toBeNull()
+      expect(mockRouterPush).not.toHaveBeenCalled()
+      expect(logger.info).toHaveBeenCalledWith('homepage.auth-dismissed', expect.objectContaining({ phase: 'quick-create' }))
     })
   })
 
