@@ -165,6 +165,18 @@ describe('Database Schema Integration Tests', () => {
     });
   });
 
+  describe('simple_campaign_content raw_content column', () => {
+    it('adds a nullable raw_content column', () => {
+      initializeSchema(testDb);
+      const cols = testDb
+        .prepare(`PRAGMA table_info(simple_campaign_content)`)
+        .all() as { name: string; notnull: number }[];
+      const rawContent = cols.find((c) => c.name === 'raw_content');
+      expect(rawContent).toBeDefined();
+      expect(rawContent?.notnull).toBe(0); // nullable
+    });
+  });
+
   describe('Schema Functionality', () => {
     beforeEach(() => {
       initializeSchema(testDb);
@@ -587,5 +599,125 @@ describe('Database Schema Integration Tests', () => {
     });
 
 
+  });
+});
+
+describe('social_posts CHECK/platform rebuild migration', () => {
+  it('drops the state CHECK and platform NOT NULL on an existing DB, preserving rows, idempotently', () => {
+    const db = new Database(':memory:');
+    initializeSchema(db);
+
+    db.prepare(`INSERT INTO apps (id, name, path, status) VALUES (?, ?, ?, ?)`).run('app1234567', 'Test App', '/tmp/app', 'created');
+
+    // Recreate social_posts in the legacy shape: state CHECK + platform NOT NULL.
+    db.exec(`DROP TABLE social_posts`);
+    db.exec(`
+      CREATE TABLE social_posts (
+        id TEXT PRIMARY KEY,
+        app_id TEXT NOT NULL,
+        association_id TEXT,
+        platform TEXT NOT NULL,
+        state TEXT NOT NULL CHECK(state IN ('SCHEDULED', 'PUBLISHED', 'FAILED')),
+        payload TEXT NOT NULL,
+        external_response TEXT,
+        external_id TEXT,
+        scheduled_at DATETIME,
+        completed_at DATETIME,
+        campaign_id TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (app_id) REFERENCES apps(id) ON DELETE CASCADE,
+        FOREIGN KEY (association_id) REFERENCES social_associations(id) ON DELETE SET NULL
+      )
+    `);
+    db.prepare(
+      `INSERT INTO social_posts (id, app_id, platform, state, payload) VALUES (?, ?, ?, ?, ?)`,
+    ).run('post-legacy1', 'app1234567', 'facebook', 'SCHEDULED', '{"message":"hi"}');
+
+    // Re-run schema init twice (idempotency): the rebuild fires once, the second is a no-op.
+    initializeSchema(db);
+    initializeSchema(db);
+
+    // The legacy row survived the rebuild.
+    const preserved = db.prepare(`SELECT platform, state, payload FROM social_posts WHERE id = ?`).get('post-legacy1') as
+      | { platform: string; state: string; payload: string }
+      | undefined;
+    expect(preserved).toEqual({ platform: 'facebook', state: 'SCHEDULED', payload: '{"message":"hi"}' });
+
+    // CHECK is gone: a DRAFT row is now insertable.
+    expect(() =>
+      db.prepare(`INSERT INTO social_posts (id, app_id, platform, state, payload) VALUES (?, ?, ?, ?, ?)`)
+        .run('post-draft1', 'app1234567', 'instagram', 'DRAFT', '{"message":"draft"}'),
+    ).not.toThrow();
+
+    // platform NOT NULL is gone: a null-platform row is now insertable.
+    expect(() =>
+      db.prepare(`INSERT INTO social_posts (id, app_id, platform, state, payload) VALUES (?, ?, ?, ?, ?)`)
+        .run('post-nullplat', 'app1234567', null, 'DRAFT', '{"message":"np"}'),
+    ).not.toThrow();
+
+    db.close();
+  });
+
+  it('rolls back with no data loss when the rebuild fails mid-script, and recovers on retry', () => {
+    const db = new Database(':memory:');
+    initializeSchema(db);
+    db.prepare(`INSERT INTO apps (id, name, path, status) VALUES (?, ?, ?, ?)`).run('app1234567', 'Test App', '/tmp/app', 'created');
+
+    // Legacy shape (state CHECK + platform NOT NULL) carrying a row that must survive.
+    db.exec(`DROP TABLE social_posts`);
+    db.exec(`
+      CREATE TABLE social_posts (
+        id TEXT PRIMARY KEY,
+        app_id TEXT NOT NULL,
+        association_id TEXT,
+        platform TEXT NOT NULL,
+        state TEXT NOT NULL CHECK(state IN ('SCHEDULED', 'PUBLISHED', 'FAILED')),
+        payload TEXT NOT NULL,
+        external_response TEXT,
+        external_id TEXT,
+        scheduled_at DATETIME,
+        completed_at DATETIME,
+        campaign_id TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (app_id) REFERENCES apps(id) ON DELETE CASCADE,
+        FOREIGN KEY (association_id) REFERENCES social_associations(id) ON DELETE SET NULL
+      )
+    `);
+    db.prepare(`INSERT INTO social_posts (id, app_id, platform, state, payload) VALUES (?, ?, ?, ?, ?)`)
+      .run('post-legacy1', 'app1234567', 'facebook', 'SCHEDULED', '{"message":"hi"}');
+
+    // Force the rebuild's first statement (CREATE social_posts_new) to throw by pre-creating
+    // a conflicting table. Pre-transaction this would still DROP the original after a later
+    // failure (data loss); with db.transaction() the whole rebuild rolls back atomically.
+    db.exec(`CREATE TABLE social_posts_new (id TEXT PRIMARY KEY)`);
+
+    // Migration hits the conflict, rolls back, logs the failure, and does not throw (caught).
+    expect(() => initializeSchema(db)).not.toThrow();
+
+    // No data loss: the original table and its row survived.
+    expect(db.prepare(`SELECT platform, state, payload FROM social_posts WHERE id = ?`).get('post-legacy1')).toEqual({
+      platform: 'facebook', state: 'SCHEDULED', payload: '{"message":"hi"}',
+    });
+    // The rebuild did not partially apply — the legacy CHECK is still enforced.
+    expect(() =>
+      db.prepare(`INSERT INTO social_posts (id, app_id, platform, state, payload) VALUES (?, ?, ?, ?, ?)`)
+        .run('post-draft-blocked', 'app1234567', 'instagram', 'DRAFT', '{"message":"x"}'),
+    ).toThrow();
+
+    // Recovery: clear the conflict and re-run — the guard still sees the CHECK, so the
+    // rebuild fires again and now succeeds, preserving the row and dropping the CHECK.
+    db.exec(`DROP TABLE social_posts_new`);
+    initializeSchema(db);
+    expect(db.prepare(`SELECT payload FROM social_posts WHERE id = ?`).get('post-legacy1')).toEqual({
+      payload: '{"message":"hi"}',
+    });
+    expect(() =>
+      db.prepare(`INSERT INTO social_posts (id, app_id, platform, state, payload) VALUES (?, ?, ?, ?, ?)`)
+        .run('post-draft-ok', 'app1234567', 'instagram', 'DRAFT', '{"message":"ok"}'),
+    ).not.toThrow();
+
+    db.close();
   });
 });

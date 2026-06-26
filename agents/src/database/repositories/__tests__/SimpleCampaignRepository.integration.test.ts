@@ -50,6 +50,34 @@ describe('SimpleCampaignRepository Integration Tests', () => {
     });
   });
 
+  describe('raw_content round-trip', () => {
+    it('persists raw_content verbatim through addContent → findContentById, and updates it', () => {
+      const campaign = repo.create({ appId: APP_ID, name: 'Raw Content' });
+      const rawContent = '{"message":"hi","hashtags":["#x"],"platform":"instagram"}';
+
+      const content = repo.addContent({
+        simpleCampaignId: campaign.id,
+        assetType: 'social',
+        title: 'Launch Post',
+        rawContent,
+      });
+      expect(content.rawContent).toBe(rawContent);
+      expect(repo.findContentById(content.id)!.rawContent).toBe(rawContent);
+
+      const updatedRawContent = '{"message":"edited","hashtags":["#y"],"platform":"instagram"}';
+      repo.updateContent(content.id, { rawContent: updatedRawContent });
+      expect(repo.findContentById(content.id)!.rawContent).toBe(updatedRawContent);
+    });
+
+    it('defaults raw_content to null when not provided', () => {
+      const campaign = repo.create({ appId: APP_ID, name: 'No Raw Content' });
+      const content = repo.addContent({ simpleCampaignId: campaign.id, assetType: 'blog', title: 'Post' });
+
+      expect(content.rawContent).toBeNull();
+      expect(repo.findContentById(content.id)!.rawContent).toBeNull();
+    });
+  });
+
   describe('created_by / updated_by actor', () => {
     it('records the creating actor and tracks the updating actor', () => {
       const campaign = repo.create({ appId: APP_ID, name: 'By Agent', createdBy: 'agent' });

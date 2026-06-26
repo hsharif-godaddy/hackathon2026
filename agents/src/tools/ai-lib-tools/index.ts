@@ -36,6 +36,8 @@ export { requestSecrets } from './secrets-tool.js';
 export { socialRead } from './social-read.js';
 export { socialPostCreateAITool } from './social-post-create.js';
 export { socialPostPublish } from './social-post-publish.js';
+export { socialPostEdit } from './social-post-edit.js';
+export { socialPostDelete } from './social-post-delete.js';
 export { colorSchemeAITool } from './color-scheme.js';
 export { fontThemeAITool } from './font-theme.js';
 
@@ -93,6 +95,8 @@ import { requestSecrets } from './secrets-tool.js';
 import { socialRead } from './social-read.js';
 import { socialPostCreateAITool } from './social-post-create.js';
 import { socialPostPublish } from './social-post-publish.js';
+import { socialPostEdit } from './social-post-edit.js';
+import { socialPostDelete } from './social-post-delete.js';
 import { colorSchemeAITool } from './color-scheme.js';
 import { fontThemeAITool } from './font-theme.js';
 import { skillAITool } from './skill-loader.js';
@@ -174,6 +178,8 @@ export const allAILibTools = {
   socialRead: socialRead,
   socialPostCreate: socialPostCreateAITool,
   socialPostPublish: socialPostPublish,
+  socialPostEdit: socialPostEdit,
+  socialPostDelete: socialPostDelete,
   skill: skillAITool,
   websiteScraper: websiteScraperAITool,
   qaAnalyze: qaAnalyzeAITool,
@@ -262,6 +268,8 @@ export const toolGroups: Record<string, Record<string, Tool>> = {
     socialRead: socialRead,
     socialPostCreate: socialPostCreateAITool,
     socialPostPublish: socialPostPublish,
+    socialPostEdit: socialPostEdit,
+    socialPostDelete: socialPostDelete,
   },
 };
 

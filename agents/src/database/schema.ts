@@ -316,7 +316,7 @@ export interface SocialPost {
   id: string;
   appId: string;
   associationId: string | null;
-  platform: string;
+  platform: string | null;
   state: PostState;
   payload: string; // JSON string
   externalResponse: string | null; // JSON string
@@ -376,6 +376,17 @@ export enum SimpleCampaignStatus {
   Active = 'active',
   Completed = 'completed',
   Archived = 'archived',
+}
+
+/**
+ * Pre-launch campaigns (draft/ready) are the only ones whose social drafts may be edited
+ * or deleted. Launch flips the campaign to scheduled/active and hands the posts to the
+ * platform — from there they are managed there, not here. This is the single launch
+ * boundary; gate social edit/delete on it (the row's contentRefId is stamped at approve,
+ * so it is NOT a launch sentinel).
+ */
+export function isCampaignPreLaunch(status: SimpleCampaignStatus): boolean {
+  return status === SimpleCampaignStatus.Draft || status === SimpleCampaignStatus.Ready;
 }
 export enum SimpleCampaignContentType {
   LandingPage = 'landing-page',
@@ -484,6 +495,8 @@ export interface SimpleCampaignContent {
   status: SimpleCampaignContentStatus;
   contentPreview: string | null;
   imageUrl: string | null;
+  /** Editable draft payload as a JSON string (social: {message, hashtags, callToAction, platform}); null pre-population / non-social. */
+  rawContent: string | null;
   createdBy: CampaignActor | null;
   createdAt: string;
 }
@@ -1031,8 +1044,8 @@ function createSocialPostsTable(db: Database): void {
       id TEXT PRIMARY KEY,
       app_id TEXT NOT NULL,
       association_id TEXT,
-      platform TEXT NOT NULL,
-      state TEXT NOT NULL CHECK(state IN ('SCHEDULED', 'PUBLISHED', 'FAILED')),
+      platform TEXT,
+      state TEXT NOT NULL,
       payload TEXT NOT NULL,
       external_response TEXT,
       external_id TEXT,
@@ -1093,6 +1106,10 @@ function migrateCampaignTablesToCurrentSchema(db: Database): void {
     }
     if (cols.includes('external_ref') && !cols.includes('content_ref_id')) {
       db.exec(`ALTER TABLE simple_campaign_content RENAME COLUMN external_ref TO content_ref_id`);
+    }
+    if (!cols.includes('raw_content')) {
+      db.exec(`ALTER TABLE simple_campaign_content ADD COLUMN raw_content TEXT`);
+      logger.info('database.migration.campaign-schema.add-raw-content', {});
     }
   }
 
@@ -1181,6 +1198,7 @@ function createSimpleCampaignContentTable(db: Database): void {
       status TEXT NOT NULL,
       content_preview TEXT,
       image_url TEXT,
+      raw_content TEXT,
       created_by TEXT CHECK(created_by IS NULL OR created_by IN ('user', 'agent')),
       created_at DATETIME NOT NULL,
       FOREIGN KEY (simple_campaign_id) REFERENCES simple_campaign(id) ON DELETE CASCADE
@@ -2056,6 +2074,62 @@ function applyMigrations(db: Database): void {
     })();
     db.exec(`PRAGMA foreign_keys = ON`);
     logger.info('database.migration.social-associations.expand-platform-check', {});
+  }
+
+  // One-time rebuild of social_posts to drop the legacy state CHECK and the platform
+  // NOT NULL — SQLite cannot ALTER a CHECK or drop NOT NULL in place. Guarded on the
+  // CHECK substring so it runs exactly once; on a fresh DB the table does not exist yet
+  // (created just below) so this is skipped. Indexes + the updated_at trigger are
+  // (re)created by createIndexes()/createTriggers() afterward, so they are NOT recreated
+  // here. Both FKs (app_id -> apps CASCADE, association_id -> social_associations SET
+  // NULL) are preserved. Nothing references social_posts, so the drop/rename is FK-safe.
+  try {
+    const socialPostsTable = db
+      .prepare(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'social_posts'`)
+      .get() as { sql: string } | undefined;
+    if (socialPostsTable && socialPostsTable.sql.includes('CHECK(state IN')) {
+      // Wrap the CREATE/INSERT/DROP/RENAME in db.transaction() so a mid-script failure
+      // (disk full, I/O error, SQLITE_BUSY after the DROP) auto-rolls-back via
+      // better-sqlite3's C API and the original table survives. Do NOT hand-roll
+      // `db.exec("BEGIN; …; COMMIT")` — on a throw it leaves an orphan transaction
+      // (writes silently lost on close). See migrateImportJobsStatusConstraint / PR #4150
+      // and the sibling migrateSourceTypeConstraint, which use this same pattern.
+      db.transaction(() => {
+        db.exec(`
+          CREATE TABLE social_posts_new (
+            id TEXT PRIMARY KEY,
+            app_id TEXT NOT NULL,
+            association_id TEXT,
+            platform TEXT,
+            state TEXT NOT NULL,
+            payload TEXT NOT NULL,
+            external_response TEXT,
+            external_id TEXT,
+            scheduled_at DATETIME,
+            completed_at DATETIME,
+            campaign_id TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (app_id) REFERENCES apps(id) ON DELETE CASCADE,
+            FOREIGN KEY (association_id) REFERENCES social_associations(id) ON DELETE SET NULL
+          );
+          INSERT INTO social_posts_new (id, app_id, association_id, platform, state, payload, external_response, external_id, scheduled_at, completed_at, campaign_id, created_at, updated_at)
+            SELECT id, app_id, association_id, platform, state, payload, external_response, external_id, scheduled_at, completed_at, campaign_id, created_at, updated_at FROM social_posts;
+          DROP TABLE social_posts;
+          ALTER TABLE social_posts_new RENAME TO social_posts;
+        `);
+      })();
+    }
+  } catch (err) {
+    // Past the sqlite_master guard the table existed with the legacy CHECK, so a throw
+    // here is a genuine rebuild failure (not a missing table — the SELECT returns
+    // undefined and skips, it does not throw). The transaction rolled back, so the
+    // original social_posts is intact and createSocialPostsTable below is a no-op while
+    // the legacy table keeps serving. Log it instead of swallowing so a failed migration
+    // is investigable rather than silent.
+    logger.error('database.migration.social-posts-rebuild.failed', {
+      error: err instanceof Error ? err.message : String(err),
+    });
   }
 
   // Create social_posts table if it doesn't exist

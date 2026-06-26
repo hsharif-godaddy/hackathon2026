@@ -1,8 +1,11 @@
 import { Router, Request, Response, NextFunction, IRouter } from 'express'
+import { z } from 'zod'
 import { SimpleCampaignRepository } from '../../database/repositories/SimpleCampaignRepository.js'
 import type { CreateSimpleCampaignContentParams } from '../../database/repositories/SimpleCampaignRepository.js'
-import { SimpleCampaignStatus } from '../../database/schema.js'
+import { SimpleCampaignStatus, SimpleCampaignContentType, isCampaignPreLaunch } from '../../database/schema.js'
 import type { SimpleCampaign, SimpleCampaignContent } from '../../database/schema.js'
+import { editSocialDraft, deleteSocialDraft } from '../../services/social/social-draft-sync.js'
+import { skills } from '../../services/features.js'
 import { Logger } from '../../logging/index.js'
 import type { AuthenticatedRequest } from '../middleware/jwt-auth.js'
 import { validateAppOwnership } from '../middleware/app-ownership.js'
@@ -37,6 +40,32 @@ function statusForError(error: unknown): number {
 }
 
 /**
+ * Validates the editable fields of a social-draft PATCH. This is the BFF→agents trust
+ * boundary (req.body is `any`), so mirror the Zod validation the socialPostEdit tool applies
+ * (plus the `scheduledDate` only the route accepts): a non-array `hashtags` or a malformed
+ * `scheduledDate` is a clean 400 here, never persisted verbatim into raw_content /
+ * social_posts.payload (which would corrupt the shape the launch path reads) or thrown deep
+ * in editSocialDraft as a 500. The frontend sends exactly these fields, so `.strict()`
+ * rejects anything unexpected. `.refine` enforces at least one field to edit.
+ */
+const editSocialDraftBodySchema = z
+  .object({
+    message: z.string().optional(),
+    hashtags: z.array(z.string()).optional(),
+    callToAction: z.string().optional(),
+    scheduledDate: z.string().datetime().nullable().optional(),
+  })
+  .strict()
+  .refine(
+    (body) =>
+      body.message !== undefined ||
+      body.hashtags !== undefined ||
+      body.callToAction !== undefined ||
+      body.scheduledDate !== undefined,
+    { message: 'Provide at least one field to edit (message, hashtags, callToAction, or scheduledDate)' },
+  )
+
+/**
  * Load a campaign by id and confirm it belongs to the appId in the URL. Even with
  * validateAppOwnership on :id, a campaignId from a different app in the same
  * (per-customer) DB must not be reachable by swapping the path segment.
@@ -51,6 +80,41 @@ function resolveCampaignForApp(req: Request, res: Response): SimpleCampaign | nu
     return null
   }
   return campaign
+}
+
+/**
+ * Resolve a pre-launch social draft for an edit/delete on an already-app-verified campaign.
+ * Applies the same guards as the socialPostEdit/Delete tools, in order: content exists and
+ * belongs to this campaign (404), is a social asset (400), and the campaign has not been
+ * launched yet — once it leaves draft/ready the posts are handed to the platform and are
+ * managed there (409). Editability is gated on campaign status, not contentRefId (which is
+ * stamped at approve when the draft is materialized).
+ * Returns the content, or null after sending the appropriate error response.
+ */
+function resolveSocialDraftForEdit(campaign: SimpleCampaign, req: Request, res: Response): SimpleCampaignContent | null {
+  // Gate the social-draft edit/delete capability on the social feature flag, symmetric with
+  // the socialPostEdit/socialPostDelete agent tools (which are only registered when
+  // skills.isEnabled('social')). When social is off, surface the same 404 as a missing row so
+  // the disabled capability never leaks its existence.
+  if (!skills.isEnabled('social')) {
+    res.status(404).json({ error: 'Campaign content not found' })
+    return null
+  }
+  const contentId = req.params.contentId as string
+  const content: SimpleCampaignContent | null = campaignRepo.findContentById(contentId)
+  if (!content || content.simpleCampaignId !== campaign.id) {
+    res.status(404).json({ error: 'Campaign content not found' })
+    return null
+  }
+  if (content.assetType !== SimpleCampaignContentType.Social) {
+    res.status(400).json({ error: 'Only social posts can be edited or deleted here' })
+    return null
+  }
+  if (!isCampaignPreLaunch(campaign.status)) {
+    res.status(409).json({ error: 'Cannot modify a launched post; it is now managed on the platform' })
+    return null
+  }
+  return content
 }
 
 /**
@@ -83,6 +147,7 @@ function withAssets(campaign: SimpleCampaign): SimpleCampaign & { assets: unknow
     status: content.status,
     contentPreview: content.contentPreview ?? undefined,
     imageUrl: content.imageUrl ?? undefined,
+    rawContent: content.rawContent ?? undefined,
   }))
   return { ...campaign, assets }
 }
@@ -224,6 +289,56 @@ router.post('/:id/:campaignId/assets', (req: Request, res: Response): void => {
   } catch (error) {
     logger.error('campaigns.addAsset.error', { error: error instanceof Error ? error.message : String(error) })
     res.status(500).json({ error: 'Failed to add asset' })
+  }
+})
+
+/**
+ * PATCH /campaigns/:id/:campaignId/content/:contentId - Edit a pre-launch social draft.
+ * Edits the draft's message, hashtags, call-to-action, and/or scheduledDate. The merged content
+ * is written to raw_content (message mirrored to content_preview) and, when the draft has been
+ * materialized, kept in sync on the linked social_posts row (payload + scheduled_at) via
+ * editSocialDraft, so the post that publishes matches the edit. The image is display-only here —
+ * replacement requires regeneration and is deferred.
+ */
+router.patch('/:id/:campaignId/content/:contentId', (req: Request, res: Response): void => {
+  try {
+    const campaign: SimpleCampaign | null = resolveCampaignForApp(req, res)
+    if (!campaign) return
+
+    const content: SimpleCampaignContent | null = resolveSocialDraftForEdit(campaign, req, res)
+    if (!content) return
+
+    const parsed = editSocialDraftBodySchema.safeParse(req.body)
+    if (!parsed.success) {
+      const details: { path: string; message: string }[] = parsed.error.issues.map((issue: z.ZodIssue): { path: string; message: string } => ({ path: issue.path.join('.'), message: issue.message }))
+      res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid edit payload', details })
+      return
+    }
+
+    const updated: SimpleCampaignContent = editSocialDraft(content, parsed.data)
+    res.json({ content: updated })
+  } catch (error) {
+    logger.error('campaigns.editContent.error', { error: error instanceof Error ? error.message : String(error) })
+    res.status(statusForError(error)).json({ error: 'Failed to edit content' })
+  }
+})
+
+/**
+ * DELETE /campaigns/:id/:campaignId/content/:contentId - Delete a pre-launch social draft.
+ */
+router.delete('/:id/:campaignId/content/:contentId', (req: Request, res: Response): void => {
+  try {
+    const campaign: SimpleCampaign | null = resolveCampaignForApp(req, res)
+    if (!campaign) return
+
+    const content: SimpleCampaignContent | null = resolveSocialDraftForEdit(campaign, req, res)
+    if (!content) return
+
+    deleteSocialDraft(content)
+    res.json({ success: true })
+  } catch (error) {
+    logger.error('campaigns.deleteContent.error', { error: error instanceof Error ? error.message : String(error) })
+    res.status(statusForError(error)).json({ error: 'Failed to delete content' })
   }
 })
 

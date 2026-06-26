@@ -4,15 +4,18 @@ import type { SkillToolDefinition } from '@airo/ai-skills'
 import { Logger } from '../../../logging/index.js'
 import { SimpleCampaignRepository } from '../../../database/repositories/SimpleCampaignRepository.js'
 import type { CreateSimpleCampaignParams, CreateSimpleCampaignContentParams } from '../../../database/repositories/SimpleCampaignRepository.js'
+import { SocialPostRepository } from '../../../database/repositories/SocialPostRepository.js'
 import { SimpleCampaignStatus } from '../../../database/schema.js'
-import type { SimpleCampaignContentType, SimpleCampaignContentStatus, SocialAssociation } from '../../../database/schema.js'
+import type { SimpleCampaignContentType, SimpleCampaignContentStatus, SocialAssociation, SocialPost } from '../../../database/schema.js'
 import { SocialAssociationRepository } from '../../../database/repositories/SocialAssociationRepository.js'
-import { SocialPlatform } from '../../../types/social.js'
+import { SocialPlatform, PostState } from '../../../types/social.js'
 import { MediaSearchTool } from '../../../tools/media-search-tool.js'
 import { mergeBrandIdentity, MEMORY_KEY, type BrandIdentity } from '../../../tools/ai-lib-tools/brand-identity.js'
 import { getKvMemoryStore } from '../../../memory/adapters/index.js'
 import { workspaceScopeFromAppId, customerIdFromContext } from '../../../memory/interfaces/scope.js'
 import { createForWorkspace } from '../../../workspace/index.js'
+import { serializeSocialRawContent } from '../../../services/social/social-raw-content.js'
+import type { SocialRawContent } from '../../../services/social/social-raw-content.js'
 import { readFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
@@ -21,6 +24,7 @@ const logger = Logger.create({ component: 'marketing-campaigns-tools' })
 
 const campaignRepo = new SimpleCampaignRepository()
 const socialAssociationRepo = new SocialAssociationRepository()
+const socialPostRepo = new SocialPostRepository()
 const mediaSearch = new MediaSearchTool()
 const kvMemory = getKvMemoryStore()
 
@@ -30,6 +34,28 @@ function isCampaignsEnabled(context: any): boolean {
 
 function campaignsDisabledResult(): { success: false; error: string } {
   return { success: false, error: 'Marketing campaigns are not available.' }
+}
+
+/**
+ * Materialize a pre-launch social draft into a DRAFT social_posts carrier at
+ * campaign-approve time (the GENERATE step of the V2 flow). The returned post id becomes
+ * the content row's contentRefId — the stable handle launch (RUBICON-441) binds to the
+ * platform. Editability is gated on campaign status, not on this id, so a freshly-stamped
+ * draft stays editable until the campaign launches.
+ *
+ * UTM attribution (marketing_utm) is intentionally NOT minted here — that is the
+ * RUBICON-499/500 workstream's responsibility, which owns the full token format
+ * (utm_content/utm_term/cmp_-prefixed utm_campaign) at carrier persistence.
+ */
+function materializeSocialDraft(appId: string, campaignId: string, rawContent: SocialRawContent): string {
+  const post: SocialPost = socialPostRepo.create({
+    appId,
+    campaignId,
+    state: PostState.DRAFT,
+    platform: rawContent.platform ?? null,
+    payload: rawContent,
+  })
+  return post.id
 }
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -257,6 +283,12 @@ CRITICAL TIMING: Call this tool ONLY in SUMMARY, after the build handoff has com
       contentPreview: z.string().optional().describe('Brief description of what this content will cover'),
       imageUrl: z.string().optional().describe('URL of the image used for this content piece'),
       status: z.enum(['draft', 'scheduled', 'published', 'failed']).optional().describe("Publish status shown on the card badge. Use 'scheduled' for built site assets (landing page, blog) that go out at launch, and 'draft' for social/email/ad that still need the user to publish. Never 'published' before the user launches."),
+      rawContent: z.object({
+        message: z.string().describe('The post caption/body text.'),
+        hashtags: z.array(z.string()).describe('Hashtags without the # symbol.'),
+        callToAction: z.string().optional().describe('Optional CTA text.'),
+        platform: z.enum(['facebook', 'instagram']).optional().describe('Optional target platform.'),
+      }).optional().describe('For SOCIAL assets ONLY: the generated post body, stored as the editable pre-launch draft. Copy the message/hashtags/callToAction/platform you produced with socialPostCreate.'),
     })).describe('List of planned content items for the campaign'),
   }),
   async execute(args, context) {
@@ -306,18 +338,27 @@ CRITICAL TIMING: Call this tool ONLY in SUMMARY, after the build handoff has com
         }
       }
 
-      // contentRefId holds a real content identifier only; it is intentionally left
-      // null here. These rows are the card's tracking projection (title/type/date/
-      // status) — the pointer to the actual content row is captured later when a
-      // resolver wires asset_type + contentRefId to the live content.
+      // A social asset with a generated draft is materialized now (GENERATE step): we
+      // create its DRAFT social_posts row and stamp the resulting post id as contentRefId
+      // (UTM is intentionally not minted here — RUBICON-499/500 owns that). Non-social
+      // assets, and social teasers without rawContent, leave contentRefId null — their
+      // live-content pointer is wired later by a resolver.
+      const isSocial: boolean = item.assetType === 'social'
+      const rawContent: string | undefined =
+        isSocial && item.rawContent ? serializeSocialRawContent(item.rawContent) : undefined
+      const contentRefId: string | undefined =
+        isSocial && item.rawContent ? materializeSocialDraft(appId, campaign.id, item.rawContent) : undefined
+
       const assetInput: CreateSimpleCampaignContentParams = {
         simpleCampaignId: campaign.id,
         assetType: item.assetType as SimpleCampaignContentType,
         title: item.title,
         scheduledDate: item.scheduledDate,
-        status: (item.status ?? 'scheduled') as SimpleCampaignContentStatus,
+        status: (item.status ?? (isSocial ? 'draft' : 'scheduled')) as SimpleCampaignContentStatus,
         contentPreview: item.contentPreview,
         imageUrl,
+        ...(rawContent !== undefined ? { rawContent } : {}),
+        ...(contentRefId !== undefined ? { contentRefId } : {}),
       }
       campaignRepo.addContent(assetInput)
     }

@@ -3,6 +3,7 @@ import type { SocialPost } from '../schema.js';
 import { Logger } from '../../logging/index.js';
 import { customAlphabet } from 'nanoid';
 import { PostState } from '../../types/social.js';
+import { assertEnumValue } from '../../utils/enum-guard.js';
 
 const nanoid = customAlphabet('0123456789abcdefghijklmnopqrstuvwxyz', 12);
 const logger = Logger.create({ component: 'social-post-repository' });
@@ -10,7 +11,7 @@ const logger = Logger.create({ component: 'social-post-repository' });
 export interface CreateSocialPostParams {
   appId: string;
   associationId?: string | null;
-  platform: string;
+  platform: string | null;
   state: PostState;
   payload: Record<string, any>;
   externalResponse?: Record<string, any> | null;
@@ -22,6 +23,7 @@ export interface CreateSocialPostParams {
 
 export interface UpdateSocialPostParams {
   state?: PostState;
+  payload?: Record<string, any>;
   externalResponse?: Record<string, any> | null;
   externalId?: string | null;
   scheduledAt?: Date | null;
@@ -32,7 +34,7 @@ interface SocialPostRow {
   id: string;
   app_id: string;
   association_id: string | null;
-  platform: string;
+  platform: string | null;
   state: string;
   payload: string;
   external_response: string | null;
@@ -199,6 +201,9 @@ export class SocialPostRepository {
    */
   create(params: CreateSocialPostParams): SocialPost {
     try {
+      // The DB no longer enforces a state CHECK (dropped in RUBICON-436 to admit DRAFT), so
+      // validate the enum here before inserting an out-of-range state.
+      assertEnumValue(PostState, params.state, 'social post state');
       const id = `post-${nanoid()}`;
 
       this.db
@@ -211,7 +216,7 @@ export class SocialPostRepository {
           id,
           params.appId,
           params.associationId || null,
-          params.platform,
+          params.platform || null,
           params.state,
           JSON.stringify(params.payload),
           params.externalResponse ? JSON.stringify(params.externalResponse) : null,
@@ -253,8 +258,14 @@ export class SocialPostRepository {
       const values: any[] = [];
 
       if (params.state !== undefined) {
+        assertEnumValue(PostState, params.state, 'social post state');
         updates.push('state = ?');
         values.push(params.state);
+      }
+
+      if (params.payload !== undefined) {
+        updates.push('payload = ?');
+        values.push(JSON.stringify(params.payload));
       }
 
       if (params.externalResponse !== undefined) {
@@ -324,11 +335,15 @@ export class SocialPostRepository {
 
       return deleted;
     } catch (error) {
+      // Re-throw on a genuine DB error (consistent with update() above) instead of
+      // swallowing it as `false`. Callers in a cascade (deleteSocialDraft) run inside a
+      // transaction and rely on the throw to roll back rather than reporting a false
+      // success on an orphaned row. The boolean return now means only deleted/absent.
       logger.error('social-post.delete.error', {
         id,
         error: error instanceof Error ? error.message : String(error)
       });
-      return false;
+      throw error;
     }
   }
 

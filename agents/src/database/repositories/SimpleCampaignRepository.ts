@@ -53,6 +53,8 @@ export interface CreateSimpleCampaignContentParams {
   status?: SimpleCampaignContentStatus;
   contentPreview?: string;
   imageUrl?: string;
+  /** Serialized JSON draft payload stored opaquely (social: {message, hashtags, callToAction, platform}). */
+  rawContent?: string;
   /** Who created this content — a customer action or the agent. */
   createdBy?: CampaignActor;
 }
@@ -60,10 +62,12 @@ export interface CreateSimpleCampaignContentParams {
 export interface UpdateSimpleCampaignContentParams {
   title?: string;
   contentRefId?: string;
-  scheduledDate?: string;
+  scheduledDate?: string | null;
   status?: SimpleCampaignContentStatus;
   contentPreview?: string;
   imageUrl?: string;
+  /** Serialized JSON draft payload stored opaquely (social: {message, hashtags, callToAction, platform}). */
+  rawContent?: string;
 }
 
 interface SimpleCampaignRow {
@@ -95,6 +99,7 @@ interface SimpleCampaignContentRow {
   status: string;
   content_preview: string | null;
   image_url: string | null;
+  raw_content: string | null;
   created_by: string | null;
   created_at: string;
 }
@@ -335,14 +340,15 @@ export class SimpleCampaignRepository {
       status: params.status ?? SimpleCampaignContentStatus.Draft,
       contentPreview: params.contentPreview ?? null,
       imageUrl: params.imageUrl ?? null,
+      rawContent: params.rawContent ?? null,
       createdBy: params.createdBy ?? null,
       createdAt: now,
     };
 
     const info: Database.RunResult = this.db
       .prepare(
-        `INSERT INTO simple_campaign_content (id, simple_campaign_id, asset_type, content_ref_id, title, scheduled_date, status, content_preview, image_url, created_by, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO simple_campaign_content (id, simple_campaign_id, asset_type, content_ref_id, title, scheduled_date, status, content_preview, image_url, raw_content, created_by, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         content.id,
@@ -354,6 +360,7 @@ export class SimpleCampaignRepository {
         content.status,
         content.contentPreview,
         content.imageUrl,
+        content.rawContent,
         content.createdBy,
         content.createdAt,
       );
@@ -395,6 +402,7 @@ export class SimpleCampaignRepository {
     if (params.status !== undefined) { fields.push('status = ?'); values.push(params.status); }
     if (params.contentPreview !== undefined) { fields.push('content_preview = ?'); values.push(params.contentPreview); }
     if (params.imageUrl !== undefined) { fields.push('image_url = ?'); values.push(params.imageUrl); }
+    if (params.rawContent !== undefined) { fields.push('raw_content = ?'); values.push(params.rawContent); }
 
     if (fields.length === 0) {
       const existing: SimpleCampaignContent | null = this.findContentById(contentId);
@@ -461,6 +469,7 @@ export class SimpleCampaignRepository {
       status: row.status as SimpleCampaignContentStatus,
       contentPreview: row.content_preview,
       imageUrl: row.image_url,
+      rawContent: row.raw_content,
       createdBy: row.created_by as CampaignActor | null,
       createdAt: row.created_at,
     };

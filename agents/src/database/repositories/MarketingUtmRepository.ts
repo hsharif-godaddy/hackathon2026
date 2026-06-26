@@ -127,6 +127,15 @@ export class MarketingUtmRepository {
     return rows.map((row: UTMAttributionParamsRow): UTMAttributionParams => this.mapRow(row));
   }
 
+  /** Remove all UTM rows for a content ref. Used when a campaign social draft is deleted so
+   *  its attribution does not outlive the post it pointed at. Returns rows deleted. */
+  deleteByContentRefId(contentRefId: string): number {
+    const result = this.db
+      .prepare(`DELETE FROM marketing_utm WHERE content_ref_id = ?`)
+      .run(contentRefId);
+    return result.changes;
+  }
+
   findBySimpleCampaignId(simpleCampaignId: string): UTMAttributionParams[] {
     const rows: UTMAttributionParamsRow[] = this.db
       .prepare(`SELECT * FROM marketing_utm WHERE simple_campaign_id = ? ORDER BY created_at DESC`)

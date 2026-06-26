@@ -9,6 +9,18 @@ const { mockGet, mockSet } = vi.hoisted(() => ({
   mockSet: vi.fn(),
 }))
 
+const { mockMediaSearch, mockSocialPostRepo, mockMarketingUtmRepo } = vi.hoisted(() => ({
+  mockMediaSearch: {
+    searchMedia: vi.fn().mockResolvedValue({ success: false }),
+  },
+  mockSocialPostRepo: {
+    create: vi.fn().mockReturnValue({ id: 'post-mat1' }),
+  },
+  mockMarketingUtmRepo: {
+    create: vi.fn(),
+  },
+}))
+
 vi.mock('../../../memory/adapters/index.js', () => ({
   getKvMemoryStore: () => ({ get: mockGet, set: mockSet }),
 }))
@@ -17,6 +29,15 @@ vi.mock('../../../memory/interfaces/scope.js', () => ({
   customerIdFromContext: vi.fn(() => undefined),
 }))
 vi.mock('../../../workspace/index.js', () => ({ createForWorkspace: vi.fn() }))
+vi.mock('../../../tools/media-search-tool.js', () => ({
+  MediaSearchTool: vi.fn(function () { return mockMediaSearch }),
+}))
+vi.mock('../../../database/repositories/SocialPostRepository.js', () => ({
+  SocialPostRepository: vi.fn(function () { return mockSocialPostRepo }),
+}))
+vi.mock('../../../database/repositories/MarketingUtmRepository.js', () => ({
+  MarketingUtmRepository: vi.fn(function () { return mockMarketingUtmRepo }),
+}))
 
 // Mock the social-association repo so the deterministic social-connection check in
 // campaignPlanCreate is driven by the test, not by real DB rows.
@@ -548,5 +569,79 @@ describe('campaignScaffoldPage scaffold behavior', () => {
     expect(result.success).toBe(true)
     expect(result.filesWritten).toEqual(['src/pages/lp/summer-sale.tsx'])
     expect(write).toHaveBeenCalledWith(expect.objectContaining({ path: 'src/pages/lp/summer-sale.tsx' }))
+  })
+})
+
+describe('campaignPlanCreate persists social raw_content', () => {
+  beforeEach(() => {
+    mockCampaignFindByAppId.mockReturnValue([])
+    mockCampaignCreate.mockReturnValue({ id: 'camp_x' })
+    mockCampaignTransition.mockReturnValue({ id: 'camp_x', status: 'ready' })
+    mockMediaSearch.searchMedia.mockResolvedValue({ success: false })
+    mockSocialPostRepo.create.mockReturnValue({ id: 'post-mat1' })
+    mockMarketingUtmRepo.create.mockReset()
+  })
+
+  it('writes raw_content and status=draft for a social asset', async () => {
+    await run(campaignPlanCreate, {
+      name: 'Spring', offer: 'Save', startDate: '2026-07-01', endDate: '2026-07-31',
+      plannedContent: [{
+        assetType: 'social', title: 'Launch post', scheduledDate: '2026-07-02', imageUrl: 'http://img',
+        rawContent: { message: 'Spring sale!', hashtags: ['spring'], callToAction: 'Shop', platform: 'facebook' },
+      }],
+    }, enabledContext)
+
+    expect(mockCampaignAddContent).toHaveBeenCalledWith(expect.objectContaining({
+      assetType: 'social',
+      status: 'draft',
+      rawContent: expect.stringContaining('"message":"Spring sale!"'),
+    }))
+  })
+
+  it('leaves non-social assets without raw_content and keeps their status', async () => {
+    await run(campaignPlanCreate, {
+      name: 'Spring', offer: 'Save', startDate: '2026-07-01', endDate: '2026-07-31',
+      plannedContent: [{ assetType: 'blog', title: 'SEO post', status: 'scheduled', imageUrl: 'http://img' }],
+    }, enabledContext)
+
+    expect(mockCampaignAddContent).toHaveBeenCalledWith(expect.objectContaining({ assetType: 'blog', status: 'scheduled' }))
+    expect(mockCampaignAddContent.mock.calls[0][0].rawContent).toBeUndefined()
+  })
+
+  it('defaults a social asset with no rawContent to status=draft and writes no raw_content', async () => {
+    await run(campaignPlanCreate, {
+      name: 'Spring', offer: 'Save', startDate: '2026-07-01', endDate: '2026-07-31',
+      plannedContent: [{ assetType: 'social', title: 'Teaser', imageUrl: 'http://img' }],
+    }, enabledContext)
+
+    expect(mockCampaignAddContent).toHaveBeenCalledWith(expect.objectContaining({ assetType: 'social', status: 'draft' }))
+    expect(mockCampaignAddContent.mock.calls[0][0].rawContent).toBeUndefined()
+    expect(mockSocialPostRepo.create).not.toHaveBeenCalled()
+    expect(mockCampaignAddContent.mock.calls[0][0].contentRefId).toBeUndefined()
+  })
+
+  it('materializes a DRAFT social_posts carrier (no UTM) and stamps contentRefId for a social asset', async () => {
+    await run(campaignPlanCreate, {
+      name: 'Spring', offer: 'Save', startDate: '2026-07-01', endDate: '2026-07-31',
+      plannedContent: [{
+        assetType: 'social', title: 'Launch post', scheduledDate: '2026-07-02', imageUrl: 'http://img',
+        rawContent: { message: 'Spring sale!', hashtags: ['spring'], callToAction: 'Shop', platform: 'facebook' },
+      }],
+    }, enabledContext)
+
+    expect(mockSocialPostRepo.create).toHaveBeenCalledWith(expect.objectContaining({
+      appId: 'app1234567',
+      campaignId: 'camp_x',
+      state: 'DRAFT',
+      platform: 'facebook',
+      payload: expect.objectContaining({ message: 'Spring sale!', hashtags: ['spring'], callToAction: 'Shop', platform: 'facebook' }),
+    }))
+    // UTM minting is the RUBICON-499/500 workstream's job, not 436 — the carrier alone
+    // is materialized here so edit/delete has a stable contentRefId to bind to.
+    expect(mockMarketingUtmRepo.create).not.toHaveBeenCalled()
+    expect(mockCampaignAddContent).toHaveBeenCalledWith(expect.objectContaining({
+      assetType: 'social', status: 'draft', contentRefId: 'post-mat1',
+      rawContent: expect.stringContaining('"message":"Spring sale!"'),
+    }))
   })
 })

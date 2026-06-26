@@ -1,5 +1,6 @@
 import { createMarketingAgent, createMarketingAgentFactory, MarketingAgent } from '../marketing-agent.js';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { skills } from '../../services/features.js';
 
 // Mock model selection to avoid API key requirement
 vi.mock('../../utils/model-selection.js', () => ({
@@ -266,6 +267,20 @@ describe('marketing-agent', function marketingAgentTests() {
       const toolNames = Object.keys(config.tools);
 
       expect(toolNames).toHaveLength(9);
+    });
+
+    it('exposes the social edit/delete tools when the social skill is enabled', async function socialToolsEnabled() {
+      const isEnabledSpy = vi.spyOn(skills, 'isEnabled').mockReturnValue(true);
+      try {
+        const config = await createMarketingAgent();
+
+        expect(config.tools).toHaveProperty('socialPostEdit');
+        expect(config.tools).toHaveProperty('socialPostDelete');
+        expect(config.tools.socialPostEdit).toBeTruthy();
+        expect(config.tools.socialPostDelete).toBeTruthy();
+      } finally {
+        isEnabledSpy.mockRestore();
+      }
     });
 
     it('should include seoAnalysis tool', async function seoTool() {

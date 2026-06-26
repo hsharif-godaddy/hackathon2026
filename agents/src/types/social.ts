@@ -14,9 +14,13 @@ export enum SocialPlatform {
 
 /**
  * Post State Enum
- * Matches the CHECK constraint in social_posts table
+ * DRAFT is the pre-launch editable state; SCHEDULED/PUBLISHED/FAILED are the post-launch
+ * lifecycle states. The legacy social_posts.state CHECK constraint was dropped in RUBICON-436
+ * to admit DRAFT; the state is now validated against this enum at the repository boundary
+ * (SocialPostRepository.create/update, via assertEnumValue).
  */
 export enum PostState {
+  DRAFT = 'DRAFT',
   SCHEDULED = 'SCHEDULED',
   PUBLISHED = 'PUBLISHED',
   FAILED = 'FAILED'

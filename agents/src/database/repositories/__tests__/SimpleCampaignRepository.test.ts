@@ -248,13 +248,37 @@ describe('SimpleCampaignRepository', function campaignRepoTests() {
       expect(mockStatement.run).toHaveBeenCalled();
       expect(mockStatement.get).not.toHaveBeenCalled();
     });
+
+    it('persists and returns rawContent verbatim when provided', function rawContentProvided() {
+      const rawContent = '{"message":"hi","hashtags":["#x"]}';
+      const content = repo.addContent({
+        simpleCampaignId: 'camp_1',
+        assetType: 'social',
+        title: 'Launch Post',
+        rawContent,
+      });
+
+      expect(content.rawContent).toBe(rawContent);
+      // rawContent is bound right after imageUrl, before createdBy.
+      expect(mockStatement.run.mock.calls[0]).toContain(rawContent);
+    });
+
+    it('defaults rawContent to null when not provided', function rawContentDefaultsNull() {
+      const content = repo.addContent({
+        simpleCampaignId: 'camp_1',
+        assetType: 'blog',
+        title: 'No Raw Content',
+      });
+
+      expect(content.rawContent).toBeNull();
+    });
   });
 
   describe('#getContent', function getContentTests() {
     it('should return content for a campaign', function found() {
       mockStatement.all.mockReturnValue([
-        { id: 'cont_1', simple_campaign_id: 'camp_1', asset_type: 'blog', content_ref_id: null, title: 'Blog', scheduled_date: null, status: 'draft', content_preview: null, image_url: null, created_by: null, created_at: '2026-01-01' },
-        { id: 'cont_2', simple_campaign_id: 'camp_1', asset_type: 'social', content_ref_id: null, title: 'Post', scheduled_date: null, status: 'scheduled', content_preview: null, image_url: null, created_by: null, created_at: '2026-01-02' },
+        { id: 'cont_1', simple_campaign_id: 'camp_1', asset_type: 'blog', content_ref_id: null, title: 'Blog', scheduled_date: null, status: 'draft', content_preview: null, image_url: null, raw_content: null, created_by: null, created_at: '2026-01-01' },
+        { id: 'cont_2', simple_campaign_id: 'camp_1', asset_type: 'social', content_ref_id: null, title: 'Post', scheduled_date: null, status: 'scheduled', content_preview: null, image_url: null, raw_content: '{"message":"hello"}', created_by: null, created_at: '2026-01-02' },
       ]);
 
       const content = repo.getContent('camp_1');
@@ -263,6 +287,39 @@ describe('SimpleCampaignRepository', function campaignRepoTests() {
       expect(content[0].assetType).toBe('blog');
       expect(content[1].assetType).toBe('social');
       expect(content[0].simpleCampaignId).toBe('camp_1');
+      expect(content[0].rawContent).toBeNull();
+      expect(content[1].rawContent).toBe('{"message":"hello"}');
+    });
+  });
+
+  describe('#updateContent', function updateContentTests() {
+    it('updates raw_content to a new value', function updateRawContent() {
+      const rawContent = '{"message":"updated","hashtags":["#y"]}';
+      mockStatement.get.mockReturnValue({
+        id: 'cont_u1', simple_campaign_id: 'camp_1', asset_type: 'social', content_ref_id: null, title: 'Post',
+        scheduled_date: null, status: 'draft', content_preview: null, image_url: null, raw_content: rawContent,
+        created_by: null, created_at: '2026-01-01',
+      });
+
+      const content = repo.updateContent('cont_u1', { rawContent });
+
+      expect(content.rawContent).toBe(rawContent);
+      // The UPDATE binds the new value (followed by the WHERE id).
+      expect(mockStatement.run).not.toHaveBeenCalled();
+      expect(mockDb.prepare).toHaveBeenCalledWith(expect.stringContaining('raw_content = ?'));
+      expect(mockStatement.get.mock.calls[0]).toEqual([rawContent, 'cont_u1']);
+    });
+
+    it('leaves raw_content untouched when not passed in the update', function rawContentUntouched() {
+      mockStatement.get.mockReturnValue({
+        id: 'cont_u2', simple_campaign_id: 'camp_1', asset_type: 'social', content_ref_id: null, title: 'New Title',
+        scheduled_date: null, status: 'draft', content_preview: null, image_url: null, raw_content: '{"message":"orig"}',
+        created_by: null, created_at: '2026-01-01',
+      });
+
+      repo.updateContent('cont_u2', { title: 'New Title' });
+
+      expect(mockDb.prepare).not.toHaveBeenCalledWith(expect.stringContaining('raw_content = ?'));
     });
   });
 

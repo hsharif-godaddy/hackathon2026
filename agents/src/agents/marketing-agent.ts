@@ -62,6 +62,8 @@ export async function createMarketingAgent(): Promise<AgentConfig> {
     socialRead: allAILibTools.socialRead,
     socialPostCreate: allAILibTools.socialPostCreate,
     socialPostPublish: allAILibTools.socialPostPublish,
+    socialPostEdit: allAILibTools.socialPostEdit,
+    socialPostDelete: allAILibTools.socialPostDelete,
   } : {}
 
   return {
