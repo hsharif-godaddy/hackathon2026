@@ -66,10 +66,11 @@ var ConnectTCPPorts = []uint16{80, 443, 53, 3306, 25, 2525}
 
 // ExecPaths returns filesystem access rules for agent one-off commands (/exec).
 // Only relevant in preview containers — publish containers don't expose /exec.
+// appDir is the customer app directory (config.AppDir, typically "/app").
 // sharedStorageDir is the SHARED_STORAGE_DIR env var value (e.g. "/shared-storage").
-func ExecPaths(sharedStorageDir string) []PathRule {
+func ExecPaths(appDir, sharedStorageDir string) []PathRule {
 	paths := []PathRule{
-		{Mode: "rwcx", Path: "/app"},
+		{Mode: "rwcx", Path: appDir},
 		{Mode: "rwc", Path: "/tmp"},
 		{Mode: "rwc", Path: "/dist"},
 		// NOMAD_TASK_DIR — git config, npm cache, and other tools write to $HOME which is /local.
@@ -84,7 +85,7 @@ func ExecPaths(sharedStorageDir string) []PathRule {
 		// and puts /node_modules/.bin on PATH (vite, tsc, etc.). Both paths listed
 		// for compatibility across image versions.
 		{Mode: "rwcx", Path: "/node_modules"},
-		{Mode: "rwcx", Path: "/app/node_modules"},
+		{Mode: "rwcx", Path: filepath.Join(appDir, "node_modules")},
 	}
 	if sharedStorageDir != "" {
 		paths = append(paths, PathRule{Mode: "rwc", Path: filepath.Join(sharedStorageDir, "public", "assets")})
@@ -94,9 +95,9 @@ func ExecPaths(sharedStorageDir string) []PathRule {
 
 // PreviewProcessPaths returns filesystem access rules for the preview container's
 // managed app process (the customer's `npm run dev` or similar).
-func PreviewProcessPaths(sharedStorageDir string) []PathRule {
+func PreviewProcessPaths(appDir, sharedStorageDir string) []PathRule {
 	paths := []PathRule{
-		{Mode: "rwcx", Path: "/app"},
+		{Mode: "rwcx", Path: appDir},
 		{Mode: "rwc", Path: "/tmp"},
 		// NOMAD_TASK_DIR — HOME for the customer process; tools write configs/cache here.
 		{Mode: "rwc", Path: "/local"},
@@ -106,7 +107,7 @@ func PreviewProcessPaths(sharedStorageDir string) []PathRule {
 		// and puts /node_modules/.bin on PATH (vite, tsc, etc.). Both paths listed
 		// for compatibility across image versions.
 		{Mode: "rwcx", Path: "/node_modules"},
-		{Mode: "rwcx", Path: "/app/node_modules"},
+		{Mode: "rwcx", Path: filepath.Join(appDir, "node_modules")},
 	}
 	if sharedStorageDir != "" {
 		paths = append(paths, PathRule{Mode: "rwc", Path: filepath.Join(sharedStorageDir, "public", "assets")})
@@ -117,9 +118,9 @@ func PreviewProcessPaths(sharedStorageDir string) []PathRule {
 // PublishProcessPaths returns filesystem access rules for the publish container's
 // managed app process. The entrypoint is /publish/run-app.sh, which extracts the
 // archive into /dist and execs the app from there.
-func PublishProcessPaths(sharedStorageDir string) []PathRule {
+func PublishProcessPaths(appDir, sharedStorageDir string) []PathRule {
 	paths := []PathRule{
-		{Mode: "rwcx", Path: "/app"},
+		{Mode: "rwcx", Path: appDir},
 		{Mode: "rwc", Path: "/tmp"},
 		// NOMAD_TASK_DIR — HOME for the customer process; tools write configs/cache here.
 		{Mode: "rwc", Path: "/local"},
@@ -127,7 +128,7 @@ func PublishProcessPaths(sharedStorageDir string) []PathRule {
 		{Mode: "rwc", Path: "/private"},
 		{Mode: "rwc", Path: "/dist"},
 		{Mode: "rx", Path: "/publish"},
-		{Mode: "rwcx", Path: "/app/node_modules"},
+		{Mode: "rwcx", Path: filepath.Join(appDir, "node_modules")},
 	}
 	if sharedStorageDir != "" {
 		paths = append(paths, PathRule{Mode: "rwc", Path: filepath.Join(sharedStorageDir, "public", "assets")})
@@ -136,11 +137,11 @@ func PublishProcessPaths(sharedStorageDir string) []PathRule {
 }
 
 // ProcessPaths returns the filesystem access rules for the given container variant.
-func ProcessPaths(variant ProcessVariant, sharedStorageDir string) []PathRule {
+func ProcessPaths(variant ProcessVariant, appDir, sharedStorageDir string) []PathRule {
 	if variant == VariantPublish {
-		return PublishProcessPaths(sharedStorageDir)
+		return PublishProcessPaths(appDir, sharedStorageDir)
 	}
-	return PreviewProcessPaths(sharedStorageDir)
+	return PreviewProcessPaths(appDir, sharedStorageDir)
 }
 
 // PathRule defines a filesystem path with its access mode.
@@ -191,9 +192,9 @@ type Spec struct {
 }
 
 // BuildExecProfile builds a Spec for a one-off /exec command.
-func BuildExecProfile(sharedStorageDir, command, workDir string) Spec {
+func BuildExecProfile(appDir, sharedStorageDir, command, workDir string) Spec {
 	return Spec{
-		Paths:      ExecPaths(sharedStorageDir),
+		Paths:      ExecPaths(appDir, sharedStorageDir),
 		ConnectTCP: ConnectTCPPorts,
 		BindTCP:    nil,
 		Command:    command,
@@ -204,9 +205,11 @@ func BuildExecProfile(sharedStorageDir, command, workDir string) Spec {
 // BuildProcessProfile builds a Spec for a /process/start managed process.
 // bindPorts are the ports the process needs to listen on (from ProcessStartRequest.Ports).
 // variant selects the preview vs publish filesystem layout.
-func BuildProcessProfile(variant ProcessVariant, sharedStorageDir, command, workDir string, bindPorts []uint16) Spec {
+func BuildProcessProfile(
+	variant ProcessVariant, appDir, sharedStorageDir, command, workDir string, bindPorts []uint16,
+) Spec {
 	return Spec{
-		Paths:      ProcessPaths(variant, sharedStorageDir),
+		Paths:      ProcessPaths(variant, appDir, sharedStorageDir),
 		ConnectTCP: ConnectTCPPorts,
 		BindTCP:    bindPorts,
 		Command:    command,

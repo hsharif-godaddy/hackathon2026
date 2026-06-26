@@ -24,6 +24,7 @@ import (
 
 	"github.com/bmatcuk/doublestar/v4"
 
+	"github.com/airo-ai-builder/dev-supervisor/internal/sandbox"
 	"github.com/airo-ai-builder/dev-supervisor/internal/validation"
 )
 
@@ -61,6 +62,28 @@ func (s *Server) fsBaseDir() string {
 		return s.config.AppDir
 	}
 	return "/app"
+}
+
+// resolveRoot resolves a named storage root to its absolute filesystem path.
+// Empty root defaults to "app" for backward compatibility. Returns an error
+// for unknown root names — callers must respond with 400.
+func (s *Server) resolveRoot(rootName string) (string, error) {
+	if rootName == "" {
+		return s.fsBaseDir(), nil
+	}
+	roots := s.storageRoots
+	if len(roots) == 0 {
+		sharedStorageDir := ""
+		if s.config != nil {
+			sharedStorageDir = s.config.SharedStorageDir
+		}
+		roots = sandbox.ResolveRoots(s.fsBaseDir(), sharedStorageDir)
+	}
+	path, ok := sandbox.LookupRoot(roots, sandbox.StorageRootName(rootName))
+	if !ok {
+		return "", fmt.Errorf("unknown storage root %q; valid roots: %v", rootName, sandbox.ValidRootNames())
+	}
+	return path, nil
 }
 
 // resolveDir returns dir with symlinks resolved, falling back to the original
@@ -138,6 +161,7 @@ type rgText struct {
 // --- Request/Response types ---
 
 type wsFilesTreeRequest struct {
+	Root      string `json:"root,omitempty"`
 	Path      string `json:"path,omitempty"`
 	Recursive bool   `json:"recursive,omitempty"`
 	MaxDepth  int    `json:"maxDepth,omitempty"`
@@ -166,6 +190,7 @@ type wsFilesTreeResponse struct {
 }
 
 type wsFilesViewRequest struct {
+	Root   string `json:"root,omitempty"`
 	Path   string `json:"path"`
 	Offset int    `json:"offset,omitempty"` // 0-based line number
 	Limit  int    `json:"limit,omitempty"`  // max lines to return
@@ -181,6 +206,7 @@ type wsFilesViewResponse struct {
 }
 
 type wsFilesSearchRequest struct {
+	Root          string   `json:"root,omitempty"`
 	Pattern       string   `json:"pattern"`
 	Path          string   `json:"path,omitempty"`
 	CaseSensitive bool     `json:"caseSensitive,omitempty"`
@@ -201,6 +227,7 @@ type wsFilesSearchResponse struct {
 }
 
 type wsFilesWriteRequest struct {
+	Root       string `json:"root,omitempty"`
 	Path       string `json:"path"`
 	Content    string `json:"content"`
 	Encoding   string `json:"encoding,omitempty"`   // "utf-8" (default) or "base64"
@@ -212,6 +239,7 @@ type wsFilesWriteResponse struct {
 }
 
 type wsFilesEditRequest struct {
+	Root       string `json:"root,omitempty"`
 	Path       string `json:"path"`
 	OldString  string `json:"oldString"`
 	NewString  string `json:"newString"`
@@ -223,6 +251,7 @@ type wsFilesEditResponse struct {
 }
 
 type wsFilesInsertRequest struct {
+	Root    string `json:"root,omitempty"`
 	Path    string `json:"path"`
 	Line    int    `json:"line"` // 1-based: 0 = prepend, > total lines = append
 	Content string `json:"content"`
@@ -233,16 +262,19 @@ type wsFilesInsertResponse struct {
 }
 
 type wsFilesDeleteRequest struct {
+	Root      string `json:"root,omitempty"`
 	Path      string `json:"path"`
 	Recursive bool   `json:"recursive,omitempty"`
 }
 
 type wsFilesMoveRequest struct {
+	Root string `json:"root,omitempty"`
 	From string `json:"from"`
 	To   string `json:"to"`
 }
 
 type wsFilesStatRequest struct {
+	Root  string   `json:"root,omitempty"`
 	Paths []string `json:"paths"`
 }
 
@@ -276,6 +308,7 @@ type wsFilesStatResponse struct {
 // files are added if present. prefix becomes the top-level folder inside the
 // zip (e.g. "myapp/src/index.ts").
 type wsFilesArchiveRequest struct {
+	Root   string   `json:"root,omitempty"`
 	Dirs   []string `json:"dirs,omitempty"`
 	Files  []string `json:"files,omitempty"`
 	Prefix string   `json:"prefix,omitempty"`
@@ -299,12 +332,18 @@ func (s *Server) handleWorkspaceFilesTree(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	baseDir, err := s.resolveRoot(req.Root)
+	if err != nil {
+		s.sendError(w, http.StatusBadRequest, "validation_failed", err.Error())
+		return
+	}
+
 	basePath := req.Path
 	if basePath == "" {
 		basePath = "."
 	}
 
-	resolved, err := validation.ValidateFilePath(basePath, s.fsBaseDir())
+	resolved, err := validation.ValidateFilePath(basePath, baseDir)
 	if err != nil {
 		s.sendError(w, http.StatusBadRequest, "validation_failed", err.Error())
 		return
@@ -340,7 +379,7 @@ func (s *Server) handleWorkspaceFilesTree(w http.ResponseWriter, r *http.Request
 	// correct even when the base itself is a symlink.
 	pathPrefix := filepath.Clean(req.Path)
 	if filepath.IsAbs(pathPrefix) {
-		rel, relErr := filepath.Rel(filepath.Clean(s.fsBaseDir()), pathPrefix)
+		rel, relErr := filepath.Rel(filepath.Clean(baseDir), pathPrefix)
 		if relErr != nil {
 			s.sendError(w, http.StatusBadRequest, "validation_failed", relErr.Error())
 			return
@@ -358,7 +397,7 @@ func (s *Server) handleWorkspaceFilesTree(w http.ResponseWriter, r *http.Request
 	var treeErr error
 
 	if req.Recursive {
-		entries, truncated, treeErr = s.wsFilesTreeRecursive(resolved, req, pathPrefix, maxDepth, maxEntries)
+		entries, truncated, treeErr = s.wsFilesTreeRecursive(resolved, req, pathPrefix, maxDepth, maxEntries, baseDir)
 	} else {
 		entries, truncated, treeErr = s.wsFilesTreeFlat(resolved, req, pathPrefix, maxEntries)
 	}
@@ -419,14 +458,13 @@ func (s *Server) wsFilesTreeRecursive(
 	pathPrefix string,
 	maxDepth int,
 	maxEntries int,
+	sandboxDir string,
 ) ([]wsFilesTreeEntry, bool, error) {
 	type walkItem struct {
 		absDir string
 		relDir string
 		depth  int
 	}
-
-	sandboxDir := s.fsBaseDir()
 	result := make([]wsFilesTreeEntry, 0, min(maxEntries, 256))
 	stack := []walkItem{{absDir: rootDir, relDir: pathPrefix, depth: 0}}
 
@@ -589,12 +627,18 @@ func (s *Server) handleWorkspaceFilesView(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	baseDir, err := s.resolveRoot(req.Root)
+	if err != nil {
+		s.sendError(w, http.StatusBadRequest, "validation_failed", err.Error())
+		return
+	}
+
 	if req.Path == "" {
 		s.sendError(w, http.StatusBadRequest, "validation_failed", "path is required")
 		return
 	}
 
-	resolved, err := validation.ValidateFilePath(req.Path, s.fsBaseDir())
+	resolved, err := validation.ValidateFilePath(req.Path, baseDir)
 	if err != nil {
 		s.sendError(w, http.StatusBadRequest, "validation_failed", err.Error())
 		return
@@ -685,6 +729,12 @@ func (s *Server) handleWorkspaceFilesSearch(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	baseDir, rootErr := s.resolveRoot(req.Root)
+	if rootErr != nil {
+		s.sendError(w, http.StatusBadRequest, "validation_failed", rootErr.Error())
+		return
+	}
+
 	if strings.TrimSpace(req.Pattern) == "" {
 		s.sendError(w, http.StatusBadRequest, "validation_failed", "pattern is required")
 		return
@@ -703,7 +753,6 @@ func (s *Server) handleWorkspaceFilesSearch(w http.ResponseWriter, r *http.Reque
 		maxResults = wsFilesMaxMaxResults
 	}
 
-	baseDir := s.fsBaseDir()
 	searchPath := baseDir
 	if req.Path != "" {
 		resolved, err := validation.ValidateFilePath(req.Path, baseDir)
@@ -847,12 +896,18 @@ func (s *Server) handleWorkspaceFilesWrite(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	baseDir, err := s.resolveRoot(req.Root)
+	if err != nil {
+		s.sendError(w, http.StatusBadRequest, "validation_failed", err.Error())
+		return
+	}
+
 	if req.Path == "" {
 		s.sendError(w, http.StatusBadRequest, "validation_failed", "path is required")
 		return
 	}
 
-	resolved, err := validation.ValidateFilePath(req.Path, s.fsBaseDir())
+	resolved, err := validation.ValidateFilePath(req.Path, baseDir)
 	if err != nil {
 		s.sendError(w, http.StatusBadRequest, "validation_failed", err.Error())
 		return
@@ -914,6 +969,12 @@ func (s *Server) handleWorkspaceFilesEdit(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	baseDir, err := s.resolveRoot(req.Root)
+	if err != nil {
+		s.sendError(w, http.StatusBadRequest, "validation_failed", err.Error())
+		return
+	}
+
 	if req.Path == "" {
 		s.sendError(w, http.StatusBadRequest, "validation_failed", "path is required")
 		return
@@ -923,7 +984,7 @@ func (s *Server) handleWorkspaceFilesEdit(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	resolved, err := validation.ValidateFilePath(req.Path, s.fsBaseDir())
+	resolved, err := validation.ValidateFilePath(req.Path, baseDir)
 	if err != nil {
 		s.sendError(w, http.StatusBadRequest, "validation_failed", err.Error())
 		return
@@ -1004,6 +1065,12 @@ func (s *Server) handleWorkspaceFilesInsert(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	baseDir, err := s.resolveRoot(req.Root)
+	if err != nil {
+		s.sendError(w, http.StatusBadRequest, "validation_failed", err.Error())
+		return
+	}
+
 	if req.Path == "" {
 		s.sendError(w, http.StatusBadRequest, "validation_failed", "path is required")
 		return
@@ -1013,7 +1080,7 @@ func (s *Server) handleWorkspaceFilesInsert(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	resolved, err := validation.ValidateFilePath(req.Path, s.fsBaseDir())
+	resolved, err := validation.ValidateFilePath(req.Path, baseDir)
 	if err != nil {
 		s.sendError(w, http.StatusBadRequest, "validation_failed", err.Error())
 		return
@@ -1098,12 +1165,18 @@ func (s *Server) handleWorkspaceFilesDelete(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	baseDir, err := s.resolveRoot(req.Root)
+	if err != nil {
+		s.sendError(w, http.StatusBadRequest, "validation_failed", err.Error())
+		return
+	}
+
 	if req.Path == "" {
 		s.sendError(w, http.StatusBadRequest, "validation_failed", "path is required")
 		return
 	}
 
-	resolved, err := validation.ValidateFilePath(req.Path, s.fsBaseDir())
+	resolved, err := validation.ValidateFilePath(req.Path, baseDir)
 	if err != nil {
 		s.sendError(w, http.StatusBadRequest, "validation_failed", err.Error())
 		return
@@ -1136,18 +1209,24 @@ func (s *Server) handleWorkspaceFilesMove(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	baseDir, err := s.resolveRoot(req.Root)
+	if err != nil {
+		s.sendError(w, http.StatusBadRequest, "validation_failed", err.Error())
+		return
+	}
+
 	if req.From == "" || req.To == "" {
 		s.sendError(w, http.StatusBadRequest, "validation_failed", "from and to are required")
 		return
 	}
 
-	resolvedFrom, err := validation.ValidateFilePath(req.From, s.fsBaseDir())
+	resolvedFrom, err := validation.ValidateFilePath(req.From, baseDir)
 	if err != nil {
 		s.sendError(w, http.StatusBadRequest, "validation_failed", fmt.Sprintf("from: %s", err.Error()))
 		return
 	}
 
-	resolvedTo, err := validation.ValidateFilePath(req.To, s.fsBaseDir())
+	resolvedTo, err := validation.ValidateFilePath(req.To, baseDir)
 	if err != nil {
 		s.sendError(w, http.StatusBadRequest, "validation_failed", fmt.Sprintf("to: %s", err.Error()))
 		return
@@ -1181,13 +1260,20 @@ func (s *Server) handleWorkspaceFilesMove(w http.ResponseWriter, r *http.Request
 }
 
 func (s *Server) handleWorkspaceFilesUpload(w http.ResponseWriter, r *http.Request) {
+	root := r.URL.Query().Get("root")
+	baseDir, err := s.resolveRoot(root)
+	if err != nil {
+		s.sendError(w, http.StatusBadRequest, "validation_failed", err.Error())
+		return
+	}
+
 	path := r.URL.Query().Get("path")
 	if path == "" {
 		s.sendError(w, http.StatusBadRequest, "validation_failed", "path query parameter is required")
 		return
 	}
 
-	resolved, err := validation.ValidateFilePath(path, s.fsBaseDir())
+	resolved, err := validation.ValidateFilePath(path, baseDir)
 	if err != nil {
 		s.sendError(w, http.StatusBadRequest, "validation_failed", err.Error())
 		return
@@ -1240,13 +1326,20 @@ func (s *Server) handleWorkspaceFilesUpload(w http.ResponseWriter, r *http.Reque
 }
 
 func (s *Server) handleWorkspaceFilesDownload(w http.ResponseWriter, r *http.Request) {
+	root := r.URL.Query().Get("root")
+	baseDir, err := s.resolveRoot(root)
+	if err != nil {
+		s.sendError(w, http.StatusBadRequest, "validation_failed", err.Error())
+		return
+	}
+
 	path := r.URL.Query().Get("path")
 	if path == "" {
 		s.sendError(w, http.StatusBadRequest, "validation_failed", "path query parameter is required")
 		return
 	}
 
-	resolved, err := validation.ValidateFilePath(path, s.fsBaseDir())
+	resolved, err := validation.ValidateFilePath(path, baseDir)
 	if err != nil {
 		s.sendError(w, http.StatusBadRequest, "validation_failed", err.Error())
 		return
@@ -1312,12 +1405,17 @@ func (s *Server) handleWorkspaceFilesArchive(w http.ResponseWriter, r *http.Requ
 		s.sendError(w, http.StatusBadRequest, "invalid_request", "Invalid JSON payload")
 		return
 	}
+
+	base, err := s.resolveRoot(req.Root)
+	if err != nil {
+		s.sendError(w, http.StatusBadRequest, "validation_failed", err.Error())
+		return
+	}
+
 	if len(req.Dirs) == 0 && len(req.Files) == 0 {
 		s.sendError(w, http.StatusBadRequest, "validation_failed", "dirs or files is required")
 		return
 	}
-
-	base := s.fsBaseDir()
 	// ValidateFilePath returns symlink-resolved absolute paths; rebasing entry
 	// names against the unresolved base would inject ".." on a symlinked base
 	// (macOS /var, a symlinked prod /app), so resolve the base too.
@@ -1516,6 +1614,12 @@ func (s *Server) handleWorkspaceFilesStat(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	base, err := s.resolveRoot(req.Root)
+	if err != nil {
+		s.sendError(w, http.StatusBadRequest, "validation_failed", err.Error())
+		return
+	}
+
 	if len(req.Paths) == 0 {
 		s.sendError(w, http.StatusBadRequest, "validation_failed", "paths is required and must be non-empty")
 		return
@@ -1527,8 +1631,6 @@ func (s *Server) handleWorkspaceFilesStat(w http.ResponseWriter, r *http.Request
 		)
 		return
 	}
-
-	base := s.fsBaseDir()
 	entries := make([]wsFilesStatEntry, 0, len(req.Paths))
 	for _, p := range req.Paths {
 		entry := wsFilesStatEntry{Path: p}

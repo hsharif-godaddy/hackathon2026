@@ -196,6 +196,7 @@ type TaskManagerConfig struct {
 	MaxAsyncTasks    int
 	ReapTTL          time.Duration
 	SandboxEnabled   bool
+	AppDir           string
 	SharedStorageDir string
 	DefaultWorkDir   string
 }
@@ -270,6 +271,10 @@ func (tm *TaskManager) SetSandboxEnabled(enabled bool) {
 	tm.config.SandboxEnabled = enabled
 }
 
+func (tm *TaskManager) SetAppDir(dir string) {
+	tm.config.AppDir = dir
+}
+
 func (tm *TaskManager) SetSharedStorageDir(dir string) {
 	tm.config.SharedStorageDir = dir
 }
@@ -342,7 +347,7 @@ func (tm *TaskManager) run(ctx context.Context, task *Task, req validation.Comma
 
 	childEnv := mergeEnv(os.Environ(), req.Env)
 
-	spec := sandbox.BuildExecProfile(tm.config.SharedStorageDir, req.Command, task.WorkingDir)
+	spec := sandbox.BuildExecProfile(tm.config.AppDir, tm.config.SharedStorageDir, req.Command, task.WorkingDir)
 	sandboxCmd, sandboxErr := sandbox.WrapCommand(ctx, tm.config.SandboxEnabled, spec, childEnv)
 	if sandboxErr != nil {
 		tm.finishTask(task, TaskStateFailed, -1, sandboxErr.Error())

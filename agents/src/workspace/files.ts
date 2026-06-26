@@ -1,6 +1,14 @@
 import type { Readable } from 'node:stream';
 
 /**
+ * Named storage root resolved server-side. The agent selects a root by name;
+ * the server maps it to an absolute path and confines operations within it.
+ * Omitting defaults to 'app' (the primary app source directory).
+ * Keep in sync with StorageRootName in dev-supervisor/internal/sandbox/roots.go.
+ */
+export type StorageRoot = 'app' | 'public-assets' | 'private';
+
+/**
  * Single tree entry. `path` is **workspace-rooted** — i.e. relative to the
  * workspace root, with `TreeOptions.path` already joined in. A
  * `tree({ path: 'docs/ui-kit/primitives' })` call returns entries like
@@ -15,6 +23,7 @@ export interface TreeEntry {
 }
 
 export interface TreeOptions {
+  root?: StorageRoot;
   /**
    * Workspace-relative directory to walk. Empty / omitted = workspace root.
    * Returned `TreeEntry.path` values are workspace-rooted (this prefix is
@@ -61,6 +70,7 @@ export interface TreeResult {
 }
 
 export interface ViewOptions {
+  root?: StorageRoot;
   path: string;
   offset?: number;
   limit?: number;
@@ -76,6 +86,7 @@ export interface ViewResult {
 }
 
 export interface SearchOptions {
+  root?: StorageRoot;
   pattern: string;
   path?: string;
   caseSensitive?: boolean;
@@ -92,6 +103,7 @@ export interface SearchMatch {
 }
 
 export interface WriteOptions {
+  root?: StorageRoot;
   path: string;
   content: string;
   encoding?: 'utf-8' | 'base64';
@@ -103,6 +115,7 @@ export interface WriteResult {
 }
 
 export interface EditOptions {
+  root?: StorageRoot;
   path: string;
   oldString: string;
   newString: string;
@@ -114,6 +127,7 @@ export interface EditResult {
 }
 
 export interface InsertOptions {
+  root?: StorageRoot;
   path: string;
   line: number;
   content: string;
@@ -124,21 +138,25 @@ export interface InsertResult {
 }
 
 export interface DeleteOptions {
+  root?: StorageRoot;
   path: string;
   recursive?: boolean;
 }
 
 export interface MoveOptions {
+  root?: StorageRoot;
   from: string;
   to: string;
 }
 
 export interface FileUploadOptions {
+  root?: StorageRoot;
   path: string;
   data: Buffer | Uint8Array;
 }
 
 export interface DownloadOptions {
+  root?: StorageRoot;
   path: string;
 }
 
@@ -148,6 +166,7 @@ export interface DownloadResult {
 }
 
 export interface ArchiveOptions {
+  root?: StorageRoot;
   /** Workspace-relative directories to walk recursively. Missing dirs are skipped. */
   dirs?: string[];
   /** Workspace-relative files to include. Missing files are skipped. */
@@ -163,6 +182,7 @@ export interface ArchiveResult {
 }
 
 export interface StatOptions {
+  root?: StorageRoot;
   paths: string[];
 }
 

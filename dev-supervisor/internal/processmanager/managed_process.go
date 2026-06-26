@@ -73,6 +73,7 @@ type ManagedProcess struct {
 
 // NewManagedProcess creates a new process instance.
 // If sandboxEnabled is true, the process is wrapped via the airo-sandbox binary.
+// appDir is the customer app directory for sandbox path resolution.
 // sharedStorageDir is passed through for sandbox path resolution.
 // variant selects the preview vs publish sandbox profile layout.
 // bindPorts are the TCP ports the sandbox must allow this process to listen on.
@@ -82,6 +83,7 @@ type ManagedProcess struct {
 func NewManagedProcess(
 	config validation.ProcessStartRequest,
 	sandboxEnabled bool,
+	appDir string,
 	sharedStorageDir string,
 	variant sandbox.ProcessVariant,
 	bindPorts []int,
@@ -116,7 +118,7 @@ func NewManagedProcess(
 			sandboxBindPorts = append(sandboxBindPorts, uint16(p))
 		}
 	}
-	spec := sandbox.BuildProcessProfile(variant, sharedStorageDir, config.Command, workDir, sandboxBindPorts)
+	spec := sandbox.BuildProcessProfile(variant, appDir, sharedStorageDir, config.Command, workDir, sandboxBindPorts)
 	sandboxCmd, sandboxErr := sandbox.WrapCommand(ctx, sandboxEnabled, spec, env)
 	if sandboxErr != nil {
 		cancel()

@@ -73,19 +73,22 @@ export class HttpFiles implements WorkspaceFiles {
   }
 
   async upload(options: FileUploadOptions): Promise<WriteResult> {
-    const encodedPath = options.path.split('/').map(encodeURIComponent).join('/');
-    const response = await this.client.putRaw(
-      `/workspace/files/upload?path=${encodedPath}`,
-      options.data,
-    );
+    const encodedPath: string = options.path.split('/').map(encodeURIComponent).join('/');
+    let url: string = `/workspace/files/upload?path=${encodedPath}`;
+    if (options.root) {
+      url += `&root=${encodeURIComponent(options.root)}`;
+    }
+    const response = await this.client.putRaw(url, options.data);
     return response as WriteResult;
   }
 
   async download(options: DownloadOptions): Promise<DownloadResult> {
-    const encodedPath = options.path.split('/').map(encodeURIComponent).join('/');
-    const response = await this.client.getRaw(
-      `/workspace/files/download?path=${encodedPath}`,
-    );
+    const encodedPath: string = options.path.split('/').map(encodeURIComponent).join('/');
+    let url: string = `/workspace/files/download?path=${encodedPath}`;
+    if (options.root) {
+      url += `&root=${encodeURIComponent(options.root)}`;
+    }
+    const response = await this.client.getRaw(url);
     return {
       data: response.data,
       contentType: response.contentType,
@@ -96,6 +99,7 @@ export class HttpFiles implements WorkspaceFiles {
     const { stream, contentType } = await this.client.postStream(
       '/workspace/files/archive',
       {
+        root: options.root,
         dirs: options.dirs ?? [],
         files: options.files ?? [],
         prefix: options.prefix ?? '',

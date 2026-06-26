@@ -120,6 +120,7 @@ type Server struct {
 	statusPage             *httpproxy.StatusPage // publish-only fallback HTML; nil otherwise
 	startTime              time.Time
 	config                 *Config
+	storageRoots           []sandbox.StorageRoot
 	processLogging         bool       // Current process logging configuration
 	processLoggingToStdout bool       // Current structured logging configuration
 	pruneMu                sync.Mutex // Serialize prune operations
@@ -147,12 +148,6 @@ type ErrorResponse struct {
 type SetupExecuteResponse struct {
 	Status string  `json:"status"` // "executed", "already_executed", "not_configured", "error"
 	Error  *string `json:"error,omitempty"`
-}
-
-// sharedStorageDir returns the SHARED_STORAGE_DIR environment variable value.
-// This is used by sandbox profiles to resolve the shared storage assets path.
-func sharedStorageDir() string {
-	return os.Getenv("SHARED_STORAGE_DIR")
 }
 
 func NewServer() *Server {
@@ -350,6 +345,7 @@ func (s *Server) waitForServerReady(address string, useTCP bool) error {
 
 func (s *Server) StartWithConfig(cfg *Config) error {
 	s.config = cfg
+	s.storageRoots = sandbox.ResolveRoots(cfg.AppDir, cfg.SharedStorageDir)
 	s.processLogging = cfg.ProcessLogging
 	s.processLoggingToStdout = cfg.ProcessLoggingToStdout
 	// Configure process manager logging
@@ -357,13 +353,15 @@ func (s *Server) StartWithConfig(cfg *Config) error {
 	s.procMgr.SetStructuredLogging(cfg.ProcessLoggingToStdout)
 
 	// Configure sandbox for child processes
-	storageDir := sharedStorageDir()
 	s.cmdExec.SetSandboxEnabled(cfg.SandboxEnabled)
-	s.cmdExec.SetSharedStorageDir(storageDir)
+	s.cmdExec.SetAppDir(cfg.AppDir)
+	s.cmdExec.SetSharedStorageDir(cfg.SharedStorageDir)
 	s.taskMgr.SetSandboxEnabled(cfg.SandboxEnabled)
-	s.taskMgr.SetSharedStorageDir(storageDir)
+	s.taskMgr.SetAppDir(cfg.AppDir)
+	s.taskMgr.SetSharedStorageDir(cfg.SharedStorageDir)
 	s.procMgr.SetSandboxEnabled(cfg.SandboxEnabled)
-	s.procMgr.SetSharedStorageDir(storageDir)
+	s.procMgr.SetAppDir(cfg.AppDir)
+	s.procMgr.SetSharedStorageDir(cfg.SharedStorageDir)
 	s.procMgr.SetProcessVariant(sandbox.DetectProcessVariant())
 	s.procMgr.SetDefaultBindPort(cfg.ProxyTargetPort)
 
@@ -376,10 +374,10 @@ func (s *Server) StartWithConfig(cfg *Config) error {
 		variant := sandbox.DetectProcessVariant()
 		slog.Info("sandbox.enabled",
 			"binary", sandbox.BinaryPath(),
-			"shared_storage_dir", storageDir,
+			"shared_storage_dir", cfg.SharedStorageDir,
 			"process_variant", string(variant),
-			"exec_paths", sandbox.ExecPaths(storageDir),
-			"process_paths", sandbox.ProcessPaths(variant, storageDir),
+			"exec_paths", sandbox.ExecPaths(cfg.AppDir, cfg.SharedStorageDir),
+			"process_paths", sandbox.ProcessPaths(variant, cfg.AppDir, cfg.SharedStorageDir),
 			"connect_tcp", sandbox.ConnectTCPPorts,
 		)
 	} else {

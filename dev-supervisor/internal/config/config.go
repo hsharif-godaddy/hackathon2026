@@ -116,6 +116,11 @@ type Config struct {
 	// kernel-enforced filesystem and network restrictions before exec-ing the command.
 	// Profiles (paths, ports, defaults) are embedded in internal/sandbox/profile.go.
 	SandboxEnabled bool // Enable sandbox for child processes (default: false — opt-in per environment)
+
+	// SharedStorageDir is the SHARED_STORAGE_DIR env var (e.g. "/shared-storage").
+	// Used by the workspace file API root registry and sandbox profiles to resolve
+	// persistent asset paths outside /app.
+	SharedStorageDir string
 }
 
 // LoadConfig loads configuration from environment variables with defaults
@@ -228,6 +233,9 @@ func LoadConfig() *Config {
 
 	// Sandbox configuration (Landlock-based process isolation)
 	config.SandboxEnabled = GetEnvBoolWithDefault("DEV_SUPERVISOR_SANDBOX_ENABLED", false)
+
+	// Shared storage directory (persistent asset mounts outside /app)
+	config.SharedStorageDir = os.Getenv("SHARED_STORAGE_DIR")
 
 	return config
 }

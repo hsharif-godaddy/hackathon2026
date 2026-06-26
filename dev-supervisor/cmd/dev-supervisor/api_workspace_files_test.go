@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/airo-ai-builder/dev-supervisor/internal/config"
+	"github.com/airo-ai-builder/dev-supervisor/internal/sandbox"
 )
 
 func newTestServerWithDir(t *testing.T) (*Server, string) {
@@ -1392,5 +1393,200 @@ func TestWorkspaceFilesArchive_EmptyButValidZip(t *testing.T) {
 	entries := readZipFromRecorder(t, w)
 	if len(entries) != 0 {
 		t.Errorf("expected 0 entries, got %d", len(entries))
+	}
+}
+
+// --- Root selector tests ---
+
+func TestWorkspaceFilesWrite_UnknownRoot(t *testing.T) {
+	server, _ := newTestServerWithDir(t)
+
+	w := postJSON(t, server.handleWorkspaceFilesWrite, map[string]any{
+		"root": "bogus", "path": "file.txt", "content": "hello",
+	})
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for unknown root, got %d: %s", w.Code, w.Body.String())
+	}
+	body := w.Body.String()
+	if !bytes.Contains(w.Body.Bytes(), []byte("bogus")) {
+		t.Errorf("error should mention the invalid root name, got: %s", body)
+	}
+}
+
+func TestWorkspaceFilesWrite_DefaultRoot(t *testing.T) {
+	server, dir := newTestServerWithDir(t)
+
+	w := postJSON(t, server.handleWorkspaceFilesWrite, map[string]any{
+		"path": "test.txt", "content": "hello",
+	})
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if _, err := os.Stat(filepath.Join(dir, "test.txt")); err != nil {
+		t.Fatalf("file should exist in app dir: %v", err)
+	}
+}
+
+func TestWorkspaceFilesWrite_AppRoot(t *testing.T) {
+	server, dir := newTestServerWithDir(t)
+
+	w := postJSON(t, server.handleWorkspaceFilesWrite, map[string]any{
+		"root": "app", "path": "explicit.txt", "content": "data",
+	})
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if _, err := os.Stat(filepath.Join(dir, "explicit.txt")); err != nil {
+		t.Fatalf("file should exist in app dir with explicit app root: %v", err)
+	}
+}
+
+func TestWorkspaceFilesWrite_PublicAssetsRoot_NoSharedStorage(t *testing.T) {
+	server, dir := newTestServerWithDir(t)
+	// No SharedStorageDir → public-assets falls back to {appDir}/public/assets
+
+	w := postJSON(t, server.handleWorkspaceFilesWrite, map[string]any{
+		"root": "public-assets", "path": "media/photo.png",
+		"content":  base64.StdEncoding.EncodeToString([]byte("fake-png")),
+		"encoding": "base64",
+	})
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	data, err := os.ReadFile(filepath.Join(dir, "public", "assets", "media", "photo.png"))
+	if err != nil {
+		t.Fatalf("file not written to public/assets subdir: %v", err)
+	}
+	if string(data) != "fake-png" {
+		t.Errorf("unexpected content: %q", data)
+	}
+}
+
+func TestWorkspaceFilesWrite_PublicAssetsRoot_WithSharedStorage(t *testing.T) {
+	server, _ := newTestServerWithDir(t)
+	sharedDir := t.TempDir()
+	server.config.SharedStorageDir = sharedDir
+	server.storageRoots = sandbox.ResolveRoots(server.config.AppDir, sharedDir)
+
+	w := postJSON(t, server.handleWorkspaceFilesWrite, map[string]any{
+		"root": "public-assets", "path": "img/logo.svg",
+		"content": "<svg></svg>",
+	})
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	data, err := os.ReadFile(filepath.Join(sharedDir, "public", "assets", "img", "logo.svg"))
+	if err != nil {
+		t.Fatalf("file not written to shared storage: %v", err)
+	}
+	if string(data) != "<svg></svg>" {
+		t.Errorf("unexpected content: %q", data)
+	}
+}
+
+func TestWorkspaceFilesView_PublicAssetsRoot(t *testing.T) {
+	server, dir := newTestServerWithDir(t)
+
+	targetDir := filepath.Join(dir, "public", "assets", "media")
+	os.MkdirAll(targetDir, 0o755)
+	os.WriteFile(filepath.Join(targetDir, "test.txt"), []byte("asset content"), 0o644)
+
+	w := postJSON(t, server.handleWorkspaceFilesView, map[string]any{
+		"root": "public-assets", "path": "media/test.txt",
+	})
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp wsFilesViewResponse
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	if resp.Content != "asset content" {
+		t.Errorf("expected 'asset content', got %q", resp.Content)
+	}
+}
+
+func TestWorkspaceFilesWrite_PublicAssetsRoot_PathTraversal(t *testing.T) {
+	server, _ := newTestServerWithDir(t)
+
+	w := postJSON(t, server.handleWorkspaceFilesWrite, map[string]any{
+		"root": "public-assets", "path": "../../../etc/passwd", "content": "hacked",
+	})
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for traversal via public-assets root, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestWorkspaceFilesUpload_UnknownRoot(t *testing.T) {
+	server, _ := newTestServerWithDir(t)
+
+	req := httptest.NewRequest(http.MethodPut,
+		"/workspace/files/upload?path=file.txt&root=bogus",
+		bytes.NewReader([]byte("data")))
+	req.Header.Set("Content-Type", "application/octet-stream")
+	w := httptest.NewRecorder()
+	server.handleWorkspaceFilesUpload(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for unknown root on upload, got %d: %s", w.Code, w.Body.String())
+	}
+	if !bytes.Contains(w.Body.Bytes(), []byte("bogus")) {
+		t.Errorf("error should mention invalid root name, got: %s", w.Body.String())
+	}
+}
+
+func TestWorkspaceFilesUpload_PublicAssetsRoot_PathTraversal(t *testing.T) {
+	server, _ := newTestServerWithDir(t)
+
+	req := httptest.NewRequest(http.MethodPut,
+		"/workspace/files/upload?path=../../../etc/passwd&root=public-assets",
+		bytes.NewReader([]byte("hacked")))
+	req.Header.Set("Content-Type", "application/octet-stream")
+	w := httptest.NewRecorder()
+	server.handleWorkspaceFilesUpload(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for traversal via public-assets upload, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestWorkspaceFilesDownload_UnknownRoot(t *testing.T) {
+	server, _ := newTestServerWithDir(t)
+
+	req := httptest.NewRequest(http.MethodGet,
+		"/workspace/files/download?path=file.txt&root=bogus", nil)
+	w := httptest.NewRecorder()
+	server.handleWorkspaceFilesDownload(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for unknown root on download, got %d: %s", w.Code, w.Body.String())
+	}
+	if !bytes.Contains(w.Body.Bytes(), []byte("bogus")) {
+		t.Errorf("error should mention invalid root name, got: %s", w.Body.String())
+	}
+}
+
+func TestWorkspaceFilesUpload_WithRoot(t *testing.T) {
+	server, dir := newTestServerWithDir(t)
+
+	body := []byte("binary-data")
+	req := httptest.NewRequest(http.MethodPut,
+		"/workspace/files/upload?path=img/photo.jpg&root=public-assets",
+		bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/octet-stream")
+	w := httptest.NewRecorder()
+	server.handleWorkspaceFilesUpload(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	data, err := os.ReadFile(filepath.Join(dir, "public", "assets", "img", "photo.jpg"))
+	if err != nil {
+		t.Fatalf("file not written: %v", err)
+	}
+	if string(data) != "binary-data" {
+		t.Errorf("unexpected content: %q", data)
 	}
 }

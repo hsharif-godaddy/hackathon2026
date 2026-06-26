@@ -106,6 +106,7 @@ type ProcessManager struct {
 
 	// Sandbox configuration for child process isolation
 	sandboxEnabled   bool
+	appDir           string
 	sharedStorageDir string
 	processVariant   sandbox.ProcessVariant
 	defaultBindPort  int // Used when a start request omits Ports; the sandbox denies listens otherwise.
@@ -140,6 +141,12 @@ func NewProcessManager(logMgr logs.Logger, pid1Mgr *process.PID1Manager) *Proces
 // Called once during startup in StartWithConfig before the server accepts connections.
 func (pm *ProcessManager) SetSandboxEnabled(enabled bool) {
 	pm.sandboxEnabled = enabled
+}
+
+// SetAppDir sets the customer app directory for sandbox path resolution.
+// Called once during startup in StartWithConfig before the server accepts connections.
+func (pm *ProcessManager) SetAppDir(dir string) {
+	pm.appDir = dir
 }
 
 // SetSharedStorageDir sets the shared storage directory for sandbox path resolution.
@@ -238,8 +245,10 @@ func (pm *ProcessManager) startLocked(req validation.ProcessStartRequest) error 
 	bindPorts := effectiveBindPorts(req, pm.processVariant, pm.defaultBindPort)
 
 	// Blocking operations (no pm.mu, but lifecycleMu still held)
-	// sandboxEnabled/sharedStorageDir are safe to read without lock - set once at startup
-	managedProcess, err := NewManagedProcess(req, pm.sandboxEnabled, pm.sharedStorageDir, pm.processVariant, bindPorts)
+	// sandboxEnabled/appDir/sharedStorageDir are safe to read without lock - set once at startup
+	managedProcess, err := NewManagedProcess(
+		req, pm.sandboxEnabled, pm.appDir, pm.sharedStorageDir, pm.processVariant, bindPorts,
+	)
 	if err != nil {
 		return err
 	}
@@ -442,10 +451,11 @@ func (pm *ProcessManager) Restart(req ProcessRestartRequest) error {
 	// API). Caller-explicit Ports on config are preserved.
 	bindPorts := effectiveBindPorts(config, pm.processVariant, pm.defaultBindPort)
 
-	// sandboxEnabled/sharedStorageDir are safe to read without lock - set once at startup
+	// sandboxEnabled/appDir/sharedStorageDir are safe to read without lock - set once at startup
 	managedProcess, err := NewManagedProcess(
 		config,
 		pm.sandboxEnabled,
+		pm.appDir,
 		pm.sharedStorageDir,
 		pm.processVariant,
 		bindPorts,

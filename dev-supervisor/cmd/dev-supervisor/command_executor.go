@@ -35,6 +35,7 @@ type CommandExecutor struct {
 	defaultTimeout   int
 	defaultWorkDir   string
 	sandboxEnabled   bool
+	appDir           string
 	sharedStorageDir string
 	// pid1Mgr, when non-nil, is used to atomically Start+Register every
 	// spawned child so the PID1 orphan reaper cannot waitid(2) a short-lived
@@ -64,6 +65,11 @@ func NewCommandExecutor(pid1Mgr *process.PID1Manager) *CommandExecutor {
 // SetSandboxEnabled configures whether command execution uses Landlock sandboxing.
 func (ce *CommandExecutor) SetSandboxEnabled(enabled bool) {
 	ce.sandboxEnabled = enabled
+}
+
+// SetAppDir sets the customer app directory for sandbox path resolution.
+func (ce *CommandExecutor) SetAppDir(dir string) {
+	ce.appDir = dir
 }
 
 // SetSharedStorageDir sets the shared storage directory for sandbox path resolution.
@@ -100,7 +106,7 @@ func (ce *CommandExecutor) Execute(req validation.CommandRequest) (*CommandResul
 	childEnv := mergeEnv(os.Environ(), req.Env)
 
 	// Create command (sandboxed or direct)
-	spec := sandbox.BuildExecProfile(ce.sharedStorageDir, req.Command, workDir)
+	spec := sandbox.BuildExecProfile(ce.appDir, ce.sharedStorageDir, req.Command, workDir)
 	sandboxCmd, sandboxErr := sandbox.WrapCommand(ctx, ce.sandboxEnabled, spec, childEnv)
 	if sandboxErr != nil {
 		return nil, sandboxErr

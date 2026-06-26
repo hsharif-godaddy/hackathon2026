@@ -25,7 +25,7 @@ func createTempBinary(t *testing.T) string {
 func TestExecPaths(t *testing.T) {
 	t.Parallel()
 
-	paths := sandbox.ExecPaths("/shared-storage")
+	paths := sandbox.ExecPaths("/app", "/shared-storage")
 	pathMap := makePathMap(paths)
 
 	// Must include exec-specific paths
@@ -50,7 +50,7 @@ func TestExecPaths(t *testing.T) {
 func TestExecPaths_NoSharedStorage(t *testing.T) {
 	t.Parallel()
 
-	paths := sandbox.ExecPaths("")
+	paths := sandbox.ExecPaths("/app", "")
 	pathMap := makePathMap(paths)
 
 	if _, ok := pathMap["/shared-storage/public/assets"]; ok {
@@ -61,7 +61,7 @@ func TestExecPaths_NoSharedStorage(t *testing.T) {
 func TestPreviewProcessPaths(t *testing.T) {
 	t.Parallel()
 
-	paths := sandbox.PreviewProcessPaths("/shared-storage")
+	paths := sandbox.PreviewProcessPaths("/app", "/shared-storage")
 	pathMap := makePathMap(paths)
 
 	assertPath(t, pathMap, "/app", "rwcx")
@@ -86,7 +86,7 @@ func TestPreviewProcessPaths(t *testing.T) {
 func TestPublishProcessPaths(t *testing.T) {
 	t.Parallel()
 
-	paths := sandbox.PublishProcessPaths("/shared-storage")
+	paths := sandbox.PublishProcessPaths("/app", "/shared-storage")
 	pathMap := makePathMap(paths)
 
 	assertPath(t, pathMap, "/app", "rwcx")
@@ -111,11 +111,11 @@ func TestPublishProcessPaths(t *testing.T) {
 func TestProcessPaths_Dispatches(t *testing.T) {
 	t.Parallel()
 
-	preview := makePathMap(sandbox.ProcessPaths(sandbox.VariantPreview, ""))
+	preview := makePathMap(sandbox.ProcessPaths(sandbox.VariantPreview, "/app", ""))
 	assertPath(t, preview, "/node_modules", "rwcx")
 	assertNoPath(t, preview, "/publish")
 
-	publish := makePathMap(sandbox.ProcessPaths(sandbox.VariantPublish, ""))
+	publish := makePathMap(sandbox.ProcessPaths(sandbox.VariantPublish, "/app", ""))
 	assertPath(t, publish, "/publish", "rx")
 	assertNoPath(t, publish, "/node_modules")
 }
@@ -139,7 +139,7 @@ func TestConnectTCPPorts(t *testing.T) {
 func TestBuildExecProfile(t *testing.T) {
 	t.Parallel()
 
-	spec := sandbox.BuildExecProfile("/shared-storage", "npm install", "/app")
+	spec := sandbox.BuildExecProfile("/app", "/shared-storage", "npm install", "/app")
 
 	if spec.Command != "npm install" {
 		t.Errorf("Command = %q, want %q", spec.Command, "npm install")
@@ -160,6 +160,7 @@ func TestBuildProcessProfile(t *testing.T) {
 
 	spec := sandbox.BuildProcessProfile(
 		sandbox.VariantPreview,
+		"/app",
 		"/shared-storage",
 		"npm start",
 		"/app",
@@ -183,7 +184,7 @@ func TestBuildProcessProfile(t *testing.T) {
 func TestBuildProcessProfile_NilPorts(t *testing.T) {
 	t.Parallel()
 
-	spec := sandbox.BuildProcessProfile(sandbox.VariantPreview, "", "npm start", "/app", nil)
+	spec := sandbox.BuildProcessProfile(sandbox.VariantPreview, "/app", "", "npm start", "/app", nil)
 
 	if spec.BindTCP != nil {
 		t.Errorf("BindTCP should be nil when no ports provided, got %v", spec.BindTCP)
