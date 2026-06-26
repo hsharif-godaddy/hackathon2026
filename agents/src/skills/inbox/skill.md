@@ -183,7 +183,13 @@ Calling `setup_form` with the same name again updates that form's config (idempo
 
 ### Step 2: Generate the Form UI
 
-Follow the instructions in `sections/contact-form-contract.md` (loaded with this skill's templates) to build the form component. That file contains the submission contract, field mapping rules, and honeypot requirements — all REQUIRED.
+Load the contact form contract before building the form UI:
+
+```typescript
+skill({ action: "loadReference", path: "inbox/templates/sections/contact-form-contract" });
+```
+
+Follow its instructions to build the form component. That file contains the submission contract, field mapping rules, and honeypot requirements — all REQUIRED.
 
 ---
 
