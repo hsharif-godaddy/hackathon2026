@@ -15,7 +15,20 @@ vi.mock('../../media-slot-tool.js', () => ({
     async selectMedia() {
       return { success: true }
     }
+    async importUpload({ slot }: { slot: string }) {
+      return {
+        success: true,
+        slot,
+        slotUrl: `/airo-assets/images/${slot}`,
+        mediaType: 'image',
+        uploadedUrl: '/airo-assets/uploads/the-real-upload.jpg',
+      }
+    }
   },
+}))
+
+vi.mock('../../../services/upload-classification-store.js', () => ({
+  recordUploadSlotUrl: vi.fn(),
 }))
 
 vi.mock('../../../database/repositories/AppRepository.js', () => ({
@@ -154,5 +167,57 @@ describe('rebuild Getty-gate (keepSourceImages)', () => {
     if (result !== undefined) {
       expect(result).not.toContain('"disabled": true')
     }
+  })
+
+  it('action: search → rebuild source-fill IS consulted and its result is returned verbatim', async () => {
+    // The intended trigger: a stock search on a rebuild app gets a scraped
+    // source image instead of Getty. Guards against a regression that inverts
+    // the action guard or hard-codes null, which would silently disable rebuild
+    // source-fill with every other test still green.
+    const sourcePayload = {
+      success: true,
+      slot: 'pages/home/hero',
+      slotUrl: '/airo-assets/images/pages/home/hero',
+      resolvedUrl: '/assets/images/scraped-from-source-site.png',
+      alternatives: [],
+    }
+    mockFillSlot.mockResolvedValue(sourcePayload)
+
+    const result = await (mediaSlotAITool as any).execute(
+      { action: 'search', slot: 'pages/home/hero', mediaType: 'image', query: 'restaurant hero image' },
+      { experimental_context: { metadata: { appId: 'app123' } } },
+    )
+
+    expect(mockFillSlot).toHaveBeenCalledTimes(1)
+    expect(JSON.parse(result)).toMatchObject(sourcePayload)
+  })
+
+  it('action: import_upload → source-fill is NOT consulted; the user\'s upload is placed, not a scraped image', async () => {
+    // Source-fill substitutes a scraped source image for a STOCK SEARCH. On a
+    // rebuild app it would otherwise intercept import_upload, discard the user's
+    // uploaded file, and (with no query to rank on) fill every slot with the
+    // SAME scraped image — collapsing all distinct uploads to one wrong photo.
+    // Make source-fill return a hijacking result so a regression that drops the
+    // guard short-circuits here; the guard must prevent it being called at all.
+    mockFillSlot.mockResolvedValue({
+      success: true,
+      slot: 'pages/home/hero',
+      slotUrl: '/airo-assets/images/pages/home/hero',
+      resolvedUrl: '/airo-assets/uploads/scraped-source-image.png',
+    })
+
+    const result = await (mediaSlotAITool as any).execute(
+      { action: 'import_upload', slot: 'pages/home/hero', mediaType: 'image', filename: 'photo.jpg' },
+      { experimental_context: { metadata: { appId: 'app123' } } },
+    )
+
+    // Source-fill never ran...
+    expect(mockFillSlot).not.toHaveBeenCalled()
+    // ...and the slot carries the actual upload (from MediaSlotTool.importUpload),
+    // not the scraped image source-fill would have returned.
+    const parsed = JSON.parse(result)
+    expect(parsed.slotUrl).toBe('/airo-assets/images/pages/home/hero')
+    expect(parsed.uploadedUrl).toBe('/airo-assets/uploads/the-real-upload.jpg')
+    expect(parsed.resolvedUrl).toBeUndefined()
   })
 })

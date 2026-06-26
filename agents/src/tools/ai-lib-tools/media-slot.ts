@@ -170,7 +170,18 @@ EXAMPLES:
     // with the customer's matching scraped photo instead of Getty stock. Returns
     // null (→ Getty below) for non-rebuild apps, post-build editing, or when no
     // source image fits.
-    const sourceFill = await fillSlotFromRebuildSource({ appId, slot, query: query ?? '', mediaType: (mediaType ?? 'image') as 'image' | 'video' });
+    //
+    // GUARDED to `search` only. Source-fill substitutes a scraped source image
+    // for a STOCK SEARCH — it must never run for `import_upload`, which places a
+    // specific file the user just uploaded. Without this guard, on a rebuild
+    // app the source-fill intercepts every import_upload, discards the upload,
+    // and fills the slot with a scraped image; with no query to rank on it picks
+    // the SAME scraped image for every slot, so all the user's distinct uploads
+    // collapse to one wrong photo across the page. Mirrors the action==='search'
+    // gate on the keepSourceImages block below.
+    const sourceFill = action === 'search'
+      ? await fillSlotFromRebuildSource({ appId, slot, query: query ?? '', mediaType: (mediaType ?? 'image') as 'image' | 'video' })
+      : null;
     if (sourceFill) {
       return JSON.stringify(sourceFill, null, 2);
     }
