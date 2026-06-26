@@ -131,6 +131,22 @@ export function createLocalDateTime(dateString: string, timeString: string): Dat
 }
 
 /**
+ * Format a scheduled Date into a locale-aware display string (e.g. "Jul 1, 3:30 PM EDT").
+ * @param date - The scheduled Date to format
+ * @param locale - BCP-47 locale string
+ */
+export function formatScheduledDateTime(date: Date, locale: string): string {
+    return date.toLocaleString(locale, {
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true,
+        timeZoneName: 'short'
+    })
+}
+
+/**
  * Validate if a scheduled date/time is valid (within 20 min to 80 days in the future)
  * @param dateString - Date in YYYY-MM-DD format
  * @param timeString - Time in 12-hour format (e.g., "2:30 PM")

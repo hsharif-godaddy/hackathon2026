@@ -4,6 +4,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { screen } from '@testing-library/react'
 
+import { usePublishFlow } from '@/hooks/social/usePublishFlow'
 import { renderWithProviders } from '@/tests/test-utils'
 import { PublishFlowState } from '@/types/social-posts'
 import { PublishWidget } from './PublishWidget'
@@ -34,6 +35,10 @@ vi.mock('@/utils/social/events', () => ({
 
 vi.mock('@/utils/instrumentation', () => ({
   generateClickEID: vi.fn(function () { return 'test-eid'; })
+}))
+
+vi.mock('@/hooks/useUserLocale', () => ({
+  useUserLocale: vi.fn(() => 'en-US')
 }))
 
 
@@ -247,6 +252,80 @@ describe('PublishWidget', () => {
       renderWithProviders(<PublishWidget {...defaultProps} initialResult={initialResult} isLastAssistantMessage={true} />)
 
       expect(screen.getByText('builder_widgets_socialpublish_preparing')).toBeInTheDocument()
+    })
+  })
+
+  describe('Scheduled publish success copy', () => {
+    it('shows scheduled success copy when scheduledAt is set', () => {
+      const scheduledAt = new Date('2026-07-01T15:30:00.000Z')
+      const initialResult = {
+        pendingPublish: {
+          platforms: ['facebook'],
+          message: 'Test post',
+          imageUrls: [],
+          scheduledAt: scheduledAt.toISOString()
+        },
+        platformStatuses: {
+          facebook: { status: PublishFlowState.Success, result: { id: 'fb-123' } }
+        },
+        overallStatus: PublishFlowState.Success
+      }
+
+      renderWithProviders(<PublishWidget {...defaultProps} initialResult={initialResult} />)
+
+      expect(screen.getByText('builder_widgets_socialschedule_success')).toBeInTheDocument()
+      expect(screen.queryByText('builder_widgets_socialpublish_success')).not.toBeInTheDocument()
+      expect(screen.queryByRole('link', { name: /builder_widgets_socialpublish_view/ })).not.toBeInTheDocument()
+    })
+
+    it('shows immediate success copy when scheduledAt is not set', () => {
+      const initialResult = {
+        pendingPublish: {
+          platforms: ['facebook'],
+          message: 'Test post',
+          imageUrls: []
+        },
+        platformStatuses: {
+          facebook: { status: PublishFlowState.Success, result: { id: 'fb-123', platformUrl: 'https://facebook.com/post/123' } }
+        },
+        overallStatus: PublishFlowState.Success
+      }
+
+      renderWithProviders(<PublishWidget {...defaultProps} initialResult={initialResult} />)
+
+      expect(screen.getByText('builder_widgets_socialpublish_success')).toBeInTheDocument()
+      expect(screen.queryByText('builder_widgets_socialschedule_success')).not.toBeInTheDocument()
+      expect(screen.getByRole('link', { name: 'builder_widgets_socialpublish_view_post' })).toBeInTheDocument()
+    })
+  })
+
+  describe('Scheduled publish deserialization', () => {
+    // Regression: scheduledAt arrives as an ISO string after JSON serialization over
+    // the WebSocket. If platformData[].scheduledAt is not rehydrated to a Date, the
+    // publish flow passes a string to publishToFacebook and crashes with
+    // "params.scheduledAt.getTime is not a function".
+    it('rehydrates platformData[].scheduledAt from ISO string to a Date for a fresh publish', () => {
+      const scheduledIso = '2026-07-01T15:30:00.000Z'
+      const initialResult = {
+        pendingPublish: {
+          platforms: ['facebook'],
+          message: 'Test post',
+          imageUrls: [],
+          scheduledAt: scheduledIso,
+          platformData: [
+            { platform: 'facebook', message: 'Test post', imageUrls: [], scheduledAt: scheduledIso }
+          ]
+        }
+      }
+
+      renderWithProviders(<PublishWidget {...defaultProps} initialResult={initialResult} isLastAssistantMessage={true} />)
+
+      expect(usePublishFlow).toHaveBeenCalled()
+      const pendingPublish = vi.mocked(usePublishFlow).mock.calls[0][2] as any
+      expect(pendingPublish.platformData[0].scheduledAt).toBeInstanceOf(Date)
+      expect(pendingPublish.platformData[0].scheduledAt.toISOString()).toBe(scheduledIso)
+      expect(pendingPublish.scheduledAt).toBeInstanceOf(Date)
+      expect(pendingPublish.scheduledAt.toISOString()).toBe(scheduledIso)
     })
   })
 })

@@ -16,6 +16,7 @@ import { PLATFORM_TRANSFORMS, type PublishablePlatform } from '@/lib/social-plat
 import { CONNECT_REQUEST_FROM_PUBLISH, type SiteAssociation } from '@/types/social'
 import { PublishTiming, SocialPostData, SocialPostState } from '@/types/social-posts'
 import { formatHashtags, formatPlatformName } from '@/utils/social/format'
+import { createLocalDateTime } from '@/utils/social/scheduling'
 import { getCharacterCount } from '@/utils/social/validation'
 import { ContentEditor, type PlatformContent } from './editor/ContentEditor'
 import { PlatformSelector } from './platform-select/PlatformSelector'
@@ -176,7 +177,7 @@ export const PostModal = memo(({
       let scheduledAt: Date | undefined
       let scheduledDateStr: string | undefined
       if (scheduling.timing === PublishTiming.LATER && scheduling.date.length && scheduling.time) {
-        scheduledAt = new Date(`${scheduling.date[0]}T${scheduling.time}`)
+        scheduledAt = createLocalDateTime(scheduling.date[0], scheduling.time)
         scheduledDateStr = scheduledAt.toLocaleDateString('en-US', {
           month: 'short',
           day: 'numeric',

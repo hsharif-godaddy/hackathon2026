@@ -9,6 +9,7 @@ import text, { type Emphasis } from '@ux/text'
 import { useTranslations } from '@/hooks/useTranslations'
 import { useUserLocale } from '@/hooks/useUserLocale'
 import { generateClickEID } from '@/utils/instrumentation'
+import { formatScheduledDateTime } from '@/utils/social/scheduling'
 
 export enum SocialPublishStatus {
   Success = 'success',
@@ -54,16 +55,7 @@ export const SocialPublishStatusMessage = memo(function SocialPublishStatusMessa
   const config = statusConfig[status]
   const isScheduled = !!scheduledAt
 
-  const scheduledDateTime = scheduledAt
-    ? scheduledAt.toLocaleString(locale, {
-        month: 'short',
-        day: 'numeric',
-        hour: 'numeric',
-        minute: '2-digit',
-        hour12: true,
-        timeZoneName: 'short'
-      })
-    : ''
+  const scheduledDateTime = scheduledAt ? formatScheduledDateTime(scheduledAt, locale) : ''
 
   const message =
     status === SocialPublishStatus.Success

@@ -8,12 +8,14 @@ import text from '@ux/text'
 import { usePublishFlow } from '@/hooks/social/usePublishFlow'
 import { useToolResultSync } from '@/hooks/useToolResultSync'
 import { useTranslations } from '@/hooks/useTranslations'
+import { useUserLocale } from '@/hooks/useUserLocale'
 import { logger } from '@/lib/request-context'
 import { type PublishablePlatform } from '@/lib/social-platforms'
 import { type PendingPublish, type PublishAction, PublishFlowState, type SocialPostData, SocialPostState } from '@/types/social-posts'
 import { generateClickEID } from '@/utils/instrumentation'
 import { emitPostPublished } from '@/utils/social/events'
 import { formatPlatformName } from '@/utils/social/format'
+import { formatScheduledDateTime } from '@/utils/social/scheduling'
 
 interface SocialPublishWidgetProps {
   appId: string
@@ -82,6 +84,7 @@ function publishReducer(state: LocalState, action: PublishAction): LocalState {
 
 export function PublishWidget({ appId, publishId, toolId, conversationId, initialResult, isLastAssistantMessage = false }: SocialPublishWidgetProps) {
   const t = useTranslations()
+  const locale = useUserLocale()
   const emittedRef = useRef(false)
   const publishStartedRef = useRef(false)
 
@@ -113,8 +116,12 @@ export function PublishWidget({ appId, publishId, toolId, conversationId, initia
       if (result.platformStatuses && result.pendingPublish) {
         const rawPublish = result.pendingPublish as any
         const platforms = rawPublish.platforms || (rawPublish.platform ? [rawPublish.platform] : [])
+        const platformData = rawPublish.platformData?.map((pd: any) => ({
+          ...pd,
+          scheduledAt: pd.scheduledAt ? new Date(pd.scheduledAt) : undefined
+        }))
         return {
-          pendingPublish: { ...rawPublish, platforms, publishId, scheduledAt: rawPublish.scheduledAt ? new Date(rawPublish.scheduledAt) : undefined },
+          pendingPublish: { ...rawPublish, platforms, platformData, publishId, scheduledAt: rawPublish.scheduledAt ? new Date(rawPublish.scheduledAt) : undefined },
           postData: (result.postData as SocialPostData) || null,
           platformStatuses: result.platformStatuses as any,
           overallStatus: result.overallStatus as PublishFlowState,
@@ -135,9 +142,13 @@ export function PublishWidget({ appId, publishId, toolId, conversationId, initia
             result: result.publishResult || undefined
           }
         } : {}
+        const platformData = rawPublish.platformData?.map((pd: any) => ({
+          ...pd,
+          scheduledAt: pd.scheduledAt ? new Date(pd.scheduledAt) : undefined
+        }))
 
         return {
-          pendingPublish: { ...rawPublish, platforms, publishId, scheduledAt: rawPublish.scheduledAt ? new Date(rawPublish.scheduledAt) : undefined },
+          pendingPublish: { ...rawPublish, platforms, platformData, publishId, scheduledAt: rawPublish.scheduledAt ? new Date(rawPublish.scheduledAt) : undefined },
           postData: (result.postData as SocialPostData) || null,
           platformStatuses: platformStatuses as any,
           overallStatus: result.publishStatus as PublishFlowState,
@@ -152,13 +163,20 @@ export function PublishWidget({ appId, publishId, toolId, conversationId, initia
         const rawPublish = result.pendingPublish as any
         const platforms = rawPublish.platforms || (rawPublish.platform ? [rawPublish.platform] : [])
 
-        // Ensure platformData exists (backwards compatibility)
-        const platformData = rawPublish.platformData || platforms.map((platform: PublishablePlatform) => ({
-          platform,
-          message: rawPublish.message || '',
-          imageUrls: rawPublish.imageUrls || [],
-          scheduledAt: rawPublish.scheduledAt ? new Date(rawPublish.scheduledAt) : undefined
-        }))
+        // Ensure platformData exists (backwards compatibility). Rehydrate each
+        // entry's scheduledAt — it arrives as an ISO string after JSON serialization
+        // over the WebSocket, but the publish flow (publishToFacebook) requires a Date.
+        const platformData = rawPublish.platformData
+          ? rawPublish.platformData.map((pd: any) => ({
+              ...pd,
+              scheduledAt: pd.scheduledAt ? new Date(pd.scheduledAt) : undefined
+            }))
+          : platforms.map((platform: PublishablePlatform) => ({
+              platform,
+              message: rawPublish.message || '',
+              imageUrls: rawPublish.imageUrls || [],
+              scheduledAt: rawPublish.scheduledAt ? new Date(rawPublish.scheduledAt) : undefined
+            }))
 
         const pending: PendingPublish = {
           ...rawPublish,
@@ -274,6 +292,10 @@ export function PublishWidget({ appId, publishId, toolId, conversationId, initia
   const platforms = pendingPublish.platforms
   const isMultiPlatform = platforms.length > 1
   const platformNames = platforms.map(p => formatPlatformName(p)).join(' & ')
+  const isScheduled = !!pendingPublish.scheduledAt
+  const scheduledDateTime = pendingPublish.scheduledAt
+    ? formatScheduledDateTime(pendingPublish.scheduledAt, locale)
+    : ''
 
   const isLoading = overallStatus === PublishFlowState.ReadyToPublish ||
                     overallStatus === PublishFlowState.Publishing
@@ -303,7 +325,7 @@ export function PublishWidget({ appId, publishId, toolId, conversationId, initia
       case PublishFlowState.Publishing:
         return <text.p size={-1}>{t('builder_widgets_socialpublish_publishing_to', { platformName: platformNames })}</text.p>
       case PublishFlowState.Success:
-        return <text.p size={-1} emphasis="success">{t('builder_widgets_socialpublish_success')}</text.p>
+        return <text.p size={-1} emphasis="success">{isScheduled ? t('builder_widgets_socialschedule_success') : t('builder_widgets_socialpublish_success')}</text.p>
       case PublishFlowState.Error:
         return <text.p size={-1} emphasis="warning">{t('builder_widgets_socialpublish_failed')}</text.p>
       default:
@@ -322,11 +344,16 @@ export function PublishWidget({ appId, publishId, toolId, conversationId, initia
 
       {overallStatus === PublishFlowState.Success && (
         <div className="mb-1">
-          <text.p size={-1}>{t('builder_widgets_socialpublish_live_on', { platformName: platformNames })}</text.p>
+          <text.p size={-1}>
+            {isScheduled
+              ? t('builder_widgets_socialschedule_will_post_on', { platformName: platformNames, dateTime: scheduledDateTime })
+              : t('builder_widgets_socialpublish_live_on', { platformName: platformNames })
+            }
+          </text.p>
         </div>
       )}
 
-      {overallStatus === PublishFlowState.Success && successUrls.length > 0 && (
+      {overallStatus === PublishFlowState.Success && !isScheduled && successUrls.length > 0 && (
         <div className="flex flex-col gap-2">
           {successUrls.map(({ platform, url }) => (
             <Button
