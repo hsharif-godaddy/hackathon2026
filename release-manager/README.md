@@ -109,9 +109,12 @@ pipeline:
 3. **Rollback snapshot** — fetches current production state from GitHub for verification
 4. **Release notes + commit pinning** — resolves the target branch to a specific commit SHA, then lists merged PRs since the last production deploy. The pinned SHA is stored and used by all subsequent stages, ensuring deterministic builds even if the branch advances during the deploy.
 5. **Test deployment** — deploys app + builds images in parallel, then E2E + regression tests + manual checklist
-6. **Production gate** — confirmation prompt before prod deploy
-7. **Production deployment** — promotes images, then promotes app + upserts pre-prov in parallel, then E2E + regression tests + prod checklist
-8. **Completion** — offers Done or Rollback options
+6. **Dark phase** _(opt-in — GHA dispatch with `run_dark=true`; skipped on classic runs)_ — before the gate, **promotes the agent/preview/publish images to the prod ECR first** (so the bind has real images to reference), dark-deploys the build to prod via Katana `dark_release` (0% traffic), binds those images to the build's commit SHA via a cohort-less Release Group, and runs advisory dark E2E + regression against the dark URL, so the approver reviews a live, already-tested dark build
+7. **Production gate** — confirmation prompt before prod deploy (the awaiting-approval Slack CTA + approver ping fire from the last pre-gate phase: test when `run_dark` is off, dark when on)
+8. **Production deployment** — rolls back the dark Release Group first if one was created, then promotes images (**skipped when the dark phase already promoted them**), then promotes app + upserts pre-prov in parallel, then E2E + regression tests + prod checklist
+9. **Completion** — offers Done or Rollback options
+
+> **GHA dispatch toggles** (`.github/workflows/release.yml`): `run_dark` (default off) enables the dark phase above; `notify_slack` (default on) — uncheck to run silently, in which case the would-be Slack messages are printed to the GHA run log instead of posted.
 
 ## Commit SHA Pinning
 

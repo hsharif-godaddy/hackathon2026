@@ -30,6 +30,16 @@ func (n *Notifier) ResolveMentions(ctx context.Context, handles []string) []stri
 		return nil
 	}
 
+	// Log-only has no token to call users.list/usergroups.list with — return the
+	// raw handles (as @handle) so the printed approval ping is still readable.
+	if n.logOnly {
+		out := make([]string, 0, len(handles))
+		for _, h := range handles {
+			out = append(out, "@"+h)
+		}
+		return out
+	}
+
 	users, groups := n.fetchLookups(ctx)
 
 	out := make([]string, 0, len(handles))
@@ -48,6 +58,14 @@ func (n *Notifier) ResolveMentions(ctx context.Context, handles []string) []stri
 // specific author. Unresolved handles are omitted from the map.
 func (n *Notifier) ResolveMentionMap(ctx context.Context, handles []string) map[string]string {
 	if n == nil || len(handles) == 0 {
+		return nil
+	}
+
+	// Log-only has no token/client to call users.list/usergroups.list with —
+	// reaching fetchLookups would dereference a nil *http.Client and panic. Return
+	// nil; unresolved authors render as plain @handle (best-effort contract), the
+	// same fallback ResolveMentions uses.
+	if n.logOnly {
 		return nil
 	}
 

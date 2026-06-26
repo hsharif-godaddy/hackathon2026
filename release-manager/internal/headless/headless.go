@@ -54,7 +54,8 @@ const prodBuilderHost = "airo-builder.godaddy.com"
 
 // Dark Release Group teardown target: the abort path dispatches pioneer-infra's
 // release-group-simple.yml (Rollback) to clear a dark RG on a declined/cancelled
-// release. Mirrors the rg-rollback stage in release-manager.yml.
+// release. There is no rg-rollback *stage* in release-manager.yml — teardownDarkRG
+// replaces it (see its doc comment).
 const (
 	darkRGRepo     = "gdcorp-commerce/pioneer-infra"
 	darkRGWorkflow = "release-group-simple.yml"
@@ -101,6 +102,11 @@ type Options struct {
 	// auto-discovered snapshot value.
 	Overrides  pipeline.SnapshotOverrides
 	BaseCommit string
+
+	// AwaitApproval makes the phase end by posting the awaiting-approval CTA +
+	// approver ping — set on the LAST pre-gate phase (test when run_dark is off,
+	// dark when on), so the approvers are pinged exactly once, just before the gate.
+	AwaitApproval bool
 
 	SkipPreflight bool
 }
@@ -245,20 +251,32 @@ func (r *run) runTest(ctx context.Context, opts Options) error {
 		r.fail(ctx, "writing phase state failed")
 		return fmt.Errorf("writing phase state: %w", err)
 	}
-	// TEST done and the prod gate is next — edit the single status message to the
-	// "awaiting prod approval" CTA, then ping the approvers in a SEPARATE fresh
-	// post. The in-place edit can't notify anyone (Slack only delivers @-mentions
-	// on a new message, never on a chat.update edit), so resolve the approver handles
-	// → mention tokens and post them as a broadcast threaded reply. Best-effort:
-	// unresolved handles / a missing scope just yield no ping.
+	// TEST done. If this is the last pre-gate phase (run_dark off → --await-approval),
+	// post the awaiting-approval CTA + approver ping; otherwise keep the message
+	// in-progress and let the dark phase do it just before the gate.
+	if opts.AwaitApproval {
+		r.postApprovalGate(ctx)
+	} else {
+		r.update(ctx, false)
+	}
+	r.writeTestSummary()
+	return nil
+}
+
+// postApprovalGate edits the single status message to the "awaiting prod
+// approval" CTA, then pings the approvers in a SEPARATE fresh post — the
+// in-place edit can't notify anyone (Slack only delivers @-mentions on a new
+// message, never on a chat.update edit), so resolve the approver handles →
+// mention tokens and post them as a broadcast threaded reply. Called by the LAST
+// pre-gate phase only (Options.AwaitApproval). Best-effort: unresolved handles /
+// a missing scope just yield no ping.
+func (r *run) postApprovalGate(ctx context.Context) {
 	r.updateAwaiting(ctx)
 	if r.notifier != nil && len(r.approvalMentions) > 0 {
 		if mentions := r.notifier.ResolveMentions(ctx, r.approvalMentions); len(mentions) > 0 {
 			r.notifier.PostReply(ctx, approvalPing(r.runURL, mentions))
 		}
 	}
-	r.writeTestSummary()
-	return nil
 }
 
 // approvalPing is the fresh message that actually notifies the approvers (the
@@ -292,10 +310,22 @@ func (r *run) runProd(ctx context.Context, opts Options) error {
 	// deploy and on Complete. Best-effort: "" when the API can't be read.
 	r.approvedBy = r.gateApprover(ctx)
 
+	// Tear down the dark Release Group (if the dark phase created one) BEFORE the
+	// fleet-wide promote — clears the SHA binding and reverts dark-enrolled apps.
+	// No-op when run_dark was off: release_group_id is absent from the imported
+	// state and teardownDarkRG guards on the empty id. Replaces a config
+	// rg-rollback stage, which would dispatch Rollback with an unexpanded
+	// {{prod-dark.dark-create-rg.release_group_id}} on every classic (dark-off) run.
+	// Fire-and-forget (it dispatches the Rollback but does not wait), so it races
+	// the fleet promote below — harmless because the dark RG is at rolloutPct=0;
+	// revisit here if rollback-before-promote ordering ever matters.
+	r.teardownDarkRG(ctx)
+
 	if err := r.p.BuildStages("prod"); err != nil {
 		return err
 	}
-	r.update(ctx, false) // PROD section now visible, stages pending
+	r.skipRedundantPromote() // dark phase already promoted ⇒ skip the prod re-promote
+	r.update(ctx, false)     // PROD section now visible, stages pending
 	if err := r.orchestrate(ctx, r.p.StageGroups("prod")); err != nil {
 		r.fail(ctx, "prod phase failed")
 		return err
@@ -378,14 +408,11 @@ func (r *run) runProdDark(ctx context.Context, opts Options) error {
 		}
 	}
 
-	// Gate is next: edit to the awaiting-approval CTA, then ping the approvers in
-	// a SEPARATE fresh post (an in-place edit can't notify). Moved here from the
-	// test phase so approvers are pinged only once the dark build is live+tested.
-	r.updateAwaiting(ctx)
-	if r.notifier != nil && len(r.approvalMentions) > 0 {
-		if mentions := r.notifier.ResolveMentions(ctx, r.approvalMentions); len(mentions) > 0 {
-			r.notifier.PostReply(ctx, approvalPing(r.runURL, mentions))
-		}
+	// Gate is next and the dark build is live+tested, so the dark phase is the
+	// last pre-gate phase: post the awaiting-approval CTA + approver ping (always
+	// set via --await-approval when dark runs).
+	if opts.AwaitApproval {
+		r.postApprovalGate(ctx)
 	}
 	return nil
 }
@@ -429,6 +456,25 @@ func (r *run) runAbort(ctx context.Context, opts Options) error {
 	r.notifier.SeedTS(st.SlackTS)                 // edit the existing message in place
 	r.fail(ctx, r.abortMessage(ctx, opts.Reason)) // terminal aborted footer + notified=true
 	return nil
+}
+
+// skipRedundantPromote marks the prod-phase promote-images stage skipped when
+// the dark phase already promoted the agent/preview/publish images to the prod
+// ECR (dark-promote-images, which runs before the bind). Guarded on the same
+// release_group_id-in-state signal teardownDarkRG uses: present ⇒ a dark run
+// reached the bind, so the images are already promoted. No-op on a classic
+// (dark-off) run, or if dark-create-rg failed (no id) — there docker-promote's
+// idempotency makes any redundant prod promote a harmless no-op anyway.
+func (r *run) skipRedundantPromote() {
+	if r.p.Values()["prod-dark.dark-create-rg.release_group_id"] == "" {
+		return
+	}
+	for i, sr := range r.p.Stages() {
+		if sr.Stage.ID == "promote-images" {
+			r.p.SkipStage(i)
+			return
+		}
+	}
 }
 
 // teardownDarkRG best-effort rolls back the dark Release Group the dark phase

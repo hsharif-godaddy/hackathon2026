@@ -35,6 +35,10 @@ type Notifier struct {
 	ts       string
 	lastText string
 
+	// logOnly makes Post/PostReply/Update print the would-be message to STDOUT
+	// instead of calling the Slack API. Set only via NewLogOnly (notify_slack=off).
+	logOnly bool
+
 	// verbose surfaces Slack API failures to STDOUT (as GitHub Actions
 	// ::warning:: annotations) in addition to the file log. Enable it ONLY on the
 	// headless/CI path (Verbose()): the interactive TUI owns stdout, so a stray
@@ -51,6 +55,22 @@ func New(token, channelID string) *Notifier {
 		client:    &http.Client{Timeout: 10 * time.Second},
 		baseURL:   "https://slack.com/api",
 	}
+}
+
+// NewLogOnly returns a Notifier that prints every would-be message to STDOUT
+// instead of posting to Slack. Wired when notify_slack is off (the runner blanks
+// the Slack creds, so CredentialsFromEnv returns ok=false). A real release then
+// surfaces its Slack content in the GitHub Actions log without notifying the
+// channel. Never used when creds are present.
+func NewLogOnly() *Notifier {
+	return &Notifier{logOnly: true}
+}
+
+// printLogOnly writes a would-be Slack message to STDOUT. logger.Log writes to a
+// file that GitHub Actions does not surface, so this uses fmt to reach the run
+// log. Only the log-only notifier calls it.
+func printLogOnly(kind, text string) {
+	fmt.Printf("::group::📣 SLACK %s (notify_slack off — would post)\n%s\n::endgroup::\n", kind, text)
 }
 
 // Verbose enables surfacing Slack failures to STDOUT (GHA ::warning::). Headless
@@ -176,6 +196,11 @@ func (n *Notifier) Post(ctx context.Context, text string) {
 
 	n.mu.Lock()
 	defer n.mu.Unlock()
+	if n.logOnly {
+		n.lastText = text
+		printLogOnly("status", text)
+		return
+	}
 	n.post(ctx, text)
 }
 
@@ -214,6 +239,11 @@ func (n *Notifier) PostReply(ctx context.Context, text string) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 
+	if n.logOnly {
+		printLogOnly("reply", text)
+		return
+	}
+
 	req := postRequest{Channel: n.channelID, MarkdownText: text}
 	if n.ts != "" {
 		req.ThreadTS = n.ts       // keep it attached to the release thread
@@ -238,6 +268,15 @@ func (n *Notifier) Update(ctx context.Context, text string) {
 
 	n.mu.Lock()
 	defer n.mu.Unlock()
+
+	if n.logOnly {
+		if n.lastText == text {
+			return
+		}
+		n.lastText = text
+		printLogOnly("status update", text)
+		return
+	}
 
 	if n.ts != "" && n.lastText == text {
 		return

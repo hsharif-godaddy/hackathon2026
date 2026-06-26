@@ -393,6 +393,54 @@ func TestStageGroupsMixed(t *testing.T) {
 	}
 }
 
+// TestProdDarkPromotesBeforeBind is the load-bearing guard for the
+// promote-before-bind change: in the real config, dark-promote-images must land
+// in an EARLIER stage group than dark-create-rg, so the images are in the prod
+// ECR before the RG bind dispatches. (orchestrate waits for a whole group before
+// the next, so an earlier group == fully completes first.)
+func TestProdDarkPromotesBeforeBind(t *testing.T) {
+	cfg, err := config.Load("../../release-manager.yml")
+	if err != nil {
+		t.Skipf("skipping actual config test: %v", err)
+	}
+	p := New(cfg, &mockRunner{}, false, "main", nil)
+	if err := p.BuildStages("prod-dark"); err != nil {
+		t.Fatalf("BuildStages(prod-dark): %v", err)
+	}
+
+	idxByID := map[string]int{}
+	for i, sr := range p.Stages() {
+		idxByID[sr.Stage.ID] = i
+	}
+	promoteIdx, ok := idxByID["dark-promote-images"]
+	if !ok {
+		t.Fatal("dark-promote-images stage not found in prod-dark")
+	}
+	bindIdx, ok := idxByID["dark-create-rg"]
+	if !ok {
+		t.Fatal("dark-create-rg stage not found in prod-dark")
+	}
+
+	groups := p.StageGroups("prod-dark")
+	groupOf := func(stageIdx int) int {
+		for g, members := range groups {
+			for _, m := range members {
+				if m == stageIdx {
+					return g
+				}
+			}
+		}
+		return -1
+	}
+	promoteGroup, bindGroup := groupOf(promoteIdx), groupOf(bindIdx)
+	if promoteGroup < 0 || bindGroup < 0 {
+		t.Fatalf("stage not in any group: promote=%d bind=%d", promoteGroup, bindGroup)
+	}
+	if promoteGroup >= bindGroup {
+		t.Errorf("dark-promote-images group (%d) must precede dark-create-rg group (%d)", promoteGroup, bindGroup)
+	}
+}
+
 func TestSetValueAndValues(t *testing.T) {
 	p := New(testConfig(), &mockRunner{}, false, "main", nil)
 

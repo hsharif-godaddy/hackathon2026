@@ -37,6 +37,14 @@ on:
         description: 'Skip real dispatches + Slack; skip the prod gate so the flow runs end to end'
         default: false
         type: boolean
+      run_dark:
+        description: 'Run the dark phase (dark-deploy + advisory dark e2e/regression) before the prod gate'
+        default: false
+        type: boolean
+      notify_slack:
+        description: 'Post Slack updates (uncheck to run silently — would-be messages print to the run log)'
+        default: true
+        type: boolean
 
 permissions:
   contents: write # gh release create
@@ -136,17 +144,23 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PIONEER_INFRA_TOKEN: ${{ secrets.PIONEER_INFRA_TOKEN }}
-          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
-          SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
+          SLACK_BOT_TOKEN: ${{ (inputs.notify_slack || github.event_name != 'workflow_dispatch') && secrets.SLACK_BOT_TOKEN || '' }}
+          SLACK_CHANNEL_ID: ${{ (inputs.notify_slack || github.event_name != 'workflow_dispatch') && secrets.SLACK_CHANNEL_ID || '' }}
           BRANCH: ${{ needs.preflight.outputs.branch }}
           DRY_RUN: ${{ inputs.dry_run == true }}
+          RUN_DARK: ${{ inputs.run_dark == true }}
         run: |
           DRY=""
           [ "$DRY_RUN" = "true" ] && DRY="--dry-run"
+          # Dark off → the test phase is the last pre-gate phase, so it posts the
+          # awaiting-approval CTA + approver ping. Dark on → the dark-phase job does
+          # that (after the dark build is live), so test keeps its message in-progress.
+          AWAIT="--await-approval"
+          [ "$RUN_DARK" = "true" ] && AWAIT=""
           "$RUNNER_TEMP/release-manager" run --headless --mode test \
             --branch "$BRANCH" \
             --state-file "$RUNNER_TEMP/state.json" \
-            $DRY
+            $DRY $AWAIT
       # If the run is CANCELLED mid-test (someone hits "Cancel workflow run"),
       # GitHub re-evaluates step `if`s, so this runs even though the step above
       # was killed. It finalizes the same Slack message in place via the
@@ -157,8 +171,8 @@ jobs:
       - name: Mark cancelled in Slack
         if: cancelled()
         env:
-          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
-          SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
+          SLACK_BOT_TOKEN: ${{ (inputs.notify_slack || github.event_name != 'workflow_dispatch') && secrets.SLACK_BOT_TOKEN || '' }}
+          SLACK_CHANNEL_ID: ${{ (inputs.notify_slack || github.event_name != 'workflow_dispatch') && secrets.SLACK_CHANNEL_ID || '' }}
         run: |
           "$RUNNER_TEMP/release-manager" run --headless --mode abort \
             --state-file "$RUNNER_TEMP/state.json" \
@@ -174,16 +188,94 @@ jobs:
           if-no-files-found: error
 
   # ---------------------------------------------------------------------------
+  # DARK PHASE (opt-in: run_dark=true) — dark-deploy the new builder + bind images
+  # via a cohort-less Release Group + advisory dark e2e/regression, BEFORE the prod
+  # gate, so the approver reviews a live, already-tested dark build. Skipped on
+  # classic runs and on cron. Re-uploads state.json (now carrying the dark RG id)
+  # so the prod phase can tear the RG down.
+  # ---------------------------------------------------------------------------
+  dark-phase:
+    needs: [preflight, test-phase]
+    if: needs.preflight.outputs.should_release == 'true' && inputs.run_dark == true
+    runs-on:
+      labels:
+        - airo-cicd-runners
+        - self-hosted
+    outputs:
+      notified: ${{ steps.run.outputs.notified }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
+        with:
+          go-version: '1.26'
+          cache-dependency-path: release-manager/go.sum
+      - name: Build release-manager
+        working-directory: release-manager
+        run: go build -o "$RUNNER_TEMP/release-manager" ./cmd/release-manager/
+      - name: Download phase state
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: release-phase-state
+          path: ${{ runner.temp }}
+      - name: Run dark phase
+        id: run
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PIONEER_INFRA_TOKEN: ${{ secrets.PIONEER_INFRA_TOKEN }}
+          SLACK_BOT_TOKEN: ${{ (inputs.notify_slack || github.event_name != 'workflow_dispatch') && secrets.SLACK_BOT_TOKEN || '' }}
+          SLACK_CHANNEL_ID: ${{ (inputs.notify_slack || github.event_name != 'workflow_dispatch') && secrets.SLACK_CHANNEL_ID || '' }}
+          BRANCH: ${{ needs.preflight.outputs.branch }}
+          DRY_RUN: ${{ inputs.dry_run == true }}
+        run: |
+          DRY=""
+          [ "$DRY_RUN" = "true" ] && DRY="--dry-run"
+          # Dark is the last pre-gate phase when it runs, so it always posts the
+          # awaiting-approval CTA + approver ping (--await-approval).
+          "$RUNNER_TEMP/release-manager" run --headless --mode prod-dark \
+            --branch "$BRANCH" \
+            --state-file "$RUNNER_TEMP/state.json" \
+            --await-approval \
+            $DRY
+      - name: Mark cancelled / tear down dark RG
+        if: cancelled()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PIONEER_INFRA_TOKEN: ${{ secrets.PIONEER_INFRA_TOKEN }}
+          SLACK_BOT_TOKEN: ${{ (inputs.notify_slack || github.event_name != 'workflow_dispatch') && secrets.SLACK_BOT_TOKEN || '' }}
+          SLACK_CHANNEL_ID: ${{ (inputs.notify_slack || github.event_name != 'workflow_dispatch') && secrets.SLACK_CHANNEL_ID || '' }}
+          DRY_RUN: ${{ inputs.dry_run == true }}
+        run: |
+          DRY=""
+          [ "$DRY_RUN" = "true" ] && DRY="--dry-run"
+          "$RUNNER_TEMP/release-manager" run --headless --mode abort \
+            --state-file "$RUNNER_TEMP/state.json" \
+            --reason "Release cancelled" $DRY || true
+      - name: Upload phase state (with dark outputs)
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-phase-state
+          path: ${{ runner.temp }}/state.json
+          retention-days: 5
+          if-no-files-found: error
+          overwrite: true
+
+  # ---------------------------------------------------------------------------
   # APPROVAL GATE — pauses until a release-prod-approval reviewer approves. The
   # test-phase process has already exited, so "close the browser, release
   # continues" holds. Skipped in dry-run so the flow runs straight through.
   # ---------------------------------------------------------------------------
   approve-prod:
-    needs: [preflight, test-phase]
-    # Runs (and pauses for a reviewer) on schedule, manual dispatch, AND push —
-    # the push smoke test must stop here before prod. Only a workflow_dispatch
-    # dry_run skips the gate.
-    if: needs.preflight.outputs.should_release == 'true' && inputs.dry_run != true
+    needs: [preflight, test-phase, dark-phase]
+    # always() is REQUIRED: dark-phase is skipped on classic (run_dark=false) runs,
+    # and a skipped `needs` dependency would otherwise auto-skip this gate. So gate
+    # explicitly on test-phase success + dark-phase success-or-skipped. Pauses for a
+    # reviewer on schedule, manual dispatch, AND push; only a dry_run skips it.
+    if: |
+      always() &&
+      needs.preflight.outputs.should_release == 'true' &&
+      inputs.dry_run != true &&
+      needs.test-phase.result == 'success' &&
+      (needs.dark-phase.result == 'success' || needs.dark-phase.result == 'skipped')
     runs-on:
       labels:
         - airo-cicd-runners
@@ -194,8 +286,9 @@ jobs:
           {
             echo "## Approve prod deployment"
             echo
-            echo "Review the **test-phase** job summary (per-stage results, incl. the e2e +"
-            echo "regression suites), then approve to start the fleet-wide prod promote."
+            echo "Review the **test-phase** summary (per-stage results, incl. the e2e + regression"
+            echo "suites) and, on a run_dark=true release, the **dark-phase** summary + the live dark"
+            echo "build (dark URL in the Slack thread), then approve to start the fleet-wide promote."
           } >> "$GITHUB_STEP_SUMMARY"
 
   # ---------------------------------------------------------------------------
@@ -203,13 +296,15 @@ jobs:
   # cuts the GitHub release, finalizes the Slack message.
   # ---------------------------------------------------------------------------
   prod-phase:
-    needs: [preflight, test-phase, approve-prod]
-    # Runs when test-phase succeeded AND either the gate was approved OR it was
-    # skipped *because* this is a dry-run (never on a failure-skip).
+    needs: [preflight, test-phase, dark-phase, approve-prod]
+    # Runs when test-phase succeeded, the dark phase succeeded OR was skipped
+    # (run_dark=false — `|| skipped` is REQUIRED or every classic run would skip
+    # prod), AND either the gate was approved OR skipped *because* this is a dry-run.
     if: |
       always() &&
       needs.preflight.outputs.should_release == 'true' &&
       needs.test-phase.result == 'success' &&
+      (needs.dark-phase.result == 'success' || needs.dark-phase.result == 'skipped') &&
       (needs.approve-prod.result == 'success' ||
        (needs.approve-prod.result == 'skipped' && inputs.dry_run == true))
     runs-on:
@@ -237,8 +332,8 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PIONEER_INFRA_TOKEN: ${{ secrets.PIONEER_INFRA_TOKEN }}
-          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
-          SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
+          SLACK_BOT_TOKEN: ${{ (inputs.notify_slack || github.event_name != 'workflow_dispatch') && secrets.SLACK_BOT_TOKEN || '' }}
+          SLACK_CHANNEL_ID: ${{ (inputs.notify_slack || github.event_name != 'workflow_dispatch') && secrets.SLACK_CHANNEL_ID || '' }}
           BRANCH: ${{ needs.preflight.outputs.branch }}
           DRY_RUN: ${{ inputs.dry_run == true }}
         run: |
@@ -254,8 +349,8 @@ jobs:
       - name: Mark cancelled in Slack
         if: cancelled()
         env:
-          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
-          SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
+          SLACK_BOT_TOKEN: ${{ (inputs.notify_slack || github.event_name != 'workflow_dispatch') && secrets.SLACK_BOT_TOKEN || '' }}
+          SLACK_CHANNEL_ID: ${{ (inputs.notify_slack || github.event_name != 'workflow_dispatch') && secrets.SLACK_CHANNEL_ID || '' }}
         run: |
           "$RUNNER_TEMP/release-manager" run --headless --mode abort \
             --state-file "$RUNNER_TEMP/state.json" \
@@ -269,9 +364,15 @@ jobs:
   # notified=true so the backstop below stays quiet. (A hard run-cancellation
   # cancels this job too, so it only covers an explicit reject — a cancel
   # leaves the message as-is and the backstop is the safety net.)
+  # NOTE (run_dark): a hard cancel WHILE PAUSED AT THE GATE runs neither this job
+  # (it fires only on an explicit reject) nor any dark-RG teardown — the already-
+  # completed dark-phase's `if: cancelled()` step won't re-run. The bound dark RG
+  # then self-heals via rolloutPct=0 + the dark artifact's 24h TTL.
   # ---------------------------------------------------------------------------
   gate-declined:
-    needs: [preflight, test-phase, approve-prod]
+    needs: [preflight, test-phase, dark-phase, approve-prod]
+    # dark-phase is in needs only for ordering; this job doesn't read its result
+    # (a skipped dark-phase is irrelevant — it fires only on an explicit reject).
     if: |
       always() &&
       needs.preflight.outputs.should_release == 'true' &&
@@ -306,8 +407,8 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PIONEER_INFRA_TOKEN: ${{ secrets.PIONEER_INFRA_TOKEN }}
-          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
-          SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
+          SLACK_BOT_TOKEN: ${{ (inputs.notify_slack || github.event_name != 'workflow_dispatch') && secrets.SLACK_BOT_TOKEN || '' }}
+          SLACK_CHANNEL_ID: ${{ (inputs.notify_slack || github.event_name != 'workflow_dispatch') && secrets.SLACK_CHANNEL_ID || '' }}
           BRANCH: ${{ needs.preflight.outputs.branch }}
         run: |
           "$RUNNER_TEMP/release-manager" run --headless --mode abort \
@@ -321,15 +422,17 @@ jobs:
   # in dry-run. Best-effort: never blocks.
   # ---------------------------------------------------------------------------
   slack-failure:
-    needs: [preflight, test-phase, approve-prod, prod-phase, gate-declined]
+    needs: [preflight, test-phase, dark-phase, approve-prod, prod-phase, gate-declined]
     # Only when NONE of the phases already posted a terminal update to the
     # thread (their `notified` output is unset) — otherwise the in-place update
-    # already covered it and a second post would be a duplicate.
+    # already covered it and a second post would be a duplicate. A skipped
+    # dark-phase has notified='' so its clause passes (doesn't suppress).
     if: |
       failure() &&
       needs.preflight.outputs.should_release == 'true' &&
       inputs.dry_run != true &&
       needs.test-phase.outputs.notified != 'true' &&
+      needs.dark-phase.outputs.notified != 'true' &&
       needs.prod-phase.outputs.notified != 'true' &&
       needs.gate-declined.outputs.notified != 'true'
     runs-on:
@@ -339,13 +442,19 @@ jobs:
     steps:
       - name: Post failure backstop to Slack
         env:
-          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
-          SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
+          SLACK_BOT_TOKEN: ${{ (inputs.notify_slack || github.event_name != 'workflow_dispatch') && secrets.SLACK_BOT_TOKEN || '' }}
+          SLACK_CHANNEL_ID: ${{ (inputs.notify_slack || github.event_name != 'workflow_dispatch') && secrets.SLACK_CHANNEL_ID || '' }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -uo pipefail
-          [ -z "${SLACK_BOT_TOKEN:-}" ] && { echo "::warning::Slack token unset; skipping backstop"; exit 0; }
           TEXT=":x: Release pipeline failed — [view run]($RUN_URL)"
+          if [ -z "${SLACK_BOT_TOKEN:-}" ]; then
+            # notify_slack off (creds blanked) — print the would-be message instead of posting.
+            echo "::group::📣 SLACK failure-backstop (notify_slack off — would post)"
+            echo "$TEXT"
+            echo "::endgroup::"
+            exit 0
+          fi
           PAYLOAD=$(jq -nc --arg c "$SLACK_CHANNEL_ID" --arg m "$TEXT" '{channel:$c, markdown_text:$m}')
           curl -sS -X POST https://slack.com/api/chat.postMessage \
             -H "Authorization: Bearer $SLACK_BOT_TOKEN" \

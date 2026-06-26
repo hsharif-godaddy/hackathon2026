@@ -159,6 +159,104 @@ pipeline:
             fail-on-threshold: 'true'
             score-threshold: '70'
 
+    # ===== PROD-DARK (opt-in: only runs when dispatched with run_dark=true) =====
+    # release.yml's dark-phase job (gated on run_dark) runs this env BEFORE the approve-prod gate:
+    # dark-deploy the new builder (Katana dark_release @ 0% traffic) + bind agent/preview/publish to
+    # the build's commit SHA via a cohort-less Release Group, then advisory dark e2e/regression
+    # against the dark URL so the approver reviews a live, already-tested dark build. dark_url +
+    # katanaSelector are DERIVED by the release-manager from the pinned {{commit}} (see runProdDark /
+    # darkURL), not scraped. e2e-test/regression-test still run in the TEST phase above (vs
+    # test-godaddy.com); the dark e2e/regression here additionally validate the DARK prod build — on a
+    # run_dark=true release e2e/regression run against both targets (the static config can't
+    # conditionally drop the test stages). The dark RG TEARDOWN is NOT a stage here — runProd calls
+    # teardownDarkRG (a no-op when run_dark was off), so the prod env stays a clean classic flow.
+    prod-dark:
+      requires: test
+      stages:
+        # --- Promote images to the prod ECR FIRST, so dark-create-rg can bind
+        #     them (the bind references these tags by commit SHA; absent images
+        #     leave the dark stack non-functional). Blocking + ungrouped: it must
+        #     fully complete before the bind's group dispatches. Distinct id from
+        #     the prod-phase promote-images, which runProd SKIPS on a dark run
+        #     (release_group_id present) since these are already promoted. ---
+        - id: dark-promote-images
+          name: Promote Images to Prod
+          repo: gdcorp-commerce/pioneer-infra
+          workflow: docker-promote.yml
+          active_run_filter: 'airo-builder'
+          matrix:
+            - inputs:
+                environment: c1-dev-private-us-west-2
+                source-repository-name: airo-builder/agent
+                image-tag: '{{test.build-images.agent_image_tag}}'
+            - inputs:
+                environment: c1-dev-private-us-west-2
+                source-repository-name: airo-builder/preview
+                image-tag: '{{test.build-images.preview_image_tag}}'
+            - inputs:
+                environment: c1-dev-private-us-west-2
+                source-repository-name: airo-builder/publish
+                image-tag: '{{test.build-images.publish_image_tag}}'
+
+        - id: dark-deploy-app
+          name: Dark-deploy App to Prod (0% traffic)
+          repo: gdcorp-partners/airo-app-builder
+          workflow: promote-artifact.yml
+          ref: '{{branch}}'
+          inputs:
+            component: app
+            environment: prod
+            artifact_id: '{{test.deploy-app.artifact_id}}'
+            strategy: dark_release
+            skip_e2e: 'true'
+
+        - id: dark-create-rg
+          name: Create + bind dark Release Group
+          advisory: true # RG create is best-effort; a failed create (e.g. 409) must not block the release
+          repo: gdcorp-commerce/pioneer-infra
+          workflow: release-group-simple.yml
+          inputs:
+            action: 'Create + Reload'
+            environment: mgmt-prod-us-west-2
+            katanaSelector: '{{commit}}'
+            agentImageTag: '{{test.build-images.agent_image_tag}}'
+            previewImageTag: '{{test.build-images.preview_image_tag}}'
+            publishImageTag: '{{test.build-images.publish_image_tag}}'
+            compositionId: ai-builder
+            compositionVersion: v4
+          outputs:
+            release_group_id:
+              from: run-log
+              pattern: "RELEASE_GROUP_ID=(\\S+)"
+
+        - id: dark-e2e
+          name: Dark E2E (Prod)
+          group: dark-validate
+          advisory: true # surfaced in Slack; does NOT gate the promote
+          test_summary: true
+          repo: gdcorp-partners/airo-app-builder
+          workflow: playwright-e2e.yml
+          active_run_check: false
+          ref: '{{branch}}'
+          inputs:
+            environment: prod
+            test_filter: e2e
+            dark_url: '{{dark_url}}'
+
+        - id: dark-regression
+          name: Dark Regression (Prod)
+          group: dark-validate
+          advisory: true # surfaced in Slack; does NOT gate the promote
+          test_summary: true
+          repo: gdcorp-partners/airo-app-builder
+          workflow: playwright-e2e.yml
+          active_run_check: false
+          ref: '{{branch}}'
+          inputs:
+            environment: prod
+            test_filter: regression
+            dark_url: '{{dark_url}}'
+
     prod:
       requires: test
       stages:

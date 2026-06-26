@@ -333,6 +333,13 @@ func (p *Pipeline) StageGroups(envName string) [][]int {
 func (p *Pipeline) RunStage(ctx context.Context, idx int) error {
 	p.mu.Lock()
 	sr := p.stages[idx]
+	if sr.State == StateSkipped {
+		// Pre-skipped before orchestration (e.g. runProd skips the prod-phase
+		// promote-images when the dark phase already promoted). Honor it instead
+		// of overwriting with StateRunning and dispatching. The ⊘ render stays.
+		p.mu.Unlock()
+		return nil
+	}
 	sr.State = StateRunning
 	sr.StartTime = time.Now()
 	p.mu.Unlock()

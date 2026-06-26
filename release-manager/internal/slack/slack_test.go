@@ -6,6 +6,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -365,5 +367,61 @@ func TestPostReplyIsAFreshThreadedBroadcast(t *testing.T) {
 	// The status message's ts must be untouched (the reply has its own ts).
 	if n.TS() != "123.456" {
 		t.Errorf("PostReply clobbered the status ts: %q", n.TS())
+	}
+}
+
+// TestLogOnlyNotifier covers the notify_slack=off path: a log-only notifier (no
+// client/baseURL, so any real API call would panic) must print every would-be
+// message to stdout, and Update must dedupe identical consecutive renders.
+func TestLogOnlyNotifier(t *testing.T) {
+	n := NewLogOnly()
+
+	old := os.Stdout
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe: %v", err)
+	}
+	os.Stdout = w
+	n.Post(context.Background(), "status body")
+	n.PostReply(context.Background(), "approval ping")
+	n.Update(context.Background(), "updated body")
+	n.Update(context.Background(), "updated body") // identical → deduped, no second print
+	w.Close()
+	os.Stdout = old
+
+	out, err := io.ReadAll(r)
+	if err != nil {
+		t.Fatalf("reading captured stdout: %v", err)
+	}
+	got := string(out)
+
+	for _, want := range []string{"status body", "approval ping", "updated body"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("stdout missing %q; got:\n%s", want, got)
+		}
+	}
+	if c := strings.Count(got, "updated body"); c != 1 {
+		t.Errorf("expected 'updated body' printed once (deduped), got %d:\n%s", c, got)
+	}
+}
+
+// TestLogOnlyResolveMentionsNoPanic locks in the log-only guard on BOTH
+// resolvers. A log-only notifier has client==nil, so reaching fetchLookups ->
+// getJSON -> n.client.Do panics. ResolveMentionMap previously lacked the guard
+// ResolveMentions has, so a real notify_slack=off release crashed in the test
+// phase (runTest -> resolveAuthorMentions -> ResolveMentionMap).
+func TestLogOnlyResolveMentionsNoPanic(t *testing.T) {
+	n := NewLogOnly()
+	handles := []string{"alice", "bob"}
+
+	// Must return nil without touching the (nil) HTTP client.
+	if got := n.ResolveMentionMap(context.Background(), handles); got != nil {
+		t.Errorf("ResolveMentionMap on log-only = %v, want nil", got)
+	}
+
+	// Sibling resolver returns readable @handle tokens (already guarded).
+	got := n.ResolveMentions(context.Background(), handles)
+	if len(got) != 2 || got[0] != "@alice" || got[1] != "@bob" {
+		t.Errorf("ResolveMentions on log-only = %v, want [@alice @bob]", got)
 	}
 }

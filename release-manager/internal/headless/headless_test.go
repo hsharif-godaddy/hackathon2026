@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -12,6 +14,7 @@ import (
 	"github.com/airo-ai-builder/release-manager/internal/config"
 	"github.com/airo-ai-builder/release-manager/internal/gh"
 	"github.com/airo-ai-builder/release-manager/internal/pipeline"
+	"github.com/airo-ai-builder/release-manager/internal/slack"
 )
 
 // fakeRunner makes every dispatched stage resolve to a single run whose
@@ -395,6 +398,53 @@ func TestTeardownDarkRGRollsBackWhenPresent(t *testing.T) {
 	}
 }
 
+// skipRedundantPromote must skip the prod promote-images ONLY when the dark
+// phase already promoted (release_group_id present, the same guard teardownDarkRG
+// uses); a classic (dark-off) run must still promote.
+func TestSkipRedundantPromote(t *testing.T) {
+	cfg := &config.Config{
+		Pipeline: config.PipelineConfig{
+			Environments: map[string]*config.EnvironmentConfig{
+				"prod": {Stages: []config.Stage{
+					{ID: "promote-images", Name: "Promote Images", Repo: "o/r", Workflow: "docker-promote.yml"},
+					{ID: "promote-app", Name: "Promote App", Group: "deploy-prod", Repo: "o/r", Workflow: "promote.yml"},
+				}},
+			},
+		},
+	}
+	promoteState := func(r *run) pipeline.StageState {
+		t.Helper()
+		for _, sr := range r.p.Stages() {
+			if sr.Stage.ID == "promote-images" {
+				return sr.State
+			}
+		}
+		t.Fatal("promote-images stage not found")
+		return pipeline.StatePending
+	}
+
+	// Dark ran (release_group_id present) → prod promote-images is skipped.
+	dark := &run{p: pipeline.New(cfg, &fakeRunner{}, false, "main", nil), start: time.Now()}
+	if err := dark.p.BuildStages("prod"); err != nil {
+		t.Fatal(err)
+	}
+	dark.p.SetValue("prod-dark.dark-create-rg.release_group_id", "rg-abc123")
+	dark.skipRedundantPromote()
+	if got := promoteState(dark); got != pipeline.StateSkipped {
+		t.Errorf("dark run: promote-images = %v, want StateSkipped", got)
+	}
+
+	// Classic run (no release_group_id) → promote-images is NOT skipped.
+	classic := &run{p: pipeline.New(cfg, &fakeRunner{}, false, "main", nil), start: time.Now()}
+	if err := classic.p.BuildStages("prod"); err != nil {
+		t.Fatal(err)
+	}
+	classic.skipRedundantPromote()
+	if got := promoteState(classic); got == pipeline.StateSkipped {
+		t.Error("classic run: promote-images must NOT be skipped")
+	}
+}
+
 // darkURL must produce a URL whose hostname + x-katana-version selector are what
 // tests/helpers/auth.ts seedDarkVersionCookie parses (cookie domain = hostname,
 // value = selector), pinned to the build commit.
@@ -403,6 +453,41 @@ func TestDarkURL(t *testing.T) {
 	want := "https://airo-builder.godaddy.com?x-katana-version=abc123def&cookie=1"
 	if got != want {
 		t.Errorf("darkURL = %q, want %q", got, want)
+	}
+}
+
+// TestPostApprovalGate guards the approval ping that has regressed twice (#5259
+// moved it out of runTest into runProdDark; #5325 stranded it). It asserts the
+// last pre-gate phase actually emits the awaiting-approval CTA + the approver
+// ping. Uses a log-only notifier so the would-be messages are captured from
+// stdout (no Slack API), and asserts the ping carries the approver handle.
+func TestPostApprovalGate(t *testing.T) {
+	r := newRun(&fakeRunner{conclusion: "success"})
+	r.notifier = slack.NewLogOnly()
+	r.approvalMentions = []string{"jeichorn"}
+	r.runURL = "https://github.com/o/r/actions/runs/1"
+
+	old := os.Stdout
+	pr, pw, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe: %v", err)
+	}
+	os.Stdout = pw
+	r.postApprovalGate(context.Background())
+	pw.Close()
+	os.Stdout = old
+
+	out, err := io.ReadAll(pr)
+	if err != nil {
+		t.Fatalf("reading captured stdout: %v", err)
+	}
+	got := string(out)
+
+	if !strings.Contains(got, "Prod approval needed") {
+		t.Errorf("postApprovalGate did not emit the awaiting-approval ping; got:\n%s", got)
+	}
+	if !strings.Contains(got, "@jeichorn") {
+		t.Errorf("postApprovalGate ping missing the approver mention; got:\n%s", got)
 	}
 }
 

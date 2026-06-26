@@ -765,6 +765,8 @@ func TestValidateStagesAdvisoryActualConfig(t *testing.T) {
 		"e2e-test", "regression-test", "health-check-test", "simulation-eval-test",
 		// prod phase
 		"e2e-prod", "regression-prod", "health-check-prod",
+		// prod-dark phase (opt-in via run_dark) — surfaced in Slack, must NOT gate the promote
+		"dark-create-rg", "dark-e2e", "dark-regression",
 	}
 	for _, id := range advisoryStages {
 		if _, ok := advisory[id]; !ok {
@@ -779,6 +781,9 @@ func TestValidateStagesAdvisoryActualConfig(t *testing.T) {
 	blockingStages := []string{
 		// test phase
 		"deploy-app", "build-images",
+		// prod-dark phase — a failed dark deploy/promote must halt the release
+		// (dark-promote-images must finish before the bind, so it can't be advisory)
+		"dark-deploy-app", "dark-promote-images",
 		// prod phase
 		"promote-images", "promote-app", "upsert-reload-preprov",
 	}

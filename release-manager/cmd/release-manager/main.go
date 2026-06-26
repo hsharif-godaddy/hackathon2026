@@ -130,6 +130,7 @@ func runHeadless(args []string) int {
 	slackTS := fs.String("slack-ts", "", "existing Slack message ts to update in place (optional; prod normally reads it from --state-file)")
 	operator := fs.String("operator", "", "name shown in the Slack header (default: $GITHUB_ACTOR, else 'scheduler')")
 	baseCommit := fs.String("base-commit", "", "override the release-notes base commit")
+	awaitApproval := fs.Bool("await-approval", false, "post the awaiting-approval CTA + approver ping at the end of this phase (set on the LAST pre-gate phase: test when run_dark off, dark when on)")
 	rbArtifact := fs.String("rollback-artifact-id", "", "rollback: override the previous-good artifact ID")
 	rbAgent := fs.String("rollback-agent-tag", "", "rollback: override the previous-good agent image tag")
 	rbPreview := fs.String("rollback-preview-tag", "", "rollback: override the previous-good preview image tag")
@@ -194,7 +195,12 @@ func runHeadless(args []string) int {
 			// failures as GHA ::warning:: annotations in the run log.
 			notifier = slack.New(creds.Token, creds.ChannelID).Verbose()
 		} else {
-			logger.Log("headless: SLACK_BOT_TOKEN/SLACK_CHANNEL_ID unset — Slack disabled")
+			// Creds absent — on the runner this means notify_slack=off (the workflow
+			// blanks SLACK_BOT_TOKEN/SLACK_CHANNEL_ID). Use a log-only notifier so a
+			// real release still surfaces its would-be Slack content in the GHA run
+			// log instead of dropping it silently.
+			logger.Log("headless: SLACK_BOT_TOKEN/SLACK_CHANNEL_ID unset — Slack log-only (printing would-be messages to stdout)")
+			notifier = slack.NewLogOnly()
 		}
 	}
 	if *slackTS != "" {
@@ -208,13 +214,14 @@ func runHeadless(args []string) int {
 	}
 
 	opts := headless.Options{
-		Mode:       headless.Mode(*mode),
-		Branch:     *branch,
-		DryRun:     *dryRun,
-		Operator:   op,
-		StateFile:  *stateFile,
-		Reason:     strings.TrimSpace(*reason),
-		BaseCommit: strings.TrimSpace(*baseCommit),
+		Mode:          headless.Mode(*mode),
+		Branch:        *branch,
+		DryRun:        *dryRun,
+		Operator:      op,
+		StateFile:     *stateFile,
+		Reason:        strings.TrimSpace(*reason),
+		BaseCommit:    strings.TrimSpace(*baseCommit),
+		AwaitApproval: *awaitApproval,
 		// abort is a best-effort finalizer (edit the Slack message after a gate
 		// decline); a gh auth hiccup must not stop it from posting — it degrades
 		// to "Release canceled" on its own when the approvals API is unreadable.
