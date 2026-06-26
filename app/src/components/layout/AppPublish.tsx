@@ -25,16 +25,21 @@ import TextLockup from '@ux/text-lockup';
 import IconButton from '@/app/[market]/develop/components/IconButton';
 import { ChatTab, MobileMode, SettingsSection, ViewMode } from '@/app/[market]/develop/components/types';
 import { FEEDBACK_ID } from '@/components/feedback/utils';
+import PublishDomainSelector, { type SelectableDomain } from '@/components/layout/PublishDomainSelector';
 import PublishUpsellPopover from '@/components/layout/PublishUpsellPopover';
 import SeoQualityRegressionAlert from '@/components/layout/SeoQualityRegressionAlert';
+import { COHORT_ON, EXPERIMENT_IDS } from '@/config/experiments';
 import { SWITCHBOARD_APPBUILDER_GO_LIVE_FEATURE } from '@/config/switchboard-flags';
 import { useAppSsoStatus } from '@/hooks/useAppSsoStatus';
 import { useChatTabs } from '@/hooks/useChatTabs';
 import { useDeploymentsQuery } from '@/hooks/useDeploymentsQuery';
 import { useDnsConflictGate } from '@/hooks/useDnsConflictGate';
+import { useDomainsQuery } from '@/hooks/useDomainsQuery';
 import { useGitHistoryQuery } from '@/hooks/useGitHistory';
 import { useGscSitemapOnPublish } from '@/hooks/useGscSitemapOnPublish';
+import { useHivemind } from '@/hooks/useHivemind';
 import { useIsHistoryDisabled } from '@/hooks/useIsHistoryDisabled';
+import { DomainMutationError, useModifyDomains } from '@/hooks/useModifyDomains';
 import { usePaywallEligibility } from '@/hooks/usePaywallEligibility';
 import { usePaywallModal } from '@/hooks/usePaywallModal';
 import { usePublishApp } from '@/hooks/usePublishApp';
@@ -49,6 +54,7 @@ import { useTranslations } from '@/hooks/useTranslations';
 import { useTriggerSecurityAnalysis } from '@/hooks/useTriggerSecurityAnalysis';
 import { useIsUpgradePolling } from '@/hooks/useUpgradePurchase';
 import { isBuilderPagePath } from '@/lib/builder-route';
+import { DomainStatus, DomainType } from '@/lib/control-plane/types';
 import { JourneyTracker } from '@/lib/journeyTracker';
 import { shipAnalyticsLog } from '@/lib/logging';
 import { DeploymentStatus } from '@/lib/mgmt-airo/types';
@@ -60,6 +66,7 @@ import { markSettingsNotification } from '@/lib/settings-notifications-storage';
 import { Popover, PopoverContent, PopoverTrigger } from '@/lib/shadcn/popover';
 import { Separator } from '@/lib/shadcn/separator';
 import { PublishComplianceBlockReason } from '@/lib/subscription';
+import { cn } from '@/lib/utils';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { usePaywallStore } from '@/stores/usePaywallStore';
 import { useSiteStore } from '@/stores/useSiteStore';
@@ -83,6 +90,10 @@ function publishSubmitClickEid(surfaceLocation: string): string {
     return 'develop.chat_toolbar.publish_submit';
   }
   return 'develop.header.publish_submit';
+}
+
+function normalizeDomainToken(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]/g, '');
 }
 
 function PublishFailedMessage({
@@ -141,6 +152,8 @@ export default function AppPublish({ location = 'develop' }: { location?: string
     [currentAppId],
   );
   const { isTreatment } = usePublishUpsellEligibility();
+  const { cohort: defaultDomainSelectionCohort } = useHivemind(EXPERIMENT_IDS.defaultDomainSelection);
+  const isDefaultDomainSelectionTreatment: boolean = defaultDomainSelectionCohort === COHORT_ON;
   const { isDisabled: isHistoryDisabled } = useIsHistoryDisabled(currentAppId || '');
   const setIsPublishing = useDevelopPageStore((state) => state.setIsPublishing);
   const setPublishError = useDevelopPageStore((state) => state.setPublishError);
@@ -333,6 +346,7 @@ export default function AppPublish({ location = 'develop' }: { location?: string
   );
 
   const publishMutation = usePublishApp();
+  const modifyDomains = useModifyDomains();
 
   const site = useSiteStore((state) => currentAppId ? state.getSite(currentAppId) : null);
   const { isBlocked: isPublishComplianceBlocked, blockReason: publishComplianceBlockReason } =
@@ -344,6 +358,36 @@ export default function AppPublish({ location = 'develop' }: { location?: string
   const sso = useAppSsoStatus(currentAppId);
   const isSsoBlocked = sso.ssoRequired && !sso.ssoConfigured;
   const fqdn = resolveSiteFqdn(site) || '';
+  // resolveSiteFqdn returns a protocol-prefixed URL; the selector compares against bare hostnames,
+  // so strip the protocol before using it as a default/selected value.
+  const hostnameFqdn: string = fqdn.replace(/^https?:\/\//, '');
+  // The picker lists the user's account-owned domains; fetch only for the treatment cohort.
+  const { data: accountDomains = [] } = useDomainsQuery({ enabled: isDefaultDomainSelectionTreatment });
+  // Domains already connected to this app (active, non-prefix) — used to flag the "in use" row.
+  const connectedFqdns: Set<string> = new Set(
+    (site?.domains ?? [])
+      .filter((d) => d.domainType !== DomainType.PREFIX && d.status === DomainStatus.ACTIVE && !!d.fqdn)
+      .map((d) => d.fqdn.replace(/^https?:\/\//, '').toLowerCase()),
+  );
+  const selectableDomains: SelectableDomain[] = accountDomains
+    .map((d) => d.domain || d.name)
+    .filter((domainFqdn): domainFqdn is string => !!domainFqdn)
+    .map((domainFqdn) => ({ fqdn: domainFqdn, inUse: connectedFqdns.has(domainFqdn.toLowerCase()) }));
+  const prefixDomain = site?.domains?.find(
+    (d) => d.domainType === DomainType.PREFIX && d.status === DomainStatus.ACTIVE,
+  );
+  const freeProjectUrl: string = (prefixDomain?.fqdn || site?.published_url || '').replace(/^https?:\/\//, '');
+  const projectToken: string = normalizeDomainToken(site?.name ?? '');
+  const matchesProjectFqdn: string | undefined = projectToken
+    ? selectableDomains.find((d) => normalizeDomainToken(d.fqdn.split('.')[0]) === projectToken)?.fqdn
+    : undefined;
+  const inUseFqdn: string | undefined = selectableDomains.find((d) => d.inUse)?.fqdn;
+  const [selectedDomainFqdn, setSelectedDomainFqdn] = useState<string>('');
+  // Default to the currently-connected ("in use") domain so the untouched pre-selection matches the
+  // domain publish actually targets; fall back to the project-name match, then the first owned domain.
+  const effectiveSelectedFqdn: string =
+    selectedDomainFqdn || inUseFqdn || matchesProjectFqdn || selectableDomains[0]?.fqdn || hostnameFqdn;
+  const showDomainSelector: boolean = isDefaultDomainSelectionTreatment;
   const { modal: dnsConflictModal, runGate } = useDnsConflictGate({ appId: currentAppId, site });
 
   // Check if a conversation is in progress (AI is actively processing)
@@ -440,6 +484,7 @@ export default function AppPublish({ location = 'develop' }: { location?: string
       setOpen(false);
       setIsFixingBuildError(false);
       setIsAgentInitiatedPublish(false);
+      setSelectedDomainFqdn('');
     }
   }, [currentAppId, publishPopoverRequestNonce]);
 
@@ -558,6 +603,62 @@ export default function AppPublish({ location = 'develop' }: { location?: string
         logger.warn('app-publish.analytics.failed', { appId: currentAppId, error: e instanceof Error ? e.message : String(e) })
       }
 
+      // Default-domain-selection treatment: only when the user EXPLICITLY picked a custom domain
+      // (selectedDomainFqdn — not the visual default), attach it as primary before publishing
+      // (freeing mgmt-airo's single custom-domain slot by detaching other active custom domains).
+      // Gating on the explicit selection prevents a routine/agent publish from silently re-pointing
+      // the live domain via the defaulted pre-selection.
+      const normalizedSelected = selectedDomainFqdn.replace(/^https?:\/\//, '').toLowerCase();
+      // Any non-prefix domain already on the app (regardless of status) counts as connected — a
+      // PENDING/stale row would otherwise trigger a redundant attach that mgmt rejects with
+      // DOMAIN_ALREADY_OWNED.
+      const appCustomDomains = (site.domains ?? []).filter(
+        (d) => d.domainType !== DomainType.PREFIX && !!d.fqdn,
+      );
+      const isCustomDomainSelected =
+        showDomainSelector && !!selectedDomainFqdn && selectedDomainFqdn !== freeProjectUrl;
+      const isAlreadyConnected = appCustomDomains.some(
+        (d) => d.fqdn.replace(/^https?:\/\//, '').toLowerCase() === normalizedSelected,
+      );
+      if (isCustomDomainSelected && !isAlreadyConnected) {
+        try {
+          await modifyDomains.mutateAsync({
+            siteId: currentAppId,
+            payload: {
+              domainsToCreate: [{ fqdn: selectedDomainFqdn, primary: true }],
+              domainsToDelete: appCustomDomains
+                .filter((d) => d.status === DomainStatus.ACTIVE && d.fqdn.replace(/^https?:\/\//, '').toLowerCase() !== normalizedSelected)
+                .map((d) => ({ fqdn: d.fqdn })),
+              createCdn: true,
+              isWildcardDomain: true,
+            },
+          });
+          shipAnalyticsLog('publish.domain_attach.success', { appId: currentAppId, fqdn: selectedDomainFqdn });
+        } catch (attachError) {
+          // Already attached to this app → goal already met, continue to publish.
+          if (attachError instanceof DomainMutationError && attachError.details.nestedCode === 'DOMAIN_ALREADY_OWNED') {
+            logger.info('app-publish.domain-attach.already-owned', { appId: currentAppId, fqdn: selectedDomainFqdn });
+          } else {
+            // Real attach failure — preserve the typed conflict detail (lost by the generic catch)
+            // and abort publish so the user isn't silently published without the chosen domain.
+            if (attachError instanceof DomainMutationError) {
+              logger.error('app-publish.domain-attach.failure', {
+                appId: currentAppId,
+                fqdn: selectedDomainFqdn,
+                nestedCode: attachError.details.nestedCode,
+                conflictingProduct: attachError.details.conflictingProduct,
+              });
+            }
+            shipAnalyticsLog('publish.domain_attach.failure', {
+              appId: currentAppId,
+              fqdn: selectedDomainFqdn,
+              nestedCode: attachError instanceof DomainMutationError ? attachError.details.nestedCode : undefined,
+            });
+            throw attachError;
+          }
+        }
+      }
+
       await publishMutation.mutateAsync({
         appId: currentAppId,
         dnsUpdateConsent: gateResult.consent,
@@ -586,7 +687,7 @@ export default function AppPublish({ location = 'develop' }: { location?: string
       setPublishError(currentAppId, true);
       setIsPublishing(currentAppId, false);
     }
-  }, [clickContext, currentAppId, site, location, isFirstTimePublishing, isPublishComplianceBlocked, publishComplianceBlockReason, setPublishError, setIsPublishing, clearPublishStatus, publishMutation, runGate, triggerAnalysis, setSecurityAnalysisResult]);
+  }, [clickContext, currentAppId, site, location, isFirstTimePublishing, isPublishComplianceBlocked, publishComplianceBlockReason, setPublishError, setIsPublishing, clearPublishStatus, publishMutation, runGate, triggerAnalysis, setSecurityAnalysisResult, showDomainSelector, selectedDomainFqdn, freeProjectUrl, modifyDomains]);
 
   // Flush the deferred security growl only once publish is fully resolved.
   useEffect(() => {
@@ -1007,7 +1108,13 @@ export default function AppPublish({ location = 'develop' }: { location?: string
             className="!rounded-xmd !pt-0 !pb-0 !pl-1.5 !pr-1.5 sm:!p-1 !border-none md:!border-solid"
           />
         </PopoverTrigger>
-        <PopoverContent align='end' className='w-[350px] p-3'>
+        <PopoverContent
+          align='end'
+          className={cn(
+            'p-3',
+            showDomainSelector ? 'w-[400px]' : 'w-[350px]',
+          )}
+        >
           <div className='flex flex-col gap-1'>
             <TextLockup
               title={t('builder_publish_popover_title')}
@@ -1051,7 +1158,18 @@ export default function AppPublish({ location = 'develop' }: { location?: string
             {getPublishStatusAlert()}
 
             {/* Domain Editing */}
-            {fqdn && (
+            {showDomainSelector ? (
+              <PublishDomainSelector
+                customDomains={selectableDomains}
+                freeProjectUrl={freeProjectUrl}
+                selectedFqdn={effectiveSelectedFqdn}
+                matchesProjectFqdn={matchesProjectFqdn}
+                onSelect={setSelectedDomainFqdn}
+                onNewDomain={handleViewDomain}
+                onSeeAllDomains={handleViewDomain}
+                onUseExternalDomain={handleViewDomain}
+              />
+            ) : fqdn ? (
               <div className='flex flex-col gap-0.5'>
                 <text.label size={-1} htmlFor={isFirstTimePublishing ? undefined : 'AppPublishDomainEdit'} as='label'>
                   {t('builder_domain_title')}
@@ -1103,7 +1221,7 @@ export default function AppPublish({ location = 'develop' }: { location?: string
                   </div>
                 )}
               </div>
-            )}
+            ) : null}
 
             {/* Explanation that domain connect/edit relies on publishing */}
             {isFirstTimePublishing && (
@@ -1112,14 +1230,14 @@ export default function AppPublish({ location = 'develop' }: { location?: string
               </text.p>
             )}
 
-            <Separator />
+            {!showDomainSelector && <Separator />}
 
             {isPostPublishFeatureSelectionEnabled === true &&
               isGoLiveFeatureEnabled &&
               currentAppId &&
               !isFirstTimePublishing && (
               <Button
-                className='w-full'
+                className={cn('w-full', showDomainSelector && '!py-1.5')}
                 design='secondary'
                 size='sm'
                 data-eid={generateClickEID(`${location}.header.publish_go_live_chat`)}
@@ -1129,7 +1247,7 @@ export default function AppPublish({ location = 'develop' }: { location?: string
               />
             )}
 
-            {isAiroSubdomain(fqdn) && !isFirstTimePublishing && (
+            {!showDomainSelector && isAiroSubdomain(fqdn) && !isFirstTimePublishing && (
               <Button
                 className='w-full'
                 design='secondary'
@@ -1141,7 +1259,7 @@ export default function AppPublish({ location = 'develop' }: { location?: string
 
             {(publishResult === null || isFixingBuildError) && (
               <Button
-                className='w-full'
+                className={cn('w-full', showDomainSelector && '!py-1.5')}
                 design='primary'
                 size='sm'
                 data-partial='componentAiro'

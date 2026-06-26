@@ -422,6 +422,8 @@ export default makeGasket({
           'airo-build-initial-agent',
           // Canonical ID: EXPERIMENT_IDS.aabProgressTracker in app/src/config/experiments.ts
           'aab_progress_tracker',
+          // Canonical ID: EXPERIMENT_IDS.defaultDomainSelection in app/src/config/experiments.ts
+          'aab_default_domain_selection',
         ]
       }
     }
