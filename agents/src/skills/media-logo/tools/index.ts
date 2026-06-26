@@ -209,9 +209,8 @@ function buildPaletteSuffix(palette: Partial<Record<CorePaletteKey, string>>): s
 /**
  * Color roles sent to the logo API as structured params. `background` is the
  * surface the logo lands on (header/footer use `bg-background`); the rest are
- * brand colors to harmonize with. `foreground` is intentionally excluded — the
- * logo's reversed/solid variants handle light/dark polarity, so the exact
- * background hex is the only contrast signal the API needs.
+ * brand colors to harmonize with. `foreground` is intentionally excluded —
+ * the background hex is the only contrast signal the API needs.
  */
 const STRUCTURED_COLOR_KEYS: readonly (keyof LogoColors)[] = [
   'primary',

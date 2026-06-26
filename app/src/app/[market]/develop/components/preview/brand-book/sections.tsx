@@ -87,16 +87,13 @@ export function LogoSection({
   brand,
   palette,
   logoUrl,
-  reversedLogoUrl,
   isLoading = false,
   isPending = false,
   priorLightLogoUrl,
-  priorDarkLogoUrl,
 }: {
   brand: BrandStyle;
   palette?: BrandDataPalette;
   logoUrl?: string;
-  reversedLogoUrl?: string;
   isLoading?: boolean;
   /** When the logo slot has an in-flight async job, render a shimmer and ignore the live logoUrl
    *  (the /airo-assets/* shimmer URL does not resolve on the builder origin). */
@@ -104,61 +101,36 @@ export function LogoSection({
   /** Prior hosted logo (light/solid) when this is a REGENERATION — shown dimmed under an
    *  animated "updating" overlay. Absent for a fresh generation (bare shimmer). */
   priorLightLogoUrl?: string;
-  /** Prior hosted logo for the dark panel (reversed/solid variant, falling back to light). */
-  priorDarkLogoUrl?: string;
 }) {
   const downloadImage = useDownloadImage();
   const brandClickProps = { flow: 'logo-designer' as const };
 
-  // In-flight async logo job: shimmer the dual panel and never load the live currentUrl.
+  // In-flight async logo job: shimmer the logo panel and never load the live currentUrl.
   // Takes precedence over both the loaded and empty/placeholder states below.
   if (isPending) {
-    // Regeneration: a prior hosted logo exists — show it dimmed beneath an animated overlay sheen.
     const isRegen = !!priorLightLogoUrl;
     return (
       <SectionWrapper palette={palette}>
         <SectionHeader num="01" label="Primary Mark" title="Logo" brand={brand} />
         <Box gap="lg">
-          <div className={styles.logoDualPanel}>
-            <div className={styles.logoPanelCard}>
-              <div className={`${styles.logoPanelImage} relative`} style={{ backgroundColor: '#FFFFFF' }}>
-                {isRegen ? (
-                  <>
-                    <Image
-                      src={priorLightLogoUrl}
-                      alt="Logo on light background"
-                      width={0}
-                      height={0}
-                      sizes="(max-width: 768px) 100vw, 50vw"
-                      unoptimized
-                      className={`${styles.logoPanelMedia} opacity-60`}
-                    />
-                    <LogoShimmerOverlay data-testid="logo-shimmer-overlay-light" />
-                  </>
-                ) : (
-                  <LogoShimmer className="w-full aspect-video" orientation="horizontal" data-testid="logo-shimmer-light" />
-                )}
-              </div>
-            </div>
-            <div className={styles.logoPanelCard}>
-              <div className={`${styles.logoPanelImage} relative`} style={{ backgroundColor: '#1C1C1E' }}>
-                {isRegen ? (
-                  <>
-                    <Image
-                      src={priorDarkLogoUrl || priorLightLogoUrl}
-                      alt="Logo on dark background"
-                      width={0}
-                      height={0}
-                      sizes="(max-width: 768px) 100vw, 50vw"
-                      unoptimized
-                      className={`${styles.logoPanelMedia} opacity-60`}
-                    />
-                    <LogoShimmerOverlay data-testid="logo-shimmer-overlay-dark" />
-                  </>
-                ) : (
-                  <LogoShimmer className="w-full aspect-video" orientation="horizontal" data-testid="logo-shimmer-dark" />
-                )}
-              </div>
+          <div className={styles.logoPanelCard}>
+            <div className={`${styles.logoPanelImage} relative`} style={{ backgroundColor: '#FFFFFF' }}>
+              {isRegen ? (
+                <>
+                  <Image
+                    src={priorLightLogoUrl}
+                    alt="Logo on light background"
+                    width={0}
+                    height={0}
+                    sizes="(max-width: 768px) 100vw, 50vw"
+                    unoptimized
+                    className={`${styles.logoPanelMedia} opacity-60`}
+                  />
+                  <LogoShimmerOverlay data-testid="logo-shimmer-overlay-light" />
+                </>
+              ) : (
+                <LogoShimmer className="w-full aspect-video" orientation="horizontal" data-testid="logo-shimmer-light" />
+              )}
             </div>
           </div>
         </Box>
@@ -193,46 +165,22 @@ export function LogoSection({
 
       {logoUrl ? (
         <Box gap="lg">
-          <div className={styles.logoDualPanel}>
-            {/* Light panel — explicit background covers the case where the URL falls back to a transparent variant */}
-            <div className={styles.logoPanelCard}>
-              <div className={styles.logoPanelImage} style={{ backgroundColor: '#FFFFFF' }}>
-                <Image
-                  src={logoUrl}
-                  alt="Logo on light background"
-                  width={0}
-                  height={0}
-                  sizes="(max-width: 768px) 100vw, 50vw"
-                  unoptimized
-                  className={styles.logoPanelMedia}
-                />
-              </div>
-              <div className={styles.logoPanelFooter}>
-                <text.span as="caption" style={{ opacity: 0.5 }}>SOLID / LIGHT</text.span>
-                <button type="button" className={styles.downloadButton} onClick={() => { logClickEvent('develop.brand.logo_download_light', brandClickProps)(); downloadImage(logoUrl, 'logo-light.png'); }}>DOWNLOAD PNG</button>
-              </div>
+          <div className={styles.logoPanelCard}>
+            <div className={styles.logoPanelImage} style={{ backgroundColor: '#FFFFFF' }}>
+              <Image
+                src={logoUrl}
+                alt="Logo on light background"
+                width={0}
+                height={0}
+                sizes="(max-width: 768px) 100vw, 50vw"
+                unoptimized
+                className={styles.logoPanelMedia}
+              />
             </div>
-
-            {/* Dark panel — falls back to the light logo when no reversed variant is available */}
-            <div className={styles.logoPanelCard}>
-              <div className={styles.logoPanelImage} style={{ backgroundColor: '#1C1C1E' }}>
-                <Image
-                  src={reversedLogoUrl || logoUrl}
-                  alt="Logo on dark background"
-                  width={0}
-                  height={0}
-                  sizes="(max-width: 768px) 100vw, 50vw"
-                  unoptimized
-                  className={styles.logoPanelMedia}
-                />
-              </div>
-              <div className={styles.logoPanelFooter}>
-                <text.span as="caption" style={{ opacity: 0.5 }}>REVERSED / DARK</text.span>
-                <button type="button" className={styles.downloadButton} onClick={() => { logClickEvent('develop.brand.logo_download_dark', brandClickProps)(); downloadImage(reversedLogoUrl || logoUrl, 'logo-dark.png'); }}>DOWNLOAD PNG</button>
-              </div>
+            <div className={styles.logoPanelFooter}>
+              <button type="button" className={styles.downloadButton} onClick={() => { logClickEvent('develop.brand.logo_download_light', brandClickProps)(); downloadImage(logoUrl, 'logo-light.png'); }}>DOWNLOAD PNG</button>
             </div>
           </div>
-
         </Box>
       ) : null}
     </SectionWrapper>
@@ -582,7 +530,6 @@ export function UsageGuidelinesSection({
     'Maintain minimum size of 80px wide for digital use',
     'Keep clear space around the logo equal to its height',
     'Use on solid brand colors from the approved palette',
-    'Use the reversed version on dark backgrounds',
   ];
 
   const dontItems = [

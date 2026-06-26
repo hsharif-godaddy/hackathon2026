@@ -88,8 +88,6 @@ describe('media-logo generate_logo tool', () => {
           horizontal: {
             transparent: '/airo-assets/uploads/logo-sess-1-horizontal.png',
             solid: '/airo-assets/uploads/logo-sess-1-horizontal.png',
-            reversed: '/airo-assets/uploads/logo-sess-1-horizontal.png',
-            reversedSolid: '/airo-assets/uploads/logo-sess-1-horizontal.png',
             mockup: '/airo-assets/uploads/logo-sess-1-horizontal.png',
             landscapeMockup: '/airo-assets/uploads/logo-sess-1-horizontal.png',
           },

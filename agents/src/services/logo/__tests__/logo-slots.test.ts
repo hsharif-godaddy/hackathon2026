@@ -168,8 +168,6 @@ describe('saveLogoToSlots userModified guard', () => {
           horizontal: {
             transparent: 'https://cdn/new-transparent.png',
             solid: 'https://cdn/new-solid.png',
-            reversed: 'https://cdn/new-reversed.png',
-            reversedSolid: 'https://cdn/new-reversed-solid.png',
             mockup: 'https://cdn/new-mockup.png',
             landscapeMockup: 'https://cdn/new-landscape.png',
           },

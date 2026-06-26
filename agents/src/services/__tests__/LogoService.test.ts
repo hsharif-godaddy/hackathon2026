@@ -23,8 +23,6 @@ const SQUARE_API_LOGO = {
   id: 'logo-1',
   transparentUrl: `${SQUARE_BASE}-transparent.png`,
   solidUrl: `${SQUARE_BASE}-solid.png`,
-  reversedUrl: `${SQUARE_BASE}-reversed.png`,
-  reversedSolidUrl: `${SQUARE_BASE}-reversed-solid.png`,
   mockupUrl: `${SQUARE_BASE}-mockup.png`,
   landscapeMockupUrl: `${SQUARE_BASE}-landscape.png`,
 }
@@ -32,8 +30,6 @@ const SQUARE_API_LOGO = {
 const HORIZONTAL_VARIANTS = {
   horizontalTransparentUrl: `${HORIZONTAL_BASE}-transparent.png`,
   horizontalSolidUrl: `${HORIZONTAL_BASE}-solid.png`,
-  horizontalReversedUrl: `${HORIZONTAL_BASE}-reversed.png`,
-  horizontalReversedSolidUrl: `${HORIZONTAL_BASE}-reversed-solid.png`,
   horizontalMockupUrl: `${HORIZONTAL_BASE}-mockup.png`,
 }
 
@@ -124,18 +120,13 @@ describe('LogoService', () => {
     expect(result.logo.urls.square).toEqual({
       transparent: SQUARE_API_LOGO.transparentUrl,
       solid: SQUARE_API_LOGO.solidUrl,
-      reversed: SQUARE_API_LOGO.reversedUrl,
-      reversedSolid: SQUARE_API_LOGO.reversedSolidUrl,
       mockup: SQUARE_API_LOGO.mockupUrl,
       landscapeMockup: SQUARE_API_LOGO.landscapeMockupUrl,
     })
     expect(result.logo.urls.horizontal).toEqual({
       transparent: HORIZONTAL_VARIANTS.horizontalTransparentUrl,
       solid: HORIZONTAL_VARIANTS.horizontalSolidUrl,
-      reversed: HORIZONTAL_VARIANTS.horizontalReversedUrl,
-      reversedSolid: HORIZONTAL_VARIANTS.horizontalReversedSolidUrl,
       mockup: HORIZONTAL_VARIANTS.horizontalMockupUrl,
-      // landscapeMockup falls back to mockup when no horizontal landscape is returned
       landscapeMockup: HORIZONTAL_VARIANTS.horizontalMockupUrl,
     })
   })
@@ -160,7 +151,6 @@ describe('LogoService', () => {
     const sq = result.logo.urls.square!
     expect(sq.transparent).toBe(SQUARE_API_LOGO.transparentUrl)
     expect(sq.solid).toBe(SQUARE_API_LOGO.transparentUrl)
-    expect(sq.reversed).toBe(SQUARE_API_LOGO.transparentUrl)
     expect(sq.mockup).toBe(SQUARE_API_LOGO.transparentUrl)
     expect(sq.landscapeMockup).toBe(SQUARE_API_LOGO.transparentUrl)
   })

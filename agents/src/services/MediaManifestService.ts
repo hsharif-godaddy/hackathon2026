@@ -186,12 +186,6 @@ export interface MediaSlot {
   /** Maps transparent URL → solid-background URL for logo variants.
    *  Only populated when mediaType === 'logo'. */
   solidUrlMap?: Record<string, string>;
-  /** Maps transparent URL → reversed (dark mode) URL for logo variants.
-   *  Only populated when mediaType === 'logo'. */
-  reversedUrlMap?: Record<string, string>;
-  /** Maps transparent URL → reversed solid (dark mode + solid background) URL for logo variants.
-   * Only populated when mediaType === 'logo'. */
-  reversedSolidUrlMap?: Record<string, string>;
   /** Maps transparent URL → mockup-preview URL for logo variants.
    *  Only populated when mediaType === 'logo'. */
   mockupUrlMap?: Record<string, string>;
@@ -219,8 +213,6 @@ export const LOGO_NATURAL_SLOT_PATHS: Record<LogoOrientation, string> = {
  *  mis-resolves `?variant=solid` to a stale AI URL. */
 const LOGO_VARIANT_MAP_FIELDS = [
   'solidUrlMap',
-  'reversedUrlMap',
-  'reversedSolidUrlMap',
   'mockupUrlMap',
   'landscapeMockupUrlMap',
   'logoSourceMap',
@@ -639,8 +631,8 @@ function repoRelativeMediaPath(appPath: string, absFilePath: string): string | n
  * For a logo slot, rewrite a non-transparent currentUrl to its transparent sibling
  * if one exists in the slot's variant maps. Returns the URL to use.
  *
- * Why: solid/reversed variants have backgrounds that produce visible borders when
- * placed on a website. The slot's solidUrlMap and reversedUrlMap are keyed by the
+ * Why: solid variants have backgrounds that produce visible borders when
+ * placed on a website. The slot's solidUrlMap is keyed by the
  * transparent URL, so a reverse lookup gives us the canonical transparent variant.
  */
 function resolveTransparentLogoUrl(
@@ -653,16 +645,6 @@ function resolveTransparentLogoUrl(
 
   for (const [transparent, solid] of Object.entries(slot.solidUrlMap || {})) {
     if (solid === candidateUrl) {
-      return { url: transparent, rewritten: true };
-    }
-  }
-  for (const [transparent, reversed] of Object.entries(slot.reversedUrlMap || {})) {
-    if (reversed === candidateUrl) {
-      return { url: transparent, rewritten: true };
-    }
-  }
-  for (const [transparent, reversedSolid] of Object.entries(slot.reversedSolidUrlMap || {})) {
-    if (reversedSolid === candidateUrl) {
       return { url: transparent, rewritten: true };
     }
   }
@@ -1537,9 +1519,9 @@ export class MediaManifestService {
         }
       }
 
-      // Enforce transparent-logo invariant: if newCurrentUrl resolves to a solid or
-      // reversed variant, rewrite to the transparent sibling so generated websites
-      // never render logos with backgrounds.
+      // Enforce transparent-logo invariant: if newCurrentUrl resolves to a solid
+      // variant, rewrite to the transparent sibling so generated websites never
+      // render logos with backgrounds.
       const resolved = resolveTransparentLogoUrl(existingSlot, newCurrentUrl);
       if (resolved.rewritten) {
         logger.warn('media_manifest.logo.non_transparent_rewritten', {
@@ -2220,8 +2202,6 @@ export class MediaManifestService {
     const hasRemovedUploadSource = uploadSourceUrls.some((url) => removeSet.has(url));
     const hasRemovedLogoMapEntry = [
       existingSlot.solidUrlMap,
-      existingSlot.reversedUrlMap,
-      existingSlot.reversedSolidUrlMap,
       existingSlot.mockupUrlMap,
       existingSlot.landscapeMockupUrlMap,
     ].some(
@@ -2284,8 +2264,6 @@ export class MediaManifestService {
         newUploadSources && Object.keys(newUploadSources).length > 0 ? newUploadSources : undefined,
       ...(newCurrentUrl !== existingSlot.currentUrl ? { naturalOrientation: undefined } : {}),
       solidUrlMap: pruneStringMap(existingSlot.solidUrlMap),
-      reversedUrlMap: pruneStringMap(existingSlot.reversedUrlMap),
-      reversedSolidUrlMap: pruneStringMap(existingSlot.reversedSolidUrlMap),
       mockupUrlMap: pruneStringMap(existingSlot.mockupUrlMap),
       landscapeMockupUrlMap: pruneStringMap(existingSlot.landscapeMockupUrlMap),
       logoSourceMap: pruneLogoSourceMap(existingSlot.logoSourceMap),
@@ -2590,9 +2568,9 @@ export class MediaManifestService {
         }
       }
 
-      // Enforce transparent-logo invariant: if currentUrl resolves to a solid or reversed
-      // variant, rewrite to the transparent sibling so generated websites never render
-      // logos with backgrounds.
+      // Enforce transparent-logo invariant: if currentUrl resolves to a solid
+      // variant, rewrite to the transparent sibling so generated websites never
+      // render logos with backgrounds.
       const resolved = resolveTransparentLogoUrl(slot, slot.currentUrl);
       if (resolved.rewritten) {
         logger.warn('media_manifest.logo.non_transparent_rewritten', {

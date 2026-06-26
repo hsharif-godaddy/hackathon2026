@@ -43,8 +43,6 @@ export async function saveLogoToSlots(
     const transparent = variants.transparent
 
     const solidUrlMap = { [transparent]: variants.solid }
-    const reversedUrlMap = { [transparent]: variants.reversed }
-    const reversedSolidUrlMap = { [transparent]: variants.reversedSolid }
     const mockupUrlMap = { [transparent]: variants.mockup }
     const landscapeMockupUrlMap = { [transparent]: variants.landscapeMockup }
     const logoSourceMap = {
@@ -53,8 +51,6 @@ export async function saveLogoToSlots(
 
     let mergedAlternatives: string[] = []
     let mergedSolidUrlMap = { ...solidUrlMap }
-    let mergedReversedUrlMap = { ...reversedUrlMap }
-    let mergedReversedSolidUrlMap = { ...reversedSolidUrlMap }
     let mergedMockupUrlMap = { ...mockupUrlMap }
     let mergedLandscapeMockupUrlMap = { ...landscapeMockupUrlMap }
     let mergedLogoSourceMap = { ...logoSourceMap }
@@ -85,8 +81,6 @@ export async function saveLogoToSlots(
         )
         mergedAlternatives = oldUrls
         mergedSolidUrlMap = { ...(old.solidUrlMap ?? {}), ...solidUrlMap }
-        mergedReversedUrlMap = { ...(old.reversedUrlMap ?? {}), ...reversedUrlMap }
-        mergedReversedSolidUrlMap = { ...(old.reversedSolidUrlMap ?? {}), ...reversedSolidUrlMap }
         mergedMockupUrlMap = { ...(old.mockupUrlMap ?? {}), ...mockupUrlMap }
         mergedLandscapeMockupUrlMap = {
           ...(old.landscapeMockupUrlMap ?? {}),
@@ -102,8 +96,6 @@ export async function saveLogoToSlots(
         searchQuery,
         alternatives: mergedAlternatives,
         solidUrlMap: mergedSolidUrlMap,
-        reversedUrlMap: mergedReversedUrlMap,
-        reversedSolidUrlMap: mergedReversedSolidUrlMap,
         mockupUrlMap: mergedMockupUrlMap,
         landscapeMockupUrlMap: mergedLandscapeMockupUrlMap,
         logoSourceMap: mergedLogoSourceMap,

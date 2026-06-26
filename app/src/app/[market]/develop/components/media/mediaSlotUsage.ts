@@ -49,8 +49,6 @@ export function mediaSlotUsesUpload(slot: MediaSlot | undefined, filename: strin
     uploadSourcesUseFilename(slot.uploadSources, filename) ||
     [
       slot.solidUrlMap,
-      slot.reversedUrlMap,
-      slot.reversedSolidUrlMap,
       slot.mockupUrlMap,
       slot.landscapeMockupUrlMap,
     ].some((map) => stringMapUsesFilename(map, filename)) ||

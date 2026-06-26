@@ -65,8 +65,6 @@ function makeAiHorizontalLogo(): MediaSlot {
     searchQuery: 'Acme',
     alternatives: [],
     solidUrlMap: { [AI_TRANSPARENT]: AI_SOLID },
-    reversedUrlMap: { [AI_TRANSPARENT]: 'https://logos.example.com/old-reversed.png' },
-    reversedSolidUrlMap: { [AI_TRANSPARENT]: 'https://logos.example.com/old-reversed-solid.png' },
     mockupUrlMap: { [AI_TRANSPARENT]: 'https://logos.example.com/old-mockup.png' },
     landscapeMockupUrlMap: { [AI_TRANSPARENT]: 'https://logos.example.com/old-landscape.png' },
     logoSourceMap: { [AI_TRANSPARENT]: { sessionId: 'sess-1', logoId: 'logo-1' } },
@@ -165,8 +163,6 @@ describe('updateSlotWithUpload — logo variant-map clearing & sibling propagati
     expect(horizontal.naturalOrientation).toBe('square');
     expect(horizontal.userModified).toBe(true);
     expect(horizontal.solidUrlMap).toBeUndefined();
-    expect(horizontal.reversedUrlMap).toBeUndefined();
-    expect(horizontal.reversedSolidUrlMap).toBeUndefined();
     expect(horizontal.mockupUrlMap).toBeUndefined();
     expect(horizontal.landscapeMockupUrlMap).toBeUndefined();
     expect(horizontal.logoSourceMap).toBeUndefined();

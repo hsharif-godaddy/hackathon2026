@@ -60,7 +60,6 @@ export default function BrandBookView({ appId }: BrandBookViewProps) {
   // Track logo preview override from chat selection (logo-select event)
   const [previewLogoUrl, setPreviewLogoUrl] = useState<string | null>(null);
   const [previewSolidUrl, setPreviewSolidUrl] = useState<string | null>(null);
-  const [previewReversedUrl, setPreviewReversedUrl] = useState<string | null>(null);
   const [previewMockupUrl, setPreviewMockupUrl] = useState<string | null>(null);
 
   useEffect(() => {
@@ -76,10 +75,6 @@ export default function BrandBookView({ appId }: BrandBookViewProps) {
       // otherwise the prior logo's state leaks across selections (mismatched light/dark/mockup tuple).
       const solid = logo?.solidUrl || logo?.horizontalSolidUrl || logo?.verticalSolidUrl;
       setPreviewSolidUrl(solid || null);
-      const reversed =
-        logo?.reversedSolidUrl || logo?.horizontalReversedSolidUrl || logo?.verticalReversedSolidUrl ||
-        logo?.reversedUrl || logo?.horizontalReversedUrl || logo?.verticalReversedUrl;
-      setPreviewReversedUrl(reversed || null);
       const mockup = logo?.landscapeMockupUrl || logo?.horizontalLandscapeMockupUrl || logo?.verticalLandscapeMockupUrl
         || logo?.mockupUrl || logo?.horizontalMockupUrl || logo?.verticalMockupUrl;
       setPreviewMockupUrl(mockup || null);
@@ -135,29 +130,6 @@ export default function BrandBookView({ appId }: BrandBookViewProps) {
     return undefined;
   }, [previewSolidUrl, previewLogoUrl, isManifestLoading, manifestError, manifest, previewBaseUrl]);
 
-  const reversedLogoUrl = useMemo(() => {
-    if (previewReversedUrl) return previewReversedUrl;
-    // Fall back to the transparent preview when a chat event lacked a reversed variant —
-    // mirrors primarySolidLogoUrl so the dual panel still renders.
-    if (previewLogoUrl) return previewLogoUrl;
-    if (isManifestLoading) return null;
-
-    if (manifestError && !manifest) {
-      logger.warn('brandBook.manifest.fetchFailed', { appId, error: String(manifestError) });
-      return undefined;
-    }
-
-    for (const slotName of LOGO_SLOT_NAMES) {
-      const slot = manifest?.[slotName];
-      const transparentUrl = slot?.currentUrl;
-      if (!transparentUrl) continue;
-      const url = slot?.reversedSolidUrlMap?.[transparentUrl] || slot?.reversedUrlMap?.[transparentUrl] || transparentUrl;
-      return getSlotImageUrl(slotName, url, previewBaseUrl);
-    }
-
-    return undefined;
-  }, [previewReversedUrl, previewLogoUrl, isManifestLoading, manifestError, manifest, previewBaseUrl, appId]);
-
   const primaryMockupUrl = useMemo(() => {
     if (previewMockupUrl) return previewMockupUrl;
     if (isManifestLoading) return null;
@@ -179,57 +151,38 @@ export default function BrandBookView({ appId }: BrandBookViewProps) {
     return undefined;
   }, [previewMockupUrl, isManifestLoading, manifestError, manifest, previewBaseUrl, appId]);
 
-  // Pending-job state plus the prior hosted logo URLs to show during a *regeneration*.
-  //
-  // SHARED CONTRACT: when a logo slot has pendingJobId set AND its currentUrl is a real hosted
-  // https logo, this is a regeneration — surfaces show the EXISTING logo (dimmed) with an animated
-  // "updating" overlay sheen. When pendingJobId is set but currentUrl is the shimmer-asset path
-  // (not http), it's a fresh generation — surfaces show a bare animated shimmer.
-  //
-  // A chat-selected logo (previewLogoUrl) means a real logo already arrived, so it wins over any
-  // pending flag. Otherwise we honor the first logo slot that is either pending or has a currentUrl
-  // — mirroring the first-match ordering used by the URL memos above — so the shimmer maps to the
-  // same slot that would otherwise drive the logo image.
-  //
-  // priorLightUrl / priorDarkUrl are only populated for a regeneration; the dark panel prefers the
-  // reversed-solid / reversed variant of the prior currentUrl (falling back to the light prior).
-  const { isLogoPending, priorLightLogoUrl, priorDarkLogoUrl } = useMemo(() => {
+  const { isLogoPending, priorLightLogoUrl } = useMemo(() => {
     if (previewLogoUrl) {
-      return { isLogoPending: false, priorLightLogoUrl: undefined, priorDarkLogoUrl: undefined };
+      return { isLogoPending: false, priorLightLogoUrl: undefined };
     }
     for (const slotName of LOGO_SLOT_NAMES) {
       const slot = manifest?.[slotName];
       if (!slot) continue;
       if (slot.pendingJobId) {
         const prior = slot.currentUrl;
-        // Regeneration only when the prior currentUrl is a real hosted logo (startsWith http).
         if (prior && (prior.startsWith('http://') || prior.startsWith('https://'))) {
           const light = getSlotImageUrl(slotName, slot.solidUrlMap?.[prior] || prior, previewBaseUrl);
-          const darkSource =
-            slot.reversedSolidUrlMap?.[prior] || slot.reversedUrlMap?.[prior] || prior;
-          const dark = getSlotImageUrl(slotName, darkSource, previewBaseUrl);
-          return { isLogoPending: true, priorLightLogoUrl: light, priorDarkLogoUrl: dark };
+          return { isLogoPending: true, priorLightLogoUrl: light };
         }
-        // Fresh generation — bare shimmer, no prior URL.
-        return { isLogoPending: true, priorLightLogoUrl: undefined, priorDarkLogoUrl: undefined };
+        return { isLogoPending: true, priorLightLogoUrl: undefined };
       }
       if (slot.currentUrl) {
-        return { isLogoPending: false, priorLightLogoUrl: undefined, priorDarkLogoUrl: undefined };
+        return { isLogoPending: false, priorLightLogoUrl: undefined };
       }
     }
-    return { isLogoPending: false, priorLightLogoUrl: undefined, priorDarkLogoUrl: undefined };
+    return { isLogoPending: false, priorLightLogoUrl: undefined };
   }, [previewLogoUrl, manifest, previewBaseUrl]);
 
   // Fire book_view impression once all brand data sections are populated
   useEffect(() => {
     if (bookViewFiredRef.current) return;
-    if (!data?.palette || !data?.typography || !primaryLogoUrl || !reversedLogoUrl) return;
+    if (!data?.palette || !data?.typography || !primaryLogoUrl) return;
     bookViewFiredRef.current = true;
     logImpressionEvent('develop.brand.book_view', {
       appId,
       flow: 'logo-designer',
     })();
-  }, [data, primaryLogoUrl, reversedLogoUrl, appId]);
+  }, [data, primaryLogoUrl, appId]);
 
   if (!data) {
     const showLoadingMessage = isGenerating || isBrandDataLoading || !isAppHydrated;
@@ -263,11 +216,9 @@ export default function BrandBookView({ appId }: BrandBookViewProps) {
         brand={brand}
         palette={palette}
         logoUrl={primarySolidLogoUrl}
-        reversedLogoUrl={reversedLogoUrl}
         isLoading={isGenerating}
         isPending={isLogoPending}
         priorLightLogoUrl={priorLightLogoUrl}
-        priorDarkLogoUrl={priorDarkLogoUrl}
       />
       <BrandApplicationsSection
         brand={brand}

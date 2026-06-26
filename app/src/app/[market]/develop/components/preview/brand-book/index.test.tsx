@@ -90,13 +90,12 @@ describe('BrandBookView', function brandBookTests() {
     expect(screen.getByText('Your logo will appear here once generated.')).toBeInTheDocument();
   });
 
-  it('shows logo on light and dark backgrounds when manifest has logo/primary', function withLogo() {
+  it('shows logo on light background when manifest has logo/primary', function withLogo() {
     mockManifest.value = {
       'logo/primary': { currentUrl: 'https://cdn.example.com/logo.png' },
     };
     renderWithProviders(<BrandBookView appId="app-123" />);
     expect(screen.getByTestId('logo-img-Logo on light background')).toHaveAttribute('src', 'https://cdn.example.com/logo.png');
-    expect(screen.getByTestId('logo-img-Logo on dark background')).toHaveAttribute('src', 'https://cdn.example.com/logo.png');
   });
 
   it('shows placeholder while manifest is loading', function loadingState() {
@@ -137,7 +136,6 @@ describe('BrandBookView', function brandBookTests() {
       });
 
       expect(screen.getByTestId('logo-img-Logo on light background')).toHaveAttribute('src', 'https://cdn.example.com/generated-logo.png');
-      expect(screen.getByTestId('logo-img-Logo on dark background')).toHaveAttribute('src', 'https://cdn.example.com/generated-logo.png');
     });
 
     it('updates logo src when logo-select fires', function logoSelect() {
@@ -151,48 +149,6 @@ describe('BrandBookView', function brandBookTests() {
       });
 
       expect(screen.getByTestId('logo-img-Logo on light background')).toHaveAttribute('src', 'https://cdn.example.com/selected-logo.png');
-    });
-
-    it('uses event reversedUrl for dark panel when reversedSolidUrl is absent', function legacyReversedFallback() {
-      mockManifest.value = {};
-      renderWithProviders(<BrandBookView appId="app-123" />);
-
-      act(() => {
-        window.dispatchEvent(new CustomEvent('logo-generated', {
-          detail: {
-            transparentUrl: 'https://cdn.example.com/logo.png',
-            reversedUrl: 'https://cdn.example.com/logo-reversed.png',
-          },
-        }));
-      });
-
-      expect(screen.getByTestId('logo-img-Logo on light background')).toHaveAttribute('src', 'https://cdn.example.com/logo.png');
-      expect(screen.getByTestId('logo-img-Logo on dark background')).toHaveAttribute('src', 'https://cdn.example.com/logo-reversed.png');
-    });
-
-    it('resets stale preview state when subsequent logo lacks variants', function resetsStaleState() {
-      mockManifest.value = {};
-      renderWithProviders(<BrandBookView appId="app-123" />);
-
-      // First logo with full set of variants
-      act(() => {
-        window.dispatchEvent(new CustomEvent('logo-generated', {
-          detail: {
-            transparentUrl: 'https://cdn.example.com/logo-a.png',
-            reversedSolidUrl: 'https://cdn.example.com/logo-a-reversed.png',
-          },
-        }));
-      });
-
-      // Second logo with only transparent — reversed should reset to fall back to transparent, not stay stale
-      act(() => {
-        window.dispatchEvent(new CustomEvent('logo-select', {
-          detail: { transparentUrl: 'https://cdn.example.com/logo-b.png' },
-        }));
-      });
-
-      expect(screen.getByTestId('logo-img-Logo on light background')).toHaveAttribute('src', 'https://cdn.example.com/logo-b.png');
-      expect(screen.getByTestId('logo-img-Logo on dark background')).toHaveAttribute('src', 'https://cdn.example.com/logo-b.png');
     });
 
     it('renders mockup when logo-generated includes mockupUrl', function logoGeneratedMockup() {
@@ -244,39 +200,6 @@ describe('BrandBookView', function brandBookTests() {
       expect(screen.getByTestId('logo-img-Brand mockup preview')).toHaveAttribute('src', 'https://cdn.example.com/mockup.png');
     });
 
-    it('uses reversedSolidUrl for dark panel when available', function reversedSolidUrlOnDarkPanel() {
-      mockManifest.value = {};
-      renderWithProviders(<BrandBookView appId="app-123" />);
-
-      act(() => {
-        window.dispatchEvent(new CustomEvent('logo-generated', {
-          detail: {
-            transparentUrl: 'https://cdn.example.com/logo.png',
-            reversedSolidUrl: 'https://cdn.example.com/logo-reversed-solid.png',
-          },
-        }));
-      });
-
-      expect(screen.getByTestId('logo-img-Logo on light background')).toHaveAttribute('src', 'https://cdn.example.com/logo.png');
-      expect(screen.getByTestId('logo-img-Logo on dark background')).toHaveAttribute('src', 'https://cdn.example.com/logo-reversed-solid.png');
-    });
-
-    it('falls back to transparent logo on dark panel when no reversedSolidUrl', function noReversedFallback() {
-      mockManifest.value = {};
-      renderWithProviders(<BrandBookView appId="app-123" />);
-
-      act(() => {
-        window.dispatchEvent(new CustomEvent('logo-generated', {
-          detail: {
-            transparentUrl: 'https://cdn.example.com/logo.png',
-          },
-        }));
-      });
-
-      expect(screen.getByTestId('logo-img-Logo on light background')).toHaveAttribute('src', 'https://cdn.example.com/logo.png');
-      expect(screen.getByTestId('logo-img-Logo on dark background')).toHaveAttribute('src', 'https://cdn.example.com/logo.png');
-    });
-
     it('falls back to mockupUrlMap when manifest has no landscapeMockupUrlMap', function manifestMockupFallback() {
       mockManifest.value = {
         'logo/primary': {
@@ -306,21 +229,6 @@ describe('BrandBookView', function brandBookTests() {
       renderWithProviders(<BrandBookView appId="app-123" />);
 
       expect(screen.getByTestId('logo-img-Brand mockup preview')).toHaveAttribute('src', 'https://cdn.example.com/landscape-mockup.png');
-    });
-
-    it('falls back through manifest reversedUrlMap when reversedSolidUrlMap is empty', function manifestReversedFallback() {
-      mockManifest.value = {
-        'logo/primary': {
-          currentUrl: 'https://cdn.example.com/logo.png',
-          reversedUrlMap: {
-            'https://cdn.example.com/logo.png': 'https://cdn.example.com/logo-reversed.png',
-          },
-        },
-      };
-      renderWithProviders(<BrandBookView appId="app-123" />);
-
-      expect(screen.getByTestId('logo-img-Logo on light background')).toHaveAttribute('src', 'https://cdn.example.com/logo.png');
-      expect(screen.getByTestId('logo-img-Logo on dark background')).toHaveAttribute('src', 'https://cdn.example.com/logo-reversed.png');
     });
 
     it('clears stale mockup when subsequent logo-select lacks mockupUrl', function clearsStaleMockup() {

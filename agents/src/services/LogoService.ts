@@ -23,8 +23,6 @@ export type LogoLayout = 'square' | 'horizontal' | 'vertical'
 export interface LayoutUrls {
   transparent: string
   solid: string
-  reversed: string
-  reversedSolid: string
   mockup: string
   landscapeMockup: string
 }
@@ -102,21 +100,15 @@ interface ApiProcessedLogo {
   // Square
   transparentUrl?: string
   solidUrl?: string
-  reversedUrl?: string
-  reversedSolidUrl?: string
   mockupUrl?: string
   landscapeMockupUrl?: string
   // Horizontal
   horizontalTransparentUrl?: string
   horizontalSolidUrl?: string
-  horizontalReversedUrl?: string
-  horizontalReversedSolidUrl?: string
   horizontalMockupUrl?: string
   // Vertical
   verticalTransparentUrl?: string
   verticalSolidUrl?: string
-  verticalReversedUrl?: string
-  verticalReversedSolidUrl?: string
   verticalMockupUrl?: string
 }
 
@@ -139,8 +131,6 @@ function pickUrls(logo: ApiProcessedLogo, layout: LogoLayout): LayoutUrls | unde
     return {
       transparent: logo.transparentUrl,
       solid: logo.solidUrl ?? logo.transparentUrl,
-      reversed: logo.reversedUrl ?? logo.transparentUrl,
-      reversedSolid: logo.reversedSolidUrl ?? logo.solidUrl ?? logo.transparentUrl,
       mockup: logo.mockupUrl ?? logo.transparentUrl,
       landscapeMockup: logo.landscapeMockupUrl ?? logo.mockupUrl ?? logo.transparentUrl,
     }
@@ -150,14 +140,7 @@ function pickUrls(logo: ApiProcessedLogo, layout: LogoLayout): LayoutUrls | unde
     return {
       transparent: logo.horizontalTransparentUrl,
       solid: logo.horizontalSolidUrl ?? logo.horizontalTransparentUrl,
-      reversed: logo.horizontalReversedUrl ?? logo.horizontalTransparentUrl,
-      reversedSolid:
-        logo.horizontalReversedSolidUrl ??
-        logo.horizontalSolidUrl ??
-        logo.horizontalTransparentUrl,
       mockup: logo.horizontalMockupUrl ?? logo.horizontalTransparentUrl,
-      // The API has no horizontal/vertical landscape-mockup field, so
-      // `landscapeMockup` intentionally aliases the standard mockup here.
       landscapeMockup: logo.horizontalMockupUrl ?? logo.horizontalTransparentUrl,
     }
   }
@@ -165,13 +148,7 @@ function pickUrls(logo: ApiProcessedLogo, layout: LogoLayout): LayoutUrls | unde
   return {
     transparent: logo.verticalTransparentUrl,
     solid: logo.verticalSolidUrl ?? logo.verticalTransparentUrl,
-    reversed: logo.verticalReversedUrl ?? logo.verticalTransparentUrl,
-    reversedSolid:
-      logo.verticalReversedSolidUrl ??
-      logo.verticalSolidUrl ??
-      logo.verticalTransparentUrl,
     mockup: logo.verticalMockupUrl ?? logo.verticalTransparentUrl,
-    // No vertical landscape-mockup field exists upstream — alias the mockup.
     landscapeMockup: logo.verticalMockupUrl ?? logo.verticalTransparentUrl,
   }
 }

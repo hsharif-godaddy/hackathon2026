@@ -6,22 +6,16 @@ export interface LogoData {
   // Square layout URLs
   transparentUrl?: string
   solidUrl?: string
-  reversedUrl?: string
-  reversedSolidUrl?: string
   mockupUrl?: string
   landscapeMockupUrl?: string
   // Horizontal layout URLs
   horizontalTransparentUrl?: string
   horizontalSolidUrl?: string
-  horizontalReversedUrl?: string
-  horizontalReversedSolidUrl?: string
   horizontalMockupUrl?: string
   horizontalLandscapeMockupUrl?: string
   // Vertical layout URLs
   verticalTransparentUrl?: string
   verticalSolidUrl?: string
-  verticalReversedUrl?: string
-  verticalReversedSolidUrl?: string
   verticalMockupUrl?: string
   verticalLandscapeMockupUrl?: string
   // V1 Extra Urls when not entitled or deprecated
@@ -116,8 +110,6 @@ export function getLogoSlotName(logo: LogoData): string {
 interface LogoSessionLayoutUrls {
   transparent?: string
   solid?: string
-  reversed?: string
-  reversedSolid?: string
   mockup?: string
   landscapeMockup?: string
 }
@@ -140,20 +132,14 @@ export function mapLogoSessionToLogoData(logo: LogoSessionLogo): LogoData {
     id: logo.id,
     transparentUrl: square?.transparent,
     solidUrl: square?.solid,
-    reversedUrl: square?.reversed,
-    reversedSolidUrl: square?.reversedSolid,
     mockupUrl: square?.mockup,
     landscapeMockupUrl: square?.landscapeMockup,
     horizontalTransparentUrl: horizontal?.transparent,
     horizontalSolidUrl: horizontal?.solid,
-    horizontalReversedUrl: horizontal?.reversed,
-    horizontalReversedSolidUrl: horizontal?.reversedSolid,
     horizontalMockupUrl: horizontal?.mockup,
     horizontalLandscapeMockupUrl: horizontal?.landscapeMockup,
     verticalTransparentUrl: vertical?.transparent,
     verticalSolidUrl: vertical?.solid,
-    verticalReversedUrl: vertical?.reversed,
-    verticalReversedSolidUrl: vertical?.reversedSolid,
     verticalMockupUrl: vertical?.mockup,
     verticalLandscapeMockupUrl: vertical?.landscapeMockup,
   };

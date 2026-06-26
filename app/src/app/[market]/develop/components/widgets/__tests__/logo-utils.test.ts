@@ -16,8 +16,6 @@ describe('mapLogoSessionToLogoData', () => {
         square: {
           transparent: 'https://cdn/sq-t.png',
           solid: 'https://cdn/sq-s.png',
-          reversed: 'https://cdn/sq-r.png',
-          reversedSolid: 'https://cdn/sq-rs.png',
           mockup: 'https://cdn/sq-m.png',
           landscapeMockup: 'https://cdn/sq-lm.png',
         },
@@ -29,11 +27,8 @@ describe('mapLogoSessionToLogoData', () => {
     expect(logo.id).toBe('logo-1')
     expect(logo.transparentUrl).toBe('https://cdn/sq-t.png')
     expect(logo.solidUrl).toBe('https://cdn/sq-s.png')
-    expect(logo.reversedUrl).toBe('https://cdn/sq-r.png')
     expect(logo.mockupUrl).toBe('https://cdn/sq-m.png')
     expect(logo.landscapeMockupUrl).toBe('https://cdn/sq-lm.png')
-    // reversedSolid is mapped (brand book's dark panel prefers it over reversed).
-    expect(logo.reversedSolidUrl).toBe('https://cdn/sq-rs.png')
     expect(logo.horizontalTransparentUrl).toBeUndefined()
     expect(logo.verticalTransparentUrl).toBeUndefined()
   })

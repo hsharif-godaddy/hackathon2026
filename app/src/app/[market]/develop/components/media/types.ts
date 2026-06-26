@@ -56,12 +56,6 @@ export interface MediaSlot {
   /** Maps transparent URL → solid-background URL for logo variants.
    *  Only populated when mediaType === 'logo'. */
   solidUrlMap?: Record<string, string>;
-  /** Maps transparent URL → reversed (dark mode) URL for logo variants.
-   *  Only populated when mediaType === 'logo'. */
-  reversedUrlMap?: Record<string, string>;
-  /** Maps transparent URL → reversed solid (dark mode + solid background) URL for logo variants.
-   *  Only populated when mediaType === 'logo'. */
-  reversedSolidUrlMap?: Record<string, string>;
   /** Maps transparent URL → mockup URL for logo variants.
    *  Only populated when mediaType === 'logo'. */
   mockupUrlMap?: Record<string, string>;

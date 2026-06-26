@@ -30,8 +30,6 @@ export function collectUploadUrlsForFilenameFromSlot(
 
   for (const map of [
     slot.solidUrlMap,
-    slot.reversedUrlMap,
-    slot.reversedSolidUrlMap,
     slot.mockupUrlMap,
     slot.landscapeMockupUrlMap,
   ]) {

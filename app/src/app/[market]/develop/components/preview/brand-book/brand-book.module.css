@@ -95,18 +95,13 @@
 }
 
 
-/* ── Logo dual panel ───────────────────────────────────────────────────── */
-
-.logoDualPanel {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1.5rem;
-}
+/* ── Logo panel ───────────────────────────────────────────────────────── */
 
 .logoPanelCard {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
+  max-inline-size: 75%;
 }
 
 .logoPanelImage {
@@ -124,7 +119,7 @@
 
 .logoPanelFooter {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end;
   align-items: center;
 }
 
