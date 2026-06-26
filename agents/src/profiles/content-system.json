@@ -1,7 +1,0 @@
-{
-  "name": "content-system",
-  "description": "Develop agent with the CMS content layer enabled (develop.contentSystem): the agent scaffolds src/content via content_scaffold, content-rules linting is enforced, and the content-layer prompt guidance is injected. Default develop config otherwise.",
-  "properties": {
-    "develop.contentSystem": true
-  }
-}

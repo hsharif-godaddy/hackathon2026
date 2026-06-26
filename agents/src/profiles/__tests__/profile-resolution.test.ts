@@ -31,12 +31,6 @@ describe('profile-registry', function registryTests() {
       expect(profile.name).toBe('experimental')
       expect(profile.description).toBeTruthy()
     })
-
-    it('loads the content-system profile with develop.contentSystem enabled', function loadsContentSystem() {
-      const registry = getProfileRegistry()
-      expect(registry.has('content-system')).toBe(true)
-      expect(registry.get('content-system')!.properties['develop.contentSystem']).toBe(true)
-    })
   })
 
   describe('resolveProfile', function resolveTests() {

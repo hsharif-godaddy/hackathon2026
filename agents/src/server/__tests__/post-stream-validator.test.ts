@@ -9,14 +9,6 @@ vi.mock('../../tools/content-rules-lint.js', () => ({
   checkContentRulesForFile: vi.fn(() => [])
 }));
 
-const contentSystemFlag = vi.hoisted(() => ({ enabled: true }));
-vi.mock('../../profiles/profile-accessor.js', () => ({
-  profileFlag: (key: string, defaultValue?: boolean) => {
-    if (key === 'develop.contentSystem') return contentSystemFlag.enabled;
-    return defaultValue ?? false;
-  }
-}));
-
 const { checkContentRulesForFile: checkContentRulesForFileMock } = await import('../../tools/content-rules-lint.js') as {
   checkContentRulesForFile: ReturnType<typeof vi.fn>;
 };
@@ -208,7 +200,6 @@ function makeDeps(overrides: {
 describe('createPostStreamValidator', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    contentSystemFlag.enabled = true;
   });
 
   it('returns void when aborted', async () => {
@@ -1495,16 +1486,6 @@ describe('createPostStreamValidator', () => {
       const { deps } = makeDeps({ contentRulesAppPath: null });
       const validator = createPostStreamValidator(deps);
       const result = await validator(makeArgs());
-      expect(result).toBeUndefined();
-      expect(checkContentRulesForFileMock).not.toHaveBeenCalled();
-    });
-
-    it('skips the phase entirely when develop.contentSystem is OFF (default for all traffic)', async () => {
-      contentSystemFlag.enabled = false;
-      checkContentRulesForFileMock.mockReturnValue([missedOpportunityViolation]);
-      const { deps } = makeDeps({ contentRulesAppPath: '/tmp/app' });
-      const validator = createPostStreamValidator(deps);
-      const result = await validator(makeArgs({ toolCalls: pageEditToolCalls }));
       expect(result).toBeUndefined();
       expect(checkContentRulesForFileMock).not.toHaveBeenCalled();
     });

@@ -136,8 +136,7 @@ import { todoListTool } from '../todo-list-tool.js';
 registerPostEditHandler(seoRoutesPostEditHandler);
 registerPostEditHandler(seoPagePostEditHandler);
 // Content-layer enforcement: appends content-rule violations to the agent's
-// own file writes. Self-gates on `develop.contentSystem`, so apps that don't
-// use the content layer are never nagged (gate lives in the handler's match).
+// own file writes (applies to all develop edits; src/content/ files skipped).
 registerPostEditHandler(contentRulesPostEditHandler);
 
 // AC3: gate mark_done on SEO completeness for any page files edited this session.

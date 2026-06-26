@@ -5,10 +5,9 @@
  * appended to the tool result so the agent self-corrects on the next turn
  * without needing a separate validation pass.
  *
- * Gated by `develop.contentSystem`: apps that don't opt into the content layer
- * must never be nagged with content-layer violations. Files under
- * `src/content/` (the content JSON / schemas the layer produces) are skipped —
- * the rules are about presentation files wiring text through `virtual:content`.
+ * Files under `src/content/` (the content JSON / schemas the layer produces)
+ * are skipped — the rules are about presentation files wiring text through
+ * `virtual:content`.
  *
  * Best-effort: the write has already succeeded by the time this runs, so a
  * read or lint failure must never alter the result the agent sees beyond the
@@ -20,7 +19,6 @@ import { readFile } from 'node:fs/promises';
 import { extname, relative, resolve, sep } from 'node:path';
 
 import { logger } from '../logging/index.js';
-import { profileFlag } from '../profiles/profile-accessor.js';
 import type {
   PostEditContext,
   PostEditHandler,
@@ -50,7 +48,6 @@ export const contentRulesPostEditHandler: PostEditHandler = {
   name: 'content-rules-lint',
 
   matches(relPath: string): boolean {
-    if (!profileFlag('develop.contentSystem', false)) return false;
     const ext = extname(relPath);
     if (ext !== '.ts' && ext !== '.tsx') return false;
     if (relPath.startsWith(CONTENT_ROOT)) return false;

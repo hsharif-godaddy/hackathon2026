@@ -225,12 +225,9 @@ async function buildDevelopSystemPrompt(
     .file(resolveFragment('font-theme.md', paths.getAgentFile('develop', 'font-theme.md'))) // Font theme tool documentation
     //.file(paths.getAgentFile('develop', 'design.md'))
 
-  // Content layer guidance (Five Rules + content_scaffold usage). Gated by the
-  // same flag as the content_scaffold tool in the activeTools resolver, so the
-  // agent only sees the instructions when it can act on them.
-  if (profileFlag('develop.contentSystem', false)) {
-    promptBuilder.file(paths.getAgentFile('develop', 'content-layer.md'))
-  }
+  // Content layer guidance (Five Rules + content_scaffold usage). Always on:
+  // the develop agent authors content-backed, inline-editable markup for every app.
+  promptBuilder.file(paths.getAgentFile('develop', 'content-layer.md'))
 
   if (profileFlag('develop.promptOptimization', true)) {
     promptBuilder.file(paths.getAgentFile('develop', 'prompt-optimization.md'))
@@ -365,7 +362,7 @@ export async function createDevelopAgent(options?: { appPath?: string }): Promis
     askQuestion: allAILibTools.askQuestion,
     suggestedResponse: allAILibTools.suggestedResponse,
 
-    // Content layer (gated by develop.contentSystem in the activeTools resolver).
+    // Content layer (always active — see content-layer.md prompt).
     content_scaffold: allAILibTools.content_scaffold,
 
     // Secrets management (for API keys, credentials)
@@ -387,9 +384,6 @@ export async function createDevelopAgent(options?: { appPath?: string }): Promis
       }
       if (!profileFlag('develop.suggestedResponse', false)) {
         allow.delete('suggestedResponse')
-      }
-      if (!profileFlag('develop.contentSystem', false)) {
-        allow.delete('content_scaffold')
       }
       return Array.from(allow)
     },

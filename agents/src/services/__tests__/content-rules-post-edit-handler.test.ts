@@ -1,9 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
-const { mockReadFile, mockCheckContentRulesForFile, mockProfileFlag, mockLoggerWarn } = vi.hoisted(() => ({
+const { mockReadFile, mockCheckContentRulesForFile, mockLoggerWarn } = vi.hoisted(() => ({
   mockReadFile: vi.fn(),
   mockCheckContentRulesForFile: vi.fn(),
-  mockProfileFlag: vi.fn(),
   mockLoggerWarn: vi.fn(),
 }));
 
@@ -13,10 +12,6 @@ vi.mock('node:fs/promises', () => ({
 
 vi.mock('../../tools/content-rules-lint.js', () => ({
   checkContentRulesForFile: mockCheckContentRulesForFile,
-}));
-
-vi.mock('../../profiles/profile-accessor.js', () => ({
-  profileFlag: mockProfileFlag,
 }));
 
 vi.mock('../../logging/index.js', () => ({
@@ -46,17 +41,16 @@ function makeContext(relPath: string): PostEditContext {
 describe('contentRulesPostEditHandler', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockProfileFlag.mockReturnValue(true);
     mockCheckContentRulesForFile.mockReturnValue([]);
     mockReadFile.mockResolvedValue('export default function Page() { return null; }');
   });
 
   describe('matches', () => {
-    it('matches .tsx page files when the flag is on', () => {
+    it('matches .tsx page files', () => {
       expect(contentRulesPostEditHandler.matches('src/pages/index.tsx', makeContext('src/pages/index.tsx'))).toBe(true);
     });
 
-    it('matches .ts files when the flag is on', () => {
+    it('matches .ts files', () => {
       expect(contentRulesPostEditHandler.matches('src/lib/util.ts', makeContext('src/lib/util.ts'))).toBe(true);
     });
 
@@ -68,12 +62,6 @@ describe('contentRulesPostEditHandler', () => {
     it('does not match files under src/content/', () => {
       expect(contentRulesPostEditHandler.matches('src/content/index.ts', makeContext('src/content/index.ts'))).toBe(false);
       expect(contentRulesPostEditHandler.matches('src/content/home/index.json', makeContext('src/content/home/index.json'))).toBe(false);
-    });
-
-    it('is a no-op (matches false) when develop.contentSystem is off', () => {
-      mockProfileFlag.mockReturnValue(false);
-      expect(contentRulesPostEditHandler.matches('src/pages/index.tsx', makeContext('src/pages/index.tsx'))).toBe(false);
-      expect(mockProfileFlag).toHaveBeenCalledWith('develop.contentSystem', false);
     });
   });
 

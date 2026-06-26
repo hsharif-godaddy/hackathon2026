@@ -49,7 +49,6 @@ import {
   checkContentRulesForFile,
   type RuleViolation
 } from '../tools/content-rules-lint.js';
-import { profileFlag } from '../profiles/profile-accessor.js';
 
 type PhaseLogger = Pick<ILogger, 'info' | 'warn'>;
 
@@ -360,9 +359,8 @@ export async function runTypecheckPhase(
 /**
  * Content-rules backstop. Runs the static content-layer linter across the
  * app's pages and forces a continuation when actionable violations remain
- * (user-visible copy that isn't wired through `virtual:content`). Gated by
- * the composite on `develop.contentSystem`; non-fatal — any linter failure
- * resolves to `clean` so a flaky walk never breaks stream finalize.
+ * (user-visible copy that isn't wired through `virtual:content`). Non-fatal —
+ * any linter failure resolves to `clean` so a flaky walk never breaks stream finalize.
  */
 export async function runContentRulesPhase(
   args: PostStreamValidatorArgs,
@@ -1070,11 +1068,7 @@ export function createPostStreamValidator(deps: CompositePostStreamValidatorDeps
     const [tscOutcome, rtOutcome, crOutcome] = await Promise.all([
       runTypecheckPhase(args, typecheck, { appId, conversationId }),
       runRuntimeErrorPhase(args, runtimeErrors, { appId, conversationId }),
-      // Content-rules backstop only runs for apps that opted into the content
-      // layer — otherwise it would nag every app with content-layer feedback.
-      profileFlag('develop.contentSystem', false)
-        ? runContentRulesPhase(args, contentRules, { appId, conversationId })
-        : { kind: 'clean' as const }
+      runContentRulesPhase(args, contentRules, { appId, conversationId })
     ]);
 
     // SEO check: if this turn wrote any page files and gaps remain, force a continuation.

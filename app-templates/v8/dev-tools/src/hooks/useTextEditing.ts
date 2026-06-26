@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { createRoot, Root } from "react-dom/client";
 import { safePostMessage, isOriginAllowed } from "../utils/postMessage";
 import { type BusTextUpdatePayload, send, TextEditErrorCode } from "../utils/eventBus";
+import { trackInlineEdit } from "../utils/inline-edit-tracking";
 import { t } from "../utils/translations";
 import {
   generatePreciseSelector,
@@ -163,6 +164,7 @@ export function useTextEditing(isEditModeActive: boolean, cmsInlineEditEnabled: 
       // CMS field. Falls back to the JSX-literal AST-edit path otherwise.
       const contentTarget = resolveContentKey(element);
       if (contentTarget) {
+        trackInlineEdit("save", contentTarget);
         safePostMessage(window.parent, {
           type: "CONTENT_UPDATED",
           data: {
@@ -349,6 +351,7 @@ export function useTextEditing(isEditModeActive: boolean, cmsInlineEditEnabled: 
 
   const handleCancel = useCallback(
     (element: HTMLElement) => {
+      trackInlineEdit("cancel", resolveContentKey(element));
       cleanupOverlay();
       unwrapOrReveal(element);
       cleanupEditor();
@@ -443,6 +446,7 @@ export function useTextEditing(isEditModeActive: boolean, cmsInlineEditEnabled: 
 
   const startEditing = useCallback(
     (element: HTMLElement, brParent?: HTMLElement) => {
+      trackInlineEdit("field", resolveContentKey(element));
       if (!import.meta.env.VITE_ENABLE_LEXICAL_EDITOR) {
         startEditingLegacy(element, brParent);
         return;

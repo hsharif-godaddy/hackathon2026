@@ -113,40 +113,19 @@ describe('develop-agent profile flag gating (resolver-driven)', () => {
     })
   })
 
-  describe('develop.contentSystem (content_scaffold gating)', () => {
-    it('hides content_scaffold via activeTools by default (defaults false)', async () => {
+  describe('content layer (always on)', () => {
+    it('exposes content_scaffold via activeTools with no profile', async () => {
       const { activeTools } = await resolveUnderProfile(undefined)
-      expect(activeTools).not.toContain('content_scaffold')
-    })
-
-    it('exposes content_scaffold via activeTools when the flag is set', async () => {
-      const profile: ProfileData = {
-        name: 'test-content-system',
-        description: 'test profile enabling the content system',
-        properties: { 'develop.contentSystem': true }
-      }
-      const { activeTools } = await resolveUnderProfile(profile)
       expect(activeTools).toContain('content_scaffold')
     })
 
-    it('keeps content_scaffold in the tools map (union; inert when not active)', async () => {
+    it('keeps content_scaffold in the tools map', async () => {
       const config = await createDevelopAgent()
       expect(config.tools).toHaveProperty('content_scaffold')
     })
 
-    it('does not load content-layer.md by default (defaults false)', async () => {
+    it('loads content-layer.md with no profile', async () => {
       await resolveUnderProfile(undefined)
-      const hasContentLayer = loadedFiles.some(f => f.includes('content-layer.md'))
-      expect(hasContentLayer).toBe(false)
-    })
-
-    it('loads content-layer.md when the flag is set', async () => {
-      const profile: ProfileData = {
-        name: 'test-content-system',
-        description: 'test profile enabling the content system',
-        properties: { 'develop.contentSystem': true }
-      }
-      await resolveUnderProfile(profile)
       const hasContentLayer = loadedFiles.some(f => f.includes('content-layer.md'))
       expect(hasContentLayer).toBe(true)
     })
