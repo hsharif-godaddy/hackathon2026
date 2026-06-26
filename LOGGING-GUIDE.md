@@ -378,3 +378,62 @@ The logging system automatically adapts to different environments:
 - **Test**: Memory buffer with assertion helpers
 
 No code changes needed - the system detects `NODE_ENV` and configures appropriately.
+
+
+## Publish Flow Logging
+
+The publish flow has comprehensive observability with structured events tracking the entire publish journey. See [Publish Flow Observability](docs/observability/publish-flow.md) for detailed documentation.
+
+### Key Event Domains
+
+**Agents Service (agents/)**:
+- `publish.flow.*` - Main publish flow events (start, success, failure)
+- `funnel.publish.agent.*` - Funnel tracking for analytics
+
+**BFF (app/)**:
+- `agent-token.paywall-check.*` - Token creation and paywall validation
+- `paywall.eligibility.*` - Detailed eligibility checking
+- `subscriptions.api.*` - Subscription fetch and selection
+
+### Required Context Fields
+
+All publish-related events should include:
+- `appId` - Application identifier
+- `customerId` - Customer identifier (when available)
+- `publishAttemptId` - Correlation ID for publish attempts
+- `durationMs` - Operation duration for performance tracking
+
+### Example: Logging a Publish Flow
+
+```typescript
+// Agents service - publish start
+contextLogger.info('publish.flow.start', {
+  appId: id,
+  deploymentStrategy,
+  publishAttemptId,
+  customerId: authReq.agentContext?.customerId,
+});
+
+// Agents service - publish success
+contextLogger.info('publish.flow.success', {
+  appId: id,
+  publishAttemptId,
+  customerId: authReq.agentContext?.customerId,
+  commitHash: fullCommitHash.substring(0, 7),
+  archivePath,
+  strategy: strategy.key,
+  durationMs: publishFlowDuration,
+});
+
+// BFF - paywall check (cacheHit is true on cache-hit path, false on cache-miss path)
+logger.info('agent-token.paywall-check.start', {
+  appId: body.siteId,
+  customerId: user.customerId,
+  cacheHit: true, // or false on cache-miss
+});
+```
+
+### Dashboards and Alerts
+
+- **Dashboard**: [Publish Flow Observability Dashboard](https://airobuilde-prod-usw2.kb.us-west-2.aws.found.io/app/dashboards#/view/publish-flow-dashboard)
+- **Alerts**: See [publish-flow-alerts.md](docs/alerts/publish-flow-alerts.md)

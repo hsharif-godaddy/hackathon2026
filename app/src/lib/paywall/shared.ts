@@ -172,6 +172,22 @@ export function isPaidPlanForGrants(
 }
 
 /**
+ * Account-level paid eligibility: an active subscription on a grants-paid plan.
+ *
+ * Single source of truth for "does this subscription grant paid-tier access",
+ * shared by the eligibility hook and the publish critical path so the two never
+ * diverge.
+ *
+ * @param subscription - The active subscription (or null/undefined)
+ * @returns True if the subscription is active and on a paid plan
+ */
+export function hasActivePaidPlan(
+  subscription: { status?: string; plan?: SubscriptionPlan | null } | null | undefined
+): boolean {
+  return subscription?.status === 'active' && isPaidPlanForGrants(subscription.plan);
+}
+
+/**
  * Paywall modal types
  *
  * Determines which modal to show to the user.

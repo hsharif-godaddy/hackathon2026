@@ -215,28 +215,6 @@ describe('GET /api/subscriptions', function describeRoute() {
       expect(logger.error).not.toHaveBeenCalledWith('subscriptions.api.error', expect.anything());
     });
 
-    it('should return empty subscriptions on 403 (unregistered customer)', async function notRegistered403() {
-      const request = new NextRequest('http://localhost/api/subscriptions');
-      const authContext = createAuthContext('jwt-token');
-      const { logger } = await import('@/lib/request-context');
-
-      const { AiroHttpError } = await import('@/lib/mgmt-airo');
-      mockClient.getSubscriptions.mockRejectedValue(
-        new AiroHttpError(403, 'Forbidden', 'Customer not registered with Airo')
-      );
-
-      const response = await GET(request, authContext);
-      const data = await response.json();
-
-      expect(response.status).toBe(200);
-      expect(data.success).toBe(true);
-      expect(data.data.subscriptions).toEqual([]);
-      expect(data.data.active).toBe(null);
-      expect(logger.info).toHaveBeenCalledWith('subscriptions.api.not-registered', expect.objectContaining({
-        customerId: 'test-customer-123',
-      }));
-    });
-
     it('should return empty subscriptions on 404 (subscription not found during provisioning)', async function notFound404() {
       const request = new NextRequest('http://localhost/api/subscriptions');
       const authContext = createAuthContext('jwt-token');

@@ -5,7 +5,7 @@ import '@testing-library/jest-dom';
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { QueryClient } from '@tanstack/react-query';
-import { waitFor } from '@testing-library/react';
+import { act, waitFor } from '@testing-library/react';
 
 import { renderHookWithProviders } from '@/tests/test-utils';
 import { SubscriptionPlan } from '@/types/credits';

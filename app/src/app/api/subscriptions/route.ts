@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+import { setApmCustomerId, setApmLabel } from '@/lib/apm-context';
 import { CORS_ROUTES, createCorsOptionsHandler } from '@/lib/cors';
 import { type CustomerAuthContext, withCustomerAuth } from '@/lib/customer-auth';
 import { AIRO_OWNER_PRODUCTS, AIRO_PRODUCT_IDS, AiroHttpError, AiroMgmtClient } from '@/lib/mgmt-airo';
@@ -38,6 +39,8 @@ export const GET = withCustomerAuth(async (
       return NextResponse.json({ error: 'Authentication token required' }, { status: 401 });
     }
 
+    setApmCustomerId(authContext.user.customerId);
+
     const baseUrl = process.env.MGMT_AIRO_BASE_URL || 'https://mgmt.nstk.net';
     const client = new AiroMgmtClient({ baseUrl, jwt: authContext.jwt });
 
@@ -72,12 +75,38 @@ export const GET = withCustomerAuth(async (
              sub.productId === AIRO_PRODUCT_IDS.AAB_ENT_V1
     );
 
+    logger.info('subscriptions.api.selection', {
+      totalSubscriptions: subscriptionsWithPlan.length,
+      aabSubscriptions: aabSubscriptions.length,
+      customerId: authContext.user.customerId,
+    });
+
     // Prefer active, then suspended, then any other status
     const bestSubscription =
       aabSubscriptions.find(sub => sub.status === SubscriptionStatus.Active) ||
       aabSubscriptions.find(sub => sub.status === SubscriptionStatus.Suspended) ||
       aabSubscriptions[0] ||
       null;
+
+    if (bestSubscription) {
+      setApmLabel('subscription.plan', bestSubscription.plan ?? 'unknown');
+      setApmLabel('subscription.status', bestSubscription.status);
+      if (bestSubscription.id) {
+        setApmLabel('subscription.id', bestSubscription.id);
+      }
+
+      logger.info('subscriptions.api.best-subscription-selected', {
+        subscriptionId: bestSubscription.id,
+        plan: bestSubscription.plan,
+        status: bestSubscription.status,
+        customerId: authContext.user.customerId,
+      });
+    } else {
+      logger.warn('subscriptions.api.no-aab-subscription', {
+        totalSubscriptions: subscriptionsWithPlan.length,
+        customerId: authContext.user.customerId,
+      });
+    }
 
     logger.info('subscriptions.api.success', {
       count: subscriptionsWithPlan.length,
@@ -91,14 +120,11 @@ export const GET = withCustomerAuth(async (
     });
 
   } catch (error) {
-    // mgmt-airo returns 403 for unregistered customers ("Customer not registered
-    // with Airo") and 404 when a subscription doesn't exist yet (e.g. first app
-    // creation while provisioning). Both are treated as empty subscriptions.
-    // During the 403→404 migration we must support both. See PR #2665.
-    // TODO: Remove 403 once the 403 -> 404 migration is complete.
-    if (error instanceof AiroHttpError && (error.status === 403 || error.status === 404)) {
+    // mgmt-airo returns 404 when a subscription doesn't exist yet (e.g. first app
+    // creation while provisioning). Treat as empty subscriptions. See PR #4918.
+    if (error instanceof AiroHttpError && error.status === 404) {
       logger.info('subscriptions.api.not-registered', {
-        message: 'Customer not registered or subscription not found - returning empty subscriptions',
+        message: 'Subscription not found - returning empty subscriptions',
         customerId: authContext.user.customerId,
         errorMessage: error.message,
         statusCode: error.status,

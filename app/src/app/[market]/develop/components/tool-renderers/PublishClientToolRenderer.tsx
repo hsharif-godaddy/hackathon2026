@@ -4,12 +4,11 @@ import { Rocket } from 'lucide-react'
 import { useEffect, useRef } from 'react'
 
 import ToolHeader from '@/app/[market]/develop/components/tool-renderers/ToolHeader'
-import { usePaywallEligibility } from '@/hooks/usePaywallEligibility'
+import { usePaywallModal } from '@/hooks/usePaywallModal'
 import { useTranslations } from '@/hooks/useTranslations'
 import { PAYWALL_ITC } from '@/lib/paywall/shared'
 import { logger } from '@/lib/request-context'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
-import { usePaywallStore } from '@/stores/usePaywallStore'
 import type { DefaultToolRendererProps } from './DefaultToolRenderer'
 
 /**
@@ -68,8 +67,12 @@ export default function PublishClientToolRenderer({
   const t = useTranslations()
   const currentAppId = useDevelopPageStore((state) => state.currentAppId)
   const requestPublishPopoverOpen = useDevelopPageStore((state) => state.requestPublishPopoverOpen)
-  const openUpgradeModal = usePaywallStore((state) => state.openUpgradeModal)
-  const { showPaywall, isLoading: isPaywallLoading } = usePaywallEligibility(currentAppId)
+  // Same paywall gate as the manual publish button (AppPublish).
+  const { checkAndShowPaywall, paywallModal, isPaywallLoading, isPublishLimitLoading } = usePaywallModal({
+    appId: currentAppId ?? undefined,
+    source: 'publish',
+    itc: PAYWALL_ITC.PUBLISH,
+  })
   const hasHandledRef = useRef(false)
   const lastLoggedErrorRef = useRef<string | null>(null)
 
@@ -89,18 +92,17 @@ export default function PublishClientToolRenderer({
       !isLastAssistantMessage ||
       toolStatus !== 'running' ||
       isPaywallLoading ||
+      isPublishLimitLoading ||
       hasHandledRef.current
     ) {
       return
     }
     hasHandledRef.current = true
 
-    if (showPaywall) {
-      openUpgradeModal('publish', PAYWALL_ITC.PUBLISH)
-    } else {
+    void checkAndShowPaywall(async () => {
       requestPublishPopoverOpen(currentAppId)
-    }
-  }, [currentAppId, isLastAssistantMessage, isPaywallLoading, openUpgradeModal, requestPublishPopoverOpen, showPaywall, toolStatus])
+    })
+  }, [currentAppId, isLastAssistantMessage, isPaywallLoading, isPublishLimitLoading, checkAndShowPaywall, requestPublishPopoverOpen, toolStatus])
 
   useEffect(() => {
     if (!currentAppId || !error || error === lastLoggedErrorRef.current) return
@@ -129,6 +131,7 @@ export default function PublishClientToolRenderer({
 
   return (
     <div>
+      {paywallModal}
       <ToolHeader
         icon={<Rocket className="w-2 h-2" />}
         displayName={getDisplayText()}

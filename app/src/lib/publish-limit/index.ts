@@ -6,6 +6,7 @@
  */
 
 import type { SiteInfo } from '@/lib/control-plane/types';
+import { getEffectivePlan } from '@/lib/paywall/shared';
 import { SubscriptionPlan } from '@/types/credits';
 
 /**
@@ -133,4 +134,86 @@ export function canPublishWithPlan(
 
   // Check if under limit
   return currentPublishedCount < limit;
+}
+
+/** Inputs for {@link evaluatePublishLimit}. */
+export interface EvaluatePublishLimitInputs {
+  /** Raw plan from the active subscription (before getEffectivePlan). */
+  subscriptionPlan: SubscriptionPlan | undefined;
+  /** Whether the user previously had Airo Plus (legacy conversion). */
+  hadAiroPlus: boolean | undefined;
+  /** Currently published apps. */
+  publishedApps: SiteInfo[];
+  /** Count of currently published apps. */
+  publishedCount: number;
+  /** The app being published (excluded from the limit if already published). */
+  currentAppId?: string;
+  /** Whether the publish-limit bypass flag is enabled. */
+  isBypassEnabled: boolean;
+  /** Whether the published-apps list is still loading. */
+  isPublishedAppsLoading: boolean;
+}
+
+/**
+ * Pure evaluation of the publish-limit gate.
+ *
+ * Extracted from usePublishLimitCheck so the gate can be unit-tested and so the
+ * publish critical path can re-evaluate it against freshly-fetched data without
+ * duplicating the logic. Behavior mirrors the hook exactly.
+ *
+ * @param inputs - Subscription/published-apps state
+ * @returns The publish-limit result
+ */
+export function evaluatePublishLimit(inputs: EvaluatePublishLimitInputs): PublishLimitResult {
+  const {
+    subscriptionPlan,
+    hadAiroPlus,
+    publishedApps,
+    publishedCount,
+    currentAppId,
+    isBypassEnabled,
+    isPublishedAppsLoading,
+  } = inputs;
+
+  // Default result for loading/disabled/bypass state — uses the raw plan.
+  const defaultResult: PublishLimitResult = {
+    canPublish: true,
+    currentCount: publishedCount,
+    limit: null,
+    plan: subscriptionPlan,
+    publishedApps,
+  };
+
+  if (isBypassEnabled) {
+    return defaultResult;
+  }
+
+  if (isPublishedAppsLoading) {
+    return { ...defaultResult, canPublish: false };
+  }
+
+  const plan = getEffectivePlan(subscriptionPlan, hadAiroPlus) ?? undefined;
+
+  // No plan, None, or Free plan - show paywall (limit: 0)
+  if (!plan || plan === SubscriptionPlan.None || plan === SubscriptionPlan.Free) {
+    return {
+      canPublish: false,
+      currentCount: publishedCount,
+      limit: 0,
+      plan,
+      publishedApps,
+    };
+  }
+
+  const limit = getPublishLimit(plan);
+  const publishedAppIds = publishedApps.map(app => app.id);
+  const canPublish = canPublishWithPlan(plan, publishedCount, currentAppId, publishedAppIds);
+
+  return {
+    canPublish,
+    currentCount: publishedCount,
+    limit,
+    plan,
+    publishedApps,
+  };
 }

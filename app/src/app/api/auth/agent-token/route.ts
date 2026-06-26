@@ -12,6 +12,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { isEmployeeAuthType, type ProductType } from '@airo/shared/auth';
 
 import { EXPERIMENT_IDS, INITIAL_AGENT_COHORT_TO_PROFILE } from '@/config/experiments';
+import { setApmAppId, setApmCustomerId } from '@/lib/apm-context';
 import { getAuthzFgaConfig } from '@/lib/authz-fga/config';
 import { enforceAabMultiUserCanBuild } from '@/lib/authz-fga/enforce-can-build';
 import { ensureAppTeamVenture } from '@/lib/authz-fga/ensure-app-venture';
@@ -84,10 +85,11 @@ function resolvePaywallResult(
   customerId: string
 ): { canDownload: boolean; canPublish: boolean } {
   if (result.status === 'rejected') {
-    logger.error('agent-token.paywall-check-failed', {
+    logger.error('agent-token.paywall-check.rejected', {
       siteId,
       customerId,
       error: result.reason instanceof Error ? result.reason.message : String(result.reason),
+      errorType: result.reason instanceof Error ? result.reason.constructor.name : typeof result.reason,
     });
     return { canDownload: false, canPublish: false };
   }
@@ -105,10 +107,13 @@ function resolvePaywallResult(
     hasSubscription: eligibility.details.hasSubscription,
     hasEntitlements: eligibility.details.hasEntitlements,
     hasMatchingProject: eligibility.details.hasMatchingProject,
+    publishLimit: eligibility.details.publishLimit,
+    publishedCount: eligibility.details.publishedCount,
+    subscriptionId: eligibility.details.subscriptionId,
   };
 
   if (canPublish || canDownload) {
-    logger.info('agent-token.permissions-granted', {
+    logger.info('agent-token.paywall-check.success', {
       siteId,
       customerId,
       canPublish,
@@ -117,7 +122,7 @@ function resolvePaywallResult(
       ...eligibilityDetails,
     });
   } else {
-    logger.info('agent-token.permissions-denied', {
+    logger.warn('agent-token.paywall-check.denied', {
       siteId,
       customerId,
       ...eligibilityDetails,
@@ -348,6 +353,13 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
 
     if (siteValidationCacheHit) {
       // Cache hit: skip site validation, run paywall + switchboard + subscription lookup in parallel
+      logger.info('agent-token.paywall-check.start', {
+        appId: body.siteId,
+        customerId: user.customerId,
+        cacheHit: true,
+      });
+      setApmAppId(body.siteId);
+      setApmCustomerId(user.customerId);
       const parallelStart = Date.now();
       const [paywallResult, domainPurchaseResult, testBudgetResult, budgetServiceResult, bmsExistingResult, siteInfoResult, assessmentAgentResult, assessmentOverrideResult, assessmentClassifierResult, modelSelectorResult, modelOverrideResult, agentProfileSelectorResult, agentProfileResult, costAttributionDryRunResult, useAtlasCrawlerResult, rebuildIntakeFormResult, debugDrawerResult, marketingCampaignsResult, googleBusinessProfileSyncResult, asmDualWriteResult, logoBrandColorsResult, purchaseIntentClassifierResult, skillSuggestionsResult, rebuildSourceImagesResult] = await Promise.allSettled([
         checkPaywallEligibility(
@@ -416,6 +428,13 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       rebuildSourceImagesEnabled = resolveBooleanFlag(rebuildSourceImagesResult, 'agent-token.rebuild-source-images-flag-check-failed', body.siteId, user.customerId);
     } else {
       // Cache miss: run site validation, paywall, switchboard, and subscription lookup all in parallel
+      logger.info('agent-token.paywall-check.start', {
+        appId: body.siteId,
+        customerId: user.customerId,
+        cacheHit: false,
+      });
+      setApmAppId(body.siteId);
+      setApmCustomerId(user.customerId);
       const parallelStart = Date.now();
       const [siteResult, paywallResult, domainPurchaseResult, testBudgetResult, budgetServiceResult, bmsExistingResult, siteInfoResult, assessmentAgentResult, assessmentOverrideResult, assessmentClassifierResult, modelSelectorResult, modelOverrideResult, agentProfileSelectorResult, agentProfileResult, costAttributionDryRunResult, useAtlasCrawlerResult, rebuildIntakeFormResult, debugDrawerResult, marketingCampaignsResult, googleBusinessProfileSyncResult, asmDualWriteResult, logoBrandColorsResult, purchaseIntentClassifierResult, skillSuggestionsResult, rebuildSourceImagesResult] = await Promise.allSettled([
         validateSiteAccess(body.siteId, user, authContext.jwt || '', body.owningProduct, multiUserEnabled),

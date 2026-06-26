@@ -1,4 +1,4 @@
-import { isPaidPlanForGrants } from '@/lib/paywall/shared';
+import { hasActivePaidPlan } from '@/lib/paywall/shared';
 import { useSiteStore } from '@/stores/useSiteStore';
 import { useSubscription } from './useSubscription';
 
@@ -39,11 +39,12 @@ export const usePaywallEligibility = (appId?: string): PaywallEligibilityResult 
     return { showPaywall: false, isLoading: false, isError: false, error: null };
   }
 
-  const isActive = subscription?.status === 'active';
-  const hasPaidPlan = isActive && isPaidPlanForGrants(subscription?.plan);
+  const hasPaidPlan = hasActivePaidPlan(subscription);
 
   return {
-    showPaywall: isSubscriptionError || !hasPaidPlan,
+    // TanStack keeps prior data on a background refetch error, so showPaywall
+    // derives only from hasActivePaidPlan — a refetch error alone does not paywall.
+    showPaywall: !hasPaidPlan,
     isLoading: isSubscriptionLoading,
     isError: isSubscriptionError,
     error: null,

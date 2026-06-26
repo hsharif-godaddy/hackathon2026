@@ -4,6 +4,7 @@ import { SubscriptionPlan } from '@/types/credits';
 import {
   canUpgradePlan,
   GRANTS_PAID_PLANS,
+  hasActivePaidPlan,
   isPaidPlan,
   isPaidPlanForGrants,
   isPlanUpgrade,
@@ -293,6 +294,30 @@ describe('paywall/shared', function paywallSharedTests() {
       // Enum values are lowercase: 'starter', 'professional', 'ultimate'
       expect(isPlanUpgrade('starter', 'professional')).toBe(true);
       expect(isPlanUpgrade('professional', 'starter')).toBe(false);
+    });
+  });
+
+  describe('hasActivePaidPlan', function hasActivePaidPlanTests() {
+    it('returns true for an active grants-paid plan', function activePaid() {
+      expect(hasActivePaidPlan({ status: 'active', plan: SubscriptionPlan.Ultimate })).toBe(true);
+      expect(hasActivePaidPlan({ status: 'active', plan: SubscriptionPlan.Starter })).toBe(true);
+    });
+
+    it('returns false when status is not active', function inactivePaid() {
+      expect(hasActivePaidPlan({ status: 'cancelled', plan: SubscriptionPlan.Ultimate })).toBe(false);
+      expect(hasActivePaidPlan({ status: 'suspended', plan: SubscriptionPlan.Starter })).toBe(false);
+    });
+
+    it('returns false for non-grants-paid plans even when active', function activeUnpaid() {
+      expect(hasActivePaidPlan({ status: 'active', plan: SubscriptionPlan.Free })).toBe(false);
+      expect(hasActivePaidPlan({ status: 'active', plan: SubscriptionPlan.AiroPlus })).toBe(false);
+    });
+
+    it('returns false for null/undefined subscription or missing plan', function missing() {
+      expect(hasActivePaidPlan(null)).toBe(false);
+      expect(hasActivePaidPlan(undefined)).toBe(false);
+      expect(hasActivePaidPlan({ status: 'active' })).toBe(false);
+      expect(hasActivePaidPlan({ status: 'active', plan: null })).toBe(false);
     });
   });
 });

@@ -5,18 +5,29 @@
  * to determine if a user can publish their app.
  */
 
-import { useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 
-import { getEffectivePlan } from '@/lib/paywall/shared';
+import { hasActivePaidPlan } from '@/lib/paywall/shared';
 import {
-  canPublishWithPlan,
-  getPublishLimit,
+  evaluatePublishLimit,
   type PublishLimitResult,
 } from '@/lib/publish-limit';
-import { SubscriptionPlan } from '@/types/credits';
 import { usePublishedApps } from './usePublishedApps';
-import { useSubscription } from './useSubscription';
+import {
+  type SubscriptionQueryData,
+  SUBSCRIPTIONS_QUERY_KEY,
+  useSubscription,
+} from './useSubscription';
 import { useSwitchboard } from './useSwitchboard';
+
+/** Result of a forced-fresh publish confirmation (see {@link usePublishLimitCheck}). */
+export interface ConfirmPublishResult extends PublishLimitResult {
+  /** Account-level eligibility (active + grants-paid plan), computed from fresh data. */
+  hasPaidPlan: boolean;
+  /** Whether the forced refetch ended in an error state. */
+  isError: boolean;
+}
 
 interface UsePublishLimitCheckOptions {
   /** The app ID being published (used to check if re-publishing) */
@@ -32,6 +43,13 @@ interface UsePublishLimitCheckResult extends PublishLimitResult {
   isError: boolean;
   /** Refetch all data */
   refetch: () => void;
+  /**
+   * Force-fetch fresh subscription data (bypassing staleTime) and re-evaluate
+   * the publish + account-level gates. Use on the publish critical path so a
+   * transient thrown fetch error fails open rather than paywalling a paid user.
+   * Latency is incurred only when the cached gate denies.
+   */
+  confirmCanPublish: () => Promise<ConfirmPublishResult>;
 }
 
 /**
@@ -76,62 +94,17 @@ export function usePublishLimitCheck(
   const isLoading = enabled && (isSubscriptionLoading || isPublishedAppsLoading);
   const isError = enabled && (isSubscriptionError || isPublishedAppsError);
 
-  const result = useMemo((): PublishLimitResult => {
-    // Default result for loading/disabled state
-    const defaultResult: PublishLimitResult = {
-      canPublish: true,
-      currentCount: publishedCount,
-      limit: null,
-      plan: subscription?.plan,
-      publishedApps,
-    };
-    // If bypass flag is enabled, allow publishing
-    if (isBypassEnabled) {
-      return defaultResult;
-    }
+  const queryClient = useQueryClient();
 
-    if (isPublishedAppsLoading) {
-      return {
-        ...defaultResult,
-        canPublish: false,
-      };
-    }
-
-    const plan = getEffectivePlan(subscription?.plan, subscription?.hadAiroPlus);
-
-    // No plan, None, or Free plan - show paywall (limit: 0)
-    if (!plan || plan === SubscriptionPlan.None || plan === SubscriptionPlan.Free) {
-      return {
-        canPublish: false,
-        currentCount: publishedCount,
-        limit: 0,
-        plan,
-        publishedApps,
-      };
-    }
-
-    const limit = getPublishLimit(plan);
-    const publishedAppIds = publishedApps.map(app => app.id);
-    const canPublish = canPublishWithPlan(plan, publishedCount, currentAppId, publishedAppIds);
-
-    if (!canPublish) {
-      return {
-        canPublish: false,
-        currentCount: publishedCount,
-        limit,
-        plan,
-        publishedApps,
-      };
-    }
-
-    return {
-      canPublish: true,
-      currentCount: publishedCount,
-      limit,
-      plan,
-      publishedApps,
-    };
-  }, [
+  const result = useMemo((): PublishLimitResult => evaluatePublishLimit({
+    subscriptionPlan: subscription?.plan,
+    hadAiroPlus: subscription?.hadAiroPlus,
+    publishedApps,
+    publishedCount,
+    currentAppId,
+    isBypassEnabled,
+    isPublishedAppsLoading,
+  }), [
     isBypassEnabled,
     isPublishedAppsLoading,
     subscription,
@@ -145,10 +118,40 @@ export function usePublishLimitCheck(
     refetchPublishedApps();
   };
 
+  const confirmCanPublish = useCallback(async (): Promise<ConfirmPublishResult> => {
+    // Force a fresh subscription fetch (ignores staleTime).
+    await queryClient.refetchQueries({ queryKey: SUBSCRIPTIONS_QUERY_KEY });
+
+    // Re-read from cache rather than captured render state to avoid a stale closure.
+    const freshSubscription = queryClient.getQueryData<SubscriptionQueryData>(SUBSCRIPTIONS_QUERY_KEY);
+    const freshActiveSubscription = freshSubscription?.active ?? undefined;
+    // Only a *thrown* fetch error sets status:'error'; a 404→200+active:null is
+    // a successful response and reads as unpaid (hasPaidPlan:false) below.
+    const freshIsError =
+      queryClient.getQueryState(SUBSCRIPTIONS_QUERY_KEY)?.status === 'error';
+
+    const publishLimit = evaluatePublishLimit({
+      subscriptionPlan: freshActiveSubscription?.plan,
+      hadAiroPlus: freshActiveSubscription?.hadAiroPlus,
+      publishedApps,
+      publishedCount,
+      currentAppId,
+      isBypassEnabled,
+      isPublishedAppsLoading: false,
+    });
+
+    return {
+      ...publishLimit,
+      hasPaidPlan: hasActivePaidPlan(freshActiveSubscription),
+      isError: freshIsError,
+    };
+  }, [queryClient, publishedApps, publishedCount, currentAppId, isBypassEnabled]);
+
   return {
     ...result,
     isLoading,
     isError,
     refetch,
+    confirmCanPublish,
   };
 }

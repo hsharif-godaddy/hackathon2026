@@ -8,6 +8,7 @@
  * data, allowing it to work in both client (browser) and server (Node.js) contexts.
  */
 
+import { setApmLabel } from '@/lib/apm-context';
 import { canPublishWithPlan, getPublishLimit } from '@/lib/publish-limit';
 import { logger } from '@/lib/request-context';
 import type { PaywallDataProvider, SwitchboardFlagsResult } from './providers';
@@ -42,7 +43,10 @@ export async function checkPaywallEligibility(
   appId?: string,
   action: PaywallAction = PaywallAction.Publish
 ): Promise<PaywallCheckResult> {
+  const startTime = Date.now();
+
   logger.info('paywall.eligibility.check.start', { appId, action });
+  setApmLabel('paywall.action', action);
 
   // Initialize result structure
   const result: PaywallCheckResult = {
@@ -76,33 +80,64 @@ export async function checkPaywallEligibility(
     }
 
     // Step 2: Check account-level subscription
+    logger.info('paywall.eligibility.subscription.fetch.start', { appId });
     const accountSubscription = await provider.getAccountSubscription();
 
     if (!accountSubscription) {
-      logger.warn('paywall.eligibility.no-subscription', { appId });
+      const durationMs = Date.now() - startTime;
+      logger.warn('paywall.eligibility.no-subscription', { appId, durationMs });
+      setApmLabel('paywall.has_access', false);
+      setApmLabel('paywall.denial_reason', 'no_subscription');
       result.reason = 'No active subscription found';
       return result;
     }
 
+    logger.info('paywall.eligibility.subscription.fetch.success', {
+      appId,
+      subscriptionId: accountSubscription.id,
+      plan: accountSubscription.plan,
+      status: accountSubscription.status,
+    });
+
     result.details.hasSubscription = true;
     result.details.subscriptionId = accountSubscription.id;
+    setApmLabel('subscription.plan', accountSubscription.plan ?? 'unknown');
+    setApmLabel('subscription.status', accountSubscription.status);
 
     const hasAccessByPlan = isPaidPlanForGrants(accountSubscription.plan);
+    logger.info('paywall.eligibility.plan-tier-check', {
+      appId,
+      plan: accountSubscription.plan,
+      isPaidPlan: hasAccessByPlan,
+    });
+
     if (hasAccessByPlan) {
       result.details.hasSubscription = true;
       result.details.subscriptionId = accountSubscription.id;
 
       if (action === PaywallAction.Publish && !flags.bypassPublishLimit) {
+        logger.info('paywall.eligibility.publish-limit-check.start', {
+          appId,
+          plan: accountSubscription.plan,
+        });
 
         let publishedApps;
         try {
           publishedApps = await provider.getPublishedApps();
+          logger.info('paywall.eligibility.published-apps.fetch.success', {
+            appId,
+            count: publishedApps.count,
+          });
         } catch (error) {
+          const durationMs = Date.now() - startTime;
           logger.error('paywall.eligibility.published-apps.check-failed', {
             appId,
             subscriptionId: accountSubscription.id,
             error: error instanceof Error ? error.message : String(error),
+            durationMs,
           });
+          setApmLabel('paywall.has_access', false);
+          setApmLabel('paywall.denial_reason', 'published_apps_fetch_failed');
           // Fail closed - deny access if we can't verify publish count
           return {
             hasAccess: false,
@@ -125,13 +160,26 @@ export async function checkPaywallEligibility(
           publishedApps.publishedAppIds
         );
 
+        logger.info('paywall.eligibility.publish-limit-evaluated', {
+          appId,
+          plan: accountSubscription.plan,
+          effectivePlan,
+          currentCount: publishedApps.count,
+          limit,
+          canPublish,
+        });
+
         if (!canPublish) {
+          const durationMs = Date.now() - startTime;
           logger.warn('paywall.eligibility.publish-limit-reached', {
             appId,
             plan: accountSubscription.plan,
             currentCount: publishedApps.count,
             limit,
+            durationMs,
           });
+          setApmLabel('paywall.has_access', false);
+          setApmLabel('paywall.denial_reason', PaywallDenialReason.PublishLimitReached);
 
           return {
             hasAccess: false,
@@ -147,6 +195,7 @@ export async function checkPaywallEligibility(
           };
         }
 
+        const durationMs = Date.now() - startTime;
         logger.info('paywall.eligibility.access-granted', {
           appId,
           reason: 'user-has-paid-plan-under-limit',
@@ -154,14 +203,20 @@ export async function checkPaywallEligibility(
           plan: accountSubscription.plan,
           currentCount: publishedApps.count,
           limit,
+          durationMs,
         });
+        setApmLabel('paywall.has_access', true);
       } else {
+        const durationMs = Date.now() - startTime;
         logger.info('paywall.eligibility.access-granted', {
           appId,
-          reason: 'user-has-paid-plan',
+          reason: flags.bypassPublishLimit ? 'bypass-publish-limit-enabled' : 'user-has-paid-plan',
           subscriptionId: accountSubscription.id,
           plan: accountSubscription.plan,
+          bypassEnabled: flags.bypassPublishLimit,
+          durationMs,
         });
+        setApmLabel('paywall.has_access', true);
       }
 
       result.hasAccess = true;
@@ -169,14 +224,27 @@ export async function checkPaywallEligibility(
     }
 
     // User does not have a paid plan — require upgrade
+    const durationMs = Date.now() - startTime;
+    logger.warn('paywall.eligibility.denied', {
+      appId,
+      reason: 'subscription-upgrade-required',
+      plan: accountSubscription.plan,
+      durationMs,
+    });
+    setApmLabel('paywall.has_access', false);
+    setApmLabel('paywall.denial_reason', 'upgrade_required');
     result.reason = 'Subscription upgrade required';
     return result;
   } catch (error) {
+    const durationMs = Date.now() - startTime;
     logger.error('paywall.eligibility.check-failed', {
       appId,
       error: error instanceof Error ? error.message : String(error),
       errorType: error instanceof Error ? error.constructor.name : typeof error,
+      durationMs,
     });
+    setApmLabel('paywall.has_access', false);
+    setApmLabel('paywall.denial_reason', 'check_failed');
 
     // Fail closed - deny access if check fails
     result.hasAccess = false;

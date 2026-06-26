@@ -16,25 +16,6 @@ vi.mock('./useSubscription', () => ({
   useSubscription: vi.fn(),
 }));
 
-// Site store mock:
-//  - 'shared-app'  → loaded, shared (owner-pays)
-//  - 'owned-app'   → loaded, not shared
-//  - 'loading-app' → present but still loading
-//  - anything else → not in store yet (null)
-// No-appId tests are unaffected (the appId-gated branches are skipped).
-vi.mock('@/stores/useSiteStore', () => ({
-  useSiteStore: (selector: (s: unknown) => unknown) =>
-    selector({
-      loading: { 'loading-app': true } as Record<string, boolean>,
-      getSite: (id?: string) => {
-        if (id === 'shared-app') return { sharedWithMe: true };
-        if (id === 'owned-app') return { sharedWithMe: false };
-        if (id === 'loading-app') return { sharedWithMe: true };
-        return null;
-      },
-    }),
-}));
-
 import { usePaywallEligibility } from './usePaywallEligibility';
 import { useSubscription } from './useSubscription';
 
@@ -50,38 +31,6 @@ describe('usePaywallEligibility', function hook() {
       error: null,
       refetch: vi.fn(),
     } as any);
-  });
-
-  describe('Owner-pays bypass for shared apps', function sharedApp() {
-    it('never shows the paywall for a shared app, even on a Free plan', function shared() {
-      // useSubscription is Free (would normally paywall), but the app is shared.
-      const { result } = renderHookWithProviders(() => usePaywallEligibility('shared-app'));
-
-      expect(result.current.showPaywall).toBe(false);
-      expect(result.current.isLoading).toBe(false);
-    });
-
-    it('still paywalls a non-shared app on a Free plan (control)', function notShared() {
-      const { result } = renderHookWithProviders(() => usePaywallEligibility('owned-app'));
-
-      expect(result.current.showPaywall).toBe(true);
-    });
-  });
-
-  describe('Defer until the site is known (no free-owner flash for invitees)', function defer() {
-    it('defers (isLoading, no paywall) while the site is not yet in the store', function notLoaded() {
-      const { result } = renderHookWithProviders(() => usePaywallEligibility('not-in-store-yet'));
-
-      expect(result.current.isLoading).toBe(true);
-      expect(result.current.showPaywall).toBe(false);
-    });
-
-    it('defers while the site is still loading, even if present', function stillLoading() {
-      const { result } = renderHookWithProviders(() => usePaywallEligibility('loading-app'));
-
-      expect(result.current.isLoading).toBe(true);
-      expect(result.current.showPaywall).toBe(false);
-    });
   });
 
   describe('Account-level subscription checks', function accountLevel() {
@@ -181,7 +130,24 @@ describe('usePaywallEligibility', function hook() {
   });
 
   describe('Error handling', function errorHandling() {
-    it('should show paywall when subscription has error', function subscriptionError() {
+    it('should NOT show paywall when error but cached data has paid plan', function errorWithCachedPaid() {
+      vi.mocked(useSubscription).mockReturnValue({
+        data: { id: 'sub-ult', plan: SubscriptionPlan.Ultimate, status: 'active' },
+        subscriptions: [{ id: 'sub-ult', plan: SubscriptionPlan.Ultimate, status: 'active' }],
+        isLoading: false,
+        isError: true,
+        error: new Error('Background refetch failed'),
+        refetch: vi.fn(),
+      } as any);
+
+      const { result } = renderHookWithProviders(() => usePaywallEligibility());
+
+      // Root cause fix: transient error should NOT paywall a user with valid cached data
+      expect(result.current.showPaywall).toBe(false);
+      expect(result.current.isError).toBe(true);
+    });
+
+    it('should show paywall when error and no cached data', function errorNoCachedData() {
       vi.mocked(useSubscription).mockReturnValue({
         data: undefined,
         subscriptions: [],

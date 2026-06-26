@@ -3,23 +3,23 @@ name: budget-service load test
 on:
   pull_request:
     paths:
-      - "budget-service/**"
-      - ".github/workflows/budget-service-load-test.yml"
+      - 'budget-service/**'
+      - '.github/workflows/budget-service-load-test.yml'
   push:
     branches: [main]
     paths:
-      - "budget-service/**"
-      - ".github/workflows/budget-service-load-test.yml"
+      - 'budget-service/**'
+      - '.github/workflows/budget-service-load-test.yml'
   workflow_dispatch:
     inputs:
       scenario:
-        description: "k6 scenario to run"
+        description: 'k6 scenario to run'
         type: choice
         options: [contention, throughput, lifecycle]
         default: contention
       runs:
-        description: "number of runs per branch (median taken)"
-        default: "3"
+        description: 'number of runs per branch (median taken)'
+        default: '3'
 
 concurrency:
   group: budget-load-test-${{ github.head_ref || github.ref }}

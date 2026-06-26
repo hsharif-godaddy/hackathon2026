@@ -1,5 +1,7 @@
 import { existsSync } from 'node:fs';
 
+import apm from 'elastic-apm-node';
+
 import { PublishErrorCode } from '@airo/shared/publish';
 import { DevSupervisorClientFactory } from '../../utils/dev-supervisor-client-factory.js';
 import { createForWorkspace } from '../../workspace/index.js';
@@ -107,6 +109,15 @@ function runAsyncPublish(params: AsyncPublishParams): void {
 
   const BUILD_TIMEOUT_MS = 9 * 60 * 1000;
 
+  // Start a new APM transaction for the background publish work.
+  // The HTTP request transaction is already closed by the time this runs.
+  const asyncTx = apm.startTransaction(`publish.async ${strategy.key}`, 'publish');
+  if (asyncTx) {
+    asyncTx.setLabel('publish.app_id', appId);
+    asyncTx.setLabel('publish.strategy', strategy.key);
+    asyncTx.setLabel('publish.job_id', jobId);
+  }
+
   (async (): Promise<void> => {
     let buildTimer: ReturnType<typeof setTimeout> | undefined;
     try {
@@ -137,7 +148,19 @@ function runAsyncPublish(params: AsyncPublishParams): void {
         }
 
         if (!publishSupervisor) {
+          const durationMs = Date.now() - startedAt;
           publishJobRegistry.update(appId, { phase: 'failed', error: 'Publish supervisor unavailable' }, jobId);
+          contextLogger.error('publish.flow.failure', {
+            appId,
+            error: 'Publish supervisor unavailable',
+            errorType: 'SupervisorUnavailable',
+            durationMs,
+            customerId,
+          });
+          asyncTx?.setLabel('publish.outcome', 'failure');
+          asyncTx?.setLabel('publish.error_type', 'SupervisorUnavailable');
+          asyncTx?.setLabel('publish.duration_ms', durationMs);
+          asyncTx?.end();
           return;
         }
 
@@ -161,11 +184,24 @@ function runAsyncPublish(params: AsyncPublishParams): void {
         clearTimeout(deployTimer);
 
         if (deployResponse.status === 'error') {
+          const durationMs = Date.now() - startedAt;
+          const deployError = deployResponse.error || 'Deploy failed';
           publishJobRegistry.update(appId, {
             phase: 'failed',
-            error: deployResponse.error || 'Deploy failed',
+            error: deployError,
             logs: deployResponse.logs?.map(l => l.message) || null,
           }, jobId);
+          contextLogger.error('publish.flow.failure', {
+            appId,
+            error: deployError,
+            errorType: 'DeployError',
+            durationMs,
+            customerId,
+          });
+          asyncTx?.setLabel('publish.outcome', 'failure');
+          asyncTx?.setLabel('publish.error_type', 'DeployError');
+          asyncTx?.setLabel('publish.duration_ms', durationMs);
+          asyncTx?.end();
           return;
         }
 
@@ -190,7 +226,7 @@ function runAsyncPublish(params: AsyncPublishParams): void {
           logSeoAuditReport(appId, report, contextLogger);
           await captureSeoQuality(appId, report, contextLogger);
         } catch (seoErr) {
-          contextLogger.error('seo.audit.exception', { error: seoErr instanceof Error ? seoErr.message : String(seoErr) });
+          log.error(contextLogger, 'seo.audit.exception', seoErr, {});
         } finally {
           seoAuditInProgress.delete(appId);
         }
@@ -204,20 +240,43 @@ function runAsyncPublish(params: AsyncPublishParams): void {
           });
         });
       }
-      contextLogger.info('route.publish.async.complete', { phase: 'deployed', totalMs: Date.now() - startedAt });
+      const totalMs = Date.now() - startedAt;
+      contextLogger.info('route.publish.async.complete', { phase: 'deployed', totalMs });
+      contextLogger.info('publish.flow.success', {
+        appId,
+        strategy: strategy.key,
+        commitHash: buildResult.commitHash.substring(0, 7),
+        durationMs: totalMs,
+        customerId,
+      });
+      asyncTx?.setLabel('publish.outcome', 'success');
+      asyncTx?.setLabel('publish.duration_ms', totalMs);
+      asyncTx?.end();
     } catch (error) {
       clearTimeout(buildTimer);
       const message = error instanceof Error ? error.message : String(error);
       const logs = error instanceof BuildError && error.details ? [error.details] : null;
       const isTimeout = message.includes('timed out');
+      const totalMs = Date.now() - startedAt;
       publishJobRegistry.update(appId, { phase: 'failed', error: message, logs, buildTimeoutSeconds: isTimeout ? BUILD_TIMEOUT_MS / 1000 : null }, jobId);
-      contextLogger.error('route.publish.async.failed', { error: message, totalMs: Date.now() - startedAt });
+      const errorType = error instanceof Error ? error.constructor.name : typeof error;
+      log.error(contextLogger, 'publish.flow.failure', error, {
+        appId,
+        errorType,
+        durationMs: totalMs,
+        customerId,
+      });
+      asyncTx?.setLabel('publish.outcome', 'failure');
+      asyncTx?.setLabel('publish.error_type', error instanceof Error ? error.constructor.name : 'unknown');
+      asyncTx?.setLabel('publish.duration_ms', totalMs);
+      asyncTx?.end();
     }
   })().catch((err) => {
-    contextLogger.error('route.publish.async.unhandled', {
-      error: err instanceof Error ? err.message : String(err),
-    });
+    log.error(contextLogger, 'route.publish.async.unhandled', err, {});
     publishJobRegistry.update(appId, { phase: 'failed', error: 'Unhandled error during publish' }, jobId);
+    asyncTx?.setLabel('publish.outcome', 'failure');
+    asyncTx?.setLabel('publish.error_type', 'UnhandledError');
+    asyncTx?.end();
   });
 }
 
@@ -284,9 +343,12 @@ router.use('/apps/:id', validateAppOwnership);
  * }
  */
 router.post('/apps/:id/publish', requirePermission('canPublish'), requireSsoConfigured, async (req, res) => {
+  const publishFlowStart = Date.now();
   try {
     const { id } = req.params;
     const { deploymentStrategy } = req.body;
+    const rawAttemptId: unknown = req.headers['x-publish-attempt-id'];
+    const publishAttemptId: string | undefined = typeof rawAttemptId === 'string' && rawAttemptId.length > 0 ? rawAttemptId : undefined;
 
     if (!id) {
       return res.status(400).json({ error: 'App ID is required' });
@@ -295,11 +357,19 @@ router.post('/apps/:id/publish', requirePermission('canPublish'), requireSsoConf
     const contextLogger = log.forApp(id);
     const authReq = req as AuthenticatedRequest;
 
+    contextLogger.info('publish.flow.start', {
+      appId: id,
+      deploymentStrategy,
+      publishAttemptId,
+      customerId: authReq.agentContext?.customerId,
+    });
+
     // Enforce token freshness for AAB before trusting claims (PaaS tokens may be longer-lived)
     if (authReq.agentContext?.product !== 'PaaSNodeJS') {
       const iat = authReq.agentContext?.iat;
       if (iat == null) {
         contextLogger.warn('route.publish.token-missing-iat', {});
+        contextLogger.error('publish.flow.failure', { appId: id, publishAttemptId, customerId: authReq.agentContext?.customerId, error: 'Token missing iat', errorType: 'TokenStale', durationMs: Date.now() - publishFlowStart });
         return res.status(401).json({
           error: 'Token missing iat',
           details: 'Publish requires a token with an issued-at claim. Please retry.',
@@ -309,6 +379,7 @@ router.post('/apps/:id/publish', requirePermission('canPublish'), requireSsoConf
       const tokenAge = Math.floor(Date.now() / 1000) - iat;
       if (tokenAge > 30) {
         contextLogger.warn('route.publish.token-stale', { tokenAge, iat });
+        contextLogger.error('publish.flow.failure', { appId: id, publishAttemptId, customerId: authReq.agentContext?.customerId, error: 'Token too old for publish', errorType: 'TokenStale', durationMs: Date.now() - publishFlowStart });
         return res.status(401).json({
           error: 'Token too old for publish',
           details: 'Publish requires a recently issued token. Please retry.',
@@ -321,6 +392,7 @@ router.post('/apps/:id/publish', requirePermission('canPublish'), requireSsoConf
     const app = appRepository.findById(id);
     if (!app) {
       contextLogger.error('route.publish.app-not-found', {});
+      contextLogger.error('publish.flow.failure', { appId: id, publishAttemptId, customerId: authReq.agentContext?.customerId, error: 'App not found', errorType: 'AppNotFound', durationMs: Date.now() - publishFlowStart });
       return res.status(404).json({ error: 'App not found' });
     }
 
@@ -342,6 +414,7 @@ router.post('/apps/:id/publish', requirePermission('canPublish'), requireSsoConf
 
     if (!workspace) {
       contextLogger.error('route.publish.workspace.unavailable', {});
+      contextLogger.error('publish.flow.failure', { appId: id, publishAttemptId, customerId: authReq.agentContext?.customerId, error: 'Preview container is not available', errorType: 'WorkspaceUnavailable', durationMs: Date.now() - publishFlowStart });
       return res.status(503).json({ error: 'Preview container is not available' });
     }
 
@@ -358,6 +431,11 @@ router.post('/apps/:id/publish', requirePermission('canPublish'), requireSsoConf
     contextLogger.info('route.publish.strategy-selected', {
       strategy: strategy.key,
     });
+    // Label the active APM request transaction with publish metadata so
+    // duration and outcome are queryable on the span without custom dashboards.
+    const syncTx = apm.currentTransaction;
+    syncTx?.setLabel('publish.strategy', strategy.key);
+    syncTx?.setLabel('publish.app_id', id);
 
     // Create context for strategy
     const publishContext: PublishContext = {
@@ -386,6 +464,7 @@ router.post('/apps/:id/publish', requirePermission('canPublish'), requireSsoConf
         job = publishJobRegistry.create(id);
       } catch (error) {
         if (error instanceof ConflictError) {
+          contextLogger.error('publish.flow.failure', { appId: id, publishAttemptId, customerId: authReq.agentContext?.customerId, error: 'Publish already in progress', errorType: 'ConflictError', durationMs: Date.now() - publishFlowStart });
           return res.status(409).json({
             error: 'Publish already in progress',
             jobId: error.activeJob.jobId,
@@ -436,6 +515,14 @@ router.post('/apps/:id/publish', requirePermission('canPublish'), requireSsoConf
       }
     } catch (error) {
       if (error instanceof BuildError) {
+        const durationMs = Date.now() - publishFlowStart;
+        log.error(contextLogger, 'publish.flow.failure', error, {
+          appId: id,
+          publishAttemptId,
+          customerId: authReq.agentContext?.customerId,
+          errorType: 'BuildError',
+          durationMs,
+        });
         return res.status(400).json({
           error: error.message,
           details: error.details,
@@ -443,7 +530,14 @@ router.post('/apps/:id/publish', requirePermission('canPublish'), requireSsoConf
         });
       }
       if (error instanceof PreviewNotRunningError) {
-        // Use 503 for system/connection errors, 400 for known bad states
+        const durationMs = Date.now() - publishFlowStart;
+        log.error(contextLogger, 'publish.flow.failure', error, {
+          appId: id,
+          publishAttemptId,
+          customerId: authReq.agentContext?.customerId,
+          errorType: 'PreviewNotRunningError',
+          durationMs,
+        });
         const statusCode = error.isSystemError ? 503 : 400;
         return res.status(statusCode).json({
           error: error.message,
@@ -452,6 +546,14 @@ router.post('/apps/:id/publish', requirePermission('canPublish'), requireSsoConf
         });
       }
       if (error instanceof MissingStartCommandError) {
+        const durationMs = Date.now() - publishFlowStart;
+        log.error(contextLogger, 'publish.flow.failure', error, {
+          appId: id,
+          publishAttemptId,
+          customerId: authReq.agentContext?.customerId,
+          errorType: 'MissingStartCommandError',
+          durationMs,
+        });
         return res.status(error.statusCode).json({
           error: error.message,
           preflight: error.preflight,
@@ -505,10 +607,19 @@ router.post('/apps/:id/publish', requirePermission('canPublish'), requireSsoConf
         );
 
         if (publishResponse.status === 'error') {
+          const durationMs = Date.now() - publishFlowStart;
           contextLogger.error('route.publish.supervisor.failed', {
             commitHash: fullCommitHash.substring(0, 7),
             error: publishResponse.error,
             healthStatus: publishResponse.healthStatus,
+          });
+          contextLogger.error('publish.flow.failure', {
+            appId: id,
+            publishAttemptId,
+            customerId: authReq.agentContext?.customerId,
+            error: publishResponse.error ?? 'Publish supervisor failed',
+            errorType: 'SupervisorError',
+            durationMs,
           });
           return res.status(500).json({
             error: 'Publish supervisor failed',
@@ -529,9 +640,14 @@ router.post('/apps/:id/publish', requirePermission('canPublish'), requireSsoConf
           healthCheckDuration: publishResult.healthCheckDuration,
         });
       } catch (error) {
-        contextLogger.error('route.publish.supervisor.failed', {
+        const durationMs = Date.now() - publishFlowStart;
+        log.error(contextLogger, 'publish.flow.failure', error, {
+          appId: id,
+          publishAttemptId,
+          customerId: authReq.agentContext?.customerId,
+          errorType: error instanceof Error ? error.constructor.name : typeof error,
           commitHash: fullCommitHash.substring(0, 7),
-          error: error instanceof Error ? error.message : String(error),
+          durationMs,
         });
         return res.status(500).json({
           error: 'Failed to call publish supervisor',
@@ -569,6 +685,19 @@ router.post('/apps/:id/publish', requirePermission('canPublish'), requireSsoConf
       }
     }
 
+    const publishFlowDuration = Date.now() - publishFlowStart;
+    contextLogger.info('publish.flow.success', {
+      appId: id,
+      publishAttemptId,
+      customerId: authReq.agentContext?.customerId,
+      commitHash: fullCommitHash.substring(0, 7),
+      archivePath,
+      strategy: strategy.key,
+      durationMs: publishFlowDuration,
+    });
+    syncTx?.setLabel('publish.outcome', 'success');
+    syncTx?.setLabel('publish.duration_ms', publishFlowDuration);
+
     res.json(response);
 
     // Advisory SEO validation + quality scoring — fire-and-forget; never blocks publish.
@@ -602,10 +731,7 @@ router.post('/apps/:id/publish', requirePermission('canPublish'), requireSsoConf
         seoAuditInProgress.delete(id);
       }
     })().catch((err) => {
-      contextLogger.error('seo.audit.exception', {
-        appId: id,
-        error: err instanceof Error ? err.message : String(err),
-      });
+      log.error(contextLogger, 'seo.audit.exception', err, { appId: id });
     });
 
     // Compliance document status — fire-and-forget after response; never blocks
@@ -625,7 +751,25 @@ router.post('/apps/:id/publish', requirePermission('canPublish'), requireSsoConf
     return;
   } catch (error) {
     const contextLogger = req.params.id ? log.forApp(req.params.id) : log.forAgent('publish-routes');
-    log.error(contextLogger, 'route.publish.error', error as Error, {});
+    const publishFlowDuration = Date.now() - publishFlowStart;
+    const { deploymentStrategy } = req.body;
+    const rawCatchAttemptId: unknown = req.headers['x-publish-attempt-id'];
+    const publishAttemptId: string | undefined = typeof rawCatchAttemptId === 'string' && rawCatchAttemptId.length > 0 ? rawCatchAttemptId : undefined;
+    const authReq = req as AuthenticatedRequest;
+
+    const errorType = error instanceof Error ? error.constructor.name : typeof error;
+    log.error(contextLogger, 'publish.flow.failure', error, {
+      appId: req.params.id,
+      publishAttemptId,
+      customerId: authReq.agentContext?.customerId,
+      deploymentStrategy,
+      errorType,
+      durationMs: publishFlowDuration,
+    });
+    apm.currentTransaction?.setLabel('publish.outcome', 'failure');
+    apm.currentTransaction?.setLabel('publish.error_type', errorType);
+    apm.currentTransaction?.setLabel('publish.duration_ms', publishFlowDuration);
+
     return res.status(500).json({
       error: 'Failed to publish archive',
       details: error instanceof Error ? error.message : String(error),

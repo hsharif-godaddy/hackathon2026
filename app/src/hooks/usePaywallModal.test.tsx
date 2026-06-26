@@ -6,11 +6,15 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook } from '@testing-library/react';
 
+import { shipAnalyticsLog } from '@/lib/logging';
+import { SubscriptionPlan } from '@/types/credits';
 import { usePaywallModal } from './usePaywallModal';
+import { usePublishLimitCheck } from './usePublishLimitCheck';
 
 // Stable mock references to avoid destabilizing useMemo dependencies
 const mockOpenUpgradeModal = vi.fn();
 const mockGetSite = vi.fn(function (): { name?: string; sharedWithMe?: boolean } | null { return { name: 'Test Site' }; });
+const mockConfirmCanPublish = vi.fn();
 
 // Mock dependencies
 vi.mock('@/lib/logging', () => ({
@@ -45,6 +49,21 @@ vi.mock('./usePaywallEligibility', () => ({
 }));
 vi.mock('@/lib/jwt-regeneration', () => ({
   regenerateToken: vi.fn(function () { return Promise.resolve(); }),
+}));
+vi.mock('./usePublishLimitCheck', () => ({
+  usePublishLimitCheck: vi.fn(function () {
+    return {
+      canPublish: true,
+      currentCount: 0,
+      limit: null,
+      plan: undefined,
+      publishedApps: [],
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+      confirmCanPublish: mockConfirmCanPublish,
+    };
+  }),
 }));
 
 describe('usePaywallModal', () => {
@@ -288,6 +307,154 @@ describe('usePaywallModal', () => {
       );
 
       expect(spy).toHaveBeenCalled();
+    });
+  });
+
+  describe('Publish path confirms fresh data before paywalling', () => {
+    // Cached publish-limit state that denies (e.g. cold-load 403→null left the
+    // subscription cache empty). The decision is then re-confirmed against fresh data.
+    const cachedDeny = {
+      canPublish: false,
+      currentCount: 0,
+      limit: 0,
+      plan: undefined,
+      publishedApps: [],
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+      confirmCanPublish: mockConfirmCanPublish,
+    };
+
+    const renderPublish = () =>
+      renderHook(
+        () => usePaywallModal({ appId: 'app-123', source: 'publish' }),
+        { wrapper }
+      );
+
+    it('executes the action without paywall when fresh data confirms a paid plan with capacity', async () => {
+      vi.mocked(usePublishLimitCheck).mockReturnValue(cachedDeny);
+      mockConfirmCanPublish.mockResolvedValue({
+        canPublish: true,
+        hasPaidPlan: true,
+        currentCount: 1,
+        limit: 50,
+        plan: SubscriptionPlan.Ultimate,
+        publishedApps: [],
+        isError: false,
+      });
+
+      const { result } = renderPublish();
+      const action = vi.fn().mockResolvedValue(undefined);
+
+      await act(async () => {
+        await result.current.checkAndShowPaywall(action);
+      });
+
+      expect(mockConfirmCanPublish).toHaveBeenCalledTimes(1);
+      expect(action).toHaveBeenCalledTimes(1);
+      expect(result.current.paywallModal).toBeNull();
+    });
+
+    it('shows the upgrade paywall when fresh data still has no paid plan', async () => {
+      vi.mocked(usePublishLimitCheck).mockReturnValue(cachedDeny);
+      mockConfirmCanPublish.mockResolvedValue({
+        canPublish: false,
+        hasPaidPlan: false,
+        currentCount: 0,
+        limit: 0,
+        plan: undefined,
+        publishedApps: [],
+        isError: false,
+      });
+
+      const { result } = renderPublish();
+      const action = vi.fn().mockResolvedValue(undefined);
+
+      await act(async () => {
+        await result.current.checkAndShowPaywall(action);
+      });
+
+      expect(action).not.toHaveBeenCalled();
+      expect(result.current.paywallModal).not.toBeNull();
+      expect(vi.mocked(shipAnalyticsLog)).toHaveBeenCalledWith(
+        'builder.paywall.shown',
+        expect.objectContaining({ source: 'publish' })
+      );
+    });
+
+    it('fails open (runs the action, no paywall) when the forced refetch errored with no paid signal', async () => {
+      vi.mocked(usePublishLimitCheck).mockReturnValue(cachedDeny);
+      // Cold cache + transient fetch error: no positive paid signal, but the deny
+      // is unconfirmed, so we must not false-paywall a (possibly paid) user.
+      mockConfirmCanPublish.mockResolvedValue({
+        canPublish: false,
+        hasPaidPlan: false,
+        currentCount: 0,
+        limit: 0,
+        plan: undefined,
+        publishedApps: [],
+        isError: true,
+      });
+
+      const { result } = renderPublish();
+      const action = vi.fn().mockResolvedValue(undefined);
+
+      await act(async () => {
+        await result.current.checkAndShowPaywall(action);
+      });
+
+      expect(action).toHaveBeenCalledTimes(1);
+      expect(result.current.paywallModal).toBeNull();
+      expect(vi.mocked(shipAnalyticsLog)).toHaveBeenCalledWith(
+        'builder.paywall.bypassed',
+        expect.objectContaining({ source: 'publish', reason: 'confirm_error' })
+      );
+      expect(vi.mocked(shipAnalyticsLog)).not.toHaveBeenCalledWith(
+        'builder.paywall.shown',
+        expect.anything()
+      );
+    });
+
+    it('shows the publish-limit modal when fresh data confirms a paid plan at the limit', async () => {
+      vi.mocked(usePublishLimitCheck).mockReturnValue(cachedDeny);
+      mockConfirmCanPublish.mockResolvedValue({
+        canPublish: false,
+        hasPaidPlan: true,
+        currentCount: 1,
+        limit: 1,
+        plan: SubscriptionPlan.Starter,
+        publishedApps: [],
+        isError: false,
+      });
+
+      const { result } = renderPublish();
+      const action = vi.fn().mockResolvedValue(undefined);
+
+      await act(async () => {
+        await result.current.checkAndShowPaywall(action);
+      });
+
+      expect(action).not.toHaveBeenCalled();
+      expect(result.current.paywallModal).not.toBeNull();
+      expect(vi.mocked(shipAnalyticsLog)).toHaveBeenCalledWith(
+        'publish.limit.modal.shown',
+        expect.objectContaining({ limit: 1 })
+      );
+    });
+
+    it('does not confirm or run the action while the publish limit is still loading', async () => {
+      vi.mocked(usePublishLimitCheck).mockReturnValue({ ...cachedDeny, isLoading: true });
+
+      const { result } = renderPublish();
+      const action = vi.fn().mockResolvedValue(undefined);
+
+      await act(async () => {
+        await result.current.checkAndShowPaywall(action);
+      });
+
+      expect(mockConfirmCanPublish).not.toHaveBeenCalled();
+      expect(action).not.toHaveBeenCalled();
+      expect(result.current.paywallModal).toBeNull();
     });
   });
 });

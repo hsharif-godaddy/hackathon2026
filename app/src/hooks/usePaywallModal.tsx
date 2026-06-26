@@ -80,32 +80,21 @@ export function usePaywallModal({
   const openUpgradeModal = usePaywallStore((state) => state.openUpgradeModal)
   const { showPaywall, isLoading: isPaywallLoading } = usePaywallEligibility(appId)
   const site = useSiteStore((state) => (appId ? state.getSite(appId) : null))
-
-  // Owner-pays: an app shared with the caller (invited collaborator) never hits
-  // a paywall. Their publish/download permission already comes from FGA
-  // (canPublish/canDownload on the agent token); plan limits and billing belong
-  // to the subscription owner. Without this, the invitee — who has no
-  // subscription of their own — resolves to Free/limit:0 and gets routed into
-  // the UpgradeContainer, which is both wrong (they're not the billing
-  // principal) and currently fatal (the plans/pricing CDS bundle crashes).
   const isSharedApp = Boolean(site?.sharedWithMe)
 
-  // Publish limit check (only applies when source is 'publish'); skipped for
-  // shared apps so the invitee's empty/own subscription never gates publish.
+  // Publish limit check (only applies when source is 'publish', and not for shared apps
+  // where the invitee is not the billing principal)
   const isPublishSource = source === 'publish'
   const {
     canPublish: canPublishWithLimit,
-    currentCount,
-    limit,
-    plan,
-    publishedApps,
     isLoading: isPublishLimitLoading,
+    confirmCanPublish,
   } = usePublishLimitCheck({ currentAppId: appId, enabled: isPublishSource && !isSharedApp })
 
   const handlePurchaseSuccess = useCallback(async () => {
     setShowAiroPlusPaywall(false)
-
     setHasCompletedPurchase(true)
+    shipAnalyticsLog('builder.paywall.purchase_completed', { appId, source })
 
     // Regenerate JWT with fresh permissions after successful purchase if appId provided
     // This ensures the user immediately gets canDownload and canPublish permissions
@@ -138,43 +127,67 @@ export function usePaywallModal({
 
   const checkAndShowPaywall = useCallback(
     async (action: () => Promise<void>) => {
-      // Owner-pays bypass: a collaborator on a shared app is never the billing
-      // principal, so skip the paywall entirely and run the (FGA-gated) action.
+      // Owner-pays: invitees are not the billing principal — skip the paywall.
       if (isSharedApp) {
         await action()
         return
       }
 
-      // For publish source, check publish limits first
       if (isPublishSource && !canPublishWithLimit) {
-        // Free plan or no plan (limit === 0) - show paywall
-        if (limit === 0) {
-          setShowAiroPlusPaywall(true)
-          shipAnalyticsLog('airoplus.paywall.shown', {
-            appId,
-            appName: site?.name,
-            source,
-            plan,
-          })
+        if (isPublishLimitLoading) {
           return
-        } else {
-          // Paid plan at limit - show publish limit modal
+        }
+        // Cached deny may be stale. Re-confirm with fresh data before paywalling.
+        // A thrown refetch error fails open (isError path below); a 404→active:null
+        // still paywalls (legitimate "no subscription" response).
+        const fresh = await confirmCanPublish()
+
+        if (!fresh.canPublish && fresh.limit !== 0) {
+          // Confirmed paid plan but at the app limit - show publish limit modal
           setPublishLimitData({
-            plan,
-            currentCount,
-            limit,
-            publishedApps,
+            plan: fresh.plan,
+            currentCount: fresh.currentCount,
+            limit: fresh.limit,
+            publishedApps: fresh.publishedApps,
           })
           setShowPublishLimitModal(true)
           shipAnalyticsLog('publish.limit.modal.shown', {
             appId,
-            appName: site?.name,
-            plan,
-            currentCount,
-            limit,
+            plan: fresh.plan,
+            currentCount: fresh.currentCount,
+            limit: fresh.limit,
           })
           return
         }
+
+        if (!fresh.hasPaidPlan) {
+          if (fresh.isError) {
+            // Refetch threw — can't confirm user is unpaid. Fail open; server FGA is the backstop.
+            shipAnalyticsLog('builder.paywall.bypassed', {
+              appId,
+              source,
+              reason: 'confirm_error',
+            })
+            await action()
+            return
+          }
+          // Confirmed free / no plan / Airo Plus - paywall
+          setShowAiroPlusPaywall(true)
+          shipAnalyticsLog('builder.paywall.shown', {
+            appId,
+            source,
+            plan: fresh.plan,
+          })
+          return
+        }
+
+        // Fresh data confirms a paid plan with capacity - execute the publish action.
+        shipAnalyticsLog('builder.paywall.bypassed', {
+          appId,
+          source,
+        })
+        await action()
+        return
       }
 
       // Show paywall only if not completed purchase and showPaywall is true
@@ -182,30 +195,29 @@ export function usePaywallModal({
 
       if (shouldShowPaywall) {
         setShowAiroPlusPaywall(true)
-        shipAnalyticsLog('airoplus.paywall.shown', {
+        shipAnalyticsLog('builder.paywall.shown', {
           appId,
-          appName: site?.name,
           source,
         })
         return
       }
 
-      // Execute action if paywall not needed
+      shipAnalyticsLog('builder.paywall.bypassed', {
+        appId,
+        source,
+      })
       await action()
     },
     [
       appId,
       hasCompletedPurchase,
       showPaywall,
-      site?.name,
       source,
       isSharedApp,
       isPublishSource,
+      isPublishLimitLoading,
       canPublishWithLimit,
-      plan,
-      currentCount,
-      limit,
-      publishedApps,
+      confirmCanPublish,
     ]
   )
 
@@ -223,8 +235,7 @@ export function usePaywallModal({
             setPublishLimitData(null)
             shipAnalyticsLog('publish.limit.modal.dismissed', {
               appId,
-              appName: site?.name,
-              plan: publishLimitData.plan,
+                plan: publishLimitData.plan,
             })
           }}
           onUpgrade={() => {
@@ -233,8 +244,7 @@ export function usePaywallModal({
             openUpgradeModal('publish_limit.upgrade_plan', PAYWALL_ITC.UPGRADE)
             shipAnalyticsLog('publish.limit.modal.upgrade_clicked', {
               appId,
-              appName: site?.name,
-              plan: publishLimitData.plan,
+                plan: publishLimitData.plan,
             })
           }}
         />
@@ -249,24 +259,22 @@ export function usePaywallModal({
         itc={itc}
         onErrorClick={async () => {
           setShowAiroPlusPaywall(false)
-          shipAnalyticsLog('airoplus.paywall.error', {
+          shipAnalyticsLog('builder.paywall.error', {
             appId,
-            appName: site?.name,
             source,
           })
         }}
         onClose={() => {
           setShowAiroPlusPaywall(false)
-          shipAnalyticsLog('airoplus.paywall.dismissed', {
+          shipAnalyticsLog('builder.paywall.dismissed', {
             appId,
-            appName: site?.name,
             source,
           })
         }}
         onSuccessClick={handlePurchaseSuccess}
       />
     )
-  }, [showAiroPlusPaywall, showPublishLimitModal, publishLimitData, appId, site?.name, source, itc, handlePurchaseSuccess, openUpgradeModal])
+  }, [showAiroPlusPaywall, showPublishLimitModal, publishLimitData, appId, source, itc, handlePurchaseSuccess, openUpgradeModal])
 
   return {
     checkAndShowPaywall,

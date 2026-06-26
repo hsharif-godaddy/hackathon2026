@@ -13,7 +13,7 @@
     "local": "concurrently \"npm run build:tsc:watch\" \"npm run local:https\" \"next dev --webpack\"",
     "local:https": "tsx watch server.ts",
     "prebuild": "node scripts/generate-cds-deps.js && tsx gasket.ts build",
-    "build": "npm run build:tsc && next build --webpack",
+    "build": "npm run build:tsc && NODE_OPTIONS='--max-old-space-size=4096' next build --webpack",
     "build:tsc": "tsc -p ./tsconfig.server.json",
     "build:tsc:watch": "tsc -p ./tsconfig.server.json --watch",
     "start": "npm run start:https & next start",

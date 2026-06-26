@@ -1,13 +1,30 @@
 import { describe, expect, it } from 'vitest';
 
+import type { SiteInfo } from '@/lib/control-plane/types';
 import { SubscriptionPlan } from '@/types/credits';
 import {
   canPublishWithPlan,
+  evaluatePublishLimit,
   filterPublishedApps,
   getPublishLimit,
   isPublishedApp,
   PLAN_PUBLISH_LIMITS,
 } from './index';
+
+/** Build a minimal published-apps list for limit tests. */
+const mkApps = (ids: string[]): SiteInfo[] =>
+  ids.map(id => ({ id })) as unknown as SiteInfo[];
+
+/** Defaults for evaluatePublishLimit inputs; override per test. */
+const baseInputs = {
+  subscriptionPlan: undefined as SubscriptionPlan | undefined,
+  hadAiroPlus: false,
+  publishedApps: [] as SiteInfo[],
+  publishedCount: 0,
+  currentAppId: undefined as string | undefined,
+  isBypassEnabled: false,
+  isPublishedAppsLoading: false,
+};
 
 describe('publish-limit', () => {
   describe('PLAN_PUBLISH_LIMITS', () => {
@@ -338,6 +355,80 @@ describe('publish-limit', () => {
       it('should handle empty publishedAppIds array', () => {
         expect(canPublishWithPlan(SubscriptionPlan.Starter, 0, 'app-1', [])).toBe(true);
       });
+    });
+  });
+
+  describe('evaluatePublishLimit', () => {
+    it('allows publishing when bypass flag is enabled, regardless of plan', () => {
+      const result = evaluatePublishLimit({ ...baseInputs, isBypassEnabled: true });
+      expect(result.canPublish).toBe(true);
+      expect(result.limit).toBeNull();
+    });
+
+    it('denies (without limit:0) while published apps are still loading', () => {
+      const result = evaluatePublishLimit({
+        ...baseInputs,
+        subscriptionPlan: SubscriptionPlan.Ultimate,
+        isPublishedAppsLoading: true,
+      });
+      expect(result.canPublish).toBe(false);
+      expect(result.limit).toBeNull();
+    });
+
+    it('treats an undefined plan as free (limit:0, paywall)', () => {
+      const result = evaluatePublishLimit({ ...baseInputs, subscriptionPlan: undefined });
+      expect(result.canPublish).toBe(false);
+      expect(result.limit).toBe(0);
+    });
+
+    it('treats Free and None plans as limit:0', () => {
+      expect(evaluatePublishLimit({ ...baseInputs, subscriptionPlan: SubscriptionPlan.Free }).limit).toBe(0);
+      expect(evaluatePublishLimit({ ...baseInputs, subscriptionPlan: SubscriptionPlan.None }).limit).toBe(0);
+    });
+
+    it('allows a paid plan under its limit', () => {
+      const result = evaluatePublishLimit({
+        ...baseInputs,
+        subscriptionPlan: SubscriptionPlan.Ultimate,
+        publishedCount: 3,
+      });
+      expect(result.canPublish).toBe(true);
+      expect(result.limit).toBe(50);
+      expect(result.plan).toBe(SubscriptionPlan.Ultimate);
+    });
+
+    it('denies a paid plan at its limit (limit > 0 → publish-limit modal path)', () => {
+      const result = evaluatePublishLimit({
+        ...baseInputs,
+        subscriptionPlan: SubscriptionPlan.Starter,
+        publishedApps: mkApps(['other-app']),
+        publishedCount: 1,
+      });
+      expect(result.canPublish).toBe(false);
+      expect(result.limit).toBe(1);
+    });
+
+    it('allows re-publishing an already-published app without consuming a slot', () => {
+      const result = evaluatePublishLimit({
+        ...baseInputs,
+        subscriptionPlan: SubscriptionPlan.Starter,
+        publishedApps: mkApps(['app-1']),
+        publishedCount: 1,
+        currentAppId: 'app-1',
+      });
+      expect(result.canPublish).toBe(true);
+    });
+
+    it('maps legacy Airo Plus (Starter + hadAiroPlus) to the AiroPlus limit of 9', () => {
+      const result = evaluatePublishLimit({
+        ...baseInputs,
+        subscriptionPlan: SubscriptionPlan.Starter,
+        hadAiroPlus: true,
+        publishedCount: 5,
+      });
+      expect(result.plan).toBe(SubscriptionPlan.AiroPlus);
+      expect(result.limit).toBe(9);
+      expect(result.canPublish).toBe(true);
     });
   });
 });

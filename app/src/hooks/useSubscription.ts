@@ -11,7 +11,8 @@ import { HttpError } from '@/lib/errors';
 import { appFetch } from '@/lib/gasket-config';
 import type { AiroSubscription } from '@/lib/mgmt-airo';
 
-const QUERY_KEY = ['subscriptions'] as const;
+export const SUBSCRIPTIONS_QUERY_KEY = ['subscriptions'] as const;
+const QUERY_KEY = SUBSCRIPTIONS_QUERY_KEY;
 const STALE_TIME = 5 * 60 * 1000;
 const GC_TIME = 10 * 60 * 1000;
 
