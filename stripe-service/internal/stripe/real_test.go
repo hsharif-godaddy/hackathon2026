@@ -153,8 +153,8 @@ func TestRealClient_CreateClaimableSandbox_TranslatesInput(t *testing.T) {
 	// constants Stripe currently demands; missing or wrong values produce
 	// the 500 api_error this PR fixed. Asserted explicitly so a regression
 	// surfaces here instead of in a live-fire Stripe call.
-	if fc.lastReq.AppChannel != "testing" {
-		t.Errorf("AppChannel: want %q, got %q", "testing", fc.lastReq.AppChannel)
+	if fc.lastReq.AppChannel != "public" {
+		t.Errorf("AppChannel: want %q, got %q", "public", fc.lastReq.AppChannel)
 	}
 	if fc.lastReq.OnboardingLinkDetails == nil {
 		t.Fatalf("OnboardingLinkDetails: want non-nil")

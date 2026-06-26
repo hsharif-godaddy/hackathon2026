@@ -198,12 +198,11 @@ func NewRealClient(innerTest, innerLive stripeAPIClient, pem pemFetcher, decrypt
 func (r *RealClient) CreateClaimableSandbox(ctx context.Context, in CreateSandboxInput) (Sandbox, error) {
 	idempotencyKey := "sandbox-" + in.AppID
 	req := stripeapi.CreateClaimableSandboxRequest{
-		// TODO(stripe-publish): hardcoded to "testing" because com.gdairo.app
-		// isn't published for production yet. "public" requires a published
-		// version; "testing" requires an external testing version configured
-		// in the Stripe Dashboard. Make this env-driven (e.g. STRIPE_APP_CHANNEL)
-		// once the app is approved for live mode so dev can keep using "testing".
-		AppChannel:      "testing",
+		// com.gdairo.app is published for production, so sandboxes install the
+		// public channel. The "testing" channel is restricted (max 25 live-mode
+		// installs) and must not ship live — see
+		// https://docs.stripe.com/sandboxes/claimable-sandboxes#review-and-publish.
+		AppChannel:      "public",
 		EnableMcpAccess: true,
 		OnboardingLinkDetails: &stripeapi.OnboardingLinkDetails{
 			// refresh_url is where Stripe redirects the user when their
