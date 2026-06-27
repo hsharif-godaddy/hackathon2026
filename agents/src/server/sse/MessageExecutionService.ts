@@ -101,6 +101,7 @@ import { AppRepository } from '../../database/repositories/index.js'
 import { enrichWithForcedDesignKit, isDesignSystemVariant } from '../../services/design-system/forced-install.js'
 import { createForWorkspace } from '../../workspace/index.js'
 import { buildAppliedSkillsContextMessage } from '../applied-skills-context.js'
+import { buildWorkflowContextMessage } from '../workflow-context.js'
 
 /** Short timeout for awaiting the classifier on an errored turn — the user is
  *  already seeing a failure, so don't delay terminal events for a slow classifier.
@@ -1187,7 +1188,14 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
 
     const appliedSkillsMessage = await buildAppliedSkillsContextMessage(appId)
 
-    const extraAfterHistory = [todoContextMessage, memoryContextMessage, dynamicDataMessage, appliedSkillsMessage]
+    const workflowContextMessage = agentName === 'deep-build'
+      ? await buildWorkflowContextMessage(appId).catch(err => {
+        logger.warn('sse.execution.workflow_context_failed', { appId, conversationId, ...errorFields(err) })
+        return null
+      })
+      : null
+
+    const extraAfterHistory = [todoContextMessage, memoryContextMessage, dynamicDataMessage, appliedSkillsMessage, workflowContextMessage]
       .filter((m): m is NonNullable<typeof m> => m != null)
       .map(m => ({ role: m.role, content: m.content, ...(m.cachePoint && { cachePoint: m.cachePoint }) }))
 

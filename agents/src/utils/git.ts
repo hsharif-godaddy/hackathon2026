@@ -435,6 +435,21 @@ export class GitUtils {
   }
 
   /**
+   * Restore specific files to their last committed state.
+   * Runs `git checkout HEAD -- <files>`, discarding any working-tree or staged
+   * changes for the listed paths. Used by reconcileBeforeTurnEnd to revert
+   * failed-step owned files before a turn ends so they are not accidentally
+   * swept into a commit by the git-hook-service's greedy `git add .` failsafe.
+   */
+  async checkoutFiles(
+    repoPath: string,
+    files: string[],
+    options: GitCommandOptions = {}
+  ): Promise<GitCommandResult> {
+    return this.executeGitCommand(['checkout', 'HEAD', '--', ...files], repoPath, options);
+  }
+
+  /**
    * Restore the index and working tree to the contents of a specific commit.
    * Runs `git restore --source=<hash> --staged --worktree .` — does not rewrite
    * history or move the branch pointer. Goes through executeGitCommand so
@@ -1377,6 +1392,64 @@ export class GitUtils {
     }
 
     return commitResult;
+  }
+
+  /**
+   * Perform a no-fast-forward merge from a branch into the current branch
+   *
+   * Unlike squashMerge, this preserves individual commits from the feature branch
+   * on the target branch (main), creating a merge commit that retains full history.
+   *
+   * @param repoPath - Path to the git repository
+   * @param branchName - Name of the branch to merge
+   * @param commitMessage - Commit message for the merge commit
+   * @param options - Git command options
+   * @returns GitCommandResult from the merge operation
+   * @throws Error if merge fails
+   */
+  async mergeNoFf(
+    repoPath: string,
+    branchName: string,
+    commitMessage: string,
+    options: GitCommandOptions = {}
+  ): Promise<GitCommandResult> {
+    // Check if the branch has any commits that aren't in the current branch (main)
+    // This prevents creating empty merge commits when the feature branch is identical to main
+    const revListResult = await this.executeGitCommand(
+      ['rev-list', '--count', `HEAD..${branchName}`],
+      repoPath,
+      options
+    );
+
+    if (revListResult.success) {
+      const commitCount = parseInt(revListResult.stdout.trim(), 10);
+      if (commitCount === 0) {
+        // Feature branch has no commits that aren't in main - nothing to merge
+        return {
+          command: `git merge --no-ff ${branchName}`,
+          workingDir: repoPath,
+          success: true,
+          stdout: 'No changes to commit - branch is already merged',
+          stderr: '',
+          exitCode: 0,
+          executionTime: 0,
+          timedOut: false
+        };
+      }
+    }
+
+    // Execute no-ff merge — the -m flag creates the merge commit in one step
+    const mergeResult = await this.executeGitCommand(
+      ['merge', '--no-ff', '-m', commitMessage, branchName],
+      repoPath,
+      options
+    );
+
+    if (!mergeResult.success) {
+      throw new Error(`Failed to no-ff merge branch '${branchName}': ${mergeResult.stderr}`);
+    }
+
+    return mergeResult;
   }
 
   /**

@@ -23,6 +23,7 @@ import type {
 import type { ILogger } from '../logging/types.js'
 import { deriveUsedFreeGrants } from './assessment-executor.js'
 import { withTimeout } from '../utils/promise-utils.js'
+import { reconcileBeforeTurnEnd } from '../workflow/index.js'
 
 type LifecycleLogger = Pick<ILogger, 'info' | 'warn' | 'debug' | 'error'>
 
@@ -344,10 +345,22 @@ export async function runMessageEndHooks(
     budgetServiceEnabled, assessmentOutcome, enableAssessmentOverride,
   )
 
+  let excludeFiles: string[] = []
+  try {
+    excludeFiles = await reconcileBeforeTurnEnd(appId)
+    if (excludeFiles.length > 0) {
+      logger.warn('message_lifecycle.reconcile.partial', { appId, unrevertedFiles: excludeFiles })
+    }
+  } catch (err: unknown) {
+    logger.warn('message_lifecycle.reconcile.error', {
+      appId, error: err instanceof Error ? err.message : String(err),
+    })
+  }
+
   let commitHash: string | null = null
   try {
     commitHash = await gitHookService.handleConnectionEnd(
-      appId, reason, conversationId, sessionKey, userPrompt,
+      appId, reason, conversationId, sessionKey, userPrompt, excludeFiles,
     )
   } catch (err) {
     logger.warn('message_lifecycle.git_hook.end.error', {

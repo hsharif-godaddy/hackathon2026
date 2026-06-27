@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Deep Build — Workflow State System</title>
+  <style>
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --border: #2a2d3a;
+      --text: #e2e4eb;
+      --text-muted: #8b8fa3;
+      --accent: #7c6bf0;
+      --accent-soft: #7c6bf020;
+      --green: #4ade80;
+      --yellow: #facc15;
+      --red: #f87171;
+      --blue: #60a5fa;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      padding: 2rem;
+      max-width: 900px;
+      margin: 0 auto;
+    }
+    h1 { font-size: 2rem; font-weight: 700; margin-bottom: 0.5rem; }
+    h2 { font-size: 1.4rem; font-weight: 600; margin-top: 3rem; margin-bottom: 1rem; color: var(--accent); }
+    h3 { font-size: 1.1rem; font-weight: 600; margin-top: 2rem; margin-bottom: 0.75rem; }
+    p { margin-bottom: 1rem; color: var(--text-muted); }
+    .subtitle { color: var(--text-muted); font-size: 1.1rem; margin-bottom: 2rem; }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+    .card h3 { margin-top: 0; }
+    .badge {
+      display: inline-block;
+      padding: 0.2rem 0.6rem;
+      border-radius: 6px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.02em;
+    }
+    .badge-green { background: #4ade8020; color: var(--green); }
+    .badge-yellow { background: #facc1520; color: var(--yellow); }
+    .badge-blue { background: #60a5fa20; color: var(--blue); }
+    .badge-red { background: #f8717120; color: var(--red); }
+    ul { padding-left: 1.5rem; margin-bottom: 1rem; }
+    li { margin-bottom: 0.5rem; color: var(--text-muted); }
+    li strong { color: var(--text); }
+    code {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      padding: 0.15rem 0.4rem;
+      border-radius: 4px;
+      font-size: 0.85em;
+      font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    }
+    pre {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem 1.25rem;
+      overflow-x: auto;
+      margin-bottom: 1.5rem;
+      font-size: 0.85rem;
+      line-height: 1.5;
+    }
+    pre code { background: none; border: none; padding: 0; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem; }
+    @media (max-width: 640px) { .grid { grid-template-columns: 1fr; } }
+    .flow {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+      margin-bottom: 1.5rem;
+    }
+    .flow-step {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.5rem 1rem;
+      font-size: 0.85rem;
+      font-weight: 500;
+    }
+    .flow-arrow { color: var(--text-muted); font-size: 1.2rem; }
+    .comparison {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+    .comparison > div { padding: 1.25rem; border-radius: 10px; }
+    .comparison .before { background: #f8717110; border: 1px solid #f8717130; }
+    .comparison .after { background: #4ade8010; border: 1px solid #4ade8030; }
+    .comparison h4 { font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.75rem; }
+    .comparison .before h4 { color: var(--red); }
+    .comparison .after h4 { color: var(--green); }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 1.5rem; }
+    th, td { text-align: left; padding: 0.6rem 1rem; border-bottom: 1px solid var(--border); font-size: 0.9rem; }
+    th { color: var(--text-muted); font-weight: 500; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.03em; }
+    td { color: var(--text); }
+    .divider { border: none; border-top: 1px solid var(--border); margin: 3rem 0; }
+  </style>
+</head>
+<body>
+
+  <div style="display: flex; align-items: center; gap: 1.5rem; margin-bottom: 0.5rem;">
+    <svg width="80" height="80" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <!-- Body -->
+      <ellipse cx="60" cy="72" rx="28" ry="22" fill="#7c6bf0" opacity="0.9"/>
+      <!-- Belly -->
+      <ellipse cx="60" cy="76" rx="16" ry="14" fill="#9d8ff7" opacity="0.6"/>
+      <!-- Neck -->
+      <path d="M52 54 Q48 38 55 28 Q60 22 65 28 Q72 38 68 54" fill="#7c6bf0"/>
+      <!-- Head -->
+      <ellipse cx="60" cy="26" rx="14" ry="12" fill="#7c6bf0"/>
+      <!-- Snout -->
+      <ellipse cx="60" cy="32" rx="8" ry="6" fill="#9d8ff7" opacity="0.5"/>
+      <!-- Eyes -->
+      <circle cx="54" cy="24" r="3" fill="#facc15"/>
+      <circle cx="66" cy="24" r="3" fill="#facc15"/>
+      <circle cx="55" cy="23.5" r="1.2" fill="#0f1117"/>
+      <circle cx="67" cy="23.5" r="1.2" fill="#0f1117"/>
+      <!-- Horns -->
+      <path d="M50 16 L47 6 L53 14" fill="#facc15" opacity="0.8"/>
+      <path d="M70 16 L73 6 L67 14" fill="#facc15" opacity="0.8"/>
+      <!-- Wings -->
+      <path d="M32 60 Q18 42 28 35 Q35 30 40 40 Q42 48 38 55 Z" fill="#6356c7" opacity="0.8"/>
+      <path d="M88 60 Q102 42 92 35 Q85 30 80 40 Q78 48 82 55 Z" fill="#6356c7" opacity="0.8"/>
+      <!-- Wing membrane lines -->
+      <path d="M34 56 Q24 44 30 38" stroke="#7c6bf0" stroke-width="0.8" fill="none"/>
+      <path d="M86 56 Q96 44 90 38" stroke="#7c6bf0" stroke-width="0.8" fill="none"/>
+      <!-- Tail -->
+      <path d="M85 78 Q100 82 108 74 Q112 70 108 68 Q104 72 98 74 Q92 76 86 76" fill="#6356c7"/>
+      <!-- Tail spade -->
+      <path d="M106 68 L112 62 L110 70 L104 72 Z" fill="#facc15" opacity="0.7"/>
+      <!-- Legs -->
+      <rect x="46" y="88" width="7" height="12" rx="3" fill="#6356c7"/>
+      <rect x="67" y="88" width="7" height="12" rx="3" fill="#6356c7"/>
+      <!-- Feet -->
+      <ellipse cx="49" cy="101" rx="5" ry="3" fill="#5548a8"/>
+      <ellipse cx="70" cy="101" rx="5" ry="3" fill="#5548a8"/>
+      <!-- Nostrils - tiny smoke puffs -->
+      <circle cx="56" cy="34" r="1.5" fill="#facc15" opacity="0.4"/>
+      <circle cx="64" cy="34" r="1.5" fill="#facc15" opacity="0.4"/>
+      <!-- Small spines down the back -->
+      <path d="M58 15 L60 10 L62 15" fill="#facc15" opacity="0.5"/>
+      <path d="M56 44 L58 40 L60 44" fill="#facc15" opacity="0.4"/>
+      <path d="M60 48 L62 44 L64 48" fill="#facc15" opacity="0.4"/>
+    </svg>
+    <div>
+      <h1>Deep Build Workflow System</h1>
+      <p class="subtitle">A passive, DAG-driven step executor that replaces prose-based state inference for the Deep Build orchestrator.</p>
+    </div>
+  </div>
+
+  <h2>The Problem</h2>
+
+  <p>The Deep Build orchestrator coordinates sub-agents through a multi-phase pipeline: interview, design, plan, build, verify. Previously, the entire workflow was encoded as a prose decision-loop table in the system prompt. Every turn, the LLM had to re-infer "where am I?" from conversation history and artifact existence, then pick the matching action.</p>
+
+  <div class="comparison">
+    <div class="before">
+      <h4>Before</h4>
+      <ul>
+        <li>State inferred from history each turn</li>
+        <li>Gates skipped (model prefers progress)</li>
+        <li>Steps dropped silently</li>
+        <li>Goals forgotten mid-build</li>
+        <li>Bookkeeping competed with real work</li>
+      </ul>
+    </div>
+    <div class="after">
+      <h4>After</h4>
+      <ul>
+        <li>State persisted, injected every turn</li>
+        <li>Gates enforced by the system</li>
+        <li>Next actions computed from a DAG</li>
+        <li>North Star always in context</li>
+        <li>State advances automatically</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2>Core Idea</h2>
+
+  <p>Separate two concerns that the prose table conflated:</p>
+
+  <div class="grid">
+    <div class="card">
+      <h3>Which steps <span class="badge badge-blue">Dynamic</span></h3>
+      <p>Generated per project. A game, admin app, and marketing site get different step plans. This is an LLM judgment call.</p>
+    </div>
+    <div class="card">
+      <h3>Execution discipline <span class="badge badge-green">Deterministic</span></h3>
+      <p>Don't skip steps, enforce gates, verify before completing. Applied to whatever steps the plan declares. This is code.</p>
+    </div>
+  </div>
+
+  <h2>How It Works</h2>
+
+  <h3>1. The agent creates a step plan</h3>
+  <p>After triaging the user's request, the orchestrator calls <code>workflow({ operation: "init" })</code> with a typed step DAG. Each step declares its type, dependencies, owned files, and verification checks.</p>
+
+  <h3>2. State advances passively</h3>
+  <p>The agent does its real work — dispatching builders, asking questions, awaiting results. An <code>afterToolExecution</code> hook observes these actions and advances state automatically:</p>
+
+  <table>
+    <thead>
+      <tr><th>Agent action</th><th>Auto-transition</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>runAgent</code> with <code>inputs.stepId</code></td><td>Step marked <span class="badge badge-blue">in_progress</span></td></tr>
+      <tr><td><code>awaitAgents</code> returns success</td><td>Step verified + marked <span class="badge badge-green">done</span></td></tr>
+      <tr><td><code>askQuestion</code> for a gate</td><td>Step marked <span class="badge badge-yellow">blocked</span></td></tr>
+      <tr><td>User responds (next turn)</td><td>Gate auto-resolved to <span class="badge badge-green">done</span></td></tr>
+      <tr><td><code>awaitAgents</code> returns error</td><td>Step marked <span class="badge badge-red">failed</span></td></tr>
+    </tbody>
+  </table>
+
+  <h3>3. Context injected every turn</h3>
+  <p>The orchestrator always sees its current state via an auto-injected XML context block — no tool call needed to read state:</p>
+
+  <pre><code>&lt;workflow_steps&gt;
+  &lt;step id="interview" status="done" type="auto"&gt;Collect project brief&lt;/step&gt;
+  &lt;step id="design" status="in_progress" type="auto" deps="brief-review"&gt;Create design system&lt;/step&gt;
+  &lt;step id="showcase" status="pending" type="auto" deps="business-details,design"&gt;Build showcase&lt;/step&gt;
+&lt;/workflow_steps&gt;
+
+&lt;next_eligible&gt;showcase&lt;/next_eligible&gt;</code></pre>
+
+  <h2>Key Features</h2>
+
+  <div class="grid">
+    <div class="card">
+      <h3>DAG-based eligibility</h3>
+      <p>Next actions are computed from dependency edges. The model can't jump ahead — only steps with all deps satisfied are eligible.</p>
+    </div>
+    <div class="card">
+      <h3>Hard gate enforcement</h3>
+      <p>Gate steps require <code>askQuestion</code>. The system refuses to advance until the user responds. No more silently skipped approvals.</p>
+    </div>
+    <div class="card">
+      <h3>Verification on complete</h3>
+      <p>When a builder finishes, the system runs checks (file existence, tsc) before marking done. Failed steps are marked with reasons.</p>
+    </div>
+    <div class="card">
+      <h3>North Star persistence</h3>
+      <p>Project goals, audience, and voice are stored in the workflow state and injected every turn. The model can't lose sight of the big picture.</p>
+    </div>
+    <div class="card">
+      <h3>Archetype flexibility</h3>
+      <p>The step plan is generated per project. Different archetypes (marketing site, admin app, game) produce different step sequences.</p>
+    </div>
+    <div class="card">
+      <h3>Explicit skips</h3>
+      <p>When pre-supplied inputs satisfy a step, it's marked <code>skipped</code> with a reason — not silently dropped. Every step is accounted for.</p>
+    </div>
+  </div>
+
+  <h2>Example Flow</h2>
+
+  <div class="flow">
+    <div class="flow-step">Interview</div>
+    <span class="flow-arrow">&rarr;</span>
+    <div class="flow-step">Brief Review <span class="badge badge-yellow">gate</span></div>
+    <span class="flow-arrow">&rarr;</span>
+    <div class="flow-step">Business Details</div>
+    <span class="flow-arrow">&rarr;</span>
+    <div class="flow-step">Design + Showcase</div>
+    <span class="flow-arrow">&rarr;</span>
+    <div class="flow-step">Design Approval <span class="badge badge-yellow">gate</span></div>
+    <span class="flow-arrow">&rarr;</span>
+    <div class="flow-step">Planning</div>
+    <span class="flow-arrow">&rarr;</span>
+    <div class="flow-step">Foundation</div>
+    <span class="flow-arrow">&rarr;</span>
+    <div class="flow-step">Pages (parallel)</div>
+    <span class="flow-arrow">&rarr;</span>
+    <div class="flow-step">Polish</div>
+    <span class="flow-arrow">&rarr;</span>
+    <div class="flow-step">Verify</div>
+  </div>
+
+  <p>Steps connected by arrows depend on each other. Steps at the same level (Design + Showcase, parallel pages) run concurrently. Gates pause for user input.</p>
+
+  <hr class="divider">
+
+  <h2>Architecture (for engineers)</h2>
+
+  <h3>State storage</h3>
+  <p>Workflow state lives in <code>docs/workflow.json</code> in the app's git repository. It's committed alongside code so that a <code>git revert</code> rolls back both the feature and its completion flag atomically.</p>
+
+  <h3>Module map</h3>
+
+  <table>
+    <thead>
+      <tr><th>Module</th><th>Purpose</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>workflow/types.ts</code></td><td>TypeScript types (WorkflowState, WorkflowStep, etc.)</td></tr>
+      <tr><td><code>workflow/workflow-store.ts</code></td><td>Read/write JSON, computeNextActions (DAG), validateDisjoint</td></tr>
+      <tr><td><code>workflow/workflow-transitions.ts</code></td><td>afterToolExecution handler — auto-assign, auto-complete</td></tr>
+      <tr><td><code>workflow/workflow-gate-resolver.ts</code></td><td>Auto-resolve blocked gates at turn start</td></tr>
+      <tr><td><code>workflow/verify-runner.ts</code></td><td>Run verification checks (files_exist, tsc, manual)</td></tr>
+      <tr><td><code>server/workflow-context.ts</code></td><td>Build XML context message, injected after history</td></tr>
+      <tr><td><code>tools/ai-lib-tools/workflow.ts</code></td><td>AI-lib tool (init, skip_step, add_steps, etc.)</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Agent mode persistence</h3>
+  <p>The <code>setAgentMode</code> tool writes <code>app.agent_mode</code> to KV memory. The agent router checks this between session-cache and conversation-agent lookups, ensuring deep-build apps always resolve correctly on reopen.</p>
+
+  <h3>Git integration</h3>
+  <p>Deep-build turns use <code>--no-ff</code> merge instead of squash, preserving per-step commits on main. Each step's <code>ownedFiles</code> field drives file-scoped commits. The existing per-message auto-commit serves as a failsafe only.</p>
+
+  <h3>What the agent explicitly controls</h3>
+  <ul>
+    <li><code>workflow({ operation: "init" })</code> — creating the step plan (requires judgment)</li>
+    <li><code>workflow({ operation: "skip_step" })</code> — deliberate skips with a reason</li>
+    <li><code>workflow({ operation: "add_steps" })</code> — mid-build re-planning</li>
+    <li>Including <code>inputs: { stepId }</code> when dispatching builders</li>
+    <li>Using <code>askQuestion</code> (not prose) for gate steps</li>
+  </ul>
+
+  <h2>Next Steps</h2>
+  <p>The current passive-observation architecture is prototype scaffolding. The planned evolution flips from post-hoc observation to pre-dispatch validation — a centralized workflow authority with a run/attempt model. See <a href="next-steps-authority-model.md">next-steps-authority-model.md</a> for the full roadmap covering:</p>
+  <ul>
+    <li><strong>Phase 1:</strong> Centralized workflow service with pre-dispatch leasing (<code>canAssignStep → assignStep → launch</code>)</li>
+    <li><strong>Phase 2:</strong> Step-aware git (isolated worktrees or baseline+revert)</li>
+    <li><strong>Phase 3:</strong> Gate identity + intent classification</li>
+    <li><strong>Phase 4:</strong> Context optimization for large plans</li>
+  </ul>
+
+</body>
+</html>

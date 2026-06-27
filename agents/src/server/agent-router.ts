@@ -17,6 +17,12 @@ interface AgentRouterDeps {
    * initial agent).
    */
   getPersistedAgentForApp?: (appId: string) => Promise<string | undefined>
+  /**
+   * Durable per-app agent mode override written by tools (e.g. deep-build). Checked
+   * after the session cache but before the persisted-conversation agent so new
+   * conversations on an app with a mode set inherit it automatically.
+   */
+  getAppAgentMode?: (appId: string) => Promise<string | undefined>
 }
 
 export interface AgentStateManager {
@@ -100,6 +106,18 @@ export function createAgentRouter(deps: AgentRouterDeps) {
       if (currentAgent && sessionAppId && sessionAppId !== appId) {
         logger.info('agent_router.app_changed', { sessionId, oldAppId: sessionAppId, newAppId: appId, oldAgent: currentAgent })
         stateManager.clearSession?.(sessionId)
+      }
+    }
+
+    // 2.5 App-level agent mode — durable per-app override (e.g. deep-build).
+    // Checked before conversation-level persistence so new conversations on
+    // an app with a set mode inherit it automatically.
+    if (deps.getAppAgentMode) {
+      const appAgentMode: string | undefined = await deps.getAppAgentMode(appId)
+      if (appAgentMode) {
+        if (session) rehydrateSession(session, appAgentMode, 'agent_router.app_mode_rehydrate_error')
+        logger.info('agent_router.app_mode', { appId, agentId: appAgentMode })
+        return appAgentMode
       }
     }
 

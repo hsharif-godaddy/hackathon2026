@@ -6,6 +6,7 @@ import { allAILibTools } from '../tools/ai-lib-tools/index.js'
 import { logger } from '../logging/index.js'
 import { createAgentTelemetryLogger } from '../utils/agent-logger.js'
 import { getAgentModelWithName } from '../utils/model-selection.js'
+import { handleToolCompletion } from '../workflow/workflow-transitions.js'
 
 function hasInteractiveRunAgent(): (result: unknown) => boolean {
   return (result: unknown): boolean => {
@@ -55,6 +56,18 @@ export async function createDeepBuildAgent(): Promise<AgentConfig> {
       readFile: allAILibTools.readFile,
       str_replace_based_edit_tool: allAILibTools['str_replace_based_edit_tool'],
       skill: allAILibTools.skill,
+      setAgentMode: allAILibTools.setAgentMode,
+      workflow: allAILibTools.workflow,
+    },
+    afterToolExecution: async (toolName: string, args: unknown, result: unknown, error: unknown, context?: unknown): Promise<unknown> => {
+      const appId: string | undefined = (context as Record<string, Record<string, unknown>> | undefined)?.metadata?.appId as string | undefined
+      if (appId) {
+        await handleToolCompletion(appId, toolName, args, result, error).catch((err: unknown) => {
+          const message: string = err instanceof Error ? err.message : String(err)
+          logger.warn('deep_build_agent.after_tool.error', { appId, toolName, error: message })
+        })
+      }
+      return undefined
     },
     stopAfterTools: ['askQuestion'],
     stopWhen: [hasInteractiveRunAgent()],

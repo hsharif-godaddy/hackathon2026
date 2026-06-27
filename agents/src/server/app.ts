@@ -200,6 +200,7 @@ import { resolveSkillToolMetadata } from '../tools/skill-tool-manager.js';
 import { getBackgroundSummarizer } from '../services/summarization/index.js';
 import {
   getConversationLifecycleStore,
+  getKvMemoryStore,
   getMessageStore,
 } from '../memory/adapters/index.js';
 import { workspaceScopeFromAppId } from '../memory/interfaces/scope.js';
@@ -251,6 +252,17 @@ const resolveAgent = createAgentRouter({
   // SSE has no in-memory session, so this is what keeps a conversation in its
   // persisted phase instead of defaulting to `develop` once messages exist.
   getPersistedAgentForApp: (appId) => getPersistedAgentIdForApp(getConversationLifecycleStore(), appId),
+  // Durable per-app agent mode: written by tools (e.g. setAgentMode for deep-build).
+  // New conversations on an app with a mode set inherit it without re-selection.
+  getAppAgentMode: async (appId: string): Promise<string | undefined> => {
+    const memoryStore = getKvMemoryStore()
+    const result = await memoryStore.get(workspaceScopeFromAppId(appId), 'app.agent_mode')
+    if (result.success && result.exists && result.value && typeof result.value === 'object') {
+      const mode: unknown = (result.value as Record<string, unknown>).mode
+      return typeof mode === 'string' ? mode : undefined
+    }
+    return undefined
+  },
 })
 
 function getOrCreateSSEExecutionService(): MessageExecutionService | null {

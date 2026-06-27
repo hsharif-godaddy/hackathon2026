@@ -40,6 +40,7 @@ import RebuildPageSelectorToolRenderer from './RebuildPageSelectorToolRenderer'
 import RunAgentToolRenderer from './RunAgentToolRenderer'
 import SecretsToolRenderer from './SecretsToolRenderer'
 import SeoAuditToolRenderer from './SeoAuditToolRenderer'
+import SetAgentModeToolRenderer from './SetAgentModeToolRenderer'
 import SetProjectNameToolRenderer from './SetProjectNameToolRenderer'
 import SetVentureLogoToolRenderer from './SetVentureLogoToolRenderer'
 import ShowDocToolRenderer from './ShowDocToolRenderer'
@@ -54,6 +55,7 @@ import TodoListToolRenderer from './TodoListToolRenderer'
 import ValidateCodeToolRenderer from './ValidateCodeToolRenderer'
 import VideoGeneratorToolRenderer from './VideoGeneratorToolRenderer'
 import WebsiteRebuildToolRenderer from './WebsiteRebuildToolRenderer'
+import WorkflowToolRenderer from './WorkflowToolRenderer'
 
 /**
  * Tool renderer component props type
@@ -134,6 +136,8 @@ export const toolRendererRegistry = {
   websiteRebuild: WebsiteRebuildToolRenderer,
   rebuildPageSelector: RebuildPageSelectorToolRenderer,
   rebuildBuildPage: RebuildBuildPageToolRenderer,
+  workflow: WorkflowToolRenderer,
+  setAgentMode: SetAgentModeToolRenderer,
   'media-logo__generate_logo': LogoGeneratorToolRenderer,
   'media-logo__edit_logo': LogoGeneratorToolRenderer,
   'media-logo__offer_logo_actions': LogoActionsToolRenderer,

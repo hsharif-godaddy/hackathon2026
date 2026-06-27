@@ -18,6 +18,7 @@ vi.mock('../../utils/git.js', () => ({
     createBranch: vi.fn(),
     switchBranch: vi.fn(),
     squashMerge: vi.fn(),
+    mergeNoFf: vi.fn(),
     getCurrentCommit: vi.fn(),
     getTreeHash: vi.fn(),
     resolveCommitHash: vi.fn(),
@@ -44,6 +45,16 @@ const mockSetup = {
 
 vi.mock('../../workspace/index.js', () => ({
   createForWorkspace: () => ({ tasks: {}, setup: mockSetup }),
+}));
+
+vi.mock('../../memory/adapters/index.js', () => ({
+  getKvMemoryStore: vi.fn().mockReturnValue({
+    get: vi.fn().mockResolvedValue({ success: true, exists: false }),
+  }),
+}));
+
+vi.mock('../../memory/interfaces/scope.js', () => ({
+  workspaceScopeFromAppId: vi.fn().mockReturnValue({ appId: 'test-app-1' }),
 }));
 
 // Import after mocks
@@ -90,6 +101,7 @@ describe('GitHookService', () => {
         createBranch: vi.fn().mockResolvedValue(undefined),
         switchBranch: vi.fn().mockResolvedValue(undefined),
         squashMerge: vi.fn().mockResolvedValue(undefined),
+        mergeNoFf: vi.fn().mockResolvedValue(undefined),
         getCurrentCommit: vi.fn().mockResolvedValue('mock-commit-hash'),
         getCommitHistory: vi.fn().mockResolvedValue([]),
         cleanupOldBranches: vi.fn().mockResolvedValue({ needed: false, deleted: 0, failed: [], gcPerformed: false }),
@@ -188,6 +200,7 @@ describe('GitHookService', () => {
         createBranch: vi.fn().mockResolvedValue(undefined),
         switchBranch: vi.fn().mockResolvedValue(undefined),
         squashMerge: vi.fn().mockResolvedValue(undefined),
+        mergeNoFf: vi.fn().mockResolvedValue(undefined),
         getCurrentCommit: vi.fn().mockResolvedValue('mock-commit-hash'),
         getTreeHash: vi.fn().mockResolvedValue('tree-hash'),
         resolveCommitHash: vi.fn().mockResolvedValue('commit-hash'),
@@ -317,6 +330,7 @@ describe('GitHookService', () => {
         createBranch: vi.fn().mockResolvedValue({ success: true }),
         switchBranch: vi.fn().mockResolvedValue({ success: true }),
         squashMerge: vi.fn().mockResolvedValue({ success: true }),
+        mergeNoFf: vi.fn().mockResolvedValue({ success: true }),
         getCurrentCommit: vi.fn().mockResolvedValue('mock-commit-hash'),
         getCommitHistory: vi.fn().mockResolvedValue([{ hash: 'abc1234' }]),
         cleanupOldBranches: vi.fn().mockResolvedValue({ needed: false, deleted: 0, failed: [], gcPerformed: false }),
@@ -508,6 +522,105 @@ describe('GitHookService', () => {
 
       expect(service.hasActiveBranch(TEST_APP_ID)).toBe(false);
       expect(service.getAppBranch(TEST_APP_ID)).toBeUndefined();
+    });
+  });
+
+  describe('merge mode selection (deep-build no-ff)', () => {
+    function createGitMockForMerge(currentBranch = 'feature-branch') {
+      const mockImpl = {
+        isGitRepository: vi.fn().mockResolvedValue(true),
+        getCurrentBranch: vi.fn().mockResolvedValue(currentBranch),
+        hasUncommittedChanges: vi.fn().mockResolvedValue(false),
+        reset: vi.fn().mockResolvedValue(undefined),
+        addFiles: vi.fn().mockResolvedValue(undefined),
+        commit: vi.fn().mockResolvedValue({ success: true }),
+        createBranch: vi.fn().mockResolvedValue({ success: true }),
+        switchBranch: vi.fn().mockResolvedValue({ success: true }),
+        squashMerge: vi.fn().mockResolvedValue({ success: true }),
+        mergeNoFf: vi.fn().mockResolvedValue({ success: true }),
+        getCurrentCommit: vi.fn().mockResolvedValue('mock-commit-hash'),
+        getCommitHistory: vi.fn().mockResolvedValue([{ hash: 'abc1234' }]),
+        cleanupOldBranches: vi.fn().mockResolvedValue({ needed: false, deleted: 0, failed: [], gcPerformed: false }),
+      };
+      vi.mocked(GitUtils).mockImplementation(function () { return mockImpl as unknown as GitUtils; });
+      return mockImpl;
+    }
+
+    it('uses mergeNoFf when app.agent_mode is deep-build', async () => {
+      const { getKvMemoryStore } = await import('../../memory/adapters/index.js');
+      vi.mocked(getKvMemoryStore).mockReturnValue({
+        get: vi.fn().mockResolvedValue({ success: true, exists: true, value: { mode: 'deep-build' } }),
+      } as any);
+
+      const gitMock = createGitMockForMerge('test-feature');
+      // Return different hashes before/after merge so the service detects the new commit
+      gitMock.getCommitHistory
+        .mockResolvedValueOnce([{ hash: 'before-hash' }])
+        .mockResolvedValueOnce([{ hash: 'after-merge-hash' }]);
+
+      // Ensure AppRepository mock returns the test app
+      const repoInstance = vi.mocked(AppRepository).mock.results.at(-1)?.value as { findById: ReturnType<typeof vi.fn> };
+      if (repoInstance) repoInstance.findById.mockReturnValue(TEST_APP);
+
+      // Manually set up branch tracking (bypass handleMessageStart complexity)
+      (service as any).appBranches.set(TEST_APP_ID, {
+        appId: TEST_APP_ID,
+        branchName: 'test-feature',
+        createdAt: new Date(),
+        userPrompt: 'build homepage',
+      });
+
+      const commitHash: string | null = await service.handleConnectionEnd(TEST_APP_ID, 'complete');
+
+      expect(gitMock.mergeNoFf).toHaveBeenCalledWith(TEST_APP_PATH, 'test-feature', expect.any(String));
+      expect(gitMock.squashMerge).not.toHaveBeenCalled();
+      expect(commitHash).toBe('after-merge-hash');
+    });
+
+    it('uses squashMerge when app.agent_mode is not set', async () => {
+      const { getKvMemoryStore } = await import('../../memory/adapters/index.js');
+      vi.mocked(getKvMemoryStore).mockReturnValue({
+        get: vi.fn().mockResolvedValue({ success: true, exists: false }),
+      } as any);
+
+      const gitMock = createGitMockForMerge('test-feature');
+      const repoInstance = vi.mocked(AppRepository).mock.results.at(-1)?.value as { findById: ReturnType<typeof vi.fn> };
+      if (repoInstance) repoInstance.findById.mockReturnValue(TEST_APP);
+
+      (service as any).appBranches.set(TEST_APP_ID, {
+        appId: TEST_APP_ID,
+        branchName: 'test-feature',
+        createdAt: new Date(),
+        userPrompt: 'fix typo',
+      });
+
+      await service.handleConnectionEnd(TEST_APP_ID, 'complete');
+
+      expect(gitMock.squashMerge).toHaveBeenCalledWith(TEST_APP_PATH, 'test-feature', expect.any(String));
+      expect(gitMock.mergeNoFf).not.toHaveBeenCalled();
+    });
+
+    it('falls back to squash when KV lookup fails', async () => {
+      const { getKvMemoryStore } = await import('../../memory/adapters/index.js');
+      vi.mocked(getKvMemoryStore).mockReturnValue({
+        get: vi.fn().mockRejectedValue(new Error('db error')),
+      } as any);
+
+      const gitMock = createGitMockForMerge('test-feature');
+      const repoInstance = vi.mocked(AppRepository).mock.results.at(-1)?.value as { findById: ReturnType<typeof vi.fn> };
+      if (repoInstance) repoInstance.findById.mockReturnValue(TEST_APP);
+
+      (service as any).appBranches.set(TEST_APP_ID, {
+        appId: TEST_APP_ID,
+        branchName: 'test-feature',
+        createdAt: new Date(),
+        userPrompt: 'build page',
+      });
+
+      await service.handleConnectionEnd(TEST_APP_ID, 'complete');
+
+      expect(gitMock.squashMerge).toHaveBeenCalled();
+      expect(gitMock.mergeNoFf).not.toHaveBeenCalled();
     });
   });
 });

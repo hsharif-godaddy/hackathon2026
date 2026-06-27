@@ -62,7 +62,9 @@ export { showDocAITool } from './show-doc.js';
 export { runAgentAITool, awaitAgentsAITool } from './run-agent.js'
 export { returnToParentAITool } from './return-to-parent.js';
 export { setWizardStepAITool } from './set-wizard-step.js';
+export { setAgentModeAITool } from './set-agent-mode.js';
 export { referenceAITool } from './reference.js';
+export { workflowAITool } from './workflow.js';
 
 // Re-import for registry
 import { textEditorAITool } from './text-editor.js';
@@ -120,7 +122,9 @@ import { showDocAITool } from './show-doc.js';
 import { runAgentAITool, awaitAgentsAITool } from './run-agent.js'
 import { returnToParentAITool } from './return-to-parent.js';
 import { setWizardStepAITool } from './set-wizard-step.js';
+import { setAgentModeAITool } from './set-agent-mode.js';
 import { referenceAITool } from './reference.js';
+import { workflowAITool } from './workflow.js';
 import { screenshotAITool } from './screenshot.js';
 import { crawlPagesAITool } from './crawl-pages.js';
 import { registerPostEditHandler } from './post-edit-handlers.js';
@@ -202,9 +206,11 @@ export const allAILibTools = {
   awaitAgents: awaitAgentsAITool,
   returnToParent: returnToParentAITool,
   setWizardStep: setWizardStepAITool,
+  setAgentMode: setAgentModeAITool,
   screenshot: screenshotAITool,
   crawlPages: crawlPagesAITool,
   reference: referenceAITool,
+  workflow: workflowAITool,
 } satisfies Record<string, Tool>;
 
 /** Valid tool names in {@link allAILibTools}. Use for compile-time-checked tool selection. */

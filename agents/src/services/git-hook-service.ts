@@ -2,6 +2,9 @@ import { AppRepository } from '../database/repositories/AppRepository.js';
 import { createForWorkspace } from '../workspace/index.js';
 import { GitUtils } from '../utils/git.js';
 import { logger } from '../logging/index.js';
+import { getKvMemoryStore } from '../memory/adapters/index.js';
+import { workspaceScopeFromAppId } from '../memory/interfaces/scope.js';
+import type { KvMemoryStore } from '../memory/interfaces/kv-memory-store.js';
 
 /**
  * Tracks active feature branches per app
@@ -91,6 +94,26 @@ export class GitHookService {
       operation,
       error: errorMessage
     });
+  }
+
+  /**
+   * Check the app's agent mode from KV memory to determine merge strategy.
+   * Returns 'no-ff' for deep-build apps, 'squash' for everything else.
+   * Falls back to 'squash' on any error.
+   */
+  private async getAppMergeMode(appId: string): Promise<'squash' | 'no-ff'> {
+    try {
+      const memoryStore: KvMemoryStore = getKvMemoryStore();
+      const result = await memoryStore.get(workspaceScopeFromAppId(appId), 'app.agent_mode');
+      if (result.success && result.exists && result.value && typeof result.value === 'object') {
+        const mode: unknown = (result.value as Record<string, unknown>).mode;
+        if (mode === 'deep-build') return 'no-ff';
+      }
+    } catch (error: unknown) {
+      const message: string = error instanceof Error ? error.message : String(error);
+      logger.warn('git_hook.merge_mode.check_failed', { appId, error: message });
+    }
+    return 'squash';
   }
 
   /**
@@ -266,7 +289,8 @@ export class GitHookService {
     reason: 'complete' | 'error' | 'disconnection',
     conversationId?: string,
     socketId?: string,
-    userPrompt?: string
+    userPrompt?: string,
+    excludeFiles?: string[],
   ): Promise<string | null> {
     try {
       // Get tracked branch info
@@ -337,6 +361,31 @@ export class GitHookService {
 
         try {
           await gitUtils.addFiles(app.path, ['.']);
+          if (excludeFiles && excludeFiles.length > 0) {
+            const stillStaged: string[] = [];
+            for (const file of excludeFiles) {
+              const resetResult = await workspace.tasks.runCommandSync({
+                command: `git reset HEAD -- ${file}`,
+                workingDir: app.path,
+                timeoutSeconds: 5,
+              }).catch(() => null);
+              if (!resetResult || resetResult.exitCode !== 0) {
+                stillStaged.push(file);
+                logger.warn('git_hook.connection_end.exclude_reset_failed', {
+                  appId,
+                  file,
+                  exitCode: resetResult?.exitCode ?? -1,
+                  stderr: resetResult?.stderr ?? 'command failed',
+                });
+              }
+            }
+            if (stillStaged.length > 0) {
+              logger.error('git_hook.connection_end.unverified_files_staged', {
+                appId,
+                files: stillStaged,
+              });
+            }
+          }
           await gitUtils.commit(app.path, commitMessage);
 
           logger.info('git_hook.connection_end.final_commit', {
@@ -358,18 +407,24 @@ export class GitHookService {
         squashMessage = squashMessage.substring(0, 69) + '...';
       }
 
-      // Step 3: Squash merge to main
+      // Step 3: Merge to main (squash by default, no-ff for deep-build apps)
       try {
         await gitUtils.switchBranch(app.path, 'main');
         const mainHeadBefore = await gitUtils.getCommitHistory(app.path, 1);
         const mainHashBefore = mainHeadBefore[0]?.hash ?? null;
 
-        await gitUtils.squashMerge(app.path, currentBranch, squashMessage);
+        const mergeMode: 'squash' | 'no-ff' = await this.getAppMergeMode(appId);
+        if (mergeMode === 'no-ff') {
+          await gitUtils.mergeNoFf(app.path, currentBranch, squashMessage);
+        } else {
+          await gitUtils.squashMerge(app.path, currentBranch, squashMessage);
+        }
 
-        logger.info('git_hook.connection_end.squash_merged', {
+        logger.info('git_hook.connection_end.merged', {
           appId,
           socketId,
           featureBranch: currentBranch,
+          mergeMode,
           squashMessage,
           reason
         });
