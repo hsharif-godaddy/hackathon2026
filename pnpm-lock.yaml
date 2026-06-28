@@ -2024,6 +2024,31 @@ importers:
         specifier: 4.1.0
         version: 4.1.0(@opentelemetry/api@1.9.1)(@types/node@22.19.18)(jsdom@26.1.0(bufferutil@4.1.0))(vite@6.4.3(@types/node@22.19.18)(jiti@2.7.0)(lightningcss@1.32.0)(sass@1.99.0)(terser@5.47.1)(tsx@4.21.0)(yaml@2.9.0))
 
+  tools/llm-proxy:
+    dependencies:
+      '@airo/ai-lib':
+        specifier: workspace:*
+        version: link:../../packages/ai-lib
+      tsx:
+        specifier: 'catalog:'
+        version: 4.21.0
+    devDependencies:
+      '@airo/eslint-config':
+        specifier: workspace:*
+        version: link:../../packages/eslint-config-airo
+      '@types/node':
+        specifier: 'catalog:'
+        version: 22.19.18
+      eslint:
+        specifier: 9.28.0
+        version: 9.28.0(jiti@2.7.0)
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      vitest:
+        specifier: 4.1.0
+        version: 4.1.0(@opentelemetry/api@1.9.1)(@types/node@22.19.18)(jsdom@26.1.0(bufferutil@4.1.0))(vite@6.4.3(@types/node@22.19.18)(jiti@2.7.0)(lightningcss@1.32.0)(sass@1.99.0)(terser@5.47.1)(tsx@4.21.0)(yaml@2.9.0))
+
   ts-bridge:
     dependencies:
       '@airo/agents':

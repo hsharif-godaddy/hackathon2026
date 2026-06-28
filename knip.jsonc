@@ -18,7 +18,8 @@
     "notification-service",
     "design-rag",
     "ts-bridge",
-    "evals/**"
+    "evals/**",
+    "tools/**"
   ],
 
   // Dependencies that are genuinely used but invisible to static analysis

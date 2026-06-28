@@ -16,6 +16,7 @@ packages:
   - 'evals/gosym-probe'
   - 'evals/rebuild-prompts'
   - 'evals/rebuild-media'
+  - 'tools/*'
   - '!app-templates/**'
 
 catalog:

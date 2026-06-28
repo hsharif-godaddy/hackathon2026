@@ -19,6 +19,7 @@ type RunningKeyMap struct {
 	DevSetting key.Binding
 	Settings   key.Binding
 	Prewarm    key.Binding
+	Inject     key.Binding
 	Scroll     key.Binding
 	Top        key.Binding
 	Bottom     key.Binding
@@ -42,6 +43,7 @@ func NewRunningKeyMap() RunningKeyMap {
 		DevSetting: key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "dev settings")),
 		Settings:   key.NewBinding(key.WithKeys("s", "?"), key.WithHelp("s", "settings")),
 		Prewarm:    key.NewBinding(key.WithKeys("w"), key.WithHelp("w", "prewarm")),
+		Inject:     key.NewBinding(key.WithKeys("i"), key.WithHelp("i", "inject fault")),
 		Scroll:     key.NewBinding(key.WithKeys("up", "down"), key.WithHelp("up/dn", "scroll")),
 		Top:        key.NewBinding(key.WithKeys("g"), key.WithHelp("g", "top")),
 		Bottom:     key.NewBinding(key.WithKeys("G"), key.WithHelp("G", "bottom")),
@@ -50,7 +52,7 @@ func NewRunningKeyMap() RunningKeyMap {
 }
 
 func (k RunningKeyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.Tab, k.Mouse, k.DevSetting, k.Settings, k.Prewarm, k.Scroll, k.Search, k.Follow, k.ClearErr, k.Quit}
+	return []key.Binding{k.Tab, k.Mouse, k.DevSetting, k.Settings, k.Prewarm, k.Inject, k.Scroll, k.Search, k.Follow, k.ClearErr, k.Quit}
 }
 
 func (k RunningKeyMap) FullHelp() [][]key.Binding {

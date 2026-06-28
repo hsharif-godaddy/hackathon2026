@@ -94,6 +94,8 @@ func (m Model) View() tea.View {
 			content = m.overlayModal(base, m.renderPrewarmPicker())
 		case m.prewarmRunning || m.prewarmErr != nil:
 			content = m.overlayModal(base, m.renderPrewarming())
+		case m.faultPickerForm != nil:
+			content = m.overlayModal(base, m.renderFaultPicker())
 		default:
 			content = base
 		}
@@ -201,7 +203,7 @@ func (m Model) renderContent() string {
 
 func (m Model) renderCombinedView() string {
 	var rendered []string
-	for i := range m.panes {
+	for _, i := range m.allViewProcessIndexes() {
 		header := paneHeaderStyle.Width(m.width).
 			Render(fmt.Sprintf(" %s ", m.manager.Processes[i].Config.Name))
 		rendered = append(rendered, header+"\n"+m.panes[i].Viewport.View())
@@ -333,6 +335,17 @@ func (m Model) renderStatusLeft() string {
 		parts = append(parts, barKey("[sub: "+m.devSettingsPreset+"]"))
 	}
 
+	// LLM fault indicator: armed state (poll-driven) or the last control error.
+	if m.faultState.armed {
+		parts = append(parts, barText("  \u2502  "))
+		parts = append(parts, lipgloss.NewStyle().Foreground(lipgloss.Color("203")).Background(barBg).Bold(true).
+			Render(fmt.Sprintf("\u26a0 fault: %s \u00d7%d", m.faultState.fault, m.faultState.remaining)))
+	} else if m.faultActionErr != "" {
+		parts = append(parts, barText("  \u2502  "))
+		parts = append(parts, lipgloss.NewStyle().Foreground(statusErrored).Background(barBg).
+			Render("fault ctl: "+m.faultActionErr))
+	}
+
 	return strings.Join(parts, "")
 }
 
@@ -376,6 +389,8 @@ func (m Model) renderStatusRight() string {
 	m.keys.Follow.SetEnabled(onProcessTab)
 	m.keys.NextMatch.SetEnabled(onProcessTab)
 	m.keys.PrevMatch.SetEnabled(onProcessTab)
+	// Fault injection is only meaningful from the LLM Proxy tab.
+	m.keys.Inject.SetEnabled(m.activeTab == m.llmProxyTabIndex())
 
 	barBg := lipgloss.Color("236")
 	barKey := func(s string) string {

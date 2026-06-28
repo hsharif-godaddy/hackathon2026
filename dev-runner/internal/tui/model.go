@@ -220,6 +220,19 @@ type Model struct {
 	prewarmOnHealthy   *prewarm.Selection // non-nil => auto-fire once all healthy
 	prewarmAutoFired   bool
 
+	// LLM fault picker (i key) — arms/disarms @airo/llm-proxy faults via its
+	// loopback control listener. faultState is the last value polled from the
+	// proxy (it can auto-disarm server-side, so the indicator is poll-driven).
+	faultPickerForm  *huh.Form
+	faultPickerFault *string
+	faultPickerCount *string
+	faultActionErr   string
+	faultState       faultStatus
+	// Guards against spawning more than one recurring poll chain. Each chain is
+	// a self-perpetuating 2s tick; without this guard every arm/disarm and
+	// every restart would add another parallel chain.
+	faultPollScheduled bool
+
 	// Inline env form state (huh-based)
 	envForm        *huh.Form
 	envFormBuilder *envFormBuilder
@@ -446,6 +459,8 @@ func buildPreflightRunner(projectRoot string) *preflight.Runner {
 		config.AgentsPortInt(4000): "Agents",
 		4100:                       "Control Plane",
 		8443:                       "App HTTPS",
+		8788:                       "LLM Proxy",
+		8789:                       "LLM Proxy Control",
 	}
 
 	// Shared SSO token cache so KnowB and Design RAG fixers authenticate only once.
@@ -647,6 +662,21 @@ func (m *Model) scheduleHealthCheck(index int, hc *config.HealthCheck) tea.Cmd {
 
 func (m Model) processCount() int {
 	return len(m.manager.Processes)
+}
+
+// allViewProcessIndexes returns the process indexes shown in the "All" tab —
+// every process except the LLM Proxy, whose per-chunk relay log lives only on
+// its own tab. Each excluded process is still reachable via its dedicated tab.
+func (m Model) allViewProcessIndexes() []int {
+	proxy := m.llmProxyProcessIndex()
+	indexes := make([]int, 0, len(m.manager.Processes))
+	for i := range m.manager.Processes {
+		if i == proxy {
+			continue
+		}
+		indexes = append(indexes, i)
+	}
+	return indexes
 }
 
 func (m Model) tabCount() int {

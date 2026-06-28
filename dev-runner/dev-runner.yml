@@ -12,8 +12,16 @@ processes:
       healthyInterval: 60s
       insecure: true
 
+  # OPENAI_BASE_URL / ANTHROPIC_BASE_URL point the agent at the local LLM proxy
+  # (AIROBUILD-2998). This is set on the command (process env) rather than in
+  # agents/.env so it is dev-only: `local:test` / `local:prod` run agents
+  # outside dev-runner and keep talking to the real provider. load-env.cjs loads
+  # .env with override:false, so this process-env value wins. The proxy reads
+  # agents/.env to learn the mode + real upstreams. SKIP_GOCODE_KEY_VALIDATION
+  # avoids load-env.cjs's startup key-check racing the proxy in api-key mode
+  # (s2s mode skips that check regardless).
   - name: Agents
-    command: pnpm run dev
+    command: OPENAI_BASE_URL=http://127.0.0.1:8788/u/openai ANTHROPIC_BASE_URL=http://127.0.0.1:8788/u/anthropic SKIP_GOCODE_KEY_VALIDATION=true pnpm run dev
     dir: agents
     errorPatterns:
       - "FATAL"
@@ -36,6 +44,21 @@ processes:
       - "bind: address already in use"
     healthCheck:
       url: http://localhost:4100/health
+      unhealthyInterval: 10s
+      healthyInterval: 60s
+
+  # Local LLM fault-injection proxy (AIROBUILD-2998). Always in-path between the
+  # agent and the LLM provider; transparent passthrough until a fault is armed
+  # from the TUI (the `i` key). Health is the control listener on :8789.
+  - name: LLM Proxy
+    command: pnpm run llm-proxy
+    dir: .
+    errorPatterns:
+      - "EADDRINUSE"
+      - "Cannot find module"
+      - "Cannot find package"
+    healthCheck:
+      url: http://localhost:8789/health
       unhealthyInterval: 10s
       healthyInterval: 60s
 

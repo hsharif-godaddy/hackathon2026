@@ -12,6 +12,7 @@
     "local:prod": "pnpm --parallel --filter @airo/agents --filter website local:prod",
     "dev:agents": "pnpm --filter @airo/agents dev",
     "dev:app": "pnpm --filter website dev",
+    "llm-proxy": "pnpm --filter @airo/llm-proxy start",
     "storybook": "pnpm --filter @airo-ux/pattern-library storybook",
     "storybook:build": "pnpm --filter @airo-ux/pattern-library storybook:build",
     "build": "turbo run build --filter=@airo/shared --filter=@airo-ux/pattern-library --filter=@airo/ai-common --filter=@airo/ai-grants --filter=@airo/ai-lib --filter=@airo/ai-transport --filter=@airo/ai-skills --filter=@airo/agents --filter=website",
@@ -88,6 +89,9 @@
     ],
     "website/**/*.{ts,tsx,js,jsx}": [
       "pnpm --filter website lint --fix"
+    ],
+    "tools/llm-proxy/**/*.{ts,tsx,js,jsx}": [
+      "pnpm --filter @airo/llm-proxy lint:fix"
     ],
     "*.{md,yml,yaml}": [
       "bash -c 'if [[ \"$0\" != *\"pnpm-lock.yaml\" ]] && [[ \"$0\" != *\"agents/src/skills/\"* ]] && [[ \"$0\" != *\"agents/src/prompts/\"* ]]; then prettier --write \"$0\"; fi'"

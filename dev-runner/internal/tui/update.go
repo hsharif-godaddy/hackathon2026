@@ -284,6 +284,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.phase = PhaseRunning
 			m.manager.StartAll()
 			cmds = append(cmds, m.scheduleHealthChecks())
+			// Start the recurring fault poll only if one isn't already running,
+			// so a restart (this fires again) doesn't add a second chain.
+			if !m.faultPollScheduled {
+				m.faultPollScheduled = true
+				cmds = append(cmds, scheduleFaultPoll())
+			}
 		}
 
 	case healthCheckMsg:
@@ -482,6 +488,28 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		})
 		if cmd != nil {
 			cmds = append(cmds, cmd)
+		}
+
+	case faultActionDoneMsg:
+		if msg.err != nil {
+			m.faultActionErr = msg.err.Error()
+		} else {
+			m.faultActionErr = ""
+		}
+		// One-shot poll (scheduled=false) so the indicator reflects the new arm
+		// state promptly without forking a second recurring chain.
+		cmds = append(cmds, pollFaultStateCmd())
+
+	case faultStatePolledMsg:
+		m.faultState = msg.status
+		// Only the recurring tick re-arms; a one-shot poll must not, or it would
+		// fork a parallel chain. Let the chain lapse when not running.
+		if msg.scheduled {
+			if m.phase == PhaseRunning {
+				cmds = append(cmds, scheduleFaultPoll())
+			} else {
+				m.faultPollScheduled = false
+			}
 		}
 
 	case clickHintMsg:
@@ -757,6 +785,11 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		return m.updateProbeEnvEdit(msg)
 	}
 
+	// Fault picker intercepts all keys while open.
+	if m.faultPickerForm != nil {
+		return m.updateFaultPicker(msg)
+	}
+
 	// Prewarm picker intercepts all keys while open.
 	if m.prewarmPickerForm != nil {
 		return m.updatePrewarmPicker(msg)
@@ -784,7 +817,7 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	if m.activeTab == m.probeTabIndex() && m.probeRunner.GetState() == probe.StateIdle &&
 		!key.Matches(msg, m.keys.Tab) && !key.Matches(msg, m.keys.ShiftTab) &&
 		!key.Matches(msg, m.keys.Mouse) && !key.Matches(msg, m.keys.DevSetting) &&
-		!key.Matches(msg, m.keys.Settings) {
+		!key.Matches(msg, m.keys.Settings) && !key.Matches(msg, m.keys.Inject) {
 		// Esc exits the "View Scenarios" display back to the menu.
 		if m.probeShowingView && msg.String() == "esc" {
 			m.probeShowingView = false
@@ -869,6 +902,10 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	case key.Matches(msg, m.keys.Prewarm):
 		if m.phase == PhaseRunning {
 			return m.openPrewarmPicker()
+		}
+	case key.Matches(msg, m.keys.Inject):
+		if m.phase == PhaseRunning && m.activeTab == m.llmProxyTabIndex() {
+			return m.openFaultPicker()
 		}
 	case key.Matches(msg, m.keys.Follow):
 		pane := m.activePanePtr()
@@ -1043,7 +1080,8 @@ func (m *Model) resizePanes() {
 		// viewport allotment, matching the pre-E2E layout.
 		includeE2E := len(m.e2eRunner.GetLines()) > 0
 		includeProbe := len(m.probeRunner.GetLines()) > 0
-		nPanes := len(m.panes)
+		visible := m.allViewProcessIndexes()
+		nPanes := len(visible)
 		total := nPanes
 		if includeE2E {
 			total++
@@ -1060,8 +1098,11 @@ func (m *Model) resizePanes() {
 			viewportHeight = 1
 		}
 		remainder := contentHeight - (perPane * total)
-		lastProcessPane := nPanes - 1
-		for i := range m.panes {
+		lastProcessPane := -1
+		if nPanes > 0 {
+			lastProcessPane = visible[nPanes-1]
+		}
+		for _, i := range visible {
 			vpH := viewportHeight
 			if !includeE2E && !includeProbe && i == lastProcessPane {
 				vpH += remainder
@@ -1110,8 +1151,8 @@ func (m *Model) resizePanes() {
 func (m *Model) refreshPanes() {
 	switch {
 	case m.activeTab == 0:
-		for i, p := range m.manager.Processes {
-			m.panes[i].UpdateContent(p.GetLines(), false)
+		for _, i := range m.allViewProcessIndexes() {
+			m.panes[i].UpdateContent(m.manager.Processes[i].GetLines(), false)
 		}
 		if len(m.e2eRunner.GetLines()) > 0 {
 			m.e2ePane.UpdateContent(m.e2eRunner.GetLines(), false)

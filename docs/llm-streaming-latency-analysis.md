@@ -19,16 +19,18 @@ The UI receives `tool_start` (shows "Text Editor" spinner) but has no `partialIn
 
 ## Methodology
 
-Ran `debug-proxy.js` between agent and GoCode to measure per-chunk streaming timing. The proxy intercepts HTTP traffic and logs each SSE chunk with delta timing, elapsed time, and parsed event types.
+Ran the `@airo/llm-proxy` tool (formerly the standalone `debug-proxy.js`) between agent and GoCode to measure per-chunk streaming timing. The proxy intercepts HTTP traffic and logs each SSE chunk with delta timing, elapsed time, and parsed event types.
 
-**Setup:**
+**Setup** — run the proxy standalone against a fixed upstream and point the agent at it:
 
 ```
+UPSTREAM_URL=https://caas-gocode-prod.caas-prod.prod.onkatana.net PORT=8888 pnpm run llm-proxy
+
 ANTHROPIC_BASE_URL=http://localhost:8888   # catches LLM chat calls
 OPENAI_BASE_URL=http://localhost:8888      # catches embeddings
 ```
 
-Proxy forwarding to `caas-gocode-prod.caas-prod.prod.onkatana.net`.
+(In the integrated `pnpm run dev` loop the proxy is always in-path via the `/u/<provider>` prefixes; the standalone form above reproduces the original single-upstream capture.)
 
 **Key insight:** In the default local config (with `isS2SAuthEnabled()` routing Claude calls through the Anthropic provider), `OPENAI_BASE_URL` only affects embeddings while `ANTHROPIC_BASE_URL` captures LLM chat calls. In other configurations (e.g., OpenAI-compatible proxy mode), `OPENAI_BASE_URL` may also carry chat traffic. Both env vars are required to capture all traffic in the default setup.
 

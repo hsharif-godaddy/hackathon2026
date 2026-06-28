@@ -1,0 +1,25 @@
+{
+  "name": "@airo/llm-proxy",
+  "version": "0.1.0",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "lint": "eslint src/",
+    "lint:fix": "eslint --fix src/"
+  },
+  "dependencies": {
+    "@airo/ai-lib": "workspace:*",
+    "tsx": "catalog:"
+  },
+  "devDependencies": {
+    "@airo/eslint-config": "workspace:*",
+    "@types/node": "catalog:",
+    "eslint": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

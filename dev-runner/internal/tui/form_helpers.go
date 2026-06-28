@@ -118,7 +118,7 @@ func (m *Model) resizeForms() {
 	for _, f := range []*huh.Form{m.envForm, m.fixSelectorForm, m.cleanPickerForm} {
 		m.applyInlineForm(f)
 	}
-	for _, f := range []*huh.Form{m.devSettingsForm, m.quitConfirmForm, m.settingsForm, m.e2ePickerForm, m.probePickerForm, m.probeCustomRunForm, m.probeEnvEditForm, m.prewarmPickerForm} {
+	for _, f := range []*huh.Form{m.devSettingsForm, m.quitConfirmForm, m.settingsForm, m.e2ePickerForm, m.probePickerForm, m.probeCustomRunForm, m.probeEnvEditForm, m.prewarmPickerForm, m.faultPickerForm} {
 		m.applyModalForm(f)
 	}
 }
@@ -145,7 +145,7 @@ func (m Model) prewarmPickerActive() bool {
 func (m Model) anyModalOpen() bool {
 	return m.settingsForm != nil || m.devSettingsForm != nil || m.quitConfirmForm != nil ||
 		m.e2ePickerActive() || m.probePickerActive() || m.probeCustomRunActive() || m.probeEnvEditActive() ||
-		m.prewarmPickerActive() || m.prewarmRunning || m.prewarmErr != nil
+		m.prewarmPickerActive() || m.prewarmRunning || m.prewarmErr != nil || m.faultPickerActive()
 }
 
 // forwardToActiveForm routes any tea.Msg to the currently-open form's
@@ -180,6 +180,8 @@ func (m *Model) forwardToActiveForm(msg tea.Msg) tea.Cmd {
 		return m.updateProbeEnvEdit(msg)
 	case m.prewarmPickerForm != nil:
 		return m.updatePrewarmPicker(msg)
+	case m.faultPickerForm != nil:
+		return m.updateFaultPicker(msg)
 	}
 	return nil
 }
