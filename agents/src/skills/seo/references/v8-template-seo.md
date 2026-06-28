@@ -26,7 +26,7 @@ Every page MUST set, via `<Helmet>`:
 
 Titles and descriptions MUST be specific to the page. Never copy the home page title onto other pages.
 
-Build absolute canonical, Open Graph, and Twitter URLs explicitly. If the page uses a generated OG image endpoint, use the native `URL` API and `searchParams.set()` instead of string interpolation so values are escaped correctly.
+Build absolute canonical, Open Graph, and Twitter URLs explicitly. `og:image`/`twitter:image` must be an absolute URL to a real image the site serves (e.g. a static file in `public/`) — the v8 template has no dynamic OG-image endpoint, so do not point at `/api/og`.
 
 ```tsx
 import { Helmet } from '@dr.pogodin/react-helmet';
@@ -35,9 +35,7 @@ export default function AboutPage() {
   const title = 'About - Acme Consulting';
   const description = 'Meet the team behind Acme Consulting...';
   const canonicalUrl = 'https://acme.example/about';
-  const ogImage = new URL('/api/og', canonicalUrl);
-  ogImage.searchParams.set('title', title);
-  ogImage.searchParams.set('description', description);
+  const ogImage = 'https://acme.example/og-image.png'; // a real static image (e.g. in public/)
   const jsonLd = {
     '@context': 'https://schema.org',
     '@type': 'AboutPage',
@@ -56,11 +54,11 @@ export default function AboutPage() {
         <link rel="canonical" href={canonicalUrl} />
         <meta property="og:title" content={title} />
         <meta property="og:description" content={description} />
-        <meta property="og:image" content={ogImage.href} />
+        <meta property="og:image" content={ogImage} />
         <meta property="og:url" content={canonicalUrl} />
         <meta property="og:type" content="website" />
         <meta name="twitter:card" content="summary_large_image" />
-        <meta name="twitter:image" content={ogImage.href} />
+        <meta name="twitter:image" content={ogImage} />
         <script type="application/ld+json">{JSON.stringify(jsonLd)}</script>
       </Helmet>
       <section>{/* page content */}</section>

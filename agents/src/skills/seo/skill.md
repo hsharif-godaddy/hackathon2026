@@ -144,13 +144,15 @@ After technical fixes:
 
 ## Notes on URLs
 
-Build absolute canonical, OG, and Twitter URLs explicitly. For generated OG image endpoints, use the native `URL` API with `searchParams.set()` instead of string interpolation — this keeps values correctly escaped for crawlers and social previews.
+Build absolute canonical, OG, and Twitter URLs explicitly — relative paths break for crawlers and social scrapers, which resolve them against their own origin.
+
+`og:image`/`twitter:image` must be an absolute URL to a **real image the site serves** (e.g. a static file in `public/`):
 
 ```tsx
-const ogImage = new URL('/api/og', canonicalUrl);
-ogImage.searchParams.set('title', title);
-ogImage.searchParams.set('description', description);
+const ogImage = `${site}/og-image.png`; // a real image you've added; the v8 template has no dynamic OG endpoint — do not point at /api/og
 ```
+
+Only if the framework genuinely provides a generated OG-image endpoint (e.g. Next.js `@vercel/og`) should you build its URL with the native `URL` API + `searchParams.set()` so query values stay escaped.
 
 ## Environment-Aware robots
 
