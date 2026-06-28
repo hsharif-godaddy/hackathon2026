@@ -8,6 +8,9 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const gasket = (await import('./gasket.ts')).default;
 
 export default gasket.actions.getNextConfig({
+  typescript: {
+    tsconfigPath: './tsconfig.typecheck.json',
+  },
   // AWS SDK clients are huge module graphs (hundreds of files per client).
   // Listing them here tells Next/webpack to require them at runtime instead
   // of bundling, which keeps the server-side compilation memory footprint
