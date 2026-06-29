@@ -1249,6 +1249,10 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
     const contextMessages = [...assembled.beforeHistory, ...assembled.afterHistory]
     const messages = assembled.messages
 
+    for (const removed of assembled.strippedOrphanTools) {
+      logger.warn('sse.history.strip_orphan_tool', { toolCallId: removed.tool_call_id })
+    }
+
     // Create the Langfuse-facing agent-invocation span under the trace context
     // established in execute(). The handle ends on every exit path (success,
     // abort, error), idempotently.

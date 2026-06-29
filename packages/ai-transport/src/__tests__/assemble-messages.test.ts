@@ -1,5 +1,49 @@
 import { describe, it, expect } from 'vitest'
 import { assembleMessages, dropTrailingPrompt } from '../assemble-messages.js'
+import { stripLeadingOrphanTools } from '../strip-orphan-tools.js'
+
+describe('stripLeadingOrphanTools', () => {
+  it('removes leading tool messages and returns them', () => {
+    const messages = [
+      { role: 'tool', content: 'result', tool_call_id: 'tc1' },
+      { role: 'tool', content: 'result2', tool_call_id: 'tc2' },
+      { role: 'assistant', content: 'hello' },
+      { role: 'tool', content: 'later', tool_call_id: 'tc3' },
+    ]
+    const removed = stripLeadingOrphanTools(messages)
+    expect(removed).toHaveLength(2)
+    expect(removed[0]!.tool_call_id).toBe('tc1')
+    expect(removed[1]!.tool_call_id).toBe('tc2')
+    expect(messages).toHaveLength(2)
+    expect(messages[0]!.role).toBe('assistant')
+  })
+
+  it('returns empty array when no leading tool messages', () => {
+    const messages = [
+      { role: 'user', content: 'hi' },
+      { role: 'assistant', content: 'hello' },
+    ]
+    const removed = stripLeadingOrphanTools(messages)
+    expect(removed).toHaveLength(0)
+    expect(messages).toHaveLength(2)
+  })
+
+  it('handles empty array', () => {
+    const messages: Array<{ role: string }> = []
+    const removed = stripLeadingOrphanTools(messages)
+    expect(removed).toHaveLength(0)
+  })
+
+  it('strips all messages when all are tool-role', () => {
+    const messages = [
+      { role: 'tool', content: 'a', tool_call_id: 'x' },
+      { role: 'tool', content: 'b', tool_call_id: 'y' },
+    ]
+    const removed = stripLeadingOrphanTools(messages)
+    expect(removed).toHaveLength(2)
+    expect(messages).toHaveLength(0)
+  })
+})
 
 describe('assembleMessages', () => {
   it('splits context by insertionOrder: before→beforeHistory, after→afterHistory (NOT messages)', () => {
@@ -110,15 +154,27 @@ describe('assembleMessages', () => {
     }))
   })
 
-  it('passes through history messages unchanged', () => {
+  it('strips orphan leading tool messages and returns them', () => {
     const result = assembleMessages({
       contextMessages: [],
       conversationHistory: [
         { role: 'tool', content: 'orphan', tool_calls: undefined },
       ],
     })
-    expect(result.messages).toHaveLength(1)
-    expect(result.messages[0]!.role).toBe('tool')
+    expect(result.strippedOrphanTools).toHaveLength(1)
+    expect(result.messages).toHaveLength(0)
+  })
+
+  it('handles all-tool history (everything stripped)', () => {
+    const result = assembleMessages({
+      contextMessages: [],
+      conversationHistory: [
+        { role: 'tool', content: 'a' },
+        { role: 'tool', content: 'b' },
+      ],
+    })
+    expect(result.strippedOrphanTools).toHaveLength(2)
+    expect(result.messages).toHaveLength(0)
   })
 
   it('handles empty inputs', () => {
@@ -129,6 +185,7 @@ describe('assembleMessages', () => {
     expect(result.beforeHistory).toHaveLength(0)
     expect(result.afterHistory).toHaveLength(0)
     expect(result.messages).toHaveLength(0)
+    expect(result.strippedOrphanTools).toHaveLength(0)
   })
 
   describe('currentPrompt dedup', () => {

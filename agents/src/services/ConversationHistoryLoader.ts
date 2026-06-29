@@ -858,9 +858,6 @@ export class ConversationHistoryLoader {
       }
     }
     
-    // Canonical orphan tool-call/result cleanup for the LLM path (SSE). applyTokenLimit
-    // may leave mismatched pairs when it walks backwards; callers always run this before
-    // sending history to the model (see app.ts loadConversationHistory).
     // Strip out tool calls that don't have corresponding tool results
     // This handles failed tool calls that never got a result saved
     const toolResultIds = new Set<string>();

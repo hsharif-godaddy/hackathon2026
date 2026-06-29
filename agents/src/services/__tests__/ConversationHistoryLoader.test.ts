@@ -404,38 +404,6 @@ describe('ConversationHistoryLoader', () => {
     });
   });
 
-  describe('applyTokenLimit and formatMessagesForAISDK orphan contract', () => {
-    it('leaves token-limit orphans in applyTokenLimit output and strips them in formatMessagesForAISDK', async () => {
-      const messages: LLMMessage[] = [
-        { role: 'user', content: 'x'.repeat(1000) },
-        {
-          role: 'assistant',
-          content: 'Calling tool',
-          tool_calls: [{
-            id: 'call_orphaned',
-            type: 'function',
-            function: { name: 'readFile', arguments: '{}' },
-          }],
-        },
-        {
-          role: 'tool',
-          content: 'file contents',
-          tool_call_id: 'call_orphaned',
-          name: 'readFile',
-        },
-      ];
-
-      const limited = await loader.applyTokenLimit(messages, 12);
-
-      expect(limited.some(msg => msg.role === 'tool')).toBe(true);
-      expect(limited.some(msg => msg.role === 'assistant')).toBe(false);
-
-      const formatted = loader.formatMessagesForAISDK(limited, 'test-app', 'test-agent');
-
-      expect(formatted.filter(msg => msg.role === 'tool')).toHaveLength(0);
-    });
-  });
-
   describe('loadMessagesWithTokenLimitByConversationId', () => {
     it('should load and apply token limit by conversation ID', async () => {
       const messages = [
@@ -663,44 +631,6 @@ describe('ConversationHistoryLoader', () => {
 
       const toolResult = toolResults[0] as any;
       expect(toolResult.content[0].toolCallId).toBe('call_valid');
-    });
-
-    it('should strip orphaned AIToolMessage tool results without matching tool calls', () => {
-      const llmMessages: LLMMessage[] = [
-        {
-          role: 'tool',
-          content: [{
-            type: 'tool-result',
-            toolCallId: 'call_orphaned',
-            toolName: 'readFile',
-            output: { type: 'text', value: 'orphaned result' },
-          }],
-        },
-        {
-          role: 'assistant',
-          content: ' ',
-          tool_calls: [{
-            id: 'call_valid',
-            type: 'function',
-            function: { name: 'writeFile', arguments: '{}' },
-          }],
-        },
-        {
-          role: 'tool',
-          content: [{
-            type: 'tool-result',
-            toolCallId: 'call_valid',
-            toolName: 'writeFile',
-            output: { type: 'text', value: 'ok' },
-          }],
-        },
-      ];
-
-      const result = loader.formatMessagesForAISDK(llmMessages, 'test-app', 'test-agent');
-
-      const toolResults = result.filter(msg => msg.role === 'tool');
-      expect(toolResults).toHaveLength(1);
-      expect((toolResults[0] as any).content[0].toolCallId).toBe('call_valid');
     });
 
     it('should not strip tool results when all tool calls are present', () => {
