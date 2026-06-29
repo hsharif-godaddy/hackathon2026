@@ -8,6 +8,10 @@ import { renderHook, waitFor } from '@testing-library/react';
 
 vi.mock('@/lib/gasket-config', () => ({
   appFetch: vi.fn(),
+  // useSubscription's refetchInterval/retry guards do `error instanceof
+  // AuthDismissedError`; these must be real constructors or the guard throws.
+  AuthDismissedError: class AuthDismissedError extends Error {},
+  AuthSessionExpiredError: class AuthSessionExpiredError extends Error {},
 }));
 vi.mock('@/lib/request-context', () => ({
   logger: {
@@ -239,7 +243,7 @@ describe('useConversionEvent', () => {
 
       // Phase 0: gate read resolves with no subscription -> attributes query never enabled.
       await vi.advanceTimersByTimeAsync(0);
-      expect(mockAppFetch).toHaveBeenCalledWith('/api/subscriptions', expect.anything());
+      expect(mockAppFetch).toHaveBeenCalledWith('/api/subscriptions', expect.anything(), expect.anything());
       expect(mockAppFetch).not.toHaveBeenCalledWith(
         expect.stringContaining('?include=attributes'),
         expect.anything(),
@@ -295,7 +299,7 @@ describe('useConversionEvent', () => {
 
     // Let the gate read resolve.
     await waitFor(() => {
-      expect(mockAppFetch).toHaveBeenCalledWith('/api/subscriptions', expect.anything());
+      expect(mockAppFetch).toHaveBeenCalledWith('/api/subscriptions', expect.anything(), expect.anything());
     });
 
     expect(mockAppFetch).not.toHaveBeenCalledWith(
@@ -311,7 +315,7 @@ describe('useConversionEvent', () => {
     renderHook(() => useConversionEvent(), { wrapper: createWrapper(queryClient) });
 
     await waitFor(() => {
-      expect(mockAppFetch).toHaveBeenCalledWith('/api/subscriptions', expect.anything());
+      expect(mockAppFetch).toHaveBeenCalledWith('/api/subscriptions', expect.anything(), expect.anything());
     });
 
     expect(mockAppFetch).not.toHaveBeenCalledWith(
