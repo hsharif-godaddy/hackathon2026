@@ -3,16 +3,20 @@
 import clsx from 'clsx'
 import { useState } from 'react'
 import Box from '@ux/box'
-import CodeIcon from '@ux/icon/code'
+import ImageIcon from '@ux/icon/image'
+import WebsiteIcon from '@ux/icon/website'
 
+import { type ProjectType } from '@/app/[market]/projects/lib/projectType'
 import { logger } from '@/lib/request-context'
 
 interface AppThumbnailProps {
   siteName: string
   size?: 'xs' | 'sm' | 'md' | 'lg'
+  projectType?: ProjectType
   /**
    * Pre-rendered screenshot URL (resolve with getAppScreenshotUrl). When absent
-   * — or when the image fails to load — a code-icon fallback tile is shown.
+   * — or when the image fails to load — a fallback tile is shown using an icon
+   * derived from the project type.
    * Pass key={screenshotUrl} at the call site so React remounts this component
    * when the URL changes, giving each URL a fresh error state automatically.
    */
@@ -33,7 +37,7 @@ const ICON_SIZE_MAP = {
   lg: 'size-5'
 } as const;
 
-export default function AppThumbnail({ siteName, size, screenshotUrl }: AppThumbnailProps) {
+export default function AppThumbnail({ siteName, size, screenshotUrl, projectType }: AppThumbnailProps) {
   const [hasError, setHasError] = useState(false)
 
   const containerSize = size ? clsx(SIZE_CLASS_MAP[size], 'shrink-0') : 'w-full h-full'
@@ -50,7 +54,9 @@ export default function AppThumbnail({ siteName, size, screenshotUrl }: AppThumb
         inlineAlignChildren="center"
         className={clsx(containerClasses, borderClasses, 'bg-intents-ux-boxLowContrast-backgroundColor')}
       >
-        <CodeIcon className={iconSize} />
+        {projectType === 'logo'
+          ? <ImageIcon data-testid="thumbnail-icon-logo" className={iconSize} />
+          : <WebsiteIcon data-testid="thumbnail-icon-website" className={iconSize} />}
       </Box>
     )
   }

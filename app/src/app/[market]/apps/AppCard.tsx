@@ -29,6 +29,7 @@ import AppThumbnail from '@/app/[market]/apps/AppThumbnail'
 import DeleteProjectConfirmationModal from '@/app/[market]/apps/components/DeleteProjectConfirmationModal'
 import { transferEventProps } from '@/app/[market]/apps/components/transfer-constants'
 import TransferInitiateDialog from '@/app/[market]/apps/components/TransferInitiateDialog'
+import { getProjectType } from '@/app/[market]/projects/lib/projectType'
 import UnpublishConfirmationModal from '@/components/layout/UnpublishConfirmationModal'
 import { SWITCHBOARD_APPBUILDER_APP_DELETE_MODAL } from '@/config/switchboard-flags'
 import { useAppRename } from '@/hooks/useAppRename'
@@ -748,6 +749,7 @@ export default function AppCard({ site, transferAllowed = false }: { site: SiteI
         key={getAppScreenshotUrl(site)}
         siteName={site.name || t('builder_apps_alert_delete_untitled')}
         screenshotUrl={getAppScreenshotUrl(site)}
+        projectType={getProjectType(site)}
       />
     </div>
   )

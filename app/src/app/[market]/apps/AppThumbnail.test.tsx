@@ -35,16 +35,31 @@ describe('AppThumbnail', () => {
   });
 
   describe('renders the fallback tile', () => {
-    it('shows the code-icon fallback when no screenshotUrl is provided', () => {
+    it('shows the website-icon fallback when no screenshotUrl is provided', () => {
       renderWithProviders(<AppThumbnail siteName={mockSiteName} />);
 
       expect(screen.getByTestId('app-thumbnail-fallback')).toBeInTheDocument();
-      expect(
-        screen.queryByAltText(`Screenshot of ${mockSiteName}`)
-      ).not.toBeInTheDocument();
+      expect(screen.getByTestId('thumbnail-icon-website')).toBeInTheDocument();
+      expect(screen.queryByAltText(`Screenshot of ${mockSiteName}`)).not.toBeInTheDocument();
     });
 
-    it('falls back to the code-icon tile when the image fails to load', async () => {
+    it('shows the website-icon fallback for projectType="website"', () => {
+      renderWithProviders(<AppThumbnail siteName={mockSiteName} projectType="website" />);
+
+      expect(screen.getByTestId('app-thumbnail-fallback')).toBeInTheDocument();
+      expect(screen.getByTestId('thumbnail-icon-website')).toBeInTheDocument();
+      expect(screen.queryByTestId('thumbnail-icon-logo')).not.toBeInTheDocument();
+    });
+
+    it('shows the image-icon fallback for projectType="logo"', () => {
+      renderWithProviders(<AppThumbnail siteName={mockSiteName} projectType="logo" />);
+
+      expect(screen.getByTestId('app-thumbnail-fallback')).toBeInTheDocument();
+      expect(screen.getByTestId('thumbnail-icon-logo')).toBeInTheDocument();
+      expect(screen.queryByTestId('thumbnail-icon-website')).not.toBeInTheDocument();
+    });
+
+    it('falls back to the placeholder tile when the image fails to load', async () => {
       const { logger } = await import('@/lib/request-context');
 
       renderWithProviders(
@@ -58,8 +73,6 @@ describe('AppThumbnail', () => {
       expect(
         screen.queryByAltText(`Screenshot of ${mockSiteName}`)
       ).not.toBeInTheDocument();
-      // Abnormal failures are logged so they surface in Loki (404s silent would be nice,
-      // but we have no status code here — log all onError events for observability).
       expect(logger.warn).toHaveBeenCalledWith(
         'app-thumbnail.image.load.failed',
         expect.objectContaining({ siteName: mockSiteName, screenshotUrl: mockUrl }),

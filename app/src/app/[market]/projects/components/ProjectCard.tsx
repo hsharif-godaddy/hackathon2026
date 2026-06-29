@@ -116,6 +116,7 @@ export default function ProjectCard({
   const thumbnailProps = {
     siteName: displayName,
     screenshotUrl,
+    projectType: type,
   }
 
   const publishedUrl = useMemo(() => {

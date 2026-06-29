@@ -1083,7 +1083,7 @@ describe('AppCard', () => {
   });
 
   describe('renders thumbnail', () => {
-    it('should render the code-icon fallback when the site has no screenshots', () => {
+    it('should render the placeholder fallback when the site has no screenshots', () => {
       renderWithProviders(<AppCard site={mockSite} />);
 
       expect(screen.getByTestId('app-thumbnail-fallback')).toBeInTheDocument();
