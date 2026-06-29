@@ -2,14 +2,10 @@
  * Hivemind experiment IDs. Single source of truth for A/B and engagement experiments.
  */
 export const EXPERIMENT_IDS = {
-  /** UPP / pricing: which paid tier is highlighted as recommended (Professional vs Ultimate) */
-  recommendedPlan: 'aab_recommended_plan_uppdcx',
   /** Venture Home logo redirect: enable Brand Book for users entering via Venture Home */
   ventureHomeLogo: 'vh_dashboard_logo_to_airo_builder_redirect',
   /** Initial agent selection: maps cohort → agent profile. Only one agent-config experiment should run at a time. */
   initialAgent: 'airo-build-initial-agent',
-  /** Grants A/A: both cohorts (on/off) use legacy grants for baseline measurement. */
-  grantsHoldout: 'airo-app-builder-grants-holdout',
   /** BMS A/A: assigns homepage new users to BMS for baseline measurement. Both cohorts receive BMS — A/A only. */
   bmsLaunchAA: 'airo-app-builder-bms-launch-aa',
   /** Building tips variant: tests the initial build loading screen (H1 headline + tip cards) as a single packaged experience. */

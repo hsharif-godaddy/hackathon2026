@@ -273,36 +273,12 @@ describe('HigherPlansUpgradeContainer', function higherPlansUpgradeContainerTest
     expect(screen.getByTestId('source')).toHaveTextContent('app-builder-NES');
   });
 
-  describe('recommendedPlan → requestedPlanType (UPP recommended tier)', function recommendedPlanTests() {
-    it('passes professional when recommendedPlan is Professional (treatment off / default path)', function professionalRecommended() {
-      renderWithProviders(
-        <HigherPlansUpgradeContainer
-          onClose={mockOnClose}
-          recommendedPlan={SubscriptionPlan.Professional}
-        />
-      );
+  it('always passes Professional as requestedPlanType', function professionalRecommended() {
+    renderWithProviders(
+      <HigherPlansUpgradeContainer onClose={mockOnClose} />
+    );
 
-      expect(screen.getByTestId('requested-plan-type')).toHaveTextContent(SubscriptionPlan.Professional);
-    });
-
-    it('passes ultimate when recommendedPlan is Ultimate (treatment cohort)', function ultimateRecommended() {
-      renderWithProviders(
-        <HigherPlansUpgradeContainer
-          onClose={mockOnClose}
-          recommendedPlan={SubscriptionPlan.Ultimate}
-        />
-      );
-
-      expect(screen.getByTestId('requested-plan-type')).toHaveTextContent(SubscriptionPlan.Ultimate);
-    });
-
-    it('passes empty requestedPlanType when recommendedPlan is omitted', function noRecommendedPlan() {
-      renderWithProviders(
-        <HigherPlansUpgradeContainer onClose={mockOnClose} />
-      );
-
-      expect(screen.getByTestId('requested-plan-type')).toBeEmptyDOMElement();
-    });
+    expect(screen.getByTestId('requested-plan-type')).toHaveTextContent(SubscriptionPlan.Professional);
   });
 
   it('passes entitlementId when grants are enabled', async function passesEntitlementId() {

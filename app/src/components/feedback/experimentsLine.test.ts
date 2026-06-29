@@ -66,7 +66,6 @@ describe('experimentsLine', function experimentsLineSuite() {
       mockUseGasketData.mockReset();
       mockUseGasketData.mockReturnValue({
         switchboard: {
-          'aab_recommended_plan_uppdcx': { cohortId: 'control' },
           'vh_dashboard_logo_to_airo_builder_redirect': { cohortId: 'control' },
         },
       });
@@ -76,15 +75,14 @@ describe('experimentsLine', function experimentsLineSuite() {
       const { result } = renderHookWithProviders(() => useExperimentsLine());
 
       expect(result.current).toBe(
-        '<https://hivemind.gdcorp.tools/experiments/aab_recommended_plan_uppdcx|aab_recommended_plan_uppdcx>: control\n'
-        + '<https://hivemind.gdcorp.tools/experiments/vh_dashboard_logo_to_airo_builder_redirect|vh_dashboard_logo_to_airo_builder_redirect>: control',
+        '<https://hivemind.gdcorp.tools/experiments/vh_dashboard_logo_to_airo_builder_redirect|vh_dashboard_logo_to_airo_builder_redirect>: control',
       );
     });
 
     it('updates when switchboard reference changes', function updatesOnChange() {
       const { result, rerender } = renderHookWithProviders(() => useExperimentsLine());
 
-      expect(result.current).toContain('aab_recommended_plan_uppdcx');
+      expect(result.current).toContain('vh_dashboard_logo_to_airo_builder_redirect');
 
       mockUseGasketData.mockReturnValue({
         switchboard: {

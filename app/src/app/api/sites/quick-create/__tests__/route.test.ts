@@ -8,12 +8,10 @@ vi.mock('@/lib/request-context', () => ({
 }));
 
 const mockFetchHivemindCohorts = vi.fn().mockResolvedValue(undefined);
-const mockGetGrantsHoldoutCohort = vi.fn().mockReturnValue(undefined);
 const mockGetBmsLaunchAACohort = vi.fn().mockReturnValue(undefined);
 
 vi.mock('@/lib/budget-service-experiment', () => ({
   fetchHivemindCohorts: (...args: unknown[]) => mockFetchHivemindCohorts(...args),
-  getGrantsHoldoutCohort: (...args: unknown[]) => mockGetGrantsHoldoutCohort(...args),
   getBmsLaunchAACohort: (...args: unknown[]) => mockGetBmsLaunchAACohort(...args),
 }));
 
@@ -55,47 +53,13 @@ function makeRequest(body: Record<string, unknown>) {
   });
 }
 
-describe('/api/sites/quick-create grants holdout cohort', () => {
+describe('/api/sites/quick-create BMS experiment cohort', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockCreateSite.mockResolvedValue({
       success: true, siteId: 'app-1', name: 'Test', status: 'active',
       type: 'job', account_id: 'acc-1',
     });
-  });
-
-  it('passes holdout cohort to createSite when user is in holdout', async function holdoutCohort() {
-    mockFetchHivemindCohorts.mockResolvedValue({ 'airo-app-builder-grants-holdout': 'holdout' });
-    mockGetGrantsHoldoutCohort.mockReturnValue('holdout');
-
-    const { POST } = await import('../route');
-    await POST(makeRequest({ initialPrompt: 'test' }));
-
-    expect(mockCreateSite).toHaveBeenCalledWith(
-      expect.objectContaining({ grantsHoldoutCohort: 'holdout' })
-    );
-  });
-
-  it('passes undefined cohort when user is not in holdout experiment', async function noCohort() {
-    mockFetchHivemindCohorts.mockResolvedValue(undefined);
-    mockGetGrantsHoldoutCohort.mockReturnValue(undefined);
-
-    const { POST } = await import('../route');
-    await POST(makeRequest({ initialPrompt: 'test' }));
-
-    expect(mockCreateSite).toHaveBeenCalledWith(
-      expect.objectContaining({ grantsHoldoutCohort: undefined })
-    );
-  });
-
-  it('skips holdout cohort and passes undefined for homepage source', async function homepageSource() {
-    const { POST } = await import('../route');
-    await POST(makeRequest({ initialPrompt: 'test', source: 'homepage' }));
-
-    expect(mockFetchHivemindCohorts).toHaveBeenCalled();
-    expect(mockCreateSite).toHaveBeenCalledWith(
-      expect.objectContaining({ grantsHoldoutCohort: undefined })
-    );
   });
 
   it('passes bmsLaunchAACohort to createSite for homepage source', async function homepageAACohort() {
@@ -120,15 +84,14 @@ describe('/api/sites/quick-create grants holdout cohort', () => {
     );
   });
 
-  it('treats unknown source as non-homepage (falls back to grants holdout path)', async function unknownSource() {
-    mockGetGrantsHoldoutCohort.mockReturnValue('holdout');
+  it('passes undefined bmsLaunchAACohort for unknown source', async function unknownSource() {
     mockGetBmsLaunchAACohort.mockReturnValue('bms');
 
     const { POST } = await import('../route');
     await POST(makeRequest({ initialPrompt: 'test', source: 'forged-value' }));
 
     expect(mockCreateSite).toHaveBeenCalledWith(
-      expect.objectContaining({ grantsHoldoutCohort: 'holdout', bmsLaunchAACohort: undefined })
+      expect.objectContaining({ bmsLaunchAACohort: undefined })
     );
   });
 });

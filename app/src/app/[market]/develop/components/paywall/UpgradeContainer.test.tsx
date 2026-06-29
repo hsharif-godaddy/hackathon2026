@@ -6,11 +6,8 @@ import '@testing-library/jest-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, screen } from '@testing-library/react';
 
-import { EXPERIMENT_IDS } from '@/config/experiments';
-import { useIsInCohort } from '@/hooks/useHivemind';
 import { useSubscription } from '@/hooks/useSubscription';
 import { renderWithProviders } from '@/tests/test-utils';
-import { SubscriptionPlan } from '@/types/credits';
 
 vi.mock('@/hooks/useSwitchboard', () => ({
   useSwitchboard: vi.fn(function () { return false; }),
@@ -28,9 +25,8 @@ vi.mock('@/hooks/useSubscription', () => ({
 }));
 
 vi.mock('./HigherPlansUpgradeContainer', () => ({
-  default: (props: { source?: string; recommendedPlan?: string; onSuccessClick?: () => void }) => (
+  default: (props: { source?: string; onSuccessClick?: () => void }) => (
     <div data-testid="higher-plans-upgrade">
-      <span data-testid="recommended-plan">{props.recommendedPlan ?? ''}</span>
       <span data-testid="higher-plans-source">{props.source ?? ''}</span>
       <button data-testid="success-click-btn" onClick={props.onSuccessClick}>Success</button>
     </div>
@@ -78,10 +74,6 @@ vi.mock('@/utils/focus', () => ({
   resetFocusOnModalClose: vi.fn(),
 }));
 
-vi.mock('@/hooks/useHivemind', () => ({
-  useIsInCohort: vi.fn(function () { return false; }),
-}));
-
 vi.mock('@/utils/instrumentation', () => ({
   logImpressionEvent: vi.fn(function () { return vi.fn(); }),
 }));
@@ -101,7 +93,7 @@ describe('UpgradeContainer', function upgradeContainerTests() {
     usePaywallStore.setState({ paywallLoading: false });
   });
 
-  it('should render HigherPlansUpgradeContainer with Professional plan by default', function renderHigherPlans() {
+  it('should render HigherPlansUpgradeContainer', function renderHigherPlans() {
     const { container } = renderWithProviders(
       <UpgradeContainer
         source="test"
@@ -110,7 +102,6 @@ describe('UpgradeContainer', function upgradeContainerTests() {
     );
 
     expect(container.querySelector('[data-testid="higher-plans-upgrade"]')).toBeInTheDocument();
-    expect(screen.getByTestId('recommended-plan')).toHaveTextContent(SubscriptionPlan.Professional);
   });
 
   it('should pass source prop through to HigherPlansUpgradeContainer', function passProps() {
@@ -122,30 +113,6 @@ describe('UpgradeContainer', function upgradeContainerTests() {
     );
 
     expect(screen.getByTestId('higher-plans-source')).toHaveTextContent('my-source');
-  });
-
-  it('forwards SubscriptionPlan.Ultimate to HigherPlansUpgradeContainer when Hivemind treatment', function cohortTreatmentUltimate() {
-    vi.mocked(useIsInCohort).mockReturnValue(true);
-
-    renderWithProviders(
-      <UpgradeContainer source="test" onClose={vi.fn()} />
-    );
-
-    expect(useIsInCohort).toHaveBeenCalledWith(EXPERIMENT_IDS.recommendedPlan, 'treatment');
-    expect(screen.getByTestId('higher-plans-upgrade')).toBeInTheDocument();
-    expect(screen.getByTestId('recommended-plan')).toHaveTextContent(SubscriptionPlan.Ultimate);
-  });
-
-  it('forwards SubscriptionPlan.Professional to HigherPlansUpgradeContainer when not in treatment (control)', function cohortControlProfessional() {
-    vi.mocked(useIsInCohort).mockReturnValue(false);
-
-    renderWithProviders(
-      <UpgradeContainer source="test" onClose={vi.fn()} />
-    );
-
-    expect(useIsInCohort).toHaveBeenCalledWith(EXPERIMENT_IDS.recommendedPlan, 'treatment');
-    expect(screen.getByTestId('higher-plans-upgrade')).toBeInTheDocument();
-    expect(screen.getByTestId('recommended-plan')).toHaveTextContent(SubscriptionPlan.Professional);
   });
 
   it('logs paywall.upgrade.view on mount via logImpressionEvent and shipAnalyticsLog', function paywallViewOnMount() {

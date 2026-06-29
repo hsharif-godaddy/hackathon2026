@@ -46,8 +46,6 @@ interface HigherPlansUpgradeContainerProps {
   onError?: (error: Error) => void
   source?: string
   itc?: string
-  /** Hivemind-driven recommended plan tier (e.g. 'professional' or 'ultimate') */
-  recommendedPlan?: SubscriptionPlan.Professional | SubscriptionPlan.Ultimate;
 }
 
 const HigherPlansUpgradeContainer = ({
@@ -57,7 +55,6 @@ const HigherPlansUpgradeContainer = ({
   onError,
   source,
   itc,
-  recommendedPlan,
 }: HigherPlansUpgradeContainerProps) => {
   const gasketData = useGasketData()
   const { getUserInfo } = useAuth()
@@ -216,7 +213,7 @@ const HigherPlansUpgradeContainer = ({
         shopperId={shopperId}
         overrideItc={getItcOverride() ?? itc}
         accountId={entitlementId}
-        requestedPlanType={recommendedPlan}
+        requestedPlanType={SubscriptionPlan.Professional}
         locale={gasketData?.intl?.locale || 'en-US'}
         app="airo-builder"
         source="app-builder-NES"

@@ -1,6 +1,6 @@
 import type { NextRequest } from 'next/server';
 
-import { COHORT_OFF, COHORT_ON, EXPERIMENT_IDS, INELIGIBLE_COHORT } from '@/config/experiments';
+import { EXPERIMENT_IDS, INELIGIBLE_COHORT } from '@/config/experiments';
 import { logger } from '@/lib/request-context';
 import gasket from '../../gasket';
 
@@ -71,33 +71,3 @@ export function logBmsLaunchAATriggered(
   });
 }
 
-/**
- * Extract the grants-holdout experiment cohort from a Hivemind cohort map.
- */
-export function getGrantsHoldoutCohort(
-  hivemindCohorts: Record<string, unknown> | undefined,
-): string | undefined {
-  return normalizeHivemindCohort(hivemindCohorts?.[EXPERIMENT_IDS.grantsHoldout]);
-}
-
-/**
- * Whether this user is bucketed in the grants A/A experiment.
- * Both cohorts (on/off) use legacy grants for baseline measurement.
- */
-export function isGrantsHoldoutParticipant(cohort: string | undefined): boolean {
-  if (!cohort) return false;
-  return cohort === COHORT_ON || cohort === COHORT_OFF;
-}
-
-export function logGrantsHoldoutTriggered(
-  cohort: string | undefined,
-  context: { customerId?: string; siteId?: string },
-): void {
-  if (!cohort || EXCLUDED_COHORTS.has(cohort)) return;
-  logger.info('hivemind.experiment.triggered', {
-    experimentId: EXPERIMENT_IDS.grantsHoldout,
-    cohortId: cohort,
-    customerId: context.customerId,
-    siteId: context.siteId,
-  });
-}

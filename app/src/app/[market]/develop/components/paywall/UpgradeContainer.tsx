@@ -2,14 +2,11 @@
 
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 
-import { EXPERIMENT_IDS } from '@/config/experiments'
-import { useIsInCohort } from '@/hooks/useHivemind'
 import { useSubscription } from '@/hooks/useSubscription'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { shipAnalyticsLog } from '@/lib/logging'
 import { isSubscriptionSuspendedForNonPayment } from '@/lib/subscription'
 import { usePaywallStore } from '@/stores/usePaywallStore'
-import { SubscriptionPlan } from '@/types/credits'
 import { resetFocusOnModalClose } from '@/utils/focus'
 import { logImpressionEvent } from '@/utils/instrumentation'
 import DirectToPaidContainer from './DirectToPaidContainer'
@@ -34,8 +31,6 @@ export default React.memo(function UpgradeContainer(props: UpgradeContainerProps
   const setPaywallLoading = usePaywallStore((state) => state.setPaywallLoading)
 
   const suspendedNonPaymentEnabled = useSwitchboard('appbuilder-suspended-nonpayment-banner') ?? false
-  const isInTreatment = useIsInCohort(EXPERIMENT_IDS.recommendedPlan, 'treatment')
-  const recommendedPlan = isInTreatment ? SubscriptionPlan.Ultimate : SubscriptionPlan.Professional;
 
   const [paywallTimedOut, setPaywallTimedOut] = useState(false)
 
@@ -117,7 +112,6 @@ export default React.memo(function UpgradeContainer(props: UpgradeContainerProps
         <HigherPlansUpgradeContainer
           {...props}
           onSuccessClick={handleSuccessClick}
-          recommendedPlan={recommendedPlan}
         />
       )}
     </>

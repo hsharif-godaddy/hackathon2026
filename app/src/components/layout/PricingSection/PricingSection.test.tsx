@@ -7,8 +7,6 @@ import React from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, screen, waitFor, within } from '@testing-library/react'
 
-import { EXPERIMENT_IDS } from '@/config/experiments'
-import { useIsInCohort } from '@/hooks/useHivemind'
 import { mockAuthContext, mockParams, mockRouter, mockSearchParams } from '@/tests/mocks'
 import { renderWithProviders } from '@/tests/test-utils'
 import { SubscriptionPlan } from '@/types/credits'
@@ -188,10 +186,6 @@ vi.mock('@/components/providers/AuthProvider', () => ({
   useAuthContext: () => mockAuthContext(authContextOverrides),
 }))
 
-vi.mock('@/hooks/useHivemind', () => ({
-  useIsInCohort: vi.fn(function () { return false; }),
-}));
-
 const mockUseIsUpgradePolling = vi.fn(function () { return false; })
 vi.mock('@/hooks/useUpgradePurchase', () => ({
   useIsUpgradePolling: () => mockUseIsUpgradePolling(),
@@ -204,7 +198,6 @@ vi.mock('@/app/[market]/develop/components/paywall', () => ({
 describe('PricingSection', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.mocked(useIsInCohort).mockReturnValue(false)
     mockUseIsUpgradePolling.mockReturnValue(false)
     mockInViewValue = false
     sessionStorage.clear()
@@ -274,11 +267,9 @@ describe('PricingSection', () => {
       expect(starterButton).toBeDisabled()
     })
 
-    it('should render Recommended badge on Professional plan (control cohort)', async () => {
-      vi.mocked(useIsInCohort).mockReturnValue(false)
+    it('should render Recommended badge on Professional plan', async () => {
       renderWithProviders(<PricingSection />)
 
-      expect(useIsInCohort).toHaveBeenCalledWith(EXPERIMENT_IDS.recommendedPlan, 'treatment')
       expect(screen.getByText('builder_pricing_recommended')).toBeInTheDocument()
       const professionalCard = screen.getByText('builder_pricing_professional_title').parentElement?.parentElement
       expect(professionalCard).toBeTruthy()
@@ -286,20 +277,6 @@ describe('PricingSection', () => {
       const ultimateCard = screen.getByText('builder_pricing_ultimate_title').parentElement?.parentElement
       expect(ultimateCard).toBeTruthy()
       expect(within(ultimateCard!).queryByText('builder_pricing_recommended')).not.toBeInTheDocument()
-    })
-
-    it('should render Recommended badge on Ultimate plan (treatment cohort)', async () => {
-      vi.mocked(useIsInCohort).mockReturnValue(true)
-      renderWithProviders(<PricingSection />)
-
-      expect(useIsInCohort).toHaveBeenCalledWith(EXPERIMENT_IDS.recommendedPlan, 'treatment')
-      expect(screen.getByText('builder_pricing_recommended')).toBeInTheDocument()
-      const professionalCard = screen.getByText('builder_pricing_professional_title').parentElement?.parentElement
-      expect(professionalCard).toBeTruthy()
-      expect(within(professionalCard!).queryByText('builder_pricing_recommended')).not.toBeInTheDocument()
-      const ultimateCard = screen.getByText('builder_pricing_ultimate_title').parentElement?.parentElement
-      expect(ultimateCard).toBeTruthy()
-      expect(within(ultimateCard!).getByText('builder_pricing_recommended')).toBeInTheDocument()
     })
 
     it('should render PlanPriceDisplay for each paid plan', async () => {

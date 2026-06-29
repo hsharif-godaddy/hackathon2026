@@ -629,7 +629,7 @@ describe('V2ControlPlaneAdapter', () => {
         delete process.env.ALWAYS_NEW_SUBSCRIPTION;
       });
 
-      it('should pass bmsActive: true when flag enabled and user is not in grants holdout', async () => {
+      it('should pass bmsActive: true when flag enabled', async () => {
         mockCheckSwitchboardFlag.mockResolvedValue(true);
 
         mockFetch.mockResolvedValueOnce({
@@ -648,41 +648,14 @@ describe('V2ControlPlaneAdapter', () => {
           headers: mockHeaders,
         });
 
-        // Verify checkSwitchboardFlag was called with correct flag name
         expect(mockCheckSwitchboardFlag).toHaveBeenCalledWith(
           'app-builder-budget-service',
           { headers: mockHeaders }
         );
 
-        // Verify signup was called with bmsActive: true
         const signupCall = mockFetch.mock.calls[0];
         const requestBody = JSON.parse(signupCall[1].body);
         expect(requestBody.bmsActive).toBe(true);
-      });
-
-      it('should pass bmsActive: false when flag enabled but user is in grants holdout', async () => {
-        mockCheckSwitchboardFlag.mockResolvedValue(true);
-
-        mockFetch.mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({
-            statusJobId: MOCK_JOB_ID,
-            subscriptionId: 'new-sub-xyz789'
-          })
-        });
-
-        const mockHeaders = new Headers({ 'x-test': 'value' });
-        await adapter.createSite({
-          accountId: MOCK_ACCOUNT_ID,
-          prompt: MOCK_PROMPT,
-          jwt: MOCK_JWT,
-          headers: mockHeaders,
-          grantsHoldoutCohort: 'on',
-        });
-
-        const signupCall = mockFetch.mock.calls[0];
-        const requestBody = JSON.parse(signupCall[1].body);
-        expect(requestBody.bmsActive).toBe(false);
       });
 
       it('should pass bmsActive: false when headers provided and flag disabled', async () => {

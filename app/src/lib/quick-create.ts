@@ -14,7 +14,7 @@ export interface QuickCreateResponse {
 interface FetchQuickCreateOptions {
   productId?: string
   fqdn?: string
-  /** Entry point source passed to the BFF. Used to gate experiment bucketing (e.g. 'homepage' skips grants holdout). */
+  /** Entry point source passed to the BFF. Used to gate experiment bucketing (e.g. 'homepage' enables BMS A/A). */
   source?: string
 }
 

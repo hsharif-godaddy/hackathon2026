@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { fetchHivemindCohorts, getBmsLaunchAACohort, getGrantsHoldoutCohort } from '@/lib/budget-service-experiment';
+import { fetchHivemindCohorts, getBmsLaunchAACohort } from '@/lib/budget-service-experiment';
 import { getControlPlaneAdapter } from '@/lib/control-plane';
 import { CreateSiteParams } from '@/lib/control-plane/types';
 import { CORS_ROUTES, createCorsOptionsHandler } from '@/lib/cors';
@@ -110,7 +110,6 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
     if (source && !validSource) {
       logger.warn('sites.quick-create.unknown-source', { source, accountId: account_id });
     }
-    const isHomepage = validSource === 'homepage';
 
     const createSiteParams: CreateSiteParams = {
       accountId: account_id,
@@ -119,8 +118,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       productId,
       marketId,
       headers: request.headers,
-      grantsHoldoutCohort: isHomepage ? undefined : getGrantsHoldoutCohort(hivemindCohorts),
-      bmsLaunchAACohort: isHomepage ? getBmsLaunchAACohort(hivemindCohorts) : undefined,
+      bmsLaunchAACohort: validSource === 'homepage' ? getBmsLaunchAACohort(hivemindCohorts) : undefined,
       ...(validItc && { itc: validItc }),
       ...(validDatacenter && { datacenter: validDatacenter }),
       ...(validFqdn && { fqdn: validFqdn }),
@@ -134,7 +132,6 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
     logger.info('sites.quick-create.success', {
       appId: result.siteId,
       type: result.type,
-      grantsHoldoutCohort: createSiteParams.grantsHoldoutCohort,
       bmsLaunchAACohort: createSiteParams.bmsLaunchAACohort,
     });
 

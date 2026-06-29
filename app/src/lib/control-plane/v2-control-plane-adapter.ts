@@ -1,4 +1,4 @@
-import { isGrantsHoldoutParticipant, logBmsLaunchAATriggered, logGrantsHoldoutTriggered } from '@/lib/budget-service-experiment';
+import { logBmsLaunchAATriggered } from '@/lib/budget-service-experiment';
 import { AIRO_OWNER_PRODUCTS, AIRO_PRODUCT_IDS, AiroHttpError, AiroMgmtClient, extractKatanaVersion, getOwnerProductFromProductId } from '@/lib/mgmt-airo';
 import type { AiroApp } from '@/lib/mgmt-airo/types';
 import { logger } from '@/lib/request-context';
@@ -293,14 +293,9 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
         }
       }
 
-      const inHoldout = isGrantsHoldoutParticipant(params.grantsHoldoutCohort);
-      if (inHoldout) {
-        logGrantsHoldoutTriggered(params.grantsHoldoutCohort, { customerId: params.accountId });
-      }
       if (isBmsEnabled && params.bmsLaunchAACohort) {
         logBmsLaunchAATriggered(params.bmsLaunchAACohort, { customerId: params.accountId });
       }
-      const bmsActive = isBmsEnabled && !inHoldout;
       const response = await client.signup({
         datacenter: resolvedDatacenter,
         isTrial: true,
@@ -315,14 +310,14 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
             ...(params.fqdn && { fqdn: params.fqdn })
           }
         }],
-        bmsActive,
+        bmsActive: isBmsEnabled,
         ...(params.itc && { itc: params.itc }),
         ...(params.fqdn && { fqdn: params.fqdn }),
       }, katanaVersion);
 
       logger.info('v2-control-plane.create-site.signup.success', {
         jobId: response.statusJobId,
-        bmsActive,
+        bmsActive: isBmsEnabled,
         fqdn: !!params.fqdn,
       }, {
         tags: ['security']

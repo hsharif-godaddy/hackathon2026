@@ -87,7 +87,6 @@ vi.mock('@/hooks/useTranslations', () => ({
 const mockUseGasketData = vi.hoisted(() =>
   vi.fn(function () { return {
     switchboard: {
-      'aab_recommended_plan_uppdcx': { cohortId: 'control' },
       'vh_dashboard_logo_to_airo_builder_redirect': { cohortId: 'control' },
     },
   }; }),
@@ -226,7 +225,6 @@ const defaultProps = {
 };
 
 const EXPECTED_EXPERIMENTS_LINE_DEFAULT = buildExperimentsLineFromSwitchboard({
-  [EXPERIMENT_IDS.recommendedPlan]: { cohortId: 'control' },
   [EXPERIMENT_IDS.ventureHomeLogo]: { cohortId: 'control' },
 });
 
@@ -264,7 +262,6 @@ describe('Feedback', function feedbackTests() {
     vi.mocked(storeToS3).mockResolvedValue({ ok: true, status: 200 });
     mockUseGasketData.mockReturnValue({
       switchboard: {
-        [EXPERIMENT_IDS.recommendedPlan]: { cohortId: 'control' },
         [EXPERIMENT_IDS.ventureHomeLogo]: { cohortId: 'control' },
       },
     });

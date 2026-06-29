@@ -19,8 +19,6 @@ import PageSection from '@/components/layout/PageSection'
 import PlanPriceDisplay from '@/components/layout/PricingSection/PlanPriceDisplay'
 import { useAuthContext } from '@/components/providers/AuthProvider'
 import { InfoTooltip } from '@/components/ui/InfoTooltip'
-import { EXPERIMENT_IDS } from '@/config/experiments'
-import { useIsInCohort } from '@/hooks/useHivemind'
 import { usePricingOffers } from '@/hooks/usePricingOffers'
 import { useSsoSignIn } from '@/hooks/useSsoSignIn'
 import { useSubscription } from '@/hooks/useSubscription'
@@ -209,9 +207,6 @@ export default function PricingSection({ onPricingViewEnd }: PricingSectionProps
     ))
   }
 
-  const isInTreatment = useIsInCohort(EXPERIMENT_IDS.recommendedPlan, 'treatment')
-  const recommendedPlan = isInTreatment ? SubscriptionPlan.Ultimate : SubscriptionPlan.Professional;
-
   const paidCardStyles = "flex flex-col h-full bg-intents-ux-boxLowContrast-backgroundColor border border-intents-ux-box-borderColor rounded-2xl text-intents-ux-boxLowContrast-foregroundColor overflow-hidden"
   const recommendedCardStyles = `${paidCardStyles} border-2 border-ring-ai relative overflow-visible shadow-[0_0_18px_rgba(139,92,246,0.8)]`
 
@@ -267,14 +262,12 @@ export default function PricingSection({ onPricingViewEnd }: PricingSectionProps
           </div>
 
           {/* Professional Plan */}
-          <div className={recommendedPlan === SubscriptionPlan.Professional ? recommendedCardStyles : paidCardStyles}>
-            {recommendedPlan === SubscriptionPlan.Professional && (
-              <text.span
-                as="paragraph"
-                className="absolute -top-3 left-1/2 -translate-x-1/2 bg-ring-ai text-intents-ux-boxHighContrast-foregroundColor font-semibold px-4 py-1.5 rounded-full whitespace-nowrap shadow-lg z-10"
-                text={t('builder_pricing_recommended')}
-              />
-            )}
+          <div className={recommendedCardStyles}>
+            <text.span
+              as="paragraph"
+              className="absolute -top-3 left-1/2 -translate-x-1/2 bg-ring-ai text-intents-ux-boxHighContrast-foregroundColor font-semibold px-4 py-1.5 rounded-full whitespace-nowrap shadow-lg z-10"
+              text={t('builder_pricing_recommended')}
+            />
             <div className={`p-4 flex flex-col h-full`}>
               <text.h3 as="heading" size={0} className="mb-2" text={t('builder_pricing_professional_title')} />
               <text.p size={1} className="mb-2 min-h-8" emphasis="passive" text={t('builder_pricing_professional_desc')} />
@@ -294,14 +287,7 @@ export default function PricingSection({ onPricingViewEnd }: PricingSectionProps
           </div>
 
           {/* Ultimate Plan */}
-          <div className={recommendedPlan === SubscriptionPlan.Ultimate ? recommendedCardStyles : paidCardStyles}>
-            {recommendedPlan === SubscriptionPlan.Ultimate && (
-              <text.span
-                as="paragraph"
-                className="absolute -top-3 left-1/2 -translate-x-1/2 bg-ring-ai text-intents-ux-boxHighContrast-foregroundColor font-semibold px-4 py-1.5 rounded-full whitespace-nowrap shadow-lg z-10"
-                text={t('builder_pricing_recommended')}
-              />
-            )}
+          <div className={paidCardStyles}>
             <div className={`p-4 flex flex-col h-full`}>
               <text.h3 as="heading" size={0} className="mb-2" text={t('builder_pricing_ultimate_title')} />
               <text.p size={1} className="mb-2 min-h-8" emphasis="passive" text={t('builder_pricing_ultimate_desc')} />
