@@ -1,0 +1,252 @@
+---
+evaluatorId: "airo-batch-rebuild-execution"
+name: "Batch Rebuild Execution Evaluator"
+description: "Session-level batch evaluator for rebuild scoring. Scores whether rebuild tools ran cleanly — errors, failed tools, websiteRebuild outcome — not clone fidelity."
+
+type: llm
+customOutputSchema: true
+
+scoreType: NUMERIC
+scoreName: "rebuild_penalty"
+scoreConfig:
+  min: 0
+  max: 100
+
+llmConfig:
+  model: gpt-5.2
+  temperature: 0
+  maxTokens: 4000
+
+staticContext: |
+  You are a senior QA analyst evaluating production sessions of an AI coding agent
+  (Airo Builder) for Switchers rebuild pipeline execution health.
+
+  This is rebuild scoring (execution health), NOT clone fidelity. Do not judge whether the
+  built site matches the original — only whether the rebuild agent pipeline ran cleanly.
+
+  Count only evidence present in the session workflow (user/assistant messages, tool
+  names, tool outcomes, tool result text). Never assume or hallucinate steps.
+
+  Rebuild tool names to look for:
+  - websiteRebuild (or suffixed __websiteRebuild)
+  - waitForIntake / wait_for_intake
+  - rebuildBuildPage / rebuild_build_page
+
+  Error signals:
+  - agent_error_trace* events or explicit agent error messages in the workflow
+  - Tool spans with FAILURE/error status or non-empty error text in tool results
+  - websiteRebuild output with success=false or explicit errorCode
+  - websiteRebuild called with no parseable success field → treat as not OK
+
+  websiteRebuildFailurePenalty: 1 when websiteRebuild was called and did not succeed
+  (success=false OR success missing/unparseable); 0 when websiteRebuild was not called
+  or succeeded (success=true).
+
+  isRebuildSession: true only when any named signal below is true OR rebuild tools are
+  clearly present in the workflow. If false, set errorCount, failedToolCount,
+  buildPageCount, and websiteRebuildFailurePenalty to 0, websiteRebuildOk to false.
+
+  Deterministic downstream metrics (computed by the batch runner, not the LLM):
+  - penalty = errorCount + failedToolCount + websiteRebuildFailurePenalty
+  - executionHealth = 1 / (1 + penalty) — compute in dashboards from rebuild_penalty
+  Always filter rebuild_session_relevant=1 before aggregating rebuild_penalty.
+
+steps:
+  - id: rebuild_signals
+    llmConfig:
+      model: gpt-5.2
+      temperature: 0
+      maxTokens: 2000
+    template: |
+      {{staticContext}}
+
+      Deterministic signals already detected from tool-call patterns:
+      - website_rebuild_call_found: {{criteria.websiteRebuildCalled}}
+      - rebuild_build_page_call_found: {{criteria.rebuildBuildPageCalled}}
+      - wait_for_intake_call_found: {{criteria.waitForIntakeCalled}}
+
+      Classify this production session and count rebuild execution signals.
+
+      Session:
+      {{workflow}}
+
+      Response Format:
+      Return ONLY a valid JSON object — no markdown, no prose, no trailing text.
+      Required fields:
+        isRebuildSession          — boolean (see rules above)
+        errorCount                — integer
+        failedToolCount           — integer
+        buildPageCount            — integer
+        websiteRebuildCalled      — boolean
+        websiteRebuildOk          — boolean: true only when not called or success=true
+        intakeTimedOut            — boolean
+        handoffTriggered          — boolean
+        websiteRebuildFailurePenalty — integer 0 or 1 (see rules above)
+    output:
+      kind: json
+      schema:
+        type: object
+        required:
+          - isRebuildSession
+          - errorCount
+          - failedToolCount
+          - buildPageCount
+          - websiteRebuildCalled
+          - websiteRebuildOk
+          - intakeTimedOut
+          - handoffTriggered
+          - websiteRebuildFailurePenalty
+        properties:
+          isRebuildSession:
+            type: boolean
+          errorCount:
+            type: integer
+          failedToolCount:
+            type: integer
+          buildPageCount:
+            type: integer
+          websiteRebuildCalled:
+            type: boolean
+          websiteRebuildOk:
+            type: boolean
+          intakeTimedOut:
+            type: boolean
+          handoffTriggered:
+            type: boolean
+          websiteRebuildFailurePenalty:
+            type: integer
+        additionalProperties: false
+
+  - id: execution_scoring
+    template: |
+      {{staticContext}}
+
+      Prior analysis:
+      - isRebuildSession: {{steps.rebuild_signals.isRebuildSession}}
+      - errorCount: {{steps.rebuild_signals.errorCount}}
+      - failedToolCount: {{steps.rebuild_signals.failedToolCount}}
+      - buildPageCount: {{steps.rebuild_signals.buildPageCount}}
+      - websiteRebuildCalled: {{steps.rebuild_signals.websiteRebuildCalled}}
+      - websiteRebuildOk: {{steps.rebuild_signals.websiteRebuildOk}}
+      - intakeTimedOut: {{steps.rebuild_signals.intakeTimedOut}}
+      - handoffTriggered: {{steps.rebuild_signals.handoffTriggered}}
+      - websiteRebuildFailurePenalty: {{steps.rebuild_signals.websiteRebuildFailurePenalty}}
+
+      Summarize this rebuild session outcome. Do not estimate numeric scores — the batch
+      runner computes penalty and executionHealth deterministically from the counts above.
+
+      Response Format:
+      Return ONLY a valid JSON object — no markdown, no prose, no trailing text.
+      Required fields:
+        score    — always set to 0 (unused; runner overwrites derived metrics)
+        summary  — string ≤300 chars: one-sentence outcome
+        reason   — string ≤500 chars: cite key evidence
+    output:
+      kind: score
+      schema:
+        type: object
+        required:
+          - score
+          - summary
+          - reason
+        properties:
+          score:
+            type: number
+          summary:
+            type: string
+          reason:
+            type: string
+        additionalProperties: false
+
+onlineConfig:
+  enabled: true
+  version: "v5"
+  scope: trace
+  target:
+    langfuseProjectIds:
+      - REPLACE_LANGFUSE_PROJECT_ID
+  metadataFilters:
+    tagsAnyOf:
+      - airo-app-builder
+  criteria:
+    batchConfig:
+      detectionKeywords: []
+      detectionToolPatterns:
+        - "websiteRebuild"
+        - "__websiteRebuild"
+        - "rebuildBuildPage"
+        - "__rebuildBuildPage"
+        - "waitForIntake"
+        - "wait_for_intake"
+      namedSignals:
+        - name: websiteRebuildCalled
+          toolNameContains: "websiterebuild"
+        - name: rebuildBuildPageCalled
+          toolNameContains: "rebuildbuildpage"
+        - name: waitForIntakeCalled
+          toolNameContains: "waitforintake"
+      computedScores:
+        - name: penalty
+          formula: sum
+          components:
+            - errorCount
+            - failedToolCount
+            - websiteRebuildFailurePenalty
+      scoreMapping:
+        - langfuseName: "rebuild_session_relevant"
+          sourceField: "isRebuildSession"
+          type: BOOLEAN
+          nonMatchValue: 0
+          description: "Was this a rebuild session? Filter rebuild_session_relevant=1 before aggregating rebuild_penalty."
+        - langfuseName: "rebuild_penalty"
+          sourceField: "penalty"
+          type: NUMERIC
+          nonMatchValue: 0
+          description: "Deterministic penalty sum (errors + failed tools + websiteRebuild failure), 0–N. Derive execution health as 1/(1+rebuild_penalty). Filter rebuild_session_relevant=1 (non-rebuild fast-path writes 0)."
+        - langfuseName: "rebuild_error_count"
+          sourceField: "errorCount"
+          type: NUMERIC
+          nonMatchValue: 0
+          description: "Agent error events in rebuild session"
+        - langfuseName: "rebuild_tool_failure_count"
+          sourceField: "failedToolCount"
+          type: NUMERIC
+          nonMatchValue: 0
+          description: "Failed tool observations in rebuild session"
+        - langfuseName: "rebuild_website_rebuild_ok"
+          sourceField: "websiteRebuildOk"
+          type: BOOLEAN
+          nonMatchValue: 0
+          description: "websiteRebuild succeeded when called"
+        - langfuseName: "rebuild_intake_timed_out"
+          sourceField: "intakeTimedOut"
+          type: BOOLEAN
+          nonMatchValue: 0
+          description: "websiteRebuild reported intake timeout"
+        - langfuseName: "rebuild_handoff_triggered"
+          sourceField: "handoffTriggered"
+          type: BOOLEAN
+          nonMatchValue: 0
+          description: "websiteRebuild reported handoff to develop agent"
+        - langfuseName: "rebuild_build_page_count"
+          sourceField: "buildPageCount"
+          type: NUMERIC
+          nonMatchValue: 0
+          description: "Number of rebuildBuildPage tool calls"
+
+criteriaSchema:
+  type: object
+  properties:
+    websiteRebuildCalled:
+      type: boolean
+      description: "Deterministic: websiteRebuild tool call found"
+    rebuildBuildPageCalled:
+      type: boolean
+      description: "Deterministic: rebuildBuildPage tool call found"
+    waitForIntakeCalled:
+      type: boolean
+      description: "Deterministic: waitForIntake tool call found"
+    batchConfig:
+      type: object
+      description: "Fast-path detection config — detectionKeywords, detectionToolPatterns, namedSignals, scoreMapping"
+  additionalProperties: false

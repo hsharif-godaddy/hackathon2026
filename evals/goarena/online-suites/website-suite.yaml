@@ -7,3 +7,4 @@ suite:
   evaluatorIds:
     - "airo-batch-skill-authentication"
     - "airo-batch-intent-resolution-status"
+    - "airo-batch-rebuild-execution"

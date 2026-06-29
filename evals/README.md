@@ -43,11 +43,14 @@ pnpm --filter agentic-qa-langfuse start -- --hours 24
 
 Simulation evaluation suite for the Synthia platform. Defines synthetic users, evaluators, and scenarios for browser-based website quality testing. Consumed by GitHub Actions workflows that dispatch runs to the Synthia service.
 
+**Production online evaluators** (`goarena/online-evaluators/`) score Langfuse traces via Synthia batch runners. Load with the **Load Online Evaluators** workflow.
+
 **Type:** YAML configuration (no package.json)
 
 Triggered via GitHub Actions:
 - `Run Brand Logo Eval Scenarios` workflow
 - `Run Browser Testing Scenarios` workflow
+- `Load Online Evaluators` workflow (production trace evaluators)
 
 ### airo-baseline-set
 

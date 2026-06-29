@@ -25,6 +25,7 @@ import {
 } from './prompt-vs-skill/index.js';
 import { buildPortfolioPromptTaxScenarios } from './prompt-tax/index.js';
 import { buildCookieConsentGtmScenario } from './cookie-consent-gtm.js';
+import { rebuildFromUrlScenario } from './rebuild/index.js';
 import {
   addUserTableScenario,
   crudApiHandlerScenario,
@@ -90,6 +91,7 @@ export function createAllScenarios(
     handoffVoiceSeoCheckScenario(gocode, ctrlPlane),
     handoffVoiceHandbackScenario(gocode, ctrlPlane),
     buildCookieConsentGtmScenario(gocode, ctrlPlane),
+    rebuildFromUrlScenario(gocode, ctrlPlane),
     ...buildAiroBaselineScenarios(gocode, ctrlPlane),
     ...buildPortfolioPromptTaxScenarios(gocode, ctrlPlane),
     addUserTableScenario(gocode, ctrlPlane),

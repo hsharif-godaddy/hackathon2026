@@ -26,6 +26,7 @@ export const DEV_FALLBACK_THRESHOLDS: StatisticalRegressionConfig['fallbackThres
     'tool-call-verification': 0.1,
     'token-usage': 1.5,
     'tool-failure-rate': 1.5,
+    'rebuild-execution-health': 0.25,
     'intent-to-output-alignment': 0.15,
     'implicit-feature-gap': 0.15,
     'scope-drift-overgeneration': 0.15,
