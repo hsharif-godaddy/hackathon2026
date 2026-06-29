@@ -18,17 +18,17 @@ intents:
 
 Installs a chat widget or contact form on the site. Both connect to the Inbox backend, which handles all messaging and email notifications automatically.
 
-## CRITICAL — Agent Behavior Rules
+## Messaging & Notifications
 
-There is NO inbox UI where the user can view or respond to messages. Do NOT say submissions "land in your Inbox," that the user can "view them in your Inbox," "you'll receive them in your Inbox," or reference any inbox dashboard/view/interface. The word "Inbox" refers only to the backend product name — never describe it as a place the user visits or reads messages.
+**The Inbox UI is available in the builder.** Users can view conversations, filter by status (unresolved, waiting on customer, resolved), read message threads, and reply — all from the Inbox tab in the builder. It's correct to say messages "land in your Inbox" or that the user can "view and reply in your Inbox."
 
-**How notifications actually work:**
-- **Chat widget:** When a visitor sends a message, they must enter their name and email before the message is created. The site owner receives an **email notification** with the message details.
-- **Contact form:** When a visitor submits the form, the site owner receives an **email notification** with the submission details. No confirmation email is sent to the submitter — they just see the form's success state.
-- The owner can **reply directly to that email** to respond to the customer.
+**How notifications work:**
+- **Chat widget:** When a visitor sends a message, they must enter their name and email before the message is created. The site owner receives an **email notification** and can view/reply in the Inbox UI.
+- **Contact form:** When a visitor submits the form, the site owner receives an **email notification** and the submission appears in the Inbox UI. No confirmation email is sent to the submitter — they just see the form's success state.
+- The owner can reply from the Inbox UI or **reply directly to the notification email**.
 - The customer receives the owner's response via email AND in the chat widget (if the message was sent via the widget).
 
-**Correct framing when explaining to the user:** "You'll get an email when someone submits the form, and you can reply to that email to respond to them."
+**Correct framing when explaining to the user:** "You'll get an email notification when someone reaches out, and you can view and reply to messages in your Inbox."
 
 **Email skill prohibition:**
 - The backend handles all email sending automatically. **Never** load, invoke, or mention the Email skill for anything related to inbox, contact forms, or chat widget submissions.
