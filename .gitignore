@@ -103,7 +103,6 @@ local-control-plane/server
 # GoDaddy Golden Container Image metadata (fetch from s3://gd-goldenami-prod-ecr-repolist/gci-metadata.json)
 gci-metadata.json
 all.log
-.claude/skills/
 
 # Offline ML LR classifier outputs (train/verify JSON + embedding cache)
 offline-ml/cost-attribution-classifier/weights/
