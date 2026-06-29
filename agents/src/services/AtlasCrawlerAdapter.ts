@@ -25,7 +25,7 @@ import type {
   SitemapPage,
   TypographyScaleEntry,
 } from '../types/rebuild.js';
-import type { ZodSchema } from 'zod';
+import type { z } from 'zod';
 import type {
   ExtractedAsset,
   PageScrapeResult,
@@ -132,11 +132,11 @@ export class AtlasCrawlerAdapter {
    * minutes; an HTML error page would surface as a bare SyntaxError without
    * the boundary tag).
    */
-  private async parseAtlasJson<T>(
+  private async parseAtlasJson<S extends z.ZodType>(
     response: Response,
-    schema: ZodSchema<T>,
+    schema: S,
     boundary: string,
-  ): Promise<T> {
+  ): Promise<z.infer<S>> {
     let raw: unknown;
     try {
       raw = await response.json();
