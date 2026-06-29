@@ -15,13 +15,13 @@ describe('agent-work-feedback-storage', function storageTests() {
   });
 
   it('builds a dedupe key per agent, app, and milestone', function key() {
-    expect(agentWorkFeedbackStorageKey('InitialAgent', 'app-1', 'firstFileEdit')).toBe(
-      'InitialAgent-app-1-firstFileEdit'
+    expect(agentWorkFeedbackStorageKey('InitialAgent', 'app-1', 'logoDownload')).toBe(
+      'InitialAgent-app-1-logoDownload'
     );
   });
 
   it('marks and reads feedback shown state', function markRead() {
-    const dedupeKey = agentWorkFeedbackStorageKey('InitialAgent', 'app-1', 'firstFileEdit');
+    const dedupeKey = agentWorkFeedbackStorageKey('InitialAgent', 'app-1', 'logoDownload');
     expect(hasShownAgentWorkFeedback(dedupeKey)).toBe(false);
     markAgentWorkFeedbackShown(dedupeKey);
     expect(hasShownAgentWorkFeedback(dedupeKey)).toBe(true);

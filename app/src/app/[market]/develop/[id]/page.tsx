@@ -36,7 +36,7 @@ import { useDevToolsBusBindings } from '@/app/[market]/develop/hooks/useDevTools
 import { useDevToolsSpeechBridge } from '@/app/[market]/develop/hooks/useDevToolsSpeechBridge'
 import { useEvalSnapshotCapture } from '@/app/[market]/develop/hooks/useEvalSnapshotCapture'
 import { useInboxRealtime } from '@/app/[market]/develop/hooks/useInboxRealtime'
-import { useInitialBuildRevealSignals } from '@/app/[market]/develop/hooks/useInitialBuildRevealSignals'
+import { useFirstFileEditFeedbackReveal, useJtbdFeedbackRevealSignal } from '@/app/[market]/develop/hooks/useInitialBuildRevealSignals'
 import { deriveIsAwaitingStream, useInitialization } from '@/app/[market]/develop/hooks/useInitialization'
 import { usePublishSnapshotCapture } from '@/app/[market]/develop/hooks/usePublishSnapshotCapture'
 import { broadcast as broadcastProcessingState } from '@/app/[market]/develop/utils/iframeProcessingState'
@@ -175,14 +175,25 @@ function DevelopPageContent({ layout: layoutProp }: { layout?: BuilderLayout }) 
   // Unified initialization hook - handles all sequencing and UI state
   const init = useInitialization({ appId, isJobId })
 
-  // Shows the "happy with how your app looks?" banner on the first app
-  // generation complete. Localstorage-gated per-app; fires at most once.
-  const initialBuildReveal = useInitialBuildRevealSignals(
-    init.context.hasSeenFirstFileEdit,
-    appId
+  // Persist the firstFileEdit reveal milestone — the write side that gates the
+  // First-Build-Feedback survey. Kept out of the JTBD reveal signal so it never
+  // triggers agent-work task-completion feedback.
+  useFirstFileEditFeedbackReveal(init.context.hasSeenFirstFileEdit, appId)
+  // JTBD feedback reveal is independent from first-file-edit.
+  const jtbdRevealFeedback = useJtbdFeedbackRevealSignal(appId)
+  useAgentWorkFeedbackTrigger(jtbdRevealFeedback)
+
+  // App-generation feedback fires on first-file-edit readiness. The runtime
+  // machine signal (`init.context.hasSeenFirstFileEdit`) resets to false on every
+  // reload, so we OR it with the persisted `firstFileEdit` reveal milestone read
+  // back through the JTBD reveal signal (the same localStorage-backed mechanism
+  // useFirstBuildFeedback consumes). Without this, an app whose first edit landed
+  // but whose banner was still gated (e.g. streaming not yet idle) would lose the
+  // banner permanently after a reload, since the runtime flag is gone and the
+  // per-app "already shown" guard was never written.
+  useAppGenerationFeedbackTrigger(
+    init.context.hasSeenFirstFileEdit || jtbdRevealFeedback.firstFileEdit
   )
-  useAppGenerationFeedbackTrigger(initialBuildReveal.isRevealReady)
-  useAgentWorkFeedbackTrigger(initialBuildReveal)
 
   // Check for venture home logo to airo builder experiment
   const { cohort: ventureHomeLogoCohort } = useHivemind(EXPERIMENT_IDS.ventureHomeLogo);

@@ -38,7 +38,7 @@ interface ChatBannersProps {
  * 4. UpgradeBanner (free users, control cohort only — treatment sees preview bar)
  * 5. FeedbackBanner (session-based NPS prompt)
  * 6. AppGenerationFeedbackBanner (thumbs up/down after first app generation; Switchboard-gated upstream in useAppGenerationFeedbackTrigger)
- * 7. AgentWorkFeedbackBanner (thumbs up/down after first file edit; gated in useAgentWorkFeedbackTrigger)
+ * 7. AgentWorkFeedbackBanner (thumbs up/down after task completion signal; gated in useAgentWorkFeedbackTrigger)
  */
 export default function ChatBanners({ appId }: ChatBannersProps) {
   const { tokenAuthType } = useAuthContext();
@@ -113,7 +113,7 @@ export default function ChatBanners({ appId }: ChatBannersProps) {
     return <AppGenerationFeedbackBanner />;
   }
 
-  // Priority 7: Agent-work feedback (how did the agent perform?).
+  // Priority 7: Agent-work feedback (task-completion follow-up).
   // Switchboard gating is upstream in useAgentWorkFeedbackTrigger.
   if (showAgentWorkFeedbackBanner) {
     return <AgentWorkFeedbackBanner />;

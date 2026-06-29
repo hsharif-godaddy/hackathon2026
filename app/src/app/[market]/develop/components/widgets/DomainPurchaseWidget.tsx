@@ -23,6 +23,7 @@ import { useOfferEligibility } from '@/hooks/useOfferEligibility';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
 import { appFetch } from '@/lib/gasket-config';
+import { markFeedbackRevealMilestone } from '@/lib/initial-build-reveal-storage';
 import { shipAnalyticsLog } from '@/lib/logging';
 import { PAYWALL_ITC } from '@/lib/paywall/shared';
 import { logger } from '@/lib/request-context';
@@ -315,6 +316,11 @@ export default function DomainPurchaseWidget({
       searchResult?.domains,
       selectedDomain,
     );
+
+    if (appId && purchasedDomain) {
+      // JTBD event: domain purchase completed successfully.
+      markFeedbackRevealMilestone(appId, 'domainPurchase');
+    }
 
     logger.info('domain-purchase.checkout-success', {
       appId,

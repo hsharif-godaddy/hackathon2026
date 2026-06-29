@@ -30,6 +30,7 @@ import { useMediaSlot } from '@/hooks/useMediaSlot'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 import { agentFetch } from '@/lib/agent-fetch'
+import { markFeedbackRevealMilestone } from '@/lib/initial-build-reveal-storage'
 import { regenerateToken } from '@/lib/jwt-regeneration'
 import { logger } from '@/lib/request-context'
 import { useMediaSlotDialogStore } from '@/stores/useMediaSlotDialogStore'
@@ -924,6 +925,9 @@ export function MediaSlotDetail({
     const imageUrl = getSlotImageUrl(slotName, url, previewBaseUrl)
     const action = 'set-as-logo'
     try {
+      // Mark downstream-apply JTBD before cross-window postMessage so banner triggering
+      // remains deterministic even if embedding target is slow/unavailable.
+      markFeedbackRevealMilestone(appId, 'logoDownstreamApply')
       const dataUrl = await fetchAsDataUrl(imageUrl)
       window.parent.postMessage({ action, sender: 'airo-hq', imageUrl: dataUrl }, parentOrigin)
     } catch (err) {

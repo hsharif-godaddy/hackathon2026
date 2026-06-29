@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
-import { useInitialBuildRevealSignals } from '@/app/[market]/develop/hooks/useInitialBuildRevealSignals'
+import { useJtbdFeedbackRevealSignal } from '@/app/[market]/develop/hooks/useInitialBuildRevealSignals'
 import { SWITCHBOARD_APPBUILDER_FIRST_BUILD_FEEDBACK } from '@/config/switchboard-flags'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { isLogoDesignerApp } from '@/lib/logo-designer-preview-switch-storage'
@@ -21,7 +21,7 @@ export function useFirstBuildFeedback(appId: string): UseFirstBuildFeedbackResul
   const initialBuildComplete = useDevelopPageStore(
     (s) => s.app?.id === appId ? s.app?.initialBuildComplete : undefined,
   )
-  const { firstFileEdit } = useInitialBuildRevealSignals(false, appId)
+  const { firstFileEdit } = useJtbdFeedbackRevealSignal(appId)
   const [step, setStep] = useState<FeedbackStep | 'done'>('prompt')
 
   useEffect(() => {

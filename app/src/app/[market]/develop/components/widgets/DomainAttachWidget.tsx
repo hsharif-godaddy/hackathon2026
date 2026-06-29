@@ -38,6 +38,7 @@ import {
 import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
 import { appFetch } from '@/lib/gasket-config';
+import { markFeedbackRevealMilestone } from '@/lib/initial-build-reveal-storage';
 import { shipAnalyticsLog } from '@/lib/logging';
 import { DomainMode, DomainStatus } from '@/lib/mgmt-airo/types';
 import { logger } from '@/lib/request-context';
@@ -477,6 +478,13 @@ export default function DomainAttachWidget({
         isGoDaddyDomain
       });
       logImpressionEvent('develop.domains.widget_connect_success', { isGoDaddyDomain })();
+
+      // JTBD event: website domain successfully connected to the site.
+      markFeedbackRevealMilestone(appId, 'websiteDomainConnect');
+      if (purchasedDomain && normalizeFqdn(purchasedDomain) === normalizeFqdn(domainName)) {
+        // JTBD event: purchased domain connected downstream to the website.
+        markFeedbackRevealMilestone(appId, 'domainDownstreamConnect');
+      }
 
       if (sendUserMessage) {
         if (isGoDaddyDomain) {

@@ -9,21 +9,23 @@ import { screen, waitFor } from '@testing-library/react';
 
 import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { renderWithProviders } from '@/tests/test-utils';
-import {
-  InvocationFeedbackProvider,
-  useInvocationFeedback,
-} from './InvocationFeedbackContext';
+import { InvocationFeedbackProvider, useInvocationFeedback } from './InvocationFeedbackContext';
 import InvocationFeedbackControls from './InvocationFeedbackControls';
 import InvocationFeedbackPanel from './InvocationFeedbackPanel';
 
 const mockSubmitFeedback = vi.fn();
+const mockStoreToS3 = vi.fn();
 const mockShipAnalyticsLog = vi.fn();
 const mockPatchMessageFeedbackMetadata = vi.fn();
 const mockMergeMessageMetadata = vi.fn();
 
 vi.mock('@/hooks/useSwitchboard', () => ({
-  useSwitchboard: vi.fn(function () { return false; }),
-  getSwitchboardFlag: vi.fn(function () { return false; }),
+  useSwitchboard: vi.fn(function () {
+    return false;
+  }),
+  getSwitchboardFlag: vi.fn(function () {
+    return false;
+  }),
 }));
 
 vi.mock('@/hooks/chat/useChatHelpers', () => ({
@@ -32,6 +34,16 @@ vi.mock('@/hooks/chat/useChatHelpers', () => ({
 
 vi.mock('@/lib/feedback-client', () => ({
   submitFeedback: (...args: unknown[]) => mockSubmitFeedback(...args),
+}));
+
+vi.mock('@/components/feedback/submitFeedback', () => ({
+  storeToS3: (...args: unknown[]) => mockStoreToS3(...args),
+}));
+
+vi.mock('@/components/feedback/utils', () => ({
+  getFullStorySessionUrl: vi.fn(async function () {
+    return 'https://fullstory.test/session';
+  }),
 }));
 
 vi.mock('@/lib/message-metadata-client', () => ({
@@ -48,7 +60,9 @@ vi.mock('@/lib/logging', () => ({
 }));
 
 vi.mock('@/utils/instrumentation', () => ({
-  logClickEvent: vi.fn(function () { return vi.fn(); }),
+  logClickEvent: vi.fn(function () {
+    return vi.fn();
+  }),
   generateClickEID: (id: string) => id,
 }));
 
@@ -61,7 +75,7 @@ vi.mock('@/stores/useDevelopPageStore', () => ({
       }),
     {
       getState: () => ({
-        agentWorkFeedbackRevealMilestone: 'firstFileEdit',
+        agentWorkFeedbackRevealMilestone: 'logoDownload',
         showResponseFeedbackThanksBannerTemporarily: vi.fn(),
       }),
     }
@@ -86,6 +100,7 @@ describe('InvocationFeedbackContext', function contextTests() {
   beforeEach(function setup() {
     vi.clearAllMocks();
     mockSubmitFeedback.mockResolvedValue({ ok: true });
+    mockStoreToS3.mockResolvedValue({ ok: true, status: 200 });
     mockPatchMessageFeedbackMetadata.mockResolvedValue({ ok: true });
   });
 
@@ -158,7 +173,7 @@ describe('InvocationFeedbackContext', function contextTests() {
       <InvocationFeedbackProvider
         appId="app-1"
         messageId="msg-1"
-        traceIds={{ traceId: 'trace-1', observationId: 'obs-1', agentName: 'InitialAgent' }}
+        traceIds={{ traceId: 'trace-1', observationId: 'obs-1' }}
         flow="per-message"
         onSubmitFailed={onSubmitFailed}
       >
@@ -266,25 +281,28 @@ describe('InvocationFeedbackContext', function contextTests() {
   it('rolls back optimistic feedback when a second persist starts while one is in flight', async function inFlight() {
     const onSubmitFailed = vi.fn();
     let resolveSubmit: ((value: { ok: boolean }) => void) | undefined;
-    mockSubmitFeedback.mockImplementation(
-      function () { return new Promise((resolve) => {
-          resolveSubmit = resolve;
-        }); }
-    );
+    mockSubmitFeedback.mockImplementation(function () {
+      return new Promise((resolve) => {
+        resolveSubmit = resolve;
+      });
+    });
 
     function OverlappingPersistProbe() {
       const { toggleNegative, handleReasonSelect, togglePositive } = useInvocationFeedback();
       const started = useRef(false);
 
-      useEffect(function startOverlappingPersists() {
-        if (started.current) {
-          return;
-        }
-        started.current = true;
-        toggleNegative();
-        handleReasonSelect('not_factually_correct');
-        togglePositive();
-      }, [handleReasonSelect, toggleNegative, togglePositive]);
+      useEffect(
+        function startOverlappingPersists() {
+          if (started.current) {
+            return;
+          }
+          started.current = true;
+          toggleNegative();
+          handleReasonSelect('not_factually_correct');
+          togglePositive();
+        },
+        [handleReasonSelect, toggleNegative, togglePositive]
+      );
 
       return null;
     }
@@ -313,13 +331,13 @@ describe('InvocationFeedbackContext', function contextTests() {
     resolveSubmit?.({ ok: true });
   });
 
-  it('submits agent-work feedback with invocation target level and agent target id', async function agentWork() {
+  it('submits skill-invoke feedback with invocation target level and namespaced jtbd target id', async function agentWork() {
     const { user } = renderWithProviders(
       <InvocationFeedbackProvider
         appId="app-1"
         messageId="agent-work-feedback"
         traceIds={{ traceId: 'trace-1', observationId: 'obs-1' }}
-        flow="agent-work"
+        flow="skill-invoke"
         agentTargetId="airo-app-builder-InitialAgent"
         thanksMode="none"
         onSubmitted={vi.fn()}
@@ -336,17 +354,17 @@ describe('InvocationFeedbackContext', function contextTests() {
       expect(mockSubmitFeedback).toHaveBeenCalledWith(
         expect.objectContaining({
           targetLevel: 'invocation',
-          targetId: 'airo-app-builder-InitialAgent',
+          targetId: 'airo-app-builder-logo',
         })
       );
     });
     expect(mockPatchMessageFeedbackMetadata).not.toHaveBeenCalled();
 
     expect(mockShipAnalyticsLog).toHaveBeenCalledWith(
-      'agentWork.feedback.submit',
+      'skill-invoke.feedback.submit',
       expect.objectContaining({
-        flow: 'agent-work',
-        initialBuildRevealMilestone: 'firstFileEdit',
+        flow: 'skill-invoke',
+        initialBuildRevealMilestone: 'logoDownload',
       })
     );
   });
@@ -380,6 +398,7 @@ describe('InvocationFeedbackContext', function contextTests() {
 
     const submitArg = mockSubmitFeedback.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(submitArg).not.toHaveProperty('feedbackText');
+    expect(mockStoreToS3).not.toHaveBeenCalled();
   });
 
   it('submits negative other feedback with draft text when the panel close button is clicked', async function closeWithDraft() {
@@ -403,6 +422,115 @@ describe('InvocationFeedbackContext', function contextTests() {
           feedbackCategory: 'Other',
           feedbackText: 'draft',
           hasDetailedFeedback: true,
+        })
+      );
+    });
+    await waitFor(function waitS3() {
+      expect(mockStoreToS3).toHaveBeenCalledWith(
+        expect.objectContaining({
+          app_id: 'app-1',
+          feedback_category: 'feedback',
+          feedback_text: 'draft',
+          feedback_topic_list: JSON.stringify(['Other']),
+          feedback_origin_name: 'inline-customer-feedback',
+          full_story_url: 'https://fullstory.test/session',
+          consent_flag: false,
+        })
+      );
+    });
+  });
+
+  it('stores negative other text to S3 for skill-invoke flow', async function skillInvokeS3() {
+    const { user } = renderWithProviders(
+      <InvocationFeedbackProvider
+        appId="app-1"
+        messageId="agent-work-feedback"
+        flow="skill-invoke"
+        agentTargetId="airo-app-builder-InitialAgent"
+        thanksMode="none"
+      >
+        <InvocationFeedbackControls />
+        <InvocationFeedbackPanel />
+      </InvocationFeedbackProvider>
+    );
+
+    const thumbsDown = document.querySelector('[data-eid="chat.response_metadata.thumbs_down"]');
+    expect(thumbsDown).toBeTruthy();
+    await user.click(thumbsDown!);
+    await user.type(screen.getByPlaceholderText(/Share your feedback/i), 'skill invoke issue');
+    await user.click(screen.getByRole('button', { name: /^Close$/i }));
+
+    await waitFor(function waitS3() {
+      expect(mockStoreToS3).toHaveBeenCalledWith(
+        expect.objectContaining({
+          feedback_text: 'skill invoke issue',
+          feedback_origin_name: 'inline-customer-feedback',
+        })
+      );
+    });
+  });
+
+  it('does not store negative other text to S3 when submitFeedback fails', async function noS3OnSubmitFailure() {
+    mockSubmitFeedback.mockResolvedValue({ ok: false, reason: 'http_error' });
+    const onSubmitFailed = vi.fn();
+    const { user } = renderWithProviders(
+      <InvocationFeedbackProvider
+        appId="app-1"
+        messageId="msg-1"
+        traceIds={{ traceId: 'trace-1', observationId: 'obs-1' }}
+        flow="per-message"
+        onSubmitFailed={onSubmitFailed}
+      >
+        <InvocationFeedbackControls />
+        <InvocationFeedbackPanel />
+      </InvocationFeedbackProvider>
+    );
+
+    const thumbsDown = document.querySelector('[data-eid="chat.response_metadata.thumbs_down"]');
+    expect(thumbsDown).toBeTruthy();
+    await user.click(thumbsDown!);
+    await user.click(screen.getByRole('radio', { name: /^Other$/i }));
+    await user.type(screen.getByPlaceholderText(/Share your feedback/i), 'draft');
+    await user.click(screen.getByRole('button', { name: /^Close$/i }));
+
+    await waitFor(function waitSubmitFailure() {
+      expect(mockSubmitFeedback).toHaveBeenCalledWith(
+        expect.objectContaining({
+          feedback: 'negative',
+          feedbackCategory: 'Other',
+          feedbackText: 'draft',
+        })
+      );
+      expect(onSubmitFailed).toHaveBeenCalledWith('http_error');
+    });
+    expect(mockStoreToS3).not.toHaveBeenCalled();
+  });
+
+  it('stores negative other text to S3 for artifact flow', async function artifactS3() {
+    const { user } = renderWithProviders(
+      <InvocationFeedbackProvider
+        appId="app-1"
+        messageId="artifact-feedback"
+        flow="artifact"
+        thanksMode="none"
+      >
+        <InvocationFeedbackControls />
+        <InvocationFeedbackPanel />
+      </InvocationFeedbackProvider>
+    );
+
+    const thumbsDown = document.querySelector('[data-eid="chat.response_metadata.thumbs_down"]');
+    expect(thumbsDown).toBeTruthy();
+    await user.click(thumbsDown!);
+    await user.click(screen.getByRole('radio', { name: /^Other$/i }));
+    await user.type(screen.getByPlaceholderText(/Share your feedback/i), 'artifact issue');
+    await user.click(screen.getByRole('button', { name: /^Close$/i }));
+
+    await waitFor(function waitS3() {
+      expect(mockStoreToS3).toHaveBeenCalledWith(
+        expect.objectContaining({
+          feedback_text: 'artifact issue',
+          feedback_origin_name: 'inline-customer-feedback',
         })
       );
     });

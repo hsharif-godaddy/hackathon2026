@@ -14,19 +14,19 @@ describe('initial-build-reveal-storage', function storageTests() {
   });
 
   it('marks and reads per app and milestone', function markRead() {
-    expect(hasFeedbackRevealMilestone('app-1', 'firstFileEdit')).toBe(false);
-    markFeedbackRevealMilestone('app-1', 'firstFileEdit');
-    expect(hasFeedbackRevealMilestone('app-1', 'firstFileEdit')).toBe(true);
-    expect(hasFeedbackRevealMilestone('app-2', 'firstFileEdit')).toBe(false);
+    expect(hasFeedbackRevealMilestone('app-1', 'logoDownload')).toBe(false);
+    markFeedbackRevealMilestone('app-1', 'logoDownload');
+    expect(hasFeedbackRevealMilestone('app-1', 'logoDownload')).toBe(true);
+    expect(hasFeedbackRevealMilestone('app-2', 'logoDownload')).toBe(false);
   });
 
   it('dispatches appbuilder:feedback-reveal-updated', function event() {
     const handler = vi.fn();
     window.addEventListener('appbuilder:feedback-reveal-updated', handler);
-    markFeedbackRevealMilestone('app-1', 'firstFileEdit');
+    markFeedbackRevealMilestone('app-1', 'logoDownload');
     expect(handler).toHaveBeenCalledTimes(1);
     const event = handler.mock.calls[0][0] as CustomEvent<{ appId: string; milestone: string }>;
-    expect(event.detail).toEqual({ appId: 'app-1', milestone: 'firstFileEdit' });
+    expect(event.detail).toEqual({ appId: 'app-1', milestone: 'logoDownload' });
     window.removeEventListener('appbuilder:feedback-reveal-updated', handler);
   });
 });

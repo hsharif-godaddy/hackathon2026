@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import {
   type FeedbackRevealSignals,
@@ -16,23 +16,31 @@ export interface FeedbackRevealState extends FeedbackRevealSignals {
 }
 
 /**
- * Composes feedback reveal signals for banner triggers.
+ * Persists the `firstFileEdit` reveal milestone once the initialization machine
+ * reports the first meaningful file edit.
  *
- * Today only `firstFileEdit` is active (init machine / preview reveal).
- * To add logo or image flows later:
- *   1. Call `markFeedbackRevealMilestone(appId, 'logoCreation' | 'imageSelection')` from the workflow UI
- *   2. Add the milestone to `ACTIVE_FEEDBACK_REVEAL_MILESTONES` in `initial-build-reveal.ts`
+ * This is the write side that gates the First-Build-Feedback survey
+ * (`useFirstBuildFeedback` reads `firstFileEdit` back via
+ * `useJtbdFeedbackRevealSignal`). It is intentionally separate from the JTBD
+ * reveal reader: `firstFileEdit` is excluded from
+ * `ACTIVE_FEEDBACK_REVEAL_MILESTONES`, so it must never contribute to
+ * agent-work task-completion feedback.
  */
-export function useInitialBuildRevealSignals(
+export function useFirstFileEditFeedbackReveal(
   hasSeenFirstFileEdit: boolean,
   appId: string | null
-): FeedbackRevealState {
-  const [persistedVersion, setPersistedVersion] = useState(0);
-
+): void {
   useEffect(() => {
     if (!hasSeenFirstFileEdit || !appId) return;
     markFeedbackRevealMilestone(appId, 'firstFileEdit');
   }, [hasSeenFirstFileEdit, appId]);
+}
+
+/**
+ * Composes JTBD reveal signals for agent-work feedback banner triggers.
+ */
+export function useJtbdFeedbackRevealSignal(appId: string | null): FeedbackRevealState {
+  const [persistedVersion, setPersistedVersion] = useState(0);
 
   useEffect(() => {
     if (!appId) return;
@@ -52,18 +60,51 @@ export function useInitialBuildRevealSignals(
 
   void persistedVersion;
 
-  const firstFileEdit =
-    hasSeenFirstFileEdit ||
-    (appId ? hasFeedbackRevealMilestone(appId, 'firstFileEdit') : false);
+  const logoDownload = appId ? hasFeedbackRevealMilestone(appId, 'logoDownload') : false;
+  const logoDownstreamApply = appId
+    ? hasFeedbackRevealMilestone(appId, 'logoDownstreamApply')
+    : false;
+  const websitePublish = appId ? hasFeedbackRevealMilestone(appId, 'websitePublish') : false;
+  const websiteDomainConnect = appId
+    ? hasFeedbackRevealMilestone(appId, 'websiteDomainConnect')
+    : false;
+  const domainPurchase = appId ? hasFeedbackRevealMilestone(appId, 'domainPurchase') : false;
+  const domainDownstreamConnect = appId
+    ? hasFeedbackRevealMilestone(appId, 'domainDownstreamConnect')
+    : false;
+  const firstFileEdit = appId ? hasFeedbackRevealMilestone(appId, 'firstFileEdit') : false;
 
-  const signals: FeedbackRevealSignals = {
-    firstFileEdit,
-    logoCreation: false,
-    imageSelection: false,
-  };
+  const signals = useMemo(
+    function buildSignals(): FeedbackRevealSignals {
+      return {
+        logoDownload,
+        logoDownstreamApply,
+        websitePublish,
+        websiteDomainConnect,
+        domainPurchase,
+        domainDownstreamConnect,
+        imageSelection: false,
+        firstFileEdit,
+      };
+    },
+    [
+      logoDownload,
+      logoDownstreamApply,
+      websitePublish,
+      websiteDomainConnect,
+      domainPurchase,
+      domainDownstreamConnect,
+      firstFileEdit,
+    ]
+  );
 
-  return {
-    ...signals,
-    isRevealReady: isFeedbackRevealReady(signals),
-  };
+  return useMemo(
+    function buildState(): FeedbackRevealState {
+      return {
+        ...signals,
+        isRevealReady: isFeedbackRevealReady(signals),
+      };
+    },
+    [signals]
+  );
 }

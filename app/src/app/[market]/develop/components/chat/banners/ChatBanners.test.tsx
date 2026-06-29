@@ -52,7 +52,7 @@ const mockStoreState = {
   currentAppId: 'test-app',
   agentWorkFeedbackAgentId: 'airo-app-builder-InitialAgent',
   agentWorkFeedbackTraceIds: { traceId: 'trace-1', observationId: 'obs-1' },
-  agentWorkFeedbackRevealMilestone: 'firstFileEdit',
+  agentWorkFeedbackRevealMilestone: 'logoDownload',
   markAppGenerationFeedbackSubmitted: vi.fn(),
   setShowAppGenerationFeedbackBanner: vi.fn(),
   markAgentWorkFeedbackSubmitted: vi.fn(),

@@ -18,6 +18,7 @@ import {
   submitFeedback,
   type SubmitFeedbackResult,
 } from '@/lib/feedback-client';
+import { jtbdFeedbackTargetIdFromMilestone } from '@/lib/initial-build-reveal';
 import { shipAnalyticsLog } from '@/lib/logging';
 import { patchMessageFeedbackMetadata } from '@/lib/message-metadata-client';
 import { logger } from '@/lib/request-context';
@@ -26,19 +27,20 @@ import { useStreamingConversationStore } from '@/stores/useStreamingConversation
 import { logClickEvent } from '@/utils/instrumentation';
 import { INVOCATION_FEEDBACK_FLYOUT_HEIGHT_FLAG } from './constants';
 import { getScrollParent } from './getScrollParent';
+import { store as storeInlineOtherFeedback } from './inlineFeedbackS3';
 import {
   feedbackCategoryForReason,
   type FeedbackReason,
   type InvocationFeedbackVote,
 } from './types';
 
-export type InvocationFeedbackFlow = 'per-message' | 'agent-work' | 'artifact';
+export type InvocationFeedbackFlow = 'per-message' | 'skill-invoke' | 'artifact';
 export type InvocationFeedbackThanksMode = 'global-banner' | 'none';
 
 /**
  *
  * @param flow
- * flow === 'agent-work'      => return 'invocation' (targetLevel = 'invocation')
+ * flow === 'skill-invoke'    => return 'invocation' (targetLevel = 'invocation')
  * flow === 'per-message'     => return 'conversation' (targetLevel = 'conversation')
  * flow === 'artifact'        => return 'artifact' (targetLevel = 'artifact')
  * @returns 'invocation' | 'conversation' | 'artifact'
@@ -47,7 +49,7 @@ function targetLevelFromFlow(
   flow: InvocationFeedbackFlow
 ): 'invocation' | 'conversation' | 'artifact' {
   switch (flow) {
-    case 'agent-work':
+    case 'skill-invoke':
       return 'invocation';
     case 'per-message':
       return 'conversation';
@@ -64,9 +66,9 @@ export interface InvocationFeedbackProviderProps {
   /** Persisted `metadata.feedback` from the agent message (hydrates thumbs up/down state on reload). */
   initialFeedback?: InvocationFeedbackVote;
   traceIds?: InvocationFeedbackTraceIds | null;
-  /** Per-message (ResponseMetadata) vs agent-work chat banner. */
+  /** Per-message (ResponseMetadata) vs skill-invoke chat banner. */
   flow?: InvocationFeedbackFlow;
-  /** Canonical agent id (`airo-app-builder-*`) when flow is `agent-work`. */
+  /** Canonical agent id (`airo-app-builder-*`) when flow is `skill-invoke`. */
   agentTargetId?: string;
   thanksMode?: InvocationFeedbackThanksMode;
   onSubmitted?: () => void;
@@ -205,18 +207,27 @@ export function InvocationFeedbackProvider({
       isSubmittingRef.current = true;
       setIsSubmittingFeedback(true);
       /**
-       * flow === 'agent-work'      => targetId = agentTargetId, targetLevel = 'invocation'
+       * flow === 'skill-invoke'    => targetId = jtbdFeedbackTargetIdFromMilestone(revealMilestone)
+       *                               (`airo-app-builder-logo|website|domain`), with fallback to
+       *                               agentTargetId (then `airo-app-builder-unknown`), targetLevel = 'invocation'
        * flow === 'per-message'     => targetId = messageId, targetLevel = 'conversation'
        * flow === 'artifact'        => targetId = traceIds.observationId or messageId, targetLevel = 'artifact'
        *
        * targetLevel is the events-schema aggregation bucket; targetId is the rated unit
-       * within that bucket. Per-message thumbs rate a specific assistant message
+       * within that bucket. For skill-invoke every branch resolves to an
+       * `airo-app-builder-*` value, so the emitted targetId stays homogeneous for
+       * downstream consumers. Per-message thumbs rate a specific assistant message
        * (messageId) under the conversation bucket — conversationId is sent separately
        * on the POST body from the cookie, not as targetId.
        */
+      const revealMilestone =
+        flow === 'skill-invoke'
+          ? useDevelopPageStore.getState().agentWorkFeedbackRevealMilestone
+          : null;
+      const jtbdTargetId = jtbdFeedbackTargetIdFromMilestone(revealMilestone);
       const targetId =
-        flow === 'agent-work'
-          ? (agentTargetId ?? 'airo-app-builder-unknown')
+        flow === 'skill-invoke'
+          ? (jtbdTargetId ?? agentTargetId ?? 'airo-app-builder-unknown')
           : flow === 'per-message'
             ? messageId
             : (traceIds?.observationId ?? messageId);
@@ -260,13 +271,9 @@ export function InvocationFeedbackProvider({
 
       const { ok, reason } = result;
       const analyticsEvent =
-        flow === 'agent-work'
-          ? 'agentWork.feedback.submit'
+        flow === 'skill-invoke'
+          ? 'skill-invoke.feedback.submit'
           : 'chat.response_metadata.feedback.submit';
-      const revealMilestone =
-        flow === 'agent-work'
-          ? useDevelopPageStore.getState().agentWorkFeedbackRevealMilestone
-          : null;
 
       shipAnalyticsLog(analyticsEvent, {
         appId,
@@ -304,6 +311,10 @@ export function InvocationFeedbackProvider({
 
       if (!ok && reason) {
         onSubmitFailed?.(reason);
+      }
+
+      if (ok && feedbackValue === 'negative' && analyticsReason === 'other' && trimmedOther && appId) {
+        void storeInlineOtherFeedback({ appId, feedbackText: trimmedOther, flow });
       }
 
       return result;
@@ -438,7 +449,7 @@ export function InvocationFeedbackProvider({
   const togglePositive = useCallback(
     function togglePositive() {
       logClickEvent(
-        flow === 'agent-work' ? 'agentWork.feedback.thumbs_up' : 'chat.response_metadata.thumbs_up'
+        flow === 'skill-invoke' ? 'skill-invoke.feedback.thumbs_up' : 'chat.response_metadata.thumbs_up'
       )();
       setIsNegativeFeedbackOpen(false);
       clearNegativeFeedbackDraft();
@@ -457,14 +468,14 @@ export function InvocationFeedbackProvider({
   const toggleNegative = useCallback(
     function toggleNegative() {
       logClickEvent(
-        flow === 'agent-work'
-          ? 'agentWork.feedback.thumbs_down'
+        flow === 'skill-invoke'
+          ? 'skill-invoke.feedback.thumbs_down'
           : 'chat.response_metadata.thumbs_down'
       )();
       if (feedback !== 'negative') {
         clearNegativeFeedbackDraft();
         setFeedback('negative');
-        if (flow === 'agent-work') {
+        if (flow === 'skill-invoke') {
           if (isFlyoutHeightEnabled) {
             selectedReasonRef.current = 'other';
           }

@@ -21,11 +21,16 @@ vi.mock('@/stores/useDevelopPageStore', () => ({
 }))
 
 vi.mock('@/app/[market]/develop/hooks/useInitialBuildRevealSignals', () => ({
-  useInitialBuildRevealSignals: () => ({
+  useJtbdFeedbackRevealSignal: () => ({
     firstFileEdit: mockFirstFileEdit,
-    logoCreation: false,
+    logoDownload: false,
+    logoDownstreamApply: false,
+    websitePublish: false,
+    websiteDomainConnect: false,
+    domainPurchase: false,
+    domainDownstreamConnect: false,
     imageSelection: false,
-    isRevealReady: mockFirstFileEdit,
+    isRevealReady: false,
   }),
 }))
 

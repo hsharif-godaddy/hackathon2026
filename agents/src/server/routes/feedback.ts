@@ -76,6 +76,14 @@ const FeedbackRequestSchema = z.object({
   // Stable identifier for the rated target. For app-generation this is the
   // appId; for invocation-level feedback it's the invocationId from the
   // rated invocation; for general feedback it's the agentId.
+  //
+  // NOTE (skill-invoke / agent-work banner): this surface sends the JTBD track
+  // under the agent namespace — `airo-app-builder-logo` | `airo-app-builder-website`
+  // | `airo-app-builder-domain` — derived from the reveal milestone (falling back
+  // to the agent id, then `airo-app-builder-unknown`). The value stays in the
+  // `airo-app-builder-*` shape, so downstream invocation-feedback consumers that
+  // key on that prefix keep matching while gaining the JTBD track. See
+  // app/src/app/[market]/develop/components/invocation-feedback/InvocationFeedbackContext.tsx.
   targetId: z.string().min(1).max(256),
   // Optional: when the complete WS event carried them, they seed an OTel
   // span context so this feedback event stitches to the rated turn's

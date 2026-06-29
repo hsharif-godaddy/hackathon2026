@@ -5,7 +5,9 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { DefaultToolRendererProps } from '@/app/[market]/develop/components/tool-renderers/DefaultToolRenderer'
 import { getParentOrigin } from '@/components/security/allowed-frame-ancestors'
 import { useIsEmbedded } from '@/hooks/useIsEmbedded'
+import { markFeedbackRevealMilestone } from '@/lib/initial-build-reveal-storage'
 import { logger } from '@/lib/request-context'
+import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { fetchAsDataUrl } from '@/utils/image'
 import { logImpressionEvent } from '@/utils/instrumentation'
 
@@ -33,6 +35,7 @@ export default function SetVentureLogoToolRenderer({
   result,
 }: DefaultToolRendererProps) {
   const isEmbedded = useIsEmbedded()
+  const appId = useDevelopPageStore((state) => state.currentAppId)
   const firedRef = useRef(false)
   const [phase, setPhase] = useState<'sending' | 'done' | 'error'>('sending')
 
@@ -51,6 +54,8 @@ export default function SetVentureLogoToolRenderer({
     if (!shouldRender || firedRef.current || !urls || !parentOrigin) return
     firedRef.current = true
 
+    // This action is an explicit downstream logo-application success signal.
+    if (appId) markFeedbackRevealMilestone(appId, 'logoDownstreamApply')
     logImpressionEvent('develop.brand.logo_set_to_venture', { flow: 'logo-designer' })()
 
     void (async () => {
@@ -87,7 +92,7 @@ export default function SetVentureLogoToolRenderer({
         setPhase('error')
       }
     })()
-  }, [shouldRender, urls, parentOrigin])
+  }, [shouldRender, urls, parentOrigin, appId])
 
   if (!shouldRender) return null
 

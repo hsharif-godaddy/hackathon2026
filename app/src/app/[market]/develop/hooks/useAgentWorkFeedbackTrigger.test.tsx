@@ -38,16 +38,26 @@ const ASSISTANT_MESSAGE: ChatMessage = {
 };
 
 const REVEAL_NONE: FeedbackRevealState = {
-  firstFileEdit: false,
-  logoCreation: false,
+  logoDownload: false,
+  logoDownstreamApply: false,
+  websitePublish: false,
+  websiteDomainConnect: false,
+  domainPurchase: false,
+  domainDownstreamConnect: false,
   imageSelection: false,
+  firstFileEdit: false,
   isRevealReady: false,
 };
 
 const REVEAL_READY: FeedbackRevealState = {
-  firstFileEdit: true,
-  logoCreation: false,
+  logoDownload: true,
+  logoDownstreamApply: false,
+  websitePublish: false,
+  websiteDomainConnect: false,
+  domainPurchase: false,
+  domainDownstreamConnect: false,
   imageSelection: false,
+  firstFileEdit: false,
   isRevealReady: true,
 };
 
@@ -65,6 +75,7 @@ function resetState() {
     currentAgentName: null,
   });
   window.localStorage.clear();
+  window.sessionStorage.clear();
 }
 
 function setStateFor({
@@ -123,28 +134,34 @@ describe('useAgentWorkFeedbackTrigger', function hookTests() {
     expect(useDevelopPageStore.getState().showAgentWorkFeedbackBanner).toBe(false);
   });
 
-  it('shows the banner and records firstFileEdit milestone dedupe when preconditions are met', function show() {
-    setStateFor({
-      streamingState: 'idle',
-      appId: APP_ID,
-      messages: [ASSISTANT_MESSAGE],
-      lastCompleteTraceIds: TRACE_IDS,
-    });
-    renderHookWithProviders(() => useAgentWorkFeedbackTrigger(REVEAL_READY));
+  it('shows the banner and records logoDownload milestone dedupe when preconditions are met', async function show() {
+    vi.useFakeTimers();
+    try {
+      setStateFor({
+        streamingState: 'idle',
+        appId: APP_ID,
+        messages: [ASSISTANT_MESSAGE],
+        lastCompleteTraceIds: TRACE_IDS,
+      });
+      renderHookWithProviders(() => useAgentWorkFeedbackTrigger(REVEAL_READY));
+      vi.advanceTimersByTime(10_000);
 
-    const state = useDevelopPageStore.getState();
-    expect(state.showAgentWorkFeedbackBanner).toBe(true);
-    expect(state.agentWorkFeedbackAgentId).toBe('airo-app-builder-InitialAgent');
-    expect(state.agentWorkFeedbackRevealMilestone).toBe('firstFileEdit');
-    expect(
-      window.localStorage.getItem(
-        `appbuilder-agent-work-feedback-shown:${agentWorkFeedbackStorageKey(
-          AGENT_KEY,
-          APP_ID,
-          'firstFileEdit'
-        )}`
-      )
-    ).toBe('true');
+      const state = useDevelopPageStore.getState();
+      expect(state.showAgentWorkFeedbackBanner).toBe(true);
+      expect(state.agentWorkFeedbackAgentId).toBe('airo-app-builder-InitialAgent');
+      expect(state.agentWorkFeedbackRevealMilestone).toBe('logoDownload');
+      expect(
+        window.localStorage.getItem(
+          `appbuilder-agent-work-feedback-shown:${agentWorkFeedbackStorageKey(
+            AGENT_KEY,
+            APP_ID,
+            'logoDownload'
+          )}`
+        )
+      ).toBe('true');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('does not show while app-generation feedback banner is active', function appGenActive() {
@@ -158,5 +175,36 @@ describe('useAgentWorkFeedbackTrigger', function hookTests() {
     renderHookWithProviders(() => useAgentWorkFeedbackTrigger(REVEAL_READY));
 
     expect(useDevelopPageStore.getState().showAgentWorkFeedbackBanner).toBe(false);
+  });
+
+  it('does not reset the reveal timer for unrelated message array updates', function noTimerStarvation() {
+    vi.useFakeTimers();
+    try {
+      setStateFor({
+        streamingState: 'idle',
+        appId: APP_ID,
+        messages: [ASSISTANT_MESSAGE],
+        lastCompleteTraceIds: TRACE_IDS,
+      });
+      renderHookWithProviders(() => useAgentWorkFeedbackTrigger(REVEAL_READY));
+      vi.advanceTimersByTime(9_000);
+
+      setStateFor({
+        messages: [
+          ASSISTANT_MESSAGE,
+          {
+            id: 'msg-2',
+            role: 'user',
+            content: 'follow up',
+            timestamp: new Date(),
+          } as ChatMessage,
+        ],
+      });
+      vi.advanceTimersByTime(1_000);
+
+      expect(useDevelopPageStore.getState().showAgentWorkFeedbackBanner).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

@@ -56,6 +56,7 @@ import { useTriggerSecurityAnalysis } from '@/hooks/useTriggerSecurityAnalysis';
 import { useIsUpgradePolling } from '@/hooks/useUpgradePurchase';
 import { isBuilderPagePath } from '@/lib/builder-route';
 import { DomainStatus, DomainType } from '@/lib/control-plane/types';
+import { markFeedbackRevealMilestone } from '@/lib/initial-build-reveal-storage';
 import { JourneyTracker } from '@/lib/journeyTracker';
 import { shipAnalyticsLog } from '@/lib/logging';
 import { DeploymentStatus } from '@/lib/mgmt-airo/types';
@@ -768,6 +769,11 @@ export default function AppPublish({ location = 'develop' }: { location?: string
 
     if (outcome === 'success') {
       if (!wasPublishing) return;
+
+      if (currentAppId) {
+        // JTBD event: website publish completed successfully.
+        markFeedbackRevealMilestone(currentAppId, 'websitePublish');
+      }
 
       if (
         currentAppId &&

@@ -8,6 +8,7 @@ import Spinner from '@ux/spinner';
 import text from '@ux/text';
 
 import type { BrandData, BrandDataPalette } from '@/hooks/useBrandData';
+import { markFeedbackRevealMilestone } from '@/lib/initial-build-reveal-storage';
 import { logger } from '@/lib/request-context';
 import { logClickEvent } from '@/utils/instrumentation';
 import styles from './brand-book.module.css';
@@ -33,7 +34,11 @@ function useDownloadImage() {
       document.body.removeChild(a);
       URL.revokeObjectURL(blobUrl);
     } catch (error) {
-      logger.warn('brandBook.downloadImage.failed', { url, filename, error: error instanceof Error ? error.message : String(error) });
+      logger.warn('brandBook.downloadImage.failed', {
+        url,
+        filename,
+        error: error instanceof Error ? error.message : String(error),
+      });
       window.open(url, '_blank', 'noopener,noreferrer');
     }
   }, []);
@@ -59,19 +64,10 @@ export function HeroSection({
     <Box className={styles.hero} style={bgStyle}>
       <div className={styles.heroInner}>
         <span className={styles.heroLabel}>BRAND IDENTITY</span>
-        <text.h1
-          className={styles.heroTitle}
-          as="heading"
-          size={2}
-        >
+        <text.h1 className={styles.heroTitle} as="heading" size={2}>
           {brandName}
         </text.h1>
-        <text.p
-          className={styles.heroTagline}
-          as="paragraph"
-          size={0}
-          style={{ opacity: 0.6 }}
-        >
+        <text.p className={styles.heroTagline} as="paragraph" size={0} style={{ opacity: 0.6 }}>
           Logo &amp; Brand Guide
         </text.p>
       </div>
@@ -84,6 +80,7 @@ export function HeroSection({
 /* ═══════════════════════════════════════════════════════════════════════════ */
 
 export function LogoSection({
+  appId,
   brand,
   palette,
   logoUrl,
@@ -91,6 +88,7 @@ export function LogoSection({
   isPending = false,
   priorLightLogoUrl,
 }: {
+  appId: string;
   brand: BrandStyle;
   palette?: BrandDataPalette;
   logoUrl?: string;
@@ -114,7 +112,10 @@ export function LogoSection({
         <SectionHeader num="01" label="Primary Mark" title="Logo" brand={brand} />
         <Box gap="lg">
           <div className={styles.logoPanelCard}>
-            <div className={`${styles.logoPanelImage} relative`} style={{ backgroundColor: '#FFFFFF' }}>
+            <div
+              className={`${styles.logoPanelImage} relative`}
+              style={{ backgroundColor: '#FFFFFF' }}
+            >
               {isRegen ? (
                 <>
                   <Image
@@ -129,7 +130,11 @@ export function LogoSection({
                   <LogoShimmerOverlay data-testid="logo-shimmer-overlay-light" />
                 </>
               ) : (
-                <LogoShimmer className="w-full aspect-video" orientation="horizontal" data-testid="logo-shimmer-light" />
+                <LogoShimmer
+                  className="w-full aspect-video"
+                  orientation="horizontal"
+                  data-testid="logo-shimmer-light"
+                />
               )}
             </div>
           </div>
@@ -147,7 +152,9 @@ export function LogoSection({
           {isLoading ? (
             <>
               <Spinner />
-              <text.span as="caption" style={{ opacity: 0.5 }}>Generating your logo...</text.span>
+              <text.span as="caption" style={{ opacity: 0.5 }}>
+                Generating your logo...
+              </text.span>
             </>
           ) : (
             <text.span as="caption" style={{ opacity: 0.5 }}>
@@ -178,7 +185,19 @@ export function LogoSection({
               />
             </div>
             <div className={styles.logoPanelFooter}>
-              <button type="button" className={styles.downloadButton} onClick={() => { logClickEvent('develop.brand.logo_download_light', brandClickProps)(); downloadImage(logoUrl, 'logo-light.png'); }}>DOWNLOAD PNG</button>
+              <button
+                type="button"
+                className={styles.downloadButton}
+                onClick={() => {
+                  logClickEvent('develop.brand.logo_download_light', brandClickProps)();
+                  // Mark the logo-download JTBD before download starts so banner gating
+                  // is deterministic even if browser download flow varies by platform.
+                  markFeedbackRevealMilestone(appId, 'logoDownload');
+                  downloadImage(logoUrl, 'logo-light.png');
+                }}
+              >
+                DOWNLOAD PNG
+              </button>
             </div>
           </div>
         </Box>
@@ -201,47 +220,36 @@ export function ColorSection({
   isLoading?: boolean;
 }) {
   // Prefer displayColors when available; fall back to generic swatches
-  const swatches = palette?.displayColors && palette.displayColors.length > 0
-    ? palette.displayColors.map((c) => ({
-        name: c.name,
-        hex: c.hex,
-        role: c.role,
-      }))
-    : palette
-      ? [
-          { name: 'Primary', hex: palette.primary, role: 'Primary brand color' },
-          { name: 'Secondary', hex: palette.secondary, role: 'Secondary brand color' },
-          { name: 'Accent', hex: palette.accent, role: 'Accent color' },
-          { name: 'Background', hex: palette.background, role: 'Background' },
-          { name: 'Foreground', hex: palette.foreground, role: 'Text color' },
-        ].filter((c): c is { name: string; hex: string; role: string } => !!c.hex)
-      : [];
+  const swatches =
+    palette?.displayColors && palette.displayColors.length > 0
+      ? palette.displayColors.map((c) => ({
+          name: c.name,
+          hex: c.hex,
+          role: c.role,
+        }))
+      : palette
+        ? [
+            { name: 'Primary', hex: palette.primary, role: 'Primary brand color' },
+            { name: 'Secondary', hex: palette.secondary, role: 'Secondary brand color' },
+            { name: 'Accent', hex: palette.accent, role: 'Accent color' },
+            { name: 'Background', hex: palette.background, role: 'Background' },
+            { name: 'Foreground', hex: palette.foreground, role: 'Text color' },
+          ].filter((c): c is { name: string; hex: string; role: string } => !!c.hex)
+        : [];
 
   return (
     <SectionWrapper palette={palette}>
-      <SectionHeader
-        num="03"
-        label="Brand Colors"
-        title="Color Palette"
-        brand={brand}
-      />
+      <SectionHeader num="03" label="Brand Colors" title="Color Palette" brand={brand} />
 
       {swatches.length > 0 ? (
         <div className={styles.swatchGrid}>
           {swatches.map((c) => (
             <div key={c.name} className={styles.swatchCard}>
-              <div
-                className={styles.swatchSquare}
-                style={{ backgroundColor: c.hex }}
-              />
+              <div className={styles.swatchSquare} style={{ backgroundColor: c.hex }} />
               <div className={styles.swatchInfo}>
                 <span className={styles.swatchName}>{c.name}</span>
-                <span className={styles.swatchValue}>
-                  {c.hex.toUpperCase()}
-                </span>
-                {c.role && (
-                  <span className={styles.swatchRole}>{c.role}</span>
-                )}
+                <span className={styles.swatchValue}>{c.hex.toUpperCase()}</span>
+                {c.role && <span className={styles.swatchRole}>{c.role}</span>}
               </div>
             </div>
           ))}
@@ -251,7 +259,9 @@ export function ColorSection({
           {isLoading ? (
             <>
               <Spinner />
-              <text.span as="caption" style={{ opacity: 0.5 }}>Creating your color palette...</text.span>
+              <text.span as="caption" style={{ opacity: 0.5 }}>
+                Creating your color palette...
+              </text.span>
             </>
           ) : (
             <text.span as="caption" style={{ opacity: 0.5 }}>
@@ -371,7 +381,9 @@ export function ColorContextsSection({
           {isLoading ? (
             <>
               <Spinner />
-              <text.span as="caption" style={{ opacity: 0.5 }}>Preparing color contexts...</text.span>
+              <text.span as="caption" style={{ opacity: 0.5 }}>
+                Preparing color contexts...
+              </text.span>
             </>
           ) : (
             <text.span as="caption" style={{ opacity: 0.5 }}>
@@ -416,8 +428,19 @@ export function BrandApplicationsSection({
             className={styles.mockupImage}
           />
           <div className={styles.mockupPreviewFooter}>
-            <text.span as="caption" style={{ opacity: 0.5 }}>BRAND MOCKUP PREVIEW</text.span>
-            <button type="button" className={styles.downloadButton} onClick={() => { logClickEvent('develop.brand.mockup_download', brandClickProps)(); downloadImage(mockupUrl, 'logo-mockup.png'); }}>Download Mockup</button>
+            <text.span as="caption" style={{ opacity: 0.5 }}>
+              BRAND MOCKUP PREVIEW
+            </text.span>
+            <button
+              type="button"
+              className={styles.downloadButton}
+              onClick={() => {
+                logClickEvent('develop.brand.mockup_download', brandClickProps)();
+                downloadImage(mockupUrl, 'logo-mockup.png');
+              }}
+            >
+              Download Mockup
+            </button>
           </div>
         </div>
       ) : (
@@ -425,7 +448,9 @@ export function BrandApplicationsSection({
           {isLoading ? (
             <>
               <Spinner />
-              <text.span as="caption" style={{ opacity: 0.5 }}>Creating brand mockups...</text.span>
+              <text.span as="caption" style={{ opacity: 0.5 }}>
+                Creating brand mockups...
+              </text.span>
             </>
           ) : (
             <text.span as="caption" style={{ opacity: 0.5 }}>
@@ -463,8 +488,14 @@ export function TypographySection({
 
       {typo ? (
         <Box orientation="horizontal" gap="xl">
-          <Box gap="md" className={`${styles.softCard} ${styles.fontShowcase} ${styles.flexOne}`} style={{ '--showcase-font': brand.headingFont } as React.CSSProperties}>
-            <text.span as="caption" className={styles.sectionLabel} style={{ fontSize: '0.6rem' }}>HEADING FONT</text.span>
+          <Box
+            gap="md"
+            className={`${styles.softCard} ${styles.fontShowcase} ${styles.flexOne}`}
+            style={{ '--showcase-font': brand.headingFont } as React.CSSProperties}
+          >
+            <text.span as="caption" className={styles.sectionLabel} style={{ fontSize: '0.6rem' }}>
+              HEADING FONT
+            </text.span>
             <text.h3 as="heading" size={2}>
               {typo.heading?.family || 'System UI'}
             </text.h3>
@@ -477,23 +508,26 @@ export function TypographySection({
               </text.p>
             )}
             <hr className={styles.softDivider} />
-            <text.span as="caption">
-              Use for: Page titles, section headers, brand name
-            </text.span>
+            <text.span as="caption">Use for: Page titles, section headers, brand name</text.span>
           </Box>
 
-          <Box gap="md" className={`${styles.softCard} ${styles.fontShowcase} ${styles.flexOne}`} style={{ '--showcase-font': brand.bodyFont } as React.CSSProperties}>
-            <text.span as="caption" className={styles.sectionLabel} style={{ fontSize: '0.6rem' }}>BODY FONT</text.span>
+          <Box
+            gap="md"
+            className={`${styles.softCard} ${styles.fontShowcase} ${styles.flexOne}`}
+            style={{ '--showcase-font': brand.bodyFont } as React.CSSProperties}
+          >
+            <text.span as="caption" className={styles.sectionLabel} style={{ fontSize: '0.6rem' }}>
+              BODY FONT
+            </text.span>
             <text.h3 as="heading" size={2}>
               {typo.body?.family || 'System UI'}
             </text.h3>
             <text.p as="paragraph" size={0} style={{ opacity: 0.85 }}>
-              Every detail matters. From the first impression to the lasting memory, your brand speaks through every touchpoint.
+              Every detail matters. From the first impression to the lasting memory, your brand
+              speaks through every touchpoint.
             </text.p>
             <hr className={styles.softDivider} />
-            <text.span as="caption">
-              Use for: Body copy, navigation, captions, UI labels
-            </text.span>
+            <text.span as="caption">Use for: Body copy, navigation, captions, UI labels</text.span>
           </Box>
         </Box>
       ) : (
@@ -501,7 +535,9 @@ export function TypographySection({
           {isLoading ? (
             <>
               <Spinner />
-              <text.span as="caption" style={{ opacity: 0.5 }}>Selecting your fonts...</text.span>
+              <text.span as="caption" style={{ opacity: 0.5 }}>
+                Selecting your fonts...
+              </text.span>
             </>
           ) : (
             <text.span as="caption" style={{ opacity: 0.5 }}>
@@ -547,26 +583,44 @@ export function UsageGuidelinesSection({
       <div className={styles.guidelinesGrid}>
         <div className={styles.guidelinesColumn}>
           <div className={styles.guidelinesHeader}>
-            <span className={`${styles.guidelinesDot} bg-intents-ux-feedbackSuccess-feedbackColor`} />
-            <text.span as="caption" className={styles.sectionLabel} style={{ fontSize: '0.6rem' }}>DO</text.span>
+            <span
+              className={`${styles.guidelinesDot} bg-intents-ux-feedbackSuccess-feedbackColor`}
+            />
+            <text.span as="caption" className={styles.sectionLabel} style={{ fontSize: '0.6rem' }}>
+              DO
+            </text.span>
           </div>
           {doItems.map((item) => (
             <div key={item} className={styles.guidelinesItem}>
-              <Check size={14} className={`${styles.voiceIcon} text-intents-ux-feedbackSuccess-feedbackColor`} />
-              <text.span as="paragraph" size={0}>{item}</text.span>
+              <Check
+                size={14}
+                className={`${styles.voiceIcon} text-intents-ux-feedbackSuccess-feedbackColor`}
+              />
+              <text.span as="paragraph" size={0}>
+                {item}
+              </text.span>
             </div>
           ))}
         </div>
 
         <div className={styles.guidelinesColumn}>
           <div className={styles.guidelinesHeader}>
-            <span className={`${styles.guidelinesDot} bg-intents-ux-feedbackCritical-feedbackColor`} />
-            <text.span as="caption" className={styles.sectionLabel} style={{ fontSize: '0.6rem' }}>DON&apos;T</text.span>
+            <span
+              className={`${styles.guidelinesDot} bg-intents-ux-feedbackCritical-feedbackColor`}
+            />
+            <text.span as="caption" className={styles.sectionLabel} style={{ fontSize: '0.6rem' }}>
+              DON&apos;T
+            </text.span>
           </div>
           {dontItems.map((item) => (
             <div key={item} className={styles.guidelinesItem}>
-              <X size={14} className={`${styles.voiceIcon} text-intents-ux-feedbackCritical-feedbackColor`} />
-              <text.span as="paragraph" size={0}>{item}</text.span>
+              <X
+                size={14}
+                className={`${styles.voiceIcon} text-intents-ux-feedbackCritical-feedbackColor`}
+              />
+              <text.span as="paragraph" size={0}>
+                {item}
+              </text.span>
             </div>
           ))}
         </div>
@@ -574,4 +628,3 @@ export function UsageGuidelinesSection({
     </SectionWrapper>
   );
 }
-

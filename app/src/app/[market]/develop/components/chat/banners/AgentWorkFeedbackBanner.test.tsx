@@ -55,14 +55,14 @@ vi.mock('@/stores/useDevelopPageStore', () => ({
         currentAppId: 'app-1',
         agentWorkFeedbackAgentId: mockAgentTargetId,
         agentWorkFeedbackTraceIds: mockTraceIds,
-        agentWorkFeedbackRevealMilestone: 'firstFileEdit',
+        agentWorkFeedbackRevealMilestone: 'logoDownload',
         markAgentWorkFeedbackSubmitted: mockMarkSubmitted,
         setShowAgentWorkFeedbackBanner: mockSetShowBanner,
         showResponseFeedbackThanksBannerTemporarily: mockShowThanksBanner,
       }),
     {
       getState: () => ({
-        agentWorkFeedbackRevealMilestone: 'firstFileEdit',
+        agentWorkFeedbackRevealMilestone: 'logoDownload',
         showResponseFeedbackThanksBannerTemporarily: mockShowThanksBanner,
       }),
     }
@@ -95,7 +95,7 @@ describe('AgentWorkFeedbackBanner', function bannerTests() {
 
   it('logs an impression and renders the agent-work banner', function render() {
     renderWithProviders(<AgentWorkFeedbackBanner />);
-    expect(mockLogImpression).toHaveBeenCalledWith('agentWork.feedback.view');
+    expect(mockLogImpression).toHaveBeenCalledWith('skill-invoke.feedback.view');
     expect(screen.getByTestId('agent-work-feedback-banner')).toBeInTheDocument();
     expect(screen.getByTestId('agent-work-feedback-prompt')).toBeInTheDocument();
   });
@@ -113,13 +113,13 @@ describe('AgentWorkFeedbackBanner', function bannerTests() {
 
     const body = JSON.parse(mockAgentFetch.mock.calls[0][1].body as string);
     expect(body.targetLevel).toBe('invocation');
-    expect(body.targetId).toBe('airo-app-builder-InitialAgent');
+    expect(body.targetId).toBe('airo-app-builder-logo');
     expect(mockMarkSubmitted).toHaveBeenCalled();
     expect(mockShipAnalyticsLog).toHaveBeenCalledWith(
-      'agentWork.feedback.submit',
+      'skill-invoke.feedback.submit',
       expect.objectContaining({
-        flow: 'agent-work',
-        initialBuildRevealMilestone: 'firstFileEdit',
+        flow: 'skill-invoke',
+        initialBuildRevealMilestone: 'logoDownload',
       })
     );
   });
@@ -127,7 +127,7 @@ describe('AgentWorkFeedbackBanner', function bannerTests() {
   it('closes the banner when the close control is used', function close() {
     renderWithProviders(<AgentWorkFeedbackBanner />);
     fireEvent.click(screen.getByRole('button', { name: /close/i }));
-    expect(mockLogClick).toHaveBeenCalledWith('agentWork.feedback.close');
+    expect(mockLogClick).toHaveBeenCalledWith('skill-invoke.feedback.close');
     expect(mockSetShowBanner).toHaveBeenCalledWith(false, null);
   });
 });

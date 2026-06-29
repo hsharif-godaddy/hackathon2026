@@ -213,6 +213,7 @@ export default function BrandBookView({ appId }: BrandBookViewProps) {
         palette={palette}
       />
       <LogoSection
+        appId={appId}
         brand={brand}
         palette={palette}
         logoUrl={primarySolidLogoUrl}
