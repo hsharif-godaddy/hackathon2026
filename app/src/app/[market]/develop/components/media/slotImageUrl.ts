@@ -4,17 +4,47 @@ export function getPreviewOrigin(previewBaseUrl: string): string {
   catch { return previewBaseUrl.split('?')[0].split('#')[0].replace(/\/$/, '') }
 }
 
+/** True when a URL points at a raster image suitable for img/poster (not mp4/webm). */
+export function isImageMediaUrl(url: string): boolean {
+  const base = url.split('?')[0].toLowerCase()
+  if (/\.(jpe?g|png|webp|gif|avif)(\?|$)/.test(base)) {
+    return true
+  }
+  if (/\.(mp4|webm|mov|m4v)(\?|$)/.test(base)) {
+    return false
+  }
+  if (base.includes('/video/')) {
+    return false
+  }
+  return true
+}
+
+/**
+ * Returns posterUrl only when it is a still image (Getty preview URLs are often mp4).
+ * Assumes posterUrl is always an absolute URL — media-search-tool always emits absolute
+ * Getty CDN URLs for thumbnailUrl, so no preview-origin resolution is needed here.
+ */
+export function getSlotVideoPosterUrl(posterUrl: string | undefined): string {
+  if (!posterUrl || !isImageMediaUrl(posterUrl)) {
+    return ''
+  }
+  return posterUrl
+}
+
 export function getSlotImageUrl(
   slotName: string | null,
   imageUrl: string,
   previewBaseUrl: string | null,
   mediaType?: string,
 ): string {
-  if (!imageUrl || !slotName || !previewBaseUrl) {
-    return imageUrl || ''
+  if (!imageUrl) {
+    return ''
   }
   // Absolute URLs (e.g. signed agent URLs for chat uploads) are used as-is
   if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
+    return imageUrl
+  }
+  if (!previewBaseUrl) {
     return imageUrl
   }
   // /airo-assets/uploads/ are served directly by dev-supervisor — only the
@@ -22,6 +52,9 @@ export function getSlotImageUrl(
   // the URL is already fully resolved). Tool renderers use this path.
   if (imageUrl.startsWith('/airo-assets/uploads/')) {
     return `${getPreviewOrigin(previewBaseUrl)}${imageUrl}`
+  }
+  if (!slotName) {
+    return imageUrl
   }
   const assetPrefix = mediaType === 'video' ? '/airo-assets/videos/' : '/airo-assets/images/'
   return `${getPreviewOrigin(previewBaseUrl)}${assetPrefix}${slotName}?src=${encodeURIComponent(imageUrl)}`

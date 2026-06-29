@@ -108,3 +108,89 @@ describe('MediaSearchTool Getty ID tracking', () => {
     expect(result.gettyIds).toBeUndefined();
   });
 });
+
+describe('MediaSearchTool video thumbnail URL selection', () => {
+  let tool: MediaSearchTool;
+  let mockDriverSearch: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    tool = new MediaSearchTool();
+    const mockDriverInstance = vi.mocked(GettyMediaDriver).mock.results[0]?.value;
+    mockDriverSearch = mockDriverInstance.search;
+  });
+
+  it('prefers thumbnail (still image) over standard mp4 and preview mp4', async () => {
+    mockDriverSearch.mockResolvedValueOnce({
+      success: true,
+      items: [{
+        id: 'v1',
+        urls: {
+          thumbnail: 'https://cdn.getty.com/thumb.jpg',
+          standard: 'https://cdn.getty.com/vid.mp4',
+          preview: 'https://cdn.getty.com/prev.mp4',
+        },
+      }],
+    });
+
+    const result = await tool.searchMedia('sunset', 'video', 1);
+
+    expect(result.success).toBe(true);
+    expect(result.thumbnailUrl).toBe('https://cdn.getty.com/thumb.jpg');
+  });
+
+  it('skips mp4 thumbnail and falls back to still-image preview', async () => {
+    mockDriverSearch.mockResolvedValueOnce({
+      success: true,
+      items: [{
+        id: 'v2',
+        urls: {
+          thumbnail: 'https://cdn.getty.com/thumb.mp4',
+          standard: 'https://cdn.getty.com/vid.mp4',
+          preview: 'https://cdn.getty.com/still.jpg',
+        },
+      }],
+    });
+
+    const result = await tool.searchMedia('ocean', 'video', 1);
+
+    expect(result.success).toBe(true);
+    expect(result.thumbnailUrl).toBe('https://cdn.getty.com/still.jpg');
+  });
+
+  it('returns no thumbnailUrl when all candidates are video files', async () => {
+    mockDriverSearch.mockResolvedValueOnce({
+      success: true,
+      items: [{
+        id: 'v3',
+        urls: {
+          thumbnail: 'https://cdn.getty.com/clip.m4v',
+          standard: 'https://cdn.getty.com/vid.mp4',
+          preview: 'https://cdn.getty.com/prev.webm',
+        },
+      }],
+    });
+
+    const result = await tool.searchMedia('fire', 'video', 1);
+
+    expect(result.success).toBe(true);
+    expect(result.thumbnailUrl).toBeUndefined();
+  });
+
+  it('returns no thumbnailUrl and does not crash when urls are absent', async () => {
+    mockDriverSearch.mockResolvedValueOnce({
+      success: true,
+      items: [{
+        id: 'v4',
+        urls: {
+          standard: 'https://cdn.getty.com/vid.mp4',
+        },
+      }],
+    });
+
+    const result = await tool.searchMedia('rain', 'video', 1);
+
+    expect(result.success).toBe(true);
+    expect(result.thumbnailUrl).toBeUndefined();
+  });
+});

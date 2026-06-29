@@ -6,6 +6,7 @@ import ImageIcon from '@ux/icon/image'
 import PlusIcon from '@ux/icon/plus'
 
 import { getSlotImageUrl } from '@/app/[market]/develop/components/media/slotImageUrl'
+import ChatVideoThumbnail from '@/app/[market]/develop/components/tool-renderers/ChatVideoThumbnail'
 import ToolHeader from '@/app/[market]/develop/components/tool-renderers/ToolHeader'
 import { ChatTab } from '@/app/[market]/develop/components/types'
 import { useChatTabs } from '@/hooks/useChatTabs'
@@ -99,9 +100,13 @@ export default function MediaGroupRenderer({
     return { toolCall, input, result }
   })
 
-  // Filter to only completed, successful slots
+  // Images require resolvedUrl to render the thumbnail. Videos can fall back to the
+  // ChatVideoThumbnail placeholder when resolvedUrl is absent but slot path is known.
   const completedSlots = parsedSlots.filter(
-    (slot) => slot.toolCall.status === 'completed' && slot.result?.success && slot.result?.resolvedUrl
+    (slot) =>
+      slot.toolCall.status === 'completed' &&
+      slot.result?.success &&
+      (slot.result?.resolvedUrl || (slot.result?.mediaType === 'video' && slot.result?.slot))
   )
 
   const runningSlots = parsedSlots.filter((slot) => slot.toolCall.status === 'running')
@@ -164,11 +169,11 @@ export default function MediaGroupRenderer({
       {/* 2 images + See all button */}
       <div className="flex gap-1 overflow-x-scroll">
         {visibleSlots.map((slot) => {
-          // For videos, use thumbnailUrl for preview; for images, use resolvedUrl
           const isVideo = slot.result!.mediaType === 'video'
-          const previewUrl = isVideo
-            ? slot.result!.thumbnailUrl || slot.result!.resolvedUrl
-            : slot.result!.resolvedUrl
+          const slotName = slot.result!.slot
+          const thumbnailSrc = isVideo
+            ? ''
+            : getSlotImageUrl(slotName, slot.result!.resolvedUrl || '', previewBaseUrl, slot.result!.mediaType)
 
           return (
             <button
@@ -178,14 +183,20 @@ export default function MediaGroupRenderer({
               className="flex-shrink-0 w-12 cursor-pointer group text-left"
               data-eid={generateClickEID("develop.media_group.image")}
             >
-              {/* Square thumbnail (uses thumbnailUrl for videos, resolvedUrl for images) */}
-              <div className="w-12 h-12 rounded-md overflow-hidden relative">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={getSlotImageUrl(slot.result!.slot, previewUrl || '', previewBaseUrl, slot.result!.mediaType)}
-                  alt={slot.result!.searchQuery}
-                  className="w-full h-full object-cover rounded-md transition-all duration-300 group-hover:opacity-20"
-                />
+              <div className="w-12 h-12 rounded-md overflow-hidden relative bg-intents-ux-boxLowContrast-backgroundColor">
+                {isVideo ? (
+                  <ChatVideoThumbnail
+                    thumbnailUrl={slot.result!.thumbnailUrl}
+                    searchQuery={slot.result!.searchQuery}
+                  />
+                ) : (
+                  /* eslint-disable-next-line @next/next/no-img-element */
+                  <img
+                    src={thumbnailSrc}
+                    alt={slot.result!.searchQuery}
+                    className="w-full h-full object-cover rounded-md transition-all duration-300 group-hover:opacity-20"
+                  />
+                )}
                 {/* Centered text on hover */}
                 <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 pointer-events-none">
                   <PlusIcon className="size-3 opacity-0 transition-all duration-300 ease-in-out group-hover:opacity-100" />

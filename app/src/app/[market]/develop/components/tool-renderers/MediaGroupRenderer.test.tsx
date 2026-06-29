@@ -33,7 +33,7 @@ vi.mock('@/hooks/useChatTabs', () => ({
 
 vi.mock('@/stores/useServerPollingStore', () => ({
   useServerPollingStore: (selector: unknown) => (selector as (state: unknown) => unknown)({
-    getServerState: () => ({ url: 'https://preview.example' }),
+    getServerState: () => ({ url: 'https://preview.example/app?airoShareToken=abc' }),
   }),
 }))
 
@@ -248,5 +248,54 @@ describe('MediaGroupRenderer', () => {
 
     expect(screen.queryByText(/NaN/i)).not.toBeInTheDocument()
     expect(screen.queryByText('builder_common_options_count')).not.toBeInTheDocument()
+  })
+
+  it('renders stock video chat thumbnails as still images when a jpeg thumb exists', () => {
+    const toolCalls = [makeToolCall({
+      id: 'tc-video',
+      result: JSON.stringify({
+        success: true,
+        slot: 'pages/home/gallery-1',
+        slotUrl: '/airo-assets/videos/pages/home/gallery-1',
+        mediaType: 'video',
+        searchQuery: 'cute cat playing',
+        resolvedUrl: 'https://blobby.dev-wsimg.com/getty/videos/2155415555',
+        thumbnailUrl: 'https://media.gettyimages.com/cat-thumb.jpg',
+      }),
+    })]
+
+    renderWithProviders(
+      <MediaGroupRenderer toolCalls={toolCalls} />
+    )
+
+    const video = document.querySelector('video')
+    expect(video).not.toBeInTheDocument()
+    expect(screen.getByAltText('cute cat playing')).toHaveAttribute(
+      'src',
+      'https://media.gettyimages.com/cat-thumb.jpg',
+    )
+  })
+
+  it('renders a play placeholder when the video thumb is an mp4 preview URL', () => {
+    const toolCalls = [makeToolCall({
+      id: 'tc-video-mp4-thumb',
+      result: JSON.stringify({
+        success: true,
+        slot: 'pages/home/gallery-1',
+        slotUrl: '/airo-assets/videos/pages/home/gallery-1',
+        mediaType: 'video',
+        searchQuery: 'cute cat playing',
+        resolvedUrl: 'https://blobby.dev-wsimg.com/getty/videos/2155415555',
+        thumbnailUrl: 'https://media.gettyimages.com/id/1/video/clip.mp4?sig=abc',
+      }),
+    })]
+
+    renderWithProviders(
+      <MediaGroupRenderer toolCalls={toolCalls} />
+    )
+
+    expect(document.querySelector('video')).not.toBeInTheDocument()
+    expect(screen.queryByAltText('cute cat playing')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('cute cat playing')).toBeInTheDocument()
   })
 })

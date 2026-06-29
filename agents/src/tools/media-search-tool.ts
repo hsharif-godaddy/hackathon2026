@@ -399,11 +399,12 @@ export class MediaSearchTool {
         });
       }
 
-      // For videos, extract thumbnail URL from the item's urls
+      // For videos, prefer still-image thumbs — Getty preview URLs are often mp4 clips.
       let thumbnailUrl: string | undefined;
       if (mediaType === 'video' && result.items[0]) {
         const item = result.items[0];
-        thumbnailUrl = item.urls?.preview || item.urls?.thumbnail || item.urls?.standard;
+        const candidates = [item.urls?.thumbnail, item.urls?.standard, item.urls?.preview].filter(Boolean) as string[];
+        thumbnailUrl = candidates.find((url) => !/\.(mp4|webm|mov|m4v)(\?|$)/i.test(url.split('?')[0] ?? url));
       }
 
       if (count === 1 && mediaUrls.length > 0) {
