@@ -384,20 +384,34 @@ export async function createInitialAgent(
     tools.skill = allAILibTools.skill
     tools.media = allAILibTools.media
     tools.setWizardStep = allAILibTools.setWizardStep
-    // Step 4 writes the brand showcase to public/brand-showcase.html itself, so the
-    // wizard needs the file editor. Without it the agent cannot author the showcase
-    // (it was observed trying to load a nonexistent "file-edit" skill as a workaround,
-    // which also left public/brand-showcase.html unwritten so the iframe fell back to
-    // the site index).
+    // The homepage and brand showcase are built by sub-agents (design-kit-build +
+    // builder), and the kit at docs/ui-kit/ is the build spec — the wizard authors no
+    // plan file. The file editor stays wired for ad-hoc refinements (e.g. the user asks
+    // to tweak a specific file mid-wizard) so the agent edits directly rather than
+    // improvising (it was once observed loading a nonexistent "file-edit" skill).
     tools.str_replace_based_edit_tool = allAILibTools.str_replace_based_edit_tool
+    // AIROBUILD-2871: parallel showcase + website generation. Instead of the old
+    // sequential handoff to `develop`, the wizard dispatches TWO background sub-agents
+    // with runAgent — `design-kit-build` for the homepage and `builder` for the brand
+    // showcase — then blocks on awaitAgents, so the showcase and the website are produced
+    // concurrently. `develop` is not dispatchable as a sub-agent (not in VALID_AGENTS),
+    // which is why the website is built by `design-kit-build`/`builder`.
+    tools.runAgent = allAILibTools.runAgent
+    tools.awaitAgents = allAILibTools.awaitAgents
     // The wizard never rebuilds an existing site. websiteRebuild performs an
     // unconditional switchAgent(...,'develop') with no step gating, which would
     // hard-hand-off mid-wizard — the exact bug we're preventing. Remove it so the
-    // ONLY route to develop is the Step-5 handoff.
+    // wizard's only route to the website build is the parallel fan-out above.
     delete tools.websiteRebuild
   }
 
-  if (handoffTool) {
+  // AIROBUILD-2871: the design-kit wizard no longer hands off to `develop` — it
+  // fans out the website build to a background `builder` sub-agent (see the
+  // design-kit tool block above). Withholding the handoff tool keeps the model from
+  // taking the legacy sequential route. To restore the handoff fallback (spike
+  // off-ramp), drop the `!isDesignKitVariant` guard here and revert the "Create
+  // website" section of wizard-flow.md.
+  if (handoffTool && !isDesignKitVariant) {
     tools.handoff = handoffTool
   }
 
@@ -467,11 +481,16 @@ export async function createInitialAgent(
       'askQuestion',
     ],
 
-    // The Design Kit Wizard fires many tools in a single assembly turn (install
-    // kit, colors, fonts, project name, logo, imagery, voice, summary, plus the
-    // setWizardStep transitions), so it needs a higher step budget than the
-    // standard initial agent or it stops before the kit is fully assembled.
-    maxSteps: isDesignKitVariant ? 20 : 10,
+    // The Design Kit Wizard runs the brand and website phases as one continuous turn
+    // and orchestrates several sub-agents along the way. AIROBUILD-2871: the brand
+    // phase fans out mood-imagery + logo `media` sub-agents (then awaitAgents), and
+    // the website phase fans out homepage + showcase `builder` sub-agents (then
+    // awaitAgents) — on top of the foreground token writes (install/colors/fonts/
+    // brand/setProjectName/todoList/setWizardStep). No plan is authored; the kit at
+    // docs/ui-kit/ is the build spec. That's a lot of steps in one turn, so the budget
+    // is raised well above the standard initial agent (awaitAgents blocks within a
+    // single step, not many).
+    maxSteps: isDesignKitVariant ? 40 : 10,
     temperature: 0.5,
     maxOutputTokens: 8000,
     timeout: { stepMs: 600_000 },

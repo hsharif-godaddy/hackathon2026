@@ -21,6 +21,7 @@ import BrandBookView from '@/app/[market]/develop/components/preview/brand-book'
 import { DesignKitChatHeader } from '@/app/[market]/develop/components/preview/design-kit-wizard/DesignKitChatHeader'
 import { DesignKitWizard } from '@/app/[market]/develop/components/preview/design-kit-wizard/DesignKitWizard'
 import { useIsDesignKitWizardProfile } from '@/app/[market]/develop/components/preview/design-kit-wizard/isDesignKitWizardProfile'
+import { isDesignKitInitialViewResolving, resolveDesignKitInitialView } from '@/app/[market]/develop/components/preview/design-kit-wizard/landing'
 import PreviewPane, { type PublishSnapshotRequestDetail } from '@/app/[market]/develop/components/preview/PreviewPane'
 import ResizableDivider from '@/app/[market]/develop/components/ResizableDivider'
 import { SettingsLoadingState } from '@/app/[market]/develop/components/settings/components/SettingsLoadingState'
@@ -55,6 +56,7 @@ import { useAotPreload } from '@/hooks/useAotPreload'
 import { useAppArchiveRestore } from '@/hooks/useAppArchiveRestore'
 import { useAppDetails } from '@/hooks/useAppDetails'
 import { useAppHibernation } from '@/hooks/useAppHibernation'
+import { useBrandData } from '@/hooks/useBrandData'
 import { useChatTabs } from '@/hooks/useChatTabs'
 import { useChatTransport } from '@/hooks/useChatTransport'
 import { useCombinePublishTrigger } from '@/hooks/useCombinePublishTrigger'
@@ -221,6 +223,21 @@ function DevelopPageContent({ layout: layoutProp }: { layout?: BuilderLayout }) 
   // hide the develop-page chrome so only the chat + wizard overlay show.
   const wizardPhase = useWizardStore((s) => s.phaseByApp[appId])
 
+  // The immersive wizard is for the *initial build only*. A finished build persists
+  // `wizard.phase === 'ready'` (the agent emits it after the builders complete —
+  // AIROBUILD-2871), so reloading a finished app must land in the normal builder, not
+  // replay "Building your website". Read the persisted phase here (page level) so the
+  // *landing* decision below knows it before the wizard mounts — the wizard's own
+  // `useWizardPhase` only hydrates the store once it's on BRAND, which is too late.
+  // Gated on the wizard profile so non-design-kit apps issue no brand-data fetch.
+  // `data`+`isLoading` come from one hook instance (same commit), so the landing reads
+  // a settled phase with no hydration race. `isLoading` defaults false when disabled.
+  const { data: designKitBrandData, isLoading: designKitBrandLoading } = useBrandData(
+    appId,
+    { enabled: showDesignKitWizard },
+  )
+  const designKitBuildFinished: boolean = designKitBrandData?.wizard?.phase === 'ready'
+
   // Logo-designer handoff → website build: switch Brand → Preview when the
   // first page file edit lands. localStorage-gated per appId so a reload after
   // we've already switched once doesn't re-hijack a tab the user has since
@@ -303,13 +320,19 @@ function DevelopPageContent({ layout: layoutProp }: { layout?: BuilderLayout }) 
     },
     [isInboxEnabled, brandId, isLoadingAccount]
   )
-  // Land design-kit sessions on the BRAND tab by default (showDesignKitWizard is
-  // resolved above, alongside the logo-designer auto-switch guard that also uses it).
+  // Land an *in-progress* design-kit session on the BRAND tab (the immersive flow).
+  // A finished build (phase 'ready') returns null so it lands in the normal builder —
+  // never replaying the wizard. The persisted phase loads async, so hold the landing
+  // (initialViewResolving) until brand-data settles; otherwise a finished app would
+  // briefly flash the wizard before we know to skip it. A fresh create (initial prompt
+  // still pending) is known in-progress up front and lands immediately, no wait.
   const resolveInitialViewMode = useCallback(
-    (): ViewMode | null => (showDesignKitWizard ? ViewMode.BRAND : null),
-    [showDesignKitWizard]
+    (): ViewMode | null => resolveDesignKitInitialView(showDesignKitWizard, designKitBuildFinished),
+    [showDesignKitWizard, designKitBuildFinished]
   )
-  useView({ getViewAvailability, resolveInitialViewMode })
+  const initialViewResolving: boolean =
+    isDesignKitInitialViewResolving(showDesignKitWizard, init.context.hasInitialPrompt, designKitBrandLoading)
+  useView({ getViewAvailability, resolveInitialViewMode, initialViewResolving })
 
   // Eval snapshot capture - captures screenshot on first build completion
   const { triggerEvalSnapshot, handleEvalViewportScreenshot } = useEvalSnapshotCapture({ appId })

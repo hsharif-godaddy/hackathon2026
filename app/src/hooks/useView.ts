@@ -25,6 +25,15 @@ export interface UseViewOptions {
    * URL deep link always wins over this default.
    */
   resolveInitialViewMode?: () => ViewMode | null
+  /**
+   * Optional: hold the initial-default landing (don't apply it or mark the view
+   * initialized) until the caller can decide it. Mirrors the per-mode `resolving`
+   * hold below: the effect re-runs once this clears. Lets a caller defer a
+   * data-dependent landing — e.g. the design-kit BRAND tab, which depends on the
+   * async persisted wizard phase — so a finished app never briefly flashes the
+   * wizard before we know to skip it. A valid `?view=` deep link still wins.
+   */
+  initialViewResolving?: boolean
 }
 
 /** View modes that participate in the `?view=` URL param. Inbox-only today. */
@@ -57,7 +66,7 @@ const parseViewMode = (value: string | null): ViewMode | null => {
  * fall-back decision until the caller reports the mode as resolved, so a valid
  * deep link is not stripped while async data (e.g. the inbox brand) loads.
  */
-export function useView({ getViewAvailability, resolveInitialViewMode }: UseViewOptions): void {
+export function useView({ getViewAvailability, resolveInitialViewMode, initialViewResolving }: UseViewOptions): void {
   const pathname = usePathname()
 
   const viewMode = useDevelopPageStore((state) => state.viewMode)
@@ -109,15 +118,20 @@ export function useView({ getViewAvailability, resolveInitialViewMode }: UseView
       if (normalizedUrl !== currentUrl) {
         window.history.replaceState(null, '', normalizedUrl)
       }
+      // Hold the initial default until the caller resolves it (re-runs on clear).
+      if (initialViewResolving) return
       applyInitialDefault()
       markViewInitialized(pathname)
       return
     }
 
-    // No / invalid view param: land on the initial default.
+    // No / invalid view param: land on the initial default. Hold it until the
+    // caller resolves it (re-runs on clear) so a data-dependent landing never
+    // flashes the wrong view.
+    if (initialViewResolving) return
     applyInitialDefault()
     markViewInitialized(pathname)
-  }, [pathname, viewInitializedForPathname, viewMode, getViewAvailability, resolveInitialViewMode, setViewMode, markViewInitialized])
+  }, [pathname, viewInitializedForPathname, viewMode, getViewAvailability, resolveInitialViewMode, initialViewResolving, setViewMode, markViewInitialized])
 
   // store -> URL. Invariant: ?view=<mode> present iff viewMode is URL-synced.
   // Always replaceState: the URL reflects the current view without adding

@@ -260,5 +260,48 @@ describe('useView', () => {
       });
       expect(useDevelopPageStore.getState().viewMode).toBe(ViewMode.EDIT);
     });
+
+    it('holds the initial default while initialViewResolving, then applies it once resolved', async () => {
+      const { rerender } = renderHook(
+        ({ resolving }) =>
+          useView({
+            getViewAvailability: allAvailable,
+            resolveInitialViewMode: () => ViewMode.BRAND,
+            initialViewResolving: resolving,
+          }),
+        { initialProps: { resolving: true } }
+      );
+
+      // Held: not initialized, default not applied.
+      await waitFor(() => {
+        expect(useDevelopPageStore.getState().viewInitializedForPathname).toBeNull();
+      });
+      expect(useDevelopPageStore.getState().viewMode).toBe(ViewMode.EDIT);
+
+      // Resolved: applies the default and initializes.
+      rerender({ resolving: false });
+      await waitFor(() => {
+        expect(useDevelopPageStore.getState().viewMode).toBe(ViewMode.BRAND);
+      });
+      expect(useDevelopPageStore.getState().viewInitializedForPathname).toBe('/develop/app-123');
+    });
+
+    it('lets a valid ?view deep link win even while initialViewResolving', async () => {
+      window.history.replaceState(null, '', '/develop/app-123?view=inbox');
+
+      renderHook(() =>
+        useView({
+          getViewAvailability: allAvailable,
+          resolveInitialViewMode: () => ViewMode.BRAND,
+          initialViewResolving: true,
+        })
+      );
+
+      // The available deep link initializes immediately; the hold only defers the
+      // *default* landing, not a valid URL-synced mode.
+      await waitFor(() => {
+        expect(useDevelopPageStore.getState().viewMode).toBe(ViewMode.INBOX);
+      });
+    });
   });
 });

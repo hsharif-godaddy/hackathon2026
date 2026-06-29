@@ -11,6 +11,7 @@ import {
   useStreamingConversationStore,
 } from '@/stores/useStreamingConversationStore'
 import { useTodoListStore } from '@/stores/useTodoListStore'
+import { useWizardStore } from '@/stores/useWizardStore'
 import { AppErrorCode } from '@/types/error-codes'
 import {
   getPhaseFromState,
@@ -449,6 +450,19 @@ export function resetStaleAppContext(
  */
 export function shouldReplaceJobRoute(appId: string | null, isJobId: boolean, realAppId: string | null): boolean {
   return Boolean(isJobId && appId && realAppId && realAppId !== appId)
+}
+
+/**
+ * Whether the design-kit wizard reaching `ready` should dismiss the preview loader.
+ *
+ * In the parallel design-kit build the homepage is written by a background sub-agent, so
+ * its edit never reaches the parent stream that normally fires FIRST_FILE_EDIT_SEEN. The
+ * wizard's `ready` phase is the authoritative build-complete signal, so we bridge it — but
+ * only once, and only while the loader is still up (we haven't already seen the first edit).
+ * Exported for testing.
+ */
+export function shouldRevealOnWizardReady(wizardReady: boolean, hasSeenFirstFileEdit: boolean): boolean {
+  return wizardReady && !hasSeenFirstFileEdit
 }
 
 /**
@@ -1037,6 +1051,27 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
       send({ type: 'FIRST_FILE_EDIT_SEEN' })
     }
   }, [state.context.hasSeenFirstFileEdit, activeStream, send])
+
+  // EFFECT: Bridge the design-kit wizard's `ready` phase to the first-edit signal.
+  // In the parallel design-kit build (AIROBUILD-2871) the homepage is written by a
+  // background sub-agent, so its file edits arrive as `subagent_event`s and never reach
+  // the parent `activeStream.toolCalls` the effect above watches. FIRST_FILE_EDIT_SEEN
+  // would therefore never fire, and the "Building your project" overlay would hang until
+  // the 10-min failsafe. The wizard emitting `ready` IS the authoritative build-complete
+  // signal (the agent emits it only after `awaitAgents` confirms the builds finished), so
+  // treat it as the first edit and dismiss the loader.
+  //
+  // Note: "builds succeeded" is enforced upstream — the orchestrator emits `ready` only
+  // after `awaitAgents` returns success (and this PR makes a truncated sub-agent run an
+  // error so it retries rather than reporting done). There's no client-side per-sub-agent
+  // status today, so a `ready` wrongly emitted after a failure would still reveal; closing
+  // that gap needs a distinct build-failed signal (tracked as a follow-up).
+  const wizardReady = useWizardStore((s) => (appId ? s.phaseByApp[appId] === 'ready' : false))
+  useEffect(() => {
+    if (shouldRevealOnWizardReady(wizardReady, state.context.hasSeenFirstFileEdit)) {
+      send({ type: 'FIRST_FILE_EDIT_SEEN' })
+    }
+  }, [wizardReady, state.context.hasSeenFirstFileEdit, send])
 
   // EFFECT: Reset failsafe timeout on agent activity
   // When the agent is actively working (new tool calls, new text segments), reset the 5-min

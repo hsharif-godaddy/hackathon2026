@@ -50,10 +50,11 @@ import { createDiscoveryConfig } from '../discovery.js'
 import { createMediaConfig } from '../media.js'
 import { createDesignConfig } from '../design.js'
 import { createPlanReviewConfig } from '../plan-review.js'
+import { createDesignKitBuildConfig } from '../design-kit-build.js'
 
 describe('reference tool wiring', () => {
-  it('planning/builder/discovery/media/plan-review expose the reference tool', async () => {
-    for (const factory of [createPlanningConfig, createBuilderConfig, createDiscoveryConfig, createMediaConfig, createPlanReviewConfig]) {
+  it('planning/builder/discovery/media/plan-review/design-kit-build expose the reference tool', async () => {
+    for (const factory of [createPlanningConfig, createBuilderConfig, createDiscoveryConfig, createMediaConfig, createPlanReviewConfig, createDesignKitBuildConfig]) {
       const cfg = await factory()
       expect(cfg.tools.reference).toBeDefined()
     }
@@ -62,6 +63,16 @@ describe('reference tool wiring', () => {
   it('design does NOT expose the reference tool', async () => {
     const cfg = await createDesignConfig()
     expect(cfg.tools.reference).toBeUndefined()
+  })
+
+  it('design-kit-build wires its core build tools and a raised output-token cap', async () => {
+    const cfg = await createDesignKitBuildConfig()
+    for (const tool of ['reference', 'loadUiKit', 'str_replace_based_edit_tool', 'showDoc']) {
+      expect(cfg.tools[tool]).toBeDefined()
+    }
+    // Homepage section writes are large; the cap is lifted above the 16k sub-agent default
+    // so a single section edit isn't truncated (finishReason: length). See design-kit-build.ts.
+    expect(cfg.maxOutputTokens).toBe(32000)
   })
 
   it('planning injects the corpus summary as ground truth', async () => {

@@ -170,7 +170,7 @@ describe('DesignKitWizard — build reveal → celebration → Preview tab', () 
     vi.useRealTimers();
   });
 
-  it('plays the animation during the build, then celebrates and reveals the Preview tab', () => {
+  it('ignores an early initialBuildComplete flip, then celebrates + reveals when the agent emits ready', () => {
     // Mount mid-build (website phase, build not yet complete): the assembly
     // animation plays and the view stays on the Logo & Brand (BRAND) tab.
     mockPhase = 'website';
@@ -184,12 +184,25 @@ describe('DesignKitWizard — build reveal → celebration → Preview tab', () 
     expect(screen.getByTestId('design-kit-finalizing')).toBeInTheDocument();
     expect(useDevelopPageStore.getState().viewMode).toBe(ViewMode.BRAND);
 
-    // The build completes (initialBuildComplete) — even with no `ready` phase event,
-    // the celebration shows and the view has not switched yet.
+    // AIROBUILD-2871 regression guard: initialBuildComplete flips early (e.g.
+    // setProjectName's title commit during brand assembly). That must NOT reveal —
+    // the animation keeps playing and the view stays on BRAND until the agent says ready.
     act(() => {
       useDevelopPageStore.setState({
         app: { id: 'app1234567', initialBuildComplete: true },
       } as Parameters<typeof useDevelopPageStore.setState>[0]);
+      rerender(<DesignKitWizard appId="app1234567" />);
+    });
+    expect(screen.getByTestId('design-kit-finalizing')).toBeInTheDocument();
+    expect(screen.queryByTestId('design-kit-website-ready')).not.toBeInTheDocument();
+    act(() => { vi.advanceTimersByTime(2700); });
+    expect(useDevelopPageStore.getState().viewMode).toBe(ViewMode.BRAND);
+
+    // The agent emits `ready` once the website build actually finishes → celebrate,
+    // view still on BRAND for the beat.
+    act(() => {
+      mockPhase = 'ready';
+      useWizardStore.setState({ phaseByApp: { app1234567: 'ready' } });
       rerender(<DesignKitWizard appId="app1234567" />);
     });
     expect(screen.getByTestId('design-kit-website-ready')).toBeInTheDocument();

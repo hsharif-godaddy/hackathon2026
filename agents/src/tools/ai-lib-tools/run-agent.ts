@@ -12,7 +12,7 @@ import { detectStaleFiles } from '../../agents/sub-agent-transcript.js'
 
 const logger = Logger.create({ component: 'run-agent-tool' })
 
-const VALID_AGENTS = ['discovery', 'planning', 'plan-review', 'media', 'design', 'builder', 'interview', 'verification'] as const
+const VALID_AGENTS = ['discovery', 'planning', 'plan-review', 'media', 'design', 'builder', 'design-kit-build', 'interview', 'verification'] as const
 type AgentName = typeof VALID_AGENTS[number]
 
 export const runAgentAITool: Tool = createTool(
@@ -22,7 +22,7 @@ Modes:
 - "background" (default): Sub-agent is dispatched NON-BLOCKING. Returns { jobId, status: "running" } immediately. You MUST call awaitAgents([jobId]) to get results before using them. Multiple background calls can be dispatched in the same turn for true parallelism, then awaited together.
 - "interactive": Sub-agent takes over the conversation temporarily. It CAN ask the user questions via askQuestion. Only one interactive agent at a time. Use for tasks requiring user input (e.g. interview).
 
-Available agents: discovery (research/scraping), planning (write implementation plans), plan-review (review and fix plans against quality criteria), media (find/generate images), design (create/update design.md + CSS), builder (execute plans, write code), interview (structured Q&A with user to produce docs/brief.md), verification (run automated checks against built app).`,
+Available agents: discovery (research/scraping), planning (write implementation plans), plan-review (review and fix plans against quality criteria), media (find/generate images), design (create/update design.md + CSS), builder (execute plans, write code), design-kit-build (build the homepage faithfully from an installed design kit — self-loads docs/ui-kit/ + anchor.json), interview (structured Q&A with user to produce docs/brief.md), verification (run automated checks against built app).`,
   z.object({
     agent: z.enum(VALID_AGENTS).describe('Which sub-agent to dispatch to'),
     title: z.string().describe('Short display title for the task (shown to user in the UI card)'),
@@ -105,8 +105,13 @@ Available agents: discovery (research/scraping), planning (write implementation 
             const payload = computeDebugTurnStats(statsInput)
             emitter.emit('debug_turn_stats', payload)
           }
-        } catch {
-          // ignore parse errors
+        } catch (err) {
+          // Malformed usage payload — drop the stats but surface it, so a recurring bad
+          // payload is visible rather than silently losing cost-attribution data.
+          logger.warn('runAgent.usage.parse_failed', {
+            agent: event.agent,
+            error: err instanceof Error ? err.message : String(err),
+          })
         }
       }
     }

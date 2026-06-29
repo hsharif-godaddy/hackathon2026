@@ -285,10 +285,30 @@ export class SubAgentRunner {
 
       const artifacts = extractArtifacts(toolResults)
 
-      onEvent({ event: 'completed', agent: name, detail: fullText })
-
       const sessionSteps = (Array.isArray(fullResult.steps) ? fullResult.steps : []) as StepForSession[]
       const session = buildSessionTranscript(sessionSteps, userMessage, priorMessages)
+
+      // A 'length' finish means the model hit the output-token cap mid-step — typically a
+      // single file write too large to emit in one call. The truncated tool call is never
+      // applied (the edit is silently lost), so the run can "finish" having written nothing
+      // while looking successful. Report it as an error — before emitting `completed`, so a
+      // truncated run surfaces only an `error` event, not a misleading completed-then-error
+      // pair — letting the orchestrator's await-then-retry path re-dispatch (the message
+      // tells it to write incrementally) rather than declaring a half-built result done.
+      if (fullResult.finishReason === 'length') {
+        logger.warn('subAgentRunner.execute.truncated', { agent: name, artifactCount: artifacts.length })
+        onEvent({ event: 'error', agent: name, detail: 'Output truncated at the token limit before completion' })
+        return {
+          summary:
+            'Build hit the output-token limit before finishing (finishReason: length) — the last edit was too large to emit in one call and was NOT applied. Retry by writing the file incrementally: create it with a skeleton plus the first section, then use str_replace to add each remaining section so no single write is huge.',
+          artifacts,
+          status: 'error',
+          _session: session,
+          _sessionAgent: id,
+        }
+      }
+
+      onEvent({ event: 'completed', agent: name, detail: fullText })
 
       return {
         summary: fullText,

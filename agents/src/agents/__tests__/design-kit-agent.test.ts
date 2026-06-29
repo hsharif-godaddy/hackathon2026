@@ -87,9 +87,15 @@ describe('createInitialAgent (design-kit wizard variant)', () => {
     expect(cfg.tools).toHaveProperty('skill')
     expect(cfg.tools).toHaveProperty('media')
     expect(cfg.tools).toHaveProperty('setWizardStep')
-    // Step 4 authors public/brand-showcase.html itself — it must have the file editor,
-    // or the agent improvises (it was seen trying to load a nonexistent "file-edit" skill).
+    // The file editor stays wired for ad-hoc refinements (e.g. the user asks to tweak a
+    // specific file mid-wizard) so the agent edits directly rather than improvising (it was
+    // once seen trying to load a nonexistent "file-edit" skill). The homepage and brand
+    // showcase are built by sub-agents (design-kit-build + builder), not the wizard itself.
     expect(cfg.tools).toHaveProperty('str_replace_based_edit_tool')
+    // AIROBUILD-2871: the wizard fans out the website build to a background `builder`
+    // sub-agent, so it needs the sub-agent dispatch tools.
+    expect(cfg.tools).toHaveProperty('runAgent')
+    expect(cfg.tools).toHaveProperty('awaitAgents')
 
     // The wizard uses the consolidated, design-kit-owned `brand` tool — NOT the
     // shared brandBook or the raw memory tools (keeps it isolated from production).
@@ -99,7 +105,7 @@ describe('createInitialAgent (design-kit wizard variant)', () => {
 
     // websiteRebuild performs an unconditional switchAgent(...,'develop') with no
     // step gating; it must NOT be wired for the wizard or it could hand off to
-    // develop mid-flow, before the Step-5 "Create my website" handoff.
+    // develop mid-flow instead of taking the parallel fan-out route.
     expect(cfg.tools).not.toHaveProperty('websiteRebuild')
   })
 
@@ -109,6 +115,22 @@ describe('createInitialAgent (design-kit wizard variant)', () => {
     // Without this, the assembly turn (designed to fire many tools in sequence)
     // would barrel past the kit cards and auto-install, defeating the picker.
     expect(cfg.stopAfterTools).toContain('suggestDesignKits')
+  })
+
+  it('withholds the handoff tool for the wizard even with a stateManager, and wires fan-out instead (AIROBUILD-2871)', async () => {
+    // A real stateManager makes the handoff tool available; the wizard must still NOT
+    // wire it (it builds the website via a background builder, not a develop handoff).
+    const stateManager = {} as Parameters<typeof createInitialAgent>[0]
+
+    const designKit = await createInitialAgent(stateManager, undefined, 'design-kit')
+    expect(designKit.tools).not.toHaveProperty('handoff')
+    expect(designKit.tools).toHaveProperty('runAgent')
+    expect(designKit.tools).toHaveProperty('awaitAgents')
+
+    // Control: the default variant still gets the handoff tool when a stateManager is present.
+    const def = await createInitialAgent(stateManager)
+    expect(def.tools).toHaveProperty('handoff')
+    expect(def.tools).not.toHaveProperty('runAgent')
   })
 
   it('does not wire the wizard stepper or suggestDesignKits for the default variant', async () => {

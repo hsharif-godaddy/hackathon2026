@@ -19,10 +19,10 @@ export const StepSchema = z.object({
 })
 
 export const setWizardStepAITool: Tool = createTool(
-  'Advance the Design Kit Wizard to a phase and notify the UI. Call this at each transition: "gathering" when you start asking the core questions and assembling the kit; "brand" once the kit is assembled (colours, fonts, imagery, logo) so the "Building Your Brand" progress panel appears while you finalize the brand and build its showcase; "website" when you start creating the website (at the handoff to develop) so the UI shows the "Building your website" state. Do not emit "ready" — the UI reveals the full builder on its own when the website build completes.',
+  'Advance the Design Kit Wizard to a phase and notify the UI. Call this at each transition: "gathering" when you start asking the core questions and assembling the kit; "brand" once the kit is assembled (colours, fonts, imagery, logo) so the "Building Your Brand" progress panel appears while you finalize the brand; "website" when you start creating the website (you fan the homepage and brand-showcase builds out to background sub-agents in parallel — no plan is authored) so the UI shows the "Building your website" state; "ready" once the website build has actually completed (after awaitAgents confirms the builder sub-agents finished) — this reveals the finished site. Emit "ready" only when the build is genuinely done, never during assembly.',
   StepSchema,
   async (input, context) => {
-    const appId = context?.metadata?.appId as string | undefined
+    const appId = typeof context?.metadata?.appId === 'string' ? context.metadata.appId : undefined
     if (!appId) {
       return '**Error:** No app ID available in context'
     }

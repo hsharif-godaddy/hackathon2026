@@ -37,8 +37,11 @@ type WizardVisual = 'building-brand' | 'building-website' | 'celebrating' | 'res
  * - resume: returning to an already-finished build shows a calm "watch it build"
  *   panel instead of replaying the assembly.
  *
- * The reveal is driven by the real build-completion signal
- * (`useDevelopPageStore.app.initialBuildComplete`) — the agent never emits `ready`.
+ * The reveal is driven by the agent emitting the `ready` phase once the website build
+ * finishes (AIROBUILD-2871: the design-kit agent orchestrates the build via sub-agents,
+ * so it knows when it's done). `initialBuildComplete` is used ONLY for the mount-time
+ * resume check — never as the live reveal trigger, because it flips on the first git
+ * commit (e.g. setProjectName's page-title commit during brand assembly), far too early.
  */
 export function DesignKitWizard({
   appId,
@@ -50,36 +53,43 @@ export function DesignKitWizard({
 
   const setViewMode = useDevelopPageStore((s) => s.setViewMode);
 
-  // Drive the reveal from the real build-completion signal — the agent never emits
-  // `ready`. Scope to this app so a stale store entry for another app can't flip us.
+  // The website build is done when the agent emits the `ready` phase (it orchestrates the
+  // build and emits `ready` once the builders finish). This is the authoritative live
+  // signal — NOT `initialBuildComplete`, which flips on the first git commit (e.g.
+  // setProjectName's title commit during brand assembly) and would reveal mid-assembly.
+  const buildComplete = phase === 'ready';
+
+  // Scope to this app so a stale store entry for another app can't flip us. Used only for
+  // the mount-time resume check below (a resumed, already-finished session may have no live
+  // `ready` event), never as the live reveal trigger.
   const initialBuildComplete = useDevelopPageStore(
     (s) => (s.app?.id === appId ? (s.app?.initialBuildComplete ?? false) : false),
   );
-  const inHandoff = phase === 'ready' || initialBuildComplete;
 
   // Distinguish a live build (mounted while gathering/brand/website, then the build
-  // completed) from resuming straight into a finished build: only the latter shows
-  // the calm "watch it build" panel. Captured once on first render.
+  // completed) from resuming straight into a finished build: only the latter shows the
+  // calm "watch it build" panel. Captured once on first render — a resumed finished build
+  // is detected via `ready` OR initialBuildComplete.
   const startedAtReadyRef = useRef<boolean | null>(null);
-  if (startedAtReadyRef.current === null) startedAtReadyRef.current = inHandoff;
+  if (startedAtReadyRef.current === null) startedAtReadyRef.current = buildComplete || initialBuildComplete;
 
-  // The website-assembly animation plays *during* the build (the `website` phase).
-  // When the real build completes we play a brief "your website is ready" beat, then
-  // reveal the finished site on the Preview tab — PreviewPane's build overlay carries
-  // any remaining loading there. Resuming into a finished build shows the calm panel
-  // and waits for the user, so only auto-reveal for a live build.
+  // The website-assembly animation plays *during* the build (the `website` phase). When the
+  // agent emits `ready` we play a brief "your website is ready" beat, then reveal the
+  // finished site on the Preview tab — PreviewPane's build overlay carries any remaining
+  // loading there. Resuming into a finished build shows the calm panel and waits for the
+  // user, so only auto-reveal for a live build.
   useEffect(() => {
-    if (!(inHandoff && startedAtReadyRef.current === false)) return undefined;
+    if (!(buildComplete && startedAtReadyRef.current === false)) return undefined;
     const t = window.setTimeout(() => setViewMode(ViewMode.PREVIEW), CELEBRATE_MS);
     return () => window.clearTimeout(t);
-  }, [inHandoff, setViewMode]);
+  }, [buildComplete, setViewMode]);
 
-  // Which visual to render. The website-assembly animation plays during the build;
-  // the moment it completes we celebrate, then (via the effect above) reveal the
+  // Which visual to render. The website-assembly animation plays during the build; the
+  // moment the agent emits `ready` we celebrate, then (via the effect above) reveal the
   // finished site. Resuming into a finished build shows the calm "watch it build" panel.
   const visual: WizardVisual = ((): WizardVisual => {
     if (startedAtReadyRef.current) return 'resume-done';
-    if (inHandoff) return 'celebrating';
+    if (buildComplete) return 'celebrating';
     if (phase === 'website') return 'building-website';
     return 'building-brand';
   })();

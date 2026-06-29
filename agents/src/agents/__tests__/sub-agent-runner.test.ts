@@ -141,6 +141,48 @@ describe('SubAgentRunner', () => {
     })
   })
 
+  it('reports a truncated (finishReason: length) run as an error, not success', async () => {
+    mockStreamGenerate.mockResolvedValue({
+      textStream: textStreamFrom('Building the homepage...'),
+      getFinalResult: vi.fn().mockResolvedValue({
+        usage: {},
+        finishReason: 'length',
+        // A partial edit landed before the truncation — it must survive on the error path
+        // so downstream retry logic can see what was already written.
+        toolCalls: [
+          { toolName: 'str_replace_based_edit_tool', result: { path: '/app/src/pages/index.tsx' } },
+        ],
+      }),
+    })
+    const runner = new SubAgentRunner(makeConfig({ name: 'Design Kit Build' }))
+    const events: SubAgentEvent[] = []
+
+    const result = await runner.execute('build homepage', {}, (e) => events.push(e))
+
+    expect(result.status).toBe('error')
+    expect(result.summary).toContain('finishReason: length')
+    expect(result.summary).toContain('incrementally')
+    expect(result.artifacts).toEqual(['/app/src/pages/index.tsx'])
+    expect(events.some((e) => e.event === 'error')).toBe(true)
+    // A truncated run must NOT also emit `completed` — error is the only terminal event.
+    expect(events.some((e) => e.event === 'completed')).toBe(false)
+  })
+
+  it('treats a non-length finish (stop) with artifacts as success', async () => {
+    mockStreamGenerate.mockResolvedValue(mockStreamResult('Wrote the homepage.', [
+      { toolName: 'str_replace_based_edit_tool', result: { path: '/app/src/pages/index.tsx' } },
+    ]))
+    const runner = new SubAgentRunner(makeConfig({ name: 'Design Kit Build' }))
+    const events: SubAgentEvent[] = []
+
+    const result = await runner.execute('build homepage', {}, (e) => events.push(e))
+
+    expect(result.status).toBe('success')
+    expect(result.artifacts).toEqual(['/app/src/pages/index.tsx'])
+    expect(events.some((e) => e.event === 'completed')).toBe(true)
+    expect(events.some((e) => e.event === 'error')).toBe(false)
+  })
+
   it('extracts artifacts from writeFile tool results', async () => {
     mockStreamGenerate.mockResolvedValue(mockStreamResult('Created files.', [
       { toolName: 'writeFile', result: { path: '/app/src/index.ts', content: '...' } },

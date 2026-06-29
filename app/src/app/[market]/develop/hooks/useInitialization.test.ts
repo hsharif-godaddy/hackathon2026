@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { SiteStatus } from '@/lib/control-plane/types';
 import type { Site } from '@/stores/useSitesStore';
-import { applyMarkInitialPromptSentEffects, checkHasInitialPrompt, deriveIsAwaitingStream, getEditPaths, isCompletedFileEdit, isInCreationHandoff, isSiteForCurrentApp, resetStaleAppContext, shouldFireSiteAwareHydration, shouldHydrateInitialPromptFromSite, shouldReplaceJobRoute } from './useInitialization';
+import { applyMarkInitialPromptSentEffects, checkHasInitialPrompt, deriveIsAwaitingStream, getEditPaths, isCompletedFileEdit, isInCreationHandoff, isSiteForCurrentApp, resetStaleAppContext, shouldFireSiteAwareHydration, shouldHydrateInitialPromptFromSite, shouldReplaceJobRoute, shouldRevealOnWizardReady } from './useInitialization';
 
 function makeSite(overrides: Partial<Site>): Site {
   return {
@@ -177,6 +177,20 @@ describe('useInitialization', function hookTests() {
 
     it('does not replace when the URL already has the real app id', function alreadyReplaced() {
       expect(shouldReplaceJobRoute('app-456', true, 'app-456')).toBe(false);
+    });
+  });
+
+  describe('shouldRevealOnWizardReady', function shouldRevealOnWizardReadyTests() {
+    it('reveals when the wizard is ready and the first edit has not been seen', function revealsOnReady() {
+      expect(shouldRevealOnWizardReady(true, false)).toBe(true);
+    });
+
+    it('does not reveal before the wizard is ready', function waitsForReady() {
+      expect(shouldRevealOnWizardReady(false, false)).toBe(false);
+    });
+
+    it('does not re-fire once the first edit has already been seen', function alreadySeenGuard() {
+      expect(shouldRevealOnWizardReady(true, true)).toBe(false);
     });
   });
 

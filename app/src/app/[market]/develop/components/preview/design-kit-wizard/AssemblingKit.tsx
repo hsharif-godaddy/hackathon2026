@@ -14,7 +14,7 @@ import { useMediaManifest } from '@/hooks/useMediaManifest';
 import { useServerPollingStore } from '@/stores/useServerPollingStore';
 import { useBrandData } from './useBrandData';
 
-// The design-kit wizard generates a single square logo (slot `logo/primary`);
+// The design-kit wizard generates a single horizontal logo (slot `logo/horizontal`);
 // the other slots are the fallback order the brand book / LogoPanel also use.
 const LOGO_SLOT_NAMES = ['logo/primary', 'logo/horizontal', 'logo/vertical'] as const;
 
