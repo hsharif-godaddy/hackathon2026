@@ -11,8 +11,8 @@ import { type Page } from '@playwright/test';
 
 import { test, expect } from '../helpers/test-fixtures';
 import { deleteAppsWithPrefix, evictOldestE2eAppsToFitLimit } from '../helpers/api';
-import { handleSsoLogin } from '../helpers/auth';
-import { DEFAULT_TIMEOUT, E2E_NO_DELETE, LONG_TIMEOUT, getSpecPrefix } from '../helpers/constants';
+import { detectSsoType, ensureAuthenticated, handleSsoLogin, isSignInUIResult, loginViaSsoDirect } from '../helpers/auth';
+import { AI_RESPONSE_TIMEOUT_MS, DEFAULT_TIMEOUT, E2E_NO_DELETE, LONG_TIMEOUT, getSpecPrefix } from '../helpers/constants';
 import { dismissOverlays, logTestResult, logTestStart, waitForDevelopPage } from '../helpers/ui';
 
 const ARCHIVE_STATUS_GLOB = '**/api/sites/*/archive-status**';
@@ -118,32 +118,33 @@ async function installArchiveRestoreFailThenRetryMocks(page: Page, appId: string
 }
 
 /**
- * Skipped at the describe level (rather than per test.skip) so the skip is
- * visible at the top of the file and applies to every test in the suite.
- *
- * Blocking issue: both tests in this file consistently fail on CI against
- * the real backend after the cold-archive UX changes in #2697. They were
- * skipped in #3093 to unblock unrelated PRs while the underlying flow is
- * stabilized — even with route mocks in place, navigating to /develop/:id
- * for a freshly-created app does not reliably reach the archived state
- * the mocks assume, so the restoring/failed UI never renders.
- *
- * To re-enable: either harden the mocks so the dev server treats the app
- * as cold-archived without requiring a real backend signal (e.g. flip
- * site state via /api/sites/:id PATCH before reload), or add a real
- * archive→restore fixture to the local control plane and remove the
- * route mocks entirely. Once green locally, drop the .skip and run
- * regression in CI to confirm.
+ * Re-enabled (VNEXT-80878). Previously skipped (#3093) on the theory that the
+ * route mocks never reached the archived state after the cold-archive UX change
+ * (#2697). The real failure was the same one that skipped the sibling analytics
+ * spec (VNEXT-80877): CI failed before any archive assertion because the in-body
+ * homepage sign-in iframe's credential fill timed out on prod. Fixed by
+ * authenticating once in beforeEach via the fast standalone-SSO login
+ * (loginViaSsoDirect); the in-body handleSsoLogin is now a conditional re-auth
+ * guard. The archive-status / archive-restore route mocks are unchanged — they
+ * drive the restoring/failed UI deterministically once the develop page loads.
  */
 /** Spec prefixes used by `getSpecPrefix(...)` calls in this describe block. */
 const SPEC_PREFIXES = ['archive-restore', 'archive-retry'] as const;
 
-test.describe.skip('Cold archive restore', () => {
+test.describe('Cold archive restore', () => {
   test.beforeEach(async ({ page }, testInfo) => {
     logTestStart(testInfo);
+    // Authenticate once via the fast standalone-SSO login (e2e-v2 style) so the
+    // homepage submit redirects straight to /develop/ instead of routing through
+    // the in-body cross-origin sign-in iframe whose credential fill was timing
+    // out on prod (the reason this spec was skipped). The eviction's internal
+    // loginIfNeeded then becomes a fast no-op.
+    await loginViaSsoDirect(page);
     if (!E2E_NO_DELETE) {
       await page.goto('/');
-      await evictOldestE2eAppsToFitLimit(page).catch(() => {});
+      await evictOldestE2eAppsToFitLimit(page).catch((err) => {
+        console.error('App eviction failed:', err);
+      });
     }
   });
 
@@ -158,10 +159,21 @@ test.describe.skip('Cold archive restore', () => {
     await promptInput.fill(
       `${getSpecPrefix('archive-restore')} Single page hello world - do not ask follow up questions`
     );
+    await dismissOverlays(page);
     await page.locator('[data-eid*="homepage.prompt.submit"]').click();
-    await handleSsoLogin(page);
+
+    // Already authenticated in beforeEach, so the submit normally redirects
+    // straight to /develop/. Only drive the in-body SSO flow if the session
+    // refreshed mid-test and the sign-in UI actually reappeared.
+    const ssoResult = await detectSsoType(page, true);
+    if (isSignInUIResult(ssoResult)) {
+      await handleSsoLogin(page);
+    }
+
     await page.waitForURL(/\/develop\//, { timeout: LONG_TIMEOUT });
     await waitForDevelopPage(page);
+    await expect(page.getByTestId('chat-send-button')).toBeVisible({ timeout: AI_RESPONSE_TIMEOUT_MS });
+    await ensureAuthenticated(page);
     await dismissOverlays(page);
 
     const appId = developAppIdFromPageUrl(page.url());
@@ -189,10 +201,21 @@ test.describe.skip('Cold archive restore', () => {
     await promptInput.fill(
       `${getSpecPrefix('archive-retry')} Single page hello world - do not ask follow up questions`
     );
+    await dismissOverlays(page);
     await page.locator('[data-eid*="homepage.prompt.submit"]').click();
-    await handleSsoLogin(page);
+
+    // Already authenticated in beforeEach, so the submit normally redirects
+    // straight to /develop/. Only drive the in-body SSO flow if the session
+    // refreshed mid-test and the sign-in UI actually reappeared.
+    const ssoResult = await detectSsoType(page, true);
+    if (isSignInUIResult(ssoResult)) {
+      await handleSsoLogin(page);
+    }
+
     await page.waitForURL(/\/develop\//, { timeout: LONG_TIMEOUT });
     await waitForDevelopPage(page);
+    await expect(page.getByTestId('chat-send-button')).toBeVisible({ timeout: AI_RESPONSE_TIMEOUT_MS });
+    await ensureAuthenticated(page);
     await dismissOverlays(page);
 
     const appId = developAppIdFromPageUrl(page.url());

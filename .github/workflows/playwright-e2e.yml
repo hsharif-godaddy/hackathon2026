@@ -51,6 +51,7 @@ on:
           - develop-dpp-handoff
           - develop-analytics-period
           - develop-view-share
+          - develop-archive-restore
       post_promotion:
         description: 'Triggered by promotion workflow (internal use)'
         required: false
