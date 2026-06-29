@@ -12,9 +12,11 @@ import { slideMotionProps } from './slideView';
 
 interface InboxProps {
   brandId: UuidString;
+  embeddableId: number | null;
+  categoryId: number | string | null;
 }
 
-export default function Inbox({ brandId }: InboxProps) {
+export default function Inbox({ brandId, embeddableId, categoryId }: InboxProps) {
   const [direction, setDirection] = useState(1);
 
   // The active conversation is synced to the `?conversationId=` URL param, so
@@ -62,6 +64,8 @@ export default function Inbox({ brandId }: InboxProps) {
           >
             <InboxConversationList
               brandId={brandId}
+              embeddableId={embeddableId}
+              categoryId={categoryId}
               onConversationClick={handleConversationClick}
               consumeEntryRef={consumeEntryRef}
             />

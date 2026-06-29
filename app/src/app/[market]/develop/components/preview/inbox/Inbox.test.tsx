@@ -45,14 +45,20 @@ vi.mock('@/hooks/useConversationId', async () => {
 vi.mock('./InboxConversationList', () => ({
   InboxConversationList: ({
     brandId,
+    embeddableId,
+    categoryId,
     onConversationClick,
   }: {
     brandId: string;
+    embeddableId: number | null;
+    categoryId: number | string | null;
     onConversationClick: (conversationId: string) => void;
   }) => (
     <button
       data-testid='stub-conversation-list'
       data-brand-id={brandId}
+      data-embeddable-id={embeddableId ?? ''}
+      data-category-id={categoryId ?? ''}
       onClick={() => onConversationClick('conv-from-list')}
     >
       list
@@ -90,18 +96,21 @@ describe('Inbox', () => {
   it('renders the conversation list when there is no deep-linked conversation', () => {
     hoisted.initialConversationId = null;
 
-    render(<Inbox brandId='brand-1' />);
+    render(<Inbox brandId='brand-1' embeddableId={789} categoryId='support' />);
 
     const list = screen.getByTestId('stub-conversation-list');
     expect(list).toBeInTheDocument();
     expect(list).toHaveAttribute('data-brand-id', 'brand-1');
+    // embeddableId/categoryId are forwarded to the list for the future empty-state variations.
+    expect(list).toHaveAttribute('data-embeddable-id', '789');
+    expect(list).toHaveAttribute('data-category-id', 'support');
     expect(screen.queryByTestId('stub-conversation-detail')).not.toBeInTheDocument();
   });
 
   it('renders the conversation detail seeded from the deep-linked conversation id', () => {
     hoisted.initialConversationId = 'conv-abc';
 
-    render(<Inbox brandId='brand-1' />);
+    render(<Inbox brandId='brand-1' embeddableId={789} categoryId='support' />);
 
     const detail = screen.getByTestId('stub-conversation-detail');
     expect(detail).toBeInTheDocument();
@@ -113,7 +122,7 @@ describe('Inbox', () => {
   it('switches from list to detail when a conversation is clicked', () => {
     hoisted.initialConversationId = null;
 
-    render(<Inbox brandId='brand-1' />);
+    render(<Inbox brandId='brand-1' embeddableId={789} categoryId='support' />);
 
     fireEvent.click(screen.getByTestId('stub-conversation-list'));
 
@@ -125,7 +134,7 @@ describe('Inbox', () => {
   it('returns to the list when the detail view requests going back', () => {
     hoisted.initialConversationId = 'conv-abc';
 
-    render(<Inbox brandId='brand-1' />);
+    render(<Inbox brandId='brand-1' embeddableId={789} categoryId='support' />);
 
     fireEvent.click(screen.getByTestId('stub-conversation-detail'));
 

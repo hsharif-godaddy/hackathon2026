@@ -12,6 +12,11 @@ import { logger } from '@/lib/request-context';
 export interface InboxAccountData {
   accountId: string | null;
   brandId: string | null;
+  // The inbox skill persists embeddableId as a number and the contact-form category id as the
+  // Reamaze channel id (number | string); surfaced with their stored types, unlike the string
+  // brand/account URL pointers.
+  embeddableId: number | null;
+  categoryId: number | string | null;
 }
 
 /** Minimal shape of a Reamaze account returned by `POST /api/inbox` (list_accounts). */
@@ -31,6 +36,8 @@ interface PersistVariables {
 export interface UseInboxAccountResult {
   accountId: string | null;
   brandId: string | null;
+  embeddableId: number | null;
+  categoryId: number | string | null;
   isLoading: boolean;
   error: Error | null;
   refetch: (options?: RefetchOptions) => Promise<QueryObserverResult<InboxAccountData, Error>>;
@@ -116,7 +123,7 @@ export function useInboxAccount(appId: string | undefined): UseInboxAccountResul
     queryKey: ['inbox-account', appId],
     queryFn: async (): Promise<InboxAccountData> => {
       if (!appId) {
-        return { accountId: null, brandId: null };
+        return { accountId: null, brandId: null, embeddableId: null, categoryId: null };
       }
 
       logger.debug('inbox-account.fetch.start', {
@@ -152,6 +159,8 @@ export function useInboxAccount(appId: string | undefined): UseInboxAccountResul
 
   const brandId = query.data?.brandId ?? null;
   const accountId = query.data?.accountId ?? null;
+  const embeddableId = query.data?.embeddableId ?? null;
+  const categoryId = query.data?.categoryId ?? null;
   const isLoaded = query.isSuccess;
   const pointersComplete = Boolean(brandId && accountId);
 
@@ -240,6 +249,8 @@ export function useInboxAccount(appId: string | undefined): UseInboxAccountResul
   return {
     accountId,
     brandId,
+    embeddableId,
+    categoryId,
     isLoading: query.isLoading,
     error: query.error,
     refetch: query.refetch,

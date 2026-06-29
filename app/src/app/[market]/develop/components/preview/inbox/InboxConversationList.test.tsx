@@ -25,6 +25,16 @@ const hoisted = vi.hoisted(() => ({
 
 const instrumentation = vi.hoisted(() => ({
   logImpressionEvent: vi.fn(() => vi.fn()),
+  logClickEvent: vi.fn(() => vi.fn()),
+}));
+
+const emptyPrompt = vi.hoisted(() => ({
+  handleCtaClick: vi.fn(),
+  isProcessing: false,
+}));
+
+vi.mock('./useInboxEmptyPrompt', () => ({
+  useInboxEmptyPrompt: () => emptyPrompt,
 }));
 
 vi.mock('@/utils/instrumentation', async (importOriginal) => {
@@ -32,6 +42,7 @@ vi.mock('@/utils/instrumentation', async (importOriginal) => {
   return {
     ...actual,
     logImpressionEvent: instrumentation.logImpressionEvent,
+    logClickEvent: instrumentation.logClickEvent,
   };
 });
 
@@ -87,6 +98,24 @@ vi.mock('framer-motion', () => ({
   },
 }));
 
+vi.mock('@ux/button', () => ({
+  default: ({
+    children,
+    onClick,
+    disabled,
+    'data-testid': dataTestid,
+  }: {
+    children?: ReactNode;
+    onClick?: () => void;
+    disabled?: boolean;
+    'data-testid'?: string;
+  }) => (
+    <button data-testid={dataTestid} onClick={onClick} disabled={disabled}>
+      {children}
+    </button>
+  ),
+}));
+
 const brandId = '00000000-0000-0000-0000-000000000000';
 
 describe('InboxConversationList', () => {
@@ -96,39 +125,31 @@ describe('InboxConversationList', () => {
       isLoading: false,
       error: null,
     };
+    emptyPrompt.handleCtaClick.mockReset();
+    emptyPrompt.isProcessing = false;
   });
 
   afterEach(() => {
     vi.clearAllMocks();
   });
 
-  it('renders the rich empty state with illustration for the "all" filter', () => {
-    const { container } = render(
-      <InboxConversationList brandId={brandId} onConversationClick={vi.fn()} consumeEntryRef={() => null} />,
+  it('renders the empty-state component in the empty branch', () => {
+    render(
+      <InboxConversationList brandId={brandId} embeddableId={null} categoryId={null} onConversationClick={vi.fn()} consumeEntryRef={() => null} />,
     );
 
-    expect(screen.getByText('builder_inbox_empty_all_title')).toBeInTheDocument();
-    expect(screen.getByText('builder_inbox_empty_all_body')).toBeInTheDocument();
-    expect(container.querySelector('svg')).toBeInTheDocument();
-  });
-
-  it('shows the single-line message for a non-"all" filter', () => {
-    render(<InboxConversationList brandId={brandId} onConversationClick={vi.fn()} consumeEntryRef={() => null} />);
-
-    fireEvent.click(screen.getByText('unresolved'));
-
-    expect(screen.getByText('builder_inbox_empty_unresolved')).toBeInTheDocument();
-    expect(screen.queryByText('builder_inbox_empty_all_title')).not.toBeInTheDocument();
+    expect(screen.getByText('builder_inbox_empty_setup_title')).toBeInTheDocument();
+    expect(screen.queryByTestId('stub-row')).not.toBeInTheDocument();
   });
 
   it('disables the status filters when the inbox is empty on the "all" filter', () => {
-    render(<InboxConversationList brandId={brandId} onConversationClick={vi.fn()} consumeEntryRef={() => null} />);
+    render(<InboxConversationList brandId={brandId} embeddableId={null} categoryId={null} onConversationClick={vi.fn()} consumeEntryRef={() => null} />);
 
     expect(screen.getByTestId('stub-filters')).toHaveAttribute('data-disabled', 'true');
   });
 
   it('keeps the status filters enabled once a non-"all" filter is active', () => {
-    render(<InboxConversationList brandId={brandId} onConversationClick={vi.fn()} consumeEntryRef={() => null} />);
+    render(<InboxConversationList brandId={brandId} embeddableId={null} categoryId={null} onConversationClick={vi.fn()} consumeEntryRef={() => null} />);
 
     fireEvent.click(screen.getByText('unresolved'));
 
@@ -142,16 +163,16 @@ describe('InboxConversationList', () => {
       droppedCount: 0,
     };
 
-    render(<InboxConversationList brandId={brandId} onConversationClick={vi.fn()} consumeEntryRef={() => null} />);
+    render(<InboxConversationList brandId={brandId} embeddableId={null} categoryId={null} onConversationClick={vi.fn()} consumeEntryRef={() => null} />);
 
     expect(screen.getAllByTestId('stub-row')).toHaveLength(2);
-    expect(screen.queryByText('builder_inbox_empty_all_title')).not.toBeInTheDocument();
+    expect(screen.queryByText('builder_inbox_empty_setup_title')).not.toBeInTheDocument();
     expect(screen.getByTestId('stub-filters')).toHaveAttribute('data-disabled', 'false');
   });
 
   it('attaches the consumed entry ref to the list viewed impression', () => {
     render(
-      <InboxConversationList brandId={brandId} onConversationClick={vi.fn()} consumeEntryRef={() => 'email'} />,
+      <InboxConversationList brandId={brandId} embeddableId={null} categoryId={null} onConversationClick={vi.fn()} consumeEntryRef={() => 'email'} />,
     );
 
     expect(instrumentation.logImpressionEvent).toHaveBeenCalledWith(
@@ -162,7 +183,7 @@ describe('InboxConversationList', () => {
 
   it('omits ref from the list viewed impression when there is no entry ref', () => {
     render(
-      <InboxConversationList brandId={brandId} onConversationClick={vi.fn()} consumeEntryRef={() => null} />,
+      <InboxConversationList brandId={brandId} embeddableId={null} categoryId={null} onConversationClick={vi.fn()} consumeEntryRef={() => null} />,
     );
 
     expect(instrumentation.logImpressionEvent).toHaveBeenCalledWith(

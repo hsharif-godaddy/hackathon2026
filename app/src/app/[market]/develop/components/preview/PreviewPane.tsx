@@ -326,6 +326,8 @@ export default function PreviewPane({
   const isMobileInlineEditActive = useDevelopPageStore((state) => state.isMobileInlineEditActive)
   const handleMobileModeChange = useDevelopPageStore((state) => state.handleMobileModeChange)
   const inboxBrandId = useDevelopPageStore((state) => state.inboxBrandId)
+  const inboxEmbeddableId = useDevelopPageStore((state) => state.inboxEmbeddableId)
+  const inboxCategoryId = useDevelopPageStore((state) => state.inboxCategoryId)
   // Get device dimensions from preset
   const selectedDevice = getDevicePreset(selectedDeviceId)
   const isFullSize = previewViewMode === PreviewViewMode.DESKTOP || isFullWidthDevice(selectedDeviceId)
@@ -1397,7 +1399,7 @@ export default function PreviewPane({
     return (
       <div className="h-full flex flex-col pr-1 md:pr-2.5 pl-1">
         <div className="relative h-full overflow-auto rounded-lg md:rounded-b-none border bg-intents-ux-box-backgroundColor">
-          <Inbox brandId={inboxBrandId} />
+          <Inbox brandId={inboxBrandId} embeddableId={inboxEmbeddableId} categoryId={inboxCategoryId} />
         </div>
       </div>
     )
@@ -1598,7 +1600,7 @@ export default function PreviewPane({
                         : 'opacity-0 pointer-events-none',
                     )}
                   >
-                    <Inbox brandId={inboxBrandId} />
+                    <Inbox brandId={inboxBrandId} embeddableId={inboxEmbeddableId} categoryId={inboxCategoryId} />
                   </div>
                 )}
 

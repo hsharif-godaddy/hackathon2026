@@ -301,14 +301,18 @@ function DevelopPageContent({ layout: layoutProp }: { layout?: BuilderLayout }) 
   const isInboxEnabled = useSwitchboard('app-builder-inbox-button')
 
   // Fetch inbox account data early and sync to store
-  const { brandId, accountId, isLoading: isLoadingAccount } = useInboxAccount(isInboxEnabled ? appId : undefined)
+  const { brandId, accountId, embeddableId, categoryId, isLoading: isLoadingAccount } = useInboxAccount(isInboxEnabled ? appId : undefined)
   const setInboxBrandId = useDevelopPageStore((state) => state.setInboxBrandId)
   const setInboxAccountId = useDevelopPageStore((state) => state.setInboxAccountId)
+  const setInboxEmbeddableId = useDevelopPageStore((state) => state.setInboxEmbeddableId)
+  const setInboxCategoryId = useDevelopPageStore((state) => state.setInboxCategoryId)
 
   useEffect(() => {
     setInboxBrandId(brandId)
     setInboxAccountId(accountId)
-  }, [brandId, accountId, setInboxBrandId, setInboxAccountId])
+    setInboxEmbeddableId(embeddableId)
+    setInboxCategoryId(categoryId)
+  }, [brandId, accountId, embeddableId, categoryId, setInboxBrandId, setInboxAccountId, setInboxEmbeddableId, setInboxCategoryId])
 
   // Single Pusher subscription for the whole builder session, so the inbox
   // unresolved badge stays fresh even when the inbox view is closed. Gated on the

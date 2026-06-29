@@ -75,7 +75,9 @@ describe('GET /apps/:id/inbox-account', () => {
 
     expect(response.body).toEqual({
       brandId: mockBrandId,
-      accountId: mockAccountId
+      accountId: mockAccountId,
+      embeddableId: null,
+      categoryId: null
     });
     expect(mockMemoryStore.get).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -105,7 +107,9 @@ describe('GET /apps/:id/inbox-account', () => {
 
     expect(response.body).toEqual({
       brandId: null,
-      accountId: null
+      accountId: null,
+      embeddableId: null,
+      categoryId: null
     });
   });
 
@@ -130,7 +134,9 @@ describe('GET /apps/:id/inbox-account', () => {
 
     expect(response.body).toEqual({
       brandId: mockBrandId,
-      accountId: null
+      accountId: null,
+      embeddableId: null,
+      categoryId: null
     });
   });
 
@@ -154,7 +160,9 @@ describe('GET /apps/:id/inbox-account', () => {
 
     expect(response.body).toEqual({
       brandId: null,
-      accountId: mockAccountId
+      accountId: mockAccountId,
+      embeddableId: null,
+      categoryId: null
     });
   });
 
@@ -184,7 +192,9 @@ describe('GET /apps/:id/inbox-account', () => {
 
     expect(response.body).toEqual({
       brandId: null,
-      accountId: mockAccountId
+      accountId: mockAccountId,
+      embeddableId: null,
+      categoryId: null
     });
   });
 
@@ -214,7 +224,9 @@ describe('GET /apps/:id/inbox-account', () => {
 
     expect(response.body).toEqual({
       brandId: mockBrandId,
-      accountId: null
+      accountId: null,
+      embeddableId: null,
+      categoryId: null
     });
   });
 
@@ -229,6 +241,8 @@ describe('GET /apps/:id/inbox-account', () => {
       error: 'Internal server error',
       brandId: null,
       accountId: null,
+      embeddableId: null,
+      categoryId: null,
     });
   });
 
@@ -259,7 +273,9 @@ describe('GET /apps/:id/inbox-account', () => {
 
     expect(response.body).toEqual({
       brandId: null,
-      accountId: mockAccountId
+      accountId: mockAccountId,
+      embeddableId: null,
+      categoryId: null
     });
   });
 
@@ -290,7 +306,124 @@ describe('GET /apps/:id/inbox-account', () => {
 
     expect(response.body).toEqual({
       brandId: mockBrandId,
-      accountId: null
+      accountId: null,
+      embeddableId: null,
+      categoryId: null
+    });
+  });
+
+  it('should return embeddableId and categoryId when present', async () => {
+    const mockBrandId = 'test-brand-id-123';
+    const mockAccountId = 'test-account-id-456';
+    const mockEmbeddableId = 789;
+    const mockCategoryId = 'support';
+
+    mockMemoryStore.get.mockImplementation((scope, key) => {
+      if (key === 'integrations.inbox.brandId') {
+        return Promise.resolve({ success: true, exists: true, value: mockBrandId });
+      }
+      if (key === 'integrations.inbox.accountId') {
+        return Promise.resolve({ success: true, exists: true, value: mockAccountId });
+      }
+      if (key === 'integrations.inbox.embeddableId') {
+        return Promise.resolve({ success: true, exists: true, value: mockEmbeddableId });
+      }
+      if (key === 'integrations.inbox.contactFormCategoryId') {
+        return Promise.resolve({ success: true, exists: true, value: mockCategoryId });
+      }
+      return Promise.resolve({ success: true, exists: false });
+    });
+
+    const response = await request(app)
+      .get('/apps/test-app-id/inbox-account')
+      .expect(200);
+
+    expect(response.body).toEqual({
+      brandId: mockBrandId,
+      accountId: mockAccountId,
+      embeddableId: mockEmbeddableId,
+      categoryId: mockCategoryId
+    });
+  });
+
+  it('should return a numeric categoryId when stored as a number', async () => {
+    mockMemoryStore.get.mockImplementation((scope, key) => {
+      if (key === 'integrations.inbox.contactFormCategoryId') {
+        return Promise.resolve({ success: true, exists: true, value: 42 });
+      }
+      return Promise.resolve({ success: true, exists: false });
+    });
+
+    const response = await request(app)
+      .get('/apps/test-app-id/inbox-account')
+      .expect(200);
+
+    expect(response.body).toEqual({
+      brandId: null,
+      accountId: null,
+      embeddableId: null,
+      categoryId: 42
+    });
+  });
+
+  it('should return null when embeddableId has invalid data type', async () => {
+    mockMemoryStore.get.mockImplementation((scope, key) => {
+      if (key === 'integrations.inbox.embeddableId') {
+        // Not a number (the inbox skill persists embeddableId as a number)
+        return Promise.resolve({ success: true, exists: true, value: 'not-a-number' });
+      }
+      return Promise.resolve({ success: true, exists: false });
+    });
+
+    const response = await request(app)
+      .get('/apps/test-app-id/inbox-account')
+      .expect(200);
+
+    expect(response.body).toEqual({
+      brandId: null,
+      accountId: null,
+      embeddableId: null,
+      categoryId: null
+    });
+  });
+
+  it('should return null when categoryId has invalid data type', async () => {
+    mockMemoryStore.get.mockImplementation((scope, key) => {
+      if (key === 'integrations.inbox.contactFormCategoryId') {
+        return Promise.resolve({ success: true, exists: true, value: { nested: 'object' } });
+      }
+      return Promise.resolve({ success: true, exists: false });
+    });
+
+    const response = await request(app)
+      .get('/apps/test-app-id/inbox-account')
+      .expect(200);
+
+    expect(response.body).toEqual({
+      brandId: null,
+      accountId: null,
+      embeddableId: null,
+      categoryId: null
+    });
+  });
+
+  it('should return null for embeddableId and categoryId on a read failure', async () => {
+    mockMemoryStore.get.mockImplementation((scope, key) => {
+      if (key === 'integrations.inbox.embeddableId' || key === 'integrations.inbox.contactFormCategoryId') {
+        return Promise.resolve({ success: false, error: 'Database error' });
+      }
+      return Promise.resolve({ success: true, exists: false });
+    });
+
+    const response = await request(app)
+      .get('/apps/test-app-id/inbox-account')
+      .expect(200);
+
+    expect(response.body).toEqual({
+      brandId: null,
+      accountId: null,
+      embeddableId: null,
+      categoryId: null
     });
   });
 });

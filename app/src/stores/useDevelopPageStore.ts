@@ -295,6 +295,8 @@ interface DevelopPageStore {
   // Inbox
   inboxBrandId: string | null
   inboxAccountId: string | null
+  inboxEmbeddableId: number | null
+  inboxCategoryId: number | string | null
 
   // Marketing campaigns canvas
   marketingView: MarketingView
@@ -419,6 +421,8 @@ interface DevelopPageStore {
   setSelectedModel: (model: string | null) => void
   setConversationsBrandId: (brandId: string | null) => void
   setInboxBrandId: (brandId: string | null) => void
+  setInboxEmbeddableId: (embeddableId: number | null) => void
+  setInboxCategoryId: (categoryId: number | string | null) => void
   openMarketingList: () => void
   openMarketingDetail: (campaignId: string) => void
   showMarketingList: () => void
@@ -633,6 +637,8 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     modelByAppId: {},
     conversationsBrandId: null,
     inboxBrandId: null,
+    inboxEmbeddableId: null,
+    inboxCategoryId: null,
     marketingView: 'list' as MarketingView,
     selectedCampaignId: null,
     inboxAccountId: null,
@@ -741,6 +747,8 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     }),
     setConversationsBrandId: (brandId) => set((state) => { state.conversationsBrandId = brandId }),
     setInboxBrandId: (brandId) => set((state) => { state.inboxBrandId = brandId }),
+    setInboxEmbeddableId: (embeddableId) => set((state) => { state.inboxEmbeddableId = embeddableId }),
+    setInboxCategoryId: (categoryId) => set((state) => { state.inboxCategoryId = categoryId }),
     openMarketingList: () => {
       syncEditModeForViewMode(get, set, ViewMode.MARKETING)
       set((state) => {

@@ -91,7 +91,12 @@ function listAccountsResponse(accounts: unknown[]): Response {
 }
 
 /** agentFetch mock: returns the given inbox-account GET payload, and 200 for the POST persist. */
-function mockAgentFetch(getPayload: { brandId: string | null; accountId: string | null }): void {
+function mockAgentFetch(getPayload: {
+  brandId: string | null;
+  accountId: string | null;
+  embeddableId?: number | null;
+  categoryId?: number | string | null;
+}): void {
   vi.mocked(agentFetch).mockImplementation(async (_url, options) => {
     if (options?.method === 'POST') {
       return mockResponse({ ok: true, json: { accountId: ACCOUNT_URL, brandId: BRAND_URL } });
@@ -189,6 +194,29 @@ describe('useInboxAccount backfill', () => {
     });
     expect(appFetch).not.toHaveBeenCalled();
     expect(persistCallCount()).toBe(0);
+  });
+
+  it('surfaces embeddableId and categoryId from the account fetch', async () => {
+    mockAgentFetch({ brandId: BRAND_URL, accountId: ACCOUNT_URL, embeddableId: 789, categoryId: 'support' });
+
+    const { result } = renderHook(() => useInboxAccount(APP_ID), { wrapper: createWrapper() });
+
+    await waitFor(() => {
+      expect(result.current.embeddableId).toBe(789);
+    });
+    expect(result.current.categoryId).toBe('support');
+  });
+
+  it('defaults embeddableId and categoryId to null when absent from the payload', async () => {
+    mockAgentFetch({ brandId: BRAND_URL, accountId: ACCOUNT_URL });
+
+    const { result } = renderHook(() => useInboxAccount(APP_ID), { wrapper: createWrapper() });
+
+    await waitFor(() => {
+      expect(result.current.accountId).toBe(ACCOUNT_URL);
+    });
+    expect(result.current.embeddableId).toBeNull();
+    expect(result.current.categoryId).toBeNull();
   });
 
   it('does not poll until the account fetch resolves', async () => {
