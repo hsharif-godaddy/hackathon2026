@@ -14,6 +14,8 @@
 
 import type { Money } from './gql';
 
+export const AAB_CHECKOUT_SOURCE_APP = 'airo.ai.builder';
+
 export interface OAuthTokenResponse {
   access_token: string;
   scope: string;
@@ -218,7 +220,6 @@ export interface BuyNowCheckoutInput {
   returnUrl: string;
   successUrl: string;
   channelId?: string;
-  sourceApp?: string;
 }
 
 export interface CartCheckoutInput {
@@ -227,7 +228,6 @@ export interface CartCheckoutInput {
   returnUrl: string;
   successUrl: string;
   channelId?: string;
-  sourceApp?: string;
 }
 
 export interface NonCatalogCheckoutInput {
@@ -237,15 +237,16 @@ export interface NonCatalogCheckoutInput {
   returnUrl: string;
   successUrl: string;
   channelId?: string;
-  sourceApp?: string;
 }
 
 export type CheckoutSessionOverrides = Partial<
   Omit<
     CreateCheckoutSessionInput,
-    'storeId' | 'returnUrl' | 'successUrl' | 'draftOrderId' | 'lineItems'
+    'storeId' | 'returnUrl' | 'successUrl' | 'draftOrderId' | 'lineItems' | 'sourceApp'
   >
->;
+> & {
+  sourceApp?: never;
+};
 
 function stripUndefined<T extends Record<string, unknown>>(value: T): Partial<T> {
   return Object.fromEntries(
@@ -257,10 +258,13 @@ function applyCheckoutDefaults(
   base: CreateCheckoutSessionInput,
   overrides: CheckoutSessionOverrides = {},
 ): CreateCheckoutSessionInput {
+  const definedOverrides = stripUndefined(overrides);
   const result: CreateCheckoutSessionInput = {
     ...base,
-    ...stripUndefined(overrides),
+    ...definedOverrides,
   };
+
+  result.sourceApp = AAB_CHECKOUT_SOURCE_APP;
 
   if (result.paymentMethods === undefined) {
     result.paymentMethods = {
@@ -360,7 +364,6 @@ export function buildBuyNowCheckoutInput(
     returnUrl,
     successUrl,
     channelId,
-    sourceApp,
   }: BuyNowCheckoutInput,
   overrides: CheckoutSessionOverrides = {},
 ): CreateCheckoutSessionInput {
@@ -369,7 +372,6 @@ export function buildBuyNowCheckoutInput(
     returnUrl,
     successUrl,
     channelId,
-    sourceApp,
     lineItems: [{ skuId, quantity }],
   };
 
@@ -383,7 +385,6 @@ export function buildCartCheckoutInput(
     returnUrl,
     successUrl,
     channelId,
-    sourceApp,
   }: CartCheckoutInput,
   overrides: CheckoutSessionOverrides = {},
 ): CreateCheckoutSessionInput {
@@ -392,7 +393,6 @@ export function buildCartCheckoutInput(
     returnUrl,
     successUrl,
     channelId,
-    sourceApp,
     draftOrderId,
   };
 
@@ -407,7 +407,6 @@ export function buildNonCatalogCheckoutInput(
     returnUrl,
     successUrl,
     channelId,
-    sourceApp,
   }: NonCatalogCheckoutInput,
   overrides: CheckoutSessionOverrides = {},
 ): CreateCheckoutSessionInput {
@@ -416,7 +415,6 @@ export function buildNonCatalogCheckoutInput(
     returnUrl,
     successUrl,
     channelId,
-    sourceApp,
     lineItems: [{ lineItemData, quantity }],
   };
 

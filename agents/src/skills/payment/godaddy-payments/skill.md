@@ -303,6 +303,8 @@ On the success page, read `orderId` from the query string, verify paid status se
 
 The checkout route applies these defaults to every session if not explicitly overridden:
 
+The server checkout helper always sets `sourceApp` to `airo.ai.builder`; checkout-api prefixes this into transaction `clientContext.sourceApp` as `godaddy.checkout.airo.ai.builder`.
+
 | Flag                              | Default                                                                                                        | Notes                                                      |
 | --------------------------------- | -------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
 | `paymentMethods`                  | `{ card: { processor: 'godaddy', checkoutTypes: ['standard'] } }`                                              | Standard card checkout                                     |

@@ -26,8 +26,9 @@
  * the success page has no way to know which order completed unless it is in
  * the URL the caller supplies here.
  *
- * `storeId` and `channelId` are read server-side from `readCommerceConfig()` —
- * never from the request body, so the client cannot choose which store to charge.
+ * `storeId` and `channelId` are read server-side from `readCommerceConfig()`
+ * and `sourceApp` is set by the server checkout helper — never from the request
+ * body, so the client cannot choose which store/channel/source to charge.
  *
  * Response: { url, id, draftOrderId } from the created checkout session.
  * Browser callers should redirect to `response.url`; this route does not
