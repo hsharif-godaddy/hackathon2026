@@ -4,6 +4,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import Alert from '@ux/alert';
 import Box from '@ux/box';
 import Button from '@ux/button';
+import FieldFrame from '@ux/field-frame';
 import Growl from '@ux/growl';
 import CheckmarkIcon from '@ux/icon/checkmark';
 import CopyIcon from '@ux/icon/copy';
@@ -17,6 +18,7 @@ import XIcon from '@ux/icon/x';
 import { Menu, MenuButton, MenuItem, MenuList } from '@ux/menu';
 import Tag from '@ux/tag';
 import text from '@ux/text';
+import TextEntry from '@ux/text-entry';
 import TextInput from '@ux/text-input';
 
 import IconButton from '@/app/[market]/develop/components/IconButton';
@@ -75,6 +77,7 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
   const [sessionPlaintextByName, setSessionPlaintextByName] = useState<Record<string, string>>({});
   /** When false, masked placeholder is shown for cached values until the user reveals them. */
   const [valueRevealedByName, setValueRevealedByName] = useState<Record<string, boolean>>({});
+  const [newSecretValuesRevealed, setNewSecretValuesRevealed] = useState<Record<number, boolean>>({});
   const textareaRefs = useRef<{ [secretName: string]: HTMLTextAreaElement | null }>({});
   /** Coordinates overlapping submit operations (batch save vs per-row save). */
   const submissionCountRef = useRef(0);
@@ -134,6 +137,7 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
         });
     });
   }, [dataUpdatedAt, secrets]);
+
 
   const handleEdit = (secretName: string) => {
     const snapshot = formSecrets;
@@ -409,6 +413,7 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
 
       // Reset new secrets form
       setNewSecrets([{ name: '', value: '' }]);
+      setNewSecretValuesRevealed({});
 
       // Reset form secrets to clear change flags (prevents brief button re-enable)
       setFormSecrets((prev) =>
@@ -528,6 +533,10 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
     setValueRevealedByName((prev) => ({ ...prev, [secretName]: !prev[secretName] }));
   };
 
+  const toggleNewSecretReveal = (index: number): void => {
+    setNewSecretValuesRevealed((prev) => ({ ...prev, [index]: !prev[index] }));
+  };
+
   const handleNewSecretChange = (index: number, field: 'name' | 'value', value: string) => {
     let updatedSecrets = [...newSecrets];
 
@@ -640,17 +649,35 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
                       />
                     </div>
                     <div>
-                      <TextInput
-                        id={`newSecretValue-${index}`}
-                        label={null}
-                        visualSize="sm"
-                        multiline={true}
-                        value={newSecret.value}
-                        onChange={(value: string) => handleNewSecretChange(index, 'value', value)}
-                        placeholder={t('builder_settings_secrets_placeholder_key_value')}
-                        size={calculateRows(newSecret.value)}
-                        errorMessage={getNewSecretValueError(newSecret, index)}
-                      />
+                      <div className="flex items-center">
+                        <FieldFrame stretch invalid={!!getNewSecretValueError(newSecret, index)}>
+                          <TextEntry
+                            id={`newSecretValue-${index}`}
+                            value={newSecret.value}
+                            onChange={(value: string) => handleNewSecretChange(index, 'value', value)}
+                            placeholder={t('builder_settings_secrets_placeholder_key_value')}
+                            type={newSecretValuesRevealed[index] ? 'text' : 'password'}
+                            visualSize="sm"
+                            stretch
+                          />
+                        </FieldFrame>
+                        <Button
+                          design="control"
+                          size="sm"
+                          icon={newSecretValuesRevealed[index] ? <HideIcon /> : <ShowIcon />}
+                          aria-label={
+                            newSecretValuesRevealed[index]
+                              ? t(('builder_settings_secrets_hide_value' as string), undefined, 'Hide value')
+                              : t(('builder_settings_secrets_show_value' as string), undefined, 'Show value')
+                          }
+                          disabled={newSecret.value === ''}
+                          onClick={() => toggleNewSecretReveal(index)}
+                          data-eid={generateClickEID(`develop.settings.secrets.new-value.show.${index}`)}
+                        />
+                      </div>
+                      {getNewSecretValueError(newSecret, index) && (
+                        <text.p emphasis="critical" text={getNewSecretValueError(newSecret, index)!} />
+                      )}
                       {newSecret.name && isValidSecretName(newSecret.name) && isSecretNameUnique(newSecret.name, index) && isValueValid(newSecret.value) && (
                         <Tag emphasis="warning" className="mt-1">{t('builder_settings_secrets_tag_unsaved_new')}</Tag>
                       )}
@@ -713,19 +740,50 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
                         />
                       </div>
                       <div className="min-w-0 flex-1">
-                        <TextInput
-                          id={`secretValue-${index}`}
-                          label={null}
-                          ref={(el) => { textareaRefs.current[secret.name] = el; }}
-                          value={valueDisplay}
-                          onChange={(value: string) => handleValueChange(secret.name, value)}
-                          onBlur={() => handleValueBlur(secret.name)}
-                          disabled={!secret.isEditing}
-                          size={valueRows}
-                          placeholder={secret.isEditing ? '' : '••••••••••••'}
-                          visualSize="sm"
-                          multiline={true}
-                        />
+                        {secret.isEditing ? (
+                          <div className="flex items-center gap-2">
+                            <FieldFrame stretch>
+                              <TextEntry
+                                id={`secretValue-${index}`}
+                                ref={(el) => { textareaRefs.current[secret.name] = el; }}
+                                value={secret.editedValue ?? ''}
+                                onChange={(value: string) => handleValueChange(secret.name, value)}
+                                onBlur={() => handleValueBlur(secret.name)}
+                                type={revealed ? 'text' : 'password'}
+                                visualSize="sm"
+                                stretch
+                              />
+                            </FieldFrame>
+                            {!secret.systemManaged && (
+                              <Button
+                                design="control"
+                                size="sm"
+                                icon={revealed ? <HideIcon /> : <ShowIcon />}
+                                aria-label={
+                                  revealed
+                                    ? t(('builder_settings_secrets_hide_value' as string), undefined, 'Hide value')
+                                    : t(('builder_settings_secrets_show_value' as string), undefined, 'Show value')
+                                }
+                                disabled={!isValueValid(secret.editedValue ?? '')}
+                                onClick={() => toggleValueReveal(secret.name)}
+                                data-eid={generateClickEID(`develop.settings.secrets.show.${secret.name}`)}
+                              />
+                            )}
+                          </div>
+                        ) : (
+                          <FieldFrame stretch disabled>
+                            <TextEntry
+                              id={`secretValue-${index}`}
+                              value={valueDisplay}
+                              disabled
+                              placeholder="••••••••••••"
+                              visualSize="sm"
+                              stretch
+                              multiline={hasPlaintextSource && revealed}
+                              size={hasPlaintextSource && revealed ? valueRows : undefined}
+                            />
+                          </FieldFrame>
+                        )}
                       </div>
                       {!secret.systemManaged && (
                         <div
@@ -746,7 +804,6 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
                                 showLabelAlways={false}
                                 onClick={() => toggleValueReveal(secret.name)}
                                 disabled={!canToggleShow}
-                                active={visuallyShowingPlaintext}
                                 size="sm"
                                 ghost
                                 className="!border-0"
@@ -809,7 +866,6 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
                                 design="control"
                                 size="sm"
                                 icon={<MenuIcon />}
-                                className="!border-0 !bg-transparent p-[6px] rounded-md shadow-none transition-all duration-200 hover:shadow-md hover:!bg-transparent active:!bg-transparent [&[aria-expanded='true']]:!bg-transparent"
                                 data-eid={generateClickEID(`develop.settings.secrets.menu.${secret.name}`)}
                               />
                               <MenuList stretch placement="bottom-end">

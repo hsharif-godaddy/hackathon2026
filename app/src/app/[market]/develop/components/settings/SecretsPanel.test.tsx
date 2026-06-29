@@ -107,10 +107,14 @@ const rowMenuButton = () =>
 const queryRowMenuButton = () =>
   screen.queryByRole('button', { name: /Secret actions|builder_settings_secrets_row_actions/ });
 
-const showValueButton = () =>
-  screen.getByRole('button', { name: /Show value|builder_settings_secrets_show_value/ });
-const hideValueButton = () =>
-  screen.getByRole('button', { name: /Hide value|builder_settings_secrets_hide_value/ });
+const showValueButton = () => {
+  const btns = screen.getAllByRole('button', { name: /Show value|builder_settings_secrets_show_value/ });
+  return btns[btns.length - 1];
+};
+const hideValueButton = () => {
+  const btns = screen.getAllByRole('button', { name: /Hide value|builder_settings_secrets_hide_value/ });
+  return btns[btns.length - 1];
+};
 const copySecretButton = () =>
   screen.getByRole('button', { name: /Copy to clipboard|builder_common_copy_clipboard/ });
 
@@ -997,6 +1001,58 @@ describe('SecretsPanel', () => {
       expect(screen.getByText('builder_settings_secrets_tag_unsaved_delete')).toBeInTheDocument();
       expect(screen.getByText('builder_settings_secrets_tag_unsaved_edit')).toBeInTheDocument();
       expect(screen.getByRole('button', { name: /builder_common_save.*FIRST_SECRET/ })).toBeInTheDocument();
+    });
+  });
+
+  describe('new-secret value field reveal', function newSecretRevealTests() {
+    it('value field is masked (type=password) by default', async function maskedByDefault() {
+      renderSecretsPanel();
+
+      await waitFor(function waitForInput() {
+        const valueInput = screen.getByPlaceholderText('builder_settings_secrets_placeholder_key_value');
+        expect(valueInput).toHaveAttribute('type', 'password');
+      });
+    });
+
+    it('reveal toggle switches field to type=text', async function revealToText() {
+      const { user } = renderSecretsPanel();
+
+      const valueInput = screen.getByPlaceholderText('builder_settings_secrets_placeholder_key_value');
+      await user.type(valueInput, 'my-secret-val');
+
+      const showBtns = screen.getAllByRole('button', { name: /Show value|builder_settings_secrets_show_value/ });
+      await user.click(showBtns[0]);
+
+      await waitFor(function waitForText() {
+        expect(
+          screen.getAllByPlaceholderText('builder_settings_secrets_placeholder_key_value')[0]
+        ).toHaveAttribute('type', 'text');
+      });
+    });
+
+    it('hide toggle switches field back to type=password', async function hideToPassword() {
+      const { user } = renderSecretsPanel();
+
+      const valueInput = screen.getByPlaceholderText('builder_settings_secrets_placeholder_key_value');
+      await user.type(valueInput, 'my-secret-val');
+
+      const showBtns = screen.getAllByRole('button', { name: /Show value|builder_settings_secrets_show_value/ });
+      await user.click(showBtns[0]);
+
+      await waitFor(function waitForText() {
+        expect(
+          screen.getAllByPlaceholderText('builder_settings_secrets_placeholder_key_value')[0]
+        ).toHaveAttribute('type', 'text');
+      });
+
+      const hideBtns = screen.getAllByRole('button', { name: /Hide value|builder_settings_secrets_hide_value/ });
+      await user.click(hideBtns[0]);
+
+      await waitFor(function waitForPassword() {
+        expect(
+          screen.getAllByPlaceholderText('builder_settings_secrets_placeholder_key_value')[0]
+        ).toHaveAttribute('type', 'password');
+      });
     });
   });
 
