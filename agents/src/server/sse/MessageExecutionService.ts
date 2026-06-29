@@ -2241,8 +2241,12 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
       todoListContext, isActionRequest, customContext,
     }
 
-    // Inject event emitter for sub-agent streaming events (used by runAgent tool).
+    // Tool metadata for sub-agent streaming (runAgent) and optional debug_turn_stats (Sora).
     const execMeta = executionContext.metadata as Record<string, unknown>
+    if (agentCtx?.debugStatsEnabled) {
+      execMeta.debugStatsEnabled = true
+    }
+    execMeta.agentName = resolvedAgentId
     execMeta.eventEmitter = {
       emit: (type: string, data: unknown): void => {
         if (type === 'subagent_event') {

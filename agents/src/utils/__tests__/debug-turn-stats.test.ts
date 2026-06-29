@@ -67,4 +67,33 @@ describe('computeDebugTurnStats', () => {
     expect(result.contextWindowUtilization).toBe(0)
     expect(result.costUsd).toBe(0)
   })
+
+  it('uses costUsd override for non-token downstream calls', () => {
+    const result = computeDebugTurnStats({
+      conversationId: 'conv-4',
+      agentName: 'develop',
+      modelName: 'sora-2',
+      inputTokens: 0,
+      outputTokens: 0,
+      totalTokens: 0,
+      costUsd: 0.8,
+    })
+
+    expect(result.costUsd).toBe(0.8)
+    expect(result.modelName).toBe('sora-2')
+  })
+
+  it('preserves costUsd zero override instead of falling back to token estimate', () => {
+    const result = computeDebugTurnStats({
+      conversationId: 'conv-5',
+      agentName: 'develop',
+      modelName: 'sora-2',
+      inputTokens: 1000,
+      outputTokens: 500,
+      totalTokens: 1500,
+      costUsd: 0,
+    })
+
+    expect(result.costUsd).toBe(0)
+  })
 })

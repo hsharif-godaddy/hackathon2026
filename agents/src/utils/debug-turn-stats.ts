@@ -11,6 +11,8 @@ export interface ComputeDebugTurnStatsInput {
   cachedInputTokens?: number
   cacheWriteInputTokens?: number
   steps?: number
+  /** When set, used instead of token-based cost (e.g. Sora per-second pricing). */
+  costUsd?: number
 }
 
 export function computeDebugTurnStats(input: ComputeDebugTurnStatsInput): DebugTurnStatsEvent {
@@ -44,7 +46,7 @@ export function computeDebugTurnStats(input: ComputeDebugTurnStatsInput): DebugT
     cacheWriteInputTokens: cachedWrite,
     cacheHitRate: cacheMetrics.cacheHitRate / 100,
     contextWindowUtilization: contextWindowUtilization / 100,
-    costUsd: costEstimate.totalCost,
+    costUsd: input.costUsd ?? costEstimate.totalCost,
     timestamp: new Date().toISOString(),
     ...(input.steps !== undefined && { steps: input.steps }),
   }

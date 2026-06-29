@@ -374,3 +374,15 @@ export function getAvailableModelsWithPricing(): Array<{
 
   return models.sort((a, b) => a.name.localeCompare(b.name))
 }
+
+/** Approximate Sora-2 list price per generated second (align with GoCode billing table). */
+const SORA_2_USD_PER_SECOND = 0.10
+
+/**
+ * Estimate USD cost for a Sora-2 clip from duration alone.
+ * Display-only helper for the debug stats drawer — not used for billing.
+ * Align the rate with the GoCode billing table when that number is confirmed.
+ */
+export function calculateSoraVideoCostEstimate(durationSeconds: number): number {
+  return durationSeconds * SORA_2_USD_PER_SECOND
+}

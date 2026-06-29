@@ -8,6 +8,7 @@ import { describe, it, expect } from 'vitest'
 import {
   buildTokenUsage,
   calculateCostEstimate,
+  calculateSoraVideoCostEstimate,
   formatCostEstimate,
   getCacheHitRate,
   getAvailableModelsWithPricing,
@@ -626,6 +627,18 @@ describe('model-pricing', () => {
       const estimate = calculateCostEstimate(usage, 'claude-sonnet-4-6')
       expect(estimate.totalCost).toBeGreaterThan(0)
       expect(estimate.totalCost).toBeLessThan(10000) // Reasonable upper bound
+    })
+  })
+
+  describe('calculateSoraVideoCostEstimate', () => {
+    it('should multiply duration seconds by the Sora-2 per-second rate', () => {
+      expect(calculateSoraVideoCostEstimate(8)).toBeCloseTo(0.8)
+      expect(calculateSoraVideoCostEstimate(12)).toBeCloseTo(1.2)
+      expect(calculateSoraVideoCostEstimate(4)).toBeCloseTo(0.4)
+    })
+
+    it('should return zero for zero duration', () => {
+      expect(calculateSoraVideoCostEstimate(0)).toBe(0)
     })
   })
 })

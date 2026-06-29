@@ -10,9 +10,15 @@ vi.mock('../../../../logging/index.js', () => ({
 }));
 
 const mockGenerateSoraVideo = vi.fn();
-vi.mock('@airo/ai-lib', () => ({
-  generateSoraVideo: mockGenerateSoraVideo,
-}));
+const mockCalculateSoraVideoCostEstimate = vi.fn();
+vi.mock('@airo/ai-lib', async (importOriginal) => {
+  const actual = await importOriginal<Record<string, unknown>>();
+  return {
+    ...actual,
+    generateSoraVideo: mockGenerateSoraVideo,
+    calculateSoraVideoCostEstimate: mockCalculateSoraVideoCostEstimate,
+  };
+});
 
 const mockUploadGeneratedVideo = vi.fn();
 vi.mock('../../../../utils/upload-generated-video.js', () => ({
@@ -109,6 +115,8 @@ describe('generateVideoTool', () => {
       buffer: Buffer.from('video-bytes'),
     });
 
+    mockCalculateSoraVideoCostEstimate.mockReturnValue(0.8);
+
     mockUploadGeneratedVideo.mockResolvedValue('/airo-assets/uploads/ai-video-abc123.mp4');
 
     mockGetManifest.mockResolvedValue({
@@ -203,6 +211,90 @@ describe('generateVideoTool', () => {
         slotUrl: '/airo-assets/videos/pages/home/hero',
       },
     });
+  });
+
+  it('emits debug_turn_stats when debug stats are enabled', async () => {
+    const emit = vi.fn();
+    const { generateVideoTool } = await import('../index.js');
+
+    await generateVideoTool.execute(
+      {
+        prompt: 'A sunset video',
+        orientation: 'landscape',
+        duration: 8,
+        slotName: 'pages/home/hero',
+        userConfirmed: true as const,
+      },
+      confirmedContext({
+        appId: 'app-123',
+        conversationId: 'conv-1',
+        agentName: 'develop',
+        debugStatsEnabled: true,
+        eventEmitter: { emit },
+      }),
+    );
+
+    expect(mockCalculateSoraVideoCostEstimate).toHaveBeenCalledWith(8);
+    expect(emit).toHaveBeenCalledWith('debug_turn_stats', expect.objectContaining({
+      conversationId: 'conv-1',
+      agentName: 'develop',
+      modelName: 'sora-2',
+      outputTokens: 0,
+      totalTokens: 0,
+      costUsd: 0.8,
+    }));
+  });
+
+  it('does not emit debug_turn_stats when debug stats are disabled', async () => {
+    const emit = vi.fn();
+    const { generateVideoTool } = await import('../index.js');
+
+    await generateVideoTool.execute(
+      {
+        prompt: 'A sunset video',
+        orientation: 'landscape',
+        duration: 8,
+        slotName: 'pages/home/hero',
+        userConfirmed: true as const,
+      },
+      confirmedContext({
+        appId: 'app-123',
+        conversationId: 'conv-1',
+        agentName: 'develop',
+        eventEmitter: { emit },
+      }),
+    );
+
+    expect(emit).not.toHaveBeenCalled();
+    expect(mockCalculateSoraVideoCostEstimate).not.toHaveBeenCalled();
+  });
+
+  it('warns and skips debug_turn_stats when enabled but emitter metadata is missing', async () => {
+    const { logger } = await import('../../../../logging/index.js');
+    const emit = vi.fn();
+    const { generateVideoTool } = await import('../index.js');
+
+    await generateVideoTool.execute(
+      {
+        prompt: 'A sunset video',
+        orientation: 'landscape',
+        duration: 8,
+        slotName: 'pages/home/hero',
+        userConfirmed: true as const,
+      },
+      confirmedContext({
+        appId: 'app-123',
+        conversationId: 'conv-1',
+        agentName: 'develop',
+        debugStatsEnabled: true,
+      }),
+    );
+
+    expect(emit).not.toHaveBeenCalled();
+    expect(logger.warn).toHaveBeenCalledWith(
+      'skills.media-video.tools.generate_video.debug_stats.skipped',
+      expect.objectContaining({ hasEmitter: false }),
+    );
   });
 
   it('should return error when customerId not found', async () => {

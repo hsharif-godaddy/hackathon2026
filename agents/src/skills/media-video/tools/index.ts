@@ -1,5 +1,5 @@
 import { buildLitellmMetadataFromContext, LlmCallSource, type ExecutionContext } from '@airo/ai-grants';
-import { generateSoraVideo, type SoraVideoDuration } from '@airo/ai-lib';
+import { calculateSoraVideoCostEstimate, generateSoraVideo, type SoraVideoDuration } from '@airo/ai-lib';
 import { BudgetExceededError, llmMetadataContext } from '@airo/ai-common';
 import type { SkillToolDefinition } from '@airo/ai-skills';
 import { z } from 'zod';
@@ -8,6 +8,7 @@ import { appRepository } from '../../../database/repositories/index.js';
 import { logger } from '../../../logging/index.js';
 import { captionFromPrompt } from '../../../services/MediaCaptionService.js';
 import { mediaManifestService, type MediaSlot } from '../../../services/MediaManifestService.js';
+import { computeDebugTurnStats } from '../../../utils/debug-turn-stats.js';
 import { uploadGeneratedVideo } from '../../../utils/upload-generated-video.js';
 
 const GENERATED_VIDEO_CONFIRMATION_ERROR = 'Generated video requires explicit confirmation. Use the media tool with mediaType video for stock clips, or ask the user to confirm generated video first.';
@@ -21,6 +22,39 @@ function hasGeneratedVideoConfirmation(userMessage: unknown): boolean {
     || normalized === 'i understand, continue'
     || normalized.endsWith('\nconfirmed')
     || normalized.endsWith('\ni understand, continue');
+}
+
+interface DebugStatsEmitter {
+  emit: (type: string, data: unknown) => void;
+}
+
+function emitSoraDebugStats(
+  metadata: Record<string, unknown> | undefined,
+  duration: SoraVideoDuration,
+): void {
+  if (metadata?.debugStatsEnabled !== true) {
+    return;
+  }
+  const conversationId = metadata.conversationId;
+  const agentName = metadata.agentName;
+  const emitter = metadata.eventEmitter as DebugStatsEmitter | undefined;
+  if (typeof conversationId !== 'string' || typeof agentName !== 'string' || !emitter?.emit) {
+    logger.warn('skills.media-video.tools.generate_video.debug_stats.skipped', {
+      hasConversationId: typeof conversationId === 'string',
+      hasAgentName: typeof agentName === 'string',
+      hasEmitter: Boolean(emitter?.emit),
+    });
+    return;
+  }
+  emitter.emit('debug_turn_stats', computeDebugTurnStats({
+    conversationId,
+    agentName,
+    modelName: 'sora-2',
+    inputTokens: 0,
+    outputTokens: 0,
+    totalTokens: 0,
+    costUsd: calculateSoraVideoCostEstimate(duration),
+  }));
 }
 
 const GenerateVideoInputSchema = z.object({
@@ -73,6 +107,10 @@ export const generateVideoTool: SkillToolDefinition = {
         budgetSessionId?: string;
         traceId?: string;
         _userMessage?: string;
+        conversationId?: string;
+        agentName?: string;
+        debugStatsEnabled?: boolean;
+        eventEmitter?: DebugStatsEmitter;
       };
       socketId?: string;
     };
@@ -161,6 +199,8 @@ export const generateVideoTool: SkillToolDefinition = {
         appId,
         budgetUserId,
       });
+
+      emitSoraDebugStats(toolContext.metadata, input.duration as SoraVideoDuration);
 
       let normalizedSlot = input.slotName.trim().replace(/^\/+|\/+$/g, '');
       let manifestWriteSuccess = false;

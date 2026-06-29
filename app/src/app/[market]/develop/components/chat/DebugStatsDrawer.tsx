@@ -23,6 +23,7 @@ function FlaskIcon(): ReactElement {
 }
 
 function abbreviateModel(modelName: string): string {
+  if (modelName.includes('sora')) return 'Sora2'
   if (modelName.includes('opus-4-7')) return 'Op4.7'
   if (modelName.includes('opus-4-6')) return 'Op4.6'
   if (modelName.includes('sonnet-4-6')) return 'So4.6'
