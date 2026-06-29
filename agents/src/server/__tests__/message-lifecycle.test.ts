@@ -6,6 +6,8 @@ import {
   startParallelAssessment,
 } from '../message-lifecycle.js'
 import type { AssessmentAgent, AssessmentOutcome } from '../../agents/assessment-agent/index.js'
+import { AssessmentTaskType, AssessmentReason, ClassifierMode, FixSessionPhase } from '../../agents/assessment-agent/index.js'
+import type { ClassificationResult } from '../../agents/assessment-agent/index.js'
 
 const silentLogger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }
 
@@ -100,6 +102,169 @@ describe('startParallelAssessment', () => {
     const b = await handle.awaitOutcome({ timeoutMs: 100 })
     expect(a).toBe(b)
     expect(classify).toHaveBeenCalledTimes(1)
+  })
+
+  describe('getTimeoutFallback', () => {
+    function lrFixResult(confidence: number): ClassificationResult {
+      return {
+        taskType: AssessmentTaskType.Fix,
+        confidence,
+        similarity: confidence / 100,
+        matchedExample: '',
+        margin: (confidence - 50) / 50,
+        method: 'embedding-lr',
+        hasNegation: false,
+        requiresHaikuVerification: true,
+      }
+    }
+
+    function lrGeneralResult(confidence: number): ClassificationResult {
+      return {
+        taskType: AssessmentTaskType.General,
+        confidence,
+        similarity: 1 - confidence / 100,
+        matchedExample: '',
+        margin: (confidence - 50) / 50,
+        method: 'embedding-lr',
+        hasNegation: false,
+        requiresHaikuVerification: true,
+      }
+    }
+
+    it('returns undefined when disabled (enableAssessmentAgent=false)', () => {
+      const deps = makeDeps(vi.fn() as any)
+      const handle = startParallelAssessment(deps, {
+        appId: 'a', sessionKey: 's', message: 'hi',
+        isInitialPrompt: false, enableAssessmentAgent: false, enableAssessmentOverride: false,
+      })
+      expect(handle.getTimeoutFallback()).toBeUndefined()
+    })
+
+    it('returns undefined when LR result is not yet available (classify still running)', () => {
+      const classify = vi.fn().mockReturnValue(new Promise(() => {}))
+      const deps = makeDeps(classify as any)
+      const handle = startParallelAssessment(deps, {
+        appId: 'a', sessionKey: 's', message: 'hi',
+        isInitialPrompt: false, enableAssessmentAgent: true, enableAssessmentOverride: false,
+        classifierMode: ClassifierMode.LogisticRegression,
+        enableFixSession: true,
+      })
+      expect(handle.getTimeoutFallback()).toBeUndefined()
+    })
+
+    it('returns undefined when LR said general (no fix signal)', async () => {
+      const classify = vi.fn().mockImplementation((_prompt: string, context: any) => {
+        context?.onClassifierResult?.(lrGeneralResult(85))
+        return new Promise(() => {}) // Haiku never resolves
+      })
+      const deps = makeDeps(classify as any)
+      deps.sessionStore.activateFixSession('s')
+      const handle = startParallelAssessment(deps, {
+        appId: 'a', sessionKey: 's', message: 'hi',
+        isInitialPrompt: false, enableAssessmentAgent: true, enableAssessmentOverride: false,
+        classifierMode: ClassifierMode.LogisticRegression,
+        enableFixSession: true,
+      })
+      // Allow microtask to fire onClassifierResult
+      await Promise.resolve()
+      expect(handle.getTimeoutFallback()).toBeUndefined()
+    })
+
+    it('returns undefined when LR said fix but no fix session is active', async () => {
+      const classify = vi.fn().mockImplementation((_prompt: string, context: any) => {
+        context?.onClassifierResult?.(lrFixResult(75))
+        return new Promise(() => {})
+      })
+      const deps = makeDeps(classify as any)
+      const handle = startParallelAssessment(deps, {
+        appId: 'a', sessionKey: 's', message: 'hi',
+        isInitialPrompt: false, enableAssessmentAgent: true, enableAssessmentOverride: false,
+        classifierMode: ClassifierMode.LogisticRegression,
+        enableFixSession: true,
+      })
+      await Promise.resolve()
+      expect(handle.getTimeoutFallback()).toBeUndefined()
+    })
+
+    it('returns fix outcome when LR said fix AND fix session is active', async () => {
+      const classify = vi.fn().mockImplementation((_prompt: string, context: any) => {
+        context?.onClassifierResult?.(lrFixResult(75))
+        return new Promise(() => {})
+      })
+      const deps = makeDeps(classify as any)
+      deps.sessionStore.activateFixSession('s')
+      const handle = startParallelAssessment(deps, {
+        appId: 'a', sessionKey: 's', message: 'hi',
+        isInitialPrompt: false, enableAssessmentAgent: true, enableAssessmentOverride: false,
+        classifierMode: ClassifierMode.LogisticRegression,
+        enableFixSession: true,
+      })
+      await Promise.resolve()
+      const fallback = handle.getTimeoutFallback()
+      expect(fallback).toBeDefined()
+      expect(fallback!.result?.taskType).toBe(AssessmentTaskType.Fix)
+      expect(fallback!.result?.confidence).toBe(75)
+      expect(fallback!.reason).toBe(AssessmentReason.EmbeddingTimeoutFallback)
+      expect(fallback!.completedInTime).toBe(false)
+      expect(fallback!.overrideApplied).toBe(true)
+      expect(fallback!.appliedBudget).toBe('airo-builder:fix-task')
+    })
+
+    it('does not apply override when LR fix confidence is below threshold', async () => {
+      const classify = vi.fn().mockImplementation((_prompt: string, context: any) => {
+        context?.onClassifierResult?.(lrFixResult(50))
+        return new Promise(() => {})
+      })
+      const deps = makeDeps(classify as any)
+      deps.sessionStore.activateFixSession('s')
+      const handle = startParallelAssessment(deps, {
+        appId: 'a', sessionKey: 's', message: 'hi',
+        isInitialPrompt: false, enableAssessmentAgent: true, enableAssessmentOverride: false,
+        classifierMode: ClassifierMode.LogisticRegression,
+        enableFixSession: true,
+      })
+      await Promise.resolve()
+      const fallback = handle.getTimeoutFallback()
+      expect(fallback).toBeDefined()
+      expect(fallback!.result?.taskType).toBe(AssessmentTaskType.Fix)
+      expect(fallback!.overrideApplied).toBe(false)
+      expect(fallback!.appliedBudget).toBeUndefined()
+    })
+
+    it('returns undefined when enableFixSession is false even with active session', async () => {
+      const classify = vi.fn().mockImplementation((_prompt: string, context: any) => {
+        context?.onClassifierResult?.(lrFixResult(75))
+        return new Promise(() => {})
+      })
+      const deps = makeDeps(classify as any)
+      deps.sessionStore.activateFixSession('s')
+      const handle = startParallelAssessment(deps, {
+        appId: 'a', sessionKey: 's', message: 'hi',
+        isInitialPrompt: false, enableAssessmentAgent: true, enableAssessmentOverride: false,
+        classifierMode: ClassifierMode.LogisticRegression,
+        enableFixSession: false,
+      })
+      await Promise.resolve()
+      expect(handle.getTimeoutFallback()).toBeUndefined()
+    })
+  })
+
+  describe('onClassifierResult callback', () => {
+    it('passes onClassifierResult to the classify call', async () => {
+      let receivedContext: any
+      const classify = vi.fn().mockImplementation((_prompt: string, context: any) => {
+        receivedContext = context
+        return Promise.resolve(makeOutcome('fix'))
+      })
+      const deps = makeDeps(classify as any)
+      startParallelAssessment(deps, {
+        appId: 'a', sessionKey: 's', message: 'hi',
+        isInitialPrompt: false, enableAssessmentAgent: true, enableAssessmentOverride: false,
+        classifierMode: ClassifierMode.LogisticRegression,
+      })
+      await Promise.resolve()
+      expect(receivedContext.onClassifierResult).toBeTypeOf('function')
+    })
   })
 })
 

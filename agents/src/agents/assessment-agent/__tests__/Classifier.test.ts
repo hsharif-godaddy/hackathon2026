@@ -235,16 +235,34 @@ describe('Classifier pipeline', () => {
       expect(outcome.overrideApplied).toBe(true)
     })
 
-    it('should skip Haiku and use classifier result when insufficient time remains', async () => {
+    it('should skip Haiku and use classifier result when insufficient time remains (blocking mode)', async () => {
       mockLRClassify.mockResolvedValue(lrFix(70, true))
+      mocks.embeddingClassifierClassify.mockResolvedValue(lrFix(70, true))
 
       const agent = createAssessmentAgent({ enabled: true, timeoutMs: 100 })
-      const outcome = await agent.classify('make my site available to visitors', { enabledOverride: true, classifierMode: LR })
+      const outcome = await agent.classify('make my site available to visitors', {
+        enabledOverride: true,
+        classifierMode: ClassifierMode.CosineSimilarity,
+      })
 
       // BILLING SAFETY: Fix + requiresHaikuVerification + no time → fall back to General
       expect(outcome.reason).toBe(AssessmentReason.EmbeddingTimeoutFallback)
       expect(outcome.result?.taskType).toBe(AssessmentTaskType.General)
       expect(outcome.overrideApplied).toBe(false)
+    })
+
+    it('should NOT skip Haiku for insufficient time in parallel mode (LR)', async () => {
+      mockLRClassify.mockResolvedValue(lrFix(70, true))
+      mockGenerateText.mockResolvedValue({
+        text: JSON.stringify({ taskType: AssessmentTaskType.Fix, confidence: 85, reasoning: 'fix intent' }),
+      })
+
+      const agent = createAssessmentAgent({ enabled: true, timeoutMs: 100 })
+      const outcome = await agent.classify('make my site available to visitors', { enabledOverride: true, classifierMode: LR })
+
+      // Parallel mode: no internal timeout, Haiku runs to completion
+      expect(outcome.reason).toBe(AssessmentReason.LlmCompleted)
+      expect(outcome.result?.taskType).toBe(AssessmentTaskType.Fix)
     })
 
     it('should handle Haiku errors and apply billing-safety fallback', async () => {
@@ -374,30 +392,52 @@ describe('Classifier pipeline', () => {
       expect(outcome.overrideApplied).toBe(false)
     })
 
-    it('should apply billing-safety fallback when Haiku is skipped and classifier returned fix (requiresHaikuVerification)', async () => {
+    it('should apply billing-safety fallback when Haiku is skipped and classifier returned fix (blocking mode)', async () => {
       mockLRClassify.mockResolvedValue(lrFix(75, true))
+      mocks.embeddingClassifierClassify.mockResolvedValue(lrFix(75, true))
 
       const agent = createAssessmentAgent({ enabled: true, timeoutMs: 100 })
-      const outcome = await agent.classify('continue working', { enabledOverride: true, classifierMode: LR })
+      const outcome = await agent.classify('continue working', {
+        enabledOverride: true,
+        classifierMode: ClassifierMode.CosineSimilarity,
+      })
 
       expect(outcome.reason).toBe(AssessmentReason.EmbeddingTimeoutFallback)
       expect(outcome.result?.taskType).toBe(AssessmentTaskType.General)
       expect(outcome.overrideApplied).toBe(false)
     })
 
-    it('should apply billing-safety fallback when Haiku times out and classifier returned fix (requiresHaikuVerification)', async () => {
-      mockLRClassify.mockResolvedValue(lrFix(75, true))
+    it('should apply billing-safety fallback when Haiku times out in blocking mode', async () => {
+      mocks.embeddingClassifierClassify.mockResolvedValue(lrFix(75, true))
       mockGenerateText.mockImplementation(async function () {
         await new Promise((resolve) => setTimeout(resolve, 2000))
         return { text: JSON.stringify({ taskType: AssessmentTaskType.Fix, confidence: 90 }) }
       })
 
       const agent = createAssessmentAgent({ enabled: true, timeoutMs: 600 })
-      const outcome = await agent.classify('continue working', { enabledOverride: true, classifierMode: LR })
+      const outcome = await agent.classify('continue working', {
+        enabledOverride: true,
+        classifierMode: ClassifierMode.CosineSimilarity,
+      })
 
       expect(outcome.reason).toBe(AssessmentReason.Timeout)
       expect(outcome.result?.taskType).toBe(AssessmentTaskType.General)
       expect(outcome.overrideApplied).toBe(false)
+    })
+
+    it('should NOT timeout Haiku internally in parallel mode (LR) — waits for completion', async () => {
+      mockLRClassify.mockResolvedValue(lrFix(75, true))
+      mockGenerateText.mockImplementation(async function () {
+        await new Promise((resolve) => setTimeout(resolve, 200))
+        return { text: JSON.stringify({ taskType: AssessmentTaskType.General, confidence: 85, reasoning: 'continuation' }) }
+      })
+
+      const agent = createAssessmentAgent({ enabled: true, timeoutMs: 100 })
+      const outcome = await agent.classify('continue working', { enabledOverride: true, classifierMode: LR })
+
+      // Parallel mode: Haiku runs past the timeoutMs budget without being killed
+      expect(outcome.reason).toBe(AssessmentReason.LlmCompleted)
+      expect(outcome.result?.taskType).toBe(AssessmentTaskType.General)
     })
 
     it('should NOT apply billing-safety when classifier is high-confidence fix (no Haiku needed)', async () => {
@@ -411,11 +451,14 @@ describe('Classifier pipeline', () => {
       expect(outcome.overrideApplied).toBe(true)
     })
 
-    it('should not apply billing-safety for General result with requiresHaikuVerification when Haiku skipped', async () => {
-      mockLRClassify.mockResolvedValue(lrGeneral(65, true))
+    it('should not apply billing-safety for General result with requiresHaikuVerification when Haiku skipped (blocking mode)', async () => {
+      mocks.embeddingClassifierClassify.mockResolvedValue(lrGeneral(65, true))
 
       const agent = createAssessmentAgent({ enabled: true, timeoutMs: 100 })
-      const outcome = await agent.classify('Search by ingredients', { enabledOverride: true, classifierMode: LR })
+      const outcome = await agent.classify('Search by ingredients', {
+        enabledOverride: true,
+        classifierMode: ClassifierMode.CosineSimilarity,
+      })
 
       // General + requiresHaikuVerification + no time → billing safety doesn't apply (already General)
       expect(outcome.reason).toBe(AssessmentReason.EmbeddingTimeoutFallback)
@@ -518,7 +561,7 @@ describe('Classifier pipeline', () => {
       expect(outcome.result?.taskType).toBe(AssessmentTaskType.Fix)
     })
 
-    it('should NOT route to Haiku when previous assessment was general (no session gate)', async () => {
+    it('should NOT route to Haiku when previous assessment was general and no fix session active', async () => {
       mockLRClassify.mockResolvedValue(highConfidenceLRGeneral)
 
       const agent = createAssessmentAgent({ enabled: true, timeoutMs: 2000 })
@@ -530,6 +573,27 @@ describe('Classifier pipeline', () => {
 
       expect(outcome.reason).toBe(AssessmentReason.EmbeddingCompleted)
       expect(outcome.result?.taskType).toBe(AssessmentTaskType.General)
+    })
+
+    it('should route to Haiku when fixSessionActive=true even if previousAssessmentTaskType=General (broken-chain fix)', async () => {
+      mockLRClassify.mockResolvedValue(highConfidenceLRGeneral)
+      mockGenerateText.mockResolvedValue({
+        text: JSON.stringify({ taskType: AssessmentTaskType.Fix, confidence: 75, reasoning: 'fix follow-up in session' }),
+      })
+
+      const agent = createAssessmentAgent({ enabled: true, timeoutMs: 2000 })
+      const outcome = await agent.classify('Chrome', {
+        enabledOverride: true,
+        classifierMode: LR,
+        previousAssessmentTaskType: AssessmentTaskType.General,
+        fixSessionActive: true,
+        fixSessionPhase: 'gathering',
+        recentTurns: [{ role: 'user', content: 'fix my button' }],
+      })
+
+      expect(outcome.reason).toBe(AssessmentReason.LlmCompleted)
+      expect(outcome.result?.taskType).toBe(AssessmentTaskType.Fix)
+      expect(mockGenerateText).toHaveBeenCalled()
     })
 
     it('should NOT route to Haiku when no previous assessment exists', async () => {
@@ -561,8 +625,27 @@ describe('Classifier pipeline', () => {
       expect(outcome.overrideApplied).toBe(false)
     })
 
-    it('should fall back to classifier result when insufficient time for Haiku (session context)', async () => {
+    it('should fall back to classifier result when insufficient time for Haiku in blocking mode (session context)', async () => {
+      mocks.embeddingClassifierClassify.mockResolvedValue(lrGeneral(95))
+
+      const agent = createAssessmentAgent({ enabled: true, timeoutMs: 100 })
+      const outcome = await agent.classify('here', {
+        enabledOverride: true,
+        classifierMode: ClassifierMode.CosineSimilarity,
+        previousAssessmentTaskType: AssessmentTaskType.Fix,
+        previousUserMessage: 'fix the button',
+      })
+
+      // <500ms remaining → Haiku skipped, LR result is General → no billing safety fallback
+      expect(outcome.reason).toBe(AssessmentReason.EmbeddingTimeoutFallback)
+      expect(outcome.result?.taskType).toBe(AssessmentTaskType.General)
+    })
+
+    it('should NOT fall back when insufficient time in parallel mode (session context) — Haiku runs unbounded', async () => {
       mockLRClassify.mockResolvedValue(highConfidenceLRGeneral)
+      mockGenerateText.mockResolvedValue({
+        text: JSON.stringify({ taskType: AssessmentTaskType.Fix, confidence: 78, reasoning: 'fix follow-up' }),
+      })
 
       const agent = createAssessmentAgent({ enabled: true, timeoutMs: 100 })
       const outcome = await agent.classify('here', {
@@ -572,9 +655,9 @@ describe('Classifier pipeline', () => {
         previousUserMessage: 'fix the button',
       })
 
-      // <500ms remaining → Haiku skipped, LR result is General → no billing safety fallback
-      expect(outcome.reason).toBe(AssessmentReason.EmbeddingTimeoutFallback)
-      expect(outcome.result?.taskType).toBe(AssessmentTaskType.General)
+      // Parallel mode: no internal timeout, Haiku completes
+      expect(outcome.reason).toBe(AssessmentReason.LlmCompleted)
+      expect(outcome.result?.taskType).toBe(AssessmentTaskType.Fix)
     })
 
     it('should not trigger session gate when classifier returns Fix (gate only fires for General results)', async () => {

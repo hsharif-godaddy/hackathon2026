@@ -127,6 +127,11 @@ export class AssessmentEvaluator extends BaseEvaluator {
       previousAssessmentTaskType: testCase.previousAssessmentTaskType as AssessmentTaskType | undefined,
       isInitialPrompt,
       classifierMode: this.classifierMode ?? ClassifierMode.CosineSimilarity,
+      fixSessionActive: testCase.fixSessionActive,
+      fixSessionPhase: testCase.fixSessionPhase,
+      recentTurns: testCase.recentTurns,
+      lastTurnAgentAskedQuestion: testCase.lastTurnAgentAskedQuestion,
+      lastTurnAgentMadeCodeChanges: testCase.lastTurnAgentMadeCodeChanges,
     };
 
     // Run classification

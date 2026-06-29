@@ -13,6 +13,8 @@ export {
   HaikuAssessmentResultSchema,
   HaikuBinaryAssessmentResultSchema,
   ClassifierMode,
+  FixSessionPhase,
+  ConversationRole,
 } from './types.js'
 
 export type {
@@ -22,6 +24,7 @@ export type {
   AssessmentOutcome,
   ABComparisonResult,
   ClassificationResult,
+  ConversationTurn,
   IClassifier,
   CostPrediction,
 } from './types.js'

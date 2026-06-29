@@ -318,6 +318,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
     let fqdn: string | undefined;
     let enableAssessmentAgent = false;
     let enableAssessmentOverride = false;
+    let enableFixSession = false;
     let assessmentClassifier: string | undefined;
     let modelSelectorEnabled = false;
     let modelOverride: string | undefined;
@@ -361,7 +362,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       setApmAppId(body.siteId);
       setApmCustomerId(user.customerId);
       const parallelStart = Date.now();
-      const [paywallResult, domainPurchaseResult, testBudgetResult, budgetServiceResult, bmsExistingResult, siteInfoResult, assessmentAgentResult, assessmentOverrideResult, assessmentClassifierResult, modelSelectorResult, modelOverrideResult, agentProfileSelectorResult, agentProfileResult, costAttributionDryRunResult, useAtlasCrawlerResult, rebuildIntakeFormResult, debugDrawerResult, marketingCampaignsResult, googleBusinessProfileSyncResult, asmDualWriteResult, logoBrandColorsResult, purchaseIntentClassifierResult, skillSuggestionsResult, rebuildSourceImagesResult] = await Promise.allSettled([
+      const [paywallResult, domainPurchaseResult, testBudgetResult, budgetServiceResult, bmsExistingResult, siteInfoResult, assessmentAgentResult, assessmentOverrideResult, assessmentClassifierResult, modelSelectorResult, modelOverrideResult, agentProfileSelectorResult, agentProfileResult, costAttributionDryRunResult, useAtlasCrawlerResult, rebuildIntakeFormResult, debugDrawerResult, marketingCampaignsResult, googleBusinessProfileSyncResult, asmDualWriteResult, logoBrandColorsResult, purchaseIntentClassifierResult, skillSuggestionsResult, rebuildSourceImagesResult, fixSessionResult] = await Promise.allSettled([
         checkPaywallEligibility(
           new ServerPaywallProvider(authContext.jwt || '', user.customerId, request.headers),
           body.siteId,
@@ -390,6 +391,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
         checkSwitchboardFlag('appbuilder-purchase-intent-classifier', request),
         checkSwitchboardFlag('appbuilder-skill-suggestions', request),
         checkSwitchboardFlag('appbuilder-rebuild-source-images', request),
+        checkSwitchboardFlag('appbuilder-fix-session', request),
       ]);
       timing.parallelChecksMs = Date.now() - parallelStart;
 
@@ -426,6 +428,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       purchaseIntentClassifierEnabled = resolveBooleanFlag(purchaseIntentClassifierResult, 'agent-token.purchase-intent-classifier-flag-check-failed', body.siteId, user.customerId);
       skillSuggestionsEnabled = resolveBooleanFlag(skillSuggestionsResult, 'agent-token.skill-suggestions-flag-check-failed', body.siteId, user.customerId);
       rebuildSourceImagesEnabled = resolveBooleanFlag(rebuildSourceImagesResult, 'agent-token.rebuild-source-images-flag-check-failed', body.siteId, user.customerId);
+      enableFixSession = resolveBooleanFlag(fixSessionResult, 'agent-token.fix-session-flag-check-failed', body.siteId, user.customerId);
     } else {
       // Cache miss: run site validation, paywall, switchboard, and subscription lookup all in parallel
       logger.info('agent-token.paywall-check.start', {
@@ -436,7 +439,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       setApmAppId(body.siteId);
       setApmCustomerId(user.customerId);
       const parallelStart = Date.now();
-      const [siteResult, paywallResult, domainPurchaseResult, testBudgetResult, budgetServiceResult, bmsExistingResult, siteInfoResult, assessmentAgentResult, assessmentOverrideResult, assessmentClassifierResult, modelSelectorResult, modelOverrideResult, agentProfileSelectorResult, agentProfileResult, costAttributionDryRunResult, useAtlasCrawlerResult, rebuildIntakeFormResult, debugDrawerResult, marketingCampaignsResult, googleBusinessProfileSyncResult, asmDualWriteResult, logoBrandColorsResult, purchaseIntentClassifierResult, skillSuggestionsResult, rebuildSourceImagesResult] = await Promise.allSettled([
+      const [siteResult, paywallResult, domainPurchaseResult, testBudgetResult, budgetServiceResult, bmsExistingResult, siteInfoResult, assessmentAgentResult, assessmentOverrideResult, assessmentClassifierResult, modelSelectorResult, modelOverrideResult, agentProfileSelectorResult, agentProfileResult, costAttributionDryRunResult, useAtlasCrawlerResult, rebuildIntakeFormResult, debugDrawerResult, marketingCampaignsResult, googleBusinessProfileSyncResult, asmDualWriteResult, logoBrandColorsResult, purchaseIntentClassifierResult, skillSuggestionsResult, rebuildSourceImagesResult, fixSessionResult] = await Promise.allSettled([
         validateSiteAccess(body.siteId, user, authContext.jwt || '', body.owningProduct, multiUserEnabled),
         checkPaywallEligibility(
           new ServerPaywallProvider(authContext.jwt || '', user.customerId, request.headers),
@@ -466,6 +469,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
         checkSwitchboardFlag('appbuilder-purchase-intent-classifier', request),
         checkSwitchboardFlag('appbuilder-skill-suggestions', request),
         checkSwitchboardFlag('appbuilder-rebuild-source-images', request),
+        checkSwitchboardFlag('appbuilder-fix-session', request),
       ]);
       timing.parallelChecksMs = Date.now() - parallelStart;
 
@@ -511,6 +515,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       purchaseIntentClassifierEnabled = resolveBooleanFlag(purchaseIntentClassifierResult, 'agent-token.purchase-intent-classifier-flag-check-failed', body.siteId, user.customerId);
       skillSuggestionsEnabled = resolveBooleanFlag(skillSuggestionsResult, 'agent-token.skill-suggestions-flag-check-failed', body.siteId, user.customerId);
       rebuildSourceImagesEnabled = resolveBooleanFlag(rebuildSourceImagesResult, 'agent-token.rebuild-source-images-flag-check-failed', body.siteId, user.customerId);
+      enableFixSession = resolveBooleanFlag(fixSessionResult, 'agent-token.fix-session-flag-check-failed', body.siteId, user.customerId);
     }
 
     const hivemindCohorts = await fetchHivemindCohorts(request);
@@ -698,9 +703,10 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       }
     }
 
-    // Enforce dependency: enableAssessmentOverride requires enableAssessmentAgent
-    // If agent is disabled, override can't function (classification is short-circuited)
+    // Enforce dependency: enableAssessmentOverride and enableFixSession require enableAssessmentAgent
+    // If agent is disabled, override/session can't function (classification is short-circuited)
     enableAssessmentOverride = enableAssessmentAgent && enableAssessmentOverride;
+    enableFixSession = enableAssessmentAgent && enableFixSession;
 
     // CRM skip / impersonation sessions (e2s, e2s2s) always get the model selector
     // regardless of the switchboard flag — matches the bypass patterns used in
@@ -846,6 +852,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       bmsBudgetId,
       enableAssessmentAgent,
       enableAssessmentOverride,
+      enableFixSession,
       assessmentClassifier,
       product,
       modelSelectorEnabled,

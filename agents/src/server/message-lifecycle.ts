@@ -14,18 +14,28 @@
  */
 import type { GitHookService } from '../services/git-hook-service.js'
 import { gitOpsService } from '../services/GitOpsService.js'
-import type {
+import {
   AssessmentAgent,
   AssessmentOutcome,
-  AssessmentTaskType,
   ClassifierMode,
+  ClassificationResult,
+  ConversationRole,
+  ConversationTurn,
+  MIN_CONFIDENCE_FOR_OVERRIDE,
+  TASK_BUDGET_MAP,
 } from '../agents/assessment-agent/index.js'
+import { AssessmentTaskType, AssessmentReason, FixSessionPhase } from '../agents/assessment-agent/index.js'
 import type { ILogger } from '../logging/types.js'
 import { deriveUsedFreeGrants } from './assessment-executor.js'
+import { manageFixSessionLifecycle } from './fix-session.js'
 import { withTimeout } from '../utils/promise-utils.js'
 import { reconcileBeforeTurnEnd } from '../workflow/index.js'
+export type { ConversationTurn } from '../agents/assessment-agent/index.js'
 
 type LifecycleLogger = Pick<ILogger, 'info' | 'warn' | 'debug' | 'error'>
+
+/** Sliding window size for recent conversation turns (user + agent) passed to Haiku. */
+const RECENT_MESSAGES_WINDOW = 6
 
 /**
  * Per-session cache for assessment multi-turn context. Both transports share
@@ -37,12 +47,20 @@ type LifecycleLogger = Pick<ILogger, 'info' | 'warn' | 'debug' | 'error'>
  *   - WS : the Socket.IO `socketId` (ephemeral, per-connection)
  *   - SSE: `sse:${conversationId}` (stable across HTTP requests for one convo)
  *
- * These keyspaces don't collide. Entries are pruned by the transport on
- * disconnect (WS) or explicit clear (SSE); the store itself doesn't TTL.
+ * These keyspaces don't collide. Per-turn bridging data (lastUserMessage,
+ * lastAssessmentTaskType) is cleared at end-of-turn via clearTurnState.
+ * Fix session state persists across turns and is reclaimed by
+ * deactivateFixSession (turn guard or topic-change classification).
+ * Abandoned fix sessions are bounded per-conversation and per-process.
  */
 export class LifecycleSessionStore {
   private lastUserMessage = new Map<string, string>()
   private lastAssessmentTaskType = new Map<string, AssessmentTaskType>()
+  private fixSessionPhase = new Map<string, FixSessionPhase>()
+  private recentTurns = new Map<string, ConversationTurn[]>()
+  private fixSessionTurnCount = new Map<string, number>()
+  private lastTurnAgentAskedQuestion = new Map<string, boolean>()
+  private lastTurnAgentMadeCodeChanges = new Map<string, boolean>()
 
   getLastUserMessage(sessionKey: string): string | undefined {
     return this.lastUserMessage.get(sessionKey)
@@ -58,9 +76,108 @@ export class LifecycleSessionStore {
     this.lastAssessmentTaskType.set(sessionKey, taskType)
   }
 
+  // --- Fix session state ---
+
+  isFixSessionActive(sessionKey: string): boolean {
+    return this.fixSessionPhase.has(sessionKey)
+  }
+
+  getFixSessionPhase(sessionKey: string): FixSessionPhase | undefined {
+    return this.fixSessionPhase.get(sessionKey)
+  }
+
+  activateFixSession(sessionKey: string): void {
+    this.fixSessionPhase.set(sessionKey, FixSessionPhase.Gathering)
+    this.fixSessionTurnCount.set(sessionKey, 1)
+  }
+
+  transitionToAttempted(sessionKey: string): void {
+    this.fixSessionPhase.set(sessionKey, FixSessionPhase.Attempted)
+  }
+
+  transitionToGathering(sessionKey: string): void {
+    this.fixSessionPhase.set(sessionKey, FixSessionPhase.Gathering)
+  }
+
+  deactivateFixSession(sessionKey: string): void {
+    this.fixSessionPhase.delete(sessionKey)
+    this.fixSessionTurnCount.delete(sessionKey)
+    this.recentTurns.delete(sessionKey)
+    this.lastTurnAgentAskedQuestion.delete(sessionKey)
+    this.lastTurnAgentMadeCodeChanges.delete(sessionKey)
+  }
+
+  incrementFixSessionTurns(sessionKey: string): number {
+    const current = this.fixSessionTurnCount.get(sessionKey) ?? 0
+    const next = current + 1
+    this.fixSessionTurnCount.set(sessionKey, next)
+    return next
+  }
+
+  getFixSessionTurnCount(sessionKey: string): number {
+    return this.fixSessionTurnCount.get(sessionKey) ?? 0
+  }
+
+  // --- Conversation arc (user + agent turns) ---
+
+  getRecentTurns(sessionKey: string): ConversationTurn[] {
+    return [...(this.recentTurns.get(sessionKey) ?? [])]
+  }
+
+  pushTurn(sessionKey: string, turn: ConversationTurn): void {
+    const turns = this.recentTurns.get(sessionKey) ?? []
+    turns.push(turn)
+    if (turns.length > RECENT_MESSAGES_WINDOW) {
+      turns.shift()
+    }
+    this.recentTurns.set(sessionKey, turns)
+  }
+
+  // --- Agent question tracking (structural short-circuit) ---
+
+  didLastTurnAgentAskQuestion(sessionKey: string): boolean {
+    return this.lastTurnAgentAskedQuestion.get(sessionKey) ?? false
+  }
+
+  setLastTurnAgentAskedQuestion(sessionKey: string, asked: boolean): void {
+    this.lastTurnAgentAskedQuestion.set(sessionKey, asked)
+  }
+
+  didLastTurnAgentMakeCodeChanges(sessionKey: string): boolean {
+    return this.lastTurnAgentMadeCodeChanges.get(sessionKey) ?? false
+  }
+
+  setLastTurnAgentMadeCodeChanges(sessionKey: string, madeChanges: boolean): void {
+    this.lastTurnAgentMadeCodeChanges.set(sessionKey, madeChanges)
+  }
+
+   /**
+   * Clear ephemeral per-turn bridging data only. Called at the end of each turn.
+   * Fix session state (fixSessionPhase, recentTurns, fixSessionTurnCount) and
+   * agent signal flags (lastTurnAgentAskedQuestion, lastTurnAgentMadeCodeChanges) are intentionally preserved
+   * while a session is active. recentTurns is reclaimed here when no session is active so
+   * non-fix-session conversations don't accumulate entries indefinitely.
+   */
+  clearTurnState(sessionKey: string): void {
+    this.lastUserMessage.delete(sessionKey)
+    this.lastAssessmentTaskType.delete(sessionKey)
+    if (!this.fixSessionPhase.has(sessionKey)) {
+      this.recentTurns.delete(sessionKey)
+    }
+  }
+
+  /**
+   * Full teardown — clears all state including fix session.
+   * Not yet called on SSE disconnect; wire here when TTL/eviction is added.
+   */
   clearSession(sessionKey: string): void {
     this.lastUserMessage.delete(sessionKey)
     this.lastAssessmentTaskType.delete(sessionKey)
+    this.fixSessionPhase.delete(sessionKey)
+    this.recentTurns.delete(sessionKey)
+    this.fixSessionTurnCount.delete(sessionKey)
+    this.lastTurnAgentAskedQuestion.delete(sessionKey)
+    this.lastTurnAgentMadeCodeChanges.delete(sessionKey)
   }
 }
 
@@ -95,6 +212,24 @@ export async function runStartGitHook(
   }
 }
 
+interface FixSessionContext {
+  fixSessionActive: boolean
+  recentTurns: ConversationTurn[] | undefined
+  fixSessionPhase: FixSessionPhase | undefined
+  lastTurnAgentAskedQuestion: boolean | undefined
+  lastTurnAgentMadeCodeChanges: boolean | undefined
+}
+
+function readFixSessionContext(sessionStore: LifecycleSessionStore, sessionKey: string, enableFixSession?: boolean): FixSessionContext {
+  return {
+    fixSessionActive: enableFixSession ? sessionStore.isFixSessionActive(sessionKey) : false,
+    recentTurns: enableFixSession ? sessionStore.getRecentTurns(sessionKey) : undefined,
+    fixSessionPhase: enableFixSession ? sessionStore.getFixSessionPhase(sessionKey) : undefined,
+    lastTurnAgentAskedQuestion: enableFixSession ? sessionStore.didLastTurnAgentAskQuestion(sessionKey) : undefined,
+    lastTurnAgentMadeCodeChanges: enableFixSession ? sessionStore.didLastTurnAgentMakeCodeChanges(sessionKey) : undefined,
+  }
+}
+
 export interface StartAssessmentParams {
   appId: string
   sessionKey: string
@@ -113,6 +248,8 @@ export interface StartAssessmentParams {
   previousAssessmentTaskType?: AssessmentTaskType
   /** Which classifier to use (derived from switchboard via JWT). Defaults to cosine-similarity when absent. */
   classifierMode?: ClassifierMode
+  /** When true, enables fix session tracking (multi-turn fix context persistence). Derived from switchboard. */
+  enableFixSession?: boolean
 }
 
 export interface StartAssessmentResult {
@@ -149,6 +286,7 @@ export async function runStartAssessment(
   const {
     appId, sessionKey, message, customerId, isInitialPrompt,
     enableAssessmentAgent, enableAssessmentOverride, classifierMode,
+    enableFixSession,
   } = params
 
   if (!enableAssessmentAgent) return {}
@@ -157,6 +295,7 @@ export async function runStartAssessment(
     ?? sessionStore.getLastUserMessage(sessionKey)
   const previousAssessmentTaskType = params.previousAssessmentTaskType
     ?? sessionStore.getLastAssessmentTaskType(sessionKey)
+  const fixCtx = readFixSessionContext(sessionStore, sessionKey, enableFixSession)
 
   let assessmentOutcome: AssessmentOutcome | undefined
   try {
@@ -167,6 +306,7 @@ export async function runStartAssessment(
       previousAssessmentTaskType,
       isInitialPrompt,
       classifierMode,
+      ...fixCtx,
     })
   } catch (err) {
     logger.warn('message_lifecycle.assessment.classify.error', {
@@ -178,8 +318,14 @@ export async function runStartAssessment(
 
   // Seed the shared cache so the next turn on this session has multi-turn context.
   sessionStore.setLastUserMessage(sessionKey, message)
+  if (enableFixSession) sessionStore.pushTurn(sessionKey, { role: ConversationRole.user, content: message })
   if (assessmentOutcome.result?.taskType) {
     sessionStore.setLastAssessmentTaskType(sessionKey, assessmentOutcome.result.taskType)
+  }
+
+  // Fix session lifecycle management (gated by feature flag)
+  if (enableFixSession) {
+    manageFixSessionLifecycle(sessionStore, logger, sessionKey, appId, assessmentOutcome, classifierMode)
   }
 
   const willApply = isOverrideApplicable(assessmentOutcome, enableAssessmentOverride)
@@ -226,6 +372,8 @@ export interface ParallelAssessmentHandle {
    * doesn't fire in practice.
    */
   awaitOutcome(opts: { timeoutMs: number }): Promise<AssessmentOutcome | undefined>
+  /** Fallback when awaitOutcome times out: returns fix if LR agreed + fix session active, else undefined. */
+  getTimeoutFallback(): AssessmentOutcome | undefined
 }
 
 /**
@@ -245,17 +393,20 @@ export function startParallelAssessment(
   const { getAssessmentAgent, sessionStore, logger } = deps
   const {
     appId, sessionKey, message, customerId, isInitialPrompt,
-    enableAssessmentAgent, classifierMode,
+    enableAssessmentAgent, classifierMode, enableFixSession,
   } = params
 
   if (!enableAssessmentAgent) {
-    return { awaitOutcome: async () => undefined }
+    return { awaitOutcome: async () => undefined, getTimeoutFallback: () => undefined }
   }
 
   const previousUserMessage = params.previousUserMessage
     ?? sessionStore.getLastUserMessage(sessionKey)
   const previousAssessmentTaskType = params.previousAssessmentTaskType
     ?? sessionStore.getLastAssessmentTaskType(sessionKey)
+  const fixCtx = readFixSessionContext(sessionStore, sessionKey, enableFixSession)
+
+  let intermediateClassifierResult: ClassificationResult | undefined
 
   const promise = getAssessmentAgent().classify(message, {
     appId, customerId, socketId: sessionKey,
@@ -264,11 +415,14 @@ export function startParallelAssessment(
     previousAssessmentTaskType,
     isInitialPrompt,
     classifierMode,
+    ...fixCtx,
+    onClassifierResult: (result) => { intermediateClassifierResult = result },
   })
 
   // Seed the cache eagerly so the next turn gets multi-turn context even if
   // this turn never awaits (short-circuits on abort, transport error, etc.).
   sessionStore.setLastUserMessage(sessionKey, message)
+  if (enableFixSession) sessionStore.pushTurn(sessionKey, { role: ConversationRole.user, content: message })
 
   promise.then(
     (outcome) => {
@@ -279,12 +433,10 @@ export function startParallelAssessment(
         appId, sessionKey,
         taskType: outcome.result?.taskType,
         confidence: outcome.result?.confidence,
+        fixSessionActive: enableFixSession ? sessionStore.isFixSessionActive(sessionKey) : false,
       })
     },
     (err) => {
-      // Match the blocking path (runStartAssessment) severity — both represent
-      // the same class of transient LLM/network failure, so both should or
-      // neither should page on-call.
       logger.warn('assessment.parallel.rejected', {
         appId, sessionKey,
         error: err instanceof Error ? err.message : String(err),
@@ -308,9 +460,40 @@ export function startParallelAssessment(
         // in sync with this handler if the rejection model changes.
         () => { /* unreachable — swallowed never rejects */ },
       )
-      // withTimeout returns null on timeout; normalize to undefined so callers
-      // have a single "outcome unavailable" sentinel.
-      return result === null ? undefined : result
+      const outcome: AssessmentOutcome | undefined = result === null ? undefined : result
+      if (outcome && enableFixSession) {
+        manageFixSessionLifecycle(sessionStore, logger, sessionKey, appId, outcome, classifierMode)
+      }
+      return outcome
+    },
+    // Intentional billing inversion: when Haiku times out but LR already said Fix
+    // AND an active fix session exists, bill to GoDaddy. Flag-gated by enableFixSession.
+    getTimeoutFallback: () => {
+      const lrSaidFix = intermediateClassifierResult?.taskType === AssessmentTaskType.Fix
+      const fixSessionActive = enableFixSession && sessionStore.isFixSessionActive(sessionKey)
+
+      if (!lrSaidFix || !fixSessionActive) return undefined
+
+      const confidence = intermediateClassifierResult?.confidence ?? 0
+      const meetsThreshold = confidence >= MIN_CONFIDENCE_FOR_OVERRIDE
+      const budgetOverride = meetsThreshold ? TASK_BUDGET_MAP[AssessmentTaskType.Fix] : null
+
+      logger.info('assessment.parallel.timeout_fallback', {
+        appId, sessionKey,
+        lrTaskType: intermediateClassifierResult?.taskType,
+        lrConfidence: confidence,
+        fixSessionActive: true,
+        overrideApplied: !!budgetOverride,
+      })
+
+      return {
+        result: { taskType: AssessmentTaskType.Fix, confidence },
+        completedInTime: false,
+        durationMs: 0,
+        overrideApplied: !!budgetOverride,
+        appliedBudget: budgetOverride ?? undefined,
+        reason: AssessmentReason.EmbeddingTimeoutFallback,
+      }
     },
   }
 }

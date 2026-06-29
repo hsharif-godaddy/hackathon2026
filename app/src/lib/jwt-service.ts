@@ -30,6 +30,7 @@ export interface CreateTokenOptions {
   bmsBudgetId?: string; // BMS budget ID for direct Budget Service API calls
   enableAssessmentAgent?: boolean; // Enable assessment agent for prompt classification
   enableAssessmentOverride?: boolean; // Apply budget override from assessment (requires enableAssessmentAgent)
+  enableFixSession?: boolean; // Enable fix session tracking (requires enableAssessmentAgent)
   assessmentClassifier?: string; // Which classifier to use (switchboard: appbuilder-assessment-classifier)
   product?: ProductType; // Product type: 'AiroAppBuilder' (default) or 'PaaSNodeJS'
   modelOverride?: string; // Override the default agent model (switchboard: appbuilder-model-override)
@@ -220,6 +221,7 @@ export class JWTService {
       bmsBudgetId: options.bmsBudgetId,
       enableAssessmentAgent: options.enableAssessmentAgent ?? false,
       enableAssessmentOverride: options.enableAssessmentOverride ?? false,
+      enableFixSession: options.enableFixSession ?? false,
       ...(options.assessmentClassifier && { assessmentClassifier: options.assessmentClassifier }),
       product: options.product || 'AiroAppBuilder',
       ...(options.modelOverride && { modelOverride: options.modelOverride }),

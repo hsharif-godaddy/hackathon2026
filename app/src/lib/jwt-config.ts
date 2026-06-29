@@ -34,6 +34,7 @@ export interface JWTClaims {
   bmsBudgetId?: string; // BMS budget ID for direct Budget Service API calls (set when subscription.bmsBudgetId exists)
   enableAssessmentAgent?: boolean; // When true, enable assessment agent for prompt classification (switchboard: appbuilder-assessment-agent)
   enableAssessmentOverride?: boolean; // When true, apply budget override from assessment (switchboard: appbuilder-assessment-override). Requires enableAssessmentAgent.
+  enableFixSession?: boolean; // When true, enable fix session tracking for multi-turn fix context persistence (switchboard: appbuilder-fix-session). Requires enableAssessmentAgent.
   product?: ProductType; // Product type: 'AiroAppBuilder' (default) or 'PaaSNodeJS'
   modelOverride?: string; // When set, override the default agent model (switchboard: appbuilder-model-override)
   modelSelectorEnabled?: boolean; // When true, allow per-project model selection from frontend (switchboard: appbuilder-model-selector)

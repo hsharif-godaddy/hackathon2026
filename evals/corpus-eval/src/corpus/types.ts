@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ConversationRole, FixSessionPhase } from '@airo/agents/assessment-agent';
 
 /**
  * Task types that can be classified by the assessment agent
@@ -46,6 +47,21 @@ export const TestCaseSchema = z.object({
    * Use this for test cases that simulate the first user message in app creation.
    */
   isInitialPrompt: z.boolean().optional().default(false),
+
+  /** Whether a fix session is active for this test case (optional) */
+  fixSessionActive: z.boolean().optional(),
+
+  /** Fix session phase (optional, requires fixSessionActive) */
+  fixSessionPhase: z.enum([FixSessionPhase.Gathering, FixSessionPhase.Attempted]).optional(),
+
+  /** Recent conversation turns for expanded Haiku context (optional, max 6) */
+  recentTurns: z.array(z.object({ role: z.enum([ConversationRole.user, ConversationRole.agent]), content: z.string() })).max(6).optional(),
+
+  /** Whether the agent's last turn explicitly asked a question (optional) */
+  lastTurnAgentAskedQuestion: z.boolean().optional(),
+
+  /** Whether the agent's last turn made code changes (optional) */
+  lastTurnAgentMadeCodeChanges: z.boolean().optional(),
 
   /** Human-readable rationale for expected outcome */
   rationale: z.string().optional(),

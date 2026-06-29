@@ -51,6 +51,7 @@ export interface AgentContext {
   bmsBudgetId?: string; // BMS budget ID for cost allocation (undefined = cost to GoDaddy)
   enableAssessmentAgent?: boolean; // Enable assessment agent for prompt classification
   enableAssessmentOverride?: boolean; // Apply budget override from assessment (requires enableAssessmentAgent)
+  enableFixSession?: boolean; // Enable fix session tracking for multi-turn fix context persistence (switchboard: appbuilder-fix-session)
   assessmentClassifier?: ClassifierMode; // Which classifier to use (switchboard: appbuilder-assessment-classifier)
   product: ProductType;    // Product type: 'AiroAppBuilder' (default) or 'PaaSNodeJS'
   modelOverride?: string; // Override the default agent model (switchboard: appbuilder-model-override)
@@ -114,6 +115,7 @@ export function buildAgentContext(raw: Record<string, unknown>): AgentContext {
     bmsBudgetId: raw.bmsBudgetId as string | undefined,
     enableAssessmentAgent: (raw.enableAssessmentAgent as boolean) ?? false,
     enableAssessmentOverride: (raw.enableAssessmentOverride as boolean) ?? false,
+    enableFixSession: (raw.enableFixSession as boolean) ?? false,
     assessmentClassifier: coerceClassifierMode(raw.assessmentClassifier as string | undefined),
     product: coerceProductType(raw.product as string | undefined),
     modelOverride: raw.modelOverride as string | undefined,

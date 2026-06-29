@@ -15,8 +15,9 @@ export const ASSESSMENT_MODE = {
   BLOCKING: 'blocking',
 } as const
 
-/** Timeout for parallel assessment awaiting in beforeMessageComplete and onMessageComplete */
-export const PARALLEL_ASSESSMENT_TIMEOUT_MS = 5000
+/** Timeout (ms) for parallel assessment (BMS/LR mode) — applies to both the early-override
+ *  await (pre-execution budget routing) and the post-execution attribution await. */
+export const PARALLEL_ASSESSMENT_TIMEOUT_MS = 2000
 
 /**
  * State for tracking parallel assessment execution.

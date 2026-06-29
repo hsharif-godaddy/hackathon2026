@@ -969,3 +969,393 @@ cases:
     expectedTaskType: "fix"
     tags: ["fix", "explicit", "billing-critical"]
     rationale: "Explicit troubleshoot request"
+
+  # ============================================================================
+  # FIX SESSION — GATHERING PHASE (ambiguous follow-ups that should stay as fix)
+  # Tests the broken-chain scenario: previousAssessmentTaskType is "general"
+  # (chain broke) but fixSessionActive is true (session persists).
+  # ============================================================================
+
+  - id: "fix-session-gather-001"
+    fixSessionActive: true
+    fixSessionPhase: "gathering"
+    previousAssessmentTaskType: "general"
+    lastTurnAgentAskedQuestion: true
+    recentTurns:
+      - role: "user"
+        content: "fix my button"
+      - role: "agent"
+        content: "asked follow-up question"
+    prompt: "the submit one"
+    expectedTaskType: "fix"
+    expectedPath: "haiku"
+    tags: ["fix", "fix-session", "gathering"]
+    rationale: "Answering agent's question about which button. Fix session active despite previous General classification."
+
+  - id: "fix-session-gather-002"
+    fixSessionActive: true
+    fixSessionPhase: "gathering"
+    previousAssessmentTaskType: "general"
+    lastTurnAgentAskedQuestion: true
+    recentTurns:
+      - role: "user"
+        content: "the form is broken"
+      - role: "agent"
+        content: "asked follow-up question"
+    prompt: "Chrome"
+    expectedTaskType: "fix"
+    expectedPath: "haiku"
+    tags: ["fix", "fix-session", "gathering"]
+    rationale: "Single word answer to agent browser question. No fix keywords but clearly part of fix session."
+
+  - id: "fix-session-gather-003"
+    fixSessionActive: true
+    fixSessionPhase: "gathering"
+    lastTurnAgentAskedQuestion: true
+    recentTurns:
+      - role: "user"
+        content: "fix the error on the contact page"
+      - role: "agent"
+        content: "asked follow-up question"
+    prompt: "yes"
+    expectedTaskType: "fix"
+    expectedPath: "haiku"
+    tags: ["fix", "fix-session", "gathering"]
+    rationale: "Confirmation during active fix. Embedding cannot classify 'yes' but Haiku with session context can."
+
+  - id: "fix-session-gather-004"
+    fixSessionActive: true
+    fixSessionPhase: "gathering"
+    lastTurnAgentAskedQuestion: true
+    recentTurns:
+      - role: "user"
+        content: "the page crashes when I click submit"
+      - role: "agent"
+        content: "asked follow-up question"
+    prompt: "on mobile"
+    expectedTaskType: "fix"
+    expectedPath: "haiku"
+    tags: ["fix", "fix-session", "gathering"]
+    rationale: "Providing device info for the reported crash."
+
+  - id: "fix-session-gather-005"
+    fixSessionActive: true
+    fixSessionPhase: "gathering"
+    lastTurnAgentAskedQuestion: true
+    recentTurns:
+      - role: "user"
+        content: "fix my button"
+      - role: "agent"
+        content: "asked follow-up question"
+    prompt: "Safari on iPhone"
+    expectedTaskType: "fix"
+    expectedPath: "haiku"
+    tags: ["fix", "fix-session", "gathering"]
+    rationale: "Browser/device info follow-up during fix investigation."
+
+  - id: "fix-session-gather-006"
+    fixSessionActive: true
+    fixSessionPhase: "gathering"
+    lastTurnAgentAskedQuestion: true
+    recentTurns:
+      - role: "user"
+        content: "the image won't load"
+      - role: "agent"
+        content: "asked follow-up question"
+    prompt: "the one on the about page"
+    expectedTaskType: "fix"
+    expectedPath: "haiku"
+    tags: ["fix", "fix-session", "gathering"]
+    rationale: "Location clarification for the reported bug."
+
+  - id: "fix-session-gather-007"
+    fixSessionActive: true
+    fixSessionPhase: "gathering"
+    previousAssessmentTaskType: "general"
+    lastTurnAgentAskedQuestion: true
+    recentTurns:
+      - role: "user"
+        content: "fix the checkout flow"
+      - role: "agent"
+        content: "asked follow-up question"
+      - role: "user"
+        content: "still broken"
+    prompt: "yeah exactly"
+    expectedTaskType: "fix"
+    expectedPath: "haiku"
+    tags: ["fix", "fix-session", "gathering"]
+    rationale: "Agreement/confirmation in ongoing fix conversation."
+
+  # ============================================================================
+  # FIX SESSION — GATHERING PHASE (clear new topics that should end the session)
+  # Even with an active fix session, clearly new unrelated work = general.
+  # ============================================================================
+
+  - id: "fix-session-gather-end-001"
+    fixSessionActive: true
+    fixSessionPhase: "gathering"
+    lastTurnAgentAskedQuestion: true
+    recentTurns:
+      - role: "user"
+        content: "fix my button"
+      - role: "agent"
+        content: "asked follow-up question"
+    prompt: "add a contact form with email validation"
+    expectedTaskType: "general"
+    expectedPath: "haiku"
+    tags: ["general", "fix-session", "gathering", "topic-change"]
+    rationale: "Clear new feature request unrelated to the button fix."
+
+  - id: "fix-session-gather-end-002"
+    fixSessionActive: true
+    fixSessionPhase: "gathering"
+    recentTurns:
+      - role: "user"
+        content: "the form is broken"
+      - role: "agent"
+        content: "investigated/searched"
+    prompt: "create a new page for recipes"
+    expectedTaskType: "general"
+    expectedPath: "haiku"
+    tags: ["general", "fix-session", "gathering", "topic-change"]
+    rationale: "Distinct new page creation — clearly not answering a fix question."
+
+  - id: "fix-session-gather-end-003"
+    fixSessionActive: true
+    fixSessionPhase: "gathering"
+    recentTurns:
+      - role: "user"
+        content: "fix the login error"
+      - role: "agent"
+        content: "investigated/searched"
+    prompt: "now publish my app"
+    expectedTaskType: "general"
+    expectedPath: "haiku"
+    tags: ["general", "fix-session", "gathering", "topic-change"]
+    rationale: "Publish intent is clearly a different action from fixing."
+
+  # ============================================================================
+  # FIX SESSION — ATTEMPTED PHASE (agent made code changes, user responds)
+  # ============================================================================
+
+  - id: "fix-session-attempted-001"
+    fixSessionActive: true
+    fixSessionPhase: "attempted"
+    lastTurnAgentMadeCodeChanges: true
+    recentTurns:
+      - role: "user"
+        content: "fix my button"
+      - role: "user"
+        content: "Chrome"
+      - role: "agent"
+        content: "made code changes"
+    prompt: "still broken"
+    expectedTaskType: "fix"
+    expectedPath: "haiku"
+    tags: ["fix", "fix-session", "attempted"]
+    rationale: "User reports fix didn't work. Should remain classified as fix."
+
+  - id: "fix-session-attempted-002"
+    fixSessionActive: true
+    fixSessionPhase: "attempted"
+    lastTurnAgentMadeCodeChanges: true
+    recentTurns:
+      - role: "user"
+        content: "fix the error"
+      - role: "agent"
+        content: "made code changes"
+    prompt: "nope same error"
+    expectedTaskType: "fix"
+    expectedPath: "haiku"
+    tags: ["fix", "fix-session", "attempted"]
+    rationale: "User reports same error persists after fix attempt."
+
+  - id: "fix-session-attempted-003"
+    fixSessionActive: true
+    fixSessionPhase: "attempted"
+    lastTurnAgentMadeCodeChanges: true
+    recentTurns:
+      - role: "user"
+        content: "fix my button"
+      - role: "agent"
+        content: "made code changes"
+    prompt: "thanks that worked"
+    expectedTaskType: "general"
+    expectedPath: "haiku"
+    tags: ["general", "fix-session", "attempted", "positive-resolution"]
+    rationale: "Positive resolution signal. Fix is complete, session should end."
+
+  - id: "fix-session-attempted-004"
+    fixSessionActive: true
+    fixSessionPhase: "attempted"
+    lastTurnAgentMadeCodeChanges: true
+    recentTurns:
+      - role: "user"
+        content: "fix the form"
+      - role: "agent"
+        content: "made code changes"
+    prompt: "looks good"
+    expectedTaskType: "general"
+    expectedPath: "haiku"
+    tags: ["general", "fix-session", "attempted", "positive-resolution"]
+    rationale: "Positive acknowledgment after fix attempt."
+
+  - id: "fix-session-attempted-005"
+    fixSessionActive: true
+    fixSessionPhase: "attempted"
+    lastTurnAgentMadeCodeChanges: true
+    recentTurns:
+      - role: "user"
+        content: "fix the broken link"
+      - role: "agent"
+        content: "made code changes"
+    prompt: "perfect"
+    expectedTaskType: "general"
+    expectedPath: "haiku"
+    tags: ["general", "fix-session", "attempted", "positive-resolution"]
+    rationale: "Single-word positive resolution."
+
+  - id: "fix-session-attempted-006"
+    fixSessionActive: true
+    fixSessionPhase: "attempted"
+    lastTurnAgentMadeCodeChanges: true
+    recentTurns:
+      - role: "user"
+        content: "fix the login"
+      - role: "agent"
+        content: "made code changes"
+    prompt: "add a gallery page"
+    expectedTaskType: "general"
+    expectedPath: "haiku"
+    tags: ["general", "fix-session", "attempted", "topic-change"]
+    rationale: "Clear new topic after fix attempt — user moved on."
+
+  # ============================================================================
+  # FIX SESSION — MULTILINGUAL (both phases)
+  # ============================================================================
+
+  - id: "fix-session-multilingual-001"
+    fixSessionActive: true
+    fixSessionPhase: "attempted"
+    lastTurnAgentMadeCodeChanges: true
+    recentTurns:
+      - role: "user"
+        content: "fix the button"
+      - role: "agent"
+        content: "made code changes"
+    prompt: "gracias funciona"
+    expectedTaskType: "general"
+    expectedPath: "haiku"
+    tags: ["general", "fix-session", "attempted", "multilingual", "es-es"]
+    rationale: "Spanish positive resolution: 'thanks it works'"
+
+  - id: "fix-session-multilingual-002"
+    fixSessionActive: true
+    fixSessionPhase: "attempted"
+    lastTurnAgentMadeCodeChanges: true
+    recentTurns:
+      - role: "user"
+        content: "fix the error"
+      - role: "agent"
+        content: "made code changes"
+    prompt: "merci ça marche"
+    expectedTaskType: "general"
+    expectedPath: "haiku"
+    tags: ["general", "fix-session", "attempted", "multilingual", "fr-fr"]
+    rationale: "French positive resolution: 'thanks it works'"
+
+  - id: "fix-session-multilingual-003"
+    fixSessionActive: true
+    fixSessionPhase: "gathering"
+    lastTurnAgentAskedQuestion: true
+    recentTurns:
+      - role: "user"
+        content: "el botón no funciona"
+      - role: "agent"
+        content: "asked follow-up question"
+    prompt: "en Safari"
+    expectedTaskType: "fix"
+    expectedPath: "haiku"
+    tags: ["fix", "fix-session", "gathering", "multilingual", "es-es"]
+    rationale: "Spanish browser answer during fix gathering."
+
+  # ============================================================================
+  # FIX SESSION — AMBIGUOUS EDGE CASES (attempted phase)
+  # Hard cases where user response could mean "still fixing" or "moving on."
+  # A/B eval confirmed file names in agent summaries provide no accuracy benefit.
+  # ============================================================================
+
+  - id: "fix-session-ambiguous-001"
+    fixSessionActive: true
+    fixSessionPhase: "attempted"
+    lastTurnAgentMadeCodeChanges: true
+    recentTurns:
+      - role: "user"
+        content: "fix the form submission"
+      - role: "agent"
+        content: "made code changes"
+    prompt: "hmm ok"
+    expectedTaskType: "general"
+    expectedPath: "haiku"
+    tags: ["general", "fix-session", "attempted", "ambiguous"]
+    rationale: "Neutral acknowledgment after fix — leans toward resolution."
+
+  - id: "fix-session-ambiguous-002"
+    fixSessionActive: true
+    fixSessionPhase: "attempted"
+    lastTurnAgentMadeCodeChanges: true
+    recentTurns:
+      - role: "user"
+        content: "fix the header layout"
+      - role: "agent"
+        content: "made code changes"
+    prompt: "what about the form"
+    expectedTaskType: "general"
+    expectedPath: "haiku"
+    tags: ["general", "fix-session", "attempted", "ambiguous"]
+    rationale: "Referencing different component (form) after header fix — new topic."
+
+  - id: "fix-session-ambiguous-003"
+    fixSessionActive: true
+    fixSessionPhase: "attempted"
+    lastTurnAgentMadeCodeChanges: true
+    recentTurns:
+      - role: "user"
+        content: "fix the button"
+      - role: "agent"
+        content: "made code changes"
+    prompt: "try the other one"
+    expectedTaskType: "fix"
+    expectedPath: "haiku"
+    tags: ["fix", "fix-session", "attempted", "ambiguous"]
+    rationale: "Asking to try a different approach for the same fix."
+
+  - id: "fix-session-ambiguous-004"
+    fixSessionActive: true
+    fixSessionPhase: "attempted"
+    lastTurnAgentMadeCodeChanges: true
+    recentTurns:
+      - role: "user"
+        content: "fix the checkout"
+      - role: "agent"
+        content: "made code changes"
+    prompt: "ok what else"
+    expectedTaskType: "general"
+    expectedPath: "haiku"
+    tags: ["general", "fix-session", "attempted", "ambiguous"]
+    rationale: "Implicit acceptance + requesting next thing — moving on."
+
+  - id: "fix-session-ambiguous-005"
+    fixSessionActive: true
+    fixSessionPhase: "attempted"
+    lastTurnAgentMadeCodeChanges: true
+    recentTurns:
+      - role: "user"
+        content: "the images won't load"
+      - role: "agent"
+        content: "made code changes"
+    prompt: "not that one"
+    expectedTaskType: "fix"
+    expectedPath: "haiku"
+    tags: ["fix", "fix-session", "attempted", "ambiguous"]
+    rationale: "Rejecting the fix — wrong target, needs to try again."

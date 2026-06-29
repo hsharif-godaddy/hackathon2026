@@ -60,6 +60,7 @@ describe('buildAgentContext', function suite() {
       logoBrandColorsEnabled: false,
       purchaseIntentClassifierEnabled: false,
       skillSuggestionsEnabled: false,
+      enableFixSession: false,
       ssoRequired: false,
       ssoConfigured: false,
       // ownerProduct defaults to '' when the JWT mints without a SiteInfo

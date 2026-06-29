@@ -50,6 +50,7 @@ vi.mock('@godaddy/agent-otel-sdk', async () => {
 })
 
 import { MessageExecutionService, pickForcedInstallAgent } from '../MessageExecutionService.js'
+import { FixSessionPhase } from '../../../agents/assessment-agent/index.js'
 import { skillToolManager, resolveSkillToolMetadata } from '../../../tools/skill-tool-manager.js'
 import { BudgetServiceConflictError } from '@airo/ai-lib/budget'
 import { BudgetExceededError } from '@airo/ai-common'
@@ -76,7 +77,8 @@ vi.mock('../../agent-runtime.js', () => ({
 // commitHash / usedFreeGrants propagation without running real git hooks.
 const mockRunMessageEndHooks = vi.fn().mockResolvedValue({ commitHash: null, usedFreeGrants: false })
 const mockAwaitOutcome = vi.fn().mockResolvedValue(undefined)
-const mockStartParallelAssessment = vi.fn(function () { return { awaitOutcome: mockAwaitOutcome }; })
+const mockGetTimeoutFallback = vi.fn().mockReturnValue(undefined)
+const mockStartParallelAssessment = vi.fn(function () { return { awaitOutcome: mockAwaitOutcome, getTimeoutFallback: mockGetTimeoutFallback }; })
 vi.mock('../../message-lifecycle.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../message-lifecycle.js')>()
   return {
@@ -2870,6 +2872,13 @@ describe('MessageExecutionService', () => {
             getLastAssessmentTaskType: vi.fn(),
             setLastAssessmentTaskType: vi.fn(),
             clearSession: vi.fn(),
+            clearTurnState: vi.fn(),
+            isFixSessionActive: vi.fn().mockReturnValue(false),
+            pushTurn: vi.fn(),
+            setLastTurnAgentAskedQuestion: vi.fn(),
+            setLastTurnAgentMadeCodeChanges: vi.fn(),
+            getFixSessionPhase: vi.fn(),
+            transitionToAttempted: vi.fn(),
           },
           logger: { info: vi.fn(), warn: vi.fn(), debug: vi.fn(), error: vi.fn() },
         }
@@ -3281,6 +3290,7 @@ describe('MessageExecutionService', () => {
           getLastAssessmentTaskType: vi.fn(),
           setLastAssessmentTaskType: vi.fn(),
           clearSession: vi.fn(),
+          clearTurnState: vi.fn(),
         },
         logger: { info: vi.fn(), warn: vi.fn(), debug: vi.fn(), error: vi.fn() },
       }
@@ -3497,6 +3507,13 @@ describe('MessageExecutionService', () => {
         getLastAssessmentTaskType: vi.fn(),
         setLastAssessmentTaskType: vi.fn(),
         clearSession: vi.fn(),
+        clearTurnState: vi.fn(),
+        isFixSessionActive: vi.fn().mockReturnValue(false),
+        pushTurn: vi.fn(),
+        setLastTurnAgentAskedQuestion: vi.fn(),
+        setLastTurnAgentMadeCodeChanges: vi.fn(),
+        getFixSessionPhase: vi.fn(),
+        transitionToAttempted: vi.fn(),
       },
       logger: { info: vi.fn(), warn: vi.fn(), debug: vi.fn(), error: vi.fn() },
     }
@@ -3598,6 +3615,13 @@ describe('MessageExecutionService', () => {
           getLastAssessmentTaskType: vi.fn(),
           setLastAssessmentTaskType: vi.fn(),
           clearSession: vi.fn(),
+          clearTurnState: vi.fn(),
+          isFixSessionActive: vi.fn().mockReturnValue(false),
+          pushTurn: vi.fn(),
+          setLastTurnAgentAskedQuestion: vi.fn(),
+          setLastTurnAgentMadeCodeChanges: vi.fn(),
+          getFixSessionPhase: vi.fn(),
+          transitionToAttempted: vi.fn(),
         },
         logger: { info: vi.fn(), warn: vi.fn(), debug: vi.fn(), error: vi.fn() },
       }
@@ -3613,6 +3637,84 @@ describe('MessageExecutionService', () => {
           data: expect.objectContaining({ commitHash: 'deadbeef', usedFreeGrants: true }),
         }),
       )
+    })
+  })
+
+  describe('fix-session wiring', () => {
+    function createFixSessionLifecycle(overrides: Record<string, unknown> = {}) {
+      return {
+        gitHookService: {} as any,
+        getAssessmentAgent: () => ({}) as any,
+        sessionStore: {
+          getLastUserMessage: vi.fn(),
+          setLastUserMessage: vi.fn(),
+          getLastAssessmentTaskType: vi.fn(),
+          setLastAssessmentTaskType: vi.fn(),
+          clearSession: vi.fn(),
+          clearTurnState: vi.fn(),
+          isFixSessionActive: vi.fn().mockReturnValue(true),
+          getFixSessionPhase: vi.fn().mockReturnValue(FixSessionPhase.Gathering),
+          getFixSessionTurnCount: vi.fn().mockReturnValue(1),
+          pushTurn: vi.fn(),
+          setLastTurnAgentAskedQuestion: vi.fn(),
+          setLastTurnAgentMadeCodeChanges: vi.fn(),
+          transitionToAttempted: vi.fn(),
+          ...overrides,
+        },
+        logger: { info: vi.fn(), warn: vi.fn(), debug: vi.fn(), error: vi.fn() },
+      }
+    }
+
+    it('transitions to attempted when agent makes code changes without asking a question', async () => {
+      const lifecycle = createFixSessionLifecycle()
+      const editSteps = [{
+        content: [{ type: 'tool-call', toolName: 'str_replace_based_edit_tool', input: { command: 'str_replace' } }],
+      }]
+      const mockDeps = createMockDeps([{ type: 'text-delta', text: 'fixing' }])
+      mockDeps.getAgent.mockReturnValue({
+        streamGenerate: vi.fn().mockResolvedValue({
+          textStream: (async function* () { yield 'fixing' })(),
+          baseStream: makeReadableStream([{ type: 'text-delta', text: 'fixing' }]),
+          getFinalResult: vi.fn().mockResolvedValue({ finishReason: 'complete', steps: editSteps }),
+          response: Promise.resolve({ headers: {} }),
+        }),
+        getName: vi.fn().mockReturnValue('AI Developer'),
+      })
+
+      const svc = new MessageExecutionService({ ...mockDeps, lifecycle } as any)
+      await svc.execute({
+        ...DEFAULT_PARAMS,
+        lifecycleContext: { agentContext: { enableFixSession: true, enableAssessmentAgent: true } },
+      })
+
+      expect(lifecycle.sessionStore.transitionToAttempted).toHaveBeenCalledWith('sse:conv_1')
+    })
+
+    it('uses getTimeoutFallback when awaitOutcome resolves undefined', async () => {
+      const fixOutcome = {
+        result: { taskType: 'fix', confidence: 80 },
+        overrideApplied: true,
+        appliedBudget: 'fix-task',
+        completedInTime: false,
+        durationMs: 0,
+        reason: 'embedding_timeout_fallback',
+      }
+      mockAwaitOutcome.mockReset()
+      mockAwaitOutcome.mockResolvedValue(undefined)
+      mockGetTimeoutFallback.mockReturnValue(fixOutcome)
+
+      const lifecycle = createFixSessionLifecycle()
+      const svc = new MessageExecutionService({ ...createMockDeps(), lifecycle } as any)
+      await svc.execute({
+        ...DEFAULT_PARAMS,
+        lifecycleContext: { agentContext: { enableFixSession: true, enableAssessmentAgent: true } },
+      })
+
+      expect(mockGetTimeoutFallback).toHaveBeenCalled()
+      const endHooksCall = mockRunMessageEndHooks.mock.calls.find(
+        (c: any[]) => c[1]?.reason === 'complete'
+      )
+      expect(endHooksCall?.[1]?.assessmentOutcome).toBe(fixOutcome)
     })
   })
 
@@ -3651,6 +3753,13 @@ describe('MessageExecutionService', () => {
           getLastAssessmentTaskType: vi.fn(),
           setLastAssessmentTaskType: vi.fn(),
           clearSession,
+          clearTurnState: vi.fn(),
+          isFixSessionActive: vi.fn().mockReturnValue(false),
+          pushTurn: vi.fn(),
+          setLastTurnAgentAskedQuestion: vi.fn(),
+          setLastTurnAgentMadeCodeChanges: vi.fn(),
+          getFixSessionPhase: vi.fn(),
+          transitionToAttempted: vi.fn(),
         },
         logger: { info: vi.fn(), warn: vi.fn(), debug: vi.fn(), error: vi.fn() },
       }
@@ -3673,8 +3782,8 @@ describe('MessageExecutionService', () => {
       expect(replacementCleanup).not.toHaveBeenCalled()
     })
 
-    it('calls clearSession exactly once when the turn owns the registry slot', async () => {
-      const clearSession = vi.fn()
+    it('calls clearTurnState exactly once when the turn owns the registry slot', async () => {
+      const clearTurnState = vi.fn()
       const lifecycle = {
         gitHookService: {} as any,
         getAssessmentAgent: () => ({}) as any,
@@ -3683,7 +3792,13 @@ describe('MessageExecutionService', () => {
           setLastUserMessage: vi.fn(),
           getLastAssessmentTaskType: vi.fn(),
           setLastAssessmentTaskType: vi.fn(),
-          clearSession,
+          clearTurnState,
+          isFixSessionActive: vi.fn().mockReturnValue(false),
+          pushTurn: vi.fn(),
+          setLastTurnAgentAskedQuestion: vi.fn(),
+          setLastTurnAgentMadeCodeChanges: vi.fn(),
+          getFixSessionPhase: vi.fn(),
+          transitionToAttempted: vi.fn(),
         },
         logger: { info: vi.fn(), warn: vi.fn(), debug: vi.fn(), error: vi.fn() },
       }
@@ -3691,8 +3806,8 @@ describe('MessageExecutionService', () => {
 
       await service.execute(DEFAULT_PARAMS)
 
-      expect(clearSession).toHaveBeenCalledTimes(1)
-      expect(clearSession).toHaveBeenCalledWith('sse:conv_1')
+      expect(clearTurnState).toHaveBeenCalledTimes(1)
+      expect(clearTurnState).toHaveBeenCalledWith('sse:conv_1')
     })
   })
 
@@ -3729,6 +3844,7 @@ describe('MessageExecutionService', () => {
           getLastAssessmentTaskType: vi.fn(),
           setLastAssessmentTaskType: vi.fn(),
           clearSession: vi.fn(),
+          clearTurnState: vi.fn(),
         },
         logger: { info: vi.fn(), warn: vi.fn(), debug: vi.fn(), error: vi.fn() },
       }
@@ -3805,6 +3921,7 @@ describe('MessageExecutionService', () => {
           getLastAssessmentTaskType: vi.fn(),
           setLastAssessmentTaskType: vi.fn(),
           clearSession: vi.fn(),
+          clearTurnState: vi.fn(),
         },
         logger: { info: vi.fn(), warn: vi.fn(), debug: vi.fn(), error: vi.fn() },
       }
@@ -4575,6 +4692,13 @@ describe('MessageExecutionService', () => {
           getLastAssessmentTaskType: vi.fn().mockReturnValue(undefined),
           setLastAssessmentTaskType: vi.fn(),
           clearSession: vi.fn(),
+          clearTurnState: vi.fn(),
+          isFixSessionActive: vi.fn().mockReturnValue(false),
+          pushTurn: vi.fn(),
+          setLastTurnAgentAskedQuestion: vi.fn(),
+          setLastTurnAgentMadeCodeChanges: vi.fn(),
+          getFixSessionPhase: vi.fn(),
+          transitionToAttempted: vi.fn(),
         },
         logger: { info: vi.fn(), warn: vi.fn(), debug: vi.fn(), error: vi.fn() },
       }

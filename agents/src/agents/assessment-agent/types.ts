@@ -69,6 +69,16 @@ export interface ClassificationResult {
   requiresHaikuVerification: boolean
 }
 
+export enum ConversationRole {
+  user = 'user',
+  agent = 'agent',
+}
+
+export interface ConversationTurn {
+  role: ConversationRole
+  content: string
+}
+
 export interface AssessmentConfig {
   timeoutMs: number
   confidenceThreshold: number
@@ -92,6 +102,18 @@ export interface AssessmentContext {
   isInitialPrompt?: boolean
   /** Which classifier implementation to use for this request (derived from switchboard via JWT). */
   classifierMode?: ClassifierMode
+  /** True when a fix session is active for this session (gathering or attempted). */
+  fixSessionActive?: boolean
+  /** Recent conversation turns (user + agent, last 3, oldest-first) for expanded Haiku context. */
+  recentTurns?: ConversationTurn[]
+  /** The current fix session phase: gathering info vs fix attempted. */
+  fixSessionPhase?: FixSessionPhase
+  /** True when the agent's last turn used a question tool (askQuestion/suggestedResponse). */
+  lastTurnAgentAskedQuestion?: boolean
+  /** True when the agent's last turn made code changes (str_replace_based_edit_tool, write_to_file). */
+  lastTurnAgentMadeCodeChanges?: boolean
+  /** Callback invoked with the intermediate LR/embedding result before Haiku tiebreaker runs. */
+  onClassifierResult?: (result: ClassificationResult) => void
 }
 
 export interface AssessmentOutcome {
@@ -113,6 +135,11 @@ export interface ABComparisonResult {
   haikuEscalationAgree: boolean
   confidenceDelta: number
   latencyDeltaMs: number
+}
+
+export enum FixSessionPhase {
+  Gathering = 'gathering',
+  Attempted = 'attempted',
 }
 
 export interface CostPrediction {

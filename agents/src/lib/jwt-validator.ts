@@ -49,6 +49,7 @@ export interface JWTClaims {
   subscriptionId?: string;
   enableAssessmentAgent?: boolean;
   enableAssessmentOverride?: boolean;
+  enableFixSession?: boolean;
   product?: ProductType;
   modelOverride?: string;
   modelSelectorEnabled?: boolean;

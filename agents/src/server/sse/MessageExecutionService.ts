@@ -69,7 +69,7 @@ import { runWithAutomations } from '../../agents/automations-context.js'
 import { getShopperFlag } from '../../services/switchboard.js'
 import { guardAllowedOverrideModel, resolveOverride } from '../model-override.js'
 import type { AssessmentOutcome } from '../../agents/assessment-agent/index.js'
-import { AssessmentTaskType, ClassifierMode, AssessmentReason } from '../../agents/assessment-agent/index.js'
+import { AssessmentTaskType, ClassifierMode, AssessmentReason, ConversationRole, FixSessionPhase } from '../../agents/assessment-agent/index.js'
 import { isFixIntentContext, corroborateFixIntent } from '../fix-intent-types.js'
 import { PARALLEL_ASSESSMENT_TIMEOUT_MS } from '../assessment-executor.js'
 import { createAgentContext, emitConversationStart } from '@godaddy/agent-otel-sdk'
@@ -87,6 +87,7 @@ import {
   isOverrideApplicable,
   type MessageLifecycleDeps, type ParallelAssessmentHandle,
 } from '../message-lifecycle.js'
+import { agentAskedQuestion, agentMadeCodeChanges } from '../fix-session.js'
 import {
   buildDynamicDataMessage, buildTodoContextMessage,
   buildMemoryContextMessage,
@@ -199,6 +200,7 @@ interface LifecycleContext {
   agentContext?: {
     enableAssessmentAgent?: boolean
     enableAssessmentOverride?: boolean
+    enableFixSession?: boolean
     assessmentClassifier?: ClassifierMode
     modelOverride?: string
     modelSelectorEnabled?: boolean
@@ -2015,6 +2017,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
     const agentCtx = lifecycleContext?.agentContext
     const enableAssessmentAgent = !!agentCtx?.enableAssessmentAgent
     const enableAssessmentOverride = !!agentCtx?.enableAssessmentOverride
+    const enableFixSession = !!agentCtx?.enableFixSession
 
     // LR classifier is only available for BMS users. If the flag requests LR but BMS is
     // not enabled, fall back to undefined (resolves to CosineSimilarity in classify()).
@@ -2027,6 +2030,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
       sessionKey: sseSessionKey(conversationId),
       enableAssessmentAgent,
       enableAssessmentOverride,
+      enableFixSession,
       assessmentClassifier: agentCtx?.assessmentClassifier,
       effectiveClassifierMode,
       budgetServiceEnabled: agentCtx?.budgetServiceEnabled,
@@ -2086,6 +2090,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
           enableAssessmentAgent,
           enableAssessmentOverride,
           classifierMode: effectiveClassifierMode,
+          enableFixSession,
         })
         if (corroboration) {
           logger.info('assessment_agent.fix_intent_corroboration_failed', {
@@ -2755,6 +2760,10 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
       // to "customer pays", BMS attribution defaults to the base subscription).
       if (assessmentHandle && !assessmentOutcome) {
         assessmentOutcome = await assessmentHandle.awaitOutcome({ timeoutMs: PARALLEL_ASSESSMENT_TIMEOUT_MS })
+          ?? assessmentHandle.getTimeoutFallback()
+        if (!assessmentOutcome) {
+          logger.info('assessment.parallel.unresolved_customer_pays', { appId, conversationId, sseSocketId })
+        }
       }
 
       // Run end-of-message git squash + compute usedFreeGrants BEFORE persistence,
@@ -2809,6 +2818,38 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
         logger.error('sse.execution.budget_skipped_persistence_failed', {
           appId, conversationId, phase: 'success',
         })
+      }
+
+      // Fix session: record agent turn and manage phase transitions
+      const lifecycleStore = this.deps.lifecycle?.sessionStore
+      if (lifecycleStore && enableFixSession) {
+        if (lifecycleStore.isFixSessionActive(sseSocketId)) {
+          const askedQuestion = agentAskedQuestion(allExecutionSteps)
+          const madeCodeChanges = agentMadeCodeChanges(allExecutionSteps)
+
+          // Record agent turn in conversation arc for next Haiku call context.
+          // Use the last 150 chars of the agent's actual response so Haiku can
+          // reason about whether the agent asked a clarification question in prose.
+          const agentText = lastTurnResult?.accumulatedContent ?? ''
+          const agentTurnContent = agentText.length > 150
+            ? agentText.slice(-150)
+            : agentText || (madeCodeChanges ? 'made code changes' : 'investigated/searched')
+          lifecycleStore.pushTurn(sseSocketId, { role: ConversationRole.agent, content: agentTurnContent })
+
+          // Track agent signals for next turn's classification context
+          lifecycleStore.setLastTurnAgentAskedQuestion(sseSocketId, askedQuestion)
+          lifecycleStore.setLastTurnAgentMadeCodeChanges(sseSocketId, madeCodeChanges)
+
+          // Phase transition: gathering → attempted when code changes made without asking
+          if (lifecycleStore.getFixSessionPhase(sseSocketId) === FixSessionPhase.Gathering
+              && madeCodeChanges && !askedQuestion) {
+            lifecycleStore.transitionToAttempted(sseSocketId)
+            logger.info('fix_session.phase.attempted', {
+              appId, sessionKey: sseSocketId,
+              turnCount: lifecycleStore.getFixSessionTurnCount(sseSocketId),
+            })
+          }
+        }
       }
 
       // If a later execute() has already replaced our slot (user stopped
@@ -3113,7 +3154,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
       // touching any of it would corrupt the next turn.
       if (getActionService(sseSocketId) === clientActionService) {
         cleanupActionService(sseSocketId)
-        this.deps.lifecycle?.sessionStore.clearSession(sseSocketId)
+        this.deps.lifecycle?.sessionStore.clearTurnState(sseSocketId)
       } else {
         logger.warn('sse.execution.concurrent_submit_cleanup', { appId, conversationId })
         clientActionService.cleanup()

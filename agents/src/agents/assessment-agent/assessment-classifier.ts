@@ -9,17 +9,42 @@ import { TASK_BUDGET_MAP } from './keywords.js'
 import {
   AssessmentTaskType,
   AssessmentReason,
+  ConversationRole,
   HaikuAssessmentResultSchema,
   HaikuBinaryAssessmentResultSchema,
   ClassifierMode,
+  FixSessionPhase,
   type AssessmentConfig,
   type AssessmentContext,
   type AssessmentOutcome,
   type AssessmentResult,
   type ClassificationResult,
+  type ConversationTurn,
 } from './types.js'
 
 const logger = Logger.create({ component: 'assessment-agent' })
+
+// &apos; omitted: content is placed in text nodes, not single-quoted attributes.
+function escapeXml(text: string): string {
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+}
+
+
+/** Unified context passed to the Haiku tiebreaker. */
+interface HaikuContext {
+  /** The current user prompt to classify. */
+  prompt: string
+  /** Which classifier mode determines the system prompt variant. */
+  mode: ClassifierMode
+  /** Recent conversation turns (user + agent, oldest-first). Provides full conversation arc. */
+  turns: ConversationTurn[]
+  /** Present only when a fix session is active. Absence = no fix session. */
+  fixSession?: { phase: FixSessionPhase }
+  /** True when the agent's last turn explicitly asked a question (askQuestion/suggestedResponse tool). */
+  agentAskedQuestion?: boolean
+  /** True when the agent's last turn made code changes (edit/write tools). */
+  agentMadeCodeChanges?: boolean
+}
 
 /**
  * Minimum confidence score to apply budget override.
@@ -59,6 +84,8 @@ export class AssessmentClassifier {
       const impl = getClassifier(mode)
       const result = await impl.classify(prompt)
 
+      context?.onClassifierResult?.(result)
+
       logger.info('assessment_agent.classifier.result', {
         appId: context?.appId,
         classifierMode: mode,
@@ -73,7 +100,10 @@ export class AssessmentClassifier {
       const hasActiveNonGeneralSession = context?.previousAssessmentTaskType != null
         && context.previousAssessmentTaskType !== AssessmentTaskType.General
 
-      const sessionContextNeedsHaiku = hasActiveNonGeneralSession
+      const fixSessionNeedsHaiku = context?.fixSessionActive === true
+        && result.taskType === AssessmentTaskType.General
+
+      const sessionContextNeedsHaiku = (hasActiveNonGeneralSession || fixSessionNeedsHaiku)
         && result.taskType === AssessmentTaskType.General
 
       if (!result.requiresHaikuVerification && !sessionContextNeedsHaiku) {
@@ -96,6 +126,7 @@ export class AssessmentClassifier {
       }
 
       const tiebreakerReason = result.hasNegation ? 'negation_detected'
+        : fixSessionNeedsHaiku ? 'fix_session_gate'
         : sessionContextNeedsHaiku ? 'session_context_gate'
         : 'low_confidence'
 
@@ -107,6 +138,8 @@ export class AssessmentClassifier {
         taskType: result.taskType,
         hasNegation: result.hasNegation,
         includeSessionContext: hasActiveNonGeneralSession,
+        fixSessionActive: context?.fixSessionActive,
+        fixSessionPhase: context?.fixSessionPhase,
         remainingTimeMs: this.config.timeoutMs - (Date.now() - startTime),
       })
 
@@ -138,19 +171,21 @@ export class AssessmentClassifier {
     sessionContextGated?: boolean
   ): Promise<AssessmentOutcome> {
     const elapsedMs = Date.now() - startTime
+    const isParallel = resolveClassifierMode(context) === ClassifierMode.LogisticRegression
     const remainingTime = this.config.timeoutMs - elapsedMs
 
     logger.info('assessment_agent.haiku.start', {
       appId: context?.appId,
       elapsedMs,
-      remainingTimeMs: remainingTime,
+      remainingTimeMs: isParallel ? undefined : remainingTime,
       timeoutMs: this.config.timeoutMs,
+      parallelExecution: isParallel,
       classifierTaskType: classifierResult.taskType,
       classifierSimilarity: classifierResult.similarity,
     })
 
     try {
-      if (remainingTime < 500) {
+      if (!isParallel && remainingTime < 500) {
         const fallbackTaskType = taskTypeWhenHaikuUnavailable(classifierResult)
         const billingSafetyApplied = fallbackTaskType !== classifierResult.taskType
 
@@ -181,20 +216,36 @@ export class AssessmentClassifier {
         )
       }
 
-      const previousMessage = context?.previousUserMessage
+      const haikuContext: HaikuContext = {
+        prompt,
+        mode: resolveClassifierMode(context),
+        turns: context?.recentTurns?.length
+          ? context.recentTurns
+          : context?.previousUserMessage ? [{ role: ConversationRole.user, content: context.previousUserMessage }] : [],
+        fixSession: context?.fixSessionActive
+          ? { phase: context.fixSessionPhase ?? FixSessionPhase.Gathering }
+          : undefined,
+        agentAskedQuestion: context?.lastTurnAgentAskedQuestion,
+        agentMadeCodeChanges: context?.lastTurnAgentMadeCodeChanges,
+      }
+
       logger.info('assessment_agent.haiku.calling', {
         appId: context?.appId,
         promptLength: prompt.length,
-        hasPreviousContext: !!previousMessage,
-        previousMessagePreview: previousMessage?.substring(0, 50),
-        timeoutMs: remainingTime,
+        turnCount: haikuContext.turns.length,
+        fixSessionActive: !!haikuContext.fixSession,
+        fixSessionPhase: haikuContext.fixSession?.phase,
+        timeoutMs: isParallel ? undefined : remainingTime,
+        parallelExecution: isParallel,
       })
 
       const haikuStartTime = Date.now()
-      const haikuResult = await Promise.race([
-        this.callHaiku(prompt, resolveClassifierMode(context), previousMessage),
-        new Promise<null>((resolve) => setTimeout(() => resolve(null), remainingTime)),
-      ])
+      const haikuResult = isParallel
+        ? await this.callHaiku(haikuContext)
+        : await Promise.race([
+          this.callHaiku(haikuContext),
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), remainingTime)),
+        ])
       const haikuDurationMs = Date.now() - haikuStartTime
       const totalDurationMs = Date.now() - startTime
 
@@ -288,13 +339,7 @@ export class AssessmentClassifier {
     }
   }
 
-  /**
-   * Call Haiku for classification
-   * @param prompt - Current user message
-   * @param mode - Classifier mode, used to select the appropriate system prompt
-   * @param previousMessage - Optional previous user message for multi-turn context
-   */
-  private async callHaiku(prompt: string, mode: ClassifierMode, previousMessage?: string): Promise<AssessmentResult> {
+  private async callHaiku(context: HaikuContext): Promise<AssessmentResult> {
     const model = await getModel('haiku')
 
     const metadata: LitellmMetadata = {
@@ -302,26 +347,52 @@ export class AssessmentClassifier {
       tags: [`source:${LlmCallSource.AgentAssessment}`, 'source:haiku-tiebreaker'],
     }
 
+    const { prompt, mode, turns, fixSession, agentAskedQuestion, agentMadeCodeChanges } = context
+
     return llmMetadataContext.run(metadata, async () => {
       const truncatedPrompt = prompt.length > 500 ? prompt.substring(0, 500) + '...' : prompt
-      const truncatedPrevious = previousMessage && previousMessage.length > 200
-        ? previousMessage.substring(0, 200) + '...'
-        : previousMessage
+      const truncatedTurns = turns.map(t => ({
+        role: t.role,
+        content: t.content.length > 150 ? t.content.substring(0, 150) + '...' : t.content,
+      }))
 
-      const fullPrompt = truncatedPrevious
-        ? `<previous_message>\n${truncatedPrevious}\n</previous_message>\n<user_prompt>\n${truncatedPrompt}\n</user_prompt>`
-        : `<user_prompt>\n${truncatedPrompt}\n</user_prompt>`
+      let fullPrompt = ''
+      if (fixSession) {
+        fullPrompt += `<fix_session_active>true</fix_session_active>\n`
+          + `<fix_session_phase>${fixSession.phase}</fix_session_phase>\n`
+      }
+      if (agentAskedQuestion) {
+        fullPrompt += `<agent_asked_question>true</agent_asked_question>\n`
+      }
+      if (agentMadeCodeChanges) {
+        fullPrompt += `<agent_made_code_changes>true</agent_made_code_changes>\n`
+      }
+      if (truncatedTurns.length > 0) {
+        fullPrompt += `<conversation_history>\n${truncatedTurns.map((t, i) => `<turn index="${i}" role="${t.role}">${escapeXml(t.content)}</turn>`).join('\n')}\n</conversation_history>\n`
+      }
+      fullPrompt += `<user_prompt>\n${escapeXml(truncatedPrompt)}\n</user_prompt>`
 
       const response = await generateText({
         model,
-        system: getHaikuSystemPrompt(mode),
+        system: getHaikuSystemPrompt(mode, !!fixSession),
         prompt: fullPrompt,
         temperature: 0,
         maxOutputTokens: 150,
         experimental_telemetry: { isEnabled: true, functionId: 'assessment-agent-tiebreaker' },
       })
 
-      return this.parseHaikuResponse(response.text, mode)
+      const result = this.parseHaikuResponse(response.text, mode)
+
+      if (fixSession) {
+        logger.info('fix_session.haiku_result', {
+          haikuTaskType: result.taskType,
+          haikuConfidence: result.confidence,
+          haikuReasoning: result.reasoning,
+          fixSessionPhase: fixSession.phase,
+        })
+      }
+
+      return result
     })
   }
 
@@ -329,6 +400,7 @@ export class AssessmentClassifier {
     try {
       const jsonMatch = text.match(/\{[\s\S]*\}/)
       if (!jsonMatch) {
+        logger.warn('assessment_agent.haiku.parse_no_json', { preview: text.slice(0, 120) })
         return { taskType: AssessmentTaskType.General, confidence: 100 }
       }
 
@@ -342,8 +414,16 @@ export class AssessmentClassifier {
         return validated.data
       }
 
+      logger.warn('assessment_agent.haiku.parse_schema_fail', {
+        preview: text.slice(0, 120),
+        zodError: validated.error.message,
+      })
       return { taskType: AssessmentTaskType.General, confidence: 100 }
-    } catch {
+    } catch (err: unknown) {
+      logger.warn('assessment_agent.haiku.parse_error', {
+        preview: text.slice(0, 120),
+        error: err instanceof Error ? err.message : String(err),
+      })
       return { taskType: AssessmentTaskType.General, confidence: 100 }
     }
   }
