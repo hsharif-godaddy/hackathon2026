@@ -10,30 +10,12 @@ import { useTranslations } from '@/hooks/useTranslations'
 import { Popover, PopoverContent, PopoverTrigger } from '@/lib/shadcn/popover'
 import { useCommanderStore } from '@/stores/useCommanderStore'
 import { logClickEvent } from '@/utils/instrumentation'
-import { CANVAS_REGISTRY, type CanvasDescriptor, CanvasId } from './registry'
+import { CANVAS_MENU_ORDER, CANVAS_REGISTRY, type CanvasDescriptor, CanvasId } from './registry'
 import { useCanvasFlagFilter } from './useCanvasFlagFilter'
 
 interface CanvasMenuProps {
   clickContext?: { appId: string }
 }
-
-const MENU_ORDER: readonly CanvasId[] = [
-  CanvasId.Code,
-  CanvasId.Brand,
-  CanvasId.Domain,
-  CanvasId.Inbox,
-  CanvasId.SettingsProject,
-  CanvasId.SettingsBackups,
-  CanvasId.SettingsSecurity,
-  CanvasId.SettingsDatabase,
-  CanvasId.SettingsSecrets,
-  CanvasId.SettingsSocial,
-  CanvasId.SettingsVisualScan,
-  CanvasId.SettingsAnalytics,
-  CanvasId.SettingsMarketing,
-  CanvasId.SettingsCampaigns,
-  CanvasId.SettingsGitHub,
-]
 
 const isMacPlatform = (): boolean => {
   if (typeof navigator === 'undefined') return false
@@ -83,7 +65,7 @@ export function CanvasMenu({ clickContext }: CanvasMenuProps) {
   const isFlagAllowed = useCanvasFlagFilter()
 
   const items = useMemo(() => {
-    const all = MENU_ORDER.map((id) => CANVAS_REGISTRY[id]).filter(Boolean)
+    const all = CANVAS_MENU_ORDER.map((id) => CANVAS_REGISTRY[id]).filter(Boolean)
     const visible = all.filter((d) => {
       if (openCanvasIds.includes(d.id)) return false
       return isFlagAllowed(d.id)

@@ -131,7 +131,7 @@ function PublishFailedMessage({
   return <span>{t('builder_publish_failed_inline')} {button}</span>;
 }
 
-export default function AppPublish({ location = 'develop' }: { location?: string }) {
+export default function AppPublish({ location = 'develop', triggerClassName }: { location?: string; triggerClassName?: string }) {
   const t = useTranslations();
   const [open, setOpen] = useState(false);
   const [publishResult, setPublishResult] = useState<'success' | 'failed' | null>(null);
@@ -1203,7 +1203,7 @@ export default function AppPublish({ location = 'develop' }: { location?: string
             aria-haspopup={triggerProps['aria-haspopup']}
             aria-expanded={triggerProps['aria-expanded']}
             onClick={triggerProps.onClick}
-            className="!rounded-xmd !pt-0 !pb-0 !pl-1.5 !pr-1.5 sm:!p-1 !border-none md:!border-solid"
+            className={triggerClassName ?? "!rounded-xmd !pt-0 !pb-0 !pl-1.5 !pr-1.5 sm:!p-1 !border-none md:!border-solid"}
           />
         )}
       >

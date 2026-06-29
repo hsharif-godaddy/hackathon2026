@@ -52,9 +52,10 @@ interface MenuItemConfig {
 interface UserMenuProps {
   onShowMockLogin?: () => void;
   location?: string;
+  triggerIcon?: React.ReactNode;
 }
 
-export default function UserMenu({ onShowMockLogin, location = 'unknown' }: UserMenuProps = {}) {
+export default function UserMenu({ onShowMockLogin, location = 'unknown', triggerIcon }: UserMenuProps = {}) {
   const t = useTranslations();
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -184,7 +185,7 @@ export default function UserMenu({ onShowMockLogin, location = 'unknown' }: User
         <PopoverTrigger asChild>
           {isDevelopPage ? (
             <IconButton
-              icon={<UserIcon className="size-2.5" />}
+              icon={triggerIcon ?? <UserIcon className="size-2.5" />}
               label={t('builder_user_menu_label')}
               data-testid="user-menu-trigger"
               aria-label={t('builder_user_menu_label')}

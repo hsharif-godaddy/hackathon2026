@@ -28,7 +28,11 @@ const SHEET_TRANSITION = {
 const isSettingsCanvasId = (id: CanvasId): boolean =>
   Boolean(CANVAS_REGISTRY[id]?.activation.settingsSection)
 
-export function CommanderCanvasSettingsOverlay() {
+interface CommanderCanvasSettingsOverlayProps {
+  edgeToEdge?: boolean
+}
+
+export function CommanderCanvasSettingsOverlay({ edgeToEdge = false }: CommanderCanvasSettingsOverlayProps = {}) {
   const t = useTranslations()
   const isOpen = useCommanderStore((state) => state.isCanvasSettingsOpen)
   const closeCanvasSettings = useCommanderStore((state) => state.closeCanvasSettings)
@@ -55,7 +59,8 @@ export function CommanderCanvasSettingsOverlay() {
         transition={SHEET_TRANSITION}
         aria-hidden={!isVisible}
         className={clsx(
-          'absolute top-0 bottom-0 right-1 left-1 flex flex-col p-2.5 rounded-t-lg overflow-hidden shadow-lg bg-intents-ux-box-backgroundColor',
+          'absolute flex flex-col p-2.5 overflow-hidden bg-intents-ux-box-backgroundColor',
+          edgeToEdge ? 'inset-0' : 'top-0 bottom-0 right-1 left-1 rounded-t-lg shadow-lg',
           isVisible ? 'pointer-events-auto' : 'pointer-events-none',
         )}
       >
@@ -78,7 +83,10 @@ export function CommanderCanvasSettingsOverlay() {
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={SHEET_TRANSITION}
-          className="absolute top-0 bottom-0 right-1 left-1 flex flex-col px-2.5 rounded-t-lg overflow-hidden shadow-lg bg-intents-ux-box-backgroundColor"
+          className={clsx(
+            'absolute flex flex-col px-2.5 overflow-hidden bg-intents-ux-box-backgroundColor',
+            edgeToEdge ? 'inset-0' : 'top-0 bottom-0 right-1 left-1 rounded-t-lg shadow-lg',
+          )}
         >
           <div className="flex items-center justify-end py-1.5 shrink-0">
             <Button

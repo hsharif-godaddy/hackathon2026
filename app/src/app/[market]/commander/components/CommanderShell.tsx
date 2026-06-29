@@ -1,6 +1,6 @@
 'use client'
 
-import { AnimatePresence, motion } from 'framer-motion'
+import { motion } from 'framer-motion'
 import { type ReactNode, useEffect, useRef, useState } from 'react'
 
 import { CommanderCanvasActionProvider } from '@/app/[market]/commander/canvas/CommanderCanvasActionContext'
@@ -11,7 +11,7 @@ import { CommanderPosition } from '@/app/[market]/commander/types'
 import BrandBookView from '@/app/[market]/develop/components/preview/brand-book'
 import { DesignKitWizard } from '@/app/[market]/develop/components/preview/design-kit-wizard/DesignKitWizard'
 import { useIsDesignKitWizardProfile } from '@/app/[market]/develop/components/preview/design-kit-wizard/isDesignKitWizardProfile'
-import { MobileMode, ViewMode } from '@/app/[market]/develop/components/types'
+import { ViewMode } from '@/app/[market]/develop/components/types'
 import {
   useCommanderActionsBarEnabled,
   useCommanderCanvasEnabled,
@@ -24,7 +24,8 @@ import { useServerPollingStore } from '@/stores/useServerPollingStore'
 import { Commander, COMMANDER_LAYOUT_METRICS } from './Commander'
 import { CommanderCanvasSettingsOverlay } from './CommanderCanvasSettingsOverlay'
 import CommanderHeader from './CommanderHeader'
-import { CommanderLogo } from './CommanderLogo'
+import CommanderHeaderMobile from './CommanderHeaderMobile'
+import { CommanderMobileBar } from './CommanderMobileBar'
 
 interface CommanderShellProps {
   appId: string | null
@@ -54,9 +55,10 @@ export function CommanderShell({
   const isCanvasEnabled = useCommanderCanvasEnabled()
   const isCanvasTabsEnabled = useCommanderCanvasTabsEnabled()
   const viewMode = useDevelopPageStore((state) => state.viewMode)
-  const mobileMode = useDevelopPageStore((state) => state.mobileMode)
   const activeCanvasId = useCommanderStore((state) => state.activeCanvasId)
   const isCanvasSettingsOpen = useCommanderStore((state) => state.isCanvasSettingsOpen)
+  const isMobileChatOpen = useCommanderStore((state) => state.isMobileChatOpen)
+  const closeMobileChat = useCommanderStore((state) => state.closeMobileChat)
   const showDesignKitWizard = useIsDesignKitWizardProfile()
   useCanvasSync()
 
@@ -80,8 +82,6 @@ export function CommanderShell({
     ? activeCanvasId === CanvasId.Brand
     : viewMode === ViewMode.BRAND && !isCanvasSettingsOpen
 
-  const mobileLogo = <CommanderLogo appId={appId} source="header" />
-
   const brandOverlayContent =
     appId &&
     (showDesignKitWizard
@@ -89,16 +89,15 @@ export function CommanderShell({
       : <BrandBookView appId={appId} />)
 
   if (isMobile) {
-    const isPreviewMobile = mobileMode === MobileMode.PREVIEW
     return (
       <CommanderCanvasActionProvider onPreviewRefresh={onPreviewRefresh}>
-        <CommanderHeader desktopLogo={null} mobileLogo={mobileLogo} />
+        <CommanderHeaderMobile onBack={isMobileChatOpen ? closeMobileChat : undefined} />
         <div className="relative flex-1 min-h-0">
           <div
             className="absolute inset-0 flex flex-col transition-opacity duration-150 isolate"
             style={{
-              opacity: isPreviewMobile ? 1 : 0,
-              pointerEvents: isPreviewMobile ? 'auto' : 'none',
+              opacity: isMobileChatOpen ? 0 : 1,
+              pointerEvents: isMobileChatOpen ? 'none' : 'auto',
               willChange: 'opacity',
             }}
           >
@@ -108,39 +107,25 @@ export function CommanderShell({
                 {brandOverlayContent}
               </div>
             )}
+            <CommanderCanvasSettingsOverlay edgeToEdge />
           </div>
           <div
             className="absolute inset-0 flex flex-col transition-opacity duration-150"
             style={{
-              opacity: isPreviewMobile ? 0 : 1,
-              pointerEvents: isPreviewMobile ? 'none' : 'auto',
+              opacity: isMobileChatOpen ? 1 : 0,
+              pointerEvents: isMobileChatOpen ? 'auto' : 'none',
               willChange: 'opacity',
             }}
           >
             {chatPaneNode}
           </div>
+          {!isMobileChatOpen && <CommanderMobileBar />}
         </div>
       </CommanderCanvasActionProvider>
     )
   }
 
   const rightSideLeftEdge = isLeftDock ? COMMANDER_LAYOUT_METRICS.LEFT_DOCK_WIDTH + 8 : 0
-  const desktopLogo = (
-    <AnimatePresence initial={false}>
-      {!isLeftDock && (
-        <motion.div
-          key="commander-header-logo"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.15 }}
-          className="p-1.5 md:ps-2.5 md:pe-0"
-        >
-          <CommanderLogo appId={appId} source="header" />
-        </motion.div>
-      )}
-    </AnimatePresence>
-  )
 
   return (
     <CommanderCanvasActionProvider onPreviewRefresh={onPreviewRefresh}>
@@ -150,7 +135,7 @@ export function CommanderShell({
         animate={{ insetInlineStart: rightSideLeftEdge }}
         transition={RIGHT_SIDE_TRANSITION}
       >
-        <CommanderHeader desktopLogo={desktopLogo} mobileLogo={mobileLogo} />
+        <CommanderHeader />
         <div ref={canvasAreaRef} className="relative flex-1 min-h-0 overflow-hidden">
           <div id="preview-pane-container" className="absolute inset-0 flex flex-col isolate [&>div]:pe-1!">
             {previewPaneNode}

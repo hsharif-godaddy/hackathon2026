@@ -12,6 +12,7 @@ import { getSwitchboardFlag, getSwitchboardValue } from '@/hooks/useSwitchboard'
 import type { SiteInfo } from '@/lib/control-plane/types'
 import { logger } from '@/lib/request-context'
 import { type App, appService } from '@/services/AppService'
+import { useCommanderStore } from '@/stores/useCommanderStore'
 import { type Site, useSitesStore } from '@/stores/useSitesStore'
 import { SubscriptionPlan } from '@/types/credits'
 import type { BusMediaDeletePayload, BusUnsupportedFeature } from '@/utils/eventBus'
@@ -1479,6 +1480,11 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     handleMobileModeChange: (newMode: MobileMode) => {
       const { viewMode } = get()
       set((state) => { state.mobileMode = newMode })
+      // Commander mobile gates canvas vs chat on isMobileChatOpen, not mobileMode — so callers
+      // that reveal the canvas by switching to PREVIEW must also dismiss the chat overlay.
+      if (newMode === MobileMode.PREVIEW) {
+        useCommanderStore.getState().closeMobileChat()
+      }
       // Mobile UI doesn't support ViewMode.EDIT (ChatToolbar only shows PREVIEW/CODE)
       if (newMode === MobileMode.PREVIEW && viewMode === ViewMode.EDIT) {
         // false: unsaved-changes confirm in handleViewModeChange only runs when leaving ViewMode.CODE

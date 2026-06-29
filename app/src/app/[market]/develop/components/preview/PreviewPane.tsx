@@ -238,6 +238,8 @@ export interface PublishSnapshotRequestDetail {
 interface PreviewPaneProps {
   onPreviewRefresh: () => void
   isMobile?: boolean
+  /** Drop the canvas frame chrome (border, rounded corners, inset padding) so the preview is edge-to-edge. Used by the Commander mobile layout. */
+  edgeToEdge?: boolean
   isMutatingFiles?: boolean
   isProcessing?: boolean
   showBuildingOverlay?: boolean
@@ -261,6 +263,7 @@ interface PreviewPaneProps {
 export default function PreviewPane({
   onPreviewRefresh,
   isMobile = false,
+  edgeToEdge = false,
   isMutatingFiles = false,
   isProcessing = false,
   showBuildingOverlay = false,
@@ -1559,10 +1562,10 @@ export default function PreviewPane({
       )
     )
     return (
-      <div className="h-full flex flex-col pr-e md:pe-2.5 ps-1">
+      <div className={clsx('h-full flex flex-col', edgeToEdge ? '' : 'pr-e md:pe-2.5 ps-1')}>
         <div className="inset-0 relative h-full">
-          <div className="flex flex-col items-center justify-center h-full bg-intents-ux-boxLowContrast-backgroundColor rounded-lg md:rounded-b-none">
-            <div className="flex flex-col h-full w-full bg-intents-ux-boxLowContrast-backgroundColor relative rounded-lg md:rounded-b-none">
+          <div className={clsx('flex flex-col items-center justify-center h-full bg-intents-ux-boxLowContrast-backgroundColor', !edgeToEdge && 'rounded-lg md:rounded-b-none')}>
+            <div className={clsx('flex flex-col h-full w-full bg-intents-ux-boxLowContrast-backgroundColor relative', !edgeToEdge && 'rounded-lg md:rounded-b-none')}>
               {/* Crossfade Animation Container */}
               <div className="relative w-full h-full overflow-hidden">
                 {/* Brand View is rendered as a persistent overlay by the develop page
@@ -1630,11 +1633,13 @@ export default function PreviewPane({
                   }}
                 >
                   <PreviewBanners />
-                  <div className="flex-1 flex items-center justify-center pb-1 md:pb-0 px-1 md:px-0">
+                  <div className={clsx('flex-1 flex items-center justify-center', edgeToEdge ? 'p-0' : 'pb-1 md:pb-0 px-1 md:px-0')}>
                     <div
                       ref={previewShellRef}
                       className={clsx(
-                        'relative border border-b-0 rounded-lg md:rounded-b-none bg-intents-ux-boxLowContrast-backgroundColor overflow-hidden transition-shadow duration-200', {
+                        'relative bg-intents-ux-boxLowContrast-backgroundColor overflow-hidden transition-shadow duration-200',
+                        edgeToEdge ? 'border-0 rounded-none' : 'border border-b-0 rounded-lg md:rounded-b-none',
+                        {
                           'w-full h-full': isFullSize || isMobile,
                           'my-auto': !isFullSize && !isMobile,
                         }
@@ -1650,9 +1655,11 @@ export default function PreviewPane({
                         id="preview-iframe"
                         data-testid="preview-iframe"
                         src={iframeSrc}
-                        className={`w-full h-full border rounded-lg md:rounded-b-none transition-opacity duration-150 ${
-                          isReloading ? 'opacity-70' : 'opacity-100'
-                        }`}
+                        className={clsx(
+                          'w-full h-full transition-opacity duration-150',
+                          edgeToEdge ? 'border-0 rounded-none' : 'border rounded-lg md:rounded-b-none',
+                          isReloading ? 'opacity-70' : 'opacity-100',
+                        )}
                         onError={handleIframeError}
                         onLoad={handleIframeLoad}
                         sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups allow-top-navigation-by-user-activation allow-storage-access-by-user-activation"

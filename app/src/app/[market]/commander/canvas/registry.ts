@@ -256,6 +256,25 @@ export const DEFAULT_OPEN_CANVAS_IDS: readonly CanvasId[] = Object.values(CANVAS
 
 export const PINNED_CANVAS_ID: CanvasId = CanvasId.Preview
 
+/** Order of selectable canvases in the canvas dropdown / mobile sheet (excludes the pinned Preview). */
+export const CANVAS_MENU_ORDER: readonly CanvasId[] = [
+  CanvasId.Code,
+  CanvasId.Brand,
+  CanvasId.Domain,
+  CanvasId.Inbox,
+  CanvasId.SettingsProject,
+  CanvasId.SettingsBackups,
+  CanvasId.SettingsSecurity,
+  CanvasId.SettingsDatabase,
+  CanvasId.SettingsSecrets,
+  CanvasId.SettingsSocial,
+  CanvasId.SettingsVisualScan,
+  CanvasId.SettingsAnalytics,
+  CanvasId.SettingsMarketing,
+  CanvasId.SettingsCampaigns,
+  CanvasId.SettingsGitHub,
+]
+
 export const COMMANDER_CANVAS_TABS_FLAG = 'appbuilder-commander-canvas-tabs'
 
 export const CANVAS_OVERFLOW_THRESHOLD = 4

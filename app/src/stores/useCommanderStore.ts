@@ -80,6 +80,10 @@ interface CommanderStore {
   /** True while the actions bar is shown as a floating dock beside a side-anchored pill (so the composer's inline bar collapses). Ephemeral; not persisted. */
   actionsBarShownBeside: boolean
   setActionsBarShownBeside: (value: boolean) => void
+  /** True while the mobile chat overlay is shown on top of the canvas. Ephemeral; not persisted. */
+  isMobileChatOpen: boolean
+  openMobileChat: () => void
+  closeMobileChat: () => void
   setPosition: (position: CommanderPosition) => void
   cyclePosition: () => void
   setPillHeight: (height: number) => void
@@ -163,6 +167,9 @@ export const useCommanderStore = create<CommanderStore>()(
       setActionsBarShownBeside: (value) => {
         if (get().actionsBarShownBeside !== value) set({ actionsBarShownBeside: value })
       },
+      isMobileChatOpen: false,
+      openMobileChat: () => set({ isMobileChatOpen: true }),
+      closeMobileChat: () => set({ isMobileChatOpen: false }),
       setPosition: (position) => set({ position }),
       cyclePosition: () => {
         const current = get().position

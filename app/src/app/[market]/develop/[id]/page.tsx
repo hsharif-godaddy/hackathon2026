@@ -1524,6 +1524,7 @@ function DevelopPageContent({ layout: layoutProp }: { layout?: BuilderLayout }) 
                 imageReloadFailed={!!imageReadiness.error}
                 onRetryImageReload={() => imageReadiness.retry()}
                 isMobile={isMobile}
+                edgeToEdge={layout === BuilderLayout.Commander && isMobile}
                 onPublishSnapshot={handlePublishSnapshot}
                 onAskAiroToFix={sendPreviewFixRequest}
                 chatLoadingMessage={chatLoadingMessage}
