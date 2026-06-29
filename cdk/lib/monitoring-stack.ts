@@ -69,6 +69,11 @@ export class MonitoringStack extends GDStack {
       this.createRdsAlarms(props.rdsClusterIdentifier);
     }
 
+    // WAF blocked-request alarms
+    if (config.monitoring.wafWebAclNames.length > 0) {
+      this.createWafAlarms(config.monitoring.wafWebAclNames);
+    }
+
     // Create CloudWatch dashboard
     this.dashboard = this.createDashboard();
   }
@@ -278,6 +283,31 @@ export class MonitoringStack extends GDStack {
     );
   }
 
+  private createWafAlarms(webAclNames: string[]): void {
+    const thresholds = config.monitoring.alarmThresholds;
+
+    for (const webAclName of webAclNames) {
+      const safeId: string = webAclName.replace(/[^a-zA-Z0-9]/g, '');
+      AlarmUtil.createCloudWatchAlarm(
+        this,
+        `WAFBlockedAll${safeId}`,
+        new cloudwatch.Metric({
+          namespace: 'AWS/WAFV2',
+          metricName: 'BlockedRequests',
+          dimensionsMap: {
+            WebACL: webAclName,
+            Region: config.region,
+            Rule: 'ALL',
+          },
+          statistic: 'Sum',
+          period: cdk.Duration.minutes(5),
+        }),
+        thresholds.wafMaxBlockedReqs,
+        `WAF blocked requests spike on ${webAclName} (all rules)`
+      );
+    }
+  }
+
   /**
    * Create CloudWatch dashboard with monitoring overview
    * 
@@ -407,6 +437,29 @@ export class MonitoringStack extends GDStack {
         width: 12,
       })
     );
+
+    if (config.monitoring.wafWebAclNames.length > 0) {
+      dashboard.addWidgets(
+        new cloudwatch.GraphWidget({
+          title: 'WAF - Blocked Requests (All WebACLs)',
+          left: config.monitoring.wafWebAclNames.map((webAclName: string) =>
+            new cloudwatch.Metric({
+              namespace: 'AWS/WAFV2',
+              metricName: 'BlockedRequests',
+              dimensionsMap: {
+                WebACL: webAclName,
+                Region: config.region,
+                Rule: 'ALL',
+              },
+              statistic: 'Sum',
+              period: cdk.Duration.minutes(5),
+              label: webAclName,
+            })
+          ),
+          width: 24,
+        })
+      );
+    }
 
     return dashboard;
   }

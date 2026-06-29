@@ -24,7 +24,11 @@ interface MonitoringConfig {
     rdsMaxUtilization: number;
     /** RDS maximum database connections */
     rdsMaxConnections: number;
+    /** Waf maximum blocked requests */
+    wafMaxBlockedReqs: number;
   };
+  /** WAF WebACL metric names to monitor for blocked-request spikes */
+  wafWebAclNames: string[];
 }
 
 /**
@@ -290,6 +294,7 @@ const devConfig: Config = {
   monitoring: {
     ecsClusterName: 'katanaRuntime',
     rdsClusterIdentifier: 'dev-mysql-v2-cluster',
+    wafWebAclNames: [],
     appAlbArn: 'arn:aws:elasticloadbalancing:us-west-2:694282668781:loadbalancer/app/airobuildeappdevprivatee66716e84/34f28f40a512e6fa',
     alarmThresholds: {
       alb5xxThreshold: 10,
@@ -298,6 +303,7 @@ const devConfig: Config = {
       ecsMaxUtilization: 90,
       rdsMaxUtilization: 80,
       rdsMaxConnections: 100,
+      wafMaxBlockedReqs: 50,
     },
   },
   jwt: {
@@ -393,6 +399,7 @@ const testConfig: Config = {
   monitoring: {
     ecsClusterName: 'katanaRuntime',
     rdsClusterIdentifier: 'test-mysql-v2-cluster',
+    wafWebAclNames: [],
     appAlbArn: 'arn:aws:elasticloadbalancing:us-west-2:694282668781:loadbalancer/app/airobuildeapptestdirectc6743dcfc/239795c4eebe32af',
     alarmThresholds: {
       alb5xxThreshold: 15,
@@ -401,6 +408,7 @@ const testConfig: Config = {
       ecsMaxUtilization: 90,
       rdsMaxUtilization: 80,
       rdsMaxConnections: 200,
+      wafMaxBlockedReqs: 50,
     },
   },
   jwt: {
@@ -507,6 +515,12 @@ const prodConfig: Config = {
   monitoring: {
     ecsClusterName: 'katanaRuntime',
     rdsClusterIdentifier: 'prod-mysql-v2-cluster',
+    wafWebAclNames: [
+      'airobuilde-budget-service-prod-Regional-WebACL',
+      'airobuilde-app-prod-ecs-Regional-WebACL',
+      'airobuilde-console-prod-Regional-WebACL',
+      'prod-airo-stripe-gateway-allowlist',
+    ],
     alarmThresholds: {
       alb5xxThreshold: 20,
       alb4xxThreshold: 100,
@@ -514,6 +528,7 @@ const prodConfig: Config = {
       ecsMaxUtilization: 85,
       rdsMaxUtilization: 80,
       rdsMaxConnections: 300,
+      wafMaxBlockedReqs: 50,
     },
   },
   jwt: {
