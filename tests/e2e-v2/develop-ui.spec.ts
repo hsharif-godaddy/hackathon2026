@@ -342,18 +342,40 @@ test.describe('E2E v2 - Develop page UI', () => {
   test('Manual feedback trigger shows category step', { tag: ['@pr-fast', '@develop'] }, async ({ page }, testInfo) => {
     testInfo.setTimeout(180_000);
 
+    // Stay on the chat tab. The settings popover is opened by the toolbar
+    // button, NOT by navigating to ?tab=settings — that URL switches the chat
+    // pane to the settings *panel* (Purge Cache / Download / etc.), which has no
+    // chat input, so the beforeEach/waitForDevelopPage readiness gate could never
+    // pass there. beforeEach already navigated to /develop/<id> and waited.
     await dismissOverlays(page);
 
-    // Open Settings menu popover via the toolbar button
-    await page.getByTestId('chat-toolbar-settings-button').click({ force: true });
+    // Open the Settings popover from the toolbar. The button lives in a
+    // controlled ButtonGroup whose click takes the onChange branch
+    // (ButtonGroup.tsx handleClick: `if (controlled) onChange(value)` — the
+    // item's own onClick never fires here), and onChange → togglePopover does a
+    // single setOpen(!prev). So one click opens it. The flake is hydration: a
+    // force-click that lands before the toolbar wires its handler silently
+    // no-ops and burns the popover wait. toBeEnabled() doesn't catch this (the
+    // button has no disabled prop, so it reads enabled pre-hydration). Poll
+    // instead: click only while the popover is closed, then assert it opened.
+    // Idempotent against the toggle (never double-clicks an open popover) and
+    // retries through the hydration gap.
+    const settingsButton = page.getByTestId('chat-toolbar-settings-button');
+    await expect(settingsButton).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+
+    const settingsPopover = page.locator('[data-slot="popover-content"][data-state="open"]');
+    await expect(async () => {
+      if (!(await settingsPopover.isVisible().catch(() => false))) {
+        await settingsButton.click({ force: true });
+      }
+      await expect(settingsPopover).toBeVisible({ timeout: 2_000 });
+    }).toPass({ timeout: DEFAULT_TIMEOUT });
 
     // Click "Feedback" item in the open settings popover.
     // Scope to the popover because publish-success-alert can also render a
     // feedback button after auto-publish in test/prod.
     // useSettingsNavItems.handleFeedbackClick clears localStorage guard internally
     // and calls openFeedbackModal(FEEDBACK_ID, 'Settings') with NO initialStep.
-    const settingsPopover = page.locator('[data-slot="popover-content"][data-state="open"]');
-    await settingsPopover.waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT });
     await settingsPopover.getByTestId('settings-feedback-item').click({ force: true });
 
     // Modal should open at category step (manual trigger = no initialStep).

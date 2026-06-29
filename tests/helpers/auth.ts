@@ -18,6 +18,38 @@ const SSO_BASE_URL_BY_ENV: Record<Environment, string> = {
 };
 
 /**
+ * Drain a chain of JS-initiated redirects that fire AFTER a page's initial
+ * 'load'. The post-login SSO landing page bounces through several hosts
+ * (observed: www.godaddy.com → account.godaddy.com → …), each hop firing
+ * after the previous hop's 'load'. A caller's `page.goto('/')` that races an
+ * in-flight hop receives `net::ERR_ABORTED` (VNEXT-81338), so we settle the
+ * whole chain here before returning to the caller.
+ *
+ * Bounded two ways so a pathological redirect loop can never hang the suite:
+ *   - at most `maxHops` iterations, and
+ *   - each iteration waits at most SSO_POST_LOAD_DRAIN_MS for the NEXT hop to
+ *     start; when none starts within that window the chain has settled and we
+ *     return.
+ *
+ * Supersedes the earlier single-hop drain, which settled only one post-load
+ * navigation and left a third hop racing the caller (the residual race the old
+ * inline comment flagged with "a third hop would still race").
+ */
+async function drainPostLoadRedirects(page: Page, maxHops: number = 5): Promise<void> {
+  for (let hop = 0; hop < maxHops; hop++) {
+    const urlBeforeHop: string = page.url();
+    const hopped: boolean = await page
+      .waitForURL((url: URL) => url.toString() !== urlBeforeHop, { timeout: SSO_POST_LOAD_DRAIN_MS, waitUntil: 'commit' })
+      .then(() => true)
+      .catch(() => false);
+    if (!hopped) {
+      return; // no further redirect started within the drain window — chain settled
+    }
+    await page.waitForLoadState('load').catch(() => {});
+  }
+}
+
+/**
  * Log in directly on the standalone GoDaddy SSO page, then leave the browser
  * authenticated for the whole `.godaddy.com` (or `.test-godaddy.com`) domain —
  * so a subsequent `page.goto(<airo-builder base>)` lands already signed in.
@@ -47,13 +79,9 @@ export async function loginViaSsoDirect(page: Page, timeout: number = SSO_TIMEOU
     .catch(() => false);
   if (!formPresent) {
     console.log('  SSO direct: no login form (already authenticated), continuing');
-    const urlOnReturn: string = page.url();
-    try {
-      await page.waitForURL((url: URL) => url.toString() !== urlOnReturn, { timeout: SSO_POST_LOAD_DRAIN_MS, waitUntil: 'commit' });
-      await page.waitForLoadState('load');
-    } catch {
-      // no post-load redirect — proceed
-    }
+    // Already-authenticated SSO immediately bounces back through its redirect
+    // chain; drain every hop so a caller's page.goto('/') doesn't race one.
+    await drainPostLoadRedirects(page);
     return;
   }
 
@@ -70,24 +98,16 @@ export async function loginViaSsoDirect(page: Page, timeout: number = SSO_TIMEOU
   // networkidle never fires and the helper hangs (the rest of the suite
   // avoids networkidle for the same reason).
   //
-  // Two-stage settle after the post-login redirect lands:
-  // 1. Wait for 'load' on the SSO redirect landing page (e.g. www.godaddy.com).
-  // 2. Drain any JS-initiated redirect the landing page fires AFTER 'load'
-  //    (observed: www.godaddy.com → account.godaddy.com). A caller's page.goto('/')
-  //    racing that second navigation receives ERR_ABORTED. SSO_POST_LOAD_DRAIN_MS
-  //    covers only the URL-change detection; the subsequent load wait is unbounded
-  //    so a slow second navigation doesn't hit the same race. The try/catch handles
-  //    the common case where no second redirect fires.
-  // Note: only drains one post-load hop; a third hop would still race.
+  // Settle after the post-login redirect lands:
+  // 1. The form detaching is the completion signal for the first hop.
+  // 2. Wait for 'load' on the SSO redirect landing page (e.g. www.godaddy.com).
+  // 3. Drain every further JS-initiated redirect the landing page fires AFTER
+  //    'load' (observed: www.godaddy.com → account.godaddy.com → …). A caller's
+  //    page.goto('/') racing any in-flight hop receives ERR_ABORTED, so the
+  //    bounded loop keeps settling hops until the chain stops moving.
   await usernameInput.waitFor({ state: 'detached', timeout }).catch(() => {});
   await page.waitForLoadState('load').catch(() => {});
-  const urlAfterLoad: string = page.url();
-  try {
-    await page.waitForURL((url: URL) => url.toString() !== urlAfterLoad, { timeout: SSO_POST_LOAD_DRAIN_MS, waitUntil: 'commit' });
-    await page.waitForLoadState('load');
-  } catch {
-    // no post-load redirect within SSO_POST_LOAD_DRAIN_MS — proceed
-  }
+  await drainPostLoadRedirects(page);
   console.log(`  SSO direct: signed in at ${ssoBase} (now on ${new URL(page.url()).host})`);
 }
 
