@@ -317,7 +317,7 @@ router.use('/apps/:id', validateAppOwnership);
  *
  * @returns {Object} Response object
  * @returns {boolean} response.success - Whether the operation succeeded
- * @returns {string} response.commitHash - Git SHA (default) or hex timestamp (PaaS)
+ * @returns {string} response.commitHash - Real HEAD git SHA (default and PaaS); PaaS falls back to a hex identifier only when HEAD can't be resolved
  * @returns {Object} response.archive - Archive information
  * @returns {string} response.archive.path - Path to the created archive
  *

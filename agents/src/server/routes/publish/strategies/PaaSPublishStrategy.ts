@@ -110,9 +110,10 @@ interface PaasPreflightResult {
  * PaaS Publish Strategy
  *
  * Simplified publish workflow for PaaS apps:
- * - No git operations (code is uploaded directly, not developed in-app)
  * - Full source archive (needs package.json for npm install in publish container)
- * - Timestamp-based identifier instead of git commit hash
+ * - Stamps the archive with the real HEAD commit SHA (matching what preview
+ *   reports) so published/live can be compared against preview for drift; falls
+ *   back to a synthetic hex identifier only when HEAD can't be resolved
  * - Preview must be running before publish is allowed
  * - Timeout recovery logic for supervisor communication
  */
@@ -149,15 +150,12 @@ export class PaaSPublishStrategy implements PublishStrategy {
     // safety net rather than a strict gate.
     await this.preflightStartCommand(context);
 
-    // No git operations - generate hex timestamp identifier
-    // Format as hex to pass git.ts validation (requires ^[a-f0-9]{7,40}$)
-    // Use 12 chars: Date.now() in hex produces ~11-12 chars currently,
-    // padding to 12 ensures consistent length and uniqueness for ~4,400 years
-    const commitHash = Date.now().toString(16).padStart(12, '0');
-    logger.info(`route.publish.${this.key}.git-skipped`, {
-      identifier: commitHash,
-      message: 'PaaS strategy: skipping git operations',
-    });
+    // Stamp the archive with the real HEAD commit SHA of the working tree being
+    // archived. This is the same value preview reports (GET /apps/:id →
+    // gitUtils.getCurrentCommit), so the published/live app can be compared
+    // against preview to detect drift. A synthetic identifier is used only as a
+    // fallback when HEAD can't be resolved, so publish never hard-fails.
+    const commitHash: string = await this.resolveCommitHash(context);
 
     // Create archive with full source INCLUDING node_modules (PaaS optimization)
     // This allows publish container to skip npm install entirely
@@ -187,6 +185,32 @@ export class PaaSPublishStrategy implements PublishStrategy {
       commitHash,
       archivePath: archiveResult.path,
     };
+  }
+
+  /**
+   * Resolve the commit SHA to stamp the archive with. Returns the real HEAD SHA
+   * of the working tree (matching what preview reports), or a synthetic hex
+   * identifier when HEAD can't be resolved (e.g. a repo with no commits) so
+   * publish never hard-fails. The synthetic value is hex-formatted to satisfy
+   * git.ts archive-name validation (`^[a-f0-9]{7,40}$`).
+   */
+  private async resolveCommitHash(context: PublishContext): Promise<string> {
+    const { gitUtils, appPath, logger } = context;
+    try {
+      const commitHash: string = await gitUtils.getCurrentCommit(appPath);
+      logger.info(`route.publish.${this.key}.commit-resolved`, {
+        commitHash: commitHash.substring(0, 7),
+      });
+      return commitHash;
+    } catch (error) {
+      const fallback: string = Date.now().toString(16).padStart(12, '0');
+      logger.warn(`route.publish.${this.key}.commit-fallback`, {
+        identifier: fallback,
+        error: error instanceof Error ? error.message : String(error),
+        message: 'Could not resolve HEAD commit; using synthetic identifier',
+      });
+      return fallback;
+    }
   }
 
   /**

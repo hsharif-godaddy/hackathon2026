@@ -8,6 +8,9 @@ import {
 import type { PublishContext } from '../PublishStrategy.js';
 import { appRestartService } from '../../../../../services/AppRestartService.js';
 
+/** Realistic 40-char HEAD SHA returned by the mocked gitUtils.getCurrentCommit. */
+const REAL_HEAD_SHA = 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0';
+
 /**
  * Build a preflight-call stdout blob matching the shape PaaSPublishStrategy
  * expects: `<airo-config-body> ---airo-preflight-sep--- <package-json-body>`.
@@ -108,6 +111,7 @@ describe('PaaSPublishStrategy', () => {
   };
   let mockGitUtils: {
     createArchive: ReturnType<typeof vi.fn>;
+    getCurrentCommit: ReturnType<typeof vi.fn>;
   };
   let createPaasConfigSpy: ReturnType<typeof vi.spyOn>;
   let mockLogger: {
@@ -131,6 +135,7 @@ describe('PaaSPublishStrategy', () => {
         path: '/dist/test-archive.tar.gz',
         commitHash: 'abc123',
       }),
+      getCurrentCommit: vi.fn().mockResolvedValue(REAL_HEAD_SHA),
     };
 
     // Stub the real fs-writing config writer. Reflect the write back into the
@@ -177,11 +182,25 @@ describe('PaaSPublishStrategy', () => {
       installExecRouter(mockTasks);
     });
 
-    it('should generate hex timestamp identifier', async () => {
+    it('should use the real HEAD commit SHA', async () => {
       const result = await strategy.prepareBuild(mockContext);
 
-      // Verify commitHash is a hex string (12 chars)
+      expect(mockGitUtils.getCurrentCommit).toHaveBeenCalledWith('/tmp/test-app');
+      expect(result.commitHash).toBe(REAL_HEAD_SHA);
+    });
+
+    it('should fall back to a synthetic hex identifier when HEAD cannot be resolved', async () => {
+      mockGitUtils.getCurrentCommit.mockRejectedValue(new Error('fatal: needed a single revision'));
+
+      const result = await strategy.prepareBuild(mockContext);
+
       expect(result.commitHash).toMatch(/^[a-f0-9]{12}$/);
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        'route.publish.paas.commit-fallback',
+        expect.objectContaining({
+          message: 'Could not resolve HEAD commit; using synthetic identifier',
+        })
+      );
     });
 
     it('should create archive with includeSource, includeNodeModules, and extended timeout', async () => {
@@ -201,13 +220,13 @@ describe('PaaSPublishStrategy', () => {
       expect(result.archivePath).toBe('/dist/test-archive.tar.gz');
     });
 
-    it('should log git-skipped message', async () => {
+    it('should log commit-resolved with the HEAD SHA', async () => {
       await strategy.prepareBuild(mockContext);
 
       expect(mockLogger.info).toHaveBeenCalledWith(
-        'route.publish.paas.git-skipped',
+        'route.publish.paas.commit-resolved',
         expect.objectContaining({
-          message: 'PaaS strategy: skipping git operations',
+          commitHash: REAL_HEAD_SHA.substring(0, 7),
         })
       );
     });
@@ -248,7 +267,7 @@ describe('PaaSPublishStrategy', () => {
 
       const result = await strategy.prepareBuild(mockContext);
 
-      expect(result.commitHash).toMatch(/^[a-f0-9]{12}$/);
+      expect(result.commitHash).toBe(REAL_HEAD_SHA);
       expect(mockLogger.info).toHaveBeenCalledWith(
         'route.publish.paas.preview-check.begin',
         {}
@@ -267,7 +286,7 @@ describe('PaaSPublishStrategy', () => {
       installExecRouter(mockTasks);
 
       const result = await strategy.prepareBuild(mockContext);
-      expect(result.commitHash).toMatch(/^[a-f0-9]{12}$/);
+      expect(result.commitHash).toBe(REAL_HEAD_SHA);
     });
 
     it('should proceed when process is starting', async () => {
@@ -278,7 +297,7 @@ describe('PaaSPublishStrategy', () => {
       installExecRouter(mockTasks);
 
       const result = await strategy.prepareBuild(mockContext);
-      expect(result.commitHash).toMatch(/^[a-f0-9]{12}$/);
+      expect(result.commitHash).toBe(REAL_HEAD_SHA);
     });
 
     it('should throw PreviewNotRunningError when process is in error state', async () => {
@@ -316,7 +335,7 @@ describe('PaaSPublishStrategy', () => {
       installExecRouter(mockTasks);
 
       const result = await strategy.prepareBuild(mockContext);
-      expect(result.commitHash).toMatch(/^[a-f0-9]{12}$/);
+      expect(result.commitHash).toBe(REAL_HEAD_SHA);
     });
 
     it('should throw PreviewNotRunningError with isSystemError when runtime.status() throws', async () => {
