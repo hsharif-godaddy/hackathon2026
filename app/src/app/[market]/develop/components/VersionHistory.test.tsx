@@ -31,6 +31,7 @@ const mockGitStore = {
   getSelectedCommitHash: vi.fn(),
   isSelectingCommit: false,
   commitSelectionError: null,
+  commitSelectionAuthError: false,
   selectCommit: vi.fn(),
   setSelectedCommitHash: vi.fn(),
   setCommitSelectionError: vi.fn(),
@@ -262,6 +263,7 @@ describe('VersionHistory', () => {
 
     mockGitStore.isSelectingCommit = false;
     mockGitStore.commitSelectionError = 'error';
+    mockGitStore.commitSelectionAuthError = false;
 
     renderWithProviders(<VersionHistory />);
 
@@ -272,6 +274,7 @@ describe('VersionHistory', () => {
 
   it('shows i18n switch error copy instead of technical commitSelectionError', async function switchErrorCopy() {
     mockGitStore.commitSelectionError = 'Failed to return to latest version: 400';
+    mockGitStore.commitSelectionAuthError = false;
 
     renderWithProviders(<VersionHistory />);
 
@@ -280,6 +283,18 @@ describe('VersionHistory', () => {
       expect(screen.getByText('builder_version_history_switch_error_description')).toBeInTheDocument();
     });
     expect(screen.queryByText(mockGitStore.commitSelectionError!)).not.toBeInTheDocument();
+  });
+
+  it('shows auth-specific copy when commitSelectionAuthError is true', async function authErrorCopy() {
+    mockGitStore.commitSelectionError = 'Authentication dismissed';
+    mockGitStore.commitSelectionAuthError = true;
+
+    renderWithProviders(<VersionHistory />);
+
+    await waitFor(() => {
+      expect(screen.getByText('builder_version_history_switch_auth_error_title')).toBeInTheDocument();
+      expect(screen.getByText('builder_version_history_switch_auth_error_description')).toBeInTheDocument();
+    });
   });
 
   it('does not trigger auto-select on re-render when commits array has same data', async () => {

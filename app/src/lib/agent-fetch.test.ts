@@ -3,38 +3,74 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-// Mock fetch globally
+import { AuthDismissedError } from '@/lib/gasket-config';
+
+const mockAppFetch = vi.fn();
+const mockLogger = {
+  info: vi.fn(),
+  warn: vi.fn(),
+  error: vi.fn(),
+  debug: vi.fn(),
+};
+
 global.fetch = vi.fn();
 
-// Mock gasket-config so appFetch delegates to global.fetch.
-// This lets existing test mocks continue to work for getAgentToken.
 vi.mock('@/lib/gasket-config', () => ({
-  appFetch: (...args: unknown[]) => (global.fetch as any)(...args),
+  appFetch: (...args: unknown[]) => mockAppFetch(...args),
+  AuthDismissedError: class MockAuthDismissedError extends Error {
+    constructor() {
+      super('Authentication dismissed');
+      this.name = 'AuthDismissedError';
+    }
+  },
+}));
+
+vi.mock('@/lib/request-context', () => ({
+  logger: mockLogger,
+}));
+
+vi.mock('@/stores/useBillingModeStore', () => ({
+  useBillingModeStore: {
+    getState: () => ({
+      setMode: vi.fn(),
+      clearMode: vi.fn(),
+    }),
+  },
 }));
 
 describe('agent-fetch', function packageTests() {
-  let agentFetch: any;
+  let agentFetch: typeof import('./agent-fetch').agentFetch;
+  let getAgentToken: typeof import('./agent-fetch').getAgentToken;
+  let AgentTokenAcquisitionError: typeof import('./agent-fetch').AgentTokenAcquisitionError;
+  let CACHE_BUFFER_MS: number;
 
-  beforeEach(async () => {
+  beforeEach(async function setup() {
     vi.clearAllMocks();
     vi.resetModules();
-    // Dynamically import to get fresh module with reset caches
-    const module = await import('./agent-fetch'); // eslint-disable-line @next/next/no-assign-module-variable
-    agentFetch = module.agentFetch;
+    vi.useRealTimers();
+    mockAppFetch.mockImplementation((url: unknown, init?: unknown) =>
+      (global.fetch as typeof fetch)(url as RequestInfo, init as RequestInit)
+    );
+    const agentFetchModule = await import('./agent-fetch');
+    agentFetch = agentFetchModule.agentFetch;
+    getAgentToken = agentFetchModule.getAgentToken;
+    AgentTokenAcquisitionError = agentFetchModule.AgentTokenAcquisitionError;
+    CACHE_BUFFER_MS = agentFetchModule.CACHE_BUFFER_MS;
   });
 
-  afterEach(() => {
+  afterEach(function teardown() {
+    vi.useRealTimers();
     vi.clearAllMocks();
   });
 
   describe('token caching', function caching() {
     it('should cache tokens and reuse them', async function cacheTokens() {
       const mockToken = 'test-token-123';
-      const mockExpires = new Date(Date.now() + 12 * 60 * 60 * 1000); // 12 hours from now
+      const mockExpires = new Date(Date.now() + 12 * 60 * 60 * 1000);
 
       vi.mocked(fetch).mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ token: mockToken, expires: mockExpires.toISOString() }),
+        json: async () => ({ token: mockToken, expires: mockExpires.toISOString(), budgetServiceEnabled: false }),
       } as Response);
 
       vi.mocked(fetch).mockResolvedValueOnce({
@@ -42,12 +78,15 @@ describe('agent-fetch', function packageTests() {
         status: 200,
       } as Response);
 
-      // First call - should fetch token
       await agentFetch('http://localhost:4000/test', { siteId: 'test-site' });
 
-      expect(fetch).toHaveBeenCalledTimes(2); // 1 for token, 1 for actual request
+      expect(mockAppFetch).toHaveBeenCalledWith(
+        '/api/auth/agent-token',
+        expect.objectContaining({ method: 'POST' }),
+        { handle401: true },
+      );
+      expect(fetch).toHaveBeenCalledTimes(2);
 
-      // Second call - should use cached token
       vi.mocked(fetch).mockResolvedValueOnce({
         ok: true,
         status: 200,
@@ -55,19 +94,18 @@ describe('agent-fetch', function packageTests() {
 
       await agentFetch('http://localhost:4000/test2', { siteId: 'test-site' });
 
-      expect(fetch).toHaveBeenCalledTimes(3); // No new token call, just the actual request
+      expect(fetch).toHaveBeenCalledTimes(3);
     });
 
     it('should refresh token when it expires soon', async function refreshExpiredToken() {
       const mockToken1 = 'test-token-1';
       const mockToken2 = 'test-token-2';
-      const expiresSoon = new Date(Date.now() + 2 * 60 * 1000); // 2 minutes from now
-      const expiresLater = new Date(Date.now() + 12 * 60 * 60 * 1000); // 12 hours from now
+      const expiresSoon = new Date(Date.now() + 10 * 60 * 1000);
+      const expiresLater = new Date(Date.now() + 12 * 60 * 60 * 1000);
 
-      // First token request (expires soon)
       vi.mocked(fetch).mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ token: mockToken1, expires: expiresSoon.toISOString() }),
+        json: async () => ({ token: mockToken1, expires: expiresSoon.toISOString(), budgetServiceEnabled: false }),
       } as Response);
 
       vi.mocked(fetch).mockResolvedValueOnce({
@@ -79,10 +117,9 @@ describe('agent-fetch', function packageTests() {
 
       expect(fetch).toHaveBeenCalledTimes(2);
 
-      // Second call - should fetch new token because old one expires soon
       vi.mocked(fetch).mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ token: mockToken2, expires: expiresLater.toISOString() }),
+        json: async () => ({ token: mockToken2, expires: expiresLater.toISOString(), budgetServiceEnabled: false }),
       } as Response);
 
       vi.mocked(fetch).mockResolvedValueOnce({
@@ -92,7 +129,103 @@ describe('agent-fetch', function packageTests() {
 
       await agentFetch('http://localhost:4000/test2', { siteId: 'test-site' });
 
-      expect(fetch).toHaveBeenCalledTimes(4); // New token call + actual request
+      expect(fetch).toHaveBeenCalledTimes(4);
+    });
+  });
+
+  describe('agent-token auth recovery', function authRecovery() {
+    it('passes handle401 to appFetch for agent-token acquisition', async function handle401Option() {
+      const mockExpires = new Date(Date.now() + 12 * 60 * 60 * 1000);
+      vi.mocked(fetch).mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ token: 'token', expires: mockExpires.toISOString(), budgetServiceEnabled: false }),
+      } as Response);
+
+      await getAgentToken('site-auth');
+
+      expect(mockAppFetch).toHaveBeenCalledWith(
+        '/api/auth/agent-token',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({ siteId: 'site-auth' }),
+        }),
+        { handle401: true },
+      );
+    });
+
+    it('throws AgentTokenAcquisitionError when SSO is dismissed', async function dismissed() {
+      mockAppFetch.mockRejectedValueOnce(new AuthDismissedError());
+
+      await expect(getAgentToken('site-dismiss')).rejects.toMatchObject({
+        name: 'AgentTokenAcquisitionError',
+        reason: 'auth_dismissed',
+      });
+    });
+
+    it('throws AgentTokenAcquisitionError when agent-token still returns 401', async function unauthorized() {
+      mockAppFetch.mockResolvedValueOnce({ ok: false, status: 401 } as Response);
+
+      await expect(getAgentToken('site-401')).rejects.toMatchObject({
+        name: 'AgentTokenAcquisitionError',
+        reason: 'auth_failed',
+      });
+    });
+  });
+
+  describe('proactive refresh', function proactiveRefresh() {
+    it('prefetches a fresh token before the cache buffer expires', async function prefetchBeforeExpiry() {
+      vi.useFakeTimers();
+      const mockExpires = new Date(Date.now() + 20 * 60 * 1000);
+
+      vi.mocked(fetch).mockResolvedValue({
+        ok: true,
+        json: async () => ({ token: 'token-v1', expires: mockExpires.toISOString(), budgetServiceEnabled: false }),
+      } as Response);
+
+      await getAgentToken('site-proactive');
+      expect(mockAppFetch).toHaveBeenCalledTimes(1);
+
+      await vi.advanceTimersByTimeAsync(20 * 60 * 1000 - CACHE_BUFFER_MS + 1);
+      await vi.runAllTimersAsync();
+
+      expect(mockAppFetch).toHaveBeenCalledTimes(2);
+    });
+
+    it('warns with auth reason when proactive refresh fails', async function prefetchAuthFailure() {
+      vi.useFakeTimers();
+      const mockExpires = new Date(Date.now() + 20 * 60 * 1000);
+
+      mockAppFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ token: 'token-v1', expires: mockExpires.toISOString(), budgetServiceEnabled: false }),
+        } as Response)
+        .mockResolvedValueOnce({ ok: false, status: 401 } as Response);
+
+      await getAgentToken('site-proactive-fail');
+      await vi.advanceTimersByTimeAsync(20 * 60 * 1000 - CACHE_BUFFER_MS + 1);
+      await vi.runAllTimersAsync();
+
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        'agent-token.proactive-refresh.failed',
+        expect.objectContaining({ siteId: 'site-proactive-fail', reason: 'auth_failed' }),
+      );
+    });
+
+    it('refreshes on visibilitychange when token is within the buffer window', async function visibilityRefresh() {
+      const mockExpires = new Date(Date.now() + 4 * 60 * 1000);
+
+      vi.mocked(fetch).mockResolvedValue({
+        ok: true,
+        json: async () => ({ token: 'token-v1', expires: mockExpires.toISOString(), budgetServiceEnabled: false }),
+      } as Response);
+
+      await getAgentToken('site-visibility');
+      expect(mockAppFetch).toHaveBeenCalledTimes(1);
+
+      Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
+      document.dispatchEvent(new Event('visibilitychange'));
+      await vi.waitFor(() => expect(mockAppFetch).toHaveBeenCalledTimes(2));
     });
   });
 
@@ -101,14 +234,12 @@ describe('agent-fetch', function packageTests() {
       const mockToken = 'test-token-123';
       const mockExpires = new Date(Date.now() + 12 * 60 * 60 * 1000);
 
-      // Mock token endpoint
       vi.mocked(fetch).mockImplementation(async function (url) {
         if (typeof url === 'string' && url.includes('agent-token')) {
-          // Add delay to simulate slow token request
           await new Promise(resolve => setTimeout(resolve, 100));
           return {
             ok: true,
-            json: async () => ({ token: mockToken, expires: mockExpires.toISOString() }),
+            json: async () => ({ token: mockToken, expires: mockExpires.toISOString(), budgetServiceEnabled: false }),
           } as Response;
         }
         return {
@@ -117,8 +248,7 @@ describe('agent-fetch', function packageTests() {
         } as Response;
       });
 
-      // Make 5 concurrent requests
-      const requests = Promise.all([
+      await Promise.all([
         agentFetch('http://localhost:4000/test1', { siteId: 'test-site' }),
         agentFetch('http://localhost:4000/test2', { siteId: 'test-site' }),
         agentFetch('http://localhost:4000/test3', { siteId: 'test-site' }),
@@ -126,17 +256,11 @@ describe('agent-fetch', function packageTests() {
         agentFetch('http://localhost:4000/test5', { siteId: 'test-site' }),
       ]);
 
-      await requests;
-
-      // Count token requests
-      const tokenCalls = vi.mocked(fetch).mock.calls.filter(
-        call => typeof call[0] === 'string' && call[0].includes('agent-token')
+      const tokenCalls = mockAppFetch.mock.calls.filter(
+        call => call[0] === '/api/auth/agent-token'
       );
 
-      // Should only make 1 token request despite 5 concurrent calls
       expect(tokenCalls.length).toBe(1);
-
-      // Total calls should be 6 (1 token + 5 actual requests)
       expect(fetch).toHaveBeenCalledTimes(6);
     });
 
@@ -147,11 +271,11 @@ describe('agent-fetch', function packageTests() {
 
       vi.mocked(fetch).mockImplementation(async function (url, options) {
         if (typeof url === 'string' && url.includes('agent-token')) {
-          const body = JSON.parse(options?.body as string);
+          const body = JSON.parse((options as RequestInit)?.body as string);
           const token = body.siteId === 'site-1' ? mockToken1 : mockToken2;
           return {
             ok: true,
-            json: async () => ({ token, expires: mockExpires.toISOString() }),
+            json: async () => ({ token, expires: mockExpires.toISOString(), budgetServiceEnabled: false }),
           } as Response;
         }
         return {
@@ -160,15 +284,13 @@ describe('agent-fetch', function packageTests() {
         } as Response;
       });
 
-      // Make concurrent requests for different sites
       await Promise.all([
         agentFetch('http://localhost:4000/test1', { siteId: 'site-1' }),
         agentFetch('http://localhost:4000/test2', { siteId: 'site-2' }),
       ]);
 
-      // Should make 2 token requests (one per site)
-      const tokenCalls = vi.mocked(fetch).mock.calls.filter(
-        call => typeof call[0] === 'string' && call[0].includes('agent-token')
+      const tokenCalls = mockAppFetch.mock.calls.filter(
+        call => call[0] === '/api/auth/agent-token'
       );
       expect(tokenCalls.length).toBe(2);
     });
@@ -180,25 +302,21 @@ describe('agent-fetch', function packageTests() {
       const mockToken2 = 'fresh-token';
       const mockExpires = new Date(Date.now() + 12 * 60 * 60 * 1000);
 
-      // First token request
       vi.mocked(fetch).mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ token: mockToken1, expires: mockExpires.toISOString() }),
+        json: async () => ({ token: mockToken1, expires: mockExpires.toISOString(), budgetServiceEnabled: false }),
       } as Response);
 
-      // First request fails with 401
       vi.mocked(fetch).mockResolvedValueOnce({
         ok: false,
         status: 401,
       } as Response);
 
-      // Second token request (after 401)
       vi.mocked(fetch).mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ token: mockToken2, expires: mockExpires.toISOString() }),
+        json: async () => ({ token: mockToken2, expires: mockExpires.toISOString(), budgetServiceEnabled: false }),
       } as Response);
 
-      // Retry succeeds
       vi.mocked(fetch).mockResolvedValueOnce({
         ok: true,
         status: 200,
@@ -206,8 +324,55 @@ describe('agent-fetch', function packageTests() {
 
       await agentFetch('http://localhost:4000/test', { siteId: 'test-site' });
 
-      expect(fetch).toHaveBeenCalledTimes(4); // 2 token calls + 2 actual requests
+      expect(fetch).toHaveBeenCalledTimes(4);
+    });
+
+    it('warns when the retry is still unauthorized', async function retryStill401() {
+      const mockExpires = new Date(Date.now() + 12 * 60 * 60 * 1000);
+
+      vi.mocked(fetch).mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ token: 'token-1', expires: mockExpires.toISOString(), budgetServiceEnabled: false }),
+      } as Response);
+
+      vi.mocked(fetch).mockResolvedValueOnce({ ok: false, status: 401 } as Response);
+      vi.mocked(fetch).mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ token: 'token-2', expires: mockExpires.toISOString(), budgetServiceEnabled: false }),
+      } as Response);
+      vi.mocked(fetch).mockResolvedValueOnce({ ok: false, status: 401 } as Response);
+
+      const response = await agentFetch('http://localhost:4000/test', { siteId: 'test-site' });
+
+      expect(response.status).toBe(401);
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        'agent-fetch.retry.still-unauthorized',
+        expect.objectContaining({ siteId: 'test-site' }),
+      );
     });
   });
 
+  describe('CACHE_BUFFER_MS', function bufferConstant() {
+    it('is 15 minutes (10-minute request timeout + 5-minute margin)', function fifteenMinutes() {
+      expect(CACHE_BUFFER_MS).toBe(15 * 60 * 1000);
+    });
+  });
+
+  describe('isAgentTokenAuthError', function authErrorHelper() {
+    it('detects AgentTokenAcquisitionError', async function typedError() {
+      const { isAgentTokenAuthError } = await import('./agent-fetch');
+      expect(isAgentTokenAuthError(new AgentTokenAcquisitionError('auth_failed', 'Failed to get agent token: 401'))).toBe(true);
+    });
+
+    it('detects AuthDismissedError', async function dismissedError() {
+      const { isAgentTokenAuthError } = await import('./agent-fetch');
+      expect(isAgentTokenAuthError(new AuthDismissedError())).toBe(true);
+    });
+
+    it('returns false for generic errors', async function genericError() {
+      const { isAgentTokenAuthError, getAgentTokenAuthFailureReason } = await import('./agent-fetch');
+      expect(isAgentTokenAuthError(new Error('Failed to get agent token: 403'))).toBe(false);
+      expect(getAgentTokenAuthFailureReason(new Error('network'))).toBeNull();
+    });
+  });
 });

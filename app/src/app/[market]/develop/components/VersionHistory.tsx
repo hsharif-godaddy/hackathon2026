@@ -234,6 +234,7 @@ export default function VersionHistory() {
   const selectedCommitHash = useGitStore((state) => appId ? state.getSelectedCommitHash(appId) : null)
   const isSelectingCommit = useGitStore((state) => state.isSelectingCommit)
   const commitSelectionError = useGitStore((state) => state.commitSelectionError)
+  const commitSelectionAuthError = useGitStore((state) => state.commitSelectionAuthError)
   const selectCommitAction = useGitStore((state) => state.selectCommit)
   const setSelectedCommitHash = useGitStore((state) => state.setSelectedCommitHash)
   const setCommitSelectionError = useGitStore((state) => state.setCommitSelectionError)
@@ -572,16 +573,24 @@ export default function VersionHistory() {
           >
             <div className="font-semibold">
               {t(
-                'builder_version_history_switch_error_title',
+                commitSelectionAuthError
+                  ? 'builder_version_history_switch_auth_error_title'
+                  : 'builder_version_history_switch_error_title',
                 undefined,
-                'Failed to switch version'
+                commitSelectionAuthError
+                  ? 'Sign in required'
+                  : 'Failed to switch version'
               )}
             </div>
             <div className="text-sm mt-0.5">
               {t(
-                'builder_version_history_switch_error_description',
+                commitSelectionAuthError
+                  ? 'builder_version_history_switch_auth_error_description'
+                  : 'builder_version_history_switch_error_description',
                 undefined,
-                "You can't switch between versions while Airo is actively building."
+                commitSelectionAuthError
+                  ? 'Your session expired. Sign in again, then retry switching versions.'
+                  : "You can't switch between versions while Airo is actively building."
               )}
             </div>
           </Alert>

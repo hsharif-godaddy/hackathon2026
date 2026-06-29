@@ -3,6 +3,8 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { AgentTokenAcquisitionError } from '@/lib/agent-fetch';
+import { appService } from '@/services/AppService';
 import { useGitStore } from './useGitStore';
 
 vi.mock('@/lib/request-context', () => ({
@@ -99,6 +101,58 @@ describe('useGitStore — redo stack', () => {
       expect(getRedoStack(APP_ID)).toEqual([]);
       expect(getSelectedCommitHash(APP_ID)).toBeNull();
       expect(getUndoCursor(APP_ID)).toBeNull();
+    });
+  });
+});
+
+describe('useGitStore — commit selection errors', () => {
+  beforeEach(() => {
+    useGitStore.setState({
+      commitSelectionError: null,
+      commitSelectionAuthError: false,
+      isSelectingCommit: false,
+    });
+    vi.clearAllMocks();
+  });
+
+  describe('selectCommit', () => {
+    it('sets commitSelectionAuthError when token acquisition fails', async function authFailure() {
+      vi.mocked(appService.checkoutCommit).mockRejectedValueOnce(
+        new AgentTokenAcquisitionError('auth_failed', 'Failed to get agent token: 401'),
+      );
+
+      await expect(useGitStore.getState().selectCommit(APP_ID, 'abc1234')).rejects.toThrow();
+
+      expect(useGitStore.getState().commitSelectionAuthError).toBe(true);
+      expect(useGitStore.getState().commitSelectionError).toContain('401');
+    });
+
+    it('leaves commitSelectionAuthError false for generic failures', async function genericFailure() {
+      vi.mocked(appService.checkoutCommit).mockRejectedValueOnce(new Error('Failed to checkout: 400'));
+
+      await expect(useGitStore.getState().selectCommit(APP_ID, 'abc1234')).rejects.toThrow();
+
+      expect(useGitStore.getState().commitSelectionAuthError).toBe(false);
+    });
+  });
+
+  describe('returnToMain', () => {
+    it('sets commitSelectionAuthError and re-throws on auth failure', async function authFailure() {
+      vi.mocked(appService.returnToMainBranch).mockRejectedValueOnce(
+        new AgentTokenAcquisitionError('auth_dismissed', 'Authentication dismissed'),
+      );
+
+      await expect(useGitStore.getState().returnToMain(APP_ID, 'latest1')).rejects.toThrow();
+
+      expect(useGitStore.getState().commitSelectionAuthError).toBe(true);
+    });
+
+    it('leaves commitSelectionAuthError false for generic failures', async function genericFailure() {
+      vi.mocked(appService.returnToMainBranch).mockRejectedValueOnce(new Error('Failed to return: 500'));
+
+      await expect(useGitStore.getState().returnToMain(APP_ID, 'latest1')).rejects.toThrow();
+
+      expect(useGitStore.getState().commitSelectionAuthError).toBe(false);
     });
   });
 });

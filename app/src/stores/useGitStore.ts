@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { devtools } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
 
+import { isAgentTokenAuthError } from '@/lib/agent-fetch'
 import { logger } from '@/lib/request-context'
 import { appService } from '@/services/AppService'
 
@@ -39,6 +40,9 @@ interface GitStore {
    * Error message if commit selection failed
    */
   commitSelectionError: string | null
+
+  /** True when commitSelectionError is an auth/session failure (not a busy/build conflict). */
+  commitSelectionAuthError: boolean
   
   /**
    * Select a commit and sync the app to that commit.
@@ -125,9 +129,10 @@ export const useGitStore = create<GitStore>()(
       undoCursorByApp: {},
       isSelectingCommit: false,
       commitSelectionError: null,
-      
+      commitSelectionAuthError: false,
+
       selectCommit: async (appId, commitHash) => {
-        set({ isSelectingCommit: true, commitSelectionError: null })
+        set({ isSelectingCommit: true, commitSelectionError: null, commitSelectionAuthError: false })
 
         logger.info('git-store.select-commit.start', {
           appId,
@@ -181,17 +186,18 @@ export const useGitStore = create<GitStore>()(
             error: errorMessage,
           })
           
-          set({ 
-            commitSelectionError: errorMessage, 
-            isSelectingCommit: false 
+          set({
+            commitSelectionError: errorMessage,
+            commitSelectionAuthError: isAgentTokenAuthError(error),
+            isSelectingCommit: false,
           })
-          
+
           throw error
         }
       },
-      
+
       setCommitSelectionError: (error) => {
-        set({ commitSelectionError: error })
+        set({ commitSelectionError: error, commitSelectionAuthError: false })
       },
 
       setSelectedCommitHash: (appId, commitHash) => {
@@ -252,7 +258,7 @@ export const useGitStore = create<GitStore>()(
       },
 
       returnToMain: async (appId, latestCommitHash) => {
-        set({ isSelectingCommit: true, commitSelectionError: null })
+        set({ isSelectingCommit: true, commitSelectionError: null, commitSelectionAuthError: false })
 
         try {
           await appService.returnToMainBranch(appId)
@@ -276,8 +282,11 @@ export const useGitStore = create<GitStore>()(
 
           set({
             commitSelectionError: errorMessage,
-            isSelectingCommit: false
-          })
+            commitSelectionAuthError: isAgentTokenAuthError(error),
+            isSelectingCommit: false,
+          });
+
+          throw error;
         }
       },
     })),

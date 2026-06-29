@@ -27,6 +27,8 @@ import { useChatTabs } from '@/hooks/useChatTabs'
 import { useGitHistoryQuery } from '@/hooks/useGitHistory'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
+import { isAgentTokenAuthError } from '@/lib/agent-fetch'
+import { notifyCommitSelectionFailure } from '@/lib/git-commit-selection-feedback'
 import { logger } from '@/lib/request-context'
 import { cn } from '@/lib/utils'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
@@ -114,15 +116,23 @@ export default function ChatToolbar({
     const historyTabJustClosed = prevChatTab === ChatTab.HISTORY && activeChatTab !== ChatTab.HISTORY
 
     if (codeEditorJustOpened || historyTabJustClosed) {
+      const previousSelectedHash = useGitStore.getState().getSelectedCommitHash(appId)
+
       // Reset selected commit hash to the latest commit to prevent showing historical commit
       // banner during the async returnToMain operation. This provides smooth UX when switching
       // from History tab to Chat/Preview tab.
       setSelectedCommitHash(appId, latestCommitHash)
 
-      // Trigger async backend checkout to main branch
-      returnToMain(appId, latestCommitHash)
+      // VersionHistory unmounts on this transition — surface failures via growl and revert
+      // the optimistic selection if checkout fails.
+      void returnToMain(appId, latestCommitHash).catch(function handleReturnToMainFailure(error: unknown) {
+        if (previousSelectedHash && previousSelectedHash !== latestCommitHash) {
+          setSelectedCommitHash(appId, previousSelectedHash)
+        }
+        notifyCommitSelectionFailure(isAgentTokenAuthError(error), t)
+      })
     }
-  }, [appId, viewMode, activeChatTab, latestCommitHash, returnToMain, setSelectedCommitHash])
+  }, [appId, viewMode, activeChatTab, latestCommitHash, returnToMain, setSelectedCommitHash, t])
 
 
   const handleTabClick = (tab: ChatTab) => {
