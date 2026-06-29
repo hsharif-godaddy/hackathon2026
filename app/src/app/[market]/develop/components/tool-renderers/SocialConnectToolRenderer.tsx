@@ -182,24 +182,32 @@ function SocialConnectToolRenderer({
 
     // Determine which view to show
     let content
-    if (isGsc && (connectStatus === 'tag-injected' || (!isFromHistory && connectStatus === 'pending'))) {
+    if (isGsc && (
+      connectStatus === 'tag-injected'
+      || connectStatus === 'verified'
+      || (!isFromHistory && connectStatus === 'pending')
+    )) {
       content = (
         <GscChatFlowWidget
           appId={r.appId as string}
-          isActive={connectStatus === 'tag-injected' || Boolean(isLastAssistantMessage)}
-          initialPhase={connectStatus === 'tag-injected' ? 'tag-injected' : 'connect'}
+          isActive={connectStatus === 'tag-injected' || connectStatus === 'verified' || Boolean(isLastAssistantMessage)}
+          initialPhase={
+            connectStatus === 'verified'
+              ? 'connected'
+              : connectStatus === 'tag-injected'
+                ? 'tag-injected'
+                : 'connect'
+          }
           onTagInjected={() => { setConnectStatus('tag-injected') }}
           onComplete={() => { setConnectStatus('verified') }}
           onError={() => { setConnectStatus('error') }}
         />
       )
-    } else if (connectStatus === 'tag-injected' || connectStatus === 'verified') {
+    } else if (connectStatus === 'tag-injected') {
       content = (
         <Box gap="sm">
           <text.p>
-            {connectStatus === 'verified'
-              ? t('builder_seo_gsc_connected_label', undefined, 'Connected to Google Search Console')
-              : t('builder_seo_gsc_pending_description', undefined, 'A Google verification tag has been added to your site. Publish your site so Google can confirm ownership, then click "Verify with Google" below.')}
+            {t('builder_seo_gsc_pending_description', undefined, 'A Google verification tag has been added to your site. Publish your site so Google can confirm ownership, then click "Verify with Google" below.')}
           </text.p>
         </Box>
       )

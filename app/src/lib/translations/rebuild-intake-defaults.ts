@@ -72,6 +72,12 @@ export const SEO_GSC_DEFAULT_MESSAGES: Record<string, string> = {
     'Verification tag added. Publish your site so Google can find it, then verify ownership.',
   builder_seo_gsc_property_list_warning:
     'Your site is verified but could not be added to the Google Search Console property list. You may need to add it manually at search.google.com/search-console.',
+  builder_seo_gsc_chat_manual_sitemap:
+    'We could not submit your sitemap automatically. Open Google Search Console and add {sitemapUrl} manually.',
+  builder_seo_gsc_chat_manual_sitemap_no_url:
+    'We could not submit your sitemap automatically. Open Google Search Console and add your sitemap manually.',
+  builder_seo_gsc_sitemap_submit_failed:
+    'Sitemap submit failed. Try again or add it manually in Google Search Console.',
 };
 
 export const DISPLAY_ADS_DEFAULT_MESSAGES: Record<string, string> = {

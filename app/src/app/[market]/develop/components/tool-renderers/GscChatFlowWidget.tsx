@@ -12,17 +12,21 @@ import { usePublishedUrl } from '@/app/[market]/develop/hooks/usePublishedUrl'
 import { buildDynamicApiUrl } from '@/config/dynamic-api'
 import { AuthStatus, useAuthPopup } from '@/hooks/social/connect-flow/useAuthPopup'
 import { useSocialAuthUrl } from '@/hooks/social/queries/useSocialAuthUrl'
+import { useSocialConnections } from '@/hooks/social/queries/useSocialV2'
 import {
   type GscVerificationMetadata,
   type GscVerificationPatch,
   useGscConnectFlow,
 } from '@/hooks/social/useGscConnectFlow'
 import { usePublishApp } from '@/hooks/usePublishApp'
+import { useSiteAssociations } from '@/hooks/useSocial'
 import { useTranslations } from '@/hooks/useTranslations'
 import { agentFetch } from '@/lib/agent-fetch'
 import { logger } from '@/lib/request-context'
+import { gscClient } from '@/lib/social-gsc'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
-import { SocialPlatform } from '@/types/social'
+import type { GoogleSearchConsoleConnection } from '@/types/social'
+import { SocialPlatform, SocialPlatformKey } from '@/types/social'
 import { SOCIAL_SCOPES } from '@/types/social-scopes'
 
 type GscFlowPhase = 'connect' | 'tag-injected' | 'verify' | 'connected'
@@ -30,7 +34,7 @@ type GscFlowPhase = 'connect' | 'tag-injected' | 'verify' | 'connected'
 interface GscChatFlowWidgetProps {
   appId: string
   isActive: boolean
-  initialPhase?: 'connect' | 'tag-injected'
+  initialPhase?: 'connect' | 'tag-injected' | 'connected'
   onTagInjected?: () => void
   onComplete: () => void
   onError: (msg: string) => void
@@ -47,7 +51,13 @@ export function GscChatFlowWidget({
   const t = useTranslations()
   const publishedUrl = usePublishedUrl()
   const { setupVerificationAfterAuth, verifyAndLink } = useGscConnectFlow(appId)
-  const [phase, setPhase] = useState<GscFlowPhase>(initialPhase === 'tag-injected' ? 'tag-injected' : 'connect')
+  const [phase, setPhase] = useState<GscFlowPhase>(
+    initialPhase === 'connected'
+      ? 'connected'
+      : initialPhase === 'tag-injected'
+        ? 'tag-injected'
+        : 'connect'
+  )
   const [isConnecting, setIsConnecting] = useState(false)
   const [oauthState, setOauthState] = useState('')
   const [connectError, setConnectError] = useState<string | null>(null)
@@ -56,8 +66,20 @@ export function GscChatFlowWidget({
   const [publishAwaiting, setPublishAwaiting] = useState(false)
   const [isVerifying, setIsVerifying] = useState(false)
   const [propertyListWarning, setPropertyListWarning] = useState(false)
+  const [lastSubmittedAt, setLastSubmittedAt] = useState<string | null>(null)
+  const [sitemapSubmitError, setSitemapSubmitError] = useState<string | null>(null)
   const [pendingVerification, setPendingVerification] = useState<GscVerificationPatch | null>(null)
   const prevPublishStoreErrorRef = useRef(false)
+
+  const { data: associationsData } = useSiteAssociations(appId)
+  const { data: connections } = useSocialConnections()
+  const gscAssociation = associationsData?.associations?.find(
+    (a) => a.platform === SocialPlatformKey.GOOGLE_SEARCH_CONSOLE
+  )
+  const gscConnection = connections?.find(
+    (c): c is GoogleSearchConsoleConnection => c.socialId === gscAssociation?.socialId
+  )
+  const connectedUserTokenId = gscConnection?.userTokenId
 
   const { data: metadataData } = useQuery({
     queryKey: ['app-metadata', appId],
@@ -211,7 +233,9 @@ export function GscChatFlowWidget({
     setIsVerifying(true)
     try {
       const { siteAdded } = await verifyAndLink(pendingSiteUrl, pendingUserTokenId)
-      if (!siteAdded) {
+      if (siteAdded) {
+        setLastSubmittedAt(new Date().toISOString())
+      } else {
         setPropertyListWarning(true)
       }
       setPhase('connected')
@@ -247,16 +271,81 @@ export function GscChatFlowWidget({
   }
 
   if (phase === 'connected') {
+    const sitemapUrl = publishedUrl
+      ? `${publishedUrl.endsWith('/') ? publishedUrl : `${publishedUrl}/`}sitemap.xml`
+      : null
+
     return (
       <Box gap="sm" data-testid="gsc-chat-flow-widget">
-        {propertyListWarning && (
-          <Alert emphasis="warning">
-            {t('builder_seo_gsc_property_list_warning', undefined, 'Your site is verified but could not be added to the Google Search Console property list. You may need to add it manually at search.google.com/search-console.')}
-          </Alert>
-        )}
         <text.p>
           {t('builder_seo_gsc_connected_label', undefined, 'Connected to Google Search Console')}
         </text.p>
+        {publishedUrl && (
+          <text.p>{t('builder_seo_gsc_site_label', { url: publishedUrl }, 'Site: {url}')}</text.p>
+        )}
+        {lastSubmittedAt && (
+          <text.p>
+            {t('builder_seo_gsc_last_submitted', { date: new Date(lastSubmittedAt).toLocaleString() }, 'Sitemap last submitted: {date}')}
+          </text.p>
+        )}
+        {propertyListWarning && (
+          <>
+            <Alert emphasis="warning">
+              {t('builder_seo_gsc_property_list_warning', undefined, 'Your site is verified but could not be added to the Google Search Console property list. You may need to add it manually at search.google.com/search-console.')}
+            </Alert>
+            <text.p>
+              {sitemapUrl
+                ? t(
+                  'builder_seo_gsc_chat_manual_sitemap',
+                  { sitemapUrl },
+                  'We could not submit your sitemap automatically. Open Google Search Console and add {sitemapUrl} manually.',
+                )
+                : t(
+                  'builder_seo_gsc_chat_manual_sitemap_no_url',
+                  undefined,
+                  'We could not submit your sitemap automatically. Open Google Search Console and add your sitemap manually.',
+                )}
+            </text.p>
+          </>
+        )}
+        {sitemapSubmitError && <Alert emphasis="critical">{sitemapSubmitError}</Alert>}
+        {publishedUrl && (
+          <Button
+            as="external"
+            href={`https://search.google.com/search-console?resource_id=${encodeURIComponent(publishedUrl)}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            design="primary"
+            size="small"
+          >
+            {t('builder_seo_gsc_dashboard_link', undefined, 'View in Google Search Console')}
+          </Button>
+        )}
+        {connectedUserTokenId && publishedUrl && (
+          <Button
+            onClick={() => {
+              setSitemapSubmitError(null)
+              void gscClient
+                .submitGscSitemap(publishedUrl, connectedUserTokenId)
+                .then(() => {
+                  setLastSubmittedAt(new Date().toISOString())
+                })
+                .catch((error: unknown) => {
+                  logger.error('gsc.sitemap-submit.failed', {
+                    appId,
+                    error: error instanceof Error ? error.message : error,
+                  })
+                  setSitemapSubmitError(
+                    t('builder_seo_gsc_sitemap_submit_failed', undefined, 'Sitemap submit failed. Try again or add it manually in Google Search Console.')
+                  )
+                })
+            }}
+            design="secondary"
+            size="small"
+          >
+            {t('builder_seo_gsc_resubmit_button', undefined, 'Re-submit sitemap')}
+          </Button>
+        )}
       </Box>
     )
   }

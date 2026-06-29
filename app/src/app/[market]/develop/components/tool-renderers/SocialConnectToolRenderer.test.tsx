@@ -264,6 +264,27 @@ describe('SocialConnectToolRenderer', () => {
       expect(screen.getByTestId('gsc-chat-flow-widget')).toBeInTheDocument()
       expect(screen.queryByTestId('social-connect-flow')).not.toBeInTheDocument()
     })
+
+    it('renders GscChatFlowWidget when verified is loaded from history', () => {
+      const result = {
+        action: 'connect',
+        platform: 'GOOGLE_SEARCH_CONSOLE',
+        appId: 'test-app-id',
+        state: 'test-state',
+        connectStatus: 'verified',
+      }
+
+      renderWithProviders(
+        <SocialConnectToolRenderer
+          {...baseProps}
+          result={result}
+          isLastAssistantMessage={false}
+        />
+      )
+
+      expect(screen.getByTestId('gsc-chat-flow-widget')).toBeInTheDocument()
+      expect(screen.queryByTestId('social-connect-flow')).not.toBeInTheDocument()
+    })
   })
 
   describe('Fallback', () => {

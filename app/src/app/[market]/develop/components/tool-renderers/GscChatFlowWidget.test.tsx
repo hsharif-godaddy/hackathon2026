@@ -7,13 +7,21 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, screen, waitFor } from '@testing-library/react'
 
 import { renderWithProviders } from '@/tests/test-utils'
+import { SocialPlatformKey } from '@/types/social'
 import { GscChatFlowWidget } from './GscChatFlowWidget'
 
 const mockSetupVerificationAfterAuth = vi.fn()
 const mockVerifyAndLink = vi.fn()
 const mockPublishMutate = vi.fn()
+const mockSubmitGscSitemap = vi.fn()
 let capturedAuthSuccess: ((data: Record<string, unknown>) => Promise<void>) | null = null
 let mockPublishedUrl: string | null = 'https://example.com'
+
+const GSC_SOCIAL_ID = 'gsc-social-1'
+const GSC_USER_TOKEN_ID = 'Platform#GOOGLE#TokenType#USER#123'
+
+let mockAssociations: { associations: Array<{ id: string; appId: string; socialId: string; platform: string; createdAt: string }> }
+let mockConnections: Array<{ socialId: string; platform: typeof SocialPlatformKey.GOOGLE_SEARCH_CONSOLE; userId: string; userTokenId: string }>
 
 vi.mock('@/app/[market]/develop/hooks/usePublishedUrl', () => ({
   usePublishedUrl: () => mockPublishedUrl,
@@ -28,6 +36,21 @@ vi.mock('@/hooks/social/useGscConnectFlow', () => ({
 
 vi.mock('@/hooks/social/queries/useSocialAuthUrl', () => ({
   useSocialAuthUrl: () => ({ data: { url: 'https://oauth.example.com' } }),
+}))
+
+vi.mock('@/hooks/useSocial', () => ({
+  useSiteAssociations: () => ({ data: mockAssociations }),
+}))
+
+vi.mock('@/hooks/social/queries/useSocialV2', () => ({
+  useSocialConnections: () => ({ data: mockConnections }),
+  useCreateSocialConnection: () => ({ mutateAsync: vi.fn() }),
+}))
+
+vi.mock('@/lib/social-gsc', () => ({
+  gscClient: {
+    submitGscSitemap: (...args: unknown[]) => mockSubmitGscSitemap(...args),
+  },
 }))
 
 vi.mock('@/hooks/social/connect-flow/useAuthPopup', () => ({
@@ -99,8 +122,24 @@ describe('GscChatFlowWidget', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockPublishMutate.mockReset()
+    mockSubmitGscSitemap.mockReset()
     capturedAuthSuccess = null
     mockPublishedUrl = 'https://example.com'
+    mockAssociations = {
+      associations: [{
+        id: 'assoc-1',
+        appId: 'test-app-id',
+        socialId: GSC_SOCIAL_ID,
+        platform: SocialPlatformKey.GOOGLE_SEARCH_CONSOLE,
+        createdAt: '2026-01-01T00:00:00.000Z',
+      }],
+    }
+    mockConnections = [{
+      socialId: GSC_SOCIAL_ID,
+      platform: SocialPlatformKey.GOOGLE_SEARCH_CONSOLE,
+      userId: 'user-1',
+      userTokenId: GSC_USER_TOKEN_ID,
+    }]
     mockMetadata = {
       googleVerificationToken: 'token-abc',
       googleVerificationSiteUrl: 'https://example.com',
@@ -112,6 +151,7 @@ describe('GscChatFlowWidget', () => {
       googleVerificationUserTokenId: 'Platform#GOOGLE#TokenType#USER#123',
     })
     mockVerifyAndLink.mockResolvedValue({ siteAdded: true })
+    mockSubmitGscSitemap.mockResolvedValue(undefined)
     mockPublishStoreError = false
     mockIsPublishing = false
     mockSetPublishError.mockImplementation((appId: string, hasError: boolean) => {
@@ -172,7 +212,7 @@ describe('GscChatFlowWidget', () => {
     })
   })
 
-  it('handleVerify completes happy path', async () => {
+  it('handleVerify completes happy path with connected actions', async () => {
     const onComplete = vi.fn()
     renderWithProviders(
       <GscChatFlowWidget
@@ -197,6 +237,47 @@ describe('GscChatFlowWidget', () => {
       expect(mockVerifyAndLink).toHaveBeenCalled()
       expect(onComplete).toHaveBeenCalled()
       expect(screen.getByText(/Connected to Google Search Console/i)).toBeInTheDocument()
+      expect(screen.getByRole('link', { name: /View in Google Search Console/i })).toBeInTheDocument()
+      expect(screen.getByText(/Sitemap last submitted/i)).toBeInTheDocument()
+      expect(screen.queryByText(/could not submit your sitemap automatically/i)).not.toBeInTheDocument()
+    })
+  })
+
+  it('connected view from history omits manual sitemap guidance', () => {
+    renderWithProviders(
+      <GscChatFlowWidget {...defaultProps} initialPhase="connected" />
+    )
+
+    expect(screen.getByText(/Connected to Google Search Console/i)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /View in Google Search Console/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Re-submit sitemap/i })).toBeInTheDocument()
+    expect(screen.queryByText(/could not submit your sitemap automatically/i)).not.toBeInTheDocument()
+  })
+
+  it('re-submit sitemap succeeds and updates last submitted timestamp', async () => {
+    renderWithProviders(
+      <GscChatFlowWidget {...defaultProps} initialPhase="connected" />
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /Re-submit sitemap/i }))
+
+    await waitFor(() => {
+      expect(mockSubmitGscSitemap).toHaveBeenCalledWith('https://example.com', GSC_USER_TOKEN_ID)
+      expect(screen.getByText(/Sitemap last submitted/i)).toBeInTheDocument()
+    })
+  })
+
+  it('re-submit sitemap surfaces failure message', async () => {
+    mockSubmitGscSitemap.mockRejectedValue(new Error('submit failed'))
+
+    renderWithProviders(
+      <GscChatFlowWidget {...defaultProps} initialPhase="connected" />
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /Re-submit sitemap/i }))
+
+    await waitFor(() => {
+      expect(screen.getByText(/Sitemap submit failed/i)).toBeInTheDocument()
     })
   })
 
@@ -221,6 +302,7 @@ describe('GscChatFlowWidget', () => {
     await waitFor(() => {
       expect(screen.getByText(/Connected to Google Search Console/i)).toBeInTheDocument()
       expect(screen.getByText(/could not be added to the Google Search Console property list/i)).toBeInTheDocument()
+      expect(screen.getByText(/could not submit your sitemap automatically/i)).toBeInTheDocument()
     })
   })
 
