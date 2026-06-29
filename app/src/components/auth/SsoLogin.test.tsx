@@ -4,7 +4,7 @@
 import '@testing-library/jest-dom';
 
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { waitFor } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 
 import { renderWithProviders } from '@/tests/test-utils';
 
@@ -18,9 +18,12 @@ const mockLogger = vi.hoisted(() => ({
   warn: vi.fn(),
 }));
 
+const mockHandleSignIn = vi.hoisted(() => vi.fn());
+
 const originalLocation = window.location;
 
 let latestOnAuth: ((data?: unknown) => void) | null = null;
+let latestOnError: ((err?: unknown) => void) | null = null;
 let latestPageToLoadParams: Record<string, unknown> | null = null;
 let latestPageToLoad: string | null = null;
 let latestConsumingPath: string | null = null;
@@ -53,6 +56,7 @@ function overrideWindowLocation(urlString: string) {
 vi.mock('next/dynamic', () => ({
   default: () => function MockSsoDeck(props: any) {
     latestOnAuth = props.onAuth;
+    latestOnError = props.onError;
     latestPageToLoadParams = props.pageToLoadParams;
     latestPageToLoad = props.pageToLoad;
     latestConsumingPath = props.consumingPath;
@@ -81,6 +85,15 @@ vi.mock('@ux/spinner', () => ({
   default: () => <div data-testid="ux-spinner" />,
 }));
 
+vi.mock('@ux/button', () => ({
+  __esModule: true,
+  default: ({ text, onClick }: any) => <button onClick={onClick}>{text}</button>,
+}));
+
+vi.mock('@/hooks/useTranslations', () => ({
+  useTranslations: () => (key: string) => key,
+}));
+
 vi.mock('@/lib/request-context', () => ({
   logger: mockLogger,
 }));
@@ -99,6 +112,7 @@ vi.mock('@/components/providers/AuthProvider', () => ({
     configError: null,
     getUserEmail: vi.fn(),
     getUserInfo: vi.fn(),
+    handleSignIn: mockHandleSignIn,
     handleSignOut: vi.fn(),
   }),
 }));
@@ -116,9 +130,16 @@ const mockAuthUIState = {
   setInFlightReauth: vi.fn(),
 };
 
-vi.mock('@/stores/useAuthUIStore', () => ({
-  useAuthUIStore: (selector?: any) => (typeof selector === 'function' ? selector(mockAuthUIState) : mockAuthUIState),
-}));
+vi.mock('@/stores/useAuthUIStore', () => {
+  const store = Object.assign(
+    (selector?: any) => (typeof selector === 'function' ? selector(mockAuthUIState) : mockAuthUIState),
+    {
+      getState: () => mockAuthUIState,
+      setState: (partial: Record<string, unknown>) => Object.assign(mockAuthUIState, partial),
+    },
+  );
+  return { useAuthUIStore: store };
+});
 
 const mockSitesStoreState = vi.hoisted(() => ({
   clearRequiresAuth: vi.fn(),
@@ -602,5 +623,139 @@ describe('SsoLogin SSO Lite flag wiring', function ssoLiteFlagTests() {
     });
 
     expect(latestPageToLoad).toBe('/hbi');
+  });
+});
+
+describe('SsoLogin iframe load failure fallback', function ssoLoadFailureTests() {
+  beforeAll(function stubLocation() {
+    overrideWindowLocation('https://airo-builder.test/');
+  });
+
+  afterAll(function restoreLocation() {
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: originalLocation,
+    });
+  });
+
+  beforeEach(function resetMocks() {
+    vi.clearAllMocks();
+    overrideWindowLocation('https://airo-builder.test/');
+    latestOnAuth = null;
+    latestOnError = null;
+    mockAuthUIState.redirectUrl = null;
+    mockAuthUIState.ssoAuthReason = null;
+    mockAuthUIState.inFlightReauth = false;
+    mockAuthUIState.isSsoLoading = true;
+    delete mockSwitchboardFlags['appbuilder-sso-lite'];
+    mockSwitchboardFlags['appbuilder-sso-modal-fallback'] = true;
+  });
+
+  afterEach(function cleanupFlags() {
+    delete mockSwitchboardFlags['appbuilder-sso-modal-fallback'];
+    vi.useRealTimers();
+  });
+
+  async function renderAndFailIframe() {
+    renderWithProviders(<SsoLogin />);
+    await waitFor(function waitForDeck() {
+      expect(latestOnError).toBeInstanceOf(Function);
+    });
+    await act(async function fireError() {
+      latestOnError?.(new Error('blocked'));
+    });
+  }
+
+  it('shows retry + sign-in fallback (and hides the deck) when the iframe errors', async function showsFallbackOnError() {
+    await renderAndFailIframe();
+
+    expect(screen.getByText('builder_common_try_again')).toBeInTheDocument();
+    expect(screen.getByText('builder_common_signin')).toBeInTheDocument();
+    expect(screen.queryByTestId('sso-deck')).not.toBeInTheDocument();
+    expect(mockLogger.warn).toHaveBeenCalledWith('sso-login.iframe.error', expect.any(Object));
+  });
+
+  it('remounts the SSO deck when the user clicks try again', async function retryRemountsDeck() {
+    await renderAndFailIframe();
+    expect(screen.queryByTestId('sso-deck')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('builder_common_try_again'));
+
+    await waitFor(function deckBack() {
+      expect(screen.getByTestId('sso-deck')).toBeInTheDocument();
+    });
+  });
+
+  it('does a full-page SSO redirect carrying authReason when the user clicks sign in', async function fallbackRedirect() {
+    mockAuthUIState.ssoAuthReason = AUTH_CODE.HBI;
+    await renderAndFailIframe();
+
+    fireEvent.click(screen.getByText('builder_common_signin'));
+
+    expect(mockHandleSignIn).toHaveBeenCalledWith('https://airo-builder.test/', AUTH_CODE.HBI);
+  });
+
+  it('does not wire onError or show the fallback when the flag is off', async function flagOffNoFallback() {
+    mockSwitchboardFlags['appbuilder-sso-modal-fallback'] = false;
+
+    renderWithProviders(<SsoLogin />);
+
+    await waitFor(function waitForDeck() {
+      expect(screen.getByTestId('sso-deck')).toBeInTheDocument();
+    });
+
+    // onError is not passed to the deck, so a blocked iframe can't flip to the
+    // fallback — prior behavior preserved when the flag is off.
+    expect(latestOnError).toBeUndefined();
+    expect(screen.queryByText('builder_common_try_again')).not.toBeInTheDocument();
+    expect(screen.queryByText('builder_common_signin')).not.toBeInTheDocument();
+  });
+
+  it('shows fallback after SSO_LOAD_TIMEOUT_MS when iframe never loads', async function timeoutShowsFallback() {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    mockAuthUIState.isSsoLoading = true;
+
+    renderWithProviders(<SsoLogin />);
+
+    await waitFor(function waitForDeck() {
+      expect(screen.getByTestId('sso-deck')).toBeInTheDocument();
+    });
+
+    // No onLoad or onError — the timer is the only path to fallback.
+    expect(screen.queryByText('builder_common_try_again')).not.toBeInTheDocument();
+
+    act(function advanceTimer() {
+      vi.advanceTimersByTime(15_000);
+    });
+
+    await waitFor(function waitForFallback() {
+      expect(screen.getByText('builder_common_try_again')).toBeInTheDocument();
+    });
+
+    expect(screen.getByText('builder_common_signin')).toBeInTheDocument();
+    expect(screen.queryByTestId('sso-deck')).not.toBeInTheDocument();
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      'sso-login.iframe.load-timeout',
+      expect.objectContaining({ timeoutMs: 15_000 }),
+    );
+  });
+
+  it('does not fire timeout when isSsoLoading is false (iframe already loaded)', async function noTimeoutWhenLoaded() {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    mockAuthUIState.isSsoLoading = false;
+
+    renderWithProviders(<SsoLogin />);
+
+    await waitFor(function waitForDeck() {
+      expect(screen.getByTestId('sso-deck')).toBeInTheDocument();
+    });
+
+    act(function advanceTimer() {
+      vi.advanceTimersByTime(15_000);
+    });
+
+    // Timer didn't fire — fallback never renders
+    expect(screen.queryByText('builder_common_try_again')).not.toBeInTheDocument();
+    expect(screen.getByTestId('sso-deck')).toBeInTheDocument();
   });
 });

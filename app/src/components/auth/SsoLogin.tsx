@@ -3,13 +3,15 @@
 import dynamic from 'next/dynamic';
 import { useCallback, useEffect, useState } from 'react';
 import Alert from '@ux/alert';
+import Button from '@ux/button';
 import Modal from '@ux/modal';
 import Spinner from '@ux/spinner';
 
 import { useAuthContext } from '@/components/providers/AuthProvider';
-import { SWITCHBOARD_APPBUILDER_SSO_LITE } from '@/config/switchboard-flags';
+import { SWITCHBOARD_APPBUILDER_SSO_LITE, SWITCHBOARD_APPBUILDER_SSO_MODAL_FALLBACK } from '@/config/switchboard-flags';
 import { useBreakpoints } from '@/hooks/useBreakpoints';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
+import { useTranslations } from '@/hooks/useTranslations';
 import { logger } from '@/lib/request-context';
 import { isReturningUser } from '@/lib/returningUser';
 import { getSsoPageToLoad } from '@/lib/ssoPageRoute';
@@ -33,6 +35,7 @@ interface SsoDeckComponentProps {
   pageToLoadParams?: Record<string, string>;
   onAuth: (data?: unknown) => void;
   onLoad?: () => void;
+  onError?: (error?: unknown) => void;
   autoResize?: boolean;
   enableCheckoutLite?: boolean;
 }
@@ -62,6 +65,11 @@ const SsoDeckDynamic = dynamic<SsoDeckComponentProps>(
   }
 );
 
+// If the SSO Deck iframe never fires onLoad within this window (CSP / Private
+// Network Access / network block, etc.) we surface a retry + full-page-redirect
+// fallback instead of leaving the user stranded on an indefinite spinner.
+const SSO_LOAD_TIMEOUT_MS = 15_000;
+
 /**
  * Global SsoDeck wrapper component for in-app SSO authentication
  *
@@ -69,14 +77,24 @@ const SsoDeckDynamic = dynamic<SsoDeckComponentProps>(
  * via the useAuthUIStore Zustand store.
  */
 export default function SsoLogin() {
+  const t = useTranslations();
   const [error, setError] = useState<string | null>(null);
   const [ssoHost, setSsoHost] = useState<string | null>(null);
+  // The iframe errored (onError) or never loaded within SSO_LOAD_TIMEOUT_MS.
+  const [loadFailed, setLoadFailed] = useState(false);
+  // Bumped to force a fresh SsoDeck mount when the user retries.
+  const [reloadKey, setReloadKey] = useState(0);
   const { isSmBreakpoint } = useBreakpoints();
 
   const { isSsoLoginOpen, isSsoLoading, closeSsoLogin, setSsoLoaded, redirectUrl, setRedirectUrl, ssoAuthReason, inFlightReauth } = useAuthUIStore();
   const clearRequiresAuth = useSitesStore((state) => state.clearRequiresAuth);
-  const { authState } = useAuthContext();
+  const { authState, handleSignIn } = useAuthContext();
   const ssoLiteEnabled = useSwitchboard(SWITCHBOARD_APPBUILDER_SSO_LITE) ?? false;
+  // Gates the iframe error/timeout fallback (retry + full-page redirect). When
+  // off, the modal keeps its prior behavior: spinner until onLoad, no timeout,
+  // and no fallback UI — so a blocked iframe can still strand the user, exactly
+  // as before this fix. Lets the recovery roll out / roll back on prod alone.
+  const ssoFallbackEnabled = useSwitchboard(SWITCHBOARD_APPBUILDER_SSO_MODAL_FALLBACK) ?? false;
   // Prefer preflight-set reason (store) over Gasket authState, since preflight
   // may detect a 401 before Gasket's next validation cycle updates authState.
   // Gasket spreads the /api/auth/validate response onto authState; authReason
@@ -101,7 +119,39 @@ export default function SsoLogin() {
     setSsoHost(getRootDomain() || 'godaddy.com');
   }, []);
 
+  // Guard against a stuck spinner: if the iframe hasn't loaded within the
+  // timeout while the modal is open, treat it as a load failure so the fallback
+  // UI (retry + full-page redirect) renders instead of spinning forever.
+  useEffect(function ssoLoadTimeout() {
+    if (!ssoFallbackEnabled || !isSsoLoginOpen || !ssoHost || !isSsoLoading) {
+      return;
+    }
+    const timer = window.setTimeout(function onSsoLoadTimeout() {
+      logger.warn('sso-login.iframe.load-timeout', {
+        message: 'SSO Deck iframe did not load within timeout; showing fallback',
+        timeoutMs: SSO_LOAD_TIMEOUT_MS,
+      });
+      setLoadFailed(true);
+    }, SSO_LOAD_TIMEOUT_MS);
+    return function clearSsoLoadTimer() {
+      window.clearTimeout(timer);
+    };
+  }, [ssoFallbackEnabled, isSsoLoginOpen, ssoHost, isSsoLoading, reloadKey]);
+
+  // SsoLogin stays mounted at the root and only returns null when closed, so
+  // local state persists across opens. Clear the failure flag on close so a
+  // prior failed attempt doesn't show the fallback immediately on the next open.
+  // reloadKey is intentionally NOT reset — it's a monotonic counter whose only
+  // purpose is forcing a fresh SsoDeck mount; resetting could collide with a
+  // stale key from a previous open and skip the remount.
+  useEffect(function resetFallbackOnClose() {
+    if (!isSsoLoginOpen) {
+      setLoadFailed(false);
+    }
+  }, [isSsoLoginOpen]);
+
   const handleLoad = useCallback(function onSsoLoad() {
+    setLoadFailed(false);
     setSsoLoaded();
   }, [setSsoLoaded]);
 
@@ -336,6 +386,42 @@ export default function SsoLogin() {
     window.location.reload();
   }, [closeSsoLogin, clearRequiresAuth, applyRedirect, isValidRedirectUrl, inFlightReauth]);
 
+  const handleSsoError = useCallback(function onSsoError(err?: unknown) {
+    logger.warn('sso-login.iframe.error', {
+      message: 'SSO Deck iframe reported an error; showing fallback',
+      error: err instanceof Error ? err.message : String(err ?? 'unknown'),
+      stack: err instanceof Error ? err.stack : undefined,
+    });
+    setLoadFailed(true);
+  }, []);
+
+  const handleRetrySso = useCallback(function retrySso() {
+    logger.info('sso-login.iframe.retry', { message: 'Retrying SSO Deck load' });
+    setLoadFailed(false);
+    // Re-open resets isSsoLoading to true so the timeout effect re-arms for
+    // this attempt. Without this, an onLoad→onError→retry sequence leaves
+    // isSsoLoading false and the timer early-returns, creating a dead-end if
+    // the remount hangs without firing onLoad or onError again.
+    useAuthUIStore.setState({ isSsoLoading: true });
+    setReloadKey(function bumpReloadKey(key) {
+      return key + 1;
+    });
+  }, []);
+
+  // Full-page SSO redirect — bypasses the iframe entirely, so it still works
+  // when the iframe itself is blocked (CSP / PNA / network). Carries authReason
+  // so an HBI step-up performs the right challenge rather than a plain login.
+  // Calls handleSignIn directly rather than useSsoSignIn().signIn() because the
+  // latter re-opens the SsoLogin modal on prod — the very thing that failed.
+  const handleContinueToSignIn = useCallback(async function continueToSignIn() {
+    const target = getSsoReturnTarget();
+    logger.info('sso-login.iframe.fallback-redirect', {
+      message: 'Falling back to full-page SSO redirect after iframe load failure',
+      authReason,
+    });
+    await handleSignIn(target.fullUrl, authReason);
+  }, [getSsoReturnTarget, handleSignIn, authReason]);
+
   // Don't render if not open
   if (!isSsoLoginOpen) {
     return null;
@@ -368,29 +454,44 @@ export default function SsoLogin() {
           </Alert>
         )}
         <div className='relative w-full pt-2 md:pt-1 min-h-[480px] sm:min-h-[580px]'>
-          {(isSsoLoading || !ssoHost) && (
-            <div className='absolute inset-0 flex items-center justify-center'>
-              <Spinner />
+          {ssoFallbackEnabled && loadFailed ? (
+            <div className='absolute inset-0 flex flex-col items-center justify-center gap-4 px-6 text-center'>
+              <p className='text-lg font-semibold'>{t('builder_common_error_title')}</p>
+              <p>{t('builder_common_error_generic')}</p>
+              <div className='flex gap-3'>
+                <Button data-testid='sso-fallback-retry' design='secondary' onClick={handleRetrySso} text={t('builder_common_try_again')} />
+                <Button data-testid='sso-fallback-signin' design='primary' onClick={handleContinueToSignIn} text={t('builder_common_signin')} />
+              </div>
             </div>
-          )}
-          {ssoHost && (
-            <SsoDeckDynamic
-              host={ssoHost}
-              ssoApp='sso'
-              ssoPort=''
-              consumingApp='airo-builder'
-              consumingPath={ssoReturnTarget.path}
-              {...(consumingPort && { consumingPort })}
-              pageToLoad={pageToLoad}
-              pageToLoadParams={{
-                ...(ssoReturnTarget.fullUrl ? { redirect_url: ssoReturnTarget.fullUrl } : {}),
-                ...(authReason != null ? { auth_reason: String(authReason) } : {})
-              }}
-              onAuth={handleAuth}
-              onLoad={handleLoad}
-              autoResize
-              {...(ssoLiteEnabled && { enableCheckoutLite: true })}
-            />
+          ) : (
+            <>
+              {(isSsoLoading || !ssoHost) && (
+                <div className='absolute inset-0 flex items-center justify-center'>
+                  <Spinner />
+                </div>
+              )}
+              {ssoHost && (
+                <SsoDeckDynamic
+                  key={reloadKey}
+                  host={ssoHost}
+                  ssoApp='sso'
+                  ssoPort=''
+                  consumingApp='airo-builder'
+                  consumingPath={ssoReturnTarget.path}
+                  {...(consumingPort && { consumingPort })}
+                  pageToLoad={pageToLoad}
+                  pageToLoadParams={{
+                    ...(ssoReturnTarget.fullUrl ? { redirect_url: ssoReturnTarget.fullUrl } : {}),
+                    ...(authReason != null ? { auth_reason: String(authReason) } : {})
+                  }}
+                  onAuth={handleAuth}
+                  onLoad={handleLoad}
+                  onError={ssoFallbackEnabled ? handleSsoError : undefined}
+                  autoResize
+                  {...(ssoLiteEnabled && { enableCheckoutLite: true })}
+                />
+              )}
+            </>
           )}
         </div>
 </>
