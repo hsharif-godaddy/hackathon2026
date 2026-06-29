@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { ToolCall } from '@/stores/useStreamingConversationStore'
-import { groupConsecutiveActionTools, isActionToolGroupEligible, isSystemHiddenToolCall } from './actionToolGrouping'
+import { groupConsecutiveActionTools, groupConsecutiveMediaTools, groupConsecutiveVideoTools, isActionToolGroupEligible, isSystemHiddenToolCall } from './actionToolGrouping'
 import type { ContentBlock } from './contentBlocks'
 
 function createToolCall(overrides: Partial<ToolCall> = {}): ToolCall {
@@ -159,5 +159,20 @@ describe('actionToolGrouping', () => {
 
     expect(grouped.map((block) => block.type)).toEqual(['tool', 'tool', 'tool', 'tool-group', 'action-group'])
     expect(grouped[4]?.toolCalls?.map((toolCall) => toolCall.id)).toEqual(['git', 'status'])
+  })
+
+  it('groups consecutive generate_video tools into a video-group block', () => {
+    const blocks: ContentBlock[] = [
+      createToolBlock(0, createToolCall({ id: 'v1', name: 'media-video__generate_video' })),
+      createToolBlock(1, createToolCall({ id: 'v2', name: 'media-video__generate_video' })),
+      createToolBlock(2, createToolCall({ id: 'media', name: 'media' })),
+    ]
+
+    const grouped = groupConsecutiveVideoTools(blocks)
+
+    expect(grouped).toHaveLength(2)
+    expect(grouped[0]).toMatchObject({ type: 'video-group' })
+    expect(grouped[0]?.toolCalls?.map((toolCall) => toolCall.id)).toEqual(['v1', 'v2'])
+    expect(grouped[1]).toMatchObject({ type: 'tool' })
   })
 })

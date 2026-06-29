@@ -9,6 +9,7 @@ import { useThinkerIndicator } from '@/app/[market]/develop/components/chat/useT
 import MarkdownRenderer from '@/app/[market]/develop/components/MarkdownRenderer'
 import MessageToolCallsRenderer from '@/app/[market]/develop/components/MessageToolCallsRenderer'
 import MediaGroupRenderer from '@/app/[market]/develop/components/tool-renderers/MediaGroupRenderer'
+import VideoGroupRenderer from '@/app/[market]/develop/components/tool-renderers/VideoGroupRenderer'
 import type { ToolCall } from '@/stores/useStreamingConversationStore'
 import type { ContentBlock } from './contentBlocks'
 
@@ -28,7 +29,7 @@ function blockKey(block: ContentBlock, index: number): string {
   if (block.type === 'tool' && block.toolCall) {
     return `tool-${block.toolCall.id}`
   }
-  if ((block.type === 'tool-group' || block.type === 'action-group') && block.toolCalls?.length) {
+  if ((block.type === 'tool-group' || block.type === 'video-group' || block.type === 'action-group') && block.toolCalls?.length) {
     return `${block.type}-${block.toolCalls[0]!.id}`
   }
   return `text-${index}`
@@ -71,6 +72,10 @@ function MessageContentRenderer({ blocks, isActiveStream = false, isLastAssistan
 
             {block.type === 'tool-group' && block.toolCalls && (
               <MediaGroupRenderer toolCalls={block.toolCalls} isActiveStream={isActiveStream} isLastAssistantMessage={isLastAssistantMessage} />
+            )}
+
+            {block.type === 'video-group' && block.toolCalls && (
+              <VideoGroupRenderer toolCalls={block.toolCalls} isActiveStream={isActiveStream} isLastAssistantMessage={isLastAssistantMessage} />
             )}
 
             {block.type === 'action-group' && block.toolCalls && (

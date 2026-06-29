@@ -40,6 +40,11 @@ const DISPLAY_ADS_DEFAULTS_PATH = new URL(
   import.meta.url,
 );
 
+const VIDEO_TOOL_DEFAULTS_PATH = new URL(
+  "../app/src/lib/translations/video-tool-defaults.ts",
+  import.meta.url,
+);
+
 const API_URL =
   "https://api.i18n.int.gdcorp.tools/api/v2/package/market/en-US/%40airo-app-builder%2Faab";
 const API_TIMEOUT_MS = 10000;
@@ -75,6 +80,10 @@ function loadCampaignFallbackKeys() {
 
 function loadDisplayAdsFallbackKeys() {
   return loadFallbackKeysFromDefaultsFile(DISPLAY_ADS_DEFAULTS_PATH, "display-ads-defaults.ts");
+}
+
+function loadVideoToolFallbackKeys() {
+  return loadFallbackKeysFromDefaultsFile(VIDEO_TOOL_DEFAULTS_PATH, "video-tool-defaults.ts");
 }
 
 /**
@@ -388,6 +397,10 @@ async function main() {
   }
 
   for (const key of loadDisplayAdsFallbackKeys()) {
+    availableKeys.add(key);
+  }
+
+  for (const key of loadVideoToolFallbackKeys()) {
     availableKeys.add(key);
   }
 

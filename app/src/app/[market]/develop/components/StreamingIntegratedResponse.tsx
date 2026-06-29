@@ -3,7 +3,7 @@
 import { useMemo } from 'react'
 import { isEmployeeAuthType } from '@airo/shared/auth'
 
-import { groupConsecutiveActionTools, groupConsecutiveMediaTools, isSystemHiddenToolCall } from '@/app/[market]/develop/components/actionToolGrouping'
+import { groupConsecutiveActionTools, groupConsecutiveMediaTools, groupConsecutiveVideoTools, isSystemHiddenToolCall } from '@/app/[market]/develop/components/actionToolGrouping'
 import BudgetExceededBanner from '@/app/[market]/develop/components/chat/BudgetExceededBanner'
 import type { ContentBlock } from '@/app/[market]/develop/components/contentBlocks'
 import MessageContentRenderer from '@/app/[market]/develop/components/MessageContentRenderer'
@@ -225,7 +225,7 @@ export default function StreamingIntegratedResponse({
     // then compact action rows are grouped. Reversing this would let raw media tool
     // blocks participate in action grouping before their richer media renderer takes over.
     const sortedBlocks = filteredBlocks.sort((a, b) => a.order - b.order)
-    return groupConsecutiveActionTools(groupConsecutiveMediaTools(sortedBlocks))
+    return groupConsecutiveActionTools(groupConsecutiveVideoTools(groupConsecutiveMediaTools(sortedBlocks)))
   }, [hasSegments, isLastAssistantMessage, message.segments])
 
   const getFullResponseText = () => {

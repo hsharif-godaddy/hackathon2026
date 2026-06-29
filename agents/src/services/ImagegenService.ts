@@ -1,7 +1,7 @@
 /**
  * Imagegen Service
  *
- * Calls the imagegen-agent REST API directly using S2S auth.
+ * Calls the imagegen-agent REST API for image generation and editing using S2S auth.
  * Follows the LogoService pattern for service-to-service calls.
  *
  * Customer identity is passed via x-customer-id header.
@@ -53,28 +53,6 @@ export interface ImageEditInput {
 export interface ImageEditResult {
   sessionId: string;
   url: string;
-}
-
-export interface VideoGenerateInput {
-  description: string;
-  orientation?: string;
-  duration: number;
-  // Caller context (not sent in body)
-  customerId: string;
-  budgetUserId: string;
-}
-
-export interface VideoGenerateResult {
-  sessionId: string;
-  url: string;
-}
-
-interface VideoStatusResponse {
-  sessionId: string;
-  status: 'processing' | 'completed' | 'failed';
-  entitled?: boolean;
-  url?: string;
-  error?: string;
 }
 
 // ============================================================================
@@ -256,115 +234,6 @@ class ImagegenService {
     } catch (error) {
       this.handleCatchError(error, 'image.edit', input.customerId);
     }
-  }
-
-  async generateVideo(input: VideoGenerateInput): Promise<VideoGenerateResult> {
-    const baseUrl = getImagegenApiBaseUrl();
-    const url = `${baseUrl}/v2/api/videos`;
-
-    logger.info('imagegen.video.generate.begin', {
-      orientation: input.orientation,
-      duration: input.duration,
-      customerId: input.customerId,
-      url,
-    });
-
-    try {
-      const headers = await this.buildHeaders(input.customerId, input.budgetUserId);
-
-      const body = {
-        description: input.description,
-        ...(input.orientation && { orientation: input.orientation }),
-        duration: input.duration,
-      };
-
-      const response = await fetch(url, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(body),
-        signal: AbortSignal.timeout(120_000),
-      });
-
-      if (!response.ok) {
-        await this.handleErrorResponse(response, 'video.generate', input.customerId, input.budgetUserId);
-      }
-
-      const startResult = (await response.json()) as { sessionId: string; status: string };
-      const sessionId = startResult.sessionId;
-
-      logger.info('imagegen.video.generate.submitted', {
-        sessionId,
-        customerId: input.customerId,
-      });
-
-      // Poll for completion
-      const pollIntervalMs = 5_000;
-      const maxPollMs = 300_000; // 5 minutes
-      const startTime = Date.now();
-
-      while (Date.now() - startTime < maxPollMs) {
-        await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
-
-        const status = await this.getVideoStatus(sessionId, input.customerId, input.budgetUserId);
-
-        if (status.status === 'completed') {
-          if (!status.url) {
-            throw new Error(`Video generation completed but no URL returned (sessionId: ${sessionId})`);
-          }
-          logger.info('imagegen.video.generate.success', {
-            sessionId,
-            customerId: input.customerId,
-          });
-          return {
-            sessionId: status.sessionId,
-            url: status.url,
-          };
-        }
-
-        if (status.status === 'failed') {
-          const errorMsg = status.error || 'Video generation failed';
-          logger.error('imagegen.video.generate.failed', {
-            sessionId,
-            error: errorMsg,
-            customerId: input.customerId,
-          });
-          throw new Error(`Video generation failed: ${errorMsg}`);
-        }
-
-        logger.debug('imagegen.video.generate.polling', {
-          sessionId,
-          elapsedMs: Date.now() - startTime,
-        });
-      }
-
-      logger.error('imagegen.video.generate.timeout', {
-        sessionId,
-        timeoutMs: maxPollMs,
-        customerId: input.customerId,
-      });
-      throw new Error(`Video generation timed out after ${maxPollMs / 1000} seconds`);
-    } catch (error) {
-      this.handleCatchError(error, 'video.generate', input.customerId);
-    }
-  }
-
-  private async getVideoStatus(sessionId: string, customerId: string, budgetUserId: string): Promise<VideoStatusResponse> {
-    const baseUrl = getImagegenApiBaseUrl();
-    const url = `${baseUrl}/v2/api/videos/${sessionId}`;
-
-    const headers = await this.buildHeaders(customerId, budgetUserId);
-
-    const response = await fetch(url, {
-      method: 'GET',
-      headers,
-      signal: AbortSignal.timeout(30_000),
-    });
-
-    if (!response.ok) {
-      await this.handleErrorResponse(response, 'video.status', customerId, budgetUserId);
-    }
-
-    return (await response.json()) as VideoStatusResponse;
   }
 }
 

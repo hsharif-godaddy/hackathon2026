@@ -14,7 +14,6 @@ vi.mock('../../../../services/ImagegenService.js', () => ({
   imagegenService: {
     generateImages: mockGenerateImages,
     editImage: vi.fn(),
-    generateVideo: vi.fn(),
   },
 }));
 

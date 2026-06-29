@@ -1,3 +1,4 @@
+import { isVideoGenerateToolName as isVideoGenerateTool } from '@/app/[market]/develop/components/tool-renderers/parseGenerateVideoTool'
 import type { ToolCall } from '@/stores/useStreamingConversationStore'
 import type { ContentBlock } from './contentBlocks'
 
@@ -54,6 +55,8 @@ const ACTION_GROUP_TOOL_NAMES = new Set([
 export function isMediaSlotTool(name?: string): boolean {
   return name === 'media'
 }
+
+export { isVideoGenerateTool }
 
 // todoList operations whose renderer returns null
 const TODO_LIST_HIDDEN_OPS = new Set(['mark_done', 'mark_undone', 'mark_in_progress', 'show_list'])
@@ -152,6 +155,10 @@ function groupConsecutiveToolBlocks(
 
 export function groupConsecutiveMediaTools(blocks: ContentBlock[]): ContentBlock[] {
   return groupConsecutiveToolBlocks(blocks, (block) => isMediaSlotTool(block.toolCall?.name), 'tool-group')
+}
+
+export function groupConsecutiveVideoTools(blocks: ContentBlock[]): ContentBlock[] {
+  return groupConsecutiveToolBlocks(blocks, (block) => isVideoGenerateTool(block.toolCall?.name), 'video-group')
 }
 
 export function groupConsecutiveActionTools(blocks: ContentBlock[]): ContentBlock[] {

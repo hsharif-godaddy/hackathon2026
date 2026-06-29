@@ -1,12 +1,17 @@
 'use client'
 
 import { Play, Video } from 'lucide-react'
+import { useParams } from 'next/navigation'
 import { useEffect, useRef, useState } from 'react'
 
+import { getPreviewOrigin, getSlotImageUrl } from '@/app/[market]/develop/components/media/slotImageUrl'
 import type { DefaultToolRendererProps } from '@/app/[market]/develop/components/tool-renderers/DefaultToolRenderer'
 import MediaModal from '@/app/[market]/develop/components/tool-renderers/MediaModal'
+import { parseGenerateVideoTool } from '@/app/[market]/develop/components/tool-renderers/parseGenerateVideoTool'
 import ToolHeader from '@/app/[market]/develop/components/tool-renderers/ToolHeader'
-import { logger } from '@/lib/request-context'
+import { useTranslations } from '@/hooks/useTranslations'
+import { defaultMessageForVideoToolKey } from '@/lib/translations/video-tool-defaults'
+import { useServerPollingStore } from '@/stores/useServerPollingStore'
 import { useToolDetailsModal } from '@/stores/useToolDetailsModalStore'
 import { postMessageToIframe } from '@/utils/postMessage'
 
@@ -14,10 +19,27 @@ interface VideoResult {
   url: string
   description?: string
   slotPath?: string
+  slotUrl?: string
+}
+
+function resolveVideoPlaybackUrl(
+  video: VideoResult,
+  previewBaseUrl: string | null,
+): string {
+  if (!previewBaseUrl) {
+    return video.url
+  }
+  if (video.slotUrl?.startsWith('/airo-assets/videos/')) {
+    return `${getPreviewOrigin(previewBaseUrl)}${video.slotUrl}`
+  }
+  if (video.url.startsWith('/airo-assets/uploads/')) {
+    return `${getPreviewOrigin(previewBaseUrl)}${video.url}`
+  }
+  return getSlotImageUrl(video.slotPath ?? null, video.url, previewBaseUrl, 'video')
 }
 
 /**
- * Custom renderer for media-video__generate_video tool
+ * Custom renderer for media-video__generate_video and media__generate_video tools.
  *
  * Displays AI-generated video with inline player and modal for fullscreen view.
  */
@@ -26,92 +48,40 @@ export default function VideoGeneratorToolRenderer({
   toolStatus,
   toolId,
   input: _input,
-  result
+  result,
+  error,
 }: DefaultToolRendererProps) {
+  const t = useTranslations()
+  const params = useParams()
+  const appId = params?.id as string | undefined
+  const previewBaseUrl = useServerPollingStore((state) => state.getServerState(appId ?? '')?.url ?? null)
   const [isModalOpen, setIsModalOpen] = useToolDetailsModal(toolId)
   const [isPlaying, setIsPlaying] = useState(false)
   const inlineVideoRef = useRef<HTMLVideoElement>(null)
   const modalVideoRef = useRef<HTMLVideoElement>(null)
 
-  // Parse result - expects the MCP response format
-  let video: VideoResult | null = null
+  const parsed = parseGenerateVideoTool({
+    id: toolId ?? '',
+    name: _toolName,
+    status: toolStatus,
+    input: _input ?? {},
+    result,
+    error,
+  })
 
-  // Parse input to get the generation prompt
-  let generationPrompt = 'Video'
-  if (_input) {
-    try {
-      const inputObj = typeof _input === 'string' ? JSON.parse(_input) : _input
-      generationPrompt = inputObj?.prompt || 'Video'
-    } catch {
-      // Keep default
-    }
-  }
-
-  if (result) {
-    try {
-      let resultObj: any = null
-
-      if (typeof result === 'string') {
-        try {
-          resultObj = JSON.parse(result)
-        } catch {
-          // Not JSON string
-        }
-      } else if (typeof result === 'object') {
-        resultObj = result
+  const generationPrompt = parsed.prompt
+  const generationError = parsed.error
+  const video: VideoResult | null = parsed.videoUrl
+    ? {
+        url: parsed.videoUrl,
+        slotPath: parsed.slotPath,
+        slotUrl: parsed.slotUrl,
       }
-
-      if (resultObj) {
-        // Handle structuredContent.url from MCP response
-        if (resultObj.structuredContent?.url) {
-          // Extract slot path from slotUrl like "/airo-assets/videos/pages/home/hero"
-          const slotUrl = resultObj.structuredContent.slotUrl as string | undefined
-          const slotPath = slotUrl?.replace(/^\/airo-assets\/videos\//, '')
-          video = {
-            url: resultObj.structuredContent.url,
-            description: undefined,
-            slotPath
-          }
-          // Try to find description from content array
-          if (resultObj.content && Array.isArray(resultObj.content)) {
-            const resourceItem = resultObj.content.find(
-              (item: any) => item.type === 'resource_link' && item.uri
-            )
-            if (resourceItem?.description) {
-              video.description = resourceItem.description
-            }
-          }
-        }
-        // Handle content array with resource_link items (MCP format)
-        else if (resultObj.content && Array.isArray(resultObj.content)) {
-          const resourceItem = resultObj.content.find(
-            (item: any) => item.type === 'resource_link' && item.uri && item.mimeType?.startsWith('video/')
-          )
-          if (resourceItem) {
-            video = {
-              url: resourceItem.uri,
-              description: resourceItem.description
-            }
-          }
-        }
-        // Handle direct url
-        else if (resultObj.url) {
-          video = {
-            url: resultObj.url,
-            description: resultObj.description
-          }
-        }
-      }
-    } catch (e) {
-      logger.error('tool.video_generator.parse.failed', {
-        error: e instanceof Error ? e.message : String(e),
-        resultLength: typeof result === 'string' ? result.length : undefined
-      })
-    }
-  }
+    : null
 
   const hasVideo = video !== null
-  const hasDetails = hasVideo
+  const hasDetails = hasVideo || Boolean(generationError)
+  const playbackUrl = video ? resolveVideoPlaybackUrl(video, previewBaseUrl) : ''
 
   // Notify the preview iframe to reload the media slot when the video is generated
   const hasNotifiedRef = useRef(false)
@@ -159,16 +129,32 @@ export default function VideoGeneratorToolRenderer({
     setIsModalOpen(false)
   }
 
-  // Only show header when not completed or no video to display
+  // Only show header when not completed with video, or when running/errored
   const shouldShowHeader = toolStatus !== 'completed' || !hasVideo
+
+  const headerLabel = generationError
+    ? generationError
+    : toolStatus === 'completed' && hasVideo
+      ? t(
+          'builder_tools_video_generated_prompt',
+          { prompt: generationPrompt },
+          defaultMessageForVideoToolKey('builder_tools_video_generated_prompt'),
+        )
+      : t(
+          'builder_tools_active_video_generate',
+          undefined,
+          defaultMessageForVideoToolKey('builder_tools_active_video_generate'),
+        )
+
+  const headerStatus = generationError ? 'error' : toolStatus
 
   return (
     <div>
       {shouldShowHeader && (
         <ToolHeader
           icon={<Video className="w-2 h-2" />}
-          displayName={toolStatus === 'completed' && hasVideo ? 'Generated video' : 'Generating video...'}
-          toolStatus={toolStatus}
+          displayName={headerLabel}
+          toolStatus={headerStatus}
           hasDetails={hasDetails}
           onOpenModal={hasDetails ? handleModalOpen : undefined}
         />
@@ -179,17 +165,33 @@ export default function VideoGeneratorToolRenderer({
         <div className="my-2">
           <div className="text-sm text-foreground/70 mb-2 flex items-center gap-1">
             <Video className="w-3 h-3" />
-            <span>Generated video: &quot;{generationPrompt.length > 50 ? generationPrompt.substring(0, 50) + '...' : generationPrompt}&quot;</span>
+            <span>
+              {t(
+                'builder_tools_video_generated_prompt',
+                {
+                  prompt: generationPrompt.length > 50
+                    ? `${generationPrompt.substring(0, 50)}...`
+                    : generationPrompt,
+                },
+                defaultMessageForVideoToolKey('builder_tools_video_generated_prompt'),
+              )}
+            </span>
           </div>
           <div className="rounded-lg overflow-hidden bg-intents-ux-boxLowContrast-backgroundColor relative group">
             <video
               ref={inlineVideoRef}
-              src={video.url}
+              src={playbackUrl}
               className="w-full aspect-video object-contain cursor-pointer"
               onClick={handleInlinePlayPause}
               onPlay={() => setIsPlaying(true)}
               onPause={() => setIsPlaying(false)}
-              aria-label={video.description || 'AI generated video'}
+              playsInline
+              preload="metadata"
+              aria-label={video.description || t(
+                'builder_tools_video_ai_generated_aria',
+                undefined,
+                defaultMessageForVideoToolKey('builder_tools_video_ai_generated_aria'),
+              )}
             >
               <track kind="descriptions" label="Description" srcLang="en" default />
             </video>
@@ -227,7 +229,11 @@ export default function VideoGeneratorToolRenderer({
       <MediaModal
         isOpen={isModalOpen}
         onClose={handleModalClose}
-        title="AI Generated Video"
+        title={t(
+          'builder_tools_video_modal_title',
+          undefined,
+          defaultMessageForVideoToolKey('builder_tools_video_modal_title'),
+        )}
       >
         {video && (
           <div className="flex flex-col items-center">
@@ -242,11 +248,16 @@ export default function VideoGeneratorToolRenderer({
             <div className="bg-intents-ux-boxLowContrast-backgroundColor rounded-lg overflow-hidden w-full">
               <video
                 ref={modalVideoRef}
-                src={video.url}
+                src={playbackUrl}
                 className="w-full max-h-[70vh] object-contain"
                 controls
                 autoPlay
-                aria-label={video.description || 'AI generated video'}
+                playsInline
+                aria-label={video.description || t(
+                'builder_tools_video_ai_generated_aria',
+                undefined,
+                defaultMessageForVideoToolKey('builder_tools_video_ai_generated_aria'),
+              )}
               >
                 <track kind="descriptions" label="Description" srcLang="en" default />
               </video>
