@@ -40,10 +40,10 @@ func TestExecPaths(t *testing.T) {
 	assertPath(t, pathMap, "/node_modules", "rwcx")
 	assertPath(t, pathMap, "/app/node_modules", "rwcx")
 	assertPath(t, pathMap, "/shared-storage/public/assets", "rwc")
+	assertPath(t, pathMap, "/app-template", "r")
 
 	// Must NOT include paths that child processes shouldn't access
 	assertNoPath(t, pathMap, "/alloc")
-	assertNoPath(t, pathMap, "/app-template")
 	assertNoPath(t, pathMap, "/management-scripts")
 }
 

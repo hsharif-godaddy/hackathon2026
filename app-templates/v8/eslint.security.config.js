@@ -11,9 +11,15 @@
 //   security/*           -> RCE / weak crypto / injection / object pollution / timing-attack surface
 //   no-unsanitized/*     -> XSS sinks (innerHTML =, dangerouslySetInnerHTML-equivalent DOM writes)
 
-import tsParser from '@typescript-eslint/parser';
-import noUnsanitized from 'eslint-plugin-no-unsanitized';
-import security from 'eslint-plugin-security';
+// createRequire anchors module resolution to /app so packages are found regardless
+// of where this file is loaded from. New images have packages at /node_modules,
+// old images have them at /app/node_modules — both are reachable from /app.
+import { createRequire } from 'node:module';
+const _require = createRequire('/app/package.json');
+
+const tsParser = _require('@typescript-eslint/parser');
+const noUnsanitized = _require('eslint-plugin-no-unsanitized');
+const security = _require('eslint-plugin-security');
 
 export default [
   {

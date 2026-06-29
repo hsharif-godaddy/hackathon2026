@@ -7,8 +7,8 @@ import type { WorkspaceTasks } from '../workspace/tasks.js';
  * ESLint Security Scanner Tool (Code Quality / SAST category)
  *
  * Runs the customer-app's bundled ESLint with a security-only flat config
- * (`eslint.security.config.js`, shipped with the v8 template) against /app/src
- * and parses the JSON output into normalized SAST findings.
+ * (`eslint.security.config.js`, baked into the preview image at `/app-template/`)
+ * against /app/src and parses the JSON output into normalized SAST findings.
  *
  * Why ESLint and not Semgrep:
  *   - eslint-plugin-security is Apache-2.0 and eslint-plugin-no-unsanitized is
@@ -62,10 +62,8 @@ export interface EslintSecurityScannerResult {
   summary: { total: number; critical: number; high: number; medium: number; low: number };
 }
 
-const DEFAULT_CONFIG_PATH = '/app/eslint.security.config.js';
+const DEFAULT_CONFIG_PATH = '/app-template/eslint.security.config.js';
 const DEFAULT_SCAN_PATH = '/app/src';
-
-const TEMPLATE_FALLBACK_CONFIG_PATH = '/app-template/eslint.security.config.js';
 
 /**
  * Raw ESLint JSON output — only the fields we consume.
@@ -119,18 +117,14 @@ export class EslintSecurityScannerTool {
       const configPath = options.configPath ?? DEFAULT_CONFIG_PATH;
       const scanPath = options.scanPath ?? DEFAULT_SCAN_PATH;
 
-      const configReady = await this.ensureConfigPresent(tasks, configPath);
+      const configReady = await this.fileExists(tasks, configPath);
       if (!configReady) {
-        this.logger.warn('eslint-security-scanner.config.missing', {
-          configPath,
-          fallbackSourcePath: TEMPLATE_FALLBACK_CONFIG_PATH,
-        });
+        this.logger.warn('eslint-security-scanner.config.missing', { configPath });
         return {
           ...empty,
           executionTime: Date.now() - startTime,
           error:
-            `Security ESLint config not found at ${configPath} and image fallback ` +
-            `${TEMPLATE_FALLBACK_CONFIG_PATH} is also missing. The preview image likely ` +
+            `Security ESLint config not found at ${configPath}. The preview image likely ` +
             `pre-dates the v8 template addition — rebuild from a current branch.`,
         };
       }
@@ -194,45 +188,6 @@ export class EslintSecurityScannerTool {
     }
   }
 
-  private async ensureConfigPresent(
-    tasks: WorkspaceTasks,
-    configPath: string,
-  ): Promise<boolean> {
-    if (await this.fileExists(tasks, configPath)) return true;
-
-    if (!(await this.fileExists(tasks, TEMPLATE_FALLBACK_CONFIG_PATH))) {
-      return false;
-    }
-
-    this.logger.info('eslint-security-scanner.config.self-heal.attempt', {
-      from: TEMPLATE_FALLBACK_CONFIG_PATH,
-      to: configPath,
-    });
-
-    try {
-      const cp = await tasks.runCommandSync({
-        command: `cp ${TEMPLATE_FALLBACK_CONFIG_PATH} ${configPath}`,
-        timeoutSeconds: 5,
-      });
-      if (cp.exitCode !== 0) {
-        this.logger.error('eslint-security-scanner.config.self-heal.failed', {
-          exitCode: cp.exitCode,
-          stderr: cp.stderr?.slice(0, 200),
-        });
-        return false;
-      }
-    } catch (error) {
-      this.logger.error('eslint-security-scanner.config.self-heal.threw', {
-        error: getErrorMessage(error),
-      });
-      return false;
-    }
-
-    // Verify the copy actually landed — defensive against silent cp failures
-    // (read-only mount, ENOSPC, etc.).
-    return await this.fileExists(tasks, configPath);
-  }
-
   private async fileExists(
     tasks: WorkspaceTasks,
     filePath: string,
@@ -249,14 +204,16 @@ export class EslintSecurityScannerTool {
   }
 
   private buildEslintCommand(configPath: string, scanPath: string): string {
-    // --no-config-lookup: ignore any other eslint.config.js the customer ships;
-    //                     we want a deterministic security-only scan.
-    // --format json:      structured output to stdout.
-    // ESLint exits 0 = no findings, 1 = findings, 2 = error.
-    return (
-      `npx --no-install eslint --config ${configPath} --no-config-lookup ` +
-      `--format json ${scanPath}`
-    );
+    // jq strips `source` (full file contents per finding) and other unused bulk.
+    // Temp file preserves ESLint's exit code (0=clean, 1=findings, 2=error) through the pipe.
+    const tmp: string = '/tmp/eslint-security-scan-$$.json';
+    return [
+      `npx --no-install eslint --config ${configPath} --no-config-lookup --format json ${scanPath} >${tmp}`,
+      `_eslint_exit=$?`,
+      `[ -s ${tmp} ] && jq -c 'del(.[].source,.[].suppressedMessages,.[].usedDeprecatedRules)' ${tmp} || true`,
+      `rm -f ${tmp}`,
+      `exit $_eslint_exit`,
+    ].join('; ');
   }
 
   private async runEslint(

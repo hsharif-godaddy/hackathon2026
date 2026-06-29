@@ -510,12 +510,6 @@ const SYNC_MANIFEST = [
     force: false
   },
   {
-    file: 'eslint.security.config.js',
-    description: 'ESLint flat config for SAST security scanning (eslint-plugin-security + no-unsanitized)',
-    known_hashes: [],
-    force: false
-  },
-  {
     file: 'package.json',
     description: 'Template dependency manifest — synced to push security patches to customer apps',
     known_hashes: [
@@ -1552,6 +1546,17 @@ export const MIGRATIONS = [
       pkg.devDependencies['lockfile-lint'] = '~4.13.2';
       console.log('  Added devDependencies.lockfile-lint');
       writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n', 'utf8');
+      return { status: 'applied', changed: true };
+    }
+  },
+  {
+    id: 'delete-eslint-security-config-from-workspace',
+    description: 'Remove eslint.security.config.js from customer workspace — scanner now reads from /app-template (read-only image layer)',
+    run(customerDir, _syncedFiles) {
+      const target = join(customerDir, 'eslint.security.config.js');
+      if (!existsSync(target)) return { status: 'skipped', reason: 'already_absent' };
+      unlinkSync(target);
+      console.log('  Deleted eslint.security.config.js (now read from /app-template)');
       return { status: 'applied', changed: true };
     }
   }

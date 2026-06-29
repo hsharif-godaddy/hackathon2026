@@ -29,7 +29,7 @@ describe('EslintSecurityScannerTool', () => {
     mocks.createForWorkspace.mockReset();
   });
 
-  it('returns an error when both /app and /app-template are missing the config', async () => {
+  it('returns an error when config is missing from the image', async () => {
     setupExec((cmd) => {
       if (cmd.startsWith('test -f')) return { exitCode: 0, stdout: 'missing\n', stderr: '' };
       throw new Error(`Unexpected command: ${cmd}`);
@@ -45,62 +45,6 @@ describe('EslintSecurityScannerTool', () => {
     expect(result.error).toContain('/app-template/eslint.security.config.js');
     expect(result.error).toContain('rebuild');
     expect(result.summary.total).toBe(0);
-  });
-
-  it('self-heals from /app-template when /app is missing the config', async () => {
-    let appCheckCount = 0;
-    let cpInvoked = false;
-
-    setupExec((cmd) => {
-      if (cmd.startsWith('test -f /app/eslint.security.config.js')) {
-        appCheckCount += 1;
-        return {
-          exitCode: 0,
-          stdout: appCheckCount === 1 ? 'missing\n' : 'present\n',
-          stderr: '',
-        };
-      }
-      if (cmd.startsWith('test -f /app-template/eslint.security.config.js')) {
-        return { exitCode: 0, stdout: 'present\n', stderr: '' };
-      }
-      if (cmd.startsWith('cp /app-template/eslint.security.config.js /app/')) {
-        cpInvoked = true;
-        return { exitCode: 0, stdout: '', stderr: '' };
-      }
-      if (cmd.includes('eslint')) {
-        return { exitCode: 0, stdout: '[]', stderr: '' };
-      }
-      throw new Error(`Unexpected command: ${cmd}`);
-    });
-
-    const tool = new EslintSecurityScannerTool();
-    const result = await tool.scan(APP_ID);
-
-    expect(cpInvoked).toBe(true);
-    expect(appCheckCount).toBe(2);
-    expect(result.success).toBe(true);
-    expect(result.findings).toEqual([]);
-  });
-
-  it('returns an error when self-heal cp fails', async () => {
-    setupExec((cmd) => {
-      if (cmd.startsWith('test -f /app/eslint.security.config.js')) {
-        return { exitCode: 0, stdout: 'missing\n', stderr: '' };
-      }
-      if (cmd.startsWith('test -f /app-template/eslint.security.config.js')) {
-        return { exitCode: 0, stdout: 'present\n', stderr: '' };
-      }
-      if (cmd.startsWith('cp ')) {
-        return { exitCode: 1, stdout: '', stderr: 'cp: read-only file system' };
-      }
-      throw new Error(`Unexpected command: ${cmd}`);
-    });
-
-    const tool = new EslintSecurityScannerTool();
-    const result = await tool.scan(APP_ID);
-
-    expect(result.success).toBe(false);
-    expect(result.error).toContain('Security ESLint config not found');
   });
 
   it('returns no findings on a clean scan (exit 0, empty array)', async () => {

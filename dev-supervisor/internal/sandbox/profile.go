@@ -86,6 +86,10 @@ func ExecPaths(appDir, sharedStorageDir string) []PathRule {
 		// for compatibility across image versions.
 		{Mode: "rwcx", Path: "/node_modules"},
 		{Mode: "rwcx", Path: filepath.Join(appDir, "node_modules")},
+		// Read-only access to the image template layer for all exec commands (not scoped per-call).
+		// Required so SAST tools can read system configs (e.g. eslint.security.config.js) from the
+		// immutable layer. Nothing sensitive lives here; per-call policy extension is a future improvement.
+		{Mode: "r", Path: "/app-template"},
 	}
 	if sharedStorageDir != "" {
 		paths = append(paths, PathRule{Mode: "rwc", Path: filepath.Join(sharedStorageDir, "public", "assets")})

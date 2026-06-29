@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -647,6 +648,86 @@ func TestTaskManager_CapacityAtomic(t *testing.T) {
 	_, err := tm.Submit(validation.CommandRequest{Command: "sleep 5", Timeout: 10})
 	if !errors.Is(err, ErrTooManyTasks) {
 		t.Errorf("expected ErrTooManyTasks, got %v", err)
+	}
+}
+
+func TestTaskManager_LargeOutputPreservedUntruncated(t *testing.T) {
+	t.Parallel()
+	tm := newTestTaskManager()
+	defer tm.Shutdown(context.Background())
+
+	largePayload := strings.Repeat("x", taskOutputMaxLineLen*4)
+	taskID, err := tm.Submit(validation.CommandRequest{
+		Command: "printf '" + largePayload + "'",
+		Timeout: 5,
+	})
+	if err != nil {
+		t.Fatalf("Submit failed: %v", err)
+	}
+
+	_, err = tm.Wait(taskID, 5*time.Second)
+	if err != nil {
+		t.Fatalf("Wait failed: %v", err)
+	}
+
+	out, err := tm.Output(taskID, 0, 0, 0)
+	if err != nil {
+		t.Fatalf("Output failed: %v", err)
+	}
+	if len(out.Stdout) < taskOutputMaxLineLen*4 {
+		t.Errorf("stdout was truncated: got %d bytes, want >= %d", len(out.Stdout), taskOutputMaxLineLen*4)
+	}
+}
+
+// TestTaskManager_TailPreservedOverByteCap verifies that when total output exceeds
+// taskOutputMaxBytes the ring evicts the oldest lines, not the newest.
+func TestTaskManager_TailPreservedOverByteCap(t *testing.T) {
+	t.Parallel()
+	tm := newTestTaskManager()
+	defer tm.Shutdown(context.Background())
+
+	// Two lines of 700 KB each (total 1.4 MB > taskOutputMaxBytes).
+	// After eviction the first line ('x' fill) must be gone and TAIL_SENTINEL present.
+	cmd := "dd if=/dev/zero bs=716800 count=1 2>/dev/null | tr '\\0' 'x'; echo; " +
+		"dd if=/dev/zero bs=716800 count=1 2>/dev/null | tr '\\0' 'y'; echo TAIL_SENTINEL"
+	taskID, err := tm.Submit(validation.CommandRequest{Command: cmd, Timeout: 10})
+	if err != nil {
+		t.Fatalf("Submit failed: %v", err)
+	}
+	if _, err = tm.Wait(taskID, 10*time.Second); err != nil {
+		t.Fatalf("Wait failed: %v", err)
+	}
+	out, err := tm.Output(taskID, 0, 0, 0)
+	if err != nil {
+		t.Fatalf("Output failed: %v", err)
+	}
+	if !strings.Contains(out.Stdout, "TAIL_SENTINEL") {
+		t.Errorf("TAIL_SENTINEL not found in output (tail was lost, head retained)")
+	}
+}
+
+// TestTaskManager_SingleLineLargerThanByteCap verifies that a single line exceeding
+// taskOutputMaxBytes is retained rather than dropped (the len>1 guard in addLine).
+func TestTaskManager_SingleLineLargerThanByteCap(t *testing.T) {
+	t.Parallel()
+	tm := newTestTaskManager()
+	defer tm.Shutdown(context.Background())
+
+	wantBytes := taskOutputMaxBytes * 2
+	cmd := fmt.Sprintf("dd if=/dev/zero bs=%d count=1 2>/dev/null | tr '\\0' 'x'", wantBytes)
+	taskID, err := tm.Submit(validation.CommandRequest{Command: cmd, Timeout: 10})
+	if err != nil {
+		t.Fatalf("Submit failed: %v", err)
+	}
+	if _, err = tm.Wait(taskID, 10*time.Second); err != nil {
+		t.Fatalf("Wait failed: %v", err)
+	}
+	out, err := tm.Output(taskID, 0, 0, 0)
+	if err != nil {
+		t.Fatalf("Output failed: %v", err)
+	}
+	if len(out.Stdout) < wantBytes {
+		t.Errorf("single oversized line was dropped: got %d bytes, want >= %d", len(out.Stdout), wantBytes)
 	}
 }
 

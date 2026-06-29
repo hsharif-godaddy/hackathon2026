@@ -29,7 +29,9 @@ const (
 
 	taskOutputMaxLines   = 1000
 	taskOutputMaxLineLen = 4096
-	taskReaperInterval   = 1 * time.Minute
+	// 1 MB total cap per task; per-line truncation was removed as it corrupted single-line JSON output.
+	taskOutputMaxBytes = 1 * 1024 * 1024
+	taskReaperInterval = 1 * time.Minute
 )
 
 type TaskState string
@@ -44,8 +46,9 @@ const (
 )
 
 type TaskOutputBuffer struct {
-	mu    sync.Mutex
-	lines []string
+	mu         sync.Mutex
+	lines      []string
+	totalBytes int
 }
 
 func (b *TaskOutputBuffer) addLines(raw string) {
@@ -97,21 +100,29 @@ func (w *streamWriter) flush() {
 }
 
 func (w *streamWriter) addLine(line string) {
-	if len(line) > taskOutputMaxLineLen {
-		line = line[:taskOutputMaxLineLen] + "…"
-	}
+	// Always append the new line, then evict oldest until under the byte cap.
+	// This preserves tail semantics: callers get the most-recent output even when
+	// total output exceeds taskOutputMaxBytes. The len>1 guard keeps a single line
+	// that exceeds the cap rather than dropping it entirely.
 	w.buf.mu.Lock()
 	w.buf.lines = append(w.buf.lines, line)
-	if len(w.buf.lines) > taskOutputMaxLines {
+	w.buf.totalBytes += len(line)
+	for w.buf.totalBytes > taskOutputMaxBytes && len(w.buf.lines) > 1 {
+		removed := w.buf.lines[0]
 		w.buf.lines = w.buf.lines[1:]
+		w.buf.totalBytes -= len(removed)
 	}
 	w.buf.mu.Unlock()
 
+	logLine := line
+	if len(logLine) > taskOutputMaxLineLen {
+		logLine = logLine[:taskOutputMaxLineLen] + "…"
+	}
 	if w.logMgr != nil {
 		w.logMgr.AddLog(logs.LogEntry{
 			Timestamp: time.Now(),
 			Source:    execLogSource,
-			Message:   line,
+			Message:   logLine,
 			CommandID: w.commandID,
 		})
 	}
