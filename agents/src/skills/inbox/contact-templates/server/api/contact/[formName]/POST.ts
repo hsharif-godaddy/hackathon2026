@@ -174,6 +174,7 @@ export default async function handler(req: Request, res: Response): Promise<void
 			category_id: formConfig.categoryId,
 			user: body.user,
 			data: {
+				__gd_contact_form_title: formName,
 				...body.conversation?.data,
 				__gd_type: "contact",
 				...(formConfig.overrideEmail && { __gd_override_email: formConfig.overrideEmail }),
