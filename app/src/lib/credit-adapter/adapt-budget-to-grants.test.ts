@@ -119,6 +119,41 @@ describe('adaptBudgetToGrants', () => {
 
       expect(grants[0].type).toBe(GrantType.CreditPack)
     })
+
+    it('should map standalone-credit-pack label to StandaloneCreditPack (label takes precedence over resetInterval fallback)', () => {
+      const item = createBudgetItem({ label: 'standalone-credit-pack', resetInterval: 'month' })
+      const budget = createBudgetResponse([item])
+
+      const grants = adaptBudgetToGrants(budget, SUBSCRIPTION_ID)
+
+      expect(grants[0].type).toBe(GrantType.StandaloneCreditPack)
+    })
+
+    it('should correctly adapt standalone credit packs of all tier sizes', () => {
+      const tiers = [25, 50, 75, 100, 150, 200, 250, 500, 750, 1000]
+      const items = tiers.map((tier) =>
+        createBudgetItem({
+          budgetItemId: `standalone-pack-${tier}`,
+          label: 'standalone-credit-pack',
+          creditsTotal: `${tier}.000000`,
+          creditsUsed: '0.000000',
+          resetInterval: null,
+          resetsAt: null,
+          expiresAt: null,
+        })
+      )
+      const budget = createBudgetResponse(items)
+
+      const grants = adaptBudgetToGrants(budget, SUBSCRIPTION_ID)
+
+      expect(grants).toHaveLength(tiers.length)
+      grants.forEach((grant, i) => {
+        expect(grant.type).toBe(GrantType.StandaloneCreditPack)
+        expect(grant.creditsMax).toBe(tiers[i])
+        expect(grant.creditsSpent).toBe(0)
+        expect(grant.isAvailable).toBe(true)
+      })
+    })
   })
 
   describe('isAvailable calculation', () => {

@@ -6,8 +6,10 @@ export const UPGRADE_PRODUCT_IDS = {
   AIRO_PLUS: 'AiroPlusAppBuilderProduct',
   /** New Airo Builder subscription product */
   AIRO_BUILDER: 'AiroBuilderProduct',
-  /** Airo Builder credits add-on product */
+  /** Plan add-on credit packs (quantity selector) */
   AIRO_BUILDER_CREDITS: 'AiroBuilderCreditsProduct',
+  /** Standalone credit pack plan (quantity selector) */
+  AIRO_STANDALONE_CREDIT_PACK: 'AiroReserveCreditsProduct',
 } as const
 
 /**

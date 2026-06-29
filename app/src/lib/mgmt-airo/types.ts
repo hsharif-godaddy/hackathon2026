@@ -912,6 +912,7 @@ export interface AiroCreateBuilderPlanResponse {
 export enum AiroGrantType {
   PlanMonthly = 'plan-monthly',
   CreditPack = 'credit-pack',
+  StandaloneCreditPack = 'standalone-credit-pack',
 }
 
 /**

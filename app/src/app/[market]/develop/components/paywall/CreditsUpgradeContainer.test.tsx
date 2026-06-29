@@ -6,6 +6,7 @@ import '@testing-library/jest-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 
+import { usePaywallStore } from '@/stores/usePaywallStore';
 import { renderWithProviders } from '@/tests/test-utils';
 import CreditsUpgradeContainer from './CreditsUpgradeContainer';
 
@@ -46,8 +47,10 @@ vi.mock('@/utils/instrumentation', () => ({
 }));
 
 
+const mockUseSwitchboard = vi.fn((_flag: string) => false);
+
 vi.mock('@/hooks/useSwitchboard', () => ({
-  useSwitchboard: vi.fn(function () { return false; }),
+  useSwitchboard: (flag: string) => mockUseSwitchboard(flag),
 }));
 
 vi.mock('./PaywallLoadingModal', async () => {
@@ -81,8 +84,9 @@ vi.mock('./cdsLoader', () => ({
           Success
         </button>
         <button data-testid="error-button" onClick={props.onErrorClick}>Error</button>
+        <button data-testid="load-success-button" onClick={props.onLoadSuccess}>Load Success</button>
         <button data-testid="load-error-button" onClick={() => props.onLoadError?.(new Error('Load failed'))}>Load Error</button>
-        <button data-testid="render-error-fallback-button" onClick={() => { /* just verifies prop is a function */ }}>
+        <button data-testid="render-error-fallback-button">
           {props.renderErrorFallback ? 'has-fallback' : 'no-fallback'}
         </button>
       </div>
@@ -93,6 +97,7 @@ vi.mock('./cdsLoader', () => ({
 describe('CreditsUpgradeContainer', function creditsUpgradeContainerTests() {
   beforeEach(function setup() {
     vi.clearAllMocks();
+    mockUseSwitchboard.mockReturnValue(false);
   });
 
   describe('renders correctly', function renderTests() {
@@ -111,7 +116,7 @@ describe('CreditsUpgradeContainer', function creditsUpgradeContainerTests() {
       expect(screen.getByTestId('loader-mode')).toHaveTextContent('esm');
     });
 
-    it('should pass correct productId for credits', async function correctProductId() {
+    it('should use AIRO_BUILDER_CREDITS when standalone flag is off', async function flagOffProductId() {
       renderWithProviders(
         <CreditsUpgradeContainer
           onClose={mockOnClose}
@@ -174,6 +179,56 @@ describe('CreditsUpgradeContainer', function creditsUpgradeContainerTests() {
 
       await waitFor(function checkSource() {
         expect(screen.getByTestId('source').textContent).toBe('usage_gauge.buy_tokens');
+      });
+    });
+  });
+
+  describe('appbuilder-standalone-credit-packs flag', function flagTests() {
+    it('should use AIRO_BUILDER_CREDITS when flag is off', async function flagOff() {
+      mockUseSwitchboard.mockReturnValue(false);
+
+      renderWithProviders(
+        <CreditsUpgradeContainer
+          onClose={mockOnClose}
+          entitlementId="entitlement-123"
+        />
+      );
+
+      await waitFor(function checkProductId() {
+        expect(screen.getByTestId('product-id').textContent).toBe('AiroBuilderCreditsProduct');
+      });
+    });
+
+    it('should use AIRO_STANDALONE_CREDIT_PACK when flag is on', async function flagOn() {
+      mockUseSwitchboard.mockImplementation(function (flag: string) {
+        return flag === 'appbuilder-standalone-credit-packs';
+      });
+
+      renderWithProviders(
+        <CreditsUpgradeContainer
+          onClose={mockOnClose}
+          entitlementId="entitlement-123"
+        />
+      );
+
+      await waitFor(function checkProductId() {
+        expect(screen.getByTestId('product-id').textContent).toBe('AiroReserveCreditsProduct');
+      });
+    });
+
+    it('should use explicit productId prop regardless of flag', async function explicitProductId() {
+      mockUseSwitchboard.mockReturnValue(true);
+
+      renderWithProviders(
+        <CreditsUpgradeContainer
+          onClose={mockOnClose}
+          entitlementId="entitlement-123"
+          productId="CustomProductId"
+        />
+      );
+
+      await waitFor(function checkProductId() {
+        expect(screen.getByTestId('product-id').textContent).toBe('CustomProductId');
       });
     });
   });
@@ -276,6 +331,7 @@ describe('CreditsUpgradeContainer', function creditsUpgradeContainerTests() {
       await user.click(screen.getByTestId('success-button'));
 
       expect(logImpressionEvent).toHaveBeenCalledWith('credits.purchase.success');
+      // flag is off in this test (useSwitchboard returns false) → AIRO_BUILDER_CREDITS
       expect(shipAnalyticsLog).toHaveBeenCalledWith('airobuilder.credits.purchase.in-app', {
         source: 'test-source',
         productId: 'AiroBuilderCreditsProduct',
@@ -399,43 +455,101 @@ describe('CreditsUpgradeContainer', function creditsUpgradeContainerTests() {
     });
   });
 
-  it('calls onError when load error occurs', function callsOnErrorOnLoadError() {
-    const mockOnError = vi.fn();
-    renderWithProviders(
-      <CreditsUpgradeContainer
-        onClose={mockOnClose}
-        entitlementId="ent-123"
-        onError={mockOnError}
-        source="test"
-      />
-    );
+  describe('paywallLoading lifecycle', function paywallLoadingTests() {
+    it('onLoadSuccess clears paywallLoading and ships analytics', async function onLoadSuccessClearsLoading() {
+      const { shipAnalyticsLog } = await import('@/lib/logging');
+      usePaywallStore.setState({ paywallLoading: true });
 
-    screen.getByTestId('load-error-button').click();
-    expect(mockOnError).toHaveBeenCalledWith(expect.any(Error));
+      const { user } = renderWithProviders(
+        <CreditsUpgradeContainer
+          onClose={mockOnClose}
+          entitlementId="ent-123"
+          source="test"
+        />
+      );
+
+      await waitFor(function waitForModal() {
+        expect(screen.getByTestId('load-success-button')).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByTestId('load-success-button'));
+
+      expect(usePaywallStore.getState().paywallLoading).toBe(false);
+      expect(shipAnalyticsLog).toHaveBeenCalledWith('paywall.credits.load.success', {
+        source: 'test',
+        component: 'CreditsUpgradeContainer',
+      });
+    });
+
+    it('onLoadError clears paywallLoading', async function onLoadErrorClearsLoading() {
+      usePaywallStore.setState({ paywallLoading: true });
+
+      const { user } = renderWithProviders(
+        <CreditsUpgradeContainer
+          onClose={mockOnClose}
+          entitlementId="ent-123"
+          source="test"
+        />
+      );
+
+      await waitFor(function waitForModal() {
+        expect(screen.getByTestId('load-error-button')).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByTestId('load-error-button'));
+
+      expect(usePaywallStore.getState().paywallLoading).toBe(false);
+    });
   });
 
-  it('renders LoadingComponent callback', function rendersLoadingComponent() {
-    renderWithProviders(
-      <CreditsUpgradeContainer
-        onClose={mockOnClose}
-        entitlementId="ent-123"
-        source="test"
-      />
-    );
+  describe('load error handling', function loadErrorTests() {
+    it('should call onError when load error occurs', async function callsOnError() {
+      const mockOnError = vi.fn();
+      const { user } = renderWithProviders(
+        <CreditsUpgradeContainer
+          onClose={mockOnClose}
+          entitlementId="ent-123"
+          onError={mockOnError}
+          source="test"
+        />
+      );
 
-    expect(screen.getByTestId('loading-component')).toBeInTheDocument();
-    expect(screen.getByTestId('paywall-loading-modal')).toBeInTheDocument();
-  });
+      await waitFor(function waitForModal() {
+        expect(screen.getByTestId('load-error-button')).toBeInTheDocument();
+      });
 
-  it('passes renderErrorFallback to ComponentLoader', function passesRenderErrorFallback() {
-    renderWithProviders(
-      <CreditsUpgradeContainer
-        onClose={mockOnClose}
-        entitlementId="ent-123"
-        source="test"
-      />
-    );
+      await user.click(screen.getByTestId('load-error-button'));
 
-    expect(screen.getByTestId('render-error-fallback-button')).toHaveTextContent('has-fallback');
+      expect(mockOnError).toHaveBeenCalledWith(expect.any(Error));
+    });
+
+    it('should render PaywallLoadingModal as LoadingComponent', async function rendersLoadingComponent() {
+      renderWithProviders(
+        <CreditsUpgradeContainer
+          onClose={mockOnClose}
+          entitlementId="ent-123"
+          source="test"
+        />
+      );
+
+      await waitFor(function checkLoadingComponent() {
+        expect(screen.getByTestId('loading-component')).toBeInTheDocument();
+      });
+      expect(screen.getByTestId('paywall-loading-modal')).toBeInTheDocument();
+    });
+
+    it('should pass renderErrorFallback to ComponentLoader', async function passesRenderErrorFallback() {
+      renderWithProviders(
+        <CreditsUpgradeContainer
+          onClose={mockOnClose}
+          entitlementId="ent-123"
+          source="test"
+        />
+      );
+
+      await waitFor(function checkFallback() {
+        expect(screen.getByTestId('render-error-fallback-button')).toHaveTextContent('has-fallback');
+      });
+    });
   });
 });

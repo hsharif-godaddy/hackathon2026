@@ -43,12 +43,14 @@ export function getMonthlyPlanGrant(grants: CreditGrant[]): CreditGrant | undefi
  * Get credit pack grants sorted by useBefore (closest to expiration first)
  * Expired grants are sorted after non-expired grants
  */
+const CREDIT_PACK_TYPES = new Set([GrantType.CreditPack, GrantType.StandaloneCreditPack])
+
 export function getCreditPackGrants(grants: CreditGrant[]): CreditGrant[] {
   const now = new Date();
 
   return grants
     .filter(function filterPacks(grant) {
-      return grant.type === GrantType.CreditPack;
+      return CREDIT_PACK_TYPES.has(grant.type);
     })
     .sort(function sortByExpiration(a, b) {
       const aExpired = !a.isAvailable || a.finalState != null || !!(a.useBefore && new Date(a.useBefore) <= now);

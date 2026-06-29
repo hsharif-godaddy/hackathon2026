@@ -109,6 +109,7 @@ describe('adaptBudgetToGrants', () => {
       )
       expect(grants[0]!.type).toBe(GrantType.CreditPack)
     })
+
   })
 
   describe('isAvailable calculation', () => {

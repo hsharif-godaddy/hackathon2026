@@ -14,7 +14,7 @@ import { logger } from '@/lib/request-context'
 import { usePaywallStore } from '@/stores/usePaywallStore'
 import { resetFocusOnModalClose } from '@/utils/focus'
 import { logImpressionEvent } from '@/utils/instrumentation'
-import { CDS_TYPE_ESM, CDS_TYPE_UMD, PAYWALL_UMD_FALLBACK } from './cdsConfig'
+import { CDS_TYPE_ESM, CDS_TYPE_UMD, PAYWALL_UMD_FALLBACK, STANDALONE_CREDIT_PACKS } from './cdsConfig'
 import { ComponentLoader } from './cdsLoader'
 import { UPGRADE_PRODUCT_IDS } from './constants'
 import { PaywallErrorFallback } from './PaywallErrorFallback'
@@ -37,6 +37,12 @@ interface CreditsUpgradeContainerProps {
   subscriptionId?: string
   /** Current number of grants before purchase (for polling comparison) */
   initialGrantCount?: number
+  /**
+   * Product ID to use. When omitted, the {@link STANDALONE_CREDIT_PACKS}
+   * Switchboard flag determines whether to use AiroReserveCreditsProduct
+   * or the legacy addon AiroBuilderCreditsProduct.
+   */
+  productId?: string
 }
 
 /**
@@ -55,13 +61,20 @@ const CreditsUpgradeContainer = ({
   itc,
   subscriptionId,
   initialGrantCount,
+  productId,
 }: CreditsUpgradeContainerProps) => {
   const gasketData = useGasketData()
   const { getUserInfo } = useAuth()
   const shopperId = getUserInfo()?.shopperId
   const { handlePurchaseSuccess, invalidateQueries } = useCreditPurchase()
   const umdFallback = useSwitchboard(PAYWALL_UMD_FALLBACK) ?? false
+  const standaloneFlag = useSwitchboard(STANDALONE_CREDIT_PACKS) ?? false
   const setPaywallLoading = usePaywallStore((state) => state.setPaywallLoading)
+  const effectiveProductId = productId ?? (
+    standaloneFlag
+      ? UPGRADE_PRODUCT_IDS.AIRO_STANDALONE_CREDIT_PACK
+      : UPGRADE_PRODUCT_IDS.AIRO_BUILDER_CREDITS
+  )
   const hasLoggedImpressionRef = useRef(false)
 
   useEffect(() => {
@@ -69,19 +82,19 @@ const CreditsUpgradeContainer = ({
       hasLoggedImpressionRef.current = true
       shipAnalyticsLog('paywall.credits.modal.shown', {
         source,
-        productId: UPGRADE_PRODUCT_IDS.AIRO_BUILDER_CREDITS,
+        productId: effectiveProductId,
         entitlementId,
         component: COMPONENT_NAME,
       })
     }
-  }, [source, entitlementId])
+  }, [source, entitlementId, effectiveProductId])
 
   const handleSuccess = useCallback(async (basketId: string, details: { unitsAdded: number; newTotalBalance: number }) => {
     logImpressionEvent('credits.purchase.success')()
 
     shipAnalyticsLog('airobuilder.credits.purchase.in-app', {
       source,
-      productId: UPGRADE_PRODUCT_IDS.AIRO_BUILDER_CREDITS,
+      productId: effectiveProductId,
       basketId,
       unitsAdded: details.unitsAdded,
       newTotalBalance: details.newTotalBalance,
@@ -109,19 +122,19 @@ const CreditsUpgradeContainer = ({
       invalidateQueries()
       callOnSuccessWithFocusReset()
     }
-  }, [source, subscriptionId, initialGrantCount, handlePurchaseSuccess, invalidateQueries, onSuccess])
+  }, [source, effectiveProductId, subscriptionId, initialGrantCount, handlePurchaseSuccess, invalidateQueries, onSuccess])
 
   const handleError = useCallback((error: Error) => {
     setPaywallLoading(false)
     shipAnalyticsLog('paywall.cds.load.error', {
       source,
-      productId: UPGRADE_PRODUCT_IDS.AIRO_BUILDER_CREDITS,
+      productId: effectiveProductId,
       error: error.message,
       errorType: 'load',
       component: COMPONENT_NAME,
     })
     onError?.(error)
-  }, [source, onError, setPaywallLoading])
+  }, [source, effectiveProductId, onError, setPaywallLoading])
 
   const handleLoadSuccess = useCallback(() => {
     setPaywallLoading(false)
@@ -150,10 +163,10 @@ const CreditsUpgradeContainer = ({
       error={error}
       onClose={handleClose}
       source={source}
-      productId={UPGRADE_PRODUCT_IDS.AIRO_BUILDER_CREDITS}
+      productId={effectiveProductId}
       component={COMPONENT_NAME}
     />
-  ), [handleClose, source])
+  ), [handleClose, source, effectiveProductId])
 
   // Early return if entitlementId is missing - cannot purchase credits without it
   if (!entitlementId) {
@@ -168,7 +181,7 @@ const CreditsUpgradeContainer = ({
           onClose={handleClose}
           onError={handleError}
           source={source}
-          productId={UPGRADE_PRODUCT_IDS.AIRO_BUILDER_CREDITS}
+          productId={effectiveProductId}
           component={COMPONENT_NAME}
         />
       )}
@@ -180,7 +193,7 @@ const CreditsUpgradeContainer = ({
         cds={gasketData?.cds}
         subType='StandaloneAddon'
         shopperId={shopperId}
-        productId={UPGRADE_PRODUCT_IDS.AIRO_BUILDER_CREDITS}
+        productId={effectiveProductId}
         entitlementId={entitlementId}
         source={source}
         itc={getItcOverride() ?? itc}

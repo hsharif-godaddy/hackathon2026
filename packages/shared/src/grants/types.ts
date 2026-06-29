@@ -7,6 +7,7 @@
 export enum GrantType {
   PlanMonthly = 'plan-monthly',
   CreditPack = 'credit-pack',
+  StandaloneCreditPack = 'standalone-credit-pack',
 }
 
 export enum GrantFinalState {

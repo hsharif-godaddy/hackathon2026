@@ -193,6 +193,19 @@ describe('credits', function creditsTests() {
       expect(result.map((g) => g.id)).toContain('no-expiry-2');
     });
 
+    it('should include both addon and standalone credit packs', function includesBoth() {
+      const addonPack = createMockGrant({ id: 'addon-1', type: GrantType.CreditPack, creditsMax: 250 });
+      const standalonePack = createMockGrant({ id: 'standalone-1', type: GrantType.StandaloneCreditPack, creditsMax: 100 });
+      const planGrant = createMockGrant({ id: 'plan-1', type: GrantType.PlanMonthly });
+      const grants = [planGrant, addonPack, standalonePack];
+
+      const result = getCreditPackGrants(grants);
+
+      expect(result).toHaveLength(2);
+      expect(result.map((g) => g.id)).toContain('addon-1');
+      expect(result.map((g) => g.id)).toContain('standalone-1');
+    });
+
     it('should sort consumed BMS grant (useBefore: null, finalState: Consumed) after active grants', function consumedBmsGrantSortedLast() {
       const now = new Date();
       const consumedBmsGrant = createMockGrant({
@@ -834,6 +847,32 @@ describe('credits', function creditsTests() {
 
       expect(result.totalCreditsSpent).toBe(100);
       expect(result.totalCreditsMax).toBe(500);
+    });
+
+    it('should aggregate plan-monthly, addon credit-pack, and standalone credit-pack grants', function aggregateAll() {
+      const planGrant = createMockGrant({
+        id: 'plan-1',
+        type: GrantType.PlanMonthly,
+        creditsSpent: 300,
+        creditsMax: 500,
+      });
+      const addonPack = createMockGrant({
+        id: 'addon-pack-1',
+        type: GrantType.CreditPack,
+        creditsSpent: 100,
+        creditsMax: 250,
+      });
+      const standalonePack = createMockGrant({
+        id: 'standalone-pack-1',
+        type: GrantType.StandaloneCreditPack,
+        creditsSpent: 50,
+        creditsMax: 100,
+      });
+
+      const result = getTotalCreditsFromGrants([planGrant, addonPack, standalonePack]);
+
+      expect(result.totalCreditsSpent).toBe(450);
+      expect(result.totalCreditsMax).toBe(850);
     });
   });
 

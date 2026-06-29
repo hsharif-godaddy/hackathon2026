@@ -30,9 +30,9 @@ function toNumber(value: string, logger: AdapterLogger): number {
 }
 
 function deriveGrantType(item: BudgetItem): GrantType {
-  if (item.label === GrantType.PlanMonthly || item.label === GrantType.CreditPack) {
-    return item.label
-  }
+  if (item.label === GrantType.PlanMonthly) return GrantType.PlanMonthly
+  if (item.label === GrantType.StandaloneCreditPack) return GrantType.StandaloneCreditPack
+  if (item.label === GrantType.CreditPack) return GrantType.CreditPack
   return item.resetInterval ? GrantType.PlanMonthly : GrantType.CreditPack
 }
 
