@@ -37,6 +37,16 @@ export {
   type GeminiImageGenerationOptions,
   type GeminiImageGenerationResult
 } from './utils/image-generation.js'
+export {
+  generateSoraVideo,
+  resolveSoraResolution,
+  type GenerateSoraVideoOptions,
+  type GenerateSoraVideoResult,
+  type SoraVideoDuration,
+  type SoraVideoOrientation,
+  type SoraVideoResolution,
+} from './utils/video-generation.js'
+export { getVideoAuthToken, videoApiFetch, type VideoApiBilling } from './utils/video-api-fetch.js'
 export * from './utils/model-pricing.js'
 export * from './utils/model-context-window.js'
 export * from './utils/token-usage-events.js'

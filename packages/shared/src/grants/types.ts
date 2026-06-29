@@ -23,6 +23,7 @@ export enum LlmCallSource {
   ToolFontTheme = 'tool:font-theme',
   ToolColorScheme = 'tool:color-scheme',
   ToolVideoPrompt = 'tool:video-prompt',
+  ToolVideoGenerate = 'tool:video-generate',
   ServiceNameSuggestion = 'service:name-suggestion',
   ServiceDomainSeedSuggestion = 'service:domain-seed-suggestion',
   ServiceSummarization = 'service:summarization',

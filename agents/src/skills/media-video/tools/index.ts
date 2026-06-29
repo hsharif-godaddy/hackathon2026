@@ -1,18 +1,34 @@
-import { z } from 'zod';
-import { logger } from '../../../logging/index.js';
-import { grantSessionManager } from '@airo/ai-grants';
+import { buildLitellmMetadataFromContext, LlmCallSource, type ExecutionContext } from '@airo/ai-grants';
+import { generateSoraVideo, type SoraVideoDuration } from '@airo/ai-lib';
+import { BudgetExceededError, llmMetadataContext } from '@airo/ai-common';
 import type { SkillToolDefinition } from '@airo/ai-skills';
-import { imagegenService } from '../../../services/ImagegenService.js';
+import { z } from 'zod';
+
 import { appRepository } from '../../../database/repositories/index.js';
-import { mediaManifestService, type MediaSlot } from '../../../services/MediaManifestService.js';
+import { logger } from '../../../logging/index.js';
 import { captionFromPrompt } from '../../../services/MediaCaptionService.js';
+import { mediaManifestService, type MediaSlot } from '../../../services/MediaManifestService.js';
+import { uploadGeneratedVideo } from '../../../utils/upload-generated-video.js';
+
+const GENERATED_VIDEO_CONFIRMATION_ERROR = 'Generated video requires explicit confirmation. Use the media tool with mediaType video for stock clips, or ask the user to confirm generated video first.';
+
+function hasGeneratedVideoConfirmation(userMessage: unknown): boolean {
+  if (typeof userMessage !== 'string') {
+    return false;
+  }
+  const normalized = userMessage.trim().toLowerCase();
+  return normalized === 'confirmed'
+    || normalized === 'i understand, continue'
+    || normalized.endsWith('\nconfirmed')
+    || normalized.endsWith('\ni understand, continue');
+}
 
 const GenerateVideoInputSchema = z.object({
   prompt: z
     .string()
     .min(1)
     .max(1000)
-    .describe('Text description of the video to generate'),
+    .describe('Text description of the video to generate. For on-site use (hero, background, embedded video), prefer loop-friendly prompts: continuous cyclic motion, steady camera, seamless loopable scene — avoid one-time actions or strong start/end camera moves.'),
   orientation: z
     .enum(['landscape', 'portrait'])
     .default('landscape')
@@ -21,15 +37,20 @@ const GenerateVideoInputSchema = z.object({
     .coerce
     .number()
     .int()
-    .refine((val) => [5, 6, 7, 8].includes(val), {
-      message: 'Duration must be 5, 6, 7, or 8 seconds',
+    .refine((val) => [4, 8, 12].includes(val), {
+      message: 'Duration must be 4, 8, or 12 seconds',
     })
-    .describe('Seconds: 5, 6, 7, or 8'),
+    .describe('Seconds: 4, 8, or 12 (Sora-2 supported durations)'),
   slotName: z
     .string()
     .min(1)
     .regex(/^[a-z0-9][a-z0-9/_-]*[a-z0-9]$/i, 'Slot name must be a valid path (alphanumeric, slashes, hyphens, underscores)')
     .describe('Media slot path for this video. When replacing an existing image/video, use the EXACT existing slot path (e.g. "pages/home/featured-1"). For new placements, use standard naming (e.g. "pages/about/hero"). Look at the source code to find the current slot path from /airo-assets/images/ or /airo-assets/videos/ URLs.'),
+  userConfirmed: z
+    .literal(true)
+    .describe(
+      'Must be true only after the user explicitly confirmed via askQuestion that they want to proceed with expensive AI video generation.'
+    ),
 });
 
 type GenerateVideoInput = z.infer<typeof GenerateVideoInputSchema>;
@@ -37,13 +58,28 @@ type GenerateVideoInput = z.infer<typeof GenerateVideoInputSchema>;
 export const generateVideoTool: SkillToolDefinition = {
   name: 'generate_video',
   description:
-    'Generate a video from a text prompt. Always provide slotName to register in the Media Panel. When replacing existing media, use the exact existing slot path.',
+    'Generate a video from a text prompt using Sora-2 (expensive, up to 5 minutes per clip, not reliable for complex prompts). Requires userConfirmed=true after askQuestion approval. Prefer the media tool with mediaType video for free stock clips when the user needs multiple videos. Always provide slotName.',
 
   parameters: GenerateVideoInputSchema,
 
   async execute(input: GenerateVideoInput, context?: unknown) {
-    const appId = (context as { metadata?: { appId?: string } })?.metadata?.appId;
-    const socketId = (context as { socketId?: string })?.socketId;
+    const toolContext = context as {
+      metadata?: {
+        appId?: string;
+        customerId?: string;
+        subscriptionId?: string;
+        budgetServiceEnabled?: boolean;
+        bmsBudgetId?: string;
+        budgetSessionId?: string;
+        traceId?: string;
+        _userMessage?: string;
+      };
+      socketId?: string;
+    };
+    const appId = toolContext.metadata?.appId;
+    const socketId = toolContext.socketId;
+    const budgetServiceEnabled = toolContext.metadata?.budgetServiceEnabled === true;
+    const bmsBudgetId = toolContext.metadata?.bmsBudgetId;
 
     logger.info('skills.media-video.tools.generate_video.start', {
       promptLength: input.prompt.length,
@@ -52,8 +88,12 @@ export const generateVideoTool: SkillToolDefinition = {
       appId,
     });
 
-    // 1. Get customer context from app database
-    const app = appId ? appRepository.findById(appId) : null;
+    if (!appId) {
+      logger.error('skills.media-video.tools.generate_video.no_app', { appId });
+      return { error: 'Unable to upload generated video without app context' };
+    }
+
+    const app = appRepository.findById(appId);
     const customerId = app?.customerId;
 
     if (!customerId) {
@@ -61,107 +101,143 @@ export const generateVideoTool: SkillToolDefinition = {
       return { error: 'Unable to determine customer identity for video generation' };
     }
 
-    // 2. Get budget user from grant system
-    const budgetUserId = socketId
-      ? grantSessionManager.getCurrentUserId(socketId, customerId)
-      : customerId;
-
-    if (!budgetUserId) {
-      logger.error('skills.media-video.tools.generate_video.grants_exhausted', { appId, socketId });
-      return { error: 'All credit grants have been exhausted. Please purchase additional credits to generate videos.' };
+    if (!hasGeneratedVideoConfirmation(toolContext.metadata?._userMessage)) {
+      logger.warn('skills.media-video.tools.generate_video.confirmation_required', { appId, socketId });
+      return { error: GENERATED_VIDEO_CONFIRMATION_ERROR };
     }
 
-    // 3. Call imagegen API (polls internally until complete)
-    const result = await imagegenService.generateVideo({
-      description: input.prompt,
-      orientation: input.orientation,
-      duration: input.duration,
-      customerId,
-      budgetUserId,
+    const executionContext: ExecutionContext = {
+      socketId,
+      metadata: {
+        appId,
+        customerId,
+        subscriptionId: toolContext.metadata?.subscriptionId ?? app.subscriptionId,
+        budgetServiceEnabled,
+        bmsBudgetId,
+        budgetSessionId: toolContext.metadata?.budgetSessionId,
+        ...(toolContext.metadata?.traceId && { traceId: toolContext.metadata.traceId }),
+      },
+    };
+
+    const litellmMetadata = buildLitellmMetadataFromContext(executionContext, {
+      source: LlmCallSource.ToolVideoGenerate,
     });
 
-    logger.info('skills.media-video.tools.generate_video.success', {
-      sessionId: result.sessionId,
-    });
+    if (!litellmMetadata?.user) {
+      logger.error('skills.media-video.tools.generate_video.grants_exhausted', { appId, socketId });
+      return { error: 'Video generation is expensive and credit grants are exhausted. Recommend the media tool with mediaType video for free stock clips instead of AI generation.' };
+    }
 
-    // 4a. Register video in the media manifest so it appears in the Media Panel.
-    let normalizedSlot = input.slotName.trim().replace(/^\/+|\/+$/g, '');
-    let manifestWriteSuccess = false;
-    if (appId && normalizedSlot) {
+    const budgetUserId = litellmMetadata.user;
+
+    return await llmMetadataContext.run(litellmMetadata, async function generateVideoWithBilling() {
+      let soraResult: Awaited<ReturnType<typeof generateSoraVideo>>;
       try {
-      // Resolve slot name: find the matching existing slot in the manifest.
-      const existingManifest = await mediaManifestService.getManifest(appId);
-      if (existingManifest.success && existingManifest.manifest) {
-        const manifestSlots = Object.keys(existingManifest.manifest);
-        if (!manifestSlots.includes(normalizedSlot)) {
-          const match = manifestSlots.find((s) => {
-            if (s === normalizedSlot) return true;
-            return s.endsWith('/' + normalizedSlot);
+        soraResult = await generateSoraVideo({
+          prompt: input.prompt,
+          orientation: input.orientation,
+          duration: input.duration as SoraVideoDuration,
+        });
+      } catch (err) {
+        if (BudgetExceededError.isInstance(err)) {
+          logger.warn('skills.media-video.tools.generate_video.budget_exceeded', {
+            appId,
+            socketId,
+            budgetUserId,
+            statusCode: err.statusCode,
           });
-          if (match) {
-            logger.info('skills.media-video.tools.generate_video.slot_resolved', {
-              appId,
-              requested: normalizedSlot,
-              resolved: match,
-            });
-            normalizedSlot = match;
+          return {
+            error:
+              'Generated video budget exceeded. Use the media tool with mediaType video for stock clips instead of generated video.',
+          };
+        }
+        throw err;
+      }
+
+      const url = await uploadGeneratedVideo(appId, soraResult.buffer);
+
+      logger.info('skills.media-video.tools.generate_video.success', {
+        videoId: soraResult.videoId,
+        appId,
+        budgetUserId,
+      });
+
+      let normalizedSlot = input.slotName.trim().replace(/^\/+|\/+$/g, '');
+      let manifestWriteSuccess = false;
+      if (normalizedSlot) {
+        try {
+          const existingManifest = await mediaManifestService.getManifest(appId);
+          if (existingManifest.success && existingManifest.manifest) {
+            const manifestSlots = Object.keys(existingManifest.manifest);
+            if (!manifestSlots.includes(normalizedSlot)) {
+              const match = manifestSlots.find((s) => {
+                if (s === normalizedSlot) return true;
+                return s.endsWith('/' + normalizedSlot);
+              });
+              if (match) {
+                logger.info('skills.media-video.tools.generate_video.slot_resolved', {
+                  appId,
+                  requested: normalizedSlot,
+                  resolved: match,
+                });
+                normalizedSlot = match;
+              }
+            }
           }
+
+          const now = new Date().toISOString();
+          const existingSlot = existingManifest.manifest?.[normalizedSlot];
+          const previousAiUrls = existingSlot?.aiGeneratedUrls || [];
+          const mergedAiUrls = [url, ...previousAiUrls.filter((u: string) => u !== url)].slice(0, 20);
+          const caption = await captionFromPrompt(input.prompt);
+          const slotEntry: MediaSlot = {
+            ...existingSlot,
+            mediaType: 'video',
+            currentUrl: url,
+            searchQuery: caption,
+            caption,
+            alternatives: existingSlot?.alternatives || [],
+            aiGeneratedUrls: mergedAiUrls,
+            userModified: true,
+            createdAt: existingSlot?.createdAt || now,
+            lastUpdated: now,
+          };
+
+          const manifestResult = await mediaManifestService.setSlot(appId, normalizedSlot, slotEntry, true);
+          if (manifestResult.success) {
+            manifestWriteSuccess = true;
+            logger.info('skills.media-video.tools.generate_video.manifest_updated', {
+              appId,
+              slotName: normalizedSlot,
+            });
+          } else {
+            logger.error('skills.media-video.tools.generate_video.manifest_update_failed', {
+              appId,
+              slotName: normalizedSlot,
+              error: manifestResult.error,
+            });
+          }
+        } catch (err) {
+          logger.error('skills.media-video.tools.generate_video.manifest_write_error', {
+            appId,
+            slotName: normalizedSlot,
+            error: err instanceof Error ? err.message : String(err),
+          });
         }
       }
 
-      const now = new Date().toISOString();
-      // Merge with existing slot data to preserve alternatives and previous AI generations
-      const existingSlot = existingManifest.manifest?.[normalizedSlot];
-      const previousAiUrls = existingSlot?.aiGeneratedUrls || [];
-      const mergedAiUrls = [result.url, ...previousAiUrls.filter((u: string) => u !== result.url)].slice(0, 20);
-      const caption = await captionFromPrompt(input.prompt);
-      const slotEntry: MediaSlot = {
-        ...existingSlot,
-        mediaType: 'video',
-        currentUrl: result.url,
-        searchQuery: caption,
-        caption,
-        alternatives: existingSlot?.alternatives || [],
-        aiGeneratedUrls: mergedAiUrls,
-        userModified: true,
-        createdAt: existingSlot?.createdAt || now,
-        lastUpdated: now,
+      return {
+        structuredContent: {
+          url,
+          sessionId: soraResult.videoId,
+          slotUrl: manifestWriteSuccess ? `/airo-assets/videos/${normalizedSlot}` : undefined,
+        },
       };
-
-      const manifestResult = await mediaManifestService.setSlot(appId, normalizedSlot, slotEntry, true);
-      if (manifestResult.success) {
-        manifestWriteSuccess = true;
-        logger.info('skills.media-video.tools.generate_video.manifest_updated', {
-          appId,
-          slotName: normalizedSlot,
-        });
-      } else {
-        logger.error('skills.media-video.tools.generate_video.manifest_update_failed', {
-          appId,
-          slotName: normalizedSlot,
-          error: manifestResult.error,
-        });
-      }
-      } catch (err) {
-        logger.error('skills.media-video.tools.generate_video.manifest_write_error', {
-          appId,
-          slotName: normalizedSlot,
-          error: err instanceof Error ? err.message : String(err),
-        });
-      }
-    }
-
-    // 5. Return structured result
-    return {
-      structuredContent: {
-        url: result.url,
-        sessionId: result.sessionId,
-        slotUrl: manifestWriteSuccess ? `/airo-assets/videos/${normalizedSlot}` : undefined,
-      },
-    };
+    });
   },
 
   config: {
-    timeout: 330000, // 5.5 minutes (poll timeout is 5 min, add buffer)
+    // 330s = 300s Sora poll ceiling + buffer for upload/manifest writes
+    timeout: 330000,
   },
 };

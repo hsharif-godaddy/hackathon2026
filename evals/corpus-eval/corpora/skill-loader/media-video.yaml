@@ -35,6 +35,12 @@ cases:
     tags: [positive]
     rationale: Explicit generation of a background video
 
+  - id: multi-cat-videos-ai-generated
+    prompt: "add generated 4 cat videos doing hello"
+    expectedSkill: media-video
+    tags: [positive]
+    rationale: Explicit AI-generated multi-video requests should load media-video so the generated-video cost gate can run
+
   # --- Positive: harder cases ---
 
   - id: custom-video-no-keyword
@@ -42,12 +48,6 @@ cases:
     expectedSkill: media-video
     tags: [positive, hard]
     rationale: Rejecting stock footage and wanting something unique implies AI video generation
-
-  - id: moving-visuals
-    prompt: "I want something moving and cinematic, not a static photo"
-    expectedSkill: media-video
-    tags: [positive, hard]
-    rationale: Moving and cinematic, rejecting static photo — implies generated video without "video" or "clip" keyword
 
   - id: timelapse-feel
     prompt: "I want a timelapse of clouds rushing across the sky"
@@ -93,13 +93,25 @@ cases:
     tags: [negative]
     rationale: Adding a background video without generate/create intent uses stock search via media tool
 
-  # --- Additional positive cases ---
-
   - id: animated-background
     prompt: "Generate an animated background of flowing water for the landing page"
-    expectedSkill: media-video
-    tags: [positive]
-    rationale: Generated animated background is AI video territory
+    expectedSkill: null
+    tags: [negative, hard]
+    rationale: Ambiguous animated background requests can be code/animation work unless the user explicitly asks for generated/custom video
+
+  - id: moving-visuals
+    prompt: "I want something custom and cinematic, not a static photo"
+    expectedSkill: null
+    tags: [negative, hard]
+    rationale: Custom visual requests without video wording are ambiguous and should avoid generated video unless the user explicitly asks for generated/custom video
+
+  - id: multi-cat-videos-stock
+    prompt: "add 4 cat videos doing hello"
+    expectedSkill: null
+    tags: [negative]
+    rationale: Multi-video add requests should use stock/Getty video search, not generated video
+
+  # --- Additional positive cases ---
 
   - id: product-reveal-video
     prompt: "Create a dramatic product reveal video with particles and light effects"

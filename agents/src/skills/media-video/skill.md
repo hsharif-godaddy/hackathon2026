@@ -1,26 +1,39 @@
 ---
 name: media-video
-description: AI video generation from text prompts.
-whenToUse: User wants to generate a video, create a video clip, make a video. Use the media tool with mediaType video for stock search — not this skill.
+description: Custom or generated video after explicit user confirmation. Not for stock video or code/tool-only requests.
+whenToUse: Only when the user explicitly asks for generated, custom video from a text prompt, and stock video or code/tool changes would not be enough. When ambiguous, use stock video.
 ---
 
-# Media Video Skill
+## Cost Gate
 
-Generate videos from text prompts via `ImagegenService`.
+Never call `generate_video` on the same turn as the user's original request. First call the global `askQuestion` tool and stop.
 
-## Placement
+Stock video must be the first choice:
 
-1. Tool returns `structuredContent.url` (mp4) and `structuredContent.slotUrl` for the proxy-resolved path.
-2. **Always pass `slotName`** — this registers the video in the Media Panel so the user can manage it.
-   - **Replacing an existing image/video slot:** pass the EXACT existing slot path (e.g., `"pages/home/featured-1"`). This updates that slot in-place so the Media Panel grid reflects the change.
-   - **New placement:** use the standard slot naming convention (e.g., `"pages/home/hero"`).
-3. When `slotUrl` is returned, use it in source code (`<video src={slotUrl} ...>`) instead of the raw URL — this enables runtime resolution and user swapping.
-4. **Present first** when the user only asked to generate a clip; embed when they ask.
+```json
+{
+  "questions": [{
+    "question": "Generated videos are experimental, expensive & slow to generate",
+    "type": "chips_single",
+    "suggestions": [
+      { "text": "Search stock videos instead", "value": "stock" },
+      { "text": "I understand, continue", "value": "confirmed" }
+    ],
+    "allowOther": false,
+    "multiSelect": false
+  }]
+}
+```
 
-## Usage Notes
+- `stock`: use `media` with `mediaType: 'video'`.
+- `confirmed`: now call `generate_video` with `userConfirmed: true`.
 
-1. **Warn the user** generation takes up to 5 minutes — the tool blocks until complete or timeout.
-2. Duration must be exactly 5, 6, 7, or 8 seconds.
-3. Write detailed, vivid prompts for best results.
-4. **Fallback:** if generation fails or service is unavailable, use the `media` tool with `mediaType: 'video'` for stock video.
-5. On error: simplify the prompt, verify duration, then fall back to stock video.
+The tool also enforces this at runtime: the current user message must be the confirmation answer.
+
+## Generate
+
+- Duration: 4, 8, or 12 seconds.
+- Always pass `slotName`; use the exact existing media slot when replacing content.
+- Keep prompts simple: one subject, one motion, one mood. Ask for continuous loopable motion when needed.
+- Prefer returned `structuredContent.slotUrl` in source: `<video src={slotUrl} loop muted playsInline autoPlay />`.
+- If generation fails or budget is exhausted, fall back to stock video.

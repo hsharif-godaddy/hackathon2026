@@ -9,13 +9,14 @@ vi.mock('../../../../logging/index.js', () => ({
   },
 }));
 
-const mockGenerateVideo = vi.fn();
-vi.mock('../../../../services/ImagegenService.js', () => ({
-  imagegenService: {
-    generateImages: vi.fn(),
-    editImage: vi.fn(),
-    generateVideo: mockGenerateVideo,
-  },
+const mockGenerateSoraVideo = vi.fn();
+vi.mock('@airo/ai-lib', () => ({
+  generateSoraVideo: mockGenerateSoraVideo,
+}));
+
+const mockUploadGeneratedVideo = vi.fn();
+vi.mock('../../../../utils/upload-generated-video.js', () => ({
+  uploadGeneratedVideo: mockUploadGeneratedVideo,
 }));
 
 const mockFindById = vi.fn();
@@ -25,11 +26,30 @@ vi.mock('../../../../database/repositories/index.js', () => ({
   },
 }));
 
+const mockBuildLitellmMetadataFromContext = vi.fn();
+const mockLlmMetadataRun = vi.fn();
+
+vi.mock('@airo/ai-common', async (importOriginal) => {
+  const actual = await importOriginal<Record<string, unknown>>();
+  return {
+    ...actual,
+    llmMetadataContext: {
+      run: mockLlmMetadataRun,
+      getStore: vi.fn(),
+    },
+  };
+});
+
 const mockGetCurrentUserId = vi.fn();
 vi.mock('@airo/ai-grants', async (importOriginal) => {
   const actual = await importOriginal<Record<string, unknown>>();
   return {
     ...actual,
+    buildLitellmMetadataFromContext: mockBuildLitellmMetadataFromContext,
+    LlmCallSource: {
+      ...(actual.LlmCallSource as Record<string, string>),
+      ToolVideoGenerate: 'tool:video-generate',
+    },
     grantSessionManager: {
       getCurrentUserId: mockGetCurrentUserId,
       getSubscriptionIdForSession: vi.fn(),
@@ -51,6 +71,21 @@ vi.mock('../../../../services/MediaCaptionService.js', () => ({
   captionFromPrompt: vi.fn().mockResolvedValue('test caption'),
 }));
 
+interface ToolTestContext {
+  socketId: string;
+  metadata: Record<string, unknown>;
+}
+
+function confirmedContext(metadata: Record<string, unknown> = { appId: 'app-123' }): ToolTestContext {
+  return {
+    socketId: 'socket-1',
+    metadata: {
+      _userMessage: 'confirmed',
+      ...metadata,
+    },
+  };
+}
+
 describe('generateVideoTool', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -63,11 +98,18 @@ describe('generateVideoTool', () => {
     });
 
     mockGetCurrentUserId.mockReturnValue('budget-user-111');
-
-    mockGenerateVideo.mockResolvedValue({
-      sessionId: 'vid-123',
-      url: 'https://cdn/video.mp4',
+    mockBuildLitellmMetadataFromContext.mockReturnValue({
+      user: 'budget-user-111',
+      tags: ['source:tool:video-generate'],
     });
+    mockLlmMetadataRun.mockImplementation(async (_metadata: unknown, fn: () => Promise<unknown>) => fn());
+
+    mockGenerateSoraVideo.mockResolvedValue({
+      videoId: 'vid-123',
+      buffer: Buffer.from('video-bytes'),
+    });
+
+    mockUploadGeneratedVideo.mockResolvedValue('/airo-assets/uploads/ai-video-abc123.mp4');
 
     mockGetManifest.mockResolvedValue({
       success: true,
@@ -76,13 +118,38 @@ describe('generateVideoTool', () => {
     mockSetSlot.mockResolvedValue({ success: true });
   });
 
-  it('should call imagegenService with mapped params', async () => {
+  it('should reject generated video when the current user message is not the confirmation answer', async () => {
     const { generateVideoTool } = await import('../index.js');
 
     const context = {
       socketId: 'socket-1',
-      metadata: { appId: 'app-123' },
+      metadata: {
+        appId: 'app-123',
+        _userMessage: 'add 4 cat videos doing hello using stock videos',
+      },
     };
+
+    const result = await generateVideoTool.execute(
+      {
+        prompt: 'Four cats waving hello',
+        orientation: 'landscape',
+        duration: 4,
+        slotName: 'pages/home/cat-gallery-1',
+        userConfirmed: true as const,
+      },
+      context
+    );
+
+    expect(result).toEqual({
+      error: 'Generated video requires explicit confirmation. Use the media tool with mediaType video for stock clips, or ask the user to confirm generated video first.',
+    });
+    expect(mockGenerateSoraVideo).not.toHaveBeenCalled();
+  });
+
+  it('should call generateSoraVideo with mapped params', async () => {
+    const { generateVideoTool } = await import('../index.js');
+
+    const context = confirmedContext();
 
     await generateVideoTool.execute(
       {
@@ -90,35 +157,41 @@ describe('generateVideoTool', () => {
         orientation: 'landscape',
         duration: 8,
         slotName: 'pages/home/hero',
+        userConfirmed: true as const,
       },
       context
     );
 
-    expect(mockGenerateVideo).toHaveBeenCalledWith(
+    expect(mockGenerateSoraVideo).toHaveBeenCalledWith(
       expect.objectContaining({
-        description: 'Sunrise over mountains',
+        prompt: 'Sunrise over mountains',
         orientation: 'landscape',
         duration: 8,
-        customerId: 'cust-abc',
-        budgetUserId: 'budget-user-111',
       })
     );
+    expect(mockBuildLitellmMetadataFromContext).toHaveBeenCalledWith(
+      expect.objectContaining({
+        socketId: 'socket-1',
+        metadata: expect.objectContaining({ appId: 'app-123', customerId: 'cust-abc' }),
+      }),
+      expect.objectContaining({ source: 'tool:video-generate' })
+    );
+    expect(mockLlmMetadataRun).toHaveBeenCalled();
+    expect(mockUploadGeneratedVideo).toHaveBeenCalledWith('app-123', Buffer.from('video-bytes'));
   });
 
   it('should return structured content on success', async () => {
     const { generateVideoTool } = await import('../index.js');
 
-    const context = {
-      socketId: 'socket-1',
-      metadata: { appId: 'app-123' },
-    };
+    const context = confirmedContext();
 
     const result = await generateVideoTool.execute(
       {
         prompt: 'A sunset video',
         orientation: 'landscape',
-        duration: 5,
+        duration: 4,
         slotName: 'pages/home/hero',
+        userConfirmed: true as const,
       },
       context
     );
@@ -126,7 +199,7 @@ describe('generateVideoTool', () => {
     expect(result).toEqual({
       structuredContent: {
         sessionId: 'vid-123',
-        url: 'https://cdn/video.mp4',
+        url: '/airo-assets/uploads/ai-video-abc123.mp4',
         slotUrl: '/airo-assets/videos/pages/home/hero',
       },
     });
@@ -146,8 +219,9 @@ describe('generateVideoTool', () => {
       {
         prompt: 'Test',
         orientation: 'landscape',
-        duration: 5,
+        duration: 4,
         slotName: 'pages/home/hero',
+        userConfirmed: true as const,
       },
       context
     );
@@ -155,79 +229,178 @@ describe('generateVideoTool', () => {
     expect(result).toEqual({
       error: 'Unable to determine customer identity for video generation',
     });
-    expect(mockGenerateVideo).not.toHaveBeenCalled();
+    expect(mockGenerateSoraVideo).not.toHaveBeenCalled();
   });
 
   it('should return error when grants exhausted', async () => {
-    mockGetCurrentUserId.mockReturnValue(undefined);
+    mockBuildLitellmMetadataFromContext.mockReturnValue(null);
 
+    const { generateVideoTool } = await import('../index.js');
+
+    const context = confirmedContext();
+
+    const result = await generateVideoTool.execute(
+      {
+        prompt: 'Test',
+        orientation: 'landscape',
+        duration: 4,
+        slotName: 'pages/home/hero',
+        userConfirmed: true as const,
+      },
+      context
+    );
+
+    expect(result).toEqual({
+      error: 'Video generation is expensive and credit grants are exhausted. Recommend the media tool with mediaType video for free stock clips instead of AI generation.',
+    });
+    expect(mockGenerateSoraVideo).not.toHaveBeenCalled();
+  });
+
+  it('should return error when appId is missing', async () => {
     const { generateVideoTool } = await import('../index.js');
 
     const context = {
       socketId: 'socket-1',
-      metadata: { appId: 'app-123' },
+      metadata: {},
     };
 
     const result = await generateVideoTool.execute(
       {
         prompt: 'Test',
         orientation: 'landscape',
-        duration: 5,
+        duration: 4,
         slotName: 'pages/home/hero',
+        userConfirmed: true as const,
       },
       context
     );
 
     expect(result).toEqual({
-      error: 'All credit grants have been exhausted. Please purchase additional credits to generate videos.',
+      error: 'Unable to upload generated video without app context',
     });
-    expect(mockGenerateVideo).not.toHaveBeenCalled();
+    expect(mockGenerateSoraVideo).not.toHaveBeenCalled();
   });
 
-  it('should propagate error when imagegenService throws', async () => {
-    mockGenerateVideo.mockRejectedValue(new Error('Video generation failed: Content policy violation'));
+  it('should propagate error when generateSoraVideo throws', async () => {
+    mockGenerateSoraVideo.mockRejectedValue(new Error('Sora video generation failed'));
 
     const { generateVideoTool } = await import('../index.js');
 
-    const context = {
-      socketId: 'socket-1',
-      metadata: { appId: 'app-123' },
-    };
+    const context = confirmedContext();
 
     await expect(
       generateVideoTool.execute(
         {
           prompt: 'Test',
           orientation: 'landscape',
-          duration: 5,
+          duration: 4,
           slotName: 'pages/home/hero',
+          userConfirmed: true as const,
         },
         context
       )
-    ).rejects.toThrow('Video generation failed: Content policy violation');
+    ).rejects.toThrow('Sora video generation failed');
   });
 
   it('should pass duration as a number', async () => {
     const { generateVideoTool } = await import('../index.js');
 
-    const context = {
-      socketId: 'socket-1',
-      metadata: { appId: 'app-123' },
-    };
+    const context = confirmedContext();
 
     await generateVideoTool.execute(
       {
         prompt: 'Test video',
         orientation: 'portrait',
-        duration: 6,
+        duration: 12,
         slotName: 'pages/home/hero',
+        userConfirmed: true as const,
       },
       context
     );
 
-    const callArgs = mockGenerateVideo.mock.calls[0][0];
+    const callArgs = mockGenerateSoraVideo.mock.calls[0][0];
     expect(typeof callArgs.duration).toBe('number');
-    expect(callArgs.duration).toBe(6);
+    expect(callArgs.duration).toBe(12);
+  });
+
+  it('passes BMS budget metadata through llmMetadataContext in BMS mode', async () => {
+    mockBuildLitellmMetadataFromContext.mockReturnValue({
+      user: 'airo-builder:sid:sub-xyz',
+      tags: ['mode:bms'],
+      budgetServiceEnabled: true,
+      budgetId: 'budget-123',
+      budgetSessionId: 'session-456',
+    });
+
+    const { generateVideoTool } = await import('../index.js');
+
+    const context = {
+      socketId: 'socket-1',
+      metadata: {
+        appId: 'app-123',
+        _userMessage: 'confirmed',
+        budgetServiceEnabled: true,
+        bmsBudgetId: 'budget-123',
+        budgetSessionId: 'session-456',
+      },
+    };
+
+    await generateVideoTool.execute(
+      {
+        prompt: 'Test',
+        orientation: 'landscape',
+        duration: 4,
+        slotName: 'pages/home/hero',
+        userConfirmed: true as const,
+      },
+      context
+    );
+
+    expect(mockBuildLitellmMetadataFromContext).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          budgetServiceEnabled: true,
+          bmsBudgetId: 'budget-123',
+          budgetSessionId: 'session-456',
+        }),
+      }),
+      expect.objectContaining({ source: 'tool:video-generate' })
+    );
+    expect(mockLlmMetadataRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        budgetSessionId: 'session-456',
+        user: 'airo-builder:sid:sub-xyz',
+      }),
+      expect.any(Function)
+    );
+    expect(mockGenerateSoraVideo).toHaveBeenCalled();
+  });
+
+  it('returns stock recommendation when Sora budget is exceeded', async () => {
+    const { BudgetExceededError } = await import('@airo/ai-common');
+    mockGenerateSoraVideo.mockRejectedValueOnce(
+      new BudgetExceededError('Sora submit budget exceeded', 400, 'budget_exceeded'),
+    );
+
+    const { generateVideoTool } = await import('../index.js');
+    const context = confirmedContext();
+
+    const result = await generateVideoTool.execute(
+      {
+        prompt: 'Sunrise over mountains',
+        orientation: 'landscape',
+        duration: 8,
+        slotName: 'pages/home/hero',
+        userConfirmed: true as const,
+      },
+      context,
+    );
+
+    expect(result).toEqual({
+      error:
+        'Generated video budget exceeded. Use the media tool with mediaType video for stock clips instead of generated video.',
+    });
+    expect(mockUploadGeneratedVideo).not.toHaveBeenCalled();
   });
 
   describe('slot resolution', () => {
@@ -241,14 +414,13 @@ describe('generateVideoTool', () => {
       });
 
       const { generateVideoTool } = await import('../index.js');
-      const context = { socketId: 'socket-1', metadata: { appId: 'app-123' } };
+      const context = confirmedContext();
 
       await generateVideoTool.execute(
-        { prompt: 'Test', orientation: 'landscape', duration: 5, slotName: 'home/hero' },
+        { prompt: 'Test', orientation: 'landscape', duration: 8, slotName: 'home/hero', userConfirmed: true as const },
         context
       );
 
-      // Should resolve "home/hero" to "pages/home/hero" (ends with "/home/hero")
       expect(mockSetSlot).toHaveBeenCalledWith('app-123', 'pages/home/hero', expect.any(Object), true);
     });
 
@@ -262,13 +434,10 @@ describe('generateVideoTool', () => {
       });
 
       const { generateVideoTool } = await import('../index.js');
-      const context = { socketId: 'socket-1', metadata: { appId: 'app-123' } };
+      const context = confirmedContext();
 
-      // "hero" alone should NOT match "pages/home/hero" because "home/hero" doesn't end with "/hero" as a full path
-      // Actually "hero" would match because pages/home/hero ends with "/hero"
-      // But the key insight: "about/hero" should match pages/about/hero, NOT pages/home/hero
       await generateVideoTool.execute(
-        { prompt: 'Test', orientation: 'landscape', duration: 5, slotName: 'about/hero' },
+        { prompt: 'Test', orientation: 'landscape', duration: 8, slotName: 'about/hero', userConfirmed: true as const },
         context
       );
 
@@ -284,10 +453,10 @@ describe('generateVideoTool', () => {
       });
 
       const { generateVideoTool } = await import('../index.js');
-      const context = { socketId: 'socket-1', metadata: { appId: 'app-123' } };
+      const context = confirmedContext();
 
       await generateVideoTool.execute(
-        { prompt: 'Test', orientation: 'landscape', duration: 5, slotName: 'pages/contact/header' },
+        { prompt: 'Test', orientation: 'landscape', duration: 8, slotName: 'pages/contact/header', userConfirmed: true as const },
         context
       );
 
@@ -298,15 +467,14 @@ describe('generateVideoTool', () => {
       mockGetManifest.mockResolvedValue({ success: false, error: 'file not found' });
 
       const { generateVideoTool } = await import('../index.js');
-      const context = { socketId: 'socket-1', metadata: { appId: 'app-123' } };
+      const context = confirmedContext();
 
       const result = await generateVideoTool.execute(
-        { prompt: 'Test', orientation: 'landscape', duration: 5, slotName: 'pages/new/slot' },
+        { prompt: 'Test', orientation: 'landscape', duration: 8, slotName: 'pages/new/slot', userConfirmed: true as const },
         context
       );
 
-      // Should still succeed — manifest failure doesn't block video generation
-      expect(result).toHaveProperty('structuredContent.url', 'https://cdn/video.mp4');
+      expect(result).toHaveProperty('structuredContent.url', '/airo-assets/uploads/ai-video-abc123.mp4');
     });
   });
 
@@ -315,17 +483,17 @@ describe('generateVideoTool', () => {
       mockSetSlot.mockResolvedValue({ success: false, error: 'disk full' });
 
       const { generateVideoTool } = await import('../index.js');
-      const context = { socketId: 'socket-1', metadata: { appId: 'app-123' } };
+      const context = confirmedContext();
 
       const result = await generateVideoTool.execute(
-        { prompt: 'Test', orientation: 'landscape', duration: 5, slotName: 'pages/home/hero' },
+        { prompt: 'Test', orientation: 'landscape', duration: 8, slotName: 'pages/home/hero', userConfirmed: true as const },
         context
       );
 
       expect(result).toEqual({
         structuredContent: {
           sessionId: 'vid-123',
-          url: 'https://cdn/video.mp4',
+          url: '/airo-assets/uploads/ai-video-abc123.mp4',
           slotUrl: undefined,
         },
       });
@@ -335,17 +503,17 @@ describe('generateVideoTool', () => {
       mockSetSlot.mockRejectedValue(new Error('unexpected error'));
 
       const { generateVideoTool } = await import('../index.js');
-      const context = { socketId: 'socket-1', metadata: { appId: 'app-123' } };
+      const context = confirmedContext();
 
       const result = await generateVideoTool.execute(
-        { prompt: 'Test', orientation: 'landscape', duration: 5, slotName: 'pages/home/hero' },
+        { prompt: 'Test', orientation: 'landscape', duration: 8, slotName: 'pages/home/hero', userConfirmed: true as const },
         context
       );
 
       expect(result).toEqual({
         structuredContent: {
           sessionId: 'vid-123',
-          url: 'https://cdn/video.mp4',
+          url: '/airo-assets/uploads/ai-video-abc123.mp4',
           slotUrl: undefined,
         },
       });
@@ -363,16 +531,16 @@ describe('generateVideoTool', () => {
       });
 
       const { generateVideoTool } = await import('../index.js');
-      const context = { socketId: 'socket-1', metadata: { appId: 'app-123' } };
+      const context = confirmedContext();
 
       await generateVideoTool.execute(
-        { prompt: 'New video', orientation: 'landscape', duration: 5, slotName: 'pages/home/hero' },
+        { prompt: 'New video', orientation: 'landscape', duration: 8, slotName: 'pages/home/hero', userConfirmed: true as const },
         context
       );
 
       const slotArg = mockSetSlot.mock.calls[0][2];
       expect(slotArg.aiGeneratedUrls).toHaveLength(20);
-      expect(slotArg.aiGeneratedUrls[0]).toBe('https://cdn/video.mp4'); // new URL is first
+      expect(slotArg.aiGeneratedUrls[0]).toBe('/airo-assets/uploads/ai-video-abc123.mp4');
     });
   });
 });
