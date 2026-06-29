@@ -138,10 +138,10 @@ describe('useFirstBuildFeedback', () => {
     expect(result.current).toBeNull()
   })
 
-  it('dismiss chatted-past returns null without writing localStorage', () => {
+  it('dismiss chatted-past persists the skip key so the panel stays resolved (fires once)', () => {
     const { result } = renderHook(() => useFirstBuildFeedback('app1'))
     act(() => result.current?.dismiss('chatted-past'))
-    expect(mockSetItem).not.toHaveBeenCalled()
+    expect(mockSetItem).toHaveBeenCalledWith('fbf_skipped_app1', 'true')
     expect(result.current).toBeNull()
   })
 

@@ -45,10 +45,11 @@ export function useFirstBuildFeedback(appId: string): UseFirstBuildFeedbackResul
     (reason: DismissReason) => {
       if (reason === 'magical' || reason === 'close' || reason === 'offbase') {
         safeSetItem(`fbf_answered_${appId}`, reason)
-      } else if (reason === 'skipped') {
+      } else if (reason === 'skipped' || reason === 'chatted-past') {
+        // chatted-past is an implicit skip: persist it like the Skip button so the
+        // panel stays resolved and the skipped event fires at most once per app.
         safeSetItem(`fbf_skipped_${appId}`, 'true')
       }
-      // 'chatted-past' writes nothing — re-shows on refresh
       setStep('done')
     },
     [appId],
