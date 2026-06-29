@@ -15,10 +15,10 @@ cd go-agent
 go run ./cmd/harness configs/harness/baseline.yaml
 
 # A/B test: run two configs sequentially
-go run ./cmd/harness configs/harness/v2.0.yaml configs/harness/v3.0.yaml
+go run ./cmd/harness configs/harness/baseline.yaml configs/harness/v3.0.yaml
 
 # Run specific test case only
-go run ./cmd/harness -case bakery-brief configs/harness/v2.0.yaml
+go run ./cmd/harness -case bakery-brief configs/harness/v3.0.yaml
 
 # Control parallelism
 go run ./cmd/harness -concurrency 5 configs/harness/baseline.yaml
@@ -31,19 +31,19 @@ go run ./cmd/harness -runs 3 configs/harness/baseline.yaml
 
 ```bash
 # Compare two experiments (the main analysis tool)
-go run ./cmd/harness-review -compare results/harness/v2.0 results/harness/v3.0
+go run ./cmd/harness-review -compare results/harness/baseline results/harness/v3.0
 
 # Show judge reasoning for ALL score changes (not just outliers)
-go run ./cmd/harness-review -compare -outlier 0 results/harness/v2.0 results/harness/v3.0
+go run ./cmd/harness-review -compare -outlier 0 results/harness/baseline results/harness/v3.0
 
 # Detailed view of a single result
-go run ./cmd/harness-review results/harness/v2.0/bakery-brief/1.json
+go run ./cmd/harness-review results/harness/v3.0/bakery-brief/1.json
 
 # Brief one-line-per-result summary
-go run ./cmd/harness-review -brief results/harness/v2.0
+go run ./cmd/harness-review -brief results/harness/v3.0
 
 # View all results for a config
-go run ./cmd/harness-review results/harness/v2.0/
+go run ./cmd/harness-review results/harness/v3.0/
 ```
 
 The `-compare` mode produces:
@@ -142,7 +142,6 @@ Results are saved to `results/harness/{config_name}/{test_case_id}/{run_number}.
 | -------------------- | ------------------------------------------------------------------- |
 | `baseline.yaml`      | Production v1.0 prompts (core + attributes + guidelines + examples) |
 | `v1.0.yaml`          | Same as baseline, explicit version label                            |
-| `v2.0.yaml`          | Simplified askQuestion, no attributes.md                            |
 | `v3.0.yaml`          | Modular prompts — 8 independent swappable files                     |
 | `simple-ask.yaml`    | Core override with simplified ask logic                             |
 | `no-attributes.yaml` | Baseline minus attributes.md                                        |
@@ -153,7 +152,6 @@ Results are saved to `results/harness/{config_name}/{test_case_id}/{run_number}.
 | Version | Structure                                                                                                                                                                  | Notes                                                 |
 | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
 | 1.0     | `core.md` + `attributes.md` + `guidelines.md` + `examples.md`                                                                                                              | Original, production default                          |
-| 2.0     | `core.md` + `guidelines.md` + `examples.md`                                                                                                                                | Simplified ask, no attributes. 10% cheaper, 4s faster |
 | 3.0     | 8 modular files: `identity.md`, `questioning.md`, `project-name.md`, `design-direction.md`, `design-reference.md`, `feature-list.md`, `handoff-template.md`, `examples.md` | Each file independently swappable for A/B testing     |
 
 ### Code Structure
@@ -172,7 +170,6 @@ go-agent/
 │   │   └── core-simple-ask.md
 │   ├── baseline.yaml         # Config files
 │   ├── v1.0.yaml
-│   ├── v2.0.yaml
 │   ├── v3.0.yaml
 │   └── ...
 ├── internal/harness/

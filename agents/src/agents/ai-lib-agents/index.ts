@@ -73,9 +73,6 @@ export async function createUnifiedAgentFactory(options?: {
   const marketingConfig = await createMarketingAgent()
   const deepBuildConfig = await createDeepBuildAgent()
   const initialConfig = await createInitialAgent(stateManager)
-  const initialV2Config = await createInitialAgent(stateManager, undefined, '2.0')
-  initialV2Config.id = 'initial-v2'
-  initialV2Config.name = 'Initial (v2.0)'
 
   const initialV3Config = await createInitialAgent(stateManager, undefined, '3.0')
   initialV3Config.id = 'initial-v3'
@@ -94,11 +91,11 @@ export async function createUnifiedAgentFactory(options?: {
   const namedVariantByVersion = new Map<string, string>()
   // Reserved agent ids that a named variant must not overwrite. Includes the
   // built-in initials, any pre-created template initials, and the modular v3
-  // variant prefix. A variant directory named `v2` (→ `initial-v2`) or a
-  // name colliding with a template id would otherwise silently replace the
-  // built-in agent, making the bug invisible until request-time routing.
+  // variant prefix. A variant directory name colliding with a template id
+  // would otherwise silently replace the built-in agent, making the bug
+  // invisible until request-time routing.
   const reservedInitialAgentIds = new Set<string>([
-    'initial', 'initial-v2', 'initial-v3',
+    'initial', 'initial-v3',
     ...Object.keys(templateInitialConfigs),
   ])
   for (const variantName of discoverNamedInitialVariants()) {
@@ -176,7 +173,6 @@ export async function createUnifiedAgentFactory(options?: {
   developConfig.contextPipeline = contextPipeline
   marketingConfig.contextPipeline = contextPipeline
   initialConfig.contextPipeline = contextPipeline
-  initialV2Config.contextPipeline = contextPipeline
   initialV3Config.contextPipeline = contextPipeline
 
   for (const config of Object.values(templateInitialConfigs)) {
@@ -192,7 +188,6 @@ export async function createUnifiedAgentFactory(options?: {
   // Build agent definitions conditionally
   const agentDefinitions: Record<string, AgentConfig> = {
     initial: initialConfig,
-    'initial-v2': initialV2Config,
     'initial-v3': initialV3Config,
     ...namedVariantInitialConfigs,
     develop: developConfig,

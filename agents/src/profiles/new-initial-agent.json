@@ -1,7 +1,0 @@
-{
-  "name": "new-initial-agent",
-  "description": "Initial agent v2.0 - simplified askQuestion, no attributes.md (10% cheaper, 4s faster)",
-  "properties": {
-    "initial.promptVersion": "2.0"
-  }
-}

@@ -36,7 +36,6 @@ export {
  *
  * Prompt versions (in agents/src/prompts/initial/<version>/):
  * - 1.0: Legacy monolithic (core.md + attributes.md + guidelines.md + examples.md)
- * - 2.0: Simplified askQuestion, no attributes.md (10% cheaper, 4s faster)
  * - 3.0: Modular — each concern is a separate swappable file for A/B testing
  *
  * Shared files (communication.md, security.md) are appended from the shared/ directory.
@@ -56,7 +55,7 @@ const DEFAULT_PROMPT_VERSION = '1.0'
  * Directory names under `agents/src/prompts/initial/` that are NOT named manifest
  * variants — numbered versions, templates sub-tree, anything else is scanned.
  */
-const NON_VARIANT_INITIAL_SUBDIRS = new Set(['1.0', '2.0', '3.0', 'templates'])
+const NON_VARIANT_INITIAL_SUBDIRS = new Set(['1.0', '3.0', 'templates'])
 
 /**
  * Discover named manifest-based initial agent variants. A named variant is any
@@ -234,7 +233,7 @@ async function buildInitialSystemPrompt(
  * Create the Initial Agent configuration
  * @param stateManager - Optional session state manager for handoff support
  * @param templateId - Optional template ID to use a custom system prompt
- * @param promptVersion - Optional prompt version (e.g., '1.0', '2.0'). Defaults to DEFAULT_PROMPT_VERSION.
+ * @param promptVersion - Optional prompt version (e.g., '1.0', '3.0'). Defaults to DEFAULT_PROMPT_VERSION.
  */
 export async function createInitialAgent(
   stateManager?: SessionStateManager,

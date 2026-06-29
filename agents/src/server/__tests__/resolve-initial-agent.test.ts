@@ -25,7 +25,7 @@ describe('resolveInitialAgentId', function resolveInitialAgentTests() {
 
   describe('create-time priority order', function priority() {
     it('1. ?template= wins over the JWT profile', function templateBeatsJwt() {
-      resolveProfileSpy.mockReturnValue(profile({ name: 'jwtp', properties: { 'initial.promptVersion': '2.0' } }))
+      resolveProfileSpy.mockReturnValue(profile({ name: 'jwtp', properties: { 'initial.promptVersion': '3.0' } }))
 
       const id = resolveInitialAgentId({
         appId: 'app_new',
@@ -89,8 +89,8 @@ describe('resolveInitialAgentId', function resolveInitialAgentTests() {
       expect(withJwtProfile(profile({ name: 'v3only', properties: { 'initial.promptVersion': '3.0' } }))).toBe('initial-v3')
     })
 
-    it('routes to initial-v2 for promptVersion 2.0', function v2Only() {
-      expect(withJwtProfile(profile({ name: 'v2prod', properties: { 'initial.promptVersion': '2.0' } }))).toBe('initial-v2')
+    it('falls back to initial for legacy promptVersion 2.0', function v2Removed() {
+      expect(withJwtProfile(profile({ name: 'v2prod', properties: { 'initial.promptVersion': '2.0' } }))).toBe('initial')
     })
 
     it('routes to a registered named manifest variant', function namedVariantRegistered() {

@@ -87,8 +87,6 @@ vi.mock('fs', async () => {
       if (path.includes('initial/1.0/attributes.md')) return true;
       if (path.includes('initial/1.0/guidelines.md')) return true;
       if (path.includes('initial/1.0/examples.md')) return true;
-      if (path.includes('initial/2.0/guidelines.md')) return true;
-      if (path.includes('initial/2.0/examples.md')) return true;
       // identity.md only exists in 3.0 (sentinel for modular detection)
       if (path.includes('identity.md') && !path.includes('3.0')) return false;
       return false;
@@ -395,16 +393,6 @@ describe('initial-agent', function initialAgentTests() {
       expect(fileNames).toContain('attributes.md');
       expect(fileNames).toContain('guidelines.md');
       expect(fileNames).toContain('examples.md');
-    });
-
-    it('should load v2.0 in legacy mode (no identity.md)', async function v2Legacy() {
-      await createInitialAgent(undefined, undefined, '2.0');
-
-      const fileNames = fileCalls.map(p => p.split('/').pop());
-      expect(fileNames).toContain('core.md');
-      expect(fileNames).toContain('communication.md');
-      expect(fileNames).toContain('security.md');
-      expect(fileNames).not.toContain('identity.md');
     });
 
     it('should load v3.0 in modular mode with all 8 modules', async function modularLoading() {

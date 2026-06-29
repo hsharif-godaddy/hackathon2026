@@ -111,7 +111,7 @@ describe('Apps Routes Basic Tests', () => {
   it('strips hyphenated /agent commands before suggesting a name', async () => {
     const response = await request(app)
       .post('/apps/suggest-name')
-      .send({ prompt: '/agent initial-v2\nBuild a pricing page' })
+      .send({ prompt: '/agent initial-v3\nBuild a pricing page' })
       .expect(200);
 
     expect(mockSuggestName).toHaveBeenCalledWith('Build a pricing page');
@@ -121,11 +121,11 @@ describe('Apps Routes Basic Tests', () => {
   it('passes bodyless /agent commands through when suggesting a name', async () => {
     const response = await request(app)
       .post('/apps/suggest-name')
-      .send({ prompt: '/agent initial-v2' })
+      .send({ prompt: '/agent initial-v3' })
       .expect(200);
 
-    expect(mockSuggestName).toHaveBeenCalledWith('/agent initial-v2');
-    expect(response.body.prompt).toBe('/agent initial-v2');
+    expect(mockSuggestName).toHaveBeenCalledWith('/agent initial-v3');
+    expect(response.body.prompt).toBe('/agent initial-v3');
   });
 });
 

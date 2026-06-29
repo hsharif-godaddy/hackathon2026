@@ -159,11 +159,11 @@ describe('SSE routes', () => {
 
     it('freezes the JWT-profile variant at create (profile is the sole source)', async () => {
       // Lock the create-seam profile wiring: the JWT agentProfile (here a real
-      // registered profile that pins promptVersion 2.0) freezes initial-v2.
+      // registered profile that pins promptVersion 3.0) freezes initial-v3.
       const profileDeps = {
         ...createMockDeps(),
         authenticate: vi.fn(function (req: any, _res: any, next: any) {
-          req.agentContext = { siteId: req.params.appId ?? 'abcdefghij', agentProfile: 'new-initial-agent' }
+          req.agentContext = { siteId: req.params.appId ?? 'abcdefghij', agentProfile: 'initial-agent-v3' }
           next()
         }),
       }
@@ -175,7 +175,7 @@ describe('SSE routes', () => {
 
       expect(profileDeps.lifecycle.getOrCreateForApp).toHaveBeenCalledWith(
         expect.objectContaining({ appId: 'abcdefghij' }),
-        'initial-v2',
+        'initial-v3',
       )
     })
 
@@ -1014,7 +1014,7 @@ describe('SSE routes', () => {
       const mockExecute = vi.fn().mockResolvedValue(undefined)
       const depsWithService = {
         ...deps,
-        resolveAgent: vi.fn().mockResolvedValue('initial-v2'),
+        resolveAgent: vi.fn().mockResolvedValue('initial-v3'),
         executionService: { execute: mockExecute, hasActiveStream: vi.fn().mockReturnValue(false) },
       }
       const appWithService = express()
@@ -1023,15 +1023,15 @@ describe('SSE routes', () => {
 
       const res = await request(appWithService)
         .post('/api/conversations/abcdefghij/conv_1/messages')
-        .send({ content: '/agent initial-v2\nBuild me a pricing page', agentId: 'develop' })
+        .send({ content: '/agent initial-v3\nBuild me a pricing page', agentId: 'develop' })
 
       expect(res.status).toBe(202)
       for (let i = 0; i < 50 && mockExecute.mock.calls.length === 0; i++) {
         await new Promise(r => setTimeout(r, 5))
       }
-      expect(depsWithService.resolveAgent).toHaveBeenCalledWith(expect.objectContaining({ manualAgentOverride: 'initial-v2' }))
+      expect(depsWithService.resolveAgent).toHaveBeenCalledWith(expect.objectContaining({ manualAgentOverride: 'initial-v3' }))
       expect(mockExecute).toHaveBeenCalledWith(expect.objectContaining({
-        agentId: 'initial-v2',
+        agentId: 'initial-v3',
         content: 'Build me a pricing page',
       }))
     })
@@ -1049,7 +1049,7 @@ describe('SSE routes', () => {
 
       const res = await request(appWithService)
         .post('/api/conversations/abcdefghij/conv_1/messages')
-        .send({ content: '/agent initial-v2', agentId: 'develop' })
+        .send({ content: '/agent initial-v3', agentId: 'develop' })
 
       expect(res.status).toBe(202)
       for (let i = 0; i < 50 && mockExecute.mock.calls.length === 0; i++) {
@@ -1060,7 +1060,7 @@ describe('SSE routes', () => {
       expect(depsWithService.resolveAgent).toHaveBeenCalledWith(expect.objectContaining({ manualAgentOverride: undefined }))
       expect(mockExecute).toHaveBeenCalledWith(expect.objectContaining({
         agentId: 'develop',
-        content: '/agent initial-v2',
+        content: '/agent initial-v3',
       }))
     })
 

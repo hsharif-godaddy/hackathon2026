@@ -7,8 +7,8 @@ import { getRegisteredInitialNamedVariantAgentId } from '../agents/registered-in
 /**
  * A `promptVersion` enters the named-variant resolver branch only when it is
  * a non-empty, non-numeric string. Numeric values like `"1.0"` reserve the
- * default initial-agent path; registered numeric variants (`"2.0"`, `"3.0"`)
- * are handled by their explicit branches above.
+ * default initial-agent path; registered numeric variant `"3.0"` is handled
+ * by its explicit branch above.
  */
 export function isNamedVariantVersion(promptVersion: string | null | undefined): promptVersion is string {
   if (promptVersion == null) return false
@@ -36,8 +36,8 @@ export interface ResolveInitialAgentParams {
  *
  * Priority (top wins; `/agent <name>` is handled upstream and bypasses this):
  *   1. `?template=` → `initial-<templateId>`
- *   2. JWT switchboard/hivemind profile → base version selector (initial-v3,
- *      initial-v2, or named variant). Per-profile initial-v3-<name> variants
+ *   2. JWT switchboard/hivemind profile → base version selector (initial-v3
+ *      or named variant). Per-profile initial-v3-<name> variants
  *      were flattened (#4346) — the single initial-v3 reads modularPromptFiles
  *      from the active profile per turn.
  *   3. Default base `initial`
@@ -79,9 +79,6 @@ function concreteInitialForProfile(profile: ProfileData, appId: string): string 
   }
 
   const promptVersion = runWithProfile(profile, () => profileValue('initial.promptVersion', '' as string)).trim()
-  if (promptVersion === '2.0') {
-    return 'initial-v2'
-  }
   if (promptVersion === '3.0') {
     return 'initial-v3'
   }

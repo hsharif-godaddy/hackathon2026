@@ -5,7 +5,7 @@ export type AgentCommandParseResult =
 
 /**
  * Parse a first-line `/agent <id>` override. Agent IDs can include hyphens
- * because registered initial variants use names such as `initial-v2`.
+ * because registered initial variants use names such as `initial-v3`.
  */
 export function parseAgentCommand(content: string): AgentCommandParseResult {
   const firstLine = content.split('\n')[0]?.trim()

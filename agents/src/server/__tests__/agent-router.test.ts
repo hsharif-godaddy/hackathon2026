@@ -75,7 +75,7 @@ describe('agent-router', function agentRouterTests() {
     expect(id).toBe('initial-v3')
   })
 
-  it('routes to initial-v2 when only promptVersion 2.0 is set', async function v2Only() {
+  it('falls back to initial when promptVersion 2.0 is set (variant removed)', async function v2Removed() {
     resolveProfileSpy.mockReturnValue(profile({
       name: 'v2prod',
       properties: { 'initial.promptVersion': '2.0' },
@@ -85,7 +85,7 @@ describe('agent-router', function agentRouterTests() {
       appId: 'app_new',
       agentContext: { agentProfile: 'v2prod' },
     })
-    expect(id).toBe('initial-v2')
+    expect(id).toBe('initial')
   })
 
   it('routes to initial-<variant> when named manifest variant is registered', async function namedVariantRegistered() {
@@ -536,7 +536,7 @@ describe('agent-router', function agentRouterTests() {
     expect(getPersistedAgentForApp).not.toHaveBeenCalled()
   })
 
-  it('routes to initial-v3 when modularPromptFiles is set even if promptVersion is 2.0', async function modularBeatsV2InRouter() {
+  it('routes to initial-v3 when modularPromptFiles is set even if promptVersion is 2.0', async function modularBeatsLegacyV2() {
     resolveProfileSpy.mockReturnValue(profile({
       name: 'mixed',
       properties: {
