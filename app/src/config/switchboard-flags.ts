@@ -22,3 +22,5 @@ export const SWITCHBOARD_APPBUILDER_CMS_INLINE_EDIT = 'appbuilder-cms-inline-edi
 export const SWITCHBOARD_APPBUILDER_COMMANDER = 'appbuilder-commander';
 export const SWITCHBOARD_APPBUILDER_SUBSCRIPTIONS_HANDLE401 =
   'appbuilder-subscriptions-handle401';
+export const SWITCHBOARD_APPBUILDER_WAKE_AWARE_VAT_RECOVERY =
+  'appbuilder-wake-aware-vat-recovery';

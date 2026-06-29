@@ -1,5 +1,7 @@
 import { SUPPORTED_AUTH_TYPES } from '@airo/shared/auth';
 
+import { SWITCHBOARD_APPBUILDER_WAKE_AWARE_VAT_RECOVERY } from '@/config/switchboard-flags';
+import { getSwitchboardFlag } from '@/hooks/useSwitchboard';
 import { useAuthUIStore } from '@/stores/useAuthUIStore';
 import { sleep } from '@/utils/common';
 import { getRootDomain } from '@/utils/getRootDomain';
@@ -273,14 +275,36 @@ export const AUTH_PROBE_TIMEOUT_MS = 5_000;
 // authReason returned by gd-auth when the SSO `vat` (validated-at) claim is
 // stale. The browser ui_heartbeat refreshes vat out-of-band after the tab
 // wakes, but it has no wake trigger, so the first validate after wake can 401
-// before the heartbeat lands. These bound a spaced re-probe (3 × 2s = 6s
-// ceiling) that bridges the common fast-recovery window before we show the SSO
-// modal; wakes that refresh slower than the budget still fall through to the
-// modal. Only vat is retried — HBI/login failures can't be self-refreshed by
-// the heartbeat.
+// before the heartbeat lands. These bound a spaced re-probe that bridges the
+// common fast-recovery window before we show the SSO modal:
+//   default: 3 × 2s = 6s ceiling
+//   wake-aware (flag on + within wake window): 7 × 2s = 14s ceiling
+// Wakes that refresh slower than the budget still fall through to the modal.
+// Only vat is retried — HBI/login failures can't be self-refreshed by the
+// heartbeat.
 const VAT_AUTH_REASON = 3;
 const VAT_RECOVERY_MAX_ATTEMPTS = 3;
 const VAT_RECOVERY_DELAY_MS = 2_000;
+
+// Wake-aware extension: after an `online` event or `visibilitychange→visible`
+// (network reconnect, tab refocus, or system wake), the network may need more
+// time to stabilize. Extends the retry budget when triggered within the window.
+const VAT_RECOVERY_WAKE_MAX_ATTEMPTS = 7;
+const VAT_RECOVERY_WAKE_WINDOW_MS = 15_000;
+
+export const wakeTracker = (() => {
+  let timestamp: number = 0;
+  function mark(): void { timestamp = Date.now(); }
+  function isWithinWindow(): boolean { return Date.now() - timestamp < VAT_RECOVERY_WAKE_WINDOW_MS; }
+  function msSinceWake(): number { return timestamp === 0 ? Infinity : Date.now() - timestamp; }
+  if (typeof window !== 'undefined') {
+    window.addEventListener('online', mark);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') { mark(); }
+    });
+  }
+  return { mark, isWithinWindow, msSinceWake };
+})();
 
 /**
  * Outcome of resolveAuth(). The mutex collapses concurrent 401s into one of
@@ -362,13 +386,32 @@ async function probeAuthValidate(level: 1 | 2 | 3): Promise<Response | 'timeout'
  * the budget is exhausted.
  */
 async function recoverStaleVat(level: 1 | 2 | 3): Promise<boolean> {
-  let lastOutcome = 'unknown';
-  for (let attempt = 1; attempt <= VAT_RECOVERY_MAX_ATTEMPTS; attempt++) {
+  const wakeAwareEnabled: boolean =
+    getSwitchboardFlag(SWITCHBOARD_APPBUILDER_WAKE_AWARE_VAT_RECOVERY) ?? false;
+  const inWakeWindow: boolean = wakeAwareEnabled && wakeTracker.isWithinWindow();
+  const maxAttempts: number = inWakeWindow
+    ? VAT_RECOVERY_WAKE_MAX_ATTEMPTS
+    : VAT_RECOVERY_MAX_ATTEMPTS;
+
+  if (inWakeWindow) {
+    logger.info('app-fetch.auth-resolve.vat-recovery-wake-extended', {
+      level,
+      maxAttempts,
+      msSinceWake: wakeTracker.msSinceWake(),
+    });
+  }
+
+  let lastOutcome: string = 'unknown';
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     await sleep(VAT_RECOVERY_DELAY_MS);
     try {
-      const probe = await probeAuthValidate(level);
+      const probe: Response | 'timeout' = await probeAuthValidate(level);
       if (probe !== 'timeout' && probe.ok) {
-        logger.info('app-fetch.auth-resolve.vat-recovered', { level, attempts: attempt });
+        logger.info('app-fetch.auth-resolve.vat-recovered', {
+          level,
+          attempts: attempt,
+          wakeExtended: inWakeWindow,
+        });
         return true;
       }
       lastOutcome = probe === 'timeout' ? 'timeout' : String(probe.status);
@@ -383,8 +426,9 @@ async function recoverStaleVat(level: 1 | 2 | 3): Promise<boolean> {
   }
   logger.warn('app-fetch.auth-resolve.vat-recovery-exhausted', {
     level,
-    attempts: VAT_RECOVERY_MAX_ATTEMPTS,
+    attempts: maxAttempts,
     lastOutcome,
+    wakeExtended: inWakeWindow,
   });
   return false;
 }
