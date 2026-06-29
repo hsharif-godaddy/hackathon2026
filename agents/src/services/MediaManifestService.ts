@@ -2686,6 +2686,52 @@ export class MediaManifestService {
   }
 
   /**
+   * Commit edited media file bytes that changed WITHOUT a manifest change.
+   *
+   * The in-place image edit/crop path (overwrite-in-place in the media upload
+   * route) rewrites an existing tracked media file's bytes but leaves its slot
+   * URL unchanged — so there is no manifest diff to carry the commit, and the
+   * usual `commitManifestChange` hook never fires. Without this, the edited
+   * bytes land only at session-end `git add .`; a workspace recycle before that
+   * reverts the image to its pre-edit (original) version, silently losing the
+   * crop/edit.
+   *
+   * Uses a SCOPED commit (`git commit -- <paths>` via commitFilesIfChanged) so
+   * it stages and commits ONLY these media files — and only if they actually
+   * changed — leaving any unrelated staged entries from an in-flight agent turn
+   * (e.g. the manifest) untouched. Returns true when a commit was made, false
+   * when there was nothing to commit. Best-effort: a git failure is logged and
+   * returns false, never throws.
+   */
+  async commitMediaFiles(appId: string, mediaPaths: string[]): Promise<boolean> {
+    const uniquePaths: string[] = [...new Set(mediaPaths.filter((p) => p.length > 0))];
+    if (uniquePaths.length === 0) {
+      return false;
+    }
+    try {
+      const workspace = createForWorkspace(appId, 'preview');
+      if (!workspace) {
+        logger.warn('media_manifest.media_commit.no_supervisor', { appId });
+        return false;
+      }
+
+      const app = this.appRepository.findById(appId);
+      if (!app) {
+        return false;
+      }
+
+      const gitUtils = new GitUtils(workspace.tasks);
+      return await gitUtils.commitFilesIfChanged(app.path, 'Update edited media files', uniquePaths);
+    } catch (error) {
+      logger.warn('media_manifest.media_commit.error', {
+        appId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return false;
+    }
+  }
+
+  /**
    * Commit manifest changes to git
    * @param additionalFiles - Optional array of additional files to stage (relative to app.path)
    */

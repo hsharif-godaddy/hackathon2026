@@ -1767,8 +1767,15 @@ router.post(
       const uploadedUrl = `${AIRO_ASSET_UPLOADS_URL_PREFIX}${filename}`;
 
       if (isOverwrite) {
-        // Overwriting a local upload in place — URL is unchanged so no manifest
-        // update is needed. Also overwrite the corresponding chat upload file so
+        // Overwriting a local upload in place — the slot URL is unchanged, so
+        // there is no manifest diff and thus no commitManifestChange hook. The
+        // edited bytes still need committing: without an explicit commit they
+        // land only at session-end `git add .`, and a workspace recycle before
+        // that reverts the image to its pre-edit version (the crop/edit is lost).
+        // Collect every media file we rewrite below and commit them at the end.
+        const editedMediaPaths: string[] = [mediaPath];
+
+        // Also overwrite the corresponding chat upload file so
         // the thumbnail in UploadedMediaSection shows the updated image.
         const chatFilename = slotResult.slot?.uploadSources?.[uploadedUrl];
         if (chatFilename) {
@@ -1841,6 +1848,7 @@ router.post(
                 const siblingMediaPath = `public/assets/media/${siblingFilename}`;
                 try {
                   await workspace.files.upload({ path: siblingMediaPath, data: outputBuffer });
+                  editedMediaPaths.push(siblingMediaPath);
                   logger.debug('route.media.upload.cross_slot_overwrite', {
                     appId,
                     slotName,
@@ -1861,12 +1869,17 @@ router.post(
           }
         }
 
+        // Commit the rewritten bytes now (no manifest change to carry it), so a
+        // workspace recycle before session-end can't revert the edit. Best-effort.
+        const committed = await mediaManifestService.commitMediaFiles(appId, editedMediaPaths);
+
         logger.info('route.media.upload.overwrite_success', {
           appId,
           slotName,
           uploadedUrl,
           size: file.size,
           affectedSlots,
+          committed,
         });
 
         return res.json({
