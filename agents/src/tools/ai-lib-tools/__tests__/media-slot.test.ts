@@ -123,7 +123,7 @@ describe('rebuild Getty-gate (keepSourceImages)', () => {
     // success:false + note survive toModelOutput's projection (disabled/reason would be stripped).
     const parsed = JSON.parse(result)
     expect(parsed.success).toBe(false)
-    expect(parsed.note).toMatch(/\/assets\/images/)
+    expect(parsed.note).toMatch(/No matching source image found/)
   })
 
   it('keepSourceImages: false + action: search → gate does NOT fire', async () => {

@@ -1,21 +1,29 @@
 /**
- * Static eval (AIROBUILD-2104 / AIROBUILD-2715): the rebuild page prompt MUST
- * instruct the agent correctly based on the bring-over toggle state.
+ * Static eval (AIROBUILD-2104 / AIROBUILD-2715 / AIROBUILD-2717): the rebuild
+ * page prompt MUST instruct the agent correctly based on the bring-over toggle.
  *
- * Two regression classes guarded here:
- * 1. (2104) When the agent fabricates images instead of reusing the scraped
- *    source — guarded by the USE-IMPORTED-ASSETS directive.
+ * Three regression classes guarded here:
+ * 1. (2104/2717) When the agent fabricates images instead of reusing scraped
+ *    source — guarded by the USE THE MEDIA TOOL directive. The agent routes all
+ *    images through the media tool; fillSlotFromRebuildSource intercepts and
+ *    fills slots with matching scraped photos when keepSourceImages is true.
  * 2. (2715) When a bring-over toggle is flipped, the prompt must shift the
  *    directive AND the visible asset list to match — guarded by the four
  *    toggle-dimension assertions at the bottom of this file.
+ * 3. (2717) Keep-similar rebuilds must create media slots (airo-media.json
+ *    populated) — guarded by asserting media-tool routing, not hardcoded paths.
  *
  * All assertions are deterministic over the built prompt string (no LLM, no
- * provider keys). The behavioral counterpart (agent actually references
- * /assets/ and makes zero media calls) is verified manually via E2E for now.
+ * provider keys). The behavioral counterpart (slots actually populate) is
+ * verified manually via E2E — see PR #5631 test confirmation.
  */
+import { readFileSync } from 'fs';
+import { dirname, join } from 'path';
+import { fileURLToPath } from 'url';
 import { describe, expect, it } from 'vitest';
 
 import { buildUserPrompt, isLikelyLogo, selectPromptAssets } from '../agents/page-prompt/user-prompt-builder.js';
+import { selectSystemPromptFiles } from '../agents/page-prompt-agent.js';
 import type {
   AssetInfo,
   AssetManifest,
@@ -143,13 +151,21 @@ function buildPromptForDirection(designDirection: StylePreferences['designDirect
 describe('rebuild page prompt — imported-asset directive', () => {
   // keep-similar is a faithful clone: the agent must reuse the scraped images
   // and not fabricate new ones (the AIROBUILD-2104 regression guard).
+  // AIROBUILD-2717: keep-similar now routes through the media tool so slots are created,
+  // but fillSlotFromRebuildSource intercepts to serve the scraped photos.
   describe('keep-similar (clone)', () => {
     const prompt = buildPromptForDirection('keep-similar');
 
-    it('instructs the agent to use imported assets and not generate images', () => {
-      expect(prompt).toContain('USE IMPORTED ASSETS');
-      expect(prompt).toContain('DO NOT GENERATE NEW IMAGES');
-      expect(prompt).toContain('Do NOT use the media tool');
+    it('instructs the agent to use the media tool for all images (slots created, source photos served)', () => {
+      expect(prompt).toContain('USE THE MEDIA TOOL FOR ALL IMAGES');
+      expect(prompt).toContain('swappable slots');
+      expect(prompt).not.toContain('Do NOT use the media tool');
+    });
+
+    it('instructs the agent to use a slot path containing "logo" for the logo', () => {
+      // The concrete instruction: slot path naming, not query-based routing
+      expect(prompt).toContain('slot path containing "logo"');
+      expect(prompt).toMatch(/components\/logo|header\/logo/); // example paths in the instruction
     });
   });
 
@@ -166,6 +182,41 @@ describe('rebuild page prompt — imported-asset directive', () => {
 
     it('still preserves the source brand/logo for recognizability', () => {
       expect(prompt.toLowerCase()).toContain('logo');
+    });
+  });
+
+  // System prompt (asset-integration.md) content assertions — guards against
+  // regressions in the prompt fragments themselves, not just user-prompt assembly.
+  describe('system prompt fragment content (asset-integration.md)', () => {
+    const promptsDir = join(dirname(fileURLToPath(import.meta.url)), '../prompts/page-prompt');
+    const assetIntegrationContent = readFileSync(join(promptsDir, 'asset-integration.md'), 'utf-8');
+
+    it('selects asset-integration.md for keep-similar (preserveDesign: true)', () => {
+      const files = selectSystemPromptFiles({ isFirstPage: true, useAtlasCrawler: true, preserveDesign: true });
+      expect(files).toContain('asset-integration.md');
+      expect(files).not.toContain('asset-integration-redesign.md');
+    });
+
+    it('selects asset-integration-redesign.md for modernize (preserveDesign: false)', () => {
+      const files = selectSystemPromptFiles({ isFirstPage: true, useAtlasCrawler: true, preserveDesign: false });
+      expect(files).toContain('asset-integration-redesign.md');
+      expect(files).not.toContain('asset-integration.md');
+    });
+
+    it('asset-integration.md instructs media tool usage for all images', () => {
+      expect(assetIntegrationContent).toContain('ALWAYS use the media tool');
+      expect(assetIntegrationContent).toContain('swappable media slots');
+      expect(assetIntegrationContent).not.toContain('Reference real assets by their public path');
+    });
+
+    it('asset-integration.md instructs logo slot path naming (not query-based)', () => {
+      expect(assetIntegrationContent).toContain('slot path containing "logo"');
+      expect(assetIntegrationContent).toMatch(/components\/logo|header\/logo/);
+    });
+
+    it('asset-integration.md does not make unconditional source-fill promise', () => {
+      // Softened wording for keep-similar + keepSourceImages:false edge case
+      expect(assetIntegrationContent).toContain('When source images are enabled');
     });
   });
 
@@ -362,11 +413,13 @@ describe('eval dimension: source-image-usage (AIROBUILD-2715)', () => {
     expect(selected).not.toContain(heroAsset);
   });
 
-  it('keepSourceImages: true prompt — USE IMPORTED ASSETS directive', () => {
+  it('keepSourceImages: true prompt — USE THE MEDIA TOOL FOR ALL IMAGES directive', () => {
     const prompt = buildPromptWith({ keepLogo: true, keepSourceImages: true });
-    expect(prompt).toContain('USE IMPORTED ASSETS');
-    expect(prompt).toContain('DO NOT GENERATE NEW IMAGES');
-    expect(prompt).toContain('Do NOT use the media tool');
+    expect(prompt).toContain('USE THE MEDIA TOOL FOR ALL IMAGES');
+    expect(prompt).toContain('swappable slots');
+    expect(prompt).not.toContain('Do NOT use the media tool');
+    // Logo instruction guard - slot path naming, not query-based routing
+    expect(prompt).toContain('slot path containing "logo"');
   });
 
   it('keepSourceImages: false + keepLogo: true prompt — REIMAGINE WITH FRESH IMAGERY directive', () => {

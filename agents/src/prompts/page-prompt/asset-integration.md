@@ -1,6 +1,6 @@
 ### Asset Integration
 
-**PRIORITIZE imported images from the source website, but stock images are still available when needed.**
+**PRIORITIZE imported images from the source website — use the media tool to place them as swappable slots.**
 
 Reference available assets:
 - Hero images (use imported images from source site)
@@ -9,9 +9,11 @@ Reference available assets:
 - Logo and branding elements (use imported logos)
 
 When referencing assets:
-- Use the actual file paths provided in the asset manifest
-- Specify which imported image should be used for each section
-- **If the new design needs additional images** (e.g., new sections, decorative elements, or if imported images don't fit the new design), instruct the develop agent to search for appropriate stock images
-- Example: "Use /assets/images/abc123.jpg for the hero section"
-- Example: "Search for a modern office interior image for the About section background"
-- Imported images from the source site use paths like /assets/images/ or /assets/other/
+- **ALWAYS use the media tool** to place images — this registers them as swappable media slots
+- Use descriptive queries that match the image's content or role (e.g., "restaurant interior hero image", "team photo")
+- When source images are enabled, the system will automatically match your query to the best imported source image; otherwise it will search stock
+- For the logo, use a slot path containing "logo" (e.g., "components/logo", "header/logo") — the system routes logo slots to the imported logo automatically
+- **Do NOT hardcode `/assets/images/` paths directly** — always use the media tool so images appear in the Media Manager
+- Example: Use the media tool with query "hero image of restaurant interior" for the hero section
+- Example: Use the media tool with query "team photo" for the about section
+- **If no imported image fits** a slot, try a different query that better describes an image from the source site, or skip the slot

@@ -198,7 +198,7 @@ EXAMPLES:
       return JSON.stringify(
         {
           success: false,
-          note: 'Stock media is disabled for this rebuild because the user chose to keep their existing images. Do not use this tool for this slot — reference the imported source images directly via their /assets/images/... paths.',
+          note: 'No matching source image found for this slot and stock media is disabled for this rebuild. Try a different query that better describes an image from the source site, or skip this slot.',
         },
         null,
         2,

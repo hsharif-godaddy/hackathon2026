@@ -105,9 +105,11 @@ export function buildUserPrompt(args: BuildUserPromptArgs): string {
 
   // Asset directive is now a three-way keyed on the explicit bring-over flags
   // rather than the preserve-design predicate (AIROBUILD-2715).
+  // AIROBUILD-2717: All paths now route through the media tool so slots are created.
+  // For keepSourceImages, fillSlotFromRebuildSource intercepts and fills with scraped photos.
   const assetDirectiveNum = isFirstPage ? '5' : '4';
   const assetDirective = stylePreferences.keepSourceImages
-    ? `${assetDirectiveNum}. **USE IMPORTED ASSETS — DO NOT GENERATE NEW IMAGES** - The source site's images are already downloaded and listed above with paths like \`/assets/images/[filename]\`. Use those paths directly. Do NOT use the media tool to search for or generate replacement images. Only search for stock images if a section genuinely has no suitable imported image AND the design requires one.`
+    ? `${assetDirectiveNum}. **USE THE MEDIA TOOL FOR ALL IMAGES** - Use the media tool with descriptive queries for each image slot (hero, features, cards, etc.). The system will automatically match your query to the best imported source image. For the logo, use a slot path containing "logo" (e.g., "components/logo", "header/logo") — the system routes logo slots to the imported logo automatically. Do NOT hardcode \`/assets/images/\` paths directly — always use the media tool so images are registered as swappable slots.`
     : stylePreferences.keepLogo
       ? `${assetDirectiveNum}. **REIMAGINE WITH FRESH IMAGERY** - This is a redesign. Keep the source **logo** (listed above with a \`/assets/images/[filename]\` path) so the brand stays recognizable. For everything else — hero, sections, backgrounds — choose fresh imagery: use the media tool for modern stock photos.`
       : `${assetDirectiveNum}. **FRESH IMAGERY, NO SOURCE BRAND ASSETS** - Do not reuse any source images, including the logo. Choose all imagery fresh via the media tool to fit the new design.`;
