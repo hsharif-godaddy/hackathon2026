@@ -15,6 +15,10 @@ import {
 import { CommanderLayoutContext, type CommanderLayoutContextValue } from './CommanderLayoutContext'
 import { CommanderLogo } from './CommanderLogo'
 import { CommanderSnapOverlay } from './CommanderSnapOverlay'
+import {
+  COMMANDER_PILL_INNER_SURFACE_CLASS,
+  COMMANDER_PILL_OUTER_SURFACE_CLASS,
+} from './commanderSurface'
 
 const POSITION_TRANSITION: Transition = {
   type: 'spring',
@@ -33,7 +37,7 @@ export const COMMANDER_LAYOUT_METRICS = {
 const VERTICAL_INSET = 8
 const PILL_TOP_PADDING = 24
 const PILL_BORDER_HEIGHT = 2
-const PILL_HALO_INSET = 16
+export const PILL_HALO_INSET = 10
 const PILL_INNER_BORDER_RADIUS = 16
 const PILL_OUTER_BORDER_RADIUS = PILL_INNER_BORDER_RADIUS + PILL_HALO_INSET
 const DRAG_HANDLE_HIT_AREA = 32
@@ -393,12 +397,10 @@ export function Commander({ appId, chatPane }: CommanderProps) {
   const transitionProp = isDraggingPill || isHResizing ? INSTANT_TRANSITION : POSITION_TRANSITION
 
   const asideSurfaceClass = isPill
-    ? 'pointer-events-none overflow-hidden bg-intents-ux-boxLowContrastOverlay-backgroundColor/60 backdrop-blur-[12px] p-2'
+    ? COMMANDER_PILL_OUTER_SURFACE_CLASS
     : 'bg-intents-ux-boxLowContrast-backgroundColor border border-intents-ux-boxLowContrast-borderColor'
 
-  const innerSurfaceClass = isPill
-    ? 'pointer-events-auto bg-intents-ux-boxLowContrast-backgroundColor border border-intents-ux-boxLowContrast-borderColor'
-    : ''
+  const innerSurfaceClass = isPill ? COMMANDER_PILL_INNER_SURFACE_CLASS : ''
 
   const showLeftHResizeHandle =
     isFloating &&

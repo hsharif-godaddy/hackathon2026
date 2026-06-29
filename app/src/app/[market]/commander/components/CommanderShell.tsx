@@ -1,22 +1,26 @@
 'use client'
 
 import { AnimatePresence, motion } from 'framer-motion'
-import type { ReactNode } from 'react'
+import { type ReactNode, useEffect, useRef, useState } from 'react'
 
+import { CommanderCanvasActionProvider } from '@/app/[market]/commander/canvas/CommanderCanvasActionContext'
 import { CanvasId } from '@/app/[market]/commander/canvas/registry'
 import { useCanvasSync } from '@/app/[market]/commander/canvas/useCanvasSync'
+import CanvasActionsDock from '@/app/[market]/commander/components/chat/CanvasActionsDock'
 import { CommanderPosition } from '@/app/[market]/commander/types'
 import BrandBookView from '@/app/[market]/develop/components/preview/brand-book'
 import { DesignKitWizard } from '@/app/[market]/develop/components/preview/design-kit-wizard/DesignKitWizard'
 import { useIsDesignKitWizardProfile } from '@/app/[market]/develop/components/preview/design-kit-wizard/isDesignKitWizardProfile'
 import { MobileMode, ViewMode } from '@/app/[market]/develop/components/types'
 import {
+  useCommanderActionsBarEnabled,
   useCommanderCanvasEnabled,
   useCommanderCanvasTabsEnabled,
   useCommanderStore,
   useEffectiveCommanderPosition,
 } from '@/stores/useCommanderStore'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
+import { useServerPollingStore } from '@/stores/useServerPollingStore'
 import { Commander, COMMANDER_LAYOUT_METRICS } from './Commander'
 import { CommanderCanvasSettingsOverlay } from './CommanderCanvasSettingsOverlay'
 import CommanderHeader from './CommanderHeader'
@@ -27,6 +31,8 @@ interface CommanderShellProps {
   isMobile: boolean
   chatPaneNode: ReactNode
   previewPaneNode: ReactNode
+  onPreviewRefresh?: () => void
+  isCanvasLoading?: boolean
 }
 
 const RIGHT_SIDE_TRANSITION = { duration: 0.3, ease: [0.4, 0, 0.2, 1] as const }
@@ -36,9 +42,15 @@ export function CommanderShell({
   isMobile,
   chatPaneNode,
   previewPaneNode,
+  onPreviewRefresh,
+  isCanvasLoading,
 }: CommanderShellProps) {
   const position = useEffectiveCommanderPosition()
   const isLeftDock = position === CommanderPosition.LeftDock
+  const isActionsBarEnabled = useCommanderActionsBarEnabled()
+  const isPreviewReady = useServerPollingStore((state) =>
+    appId ? state.getServerState(appId)?.isReady === true : false,
+  )
   const isCanvasEnabled = useCommanderCanvasEnabled()
   const isCanvasTabsEnabled = useCommanderCanvasTabsEnabled()
   const viewMode = useDevelopPageStore((state) => state.viewMode)
@@ -47,6 +59,18 @@ export function CommanderShell({
   const isCanvasSettingsOpen = useCommanderStore((state) => state.isCanvasSettingsOpen)
   const showDesignKitWizard = useIsDesignKitWizardProfile()
   useCanvasSync()
+
+  const canvasAreaRef = useRef<HTMLDivElement>(null)
+  const [canvasWidth, setCanvasWidth] = useState(0)
+  useEffect(() => {
+    const el = canvasAreaRef.current
+    if (!el) return
+    const measure = (): void => setCanvasWidth(el.clientWidth)
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [isMobile])
 
   // In canvas-tabs mode the active canvas drives what's visible in the right pane,
   // so Brand only paints when it IS the active tab — closing Brand or moving focus to a
@@ -67,7 +91,7 @@ export function CommanderShell({
   if (isMobile) {
     const isPreviewMobile = mobileMode === MobileMode.PREVIEW
     return (
-      <>
+      <CommanderCanvasActionProvider onPreviewRefresh={onPreviewRefresh}>
         <CommanderHeader desktopLogo={null} mobileLogo={mobileLogo} />
         <div className="relative flex-1 min-h-0">
           <div
@@ -96,7 +120,7 @@ export function CommanderShell({
             {chatPaneNode}
           </div>
         </div>
-      </>
+      </CommanderCanvasActionProvider>
     )
   }
 
@@ -119,7 +143,7 @@ export function CommanderShell({
   )
 
   return (
-    <>
+    <CommanderCanvasActionProvider onPreviewRefresh={onPreviewRefresh}>
       <motion.div
         className="absolute top-0 end-0 bottom-0 flex flex-col"
         initial={false}
@@ -127,7 +151,7 @@ export function CommanderShell({
         transition={RIGHT_SIDE_TRANSITION}
       >
         <CommanderHeader desktopLogo={desktopLogo} mobileLogo={mobileLogo} />
-        <div className="relative flex-1 min-h-0 overflow-hidden">
+        <div ref={canvasAreaRef} className="relative flex-1 min-h-0 overflow-hidden">
           <div id="preview-pane-container" className="absolute inset-0 flex flex-col isolate [&>div]:pe-1!">
             {previewPaneNode}
           </div>
@@ -144,11 +168,18 @@ export function CommanderShell({
             </div>
           )}
           {isCanvasEnabled && <CommanderCanvasSettingsOverlay />}
+          {isActionsBarEnabled && (
+            <CanvasActionsDock
+              canvasWidth={canvasWidth}
+              isReady={isPreviewReady}
+              isLoading={isCanvasLoading === true}
+            />
+          )}
         </div>
       </motion.div>
 
       {/* Commander needs to be after content to ensure it's on top of the content while breaking z-index rules */}
       <Commander appId={appId} chatPane={chatPaneNode} />
-    </>
+    </CommanderCanvasActionProvider>
   )
 }

@@ -7,11 +7,13 @@ import { flushSync } from 'react-dom';
 import { isEmployeeAuthType } from '@airo/shared/auth';
 import Growl from '@ux/growl';
 
+import { CanvasActionsVariant } from '@/app/[market]/commander/canvas/actions';
+import CanvasActionsHost from '@/app/[market]/commander/components/chat/CanvasActionsHost';
 import CommanderChatRow from '@/app/[market]/commander/components/chat/CommanderChatRow';
 import CommanderComposerLeft from '@/app/[market]/commander/components/chat/CommanderComposerLeft';
 import CommanderTabBackButton from '@/app/[market]/commander/components/chat/CommanderTabBackButton';
 import { useCommanderLayout } from '@/app/[market]/commander/components/CommanderLayoutContext';
-import { BuilderLayout } from '@/app/[market]/commander/types';
+import { BuilderLayout, CommanderPosition } from '@/app/[market]/commander/types';
 import { AssetManagerItem, MediaType } from '@/app/[market]/develop/components/chat/AssetTypes';
 import ChatBanners from '@/app/[market]/develop/components/chat/banners/ChatBanners';
 import ChatAttachmentMenu from '@/app/[market]/develop/components/chat/ChatAttachmentMenu';
@@ -74,6 +76,7 @@ import { logger } from '@/lib/request-context';
 import { appService } from '@/services/AppService';
 import { hasComposerSendPayload } from '@/services/transport/composerAttachments';
 import type { SendMessageOptions } from '@/services/transport/messageTypes';
+import { useCommanderActionsBarEnabled, useCommanderStore, useEffectiveCommanderPosition } from '@/stores/useCommanderStore';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { useGitStore } from '@/stores/useGitStore'
 import { MEDIA_GRID_VIEW, useMediaSlotDialogStore } from '@/stores/useMediaSlotDialogStore';
@@ -316,6 +319,9 @@ function ChatPaneInner({
   const isPurchaseIntentClassifierEnabled = useSwitchboard(SWITCHBOARD_APPBUILDER_PURCHASE_INTENT_CLASSIFIER) === true;
   const isCommanderChatFlagEnabled = useSwitchboard('appbuilder-commander-chat') === true;
   const isCommanderChatEnabled = layout === BuilderLayout.Commander && isCommanderChatFlagEnabled;
+  const isActionsBarEnabled = useCommanderActionsBarEnabled();
+  const effectiveCommanderPosition = useEffectiveCommanderPosition();
+  const actionsBarShownBeside = useCommanderStore((state) => state.actionsBarShownBeside);
   const isMediaCanvasEnabled = useSwitchboard(SWITCHBOARD_APPBUILDER_MEDIA_CANVAS) === true;
   const mediaCurrentSlotName = useMediaSlotDialogStore((state) => state.currentSlotName);
   const mediaPanelSlotName = useMediaSlotDialogStore((state) => state.panelSlotName);
@@ -1585,20 +1591,36 @@ function ChatPaneInner({
 
   const commanderComposerSlots = useMemo(() => {
     if (!isCommanderChatEnabled) return undefined;
+    const attachmentMenu = appId && handleStageFiles && (
+      <ChatAttachmentMenu
+        appId={appId}
+        onStageFiles={handleStageFiles}
+        onScreenshotCaptured={handleScreenshotCaptured}
+        onFileReferencesSelected={handleFileReferencesSelected}
+        onMediaLibrary={handleOpenMediaLibrary}
+        onUploadError={handleAttachmentMenuError}
+        disabled={isProcessing || budgetExceeded}
+      />
+    );
+    const inlineActions = isActionsBarEnabled &&
+      (isMobile ||
+        (effectiveCommanderPosition !== CommanderPosition.LeftDock && !actionsBarShownBeside)) && (
+        <CanvasActionsHost variant={CanvasActionsVariant.Inline} />
+      );
     return {
       toolbarStart: (
-        <div className="flex items-center gap-0.5">
-          <CommanderComposerLeft appId={appId} />
-          {appId && handleStageFiles && (
-            <ChatAttachmentMenu
-              appId={appId}
-              onStageFiles={handleStageFiles}
-              onScreenshotCaptured={handleScreenshotCaptured}
-              onFileReferencesSelected={handleFileReferencesSelected}
-              onMediaLibrary={handleOpenMediaLibrary}
-              onUploadError={handleAttachmentMenuError}
-              disabled={isProcessing || budgetExceeded}
-            />
+        <div className="flex items-center gap-0.5 min-w-0">
+          {isActionsBarEnabled ? (
+            <>
+              {attachmentMenu}
+              <CommanderComposerLeft appId={appId} />
+              {inlineActions}
+            </>
+          ) : (
+            <>
+              <CommanderComposerLeft appId={appId} />
+              {attachmentMenu}
+            </>
           )}
         </div>
       ),
@@ -1614,6 +1636,10 @@ function ChatPaneInner({
     handleAttachmentMenuError,
     isProcessing,
     budgetExceeded,
+    isActionsBarEnabled,
+    isMobile,
+    effectiveCommanderPosition,
+    actionsBarShownBeside,
   ]);
 
   // Listen for error fix requests from PreviewPaneSimple

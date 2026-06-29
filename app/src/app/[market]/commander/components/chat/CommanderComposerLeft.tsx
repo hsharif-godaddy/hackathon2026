@@ -12,7 +12,11 @@ import { ChatTab, ViewMode } from '@/app/[market]/develop/components/types'
 import { useChatTabs } from '@/hooks/useChatTabs'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
-import { useCommanderCanvasTabsEnabled, useCommanderStore } from '@/stores/useCommanderStore'
+import {
+  useCommanderActionsBarEnabled,
+  useCommanderCanvasTabsEnabled,
+  useCommanderStore,
+} from '@/stores/useCommanderStore'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { logClickEvent, logImpressionEvent } from '@/utils/instrumentation'
 
@@ -33,6 +37,7 @@ export default function CommanderComposerLeft({ appId }: CommanderComposerLeftPr
   const isCommandPaletteEnabled = useSwitchboard('appbuilder-commander-command-palette') === true
   const isAnnotationEnabled = useSwitchboard('appbuilder-commander-annotation') === true
   const isCanvasTabsEnabled = useCommanderCanvasTabsEnabled()
+  const isActionsBarEnabled = useCommanderActionsBarEnabled()
   const setActiveCanvas = useCommanderStore((state) => state.setActiveCanvas)
 
   const isEditActive = viewMode === ViewMode.EDIT && !isAnnotationActive
@@ -87,19 +92,21 @@ export default function CommanderComposerLeft({ appId }: CommanderComposerLeftPr
         </>
       )}
 
-      <Button
-        design={isEditActive ? 'primary' : 'control'}
-        size="sm"
-        icon={<ClickIcon className="size-2.5" />}
-        text={t('builder_chat_toolbar_button_edit')}
-        onClick={handleEditClick}
-        aria-pressed={isEditActive}
-        data-eid="commander.composer.edit_mode"
-        data-partial={isEditActive ? 'componentAiro' : ''}
-        className="px-1.5!"
-      />
+      {!isActionsBarEnabled && (
+        <Button
+          design={isEditActive ? 'primary' : 'control'}
+          size="sm"
+          icon={<ClickIcon className="size-2.5" />}
+          text={t('builder_chat_toolbar_button_edit')}
+          onClick={handleEditClick}
+          aria-pressed={isEditActive}
+          data-eid="commander.composer.edit_mode"
+          data-partial={isEditActive ? 'componentAiro' : ''}
+          className="px-1.5!"
+        />
+      )}
 
-      {isAnnotationEnabled && (
+      {isAnnotationEnabled && !isActionsBarEnabled && (
         <Button
           design={isAnnotationActive ? 'primary' : 'control'}
           size="sm"

@@ -23,7 +23,11 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/lib/shadcn/popover'
-import { useCommanderFloatModesEnabled, useCommanderStore } from '@/stores/useCommanderStore'
+import {
+  useCommanderActionsBarEnabled,
+  useCommanderFloatModesEnabled,
+  useCommanderStore,
+} from '@/stores/useCommanderStore'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { useSites } from '@/stores/useSitesStore'
 import { logClickEvent } from '@/utils/instrumentation'
@@ -76,6 +80,7 @@ export default function CommanderChatRow({ appId, onPreviewRefresh }: CommanderC
   const setCommanderPosition = useCommanderStore((state) => state.setPosition)
   const isCanvasSettingsOpen = useCommanderStore((state) => state.isCanvasSettingsOpen)
   const floatModesEnabled = useCommanderFloatModesEnabled()
+  const isActionsBarEnabled = useCommanderActionsBarEnabled()
 
   const { sites, isLoading: isLoadingSites, error: sitesError, requiresAuth: sitesRequireAuth } = useSites()
 
@@ -189,7 +194,7 @@ export default function CommanderChatRow({ appId, onPreviewRefresh }: CommanderC
         </Popover>
 
         <AnimatePresence initial={false}>
-          {isPreviewMode && (
+          {isPreviewMode && !isActionsBarEnabled && (
             <motion.div
               key="commander-chat-row-preview-controls"
               className="flex items-center gap-0.5 overflow-hidden"

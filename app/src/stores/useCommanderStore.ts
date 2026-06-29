@@ -44,9 +44,14 @@ export const clampPillHeight = (h: number): number =>
 
 export const COMMANDER_FLOATMODES_FLAG = 'appbuilder-commander-floatmodes'
 export const COMMANDER_CANVAS_FLAG = 'appbuilder-commander-canvas'
+export const COMMANDER_ACTIONS_BAR_FLAG = 'appbuilder-commander-actions-bar'
 
 export function useCommanderFloatModesEnabled(): boolean {
   return useSwitchboard(COMMANDER_FLOATMODES_FLAG) === true
+}
+
+export function useCommanderActionsBarEnabled(): boolean {
+  return useSwitchboard(COMMANDER_ACTIONS_BAR_FLAG) === true
 }
 
 export function useCommanderCanvasEnabled(): boolean {
@@ -72,6 +77,9 @@ interface CommanderStore {
   isCanvasSettingsOpen: boolean
   openCanvasIds: CanvasId[]
   activeCanvasId: CanvasId
+  /** True while the actions bar is shown as a floating dock beside a side-anchored pill (so the composer's inline bar collapses). Ephemeral; not persisted. */
+  actionsBarShownBeside: boolean
+  setActionsBarShownBeside: (value: boolean) => void
   setPosition: (position: CommanderPosition) => void
   cyclePosition: () => void
   setPillHeight: (height: number) => void
@@ -151,6 +159,10 @@ export const useCommanderStore = create<CommanderStore>()(
       isCanvasSettingsOpen: false,
       openCanvasIds: [...DEFAULT_OPEN_CANVAS_IDS],
       activeCanvasId: PINNED_CANVAS_ID,
+      actionsBarShownBeside: false,
+      setActionsBarShownBeside: (value) => {
+        if (get().actionsBarShownBeside !== value) set({ actionsBarShownBeside: value })
+      },
       setPosition: (position) => set({ position }),
       cyclePosition: () => {
         const current = get().position

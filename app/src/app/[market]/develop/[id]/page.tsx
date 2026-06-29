@@ -1485,6 +1485,8 @@ function DevelopPageContent({ layout: layoutProp }: { layout?: BuilderLayout }) 
           <CommanderShell
             appId={appId}
             isMobile={isMobile}
+            onPreviewRefresh={() => handlePreviewRefresh({ lastIframeState })}
+            isCanvasLoading={init.ui.showPreviewLoader}
             chatPaneNode={
               <ChatPane
                 sendMessage={ws.actions.send}
