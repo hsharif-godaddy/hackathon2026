@@ -149,8 +149,53 @@ describe("findBrSegment", () => {
     expect(findBrSegment(br as HTMLElement, 0, 0, true)).toBeNull();
   });
 
-  it("returns null when element is the br-parent and no caret range found", () => {
+  it("heals to first bare segment when caret resolution fails (br-parent click)", () => {
+    // Behavior change: previously this returned null when the caret could not
+    // resolve to a glyph (common on large/centered display headings). The
+    // self-healing fallback now wraps the first non-empty direct-child text
+    // node instead. In this markup "Hello" is a bare text node, so clicking the
+    // <h1> with a failed caret heals to "Hello" rather than refusing the cursor.
     const root = html('<h1>Hello<br /><span>World</span></h1>');
+    const h1 = root.querySelector("h1")!;
+    document.caretRangeFromPoint = vi.fn(() => null);
+    const result = findBrSegment(h1, 0, 0, true);
+    expect(result).not.toBeNull();
+    expect(result!.parent).toBe(h1);
+    expect(result!.segment.textContent).toBe("Hello");
+    expect(result!.segment.getAttribute("data-airo-wrapped")).toBe("true");
+  });
+
+  it("heals to first bare line on a bare-text <br> heading when caret is null", () => {
+    const root = html('<h1>Shop better.<br />Spend less.</h1>');
+    const h1 = root.querySelector("h1")!;
+    document.caretRangeFromPoint = vi.fn(() => null);
+    const result = findBrSegment(h1, 0, 0, true);
+    expect(result).not.toBeNull();
+    expect(result!.parent).toBe(h1);
+    expect(result!.segment.textContent).toBe("Shop better.");
+    expect(result!.segment.getAttribute("data-airo-wrapped")).toBe("true");
+  });
+
+  it("wraps the precise bare text node the caret resolves to (precise click)", () => {
+    const root = html('<h1>Shop better.<br />Spend less.</h1>');
+    const h1 = root.querySelector("h1")!;
+    const secondLine: Node = Array.from(h1.childNodes).find(
+      (n: ChildNode): boolean => n.nodeType === Node.TEXT_NODE && n.textContent === "Spend less.",
+    )!;
+    document.caretRangeFromPoint = vi.fn((): Range => {
+      const range: Range = document.createRange();
+      range.setStart(secondLine, 0);
+      return range;
+    });
+    const result = findBrSegment(h1, 0, 0, true);
+    expect(result).not.toBeNull();
+    expect(result!.parent).toBe(h1);
+    expect(result!.segment.textContent).toBe("Spend less.");
+    expect(result!.segment.getAttribute("data-airo-wrapped")).toBe("true");
+  });
+
+  it("returns null when the br-parent has no non-empty bare text node", () => {
+    const root = html('<h1>   <br /><span>World</span></h1>');
     const h1 = root.querySelector("h1")!;
     document.caretRangeFromPoint = vi.fn(() => null);
     expect(findBrSegment(h1, 0, 0, true)).toBeNull();

@@ -202,25 +202,75 @@ function caretRangeAt(x: number, y: number): Range | null {
   return range;
 }
 
+function wrapTextNode(parent: HTMLElement, node: Text): HTMLElement {
+  const span: HTMLElement = document.createElement("span");
+  span.setAttribute("data-airo-wrapped", "true");
+  parent.insertBefore(span, node);
+  span.appendChild(node);
+  return span;
+}
+
+function bareChildTextNodes(parent: HTMLElement): Text[] {
+  const result: Text[] = [];
+  for (const node of Array.from(parent.childNodes)) {
+    if (node.nodeType === Node.TEXT_NODE && node.textContent?.trim()) {
+      result.push(node as Text);
+    }
+  }
+  return result;
+}
+
+// Self-healing fallback: when the caret resolves to a glyph (precise click) we
+// wrap that exact bare text node. But on large/centered display headings the
+// click frequently resolves to the element itself or to null, leaving the
+// heading uneditable. Rather than refuse the cursor, fall back to a sensible
+// direct-child bare text node so the user always gets a caret. With real
+// layout we prefer the line nearest the click `y`; in jsdom (no layout, all
+// rects zero) this cleanly degrades to the first non-empty bare text node.
+function pickFallbackTextNode(candidates: Text[], y: number): Text {
+  let best: Text = candidates[0];
+  let bestDistance: number = Infinity;
+  for (const node of candidates) {
+    let rect: DOMRect;
+    try {
+      const range: Range = document.createRange();
+      range.selectNodeContents(node);
+      rect = range.getBoundingClientRect();
+    } catch {
+      continue;
+    }
+    if (rect.height === 0 && rect.width === 0) continue;
+    const center: number = rect.top + rect.height / 2;
+    const distance: number = Math.abs(center - y);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      best = node;
+    }
+  }
+  return best;
+}
+
 function wrapBareTextNode(
   parent: HTMLElement,
   x: number,
   y: number,
 ): HTMLElement | null {
   unwrapAiroSpans(parent);
-  const range = caretRangeAt(x, y);
-  if (!range) return null;
 
-  const node = range.startContainer;
-  if (node.nodeType !== Node.TEXT_NODE) return null;
-  if (!node.textContent?.trim()) return null;
-  if (node.parentElement !== parent) return null;
+  const range: Range | null = caretRangeAt(x, y);
+  const node: Node | null = range ? range.startContainer : null;
+  if (
+    node &&
+    node.nodeType === Node.TEXT_NODE &&
+    node.textContent?.trim() &&
+    node.parentElement === parent
+  ) {
+    return wrapTextNode(parent, node as Text);
+  }
 
-  const span = document.createElement("span");
-  span.setAttribute("data-airo-wrapped", "true");
-  parent.insertBefore(span, node);
-  span.appendChild(node);
-  return span;
+  const candidates: Text[] = bareChildTextNodes(parent);
+  if (candidates.length === 0) return null;
+  return wrapTextNode(parent, pickFallbackTextNode(candidates, y));
 }
 
 export function wrapBareChildTextNodes(parent: HTMLElement) {
