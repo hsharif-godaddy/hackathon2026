@@ -47,9 +47,23 @@ Services available at:
 Add to your `.env` file (in `agents/` directory):
 
 ```bash
-ELASTIC_APM_SERVER_URL=http://localhost:8200
-ELASTIC_APM_SECRET_TOKEN=local-dev-token
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:8200
+OTEL_EXPORTER_OTLP_HEADERS=Authorization=Bearer <apm-secret-token>
+OTEL_SERVICE_NAME=airo-agents
 ```
+
+> **Note: Auth header format depends on which credentials you use.**
+> The ESS/Elastic team provides two sets of credentials and the format differs:
+>
+> | Credential | Header format |
+> |---|---|
+> | `essp_apm_deployment` secret token | `Authorization=Bearer <secret-token>` |
+> | `elastic_otel_credentials` | `Authorization=ApiKey <base64-value>` (use the full value as-is) |
+>
+> We currently use the APM secret token (`Bearer`), which matches production.
+> If you use the OTel credentials instead and set `Bearer`, auth will fail — use the full
+> `ApiKey ...` value from the credential exactly as supplied.
+> See [this Slack thread](https://godaddy.slack.com/archives/C0B03JKRX09/p1782161392820439?thread_ts=1780613495.448979&cid=C0B03JKRX09) for background.
 
 ### 4. Start the Agents Server
 

@@ -1,64 +1,79 @@
-import { NodeSDK } from "@opentelemetry/sdk-node";
-import type { SpanProcessor } from "@opentelemetry/sdk-trace-node";
-import { GDEnvEnum } from '@godaddy/agent-observability-events';
-import { createAgentSpanProcessor } from '@godaddy/agent-otel-sdk';
-import {
-  AGENT_SERVICE_ID,
-  AGENT_SERVICE_NAME,
-  MULTI_AGENT_SYSTEM,
-} from '@airo/ai-transport';
+import { HttpInstrumentation } from '@opentelemetry/instrumentation-http'
+import { ExpressInstrumentation } from '@opentelemetry/instrumentation-express'
+import { UndiciInstrumentation } from '@opentelemetry/instrumentation-undici'
+import { registerInstrumentations } from '@opentelemetry/instrumentation'
 
-import { logger, toPinoLogger } from '../logging/index.js';
-import { resolveEnv } from '../utils/gd-env.js';
+import { installDedupingDiagLogger } from './diag-logger.js'
 
-const gdEnvMap = { dev: GDEnvEnum.Dev, test: GDEnvEnum.Test, prod: GDEnvEnum.Prod } as const;
+// Preloaded via `node --import` so the HTTP/Express/Undici instrumentations
+// patch their target modules BEFORE app code imports express. This module must
+// stay import-safe: only @opentelemetry/* plus the express-free diag helper.
+// Pulling in the pino logger, the @godaddy/* SDKs, or @airo/ai-transport here
+// would load express first and silently disable Express instrumentation.
+//
+// The TracerProvider and every span processor live in instrumentation-extras.ts,
+// which app.ts imports immediately after this and before the server listens. The
+// API's ProxyTracer bridges the two: once the provider registers, tracers
+// obtained earlier delegate to it. Spans created in the gap before it registers
+// are non-recording and lost — acceptable because no HTTP/AI span is created
+// during the module-load window (the server isn't listening and prewarm runs later).
 
-const observabilityEnabled = process.env.ENABLE_OBSERVABILITY_EVENTS === 'true';
-const langfuseConfigured = process.env.LANGFUSE_PUBLIC_KEY && process.env.LANGFUSE_SECRET_KEY;
+installDedupingDiagLogger((level, event) =>
+  console[level === 'debug' ? 'log' : level](JSON.stringify({ event: 'otel.diag', level, ...event })),
+)
 
-if (observabilityEnabled || langfuseConfigured) {
-  const spanProcessors: SpanProcessor[] = [];
+const INTERNAL_HOSTS: Set<string> = new Set(['localhost', '127.0.0.1', '::1'])
 
-  if (observabilityEnabled) {
-    const apiKey = process.env.EVENTBUS_API_KEY;
+const anyBackendConfigured: boolean =
+  process.env.ENABLE_OBSERVABILITY_EVENTS === 'true' ||
+  !!(process.env.LANGFUSE_PUBLIC_KEY && process.env.LANGFUSE_SECRET_KEY) ||
+  !!process.env.OTEL_EXPORTER_OTLP_ENDPOINT
 
-    if (!apiKey) {
-      logger.warn('instrumentation.init.missing_api_key', {
-        message: 'EVENTBUS_API_KEY is not set; disabling observability span processor'
-      });
-    } else {
-      spanProcessors.push(createAgentSpanProcessor({
-        clientOptions: {
-          eventBusOptions: { dxEnabled: false, apiKey, env: gdEnvMap[resolveEnv()] },
-          globalContext: {
-            site: {
-              privateLabelId: 1,
-            },
-            context: {
-              userType: 'c1',
-            },
-            agent: {
-              agentId: AGENT_SERVICE_ID,
-              agentName: AGENT_SERVICE_NAME,
-              multiAgentSystem: MULTI_AGENT_SYSTEM,
-            },
-          },
+if (anyBackendConfigured) {
+  registerInstrumentations({
+    // Transports covered: HTTP/1.x via node:http+https (HttpInstrumentation),
+    // native fetch via undici (UndiciInstrumentation), Express routing
+    // (ExpressInstrumentation). NOT covered: node:http2 (no maintained
+    // standalone OTel package) and @grpc/grpc-js (add
+    // @opentelemetry/instrumentation-grpc if real gRPC traffic ever lands).
+    instrumentations: [
+      new HttpInstrumentation({
+        applyCustomAttributesOnSpan: (span, request, response) => {
+          const isServer: boolean = 'setHeader' in response
+          const method: string = (request as { method?: string }).method ?? 'HTTP'
+          if (isServer) {
+            const routePath: string | undefined = (request as { route?: { path?: string } }).route?.path
+            if (routePath) {
+              span.updateName(`${method} ${routePath}`)
+            } else {
+              const status: number | string = (response as { statusCode?: number }).statusCode ?? 'unknown'
+              span.updateName(`${method} (unrouted ${status})`)
+            }
+          } else {
+            const req: { host?: string; path?: string } = request as { host?: string; path?: string }
+            const host: string = req.host ?? 'unknown'
+            const path: string = req.path ?? '/'
+            span.updateName(`${method} ${host}${path}`)
+          }
         },
-        // Override default 10 min TTL to 30 min for slow AAB agent responses
-        trackedSpanTtlMs: Number(process.env.TRACKED_SPAN_TTL_MS ?? 1_800_000),
-        logger: toPinoLogger(logger),
-      }));
-    }
-  }
-
-  if (langfuseConfigured) {
-    const { LangfuseSpanProcessor } = await import("@langfuse/otel");
-    spanProcessors.unshift(new LangfuseSpanProcessor());
-  }
-
-  const sdk = new NodeSDK({
-    spanProcessors,
-  });
-
-  sdk.start();
+      }),
+      new ExpressInstrumentation(),
+      new UndiciInstrumentation({
+        requestHook: (span, request) => {
+          let hostname: string = 'unknown'
+          let pathname: string = request.path ?? '/'
+          try {
+            const url: URL = new URL(request.origin + request.path)
+            hostname = url.hostname
+            pathname = url.pathname
+            span.setAttribute('http_is_external', !INTERNAL_HOSTS.has(hostname.toLowerCase()))
+            span.setAttribute('destination_service_resource', `${hostname}${pathname}`)
+          } catch {
+            // Parse failed — still produce a useful span name below.
+          }
+          span.updateName(`${request.method} ${hostname}${pathname}`)
+        },
+      }),
+    ],
+  })
 }

@@ -5,11 +5,25 @@ import { createSSERoutes } from '../routes.js'
 import { EventStreamRegistry } from '../EventStreamRegistry.js'
 import { getAgentFactory } from '../../agent-runtime.js'
 
-const mockApmTransaction = { setLabel: vi.fn(), setOutcome: vi.fn(), end: vi.fn(), result: undefined as string | undefined }
-const mockStartTransaction = vi.fn().mockReturnValue(mockApmTransaction)
-vi.mock('elastic-apm-node', () => ({
-  default: { startTransaction: (...args: any[]) => mockStartTransaction(...args) },
-}))
+const { mockSpan, mockStartSpan } = vi.hoisted(() => {
+  const mockSpan = {
+    setAttribute: vi.fn(),
+    setStatus: vi.fn(),
+    end: vi.fn(),
+  }
+  const mockStartSpan = vi.fn().mockReturnValue(mockSpan)
+  return { mockSpan, mockStartSpan }
+})
+vi.mock('@opentelemetry/api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@opentelemetry/api')>()
+  return {
+    ...actual,
+    trace: {
+      ...actual.trace,
+      getTracer: vi.fn().mockReturnValue({ startSpan: mockStartSpan }),
+    },
+  }
+})
 
 vi.mock('@airo/ai-grants', async (importOriginal) => {
   const actual = await importOriginal() as Record<string, unknown>
@@ -84,11 +98,10 @@ describe('SSE routes', () => {
   beforeEach(() => {
     mockClientActionServices.clear()
     mockBudgetPreCheck.mockReset().mockResolvedValue(null)
-    mockStartTransaction.mockReset().mockReturnValue(null)
-    mockApmTransaction.setLabel.mockReset()
-    mockApmTransaction.setOutcome.mockReset()
-    mockApmTransaction.end.mockReset()
-    mockApmTransaction.result = undefined
+    mockStartSpan.mockReset().mockReturnValue(mockSpan)
+    mockSpan.setAttribute.mockReset()
+    mockSpan.setStatus.mockReset()
+    mockSpan.end.mockReset()
     app = express()
     app.use(express.json())
     deps = createMockDeps()
@@ -1491,9 +1504,9 @@ describe('SSE routes', () => {
       )
     })
 
-    it('starts an APM transaction and passes it to execute()', async () => {
-      const txn = { setLabel: vi.fn(), setOutcome: vi.fn(), end: vi.fn(), result: undefined as string | undefined }
-      mockStartTransaction.mockReturnValueOnce(txn)
+    it('starts an OTel span and passes it to execute()', async () => {
+      const span = { setAttribute: vi.fn(), setStatus: vi.fn(), end: vi.fn() }
+      mockStartSpan.mockReturnValueOnce(span)
       const mockExecute = vi.fn().mockResolvedValue(undefined)
       const authenticateWithCtx = vi.fn(function (req: any, _res: any, next: any) {
         req.agentContext = { siteId: 'abcdefghij', customerId: 'cust-123', trafficSessionId: 'sess-456' }
@@ -1517,13 +1530,13 @@ describe('SSE routes', () => {
         await new Promise(r => setTimeout(r, 5))
       }
       expect(mockExecute).toHaveBeenCalledWith(
-        expect.objectContaining({ apmTransaction: txn })
+        expect.objectContaining({ messageSpan: span })
       )
-      expect(txn.setLabel).toHaveBeenCalledWith('requestId', 'apm-req-id')
-      expect(txn.setLabel).toHaveBeenCalledWith('conversationId', 'conv_1')
-      expect(txn.setLabel).toHaveBeenCalledWith('message_length', 11)
-      expect(txn.setLabel).toHaveBeenCalledWith('customerId', 'cust-123')
-      expect(txn.setLabel).toHaveBeenCalledWith('sessionId', 'sess-456')
+      expect(span.setAttribute).toHaveBeenCalledWith('requestId', 'apm-req-id')
+      expect(span.setAttribute).toHaveBeenCalledWith('conversationId', 'conv_1')
+      expect(span.setAttribute).toHaveBeenCalledWith('message_length', 11)
+      expect(span.setAttribute).toHaveBeenCalledWith('customerId', 'cust-123')
+      expect(span.setAttribute).toHaveBeenCalledWith('sessionId', 'sess-456')
     })
   })
 

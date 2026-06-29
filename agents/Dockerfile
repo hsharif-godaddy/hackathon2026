@@ -94,4 +94,7 @@ WORKDIR /workspace/agents
 ENV NODE_ENV=production
 
 ENTRYPOINT ["/management-scripts/nomad_setup_and_serve.sh"]
-CMD ["node", "/workspace/agents/dist/server/app.js"]
+# --import preloads the OTel bootstrap so HttpInstrumentation patches
+# node:http BEFORE app.js evaluates and imports express. The `start` script in
+# package.json carries the same flag for local runs; this is the production path.
+CMD ["node", "--import", "/workspace/agents/dist/server/instrumentation.js", "/workspace/agents/dist/server/app.js"]

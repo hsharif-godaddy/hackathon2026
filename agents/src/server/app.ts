@@ -5,181 +5,20 @@ import { Logger } from '../logging/index.js';
 import { setLoggerFactory } from '@airo/ai-common';
 setLoggerFactory((moduleName) => Logger.create({ component: `ai-lib.${moduleName}` }));
 
-// Initialize OpenTelemetry with Langfuse (imported from instrumentation.ts)
+// Initialize OpenTelemetry (OTLP exporter, auto-instrumentations, span processors)
 import './instrumentation.js';
+import './instrumentation-extras.js';
 import { describeError } from '@airo/shared/errors';
 import { handleUnhandledRejection } from './unhandled-rejection-handler.js';
+import { trace, type Span } from '@opentelemetry/api';
+import { runRootSpan } from './root-span.js';
+import { flushTelemetry } from './instrumentation-extras.js';
 
-// Initialize Elastic APM
-import apmAgent from 'elastic-apm-node';
-
-const isApmEnabled = !!(process.env.ELASTIC_APM_SECRET_TOKEN && process.env.ELASTIC_APM_SERVER_URL);
 const serviceName = 'airo-agents';
 const logger = Logger.create({ component: 'airo-agents-server' });
-
-if (isApmEnabled) {
-  logger.info('server.apm.enabled', {
-    serverUrl: process.env.ELASTIC_APM_SERVER_URL,
-    environment: process.env.NODE_ENV || 'development',
-    serviceName,
-  });
-} else {
-  logger.warn('server.apm.disabled', {
-    reason: 'Missing ELASTIC_APM_SECRET_TOKEN or ELASTIC_APM_SERVER_URL',
-  });
-}
-
-// Patch global fetch to include full URL paths in APM spans
-if (isApmEnabled) {
-  const originalFetch = global.fetch;
-  global.fetch = async function apmFetch(this: any, input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
-    // Extract URL and method
-    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
-    const method =
-      init?.method ||
-      (input instanceof Request ? input.method : undefined) ||
-      'GET';
-
-    // Check if URL is absolute (has protocol)
-    const isAbsoluteUrl = url.startsWith('http://') || url.startsWith('https://');
-
-    // For relative URLs, we need a base URL to parse them
-    let urlObj: URL;
-    let hostname: string;
-    let path: string;
-    let isExternal: boolean;
-
-    if (!isAbsoluteUrl) {
-      // Relative URL - assume it's to localhost (internal call)
-      // Use a dummy base URL just for parsing the path
-      try {
-        urlObj = new URL(url, 'http://localhost');
-        hostname = 'localhost';
-        path = urlObj.pathname + urlObj.search;
-        isExternal = false;
-      } catch (error) {
-        // If URL parsing fails, just call original fetch without instrumentation
-        return originalFetch.call(this, input, init);
-      }
-    } else {
-      // Absolute URL - parse normally
-      urlObj = new URL(url);
-      hostname = urlObj.hostname;
-      path = urlObj.pathname + urlObj.search;
-      // Consider localhost, 127.0.0.1, and same hostname as internal
-      isExternal = !['localhost', '127.0.0.1', '::1'].includes(hostname.toLowerCase());
-    }
-
-    // Create custom span name with full URL path
-    const spanName = `${method} ${hostname}${path}`;
-
-    // Start custom APM span
-    // Use 'external' for external calls, 'internal' for local calls
-    const spanType = isExternal ? 'external' : 'internal';
-    const span = apmAgent.startSpan(spanName, spanType, 'http');
-
-    if (span) {
-      // Add span labels for better filtering and searching (use underscores, not dots)
-      span.addLabels({
-        'http_url': url,
-        'http_method': method,
-        'http_hostname': hostname,
-        'http_path': path,
-        'http_is_external': isExternal,
-        'destination_service_resource': `${hostname}${path}`
-      });
-
-      // Set span type for proper categorization
-      span.setType(spanType, 'http', hostname);
-    }
-
-    try {
-      // Execute the actual fetch with proper context binding
-      const response = await originalFetch.call(this, input, init);
-
-      if (span) {
-        // Add response status to span
-        span.addLabels({ 'http_status_code': response.status });
-        span.setOutcome(response.ok ? 'success' : 'failure');
-      }
-
-      // Return the original response. Cloning a streamed response here can
-      // force tee buffering of the unread branch and blow up heap usage.
-      return response;
-    } catch (error) {
-      if (span) {
-        span.setOutcome('failure');
-        // Capture the error in the span
-        if (error instanceof Error) {
-          span.addLabels({ 'error_message': error.message });
-        }
-      }
-      throw error;
-    } finally {
-      // Always end the span
-      if (span) {
-        span.end();
-      }
-    }
-  } as typeof fetch;
-
-  logger.info('server.apm.fetch_instrumentation', {
-    message: 'Global fetch patched with APM instrumentation for full URL path tracking'
-  });
-}
-
-const apm = apmAgent.start({
-  serviceName,
-  secretToken: process.env.ELASTIC_APM_SECRET_TOKEN || '',
-  serverUrl: process.env.ELASTIC_APM_SERVER_URL || '',
-  environment: process.env.NODE_ENV || 'development',
-  active: isApmEnabled,
-  // Global labels added to ALL data: transactions, spans, errors, AND metrics
-  // Using ECS standard fields for container metadata
-  globalLabels: {
-    appId: process.env.SITE_ID || 'default-site',
-    'container.image.tag': process.env.AGENT_IMAGE_TAG || 'unknown',
-    'service.version': process.env.AGENT_IMAGE_TAG || 'unknown',
-    'service.name': 'airo-agent',
-  },
-  // Express specific configuration for route template support
-  usePathAsTransactionName: true,
-  transactionSampleRate: 1.0,
-  captureBody: 'all',
-  captureHeaders: true,
-  // Additional configuration for better transaction capture
-  instrument: true,
-  instrumentIncomingHTTPRequests: true,
-  captureSpanStackTraces: false,
-  stackTraceLimit: 50,
-  transactionMaxSpans: 500,
-  // Span configuration for external HTTP calls
-  spanCompressionEnabled: false,
-  spanCompressionExactMatchMaxDuration: '0ms',
-  spanCompressionSameKindMaxDuration: '0ms',
-  // Capture full URL paths in external HTTP spans for better dependency tracking
-  spanStackTraceMinDuration: '0ms',
-  // Enable OpenTelemetry bridge to receive spans from Vercel AI SDK experimental_telemetry
-  opentelemetryBridgeEnabled: true,
-  // Enable automatic HTTP client instrumentation for http, https, and undici
-  // disableInstrumentations: ['http', 'https', 'undici']
-});
-
-// Filter out CSP event bus spans from WebSocket transactions (all environments)
-apm.addSpanFilter((span) => {
-  const url = span.context?.http?.url;
-  // Drop spans for CSP event bus calls - these are internal observability HTTP calls
-  // Matches: csp.dev-godaddy.com, csp.test-godaddy.com, csp.godaddy.com (prod)
-  if (url && /csp\.(dev-|test-)?godaddy\.com/.test(url)) {
-    return false;
-  }
-  return span;
-});
-
-// Now import other modules after APM is initialized
 import path from 'node:path';
 
-import express, { Express, Router } from 'express';
+import express, { Express, Router, type Request, type Response, type NextFunction } from 'express';
 import helmet from 'helmet';
 import compression from 'compression';
 
@@ -346,11 +185,6 @@ function getOrCreateSSEExecutionService(): MessageExecutionService | null {
   return sseExecutionService
 }
 
-// APM middleware should be added BEFORE other middleware
-if (isApmEnabled) {
-  app.use(apm.middleware.connect());
-}
-
 // Security middleware
 // Configure helmet with cross-origin resource policy for file serving endpoints
 // Files endpoint needs cross-origin for browser image loading (protected by signed URLs)
@@ -377,47 +211,27 @@ app.use(express.urlencoded({ extended: true }));
 // Logging
 app.use(requestLogger);
 
-// APM transaction middleware for explicit transaction creation with dynamic route support
-if (isApmEnabled) {
-  app.use((req, res, next) => {
-    // Start with actual path, will update with route template after matching
-    const transaction = apm.startTransaction(`${req.method} ${req.path}`, 'request');
-    if (transaction) {
-      transaction.setLabel('method', req.method);
-      transaction.setLabel('path', req.path);
-      transaction.setLabel('url', req.url);
-      // appId is set via globalLabels in APM config
-
-      res.on('finish', () => {
-        // Update transaction name with route template if available
-        if (req.route?.path) {
-          // Convert :param to [param] format for better APM grouping
-          const routeTemplate = req.route.path.replace(/:([a-zA-Z0-9_-]+)/g, '[$1]');
-          const baseUrl = req.baseUrl || '';
-          const fullRoute = baseUrl + routeTemplate;
-          transaction.name = `${req.method} ${fullRoute}`;
-          transaction.setLabel('route_template', fullRoute);
-          transaction.setLabel('actual_path', req.path);
-
-          // Log route template usage for debugging
-          if (req.route.path.includes(':')) {
-            logger.debug('apm.route.template', {
-              method: req.method,
-              template: fullRoute,
-              actualPath: req.path,
-              statusCode: res.statusCode
-            });
-          }
-        }
-
-        transaction.result = `HTTP ${res.statusCode}`;
-        transaction.setOutcome(res.statusCode >= 400 ? 'failure' : 'success');
-        transaction.end();
-      });
-    }
-    next();
-  });
-}
+// OTel span enrichment middleware — adds route template attributes to the auto-created span
+app.use((req: Request, res: Response, next: NextFunction) => {
+  const span: Span | undefined = trace.getActiveSpan();
+  if (span) {
+    span.setAttribute('method', req.method);
+    span.setAttribute('path', req.path);
+    span.setAttribute('url', req.url);
+    // prependListener so this runs before HttpInstrumentation's own 'finish'
+    // handler ends the span — otherwise updateName/setAttribute would be no-ops.
+    res.prependListener('finish', () => {
+      if (req.route?.path) {
+        const routeTemplate: string = req.route.path.replace(/:([a-zA-Z0-9_-]+)/g, '[$1]');
+        const fullRoute: string = (req.baseUrl || '') + routeTemplate;
+        span.updateName(`${req.method} ${fullRoute}`);
+        span.setAttribute('route_template', fullRoute);
+        span.setAttribute('actual_path', req.path);
+      }
+    });
+  }
+  next();
+});
 
 // Public routes (no authentication required)
 app.use('/health', healthRouter);
@@ -702,7 +516,7 @@ async function initialize() {
     // keeps the logo/WS module graph out of app.ts eval.
     try {
       const { reconcileAllStaleLogoJobs } = await import('../services/logo/logo-reconciler.js')
-      await reconcileAllStaleLogoJobs()
+      await runRootSpan('startup.reconcile_logo_jobs', reconcileAllStaleLogoJobs)
     } catch (error) {
       logger.error('server.logo.reconcile.failed', {
         error: error instanceof Error ? error.message : String(error),
@@ -711,7 +525,7 @@ async function initialize() {
 
     // Pre-warm all classifiers via AssessmentAgent to avoid cold start on first prompt.
     const { getAssessmentAgent } = await import('../agents/assessment-agent/index.js');
-    await getAssessmentAgent().initialize();
+    await runRootSpan('startup.prewarm_classifiers', () => getAssessmentAgent().initialize());
 
     // Start periodic memory logging
     startPeriodicMemoryLogging();
@@ -881,6 +695,10 @@ async function shutdown(cause: string): Promise<void> {
 
     const { destroyAgentRuntime } = await import('./agent-runtime.js')
     await destroyAgentRuntime();
+
+    // Flush buffered OTel spans before exit so the final batch (incl. shutdown
+    // error spans) isn't dropped. Best-effort + timeout-guarded inside.
+    await flushTelemetry();
 
     logger.info('server.shutdown.success', {
       service: serviceName,

@@ -32,7 +32,7 @@ import { AppNotFoundError } from './errors/app-not-found-error.js'
 import { getMessageOriginForAuthType, type MessageOrigin } from '@airo/shared/auth'
 import type { ContextAttachment } from '@airo/shared/context-attachment'
 import { nanoid } from 'nanoid'
-import apm from 'elastic-apm-node'
+import { trace, SpanStatusCode } from '@opentelemetry/api'
 
 interface ConversationContextWithAttachments extends ConversationContext {
   contextAttachments?: ContextAttachment[]
@@ -111,10 +111,11 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
   }
 
   /**
-   * Track token usage in APM for monitoring and analytics using custom transactions
+   * Track token usage for monitoring and analytics.
    *
-   * Creates a dedicated APM transaction with token metrics and accurate total cost.
-   * The cost calculation properly accounts for cached token pricing (10x cheaper for reads).
+   * Creates a dedicated OTel span with token metrics and accurate total cost,
+   * exported to Elastic APM and the EventBus cost pipeline. The cost calculation
+   * properly accounts for cached token pricing (10x cheaper for reads).
    *
    * @param type - Type of usage: 'main_agent' or 'handoff'
    * @param usage - Token usage metrics from LLM response
@@ -138,7 +139,6 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
     }
   ): void {
     try {
-      // Calculate accurate cost including cache pricing
       const costEstimate = calculateCostEstimate(
         {
           inputTokens: usage.inputTokens,
@@ -150,54 +150,46 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
         metadata.modelName
       )
 
-      // Create a custom transaction specifically for token tracking
       const transactionName = type === 'handoff'
         ? `Token Usage: Handoff (${metadata.agentName} → ${metadata.targetAgent})`
         : `Token Usage: ${metadata.agentName}`
 
-      const transaction = apm.startTransaction(transactionName, 'token-tracking')
-
-      if (transaction) {
-        // Add metadata as labels (strings for filtering)
-        // appId is set via globalLabels in APM config
-        transaction.setLabel('token_usage_type', type)
-        transaction.setLabel('agent_name', metadata.agentName)
-        transaction.setLabel('model_name', metadata.modelName)
-        transaction.setLabel('conversation_id', metadata.conversationId)
-
-        if (metadata.targetAgent) {
-          transaction.setLabel('target_agent', metadata.targetAgent)
-        }
-
-        // Store numeric token values as labels (for aggregations and filtering)
-        transaction.addLabels({
+      const tracer = trace.getTracer('airo-agents')
+      const span = tracer.startSpan(transactionName, {
+        attributes: {
+          'transaction.type': 'token-tracking',
+          token_usage_type: type,
+          agent_name: metadata.agentName,
+          model_name: metadata.modelName,
+          conversation_id: metadata.conversationId,
           tokens_input: usage.inputTokens,
           tokens_output: usage.outputTokens,
           tokens_total: usage.totalTokens,
           tokens_cache_read: usage.cacheReadTokens || 0,
           tokens_cache_write: usage.cacheWriteTokens || 0,
-          // Add total cost metric (includes cache pricing)
-          cost_total_usd: parseFloat(costEstimate.totalCost.toFixed(6))
-        })
+          cost_total_usd: parseFloat(costEstimate.totalCost.toFixed(6)),
+          ...(metadata.targetAgent && { target_agent: metadata.targetAgent }),
+        },
+      })
+      // Snapshot before end(): isRecording() flips to false once the span ends,
+      // and we want to skip the log when no real tracing backend is wired up
+      // (OTel hands out a no-op span when no provider is registered).
+      const wasRecording = span.isRecording()
+      span.setStatus({ code: SpanStatusCode.OK })
+      span.end()
 
-        // Mark transaction as successful and end it
-        transaction.result = 'success'
-        transaction.setOutcome('success')
-        transaction.end()
+      if (!wasRecording) return
 
-        logger.info('apm.token_tracking.sent', {
-          type,
-          conversationId: metadata.conversationId,
-          totalTokens: usage.totalTokens,
-          cacheReadTokens: usage.cacheReadTokens,
-          cacheWriteTokens: usage.cacheWriteTokens,
-          totalCost: costEstimate.totalCost,
-          transactionName
-        })
-      }
-
+      logger.info('apm.token_tracking.sent', {
+        type,
+        conversationId: metadata.conversationId,
+        totalTokens: usage.totalTokens,
+        cacheReadTokens: usage.cacheReadTokens,
+        cacheWriteTokens: usage.cacheWriteTokens,
+        totalCost: costEstimate.totalCost,
+        transactionName
+      })
     } catch (error) {
-      // Don't let APM tracking errors break the flow
       logger.warn('apm.token_tracking.failed', {
         error: error instanceof Error ? error.message : String(error),
         type,

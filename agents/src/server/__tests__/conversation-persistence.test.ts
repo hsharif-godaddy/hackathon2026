@@ -61,9 +61,12 @@ vi.mock('../../logging/index.js', () => ({
   },
 }))
 
-vi.mock('elastic-apm-node', () => ({
-  default: { startTransaction: vi.fn().mockReturnValue(null) },
-}))
+const mockSpan = { setAttribute: vi.fn(), setStatus: vi.fn(), end: vi.fn(), isRecording: vi.fn().mockReturnValue(true) }
+vi.mock('@opentelemetry/api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@opentelemetry/api')>()
+  const mockTracer = { startSpan: vi.fn().mockReturnValue(mockSpan) }
+  return { ...actual, trace: { ...actual.trace, getTracer: vi.fn().mockReturnValue(mockTracer) } }
+})
 
 vi.mock('@godaddy/agent-otel-sdk', () => ({
   emitConversationStart: vi.fn(),
@@ -652,6 +655,42 @@ describe('AgentsMessagePersistence', function packageTests() {
 
       const activeConversations = (persistence as any).activeConversations
       expect(activeConversations.has('test-socket')).toBe(false)
+    })
+  })
+
+  describe('#trackTokenUsageInAPM', () => {
+    const usage = { inputTokens: 100, outputTokens: 50, totalTokens: 150 }
+    const metadata = {
+      conversationId: 'conv-1',
+      appId: 'app-1',
+      agentName: 'develop',
+      modelName: 'claude-sonnet-4-6',
+    }
+
+    it('logs apm.token_tracking.sent when the span is recording', () => {
+      mockSpan.isRecording.mockReturnValue(true)
+
+      ;(persistence as any).trackTokenUsageInAPM('main_agent', usage, metadata)
+
+      expect(mockSpan.end).toHaveBeenCalled()
+      expect(mockLoggerModule.info).toHaveBeenCalledWith(
+        'apm.token_tracking.sent',
+        expect.objectContaining({
+          type: 'main_agent',
+          conversationId: 'conv-1',
+          totalTokens: 150,
+        }),
+      )
+    })
+
+    it('skips the log when the span is not recording (no tracing backend wired up)', () => {
+      mockSpan.isRecording.mockReturnValue(false)
+
+      ;(persistence as any).trackTokenUsageInAPM('main_agent', usage, metadata)
+
+      // Span still ended, but the misleading "sent" log is suppressed.
+      expect(mockSpan.end).toHaveBeenCalled()
+      expect(mockLoggerModule.info).not.toHaveBeenCalledWith('apm.token_tracking.sent', expect.anything())
     })
   })
 

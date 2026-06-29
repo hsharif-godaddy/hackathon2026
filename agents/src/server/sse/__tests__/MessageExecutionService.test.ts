@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { context as otelContext, trace as otelTrace } from '@opentelemetry/api'
+import { context as otelContext, trace as otelTrace, SpanStatusCode } from '@opentelemetry/api'
 
 // Mock the Langfuse invocation-span SDK so tests can assert the lifecycle
 // (createAgentInvocationSpan → end) that MessageExecutionService now owns.
@@ -4977,22 +4977,22 @@ describe('MessageExecutionService', () => {
   })
 
   describe('APM transaction lifecycle', () => {
-    it('labels and ends apmTransaction on successful completion', async () => {
-      const mockTransaction = { setLabel: vi.fn(), setOutcome: vi.fn(), end: vi.fn(), result: undefined as string | undefined }
+    it('labels and ends messageSpan on successful completion', async () => {
+      const mockTransaction = { setAttribute: vi.fn(), setStatus: vi.fn(), updateName: vi.fn(), end: vi.fn() }
       deps = createMockDeps([{ type: 'text-delta', text: 'hi' }])
       service = new MessageExecutionService(deps as any)
 
-      await service.execute({ ...DEFAULT_PARAMS, apmTransaction: mockTransaction })
+      await service.execute({ ...DEFAULT_PARAMS, messageSpan: mockTransaction })
 
-      expect(mockTransaction.setLabel).toHaveBeenCalledWith('agent_name', 'develop')
-      expect(mockTransaction.setLabel).toHaveBeenCalledWith('finishReason', expect.any(String))
-      expect(mockTransaction.result).toBe('success')
-      expect(mockTransaction.setOutcome).toHaveBeenCalledWith('success')
+      expect(mockTransaction.setAttribute).toHaveBeenCalledWith('agent_name', 'develop')
+      expect(mockTransaction.setAttribute).toHaveBeenCalledWith('finishReason', expect.any(String))
+      expect(mockTransaction.setAttribute).toHaveBeenCalledWith('result', 'success')
+      expect(mockTransaction.setStatus).toHaveBeenCalledWith({ code: SpanStatusCode.OK })
       expect(mockTransaction.end).toHaveBeenCalled()
     })
 
-    it('labels and ends apmTransaction on error', async () => {
-      const mockTransaction = { setLabel: vi.fn(), setOutcome: vi.fn(), end: vi.fn(), result: undefined as string | undefined }
+    it('labels and ends messageSpan on error', async () => {
+      const mockTransaction = { setAttribute: vi.fn(), setStatus: vi.fn(), updateName: vi.fn(), end: vi.fn() }
       deps = createMockDeps([])
       deps.getAgent.mockReturnValue({
         streamGenerate: vi.fn().mockRejectedValue(new Error('provider down')),
@@ -5000,17 +5000,17 @@ describe('MessageExecutionService', () => {
       })
       service = new MessageExecutionService(deps as any)
 
-      await service.execute({ ...DEFAULT_PARAMS, apmTransaction: mockTransaction })
+      await service.execute({ ...DEFAULT_PARAMS, messageSpan: mockTransaction })
 
-      expect(mockTransaction.setLabel).toHaveBeenCalledWith('finishReason', 'error')
-      expect(mockTransaction.setLabel).toHaveBeenCalledWith('error_type', 'Error')
-      expect(mockTransaction.result).toBe('error')
-      expect(mockTransaction.setOutcome).toHaveBeenCalledWith('failure')
+      expect(mockTransaction.setAttribute).toHaveBeenCalledWith('finishReason', 'error')
+      expect(mockTransaction.setAttribute).toHaveBeenCalledWith('error_type', 'Error')
+      expect(mockTransaction.setAttribute).toHaveBeenCalledWith('result', 'error')
+      expect(mockTransaction.setStatus).toHaveBeenCalledWith({ code: SpanStatusCode.ERROR })
       expect(mockTransaction.end).toHaveBeenCalled()
     })
 
-    it('ends apmTransaction on user stop', async () => {
-      const mockTransaction = { setLabel: vi.fn(), setOutcome: vi.fn(), end: vi.fn(), result: undefined as string | undefined }
+    it('ends messageSpan on user stop', async () => {
+      const mockTransaction = { setAttribute: vi.fn(), setStatus: vi.fn(), updateName: vi.fn(), end: vi.fn() }
       let resolveRead: (v: any) => void
       const readPromise = new Promise(r => { resolveRead = r })
       const slowStream = new ReadableStream({
@@ -5029,15 +5029,15 @@ describe('MessageExecutionService', () => {
       })
       service = new MessageExecutionService(deps as any)
 
-      const executePromise = service.execute({ ...DEFAULT_PARAMS, apmTransaction: mockTransaction })
+      const executePromise = service.execute({ ...DEFAULT_PARAMS, messageSpan: mockTransaction })
       await new Promise(r => setTimeout(r, 50))
       service.stop('conv_1')
       resolveRead!(undefined)
       await executePromise
 
-      expect(mockTransaction.setLabel).toHaveBeenCalledWith('finishReason', 'user_stopped')
-      expect(mockTransaction.result).toBe('aborted')
-      expect(mockTransaction.setOutcome).toHaveBeenCalledWith('unknown')
+      expect(mockTransaction.setAttribute).toHaveBeenCalledWith('finishReason', 'user_stopped')
+      expect(mockTransaction.setAttribute).toHaveBeenCalledWith('result', 'aborted')
+      expect(mockTransaction.setStatus).toHaveBeenCalledWith({ code: SpanStatusCode.UNSET })
       expect(mockTransaction.end).toHaveBeenCalled()
     })
   })
@@ -5054,7 +5054,7 @@ describe('MessageExecutionService', () => {
 
     it('shutdown does not throw when cleanupActionService throws, and APM still ends', async () => {
       const { cleanupActionService } = await import('../../agent-runtime.js') as { cleanupActionService: ReturnType<typeof vi.fn> }
-      const mockTransaction = { setLabel: vi.fn(), setOutcome: vi.fn(), end: vi.fn(), result: undefined as string | undefined }
+      const mockTransaction = { setAttribute: vi.fn(), setStatus: vi.fn(), updateName: vi.fn(), end: vi.fn() }
       const streamStarted = deferred<void>()
       const mockSub = { id: 'sse-sub-1', onEvent: vi.fn(), onError: vi.fn() }
       deps = createMockDeps([])
@@ -5077,7 +5077,7 @@ describe('MessageExecutionService', () => {
       })
       service = new MessageExecutionService(deps as any)
 
-      const execPromise = service.execute({ ...DEFAULT_PARAMS, conversationId: 'conv_1', apmTransaction: mockTransaction })
+      const execPromise = service.execute({ ...DEFAULT_PARAMS, conversationId: 'conv_1', messageSpan: mockTransaction })
       await streamStarted.promise
       service.onLastSubscriberLeft('conv_1')
 
@@ -5090,11 +5090,11 @@ describe('MessageExecutionService', () => {
 
       // APM transaction still ends despite the throw (finally block)
       expect(mockTransaction.end).toHaveBeenCalled()
-      expect(mockTransaction.result).toBe('aborted')
+      expect(mockTransaction.setAttribute).toHaveBeenCalledWith('result', 'aborted')
     })
 
     it('aborts active streams and cleans action services, subscribers, timers, and APM state', async () => {
-      const mockTransaction = { setLabel: vi.fn(), setOutcome: vi.fn(), end: vi.fn(), result: undefined as string | undefined }
+      const mockTransaction = { setAttribute: vi.fn(), setStatus: vi.fn(), updateName: vi.fn(), end: vi.fn() }
       const streamStarted = deferred<void>()
       let capturedSignal: AbortSignal | undefined
       const mockSub = { id: 'sse-sub-1', onEvent: vi.fn(), onError: vi.fn() }
@@ -5119,7 +5119,7 @@ describe('MessageExecutionService', () => {
       })
       service = new MessageExecutionService(deps as any)
 
-      const executePromise = service.execute({ ...DEFAULT_PARAMS, apmTransaction: mockTransaction })
+      const executePromise = service.execute({ ...DEFAULT_PARAMS, messageSpan: mockTransaction })
       await streamStarted.promise
       service.onLastSubscriberLeft('conv_1')
 
@@ -5137,9 +5137,9 @@ describe('MessageExecutionService', () => {
       expect(deps.eventChannel.publish.mock.invocationCallOrder.at(-1)).toBeLessThan(
         deps.eventChannel.unsubscribe.mock.invocationCallOrder[0],
       )
-      expect(mockTransaction.setLabel).toHaveBeenCalledWith('finishReason', 'server_shutdown')
-      expect(mockTransaction.result).toBe('aborted')
-      expect(mockTransaction.setOutcome).toHaveBeenCalledWith('unknown')
+      expect(mockTransaction.setAttribute).toHaveBeenCalledWith('finishReason', 'server_shutdown')
+      expect(mockTransaction.setAttribute).toHaveBeenCalledWith('result', 'aborted')
+      expect(mockTransaction.setStatus).toHaveBeenCalledWith({ code: SpanStatusCode.UNSET })
       expect(mockTransaction.end).toHaveBeenCalledTimes(1)
       expect(service.hasActiveStream('conv_1')).toBe(false)
     })

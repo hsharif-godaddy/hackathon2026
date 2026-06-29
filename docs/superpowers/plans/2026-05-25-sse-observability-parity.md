@@ -1,5 +1,7 @@
 # SSE Observability Parity Implementation Plan
 
+> **[EDIT 2026-06-05]** This plan was implemented against `elastic-apm-node`. The agents service has since been migrated to OpenTelemetry (PR #4030) — span lifecycle uses `tracer.startSpan(...)` + `setAttribute`/`setStatus` instead of `apm.startTransaction(...)` + `setLabel`/`setOutcome`. The `apmTransaction` field on `MessageExecutionService` was renamed to `messageSpan`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add per-message request ID threading, Elastic APM transaction parity, and client trace ID extraction to the SSE transport so observability matches WebSocket.

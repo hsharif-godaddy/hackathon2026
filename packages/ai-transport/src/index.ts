@@ -48,16 +48,8 @@ export {
 export type {
   PersistenceLogger
 } from './subscribers/persistence-subscriber.js'
-export {
-  APMSubscriber
-} from './subscribers/apm-subscriber.js'
 export type { CoalescerConfig, CoalescedMessage } from './subscribers/event-coalescer.js'
 export { EventCoalescer } from './subscribers/event-coalescer.js'
-export type {
-  APMAgent,
-  APMSpan,
-  APMTransaction
-} from './subscribers/apm-subscriber.js'
 
 // LLM Response Metadata Capture (shared by WS + SSE)
 export { captureResponseMetadata, awaitResponseMetadata } from './response-metadata-capture.js'

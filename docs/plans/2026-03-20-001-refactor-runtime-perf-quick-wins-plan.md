@@ -6,6 +6,8 @@ date: 2026-03-20
 origin: docs/brainstorms/2026-03-20-runtime-perf-quick-wins-requirements.md
 ---
 
+> **[EDIT 2026-06-05]** References below to `elastic-apm-node` are historical. The agents service has since been migrated to OpenTelemetry (PR #4030); env-var precedence and tracing config now go through `OTEL_*` variables.
+
 # Runtime Performance Quick Wins
 
 6 independent, low-risk performance improvements across agents/ and app/. Each ships as its own PR. No user-facing behavior changes.

@@ -287,8 +287,8 @@ export function extractAppIdFromPath(url: string): string | null {
 }
 
 /**
- * Wrap an OpenTelemetry Span to provide a consistent interface
- * Maintains backward compatibility with elastic-apm-node's transaction API
+ * Wrap an OpenTelemetry Span to provide a stable transaction-like interface
+ * for callers in this app (e.g. setLabel/end semantics).
  *
  * @param span - The underlying OTel span
  * @param ownsSpan - If true, we created the span and should end it. If false,

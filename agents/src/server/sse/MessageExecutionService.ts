@@ -38,7 +38,7 @@ import type { ResponseMetadata, ResolveToolMetadata } from '@airo/ai-transport'
 import { BudgetExceededError, classifyError } from '@airo/ai-common'
 import { grantSessionManager, BudgetOverride } from '@airo/ai-grants'
 import { createGrantBudgetRecoveryCallback } from '../grant-budget-recovery-callback.js'
-import { context as otelContext, trace } from '@opentelemetry/api'
+import { context as otelContext, trace, SpanStatusCode } from '@opentelemetry/api'
 import type { AgentsMessagePersistence } from '../conversation-persistence.js'
 import type { EventStreamRegistry, SubscriberLifecycleListener } from './EventStreamRegistry.js'
 import { SSEClientActionService } from './SSEClientActionService.js'
@@ -271,8 +271,8 @@ interface ExecuteParams {
   market?: string
   userTimezone?: string
   requestId?: string
-  /** Elastic APM transaction — labeled progressively and ended at terminal. */
-  apmTransaction?: { setLabel: (k: string, v: string | number) => void; setOutcome: (o: 'unknown' | 'success' | 'failure') => void; end: () => void; result?: string | number } | null
+  /** OTel span — attributes set progressively, ended at terminal. */
+  messageSpan?: import('@opentelemetry/api').Span | null
   /** User-selected design kit slug from the gallery; forces install on turn 1 for design-system variants. */
   designKitSlug?: string
   /** Whether the client is running inside an iframe (embedded in a parent product). */
@@ -284,7 +284,7 @@ interface ActiveStream {
   convId: string
   subscriberIds: Set<string>
   requestId?: string
-  apmTransaction?: { setLabel: (k: string, v: string | number) => void; setOutcome: (o: 'unknown' | 'success' | 'failure') => void; end: () => void; result?: string | number } | null
+  messageSpan?: import('@opentelemetry/api').Span | null
   lastTrackerSnapshot?: { chunksRead: number; streamElapsedMs: number }
   lastResponseMetadata?: ResponseMetadata
 }
@@ -364,10 +364,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
   private readonly chunkTimeoutMs = parseChunkTimeoutMs()
   private abortControllers = new Map<string, AbortController>()
   private activeStreams = new Map<string, ActiveStream>()
-  private endedApmTransactions = new WeakSet<NonNullable<ActiveStream['apmTransaction']>>()
-  // Tracks in-flight execute() turns (promise → conversationId) so shutdown()
-  // can await their finalization (including their git commits) before the DB
-  // closes. Entries self-remove when the turn settles.
+  private endedSpans = new WeakSet<NonNullable<ActiveStream['messageSpan']>>()
   private inFlightTurns = new Map<Promise<void>, string>()
 
   constructor(deps: ExecutionDeps) {
@@ -459,12 +456,12 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
     })
   }
 
-  private markApmTransactionEnded(transaction: ActiveStream['apmTransaction']): void {
-    if (transaction) this.endedApmTransactions.add(transaction)
+  private markSpanEnded(transaction: ActiveStream['messageSpan']): void {
+    if (transaction) this.endedSpans.add(transaction)
   }
 
-  private isApmTransactionEnded(transaction: ActiveStream['apmTransaction']): boolean {
-    return !!transaction && this.endedApmTransactions.has(transaction)
+  private isSpanEnded(transaction: ActiveStream['messageSpan']): boolean {
+    return !!transaction && this.endedSpans.has(transaction)
   }
 
   private async completeConversationAndMarkPersisted(opts: {
@@ -538,12 +535,12 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
     // client side (finalizeStream early-returns when activeStream is null)
     // and produces at most a duplicate event on any other subscriber.
     if (active) {
-      if (active.apmTransaction) {
-        active.apmTransaction.setLabel('finishReason', 'user_stopped')
-        active.apmTransaction.result = 'aborted'
-        active.apmTransaction.setOutcome('unknown')
-        active.apmTransaction.end()
-        this.markApmTransactionEnded(active.apmTransaction)
+      if (active.messageSpan) {
+        active.messageSpan.setAttribute('finishReason', 'user_stopped')
+        active.messageSpan.setAttribute('result', 'aborted')
+        active.messageSpan.setStatus({ code: SpanStatusCode.UNSET })
+        active.messageSpan.end()
+        this.markSpanEnded(active.messageSpan)
       }
       // Vacate the slot BEFORE publishing the terminal. Late events from
       // the still-running old execute() (mid-chunk reader.read(), tool
@@ -620,12 +617,12 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
           error: error instanceof Error ? error.message : String(error),
         })
       } finally {
-        if (active.apmTransaction) {
-          active.apmTransaction.setLabel('finishReason', 'server_shutdown')
-          active.apmTransaction.result = 'aborted'
-          active.apmTransaction.setOutcome('unknown')
-          active.apmTransaction.end()
-          this.markApmTransactionEnded(active.apmTransaction)
+        if (active.messageSpan) {
+          active.messageSpan.setAttribute('finishReason', 'server_shutdown')
+          active.messageSpan.setAttribute('result', 'aborted')
+          active.messageSpan.setStatus({ code: SpanStatusCode.UNSET })
+          active.messageSpan.end()
+          this.markSpanEnded(active.messageSpan)
         }
       }
     }
@@ -1973,16 +1970,19 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
     appId: string
     agentNameForApm: string
     requestId?: string
-    apmTransaction?: ActiveStream['apmTransaction']
+    messageSpan?: ActiveStream['messageSpan']
   }): ActiveStream {
-    const { conversationId, appId, agentNameForApm, requestId, apmTransaction } = opts
+    const { conversationId, appId, agentNameForApm, requestId, messageSpan } = opts
     const streamState: ActiveStream = {
       appId, convId: conversationId, subscriberIds: new Set(),
       ...(requestId && { requestId }),
-      apmTransaction,
+      messageSpan,
     }
     this.activeStreams.set(conversationId, streamState)
-    if (apmTransaction) apmTransaction.setLabel('agent_name', agentNameForApm)
+    if (messageSpan) {
+      messageSpan.setAttribute('agent_name', agentNameForApm)
+      messageSpan.updateName(`SSE Message: ${agentNameForApm}`)
+    }
     const sseSubscribers = this.deps.sseRegistry.getSubscribers(conversationId)
     for (const sub of sseSubscribers) {
       this.deps.eventChannel.subscribe(conversationId, sub)
@@ -2002,7 +2002,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
       visualContext, aiEditContext, aiEditContexts, selectedAssets,
       todoListContext, isActionRequest, customContext, buildErrorContext,
       bmsBudgetId, budgetSessionId, subscriptionId, authType,
-      lifecycleContext, uploadedFileName, automationId, market, userTimezone, requestId, apmTransaction,
+      lifecycleContext, uploadedFileName, automationId, market, userTimezone, requestId, messageSpan,
       designKitSlug, isEmbedded,
     } = params
 
@@ -2140,7 +2140,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
     // eventChannel and the /stream client hangs forever.
     const streamState = this.setupStreamState({
       conversationId, appId, agentNameForApm: resolvedAgentId,
-      requestId, apmTransaction,
+      requestId, messageSpan,
     })
 
     this.emitConversationStartIfFirstTurn(lifecycleContext, conversationId, resolvedAgentId)
@@ -2172,12 +2172,12 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
         }
         this.activeStreams.delete(conversationId)
       }
-      if (apmTransaction) {
-        apmTransaction.setLabel('finishReason', 'persistence_pre_turn_failed')
-        apmTransaction.result = 'error'
-        apmTransaction.setOutcome('failure')
-        apmTransaction.end()
-        this.markApmTransactionEnded(apmTransaction)
+      if (messageSpan) {
+        messageSpan.setAttribute('finishReason', 'persistence_pre_turn_failed')
+        messageSpan.setAttribute('result', 'error')
+        messageSpan.setStatus({ code: SpanStatusCode.ERROR })
+        messageSpan.end()
+        this.markSpanEnded(messageSpan)
       }
       turnResult = { success: false, error: err }
       return turnResult
@@ -2849,14 +2849,14 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
       }
 
       logger.info('sse.execution.complete', { appId, conversationId, agentId: finalAgentName, finishReason, iterations: loopResult.iterations, ...(requestId && { requestId }) })
-      if (apmTransaction && !supersededSuccess) {
-        apmTransaction.setLabel('finishReason', finishReason)
-        apmTransaction.setLabel('agent_id', finalAgentName)
-        if (lastTurnResult?.currentStep) apmTransaction.setLabel('steps', lastTurnResult.currentStep)
-        apmTransaction.result = 'success'
-        apmTransaction.setOutcome('success')
-        apmTransaction.end()
-        this.markApmTransactionEnded(apmTransaction)
+      if (messageSpan && !supersededSuccess) {
+        messageSpan.setAttribute('finishReason', finishReason)
+        messageSpan.setAttribute('agent_id', finalAgentName)
+        if (lastTurnResult?.currentStep) messageSpan.setAttribute('steps', lastTurnResult.currentStep)
+        messageSpan.setAttribute('result', 'success')
+        messageSpan.setStatus({ code: SpanStatusCode.OK })
+        messageSpan.end()
+        this.markSpanEnded(messageSpan)
       }
       turnResult = {
         success: true,
@@ -2937,12 +2937,12 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
         })
       } else if (abortController.signal.aborted && !chunkTimeoutAborted) {
         logger.info('sse.execution.aborted', { appId, conversationId, ...(requestId && { requestId }) })
-        if (apmTransaction && !supersededError) {
-          apmTransaction.setLabel('finishReason', 'aborted')
-          apmTransaction.result = 'aborted'
-          apmTransaction.setOutcome('unknown')
-          apmTransaction.end()
-          this.markApmTransactionEnded(apmTransaction)
+        if (messageSpan && !supersededError) {
+          messageSpan.setAttribute('finishReason', 'aborted')
+          messageSpan.setAttribute('result', 'aborted')
+          messageSpan.setStatus({ code: SpanStatusCode.UNSET })
+          messageSpan.end()
+          this.markSpanEnded(messageSpan)
         }
         await this.publishTerminal(appId, conversationId, {
           type: 'complete',
@@ -2998,14 +2998,14 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
           ...(streamState.lastResponseMetadata?.responseId && { responseId: streamState.lastResponseMetadata.responseId }),
           ...(streamState.lastResponseMetadata?.modelId && { responseModelId: streamState.lastResponseMetadata.modelId }),
         })
-        if (apmTransaction && !supersededError) {
-          apmTransaction.setLabel('finishReason', 'error')
-          apmTransaction.setLabel('error_message', clientMessage)
-          apmTransaction.setLabel('error_type', err.name || 'Error')
-          apmTransaction.result = 'error'
-          apmTransaction.setOutcome('failure')
-          apmTransaction.end()
-          this.markApmTransactionEnded(apmTransaction)
+        if (messageSpan && !supersededError) {
+          messageSpan.setAttribute('finishReason', 'error')
+          messageSpan.setAttribute('error_message', clientMessage)
+          messageSpan.setAttribute('error_type', err.name || 'Error')
+          messageSpan.setAttribute('result', 'error')
+          messageSpan.setStatus({ code: SpanStatusCode.ERROR })
+          messageSpan.end()
+          this.markSpanEnded(messageSpan)
         }
         await this.publishTerminal(appId, conversationId, {
           type: 'error', content: clientMessage,
@@ -3125,14 +3125,14 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
           this.deps.eventChannel.unsubscribe(conversationId, subId)
         }
         this.activeStreams.delete(conversationId)
-      } else if (apmTransaction && !this.isApmTransactionEnded(apmTransaction)) {
+      } else if (messageSpan && !this.isSpanEnded(messageSpan)) {
         // Superseded by a newer execute() — the success/error paths skipped
         // ending the transaction (guarded by !superseded*), so end it here.
-        apmTransaction.setLabel('finishReason', 'superseded')
-        apmTransaction.result = 'aborted'
-        apmTransaction.setOutcome('unknown')
-        apmTransaction.end()
-        this.markApmTransactionEnded(apmTransaction)
+        messageSpan.setAttribute('finishReason', 'superseded')
+        messageSpan.setAttribute('result', 'aborted')
+        messageSpan.setStatus({ code: SpanStatusCode.UNSET })
+        messageSpan.end()
+        this.markSpanEnded(messageSpan)
       }
     }
     return turnResult
@@ -3145,7 +3145,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
   ): Promise<TurnExecutionResult> {
     const {
       appId, conversationId, content, siteId, authType,
-      lifecycleContext, requestId, apmTransaction,
+      lifecycleContext, requestId, messageSpan,
     } = params
     const agentCtx = lifecycleContext?.agentContext
     const sseSocketId = sseSessionKey(conversationId)
@@ -3159,7 +3159,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
     // cleanup and ownership-guarded activeStreams.delete in finally.
     const streamState = this.setupStreamState({
       conversationId, appId, agentNameForApm: 'support',
-      requestId, apmTransaction,
+      requestId, messageSpan,
     })
 
     // Persist user message + open agent-turn slot.
@@ -3286,12 +3286,12 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
         }
         this.activeStreams.delete(conversationId)
       }
-      // End the APM transaction to match the build path lifecycle.
-      if (apmTransaction && !this.isApmTransactionEnded(apmTransaction)) {
-        apmTransaction.result = turnResult.success ? 'success' : 'error'
-        apmTransaction.setOutcome(turnResult.success ? 'success' : 'failure')
-        apmTransaction.end()
-        this.markApmTransactionEnded(apmTransaction)
+      // End the messageSpan to match the build path lifecycle.
+      if (messageSpan && !this.isSpanEnded(messageSpan)) {
+        messageSpan.setAttribute('result', turnResult.success ? 'success' : 'error')
+        messageSpan.setStatus({ code: turnResult.success ? SpanStatusCode.OK : SpanStatusCode.ERROR })
+        messageSpan.end()
+        this.markSpanEnded(messageSpan)
       }
     }
   }

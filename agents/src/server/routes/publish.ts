@@ -1,8 +1,10 @@
 import { existsSync } from 'node:fs';
 
-import apm from 'elastic-apm-node';
+import { trace } from '@opentelemetry/api';
 
 import { PublishErrorCode } from '@airo/shared/publish';
+
+import { runRootSpanBackground } from '../root-span.js';
 import { DevSupervisorClientFactory } from '../../utils/dev-supervisor-client-factory.js';
 import { createForWorkspace } from '../../workspace/index.js';
 import { AppRepository } from '../../database/repositories/AppRepository.js';
@@ -109,16 +111,11 @@ function runAsyncPublish(params: AsyncPublishParams): void {
 
   const BUILD_TIMEOUT_MS = 9 * 60 * 1000;
 
-  // Start a new APM transaction for the background publish work.
-  // The HTTP request transaction is already closed by the time this runs.
-  const asyncTx = apm.startTransaction(`publish.async ${strategy.key}`, 'publish');
-  if (asyncTx) {
-    asyncTx.setLabel('publish.app_id', appId);
-    asyncTx.setLabel('publish.strategy', strategy.key);
-    asyncTx.setLabel('publish.job_id', jobId);
-  }
-
-  (async (): Promise<void> => {
+  runRootSpanBackground('publish.background.deploy', async (): Promise<void> => {
+    const span = trace.getActiveSpan();
+    span?.setAttribute('publish.app_id', appId);
+    span?.setAttribute('publish.strategy', strategy.key);
+    span?.setAttribute('publish.job_id', jobId);
     let buildTimer: ReturnType<typeof setTimeout> | undefined;
     try {
       const buildResult = await Promise.race([
@@ -157,10 +154,9 @@ function runAsyncPublish(params: AsyncPublishParams): void {
             durationMs,
             customerId,
           });
-          asyncTx?.setLabel('publish.outcome', 'failure');
-          asyncTx?.setLabel('publish.error_type', 'SupervisorUnavailable');
-          asyncTx?.setLabel('publish.duration_ms', durationMs);
-          asyncTx?.end();
+          span?.setAttribute('publish.outcome', 'failure');
+          span?.setAttribute('publish.error_type', 'SupervisorUnavailable');
+          span?.setAttribute('publish.duration_ms', durationMs);
           return;
         }
 
@@ -198,10 +194,9 @@ function runAsyncPublish(params: AsyncPublishParams): void {
             durationMs,
             customerId,
           });
-          asyncTx?.setLabel('publish.outcome', 'failure');
-          asyncTx?.setLabel('publish.error_type', 'DeployError');
-          asyncTx?.setLabel('publish.duration_ms', durationMs);
-          asyncTx?.end();
+          span?.setAttribute('publish.outcome', 'failure');
+          span?.setAttribute('publish.error_type', 'DeployError');
+          span?.setAttribute('publish.duration_ms', durationMs);
           return;
         }
 
@@ -249,9 +244,8 @@ function runAsyncPublish(params: AsyncPublishParams): void {
         durationMs: totalMs,
         customerId,
       });
-      asyncTx?.setLabel('publish.outcome', 'success');
-      asyncTx?.setLabel('publish.duration_ms', totalMs);
-      asyncTx?.end();
+      span?.setAttribute('publish.outcome', 'success');
+      span?.setAttribute('publish.duration_ms', totalMs);
     } catch (error) {
       clearTimeout(buildTimer);
       const message = error instanceof Error ? error.message : String(error);
@@ -266,17 +260,13 @@ function runAsyncPublish(params: AsyncPublishParams): void {
         durationMs: totalMs,
         customerId,
       });
-      asyncTx?.setLabel('publish.outcome', 'failure');
-      asyncTx?.setLabel('publish.error_type', error instanceof Error ? error.constructor.name : 'unknown');
-      asyncTx?.setLabel('publish.duration_ms', totalMs);
-      asyncTx?.end();
+      span?.setAttribute('publish.outcome', 'failure');
+      span?.setAttribute('publish.error_type', error instanceof Error ? error.constructor.name : 'unknown');
+      span?.setAttribute('publish.duration_ms', totalMs);
     }
-  })().catch((err) => {
+  }, (err) => {
     log.error(contextLogger, 'route.publish.async.unhandled', err, {});
     publishJobRegistry.update(appId, { phase: 'failed', error: 'Unhandled error during publish' }, jobId);
-    asyncTx?.setLabel('publish.outcome', 'failure');
-    asyncTx?.setLabel('publish.error_type', 'UnhandledError');
-    asyncTx?.end();
   });
 }
 
@@ -433,9 +423,9 @@ router.post('/apps/:id/publish', requirePermission('canPublish'), requireSsoConf
     });
     // Label the active APM request transaction with publish metadata so
     // duration and outcome are queryable on the span without custom dashboards.
-    const syncTx = apm.currentTransaction;
-    syncTx?.setLabel('publish.strategy', strategy.key);
-    syncTx?.setLabel('publish.app_id', id);
+    const syncTx = trace.getActiveSpan();
+    syncTx?.setAttribute('publish.strategy', strategy.key);
+    syncTx?.setAttribute('publish.app_id', id);
 
     // Create context for strategy
     const publishContext: PublishContext = {
@@ -695,42 +685,42 @@ router.post('/apps/:id/publish', requirePermission('canPublish'), requireSsoConf
       strategy: strategy.key,
       durationMs: publishFlowDuration,
     });
-    syncTx?.setLabel('publish.outcome', 'success');
-    syncTx?.setLabel('publish.duration_ms', publishFlowDuration);
+    syncTx?.setAttribute('publish.outcome', 'success');
+    syncTx?.setAttribute('publish.duration_ms', publishFlowDuration);
 
     res.json(response);
 
     // Advisory SEO validation + quality scoring — fire-and-forget; never blocks publish.
     // Runs on every publish: HTML audit when published_url is available, source-only otherwise.
-    (async (): Promise<void> => {
+    runRootSpanBackground('publish.background.seo_audit', async (): Promise<void> => {
       if (seoAuditInProgress.has(id)) {
         contextLogger.info('seo.quality.audit-skipped', { appId: id, reason: 'previous audit still in progress' });
         return;
       }
       seoAuditInProgress.add(id);
       try {
-      const bodyUrl = typeof req.body.publishedUrl === 'string' ? req.body.publishedUrl.trim() : null;
-      const publishedUrl = resolvePublicHttpsFetchUrl(app.publishedUrl, bodyUrl);
-      if ((app.publishedUrl?.trim() || bodyUrl) && !publishedUrl) {
-        contextLogger.warn('seo.audit.blocked-url', {
+        const bodyUrl: string | null = typeof req.body.publishedUrl === 'string' ? req.body.publishedUrl.trim() : null;
+        const publishedUrl: string | null = resolvePublicHttpsFetchUrl(app.publishedUrl, bodyUrl);
+        if ((app.publishedUrl?.trim() || bodyUrl) && !publishedUrl) {
+          contextLogger.warn('seo.audit.blocked-url', {
+            appId: id,
+            hadDbUrl: Boolean(app.publishedUrl?.trim()),
+            hadBodyUrl: Boolean(bodyUrl),
+          });
+        }
+        const report: SeoAuditReport = await runSeoAudit({
           appId: id,
-          hadDbUrl: Boolean(app.publishedUrl?.trim()),
-          hadBodyUrl: Boolean(bodyUrl),
+          appPath: app.path,
+          publishedUrl,
+          isPublished: !!publishedUrl,
+          includeSourceScan: true,
         });
-      }
-      const report = await runSeoAudit({
-        appId: id,
-        appPath: app.path,
-        publishedUrl,
-        isPublished: !!publishedUrl,
-        includeSourceScan: true,
-      });
-      logSeoAuditReport(id, report, contextLogger);
-      await captureSeoQuality(id, report, contextLogger);
+        logSeoAuditReport(id, report, contextLogger);
+        await captureSeoQuality(id, report, contextLogger);
       } finally {
         seoAuditInProgress.delete(id);
       }
-    })().catch((err) => {
+    }, (err) => {
       log.error(contextLogger, 'seo.audit.exception', err, { appId: id });
     });
 
@@ -738,9 +728,11 @@ router.post('/apps/:id/publish', requirePermission('canPublish'), requireSsoConf
     // publish. Reports the published/deleted state of any compliance docs the
     // app generated. Requires a real customerId (the AppRepository default of
     // 'not-provided' is treated as absent — the compliance API is keyed by it).
-    const customerId = app.customerId?.trim();
+    const customerId: string | undefined = app.customerId?.trim();
     if (customerId && customerId !== 'not-provided') {
-      reportPublishedComplianceStatus(id, customerId, workspace, contextLogger).catch((err) => {
+      runRootSpanBackground('publish.background.compliance_report', async (): Promise<void> => {
+        await reportPublishedComplianceStatus(id, customerId, workspace, contextLogger);
+      }, (err) => {
         contextLogger.warn('compliance.publishReport.exception', {
           error: err instanceof Error ? err.message : String(err),
         });
@@ -766,9 +758,9 @@ router.post('/apps/:id/publish', requirePermission('canPublish'), requireSsoConf
       errorType,
       durationMs: publishFlowDuration,
     });
-    apm.currentTransaction?.setLabel('publish.outcome', 'failure');
-    apm.currentTransaction?.setLabel('publish.error_type', errorType);
-    apm.currentTransaction?.setLabel('publish.duration_ms', publishFlowDuration);
+    trace.getActiveSpan()?.setAttribute('publish.outcome', 'failure');
+    trace.getActiveSpan()?.setAttribute('publish.error_type', errorType);
+    trace.getActiveSpan()?.setAttribute('publish.duration_ms', publishFlowDuration);
 
     return res.status(500).json({
       error: 'Failed to publish archive',

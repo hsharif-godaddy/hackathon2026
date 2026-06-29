@@ -1,5 +1,7 @@
 # Grant Consumption Mechanism (Revised)
 
+> **[EDIT 2026-06-05]** Code snippets below show `elastic-apm-node` imports for historical context. The agents service has since been migrated to OpenTelemetry — see PR #4030. Use `trace.getTracer('airo-agents').startSpan(...)` with `setAttribute`/`setStatus`/`recordException` instead.
+
 ## Architecture Overview
 
 ```mermaid

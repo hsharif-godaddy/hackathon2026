@@ -18,6 +18,20 @@ packages:
   - 'evals/rebuild-media'
   - 'tools/*'
   - '!app-templates/**'
+auditConfig:
+  ignoreGhsas:
+    - GHSA-2pvr-wf23-7pc7
+    - GHSA-72gw-mp4g-v24j
+    - GHSA-8hv8-536x-4wqp
+    - GHSA-88fw-hqm2-52qc
+    - GHSA-67mh-4wv8-2f99
+    - GHSA-cvhv-6xm6-c3v4
+    - GHSA-pxg6-pf52-xh8x
+    - GHSA-r7x9-8ph7-w8cg
+    - GHSA-w5cr-2qhr-jqc5
+    - GHSA-w5hq-g745-h8pq
+    - GHSA-5pgg-2g8v-p4x9
+    - GHSA-4r6h-8v6p-xvw6
 
 catalog:
   # Tooling - single source of truth for shared dev dependencies.
@@ -29,7 +43,6 @@ catalog:
   '@aws-sdk/client-dynamodb': ^3.1073.0
   '@aws-sdk/client-lambda': ^3.1048.0
   '@aws-sdk/lib-dynamodb': ^3.1073.0
-  '@smithy/node-http-handler': ^4.8.0
 
   # Shared runtime
   '@airo-care/client': 1.0.2
@@ -48,6 +61,9 @@ catalog:
   # Observability
   '@langfuse/tracing': ^4.6.1
   '@opentelemetry/api': ^1.9.1
+  '@opentelemetry/core': ^2.7.1
+  '@opentelemetry/instrumentation': ^0.217.0
+  '@smithy/node-http-handler': ^4.8.0
   '@testing-library/dom': ^10.4.1
   '@testing-library/react': ^16.3.2
   '@types/archiver': ^6.0.4
@@ -134,27 +150,13 @@ catalog:
   # Artifactory mirror lag for transitive @smithy/* deps.
   # Coordinate AWS SDK bumps manually across app/ and ai-lib/.
 
-# Audit suppressions — advisories that can't be resolved via overrides.
-# - GHSA-r7x9-8ph7-w8cg, GHSA-cvhv-6xm6-c3v4, GHSA-w5cr-2qhr-jqc5: workspace name "agents" collides with Cloudflare's npm "agents" package
-# - GHSA-8hv8-536x-4wqp, GHSA-2pvr-wf23-7pc7: astro <6.x in blog/ (major version, separate upgrade tracked in #5032)
-# - GHSA-88fw-hqm2-52qc: hono <4.12.25 via @ai-sdk/devtools in agents/ (bumped to ^0.0.20 which requires hono ^4.12.25)
-# - GHSA-w5hq-g745-h8pq: uuid <11.1.1 in GoDaddy internal packages (major version, can't override)
-# - GHSA-pxg6-pf52-xh8x: cookie <0.7.0 in @social/social-flows (breaking semver, owned by another team)
-# - GHSA-72gw-mp4g-v24j: multer <2.2.0 DoS (deeply nested field names) in agents/. TEMPORARY —
-#   the fix (multer 2.2.0, published 2026-06-15) is younger than the 7-day release-age quarantine
-#   (.npmrc minimum-release-age). Remove this entry AND bump catalog `multer` to ^2.2.0 after
-#   ~2026-06-22, once 2.2.0 clears quarantine. Risk meanwhile: DoS on internal, auth-gated upload routes.
-auditConfig:
-  ignoreGhsas:
-    - GHSA-2pvr-wf23-7pc7
-    - GHSA-72gw-mp4g-v24j
-    - GHSA-8hv8-536x-4wqp
-    - GHSA-88fw-hqm2-52qc
-    - GHSA-67mh-4wv8-2f99
-    - GHSA-cvhv-6xm6-c3v4
-    - GHSA-pxg6-pf52-xh8x
-    - GHSA-r7x9-8ph7-w8cg
-    - GHSA-w5cr-2qhr-jqc5
-    - GHSA-w5hq-g745-h8pq
-    - GHSA-5pgg-2g8v-p4x9
-    - GHSA-4r6h-8v6p-xvw6
+  # Audit suppressions — advisories that can't be resolved via overrides.
+  # - GHSA-r7x9-8ph7-w8cg, GHSA-cvhv-6xm6-c3v4, GHSA-w5cr-2qhr-jqc5: workspace name "agents" collides with Cloudflare's npm "agents" package
+  # - GHSA-8hv8-536x-4wqp, GHSA-2pvr-wf23-7pc7: astro <6.x in blog/ (major version, separate upgrade tracked in #5032)
+  # - GHSA-88fw-hqm2-52qc: hono <4.12.25 via @ai-sdk/devtools in agents/ (bumped to ^0.0.20 which requires hono ^4.12.25)
+  # - GHSA-w5hq-g745-h8pq: uuid <11.1.1 in GoDaddy internal packages (major version, can't override)
+  # - GHSA-pxg6-pf52-xh8x: cookie <0.7.0 in @social/social-flows (breaking semver, owned by another team)
+  # - GHSA-72gw-mp4g-v24j: multer <2.2.0 DoS (deeply nested field names) in agents/. TEMPORARY —
+  #   the fix (multer 2.2.0, published 2026-06-15) is younger than the 7-day release-age quarantine
+  #   (.npmrc minimum-release-age). Remove this entry AND bump catalog `multer` to ^2.2.0 after
+  #   ~2026-06-22, once 2.2.0 clears quarantine. Risk meanwhile: DoS on internal, auth-gated upload routes.

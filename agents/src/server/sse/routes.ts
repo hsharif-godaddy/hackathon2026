@@ -22,7 +22,7 @@ import type { AgentRouterParams, AgentStateManager } from '../agent-router.js'
 import { resolveInitialAgentId } from '../resolve-initial-agent.js'
 import { buildContextAttachments } from '@airo/shared/context-attachment'
 
-import apm from 'elastic-apm-node'
+import { context, trace, SpanKind, SpanStatusCode } from '@opentelemetry/api'
 import { sseSessionKey } from './session-key.js'
 import { asyncHandler } from '../middleware/async-handler.js'
 import { mapSegmentsToUI, mapToolCallsToUI } from '../tool-call-mapper.js'
@@ -549,8 +549,27 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
       return
     }
 
-    const apmTransaction = apm.startTransaction('SSE Message', 'request')
+    const tracer = trace.getTracer('airo-agents')
+    // Intentionally NOT root: true. Elastic surfaces SpanKind.SERVER as a
+    // transaction regardless of parent, so the messaging.* attributes below
+    // are what classify this (versus the hidden "unknown" type). Leaving the
+    // span linked to the auto-instrumented inbound HTTP server span preserves
+    // distributed trace continuity if a future caller propagates traceparent.
+    const messageSpan = tracer.startSpan('SSE Message', {
+      kind: SpanKind.SERVER,
+      // Elastic's OTLP intake derives transaction.type from attributes
+      // (messaging.* → "messaging", http.* → "request", db.* → "db",
+      // else "unknown"). Spans typed "unknown" are hidden from the APM
+      // Applications view. SSE Message is the lifecycle of processing one
+      // chat message turn — semantically a messaging operation, not an
+      // HTTP request (the inbound POST already has its own SERVER span).
+      attributes: {
+        'messaging.system': 'airo-sse',
+        'messaging.operation': 'process',
+      },
+    })
 
+    await context.with(trace.setSpan(context.active(), messageSpan), async (): Promise<void> => {
     const parsedAgentCommand = parseAgentCommand(content)
     if (parsedAgentCommand.hasCommand && !parsedAgentCommand.hasBody) {
       logger.info('sse.agent_override.bodyless_passthrough', { appId, conversationId, requestedAgent: parsedAgentCommand.agentId })
@@ -565,20 +584,20 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
       ? parsedAgentCommand.agentId
       : undefined
 
-    if (apmTransaction) {
-      apmTransaction.setLabel('requestId', (req as any).requestId ?? 'unknown')
-      apmTransaction.setLabel('conversationId', conversationId)
-      apmTransaction.setLabel('message_length', effectiveContent.length)
-      apmTransaction.setLabel('isInitialPrompt', 'false')
-      if (fullStorySessionId) apmTransaction.setLabel('fullStorySessionId', fullStorySessionId)
+    if (messageSpan) {
+      messageSpan.setAttribute('requestId', (req as any).requestId ?? 'unknown')
+      messageSpan.setAttribute('conversationId', conversationId)
+      messageSpan.setAttribute('message_length', effectiveContent.length)
+      messageSpan.setAttribute('isInitialPrompt', 'false')
+      if (fullStorySessionId) messageSpan.setAttribute('fullStorySessionId', fullStorySessionId)
     }
 
     if (!deps.executionService) {
-      if (apmTransaction) {
-        apmTransaction.setLabel('finishReason', 'execution_unavailable')
-        apmTransaction.result = 'error'
-        apmTransaction.setOutcome('failure')
-        apmTransaction.end()
+      if (messageSpan) {
+        messageSpan.setAttribute('finishReason', 'execution_unavailable')
+        messageSpan.setAttribute('result', 'error')
+        messageSpan.setStatus({ code: SpanStatusCode.ERROR })
+        messageSpan.end()
       }
       res.status(503).json({ error: 'Message execution not available' })
       return
@@ -586,9 +605,9 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
 
     const agentContext = (req as AuthenticatedRequest).agentContext
     const siteId = agentContext?.siteId ?? 'unknown'
-    if (apmTransaction) {
-      if (agentContext?.customerId) apmTransaction.setLabel('customerId', agentContext.customerId)
-      if (agentContext?.trafficSessionId) apmTransaction.setLabel('sessionId', agentContext.trafficSessionId)
+    if (messageSpan) {
+      if (agentContext?.customerId) messageSpan.setAttribute('customerId', agentContext.customerId)
+      if (agentContext?.trafficSessionId) messageSpan.setAttribute('sessionId', agentContext.trafficSessionId)
     }
 
     // Derive effective subscriptionId for override detection at report time
@@ -620,11 +639,11 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
       }
     } catch (err) {
       if (BudgetExceededError.isInstance(err)) {
-        if (apmTransaction) {
-          apmTransaction.setLabel('finishReason', 'budget_exceeded')
-          apmTransaction.result = 'error'
-          apmTransaction.setOutcome('failure')
-          apmTransaction.end()
+        if (messageSpan) {
+          messageSpan.setAttribute('finishReason', 'budget_exceeded')
+          messageSpan.setAttribute('result', 'error')
+          messageSpan.setStatus({ code: SpanStatusCode.ERROR })
+          messageSpan.end()
         }
         // Pre-stream BMS capacity gate: the turn never starts, so it produces no
         // terminal sse.execution.error. WS surfaced this as a 402 agent.error;
@@ -643,11 +662,11 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
         })
         return
       }
-      if (apmTransaction) {
-        apmTransaction.setLabel('finishReason', 'precheck_error')
-        apmTransaction.result = 'error'
-        apmTransaction.setOutcome('failure')
-        apmTransaction.end()
+      if (messageSpan) {
+        messageSpan.setAttribute('finishReason', 'precheck_error')
+        messageSpan.setAttribute('result', 'error')
+        messageSpan.setStatus({ code: SpanStatusCode.ERROR })
+        messageSpan.end()
       }
       logger.error('sse.budget.precheck_failed', { appId, conversationId, ...errorFields(err) })
       throw err
@@ -663,11 +682,11 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
         ...(stateManager && { session: { sessionId: sseSocketId, stateManager } }),
       })
     } catch (err) {
-      if (apmTransaction) {
-        apmTransaction.setLabel('finishReason', 'agent_resolution_failed')
-        apmTransaction.result = 'error'
-        apmTransaction.setOutcome('failure')
-        apmTransaction.end()
+      if (messageSpan) {
+        messageSpan.setAttribute('finishReason', 'agent_resolution_failed')
+        messageSpan.setAttribute('result', 'error')
+        messageSpan.setStatus({ code: SpanStatusCode.ERROR })
+        messageSpan.end()
       }
       throw err
     }
@@ -682,8 +701,8 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
     } catch (err) {
       logger.warn('sse.messages.isInitialPrompt.error', { conversationId, ...errorFields(err) })
     }
-    if (apmTransaction) {
-      apmTransaction.setLabel('isInitialPrompt', String(isInitialPrompt))
+    if (messageSpan) {
+      messageSpan.setAttribute('isInitialPrompt', String(isInitialPrompt))
     }
 
     // SSE freezes the agent at the bare `POST /:appId` create call. The client
@@ -758,7 +777,7 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
       ...(fullStorySessionId !== undefined && { fullStorySessionId }),
       ...(typeof isEmbedded === 'boolean' && { isEmbedded }),
       requestId: (req as any).requestId,
-      apmTransaction,
+      messageSpan,
       lifecycleContext: {
         agentContext: {
           enableAssessmentAgent: agentContext?.enableAssessmentAgent,
@@ -794,6 +813,7 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
       },
     }).catch(err => {
       logger.error('sse.chat.execution_failed', { appId, conversationId, ...errorFields(err) })
+    })
     })
   }))
 
