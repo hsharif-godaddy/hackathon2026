@@ -1,7 +1,6 @@
 import type {
   WorkspaceConfig,
   EnvEntry,
-  SecretEntry,
   UpsertEnvOptions,
   RemoveKeysOptions,
 } from '../config.js';
@@ -27,16 +26,5 @@ export class HttpConfig implements WorkspaceConfig {
   async removeEnv(_options: RemoveKeysOptions): Promise<{ removed: string[] }> {
     this.ensureMutationAllowed('config.removeEnv');
     throw new WorkspaceNotImplementedError('config.removeEnv');
-  }
-  async listSecrets(): Promise<SecretEntry[]> {
-    throw new WorkspaceNotImplementedError('config.listSecrets');
-  }
-  async upsertSecrets(_options: UpsertEnvOptions): Promise<{ updated: string[] }> {
-    this.ensureMutationAllowed('config.upsertSecrets');
-    throw new WorkspaceNotImplementedError('config.upsertSecrets');
-  }
-  async removeSecrets(_options: RemoveKeysOptions): Promise<{ removed: string[] }> {
-    this.ensureMutationAllowed('config.removeSecrets');
-    throw new WorkspaceNotImplementedError('config.removeSecrets');
   }
 }

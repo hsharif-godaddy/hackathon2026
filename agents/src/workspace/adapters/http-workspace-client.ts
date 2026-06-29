@@ -95,9 +95,6 @@ const PREVIEW_METHODS = {
   'config.listEnv': 'stubbed',
   'config.upsertEnv': 'stubbed',
   'config.removeEnv': 'stubbed',
-  'config.listSecrets': 'stubbed',
-  'config.upsertSecrets': 'stubbed',
-  'config.removeSecrets': 'stubbed',
 } as const satisfies Record<WorkspaceMethodKey, MethodAvailability>;
 
 const PUBLISH_METHODS = {
@@ -117,9 +114,6 @@ const PUBLISH_METHODS = {
   'config.listEnv': 'stubbed',
   'config.upsertEnv': 'variant-not-applicable',
   'config.removeEnv': 'variant-not-applicable',
-  'config.listSecrets': 'stubbed',
-  'config.upsertSecrets': 'variant-not-applicable',
-  'config.removeSecrets': 'variant-not-applicable',
 } as const satisfies Record<WorkspaceMethodKey, MethodAvailability>;
 
 const PREVIEW_CAPABILITIES: WorkspaceCapabilities = Object.freeze({
