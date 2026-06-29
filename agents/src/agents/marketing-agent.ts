@@ -3,12 +3,12 @@ import {
   type AgentConfig,
   type ResolverContext,
   createPromptBuilder,
-  createHandoffTool,
   type SessionStateManager,
   createSessionStateManager
 } from '@airo/ai-lib'
 import { getAgentModelWithName } from '../utils/model-selection.js'
 import { allAILibTools } from '../tools/ai-lib-tools/index.js'
+import { createAgentHandoffTool } from '../tools/create-agent-handoff-tool.js'
 import { getModularPromptPaths } from '../utils/prompt-utils.js'
 import { Logger } from '../logging/index.js'
 import { createAgentTelemetryLogger } from '../utils/agent-logger.js'
@@ -122,7 +122,7 @@ export async function createMarketingAgentFactory(options?: {
     const validTargets = (marketingConfig.handoffs || []).map(h => h.agentName)
     marketingConfig.tools = {
       ...marketingConfig.tools,
-      handoff: createHandoffTool({
+      handoff: createAgentHandoffTool({
         sourceAgentId: 'marketing',
         validTargets,
         stateManager,

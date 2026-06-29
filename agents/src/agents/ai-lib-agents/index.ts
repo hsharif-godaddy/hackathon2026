@@ -8,7 +8,6 @@ import {
   createAgentFactory,
   type AgentFactory,
   type AgentConfig,
-  createHandoffTool,
   createEndConversationTool,
   createSessionStateManager,
   type SessionStateManager
@@ -23,6 +22,7 @@ import {
   ExampleAgent,
   discoverNamedInitialVariants
 } from '../index.js'
+import { createAgentHandoffTool } from '../../tools/create-agent-handoff-tool.js'
 import { createDeepBuildAgent } from '../deep-build-agent.js'
 import { getTemplateIds } from '../template-registry.js'
 import type { EnhancedAgentContext } from './types.js'
@@ -133,7 +133,7 @@ export async function createUnifiedAgentFactory(options?: {
 
   // Create handoff tools BEFORE defining agents (using only agent IDs)
   // Extract valid targets from handoffs configuration
-  const developHandoffTool = createHandoffTool({
+  const developHandoffTool = createAgentHandoffTool({
     sourceAgentId: 'develop',
     validTargets: (developConfig.handoffs || []).map(h => h.agentName),
     stateManager
@@ -159,7 +159,7 @@ export async function createUnifiedAgentFactory(options?: {
     ...skillStopAfterTools,
   ]
 
-  const marketingHandoffTool = createHandoffTool({
+  const marketingHandoffTool = createAgentHandoffTool({
     sourceAgentId: 'marketing',
     validTargets: (marketingConfig.handoffs || []).map(h => h.agentName),
     stateManager

@@ -1,10 +1,18 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 // Mock dependencies — factories cannot reference outer variables (hoisted)
+const mockMarkInitialBuildComplete = vi.fn();
+const mockTrackInitialBuildCompletedAsync = vi.fn();
+
 vi.mock('../../database/repositories/AppRepository.js', () => ({
   AppRepository: vi.fn().mockImplementation(function () { return {
     findById: vi.fn(),
+    markInitialBuildComplete: mockMarkInitialBuildComplete,
   }; }),
+}));
+
+vi.mock('../agent-lifecycle-events/initial-build-funnel.js', () => ({
+  trackInitialBuildCompletedAsync: (...args: unknown[]) => mockTrackInitialBuildCompletedAsync(...args),
 }));
 
 vi.mock('../../utils/git.js', () => ({
@@ -64,7 +72,7 @@ import { GitUtils } from '../../utils/git.js';
 
 const TEST_APP_ID = 'test-app-1';
 const TEST_APP_PATH = '/app';
-const TEST_APP = { id: TEST_APP_ID, path: TEST_APP_PATH };
+const TEST_APP = { id: TEST_APP_ID, path: TEST_APP_PATH, initialBuildComplete: false };
 
 describe('GitHookService', () => {
   let service: GitHookService;
@@ -433,6 +441,84 @@ describe('GitHookService', () => {
         branchB,
         expect.any(String)
       );
+    });
+
+    it('marks initial build complete and emits lifecycle event on first squash merge', async () => {
+      const gitMock = createGitMock('main');
+      mockMarkInitialBuildComplete.mockReturnValue({
+        ...TEST_APP,
+        initialBuildComplete: true,
+      });
+
+      await service.handleMessageStart(TEST_APP_ID, 'conv-1', 'sock-1', 'first prompt');
+      const branch = service.getAppBranch(TEST_APP_ID)!.branchName;
+
+      gitMock.getCurrentBranch.mockResolvedValue(branch);
+      gitMock.getCommitHistory
+        .mockResolvedValueOnce([{ hash: 'before-merge' }])
+        .mockResolvedValueOnce([{ hash: 'after-merge' }]);
+
+      const commitHash = await service.handleConnectionEnd(TEST_APP_ID, 'complete', 'conv-1', 'sock-1');
+
+      expect(commitHash).toBe('after-merge');
+      expect(mockMarkInitialBuildComplete).toHaveBeenCalledWith(TEST_APP_ID);
+      expect(mockTrackInitialBuildCompletedAsync).toHaveBeenCalledWith(TEST_APP_ID);
+    });
+
+    it('does not emit completed_async when initial build DB persist fails', async () => {
+      const gitMock = createGitMock('main');
+      mockMarkInitialBuildComplete.mockReturnValue(null);
+
+      await service.handleMessageStart(TEST_APP_ID, 'conv-1', 'sock-1', 'first prompt');
+      const branch = service.getAppBranch(TEST_APP_ID)!.branchName;
+
+      gitMock.getCurrentBranch.mockResolvedValue(branch);
+      gitMock.getCommitHistory
+        .mockResolvedValueOnce([{ hash: 'before-merge' }])
+        .mockResolvedValueOnce([{ hash: 'after-merge' }]);
+
+      await service.handleConnectionEnd(TEST_APP_ID, 'complete', 'conv-1', 'sock-1');
+
+      expect(mockMarkInitialBuildComplete).toHaveBeenCalledWith(TEST_APP_ID);
+      expect(mockTrackInitialBuildCompletedAsync).not.toHaveBeenCalled();
+    });
+
+    it('does not re-mark initial build complete on subsequent squash merges', async () => {
+      vi.useFakeTimers();
+      const gitMock = createGitMock('main');
+      mockMarkInitialBuildComplete.mockReturnValue({
+        ...TEST_APP,
+        initialBuildComplete: true,
+      });
+
+      await service.handleMessageStart(TEST_APP_ID, 'conv-1', 'sock-1', 'first prompt');
+      const branchA = service.getAppBranch(TEST_APP_ID)!.branchName;
+      gitMock.getCurrentBranch.mockResolvedValue(branchA);
+      gitMock.getCommitHistory
+        .mockResolvedValueOnce([{ hash: 'before-merge' }])
+        .mockResolvedValueOnce([{ hash: 'after-merge' }]);
+
+      await service.handleConnectionEnd(TEST_APP_ID, 'complete', 'conv-1', 'sock-1');
+      expect(mockTrackInitialBuildCompletedAsync).toHaveBeenCalledTimes(1);
+
+      appRepoMock.findById.mockReturnValue({
+        ...TEST_APP,
+        initialBuildComplete: true,
+      });
+
+      vi.advanceTimersByTime(2000);
+      await service.handleMessageStart(TEST_APP_ID, 'conv-2', 'sock-2', 'second prompt');
+      const branchB = service.getAppBranch(TEST_APP_ID)!.branchName;
+      gitMock.getCurrentBranch.mockResolvedValue(branchB);
+      gitMock.getCommitHistory
+        .mockResolvedValueOnce([{ hash: 'before-merge-2' }])
+        .mockResolvedValueOnce([{ hash: 'after-merge-2' }]);
+
+      await service.handleConnectionEnd(TEST_APP_ID, 'complete', 'conv-2', 'sock-2');
+
+      expect(mockMarkInitialBuildComplete).toHaveBeenCalledTimes(1);
+      expect(mockTrackInitialBuildCompletedAsync).toHaveBeenCalledTimes(1);
+      vi.useRealTimers();
     });
 
     it('new branch creation works after publish deleted the previous feature branch', async () => {

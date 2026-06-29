@@ -1,7 +1,6 @@
 import {
   type AgentConfig,
   createPromptBuilder,
-  createHandoffTool,
   type SessionStateManager,
 } from '@airo/ai-lib'
 import { existsSync, readFileSync, readdirSync, statSync } from 'fs'
@@ -15,6 +14,7 @@ import { errorFields, logger } from '../logging/index.js'
 import { getTemplate } from './template-registry.js'
 import { skillToolManager } from '../tools/skill-tool-manager.js'
 import { SkillLoaderTool } from '../tools/skill-loader-tool.js'
+import { createAgentHandoffTool } from '../tools/create-agent-handoff-tool.js'
 import { profileValue } from '../profiles/index.js'
 import {
   MODULAR_PROMPT_FILES_KEY,
@@ -286,7 +286,7 @@ export async function createInitialAgent(
   const validTargets = handoffTargetsByTemplate[templateId ?? ''] ?? ['develop']
 
   const handoffTool = stateManager
-    ? createHandoffTool({
+    ? createAgentHandoffTool({
         sourceAgentId: agentId,
         validTargets,
         stateManager

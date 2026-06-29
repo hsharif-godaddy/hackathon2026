@@ -98,6 +98,8 @@ import { withTimeout } from '../../utils/promise-utils.js'
 import { interactiveSubAgentManager } from '../../agents/interactive-sub-agent-manager.js'
 import { subAgentJobRegistry } from '../../agents/sub-agent-job-registry.js'
 import { AppRepository } from '../../database/repositories/index.js'
+import { trackPostInteractionIfEligible } from '../../services/agent-lifecycle-events/initial-build-post-interaction.js'
+import { trackInitialBuildStartedAsync } from '../../services/agent-lifecycle-events/initial-build-funnel.js'
 import { enrichWithForcedDesignKit, isDesignSystemVariant } from '../../services/design-system/forced-install.js'
 import { createForWorkspace } from '../../workspace/index.js'
 import { buildAppliedSkillsContextMessage } from '../applied-skills-context.js'
@@ -2025,6 +2027,22 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
       effectiveClassifierMode,
       budgetServiceEnabled: agentCtx?.budgetServiceEnabled,
     })
+
+    if (appId) {
+      if (lifecycleContext?.isInitialPrompt) {
+        trackInitialBuildStartedAsync(appId)
+      } else {
+        try {
+          await trackPostInteractionIfEligible(appId, conversationId)
+        } catch (error) {
+          logger.warn('initial_build.post_interaction.lookup_failed', {
+            appId,
+            conversationId,
+            error: error instanceof Error ? error.message : String(error),
+          })
+        }
+      }
+    }
 
     // Run message-start hooks (git branch + assessment classification).
     // Failures are logged inside the helpers; neither throws out of here.

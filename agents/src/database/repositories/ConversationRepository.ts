@@ -543,6 +543,19 @@ export class ConversationRepository {
     });
   }
 
+  /** True when any agent message in the conversation carries a non-empty metadata.commitHash. */
+  async hasAgentMessageWithCommitHash(conversationId: string): Promise<boolean> {
+    const stmt = this.db.prepare(`
+      SELECT 1 AS found FROM conversation_messages
+      WHERE conversation_id = ?
+        AND sender = 'agent'
+        AND json_extract(metadata, '$.commitHash') IS NOT NULL
+        AND trim(json_extract(metadata, '$.commitHash')) != ''
+      LIMIT 1
+    `);
+    return stmt.get(conversationId) !== undefined;
+  }
+
   /**
    * Get the most recent user message for a conversation
    * Used for multi-turn context in assessment (e.g., "fix my button" before "it doesn't work")

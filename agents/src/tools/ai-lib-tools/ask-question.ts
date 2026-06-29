@@ -3,6 +3,7 @@ import { z } from 'zod'
 
 import { getTodoListStore } from '../../planning/adapters/index.js'
 import { Logger } from '../../logging/index.js'
+import { trackInitialBuildQuestionReceivedAsync } from '../../services/agent-lifecycle-events/initial-build-funnel.js'
 
 const logger = Logger.create({ component: 'ask-question-tool' })
 
@@ -165,6 +166,10 @@ EXCEPTION: Use this tool to present concrete store or business choices returned 
           listId: selectedListId,
         })
       }
+    }
+
+    if (appId) {
+      trackInitialBuildQuestionReceivedAsync(appId)
     }
 
     logger.info('ask-question.called', {

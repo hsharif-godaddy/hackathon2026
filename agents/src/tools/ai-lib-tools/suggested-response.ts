@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { getTodoListStore } from '../../planning/adapters/index.js'
 import { Logger } from '../../logging/index.js'
 import { getPageSeoGaps } from '../../services/SeoPageRegistry.js'
+import { trackInitialBuildQuestionReceivedAsync } from '../../services/agent-lifecycle-events/initial-build-funnel.js'
 
 const logger = Logger.create({ component: 'suggested-response-tool' })
 
@@ -57,6 +58,10 @@ Example use cases:
     const { question, suggestions } = input
     const appId = context?.metadata?.appId as string
     
+    if (appId) {
+      trackInitialBuildQuestionReceivedAsync(appId)
+    }
+
     logger.info('suggested-response.called', {
       appId,
       suggestionCount: suggestions.length

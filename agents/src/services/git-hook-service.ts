@@ -1,4 +1,5 @@
 import { AppRepository } from '../database/repositories/AppRepository.js';
+import { trackInitialBuildCompletedAsync } from './agent-lifecycle-events/initial-build-funnel.js';
 import { createForWorkspace } from '../workspace/index.js';
 import { GitUtils } from '../utils/git.js';
 import { logger } from '../logging/index.js';
@@ -458,6 +459,17 @@ export class GitHookService {
 
         // Clean up tracking
         this.appBranches.delete(appId);
+
+        if (commitHash && !app.initialBuildComplete) {
+          const updated = this.appRepository.markInitialBuildComplete(appId);
+          if (updated?.initialBuildComplete) {
+            trackInitialBuildCompletedAsync(appId);
+            logger.info('git_hook.initial_build.complete', {
+              appId,
+              commitHash: commitHash.substring(0, 7),
+            });
+          }
+        }
 
         // Return the commit hash
         return commitHash;

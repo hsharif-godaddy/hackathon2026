@@ -112,6 +112,15 @@ vi.mock('../../../services/budget-service-instance.js', () => ({
   getBudgetServiceClient: mockGetBudgetServiceClient,
 }))
 
+const mockTrackInitialBuildStartedAsync = vi.hoisted(() => vi.fn())
+const mockTrackPostInteractionIfEligible = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
+vi.mock('../../../services/agent-lifecycle-events/initial-build-funnel.js', () => ({
+  trackInitialBuildStartedAsync: (...args: unknown[]) => mockTrackInitialBuildStartedAsync(...args),
+}))
+vi.mock('../../../services/agent-lifecycle-events/initial-build-post-interaction.js', () => ({
+  trackPostInteractionIfEligible: (...args: unknown[]) => mockTrackPostInteractionIfEligible(...args),
+}))
+
 // Mock context-builders to avoid heavy dependency chain (AppRepository, KnowB, Langfuse)
 vi.mock('../../context-builders.js', () => ({
   buildDynamicDataMessage: vi.fn().mockReturnValue({
@@ -332,6 +341,27 @@ describe('MessageExecutionService', () => {
       await service.execute(DEFAULT_PARAMS)
 
       expect(mockEmitConversationStart).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('initial-build lifecycle tracking', () => {
+    beforeEach(() => {
+      mockTrackInitialBuildStartedAsync.mockClear()
+      mockTrackPostInteractionIfEligible.mockClear()
+    })
+
+    it('tracks started on the initial prompt turn', async () => {
+      await service.execute({ ...DEFAULT_PARAMS, lifecycleContext: { isInitialPrompt: true } })
+
+      expect(mockTrackInitialBuildStartedAsync).toHaveBeenCalledWith('app_1')
+      expect(mockTrackPostInteractionIfEligible).not.toHaveBeenCalled()
+    })
+
+    it('tracks post interaction on follow-up turns with appId and conversationId', async () => {
+      await service.execute({ ...DEFAULT_PARAMS, lifecycleContext: { isInitialPrompt: false } })
+
+      expect(mockTrackPostInteractionIfEligible).toHaveBeenCalledWith('app_1', 'conv_1')
+      expect(mockTrackInitialBuildStartedAsync).not.toHaveBeenCalled()
     })
   })
 

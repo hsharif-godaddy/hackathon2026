@@ -861,4 +861,30 @@ describe('getMessagesAfterMessageId', () => {
       expect(ui[0].result).toEqual({ ok: true })
     })
   })
+
+  describe('hasAgentMessageWithCommitHash', () => {
+    it('returns true when an agent message has metadata.commitHash', async () => {
+      createApp('app-hash')
+      const conv = await repo.create('app-hash', 'develop', 'Test')
+
+      await repo.addMessage(conv.id, 'user', 'Hello')
+      await repo.addMessage(conv.id, 'agent', 'Done', {
+        metadata: { commitHash: 'abc123def456' },
+      })
+
+      await expect(repo.hasAgentMessageWithCommitHash(conv.id)).resolves.toBe(true)
+    })
+
+    it('returns false when commitHash is missing or empty', async () => {
+      createApp('app-no-hash')
+      const conv = await repo.create('app-no-hash', 'develop', 'Test')
+
+      await repo.addMessage(conv.id, 'agent', 'Done', { metadata: {} })
+      await repo.addMessage(conv.id, 'agent', 'Still empty', {
+        metadata: { commitHash: '   ' },
+      })
+
+      await expect(repo.hasAgentMessageWithCommitHash(conv.id)).resolves.toBe(false)
+    })
+  })
 })

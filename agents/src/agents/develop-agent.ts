@@ -6,7 +6,6 @@ import {
   type AgentContext,
   type ResolverContext,
   createPromptBuilder,
-  createHandoffTool,
   createSessionStateManager,
   type SessionStateManager
 } from '@airo/ai-lib'
@@ -18,6 +17,7 @@ import { getModularPromptPaths } from '../utils/prompt-utils.js'
 import { SkillLoaderTool, buildSkillsPromptSection } from '../tools/skill-loader-tool.js'
 import { skillToolManager } from '../tools/skill-tool-manager.js'
 import { allAILibTools } from '../tools/ai-lib-tools/index.js'
+import { createAgentHandoffTool } from '../tools/create-agent-handoff-tool.js'
 import { getPersistentAssetPaths } from '../utils/persistent-assets.js'
 import { skills } from '../services/features.js'
 import { profileFlag, activeProfileName } from '../profiles/profile-accessor.js'
@@ -453,7 +453,7 @@ export async function createDevelopAgentFactory(options?: {
     const validTargets = (developConfig.handoffs || []).map(h => h.agentName)
     developConfig.tools = {
       ...developConfig.tools,
-      handoff: createHandoffTool({
+      handoff: createAgentHandoffTool({
         sourceAgentId: 'develop',
         validTargets,
         stateManager,

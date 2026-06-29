@@ -12,6 +12,7 @@ import { GitRemoteConfigRepository } from '../database/repositories/GitRemoteCon
 import { GitProviderFactory } from '../services/git-providers/GitProviderFactory.js';
 import { getErrorMessage } from '../utils/error.js';
 import { ALLOWED_DIRECTORIES, ALLOWED_CONFIG_FILES } from '../config/app-download.js';
+import { trackInitialBuildCompletedAsync } from '../services/agent-lifecycle-events/initial-build-funnel.js';
 
 // Constants for business logic clarity
 const MAX_COMMITS_FOR_INITIAL_BUILD = 2; // Allow for initial + first real commit
@@ -452,20 +453,23 @@ export class GitTool {
             const appRepository = new AppRepository();
             const app = appRepository.findById(appId);
             if (app && !app.initialBuildComplete) {
-              // Check if this might be the first real commit (not just initial setup)
-              // Look for commits that aren't just "Initial commit" or template setup
+              // Primary completed_async path is git-hook squash merge on connection end.
+              // This commit hook is a legacy fallback when squash tracking did not run.
               try {
                 const commits = await this.gitUtils.getCommitHistory(appPath, MAX_COMMITS_FOR_INITIAL_BUILD);
                 const commitCount = commits.length;
                 const isFirstRealCommit = commitCount <= MAX_COMMITS_FOR_INITIAL_BUILD;
 
                 if (isFirstRealCommit) {
-                  appRepository.markInitialBuildComplete(appId);
-                  logger.info('Initial build marked as complete after first commit', {
-                    appId,
-                    commitMessage: message,
-                    commitCount
-                  });
+                  const updated = appRepository.markInitialBuildComplete(appId);
+                  if (updated?.initialBuildComplete) {
+                    trackInitialBuildCompletedAsync(appId);
+                    logger.info('Initial build marked as complete after first commit', {
+                      appId,
+                      commitMessage: message,
+                      commitCount
+                    });
+                  }
                 }
               } catch (gitError) {
                 // If we can't get git history, assume it's a first commit
@@ -473,7 +477,10 @@ export class GitTool {
                   appId,
                   error: gitError instanceof Error ? gitError.message : String(gitError)
                 });
-                appRepository.markInitialBuildComplete(appId);
+                const updated = appRepository.markInitialBuildComplete(appId);
+                if (updated?.initialBuildComplete) {
+                  trackInitialBuildCompletedAsync(appId);
+                }
               }
             }
           } catch (error) {
