@@ -1,34 +1,34 @@
 'use client';
 
-import { KeyboardEvent, useEffect, useRef } from 'react';
+import { KeyboardEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { FloatingFooter } from '@airo-ux/pattern-library/surfaces/floating-footer';
 import Button from '@ux/button';
 import AsyncIcon from '@ux/icon/async-icon.js';
 import Spinner from '@ux/spinner';
 
+import { useSendInboxReply } from '@/app/[market]/develop/hooks/useInbox';
 import { useTranslations } from '@/hooks/useTranslations';
 import { cn } from '@/lib/utils';
-import { logActionEvent } from '@/utils/instrumentation';
+import { IntString, UuidString } from '@/types/inbox/local/core';
+import { logActionEvent, logClickEvent, logImpressionEvent } from '@/utils/instrumentation';
 
 interface InboxReplyComposerProps {
-  value: string;
-  onChange: (value: string) => void;
-  onSend: (body: string) => void;
+  brandId: UuidString;
+  conversationId: IntString;
   disabled?: boolean;
-  sending?: boolean;
-  error?: boolean;
 }
 
 export function InboxReplyComposer({
-  value,
-  onChange,
-  onSend,
+  brandId,
+  conversationId,
   disabled = false,
-  sending = false,
-  error = false,
 }: InboxReplyComposerProps) {
   const t = useTranslations();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [body, setBody] = useState('');
+  const [sendError, setSendError] = useState(false);
+
+  const sendReply = useSendInboxReply(brandId, conversationId);
 
   useEffect(
     function autoGrow() {
@@ -37,13 +37,30 @@ export function InboxReplyComposer({
       textarea.style.height = 'auto';
       textarea.style.height = `${textarea.scrollHeight}px`;
     },
-    [value],
+    [body],
+  );
+
+  const handleSend = useCallback(
+    function send(replyBody: string): void {
+      setSendError(false);
+      sendReply.mutate({ body: replyBody }, {
+        onSuccess: () => {
+          logClickEvent('inbox.detail.reply_send')();
+          setBody((current: string) => current.trim() === replyBody ? '' : current);
+        },
+        onError: () => {
+          logImpressionEvent('inbox.detail.reply_failed')();
+          setSendError(true);
+        },
+      });
+    },
+    [sendReply.mutate],
   );
 
   function handleSubmit(): void {
-    const trimmed: string = value.trim();
-    if (!trimmed || disabled || sending) return;
-    onSend(trimmed);
+    const trimmed: string = body.trim();
+    if (!trimmed || disabled || sendReply.isPending) return;
+    handleSend(trimmed);
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>): void {
@@ -55,7 +72,7 @@ export function InboxReplyComposer({
 
   return (
     <div className="mt-auto shrink-0 px-3 pb-3 pt-2">
-      {error && (
+      {sendError && (
         <p className="mb-1 text-xs text-ux-text-error" data-testid="inbox-reply-error">
           {t('builder_inbox_reply_send_error')}
         </p>
@@ -71,8 +88,8 @@ export function InboxReplyComposer({
         <div className="flex flex-col gap-1">
           <textarea
             ref={textareaRef}
-            value={value}
-            onChange={(event) => onChange(event.target.value)}
+            value={body}
+            onChange={(event) => { setSendError(false); setBody(event.target.value); }}
             onFocus={logActionEvent({ eid: 'inbox.detail.reply_composer', action: 'focus' })}
             onKeyDown={handleKeyDown}
             disabled={disabled}
@@ -85,10 +102,10 @@ export function InboxReplyComposer({
             <Button
               design="primary"
               size="sm"
-              icon={sending ? <span className="flex items-center justify-center"><Spinner size="sm" /></span> : <AsyncIcon icon="arrow-up" />}
+              icon={sendReply.isPending ? <span className="flex items-center justify-center"><Spinner size="sm" /></span> : <AsyncIcon icon="arrow-up" />}
               aria-label={t('builder_chatinput_send')}
               onClick={handleSubmit}
-              disabled={disabled || sending || !value.trim()}
+              disabled={disabled || sendReply.isPending || !body.trim()}
               data-testid="inbox-reply-send"
             />
           </div>

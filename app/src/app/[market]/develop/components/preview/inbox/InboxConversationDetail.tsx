@@ -1,12 +1,12 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 
-import { useInboxConversation, useSendInboxReply } from '@/app/[market]/develop/hooks/useInbox';
+import { useInboxConversation } from '@/app/[market]/develop/hooks/useInbox';
 import { useTranslations } from '@/hooks/useTranslations';
 import { isGuideBotConversation } from '@/lib/inbox/isGuideBotConversation';
 import { IntString, UuidString } from '@/types/inbox/local/core';
-import { logClickEvent, logImpressionEvent } from '@/utils/instrumentation';
+import { logImpressionEvent } from '@/utils/instrumentation';
 import { InboxConversationDetailHeader } from './InboxConversationDetailHeader';
 import { InboxConversationMessageThread } from './InboxConversationMessageThread';
 import { InboxReplyComposer } from './InboxReplyComposer';
@@ -25,8 +25,6 @@ export function InboxConversationDetail({
   consumeEntryRef,
 }: InboxConversationDetailProps) {
   const t = useTranslations();
-  const [body, setBody] = useState('');
-  const [sendError, setSendError] = useState(false);
 
   const {
     isLoading: conversationLoading,
@@ -38,8 +36,6 @@ export function InboxConversationDetail({
     conversationId,
   );
 
-  const sendReply = useSendInboxReply(brandId, conversationId);
-
   const detailViewedRef = useRef<IntString | null>(null);
   useEffect(() => {
     if (!conversation || detailViewedRef.current === conversationId) return;
@@ -50,30 +46,6 @@ export function InboxConversationDetail({
       ...(entryRef ? { ref: entryRef } : {}),
     })();
   }, [conversation, conversationId, consumeEntryRef]);
-
-  useEffect(
-    function resetBodyOnConversationChange() {
-      setBody('');
-    },
-    [conversationId],
-  );
-
-  const handleSend = useCallback(
-    function send(replyBody: string) {
-      setSendError(false);
-      sendReply.mutate({ body: replyBody }, {
-        onSuccess: () => {
-          logClickEvent('inbox.detail.reply_send')();
-          setBody((current: string) => current.trim() === replyBody ? '' : current);
-        },
-        onError: () => {
-          logImpressionEvent('inbox.detail.reply_failed')();
-          setSendError(true);
-        },
-      });
-    },
-    [sendReply.mutate],
-  );
 
   if (conversationLoading) {
     return (
@@ -118,12 +90,10 @@ export function InboxConversationDetail({
       />
 
       <InboxReplyComposer
-        value={body}
-        onChange={(value: string) => { setSendError(false); setBody(value); }}
-        onSend={handleSend}
+        key={conversationId}
+        brandId={brandId}
+        conversationId={conversationId}
         disabled={isGuideBotConversation(conversation)}
-        sending={sendReply.isPending}
-        error={sendError}
       />
     </div>
   );
