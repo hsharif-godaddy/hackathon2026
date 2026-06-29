@@ -1158,6 +1158,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
         state.publishStates[appId].publishError = false;
         state.publishStates[appId].buildErrorDetails = null;
         state.publishStates[appId].showSuccessAlert = false;
+        state.publishStates[appId].showPaywallModal = false;
         // Keep lastPublishedCommitHash and deploymentsRefetch for retry functionality
       }
     }),

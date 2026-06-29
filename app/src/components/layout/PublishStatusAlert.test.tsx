@@ -4,11 +4,15 @@
 import '@testing-library/jest-dom';
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { PublishDenialReason, PublishUpgradeRequiredError } from '@airo/shared/publish';
 import { screen, waitFor } from '@testing-library/react';
 
 import { FEEDBACK_ID } from '@/components/feedback/utils';
+import { usePaywallStore } from '@/stores/usePaywallStore';
 import { renderWithProviders } from '@/tests/test-utils';
 import PublishStatusAlert from './PublishStatusAlert';
+
+const mockMutateAsync = vi.fn().mockResolvedValue({ result: 'success', commitHash: 'abc123' });
 
 const mockRouter = { push: vi.fn(), replace: vi.fn() };
 const mockHandleViewModeChange = vi.fn();
@@ -42,7 +46,7 @@ vi.mock('@/hooks/useTranslations', () => ({
 }));
 vi.mock('@/hooks/usePublishApp', () => ({
   usePublishApp: () => ({
-    mutateAsync: vi.fn().mockResolvedValue({ result: 'success', commitHash: 'abc123' }),
+    mutateAsync: mockMutateAsync,
   }),
 }));
 vi.mock('@/hooks/usePublishComplianceGate', () => ({
@@ -53,7 +57,10 @@ vi.mock('@/hooks/usePublishComplianceGate', () => ({
   }),
 }));
 vi.mock('@/stores/useDevelopPageStore', () => ({
-  useDevelopPageStore: (selector: any) => selector(mockDevelopStore),
+  useDevelopPageStore: Object.assign(
+    (selector: (state: typeof mockDevelopStore) => unknown) => selector(mockDevelopStore),
+    { getState: () => mockDevelopStore },
+  ),
 }));
 vi.mock('@/stores/useSiteStore', () => ({
   useSiteStore: (selector: any) => selector(mockSiteStore),
@@ -118,6 +125,9 @@ describe('PublishStatusAlert', () => {
     for (const key of Object.keys(mockSwitchboardOverrides)) {
       delete mockSwitchboardOverrides[key];
     }
+    mockMutateAsync.mockReset();
+    mockMutateAsync.mockResolvedValue({ result: 'success', commitHash: 'abc123' });
+    usePaywallStore.setState({ showUpgradeModal: false, paywallLoading: false });
   });
 
   it('should render nothing when no publish status', () => {
@@ -171,6 +181,42 @@ describe('PublishStatusAlert', () => {
     await waitFor(() => {
       expect(mockDevelopStore.clearPublishStatus).toHaveBeenCalledWith('app-123');
       expect(mockDevelopStore.setIsPublishing).toHaveBeenCalledWith('app-123', true);
+    });
+  });
+
+  it('should not set publish error on try again when upgrade modal is showing', async function upgradeModalSuppressesTryAgainError() {
+    mockDevelopStore.publishStates = {
+      'app-123': { publishError: true },
+    };
+    mockMutateAsync.mockRejectedValueOnce(
+      new PublishUpgradeRequiredError(PublishDenialReason.NoSubscription, 'Publish not allowed'),
+    );
+    usePaywallStore.setState({ showUpgradeModal: true });
+
+    const { user } = renderWithProviders(<PublishStatusAlert />);
+
+    await user.click(screen.getByText('builder_publish_error_button_try_again'));
+
+    await waitFor(() => {
+      expect(mockDevelopStore.setIsPublishing).toHaveBeenCalledWith('app-123', false);
+    });
+    expect(mockDevelopStore.setPublishError).not.toHaveBeenCalled();
+  });
+
+  it('should set publish error on try again when upgrade modal is not showing', async function tryAgainFailureSetsError() {
+    mockDevelopStore.publishStates = {
+      'app-123': { publishError: true },
+    };
+    mockMutateAsync.mockRejectedValueOnce(new Error('Server error'));
+    usePaywallStore.setState({ showUpgradeModal: false });
+
+    const { user } = renderWithProviders(<PublishStatusAlert />);
+
+    await user.click(screen.getByText('builder_publish_error_button_try_again'));
+
+    await waitFor(() => {
+      expect(mockDevelopStore.setPublishError).toHaveBeenCalledWith('app-123', true);
+      expect(mockDevelopStore.setIsPublishing).toHaveBeenCalledWith('app-123', false);
     });
   });
 

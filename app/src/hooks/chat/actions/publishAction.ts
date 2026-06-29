@@ -5,7 +5,11 @@
  * This is triggered by agents when the user requests to publish their site.
  */
 
-import { PUBLISH_CONFIRMATION_TIMEOUT_MS,PublishDenialReason, PublishUpgradeRequiredError } from '@airo/shared/publish'
+import {
+  PUBLISH_CONFIRMATION_TIMEOUT_MS,
+  PublishDenialReason,
+  PublishUpgradeRequiredError,
+} from '@airo/shared/publish'
 
 import { getQueryClient } from '@/components/providers/QueryClientProvider'
 import { dynamicApiConfigService } from '@/config/dynamic-api'
@@ -22,6 +26,12 @@ import { shipAnalyticsLog } from '@/lib/logging'
 import { type AiroSubscription, DeploymentStatus } from '@/lib/mgmt-airo/types'
 import { ClientPaywallProvider } from '@/lib/paywall/client-provider'
 import { checkPaywallEligibility, PaywallAction } from '@/lib/paywall/core'
+import {
+  handlePublishPermissionDenied,
+  isPermissionDeniedResponse,
+  publishPermissionDeniedError,
+  shouldSuppressPublishError,
+} from '@/lib/paywall/publish-permission-denied'
 import { PAYWALL_ITC, PaywallDenialReason } from '@/lib/paywall/shared'
 import * as postAgentPublish from '@/lib/post-agent-publish'
 import { logger } from '@/lib/request-context'
@@ -391,6 +401,20 @@ export const publishAction: ClientActionExecutor = async (params, context, reque
     if (!response.ok && !(response.status === 409 && (parsedBody as any)?.jobId)) {
       const errorData: any = parsedBody ?? { error: 'Unknown error' }
 
+      if (isPermissionDeniedResponse(response.status, errorData)) {
+        logger.warn('websocket.client-action.publish.paywall-denied', { appId, error: errorData.error })
+        try {
+          handlePublishPermissionDenied(appId)
+        } catch (storeError) {
+          logger.warn('websocket.client-action.publish.paywall-modal-failed', {
+            appId,
+            error: storeError instanceof Error ? storeError.message : String(storeError),
+          })
+        }
+
+        throw publishPermissionDeniedError(errorData.error)
+      }
+
       if (errorData.details || errorData.logs) {
         try {
           const logText = errorData.logs
@@ -412,8 +436,7 @@ export const publishAction: ClientActionExecutor = async (params, context, reque
 
       try {
         const store = useDevelopPageStore.getState()
-        const showPaywallModal = store.publishStates[appId]?.showPaywallModal ?? false
-        if (!showPaywallModal) store.setPublishError(appId, true)
+        if (!shouldSuppressPublishError(appId)) store.setPublishError(appId, true)
         store.setFirstPublishDeployPending(appId, false)
         store.setIsPublishing(appId, false)
       } catch (storeError) {
@@ -565,11 +588,7 @@ export const publishAction: ClientActionExecutor = async (params, context, reque
     if (error instanceof AuthDismissedError) return { cancelled: true }
     try {
       const store = useDevelopPageStore.getState()
-      const showPaywallModal = store.publishStates[appId]?.showPaywallModal ?? false
-
-      // Only set publish error if paywall modal is not showing
-      // This prevents showing both paywall modal and error alert
-      if (!showPaywallModal) {
+      if (!shouldSuppressPublishError(appId)) {
         store.setPublishError(appId, true)
       }
 

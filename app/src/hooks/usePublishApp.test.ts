@@ -2,8 +2,11 @@
  * @vitest-environment jsdom
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ApiErrorCode } from '@airo/shared/api-error-code';
+import { PublishUpgradeRequiredError } from '@airo/shared/publish';
 import { act } from '@testing-library/react';
 
+import { PAYWALL_ITC } from '@/lib/paywall/shared';
 import { renderHookWithProviders } from '@/tests/test-utils';
 import { usePublishApp } from './usePublishApp';
 
@@ -19,12 +22,21 @@ const mockSetDeploymentInProgressId = vi.fn();
 const mockSetBuildErrorDetails = vi.fn();
 const mockSetIsPublishing = vi.fn();
 const mockSetPublishSuccess = vi.fn();
+const mockSetShowPaywallModal = vi.fn();
 const mockSetFirstPublishDeployPending = vi.fn();
 const mockSetShowFirstPublishCongrats = vi.fn();
 const mockFetchSite = vi.fn();
 const mockFetchSitesList = vi.fn();
 const mockHasBeenPublished = vi.fn();
 const mockUseSwitchboard = vi.fn();
+const mockOpenUpgradeModal = vi.fn();
+const mockPaywallState = {
+  showUpgradeModal: false,
+  openUpgradeModal: vi.fn(function (_source: string, _itc?: string) {
+    mockPaywallState.showUpgradeModal = true;
+    mockOpenUpgradeModal(_source, _itc);
+  }),
+};
 
 vi.mock('@/config/dynamic-api', () => ({
   dynamicApiConfigService: {
@@ -78,6 +90,7 @@ const mockDevelopState = {
   setIsPublishing: mockSetIsPublishing,
   setLastPublishedCommitHash: mockSetLastPublishedCommitHash,
   setPublishSuccess: mockSetPublishSuccess,
+  setShowPaywallModal: mockSetShowPaywallModal,
   setShowFirstPublishCongrats: mockSetShowFirstPublishCongrats,
   publishStates: {} as Record<string, any>,
   getPublishState: (appId: string) => mockDevelopState.publishStates[appId] || {},
@@ -109,6 +122,12 @@ vi.mock('@/stores/useSitesStore', () => ({
     selector({ fetchSite: mockFetchSitesList }),
 }));
 
+vi.mock('@/stores/usePaywallStore', () => ({
+  usePaywallStore: {
+    getState: () => mockPaywallState,
+  },
+}));
+
 vi.mock('@/utils/site', () => ({
   hasBeenPublished: (...args: unknown[]) => mockHasBeenPublished(...args),
 }));
@@ -122,6 +141,7 @@ describe('usePublishApp', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.restoreAllMocks();
+    mockPaywallState.showUpgradeModal = false;
   });
 
   function setupMocks() {
@@ -296,5 +316,54 @@ describe('usePublishApp', () => {
 
     expect(data.commitHash).toBe('local-abc');
     expect(mockPollPublishStatus).not.toHaveBeenCalled();
+  });
+
+  it('opens upgrade modal on 403 PERMISSION_DENIED from agents', async function permissionDenied() {
+    setupMocks();
+    vi.spyOn(global, 'fetch').mockResolvedValue({
+      ok: false,
+      status: 403,
+      json: async () => ({
+        error: 'Publish not allowed',
+        details: 'Publishing requires a paid Airo Builder plan',
+        code: ApiErrorCode.PermissionDenied,
+      }),
+    } as Response);
+
+    const { result } = renderHookWithProviders(() => usePublishApp());
+
+    await expect(
+      act(async () => {
+        await result.current.mutateAsync({ appId: 'app-123' });
+      }),
+    ).rejects.toBeInstanceOf(PublishUpgradeRequiredError);
+
+    expect(mockOpenUpgradeModal).toHaveBeenCalledWith('publish', PAYWALL_ITC.PUBLISH);
+    expect(mockSetIsPublishing).toHaveBeenCalledWith('app-123', false);
+    expect(mockSetBuildErrorDetails).not.toHaveBeenCalled();
+  });
+
+  it('still throws PublishUpgradeRequiredError when paywall store update fails', async function storeFailure() {
+    setupMocks();
+    vi.spyOn(global, 'fetch').mockResolvedValue({
+      ok: false,
+      status: 403,
+      json: async () => ({
+        error: 'Publish not allowed',
+        details: 'Publishing requires a paid Airo Builder plan',
+        code: ApiErrorCode.PermissionDenied,
+      }),
+    } as Response);
+    mockSetIsPublishing.mockImplementation(function () {
+      throw new Error('store failed');
+    });
+
+    const { result } = renderHookWithProviders(() => usePublishApp());
+
+    await expect(
+      act(async () => {
+        await result.current.mutateAsync({ appId: 'app-123' });
+      }),
+    ).rejects.toBeInstanceOf(PublishUpgradeRequiredError);
   });
 });

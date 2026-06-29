@@ -33,6 +33,7 @@ export const PublishDenialReason = {
 export type PublishDenialReason = (typeof PublishDenialReason)[keyof typeof PublishDenialReason];
 
 export const PublishErrorCode = {
+  /** Agents publish route returns this when the JWT is too old for publish (401 token age). */
   TokenStale: 'TOKEN_STALE',
 } as const;
 

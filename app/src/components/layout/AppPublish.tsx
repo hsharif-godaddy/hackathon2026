@@ -60,6 +60,7 @@ import { markFeedbackRevealMilestone } from '@/lib/initial-build-reveal-storage'
 import { JourneyTracker } from '@/lib/journeyTracker';
 import { shipAnalyticsLog } from '@/lib/logging';
 import { DeploymentStatus } from '@/lib/mgmt-airo/types';
+import { shouldSuppressPublishError } from '@/lib/paywall/publish-permission-denied';
 import { PAYWALL_ITC } from '@/lib/paywall/shared';
 import { openPostPublishFeatureSelectionInChat } from '@/lib/post-publish-feature-selection';
 import { getPublishLimit } from '@/lib/publish-limit';
@@ -685,7 +686,11 @@ export default function AppPublish({ location = 'develop' }: { location?: string
         error: errorMessage,
       });
       useDevelopPageStore.getState().setFirstPublishDeployPending(currentAppId, false);
-      setPublishError(currentAppId, true);
+
+      if (!shouldSuppressPublishError(currentAppId)) {
+        setPublishError(currentAppId, true);
+      }
+
       setIsPublishing(currentAppId, false);
     }
   }, [clickContext, currentAppId, site, location, isFirstTimePublishing, isPublishComplianceBlocked, publishComplianceBlockReason, setPublishError, setIsPublishing, clearPublishStatus, publishMutation, runGate, triggerAnalysis, setSecurityAnalysisResult, showDomainSelector, selectedDomainFqdn, freeProjectUrl, modifyDomains]);

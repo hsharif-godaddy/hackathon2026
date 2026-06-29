@@ -199,7 +199,8 @@ describe('Download Route Authorization', () => {
 
       expect(response.body).toEqual({
         error: 'Download not allowed',
-        details: 'Downloading requires a paid Airo Builder plan'
+        details: 'Downloading requires a paid Airo Builder plan',
+        code: 'PERMISSION_DENIED',
       });
       expect(mockFindById).not.toHaveBeenCalled();
     });

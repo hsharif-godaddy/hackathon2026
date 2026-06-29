@@ -15,6 +15,7 @@ import { usePublishApp } from '@/hooks/usePublishApp';
 import { usePublishComplianceGate } from '@/hooks/usePublishComplianceGate';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
+import { shouldSuppressPublishError } from '@/lib/paywall/publish-permission-denied';
 import { logger } from '@/lib/request-context';
 import { PublishComplianceBlockReason } from '@/lib/subscription';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
@@ -132,7 +133,9 @@ export default function PublishStatusAlert() {
         appId: currentAppId,
         error: error instanceof Error ? error.message : String(error)
       });
-      setPublishError(currentAppId, true);
+      if (!shouldSuppressPublishError(currentAppId)) {
+        setPublishError(currentAppId, true);
+      }
       setIsPublishing(currentAppId, false);
     }
   }, [currentAppId, deploymentsRefetch, isPublishComplianceBlocked, publishMutation, clearPublishStatus, setIsPublishing, setPublishError]);

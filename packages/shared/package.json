@@ -75,6 +75,10 @@
       "types": "./dist/app-structure/index.d.ts",
       "import": "./dist/app-structure/index.js"
     },
+    "./api-error-code": {
+      "types": "./dist/api-error-code/index.d.ts",
+      "import": "./dist/api-error-code/index.js"
+    },
     "./publish": {
       "types": "./dist/publish/index.d.ts",
       "import": "./dist/publish/index.js"
@@ -133,6 +137,9 @@
       ],
       "app-structure": [
         "dist/app-structure/index.d.ts"
+      ],
+      "api-error-code": [
+        "dist/api-error-code/index.d.ts"
       ],
       "publish": [
         "dist/publish/index.d.ts"

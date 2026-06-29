@@ -5,7 +5,8 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { PublishErrorCode } from '@airo/shared/publish'
+import { ApiErrorCode } from '@airo/shared/api-error-code'
+import { PublishErrorCode, PublishUpgradeRequiredError } from '@airo/shared/publish'
 
 import { SiteStatus } from '@/lib/control-plane/types'
 import { PAYWALL_ITC } from '@/lib/paywall/shared'
@@ -40,9 +41,16 @@ vi.mock('@/stores/useDevelopPageStore', () => ({
 }))
 
 const mockOpenUpgradeModal = vi.fn()
+const mockPaywallState = {
+  showUpgradeModal: false,
+  openUpgradeModal: vi.fn(function (_source: string, _itc?: string) {
+    mockPaywallState.showUpgradeModal = true
+    mockOpenUpgradeModal(_source, _itc)
+  }),
+}
 vi.mock('@/stores/usePaywallStore', () => ({
   usePaywallStore: {
-    getState: () => ({ openUpgradeModal: mockOpenUpgradeModal }),
+    getState: () => mockPaywallState,
   },
 }))
 
@@ -119,6 +127,7 @@ describe('publishAction', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    mockPaywallState.showUpgradeModal = false
     vi.mocked(authPreflight).mockResolvedValue(null)
     vi.mocked(shipAnalyticsLog).mockImplementation(() => {})
 
@@ -1011,16 +1020,16 @@ describe('publishAction', () => {
       expect(mockStoreActions.setIsPublishing).toHaveBeenCalledWith('app-123', false)
     })
 
-    it('should NOT set error state when paywall modal is showing on API error', async () => {
+    it('should NOT set error state when upgrade modal is showing on API error', async () => {
       const context = createMockMessageContext()
       const params = { appId: 'app-123', commitHash: 'abc123' }
 
-      // Mock store state to show paywall modal is active
+      mockPaywallState.showUpgradeModal = true
       vi.mocked(useDevelopPageStore.getState).mockReturnValue({
         ...mockStoreActions,
         publishStates: {
           'app-123': {
-            showPaywallModal: true,
+            showPaywallModal: false,
             isPublishing: false,
             publishError: false,
           },
@@ -1041,16 +1050,16 @@ describe('publishAction', () => {
       expect(mockStoreActions.setIsPublishing).toHaveBeenCalledWith('app-123', false)
     })
 
-    it('should NOT set error state when paywall modal is showing on exception', async () => {
+    it('should NOT set error state when upgrade modal is showing on exception', async () => {
       const context = createMockMessageContext()
       const params = { appId: 'app-123', commitHash: 'abc123' }
 
-      // Mock store state to show paywall modal is active
+      mockPaywallState.showUpgradeModal = true
       vi.mocked(useDevelopPageStore.getState).mockReturnValue({
         ...mockStoreActions,
         publishStates: {
           'app-123': {
-            showPaywallModal: true,
+            showPaywallModal: false,
             isPublishing: false,
             publishError: false,
           },
@@ -1232,6 +1241,57 @@ describe('publishAction', () => {
 
       // Should still throw the API error, not the store error
       await expect(publishAction(params, context)).rejects.toThrow('API error')
+    })
+
+    it('should set publish error when upgrade modal is closed despite stale showPaywallModal', async function stalePaywallFlag() {
+      const context = createMockMessageContext()
+      const params = { appId: 'app-123', commitHash: 'abc123' }
+
+      mockPaywallState.showUpgradeModal = false
+      vi.mocked(useDevelopPageStore.getState).mockReturnValue({
+        ...mockStoreActions,
+        publishStates: {
+          'app-123': {
+            showPaywallModal: true,
+            isPublishing: false,
+            publishError: false,
+          },
+        },
+      })
+
+      vi.mocked(global.fetch).mockResolvedValue({
+        ok: false,
+        status: 500,
+        json: async () => ({ error: 'Server error' }),
+      } as Response)
+
+      await expect(publishAction(params, context)).rejects.toThrow()
+
+      expect(mockStoreActions.setPublishError).toHaveBeenCalledWith('app-123', true)
+    })
+  })
+
+  describe('agents permission denied', () => {
+    it('should open upgrade modal on 403 PERMISSION_DENIED from agents', async function permissionDenied() {
+      const context = createMockMessageContext()
+      const params = { appId: 'app-123', commitHash: 'abc123' }
+
+      vi.mocked(global.fetch).mockResolvedValue({
+        ok: false,
+        status: 403,
+        json: async () => ({
+          error: 'Publish not allowed',
+          details: 'Publishing requires a paid Airo Builder plan',
+          code: ApiErrorCode.PermissionDenied,
+        }),
+      } as Response)
+
+      await expect(publishAction(params, context)).rejects.toBeInstanceOf(PublishUpgradeRequiredError)
+
+      expect(mockOpenUpgradeModal).toHaveBeenCalledWith('publish', PAYWALL_ITC.PUBLISH)
+      expect(mockStoreActions.setIsPublishing).toHaveBeenCalledWith('app-123', false)
+      expect(mockStoreActions.setPublishError).not.toHaveBeenCalled()
+      expect(mockStoreActions.setBuildErrorDetails).not.toHaveBeenCalled()
     })
   })
 

@@ -2,6 +2,8 @@ import { useDeploymentsQuery } from '@/hooks/useDeploymentsQuery';
 import { usePublishApp } from '@/hooks/usePublishApp';
 import { usePublishComplianceGate } from '@/hooks/usePublishComplianceGate';
 import { DeploymentStatus } from '@/lib/mgmt-airo/types';
+import { shouldSuppressPublishError } from '@/lib/paywall/publish-permission-denied';
+import { logger } from '@/lib/request-context';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import type { Site } from '@/stores/useSitesStore';
 import { useIsLoading, useStreamingState } from '@/stores/useStreamingConversationStore';
@@ -83,7 +85,13 @@ export function usePublishForDomain(currentAppId: string | null, site: Site | nu
     try {
       await publishMutation.mutateAsync({ appId: currentAppId });
     } catch (error) {
-      setPublishError(currentAppId, true);
+      logger.error('publish-for-domain.publish.error', {
+        appId: currentAppId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      if (!shouldSuppressPublishError(currentAppId)) {
+        setPublishError(currentAppId, true);
+      }
       setIsPublishing(currentAppId, false);
     }
   };

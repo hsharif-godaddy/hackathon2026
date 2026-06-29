@@ -12,6 +12,15 @@ import type { AuthenticatedRequest } from '../middleware/jwt-auth.js';
 
 vi.mock('@airo/shared/publish', () => ({
   PublishErrorCode: { TokenStale: 'TOKEN_STALE' },
+  PublishDenialReason: { NoSubscription: 'no_subscription', PublishLimitReached: 'publish_limit_reached' },
+  PublishUpgradeRequiredError: class PublishUpgradeRequiredError extends Error {
+    requiresUpgrade = true
+    reason = 'no_subscription'
+    constructor(reason: string, message?: string) {
+      super(message ?? 'upgrade required')
+      this.name = 'PublishUpgradeRequiredError'
+    }
+  },
 }));
 
 // Mock dependencies BEFORE imports
@@ -192,7 +201,8 @@ describe('Publish Route Authorization', () => {
 
       expect(response.body).toEqual({
         error: 'Publish not allowed',
-        details: 'Publishing requires a paid Airo Builder plan'
+        details: 'Publishing requires a paid Airo Builder plan',
+        code: 'PERMISSION_DENIED',
       });
       expect(mockFindById).not.toHaveBeenCalled();
     });

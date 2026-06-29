@@ -5,7 +5,9 @@
  * Use after jwtAuthMiddleware to verify specific permissions (canPublish, canDownload).
  */
 
+import { ApiErrorCode } from '@airo/shared/api-error-code';
 import { Request, Response, NextFunction } from 'express';
+
 import type { AuthenticatedRequest } from './jwt-auth.js';
 import { log } from '../../logging/index.js';
 
@@ -70,8 +72,10 @@ export function requirePermission(permission: Permission) {
         reason: `missing_${permission}_permission`
       });
 
-      const errorMessage = PERMISSION_ERRORS[permission];
-      res.status(403).json(errorMessage);
+      res.status(403).json({
+        ...PERMISSION_ERRORS[permission],
+        code: ApiErrorCode.PermissionDenied,
+      });
       return;
     }
 

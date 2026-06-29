@@ -15,6 +15,11 @@ import { DomainType } from '@/lib/control-plane/types';
 import { appFetch, AuthDismissedError, authPreflight } from '@/lib/gasket-config';
 import { regenerateToken } from '@/lib/jwt-regeneration';
 import type { AiroSubscription } from '@/lib/mgmt-airo/types';
+import {
+  handlePublishPermissionDenied,
+  isPermissionDeniedResponse,
+  publishPermissionDeniedError,
+} from '@/lib/paywall/publish-permission-denied';
 import * as postAgentPublish from '@/lib/post-agent-publish';
 import { logger } from '@/lib/request-context';
 import {
@@ -371,6 +376,19 @@ export function usePublishApp() {
 
       if (!response.ok) {
         const errorData = await response.json();
+
+        if (isPermissionDeniedResponse(response.status, errorData)) {
+          logger.warn('publish.error.paywall-denied', { appId, error: errorData.error });
+          try {
+            handlePublishPermissionDenied(appId);
+          } catch (storeError) {
+            logger.warn('publish.error.paywall-modal-failed', {
+              appId,
+              error: storeError instanceof Error ? storeError.message : String(storeError),
+            });
+          }
+          throw publishPermissionDeniedError(errorData.error);
+        }
 
         if (errorData.details || errorData.logs) {
           const logText = errorData.logs

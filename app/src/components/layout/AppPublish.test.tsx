@@ -5,6 +5,7 @@ import '@testing-library/jest-dom';
 
 import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { PublishDenialReason, PublishUpgradeRequiredError } from '@airo/shared/publish';
 import { screen, waitFor } from '@testing-library/react';
 import Growl from '@ux/growl';
 
@@ -313,7 +314,7 @@ describe('AppPublish', () => {
     mockDnsConflictModal = null;
     mockIsUpgradePolling.value = false;
     mockShowPaywall.value = true;
-    usePaywallStore.setState({ publishOpenAfterUpgradeAppId: null });
+    usePaywallStore.setState({ publishOpenAfterUpgradeAppId: null, showUpgradeModal: false, paywallLoading: false });
     mockSiteStore.getSite.mockReturnValue(
       createMockSite({
         id: 'app-123',
@@ -1593,6 +1594,57 @@ describe('AppPublish', () => {
       expect(mockDevelopStore.setPublishError).toHaveBeenCalledWith('app-123', true);
     });
     expect(mockMutateAsync).not.toHaveBeenCalled();
+  });
+
+  it('should not set publish error when upgrade modal is showing after publish failure', async function upgradeModalSuppressesError() {
+    mockRunGate.mockResolvedValueOnce({ proceed: true });
+    mockMutateAsync.mockRejectedValueOnce(
+      new PublishUpgradeRequiredError(PublishDenialReason.NoSubscription, 'Publish not allowed'),
+    );
+    usePaywallStore.setState({ showUpgradeModal: true });
+
+    const { user } = renderWithProviders(<AppPublish />);
+
+    const trigger = await screen.findByRole('button', { name: 'builder_publish_button' });
+    await user.click(trigger);
+
+    await waitFor(() => {
+      expect(screen.getByText('builder_publish_popover_title')).toBeInTheDocument();
+    });
+
+    const publishButtons = screen.getAllByRole('button', { name: 'builder_publish_button' });
+    const innerPublishButton = publishButtons.find((btn) => btn.id !== 'tour-publish-button');
+    expect(innerPublishButton).toBeDefined();
+    await user.click(innerPublishButton!);
+
+    await waitFor(() => {
+      expect(mockMutateAsync).toHaveBeenCalledWith({ appId: 'app-123' });
+    });
+    expect(mockDevelopStore.setPublishError).not.toHaveBeenCalled();
+  });
+
+  it('should set publish error when upgrade modal is not showing after publish failure', async function publishFailureSetsError() {
+    mockRunGate.mockResolvedValueOnce({ proceed: true });
+    mockMutateAsync.mockRejectedValueOnce(new Error('Server error'));
+    usePaywallStore.setState({ showUpgradeModal: false });
+
+    const { user } = renderWithProviders(<AppPublish />);
+
+    const trigger = await screen.findByRole('button', { name: 'builder_publish_button' });
+    await user.click(trigger);
+
+    await waitFor(() => {
+      expect(screen.getByText('builder_publish_popover_title')).toBeInTheDocument();
+    });
+
+    const publishButtons = screen.getAllByRole('button', { name: 'builder_publish_button' });
+    const innerPublishButton = publishButtons.find((btn) => btn.id !== 'tour-publish-button');
+    expect(innerPublishButton).toBeDefined();
+    await user.click(innerPublishButton!);
+
+    await waitFor(() => {
+      expect(mockDevelopStore.setPublishError).toHaveBeenCalledWith('app-123', true);
+    });
   });
 
   it('should call handleViewModeChange with DOMAIN on desktop when domain edit is clicked and top-level flag is on', async function domainEditDesktop() {
