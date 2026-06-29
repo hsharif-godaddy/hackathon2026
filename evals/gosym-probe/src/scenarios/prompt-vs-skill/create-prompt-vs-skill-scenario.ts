@@ -19,8 +19,13 @@ import type { IGocodeClient }
   from '../../clients/gocode-client.js';
 import type { AABCtrlPlaneClient }
   from '../../clients/aab-ctrl-plane-client.js';
-import type { Scenario, ScenarioGoal }
-  from '../types.js';
+import type {
+  Scenario,
+  ScenarioGoal,
+  ExpectedArtifactSpec,
+  SkillInstruction,
+  ToolCallAssertion,
+} from '../types.js';
 import type { Persona } from '../../personas/types.js';
 import type { Evaluator } from '../../evaluators/evaluator.js';
 
@@ -30,6 +35,26 @@ export interface PromptVsSkillConfig {
   persona?: Persona;
   trials?: number;
   extraEvaluators?: Evaluator[];
+  staticFirstMessage?: string;
+  /**
+   * Static-rigor expectations, set declaratively so the scenario carries
+   * them at construction time (no post-build mutation, which silently
+   * leaves the skill-selection evaluator reporting 'unknown' if it runs
+   * before the field is assigned).
+   */
+  expectedArtifact?: ExpectedArtifactSpec;
+  expectedSkills?: string[];
+  expectedAgent?: string;
+  suite?: string;
+  skillInstructions?: SkillInstruction[];
+  expectedTools?: ToolCallAssertion[];
+  /**
+   * Evaluators included ONLY under --calibrate (the narrow LLM judge is
+   * the canonical one): expensive, calibration-time signals that the
+   * deterministic layer is checked against, not run on every eval.
+   */
+  calibrationEvaluators?: Evaluator[];
+  calibrate?: boolean;
 }
 
 export function createPromptVsSkillScenario(
@@ -55,7 +80,14 @@ export function createPromptVsSkillScenario(
     new TurnDurationEvaluator(),
     ...tokenEvaluators,
   ];
-  const allEvaluators = [...(config.extraEvaluators ?? []), ...builtinEvaluators];
+  const calibrationEvaluators = config.calibrate
+    ? (config.calibrationEvaluators ?? [])
+    : [];
+  const allEvaluators = [
+    ...(config.extraEvaluators ?? []),
+    ...calibrationEvaluators,
+    ...builtinEvaluators,
+  ];
   const names = allEvaluators.map((e) => e.name);
   const duplicates = names.filter((n, i) => names.indexOf(n) !== i);
   if (duplicates.length > 0) {
@@ -66,10 +98,16 @@ export function createPromptVsSkillScenario(
 
   return {
     name: config.name,
-    suite: 'prompt-vs-skill',
+    suite: config.suite ?? 'prompt-vs-skill',
     persona: config.persona ?? beginnerPersona,
     goals: config.goals,
     evaluators: allEvaluators,
+    expectedArtifact: config.expectedArtifact,
+    expectedSkills: config.expectedSkills,
+    expectedAgent: config.expectedAgent,
+    skillInstructions: config.skillInstructions,
+    expectedTools: config.expectedTools,
+    staticFirstMessage: config.staticFirstMessage,
     trials: config.trials ?? 1,
 
     setup: async () => {

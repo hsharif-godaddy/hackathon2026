@@ -29,11 +29,11 @@ function makeAgg(
   passingTrials: number,
   totalTrials: number,
 ): AggregatedResult {
+  const n: number = totalTrials;
+  const c: number = passingTrials;
+  const passAt1: number | undefined = n > 0 ? c / n : undefined;
   return {
-    passAtK: passingTrials > 0,
-    passToTheK:
-      totalTrials > 0
-      && passingTrials === totalTrials,
+    ...(passAt1 !== undefined && { passAt1, passAtK: [{ k: 1, value: passAt1 }], passHatK: [{ k: 1, value: passAt1 }] }),
     passingTrials,
     totalTrials,
   };
@@ -51,11 +51,16 @@ function makeEvalResult(
   };
 }
 
-function makeTranscript(trialIndex = 0): Transcript {
+function makeTranscript(trialIndex = 0, withAgentOutput = true): Transcript {
   return {
     scenarioName: 'test-scenario',
     trialIndex,
-    turns: [],
+    turns: withAgentOutput
+      ? [
+          { role: 'user', content: 'build it', toolCalls: [], timestamp: 0 },
+          { role: 'assistant', content: 'done', toolCalls: [], timestamp: 1 },
+        ]
+      : [{ role: 'user', content: 'build it', toolCalls: [], timestamp: 0 }],
     snapshots: [],
     errors: [],
     captureErrors: [],
@@ -65,10 +70,11 @@ function makeTranscript(trialIndex = 0): Transcript {
 function makeTrialResult(
   trialIndex: number,
   evalResults: EvalResult[],
+  withAgentOutput = true,
 ): TrialResult {
   return {
     trialIndex,
-    transcript: makeTranscript(trialIndex),
+    transcript: makeTranscript(trialIndex, withAgentOutput),
     evalResults,
   };
 }
@@ -141,6 +147,7 @@ const mockConfig: ResolvedConfig = {
     alpha: 0.05,
     k: 2.0,
     minMarginFraction: 0.05,
+    reportingK: [1, 2, 3, 5, 10],
     fallbackThresholds: { thresholds: {}, defaultThreshold: 0.1 },
   },
 };
@@ -644,7 +651,23 @@ describe('GraduationRunner', () => {
       expect(result).toHaveProperty('stabilityLevel', 'low');
       expect(result).toHaveProperty('stabilityTrials', 5);
       expect(result).toHaveProperty('baselineSaved', true);
-      expect(Object.keys(result)).toHaveLength(4);
+      expect(result).toHaveProperty('droppedTrials', 0);
+      expect(Object.keys(result)).toHaveLength(5);
+    });
+
+    it('surfaces droppedTrials from the scenario result', async () => {
+      const scenarioResult = makeScenarioResult(['pass', 'pass', 'pass']);
+      scenarioResult.droppedTrials = 2;
+      mockSuiteRunnerRun.mockResolvedValue([scenarioResult]);
+
+      const runner = new GraduationRunner({
+        scenario: { ...mockScenario, stabilityLevel: 'low' },
+        config: mockConfig,
+        baselineStore: mockBaselineStore,
+      });
+      const result = await runner.run('run-dropped');
+
+      expect(result.droppedTrials).toBe(2);
     });
 
     it('result does not contain promoted, passRates, minPassRate, passRateThreshold', async () => {
@@ -713,6 +736,33 @@ describe('GraduationRunner', () => {
 
       expect(mockBaselineStore.save).toHaveBeenCalledOnce();
       expect(result.baselineSaved).toBe(true);
+    });
+
+    it('skips baseline save when no trial produced agent output (turn-0 builds)', async () => {
+      // Vacuous evaluators (bug-hit-rate) still emit 'pass' on an empty
+      // transcript, so the verdict check alone would wrongly save. The
+      // zero-assistant-turn signal is what catches a misconfigured-agent run.
+      const trials = [0, 1, 2].map((i) =>
+        makeTrialResult(i, [makeEvalResult('bug-hit-rate', 'pass')], false),
+      );
+      mockSuiteRunnerRun.mockResolvedValue([
+        {
+          scenarioName: 'test-scenario',
+          stabilityLevel: 'medium' as const,
+          trials,
+          aggregated: { 'bug-hit-rate': makeAgg(3, 3) },
+        },
+      ]);
+
+      const runner = new GraduationRunner({
+        scenario: mockScenario,
+        config: mockConfig,
+        baselineStore: mockBaselineStore,
+      });
+      const result = await runner.run('run-no-output');
+
+      expect(mockBaselineStore.save).not.toHaveBeenCalled();
+      expect(result.baselineSaved).toBe(false);
     });
   });
 

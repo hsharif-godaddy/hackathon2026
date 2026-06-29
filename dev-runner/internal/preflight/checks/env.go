@@ -106,7 +106,10 @@ func (c *AgentsEnvCheck) Run(_ context.Context, projectRoot string) preflight.Ch
 
 	required := []string{"NODE_ENV", "AUTH_TYPE", "BUDGET_SERVICE_URL"}
 	if s2s {
-		required = append(required, "AWS_PROFILE", "USE_S2S_AUTH", "S2S_AWS_PROFILE")
+		// OPENAI_BASE_URL is required in S2S mode too: it pins GoCode to the
+		// prod gateway that matches the prod sso-jwt. Absent, s2s-auth.ts
+		// derives the DEV endpoint from NODE_ENV and the prod token 401s.
+		required = append(required, "AWS_PROFILE", "USE_S2S_AUTH", "S2S_AWS_PROFILE", "OPENAI_BASE_URL")
 	} else {
 		required = append(required,
 			"OPENAI_API_KEY",
@@ -121,23 +124,27 @@ func (c *AgentsEnvCheck) Run(_ context.Context, projectRoot string) preflight.Ch
 		return result
 	}
 
-	// In S2S mode, stale api-key-mode values override the S2S endpoint via
-	// s2s-auth.ts's `process.env.OPENAI_BASE_URL || default` fallback. Flag
-	// them as fixable so EnvFixer regenerates agents/.env cleanly.
 	if s2s {
-		var stale []string
-		for _, key := range []string{"OPENAI_API_KEY", "OPENAI_BASE_URL", "ANTHROPIC_API_KEY", "ANTHROPIC_BASE_URL"} {
+		var issues []string
+		// OPENAI_BASE_URL must be the prod S2S gateway. A stale api-key-mode
+		// endpoint (LiteLLM/onkatana proxy) here sends the IAM JWT somewhere
+		// that rejects it.
+		if got := strings.TrimSpace(env["OPENAI_BASE_URL"]); got != preflight.S2SGoCodeEndpoint {
+			issues = append(issues, fmt.Sprintf("OPENAI_BASE_URL should be %q, got %q", preflight.S2SGoCodeEndpoint, got))
+		}
+		// The remaining api-key-mode credential vars don't apply in S2S mode.
+		for _, key := range []string{"OPENAI_API_KEY", "ANTHROPIC_API_KEY", "ANTHROPIC_BASE_URL"} {
 			if strings.TrimSpace(env[key]) != "" {
-				stale = append(stale, key)
+				issues = append(issues, fmt.Sprintf("stale api-key var %s set", key))
 			}
 		}
-		if len(stale) > 0 {
+		if len(issues) > 0 {
 			return preflight.CheckResult{
 				Status:       preflight.StatusFail,
 				Name:         c.Name(),
 				Category:     c.Category(),
 				FixAvailable: true,
-				Message:      fmt.Sprintf("agents/.env has S2S auth enabled but stale api-key vars set: %s", strings.Join(stale, ", ")),
+				Message:      fmt.Sprintf("agents/.env S2S GoCode config: %s", strings.Join(issues, "; ")),
 			}
 		}
 	}

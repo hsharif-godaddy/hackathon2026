@@ -105,14 +105,16 @@ const BASELINED_RESULT: ScenarioResult = {
   ],
   aggregated: {
     'bug-hit-rate': {
-      passAtK: true,
-      passToTheK: true,
+      passAt1: 1.0,
+      passAtK: [{ k: 1, value: 1.0 }, { k: 2, value: 1.0 }],
+      passHatK: [{ k: 1, value: 1.0 }, { k: 2, value: 1.0 }],
       passingTrials: 3,
       totalTrials: 3,
     },
     'jtbd-completion': {
-      passAtK: true,
-      passToTheK: false,
+      passAt1: 0.5,
+      passAtK: [{ k: 1, value: 0.5 }],
+      passHatK: [{ k: 1, value: 0.5 }],
       passingTrials: 1,
       totalTrials: 2,
     },
@@ -127,8 +129,9 @@ const NO_BASELINE_RESULT: ScenarioResult = {
   ],
   aggregated: {
     'output-quality': {
-      passAtK: true,
-      passToTheK: true,
+      passAt1: 1.0,
+      passAtK: [{ k: 1, value: 1.0 }],
+      passHatK: [{ k: 1, value: 1.0 }],
       passingTrials: 1,
       totalTrials: 1,
     },
@@ -224,9 +227,9 @@ describe('MdReporter', () => {
     const reporter = new MdReporter();
     const content = reporter.render('run-001', [BASELINED_RESULT]);
 
-    expect(content).toContain('| Scenario | Evaluator | pass@k | pass^k | Pass Rate | T1 | T2 | T3 |');
+    expect(content).toContain('| Scenario | Evaluator | pass@1 | pass@k | pass^k | Pass Rate | T1 | T2 | T3 |');
     expect(content).toContain(
-      '| build-landing-page | jtbd-completion | ✓ | ✗ | 1/2 (50%) | pass | ⚠️ unknown | partial |',
+      '| build-landing-page | jtbd-completion | 0.50 | 1:0.50 | 1:0.50 | 1/2 (50%) | pass | ⚠️ unknown | partial |',
     );
   });
 
@@ -264,20 +267,18 @@ describe('MdReporter', () => {
     expect(content as string).toContain('pass^k');
   });
 
-  it('renders pass@k and pass^k cells as "pass" or "fail" text', () => {
+  it('renders pass@k and pass^k cells as numeric estimator vectors', () => {
     const reporter = new MdReporter();
-    // bug-hit-rate: passAtK=true, passToTheK=true
-    // jtbd-completion: passAtK=true, passToTheK=false
+    // bug-hit-rate: passAtK={1:1.0, 2:1.0}, passHatK={1:1.0, 2:1.0}
+    // jtbd-completion: passAtK={1:0.5}, passHatK={1:0.5}
     const content = reporter.render('run-001', [BASELINED_RESULT]);
     const lines = content.split('\n');
     const bugRow = lines.find((l) =>
-      l.includes('| bug-hit-rate | pass | pass |'));
+      l.includes('bug-hit-rate') && l.includes('1:1.00; 2:1.00'));
     const jtbdRow = lines.find((l) =>
-      l.includes('| jtbd-completion | pass | fail |'));
-    // per-trial cells use "pass (n.nn)" format, so bare "| pass |"
-    // and "| fail |" tokens are unique to the passAtK / passToTheK columns
-    expect(bugRow).toContain('| pass | pass |');
-    expect(jtbdRow).toContain('| pass | fail |');
+      l.includes('jtbd-completion') && l.includes('1:0.50'));
+    expect(bugRow).toContain('| 1:1.00; 2:1.00 | 1:1.00; 2:1.00 |');
+    expect(jtbdRow).toContain('| 1:0.50 | 1:0.50 |');
   });
 
   it('shows per-trial verdict columns (T1, T2, T3)', async () => {
@@ -299,6 +300,77 @@ describe('MdReporter', () => {
       '## \u26a0\ufe0f Unknown Verdicts \u2014 Require Human Review',
     );
     expect(content as string).toContain('Insufficient info');
+  });
+
+  it('renders a Signal Disagreements section when static and judge diverge', () => {
+    const disagreeResult: ScenarioResult = {
+      scenarioName: 'build-landing-page',
+      stabilityLevel: 'low',
+      trials: [
+        makeTrial(0, [
+          makeEvalResult('expected-artifact-match', 'fail', 0, 'no contact'),
+          makeEvalResult('narrow-artifact-judge', 'pass', 1, 'looks fine'),
+        ]),
+      ],
+      aggregated: {},
+    };
+    const reporter = new MdReporter();
+    const content = reporter.render('run-001', [disagreeResult]);
+    expect(content).toContain('Signal Disagreements');
+    expect(content).toContain('valid-but-different');
+    const row = content
+      .split('\n')
+      .find((l) => l.includes('build-landing-page') && l.includes('T1') && l.includes('fail'));
+    expect(row).toBeDefined();
+  });
+
+  it('omits the Signal Disagreements section when verdicts agree', () => {
+    const agreeResult: ScenarioResult = {
+      scenarioName: 'build-landing-page',
+      stabilityLevel: 'low',
+      trials: [
+        makeTrial(0, [
+          makeEvalResult('expected-artifact-match', 'pass', 1, 'ok'),
+          makeEvalResult('narrow-artifact-judge', 'pass', 1, 'ok'),
+        ]),
+      ],
+      aggregated: {},
+    };
+    const reporter = new MdReporter();
+    const content = reporter.render('run-001', [agreeResult]);
+    expect(content).not.toContain('Signal Disagreements');
+  });
+
+  it('renders a Grader Stability section for multi-trial runs', () => {
+    const multiTrial: ScenarioResult = {
+      scenarioName: 'build-landing-page',
+      stabilityLevel: 'low',
+      trials: [
+        makeTrial(0, [makeEvalResult('expected-artifact-match', 'pass', 1, 'ok')]),
+        makeTrial(1, [makeEvalResult('expected-artifact-match', 'partial', 0.5, 'meh')]),
+      ],
+      aggregated: {},
+    };
+    const reporter = new MdReporter();
+    const content = reporter.render('run-001', [multiTrial]);
+    expect(content).toContain('Grader Stability');
+    expect(content).toContain('Flip-rate');
+    const row = content
+      .split('\n')
+      .find((l) => l.includes('expected-artifact-match') && l.includes('1.00'));
+    expect(row).toBeDefined();
+  });
+
+  it('omits the Grader Stability section for single-trial runs', () => {
+    const single: ScenarioResult = {
+      scenarioName: 'build-landing-page',
+      stabilityLevel: 'low',
+      trials: [makeTrial(0, [makeEvalResult('expected-artifact-match', 'pass', 1, 'ok')])],
+      aggregated: {},
+    };
+    const reporter = new MdReporter();
+    const content = reporter.render('run-001', [single]);
+    expect(content).not.toContain('Grader Stability');
   });
 
   it('shows T2 label for unknown verdict from trialIndex 1', async () => {
@@ -325,8 +397,9 @@ describe('MdReporter', () => {
       ],
       aggregated: {
         'my-eval': {
-          passAtK: false,
-          passToTheK: false,
+          passAt1: 0,
+          passAtK: [{ k: 1, value: 0 }],
+          passHatK: [{ k: 1, value: 0 }],
           passingTrials: 0,
           totalTrials: 1,
         },
@@ -360,8 +433,9 @@ describe('MdReporter', () => {
       ],
       aggregated: {
         'my-eval': {
-          passAtK: false,
-          passToTheK: false,
+          passAt1: 0,
+          passAtK: [{ k: 1, value: 0 }],
+          passHatK: [{ k: 1, value: 0 }],
           passingTrials: 0,
           totalTrials: 1,
         },
@@ -393,8 +467,9 @@ describe('MdReporter', () => {
       ],
       aggregated: {
         'my-eval': {
-          passAtK: false,
-          passToTheK: false,
+          passAt1: 0,
+          passAtK: [{ k: 1, value: 0 }],
+          passHatK: [{ k: 1, value: 0 }],
           passingTrials: 0,
           totalTrials: 1,
         },
@@ -417,8 +492,9 @@ describe('MdReporter', () => {
       ],
       aggregated: {
         'bug-hit-rate': {
-          passAtK: true,
-          passToTheK: true,
+          passAt1: 1.0,
+          passAtK: [{ k: 1, value: 1.0 }],
+          passHatK: [{ k: 1, value: 1.0 }],
           passingTrials: 2,
           totalTrials: 2,
         },
@@ -440,8 +516,9 @@ describe('MdReporter', () => {
       ],
       aggregated: {
         'bug-hit-rate': {
-          passAtK: true,
-          passToTheK: true,
+          passAt1: 1.0,
+          passAtK: [{ k: 1, value: 1.0 }],
+          passHatK: [{ k: 1, value: 1.0 }],
           passingTrials: 1,
           totalTrials: 1,
         },
@@ -514,8 +591,6 @@ describe('MdReporter', () => {
         ],
         aggregated: {
           'latency': {
-            passAtK: false,
-            passToTheK: false,
             passingTrials: 0,
             totalTrials: 1,
             aggregateScore: 0.75,
@@ -762,14 +837,16 @@ describe('MdReporter — per-scenario sections', () => {
       ],
       aggregated: {
         'eval-a': {
-          passAtK: false,
-          passToTheK: false,
+          passAt1: 0,
+          passAtK: [{ k: 1, value: 0 }],
+          passHatK: [{ k: 1, value: 0 }],
           passingTrials: 0,
           totalTrials: 1,
         },
         'eval-b': {
-          passAtK: true,
-          passToTheK: true,
+          passAt1: 1.0,
+          passAtK: [{ k: 1, value: 1.0 }],
+          passHatK: [{ k: 1, value: 1.0 }],
           passingTrials: 1,
           totalTrials: 1,
         },
@@ -790,8 +867,9 @@ describe('MdReporter — per-scenario sections', () => {
       ],
       aggregated: {
         'my-eval': {
-          passAtK: false,
-          passToTheK: false,
+          passAt1: 0,
+          passAtK: [{ k: 1, value: 0 }],
+          passHatK: [{ k: 1, value: 0 }],
           passingTrials: 0,
           totalTrials: 1,
         },
@@ -829,8 +907,9 @@ describe('MdReporter — per-scenario sections', () => {
       ],
       aggregated: {
         'eval-a': {
-          passAtK: false,
-          passToTheK: false,
+          passAt1: 0,
+          passAtK: [{ k: 1, value: 0 }],
+          passHatK: [{ k: 1, value: 0 }],
           passingTrials: 0,
           totalTrials: 1,
         },
@@ -856,8 +935,9 @@ describe('MdReporter — per-scenario sections', () => {
       ],
       aggregated: {
         'eval-a': {
-          passAtK: false,
-          passToTheK: false,
+          passAt1: 0,
+          passAtK: [{ k: 1, value: 0 }],
+          passHatK: [{ k: 1, value: 0 }],
           passingTrials: 0,
           totalTrials: 1,
         },
@@ -881,8 +961,9 @@ describe('MdReporter — per-scenario sections', () => {
       ],
       aggregated: {
         'eval-x': {
-          passAtK: true,
-          passToTheK: false,
+          passAt1: 0.33,
+          passAtK: [{ k: 1, value: 0.33 }, { k: 2, value: 0.56 }],
+          passHatK: [{ k: 1, value: 0.33 }, { k: 2, value: 0.0 }],
           passingTrials: 1,
           totalTrials: 3,
         },
@@ -915,8 +996,9 @@ describe('MdReporter — failure/error counts', () => {
       ],
       aggregated: {
         'eval-a': {
-          passAtK: false,
-          passToTheK: false,
+          passAt1: 0,
+          passAtK: [{ k: 1, value: 0 }],
+          passHatK: [{ k: 1, value: 0 }],
           passingTrials: 0,
           totalTrials: 1,
         },
@@ -941,8 +1023,9 @@ describe('MdReporter — failure/error counts', () => {
       ],
       aggregated: {
         'eval-a': {
-          passAtK: false,
-          passToTheK: false,
+          passAt1: 0,
+          passAtK: [{ k: 1, value: 0 }],
+          passHatK: [{ k: 1, value: 0 }],
           passingTrials: 0,
           totalTrials: 1,
         },
@@ -967,8 +1050,9 @@ describe('MdReporter — failure/error counts', () => {
       ],
       aggregated: {
         'eval-a': {
-          passAtK: false,
-          passToTheK: false,
+          passAt1: 0,
+          passAtK: [{ k: 1, value: 0 }],
+          passHatK: [{ k: 1, value: 0 }],
           passingTrials: 0,
           totalTrials: 1,
         },
@@ -993,8 +1077,9 @@ describe('MdReporter — failure/error counts', () => {
       ],
       aggregated: {
         'eval-a': {
-          passAtK: true,
-          passToTheK: true,
+          passAt1: 1.0,
+          passAtK: [{ k: 1, value: 1.0 }],
+          passHatK: [{ k: 1, value: 1.0 }],
           passingTrials: 1,
           totalTrials: 1,
         },
@@ -1014,8 +1099,9 @@ describe('MdReporter — failure/error counts', () => {
       ],
       aggregated: {
         'eval-a': {
-          passAtK: true,
-          passToTheK: true,
+          passAt1: 1.0,
+          passAtK: [{ k: 1, value: 1.0 }],
+          passHatK: [{ k: 1, value: 1.0 }],
           passingTrials: 1,
           totalTrials: 1,
         },
@@ -1041,8 +1127,9 @@ describe('MdReporter — failure/error counts', () => {
       ],
       aggregated: {
         'eval-a': {
-          passAtK: true,
-          passToTheK: true,
+          passAt1: 1.0,
+          passAtK: [{ k: 1, value: 1.0 }],
+          passHatK: [{ k: 1, value: 1.0 }],
           passingTrials: 1,
           totalTrials: 1,
         },
@@ -1062,8 +1149,9 @@ describe('MdReporter — failure/error counts', () => {
       ],
       aggregated: {
         'eval-a': {
-          passAtK: true,
-          passToTheK: true,
+          passAt1: 1.0,
+          passAtK: [{ k: 1, value: 1.0 }],
+          passHatK: [{ k: 1, value: 1.0 }],
           passingTrials: 1,
           totalTrials: 1,
         },
@@ -1094,8 +1182,9 @@ describe('MdReporter — failure/error counts', () => {
       ],
       aggregated: {
         'eval-a': {
-          passAtK: false,
-          passToTheK: false,
+          passAt1: 0,
+          passAtK: [{ k: 1, value: 0 }],
+          passHatK: [{ k: 1, value: 0 }],
           passingTrials: 0,
           totalTrials: 2,
         },
@@ -1115,7 +1204,7 @@ describe('MdReporter — score-mode pass@k rendering', () => {
     mockWriteFile.mockResolvedValue(undefined);
   });
 
-  it('renders — in pass@k and pass^k columns when passAtK is absent', () => {
+  it('renders — in pass@1, pass@k and pass^k columns when estimators are absent', () => {
     const scoreModeResult: ScenarioResult = {
       scenarioName: 'latency-check',
       stabilityLevel: 'medium',
@@ -1136,19 +1225,46 @@ describe('MdReporter — score-mode pass@k rendering', () => {
     const lines = content.split('\n');
     const latencyRow = lines.find((l) =>
       l.startsWith('| latency-check | latency |'));
-    expect(latencyRow).toContain('| — | — |');
+    expect(latencyRow).toContain('| — | — | — |');
   });
 
-  it('still renders pass/fail for pass-rate evaluator with defined passAtK', () => {
+  it('renders numeric vectors for pass-rate evaluator with defined passAtK', () => {
     const reporter = new MdReporter();
     const content = reporter.render('run-001', [BASELINED_RESULT]);
     const lines = content.split('\n');
     const bugRow = lines.find((l) =>
       l.startsWith('| build-landing-page | bug-hit-rate |'));
-    expect(bugRow).toContain('| pass | pass |');
+    expect(bugRow).toContain('| 1:1.00; 2:1.00 | 1:1.00; 2:1.00 |');
   });
 
-  it('renders — for passAtK: undefined even when regressionMode is absent', () => {
+  it('renders Pass Rate from baselinePassingTrials when passAt1 is undefined (TOST path)', () => {
+    const tostResult: ScenarioResult = {
+      scenarioName: 'tost-scenario',
+      stabilityLevel: 'medium',
+      trials: [
+        makeTrial(0, [makeEvalResult('latency', 'observed', 0.5)]),
+        makeTrial(1, [makeEvalResult('latency', 'observed', 0.4)]),
+        makeTrial(2, [makeEvalResult('latency', 'observed', 0.6)]),
+      ],
+      aggregated: {
+        'latency': {
+          passingTrials: 0,
+          totalTrials: 3,
+          aggregateScore: 0.5,
+          regressionMode: 'score',
+          baselinePassingTrials: 3,
+        },
+      },
+    };
+    const reporter = new MdReporter();
+    const content = reporter.render('run-001', [tostResult]);
+    const lines = content.split('\n');
+    const row = lines.find((l) =>
+      l.startsWith('| tost-scenario | latency |'));
+    expect(row).toContain('| 3/3 (100%) |');
+  });
+
+  it('renders — for all estimators when they are undefined and regressionMode is absent', () => {
     const noModeResult: ScenarioResult = {
       scenarioName: 'no-mode',
       stabilityLevel: 'medium',
@@ -1167,7 +1283,7 @@ describe('MdReporter — score-mode pass@k rendering', () => {
     const lines = content.split('\n');
     const row = lines.find((l) =>
       l.startsWith('| no-mode | my-eval |'));
-    expect(row).toContain('| — | — |');
+    expect(row).toContain('| — | — | — |');
   });
 });
 
@@ -1189,8 +1305,9 @@ describe('MdReporter — formatDuration', () => {
       ],
       aggregated: {
         'eval-a': {
-          passAtK: true,
-          passToTheK: true,
+          passAt1: 1.0,
+          passAtK: [{ k: 1, value: 1.0 }],
+          passHatK: [{ k: 1, value: 1.0 }],
           passingTrials: 1,
           totalTrials: 1,
         },
@@ -1217,8 +1334,9 @@ describe('MdReporter — formatDuration', () => {
       ],
       aggregated: {
         'eval-a': {
-          passAtK: true,
-          passToTheK: true,
+          passAt1: 1.0,
+          passAtK: [{ k: 1, value: 1.0 }],
+          passHatK: [{ k: 1, value: 1.0 }],
           passingTrials: 1,
           totalTrials: 1,
         },
@@ -1287,8 +1405,9 @@ describe('MdReporter — composite breakdown', () => {
       trials: [makeTrial(0, [composite])],
       aggregated: {
         'output-quality': {
-          passAtK: true,
-          passToTheK: true,
+          passAt1: 1.0,
+          passAtK: [{ k: 1, value: 1.0 }],
+          passHatK: [{ k: 1, value: 1.0 }],
           passingTrials: 1,
           totalTrials: 1,
         },
@@ -1310,8 +1429,9 @@ describe('MdReporter — composite breakdown', () => {
       trials: [makeTrial(0, [makeEvalResult('bug-hit-rate', 'pass', 1.0)])],
       aggregated: {
         'bug-hit-rate': {
-          passAtK: true,
-          passToTheK: true,
+          passAt1: 1.0,
+          passAtK: [{ k: 1, value: 1.0 }],
+          passHatK: [{ k: 1, value: 1.0 }],
           passingTrials: 1,
           totalTrials: 1,
         },
@@ -1343,8 +1463,9 @@ describe('MdReporter — composite breakdown', () => {
       ],
       aggregated: {
         'output-quality': {
-          passAtK: true,
-          passToTheK: true,
+          passAt1: 1.0,
+          passAtK: [{ k: 1, value: 1.0 }],
+          passHatK: [{ k: 1, value: 1.0 }],
           passingTrials: 2,
           totalTrials: 2,
         },
@@ -1434,8 +1555,9 @@ const SCORE_MODE_ENRICHED_RESULT: ScenarioResult = {
   ],
   aggregated: {
     latency: {
-      passAtK: true,
-      passToTheK: false,
+      passAt1: 0.5,
+      passAtK: [{ k: 1, value: 0.5 }],
+      passHatK: [{ k: 1, value: 0.5 }],
       passingTrials: 1,
       totalTrials: 2,
       regressionMode: 'score',
@@ -1907,6 +2029,69 @@ describe('MdReporter — TOST diagnostics block', () => {
     expect(content).toContain('not proven');
   });
 
+  it('renders a Power line with achieved power, Cohen’s d, and MDE when present', () => {
+    const result = makeResultWithEvaluators('fail', [
+      makeCompared('jtbd-completion', -0.30, true, {
+        ...TOST_FAIL_META,
+        power: { cohensD: 0.25, achievedPower: 0.32, mdeScore: 0.48, targetPower: 0.8 },
+      }),
+    ]);
+    const reporter = new MdReporter();
+    const content = reporter.render('run-001', [result]);
+    expect(content).toContain('Power: 32%');
+    expect(content).toContain("Cohen's d=0.25");
+    expect(content).toContain('MDE ±0.48');
+    expect(content).toContain('target 80%');
+  });
+
+  it('tags an evaluator underpowered when achieved power < target and non-inferiority not proven', () => {
+    const result = makeResultWithEvaluators('fail', [
+      makeCompared('jtbd-completion', -0.30, true, {
+        ...TOST_FAIL_META,
+        power: { cohensD: 0.25, achievedPower: 0.32, mdeScore: 0.48, targetPower: 0.8 },
+      }),
+    ]);
+    const reporter = new MdReporter();
+    const content = reporter.render('run-001', [result]);
+    expect(content).toContain('underpowered');
+  });
+
+  it('does not tag underpowered when achieved power meets target', () => {
+    const result = makeResultWithEvaluators('fail', [
+      makeCompared('jtbd-completion', -0.30, true, {
+        ...TOST_FAIL_META,
+        power: { cohensD: 0.9, achievedPower: 0.92, mdeScore: 0.12, targetPower: 0.8 },
+      }),
+    ]);
+    const reporter = new MdReporter();
+    const content = reporter.render('run-001', [result]);
+    expect(content).toContain('Power: 92%');
+    expect(content).not.toContain('underpowered');
+  });
+
+  it('omits the Power line when statistical metadata has no power field', () => {
+    const result = makeResultWithEvaluators('fail', [
+      makeCompared('jtbd-completion', -0.30, true, TOST_FAIL_META),
+    ]);
+    const reporter = new MdReporter();
+    const content = reporter.render('run-001', [result]);
+    expect(content).toContain('TOST Diagnostics');
+    expect(content).not.toContain('Power:');
+  });
+
+  it('renders MDE as ∞ rather than "Infinity" when mdeScore is non-finite', () => {
+    const result = makeResultWithEvaluators('fail', [
+      makeCompared('jtbd-completion', -0.30, true, {
+        ...TOST_FAIL_META,
+        power: { cohensD: 0, achievedPower: 0, mdeScore: Infinity, targetPower: 0.8 },
+      }),
+    ]);
+    const reporter = new MdReporter();
+    const content = reporter.render('run-001', [result]);
+    expect(content).toContain('MDE ±∞');
+    expect(content).not.toContain('Infinity');
+  });
+
   it('renders margin=0 (uniform-match case) as 0.00', () => {
     const result = makeResultWithEvaluators('pass', [
       makeCompared('jtbd-completion', 0.0, false, {
@@ -2006,5 +2191,248 @@ describe('MdReporter — gate summary and diagnostics integration', () => {
     const content = reporter.render('run-001', [NO_BASELINE_RESULT]);
     expect(content).not.toContain('Regression gate');
     expect(content).not.toContain('TOST Diagnostics');
+  });
+});
+
+// ── Numeric pass-estimator rendering (seam: producer → reporter) ──────────────
+
+const NUMERIC_ESTIMATOR_RESULT: ScenarioResult = {
+  scenarioName: 'numeric-estimators',
+  stabilityLevel: 'medium',
+  trials: [
+    makeTrial(0, [makeEvalResult('jtbd-completion', 'pass')]),
+    makeTrial(1, [makeEvalResult('jtbd-completion', 'pass')]),
+    makeTrial(2, [makeEvalResult('jtbd-completion', 'fail', 0)]),
+    makeTrial(3, [makeEvalResult('jtbd-completion', 'pass')]),
+    makeTrial(4, [makeEvalResult('jtbd-completion', 'fail', 0)]),
+  ],
+  aggregated: {
+    'jtbd-completion': {
+      passAt1: 0.6,
+      passAtK: [{ k: 1, value: 0.6 }, { k: 2, value: 0.9 }, { k: 3, value: 0.97 }],
+      passHatK: [{ k: 1, value: 0.6 }, { k: 2, value: 0.3 }, { k: 3, value: 0.1 }],
+      passingTrials: 3,
+      totalTrials: 5,
+    },
+  },
+};
+
+describe('MdReporter — numeric pass-estimator rendering', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockMkdir.mockResolvedValue(undefined);
+    mockWriteFile.mockResolvedValue(undefined);
+  });
+
+  it('uses pass@1 / pass@k / pass^k column headers, not a boolean pass column', () => {
+    const reporter = new MdReporter();
+    const content = reporter.render('run-001', [NUMERIC_ESTIMATOR_RESULT]);
+    expect(content).toContain('| Scenario | Evaluator | pass@1 | pass@k | pass^k | Pass Rate |');
+    expect(content).toContain(
+      '| Evaluator | pass@1 | pass@k | pass^k | Pass Rate | Mean | Range |',
+    );
+  });
+
+  it('renders numeric pass@1 in the category matrix', () => {
+    const reporter = new MdReporter();
+    const content = reporter.render('run-001', [NUMERIC_ESTIMATOR_RESULT]);
+    const matrixRow = content
+      .split('\n')
+      .find((l) => l.startsWith('| numeric-estimators | jtbd-completion |'));
+    expect(matrixRow).toBeDefined();
+    expect(matrixRow).toContain('| 0.60 |');
+  });
+
+  it('renders pass@k and pass^k as semicolon-separated k:value vectors', () => {
+    const reporter = new MdReporter();
+    const content = reporter.render('run-001', [NUMERIC_ESTIMATOR_RESULT]);
+    expect(content).toContain('1:0.60; 2:0.90; 3:0.97');
+    expect(content).toContain('1:0.60; 2:0.30; 3:0.10');
+  });
+
+  it('renders no standalone ✓/✗ pass-indicator cell', () => {
+    const reporter = new MdReporter();
+    const content = reporter.render('run-001', [NUMERIC_ESTIMATOR_RESULT]);
+    const matrixRow = content
+      .split('\n')
+      .find((l) => l.startsWith('| numeric-estimators | jtbd-completion |'));
+    expect(matrixRow).toBeDefined();
+    expect(matrixRow).not.toContain('✓');
+    expect(matrixRow).not.toContain('✗');
+  });
+
+  it('renders — for undefined estimators (score-mode without enrichment)', () => {
+    const scoreModeResult: ScenarioResult = {
+      scenarioName: 'latency-check',
+      stabilityLevel: 'medium',
+      trials: [makeTrial(0, [makeEvalResult('latency', 'observed', 0.75)])],
+      aggregated: {
+        latency: {
+          passingTrials: 0,
+          totalTrials: 1,
+          aggregateScore: 0.75,
+          regressionMode: 'score',
+        },
+      },
+    };
+    const reporter = new MdReporter();
+    const content = reporter.render('run-001', [scoreModeResult]);
+    const matrixRow = content
+      .split('\n')
+      .find((l) => l.startsWith('| latency-check | latency |'));
+    expect(matrixRow).toBeDefined();
+    expect(matrixRow).toContain('| — | — | — |');
+  });
+});
+
+// ── Pass-rate comparison (main vs our-change) — 1d ─────────────────────────────
+
+describe('MdReporter — pass-rate comparison (main vs our-change)', () => {
+  // Slice out just the comparison section (up to the next ## heading) so later
+  // sections that mention evaluator names don't pollute the assertions.
+  function passRateSection(content: string): string {
+    const start = content.indexOf('## Pass-Rate Comparison');
+    if (start === -1) return '';
+    const rest = content.slice(start + 3);
+    const end = rest.indexOf('\n## ');
+    return end === -1 ? content.slice(start) : content.slice(start, start + 3 + end);
+  }
+
+  it('renders a side-by-side row with main, our-change, and delta', () => {
+    // makeCompared sets currentScore 0.8, baselineScore = 0.8 - delta.
+    // delta +0.20 → our-change 80%, main 60%, Δ +20pp.
+    const result = makeResultWithEvaluators('pass', [
+      makeCompared('jtbd-completion', 0.20, false),
+    ]);
+    const content = new MdReporter().render('run-001', [result]);
+
+    expect(content).toContain('Pass-Rate Comparison: main vs our-change');
+    expect(content).toContain('| Scenario | Evaluator | main | our-change | Δ | Gate |');
+    expect(content).toContain('build-landing-page');
+    expect(content).toContain('jtbd-completion');
+    expect(content).toContain('60%'); // main (baseline)
+    expect(content).toContain('80%'); // our-change (current)
+    expect(content).toContain('+20pp');
+    expect(content).toContain('✓ pass');
+  });
+
+  it('flags a regression row and surfaces the fail gate', () => {
+    // delta -0.20 → our-change 80%, main 100% (a real, in-range pass rate); the
+    // regression marker and fail gate are the load-bearing assertions.
+    const result = makeResultWithEvaluators('fail', [
+      makeCompared('jtbd-completion', -0.20, true),
+    ]);
+    const content = new MdReporter().render('run-001', [result]);
+    expect(content).toContain('⚠️ -20pp');
+    expect(content).toContain('✗ fail');
+  });
+
+  it('omits skipped evaluators from the comparison table', () => {
+    const result = makeResultWithEvaluators('pass', [
+      makeCompared('jtbd-completion', 0.10, false),
+      makeSkipped('bug-hit-rate', 'evaluator-version-mismatch'),
+    ]);
+    const section = passRateSection(new MdReporter().render('run-001', [result]));
+    expect(section).toContain('jtbd-completion');
+    // bug-hit-rate was skipped → no comparison row for it
+    expect(section).not.toMatch(/\| build-landing-page \| bug-hit-rate \|/);
+  });
+
+  it('excludes score-mode evaluators (aggregate score, not a pass rate)', () => {
+    // Mark jtbd-completion score-mode in the aggregated map; its compared
+    // result must be omitted from the pass-rate table and counted in a note.
+    const base = makeResultWithEvaluators('pass', [
+      makeCompared('bug-hit-rate', 0.10, false),
+      makeCompared('jtbd-completion', 0.20, false),
+    ]);
+    const result: ScenarioResult = {
+      ...base,
+      aggregated: {
+        'bug-hit-rate': base.aggregated['bug-hit-rate'],
+        'jtbd-completion': {
+          ...base.aggregated['jtbd-completion'],
+          regressionMode: 'score',
+        },
+      },
+    };
+    const section = passRateSection(new MdReporter().render('run-001', [result]));
+    expect(section).toMatch(/\| build-landing-page \| bug-hit-rate \|/);
+    expect(section).not.toMatch(/\| build-landing-page \| jtbd-completion \|/);
+    expect(section).toContain('score-mode evaluator');
+  });
+
+  it('excludes evaluators with no main-baseline data (NaN baseline) instead of showing a green pass', () => {
+    // A newly-added evaluator the main baseline predates: comparator returns a
+    // type:'compared' result with baselineScore/delta = NaN, exceeded=false.
+    // It must NOT render as "— | 80% | — | ✓ pass" (untraced green evidence).
+    const noBaselineData: RegressionEvalResult = {
+      type: 'compared',
+      evaluator: 'skill-selection',
+      currentScore: 0.8,
+      baselineScore: NaN,
+      delta: NaN,
+      exceeded: false,
+    };
+    const result = makeResultWithEvaluators('pass', [
+      makeCompared('bug-hit-rate', 0.10, false),
+      noBaselineData,
+    ]);
+    const section = passRateSection(new MdReporter().render('run-001', [result]));
+    expect(section).toMatch(/\| build-landing-page \| bug-hit-rate \|/);
+    // skill-selection has no baseline → excluded from the table, footnoted
+    expect(section).not.toMatch(/\| build-landing-page \| skill-selection \|/);
+    expect(section).toContain('main baseline has no data');
+  });
+
+  it('omits the comparison section entirely when no scenario was gated', () => {
+    const content = new MdReporter().render('run-001', [NO_BASELINE_RESULT]);
+    // No gated scenario → renderPassRateComparison isn't invoked, so the
+    // section header is never emitted (distinct from the empty-state note,
+    // which only appears when there ARE gated scenarios but no comparable rows).
+    expect(content).not.toContain('Pass-Rate Comparison: main vs our-change');
+  });
+
+  it('renders the empty-state note (score-mode why) when every gated evaluator is score-mode', () => {
+    // A gated scenario whose only compared evaluator is score-mode: the header
+    // IS emitted (scenario is gated), but there are no rows → empty-state note.
+    const base = makeResultWithEvaluators('pass', [
+      makeCompared('token-usage', 0.20, false),
+    ]);
+    const result: ScenarioResult = {
+      ...base,
+      aggregated: {
+        'token-usage': { ...base.aggregated['jtbd-completion'], regressionMode: 'score' },
+      },
+    };
+    const section = passRateSection(new MdReporter().render('run-001', [result]));
+    expect(section).toContain('Pass-Rate Comparison: main vs our-change');
+    expect(section).toContain('No pass-rate rows to compare');
+    expect(section).toContain('score-mode');
+    // The exact excluded count is preserved in the empty-state via the footnote.
+    expect(section).toContain('1 score-mode evaluator');
+  });
+
+  it('renders the empty-state note (no-baseline why) when every gated evaluator lacks baseline data', () => {
+    const noBaselineData: RegressionEvalResult = {
+      type: 'compared',
+      evaluator: 'skill-selection',
+      currentScore: 0.8,
+      baselineScore: NaN,
+      delta: NaN,
+      exceeded: false,
+    };
+    const result = makeResultWithEvaluators('warning', [noBaselineData]);
+    const section = passRateSection(new MdReporter().render('run-001', [result]));
+    expect(section).toContain('No pass-rate rows to compare');
+    expect(section).toContain('re-capture the main baseline');
+    expect(section).toContain('1 evaluator(s) are omitted');
+  });
+
+  it('renders the warning gate icon on a comparison row', () => {
+    const result = makeResultWithEvaluators('warning', [
+      makeCompared('jtbd-completion', 0.10, false),
+    ]);
+    const section = passRateSection(new MdReporter().render('run-001', [result]));
+    expect(section).toContain('⚠️ warning');
   });
 });

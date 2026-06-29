@@ -2,6 +2,7 @@ import type { Transcript } from './transcript.js';
 import type { EvalResult } from '../evaluators/evaluator.js';
 import type { StabilityLevel } from '../scenarios/types.js';
 import type { RegressionResult } from '../baselines/types.js';
+import type { PassEstimatorEntry } from '../util/pass-at-k.js';
 
 export type DiagnosticLogFn = (
   msg: string,
@@ -16,23 +17,23 @@ export interface TrialResult {
 
 export interface AggregatedResult {
   /**
-   * At least one trial passed. For pass-rate evaluators this is always present.
-   * For score-mode evaluators (`regressionMode === 'score'`): present when a
-   * baseline exists; absent when no baseline is available. Populated by one of:
-   * - TOST path: set to the distribution-level nonInferiority result (all-or-nothing).
-   * - Threshold fallback: derived from per-trial comparison against the baseline
-   *   aggregate score (true when at least one trial falls within threshold).
+   * Headline unbiased pass@1 estimate (`c / n`). For pass-rate evaluators this
+   * is always present. For score-mode evaluators (`regressionMode === 'score'`):
+   * present only after baseline enrichment derives per-trial pass/fail; absent
+   * when no baseline is available.
    */
-  passAtK?: boolean;
+  passAt1?: number;
   /**
-   * All trials passed. For pass-rate evaluators this is always present.
-   * For score-mode evaluators (`regressionMode === 'score'`): present when a
-   * baseline exists; absent when no baseline is available. Populated by one of:
-   * - TOST path: set to the distribution-level nonInferiority result (all-or-nothing).
-   * - Threshold fallback: derived from per-trial comparison against the baseline
-   *   aggregate score (true when every trial falls within threshold).
+   * Unbiased `pass@k` (probability at least one of `k` draws passes), one entry
+   * per reporting `k`. Same population semantics as {@link passAt1}: present for
+   * pass-rate evaluators, and for score-mode evaluators only after enrichment.
    */
-  passToTheK?: boolean;
+  passAtK?: PassEstimatorEntry[];
+  /**
+   * Unbiased `pass^k` (probability all `k` draws pass; reliability), one entry
+   * per reporting `k`. Same population semantics as {@link passAt1}.
+   */
+  passHatK?: PassEstimatorEntry[];
   /**
    * Count of trials that passed based on their own verdict (verdict === 'pass').
    */

@@ -2265,6 +2265,14 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
             data: data as Record<string, unknown>,
             agentName: (data as Record<string, unknown>)?.agentName as string ?? '',
           })
+        } else if (type === 'skill_diagnostics' && process.env.SKILL_DIAGNOSTICS === 'true') {
+          this.publishNonTerminal(appId, conversationId, {
+            conversationId,
+            type: 'skill_diagnostics',
+            content: '',
+            data: data as Record<string, unknown>,
+            agentName: '',
+          })
         }
       },
     }

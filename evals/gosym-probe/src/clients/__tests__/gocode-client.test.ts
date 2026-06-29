@@ -207,6 +207,44 @@ describe('GocodeClient', () => {
         }),
       );
     });
+
+    it('forwards temperature and seed into the request body when provided', async () => {
+      mockCreate.mockResolvedValue({
+        choices: [{ message: { content: 'ok' } }],
+      });
+
+      await client.complete(messages, { temperature: 0, seed: 42 });
+
+      expect(mockCreate).toHaveBeenCalledWith(
+        expect.objectContaining({ temperature: 0, seed: 42 }),
+      );
+    });
+
+    it('omits temperature and seed from the request body when not provided', async () => {
+      mockCreate.mockResolvedValue({
+        choices: [{ message: { content: 'ok' } }],
+      });
+
+      await client.complete(messages);
+
+      const body = mockCreate.mock.calls[0]![0] as Record<string, unknown>;
+      expect(body).not.toHaveProperty('temperature');
+      expect(body).not.toHaveProperty('seed');
+    });
+
+    it('forwards temperature alongside the abort signal options object', async () => {
+      const controller = new AbortController();
+      mockCreate.mockResolvedValue({
+        choices: [{ message: { content: 'ok' } }],
+      });
+
+      await client.complete(messages, { temperature: 0, signal: controller.signal });
+
+      expect(mockCreate).toHaveBeenCalledWith(
+        expect.objectContaining({ temperature: 0 }),
+        { signal: controller.signal },
+      );
+    });
   });
 
   describe('usage accumulation', () => {

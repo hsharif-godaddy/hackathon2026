@@ -7,6 +7,8 @@ import type {
   AggregatedResult,
 } from './types.js';
 import { trimmedMean } from '../util/trimmed-mean.js';
+import { buildPassEstimators, DEFAULT_REPORTING_KS } from '../util/pass-at-k.js';
+import type { StatisticalRegressionConfig } from '../../config/environments/types.js';
 
 type EvalData = {
   verdicts: EvalResult['verdict'][];
@@ -17,6 +19,8 @@ type EvalData = {
 };
 
 export class TrialAggregator {
+  constructor(private readonly regression?: StatisticalRegressionConfig) {}
+
   aggregate(scenario: Scenario, trials: TrialResult[]): ScenarioResult {
     const modeMap = new Map<string, 'passRate' | 'score'>(
       scenario.evaluators.map((e) => [
@@ -73,11 +77,12 @@ export class TrialAggregator {
         );
       }
 
+      const reportingKs = this.regression?.reportingKOverrides?.[name]
+        ?? this.regression?.reportingK
+        ?? DEFAULT_REPORTING_KS;
+
       aggregated[name] = {
-        ...(mode !== 'score' && {
-          passAtK: passingTrials > 0,
-          passToTheK: totalTrials > 0 && passingTrials === totalTrials,
-        }),
+        ...(mode !== 'score' && buildPassEstimators(totalTrials, passingTrials, reportingKs)),
         passingTrials,
         totalTrials,
         ...(failedCount > 0 && { failedTrials: failedCount }),

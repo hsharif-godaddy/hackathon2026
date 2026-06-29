@@ -392,3 +392,172 @@ export function tostPermutation(
   };
 }
 
+// ── Power analysis ──────────────────────────────────────────────────────────
+//
+// TOST answers "did the metric move?" (significance). Power answers the
+// complement: "if it had moved, would n trials have let us see it?" Without
+// this, a TOST that fails to prove non-inferiority is ambiguous — a real
+// regression and an underpowered run (too few trials at high σ) look identical.
+// Reporting achieved power + the minimum detectable effect lets a borderline
+// result read "underpowered", not "regressed".
+//
+// Ported from claude-benchmark's analysis/power.py (Cohen's d → achieved power
+// at alpha → MDE at target power). The Python version leans on statsmodels'
+// t-distribution power; here we use the normal approximation, consistent with
+// the normal-approx CIs already used above (normCDF/normInvCDF). The error vs
+// the exact non-central-t power is small at the n we run (5–20) and never
+// changes the underpowered/well-powered call near the 0.8 threshold.
+
+/** Sample variance (ddof=1). Returns 0 for fewer than two values. */
+function sampleVariance(values: readonly number[]): number {
+  if (values.length < 2) return 0;
+  const mean = values.reduce((s, x) => s + x, 0) / values.length;
+  return (
+    values.reduce((s, x) => s + (x - mean) ** 2, 0) / (values.length - 1)
+  );
+}
+
+/**
+ * Pooled sample SD (ddof=1) across two arms — the shared denominator for
+ * Cohen's d and the raw-unit MDE. Returns 0 when either arm has fewer than
+ * two values (no variance estimate) so callers can guard division by zero.
+ */
+function pooledSampleSD(a: readonly number[], b: readonly number[]): number {
+  const na = a.length;
+  const nb = b.length;
+  if (na < 2 || nb < 2) return 0;
+  const varA = sampleVariance(a);
+  const varB = sampleVariance(b);
+  return Math.sqrt(((na - 1) * varA + (nb - 1) * varB) / (na + nb - 2));
+}
+
+export interface PowerOpts {
+  /** Significance level, e.g. 0.05. */
+  alpha: number;
+  /** Power we size for when reporting the MDE. Default 0.8. */
+  targetPower?: number;
+  /**
+   * When true, a score increase is a regression: cohensD is oriented so a
+   * regression always reads negative, matching the higher-is-better default.
+   */
+  lowerIsBetter?: boolean;
+}
+
+export interface PowerResult {
+  /**
+   * Standardized effect size. Oriented so a regression is negative: for
+   * higher-is-better metrics this is `(mean_current - mean_baseline) / pooledSD`;
+   * for lower-is-better metrics that raw sign is flipped.
+   */
+  cohensD: number;
+  /** Pooled sample SD across both arms (the d denominator). */
+  pooledSD: number;
+  /** Probability this design would detect the observed effect at alpha. */
+  achievedPower: number;
+  /** The power we sized the MDE for. */
+  targetPower: number;
+  /** Smallest standardized effect detectable at targetPower with this n. */
+  mdeD: number;
+  /** mdeD expressed in raw score units (mdeD * pooledSD). */
+  mdeScore: number;
+  /** Trial count per arm. */
+  n: { baseline: number; current: number };
+}
+
+/**
+ * Two-sample pooled-SD Cohen's d. Returns 0 when the pooled SD is 0
+ * (degenerate: both arms constant) so callers never divide by zero.
+ */
+export function cohensD(
+  baselineScores: readonly number[],
+  currentScores: readonly number[],
+): number {
+  const nb = baselineScores.length;
+  const nc = currentScores.length;
+  if (nb < 2 || nc < 2) return 0;
+  const meanB = baselineScores.reduce((s, x) => s + x, 0) / nb;
+  const meanC = currentScores.reduce((s, x) => s + x, 0) / nc;
+  const pooledSD = pooledSampleSD(baselineScores, currentScores);
+  if (pooledSD === 0) return 0;
+  return (meanC - meanB) / pooledSD;
+}
+
+/**
+ * Achieved power of a two-sample test for a standardized effect `d` at `n`
+ * observations per arm and significance `alpha` (two-sided), via the normal
+ * approximation:
+ *   ncp = |d| * sqrt(n / 2)
+ *   power = 1 - Phi(z_{1-alpha/2} - ncp) + Phi(-z_{1-alpha/2} - ncp)
+ * The second term (left-tail rejection) is negligible for d != 0 but kept for
+ * exactness at d = 0, where it correctly returns ~alpha.
+ */
+export function achievedPower(d: number, n: number, alpha: number): number {
+  if (n < 2) return 0;
+  const zCrit = normInvCDF(1 - alpha / 2);
+  const ncp = Math.abs(d) * Math.sqrt(n / 2);
+  const power = 1 - normCDF(zCrit - ncp) + normCDF(-zCrit - ncp);
+  // The closed form is bounded in (0,1); clamp to absorb erf/inverse-CDF
+  // approximation error so the contract is exact for downstream comparisons.
+  return Math.min(1, Math.max(0, power));
+}
+
+/**
+ * Minimum detectable standardized effect for a two-sample test at `n`
+ * observations per arm, significance `alpha`, and `targetPower`, inverting
+ * the normal-approximation power function:
+ *   mdeD = (z_{1-alpha/2} + z_{targetPower}) * sqrt(2 / n)
+ *
+ * Returns Infinity (no resolvable effect) for n < 2 or a `targetPower` outside
+ * the open interval (0, 1) — at the 0/1 bounds or NaN, `normInvCDF` would
+ * otherwise yield ±Infinity/NaN. The MDE is report-only, so an out-of-range
+ * config knob degrades to a `±∞` display rather than throwing.
+ */
+export function minDetectableEffect(
+  n: number,
+  alpha: number,
+  targetPower: number = 0.8,
+): number {
+  if (n < 2) return Infinity;
+  if (!(targetPower > 0 && targetPower < 1)) return Infinity;
+  const zAlpha = normInvCDF(1 - alpha / 2);
+  const zPower = normInvCDF(targetPower);
+  return (zAlpha + zPower) * Math.sqrt(2 / n);
+}
+
+/**
+ * Full power summary for a baseline-vs-current contrast: the observed effect
+ * size, the probability this design could detect it, and the smallest effect
+ * the design could detect at targetPower (in both standardized and raw units).
+ *
+ * Uses the smaller arm's n for the power/MDE so the reported power is not
+ * optimistic when arms are unbalanced. For lowerIsBetter metrics the effect
+ * sign is flipped so a regression always reads as a negative cohensD.
+ */
+export function computePower(
+  baselineScores: readonly number[],
+  currentScores: readonly number[],
+  opts: PowerOpts,
+): PowerResult {
+  const { alpha, targetPower = 0.8, lowerIsBetter = false } = opts;
+  const nb = baselineScores.length;
+  const nc = currentScores.length;
+  const rawD = cohensD(baselineScores, currentScores);
+  const d = lowerIsBetter ? -rawD : rawD;
+
+  const pooledSD = pooledSampleSD(baselineScores, currentScores);
+
+  const nEff = Math.min(nb, nc);
+  const power = achievedPower(d, nEff, alpha);
+  const mdeD = minDetectableEffect(nEff, alpha, targetPower);
+  const mdeScore = Number.isFinite(mdeD) ? mdeD * pooledSD : Infinity;
+
+  return {
+    cohensD: d,
+    pooledSD,
+    achievedPower: power,
+    targetPower,
+    mdeD,
+    mdeScore,
+    n: { baseline: nb, current: nc },
+  };
+}

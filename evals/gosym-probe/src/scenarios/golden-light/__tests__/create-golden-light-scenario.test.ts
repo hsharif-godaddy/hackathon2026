@@ -191,6 +191,26 @@ describe('createGoldenLightScenario', () => {
         ctrlPlane,
       )).toThrow(RangeError);
     });
+
+    it('throws when both scriptedTurns and staticFirstMessage are set', () => {
+      expect(() => createGoldenLightScenario(
+        {
+          ...makeBaseConfig(),
+          scriptedTurns: ['build it'],
+          staticFirstMessage: 'build it',
+        },
+        gocode,
+        ctrlPlane,
+      )).toThrow(/supersedes staticFirstMessage/);
+    });
+
+    it('allows scriptedTurns alone (no staticFirstMessage)', () => {
+      expect(() => createGoldenLightScenario(
+        { ...makeBaseConfig(), scriptedTurns: ['build it'] },
+        gocode,
+        ctrlPlane,
+      )).not.toThrow();
+    });
   });
 
   it('leaves staticFirstMessage undefined when not provided in config', () => {

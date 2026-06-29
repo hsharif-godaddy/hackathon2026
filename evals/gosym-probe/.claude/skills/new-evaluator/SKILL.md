@@ -122,7 +122,7 @@ Create `src/evaluators/<evaluator-name>.ts`.
   (no constructor) or `src/evaluators/turn-duration.ts` (constructor
   options object) depending on whether the threshold is configurable.
 - **LLM-based pattern**: follow `src/evaluators/jtbd-completion.ts`
-  (categorical) or `src/evaluators/llm-json-evaluator.ts` (continuous
+  (categorical) or `src/evaluators/llm-judge-evaluator.ts` (continuous
   scoring via Zod-validated JSON response).
 
 Key rules: `.js` extensions on local imports, 80-char wrap, prefix

@@ -14,6 +14,18 @@ export interface ToolCall {
   agentId?: string;
 }
 
+/** Token/cost totals attributed to a single assistant turn. */
+export interface TurnTokens {
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  cachedInputTokensRead: number;
+  cachedInputTokensWrite: number;
+  totalCost: number;
+  /** Number of token_usage_summary events folded into this turn. */
+  eventCount: number;
+}
+
 export interface Turn {
   role: 'user' | 'assistant';
   content: string;
@@ -21,6 +33,20 @@ export interface Turn {
   timestamp: number;
   totalSteps?: number;
   durationMs?: number;
+  /**
+   * Per-turn token/cost totals, summed from the token_usage_summary events
+   * (one per agent message-execution) that arrived while this turn was the
+   * in-flight assistant turn. Present only when the AAB agent runs with
+   * `SOCKET_DIAGNOSTICS=true`: the sole emission site
+   * (agents MessageExecutionService) wraps token_usage_summary in that flag,
+   * so with the flag off no events arrive
+   * and this field stays absent. Lets a multi-turn trial isolate one turn's
+   * cost (e.g. an increment turn vs a prior build turn). Also absent on legacy
+   * transcripts and for clients that never emit token events. A variance run
+   * that needs per-turn cost MUST set `SOCKET_DIAGNOSTICS=true`, or every
+   * turn.tokens is silently empty.
+   */
+  tokens?: TurnTokens;
 }
 
 export interface Transcript {
@@ -39,6 +65,14 @@ export interface Transcript {
   captureDiagnostics?: CaptureDiagnostics[];
   /** Number of retries before the trial succeeded (0 means first attempt). */
   retryCount?: number;
+  /** Skills loaded at any point during the run (loads win over later
+   * unloads — deriveLoadedSkills returns the union of everything ever
+   * loaded), as reported by the agents-service `skill_diagnostics` socket
+   * event (emitted only when SKILL_DIAGNOSTICS=true). Optional so existing
+   * fixtures and baselines remain valid, and absent when instrumentation is
+   * off — skill-selection treats absence as an 'unknown' skill-load verdict
+   * rather than a pass/fail. */
+  loadedSkills?: string[];
 }
 
 export class TranscriptBuilder {
@@ -48,6 +82,7 @@ export class TranscriptBuilder {
   private readonly _captureErrors: string[] = [];
   private readonly _captureDiagnostics: CaptureDiagnostics[] = [];
   private _capturedSite: CapturedSite | undefined;
+  private _loadedSkills: string[] | undefined;
 
   constructor(
     private readonly scenarioName: string,
@@ -78,6 +113,13 @@ export class TranscriptBuilder {
     this._captureDiagnostics.push(diagnostics);
   }
 
+  /** Record the skills active in the agent, as reported by the
+   * agents-service `skill_diagnostics` event. No-op consumers (instrumentation
+   * off) simply never call this, leaving loadedSkills absent. */
+  setLoadedSkills(skills: string[]): void {
+    this._loadedSkills = [...skills];
+  }
+
   /** True when any agent error recorded so far looks like a rate-limit (429). */
   hasRateLimitError(): boolean {
     return this._errors.some((e) => /429|rate limit/i.test(e));
@@ -96,6 +138,9 @@ export class TranscriptBuilder {
       captureErrors: [...this._captureErrors],
       ...(this._captureDiagnostics.length > 0 && {
         captureDiagnostics: [...this._captureDiagnostics],
+      }),
+      ...(this._loadedSkills !== undefined && {
+        loadedSkills: [...this._loadedSkills],
       }),
     };
   }

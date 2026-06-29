@@ -1,11 +1,24 @@
 import type { StabilityLevel } from '../scenarios/types.js';
-import type { TOSTMethod } from './statistical-tests.js';
+import type { PowerResult, TOSTMethod } from './statistical-tests.js';
+import type { PassEstimatorEntry } from '../util/pass-at-k.js';
 
+/**
+ * NOTE on legacy on-disk baselines: committed baseline JSON files saved before
+ * the numeric estimator migration carry `passAtK`/`passToTheK` as booleans
+ * ("at least one passed" / "all passed"), NOT the typed shapes below. No load
+ * path dereferences these loaded estimator fields (gating reads only
+ * `passingTrials`/`totalTrials`/`aggregateScore`/`trialScores`/`evalVersion`),
+ * so the mismatch is inert. Any FUTURE consumer that reads a loaded baseline's
+ * `passAt1`/`passAtK`/`passHatK` MUST treat legacy values as untyped and
+ * normalize them, or regenerate the affected baselines first.
+ */
 export interface BaselineEvalScores {
-  /** Absent when regressionMode === 'score'. */
-  passAtK?: boolean;
-  /** Absent when regressionMode === 'score'. */
-  passToTheK?: boolean;
+  /** Headline unbiased pass@1 (`c / n`). Absent on legacy baselines. */
+  passAt1?: number;
+  /** Unbiased `pass@k`, one entry per reporting `k`. Absent on legacy baselines. */
+  passAtK?: PassEstimatorEntry[];
+  /** Unbiased `pass^k`, one entry per reporting `k`. Absent on legacy baselines. */
+  passHatK?: PassEstimatorEntry[];
   passingTrials: number;
   totalTrials: number;
   /** Aggregate score across trials; populated for score-mode evaluators. */
@@ -71,6 +84,21 @@ export interface StatisticalMetadata {
    * and the pass should carry a warning.
    */
   marginFloored?: boolean;
+  /**
+   * Power analysis for this contrast (report-only; does not affect the gate).
+   * Lets a TOST that fails to prove non-inferiority be read as "underpowered"
+   * (too few trials to resolve the observed effect) rather than a regression.
+   * Absent on the uniform-match path and on legacy results.
+   *
+   * A reported subset of {@link PowerResult} (drops pooledSD/mdeD/n — the arm
+   * counts are already carried on `n` above). Derived via Pick so the field
+   * types stay in lockstep with the source of truth. `mdeScore` may be
+   * Infinity when an arm has fewer than two trials.
+   */
+  power?: Pick<
+    PowerResult,
+    'cohensD' | 'achievedPower' | 'mdeScore' | 'targetPower'
+  >;
 }
 
 export interface ComparedRegressionEvalResult extends RegressionEvalResultBase {

@@ -1,6 +1,6 @@
 import { AsyncLocalStorage } from 'async_hooks';
 import { GocodeClient } from './gocode-client.js';
-import type { IGocodeClient, Message, ProbeUsage } from './gocode-client.js';
+import type { CompleteOptions, IGocodeClient, Message, ProbeUsage } from './gocode-client.js';
 import type { TrialLifecycle } from './trial-lifecycle.js';
 import type { Config } from '../../config/environments/types.js';
 
@@ -54,7 +54,7 @@ export class PerTrialGocodeClient implements IGocodeClient, TrialLifecycle {
 
   async complete(
     messages: Message[],
-    options?: { signal?: AbortSignal },
+    options?: CompleteOptions,
   ): Promise<string> {
     return this.resolve().complete(messages, options);
   }

@@ -1,8 +1,13 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { loadConfig, resolveCaptureConfig } from '../index.js';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { loadConfig, resolveCaptureConfig, validateReportingK } from '../index.js';
 import { createConfig as createLocalDev } from '../environments/local.dev.js';
 import { CAPTURE_DEFAULTS } from '../resolve-eval-config.js';
-import type { Config } from '../environments/types.js';
+import type { Config, StatisticalRegressionConfig } from '../environments/types.js';
+
+const mockWarnLine = vi.fn();
+vi.mock('../../src/util/warn-line.js', () => ({
+  warnLine: (...args: unknown[]) => mockWarnLine(...args),
+}));
 
 const ENV_VARS = [
   'GD_ENV',
@@ -10,6 +15,7 @@ const ENV_VARS = [
   'PROBE_OPENAI_API_KEY',
   'GOCODE_USE_S2S_AUTH',
   'OPENAI_MODEL',
+  'SUMMARY_ANALYSIS_MODEL',
   'MAX_CONCURRENCY',
   'MAX_TURNS',
   'CAPTURE_CONCURRENCY',
@@ -115,6 +121,15 @@ describe('loadConfig', () => {
 
     it('defaults gocode.model to empty string when unset', () => {
       expect(loadConfig().gocode.model).toBe('');
+    });
+
+    it('reads gocode.summaryAnalysisModel from SUMMARY_ANALYSIS_MODEL', () => {
+      process.env.SUMMARY_ANALYSIS_MODEL = 'claude-opus-4-8';
+      expect(loadConfig().gocode.summaryAnalysisModel).toBe('claude-opus-4-8');
+    });
+
+    it('leaves gocode.summaryAnalysisModel undefined when SUMMARY_ANALYSIS_MODEL is unset', () => {
+      expect(loadConfig().gocode.summaryAnalysisModel).toBeUndefined();
     });
 
     it('reads eval.maxConcurrency from MAX_CONCURRENCY', () => {
@@ -239,6 +254,66 @@ describe('loadConfig', () => {
     it('falls back to default viewports when capture block is absent', () => {
       const resolved = resolveCaptureConfig(withCapture(undefined));
       expect(resolved.viewports).toEqual(CAPTURE_DEFAULTS.viewports);
+    });
+  });
+
+  describe('validateReportingK', () => {
+    const buildRegression = (
+      overrides: Partial<StatisticalRegressionConfig>,
+    ): StatisticalRegressionConfig => ({
+      ...createLocalDev().regression,
+      ...overrides,
+    });
+
+    beforeEach(() => {
+      mockWarnLine.mockClear();
+    });
+
+    it('does not warn for a valid reportingK vector', () => {
+      validateReportingK(buildRegression({ reportingK: [1, 2, 3, 5, 10] }));
+      expect(mockWarnLine).not.toHaveBeenCalled();
+    });
+
+    it('warns once with the offending values when reportingK has invalid entries', () => {
+      validateReportingK(buildRegression({ reportingK: [0, 2.5, -3] }));
+      expect(mockWarnLine).toHaveBeenCalledTimes(1);
+      const [, data] = mockWarnLine.mock.calls[0];
+      expect(data).toEqual({
+        offenders: [{ key: 'regression.reportingK', values: [0, 2.5, -3] }],
+      });
+    });
+
+    it('does not mutate the validated reportingK vector', () => {
+      const reportingK: number[] = [0, 2.5, -3];
+      validateReportingK(buildRegression({ reportingK }));
+      expect(reportingK).toEqual([0, 2.5, -3]);
+    });
+
+    it('warns for invalid entries in reportingKOverrides keyed by evaluator', () => {
+      validateReportingK(
+        buildRegression({
+          reportingK: [1, 2, 3],
+          reportingKOverrides: { 'token-usage': [1, -1, 4.4] },
+        }),
+      );
+      expect(mockWarnLine).toHaveBeenCalledTimes(1);
+      const [, data] = mockWarnLine.mock.calls[0];
+      expect(data).toEqual({
+        offenders: [
+          { key: 'regression.reportingKOverrides.token-usage', values: [-1, 4.4] },
+        ],
+      });
+    });
+  });
+
+  describe('loadConfig reportingK validation', () => {
+    beforeEach(() => {
+      mockWarnLine.mockClear();
+    });
+
+    it('does not warn for the default (valid) env reportingK', () => {
+      loadConfig();
+      expect(mockWarnLine).not.toHaveBeenCalled();
     });
   });
 

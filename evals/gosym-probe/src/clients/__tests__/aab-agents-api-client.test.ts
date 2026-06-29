@@ -88,4 +88,76 @@ describe('AABAgentsApiClient', () => {
       );
     });
   });
+
+  describe('seedSummary()', () => {
+    it('POSTs the summary to the debug seed endpoint with a bearer token', async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: vi.fn().mockResolvedValue({ success: true, summaryId: 'sum-1' }),
+      });
+
+      const id = await client.seedSummary('app-1', {
+        summaryText: '## State\nLanding page built.',
+        messageCount: 6,
+      });
+
+      expect(id).toBe('sum-1');
+      const [url, init] = mockFetch.mock.calls[0];
+      expect(url).toBe('http://localhost:4000/debug/app-1/seed-summary');
+      expect(init.method).toBe('POST');
+      expect(init.headers.Authorization).toMatch(/^Bearer /);
+      expect(JSON.parse(init.body)).toEqual({
+        summaryText: '## State\nLanding page built.',
+        messageCount: 6,
+      });
+    });
+
+    it('forwards raw priorTurns for higher-fidelity seeding', async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: vi.fn().mockResolvedValue({ summaryId: 'sum-3', conversationId: 'conv-1' }),
+      });
+
+      await client.seedSummary('app-1', {
+        summaryText: 'state',
+        priorTurns: [
+          { sender: 'user', content: 'add a contact form' },
+          { sender: 'agent', content: 'done' },
+        ],
+      });
+
+      expect(JSON.parse(mockFetch.mock.calls[0][1].body)).toEqual({
+        summaryText: 'state',
+        priorTurns: [
+          { sender: 'user', content: 'add a contact form' },
+          { sender: 'agent', content: 'done' },
+        ],
+      });
+    });
+
+    it('omits optional fields that were not provided', async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: vi.fn().mockResolvedValue({ summaryId: 'sum-2' }),
+      });
+
+      await client.seedSummary('app-1', { summaryText: 'hi' });
+
+      expect(JSON.parse(mockFetch.mock.calls[0][1].body)).toEqual({
+        summaryText: 'hi',
+      });
+    });
+
+    it('throws on non-ok response, surfacing the server error body', async () => {
+      mockFetch.mockResolvedValue({
+        ok: false,
+        status: 500,
+        text: vi.fn().mockResolvedValue('{"error":"Failed to seed conversation summary"}'),
+      });
+
+      await expect(
+        client.seedSummary('bad-app', { summaryText: 'x' }),
+      ).rejects.toThrow(/seed summary.*bad-app.*500.*Failed to seed conversation summary/i);
+    });
+  });
 });

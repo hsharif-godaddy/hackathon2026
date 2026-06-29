@@ -8,7 +8,7 @@ import type { Scenario, SetupContext } from '../scenarios/types.js';
 import { Agent, fetch } from 'undici';
 import { GoalTracker } from './goal-tracker.js';
 import type { SyntheticUserAgent } from './synthetic-user.js';
-import type { Transcript, ToolCall, Turn } from './transcript.js';
+import type { Transcript, ToolCall, Turn, TurnTokens } from './transcript.js';
 import { TranscriptBuilder } from './transcript.js';
 import type { DiagnosticLogFn } from './types.js';
 import { classifyCaptureError } from '../clients/site-capture/timeout-class.js';
@@ -124,6 +124,31 @@ interface RunState {
   currentAgentId: string | undefined;
   lastTotalSteps: number | undefined;
   lastDurationMs: number | undefined;
+  /** Ordered skill load/unload events from the agents-service
+   * skill.diagnostics stream (only populated when SKILL_DIAGNOSTICS=true).
+   * undefined until the first event, so transcript.loadedSkills stays
+   * absent when instrumentation is off. */
+  skillEvents: { event: 'load' | 'unload'; skill: string }[] | undefined;
+  /** token_usage_summary events accumulated for the in-flight assistant turn;
+   * folded onto the Turn when it's built, then reset. undefined until the first
+   * event so turns carry no `tokens` field when diagnostics are off. */
+  currentTurnTokens: TurnTokens | undefined;
+}
+
+/**
+ * Reconstruct the set of skills loaded during the run from the ordered
+ * load/unload event log. A skill that was loaded counts as loaded even
+ * if later unloaded — the eval question is "did the requisite skill
+ * ever load?", so loads win over subsequent unloads.
+ */
+function deriveLoadedSkills(
+  events: { event: 'load' | 'unload'; skill: string }[],
+): string[] {
+  const everLoaded = new Set<string>();
+  for (const e of events) {
+    if (e.event === 'load') everLoaded.add(e.skill);
+  }
+  return [...everLoaded];
 }
 
 export class Simulation {
@@ -160,6 +185,8 @@ export class Simulation {
       currentAgentId: undefined,
       lastTotalSteps: undefined,
       lastDurationMs: undefined,
+      skillEvents: undefined,
+      currentTurnTokens: undefined,
     };
 
     this.options.agentClient.onMessage(
@@ -214,10 +241,20 @@ export class Simulation {
           timestamp: Date.now(),
           totalSteps: state.lastTotalSteps,
           durationMs: state.lastDurationMs,
+          ...(state.currentTurnTokens && { tokens: state.currentTurnTokens }),
         };
         builder.addTurn(assistantTurn);
         history.push(assistantTurn);
 
+        // Reset per-turn token accumulation here, at turn END, rather than at
+        // turn start in sendAndAwaitTurn() where the other per-turn accumulators
+        // reset. token_usage_summary events arrive as the turn runs and must
+        // survive until the assistantTurn is built above; clearing at the start
+        // of the next turn would be equivalent, but resetting immediately after
+        // the build keeps the accumulator's lifetime scoped to the turn that
+        // owns it. Any new early-return between the build and here must repeat
+        // this reset, or the next turn would inherit these tokens.
+        state.currentTurnTokens = undefined;
         assistantTurnCount++;
       }
 
@@ -227,6 +264,10 @@ export class Simulation {
         conversationMs: Date.now() - conversationStartMs,
         turns: assistantTurnCount,
       });
+
+      if (state.skillEvents !== undefined) {
+        builder.setLoadedSkills(deriveLoadedSkills(state.skillEvents));
+      }
 
       if (this.options.onConversationComplete) {
         await this.options.onConversationComplete(trialIndex, builder.build(), setupResult ?? {});
@@ -263,6 +304,30 @@ export class Simulation {
       state.inactivityGuard?.arm();
       if (event.type === 'step_start') {
         state.currentAgentId = event.agentName;
+      } else if (event.type === 'skill_diagnostics') {
+        (state.skillEvents ??= []).push({
+          event: event.event,
+          skill: event.skill,
+        });
+      } else if (event.type === 'token_usage_summary') {
+        // One event per agent message-execution. Fold into the in-flight turn's
+        // running total; attached to the Turn when it's built, then reset.
+        const acc = (state.currentTurnTokens ??= {
+          inputTokens: 0,
+          outputTokens: 0,
+          totalTokens: 0,
+          cachedInputTokensRead: 0,
+          cachedInputTokensWrite: 0,
+          totalCost: 0,
+          eventCount: 0,
+        });
+        acc.inputTokens += event.inputTokens;
+        acc.outputTokens += event.outputTokens;
+        acc.totalTokens += event.totalTokens;
+        acc.cachedInputTokensRead += event.cachedInputTokensRead;
+        acc.cachedInputTokensWrite += event.cachedInputTokensWrite;
+        acc.totalCost += event.totalCost;
+        acc.eventCount += 1;
       } else if (event.type === 'tool_start') {
         state.currentTurnTools.set(event.tool.id, {
           id: event.tool.id,

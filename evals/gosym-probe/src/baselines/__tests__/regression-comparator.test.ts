@@ -12,6 +12,7 @@ const THRESHOLDS: StatisticalRegressionConfig = {
   alpha: 0.05,
   k: 2.0,
   minMarginFraction: 0.05,
+  reportingK: [1, 2, 3, 5, 10],
   seed: 42,
   fallbackThresholds: {
     thresholds: {
@@ -26,9 +27,11 @@ function makeAgg(
   passingTrials: number,
   totalTrials: number,
 ): AggregatedResult {
+  const n: number = totalTrials;
+  const c: number = passingTrials;
+  const passAt1: number | undefined = n > 0 ? c / n : undefined;
   return {
-    passAtK: passingTrials > 0,
-    passToTheK: passingTrials === totalTrials && totalTrials > 0,
+    ...(passAt1 !== undefined && { passAt1, passAtK: [{ k: 1, value: passAt1 }], passHatK: [{ k: 1, value: passAt1 }] }),
     passingTrials,
     totalTrials,
   };
@@ -53,8 +56,9 @@ function makeScoreBaseline(
     createdAt: '2026-04-01T00:00:00.000Z',
     scores: {
       latency: {
-        passAtK: false,
-        passToTheK: false,
+        passAt1: 0,
+        passAtK: [{ k: 1, value: 0 }],
+        passHatK: [{ k: 1, value: 0 }],
         passingTrials: 0,
         totalTrials: 1,
         ...(aggregateScore !== undefined ? { aggregateScore } : {}),
@@ -101,14 +105,16 @@ function makeBaseline(
     createdAt: '2026-04-01T00:00:00.000Z',
     ...(stabilityLevel !== undefined ? { stabilityLevel } : {}),
     scores: Object.fromEntries(
-      Object.entries(scores).map(([k, v]) => [
-        k,
-        {
-          passAtK: v.passingTrials > 0,
-          passToTheK: v.passingTrials === v.totalTrials,
-          ...v,
-        },
-      ]),
+      Object.entries(scores).map(([k, v]) => {
+        const passAt1: number | undefined = v.totalTrials > 0 ? v.passingTrials / v.totalTrials : undefined;
+        return [
+          k,
+          {
+            ...(passAt1 !== undefined && { passAt1, passAtK: [{ k: 1, value: passAt1 }], passHatK: [{ k: 1, value: passAt1 }] }),
+            ...v,
+          },
+        ];
+      }),
     ),
   };
 }
@@ -260,8 +266,9 @@ describe('RegressionComparator', () => {
       const baseline = makeScoreBaseline(0.9);
       baseline.scores.latency.evalVersion = 'v1';
       baseline.scores['output-quality'] = {
-        passAtK: true,
-        passToTheK: true,
+        passAt1: 1,
+        passAtK: [{ k: 1, value: 1 }],
+        passHatK: [{ k: 1, value: 1 }],
         passingTrials: 3,
         totalTrials: 3,
         evalVersion: 'v1',
@@ -283,8 +290,9 @@ describe('RegressionComparator', () => {
       const baseline = makeScoreBaseline(0.9);
       baseline.scores.latency.evalVersion = 'v1';
       baseline.scores['bug-hit-rate'] = {
-        passAtK: true,
-        passToTheK: true,
+        passAt1: 1,
+        passAtK: [{ k: 1, value: 1 }],
+        passHatK: [{ k: 1, value: 1 }],
         passingTrials: 3,
         totalTrials: 3,
       };
@@ -718,6 +726,64 @@ describe('RegressionComparator', () => {
       expect(e?.statistical?.k).toBe(2.0);
     });
 
+    it('attaches a power block with the expected shape on the pass-rate path', () => {
+      const baselineTrialScores = [1, 0, 1, 1, 0, 1, 1, 1, 0, 1];
+      const trials = [0, 1, 2, 3, 4].map((i) =>
+        makeTrialResult(i, 'jtbd-completion', 1, 'pass'),
+      );
+      const result = makeResult({ 'jtbd-completion': makeAgg(5, 5) }, trials);
+      const baseline = makeBaseline({ 'jtbd-completion': { passingTrials: 7, totalTrials: 10 } });
+      baseline.scores['jtbd-completion'].trialScores = baselineTrialScores;
+
+      const r = comparator.compare(result, baseline, THRESHOLDS);
+      const e = r.evaluators.find((x) => x.evaluator === 'jtbd-completion') as ComparedRegressionEvalResult | undefined;
+
+      // Guards against a dropped `power:` spread silently disabling the feature.
+      expect(e?.statistical?.power).toBeDefined();
+      expect(e?.statistical?.power).toEqual({
+        cohensD: expect.any(Number),
+        achievedPower: expect.any(Number),
+        mdeScore: expect.any(Number),
+        targetPower: 0.8,
+      });
+    });
+
+    it('orients power.cohensD by lowerIsBetter on the score-mode path', () => {
+      // current scores HIGHER than baseline → regression for a lower-is-better
+      // metric → cohensD must read negative.
+      const baselineTrialScores = [0.80, 0.82, 0.81, 0.83, 0.79];
+      const currentScores = [0.90, 0.92, 0.91, 0.93, 0.89];
+      const trials = currentScores.map((s, i) =>
+        makeTrialResult(i, 'latency', s, 'observed'),
+      );
+      const result = makeResult(
+        { latency: { ...makeScoreAgg(0.91), regressionMode: 'score', lowerIsBetter: true } },
+        trials,
+      );
+      const baseline = makeScoreBaseline(0.81);
+      baseline.scores.latency.trialScores = baselineTrialScores;
+
+      const r = comparator.compare(result, baseline, THRESHOLDS);
+      const e = r.evaluators.find((x) => x.evaluator === 'latency') as ComparedRegressionEvalResult | undefined;
+
+      expect(e?.statistical?.power?.cohensD).toBeLessThan(0);
+    });
+
+    it('propagates a config-level targetPower override into the power block', () => {
+      const baselineTrialScores = [1, 0, 1, 1, 0, 1, 1, 1, 0, 1];
+      const trials = [0, 1, 2, 3, 4].map((i) =>
+        makeTrialResult(i, 'jtbd-completion', 1, 'pass'),
+      );
+      const result = makeResult({ 'jtbd-completion': makeAgg(5, 5) }, trials);
+      const baseline = makeBaseline({ 'jtbd-completion': { passingTrials: 7, totalTrials: 10 } });
+      baseline.scores['jtbd-completion'].trialScores = baselineTrialScores;
+
+      const r = comparator.compare(result, baseline, { ...THRESHOLDS, targetPower: 0.95 });
+      const e = r.evaluators.find((x) => x.evaluator === 'jtbd-completion') as ComparedRegressionEvalResult | undefined;
+
+      expect(e?.statistical?.power?.targetPower).toBe(0.95);
+    });
+
     it('falls back when baseline lacks trialScores — no statistical field', () => {
       const result = makeResult({ 'jtbd-completion': makeAgg(3, 3) });
       const baseline = makeBaseline({ 'jtbd-completion': { passingTrials: 3, totalTrials: 3 } });
@@ -1039,8 +1105,6 @@ describe('RegressionComparator', () => {
         createdAt: '2026-04-01T00:00:00.000Z',
         scores: {
           [name]: {
-            passAtK: false,
-            passToTheK: false,
             passingTrials: 0,
             totalTrials: trialScores.length,
             aggregateScore: mean,

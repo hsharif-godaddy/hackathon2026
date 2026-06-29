@@ -15,6 +15,7 @@ import type { ScenarioResult, TrialResult } from '../runner/types.js';
 import type { EvalStore } from '../store/eval-store.js';
 import type { BaselineSaveOptions } from './baseline-store.js';
 import { pickGitFields } from './types.js';
+import { assessBaselineEligibility } from './baseline-eligibility.js';
 import type { TrialLifecycle } from '../clients/trial-lifecycle.js';
 import type { IGocodeClient } from '../clients/gocode-client.js';
 import type { ProgressReporter } from '../util/progress-reporter.js';
@@ -65,6 +66,9 @@ interface GraduationResultBase {
   stabilityLevel: StabilityLevel;
   stabilityTrials: number;
   baselineSaved: boolean;
+  /** Trials that failed during execution and were dropped from aggregation.
+   * Surfaced so callers can degrade the exit code on a thinned sample. */
+  droppedTrials: number;
 }
 
 export interface DeferredGraduationResult extends GraduationResultBase {
@@ -168,6 +172,14 @@ export class GraduationRunner {
     await Promise.allSettled(pendingDownloads);
     result.stabilityLevel = stabilityLevel;
 
+    if (result.droppedTrials !== undefined && result.droppedTrials > 0) {
+      log(
+        `[GraduationRunner] ${result.droppedTrials} of ${totalTrials} trial(s) ` +
+        `dropped for "${scenario.name}" (e.g. turn timeout); graduating on the ` +
+        `${totalTrials - result.droppedTrials} completed trial(s).`,
+      );
+    }
+
     if (store && dirName) {
       if (this.options.skipFinalize) {
         await Promise.all(
@@ -186,19 +198,17 @@ export class GraduationRunner {
       }
     }
 
-    const hasValidResults = result.trials.some((trial) =>
-      trial.evalResults.some((e) => e.verdict !== 'unknown'),
-    );
+    const eligibility = assessBaselineEligibility(result);
 
-    if (hasValidResults) {
+    if (eligibility.eligible) {
       await baselineStore.save(runId, result, {
         defaultThreshold: config.regression.fallbackThresholds.defaultThreshold,
         ...pickGitFields(runMetadata),
       });
     } else {
       log(
-        '[GraduationRunner] All trials produced unknown verdicts; skipping baseline save.',
-        { scenarioName: scenario.name, runId },
+        `[GraduationRunner] Skipping baseline save: ${eligibility.detail}.`,
+        { scenarioName: scenario.name, runId, reason: eligibility.reason },
       );
     }
 
@@ -206,7 +216,8 @@ export class GraduationRunner {
       scenarioName: scenario.name,
       stabilityLevel,
       stabilityTrials: totalTrials,
-      baselineSaved: hasValidResults,
+      baselineSaved: eligibility.eligible,
+      droppedTrials: result.droppedTrials ?? 0,
     };
 
     if (this.options.skipFinalize) {

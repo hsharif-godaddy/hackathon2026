@@ -50,14 +50,16 @@ const SCENARIO_RESULT: ScenarioResult = {
   trials: [],
   aggregated: {
     'bug-hit-rate': {
-      passAtK: true,
-      passToTheK: false,
+      passAt1: 2 / 3,
+      passAtK: [{ k: 1, value: 2 / 3 }, { k: 2, value: 1 }],
+      passHatK: [{ k: 1, value: 2 / 3 }, { k: 2, value: 1 / 3 }],
       passingTrials: 2,
       totalTrials: 3,
     },
     'prompt-efficiency': {
-      passAtK: false,
-      passToTheK: false,
+      passAt1: 0,
+      passAtK: [{ k: 1, value: 0 }, { k: 2, value: 0 }],
+      passHatK: [{ k: 1, value: 0 }, { k: 2, value: 0 }],
       passingTrials: 0,
       totalTrials: 3,
     },
@@ -70,8 +72,9 @@ const STORED_BASELINE: BaselineScores = {
   createdAt: '2026-04-03T00:00:00.000Z',
   scores: {
     'bug-hit-rate': {
-      passAtK: true,
-      passToTheK: false,
+      passAt1: 2 / 3,
+      passAtK: [{ k: 1, value: 2 / 3 }, { k: 2, value: 1 }],
+      passHatK: [{ k: 1, value: 2 / 3 }, { k: 2, value: 1 / 3 }],
       passingTrials: 2,
       totalTrials: 3,
     },
@@ -82,8 +85,9 @@ const STORED_AGGREGATED: StoredAggregated = {
   scenarioName: 'build-landing-page',
   evaluators: {
     'bug-hit-rate': {
-      passAtK: true,
-      passToTheK: false,
+      passAt1: 2 / 5,
+      passAtK: [{ k: 1, value: 2 / 5 }, { k: 2, value: 7 / 10 }, { k: 3, value: 9 / 10 }],
+      passHatK: [{ k: 1, value: 2 / 5 }, { k: 2, value: 1 / 10 }, { k: 3, value: 0 }],
       passingTrials: 2,
       totalTrials: 5,
       scores: { min: 0, max: 1, mean: 0.4, median: 0, stddev: 0 },
@@ -152,14 +156,16 @@ describe('BaselineStore', () => {
       const parsed = JSON.parse(raw as string) as BaselineScores;
 
       expect(parsed.scores['bug-hit-rate']).toEqual({
-        passAtK: true,
-        passToTheK: false,
+        passAt1: 2 / 3,
+        passAtK: [{ k: 1, value: 2 / 3 }, { k: 2, value: 1 }],
+        passHatK: [{ k: 1, value: 2 / 3 }, { k: 2, value: 1 / 3 }],
         passingTrials: 2,
         totalTrials: 3,
       });
       expect(parsed.scores['prompt-efficiency']).toEqual({
-        passAtK: false,
-        passToTheK: false,
+        passAt1: 0,
+        passAtK: [{ k: 1, value: 0 }, { k: 2, value: 0 }],
+        passHatK: [{ k: 1, value: 0 }, { k: 2, value: 0 }],
         passingTrials: 0,
         totalTrials: 3,
       });
@@ -234,8 +240,9 @@ describe('BaselineStore', () => {
           ...SCENARIO_RESULT,
           aggregated: {
             'output-quality': {
-              passAtK: true,
-              passToTheK: false,
+              passAt1: 2 / 3,
+              passAtK: [{ k: 1, value: 2 / 3 }, { k: 2, value: 1 }],
+              passHatK: [{ k: 1, value: 2 / 3 }, { k: 2, value: 1 / 3 }],
               passingTrials: 2,
               totalTrials: 3,
               aggregateScore: 0.67,
@@ -262,8 +269,9 @@ describe('BaselineStore', () => {
           ...SCENARIO_RESULT,
           aggregated: {
             'latency': {
-              passAtK: true,
-              passToTheK: true,
+              passAt1: 1,
+              passAtK: [{ k: 1, value: 1 }, { k: 2, value: 1 }],
+              passHatK: [{ k: 1, value: 1 }, { k: 2, value: 1 }],
               passingTrials: 3,
               totalTrials: 3,
               aggregateScore: 0.75,
@@ -284,8 +292,8 @@ describe('BaselineStore', () => {
     );
   });
 
-  describe('save() — passAtK/passToTheK conditional', () => {
-    it('omits passAtK and passToTheK for score-mode evaluator (passAtK absent)', async () => {
+  describe('save() — pass estimator conditional', () => {
+    it('omits pass estimators for score-mode evaluator without enrichment', async () => {
       const store = new BaselineStore();
       const result: ScenarioResult = {
         ...SCENARIO_RESULT,
@@ -302,18 +310,20 @@ describe('BaselineStore', () => {
 
       const [, raw] = mockWriteFile.mock.calls[0];
       const parsed = JSON.parse(raw as string) as BaselineScores;
+      expect(parsed.scores['latency']).not.toHaveProperty('passAt1');
       expect(parsed.scores['latency']).not.toHaveProperty('passAtK');
-      expect(parsed.scores['latency']).not.toHaveProperty('passToTheK');
+      expect(parsed.scores['latency']).not.toHaveProperty('passHatK');
     });
 
-    it('preserves passAtK and passToTheK for pass-rate evaluators', async () => {
+    it('preserves numeric pass estimators for pass-rate evaluators', async () => {
       const store = new BaselineStore();
       await store.save('run-001', SCENARIO_RESULT);
 
       const [, raw] = mockWriteFile.mock.calls[0];
       const parsed = JSON.parse(raw as string) as BaselineScores;
-      expect(parsed.scores['bug-hit-rate']).toHaveProperty('passAtK', true);
-      expect(parsed.scores['bug-hit-rate']).toHaveProperty('passToTheK', false);
+      expect(parsed.scores['bug-hit-rate']).toHaveProperty('passAt1', 2 / 3);
+      expect(parsed.scores['bug-hit-rate']).toHaveProperty('passAtK', [{ k: 1, value: 2 / 3 }, { k: 2, value: 1 }]);
+      expect(parsed.scores['bug-hit-rate']).toHaveProperty('passHatK', [{ k: 1, value: 2 / 3 }, { k: 2, value: 1 / 3 }]);
     });
   });
 
@@ -360,8 +370,9 @@ describe('BaselineStore', () => {
       ...SCENARIO_RESULT,
       aggregated: {
         'latency': {
-          passAtK: true,
-          passToTheK: true,
+          passAt1: 1,
+          passAtK: [{ k: 1, value: 1 }, { k: 2, value: 1 }],
+          passHatK: [{ k: 1, value: 1 }, { k: 2, value: 1 }],
           passingTrials: 3,
           totalTrials: 3,
           aggregateScore: 0.8,
@@ -558,8 +569,8 @@ describe('BaselineStore', () => {
     });
   });
 
-  describe('saveFromStored() — passAtK/passToTheK conditional', () => {
-    it('omits passAtK and passToTheK for score-mode evaluator (passAtK absent)', async () => {
+  describe('saveFromStored() — pass estimator conditional', () => {
+    it('omits pass estimators for score-mode evaluator without enrichment', async () => {
       const stored: StoredAggregated = {
         scenarioName: 'build-landing-page',
         evaluators: {
@@ -585,18 +596,20 @@ describe('BaselineStore', () => {
 
       const [, raw] = mockWriteFile.mock.calls[0];
       const parsed = JSON.parse(raw as string) as BaselineScores;
+      expect(parsed.scores['latency']).not.toHaveProperty('passAt1');
       expect(parsed.scores['latency']).not.toHaveProperty('passAtK');
-      expect(parsed.scores['latency']).not.toHaveProperty('passToTheK');
+      expect(parsed.scores['latency']).not.toHaveProperty('passHatK');
     });
 
-    it('preserves passAtK and passToTheK for pass-rate evaluators in saveFromStored', async () => {
+    it('preserves numeric pass estimators for pass-rate evaluators in saveFromStored', async () => {
       const store = new BaselineStore();
       await store.saveFromStored('run-001', STORED_AGGREGATED);
 
       const [, raw] = mockWriteFile.mock.calls[0];
       const parsed = JSON.parse(raw as string) as BaselineScores;
-      expect(parsed.scores['bug-hit-rate']).toHaveProperty('passAtK', true);
-      expect(parsed.scores['bug-hit-rate']).toHaveProperty('passToTheK', false);
+      expect(parsed.scores['bug-hit-rate']).toHaveProperty('passAt1', 2 / 5);
+      expect(parsed.scores['bug-hit-rate']).toHaveProperty('passAtK', [{ k: 1, value: 2 / 5 }, { k: 2, value: 7 / 10 }, { k: 3, value: 9 / 10 }]);
+      expect(parsed.scores['bug-hit-rate']).toHaveProperty('passHatK', [{ k: 1, value: 2 / 5 }, { k: 2, value: 1 / 10 }, { k: 3, value: 0 }]);
     });
   });
 
@@ -605,8 +618,9 @@ describe('BaselineStore', () => {
       scenarioName: 'build-landing-page',
       evaluators: {
         'latency-evaluator': {
-          passAtK: true,
-          passToTheK: true,
+          passAt1: 1,
+          passAtK: [{ k: 1, value: 1 }, { k: 2, value: 1 }],
+          passHatK: [{ k: 1, value: 1 }, { k: 2, value: 1 }],
           passingTrials: 3,
           totalTrials: 3,
           scores: {
@@ -620,8 +634,9 @@ describe('BaselineStore', () => {
           aggregateScore: 0.85,
         },
         'output-quality': {
-          passAtK: true,
-          passToTheK: false,
+          passAt1: 2 / 3,
+          passAtK: [{ k: 1, value: 2 / 3 }, { k: 2, value: 1 }],
+          passHatK: [{ k: 1, value: 2 / 3 }, { k: 2, value: 1 / 3 }],
           passingTrials: 2,
           totalTrials: 3,
           scores: {
@@ -758,8 +773,9 @@ describe('BaselineStore', () => {
           scenarioName: 'build-landing-page',
           evaluators: {
             'latency': {
-              passAtK: true,
-              passToTheK: true,
+              passAt1: 1,
+              passAtK: [{ k: 1, value: 1 }, { k: 2, value: 1 }],
+              passHatK: [{ k: 1, value: 1 }, { k: 2, value: 1 }],
               passingTrials: 3,
               totalTrials: 3,
               scores: { min: 7, max: 9, mean: 8, median: 8.5, stddev: 0.5 },
@@ -767,8 +783,9 @@ describe('BaselineStore', () => {
               aggregateScore: 0.85,
             },
             'response-time': {
-              passAtK: true,
-              passToTheK: false,
+              passAt1: 2 / 3,
+              passAtK: [{ k: 1, value: 2 / 3 }, { k: 2, value: 1 }],
+              passHatK: [{ k: 1, value: 2 / 3 }, { k: 2, value: 1 / 3 }],
               passingTrials: 2,
               totalTrials: 3,
               scores: { min: 5, max: 8, mean: 6.5, median: 6, stddev: 1 },
@@ -927,8 +944,9 @@ describe('BaselineStore', () => {
       const parsed = JSON.parse(raw as string) as BaselineScores;
 
       expect(parsed.scores['bug-hit-rate']).toEqual({
-        passAtK: true,
-        passToTheK: false,
+        passAt1: 2 / 5,
+        passAtK: [{ k: 1, value: 2 / 5 }, { k: 2, value: 7 / 10 }, { k: 3, value: 9 / 10 }],
+        passHatK: [{ k: 1, value: 2 / 5 }, { k: 2, value: 1 / 10 }, { k: 3, value: 0 }],
         passingTrials: 2,
         totalTrials: 5,
       });
@@ -980,8 +998,9 @@ describe('BaselineStore', () => {
         scenarioName: 'build-landing-page',
         evaluators: {
           'latency': {
-            passAtK: true,
-            passToTheK: true,
+            passAt1: 1,
+            passAtK: [{ k: 1, value: 1 }, { k: 2, value: 1 }],
+            passHatK: [{ k: 1, value: 1 }, { k: 2, value: 1 }],
             passingTrials: 3,
             totalTrials: 3,
             scores: { min: 0, max: 0, mean: 0, median: 0, stddev: 0 },
@@ -1013,8 +1032,9 @@ describe('BaselineStore', () => {
         scenarioName: 'build-landing-page',
         evaluators: {
           'latency': {
-            passAtK: true,
-            passToTheK: true,
+            passAt1: 2 / 5,
+            passAtK: [{ k: 1, value: 2 / 5 }, { k: 2, value: 7 / 10 }, { k: 3, value: 9 / 10 }],
+            passHatK: [{ k: 1, value: 2 / 5 }, { k: 2, value: 1 / 10 }, { k: 3, value: 0 }],
             passingTrials: 2,
             totalTrials: 5,
             scores: { min: 0, max: 9, mean: 3.4, median: 3, stddev: 3.2 },

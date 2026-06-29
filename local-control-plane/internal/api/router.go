@@ -29,6 +29,15 @@ type Server struct {
 	// Defaults to exponential backoff (registerBaseDelay..registerMaxDelay).
 	// Override in tests to eliminate real delays.
 	retryDelay func(attempt int) time.Duration
+
+	// restartContainers restarts an app's containers (defaults to
+	// DockerManager.Restart; overridden in handler tests to avoid shelling out
+	// to docker).
+	restartContainers func(appID string) error
+
+	// awaitPreviewReady blocks until the app's preview is serving (defaults to
+	// waitForPreviewReady; overridden in handler tests).
+	awaitPreviewReady func(previewPort int) error
 }
 
 func NewRouter(db *store.DB, jwtService *auth.JWTService, ssoMW *auth.SSOMiddleware) *mux.Router {
@@ -39,6 +48,8 @@ func NewRouter(db *store.DB, jwtService *auth.JWTService, ssoMW *auth.SSOMiddlew
 		JWT:           jwtService,
 	}
 	srv.imagePrewarmer = srv.DockerManager
+	srv.restartContainers = srv.DockerManager.Restart
+	srv.awaitPreviewReady = waitForPreviewReady
 
 	r := mux.NewRouter()
 
@@ -109,6 +120,7 @@ func NewRouter(db *store.DB, jwtService *auth.JWTService, ssoMW *auth.SSOMiddlew
 	v1.HandleFunc("/subscriptions/{subId}/systems/{sysId}/apps/{appId}/deploy", srv.DeployApp).Methods("PUT")
 	v1.HandleFunc("/subscriptions/{subId}/systems/{sysId}/apps/{appId}/publish", srv.PublishApp).Methods("PUT")
 	v1.HandleFunc("/subscriptions/{subId}/systems/{sysId}/apps/{appId}/unpublish", srv.UnpublishApp).Methods("POST")
+	v1.HandleFunc("/subscriptions/{subId}/systems/{sysId}/apps/{appId}/reset", srv.ResetApp).Methods("POST")
 	v1.HandleFunc("/subscriptions/{subId}/systems/{sysId}/apps/{appId}/secrets", srv.GetSecrets).Methods("GET")
 	v1.HandleFunc("/subscriptions/{subId}/systems/{sysId}/apps/{appId}/secrets", srv.UpdateSecrets).Methods("POST")
 

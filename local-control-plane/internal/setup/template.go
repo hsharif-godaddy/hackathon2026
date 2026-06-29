@@ -7,9 +7,18 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"strings"
 
 	"github.com/airo-ai-builder/local-control-plane/internal/projectenv"
 )
+
+// validCommitRef bounds the reset target to git-ref-shaped strings (SHAs,
+// branch/tag names, HEAD~n, etc.). exec.Command already avoids shell injection,
+// but this rejects obvious garbage early and keeps the trusted surface explicit
+// — defense-in-depth on a value that flows from an HTTP body into git. The
+// first char may not be '-' so the target can never be misread as a git flag.
+var validCommitRef = regexp.MustCompile(`^[A-Za-z0-9._/~^@{}][A-Za-z0-9._/~^@{}-]{0,254}$`)
 
 // DBCredentials holds MySQL database credentials from provisioning.
 type DBCredentials struct {
@@ -200,6 +209,57 @@ func (t *TemplateSetup) initGitWithTemplate(appID, previewPath, gitRepoPath stri
 		slog.Info("setup.git.moved", "app_id", appID, "from", previewGit, "to", gitRepoGit)
 	}
 
+	return nil
+}
+
+// ResetWorkspace hard-resets an app's git working tree to the given commit
+// (or HEAD when commit is empty) and removes untracked files, returning the
+// workspace to a known state. Used by eval stateful-injection to reuse one
+// pre-built app across trials without re-provisioning.
+//
+// The repo's .git lives in git-repo/ while the working tree is preview/ (see
+// initGitWithTemplate), so every git invocation is explicit about both via
+// --git-dir / --work-tree. This does NOT restart the container or restore
+// node_modules — the caller is responsible for DockerManager.Restart, which
+// triggers the container's existing dependency re-sync path.
+func (t *TemplateSetup) ResetWorkspace(appID, commit string) error {
+	base := t.GetBasePath(appID)
+	gitDir := filepath.Join(base, "git-repo", ".git")
+	workTree := filepath.Join(base, "preview")
+
+	if _, err := os.Stat(gitDir); err != nil {
+		return fmt.Errorf("git repo not found for app %s at %s: %w", appID, gitDir, err)
+	}
+
+	target := commit
+	if target == "" {
+		target = "HEAD"
+	} else if !validCommitRef.MatchString(target) {
+		return fmt.Errorf("invalid commit ref for app %s: %q", appID, target)
+	}
+
+	gitArgs := [][]string{
+		{"reset", "--hard", target},
+		// Drop untracked files/dirs the agent created (e.g. new routes). Use
+		// -fd, NOT -fdx: gitignored paths (node_modules/, .env, .ssl/*.pem) are
+		// deliberately preserved so the reset doesn't wipe deps/certs that the
+		// container restart would otherwise have to rebuild. Consequence:
+		// gitignored build artifacts (e.g. .next/) also survive — DockerManager
+		// .Restart re-syncs them, so the tracked tree (not the whole dir) is
+		// what's restored to the target commit.
+		{"clean", "-fd"},
+	}
+	for _, args := range gitArgs {
+		full := append([]string{"--git-dir=" + gitDir, "--work-tree=" + workTree}, args...)
+		cmd := exec.Command("git", full...)
+		var stderr strings.Builder
+		cmd.Stderr = &stderr
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("git %s (app %s): %w: %s", args[0], appID, err, stderr.String())
+		}
+	}
+
+	slog.Info("setup.workspace.reset", "app_id", appID, "commit", target)
 	return nil
 }
 

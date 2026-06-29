@@ -17,6 +17,7 @@ function makeStatistical(
   n: number,
   ciLower: number,
   ciUpper: number,
+  power?: StatisticalMetadata['power'],
 ): StatisticalMetadata {
   return {
     method: 'wilson-score',
@@ -26,6 +27,7 @@ function makeStatistical(
     n: { baseline: n, current: n },
     confidenceInterval: { lower: ciLower, upper: ciUpper },
     nonInferiorityProven: false,
+    ...(power && { power }),
   };
 }
 
@@ -128,6 +130,28 @@ describe('classifyEvaluatorSignal', () => {
     expect(classifyEvaluatorSignal(e)).toBe('inconclusive');
   });
 
+  it('returns inconclusive (not underpowered) for NaN delta even with below-target power', () => {
+    // A non-finite delta is unmeasurable, so power on it is meaningless — must
+    // stay 'inconclusive' so the closing's "delta could not be computed" agrees.
+    const e = makeCompared('eval', NaN, true, makeStatistical(5, -0.3, -0.1, {
+      cohensD: 0.2,
+      achievedPower: 0.3,
+      mdeScore: 0.5,
+      targetPower: 0.8,
+    }));
+    expect(classifyEvaluatorSignal(e)).toBe('inconclusive');
+  });
+
+  it('returns underpowered for zero-range CI with below-target power', () => {
+    const e = makeCompared('eval', 0.5, true, makeStatistical(5, 0.2, 0.2, {
+      cohensD: 0.2,
+      achievedPower: 0.3,
+      mdeScore: 0.5,
+      targetPower: 0.8,
+    }));
+    expect(classifyEvaluatorSignal(e)).toBe('underpowered');
+  });
+
   it('returns inconclusive when CI range is zero (upper === lower === 0)', () => {
     const e = makeCompared('eval', 0.5, true, makeStatistical(10, 0, 0));
     expect(classifyEvaluatorSignal(e)).toBe('inconclusive');
@@ -166,6 +190,38 @@ describe('classifyEvaluatorSignal', () => {
     // delta=0.10, ciHalfWidth=0.20
     const e = makeCompared('eval', 0.10, true, makeStatistical(10, 0.00, 0.40));
     expect(classifyEvaluatorSignal(e)).toBe('inconclusive');
+  });
+
+  it('returns underpowered when not confirmed and achieved power < target', () => {
+    // delta within ciHalfWidth (not confirmed); power 0.30 < target 0.80.
+    const e = makeCompared('eval', 0.10, true, makeStatistical(5, 0.00, 0.40, {
+      cohensD: 0.2,
+      achievedPower: 0.3,
+      mdeScore: 0.5,
+      targetPower: 0.8,
+    }));
+    expect(classifyEvaluatorSignal(e)).toBe('underpowered');
+  });
+
+  it('stays inconclusive when not confirmed but power meets target', () => {
+    const e = makeCompared('eval', 0.10, true, makeStatistical(20, 0.00, 0.40, {
+      cohensD: 0.2,
+      achievedPower: 0.85,
+      mdeScore: 0.1,
+      targetPower: 0.8,
+    }));
+    expect(classifyEvaluatorSignal(e)).toBe('inconclusive');
+  });
+
+  it('prefers confirmed over underpowered when the delta clears the CI', () => {
+    // |delta|=0.40 > ciHalfWidth=0.20 → confirmed regardless of low power.
+    const e = makeCompared('eval', 0.40, true, makeStatistical(5, -0.60, -0.20, {
+      cohensD: 1.2,
+      achievedPower: 0.3,
+      mdeScore: 0.5,
+      targetPower: 0.8,
+    }));
+    expect(classifyEvaluatorSignal(e)).toBe('confirmed');
   });
 });
 
@@ -210,6 +266,23 @@ describe('formatRegressionFailureMessage', () => {
     expect(msg).not.toContain('Investigate');
   });
 
+  it('underpowered — labels the signal and reports the power shortfall', () => {
+    const r = makeResult('multipage-catalog', [
+      makeCompared('jtbd-completion', -0.10, true, makeStatistical(5, -0.67, 0.47, {
+        cohensD: 0.2,
+        achievedPower: 0.31,
+        mdeScore: 0.5,
+        targetPower: 0.8,
+      })),
+    ]);
+    const msg = formatRegressionFailureMessage(r);
+    expect(msg).not.toBeNull();
+    expect(msg).toContain('underpowered');
+    expect(msg).toContain('power 31% < 80% target');
+    expect(msg).not.toContain('[confirmed]');
+    expect(msg).toContain('pnpm run eval --scenario multipage-catalog --trials 5');
+  });
+
   it('all confirmed — includes evaluator block, per-evaluator n, and investigate closing', () => {
     const r = makeResult('cleaning-biz-ambiguity', [
       makeCompared('jtbd-completion', -0.40, true, makeStatistical(10, -0.60, -0.20)),
@@ -236,6 +309,26 @@ describe('formatRegressionFailureMessage', () => {
     expect(msg).toContain('[inconclusive]');
     expect(msg).toContain('pnpm run eval --scenario my-scenario --trials 5');
     expect(msg).not.toContain('Investigate the change before running more trials.');
+  });
+
+  it('mixed confirmed + underpowered — summary tail counts the underpowered evaluator', () => {
+    const r = makeResult('my-scenario', [
+      // confirmed: |delta|=0.40 > ciHalfWidth=0.20
+      makeCompared('jtbd-completion', -0.40, true, makeStatistical(5, -0.60, -0.20)),
+      // underpowered: |delta|=0.05 < ciHalfWidth=0.25, power below target
+      makeCompared('token-usage', 0.05, true, makeStatistical(5, -0.20, 0.30, {
+        cohensD: 0.2,
+        achievedPower: 0.3,
+        mdeScore: 0.5,
+        targetPower: 0.8,
+      })),
+    ]);
+    const msg = formatRegressionFailureMessage(r);
+    expect(msg).not.toBeNull();
+    expect(msg).toContain('1 confirmed');
+    expect(msg).toContain('1 unconfirmed (1 underpowered)');
+    expect(msg).toContain('[underpowered]');
+    expect(msg).toContain('pnpm run eval --scenario my-scenario --trials 5');
   });
 
   it('NaN delta — shows N/A and "investigation recommended" closing', () => {

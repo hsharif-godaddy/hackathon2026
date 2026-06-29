@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/airo-ai-builder/local-control-plane/internal/store"
@@ -17,6 +18,17 @@ import (
 // Manager handles Docker Compose operations for app containers.
 type Manager struct {
 	ports *PortAllocator
+	// imgMu serializes ensureImages() across concurrent provisions.
+	// Provisioning runs one goroutine per app (see api/apps.go), and each
+	// calls Up()->ensureImages(), which runs `docker buildx build --load`
+	// on the shared aab-template-v8 / aab-publish tags. Without this lock,
+	// a concurrent fan-out (e.g. gosym-probe --graduate --fan-out on a cold
+	// cache) fires N simultaneous builds of the same --load tag, which race
+	// and fail with "exit status 1". Serializing makes the first build warm
+	// the buildx layer cache so the rest are ~1s cache hits.
+	imgMu sync.Mutex
+	// buildFn overrides the real buildx builds in tests; nil in production.
+	buildFn func() error
 }
 
 func NewManager() *Manager {
@@ -125,6 +137,20 @@ func (m *Manager) forceRemoveContainers(appID string) error {
 // builds complete in ~1s while properly rebuilding when source files
 // (dev-supervisor, container-scripts, Dockerfiles) have changed.
 func (m *Manager) ensureImages() error {
+	// Serialize image builds: concurrent `buildx build --load` of the same
+	// tag race and fail. The lock holds only for the build step; once the
+	// first provision warms the cache, the rest are fast cache hits.
+	m.imgMu.Lock()
+	defer m.imgMu.Unlock()
+
+	// buildFn is injectable for tests; nil means run the real buildx builds.
+	if m.buildFn != nil {
+		return m.buildFn()
+	}
+	return m.buildImages()
+}
+
+func (m *Manager) buildImages() error {
 	projectRoot := os.Getenv("PROJECT_ROOT")
 	if projectRoot == "" {
 		projectRoot = ".."

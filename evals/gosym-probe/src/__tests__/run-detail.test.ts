@@ -40,7 +40,9 @@ function makeAggregated(scenarioName: string) {
     scenarioName,
     evaluators: {
       'jtbd-completion': {
-        passAtK: true,
+        passAt1: 1,
+        passAtK: { 1: 1 },
+        passHatK: { 1: 1 },
         passingTrials: 3,
         totalTrials: 3,
         scores: { median: 0.9, mean: 0.88, min: 0.8, max: 1.0 },
@@ -117,7 +119,7 @@ describe('loadRunDetail', () => {
     expect(evals['jtbd-completion']).toMatchObject({
       passingTrials: 3,
       totalTrials: 3,
-      passAtK: true,
+      passAt1: 1,
       medianScore: 0.9,
     });
     expect(evals['prompt-efficiency']).toMatchObject({
@@ -125,7 +127,7 @@ describe('loadRunDetail', () => {
       totalTrials: 3,
       lowerIsBetter: false,
     });
-    expect(evals['prompt-efficiency'].passAtK).toBeUndefined();
+    expect(evals['prompt-efficiency'].passAt1).toBeUndefined();
   });
 
   it('defaults evaluators to {} when aggregated.json is missing (ENOENT)', async () => {

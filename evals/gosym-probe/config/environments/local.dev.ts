@@ -24,6 +24,7 @@ export function createConfig(): Config {
       useS2S: process.env.GOCODE_USE_S2S_AUTH === 'true',
       model: process.env.OPENAI_MODEL ?? '',
       visionModel: process.env.OPENAI_VISION_MODEL || process.env.OPENAI_MODEL || undefined,
+      summaryAnalysisModel: process.env.SUMMARY_ANALYSIS_MODEL || undefined,
     },
     eval: {
       defaultTrials: 1,

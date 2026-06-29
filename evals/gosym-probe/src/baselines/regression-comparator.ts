@@ -13,9 +13,11 @@ import {
   computeMargin,
   tostProportions,
   tostPermutation,
+  computePower,
 } from './statistical-tests.js';
 import { extractTrialScoresForEvaluator } from './trial-scores.js';
 import type { StatisticalRegressionConfig } from '../../config/environments/types.js';
+import { REGRESSION_DEFAULTS } from '../../config/environments/defaults.js';
 
 function isBinaryScores(scores: readonly number[]): boolean {
   return scores.every((s) => s === 0 || s === 1);
@@ -130,6 +132,7 @@ export class RegressionComparator {
           confidenceInterval: tostResult.confidenceInterval,
           nonInferiorityProven: tostResult.nonInferiorityProven,
           ...(floored && { marginFloored: true }),
+          power: this.buildPower(baselineTrialScores, currentTrialScores, config, false),
         };
         return {
           type: 'compared',
@@ -223,6 +226,12 @@ export class RegressionComparator {
           confidenceInterval: tostResult.confidenceInterval,
           nonInferiorityProven: tostResult.nonInferiorityProven,
           ...(floored && { marginFloored: true }),
+          power: this.buildPower(
+            baselineTrialScores,
+            currentTrialScores,
+            config,
+            agg.lowerIsBetter === true,
+          ),
         };
         return {
           type: 'compared',
@@ -272,6 +281,32 @@ export class RegressionComparator {
   /** Resolves the k multiplier for a named evaluator, applying per-evaluator overrides. */
   private resolveK(name: string, config: StatisticalRegressionConfig): number {
     return config.evaluatorKOverrides?.[name] ?? config.k;
+  }
+
+  /**
+   * Builds the report-only power summary attached to StatisticalMetadata.
+   * Does not influence the gate — it lets the reporter distinguish an
+   * underpowered TOST result from a genuine regression. `lowerIsBetter` is
+   * forwarded so a regression reads as a negative cohensD on lower-is-better
+   * metrics (token-usage, cost, latency), matching the TOST orientation.
+   */
+  private buildPower(
+    baselineTrialScores: readonly number[],
+    currentTrialScores: readonly number[],
+    config: StatisticalRegressionConfig,
+    lowerIsBetter: boolean,
+  ): StatisticalMetadata['power'] {
+    const result = computePower(baselineTrialScores, currentTrialScores, {
+      alpha: config.alpha,
+      targetPower: config.targetPower ?? REGRESSION_DEFAULTS.targetPower,
+      lowerIsBetter,
+    });
+    return {
+      cohensD: result.cohensD,
+      achievedPower: result.achievedPower,
+      mdeScore: result.mdeScore,
+      targetPower: result.targetPower,
+    };
   }
 
   private computeGate(evaluators: RegressionEvalResult[]): RegressionResult['gate'] {

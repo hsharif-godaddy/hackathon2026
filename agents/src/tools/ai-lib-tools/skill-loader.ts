@@ -9,6 +9,29 @@ import { logger } from '../../logging/index.js';
 import { SkillLoaderTool } from '../skill-loader-tool.js';
 import { skillToolManager } from '../skill-tool-manager.js';
 
+interface SkillDiagnosticsEvent {
+  event: 'load' | 'unload';
+  skill: string;
+  conversationId?: string;
+}
+
+/**
+ * Emit a per-skill load/unload diagnostic via the context event emitter.
+ * The SSE layer forwards it to the client as `skill_diagnostics`
+ * only when SKILL_DIAGNOSTICS=true, so this is a cheap no-op in normal
+ * operation. Consumed by the gosym-probe skill-selection evaluator to
+ * reconstruct which skills were loaded during a run.
+ */
+function emitSkillDiagnostics(
+  context: AgentContext | undefined,
+  payload: SkillDiagnosticsEvent,
+): void {
+  const emitter = context?.metadata?.eventEmitter as
+    | { emit: (type: string, data: unknown) => void }
+    | undefined;
+  emitter?.emit('skill_diagnostics', payload);
+}
+
 type LifecycleAction = 'load' | 'unload' | 'install' | 'complete';
 
 // Guarded wrapper: a throw from createSkillAction/emitSkillAction must not
@@ -134,6 +157,12 @@ export const skillAITool: Tool = createTool(
           };
         }
 
+        emitSkillDiagnostics(context, {
+          event: 'load',
+          skill: result.skill,
+          conversationId,
+        });
+
         // Return skill information - tools are now visible via prepareStep/activeTools
         return {
           skill: result.skill,
@@ -235,6 +264,11 @@ export const skillAITool: Tool = createTool(
         appId
       });
 
+      emitSkillDiagnostics(context, {
+        event: 'unload',
+        skill: input.skill,
+        conversationId,
+      });
       safeEmitEvent(input.skill, 'unload');
 
       return {

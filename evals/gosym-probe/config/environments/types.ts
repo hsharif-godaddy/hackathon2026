@@ -9,6 +9,14 @@ export interface StatisticalRegressionConfig {
   /** Per-evaluator k overrides. Keys are evaluator names. */
   evaluatorKOverrides?: Record<string, number>;
   /**
+   * Reporting vector for the unbiased pass@k / pass^k estimators (distinct
+   * from the TOST margin `k` above). Resolved per scenario to integers
+   * `1 <= k <= ceil(n/2)`, always including 1. Default: [1, 2, 3, 5, 10].
+   */
+  reportingK: number[];
+  /** Per-evaluator reporting-vector overrides. Keys are evaluator names. */
+  reportingKOverrides?: Record<string, number[]>;
+  /**
    * Non-inferiority margin floor as a fraction of the baseline mean:
    * floorTerm = minMarginFraction * max(mean, 0), and
    * margin = max(k * SD(baseline), floorTerm). When baseline SD is near-zero,
@@ -22,6 +30,12 @@ export interface StatisticalRegressionConfig {
   minMarginFraction: number;
   /** Integer PRNG seed for Monte Carlo / bootstrap determinism. */
   seed?: number;
+  /**
+   * Target power the reported minimum-detectable-effect is sized for, in
+   * (0, 1). Report-only: a result whose achieved power falls below this is
+   * labelled "underpowered" rather than treated as a regression. Default: 0.8.
+   */
+  targetPower?: number;
   /** Fallback thresholds used when baseline lacks trialScores (legacy baselines). */
   fallbackThresholds: ThresholdConfig;
 }
@@ -39,6 +53,14 @@ export interface Config {
     useS2S?: boolean;
     model: string;
     visionModel?: string;
+    /**
+     * Strong reasoning model for the `summary.md` narrative
+     * (`NarrativeSummaryReporter`). Read from `SUMMARY_ANALYSIS_MODEL`. When
+     * set, the reporter routes its single narrative call through
+     * `GocodeClient.withModel(<this>)`; when unset, it reuses the synthetic-user
+     * client's `model`.
+     */
+    summaryAnalysisModel?: string;
     unicodeSecurityMode?: string;
     piiDetection?: boolean;
     /**

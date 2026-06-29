@@ -79,7 +79,7 @@ function makeConfig(overrides: Partial<Config> = {}): Config {
       turnTimeoutMs: 5000,
     },
     playwright: { ignoreHttpsErrors: false },
-    regression: { alpha: 0.05, k: 2.0, minMarginFraction: 0.05, fallbackThresholds: { thresholds: {}, defaultThreshold: 0.1 } },
+    regression: { alpha: 0.05, k: 2.0, minMarginFraction: 0.05, reportingK: [1, 2, 3, 5, 10], fallbackThresholds: { thresholds: {}, defaultThreshold: 0.1 } },
     ...overrides,
   };
 }
@@ -136,6 +136,7 @@ describe('sanitizeConfig', () => {
       alpha: 0.05,
       k: 2.0,
       minMarginFraction: 0.05,
+      reportingK: [1, 2, 3, 5, 10],
       fallbackThresholds: { thresholds: {}, defaultThreshold: 0.1 },
     });
   });

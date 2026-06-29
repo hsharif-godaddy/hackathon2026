@@ -3,11 +3,13 @@ package api
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -2895,4 +2897,225 @@ func readConfig(t *testing.T, path string) map[string]any {
 		t.Fatalf("parse %s: %v", path, err)
 	}
 	return cfg
+}
+
+// initResetTestRepo builds the git-repo/.git + preview/ layout ResetApp needs,
+// commits one file, and returns its committed content.
+func initResetTestRepo(t *testing.T, baseDir, appID string) (workTree, committed string) {
+	t.Helper()
+	base := filepath.Join(baseDir, appID)
+	gitDir := filepath.Join(base, "git-repo", ".git")
+	workTree = filepath.Join(base, "preview")
+	for _, d := range []string{filepath.Join(base, "git-repo"), workTree} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", d, err)
+		}
+	}
+	git := func(args ...string) {
+		full := append([]string{"--git-dir=" + gitDir, "--work-tree=" + workTree}, args...)
+		if out, err := exec.Command("git", full...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	git("init", "--initial-branch=main")
+	git("config", "user.email", "test@airo.dev")
+	git("config", "user.name", "Test")
+	committed = "committed\n"
+	if err := os.WriteFile(filepath.Join(workTree, "page.tsx"), []byte(committed), 0o644); err != nil {
+		t.Fatalf("write page.tsx: %v", err)
+	}
+	git("add", "-A")
+	git("commit", "-m", "initial")
+	return workTree, committed
+}
+
+func TestResetAppRestoresWorkspace(t *testing.T) {
+	srv, tmpDir := newTestServerWithFS(t)
+	app, err := srv.DB.CreateApp("sub-1", "sys-1", nil, nil)
+	if err != nil {
+		t.Fatalf("create app: %v", err)
+	}
+	workTree, committed := initResetTestRepo(t, tmpDir, app.ID)
+
+	// Agent dirties the tree.
+	if err := os.WriteFile(filepath.Join(workTree, "page.tsx"), []byte("edited\n"), 0o644); err != nil {
+		t.Fatalf("dirty file: %v", err)
+	}
+
+	// restart:false so the handler doesn't shell out to docker in CI.
+	body, _ := json.Marshal(map[string]any{"restart": false})
+	r := setMuxVars(
+		httptest.NewRequest("POST", "/reset", bytes.NewReader(body)),
+		map[string]string{"subId": "sub-1", "sysId": "sys-1", "appId": app.ID},
+	)
+	w := httptest.NewRecorder()
+	srv.ResetApp(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d (%s)", w.Code, w.Body.String())
+	}
+	var resp struct {
+		Success   bool `json:"success"`
+		Restarted bool `json:"restarted"`
+	}
+	decodeJSON(t, w, &resp)
+	if !resp.Success || resp.Restarted {
+		t.Fatalf("expected success=true restarted=false, got %+v", resp)
+	}
+
+	got, err := os.ReadFile(filepath.Join(workTree, "page.tsx"))
+	if err != nil {
+		t.Fatalf("read after reset: %v", err)
+	}
+	if string(got) != committed {
+		t.Errorf("page.tsx = %q, want %q", got, committed)
+	}
+}
+
+func TestResetAppReadyAfterRestart(t *testing.T) {
+	srv, tmpDir := newTestServerWithFS(t)
+	app, err := srv.DB.CreateApp("sub-1", "sys-1", nil, nil)
+	if err != nil {
+		t.Fatalf("create app: %v", err)
+	}
+	initResetTestRepo(t, tmpDir, app.ID)
+
+	restartCalled := false
+	readyCalled := false
+	srv.restartContainers = func(string) error { restartCalled = true; return nil }
+	srv.awaitPreviewReady = func(int) error { readyCalled = true; return nil }
+
+	r := setMuxVars(
+		httptest.NewRequest("POST", "/reset", strings.NewReader("{}")),
+		map[string]string{"subId": "sub-1", "sysId": "sys-1", "appId": app.ID},
+	)
+	w := httptest.NewRecorder()
+	srv.ResetApp(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d (%s)", w.Code, w.Body.String())
+	}
+	var resp struct {
+		Restarted bool `json:"restarted"`
+		Ready     bool `json:"ready"`
+	}
+	decodeJSON(t, w, &resp)
+	if !restartCalled || !readyCalled {
+		t.Fatalf("expected restart and readiness both invoked, got restart=%v ready=%v", restartCalled, readyCalled)
+	}
+	if !resp.Restarted || !resp.Ready {
+		t.Fatalf("expected restarted=true ready=true, got %+v", resp)
+	}
+}
+
+func TestResetAppRestartedButNotReady(t *testing.T) {
+	srv, tmpDir := newTestServerWithFS(t)
+	app, err := srv.DB.CreateApp("sub-1", "sys-1", nil, nil)
+	if err != nil {
+		t.Fatalf("create app: %v", err)
+	}
+	initResetTestRepo(t, tmpDir, app.ID)
+
+	srv.restartContainers = func(string) error { return nil }
+	srv.awaitPreviewReady = func(int) error { return fmt.Errorf("preview health check timed out") }
+
+	r := setMuxVars(
+		httptest.NewRequest("POST", "/reset", strings.NewReader("{}")),
+		map[string]string{"subId": "sub-1", "sysId": "sys-1", "appId": app.ID},
+	)
+	w := httptest.NewRecorder()
+	srv.ResetApp(w, r)
+
+	// A not-ready preview is reported on the body (ready:false + readyError),
+	// not as an HTTP error: the git reset itself succeeded, so the handler
+	// returns 200 and lets the caller decide the reset was degraded.
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d (%s)", w.Code, w.Body.String())
+	}
+	var resp struct {
+		Restarted  bool   `json:"restarted"`
+		Ready      bool   `json:"ready"`
+		ReadyError string `json:"readyError"`
+	}
+	decodeJSON(t, w, &resp)
+	if !resp.Restarted {
+		t.Fatalf("expected restarted=true, got %+v", resp)
+	}
+	if resp.Ready {
+		t.Fatalf("expected ready=false, got %+v", resp)
+	}
+	if resp.ReadyError == "" {
+		t.Fatalf("expected readyError to be populated, got %+v", resp)
+	}
+}
+
+func TestResetAppSkipsReadinessWhenRestartNotRequested(t *testing.T) {
+	srv, tmpDir := newTestServerWithFS(t)
+	app, err := srv.DB.CreateApp("sub-1", "sys-1", nil, nil)
+	if err != nil {
+		t.Fatalf("create app: %v", err)
+	}
+	initResetTestRepo(t, tmpDir, app.ID)
+
+	srv.restartContainers = func(string) error {
+		t.Fatal("restart must not be called when restart:false")
+		return nil
+	}
+	srv.awaitPreviewReady = func(int) error {
+		t.Fatal("readiness must not be checked when restart:false")
+		return nil
+	}
+
+	body, _ := json.Marshal(map[string]any{"restart": false})
+	r := setMuxVars(
+		httptest.NewRequest("POST", "/reset", bytes.NewReader(body)),
+		map[string]string{"subId": "sub-1", "sysId": "sys-1", "appId": app.ID},
+	)
+	w := httptest.NewRecorder()
+	srv.ResetApp(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d (%s)", w.Code, w.Body.String())
+	}
+	var resp struct {
+		Restarted bool `json:"restarted"`
+		Ready     bool `json:"ready"`
+	}
+	decodeJSON(t, w, &resp)
+	if resp.Restarted || resp.Ready {
+		t.Fatalf("expected restarted=false ready=false, got %+v", resp)
+	}
+}
+
+func TestResetAppNotFound(t *testing.T) {
+	srv, _ := newTestServerWithFS(t)
+	r := setMuxVars(
+		httptest.NewRequest("POST", "/reset", strings.NewReader("{}")),
+		map[string]string{"subId": "sub-1", "sysId": "sys-1", "appId": "missing"},
+	)
+	w := httptest.NewRecorder()
+	srv.ResetApp(w, r)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", w.Code)
+	}
+}
+
+func TestResetAppRejectsMalformedBody(t *testing.T) {
+	srv, tmpDir := newTestServerWithFS(t)
+	app, err := srv.DB.CreateApp("sub-1", "sys-1", nil, nil)
+	if err != nil {
+		t.Fatalf("create app: %v", err)
+	}
+	initResetTestRepo(t, tmpDir, app.ID)
+
+	// Present-but-malformed body must 400, not silently reset-to-HEAD.
+	r := setMuxVars(
+		httptest.NewRequest("POST", "/reset", strings.NewReader(`{"restart": "yes"`)),
+		map[string]string{"subId": "sub-1", "sysId": "sys-1", "appId": app.ID},
+	)
+	w := httptest.NewRecorder()
+	srv.ResetApp(w, r)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for malformed body, got %d (%s)", w.Code, w.Body.String())
+	}
 }

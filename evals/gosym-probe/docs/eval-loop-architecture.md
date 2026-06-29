@@ -111,7 +111,7 @@ or `unknown`. Score mapping: pass=1.0, partial=0.5, fail/unknown=0.0.
 **Build-Quality Evaluators** — DOM snapshot quality suite.
 
 Two LLM-based evaluators (`visual_coherence`, `content_substance`) using
-the `LLMJsonEvaluator` framework. Each receives scenario goals + body
+the `LLMJudgeEvaluator` framework. Each receives scenario goals + body
 HTML/text evidence and returns structured JSON `{score, verdict, reason}`.
 
 Additionally, 7 deterministic `DeterministicDomEvaluator` specs run once

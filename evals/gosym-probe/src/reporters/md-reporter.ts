@@ -17,7 +17,16 @@ import {
   computeTimingStats,
 } from '../util/timing.js';
 import { computeScoreStats } from '../util/score-stats.js';
+import { formatPass1, formatEstimatorVector } from '../util/pass-at-k.js';
 import { summarizeToolCalls } from '../store/tool-call-summarizer.js';
+import {
+  findSignalDisagreements,
+  type SignalDisagreement,
+} from '../baselines/signal-disagreement.js';
+import {
+  computeGraderStability,
+  type GraderStability,
+} from '../baselines/grader-stability.js';
 
 interface UnknownVerdict {
   scenario: string;
@@ -45,7 +54,8 @@ function truncateCell(
 }
 
 function formatPassRate(agg: AggregatedResult): string {
-  if (agg.passAtK === undefined || agg.totalTrials === 0) return '\u2014';
+  if (agg.passAt1 === undefined && agg.baselinePassingTrials === undefined) return '\u2014';
+  if (agg.totalTrials === 0) return '\u2014';
   const passing = agg.baselinePassingTrials ?? agg.passingTrials;
   return `${passing}/${agg.totalTrials} (${formatPercent(passing, agg.totalTrials)})`;
 }
@@ -85,6 +95,147 @@ function baselineCell(
   }
 
   return base;
+}
+
+// Formats a pre-divided rate fraction (0..1) as a percentage. Distinct from
+// formatPercent (which takes a numerator/denominator and returns '0%'/'NaN%'):
+// here the input is already a fraction and a non-finite value means "no data",
+// which renders as an em-dash rather than a bogus number.
+function formatRateFraction(fraction: number): string {
+  if (!Number.isFinite(fraction)) return '—';
+  return `${Math.round(fraction * 100)}%`;
+}
+
+function gateIcon(gate: RegressionResult['gate']): string {
+  if (gate === 'fail') return '✗ fail';
+  if (gate === 'warning') return '⚠️ warning';
+  return '✓ pass';
+}
+
+/**
+ * Renders the main-vs-our-change pass-rate comparison (squad task 1d): one row
+ * per gated scenario × pass-rate evaluator, putting the baseline ("main") and
+ * current ("our-change") pass rates side by side with their delta and the
+ * scenario's gate. This is the merge-back evidence format — a reviewer reads it
+ * to judge whether an our-change run beats main. Reuses the comparison the
+ * regression gate already computes (ComparedRegressionEvalResult), so it adds a
+ * view, not a second computation.
+ *
+ * Only **pass-rate-mode** evaluators appear here: for them
+ * `currentScore`/`baselineScore` are genuine pass rates (passingTrials /
+ * totalTrials), so a percentage and a percentage-point delta are meaningful.
+ * Score-mode evaluators (token cost, latency, agent steps, …) carry an
+ * aggregate score in those same fields — rendering them as "%" would be a
+ * category error — so they're excluded and counted in a footnote rather than
+ * silently dropped. Their regression status still shows in the per-scenario
+ * gated tables above.
+ *
+ * "main" = the saved baseline a run was gated against (typically captured on
+ * the main branch); "our-change" = the current run. Scenarios with no baseline
+ * are omitted (nothing to compare).
+ */
+function renderPassRateComparison(results: ScenarioResult[]): string {
+  const gated = results.filter((r) => r.regressionStatus !== undefined);
+  const rows: string[] = [];
+  let scoreModeExcluded = 0;
+  let noBaselineExcluded = 0;
+  for (const result of gated) {
+    const status = result.regressionStatus!;
+    for (const evalResult of status.evaluators) {
+      if (evalResult.type !== 'compared') continue;
+      // currentScore/baselineScore are a pass rate only in pass-rate mode;
+      // skip score-mode evaluators rather than mislabel their aggregate score.
+      if (result.aggregated[evalResult.evaluator]?.regressionMode === 'score') {
+        scoreModeExcluded += 1;
+        continue;
+      }
+      const e = evalResult as ComparedRegressionEvalResult;
+      // A non-finite baselineScore means the main baseline carried NO data for
+      // this evaluator (e.g. a newly-added evaluator the baseline predates).
+      // There is no comparison to show — rendering it would print a green
+      // "— | 80% | — | ✓ pass" row that reads as merge-back evidence while
+      // carrying zero signal. Exclude it (footnoted), never show it as a pass.
+      if (!Number.isFinite(e.baselineScore)) {
+        noBaselineExcluded += 1;
+        continue;
+      }
+      const sign: string = e.delta >= 0 ? '+' : '';
+      const deltaStr = Number.isFinite(e.delta)
+        ? `${sign}${(e.delta * 100).toFixed(0)}pp`
+        : '—';
+      const flagged = e.exceeded ? `⚠️ ${deltaStr}` : deltaStr;
+      rows.push(
+        `| ${result.scenarioName} | ${e.evaluator} | `
+        + `${formatRateFraction(e.baselineScore)} | `
+        + `${formatRateFraction(e.currentScore)} | ${flagged} | `
+        + `${gateIcon(status.gate)} |`,
+      );
+    }
+  }
+
+  const footnote: string[] = [];
+  if (scoreModeExcluded > 0) {
+    footnote.push(
+      '',
+      `_${scoreModeExcluded} score-mode evaluator result(s) (e.g. token `
+      + 'cost, latency) are omitted here — they carry an aggregate score, not '
+      + 'a pass rate. See the per-scenario gated tables above for their '
+      + 'regression status._',
+    );
+  }
+  if (noBaselineExcluded > 0) {
+    footnote.push(
+      '',
+      `_${noBaselineExcluded} evaluator(s) are omitted — the main baseline `
+      + 'has no data for them (e.g. an evaluator added after the baseline was '
+      + 'captured), so there is nothing to compare. Re-capture the main '
+      + 'baseline to include them._',
+    );
+  }
+
+  const header = [
+    '## Pass-Rate Comparison: main vs our-change',
+    '',
+    '> Per-scenario, per-evaluator pass rates side by side. **main** = the '
+    + 'baseline this run was gated against; **our-change** = this run. '
+    + 'Delta is our-change − main in percentage points; ⚠️ on the Δ cell marks '
+    + 'the per-evaluator regression the gate flagged. The **Gate** column is the '
+    + 'scenario-level verdict (repeated on each of its rows), not a per-evaluator '
+    + 'one — a passing evaluator can sit under a failing scenario gate. This is '
+    + 'the merge-back evidence format.',
+    '',
+  ];
+
+  if (rows.length === 0) {
+    let why: string;
+    if (noBaselineExcluded > 0 && scoreModeExcluded === 0) {
+      why = 'the main baseline has no data for these evaluators (e.g. they '
+        + 'were added after it was captured) — re-capture the main baseline to '
+        + 'compare them';
+    } else if (scoreModeExcluded > 0 && noBaselineExcluded === 0) {
+      why = 'baselined scenarios had only score-mode evaluators (token cost, '
+        + 'latency, …), which report an aggregate score rather than a pass '
+        + 'rate — see the gated tables above';
+    } else if (scoreModeExcluded > 0 || noBaselineExcluded > 0) {
+      why = 'every comparable evaluator was excluded (score-mode and/or '
+        + 'missing main-baseline data) — see the gated tables above';
+    } else {
+      why = 'no baselined scenarios in this run — capture a main baseline '
+        + '(`save-baseline`) and re-run against it to populate this table';
+    }
+    // Append the same footnotes the non-empty path builds so the exact
+    // excluded counts (score-mode / missing-baseline) aren't lost when every
+    // comparable evaluator was excluded.
+    return [...header, `_No pass-rate rows to compare: ${why}._`, ...footnote].join('\n');
+  }
+
+  return [
+    ...header,
+    '| Scenario | Evaluator | main | our-change | Δ | Gate |',
+    '| --- | --- | --- | --- | --- | --- |',
+    ...rows,
+    ...footnote,
+  ].join('\n');
 }
 
 function renderEvaluatorReasoning(
@@ -246,17 +397,64 @@ function renderUnknowns(
   return lines.join('\n');
 }
 
+function totalTrialCount(results: ScenarioResult[]): number {
+  return results.reduce((sum, r) => sum + r.trials.length, 0);
+}
+
+function renderGraderStability(stability: GraderStability): string {
+  const lines = [
+    '## \u{1f4cf} Grader Stability',
+    '',
+    '> Meta-metric: how consistent the GRADERS are across trials, '
+    + 'separate from how the agent scored. Flip-rate = distinct verdicts '
+    + '÷ trials (lower = steadier). Each trial is a different build, '
+    + 'so some variation is the agent, not the grader — read with the '
+    + 'per-trial table.',
+    '',
+    '| Evaluator | Trials | Distinct verdicts | Flip-rate | Verdicts seen |',
+    '|-----------|--------|-------------------|-----------|---------------|',
+    ...stability.perEvaluator.map((e) => {
+      const seen = [...new Set(e.verdicts)].join(', ');
+      return `| ${escapePipeForMarkdown(e.evaluator)} | ${e.trials}`
+        + ` | ${e.distinctVerdicts} | ${e.flipRate.toFixed(2)}`
+        + ` | ${escapePipeForMarkdown(seen)} |`;
+    }),
+    '',
+    `*Static-vs-judge disagreement rate:* `
+    + `${stability.disagreements}/${stability.comparableTrials} `
+    + `(${(stability.disagreementRate * 100).toFixed(0)}%) of comparable trials.`,
+  ];
+  return lines.join('\n');
+}
+
+function renderSignalDisagreements(
+  disagreements: SignalDisagreement[],
+): string {
+  const lines = [
+    '## \u{1f50d} Signal Disagreements — Static vs Judge',
+    '',
+    '> The static evaluator and the narrow LLM-judge share one checklist.'
+    + ' Where their verdicts diverge, investigate: a bad static test, a bad'
+    + ' judgment, or a genuinely-different-but-valid solution.',
+    '',
+    '| Scenario | Trial | Static | Judge | Investigate |',
+    '|----------|-------|--------|-------|-------------|',
+    ...disagreements.map((d) => {
+      const scenario = escapePipeForMarkdown(d.scenario);
+      const investigate = escapePipeForMarkdown(d.investigate);
+      return `| ${scenario} | ${d.trialLabel} | ${d.staticVerdict}`
+        + ` | ${d.judgeVerdict} | ${investigate} |`;
+    }),
+  ];
+  return lines.join('\n');
+}
+
 function compactVerdict(
   result: EvalResult | undefined,
 ): string {
   if (!result) return '\u2014';
   if (result.verdict === 'unknown') return '\u26a0\ufe0f unknown';
   return result.verdict;
-}
-
-function passIcon(value: boolean | undefined): string {
-  if (value === undefined) return '\u2014';
-  return value ? '✓' : '✗';
 }
 
 function formatPercent(
@@ -365,7 +563,7 @@ function renderCategoryMatrix(results: ScenarioResult[]): string[] {
     { length: maxTrials },
     (_, i) => `T${i + 1}`,
   );
-  const cols = ['Scenario', 'Evaluator', 'pass@k', 'pass^k', 'Pass Rate', ...trialHeaders];
+  const cols = ['Scenario', 'Evaluator', 'pass@1', 'pass@k', 'pass^k', 'Pass Rate', ...trialHeaders];
   const lines = [
     `| ${cols.join(' | ')} |`,
     `|${cols.map((col) => '-'.repeat(col.length + 2)).join('|')}|`,
@@ -374,13 +572,14 @@ function renderCategoryMatrix(results: ScenarioResult[]): string[] {
   for (const result of results) {
     const evalIndex = buildEvalIndex(result);
     for (const [name, agg] of Object.entries(result.aggregated)) {
-      // passAtK is defined for pass-rate evaluators and enriched score-mode evaluators
+      // Estimators are defined for pass-rate evaluators and enriched score-mode evaluators
       const rate = formatPassRate(agg);
       const cells = [
         escapePipeForMarkdown(result.scenarioName),
         escapePipeForMarkdown(name),
-        passIcon(agg.passAtK),
-        passIcon(agg.passToTheK),
+        formatPass1(agg.passAt1, '\u2014'),
+        formatEstimatorVector(agg.passAtK, '\u2014'),
+        formatEstimatorVector(agg.passHatK, '\u2014'),
         rate,
       ];
       for (let i = 0; i < maxTrials; i++) {
@@ -481,14 +680,29 @@ function renderTostDiagnostics(regressionStatus: RegressionResult): string | nul
       ? (e.delta >= 0 ? `+${e.delta.toFixed(2)}` : e.delta.toFixed(2))
       : '\u2014';
 
+    const underpowered =
+      stat.power !== undefined &&
+      !stat.nonInferiorityProven &&
+      stat.power.achievedPower < stat.power.targetPower;
+
     blocks.push(
       `**${e.evaluator}** ${stat.method} | n: baseline=${stat.n.baseline}, current=${stat.n.current}`,
       `- Margin: \u00b1${stat.margin.toFixed(2)} (k=${stat.k}, SD=${stat.baselineSD.toFixed(2)})`,
       `- CI: ${stat.confidenceInterval.lower.toFixed(2)}..${stat.confidenceInterval.upper.toFixed(2)}`,
       `- Delta: ${deltaStr}`,
       `- Non-inferiority: ${stat.nonInferiorityProven ? 'proven' : 'not proven'}`,
-      '',
     );
+    if (stat.power !== undefined) {
+      const p = stat.power;
+      const mdeStr = Number.isFinite(p.mdeScore) ? p.mdeScore.toFixed(2) : '\u221e';
+      blocks.push(
+        `- Power: ${(p.achievedPower * 100).toFixed(0)}% `
+        + `(Cohen's d=${p.cohensD.toFixed(2)}, MDE \u00b1${mdeStr}, `
+        + `target ${(p.targetPower * 100).toFixed(0)}%)`
+        + (underpowered ? ' \u2014 **underpowered**' : ''),
+      );
+    }
+    blocks.push('');
   }
 
   return [
@@ -509,6 +723,8 @@ export interface RenderOptions {
   gitSha?: string | null;
   gitBranch?: string | null;
   tostConfig?: { alpha: number; k: number };
+  /** Strong reasoning model for the `summary.md` narrative; forwarded to `NarrativeSummaryReporter`. */
+  summaryAnalysisModel?: string;
 }
 
 export class MdReporter {
@@ -527,6 +743,8 @@ export class MdReporter {
     const gated = results.filter((r) => r.regressionStatus !== undefined);
     const informational = results.filter((r) => r.regressionStatus === undefined);
     const unknowns = collectUnknowns(results);
+    const disagreements = findSignalDisagreements(results);
+    const trialCount = totalTrialCount(results);
 
     const headerLine = options?.wallClockMs
       ? `**Generated:** ${new Date().toISOString()} | **Wall Clock:** ${formatDuration(options.wallClockMs)}`
@@ -563,6 +781,18 @@ export class MdReporter {
         informational,
       ),
     ];
+
+    if (gated.length > 0) {
+      sections.push('', renderPassRateComparison(results));
+    }
+
+    if (trialCount > 1) {
+      sections.push('', renderGraderStability(computeGraderStability(results)));
+    }
+
+    if (disagreements.length > 0) {
+      sections.push('', renderSignalDisagreements(disagreements));
+    }
 
     if (unknowns.length > 0) {
       sections.push('', renderUnknowns(unknowns));
@@ -794,7 +1024,7 @@ export class MdReporter {
       result.regressionStatus !== undefined;
 
     const cols: string[] = [
-      'Evaluator', 'pass@k', 'pass^k', 'Pass Rate', 'Mean', 'Range',
+      'Evaluator', 'pass@1', 'pass@k', 'pass^k', 'Pass Rate', 'Mean', 'Range',
     ];
     if (hasBaseline) cols.push('vs. baseline');
     cols.push(...trialHeaders);
@@ -857,14 +1087,9 @@ export class MdReporter {
     evalIndex: Map<number, Map<string, EvalResult>>,
     baselineCellValue?: string,
   ): string {
-    const passAtK = agg.passAtK === undefined
-      ? '\u2014'
-      : agg.baselinePassingTrials !== undefined
-        ? `${agg.passAtK ? 'pass' : 'fail'} (${agg.baselinePassingTrials}/${agg.totalTrials})`
-        : agg.passAtK ? 'pass' : 'fail';
-    const passToTheK = agg.passToTheK === undefined
-      ? '\u2014'
-      : agg.passToTheK ? 'pass' : 'fail';
+    const pass1 = formatPass1(agg.passAt1, '\u2014');
+    const passAtK = formatEstimatorVector(agg.passAtK, '\u2014');
+    const passHatK = formatEstimatorVector(agg.passHatK, '\u2014');
 
     const passRate = formatPassRate(agg);
 
@@ -880,7 +1105,7 @@ export class MdReporter {
       : '\u2014';
 
     const cells: string[] = [
-      evaluator.replace(/\|/g, '\\|'), passAtK, passToTheK, passRate, mean, range,
+      evaluator.replace(/\|/g, '\\|'), pass1, passAtK, passHatK, passRate, mean, range,
     ];
     if (baselineCellValue !== undefined) cells.push(baselineCellValue);
     for (let i = 0; i < trialCount; i++) {

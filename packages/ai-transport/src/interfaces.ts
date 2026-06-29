@@ -315,6 +315,7 @@ export const STREAMING_EVENT_TYPES = [
   'build_phase',
   'logo',
   'request_grant_refresh',
+  'skill_diagnostics',
 ] as const
 
 export type StreamingEventType = typeof STREAMING_EVENT_TYPES[number]

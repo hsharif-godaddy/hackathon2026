@@ -10,6 +10,7 @@ import {
   SiteCapture,
 } from './clients/dom-capture.js';
 import { GocodeSyntheticUser } from './runner/gocode-synthetic-user.js';
+import { ScriptedSyntheticUser } from './runner/scripted-synthetic-user.js';
 import {
   SuiteRunner,
 } from './runner/suite-runner.js';
@@ -93,6 +94,7 @@ async function main(): Promise<void> {
       'graduate-suite':   { type: 'string' },
       resume:             { type: 'string' },
       stability:          { type: 'string' },
+      calibrate:          { type: 'boolean' },
       list:               { type: 'boolean' },
       'list-baselines':   { type: 'boolean' },
       'list-runs':        { type: 'boolean' },
@@ -135,7 +137,10 @@ async function main(): Promise<void> {
     const listConfig = loadConfig();
     const listCtrlPlane = new AABCtrlPlaneClient({ baseUrl: listConfig.aab.controlPlaneUrl });
     const listGocode = new GocodeClient(listConfig.gocode);
-    const allScenarios = createAllScenarios(listGocode, listCtrlPlane);
+    // Pass listConfig: midConversationIncrementScenario throws without it when
+    // EVAL_INCREMENT_* is set (the runbook tells operators to set it), which
+    // would crash --list. With config present it resolves cleanly.
+    const allScenarios = createAllScenarios(listGocode, listCtrlPlane, listConfig);
     process.stdout.write(JSON.stringify(allScenarios.map(scenarioToInfo)));
     process.exit(0);
   }
@@ -236,9 +241,22 @@ async function main(): Promise<void> {
   });
   const gocodeClient          = new PerTrialGocodeClient(config.gocode);
   const narrativeGocodeClient = new GocodeClient(config.gocode);
-  const syntheticUser         = new GocodeSyntheticUser(gocodeClient);
+  // Wrap the LLM-backed user so scenarios declaring scriptedTurns replay a
+  // fixed script (stateful injection); behaviour-neutral for all others.
+  const syntheticUser         = new ScriptedSyntheticUser(
+    new GocodeSyntheticUser(gocodeClient),
+  );
 
-  const ALL_SCENARIOS = createAllScenarios(gocodeClient, ctrlPlane, config);
+  const calibrate = values.calibrate ?? false;
+  if (calibrate) {
+    console.log(
+      'Calibration mode: narrow-artifact-judge enabled alongside the ' +
+      'deterministic evaluators (static-vs-judge disagreement check).',
+    );
+  }
+  const ALL_SCENARIOS = createAllScenarios(
+    gocodeClient, ctrlPlane, config, calibrate,
+  );
   const scenarioIndex = buildScenarioIndex(ALL_SCENARIOS);
 
   if (values['graduate-suite']) {
@@ -475,8 +493,17 @@ async function main(): Promise<void> {
     gradReporter.finish();
 
     printGraduationResult(gradResult);
+    if (gradResult.droppedTrials > 0) {
+      console.warn(
+        `Warning: ${gradResult.droppedTrials} trial(s) dropped for ` +
+        `"${gradResult.scenarioName}" due to execution failures; ` +
+        `graduated on a thinned sample.`,
+      );
+    }
     await singleGradStore.prune();
-    process.exit(gradResult.baselineSaved ? 0 : 1);
+    // Degrade the exit code on dropped trials, matching the graduate-suite
+    // and standard-eval paths — a thinned sample shouldn't exit clean.
+    process.exit(gradResult.baselineSaved && gradResult.droppedTrials === 0 ? 0 : 1);
   }
 
   const baselineStore = skipBaseline ? undefined : new BaselineStore();
@@ -690,6 +717,7 @@ async function main(): Promise<void> {
       wallClockMs,
       skipBaseline,
       tostConfig: { alpha: config.regression.alpha, k: config.regression.k },
+      summaryAnalysisModel: config.gocode.summaryAnalysisModel,
     }, narrativeGocodeClient);
     await store.prune();
 

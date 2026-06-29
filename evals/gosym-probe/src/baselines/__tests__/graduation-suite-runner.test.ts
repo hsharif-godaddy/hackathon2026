@@ -62,7 +62,7 @@ function makeConfig(overrides?: Partial<ResolvedConfig>): ResolvedConfig {
     eval: { defaultTrials: 3, maxTurns: 30, turnTimeoutMs: 30000, maxConcurrency: 2, firstTurnInactivityMs: 600_000, firstTurnRetryScheduleMs: [600_000, 120_000, 120_000, 120_000], maxFirstTurnRetries: 2 },
     playwright: { ignoreHttpsErrors: true },
     capture: { concurrency: 2, maxConcurrency: 8, maxRoutes: 20, viewports: ['mobile', 'laptop'], gotoTimeoutMs: 30_000, appReadyTimeoutMs: 15_000 },
-    regression: { alpha: 0.05, k: 2.0, minMarginFraction: 0.05, fallbackThresholds: { defaultThreshold: 0.25, thresholds: {} } },
+    regression: { alpha: 0.05, k: 2.0, minMarginFraction: 0.05, reportingK: [1, 2, 3, 5, 10], fallbackThresholds: { defaultThreshold: 0.25, thresholds: {} } },
     ...overrides,
   };
 }
@@ -76,6 +76,7 @@ function makeGraduationResult(
     stabilityLevel: 'low',
     stabilityTrials: 5,
     baselineSaved: true,
+    droppedTrials: 0,
     scenarioResult: {
       scenarioName,
       stabilityLevel: 'low',
@@ -99,7 +100,19 @@ function makeMockStore(): EvalStore {
 }
 
 function makeTranscript(scenarioName = 'test', trialIndex = 0): Transcript {
-  return { scenarioName, trialIndex, turns: [], snapshots: [], errors: [], captureErrors: [] };
+  // Include an assistant turn by default: a graduation run with verdicts
+  // had agent output. The baseline-eligibility guard rejects zero-turn runs.
+  return {
+    scenarioName,
+    trialIndex,
+    turns: [
+      { role: 'user', content: 'build it', toolCalls: [], timestamp: 0 },
+      { role: 'assistant', content: 'done', toolCalls: [], timestamp: 1 },
+    ],
+    snapshots: [],
+    errors: [],
+    captureErrors: [],
+  };
 }
 
 function makeTrialResult(overrides?: Partial<TrialResult>): TrialResult {

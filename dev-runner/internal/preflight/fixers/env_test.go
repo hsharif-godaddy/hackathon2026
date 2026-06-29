@@ -38,6 +38,9 @@ func TestEnvFixer_FirstTimeCreate_S2S(t *testing.T) {
 	assertEq(t, env, "GOCODE_USE_S2S_AUTH", "true")
 	assertEq(t, env, "AWS_PROFILE", "airobuild-dev-private-sso")
 	assertEq(t, env, "AUTH_TYPE", "jwt")
+	// S2S mode pins GoCode to the prod gateway so the prod sso-jwt isn't sent
+	// to the NODE_ENV-derived dev endpoint (401 → silent no-output agent).
+	assertEq(t, env, "OPENAI_BASE_URL", "https://api.gocode.caas.gdcorp.tools/v1")
 	assertAbsent(t, env, "OPENAI_API_KEY")
 	assertAbsent(t, env, "ANTHROPIC_API_KEY")
 }
@@ -347,8 +350,10 @@ SSO_JWT=preserved-value
 	env := readEnvMap(t, filepath.Join(root, "agents/.env"))
 	assertEq(t, env, "GOCODE_USE_S2S_AUTH", "true")
 	assertEq(t, env, "SSO_JWT", "preserved-value") // unmanaged var preserved
+	// OPENAI_BASE_URL is re-pinned to the prod S2S gateway (matches the prod
+	// sso-jwt), NOT stripped — the old onkatana api-key endpoint is replaced.
+	assertEq(t, env, "OPENAI_BASE_URL", "https://api.gocode.caas.gdcorp.tools/v1")
 	assertAbsent(t, env, "OPENAI_API_KEY")
-	assertAbsent(t, env, "OPENAI_BASE_URL")
 	assertAbsent(t, env, "ANTHROPIC_API_KEY")
 	assertAbsent(t, env, "ANTHROPIC_BASE_URL")
 }

@@ -8,3 +8,5 @@ export { symptomModuleNotFoundScenario }
   from './symptom-module-not-found.js';
 export { multiTurnPublishFlowScenario }
   from './multi-turn-publish-flow.js';
+export { contactPageExpectationsScenario }
+  from './contact-page-expectations.js';

@@ -101,6 +101,46 @@ describe('skillAITool hooks', () => {
     mockCreateSkillAction.mockReturnValue({ schemaId: 'test-schema', data: {} });
   });
 
+  describe('skill diagnostics emission', () => {
+    function contextWithEmitter() {
+      const emit = vi.fn();
+      const context = {
+        metadata: {
+          conversationId: 'conv-123',
+          appId: 'app-456',
+          eventEmitter: { emit },
+        },
+      };
+      return { emit, context };
+    }
+
+    it('emits a load diagnostic after a successful load', async () => {
+      const { emit, context } = contextWithEmitter();
+      await executeTool({ action: 'load', skill: 'authentication' }, context);
+      expect(emit).toHaveBeenCalledWith('skill_diagnostics', {
+        event: 'load',
+        skill: 'test-skill',
+        conversationId: 'conv-123',
+      });
+    });
+
+    it('emits an unload diagnostic after a successful unload', async () => {
+      const { emit, context } = contextWithEmitter();
+      await executeTool({ action: 'unload', skill: 'authentication' }, context);
+      expect(emit).toHaveBeenCalledWith('skill_diagnostics', {
+        event: 'unload',
+        skill: 'authentication',
+        conversationId: 'conv-123',
+      });
+    });
+
+    it('does not throw when no event emitter is present', async () => {
+      await expect(
+        executeTool({ action: 'load', skill: 'authentication' }, mockContext),
+      ).resolves.toBeDefined();
+    });
+  });
+
   describe('load action', () => {
     it('should call runHook with onLoad after successful load', async () => {
       await executeTool({ action: 'load', skill: 'authentication' }, mockContext);

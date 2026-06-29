@@ -2,6 +2,7 @@ package setup
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 )
@@ -201,6 +202,106 @@ func TestGenerateSSLCertsWritesBothDirs(t *testing.T) {
 		}
 		if string(key) != string(keyContent) {
 			t.Errorf("%s/key.pem = %q, want %q", dir, key, keyContent)
+		}
+	}
+}
+
+// gitRun runs a git command with explicit git-dir/work-tree in a test repo.
+func gitRun(t *testing.T, gitDir, workTree string, args ...string) {
+	t.Helper()
+	full := append([]string{"--git-dir=" + gitDir, "--work-tree=" + workTree}, args...)
+	cmd := exec.Command("git", full...)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git %v: %v\n%s", args, err, out)
+	}
+}
+
+// makeResetTestRepo builds the git-repo/.git + preview/ layout ResetWorkspace
+// expects, with one committed file, and returns the appID + committed content.
+func makeResetTestRepo(t *testing.T, ts *TemplateSetup, appID string) (gitDir, workTree, committed string) {
+	t.Helper()
+	base := ts.GetBasePath(appID)
+	gitDir = filepath.Join(base, "git-repo", ".git")
+	workTree = filepath.Join(base, "preview")
+	if err := os.MkdirAll(workTree, 0o755); err != nil {
+		t.Fatalf("mkdir preview: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(base, "git-repo"), 0o755); err != nil {
+		t.Fatalf("mkdir git-repo: %v", err)
+	}
+
+	gitRun(t, gitDir, workTree, "init", "--initial-branch=main")
+	gitRun(t, gitDir, workTree, "config", "user.email", "test@airo.dev")
+	gitRun(t, gitDir, workTree, "config", "user.name", "Test")
+
+	committed = "committed content\n"
+	if err := os.WriteFile(filepath.Join(workTree, "page.tsx"), []byte(committed), 0o644); err != nil {
+		t.Fatalf("write page.tsx: %v", err)
+	}
+	gitRun(t, gitDir, workTree, "add", "-A")
+	gitRun(t, gitDir, workTree, "commit", "-m", "initial")
+	return gitDir, workTree, committed
+}
+
+func TestResetWorkspaceRestoresTrackedAndRemovesUntracked(t *testing.T) {
+	t.Setenv("APPS_BASE_DIR", t.TempDir())
+	ts := NewTemplateSetup()
+	appID := "reset-app-1"
+	gitDir, workTree, committed := makeResetTestRepo(t, ts, appID)
+
+	// Agent mutates a tracked file and adds an untracked one.
+	tracked := filepath.Join(workTree, "page.tsx")
+	if err := os.WriteFile(tracked, []byte("agent edited this\n"), 0o644); err != nil {
+		t.Fatalf("dirty tracked file: %v", err)
+	}
+	untracked := filepath.Join(workTree, "new-route.tsx")
+	if err := os.WriteFile(untracked, []byte("agent added this\n"), 0o644); err != nil {
+		t.Fatalf("write untracked file: %v", err)
+	}
+
+	if err := ts.ResetWorkspace(appID, ""); err != nil {
+		t.Fatalf("ResetWorkspace: %v", err)
+	}
+
+	// Tracked file restored to the committed content.
+	got, err := os.ReadFile(tracked)
+	if err != nil {
+		t.Fatalf("read tracked after reset: %v", err)
+	}
+	if string(got) != committed {
+		t.Errorf("tracked file = %q, want %q", got, committed)
+	}
+	// Untracked file removed by clean -fd.
+	if _, err := os.Stat(untracked); !os.IsNotExist(err) {
+		t.Errorf("untracked file should be removed, stat err = %v", err)
+	}
+	_ = gitDir
+}
+
+func TestResetWorkspaceMissingRepoErrors(t *testing.T) {
+	t.Setenv("APPS_BASE_DIR", t.TempDir())
+	ts := NewTemplateSetup()
+	if err := ts.ResetWorkspace("nonexistent-app", ""); err == nil {
+		t.Fatal("expected error for missing git repo, got nil")
+	}
+}
+
+func TestResetWorkspaceRejectsInvalidCommitRef(t *testing.T) {
+	t.Setenv("APPS_BASE_DIR", t.TempDir())
+	ts := NewTemplateSetup()
+	appID := "reset-app-bad-ref"
+	makeResetTestRepo(t, ts, appID)
+
+	// Garbage and flag-shaped inputs must be rejected before exec so the target
+	// can never be misread as a git flag or smuggle shell metacharacters.
+	for _, bad := range []string{
+		"--hard",        // leading dash → git flag
+		"a; rm -rf /",   // shell metacharacters
+		"branch name",   // whitespace
+		"feat$(whoami)", // command substitution chars
+	} {
+		if err := ts.ResetWorkspace(appID, bad); err == nil {
+			t.Errorf("expected ResetWorkspace to reject ref %q, got nil", bad)
 		}
 	}
 }

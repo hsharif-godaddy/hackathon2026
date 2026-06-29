@@ -62,24 +62,34 @@ function makeTrial(
 describe('TrialAggregator', () => {
   const agg = new TrialAggregator();
 
-  describe('pass@k (passAtK)', () => {
-    it('is true when at least one trial passes', () => {
+  describe('pass@k numeric estimators', () => {
+    it('computes passAt1 and passAtK when at least one trial passes', () => {
       const trials = [
         makeTrial(0, { eval: 'fail' }),
         makeTrial(1, { eval: 'pass' }),
         makeTrial(2, { eval: 'fail' }),
       ];
       const result = agg.aggregate(makeScenario(), trials);
-      expect(result.aggregated['eval'].passAtK).toBe(true);
+      // n=3, c=1, resolvedKs=[1,2] (ceil(3/2)=2)
+      // passAtK k=1: 1/3, k=2: 1-C(2,2)/C(3,2) = 1-1/3 = 2/3
+      // passHatK k=1: 1/3, k=2: C(1,2)/C(3,2) = 0/3 = 0
+      expect(result.aggregated['eval'].passAt1).toBeCloseTo(1 / 3);
+      expect(result.aggregated['eval'].passAtK!.find((e) => e.k === 1)?.value).toBeCloseTo(1 / 3);
+      expect(result.aggregated['eval'].passAtK!.find((e) => e.k === 2)?.value).toBeCloseTo(2 / 3);
+      expect(result.aggregated['eval'].passHatK!.find((e) => e.k === 1)?.value).toBeCloseTo(1 / 3);
+      expect(result.aggregated['eval'].passHatK!.find((e) => e.k === 2)?.value).toBe(0);
     });
 
-    it('is false when no trials pass', () => {
+    it('computes passAt1=0 when no trials pass', () => {
       const trials = [
         makeTrial(0, { eval: 'fail' }),
         makeTrial(1, { eval: 'partial' }),
       ];
       const result = agg.aggregate(makeScenario(), trials);
-      expect(result.aggregated['eval'].passAtK).toBe(false);
+      // n=2, c=0 → passAt1=0, passAtK k=1: 0, passHatK k=1: 0
+      expect(result.aggregated['eval'].passAt1).toBe(0);
+      expect(result.aggregated['eval'].passAtK).toEqual([{ k: 1, value: 0 }]);
+      expect(result.aggregated['eval'].passHatK).toEqual([{ k: 1, value: 0 }]);
     });
 
     it('returns empty aggregated map for zero trials', () => {
@@ -88,25 +98,31 @@ describe('TrialAggregator', () => {
     });
   });
 
-  describe('pass^k (passToTheK)', () => {
-    it('is true when all trials pass', () => {
+  describe('pass^k (passHatK)', () => {
+    it('equals 1 for all ks when all trials pass', () => {
       const trials = [
         makeTrial(0, { eval: 'pass' }),
         makeTrial(1, { eval: 'pass' }),
         makeTrial(2, { eval: 'pass' }),
       ];
       const result = agg.aggregate(makeScenario(), trials);
-      expect(result.aggregated['eval'].passToTheK).toBe(true);
+      // n=3, c=3, resolvedKs=[1,2]
+      expect(result.aggregated['eval'].passAt1).toBe(1);
+      expect(result.aggregated['eval'].passHatK).toEqual([{ k: 1, value: 1 }, { k: 2, value: 1 }]);
     });
 
-    it('is false when any trial fails', () => {
+    it('passHatK < 1 when any trial fails', () => {
       const trials = [
         makeTrial(0, { eval: 'pass' }),
         makeTrial(1, { eval: 'pass' }),
         makeTrial(2, { eval: 'fail' }),
       ];
       const result = agg.aggregate(makeScenario(), trials);
-      expect(result.aggregated['eval'].passToTheK).toBe(false);
+      // n=3, c=2, resolvedKs=[1,2]
+      // passHatK k=1: 2/3, k=2: C(2,2)/C(3,2) = 1/3
+      expect(result.aggregated['eval'].passAt1).toBeCloseTo(2 / 3);
+      expect(result.aggregated['eval'].passHatK!.find((e) => e.k === 1)?.value).toBeCloseTo(2 / 3);
+      expect(result.aggregated['eval'].passHatK!.find((e) => e.k === 2)?.value).toBeCloseTo(1 / 3);
     });
 
     it('treats partial as non-pass', () => {
@@ -115,7 +131,9 @@ describe('TrialAggregator', () => {
         makeTrial(1, { eval: 'partial' }),
       ];
       const result = agg.aggregate(makeScenario(), trials);
-      expect(result.aggregated['eval'].passToTheK).toBe(false);
+      // n=2, c=1 → passAt1=0.5, passHatK k=1: 0.5
+      expect(result.aggregated['eval'].passAt1).toBe(0.5);
+      expect(result.aggregated['eval'].passHatK).toEqual([{ k: 1, value: 0.5 }]);
     });
   });
 
@@ -128,27 +146,29 @@ describe('TrialAggregator', () => {
       ];
       const result = agg.aggregate(makeScenario(), trials);
       const e = result.aggregated['eval'];
-      expect(e.passAtK).toBe(true);
-      expect(e.passToTheK).toBe(false);
+      // n=3, c=1, resolvedKs=[1,2]
+      expect(e.passAt1).toBeCloseTo(1 / 3);
+      expect(e.passHatK!.find((x) => x.k === 1)?.value).toBeCloseTo(1 / 3);
+      expect(e.passHatK!.find((x) => x.k === 2)?.value).toBe(0);
       expect(e.totalTrials).toBe(3);
     });
 
-    it('passAtK is false when all trials fail or are unknown', () => {
+    it('passAt1 is 0 when all trials fail or are unknown', () => {
       const trials = [
         makeTrial(0, { eval: 'fail' }),
         makeTrial(1, { eval: 'unknown' }),
       ];
       const result = agg.aggregate(makeScenario(), trials);
-      expect(result.aggregated['eval'].passAtK).toBe(false);
+      expect(result.aggregated['eval'].passAt1).toBe(0);
     });
 
-    it('passAtK is false when all trials are unknown', () => {
+    it('passAt1 is 0 when all trials are unknown', () => {
       const trials = [
         makeTrial(0, { eval: 'unknown' }),
         makeTrial(1, { eval: 'unknown' }),
       ];
       const result = agg.aggregate(makeScenario(), trials);
-      expect(result.aggregated['eval'].passAtK).toBe(false);
+      expect(result.aggregated['eval'].passAt1).toBe(0);
     });
 
     it('totalTrials counts all verdicts including unknown', () => {
@@ -181,8 +201,9 @@ describe('TrialAggregator', () => {
         makeTrial(1, { eval1: 'pass', eval2: 'fail' }),
       ];
       const result = agg.aggregate(makeScenario(), trials);
-      expect(result.aggregated['eval1'].passAtK).toBe(true);
-      expect(result.aggregated['eval2'].passAtK).toBe(false);
+      // eval1: n=2, c=2 → passAt1=1; eval2: n=2, c=0 → passAt1=0
+      expect(result.aggregated['eval1'].passAt1).toBe(1);
+      expect(result.aggregated['eval2'].passAt1).toBe(0);
     });
   });
 
@@ -264,8 +285,7 @@ describe('TrialAggregator', () => {
         const e = result.aggregated[name];
         expect(e.totalTrials).toBe(100);
         expect(e.passingTrials).toBe(expectedPassing);
-        expect(e.passAtK).toBe(expectedPassing > 0);
-        expect(e.passToTheK).toBe(expectedPassing === 100);
+        expect(e.passAt1).toBeCloseTo(expectedPassing / 100);
       }
     });
   });
@@ -557,7 +577,7 @@ describe('TrialAggregator', () => {
     });
   });
 
-  describe('score-mode: passAtK and passToTheK omitted', () => {
+  describe('score-mode: estimators omitted', () => {
     const scoreModeEval = {
       name: 'score-eval',
       regressionMode: 'score' as const,
@@ -573,7 +593,7 @@ describe('TrialAggregator', () => {
       return makeScenario({ evaluators: [scoreModeEval] });
     }
 
-    it('omits passAtK and passToTheK for score-mode evaluator', () => {
+    it('omits passAt1/passAtK/passHatK for score-mode evaluator', () => {
       const trials: TrialResult[] = [
         {
           trialIndex: 0,
@@ -584,7 +604,7 @@ describe('TrialAggregator', () => {
             snapshots: [],
             errors: [],
             captureErrors: [],
-            
+
           },
           evalResults: [{
             evaluator: 'score-eval',
@@ -602,7 +622,7 @@ describe('TrialAggregator', () => {
             snapshots: [],
             errors: [],
             captureErrors: [],
-            
+
           },
           evalResults: [{
             evaluator: 'score-eval',
@@ -613,21 +633,24 @@ describe('TrialAggregator', () => {
         },
       ];
       const result = agg.aggregate(makeScoreModeScenario(), trials);
+      expect(result.aggregated['score-eval'].passAt1).toBeUndefined();
       expect(result.aggregated['score-eval'].passAtK).toBeUndefined();
-      expect(result.aggregated['score-eval'].passToTheK).toBeUndefined();
+      expect(result.aggregated['score-eval'].passHatK).toBeUndefined();
     });
 
-    it('keeps passAtK and passToTheK as boolean for pass-rate evaluator', () => {
+    it('populates numeric estimators for pass-rate evaluator', () => {
       const trials = [
         makeTrial(0, { 'pr-eval': 'pass' }),
         makeTrial(1, { 'pr-eval': 'fail' }),
       ];
       const result = agg.aggregate(makeScenario(), trials);
-      expect(typeof result.aggregated['pr-eval'].passAtK).toBe('boolean');
-      expect(typeof result.aggregated['pr-eval'].passToTheK).toBe('boolean');
+      // n=2, c=1 → passAt1=0.5
+      expect(result.aggregated['pr-eval'].passAt1).toBe(0.5);
+      expect(result.aggregated['pr-eval'].passAtK).toEqual([{ k: 1, value: 0.5 }]);
+      expect(result.aggregated['pr-eval'].passHatK).toEqual([{ k: 1, value: 0.5 }]);
     });
 
-    it('treats regressionMode absent as pass-rate (boolean fields present)', () => {
+    it('treats regressionMode absent as pass-rate (numeric estimators present)', () => {
       const noModeEval = {
         name: 'no-mode',
         evaluate: async () => ({
@@ -640,11 +663,12 @@ describe('TrialAggregator', () => {
       const scenario = makeScenario({ evaluators: [noModeEval] });
       const trials = [makeTrial(0, { 'no-mode': 'pass' })];
       const result = agg.aggregate(scenario, trials);
-      expect(typeof result.aggregated['no-mode'].passAtK).toBe('boolean');
-      expect(typeof result.aggregated['no-mode'].passToTheK).toBe('boolean');
+      expect(result.aggregated['no-mode'].passAt1).toBe(1);
+      expect(result.aggregated['no-mode'].passAtK).toEqual([{ k: 1, value: 1 }]);
+      expect(result.aggregated['no-mode'].passHatK).toEqual([{ k: 1, value: 1 }]);
     });
 
-    it('mixed: score-mode omits passAtK/passToTheK, pass-rate retains them', () => {
+    it('mixed: score-mode omits estimators, pass-rate has them', () => {
       const passRateEval = {
         name: 'pass-rate-eval',
         evaluate: async () => ({
@@ -667,7 +691,7 @@ describe('TrialAggregator', () => {
             snapshots: [],
             errors: [],
             captureErrors: [],
-            
+
           },
           evalResults: [
             {
@@ -693,7 +717,7 @@ describe('TrialAggregator', () => {
             snapshots: [],
             errors: [],
             captureErrors: [],
-            
+
           },
           evalResults: [
             {
@@ -712,10 +736,13 @@ describe('TrialAggregator', () => {
         },
       ];
       const result = agg.aggregate(mixedScenario, trials);
+      expect(result.aggregated['score-eval'].passAt1).toBeUndefined();
       expect(result.aggregated['score-eval'].passAtK).toBeUndefined();
-      expect(result.aggregated['score-eval'].passToTheK).toBeUndefined();
-      expect(result.aggregated['pass-rate-eval'].passAtK).toBe(true);
-      expect(result.aggregated['pass-rate-eval'].passToTheK).toBe(false);
+      expect(result.aggregated['score-eval'].passHatK).toBeUndefined();
+      // pass-rate-eval: n=2, c=1 → passAt1=0.5
+      expect(result.aggregated['pass-rate-eval'].passAt1).toBe(0.5);
+      expect(result.aggregated['pass-rate-eval'].passAtK).toEqual([{ k: 1, value: 0.5 }]);
+      expect(result.aggregated['pass-rate-eval'].passHatK).toEqual([{ k: 1, value: 0.5 }]);
     });
   });
 
@@ -841,7 +868,7 @@ describe('TrialAggregator', () => {
       };
     }
 
-    it('excludes evaluatorFailed trials from totalTrials and passAtK', () => {
+    it('excludes evaluatorFailed trials from totalTrials and estimators', () => {
       const trials = [
         makeTrial(0, { eval: 'pass' }),
         makeFailedTrial(1, 'eval'),
@@ -850,12 +877,14 @@ describe('TrialAggregator', () => {
       const result = agg.aggregate(makeScenario(), trials);
       expect(result.aggregated['eval'].totalTrials).toBe(1);
       expect(result.aggregated['eval'].passingTrials).toBe(1);
-      expect(result.aggregated['eval'].passAtK).toBe(true);
-      expect(result.aggregated['eval'].passToTheK).toBe(true);
+      // n=1, c=1 → passAt1=1
+      expect(result.aggregated['eval'].passAt1).toBe(1);
+      expect(result.aggregated['eval'].passAtK).toEqual([{ k: 1, value: 1 }]);
+      expect(result.aggregated['eval'].passHatK).toEqual([{ k: 1, value: 1 }]);
       expect(result.aggregated['eval'].failedTrials).toBe(2);
     });
 
-    it('passAtK is false when all non-failed trials fail', () => {
+    it('passAt1 is 0 when all non-failed trials fail', () => {
       const trials = [
         makeTrial(0, { eval: 'fail' }),
         makeFailedTrial(1, 'eval'),
@@ -864,19 +893,21 @@ describe('TrialAggregator', () => {
       const result = agg.aggregate(makeScenario(), trials);
       expect(result.aggregated['eval'].totalTrials).toBe(1);
       expect(result.aggregated['eval'].passingTrials).toBe(0);
-      expect(result.aggregated['eval'].passAtK).toBe(false);
+      expect(result.aggregated['eval'].passAt1).toBe(0);
       expect(result.aggregated['eval'].failedTrials).toBe(2);
     });
 
-    it('all trials failed produces totalTrials 0 and passAtK false', () => {
+    it('all trials failed produces totalTrials 0 and undefined estimators', () => {
       const trials = [
         makeFailedTrial(0, 'eval'),
         makeFailedTrial(1, 'eval'),
       ];
       const result = agg.aggregate(makeScenario(), trials);
       expect(result.aggregated['eval'].totalTrials).toBe(0);
-      expect(result.aggregated['eval'].passAtK).toBe(false);
-      expect(result.aggregated['eval'].passToTheK).toBe(false);
+      // n=0 → buildPassEstimators returns {}, so fields undefined
+      expect(result.aggregated['eval'].passAt1).toBeUndefined();
+      expect(result.aggregated['eval'].passAtK).toBeUndefined();
+      expect(result.aggregated['eval'].passHatK).toBeUndefined();
       expect(result.aggregated['eval'].failedTrials).toBe(2);
     });
 

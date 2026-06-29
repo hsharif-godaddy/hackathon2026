@@ -590,6 +590,95 @@ func (s *Server) DeployApp(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// ResetApp hard-resets an app's git working tree to a known commit (or HEAD)
+// and removes untracked files, then — unless restart=false — restarts the
+// containers so the existing dependency re-sync path runs. Used by eval
+// stateful-injection to reuse one pre-built app across trials: each trial
+// starts from the same mid-build state instead of a fresh from-scratch app,
+// removing the dominant per-trial build variance.
+func (s *Server) ResetApp(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	appID := vars["appId"]
+
+	// restart defaults to true; only an explicit false skips the container
+	// restart (e.g. when the caller batches its own restart).
+	body := struct {
+		Commit  string `json:"commit"`
+		Restart *bool  `json:"restart"`
+	}{}
+	// Body is optional: an empty body keeps the zero-value defaults. A present
+	// but malformed body is a client error — fail loudly rather than silently
+	// reset-to-HEAD (a commit typo must not pass as "no commit given").
+	if r.ContentLength != 0 {
+		if err := readJSON(r, &body); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid request body: "+err.Error())
+			return
+		}
+	}
+
+	app, err := s.DB.GetApp(appID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if app == nil {
+		writeError(w, http.StatusNotFound, "app not found")
+		return
+	}
+
+	if err := s.TemplateSetup.ResetWorkspace(appID, body.Commit); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	// Report the actual restart outcome, not the intent: a failed restart
+	// leaves stale node_modules relative to the reset package.json, so the
+	// caller must be able to tell the reset is degraded.
+	restartRequested := body.Restart == nil || *body.Restart
+	restarted := false
+	restartError := ""
+	// ready tracks whether the preview is actually serving again after a
+	// restart. `docker compose restart` returns as soon as the process
+	// relaunches — before the dev server recompiles and rebinds its port — so
+	// a restart that "succeeds" can still leave the app un-served. A trial that
+	// runs against a not-yet-ready preview no-ops (the exact failure stateful
+	// injection caused at n=7), so we gate on readiness the same way
+	// provisioning does and report it. `ready` is only meaningful when a
+	// restart was requested; it stays false otherwise.
+	ready := false
+	readyError := ""
+	if restartRequested {
+		if err := s.restartContainers(appID); err != nil {
+			slog.Warn("docker.restart.failed", "app_id", appID, "error", err)
+			restartError = err.Error()
+		} else {
+			restarted = true
+			if err := s.awaitPreviewReady(app.PreviewPort); err != nil {
+				slog.Warn("app.reset.preview_not_ready", "app_id", appID, "error", err)
+				readyError = err.Error()
+			} else {
+				ready = true
+			}
+		}
+	}
+
+	slog.Info("app.reset", "app_id", appID, "commit", body.Commit, "restarted", restarted, "ready", ready)
+	resp := map[string]any{
+		"success":   true,
+		"message":   "workspace reset",
+		"appId":     appID,
+		"restarted": restarted,
+		"ready":     ready,
+	}
+	if restartError != "" {
+		resp["restartError"] = restartError
+	}
+	if readyError != "" {
+		resp["readyError"] = readyError
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
 func (s *Server) PublishApp(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	appID := vars["appId"]

@@ -643,6 +643,34 @@ describe('AABClient (SSE)', () => {
         expect(e.error).toBe('');
       }
     });
+
+    it('dispatches a skill_diagnostics load event', () => {
+      source.dispatch('skill_diagnostics', { event: 'load', skill: 'payments' });
+      expect(received).toEqual([
+        { type: 'skill_diagnostics', event: 'load', skill: 'payments' },
+      ]);
+    });
+
+    it('dispatches a skill_diagnostics unload event', () => {
+      source.dispatch('skill_diagnostics', { event: 'unload', skill: 'seo' });
+      expect(received).toEqual([
+        { type: 'skill_diagnostics', event: 'unload', skill: 'seo' },
+      ]);
+    });
+
+    it('defaults an unrecognized skill_diagnostics event to load', () => {
+      source.dispatch('skill_diagnostics', { event: 'wat', skill: 'payments' });
+      expect(received[0]).toEqual({
+        type: 'skill_diagnostics',
+        event: 'load',
+        skill: 'payments',
+      });
+    });
+
+    it('ignores a skill_diagnostics event with no skill name', () => {
+      source.dispatch('skill_diagnostics', { event: 'load' });
+      expect(received).toHaveLength(0);
+    });
   });
 
   describe('disconnect()', () => {

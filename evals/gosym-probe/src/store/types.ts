@@ -8,6 +8,7 @@ import type {
   ToolCallAssertion,
 } from '../scenarios/types.js';
 import type { Turn } from '../runner/transcript.js';
+import type { PassEstimatorEntry } from '../util/pass-at-k.js';
 
 export interface RunMetadata {
   runId: string;
@@ -58,10 +59,12 @@ export interface ScoreStats {
 }
 
 export interface EvaluatorSummary {
-  /** Absent when regressionMode === 'score'. */
-  passAtK?: boolean;
-  /** Absent when regressionMode === 'score'. */
-  passToTheK?: boolean;
+  /** Headline unbiased pass@1 (`c / n`). Absent when not yet computed. */
+  passAt1?: number;
+  /** Unbiased `pass@k`, one entry per reporting `k`. */
+  passAtK?: PassEstimatorEntry[];
+  /** Unbiased `pass^k`, one entry per reporting `k`. */
+  passHatK?: PassEstimatorEntry[];
   passingTrials: number;
   totalTrials: number;
   scores: ScoreStats;

@@ -183,11 +183,61 @@ informational — it means the comparison ran without statistical backing
 
 ## Power and Sample Size
 
-### What "power" means here
+### Two senses of "power" — keep them distinct
 
-Power is the probability that the TOST correctly proves non-inferiority
-when the true performance is unchanged. Low power = high false-fail rate
-(the test fails to prove non-inferiority even when nothing regressed).
+1. **False-fail power** (this section's tables): the probability TOST
+   correctly proves non-inferiority when nothing regressed. Low here = high
+   false-fail rate. This is about the *gate*.
+2. **Achieved power on the observed effect** (reported per-evaluator): given
+   the effect actually observed this run and the n run, how likely was the
+   design to detect an effect of that size? This is about *reading a result*:
+   it separates "no real change" from "too few trials to tell."
+
+Sense (1) tells you whether to trust a pass. Sense (2) tells you, when TOST
+fails to prove non-inferiority, whether you're looking at a regression or an
+**underpowered** run.
+
+### Reported achieved power (the `underpowered` label)
+
+Every TOST comparison now carries a `power` block in its `statistical`
+metadata (`StatisticalMetadata.power`, computed by `computePower()` in
+`src/baselines/statistical-tests.ts`, ported from claude-benchmark's
+`analysis/power.py`):
+
+| Field | Meaning |
+|-------|---------|
+| `cohensD` | Standardized observed effect, `(mean_current − mean_baseline) / pooledSD`, oriented so a regression is **negative** — for lower-is-better metrics (token-usage, cost, latency) that raw sign is flipped |
+| `achievedPower` | P(detect an effect this size) at `alpha`, using the smaller arm's n |
+| `mdeScore` | Smallest raw-score difference detectable at `targetPower` with this n |
+| `targetPower` | The power the MDE is sized for (config `targetPower`, default 0.8) |
+
+The math uses the normal approximation (consistent with the normal-approx
+CIs elsewhere in the file): `power = 1 − Φ(z_{1−α/2} − |d|·√(n/2)) + Φ(−z_{1−α/2} − |d|·√(n/2))`,
+inverted for the MDE as `mde_d = (z_{1−α/2} + z_{power})·√(2/n)`. Power uses
+`|d|`, so the sign convention above affects only the reported `cohensD`, not
+the achieved-power magnitude or the `underpowered` label.
+
+**This is report-only — it does not change the gate.** A failing TOST still
+fails. But the markdown report's TOST Diagnostics now prints a `Power:` line,
+and tags an evaluator **underpowered** when `achievedPower < targetPower` and
+non-inferiority was not proven. The CLI regression message likewise classifies
+such an evaluator as `underpowered (power X% < Y% target)` rather than a flat
+`inconclusive`, so the suggested fix reads "run more trials," not "investigate
+a regression."
+
+How to read it:
+- **Failed + underpowered** → the n was too thin to resolve the observed
+  effect. Re-run at higher n (see the workflow below) before treating it as
+  real.
+- **Failed + well-powered** (achieved ≥ target) → the design *could* have seen
+  an effect this size and TOST still couldn't clear the margin. More likely a
+  genuine regression; investigate.
+- **MDE** tells you the smallest real change the current n can catch at
+  `targetPower`. If `mdeScore` is larger than the regression you care about,
+  the scenario is structurally under-sampled for that question — raise the
+  stability level rather than chasing the result.
+
+### What drives false-fail power
 
 Power increases with:
 - Larger current run n
@@ -324,6 +374,7 @@ regression: {
     'llm-cost': 3.0,
   },
   seed: 42,                  // optional: PRNG seed for MC/bootstrap determinism
+  targetPower: 0.8,          // optional: power the reported MDE is sized for (default: 0.8)
   fallbackThresholds: {
     thresholds: {
       'jtbd-completion': 0.1,
@@ -402,6 +453,17 @@ regression: {
   fallbackThresholds: { /* ... */ },
 }
 ```
+
+### `targetPower`
+
+The power the reported minimum-detectable-effect (`mdeScore`) is sized for,
+and the threshold below which an unproven evaluator is labelled
+`underpowered`. Report-only — it does not gate. Convention is 0.8 (an 80%
+chance of detecting a true effect of the MDE size). Must lie in the open
+interval (0, 1); a value at the 0/1 bounds, out of range, or `NaN` degrades
+`mdeScore` to `±∞` (rendered `±∞`) rather than producing `NaN`.
+
+Default: `0.8`.
 
 ### `fallbackThresholds`
 
@@ -493,6 +555,28 @@ promoting an existing run to baseline without spending additional LLM calls.
 
 Higher baseline n improves margin accuracy (better SD estimate) and
 increases power for low-n regression checks.
+
+**Why these counts, and where they fall short.** The 5/10/20 ladder is a
+cost/sensitivity tradeoff, not a one-size-fits-all power guarantee. The MDE
+each level resolves depends entirely on the evaluator's variance:
+
+- **Low-variance binary evaluators** (skill-loaded? routed correctly?
+  jtbd-completion) are near-deterministic. `high`=20 detects small pass-rate
+  drops comfortably; even `low`=5 catches large ones.
+- **High-variance score evaluators** (token-usage, llm-cost, latency) are the
+  weak spot. On real builds, per-trial cost variance is roughly equal to the
+  mean (σ≈µ) — a single build that takes 5× the tool round-trips of the next
+  dominates the sample. At that variance, `high`=20 is **borderline** for the
+  5–18% cost deltas we care about: the design is underpowered for the question,
+  even though the gate runs fine. This is the empirical "20 trials, not the
+  usual 30" caveat from the prompting-tax validation.
+
+The fix is not a blanket bump to 30 — it's to **read the reported power**.
+When a cost/latency evaluator fails and shows `underpowered`, that's the σ≈µ
+regime telling you 20 wasn't enough *for that metric*; re-run higher or treat
+the result as directional. When a binary evaluator is well-powered at 20, more
+trials buy nothing. Sizing per-evaluator (and the longer-term de-noising work
+on the high-variance scenarios) beats raising the global count.
 
 ---
 

@@ -108,7 +108,7 @@ function makeConfig(): Config {
     },
     eval: { defaultTrials: 2, maxTurns: 5, turnTimeoutMs: 5000 },
     playwright: { ignoreHttpsErrors: false },
-    regression: { alpha: 0.05, k: 2.0, minMarginFraction: 0.05, fallbackThresholds: { thresholds: {}, defaultThreshold: 0.1 } },
+    regression: { alpha: 0.05, k: 2.0, minMarginFraction: 0.05, reportingK: [1, 2, 3, 5, 10], fallbackThresholds: { thresholds: {}, defaultThreshold: 0.1 } },
   };
 }
 
@@ -194,8 +194,9 @@ function makeScenarioResult(
     trials,
     aggregated: {
       'test-evaluator': {
-        passAtK: true,
-        passToTheK: true,
+        passAt1: 1,
+        passAtK: [{ k: 1, value: 1 }],
+        passHatK: [{ k: 1, value: 1 }],
         passingTrials: trials.length,
         totalTrials: trials.length,
       },
@@ -792,8 +793,9 @@ describe('EvalStore', () => {
         trials,
         aggregated: {
           'test-evaluator': {
-            passAtK: true,
-            passToTheK: false,
+            passAt1: 0.5,
+            passAtK: [{ k: 1, value: 0.5 }],
+            passHatK: [{ k: 1, value: 0.5 }],
             passingTrials: 1,
             totalTrials: 2,
           },
@@ -810,8 +812,9 @@ describe('EvalStore', () => {
       expect(parsed.scenarioName).toBe('test-scenario');
 
       const evalSummary = parsed.evaluators['test-evaluator'];
-      expect(evalSummary.passAtK).toBe(true);
-      expect(evalSummary.passToTheK).toBe(false);
+      expect(evalSummary.passAt1).toBe(0.5);
+      expect(evalSummary.passAtK).toEqual([{ k: 1, value: 0.5 }]);
+      expect(evalSummary.passHatK).toEqual([{ k: 1, value: 0.5 }]);
       expect(evalSummary.passingTrials).toBe(1);
       expect(evalSummary.totalTrials).toBe(2);
       expect(evalSummary.scores.min).toBeCloseTo(0.4);
@@ -826,7 +829,7 @@ describe('EvalStore', () => {
       expect(parsed.timing.avgTurnsPerTrial).toBe(2);
     });
 
-    it('omits passAtK and passToTheK from aggregated.json for score-mode evaluator', async () => {
+    it('omits pass estimators from aggregated.json for score-mode evaluator', async () => {
       const store = new EvalStore();
       const trial: TrialResult = {
         trialIndex: 0,
@@ -850,7 +853,7 @@ describe('EvalStore', () => {
           snapshots: [],
           errors: [],
           captureErrors: [],
-          
+
         },
         evalResults: [
           {
@@ -885,8 +888,9 @@ describe('EvalStore', () => {
       expect(call).toBeDefined();
       const parsed = JSON.parse(call![1] as string);
       const evalSummary = parsed.evaluators['test-evaluator'];
+      expect(evalSummary).not.toHaveProperty('passAt1');
       expect(evalSummary).not.toHaveProperty('passAtK');
-      expect(evalSummary).not.toHaveProperty('passToTheK');
+      expect(evalSummary).not.toHaveProperty('passHatK');
       expect(evalSummary.passingTrials).toBe(0);
       expect(evalSummary.totalTrials).toBe(1);
       expect(evalSummary.lowerIsBetter).toBe(true);
@@ -934,8 +938,9 @@ describe('EvalStore', () => {
         trials: [trial],
         aggregated: {
           'test-evaluator': {
-            passAtK: true,
-            passToTheK: true,
+            passAt1: 1,
+            passAtK: [{ k: 1, value: 1 }],
+            passHatK: [{ k: 1, value: 1 }],
             passingTrials: 1,
             totalTrials: 1,
             evalVersion: '2.0',
@@ -2118,6 +2123,63 @@ describe('EvalStore', () => {
       expect(summaryCall![1] as string).toContain('aggregate-report.md');
     });
 
+    it('writes a deterministic-only summary.md for graduation runs (no narrative)', async () => {
+      const store = new EvalStore();
+      const scenario = makeScenario();
+      const results = [makeScenarioResult(scenario, [makeTrialResult()])];
+      const mockGocode = {
+        complete: vi.fn(),
+        withModel: vi.fn(),
+        getModel: vi.fn().mockReturnValue('test-model'),
+      } as unknown as IGocodeClient;
+
+      await store.finalizeRun(DIR_NAME, 'run-001', results, 'graduation', undefined, mockGocode);
+
+      const summaryCall = mockWriteFile.mock.calls.find(([p]) =>
+        (p as string).endsWith('summary.md'),
+      );
+      expect(summaryCall).toBeDefined();
+      const summary = summaryCall![1] as string;
+      expect(summary).toContain('**RESULT:');
+      expect(summary).not.toContain('## Regressing Behaviors');
+      expect(summary).not.toContain('## Likely Correlated Code Changes');
+    });
+
+    it('makes no LLM call on the graduation path even when gocode is provided', async () => {
+      const store = new EvalStore();
+      const scenario = makeScenario();
+      const results = [makeScenarioResult(scenario, [makeTrialResult()])];
+      const completeSpy = vi.fn();
+      const withModelSpy = vi.fn();
+      const mockGocode = {
+        complete: completeSpy,
+        withModel: withModelSpy,
+        getModel: vi.fn().mockReturnValue('test-model'),
+      } as unknown as IGocodeClient;
+
+      await store.finalizeRun(DIR_NAME, 'run-001', results, 'graduation', undefined, mockGocode);
+
+      expect(NarrativeSummaryReporter).not.toHaveBeenCalled();
+      expect(mockNarrativeRender).not.toHaveBeenCalled();
+      expect(completeSpy).not.toHaveBeenCalled();
+      expect(withModelSpy).not.toHaveBeenCalled();
+    });
+
+    it('still carries the narrative on the standard eval path when gocode is provided', async () => {
+      const store = new EvalStore();
+      const scenario = makeScenario();
+      const results = [makeScenarioResult(scenario, [makeTrialResult()])];
+      const mockGocode = { complete: vi.fn() } as unknown as IGocodeClient;
+
+      await store.finalizeRun(DIR_NAME, 'run-001', results, 'eval', undefined, mockGocode);
+
+      expect(mockNarrativeRender).toHaveBeenCalled();
+      const summaryCall = mockWriteFile.mock.calls.find(([p]) =>
+        (p as string).endsWith('summary.md'),
+      );
+      expect(summaryCall![1]).toBe('# narrative summary');
+    });
+
     it('passes tostConfig from renderOptions through to MdReporter.render()', async () => {
       const store = new EvalStore();
       const scenario = makeScenario();
@@ -2851,8 +2913,9 @@ describe('EvalStore', () => {
           scenarioName: 'test-scenario',
           evaluators: {
             'test-evaluator': {
-              passAtK: true,
-              passToTheK: true,
+              passAt1: 1,
+              passAtK: [{ k: 1, value: 1 }],
+              passHatK: [{ k: 1, value: 1 }],
               passingTrials: 1,
               totalTrials: 1,
               scores: {

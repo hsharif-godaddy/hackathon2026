@@ -30,7 +30,7 @@ export const JudgeNumericalSchema = z.object({
 
 export type JudgeNumerical = z.infer<typeof JudgeNumericalSchema>;
 
-export interface LLMJsonEvaluatorConfig<T> {
+export interface LLMJudgeEvaluatorConfig<T> {
   name: string;
   evalVersion?: string;
   regressionMode?: 'passRate' | 'score';
@@ -47,7 +47,7 @@ export interface LLMJsonEvaluatorConfig<T> {
   ) => EvalResult;
 }
 
-export class LLMJsonEvaluator<T> implements Evaluator {
+export class LLMJudgeEvaluator<T> implements Evaluator {
   readonly name: string;
   readonly evalVersion?: string;
   readonly regressionMode?: 'passRate' | 'score';
@@ -55,7 +55,7 @@ export class LLMJsonEvaluator<T> implements Evaluator {
 
   constructor(
     private readonly gocode: IGocodeClient,
-    private readonly config: LLMJsonEvaluatorConfig<T>,
+    private readonly config: LLMJudgeEvaluatorConfig<T>,
   ) {
     this.name = config.name;
     this.evalVersion = config.evalVersion;

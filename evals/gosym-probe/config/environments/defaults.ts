@@ -4,10 +4,15 @@ import type { StatisticalRegressionConfig } from './types.js';
  * Statistical parameters shared across all environments.
  * Spread into per-env regression configs; individual fields can be overridden.
  */
-export const REGRESSION_DEFAULTS: Pick<StatisticalRegressionConfig, 'alpha' | 'k' | 'minMarginFraction'> = {
+export const REGRESSION_DEFAULTS: Pick<
+  StatisticalRegressionConfig,
+  'alpha' | 'k' | 'minMarginFraction' | 'reportingK' | 'targetPower'
+> = {
   alpha: 0.05,
   k: 2.0,
   minMarginFraction: 0.05,
+  reportingK: [1, 2, 3, 5, 10],
+  targetPower: 0.8,
 };
 
 /**

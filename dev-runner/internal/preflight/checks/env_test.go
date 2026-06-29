@@ -30,6 +30,7 @@ func TestAgentsEnvCheck_S2SMode_NoAPIKeyRequired(t *testing.T) {
 		"USE_S2S_AUTH=true",
 		"S2S_AWS_PROFILE=airobuild-dev-private-sso",
 		"AWS_PROFILE=airobuild-dev-private-sso",
+		"OPENAI_BASE_URL=https://api.gocode.caas.gdcorp.tools/v1",
 		"BUDGET_SERVICE_URL=https://budget-service.api.int.dev-godaddy.com",
 	}, "\n"))
 

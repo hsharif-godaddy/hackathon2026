@@ -9,7 +9,7 @@ import { warnLine } from '../util/warn-line.js';
 /**
  * Default 429 retry budget for every LLM call routed through
  * `GocodeClient.complete()`. Matches the values previously hard-coded in
- * `LLMJsonEvaluator` so behavior for the judge calls is unchanged; the win is
+ * `LLMJudgeEvaluator` so behavior for the judge calls is unchanged; the win is
  * that the synthetic-user conversation loop and all other evaluators now share
  * the same `Retry-After`-honoring retry instead of falling through with only
  * the OpenAI SDK's default attempts.
@@ -46,8 +46,20 @@ export interface ProbeUsageSource {
 }
 
 /** Full interface for GoCode LLM clients used by the eval harness. */
+/**
+ * Per-call options for {@link IGocodeClient.complete}. `temperature`/`seed` are
+ * additive determinism knobs (omitted from the request body when unset, so
+ * existing calls are byte-for-byte unchanged); the gocode proxy may ignore
+ * them, which is safe.
+ */
+export interface CompleteOptions {
+  signal?: AbortSignal;
+  temperature?: number;
+  seed?: number;
+}
+
 export interface IGocodeClient extends ProbeUsageSource {
-  complete(messages: Message[], options?: { signal?: AbortSignal }): Promise<string>;
+  complete(messages: Message[], options?: CompleteOptions): Promise<string>;
   getModel(): string;
   resetAccumulatedUsage(): void;
   withModel(model: string): IGocodeClient;
@@ -128,7 +140,7 @@ export class GocodeClient implements IGocodeClient {
 
   async complete(
     messages: Message[],
-    options?: { signal?: AbortSignal },
+    options?: CompleteOptions,
   ): Promise<string> {
     const body = {
       model: this.model,
@@ -136,6 +148,8 @@ export class GocodeClient implements IGocodeClient {
         role: m.role,
         content: sanitize(m.content),
       })) as OpenAI.ChatCompletionMessageParam[],
+      ...(options?.temperature !== undefined && { temperature: options.temperature }),
+      ...(options?.seed !== undefined && { seed: options.seed }),
       metadata: {
         guardrails: {
           'unicode-security': {

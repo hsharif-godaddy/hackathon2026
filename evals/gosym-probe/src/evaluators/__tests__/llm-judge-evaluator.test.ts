@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { z } from 'zod';
 import { RateLimitError } from 'openai';
 
-import { LLMJsonEvaluator, JudgeNumericalSchema } from '../llm-json-evaluator.js';
+import { LLMJudgeEvaluator, JudgeNumericalSchema } from '../llm-judge-evaluator.js';
 import { sleep } from '../../util/sleep.js';
 import type { GocodeClient } from '../../clients/gocode-client.js';
 import type { Transcript } from '../../runner/transcript.js';
@@ -44,7 +44,7 @@ function makeEvaluator(
   opts: { evalVersion?: string; scoreOverride?: number } = {},
 ) {
   const gocode = { complete: vi.fn(complete) } as unknown as GocodeClient;
-  const evaluator = new LLMJsonEvaluator(gocode, {
+  const evaluator = new LLMJudgeEvaluator(gocode, {
     name: 'test-evaluator',
     evalVersion: opts.evalVersion,
     schema: TestSchema,
@@ -61,7 +61,7 @@ function makeEvaluator(
 
 // ── Error path tests ──────────────────────────────────────────────────────────
 
-describe('LLMJsonEvaluator — error paths', () => {
+describe('LLMJudgeEvaluator — error paths', () => {
   it('returns unknown when LLM request throws', async () => {
     const { evaluator } = makeEvaluator(() => {
       throw new Error('network timeout');
@@ -115,7 +115,7 @@ describe('LLMJsonEvaluator — error paths', () => {
 
 // ── Validation boundary tests (JSON extraction) ───────────────────────────────
 
-describe('LLMJsonEvaluator — JSON extraction boundaries', () => {
+describe('LLMJudgeEvaluator — JSON extraction boundaries', () => {
   it('extracts JSON embedded in surrounding prose', async () => {
     const json = validResponse(0.75);
     const { evaluator } = makeEvaluator(
@@ -133,7 +133,7 @@ describe('LLMJsonEvaluator — JSON extraction boundaries', () => {
       reason: 'ok',
       meta: { extra: 'ignored' },
     });
-    // LLMJsonEvaluator uses indexOf / lastIndexOf so the outer braces are captured
+    // LLMJudgeEvaluator uses indexOf / lastIndexOf so the outer braces are captured
     const { evaluator } = makeEvaluator(async () => withNested);
     const result = await evaluator.evaluate(makeTranscript(), testScenario);
     expect(result.verdict).toBe('partial');
@@ -162,7 +162,7 @@ describe('LLMJsonEvaluator — JSON extraction boundaries', () => {
 
 // ── Integration seam tests ────────────────────────────────────────────────────
 
-describe('LLMJsonEvaluator — evalVersion propagation', () => {
+describe('LLMJudgeEvaluator — evalVersion propagation', () => {
   it('includes evalVersion on successful result when configured', async () => {
     const { evaluator } = makeEvaluator(
       async () => validResponse(),
@@ -203,7 +203,7 @@ describe('LLMJsonEvaluator — evalVersion propagation', () => {
   });
 });
 
-describe('LLMJsonEvaluator — score clamping', () => {
+describe('LLMJudgeEvaluator — score clamping', () => {
   it('clamps score above 1.0 to 1.0', async () => {
     const { evaluator } = makeEvaluator(
       async () => validResponse(),
@@ -231,10 +231,10 @@ describe('LLMJsonEvaluator — score clamping', () => {
 
 // ── Evidence validation tests ────────────────────────────────────────────────
 
-describe('LLMJsonEvaluator — validateEvidence', () => {
+describe('LLMJudgeEvaluator — validateEvidence', () => {
   it('returns unknown without calling LLM when validateEvidence returns false', async () => {
     const gocode = { complete: vi.fn(async function () { return validResponse(); }) } as unknown as GocodeClient;
-    const evaluator = new LLMJsonEvaluator(gocode, {
+    const evaluator = new LLMJudgeEvaluator(gocode, {
       name: 'test-evaluator',
       evalVersion: 'v1',
       schema: TestSchema,
@@ -260,7 +260,7 @@ describe('LLMJsonEvaluator — validateEvidence', () => {
 
   it('proceeds to LLM call when validateEvidence returns true', async () => {
     const gocode = { complete: vi.fn(async function () { return validResponse(0.9); }) } as unknown as GocodeClient;
-    const evaluator = new LLMJsonEvaluator(gocode, {
+    const evaluator = new LLMJudgeEvaluator(gocode, {
       name: 'test-evaluator',
       schema: TestSchema,
       canEvaluate: () => true,
@@ -283,7 +283,7 @@ describe('LLMJsonEvaluator — validateEvidence', () => {
 
   it('skips validateEvidence when not configured', async () => {
     const gocode = { complete: vi.fn(async function () { return validResponse(0.7); }) } as unknown as GocodeClient;
-    const evaluator = new LLMJsonEvaluator(gocode, {
+    const evaluator = new LLMJudgeEvaluator(gocode, {
       name: 'test-evaluator',
       schema: TestSchema,
       prompt: () => 'evaluate this',
@@ -304,10 +304,10 @@ describe('LLMJsonEvaluator — validateEvidence', () => {
 
 // ── Meta tests ────────────────────────────────────────────────────────────────
 
-describe('LLMJsonEvaluator — class properties', () => {
+describe('LLMJudgeEvaluator — class properties', () => {
   it('name matches config', () => {
     const gocode = { complete: vi.fn() } as unknown as GocodeClient;
-    const ev = new LLMJsonEvaluator(gocode, {
+    const ev = new LLMJudgeEvaluator(gocode, {
       name: 'my-evaluator',
       schema: z.object({ value: z.number() }),
       prompt: () => '',
@@ -335,7 +335,7 @@ function makeRateLimitError(retryAfterSeconds?: number): RateLimitError {
   return new RateLimitError(429, undefined, 'rate limited', headers);
 }
 
-describe('LLMJsonEvaluator — request failure handling', () => {
+describe('LLMJudgeEvaluator — request failure handling', () => {
   let warnSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {

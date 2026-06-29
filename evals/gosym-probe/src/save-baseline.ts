@@ -44,7 +44,7 @@ async function main(): Promise<void> {
     baseUrl: config.aab.controlPlaneUrl,
   });
   const gocodeClient = new GocodeClient(config.gocode);
-  const allScenarios = createAllScenarios(gocodeClient, ctrlPlane);
+  const allScenarios = createAllScenarios(gocodeClient, ctrlPlane, config);
   const evalStore = new EvalStore();
   const baselineStore = new BaselineStore();
 

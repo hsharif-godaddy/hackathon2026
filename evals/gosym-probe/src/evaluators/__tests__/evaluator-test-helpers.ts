@@ -45,6 +45,26 @@ export function makeTranscript(turns: Turn[]): Transcript {
   };
 }
 
+/**
+ * Overrides-style transcript factory for tests that patch arbitrary
+ * fields (e.g. loadedSkills, capturedSite) rather than only supplying
+ * turns. Sibling to makeTranscript(turns) above; both build the same
+ * baseline shape.
+ */
+export function makeTranscriptWith(
+  overrides: Partial<Transcript> = {},
+): Transcript {
+  return {
+    scenarioName: 'test',
+    trialIndex: 0,
+    turns: [],
+    snapshots: [],
+    errors: [],
+    captureErrors: [],
+    ...overrides,
+  };
+}
+
 export function makeScenario(overrides: Partial<Scenario> = {}): Scenario {
   return {
     name: 'test-scenario',

@@ -3,10 +3,10 @@ import type { IGocodeClient } from '../../clients/gocode-client.js';
 import type { DOMSnapshot, Transcript } from '../../runner/transcript.js';
 import type { Scenario } from '../../scenarios/types.js';
 import {
-  LLMJsonEvaluator,
+  LLMJudgeEvaluator,
   JudgeNumericalSchema,
   type JudgeNumerical,
-} from '../llm-json-evaluator.js';
+} from '../llm-judge-evaluator.js';
 import { readSnapshotHtml, extractBodyHtml } from '../shared.js';
 import { buildAlignmentEvidence } from './alignment-evidence.js';
 
@@ -153,7 +153,7 @@ function createEvaluatorFromSpec(gocode: IGocodeClient, spec: AlignmentSpec): Ev
     return extractBodyHtml(html).trim().length > 0;
   };
 
-  return new LLMJsonEvaluator(gocode, {
+  return new LLMJudgeEvaluator(gocode, {
     name: spec.name,
     evalVersion: ALIGNMENT_EVAL_VERSION,
     regressionMode: spec.regressionMode,

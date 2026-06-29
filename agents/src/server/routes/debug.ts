@@ -1,4 +1,5 @@
 import { Router, Request, Response, NextFunction } from 'express'
+import { z } from 'zod'
 import { logger, log } from '../../logging/index.js'
 import { buildDebugContext } from '../../utils/context-builder.js'
 import { countTokens } from '../../utils/token-counter.js'
@@ -9,6 +10,34 @@ import { getPersistentAssetPaths } from '../../utils/persistent-assets.js'
 import { AppContextManager } from '../../services/AppContextManager.js'
 import { profileFlag } from '../../profiles/profile-accessor.js'
 import { readFile } from 'fs/promises'
+import { getSummaryStore, getConversationLifecycleStore, getMessageStore } from '../../memory/adapters/index.js'
+import { workspaceScopeFromAppId } from '../../memory/interfaces/scope.js'
+import { auth } from '../../services/features.js'
+import type { AuthenticatedRequest } from '../middleware/jwt-auth.js'
+import type { SummarizationResult } from '../../services/summarization/SummarizationStrategy.js'
+
+// The develop agent owns continued-conversation turns; a seeded conversation is
+// frozen to it so the trial's getOrCreateForApp resolves into it rather than
+// re-routing to the initial agent.
+const SEEDED_CONVERSATION_AGENT_ID = 'develop'
+
+/**
+ * Whether the destructive seed-summary endpoint may run. It wipes an app's
+ * conversation history before seeding, so it is restricted to local/eval
+ * environments — production GASKET_ENV never starts with `local` (see
+ * server-factory.ts tlsEnabled), and mock auth marks an eval/dev stack. Either
+ * signal enables it; anything else gets a 404.
+ *
+ * The mock-auth signal reads the resolved `auth.getType()` rather than raw
+ * `process.env.AUTH_TYPE`, so enablement tracks the same source of truth as the
+ * rest of the auth stack (validated value, NODE_ENV fallback) instead of a
+ * second, divergent env read.
+ */
+function isSeedSummaryEnabled(): boolean {
+  if (process.env.NODE_ENV === 'production') return false;
+  return (process.env.GASKET_ENV ?? '').startsWith('local')
+    || auth.isMock()
+}
 
 const router: Router = Router()
 
@@ -351,6 +380,163 @@ router.get('/context/:appId', validateAppIdParam, async (req: Request, res: Resp
     res.status(500).json({
       error: 'Failed to build context debug data',
       details: error instanceof Error ? error.message : String(error)
+    })
+  }
+})
+
+/**
+ * Body for POST /debug/:appId/seed-summary.
+ *
+ * summaryText is the only required field — the prefabricated, already-compacted
+ * conversation state (typically authored with the same ## State / ## Completed /
+ * ## Decisions / ## Pending sections the LLMSummarizationStrategy produces). The
+ * remaining fields describe the synthetic message range the summary stands in
+ * for; they default to plausible values since no real messages exist when an
+ * eval seeds a summary up front.
+ */
+const seedSummarySchema = z.object({
+  summaryText: z.string().min(1, 'summaryText is required'),
+  messageCount: z.number().int().nonnegative().optional(),
+  originalTokenCount: z.number().int().nonnegative().optional(),
+  modelUsed: z.string().optional(),
+  conversationId: z.string().optional(),
+  /**
+   * Optional raw prior turns to seed into a conversation the trial resolves
+   * into. Higher-fidelity than summary-only: the agent reads these verbatim as
+   * recent un-summarized history (conversation-scoped), alongside the
+   * app-scoped summary — matching production's steady state of summary + a tail
+   * of recent turns. Omit for summary-only seeding.
+   */
+  priorTurns: z
+    .array(
+      z.object({
+        sender: z.enum(['user', 'agent']),
+        content: z.string().min(1),
+      }),
+    )
+    .optional(),
+})
+
+/**
+ * POST /debug/:appId/seed-summary
+ *
+ * Eval-only: pre-fabricate a conversation summary for an app so a fresh run
+ * starts mid-conversation. The agent's normal turn-0 path loads the latest
+ * summary (getPinnedOrLatestSummary → findLatestForApp) and injects it as a
+ * `# Memory` user message, so seeding this row makes the agent start with prior
+ * conversation state already in context — without replaying real turns. Used by
+ * gosym-probe stateful injection (filesystem reset to a pinned commit PLUS this
+ * conversation-state seed) to start trials from a genuine mid-state.
+ *
+ * Mirrors how summaries are normally written (getSummaryStore().create), so the
+ * seeded row is indistinguishable from one the BackgroundSummarizer produced.
+ *
+ * SECURITY: this is a DESTRUCTIVE eval-only endpoint — it deletes the app's
+ * existing conversations + summaries before seeding. Isolation rests entirely
+ * on the env gate (isSeedSummaryEnabled): it returns 404 outside local/eval, so
+ * it can never wipe history in a deployed environment even for a caller holding
+ * a valid token for that app. validateAppIdParam runs validateAppOwnership, but
+ * note that under mock auth — the mode this endpoint actually runs in — the
+ * resolved siteId (`mock-site-id`) is in BYPASS_SITE_IDS, so ownership is NOT
+ * enforced; it is a real check only in JWT mode, which the gate excludes from
+ * reaching the destructive branch in production. Do not rely on the middleware
+ * for tenant isolation here — the gate is what makes prod exposure impossible.
+ */
+router.post('/:appId/seed-summary', validateAppIdParam, async (req: Request, res: Response): Promise<void> => {
+  if (!isSeedSummaryEnabled()) {
+    res.status(404).json({ error: 'Not found' })
+    return
+  }
+
+  const appId = req.params.appId
+  if (!appId) {
+    res.status(400).json({ error: 'Missing appId parameter' })
+    return
+  }
+
+  const parsed = seedSummarySchema.safeParse(req.body)
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Invalid request body', details: parsed.error.flatten() })
+    return
+  }
+
+  const { summaryText, messageCount, originalTokenCount, modelUsed, conversationId, priorTurns } = parsed.data
+
+  try {
+    const customerId = (req as AuthenticatedRequest).agentContext?.customerId
+    const scope = workspaceScopeFromAppId(appId, customerId)
+
+    // Seeding runs before EVERY resetting trial, and the workspace reset does
+    // not touch the agent DB — so without clearing first, each trial's seed
+    // would stack on the last (duplicate summaries, prior trials' live turns
+    // lingering as "history"). Clear app conversations + summaries so every
+    // trial starts from the identical seeded state. Deleting a conversation
+    // cascades its messages (FK ON DELETE CASCADE).
+    const lifecycle = getConversationLifecycleStore()
+    const summaryStore = getSummaryStore()
+    const existingConversations = await lifecycle.getByAppId(scope)
+    for (const conversation of existingConversations) {
+      await lifecycle.delete(conversation.id)
+    }
+    await summaryStore.deleteByAppId(scope)
+
+    // Higher-fidelity seeding: when raw prior turns are supplied, create a
+    // conversation and replay them so the trial's getOrCreateForApp resolves
+    // INTO it (it returns the latest conversation for the app) and the agent
+    // reads the turns as recent un-summarized history — summary + recent tail,
+    // matching production's steady state rather than summary-only.
+    let seededConversationId: string | undefined = conversationId
+    if (priorTurns && priorTurns.length > 0) {
+      const messageStore = getMessageStore()
+      const conversation = await lifecycle.create(scope, SEEDED_CONVERSATION_AGENT_ID)
+      seededConversationId = conversation.id
+      for (const turn of priorTurns) {
+        await messageStore.addMessage(conversation.id, turn.sender, turn.content, { origin: 'customer' })
+      }
+    }
+
+    const tokenCountResult = await countTokens(summaryText, TOKEN_COUNTING_MODEL)
+    const summaryTokenCount = typeof tokenCountResult === 'object' ? tokenCountResult.tokenCount : tokenCountResult
+
+    // A seeded summary stands in for a span of prior messages that never
+    // actually ran, so there are no real message IDs to bound it. The live
+    // path uses these only for incremental-update bookkeeping (which a seeded
+    // summary doesn't participate in), so sentinel IDs are sufficient and make
+    // the row's synthetic origin self-evident.
+    const result: SummarizationResult = {
+      summaryText,
+      summaryTokenCount,
+      modelUsed: modelUsed ?? 'eval-seed',
+      messageRange: { startId: 'seed-start', endId: 'seed-end' },
+      messageCount: messageCount ?? 0,
+      originalTokenCount: originalTokenCount ?? summaryTokenCount,
+    }
+
+    const created = await summaryStore.create(scope, result, seededConversationId)
+
+    logger.info('debug.seed_summary.success', {
+      appId,
+      summaryId: created.id,
+      summaryTokenCount,
+      messageCount: result.messageCount,
+      priorTurnsSeeded: priorTurns?.length ?? 0,
+      ...(seededConversationId && { conversationId: seededConversationId }),
+    })
+
+    res.status(201).json({
+      success: true,
+      summaryId: created.id,
+      summaryTokenCount,
+      ...(seededConversationId && { conversationId: seededConversationId }),
+    })
+  } catch (error) {
+    logger.error('debug.seed_summary.failure', {
+      appId,
+      error: error instanceof Error ? error.message : String(error),
+    })
+    res.status(500).json({
+      error: 'Failed to seed conversation summary',
+      details: error instanceof Error ? error.message : String(error),
     })
   }
 })

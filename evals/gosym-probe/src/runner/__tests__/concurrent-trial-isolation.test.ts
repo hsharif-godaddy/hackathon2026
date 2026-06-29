@@ -90,7 +90,7 @@ const EVAL_CONFIG: ResolvedConfig = {
   },
   playwright: { ignoreHttpsErrors: true },
   capture: { concurrency: 2, maxConcurrency: 8, maxRoutes: 20, viewports: ['mobile', 'laptop'], gotoTimeoutMs: 30_000, appReadyTimeoutMs: 15_000 },
-  regression: { alpha: 0.05, k: 2.0, minMarginFraction: 0.05, fallbackThresholds: { defaultThreshold: 0.25, thresholds: {} } },
+  regression: { alpha: 0.05, k: 2.0, minMarginFraction: 0.05, reportingK: [1, 2, 3, 5, 10], fallbackThresholds: { defaultThreshold: 0.25, thresholds: {} } },
 };
 
 // OpenAI mock returns 15 tokens per complete() call.

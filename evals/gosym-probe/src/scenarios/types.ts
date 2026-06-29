@@ -1,5 +1,6 @@
 import type { Evaluator } from '../evaluators/evaluator.js';
-import type { DOMSnapshot } from '../runner/transcript.js';
+import type { DOMSnapshot, ToolCall } from '../runner/transcript.js';
+import type { CapturedSite } from '../clients/site-capture/types.js';
 import type { Persona } from '../personas/types.js';
 import type { AgentClient } from '../clients/agent-client.js';
 
@@ -10,6 +11,15 @@ export interface SetupContext {
 }
 
 export type StabilityLevel = 'low' | 'medium' | 'high';
+
+/**
+ * The develop sub-agent's DISPLAY name, as it appears on toolCall.agentId
+ * (the agentId is the display name, not a slug — confirmed from real runs:
+ * tool calls carried 'Initial' then 'AI Developer'). Used as the
+ * expectedAgent on build scenarios so a UI-facing rename is a single edit
+ * here rather than a literal repeated across scenarios.
+ */
+export const DEVELOP_AGENT_DISPLAY_NAME = 'AI Developer';
 
 export const DEFAULT_STABILITY_LEVEL: StabilityLevel = 'low';
 
@@ -38,6 +48,75 @@ export interface ToolCallAssertion {
   toolPattern?: RegExp;
 }
 
+/**
+ * CheckList behavioral-test category (Ribeiro et al., ACL 2020):
+ * - 'capability'  (MFT) — a required behavior must be present.
+ *   Failure is a hard fail for the scenario.
+ * - 'invariance'  (INV) — a property that must hold regardless of how
+ *   the artifact was built (e.g. no module-not-found, publish did not
+ *   500). Failure is a hard fail.
+ * - 'directional' (DIR) — a "nice to have" signal that should be present
+ *   but isn't required (e.g. the copy mentions the product category).
+ *   Failure is soft (downgrades the scenario to 'partial'); it never
+ *   hard-fails. (CheckList's original DIR is a baseline-relative
+ *   expectation; here the shipped DIR items are binary presence checks
+ *   treated as soft pass/fail.)
+ */
+export type ChecklistCheckType = 'capability' | 'invariance' | 'directional';
+
+/**
+ * A single binary behavioral expectation, checked deterministically
+ * against trial data by the expected-artifact-match evaluator.
+ *
+ * Matchers assert *capabilities* over the captured artifact, never
+ * string-equality against a golden output — so any valid
+ * implementation of the behavior passes. Exactly one matcher should be
+ * set per item.
+ */
+export interface ChecklistItem {
+  /** Stable identifier, e.g. 'has-contact-form'. */
+  id: string;
+  /** Observable behavior in plain language. */
+  description: string;
+  type: ChecklistCheckType;
+  domMatcher?: (site: CapturedSite, snapshots: DOMSnapshot[]) => boolean;
+  toolMatcher?: (toolCalls: ToolCall[]) => boolean;
+  routeMatcher?: { path: string | RegExp; mustBeReachable: boolean };
+  textMatcher?: { source: 'rendered' | 'transcript'; pattern: RegExp };
+}
+
+/**
+ * The written-down "expected finished product" for a scenario: the
+ * user's intent plus a CheckList of binary behavioral expectations.
+ * Consumed by the expected-artifact-match (static) evaluator and the
+ * narrow-artifact-judge (LLM) evaluator, which share these items so
+ * their per-item verdicts are directly comparable.
+ */
+export interface ExpectedArtifactSpec {
+  /** Human-readable summary of what the user wanted. */
+  intent: string;
+  items: ChecklistItem[];
+  /**
+   * Bumped whenever an item changes. Surfaces on EvalResult.evalVersion
+   * so baseline comparison is skipped when the checklist changes,
+   * preventing a tightened check from firing a false regression.
+   */
+  evalVersion: string;
+}
+
+/**
+ * A specific instruction the agent is expected to follow when executing
+ * a skill. Checked by SkillOutcomeEvaluator via LLM judge.
+ */
+export interface SkillInstruction {
+  /** Stable ID for reporting (e.g. 'uses-react-helmet'). kebab-case. */
+  id: string;
+  /** The specific instruction to check, in plain language. */
+  instruction: string;
+  /** 'required' = hard-fail if not followed. 'advisory' = partial only. */
+  priority: 'required' | 'advisory';
+}
+
 export interface Scenario {
   name: string;
   suite?: string;
@@ -49,19 +128,73 @@ export interface Scenario {
   stabilityLevel?: StabilityLevel;
   referenceSolution?: string | DOMSnapshot;
   expectedTools?: ToolCallAssertion[];
+  /**
+   * The written-down expected finished product for this scenario,
+   * consumed by the expected-artifact-match and narrow-artifact-judge
+   * evaluators. Typically loaded from a co-located expectation fixture
+   * (src/scenarios/<suite>/expectations/<scenario>.expectation.ts).
+   */
+  expectedArtifact?: ExpectedArtifactSpec;
+  /**
+   * Skills the agent is expected to load to satisfy this scenario,
+   * asserted by the skill-selection evaluator. The skill-load check
+   * is only enforced when SKILL_DIAGNOSTICS instrumentation populates
+   * Transcript.loadedSkills; otherwise that sub-check returns
+   * 'unknown'.
+   */
+  expectedSkills?: string[];
+  /**
+   * The sub-agent expected to handle this scenario's work (e.g.
+   * 'develop'). Asserted by skill-selection against toolCall.agentId,
+   * which is populated today (no instrumentation gate). When set, at
+   * least one tool call must carry this agentId.
+   */
+  expectedAgent?: string;
+  /**
+   * Skill-specific instructions the agent is expected to follow.
+   * Consumed by SkillOutcomeEvaluator at eval time. Required for
+   * skill-eval scenarios (factory enforces non-empty); optional on
+   * the Scenario type so non-skill-eval scenarios don't need it.
+   */
+  skillInstructions?: SkillInstruction[];
   setup?: () => Promise<SetupContext | void>;
   teardown?: (ctx: SetupContext) => Promise<void>;
+  /**
+   * When true, this scenario's trials MUST run sequentially (concurrency 1).
+   * Set by stateful injection, which shares one app workspace across trials:
+   * concurrent trials would reset/clobber each other's in-progress build. The
+   * runner throws rather than silently corrupting measurements if effective
+   * trial concurrency is > 1.
+   */
+  requiresSerialTrials?: boolean;
   /**
    * When set, the synthetic user sends this text
    * verbatim on the first turn instead of generating a
    * message via the GoCode LLM. Use for scenarios that
    * require a fixed, reproducible prompt.
    *
-   * Single-turn only. Multi-turn scripted conversations
-   * would require a staticMessages array or a
-   * ScriptedSyntheticUser strategy.
+   * Single-turn only. For multi-turn scripted conversations
+   * use {@link scriptedTurns}, which supersedes this field.
    */
   staticFirstMessage?: string;
+  /**
+   * A fixed, ordered list of verbatim user messages for stateful injection.
+   * The {@link ScriptedSyntheticUser} replays entry `n` on the nth user turn
+   * with no LLM call, removing synthetic-user variance. Once the script is
+   * exhausted it either delegates to the LLM-backed user (free-form
+   * continuation) or ends the conversation — see {@link scriptEndsConversation}.
+   *
+   * Supersedes {@link staticFirstMessage}: when both are set, `scriptedTurns[0]`
+   * is used for the first turn and `staticFirstMessage` is ignored.
+   */
+  scriptedTurns?: string[];
+  /**
+   * When true, the conversation ends once {@link scriptedTurns} is exhausted
+   * (the synthetic user returns null) instead of handing off to the LLM-backed
+   * user for free-form continuation. Use for fully-deterministic runs. Ignored
+   * when `scriptedTurns` is unset.
+   */
+  scriptEndsConversation?: boolean;
   /**
    * Called with the agent client immediately before each
    * trial's simulation starts. Use for non-evaluator

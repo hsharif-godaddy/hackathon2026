@@ -2,15 +2,28 @@ import type { AggregatedResult, TrialResult } from '../runner/types.js';
 import type { BaselineScores, RegressionResult } from './types.js';
 import { exceedsThreshold, resolveThreshold, hasVersionMismatch } from './threshold.js';
 import type { ThresholdConfig } from './threshold.js';
+import { buildPassEstimators } from '../util/pass-at-k.js';
+
+/** Reporting vector (plus per-evaluator overrides) for the pass@k estimators. */
+export interface ReportingKConfig {
+  reportingK: readonly number[];
+  reportingKOverrides?: Record<string, readonly number[]>;
+}
+
+/** Resolve the reporting vector for a single evaluator, honoring overrides. */
+function ksForEvaluator(name: string, reporting: ReportingKConfig): readonly number[] {
+  return reporting.reportingKOverrides?.[name] ?? reporting.reportingK;
+}
 
 /**
- * Enriches score-mode evaluators in a ScenarioResult with passAtK/passToTheK
- * derived from per-trial comparison against a baseline aggregate score.
+ * Enriches score-mode evaluators in a ScenarioResult with the unbiased pass@k /
+ * pass^k / pass@1 estimators derived from per-trial comparison against a
+ * baseline aggregate score.
  *
  * Returns a NEW aggregated record. The input ScenarioResult is not mutated.
  * Each evaluator is processed independently.
  *
- * Score-mode evaluators are left unchanged (passAtK remains undefined) when:
+ * Score-mode evaluators are left unchanged (estimators remain undefined) when:
  * - The baseline has no entry for the evaluator.
  * - The baseline aggregateScore is undefined or non-finite.
  * - evalVersion differs between current run and baseline.
@@ -41,6 +54,7 @@ export function enrichScoreModePassRates(
   result: { trials: TrialResult[]; aggregated: Record<string, AggregatedResult> },
   baseline: BaselineScores,
   config: ThresholdConfig,
+  reporting: ReportingKConfig,
   regressionResult?: RegressionResult,
 ): { aggregated: Record<string, AggregatedResult>; trials: TrialResult[] } {
   const enriched: Record<string, AggregatedResult> = {};
@@ -55,7 +69,8 @@ export function enrichScoreModePassRates(
     }
 
     // TOST path: TOST ran for this evaluator — use its distribution-level result.
-    // Per-trial verdicts stay 'observed'; gating is expressed through passAtK/passToTheK.
+    // It yields one all-or-nothing verdict, not a per-trial sample, so the pass@k
+    // estimators are left undefined; only baselinePassingTrials is recorded.
     const tostNonInferior = tostResults.get(name);
     if (tostNonInferior !== undefined) {
       const validTrials = result.trials.filter((t) => {
@@ -64,8 +79,6 @@ export function enrichScoreModePassRates(
       }).length;
       enriched[name] = {
         ...agg,
-        passAtK: tostNonInferior,
-        passToTheK: tostNonInferior,
         baselinePassingTrials: tostNonInferior ? validTrials : 0,
       };
       continue;
@@ -107,11 +120,10 @@ export function enrichScoreModePassRates(
       if (evalResult === undefined) continue;
       foundAny = true;
       if (evalResult.verdict === 'unknown') continue;
+      if (!Number.isFinite(evalResult.score)) continue;
       validTrials++;
-      const trialVerdict: 'pass' | 'fail' = (
-        Number.isFinite(evalResult.score) &&
-        !exceedsThreshold(evalResult.score, baselineAggregate, threshold, lowerIsBetter)
-      ) ? 'pass' : 'fail';
+      const trialVerdict: 'pass' | 'fail' =
+        !exceedsThreshold(evalResult.score, baselineAggregate, threshold, lowerIsBetter) ? 'pass' : 'fail';
 
       const baselineComparison = `${name}: ${evalResult.score} vs baseline ${baselineAggregate} (threshold ${(threshold * 100).toFixed(0)}%) → ${trialVerdict}`;
 
@@ -137,8 +149,7 @@ export function enrichScoreModePassRates(
 
     enriched[name] = {
       ...agg,
-      passAtK: passingTrials > 0,
-      passToTheK: validTrials > 0 && passingTrials === validTrials,
+      ...buildPassEstimators(validTrials, passingTrials, ksForEvaluator(name, reporting)),
       baselinePassingTrials: passingTrials,
     };
   }

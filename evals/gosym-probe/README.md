@@ -529,7 +529,7 @@ src/
 
   evaluators/
     evaluator.ts          # Evaluator interface + EvalResult type
-    llm-json-evaluator.ts # LLMJsonEvaluator base class
+    llm-judge-evaluator.ts # LLMJudgeEvaluator base class
     shared.ts             # clamp01, extractBodyHtml, htmlToText, truncate
     bug-hit-rate.ts
     prompt-efficiency.ts

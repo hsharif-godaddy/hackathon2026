@@ -173,10 +173,12 @@ export interface SuiteRunnerOptions {
 }
 
 export class SuiteRunner {
-  private readonly aggregator = new TrialAggregator();
+  private readonly aggregator: TrialAggregator;
   private readonly comparator = new RegressionComparator();
 
-  constructor(private readonly options: SuiteRunnerOptions) {}
+  constructor(private readonly options: SuiteRunnerOptions) {
+    this.aggregator = new TrialAggregator(options.config.regression);
+  }
 
   private makeDiagnosticLog(fallback?: DiagnosticLogFn): DiagnosticLogFn | undefined {
     const { progressReporter } = this.options;
@@ -276,6 +278,10 @@ export class SuiteRunner {
         result,
         loaded.scores,
         config.regression.fallbackThresholds,
+        {
+          reportingK: config.regression.reportingK,
+          reportingKOverrides: config.regression.reportingKOverrides,
+        },
         regressionStatus,
       );
       result.regressionStatus = regressionStatus;
@@ -312,6 +318,17 @@ export class SuiteRunner {
     }
 
     const cap = effectiveConcurrency(scenarioConcurrency, config.eval.maxConcurrency);
+
+    if (cap > 1) {
+      const serial = scenarios.find((s) => s.requiresSerialTrials);
+      if (serial) {
+        throw new Error(
+          `Scenario "${serial.name}" requires serial trials (stateful injection ` +
+          `shares one app workspace) and cannot run under fan-out concurrency ${cap}. ` +
+          `Run it without --fan-out, at --concurrency 1.`,
+        );
+      }
+    }
 
     const trialIndicesPerScenario: number[][] = scenarios.map((s) =>
       trialIndicesByScenario?.get(s.name)
@@ -482,14 +499,54 @@ export class SuiteRunner {
     const afterSimFailures = new Set<string>();
 
     const concurrency = effectiveConcurrency(trialConcurrency, config.eval.maxConcurrency);
-    const newTrialResults = await runCapped(trialIndices.length, concurrency, (i) => {
-      const trialIndex = trialIndices[i];
-      return staggeredRun(i, concurrency, () =>
-        this.executeTrialWithCleanup(
-          scenario, trialIndex, makeAgentClient, syntheticUser, afterSimFailures,
-        ),
+    if (scenario.requiresSerialTrials && concurrency > 1) {
+      throw new Error(
+        `Scenario "${scenario.name}" requires serial trials (stateful injection ` +
+        `shares one app workspace), but effective trial concurrency is ${concurrency}. ` +
+        `Re-run with --concurrency 1.`,
       );
-    });
+    }
+    let newTrialResults: TrialResult[];
+    let dropped = 0;
+    try {
+      newTrialResults = await runCapped(trialIndices.length, concurrency, (i) => {
+        const trialIndex = trialIndices[i];
+        return staggeredRun(i, concurrency, () =>
+          this.executeTrialWithCleanup(
+            scenario, trialIndex, makeAgentClient, syntheticUser, afterSimFailures,
+          ),
+        );
+      });
+    } catch (err) {
+      // A single trial failure (e.g. a hard turn timeout) must not discard
+      // the whole scenario — that throws away every completed trial. Mirror
+      // runFanOut: keep the partials, count the drops, and let the caller
+      // degrade the exit code via result.droppedTrials. Only the strict
+      // AggregateError carrying partials is recoverable here.
+      if (
+        !(err instanceof AggregateError) ||
+        !(err as RuncappedError<TrialResult>).partialResults
+      ) {
+        throw err;
+      }
+      const partial = (err as RuncappedError<TrialResult>).partialResults;
+      const completed: TrialResult[] = [];
+      for (const trialResult of partial) {
+        if (trialResult !== undefined) {
+          completed.push(trialResult);
+        } else {
+          dropped++;
+        }
+      }
+      newTrialResults = completed;
+      console.warn('Trials failed.', {
+        scenarioName: scenario.name,
+        dropped,
+        errors: (err as AggregateError).errors.map((e: unknown) =>
+          e instanceof Error ? e.message : String(e),
+        ),
+      });
+    }
     const trialResults = [
       ...(existingTrialsByScenario?.get(scenario.name) ?? []),
       ...newTrialResults,
@@ -498,6 +555,9 @@ export class SuiteRunner {
       scenario,
       trialResults,
     );
+    if (dropped > 0) {
+      result.droppedTrials = dropped;
+    }
 
     await this.applyBaselineComparison(scenario, result);
 

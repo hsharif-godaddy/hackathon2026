@@ -65,6 +65,7 @@ pnpm run eval          # headless eval with flags
 --graduate <name>        Stability check one scenario before promoting
 --graduate-suite <name>  Stability check all scenarios in a suite
 --stability <level>      Override stability level (low|medium|high)
+--calibrate              Add the narrow-artifact-judge (LLM) alongside the deterministic static evaluators, enabling the static-vs-judge disagreement check. Off by default — the judge is a calibration-time signal, not run on every eval.
 --resume <run-id>        Resume a previous incomplete run
 ```
 
@@ -136,6 +137,20 @@ support `--resume` — the sequential path re-runs each scenario entirely and
 cannot resume partial scenario work. Use `--fan-out` for graduation runs that
 may need recovery. `--graduate` (single-scenario) also does not support
 `--resume`.
+
+**Trial-failure tolerance.** A single trial failure (e.g. a hard turn
+timeout) no longer aborts the scenario in any graduation path — the
+completed trials are kept and the scenario graduates on them, with the
+dropped count surfaced via `result.droppedTrials` and logged.
+
+**Baseline-eligibility guard.** A graduation run saves a baseline only if at
+least one trial both produced agent output (an assistant turn) AND a
+comparable verdict (`assessBaselineEligibility`, `baselines/baseline-eligibility.ts`).
+This blocks a zero-output run — e.g. a misconfigured agent 401ing every
+trial (see `OPENAI_BASE_URL` above) — from pinning the regression floor to
+garbage; vacuous evaluators (`bug-hit-rate`) emit `pass` on an empty build,
+so the verdict alone isn't enough. A skipped save logs the reason
+(`no-agent-output` / `all-unknown-verdicts` / `no-trials`).
 
 ### `pnpm run save-baseline` usage
 
@@ -240,6 +255,7 @@ Configured in `.env` (copy from `.env.example`).
 | Variable             | Required | Default | Description                                                                                                                                                                                                         |
 | -------------------- | -------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `SOCKET_DIAGNOSTICS` | No       | —       | Set to `true` in AAB to gate the SSE diagnostic events `token_usage_summary`, `stream_timing_summary`, `stream_chunk_slow_gap`, and `stream_chunk_timeout` (emitted by the SSE path), consumed by `LatencyEvaluator` and the token-usage collector. When unset, no diagnostic events are emitted. |
+| `OPENAI_BASE_URL`    | Yes (S2S) | —      | The agent's GoCode endpoint, **separate from the probe's**. In S2S mode it must be the prod sso-jwt gateway `https://api.gocode.caas.gdcorp.tools/v1` to match the prod token `SSO_HOST=sso.godaddy.com` mints. If unset, `s2s-auth.ts` derives the DEV endpoint from `NODE_ENV=development`; the prod token then 401s and **the agent silently produces zero-turn builds** (no error surfaced — every trial looks empty). The dev-runner preflight sets this; only an issue if you hand-edit `agents/.env`. Diagnose via `agents/dev.log` (`401`/`JWT validation failed`/`No output generated`). |
 | `ENABLE_AI_DEVTOOLS` | No       | —       | Set to `false` when running evals. `@ai-sdk/devtools` registers a process-level middleware that accumulates every AI SDK event in memory with no eviction. Across a graduation run (20 trials × tool call volume per scenario), the shared in-memory store exhausts the V8 heap after ~80–100 cumulative LLM calls, crashing the agents process mid-run. The variable has no effect unless the devtools package is wired into the SDK initialization; leaving it unset defaults to enabled if the package is present. |
 
 ---

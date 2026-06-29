@@ -87,7 +87,7 @@ const mockConfig: ResolvedConfig = {
   },
   playwright: { ignoreHttpsErrors: true },
   capture: { concurrency: 2, maxConcurrency: 8, maxRoutes: 20, viewports: ['mobile', 'laptop'], gotoTimeoutMs: 30_000, appReadyTimeoutMs: 15_000 },
-  regression: { alpha: 0.05, k: 2.0, minMarginFraction: 0.05, fallbackThresholds: { thresholds: {}, defaultThreshold: 0.1 } },
+  regression: { alpha: 0.05, k: 2.0, minMarginFraction: 0.05, reportingK: [1, 2, 3, 5, 10], fallbackThresholds: { thresholds: {}, defaultThreshold: 0.1 } },
 };
 
 function makeScenario(overrides: Partial<Scenario> = {}): Scenario {
@@ -268,6 +268,135 @@ describe('Simulation', () => {
       (t) => t.role === 'assistant',
     );
     expect(assistantTurns).toHaveLength(2);
+  });
+
+  it('leaves loadedSkills absent when no skill_diagnostics events fire', async () => {
+    const scenario = makeScenario();
+    const syntheticUser: SyntheticUserAgent = {
+      nextMessage: vi.fn().mockResolvedValueOnce('hi').mockResolvedValue(null),
+    };
+    const transcript = await new Simulation({
+      scenario,
+      agentClient: makeAutoAgent(),
+      syntheticUser,
+      config: mockConfig,
+    }).run(0);
+    expect(transcript.loadedSkills).toBeUndefined();
+  });
+
+  it('reconstructs loadedSkills from skill_diagnostics events (load wins over unload)', async () => {
+    const scenario = makeScenario();
+    const syntheticUser: SyntheticUserAgent = {
+      nextMessage: vi.fn().mockResolvedValueOnce('hi').mockResolvedValue(null),
+    };
+    const agent = new MockAgentClient();
+    agent.send = vi.fn().mockImplementation(function (msg: string) {
+      agent.sent.push(msg);
+      Promise.resolve().then(() => {
+        agent.emit({ type: 'skill_diagnostics', event: 'load', skill: 'payments' });
+        agent.emit({ type: 'skill_diagnostics', event: 'load', skill: 'seo' });
+        agent.emit({ type: 'skill_diagnostics', event: 'unload', skill: 'seo' });
+        agent.emit({ type: 'complete', content: 'done' });
+      });
+    });
+
+    const transcript = await new Simulation({
+      scenario,
+      agentClient: agent,
+      syntheticUser,
+      config: mockConfig,
+    }).run(0);
+
+    expect(transcript.loadedSkills).toBeDefined();
+    expect([...transcript.loadedSkills!].sort()).toEqual(['payments', 'seo']);
+  });
+
+  it('attributes token_usage_summary events to the in-flight turn', async () => {
+    // Two-turn trial: each turn emits a distinct token event. The per-turn
+    // tokens must bucket separately (not sum into one), and sum to the trial
+    // total — the isolation that lets an increment turn be measured apart from
+    // a prior build turn.
+    const scenario = makeScenario();
+    const syntheticUser: SyntheticUserAgent = {
+      nextMessage: vi
+        .fn()
+        .mockResolvedValueOnce('build it')
+        .mockResolvedValueOnce('add a page')
+        .mockResolvedValue(null),
+    };
+    const tokenEvent = (
+      input: number,
+      output: number,
+      cachedRead = 0,
+      cachedWrite = 0,
+    ): AgentEvent => ({
+      type: 'token_usage_summary',
+      inputTokens: input,
+      outputTokens: output,
+      totalTokens: input + output,
+      cachedInputTokensRead: cachedRead,
+      cachedInputTokensWrite: cachedWrite,
+      modelName: 'test-model',
+      totalCost: input / 1000,
+      inputCost: input / 1000,
+      outputCost: 0,
+      cachedInputCost: 0,
+      savings: 0,
+      currency: 'USD',
+    });
+    let turn = 0;
+    const agent = new MockAgentClient();
+    agent.send = vi.fn().mockImplementation(function (msg: string) {
+      agent.sent.push(msg);
+      const t = turn++;
+      Promise.resolve().then(() => {
+        // turn 0 (build): 1000 in / 100 out, with cached read/write so the
+        // cache-token summation is exercised with a non-zero addend; turn 1
+        // (increment): 50 in / 5 out.
+        agent.emit(t === 0 ? tokenEvent(1000, 100, 800, 200) : tokenEvent(50, 5));
+        agent.emit({ type: 'complete', content: 'done' });
+      });
+    });
+
+    const transcript = await new Simulation({
+      scenario,
+      agentClient: agent,
+      syntheticUser,
+      config: mockConfig,
+    }).run(0);
+
+    const asst = transcript.turns.filter((t) => t.role === 'assistant');
+    expect(asst).toHaveLength(2);
+    expect(asst[0].tokens).toMatchObject({
+      inputTokens: 1000,
+      outputTokens: 100,
+      cachedInputTokensRead: 800,
+      cachedInputTokensWrite: 200,
+      eventCount: 1,
+    });
+    expect(asst[1].tokens).toMatchObject({ inputTokens: 50, outputTokens: 5, eventCount: 1 });
+    // Per-turn buckets sum to the trial total.
+    const trialInput = asst.reduce((s, t) => s + (t.tokens?.inputTokens ?? 0), 0);
+    expect(trialInput).toBe(1050);
+  });
+
+  it('leaves turn.tokens absent when no token events are emitted', async () => {
+    const scenario = makeScenario();
+    const syntheticUser: SyntheticUserAgent = {
+      nextMessage: vi.fn().mockResolvedValueOnce('hi').mockResolvedValue(null),
+    };
+    const agent = makeAutoAgent('done');
+
+    const transcript = await new Simulation({
+      scenario,
+      agentClient: agent,
+      syntheticUser,
+      config: mockConfig,
+    }).run(0);
+
+    const asst = transcript.turns.filter((t) => t.role === 'assistant');
+    expect(asst.length).toBeGreaterThan(0);
+    expect(asst[0].tokens).toBeUndefined();
   });
 
   it('records error events in the transcript', async () => {

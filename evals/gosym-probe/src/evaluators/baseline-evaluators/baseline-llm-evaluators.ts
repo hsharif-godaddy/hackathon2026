@@ -7,17 +7,17 @@ import type { IGocodeClient } from '../../clients/gocode-client.js';
 import type { DOMSnapshot, Transcript } from '../../runner/transcript.js';
 import type { Scenario } from '../../scenarios/types.js';
 
-import { LLMJsonEvaluator } from './llm-json-evaluator.js';
+import { LLMJudgeEvaluator } from './llm-judge-evaluator.js';
 import type {
   JudgeBoolean,
   JudgeCategorical,
   JudgeNumerical,
-} from './llm-json-evaluator.js';
+} from './llm-judge-evaluator.js';
 import {
   JudgeBooleanSchema,
   JudgeCategoricalSchema,
   JudgeNumericalSchema,
-} from './llm-json-evaluator.js';
+} from './llm-judge-evaluator.js';
 import { buildEvidence, clamp01, extractBodyHtml, htmlToText, lastSnapshotSectionSanitized, truncate } from './shared.js';
 import { readSnapshotHtml } from '../shared.js';
 
@@ -444,7 +444,7 @@ function createEvaluatorFromSpec(
   spec: BaselineEvaluatorSpec,
 ): Evaluator {
   if (spec.scoreType === 'numerical') {
-    return new LLMJsonEvaluator(gocode, {
+    return new LLMJudgeEvaluator(gocode, {
       name: spec.name,
       evalVersion: version(spec),
       schema: JudgeNumericalSchema,
@@ -454,7 +454,7 @@ function createEvaluatorFromSpec(
   }
 
   if (spec.scoreType === 'boolean') {
-    return new LLMJsonEvaluator(gocode, {
+    return new LLMJudgeEvaluator(gocode, {
       name: spec.name,
       evalVersion: version(spec),
       schema: JudgeBooleanSchema,
@@ -464,7 +464,7 @@ function createEvaluatorFromSpec(
   }
 
   if (spec.scoreType === 'categorical') {
-    return new LLMJsonEvaluator(gocode, {
+    return new LLMJudgeEvaluator(gocode, {
       name: spec.name,
       evalVersion: version(spec),
       schema: JudgeCategoricalSchema.extend({

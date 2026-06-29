@@ -81,11 +81,14 @@ export class BaselineStore {
           return [
             name,
             {
+              ...(agg.passAt1 !== undefined && {
+                passAt1: agg.passAt1,
+              }),
               ...(agg.passAtK !== undefined && {
                 passAtK: agg.passAtK,
               }),
-              ...(agg.passToTheK !== undefined && {
-                passToTheK: agg.passToTheK,
+              ...(agg.passHatK !== undefined && {
+                passHatK: agg.passHatK,
               }),
               passingTrials: agg.passingTrials,
               totalTrials: agg.totalTrials,
@@ -179,11 +182,14 @@ export class BaselineStore {
           return [
             name,
             {
-              ...(!scoreNamesSet.has(name) && ev.passAtK !== undefined && {
+              ...(ev.passAt1 !== undefined && {
+                passAt1: ev.passAt1,
+              }),
+              ...(ev.passAtK !== undefined && {
                 passAtK: ev.passAtK,
               }),
-              ...(!scoreNamesSet.has(name) && ev.passToTheK !== undefined && {
-                passToTheK: ev.passToTheK,
+              ...(ev.passHatK !== undefined && {
+                passHatK: ev.passHatK,
               }),
               passingTrials: ev.passingTrials,
               totalTrials: ev.totalTrials,

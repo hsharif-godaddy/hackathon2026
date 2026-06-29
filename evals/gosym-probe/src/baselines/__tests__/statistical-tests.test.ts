@@ -3,6 +3,10 @@ import {
   computeMargin,
   tostProportions,
   tostPermutation,
+  cohensD,
+  achievedPower,
+  minDetectableEffect,
+  computePower,
 } from '../statistical-tests.js';
 
 // ── computeMargin ─────────────────────────────────────────────────────────────
@@ -490,5 +494,164 @@ describe('power validation', () => {
       const result = tostPermutation(baseline10, current3, { alpha: 0.05, margin });
       expect(result.nonInferiorityProven).toBe(true);
     });
+  });
+});
+
+// ── cohensD ───────────────────────────────────────────────────────────────────
+
+describe('cohensD', () => {
+  describe('boundary: degenerate inputs', () => {
+    it('returns 0 when either arm has fewer than two values', () => {
+      expect(cohensD([0.5], [0.4, 0.6])).toBe(0);
+      expect(cohensD([0.4, 0.6], [])).toBe(0);
+    });
+
+    it('returns 0 when pooled SD is 0 (both arms constant)', () => {
+      expect(cohensD([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])).toBe(0);
+    });
+  });
+
+  describe('hand-computed effect sizes', () => {
+    // Both arms: variance(sample, ddof=1) = 1.0, so pooledSD = 1.0.
+    // mean difference = 1, so d = 1 / 1 = 1.
+    it('computes d=1 for a one-SD shift', () => {
+      const baseline = [1, 2, 3]; // mean 2, sampleVar 1
+      const current = [2, 3, 4]; // mean 3, sampleVar 1
+      expect(cohensD(baseline, current)).toBeCloseTo(1.0, 10);
+    });
+
+    it('is signed: regression (current lower) yields negative d', () => {
+      const baseline = [2, 3, 4]; // mean 3
+      const current = [1, 2, 3]; // mean 2
+      expect(cohensD(baseline, current)).toBeCloseTo(-1.0, 10);
+    });
+
+    it('returns ~0 when arm means coincide', () => {
+      expect(cohensD([1, 2, 3], [1, 2, 3])).toBeCloseTo(0, 10);
+    });
+  });
+});
+
+// ── achievedPower ───────────────────────────────────────────────────────────────
+
+describe('achievedPower', () => {
+  it('returns 0 when n < 2 (no test possible)', () => {
+    expect(achievedPower(0.8, 1, 0.05)).toBe(0);
+  });
+
+  it('returns ~alpha at zero effect (only the null rejection rate)', () => {
+    expect(achievedPower(0, 20, 0.05)).toBeCloseTo(0.05, 2);
+  });
+
+  it('is high for a large effect at large n', () => {
+    // d=1.5, n=20/arm → essentially certain detection.
+    expect(achievedPower(1.5, 20, 0.05)).toBeGreaterThan(0.99);
+  });
+
+  it('is low (underpowered) for a small effect at small n', () => {
+    // d=0.2, n=5/arm → well below the conventional 0.8 bar.
+    expect(achievedPower(0.2, 5, 0.05)).toBeLessThan(0.2);
+  });
+
+  it('increases monotonically with n for a fixed effect', () => {
+    const p5 = achievedPower(0.5, 5, 0.05);
+    const p20 = achievedPower(0.5, 20, 0.05);
+    expect(p20).toBeGreaterThan(p5);
+  });
+});
+
+// ── minDetectableEffect ─────────────────────────────────────────────────────────
+
+describe('minDetectableEffect', () => {
+  it('returns Infinity when n < 2', () => {
+    expect(minDetectableEffect(1, 0.05)).toBe(Infinity);
+  });
+
+  it('returns Infinity (no NaN/±Infinity arithmetic) for out-of-range targetPower', () => {
+    // 0, 1, >1, and NaN would push normInvCDF to ±Infinity/NaN — guard degrades
+    // to Infinity so the report shows ±∞ rather than NaN.
+    for (const bad of [0, 1, 1.5, -0.2, NaN]) {
+      expect(minDetectableEffect(20, 0.05, bad)).toBe(Infinity);
+    }
+  });
+
+  it('shrinks as n grows (more trials detect smaller effects)', () => {
+    const mde5 = minDetectableEffect(5, 0.05);
+    const mde20 = minDetectableEffect(20, 0.05);
+    expect(mde20).toBeLessThan(mde5);
+  });
+
+  it('matches the closed form at n=20, alpha=0.05, power=0.8', () => {
+    // (z_0.975 + z_0.8) * sqrt(2/20) = (1.95996 + 0.84162) * 0.31623 ≈ 0.8857
+    expect(minDetectableEffect(20, 0.05, 0.8)).toBeCloseTo(0.886, 2);
+  });
+
+  it('is consistent with achievedPower: an effect at the MDE has ~targetPower', () => {
+    const mde = minDetectableEffect(20, 0.05, 0.8);
+    expect(achievedPower(mde, 20, 0.05)).toBeCloseTo(0.8, 2);
+  });
+});
+
+// ── computePower ────────────────────────────────────────────────────────────────
+
+describe('computePower', () => {
+  it('flags a small effect at n=5 as underpowered (power < target)', () => {
+    // Near-identical arms, tiny shift, only 5 trials → cannot resolve.
+    const baseline = [0.50, 0.52, 0.48, 0.51, 0.49];
+    const current = [0.51, 0.53, 0.49, 0.52, 0.50];
+    const result = computePower(baseline, current, { alpha: 0.05, targetPower: 0.8 });
+    expect(result.achievedPower).toBeLessThan(result.targetPower);
+    expect(result.n).toEqual({ baseline: 5, current: 5 });
+  });
+
+  it('reports high power for a large, clear effect at high n', () => {
+    const baseline = Array.from({ length: 20 }, (_, i) => (i % 2 === 0 ? 0.1 : 0.2));
+    const current = Array.from({ length: 20 }, (_, i) => (i % 2 === 0 ? 0.9 : 1.0));
+    const result = computePower(baseline, current, { alpha: 0.05, targetPower: 0.8 });
+    expect(result.achievedPower).toBeGreaterThan(0.8);
+  });
+
+  it('uses the smaller arm n for power (no optimism on unbalanced arms)', () => {
+    const baseline = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+    const current = [2, 3, 4];
+    const result = computePower(baseline, current, { alpha: 0.05 });
+    // achievedPower should reflect n=3, not n=10.
+    expect(result.achievedPower).toBeCloseTo(
+      achievedPower(result.cohensD, 3, 0.05),
+      6,
+    );
+  });
+
+  it('returns mdeScore in raw units (mdeD * pooledSD)', () => {
+    const baseline = [1, 2, 3];
+    const current = [2, 3, 4];
+    const result = computePower(baseline, current, { alpha: 0.05, targetPower: 0.8 });
+    expect(result.mdeScore).toBeCloseTo(result.mdeD * result.pooledSD, 10);
+  });
+
+  it('handles degenerate constant arms without NaN', () => {
+    const result = computePower([0.5, 0.5, 0.5], [0.5, 0.5, 0.5], { alpha: 0.05 });
+    expect(result.cohensD).toBe(0);
+    expect(result.pooledSD).toBe(0);
+    expect(Number.isNaN(result.achievedPower)).toBe(false);
+    expect(result.mdeScore).toBe(0);
+  });
+
+  it('orients cohensD so a regression is negative for lowerIsBetter metrics', () => {
+    // current is HIGHER than baseline → a regression for a lower-is-better metric.
+    const baseline = [1, 2, 3];
+    const current = [2, 3, 4];
+    const higher = computePower(baseline, current, { alpha: 0.05 });
+    const lower = computePower(baseline, current, { alpha: 0.05, lowerIsBetter: true });
+    expect(higher.cohensD).toBeGreaterThan(0); // raw: current up = positive
+    expect(lower.cohensD).toBeCloseTo(-higher.cohensD, 10); // flipped → regression reads negative
+    // Power magnitude is sign-independent (|d|), so it is unchanged.
+    expect(lower.achievedPower).toBeCloseTo(higher.achievedPower, 10);
+  });
+
+  it('returns mdeScore = Infinity when an arm has fewer than two trials', () => {
+    const result = computePower([0.5], [0.4, 0.6], { alpha: 0.05 });
+    expect(result.mdeScore).toBe(Infinity);
+    expect(result.achievedPower).toBe(0);
   });
 });

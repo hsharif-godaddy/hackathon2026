@@ -11,6 +11,14 @@ export interface AABCtrlPlaneClientConfig {
   provisionTimeoutMs?: number;
   pollIntervalMs?: number;
   requestTimeoutMs?: number;
+  /**
+   * Timeout for the reset request specifically. A reset that restarts
+   * containers blocks server-side until the preview is serving again
+   * (the control plane polls `/airo/health` for up to ~45s), so the reset
+   * request must allow more time than a normal request. Defaults to
+   * DEFAULT_RESET_TIMEOUT_MS, comfortably above the server's readiness window.
+   */
+  resetTimeoutMs?: number;
   retryDelayMs?: number;
   maxRetries?: number;
 }
@@ -28,11 +36,22 @@ const PollResponseSchema = z.object({
   error: z.string().optional(),
 });
 
+const ResetResponseSchema = z.object({
+  restarted: z.boolean().optional(),
+  restartError: z.string().optional(),
+  ready: z.boolean().optional(),
+  readyError: z.string().optional(),
+});
+
 type PollResponse = z.infer<typeof PollResponseSchema>;
 
 const DEFAULT_PROVISION_TIMEOUT_MS = 120_000;
 const DEFAULT_POLL_INTERVAL_MS = 2_000;
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
+// Above the control plane's preview-readiness window (~45s) plus margin: a
+// reset that restarts containers blocks until the preview serves again, so the
+// client must not abort mid-readiness-poll.
+const DEFAULT_RESET_TIMEOUT_MS = 90_000;
 const DEFAULT_RETRY_DELAY_MS = 30_000;
 const DEFAULT_MAX_RETRIES = 3;
 const LOCAL_SUB = 'local-sub-001';
@@ -63,6 +82,7 @@ export class AABCtrlPlaneClient {
   private readonly provisionTimeoutMs: number;
   private readonly pollIntervalMs: number;
   private readonly requestTimeoutMs: number;
+  private readonly resetTimeoutMs: number;
   private readonly retryDelayMs: number;
   private readonly maxRetries: number;
 
@@ -74,6 +94,8 @@ export class AABCtrlPlaneClient {
       config.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
     this.requestTimeoutMs =
       config.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
+    this.resetTimeoutMs =
+      config.resetTimeoutMs ?? DEFAULT_RESET_TIMEOUT_MS;
     this.retryDelayMs =
       config.retryDelayMs ?? DEFAULT_RETRY_DELAY_MS;
     this.maxRetries =
@@ -102,6 +124,82 @@ export class AABCtrlPlaneClient {
       }
     }
     throw lastErr;
+  }
+
+  /**
+   * Hard-resets an app's workspace to a known commit (or HEAD when omitted)
+   * and restarts its containers so dependencies re-sync. Used by stateful
+   * injection to reuse one pre-built app across trials. Requires the
+   * control-plane reset endpoint (POST .../apps/{appId}/reset).
+   *
+   * When a restart is requested, this waits for the control plane to confirm
+   * the preview is serving again (`ready:true`) before resolving, and throws
+   * otherwise. A restart that relaunches the container but leaves the preview
+   * un-served produces a silent no-op trial — the dominant cause of the
+   * post-reset trial exclusions at n=7 — so a not-ready reset is treated as a
+   * hard failure rather than allowed to poison the next trial.
+   */
+  async resetApp(
+    appId: string,
+    options?: { commit?: string; restart?: boolean },
+  ): Promise<void> {
+    const url =
+      `${this.baseUrl}/api/airo/v1/subscriptions` +
+      `/${LOCAL_SUB}/systems/${LOCAL_SYS}/apps/${appId}/reset`;
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ...(options?.commit !== undefined && { commit: options.commit }),
+        ...(options?.restart !== undefined && { restart: options.restart }),
+      }),
+      // A reset that restarts containers blocks server-side until the preview
+      // is serving again, so allow more time than a normal request.
+      signal: AbortSignal.timeout(this.resetTimeoutMs),
+    });
+
+    if (!response.ok) {
+      throw new Error(
+        `Failed to reset app '${appId}': HTTP ${response.status}`,
+      );
+    }
+
+    // A 200 can still be a degraded reset: the container restart may have
+    // failed (handler reports restarted:false + restartError), or it may have
+    // restarted but not come back up to serve traffic (ready:false +
+    // readyError) while the git reset succeeded. Running a trial against an
+    // un-restarted app means stale node_modules vs the reset package.json;
+    // running against a not-yet-ready app means the agent hits a dead preview
+    // and no-ops. Both are the exact corruption stateful injection exists to
+    // prevent, so treat either as a hard failure.
+    const restartRequested = options?.restart !== false;
+    if (restartRequested) {
+      const parsed = ResetResponseSchema.safeParse(
+        await response.json().catch(() => null),
+      );
+      // An unparseable/absent body when a restart was requested is itself a
+      // degraded signal: we cannot confirm the restart succeeded, so fail loud
+      // rather than let `restarted` default to undefined and skip the check.
+      if (!parsed.success || parsed.data.restarted !== true) {
+        const reason = parsed.success
+          ? (parsed.data.restartError ?? 'unknown error')
+          : 'reset response body missing or malformed';
+        throw new Error(
+          `Reset of app '${appId}' left containers un-restarted ` +
+          `(degraded — stale dependencies): ${reason}`,
+        );
+      }
+      // Restart succeeded but the preview never came back to serving — the
+      // next trial would run against a dead preview and no-op.
+      if (parsed.data.ready !== true) {
+        throw new Error(
+          `Reset of app '${appId}' restarted containers but the preview ` +
+          `did not become ready (degraded — trial would no-op): ` +
+          `${parsed.data.readyError ?? 'unknown error'}`,
+        );
+      }
+    }
   }
 
   async deleteApp(appId: string): Promise<void> {

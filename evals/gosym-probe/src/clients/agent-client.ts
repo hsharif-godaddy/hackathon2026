@@ -30,6 +30,14 @@ export type AgentEvent =
   //      src/evaluators/token-usage-collector.ts
   //      (TokenUsageCollector handler)
   | {
+      // Per-skill load/unload, emitted by the AAB agents service only
+      // when SKILL_DIAGNOSTICS=true. Captured by Simulation into
+      // Transcript.loadedSkills for the skill-selection evaluator.
+      type: 'skill_diagnostics';
+      event: 'load' | 'unload';
+      skill: string;
+    }
+  | {
       type: 'stream_timing_summary';
       timeToStreamStartMs: number;
       timeToFirstTextChunkMs: number | null;

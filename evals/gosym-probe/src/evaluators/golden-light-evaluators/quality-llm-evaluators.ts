@@ -3,10 +3,10 @@ import type { IGocodeClient } from '../../clients/gocode-client.js';
 import type { DOMSnapshot, Transcript } from '../../runner/transcript.js';
 import type { Scenario } from '../../scenarios/types.js';
 import {
-  LLMJsonEvaluator,
+  LLMJudgeEvaluator,
   JudgeNumericalSchema,
   type JudgeNumerical,
-} from '../llm-json-evaluator.js';
+} from '../llm-judge-evaluator.js';
 import { extractBodyHtml, extractBodyHtmlFull, sanitizeHtmlForEval, htmlToText, truncate, readSnapshotHtml, LLM_PROMPT_HTML_MAX_CHARS, LLM_PROMPT_SANITIZED_HTML_MAX_CHARS } from '../shared.js';
 
 async function buildHtmlEvidence(scenario: Scenario, snapshot?: DOMSnapshot): Promise<string> {
@@ -109,7 +109,7 @@ async function contentSubstancePrompt(
 }
 
 export function createQualityLLMEvaluators(gocode: IGocodeClient): Evaluator[] {
-  const visualCoherence = new LLMJsonEvaluator(gocode, {
+  const visualCoherence = new LLMJudgeEvaluator(gocode, {
     name: 'visual-coherence',
     evalVersion: '1.0',
     schema: JudgeNumericalSchema,
@@ -123,7 +123,7 @@ export function createQualityLLMEvaluators(gocode: IGocodeClient): Evaluator[] {
     toEvalResult: toNumericalResult('visual-coherence', 'Visual Coherence'),
   });
 
-  const contentSubstance = new LLMJsonEvaluator(gocode, {
+  const contentSubstance = new LLMJudgeEvaluator(gocode, {
     name: 'content-substance',
     evalVersion: '1.1',
     schema: JudgeNumericalSchema,

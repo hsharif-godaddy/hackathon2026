@@ -5,6 +5,7 @@ import { GraduationRunner, isDeferredResult } from './graduation-runner.js';
 import type { GraduationResult } from './graduation-runner.js';
 import { BaselineStore } from './baseline-store.js';
 import { pickGitFields } from './types.js';
+import { assessBaselineEligibility } from './baseline-eligibility.js';
 import {
   resolveStabilityLevel,
   STABILITY_TRIALS,
@@ -359,11 +360,9 @@ export class GraduationSuiteRunner {
       ),
     );
 
-    const hasValidResults = result.trials.some((t) =>
-      t.evalResults.some((e) => e.verdict !== 'unknown'),
-    );
+    const eligibility = assessBaselineEligibility(result);
 
-    if (hasValidResults) {
+    if (eligibility.eligible) {
       const baselineStore = baselineStoreFactory?.() ?? new BaselineStore();
       await baselineStore.save(runId, result, {
         defaultThreshold: config.regression.fallbackThresholds.defaultThreshold,
@@ -371,8 +370,8 @@ export class GraduationSuiteRunner {
       });
     } else {
       this.log(
-        '[GraduationSuiteRunner] All trials produced unknown verdicts; skipping baseline save.',
-        { scenarioName: result.scenarioName, runId },
+        `[GraduationSuiteRunner] Skipping baseline save: ${eligibility.detail}.`,
+        { scenarioName: result.scenarioName, runId, reason: eligibility.reason },
       );
     }
 
@@ -380,7 +379,8 @@ export class GraduationSuiteRunner {
       scenarioName: result.scenarioName,
       stabilityLevel,
       stabilityTrials: STABILITY_TRIALS[stabilityLevel],
-      baselineSaved: hasValidResults,
+      baselineSaved: eligibility.eligible,
+      droppedTrials: result.droppedTrials ?? 0,
       scenarioResult: result,
     };
   }

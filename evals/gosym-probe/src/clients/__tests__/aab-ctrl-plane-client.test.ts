@@ -653,4 +653,92 @@ describe('AABCtrlPlaneClient', () => {
       );
     });
   });
+
+  describe('resetApp()', () => {
+    it('resolves on a 200 with restarted:true and ready:true', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ success: true, restarted: true, ready: true }),
+      });
+      await expect(
+        client.resetApp('app-1', { commit: 'abc', restart: true }),
+      ).resolves.toBeUndefined();
+    });
+
+    it('throws on a requested restart that failed (restarted:false)', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ success: true, restarted: false, restartError: 'boom' }),
+      });
+      await expect(client.resetApp('app-1')).rejects.toThrow(/degraded.*boom/i);
+    });
+
+    it('throws when restarted but the preview never became ready (ready:false)', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          success: true,
+          restarted: true,
+          ready: false,
+          readyError: 'preview health check timed out',
+        }),
+      });
+      await expect(client.resetApp('app-1')).rejects.toThrow(
+        /did not become ready.*no-op.*timed out/i,
+      );
+    });
+
+    it('throws when ready is absent on a requested restart', async () => {
+      // A restarted:true body that omits `ready` cannot confirm the preview is
+      // serving — fail loud rather than let a no-op trial through.
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ success: true, restarted: true }),
+      });
+      await expect(client.resetApp('app-1')).rejects.toThrow(
+        /did not become ready.*unknown error/i,
+      );
+    });
+
+    it('does not flag degraded when restart was not requested', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ success: true, restarted: false, ready: false }),
+      });
+      await expect(
+        client.resetApp('app-1', { restart: false }),
+      ).resolves.toBeUndefined();
+    });
+
+    it('throws when a restart was requested but the body is malformed', async () => {
+      // A 200 whose body we cannot parse (or that omits `restarted`) leaves us
+      // unable to confirm the restart succeeded — that is itself a degraded
+      // signal, so we must fail loud rather than skip the check.
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => {
+          throw new SyntaxError('not json');
+        },
+      });
+      await expect(client.resetApp('app-1')).rejects.toThrow(
+        /degraded.*missing or malformed/i,
+      );
+    });
+
+    it('throws when restarted is absent on a requested restart', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ success: true }),
+      });
+      await expect(client.resetApp('app-1')).rejects.toThrow(
+        /degraded.*unknown error/i,
+      );
+    });
+
+    it('throws on a non-ok HTTP status', async () => {
+      mockFetch.mockResolvedValueOnce({ ok: false, status: 500, json: async () => ({}) });
+      await expect(client.resetApp('app-1')).rejects.toThrow(/reset app.*app-1.*500/i);
+    });
+  });
+
 });

@@ -1,17 +1,35 @@
 import { execFile as execFileCb } from 'node:child_process';
 import { promisify } from 'node:util';
 import { readFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import type { IGocodeClient, Message } from '../clients/gocode-client.js';
 import type { ScenarioResult } from '../runner/types.js';
-import type {
-  BaselineScores,
-  ComparedRegressionEvalResult,
-} from '../baselines/types.js';
+import type { BaselineScores } from '../baselines/types.js';
+import { renderVerdictHeader } from './verdict.js';
+import type { VerdictHeaderContext } from './verdict.js';
+import {
+  buildScenarioEvidence,
+  selectTrialsNeedingInvestigation,
+  DEFAULT_EVIDENCE_CAPS,
+} from './evidence.js';
+import type { EvidenceCaps, ScenarioEvidence } from './evidence.js';
+import {
+  collectGitContext,
+  renderGitContextMarkdown,
+  DEFAULT_GIT_CONTEXT_CAPS,
+} from './git-context.js';
+import type { GitContext, GitContextCaps, GitExec } from './git-context.js';
+import { formatPass1, formatEstimatorVector } from '../util/pass-at-k.js';
 
 const execFile = promisify(execFileCb);
 
-const GIT_OUTPUT_MAX_CHARS = 4000;
 const LLM_TIMEOUT_MS = 60_000;
+
+/**
+ * Bumped whenever SYSTEM_PROMPT or the user-payload structure changes, so a
+ * regenerated summary records which prompt produced its narrative.
+ */
+export const PROMPT_VERSION = '3';
 
 export interface NarrativeRenderOptions {
   wallClockMs?: number;
@@ -21,36 +39,64 @@ export interface NarrativeRenderOptions {
   gitSha: string | null;
   /** Git branch name at evaluation time; null when detached HEAD. */
   gitBranch: string | null;
+  /**
+   * Strong reasoning model for the narrative call. When set, the reporter
+   * routes the call through `gocode.withModel(<this>)`; when unset, it reuses
+   * the injected client. Threaded from `config.gocode.summaryAnalysisModel`
+   * (the reporter never reads `process.env`).
+   */
+  summaryAnalysisModel?: string;
+  /**
+   * ISO timestamp recorded in provenance. Threaded from the run's
+   * `run-metadata.json` so the verdict header is byte-identical across
+   * regenerations; falls back to the current time only when unset.
+   */
+  generatedAt?: string;
+  /** Evidence caps; defaults to {@link DEFAULT_EVIDENCE_CAPS}. */
+  evidenceCaps?: EvidenceCaps;
+  /** Git-context caps; defaults to {@link DEFAULT_GIT_CONTEXT_CAPS}. */
+  gitContextCaps?: GitContextCaps;
 }
 
-const SYSTEM_PROMPT = `You are an expert AI evaluation analyst. \
-Produce a concise human-readable narrative summary of an AI eval run for a software engineering team.
+const SYSTEM_PROMPT = `You are an AI-eval investigator writing the deep-dive section of a run report for \
+a software engineering team. A deterministic PASS/WARNING/FAIL verdict has ALREADY been decided by code \
+and printed above your output. Do NOT restate, re-derive, or contradict that verdict, and do NOT use the \
+words "pass", "warning", "fail", or "verdict" to label the overall run — your job is to explain the \
+evidence behind it, not to re-judge it.
 
-Structure your response as Markdown with these sections:
+Every behavioral claim you make MUST be traceable to the evidence. Cite each scenario's trial path \
+ONCE per subsection (e.g. \`scenarios/<name>/trials/<i>/\`), then refer to further trials by index \
+("trial 12", "trials 10-19") in prose — do NOT repeat the full path on every reference. Cite an \
+evaluator by name and any code correlation by commit SHA. Do not assert tool-call counts, errors, or \
+scores that are not present in the evidence below; if the evidence does not support a claim, do not \
+make it.
 
-## TL;DR
-2-3 sentences describing the overall outcome.
+A deterministic per-scenario overview table and TL;DR are ALREADY rendered above your output; do NOT \
+reproduce a scenario overview, a results table, or per-evaluator pass-rate counts. Your job is the \
+qualitative deep-dive only.
 
-## Scenario Overview
-Brief status (pass / warning / fail) for each scenario and which evaluators drove the result.
+Structure your response as Markdown with exactly these sections:
 
-## Regression Analysis
-For any regressions or warnings: what changed, statistical confidence (TOST CI bounds, sample sizes), severity.
+## Regressing Behaviors
+For each non-passing scenario, describe the failure mode using the cited trial evidence (tool calls, \
+errors, evaluator reasons). Cite the scenario's trial path once, then reference trials by index.
 
-## Code Changes
-(Include only when git context is provided.) Correlate regressions or improvements to specific commits or files.
+## Likely Correlated Code Changes
+(Include only when git context is provided.) Attribute behaviors to specific commits, citing the commit SHA. State explicitly when no correlation is evident.
 
 ## Recommended Actions
-Concrete next steps (investigate, re-run, merge, etc.).
+Concrete next steps (investigate a specific trial, re-run, inspect a commit, etc.).
 
-Be precise and concise. Interpret data — do not restate raw numbers. Output clean Markdown only.`;
+Be precise and concise. Interpret the evidence — do not restate raw numbers. Output clean Markdown only.`;
 
 export class NarrativeSummaryReporter {
   constructor(private readonly gocode: IGocodeClient) {}
 
   /**
-   * Generates an LLM-authored narrative summary of eval results.
-   * Returns markdown string on success, or a fallback stub on failure.
+   * Renders `summary.md`: a deterministic, code-owned verdict header followed
+   * by provenance and — only when at least one trial needs investigation — an
+   * LLM narrative over the full cited evidence. The header is always present,
+   * even on LLM failure/empty, because the verdict is code-owned not LLM-owned.
    * Never throws.
    */
   async render(
@@ -58,68 +104,110 @@ export class NarrativeSummaryReporter {
     results: ScenarioResult[],
     options: NarrativeRenderOptions,
   ): Promise<string> {
-    const contextPayload = buildContextPayload(runId, results, options);
-    const gitSection = await this.getGitContext(results, options.gitSha);
+    const context: VerdictHeaderContext = buildHeaderContext(runId, options);
 
-    const userContent = gitSection
-      ? `${contextPayload}\n\n${gitSection}`
-      : contextPayload;
+    const investigate: boolean = results.some(
+      (r) => selectTrialsNeedingInvestigation(r).length > 0,
+    );
 
+    if (!investigate) {
+      const header: string = renderVerdictHeader(results, options.runMode, context);
+      return `${header}\n\n_No trials required investigation; the narrative deep-dive is skipped._`;
+    }
+
+    const userContent: string = await this.buildInvestigationPayload(runId, results, options);
+    const header: string = renderVerdictHeader(results, options.runMode, context, {
+      model: options.summaryAnalysisModel ?? this.gocode.getModel(),
+      promptVersion: PROMPT_VERSION,
+      payloadSha: sha256(userContent),
+    });
+
+    const narrative: string | null = await this.callNarrative(userContent, options);
+    if (narrative === null) {
+      return `${header}\n\n${buildFallbackNote('LLM narrative unavailable')}`;
+    }
+    return `${header}\n\n${narrative}`;
+  }
+
+  private async buildInvestigationPayload(
+    runId: string,
+    results: ScenarioResult[],
+    options: NarrativeRenderOptions,
+  ): Promise<string> {
+    const contextPayload: string = buildContextPayload(runId, results, options);
+    const caps: EvidenceCaps = options.evidenceCaps ?? DEFAULT_EVIDENCE_CAPS;
+    const evidenceSections: string[] = results
+      .filter((r) => selectTrialsNeedingInvestigation(r).length > 0)
+      .map((r) => renderScenarioEvidence(buildScenarioEvidence(r, caps)));
+
+    const gitSection: string | null = await this.getGitContext(results, options);
+
+    return [contextPayload, ...evidenceSections, gitSection]
+      .filter((section): section is string => section !== null)
+      .join('\n\n');
+  }
+
+  private async callNarrative(
+    userContent: string,
+    options: NarrativeRenderOptions,
+  ): Promise<string | null> {
     const messages: Message[] = [
       { role: 'system', content: SYSTEM_PROMPT },
       { role: 'user', content: userContent },
     ];
 
+    const client: IGocodeClient = options.summaryAnalysisModel
+      ? this.gocode.withModel(options.summaryAnalysisModel)
+      : this.gocode;
+
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), LLM_TIMEOUT_MS);
     let narrative: string;
     try {
-      narrative = await this.gocode.complete(messages, { signal: controller.signal });
+      narrative = await client.complete(messages, {
+        signal: controller.signal,
+        temperature: 0,
+      });
     } catch (err) {
       console.warn(
         '[NarrativeSummaryReporter] Failed to generate narrative summary',
         { error: (err as Error).message, stack: (err as Error).stack },
       );
-      return buildFallbackStub((err as Error).message);
+      return null;
     } finally {
       clearTimeout(timer);
     }
 
     if (!narrative || narrative.trim().length === 0) {
-      return buildFallbackStub('LLM returned empty response');
+      console.warn('[NarrativeSummaryReporter] LLM returned empty response');
+      return null;
     }
     return narrative;
   }
 
   private async getGitContext(
     results: ScenarioResult[],
-    currentSha: string | null,
+    options: NarrativeRenderOptions,
   ): Promise<string | null> {
-    if (!currentSha) return null;
+    if (!options.gitSha) return null;
 
-    const baselineSha = await this.extractBaselineSha(results);
+    const baselineSha: string | null = await this.extractBaselineSha(results);
     if (!baselineSha) return null;
 
-    const range = `${baselineSha}..${currentSha}`;
+    const exec: GitExec = (args) =>
+      execFile('git', [...args], { encoding: 'utf-8', maxBuffer: 32 * 1024 * 1024 }).then(
+        (r) => r.stdout.trim(),
+      );
 
-    const [logOut, diffOut] = await Promise.all([
-      execFile('git', ['log', '--oneline', range], { encoding: 'utf-8' })
-        .then((r) => r.stdout.trim())
-        .catch(() => ''),
-      execFile('git', ['diff', '--stat', range], { encoding: 'utf-8' })
-        .then((r) => r.stdout.trim())
-        .catch(() => ''),
-    ]);
-
-    if (!logOut && !diffOut) return null;
-
-    const combined = [logOut, diffOut].filter(Boolean).join('\n\n');
-    const capped =
-      combined.length > GIT_OUTPUT_MAX_CHARS
-        ? combined.slice(0, GIT_OUTPUT_MAX_CHARS) + '\n... [truncated]'
-        : combined;
-
-    return `## Git Changes (${baselineSha}..${currentSha.slice(0, 7)})\n\`\`\`\n${capped}\n\`\`\``;
+    const caps: GitContextCaps = options.gitContextCaps ?? DEFAULT_GIT_CONTEXT_CAPS;
+    const context: GitContext | null = await collectGitContext(
+      baselineSha,
+      options.gitSha,
+      exec,
+      caps,
+    );
+    if (context === null) return null;
+    return renderGitContextMarkdown(context);
   }
 
   /**
@@ -146,6 +234,37 @@ export class NarrativeSummaryReporter {
     }
     return null;
   }
+}
+
+function buildHeaderContext(
+  runId: string,
+  options: NarrativeRenderOptions,
+): VerdictHeaderContext {
+  return {
+    runId,
+    gitSha: options.gitSha,
+    gitBranch: options.gitBranch,
+    generatedAt: options.generatedAt ?? new Date().toISOString(),
+  };
+}
+
+function renderScenarioEvidence(evidence: ScenarioEvidence): string {
+  const lines: string[] = [`## Evidence: ${evidence.scenarioName}`];
+  for (const trial of evidence.trials) {
+    lines.push('');
+    lines.push(trial.markdown);
+  }
+  if (evidence.droppedTrialCount > 0) {
+    lines.push('');
+    lines.push(
+      `_(${evidence.droppedTrialCount} additional investigable trial(s) omitted by the per-scenario cap.)_`,
+    );
+  }
+  return lines.join('\n');
+}
+
+function sha256(content: string): string {
+  return createHash('sha256').update(content, 'utf-8').digest('hex');
 }
 
 /**
@@ -197,10 +316,13 @@ export function buildContextPayload(
             : 'N/A';
         const direction = agg.lowerIsBetter ? ' (lower is better)' : '';
         lines.push(`  Score (aggregate): ${score}${direction}`);
+        lines.push(`  Pass@1: ${formatPass1(agg.passAt1, 'N/A')}`);
       } else {
-        const passAtK = agg.passAtK !== undefined ? String(agg.passAtK) : 'N/A';
-        const passToK = agg.passToTheK !== undefined ? String(agg.passToTheK) : 'N/A';
-        lines.push(`  Pass@k: ${passAtK} | Pass^k: ${passToK}`);
+        lines.push(`  Pass@1: ${formatPass1(agg.passAt1, 'N/A')}`);
+        lines.push(
+          `  Pass@k: ${formatEstimatorVector(agg.passAtK, 'N/A')}`
+          + ` | Pass^k: ${formatEstimatorVector(agg.passHatK, 'N/A')}`,
+        );
       }
       lines.push(`  Passing trials: ${agg.passingTrials}/${agg.totalTrials}`);
       if (agg.failedTrials) {
@@ -266,12 +388,16 @@ export function buildContextPayload(
   return lines.join('\n');
 }
 
-function buildFallbackStub(reason: string): string {
+/**
+ * Note appended below the deterministic verdict header when the LLM narrative
+ * could not be produced. The authoritative verdict is already rendered above,
+ * so this only explains the missing deep-dive — it never replaces the header.
+ */
+function buildFallbackNote(reason: string): string {
   return [
-    '# Narrative Summary Unavailable',
+    '## Narrative Deep-Dive Unavailable',
     '',
-    `Narrative generation failed: ${reason}`,
-    '',
-    'See `aggregate-report.md` for the full tabular results.',
+    `Narrative generation failed: ${reason}.`,
+    'The verdict above is code-derived and authoritative; see `aggregate-report.md` for full tabular results.',
   ].join('\n');
 }

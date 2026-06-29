@@ -68,7 +68,7 @@ const mockConfig: ResolvedConfig = {
   },
   playwright: { ignoreHttpsErrors: true },
   capture: { concurrency: 2, maxConcurrency: 8, maxRoutes: 20, viewports: ['mobile', 'laptop'], gotoTimeoutMs: 30_000, appReadyTimeoutMs: 15_000 },
-  regression: { alpha: 0.05, k: 2.0, minMarginFraction: 0.05, fallbackThresholds: { thresholds: {}, defaultThreshold: 0.1 } },
+  regression: { alpha: 0.05, k: 2.0, minMarginFraction: 0.05, reportingK: [1, 2, 3, 5, 10], fallbackThresholds: { thresholds: {}, defaultThreshold: 0.1 } },
 };
 
 function makeTranscript(
@@ -350,6 +350,62 @@ describe('SuiteRunner', () => {
     expect(order).toEqual(['start:0', 'end:0', 'start:1']);
   });
 
+  it('throws when a requiresSerialTrials scenario runs with concurrency > 1', async () => {
+    mockSimulationRun.mockResolvedValue(makeTranscript());
+    const scenario = makeScenario({ trials: 3, requiresSerialTrials: true });
+    const concurrentConfig = {
+      ...mockConfig,
+      eval: { ...mockConfig.eval, maxConcurrency: 2 },
+    };
+
+    await expect(
+      new SuiteRunner({
+        scenarios: [scenario],
+        config: concurrentConfig,
+        makeAgentClient,
+        syntheticUser: mockSyntheticUser,
+        trialConcurrency: 2,
+      }).run(),
+    ).rejects.toThrow(/requires serial trials/);
+    expect(mockSimulationRun).not.toHaveBeenCalled();
+  });
+
+  it('allows a requiresSerialTrials scenario at concurrency 1', async () => {
+    mockSimulationRun.mockResolvedValue(makeTranscript());
+    const scenario = makeScenario({ trials: 2, requiresSerialTrials: true });
+
+    await new SuiteRunner({
+      scenarios: [scenario],
+      config: mockConfig,
+      makeAgentClient,
+      syntheticUser: mockSyntheticUser,
+      trialConcurrency: 1,
+    }).run();
+
+    expect(mockSimulationRun).toHaveBeenCalledTimes(2);
+  });
+
+  it('throws in fan-out mode when a requiresSerialTrials scenario runs with concurrency > 1', async () => {
+    mockSimulationRun.mockResolvedValue(makeTranscript());
+    const scenario = makeScenario({ trials: 3, requiresSerialTrials: true });
+    const concurrentConfig = {
+      ...mockConfig,
+      eval: { ...mockConfig.eval, maxConcurrency: 2 },
+    };
+
+    await expect(
+      new SuiteRunner({
+        scenarios: [scenario],
+        config: concurrentConfig,
+        makeAgentClient,
+        syntheticUser: mockSyntheticUser,
+        suiteMode: 'parallel',
+        scenarioConcurrency: 2,
+      }).run(),
+    ).rejects.toThrow(/requires serial trials/);
+    expect(mockSimulationRun).not.toHaveBeenCalled();
+  });
+
   it('parallel mode: all trials start before any complete', async () => {
     const order: string[] = [];
     const resolvers: (() => void)[] = [];
@@ -540,6 +596,56 @@ describe('SuiteRunner — processScenario guards', () => {
   });
 });
 
+describe('SuiteRunner — processScenario partial failure (non-fan-out)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockSimulationRun.mockResolvedValue(makeTranscript());
+  });
+
+  it('keeps completed trials and records droppedTrials when one trial fails', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(function () {});
+    mockSimulationRun.mockImplementation(
+      async function (trialIndex: number): Promise<Transcript> {
+        if (trialIndex === 1) throw new Error('Turn 3 timed out after 1200000ms');
+        return makeTranscript('s0', trialIndex);
+      },
+    );
+
+    const scenario = makeScenario({ name: 's0', trials: 3 });
+    const results = await new SuiteRunner({
+      scenarios: [scenario],
+      config: { ...mockConfig, eval: { ...mockConfig.eval, maxConcurrency: 1 } },
+      makeAgentClient,
+      syntheticUser: mockSyntheticUser,
+    }).run();
+
+    expect(results).toHaveLength(1);
+    expect(results[0].trials).toHaveLength(2);
+    expect(results[0].droppedTrials).toBe(1);
+    expect(warnSpy).toHaveBeenCalledWith(
+      'Trials failed.',
+      expect.objectContaining({
+        scenarioName: 's0',
+        dropped: 1,
+        errors: ['Turn 3 timed out after 1200000ms'],
+      }),
+    );
+
+    warnSpy.mockRestore();
+  });
+
+  it('re-throws a non-AggregateError without partials unchanged', async () => {
+    // A scenario-level guard failure (not a per-trial AggregateError) must
+    // still propagate — the recovery path only swallows runCapped partials.
+    const results = new SuiteRunner({
+      scenarios: [makeScenario({ name: 's0', trials: 1 })],
+      config: mockConfig,
+      syntheticUser: mockSyntheticUser,
+    }).run();
+    await expect(results).rejects.toThrow('makeAgentClient');
+  });
+});
+
 describe('SuiteRunner — onTrialEvaluated callback', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -638,6 +744,7 @@ describe('SuiteRunner — onTrialEvaluated callback', () => {
   });
 
   it('fires for successful trials even when another trial throws', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(function () {});
     const onTrialEvaluated = vi.fn();
     const ev = makeEvaluator('ev', makePassResult('ev'));
     const scenario = makeScenario({
@@ -650,7 +757,9 @@ describe('SuiteRunner — onTrialEvaluated callback', () => {
       .mockRejectedValueOnce(new Error('sim failed'))
       .mockResolvedValueOnce(makeTranscript('my-scenario', 1));
 
-    const runPromise = new SuiteRunner({
+    // A single failed trial no longer aborts the scenario: the run resolves
+    // with the completed trial and records the drop.
+    const results = await new SuiteRunner({
       scenarios: [scenario],
       config: { ...mockConfig, eval: { ...mockConfig.eval, maxConcurrency: 2 } },
       makeAgentClient,
@@ -658,13 +767,16 @@ describe('SuiteRunner — onTrialEvaluated callback', () => {
       onTrialEvaluated,
     }).run();
 
-    await expect(runPromise).rejects.toThrow();
-
+    expect(results).toHaveLength(1);
+    expect(results[0].trials).toHaveLength(1);
+    expect(results[0].droppedTrials).toBe(1);
     expect(onTrialEvaluated).toHaveBeenCalledTimes(1);
     expect(onTrialEvaluated).toHaveBeenCalledWith(
       'my-scenario',
       expect.objectContaining({ trialIndex: 1 }),
     );
+
+    warnSpy.mockRestore();
   });
 
   it('fires across multiple scenarios', async () => {
@@ -756,8 +868,10 @@ describe('SuiteRunner — score-mode enrichment', () => {
     }).run();
 
     // (95 - 100) / 100 = -0.05 <= defaultThreshold 0.1 → passes
-    expect(result.aggregated['token-count'].passAtK).toBeDefined();
-    expect(result.aggregated['token-count'].passAtK).toBe(true);
+    // n=1 valid trial, c=1 passing; resolveReportingKs([1,2,3,5,10], 1) → [1]
+    expect(result.aggregated['token-count'].passAt1).toBe(1);
+    expect(result.aggregated['token-count'].passAtK).toEqual([{ k: 1, value: 1 }]);
+    expect(result.aggregated['token-count'].passHatK).toEqual([{ k: 1, value: 1 }]);
   });
 
   it('leaves score-mode passAtK undefined when no baseline exists', async () => {
@@ -782,7 +896,7 @@ describe('SuiteRunner — score-mode enrichment', () => {
       baselineStore: mockBaselineStore,
     }).run();
 
-    expect(result.aggregated['token-count'].passAtK).toBeUndefined();
+    expect(result.aggregated['token-count'].passAt1).toBeUndefined();
   });
 });
 
@@ -868,8 +982,9 @@ describe('SuiteRunner — baseline comparison', () => {
         createdAt: '2026-01-01T00:00:00Z',
         scores: {
           'test-eval': {
-            passAtK: true,
-            passToTheK: true,
+            passAt1: 1,
+            passAtK: [{ k: 1, value: 1 }, { k: 2, value: 1 }],
+            passHatK: [{ k: 1, value: 1 }, { k: 2, value: 1 }],
             passingTrials: 3,
             totalTrials: 3,
           },
@@ -925,8 +1040,9 @@ describe('SuiteRunner — baseline comparison', () => {
         createdAt: '2026-01-01T00:00:00Z',
         scores: {
           'test-eval': {
-            passAtK: true,
-            passToTheK: true,
+            passAt1: 1,
+            passAtK: [{ k: 1, value: 1 }, { k: 2, value: 1 }],
+            passHatK: [{ k: 1, value: 1 }, { k: 2, value: 1 }],
             passingTrials: 3,
             totalTrials: 3,
           },
@@ -1592,19 +1708,21 @@ describe('first-turn inactivity retry', () => {
     };
     const scenario = makeScenario({ trials: 1 });
 
-    await expect(
-      new SuiteRunner({
-        scenarios: [scenario],
-        config,
-        makeAgentClient,
-        syntheticUser: mockSyntheticUser,
-      }).run(),
-    ).rejects.toBeInstanceOf(AggregateError);
+    // The only trial fails permanently; the scenario resolves with zero
+    // completed trials and droppedTrials=1 rather than aborting the run.
+    const results = await new SuiteRunner({
+      scenarios: [scenario],
+      config,
+      makeAgentClient,
+      syntheticUser: mockSyntheticUser,
+    }).run();
 
+    expect(results[0].trials).toHaveLength(0);
+    expect(results[0].droppedTrials).toBe(1);
     // 1 initial + 2 retries = 3 total attempts
     expect(mockSimulationRun).toHaveBeenCalledTimes(3);
-    expect(warnSpy).toHaveBeenCalledTimes(3);
-    expect(warnSpy).toHaveBeenLastCalledWith(
+    // 3 retry-budget warnings + 1 'Trials failed.' summary.
+    expect(warnSpy).toHaveBeenCalledWith(
       'Trial failed: first-turn inactivity retry budget exhausted.',
       expect.objectContaining({ scenarioName: scenario.name }),
     );
@@ -1624,17 +1742,21 @@ describe('first-turn inactivity retry', () => {
     };
     const scenario = makeScenario({ trials: 1 });
 
-    await expect(
-      new SuiteRunner({
-        scenarios: [scenario],
-        config,
-        makeAgentClient,
-        syntheticUser: mockSyntheticUser,
-      }).run(),
-    ).rejects.toBeInstanceOf(AggregateError);
+    const results = await new SuiteRunner({
+      scenarios: [scenario],
+      config,
+      makeAgentClient,
+      syntheticUser: mockSyntheticUser,
+    }).run();
 
+    expect(results[0].trials).toHaveLength(0);
+    expect(results[0].droppedTrials).toBe(1);
     expect(mockSimulationRun).toHaveBeenCalledTimes(1);
-    expect(warnSpy).not.toHaveBeenCalled();
+    // No retry warning (non-inactivity error); only the 'Trials failed.' summary.
+    expect(warnSpy).not.toHaveBeenCalledWith(
+      'Trial failed: first-turn inactivity retry budget exhausted.',
+      expect.anything(),
+    );
     warnSpy.mockRestore();
   });
 
@@ -1773,20 +1895,18 @@ describe('rate limit (429) retry', () => {
 
     const scenario = makeScenario({ trials: 1 });
 
-    await expect(
-      new SuiteRunner({
-        scenarios: [scenario],
-        config: mockConfig,
-        makeAgentClient,
-        syntheticUser: mockSyntheticUser,
-      }).run(),
-    ).rejects.toBeInstanceOf(AggregateError);
+    const results = await new SuiteRunner({
+      scenarios: [scenario],
+      config: mockConfig,
+      makeAgentClient,
+      syntheticUser: mockSyntheticUser,
+    }).run();
 
+    expect(results[0].trials).toHaveLength(0);
+    expect(results[0].droppedTrials).toBe(1);
     // 1 initial + 10 retries = 11 total attempts
     expect(mockSimulationRun).toHaveBeenCalledTimes(11);
-    // 10 per-retry warnings + 1 budget-exhaustion warning
-    expect(warnSpy).toHaveBeenCalledTimes(11);
-    expect(warnSpy).toHaveBeenLastCalledWith(
+    expect(warnSpy).toHaveBeenCalledWith(
       'Trial failed: rate-limit retry budget exhausted.',
       expect.objectContaining({
         scenarioName: 'test-scenario',
@@ -2715,21 +2835,24 @@ describe('SuiteRunner — trialLifecycle integration', () => {
     };
 
     mockSimulationRun.mockRejectedValue(new Error('simulation exploded'));
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(function () {});
 
     const scenario = makeScenario({ name: 'failing-scenario', trials: 1 });
 
-    await expect(
-      new SuiteRunner({
-        scenarios: [scenario],
-        config: mockConfig,
-        makeAgentClient,
-        syntheticUser: mockSyntheticUser,
-        trialLifecycle,
-      }).run(),
-    ).rejects.toThrow();
+    // The scenario no longer rejects on a failed trial, but release must
+    // still fire (finally semantics) before the drop is recorded.
+    const results = await new SuiteRunner({
+      scenarios: [scenario],
+      config: mockConfig,
+      makeAgentClient,
+      syntheticUser: mockSyntheticUser,
+      trialLifecycle,
+    }).run();
 
+    expect(results[0].droppedTrials).toBe(1);
     expect(release).toHaveBeenCalledTimes(1);
     expect(release).toHaveBeenCalledWith('failing-scenario', 0);
+    warnSpy.mockRestore();
   });
 
   it('calls release in fan-out mode even when a trial fails', async () => {

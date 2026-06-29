@@ -73,8 +73,9 @@ function baselineFromResult(result: ScenarioResult, trials: TrialResult[]): Base
         return [
           name,
           {
+            ...(agg.passAt1 !== undefined && { passAt1: agg.passAt1 }),
             ...(agg.passAtK !== undefined && { passAtK: agg.passAtK }),
-            ...(agg.passToTheK !== undefined && { passToTheK: agg.passToTheK }),
+            ...(agg.passHatK !== undefined && { passHatK: agg.passHatK }),
             passingTrials: agg.passingTrials,
             totalTrials: agg.totalTrials,
             ...(agg.aggregateScore != null && { aggregateScore: agg.aggregateScore }),

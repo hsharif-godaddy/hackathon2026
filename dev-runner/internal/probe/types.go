@@ -147,7 +147,7 @@ type ScenarioPerfEntry struct {
 type EvalPerfEntry struct {
 	PassingTrials int      `json:"passingTrials"`
 	TotalTrials   int      `json:"totalTrials"`
-	PassAtK       *bool    `json:"passAtK,omitempty"`
+	PassAt1       *float64 `json:"passAt1,omitempty"`
 	MedianScore   *float64 `json:"medianScore,omitempty"`
 	LowerIsBetter bool     `json:"lowerIsBetter,omitempty"`
 }

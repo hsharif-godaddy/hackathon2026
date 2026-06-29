@@ -398,6 +398,13 @@ export class AABClient implements AgentClient {
       });
     });
 
+    on('skill_diagnostics', (data) => {
+      const event = data.event === 'unload' ? 'unload' : 'load';
+      const skill = typeof data.skill === 'string' ? data.skill : '';
+      if (!skill) return;
+      this.dispatch({ type: 'skill_diagnostics', event, skill });
+    });
+
     source.onerror = (ev: unknown): void => {
       // Intentional teardown (configure/disconnect closes the stream) is not an
       // error. The eventsource pkg auto-reconnects otherwise; mirror the prior

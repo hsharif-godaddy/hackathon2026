@@ -30,8 +30,10 @@ SSO_JWT=preserved-value
 	assertEq(t, env, "AUTH_TYPE", "jwt")
 	assertEq(t, env, "AWS_PROFILE", "custom-profile") // preserved
 	assertEq(t, env, "SSO_JWT", "preserved-value")    // unmanaged var preserved
+	// Migration re-pins OPENAI_BASE_URL to the prod S2S gateway (matches the
+	// prod sso-jwt) rather than stripping it.
+	assertEq(t, env, "OPENAI_BASE_URL", "https://api.gocode.caas.gdcorp.tools/v1")
 	assertAbsent(t, env, "OPENAI_API_KEY")
-	assertAbsent(t, env, "OPENAI_BASE_URL")
 	assertAbsent(t, env, "ANTHROPIC_API_KEY")
 	assertAbsent(t, env, "ANTHROPIC_BASE_URL")
 }

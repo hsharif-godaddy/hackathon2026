@@ -6,6 +6,16 @@ import (
 	"strings"
 )
 
+// S2SGoCodeEndpoint is the prod GoCode sso-jwt gateway. In S2S mode the
+// agent mints a PROD sso-jwt (SSO_HOST=sso.godaddy.com), so OPENAI_BASE_URL
+// must point at this matching PROD endpoint; otherwise s2s-auth.ts derives
+// the DEV gateway from NODE_ENV=development and the prod token 401s ("JWT
+// validation failed"), leaving the agent silently producing no output.
+// Single source of truth for both the AgentsEnvCheck (validates) and the
+// EnvFixer (writes) so the fix→check handshake can't drift. Distinct from
+// the api-key LiteLLM proxy (caas-gocode-*.onkatana.net) used in api-key mode.
+const S2SGoCodeEndpoint = "https://api.gocode.caas.gdcorp.tools/v1"
+
 // ParseEnvFile reads a .env file and returns a map of key -> value.
 // Supports:
 //   - KEY=VALUE

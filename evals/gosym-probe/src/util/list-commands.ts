@@ -2,6 +2,7 @@ import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Scenario } from '../scenarios/types.js';
 import type { EvaluatorSummary, TimingStats } from '../store/types.js';
+import { jsonReviver } from './json-infinity.js';
 
 /**
  * ScenarioInfo is the JSON shape emitted by `--list`.
@@ -104,7 +105,7 @@ export interface RunListEntry {
 export interface EvalPerfEntry {
   passingTrials: number;
   totalTrials: number;
-  passAtK?: boolean;
+  passAt1?: number;
   medianScore?: number;
   lowerIsBetter?: boolean;
 }
@@ -236,7 +237,7 @@ export async function loadRunDetail(
 
     try {
       const aggRaw = await readFile(aggPath, 'utf-8');
-      const agg = JSON.parse(aggRaw) as StoredAggregatedFile;
+      const agg = JSON.parse(aggRaw, jsonReviver) as StoredAggregatedFile;
 
       evaluators = buildEvalPerfEntries(agg.evaluators);
       timing = {
@@ -273,7 +274,7 @@ function buildEvalPerfEntries(
     result[name] = {
       passingTrials: summary.passingTrials,
       totalTrials: summary.totalTrials,
-      ...(summary.passAtK !== undefined && { passAtK: summary.passAtK }),
+      ...(summary.passAt1 !== undefined && { passAt1: summary.passAt1 }),
       medianScore: summary.scores.median,
       ...(summary.lowerIsBetter !== undefined && { lowerIsBetter: summary.lowerIsBetter }),
     };

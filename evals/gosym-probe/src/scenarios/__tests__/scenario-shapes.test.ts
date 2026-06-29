@@ -9,10 +9,12 @@ import {
   symptomChangesNotShowingScenario,
   symptomModuleNotFoundScenario,
   multiTurnPublishFlowScenario,
+  contactPageExpectationsScenario,
 } from '../prompt-vs-skill/index.js';
 import { complexPromptLatencyScenario } from '../complex-prompt-latency.js';
 import { buildWithExplicitNameScenario } from '../todo-lifecycle/build-with-explicit-name.js';
 import { reAskInToolCallScenario } from '../todo-lifecycle/re-ask-in-tool-call.js';
+import { inboxSkillEvalScenario } from '../skill-eval/inbox.js';
 import {
   makeGocodeClient,
   makeCtrlPlaneClient,
@@ -41,6 +43,22 @@ function assertScenarioShape(scenario: Scenario, expectedName: string): void {
   expect(evaluatorNames).toContain('token-usage');
 }
 
+/**
+ * Assert a scenario carries the static-rigor skill-eval wiring + fields.
+ * The deterministic evaluators (expected-artifact-match, skill-selection)
+ * always run; the narrow LLM judge is calibration-only and must be ABSENT
+ * unless the scenario was built with calibrate=true.
+ */
+function assertSkillEvalWiring(scenario: Scenario, expectedSkills: string[]): void {
+  const names = scenario.evaluators.map((e) => e.name);
+  expect(names).toContain('expected-artifact-match');
+  expect(names).toContain('skill-selection');
+  expect(names).not.toContain('narrow-artifact-judge');
+  expect(scenario.expectedArtifact?.items.length).toBeGreaterThan(0);
+  expect(scenario.expectedAgent).toBe('AI Developer');
+  expect(scenario.expectedSkills).toEqual(expectedSkills);
+}
+
 describe('scenario shapes', () => {
   const gocode = makeGocodeClient();
   const ctrlPlane = makeCtrlPlaneClient();
@@ -53,10 +71,9 @@ describe('scenario shapes', () => {
   });
 
   it('multipage-catalog has token evaluators and valid shape', () => {
-    assertScenarioShape(
-      multipageCatalogScenario(gocode, ctrlPlane),
-      'multipage-catalog',
-    );
+    const scenario = multipageCatalogScenario(gocode, ctrlPlane);
+    assertScenarioShape(scenario, 'multipage-catalog');
+    assertSkillEvalWiring(scenario, ['commerce']);
   });
 
   it('build-landing-page has token evaluators and valid shape', () => {
@@ -99,6 +116,30 @@ describe('scenario shapes', () => {
     for (const evalName of PVS_REQUIRED_EVALUATORS) {
       expect(names).toContain(evalName);
     }
+    assertSkillEvalWiring(scenario, ['publishing']);
+  });
+
+  it('pvs-contact-page-expectations wires the static-rigor evaluators + expectation', () => {
+    const scenario = contactPageExpectationsScenario(gocode, ctrlPlane);
+    assertScenarioShape(scenario, 'pvs-contact-page-expectations');
+    const names = scenario.evaluators.map((e) => e.name);
+    for (const evalName of PVS_REQUIRED_EVALUATORS) {
+      expect(names).toContain(evalName);
+    }
+    assertSkillEvalWiring(scenario, ['inbox']);
+    expect(scenario.staticFirstMessage).toBeTruthy();
+  });
+
+  it('calibrate=true adds the narrow-artifact-judge to skill-eval scenarios', () => {
+    const contact = contactPageExpectationsScenario(gocode, ctrlPlane, true);
+    const catalog = multipageCatalogScenario(gocode, ctrlPlane, true);
+    const publish = multiTurnPublishFlowScenario(gocode, ctrlPlane, true);
+    for (const scenario of [contact, catalog, publish]) {
+      const names = scenario.evaluators.map((e) => e.name);
+      expect(names).toContain('narrow-artifact-judge');
+      expect(names).toContain('expected-artifact-match');
+      expect(names).toContain('skill-selection');
+    }
   });
 
   it('complex-prompt-latency has token evaluators and valid shape', () => {
@@ -122,5 +163,19 @@ describe('scenario shapes', () => {
     expect(scenario.goals.length).toBeGreaterThan(0);
     expect(scenario.evaluators.map((e) => e.name)).toContain('todo-lifecycle');
     expect(scenario.trials).toBe(5);
+  });
+
+  it('skill-eval-inbox has skill-selection, skill-outcome, and skillInstructions', () => {
+    const scenario = inboxSkillEvalScenario(gocode, ctrlPlane);
+    assertScenarioShape(scenario, 'skill-eval-inbox');
+    const names = scenario.evaluators.map((e) => e.name);
+    expect(names).toContain('skill-selection');
+    expect(names).toContain('skill-outcome');
+    expect(scenario.suite).toBe('skill-eval');
+    expect(scenario.expectedSkills).toEqual(['inbox']);
+    expect(scenario.expectedAgent).toBeUndefined();
+    expect(scenario.skillInstructions).toBeDefined();
+    expect(scenario.skillInstructions!.length).toBe(3);
+    expect(scenario.staticFirstMessage).toBeTruthy();
   });
 });

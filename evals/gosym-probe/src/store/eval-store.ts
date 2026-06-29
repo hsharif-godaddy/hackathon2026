@@ -22,6 +22,7 @@ import {
 } from '../reporters/md-reporter.js';
 import type { RenderOptions } from '../reporters/md-reporter.js';
 import { NarrativeSummaryReporter } from '../reporters/narrative-summary.js';
+import { renderVerdictHeader } from '../reporters/verdict.js';
 import type { IGocodeClient } from '../clients/gocode-client.js';
 import { toCompactTimestamp } from '../util/timestamp.js';
 import { sanitizeConfig } from '../util/sanitize.js';
@@ -45,6 +46,7 @@ import { renderConversation } from
   '../util/conversation-renderer.js';
 import { computeTimingStats } from '../util/timing.js';
 import { computeScoreStats } from '../util/score-stats.js';
+import { jsonReplacer, jsonReviver } from '../util/json-infinity.js';
 
 async function removeLockDir(
   lockDir: string,
@@ -261,18 +263,20 @@ export class EvalStore {
       const scenDir = this.scenarioDir(dirName, result.scenarioName);
       await writeFile(
         join(scenDir, 'aggregated.json'),
-        JSON.stringify(this.computeAggregated(result), null, 2),
+        JSON.stringify(this.computeAggregated(result), jsonReplacer, 2),
       );
     }
 
     let gitSha: string | null = null;
     let gitBranch: string | null = null;
+    let runTimestamp: string | null = null;
     try {
       const metadata = await this.loadJsonFile<RunMetadata>(
         join(runDir, 'run-metadata.json'),
       );
       gitSha = metadata?.gitSha ?? null;
       gitBranch = metadata?.gitBranch ?? null;
+      runTimestamp = metadata?.timestamp ?? null;
     } catch (err) {
       console.warn(
         '[EvalStore] Failed to read run-metadata.json for git fields, continuing without them',
@@ -293,7 +297,16 @@ export class EvalStore {
     const timestamp = new Date().toISOString();
     await this.updateRunIndex(runId, timestamp, dirName, kind);
 
-    await this.writeSummary(runDir, runId, results, resolvedRenderOptions, gitSha, gitBranch, gocode);
+    await this.writeSummary(
+      runDir,
+      runId,
+      results,
+      resolvedRenderOptions,
+      gitSha,
+      gitBranch,
+      runTimestamp,
+      gocode,
+    );
 
     return runDir;
   }
@@ -305,24 +318,42 @@ export class EvalStore {
     resolvedRenderOptions: RenderOptions,
     gitSha: string | null,
     gitBranch: string | null,
+    runTimestamp: string | null,
     gocode?: IGocodeClient,
   ): Promise<void> {
+    const runMode: 'eval' | 'graduation' = resolvedRenderOptions.runMode ?? 'eval';
+    const generatedAt: string = runTimestamp ?? new Date().toISOString();
+
+    if (runMode === 'graduation') {
+      await writeFile(
+        join(runDir, 'summary.md'),
+        this.renderGraduationSummary(runId, results, gitSha, gitBranch, generatedAt),
+      );
+      return;
+    }
+
     try {
       let content: string;
       if (gocode) {
         const narrativeReporter = new NarrativeSummaryReporter(gocode);
         content = await narrativeReporter.render(runId, results, {
-          runMode: resolvedRenderOptions.runMode ?? 'eval',
+          runMode,
           gitSha,
           gitBranch,
           wallClockMs: resolvedRenderOptions.wallClockMs,
+          summaryAnalysisModel: resolvedRenderOptions.summaryAnalysisModel,
+          generatedAt,
         });
       } else {
-        content = [
-          '# Narrative Summary Unavailable',
-          '',
-          'No GoCode client was provided. See `aggregate-report.md` for the full tabular results.',
-        ].join('\n');
+        content = this.renderHeaderOnlySummary(
+          runId,
+          results,
+          runMode,
+          gitSha,
+          gitBranch,
+          generatedAt,
+          'No GoCode client was provided',
+        );
       }
       await writeFile(join(runDir, 'summary.md'), content);
     } catch (err) {
@@ -333,18 +364,83 @@ export class EvalStore {
       try {
         await writeFile(
           join(runDir, 'summary.md'),
-          [
-            '# Narrative Summary Unavailable',
-            '',
+          this.renderHeaderOnlySummary(
+            runId,
+            results,
+            runMode,
+            gitSha,
+            gitBranch,
+            generatedAt,
             `Summary generation failed: ${(err as Error).message}`,
-            '',
-            'See `aggregate-report.md` for the full tabular results.',
-          ].join('\n'),
+          ),
         );
-      } catch {
-        // summary.md write failed twice — skip it entirely
+      } catch (fallbackErr) {
+        console.warn('[EvalStore] summary.md fallback write also failed', {
+          error: (fallbackErr as Error).message,
+        });
       }
     }
+  }
+
+  /**
+   * Renders a `summary.md` carrying only the deterministic, code-owned verdict
+   * header plus a note explaining why the LLM narrative is absent. Used when no
+   * GoCode client is available or the narrative render throws, so the
+   * authoritative verdict is always present in `summary.md`.
+   */
+  private renderHeaderOnlySummary(
+    runId: string,
+    results: ScenarioResult[],
+    runMode: 'eval' | 'graduation',
+    gitSha: string | null,
+    gitBranch: string | null,
+    generatedAt: string,
+    reason: string,
+  ): string {
+    return [
+      this.renderVerdictHeader(runId, results, runMode, gitSha, gitBranch, generatedAt),
+      '',
+      '## Narrative Deep-Dive Unavailable',
+      '',
+      `${reason}.`,
+      'The verdict above is code-derived and authoritative; see `aggregate-report.md` for full tabular results.',
+    ].join('\n');
+  }
+
+  /**
+   * Renders the deterministic-only `summary.md` for graduation runs. A
+   * graduation run certifies stability and pins the regression floor; it has no
+   * regressions to investigate, so it carries the code-derived verdict header
+   * only — no strong-model narrative call is made (saving cost and keeping the
+   * artifact byte-for-byte reproducible).
+   */
+  private renderGraduationSummary(
+    runId: string,
+    results: ScenarioResult[],
+    gitSha: string | null,
+    gitBranch: string | null,
+    generatedAt: string,
+  ): string {
+    return [
+      this.renderVerdictHeader(runId, results, 'graduation', gitSha, gitBranch, generatedAt),
+      '',
+      '## Graduation Summary',
+      '',
+      'This is a baseline/graduation run: the verdict above is code-derived and ' +
+        'authoritative, and no LLM narrative is generated. See `aggregate-report.md` ' +
+        'for full tabular results.',
+    ].join('\n');
+  }
+
+  private renderVerdictHeader(
+    runId: string,
+    results: ScenarioResult[],
+    runMode: 'eval' | 'graduation',
+    gitSha: string | null,
+    gitBranch: string | null,
+    generatedAt: string,
+  ): string {
+    return renderVerdictHeader(results, runMode, { runId, gitSha, gitBranch, generatedAt });
   }
 
   async acquireRunLock(dirName: string): Promise<() => Promise<void>> {
@@ -617,12 +713,17 @@ export class EvalStore {
   ): Promise<StoredAggregated | null> {
     const dir = await this.findRunDir(runId);
     if (!dir) return null;
-    return this.loadJsonFile<StoredAggregated>(
-      join(
-        this.scenarioDirFrom(dir, scenarioName),
-        'aggregated.json',
-      ),
+    const filePath = join(
+      this.scenarioDirFrom(dir, scenarioName),
+      'aggregated.json',
     );
+    try {
+      const raw = await readFile(filePath, 'utf-8');
+      return JSON.parse(raw, jsonReviver) as StoredAggregated;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null;
+      throw err;
+    }
   }
 
   async loadToolCallSummary(
@@ -1077,11 +1178,14 @@ export class EvalStore {
       const { scores, verdicts } = byEval.get(evalName) ??
         { scores: [], verdicts: {} };
       evaluators[evalName] = {
+        ...(agg.passAt1 !== undefined && {
+          passAt1: agg.passAt1,
+        }),
         ...(agg.passAtK !== undefined && {
           passAtK: agg.passAtK,
         }),
-        ...(agg.passToTheK !== undefined && {
-          passToTheK: agg.passToTheK,
+        ...(agg.passHatK !== undefined && {
+          passHatK: agg.passHatK,
         }),
         passingTrials: agg.passingTrials,
         totalTrials: agg.totalTrials,
