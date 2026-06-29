@@ -213,7 +213,15 @@ export default function ProjectCard({
     renameApp(
       { appId: site.id, newName: trimmed },
       {
-        onSuccess: () => closeRename(),
+        onSuccess: () => {
+          closeRename()
+          Growl.addGrowlMessage({
+            id: `projects-rename-success-${site.id}`,
+            title: t('builder_apps_rename_success'),
+            emphasis: 'success',
+            lifetime: 4000,
+          })
+        },
         onError: (error) =>
           setRenameError(error.message || t('builder_apps_rename_error_failed')),
       }
@@ -227,6 +235,12 @@ export default function ProjectCard({
         onSuccess: async () => {
           setIsUnpublishOpen(false)
           await fetchAllSites()
+          Growl.addGrowlMessage({
+            id: `projects-unpublish-success-${site.id}`,
+            title: t('builder_apps_unpublish_success'),
+            emphasis: 'success',
+            lifetime: 4000,
+          })
         },
       }
     )
@@ -238,6 +252,12 @@ export default function ProjectCard({
       const ok = await deleteSite(site.id)
       if (ok) {
         setIsDeleteOpen(false)
+        Growl.addGrowlMessage({
+          id: `projects-delete-success-${site.id}`,
+          title: t('builder_projects_delete_success'),
+          emphasis: 'success',
+          lifetime: 4000,
+        })
       } else {
         Growl.addGrowlMessage({
           id: `projects-delete-error-${site.id}`,

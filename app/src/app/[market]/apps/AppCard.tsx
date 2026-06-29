@@ -5,6 +5,7 @@ import { FormattedMessage } from 'react-intl';
 import Box from '@ux/box'
 import Button from '@ux/button'
 import Card, { MediaCard } from '@ux/card'
+import Growl from '@ux/growl'
 import ArrowRightIcon from '@ux/icon/arrow-right'
 import CopyIcon from '@ux/icon/copy'
 import EditIcon from '@ux/icon/edit'
@@ -296,11 +297,30 @@ export default function AppCard({ site, transferAllowed = false }: { site: SiteI
       if (success) {
         setIsDeleteModalOpen(false)
         setAlertState({ siteId: null, type: null, message: '' })
+        Growl.addGrowlMessage({
+          id: `apps-delete-success-${siteId}`,
+          title: t('builder_apps_delete_success'),
+          emphasis: 'success',
+          lifetime: 4000,
+        })
+      } else {
+        Growl.addGrowlMessage({
+          id: `apps-delete-error-${siteId}`,
+          title: t('builder_apps_delete_error'),
+          emphasis: 'critical',
+          lifetime: 4000,
+        })
       }
     } catch (error) {
       logger.error('site.delete.failed', {
         siteId,
         error: error instanceof Error ? error.message : String(error)
+      })
+      Growl.addGrowlMessage({
+        id: `apps-delete-error-${siteId}`,
+        title: t('builder_apps_delete_error', undefined, 'Failed to delete app. Please try again.'),
+        emphasis: 'critical',
+        lifetime: 4000,
       })
     } finally {
       setActionLoading(null)
@@ -317,6 +337,12 @@ export default function AppCard({ site, transferAllowed = false }: { site: SiteI
         setActiveTransfer(null)
         setAlertState({ siteId: null, type: null, message: '' })
         refreshSites()
+        Growl.addGrowlMessage({
+          id: `apps-cancel-transfer-success-${site.id}`,
+          title: t('builder_apps_cancel_transfer_success'),
+          emphasis: 'success',
+          lifetime: 4000,
+        })
       } else {
         const data = await response.json()
         logClickEvent('apps.transfer.cancel_error', transferEventProps(site.id))()
@@ -431,6 +457,12 @@ export default function AppCard({ site, transferAllowed = false }: { site: SiteI
         onSuccess: async () => {
           setIsUnpublishModalOpen(false)
           setOptimisticUnpublished(true)
+          Growl.addGrowlMessage({
+            id: `apps-unpublish-success-${site.id}`,
+            title: t('builder_apps_unpublish_success'),
+            emphasis: 'success',
+            lifetime: 4000,
+          })
           try {
             await fetchAllSites()
           } finally {
@@ -465,6 +497,12 @@ export default function AppCard({ site, transferAllowed = false }: { site: SiteI
         onSuccess: () => {
           logger.info('app-card.rename.success', { appId: site.id, newName: trimmed })
           closeRenameDialog()
+          Growl.addGrowlMessage({
+            id: `apps-rename-success-${site.id}`,
+            title: t('builder_apps_rename_success'),
+            emphasis: 'success',
+            lifetime: 4000,
+          })
         },
         onError: (error) => {
           logger.error('app-card.rename.error', { appId: site.id, error: error.message })
