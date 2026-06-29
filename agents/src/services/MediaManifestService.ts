@@ -47,6 +47,14 @@ export type ImportChatUploadResult =
     }
   | { success: false; error: string; httpStatus?: number };
 
+// Normalize a filename for display-name matching: NFC unicode + U+202F (NARROW
+// NO-BREAK SPACE, emitted by macOS Screenshot / Screen Recording) → regular
+// space. Applied to both sides of the comparison so agent-passed names match
+// the originalName stored at upload time.
+function normalizeUploadFilename(s: string): string {
+  return s.normalize('NFC').replace(/\u202f/g, ' ')
+}
+
 function slugFromChatUploadFilename(filename: string): string {
   const ext = path.extname(filename);
   const base = path.basename(filename, ext);
@@ -1811,10 +1819,14 @@ export class MediaManifestService {
     }
 
     const uploadedFiles = await fileUploadService.listUploadedFiles(appId);
-    // Match by stored filename first, then by original display name — agents
-    // sometimes pass the display name rather than the internal stored filename.
+    // Match by stored filename first, then by original display name (normalized
+    // for Unicode — macOS Screenshot / Screen Recording names embed U+202F
+    // narrow no-break space that differs from the regular space the agent
+    // passes). Stored filenames are matched literally; only display names need
+    // normalization.
+    const normalizedFilename: string = normalizeUploadFilename(filename)
     const matchingFile = uploadedFiles.find(
-      (f) => f.filename === filename || f.originalName === filename
+      (f) => f.filename === filename || normalizeUploadFilename(f.originalName) === normalizedFilename
     );
     if (!matchingFile) {
       return { success: false, error: 'Upload file not found', httpStatus: 404 };

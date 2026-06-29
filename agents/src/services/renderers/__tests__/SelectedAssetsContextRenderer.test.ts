@@ -7,6 +7,12 @@ vi.mock('../../helpers/ContextFormatter.js', () => ({
   readAgentUploadAsBase64: vi.fn()
 }))
 
+vi.mock('../../FileUploadService.js', () => ({
+  fileUploadService: {
+    findMatchingUpload: vi.fn().mockResolvedValue(null),
+  },
+}))
+
 vi.mock('../../../utils/image-resize.js', () => ({
   resizeForVision: vi.fn()
 }))
@@ -45,6 +51,7 @@ import { classifyAndGuideChatUploadImage } from '../../chat-upload-classificatio
 import { createForWorkspace } from '../../../workspace/index.js'
 import { readPersistedClassifications } from '../upload-classification-persistence.js'
 import { logger } from '../../../logging/index.js'
+import { fileUploadService } from '../../FileUploadService.js'
 
 const mockedReadUploadedFileContent = vi.mocked(readUploadedFileContent)
 const mockedReadAgentUploadAsBase64 = vi.mocked(readAgentUploadAsBase64)
@@ -53,6 +60,7 @@ const mockedClassifyAndGuide = vi.mocked(classifyAndGuideChatUploadImage)
 const mockedCreateForWorkspace = vi.mocked(createForWorkspace)
 const mockedReadPersisted = vi.mocked(readPersistedClassifications)
 const mockedLoggerWarn = vi.mocked(logger.warn)
+const mockedFindMatchingUpload = vi.mocked(fileUploadService.findMatchingUpload)
 
 describe('SelectedAssetsContextRenderer', () => {
   let renderer: SelectedAssetsContextRenderer
@@ -792,6 +800,208 @@ describe('SelectedAssetsContextRenderer', () => {
       expect(mockedClassifyAndGuide).not.toHaveBeenCalled()
       // Falls back to generic guidance.
       expect(result!.content).toContain('UPLOADED FILE - To use in project')
+    })
+  })
+
+  describe('VIDEO upload placement guidance', () => {
+    it('chat-uploaded VIDEO with videoUrl → guidance includes stored filename and import_upload', async () => {
+      const attachment: ContextAttachment<any[]> = {
+        type: 'selected_assets',
+        data: [{
+          mediaType: 'VIDEO',
+          sourceType: 'upload',
+          imageUrl: 'http://localhost:4000/files/uploads/app123/app123_1782428675349_file_-gQTucykIc.mov',
+          videoUrl: 'http://localhost:4000/files/uploads/app123/app123_1782428675349_file_-gQTucykIc.mov',
+          filename: 'post fix.mov',
+          contentType: 'video/quicktime',
+          size: 5000000,
+        }],
+      }
+
+      const result = await renderer.render(attachment, 'add this video to the hero section', { appId: 'app123' })
+      expect(result).not.toBeNull()
+      expect(result!.content).toContain('import_upload')
+      expect(result!.content).toContain('app123_1782428675349_file_-gQTucykIc.mov')
+      expect(result!.content).toContain('video')
+      expect(result!.content).toContain('<video src=')
+      expect(result!.content).not.toContain('<img src=')
+      // Raw upload URL must NOT be exposed as a Video URL line
+      expect(result!.content).not.toContain('- Video URL:')
+    })
+
+    it('VIDEO upload without URL but findMatchingUpload match → guidance includes stored filename', async () => {
+      mockedFindMatchingUpload.mockResolvedValue({
+        file: {
+          id: 'f1',
+          filename: 'app123_1782428675349_file_-gQTucykIc.mov',
+          originalName: 'post fix.mov',
+          size: 5000000,
+          mimeType: 'video/quicktime',
+          uploadedAt: '2024-01-01T00:00:00Z',
+        },
+        sourcePath: '/tmp/airo-app-builder-uploads/app123/app123_1782428675349_file_-gQTucykIc.mov',
+      })
+
+      const attachment: ContextAttachment<any[]> = {
+        type: 'selected_assets',
+        data: [{
+          mediaType: 'VIDEO',
+          sourceType: 'upload',
+          imageUrl: '',
+          filename: 'post fix.mov',
+          contentType: 'video/quicktime',
+          size: 5000000,
+        }],
+      }
+
+      const result = await renderer.render(attachment, 'place this video', { appId: 'app123' })
+      expect(result).not.toBeNull()
+      expect(result!.content).toContain('import_upload')
+      expect(result!.content).toContain('app123_1782428675349_file_-gQTucykIc.mov')
+      expect(mockedFindMatchingUpload).toHaveBeenCalledWith('app123', 'post fix.mov')
+    })
+
+    it('VIDEO upload — suppresses video URL for uploads, shows for stock', async () => {
+      const stockAttachment: ContextAttachment<any[]> = {
+        type: 'selected_assets',
+        data: [{
+          mediaType: 'VIDEO',
+          sourceType: 'stock',
+          imageUrl: 'https://media.gettyimages.com/thumb.jpg',
+          videoUrl: 'https://media.gettyimages.com/video.mp4',
+          filename: 'sunset.mp4',
+        }],
+      }
+
+      const stockResult = await renderer.render(stockAttachment, 'use this video')
+      expect(stockResult!.content).toContain('- Video URL: https://media.gettyimages.com/video.mp4')
+
+      const uploadAttachment: ContextAttachment<any[]> = {
+        type: 'selected_assets',
+        data: [{
+          mediaType: 'VIDEO',
+          sourceType: 'upload',
+          imageUrl: 'http://localhost:4000/files/uploads/app123/app123_1_video.mov',
+          videoUrl: 'http://localhost:4000/files/uploads/app123/app123_1_video.mov',
+          filename: 'myvideo.mov',
+          contentType: 'video/quicktime',
+          size: 100,
+        }],
+      }
+
+      const uploadResult = await renderer.render(uploadAttachment, 'add this video')
+      expect(uploadResult!.content).not.toContain('- Video URL:')
+    })
+
+    it('VIDEO upload continuation turn reuses persisted entry — stored filename survives', async () => {
+      mockedCreateForWorkspace.mockReturnValue({} as never)
+      mockedReadPersisted.mockResolvedValue(
+        new Map([
+          ['screen.mov', {
+            fileName: 'screen.mov',
+            classification: 'video',
+            assetRole: null,
+            placementIntent: 'display_on_site',
+            storedUploadFilename: 'app123_1111_file_persisted.mov',
+          } as never],
+        ]),
+      )
+
+      const attachment: ContextAttachment<any[]> = {
+        type: 'selected_assets',
+        data: [{
+          mediaType: 'VIDEO',
+          sourceType: 'upload',
+          imageUrl: '',
+          filename: 'screen.mov',
+          contentType: 'video/quicktime',
+          size: 100,
+        }],
+      }
+
+      const result = await renderer.render(attachment, 'continue', { appId: 'app123', isContinuation: true })
+      expect(result).not.toBeNull()
+      expect(result!.content).toContain('app123_1111_file_persisted.mov')
+      expect(result!.content).toContain('import_upload')
+      // findMatchingUpload must NOT be called — we reused the persisted entry
+      expect(mockedFindMatchingUpload).not.toHaveBeenCalled()
+    })
+
+    it('VIDEO upload — persists classification entry for follow-up turns', async () => {
+      const { persistClassifications } = await import('../upload-classification-persistence.js')
+      const mockedPersist = vi.mocked(persistClassifications)
+      mockedCreateForWorkspace.mockReturnValue({} as never)
+
+      const attachment: ContextAttachment<any[]> = {
+        type: 'selected_assets',
+        data: [{
+          mediaType: 'VIDEO',
+          sourceType: 'upload',
+          imageUrl: 'http://localhost:4000/files/uploads/app123/app123_1_vid.mov',
+          videoUrl: 'http://localhost:4000/files/uploads/app123/app123_1_vid.mov',
+          filename: 'product.mov',
+          contentType: 'video/quicktime',
+          size: 100,
+        }],
+      }
+
+      await renderer.render(attachment, 'add this video', { appId: 'app123' })
+      expect(mockedPersist).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.arrayContaining([
+          expect.objectContaining({
+            fileName: 'product.mov',
+            storedUploadFilename: 'app123_1_vid.mov',
+          }),
+        ]),
+        'app123',
+      )
+    })
+
+    it('VIDEO upload with ambiguous prompt → unclear placement intent guidance', async () => {
+      const attachment: ContextAttachment<any[]> = {
+        type: 'selected_assets',
+        data: [{
+          mediaType: 'VIDEO',
+          sourceType: 'upload',
+          imageUrl: 'http://localhost:4000/files/uploads/app123/app123_1_vid.mov',
+          videoUrl: 'http://localhost:4000/files/uploads/app123/app123_1_vid.mov',
+          filename: 'product.mov',
+          contentType: 'video/quicktime',
+          size: 100,
+        }],
+      }
+
+      const result = await renderer.render(attachment, 'what do you think of this?', { appId: 'app123' })
+      expect(result).not.toBeNull()
+      expect(result!.content).toContain('User intent: **unclear**')
+      expect(result!.content).toContain('import_upload')
+    })
+
+    it('VIDEO upload — findMatchingUpload failure still emits guidance with placeholder filename', async () => {
+      mockedFindMatchingUpload.mockRejectedValue(new Error('lookup failed'))
+
+      const attachment: ContextAttachment<any[]> = {
+        type: 'selected_assets',
+        data: [{
+          mediaType: 'VIDEO',
+          sourceType: 'upload',
+          imageUrl: '',
+          filename: 'post fix.mov',
+          contentType: 'video/quicktime',
+          size: 5000000,
+        }],
+      }
+
+      const result = await renderer.render(attachment, 'add this video', { appId: 'app123' })
+      expect(result).not.toBeNull()
+      expect(mockedLoggerWarn).toHaveBeenCalledWith(
+        'context.attachment.selected_assets.video_stored_filename_lookup_failed',
+        expect.objectContaining({ filename: 'post fix.mov' }),
+      )
+      expect(result!.content).toContain('import_upload')
+      expect(result!.content).toContain('<stored-upload-filename-from-listUploadedFiles>')
+      expect(result!.content).not.toContain('Could not resolve video upload placement guidance')
     })
   })
 

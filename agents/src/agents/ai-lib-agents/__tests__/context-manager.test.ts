@@ -678,6 +678,77 @@ describe('AILibContextManager', () => {
       expect(note?.content).not.toContain('## Upload Classification')
     })
 
+    it('re-injects video upload with public/videos location hint and isVideo guidance when attached this turn', async () => {
+      viewByPath({
+        'docs/.upload-classifications.json': JSON.stringify({
+          files: [
+            {
+              fileName: 'clip.mov',
+              classification: 'video',
+              assetRole: null,
+              placementIntent: 'display_on_site',
+              storedUploadFilename: 'app-123_1_clip.mov',
+            },
+          ],
+        }),
+      })
+      mockedRegistryRender.mockResolvedValue(null)
+
+      const cm = new AILibContextManager()
+      const result = await cm.buildContextMessages(
+        '',
+        {
+          metadata: { appId: 'app-123' },
+          contextAttachments: [{
+            type: 'selected_assets',
+            data: [{
+              filename: 'clip.mov',
+              mediaType: 'VIDEO',
+              sourceType: 'upload',
+              videoUrl: 'http://localhost:4000/files/uploads/app-123/app-123_1_clip.mov',
+            }],
+          }],
+        } as any,
+        { includeTemplateDescription: false, includeAppContext: false }
+      )
+
+      const block = result.contextMessages.find((m) => m.content.includes('## Upload handling'))
+      expect(block).toBeDefined()
+      expect(block?.content).toContain('File location: `public/videos/clip.mov`')
+      expect(block?.content).toContain('"classification": "video"')
+      expect(block?.content).toContain('<video src=')
+      expect(block?.content).not.toContain('src/assets/clip.mov')
+    })
+
+    it('emits a passive public/videos availability note for an unplaced video NOT attached this turn', async () => {
+      viewByPath({
+        'docs/.upload-classifications.json': JSON.stringify({
+          files: [
+            {
+              fileName: 'clip.mov',
+              classification: 'video',
+              assetRole: null,
+              placementIntent: 'display_on_site',
+              storedUploadFilename: 'app-123_1_clip.mov',
+            },
+          ],
+        }),
+      })
+
+      const cm = new AILibContextManager()
+      const result = await cm.buildContextMessages(
+        '',
+        { metadata: { appId: 'app-123' } },
+        { includeTemplateDescription: false, includeAppContext: false }
+      )
+
+      const note = result.contextMessages.find((m) => m.content.includes('clip.mov'))
+      expect(note).toBeDefined()
+      expect(note?.content).toContain('public/videos/clip.mov')
+      expect(note?.content).toContain('has not been placed')
+      expect(note?.content).not.toContain('## Upload handling')
+    })
+
     it('does not place a leftover upload on an unrelated turn (prod repro: placed SVG + ghost PNG)', async () => {
       // Prod trace: a logo SVG placed on a prior turn, plus a coffee-cup PNG
       // uploaded earlier but never placed. On a turn whose prompt is unrelated
@@ -910,5 +981,15 @@ describe('collectAttachedUploadStoredFilenames', () => {
       ],
     } as never]
     expect(collectAttachedUploadStoredFilenames(attachments).size).toBe(0)
+  })
+
+  it('resolves stored filename from videoUrl when imageUrl is absent', () => {
+    const attachments: ContextAttachment[] = [{
+      type: 'selected_assets',
+      data: [
+        { filename: 'clip.mov', videoUrl: 'http://h/files/uploads/app1/app1_5_clip.mov' },
+      ],
+    } as never]
+    expect(collectAttachedUploadStoredFilenames(attachments).get('clip.mov')).toBe('app1_5_clip.mov')
   })
 })

@@ -118,11 +118,15 @@ export function collectAttachedUploadStoredFilenames(attachments: ContextAttachm
     if (!Array.isArray(data)) continue
     for (const item of data) {
       if (!item || typeof item !== 'object') continue
-      const record: { filename?: unknown; imageUrl?: unknown } = item as { filename?: unknown; imageUrl?: unknown }
+      const record: { filename?: unknown; imageUrl?: unknown; videoUrl?: unknown } = item as { filename?: unknown; imageUrl?: unknown; videoUrl?: unknown }
       const fileName: string | null = typeof record.filename === 'string' && record.filename.length > 0 ? record.filename : null
       const imageUrl: string | null = typeof record.imageUrl === 'string' && record.imageUrl.length > 0 ? record.imageUrl : null
-      if (!fileName || !imageUrl) continue
-      const stored: string | null = extractStoredUploadFilename(imageUrl)
+      // VIDEO assets may carry the upload URL in imageUrl, videoUrl, or both
+      // (mapUploadedFilesToAssetItems sets both to the same value). Prefer
+      // imageUrl when present, fall back to videoUrl.
+      const videoUrl: string | null = typeof record.videoUrl === 'string' && record.videoUrl.length > 0 ? record.videoUrl : null
+      if (!fileName || (!imageUrl && !videoUrl)) continue
+      const stored: string | null = extractStoredUploadFilename(imageUrl ?? videoUrl ?? undefined)
       if (stored) byName.set(fileName, stored)
     }
   }
@@ -317,7 +321,8 @@ export class AILibContextManager {
 
         for (const entry of classificationEntries) {
             const fileName: string = entry.fileName || 'unknown'
-            const isImage: boolean = /\.(png|jpg|jpeg|gif|svg|webp)$/i.test(fileName)
+            const isVideo: boolean = /\.(mp4|mov|avi|webm|mkv|m4v)$/i.test(fileName)
+            const isImage: boolean = !isVideo && /\.(png|jpg|jpeg|gif|svg|webp)$/i.test(fileName)
             const slotUrl: string | null = entry.slotUrl ?? null
             const placementIntent: UploadPlacementIntent = entry.placementIntent ?? 'unclear'
             // Sanitize before interpolating into agent-facing markdown (a
@@ -370,10 +375,12 @@ export class AILibContextManager {
                 // file that isn't there — and then reaching for a terminal `cp`
                 // (which can't touch the workspace tree) — the observed "src/assets
                 // is inaccessible / please re-upload" loop. Documents DO land in
-                // docs/, so keep that locator for them.
-                const availabilityNote: string = isImage
-                    ? `Uploaded \`${displayName}\` is available in your upload store (not on the workspace filesystem — do NOT look for it under \`src/assets\` or try to read/\`cp\` it from a terminal) but has not been placed on the site. Do not place it unless the user explicitly asks.`
-                    : `Uploaded \`${displayName}\` is available on disk (\`docs/${displayName}\`) but has not been placed on the site. Do not place it unless the user explicitly asks.`
+                // docs/, so keep that locator for them. Videos land in public/videos/.
+                const availabilityNote: string = isVideo
+                    ? `Uploaded \`${displayName}\` is available on disk (\`public/videos/${displayName}\`) but has not been placed on the site. Do not place it unless the user explicitly asks.`
+                    : isImage
+                        ? `Uploaded \`${displayName}\` is available in your upload store (not on the workspace filesystem — do NOT look for it under \`src/assets\` or try to read/\`cp\` it from a terminal) but has not been placed on the site. Do not place it unless the user explicitly asks.`
+                        : `Uploaded \`${displayName}\` is available on disk (\`docs/${displayName}\`) but has not been placed on the site. Do not place it unless the user explicitly asks.`
                 conversationContextMessages.push({
                     role: 'user',
                     content: availabilityNote,
@@ -394,6 +401,7 @@ export class AILibContextManager {
                 slotUrl,
                 storedUploadFilename: freshStoredFilename ?? entry.storedUploadFilename ?? null,
                 isImage,
+                isVideo,
                 deflectedFromCanonical: entry.deflectedFromCanonical ?? false,
             })
             // For images, defer the "where/how" entirely to the Upload handling
@@ -401,11 +409,13 @@ export class AILibContextManager {
             // logos) — both pull the bytes from the upload store. Stating a
             // `src/assets/<name>` "file location" is wrong (chat-upload images are
             // not mirrored to the workspace tree) and makes the agent try to read
-            // or `cp` a file that isn't there. Documents are mirrored into docs/,
-            // so keep their locator.
-            const locationLine: string = isImage
-                ? `This upload lives in your upload store, not on the workspace filesystem — place it using the Upload handling steps above. Do NOT look for it under \`src/assets\` or read/\`cp\` it from a terminal.`
-                : `File location: \`docs/${displayName}\``
+            // or `cp` a file that isn't there. Documents are mirrored into docs/;
+            // videos into public/videos/ — keep those locators.
+            const locationLine: string = isVideo
+                ? `File location: \`public/videos/${displayName}\``
+                : isImage
+                    ? `This upload lives in your upload store, not on the workspace filesystem — place it using the Upload handling steps above. Do NOT look for it under \`src/assets\` or read/\`cp\` it from a terminal.`
+                    : `File location: \`docs/${displayName}\``
             // Dump the entry with the fresh stored filename too, so the agent
             // can't pick the stale one out of the raw JSON either. fileName and
             // summary (the latter is LLM vision output over a user image) are

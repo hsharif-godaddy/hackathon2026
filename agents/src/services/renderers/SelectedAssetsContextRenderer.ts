@@ -3,9 +3,10 @@ import { logger } from '../../logging/index.js'
 import { readUploadedFileContent, readAgentUploadAsBase64 } from '../helpers/ContextFormatter.js'
 import { resizeForVision } from '../../utils/image-resize.js'
 import { classifyAndGuideChatUploadImage } from '../chat-upload-classification.js'
-import { buildUploadHandlingGuidance } from '../upload-handling-guidance.js'
+import { buildUploadHandlingGuidance, type UploadPlacementIntent } from '../upload-handling-guidance.js'
 import { createForWorkspace } from '../../workspace/index.js'
 import { extractStoredUploadFilename } from '../upload-stored-filename.js'
+import { fileUploadService } from '../FileUploadService.js'
 import {
   readPersistedClassifications,
   persistClassifications,
@@ -35,6 +36,10 @@ interface SelectedAsset {
 // Re-exported so existing importers (and tests) keep a stable import path
 // while the parser itself lives in the shared module imported above.
 export { extractStoredUploadFilename }
+
+function inferVideoPlacementIntent(userPrompt: string): UploadPlacementIntent {
+  return /\b(add|replace|use|set|put|place|insert|embed)\b/i.test(userPrompt) ? 'display_on_site' : 'unclear'
+}
 
 export class SelectedAssetsContextRenderer implements ContextAttachmentRenderer<SelectedAsset[]> {
   canHandle(type: string): boolean {
@@ -191,6 +196,80 @@ export class SelectedAssetsContextRenderer implements ContextAttachmentRenderer<
         })
       )
 
+      // Pre-pass: for each uploaded VIDEO, resolve the stored filename and
+      // build placement guidance. No vision/LLM call needed — placement intent
+      // is inferred from the user prompt via a simple regex heuristic.
+      const uploadedVideoData = new Map<number, { guidance: string | null }>()
+      await Promise.all(
+        assets.map(async (asset: SelectedAsset, index: number) => {
+          if (
+            asset.mediaType !== 'VIDEO' ||
+            asset.sourceType !== 'upload' ||
+            !asset.filename
+          ) {
+            return
+          }
+          const priorEntry: PersistedUploadClassification | undefined = persisted.get(asset.filename)
+          if (priorEntry && reusePersisted) {
+            // Continuation turn — reuse persisted entry so the same stored
+            // filename survives without re-deriving from the URL.
+            uploadedVideoData.set(index, {
+              guidance: buildUploadHandlingGuidance({
+                fileName: priorEntry.fileName,
+                assetRole: null,
+                placementIntent: priorEntry.placementIntent ?? 'unclear',
+                slotUrl: priorEntry.slotUrl ?? null,
+                storedUploadFilename: priorEntry.storedUploadFilename ?? null,
+                isVideo: true,
+                isImage: false,
+              }),
+            })
+            return
+          }
+          // videoUrl and imageUrl both carry the upload URL for VIDEO assets
+          // (set by mapUploadedFilesToAssetItems in ChatPane). Prefer videoUrl.
+          const urlForStored: string | undefined = asset.videoUrl || asset.imageUrl || undefined
+          const storedUploadFilename: string | null = extractStoredUploadFilename(urlForStored)
+            ?? await (async function resolveStoredUploadFilename(): Promise<string | null> {
+              if (!appId) return null
+              try {
+                return (await fileUploadService.findMatchingUpload(appId, asset.filename!))?.file.filename ?? null
+              } catch (err) {
+                logger.warn('context.attachment.selected_assets.video_stored_filename_lookup_failed', {
+                  filename: asset.filename,
+                  error: err instanceof Error ? err.message : String(err),
+                })
+                return null
+              }
+            })()
+          const placementIntent: UploadPlacementIntent = inferVideoPlacementIntent(userPrompt)
+          const guidance: string = buildUploadHandlingGuidance({
+            fileName: asset.filename,
+            assetRole: null,
+            placementIntent,
+            storedUploadFilename,
+            isVideo: true,
+            isImage: false,
+          })
+          uploadedVideoData.set(index, { guidance })
+          if (appId) {
+            freshEntries.push({
+              fileName: asset.filename,
+              variant: 'adaptive',
+              classification: 'video',
+              designDirection: 'none',
+              contentStructure: 'none',
+              assetRole: null,
+              placementIntent,
+              extractedColors: null,
+              extractedPages: null,
+              summary: '',
+              ...(storedUploadFilename ? { storedUploadFilename } : {}),
+            })
+          }
+        })
+      )
+
       // Persist newly-classified develop-chat uploads (merged) so follow-up
       // turns re-inject them and skip re-classifying — mirrors the file_upload
       // path and keeps both upload paths symmetric.
@@ -242,7 +321,7 @@ export class SelectedAssetsContextRenderer implements ContextAttachmentRenderer<
           parts.push(`- URL: ${asset.imageUrl}`)
         }
 
-        if (asset.videoUrl) {
+        if (asset.videoUrl && asset.sourceType !== 'upload') {
           parts.push(`- Video URL: ${asset.videoUrl}`)
         }
 
@@ -261,6 +340,22 @@ export class SelectedAssetsContextRenderer implements ContextAttachmentRenderer<
           } else {
             parts.push('')
             parts.push('⚠️ Could not read file content - file may be missing or unreadable')
+          }
+        }
+
+        // Handle uploaded VIDEO: include placement guidance with stored filename.
+        if (asset.sourceType === 'upload' && asset.filename && asset.mediaType === 'VIDEO') {
+          const guidance: string | null | undefined = uploadedVideoData.get(index)?.guidance
+          if (guidance) {
+            parts.push('')
+            parts.push(guidance)
+          } else {
+            parts.push('')
+            parts.push('⚠️ Could not resolve video upload placement guidance — use `media({ action: "listUploadedFiles" })` to find the stored filename, then `import_upload`.')
+            const fallbackVideoUrl: string | undefined = asset.videoUrl || asset.imageUrl || undefined
+            if (fallbackVideoUrl) {
+              parts.push(`- Video URL: ${fallbackVideoUrl}`)
+            }
           }
         }
 

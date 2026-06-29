@@ -15,6 +15,8 @@ export interface UploadHandlingInput {
   slotUrl?: string | null
   storedUploadFilename?: string | null
   isImage?: boolean
+  /** True when the upload is a video file. Takes precedence over isImage for fileKind derivation and slot-reference wording (<video> vs <img>). */
+  isVideo?: boolean
   /** True when auto-register routed to a fresh `uploads/<role>-<slug>` instead of the canonical role slot (AIROBUILD-2789 guard fired). Adjusts hero/background guidance so the agent doesn't silently swap the rendered hero. */
   deflectedFromCanonical?: boolean
 }
@@ -51,6 +53,9 @@ export function sanitizeUploadFileNameForDisplay(name: string): string {
 const USE_UPLOADED_NOT_STOCK: string =
   '- This is the user\'s OWN uploaded file and is the source of truth for THIS placement. Place that file (via `import_upload`, or the slot URL above). Do NOT run a Getty/stock `search` and do NOT generate a substitute image for this spot — the user already gave you the exact image they want here. Only search for stock when the user explicitly asks for a DIFFERENT, additional image you were not given.'
 
+const USE_UPLOADED_VIDEO_NOT_STOCK: string =
+  '- This is the user\'s OWN uploaded video and is the source of truth for THIS placement. Place that file (via `import_upload`, or the slot URL above). Do NOT run a Getty/stock `search` and do NOT generate a substitute video for this spot — the user already gave you the exact video they want here. Only search for stock when the user explicitly asks for a DIFFERENT, additional video you were not given.'
+
 /**
  * Placement-hygiene rules appended to every "place this on the site" branch
  * (display_on_site + unclear). These target the failure modes that turn a
@@ -72,7 +77,7 @@ const PLACEMENT_HYGIENE: readonly string[] = [
 ]
 
 export function buildUploadHandlingGuidance(input: UploadHandlingInput): string {
-  const fileKind = input.isImage === false ? 'document' : 'image'
+  const fileKind = input.isVideo ? 'video' : input.isImage === false ? 'document' : 'image'
   const fileName = sanitizeUploadFileNameForDisplay(input.fileName)
   const lines = [
     '## Upload handling',
@@ -135,12 +140,15 @@ export function buildUploadHandlingGuidance(input: UploadHandlingInput): string 
     const filename = input.storedUploadFilename
       ? sanitizeUploadFileNameForDisplay(input.storedUploadFilename)
       : '<stored-upload-filename-from-listUploadedFiles>'
+    const slotRefLine = input.isVideo
+      ? '- Use the returned `slotUrl` in `<video src="…">` (NOT `<img>`).'
+      : '- Use the returned `slotUrl` in `<img src="…">` or CSS background-image.'
     lines.push(
       '- User intent: **display on site** — register a media slot for THIS placement:',
       `\`media({ action: "import_upload", slot: "<semantic-name>", filename: "${filename}" })\``,
       '- Each position on the site is its own slot. ADDING a new element (e.g. another card) → use a NEW slot name. REPLACING an existing element → FIRST describe the current contents in plain language ("Your current hero is the coffee photo — want me to replace it with this one?") and wait for an explicit "yes, replace it" before passing that element\'s slot path to `import_upload`. Do NOT replace silently. If the user prefers to keep both, register to a NEW slot name instead. The same uploaded file can back multiple slots and they update independently.',
-      '- Use the returned `slotUrl` in `<img src="…">` or CSS background-image.',
-      USE_UPLOADED_NOT_STOCK,
+      slotRefLine,
+      input.isVideo ? USE_UPLOADED_VIDEO_NOT_STOCK : USE_UPLOADED_NOT_STOCK,
       ...PLACEMENT_HYGIENE,
     )
     return lines.join('\n')
@@ -149,6 +157,9 @@ export function buildUploadHandlingGuidance(input: UploadHandlingInput): string 
   const unclearFilename = input.storedUploadFilename
     ? sanitizeUploadFileNameForDisplay(input.storedUploadFilename)
     : '<stored-upload-filename-from-listUploadedFiles>'
+  const unclearSlotRefLine = input.isVideo
+    ? `- Then use the returned \`slotUrl\` in \`<video src="…">\` (NOT \`<img>\`). Do NOT copy to public/assets or use /files/uploads/ for this video.`
+    : `- Then use the returned \`slotUrl\` in \`<img src="…">\` or CSS background-image. Do NOT copy to public/assets or use /files/uploads/ for this image.`
   lines.push(
     '- User intent: **unclear** — the user uploaded this but has not said where it should go.',
     '- Ask where they want it before placing it. Do NOT place it on the site until the user tells you where.',
@@ -157,9 +168,9 @@ export function buildUploadHandlingGuidance(input: UploadHandlingInput): string 
     '  - ADDING a new element → use a NEW semantic slot name.',
     '  - REPLACING an existing element → FIRST describe the current contents in plain language ("Your current hero is the coffee photo — want me to replace it with this one?") and wait for an explicit "yes, replace it" before calling `import_upload` against that slot path. Do NOT replace silently. If the user prefers to keep both, register to a NEW slot name like `uploads/hero-<descriptor>` instead.',
     `\`media({ action: "import_upload", slot: "<semantic-name>", filename: "${unclearFilename}" })\``,
-    '- REPLACING an existing image — pass that element\'s EXACT existing slot path so the image updates in place; do NOT invent a new slot. ADDING a brand-new element — use a new semantic slot name.',
-    '- Then use the returned `slotUrl` in `<img src="…">` or CSS background-image. Do NOT copy to public/assets or use /files/uploads/ for this image.',
-    USE_UPLOADED_NOT_STOCK,
+    `- REPLACING an existing ${input.isVideo ? 'video' : 'image'} — pass that element's EXACT existing slot path so the ${input.isVideo ? 'video' : 'image'} updates in place; do NOT invent a new slot. ADDING a brand-new element — use a new semantic slot name.`,
+    unclearSlotRefLine,
+    input.isVideo ? USE_UPLOADED_VIDEO_NOT_STOCK : USE_UPLOADED_NOT_STOCK,
     ...PLACEMENT_HYGIENE,
   )
   return lines.join('\n')

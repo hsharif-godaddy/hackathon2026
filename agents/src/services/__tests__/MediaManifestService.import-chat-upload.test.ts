@@ -790,5 +790,57 @@ describe('MediaManifestService - importChatUploadToSlot', function importChatUpl
         }
       });
     });
+
+    describe('Unicode normalisation for macOS display names', function unicodeNormTests() {
+      it('matches originalName with U+202F narrow-no-break-space when agent passes regular space', async function narrowNBSP() {
+        // macOS Screenshot / Screen Recording inserts U+202F between date and
+        // time in file names; the agent receives the display string but
+        // passes it with a regular space, causing a mismatch without normalisation.
+        // Use image/jpeg to avoid video magic-bytes validation on fake bytes.
+        const narrowNBSP = ' '
+        vi.mocked(fileUploadService.listUploadedFiles).mockResolvedValue([
+          {
+            id: 'u-1',
+            filename: 'app123_9999_screenshot.jpg',
+            originalName: `Screenshot 2024-01-15${narrowNBSP}at 10.30.00.jpg`,
+            mimeType: 'image/jpeg',
+            size: 500,
+            uploadedAt: '2026-01-01T00:00:00.000Z',
+          },
+        ])
+        vi.mocked(fileUploadService.findUploadedFilePath).mockResolvedValue(
+          '/tmp/uploads/app123_9999_screenshot.jpg'
+        )
+
+        const result = await service.importChatUploadToSlot('test-app', {
+          filename: 'Screenshot 2024-01-15 at 10.30.00.jpg',
+        })
+
+        expect(result.success).toBe(true)
+      })
+
+      it('returns 404 when neither stored filename nor normalized display name matches', async function noMatch() {
+        vi.mocked(fileUploadService.listUploadedFiles).mockResolvedValue([
+          {
+            filename: 'stored-other.jpg',
+            originalName: 'completely-different.jpg',
+            mimeType: 'image/jpeg',
+            size: 100,
+            uploadedAt: '2026-01-01T00:00:00.000Z',
+            uploadId: 'u-2',
+          },
+        ])
+
+        const result = await service.importChatUploadToSlot('test-app', {
+          filename: 'not-there.jpg',
+        })
+
+        expect(result.success).toBe(false)
+        if (!result.success) {
+          expect(result.httpStatus).toBe(404)
+        }
+      })
+    })
   });
 });
+
