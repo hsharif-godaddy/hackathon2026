@@ -127,6 +127,7 @@ interface ChatInputProps {
   aiEditContexts?: AiEditContext[]
   onRemoveAiEditContext?: (number: number) => void
   isMultiElementSelect?: boolean
+  isAnnotationModeEnabled?: boolean
   onLargePasteDetected?: (content: string) => void
   mediaLimitError?: string | null
   userMessages?: string[]
@@ -172,6 +173,7 @@ export default function ChatInput({
   aiEditContexts = [],
   onRemoveAiEditContext,
   isMultiElementSelect = false,
+  isAnnotationModeEnabled = false,
   onLargePasteDetected,
   mediaLimitError = null,
   userMessages = [],
@@ -477,7 +479,7 @@ export default function ChatInput({
     const handle = promptBoxRef.current
     if (!handle) return
 
-    const desired = isMultiElementSelect
+    const desired = (isMultiElementSelect || isAnnotationModeEnabled)
       ? aiEditContexts.filter((c): c is AiEditContext & { number: number } => c.number != null)
       : []
     const desiredNumbers = new Set(desired.map(c => c.number))
@@ -514,7 +516,7 @@ export default function ChatInput({
         }
       }
     }
-  }, [aiEditContexts, isMultiElementSelect])
+  }, [aiEditContexts, isMultiElementSelect, isAnnotationModeEnabled])
 
   const handleMentionRemoved = useCallback((num: number) => {
     // Programmatic removal — parent's state already reflects it. No-op.

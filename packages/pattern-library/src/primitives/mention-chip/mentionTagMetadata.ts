@@ -1,5 +1,7 @@
-/** HTML tag → human-readable label used in element-mention chips. */
+/** HTML tag → human-readable label used in element-mention chips.
+ *  'selection' is a sentinel used for annotation-mode region chips. */
 export const MENTION_TAG_LABELS: Record<string, string> = {
+  selection: 'Selection',
   h1: 'Title',
   h2: 'Heading',
   h3: 'Heading',
@@ -28,6 +30,7 @@ export const MENTION_TAG_LABELS: Record<string, string> = {
 };
 
 export const MENTION_TAG_ICONS: Record<string, string> = {
+  selection: 'shapes',
   h1: 'text-highlight',
   h2: 'text-highlight',
   h3: 'text-highlight',

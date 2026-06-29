@@ -1243,120 +1243,47 @@ describe('ChatPane', () => {
     })
   });
 
-  describe('annotation screenshot', function annotationTests() {
-    const UPLOAD_URL = 'http://localhost:4000/files/upload';
-    let iframe: HTMLIFrameElement;
-
-    function makeFetchSuccess(signedUrlSuffix: string) {
-      return vi.fn(function (url: string) {
-        if (url.endsWith('/api/venture')) {
-          return Promise.resolve({ ok: true, json: () => Promise.resolve({ ventureId: 'v-123' }) } as Response);
-        }
-        if (url.startsWith('data:')) {
-          return Promise.resolve({ ok: true, blob: () => Promise.resolve(new Blob(['png'], { type: 'image/png' })) } as Response);
-        }
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve({
-            uploadId: 'u',
-            files: [{
-              id: 'f0',
-              originalName: 'annotation.png',
-              filename: 'annotation.png',
-              size: 1024,
-              mimeType: 'image/png',
-              uploadedAt: '2026-01-01',
-              signedUrl: `/files/signed/${signedUrlSuffix}.png`,
-            }],
-            failedFiles: [],
-          }),
-        } as Response);
-      });
-    }
-
-    function dispatchAnnotationScreenshot(dataUrl: string) {
-      window.dispatchEvent(new MessageEvent('message', {
-        data: { type: 'ANNOTATION_SCREENSHOT_RESPONSE', screenshot: dataUrl },
-        source: iframe.contentWindow,
-      }));
-    }
-
+  describe('annotation mode', function annotationTests() {
     beforeEach(function setup() {
       mockDevelopPageStore.isAnnotationModeEnabled = true;
-      vi.mocked(getFileUploadAgent).mockResolvedValue({ token: 't', uploadUrl: UPLOAD_URL });
-      iframe = document.createElement('iframe');
-      iframe.id = 'preview-iframe';
-      document.body.appendChild(iframe);
     });
 
     afterEach(function teardown() {
-      iframe.remove();
       mockDevelopPageStore.isAnnotationModeEnabled = false;
     });
 
-    it('attaches the annotation screenshot as a selected asset', async function attaches() {
-      global.fetch = makeFetchSuccess('first');
+    it('clears only annotation contexts when annotation mode is disabled', async function clearsOnDisable() {
+      mockStreamingStore.aiEditContexts = [
+        { number: 1, isAnnotation: true, elementInfo: { tagName: 'selection' } },
+        { number: 2, isAnnotation: false, elementInfo: { tagName: 'div' } },
+      ];
 
-      renderWithProviders(<ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />);
-      dispatchAnnotationScreenshot('data:image/png;base64,aaa');
+      const { rerender } = renderWithProviders(
+        <ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />
+      );
 
-      await waitFor(function assertAttached() {
-        expect(screen.getAllByTestId('selected-asset')).toHaveLength(1);
+      mockDevelopPageStore.isAnnotationModeEnabled = false;
+      rerender(<ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />);
+
+      await waitFor(function assertCleared() {
+        expect(mockStreamingStore.removeAiEditContext).toHaveBeenCalledWith(1);
       });
+      expect(mockStreamingStore.removeAiEditContext).not.toHaveBeenCalledWith(2);
+      expect(mockStreamingStore.clearAiEditContexts).not.toHaveBeenCalled();
     });
 
-    it('out-of-order older screenshot does not clobber the newer one', async function outOfOrder() {
-      // Sequence: dispatch #1 starts, dispatch #2 starts, #2 resolves first, #1 resolves last.
-      // Expectation: the chip reflects #2's signedUrl, not #1's.
-      const pending: Array<{ url: string; resolve: (r: Response) => void }> = [];
-      global.fetch = vi.fn(function (url: string) {
-        if (url.endsWith('/api/venture')) {
-          return Promise.resolve({ ok: true, json: () => Promise.resolve({ ventureId: 'v-123' }) } as Response);
-        }
-        if (url.startsWith('data:')) {
-          return Promise.resolve({ ok: true, blob: () => Promise.resolve(new Blob(['png'], { type: 'image/png' })) } as Response);
-        }
-        return new Promise<Response>((resolve) => { pending.push({ url, resolve }); });
-      });
+    it('does not clear contexts on mount when annotation mode is disabled', function noClearOnMount() {
+      mockDevelopPageStore.isAnnotationModeEnabled = false;
+      mockStreamingStore.aiEditContexts = [
+        { number: 1, isAnnotation: true, elementInfo: { tagName: 'selection' } },
+      ];
 
-      renderWithProviders(<ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />);
+      renderWithProviders(
+        <ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />
+      );
 
-      dispatchAnnotationScreenshot('data:image/png;base64,first');
-      dispatchAnnotationScreenshot('data:image/png;base64,second');
-
-      await waitFor(function bothQueued() {
-        expect(pending.length).toBe(2);
-      });
-
-      // Resolve #2 (newer seq) first
-      pending[1].resolve({
-        ok: true,
-        json: () => Promise.resolve({
-          uploadId: 'u2',
-          files: [{ id: 'f2', originalName: 'a2.png', filename: 'a2.png', size: 1, mimeType: 'image/png', uploadedAt: '2026-01-01', signedUrl: '/files/signed/second.png' }],
-          failedFiles: [],
-        }),
-      } as Response);
-      await waitFor(function secondAttached() {
-        expect(screen.getAllByTestId('selected-asset')).toHaveLength(1);
-      });
-
-      // Now resolve #1 (older seq) — must NOT replace the newer one
-      pending[0].resolve({
-        ok: true,
-        json: () => Promise.resolve({
-          uploadId: 'u1',
-          files: [{ id: 'f1', originalName: 'a1.png', filename: 'a1.png', size: 1, mimeType: 'image/png', uploadedAt: '2026-01-01', signedUrl: '/files/signed/first.png' }],
-          failedFiles: [],
-        }),
-      } as Response);
-
-      // Allow any pending microtasks to flush
-      await new Promise((resolve) => setTimeout(resolve, 30));
-
-      // Still exactly one chip — and it must be from the second (newer) upload
-      const assets = screen.getAllByTestId('selected-asset');
-      expect(assets).toHaveLength(1);
+      expect(mockStreamingStore.removeAiEditContext).not.toHaveBeenCalled();
+      expect(mockStreamingStore.clearAiEditContexts).not.toHaveBeenCalled();
     });
   });
 

@@ -62,6 +62,10 @@ export interface AiEditContext {
   }
   // Multi-element selection number (1-based, used when appbuilder-multi-element-select flag is on)
   number?: number
+  // Annotation-mode region selection fields
+  isAnnotation?: boolean
+  annotationRect?: { x: number; y: number; width: number; height: number }
+  annotationPrompt?: string
 }
 
 export enum ViewMode {

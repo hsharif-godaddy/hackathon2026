@@ -53,55 +53,6 @@ export async function captureAndResizeScreenshot(): Promise<string | null> {
 }
 
 /**
- * Captures a region of the full document (in document coordinates) and returns
- * the cropped result as a PNG data URL. Used by annotation mode to capture only
- * the area that contains the user's drawn boxes.
- */
-export async function captureCroppedDocumentScreenshot(
-  cropX: number,
-  cropY: number,
-  cropWidth: number,
-  cropHeight: number
-): Promise<string | null> {
-  try {
-    const docWidth = document.documentElement.scrollWidth;
-    const docHeight = document.documentElement.scrollHeight;
-
-    const fullPage = await toPng(document.body, {
-      quality: 0.95,
-      pixelRatio: 1,
-      width: docWidth,
-      height: docHeight,
-      fetchRequestInit: { cache: 'no-cache' },
-    });
-
-    const img = new Image();
-    img.src = fullPage;
-    await new Promise<void>((resolve, reject) => {
-      img.onload = () => resolve();
-      img.onerror = reject;
-    });
-
-    const x = Math.max(0, Math.floor(cropX));
-    const y = Math.max(0, Math.floor(cropY));
-    const w = Math.max(1, Math.min(img.width - x, Math.ceil(cropWidth)));
-    const h = Math.max(1, Math.min(img.height - y, Math.ceil(cropHeight)));
-
-    const canvas = document.createElement('canvas');
-    canvas.width = w;
-    canvas.height = h;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return null;
-    ctx.drawImage(img, x, y, w, h, 0, 0, w, h);
-
-    return canvas.toDataURL('image/png', 0.9);
-  } catch (error) {
-    console.error('Failed to capture cropped document screenshot:', error);
-    return null;
-  }
-}
-
-/**
  * Captures a screenshot of the current viewport (window.innerWidth × window.innerHeight).
  *
  * Safari workaround: Uses retry mechanism with size checking as recommended in

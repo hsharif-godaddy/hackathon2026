@@ -23,6 +23,7 @@ import { useStreamingConversationStore } from '@/stores/useStreamingConversation
 import type { RuntimeErrorData } from '@/types/runtime-error'
 import type { BusEventType, BusFormatOverrideUpdatePayload } from '@/utils/eventBus'
 import { dispatch as dispatchBusEvent, off, on } from '@/utils/eventBus'
+import { logImpressionEvent } from '@/utils/instrumentation'
 import {
   loadMediaSlotForkContext,
   loadMediaSlotOccurrenceIndex,
@@ -116,6 +117,7 @@ const REGISTERED_TYPES: readonly BusEventType[] = [
   'AUTO_IMPORT_MEDIA_SLOT',
   'MEDIA_SLOT_SCROLL_RESULT',
   'PREVIEW_UNSUPPORTED_FEATURE',
+  'ANNOTATION_SELECTION_CREATED',
 ] as const
 
 function getPreviewIframe(): HTMLIFrameElement | null {
@@ -324,6 +326,32 @@ export function useDevToolsBusBindings(deps: DevToolsBusBindingsDeps): void {
       if (m.data.number != null) {
         useStreamingConversationStore.getState().removeAiEditContext(m.data.number)
       }
+    })
+
+    on('ANNOTATION_SELECTION_CREATED', (m) => {
+      const { number, rect, prompt } = m.data ?? {}
+      if (number == null || typeof number !== 'number' || !rect || typeof prompt !== 'string') return
+      const ctx: AiEditContext = {
+        number,
+        isAnnotation: true,
+        annotationRect: rect,
+        annotationPrompt: prompt,
+        elementInfo: {
+          tagName: 'selection',
+          className: '',
+          id: '',
+          textContent: prompt,
+          selector: '',
+          rect: { top: rect.y, left: rect.x, width: rect.width, height: rect.height },
+          computedStyles: {},
+        },
+        selector: '',
+        devContext: { fileName: '', componentName: '', lineNumber: 0 },
+      }
+      d().addAiEditContext(ctx)
+      useDevelopPageStore.getState().setActiveChatTab(ChatTab.CHAT)
+      logger.info('develop-page.annotation-selection-created', { appId: d().appId, number })
+      logImpressionEvent('commander.annotation.element_selected', { selectionNumber: number })()
     })
 
     on('CLEAR_AI_EDIT_CONTEXT', () => {

@@ -714,6 +714,24 @@ function ChatPaneInner({
     clearAiEditContexts();
   }, [clearAiEditContexts]);
 
+  const handleClearAnnotationAiEditContexts = useCallback(() => {
+    const annotationContexts = aiEditContexts.filter((ctx) => ctx.isAnnotation);
+    if (annotationContexts.length === 0) return;
+    const iframe = document.getElementById('preview-iframe') as HTMLIFrameElement;
+    if (iframe) {
+      for (const ctx of annotationContexts) {
+        if (ctx.number != null) {
+          postMessageToIframe(iframe, { type: 'REMOVE_SELECTION', data: { number: ctx.number } });
+        }
+      }
+    }
+    for (const ctx of annotationContexts) {
+      if (ctx.number != null) {
+        removeAiEditContext(ctx.number);
+      }
+    }
+  }, [aiEditContexts, removeAiEditContext]);
+
   // Handle removing a single AI edit context by number (multi-select)
   const handleRemoveAiEditContext = useCallback(
     (number: number) => {
@@ -1102,13 +1120,13 @@ function ChatPaneInner({
       } else {
         const sendOptions: SendMessageOptions = {
           content: outboundContent,
-          aiEditContext: isMultiElementSelect
+          aiEditContext: (isMultiElementSelect || isAnnotationModeEnabled)
             ? undefined
             : safeAiEditContext
               ? { ...safeAiEditContext, screenshot: null }
               : undefined,
           aiEditContexts:
-            isMultiElementSelect && safeAiEditContexts.length > 0
+            (isMultiElementSelect || isAnnotationModeEnabled) && safeAiEditContexts.length > 0
               ? safeAiEditContexts.map((c) => ({ ...c, screenshot: null }))
               : undefined,
           selectedAssets: mergedAssets,
@@ -1131,7 +1149,7 @@ function ChatPaneInner({
           });
           logClickEvent('chat.queue.submit', { queueLength: newQueueLength })();
           setInputValue('');
-          if (isMultiElementSelect && safeAiEditContexts.length > 0) {
+          if ((isMultiElementSelect || isAnnotationModeEnabled) && safeAiEditContexts.length > 0) {
             handleClearAllAiEditContexts();
           } else if (safeAiEditContext) {
             handleClearAiEditContext();
@@ -1148,7 +1166,7 @@ function ChatPaneInner({
         void sendMessage(sendOptions);
 
         // Clear contexts only for user input sends
-        if (isMultiElementSelect && safeAiEditContexts.length > 0) {
+        if ((isMultiElementSelect || isAnnotationModeEnabled) && safeAiEditContexts.length > 0) {
           handleClearAllAiEditContexts();
         } else if (safeAiEditContext) {
           handleClearAiEditContext();
@@ -1400,131 +1418,20 @@ function ChatPaneInner({
   // to selectedAssets / stagedFiles. The async cap calculation depends on this.
   const selectedAssetsRef = useRef(selectedAssets);
   const stagedFilesRef = useRef(stagedFiles);
-  const annotationAssetUrlsRef = useRef<Set<string>>(new Set());
-  // Mirror annotation-mode flag so the async post-upload guard reads the live
-  // value, not a closed-over snapshot from when the upload started.
-  const isAnnotationModeEnabledRef = useRef(isAnnotationModeEnabled);
-  // Sequence guard against out-of-order screenshot uploads. annotationSeqRef
-  // increments each time the iframe sends a new screenshot; latestApplied
-  // tracks the highest seq committed to selectedAssets. A late-arriving older
-  // upload bails instead of clobbering a newer set of boxes.
-  const annotationSeqRef = useRef(0);
-  const latestAppliedAnnotationSeqRef = useRef(0);
   useEffect(() => {
     selectedAssetsRef.current = selectedAssets;
   }, [selectedAssets]);
   useEffect(() => {
     stagedFilesRef.current = stagedFiles;
   }, [stagedFiles]);
+
+  const prevAnnotationModeRef = useRef(isAnnotationModeEnabled);
   useEffect(() => {
-    isAnnotationModeEnabledRef.current = isAnnotationModeEnabled;
-  }, [isAnnotationModeEnabled]);
-
-  const handleAnnotationScreenshotResponse = useCallback(async (dataUrl: string, seq: number) => {
-    if (!appId || !agentUrl) return;
-
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), UPLOAD_TIMEOUT_MS);
-    let assetItems: AssetManagerItem[] | null = null;
-
-    try {
-      const blob = await fetch(dataUrl, { signal: controller.signal }).then((r) => r.blob());
-      const mimeType = blob.type || 'image/png';
-      const ext = mimeType === 'image/png' ? 'png' : mimeType === 'image/webp' ? 'webp' : 'jpg';
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
-      const file = new File([blob], `annotation-${timestamp}.${ext}`, { type: mimeType });
-
-      const { token, uploadUrl } = await Promise.race([
-        getFileUploadAgent(appId),
-        new Promise<never>((_, reject) => {
-          if (controller.signal.aborted) {
-            reject(new DOMException('The operation was aborted.', 'AbortError'));
-            return;
-          }
-          controller.signal.addEventListener(
-            'abort',
-            () => reject(new DOMException('The operation was aborted.', 'AbortError')),
-            { once: true }
-          );
-        }),
-      ]);
-
-      const formData = new FormData();
-      formData.append('appId', appId);
-      formData.append('files', file);
-
-      const response = await fetch(uploadUrl, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-        body: formData,
-        signal: controller.signal,
-      });
-
-      if (!response.ok) throw new Error(`Upload failed (${response.status})`);
-
-      const result = (await response.json()) as { uploadId?: string; files?: unknown };
-      if (!Array.isArray(result.files) || result.files.length === 0) {
-        throw new Error(t('builder_chatfiles_error_upload_failed'));
-      }
-
-      assetItems = mapUploadedFilesToAssetItems(result.files, agentUrl);
-    } catch (error) {
-      const isTimeout = error instanceof DOMException && error.name === 'AbortError';
-      const message = isTimeout
-        ? t('builder_chatfiles_error_timeout_duration', { seconds: UPLOAD_TIMEOUT_SECONDS })
-        : error instanceof Error
-          ? error.message
-          : t('builder_chatfiles_error_upload_failed');
-      logger.error('chat-pane.annotation-screenshot.upload-failed', { appId, error: message });
-      showTransientAttachmentBanner(message);
-      return;
-    } finally {
-      clearTimeout(timeout);
-    }
-
-    if (!assetItems || assetItems.length === 0) return;
-    if (!isAnnotationModeEnabledRef.current) return;
-    if (seq < latestAppliedAnnotationSeqRef.current) return;
-
-    const newItems = assetItems;
-    const newUrls = new Set(
-      newItems.map((a) => a.imageUrl).filter((u): u is string => typeof u === 'string')
-    );
-    const previousUrls = annotationAssetUrlsRef.current;
-
-    setSelectedAssets((prev) => {
-      const filtered = previousUrls.size > 0
-        ? prev.filter((a) => !(a.imageUrl && previousUrls.has(a.imageUrl)))
-        : prev;
-      return [...filtered, ...newItems];
-    });
-    annotationAssetUrlsRef.current = newUrls;
-    latestAppliedAnnotationSeqRef.current = seq;
-  }, [appId, agentUrl, t, showTransientAttachmentBanner]);
-
-  useEffect(() => {
-    const handler = (event: MessageEvent) => {
-      const iframe = document.getElementById('preview-iframe') as HTMLIFrameElement | null;
-      if (!iframe || event.source !== iframe.contentWindow) return;
-      if (event.data?.type !== 'ANNOTATION_SCREENSHOT_RESPONSE') return;
-      const screenshot = event.data.screenshot;
-      if (typeof screenshot !== 'string') return;
-      const seq = ++annotationSeqRef.current;
-      void handleAnnotationScreenshotResponse(screenshot, seq);
-    };
-    window.addEventListener('message', handler);
-    return () => window.removeEventListener('message', handler);
-  }, [handleAnnotationScreenshotResponse]);
-
-  useEffect(() => {
-    if (isAnnotationModeEnabled) return;
-    annotationSeqRef.current = 0;
-    latestAppliedAnnotationSeqRef.current = 0;
-    if (annotationAssetUrlsRef.current.size === 0) return;
-    const urlsToRemove = annotationAssetUrlsRef.current;
-    setSelectedAssets((prev) => prev.filter((a) => !(a.imageUrl && urlsToRemove.has(a.imageUrl))));
-    annotationAssetUrlsRef.current = new Set();
-  }, [isAnnotationModeEnabled]);
+    const wasEnabled = prevAnnotationModeRef.current;
+    prevAnnotationModeRef.current = isAnnotationModeEnabled;
+    if (!wasEnabled || isAnnotationModeEnabled) return;
+    handleClearAnnotationAiEditContexts();
+  }, [isAnnotationModeEnabled, handleClearAnnotationAiEditContexts]);
 
   // Handle screenshot/paste capture from chat input.
   // Uploads to the server so the WebSocket message carries a short URL reference
@@ -2005,6 +1912,7 @@ function ChatPaneInner({
               aiEditContexts={safeAiEditContexts}
               onRemoveAiEditContext={handleRemoveAiEditContext}
               isMultiElementSelect={Boolean(isMultiElementSelect)}
+              isAnnotationModeEnabled={Boolean(isAnnotationModeEnabled)}
               onLargePasteDetected={handleLargePasteDetected}
               mediaLimitError={uploadError}
               userMessages={userMessages}

@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import Button from '@ux/button'
 import ClickIcon from '@ux/icon/click'
 import ImageIcon from '@ux/icon/image'
@@ -14,7 +14,7 @@ import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 import { useCommanderCanvasTabsEnabled, useCommanderStore } from '@/stores/useCommanderStore'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
-import { logClickEvent } from '@/utils/instrumentation'
+import { logClickEvent, logImpressionEvent } from '@/utils/instrumentation'
 
 interface CommanderComposerLeftProps {
   appId: string | null
@@ -36,6 +36,13 @@ export default function CommanderComposerLeft({ appId }: CommanderComposerLeftPr
   const setActiveCanvas = useCommanderStore((state) => state.setActiveCanvas)
 
   const isEditActive = viewMode === ViewMode.EDIT && !isAnnotationActive
+
+  const annotationImpressionFiredRef = useRef<boolean>(false)
+  useEffect(() => {
+    if (!isAnnotationEnabled || annotationImpressionFiredRef.current) return
+    annotationImpressionFiredRef.current = true
+    logImpressionEvent('commander.composer.annotation_mode', clickContext)()
+  }, [isAnnotationEnabled, clickContext])
 
   const handlePaletteClick = () => {
     logClickEvent('commander.composer.command_palette', clickContext)()
@@ -101,7 +108,6 @@ export default function CommanderComposerLeft({ appId }: CommanderComposerLeftPr
           aria-label={t('builder_commander_chat_row_annotation')}
           aria-pressed={isAnnotationActive}
           data-testid="commander-composer-annotation"
-          data-eid="commander.composer.annotation_mode"
           data-partial={isAnnotationActive ? 'componentAiro' : ''}
         />
       )}

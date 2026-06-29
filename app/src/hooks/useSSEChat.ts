@@ -1,5 +1,5 @@
 import { useParams } from 'next/navigation'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { type MutableRefObject, useCallback, useEffect, useRef, useState } from 'react'
 import { getMessageOriginForAuthType } from '@airo/shared/auth'
 
 import { isParkedOnAskQuestion } from '@/app/[market]/develop/components/chat/useLatestNBAs'
@@ -80,6 +80,34 @@ import { useSwitchboard } from './useSwitchboard'
 import { useTranslations } from './useTranslations'
 
 const BROWSER_TIMEZONE: string = Intl.DateTimeFormat().resolvedOptions().timeZone
+
+interface PendingAnnotationTurn {
+  selectionCount: number
+}
+
+function getAnnotationTurnInfo(options: SendMessageOptions): PendingAnnotationTurn | null {
+  const hasAnnotation: boolean = options.customContext?.customAttachments?.some(
+    (attachment) => attachment.type === 'annotation_context',
+  ) ?? false
+  if (!hasAnnotation) return null
+  const selectionCount: number =
+    options.aiEditContexts?.filter((context) => context.isAnnotation === true).length ?? 0
+  return { selectionCount }
+}
+
+function fireAnnotationMessageFailed(
+  ref: MutableRefObject<PendingAnnotationTurn | null>,
+  reason: string,
+): void {
+  const annotationTurn: PendingAnnotationTurn | null = ref.current
+  if (!annotationTurn) return
+  ref.current = null
+  logImpressionEvent('commander.annotation.message_failed', {
+    multiSelect: true,
+    selectionCount: annotationTurn.selectionCount,
+    reason,
+  })()
+}
 
 type ConnectionStatus = 'idle' | 'connecting' | 'authenticating' | 'streaming' | 'completing' | 'error'
 
@@ -243,6 +271,9 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
   // WS ErrorHandler retry loop: APP_NOT_FOUND is common during app
   // provisioning and should not surface as a terminal error for ~30s.
   const lastResolvedSendParamsRef = useRef<SendMessageParams | null>(null)
+  // Tracks whether the in-flight turn carried annotation context, so success/
+  // failure events can be attributed to it after the send completes.
+  const pendingAnnotationTurnRef = useRef<PendingAnnotationTurn | null>(null)
   const appNotFoundRetryRef = useRef<{ startTime: number; count: number; timer: ReturnType<typeof setTimeout> | null }>({
     startTime: 0, count: 0, timer: null,
   })
@@ -623,6 +654,14 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
                 incrementSessionPromptCount(activeAppId)
                 maybeShowFeedbackBanner()
                 trackCompletion(!!completeData?.usage)
+                const completedAnnotationTurn: PendingAnnotationTurn | null = pendingAnnotationTurnRef.current
+                if (completedAnnotationTurn) {
+                  pendingAnnotationTurnRef.current = null
+                  logImpressionEvent('commander.annotation.message_success', {
+                    multiSelect: true,
+                    selectionCount: completedAnnotationTurn.selectionCount,
+                  })()
+                }
                 if (!parkedOnAskQuestion) {
                   trackInitialBuildComplete(commitHash)
                 }
@@ -682,6 +721,7 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
                   store.markBudgetExceeded()
                   store.finalizeStream()
                   trackError('BUDGET_EXCEEDED')
+                  fireAnnotationMessageFailed(pendingAnnotationTurnRef, 'BUDGET_EXCEEDED')
                   return
                 }
 
@@ -770,6 +810,7 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
                 store.markUpstreamError(structuredError)
                 store.finalizeStream()
                 trackError(errorType)
+                fireAnnotationMessageFailed(pendingAnnotationTurnRef, errorType ?? 'UPSTREAM_ERROR')
               } else if (type === 'history_message') {
                 const wrapper = event.data as any
                 const isPagination = wrapper?.isPagination === true
@@ -1347,6 +1388,14 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
         isEmbedded: typeof window !== 'undefined' && window.self !== window.top,
       }
       lastResolvedSendParamsRef.current = resolvedSendParams
+      const annotationTurn: PendingAnnotationTurn | null = getAnnotationTurnInfo(options)
+      pendingAnnotationTurnRef.current = annotationTurn
+      if (annotationTurn) {
+        logImpressionEvent('commander.annotation.message_sent', {
+          multiSelect: true,
+          selectionCount: annotationTurn.selectionCount,
+        })()
+      }
       monitorRef.current?.markSend()
       await t.sendMessage(resolvedSendParams)
     } catch (err) {
@@ -1363,6 +1412,7 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
         s.finalizeStream()
         s.setIsLoading(false)
         trackError('BUDGET_EXCEEDED')
+        fireAnnotationMessageFailed(pendingAnnotationTurnRef, 'BUDGET_EXCEEDED')
         return
       }
 
@@ -1375,11 +1425,15 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
         statusCode: resolveUpstreamErrorStatusCode(errMessage, (err as { statusCode?: number }).statusCode),
       })
       s.finalizeStream()
+      fireAnnotationMessageFailed(pendingAnnotationTurnRef, 'UPSTREAM_ERROR')
     }
   }, [])
 
   const stop = useCallback(async (): Promise<void> => {
     monitorRef.current?.clearSend()
+    // A user-stopped turn is neither a success nor a failure; drop any pending
+    // annotation attribution so a late complete/error can't mis-fire on it.
+    pendingAnnotationTurnRef.current = null
     // Block straggler-driven re-opens until the next send (see ref comment).
     suppressStreamReopenRef.current = true
     const ack = transportRef.current?.stopGeneration().catch(err => {

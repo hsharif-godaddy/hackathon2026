@@ -230,6 +230,13 @@ export interface BusEventMap {
   SPEECH_STOP: object;
   EDITABLE_ELEMENT_CLICKED_IN_PREVIEW: { tagName: string };
   PREVIEW_UNSUPPORTED_FEATURE: { feature: BusUnsupportedFeature };
+  ANNOTATION_SELECTION_CREATED: {
+    data: {
+      number: number;
+      rect: { x: number; y: number; width: number; height: number };
+      prompt: string;
+    };
+  };
 }
 
 export type BusUnsupportedFeature = "payment" | "push-notification" | "oauth-popup";
