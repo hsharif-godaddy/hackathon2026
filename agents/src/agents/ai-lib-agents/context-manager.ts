@@ -364,10 +364,19 @@ export class AILibContextManager {
             // AIROBUILD-2364. Emit only a passive availability note for those.
             const attachedThisTurn: boolean = attachedUploadNames.has(fileName)
             if (!attachedThisTurn) {
-                const locationHint: string = isImage ? `src/assets/${displayName}` : `docs/${displayName}`
+                // Images: a chat-uploaded image is NOT on the workspace filesystem
+                // (the upload route only mirrors NON-image uploads into docs/), so
+                // pointing the agent at `src/assets/<name>` sends it hunting for a
+                // file that isn't there — and then reaching for a terminal `cp`
+                // (which can't touch the workspace tree) — the observed "src/assets
+                // is inaccessible / please re-upload" loop. Documents DO land in
+                // docs/, so keep that locator for them.
+                const availabilityNote: string = isImage
+                    ? `Uploaded \`${displayName}\` is available in your upload store (not on the workspace filesystem — do NOT look for it under \`src/assets\` or try to read/\`cp\` it from a terminal) but has not been placed on the site. Do not place it unless the user explicitly asks.`
+                    : `Uploaded \`${displayName}\` is available on disk (\`docs/${displayName}\`) but has not been placed on the site. Do not place it unless the user explicitly asks.`
                 conversationContextMessages.push({
                     role: 'user',
-                    content: `Uploaded \`${displayName}\` is available on disk (\`${locationHint}\`) but has not been placed on the site. Do not place it unless the user explicitly asks.`,
+                    content: availabilityNote,
                     insertionOrder: 'after_history',
                 })
                 continue
@@ -387,7 +396,16 @@ export class AILibContextManager {
                 isImage,
                 deflectedFromCanonical: entry.deflectedFromCanonical ?? false,
             })
-            const locationLine: string = `File location: \`${isImage ? `src/assets/${displayName}` : `docs/${displayName}`}\``
+            // For images, defer the "where/how" entirely to the Upload handling
+            // steps above (import_upload for slots, empty-content create for
+            // logos) — both pull the bytes from the upload store. Stating a
+            // `src/assets/<name>` "file location" is wrong (chat-upload images are
+            // not mirrored to the workspace tree) and makes the agent try to read
+            // or `cp` a file that isn't there. Documents are mirrored into docs/,
+            // so keep their locator.
+            const locationLine: string = isImage
+                ? `This upload lives in your upload store, not on the workspace filesystem — place it using the Upload handling steps above. Do NOT look for it under \`src/assets\` or read/\`cp\` it from a terminal.`
+                : `File location: \`docs/${displayName}\``
             // Dump the entry with the fresh stored filename too, so the agent
             // can't pick the stale one out of the raw JSON either. fileName and
             // summary (the latter is LLM vision output over a user image) are

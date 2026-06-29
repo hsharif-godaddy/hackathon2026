@@ -431,9 +431,56 @@ describe('AILibContextManager', () => {
       const classification = result.contextMessages.find((m) => m.content.includes('Upload Classification'))
       expect(classification).toBeDefined()
       expect(classification?.content).toContain('logo.png')
-      expect(classification?.content).toContain('src/assets/logo.png')
+      // A chat-uploaded image is NOT on the workspace filesystem, so the block
+      // must NOT claim a src/assets file location (which sends the agent hunting
+      // for a missing file / reaching for a terminal cp). It defers placement to
+      // the Upload handling steps and warns off src/assets.
+      expect(classification?.content).not.toContain('src/assets/logo.png')
+      expect(classification?.content).toContain('upload store')
       expect(classification?.content).toContain('## Upload handling')
       expect(workspaceFilesMock.view).toHaveBeenCalledWith({ path: 'docs/.upload-classification.json', limit: 65536 })
+    })
+
+    it('passive note for an unattached image points to the upload store, not src/assets', async () => {
+      viewByPath({
+        'docs/.upload-classifications.json': JSON.stringify({
+          files: [{ fileName: 'photo.png', placementIntent: 'unclear' }],
+        }),
+      })
+
+      const cm = new AILibContextManager()
+      const result = await cm.buildContextMessages(
+        '',
+        { metadata: { appId: 'app-123' } },
+        { includeTemplateDescription: false, includeAppContext: false }
+      )
+
+      const note = result.contextMessages.find((m) => m.content.includes('photo.png'))
+      expect(note).toBeDefined()
+      expect(note?.content).toContain('upload store')
+      // The warning may name `src/assets` ("do NOT look under src/assets"), but it
+      // must never state a concrete src/assets/<file> location for the image.
+      expect(note?.content).not.toContain('src/assets/photo.png')
+      expect(note?.content).toMatch(/not been placed/)
+    })
+
+    it('passive note for an unattached document keeps the docs/ locator (not changed by the image fix)', async () => {
+      viewByPath({
+        'docs/.upload-classifications.json': JSON.stringify({
+          files: [{ fileName: 'menu.pdf', placementIntent: 'unclear' }],
+        }),
+      })
+
+      const cm = new AILibContextManager()
+      const result = await cm.buildContextMessages(
+        '',
+        { metadata: { appId: 'app-123' } },
+        { includeTemplateDescription: false, includeAppContext: false }
+      )
+
+      const note = result.contextMessages.find((m) => m.content.includes('menu.pdf'))
+      expect(note?.content).toContain('docs/menu.pdf')
+      expect(note?.content).not.toContain('upload store')
     })
 
     it('emits only a terse "already placed" note (no re-handling block) for an already-registered image', async () => {
@@ -623,7 +670,10 @@ describe('AILibContextManager', () => {
       const note = result.contextMessages.find((m) => m.content.includes('product.jpg'))
       expect(note).toBeDefined()
       expect(note?.content).toContain('has not been placed')
-      expect(note?.content).toContain('src/assets/product.jpg')
+      // The image is in the upload store, not the workspace tree — the note must
+      // not claim a src/assets file path for it.
+      expect(note?.content).toContain('upload store')
+      expect(note?.content).not.toContain('src/assets/product.jpg')
       expect(note?.content).not.toContain('## Upload handling')
       expect(note?.content).not.toContain('## Upload Classification')
     })
