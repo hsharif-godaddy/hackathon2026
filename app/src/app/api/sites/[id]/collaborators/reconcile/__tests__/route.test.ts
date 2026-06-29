@@ -41,6 +41,11 @@ vi.mock('@/lib/authz-fga/relations', () => ({
   AUTHZ_FGA_RELATIONS: { canTransfer: 'owner' },
 }));
 
+const mockResolveOwnerPaidPlan = vi.hoisted(() => vi.fn().mockResolvedValue({ allowed: true }));
+vi.mock('@/lib/mgmt-airo/resolve-owner-paid-plan', () => ({
+  resolveOwnerPaidPlan: mockResolveOwnerPaidPlan,
+}));
+
 // withCustomerAuth wrapper — injects a fixed authed context. The handler is the
 // second arg; the real wrapper applies { level: 3 }, which is irrelevant here.
 vi.mock('@/lib/customer-auth', () => ({
@@ -148,5 +153,23 @@ describe('POST /api/sites/[id]/collaborators/reconcile', () => {
     const body = await res.json();
     expect(body).toMatchObject({ success: true, grantFailures: 1 });
     expect(mockLogger.warn).toHaveBeenCalledWith('sites.collaborators.reconcile.partial', expect.any(Object));
+  });
+
+  it('returns 403 when the owner is on a free tier (server-side paywall)', async () => {
+    mockResolveOwnerPaidPlan.mockResolvedValue({ allowed: false, reason: 'free_tier' });
+    const res = await POST(makeRequest(), routeParams());
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body.error).toContain('paid plan');
+    expect(mockReconcile).not.toHaveBeenCalled();
+  });
+
+  it('returns 503 when subscription fetch fails (infra error, not paywall)', async () => {
+    mockResolveOwnerPaidPlan.mockResolvedValue({ allowed: false, reason: 'fetch_failed' });
+    const res = await POST(makeRequest(), routeParams());
+    expect(res.status).toBe(503);
+    const body = await res.json();
+    expect(body.error).toContain('verify subscription');
+    expect(mockReconcile).not.toHaveBeenCalled();
   });
 });

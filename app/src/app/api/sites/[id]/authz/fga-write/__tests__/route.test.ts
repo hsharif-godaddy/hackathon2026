@@ -67,6 +67,11 @@ vi.mock('@/lib/mgmt-airo/collaborator-sync', () => ({
   syncCollaboratorsToMgmtAiro: vi.fn().mockResolvedValue({ grantFailures: 0, granted: 0 }),
 }));
 
+const mockResolveOwnerPaidPlan = vi.hoisted(() => vi.fn().mockResolvedValue({ allowed: true }));
+vi.mock('@/lib/mgmt-airo/resolve-owner-paid-plan', () => ({
+  resolveOwnerPaidPlan: mockResolveOwnerPaidPlan,
+}));
+
 // Keep the real relations module so the allowlist under test is the real one.
 
 import { POST } from '@/app/api/sites/[id]/authz/fga-write/route';
@@ -229,6 +234,34 @@ describe('POST /api/sites/[id]/authz/fga-write tuple constraint', () => {
       routeParams('site-1')
     );
     expect(res.status).toBe(403);
+    expect(mockWriteFgaTuples).not.toHaveBeenCalled();
+  });
+
+  it('returns 403 when the owner is on a free tier (server-side paywall)', async () => {
+    mockResolveOwnerPaidPlan.mockResolvedValue({ allowed: false, reason: 'free_tier' });
+    const res = await POST(
+      makeRequest({
+        writes: [{ user: 'customer:cust-2', relation: 'airo_app_view', object: `venture:${VENTURE_ID}` }],
+      }),
+      routeParams('site-1')
+    );
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body.error).toContain('paid plan');
+    expect(mockWriteFgaTuples).not.toHaveBeenCalled();
+  });
+
+  it('returns 503 when subscription fetch fails (infra error, not paywall)', async () => {
+    mockResolveOwnerPaidPlan.mockResolvedValue({ allowed: false, reason: 'fetch_failed' });
+    const res = await POST(
+      makeRequest({
+        writes: [{ user: 'customer:cust-2', relation: 'airo_app_view', object: `venture:${VENTURE_ID}` }],
+      }),
+      routeParams('site-1')
+    );
+    expect(res.status).toBe(503);
+    const body = await res.json();
+    expect(body.error).toContain('verify subscription');
     expect(mockWriteFgaTuples).not.toHaveBeenCalled();
   });
 });

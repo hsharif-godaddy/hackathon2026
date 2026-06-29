@@ -18,6 +18,7 @@ import {
   withCustomerAuth,
 } from '@/lib/customer-auth';
 import { syncCollaboratorsToMgmtAiro } from '@/lib/mgmt-airo/collaborator-sync';
+import { resolveOwnerPaidPlan } from '@/lib/mgmt-airo/resolve-owner-paid-plan';
 import { logger } from '@/lib/request-context';
 import { checkSwitchboardFlag } from '@/lib/switchboard/server';
 
@@ -102,6 +103,27 @@ export const POST = withCustomerAuth(
     });
     if (memberDeny) {
       return memberDeny;
+    }
+
+    // Server-side paywall enforcement: free-tier owners cannot invite
+    // collaborators. This is the backend gate backing the client-side paywall
+    // banner — both agree so a direct API call cannot bypass the UX.
+    const ownerPlan = await resolveOwnerPaidPlan({
+      jwt: authContext.jwt,
+      subscriptionId: site.subscription_id,
+      siteId,
+    });
+    if (!ownerPlan.allowed) {
+      if (ownerPlan.reason === 'fetch_failed') {
+        return NextResponse.json(
+          { error: 'Unable to verify subscription status. Please try again.' },
+          { status: 503 }
+        );
+      }
+      return NextResponse.json(
+        { error: 'A paid plan is required to invite collaborators' },
+        { status: 403 }
+      );
     }
 
     const cfg = getAuthzFgaConfig();
