@@ -137,7 +137,7 @@ export default function PublishDomainSelector({
       <div className='rounded-lg border border-intents-ux-boxLowContrast-borderColor p-2'>
         <div className='mb-1 flex items-center justify-between gap-2'>
           <text.strong size={-1} className='text-intents-ux-box-foregroundColor'>
-            {t('builder_publish_custom_domain_title', undefined, 'Custom Domain')}
+            {t('builder_publish_custom_domain_title')}
           </text.strong>
           {hasDomains ? (
             <button
@@ -148,7 +148,7 @@ export default function PublishDomainSelector({
               className='inline-flex shrink-0 items-center gap-0.5 text-intents-ux-link-foregroundColor hover:cursor-pointer'
             >
               <CartIcon className='size-2' />
-              <text.span size={-1}>{t('builder_publish_new_domain', undefined, 'New Domain')}</text.span>
+              <text.span size={-1}>{t('builder_publish_new_domain')}</text.span>
             </button>
           ) : null}
         </div>
@@ -156,7 +156,7 @@ export default function PublishDomainSelector({
         {visibleDomains.length > 0 ? (
           <div
             role='radiogroup'
-            aria-label={t('builder_publish_custom_domain_title', undefined, 'Custom Domain')}
+            aria-label={t('builder_publish_custom_domain_title')}
             onKeyDown={handleRadioGroupKeyDown}
             className='flex flex-col overflow-hidden rounded-md'
           >
@@ -170,10 +170,10 @@ export default function PublishDomainSelector({
                 onSelect={() => onSelect(domain.fqdn)}
                 subtitle={
                   matchesProjectFqdn === domain.fqdn
-                    ? t('builder_publish_domain_matches_project', undefined, 'This domain matches your project.')
+                    ? t('builder_publish_domain_matches_project')
                     : undefined
                 }
-                badgeLabel={domain.inUse ? t('builder_publish_domain_in_use', undefined, 'In use') : undefined}
+                badgeLabel={domain.inUse ? t('builder_publish_domain_in_use') : undefined}
               />
             ))}
           </div>
@@ -182,7 +182,7 @@ export default function PublishDomainSelector({
             <TextInput
               label={null}
               visualSize='sm'
-              placeholder={t('builder_publish_find_domain_placeholder', undefined, 'Find your perfect domain')}
+              placeholder={t('builder_publish_find_domain_placeholder')}
               onKeyDown={(event: KeyboardEvent<HTMLInputElement>) => {
                 if (event.key === 'Enter') onNewDomain();
               }}
@@ -193,7 +193,7 @@ export default function PublishDomainSelector({
               onClick={onNewDomain}
               data-eid={generateClickEID('develop.publish.search_domain')}
               data-testid='publish-search-domain'
-              aria-label={t('builder_publish_find_domain_placeholder', undefined, 'Find your perfect domain')}
+              aria-label={t('builder_publish_find_domain_placeholder')}
               className='flex shrink-0 items-center justify-center rounded-l-none rounded-r-md bg-intents-ux-boxHighContrast-backgroundColor px-2 text-intents-ux-boxHighContrast-foregroundColor hover:cursor-pointer'
             >
               <SearchIcon className='size-2' />
@@ -211,7 +211,7 @@ export default function PublishDomainSelector({
               className='py-1 text-left hover:cursor-pointer'
             >
               <text.span size={-1} className='text-intents-ux-box-foregroundColor underline'>
-                {t('builder_publish_see_all_domains', undefined, 'See all domains I own')}
+                {t('builder_publish_see_all_domains')}
               </text.span>
             </button>
           ) : null}
@@ -224,7 +224,7 @@ export default function PublishDomainSelector({
             className='py-1 text-left hover:cursor-pointer'
           >
             <text.span size={-1} className='text-intents-ux-box-foregroundColor underline'>
-              {t('builder_publish_use_external_domain', undefined, 'Use a domain I own elsewhere')}
+              {t('builder_publish_use_external_domain')}
             </text.span>
           </button>
         </div>
@@ -233,9 +233,9 @@ export default function PublishDomainSelector({
       {freeProjectUrl ? (
         <div className='rounded-lg border border-intents-ux-boxLowContrast-borderColor p-2'>
           <text.strong size={-1} className='mb-1 block text-intents-ux-box-foregroundColor'>
-            {t('builder_publish_free_project_url_title', undefined, 'Free Project URL')}
+            {t('builder_publish_free_project_url_title')}
           </text.strong>
-          <div role='radiogroup' aria-label={t('builder_publish_free_project_url_title', undefined, 'Free Project URL')}>
+          <div role='radiogroup' aria-label={t('builder_publish_free_project_url_title')}>
             <DomainRadioRow
               testId='publish-free-url-item'
               label={freeProjectUrl}

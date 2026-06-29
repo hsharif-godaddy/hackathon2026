@@ -26,6 +26,7 @@ import TextLockup from '@ux/text-lockup';
 import IconButton from '@/app/[market]/develop/components/IconButton';
 import { ChatTab, MobileMode, SettingsSection, ViewMode } from '@/app/[market]/develop/components/types';
 import { FEEDBACK_ID } from '@/components/feedback/utils';
+import PublishDomainConflict from '@/components/layout/PublishDomainConflict';
 import PublishDomainSelector, { type SelectableDomain } from '@/components/layout/PublishDomainSelector';
 import PublishUpsellPopover from '@/components/layout/PublishUpsellPopover';
 import SeoQualityRegressionAlert from '@/components/layout/SeoQualityRegressionAlert';
@@ -40,7 +41,7 @@ import { useGitHistoryQuery } from '@/hooks/useGitHistory';
 import { useGscSitemapOnPublish } from '@/hooks/useGscSitemapOnPublish';
 import { useHivemind } from '@/hooks/useHivemind';
 import { useIsHistoryDisabled } from '@/hooks/useIsHistoryDisabled';
-import { DomainMutationError, useModifyDomains } from '@/hooks/useModifyDomains';
+import { type DomainMutationDetails, DomainMutationError, useModifyDomains } from '@/hooks/useModifyDomains';
 import { usePaywallEligibility } from '@/hooks/usePaywallEligibility';
 import { usePaywallModal } from '@/hooks/usePaywallModal';
 import { usePublishApp } from '@/hooks/usePublishApp';
@@ -59,7 +60,7 @@ import { DomainStatus, DomainType } from '@/lib/control-plane/types';
 import { markFeedbackRevealMilestone } from '@/lib/initial-build-reveal-storage';
 import { JourneyTracker } from '@/lib/journeyTracker';
 import { shipAnalyticsLog } from '@/lib/logging';
-import { DeploymentStatus } from '@/lib/mgmt-airo/types';
+import { DeploymentStatus, MWP_V2_APP_OWNER_TYPE } from '@/lib/mgmt-airo/types';
 import { shouldSuppressPublishError } from '@/lib/paywall/publish-permission-denied';
 import { PAYWALL_ITC } from '@/lib/paywall/shared';
 import { openPostPublishFeatureSelectionInChat } from '@/lib/post-publish-feature-selection';
@@ -136,6 +137,9 @@ export default function AppPublish({ location = 'develop' }: { location?: string
   const [publishResult, setPublishResult] = useState<'success' | 'failed' | null>(null);
   const [isFixingBuildError, setIsFixingBuildError] = useState(false);
   const [securityFooterDismissed, setSecurityFooterDismissed] = useState(false);
+  // Drives the "domain in use" override confirmation when the picked domain is used elsewhere.
+  const [domainConflict, setDomainConflict] = useState<DomainMutationDetails['conflictDetails'] | null>(null);
+  const [isOverriding, setIsOverriding] = useState(false);
   const openRef = useRef(false);
   const prevAppIdRef = useRef<string | null>(null);
   const prevPublishingRef = useRef(false);
@@ -487,6 +491,7 @@ export default function AppPublish({ location = 'develop' }: { location?: string
       setIsFixingBuildError(false);
       setIsAgentInitiatedPublish(false);
       setSelectedDomainFqdn('');
+      setDomainConflict(null);
     }
   }, [currentAppId, publishPopoverRequestNonce]);
 
@@ -535,6 +540,23 @@ export default function AppPublish({ location = 'develop' }: { location?: string
   const handleUpsellPublishClick = useCallback(() => {
     logClickEvent(publishTriggerClickEid(location, isFirstTimePublishing), clickContext)();
   }, [location, isFirstTimePublishing, clickContext]);
+
+  // Publish mutation + post-publish security scan; shared by the normal and override paths.
+  const performPublish = useCallback(async (appId: string, consent?: boolean): Promise<void> => {
+    await publishMutation.mutateAsync({ appId, dnsUpdateConsent: consent });
+    JourneyTracker.current()?.trackMilestone('site_published', { appId });
+    triggerAnalysis(appId, site?.preview_url ?? undefined, {
+      onSafe: () => {
+        setSecurityAnalysisResult(appId, 'safe');
+        setPendingSecurityGrowl('safe');
+      },
+      onIssuesFound: () => {
+        markSettingsNotification(appId, SettingsSection.SECURITY);
+        setSecurityAnalysisResult(appId, 'issues');
+        setPendingSecurityGrowl('issues');
+      },
+    });
+  }, [publishMutation, site, triggerAnalysis, setSecurityAnalysisResult]);
 
   // Internal deploy function (called after QA gate passes or is skipped)
   const handleDeploy = useCallback(async () => {
@@ -605,15 +627,10 @@ export default function AppPublish({ location = 'develop' }: { location?: string
         logger.warn('app-publish.analytics.failed', { appId: currentAppId, error: e instanceof Error ? e.message : String(e) })
       }
 
-      // Default-domain-selection treatment: only when the user EXPLICITLY picked a custom domain
-      // (selectedDomainFqdn — not the visual default), attach it as primary before publishing
-      // (freeing mgmt-airo's single custom-domain slot by detaching other active custom domains).
-      // Gating on the explicit selection prevents a routine/agent publish from silently re-pointing
-      // the live domain via the defaulted pre-selection.
+      // Attach only when the user EXPLICITLY picked a custom domain (not the visual default), so a
+      // routine/agent publish can't silently re-point the live domain.
       const normalizedSelected = selectedDomainFqdn.replace(/^https?:\/\//, '').toLowerCase();
-      // Any non-prefix domain already on the app (regardless of status) counts as connected — a
-      // PENDING/stale row would otherwise trigger a redundant attach that mgmt rejects with
-      // DOMAIN_ALREADY_OWNED.
+      // Any non-prefix domain already on the app counts as connected (avoids a redundant attach).
       const appCustomDomains = (site.domains ?? []).filter(
         (d) => d.domainType !== DomainType.PREFIX && !!d.fqdn,
       );
@@ -640,9 +657,21 @@ export default function AppPublish({ location = 'develop' }: { location?: string
           // Already attached to this app → goal already met, continue to publish.
           if (attachError instanceof DomainMutationError && attachError.details.nestedCode === 'DOMAIN_ALREADY_OWNED') {
             logger.info('app-publish.domain-attach.already-owned', { appId: currentAppId, fqdn: selectedDomainFqdn });
+          } else if (attachError instanceof DomainMutationError && attachError.details.conflictDetails) {
+            // Connected to another project — show the override confirmation instead of failing.
+            logger.info('app-publish.domain-attach.conflict', {
+              appId: currentAppId,
+              fqdn: selectedDomainFqdn,
+              nestedCode: attachError.details.nestedCode,
+            });
+            shipAnalyticsLog('publish.domain_attach.conflict', { appId: currentAppId, fqdn: selectedDomainFqdn });
+            setDomainConflict(attachError.details.conflictDetails);
+            setIsPublishing(currentAppId, false);
+            // The DNS gate may have closed the popover; reopen it for the override confirmation.
+            setOpen(true);
+            return;
           } else {
-            // Real attach failure — preserve the typed conflict detail (lost by the generic catch)
-            // and abort publish so the user isn't silently published without the chosen domain.
+            // Real attach failure — keep the typed conflict detail and abort publish.
             if (attachError instanceof DomainMutationError) {
               logger.error('app-publish.domain-attach.failure', {
                 appId: currentAppId,
@@ -661,23 +690,7 @@ export default function AppPublish({ location = 'develop' }: { location?: string
         }
       }
 
-      await publishMutation.mutateAsync({
-        appId: currentAppId,
-        dnsUpdateConsent: gateResult.consent,
-      });
-      JourneyTracker.current()?.trackMilestone('site_published', { appId: currentAppId })
-
-      triggerAnalysis(currentAppId, site?.preview_url ?? undefined, {
-        onSafe: () => {
-          setSecurityAnalysisResult(currentAppId, 'safe');
-          setPendingSecurityGrowl('safe');
-        },
-        onIssuesFound: () => {
-          markSettingsNotification(currentAppId, SettingsSection.SECURITY);
-          setSecurityAnalysisResult(currentAppId, 'issues');
-          setPendingSecurityGrowl('issues');
-        },
-      });
+      await performPublish(currentAppId, gateResult.consent);
       // Note: usePublishApp hook polls until deployment appears and triggers refetch
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -693,7 +706,69 @@ export default function AppPublish({ location = 'develop' }: { location?: string
 
       setIsPublishing(currentAppId, false);
     }
-  }, [clickContext, currentAppId, site, location, isFirstTimePublishing, isPublishComplianceBlocked, publishComplianceBlockReason, setPublishError, setIsPublishing, clearPublishStatus, publishMutation, runGate, triggerAnalysis, setSecurityAnalysisResult, showDomainSelector, selectedDomainFqdn, freeProjectUrl, modifyDomains]);
+  }, [clickContext, currentAppId, site, location, isFirstTimePublishing, isPublishComplianceBlocked, publishComplianceBlockReason, setPublishError, setIsPublishing, clearPublishStatus, performPublish, runGate, setSecurityAnalysisResult, showDomainSelector, selectedDomainFqdn, freeProjectUrl, modifyDomains]);
+
+  // Override: transfer the domain off the other project, then publish.
+  const handleOverrideAndPublish = useCallback(async () => {
+    if (!currentAppId || !domainConflict) return;
+    const conflict = domainConflict;
+    const normalizedConflictFqdn = conflict.domain.replace(/^https?:\/\//, '').toLowerCase();
+    // Free mgmt-airo's single custom-domain slot so the transfer doesn't 409.
+    const domainsToDelete = (site?.domains ?? [])
+      .filter(
+        (d) =>
+          d.domainType !== DomainType.PREFIX &&
+          d.status === DomainStatus.ACTIVE &&
+          !!d.fqdn &&
+          d.fqdn.replace(/^https?:\/\//, '').toLowerCase() !== normalizedConflictFqdn,
+      )
+      .map((d) => ({ fqdn: d.fqdn }));
+    setIsOverriding(true);
+    try {
+      await modifyDomains.mutateAsync({
+        siteId: currentAppId,
+        payload: {
+          domainsToCreate: [{ fqdn: conflict.domain, primary: true }],
+          domainsToDelete,
+          createCdn: true,
+          isWildcardDomain: true,
+          ...(conflict.existingOwnerType === MWP_V2_APP_OWNER_TYPE
+            ? { transferFromMWP: { v2AppId: conflict.existingAppId } }
+            : {
+              transferFrom: {
+                appId: conflict.existingAppId,
+                systemId: conflict.existingSystemId ?? '',
+                subscriptionId: conflict.existingOwnerId,
+              },
+            }),
+        },
+      });
+      shipAnalyticsLog('publish.domain_attach.override_success', { appId: currentAppId, fqdn: conflict.domain });
+      clearPublishStatus(currentAppId);
+      setIsPublishing(currentAppId, true);
+      // Keep the banner through "Overriding and Publishing…", then clear once publish starts.
+      await performPublish(currentAppId);
+      setDomainConflict(null);
+    } catch (error) {
+      logger.error('app-publish.domain-attach.override-failed', {
+        appId: currentAppId,
+        fqdn: conflict.domain,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      shipAnalyticsLog('publish.domain_attach.override_failed', { appId: currentAppId, fqdn: conflict.domain });
+      setDomainConflict(null);
+      setPublishError(currentAppId, true);
+      setIsPublishing(currentAppId, false);
+      setPublishResult('failed');
+    } finally {
+      setIsOverriding(false);
+    }
+  }, [currentAppId, domainConflict, site, modifyDomains, performPublish, clearPublishStatus, setIsPublishing, setPublishError]);
+
+  const handleChangeDomain = useCallback(() => {
+    setDomainConflict(null);
+    modifyDomains.reset();
+  }, [modifyDomains]);
 
   // Flush the deferred security growl only once publish is fully resolved.
   useEffect(() => {
@@ -1044,6 +1119,7 @@ export default function AppPublish({ location = 'develop' }: { location?: string
     if (!shouldOpen) {
       setOpen(false);
       setPublishResult(null);
+      setDomainConflict(null);
       return;
     }
     // No early-return on `isSsoBlocked` here — by design, the popover MUST
@@ -1134,7 +1210,7 @@ export default function AppPublish({ location = 'develop' }: { location?: string
           <Box orientation='vertical' displayType='flex' inlinePadding='lg' blockPadding='lg' gap='md'>
             <TextLockup
               title={t('builder_publish_popover_title')}
-              size='sm'
+              size={showDomainSelector ? 'md' : 'sm'}
             >
               {isFirstTimePublishing && publishLimit !== null && publishLimit > 0 && (
                 <FormattedMessage
@@ -1147,6 +1223,16 @@ export default function AppPublish({ location = 'develop' }: { location?: string
               )}
             </TextLockup>
 
+            {domainConflict ? (
+              <PublishDomainConflict
+                domain={domainConflict.domain}
+                existingProjectName={domainConflict.existingAppName || domainConflict.existingAppId}
+                isOverriding={isOverriding}
+                onChangeDomain={handleChangeDomain}
+                onOverride={handleOverrideAndPublish}
+              />
+            ) : (
+              <>
             {lastDeployedDate && (
               <button
                 type='button'
@@ -1322,7 +1408,11 @@ export default function AppPublish({ location = 'develop' }: { location?: string
               </Box>
             )}
 
-            {isPublishingOrDeploying && publishResult === null && (
+              </>
+            )}
+
+            {/* Feedback + security footer: shown during a normal publish or a conflict override. */}
+            {(isPublishingOrDeploying || isOverriding) && publishResult === null && (
               <Button
                 type='button'
                 className='w-full'
@@ -1333,7 +1423,7 @@ export default function AppPublish({ location = 'develop' }: { location?: string
               />
             )}
 
-            {isSecurityScanUiEnabled && !securityFooterDismissed && (isPublishingOrDeploying || isSecurityAnalysisRunning || securityAnalysisResult !== null) && (
+            {isSecurityScanUiEnabled && !securityFooterDismissed && (isPublishingOrDeploying || isOverriding || isSecurityAnalysisRunning || securityAnalysisResult !== null) && (
               <>
                 <Separator />
                 <div className='-mx-5 -mb-5 px-5 py-3 bg-intents-ux-boxLowContrast-backgroundColor rounded-b-md flex items-start gap-2'>
