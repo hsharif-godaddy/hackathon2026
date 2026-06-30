@@ -139,6 +139,13 @@ export default makeGasket({
       switchboard: {
         env: 'test'
       },
+      presentationCentral: {
+        // @godaddy/gasket-plugin-uxp normalizeEnv maps GASKET_ENV "local.test" → "dev"
+        // (substring "local" matches first). Without env: 'test', presentationCentral
+        // seeds window.ux.data.env as "dev" and godaddyMonetizationBannerEsm hits DEV
+        // RAD/API hosts against TEST SSO (CORS failures / empty banner).
+        env: 'test',
+      },
       cds: {
         api: {
           baseUrl: 'https://cds.api.int.test-godaddy.com',
@@ -216,6 +223,9 @@ export default makeGasket({
       insightsSsoHost: 'sso.test-godaddy.com',
       switchboard: {
         env: 'test'
+      },
+      presentationCentral: {
+        env: 'test',
       },
       cds: {
         api: {
@@ -391,6 +401,7 @@ export default makeGasket({
     componentTypes: [
       'godaddyUnifiedPlansAndPricingLibraryEsm',
       'godaddyUnifiedPlansAndPricingLibrary',
+      'godaddyMonetizationBannerEsm',
       'multiusersEsm',
     ],
     appName: 'airo-app-builder',

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { decodeTokenPayload, extractTokenFromRequest } from './gd-auth-service';
+import { decodeTokenPayload, extractTokenFromRequest, resolveShopperEmail, resolveShopperName } from './gd-auth-service';
 
 // Create shared mock authenticate function at module level
 const mockAuthenticate = vi.fn();
@@ -169,6 +169,35 @@ describe('extractTokenFromRequest (standalone function)', () => {
     const token = extractTokenFromRequest(request);
 
     expect(token).toBeNull();
+  });
+});
+
+describe('resolveShopperEmail', function resolveShopperEmailTests() {
+  it('should prefer payload email when it contains @', function payloadEmail() {
+    expect(resolveShopperEmail({ email: 'user@example.com' }, 'other@example.com')).toBe('user@example.com');
+  });
+
+  it('should fall back to username when payload email is absent', function usernameFallback() {
+    expect(resolveShopperEmail({}, 'user@example.com')).toBe('user@example.com');
+  });
+
+  it('should return undefined when neither source has an email', function noEmail() {
+    expect(resolveShopperEmail({ email: 'not-an-email' }, 'also-not-email')).toBeUndefined();
+    expect(resolveShopperEmail(undefined, undefined)).toBeUndefined();
+  });
+});
+
+describe('resolveShopperName', function resolveShopperNameTests() {
+  it('should compose first and last name', function fullName() {
+    expect(resolveShopperName({ firstname: 'Test', lastname: 'User' })).toBe('Test User');
+  });
+
+  it('should return undefined when shopper payload is absent', function noPayload() {
+    expect(resolveShopperName(undefined)).toBeUndefined();
+  });
+
+  it('should return undefined when name fields are missing', function missingFields() {
+    expect(resolveShopperName({})).toBeUndefined();
   });
 });
 

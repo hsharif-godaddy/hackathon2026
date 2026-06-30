@@ -63,6 +63,34 @@ export function decodeTokenPayload(token: string): { cid?: string; shopperId?: s
   }
 }
 
+export function resolveShopperEmail(
+  shopperPayload: Record<string, unknown> | undefined,
+  username: string | undefined,
+): string | undefined {
+  const payloadEmail = shopperPayload?.email;
+  if (typeof payloadEmail === 'string' && payloadEmail.includes('@')) {
+    return payloadEmail;
+  }
+
+  if (typeof username === 'string' && username.includes('@')) {
+    return username;
+  }
+
+  return undefined;
+}
+
+export function resolveShopperName(
+  shopperPayload: Record<string, unknown> | undefined,
+): string | undefined {
+  if (!shopperPayload) return undefined;
+
+  const firstName = typeof shopperPayload.firstname === 'string' ? shopperPayload.firstname : undefined;
+  const lastName = typeof shopperPayload.lastname === 'string' ? shopperPayload.lastname : undefined;
+  const fullName = [firstName, lastName].filter(Boolean).join(' ');
+
+  return fullName || undefined;
+}
+
 export class GdAuthService {
   private gdAuth: any;
   private ssoHost: string;
@@ -137,12 +165,18 @@ export class GdAuthService {
       // These handle all auth types: basic, e2s, s2s, e2s2s, s2snpr, cert2s, etc.
       const shopperId = jwt.getShopperId();
       const cid = jwt.getCustomerId();
+      const username = jwt.getUsername();
+      const shopperPayload = jwt.getShopperPayload() as Record<string, unknown> | undefined;
+      const email = resolveShopperEmail(shopperPayload, username);
+      const name = resolveShopperName(shopperPayload);
 
       return {
         valid: true,
         payload: {
           shopperId,
           cid,
+          email,
+          name,
           exp: jwt.exp,
           iat: jwt.iat,
           hbi: jwt.hbi,

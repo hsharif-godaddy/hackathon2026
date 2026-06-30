@@ -4,6 +4,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  */
 import { renderHook, waitFor } from '@testing-library/react';
 
+const mockGetEmailFromDocumentInfoIdpCookies = vi.fn();
+
+vi.mock('@/lib/auth/info-idp-cookie', () => ({
+  getEmailFromDocumentInfoIdpCookies: () => mockGetEmailFromDocumentInfoIdpCookies(),
+}));
+
 import { useAuth } from './useAuth';
 
 // Mock dependencies
@@ -275,6 +281,104 @@ describe('useAuth', () => {
       await waitFor(() => {
         expect(result.current.tokenAuthType).toBeUndefined();
       });
+    });
+
+    it('should read shopperId from auth validate payload when details is absent', async () => {
+      mockGetEmailFromDocumentInfoIdpCookies.mockReturnValue(undefined);
+      mockGasketConfig = {
+        ...defaultTestConfig,
+        auth: {
+          ...defaultTestConfig.auth,
+          isJWT: true,
+          isMock: false,
+        },
+      };
+
+      const gasketConfigModule = await import('@/lib/gasket-config');
+      vi.mocked(gasketConfigModule.isAuthJWTSync).mockReturnValue(true);
+      vi.mocked(gasketConfigModule.isAuthMockSync).mockReturnValue(false);
+
+      const gasketAuth = await import('@godaddy/gasket-auth');
+      vi.mocked(gasketAuth.useAuthState).mockReturnValue({
+        status: 'loaded',
+        valid: true,
+        payload: { shopperId: 'payload-shopper', cid: 'payload-customer' },
+      } as any);
+
+      const { result } = renderHook(() => useAuth());
+
+      await waitFor(() => {
+        expect(result.current.getUserInfo()).toEqual({
+          customerId: 'payload-customer',
+          shopperId: 'payload-shopper',
+          accountName: undefined,
+          email: undefined,
+        });
+      });
+    });
+
+    it('should not use cid as email when validate details omit email', async () => {
+      mockGetEmailFromDocumentInfoIdpCookies.mockReturnValue(undefined);
+
+      mockGasketConfig = {
+        ...defaultTestConfig,
+        auth: {
+          ...defaultTestConfig.auth,
+          isJWT: true,
+          isMock: false,
+        },
+      };
+
+      const gasketConfigModule = await import('@/lib/gasket-config');
+      vi.mocked(gasketConfigModule.isAuthJWTSync).mockReturnValue(true);
+      vi.mocked(gasketConfigModule.isAuthMockSync).mockReturnValue(false);
+
+      const gasketAuth = await import('@godaddy/gasket-auth');
+      vi.mocked(gasketAuth.useAuthState).mockReturnValue({
+        status: 'loaded',
+        valid: true,
+        details: { shopperId: 'shopper-1', cid: 'customer-uuid-not-email' },
+      } as any);
+
+      const { result } = renderHook(() => useAuth());
+
+      await waitFor(() => {
+        expect(result.current.getUserEmail()).toBeUndefined();
+        expect(result.current.getUserInfo().email).toBeUndefined();
+      });
+      expect(mockGetEmailFromDocumentInfoIdpCookies).toHaveBeenCalled();
+    });
+
+    it('should fall back to info_idp cookie email when validate details omit email', async () => {
+      mockGetEmailFromDocumentInfoIdpCookies.mockReturnValue('cookie@example.com');
+
+      mockGasketConfig = {
+        ...defaultTestConfig,
+        auth: {
+          ...defaultTestConfig.auth,
+          isJWT: true,
+          isMock: false,
+        },
+      };
+
+      const gasketConfigModule = await import('@/lib/gasket-config');
+      vi.mocked(gasketConfigModule.isAuthJWTSync).mockReturnValue(true);
+      vi.mocked(gasketConfigModule.isAuthMockSync).mockReturnValue(false);
+
+      const gasketAuth = await import('@godaddy/gasket-auth');
+      vi.mocked(gasketAuth.useAuthState).mockReturnValue({
+        status: 'loaded',
+        valid: true,
+        details: { shopperId: 'shopper-1', cid: 'customer-1' },
+      } as any);
+
+      const { result } = renderHook(() => useAuth());
+
+      await waitFor(() => {
+        expect(result.current.getUserEmail()).toBe('cookie@example.com');
+        expect(result.current.getUserInfo().email).toBe('cookie@example.com');
+      });
+      expect(mockGetEmailFromDocumentInfoIdpCookies).toHaveBeenCalled();
     });
   });
 

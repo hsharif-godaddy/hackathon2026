@@ -355,6 +355,15 @@
   }
 }
 
+/* Inline Monetization Banner in the preview header (portal={false}).
+   CTA opens UPP via UpgradeModal on document.body (.cds-paywall-portal). */
+.cds-monetization-banner {
+  position: relative;
+  width: 100%;
+  margin-bottom: 8px;
+  pointer-events: auto;
+}
+
 /* Full-page portal for the multiusers (Share access) bundle. Unlike the paywall
    portal above, this bundle is page content with NO modal/backdrop of its own,
    so the container must be opaque, scrollable, and interactive. Reusing the

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { AuthIdpType, AuthRealmType, AuthRiskType, useAuthState } from '@godaddy/gasket-auth';
 
 import { useMockAuth } from '@/hooks/useMockAuth';
+import { getEmailFromDocumentInfoIdpCookies } from '@/lib/auth/info-idp-cookie';
 import {
   authConfigs,
   type GasketConfig,
@@ -13,6 +14,33 @@ import {
   isAuthMockSync,
 } from '@/lib/gasket-config';
 import { logger } from '@/lib/request-context';
+
+interface AuthValidateDetails {
+  cid?: string;
+  customerId?: string;
+  shopperId?: string;
+  email?: string;
+  accountName?: string;
+  name?: string;
+}
+
+function getValidatedAuthDetails(
+  authState: ReturnType<typeof useAuthState>,
+): AuthValidateDetails | undefined {
+  const extended = authState as ReturnType<typeof useAuthState> & {
+    payload?: AuthValidateDetails;
+  };
+
+  if (extended.details && typeof extended.details === 'object') {
+    return extended.details as AuthValidateDetails;
+  }
+
+  if (extended.payload && typeof extended.payload === 'object') {
+    return extended.payload;
+  }
+
+  return undefined;
+}
 
 interface UseAuthOptions {
   onShowMockLogin?: () => void;
@@ -83,11 +111,14 @@ export function useAuth(options: UseAuthOptions = {}) {
     };
   }, []);
 
-  const getUserEmail = () => {
+  const getUserEmail = (): string | undefined => {
     if (isMockAuth && mockAuth.isAuthenticated) {
       return mockAuth.user?.email || 'mock@example.com';
     }
-    return authState.details?.email || authState.details?.cid || 'user@example.com';
+    const details = getValidatedAuthDetails(authState);
+    // JWT validate + info_idp cookie only; cid is not an email and we no longer
+    // substitute a placeholder — callers treat missing email as optional display data.
+    return details?.email ?? getEmailFromDocumentInfoIdpCookies() ?? undefined;
   };
 
   const getUserInfo = () => {
@@ -99,10 +130,13 @@ export function useAuth(options: UseAuthOptions = {}) {
         email: mockAuth.user?.email || 'mock@example.com',
       };
     }
+
+    const details = getValidatedAuthDetails(authState);
+
     return {
-      customerId: authState.details?.cid,
-      shopperId: authState.details?.shopperId,
-      accountName: authState.details?.accountName,
+      customerId: details?.cid ?? details?.customerId ?? undefined,
+      shopperId: details?.shopperId ?? undefined,
+      accountName: details?.accountName ?? details?.name ?? undefined,
       email: getUserEmail(),
     };
   };

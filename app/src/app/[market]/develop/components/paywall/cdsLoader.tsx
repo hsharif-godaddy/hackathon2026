@@ -48,6 +48,9 @@ interface CdsComponentLoaderProps extends Record<string, unknown> {
   // a dedicated class (e.g. `cds-team-portal`) for full-page page-style bundles
   // that need an opaque, scrollable, clickable container.
   containerClassName?: string
+  // Paywall modals portal to document.body to escape overflow-hidden ancestors.
+  // Inline surfaces (e.g. preview header banners) should set portal={false}.
+  portal?: boolean
 }
 
 // TODO: remove MutationObserver fallback detection once CDS surfaces proper
@@ -65,6 +68,7 @@ export function ComponentLoader({
   source,
   onLoadError,
   containerClassName = 'cds-paywall-portal',
+  portal = true,
   ...props
 }: CdsComponentLoaderProps) {
   const [error, setError] = useState<Error | null>(null)
@@ -156,7 +160,7 @@ export function ComponentLoader({
   // data-inert + overflow:hidden on that parent. On mobile develop, ancestors
   // also use overflow-hidden/ios-fixed-container. Portaling to body avoids the
   // ancestor chain; paywall SCSS overrides data-inert clipping on the portal.
-  if (typeof document === 'undefined') {
+  if (!portal || typeof document === 'undefined') {
     return loader
   }
 
