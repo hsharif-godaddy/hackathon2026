@@ -234,7 +234,7 @@ describe('resolveAuth', () => {
 
     const result = await resolveAuth({ level: 3 });
 
-    expect(result).toEqual({ kind: 'failed', response: probeResp });
+    expect(result).toEqual({ kind: 'failed', response: probeResp, authReason: null });
     expect(useAuthUIStore.getState().isSsoLoginOpen).toBe(false);
   });
 
@@ -253,7 +253,7 @@ describe('resolveAuth', () => {
     useAuthUIStore.getState().closeSsoLogin('success');
 
     const result = await promise;
-    expect(result).toEqual({ kind: 'failed', response: verifyResp });
+    expect(result).toEqual({ kind: 'failed', response: verifyResp, authReason: 2 });
   });
 
   it('opens modal with /login fallback when probe times out', async () => {
@@ -432,7 +432,7 @@ describe('resolveAuth', () => {
     const result = await promise;
     // authPreflight relies on response identity to forward the original 401
     // back to its caller; lock that contract here.
-    expect(result).toEqual({ kind: 'failed', response: probeResp });
+    expect(result).toEqual({ kind: 'failed', response: probeResp, authReason: 2 });
     expect(useAuthUIStore.getState().isSsoLoginOpen).toBe(false);
   });
 });

@@ -7,7 +7,7 @@ import { sleep } from '@/utils/common';
 import { getRootDomain } from '@/utils/getRootDomain';
 import { getSsoHostParams } from '@/utils/getSsoHostParams';
 import { SHOPPER_AUTH_FAILURE_MESSAGE } from './customer-auth';
-import { auth } from './features';
+import { auth, type SsoExpirationCode } from './features';
 import { logger } from './request-context';
 // Gasket configuration for Airo Builder authentication
 
@@ -317,7 +317,7 @@ export const AUTH_PROBE_TIMEOUT_MS = 5_000;
 // Recovery triggers (flag-gated): authReason=3 (VAT); null authReason in wake
 // window (likely stale-VAT behind WAF/proxy); probe timeout in wake window.
 // HBI/login failures (authReason 1,2) can't self-refresh via heartbeat.
-const VAT_AUTH_REASON = 3;
+const VAT_AUTH_REASON: SsoExpirationCode = 3;
 const VAT_RECOVERY_MAX_ATTEMPTS = 3;
 const VAT_RECOVERY_DELAY_MS = 2_000;
 
@@ -378,7 +378,7 @@ export type AuthResolution =
   | { kind: 'valid' }                         // probe says token is fine; original 401 was transient
   | { kind: 'reauthed' }                      // SSO completed and verify confirmed the new cookie
   | { kind: 'dismissed' }                     // user closed the modal without authenticating
-  | { kind: 'failed'; response: Response };   // probe returned non-401, or post-SSO verify failed
+  | { kind: 'failed'; response: Response; authReason: number | null }; // probe returned non-401, or SSO couldn't complete (wait / redirect / verify failed)
 
 let pendingResolution: Promise<AuthResolution> | null = null;
 
@@ -449,7 +449,7 @@ async function probeAuthValidate(level: 1 | 2 | 3): Promise<Response | 'timeout'
  * modal. Returns true once a re-probe confirms the token is valid, false when
  * the budget is exhausted.
  */
-async function recoverStaleVat(level: 1 | 2 | 3): Promise<boolean> {
+async function recoverStaleVat(level: 1 | 2 | 3, url: string): Promise<boolean> {
   const wakeAwareEnabled: boolean =
     getSwitchboardFlag(SWITCHBOARD_APPBUILDER_WAKE_AWARE_VAT_RECOVERY) ?? false;
   const inWakeWindow: boolean = wakeAwareEnabled && wakeTracker.isWithinWindow();
@@ -459,6 +459,8 @@ async function recoverStaleVat(level: 1 | 2 | 3): Promise<boolean> {
 
   if (inWakeWindow) {
     logger.info('app-fetch.auth-resolve.vat-recovery-wake-extended', {
+      url,
+      authReason: VAT_AUTH_REASON,
       level,
       maxAttempts,
       msSinceWake: wakeTracker.msSinceWake(),
@@ -471,7 +473,9 @@ async function recoverStaleVat(level: 1 | 2 | 3): Promise<boolean> {
     try {
       const probe: Response | 'timeout' = await probeAuthValidate(level);
       if (probe !== 'timeout' && probe.ok) {
-        logger.info('app-fetch.auth-resolve.vat-recovered', {
+        logger.warn('app-fetch.auth-resolve.vat-recovered', {
+          url,
+          authReason: VAT_AUTH_REASON,
           level,
           attempts: attempt,
           wakeExtended: inWakeWindow,
@@ -482,6 +486,8 @@ async function recoverStaleVat(level: 1 | 2 | 3): Promise<boolean> {
     } catch (err) {
       lastOutcome = 'error';
       logger.warn('app-fetch.auth-resolve.vat-recovery-probe-error', {
+        url,
+        authReason: VAT_AUTH_REASON,
         level,
         attempt,
         error: err instanceof Error ? err.message : String(err),
@@ -489,6 +495,8 @@ async function recoverStaleVat(level: 1 | 2 | 3): Promise<boolean> {
     }
   }
   logger.warn('app-fetch.auth-resolve.vat-recovery-exhausted', {
+    url,
+    authReason: VAT_AUTH_REASON,
     level,
     attempts: maxAttempts,
     lastOutcome,
@@ -503,6 +511,8 @@ export interface ResolveAuthOptions {
    * for sensitive operations.
    */
   level?: 1 | 2 | 3;
+  /** Original request URL when resolveAuth is handling a reactive 401. */
+  url?: string;
 }
 
 /**
@@ -526,6 +536,7 @@ export async function resolveAuth(options: ResolveAuthOptions = {}): Promise<Aut
   if (pendingResolution) return pendingResolution;
 
   const level = options.level ?? 2;
+  const url: string = options.url ?? '<preflight>';
 
   pendingResolution = (async () => {
     try {
@@ -535,13 +546,13 @@ export async function resolveAuth(options: ResolveAuthOptions = {}): Promise<Aut
         const wakeAwareEnabled: boolean =
           getSwitchboardFlag(SWITCHBOARD_APPBUILDER_WAKE_AWARE_VAT_RECOVERY) ?? false;
         const inWakeWindow: boolean = wakeAwareEnabled && wakeTracker.isWithinWindow();
-        logger.warn('app-fetch.auth-resolve.probe-timeout', { level, inWakeWindow });
+        logger.warn('app-fetch.auth-resolve.probe-timeout', { url, level, authReason: null, inWakeWindow });
         // During wake, network may still be stabilizing — attempt recovery before
         // showing the modal. Heartbeat.js likely completes within the retry budget.
-        if (inWakeWindow && (await recoverStaleVat(level))) {
+        if (inWakeWindow && (await recoverStaleVat(level, url))) {
           return { kind: 'valid' };
         }
-        return openModalAndVerify(level, null);
+        return openModalAndVerify(level, null, url);
       }
 
       if (probe.ok) {
@@ -551,7 +562,7 @@ export async function resolveAuth(options: ResolveAuthOptions = {}): Promise<Aut
       }
 
       if (probe.status !== 401) {
-        return { kind: 'failed', response: probe };
+        return { kind: 'failed', response: probe, authReason: null };
       }
 
       const body = await probe.clone().json().catch((parseErr: unknown) => {
@@ -561,6 +572,7 @@ export async function resolveAuth(options: ResolveAuthOptions = {}): Promise<Aut
         // consumed) bubble up rather than silently being treated as "no JSON."
         if (parseErr instanceof SyntaxError) {
           logger.warn('app-fetch.auth-resolve.body-parse-failed', {
+            url,
             level,
             status: probe.status,
             error: parseErr.message,
@@ -568,6 +580,7 @@ export async function resolveAuth(options: ResolveAuthOptions = {}): Promise<Aut
           return null;
         }
         logger.error('app-fetch.auth-resolve.body-parse-error', {
+          url,
           level,
           status: probe.status,
           error: parseErr instanceof Error ? parseErr.message : String(parseErr),
@@ -575,7 +588,7 @@ export async function resolveAuth(options: ResolveAuthOptions = {}): Promise<Aut
         return null;
       });
       const authReason = typeof body?.authReason === 'number' ? body.authReason : null;
-      logger.info('app-fetch.auth-resolve.reauth-required', { level, authReason });
+      logger.warn('app-fetch.auth-resolve.reauth-required', { url, level, authReason });
 
       // Recovery triggers:
       // 1. authReason === 3 (VAT expired) — always recoverable via heartbeat refresh
@@ -585,11 +598,11 @@ export async function resolveAuth(options: ResolveAuthOptions = {}): Promise<Aut
         getSwitchboardFlag(SWITCHBOARD_APPBUILDER_WAKE_AWARE_VAT_RECOVERY) ?? false;
       const inWakeWindow: boolean = wakeAwareEnabled && wakeTracker.isWithinWindow();
       if ((authReason === VAT_AUTH_REASON || (authReason === null && inWakeWindow)) &&
-          (await recoverStaleVat(level))) {
+          (await recoverStaleVat(level, url))) {
         return { kind: 'valid' };
       }
 
-      return openModalAndVerify(level, authReason, probe);
+      return openModalAndVerify(level, authReason, url, probe);
     } finally {
       pendingResolution = null;
     }
@@ -601,6 +614,7 @@ export async function resolveAuth(options: ResolveAuthOptions = {}): Promise<Aut
 async function openModalAndVerify(
   level: 1 | 2 | 3,
   authReason: number | null,
+  url: string,
   probeResponse?: Response,
 ): Promise<AuthResolution> {
   // Env gate mirrors useSsoSignIn: prod (sso.godaddy.com is public) and local
@@ -615,11 +629,13 @@ async function openModalAndVerify(
       window.location.href = await getLoginUrl(window.location.href, authReason);
     } catch (err) {
       logger.warn('app-fetch.auth-resolve.redirect-url-failed', {
+        url,
         level,
+        authReason,
         reason: err instanceof Error ? err.message : String(err),
       });
       const failureResponse = probeResponse ?? new Response(null, { status: 401 });
-      return { kind: 'failed', response: failureResponse };
+      return { kind: 'failed', response: failureResponse, authReason };
     }
     // Browser is navigating away — never resolve so callers don't continue.
     // Release the mutex synchronously so a later call (e.g. navigation
@@ -640,7 +656,7 @@ async function openModalAndVerify(
     // modal. Don't flip inFlightReauth — that would change the semantics of
     // their post-auth flow. The verify probe will pick up cookie propagation
     // if their auth happens to satisfy our level.
-    logger.warn('app-fetch.auth-resolve.modal-already-open', { level, authReason });
+    logger.warn('app-fetch.auth-resolve.modal-already-open', { url, level, authReason });
   } else {
     // Mark this open as a mid-mutation step-up. SsoLogin reads this flag and
     // skips its post-auth navigation so the awaiting fetch can resume in
@@ -654,15 +670,17 @@ async function openModalAndVerify(
     outcome = await waitForSsoOutcome();
   } catch (err) {
     logger.warn('app-fetch.auth-resolve.sso-wait-failed', {
+      url,
       level,
+      authReason,
       reason: err instanceof Error ? err.message : String(err),
     });
     const failureResponse = probeResponse ?? new Response(null, { status: 401 });
-    return { kind: 'failed', response: failureResponse };
+    return { kind: 'failed', response: failureResponse, authReason };
   }
 
   if (outcome === 'dismiss') {
-    logger.info('app-fetch.auth-resolve.sso-dismissed', { level });
+    logger.info('app-fetch.auth-resolve.sso-dismissed', { url, level, authReason });
     return { kind: 'dismissed' };
   }
 
@@ -671,12 +689,17 @@ async function openModalAndVerify(
   // and the next resolveAuth() call will sort it out.
   const verify = await probeAuthValidate(level);
   if (verify === 'timeout') {
-    logger.warn('app-fetch.auth-resolve.verify-timeout', { level });
+    logger.warn('app-fetch.auth-resolve.verify-timeout', { url, level, authReason });
     return { kind: 'reauthed' };
   }
   if (!verify.ok) {
-    logger.error('app-fetch.auth-resolve.verify-failed', { level, status: verify.status });
-    return { kind: 'failed', response: verify };
+    logger.error('app-fetch.auth-resolve.verify-failed', {
+      url,
+      level,
+      authReason,
+      status: verify.status,
+    });
+    return { kind: 'failed', response: verify, authReason };
   }
   return { kind: 'reauthed' };
 }
@@ -686,10 +709,10 @@ async function openModalAndVerify(
  * the original request. Thin wrapper over resolveAuth that adapts to the
  * legacy return contract (null = ok, Response = give up, throw = dismissed).
  */
-export async function authPreflight(level: 1 | 2 | 3): Promise<Response | null> {
+export async function authPreflight(level: 1 | 2 | 3, url?: string): Promise<Response | null> {
   if (typeof window === 'undefined') return null;
 
-  const result = await resolveAuth({ level });
+  const result = await resolveAuth({ level, url });
   switch (result.kind) {
     case 'valid':
     case 'reauthed':
@@ -698,6 +721,21 @@ export async function authPreflight(level: 1 | 2 | 3): Promise<Response | null> 
       throw new AuthDismissedError();
     case 'failed':
       return result.response;
+  }
+}
+
+// Path-only, sentinel-safe value for logging the originating request. Strips
+// the query string and hash so a caller that routes a token-bearing URL
+// through handle401/authLevel cannot export the secret to logs (and so
+// per-request query params don't fragment aggregation). Non-string inputs
+// (untyped callers) collapse to a sentinel.
+function toLogUrl(rawUrl: unknown): string {
+  if (typeof rawUrl !== 'string') return '<non-string>';
+  const base: string = typeof window !== 'undefined' ? window.location.origin : 'http://localhost';
+  try {
+    return new URL(rawUrl, base).pathname;
+  } catch {
+    return rawUrl.split(/[?#]/)[0];
   }
 }
 
@@ -712,9 +750,10 @@ export async function appFetch(
   appOptions?: AppFetchOptions
 ): Promise<Response> {
   const { authLevel, handle401 } = appOptions || {};
+  const logUrl: string = toLogUrl(url);
 
   if (authLevel) {
-    const preflightResult = await authPreflight(authLevel);
+    const preflightResult = await authPreflight(authLevel, logUrl);
     if (preflightResult) return preflightResult;
   }
 
@@ -734,7 +773,7 @@ export async function appFetch(
   // up the modal flow.
   if (handle401 && response.status === 401 && !authLevel && typeof window !== 'undefined') {
     const handle401Level = typeof handle401 === 'object' ? handle401.level : 2;
-    const result = await resolveAuth({ level: handle401Level });
+    const result = await resolveAuth({ level: handle401Level, url: logUrl });
     if (result.kind === 'reauthed' || result.kind === 'valid') {
       response = await fetch(resolvedUrl, {
         ...options,
@@ -743,11 +782,12 @@ export async function appFetch(
     } else if (result.kind === 'dismissed') {
       throw new AuthDismissedError();
     } else {
-      // kind: 'failed' — probe couldn't classify the failure (e.g. /api/auth/validate
-      // is itself returning 5xx). Surface the original 401 to the caller's normal
-      // error path; log so backend outages on validate are diagnosable.
+      // kind: 'failed' — auth resolution failed, either before opening SSO
+      // (validate non-401) or after SSO couldn't complete. Surface the original
+      // 401 to the caller's normal error path and log the source URL.
       logger.warn('app-fetch.auth-resolve.probe-failed', {
-        url: typeof url === 'string' ? url : '<non-string>',
+        url: logUrl,
+        authReason: result.authReason,
         probeStatus: result.response.status,
       });
     }

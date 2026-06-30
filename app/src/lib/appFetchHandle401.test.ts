@@ -7,8 +7,15 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+const mockLogger = vi.hoisted(() => ({
+  info: vi.fn(),
+  warn: vi.fn(),
+  error: vi.fn(),
+  debug: vi.fn(),
+}));
+
 vi.mock('@/lib/request-context', () => ({
-  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+  logger: mockLogger,
 }));
 
 const domainRef = vi.hoisted(() => ({ value: 'godaddy.com' }));
@@ -35,6 +42,7 @@ const VAT_RECOVERY_DELAY_MS = 2_000;
 describe('appFetch handle401', () => {
   beforeEach(() => {
     vi.resetModules();
+    vi.clearAllMocks();
     vi.useFakeTimers();
     domainRef.value = 'godaddy.com';
     (globalThis as unknown as { __gasketConfigCache?: unknown; __gasketConfigPromise?: unknown }).__gasketConfigCache = undefined;
@@ -102,6 +110,10 @@ describe('appFetch handle401', () => {
     expect(await response.json()).toEqual({ data: 'retry-success' });
     expect(useAuthUIStore.getState().isSsoLoginOpen).toBe(false);
     expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      'app-fetch.auth-resolve.vat-recovered',
+      expect.objectContaining({ url: '/api/things', authReason: 3 }),
+    );
   });
 
   it('throws AuthDismissedError when the user closes the modal', async () => {
@@ -142,7 +154,103 @@ describe('appFetch handle401', () => {
 
     expect(logger.warn).toHaveBeenCalledWith(
       'app-fetch.auth-resolve.probe-failed',
-      expect.objectContaining({ probeStatus: 503 }),
+      expect.objectContaining({ url: '/api/things', authReason: null, probeStatus: 503 }),
+    );
+  });
+
+  it('logs authReason on probe-failed when modal verification fails', async () => {
+    const { appFetch } = await import('@/lib/gasket-config');
+    const { useAuthUIStore } = await import('@/stores/useAuthUIStore');
+
+    const originalResponse = response401({ authReason: 2 });
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(originalResponse)
+      .mockResolvedValueOnce(response401({ authReason: 2 }))
+      .mockResolvedValueOnce(response401({ authReason: 2 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const promise = appFetch('/api/things', { method: 'GET' }, { handle401: true });
+    await vi.advanceTimersByTimeAsync(0);
+
+    useAuthUIStore.getState().closeSsoLogin('success');
+
+    const response = await promise;
+
+    expect(response).toBe(originalResponse);
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      'app-fetch.auth-resolve.probe-failed',
+      expect.objectContaining({ url: '/api/things', authReason: 2, probeStatus: 401 }),
+    );
+  });
+
+  it('passes the appFetch URL into proactive authLevel preflight logs', async () => {
+    const { appFetch, AuthDismissedError } = await import('@/lib/gasket-config');
+    const { useAuthUIStore } = await import('@/stores/useAuthUIStore');
+
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response401({ authReason: 2 })));
+
+    const promise = appFetch('/api/secure-action', { method: 'POST' }, { authLevel: 3 });
+    await vi.advanceTimersByTimeAsync(0);
+
+    useAuthUIStore.getState().closeSsoLogin('dismiss');
+
+    await expect(promise).rejects.toBeInstanceOf(AuthDismissedError);
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      'app-fetch.auth-resolve.reauth-required',
+      expect.objectContaining({ url: '/api/secure-action', level: 3, authReason: 2 }),
+    );
+  });
+
+  it('strips the query string from the logged URL (no secret export to logs)', async () => {
+    const { appFetch } = await import('@/lib/gasket-config');
+
+    const originalResponse = response401();
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(originalResponse)              // request
+      .mockResolvedValueOnce(new Response('boom', { status: 503 })); // probe non-401 → 'failed'
+    vi.stubGlobal('fetch', fetchMock);
+
+    await appFetch('/api/things?token=supersecret&x=1', { method: 'GET' }, { handle401: true });
+
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      'app-fetch.auth-resolve.probe-failed',
+      expect.objectContaining({ url: '/api/things', probeStatus: 503 }),
+    );
+    const loggedWithQuery = mockLogger.warn.mock.calls.some(
+      ([, fields]: [string, { url?: string }]) => fields?.url?.includes('supersecret'),
+    );
+    expect(loggedWithQuery).toBe(false);
+  });
+
+  it('logs only the path for absolute URLs with query strings and hashes', async () => {
+    const { appFetch } = await import('@/lib/gasket-config');
+
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(response401())
+      .mockResolvedValueOnce(new Response('boom', { status: 503 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await appFetch('https://example.com/api/things?token=supersecret#section', { method: 'GET' }, { handle401: true });
+
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      'app-fetch.auth-resolve.probe-failed',
+      expect.objectContaining({ url: '/api/things', probeStatus: 503 }),
+    );
+  });
+
+  it('collapses non-string URLs to a log sentinel', async () => {
+    const { appFetch } = await import('@/lib/gasket-config');
+
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(response401())
+      .mockResolvedValueOnce(new Response('boom', { status: 503 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await appFetch(new URL('https://example.com/api/things?token=supersecret#section') as unknown as string, { method: 'GET' }, { handle401: true });
+
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      'app-fetch.auth-resolve.probe-failed',
+      expect.objectContaining({ url: '<non-string>', probeStatus: 503 }),
     );
   });
 

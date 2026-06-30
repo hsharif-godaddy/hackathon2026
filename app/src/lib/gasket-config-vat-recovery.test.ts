@@ -42,6 +42,7 @@ vi.mock('@/utils/getRootDomain', () => ({
 
 vi.mock('./features', () => ({
   auth: { authType: 'jwt' },
+  SsoExpirationCode: { NOT_EXPIRED: 0, LOGIN: 1, HBI: 2, VAT: 3 },
 }));
 
 vi.mock('./customer-auth', () => ({
@@ -106,7 +107,7 @@ describe('recoverStaleVat wake-aware extension', function vatRecoveryWakeTests()
 
     expect(mockLogger.warn).toHaveBeenCalledWith(
       'app-fetch.auth-resolve.vat-recovery-exhausted',
-      expect.objectContaining({ attempts: 3, wakeExtended: false }),
+      expect.objectContaining({ url: '<preflight>', authReason: 3, attempts: 3, wakeExtended: false }),
     );
 
     // Promise is now waiting on SSO modal — abandon cleanly.
@@ -128,9 +129,9 @@ describe('recoverStaleVat wake-aware extension', function vatRecoveryWakeTests()
     const result = await resolveAuth({ level: 2 });
 
     expect(result).toEqual({ kind: 'valid' });
-    expect(mockLogger.info).toHaveBeenCalledWith(
+    expect(mockLogger.warn).toHaveBeenCalledWith(
       'app-fetch.auth-resolve.vat-recovered',
-      expect.objectContaining({ attempts: 7, wakeExtended: true }),
+      expect.objectContaining({ url: '<preflight>', authReason: 3, attempts: 7, wakeExtended: true }),
     );
   });
 
@@ -148,7 +149,7 @@ describe('recoverStaleVat wake-aware extension', function vatRecoveryWakeTests()
 
     expect(mockLogger.warn).toHaveBeenCalledWith(
       'app-fetch.auth-resolve.vat-recovery-exhausted',
-      expect.objectContaining({ attempts: 3, wakeExtended: false }),
+      expect.objectContaining({ url: '<preflight>', authReason: 3, attempts: 3, wakeExtended: false }),
     );
 
     void promise.catch(() => {});
@@ -174,15 +175,15 @@ describe('recoverStaleVat wake-aware extension', function vatRecoveryWakeTests()
     expect(result).toEqual({ kind: 'valid' });
     expect(mockLogger.warn).toHaveBeenCalledWith(
       'app-fetch.auth-resolve.vat-recovery-probe-error',
-      expect.objectContaining({ level: 2, attempt: 1 }),
+      expect.objectContaining({ url: '<preflight>', authReason: 3, level: 2, attempt: 1 }),
     );
     expect(mockLogger.warn).toHaveBeenCalledWith(
       'app-fetch.auth-resolve.vat-recovery-probe-error',
-      expect.objectContaining({ level: 2, attempt: 2 }),
+      expect.objectContaining({ url: '<preflight>', authReason: 3, level: 2, attempt: 2 }),
     );
-    expect(mockLogger.info).toHaveBeenCalledWith(
+    expect(mockLogger.warn).toHaveBeenCalledWith(
       'app-fetch.auth-resolve.vat-recovered',
-      expect.objectContaining({ attempts: 3, wakeExtended: true }),
+      expect.objectContaining({ url: '<preflight>', authReason: 3, attempts: 3, wakeExtended: true }),
     );
   });
 
@@ -203,7 +204,7 @@ describe('recoverStaleVat wake-aware extension', function vatRecoveryWakeTests()
     // recoverStaleVat returned false — resolveAuth proceeds to SSO modal (does NOT reject)
     expect(mockLogger.warn).toHaveBeenCalledWith(
       'app-fetch.auth-resolve.vat-recovery-exhausted',
-      expect.objectContaining({ lastOutcome: 'error', wakeExtended: true }),
+      expect.objectContaining({ url: '<preflight>', authReason: 3, lastOutcome: 'error', wakeExtended: true }),
     );
 
     // Promise is now waiting on SSO modal — abandon cleanly.
@@ -228,9 +229,9 @@ describe('recoverStaleVat wake-aware extension', function vatRecoveryWakeTests()
     const result = await resolveAuth({ level: 2 });
 
     expect(result).toEqual({ kind: 'valid' });
-    expect(mockLogger.info).toHaveBeenCalledWith(
+    expect(mockLogger.warn).toHaveBeenCalledWith(
       'app-fetch.auth-resolve.vat-recovered',
-      expect.objectContaining({ attempts: 7, wakeExtended: true }),
+      expect.objectContaining({ url: '<preflight>', authReason: 3, attempts: 7, wakeExtended: true }),
     );
   });
 
@@ -252,7 +253,7 @@ describe('recoverStaleVat wake-aware extension', function vatRecoveryWakeTests()
     // Should fall back to default 3 attempts since we're outside the window
     expect(mockLogger.warn).toHaveBeenCalledWith(
       'app-fetch.auth-resolve.vat-recovery-exhausted',
-      expect.objectContaining({ attempts: 3, wakeExtended: false }),
+      expect.objectContaining({ url: '<preflight>', authReason: 3, attempts: 3, wakeExtended: false }),
     );
 
     void promise.catch(() => {});
@@ -281,7 +282,7 @@ describe('recoverStaleVat wake-aware extension', function vatRecoveryWakeTests()
     expect(result).toEqual({ kind: 'valid' });
     expect(mockLogger.info).toHaveBeenCalledWith(
       'app-fetch.auth-resolve.vat-recovery-wake-extended',
-      expect.objectContaining({ maxAttempts: 7 }),
+      expect.objectContaining({ url: '<preflight>', authReason: 3, maxAttempts: 7 }),
     );
   });
 
@@ -299,7 +300,7 @@ describe('recoverStaleVat wake-aware extension', function vatRecoveryWakeTests()
 
     expect(mockLogger.warn).toHaveBeenCalledWith(
       'app-fetch.auth-resolve.vat-recovery-exhausted',
-      expect.objectContaining({ attempts: 3, wakeExtended: false }),
+      expect.objectContaining({ url: '<preflight>', authReason: 3, attempts: 3, wakeExtended: false }),
     );
 
     void promise.catch(() => {});
@@ -447,7 +448,7 @@ describe('resolveAuth wake-patience (null authReason path)', function nullAuthRe
       'app-fetch.auth-resolve.body-parse-failed',
       expect.objectContaining({ level: 2 }),
     );
-    expect(mockLogger.info).toHaveBeenCalledWith(
+    expect(mockLogger.warn).toHaveBeenCalledWith(
       'app-fetch.auth-resolve.vat-recovered',
       expect.objectContaining({ wakeExtended: true }),
     );
@@ -543,7 +544,7 @@ describe('resolveAuth wake-patience (null authReason path)', function nullAuthRe
     const result = await resolveAuth({ level: 2 });
 
     expect(result).toEqual({ kind: 'valid' });
-    expect(mockLogger.info).toHaveBeenCalledWith(
+    expect(mockLogger.warn).toHaveBeenCalledWith(
       'app-fetch.auth-resolve.vat-recovered',
       expect.objectContaining({ wakeExtended: true }),
     );

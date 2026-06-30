@@ -167,7 +167,7 @@ describe('authPreflight', () => {
     expect(useAuthUIStore.getState().ssoAuthReason).toBeNull();
     expect(logger.warn).toHaveBeenCalledWith(
       'app-fetch.auth-resolve.body-parse-failed',
-      expect.objectContaining({ level: 3, status: 401 }),
+      expect.objectContaining({ url: '<preflight>', level: 3, status: 401 }),
     );
 
     // Cleanly terminate the hanging preflight so the test doesn't leak.
@@ -271,7 +271,7 @@ describe('authPreflight', () => {
     expect(result).toBe(resp401);
     expect(logger.warn).toHaveBeenCalledWith(
       'app-fetch.auth-resolve.redirect-url-failed',
-      expect.objectContaining({ level: 3 }),
+      expect.objectContaining({ url: '<preflight>', level: 3, authReason: 2 }),
     );
   });
 });
