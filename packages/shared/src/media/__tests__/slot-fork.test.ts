@@ -8,12 +8,16 @@ describe('@airo/shared/media/slot-fork', function packageTests() {
       expect(isSharedSlotReference(2, 'src/data/trucks.ts:4', 'src/data/trucks.ts:4')).toBe(true);
     });
 
-    it('returns true when click sourceRef differs from manifest sourceRef', function sourceRefMismatch() {
+    it('returns true when click sourceRef differs from manifest sourceRef (different file)', function sourceRefMismatch() {
       expect(isSharedSlotReference(1, 'src/pages/home.tsx:12', 'src/data/trucks.ts:4')).toBe(true);
     });
 
     it('returns false when refCount is one and sourceRefs match', function singleRef() {
       expect(isSharedSlotReference(1, 'src/pages/home.tsx:12', 'src/pages/home.tsx:12')).toBe(false);
+    });
+
+    it('returns false when same file but line numbers differ (stale after AI edits)', function sameFileDriftedLine() {
+      expect(isSharedSlotReference(1, 'src/pages/index.tsx:91', 'src/pages/index.tsx:45')).toBe(false);
     });
 
     it('returns false when click sourceRef is missing', function missingClickRef() {

@@ -1,7 +1,8 @@
 /**
  * Whether a slot swap should fork instead of updating in place.
  * Shared when multiple source references exist, or when the clicked element's
- * source location differs from the manifest slot's sourceRef.
+ * source file differs from the manifest slot's sourceRef file.
+ * Line numbers are ignored for same-file comparison — they drift after AI edits.
  */
 export function isSharedSlotReference(
   refCount: number,
@@ -14,7 +15,11 @@ export function isSharedSlotReference(
   if (!clickSourceRef || slotSourceRef == null) {
     return false;
   }
-  return slotSourceRef !== clickSourceRef;
+  // Compare by file name only — line numbers drift after AI edits and cause
+  // false positives for single-reference slots in the same file.
+  const clickFile = clickSourceRef.split(':')[0];
+  const slotFile = slotSourceRef.split(':')[0];
+  return clickFile !== slotFile;
 }
 
 /**

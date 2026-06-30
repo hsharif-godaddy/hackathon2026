@@ -750,6 +750,19 @@ export class ASTImageEditor extends ASTEditorBase {
       if (jsxResult.success) {
         return jsxResult;
       }
+
+      // Line-number-independent fallback: match <img>/<video> by src URL directly.
+      if (request.occurrenceIndex != null && request.occurrenceIndex >= 0) {
+        const srcMatchResult = await this.replaceMediaElementBySrcUrl(appPath, {
+          oldUrl,
+          newUrl,
+          occurrenceIndex: request.occurrenceIndex,
+          scopeFile: request.elementInfo.devContext.fileName,
+        }, appId);
+        if (srcMatchResult.success) {
+          return srcMatchResult;
+        }
+      }
     }
 
     if (request.occurrenceIndex == null || request.occurrenceIndex < 0) {
@@ -954,7 +967,7 @@ export class ASTImageEditor extends ASTEditorBase {
 
       this.traverse(ast, {
         StringLiteral: (nodePath: { node: t.StringLiteral }) => {
-          if (replaced || nodePath.node.value !== options.oldUrl) {
+          if (replaced || !this.urlsMatch(nodePath.node.value, options.oldUrl)) {
             return;
           }
           if (globalMatchIndex !== options.occurrenceIndex) {
@@ -990,6 +1003,60 @@ export class ASTImageEditor extends ASTEditorBase {
       filePath: '',
       error: `Could not find shared slot URL occurrence ${options.occurrenceIndex + 1}`,
     };
+  }
+
+  /**
+   * Fallback: find the Nth <img>/<video> by matching src URL, ignoring line numbers.
+   * replaceSlotUrlOccurrenceInSource handles most cases first — this is a
+   * defensive backstop for edge cases where src isn't a top-level StringLiteral.
+   */
+  private async replaceMediaElementBySrcUrl(
+    appPath: string,
+    options: { oldUrl: string; newUrl: string; occurrenceIndex: number; scopeFile?: string | null },
+    appId: string
+  ): Promise<ImageReplaceResult> {
+    if (!options.oldUrl) {
+      return { success: false, filePath: '', error: 'No oldUrl provided for media element fallback' };
+    }
+
+    const files = await this.collectSourceFilePaths(appPath);
+    const ordered = this.orderSourceFilesForFork(files, options.scopeFile);
+
+    let matchIndex = 0;
+    for (const relativePath of ordered) {
+      const sourceCode = await readFile(path.join(appPath, relativePath), 'utf-8');
+      const ast = this.parseAST(sourceCode);
+      let replaced = false;
+
+      // Find the Nth <img>/<video> whose src matches the old slot URL and rewrite it
+      this.traverse(ast, {
+        JSXElement: (nodePath: { node: t.JSXElement }): void => {
+          if (replaced) return;
+          const tag = this.getTagName(nodePath.node)?.toLowerCase();
+          if (tag !== 'img' && tag !== 'video') return;
+          const { value: src, attr } = this.getSrcAttribute(nodePath.node);
+          if (!src || !this.urlsMatch(src, options.oldUrl)) return;
+          if (matchIndex++ !== options.occurrenceIndex) return;
+          if (attr && this.t.isStringLiteral(attr.value)) {
+            attr.value.value = options.newUrl;
+            replaced = true;
+          }
+        },
+      });
+
+      if (!replaced) continue;
+
+      const { files: workspaceFiles } = this.getWorkspace(appId);
+      await this.writeSourceFile(workspaceFiles, relativePath, this.generateCode(ast).code);
+      logger.info('ast.image-editor.src-url-fallback-success', {
+        filePath: relativePath,
+        oldUrl: options.oldUrl,
+        occurrenceIndex: options.occurrenceIndex,
+      });
+      return { success: true, filePath: relativePath, changes: { oldUrl: options.oldUrl, newUrl: options.newUrl, imageType: 'img' } };
+    }
+
+    return { success: false, filePath: '', error: 'Could not find media element with matching src URL' };
   }
 
   /**
