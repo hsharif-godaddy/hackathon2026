@@ -29,7 +29,7 @@ import {
  * - Key decisions and actions
  * 
  * Uses intelligent batching to handle large conversations:
- * - Processes up to 25k tokens per batch
+ * - Processes up to 12k tokens per batch (maxTokensPerBatch)
  * - Always cuts at conversation boundaries (full user question + assistant response)
  * - Builds incremental summaries that get merged
  * 
@@ -111,15 +111,20 @@ export class DetailedLLMSummarizationStrategy implements SummarizationStrategy {
           regeneratingFromScratch: shouldRegenerateFromScratch,
         });
 
-        // Build context with the correct messages (full history for regeneration, delta for incremental)
-        // CRITICAL: Also clear existingSummary when regenerating to force fresh summarization
+        // Explicit ternary overrides the ...context spread: spreading {} after ...context
+        // cannot delete context.existingSummary that was already copied. The local
+        // existingSummary is already undefined in the regen branch (line 87), so the
+        // ternary also serves as documentation of intent.
         const batchContext: SummarizationContext = {
           ...context,
           messages: messagesToSummarize,
-          ...(shouldRegenerateFromScratch ? {} : { existingSummary }),
+          existingSummary: shouldRegenerateFromScratch ? undefined : existingSummary,
         };
 
-        return await this.summarizeInBatches(batchContext, model, modelName);
+        // Thread the gated shouldRegenerateFromScratch so summarizeInBatches cannot
+        // re-derive an ungated copy. With disableFullRegeneration=true (prod default)
+        // this is always false, keeping the merge-depth counter honest.
+        return await this.summarizeInBatches(batchContext, model, modelName, shouldRegenerateFromScratch);
       }
 
       // Single batch processing - build context with correct messages
@@ -129,19 +134,7 @@ export class DetailedLLMSummarizationStrategy implements SummarizationStrategy {
       };
       const result = await this.summarizeSingleBatch(singleBatchContext, model, modelName, existingSummary);
 
-      // Calculate new update count
-      const newUpdateCount = shouldRegenerateFromScratch ? 0 : (previousUpdateCount + (isIncremental ? 1 : 0));
-      const now = new Date().toISOString();
-
-      // Set lastFullSummarizationAt timestamp
-      if (shouldRegenerateFromScratch) {
-        result.lastFullSummarizationAt = now;
-      } else if (context.lastFullSummarizationAt) {
-        result.lastFullSummarizationAt = context.lastFullSummarizationAt;
-      }
-
-      // Update incremental count in result
-      result.incrementalUpdateCount = newUpdateCount;
+      this.applyMergeDepthFields(context, shouldRegenerateFromScratch, result);
 
       logger.info('summarization.detailed_llm.complete', {
         appId,
@@ -149,7 +142,7 @@ export class DetailedLLMSummarizationStrategy implements SummarizationStrategy {
         summaryTokenCount: result.summaryTokenCount,
         originalTokenCount,
         compressionRatio: result.summaryTokenCount / originalTokenCount,
-        incrementalUpdateCount: newUpdateCount,
+        incrementalUpdateCount: result.incrementalUpdateCount,
         regeneratedFromScratch: shouldRegenerateFromScratch,
         modelUsed: modelName,
       });
@@ -172,7 +165,8 @@ export class DetailedLLMSummarizationStrategy implements SummarizationStrategy {
   private async summarizeInBatches(
     context: SummarizationContext,
     model: any,
-    modelName: string
+    modelName: string,
+    shouldRegenerateFromScratch: boolean
   ): Promise<SummarizationResult> {
     const { appId, messages, existingSummary, messageRange, originalTokenCount } = context;
     
@@ -244,25 +238,6 @@ export class DetailedLLMSummarizationStrategy implements SummarizationStrategy {
 
     const totalDuration = Date.now() - startTime;
 
-    // Calculate new update count and timestamps
-    const isIncremental = !!existingSummary;
-    const previousUpdateCount = context.incrementalUpdateCount ?? 0;
-    const shouldRegenerateFromScratch = previousUpdateCount >= 5;
-    const newUpdateCount = shouldRegenerateFromScratch ? 0 : (previousUpdateCount + (isIncremental ? 1 : 0));
-    const now = new Date().toISOString();
-
-    logger.info('summarization.detailed_llm.batches_complete', {
-      appId,
-      batchCount: batches.length,
-      totalSummaryTokens,
-      originalTokenCount,
-      compressionRatio: totalSummaryTokens / originalTokenCount,
-      incrementalUpdateCount: newUpdateCount,
-      regeneratedFromScratch: shouldRegenerateFromScratch,
-      totalDurationMs: totalDuration,
-      avgDurationPerBatchMs: Math.round(totalDuration / batches.length),
-    });
-
     const result: SummarizationResult = {
       summaryText: cumulativeSummary,
       summaryTokenCount: totalSummaryTokens,
@@ -270,15 +245,24 @@ export class DetailedLLMSummarizationStrategy implements SummarizationStrategy {
       messageRange,
       messageCount: messages.length,
       originalTokenCount,
-      incrementalUpdateCount: newUpdateCount,
+      incrementalUpdateCount: 0,
     };
 
-    // Set lastFullSummarizationAt timestamp
-    if (shouldRegenerateFromScratch) {
-      result.lastFullSummarizationAt = now;
-    } else if (context.lastFullSummarizationAt) {
-      result.lastFullSummarizationAt = context.lastFullSummarizationAt;
-    }
+    // Single source of truth for merge-depth bookkeeping: shouldRegenerateFromScratch is
+    // threaded from summarize() so this path cannot re-derive an ungated copy.
+    this.applyMergeDepthFields(context, shouldRegenerateFromScratch, result);
+
+    logger.info('summarization.detailed_llm.batches_complete', {
+      appId,
+      batchCount: batches.length,
+      totalSummaryTokens,
+      originalTokenCount,
+      compressionRatio: totalSummaryTokens / originalTokenCount,
+      incrementalUpdateCount: result.incrementalUpdateCount,
+      regeneratedFromScratch: shouldRegenerateFromScratch,
+      totalDurationMs: totalDuration,
+      avgDurationPerBatchMs: batches.length > 0 ? Math.round(totalDuration / batches.length) : 0,
+    });
 
     // Include operation log if provided
     if (context.operationLog) {
@@ -286,6 +270,28 @@ export class DetailedLLMSummarizationStrategy implements SummarizationStrategy {
     }
 
     return result;
+  }
+
+  /**
+   * Sets incrementalUpdateCount and lastFullSummarizationAt on a result.
+   * Called from both the single-batch and batched paths to prevent counter drift.
+   */
+  private applyMergeDepthFields(
+    context: SummarizationContext,
+    shouldRegenerateFromScratch: boolean,
+    result: SummarizationResult
+  ): void {
+    const isIncremental: boolean = !!context.existingSummary;
+    const previousUpdateCount: number = context.incrementalUpdateCount ?? 0;
+    result.incrementalUpdateCount = shouldRegenerateFromScratch
+      ? 0
+      : previousUpdateCount + (isIncremental ? 1 : 0);
+    const now: string = new Date().toISOString();
+    if (shouldRegenerateFromScratch) {
+      result.lastFullSummarizationAt = now;
+    } else if (context.lastFullSummarizationAt) {
+      result.lastFullSummarizationAt = context.lastFullSummarizationAt;
+    }
   }
 
   /**
