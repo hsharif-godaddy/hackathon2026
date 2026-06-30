@@ -111,6 +111,19 @@ describe('WAFv2 WebACL — rule ordering', () => {
       rateRule.Statement.RateBasedStatement.ScopeDownStatement.ByteMatchStatement.SearchString
     ).toBe('/webhooks/stripe');
   });
+
+  // Route 53 health checkers hit the public ALB origin directly; their AWS-managed
+  // source ranges aren't in the egress allowlist, so /health must be allowed by URI.
+  it('AllowHealthCheck allows the /health path by exact URI match', () => {
+    const acls: { [key: string]: any } = devTemplate.findResources('AWS::WAFv2::WebACL');
+    const rules: any[] = Object.values(acls)[0].Properties.Rules;
+    const healthRule: any = rules.find((r: any) => r.Name === 'AllowHealthCheck');
+    expect(healthRule, 'AllowHealthCheck rule missing').toBeDefined();
+    expect(healthRule.Action).toEqual({ Allow: {} });
+    expect(healthRule.Statement.ByteMatchStatement.SearchString).toBe('/health');
+    expect(healthRule.Statement.ByteMatchStatement.PositionalConstraint).toBe('EXACTLY');
+    expect(healthRule.Statement.ByteMatchStatement.FieldToMatch).toEqual({ UriPath: {} });
+  });
 });
 
 describe('prod hardening — deletionProtection and multiRegion', () => {

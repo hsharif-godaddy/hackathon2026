@@ -293,6 +293,31 @@ export class AiroStripeServiceStack extends GDStack {
             metricName: `${config.envName}-airo-stripe-allow-gateway`,
           },
         },
+        // Route 53 health checkers reach the public ALB origin directly (not via
+        // the frontdoor gateway), so their source IPs (AWS ROUTE53_HEALTHCHECKS
+        // ranges, e.g. 15.177.0.0/18) aren't in the egress allowlist and would
+        // otherwise hit the default Block. Allow the liveness path by URI rather
+        // than by IP — the checker ranges are AWS-managed and rotate, so a static
+        // CIDR list would silently drift. /health returns no sensitive data; the
+        // IP allowlist still gates every other path.
+        {
+          name: 'AllowHealthCheck',
+          priority: 2,
+          action: { allow: {} },
+          statement: {
+            byteMatchStatement: {
+              fieldToMatch: { uriPath: {} },
+              positionalConstraint: 'EXACTLY',
+              searchString: '/health',
+              textTransformations: [{ priority: 0, type: 'NONE' }],
+            },
+          },
+          visibilityConfig: {
+            sampledRequestsEnabled: true,
+            cloudWatchMetricsEnabled: true,
+            metricName: `${config.envName}-airo-stripe-allow-health`,
+          },
+        },
       ],
       visibilityConfig: {
         sampledRequestsEnabled: true,
