@@ -28,6 +28,7 @@ const bindingPatchSchema = z
     channelId: z.string().trim().min(1).optional(),
     channelName: z.string().trim().min(1).optional(),
     defaultLocationId: z.string().trim().min(1).optional(),
+    currencyCode: z.string().trim().min(1).optional(),
     reason: z.string().trim().min(1).max(500).optional(),
   })
   .strict()
@@ -113,6 +114,7 @@ function upsertBinding(appId: string, input: BindingPatch): AppCommerceBinding {
     channelId: input.channelId ?? (didStoreChange || clearToBusinessOnly ? null : undefined),
     channelName: input.channelName ?? (didStoreChange || clearToBusinessOnly ? null : undefined),
     defaultLocationId: input.defaultLocationId ?? (clearToBusinessOnly ? null : undefined),
+    currencyCode: input.currencyCode,
     status: determineStatus(input, previous),
     source: 'user_selected',
     lastVerifiedAt: input.channelId ? new Date() : null,

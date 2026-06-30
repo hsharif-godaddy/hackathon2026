@@ -3,6 +3,7 @@ import { logger } from '../../logging/index.js';
 import {
   applyCommerceBindingDefaultsToStoreSetupInput,
   persistCommerceBindingFromToolResult,
+  persistProjectedCommerceCurrencyCode,
   readCurrentCommerceBinding,
   selectedCommerceResourcesFromBinding,
   setupDataFromResult,
@@ -422,7 +423,8 @@ async function transitionProvisionState(
       }
 
       const env = await writeCommerceEnvVars(state.appId, state.binding, state.envSourceResult);
-      return terminal(readyResponse(storeId, channelId, state.binding, env, state.purpose));
+      const projectedBinding = persistProjectedCommerceCurrencyCode(state.appId, state.binding, env.currencyCode);
+      return terminal(readyResponse(storeId, channelId, projectedBinding, env, state.purpose));
     }
 
     case 'channel_ensure_required': {

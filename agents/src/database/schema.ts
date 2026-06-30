@@ -236,6 +236,7 @@ export interface AppCommerceBinding {
   channelId?: string | null;
   channelName?: string | null;
   defaultLocationId?: string | null;
+  currencyCode?: string | null;
   status: AppCommerceBindingStatus;
   source: AppCommerceBindingSource;
   lastVerifiedAt?: Date | null;
@@ -923,6 +924,7 @@ function createAppCommerceBindingsTable(db: Database): void {
       channel_id TEXT,
       channel_name TEXT,
       default_location_id TEXT,
+      currency_code TEXT,
       status TEXT NOT NULL CHECK(status IN (
         'business_bound',
         'store_bound',
@@ -2215,6 +2217,7 @@ function applyMigrations(db: Database): void {
   // Create AppBuilder Commerce binding tables for existing databases
   createAppCommerceBindingsTable(db);
   createAppCommerceBindingEventsTable(db);
+  migrateAppCommerceBindingsCurrencyCode(db);
 
   // Create seo_quality_scores table for existing databases — RUBICON-143
   createSeoQualityScoresTable(db);
@@ -2224,6 +2227,14 @@ function applyMigrations(db: Database): void {
 
   // Strip oversized finalResult blobs from conversation_messages metadata
   stripFinalResultBloat(db);
+}
+
+function migrateAppCommerceBindingsCurrencyCode(db: Database): void {
+  try {
+    db.exec(`ALTER TABLE app_commerce_bindings ADD COLUMN currency_code TEXT`);
+  } catch (err) {
+    // Column might already exist, that's fine.
+  }
 }
 
 /**

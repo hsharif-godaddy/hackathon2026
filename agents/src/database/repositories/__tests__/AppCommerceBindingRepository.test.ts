@@ -51,6 +51,7 @@ describe('AppCommerceBindingRepository', () => {
       businessName: 'Haven & Co.',
       storeId: 'store-1',
       storeName: 'Haven Store',
+      currencyCode: 'usd',
       status: 'store_bound',
       source: 'tool_setup',
       eventType: 'selected_store',
@@ -62,6 +63,7 @@ describe('AppCommerceBindingRepository', () => {
       appId: 'app-123456',
       businessId: 'business-1',
       storeId: 'store-1',
+      currencyCode: 'USD',
       status: 'store_bound',
       source: 'tool_setup',
     });
@@ -73,6 +75,47 @@ describe('AppCommerceBindingRepository', () => {
       nextBusinessId: 'business-1',
       nextStoreId: 'store-1',
       actorType: 'agent',
+    });
+  });
+
+  it('preserves currency code on partial upsert and records currency changes in event metadata', () => {
+    insertApp();
+    repository.upsert({
+      appId: 'app-123456',
+      businessId: 'business-1',
+      storeId: 'store-1',
+      channelId: 'channel-1',
+      currencyCode: 'usd',
+      status: 'channel_ready',
+      source: 'tool_channel_ensure',
+    });
+
+    const channelRefresh = repository.upsert({
+      appId: 'app-123456',
+      channelId: 'channel-1',
+      status: 'channel_ready',
+      source: 'tool_channel_ensure',
+    });
+
+    expect(channelRefresh.currencyCode).toBe('USD');
+
+    const currencyRefresh = repository.upsert({
+      appId: 'app-123456',
+      currencyCode: 'eur',
+      status: 'channel_ready',
+      source: 'tool_channel_ensure',
+      eventType: 'verified',
+      actorType: 'agent',
+      reason: 'commerce_env_projection',
+    });
+
+    expect(currencyRefresh.currencyCode).toBe('EUR');
+    expect(repository.listEventsByAppId('app-123456')[0]).toMatchObject({
+      eventType: 'verified',
+      metadata: {
+        previousCurrencyCode: 'USD',
+        nextCurrencyCode: 'EUR',
+      },
     });
   });
 

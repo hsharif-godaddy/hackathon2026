@@ -24,6 +24,7 @@ interface AppCommerceBindingRow {
   channel_id: string | null;
   channel_name: string | null;
   default_location_id: string | null;
+  currency_code: string | null;
   status: string;
   source: string;
   last_verified_at: string | null;
@@ -58,6 +59,7 @@ export interface UpsertAppCommerceBindingParams {
   channelId?: string | null;
   channelName?: string | null;
   defaultLocationId?: string | null;
+  currencyCode?: string | null;
   status: AppCommerceBindingStatus;
   source: AppCommerceBindingSource;
   lastVerifiedAt?: Date | string | null;
@@ -94,6 +96,24 @@ function dateInputToString(value: Date | string | null | undefined): string | nu
   if (value === undefined) return undefined;
   if (value === null) return null;
   return value instanceof Date ? value.toISOString() : value;
+}
+
+function normalizeCurrencyCode(value: string | null | undefined): string | null {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed.toUpperCase() : null;
+}
+
+function bindingEventMetadata(
+  metadata: Record<string, unknown> | null | undefined,
+  previousCurrencyCode: string | null,
+  nextCurrencyCode: string | null
+): Record<string, unknown> | null {
+  const currencyMetadata = {
+    previousCurrencyCode,
+    nextCurrencyCode,
+  };
+
+  return metadata ? { ...metadata, ...currencyMetadata } : currencyMetadata;
 }
 
 function parseMetadata(value: string | null): Record<string, unknown> | null {
@@ -139,6 +159,9 @@ export class AppCommerceBindingRepository {
           defaultLocationId: hasOwn(params, 'defaultLocationId')
             ? params.defaultLocationId ?? null
             : previous?.defaultLocationId ?? null,
+          currencyCode: hasOwn(params, 'currencyCode')
+            ? normalizeCurrencyCode(params.currencyCode)
+            : previous?.currencyCode ?? null,
           status: params.status,
           source: params.source,
           lastVerifiedAt: hasOwn(params, 'lastVerifiedAt')
@@ -161,6 +184,7 @@ export class AppCommerceBindingRepository {
               channel_id,
               channel_name,
               default_location_id,
+              currency_code,
               status,
               source,
               last_verified_at,
@@ -168,7 +192,7 @@ export class AppCommerceBindingRepository {
               created_at,
               updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
             ON CONFLICT(app_id) DO UPDATE SET
               business_id = excluded.business_id,
               business_name = excluded.business_name,
@@ -178,6 +202,7 @@ export class AppCommerceBindingRepository {
               channel_id = excluded.channel_id,
               channel_name = excluded.channel_name,
               default_location_id = excluded.default_location_id,
+              currency_code = excluded.currency_code,
               status = excluded.status,
               source = excluded.source,
               last_verified_at = excluded.last_verified_at,
@@ -193,6 +218,7 @@ export class AppCommerceBindingRepository {
             next.channelId,
             next.channelName,
             next.defaultLocationId,
+            next.currencyCode,
             next.status,
             next.source,
             next.lastVerifiedAt,
@@ -211,7 +237,7 @@ export class AppCommerceBindingRepository {
             nextChannelId: next.channelId,
             actorType: params.actorType ?? 'agent',
             reason: params.reason,
-            metadata: params.metadata,
+            metadata: bindingEventMetadata(params.metadata, previous?.currencyCode ?? null, next.currencyCode),
           });
         }
 
@@ -384,6 +410,7 @@ export class AppCommerceBindingRepository {
       channelId: row.channel_id,
       channelName: row.channel_name,
       defaultLocationId: row.default_location_id,
+      currencyCode: row.currency_code,
       status: row.status as AppCommerceBindingStatus,
       source: row.source as AppCommerceBindingSource,
       lastVerifiedAt: dateOrNull(row.last_verified_at),

@@ -15,6 +15,7 @@ import {
   nestedRecord,
   type UnknownRecord,
 } from './mcp.js';
+import { parseEnvContent } from './env-content.js';
 
 export interface SelectedCommerceResources {
   configured: boolean;
@@ -28,6 +29,7 @@ export interface SelectedCommerceResources {
   channelId: string | null;
   channelName: string | null;
   defaultLocationId: string | null;
+  currencyCode: string | null;
   source: AppCommerceBinding['source'];
   lastVerifiedAt: string | null;
 }
@@ -46,6 +48,12 @@ interface CommerceBindingData {
   channelId?: string;
   channelName?: string;
   defaultLocationId?: string;
+  currencyCode?: string;
+}
+
+function normalizeCurrencyCode(value: string | null | undefined): string {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed.toUpperCase() : 'USD';
 }
 
 export function readCurrentCommerceBinding(context: unknown): AppCommerceBinding | null {
@@ -78,6 +86,7 @@ export function selectedCommerceResourcesFromBinding(
     channelId: binding.channelId ?? null,
     channelName: binding.channelName ?? null,
     defaultLocationId: binding.defaultLocationId ?? null,
+    currencyCode: binding.currencyCode ?? null,
     source: binding.source,
     lastVerifiedAt: binding.lastVerifiedAt?.toISOString() ?? null,
   };
@@ -210,6 +219,12 @@ function commerceBindingDataFromResult(
       'locationId',
       'default_location_id',
     ]),
+    currencyCode: getStringField(contextData, [
+      'currencyCode',
+      'currency',
+      'defaultCurrencyCode',
+      'currency_code',
+    ]),
   };
 }
 
@@ -232,6 +247,7 @@ async function projectCommerceBindingToWorkspace(
       channelId: binding.channelId ?? null,
       channelName: binding.channelName ?? null,
       defaultLocationId: binding.defaultLocationId ?? null,
+      currencyCode: binding.currencyCode ?? null,
       status: binding.status,
       source: binding.source,
       updatedAt: binding.updatedAt.toISOString(),
@@ -299,6 +315,7 @@ export async function persistCommerceBindingFromToolResult(
     if (data.defaultLocationId !== undefined) {
       upsertParams.defaultLocationId = data.defaultLocationId;
     }
+    if (data.currencyCode !== undefined) upsertParams.currencyCode = data.currencyCode;
 
     if (isChannelReady) {
       upsertParams.channelId = data.channelId;
@@ -374,24 +391,42 @@ export function mergeEnvContent(existing: string, updates: Record<string, string
   return `${base.join('\n')}\n`;
 }
 
-function parseEnvContent(content: string): Record<string, string> {
-  const env: Record<string, string> = {};
-  for (const line of content.split('\n')) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith('#')) continue;
-    const eqIdx = line.indexOf('=');
-    if (eqIdx <= 0) continue;
-    const key = line.slice(0, eqIdx).trim();
-    const rawValue = line.slice(eqIdx + 1).trim();
-    env[key] = rawValue.replace(/^['"]|['"]$/g, '');
-  }
-  return env;
-}
-
 function extractCurrencyCode(result: unknown): string | undefined {
   const data = setupDataFromResult(result);
   if (!data) return undefined;
   return getStringField(data, ['currencyCode', 'currency', 'defaultCurrencyCode', 'currency_code']);
+}
+
+export function persistProjectedCommerceCurrencyCode(
+  appId: string,
+  binding: AppCommerceBinding,
+  currencyCode: string
+): AppCommerceBinding {
+  const normalizedCurrencyCode = normalizeCurrencyCode(currencyCode);
+  if (binding.currencyCode === normalizedCurrencyCode) {
+    return binding;
+  }
+
+  try {
+    new AppCommerceBindingRepository().upsert({
+      appId,
+      currencyCode: normalizedCurrencyCode,
+      status: binding.status,
+      source: binding.source,
+      eventType: 'verified',
+      actorType: 'agent',
+      reason: 'commerce_env_projection',
+      metadata: { source: 'commerce_env_projection' },
+    });
+  } catch (err) {
+    logger.warn('commerce_binding.currency_persist_failed', {
+      appId,
+      currencyCode: normalizedCurrencyCode,
+      error: formatToolError(err),
+    });
+  }
+
+  return { ...binding, currencyCode: normalizedCurrencyCode };
 }
 
 export async function writeCommerceEnvVars(
@@ -419,8 +454,9 @@ export async function writeCommerceEnvVars(
     throw new Error('GODADDY_API_BASE_URL is missing; cannot mark Commerce provisioning ready');
   }
 
-  const currencyCode =
-    extractCurrencyCode(envSourceResult) || existingEnv.VITE_GODADDY_CURRENCY_CODE || 'USD';
+  const currencyCode = normalizeCurrencyCode(
+    extractCurrencyCode(envSourceResult) || existingEnv.VITE_GODADDY_CURRENCY_CODE
+  );
 
   const merged = mergeEnvContent(existingContent, {
     GODADDY_STORE_ID: binding.storeId ?? '',

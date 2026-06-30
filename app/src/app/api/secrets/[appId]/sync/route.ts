@@ -6,6 +6,7 @@ import { AUTHZ_FGA_RELATIONS } from '@/lib/authz-fga/relations';
 import { getControlPlaneAdapter } from '@/lib/control-plane';
 import { createCustomerAuthError, type CustomerAuthContext, customerHasAccount, withCustomerAuth } from '@/lib/customer-auth';
 import { logger } from '@/lib/request-context';
+import { promotePublishEnvToPreviewSecrets } from '@/lib/secrets/publish-env-promotion';
 
 /**
  * Sync secrets from source variant to destination variant
@@ -137,6 +138,15 @@ export const POST = withCustomerAuth(async (
       sourceVariant,
       destinationVariant
     });
+
+    if (sourceVariant === 'preview' && destinationVariant === 'publish') {
+      await promotePublishEnvToPreviewSecrets({
+        appId,
+        site,
+        adapter,
+        jwt: authContext.jwt,
+      });
+    }
 
     const result = await adapter.syncSecrets(
       appId,

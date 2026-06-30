@@ -350,6 +350,52 @@ describe('Database Schema Integration Tests', () => {
       expect(app).toHaveProperty('status');
     });
 
+    it('adds app_commerce_bindings.currency_code to an existing binding table', () => {
+      testDb.exec(`
+        CREATE TABLE apps (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE app_commerce_bindings (
+          app_id TEXT PRIMARY KEY,
+          business_id TEXT,
+          business_name TEXT,
+          store_id TEXT,
+          store_name TEXT,
+          store_url TEXT,
+          channel_id TEXT,
+          channel_name TEXT,
+          default_location_id TEXT,
+          status TEXT NOT NULL,
+          source TEXT NOT NULL DEFAULT 'unknown',
+          last_verified_at DATETIME,
+          verification_error TEXT,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+      testDb.prepare(`INSERT INTO apps (id, name) VALUES (?, ?)`).run('app-commerce-old', 'Old Commerce App');
+      testDb.prepare(`
+        INSERT INTO app_commerce_bindings (app_id, store_id, channel_id, status, source)
+        VALUES (?, ?, ?, ?, ?)
+      `).run('app-commerce-old', 'store-old', 'channel-old', 'channel_ready', 'tool_channel_ensure');
+
+      initializeSchema(testDb);
+      initializeSchema(testDb);
+
+      const cols = (testDb.prepare(`PRAGMA table_info(app_commerce_bindings)`).all() as { name: string }[])
+        .map((col) => col.name);
+      expect(cols).toContain('currency_code');
+
+      const row = testDb
+        .prepare(`SELECT store_id, channel_id, currency_code FROM app_commerce_bindings WHERE app_id = ?`)
+        .get('app-commerce-old') as { store_id: string; channel_id: string; currency_code: string | null };
+      expect(row).toEqual({ store_id: 'store-old', channel_id: 'channel-old', currency_code: null });
+    });
+
     it('should be idempotent - safe to run multiple times', () => {
       // Run schema initialization multiple times
       initializeSchema(testDb);

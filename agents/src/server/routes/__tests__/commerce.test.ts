@@ -74,6 +74,7 @@ describe('commerce binding routes', () => {
         businessName: 'Haven & Co.',
         storeId: 'store-1',
         storeName: 'Haven Store',
+        currencyCode: 'eur',
         reason: 'merchant selected store',
       });
 
@@ -87,6 +88,7 @@ describe('commerce binding routes', () => {
         businessName: 'Haven & Co.',
         storeId: 'store-1',
         storeName: 'Haven Store',
+        currencyCode: 'EUR',
         channelId: null,
         status: 'store_bound',
         source: 'user_selected',
