@@ -85,7 +85,7 @@ export async function checkPaywallEligibility(
 
     if (!accountSubscription) {
       const durationMs = Date.now() - startTime;
-      logger.warn('paywall.eligibility.no-subscription', { appId, durationMs });
+      logger.warn('paywall.eligibility.no-subscription', { appId, action, durationMs });
       setApmLabel('paywall.has_access', false);
       setApmLabel('paywall.denial_reason', 'no_subscription');
       result.reason = 'No active subscription found';
@@ -132,6 +132,7 @@ export async function checkPaywallEligibility(
           const durationMs = Date.now() - startTime;
           logger.error('paywall.eligibility.published-apps.check-failed', {
             appId,
+            action,
             subscriptionId: accountSubscription.id,
             error: error instanceof Error ? error.message : String(error),
             durationMs,
@@ -173,6 +174,7 @@ export async function checkPaywallEligibility(
           const durationMs = Date.now() - startTime;
           logger.warn('paywall.eligibility.publish-limit-reached', {
             appId,
+            action,
             plan: accountSubscription.plan,
             currentCount: publishedApps.count,
             limit,
@@ -227,6 +229,7 @@ export async function checkPaywallEligibility(
     const durationMs = Date.now() - startTime;
     logger.warn('paywall.eligibility.denied', {
       appId,
+      action,
       reason: 'subscription-upgrade-required',
       plan: accountSubscription.plan,
       durationMs,
@@ -239,6 +242,7 @@ export async function checkPaywallEligibility(
     const durationMs = Date.now() - startTime;
     logger.error('paywall.eligibility.check-failed', {
       appId,
+      action,
       error: error instanceof Error ? error.message : String(error),
       errorType: error instanceof Error ? error.constructor.name : typeof error,
       durationMs,

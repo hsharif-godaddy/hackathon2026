@@ -65,9 +65,25 @@ async function validateSiteAccess(siteId: string, user: CustomerUser, jwt: strin
 
   const adapter = getControlPlaneAdapter();
   const productFilter = owningProduct || AIRO_OWNER_PRODUCTS.AIRO_APP_BUILDER;
-  const exists = await adapter.appExists(siteId, jwt, productFilter, multiUserEnabled);
+
+  let exists: boolean;
+  try {
+    exists = await adapter.appExists(siteId, jwt, productFilter, multiUserEnabled);
+  } catch (error) {
+    logger.error('agent-token.control-plane.app-exists-failed', {
+      siteId,
+      customerId: user.customerId,
+      error: error instanceof Error ? error.message : String(error),
+      errorType: error instanceof Error ? error.constructor.name : typeof error,
+    });
+    throw error;
+  }
 
   if (!exists) {
+    logger.warn('agent-token.control-plane.site-not-found', {
+      siteId,
+      customerId: user.customerId,
+    });
     return NextResponse.json({
       error: 'Site not found'
     }, { status: 404 });
