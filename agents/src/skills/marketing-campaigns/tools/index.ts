@@ -6,7 +6,7 @@ import { SimpleCampaignRepository } from '../../../database/repositories/SimpleC
 import type { CreateSimpleCampaignParams, CreateSimpleCampaignContentParams } from '../../../database/repositories/SimpleCampaignRepository.js'
 import { SocialPostRepository } from '../../../database/repositories/SocialPostRepository.js'
 import { SimpleCampaignStatus } from '../../../database/schema.js'
-import type { SimpleCampaignContentType, SimpleCampaignContentStatus, SocialAssociation, SocialPost } from '../../../database/schema.js'
+import type { SimpleCampaign, SimpleCampaignContentType, SimpleCampaignContentStatus, SocialAssociation, SocialPost } from '../../../database/schema.js'
 import { SocialAssociationRepository } from '../../../database/repositories/SocialAssociationRepository.js'
 import { SocialPlatform, PostState } from '../../../types/social.js'
 import { MediaSearchTool } from '../../../tools/media-search-tool.js'
@@ -16,6 +16,9 @@ import { workspaceScopeFromAppId, customerIdFromContext } from '../../../memory/
 import { createForWorkspace } from '../../../workspace/index.js'
 import { serializeSocialRawContent } from '../../../services/social/social-raw-content.js'
 import type { SocialRawContent } from '../../../services/social/social-raw-content.js'
+import { resolvePublishedUrlFromToolContext } from '../../../services/site-published-url.js'
+import { decorateBlogCta, decorateSocialCta, decorateConversionCtaLinks, hasCampaignConversionCta } from '../../../services/campaign-link-decorator.js'
+import { isDevSupervisorNotFound } from '../../../services/DevSupervisorClient.js'
 import { readFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
@@ -43,11 +46,26 @@ function campaignsDisabledResult(): { success: false; error: string } {
  * platform. Editability is gated on campaign status, not on this id, so a freshly-stamped
  * draft stays editable until the campaign launches.
  *
- * UTM attribution (marketing_utm) is intentionally NOT minted here — that is the
- * RUBICON-499/500 workstream's responsibility, which owns the full token format
- * (utm_content/utm_term/cmp_-prefixed utm_campaign) at carrier persistence.
+ * UTM attribution (marketing_utm) is minted here at carrier persistence (RUBICON-499/500/501,
+ * social half): once the DRAFT carrier exists we have its stable id, so we put the ABSOLUTE
+ * tracked URL in the caption (a caption lives off-site, so a relative /lp link wouldn't
+ * resolve) and mint the marketing_utm row keyed by the post id. For caption-clickable
+ * platforms (Facebook, Google Business Profile) we decorate the existing /lp/<slug> link if
+ * the caption has one, otherwise APPEND the tracked URL — so the post always carries a
+ * trackable link. Instagram is excluded: its captions can't carry per-post clickable links
+ * ("link in bio"), so per-post IG attribution is handled separately. Decoration is also
+ * skipped when the site isn't published or the campaign slug is unknown.
+ * Returns the post id plus the (possibly decorated) rawContent so the caller persists the
+ * same caption to the content-row projection that it wrote to the carrier.
  */
-function materializeSocialDraft(appId: string, campaignId: string, rawContent: SocialRawContent): string {
+const CAPTION_LINK_PLATFORMS: ReadonlySet<string> = new Set(['facebook', 'google_business_profile'])
+
+function materializeSocialDraft(
+  appId: string,
+  campaignId: string,
+  rawContent: SocialRawContent,
+  opts: { publishedUrl: string | null; campaignSlug: string | undefined },
+): { postId: string; rawContent: SocialRawContent } {
   const post: SocialPost = socialPostRepo.create({
     appId,
     campaignId,
@@ -55,7 +73,32 @@ function materializeSocialDraft(appId: string, campaignId: string, rawContent: S
     platform: rawContent.platform ?? null,
     payload: rawContent,
   })
-  return post.id
+
+  const platform: string | undefined = rawContent.platform
+  if (opts.publishedUrl && opts.campaignSlug && platform && CAPTION_LINK_PLATFORMS.has(platform)) {
+    const trackedUrl: string = decorateSocialCta({
+      publishedUrl: opts.publishedUrl,
+      campaignSlug: opts.campaignSlug,
+      contentRefId: post.id,
+      simpleCampaignId: campaignId,
+      platform,
+    }).absoluteUrl
+    // Rewrite the campaign /lp link only when the caption carries a real conversion CTA token
+    // (exact-match, same rule as the rewriter); otherwise append the tracked URL (FB/GMB captions
+    // support clickable links). A loose substring check would route prefix-slug collisions
+    // (/lp/<slug>-2025) into the rewrite branch, which then no-ops and leaves the minted row unused.
+    const decoratedMessage: string = hasCampaignConversionCta(rawContent.message, opts.campaignSlug)
+      ? decorateConversionCtaLinks(rawContent.message, opts.campaignSlug, trackedUrl)
+      : `${rawContent.message}\n\n${trackedUrl}`
+    if (decoratedMessage !== rawContent.message) {
+      const decoratedRawContent: SocialRawContent = { ...rawContent, message: decoratedMessage }
+      socialPostRepo.update(post.id, { payload: decoratedRawContent })
+      logger.info('campaign.social-utm.applied', { appId, campaignId, postId: post.id, platform })
+      return { postId: post.id, rawContent: decoratedRawContent }
+    }
+  }
+
+  return { postId: post.id, rawContent }
 }
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -263,7 +306,7 @@ CRITICAL TIMING: Call this tool in GENERATE Step 3, after socialPostCreate and e
 
 export const campaignPlanCreate: SkillToolDefinition = {
   name: 'campaignPlanCreate',
-  description: `Save the completed campaign and render the campaign card. Call this ONLY in the SUMMARY step — AFTER all content has been fully generated (landing page built, blog posts written, social posts created, email/ad copy written). This is the LAST tool you call in the campaign flow.
+  description: `Save the completed campaign and render the campaign card. Call this ONLY in the SUMMARY step — AFTER all content has been fully generated (landing page built, blog posts written, social posts created, email/ad copy written). This saves the campaign; for a campaign with blog posts, follow it with campaignApplyBlogUtm to add UTM tracking to the blog CTAs.
 
 DO NOT call this tool:
 - During the planning/discovery phase
@@ -276,6 +319,7 @@ CRITICAL TIMING: Call this tool ONLY in SUMMARY, after the build handoff has com
     offer: z.string().describe('The campaign offer or goal — keep to 5 words or fewer (e.g. "Increase revenue by 2x")'),
     startDate: z.string().describe('Campaign start date (YYYY-MM-DD)'),
     endDate: z.string().describe('Campaign end date (YYYY-MM-DD)'),
+    landingPageSlug: z.string().optional().describe('The canonical campaign slug (the same plan.landingPageSlug used at PLAN — the /lp/<slug> all CTAs point to). Pass it so social post captions get UTM tracking added to their landing-page link.'),
     plannedContent: z.array(z.object({
       assetType: z.enum(['landing-page', 'banner', 'blog', 'social', 'email', 'ad']).describe('Content channel'),
       title: z.string().describe('Planned content title or headline'),
@@ -287,9 +331,12 @@ CRITICAL TIMING: Call this tool ONLY in SUMMARY, after the build handoff has com
         message: z.string().describe('The post caption/body text.'),
         hashtags: z.array(z.string()).describe('Hashtags without the # symbol.'),
         callToAction: z.string().optional().describe('Optional CTA text.'),
-        platform: z.enum(['facebook', 'instagram']).optional().describe('Optional target platform.'),
+        platform: z.enum(['facebook', 'instagram', 'google_business_profile']).optional().describe('Target platform. facebook / google_business_profile captions carry the tracked landing link; instagram is link-in-bio.'),
       }).optional().describe('For SOCIAL assets ONLY: the generated post body, stored as the editable pre-launch draft. Copy the message/hashtags/callToAction/platform you produced with socialPostCreate.'),
-    })).describe('List of planned content items for the campaign'),
+    }).refine(
+      (item): boolean => item.assetType !== 'social' || item.rawContent !== undefined,
+      { message: 'rawContent is required for social assets — copy the message/hashtags/callToAction/platform you produced with socialPostCreate (a social post cannot be persisted or UTM-tracked without it).' },
+    )).describe('List of planned content items for the campaign'),
   }),
   async execute(args, context) {
     if (!isCampaignsEnabled(context)) {
@@ -324,6 +371,13 @@ CRITICAL TIMING: Call this tool ONLY in SUMMARY, after the build handoff has com
     // so we reuse it for the widget instead of re-reading from the DB.
     const readyCampaign = campaignRepo.transition(campaign.id, SimpleCampaignStatus.Ready)
 
+    // Resolved once for the social-CTA UTM decoration below (social posts are materialized
+    // in this loop; the campaign id already exists here, so unlike blog there's no separate
+    // post-summary tool). Both are absent on apps without a published site / frozen slug —
+    // social drafts then materialize undecorated.
+    const campaignSlug: string | undefined = args.landingPageSlug ? sanitizeSlug(args.landingPageSlug) : undefined
+    const publishedUrl: string | null = await resolvePublishedUrlFromToolContext(appId, context)
+
     for (const item of args.plannedContent) {
       let imageUrl: string | undefined = item.imageUrl
       if (!imageUrl) {
@@ -339,15 +393,18 @@ CRITICAL TIMING: Call this tool ONLY in SUMMARY, after the build handoff has com
       }
 
       // A social asset with a generated draft is materialized now (GENERATE step): we
-      // create its DRAFT social_posts row and stamp the resulting post id as contentRefId
-      // (UTM is intentionally not minted here — RUBICON-499/500 owns that). Non-social
-      // assets, and social teasers without rawContent, leave contentRefId null — their
-      // live-content pointer is wired later by a resolver.
+      // create its DRAFT social_posts row, decorate the campaign CTA in its caption with
+      // UTM tracking (RUBICON-499/500/501), and stamp the resulting post id as contentRefId.
+      // The decorated caption is persisted to BOTH the carrier and the content-row
+      // projection. Non-social assets, and social teasers without rawContent, leave
+      // contentRefId null — their live-content pointer is wired later by a resolver.
       const isSocial: boolean = item.assetType === 'social'
-      const rawContent: string | undefined =
-        isSocial && item.rawContent ? serializeSocialRawContent(item.rawContent) : undefined
-      const contentRefId: string | undefined =
-        isSocial && item.rawContent ? materializeSocialDraft(appId, campaign.id, item.rawContent) : undefined
+      const materialized: { postId: string; rawContent: SocialRawContent } | undefined =
+        isSocial && item.rawContent
+          ? materializeSocialDraft(appId, campaign.id, item.rawContent, { publishedUrl, campaignSlug })
+          : undefined
+      const rawContent: string | undefined = materialized ? serializeSocialRawContent(materialized.rawContent) : undefined
+      const contentRefId: string | undefined = materialized?.postId
 
       const assetInput: CreateSimpleCampaignContentParams = {
         simpleCampaignId: campaign.id,
@@ -480,9 +537,127 @@ This tool persists the campaign record together with its actual generated assets
   }
 }
 
+/**
+ * Decorate the campaign landing-page CTA inside generated blog posts with UTM tracking
+ * (RUBICON-501, blog half).
+ *
+ * Runs in SUMMARY, AFTER campaignPlanCreate (the campaign row must exist — marketing_utm
+ * references it) and AFTER the build handoff created the blog markdown. For each blog post it
+ * mints a marketing_utm row and rewrites the bare `/lp/<slug>` conversion CTA in the markdown
+ * to the UTM-decorated RELATIVE link (relative so it survives a later domain change). Only the
+ * conversion CTA is touched; incidental in-blog/nav links are left bare (see
+ * decorateConversionCtaLinks). Posts that don't link to this campaign are skipped.
+ *
+ * contentRefId for the act_ token is the blog slug — a stable, frozen per-post id available at
+ * this layer without reading posts.json.
+ */
+export const campaignApplyBlogUtm: SkillToolDefinition = {
+  name: 'campaignApplyBlogUtm',
+  description: `Decorate the campaign landing-page CTA inside the generated blog posts with UTM tracking. Call this in SUMMARY, AFTER campaignPlanCreate and AFTER the blog posts were created in the build handoff. For each blog post it records UTM attribution and rewrites the bare /lp/<slug> CTA in the markdown to the tracked link; incidental links are left untouched. Pass the campaign's landing slug and the slugs of the blog posts that were created.`,
+  parameters: z.object({
+    landingPageSlug: z.string().describe('The canonical campaign slug (plan.landingPageSlug) — the /lp/<slug> the CTAs point to.'),
+    blogPosts: z.array(z.object({
+      slug: z.string().describe('The blog post slug — its src/content/data/blog/<slug>.md filename.'),
+      topicSlug: z.string().optional().describe('Topic for utm_term (e.g. the blog topic). Defaults to none.'),
+    })).min(1).describe('The blog posts created for this campaign.'),
+  }),
+  async execute(args, context) {
+    if (!isCampaignsEnabled(context)) {
+      logger.warn('campaign-blog-utm.feature_disabled', { appId: context?.metadata?.appId })
+      return campaignsDisabledResult()
+    }
+    const appId: string | undefined = context?.metadata?.appId as string | undefined
+    if (!appId) {
+      return { success: false, error: 'No appId in context' }
+    }
+
+    // The campaign was just persisted by campaignPlanCreate (status 'ready'); marketing_utm
+    // references it, so it must exist before this runs.
+    const campaign: SimpleCampaign | undefined = campaignRepo
+      .findByAppId(appId)
+      .find((c: SimpleCampaign): boolean => c.status === SimpleCampaignStatus.Ready)
+    if (!campaign) {
+      return { success: false, error: 'No ready campaign found — call campaignPlanCreate first.' }
+    }
+
+    const publishedUrl: string | null = await resolvePublishedUrlFromToolContext(appId, context)
+    if (!publishedUrl) {
+      return { success: false, error: 'No published site URL available — a published website is required to generate campaign URLs.' }
+    }
+
+    const workspace = createForWorkspace(appId, 'preview')
+    if (!workspace) {
+      return { success: false, error: 'Workspace unavailable.' }
+    }
+
+    const slug: string = sanitizeSlug(args.landingPageSlug)
+    const decorated: string[] = []
+    const skipped: string[] = []
+    const failed: string[] = []
+
+    for (const post of args.blogPosts) {
+      const filePath: string = `src/content/data/blog/${post.slug}.md`
+      let markdown: string
+      try {
+        markdown = (await workspace.files.view({ path: filePath })).content
+      } catch (error: unknown) {
+        // A missing file is a legitimate skip (the post doesn't exist for this app); any other
+        // error (supervisor restart, 5xx, permission) means a real CTA may have gone undecorated,
+        // so surface it instead of silently bucketing it as skipped.
+        if (isDevSupervisorNotFound(error)) {
+          skipped.push(post.slug)
+          continue
+        }
+        logger.warn('campaign.blog-utm.read_failed', {
+          appId,
+          campaignId: campaign.id,
+          slug: post.slug,
+          error: error instanceof Error ? error.message : String(error),
+        })
+        failed.push(post.slug)
+        continue
+      }
+
+      // Only decorate posts that carry a real conversion CTA token for THIS campaign — exact-match,
+      // same rule as the rewriter below. A loose substring check would mint a marketing_utm row for
+      // prefix-slug collisions (/lp/<slug>-2025) or already-decorated links, leaving an orphan row.
+      if (!hasCampaignConversionCta(markdown, slug)) {
+        skipped.push(post.slug)
+        continue
+      }
+
+      // Mints the marketing_utm row (contentRefId = slug) and returns the relative decorated link.
+      const relativePath: string = decorateBlogCta({
+        publishedUrl,
+        campaignSlug: slug,
+        contentRefId: post.slug,
+        simpleCampaignId: campaign.id,
+        topicSlug: post.topicSlug,
+      }).relativePath
+      const updated: string = decorateConversionCtaLinks(markdown, slug, relativePath)
+      if (updated !== markdown) {
+        await workspace.files.write({ path: filePath, content: updated })
+        decorated.push(post.slug)
+      } else {
+        skipped.push(post.slug)
+      }
+    }
+
+    logger.info('campaign.blog-utm.applied', { appId, campaignId: campaign.id, decorated: decorated.length, skipped: skipped.length, failed: failed.length })
+    return {
+      success: failed.length === 0,
+      decorated,
+      skipped,
+      failed,
+      message: `Decorated the campaign CTA in ${decorated.length} blog post(s)${skipped.length ? `; skipped ${skipped.length} (no /lp/${slug} CTA or already decorated)` : ''}${failed.length ? `; ${failed.length} failed to read (see logs)` : ''}.`,
+    }
+  },
+}
+
 export const tools: SkillToolDefinition[] = [
   campaignPlanPropose,
   campaignScaffoldPage,
   campaignPlanCreate,
   campaignCreate,
+  campaignApplyBlogUtm,
 ]

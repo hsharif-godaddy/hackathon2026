@@ -69,6 +69,23 @@ export function decorateConversionCtaLinks(text: string, campaignSlug: string, d
   );
 }
 
+/**
+ * True iff `text` contains at least one conversion CTA that `decorateConversionCtaLinks` would
+ * actually rewrite for this campaign — a whole `/lp/<slug>` token whose captured slug exactly
+ * equals `campaignSlug`. Shares CONVERSION_CTA_PATTERN with the rewriter (same boundary rules,
+ * same already-decorated `?…` and prefix-slug exclusions), so callers can gate a side-effecting
+ * mint on a real rewrite target instead of a loose `includes('/lp/' + slug)` substring that
+ * diverges from the rewriter (prefix-slug collisions, already-decorated links).
+ */
+export function hasCampaignConversionCta(text: string, campaignSlug: string): boolean {
+  for (const match of text.matchAll(CONVERSION_CTA_PATTERN)) {
+    if (match[2] === campaignSlug) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export interface DecorateCtaParams {
   publishedUrl: string;
   campaignSlug: string;

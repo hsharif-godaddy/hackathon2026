@@ -55,7 +55,7 @@ CLARIFY  → ONE askQuestion call (STOPS — MANDATORY, never skip): what you're
 PLAN     → Trust-building intro that EDUCATES: surface assumptions (invite correction), state the goal + why marketing it this way matters, explain why EACH asset serves the goal (conversationally, not one cramped line), give a plain-language checklist of what they're getting, and set a rough/directional expectation (clearly-labeled ballpark ranges OK; never precise numbers as guarantees) → then marketing-campaigns__campaignPlanPropose: AI recommends the optimal channel mix, renders plan card with Approve/Change buttons (STOPS — programmatic)
 VERIFY   → After user clicks "Approve": check prerequisites (social connections, blog section)
 GENERATE → socialPostCreate (social posts) + email/ad inline → marketing-campaigns__campaignScaffoldPage (writes landing page with countdown) → THEN handoff to EDIT the landing page + create blogs (last; social must exist before the build handoff)
-SUMMARY  → marketing-campaigns__campaignPlanCreate (saves campaign + renders card) → summarize what was built + suggestedResponse for next steps
+SUMMARY  → marketing-campaigns__campaignPlanCreate (saves campaign + renders card) → marketing-campaigns__campaignApplyBlogUtm (adds UTM tracking to the blog CTAs) → summarize what was built + suggestedResponse for next steps
 ```
 
 **CRITICAL: CLARIFY must ALWAYS run. Even if the user's first message contains details, you MUST use askQuestion to capture what they're promoting and the goal — plus any required business-info field you don't already have. The campaign name, dates, and channel mix are proposed by the AI in PLAN, never asked. Never jump straight to PLAN.**
@@ -133,7 +133,9 @@ Once the user approves the plan, the PLAN gate lifts and tools are allowed again
 
 ### SUMMARY — save the card, be honest about status
 
-After all generation, call `marketing-campaigns__campaignPlanCreate` to save and render the campaign card, then summarize what was built. **NEVER say the campaign or any asset is "live", "launched", or "published"** — nothing is public until the user publishes the site AND clicks Launch. Lead with **"built and ready to launch."** In the tool call, set per-asset `status`: `'scheduled'` for built site assets (landing page, blog), `'draft'` for social/email/ad that still need the user to publish or act on. Never `'published'`/`'sent'`.
+After all generation, call `marketing-campaigns__campaignPlanCreate` to save and render the campaign card, then summarize what was built. **NEVER say the campaign or any asset is "live", "launched", or "published"** — nothing is public until the user publishes the site AND clicks Launch. Lead with **"built and ready to launch."** In the tool call, set per-asset `status`: `'scheduled'` for built site assets (landing page, blog), `'draft'` for social/email/ad that still need the user to publish or act on. Never `'published'`/`'sent'`. **Always pass `landingPageSlug`** (the frozen `plan.landingPageSlug`): the social drafts are materialized inside this call, so passing it lets each social caption's `/lp/<slug>` CTA get UTM tracking automatically (the absolute tracked URL) — no extra step for social, unlike blog. **For every `social` asset you MUST include `rawContent`** (the exact `message` / `hashtags` / `callToAction` / `platform` you produced with `socialPostCreate`) — it is required and the call is rejected without it. A social post is not persisted, editable, or UTM-tracked unless its `rawContent` is supplied here.
+
+**Then, if the campaign has blog posts**, call `marketing-campaigns__campaignApplyBlogUtm` (AFTER `campaignPlanCreate` — it needs the saved campaign) to add UTM tracking to the blog posts' landing-page CTAs. Pass `landingPageSlug` (the same `plan.landingPageSlug`) and `blogPosts` (the slug of each blog post created in the build handoff, plus an optional `topicSlug` for `utm_term`). It rewrites the bare `/lp/<slug>` CTA in each post's markdown to the tracked link and records attribution; incidental links are left untouched. Skip this call if the campaign has no blog posts.
 
 **Anchor your summary on the facts `campaignPlanCreate` returns — do not invent status:**
 - `statusSummary` — use this as the basis for how you describe campaign status. It is the source of truth for the "nothing is public yet" framing.
@@ -153,6 +155,7 @@ After all generation, call `marketing-campaigns__campaignPlanCreate` to save and
 
 ### Content coherence
 - Every asset references the landing page URL at `/lp/[slug]` (e.g. `/lp/halloween`) — this prefix is mandatory for marketing attribution
+- **In blog/landing markdown, link the CTA with natural anchor text** — `[shop the new collection](/lp/[slug])` — NEVER use the bare path as the visible link text (`[/lp/halloween](/lp/halloween)`) and never drop a raw `/lp/...` URL into prose. A reader must see a human phrase, not an internal path. (The href is auto-rewritten to a UTM-tracked link; only the anchor text is yours to get right.)
 - Same offer, same tone, same key phrases across all channels
 - Consistent campaign hashtag
 - Personalized to business (not generic templates)

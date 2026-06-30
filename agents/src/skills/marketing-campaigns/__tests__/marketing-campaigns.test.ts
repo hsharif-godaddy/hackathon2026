@@ -15,6 +15,7 @@ const { mockMediaSearch, mockSocialPostRepo, mockMarketingUtmRepo } = vi.hoisted
   },
   mockSocialPostRepo: {
     create: vi.fn().mockReturnValue({ id: 'post-mat1' }),
+    update: vi.fn(),
   },
   mockMarketingUtmRepo: {
     create: vi.fn(),
@@ -38,6 +39,26 @@ vi.mock('../../../database/repositories/SocialPostRepository.js', () => ({
 vi.mock('../../../database/repositories/MarketingUtmRepository.js', () => ({
   MarketingUtmRepository: vi.fn(function () { return mockMarketingUtmRepo }),
 }))
+
+// Blog-UTM tool deps: stub the published-URL resolver and the marketing_utm-minting half of
+// the decorator (decorateBlogCta), but keep decorateConversionCtaLinks REAL so the test
+// exercises the actual markdown rewrite + same-domain skip.
+const { mockResolvePublishedUrl, mockDecorateBlogCta, mockDecorateSocialCta } = vi.hoisted(() => ({
+  mockResolvePublishedUrl: vi.fn(),
+  mockDecorateBlogCta: vi.fn(),
+  mockDecorateSocialCta: vi.fn(),
+}))
+vi.mock('../../../services/site-published-url.js', () => ({
+  resolvePublishedUrlFromToolContext: (...args: unknown[]): unknown => mockResolvePublishedUrl(...args),
+}))
+vi.mock('../../../services/campaign-link-decorator.js', async (importOriginal): Promise<Record<string, unknown>> => {
+  const actual = await importOriginal<typeof import('../../../services/campaign-link-decorator.js')>()
+  return {
+    ...actual,
+    decorateBlogCta: (...args: unknown[]): unknown => mockDecorateBlogCta(...args),
+    decorateSocialCta: (...args: unknown[]): unknown => mockDecorateSocialCta(...args),
+  }
+})
 
 // Mock the social-association repo so the deterministic social-connection check in
 // campaignPlanCreate is driven by the test, not by real DB rows.
@@ -70,7 +91,7 @@ vi.mock('../../../database/repositories/SimpleCampaignRepository.js', () => ({
   },
 }))
 
-import { tools, campaignPlanPropose, campaignPlanCreate, campaignCreate, campaignScaffoldPage, sanitizeSlug, buildLandingPage } from '../tools/index.js'
+import { tools, campaignPlanPropose, campaignPlanCreate, campaignCreate, campaignScaffoldPage, campaignApplyBlogUtm, sanitizeSlug, buildLandingPage } from '../tools/index.js'
 import { createForWorkspace } from '../../../workspace/index.js'
 import { SocialPlatform } from '../../../types/social.js'
 
@@ -241,12 +262,13 @@ describe('marketing-campaigns orchestrator tools', () => {
     })
   })
 
-  it('exports exactly the four orchestrator tools', () => {
+  it('exports exactly the orchestrator tools', () => {
     expect(tools.map((tool) => tool.name)).toEqual([
       'campaignPlanPropose',
       'campaignScaffoldPage',
       'campaignPlanCreate',
       'campaignCreate',
+      'campaignApplyBlogUtm',
     ])
   })
 })
@@ -643,5 +665,178 @@ describe('campaignPlanCreate persists social raw_content', () => {
       assetType: 'social', status: 'draft', contentRefId: 'post-mat1',
       rawContent: expect.stringContaining('"message":"Spring sale!"'),
     }))
+  })
+})
+
+describe('campaignApplyBlogUtm', () => {
+  const DECORATED = '/lp/summer-sale?utm_source=blog-aab&utm_medium=blog&utm_campaign=cmp_X&utm_content=act_Y&utm_term=topic_baking-tips'
+
+  beforeEach(() => {
+    mockResolvePublishedUrl.mockResolvedValue('https://example-bakery.com')
+    mockDecorateBlogCta.mockReturnValue({ relativePath: DECORATED, absoluteUrl: 'https://example-bakery.com' + DECORATED, utm: {} })
+    mockCampaignFindByAppId.mockReturnValue([{ id: 'camp_1', status: 'ready' }])
+  })
+
+  function fakeWorkspace(markdownByPath: Record<string, string>): { writes: { path: string; content: string }[] } {
+    const writes: { path: string; content: string }[] = []
+    vi.mocked(createForWorkspace).mockReturnValue({
+      files: {
+        view: vi.fn(async ({ path }: { path: string }) => {
+          if (markdownByPath[path] === undefined) throw new Error('not found')
+          return { path, content: markdownByPath[path] }
+        }),
+        write: vi.fn(async (opts: { path: string; content: string }) => { writes.push(opts); return {} }),
+      },
+    } as never)
+    return { writes }
+  }
+
+  it('rewrites the bare /lp/<slug> CTA to the decorated link and leaves incidental links bare', async () => {
+    const md = 'Tips inside — [grab the deal](/lp/summer-sale) today. (See our [About](/about) page.)'
+    const { writes } = fakeWorkspace({ 'src/content/data/blog/baking-tips.md': md })
+
+    const result = await campaignApplyBlogUtm.execute(
+      { landingPageSlug: 'summer-sale', blogPosts: [{ slug: 'baking-tips', topicSlug: 'baking tips' }] },
+      enabledContext,
+    )
+
+    expect(result.success).toBe(true)
+    expect(result.decorated).toEqual(['baking-tips'])
+    expect(writes).toHaveLength(1)
+    expect(writes[0].content).toBe('Tips inside — [grab the deal](' + DECORATED + ') today. (See our [About](/about) page.)')
+    expect(mockDecorateBlogCta).toHaveBeenCalledWith(expect.objectContaining({ contentRefId: 'baking-tips', simpleCampaignId: 'camp_1', campaignSlug: 'summer-sale' }))
+  })
+
+  it('skips a post that does not link to this campaign (no write)', async () => {
+    const { writes } = fakeWorkspace({ 'src/content/data/blog/unrelated.md': 'No campaign CTA here, just [home](/).' })
+    const result = await campaignApplyBlogUtm.execute(
+      { landingPageSlug: 'summer-sale', blogPosts: [{ slug: 'unrelated' }] },
+      enabledContext,
+    )
+    expect(result.decorated).toEqual([])
+    expect(result.skipped).toEqual(['unrelated'])
+    expect(writes).toHaveLength(0)
+  })
+
+  it('errors when no ready campaign exists yet (campaignPlanCreate must run first)', async () => {
+    mockCampaignFindByAppId.mockReturnValue([])
+    fakeWorkspace({})
+    const result = await campaignApplyBlogUtm.execute(
+      { landingPageSlug: 'summer-sale', blogPosts: [{ slug: 'baking-tips' }] },
+      enabledContext,
+    )
+    expect(result.success).toBe(false)
+    expect(result.error).toMatch(/campaignPlanCreate first/)
+  })
+
+  it('is gated by the feature flag', async () => {
+    const result = await campaignApplyBlogUtm.execute(
+      { landingPageSlug: 'summer-sale', blogPosts: [{ slug: 'baking-tips' }] },
+      disabledContext,
+    )
+    expect(result.success).toBe(false)
+  })
+})
+
+describe('campaignPlanCreate decorates social CTA with UTM (RUBICON-501 social half)', () => {
+  const SOCIAL_UTM_URL: string =
+    'https://example-bakery.com/lp/summer-sale?utm_source=facebook&utm_medium=organic_social&utm_campaign=cmp_X&utm_content=act_Y'
+
+  beforeEach(() => {
+    mockCampaignFindByAppId.mockReturnValue([])
+    mockCampaignCreate.mockReturnValue({ id: 'camp_x' })
+    mockCampaignTransition.mockReturnValue({ id: 'camp_x', status: 'ready' })
+    mockMediaSearch.searchMedia.mockResolvedValue({ success: false })
+    mockSocialPostRepo.create.mockReturnValue({ id: 'post-mat1' })
+    mockSocialPostRepo.update.mockReset()
+    mockDecorateSocialCta.mockReset()
+    mockDecorateSocialCta.mockReturnValue({ absoluteUrl: SOCIAL_UTM_URL, relativePath: '/lp/summer-sale', utm: {} })
+    mockResolvePublishedUrl.mockResolvedValue('https://example-bakery.com')
+  })
+
+  function socialInput(message: string, platform: string = 'facebook'): Record<string, unknown> {
+    return {
+      name: 'Summer', offer: 'Save', startDate: '2026-07-01', endDate: '2026-07-31',
+      landingPageSlug: 'summer-sale',
+      plannedContent: [{
+        assetType: 'social', title: 'Launch post', imageUrl: 'http://img',
+        rawContent: { message, hashtags: ['sale'], platform },
+      }],
+    }
+  }
+
+  it('rewrites the /lp CTA in the caption to the absolute tracked URL and persists it to carrier + content row', async () => {
+    await run(campaignPlanCreate, socialInput('Big news — shop the sale at /lp/summer-sale today!'), enabledContext)
+
+    expect(mockDecorateSocialCta).toHaveBeenCalledWith(expect.objectContaining({
+      contentRefId: 'post-mat1', simpleCampaignId: 'camp_x', campaignSlug: 'summer-sale',
+      platform: 'facebook', publishedUrl: 'https://example-bakery.com',
+    }))
+    expect(mockSocialPostRepo.update).toHaveBeenCalledWith('post-mat1', {
+      payload: expect.objectContaining({ message: 'Big news — shop the sale at ' + SOCIAL_UTM_URL + ' today!' }),
+    })
+    // The decorated caption is also serialized into the content-row projection.
+    expect(mockCampaignAddContent).toHaveBeenCalledWith(expect.objectContaining({
+      assetType: 'social', contentRefId: 'post-mat1', rawContent: expect.stringContaining(SOCIAL_UTM_URL),
+    }))
+  })
+
+  it('appends the tracked URL for a FB caption with no /lp link (FB/GMB captions carry the link)', async () => {
+    await run(campaignPlanCreate, socialInput('Something exciting is coming soon!'), enabledContext)
+    expect(mockDecorateSocialCta).toHaveBeenCalled()
+    expect(mockSocialPostRepo.update).toHaveBeenCalledWith('post-mat1', {
+      payload: expect.objectContaining({ message: 'Something exciting is coming soon!\n\n' + SOCIAL_UTM_URL }),
+    })
+  })
+
+  it('skips Instagram captions (link-in-bio — no per-post caption link)', async () => {
+    await run(campaignPlanCreate, socialInput('Shop at /lp/summer-sale now', 'instagram'), enabledContext)
+    expect(mockDecorateSocialCta).not.toHaveBeenCalled()
+    expect(mockSocialPostRepo.update).not.toHaveBeenCalled()
+  })
+
+  it('skips decoration when the site is not published yet', async () => {
+    mockResolvePublishedUrl.mockResolvedValue(null)
+    await run(campaignPlanCreate, socialInput('Shop at /lp/summer-sale now'), enabledContext)
+    expect(mockDecorateSocialCta).not.toHaveBeenCalled()
+    expect(mockSocialPostRepo.update).not.toHaveBeenCalled()
+  })
+
+  it('skips decoration when landingPageSlug is not provided', async () => {
+    const input: Record<string, unknown> = socialInput('Shop at /lp/summer-sale now')
+    delete input.landingPageSlug
+    await run(campaignPlanCreate, input, enabledContext)
+    expect(mockDecorateSocialCta).not.toHaveBeenCalled()
+  })
+})
+
+describe('campaignPlanCreate schema — rawContent required for social assets (RUBICON-501)', () => {
+  const base = { name: 'Summer', offer: 'Save', startDate: '2026-07-01', endDate: '2026-07-31', landingPageSlug: 'summer-sale' }
+
+  it('rejects a social asset with no rawContent (the agent cannot silently drop it)', () => {
+    const result = campaignPlanCreate.parameters.safeParse({
+      ...base,
+      plannedContent: [{ assetType: 'social', title: 'Launch post' }],
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it('accepts a social asset that includes rawContent', () => {
+    const result = campaignPlanCreate.parameters.safeParse({
+      ...base,
+      plannedContent: [{
+        assetType: 'social', title: 'Launch post',
+        rawContent: { message: 'Shop at /lp/summer-sale', hashtags: ['sale'], platform: 'facebook' },
+      }],
+    })
+    expect(result.success).toBe(true)
+  })
+
+  it('accepts a non-social asset without rawContent', () => {
+    const result = campaignPlanCreate.parameters.safeParse({
+      ...base,
+      plannedContent: [{ assetType: 'blog', title: 'SEO post' }],
+    })
+    expect(result.success).toBe(true)
   })
 })

@@ -8,7 +8,7 @@ export interface SocialRawContent {
   message: string;
   hashtags: string[];
   callToAction?: string;
-  platform?: 'facebook' | 'instagram';
+  platform?: 'facebook' | 'instagram' | 'google_business_profile';
 }
 
 /** Serialize a payload to the JSON string stored in raw_content (drops undefined fields). */

@@ -9,6 +9,8 @@
 
 (The canonical slug was sanitized and frozen in the `campaignPlanPropose` response — use `plan.landingPageSlug` for all references. All CTAs across channels MUST point to `/lp/[canonicalSlug]`, never a bare top-level route. Do NOT invent a different slug — reuse the exact value from the approved plan.)
 
+**CTA link text — in blog/landing markdown, use natural anchor text, NEVER the raw path.** Write the link as `[a human call-to-action phrase](/lp/[canonicalSlug])` — e.g. `[shop the new collection](/lp/summer-launch)` or `[see the full guide](/lp/summer-launch)`. NEVER use the bare `/lp/[slug]` path as the visible link text (e.g. `[/lp/summer-launch](/lp/summer-launch)`), and never drop a bare `/lp/...` URL into prose — a reader must see a natural phrase, not an internal path. (The href is rewritten to a UTM-tracked link automatically; only the anchor text is yours to get right.)
+
 **Local signals are derived.** If the business sells in person — derive this from the stored/known `salesType` (`in_store` / `service` / `hybrid` → in-person; `online` → online), the vertical (`restaurant` / `service` / `health` → in-person; `saas` / `blog` → online), plus a physical address / opening hours on the existing site — the landing-page handoff should tell DevelopAgent to surface address, hours, directions, and a "visit us in person" angle, pulled from the existing site. Omit local signals for online-only businesses.
 
 ---
