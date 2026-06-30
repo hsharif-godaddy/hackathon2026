@@ -266,7 +266,6 @@ interface DevelopPageStore {
   originalChatPaneWidth: number | null
   isChatPaneCollapsed: boolean
   isMobile: boolean
-  isPreviewVisible: boolean
   isMobileInlineEditActive: boolean
 
   // Tab state (stored in memory, synced to URL)
@@ -434,7 +433,6 @@ interface DevelopPageStore {
   setInboxAccountId: (accountId: string | null) => void
   setIsMobile: (isMobile: boolean) => void
   setIsVersionHistoryOpen: (open: boolean) => void
-  setIsPreviewVisible: (visible: boolean) => void
   /**
    * Patch only the per-app SSO fields on `site` after a successful toggle
    * PUT or admin-side change. Keeps every other field intact (much
@@ -635,7 +633,6 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     originalChatPaneWidth: null,
     isChatPaneCollapsed: false,
     isMobile: false,
-    isPreviewVisible: false,
     isMobileInlineEditActive: false,
     isRestarting: false,
     hasUnsavedChanges: false,
@@ -815,7 +812,6 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
         get().handleViewModeChange(ViewMode.PREVIEW, false)
       }
     },
-    setIsPreviewVisible: (visible) => set((state) => { state.isPreviewVisible = visible }),
 
     patchSiteSsoFields: (fields) => set((state) => {
       if (!state.site) return;

@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
+import { trackFirstView } from '@/hooks/shared/initialBuildFunnel';
 import {
   type FeedbackRevealSignals,
   isFeedbackRevealReady,
@@ -10,6 +11,7 @@ import {
   hasFeedbackRevealMilestone,
   markFeedbackRevealMilestone,
 } from '@/lib/initial-build-reveal-storage';
+import { JourneyTracker } from '@/lib/journeyTracker';
 
 export interface FeedbackRevealState extends FeedbackRevealSignals {
   isRevealReady: boolean;
@@ -33,6 +35,41 @@ export function useFirstFileEditFeedbackReveal(
   useEffect(() => {
     if (!hasSeenFirstFileEdit || !appId) return;
     markFeedbackRevealMilestone(appId, 'firstFileEdit');
+  }, [hasSeenFirstFileEdit, appId]);
+}
+
+/**
+ * Fires the initial-build "first view" analytics + FullStory milestones at the
+ * moment the building overlay drops — i.e. when the initialization machine
+ * reports the first meaningful file edit (`hasSeenFirstFileEdit`).
+ *
+ * This is the single, authoritative anchor for time-to-first-view (TTFV).
+ * `hasSeenFirstFileEdit` is maintained for every build flow — normal builds
+ * (canonical `isCompletedFileEdit` on the homepage edit), the design-kit
+ * parallel build (the `wizardReady` bridge, whose sub-agent edits never reach
+ * the parent stream), and the auto-send/failsafe paths — so anchoring here
+ * avoids re-deriving the signal from `activeStream.toolCalls`, which would miss
+ * the design-kit flow and fire too early (on scaffolding rather than the page).
+ *
+ * `trackFirstView()` is self-guarded by the funnel's `active`/`firstViewLogged`
+ * state, so a reload of a finished app (funnel not activated) emits nothing.
+ * The ref is keyed on `appId` rather than a plain boolean so the milestones
+ * re-fire once per app even when one build flows straight into another without
+ * the component remounting (mirroring the funnel's per-appId reset).
+ */
+export function useInitialBuildFirstViewTracking(
+  hasSeenFirstFileEdit: boolean,
+  appId: string | null
+): void {
+  const firedForAppIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!hasSeenFirstFileEdit || !appId || firedForAppIdRef.current === appId) return;
+    firedForAppIdRef.current = appId;
+
+    const msToFirstView: number | null = trackFirstView();
+    JourneyTracker.current()?.trackMilestone('preview_generated', { appId, msToFirstView });
+    JourneyTracker.current()?.trackMilestone('first_edit_made', { appId });
   }, [hasSeenFirstFileEdit, appId]);
 }
 

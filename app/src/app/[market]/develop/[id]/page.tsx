@@ -36,7 +36,7 @@ import { useDevToolsBusBindings } from '@/app/[market]/develop/hooks/useDevTools
 import { useDevToolsSpeechBridge } from '@/app/[market]/develop/hooks/useDevToolsSpeechBridge'
 import { useEvalSnapshotCapture } from '@/app/[market]/develop/hooks/useEvalSnapshotCapture'
 import { useInboxRealtime } from '@/app/[market]/develop/hooks/useInboxRealtime'
-import { useFirstFileEditFeedbackReveal, useJtbdFeedbackRevealSignal } from '@/app/[market]/develop/hooks/useInitialBuildRevealSignals'
+import { useFirstFileEditFeedbackReveal, useInitialBuildFirstViewTracking, useJtbdFeedbackRevealSignal } from '@/app/[market]/develop/hooks/useInitialBuildRevealSignals'
 import { deriveIsAwaitingStream, useInitialization } from '@/app/[market]/develop/hooks/useInitialization'
 import { usePublishSnapshotCapture } from '@/app/[market]/develop/hooks/usePublishSnapshotCapture'
 import { broadcast as broadcastProcessingState } from '@/app/[market]/develop/utils/iframeProcessingState'
@@ -50,7 +50,7 @@ import { buildDynamicApiUrl, dynamicApiConfigService } from '@/config/dynamic-ap
 import { SWITCHBOARD_APPBUILDER_CMS_INLINE_EDIT } from '@/config/switchboard-flags'
 import { ChatProvider } from '@/contexts/ChatContext'
 import { prefetchGitRemoteConfig } from '@/hooks/github/useGitRemoteConfig'
-import { activateInitialBuildFunnel, trackFirstView } from '@/hooks/shared/initialBuildFunnel'
+import { activateInitialBuildFunnel } from '@/hooks/shared/initialBuildFunnel'
 import { useAotPreload } from '@/hooks/useAotPreload'
 import { useAppArchiveRestore } from '@/hooks/useAppArchiveRestore'
 import { useAppDetails } from '@/hooks/useAppDetails'
@@ -99,7 +99,6 @@ import {
   useActiveStream,
   useAddAiEditContext,
   useAutoSendInitialMessage,
-  useHistoryLoadingComplete,
   useIsActivelyStreaming,
   useIsLoading,
   useMessages,
@@ -178,6 +177,9 @@ function DevelopPageContent({ layout: layoutProp }: { layout?: BuilderLayout }) 
   // First-Build-Feedback survey. Kept out of the JTBD reveal signal so it never
   // triggers agent-work task-completion feedback.
   useFirstFileEditFeedbackReveal(init.context.hasSeenFirstFileEdit, appId)
+  // Fire TTFV (`funnel.initial_build.first_view`) + preview_generated/first_edit_made
+  // milestones when the building overlay drops (first meaningful file edit).
+  useInitialBuildFirstViewTracking(init.context.hasSeenFirstFileEdit, appId)
   // JTBD feedback reveal is independent from first-file-edit.
   const jtbdRevealFeedback = useJtbdFeedbackRevealSignal(appId)
   useAgentWorkFeedbackTrigger(jtbdRevealFeedback)
@@ -429,7 +431,6 @@ function DevelopPageContent({ layout: layoutProp }: { layout?: BuilderLayout }) 
     }
   }, [appId, activeChatTab, activeSettingsSection, notifiedSettingsSections])
 
-  const isPreviewVisible = useDevelopPageStore((state) => state.isPreviewVisible)
   const loadingPhase = useDevelopPageStore((state) => state.loadingPhase)
   const openFeedbackId = useDevelopPageStore((state) => state.openFeedbackId)
   const feedbackOrigin = useDevelopPageStore((state) => state.feedbackOrigin)
@@ -438,7 +439,6 @@ function DevelopPageContent({ layout: layoutProp }: { layout?: BuilderLayout }) 
 
   const setChatPaneWidth = useDevelopPageStore((state) => state.setChatPaneWidth)
   const closeFeedbackModal = useDevelopPageStore((state) => state.closeFeedbackModal)
-  const setIsPreviewVisible = useDevelopPageStore((state) => state.setIsPreviewVisible)
   const setShowIntroTour = useDevelopPageStore((state) => state.setShowIntroTour)
   const checkAndTriggerIntroTour = useDevelopPageStore((state) => state.checkAndTriggerIntroTour)
   const site = useDevelopPageStore((state) => state.site);
@@ -616,10 +616,6 @@ function DevelopPageContent({ layout: layoutProp }: { layout?: BuilderLayout }) 
   const [isDeletingMedia, setIsDeletingMedia] = useState(false)
   const [mediaDeleteError, setMediaDeleteError] = useState<string | null>(null)
   const prevShowChatLoaderRef = useRef(init.ui.showChatLoader)
-  const previewInitializedRef = useRef(false)
-  const firstEditTrackedRef = useRef(false)
-  const previewMilestoneTrackedRef = useRef(false)
-  const historyLoadingComplete = useHistoryLoadingComplete()
 
   const { loadingMessage: chatLoadingMessage } =
     useChatPaneLoadingState({
@@ -823,30 +819,6 @@ function DevelopPageContent({ layout: layoutProp }: { layout?: BuilderLayout }) 
   }, [cleanupServerPolling])
 
   // WebSocket and conversation history are now initialized by useInitialization hook
-
-  // Determine initial preview visibility based on persisted state or loaded history
-  useEffect(() => {
-    if (previewInitializedRef.current) return
-    if (loadingPhase !== 'ready' || !appId) return
-
-    const storageKey = `airo-preview-visible-${appId}`
-    const savedState = typeof window !== 'undefined' ? localStorage.getItem(storageKey) : null
-
-    if (savedState !== null) {
-      setIsPreviewVisible(JSON.parse(savedState))
-      previewInitializedRef.current = true
-      return
-    }
-
-    if (!historyLoadingComplete) return
-
-    const hasHistory = messages.length > 0
-    setIsPreviewVisible(hasHistory)
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(storageKey, JSON.stringify(hasHistory))
-    }
-    previewInitializedRef.current = true
-  }, [loadingPhase, appId, messages.length, setIsPreviewVisible, historyLoadingComplete])
 
   // Note: Server polling is managed by PreviewPane component
   // PreviewPane owns its server state and polling lifecycle
@@ -1192,41 +1164,6 @@ function DevelopPageContent({ layout: layoutProp }: { layout?: BuilderLayout }) 
       throw new Error('Element delete did not succeed')
     }
   }, [appId])
-
-  // Listen for file edit tool completions to show preview
-  useEffect(() => {
-    if (!appId || !activeStream) return
-
-    // Check if any fileEdit tool calls have completed successfully
-    const completedFileEdit = activeStream.toolCalls.find(
-      toolCall => toolCall.name === 'fileEdit' &&
-        toolCall.status === 'completed' &&
-        !toolCall.error
-    )
-
-    if (completedFileEdit) {
-      if (!firstEditTrackedRef.current) {
-        firstEditTrackedRef.current = true
-        JourneyTracker.current()?.trackMilestone('first_edit_made', { appId })
-      }
-
-      if (!isPreviewVisible) {
-        setIsPreviewVisible(true)
-
-        if (!previewMilestoneTrackedRef.current) {
-          previewMilestoneTrackedRef.current = true
-          const msToFirstView: number | null = trackFirstView()
-          JourneyTracker.current()?.trackMilestone('preview_generated', { appId, msToFirstView })
-        }
-
-        init.actions.markFirstFileEditSeen()
-        const storageKey = `airo-preview-visible-${appId}`
-        if (typeof window !== 'undefined') {
-          localStorage.setItem(storageKey, 'true')
-        }
-      }
-    }
-  }, [appId, activeStream, isPreviewVisible, setIsPreviewVisible, init.actions])
 
   // Listen for eval snapshot trigger from CompleteHandler
   useEffect(() => {
