@@ -84,6 +84,12 @@ export interface GoldenLightConfig {
    * reset while concurrent trials build against it. The runner enforces this.
    */
   statefulInjection?: StatefulAppOptions;
+  /**
+   * Pins a specific design kit by catalog slug (e.g. `Aether`), forcing the
+   * design-system flow to install it instead of letting the agent auto-select.
+   * Threaded to the agent via the message body (mirrors `templateId`).
+   */
+  designKitSlug?: string;
 }
 
 export function createGoldenLightScenario(
@@ -198,7 +204,11 @@ export function createGoldenLightScenario(
       : async () => {
         const { appId, previewUrl } =
           await ctrlPlane.provisionApp();
-        return { appId, previewUrl };
+        return {
+          appId,
+          previewUrl,
+          ...(config.designKitSlug && { designKitSlug: config.designKitSlug }),
+        };
       },
 
     teardown: lifecycle

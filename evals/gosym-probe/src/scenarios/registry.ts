@@ -26,6 +26,8 @@ import {
 import { buildPortfolioPromptTaxScenarios } from './prompt-tax/index.js';
 import { buildCookieConsentGtmScenario } from './cookie-consent-gtm.js';
 import { rebuildFromUrlScenario } from './rebuild/index.js';
+import { buildContrastScenarios } from './contrast-pairing.js';
+import { buildColorSchemeOptionsScenario } from './color-scheme-options.js';
 import {
   addUserTableScenario,
   crudApiHandlerScenario,
@@ -100,6 +102,8 @@ export function createAllScenarios(
     rebuildFromUrlScenario(gocode, ctrlPlane),
     ...buildAiroBaselineScenarios(gocode, ctrlPlane),
     ...buildPortfolioPromptTaxScenarios(gocode, ctrlPlane),
+    ...buildContrastScenarios(gocode, ctrlPlane),
+    buildColorSchemeOptionsScenario(gocode, ctrlPlane),
     addUserTableScenario(gocode, ctrlPlane),
     crudApiHandlerScenario(gocode, ctrlPlane),
     noReturningScenario(gocode, ctrlPlane),

@@ -25,6 +25,8 @@ import {
   ReadinessNavigationError,
   navigateUntilReady,
 } from './site-capture/readiness.js';
+import { captureContrastAudit } from './site-capture/contrast-audit.js';
+import type { ContrastAuditResult } from './site-capture/contrast.js';
 import { createSemaphore } from '../util/semaphore.js';
 import type { Semaphore } from '../util/semaphore.js';
 
@@ -48,6 +50,8 @@ export interface DOMSnapshot {
   pageErrors?: string[];
   /** Failed requests / non-2xx responses observed during capture (omitted when none). */
   networkFailures?: NetworkFailure[];
+  /** Capture-time WCAG AA contrast audit: violations + text nodes scanned (AIROBUILD-2976; omitted when the audit did not run). */
+  contrastAudit?: ContrastAuditResult;
 }
 
 export interface CapturedTrial {
@@ -192,6 +196,12 @@ export class SiteCapture {
       const consoleLogs = recorder.getConsoleLogs();
       const pageErrors = recorder.getPageErrors();
       const networkFailures = recorder.getNetworkFailures();
+      const contrastAudit: ContrastAuditResult | undefined = homepagePage
+        ? await captureContrastAudit(homepagePage).catch((err: unknown) => {
+            console.warn('SiteCapture: contrast audit failed', err);
+            return undefined;
+          })
+        : undefined;
       const snapshot: DOMSnapshot = {
         url: previewUrl,
         screenshotPath,
@@ -201,6 +211,7 @@ export class SiteCapture {
         ...(httpStatus !== undefined && { httpStatus }),
         ...(pageErrors.length > 0 && { pageErrors }),
         ...(networkFailures.length > 0 && { networkFailures }),
+        ...(contrastAudit && { contrastAudit }),
       };
 
       const capturedSite = await captureRoutes({

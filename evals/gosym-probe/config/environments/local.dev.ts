@@ -3,6 +3,7 @@ import {
   parseAgentsPort,
   parseMaxConcurrency,
   parseMaxTurns,
+  parseTurnTimeoutMs,
 } from './parse-env.js';
 import { REGRESSION_DEFAULTS, DEV_FALLBACK_THRESHOLDS } from './defaults.js';
 
@@ -29,7 +30,7 @@ export function createConfig(): Config {
     eval: {
       defaultTrials: 1,
       maxTurns: parseMaxTurns(10),
-      turnTimeoutMs: 1_200_000,
+      turnTimeoutMs: parseTurnTimeoutMs(1_200_000),
       maxConcurrency: parseMaxConcurrency(2),
     },
     playwright: {

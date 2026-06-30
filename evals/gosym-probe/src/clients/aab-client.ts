@@ -61,6 +61,7 @@ export class AABClient implements AgentClient {
   private handlers: ((event: AgentEvent) => void)[] = [];
   private appId?: string;
   private templateId?: string;
+  private designKitSlug?: string;
   private conversationId?: string;
   private accumulatedChunks = '';
   private eventSource: InstanceType<typeof EventSource> | null = null;
@@ -126,6 +127,8 @@ export class AABClient implements AgentClient {
     this.appId = ctx.appId;
     this.templateId =
       typeof ctx.templateId === 'string' ? ctx.templateId : undefined;
+    this.designKitSlug =
+      typeof ctx.designKitSlug === 'string' ? ctx.designKitSlug : undefined;
     this.conversationId = undefined;
     this.accumulatedChunks = '';
     // Each trial is a fresh conversation — drop any open stream from a prior
@@ -444,6 +447,7 @@ export class AABClient implements AgentClient {
               sessionId: this.sessionId,
               userTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
               ...(this.templateId && { templateId: this.templateId }),
+              ...(this.designKitSlug && { designKitSlug: this.designKitSlug }),
             }),
           },
         ),

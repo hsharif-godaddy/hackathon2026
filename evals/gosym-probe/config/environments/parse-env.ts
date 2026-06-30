@@ -28,6 +28,16 @@ export function parseMaxTurns(fallback: number): number {
 }
 
 /**
+ * Read TURN_TIMEOUT_MS (per-turn hard timeout) from the environment.
+ * Heavy first-build scenarios (e.g. a design-system homepage build) can exceed
+ * the default cap; raise it via this var without changing the default for every
+ * other scenario. Returns {@link fallback} when unset, empty, non-numeric, or < 1.
+ */
+export function parseTurnTimeoutMs(fallback: number): number {
+  return parsePositiveIntEnv('TURN_TIMEOUT_MS', fallback);
+}
+
+/**
  * Read CAPTURE_CONCURRENCY (max concurrent Playwright captures) from the
  * environment. This bounds the expensive capture phase independently of
  * trial concurrency. Returns {@link fallback} when unset, empty,

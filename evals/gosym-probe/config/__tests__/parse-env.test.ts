@@ -9,6 +9,7 @@ import {
   parseAgentsPort,
   parseMaxConcurrency,
   parseMaxTurns,
+  parseTurnTimeoutMs,
   parseCaptureConcurrency,
   parseMaxRoutes,
 } from '../environments/parse-env.js';
@@ -100,6 +101,51 @@ describe('parseMaxTurns', () => {
   it('returns fallback when env var is negative', () => {
     process.env.MAX_TURNS = '-5';
     expect(parseMaxTurns(30)).toBe(30);
+  });
+});
+
+describe('parseTurnTimeoutMs', () => {
+  const saved = process.env.TURN_TIMEOUT_MS;
+
+  beforeEach(() => {
+    delete process.env.TURN_TIMEOUT_MS;
+  });
+
+  afterEach(() => {
+    if (saved === undefined) {
+      delete process.env.TURN_TIMEOUT_MS;
+    } else {
+      process.env.TURN_TIMEOUT_MS = saved;
+    }
+  });
+
+  it('returns fallback when env var is unset', () => {
+    expect(parseTurnTimeoutMs(1_200_000)).toBe(1_200_000);
+  });
+
+  it('returns fallback when env var is empty', () => {
+    process.env.TURN_TIMEOUT_MS = '';
+    expect(parseTurnTimeoutMs(1_200_000)).toBe(1_200_000);
+  });
+
+  it('returns parsed integer when valid', () => {
+    process.env.TURN_TIMEOUT_MS = '2400000';
+    expect(parseTurnTimeoutMs(1_200_000)).toBe(2_400_000);
+  });
+
+  it('returns fallback when env var is non-numeric', () => {
+    process.env.TURN_TIMEOUT_MS = 'abc';
+    expect(parseTurnTimeoutMs(1_200_000)).toBe(1_200_000);
+  });
+
+  it('returns fallback when env var is zero', () => {
+    process.env.TURN_TIMEOUT_MS = '0';
+    expect(parseTurnTimeoutMs(1_200_000)).toBe(1_200_000);
+  });
+
+  it('returns fallback when env var is negative', () => {
+    process.env.TURN_TIMEOUT_MS = '-5';
+    expect(parseTurnTimeoutMs(1_200_000)).toBe(1_200_000);
   });
 });
 

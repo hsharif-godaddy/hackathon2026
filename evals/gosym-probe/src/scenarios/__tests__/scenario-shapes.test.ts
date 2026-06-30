@@ -15,6 +15,8 @@ import { complexPromptLatencyScenario } from '../complex-prompt-latency.js';
 import { buildWithExplicitNameScenario } from '../todo-lifecycle/build-with-explicit-name.js';
 import { reAskInToolCallScenario } from '../todo-lifecycle/re-ask-in-tool-call.js';
 import { inboxSkillEvalScenario } from '../skill-eval/inbox.js';
+import { buildContrastScenarios } from '../contrast-pairing.js';
+import { buildColorSchemeOptionsScenario } from '../color-scheme-options.js';
 import {
   makeGocodeClient,
   makeCtrlPlaneClient,
@@ -177,5 +179,22 @@ describe('scenario shapes', () => {
     expect(scenario.skillInstructions).toBeDefined();
     expect(scenario.skillInstructions!.length).toBe(3);
     expect(scenario.staticFirstMessage).toBeTruthy();
+  });
+
+  it('contrast-pairing-kit + control have valid shape and the contrast evaluator', () => {
+    const [kit, control] = buildContrastScenarios(gocode, ctrlPlane);
+    assertScenarioShape(kit, 'contrast-pairing-kit');
+    assertScenarioShape(control, 'contrast-pairing-control');
+    for (const scenario of [kit, control]) {
+      expect(scenario.suite).toBe('contrast');
+      expect(scenario.evaluators.map((e) => e.name)).toContain('contrast-violations');
+    }
+  });
+
+  it('color-scheme-options has valid shape and the suggest evaluator', () => {
+    const scenario = buildColorSchemeOptionsScenario(gocode, ctrlPlane);
+    assertScenarioShape(scenario, 'color-scheme-options');
+    expect(scenario.suite).toBe('contrast');
+    expect(scenario.evaluators.map((e) => e.name)).toContain('color-scheme-suggest-contrast');
   });
 });
