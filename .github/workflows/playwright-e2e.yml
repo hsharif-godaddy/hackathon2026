@@ -737,7 +737,7 @@ jobs:
   # the script is defensive and never fails the job.
   summarize:
     name: Summarize results
-    needs: [prepare, test, merge-reports, host-paas-e2e]
+    needs: [prepare, test, merge-reports, host-paas-e2e, host-paas-e2e-test]
     if: always()
     runs-on:
       labels:
@@ -774,7 +774,9 @@ jobs:
           RESULTS_DIR: downloaded-results
           TEST_RESULT: ${{ needs.test.result }}
           MERGE_RESULT: ${{ needs.merge-reports.result }}
-          HOSTPAAS_RESULT: ${{ needs.host-paas-e2e.result }}
+          # Pick whichever host-paas job actually ran (prod vs test env);
+          # exactly one runs per dispatch, the other is skipped.
+          HOSTPAAS_RESULT: ${{ needs.host-paas-e2e.result != 'skipped' && needs.host-paas-e2e.result || needs.host-paas-e2e-test.result }}
           ENVIRONMENT: ${{ needs.test.outputs.environment }}
           TRIGGER: ${{ github.event_name == 'schedule' && 'Scheduled' || (github.event_name == 'workflow_dispatch' && github.event.inputs.post_promotion == 'true' && 'Post-Promotion' || 'Manual') }}
           ACTOR: ${{ github.actor }}
@@ -799,8 +801,9 @@ jobs:
     # on GitHub but nobody on-call would see it without this.
     # `skipped` (merge-reports doesn't run when total=1) doesn't match
     # `== 'failure'`, so single-shard runs aren't affected.
-    if: always() && (needs.test.result == 'failure' || needs.merge-reports.result == 'failure' || needs.host-paas-e2e.result == 'failure')
-    needs: [test, merge-reports, host-paas-e2e, summarize]
+    # Both host-paas jobs are checked since exactly one runs per env.
+    if: always() && (needs.test.result == 'failure' || needs.merge-reports.result == 'failure' || needs.host-paas-e2e.result == 'failure' || needs.host-paas-e2e-test.result == 'failure')
+    needs: [test, merge-reports, host-paas-e2e, host-paas-e2e-test, summarize]
     uses: ./.github/workflows/slack-notify.yml
     permissions:
       id-token: write

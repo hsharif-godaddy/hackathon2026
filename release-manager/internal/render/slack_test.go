@@ -295,8 +295,8 @@ func TestMessageE2EProductSplit(t *testing.T) {
 	out := Message(State{Operator: "alice", Branch: "main", EnvOrder: []string{"test"}, Stages: []*pipeline.StageRun{sr}})
 
 	for _, want := range []string{
-		// AAB e2e: top-level (Nbsp), with the run link…
-		Nbsp + ":x: AAB e2e — 1 failed, 1 passed, 0 skipped (2 total) — [View Run](https://x/runs/42)\n",
+		// AAB e2e: top-level (Nbsp), with duration and run link…
+		Nbsp + ":x: AAB e2e — 1 failed, 1 passed, 0 skipped (2 total) (24m00s) — [View Run](https://x/runs/42)\n",
 		// …its failed test bulleted one level in…
 		Nbspx2 + "• develop.spec.ts › creates an app\n",
 		// …and PaaS e2e as a SECOND top-level line, pass/fail only, same link.
@@ -331,8 +331,8 @@ func TestMessageE2EProductSplitPaasSkipped(t *testing.T) {
 	if !strings.Contains(out, Nbsp+":fast_forward: PaaS e2e — skipped — [View Run](https://x/runs/7)\n") {
 		t.Errorf("expected a skipped PaaS line with a neutral emoji:\n%s", out)
 	}
-	if !strings.Contains(out, Nbsp+":white_check_mark: AAB e2e — 1 passed (1 total) — [View Run](https://x/runs/7)\n") {
-		t.Errorf("expected AAB e2e as a top-level line:\n%s", out)
+	if !strings.Contains(out, Nbsp+":white_check_mark: AAB e2e — 1 passed (1 total) (1m00s) — [View Run](https://x/runs/7)\n") {
+		t.Errorf("expected AAB e2e as a top-level line with duration:\n%s", out)
 	}
 }
 

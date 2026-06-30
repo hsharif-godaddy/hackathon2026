@@ -279,12 +279,17 @@ func writeProductSplit(sb *strings.Builder, sr *pipeline.StageRun) {
 		runLink = fmt.Sprintf(" — [View Run](%s)", sr.RunURL)
 	}
 
+	durStr := ""
+	if dur := sr.Duration(); dur > 0 && sr.State != pipeline.StateRunning {
+		durStr = " " + FormatDuration(dur)
+	}
+
 	tr := sr.TestReport
 	// AAB product: one top-level line per parsed suite, failures bulleted beneath.
 	// If the run produced no suites (infra failure before results), fall back to
 	// the stage's own state so the AAB line isn't dropped entirely.
 	if len(tr.Suites) == 0 {
-		line := fmt.Sprintf("%s%s AAB e2e%s", Nbsp, Emoji(sr.State), runLink)
+		line := fmt.Sprintf("%s%s AAB e2e%s%s", Nbsp, Emoji(sr.State), durStr, runLink)
 		if sr.Error != "" {
 			line += " — " + sr.Error
 		} else if tr.InfraFailure {
@@ -292,10 +297,14 @@ func writeProductSplit(sb *strings.Builder, sr *pipeline.StageRun) {
 		}
 		sb.WriteString(line + "\n")
 	}
-	for _, s := range tr.Suites {
+	for i, s := range tr.Suites {
 		line := fmt.Sprintf("%s%s %s — %s", Nbsp, suiteEmoji(s.Status), s.Label, suiteCounts(s))
 		if len(s.FailedShards) > 0 {
 			line += " · failed shard(s): " + joinInts(s.FailedShards)
+		}
+		// Stage duration on the first suite line only.
+		if i == 0 {
+			line += durStr
 		}
 		line += runLink
 		sb.WriteString(line + "\n")
