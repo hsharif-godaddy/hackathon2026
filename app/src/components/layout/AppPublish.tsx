@@ -28,6 +28,7 @@ import { ChatTab, MobileMode, SettingsSection, ViewMode } from '@/app/[market]/d
 import { FEEDBACK_ID } from '@/components/feedback/utils';
 import PublishDomainConflict from '@/components/layout/PublishDomainConflict';
 import PublishDomainSelector, { type SelectableDomain } from '@/components/layout/PublishDomainSelector';
+import PublishedDomainCard from '@/components/layout/PublishedDomainCard';
 import PublishUpsellPopover from '@/components/layout/PublishUpsellPopover';
 import SeoQualityRegressionAlert from '@/components/layout/SeoQualityRegressionAlert';
 import { COHORT_ON, EXPERIMENT_IDS } from '@/config/experiments';
@@ -98,6 +99,7 @@ function publishSubmitClickEid(surfaceLocation: string): string {
 function normalizeDomainToken(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]/g, '');
 }
+
 
 function PublishFailedMessage({
   onFix,
@@ -1162,6 +1164,12 @@ export default function AppPublish({ location = 'develop', triggerClassName }: {
   };
 
   const lastDeployedTimeAgo = lastDeployedDate ? timeAgo(lastDeployedDate) : null;
+  // Treatment "published" states: live on a custom domain, or on the free airo subdomain.
+  const isPublishedOnCustomDomain: boolean = !isFirstTimePublishing && !!fqdn && !isAiroSubdomain(fqdn);
+  const isPublishedOnFreeUrl: boolean = !isFirstTimePublishing && !!fqdn && isAiroSubdomain(fqdn);
+  const publishedLastPublishLabel: string | undefined = lastDeployedTimeAgo
+    ? t(lastDeployedTimeAgo.key, lastDeployedTimeAgo.values)
+    : undefined;
 
   // Publish-footer security state: a running scan wins; a finished scan that found issues shows the
   // "review fixes" prompt; otherwise the neutral pre-publish message.
@@ -1233,7 +1241,7 @@ export default function AppPublish({ location = 'develop', triggerClassName }: {
               />
             ) : (
               <>
-            {lastDeployedDate && (
+            {lastDeployedDate && !(showDomainSelector && (isPublishedOnCustomDomain || isPublishedOnFreeUrl)) && (
               <button
                 type='button'
                 onClick={handleViewHistory}
@@ -1259,17 +1267,37 @@ export default function AppPublish({ location = 'develop', triggerClassName }: {
             {getPublishStatusAlert()}
 
             {/* Domain Editing */}
-            {showDomainSelector ? (
-              <PublishDomainSelector
-                customDomains={selectableDomains}
-                freeProjectUrl={freeProjectUrl}
-                selectedFqdn={effectiveSelectedFqdn}
-                matchesProjectFqdn={matchesProjectFqdn}
-                onSelect={setSelectedDomainFqdn}
-                onNewDomain={handleViewDomain}
-                onSeeAllDomains={handleViewDomain}
-                onUseExternalDomain={handleViewDomain}
+            {showDomainSelector && isPublishedOnCustomDomain ? (
+              <PublishedDomainCard
+                domain={hostnameFqdn}
+                lastPublishLabel={publishedLastPublishLabel}
+                isHistoryDisabled={isHistoryDisabled}
+                onEdit={handleViewDomain}
+                onViewHistory={handleViewHistory}
               />
+            ) : showDomainSelector ? (
+              <>
+                {/* Published on the free URL: show its card, then the selector (its Free Project URL sub-card hidden). */}
+                {isPublishedOnFreeUrl && (
+                  <PublishedDomainCard
+                    domain={hostnameFqdn}
+                    lastPublishLabel={publishedLastPublishLabel}
+                    isHistoryDisabled={isHistoryDisabled}
+                    onEdit={handleViewDomain}
+                    onViewHistory={handleViewHistory}
+                  />
+                )}
+                <PublishDomainSelector
+                  customDomains={selectableDomains}
+                  freeProjectUrl={isPublishedOnFreeUrl ? '' : freeProjectUrl}
+                  selectedFqdn={effectiveSelectedFqdn}
+                  matchesProjectFqdn={matchesProjectFqdn}
+                  onSelect={setSelectedDomainFqdn}
+                  onNewDomain={handleViewDomain}
+                  onSeeAllDomains={handleViewDomain}
+                  onUseExternalDomain={handleViewDomain}
+                />
+              </>
             ) : fqdn ? (
               <div className='flex flex-col gap-0.5'>
                 <text.label size={-1} htmlFor={isFirstTimePublishing ? undefined : 'AppPublishDomainEdit'} as='label'>
