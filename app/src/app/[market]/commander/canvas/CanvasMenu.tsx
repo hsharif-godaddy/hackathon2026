@@ -9,6 +9,7 @@ import SearchIcon from '@ux/icon/search'
 import { useTranslations } from '@/hooks/useTranslations'
 import { Popover, PopoverContent, PopoverTrigger } from '@/lib/shadcn/popover'
 import { useCommanderStore } from '@/stores/useCommanderStore'
+import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { logClickEvent } from '@/utils/instrumentation'
 import { CANVAS_MENU_ORDER, CANVAS_REGISTRY, type CanvasDescriptor, CanvasId } from './registry'
 import { useCanvasFlagFilter } from './useCanvasFlagFilter'
@@ -34,6 +35,7 @@ const MENU_ORDER: readonly CanvasId[] = [
   CanvasId.SettingsMarketing,
   CanvasId.SettingsCampaigns,
   CanvasId.SettingsGitHub,
+  CanvasId.SettingsSso,
 ]
 
 const isMacPlatform = (): boolean => {
@@ -82,18 +84,22 @@ export function CanvasMenu({ clickContext }: CanvasMenuProps) {
   const openCanvasIds = useCommanderStore((state) => state.openCanvasIds)
   const openCanvas = useCommanderStore((state) => state.openCanvas)
   const isFlagAllowed = useCanvasFlagFilter()
+  const isSsoVisible = useDevelopPageStore(
+    (state) => !!state.site?.ssoRequired || !!state.site?.ssoOverrideAllowed,
+  )
 
   const items = useMemo(() => {
     const all = CANVAS_MENU_ORDER.map((id) => CANVAS_REGISTRY[id]).filter(Boolean)
     const visible = all.filter((d) => {
       if (openCanvasIds.includes(d.id)) return false
+      if (d.id === CanvasId.SettingsSso && !isSsoVisible) return false
       return isFlagAllowed(d.id)
     })
     return visible.map((d) => ({
       descriptor: d,
       label: d.labelKey ? t(d.labelKey) || d.fallbackLabel : d.fallbackLabel,
     }))
-  }, [t, openCanvasIds, isFlagAllowed])
+  }, [t, openCanvasIds, isFlagAllowed, isSsoVisible])
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()

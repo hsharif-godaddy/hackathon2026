@@ -14,9 +14,6 @@ const DatabasePanel = dynamic(
   () => import('@/app/[market]/develop/components/settings/Database/DatabasePanel').then((m) => ({ default: m.DatabasePanel })),
   { loading: () => <PanelSkeleton panelType={ChatTab.SETTINGS} settingsSection={SettingsSection.DATABASE} /> },
 )
-const DomainPanel = dynamic(() => import('@/app/[market]/develop/components/settings/DomainPanel'), {
-  loading: () => <PanelSkeleton panelType={ChatTab.SETTINGS} settingsSection={SettingsSection.DOMAIN} />,
-})
 const ProjectPanel = dynamic(() => import('@/app/[market]/develop/components/settings/ProjectPanel'), {
   loading: () => <PanelSkeleton panelType={ChatTab.SETTINGS} settingsSection={SettingsSection.PROJECT} />,
 })
@@ -48,6 +45,9 @@ const VisualScanPanel = dynamic(() => import('@/app/[market]/develop/components/
 const AnalyticsPanel = dynamic(() => import('@/app/[market]/develop/components/settings/Analytics/AnalyticsPanel'), {
   loading: () => <SettingsLoadingState fullPage />,
 })
+const SsoPanel = dynamic(() => import('@/app/[market]/develop/components/settings/SsoPanel'), {
+  loading: () => <PanelSkeleton />,
+})
 
 interface SettingsCanvasEntry {
   canvasId: CanvasId
@@ -57,22 +57,21 @@ interface SettingsCanvasEntry {
 
 const SETTINGS_CANVAS_TO_SECTION: Partial<Record<CanvasId, SettingsSection>> = {
   [CanvasId.SettingsProject]: SettingsSection.PROJECT,
-  [CanvasId.SettingsDomain]: SettingsSection.DOMAIN,
+  [CanvasId.SettingsAnalytics]: SettingsSection.ANALYTICS,
   [CanvasId.SettingsBackups]: SettingsSection.BACKUPS,
-  [CanvasId.SettingsSecurity]: SettingsSection.SECURITY,
   [CanvasId.SettingsDatabase]: SettingsSection.DATABASE,
+  [CanvasId.SettingsMarketing]: SettingsSection.MARKETING,
+  [CanvasId.SettingsSecurity]: SettingsSection.SECURITY,
   [CanvasId.SettingsSecrets]: SettingsSection.SECRETS,
   [CanvasId.SettingsSocial]: SettingsSection.SOCIAL,
+  [CanvasId.SettingsSso]: SettingsSection.SSO,
   [CanvasId.SettingsVisualScan]: SettingsSection.VISUAL_SCAN,
-  [CanvasId.SettingsAnalytics]: SettingsSection.ANALYTICS,
-  [CanvasId.SettingsMarketing]: SettingsSection.MARKETING,
   [CanvasId.SettingsCampaigns]: SettingsSection.CAMPAIGNS,
   [CanvasId.SettingsGitHub]: SettingsSection.GITHUB,
 }
 
 const SECTION_TO_COMPONENT: Partial<Record<SettingsSection, ComponentType<{ appId: string | null }>>> = {
   [SettingsSection.PROJECT]: () => <ProjectPanel />,
-  [SettingsSection.DOMAIN]: () => <DomainPanel />,
   [SettingsSection.BACKUPS]: () => <BackupsPanel />,
   [SettingsSection.SECURITY]: () => <SecurityPanel />,
   [SettingsSection.DATABASE]: ({ appId }) => <DatabasePanel appId={appId} />,
@@ -83,6 +82,7 @@ const SECTION_TO_COMPONENT: Partial<Record<SettingsSection, ComponentType<{ appI
   [SettingsSection.MARKETING]: () => <MarketingPanel />,
   [SettingsSection.CAMPAIGNS]: () => <CampaignsPanel />,
   [SettingsSection.GITHUB]: () => <GitHubPanel />,
+  [SettingsSection.SSO]: () => <SsoPanel />,
 }
 
 interface CommanderSettingsCanvasStackProps {

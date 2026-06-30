@@ -43,17 +43,6 @@ const openMenu = async () => {
 }
 
 describe('CanvasMenu', () => {
-  it('does not offer SettingsDomain — the top-level Domain canvas is the canonical surface', async () => {
-    switchboardValues['appbuilder-domain-top-level'] = true
-    switchboardValues['appbuilder-settings-domain'] = true
-    resetCommanderStore([CanvasId.Preview])
-
-    await openMenu()
-
-    expect(screen.queryByTestId(`commander-canvas-tabs-menu-${CanvasId.SettingsDomain}`))
-      .not.toBeInTheDocument()
-  })
-
   it('hides any canvas already open in the tab strip', async () => {
     resetCommanderStore([CanvasId.Preview, CanvasId.Brand])
 
