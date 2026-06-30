@@ -108,6 +108,38 @@ describe('jsxSourceMapper — data-dev-dynamic', () => {
   });
 });
 
+describe('jsxSourceMapper — structural {children} passthrough is not dynamic', () => {
+  it('should NOT mark a layout wrapper with {children}', () => {
+    const output = transform('<div className="min-h-screen">{children}</div>');
+    expect(output).not.toContain('data-dev-dynamic');
+  });
+
+  it('should NOT mark a <main> wrapper with {children}', () => {
+    const output = transform('<main>{children}</main>');
+    expect(output).not.toContain('data-dev-dynamic');
+  });
+
+  it('should NOT mark a wrapper with {props.children}', () => {
+    const output = transform('<div>{props.children}</div>');
+    expect(output).not.toContain('data-dev-dynamic');
+  });
+
+  it('should NOT mark a wrapper with {this.props.children}', () => {
+    const output = transform('<div>{this.props.children}</div>');
+    expect(output).not.toContain('data-dev-dynamic');
+  });
+
+  it('should still mark a wrapper mixing {children} with a real dynamic child', () => {
+    const output = transform('<div>{children}{badge}</div>');
+    expect(output).toContain('data-dev-dynamic="true"');
+  });
+
+  it('should still mark a static-text element next to a variable expression', () => {
+    const output = transform('<p>Hello {name}</p>');
+    expect(output).toContain('data-dev-dynamic="true"');
+  });
+});
+
 describe('jsxSourceMapper — Commerce component ownership', () => {
   it('wraps imported Commerce product components in a Commerce-owned dev marker', () => {
     const output = transform(`

@@ -419,12 +419,25 @@ export default function jsxSourceMapper(babel: { types: typeof types }): PluginO
       (t.isTemplateLiteral(expression) && expression.expressions.length === 0);
   }
 
+  // `{children}` / `{props.children}` / `{this.props.children}` render child nodes,
+  // not editable text — so they must not taint the element as dynamic.
+  function isStructuralPassthroughExpression(expression: Expression): boolean {
+    if (t.isIdentifier(expression)) {
+      return expression.name === 'children';
+    }
+    if (t.isMemberExpression(expression) || t.isOptionalMemberExpression(expression)) {
+      return !expression.computed && t.isIdentifier(expression.property) && expression.property.name === 'children';
+    }
+    return false;
+  }
+
   function hasDynamicChildExpression(jsxElement: JSXElement): boolean {
     return jsxElement.children.some(child =>
       t.isJSXExpressionContainer(child) &&
       !t.isJSXEmptyExpression(child.expression) &&
       !t.isStringLiteral(child.expression) &&
-      !(t.isTemplateLiteral(child.expression) && child.expression.expressions.length === 0)
+      !(t.isTemplateLiteral(child.expression) && child.expression.expressions.length === 0) &&
+      !isStructuralPassthroughExpression(child.expression)
     );
   }
 
