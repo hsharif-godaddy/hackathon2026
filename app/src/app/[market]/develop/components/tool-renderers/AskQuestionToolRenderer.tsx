@@ -148,13 +148,16 @@ export default function AskQuestionToolRenderer({
   // moment and held constant for the life of the flow. app_creation is the same funnel state
   // that drives intent_category='new_build' (strongly correlated), but NOT strictly identical
   // — e.g. rebuild flows are app_creation=false yet intent_category='rebuild'.
+  // endgameCohort is only stamped for initial-agent flows; develop-agent questions must not
+  // carry the cohort or they pollute per-cohort initial-agent analytics.
   const flowBox = useRef<{ result: unknown; id: string; appCreation: boolean; endgameCohort: string | undefined } | null>(null)
   if (!flowBox.current || flowBox.current.result !== result) {
+    const appCreation = isInitialBuildFunnelActive() && !isInitialBuildComplete()
     flowBox.current = {
       result,
       id: generateFlowId(),
-      appCreation: isInitialBuildFunnelActive() && !isInitialBuildComplete(),
-      endgameCohort,
+      appCreation,
+      endgameCohort: appCreation ? endgameCohort : undefined,
     }
   }
   const flowId = flowBox.current.id

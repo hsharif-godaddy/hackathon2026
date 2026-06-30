@@ -1133,13 +1133,13 @@ describe('AskQuestionToolRenderer', () => {
       )
     })
 
-    it('stamps app_creation=false when not in the initial-build funnel', () => {
+    it('stamps app_creation=false and omits endgameCohort when not in the initial-build funnel', () => {
       mockIsInitialBuildFunnelActive.mockReturnValue(false)
       mockIsInitialBuildComplete.mockReturnValue(true)
       const result = makeResult([makeQuestion('Q1?', [{ text: 'A' }, { text: 'B' }])])
       render(<AskQuestionToolRenderer {...defaultProps} result={result} />)
       expect(mockTrackFlowStarted).toHaveBeenCalledWith(
-        expect.objectContaining({ appCreation: false }),
+        expect.objectContaining({ appCreation: false, endgameCohort: undefined }),
         1,
       )
     })
