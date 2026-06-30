@@ -16,6 +16,7 @@ import { CommanderLayoutContext, type CommanderLayoutContextValue } from './Comm
 import { CommanderLogo } from './CommanderLogo'
 import { CommanderSnapOverlay } from './CommanderSnapOverlay'
 import {
+  COMMANDER_PILL_BOX_SHADOW,
   COMMANDER_PILL_INNER_SURFACE_CLASS,
   COMMANDER_PILL_OUTER_SURFACE_CLASS,
 } from './commanderSurface'
@@ -342,7 +343,7 @@ export function Commander({ appId, chatPane }: CommanderProps) {
         x: 0,
         width: rect.width,
         borderRadius: PILL_OUTER_BORDER_RADIUS,
-        boxShadow: '0 12px 40px -8px rgba(15, 23, 42, 0.35)',
+        boxShadow: COMMANDER_PILL_BOX_SHADOW,
       }
     }
     if (isLeftDock) {
@@ -354,7 +355,7 @@ export function Commander({ appId, chatPane }: CommanderProps) {
         x: 0,
         width: COMMANDER_LAYOUT_METRICS.LEFT_DOCK_WIDTH,
         borderRadius: 16,
-        boxShadow: '0 12px 40px -8px rgba(15, 23, 42, 0.35)',
+        boxShadow: COMMANDER_PILL_BOX_SHADOW,
       }
     }
     const outerWidth = floatingWidth + PILL_HALO_INSET * 2
@@ -367,7 +368,7 @@ export function Commander({ appId, chatPane }: CommanderProps) {
         x: '-50%',
         width: outerWidth,
         borderRadius: PILL_OUTER_BORDER_RADIUS,
-        boxShadow: '0 12px 40px -8px rgba(15, 23, 42, 0.35)',
+        boxShadow: COMMANDER_PILL_BOX_SHADOW,
       }
     }
     if (floatingAnchor === FloatingAnchor.BottomLeft) {
@@ -379,7 +380,7 @@ export function Commander({ appId, chatPane }: CommanderProps) {
         x: 0,
         width: outerWidth,
         borderRadius: PILL_OUTER_BORDER_RADIUS,
-        boxShadow: '0 12px 40px -8px rgba(15, 23, 42, 0.35)',
+        boxShadow: COMMANDER_PILL_BOX_SHADOW,
       }
     }
     return {
@@ -390,7 +391,7 @@ export function Commander({ appId, chatPane }: CommanderProps) {
       x: 0,
       width: outerWidth,
       borderRadius: PILL_OUTER_BORDER_RADIUS,
-      boxShadow: '0 12px 40px -8px rgba(15, 23, 42, 0.35)',
+      boxShadow: COMMANDER_PILL_BOX_SHADOW,
     }
   })()
 

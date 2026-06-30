@@ -13,6 +13,8 @@ export interface CanvasActionButton {
   label: string
   labelHidden?: boolean
   active?: boolean
+  /** When true, renders with purple AI primary styling (data-partial="componentAiro"). */
+  aiStyle?: boolean
   disabled?: boolean
   onTrigger: () => void
 }

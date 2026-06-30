@@ -12,8 +12,10 @@ import {
   CanvasActionsVariant,
 } from '@/app/[market]/commander/canvas/actions'
 import {
+  COMMANDER_PILL_BOX_SHADOW,
   COMMANDER_PILL_INNER_SURFACE_CLASS,
   COMMANDER_PILL_OUTER_SURFACE_CLASS,
+  COMMANDER_SECONDARY_ACTIVE_BUTTON_BORDER_CLASS,
 } from '@/app/[market]/commander/components/commanderSurface'
 import IconButton from '@/app/[market]/develop/components/IconButton'
 import { Popover, PopoverContent, PopoverTrigger } from '@/lib/shadcn/popover'
@@ -48,17 +50,21 @@ function CanvasActionButtonView({ action, iconOnly }: { action: CanvasActionButt
       />
     )
   }
+  const isSecondaryActive = action.active === true && action.aiStyle !== true
+  const isPrimaryActive = action.aiStyle === true && action.active === true
   return (
     <Button
-      design={action.active ? 'primary' : 'control'}
+      design={action.aiStyle ? 'primary' : 'control'}
       size="sm"
       icon={action.icon}
       text={action.label}
       onClick={action.onTrigger}
-      aria-pressed={action.active}
+      active={isSecondaryActive ? true : undefined}
+      aria-pressed={isPrimaryActive ? true : undefined}
       disabled={action.disabled}
       data-eid={`commander.canvas_action.${action.id}`}
-      className="px-1.5!"
+      data-partial={action.aiStyle ? 'componentAiro' : undefined}
+      className={clsx('px-1.5!', isSecondaryActive && COMMANDER_SECONDARY_ACTIVE_BUTTON_BORDER_CLASS)}
     />
   )
 }
@@ -142,7 +148,10 @@ export default function CanvasActionsBar({ items, variant }: CanvasActionsBarPro
   if (!isDock) return content
 
   return (
-    <div className={clsx('rounded-2xl', COMMANDER_PILL_OUTER_SURFACE_CLASS)}>
+    <div
+      className={clsx('rounded-2xl', COMMANDER_PILL_OUTER_SURFACE_CLASS)}
+      style={{ boxShadow: COMMANDER_PILL_BOX_SHADOW }}
+    >
       <div className={clsx('rounded-xl px-1 py-1', COMMANDER_PILL_INNER_SURFACE_CLASS)}>{content}</div>
     </div>
   )

@@ -119,6 +119,7 @@ describe('usePreviewCanvasActions', () => {
     const { result } = renderHook(() => usePreviewCanvasActions())
     expect(idsOf(result.current)).toEqual(['edit', 'select', 'separator', 'undo', 'redo'])
     expect(buttonById(result.current, 'edit').active).toBe(true)
+    expect(buttonById(result.current, 'edit').aiStyle).toBe(true)
     expect(buttonById(result.current, 'undo').disabled).toBe(true)
     expect(buttonById(result.current, 'redo').disabled).toBe(false)
   })
@@ -127,8 +128,11 @@ describe('usePreviewCanvasActions', () => {
     setDevelopState({ viewMode: ViewMode.EDIT, isAnnotationModeEnabled: true })
     const { result } = renderHook(() => usePreviewCanvasActions())
     expect(idsOf(result.current)).toEqual(['edit', 'select', 'separator', 'undo', 'redo'])
-    expect(buttonById(result.current, 'edit').active).toBe(false)
+    // Edit stays primary active (purple) while annotating; Annotate is secondary active.
+    expect(buttonById(result.current, 'edit').active).toBe(true)
+    expect(buttonById(result.current, 'edit').aiStyle).toBe(true)
     expect(buttonById(result.current, 'select').active).toBe(true)
+    expect(buttonById(result.current, 'select').aiStyle).toBeUndefined()
   })
 
   it('toggles edit mode from the edit action', () => {
@@ -136,6 +140,13 @@ describe('usePreviewCanvasActions', () => {
     const { result } = renderHook(() => usePreviewCanvasActions())
     buttonById(result.current, 'edit').onTrigger()
     expect(handleViewModeChange).toHaveBeenCalledWith(ViewMode.EDIT, false)
+  })
+
+  it('exits edit mode when edit is clicked while annotating', () => {
+    setDevelopState({ viewMode: ViewMode.EDIT, isAnnotationModeEnabled: true })
+    const { result } = renderHook(() => usePreviewCanvasActions())
+    buttonById(result.current, 'edit').onTrigger()
+    expect(handleViewModeChange).toHaveBeenCalledWith(ViewMode.PREVIEW, false)
   })
 
   it('toggles annotation mode from the select action', () => {

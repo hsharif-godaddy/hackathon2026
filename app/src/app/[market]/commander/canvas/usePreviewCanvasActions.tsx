@@ -60,18 +60,18 @@ export function usePreviewCanvasActions(): CanvasActionItem[] {
   const isEditMode = viewMode === ViewMode.EDIT
 
   return useMemo<CanvasActionItem[]>(() => {
-    // Annotation is a sub-mode of edit: viewMode stays EDIT while annotating,
-    // so the edit action set keeps showing. The Edit button itself reads as
-    // inactive while annotating (mirrors the legacy composer toggle styling).
-    const isEditButtonActive = isEditMode && !isAnnotationActive
+    // Annotation is a sub-mode of edit: viewMode stays EDIT while annotating.
+    // Edit remains in primary active (purple) the whole time; Annotate shows a
+    // secondary active state (control + aria-pressed) when both are on.
     const editAction: CanvasActionItem = {
       type: CanvasActionItemType.Button,
       id: 'edit',
       icon: <ClickIcon className="size-2.5" />,
       label: t('builder_chat_toolbar_button_edit'),
-      active: isEditButtonActive,
+      active: isEditMode,
+      aiStyle: isEditMode,
       onTrigger: () => {
-        handleViewModeChange(isEditButtonActive ? ViewMode.PREVIEW : ViewMode.EDIT, hasUnsavedChanges)
+        handleViewModeChange(isEditMode ? ViewMode.PREVIEW : ViewMode.EDIT, hasUnsavedChanges)
         if (isCanvasTabsEnabled) setActiveCanvas(CanvasId.Preview)
       },
     }

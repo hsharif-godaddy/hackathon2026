@@ -7,6 +7,7 @@ import SelectIcon from '@ux/icon/select'
 import WandIcon from '@ux/icon/wand'
 
 import { CanvasId } from '@/app/[market]/commander/canvas/registry'
+import { COMMANDER_SECONDARY_ACTIVE_BUTTON_BORDER_CLASS } from '@/app/[market]/commander/components/commanderSurface'
 import { ViewMode } from '@/app/[market]/develop/components/types'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
@@ -37,7 +38,7 @@ export default function CommanderComposerLeft({ appId }: CommanderComposerLeftPr
   const isActionsBarEnabled = useCommanderActionsBarEnabled()
   const setActiveCanvas = useCommanderStore((state) => state.setActiveCanvas)
 
-  const isEditActive = viewMode === ViewMode.EDIT && !isAnnotationActive
+  const isEditActive = viewMode === ViewMode.EDIT
 
   const annotationImpressionFiredRef = useRef<boolean>(false)
   useEffect(() => {
@@ -100,14 +101,14 @@ export default function CommanderComposerLeft({ appId }: CommanderComposerLeftPr
 
       {isAnnotationEnabled && !isActionsBarEnabled && (
         <Button
-          design={isAnnotationActive ? 'primary' : 'control'}
+          design="control"
           size="sm"
           icon={<SelectIcon className="size-2.5" />}
           onClick={handleAnnotationClick}
           aria-label={t('builder_commander_chat_row_annotation')}
-          aria-pressed={isAnnotationActive}
+          active={isAnnotationActive}
           data-testid="commander-composer-annotation"
-          data-partial={isAnnotationActive ? 'componentAiro' : ''}
+          className={isAnnotationActive ? COMMANDER_SECONDARY_ACTIVE_BUTTON_BORDER_CLASS : undefined}
         />
       )}
     </div>
