@@ -45,7 +45,7 @@ on:
         type: string
         default: 'simple'
 
-run-name: '[APP - ${{ inputs.DEPLOY_TO_ENV }}] branch: ${{ github.ref_name }} | actor: ${{ github.actor }}'
+run-name: "[APP - ${{ inputs.DEPLOY_TO_ENV }}] ${{ inputs.strategy == 'dark_release' && 'DARK-RELEASE' || 'SIMPLE' }} | branch: ${{ github.ref_name }} | actor: ${{ github.actor }}"
 
 permissions:
   id-token: write # required for artifactory token login
@@ -254,6 +254,7 @@ jobs:
         env:
           STRATEGY: ${{ inputs.strategy }}
           CUSTOM_URL: ${{ steps.promote.outputs.promoted_artifact_custom_url }}
+          RAW_URL: ${{ steps.promote.outputs.promoted_artifact_url }}
           SOURCE: ${{ steps.resolve-artifact.outputs.source }}
           ARTIFACT_ID: ${{ steps.resolve-artifact.outputs.artifact_id }}
           IMAGE: ${{ steps.resolve-artifact.outputs.image }}
@@ -271,21 +272,32 @@ jobs:
           } >> $GITHUB_STEP_SUMMARY
 
           if [ "$STRATEGY" = "dark_release" ]; then
-            # The x-katana-version selector is the artifact's version/tag, NOT the numeric
-            # artifact id — read the authoritative value the action put in the custom URL so
-            # the URL, header, and cookie all reference the same selector.
-            SELECTOR=$(printf '%s' "$CUSTOM_URL" | sed -n 's/.*[?&]x-katana-version=\([^&]*\).*/\1/p')
+            # Prefer the friendly custom-domain URL (carries the cookie param + redirect);
+            # fall back to the raw artifact URL. promoted_artifact_custom_url is empty when
+            # the env has no custom hostname configured in katana (e.g. prod), but
+            # promoted_artifact_url is always populated — so without the fallback the prod
+            # dark summary printed the heading with no reachable URL. The x-katana-version
+            # selector is the artifact's version/tag (not the numeric id); read it from
+            # whichever URL we have so URL, header, and cookie all reference the same value.
+            URL="${CUSTOM_URL:-$RAW_URL}"
+            SELECTOR=$(printf '%s' "$URL" | sed -n 's/.*[?&]x-katana-version=\([^&]*\).*/\1/p')
             {
               printf '## 🌑 Dark release — 0%% traffic\n\n'
-              printf 'This artifact takes **no live traffic**. Reach it explicitly:\n\n'
-              if [ -n "$CUSTOM_URL" ]; then
-                printf '**Browser** (sets a persistent `x_katana_version` cookie + redirects):\n\n%s\n\n' "$CUSTOM_URL"
-              fi
-              if [ -n "$SELECTOR" ]; then
-                printf '**Direct (API / curl)** — send the selector on each request:\n```\n'
-                printf 'Header: x-katana-version: %s\n' "$SELECTOR"
-                printf 'Cookie: x_katana_version=%s\n' "$SELECTOR"
-                printf '```\n'
+              if [ -n "$URL" ]; then
+                printf 'This artifact takes **no live traffic**. Reach it explicitly:\n\n'
+                if [ -n "$CUSTOM_URL" ]; then
+                  printf '**Browser** (sets a persistent `x_katana_version` cookie + redirects):\n\n%s\n\n' "$CUSTOM_URL"
+                else
+                  printf '**Browser** (direct access via the version selector):\n\n%s\n\n' "$RAW_URL"
+                fi
+                if [ -n "$SELECTOR" ]; then
+                  printf '**Direct (API / curl)** — send the selector on each request:\n```\n'
+                  printf 'Header: x-katana-version: %s\n' "$SELECTOR"
+                  printf 'Cookie: x_katana_version=%s\n' "$SELECTOR"
+                  printf '```\n'
+                fi
+              else
+                printf 'This artifact takes **no live traffic** and the promotion returned no reachable URL — check the promote step log for the `x-katana-version` selector.\n\n'
               fi
             } >> $GITHUB_STEP_SUMMARY
           fi
