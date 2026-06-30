@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ChoiceListOtherRow } from '@airo-ux/pattern-library/input/choice-list'
+import { ChoiceList, ChoiceListOtherRow } from '@airo-ux/pattern-library/input/choice-list'
 import Button from '@ux/button'
 
 import { useSendUserMessage } from '@/app/[market]/develop/components/chat/ChatContext'
@@ -27,17 +27,6 @@ const CLOSE_OPTIONS = [
   'Show me 2-3 font options to choose from.',
   'Change the writing tone and voice of the page copy. Ask me to pick from 2-3 copy voice options, then rewrite the text to match.',
 ]
-
-const PROMPT_QUESTION: AskQuestionChoiceQuestion = {
-  question: 'Is this what you imagined?',
-  type: 'chips_single',
-  suggestions: [
-    { text: 'Looks great!' },
-    { text: 'Close, needs some work' },
-    { text: 'Not what I expected' },
-  ],
-  allowOther: false,
-}
 
 const closeQuestion: AskQuestionChoiceQuestion = {
   question: 'What should we tweak?',
@@ -172,50 +161,56 @@ export function FirstBuildFeedbackPanel({ feedback, appId }: Props): React.React
   }, [dismiss, appId])
 
   if (step === 'prompt') {
+    const choiceListProps = {
+      numberKeyShortcuts: false,
+      showOptionChevron: false,
+      showOptionArrowOnHover: true,
+      commitBehavior: 'immediate',
+      showDeferredFooter: false,
+    } as const
+
     return (
       <CollapsibleChatInputSection
         title="Is this what you imagined?"
         onDismiss={handleSkip}
         dismissLabel="Skip"
         data-testid="first-build-feedback-panel"
-        footer={
-          <div className="flex justify-end border-t border-border pt-1">
-            <Button design="control" size="sm" text="Skip" onClick={handleSkip} />
-          </div>
-        }
       >
-        <AskQuestionChoicePanel
-          questions={[PROMPT_QUESTION]}
-          allowOtherGlobal={false}
-          rootOtherPlaceholder=""
-          otherAriaLabel=""
-          backLabel="Back"
-          submitLabel="Submit"
-          disabled={false}
-          hideQuestion={true}
+        <ChoiceList
+          {...choiceListProps}
           ariaLabel="Is this what you imagined?"
-          onStepChange={() => {}}
-          onActiveStepChange={() => {}}
-          onComplete={(selections) => {
-            const raw = selections['0']
-            if (raw === null) {
-              trackFeedbackResponse('skipped', shownAtRef.current, appId)
-              dismiss('skipped')
-              return
-            }
-            const chipIndex = typeof raw === 'string' ? parseInt(raw, 10) - 1 : -1
-            if (chipIndex === 0) {
+          onDecision={(value) => {
+            if (value === '1') {
               trackFeedbackResponse('magical', shownAtRef.current, appId)
               dismiss('magical')
-            } else if (chipIndex === 1) {
+            } else if (value === '2') {
               trackFeedbackResponse('close', shownAtRef.current, appId)
               advance('close_followup')
-            } else if (chipIndex === 2) {
-              trackFeedbackResponse('offbase', shownAtRef.current, appId)
-              advance('offbase_followup')
             }
           }}
-        />
+        >
+          <ChoiceList.Item value="1">Looks great!</ChoiceList.Item>
+          <ChoiceList.Item value="2">Close, needs some work</ChoiceList.Item>
+        </ChoiceList>
+        {/* Option 3 and Skip are DOM siblings — no nesting — to keep both independently clickable */}
+        <div className="flex w-full items-stretch">
+          <div className="flex-1 min-w-0">
+            <ChoiceList
+              {...choiceListProps}
+              ariaLabel="Not what I expected"
+              suppressLastRowBottomBorder={true}
+              onDecision={() => {
+                trackFeedbackResponse('offbase', shownAtRef.current, appId)
+                advance('offbase_followup')
+              }}
+            >
+              <ChoiceList.Item value="3" letter="3">Not what I expected</ChoiceList.Item>
+            </ChoiceList>
+          </div>
+          <div className="flex items-center pl-3">
+            <Button design="control" size="sm" text="Skip" onClick={handleSkip} />
+          </div>
+        </div>
       </CollapsibleChatInputSection>
     )
   }

@@ -22,29 +22,66 @@ vi.mock('@/lib/firstBuildFeedbackAnalytics', () => ({
   CLOSE_CHIP_MAP: { 0: 'color_scheme', 1: 'fonts', 2: 'tone' },
 }))
 
-vi.mock('@airo-ux/pattern-library/input/choice-list', () => ({
-  ChoiceListOtherRow: ({
-    otherPlaceholder,
-    onSubmit,
-    draft,
-    onDraftChange,
+vi.mock('@airo-ux/pattern-library/input/choice-list', () => {
+  function MockChoiceListItem(_props: { value: string; children?: React.ReactNode; letter?: string }) {
+    return null
+  }
+
+  function MockChoiceList({
+    ariaLabel,
+    children,
+    onDecision,
   }: {
-    otherPlaceholder: string
-    onSubmit: (v: string) => void
-    draft: string
-    onDraftChange: (v: string) => void
+    ariaLabel?: string
+    children?: React.ReactNode
+    onDecision?: (value: string) => void
     [key: string]: unknown
-  }) => (
-    <div>
-      <input
-        placeholder={otherPlaceholder}
-        value={draft}
-        onChange={(e) => onDraftChange(e.target.value)}
-      />
-      <button aria-label="Submit" onClick={() => onSubmit(draft.trim())}>Submit</button>
-    </div>
-  ),
-}))
+  }) {
+    const items = React.Children.toArray(children).filter(
+      (child): child is React.ReactElement<{ value: string; children?: React.ReactNode }> =>
+        React.isValidElement(child) && child.type === MockChoiceListItem,
+    )
+    return (
+      <div aria-label={ariaLabel}>
+        {items.map((item) => (
+          <button
+            key={item.props.value}
+            data-testid={`choice-list-item-${item.props.value}`}
+            onClick={() => onDecision?.(item.props.value)}
+          >
+            {item.props.children}
+          </button>
+        ))}
+      </div>
+    )
+  }
+  MockChoiceList.Item = MockChoiceListItem
+
+  return {
+    ChoiceList: MockChoiceList,
+    ChoiceListOtherRow: ({
+      otherPlaceholder,
+      onSubmit,
+      draft,
+      onDraftChange,
+    }: {
+      otherPlaceholder: string
+      onSubmit: (v: string) => void
+      draft: string
+      onDraftChange: (v: string) => void
+      [key: string]: unknown
+    }) => (
+      <div>
+        <input
+          placeholder={otherPlaceholder}
+          value={draft}
+          onChange={(e) => onDraftChange(e.target.value)}
+        />
+        <button aria-label="Submit" onClick={() => onSubmit(draft.trim())}>Submit</button>
+      </div>
+    ),
+  }
+})
 
 function MockAskQuestionChoicePanel({
   questions,
@@ -158,9 +195,9 @@ describe('FirstBuildFeedbackPanel — prompt step', () => {
   it('renders title and three chip options plus skip', () => {
     render(<FirstBuildFeedbackPanel feedback={makeFeedback()} appId="app1" />)
     expect(screen.getByTestId('section-title')).toHaveTextContent('Is this what you imagined?')
-    expect(screen.getByTestId('aqcp-option-0')).toHaveTextContent('Looks great!')
-    expect(screen.getByTestId('aqcp-option-1')).toHaveTextContent('Close, needs some work')
-    expect(screen.getByTestId('aqcp-option-2')).toHaveTextContent('Not what I expected')
+    expect(screen.getByTestId('choice-list-item-1')).toHaveTextContent('Looks great!')
+    expect(screen.getByTestId('choice-list-item-2')).toHaveTextContent('Close, needs some work')
+    expect(screen.getByTestId('choice-list-item-3')).toHaveTextContent('Not what I expected')
     const skipButtons = screen.getAllByRole('button', { name: 'Skip' })
     expect(skipButtons.length).toBeGreaterThan(0)
   })
@@ -168,7 +205,7 @@ describe('FirstBuildFeedbackPanel — prompt step', () => {
   it('Magical (chip 0) calls dismiss magical, not sendUserMessage', () => {
     const dismiss = vi.fn()
     render(<FirstBuildFeedbackPanel feedback={makeFeedback({ dismiss })} appId="app1" />)
-    fireEvent.click(screen.getByTestId('aqcp-option-0'))
+    fireEvent.click(screen.getByTestId('choice-list-item-1'))
     expect(dismiss).toHaveBeenCalledWith('magical')
     expect(mockSendUserMessage).not.toHaveBeenCalled()
   })
@@ -176,14 +213,14 @@ describe('FirstBuildFeedbackPanel — prompt step', () => {
   it('Close (chip 1) calls advance to close_followup', () => {
     const advance = vi.fn()
     render(<FirstBuildFeedbackPanel feedback={makeFeedback({ advance })} appId="app1" />)
-    fireEvent.click(screen.getByTestId('aqcp-option-1'))
+    fireEvent.click(screen.getByTestId('choice-list-item-2'))
     expect(advance).toHaveBeenCalledWith('close_followup')
   })
 
   it('Offbase (chip 2) calls advance to offbase_followup', () => {
     const advance = vi.fn()
     render(<FirstBuildFeedbackPanel feedback={makeFeedback({ advance })} appId="app1" />)
-    fireEvent.click(screen.getByTestId('aqcp-option-2'))
+    fireEvent.click(screen.getByTestId('choice-list-item-3'))
     expect(advance).toHaveBeenCalledWith('offbase_followup')
   })
 
