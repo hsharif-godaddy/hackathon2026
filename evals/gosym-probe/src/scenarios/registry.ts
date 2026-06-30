@@ -61,6 +61,12 @@ import {
   addStructuredDataScenario,
   registerNewRouteScenario,
 } from './skills/seo/index.js';
+import {
+  addGoogleReviewsScenario,
+  oauthConnectionFlowScenario,
+  noManualApiFetchScenario,
+  socialProofTriggeringScenario,
+} from './skills/google-reviews/index.js';
 import type { IGocodeClient } from '../clients/gocode-client.js';
 import type {
   AABCtrlPlaneClient,
@@ -125,5 +131,9 @@ export function createAllScenarios(
     // operator-provisioned fixed base is configured (EVAL_INCREMENT_* env),
     // so it's absent from normal runs; filter the null out.
     midConversationIncrementScenario(gocode, ctrlPlane, config),
+    addGoogleReviewsScenario(gocode, ctrlPlane),
+    oauthConnectionFlowScenario(gocode, ctrlPlane),
+    noManualApiFetchScenario(gocode, ctrlPlane),
+    socialProofTriggeringScenario(gocode, ctrlPlane),
   ].filter((scenario): scenario is Scenario => scenario !== null);
 }

@@ -1,220 +1,179 @@
-/**
- * Google Reviews Skill Tools
- *
- * Provides two tools for the Google reviews workflow with state management:
- *   checkConnection — verify GBP connection, initiate OAuth if needed
- *   fetchReviews — fetch reviews via two-pass mechanism (signal + context attachment)
- *
- * Each tool implements computeState() to track workflow progression and enable
- * resume-after-interruption (e.g., OAuth, errors, conversation summarization).
- */
-
 import { z } from 'zod';
 import type { SkillToolDefinition } from '@airo/ai-skills';
 import type { AgentsAppContext } from '../../../types/agents-app-context.js';
 import type { ContextAttachment } from '@airo/shared/context-attachment';
 import type { GoogleReview } from '@airo/shared/social';
-import { SocialPlatform, GOOGLE_REVIEWS_READY } from '../../../types/social.js';
+import { SocialPlatform } from '../../../types/social.js';
 import { SocialAssociationRepository } from '../../../database/repositories/SocialAssociationRepository.js';
 import { Logger } from '../../../logging/index.js';
-import { createGbpConnectionCheckTool } from '../../../services/social-connection-check.js';
+import { getActionService } from '../../../server/agent-runtime.js';
+import type { IClientActionService } from '../../../services/ClientActionService.js';
 
 const logger = Logger.create({ component: 'google-reviews-skill' });
 const socialAssociationRepo = new SocialAssociationRepository();
 
-interface GoogleReviewsReadyData {
-  reviews: GoogleReview[];
-  averageRating?: number;
-  totalReviewCount?: number;
+type ToolContext = { metadata?: { appId?: string }; socketId?: string };
+
+type ExecuteWorkflowOutput =
+  | { phase: 'error'; success: false; error: string; recoverable: boolean }
+  | { phase: 'awaiting-oauth'; action: 'connect'; platform: 'GOOGLE_BUSINESS_PROFILE'; message: string }
+  | { phase: 'complete'; success: true; reviews: GoogleReview[]; averageRating?: number; totalReviewCount?: number; installSkill: true }
+  | { phase: 'complete'; success: true; reviews: []; averageRating: undefined; totalReviewCount: 0; installSkill: false; message: string };
+
+function getAppId(context: unknown): string | undefined {
+  return (context as AgentsAppContext)?.metadata?.appId as string | undefined;
 }
 
-/**
- * FetchReviews tool output shapes
- */
-type FetchReviewsOutput =
-  | { success: false; error: string; reviews: []; needsReconnect: boolean }
-  | { action: 'fetchReviews'; success: true; appId: string; socialId: string; locationCount: number }
-  | { success: true; reviews: GoogleReview[]; averageRating?: number; totalReviewCount?: number };
+function getClient(context: unknown): IClientActionService | null {
+  const socketId = (context as ToolContext)?.socketId;
+  if (!socketId || typeof socketId !== 'string') return null;
+  return getActionService(socketId);
+}
 
-/**
- * Tool 1: checkConnection
- *
- * Checks if Google Business Profile is connected. If not, returns a signal
- * instructing the LLM to call social-platform__socialConnect directly.
- *
- * Built from the shared connection-check factory
- * (agents/src/services/social-connection-check.ts) — the lookup logic is
- * shared with google-business-profile-sync; only the workflow-state `nextStep`
- * strings differ.
- *
- * computeState tracks:
- * - pending-gbp-connection: OAuth initiated, waiting for user to complete
- * - connected: GBP connected, ready to fetch reviews
- * - connection-check-failed: Error occurred, can retry
- */
-export const checkConnectionTool: SkillToolDefinition = createGbpConnectionCheckTool({
-  loggerComponent: 'google-reviews-skill',
-  logEventPrefix: 'google-reviews',
+function findGbpAssociations(appId: string) {
+  return socialAssociationRepo.findByAppAndPlatform(appId, SocialPlatform.GOOGLE_BUSINESS_PROFILE);
+}
+
+export const executeWorkflowTool: SkillToolDefinition = {
+  name: 'executeWorkflow',
   description:
-    'Check if Google Business Profile is connected. If not connected, returns ' +
-    'a signal to initiate OAuth via social-platform__socialConnect. ' +
-    'Call this first before attempting to fetch reviews.',
-  nextStepWhenConnected: 'fetch-reviews',
-  nextStepWhenPending: 'fetch-reviews-and-install',
-});
+    'Execute the full Google Reviews workflow: checks GBP connection, handles OAuth ' +
+    'if needed, fetches reviews via the frontend, and returns them for component installation. ' +
+    'The tool handles the entire flow deterministically. Retry on transient errors. ' +
+    'Pass forceReconnect: true to detach the current business and let the user connect a different Google Business Profile.',
 
-/**
- * Tool 2: fetchReviews
- *
- * Fetches Google reviews via two-pass mechanism:
- * - Pass 1: Returns fetchReviews signal → frontend fetches via browser API → context attachment
- * - Pass 2: Reads reviews from context attachment and returns them
- *
- * computeState tracks:
- * - fetching-reviews: Signal sent, waiting for context attachment
- * - reviews-fetched: Reviews successfully retrieved
- * - fetch-failed: Error (expired token, API failure)
- * - no-reviews-found: Valid response but empty reviews array
- */
-export const fetchReviewsTool: SkillToolDefinition = {
-  name: 'fetchReviews',
-  description:
-    'Fetch Google Business Profile reviews for the current app. ' +
-    'Works in two passes: first returns a signal for frontend to fetch reviews, ' +
-    'then reads the reviews from context attachment on second call. ' +
-    'Call after confirming GBP is connected via checkConnection.',
+  parameters: z.object({
+    forceReconnect: z.boolean().optional().describe(
+      'When true, initiates OAuth even if a business is already connected. ' +
+      'Use when the user wants to detach the current business and connect a different one.'
+    ),
+  }),
 
-  parameters: z.object({}),
+  config: { timeout: 60000 },
 
-  async execute(_input, context) {
-    const agentContext = context as AgentsAppContext;
-    const appId = agentContext?.metadata?.appId as string;
+  async execute(input, context) {
+    const { forceReconnect } = input as { forceReconnect?: boolean };
+    const appId = getAppId(context);
 
     if (!appId) {
-      const error = 'App ID is required';
-      logger.error('google-reviews.fetchReviews.missing-app-id', {});
-      return { success: false, error, reviews: [], needsReconnect: false };
+      logger.error('google-reviews.executeWorkflow.missing-app-id', {});
+      return { phase: 'error', success: false, error: 'App ID is required', recoverable: false };
     }
 
-    // Pass 2: Check for context attachment with reviews
-    const contextAttachments = agentContext?.contextAttachments;
-    const reviewsContext = contextAttachments?.find(
-      (att): att is ContextAttachment<GoogleReviewsReadyData> =>
-        att.type === GOOGLE_REVIEWS_READY
-    );
-
-    if (reviewsContext) {
-      const { reviews, averageRating, totalReviewCount } = reviewsContext.data;
-      logger.info('google-reviews.fetchReviews.context-read', {
-        appId,
-        count: reviews.length,
-      });
-
-      return {
-        success: true,
-        reviews,
-        averageRating,
-        totalReviewCount,
-      };
-    }
-
-    // Pass 1: Check connection and return fetchReviews signal
     try {
-      const associations = socialAssociationRepo.findByAppAndPlatform(
-        appId,
-        SocialPlatform.GOOGLE_BUSINESS_PROFILE
-      );
+      const associations = findGbpAssociations(appId);
 
-      if (associations.length === 0) {
-        const error =
-          'No Google Business Profile connection found. ' +
-          'Call checkConnection first to establish connection, then retry fetchReviews.';
-        logger.warn('google-reviews.fetchReviews.not-connected', { appId });
+      if (associations.length === 0 || forceReconnect) {
+        logger.info('google-reviews.executeWorkflow.needs-oauth', { appId, forceReconnect: !!forceReconnect });
         return {
-          success: false,
-          error,
-          reviews: [],
-          needsReconnect: true, // Missing connection - must connect before retrying
+          phase: 'awaiting-oauth',
+          action: 'connect',
+          platform: 'GOOGLE_BUSINESS_PROFILE' as const,
+          message: forceReconnect
+            ? 'Initiating reconnection to Google Business Profile. The user can select a different business.'
+            : 'Google Business Profile is not connected. The user needs to authenticate via OAuth to continue.',
         };
       }
 
       const association = associations[0]!;
 
       if (associations.length > 1) {
-        logger.warn('google-reviews.fetchReviews.multi-location', {
+        logger.warn('google-reviews.executeWorkflow.multi-location', {
           appId,
           count: associations.length,
           chosenSocialId: association.socialId,
         });
       }
 
-      logger.info('google-reviews.fetchReviews.signal', {
-        appId,
-        socialId: association.socialId,
+      const clientActionService = getClient(context);
+      if (!clientActionService) {
+        logger.error('google-reviews.executeWorkflow.no-client-action-service', { appId });
+        return { phase: 'error', success: false, error: 'Client action service unavailable', recoverable: true };
+      }
+
+      logger.info('google-reviews.executeWorkflow.fetching', { appId, socialId: association.socialId });
+
+      const result = await clientActionService.executeAction({
+        action: 'fetch_google_reviews',
+        params: { socialId: association.socialId, appId },
+        timeoutMs: 30000,
       });
 
+      if (!result.success) {
+        const errorMsg = result.error || 'Failed to fetch reviews';
+        const isAuthFailure = /\b(token|reconnect|unauthorized|expired|forbidden|auth)\b/i.test(errorMsg);
+
+        if (isAuthFailure) {
+          logger.warn('google-reviews.executeWorkflow.auth-failure', { appId, error: errorMsg });
+          return {
+            phase: 'awaiting-oauth',
+            action: 'connect',
+            platform: 'GOOGLE_BUSINESS_PROFILE' as const,
+            message: `Authentication failed: ${errorMsg}. The user needs to reconnect their Google Business Profile.`,
+          };
+        }
+
+        logger.error('google-reviews.executeWorkflow.fetch-failed', { appId, error: errorMsg });
+        return { phase: 'error', success: false, error: errorMsg, recoverable: true };
+      }
+
+      const data = result.result as { reviews?: GoogleReview[]; averageRating?: number; totalReviewCount?: number } | undefined;
+      const reviews = data?.reviews ?? [];
+      const averageRating = data?.averageRating;
+      const totalReviewCount = data?.totalReviewCount ?? reviews.length;
+
+      logger.info('google-reviews.executeWorkflow.complete', { appId, reviewCount: reviews.length, averageRating });
+
+      if (reviews.length === 0) {
+        return {
+          phase: 'complete' as const,
+          success: true as const,
+          reviews: [] as [],
+          averageRating: undefined,
+          totalReviewCount: 0,
+          installSkill: false as const,
+          message: 'Google Business Profile is connected but no reviews were found.',
+        };
+      }
+
       return {
-        action: 'fetchReviews',
-        success: true,
-        appId,
-        socialId: association.socialId,
-        locationCount: associations.length,
+        phase: 'complete' as const,
+        success: true as const,
+        reviews,
+        averageRating,
+        totalReviewCount,
+        installSkill: true as const,
       };
     } catch (err: unknown) {
       const error = err instanceof Error ? err.message : 'Unknown error';
-      logger.error('google-reviews.fetchReviews.error', { appId, error });
-
-      // Database errors are transient - retry without reconnecting
-      return {
-        success: false,
-        error,
-        reviews: [],
-        needsReconnect: false, // Database/internal errors don't require reconnection
-      };
+      logger.error('google-reviews.executeWorkflow.error', { appId, error });
+      return { phase: 'error', success: false, error, recoverable: true };
     }
   },
 
-  // Always update state, even on errors
-  computeState(_input: unknown, output: FetchReviewsOutput) {
-    // Pass 1: fetch signal sent
-    if ('action' in output && output.action === 'fetchReviews') {
+  computeState(_input: unknown, output: ExecuteWorkflowOutput) {
+    if (output.phase === 'error') {
       return {
-        workflowState: 'fetching-reviews',
-        nextStep: 'wait-for-context-attachment',
-        lastError: null, // Clear any previous error
-        updatedAt: new Date().toISOString(),
-      };
-    }
-
-    // Error cases
-    if ('error' in output) {
-      // Use structured flag to determine if reconnection is needed
-      return {
-        workflowState: 'fetch-failed',
+        phase: 'error',
         lastError: output.error,
-        nextStep: output.needsReconnect ? 'reconnect-gbp' : 'retry-fetch',
         updatedAt: new Date().toISOString(),
       };
     }
 
-    // Success - reviews fetched (output must have 'reviews' property now)
-    if ('reviews' in output && output.reviews.length > 0) {
+    if (output.phase === 'awaiting-oauth') {
       return {
-        workflowState: 'reviews-fetched',
+        phase: 'awaiting-oauth',
+        lastError: null,
+        updatedAt: new Date().toISOString(),
+      };
+    }
+
+    if (output.phase === 'complete') {
+      return {
+        phase: 'complete',
         reviewCount: output.reviews.length,
         averageRating: output.averageRating,
-        nextStep: 'install-component',
-        lastError: null, // Clear any previous error
-        updatedAt: new Date().toISOString(),
-      };
-    }
-
-    // No reviews found (valid response but empty)
-    if ('reviews' in output && output.reviews.length === 0) {
-      return {
-        workflowState: 'no-reviews-found',
-        nextStep: 'inform-user',
-        lastError: null, // Clear any previous error
+        lastError: null,
         updatedAt: new Date().toISOString(),
       };
     }

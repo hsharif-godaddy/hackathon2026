@@ -12,6 +12,7 @@ export const CLIENT_ACTIONS = {
   INBOX_CALL: 'inboxCall',
   SCREENSHOT: 'screenshot',
   AUDIT: 'audit',
+  FETCH_GOOGLE_REVIEWS: 'fetch_google_reviews',
 } as const
 
 export type ClientAction = typeof CLIENT_ACTIONS[keyof typeof CLIENT_ACTIONS]

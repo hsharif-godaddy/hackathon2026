@@ -25,6 +25,7 @@ import FontThemeToolRenderer from './FontThemeToolRenderer'
 import GbpSyncToolRenderer from './GbpSyncToolRenderer'
 import GitRestoreDiffRenderer from './GitRestoreDiffRenderer.tsx'
 import GoogleReviewsToolRenderer from './GoogleReviewsToolRenderer'
+import GoogleReviewsWorkflowRenderer from './GoogleReviewsWorkflowRenderer'
 import GrepSearchToolRenderer from './GrepSearchToolRenderer'
 import HandoffToolRenderer from './HandoffToolRenderer'
 import ImageGeneratorToolRenderer from './ImageGeneratorToolRenderer'
@@ -103,7 +104,7 @@ export const toolRendererRegistry = {
   socialPostPublish: SocialPublishToolRenderer,
   end_conversation: EndConversationToolRenderer,
   googleReviews: GoogleReviewsToolRenderer, // Legacy global tool (backwards compatibility)
-  'google-reviews__fetchReviews': GoogleReviewsToolRenderer, // New skill-specific tool
+  'google-reviews__executeWorkflow': GoogleReviewsWorkflowRenderer,
   'google-business-profile-sync__getGbpProfile': GbpSyncToolRenderer,
   'google-business-profile-sync__syncField': GbpSyncToolRenderer,
   grepSearch: GrepSearchToolRenderer,
@@ -200,6 +201,7 @@ export {
   GbpSyncToolRenderer,
   GitRestoreDiffRenderer,
   GoogleReviewsToolRenderer,
+  GoogleReviewsWorkflowRenderer,
   GrepSearchToolRenderer,
   HandoffToolRenderer,
   ImageGeneratorToolRenderer,
