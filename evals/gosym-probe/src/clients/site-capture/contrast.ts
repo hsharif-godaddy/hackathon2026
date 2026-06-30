@@ -16,8 +16,14 @@ export interface RawTextNode {
   bg: Rgb;
   fontPx: number;
   bold: boolean;
-  /** True when the effective background is an image/gradient (no single color). */
+  /** True when the effective background is a raster image (no parseable color). */
   bgIndeterminate: boolean;
+  /**
+   * Candidate background colors when the effective background is a CSS gradient
+   * (its parsed color stops). Scored against the worst-case (lowest-contrast)
+   * stop. Absent for solid backgrounds.
+   */
+  bgCandidates?: Rgb[];
 }
 
 export type TokenGuess = 'muted' | 'tertiary' | 'other' | 'indeterminate-bg';
@@ -83,22 +89,35 @@ function rgbString(rgb: Rgb): string {
 
 /**
  * Compute AA contrast violations from raw text nodes. Determinate nodes are
- * included only when they FAIL the AA threshold; indeterminate-background nodes
- * (text over images/gradients) are always surfaced as `indeterminate-bg` — a
- * coverage caveat the evaluator reports separately, not a pass/fail.
+ * included only when they FAIL the AA threshold; a node over a CSS gradient is
+ * scored against its worst-case (lowest-contrast) color stop. Only nodes over a
+ * raster image stay `indeterminate-bg` — a coverage caveat the evaluator reports
+ * separately, not a pass/fail.
  */
 export function computeContrastViolations(nodes: RawTextNode[]): ContrastViolation[] {
   const violations: ContrastViolation[] = [];
   for (const node of nodes) {
     const large: boolean = isLargeText(node.fontPx, node.bold);
     const requiredRatio: number = large ? 3 : 4.5;
-    const ratio: number = contrastRatio(node.fg, node.bg);
     if (node.bgIndeterminate) {
-      violations.push(buildViolation(node, ratio, large, requiredRatio, 'indeterminate-bg'));
+      const ratio: number = contrastRatio(node.fg, node.bg);
+      violations.push(buildViolation(node, node.bg, ratio, large, requiredRatio, 'indeterminate-bg'));
       continue;
     }
-    if (ratio < requiredRatio) {
-      violations.push(buildViolation(node, ratio, large, requiredRatio, classifyToken(node.className)));
+    // Score against the worst-case background: for a gradient, evaluate every
+    // parsed color stop and keep the lowest contrast ratio.
+    const candidates: Rgb[] = node.bgCandidates && node.bgCandidates.length > 0 ? node.bgCandidates : [node.bg];
+    let worstBg: Rgb = candidates[0]!;
+    let worstRatio: number = Number.POSITIVE_INFINITY;
+    for (const candidate of candidates) {
+      const ratio: number = contrastRatio(node.fg, candidate);
+      if (ratio < worstRatio) {
+        worstRatio = ratio;
+        worstBg = candidate;
+      }
+    }
+    if (worstRatio < requiredRatio) {
+      violations.push(buildViolation(node, worstBg, worstRatio, large, requiredRatio, classifyToken(node.className)));
     }
   }
   return violations;
@@ -106,6 +125,7 @@ export function computeContrastViolations(nodes: RawTextNode[]): ContrastViolati
 
 function buildViolation(
   node: RawTextNode,
+  bg: Rgb,
   ratio: number,
   large: boolean,
   requiredRatio: number,
@@ -115,7 +135,7 @@ function buildViolation(
     selector: node.selector,
     className: node.className,
     fgColor: rgbString(node.fg),
-    bgColor: rgbString(node.bg),
+    bgColor: rgbString(bg),
     ratio: Math.round(ratio * 100) / 100,
     fontPx: node.fontPx,
     bold: node.bold,

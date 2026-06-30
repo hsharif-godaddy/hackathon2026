@@ -39,11 +39,38 @@ export async function captureContrastAudit(page: Page): Promise<ContrastAuditRes
       ];
     }
 
-    function effectiveBg(start: Element | null): { rgb: [number, number, number]; indeterminate: boolean } {
+    function parseGradientStops(bgImage: string): ParsedColor[] | null {
+      if (!/gradient\(/i.test(bgImage)) return null;
+      const stops: ParsedColor[] = [];
+      const re = /rgba?\(([^)]+)\)/g;
+      let m: RegExpExecArray | null;
+      while ((m = re.exec(bgImage))) {
+        const parts = m[1]!.split(',').map((s) => parseFloat(s.trim()));
+        stops.push({ r: parts[0] ?? 0, g: parts[1] ?? 0, b: parts[2] ?? 0, a: parts[3] ?? 1 });
+      }
+      return stops.length > 0 ? stops : null;
+    }
+
+    function effectiveBg(start: Element | null): {
+      rgb: [number, number, number];
+      indeterminate: boolean;
+      candidates?: [number, number, number][];
+    } {
       let node: Element | null = start;
       while (node) {
         const cs = getComputedStyle(node);
         if (cs.backgroundImage && cs.backgroundImage !== 'none') {
+          // CSS gradients are parseable — score against their color stops (worst
+          // case). Only raster images (url(...)) are truly indeterminate.
+          const stops = parseGradientStops(cs.backgroundImage);
+          if (stops) {
+            const parent = effectiveBg(node.parentElement);
+            const base: [number, number, number] = parent.indeterminate ? [255, 255, 255] : parent.rgb;
+            const candidates = stops.map(
+              (s): [number, number, number] => (s.a >= 1 ? [s.r, s.g, s.b] : composite(s, base)),
+            );
+            return { rgb: candidates[0]!, indeterminate: false, candidates };
+          }
           return { rgb: [255, 255, 255], indeterminate: true };
         }
         const c = parseColor(cs.backgroundColor);
@@ -75,6 +102,7 @@ export async function captureContrastAudit(page: Page): Promise<ContrastAuditRes
       fontPx: number;
       bold: boolean;
       bgIndeterminate: boolean;
+      bgCandidates?: [number, number, number][];
     }> = [];
     const seen = new Set<Element>();
     const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
@@ -102,6 +130,7 @@ export async function captureContrastAudit(page: Page): Promise<ContrastAuditRes
         fontPx,
         bold,
         bgIndeterminate: bg.indeterminate,
+        bgCandidates: bg.candidates,
       });
     }
     return out;

@@ -98,4 +98,53 @@ describe('computeContrastViolations', () => {
     expect(v).toHaveLength(1);
     expect(v[0]!.tokenGuess).toBe('indeterminate-bg');
   });
+
+  it('scores a gradient against its worst-case stop and flags the failure', () => {
+    // The eval residual (AIROBUILD-3143): tertiary ink (#8a9095) on a light
+    // gradient — both stops fail AA; the scanner must catch it, not exclude it.
+    // The worst-contrast (darker, closer-luminance) stop is listed SECOND so the
+    // assertion proves the scorer selects the worst candidate, not the first.
+    const nodes: RawTextNode[] = [
+      {
+        ...base,
+        className: 'caption',
+        fg: [138, 144, 149],
+        bg: [216, 221, 224],
+        bgIndeterminate: false,
+        bgCandidates: [
+          [242, 243, 244],
+          [216, 221, 224],
+        ],
+      },
+    ];
+    const v = computeContrastViolations(nodes);
+    expect(v).toHaveLength(1);
+    expect(v[0]!.ratio).toBeLessThan(3);
+    // Worst case = the lower-contrast (closer-luminance) stop, listed second.
+    expect(v[0]!.bgColor).toBe('rgb(216, 221, 224)');
+  });
+
+  it('does NOT flag a gradient when even its worst stop passes AA', () => {
+    const nodes: RawTextNode[] = [
+      {
+        ...base,
+        className: 'caption',
+        fg: [20, 20, 20],
+        bg: [200, 200, 200],
+        bgIndeterminate: false,
+        bgCandidates: [
+          [200, 200, 200],
+          [255, 255, 255],
+        ],
+      },
+    ];
+    expect(computeContrastViolations(nodes)).toHaveLength(0);
+  });
+
+  it('falls back to the solid bg when no gradient candidates are present', () => {
+    const nodes: RawTextNode[] = [
+      { ...base, className: 'x', fg: [153, 153, 153], bg: [255, 255, 255], bgIndeterminate: false },
+    ];
+    expect(computeContrastViolations(nodes)).toHaveLength(1);
+  });
 });
