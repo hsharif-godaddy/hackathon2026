@@ -13,6 +13,7 @@ import StopIcon from '@ux/icon/stop'
 import text from '@ux/text'
 import TextLockup from '@ux/text-lockup'
 
+import { useCommanderLayout } from '@/app/[market]/commander/components/CommanderLayoutContext'
 import AssetInline, { AssetMode } from '@/app/[market]/develop/components/chat/AssetInline'
 import { AssetManagerItem, MediaType } from '@/app/[market]/develop/components/chat/AssetTypes'
 import ChatAttachmentMenu from '@/app/[market]/develop/components/chat/ChatAttachmentMenu'
@@ -34,6 +35,7 @@ import { useTranslations } from '@/hooks/useTranslations'
 import { logger } from '@/lib/request-context'
 import { cn } from '@/lib/utils'
 import { hasComposerAttachments, hasComposerSendPayload } from '@/services/transport/composerAttachments'
+import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { logActionEvent, logClickEvent } from '@/utils/instrumentation'
 
 const PROMPT_BOX_EDITOR_SELECTOR = '.airo-input-prompt-box__entry'
@@ -194,6 +196,8 @@ export default function ChatInput({
   const { locale } = useIntl();
   const showInputActionsPanel = useInputActionsPanelEnabled();
   const secretsComposerTakeover = useSecretsComposerTakeover();
+  const isMobile = useDevelopPageStore((state) => state.isMobile);
+  const isCommanderMobileSheet = useCommanderLayout() !== null && isMobile;
   const isChatGaugeEnabled = useSwitchboard('appbuilder-chat-gauge');
   const isMultilineCollapseEnabled = useSwitchboard('airo-builder-chat-collapse-multiline-input');
   const attachmentSlotsUsed = selectedAssets.length + stagedFiles.length
@@ -743,17 +747,24 @@ export default function ChatInput({
     }
   }, [isAwaitingStream, isStreaming, onStopGeneration, clickContext, isQueueModeActive])
 
+  const actionsPanel =
+    showInputActionsPanel && secretsComposerTakeover == null ? (
+      <InputActionsPanel
+        activeColorSchemeSuggest={activeColorSchemeSuggest}
+        activeFontThemeSuggest={activeFontThemeSuggest}
+        shouldCollapse={isMultilineCollapseEnabled ? shouldCollapseUI : false}
+        onHideComposerPromptChange={handleHideComposerPromptChange}
+      />
+    ) : null
+
   return (
-    <div className="px-2 sm:px-3 md:px-0 mt-1 mt-auto pb-1">
+    <div className={cn(isCommanderMobileSheet ? 'px-0' : 'px-2 sm:px-3 md:px-0', 'mt-1 mt-auto pb-1')}>
       <div id="tour-chat-input" className="relative flex flex-col gap-1.5" data-chat-composer-card>
-        {showInputActionsPanel && secretsComposerTakeover == null ? (
-          <InputActionsPanel
-            activeColorSchemeSuggest={activeColorSchemeSuggest}
-            activeFontThemeSuggest={activeFontThemeSuggest}
-            shouldCollapse={isMultilineCollapseEnabled ? shouldCollapseUI : false}
-            onHideComposerPromptChange={handleHideComposerPromptChange}
-          />
-        ) : null}
+        {actionsPanel && isCommanderMobileSheet ? (
+          <div className="max-h-[40vh] overflow-y-auto px-2 -mx-2 min-h-0">{actionsPanel}</div>
+        ) : (
+          actionsPanel
+        )}
 
         <FloatingFooter
           ref={composerCardRef}

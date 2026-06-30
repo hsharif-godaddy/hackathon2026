@@ -73,6 +73,7 @@ export default function CommanderChatRow({ appId, onPreviewRefresh }: CommanderC
 
   const { setActiveChatTab } = useChatTabs()
   const viewMode = useDevelopPageStore((state) => state.viewMode)
+  const isMobile = useDevelopPageStore((state) => state.isMobile)
   const isVersionHistoryOpen = useDevelopPageStore((state) => state.isVersionHistoryOpen)
   const previewViewMode = useDevelopPageStore((state) => state.previewViewMode)
   const setPreviewViewMode = useDevelopPageStore((state) => state.setPreviewViewMode)
@@ -130,6 +131,8 @@ export default function CommanderChatRow({ appId, onPreviewRefresh }: CommanderC
     { value: CommanderPosition.LeftDock, labelKey: 'builder_commander_position_sidebar' },
     { value: CommanderPosition.Floating, labelKey: 'builder_commander_position_floating' },
   ]
+
+  if (isMobile) return null
 
   return (
     <Box

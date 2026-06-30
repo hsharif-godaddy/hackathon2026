@@ -4,7 +4,7 @@ import { motion } from 'framer-motion'
 import { type ReactNode, useEffect, useRef, useState } from 'react'
 
 import { CommanderCanvasActionProvider } from '@/app/[market]/commander/canvas/CommanderCanvasActionContext'
-import { CanvasId } from '@/app/[market]/commander/canvas/registry'
+import { CANVAS_REGISTRY, CanvasId } from '@/app/[market]/commander/canvas/registry'
 import { useCanvasSync } from '@/app/[market]/commander/canvas/useCanvasSync'
 import CanvasActionsDock from '@/app/[market]/commander/components/chat/CanvasActionsDock'
 import { CommanderPosition } from '@/app/[market]/commander/types'
@@ -12,6 +12,7 @@ import BrandBookView from '@/app/[market]/develop/components/preview/brand-book'
 import { DesignKitPanels } from '@/app/[market]/develop/components/preview/design-kit-wizard/DesignKitPanels'
 import { useIsDesignKitWizardProfile } from '@/app/[market]/develop/components/preview/design-kit-wizard/isDesignKitWizardProfile'
 import { ViewMode } from '@/app/[market]/develop/components/types'
+import { useTranslations } from '@/hooks/useTranslations'
 import {
   useCommanderActionsBarEnabled,
   useCommanderCanvasEnabled,
@@ -59,6 +60,9 @@ export function CommanderShell({
   const isCanvasSettingsOpen = useCommanderStore((state) => state.isCanvasSettingsOpen)
   const isMobileChatOpen = useCommanderStore((state) => state.isMobileChatOpen)
   const closeMobileChat = useCommanderStore((state) => state.closeMobileChat)
+  const t = useTranslations()
+  const activeCanvasDescriptor = CANVAS_REGISTRY[activeCanvasId]
+  const backLabel: string = t(activeCanvasDescriptor.labelKey) || activeCanvasDescriptor.fallbackLabel
   useCanvasSync()
 
   const canvasAreaRef = useRef<HTMLDivElement>(null)
@@ -92,16 +96,9 @@ export function CommanderShell({
   if (isMobile) {
     return (
       <CommanderCanvasActionProvider onPreviewRefresh={onPreviewRefresh}>
-        <CommanderHeaderMobile onBack={isMobileChatOpen ? closeMobileChat : undefined} />
+        <CommanderHeaderMobile onBack={isMobileChatOpen ? closeMobileChat : undefined} backLabel={backLabel} />
         <div className="relative flex-1 min-h-0">
-          <div
-            className="absolute inset-0 flex flex-col transition-opacity duration-150 isolate"
-            style={{
-              opacity: isMobileChatOpen ? 0 : 1,
-              pointerEvents: isMobileChatOpen ? 'none' : 'auto',
-              willChange: 'opacity',
-            }}
-          >
+          <div className="absolute inset-0 flex flex-col isolate">
             {previewPaneNode}
             {isBrandActive && brandOverlayContent && (
               <div className="absolute inset-0 z-20 overflow-hidden" data-testid="brand-book-overlay">
@@ -110,16 +107,7 @@ export function CommanderShell({
             )}
             <CommanderCanvasSettingsOverlay edgeToEdge />
           </div>
-          <div
-            className="absolute inset-0 flex flex-col transition-opacity duration-150"
-            style={{
-              opacity: isMobileChatOpen ? 1 : 0,
-              pointerEvents: isMobileChatOpen ? 'auto' : 'none',
-              willChange: 'opacity',
-            }}
-          >
-            {chatPaneNode}
-          </div>
+          {isMobileChatOpen && <Commander appId={appId} chatPane={chatPaneNode} isMobile />}
           {!isMobileChatOpen && <CommanderMobileBar />}
         </div>
       </CommanderCanvasActionProvider>

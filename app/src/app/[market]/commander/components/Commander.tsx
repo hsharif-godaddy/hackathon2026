@@ -44,10 +44,13 @@ const PILL_OUTER_BORDER_RADIUS = PILL_INNER_BORDER_RADIUS + PILL_HALO_INSET
 const DRAG_HANDLE_HIT_AREA = 32
 const HORIZONTAL_RESIZE_HANDLE_WIDTH = 8
 const DOCK_ZONE_WIDTH = 80
+const MOBILE_DISMISS_DRAG_SLACK = 140
+const MOBILE_DISMISS_THRESHOLD = 30
 
 interface CommanderProps {
   appId: string | null
   chatPane: ReactNode
+  isMobile?: boolean
 }
 
 interface DragStart {
@@ -98,13 +101,16 @@ function nearestSnapTarget(
   return distances.reduce((best, cur) => (cur.d < best.d ? cur : best)).target
 }
 
-export function Commander({ appId, chatPane }: CommanderProps) {
-  const position = useEffectiveCommanderPosition()
+export function Commander({ appId, chatPane, isMobile = false }: CommanderProps) {
+  const effectivePosition = useEffectiveCommanderPosition()
+  const position = isMobile ? CommanderPosition.Floating : effectivePosition
+  const closeMobileChat = useCommanderStore((state) => state.closeMobileChat)
   const pillHeight = useCommanderStore((state) => state.pillHeight)
   const setPillHeight = useCommanderStore((state) => state.setPillHeight)
   const isCollapsed = useCommanderStore((state) => state.isCollapsed)
   const setIsCollapsed = useCommanderStore((state) => state.setIsCollapsed)
-  const floatingAnchor = useCommanderStore((state) => state.floatingAnchor)
+  const storeFloatingAnchor = useCommanderStore((state) => state.floatingAnchor)
+  const floatingAnchor = isMobile ? FloatingAnchor.BottomCenter : storeFloatingAnchor
   const setFloatingAnchor = useCommanderStore((state) => state.setFloatingAnchor)
   const floatingWidthByAnchor = useCommanderStore((state) => state.floatingWidthByAnchor)
   const setFloatingWidth = useCommanderStore((state) => state.setFloatingWidth)
@@ -167,6 +173,7 @@ export function Commander({ appId, chatPane }: CommanderProps) {
   const dragStartYRef = useRef(0)
   const dragStartHeightRef = useRef(0)
   const dragStartedCollapsedRef = useRef(false)
+  const dragStartCollapsedTargetRef = useRef(0)
   const isDraggingRef = useRef(false)
 
   const handleResizePointerDown = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
@@ -176,18 +183,21 @@ export function Commander({ appId, chatPane }: CommanderProps) {
     dragStartYRef.current = e.clientY
     dragStartHeightRef.current = heightMv.get()
     dragStartedCollapsedRef.current = isCollapsed
+    dragStartCollapsedTargetRef.current = collapsedTarget
     e.currentTarget.setPointerCapture(e.pointerId)
-  }, [heightMv, isCollapsed])
+  }, [heightMv, isCollapsed, collapsedTarget])
 
   const handleResizePointerMove = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
     if (!isDraggingRef.current) return
     const deltaY = dragStartYRef.current - e.clientY
     if (deltaY !== 0) setIsResizing(true)
     const next = dragStartHeightRef.current + deltaY
-    const minHeight = collapsedTarget
+    const minHeight = isMobile
+      ? Math.max(0, dragStartCollapsedTargetRef.current - MOBILE_DISMISS_DRAG_SLACK)
+      : collapsedTarget
     const maxHeight = Math.min(PILL_MAX_HEIGHT, dockHeight)
     heightMv.set(Math.max(minHeight, Math.min(maxHeight, next)))
-  }, [heightMv, collapsedTarget, dockHeight])
+  }, [heightMv, collapsedTarget, dockHeight, isMobile])
 
   const handleResizePointerUp = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
     if (!isDraggingRef.current) return
@@ -198,6 +208,23 @@ export function Commander({ appId, chatPane }: CommanderProps) {
       // Pointer may already be released; commit the snap anyway.
     }
     const currentHeight = heightMv.get()
+    if (isMobile) {
+      if (currentHeight < dragStartCollapsedTargetRef.current - MOBILE_DISMISS_THRESHOLD) {
+        // Keep isResizing true so the height effect doesn't snap back; slide the
+        // bottom-anchored sheet down to 0 before unmounting.
+        animationRef.current?.stop()
+        animate(heightMv, 0, {
+          duration: 0.2,
+          ease: [0.4, 0, 0.2, 1] as const,
+          onComplete: closeMobileChat,
+        })
+        return
+      }
+      setIsCollapsed(false)
+      setPillHeight(Math.max(currentHeight, collapsedTarget))
+      setIsResizing(false)
+      return
+    }
     const startedCollapsed = dragStartedCollapsedRef.current
     if (startedCollapsed) {
       if (currentHeight > collapsedTarget) {
@@ -216,7 +243,7 @@ export function Commander({ appId, chatPane }: CommanderProps) {
       }
     }
     setIsResizing(false)
-  }, [heightMv, collapsedTarget, expandedTarget, setIsCollapsed, setPillHeight])
+  }, [heightMv, collapsedTarget, expandedTarget, setIsCollapsed, setPillHeight, isMobile, closeMobileChat])
 
   const pillRef = useRef<HTMLElement | null>(null)
   const dragStartRef = useRef<DragStart | null>(null)
@@ -333,6 +360,16 @@ export function Commander({ appId, chatPane }: CommanderProps) {
   }, [])
 
   const animateProps = (() => {
+    if (isMobile) {
+      return {
+        top: 'auto' as const,
+        bottom: 0,
+        left: 0,
+        right: 0,
+        x: 0,
+        boxShadow: '0 -8px 24px -12px rgba(15, 23, 42, 0.25)',
+      }
+    }
     if (isDraggingPill && dragStartRef.current) {
       const { rect } = dragStartRef.current
       return {
@@ -397,30 +434,36 @@ export function Commander({ appId, chatPane }: CommanderProps) {
 
   const transitionProp = isDraggingPill || isHResizing ? INSTANT_TRANSITION : POSITION_TRANSITION
 
-  const asideSurfaceClass = isPill
-    ? COMMANDER_PILL_OUTER_SURFACE_CLASS
-    : 'bg-intents-ux-boxLowContrast-backgroundColor border border-intents-ux-boxLowContrast-borderColor'
+  const asideSurfaceClass = isMobile
+    ? 'overflow-hidden rounded-t-2xl bg-intents-ux-boxLowContrast-backgroundColor'
+    : isPill
+      ? COMMANDER_PILL_OUTER_SURFACE_CLASS
+      : 'bg-intents-ux-boxLowContrast-backgroundColor border border-intents-ux-boxLowContrast-borderColor'
 
-  const innerSurfaceClass = isPill ? COMMANDER_PILL_INNER_SURFACE_CLASS : ''
+  const innerSurfaceClass = isMobile ? '' : isPill ? COMMANDER_PILL_INNER_SURFACE_CLASS : ''
 
   const showLeftHResizeHandle =
+    !isMobile &&
     isFloating &&
     (floatingAnchor === FloatingAnchor.BottomCenter || floatingAnchor === FloatingAnchor.BottomRight)
   const showRightHResizeHandle =
+    !isMobile &&
     isFloating &&
     (floatingAnchor === FloatingAnchor.BottomCenter || floatingAnchor === FloatingAnchor.BottomLeft)
 
   return (
     <CommanderLayoutContext.Provider value={layoutContext}>
-      <CommanderSnapOverlay
-        active={isDraggingPill}
-        target={pendingTarget}
-        pillHeight={dragStartRef.current?.rect.height ?? targetHeight + PILL_HALO_INSET * 2}
-        inset={COMMANDER_LAYOUT_METRICS.FLOATING_INSET}
-        sideWidth={sideZoneOuterWidth}
-        centerWidth={centerZoneOuterWidth}
-        dockZoneWidth={DOCK_ZONE_WIDTH}
-      />
+      {!isMobile && (
+        <CommanderSnapOverlay
+          active={isDraggingPill}
+          target={pendingTarget}
+          pillHeight={dragStartRef.current?.rect.height ?? targetHeight + PILL_HALO_INSET * 2}
+          inset={COMMANDER_LAYOUT_METRICS.FLOATING_INSET}
+          sideWidth={sideZoneOuterWidth}
+          centerWidth={centerZoneOuterWidth}
+          dockZoneWidth={DOCK_ZONE_WIDTH}
+        />
+      )}
       <motion.aside
         ref={pillRef}
         data-testid="commander-panel"
@@ -431,18 +474,18 @@ export function Commander({ appId, chatPane }: CommanderProps) {
         initial={false}
         animate={animateProps}
         transition={transitionProp}
-        style={{ height: isPill ? outerHeightMv : heightMv }}
+        style={{ height: isPill && !isMobile ? outerHeightMv : heightMv }}
       >
         <div
           className={`relative flex flex-col min-h-0 overflow-hidden h-full w-full ${innerSurfaceClass}`}
-          style={isPill ? { borderRadius: PILL_INNER_BORDER_RADIUS } : undefined}
+          style={isPill && !isMobile ? { borderRadius: PILL_INNER_BORDER_RADIUS } : undefined}
         >
           {isPill && (
             <div
               data-testid="commander-resize-handle"
               aria-label="Resize Commander"
               className="absolute top-0 left-0 z-10 cursor-ns-resize touch-none select-none flex items-start justify-center"
-              style={{ right: DRAG_HANDLE_HIT_AREA, height: 10 }}
+              style={{ right: isMobile ? 0 : DRAG_HANDLE_HIT_AREA, height: isMobile ? 24 : 10 }}
               onPointerDown={handleResizePointerDown}
               onPointerMove={handleResizePointerMove}
               onPointerUp={handleResizePointerUp}
@@ -451,19 +494,21 @@ export function Commander({ appId, chatPane }: CommanderProps) {
               <div className="mt-1.5 w-4 h-1 rounded-full bg-intents-ux-boxLowContrast-borderColor" />
             </div>
           )}
-          <div
-            data-testid="commander-drag-handle"
-            aria-label="Drag Commander to reposition"
-            role="button"
-            className="absolute top-0 right-0 z-20 cursor-grab active:cursor-grabbing touch-none select-none flex items-center justify-center text-intents-ux-textSubtle-textColor hover:text-intents-ux-text-textColor"
-            style={{ width: DRAG_HANDLE_HIT_AREA, height: DRAG_HANDLE_HIT_AREA }}
-            onPointerDown={handleDragPointerDown}
-            onPointerMove={handleDragPointerMove}
-            onPointerUp={handleDragPointerUp}
-            onPointerCancel={handleDragPointerUp}
-          >
-            <GrabVertIcon className="size-2!" />
-          </div>
+          {!isMobile && (
+            <div
+              data-testid="commander-drag-handle"
+              aria-label="Drag Commander to reposition"
+              role="button"
+              className="absolute top-0 right-0 z-20 cursor-grab active:cursor-grabbing touch-none select-none flex items-center justify-center text-intents-ux-textSubtle-textColor hover:text-intents-ux-text-textColor"
+              style={{ width: DRAG_HANDLE_HIT_AREA, height: DRAG_HANDLE_HIT_AREA }}
+              onPointerDown={handleDragPointerDown}
+              onPointerMove={handleDragPointerMove}
+              onPointerUp={handleDragPointerUp}
+              onPointerCancel={handleDragPointerUp}
+            >
+              <GrabVertIcon className="size-2!" />
+            </div>
+          )}
           {showLeftHResizeHandle && (
             <div
               data-testid="commander-h-resize-handle-left"
@@ -503,7 +548,7 @@ export function Commander({ appId, chatPane }: CommanderProps) {
             )}
           </AnimatePresence>
           <div
-            className="flex-1 min-h-0 flex flex-col pe-2"
+            className={`flex-1 min-h-0 flex flex-col ${isMobile ? '' : 'pe-2'}`}
             style={isPill ? { paddingTop: PILL_TOP_PADDING } : undefined}
           >
             {chatPane}

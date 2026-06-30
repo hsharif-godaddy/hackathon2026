@@ -16,9 +16,10 @@ const LOCATION = 'develop';
 
 interface CommanderHeaderMobileProps {
   onBack?: () => void;
+  backLabel?: string;
 }
 
-export default function CommanderHeaderMobile({ onBack }: CommanderHeaderMobileProps) {
+export default function CommanderHeaderMobile({ onBack, backLabel }: CommanderHeaderMobileProps) {
   const t = useTranslations();
   const appId = useAppIdFromParams();
 
@@ -32,7 +33,8 @@ export default function CommanderHeaderMobile({ onBack }: CommanderHeaderMobileP
         {onBack ? (
           <IconButton
             icon={<ChevronLeftIcon className="size-2.5" />}
-            label={t('builder_common_back')}
+            label={backLabel ?? t('builder_common_back')}
+            showLabelAlways
             onClick={onBack}
           />
         ) : (

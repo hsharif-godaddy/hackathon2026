@@ -3,6 +3,7 @@
 import { type ReactNode,useMemo } from 'react'
 import ClickIcon from '@ux/icon/click'
 import DesktopIcon from '@ux/icon/desktop'
+import HistoryIcon from '@ux/icon/history'
 import MobilePhoneIcon from '@ux/icon/mobile-phone'
 import RefreshIcon from '@ux/icon/refresh'
 import SelectIcon from '@ux/icon/select'
@@ -15,7 +16,7 @@ import {
 } from '@/app/[market]/commander/canvas/actions'
 import { useCommanderCanvasActionContext } from '@/app/[market]/commander/canvas/CommanderCanvasActionContext'
 import { CanvasId } from '@/app/[market]/commander/canvas/registry'
-import { PreviewViewMode, ViewMode } from '@/app/[market]/develop/components/types'
+import { ChatTab, PreviewViewMode, ViewMode } from '@/app/[market]/develop/components/types'
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils'
 import { RedoIcon, UndoIcon } from '@/components/icons/UndoRedoIcons'
 import { useRedoAction } from '@/hooks/useRedoAction'
@@ -48,12 +49,14 @@ export function usePreviewCanvasActions(): CanvasActionItem[] {
   const previewViewMode = useDevelopPageStore((state) => state.previewViewMode)
   const setPreviewViewMode = useDevelopPageStore((state) => state.setPreviewViewMode)
   const isVersionHistoryOpen = useDevelopPageStore((state) => state.isVersionHistoryOpen)
+  const isMobile = useDevelopPageStore((state) => state.isMobile)
   const setActiveCanvas = useCommanderStore((state) => state.setActiveCanvas)
   const isCanvasTabsEnabled = useCommanderCanvasTabsEnabled()
   const previewUrl = useServerPollingStore((state) =>
     appId ? state.getServerState(appId)?.url ?? null : null,
   )
   const { onPreviewRefresh } = useCommanderCanvasActionContext()
+  const setActiveChatTab = useDevelopPageStore((state) => state.setActiveChatTab)
   const undo = useUndoAction()
   const redo = useRedoAction()
 
@@ -152,6 +155,17 @@ export function usePreviewCanvasActions(): CanvasActionItem[] {
       })
     }
 
+    if (isMobile) {
+      items.push({
+        type: CanvasActionItemType.Button,
+        id: 'history',
+        icon: <HistoryIcon className="size-2.5" />,
+        label: t('builder_chat_toolbar_button_history'),
+        labelHidden: true,
+        onTrigger: () => setActiveChatTab(ChatTab.HISTORY),
+      })
+    }
+
     return items
   }, [
     t,
@@ -171,5 +185,7 @@ export function usePreviewCanvasActions(): CanvasActionItem[] {
     onPreviewRefresh,
     isVersionHistoryOpen,
     previewUrl,
+    isMobile,
+    setActiveChatTab,
   ])
 }

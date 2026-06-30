@@ -1,6 +1,7 @@
 'use client'
 
 import clsx from 'clsx'
+import { motion } from 'framer-motion'
 import { useMemo, useState } from 'react'
 import Button from '@ux/button'
 import ConversationsIcon from '@ux/icon/conversations'
@@ -40,7 +41,12 @@ export function CommanderMobileBar() {
 
   return (
     <>
-      <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-30">
+      <motion.div
+        className="absolute bottom-3 left-1/2 z-30"
+        initial={{ opacity: 0, y: 10, scale: 0.98, x: '-50%' }}
+        animate={{ opacity: 1, y: 0, scale: 1, x: '-50%' }}
+        transition={{ duration: 0.15, ease: [0.4, 0, 0.2, 1] }}
+      >
         <div className={clsx('rounded-2xl shadow-lg', COMMANDER_PILL_OUTER_SURFACE_CLASS)}>
           <div className={clsx('flex items-center gap-0.5 rounded-lg px-1 py-1', COMMANDER_PILL_INNER_SURFACE_CLASS)}>
             {isCanvasTabsEnabled && (
@@ -67,7 +73,7 @@ export function CommanderMobileBar() {
             />
           </div>
         </div>
-      </div>
+      </motion.div>
       <CommanderCanvasSheet open={sheetOpen} onOpenChange={setSheetOpen} clickContext={clickContext} />
     </>
   )

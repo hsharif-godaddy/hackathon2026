@@ -1720,7 +1720,7 @@ function ChatPaneInner({
     };
   }, [appId, sendMessage]);
 
-  if (isMobile) {
+  if (isMobile && !commanderLayout) {
     return (
       <ChatContext.Provider value={chatContextValue}>
         <div className="flex-1 flex flex-col min-h-0 overflow-x-hidden relative">
@@ -1893,7 +1893,7 @@ function ChatPaneInner({
               <BudgetExceededBanner onClose={() => setIsProactiveBannerDismissed(true)} />
             </div>
           )}
-          <div className="px-2 sm:px-3 md:px-0">
+          <div className="px-2 pb-1 md:pb-0 sm:px-3 md:px-0">
             <ChatBanners appId={appId} />
             {showResponseFeedbackThanksBanner && (
               <div className="mb-1">
