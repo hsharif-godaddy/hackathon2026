@@ -16,6 +16,7 @@ import { buildWithExplicitNameScenario } from '../todo-lifecycle/build-with-expl
 import { reAskInToolCallScenario } from '../todo-lifecycle/re-ask-in-tool-call.js';
 import { inboxSkillEvalScenario } from '../skill-eval/inbox.js';
 import { buildContrastScenarios } from '../contrast-pairing.js';
+import { buildCasingScenarios } from '../casing-eyebrows.js';
 import { buildColorSchemeOptionsScenario } from '../color-scheme-options.js';
 import {
   makeGocodeClient,
@@ -188,6 +189,16 @@ describe('scenario shapes', () => {
     for (const scenario of [kit, control]) {
       expect(scenario.suite).toBe('contrast');
       expect(scenario.evaluators.map((e) => e.name)).toContain('contrast-violations');
+    }
+  });
+
+  it('casing-eyebrows-kit + control have valid shape and the casing evaluator', () => {
+    const [kit, control] = buildCasingScenarios(gocode, ctrlPlane);
+    assertScenarioShape(kit, 'casing-eyebrows-kit');
+    assertScenarioShape(control, 'casing-eyebrows-control');
+    for (const scenario of [kit, control]) {
+      expect(scenario.suite).toBe('casing');
+      expect(scenario.evaluators.map((e) => e.name)).toContain('casing-violations');
     }
   });
 

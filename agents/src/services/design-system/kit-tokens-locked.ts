@@ -24,11 +24,13 @@ import type { KnownAppMetadata } from '@airo/shared'
  * Best-effort: returns false on any read error so a metadata hiccup never blocks
  * a tool, it just falls back to the unlocked behavior.
  *
- * TODO(AIROBUILD-2696): this is the forced-install "tokens applied in code" lock
- * signal — NARROWER than 2696's "is a kit installed at all" question. They are
- * NOT the same helper: a wizard-installed kit IS installed but its tokens were
- * not applied in code, so it must stay unlocked. Keep this signal distinct when
- * 2696 introduces a kit-installed check.
+ * NOTE: this is the forced-install "tokens applied in code" lock signal —
+ * NARROWER than the "is a kit installed at all" question. They are NOT the same
+ * helper: a wizard-installed kit IS installed but its tokens were not applied in
+ * code, so it must stay unlocked. The broader "is a kit installed" check landed
+ * with AIROBUILD-2696 as `docs/ui-kit/kit-meta.json` presence (workspace stat in
+ * MessageExecutionService, which stats once and stashes `metadata.kitMetaExists`);
+ * reuse that signal — not this lock marker — when you need "any kit installed".
  */
 export function kitTokensLocked(appId: string): boolean {
   try {

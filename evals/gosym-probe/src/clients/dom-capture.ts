@@ -27,6 +27,8 @@ import {
 } from './site-capture/readiness.js';
 import { captureContrastAudit } from './site-capture/contrast-audit.js';
 import type { ContrastAuditResult } from './site-capture/contrast.js';
+import { captureCasingAudit } from './site-capture/casing-audit.js';
+import type { CasingAuditResult } from './site-capture/casing.js';
 import { createSemaphore } from '../util/semaphore.js';
 import type { Semaphore } from '../util/semaphore.js';
 
@@ -52,6 +54,8 @@ export interface DOMSnapshot {
   networkFailures?: NetworkFailure[];
   /** Capture-time WCAG AA contrast audit: violations + text nodes scanned (AIROBUILD-2976; omitted when the audit did not run). */
   contrastAudit?: ContrastAuditResult;
+  /** Capture-time casing audit: gratuitous all-caps eyebrow/label nodes (AIROBUILD-2976 #2; omitted when the audit did not run). */
+  casingAudit?: CasingAuditResult;
 }
 
 export interface CapturedTrial {
@@ -202,6 +206,12 @@ export class SiteCapture {
             return undefined;
           })
         : undefined;
+      const casingAudit: CasingAuditResult | undefined = homepagePage
+        ? await captureCasingAudit(homepagePage).catch((err: unknown) => {
+            console.warn('SiteCapture: casing audit failed', err);
+            return undefined;
+          })
+        : undefined;
       const snapshot: DOMSnapshot = {
         url: previewUrl,
         screenshotPath,
@@ -212,6 +222,7 @@ export class SiteCapture {
         ...(pageErrors.length > 0 && { pageErrors }),
         ...(networkFailures.length > 0 && { networkFailures }),
         ...(contrastAudit && { contrastAudit }),
+        ...(casingAudit && { casingAudit }),
       };
 
       const capturedSite = await captureRoutes({

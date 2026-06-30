@@ -153,6 +153,10 @@ After completing any task, briefly describe what you built.
 - Mobile-first responsive design
 - Update shadcn components as needed
 
+### Type Casing
+
+**Default eyebrows, kickers and section labels to sentence case — do NOT reflexively apply `uppercase` + `tracking-widest`.** Gratuitous small all-caps eyebrows on every section read as generic "AI" output. Use all-caps + wide letter-spacing only where the design intent explicitly calls for it (e.g. technical chips, or a loaded kit that specifies uppercase labels — follow the kit's casing when it sets one).
+
 ### Color System
 
 **Use semantic colors only** (critical rule)
