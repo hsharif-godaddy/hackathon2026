@@ -8,6 +8,7 @@ import { isEmployeeAuthType } from '@airo/shared/auth';
 import Growl from '@ux/growl';
 
 import { CanvasActionsVariant } from '@/app/[market]/commander/canvas/actions';
+import { CanvasId } from '@/app/[market]/commander/canvas/registry';
 import CanvasActionsHost from '@/app/[market]/commander/components/chat/CanvasActionsHost';
 import CommanderChatRow from '@/app/[market]/commander/components/chat/CommanderChatRow';
 import CommanderComposerLeft from '@/app/[market]/commander/components/chat/CommanderComposerLeft';
@@ -322,6 +323,7 @@ function ChatPaneInner({
   const isActionsBarEnabled = useCommanderActionsBarEnabled();
   const effectiveCommanderPosition = useEffectiveCommanderPosition();
   const actionsBarShownBeside = useCommanderStore((state) => state.actionsBarShownBeside);
+  const openCanvas = useCommanderStore((state) => state.openCanvas);
   const isMediaCanvasEnabled = useSwitchboard(SWITCHBOARD_APPBUILDER_MEDIA_CANVAS) === true;
   const mediaCurrentSlotName = useMediaSlotDialogStore((state) => state.currentSlotName);
   const mediaPanelSlotName = useMediaSlotDialogStore((state) => state.panelSlotName);
@@ -378,12 +380,16 @@ function ChatPaneInner({
   const setViewMode = useDevelopPageStore((state) => state.setViewMode);
   const handleMobileModeChange = useDevelopPageStore((state) => state.handleMobileModeChange);
   const handleOpenMediaLibrary = useCallback((): void => {
+    if (isCommanderChatEnabled) {
+      openCanvas(CanvasId.Media)
+      return
+    }
     navigateToSlot(MEDIA_GRID_VIEW);
     setViewMode(ViewMode.MEDIA);
     if (isMobile) {
       handleMobileModeChange(MobileMode.PREVIEW);
     }
-  }, [handleMobileModeChange, isMobile, navigateToSlot, setViewMode]);
+  }, [isCommanderChatEnabled, openCanvas, handleMobileModeChange, isMobile, navigateToSlot, setViewMode]);
   const showResponseFeedbackThanksBanner = useDevelopPageStore(
     (state) => state.showResponseFeedbackThanksBanner
   );

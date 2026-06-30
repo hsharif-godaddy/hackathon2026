@@ -3,13 +3,11 @@
 import { useEffect, useMemo, useRef } from 'react'
 import Button from '@ux/button'
 import ClickIcon from '@ux/icon/click'
-import ImageIcon from '@ux/icon/image'
 import SelectIcon from '@ux/icon/select'
 import WandIcon from '@ux/icon/wand'
 
 import { CanvasId } from '@/app/[market]/commander/canvas/registry'
-import { ChatTab, ViewMode } from '@/app/[market]/develop/components/types'
-import { useChatTabs } from '@/hooks/useChatTabs'
+import { ViewMode } from '@/app/[market]/develop/components/types'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 import {
@@ -28,7 +26,6 @@ export default function CommanderComposerLeft({ appId }: CommanderComposerLeftPr
   const t = useTranslations()
   const clickContext = useMemo(() => (appId ? { appId } : undefined), [appId])
 
-  const { setActiveChatTab } = useChatTabs()
   const viewMode = useDevelopPageStore((state) => state.viewMode)
   const handleViewModeChange = useDevelopPageStore((state) => state.handleViewModeChange)
   const hasUnsavedChanges = useDevelopPageStore((state) => state.hasUnsavedChanges)
@@ -63,11 +60,6 @@ export default function CommanderComposerLeft({ appId }: CommanderComposerLeftPr
     logClickEvent('commander.composer.annotation_mode', clickContext)()
     toggleAnnotationMode()
     if (isCanvasTabsEnabled) setActiveCanvas(CanvasId.Preview)
-  }
-
-  const handleImagesClick = () => {
-    logClickEvent('commander.composer.media', clickContext)()
-    setActiveChatTab(ChatTab.MEDIAS)
   }
 
   return (
@@ -118,15 +110,6 @@ export default function CommanderComposerLeft({ appId }: CommanderComposerLeftPr
           data-partial={isAnnotationActive ? 'componentAiro' : ''}
         />
       )}
-
-      <Button
-        design="tertiary"
-        size="sm"
-        icon={<ImageIcon className="size-2.5" />}
-        onClick={handleImagesClick}
-        aria-label={t('builder_chat_toolbar_button_media')}
-        data-eid="commander.composer.media"
-      />
     </div>
   )
 }

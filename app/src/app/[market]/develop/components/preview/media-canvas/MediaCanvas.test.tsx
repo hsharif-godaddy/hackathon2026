@@ -39,7 +39,6 @@ interface BreadcrumbMockProps {
 const mediaCanvasMocks = vi.hoisted(() => ({
   importAsSlot: vi.fn(),
   moveToFolder: vi.fn(),
-  navigateToSlot: vi.fn(),
   refetchManifest: vi.fn(),
   refetchUploads: vi.fn(),
 }))
@@ -158,13 +157,14 @@ vi.mock('@/hooks/useRecentUploads', () => ({
   }),
 }))
 
-vi.mock('@/lib/request-context', () => ({
-  logger: { error: vi.fn(), info: vi.fn(), warn: vi.fn() },
+vi.mock('@/app/[market]/develop/components/media/ImageEditorPanel', () => ({
+  ImageEditorPanel: ({ appId, slotName }: { appId: string; slotName: string }) => (
+    <div data-testid="image-editor-panel" data-app-id={appId} data-slot-name={slotName} />
+  ),
 }))
 
-vi.mock('@/stores/useMediaSlotDialogStore', () => ({
-  useMediaSlotDialogStore: (selector: (state: { navigateToSlot: typeof mediaCanvasMocks.navigateToSlot }) => unknown) =>
-    selector({ navigateToSlot: mediaCanvasMocks.navigateToSlot }),
+vi.mock('@/lib/request-context', () => ({
+  logger: { error: vi.fn(), info: vi.fn(), warn: vi.fn() },
 }))
 
 vi.mock('@/stores/useServerPollingStore', () => ({
@@ -220,14 +220,18 @@ describe('MediaCanvas slots-only upload orchestration', () => {
     expect(mediaCanvasMocks.moveToFolder).not.toHaveBeenCalled()
   })
 
-  it('imports a recent upload as a slot before opening the editor', async () => {
+  it('imports a recent upload as a slot and opens the inline editor', async () => {
     const { user } = renderWithProviders(<MediaCanvas />)
 
     await user.click(screen.getByTestId('modify-upload'))
 
     await waitFor(() => {
-      expect(mediaCanvasMocks.navigateToSlot).toHaveBeenCalledWith('uploads/photo', { openEditor: true })
+      expect(mediaCanvasMocks.importAsSlot).toHaveBeenCalledWith({ filename: 'photo.png' })
     })
-    expect(mediaCanvasMocks.importAsSlot).toHaveBeenCalledWith({ filename: 'photo.png' })
+
+    const editor = screen.getByTestId('image-editor-panel')
+    expect(editor).toBeInTheDocument()
+    expect(editor).toHaveAttribute('data-slot-name', 'uploads/photo')
+    expect(editor).toHaveAttribute('data-app-id', 'app-123')
   })
 })

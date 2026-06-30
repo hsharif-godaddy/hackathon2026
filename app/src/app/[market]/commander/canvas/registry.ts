@@ -239,7 +239,7 @@ export const CANVAS_REGISTRY: Record<CanvasId, CanvasDescriptor> = {
   },
   [CanvasId.Media]: {
     id: CanvasId.Media,
-    labelKey: 'builder_canvas_media',
+    labelKey: 'builder_chat_toolbar_button_media',
     fallbackLabel: 'Media',
     Icon: ImageIcon,
     dismissible: true,

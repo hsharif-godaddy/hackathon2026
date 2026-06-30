@@ -17,6 +17,25 @@ interface CanvasMenuProps {
   clickContext?: { appId: string }
 }
 
+const MENU_ORDER: readonly CanvasId[] = [
+  CanvasId.Code,
+  CanvasId.Media,
+  CanvasId.Brand,
+  CanvasId.Domain,
+  CanvasId.Inbox,
+  CanvasId.SettingsProject,
+  CanvasId.SettingsBackups,
+  CanvasId.SettingsSecurity,
+  CanvasId.SettingsDatabase,
+  CanvasId.SettingsSecrets,
+  CanvasId.SettingsSocial,
+  CanvasId.SettingsVisualScan,
+  CanvasId.SettingsAnalytics,
+  CanvasId.SettingsMarketing,
+  CanvasId.SettingsCampaigns,
+  CanvasId.SettingsGitHub,
+]
+
 const isMacPlatform = (): boolean => {
   if (typeof navigator === 'undefined') return false
   const platform = (navigator as Navigator & { userAgentData?: { platform?: string } })

@@ -2,12 +2,14 @@
 
 import '@/app/[market]/develop/components/preview/media-canvas/media-grid.css'
 
+import type { ReactNode } from 'react'
 import { useCallback, useMemo, useState } from 'react'
 import Button from '@ux/button'
 import PlusIcon from '@ux/icon/plus'
 import SearchIcon from '@ux/icon/search'
 import Search from '@ux/search'
 
+import { ImageEditorPanel } from '@/app/[market]/develop/components/media/ImageEditorPanel'
 import type { MediaSlot } from '@/app/[market]/develop/components/media/types'
 import { GettyResultsGrid, useGettySearch } from '@/app/[market]/develop/components/preview/media-canvas/GettySearchSection'
 import {
@@ -28,10 +30,19 @@ import { useMediaUpload } from '@/hooks/useMediaUpload'
 import { useRecentUploads } from '@/hooks/useRecentUploads'
 import { regenerateToken } from '@/lib/jwt-regeneration'
 import { logger } from '@/lib/request-context'
-import { useMediaSlotDialogStore } from '@/stores/useMediaSlotDialogStore'
 import { useServerPollingStore } from '@/stores/useServerPollingStore'
 
 const RECENT_UPLOADS_LIMIT = 30
+
+function MediaCanvasShell({ children }: { children: ReactNode }) {
+  return (
+    <div className="h-full flex flex-col pr-1 md:pr-2.5 pl-1 media-canvas">
+      <div className="relative h-full overflow-auto rounded-lg md:rounded-b-none border bg-intents-ux-box-backgroundColor">
+        {children}
+      </div>
+    </div>
+  )
+}
 
 interface RecentFileEntry {
   name: string
@@ -44,7 +55,8 @@ export function MediaCanvas() {
   const { uploads: recentUploads, isLoading: uploadsLoading, refetch: refetchUploads } = useRecentUploads({ appId: appId || null })
   const { folders, createFolder, isCreating, moveToFolder, removeFromFolder } = useMediaFolders({ appId: appId || null })
   const previewBaseUrl = useServerPollingStore((state) => state.getServerState(appId || ''))?.url || null
-  const navigateToSlot = useMediaSlotDialogStore((state) => state.navigateToSlot)
+  const [isEditorOpen, setIsEditorOpen] = useState(false)
+  const [editorSlotName, setEditorSlotName] = useState<string | null>(null)
   const [activeFolder, setActiveFolder] = useState<MediaFolder | null>(null)
   const [isNewFolderModalOpen, setIsNewFolderModalOpen] = useState(false)
   const [showAllUploads, setShowAllUploads] = useState(false)
@@ -125,9 +137,22 @@ export function MediaCanvas() {
     }
   }, [createFolder])
 
+  // Editor replaces the grid via early return (not the old navigateToSlot dialog flow)
+  if (isEditorOpen && editorSlotName && appId) {
+    return (
+      <MediaCanvasShell>
+        <ImageEditorPanel
+          appId={appId}
+          slotName={editorSlotName}
+          onDone={() => { setIsEditorOpen(false); void refetch() }}
+          onCancel={() => setIsEditorOpen(false)}
+        />
+      </MediaCanvasShell>
+    )
+  }
+
   return (
-    <div className="h-full flex flex-col pr-1 md:pr-2.5 pl-1 media-canvas">
-      <div className="relative h-full overflow-auto rounded-lg md:rounded-b-none border bg-intents-ux-box-backgroundColor">
+    <MediaCanvasShell>
         <div className="p-4">
           <div className="flex items-center justify-between mb-1">
             <h1 className="text-2xl font-semibold">Media Library</h1>
@@ -204,7 +229,7 @@ export function MediaCanvas() {
                         return
                       }
                       void moveToFolder({ folderId, slotName })
-                    }} onModify={(slotName) => navigateToSlot(slotName, { openEditor: true })} onSelect={(n) => { setSelectedSlotName(n); setSelectedUploadId(null); setSelectedGettyUrl(null) }} isSelected={selectedSlotName === name} isInsideFolder={!isSiteFilesActive} onRemoveFromFolder={(slotName) => { if (activeFolder) void removeFromFolder({ folderId: activeFolder.id, slotName }) }} />
+                    }} onModify={(slotName) => { setEditorSlotName(slotName); setIsEditorOpen(true) }} onSelect={(n) => { setSelectedSlotName(n); setSelectedUploadId(null); setSelectedGettyUrl(null) }} isSelected={selectedSlotName === name} isInsideFolder={!isSiteFilesActive} onRemoveFromFolder={(slotName) => { if (activeFolder) void removeFromFolder({ folderId: activeFolder.id, slotName }) }} />
                   ))}
               </div>
             </section>
@@ -224,7 +249,8 @@ export function MediaCanvas() {
                   try {
                     const slotPath: string = await importAsSlot({ filename: file.filename })
                     await refetch()
-                    navigateToSlot(slotPath, { openEditor: true })
+                    setEditorSlotName(slotPath)
+                    setIsEditorOpen(true)
                   } catch (err) {
                     logger.warn('media_canvas.modify_upload.failed', {
                       appId,
@@ -299,7 +325,6 @@ export function MediaCanvas() {
             isCreating={isCreating}
           />
         </div>
-      </div>
-    </div>
+      </MediaCanvasShell>
   )
 }

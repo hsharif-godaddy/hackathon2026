@@ -35,6 +35,7 @@ import type { MediaFolder } from '@/hooks/useMediaFolders'
 import { SITE_FILES_FOLDER, useMediaFolders } from '@/hooks/useMediaFolders'
 import { useMediaManifest } from '@/hooks/useMediaManifest'
 import { useRecentUploads } from '@/hooks/useRecentUploads'
+import { useTranslations } from '@/hooks/useTranslations'
 import { regenerateToken } from '@/lib/jwt-regeneration'
 import { logger } from '@/lib/request-context'
 import { uploadImages } from '@/services/file-upload'
@@ -51,6 +52,7 @@ interface MediaReplacePanelProps {
 }
 
 export function MediaReplacePanel({ slotName, onClose }: MediaReplacePanelProps) {
+  const t = useTranslations()
   const appId = useAppIdFromParams()
   const { manifest, slotNames, refetch } = useMediaManifest({ appId: appId || null })
   const { uploads: recentUploads, isLoading: uploadsLoading, refetch: refetchUploads } = useRecentUploads({ appId: appId || null })
@@ -413,18 +415,18 @@ export function MediaReplacePanel({ slotName, onClose }: MediaReplacePanelProps)
       {/* Scrollable content */}
       <div className="flex-1 overflow-y-auto px-3 py-2">
         {/* Header — inline with X */}
-        <div className="flex items-center gap-1.5 mb-2">
+        <div className="flex items-center mb-2">
+          <h2 className="text-base font-semibold">{t('builder_media_replace_image_title')}</h2>
           <button
             type="button"
             onClick={onClose}
-            className="w-[36px] h-[36px] flex items-center justify-center shrink-0 hover:opacity-70 transition-opacity"
+            className="ml-auto w-[36px] h-[36px] flex items-center justify-center shrink-0 hover:opacity-70 transition-opacity"
           >
             <svg width="14" height="14" viewBox="0 0 14 14" stroke="#000" strokeWidth="1.5" fill="none">
               <line x1="2" y1="2" x2="12" y2="12" />
               <line x1="12" y1="2" x2="2" y2="12" />
             </svg>
           </button>
-          <h2 className="text-base font-semibold">Replace Image</h2>
         </div>
 
         {uploadError && (
