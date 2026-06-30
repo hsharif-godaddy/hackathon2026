@@ -10,17 +10,23 @@
  */
 import { test, expect } from '../helpers/test-fixtures';
 
-import { loginIfNeeded } from '../helpers/auth';
+import { loginViaSsoDirect } from '../helpers/auth';
 import { DEFAULT_TIMEOUT, LONG_TIMEOUT } from '../helpers/constants';
 import { dismissOverlays, logTestResult, logTestStart } from '../helpers/ui';
 
 test.describe('Manage Plan - Deeplinks', function deeplinks() {
   test.beforeEach(async function setup({ page }, testInfo) {
     logTestStart(testInfo);
+    await loginViaSsoDirect(page);
+    // loginViaSsoDirect already awaits domcontentloaded, but the SSO host may
+    // still be running a post-login client-side redirect when we return. A best-
+    // effort 'load' wait lets that redirect settle. Safe to swallow: auth is
+    // already set and the subsequent goto('/') navigates correctly regardless.
+    await page.waitForLoadState('load').catch(() => {});
+    // Land on the app home before the test navigates to /manage-plan.
+    // Without this, the browser is still on the SSO host and the direct goto
+    // to /manage-plan?... races the SSO redirect and gets ERR_ABORTED.
     await page.goto('/');
-    // loginIfNeeded checks the user-menu state and signs in only when required,
-    // making this safe regardless of prior auth state in the test run.
-    await loginIfNeeded(page);
   });
 
   test.afterEach(async function teardown({ page }, testInfo) {

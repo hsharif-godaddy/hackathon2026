@@ -108,6 +108,20 @@ export async function loginViaSsoDirect(page: Page, timeout: number = SSO_TIMEOU
   await usernameInput.waitFor({ state: 'detached', timeout }).catch(() => {});
   await page.waitForLoadState('load').catch(() => {});
   await drainPostLoadRedirects(page);
+
+  // GoDaddy may redirect to an email-validation interstitial after login.
+  // "Continue to Account" skips the verification prompt and completes the
+  // auth redirect so the auth_idp cookie is set for the whole domain.
+  const continueButton = page.getByRole('button', { name: 'Continue to Account' });
+  const interstitialPresent = await continueButton
+    .waitFor({ state: 'visible', timeout: 5_000 })
+    .then(() => true)
+    .catch(() => false);
+  if (interstitialPresent) {
+    console.log('  SSO direct: email validation interstitial, clicking Continue to Account...');
+    await continueButton.click();
+    await page.waitForLoadState('load').catch(() => {});
+  }
   console.log(`  SSO direct: signed in at ${ssoBase} (now on ${new URL(page.url()).host})`);
 }
 
