@@ -142,7 +142,11 @@ export function CanvasMenu({ clickContext }: CanvasMenuProps) {
           onClick={() => logClickEvent('commander.canvas_menu.open', clickContext)()}
         />
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-[260px] p-1">
+      <PopoverContent
+        align="start"
+        className="w-[260px] p-1"
+        collisionPadding={8}
+      >
         <div className="flex flex-col gap-1">
           <div
             className={clsx(
