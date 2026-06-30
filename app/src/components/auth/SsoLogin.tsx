@@ -18,6 +18,7 @@ import { getSsoPageToLoad } from '@/lib/ssoPageRoute';
 import { useAuthUIStore } from '@/stores/useAuthUIStore';
 import { useSitesStore } from '@/stores/useSitesStore';
 import { getRootDomain } from '@/utils/getRootDomain';
+import { getSsoHostParams } from '@/utils/getSsoHostParams';
 
 /**
  * Props interface for SsoDeck component
@@ -106,13 +107,8 @@ export default function SsoLogin() {
     closeSsoLogin('dismiss');
   }
 
-  // Determine consuming port on client-side only using lazy initializer to avoid SSR hydration issues
-  // Only pass non-standard ports (not 80, 443, or 3000) to SsoDeck for proper origin validation
-  const [consumingPort] = useState(() => {
-    if (typeof window === 'undefined') return '';
-    const port = window.location.port;
-    return (port && port !== '80' && port !== '443' && port !== '3000') ? port : '';
-  });
+  // Lazy initializer matches getSsoHostParams' SSR-safe contract.
+  const [{ app: consumingApp, port: consumingPort }] = useState<{ app: string; port: string }>(getSsoHostParams);
 
   // Determine SSO host on client-side only
   useEffect(function determineSsoHost() {
@@ -476,7 +472,7 @@ export default function SsoLogin() {
                   host={ssoHost}
                   ssoApp='sso'
                   ssoPort=''
-                  consumingApp='airo-builder'
+                  consumingApp={consumingApp}
                   consumingPath={ssoReturnTarget.path}
                   {...(consumingPort && { consumingPort })}
                   pageToLoad={pageToLoad}

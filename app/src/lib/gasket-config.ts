@@ -5,6 +5,7 @@ import { getSwitchboardFlag } from '@/hooks/useSwitchboard';
 import { useAuthUIStore } from '@/stores/useAuthUIStore';
 import { sleep } from '@/utils/common';
 import { getRootDomain } from '@/utils/getRootDomain';
+import { getSsoHostParams } from '@/utils/getSsoHostParams';
 import { SHOPPER_AUTH_FAILURE_MESSAGE } from './customer-auth';
 import { auth } from './features';
 import { logger } from './request-context';
@@ -153,18 +154,20 @@ export const authConfigs = {
   }
 };
 
-// GoDaddy SSO recognized params: realm, path, app, auth_reason.
-// 'path' is a URI-encoded relative path; SSO appends it to the app's
-// registered domain when redirecting back after authentication.
+// GoDaddy SSO recognized params: realm, path, app, port, auth_reason.
+// `app` + `port` resolve to the current host's SSO registration; `path` is the
+// URI-encoded relative path SSO appends after authentication.
 export async function getLoginUrl(returnUrl?: string, authReason?: number | null): Promise<string> {
   const gasketConfig = await getGasketConfig();
-  const params = new URLSearchParams({ app: gasketConfig.sso.appName });
+  const { app, port }: { app: string; port: string } = getSsoHostParams(gasketConfig.sso.appName);
+  const params = new URLSearchParams({ app });
+  if (port) params.set('port', port);
 
-  const target = returnUrl || gasketConfig.redirects.loginRedirectUrl;
+  const target: string = returnUrl || gasketConfig.redirects.loginRedirectUrl;
   if (target) {
     try {
-      const url = new URL(target, typeof window !== 'undefined' ? window.location.origin : 'http://localhost');
-      const path = url.pathname + url.search + url.hash;
+      const url: URL = new URL(target, typeof window !== 'undefined' ? window.location.origin : 'http://localhost');
+      const path: string = url.pathname + url.search + url.hash;
       if (path.startsWith('/') && path !== '/') {
         // URLSearchParams encodes /, ?, = etc., keeping the value opaque to SSO
         params.set('path', path);
@@ -188,14 +191,45 @@ export async function getLoginUrl(returnUrl?: string, authReason?: number | null
   return `${gasketConfig.sso.loginUrl}?${params.toString()}`;
 }
 
-// Helper function to get logout URL (async version for runtime config)
+function resolveLogoutParams(gasketConfig: GasketConfig): { app: string; redirect: string; port: string } {
+  if (typeof window === 'undefined') {
+    return {
+      app: gasketConfig.sso.appName,
+      redirect: gasketConfig.redirects.logoutRedirectUrl,
+      port: '',
+    };
+  }
+  let configuredOrigin: string | null = null;
+  try {
+    configuredOrigin = new URL(gasketConfig.redirects.logoutRedirectUrl).origin;
+  } catch (err) {
+    logger.warn('sso.logout.redirect-url.parse-failed', {
+      url: gasketConfig.redirects.logoutRedirectUrl,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+  if (configuredOrigin === window.location.origin) {
+    return {
+      app: gasketConfig.sso.appName,
+      redirect: gasketConfig.redirects.logoutRedirectUrl,
+      port: '',
+    };
+  }
+  const { app, port }: { app: string; port: string } = getSsoHostParams(gasketConfig.sso.appName);
+  return { app, redirect: `${window.location.origin}/`, port };
+}
+
+// Honor the env-configured redirect when its origin matches the current host;
+// otherwise fall back to the host-derived params. SSO validates `redirect`
+// against the (app, port) registration, so `port` rides as its own param.
 export async function getLogoutUrl(): Promise<string> {
   const gasketConfig = await getGasketConfig();
-  const baseUrl = gasketConfig.sso.logoutUrl;
-  const params = new URLSearchParams({
-    app: gasketConfig.sso.appName,
-    redirect: gasketConfig.redirects.logoutRedirectUrl
-  });
+  const baseUrl: string = gasketConfig.sso.logoutUrl;
+  const { app, redirect, port }: { app: string; redirect: string; port: string } = resolveLogoutParams(gasketConfig);
+
+  const params = new URLSearchParams({ app, redirect });
+  if (port) params.set('port', port);
+
   return `${baseUrl}?${params.toString()}`;
 }
 

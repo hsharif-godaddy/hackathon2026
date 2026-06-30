@@ -5,8 +5,15 @@ vi.mock('@/lib/request-context', () => ({
 }));
 
 const mockConfig = {
-  sso: { loginUrl: 'https://sso.test-godaddy.com/login', appName: 'airo-builder' },
-  redirects: { loginRedirectUrl: 'https://airo-builder.test-godaddy.com/' },
+  sso: {
+    loginUrl: 'https://sso.test-godaddy.com/login',
+    logoutUrl: 'https://sso.test-godaddy.com/logout',
+    appName: 'airo-builder',
+  },
+  redirects: {
+    loginRedirectUrl: 'https://airo-builder.test-godaddy.com/',
+    logoutRedirectUrl: 'https://airo-builder.test-godaddy.com/',
+  },
 };
 
 vi.mock('@/lib/gasket-config', async (importOriginal) => {
@@ -17,7 +24,7 @@ vi.mock('@/lib/gasket-config', async (importOriginal) => {
   };
 });
 
-const { getLoginUrl } = await import('@/lib/gasket-config');
+const { getLoginUrl, getLogoutUrl } = await import('@/lib/gasket-config');
 
 describe('gasket-config', function gasketConfigTests() {
   describe('#getLoginUrl', function getLoginUrlTests() {
@@ -104,6 +111,20 @@ describe('gasket-config', function gasketConfigTests() {
       const result = await getLoginUrl('/', 2);
 
       expect(result).toBe('https://sso.test-godaddy.com/login?app=airo-builder&auth_reason=2');
+    });
+  });
+
+  describe('#getLogoutUrl', function getLogoutUrlTests() {
+    it('returns env-configured app + redirect under SSR', async function ssrDefaults() {
+      const result: string = await getLogoutUrl();
+      expect(result).toBe(
+        'https://sso.test-godaddy.com/logout?app=airo-builder&redirect=https%3A%2F%2Fairo-builder.test-godaddy.com%2F'
+      );
+    });
+
+    it('omits the port param under SSR', async function ssrNoPort() {
+      const result: string = await getLogoutUrl();
+      expect(result).not.toContain('port=');
     });
   });
 
