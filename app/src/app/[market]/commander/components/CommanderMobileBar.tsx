@@ -1,13 +1,15 @@
 'use client'
 
+import clsx from 'clsx'
 import { useMemo, useState } from 'react'
-import ChevronDownIcon from '@ux/icon/chevron-down'
+import Button from '@ux/button'
 import ConversationsIcon from '@ux/icon/conversations'
 
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils'
 import { useTranslations } from '@/hooks/useTranslations'
 import { useCommanderCanvasTabsEnabled, useCommanderStore } from '@/stores/useCommanderStore'
 import { logClickEvent } from '@/utils/instrumentation'
+import { COMMANDER_PILL_INNER_SURFACE_CLASS, COMMANDER_PILL_OUTER_SURFACE_CLASS } from './commanderSurface'
 import { CommanderCanvasSheet } from '../canvas/CommanderCanvasSheet'
 import { CANVAS_REGISTRY } from '../canvas/registry'
 
@@ -38,28 +40,33 @@ export function CommanderMobileBar() {
 
   return (
     <>
-      <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2">
-        {isCanvasTabsEnabled && (
-          <button
-            type="button"
-            onClick={handleOpenSheet}
-            data-testid="commander-mobile-canvas-selector"
-            className="flex items-center gap-1 rounded-full px-2.5 py-1.5 shadow-lg bg-intents-ux-boxHighContrast-backgroundColor text-intents-ux-boxHighContrast-foregroundColor"
-          >
-            <ActiveIcon className="size-2.5" />
-            <span className="text-sm font-medium whitespace-nowrap">{activeLabel}</span>
-            <ChevronDownIcon className="size-2.5" />
-          </button>
-        )}
-        <button
-          type="button"
-          onClick={handleOpenChat}
-          data-testid="commander-mobile-chat-button"
-          className="flex items-center gap-1 rounded-full px-2.5 py-1.5 shadow-lg bg-intents-ux-box-backgroundColor text-intents-ux-box-foregroundColor"
-        >
-          <ConversationsIcon className="size-2.5" />
-          <span className="text-sm font-medium whitespace-nowrap">{t('builder_chat_toolbar_button_chat')}</span>
-        </button>
+      <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-30">
+        <div className={clsx('rounded-2xl shadow-lg', COMMANDER_PILL_OUTER_SURFACE_CLASS)}>
+          <div className={clsx('flex items-center gap-0.5 rounded-lg px-1 py-1', COMMANDER_PILL_INNER_SURFACE_CLASS)}>
+            {isCanvasTabsEnabled && (
+              <>
+                <Button
+                  as="select"
+                  design="primary"
+                  size="sm"
+                  icon={<ActiveIcon className="size-2.5" />}
+                  text={activeLabel}
+                  onClick={handleOpenSheet}
+                  data-testid="commander-mobile-canvas-selector"
+                />
+                <span aria-hidden="true" className="inline-block w-px h-3 bg-intents-ux-box-borderColor mx-0.5 shrink-0" />
+              </>
+            )}
+            <Button
+              design="secondary"
+              size="sm"
+              icon={<ConversationsIcon className="size-2.5" />}
+              text={t('builder_chat_toolbar_button_chat')}
+              onClick={handleOpenChat}
+              data-testid="commander-mobile-chat-button"
+            />
+          </div>
+        </div>
       </div>
       <CommanderCanvasSheet open={sheetOpen} onOpenChange={setSheetOpen} clickContext={clickContext} />
     </>
