@@ -10,6 +10,7 @@ import RevertIcon from '@ux/icon/revert';
 import SettingsIcon from '@ux/icon/settings';
 import ShieldIcon from '@ux/icon/shield';
 import SocialIcon from '@ux/icon/social';
+import UserLockedIcon from '@ux/icon/user-locked';
 import WorldIcon from '@ux/icon/world';
 
 import { SettingsSection } from '@/app/[market]/develop/components/types';
@@ -161,7 +162,7 @@ export function useSettingsNavItems(): SettingsNavItem[] {
     ...(isSsoNavVisible ? [{
       id: SettingsSection.SSO,
       label: t('builder_settings_nav_sso'),
-      icon: <LockedIcon />,
+      icon: <UserLockedIcon />,
       disabled: false,
     }] : []),
     ...(seo ? [{

@@ -16,6 +16,7 @@ import RevertIcon from '@ux/icon/revert'
 import SettingsIcon from '@ux/icon/settings'
 import ShieldIcon from '@ux/icon/shield'
 import SocialIcon from '@ux/icon/social'
+import UserLockedIcon from '@ux/icon/user-locked'
 import WebsiteFilledIcon from '@ux/icon/website-filled'
 import WorldIcon from '@ux/icon/world'
 
@@ -212,7 +213,7 @@ export const CANVAS_REGISTRY: Record<CanvasId, CanvasDescriptor> = {
     id: CanvasId.SettingsSso,
     labelKey: 'builder_settings_nav_sso',
     fallbackLabel: 'SSO',
-    Icon: LockedIcon,
+    Icon: UserLockedIcon,
     dismissible: true,
     defaultOpen: false,
     activation: { settingsSection: SettingsSection.SSO },
