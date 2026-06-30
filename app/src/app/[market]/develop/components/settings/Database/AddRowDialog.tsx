@@ -8,7 +8,15 @@ import TextInput from '@ux/text-input';
 
 import { useAddRow } from '@/hooks/useTableMutations';
 import { useTranslations } from '@/hooks/useTranslations';
-import { formatColumnName, formatColumnType, getGridClasses } from './utils';
+import {
+  formatColumnName,
+  formatColumnType,
+  formatDateForMySQL,
+  formatDateTimeForMySQL,
+  getGridClasses,
+  isDateColumnType,
+  isDateTimeColumnType,
+} from './utils';
 
 interface AddRowDialogProps {
   isOpen: boolean;
@@ -94,6 +102,10 @@ export function AddRowDialog({
         data[col.name] = Number(value);
       } else if (type.includes('bool') || type.includes('tinyint(1)')) {
         data[col.name] = value === 'true' || value === '1';
+      } else if (isDateColumnType(col.type)) {
+        data[col.name] = formatDateForMySQL(value);
+      } else if (isDateTimeColumnType(col.type)) {
+        data[col.name] = formatDateTimeForMySQL(value);
       } else {
         data[col.name] = value;
       }

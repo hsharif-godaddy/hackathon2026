@@ -85,3 +85,63 @@ export function getGridClasses(columnCount: number): string {
   return 'grid-cols-1 md:grid-cols-2 xl:grid-cols-3';
 }
 
+function getBaseColumnType(type: string): string {
+  return type.toLowerCase().trim().split('(')[0];
+}
+
+export function isDateColumnType(type: string): boolean {
+  return getBaseColumnType(type) === 'date';
+}
+
+export function isDateTimeColumnType(type: string): boolean {
+  const baseType: string = getBaseColumnType(type);
+  return baseType === 'datetime' || baseType === 'timestamp';
+}
+
+export function formatDateForForm(value: unknown): string {
+  if (value === null || value === undefined) {
+    return '';
+  }
+
+  const stringValue: string = String(value);
+  const match: RegExpMatchArray | null = stringValue.match(/^(\d{4}-\d{2}-\d{2})/);
+  return match ? match[1] : stringValue;
+}
+
+export function formatDateForMySQL(value: string): string {
+  const match: RegExpMatchArray | null = value.match(/^(\d{4}-\d{2}-\d{2})/);
+  return match ? match[1] : value;
+}
+
+export function formatDateTimeForForm(value: unknown): string {
+  if (value === null || value === undefined) {
+    return '';
+  }
+
+  const stringValue: string = String(value);
+  const isoMatch: RegExpMatchArray | null = stringValue.match(/^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2}:\d{2})/);
+  if (isoMatch) {
+    return `${isoMatch[1]} ${isoMatch[2]}`;
+  }
+
+  return stringValue;
+}
+
+export function formatDateTimeForMySQL(value: string): string {
+  const isoMatch: RegExpMatchArray | null = value.match(/^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2}:\d{2})/);
+  if (isoMatch) {
+    return `${isoMatch[1]} ${isoMatch[2]}`;
+  }
+
+  const mysqlMatch: RegExpMatchArray | null = value.match(/^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2})/);
+  if (mysqlMatch) {
+    return `${mysqlMatch[1]} ${mysqlMatch[2]}`;
+  }
+
+  const shortMatch: RegExpMatchArray | null = value.match(/^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2})/);
+  if (shortMatch) {
+    return `${shortMatch[1]} ${shortMatch[2]}:00`;
+  }
+
+  return value;
+}

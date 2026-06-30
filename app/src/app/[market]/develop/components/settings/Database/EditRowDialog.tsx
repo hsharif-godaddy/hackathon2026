@@ -8,7 +8,17 @@ import TextInput from '@ux/text-input';
 
 import { useUpdateRow } from '@/hooks/useTableMutations';
 import { useTranslations } from '@/hooks/useTranslations';
-import { formatColumnName, formatColumnType, getGridClasses } from './utils';
+import {
+  formatColumnName,
+  formatColumnType,
+  formatDateForForm,
+  formatDateForMySQL,
+  formatDateTimeForForm,
+  formatDateTimeForMySQL,
+  getGridClasses,
+  isDateColumnType,
+  isDateTimeColumnType,
+} from './utils';
 
 interface EditRowDialogProps {
   isOpen: boolean;
@@ -65,16 +75,20 @@ export function EditRowDialog({
 
   useEffect(() => {
     if (row) {
-      // Initialize form with existing row data
       const initialData: Record<string, string> = {};
-      Object.entries(row).forEach(([key, value]) => {
+      schema.forEach(col => {
+        const value: unknown = row[col.name];
         if (value !== null && value !== undefined) {
-          initialData[key] = String(value);
+          initialData[col.name] = isDateColumnType(col.type)
+            ? formatDateForForm(value)
+            : isDateTimeColumnType(col.type)
+              ? formatDateTimeForForm(value)
+              : String(value);
         }
       });
       setFormData(initialData);
     }
-  }, [row]);
+  }, [row, schema]);
 
   const handleClose = () => {
     updateRow.reset();
@@ -125,6 +139,10 @@ export function EditRowDialog({
         data[col.name] = Number(value);
       } else if (type.includes('bool') || type.includes('tinyint(1)')) {
         data[col.name] = value === 'true' || value === '1';
+      } else if (isDateColumnType(col.type)) {
+        data[col.name] = formatDateForMySQL(value);
+      } else if (isDateTimeColumnType(col.type)) {
+        data[col.name] = formatDateTimeForMySQL(value);
       } else {
         data[col.name] = value;
       }
