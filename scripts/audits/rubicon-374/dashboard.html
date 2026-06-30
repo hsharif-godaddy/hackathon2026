@@ -1,0 +1,304 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>RUBICON-374 robots.txt audit</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 32px 24px; background: #fafafa; color: #1f2328; max-width: 980px; margin-inline: auto; line-height: 1.5; }
+    header h1 { margin: 0 0 6px; font-size: 22px; }
+    header p { margin: 0; color: #6e7781; font-size: 14px; }
+    .meta { color: #6e7781; font-size: 13px; margin: 16px 0 28px; }
+    .meta code { background: #eef0f3; padding: 1px 6px; border-radius: 3px; font-size: 12px; }
+
+    .headline { display: grid; grid-template-columns: minmax(0, 560px); gap: 16px; margin-bottom: 32px; }
+
+    .card { background: #fff; border: 1px solid #d0d7de; border-radius: 10px; padding: 20px 22px; }
+    .card.primary { border-left: 6px solid #cf222e; }
+    .card.secondary { border-left: 6px solid #bf8700; }
+    .card-label { font-size: 12px; color: #57606a; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; margin-bottom: 12px; }
+    .card-pct { font-size: 44px; font-weight: 700; line-height: 1; }
+    .card.primary .card-pct { color: #cf222e; }
+    .card.secondary .card-pct { color: #bf8700; }
+    .card-count { font-size: 15px; color: #1f2328; margin-top: 10px; }
+    .card-count strong { font-weight: 600; }
+    .card-bar { height: 10px; background: #eaeef2; border-radius: 6px; overflow: hidden; margin-top: 14px; }
+    .card-bar-fill { height: 100%; }
+    .card.primary .card-bar-fill { background: #cf222e; }
+    .card.secondary .card-bar-fill { background: #bf8700; }
+    .card-note { font-size: 12px; color: #6e7781; margin-top: 10px; }
+
+    h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; color: #57606a; margin: 8px 0 12px; font-weight: 600; }
+    details { background: #fff; border: 1px solid #d0d7de; border-radius: 8px; padding: 12px 16px; margin-bottom: 12px; }
+    details > summary { font-weight: 600; cursor: pointer; padding: 4px 0; user-select: none; font-size: 13px; list-style: none; display: flex; justify-content: space-between; align-items: center; }
+    details > summary::after { content: '▸'; color: #8c959f; transition: transform 0.15s; }
+    details[open] > summary::after { transform: rotate(90deg); }
+    details[open] > summary { margin-bottom: 12px; border-bottom: 1px solid #eaeef2; padding-bottom: 10px; }
+
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th { background: #f6f8fa; padding: 8px 12px; text-align: left; font-weight: 600; font-size: 11px; color: #57606a; text-transform: uppercase; letter-spacing: 0.04em; border-bottom: 1px solid #d0d7de; }
+    td { padding: 6px 12px; border-bottom: 1px solid #eaeef2; }
+    tr:last-child td { border-bottom: none; }
+    td.num { text-align: right; font-variant-numeric: tabular-nums; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    .chart-card { background: #fff; border: 1px solid #d0d7de; border-radius: 10px; padding: 20px 22px; margin-bottom: 28px; }
+    .chart-card h2 { margin: 0 0 16px; }
+    .chart-legend { display: flex; gap: 20px; font-size: 12px; color: #57606a; margin-bottom: 8px; }
+    .chart-legend-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; vertical-align: middle; margin-right: 6px; }
+
+    .footnote { font-size: 12px; color: #8c959f; margin-top: 24px; }
+    .footnote code { background: #eef0f3; padding: 1px 5px; border-radius: 3px; }
+    .error { background: #fff8c5; border: 1px solid #d4a72c; padding: 12px 16px; border-radius: 8px; color: #5d4500; font-size: 13px; }
+    .error code { background: #fff; padding: 1px 6px; border-radius: 3px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>RUBICON-374 robots.txt audit</h1>
+    <p>Platform hosts (<code>*.airoapp.ai</code>) should disallow crawlers. Custom domains should allow them.</p>
+  </header>
+
+  <div id="meta" class="meta">Loading…</div>
+
+  <section class="headline" id="headline"></section>
+
+  <section class="chart-card" id="chart-card">
+    <h2>Platform bug rate trend</h2>
+    <div class="chart-legend">
+      <span><span class="chart-legend-dot" style="background:#cf222e"></span>Platform hosts allowing (the bug — should drop after enable)</span>
+      <span><span class="chart-legend-dot" style="background:#bf8700;opacity:0.55"></span>Custom domains blocking (canary — should stay flat or drop)</span>
+    </div>
+    <svg id="chart" width="100%" viewBox="0 0 900 280"></svg>
+    <div class="card-note" style="margin-top:12px">If the amber canary line spikes, the rewriter is misfiring and Disallowing custom domains — worst-case regression. Investigate before continuing rollout.</div>
+  </section>
+
+  <section>
+    <h2>Affected apps</h2>
+    <details open>
+      <summary id="platform-incorrect-summary">Platform hosts incorrectly allowing crawlers</summary>
+      <table id="platform-incorrect-table">
+        <thead><tr><th>app_id</th><th>customer_id</th><th>publish_url</th><th>reason</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </details>
+    <details>
+      <summary id="custom-incorrect-summary">Custom domains incorrectly blocking crawlers</summary>
+      <table id="custom-incorrect-table">
+        <thead><tr><th>app_id</th><th>customer_id</th><th>publish_url</th><th>reason</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </details>
+  </section>
+
+  <section>
+    <h2>Run history</h2>
+    <details id="history-details">
+      <summary id="history-summary">Past runs</summary>
+      <table id="history-table">
+        <thead><tr>
+          <th>Ran</th>
+          <th>Snapshot</th>
+          <th class="num">Platform bug %</th>
+          <th class="num">Platform bug count</th>
+          <th class="num">Custom (canary)</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </details>
+  </section>
+
+  <div id="footnote" class="footnote"></div>
+  <div id="error-banner"></div>
+
+  <script>
+    const RESULTS = './results';
+    const TABLE_LIMIT = 100;
+
+    function pct(n, digits = 1) { return (n * 100).toFixed(digits) + '%'; }
+    function n(v) { return Number(v).toLocaleString(); }
+
+    async function fetchJsonl(url) {
+      const r = await fetch(url);
+      if (!r.ok) throw new Error(`${url}: HTTP ${r.status}`);
+      const text = await r.text();
+      return text.split('\n').filter(Boolean).map(l => JSON.parse(l));
+    }
+
+    function parseCsv(text) {
+      const lines = text.split('\n').filter(Boolean);
+      const headers = lines.shift().split(',');
+      return lines.map(line => {
+        const fields = line.split(',');
+        const o = {};
+        headers.forEach((h, i) => o[h] = fields[i] ?? '');
+        return o;
+      });
+    }
+
+    function renderMeta(s) {
+      document.getElementById('meta').innerHTML = `
+        Snapshot <strong>${s.input.snapshotDate ?? '(unknown)'}</strong>
+        · ${n(s.platformDomains.checked + s.customDomains.checked)} apps probed
+        · ran ${new Date(s.ranAt).toLocaleString()}
+      `;
+    }
+
+    function renderHeadline(s) {
+      const p = s.platformDomains;
+      const pBadTotal = p.correctlyDisallowed + p.incorrectlyAllowed;
+      const pBadRate = pBadTotal ? p.incorrectlyAllowed / pBadTotal : 0;
+
+      document.getElementById('headline').innerHTML = `
+        <div class="card primary">
+          <div class="card-label">Platform hosts allowing crawlers (the bug)</div>
+          <div class="card-pct">${pct(pBadRate)}</div>
+          <div class="card-count"><strong>${n(p.incorrectlyAllowed)}</strong> of ${n(pBadTotal)} platform apps</div>
+          <div class="card-bar"><div class="card-bar-fill" style="width:${(pBadRate * 100).toFixed(2)}%"></div></div>
+          <div class="card-note">Should serve <code>Disallow: /</code>. Fixed by the RUBICON-374 rewriter once prod-enabled.</div>
+        </div>
+      `;
+    }
+
+    function platformBadRate(r) {
+      const p = r.platformDomains;
+      const denom = p.correctlyDisallowed + p.incorrectlyAllowed;
+      return denom ? p.incorrectlyAllowed / denom : 0;
+    }
+    function customBadRate(r) {
+      const c = r.customDomains;
+      const denom = c.correctlyAllowed + c.incorrectlyDisallowed;
+      return denom ? c.incorrectlyDisallowed / denom : 0;
+    }
+
+    function renderChart(runs) {
+      const svg = document.getElementById('chart');
+      const W = 900, H = 280, pad = { l: 50, r: 24, t: 16, b: 56 };
+      const out = [];
+
+      if (runs.length === 0) {
+        svg.innerHTML = `<text x="${W/2}" y="${H/2}" text-anchor="middle" fill="#8c959f" font-size="14">No runs yet</text>`;
+        return;
+      }
+
+      const platRates = runs.map(platformBadRate);
+      const custRates = runs.map(customBadRate);
+      const maxRate = Math.max(...platRates, ...custRates, 0.1);
+      const yMax = Math.min(1, Math.ceil(maxRate * 10) / 10);
+      const yScale = v => H - pad.b - (v / yMax) * (H - pad.t - pad.b);
+
+      const xs = runs.map(r => new Date(r.ranAt).getTime());
+      const xMin = Math.min(...xs);
+      const xMax = Math.max(...xs);
+      const xSpan = xMax - xMin || 1;
+      const xScale = t => runs.length === 1
+        ? pad.l + (W - pad.l - pad.r) / 2
+        : pad.l + ((t - xMin) / xSpan) * (W - pad.l - pad.r);
+
+      const yTicks = 4;
+      for (let i = 0; i <= yTicks; i++) {
+        const v = (yMax / yTicks) * i;
+        const py = yScale(v);
+        out.push(`<line x1="${pad.l}" x2="${W - pad.r}" y1="${py}" y2="${py}" stroke="#eaeef2"/>`);
+        out.push(`<text x="${pad.l - 8}" y="${py + 4}" text-anchor="end" font-size="11" fill="#6e7781">${(v * 100).toFixed(0)}%</text>`);
+      }
+
+      runs.forEach(r => {
+        const px = xScale(new Date(r.ranAt).getTime());
+        out.push(`<line x1="${px}" x2="${px}" y1="${H - pad.b}" y2="${H - pad.b + 4}" stroke="#8c959f"/>`);
+        out.push(`<text x="${px}" y="${H - pad.b + 20}" text-anchor="middle" font-size="11" fill="#1f2328">${r.input.snapshotDate ?? r.runDate}</text>`);
+        out.push(`<text x="${px}" y="${H - pad.b + 36}" text-anchor="middle" font-size="10" fill="#8c959f">${new Date(r.ranAt).toLocaleDateString()}</text>`);
+      });
+
+      const platPts = runs.map((r, i) => [xScale(new Date(r.ranAt).getTime()), yScale(platRates[i])]);
+      const custPts = runs.map((r, i) => [xScale(new Date(r.ranAt).getTime()), yScale(custRates[i])]);
+      const pathStr = pts => 'M' + pts.map(p => p.join(',')).join(' L');
+
+      if (runs.length > 1) {
+        out.push(`<path d="${pathStr(custPts)}" stroke="#bf8700" stroke-width="1.25" stroke-dasharray="4 4" fill="none" opacity="0.55"/>`);
+        out.push(`<path d="${pathStr(platPts)}" stroke="#cf222e" stroke-width="2.5" fill="none"/>`);
+      }
+      custPts.forEach(([x, y], i) => {
+        out.push(`<circle cx="${x}" cy="${y}" r="3" fill="#bf8700" opacity="0.55"><title>Custom (canary) ${pct(custRates[i])} — ${runs[i].input.snapshotDate ?? runs[i].runDate}</title></circle>`);
+      });
+      platPts.forEach(([x, y], i) => {
+        out.push(`<circle cx="${x}" cy="${y}" r="5.5" fill="#cf222e"><title>Platform bug ${pct(platRates[i])} — ${runs[i].input.snapshotDate ?? runs[i].runDate}</title></circle>`);
+      });
+
+      svg.innerHTML = out.join('');
+    }
+
+    function renderHistory(runs) {
+      const tbody = document.querySelector('#history-table tbody');
+      tbody.innerHTML = [...runs].reverse().map(r => `
+        <tr>
+          <td>${new Date(r.ranAt).toLocaleString()}</td>
+          <td>${r.input.snapshotDate ?? '—'}</td>
+          <td class="num">${pct(platformBadRate(r))}</td>
+          <td class="num">${n(r.platformDomains.incorrectlyAllowed)}</td>
+          <td class="num">${pct(customBadRate(r))} (${n(r.customDomains.incorrectlyDisallowed)})</td>
+        </tr>
+      `).join('');
+      document.getElementById('history-summary').textContent = `Past runs (${runs.length})`;
+    }
+
+    function renderFootnote(s) {
+      const p = s.platformDomains;
+      const c = s.customDomains;
+      document.getElementById('footnote').innerHTML = `
+        Inconclusive probes (SSL, DNS, timeouts, 404s) excluded from rates above:
+        ${n(p.inconclusive)} platform · ${n(c.inconclusive)} custom.
+        Cohort ${n(s.cohortSize)} from ${n(s.totalRows)} rows in <code>${s.input.filename}</code>.
+      `;
+    }
+
+    function rowToTr(row) {
+      const url = row.publish_url.startsWith('http') ? row.publish_url : `https://${row.publish_url}`;
+      return `<tr><td><code>${row.app_id}</code></td><td>${row.customer_id}</td><td><a href="${url}" target="_blank" rel="noopener">${row.publish_url}</a></td><td>${row.reason}</td></tr>`;
+    }
+
+    async function renderIncorrectTable(stamp, kind, summaryId, tableId, label) {
+      const summary = document.getElementById(summaryId);
+      try {
+        const raw = await fetch(`${RESULTS}/${kind}-${stamp}.csv`).then(r => {
+          if (!r.ok) throw new Error(`HTTP ${r.status}`);
+          return r.text();
+        });
+        const rows = parseCsv(raw);
+        summary.textContent = `${label} — ${n(rows.length)} apps (showing first ${Math.min(TABLE_LIMIT, rows.length)})`;
+        document.querySelector(`#${tableId} tbody`).innerHTML = rows.slice(0, TABLE_LIMIT).map(rowToTr).join('');
+      } catch (e) {
+        summary.textContent = `${label} — CSV not loadable (${e.message})`;
+      }
+    }
+
+    async function load() {
+      const runs = await fetchJsonl(`${RESULTS}/runs.jsonl`);
+      if (!runs.length) return;
+      const latest = runs[runs.length - 1];
+      renderMeta(latest);
+      renderHeadline(latest);
+      renderChart(runs);
+      renderHistory(runs);
+      renderFootnote(latest);
+      const stamp = latest.ranAt.replace(/[:.]/g, '-');
+      await Promise.all([
+        renderIncorrectTable(stamp, 'platform-incorrect', 'platform-incorrect-summary', 'platform-incorrect-table', 'Platform hosts incorrectly allowing crawlers'),
+        renderIncorrectTable(stamp, 'custom-incorrect', 'custom-incorrect-summary', 'custom-incorrect-table', 'Custom domains incorrectly blocking crawlers'),
+      ]);
+    }
+
+    load().catch(e => {
+      document.getElementById('error-banner').innerHTML = `
+        <div class="error">
+          Could not load run data: ${e.message}. If you opened this with <code>file://</code>, browsers block local fetch — serve the directory instead:
+          <br><br>
+          <code>cd scripts/audits/rubicon-374 &amp;&amp; python3 -m http.server 8765</code><br>
+          then open <code>http://localhost:8765/dashboard.html</code>.
+        </div>`;
+    });
+  </script>
+</body>
+</html>

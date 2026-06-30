@@ -1,0 +1,4 @@
+# Audit run outputs — contain customer PII (customer_id, app_id, publish_url) and local paths.
+# Each runner generates their own results locally. Share aggregate trends via Confluence / Slack, not via this repo.
+results/
+dashboard-preview.png
