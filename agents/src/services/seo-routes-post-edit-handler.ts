@@ -17,6 +17,7 @@ import type {
   PostEditContext,
   PostEditHandler,
 } from '../tools/ai-lib-tools/post-edit-handlers.js';
+import { invalidateSeoAuditCache } from './seo-audit.js';
 import { synchronizeSeoRoutes } from './SeoRoutesSynchronizer.js';
 
 const ROUTES_REL_PATH = join('src', 'routes.tsx');
@@ -39,6 +40,7 @@ export const seoRoutesPostEditHandler: PostEditHandler = {
     try {
       syncResult = await synchronizeSeoRoutes(appId);
     } catch (error) {
+      invalidateSeoAuditCache(appId);
       // synchronizeSeoRoutes returns status:'skipped' for parse / non-literal-routes
       // cases, so anything that throws here is a real failure — a workspace that
       // can't be bound, or a non-not_found transport error re-thrown from a
@@ -51,7 +53,7 @@ export const seoRoutesPostEditHandler: PostEditHandler = {
       });
       return `${result}\nSEO sync failed: ${error instanceof Error ? error.message : String(error)} — verify src/lib/seo-routes.ts is up to date.`;
     }
-
+    invalidateSeoAuditCache(appId);
     logger.info(`seo.routes.sync.${syncResult.status}`, {
       appPath,
       appId,

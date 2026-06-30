@@ -21,7 +21,7 @@ import { getPublishStrategy, BuildError, PreviewNotRunningError, MissingStartCom
 import type { PublishContext } from './publish/strategies/index.js';
 import { getGitHookService } from '../agent-runtime.js';
 import { AdSensePublishManifestService } from '../../services/AdSensePublishManifestService.js';
-import { logSeoAuditReport, runSeoAudit } from '../../services/seo-audit.js';
+import { logSeoAuditReport, runSeoAudit, invalidateSeoAuditCache } from '../../services/seo-audit.js';
 import type { SeoAuditReport } from '../../services/seo-audit.js';
 import { reportPublishedComplianceStatus } from '../../services/compliance-publish-report.js';
 import { scoreAuditReport, detectRegressionFromSnapshot } from '../../services/SeoQualityScorer.js';
@@ -209,13 +209,12 @@ function runAsyncPublish(params: AsyncPublishParams): void {
       // catch so a failure here never overwrites the deployed phase.
       if (!seoAuditInProgress.has(appId)) {
         seoAuditInProgress.add(appId);
+        invalidateSeoAuditCache(appId);
         try {
           const resolvedUrl = resolvePublicHttpsFetchUrl(publishedUrl, bodyPublishedUrl);
           const report = await runSeoAudit({
             appId,
             appPath: publishContext.appPath,
-            publishedUrl: resolvedUrl,
-            isPublished: !!resolvedUrl,
             includeSourceScan: true,
           });
           logSeoAuditReport(appId, report, contextLogger);
@@ -698,21 +697,11 @@ router.post('/apps/:id/publish', requirePermission('canPublish'), requireSsoConf
         return;
       }
       seoAuditInProgress.add(id);
+      invalidateSeoAuditCache(id);
       try {
-        const bodyUrl: string | null = typeof req.body.publishedUrl === 'string' ? req.body.publishedUrl.trim() : null;
-        const publishedUrl: string | null = resolvePublicHttpsFetchUrl(app.publishedUrl, bodyUrl);
-        if ((app.publishedUrl?.trim() || bodyUrl) && !publishedUrl) {
-          contextLogger.warn('seo.audit.blocked-url', {
-            appId: id,
-            hadDbUrl: Boolean(app.publishedUrl?.trim()),
-            hadBodyUrl: Boolean(bodyUrl),
-          });
-        }
         const report: SeoAuditReport = await runSeoAudit({
           appId: id,
           appPath: app.path,
-          publishedUrl,
-          isPublished: !!publishedUrl,
           includeSourceScan: true,
         });
         logSeoAuditReport(id, report, contextLogger);

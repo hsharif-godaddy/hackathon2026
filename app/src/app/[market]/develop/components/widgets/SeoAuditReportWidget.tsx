@@ -284,7 +284,7 @@ function auditCardStatusLine(report: SeoAuditReportView, allRoutesPassed: boolea
   return t(
     'builder_seo_audit_status_all_passed_source',
     undefined,
-    'Source checks passed (Helmet and seo-routes). Publish for live HTML validation.',
+    'Source checks passed (Helmet and seo-routes). Publish to make your changes live.',
   )
 }
 

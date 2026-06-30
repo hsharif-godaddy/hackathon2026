@@ -404,6 +404,7 @@ const SYNC_MANIFEST = [
       '2880be775a2ab33ded88ffdd944a1b19', // preview-load fix - before server.warmup added
       'a229eb3610393644d6d07000792f96bb', // preview-load fix - warmup comment revision (within-branch)
       '91878f06aa011a0e51db432778c254c9', // feat/cms-ile-data-bound-slice1 - before contentPlugin() registration
+      'e248516684acc3749b0b08df0a6ea16c', // RUBICON-516 - indentation noise (revert)
     ],
     force: false,
     syncGroup: 'ssrMigration'

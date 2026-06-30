@@ -128,8 +128,6 @@ router.post('/apps/:id/seo-quality/capture', async (req, res) => {
     const report = await runSeoAudit({
       appId,
       appPath: app.path,
-      publishedUrl,
-      isPublished: !!publishedUrl,
       includeSourceScan: true,
     });
 

@@ -2,7 +2,6 @@ import { createTool } from '@airo/ai-lib';
 import { z } from 'zod';
 import { AppRepository } from '../../database/repositories/AppRepository.js';
 import { formatSeoAuditSummary, buildSeoAuditExecutionContext, runSeoCheck } from '../../services/seo-audit.js';
-import { resolveSiteSeoContextFromToolContext } from '../../services/site-published-url.js';
 import {
   buildSeoStrategyContext,
   seoStrategyInputSchema,
@@ -59,13 +58,9 @@ export const seoAnalyze = createTool(
 
     try {
       if (includeAudit) {
-        const siteSeo = await resolveSiteSeoContextFromToolContext(appId, context);
         const report = await runSeoCheck({
           appId,
           appPath: app.path,
-          publishedUrl: siteSeo.publishedUrl,
-          previewUrl: siteSeo.previewUrl ?? app.previewUrl ?? null,
-          isPublished: siteSeo.isPublished,
           includeSourceScan: includeSourceScan !== false,
           useCachedAudit: useCachedAudit !== false,
           strategyInput,

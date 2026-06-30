@@ -111,6 +111,7 @@ vi.mock('../agent-runtime.js', () => ({
 vi.mock('../../services/seo-audit.js', () => ({
   runSeoAudit: vi.fn().mockResolvedValue({}),
   logSeoAuditReport: vi.fn(),
+  invalidateSeoAuditCache: vi.fn(),
 }));
 
 vi.mock('../../services/compliance-publish-report.js', () => ({

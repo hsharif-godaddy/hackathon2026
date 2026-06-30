@@ -6,18 +6,10 @@ import type { ExecutionContext, ExecutionContextMetadata } from '@airo/ai-grants
 import { labelForSeoCheck } from './seo-audit-labels.js';
 import { SEO_SOURCE_CHECKS } from './SeoPageInjector.js';
 import {
-  extractRoutePageSignals,
-  recommendAeoSchemaTypes,
-  type AeoRouteSchemaGuidance,
-} from './aeo-schema-recommendations.js';
-import {
   buildSeoStrategyContext,
   type SeoStrategyContext,
   type SeoStrategyInput,
 } from './seo-strategy-context.js';
-import { extractSchemaTypesFromHtml, runAeoStructureChecks } from './aeo-structure-validator.js';
-import { fetchPublishedPageHtml, runSeoHtmlChecks, type SeoCheckResult } from './SeoValidator.js';
-import { resolveAppBaseUrl } from '../utils/share-token.js';
 
 export type { SeoStrategyContext } from './seo-strategy-context.js';
 
@@ -30,9 +22,6 @@ export type SeoAuditIssue = {
 };
 
 export function severityForSeoCheck(code: string): SeoIssueSeverity {
-  if (code.startsWith('fetch failed')) {
-    return 'critical';
-  }
   if (
     code === 'missing-title' ||
     code === 'empty-title' ||
@@ -56,16 +45,12 @@ export function severityForSeoCheck(code: string): SeoIssueSeverity {
   return 'warning';
 }
 
-export type SeoHtmlAuditLayer = 'published' | 'preview';
-
-export type SeoPageAuditLayer = SeoHtmlAuditLayer | 'source';
-
 export type SeoAuditMode = 'published' | 'preview' | 'source-only';
 
 export type SeoPageAudit = {
   path: string;
   url?: string;
-  layer: SeoPageAuditLayer;
+  layer: 'published' | 'preview' | 'source';
   ok: boolean;
   issues: SeoAuditIssue[];
 };
@@ -73,10 +58,10 @@ export type SeoPageAudit = {
 export type SeoAuditReport = {
   appId: string;
   auditedAt: string;
-  /** URL used for HTML route fetches (published or preview). */
+  /** Always null — kept for backward compat with cached reports. */
   htmlBaseUrl: string | null;
   auditMode: SeoAuditMode;
-  /** @deprecated Use htmlBaseUrl — kept for older cached reports. */
+  /** @deprecated Always null — kept for backward compat with cached reports. */
   publishedBaseUrl?: string | null;
   routes: string[];
   pages: SeoPageAudit[];
@@ -87,9 +72,9 @@ export type SeoAuditReport = {
   };
   /** Business/strategy context from seoAnalysis / runSeoCheck (optional on audit-only runs). */
   strategy?: SeoStrategyContext;
-  /** Per-route LLM schema guidance: recommended @types and JSON-LD fields (interactive audit only). */
-  schemaAeoByRoute?: Record<string, AeoRouteSchemaGuidance>;
-  /** @type values found in live JSON-LD per route (HTML audit). */
+  /** @deprecated Always undefined — kept for backward compat with cached reports. */
+  schemaAeoByRoute?: Record<string, { types: string[]; fields: string[] }>;
+  /** @deprecated Always undefined — kept for backward compat with cached reports. */
   schemaTypesByRoute?: Record<string, string[]>;
 };
 
@@ -110,16 +95,11 @@ export type SeoAuditExecutionContext = Pick<ExecutionContext, 'socketId'> & {
 export type RunSeoAuditParams = {
   appId: string;
   appPath: string;
-  publishedUrl?: string | null;
-  previewUrl?: string | null;
-  /** When false, HTML checks use preview (or source-only), not published_url alone. */
-  isPublished?: boolean;
   includeSourceScan?: boolean;
   maxRoutes?: number;
   /** Enables batched LLM schema recommendations when set (skipped for publish hook). */
   executionContext?: SeoAuditExecutionContext;
   strategyContext?: SeoStrategyContext;
-  skipSchemaRecommendations?: boolean;
 };
 
 export function buildSeoAuditExecutionContext(
@@ -147,37 +127,6 @@ export function buildSeoAuditExecutionContext(
   };
 }
 
-/** Choose published or preview base URL for HTML fetches; null when neither is available. */
-export function resolveHtmlAuditTarget(
-  publishedUrl?: string | null,
-  previewUrl?: string | null,
-  isPublished = false,
-): { baseUrl: string; htmlLayer: SeoHtmlAuditLayer } | null {
-  if (isPublished) {
-    const published = publishedUrl?.trim();
-    if (published) {
-      return { baseUrl: published, htmlLayer: 'published' };
-    }
-    return null;
-  }
-  const preview = previewUrl?.trim();
-  if (preview) {
-    return { baseUrl: preview, htmlLayer: 'preview' };
-  }
-  return null;
-}
-
-/** Preview fetch URL with share token; display/report URLs stay token-free. */
-export function resolveHtmlAuditFetchBaseUrl(
-  appId: string,
-  htmlTarget: { baseUrl: string; htmlLayer: SeoHtmlAuditLayer },
-): string {
-  if (htmlTarget.htmlLayer !== 'preview') {
-    return htmlTarget.baseUrl;
-  }
-  return resolveAppBaseUrl(htmlTarget.baseUrl, appId);
-}
-
 type ValidatorLogger = {
   warn: (event: string, data: unknown) => void;
   info: (event: string, data: unknown) => void;
@@ -187,7 +136,7 @@ const DEFAULT_MAX_ROUTES = 20;
 const SEO_ROUTES_FILE = join('src', 'lib', 'seo-routes.ts');
 const PAGES_DIR = join('src', 'pages');
 
-/** System/error pages — not indexable; excluded from HTML and source audits. */
+/** System/error pages — not indexable; excluded from source audits. */
 const SEO_AUDIT_EXCLUDED_ROUTES = new Set(['/404']);
 
 export function isExcludedFromSeoAudit(routePath: string): boolean {
@@ -262,7 +211,7 @@ export function discoverPageRoutes(appPath: string): string[] {
   return [...paths].sort();
 }
 
-/** Union of seo-routes registry paths and page file paths — used for HTML audit. */
+/** Union of seo-routes registry paths and page file paths. */
 export function discoverAllAuditableRoutes(appPath: string, maxRoutes = DEFAULT_MAX_ROUTES): string[] {
   const combined = new Set<string>();
   for (const routePath of discoverSeoRoutes(appPath)) {
@@ -274,25 +223,6 @@ export function discoverAllAuditableRoutes(appPath: string, maxRoutes = DEFAULT_
     combined.add(routePath);
   }
   return [...combined].sort().slice(0, maxRoutes);
-}
-
-function applyRegistryIssueIfNeeded(
-  page: SeoPageAudit,
-  routePath: string,
-  pageRoutes: Set<string>,
-  registeredSeoRoutes: Set<string>,
-): void {
-  if (!pageRoutes.has(routePath)) {
-    return;
-  }
-  if (registeredSeoRoutes.size === 0 || registeredSeoRoutes.has(routePath)) {
-    return;
-  }
-  if (page.issues.some(issue => issue.code === 'missing-seo-route')) {
-    return;
-  }
-  page.issues.push(...toIssues(['missing-seo-route']));
-  page.ok = page.issues.length === 0;
 }
 
 function applyOrphanedRegistryIssues(
@@ -323,63 +253,14 @@ function applyOrphanedRegistryIssues(
   }
 }
 
-function mergeSourceIssuesIntoPage(existing: SeoPageAudit, sourceAudit: SeoPageAudit, htmlLayer?: SeoHtmlAuditLayer): void {
+function mergeSourceIssuesIntoPage(existing: SeoPageAudit, sourceAudit: SeoPageAudit): void {
   const merged = new Map<string, SeoAuditIssue>();
   for (const issue of [...existing.issues, ...sourceAudit.issues]) {
     merged.set(issue.code, issue);
   }
   existing.issues = [...merged.values()];
   existing.ok = existing.issues.length === 0;
-  if (htmlLayer) {
-    existing.layer = htmlLayer;
-  }
 }
-
-export function buildPublishedPageUrl(baseUrl: string, routePath: string): string {
-  const parsed = new URL(baseUrl);
-  if (routePath === '/') {
-    const href = parsed.href;
-    return href.endsWith('/') && !href.endsWith('://') ? href.replace(/\/$/, '') || href : href;
-  }
-  const basePath = parsed.pathname.replace(/\/$/, '') || '';
-  const route = routePath.startsWith('/') ? routePath : `/${routePath}`;
-  parsed.pathname = `${basePath}${route}`.replace(/\/{2,}/g, '/') || '/';
-  return parsed.href;
-}
-
-export async function auditHtmlRoute(
-  baseUrl: string,
-  routePath: string,
-  htmlLayer: SeoHtmlAuditLayer,
-  recommendedTypes?: string[],
-): Promise<SeoPageAudit> {
-  const url = buildPublishedPageUrl(baseUrl, routePath);
-  const fetched = await fetchPublishedPageHtml(url);
-  if (!fetched.ok) {
-    return pageAudit(routePath, htmlLayer, [`fetch failed: ${fetched.detail}`], url);
-  }
-  return auditHtmlContent(fetched.html, routePath, htmlLayer, url, recommendedTypes);
-}
-
-export function auditHtmlContent(
-  html: string,
-  routePath: string,
-  htmlLayer: SeoHtmlAuditLayer,
-  url: string,
-  recommendedTypes?: string[],
-): SeoPageAudit {
-  const codes = [
-    ...runSeoHtmlChecks(html),
-    ...runAeoStructureChecks(html, routePath, {
-      pageUrl: url,
-      validateAgainstScannedUrl: htmlLayer === 'published',
-    }),
-  ];
-  return pageAudit(routePath, htmlLayer, codes, url);
-}
-
-/** @deprecated Use auditHtmlRoute */
-export const auditPublishedRoute = auditHtmlRoute;
 
 function listPageSourceFiles(appPath: string): string[] {
   const root = join(appPath, PAGES_DIR);
@@ -451,14 +332,9 @@ export async function runSeoAudit(params: RunSeoAuditParams): Promise<SeoAuditRe
   const {
     appId,
     appPath,
-    publishedUrl = null,
-    previewUrl = null,
-    isPublished = false,
     includeSourceScan = true,
     maxRoutes = DEFAULT_MAX_ROUTES,
-    executionContext,
     strategyContext,
-    skipSchemaRecommendations = false,
   } = params;
 
   const registeredSeoRoutes = new Set(
@@ -468,75 +344,8 @@ export async function runSeoAudit(params: RunSeoAuditParams): Promise<SeoAuditRe
   const routes = discoverAllAuditableRoutes(appPath, maxRoutes);
   const pages: SeoPageAudit[] = [];
 
-  const htmlTarget = resolveHtmlAuditTarget(publishedUrl, previewUrl, isPublished);
-  const auditMode: SeoAuditMode = htmlTarget
-    ? htmlTarget.htmlLayer
-    : 'source-only';
-  const htmlFetchBaseUrl = htmlTarget
-    ? resolveHtmlAuditFetchBaseUrl(appId, htmlTarget)
-    : null;
-
-  let schemaAeoByRoute: Record<string, AeoRouteSchemaGuidance> | undefined;
-  let schemaTypesByRoute: Record<string, string[]> | undefined;
-
-  if (htmlTarget && htmlFetchBaseUrl) {
-    type FetchedRoute = { routePath: string; html: string; url: string };
-    const fetchedRoutes: FetchedRoute[] = [];
-    const schemaTypesByRouteAccum: Record<string, string[]> = {};
-
-    for (const routePath of routes) {
-      const fetchUrl = buildPublishedPageUrl(htmlFetchBaseUrl, routePath);
-      const reportUrl = buildPublishedPageUrl(htmlTarget.baseUrl, routePath);
-      const fetched = await fetchPublishedPageHtml(fetchUrl);
-      if (!fetched.ok) {
-        const page = pageAudit(routePath, htmlTarget.htmlLayer, [`fetch failed: ${fetched.detail}`], reportUrl);
-        applyRegistryIssueIfNeeded(page, routePath, pageRoutes, registeredSeoRoutes);
-        pages.push(page);
-        continue;
-      }
-      fetchedRoutes.push({ routePath, html: fetched.html, url: reportUrl });
-    }
-
-    const shouldRecommend =
-      !skipSchemaRecommendations &&
-      executionContext !== undefined &&
-      fetchedRoutes.length > 0;
-
-    if (shouldRecommend) {
-      const recommendations = await recommendAeoSchemaTypes({
-        routes: fetchedRoutes.map(({ routePath, html }) => extractRoutePageSignals(html, routePath)),
-        strategy: strategyContext,
-        executionContext,
-      });
-      if (recommendations && Object.keys(recommendations).length > 0) {
-        schemaAeoByRoute = recommendations;
-      }
-    }
-
-    for (const { routePath, html, url: reportUrl } of fetchedRoutes) {
-      if (schemaAeoByRoute?.[routePath]) {
-        schemaTypesByRouteAccum[routePath] = extractSchemaTypesFromHtml(html);
-      }
-      const page = auditHtmlContent(
-        html,
-        routePath,
-        htmlTarget.htmlLayer,
-        reportUrl,
-        schemaAeoByRoute?.[routePath]?.types,
-      );
-      applyRegistryIssueIfNeeded(page, routePath, pageRoutes, registeredSeoRoutes);
-      pages.push(page);
-    }
-
-    if (Object.keys(schemaTypesByRouteAccum).length > 0) {
-      schemaTypesByRoute = schemaTypesByRouteAccum;
-    }
-  }
-
-  const htmlLayerForMerge = htmlTarget?.htmlLayer;
-
   if (includeSourceScan) {
-    const seenSource = new Set(pages.map(p => p.path));
+    const seenSource = new Set<string>();
     for (const file of listPageSourceFiles(appPath)) {
       const audit = auditSourceFile(file, appPath, registeredSeoRoutes);
       if (isExcludedFromSeoAudit(audit.path)) {
@@ -548,7 +357,7 @@ export async function runSeoAudit(params: RunSeoAuditParams): Promise<SeoAuditRe
       } else if (audit.issues.length > 0) {
         const existing = pages.find(p => p.path === audit.path);
         if (existing) {
-          mergeSourceIssuesIntoPage(existing, audit, htmlLayerForMerge);
+          mergeSourceIssuesIntoPage(existing, audit);
         }
       }
     }
@@ -558,14 +367,13 @@ export async function runSeoAudit(params: RunSeoAuditParams): Promise<SeoAuditRe
 
   const pagesWithIssues = pages.filter(p => !p.ok).length;
   const issueCount = pages.reduce((n, p) => n + p.issues.length, 0);
-  const htmlBaseUrl = htmlTarget?.baseUrl ?? null;
 
   return {
     appId,
     auditedAt: new Date().toISOString(),
-    htmlBaseUrl,
-    auditMode,
-    publishedBaseUrl: auditMode === 'published' ? htmlBaseUrl : null,
+    htmlBaseUrl: null,
+    auditMode: 'source-only',
+    publishedBaseUrl: null,
     routes,
     pages,
     summary: {
@@ -573,23 +381,16 @@ export async function runSeoAudit(params: RunSeoAuditParams): Promise<SeoAuditRe
       pagesWithIssues,
       issueCount,
     },
-    ...(schemaAeoByRoute && { schemaAeoByRoute }),
-    ...(schemaTypesByRoute && { schemaTypesByRoute }),
+    ...(strategyContext && { strategy: strategyContext }),
   };
 }
 
 export function formatSeoAuditSummary(report: SeoAuditReport): string {
-  const { summary, auditMode } = report;
+  const { summary } = report;
   const lines = [
     `SEO audit: ${summary.issueCount} issue(s) across ${summary.pagesWithIssues}/${summary.totalPages} page(s).`,
+    'Source code checks (Helmet + seo-routes).',
   ];
-  if (auditMode === 'published') {
-    lines.push('HTML checks ran against the published site.');
-  } else if (auditMode === 'preview') {
-    lines.push('HTML checks ran against preview. Publish to verify the live site.');
-  } else if (auditMode === 'source-only') {
-    lines.push('Preview/publish unreachable — only source code checks (Helmet + seo-routes).');
-  }
   for (const page of report.pages.filter(p => !p.ok).slice(0, 8)) {
     const labels = page.issues.map(i => i.label).join('; ');
     lines.push(`- ${page.path}: ${labels}`);
@@ -600,21 +401,11 @@ export function formatSeoAuditSummary(report: SeoAuditReport): string {
   return lines.join('\n');
 }
 
-export type SeoAuditCacheLookup = Pick<
-  RunSeoAuditParams,
-  'appId' | 'publishedUrl' | 'previewUrl' | 'isPublished' | 'includeSourceScan'
->;
+export type SeoAuditCacheLookup = Pick<RunSeoAuditParams, 'appId' | 'includeSourceScan'>;
 
 export function buildSeoAuditCacheKey(lookup: SeoAuditCacheLookup): string {
-  const htmlTarget = resolveHtmlAuditTarget(
-    lookup.publishedUrl,
-    lookup.previewUrl,
-    lookup.isPublished ?? false,
-  );
-  const auditMode: SeoAuditMode = htmlTarget ? htmlTarget.htmlLayer : 'source-only';
-  const htmlBase = htmlTarget?.baseUrl ?? '';
   const includeSource = lookup.includeSourceScan !== false ? '1' : '0';
-  return `${lookup.appId}|${auditMode}|${htmlBase}|${includeSource}`;
+  return `${lookup.appId}|${includeSource}`;
 }
 
 export function cacheSeoAuditReport(report: SeoAuditReport, lookup: SeoAuditCacheLookup): void {
@@ -632,6 +423,16 @@ export function getCachedSeoAuditReport(lookup: SeoAuditCacheLookup): SeoAuditRe
     return null;
   }
   return entry.report;
+}
+
+/** Invalidate all cached audit reports for an app (e.g. after source files are edited). */
+export function invalidateSeoAuditCache(appId: string): void {
+  const prefix = `${appId}|`;
+  for (const key of auditCache.keys()) {
+    if (key.startsWith(prefix)) {
+      auditCache.delete(key);
+    }
+  }
 }
 
 export async function runAndCacheSeoAudit(params: RunSeoAuditParams): Promise<SeoAuditReport> {
@@ -721,23 +522,12 @@ export function logSeoAuditReport(
 export async function logPublishedSeoAudit(
   appId: string,
   appPath: string,
-  publishedUrl: string,
   logger: ValidatorLogger,
 ): Promise<void> {
   const report = await runSeoAudit({
     appId,
     appPath,
-    publishedUrl,
-    isPublished: true,
-    includeSourceScan: false,
+    includeSourceScan: true,
   });
   logSeoAuditReport(appId, report, logger);
-}
-
-export function seoCheckResultFromPage(page: SeoPageAudit): SeoCheckResult {
-  if (page.ok) {
-    return { ok: true, warnings: [] };
-  }
-  const warnings = page.issues.map(i => i.code) as [string, ...string[]];
-  return { ok: false, warnings };
 }

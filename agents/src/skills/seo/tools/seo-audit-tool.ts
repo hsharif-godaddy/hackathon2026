@@ -10,7 +10,6 @@ import {
   runAndCacheSeoAudit,
   type SeoAuditReport,
 } from '../../../services/seo-audit.js';
-import { resolveSiteSeoContextFromToolContext } from '../../../services/site-published-url.js';
 
 const logger = Logger.create({ component: 'seo-skill-audit' });
 const appRepo = new AppRepository();
@@ -30,7 +29,7 @@ export const seoAuditTool: SkillToolDefinition = {
   name: 'audit',
   description: `Run a structured SEO audit for this app.
 
-Returns a user-visible report (HTML for every public page route plus seo-routes.ts entries from published or preview URL, plus optional source scan).
+Returns a user-visible report widget. Checks source files (Helmet tags, seo-routes registration) to reflect the latest code — always runs against source, never fetches the live site.
 
 For a full SEO check (strategy + audit widget), use global **seoAnalysis** on marketing. Use this tool only to re-run the technical audit without refreshing strategy.
 
@@ -50,15 +49,8 @@ STOP after this tool: do NOT edit files in the same turn. The UI shows a "Fix SE
     }
 
     const useCached = input.useCachedReport !== false;
-    const siteSeo = await resolveSiteSeoContextFromToolContext(
-      appId,
-      context as { socketId?: string },
-    );
     const cacheLookup = {
       appId,
-      publishedUrl: siteSeo.publishedUrl,
-      previewUrl: siteSeo.previewUrl ?? app.previewUrl ?? null,
-      isPublished: siteSeo.isPublished,
       includeSourceScan: input.includeSourceScan !== false,
     };
     let report: SeoAuditReport | null = useCached ? getCachedSeoAuditReport(cacheLookup) : null;

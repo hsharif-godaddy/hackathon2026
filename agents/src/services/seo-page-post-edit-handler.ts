@@ -17,6 +17,7 @@ import type {
   PostEditContext,
   PostEditHandler,
 } from '../tools/ai-lib-tools/post-edit-handlers.js';
+import { invalidateSeoAuditCache } from './seo-audit.js';
 import { isPageFile, validateSeoSource } from './SeoPageInjector.js';
 import { recordPageSeoState } from './SeoPageRegistry.js';
 
@@ -45,6 +46,7 @@ export const seoPagePostEditHandler: PostEditHandler = {
 
     const { blocking, advisory } = validateSeoSource(content);
     recordPageSeoState(appId, relPath, blocking);
+    invalidateSeoAuditCache(appId);
     logger.info('seo.page.validate', {
       appId,
       filePath,
