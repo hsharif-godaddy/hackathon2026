@@ -419,8 +419,6 @@ export default makeGasket({
     dataRetrieval: {
       hivemind: {
         settings: [
-          // Canonical ID: EXPERIMENT_IDS.ventureHomeLogo in app/src/config/experiments.ts
-          'vh_dashboard_logo_to_airo_builder_redirect',
           // Canonical ID: EXPERIMENT_IDS.initialAgent in app/src/config/experiments.ts
           'airo-build-initial-agent',
           // Canonical ID: EXPERIMENT_IDS.aabProgressTracker in app/src/config/experiments.ts

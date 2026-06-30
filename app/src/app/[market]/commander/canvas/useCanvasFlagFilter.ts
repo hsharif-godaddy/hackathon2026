@@ -8,7 +8,6 @@ import { CANVAS_REGISTRY, type CanvasId } from './registry'
 const CANVAS_FLAG_NAMES = [
   'app-builder-inbox-button',
   'appbuilder-analytics',
-  'appbuilder-brandbook',
   'appbuilder-domain-top-level',
   'appbuilder-github-sync',
   'appbuilder-marketing-campaigns',
@@ -29,7 +28,6 @@ export function useCanvasFlagFilter(): (canvasId: CanvasId) => boolean {
   const flags: Record<CanvasFlagName, boolean> = {
     'app-builder-inbox-button': useSwitchboard('app-builder-inbox-button') === true,
     'appbuilder-analytics': useSwitchboard('appbuilder-analytics') === true,
-    'appbuilder-brandbook': useSwitchboard('appbuilder-brandbook') === true,
     'appbuilder-domain-top-level': useSwitchboard('appbuilder-domain-top-level') === true,
     'appbuilder-github-sync': useSwitchboard('appbuilder-github-sync') === true,
     'appbuilder-marketing-campaigns': useSwitchboard('appbuilder-marketing-campaigns') === true,

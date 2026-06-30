@@ -1,9 +1,9 @@
 /**
  * Brand Book Tab E2E Smoke Test
  *
- * Tests the Brand Book tab in the develop page header:
- * - Tab renders when appbuilder-brandbook flag is enabled
- * - Clicking the tab shows the Brand Book view (loading or populated)
+ * Tests the Brand tab in the develop page header:
+ * - Tab renders unconditionally (appbuilder-brandbook flag removed in AIROBUILD-2075)
+ * - Clicking the tab shows the Brand overlay (Brand Design Kit or Brand Book)
  * - Switching back to Preview restores the preview iframe
  *
  * Strategy:
@@ -100,13 +100,14 @@ test.describe('Brand Book Tab', () => {
     await dismissOverlays(page);
     console.log('Step 2: Switching to Brand Book tab...');
 
-    // Brand Book tab is a button in the header ButtonGroup (role="group" wrapper since #4291).
-    const brandBookTab = page.getByRole('button', { name: /logo.*brand/i });
+    // Brand tab is a button in the header ButtonGroup (role="group" wrapper since #4291).
+    // Renamed from "Logo & Brand" to "Brand" in AIROBUILD-2075.
+    const brandBookTab = page.getByRole('button', { name: /^brand$/i });
 
-    // If the flag is not enabled, the tab won't exist — skip gracefully
+    // Defensive: if the Brand tab isn't present for any reason, skip gracefully
     const tabVisible = await brandBookTab.isVisible().catch(() => false);
     if (!tabVisible) {
-      console.log('  Brand Book tab not visible (flag may be disabled). Skipping.');
+      console.log('  Brand tab not visible; skipping.');
       await logTestResult(page, testInfo);
       return;
     }
@@ -119,12 +120,13 @@ test.describe('Brand Book Tab', () => {
     // ========================================
     console.log('Step 3: Verifying Brand Book content...');
 
-    // Either the loading state or the populated view should be visible
-    const brandBookView = page.getByTestId('brand-book-view');
-    const brandBookLoading = page.getByTestId('brand-book-loading');
+    // The Brand overlay shows either the editable Brand Design Kit (design-kit flow)
+    // or the read-only Brand Book (every other app); both render inside the same
+    // overlay wrapper, so assert that wrapper (AIROBUILD-2075).
+    const brandOverlay = page.getByTestId('brand-book-overlay');
 
-    await expect(brandBookView.or(brandBookLoading)).toBeVisible({ timeout: DEFAULT_TIMEOUT });
-    console.log('  Brand Book content visible (view or loading state)');
+    await expect(brandOverlay).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+    console.log('  Brand overlay content visible');
 
     // Preview iframe is still in the DOM (overlay architecture preserves
     // PreviewCode state) but rendered behind the Brand Book overlay with
@@ -148,9 +150,9 @@ test.describe('Brand Book Tab', () => {
     await previewIframe.waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT });
     console.log('  Preview iframe restored');
 
-    // Brand Book should no longer be visible
-    await expect(brandBookView).not.toBeVisible();
-    console.log('  Brand Book view hidden after switching back');
+    // Brand overlay should no longer be visible
+    await expect(brandOverlay).not.toBeVisible();
+    console.log('  Brand overlay hidden after switching back');
 
     await logTestResult(page, testInfo);
   });

@@ -2,8 +2,6 @@
  * Hivemind experiment IDs. Single source of truth for A/B and engagement experiments.
  */
 export const EXPERIMENT_IDS = {
-  /** Venture Home logo redirect: enable Brand Book for users entering via Venture Home */
-  ventureHomeLogo: 'vh_dashboard_logo_to_airo_builder_redirect',
   /** Initial agent selection: maps cohort → agent profile. Only one agent-config experiment should run at a time. */
   initialAgent: 'airo-build-initial-agent',
   /** BMS A/A: assigns homepage new users to BMS for baseline measurement. Both cohorts receive BMS — A/A only. */

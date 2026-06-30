@@ -33,28 +33,28 @@ describe('useCanvasFlagFilter', () => {
   })
 
   it('only treats the literal value true as enabling a flag', () => {
-    switchboardValues['appbuilder-brandbook'] = 'true'
+    switchboardValues['appbuilder-media-library'] = 'true'
     const { result: stringResult } = renderHook(() => useCanvasFlagFilter())
-    expect(stringResult.current(CanvasId.Brand)).toBe(false)
+    expect(stringResult.current(CanvasId.Media)).toBe(false)
 
-    switchboardValues['appbuilder-brandbook'] = 1
+    switchboardValues['appbuilder-media-library'] = 1
     const { result: numberResult } = renderHook(() => useCanvasFlagFilter())
-    expect(numberResult.current(CanvasId.Brand)).toBe(false)
+    expect(numberResult.current(CanvasId.Media)).toBe(false)
 
-    switchboardValues['appbuilder-brandbook'] = undefined
+    switchboardValues['appbuilder-media-library'] = undefined
     const { result: undefResult } = renderHook(() => useCanvasFlagFilter())
-    expect(undefResult.current(CanvasId.Brand)).toBe(false)
+    expect(undefResult.current(CanvasId.Media)).toBe(false)
 
-    switchboardValues['appbuilder-brandbook'] = true
+    switchboardValues['appbuilder-media-library'] = true
     const { result: trueResult } = renderHook(() => useCanvasFlagFilter())
-    expect(trueResult.current(CanvasId.Brand)).toBe(true)
+    expect(trueResult.current(CanvasId.Media)).toBe(true)
   })
 
   it('uses descriptor.switchboardFlag to decide each canvas independently', () => {
-    switchboardValues['appbuilder-brandbook'] = true
+    switchboardValues['appbuilder-media-library'] = true
     switchboardValues['appbuilder-domain-top-level'] = false
     const { result } = renderHook(() => useCanvasFlagFilter())
-    expect(result.current(CanvasId.Brand)).toBe(true)
+    expect(result.current(CanvasId.Media)).toBe(true)
     expect(result.current(CanvasId.Domain)).toBe(false)
   })
 })

@@ -120,6 +120,22 @@ describe('design-kit direct-edit routes', () => {
     expect(syncBrandTokensCss).toHaveBeenCalled();
   });
 
+  it('PUT colors returns 500 and does NOT persist when the CSS write fails (prevents name-only palette clobber, AIROBUILD-2075)', async () => {
+    updateCssColorPalette.mockResolvedValueOnce({ success: false, palette: {}, message: 'Invalid hex color: #zzz' } as never);
+
+    const res = await request(makeApp())
+      .put('/apps/app1234567/design-kit/colors')
+      .send({ name: 'Indigo', palette: { primary: '#3b5bdb', background: '#ffffff' } });
+
+    expect(res.status).toBe(500);
+    // The bug was persisting `{ name, ...{} }` (colours dropped). Must not write the key.
+    expect(setMock).not.toHaveBeenCalledWith(
+      expect.anything(),
+      'brand.colors.palette',
+      expect.anything(),
+    );
+  });
+
   it('PUT colors returns 400 when palette.primary/background missing', async () => {
     const res = await request(makeApp())
       .put('/apps/app1234567/design-kit/colors')

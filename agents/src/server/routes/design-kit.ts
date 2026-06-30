@@ -53,6 +53,15 @@ router.put('/apps/:id/design-kit/colors', validateAppOwnership, async (req: Requ
         : (palette as ColorPalette);
 
     const result = await updateCssColorPalette(workspace.files, paletteInput);
+    if (!result.success) {
+      // Never persist a failed apply: result.palette is `{}` on failure, so storing it
+      // would overwrite brand.colors.palette with a name-only object and the colours
+      // vanish from the Brand kit (AIROBUILD-2075). Surface the underlying reason —
+      // updateCssColorPalette swallows the throw into result.message, which was being
+      // discarded here, hiding the root cause.
+      logger.error('designKit.colors.css_write_failed', { appId, message: result.message });
+      res.status(500).json({ error: 'Failed to apply colors' }); return;
+    }
     const stored = { name: typeof name === 'string' ? name : 'Custom', ...result.palette };
     const writeResult = await memory.set(scope, 'brand.colors.palette', stored);
     if (!writeResult.success) {

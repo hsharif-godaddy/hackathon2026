@@ -83,9 +83,8 @@ test.describe('E2E - Critical Path', () => {
      * in the canonical environment. On non-prod they are still optional (under
      * flags or staged rollout), so a soft-skip is fine there.
      *
-     * Brand Book was previously a Step 10 here but is gated by the
-     * appbuilder-brandbook switchboard flag and is not enabled for every
-     * account on prod, so it now lives in the regression suite.
+     * Brand was previously a Step 10 here; it now lives in the
+     * regression suite (develop-brand-book.spec.ts).
      */
     const optionalFeaturesAreRequired = env === 'prod';
     // Auto-publish via AI prompt requires the full AI publish tooling available

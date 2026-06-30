@@ -1,5 +1,14 @@
-import { generatePalette, getContrastRatio, getLuminance } from '../css-color-tool.js'
+import { generatePalette, getContrastRatio, getLuminance, updateCssColorPalette } from '../css-color-tool.js'
+import type { WorkspaceFiles } from '../../workspace/files.js'
 import { describe, it, expect } from 'vitest'
+
+/** Minimal WorkspaceFiles stub for the color writer (only view/write are used). */
+function fakeFiles(content: string): WorkspaceFiles {
+  return {
+    view: async () => ({ content }),
+    write: async () => undefined,
+  } as unknown as WorkspaceFiles
+}
 
 describe('css-color-tool', function packageTests() {
   describe('#generatePalette', function generateTests() {
@@ -228,6 +237,35 @@ describe('css-color-tool — AIROBUILD-2976 suggested color schemes are AA-safe'
       const b = generatePalette({ primary: opt.primary, background: opt.background, ...(opt.card ? { card: opt.card } : {}) })
       expect(a).toEqual(b)
     }
+  })
+})
+
+describe('css-color-tool — AIROBUILD-2075 colour-write hardening', function hardeningTests() {
+  it('accepts 3-digit shorthand hex without throwing', function shorthandHex() {
+    // The old 6-digit-only hexToRgb threw on `#abc`, which upstream blanked the palette.
+    const result = generatePalette({ primary: '#abc' })
+    expect(result.primary).toBe('#abc')
+    expect(result.chart1).toMatch(/^#[0-9a-f]{6}$/i)
+  })
+
+  it('updateCssColorPalette fills a "complete" palette that is missing fields', async function fillsGaps() {
+    // primaryForeground + theme flip isCompletePalette true, but charts/foregrounds are
+    // absent — the old shortcut passed this straight to the writer and threw on undefined.
+    const partialComplete = {
+      primary: '#3b5bdb', background: '#ffffff', primaryForeground: '#ffffff', theme: 'light',
+    } as unknown as Parameters<typeof updateCssColorPalette>[1]
+    const result = await updateCssColorPalette(fakeFiles(':root{--primary: 0 0% 0%;}'), partialComplete)
+    expect(result.success).toBe(true)
+    expect(result.palette.chart1).toMatch(/^#[0-9a-f]{6}$/i)
+    expect(result.palette.cardForeground).toBeTypeOf('string')
+  })
+
+  it('updateCssColors skips an invalid hex var instead of throwing the whole write', async function skipsInvalid() {
+    const withBadBorder = {
+      primary: '#3b5bdb', background: '#ffffff', primaryForeground: '#ffffff', theme: 'light', border: 'var(--unresolved-token)',
+    } as unknown as Parameters<typeof updateCssColorPalette>[1]
+    const result = await updateCssColorPalette(fakeFiles(':root{--primary: 0 0% 0%;--border: 0 0% 0%;}'), withBadBorder)
+    expect(result.success).toBe(true)
   })
 })
 

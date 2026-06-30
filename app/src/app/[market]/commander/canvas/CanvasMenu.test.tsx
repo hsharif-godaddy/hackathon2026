@@ -55,7 +55,6 @@ describe('CanvasMenu', () => {
   })
 
   it('hides any canvas already open in the tab strip', async () => {
-    switchboardValues['appbuilder-brandbook'] = true
     resetCommanderStore([CanvasId.Preview, CanvasId.Brand])
 
     await openMenu()

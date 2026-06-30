@@ -292,7 +292,6 @@ export default function PreviewPane({
   const isInboxEnabled = useSwitchboard('app-builder-inbox-button');
   const isAutomationsEnabled = useSwitchboard('appbuilder-automations');
   const isMarketingCampaignsEnabled = useSwitchboard('appbuilder-marketing-campaigns') === true;
-  const isBrandBookEnabled = useSwitchboard('appbuilder-brandbook') === true;
   const isCanvasTabsEnabled = useCommanderCanvasTabsEnabled();
   /** Switchboard: translucent creation overlay + edit chip behavior. */
   const isPreviewEnhancedOverlaysEnabled = useSwitchboard('appbuilder-preview-enhanced-overlays') === true;

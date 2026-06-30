@@ -1,7 +1,7 @@
 import type { JSX } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import { FONT_THEMES, type FontInfo, type GoogleFontEntry, loadGoogleFontsCatalog, TAG_EXAMPLE_FONT_FAMILIES,TAG_EXAMPLE_FONTS } from '@airo/shared/fonts';
-import text from '@ux/text';
+import Button from '@ux/button';
 
 import type { FontChoice } from './designKitApi';
 import { useDismiss } from './DesignKitPanels';
@@ -128,10 +128,10 @@ function Combobox({
         aria-haspopup="listbox"
         aria-expanded={open}
         onClick={() => { setOpen((o) => !o); setQuery(''); setScrollTop(0); onOpen(); }}
-        className="flex w-full cursor-pointer items-center justify-between gap-2 rounded-lg border border-intents-ux-box-borderColor bg-intents-ux-box-backgroundColor p-1 text-left transition-colors hover:border-[color-mix(in_srgb,var(--color-ai)_45%,transparent)]"
+        className="flex w-full cursor-pointer items-center gap-2 rounded-md text-left transition-colors"
       >
-        <span className="text-sm text-intents-ux-box-foregroundColor">{value}</span>
-        <svg viewBox="0 0 24 24" className={`h-4 w-4 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: '#9a9aa3' }}><path d="M6 9l6 6 6-6" /></svg>
+        <span className="min-w-0 truncate text-2xl leading-none text-intents-ux-box-foregroundColor" style={{ fontFamily: value }}>{value}</span>
+        <svg viewBox="0 0 24 24" className={`h-5 w-5 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: '#9a9aa3' }}><path d="M6 9l6 6 6-6" /></svg>
       </button>
       {open && (
         <div className="absolute z-30 mt-1 w-full rounded-lg border border-intents-ux-box-borderColor bg-intents-ux-box-backgroundColor p-1.5 shadow-[0_12px_32px_-8px_rgba(24,24,30,0.28)]">
@@ -246,10 +246,9 @@ export function FontPicker({
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       <div>
-        <span className="mb-1 block text-[11px] uppercase tracking-[0.1em] text-intents-ux-boxPassive-foregroundColor">Headline text</span>
-        <p className="mb-2 text-4xl leading-none text-intents-ux-box-foregroundColor" style={{ fontFamily: headingName }}>{headingName}</p>
+        <span className="mb-1 block text-xs font-medium text-intents-ux-boxPassive-foregroundColor">Headline text</span>
         <Combobox
           testId="heading-font-select"
           value={headingName}
@@ -259,8 +258,7 @@ export function FontPicker({
         />
       </div>
       <div>
-        <span className="mb-1 block text-[11px] uppercase tracking-[0.1em] text-intents-ux-boxPassive-foregroundColor">Body text</span>
-        <p className="mb-2 text-3xl leading-none text-intents-ux-box-foregroundColor" style={{ fontFamily: bodyName }}>{bodyName}</p>
+        <span className="mb-1 block text-xs font-medium text-intents-ux-boxPassive-foregroundColor">Body text</span>
         <Combobox
           testId="body-font-select"
           value={bodyName}
@@ -270,27 +268,19 @@ export function FontPicker({
         />
       </div>
 
-      {/* Curated one-click pairings, labelled so users know what the buttons do.
-          Mirrors the Palette card's footer-under-a-divider treatment. */}
-      <div className="border-t border-intents-ux-box-borderColor pt-2.5">
-        <span className="mb-1.5 block text-[11px] uppercase tracking-[0.1em] text-intents-ux-boxPassive-foregroundColor">
-          Try a pairing
-        </span>
-        <text.span as="caption" emphasis="passive" className="mb-2 block">
-          Predefined font pairings — pick one to set both fonts at once.
-        </text.span>
-        <div className="flex flex-wrap gap-1.5">
+      {/* Curated one-click pairings (Figma "Recommended") — set both fonts at once. */}
+      <div>
+        <span className="mb-1.5 block text-xs font-medium text-intents-ux-boxPassive-foregroundColor">Recommended</span>
+        <div className="flex flex-wrap gap-2">
           {Object.entries(FONT_THEMES).map(([id, theme]) => (
-            <button
+            <Button
               key={id}
-              type="button"
               data-testid={`pairing-${id}`}
+              design="secondary"
+              size="sm"
               onClick={() => onApply(theme.headerFont, theme.bodyFont)}
-              title={theme.description}
-              className="rounded-full border border-intents-ux-box-borderColor px-2.5 py-1 text-xs text-intents-ux-box-foregroundColor transition-colors hover:border-[color-mix(in_srgb,var(--color-ai)_45%,transparent)]"
-            >
-              {theme.name}
-            </button>
+              text={theme.name}
+            />
           ))}
         </div>
       </div>

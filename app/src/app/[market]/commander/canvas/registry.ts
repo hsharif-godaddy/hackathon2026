@@ -79,14 +79,13 @@ export const CANVAS_REGISTRY: Record<CanvasId, CanvasDescriptor> = {
   },
   [CanvasId.Brand]: {
     id: CanvasId.Brand,
-    labelKey: 'builder_canvas_brandbook',
-    fallbackLabel: 'Brand & Logo',
+    labelKey: 'builder_canvas_brand',
+    fallbackLabel: 'Brand',
     Icon: ColorPaletteIcon,
     dismissible: true,
     defaultOpen: true,
     defaultOrder: 1,
     activation: { viewMode: ViewMode.BRAND },
-    switchboardFlag: 'appbuilder-brandbook',
   },
   [CanvasId.Domain]: {
     id: CanvasId.Domain,

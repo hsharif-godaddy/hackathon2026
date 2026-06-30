@@ -66,7 +66,7 @@ describe('experimentsLine', function experimentsLineSuite() {
       mockUseGasketData.mockReset();
       mockUseGasketData.mockReturnValue({
         switchboard: {
-          'vh_dashboard_logo_to_airo_builder_redirect': { cohortId: 'control' },
+          'aab_progress_tracker': { cohortId: 'control' },
         },
       });
     });
@@ -75,24 +75,24 @@ describe('experimentsLine', function experimentsLineSuite() {
       const { result } = renderHookWithProviders(() => useExperimentsLine());
 
       expect(result.current).toBe(
-        '<https://hivemind.gdcorp.tools/experiments/vh_dashboard_logo_to_airo_builder_redirect|vh_dashboard_logo_to_airo_builder_redirect>: control',
+        '<https://hivemind.gdcorp.tools/experiments/aab_progress_tracker|aab_progress_tracker>: control',
       );
     });
 
     it('updates when switchboard reference changes', function updatesOnChange() {
       const { result, rerender } = renderHookWithProviders(() => useExperimentsLine());
 
-      expect(result.current).toContain('vh_dashboard_logo_to_airo_builder_redirect');
+      expect(result.current).toContain('aab_progress_tracker');
 
       mockUseGasketData.mockReturnValue({
         switchboard: {
-          'vh_dashboard_logo_to_airo_builder_redirect': { cohortId: 'treatment' },
+          'aab_progress_tracker': { cohortId: 'treatment' },
         },
       });
       rerender();
 
       expect(result.current).toBe(
-        '<https://hivemind.gdcorp.tools/experiments/vh_dashboard_logo_to_airo_builder_redirect|vh_dashboard_logo_to_airo_builder_redirect>: treatment',
+        '<https://hivemind.gdcorp.tools/experiments/aab_progress_tracker|aab_progress_tracker>: treatment',
       );
     });
   });

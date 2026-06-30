@@ -29,7 +29,6 @@ import IconButton from '@/app/[market]/develop/components/IconButton';
 import { InboxUnresolvedBadge } from '@/app/[market]/develop/components/layout/InboxUnresolvedBadge';
 import ShareAccess from '@/app/[market]/develop/components/layout/ShareAccess';
 import ShareLink from '@/app/[market]/develop/components/layout/ShareLink';
-import { useIsDesignKitWizardProfile } from '@/app/[market]/develop/components/preview/design-kit-wizard/isDesignKitWizardProfile'
 import DeviceSelector from '@/app/[market]/develop/components/preview/DeviceSelector'
 import { CAMPAIGN_KEYS, translateCampaignKey } from '@/app/[market]/develop/components/settings/Campaigns/copy';
 import { useOpenMarketingCampaign } from '@/app/[market]/develop/components/settings/Campaigns/useOpenMarketingCampaign';
@@ -72,11 +71,6 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
   const isEditModeCueEnabled = useSwitchboard('appbuilder-edit-mode-cue') === true;
   const editButtonRef = useRef<HTMLDivElement>(null);
   const { visible: editNudgeVisible, dismissForever: dismissEditNudge } = useEditNudgeTooltip();
-  const isBrandBookEnabled = useSwitchboard('appbuilder-brandbook');
-  // The design-kit wizard renders inside the "Logo & Brand" tab, so the tab must be
-  // visible whenever the wizard profile is active (gated on the appbuilder-agent-profile
-  // switchboard value), even if the generic brandbook flag is off.
-  const showDesignKitWizard = useIsDesignKitWizardProfile();
   const isTopLevelDomainEnabled = useSwitchboard('appbuilder-domain-top-level');
   const isInboxEnabled = useSwitchboard('app-builder-inbox-button');
   const isAutomationsEnabled = useSwitchboard('appbuilder-automations');
@@ -256,14 +250,12 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
                     disabled={isVersionHistoryOpen}
                   />
                 )}
-                {(isBrandBookEnabled || showDesignKitWizard) && (
-                  <ButtonGroup.Item
-                    value={ViewMode.BRAND}
-                    icon={<ColorPaletteIcon className="size-2.5" />}
-                    label="Logo & Brand"
-                    disabled={isVersionHistoryOpen}
-                  />
-                )}
+                <ButtonGroup.Item
+                  value={ViewMode.BRAND}
+                  icon={<ColorPaletteIcon className="size-2.5" />}
+                  label={t('builder_canvas_brand')}
+                  disabled={isVersionHistoryOpen}
+                />
                 {isMediaCanvasEnabled && (
                   <ButtonGroup.Item
                     value={ViewMode.MEDIA}

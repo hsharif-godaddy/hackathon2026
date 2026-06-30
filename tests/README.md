@@ -139,10 +139,8 @@ A single test that creates ONE app and exercises all critical features sequentia
 10. Publish button verification
 11. Page refresh recovery
 
-Use this for: post-deploy validation, CI, quick smoke checks. Brand Book lives
-in the regression suite (`develop-brand-book.spec.ts`) because it's gated by
-the `appbuilder-brandbook` switchboard flag and isn't enabled for every prod
-account.
+Use this for: post-deploy validation, CI, quick smoke checks. The Brand tab
+lives in the regression suite (`develop-brand-book.spec.ts`).
 
 ### E2E v2 (Split + Parallel)
 

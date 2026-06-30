@@ -103,11 +103,11 @@ describe('useCanvasSync', () => {
   })
 
   it('resets activeCanvasId to PINNED when the active canvas is flag-gated-off', () => {
-    // Brand requires appbuilder-brandbook (off in this test). Persisted/active
-    // Brand should be force-reset to PINNED so useCanvasSync never drives the
+    // Media requires appbuilder-media-library (off in this test). Persisted/active
+    // Media should be force-reset to PINNED so useCanvasSync never drives the
     // develop store into a viewMode whose tab is filtered out of the strip.
     act(() => {
-      useCommanderStore.setState({ activeCanvasId: CanvasId.Brand })
+      useCommanderStore.setState({ activeCanvasId: CanvasId.Media })
     })
     renderHook(() => useCanvasSync())
     expect(useCommanderStore.getState().activeCanvasId).toBe(PINNED_CANVAS_ID)

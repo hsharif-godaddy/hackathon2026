@@ -9,7 +9,13 @@ import { logger } from '../logging/index.js'
  * Parse hex color to RGB
  */
 function hexToRgb(hex: string): { r: number; g: number; b: number } {
-  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex)
+  // Expand 3-digit shorthand (#fff -> #ffffff). The old 6-digit-only regex rejected
+  // valid 3-digit hex and threw — which upstream blanked the saved palette. Accept it.
+  const cleaned = typeof hex === 'string' ? hex.trim().replace(/^#/, '') : ''
+  const full = /^[a-f\d]{3}$/i.test(cleaned)
+    ? cleaned.split('').map(function double(c) { return c + c }).join('')
+    : cleaned
+  const result = /^([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(full)
   if (!result || !result[1] || !result[2] || !result[3]) {
     throw new Error(`Invalid hex color: ${hex}`)
   }
@@ -452,6 +458,17 @@ function generateChartColors(primary: string): string[] {
   ]
 }
 
+/** Own enumerable entries with a non-null/undefined value. Used to overlay a caller's
+ *  explicitly-set palette fields onto a generated base without letting `undefined`
+ *  holes punch through (which would later throw in updateCssColors). */
+function definedOnly(obj: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(obj)) {
+    if (v !== undefined && v !== null) out[k] = v
+  }
+  return out
+}
+
 /**
  * Update CSS custom properties in globals.css
  */
@@ -501,10 +518,19 @@ export async function updateCssColors(files: WorkspaceFiles, palette: GeneratedP
     '--sidebar-ring': palette.primary
   }
 
-  // Update each CSS variable
+  // Update each CSS variable. A single malformed/undefined value must NOT abort the
+  // whole write — that throw is what upstream turned into a blanked, name-only palette.
+  // Skip the bad var (leaving the prior globals.css value) and record it.
+  const skipped: string[] = []
   for (const [varName, hexColor] of Object.entries(colorMap)) {
-    const { r, g, b } = hexToRgb(hexColor)
-    const { h, s, l } = rgbToHsl(r, g, b)
+    let rgb: { r: number; g: number; b: number }
+    try {
+      rgb = hexToRgb(hexColor)
+    } catch {
+      skipped.push(`${varName}=${String(hexColor)}`)
+      continue
+    }
+    const { h, s, l } = rgbToHsl(rgb.r, rgb.g, rgb.b)
 
     // Format as HSL: "hue saturation% lightness%"
     const cssValue = `${Math.round(h)} ${Math.round(s)}% ${Math.round(l)}%`
@@ -512,6 +538,10 @@ export async function updateCssColors(files: WorkspaceFiles, palette: GeneratedP
     // Match pattern: --variable-name: value;
     const regex = new RegExp(`(${varName}:\\s*)[^;]+;`, 'g')
     content = content.replace(regex, `$1${cssValue};`)
+  }
+
+  if (skipped.length > 0) {
+    logger.warn('cssColorTool.updateCssColors.skipped_invalid', { count: skipped.length, vars: skipped })
   }
 
   await files.write({ path: cssRelativePath, content })
@@ -534,13 +564,19 @@ export async function updateCssColorPalette(
   input: ColorPalette
 ): Promise<CssColorToolResult> {
   try {
-    // Check if input is already a complete generated palette (from session state)
-    // GeneratedPalette has foreground colors and theme property, ColorPalette doesn't
-    const inputAny = input as any
+    // Check if input is already a complete generated palette (from session state).
+    // GeneratedPalette has foreground colors and theme property, ColorPalette doesn't.
+    const inputAny = input as unknown as Record<string, unknown>
     const isCompletePalette = !!(inputAny.primaryForeground && inputAny.theme)
 
-    // If already complete, use it directly; otherwise generate
-    const palette = isCompletePalette ? (input as unknown as GeneratedPalette) : generatePalette(input)
+    // Even a "complete" palette can be missing newer fields (charts, other foregrounds,
+    // card, border) — and a single undefined field throws in updateCssColors, blanking
+    // the palette upstream. generatePalette fills EVERY field; overlay the caller's
+    // explicitly-set values so a complete palette is preserved exactly while gaps fill.
+    const base = generatePalette(input)
+    const palette: GeneratedPalette = isCompletePalette
+      ? ({ ...base, ...definedOnly(inputAny) } as GeneratedPalette)
+      : base
 
     // Update CSS file
     await updateCssColors(files, palette)

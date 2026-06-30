@@ -39,7 +39,6 @@ const LOCATION = 'develop';
 
 export default function CommanderHeader() {
   const t = useTranslations();
-  const isBrandBookEnabled = useSwitchboard('appbuilder-brandbook');
   const isTopLevelDomainEnabled = useSwitchboard('appbuilder-domain-top-level');
   const isInboxEnabled = useSwitchboard('app-builder-inbox-button');
   const isCanvasEnabled = useCommanderCanvasEnabled();
@@ -148,17 +147,15 @@ export default function CommanderHeader() {
                     />
                   )}
 
-                  {isBrandBookEnabled && (
-                    <IconButton
-                      icon={<ColorPaletteIcon className="size-2.5" />}
-                      label="Logo & Brand"
-                      active={viewMode === ViewMode.BRAND}
-                      disabled={isVersionHistoryOpen}
-                      onClick={() => handleViewModeButtonChange(ViewMode.BRAND)}
-                      showLabelAlways
-                      ghost
-                    />
-                  )}
+                  <IconButton
+                    icon={<ColorPaletteIcon className="size-2.5" />}
+                    label={t('builder_canvas_brand')}
+                    active={viewMode === ViewMode.BRAND}
+                    disabled={isVersionHistoryOpen}
+                    onClick={() => handleViewModeButtonChange(ViewMode.BRAND)}
+                    showLabelAlways
+                    ghost
+                  />
 
                   {isInboxEnabled && inboxBrandId && (
                     <IconButton

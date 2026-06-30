@@ -9,6 +9,8 @@ import { useCanvasSync } from '@/app/[market]/commander/canvas/useCanvasSync'
 import CanvasActionsDock from '@/app/[market]/commander/components/chat/CanvasActionsDock'
 import { CommanderPosition } from '@/app/[market]/commander/types'
 import BrandBookView from '@/app/[market]/develop/components/preview/brand-book'
+import { DesignKitPanels } from '@/app/[market]/develop/components/preview/design-kit-wizard/DesignKitPanels'
+import { useIsDesignKitWizardProfile } from '@/app/[market]/develop/components/preview/design-kit-wizard/isDesignKitWizardProfile'
 import { ViewMode } from '@/app/[market]/develop/components/types'
 import {
   useCommanderActionsBarEnabled,
@@ -80,8 +82,12 @@ export function CommanderShell({
     : viewMode === ViewMode.BRAND && !isCanvasSettingsOpen
 
   // The design-kit wizard runs in its own Immersive BuilderLayout (AIROBUILD-3095);
-  // once the builder takes over, the Brand canvas shows the Brand Book like any app.
-  const brandOverlayContent = appId && <BrandBookView appId={appId} />
+  // once the builder takes over, the Brand canvas content is gated by flow
+  // (AIROBUILD-2075): the design-kit flow gets the editable Brand Design Kit (the
+  // customer's surface to manually adjust their kit); every other app keeps the
+  // read-only Brand Book.
+  const isDesignKitProfile = useIsDesignKitWizardProfile()
+  const brandOverlayContent = appId && (isDesignKitProfile ? <DesignKitPanels appId={appId} /> : <BrandBookView appId={appId} />)
 
   if (isMobile) {
     return (

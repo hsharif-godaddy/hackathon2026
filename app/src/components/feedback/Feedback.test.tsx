@@ -87,7 +87,7 @@ vi.mock('@/hooks/useTranslations', () => ({
 const mockUseGasketData = vi.hoisted(() =>
   vi.fn(function () { return {
     switchboard: {
-      'vh_dashboard_logo_to_airo_builder_redirect': { cohortId: 'control' },
+      'aab_progress_tracker': { cohortId: 'control' },
     },
   }; }),
 );
@@ -225,7 +225,7 @@ const defaultProps = {
 };
 
 const EXPECTED_EXPERIMENTS_LINE_DEFAULT = buildExperimentsLineFromSwitchboard({
-  [EXPERIMENT_IDS.ventureHomeLogo]: { cohortId: 'control' },
+    [EXPERIMENT_IDS.aabProgressTracker]: { cohortId: 'control' },
 });
 
 function mockAuth(authType: string | undefined, shopperId = '12345678') {
@@ -262,7 +262,7 @@ describe('Feedback', function feedbackTests() {
     vi.mocked(storeToS3).mockResolvedValue({ ok: true, status: 200 });
     mockUseGasketData.mockReturnValue({
       switchboard: {
-        [EXPERIMENT_IDS.ventureHomeLogo]: { cohortId: 'control' },
+        [EXPERIMENT_IDS.aabProgressTracker]: { cohortId: 'control' },
       },
     });
     global.fetch = vi.fn(function () { return Promise.resolve({

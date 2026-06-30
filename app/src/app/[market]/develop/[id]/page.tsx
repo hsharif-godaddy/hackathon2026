@@ -20,6 +20,7 @@ import PanelSkeleton from '@/app/[market]/develop/components/PanelSkeleton'
 import { DevelopCreditsModal, PaywallErrorFallback, RenewalPollingModal, UpgradePollingModal } from '@/app/[market]/develop/components/paywall'
 import { CdsEsmPreload } from '@/app/[market]/develop/components/paywall/CdsEsmPreload'
 import BrandBookView from '@/app/[market]/develop/components/preview/brand-book'
+import { DesignKitPanels } from '@/app/[market]/develop/components/preview/design-kit-wizard/DesignKitPanels'
 import { useIsDesignKitWizardProfile } from '@/app/[market]/develop/components/preview/design-kit-wizard/isDesignKitWizardProfile'
 import PreviewPane, { type PublishSnapshotRequestDetail } from '@/app/[market]/develop/components/preview/PreviewPane'
 import ResizableDivider from '@/app/[market]/develop/components/ResizableDivider'
@@ -46,7 +47,6 @@ import ErrorBoundary from '@/components/ErrorBoundary'
 import { FEEDBACK_ID } from '@/components/feedback/utils'
 import { UpgradeModal } from '@/components/upgrade/UpgradeModal'
 import { buildDynamicApiUrl, dynamicApiConfigService } from '@/config/dynamic-api'
-import { EXPERIMENT_IDS } from '@/config/experiments'
 import { SWITCHBOARD_APPBUILDER_CMS_INLINE_EDIT } from '@/config/switchboard-flags'
 import { ChatProvider } from '@/contexts/ChatContext'
 import { prefetchGitRemoteConfig } from '@/hooks/github/useGitRemoteConfig'
@@ -60,7 +60,6 @@ import { useChatTransport } from '@/hooks/useChatTransport'
 import { useCombinePublishTrigger } from '@/hooks/useCombinePublishTrigger'
 import { useCreditsDeeplinkWithStore } from '@/hooks/useCreditsDeeplinkWithStore'
 import { useGitHistoryQuery } from '@/hooks/useGitHistory'
-import { useHivemind } from '@/hooks/useHivemind'
 import { useImageReadiness } from '@/hooks/useImageReadiness'
 import { useInboxAccount } from '@/hooks/useInboxAccount'
 import { usePaywallDeeplinkWithStore } from '@/hooks/usePaywallDeeplinkWithStore'
@@ -195,21 +194,16 @@ function DevelopPageContent({ layout: layoutProp }: { layout?: BuilderLayout }) 
     init.context.hasSeenFirstFileEdit || jtbdRevealFeedback.firstFileEdit
   )
 
-  // Check for venture home logo to airo builder experiment
-  const { cohort: ventureHomeLogoCohort } = useHivemind(EXPERIMENT_IDS.ventureHomeLogo);
-  const isVentureHomeLogo = ventureHomeLogoCohort === 'on';
-
-  // Default to Brand Book tab for logo-designer template. Also persist a
+  // Default to the Brand tab for the logo-designer template. Also persist a
   // per-app localStorage marker because `init.ui.templateId` is cleared from
   // sessionStorage the moment the first prompt is sent — downstream effects
   // (the Brand → Preview auto-switch below) can't rely on reading it later.
-  const isBrandBookEnabled = useSwitchboard('appbuilder-brandbook');
   useEffect(() => {
-    if (init.ui.templateId === 'logo-designer' && (isBrandBookEnabled || isVentureHomeLogo)) {
+    if (init.ui.templateId === 'logo-designer') {
       if (appId) markLogoDesignerApp(appId)
       useDevelopPageStore.getState().setViewMode(ViewMode.BRAND)
     }
-  }, [init.ui.templateId, isBrandBookEnabled, isVentureHomeLogo, appId])
+  }, [init.ui.templateId, appId])
 
   const brandViewFiredRef = useRef(false)
   useEffect(() => {
@@ -1616,11 +1610,14 @@ function DevelopPageContent({ layout: layoutProp }: { layout?: BuilderLayout }) 
                     chatLoadingMessage={chatLoadingMessage}
                   />
                 </div>
-                {/* Brand overlay (Brand Book, or the design-kit wizard when the app is on
-                    the design-kit profile) — mounted here (a stable parent) rather than inside
-                    PreviewPane so it is NOT torn down and re-mounted when PreviewPane flips
-                    between its preview-server readiness branches mid-generation. PreviewPane
-                    keeps the underlying preview/code mounted-but-inert while BRAND is active. */}
+                {/* Brand overlay — mounted here (a stable parent) rather than inside PreviewPane so
+                    it is NOT torn down and re-mounted when PreviewPane flips between its
+                    preview-server readiness branches mid-generation. PreviewPane keeps the
+                    underlying preview/code mounted-but-inert while BRAND is active. Content is
+                    gated by flow (AIROBUILD-2075): the design-kit flow gets the editable Brand
+                    Design Kit; every other app keeps the read-only Brand Book. (The design-kit
+                    wizard itself runs in its own Immersive BuilderLayout pre-build — see
+                    useBuilderLayout — not this tab.) */}
                 {/* When we leave BRAND (e.g. the design-kit reveal flips to Preview),
                     fade the overlay out so the finished site underneath is revealed with
                     a soft crossfade rather than a hard cut. `initial={false}` keeps the
@@ -1634,7 +1631,7 @@ function DevelopPageContent({ layout: layoutProp }: { layout?: BuilderLayout }) 
                       exit={{ opacity: 0 }}
                       transition={{ duration: 0.45, ease: 'easeOut' }}
                     >
-                      <BrandBookView appId={appId} />
+                      {showDesignKitWizard ? <DesignKitPanels appId={appId} /> : <BrandBookView appId={appId} />}
                     </motion.div>
                   )}
                 </AnimatePresence>
