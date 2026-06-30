@@ -18,6 +18,10 @@ const TOKEN_ID = 'Platform#GOOGLE#TokenType#USER#123'
 const SITE_URL = 'https://example.godaddysites.com'
 const SITE_URL_TRAILING = 'https://example.godaddysites.com/'
 
+function webmastersPathParam(value: string): string {
+  return encodeURIComponent(encodeURIComponent(value))
+}
+
 function okResponse(data: Record<string, unknown> = {}): Response {
   return { ok: true, status: 200, json: async () => data } as Response
 }
@@ -130,7 +134,7 @@ describe('GscClient', () => {
       vi.mocked(fetch).mockResolvedValueOnce(okResponse())
       const result = await client.addGscSite(SITE_URL, TOKEN_ID)
       const [url, opts] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit]
-      expect(url).toContain(encodeURIComponent(SITE_URL_TRAILING))
+      expect(url).toContain(webmastersPathParam(SITE_URL_TRAILING))
       expect(opts.method).toBe('PUT')
       expect(result).toBe(true)
     })
@@ -139,8 +143,8 @@ describe('GscClient', () => {
       vi.mocked(fetch).mockResolvedValueOnce(okResponse())
       await client.addGscSite(SITE_URL, TOKEN_ID)
       const [url] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit]
-      expect(url).toContain(encodeURIComponent(SITE_URL_TRAILING))
-      expect(url).not.toContain(encodeURIComponent(SITE_URL + '/extra'))
+      expect(url).toContain(webmastersPathParam(SITE_URL_TRAILING))
+      expect(url).not.toContain(webmastersPathParam(SITE_URL + '/extra'))
     })
 
     it('returns false and logs after exhausting all retries', async () => {
@@ -179,7 +183,7 @@ describe('GscClient', () => {
       vi.mocked(fetch).mockResolvedValueOnce(okResponse())
       await client.submitGscSitemap(SITE_URL, TOKEN_ID)
       const [url] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit]
-      expect(url).toContain(encodeURIComponent(`${SITE_URL_TRAILING}sitemap.xml`))
+      expect(url).toContain(webmastersPathParam(`${SITE_URL_TRAILING}sitemap.xml`))
     })
 
     it('throws on failure', async () => {
