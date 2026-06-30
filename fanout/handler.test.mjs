@@ -966,6 +966,27 @@ await test('downstream: feedback rating=null → Jira skip AND CRM skip', async 
   assert.equal(calls.slack.length, 1);
 });
 
+await test('downstream: customer-feedback → feedback_text maps to comment (not description) in Slack formData', async () => {
+  // Regression guard for the buildFormDataFromRow contract break:
+  // 'customer-feedback' previously fell to the else branch, mapping
+  // feedback_text → description. buildCustomerFeedbackBlocks only reads
+  // data.comment, so the text was silently dropped from the Slack message.
+  readStateImpl = freshReadStateImpl();
+  parseFeedbackParquetImpl = async () => ({
+    ...FEEDBACK_ROW,
+    feedback_category: 'customer-feedback',
+    feedback_text: 'this is the inline comment',
+    rating: null,
+  });
+
+  await handler(S3_EVENT);
+
+  assert.equal(calls.slack.length, 1);
+  assert.equal(calls.slack[0].category, 'customer-feedback');
+  assert.equal(calls.slack[0].formData.comment, 'this is the inline comment');
+  assert.equal(calls.slack[0].formData.description, undefined);
+});
+
 await test('crm: internal user (3-char shopperId) → CRM SKIPPED even on issue/support category (TLA gate)', async () => {
   readStateImpl = freshReadStateImpl();
   parseFeedbackParquetImpl = async () => ({

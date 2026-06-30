@@ -810,11 +810,11 @@ function renderDuplicateNote({ submissionId, appId, row }) {
  * Driven by `row.feedback_category` — distinct from `row.feedback_origin_name`
  * which holds the UI surface label (e.g. 'first-publish-banner').
  */
-function buildFormDataFromRow(row) {
+export function buildFormDataFromRow(row) {
   const topics = parseTopics(row.feedback_topic_list);
   const followUp = row.consent_flag === true;
   const text = row.feedback_text ?? '';
-  if (row.feedback_category === 'feedback') {
+  if (row.feedback_category === 'feedback' || row.feedback_category === 'customer-feedback') {
     return {
       rating: row.rating ?? null,
       topics,

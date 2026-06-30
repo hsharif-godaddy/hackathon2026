@@ -4,6 +4,7 @@ import { getFullStorySessionUrl } from '@/components/feedback/utils';
 import { logger } from '@/lib/request-context';
 import type { CreditGrantsResponse, SubscriptionPlan, SubscriptionStatus } from '@/types/credits';
 import { getTotalCreditsFromGrants } from '@/utils/credits';
+import { feedbackCategoryForReason, type FeedbackReason } from './types';
 
 interface SubscriptionSnapshot {
   planType: SubscriptionPlan | null;
@@ -36,24 +37,45 @@ async function fetchSubscription(appId: string): Promise<SubscriptionSnapshot> {
     const subscriptionStatus = (active.status as SubscriptionStatus) || null;
 
     if (!active.id) {
-      return { planType, subscriptionId, subscriptionStatus, totalCredits: null, availableCredits: null, subscriptionInfo: null };
+      return {
+        planType,
+        subscriptionId,
+        subscriptionStatus,
+        totalCredits: null,
+        availableCredits: null,
+        subscriptionInfo: null,
+      };
     }
 
     const creditsResponse = await fetch(
       `/api/credits/grants?subscriptionId=${encodeURIComponent(active.id)}&syncSpend=false`,
-      { credentials: 'include' },
+      { credentials: 'include' }
     );
     if (!creditsResponse.ok) {
       logger.warn('invocation_feedback.credits_fetch_failed', {
         status: creditsResponse.status,
         appId,
       });
-      return { planType, subscriptionId, subscriptionStatus, totalCredits: null, availableCredits: null, subscriptionInfo: null };
+      return {
+        planType,
+        subscriptionId,
+        subscriptionStatus,
+        totalCredits: null,
+        availableCredits: null,
+        subscriptionInfo: null,
+      };
     }
 
     const creditsData: CreditGrantsResponse = await creditsResponse.json();
     if (!creditsData.success || !Array.isArray(creditsData.data)) {
-      return { planType, subscriptionId, subscriptionStatus, totalCredits: null, availableCredits: null, subscriptionInfo: null };
+      return {
+        planType,
+        subscriptionId,
+        subscriptionStatus,
+        totalCredits: null,
+        availableCredits: null,
+        subscriptionInfo: null,
+      };
     }
 
     const { totalCreditsSpent, totalCreditsMax } = getTotalCreditsFromGrants(creditsData.data);
@@ -91,6 +113,7 @@ function build(
   feedbackText: string,
   fullStoryUrl: string | null,
   sub: SubscriptionSnapshot,
+  reason: FeedbackReason
 ): FeedbackStorePayload {
   return {
     app_id: appId,
@@ -106,9 +129,9 @@ function build(
     total_credit_cnt: sub.totalCredits,
     available_credit_cnt: sub.availableCredits,
     subscription_info: sub.subscriptionInfo,
-    feedback_topic_list: JSON.stringify(['Other']),
+    feedback_topic_list: JSON.stringify([feedbackCategoryForReason(reason)]),
     feedback_origin_name: 'inline-customer-feedback',
-    feedback_category: 'feedback',
+    feedback_category: 'customer-feedback',
     app_publish_flag: null,
     publish_url: null,
     experiments_line: null,
@@ -120,12 +143,14 @@ function build(
 
 export async function store({
   appId,
-  feedbackText,
+  feedbackText = '',
   flow,
+  reason,
 }: {
   appId: string;
-  feedbackText: string;
+  feedbackText?: string;
   flow: 'per-message' | 'skill-invoke' | 'artifact';
+  reason: FeedbackReason;
 }): Promise<void> {
   try {
     const [subResult, fullStoryResult] = await Promise.allSettled([
@@ -134,7 +159,7 @@ export async function store({
     ]);
     const sub = subResult.status === 'fulfilled' ? subResult.value : nullSnapshot();
     const fullStoryUrl = fullStoryResult.status === 'fulfilled' ? fullStoryResult.value : null;
-    const s3Result = await storeToS3(build(appId, feedbackText, fullStoryUrl, sub));
+    const s3Result = await storeToS3(build(appId, feedbackText, fullStoryUrl, sub, reason));
     if (!s3Result.ok) {
       logger.warn('invocation_feedback.s3_store.failed', {
         appId,

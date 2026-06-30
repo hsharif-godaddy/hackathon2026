@@ -251,10 +251,10 @@ export const POST = withCustomerAuth(async (
   const fullStoryUrl = fullStoryUrlRaw && /^https?:\/\//i.test(fullStoryUrlRaw) ? fullStoryUrlRaw : null;
   const subscriptionInfo = typeof body.subscription_info === 'string' ? body.subscription_info : null;
 
-  // Feedback dialog category — 'issue' | 'support' | 'feedback'. Used by the
-  // fanout Lambda to pick the right Slack Block Kit builder. Null-tolerant
+  // Feedback dialog category — 'issue' | 'support' | 'feedback' | 'customer-feedback'.
+  // Used by the fanout Lambda to pick the right Slack Block Kit builder. Null-tolerant
   // (legacy callers without category render Slack as a graceful skip).
-  const ALLOWED_CATEGORIES = ['issue', 'support', 'feedback'];
+  const ALLOWED_CATEGORIES = ['issue', 'support', 'feedback', 'customer-feedback'];
   const rawCategory = typeof body.feedback_category === 'string' ? body.feedback_category.trim() : null;
   const feedbackCategory = rawCategory && ALLOWED_CATEGORIES.includes(rawCategory) ? rawCategory : null;
 

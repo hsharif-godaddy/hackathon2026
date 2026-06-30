@@ -90,6 +90,32 @@ function buildSubscriptionOriginSection(ctx, origin) {
   return undefined;
 }
 
+// Extends the standard Subscription/Origin two-column section with a Reason
+// field for customer-feedback — rendered below Origin in the right column so
+// triagers see the reason signal without an extra standalone section.
+//
+//   Row 1:  Subscription  |  Origin
+//   Row 2:  (empty)       |  Reason
+//
+function buildCustomerFeedbackMetadataSection(ctx, origin, topics) {
+  const firstTopic = Array.isArray(topics) && topics.length > 0 ? topics[0] : null;
+  const leftFields = [];
+  if (ctx.subscriptionInfo) {
+    leftFields.push({ label: 'Subscription', value: ctx.subscriptionInfo });
+  }
+  const rightFields = [];
+  if (origin) {
+    rightFields.push({ label: 'Origin', value: origin });
+  }
+  if (firstTopic) {
+    rightFields.push({ label: 'Reason', value: firstTopic });
+  }
+  if (leftFields.length > 0 && rightFields.length > 0) return { leftFields, rightFields };
+  if (leftFields.length > 0) return { leftFields, rightFields: [{ value: ' ' }] };
+  if (rightFields.length > 0) return { leftFields: [{ label: ' ', value: ' ' }], rightFields };
+  return undefined;
+}
+
 function decorateTitleForImpersonation(baseTitle, ctx) {
   if (!ctx.isImpersonating) return baseTitle;
   return `${baseTitle} - :no_entry_sign: CRM skip (${ctx.shopperId || 'unknown'})`;
@@ -202,6 +228,37 @@ export function buildFeedbackBlocks(data, origin, ctx, enrichment = null) {
   return {
     title,
     twoColumnSection: buildSubscriptionOriginSection(ctx, origin),
+    singleColumnSections: singleColumnSections.length > 0 ? singleColumnSections : undefined,
+    links: buildFooterLinks(ctx, enrichment),
+  };
+}
+
+export function buildCustomerFeedbackBlocks(data, origin, ctx, enrichment = null) {
+  /**
+   * Title does not carry the rating so it shows in Slack push notifications
+   * (also used as the fallback `text` field). Body keeps Subscription +
+   * Origin + Reason (the facts readers triage on most often) and the comment.
+   * Everything else (consent, experiments, customer profile) is
+   * one click away in the debug-console feedback tab via the Details link.
+   */
+  const BASE_TITLE = ':thumbsdown::skin-tone-2: Customer Feedback ( Inline )';
+  let title = BASE_TITLE;
+  if (ctx.isImpersonating || ctx.isInternalUser) {
+    const reason = ctx.isImpersonating
+      ? 'E2S session'
+      : `TLA account (${ctx.shopperId || 'unknown'})`;
+    title = `${title} - :no_entry_sign: No score (${reason})`;
+  }
+
+  const singleColumnSections = [];
+  const trimmedComment = data.comment ? data.comment.trim() : '';
+  if (trimmedComment) {
+    singleColumnSections.push({ value: quoteBlock(trimmedComment) });
+  }
+
+  return {
+    title,
+    twoColumnSection: buildCustomerFeedbackMetadataSection(ctx, origin, data.topics),
     singleColumnSections: singleColumnSections.length > 0 ? singleColumnSections : undefined,
     links: buildFooterLinks(ctx, enrichment),
   };

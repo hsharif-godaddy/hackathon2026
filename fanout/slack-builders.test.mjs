@@ -1,9 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
+import { buildFormDataFromRow } from './handler.mjs';
 import {
   buildSupportRequestBlocks,
   buildBugReportBlocks,
+  buildCustomerFeedbackBlocks,
   buildFeedbackBlocks,
 } from './slack-builders.mjs';
 
@@ -261,6 +263,318 @@ await test('buildFeedbackBlocks: Details link omits feedbackId / customerId when
   const result = buildFeedbackBlocks(data, undefined, ctx);
   const details = result.links.find((l) => l.text === 'Details');
   assert.equal(details.url, 'https://console.airo-builder.godaddy.com/?appId=app-x&tab=feedback');
+});
+
+// ---- buildFormDataFromRow → builder integration tests ----
+// These tests exercise the real Lambda data path: parquet row → buildFormDataFromRow
+// → builder. The unit tests above bypass this transform and can stay green even
+// when the two layers have a mismatched contract (e.g. description vs comment).
+
+await test('buildFormDataFromRow + buildCustomerFeedbackBlocks: feedback_text lands in comment and renders in blockquote', () => {
+  const formData = buildFormDataFromRow({
+    feedback_category: 'customer-feedback',
+    feedback_text: 'inline comment from customer',
+    feedback_topic_list: '["Other"]',
+    consent_flag: false,
+    rating: null,
+  });
+
+  // This assertion would have FAILED before the buildFormDataFromRow fix:
+  // 'customer-feedback' fell to the else branch → { description: text }
+  // buildCustomerFeedbackBlocks only reads data.comment → blockquote silently omitted.
+  assert.equal(formData.comment, 'inline comment from customer');
+  assert.equal(formData.description, undefined);
+
+  const ctx = {
+    currentAppId: 'app-1',
+    previewUrl: undefined,
+    publishedUrl: undefined,
+    fullStoryUrl: null,
+    subscriptionInfo: '',
+    isImpersonating: false,
+    isInternalUser: false,
+    shopperId: undefined,
+  };
+
+  const result = buildCustomerFeedbackBlocks(formData, undefined, ctx);
+
+  assert.deepEqual(result.singleColumnSections, [
+    { value: '> inline comment from customer' },
+  ]);
+});
+
+await test('buildFormDataFromRow + buildCustomerFeedbackBlocks: parsed topic flows through to Reason field', () => {
+  const formData = buildFormDataFromRow({
+    feedback_category: 'customer-feedback',
+    feedback_text: '',
+    feedback_topic_list: '["Not accurate"]',
+    consent_flag: false,
+    rating: null,
+  });
+
+  assert.deepEqual(formData.topics, ['Not accurate']);
+
+  const ctx = {
+    currentAppId: 'app-1',
+    previewUrl: undefined,
+    publishedUrl: undefined,
+    fullStoryUrl: null,
+    subscriptionInfo: '',
+    isImpersonating: false,
+    isInternalUser: false,
+    shopperId: undefined,
+  };
+
+  const result = buildCustomerFeedbackBlocks(formData, 'develop-page', ctx);
+
+  const rightFields = result.twoColumnSection.rightFields;
+  assert.deepEqual(rightFields, [
+    { label: 'Origin', value: 'develop-page' },
+    { label: 'Reason', value: 'Not accurate' },
+  ]);
+});
+
+await test('buildFormDataFromRow + buildCustomerFeedbackBlocks: empty feedback_text → no singleColumnSections', () => {
+  const formData = buildFormDataFromRow({
+    feedback_category: 'customer-feedback',
+    feedback_text: '',
+    feedback_topic_list: '[]',
+    consent_flag: false,
+    rating: null,
+  });
+
+  const ctx = {
+    currentAppId: null,
+    previewUrl: undefined,
+    publishedUrl: undefined,
+    fullStoryUrl: null,
+    subscriptionInfo: '',
+    isImpersonating: false,
+    isInternalUser: false,
+    shopperId: undefined,
+  };
+
+  const result = buildCustomerFeedbackBlocks(formData, undefined, ctx);
+
+  assert.equal(result.singleColumnSections, undefined);
+});
+
+await test('buildFormDataFromRow: feedback category maps feedback_text → comment', () => {
+  const result = buildFormDataFromRow({
+    feedback_category: 'feedback',
+    feedback_text: 'nps comment',
+    feedback_topic_list: '[]',
+    consent_flag: true,
+    rating: 5,
+  });
+
+  assert.equal(result.comment, 'nps comment');
+  assert.equal(result.description, undefined);
+  assert.equal(result.rating, 5);
+});
+
+await test('buildFormDataFromRow: issue category maps feedback_text → description', () => {
+  const result = buildFormDataFromRow({
+    feedback_category: 'issue',
+    feedback_text: 'something broke',
+    feedback_topic_list: '[]',
+    consent_flag: true,
+    rating: null,
+  });
+
+  assert.equal(result.description, 'something broke');
+  assert.equal(result.comment, undefined);
+});
+
+// ---- buildCustomerFeedbackBlocks tests ----
+
+await test('buildCustomerFeedbackBlocks: base title with no rating, body has comment blockquoted', () => {
+  const data = { rating: 5, topics: [], comment: 'pretty good', customerConsent: true };
+  const ctx = {
+    currentAppId: 'app-cf',
+    previewUrl: undefined,
+    publishedUrl: undefined,
+    fullStoryUrl: null,
+    subscriptionInfo: 'Pro Annual / Active',
+    isImpersonating: false,
+    isInternalUser: false,
+    shopperId: '12345',
+    customerId: 'cust-cf',
+    feedbackUuid: 'fb-uuid-cf',
+  };
+
+  const result = buildCustomerFeedbackBlocks(data, 'develop-page', ctx);
+
+  assert.equal(result.title, ':thumbsdown::skin-tone-2: Customer Feedback ( Inline )');
+  assert.deepEqual(result.twoColumnSection, {
+    leftFields: [{ label: 'Subscription', value: 'Pro Annual / Active' }],
+    rightFields: [{ label: 'Origin', value: 'develop-page' }],
+  });
+  assert.deepEqual(result.singleColumnSections, [{ value: '> pretty good' }]);
+  assert.ok(result.links.find((l) => l.text === 'Details'));
+});
+
+await test('buildCustomerFeedbackBlocks: topic in data.topics renders as Reason field beside Origin', () => {
+  const data = { rating: null, topics: ['Not accurate'], comment: '', customerConsent: false };
+  const ctx = {
+    currentAppId: 'app-r',
+    previewUrl: undefined,
+    publishedUrl: undefined,
+    fullStoryUrl: null,
+    subscriptionInfo: 'Pro Monthly / Active',
+    isImpersonating: false,
+    isInternalUser: false,
+    shopperId: '55555',
+  };
+
+  const result = buildCustomerFeedbackBlocks(data, 'develop-page', ctx);
+
+  assert.deepEqual(result.twoColumnSection, {
+    leftFields: [{ label: 'Subscription', value: 'Pro Monthly / Active' }],
+    rightFields: [
+      { label: 'Origin', value: 'develop-page' },
+      { label: 'Reason', value: 'Not accurate' },
+    ],
+  });
+  assert.equal(result.singleColumnSections, undefined);
+});
+
+await test('buildCustomerFeedbackBlocks: empty topics array → no Reason field', () => {
+  const data = { rating: null, topics: [], comment: '', customerConsent: false };
+  const ctx = {
+    currentAppId: 'app-r',
+    previewUrl: undefined,
+    publishedUrl: undefined,
+    fullStoryUrl: null,
+    subscriptionInfo: 'Pro Monthly / Active',
+    isImpersonating: false,
+    isInternalUser: false,
+    shopperId: '55555',
+  };
+
+  const result = buildCustomerFeedbackBlocks(data, 'develop-page', ctx);
+
+  assert.deepEqual(result.twoColumnSection, {
+    leftFields: [{ label: 'Subscription', value: 'Pro Monthly / Active' }],
+    rightFields: [{ label: 'Origin', value: 'develop-page' }],
+  });
+});
+
+await test('buildCustomerFeedbackBlocks: impersonating session → No score in title', () => {
+  const data = { rating: 4, topics: [], comment: '', customerConsent: false };
+  const ctx = {
+    currentAppId: null,
+    previewUrl: undefined,
+    publishedUrl: undefined,
+    fullStoryUrl: null,
+    subscriptionInfo: '',
+    isImpersonating: true,
+    isInternalUser: false,
+    shopperId: '99887',
+  };
+
+  const result = buildCustomerFeedbackBlocks(data, undefined, ctx);
+
+  assert.equal(
+    result.title,
+    ':thumbsdown::skin-tone-2: Customer Feedback ( Inline ) - :no_entry_sign: No score (E2S session)',
+  );
+  assert.equal(result.twoColumnSection, undefined);
+  assert.equal(result.singleColumnSections, undefined);
+});
+
+await test('buildCustomerFeedbackBlocks: internal user (TLA) → No score in title', () => {
+  const data = { rating: 3, topics: [], comment: '', customerConsent: true };
+  const ctx = {
+    currentAppId: null,
+    previewUrl: undefined,
+    publishedUrl: undefined,
+    fullStoryUrl: null,
+    subscriptionInfo: '',
+    isImpersonating: false,
+    isInternalUser: true,
+    shopperId: 'abc',
+  };
+
+  const result = buildCustomerFeedbackBlocks(data, undefined, ctx);
+
+  assert.equal(
+    result.title,
+    ':thumbsdown::skin-tone-2: Customer Feedback ( Inline ) - :no_entry_sign: No score (TLA account (abc))',
+  );
+});
+
+await test('buildCustomerFeedbackBlocks: rating is ignored — title never carries a score', () => {
+  const data = { rating: 7, topics: [], comment: '', customerConsent: false };
+  const ctx = {
+    currentAppId: null,
+    previewUrl: undefined,
+    publishedUrl: undefined,
+    fullStoryUrl: null,
+    subscriptionInfo: '',
+    isImpersonating: false,
+    isInternalUser: false,
+    shopperId: undefined,
+  };
+
+  const result = buildCustomerFeedbackBlocks(data, undefined, ctx);
+
+  assert.equal(result.title, ':thumbsdown::skin-tone-2: Customer Feedback ( Inline )');
+  assert.equal(result.singleColumnSections, undefined);
+});
+
+await test('buildCustomerFeedbackBlocks: multiline comment is line-wise blockquoted', () => {
+  const data = { rating: 6, topics: [], comment: 'line one\nline two\nline three', customerConsent: true };
+  const ctx = {
+    currentAppId: 'app-ml',
+    previewUrl: undefined,
+    publishedUrl: undefined,
+    fullStoryUrl: null,
+    subscriptionInfo: '',
+    isImpersonating: false,
+    isInternalUser: false,
+    shopperId: undefined,
+  };
+
+  const result = buildCustomerFeedbackBlocks(data, undefined, ctx);
+
+  assert.equal(result.title, ':thumbsdown::skin-tone-2: Customer Feedback ( Inline )');
+  assert.deepEqual(result.singleColumnSections, [
+    { value: '> line one\n> line two\n> line three' },
+  ]);
+});
+
+await test('buildCustomerFeedbackBlocks: enrichment triage links appear between App ID and diagnostic links', () => {
+  const enrichment = {
+    crmCaseUrl: 'https://godaddy2.lightning.force.com/lightning/r/Case/500U900000TUb7vIAD/view',
+    caseNumber: '00012345',
+    jiraKey: 'AABSP-77',
+    jiraUrl: 'https://godaddy-corp.atlassian.net/browse/AABSP-77',
+  };
+  const ctx = {
+    currentAppId: 'app-enr',
+    previewUrl: undefined,
+    publishedUrl: undefined,
+    fullStoryUrl: null,
+    subscriptionInfo: '',
+    isImpersonating: false,
+    isInternalUser: false,
+    shopperId: undefined,
+  };
+
+  const result = buildCustomerFeedbackBlocks(
+    { rating: 2, topics: [], comment: 'bad', customerConsent: true },
+    undefined,
+    ctx,
+    enrichment,
+  );
+
+  assert.equal(result.links[0].text, 'app-enr');
+  assert.equal(result.links[0].url, undefined);
+  assert.equal(result.links[1].text, 'Case #00012345');
+  assert.equal(result.links[1].url, enrichment.crmCaseUrl);
+  assert.equal(result.links[2].text, 'Jira');
+  assert.equal(result.links[2].url, enrichment.jiraUrl);
 });
 
 await test('buildDiagnosticLinks: publishedUrl with "test-" omitted', () => {

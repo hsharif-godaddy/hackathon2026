@@ -313,8 +313,14 @@ export function InvocationFeedbackProvider({
         onSubmitFailed?.(reason);
       }
 
-      if (ok && feedbackValue === 'negative' && analyticsReason === 'other' && trimmedOther && appId) {
-        void storeInlineOtherFeedback({ appId, feedbackText: trimmedOther, flow });
+      if (ok && feedbackValue === 'negative' && analyticsReason && appId
+        && (analyticsReason !== 'other' || Boolean(trimmedOther))) {
+        void storeInlineOtherFeedback({
+          appId,
+          feedbackText: trimmedOther ?? '',
+          flow,
+          reason: analyticsReason,
+        });
       }
 
       return result;

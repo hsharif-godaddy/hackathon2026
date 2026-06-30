@@ -429,7 +429,7 @@ describe('InvocationFeedbackContext', function contextTests() {
       expect(mockStoreToS3).toHaveBeenCalledWith(
         expect.objectContaining({
           app_id: 'app-1',
-          feedback_category: 'feedback',
+          feedback_category: 'customer-feedback',
           feedback_text: 'draft',
           feedback_topic_list: JSON.stringify(['Other']),
           feedback_origin_name: 'inline-customer-feedback',
@@ -531,6 +531,39 @@ describe('InvocationFeedbackContext', function contextTests() {
         expect.objectContaining({
           feedback_text: 'artifact issue',
           feedback_origin_name: 'inline-customer-feedback',
+        })
+      );
+    });
+  });
+
+  it('stores non-other negative reason to S3 with correct topic and empty text', async function nonOtherReasonS3() {
+    const { user } = renderWithProviders(
+      <InvocationFeedbackProvider
+        appId="app-1"
+        messageId="msg-1"
+        traceIds={{ traceId: 'trace-1', observationId: 'obs-1' }}
+        flow="per-message"
+        thanksMode="none"
+      >
+        <InvocationFeedbackControls />
+        <InvocationFeedbackPanel />
+      </InvocationFeedbackProvider>
+    );
+
+    const thumbsDown = document.querySelector('[data-eid="chat.response_metadata.thumbs_down"]');
+    expect(thumbsDown).toBeTruthy();
+    await user.click(thumbsDown!);
+    await user.click(screen.getByRole('radio', { name: /Not factually correct/i }));
+
+    await waitFor(function waitS3() {
+      expect(mockStoreToS3).toHaveBeenCalledWith(
+        expect.objectContaining({
+          app_id: 'app-1',
+          feedback_category: 'customer-feedback',
+          feedback_text: '',
+          feedback_topic_list: JSON.stringify(['Not accurate']),
+          feedback_origin_name: 'inline-customer-feedback',
+          consent_flag: false,
         })
       );
     });

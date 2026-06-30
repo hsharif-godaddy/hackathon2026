@@ -103,6 +103,22 @@ await test('routes support category to buildSupportRequestBlocks', async () => {
   assert.equal(body.text, ':sos: Support Request');
 });
 
+await test('routes customer-feedback category to buildCustomerFeedbackBlocks', async () => {
+  await postSlackMessage({
+    category: 'customer-feedback',
+    formData: { rating: 5, topics: [], comment: 'looks good', customerConsent: true },
+    origin: undefined,
+    ctx: CTX,
+  });
+  const body = JSON.parse(fetchCalls[0].init.body);
+  assert.equal(
+    body.text,
+    ':thumbsdown::skin-tone-2: Customer Feedback ( Inline )',
+  );
+  assert.ok(Array.isArray(body.blocks));
+  assert.equal(body.blocks[body.blocks.length - 1].type, 'divider');
+});
+
 // Restore fetch when this test file completes
 await test('cleanup: restore fetch', () => {
   globalThis.fetch = originalFetch;

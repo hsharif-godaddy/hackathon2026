@@ -370,6 +370,35 @@ describe('/api/feedback/s3-store', function s3StoreTests() {
       );
     });
 
+    it('should pass customer-feedback category through to parquet (allowlist includes it)', async function customerFeedbackCategory() {
+      mockS3Send.mockResolvedValueOnce({});
+      const { POST } = await import('./route');
+      await POST(createRequest({
+        app_id: 'app-abc',
+        feedback_text: 'inline comment',
+        consent_flag: false,
+        rating: null,
+        feedback_category: 'customer-feedback',
+        feedback_origin_name: 'inline-customer-feedback',
+      }));
+      const record = await readParquetRow(mockS3Send.mock.calls[0][0].Body);
+      expect(record.feedback_category).toBe('customer-feedback');
+    });
+
+    it('should coerce unknown feedback_category to null', async function unknownCategory() {
+      mockS3Send.mockResolvedValueOnce({});
+      const { POST } = await import('./route');
+      await POST(createRequest({
+        app_id: 'app-abc',
+        feedback_text: 't',
+        consent_flag: null,
+        rating: null,
+        feedback_category: 'mystery-type',
+      }));
+      const record = await readParquetRow(mockS3Send.mock.calls[0][0].Body);
+      expect(record.feedback_category == null).toBe(true);
+    });
+
     it('should store null feedback_origin_name for whitespace-only value', async function originWhitespace() {
       mockS3Send.mockResolvedValueOnce({});
       const { POST } = await import('./route');

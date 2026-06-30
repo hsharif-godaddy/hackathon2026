@@ -3,6 +3,7 @@ import {
   buildSupportRequestBlocks,
   buildBugReportBlocks,
   buildFeedbackBlocks,
+  buildCustomerFeedbackBlocks,
 } from './slack-builders.mjs';
 import { formatSlackBlockMessage } from './slack-format.mjs';
 
@@ -44,10 +45,22 @@ export async function postSlackMessage({ category, formData, origin, ctx, enrich
   if (!url) return;
 
   let blockMessage;
-  if (category === 'issue') blockMessage = buildBugReportBlocks(formData, origin, ctx, enrichment);
-  else if (category === 'support') blockMessage = buildSupportRequestBlocks(formData, origin, ctx, enrichment);
-  else if (category === 'feedback') blockMessage = buildFeedbackBlocks(formData, origin, ctx, enrichment);
-  else throw new Error(`Unknown feedback category: ${category}`);
+  switch (category) {
+    case 'issue':
+      blockMessage = buildBugReportBlocks(formData, origin, ctx, enrichment);
+      break;
+    case 'support':
+      blockMessage = buildSupportRequestBlocks(formData, origin, ctx, enrichment);
+      break;
+    case 'feedback':
+      blockMessage = buildFeedbackBlocks(formData, origin, ctx, enrichment);
+      break;
+    case 'customer-feedback':
+      blockMessage = buildCustomerFeedbackBlocks(formData, origin, ctx, enrichment);
+      break;
+    default:
+      throw new Error(`Unknown feedback category: ${category}`);
+  }
 
   const slackBody = formatSlackBlockMessage(blockMessage);
 
