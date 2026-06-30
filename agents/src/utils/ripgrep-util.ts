@@ -33,6 +33,7 @@ export interface RipgrepOptions {
   afterContext?: number     // -A
   beforeContext?: number    // -B
   filePattern?: string      // --glob
+  excludeGlobs?: readonly string[]   // --glob (negated patterns)
   fileType?: string         // --type
   wholeWord?: boolean       // --word-regexp
   multiline?: boolean       // --multiline --multiline-dotall
@@ -175,6 +176,12 @@ export class RipgrepUtil {
 
     if (options.filePattern) {
       args.push('--glob', this.escapeShellArg(options.filePattern))
+    }
+
+    if (options.excludeGlobs) {
+      for (const glob of options.excludeGlobs) {
+        args.push('--glob', this.escapeShellArg(glob))
+      }
     }
 
     if (options.fileType) {

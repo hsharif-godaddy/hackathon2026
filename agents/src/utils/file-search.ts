@@ -22,6 +22,7 @@ export interface FileSearchOptions {
   maxResults?: number
   maxMatchesPerFile?: number
   fileBlockChecker?: (path: string) => boolean
+  skipDirectory?: (relativePath: string) => boolean
 }
 
 /**
@@ -66,12 +67,16 @@ export class FileSearch {
             continue
           }
 
+          const relativePath = toRelativeSearchPath(directory, fullPath)
+
           if (entry.isDirectory()) {
+            if (options.skipDirectory?.(relativePath)) {
+              continue
+            }
             await searchDirectory(fullPath)
           } else if (entry.isFile()) {
             if (!FileSearch.isTextFile(entry.name)) continue
 
-            const relativePath = fullPath.replace(directory + '/', '')
             if (options.fileBlockChecker && !options.fileBlockChecker(relativePath)) {
               continue
             }
@@ -155,3 +160,10 @@ export class FileSearch {
   }
 }
 
+export function toRelativeSearchPath(searchRoot: string, fullPath: string): string {
+  const prefix = searchRoot.endsWith('/') ? searchRoot : `${searchRoot}/`
+  if (fullPath.startsWith(prefix)) {
+    return fullPath.slice(prefix.length)
+  }
+  return fullPath
+}

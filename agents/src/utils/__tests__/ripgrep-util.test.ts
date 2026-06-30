@@ -45,6 +45,23 @@ describe('RipgrepUtil', () => {
       expect(cmd).toContain("--glob '*.ts'");
     });
 
+    it('should add negated --glob entries for excludeGlobs', () => {
+      const cmd = RipgrepUtil.buildCommand('test', '.', {
+        excludeGlobs: ['!dev-tools/**', '!source-mapper/**'],
+      });
+      expect(cmd).toContain("--glob '!dev-tools/**'");
+      expect(cmd).toContain("--glob '!source-mapper/**'");
+    });
+
+    it('should emit inclusive and exclusive globs together', () => {
+      const cmd = RipgrepUtil.buildCommand('test', '.', {
+        filePattern: '*.tsx',
+        excludeGlobs: ['!dev-tools/**'],
+      });
+      expect(cmd).toContain("--glob '*.tsx'");
+      expect(cmd).toContain("--glob '!dev-tools/**'");
+    });
+
     it('should add --word-regexp for wholeWord', () => {
       const cmd = RipgrepUtil.buildCommand('test', '.', { wholeWord: true });
       expect(cmd).toContain('--word-regexp');

@@ -1,10 +1,14 @@
 import { createForWorkspace } from '../workspace/index.js'
-import type { WorkspaceTasks } from '../workspace/tasks.js'
-import { FileSearch } from './file-search.js'
 import { isFileBlocked } from '../tools/read-file.js'
+import type { WorkspaceTasks } from '../workspace/tasks.js'
+import { FileSearch, type FileSearchOptions } from './file-search.js'
 import { logger } from '../logging/index.js'
-import { RipgrepUtil, type RipgrepOptions, type RipgrepResult } from './ripgrep-util.js'
 import { toolCodeSearchEvents } from '../logging/events/index.js'
+import {
+  isPlatformInfrastructurePath,
+  platformInfrastructureExcludeGlobs,
+} from './platform-paths.js'
+import { RipgrepUtil, type RipgrepOptions, type RipgrepResult } from './ripgrep-util.js'
 
 export interface SearchMatch {
   path: string
@@ -39,6 +43,9 @@ const MAX_MATCHES_PER_FILE = 10
  * Check if a file should be searchable
  */
 function isFileSearchable(filePath: string): boolean {
+  if (isPlatformInfrastructurePath(filePath)) {
+    return false
+  }
   return !isFileBlocked(filePath).blocked
 }
 
@@ -107,6 +114,7 @@ async function searchWithRipgrep(
   if (options.filePattern !== undefined) {
     ripgrepOptions.filePattern = options.filePattern
   }
+  ripgrepOptions.excludeGlobs = platformInfrastructureExcludeGlobs()
 
   const result: RipgrepResult = await RipgrepUtil.search(
     tasks,
@@ -138,9 +146,10 @@ async function searchWithNodejs(
   query: string,
   options: SearchOptions = {}
 ): Promise<SearchResult> {
-  const searchOptions: any = {
+  const searchOptions: FileSearchOptions = {
     maxMatchesPerFile: MAX_MATCHES_PER_FILE,
-    fileBlockChecker: isFileSearchable
+    fileBlockChecker: isFileSearchable,
+    skipDirectory: isPlatformInfrastructurePath,
   }
 
   if (options.caseSensitive !== undefined) {

@@ -1,7 +1,8 @@
 import { logger } from '../logging/index.js';
 import { toolDirectoryListingEvents } from '../logging/events/index.js';
-import type { TreeOptions, WorkspaceFiles } from '../workspace/files.js';
 import { isDevSupervisorNotFound } from '../services/DevSupervisorClient.js';
+import { PLATFORM_INFRASTRUCTURE_PATHS } from '../utils/platform-paths.js';
+import type { TreeOptions, WorkspaceFiles } from '../workspace/files.js';
 
 /**
  * Thrown by `DirectoryListingTool.listDirectory` when the requested path does
@@ -130,12 +131,7 @@ export class DirectoryListingTool {
     'Pipfile.lock',
     'poetry.lock',
 
-    // template files we want to hide for now
-    'dev-supervisor',
-    'dev-tools',
-    'airo-secrets',
-    'source-mapper',
-    'fullstory-plugin.ts',
+    ...PLATFORM_INFRASTRUCTURE_PATHS,
   ];
 
   constructor(private readonly files: WorkspaceFiles) {}

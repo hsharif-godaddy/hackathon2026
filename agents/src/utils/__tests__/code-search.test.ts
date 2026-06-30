@@ -162,10 +162,43 @@ describe('code-search', () => {
           caseSensitive: true,
           regex: true,
           maxResults: 25,
-          filePattern: '*.tsx'
+          filePattern: '*.tsx',
+          excludeGlobs: expect.arrayContaining(['!dev-tools/**', '!source-mapper/**'])
         },
         expect.any(Function)
       );
+    });
+
+    it('should exclude platform infrastructure paths from the fileBlockChecker', async () => {
+      const mockTasks = { runCommandSync: vi.fn() };
+      vi.mocked(createForWorkspace).mockReturnValue({ tasks: mockTasks } as any);
+      vi.mocked(RipgrepUtil.isAvailable).mockResolvedValue(true);
+      vi.mocked(RipgrepUtil.search).mockResolvedValue({
+        matches: [],
+        totalMatches: 0,
+        truncated: false
+      });
+
+      await searchCode('app-123', '/host/path', 'query');
+
+      const fileBlockChecker = vi.mocked(RipgrepUtil.search).mock.calls[0][4] as (path: string) => boolean;
+      expect(fileBlockChecker('dev-tools/src/utils/partial.ts')).toBe(false);
+      expect(fileBlockChecker('src/pages/index.tsx')).toBe(true);
+    });
+
+    it('should pass skipDirectory to the Node.js fallback', async () => {
+      vi.mocked(createForWorkspace).mockReturnValue(null);
+      vi.mocked(FileSearch.search).mockResolvedValue({
+        matches: [],
+        totalMatches: 0,
+        truncated: false
+      });
+
+      await searchCode('app-123', '/tmp/airo-app-builder/app-123/preview', 'query');
+
+      const options = vi.mocked(FileSearch.search).mock.calls[0][2];
+      expect(options?.skipDirectory?.('dev-tools')).toBe(true);
+      expect(options?.skipDirectory?.('src')).toBe(false);
     });
   });
 });
