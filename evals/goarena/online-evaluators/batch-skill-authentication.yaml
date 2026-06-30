@@ -387,6 +387,56 @@ onlineConfig:
   metadataFilters:
     tagsAnyOf:
       - airo-app-builder
+  metrics:
+    # Overall health — single number to gauge auth quality across the run.
+    - name: "Auth quality score"
+      description: "Average composite score (0–100) for auth-relevant sessions"
+      metric: auth_composite_score
+      filter:
+        - name: auth_session_relevant
+          value: 1
+      agg: [avg, min, max]
+
+    # What's failing — most actionable breakdown for fixing the agent.
+    - name: "Error categories"
+      description: "Count per failure mode for auth-relevant sessions"
+      metric: auth_composite_score
+      filter:
+        - name: auth_session_relevant
+          value: 1
+      groupBy: [auth_primary_error_category]
+      agg: [count]
+
+    # Skill gap — did the agent invoke the skill when it needed to?
+    - name: "Skill invocation rate"
+      description: "Among sessions that required auth skill, how often it was actually invoked"
+      metric: auth_composite_score
+      filter:
+        - name: auth_skill_should_be_used
+          value: 1
+      groupBy: [auth_skill_used]
+      agg: [count]
+
+    # Outcome distribution — captures success, confusion, and abandonment in one view.
+    - name: "Session outcomes"
+      description: "Count per outcome classification for auth-relevant sessions"
+      metric: auth_composite_score
+      filter:
+        - name: auth_session_relevant
+          value: 1
+      groupBy: [auth_session_outcome]
+      agg: [count]
+
+    # Quality by flow — shows which auth flow to fix first.
+    - name: "Score by auth flow"
+      description: "Average composite score per authentication flow"
+      metric: auth_composite_score
+      filter:
+        - name: auth_session_relevant
+          value: 1
+      groupBy: [auth_flow]
+      agg: [count, avg]
+
   # batchConfig drives fast-path signal detection and score mapping.
   # Stored inside criteria (Record<string, unknown>) so it flows through load-online-evaluators
   # → DynamoDB unchanged with no schema changes.

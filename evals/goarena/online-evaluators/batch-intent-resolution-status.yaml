@@ -2,7 +2,7 @@
 evaluatorId: "airo-batch-intent-resolution-status"
 name: "Batch Intent Resolution Status Evaluator"
 # schema-only: not read by the batch runner
-description: "Session-level batch evaluator for production traces. Scores how well the agent resolved the user's goal for the session, infers an intent tag for the session's primary objective, and records an outcome classification. Runs on every session (alwaysRun: true) — not skill-gated."
+description: "Session-level batch evaluator for production traces. Scores how well the agent resolved the user's goal for the session, classifies the session's primary objective into a two-level intent/sub_intent taxonomy, and records an outcome classification. Runs on every session (alwaysRun: true) — not skill-gated."
 
 type: llm
 
@@ -72,33 +72,55 @@ steps:
       Session:
       {{workflow}}
 
+      Classify the session into the two-level taxonomy below. Pick the single
+      best-fitting sub_intent, then set intent to the parent it belongs to. The
+      sub_intent and intent MUST come from ONE row of this table:
+
+        intent       | sub_intent                          | what it covers
+        create       | website_creation                    | A brand-new website/app from scratch — template selection, domain setup, new project initiation.
+        create       | website_creation_migrate            | Moving from another platform or importing content into Airo Builder. Migration is a special case of integration from an external platform.
+        iterate      | visual_design                       | Replacing, adding, or removing images, videos, icons, or other visual assets; logo/image creation and customization. New asset creation falls here; swapping existing assets leans toward iterative_refinement.
+        iterate      | iterative_refinement                | Changing copy, headings, paragraphs, labels — purely text modifications and incremental improvements (multiple small edits, refinement loops).
+        iterate      | rebuild                             | Full or major redesign of an existing site — a structured multi-step workflow on an existing project.
+        grow         | technical_integration_add_feature   | Adding a new capability to an existing site (store, login, payments, forms) — integrating new functionality.
+        grow         | technical_integration_publish       | Going live: connecting a domain, configuring DNS, hosting. Publishing is the terminal integration step.
+        grow         | marketing_enhancement               | Post-build guidance — next steps, promotion, SEO, business development; tactical or strategic advice after building.
+        troubleshoot | system_errors                       | Debugging errors, fixing broken pages, resolving technical malfunctions and bugs.
+        explore      | feature_discovery                   | Vague, generic, or experimental prompts — testing the tool, asking what it can do, capability inquiries.
+        abandon      | early_exit                          | Too ambiguous to classify; single interaction, immediate bounce, disengagement.
+        abandon      | context_issues                      | Too ambiguous to classify; communication breakdowns, clarification requests, context mismatch.
+
       Response Format:
       Return ONLY a valid JSON object — no markdown, no prose, no trailing text.
       Required fields:
-        intent_tag — the single best-fitting tag for the session's primary objective.
-                     Must be exactly one of:
-                       add_feature | edit_text | edit_media | troubleshoot | publish_deploy |
-                       rebuild_redesign | explore_test | create_new | migrate |
-                       post_build_guidance | other
-                     Use "other" only when none of the above fit.
-        outcome    — one of: fully_resolved | largely_resolved | partial | poor | failed
-                     Map from goal satisfaction: fully satisfies → fully_resolved,
-                     largely satisfies with minor gaps → largely_resolved,
-                     partially satisfies → partial, poorly aligns → poor,
-                     fails or contradicts → failed
+        sub_intent — the single best-fitting sub-intent for the session's primary
+                     objective. Must be exactly one of:
+                       website_creation | website_creation_migrate | visual_design |
+                       iterative_refinement | rebuild | technical_integration_add_feature |
+                       technical_integration_publish | marketing_enhancement |
+                       system_errors | feature_discovery | early_exit | context_issues
+        intent     — the parent intent. DERIVE it from sub_intent using the table
+                     above; do NOT choose it independently. Must be exactly one of:
+                       create | iterate | grow | troubleshoot | explore | abandon
+        outcome    — boolean: true if the agent resolved the user's goal, else false.
+                     true (passed)  = the achieved end state satisfies the goal.
+                     false (failed) = the goal was not satisfied — fails, contradicts,
+                     or only partially/poorly addresses it. When in doubt, use false.
         goal       — string ≤200 chars: the inferred user goal for this session
     output:
       kind: json
       schema:
         type: object
-        required: [intent_tag, outcome, goal]
+        required: [intent, sub_intent, outcome, goal]
         properties:
-          intent_tag:
+          intent:
             type: string
-            enum: [add_feature, edit_text, edit_media, troubleshoot, publish_deploy, rebuild_redesign, explore_test, create_new, migrate, post_build_guidance, other]
+            enum: [create, iterate, grow, troubleshoot, explore, abandon]
+          sub_intent:
+            type: string
+            enum: [website_creation, website_creation_migrate, visual_design, iterative_refinement, rebuild, technical_integration_add_feature, technical_integration_publish, marketing_enhancement, system_errors, feature_discovery, early_exit, context_issues]
           outcome:
-            type: string
-            enum: [fully_resolved, largely_resolved, partial, poor, failed]
+            type: boolean
           goal:
             type: string
         additionalProperties: false
@@ -109,7 +131,8 @@ steps:
 
       You previously classified this session:
       - User goal: {{steps.intent_classification.goal}}
-      - Intent tag: {{steps.intent_classification.intent_tag}}
+      - Intent: {{steps.intent_classification.intent}}
+      - Sub-intent: {{steps.intent_classification.sub_intent}}
       - Outcome: {{steps.intent_classification.outcome}}
 
       Now score the session numerically.
@@ -142,7 +165,7 @@ steps:
 
 onlineConfig:
   enabled: true
-  version: "v1"
+  version: "v2"
   # schema-only: scope, target, metadataFilters not read by the batch runner
   scope: trace
   target:
@@ -173,19 +196,35 @@ onlineConfig:
           description: "How well the agent resolved the user's goal for the session (0–100)"
         - langfuseName: "session_objective_outcome"
           sourceField: "outcome"
-          type: CATEGORICAL
-          nonMatchValue: "unknown"
-          description: "Overall session outcome classification"
+          type: BOOLEAN
+          nonMatchValue: 0
+          description: "Whether the agent resolved the user's goal (true = passed, false = failed)"
         - langfuseName: "session_objective_confidence"
           sourceField: "confidence"
           type: NUMERIC
           nonMatchValue: -1
           description: "LLM judge confidence in its evaluation (0–1)"
-        - langfuseName: "session_intent_tag"
-          sourceField: "intent_tag"
+        - langfuseName: "session_intent"
+          sourceField: "intent"
           type: CATEGORICAL
-          nonMatchValue: "other"
-          description: "Primary intent category for the session's objective"
+          nonMatchValue: "unknown"
+          description: "Top-level taxonomy intent (create/iterate/grow/troubleshoot/explore/abandon)"
+        - langfuseName: "session_sub_intent"
+          sourceField: "sub_intent"
+          type: CATEGORICAL
+          nonMatchValue: "unknown"
+          description: "Taxonomy sub-intent for the session's objective"
+  metrics:
+    - name: "Objective Completion"
+      description: "How well the agent resolved the user's goal for the session (0–100) by intent, sub-intent"
+      metric: session_objective_completion
+      groupBy: [session_intent, session_sub_intent]
+      agg: [count, avg, min, max]
+#    - name: "Objective Outcome"
+#      description: "Whether the agent resolved the user's goal (true = passed, false = failed) by intent, sub-intent"
+#      metric: session_objective_outcome
+#      groupBy: [session_intent, session_sub_intent]
+#      agg: [count, avg, min, max]
 
 # schema-only: not read by the batch runner
 criteriaSchema:
