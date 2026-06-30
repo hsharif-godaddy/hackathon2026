@@ -21,7 +21,6 @@ export function CanvasTabs({ clickContext }: CanvasTabsProps) {
   const setActiveCanvas = useCommanderStore((state) => state.setActiveCanvas)
   const closeCanvas = useCommanderStore((state) => state.closeCanvas)
 
-  const closeLabel = t('builder_commander_canvas_tab_close')
   const collapseLabels = openCanvasIds.length > CANVAS_OVERFLOW_THRESHOLD
 
   const isFlagAllowed = useCanvasFlagFilter()
@@ -41,6 +40,9 @@ export function CanvasTabs({ clickContext }: CanvasTabsProps) {
         const label = translatedLabel && translatedLabel !== descriptor.labelKey
           ? translatedLabel
           : descriptor.fallbackLabel
+        const closeLabel = collapseLabels
+          ? t('builder_commander_canvas_tab_close_named', { name: label })
+          : t('builder_common_close')
         return (
           <CanvasTab
             key={descriptor.id}

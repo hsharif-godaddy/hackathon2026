@@ -6,6 +6,7 @@ import Button from '@ux/button'
 import PlusIcon from '@ux/icon/plus'
 import SearchIcon from '@ux/icon/search'
 
+import { HeaderTooltip } from '@/components/ui/HeaderTooltip'
 import { useTranslations } from '@/hooks/useTranslations'
 import { Popover, PopoverContent, PopoverTrigger } from '@/lib/shadcn/popover'
 import { useCommanderStore } from '@/stores/useCommanderStore'
@@ -80,7 +81,9 @@ export function CanvasMenu({ clickContext }: CanvasMenuProps) {
   const t = useTranslations()
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
+  const [showTooltip, setShowTooltip] = useState<boolean>(false)
   const inputRef = useRef<HTMLInputElement>(null)
+  const buttonRef = useRef<HTMLButtonElement | null>(null)
   const openCanvasIds = useCommanderStore((state) => state.openCanvasIds)
   const openCanvas = useCommanderStore((state) => state.openCanvas)
   const isFlagAllowed = useCanvasFlagFilter()
@@ -109,6 +112,7 @@ export function CanvasMenu({ clickContext }: CanvasMenuProps) {
 
   useEffect(() => {
     if (!open) return
+    setShowTooltip(false)
     setQuery('')
     const id = window.setTimeout(() => inputRef.current?.focus(), 50)
     return () => window.clearTimeout(id)
@@ -137,73 +141,81 @@ export function CanvasMenu({ clickContext }: CanvasMenuProps) {
   const shortcutHint = isMacPlatform() ? '⌘O' : 'Ctrl+O'
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button
-          data-testid="commander-canvas-tabs-menu-trigger"
-          design="tertiary"
-          size="sm"
-          icon={<PlusIcon />}
-          aria-label={t('builder_commander_canvas_menu_label')}
-          onClick={() => logClickEvent('commander.canvas_menu.open', clickContext)()}
-        />
-      </PopoverTrigger>
-      <PopoverContent
-        align="start"
-        className="w-[260px] p-1"
-        collisionPadding={8}
-      >
-        <div className="flex flex-col gap-1">
-          <div
-            className={clsx(
-              'flex items-center gap-1 px-1 py-1 rounded-md',
-              'bg-intents-ux-boxLowContrast-backgroundColor',
-            )}
-          >
-            <SearchIcon className="size-2.5 opacity-60" />
-            <input
-              ref={inputRef}
-              type="text"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder={t('builder_commander_canvas_menu_search_placeholder')}
-              data-testid="commander-canvas-tabs-menu-search"
-              className="flex-1 bg-transparent outline-none text-sm placeholder:opacity-60"
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && filtered.length > 0) {
-                  e.preventDefault()
-                  handleSelect(filtered[0].descriptor.id as CanvasId)
-                }
-                if (e.key === 'Escape') {
-                  e.preventDefault()
-                  setOpen(false)
-                }
-              }}
-            />
-            <span className="text-xs opacity-60 px-0.5 py-0.5 rounded bg-intents-ux-box-backgroundColor">
-              {shortcutHint}
-            </span>
-          </div>
+    <>
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            ref={buttonRef}
+            data-testid="commander-canvas-tabs-menu-trigger"
+            design="tertiary"
+            size="sm"
+            icon={<PlusIcon />}
+            aria-label={t('builder_commander_canvas_menu_label')}
+            onMouseEnter={() => setShowTooltip(true)}
+            onMouseLeave={() => setShowTooltip(false)}
+            onClick={() => logClickEvent('commander.canvas_menu.open', clickContext)()}
+          />
+        </PopoverTrigger>
+        <PopoverContent
+          align="start"
+          className="w-[260px] p-1"
+          collisionPadding={8}
+        >
+          <div className="flex flex-col gap-1">
+            <div
+              className={clsx(
+                'flex items-center gap-1 px-1 py-1 rounded-md',
+                'bg-intents-ux-boxLowContrast-backgroundColor',
+              )}
+            >
+              <SearchIcon className="size-2.5 opacity-60" />
+              <input
+                ref={inputRef}
+                type="text"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder={t('builder_commander_canvas_menu_search_placeholder')}
+                data-testid="commander-canvas-tabs-menu-search"
+                className="flex-1 bg-transparent outline-none text-sm placeholder:opacity-60"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && filtered.length > 0) {
+                    e.preventDefault()
+                    handleSelect(filtered[0].descriptor.id as CanvasId)
+                  }
+                  if (e.key === 'Escape') {
+                    e.preventDefault()
+                    setOpen(false)
+                  }
+                }}
+              />
+              <span className="text-xs opacity-60 px-0.5 py-0.5 rounded bg-intents-ux-box-backgroundColor">
+                {shortcutHint}
+              </span>
+            </div>
 
-          <div className="max-h-[320px] overflow-y-auto flex flex-col gap-0.5">
-            {filtered.length === 0 ? (
-              <div className="px-1 py-1 text-sm opacity-60">
-                {t('builder_code_search_no_results')}
-              </div>
-            ) : (
-              filtered.map(({ descriptor, label }) => (
-                <MenuItem
-                  key={descriptor.id}
-                  descriptor={descriptor}
-                  label={label}
-                  testId={`commander-canvas-tabs-menu-${descriptor.id}`}
-                  onSelect={() => handleSelect(descriptor.id as CanvasId)}
-                />
-              ))
-            )}
+            <div className="max-h-[320px] overflow-y-auto flex flex-col gap-0.5">
+              {filtered.length === 0 ? (
+                <div className="px-1 py-1 text-sm opacity-60">
+                  {t('builder_code_search_no_results')}
+                </div>
+              ) : (
+                filtered.map(({ descriptor, label }) => (
+                  <MenuItem
+                    key={descriptor.id}
+                    descriptor={descriptor}
+                    label={label}
+                    testId={`commander-canvas-tabs-menu-${descriptor.id}`}
+                    onSelect={() => handleSelect(descriptor.id as CanvasId)}
+                  />
+                ))
+              )}
+            </div>
           </div>
-        </div>
-      </PopoverContent>
-    </Popover>
+        </PopoverContent>
+      </Popover>
+      {!open && showTooltip && (
+        <HeaderTooltip anchorRef={buttonRef} label={t('builder_commander_canvas_menu_label')} />
+      )}
+    </>
   )
 }

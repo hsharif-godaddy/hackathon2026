@@ -61,6 +61,22 @@ vi.mock('@ux/icon/copy', () => ({
   default: () => <span data-testid="first-publish-copy-icon" />,
 }));
 
+vi.mock('@/app/[market]/develop/components/IconButton', () => ({
+  default: ({
+    icon,
+    onClick,
+    label,
+  }: {
+    icon: ReactNode;
+    onClick?: () => void;
+    label?: string;
+  }) => (
+    <button type="button" aria-label={label} onClick={onClick}>
+      {icon}
+    </button>
+  ),
+}));
+
 vi.mock('@ux/modal', () => ({
   default: ({
     title,
@@ -82,13 +98,6 @@ vi.mock('@ux/modal', () => ({
       <div>{children}</div>
     </div>
   ),
-}));
-
-vi.mock('@ux/text', () => ({
-  default: {
-    label: ({ children }: { children: ReactNode }) => <label>{children}</label>,
-    span: ({ children }: { children: ReactNode }) => <span>{children}</span>,
-  },
 }));
 
 describe('FirstPublishCongratsModal', function firstPublishCongratsModalTests() {

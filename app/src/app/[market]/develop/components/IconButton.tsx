@@ -1,6 +1,7 @@
 import clsx from 'clsx'
 import { forwardRef, useCallback, useRef, useState } from 'react'
-import Tooltip from '@ux/tooltip';
+
+import { HeaderTooltip } from '@/components/ui/HeaderTooltip'
 
 interface IconButtonProps extends Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, 'onClick'> {
   icon: React.ReactNode
@@ -53,14 +54,9 @@ const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(function IconB
     }
   }, [forwardedRef])
 
-  const tooltipComponent = (
-    <Tooltip anchorRef={internalRef} portalElem={document.body} className="z-50 develop-header-tooltip">
-      <div className="flex flex-col gap-0 p-1">
-        <div className="text-sm font-bold leading-none">{label}</div>
-        {tooltipDescription && <div className="text-sm font-thin">{tooltipDescription}</div>}
-      </div>
-    </Tooltip>
-  )
+  const tooltipComponent = label ? (
+    <HeaderTooltip anchorRef={internalRef} label={label} description={tooltipDescription ?? undefined} />
+  ) : null
 
   const clickEvent = (e: React.MouseEvent<HTMLButtonElement>) => {
     onClick?.(e)

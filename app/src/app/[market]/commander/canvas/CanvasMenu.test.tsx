@@ -3,13 +3,52 @@
  */
 import '@testing-library/jest-dom'
 
+import { forwardRef, type ReactNode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { screen } from '@testing-library/react'
+import { fireEvent, screen } from '@testing-library/react'
 
 import { useCommanderStore } from '@/stores/useCommanderStore'
 import { renderWithProviders } from '@/tests/test-utils'
 import { CanvasMenu } from './CanvasMenu'
 import { CanvasId, DEFAULT_OPEN_CANVAS_IDS, PINNED_CANVAS_ID } from './registry'
+
+vi.mock('@ux/tooltip', () => ({
+  default: ({ children, id }: { children: ReactNode; id?: string }) => (
+    <div data-testid="tooltip" id={id} role="tooltip">{children}</div>
+  ),
+}))
+
+vi.mock('@ux/button', () => ({
+  default: forwardRef(function MockButton(
+    {
+      icon,
+      onClick,
+      onMouseEnter,
+      onMouseLeave,
+      ...rest
+    }: {
+      icon?: ReactNode
+      onClick?: () => void
+      onMouseEnter?: () => void
+      onMouseLeave?: () => void
+      [key: string]: unknown
+    },
+    ref: React.Ref<HTMLButtonElement>,
+  ) {
+    return (
+      <button
+        ref={ref}
+        type="button"
+        onClick={onClick}
+        onMouseEnter={onMouseEnter}
+        onMouseLeave={onMouseLeave}
+        {...rest}
+      >
+        {icon}
+      </button>
+    )
+  }),
+}))
 
 const switchboardValues: Record<string, unknown> = {}
 
@@ -60,5 +99,36 @@ describe('CanvasMenu', () => {
 
     expect(screen.getByTestId(`commander-canvas-tabs-menu-${CanvasId.Domain}`))
       .toBeInTheDocument()
+  })
+
+  describe('tooltip', () => {
+    it('shows tooltip on mouse enter when the menu is closed', function showTooltip() {
+      renderWithProviders(<CanvasMenu />)
+
+      const trigger = screen.getByTestId('commander-canvas-tabs-menu-trigger')
+      expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
+
+      fireEvent.mouseEnter(trigger)
+      expect(screen.getByRole('tooltip')).toBeInTheDocument()
+    })
+
+    it('hides tooltip on mouse leave', function hideTooltip() {
+      renderWithProviders(<CanvasMenu />)
+
+      const trigger = screen.getByTestId('commander-canvas-tabs-menu-trigger')
+      fireEvent.mouseEnter(trigger)
+      fireEvent.mouseLeave(trigger)
+
+      expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
+    })
+
+    it('does not show tooltip while the popover is open', async function hideTooltipWhenOpen() {
+      await openMenu()
+
+      const trigger = screen.getByTestId('commander-canvas-tabs-menu-trigger')
+      fireEvent.mouseEnter(trigger)
+
+      expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
+    })
   })
 })

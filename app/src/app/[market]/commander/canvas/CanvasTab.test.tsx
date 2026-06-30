@@ -3,12 +3,19 @@
  */
 import '@testing-library/jest-dom'
 
+import type { ReactNode } from 'react'
 import { describe, expect, it, vi } from 'vitest'
-import { fireEvent, screen } from '@testing-library/react'
+import { fireEvent, screen, within } from '@testing-library/react'
 
 import { renderWithProviders } from '@/tests/test-utils'
 import { CanvasTab } from './CanvasTab'
 import { CanvasId } from './registry'
+
+vi.mock('@ux/tooltip', () => ({
+  default: ({ children, id }: { children: ReactNode; id?: string }) => (
+    <div data-testid="tooltip" id={id} role="tooltip">{children}</div>
+  ),
+}))
 
 const Icon = () => <svg data-testid="canvas-icon" />
 
@@ -113,7 +120,7 @@ describe('CanvasTab', () => {
     renderWithProviders(<CanvasTab {...baseProps} collapseLabel />)
     const tab = screen.getByRole('tab', { name: 'Brand & Logo' })
     fireEvent.mouseEnter(tab)
-    const labelSpan = screen.getByText('Brand & Logo')
+    const labelSpan = within(tab).getByText('Brand & Logo')
     expect(labelSpan).toHaveAttribute('aria-hidden', 'true')
     expect(labelSpan).toHaveClass('max-w-0')
   })
@@ -122,8 +129,34 @@ describe('CanvasTab', () => {
     renderWithProviders(
       <CanvasTab {...baseProps} active collapseLabel onActivate={vi.fn()} />,
     )
-    const labelSpan = screen.getByText('Brand & Logo')
+    const tab = screen.getByRole('tab', { name: 'Brand & Logo' })
+    const labelSpan = within(tab).getByText('Brand & Logo')
     expect(labelSpan).toHaveAttribute('aria-hidden', 'true')
     expect(labelSpan).toHaveClass('max-w-0')
+  })
+
+  describe('tooltip in collapsed mode', () => {
+    it('shows tooltip on mouse enter when collapseLabel is true', () => {
+      renderWithProviders(<CanvasTab {...baseProps} collapseLabel />)
+      const tab = screen.getByRole('tab', { name: 'Brand & Logo' })
+      expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
+      fireEvent.mouseEnter(tab)
+      expect(screen.getByRole('tooltip')).toBeInTheDocument()
+    })
+
+    it('does not show tooltip on mouse enter when collapseLabel is false', () => {
+      renderWithProviders(<CanvasTab {...baseProps} collapseLabel={false} />)
+      const tab = screen.getByRole('tab', { name: 'Brand & Logo' })
+      fireEvent.mouseEnter(tab)
+      expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
+    })
+
+    it('hides tooltip on mouse leave', () => {
+      renderWithProviders(<CanvasTab {...baseProps} collapseLabel />)
+      const tab = screen.getByRole('tab', { name: 'Brand & Logo' })
+      fireEvent.mouseEnter(tab)
+      fireEvent.mouseLeave(tab)
+      expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
+    })
   })
 })
