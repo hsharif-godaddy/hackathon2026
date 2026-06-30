@@ -337,10 +337,11 @@ export class AiroMgmtClient {
    * This ensures we don't show PaaS or other product subscriptions in the AI App Builder UI.
    *
    * @param ownerProduct - Filter by product family (defaults to AiroAppBuilder)
+   * @param options.noCache - Bypass Next.js fetch cache to get fresh data
    */
   async getSubscriptions(
     ownerProduct: string = DEFAULT_OWNER_PRODUCT,
-    options: { includeAttributes?: boolean } = {}
+    options: { includeAttributes?: boolean; noCache?: boolean } = {}
   ): Promise<AiroSubscription[]> {
     const params = new URLSearchParams({ ownerProduct });
     if (options.includeAttributes) {
@@ -350,7 +351,7 @@ export class AiroMgmtClient {
       'GET',
       `/api/airo/v1/subscriptions?${params.toString()}`,
       undefined,
-      { logEvent: 'mgmt-airo.get-subscriptions' }
+      { logEvent: 'mgmt-airo.get-subscriptions', noCache: options.noCache }
     );
 
     return Array.isArray(response) ? response : response.subscriptions || [];
@@ -422,13 +423,18 @@ export class AiroMgmtClient {
   }
   /**
    * Get entitlement for a subscription
+   *
+   * @param options.noCache - Bypass Next.js fetch cache to get fresh data
    */
-  async getEntitlements(subscriptionId: string): Promise<AiroSubscription> {
+  async getEntitlements(
+    subscriptionId: string,
+    options: { noCache?: boolean } = {}
+  ): Promise<AiroSubscription> {
     const response = await this.request<AiroSubscription>(
       'GET',
       `/api/airo/v1/subscriptions/${subscriptionId}/entitlement`,
       undefined,
-      { logEvent: 'mgmt-airo.get-entitlement' }
+      { logEvent: 'mgmt-airo.get-entitlement', noCache: options.noCache }
     );
 
     return response;

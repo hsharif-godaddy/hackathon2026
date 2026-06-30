@@ -236,6 +236,39 @@ describe('AiroMgmtClient', () => {
         })
       );
     });
+
+    it('should bypass cache when noCache option is true', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => [MOCK_SUBSCRIPTION]
+      });
+
+      await client.getSubscriptions('AiroAppBuilder', { noCache: true });
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://mgmt.test.com/api/airo/v1/subscriptions?ownerProduct=AiroAppBuilder',
+        expect.objectContaining({
+          method: 'GET',
+          cache: 'no-store'
+        })
+      );
+    });
+
+    it('should use default cache behavior when noCache is not specified', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => [MOCK_SUBSCRIPTION]
+      });
+
+      await client.getSubscriptions();
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.not.objectContaining({
+          cache: 'no-store'
+        })
+      );
+    });
   });
 
   describe('getActiveSubscription', () => {
@@ -289,6 +322,58 @@ describe('AiroMgmtClient', () => {
       });
 
       await expect(client.getSubscription('non-existent')).rejects.toThrow();
+    });
+  });
+
+  describe('getEntitlements', () => {
+    it('should fetch entitlements for a subscription', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => MOCK_SUBSCRIPTION
+      });
+
+      const result = await client.getEntitlements('sub-123');
+
+      expect(result).toEqual(MOCK_SUBSCRIPTION);
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://mgmt.test.com/api/airo/v1/subscriptions/sub-123/entitlement',
+        expect.objectContaining({
+          method: 'GET'
+        })
+      );
+    });
+
+    it('should bypass cache when noCache option is true', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => MOCK_SUBSCRIPTION
+      });
+
+      await client.getEntitlements('sub-123', { noCache: true });
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://mgmt.test.com/api/airo/v1/subscriptions/sub-123/entitlement',
+        expect.objectContaining({
+          method: 'GET',
+          cache: 'no-store'
+        })
+      );
+    });
+
+    it('should use default cache behavior when noCache is not specified', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => MOCK_SUBSCRIPTION
+      });
+
+      await client.getEntitlements('sub-123');
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.not.objectContaining({
+          cache: 'no-store'
+        })
+      );
     });
   });
 

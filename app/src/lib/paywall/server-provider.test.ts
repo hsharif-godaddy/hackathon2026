@@ -313,6 +313,62 @@ describe('ServerPaywallProvider', () => {
 
     });
 
+    describe('Cache bypass behavior', () => {
+      it('should pass noCache: true to getSubscriptions', async () => {
+        mockGetSubscriptions.mockResolvedValue([
+          {
+            id: 'sub-1',
+            productId: 'aab-v1',
+            status: 'active',
+            plan: SubscriptionPlan.Starter,
+          },
+        ]);
+
+        mockGetEntitlements.mockResolvedValue({
+          id: 'sub-1',
+          productId: 'aab-v1',
+          customerId: 'customer-123',
+          status: 'active',
+          plan: SubscriptionPlan.Starter,
+        });
+
+        const provider = new ServerPaywallProvider('jwt-token', 'customer-123', mockHeaders);
+        await provider.getAccountSubscription();
+
+        expect(mockGetSubscriptions).toHaveBeenCalledWith(
+          'AiroAppBuilder',
+          { noCache: true }
+        );
+      });
+
+      it('should pass noCache: true to getEntitlements', async () => {
+        mockGetSubscriptions.mockResolvedValue([
+          {
+            id: 'sub-1',
+            productId: 'aab-v1',
+            status: 'active',
+            plan: SubscriptionPlan.Starter,
+          },
+        ]);
+
+        mockGetEntitlements.mockResolvedValue({
+          id: 'sub-1',
+          productId: 'aab-v1',
+          customerId: 'customer-123',
+          status: 'active',
+          plan: SubscriptionPlan.Starter,
+        });
+
+        const provider = new ServerPaywallProvider('jwt-token', 'customer-123', mockHeaders);
+        await provider.getAccountSubscription();
+
+        expect(mockGetEntitlements).toHaveBeenCalledWith(
+          'sub-1',
+          { noCache: true }
+        );
+      });
+    });
+
     describe('Error handling', () => {
       it('should return subscription without full details if getEntitlements fails', async () => {
         mockCheckSwitchboardFlag.mockResolvedValue(true);

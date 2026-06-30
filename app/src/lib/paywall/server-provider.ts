@@ -76,7 +76,13 @@ export class ServerPaywallProvider implements PaywallDataProvider {
     const baseUrl = process.env.MGMT_AIRO_BASE_URL || 'https://mgmt.nstk.net';
     const client = new AiroMgmtClient({ baseUrl, jwt: this.jwt });
 
-    const subscriptions = await client.getSubscriptions(AIRO_OWNER_PRODUCTS.AIRO_APP_BUILDER);
+    // Bypass Next.js fetch cache to ensure fresh subscription data.
+    // Without noCache, customers see stale plan data for ~2 minutes after purchase,
+    // causing false "upgrade required" blocks on publish (canPublish=false).
+    const subscriptions = await client.getSubscriptions(
+      AIRO_OWNER_PRODUCTS.AIRO_APP_BUILDER,
+      { noCache: true }
+    );
 
     logger.info('paywall.server-provider.get-account-subscription', {
       message: 'Fetched account subscription data',
@@ -118,7 +124,8 @@ export class ServerPaywallProvider implements PaywallDataProvider {
 
     // Try to fetch full subscription details via entitlements endpoint
     try {
-      const fullSubscription = await client.getEntitlements(bestSubscription.id);
+      // Bypass cache here too - entitlements must be fresh after purchase
+      const fullSubscription = await client.getEntitlements(bestSubscription.id, { noCache: true });
       return {
         id: fullSubscription.id,
         productId: fullSubscription.productId,
