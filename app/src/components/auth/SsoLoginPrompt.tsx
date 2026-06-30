@@ -7,6 +7,7 @@ import Spinner from '@ux/spinner';
 import { useAuthContext } from '@/components/providers/AuthProvider';
 import { useSsoSignIn } from '@/hooks/useSsoSignIn';
 import { useTranslations } from '@/hooks/useTranslations';
+import { awaitHeartbeatRecovery, shouldAttemptHeartbeatPatience } from '@/lib/auth/heartbeat-patience';
 import { useAuthUIStore } from '@/stores/useAuthUIStore';
 import { MockLoginDialog } from './MockLogin';
 
@@ -27,13 +28,39 @@ export default function SsoLoginPrompt() {
   const [showMockLogin, setShowMockLogin] = useState(false);
   const [dismissed, setDismissed] = useState(false);
   const triggered = useRef(false);
+  const hasAttemptedPatience = useRef(false);
   const ssoCloseReason = useAuthUIStore((s) => s.ssoCloseReason);
   const clearSsoCloseReason = useAuthUIStore((s) => s.clearSsoCloseReason);
 
   useEffect(() => {
     if (triggered.current || dismissed) return;
     triggered.current = true;
-    signIn({ onShowMockLogin: () => setShowMockLogin(true) });
+
+    if (hasAttemptedPatience.current || !shouldAttemptHeartbeatPatience()) {
+      signIn({ onShowMockLogin: () => setShowMockLogin(true) });
+      return;
+    }
+
+    hasAttemptedPatience.current = true;
+
+    const controller: AbortController = new AbortController();
+
+    awaitHeartbeatRecovery(controller.signal)
+      .then((result) => {
+        if (controller.signal.aborted) return;
+        if (!result.recovered) {
+          signIn({ onShowMockLogin: () => setShowMockLogin(true) });
+        }
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) {
+          signIn({ onShowMockLogin: () => setShowMockLogin(true) });
+        }
+      });
+
+    return () => {
+      controller.abort();
+    };
   }, [signIn, dismissed]);
 
   useEffect(() => {

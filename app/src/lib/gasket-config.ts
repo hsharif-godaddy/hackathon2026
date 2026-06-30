@@ -280,8 +280,9 @@ export const AUTH_PROBE_TIMEOUT_MS = 5_000;
 //   default: 3 × 2s = 6s ceiling
 //   wake-aware (flag on + within wake window): 7 × 2s = 14s ceiling
 // Wakes that refresh slower than the budget still fall through to the modal.
-// Only vat is retried — HBI/login failures can't be self-refreshed by the
-// heartbeat.
+// Recovery triggers (flag-gated): authReason=3 (VAT); null authReason in wake
+// window (likely stale-VAT behind WAF/proxy); probe timeout in wake window.
+// HBI/login failures (authReason 1,2) can't self-refresh via heartbeat.
 const VAT_AUTH_REASON = 3;
 const VAT_RECOVERY_MAX_ATTEMPTS = 3;
 const VAT_RECOVERY_DELAY_MS = 2_000;
@@ -292,6 +293,11 @@ const VAT_RECOVERY_DELAY_MS = 2_000;
 const VAT_RECOVERY_WAKE_MAX_ATTEMPTS = 7;
 const VAT_RECOVERY_WAKE_WINDOW_MS = 15_000;
 
+// Delay before signalling TQ online — gives heartbeat.js time to POST and land
+// Set-Cookie before refetches fire with the old token. 1s covers the typical
+// 100-500ms heartbeat round-trip with margin for cold TLS handshakes.
+const HEARTBEAT_HEAD_START_MS: number = 1_000;
+
 export const wakeTracker = (() => {
   let timestamp: number = 0;
   function mark(): void { timestamp = Date.now(); }
@@ -301,6 +307,30 @@ export const wakeTracker = (() => {
     window.addEventListener('online', mark);
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible') { mark(); }
+    });
+    import('@tanstack/react-query').then(({ onlineManager }) => {
+      onlineManager.setEventListener((setOnline) => {
+        const onlineHandler = (): void => {
+          const flagEnabled: boolean =
+            getSwitchboardFlag(SWITCHBOARD_APPBUILDER_WAKE_AWARE_VAT_RECOVERY) ?? false;
+          if (flagEnabled) {
+            setTimeout(() => { setOnline(true); }, HEARTBEAT_HEAD_START_MS);
+          } else {
+            setOnline(true);
+          }
+        };
+        const offlineHandler = (): void => { setOnline(false); };
+        window.addEventListener('online', onlineHandler);
+        window.addEventListener('offline', offlineHandler);
+        return () => {
+          window.removeEventListener('online', onlineHandler);
+          window.removeEventListener('offline', offlineHandler);
+        };
+      });
+    }).catch((err: unknown) => {
+      logger.warn('app-fetch.wake-tracker.online-manager-init-failed', {
+        error: err instanceof Error ? err.message : String(err),
+      });
     });
   }
   return { mark, isWithinWindow, msSinceWake };
@@ -468,10 +498,15 @@ export async function resolveAuth(options: ResolveAuthOptions = {}): Promise<Aut
       const probe = await probeAuthValidate(level);
 
       if (probe === 'timeout') {
-        // Couldn't reach validate. Open the modal as a safe default with a
-        // null authReason → /login. Better an occasional spurious prompt than
-        // surfacing "we don't know if you're authed."
-        logger.warn('app-fetch.auth-resolve.probe-timeout', { level });
+        const wakeAwareEnabled: boolean =
+          getSwitchboardFlag(SWITCHBOARD_APPBUILDER_WAKE_AWARE_VAT_RECOVERY) ?? false;
+        const inWakeWindow: boolean = wakeAwareEnabled && wakeTracker.isWithinWindow();
+        logger.warn('app-fetch.auth-resolve.probe-timeout', { level, inWakeWindow });
+        // During wake, network may still be stabilizing — attempt recovery before
+        // showing the modal. Heartbeat.js likely completes within the retry budget.
+        if (inWakeWindow && (await recoverStaleVat(level))) {
+          return { kind: 'valid' };
+        }
         return openModalAndVerify(level, null);
       }
 
@@ -508,11 +543,15 @@ export async function resolveAuth(options: ResolveAuthOptions = {}): Promise<Aut
       const authReason = typeof body?.authReason === 'number' ? body.authReason : null;
       logger.info('app-fetch.auth-resolve.reauth-required', { level, authReason });
 
-      // Stale vat self-heals once the browser ui_heartbeat catches up. Spaced
-      // re-probe to bridge that window before disturbing the user with the
-      // modal. Runs inside pendingResolution, so a burst of 401s shares one
-      // recovery loop. Only vat (3) is recoverable this way.
-      if (authReason === VAT_AUTH_REASON && (await recoverStaleVat(level))) {
+      // Recovery triggers:
+      // 1. authReason === 3 (VAT expired) — always recoverable via heartbeat refresh
+      // 2. authReason === null during wake — likely stale-VAT behind a WAF/proxy HTML
+      //    response that couldn't be parsed. Outside wake, null goes straight to modal.
+      const wakeAwareEnabled: boolean =
+        getSwitchboardFlag(SWITCHBOARD_APPBUILDER_WAKE_AWARE_VAT_RECOVERY) ?? false;
+      const inWakeWindow: boolean = wakeAwareEnabled && wakeTracker.isWithinWindow();
+      if ((authReason === VAT_AUTH_REASON || (authReason === null && inWakeWindow)) &&
+          (await recoverStaleVat(level))) {
         return { kind: 'valid' };
       }
 

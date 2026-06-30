@@ -305,3 +305,365 @@ describe('recoverStaleVat wake-aware extension', function vatRecoveryWakeTests()
     void promise.catch(() => {});
   });
 });
+
+describe('resolveAuth wake-patience (probe timeout path)', function probeTimeoutTests() {
+  let fetchSpy: ReturnType<typeof vi.fn>;
+
+  beforeEach(function setup() {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.clearAllMocks();
+    mockSwitchboardValue = undefined;
+    fetchSpy = vi.fn();
+    vi.stubGlobal('fetch', fetchSpy);
+    vi.resetModules();
+  });
+
+  afterEach(function teardown() {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it('probe timeout during wake → attempts recoverStaleVat → succeeds', async function timeoutWakeRecovery() {
+    mockSwitchboardValue = true;
+
+    const { resolveAuth, wakeTracker } = await import('@/lib/gasket-config');
+    wakeTracker.mark();
+
+    // Initial probe times out (simulate by making fetch hang then abort)
+    fetchSpy.mockImplementationOnce((_url: string, opts: RequestInit) => {
+      return new Promise((_resolve, reject) => {
+        opts.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')));
+      });
+    });
+    // recoverStaleVat retry probes: first fails, second succeeds
+    fetchSpy.mockResolvedValueOnce(make401());
+    fetchSpy.mockResolvedValueOnce(make200());
+
+    // Need to advance past the 5s probe timeout
+    const promise = resolveAuth({ level: 2 });
+    await vi.advanceTimersByTimeAsync(6_000);
+
+    const result = await promise;
+
+    expect(result).toEqual({ kind: 'valid' });
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      'app-fetch.auth-resolve.probe-timeout',
+      expect.objectContaining({ level: 2, inWakeWindow: true }),
+    );
+  });
+
+  it('probe timeout outside wake → goes straight to modal (no recovery)', async function timeoutNoWakeModal() {
+    mockSwitchboardValue = true;
+
+    const { resolveAuth } = await import('@/lib/gasket-config');
+    // No wakeTracker.mark() — outside wake window
+
+    fetchSpy.mockImplementationOnce((_url: string, opts: RequestInit) => {
+      return new Promise((_resolve, reject) => {
+        opts.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')));
+      });
+    });
+
+    const promise = resolveAuth({ level: 2 });
+    await vi.advanceTimersByTimeAsync(6_000);
+
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      'app-fetch.auth-resolve.probe-timeout',
+      expect.objectContaining({ level: 2, inWakeWindow: false }),
+    );
+    // Modal opened without attempting recovery
+    expect(mockStoreState.openSsoLogin).toHaveBeenCalled();
+    // Only the single probe call — no recoverStaleVat retries
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+
+    void promise.catch(() => {});
+  });
+
+  it('probe timeout with flag OFF → goes straight to modal (matches main behavior)', async function timeoutFlagOffModal() {
+    mockSwitchboardValue = false;
+
+    const { resolveAuth, wakeTracker } = await import('@/lib/gasket-config');
+    wakeTracker.mark(); // Even within wake window, flag OFF means no recovery
+
+    fetchSpy.mockImplementationOnce((_url: string, opts: RequestInit) => {
+      return new Promise((_resolve, reject) => {
+        opts.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')));
+      });
+    });
+
+    const promise = resolveAuth({ level: 2 });
+    await vi.advanceTimersByTimeAsync(6_000);
+
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      'app-fetch.auth-resolve.probe-timeout',
+      expect.objectContaining({ level: 2, inWakeWindow: false }),
+    );
+    // Flag OFF: inWakeWindow is always false regardless of wakeTracker state
+    expect(mockStoreState.openSsoLogin).toHaveBeenCalled();
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+
+    void promise.catch(() => {});
+  });
+});
+
+describe('resolveAuth wake-patience (null authReason path)', function nullAuthReasonTests() {
+  let fetchSpy: ReturnType<typeof vi.fn>;
+
+  beforeEach(function setup() {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.clearAllMocks();
+    mockSwitchboardValue = undefined;
+    fetchSpy = vi.fn();
+    vi.stubGlobal('fetch', fetchSpy);
+    vi.resetModules();
+  });
+
+  afterEach(function teardown() {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it('null authReason during wake → attempts recoverStaleVat → succeeds', async function nullReasonWakeRecovery() {
+    mockSwitchboardValue = true;
+
+    const { resolveAuth, wakeTracker } = await import('@/lib/gasket-config');
+    wakeTracker.mark();
+
+    // Initial probe: 401 with unparseable body (simulates WAF/proxy HTML)
+    fetchSpy.mockResolvedValueOnce(
+      new Response('<html>Access Denied</html>', {
+        status: 401,
+        headers: { 'Content-Type': 'text/html' },
+      }),
+    );
+    // recoverStaleVat probes: first still 401, second succeeds
+    fetchSpy.mockResolvedValueOnce(make401());
+    fetchSpy.mockResolvedValueOnce(make200());
+
+    const result = await resolveAuth({ level: 2 });
+
+    expect(result).toEqual({ kind: 'valid' });
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      'app-fetch.auth-resolve.body-parse-failed',
+      expect.objectContaining({ level: 2 }),
+    );
+    expect(mockLogger.info).toHaveBeenCalledWith(
+      'app-fetch.auth-resolve.vat-recovered',
+      expect.objectContaining({ wakeExtended: true }),
+    );
+  });
+
+  it('null authReason outside wake → goes straight to modal (no recovery)', async function nullReasonNoWakeModal() {
+    mockSwitchboardValue = true;
+
+    const { resolveAuth } = await import('@/lib/gasket-config');
+    // No wakeTracker.mark() — outside wake window
+
+    // 401 with HTML body → authReason null
+    fetchSpy.mockResolvedValueOnce(
+      new Response('<html>Access Denied</html>', {
+        status: 401,
+        headers: { 'Content-Type': 'text/html' },
+      }),
+    );
+
+    const promise = resolveAuth({ level: 2 });
+    await vi.advanceTimersByTimeAsync(100);
+
+    // Should open SSO modal without attempting recovery
+    expect(mockStoreState.openSsoLogin).toHaveBeenCalled();
+
+    void promise.catch(() => {});
+  });
+
+  it('non-null non-VAT authReason during wake → goes to modal (not recoverable)', async function nonVatReasonDuringWake() {
+    mockSwitchboardValue = true;
+
+    const { resolveAuth, wakeTracker } = await import('@/lib/gasket-config');
+    wakeTracker.mark();
+
+    // 401 with authReason=1 (login required, NOT stale VAT)
+    fetchSpy.mockResolvedValueOnce(
+      new Response(JSON.stringify({ authReason: 1 }), { status: 401 }),
+    );
+
+    const promise = resolveAuth({ level: 2 });
+    await vi.advanceTimersByTimeAsync(100);
+
+    // authReason 1 (login) is not recoverable — modal should open
+    expect(mockStoreState.openSsoLogin).toHaveBeenCalled();
+
+    void promise.catch(() => {});
+  });
+
+  it('null authReason with flag OFF → goes straight to modal (matches main behavior)', async function nullReasonFlagOffModal() {
+    mockSwitchboardValue = false;
+
+    const { resolveAuth, wakeTracker } = await import('@/lib/gasket-config');
+    wakeTracker.mark(); // Within wake window but flag is OFF
+
+    // 401 with unparseable body
+    fetchSpy.mockResolvedValueOnce(
+      new Response('<html>Access Denied</html>', {
+        status: 401,
+        headers: { 'Content-Type': 'text/html' },
+      }),
+    );
+
+    const promise = resolveAuth({ level: 2 });
+    await vi.advanceTimersByTimeAsync(100);
+
+    // Flag OFF: null authReason always goes to modal, no recovery attempted
+    expect(mockStoreState.openSsoLogin).toHaveBeenCalled();
+    // Only the initial probe — no recoverStaleVat retries
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+
+    void promise.catch(() => {});
+  });
+
+  it('null authReason at 14,999ms since wake → attempts recovery (inside boundary)', async function nullReasonWakeEdgeInside() {
+    mockSwitchboardValue = true;
+
+    const { resolveAuth, wakeTracker } = await import('@/lib/gasket-config');
+    wakeTracker.mark();
+
+    // Advance to 14,999ms — just inside the 15s window
+    vi.advanceTimersByTime(14_999);
+
+    // 401 with unparseable body
+    fetchSpy.mockResolvedValueOnce(
+      new Response('<html>Access Denied</html>', {
+        status: 401,
+        headers: { 'Content-Type': 'text/html' },
+      }),
+    );
+    // recoverStaleVat: first retry succeeds
+    fetchSpy.mockResolvedValueOnce(make200());
+
+    const result = await resolveAuth({ level: 2 });
+
+    expect(result).toEqual({ kind: 'valid' });
+    expect(mockLogger.info).toHaveBeenCalledWith(
+      'app-fetch.auth-resolve.vat-recovered',
+      expect.objectContaining({ wakeExtended: true }),
+    );
+  });
+
+  it('null authReason at 15,001ms since wake → goes straight to modal (outside boundary)', async function nullReasonWakeEdgeOutside() {
+    mockSwitchboardValue = true;
+
+    const { resolveAuth, wakeTracker } = await import('@/lib/gasket-config');
+    wakeTracker.mark();
+
+    // Advance to 15,001ms — just outside the 15s window
+    vi.advanceTimersByTime(15_001);
+
+    // 401 with unparseable body
+    fetchSpy.mockResolvedValueOnce(
+      new Response('<html>Access Denied</html>', {
+        status: 401,
+        headers: { 'Content-Type': 'text/html' },
+      }),
+    );
+
+    const promise = resolveAuth({ level: 2 });
+    await vi.advanceTimersByTimeAsync(100);
+
+    // Outside wake window: null authReason goes directly to modal
+    expect(mockStoreState.openSsoLogin).toHaveBeenCalled();
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+
+    void promise.catch(() => {});
+  });
+});
+
+describe('wakeTracker onlineManager gate', function onlineManagerGateTests() {
+  beforeEach(function setup() {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.clearAllMocks();
+    mockSwitchboardValue = undefined;
+    vi.stubGlobal('fetch', vi.fn());
+    vi.resetModules();
+  });
+
+  afterEach(function teardown() {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it('delays setOnline by 1s when flag is ON (heartbeat head start)', async function delayWhenFlagOn() {
+    mockSwitchboardValue = true;
+    const mockSetEventListener: ReturnType<typeof vi.fn> = vi.fn();
+
+    vi.doMock('@tanstack/react-query', () => ({
+      onlineManager: { setEventListener: mockSetEventListener },
+    }));
+
+    await import('@/lib/gasket-config');
+    // Flush the dynamic import's .then() microtask
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(mockSetEventListener).toHaveBeenCalledTimes(1);
+    const listenerSetup: (setOnline: (online: boolean) => void) => () => void =
+      mockSetEventListener.mock.calls[0][0];
+
+    const mockSetOnline: ReturnType<typeof vi.fn> = vi.fn();
+    listenerSetup(mockSetOnline);
+
+    // Dispatch online event — triggers the handler registered by listenerSetup
+    window.dispatchEvent(new Event('online'));
+
+    // setOnline should NOT be called immediately (1s delay pending)
+    expect(mockSetOnline).not.toHaveBeenCalled();
+
+    // After 1s, setOnline fires
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(mockSetOnline).toHaveBeenCalledWith(true);
+  });
+
+  it('calls setOnline immediately when flag is OFF (no delay)', async function immediateWhenFlagOff() {
+    mockSwitchboardValue = false;
+    const mockSetEventListener: ReturnType<typeof vi.fn> = vi.fn();
+
+    vi.doMock('@tanstack/react-query', () => ({
+      onlineManager: { setEventListener: mockSetEventListener },
+    }));
+
+    await import('@/lib/gasket-config');
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(mockSetEventListener).toHaveBeenCalledTimes(1);
+    const listenerSetup: (setOnline: (online: boolean) => void) => () => void =
+      mockSetEventListener.mock.calls[0][0];
+
+    const mockSetOnline: ReturnType<typeof vi.fn> = vi.fn();
+    listenerSetup(mockSetOnline);
+
+    window.dispatchEvent(new Event('online'));
+
+    // Flag OFF: setOnline called immediately, no setTimeout delay
+    expect(mockSetOnline).toHaveBeenCalledWith(true);
+  });
+
+  it('calls setOnline(false) on offline event', async function offlineHandler() {
+    mockSwitchboardValue = true;
+    const mockSetEventListener: ReturnType<typeof vi.fn> = vi.fn();
+
+    vi.doMock('@tanstack/react-query', () => ({
+      onlineManager: { setEventListener: mockSetEventListener },
+    }));
+
+    await import('@/lib/gasket-config');
+    await vi.advanceTimersByTimeAsync(0);
+
+    const listenerSetup: (setOnline: (online: boolean) => void) => () => void =
+      mockSetEventListener.mock.calls[0][0];
+
+    const mockSetOnline: ReturnType<typeof vi.fn> = vi.fn();
+    listenerSetup(mockSetOnline);
+
+    window.dispatchEvent(new Event('offline'));
+
+    expect(mockSetOnline).toHaveBeenCalledWith(false);
+  });
+});

@@ -1,0 +1,197 @@
+/**
+ * @vitest-environment jsdom
+ */
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+let mockSwitchboardValue: boolean | undefined = undefined;
+let mockIsReturning: boolean = false;
+
+vi.mock('@/config/switchboard-flags', () => ({
+  SWITCHBOARD_APPBUILDER_WAKE_AWARE_VAT_RECOVERY: 'appbuilder-wake-aware-vat-recovery',
+}));
+
+vi.mock('@/hooks/useSwitchboard', () => ({
+  getSwitchboardFlag: () => mockSwitchboardValue,
+}));
+
+vi.mock('@/lib/returningUser', () => ({
+  isReturningUser: () => mockIsReturning,
+}));
+
+const mockLogger = vi.hoisted(() => ({
+  info: vi.fn(),
+  warn: vi.fn(),
+  error: vi.fn(),
+  debug: vi.fn(),
+}));
+vi.mock('@/lib/request-context', () => ({
+  logger: mockLogger,
+}));
+
+import {
+  awaitHeartbeatRecovery,
+  HEARTBEAT_PATIENCE_RELOAD_KEY,
+  shouldAttemptHeartbeatPatience,
+} from './heartbeat-patience';
+
+describe('shouldAttemptHeartbeatPatience', () => {
+  beforeEach(() => {
+    mockSwitchboardValue = true;
+    mockIsReturning = true;
+    sessionStorage.clear();
+  });
+
+  it('returns true when flag is on, user is returning, and no marker', () => {
+    expect(shouldAttemptHeartbeatPatience()).toBe(true);
+  });
+
+  it('returns false when flag is off', () => {
+    mockSwitchboardValue = false;
+    expect(shouldAttemptHeartbeatPatience()).toBe(false);
+  });
+
+  it('returns false when flag is undefined', () => {
+    mockSwitchboardValue = undefined;
+    expect(shouldAttemptHeartbeatPatience()).toBe(false);
+  });
+
+  it('returns false for anonymous visitors (no returning-user cookie)', () => {
+    mockIsReturning = false;
+    expect(shouldAttemptHeartbeatPatience()).toBe(false);
+  });
+
+  it('returns false when sessionStorage marker is set', () => {
+    sessionStorage.setItem(HEARTBEAT_PATIENCE_RELOAD_KEY, '1');
+    expect(shouldAttemptHeartbeatPatience()).toBe(false);
+  });
+});
+
+describe('awaitHeartbeatRecovery', () => {
+  let fetchSpy: ReturnType<typeof vi.fn>;
+  let reloadSpy: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.clearAllMocks();
+    fetchSpy = vi.fn();
+    vi.stubGlobal('fetch', fetchSpy);
+    reloadSpy = vi.fn();
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: { ...window.location, reload: reloadSpy },
+    });
+    sessionStorage.clear();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it('waits 2s then probes — reloads on 200', async () => {
+    fetchSpy.mockResolvedValueOnce(new Response('{}', { status: 200 }));
+    const controller: AbortController = new AbortController();
+
+    const promise = awaitHeartbeatRecovery(controller.signal);
+
+    await vi.advanceTimersByTimeAsync(2_000);
+    const result = await promise;
+
+    expect(result).toEqual({ recovered: true });
+    expect(fetchSpy).toHaveBeenCalledWith(
+      '/api/auth/validate?level=1',
+      expect.objectContaining({ credentials: 'include' }),
+    );
+    expect(sessionStorage.getItem(HEARTBEAT_PATIENCE_RELOAD_KEY)).toBe('1');
+    expect(reloadSpy).toHaveBeenCalled();
+    expect(mockLogger.info).toHaveBeenCalledWith(
+      'auth.heartbeat-patience.recovered',
+      { attempt: 0 },
+    );
+  });
+
+  it('retries on 401 and recovers on second attempt', async () => {
+    fetchSpy.mockResolvedValueOnce(new Response('{}', { status: 401 }));
+    fetchSpy.mockResolvedValueOnce(new Response('{}', { status: 200 }));
+    const controller: AbortController = new AbortController();
+
+    const promise = awaitHeartbeatRecovery(controller.signal);
+
+    // Initial 2s delay
+    await vi.advanceTimersByTimeAsync(2_000);
+    // 1s retry interval
+    await vi.advanceTimersByTimeAsync(1_000);
+    const result = await promise;
+
+    expect(result).toEqual({ recovered: true });
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(mockLogger.info).toHaveBeenCalledWith(
+      'auth.heartbeat-patience.recovered',
+      { attempt: 1 },
+    );
+  });
+
+  it('returns recovered=false when all retries exhausted', async () => {
+    fetchSpy.mockResolvedValue(new Response('{}', { status: 401 }));
+    const controller: AbortController = new AbortController();
+
+    const promise = awaitHeartbeatRecovery(controller.signal);
+
+    // 2s initial + 3 retry intervals (1s each)
+    await vi.advanceTimersByTimeAsync(2_000 + 3_000);
+    const result = await promise;
+
+    expect(result).toEqual({ recovered: false });
+    expect(fetchSpy).toHaveBeenCalledTimes(4);
+    expect(reloadSpy).not.toHaveBeenCalled();
+    expect(mockLogger.warn).toHaveBeenCalledWith('auth.heartbeat-patience.exhausted');
+  });
+
+  it('logs warning on network error and continues retrying', async () => {
+    fetchSpy.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    fetchSpy.mockResolvedValueOnce(new Response('{}', { status: 200 }));
+    const controller: AbortController = new AbortController();
+
+    const promise = awaitHeartbeatRecovery(controller.signal);
+
+    await vi.advanceTimersByTimeAsync(2_000);
+    await vi.advanceTimersByTimeAsync(1_000);
+    const result = await promise;
+
+    expect(result).toEqual({ recovered: true });
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      'auth.heartbeat-patience.probe-error',
+      expect.objectContaining({ attempt: 0, error: 'Failed to fetch' }),
+    );
+  });
+
+  it('returns immediately when signal is already aborted', async () => {
+    const controller: AbortController = new AbortController();
+    controller.abort();
+
+    const result = await awaitHeartbeatRecovery(controller.signal);
+
+    expect(result).toEqual({ recovered: false });
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('stops probing when aborted mid-retry', async () => {
+    fetchSpy.mockResolvedValueOnce(new Response('{}', { status: 401 }));
+    const controller: AbortController = new AbortController();
+
+    const promise = awaitHeartbeatRecovery(controller.signal);
+
+    // Advance past initial delay, first probe fires (401)
+    await vi.advanceTimersByTimeAsync(2_000);
+
+    // Abort during retry interval
+    controller.abort();
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    const result = await promise;
+
+    expect(result).toEqual({ recovered: false });
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(reloadSpy).not.toHaveBeenCalled();
+  });
+});

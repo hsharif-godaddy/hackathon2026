@@ -3,7 +3,8 @@
 import { createContext, ReactNode, useContext, useEffect, useRef, useState } from 'react';
 
 import LoadingComponent from '@/components/auth/LoadingComponent';
-import { useAuth } from '@/hooks/useAuth'
+import { useAuth } from '@/hooks/useAuth';
+import { awaitHeartbeatRecovery, shouldAttemptHeartbeatPatience } from '@/lib/auth/heartbeat-patience';
 import { getGasketConfig, isAuthJWTSync } from '@/lib/gasket-config';
 import { logger } from '@/lib/request-context';
 
@@ -23,17 +24,56 @@ function InnerAuthProvider({
   children: ReactNode;
 }) {
   const authData = useAuth();
-  const { isLoading } = authData;
+  const { isLoading, isAuthenticated } = authData;
   const hasInitiallyLoaded = useRef(false);
+  const hasAttemptedPatience = useRef(false);
+  const [isPatienceActive, setIsPatienceActive] = useState(false);
 
   if (!isLoading) {
     hasInitiallyLoaded.current = true;
   }
 
-  // Only gate rendering on the initial auth check.
-  // After initial auth completes, keep children mounted during heartbeat revalidations
-  // to prevent tearing down websocket connections, form state, etc.
-  if (isLoading && !hasInitiallyLoaded.current) {
+  // Synchronous render-time gate: prevents a single-frame flash of logged-out
+  // UI between auth resolving (isLoading→false) and the effect setting
+  // isPatienceActive. useEffect runs after paint, so without this the children
+  // would render for one frame before patience activates.
+  const shouldActivatePatience: boolean =
+    !isLoading && !isAuthenticated && !hasAttemptedPatience.current && shouldAttemptHeartbeatPatience();
+
+  // On cold browser launch, Gasket's validate can race heartbeat.js — it fires
+  // with the stale JWT before heartbeat refreshes the cookie. For returning
+  // users only (airo_returning_user cookie), hold loading while we probe for
+  // valid auth. Anonymous visitors skip this entirely.
+  useEffect(() => {
+    if (isLoading || isAuthenticated || hasAttemptedPatience.current) return;
+    if (!shouldAttemptHeartbeatPatience()) return;
+
+    hasAttemptedPatience.current = true;
+    setIsPatienceActive(true);
+
+    const controller: AbortController = new AbortController();
+
+    awaitHeartbeatRecovery(controller.signal)
+      .then((result) => {
+        if (controller.signal.aborted) return;
+        if (!result.recovered) {
+          setIsPatienceActive(false);
+        }
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) {
+          setIsPatienceActive(false);
+        }
+      });
+
+    return () => {
+      controller.abort();
+    };
+  }, [isLoading, isAuthenticated]);
+
+  // Gate rendering on: initial auth loading, active patience, or the synchronous
+  // pre-effect frame where patience is about to activate.
+  if ((isLoading && !hasInitiallyLoaded.current) || isPatienceActive || shouldActivatePatience) {
     return <LoadingComponent />;
   }
 

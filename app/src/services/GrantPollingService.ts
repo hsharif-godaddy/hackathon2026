@@ -1,3 +1,4 @@
+import { appFetch } from '@/lib/gasket-config';
 import { logger } from '@/lib/request-context';
 
 export interface GrantPollingResult {
@@ -82,10 +83,11 @@ export class GrantPollingService {
             syncSpend: 'false', // Don't need to sync spend for count check
           });
 
-          const response = await fetch(`/api/credits/grants?${params.toString()}`, {
-            credentials: 'include',
-            signal,
-          });
+          const response = await appFetch(
+            `/api/credits/grants?${params.toString()}`,
+            { signal },
+            { handle401: true }
+          );
 
           // Check if aborted after fetch
           if (signal?.aborted) {

@@ -3,7 +3,7 @@
  */
 import '@testing-library/jest-dom';
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 
 import { useAuthUIStore } from '@/stores/useAuthUIStore';
@@ -11,6 +11,25 @@ import SsoLoginPrompt from './SsoLoginPrompt';
 
 const mockSignIn = vi.fn();
 const mockIsMockAuth = { current: false };
+
+let mockShouldAttempt: boolean = false;
+const mockAwaitRecovery = vi.fn();
+
+vi.mock('@/lib/auth/heartbeat-patience', () => ({
+  shouldAttemptHeartbeatPatience: () => mockShouldAttempt,
+  awaitHeartbeatRecovery: (...args: unknown[]) => mockAwaitRecovery(...args),
+  HEARTBEAT_PATIENCE_RELOAD_KEY: '__airo_heartbeat_patience_reload',
+}));
+
+const mockLogger = vi.hoisted(() => ({
+  info: vi.fn(),
+  warn: vi.fn(),
+  error: vi.fn(),
+  debug: vi.fn(),
+}));
+vi.mock('@/lib/request-context', () => ({
+  logger: mockLogger,
+}));
 
 vi.mock('@/hooks/useSsoSignIn', () => ({
   useSsoSignIn: () => ({ signIn: mockSignIn }),
@@ -56,6 +75,7 @@ describe('SsoLoginPrompt', () => {
     vi.clearAllMocks();
     resetStore();
     mockIsMockAuth.current = false;
+    mockShouldAttempt = false;
   });
 
   it('calls signIn exactly once on mount via ref guard', () => {
@@ -130,5 +150,74 @@ describe('SsoLoginPrompt', () => {
     expect(screen.queryByRole('button', { name: 'builder_common_signin' })).not.toBeInTheDocument();
     expect(screen.getByTestId('spinner')).toBeInTheDocument();
     expect(mockSignIn).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('SsoLoginPrompt heartbeat patience (shared helper)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetStore();
+    mockIsMockAuth.current = false;
+    mockShouldAttempt = true;
+  });
+
+  it('does not call signIn while patience is running', async () => {
+    mockAwaitRecovery.mockReturnValue(new Promise(() => {}));
+
+    render(<SsoLoginPrompt />);
+
+    expect(mockSignIn).not.toHaveBeenCalled();
+    expect(mockAwaitRecovery).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId('spinner')).toBeInTheDocument();
+  });
+
+  it('calls signIn when recovery fails', async () => {
+    mockAwaitRecovery.mockResolvedValue({ recovered: false });
+
+    render(<SsoLoginPrompt />);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(mockSignIn).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not call signIn when recovery succeeds (reload happens)', async () => {
+    mockAwaitRecovery.mockResolvedValue({ recovered: true });
+
+    render(<SsoLoginPrompt />);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(mockSignIn).not.toHaveBeenCalled();
+  });
+
+  it('skips patience when shouldAttemptHeartbeatPatience returns false', () => {
+    mockShouldAttempt = false;
+
+    render(<SsoLoginPrompt />);
+
+    expect(mockSignIn).toHaveBeenCalledTimes(1);
+    expect(mockAwaitRecovery).not.toHaveBeenCalled();
+  });
+
+  it('aborts recovery on unmount', async () => {
+    let capturedSignal: AbortSignal | undefined;
+    mockAwaitRecovery.mockImplementation((signal: AbortSignal) => {
+      capturedSignal = signal;
+      return new Promise(() => {});
+    });
+
+    const { unmount } = render(<SsoLoginPrompt />);
+
+    expect(capturedSignal?.aborted).toBe(false);
+
+    unmount();
+
+    expect(capturedSignal?.aborted).toBe(true);
+    expect(mockSignIn).not.toHaveBeenCalled();
   });
 });
