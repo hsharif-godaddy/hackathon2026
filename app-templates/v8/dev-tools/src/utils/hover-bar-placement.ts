@@ -103,13 +103,14 @@ export function computeLinkFollowBarStyle(
   const belowElementTop = bounds.bottom + GAP + OUTLINE_PAD;
   const stackedBelowTop = bounds.bottom + GAP + OUTLINE_PAD + ESTIMATED_TOOLBAR_HEIGHT + BAR_STACK_GAP;
   const aboveElementAnchor = bounds.top - GAP - OUTLINE_PAD;
+  const stackedAboveAnchor = aboveElementAnchor - ESTIMATED_TOOLBAR_HEIGHT - BAR_STACK_GAP;
 
   let placement: VerticalPlacement = "below";
   let top = toolbarPlacement === "above" ? belowElementTop : stackedBelowTop;
 
   if (!fitsBelow(top, viewport.height)) {
     placement = "above";
-    top = aboveElementAnchor;
+    top = toolbarPlacement === "above" ? stackedAboveAnchor : aboveElementAnchor;
   }
 
   const style: CSSProperties = {

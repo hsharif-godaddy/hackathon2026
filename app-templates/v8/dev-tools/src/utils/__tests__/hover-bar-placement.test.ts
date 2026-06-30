@@ -67,14 +67,15 @@ describe('hover-bar-placement', function packageTests() {
       expect(linkTop).toBeGreaterThan(toolbarTop);
     });
 
-    it('flips link bar above footer links when there is no room below', function flipAboveFooter() {
+    it('flips link bar above toolbar when toolbar is above and no room below', function flipAboveFooter() {
       const elementBounds = bounds({ top: 760, bottom: 784 });
       const toolbar = computeHoverBarStyle(elementBounds, viewport);
       const link = computeLinkFollowBarStyle(elementBounds, toolbar.placement, viewport);
 
       expect(toolbar.placement).toBe('above');
       expect(link.placement).toBe('above');
-      expect(link.style.top).toBe('744px');
+      // Stacked above toolbar: aboveElementAnchor (744) - ESTIMATED_TOOLBAR_HEIGHT (40) - BAR_STACK_GAP (6) = 698
+      expect(link.style.top).toBe('698px');
       expect(String(link.style.transform)).toMatch(/-100%/);
     });
   });
