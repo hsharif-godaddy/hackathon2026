@@ -1,3 +1,4 @@
+import type { Dirent } from 'node:fs'
 import { readFile, readdir } from 'node:fs/promises'
 import path from 'node:path'
 
@@ -39,14 +40,24 @@ function firstHeading(content: string): string {
   return ''
 }
 
-async function listMarkdownNames(baseDir: string): Promise<string[]> {
-  const names: string[] = await readdir(baseDir)
-  return names.filter((n: string) => n.endsWith('.md')).sort()
+async function listMarkdownFiles(baseDir: string, prefix: string = ''): Promise<string[]> {
+  const entries: Dirent[] = await readdir(baseDir, { withFileTypes: true })
+  const results: string[] = []
+  for (const entry of entries) {
+    const relativePath: string = prefix ? `${prefix}/${entry.name}` : entry.name
+    if (entry.isDirectory()) {
+      const nested: string[] = await listMarkdownFiles(path.join(baseDir, entry.name), relativePath)
+      results.push(...nested)
+    } else if (entry.name.endsWith('.md')) {
+      results.push(relativePath)
+    }
+  }
+  return results.sort()
 }
 
 export async function listDocs(corpusId: string = DEFAULT_CORPUS_ID): Promise<DocEntry[]> {
   const baseDir: string = getCorpus(corpusId).baseDir
-  const names: string[] = await listMarkdownNames(baseDir)
+  const names: string[] = await listMarkdownFiles(baseDir)
   const entries: DocEntry[] = []
   for (const name of names) {
     const content: string = await readFile(path.join(baseDir, name), 'utf-8')
@@ -71,7 +82,7 @@ export async function searchDocs(query: string, corpusId: string = DEFAULT_CORPU
   }
   const needle: string = query.toLowerCase()
   const baseDir: string = getCorpus(corpusId).baseDir
-  const names: string[] = await listMarkdownNames(baseDir)
+  const names: string[] = await listMarkdownFiles(baseDir)
   const hits: SearchHit[] = []
   for (const name of names) {
     const content: string = await readFile(path.join(baseDir, name), 'utf-8')

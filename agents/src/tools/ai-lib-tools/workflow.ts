@@ -40,7 +40,7 @@ const OperationSchema = z.object({
   ]).describe('The workflow operation to perform'),
   stepId: z.string().optional().describe('Step ID (required for assign, complete_step, satisfy_gate, skip_step, fail_step, update_step)'),
   builder: z.string().optional().describe('Builder identifier (required for assign)'),
-  archetype: z.enum(['marketing-site', 'admin-app', 'game', 'custom']).optional().describe('Project archetype (required for init)'),
+  archetype: z.enum(['site', 'app', 'game', 'custom']).optional().describe('Project archetype (required for init)'),
   northStar: z.object({
     goals: z.array(z.string()),
     audience: z.string(),

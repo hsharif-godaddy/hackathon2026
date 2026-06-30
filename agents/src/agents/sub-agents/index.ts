@@ -7,8 +7,9 @@ import { createDesignConfig } from './design.js'
 import { createBuilderConfig } from './builder.js'
 import { createDesignKitBuildConfig } from './design-kit-build.js'
 import { createVerificationConfig } from './verification.js'
+import { createWorkflowInitConfig } from './workflow-init.js'
 
-type SubAgentName = 'discovery' | 'planning' | 'plan-review' | 'media' | 'design' | 'builder' | 'design-kit-build' | 'verification'
+type SubAgentName = 'discovery' | 'planning' | 'plan-review' | 'media' | 'design' | 'builder' | 'design-kit-build' | 'verification' | 'workflow-init'
 
 const configFactories: Record<SubAgentName, () => Promise<SubAgentConfig>> = {
   discovery: createDiscoveryConfig,
@@ -19,6 +20,7 @@ const configFactories: Record<SubAgentName, () => Promise<SubAgentConfig>> = {
   builder: createBuilderConfig,
   'design-kit-build': createDesignKitBuildConfig,
   verification: createVerificationConfig,
+  'workflow-init': createWorkflowInitConfig,
 }
 
 export async function getSubAgentConfig(name: SubAgentName): Promise<SubAgentConfig> {

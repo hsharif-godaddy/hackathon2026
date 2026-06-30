@@ -38,3 +38,29 @@ describe('reference-service (template-v8 corpus)', () => {
     await expect(searchDocs('   ')).rejects.toThrow(/query/)
   })
 })
+
+describe('reference-service (deep-build corpus)', () => {
+  it('listDocs returns nested docs with relative paths', async () => {
+    const docs = await listDocs('deep-build')
+    const paths: string[] = docs.map((d) => d.path).sort()
+    expect(paths).toContain('summary.md')
+    expect(paths).toContain('archetypes/site.md')
+    expect(paths).toContain('archetypes/app.md')
+    expect(paths).toContain('archetypes/game.md')
+    expect(paths).toContain('archetypes/custom.md')
+    expect(paths).toContain('step-planning.md')
+    expect(docs.every((d) => d.title.length > 0)).toBe(true)
+  })
+
+  it('readDoc reads nested archetype doc', async () => {
+    const content: string = await readDoc('archetypes/site.md', 'deep-build')
+    expect(content).toContain('# ')
+    expect(content.length).toBeGreaterThan(0)
+  })
+
+  it('searchDocs searches nested files', async () => {
+    const hits = await searchDocs('parallelism', 'deep-build')
+    expect(hits.length).toBeGreaterThan(0)
+    expect(hits.some((h) => h.path.startsWith('archetypes/'))).toBe(true)
+  })
+})

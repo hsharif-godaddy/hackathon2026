@@ -38,7 +38,7 @@ export interface WorkflowStep {
   notes?: string;
 }
 
-export type WorkflowArchetype = 'marketing-site' | 'admin-app' | 'game' | 'custom';
+export type WorkflowArchetype = 'site' | 'app' | 'game' | 'custom';
 
 export interface NorthStar {
   goals: string[];

@@ -1,5 +1,5 @@
 import { createForWorkspace } from '../workspace/index.js'
-import type { WorkflowState, WorkflowStep, StepStatus } from './types.js'
+import type { WorkflowState, WorkflowStep, StepStatus, WorkflowArchetype } from './types.js'
 import { Logger } from '../logging/index.js'
 import { GitUtils } from '../utils/git.js'
 import { AppRepository } from '../database/repositories/AppRepository.js'
@@ -28,12 +28,31 @@ export async function withWorkflowLock<T>(appId: string, fn: () => Promise<T>): 
   }
 }
 
+const LEGACY_ARCHETYPE_MAP: Record<string, WorkflowArchetype> = {
+  'marketing-site': 'site',
+  'admin-app': 'app',
+}
+
+const VALID_ARCHETYPES: Set<string> = new Set<string>(['site', 'app', 'game', 'custom'])
+
+function migrateArchetype(obj: Record<string, unknown>): void {
+  const raw: unknown = obj.archetype
+  if (typeof raw === 'string' && !VALID_ARCHETYPES.has(raw)) {
+    const mapped: WorkflowArchetype | undefined = LEGACY_ARCHETYPE_MAP[raw]
+    if (mapped) {
+      obj.archetype = mapped
+    } else {
+      obj.archetype = 'custom'
+    }
+  }
+}
+
 function isValidWorkflowState(value: unknown): value is WorkflowState {
   if (typeof value !== 'object' || value === null) return false
   const obj = value as Record<string, unknown>
-  return obj.schemaVersion === 1
-    && typeof obj.appId === 'string'
-    && Array.isArray(obj.steps)
+  if (obj.schemaVersion !== 1 || typeof obj.appId !== 'string' || !Array.isArray(obj.steps)) return false
+  migrateArchetype(obj)
+  return true
 }
 
 export async function readWorkflowState(appId: string): Promise<WorkflowState | null> {

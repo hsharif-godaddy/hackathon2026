@@ -27,11 +27,15 @@ describe('createDeepBuildAgent', () => {
     expect(config.name).toBe('Deep Build')
     expect(config.tools).toHaveProperty('askQuestion')
     expect(config.tools).toHaveProperty('runAgent')
-    expect(config.tools).toHaveProperty('skill')
+    expect(config.tools).toHaveProperty('awaitAgents')
+    expect(config.tools).toHaveProperty('setAgentMode')
+    expect(config.tools).toHaveProperty('workflow')
     expect(config.tools).toHaveProperty('todoList')
     expect(config.tools).toHaveProperty('showDoc')
     expect(config.tools).toHaveProperty('readFile')
     expect(config.tools).toHaveProperty('str_replace_based_edit_tool')
+    expect(config.tools).not.toHaveProperty('skill')
+    expect(config.tools).not.toHaveProperty('reference')
   })
 
   it('has stop-after on askQuestion', async () => {

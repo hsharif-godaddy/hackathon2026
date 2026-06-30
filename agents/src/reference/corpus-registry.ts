@@ -16,6 +16,11 @@ const CORPORA = {
     description:
       'v8 web app template: stack, routing, layouts, components, API handlers, media slots.',
   },
+  'deep-build': {
+    id: 'deep-build',
+    baseDir: path.join(referenceDir, 'corpora', 'deep-build'),
+    description: 'Deep Build workflow: archetypes, step planning, dispatch conventions.',
+  },
 } satisfies Record<string, Corpus>
 
 /** Valid corpus ids. Internal callers should prefer this; the tool boundary still takes `string`. */

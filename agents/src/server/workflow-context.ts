@@ -14,6 +14,7 @@ import { readWorkflowState, computeNextActions } from '../workflow/workflow-stor
 import { resolveBlockedGates, resolveInteractiveSteps } from '../workflow/workflow-gate-resolver.js'
 import type { WorkflowState, WorkflowStep } from '../workflow/types.js'
 import { logger } from '../logging/index.js'
+import { readDoc } from '../reference/reference-service.js'
 
 export interface WorkflowContextMessage {
   role: 'user'
@@ -28,6 +29,26 @@ function escapeXmlAttr(value: string): string {
 
 function escapeXmlText(value: string): string {
   return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+
+export function extractInjectBlock(content: string): string | null {
+  const startMarker: string = '<!-- inject-start -->'
+  const endMarker: string = '<!-- inject-end -->'
+  const startIdx: number = content.indexOf(startMarker)
+  const endIdx: number = content.indexOf(endMarker)
+  if (startIdx === -1 || endIdx === -1 || endIdx <= startIdx) return null
+  return content.substring(startIdx + startMarker.length, endIdx).trim()
+}
+
+async function loadArchetypeGuidance(archetype: string): Promise<string | null> {
+  try {
+    const content: string = await readDoc(`archetypes/${archetype}.md`, 'deep-build')
+    return extractInjectBlock(content)
+  } catch (error: unknown) {
+    const message: string = error instanceof Error ? error.message : String(error)
+    logger.warn('workflow_context.archetype_guidance_failed', { archetype, error: message })
+    return null
+  }
 }
 
 function formatStepXml(step: WorkflowStep): string {
@@ -75,6 +96,14 @@ export async function buildWorkflowContextMessage(
     if (eligible.length > 0) {
       lines.push('')
       lines.push(`<next_eligible>${eligible.map((s: WorkflowStep) => s.id).join(', ')}</next_eligible>`)
+    }
+
+    const guidance: string | null = await loadArchetypeGuidance(state.archetype)
+    if (guidance) {
+      lines.push('')
+      lines.push(`<archetype_guidance type="${escapeXmlAttr(state.archetype)}">`)
+      lines.push(escapeXmlText(guidance))
+      lines.push('</archetype_guidance>')
     }
 
     return {

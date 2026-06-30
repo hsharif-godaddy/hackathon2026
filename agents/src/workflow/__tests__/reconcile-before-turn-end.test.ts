@@ -48,7 +48,7 @@ function makeState(steps: WorkflowStep[]): WorkflowState {
   return {
     schemaVersion: 1,
     appId: 'test-app',
-    archetype: 'marketing-site',
+    archetype: 'site',
     northStar: { goals: ['test'], audience: 'testers', voice: 'neutral' },
     steps,
     createdAt: '2024-01-01T00:00:00Z',
