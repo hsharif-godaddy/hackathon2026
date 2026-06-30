@@ -13,6 +13,7 @@ import SidebarExpandIcon from '@ux/icon/sidebar-expand'
 import TabletIcon from '@ux/icon/tablet'
 
 import { CommanderPosition } from '@/app/[market]/commander/types'
+import { DebugStatsToggleButton } from '@/app/[market]/develop/components/chat/DebugStatsDrawer'
 import IconButton from '@/app/[market]/develop/components/IconButton'
 import { ChatTab, PreviewViewMode, ViewMode } from '@/app/[market]/develop/components/types'
 import AppItem from '@/components/layout/AppItem'
@@ -260,6 +261,7 @@ export default function CommanderChatRow({ appId, onPreviewRefresh }: CommanderC
       </Box>
 
       <Box orientation="horizontal" gap="sm" inlineAlignChildren="center">
+        <DebugStatsToggleButton />
         <IconButton
           icon={<HistoryIcon className="size-2.5" />}
           onClick={handleHistoryClick}

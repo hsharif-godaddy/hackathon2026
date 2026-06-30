@@ -56,9 +56,9 @@ function CallRow({ call }: { call: LLMCallRecord }): ReactElement {
 
 export function DebugStatsToggleButton(): ReactElement | null {
   const enabled = useSwitchboard(SWITCHBOARD_APPBUILDER_DEBUG_DRAWER)
-  const { open, setOpen } = useDebugStats()
+  const { open, setOpen, hidden } = useDebugStats()
 
-  if (!enabled) return null
+  if (!enabled || hidden) return null
 
   return (
     <Button
@@ -76,7 +76,7 @@ export function DebugStatsToggleButton(): ReactElement | null {
 
 export function DebugStatsPanel(): ReactElement | null {
   const enabled = useSwitchboard(SWITCHBOARD_APPBUILDER_DEBUG_DRAWER)
-  const { state, dispatch, open, setOpen } = useDebugStats()
+  const { state, dispatch, open, setOpen, hidden, setHidden } = useDebugStats()
   const connectionState = useConnectionState()
   const streamingState = useStreamingState()
 
@@ -93,15 +93,26 @@ export function DebugStatsPanel(): ReactElement | null {
       defaultSize={{ width: 360, height: 480 }}
       defaultPosition={{ x: 24, y: 96 }}
       footer={
-        <div className="flex items-center justify-between gap-2 text-[10px] font-mono">
-          <span className="font-semibold tabular-nums">Total: ${totalCost.toFixed(4)}</span>
-          <button
-            type="button"
-            className="text-muted-foreground hover:text-foreground font-sans"
-            onClick={() => dispatch({ type: 'CLEAR' })}
-          >
-            Clear
-          </button>
+        <div className="flex flex-col gap-1 text-[10px] font-mono">
+          <div className="flex items-center justify-between gap-2">
+            <span className="font-semibold tabular-nums">Total: ${totalCost.toFixed(4)}</span>
+            <button
+              type="button"
+              className="text-muted-foreground hover:text-foreground font-sans"
+              onClick={() => dispatch({ type: 'CLEAR' })}
+            >
+              Clear
+            </button>
+          </div>
+          <label className="flex items-center gap-1 font-sans text-muted-foreground cursor-pointer">
+            <input
+              type="checkbox"
+              checked={hidden}
+              onChange={(e) => setHidden(e.target.checked)}
+              className="accent-current"
+            />
+            Hide button (for screenshots)
+          </label>
         </div>
       }
     >

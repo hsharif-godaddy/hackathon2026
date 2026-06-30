@@ -58,6 +58,8 @@ interface DebugStatsContextValue {
   dispatch: Dispatch<DebugStatsAction>
   open: boolean
   setOpen: (open: boolean) => void
+  hidden: boolean
+  setHidden: (hidden: boolean) => void
 }
 
 const DebugStatsContext = createContext<DebugStatsContextValue | null>(null)
@@ -65,8 +67,9 @@ const DebugStatsContext = createContext<DebugStatsContextValue | null>(null)
 export function DebugStatsProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(debugStatsReducer, initialState)
   const [open, setOpen] = useState(false)
+  const [hidden, setHidden] = useState(false)
   return (
-    <DebugStatsContext.Provider value={{ state, dispatch, open, setOpen }}>
+    <DebugStatsContext.Provider value={{ state, dispatch, open, setOpen, hidden, setHidden }}>
       {children}
     </DebugStatsContext.Provider>
   )
@@ -77,6 +80,8 @@ const noopContextValue: DebugStatsContextValue = {
   dispatch: () => undefined,
   open: false,
   setOpen: () => undefined,
+  hidden: false,
+  setHidden: () => undefined,
 }
 
 export function useDebugStats(): DebugStatsContextValue {
