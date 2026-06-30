@@ -57,6 +57,28 @@ describe('CopyableValue', () => {
 
     vi.useRealTimers();
   });
+
+  it('truncates long values visually when overflow flag is enabled', async () => {
+    const { useSwitchboard } = await import('@/hooks/useSwitchboard');
+    vi.mocked(useSwitchboard).mockImplementation((feature: string) =>
+      feature === 'appbuilder-dns-record-values-overflow' ? true : false
+    );
+
+    const longValue = 's1.dkim.jasongreen_co.bbc.onsecureserver.net.';
+    renderWithProviders(<CopyableValue value={longValue} />);
+
+    const code = screen.getByText(longValue);
+    expect(code).toHaveClass('truncate');
+  });
+
+  it('copies the full value for long DNS records', async () => {
+    const longValue = 's1.dkim.jasongreen_co.bbc.onsecureserver.net.';
+    const { user } = renderWithProviders(<CopyableValue value={longValue} />);
+
+    await user.click(screen.getByRole('button', { name: 'builder_common_copy_clipboard' }));
+
+    expect(screen.getByRole('button', { name: 'builder_common_copied' })).toBeInTheDocument();
+  });
 });
 
 describe('DomainDNS', () => {

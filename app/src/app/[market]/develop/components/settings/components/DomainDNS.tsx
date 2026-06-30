@@ -7,6 +7,8 @@ import ClipboardIcon from '@ux/icon/copy';
 import Spinner from '@ux/spinner';
 import text from "@ux/text";
 
+import { ContentTooltip } from '@/components/ui/ContentTooltip';
+import { SWITCHBOARD_APPBUILDER_DNS_RECORD_VALUES_OVERFLOW } from '@/config/switchboard-flags';
 import type { AppDomain } from '@/hooks/useAppDetails';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
@@ -14,6 +16,8 @@ import { getDnsRecords, parseDomain } from '@/utils/domain';
 
 export function CopyableValue({ value }: { value: string }) {
   const t = useTranslations();
+  const isTruncationEnabled =
+    useSwitchboard(SWITCHBOARD_APPBUILDER_DNS_RECORD_VALUES_OVERFLOW) === true;
   const [copied, setCopied] = useState(false);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
@@ -33,15 +37,28 @@ export function CopyableValue({ value }: { value: string }) {
     }
   };
 
-  return (
-    <Box orientation="horizontal" inlineAlignChildren="center" gap="sm" wrap>
-      <code className="bg-intents-ux-box-subtle rounded px-1 py-0.5 text-xs font-mono">
+  const codeElement = isTruncationEnabled ? (
+    <ContentTooltip
+      content={<span className="font-mono text-xs break-all">{value}</span>}
+      contentClassName="p-2 max-w-sm"
+    >
+      <code className="block min-w-0 max-w-full truncate bg-intents-ux-box-subtle rounded px-1 py-0.5 text-xs font-mono">
         {value}
       </code>
+    </ContentTooltip>
+  ) : (
+    <code className="bg-intents-ux-box-subtle rounded px-1 py-0.5 text-xs font-mono">
+      {value}
+    </code>
+  );
+
+  return (
+    <Box orientation="horizontal" inlineAlignChildren="center" gap="sm" className={isTruncationEnabled ? 'min-w-0 flex-1' : undefined} wrap={!isTruncationEnabled}>
+      {codeElement}
       <button
         type="button"
         onClick={handleCopy}
-        className="inline-flex items-center text-intents-ux-content-subtle hover:text-intents-ux-content-default cursor-pointer"
+        className={`inline-flex items-center text-intents-ux-content-subtle hover:text-intents-ux-content-default cursor-pointer${isTruncationEnabled ? ' shrink-0' : ''}`}
         aria-label={copied ? t('builder_common_copied') : t('builder_common_copy_clipboard')}
       >
         {copied ? (
@@ -166,9 +183,8 @@ export default function DomainDNS({
 }) {
   const t = useTranslations();
   const { fqdn, anycastIp, certificateValidationCname } = domainDetails;
-  const isDCVEnabled = useSwitchboard('appbuilder-domain-dcv');
+  const isDCVEnabled = useSwitchboard('appbuilder-domain-dcv') === true;
 
-  // Show provisioning message if anycast IP or DCV CNAME is not ready yet
   if (!anycastIp || (isDCVEnabled && !certificateValidationCname)) {
     return (
       <Box
@@ -189,10 +205,6 @@ export default function DomainDNS({
 
   const dnsRecords = getDnsRecords(fqdn, anycastIp, certificateValidationCname);
 
-  // Email records (SPF, DKIM, DMARC) are shown once the DCV CNAME is provisioned
-  // AND dkimCnames are available (indicating the aab-external-dkim flag is on and
-  // Vox has provisioned the selectors). Tying all three to dkimCnames means the
-  // entire email block is suppressed automatically when the flag is off.
   const emailRecordsReady = isDCVEnabled && !!certificateValidationCname && !!dkimCnames?.length;
   const apexDomain = parseDomain(fqdn)?.rootDomain ?? fqdn;
   const dkimRecordCards = emailRecordsReady
