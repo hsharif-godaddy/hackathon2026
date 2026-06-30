@@ -6,11 +6,17 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 // AppMetadataRepository().get(appId).designKitTokensLocked, best-effort (any
 // read error → false so a metadata hiccup never blocks a tool).
 const mockGet = vi.hoisted(() => vi.fn())
+const mockMerge = vi.hoisted(() => vi.fn())
+const mockWarn = vi.hoisted(() => vi.fn())
 
 vi.mock('../../../database/index.js', () => ({
   AppMetadataRepository: vi.fn().mockImplementation(function () {
-    return { get: mockGet }
+    return { get: mockGet, merge: mockMerge }
   }),
+}))
+
+vi.mock('../../../logging/index.js', () => ({
+  logger: { warn: mockWarn, info: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }))
 
 describe('kitTokensLocked', () => {
@@ -49,5 +55,23 @@ describe('kitTokensLocked', () => {
     })
     const { kitTokensLocked } = await import('../kit-tokens-locked.js')
     expect(kitTokensLocked('test-app')).toBe(false)
+  })
+})
+
+describe('lockKitTokens', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('does not throw and logs a diagnostic when the metadata write fails', async () => {
+    mockMerge.mockImplementation(() => {
+      throw new Error('db locked')
+    })
+    const { lockKitTokens } = await import('../kit-tokens-locked.js')
+    expect(() => lockKitTokens('test-app')).not.toThrow()
+    expect(mockWarn).toHaveBeenCalledWith(
+      'design_kit.lock_tokens.failed',
+      expect.objectContaining({ appId: 'test-app' }),
+    )
   })
 })

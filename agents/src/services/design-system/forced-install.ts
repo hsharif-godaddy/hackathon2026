@@ -40,7 +40,7 @@ function forcedInstallMessage(slug: string, written: number, loaded: boolean, ap
   // Telling it to "build the page" makes it edit files DURING the interview turn,
   // muddying the question widget (the user then has to type instead of clicking).
   const tokensClause = appliedParts
-    ? `The kit's ${appliedParts} are ALREADY applied to the site — do NOT change them, and do NOT edit files or build pages yourself.`
+    ? `The kit's ${appliedParts} are the starting foundation and are ALREADY applied to the site — do NOT re-derive or change them on your own, and do NOT edit files or build pages yourself.`
     : `Do NOT edit files or build pages yourself.`
   return `Installed \`${slug}\` (${written} files in docs/ui-kit/). ${directive} ${loadClause} ${tokensClause} ${interviewClause}\nAfter the interview: set the project name, create the todo list, then hand off to develop (develop builds the pages).`
 }

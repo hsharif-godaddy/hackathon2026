@@ -1,7 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { applyRebuildColors } from '../apply-rebuild-colors.js'
-import { updateCssColors } from '../../../tools/css-color-tool.js'
+import { generatePalette, updateCssColors } from '../../../tools/css-color-tool.js'
 import { createForWorkspace } from '../../../workspace/index.js'
+
+const { kitTokensLockedMock } = vi.hoisted(() => ({ kitTokensLockedMock: vi.fn(() => false) }))
 
 vi.mock('../../../tools/css-color-tool.js', () => ({
   generatePalette: vi.fn(() => ({})),
@@ -12,6 +14,8 @@ vi.mock('../../../workspace/index.js', () => ({
   createForWorkspace: vi.fn(() => ({ files: {} })),
 }))
 
+vi.mock('../../design-system/kit-tokens-locked.js', () => ({ kitTokensLocked: kitTokensLockedMock }))
+
 function metadataWith(primary: string[]) {
   return { colorPalette: { primary, secondary: [], accent: [] } } as any
 }
@@ -19,6 +23,7 @@ function metadataWith(primary: string[]) {
 describe('applyRebuildColors', () => {
   beforeEach(() => {
     vi.mocked(updateCssColors).mockResolvedValue(undefined)
+    kitTokensLockedMock.mockReturnValue(false)
   })
 
   it('skips when colorPreference is not keep-original', async () => {
@@ -48,6 +53,13 @@ describe('applyRebuildColors', () => {
   it('skips when isFirstPage is false, even with keep-original and a palette', async () => {
     const res = await applyRebuildColors('app123', metadataWith(['#123456']), { colorPreference: 'keep-original' } as any, false)
     expect(res.applied).toBe(false)
+    expect(vi.mocked(updateCssColors)).not.toHaveBeenCalled()
+  })
+  it('skips (no-op) when the kit palette is locked, without re-deriving (AIROBUILD-2976)', async () => {
+    kitTokensLockedMock.mockReturnValue(true)
+    const res = await applyRebuildColors('app123', metadataWith(['#123456']), { colorPreference: 'keep-original' } as any, true)
+    expect(res.applied).toBe(false)
+    expect(vi.mocked(generatePalette)).not.toHaveBeenCalled()
     expect(vi.mocked(updateCssColors)).not.toHaveBeenCalled()
   })
 })

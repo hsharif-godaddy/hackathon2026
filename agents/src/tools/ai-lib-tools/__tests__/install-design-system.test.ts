@@ -34,6 +34,51 @@ describe('installDesignSystem tool', () => {
     expect(out).toContain('loadUiKit')
   })
 
+  it('applies the kit in code + locks tokens and tells the model not to re-apply colors (AIROBUILD-2976)', async () => {
+    const installSpy = vi.fn().mockResolvedValue({
+      slug: 'aether', written: 5, displayName: 'Aether',
+      design: { palette: { primary: '#3b5bdb', background: '#ffffff' } },
+      message: 'Installed `aether`. Call loadUiKit next.',
+    })
+    const applySpy = vi.fn().mockResolvedValue({ appliedColors: true, appliedFonts: true })
+    const lockSpy = vi.fn()
+    vi.doMock('../../../services/design-system/install.js', () => ({ installDesignKitForApp: installSpy }))
+    vi.doMock('../../../services/design-system/apply-kit-design.js', () => ({ applyKitDesignTokens: applySpy }))
+    vi.doMock('../../../services/design-system/kit-tokens-locked.js', () => ({ lockKitTokens: lockSpy, kitTokensLocked: vi.fn(() => false) }))
+
+    const { installDesignSystemAITool } = await import('../install-design-system.js')
+    const out = await installDesignSystemAITool.execute(
+      { slug: 'aether' },
+      { experimental_context: { metadata: { appId: 'a', customerId: 'c' } } } as any,
+    ) as string
+
+    expect(applySpy).toHaveBeenCalledWith(expect.objectContaining({ appId: 'a', customerId: 'c' }))
+    expect(lockSpy).toHaveBeenCalledWith('a')
+    expect(out).toMatch(/locked/i)
+    expect(out).toMatch(/do NOT call colorScheme/i)
+    expect(out).toContain('loadUiKit')
+  })
+
+  it('does NOT lock when the kit applies neither colors nor fonts', async () => {
+    const installSpy = vi.fn().mockResolvedValue({
+      slug: 'x', written: 3, displayName: 'X', message: 'Installed `x`. Call loadUiKit next.',
+    })
+    const applySpy = vi.fn().mockResolvedValue({ appliedColors: false, appliedFonts: false })
+    const lockSpy = vi.fn()
+    vi.doMock('../../../services/design-system/install.js', () => ({ installDesignKitForApp: installSpy }))
+    vi.doMock('../../../services/design-system/apply-kit-design.js', () => ({ applyKitDesignTokens: applySpy }))
+    vi.doMock('../../../services/design-system/kit-tokens-locked.js', () => ({ lockKitTokens: lockSpy, kitTokensLocked: vi.fn(() => false) }))
+
+    const { installDesignSystemAITool } = await import('../install-design-system.js')
+    const out = await installDesignSystemAITool.execute(
+      { slug: 'x' },
+      { experimental_context: { metadata: { appId: 'a' } } } as any,
+    ) as string
+
+    expect(lockSpy).not.toHaveBeenCalled()
+    expect(out).toContain('loadUiKit')
+  })
+
   it('returns error when appId missing from context', async () => {
     vi.doMock('../../../services/design-system/install.js', () => ({
       installDesignKitForApp: vi.fn(),

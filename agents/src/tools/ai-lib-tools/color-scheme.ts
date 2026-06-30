@@ -38,7 +38,7 @@ const appRepo = new AppRepository()
 const memoryStore = getKvMemoryStore()
 
 const COLOR_SCHEME_KIT_LOCKED_MESSAGE =
-  "This app uses an attached design kit — its colors are fixed by the kit and can't be changed here. The kit's palette is already applied; build on top of it."
+  "This app uses an attached design kit, so its palette is the default and automated recoloring is skipped. If the customer explicitly asked to change colors, honor it with 'apply' mode (use 'suggest' first if they want options); otherwise build on top of the kit's palette."
 
 function formatPaletteForWidget(palette: ReturnType<typeof generatePalette>, name: string) {
   return {
@@ -332,6 +332,7 @@ IMPORTANT:
 - Use 'set' mode for automated flows where you should decide and apply immediately
 - Use 'suggest' mode first when the user wants options
 - Use 'apply' mode when user selects or specifies colors
+- On apps with an attached design kit, 'set' is skipped (the kit is the default palette). To honor an explicit customer request to change colors, use 'apply' (or 'suggest' then 'apply')
 - The widget has built-in "Apply" buttons and instructions - no additional text needed
 - After apply mode, use suggestedResponse to offer next steps`,
   z.object({
@@ -358,10 +359,12 @@ IMPORTANT:
     const customerId = context?.metadata?.customerId as string | undefined
 
     // When the kit's tokens were applied in code by the forced-install path
-    // (apply-kit-design.ts), its palette is the source of truth — block the model
-    // from overwriting it via set/apply. suggest only previews (no write), so it's
+    // (apply-kit-design.ts), its palette is the DEFAULT source of truth — block the
+    // model from silently re-theming via 'set' (automated decide+apply). But an
+    // explicit customer request ('apply' — the user selected or specified colors) is
+    // honored even on a locked kit. 'suggest' only previews (no write), so it's also
     // exempt. The design-kit wizard never sets this marker, so it stays usable.
-    if ((input.mode === 'set' || input.mode === 'apply') && appId && kitTokensLocked(appId)) {
+    if (input.mode === 'set' && appId && kitTokensLocked(appId)) {
       logger.info('colorScheme.kit.locked', { appId, mode: input.mode })
       return {
         success: true,

@@ -1,6 +1,7 @@
 import { Logger } from '../../logging/index.js'
 import { generatePalette, updateCssColors } from '../../tools/css-color-tool.js'
 import { createForWorkspace } from '../../workspace/index.js'
+import { kitTokensLocked } from '../design-system/kit-tokens-locked.js'
 import type { SiteMetadata, StylePreferences } from '../../types/rebuild.js'
 
 const logger = Logger.create({ component: 'apply-rebuild-colors' })
@@ -18,6 +19,12 @@ export async function applyRebuildColors(
 ): Promise<{ applied: boolean }> {
   if (!isFirstPage) return { applied: false }
   if (prefs.colorPreference !== 'keep-original') return { applied: false }
+  // When a design kit's tokens were applied + locked in code, the kit is the
+  // source of truth — don't re-derive a palette over it (AIROBUILD-2976).
+  if (kitTokensLocked(appId)) {
+    logger.info('rebuild.colors.kit_locked', { appId })
+    return { applied: false }
+  }
   const primary = metadata.colorPalette?.primary?.[0]
   if (!primary) return { applied: false }
 

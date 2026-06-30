@@ -128,7 +128,10 @@ describe('injectForcedDesignKit', () => {
     // apply them via colorScheme/fontTheme (those tools are removed).
     const val: string = (result[1]!.content as any[])[0]!.output.value
     expect(val).toMatch(/already applied/i)
-    expect(val).toMatch(/do not change them/i)
+    // Anti-drift wording: the agent must not re-derive/change the kit colors on
+    // its own, but the phrasing no longer ABSOLUTELY forbids change — an explicit
+    // customer request is honored later via the colorScheme 'apply' lock-gate.
+    expect(val).toMatch(/do not re-derive or change them on your own/i)
     expect(val).not.toContain('colorScheme')
     expect(val).not.toContain('fontTheme')
     // Must NOT push the -attached agent to build (that muddies the Phase-1

@@ -4,7 +4,7 @@ import type { KnownAppMetadata } from '@airo/shared'
 import { initializeTestDatabase } from '../../../database/schema.js'
 import * as connection from '../../../database/connection.js'
 import { AppMetadataRepository } from '../../../database/repositories/AppMetadataRepository.js'
-import { kitTokensLocked } from '../kit-tokens-locked.js'
+import { kitTokensLocked, lockKitTokens } from '../kit-tokens-locked.js'
 
 // AIROBUILD-2665 / Fix B — real write→read round-trip for the `designKitTokensLocked`
 // marker against an in-memory SQLite DB (NOT a mocked repository). The unit tests in
@@ -48,6 +48,13 @@ describe('kitTokensLocked — real metadata round-trip (AIROBUILD-2665)', () => 
     // Mirror forced-install.ts's write verbatim — same key, same value.
     new AppMetadataRepository().merge('rt-locked', { designKitTokensLocked: true } satisfies Partial<KnownAppMetadata>)
     expect(kitTokensLocked('rt-locked')).toBe(true)
+  })
+
+  it('is true after lockKitTokens() — the real helper write pairs with the read', () => {
+    // Exercise the genuine lockKitTokens() write (not a raw merge), so a regression
+    // in its key/value or a swallow-instead-of-write would fail here end to end.
+    lockKitTokens('rt-helper')
+    expect(kitTokensLocked('rt-helper')).toBe(true)
   })
 
   it('does not leak across apps (only the written appId is locked)', () => {

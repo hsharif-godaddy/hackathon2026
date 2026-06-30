@@ -1,10 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-// AIROBUILD-2665 / Fix B — colorScheme must NOT overwrite an attached kit's palette.
-// When the kit's tokens are locked (forced-install applied them in code, marked
-// via the designKitTokensLocked app-metadata flag), set/apply return a "locked"
-// result and write nothing; suggest (preview only, no write) stays exempt; without
-// the lock the writer runs as today.
+// AIROBUILD-2665 / Fix B — colorScheme must not SILENTLY overwrite an attached
+// kit's palette via automated 'set'. AIROBUILD-2976 — but an explicit customer
+// request ('apply', i.e. the user selected or specified colors) is honored even
+// when the kit is locked. When the kit's tokens are locked (forced-install applied
+// them in code, marked via the designKitTokensLocked app-metadata flag): 'set'
+// returns a "locked" result and writes nothing; 'apply' writes through; 'suggest'
+// (preview only, no write) stays exempt; without the lock the writer runs as today.
 
 const mockKitTokensLocked = vi.hoisted(() => vi.fn())
 const mockUpdateCssColorPalette = vi.hoisted(() => vi.fn())
@@ -81,15 +83,15 @@ describe('colorScheme — kit lock (Fix B)', () => {
       mockKitTokensLocked.mockReturnValue(true)
     })
 
-    it('apply mode returns the locked result and writes nothing', async () => {
+    it('apply mode honors an explicit customer request and writes (even when locked)', async () => {
       const { colorSchemeAITool } = await import('../color-scheme.js')
       const result = await (colorSchemeAITool as any).execute(
         { mode: 'apply', primary: '#123456' },
         { metadata: { appId: 'test-app' } },
       )
-      expect(result).toMatchObject({ success: true, skipped: true })
-      expect(result.message).toMatch(/attached design kit/i)
-      expect(mockUpdateCssColorPalette).not.toHaveBeenCalled()
+      expect(result.skipped).toBeUndefined()
+      expect(result.success).toBe(true)
+      expect(mockUpdateCssColorPalette).toHaveBeenCalledTimes(1)
     })
 
     it('set mode returns the locked result and writes nothing', async () => {

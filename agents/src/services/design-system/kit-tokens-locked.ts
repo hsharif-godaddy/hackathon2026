@@ -1,4 +1,6 @@
 import { AppMetadataRepository } from '../../database/index.js'
+import { logger } from '../../logging/index.js'
+import type { KnownAppMetadata } from '@airo/shared'
 
 // Construct per call (NOT a module-level singleton): AppMetadataRepository resolves
 // the DB eagerly in a field initializer (`private db = getDatabase()`), so a
@@ -33,5 +35,23 @@ export function kitTokensLocked(appId: string): boolean {
     return new AppMetadataRepository().get(appId).designKitTokensLocked === true
   } catch {
     return false
+  }
+}
+
+/**
+ * Record the `designKitTokensLocked` marker — the kit's tokens were applied
+ * DETERMINISTICALLY IN CODE (forced-install or the auto-select install tool), so
+ * the agent's colorScheme/fontTheme tools must not override them. Best-effort: a
+ * metadata hiccup must never block the install, so it just falls back to unlocked.
+ */
+export function lockKitTokens(appId: string): void {
+  try {
+    new AppMetadataRepository().merge(appId, { designKitTokensLocked: true } satisfies Partial<KnownAppMetadata>)
+  } catch (err) {
+    // best-effort — leave unlocked on any write error, but surface a diagnostic
+    // trail (mirrors forced-install.ts's lock_marker_failed): a silently dropped
+    // lock leaves colorScheme/fontTheme unlocked and re-opens the low-contrast
+    // regression this marker exists to prevent, so the miss must not be invisible.
+    logger.warn('design_kit.lock_tokens.failed', { appId, err: String(err) })
   }
 }
