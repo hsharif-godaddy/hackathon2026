@@ -65,6 +65,16 @@ describe('mapKitPaletteToColorPalette', () => {
   it('returns undefined when there is no primary to anchor on', () => {
     expect(mapKitPaletteToColorPalette({ background: '#000000' })).toBeUndefined()
   })
+
+  it('passes through mutedForeground when the kit supplies it (AIROBUILD-2976)', () => {
+    const mapped = mapKitPaletteToColorPalette({ primary: '#3b5bdb', background: '#ffffff', mutedForeground: '#666666' })
+    expect(mapped?.mutedForeground).toBe('#666666')
+  })
+
+  it('omits mutedForeground when the kit does not supply it (falls back to derivation)', () => {
+    const mapped = mapKitPaletteToColorPalette({ primary: '#3b5bdb', background: '#ffffff' })
+    expect(mapped).not.toHaveProperty('mutedForeground')
+  })
 })
 
 describe('applyKitDesignTokens', () => {

@@ -18,6 +18,7 @@ export const DesignKitPaletteSchema = z.object({
   secondary: z.string().optional(),
   accent: z.string().optional(),
   muted: z.string().optional(),
+  mutedForeground: z.string().optional(),
   border: z.string().optional(),
   tokens: z.record(z.string(), z.string()).optional(),
 }).passthrough()

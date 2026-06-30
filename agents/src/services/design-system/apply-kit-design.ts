@@ -59,6 +59,7 @@ export function mapKitPaletteToColorPalette(palette: DesignKitPalette): ColorPal
   if (palette.secondary) out.secondary = palette.secondary
   if (palette.accent) out.accent = palette.accent
   if (palette.muted) out.muted = palette.muted
+  if (palette.mutedForeground) out.mutedForeground = palette.mutedForeground
   if (palette.border) out.border = palette.border
   // primary is the one field generatePalette truly needs; without it we can't
   // build a coherent palette, so skip color apply entirely.

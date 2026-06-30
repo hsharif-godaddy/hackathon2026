@@ -1,4 +1,4 @@
-import { generatePalette } from '../css-color-tool.js'
+import { generatePalette, getContrastRatio, getLuminance } from '../css-color-tool.js'
 import { describe, it, expect } from 'vitest'
 
 describe('css-color-tool', function packageTests() {
@@ -90,6 +90,144 @@ describe('css-color-tool', function packageTests() {
         expect(color.role).toBeTypeOf('string')
       })
     })
+  })
+})
+
+// AIROBUILD-2976 — the color-contrast fix. generatePalette must be deterministic
+// (no Math.random) and derive low-emphasis text that meets WCAG AA against the
+// surface it actually renders on (background/card), not against the muted fill.
+describe('css-color-tool — AIROBUILD-2976 determinism', function determinismTests() {
+  it('generates identical muted + border across 10 calls (light theme)', function lightDeterminism() {
+    const input = { primary: '#3B82F6', background: '#FFFFFF' }
+    const muteds = new Set(Array.from({ length: 10 }, () => generatePalette(input).muted))
+    const borders = new Set(Array.from({ length: 10 }, () => generatePalette(input).border))
+    expect(muteds.size).toBe(1)
+    expect(borders.size).toBe(1)
+  })
+
+  it('generates identical muted + border across 10 calls (dark theme)', function darkDeterminism() {
+    const input = { primary: '#3B82F6', background: '#0A0A0A' }
+    const muteds = new Set(Array.from({ length: 10 }, () => generatePalette(input).muted))
+    const borders = new Set(Array.from({ length: 10 }, () => generatePalette(input).border))
+    expect(muteds.size).toBe(1)
+    expect(borders.size).toBe(1)
+  })
+
+  it('generates identical chart colors across calls', function chartDeterminism() {
+    const input = { primary: '#9333EA', background: '#FFFFFF' }
+    const a = generatePalette(input)
+    const b = generatePalette(input)
+    expect([a.chart1, a.chart2, a.chart3, a.chart4, a.chart5])
+      .toEqual([b.chart1, b.chart2, b.chart3, b.chart4, b.chart5])
+  })
+})
+
+describe('css-color-tool — AIROBUILD-2976 mutedForeground contrast', function contrastTests() {
+  it('mutedForeground meets AA (>=4.5) vs background on a white page', function vsBackground() {
+    const r = generatePalette({ primary: '#3B82F6', background: '#FFFFFF' })
+    expect(getContrastRatio(r.mutedForeground, r.background)).toBeGreaterThanOrEqual(4.5)
+  })
+
+  it('mutedForeground meets AA vs card when card differs from background', function vsCard() {
+    const r = generatePalette({ primary: '#3B82F6', background: '#FFFFFF', card: '#F0F0F0' })
+    expect(getContrastRatio(r.mutedForeground, r.card)).toBeGreaterThanOrEqual(4.5)
+  })
+
+  it('mutedForeground meets AA vs the DARKER of background/card (worst case)', function vsDarker() {
+    const r = generatePalette({ primary: '#3B82F6', background: '#FFFFFF', card: '#E0E0E0' })
+    const darker = getLuminance(r.background) <= getLuminance(r.card) ? r.background : r.card
+    expect(getContrastRatio(r.mutedForeground, darker)).toBeGreaterThanOrEqual(4.5)
+  })
+
+  it('mutedForeground meets AA on a dark theme', function darkTheme() {
+    const r = generatePalette({ primary: '#3B82F6', background: '#0A0A0A' })
+    expect(getContrastRatio(r.mutedForeground, r.background)).toBeGreaterThanOrEqual(4.5)
+  })
+
+  it('mutedForeground meets AA vs the LIGHTER of background/card on a dark theme (worst case)', function darkVsLighter() {
+    const r = generatePalette({ primary: '#3B82F6', background: '#0A0A0A', card: '#2A2A2A' })
+    expect(getContrastRatio(r.mutedForeground, r.background)).toBeGreaterThanOrEqual(4.5)
+    expect(getContrastRatio(r.mutedForeground, r.card)).toBeGreaterThanOrEqual(4.5)
+  })
+
+  it('respects an explicit mutedForeground (kit source of truth)', function explicit() {
+    const r = generatePalette({ primary: '#3B82F6', background: '#FFFFFF', mutedForeground: '#777777' })
+    expect(r.mutedForeground).toBe('#777777')
+  })
+
+  it('keeps muted (fill) distinct from mutedForeground (text)', function distinct() {
+    const r = generatePalette({ primary: '#3B82F6', background: '#FFFFFF' })
+    expect(r.muted).not.toBe(r.mutedForeground)
+  })
+})
+
+describe('css-color-tool — AIROBUILD-2976 contrast edge cases', function edgeTests() {
+  it('low-saturation/grey primary still yields AA muted text', function greyPrimary() {
+    const r = generatePalette({ primary: '#808080', background: '#FFFFFF' })
+    expect(getContrastRatio(r.mutedForeground, r.background)).toBeGreaterThanOrEqual(4.5)
+  })
+
+  it('pure-black background yields AA muted text', function blackBg() {
+    const r = generatePalette({ primary: '#FF0000', background: '#000000' })
+    expect(getContrastRatio(r.mutedForeground, r.background)).toBeGreaterThanOrEqual(4.5)
+  })
+
+  it('derives an AA muted text when the kit omits muted', function omitMuted() {
+    const r = generatePalette({ primary: '#3B82F6', background: '#FFFFFF' })
+    expect(r.muted).toBeTypeOf('string')
+    expect(getContrastRatio(r.mutedForeground, r.background)).toBeGreaterThanOrEqual(4.5)
+  })
+})
+
+// AIROBUILD-2976 — "show me more color schemes" use case. colorScheme `suggest`
+// mode runs every LLM-proposed {primary, background} through generatePalette
+// before showing the grid, so this is the EXACT derivation the customer is offered
+// to pick from. Every suggested scheme must yield AA-safe muted text on its own
+// surfaces (background AND card), the set must stay varied, and each scheme must
+// render identically on repeat (no more Math.random()).
+describe('css-color-tool — AIROBUILD-2976 suggested color schemes are AA-safe', function suggestMode() {
+  const suggested: Array<{ name: string; primary: string; background: string; card?: string }> = [
+    { name: 'Vibrant Purple Light', primary: '#7C3AED', background: '#FFFFFF' },
+    { name: 'Deep Ocean Dark', primary: '#0EA5E9', background: '#0A0A0A', card: '#1F2937' },
+    { name: 'Forest Calm Light', primary: '#16A34A', background: '#F8FAF8' },
+    { name: 'Sunset Coral Light', primary: '#F97316', background: '#FFFDF8' },
+    { name: 'Midnight Indigo Dark', primary: '#6366F1', background: '#0B1020', card: '#222B45' },
+    { name: 'Rose Boutique Light', primary: '#E11D48', background: '#FFFFFF' },
+    { name: 'Slate Pro Light', primary: '#334155', background: '#F5F6F8' },
+    { name: 'Gold Luxe Dark', primary: '#D4AF37', background: '#111111', card: '#2A2A2A' },
+    { name: 'Teal Minimal Light', primary: '#0D9488', background: '#FFFFFF' },
+    { name: 'Crimson Bold Light', primary: '#DC2626', background: '#FAFAFA' },
+  ]
+
+  for (const opt of suggested) {
+    it(`${opt.name}: muted text meets AA on background and card`, function aaSafe() {
+      const r = generatePalette({ primary: opt.primary, background: opt.background, ...(opt.card ? { card: opt.card } : {}) })
+      expect(getContrastRatio(r.mutedForeground, r.background)).toBeGreaterThanOrEqual(4.5)
+      expect(getContrastRatio(r.mutedForeground, r.card)).toBeGreaterThanOrEqual(4.5)
+    })
+  }
+
+  it('offers a varied set — distinct muted fills across all suggested palettes', function variety() {
+    const muteds = new Set(suggested.map((o) => generatePalette({ primary: o.primary, background: o.background }).muted))
+    expect(muteds.size).toBe(suggested.length)
+  })
+
+  // Joshua's concern: removing Math.random() must NOT collapse same-hue-family
+  // options into duplicates. Asking for several "green primary" options (distinct
+  // shades) must still yield distinct palettes — variety comes from the primary
+  // the model varies per option, not from the (now-deterministic) muted/border.
+  it('returns distinct palettes for several options in one hue family (e.g. greens)', function sameHueFamily() {
+    const greens: string[] = ['#10B981', '#166534', '#65A30D', '#059669', '#4ADE80', '#15803D']
+    const palettes = greens.map((primary) => JSON.stringify(generatePalette({ primary, background: '#FFFFFF' })))
+    expect(new Set(palettes).size).toBe(greens.length)
+  })
+
+  it('renders each suggested scheme identically on repeat (deterministic, no Math.random)', function deterministic() {
+    for (const opt of suggested) {
+      const a = generatePalette({ primary: opt.primary, background: opt.background, ...(opt.card ? { card: opt.card } : {}) })
+      const b = generatePalette({ primary: opt.primary, background: opt.background, ...(opt.card ? { card: opt.card } : {}) })
+      expect(a).toEqual(b)
+    }
   })
 })
 

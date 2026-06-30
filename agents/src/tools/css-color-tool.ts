@@ -102,7 +102,7 @@ function hslToRgb(h: number, s: number, l: number): { r: number; g: number; b: n
 /**
  * Calculate relative luminance for contrast ratio
  */
-function getLuminance(hex: string): number {
+export function getLuminance(hex: string): number {
   const { r, g, b } = hexToRgb(hex)
   const normalized = [r, g, b].map(function normalize(c) {
     const val = c / 255
@@ -117,7 +117,7 @@ function getLuminance(hex: string): number {
 /**
  * Calculate contrast ratio between two colors
  */
-function getContrastRatio(color1: string, color2: string): number {
+export function getContrastRatio(color1: string, color2: string): number {
   const lum1 = getLuminance(color1)
   const lum2 = getLuminance(color2)
   const lighter = Math.max(lum1, lum2)
@@ -332,56 +332,21 @@ export function generatePalette(input: ColorPalette): GeneratedPalette {
   // Generate accent if not provided (complementary)
   const accent: string = input.accent || complementary(primary)
 
-  // Generate muted (desaturated, theme-aware with pattern variety)
-  // Multiple strategies create different visual styles
-  const muted: string = input.muted || ((): string => {
-    if (isDarkBackground(background)) {
-      // Dark theme strategies
-      const darkStrategies = [
-        () => adjustSaturation(darken(primary, 35), -40),  // Colored subtle (moderate saturation)
-        () => adjustSaturation(darken(primary, 30), -50),  // Colored muted (low saturation, more color visible)
-        () => adjustSaturation(darken(background, 5), -10), // Near-background subtle (minimal contrast)
-        () => adjustSaturation(darken(primary, 40), -30),  // Deep colored (darker, keeps more saturation)
-      ]
-      const strategy = darkStrategies[Math.floor(Math.random() * darkStrategies.length)]
-      return strategy?.() ?? ''
-    } else {
-      // Light theme strategies
-      const lightStrategies = [
-        () => adjustSaturation(lighten(primary, 40), -30),  // Classic light subtle
-        () => adjustSaturation(lighten(primary, 45), -40),  // Very light minimal color
-        () => adjustSaturation(lighten(primary, 35), -20),  // Soft colored (more visible color)
-        () => adjustSaturation(lighten(background, 3), -5), // Near-background subtle
-      ]
-      const strategy = lightStrategies[Math.floor(Math.random() * lightStrategies.length)]
-      return strategy?.() ?? ''
-    }
-  })()
+  // Muted FILL (desaturated, theme-aware). Deterministic: a random strategy made
+  // palettes vary run-to-run for the same input (AIROBUILD-2976). Pick one stable
+  // strategy per theme so kit / customer / auto-select builds are reproducible.
+  const muted: string = input.muted || (
+    isDarkBackground(background)
+      ? adjustSaturation(darken(primary, 35), -40)   // Colored subtle
+      : adjustSaturation(lighten(primary, 40), -30)  // Classic light subtle
+  )
 
-  // Generate border (theme-aware with pattern variety)
-  const border: string = input.border || ((): string => {
-    if (isDarkBackground(background)) {
-      // Dark theme border strategies
-      const darkBorderStrategies = [
-        () => adjustSaturation(lighten(background, 20), -10), // Subtle gray, lighter than background
-        () => adjustSaturation(lighten(primary, 50), -35),    // Subtle primary-colored border
-        () => lighten(muted, 10),                             // Based on muted color
-        () => adjustSaturation(lighten(primary, 45), -25),    // Medium colored border
-      ]
-      const strategy = darkBorderStrategies[Math.floor(Math.random() * darkBorderStrategies.length)]
-      return strategy?.() ?? ''
-    } else {
-      // Light theme border strategies
-      const lightBorderStrategies = [
-        () => adjustSaturation(darken(background, 15), -5),   // Subtle gray, darker than background
-        () => adjustSaturation(lighten(primary, 55), -35),    // Subtle primary-colored border
-        () => darken(muted, 8),                               // Based on muted color
-        () => adjustSaturation(lighten(primary, 50), -30),    // Medium colored border
-      ]
-      const strategy = lightBorderStrategies[Math.floor(Math.random() * lightBorderStrategies.length)]
-      return strategy?.() ?? ''
-    }
-  })()
+  // Border (theme-aware). Deterministic for the same reason as muted above.
+  const border: string = input.border || (
+    isDarkBackground(background)
+      ? adjustSaturation(lighten(background, 20), -10) // Subtle gray, lighter than background
+      : adjustSaturation(darken(background, 15), -5)   // Subtle gray, darker than background
+  )
 
   // Generate semantic colors if not provided
   const destructive: string = input.destructive || '#EF4444' // Red
@@ -396,7 +361,23 @@ export function generatePalette(input: ColorPalette): GeneratedPalette {
   const primaryForeground = ensureContrast('#FFFFFF', primary, 4.5)
   const secondaryForeground = ensureContrast('#FFFFFF', secondary, 4.5)
   const accentForeground = ensureContrast('#FFFFFF', accent, 4.5)
-  const mutedForegroundColor = input.mutedForeground || ensureContrast(foreground, muted, 4.5)
+  // Low-emphasis text renders on the page / card surface, NOT on the muted fill,
+  // so its contrast must be checked against that surface (AIROBUILD-2976: the old
+  // `ensureContrast(foreground, muted, 4.5)` left muted text failing AA on white).
+  // Check against the WORST-CASE surface so the single muted color passes on both
+  // background and card: a light theme has dark text, so the darker surface is
+  // worst; a dark theme has light text, so the lighter surface is worst. Start
+  // from a muted mid-tone (~45 lightness off the surface) that ensureContrast then
+  // nudges just enough to clamp to AA — so the text stays visibly low-emphasis
+  // without dropping below 4.5:1.
+  const isDarkTheme: boolean = isDarkBackground(background)
+  const mutedTextSurface: string = isDarkTheme
+    ? (getLuminance(background) >= getLuminance(card) ? background : card)
+    : (getLuminance(background) <= getLuminance(card) ? background : card)
+  const mutedTextBase: string = isDarkTheme
+    ? lighten(mutedTextSurface, 45)
+    : darken(mutedTextSurface, 45)
+  const mutedForegroundColor = input.mutedForeground || ensureContrast(mutedTextBase, mutedTextSurface, 4.5)
   const destructiveForeground = ensureContrast('#FFFFFF', destructive, 4.5)
   const successForeground = ensureContrast('#FFFFFF', success, 4.5)
   const warningForeground = ensureContrast('#FFFFFF', warning, 4.5)
