@@ -65,6 +65,25 @@ export function getSwitchboardFlag(setting: string, defaultValue = false, criter
   }
 }
 
+export function getSwitchboardValue<T extends string | number | boolean>(setting: string, defaultValue: T, criteria?: SwitchboardCriteria): T {
+  if (!initialized || !switchboardModule) return defaultValue
+  try {
+    const client = switchboardModule.getClient(false)
+    if (!client) return defaultValue
+    return client.getValue<T>(SWITCHBOARD_APP, setting, criteria, defaultValue)
+  } catch (err: unknown) {
+    const now = Date.now()
+    if (now - lastWarnAt > 60_000) {
+      lastWarnAt = now
+      logger.warn('switchboard.getValue.failed', {
+        setting,
+        error: err instanceof Error ? err.message : String(err),
+      })
+    }
+    return defaultValue
+  }
+}
+
 export function getShopperFlag(setting: string, shopperId: string | undefined, defaultValue = false): boolean {
   return getSwitchboardFlag(setting, defaultValue, shopperId ? { shopperId } : undefined)
 }

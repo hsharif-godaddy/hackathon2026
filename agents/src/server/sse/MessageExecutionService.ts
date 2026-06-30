@@ -104,6 +104,7 @@ import { trackInitialBuildStartedAsync } from '../../services/agent-lifecycle-ev
 import { enrichWithForcedDesignKit, isDesignSystemVariant } from '../../services/design-system/forced-install.js'
 import { createForWorkspace } from '../../workspace/index.js'
 import { buildAppliedSkillsContextMessage } from '../applied-skills-context.js'
+import { recordRolloutsOnSpan } from '../../lib/feature-rollouts.js'
 import { conformExistingPages } from '../../services/content-conform.js'
 import { buildWorkflowContextMessage } from '../workflow-context.js'
 
@@ -2036,6 +2037,8 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
       lifecycleContext, uploadedFileName, automationId, market, userTimezone, requestId, messageSpan,
       designKitSlug, isEmbedded,
     } = params
+
+    recordRolloutsOnSpan(appId)
 
     const resolvedAgentId = agentId
     if (resolvedAgentId === 'support') {

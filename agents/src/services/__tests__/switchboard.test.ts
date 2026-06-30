@@ -98,6 +98,130 @@ describe('switchboard service', () => {
     expect(result).toBe(true);
   });
 
+  it('getSwitchboardValue returns default when not initialized', async () => {
+    const { getSwitchboardValue } = await import('../switchboard.js');
+    expect(getSwitchboardValue('rollout.my-feature', -1)).toBe(-1);
+    expect(getSwitchboardValue('some-string-flag', 'fallback')).toBe('fallback');
+  });
+
+  it('getSwitchboardValue returns value from client when initialized', async () => {
+    const mockGetValue = vi.fn().mockReturnValue(75);
+    const mockClient = { getValue: mockGetValue };
+
+    vi.doMock('@switchboard/client', () => ({
+      startClient: vi.fn().mockResolvedValue(mockClient),
+      getClient: vi.fn().mockReturnValue(mockClient),
+      destroyAllClients: vi.fn(),
+    }));
+
+    const { initSwitchboard, getSwitchboardValue } = await import('../switchboard.js');
+    await initSwitchboard();
+
+    const result: number = getSwitchboardValue('rollout.my-feature', -1);
+
+    expect(result).toBe(75);
+    expect(mockGetValue).toHaveBeenCalledWith(
+      'default|airo-app-builder',
+      'rollout.my-feature',
+      undefined,
+      -1,
+    );
+  });
+
+  it('getSwitchboardValue returns default when client is null', async () => {
+    vi.doMock('@switchboard/client', () => ({
+      startClient: vi.fn().mockResolvedValue(null),
+      getClient: vi.fn().mockReturnValue(null),
+      destroyAllClients: vi.fn(),
+    }));
+
+    const { initSwitchboard, getSwitchboardValue } = await import('../switchboard.js');
+    await initSwitchboard();
+
+    expect(getSwitchboardValue('rollout.my-feature', -1)).toBe(-1);
+  });
+
+  it('getSwitchboardValue returns default when client.getValue throws', async () => {
+    const mockClient = {
+      getValue: vi.fn().mockImplementation(() => { throw new Error('network error'); }),
+    };
+
+    vi.doMock('@switchboard/client', () => ({
+      startClient: vi.fn().mockResolvedValue(mockClient),
+      getClient: vi.fn().mockReturnValue(mockClient),
+      destroyAllClients: vi.fn(),
+    }));
+
+    const { initSwitchboard, getSwitchboardValue } = await import('../switchboard.js');
+    await initSwitchboard();
+
+    expect(getSwitchboardValue('rollout.my-feature', -1)).toBe(-1);
+  });
+
+  it('getSwitchboardValue returns default when not initialized', async () => {
+    const { getSwitchboardValue } = await import('../switchboard.js');
+    expect(getSwitchboardValue('rollout.my-feature', -1)).toBe(-1);
+  });
+
+  it('getSwitchboardValue returns custom default when not initialized', async () => {
+    const { getSwitchboardValue } = await import('../switchboard.js');
+    expect(getSwitchboardValue('rollout.my-feature', 50)).toBe(50);
+  });
+
+  it('getSwitchboardValue returns value from client when initialized', async () => {
+    const mockGetValue = vi.fn().mockReturnValue(80);
+    const mockClient = { getValue: mockGetValue };
+
+    vi.doMock('@switchboard/client', () => ({
+      startClient: vi.fn().mockResolvedValue(mockClient),
+      getClient: vi.fn().mockReturnValue(mockClient),
+      destroyAllClients: vi.fn(),
+    }));
+
+    const { initSwitchboard, getSwitchboardValue } = await import('../switchboard.js');
+    await initSwitchboard();
+
+    const result: number = getSwitchboardValue('rollout.my-feature', -1);
+
+    expect(result).toBe(80);
+    expect(mockGetValue).toHaveBeenCalledWith(
+      'default|airo-app-builder',
+      'rollout.my-feature',
+      undefined,
+      -1,
+    );
+  });
+
+  it('getSwitchboardValue returns default when client is null', async () => {
+    vi.doMock('@switchboard/client', () => ({
+      startClient: vi.fn().mockResolvedValue(null),
+      getClient: vi.fn().mockReturnValue(null),
+      destroyAllClients: vi.fn(),
+    }));
+
+    const { initSwitchboard, getSwitchboardValue } = await import('../switchboard.js');
+    await initSwitchboard();
+
+    expect(getSwitchboardValue('rollout.my-feature', -1)).toBe(-1);
+  });
+
+  it('getSwitchboardValue returns default when client.getValue throws', async () => {
+    const mockClient = {
+      getValue: vi.fn().mockImplementation(() => { throw new Error('network error'); }),
+    };
+
+    vi.doMock('@switchboard/client', () => ({
+      startClient: vi.fn().mockResolvedValue(mockClient),
+      getClient: vi.fn().mockReturnValue(mockClient),
+      destroyAllClients: vi.fn(),
+    }));
+
+    const { initSwitchboard, getSwitchboardValue } = await import('../switchboard.js');
+    await initSwitchboard();
+
+    expect(getSwitchboardValue('rollout.my-feature', -1)).toBe(-1);
+  });
+
   it('destroySwitchboard calls destroyAllClients', async () => {
     const mockDestroyAll = vi.fn();
     const mockClient = { getValue: vi.fn() };
