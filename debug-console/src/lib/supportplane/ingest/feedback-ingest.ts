@@ -54,10 +54,10 @@ function cfg() {
   // the split vars are absent OR set to an empty string.
   const s3Bucket = isProd
     ? envOr(process.env.S3_FEEDBACK_BUCKET_PROD, envOr(process.env.FEEDBACK_S3_BUCKET, 'airo-builder-feedback-prod'))
-    : envOr(process.env.S3_FEEDBACK_BUCKET_DEV,  envOr(process.env.FEEDBACK_S3_BUCKET, 'airo-builder-feedback-dev'));
+    : envOr(process.env.S3_FEEDBACK_BUCKET_DEV, envOr(process.env.FEEDBACK_S3_BUCKET, 'airo-builder-feedback-dev'));
   const s3Prefix = isProd
     ? envOr(process.env.S3_FEEDBACK_TABLE_PROD, envOr(process.env.FEEDBACK_S3_PREFIX, 'airo_builder_feedback_cln/'))
-    : envOr(process.env.S3_FEEDBACK_TABLE_DEV,  envOr(process.env.FEEDBACK_S3_PREFIX, 'airo_builder_feedback_cln_laketest/'));
+    : envOr(process.env.S3_FEEDBACK_TABLE_DEV, envOr(process.env.FEEDBACK_S3_PREFIX, 'airo_builder_feedback_cln_laketest/'));
   return {
     env: feedbackEnv,
     startDate: process.env.FEEDBACK_START_DATE ?? '2026-04-01',

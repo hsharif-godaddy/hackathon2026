@@ -15,6 +15,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Analytics', href: '/analytics', color: '#3b82f6' },
   { label: 'RISQ', href: '/risq', color: '#7c3aed' },
   { label: 'Support Plane', href: '/supportplane', color: '#0891b2' },
+  { label: 'Scorecard', href: '/scorecard', color: '#a855f7' },
   { label: 'E2E Runs', href: '/e2e-run-dashboard', color: '#6366f1' },
   { label: 'Images', href: '/image-search', color: '#6b7280' },
   {

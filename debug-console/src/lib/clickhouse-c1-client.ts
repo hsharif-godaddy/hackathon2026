@@ -25,13 +25,15 @@ interface ChJsonBody {
   data?: ChJsonRow[];
 }
 
-export async function c1Query<T extends ChJsonRow = ChJsonRow>(sql: string): Promise<T[]> {
+export async function c1Query<T extends ChJsonRow = ChJsonRow>(sql: string, params: Record<string, string> = {}): Promise<T[]> {
   const c = getClickHouseC1Config();
   if (!c) {
     throw new Error('ClickHouse host not configured');
   }
 
-  const url = `${c.url}/?default_format=JSON`;
+  const qs = new URLSearchParams({ default_format: 'JSON' });
+  for (const [k, v] of Object.entries(params)) qs.set(`param_${k}`, v);
+  const url = `${c.url}/?${qs.toString()}`;
   const res = await fetch(url, {
     method: 'POST',
     headers: {

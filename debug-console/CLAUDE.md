@@ -22,6 +22,7 @@ Browser (Dashboard.tsx)  ── /api/* ──▶  Next.js routes  ── fetch �
                                                                         ├── mgmt control plane (apps, subscriptions, image-status)
                                                                         ├── SSO (auth, AD groups)
                                                                         ├── Langfuse (traces / sessions)
+                                                                        ├── BMP (airo-instrumentation namespace, scorecard metrics)
                                                                         └── S3 (investigate events / reports, feedback, screenshots)
 ```
 

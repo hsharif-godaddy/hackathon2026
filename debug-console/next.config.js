@@ -4,6 +4,7 @@ const nextConfig = {
   output: 'standalone',
   allowedDevOrigins: [
     'local.console.airo-builder.dev-gdcorp.tools',
+    'local.console.airo-builder.gdcorp.tools',
     'local.airo-console.dev-godaddy.com',
     // Legacy hostnames — kept while teams still have /etc/hosts entries for
     // the old setup. Safe to remove once everyone is on the gdcorp.tools name.

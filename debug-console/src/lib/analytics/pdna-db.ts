@@ -45,7 +45,7 @@ async function getLatestSnapshotDate(): Promise<string | null> {
     return (result.aggregations?.latest as { value_as_string?: string })?.value_as_string ?? null;
 }
 
-export async function getPdnaSnapshot(tla: PdnaTlaFilter = 'non-tla', planFilter: PdnaPlanFilter = []) {
+export async function getPdnaSnapshot(tla: PdnaTlaFilter = 'non-tla', planFilter: PdnaPlanFilter = [], dateRange: { from: string; to: string } | null = null) {
     if (!pdnaClient) return null;
 
     let snapshotDate: string | null;
@@ -97,6 +97,24 @@ export async function getPdnaSnapshot(tla: PdnaTlaFilter = 'non-tla', planFilter
                     time_to_publish_percentiles: {
                         percentiles: { field: 'time_to_publish_hours', percents: [50, 75, 90, 95, 99] },
                     },
+                    // Range-scoped percentiles: apps whose creation date falls
+                    // within the UI-selected date range. Only added when the
+                    // caller passes dateRange; otherwise omitted entirely.
+                    ...(dateRange ? {
+                        time_to_publish_percentiles_range: {
+                            filter: {
+                                bool: {
+                                    must: [
+                                        { exists: { field: 'first_publish_utc_ts' } },
+                                        { range: { app_create_utc_ts: { gte: dateRange.from, lte: dateRange.to } } },
+                                    ],
+                                },
+                            },
+                            aggs: {
+                                percentiles: { percentiles: { field: 'time_to_publish_hours', percents: [50, 90] } },
+                            },
+                        },
+                    } : {}),
                     // Apps distributed across Nomad cells (region+capacity view).
                     cells: { terms: { field: 'cell_id', size: 30 } },
                     // Pending/applied subscription downgrades. Each doc is an
@@ -430,6 +448,12 @@ export async function getPdnaSnapshot(tla: PdnaTlaFilter = 'non-tla', planFilter
         p99: ttpPercentiles['99.0'] ?? null,
     };
 
+    const ttpRangePercentiles = ((aggs.time_to_publish_percentiles_range as { percentiles?: { values?: Record<string, number> } })?.percentiles?.values) ?? {};
+    const timeToPublishHoursRange = {
+        p50: ttpRangePercentiles['50.0'] ?? null,
+        p90: ttpRangePercentiles['90.0'] ?? null,
+    };
+
     const cellBuckets = ((aggs.cells as { buckets?: Array<{ key: string; doc_count: number }> })?.buckets ?? []);
     const cells: Record<string, number> = {};
     for (const b of cellBuckets) cells[b.key] = b.doc_count;
@@ -510,6 +534,7 @@ export async function getPdnaSnapshot(tla: PdnaTlaFilter = 'non-tla', planFilter
         everPublishedRate: totalApps > 0 ? Math.round((everPublishedCount / totalApps) * 1000) / 10 : 0,
         downgradesCount,
         timeToPublishHours,
+        timeToPublishHoursRange,
         cells,
         appsCreatedDaily,
         appsCreatedDailyByPlan,
