@@ -336,7 +336,7 @@ describe("MediaManifestService - importSlot", () => {
     });
   });
 
-  it("fails import when local file copy cannot read source under public/", async () => {
+  it("creates slot when local source file is missing", async () => {
     vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify({}));
     vi.mocked(fs.writeFile).mockResolvedValue(undefined);
     vi.mocked(fs.rename).mockResolvedValue(undefined);
@@ -350,35 +350,44 @@ describe("MediaManifestService - importSlot", () => {
       },
     });
 
-    expect(result.success).toBe(false);
-    expect(result.httpStatus).toBe(400);
-    expect(result.error).toMatch(/Could not read the image under public\//);
-    const manifestWrites = vi.mocked(fs.writeFile).mock.calls.filter((call) =>
+    expect(result.success).toBe(true);
+    expect(result.slotPath).toBe("pages/home/missing");
+    const manifestWrite = vi.mocked(fs.writeFile).mock.calls.find((call) =>
       String(call[0]).includes("airo-media.json")
     );
-    expect(manifestWrites).toHaveLength(0);
-    expect(astImageEditor.replaceImage).not.toHaveBeenCalled();
+    expect(manifestWrite).toBeDefined();
+    const writtenManifest = JSON.parse(manifestWrite![1] as string);
+    expect(writtenManifest["pages/home/missing"].currentUrl).toBe("/assets/missing.jpg");
+    expect(astImageEditor.replaceImage).toHaveBeenCalled();
   });
 
-  it("fails import when candidate path exists but is a directory", async () => {
+  it("creates slot when candidate path exists but is a directory", async () => {
     vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify({}));
     vi.mocked(fs.writeFile).mockResolvedValue(undefined);
     vi.mocked(fs.rename).mockResolvedValue(undefined);
     vi.mocked(fs.stat).mockResolvedValue(dirStat);
 
-    const result = await service.importSlot("test-app", {
-      imageUrl: "https://localhost:5009/assets/some-dir",
-      imageAlt: "Missing",
-      devContext: {
-        fileName: "src/pages/index.tsx",
-        componentName: "unknown",
-        lineNumber: 10,
-      },
-    });
+    const result: Awaited<ReturnType<MediaManifestService["importSlot"]>> =
+      await service.importSlot("test-app", {
+        imageUrl: "https://localhost:5009/assets/some-dir",
+        imageAlt: "Missing",
+        devContext: {
+          fileName: "src/pages/index.tsx",
+          componentName: "unknown",
+          lineNumber: 10,
+        },
+      });
 
-    expect(result.success).toBe(false);
-    expect(result.httpStatus).toBe(400);
-    expect(result.error).toMatch(/Could not read the image under public\//);
+    expect(result.success).toBe(true);
+    expect(result.slotPath).toBe("pages/home/missing");
+    const manifestWrite: Parameters<typeof fs.writeFile> | undefined = vi
+      .mocked(fs.writeFile)
+      .mock.calls.find((call: Parameters<typeof fs.writeFile>): boolean =>
+        String(call[0]).includes("airo-media.json")
+      );
+    expect(manifestWrite).toBeDefined();
+    const writtenManifest: Record<string, MediaSlot> = JSON.parse(manifestWrite![1] as string);
+    expect(writtenManifest["pages/home/missing"].currentUrl).toBe("/assets/some-dir");
   });
 
   it("decodes percent-encoded spaces in filenames before filesystem lookup", async () => {
@@ -430,6 +439,27 @@ describe("MediaManifestService - importSlot", () => {
 
     expect(result).toMatchObject({ success: false, httpStatus: 400 });
     expect(fs.stat).not.toHaveBeenCalled();
+  });
+
+  it("blocks decoded absolute paths outside app roots", async () => {
+    vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify({}));
+    vi.mocked(fs.writeFile).mockResolvedValue(undefined);
+    vi.mocked(fs.rename).mockResolvedValue(undefined);
+
+    const result: Awaited<ReturnType<MediaManifestService["importSlot"]>> =
+      await service.importSlot("test-app", {
+        imageUrl: "/%2Ftmp%2Foutside.jpg",
+        imageAlt: "Absolute",
+        devContext: {
+          fileName: "src/pages/index.tsx",
+          componentName: "unknown",
+          lineNumber: 10,
+        },
+      });
+
+    expect(result).toMatchObject({ success: false, httpStatus: 400 });
+    expect(fs.stat).not.toHaveBeenCalled();
+    expect(fs.writeFile).not.toHaveBeenCalled();
   });
 
   it("fails cleanly on malformed percent-encoding", async () => {

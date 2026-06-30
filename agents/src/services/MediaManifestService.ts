@@ -518,13 +518,16 @@ function isResolvedPathWithinRoot(resolvedFile: string, rootDir: string): boolea
  * Copy a local file (served by the preview server) into public/media/ so the
  * image-slot handler can serve it via /airo-assets/uploads/.
  *
- * @returns The /airo-assets/uploads/ URL, or null if the file couldn't be found/copied.
+ * @returns A copied /airo-assets/uploads/ URL, invalid-path failure, or missing-source failure.
  */
 async function copyLocalFileToMedia(
   appPath: string,
   localUrlPath: string,
   slotPath: string
-): Promise<{ url: string; destPath: string } | null> {
+): Promise<
+  | { success: true; url: string; destPath: string }
+  | { success: false; reason: 'invalid_path' | 'not_found' }
+> {
   // Resolve local URL path to a filesystem path.
   // Vite serves public/ at root, so /assets/images/x.png → {app}/public/assets/images/x.png
   // getPersistentPublicDir(appPath) (.../assets/public/). Host layout stores files at
@@ -537,11 +540,11 @@ async function copyLocalFileToMedia(
     sanitizedPath = decodeURIComponent(stripped);
   } catch {
     logger.error('media_manifest.copy_local.invalid_encoding', { localUrlPath });
-    return null;
+    return { success: false, reason: 'invalid_path' };
   }
   if (sanitizedPath.split('/').includes('..')) {
     logger.error('media_manifest.copy_local.path_traversal_blocked', { localUrlPath });
-    return null;
+    return { success: false, reason: 'invalid_path' };
   }
 
   const previewPublicRoot = path.resolve(appPath, 'public');
@@ -564,7 +567,7 @@ async function copyLocalFileToMedia(
         localUrlPath,
         candidate,
       });
-      continue;
+      return { success: false, reason: 'invalid_path' };
     }
     try {
       const stat = await fs.stat(candidate);
@@ -583,7 +586,7 @@ async function copyLocalFileToMedia(
       localUrlPath,
       triedPaths: uniqueCandidates,
     });
-    return null;
+    return { success: false, reason: 'not_found' };
   }
 
   // Ensure public/media/ exists
@@ -607,7 +610,7 @@ async function copyLocalFileToMedia(
     dest: filename,
   });
 
-  return { url: `${AIRO_ASSET_UPLOADS_URL_PREFIX}${filename}`, destPath };
+  return { success: true, url: `${AIRO_ASSET_UPLOADS_URL_PREFIX}${filename}`, destPath };
 }
 
 /**
@@ -856,21 +859,35 @@ export class MediaManifestService {
       let copiedMediaDestPath: string | null = null;
       if (normalizedUrl.startsWith('/') && !normalizedUrl.startsWith('/airo-assets/')) {
         const copyResult = await copyLocalFileToMedia(app.path, normalizedUrl, slotPath);
-        if (!copyResult) {
-          logger.error('media_manifest.import_slot.copy_local_failed', {
-            appId,
-            slotPath,
-            localPath: normalizedUrl,
-          });
-          return {
-            success: false,
-            error:
-              'Could not read the image under public/ in the app workspace. Ensure the file exists (e.g. public/assets/images/...), then use Replace again.',
-            httpStatus: 400,
-          };
+        if (copyResult.success) {
+          normalizedUrl = copyResult.url;
+          copiedMediaDestPath = copyResult.destPath;
+        } else {
+          switch (copyResult.reason) {
+            case 'invalid_path':
+              logger.error('media_manifest.import_slot.copy_local_invalid_path', {
+                appId,
+                slotPath,
+                localPath: normalizedUrl,
+              });
+              return {
+                success: false,
+                error: 'Invalid local image path',
+                httpStatus: 400,
+              };
+            case 'not_found':
+              logger.warn('media_manifest.import_slot.copy_local_source_missing', {
+                appId,
+                slotPath,
+                localPath: normalizedUrl,
+              });
+              break;
+            default: {
+              const exhaustiveReason: never = copyResult.reason;
+              throw new Error(`Unhandled local media copy failure: ${exhaustiveReason}`);
+            }
+          }
         }
-        normalizedUrl = copyResult.url;
-        copiedMediaDestPath = copyResult.destPath;
       }
 
       const now = new Date().toISOString();
