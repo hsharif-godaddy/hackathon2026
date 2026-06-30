@@ -421,7 +421,7 @@ describe('PaaSPublishStrategy', () => {
       expect(createPaasConfigSpy).toHaveBeenCalledWith(
         '/tmp/test-app',
         undefined,
-        'NODE_ENV=development npm run dev',
+        'NODE_ENV=production npm run dev',
         undefined,
         undefined,
         'npm',

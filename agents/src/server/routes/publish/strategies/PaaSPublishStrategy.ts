@@ -295,7 +295,8 @@ export class PaaSPublishStrategy implements PublishStrategy {
       const { startCommand, serveCommandSource } = resolveStartCommand(
         undefined,
         scripts,
-        packageManager
+        packageManager,
+        { production: true }
       );
 
       logger.info(`route.publish.${this.key}.start-command.resolved`, {

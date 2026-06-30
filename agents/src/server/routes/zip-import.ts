@@ -202,6 +202,7 @@ export async function handleZipImport(req: Request, res: Response, appId: string
         const devCommand = req.body.devCommand as string | undefined;
         const startCommand = req.body.startCommand as string | undefined;
         const productId = req.body.productId as string | undefined;
+        const commitSource: boolean = req.body.commitSource === 'true';
 
         const importJob = await projectImportService.startImport({
           appId,
@@ -213,6 +214,7 @@ export async function handleZipImport(req: Request, res: Response, appId: string
           // PaaS Node.js parameters
           entryFile,
           productId,
+          commitSource,
           commands: (installCommand || buildCommand || startCommand)
             ? { install: installCommand, build: buildCommand, start: startCommand }
             : undefined,

@@ -90,6 +90,8 @@ export interface StartImportParams {
   productId?: string;
   /** Custom commands to override defaults */
   commands?: CommandOverrides;
+  /** Commit source files to git before install/build — ensures container restart preserves imported files even if install/build fails */
+  commitSource?: boolean;
 }
 
 /**
@@ -456,6 +458,35 @@ export class ProjectImportService {
         });
       }
 
+      // Phase 7c: Early source commit (before install/build) — ensures container restart
+      // preserves imported files even if install/build fails
+      if (params.commitSource) {
+        await this.updateStatus(jobId, ImportJobStatus.COMMITTING);
+        const earlyCommitResult = await this.gitCommit(appId, app.path, 'Import: Project source from zip file');
+
+        if (!earlyCommitResult.success) {
+          this.logger.error('project-import.early-commit.failed', {
+            jobId,
+            appId,
+            stage: ImportJobStatus.COMMITTING,
+            error: earlyCommitResult.error,
+          });
+          await this.importJobRepo.markFailed(
+            jobId,
+            earlyCommitResult.error || 'Early git commit failed',
+            ImportJobStatus.COMMITTING,
+            [{
+              key: ValidationErrorKey.GIT_COMMIT_FAILED,
+              message: earlyCommitResult.error || 'Early git commit failed',
+            }]
+          );
+          await this.cleanupContainerFiles(workspace.tasks, containerZipPath, containerProjectPath);
+          if (sourceType === 'zip') await this.cleanupZipFile(params.zipPath!);
+          return;
+        }
+        this.logger.info('project-import.early-commit.success', { jobId, appId });
+      }
+
       // Phase 8: Install dependencies (already runs in container via dev-supervisor)
       await this.updateStatus(jobId, ImportJobStatus.INSTALLING);
       const detectedPm = validation.packageManager || 'npm';
@@ -537,7 +568,8 @@ export class ProjectImportService {
       const { startCommand, serveCommandSource } = resolveStartCommand(
         params.commands?.start,
         validation,
-        pm
+        pm,
+        { production: true }
       );
       this.logger.info('project-import.config.create', {
         jobId,
@@ -575,27 +607,35 @@ export class ProjectImportService {
 
       // Phase 11: Git commit
       await this.updateStatus(jobId, ImportJobStatus.COMMITTING);
-      const commitResult = await this.gitCommit(appId, app.path);
+      const phase11Message: string = params.commitSource
+        ? 'Import: Post-install changes'
+        : 'Import: Project imported from zip file';
+      const commitResult = await this.gitCommit(appId, app.path, phase11Message);
 
       if (!commitResult.success) {
-        this.logger.error('project-import.commit.failed', {
-          jobId,
-          appId,
-          stage: ImportJobStatus.COMMITTING,
-          error: commitResult.error,
-        });
-        await this.importJobRepo.markFailed(
-          jobId,
-          commitResult.error || 'Git commit failed',
-          ImportJobStatus.COMMITTING,
-          [{
-            key: ValidationErrorKey.GIT_COMMIT_FAILED,
-            message: commitResult.error || 'Git commit failed',
-          }]
-        );
-        await this.cleanupContainerFiles(workspace.tasks, containerZipPath, containerProjectPath);
-        if (sourceType === 'zip') await this.cleanupZipFile(params.zipPath!);
-        return;
+        // If early commit already captured source, "nothing to commit" is expected
+        if (params.commitSource && commitResult.nothingToCommit) {
+          this.logger.info('project-import.commit.skipped-clean', { jobId, appId });
+        } else {
+          this.logger.error('project-import.commit.failed', {
+            jobId,
+            appId,
+            stage: ImportJobStatus.COMMITTING,
+            error: commitResult.error,
+          });
+          await this.importJobRepo.markFailed(
+            jobId,
+            commitResult.error || 'Git commit failed',
+            ImportJobStatus.COMMITTING,
+            [{
+              key: ValidationErrorKey.GIT_COMMIT_FAILED,
+              message: commitResult.error || 'Git commit failed',
+            }]
+          );
+          await this.cleanupContainerFiles(workspace.tasks, containerZipPath, containerProjectPath);
+          if (sourceType === 'zip') await this.cleanupZipFile(params.zipPath!);
+          return;
+        }
       }
 
       // Phase 12: Restart dev server with start command (or custom command)
@@ -1172,8 +1212,9 @@ export class ProjectImportService {
    */
   private async gitCommit(
     appId: string,
-    appPath: string
-  ): Promise<{ success: boolean; error?: string }> {
+    appPath: string,
+    message: string = 'Import: Project imported from zip file'
+  ): Promise<{ success: boolean; nothingToCommit?: boolean; error?: string }> {
     try {
       const workspace = createForWorkspace(appId, 'preview');
       const gitTool = new GitTool(workspace?.tasks);
@@ -1185,18 +1226,27 @@ export class ProjectImportService {
       });
 
       if (!addResult.success) {
-        const result: { success: boolean; error?: string } = { success: false };
+        const result: { success: boolean; nothingToCommit?: boolean; error?: string } = { success: false };
         if (addResult.error) result.error = addResult.error;
         return result;
+      }
+
+      // Check if there are staged changes before committing
+      const statusResult = await gitTool.executeGitOperation(appPath, {
+        operation: 'status',
+      });
+      const statusOutput: string = statusResult.output || '';
+      if (statusOutput.includes('nothing to commit')) {
+        return { success: false, nothingToCommit: true };
       }
 
       // Commit with message
       const commitResult = await gitTool.executeGitOperation(appPath, {
         operation: 'commit',
-        message: 'Import: Project imported from zip file',
+        message,
       });
 
-      const result: { success: boolean; error?: string } = { success: commitResult.success };
+      const result: { success: boolean; nothingToCommit?: boolean; error?: string } = { success: commitResult.success };
       if (commitResult.error) result.error = commitResult.error;
       return result;
     } catch (error) {

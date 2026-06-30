@@ -275,7 +275,7 @@ describe('AppRestartService', () => {
 
       expect(result.success).toBe(true);
       expect(mockTerminalTool.executeCommand).toHaveBeenCalledWith(testAppPath, {
-        command: 'yarn install',
+        command: 'yarn install --production=false',
         timeout: 5 * 60 * 1000,
       });
     });
@@ -419,10 +419,10 @@ describe('AppRestartService', () => {
         'utf-8'
       );
 
-      // Verify the JSON structure - always Node.js commands
+      // Verify the JSON structure - always Node.js commands (production build)
       const writeCall = vi.mocked(fs.writeFile).mock.calls[0];
       const writtenConfig = JSON.parse(writeCall[1] as string);
-      expect(writtenConfig.runtime.build.command).toBe('npm run build');
+      expect(writtenConfig.runtime.build.command).toBe('NODE_ENV=production npm run build');
       expect(writtenConfig.runtime.serve.command).toBe('npm start');
       expect(writtenConfig.cleanAppDirBeforeExtract).toBeUndefined();
       expect(writtenConfig.productId).toBeUndefined();
@@ -433,7 +433,7 @@ describe('AppRestartService', () => {
 
       const writeCall = vi.mocked(fs.writeFile).mock.calls[0];
       const writtenConfig = JSON.parse(writeCall[1] as string);
-      expect(writtenConfig.runtime.build.command).toBe('npm run build');
+      expect(writtenConfig.runtime.build.command).toBe('NODE_ENV=production npm run build');
       expect(writtenConfig.runtime.serve.command).toBe('node server.js');
       expect(writtenConfig.cleanAppDirBeforeExtract).toBeUndefined();
     });
@@ -461,7 +461,7 @@ describe('AppRestartService', () => {
       const writeCall = vi.mocked(fs.writeFile).mock.calls[0];
       const writtenConfig = JSON.parse(writeCall[1] as string);
       expect(writtenConfig.runtime.dev.command).toBe('npm run dev');
-      expect(writtenConfig.runtime.build.command).toBe('npm run build');
+      expect(writtenConfig.runtime.build.command).toBe('NODE_ENV=production npm run build');
       expect(writtenConfig.runtime.serve.command).toBe('npm start');
     });
 
@@ -470,7 +470,7 @@ describe('AppRestartService', () => {
 
       const writeCall = vi.mocked(fs.writeFile).mock.calls[0];
       const writtenConfig = JSON.parse(writeCall[1] as string);
-      expect(writtenConfig.runtime.build.command).toBe('pnpm run build');
+      expect(writtenConfig.runtime.build.command).toBe('NODE_ENV=production pnpm run build');
       expect(writtenConfig.runtime.serve.command).toBe('pnpm start');
       expect(writtenConfig.runtime.dev.command).toBe('pnpm run dev');
     });
@@ -480,7 +480,7 @@ describe('AppRestartService', () => {
 
       const writeCall = vi.mocked(fs.writeFile).mock.calls[0];
       const writtenConfig = JSON.parse(writeCall[1] as string);
-      expect(writtenConfig.runtime.build.command).toBe('yarn run build');
+      expect(writtenConfig.runtime.build.command).toBe('NODE_ENV=production yarn run build');
       expect(writtenConfig.runtime.serve.command).toBe('yarn start');
       expect(writtenConfig.runtime.dev.command).toBe('yarn run dev');
     });
@@ -566,31 +566,87 @@ describe('AppRestartService', () => {
   });
 
   describe('resolveStartCommand', () => {
-    it('should use user-provided start command when provided', () => {
-      const result = resolveStartCommand(
-        'node custom.js',
-        { hasStartScript: true, hasDevScript: true },
-        'npm'
-      );
-      expect(result).toEqual({ startCommand: 'node custom.js', serveCommandSource: 'user' });
-    });
+    describe('legacy mode (production=false)', () => {
+      it('should use user-provided start command when provided', () => {
+        const result = resolveStartCommand(
+          'node custom.js',
+          { hasStartScript: true, hasDevScript: true },
+          'npm'
+        );
+        expect(result).toEqual({ startCommand: 'node custom.js', serveCommandSource: 'user' });
+      });
 
-    it('should use npm start when start script exists', () => {
-      const result = resolveStartCommand(undefined, { hasStartScript: true, hasDevScript: true }, 'npm');
-      expect(result).toEqual({ startCommand: 'npm start', serveCommandSource: 'scripts.start' });
-    });
+      it('should use npm start when start script exists', () => {
+        const result = resolveStartCommand(undefined, { hasStartScript: true, hasDevScript: true }, 'npm');
+        expect(result).toEqual({ startCommand: 'npm start', serveCommandSource: 'scripts.start' });
+      });
 
-    it('should use dev script with NODE_ENV=development when only dev exists', () => {
-      const result = resolveStartCommand(undefined, { hasStartScript: false, hasDevScript: true }, 'npm');
-      expect(result).toEqual({
-        startCommand: 'NODE_ENV=development npm run dev',
-        serveCommandSource: 'scripts.dev',
+      it('should use dev script with NODE_ENV=development when only dev exists', () => {
+        const result = resolveStartCommand(undefined, { hasStartScript: false, hasDevScript: true }, 'npm');
+        expect(result).toEqual({
+          startCommand: 'NODE_ENV=development npm run dev',
+          serveCommandSource: 'scripts.dev',
+        });
+      });
+
+      it('should default to npm start when no scripts', () => {
+        const result = resolveStartCommand(undefined, { hasStartScript: false, hasDevScript: false }, 'npm');
+        expect(result).toEqual({ startCommand: 'npm start', serveCommandSource: 'default' });
       });
     });
 
-    it('should default to npm start when no scripts', () => {
-      const result = resolveStartCommand(undefined, { hasStartScript: false, hasDevScript: false }, 'npm');
-      expect(result).toEqual({ startCommand: 'npm start', serveCommandSource: 'default' });
+    describe('production mode', () => {
+      it('should prefix user-provided command with NODE_ENV=production', () => {
+        const result = resolveStartCommand(
+          'node custom.js',
+          { hasStartScript: true },
+          'npm',
+          { production: true }
+        );
+        expect(result).toEqual({
+          startCommand: 'NODE_ENV=production node custom.js',
+          serveCommandSource: 'user',
+        });
+      });
+
+      it('should use NODE_ENV=production npm start when start script exists', () => {
+        const result = resolveStartCommand(
+          undefined,
+          { hasStartScript: true, hasDevScript: true },
+          'npm',
+          { production: true }
+        );
+        expect(result).toEqual({
+          startCommand: 'NODE_ENV=production npm start',
+          serveCommandSource: 'scripts.start',
+        });
+      });
+
+      it('should fall back to NODE_ENV=production npm run dev when no start script but dev exists', () => {
+        const result = resolveStartCommand(
+          undefined,
+          { hasStartScript: false, hasDevScript: true },
+          'npm',
+          { production: true }
+        );
+        expect(result).toEqual({
+          startCommand: 'NODE_ENV=production npm run dev',
+          serveCommandSource: 'scripts.dev',
+        });
+      });
+
+      it('should work with pnpm', () => {
+        const result = resolveStartCommand(
+          undefined,
+          { hasStartScript: true },
+          'pnpm',
+          { production: true }
+        );
+        expect(result).toEqual({
+          startCommand: 'NODE_ENV=production pnpm start',
+          serveCommandSource: 'scripts.start',
+        });
+      });
     });
   });
 
@@ -741,51 +797,48 @@ describe('AppRestartService', () => {
       expect(buildCalls.length).toBe(0);
     });
 
-    it('should use custom dev command when provided', async () => {
+    it('should use custom dev command when provided (prefixed with NODE_ENV=production)', async () => {
       const customCommand = 'node server.js';
       await service.performFullRestartCycle(testAppId, testAppPath, {
         devCommand: customCommand,
       });
 
       expect(mockDevSupervisor.startProcess).toHaveBeenCalledWith({
-        command: `sh -c "${customCommand}"`,
+        command: 'sh -c "NODE_ENV=production node server.js"',
         working_dir: '/app',
       });
-    });
-
-    it('should start with dev script when package.json has only dev', async () => {
-      mockExecForRestartCycle({ packageJsonScripts: { dev: 'vite' } });
-
-      await service.performFullRestartCycle(testAppId, testAppPath);
-
-      expect(mockDevSupervisor.startProcess).toHaveBeenCalledWith({
-        command: 'sh -c "NODE_ENV=development npm run dev"',
-        working_dir: '/app',
-      });
-      const writeCall = vi.mocked(fs.writeFile).mock.calls[0];
-      const writtenConfig = JSON.parse(writeCall[1] as string);
-      expect(writtenConfig.runtime.serve.command).toBe('NODE_ENV=development npm run dev');
     });
 
     it('should skip build when package.json has no build script', async () => {
-      mockExecForRestartCycle({ packageJsonScripts: { dev: 'vite', start: 'node s.js' } });
+      mockExecForRestartCycle({ packageJsonScripts: { dev: 'vite' } });
 
-      await service.performFullRestartCycle(testAppId, testAppPath);
+      const result = await service.performFullRestartCycle(testAppId, testAppPath);
 
+      expect(result.success).toBe(true);
+      expect(result.phases.build).toBe(true);
       const terminalCalls = mockTerminalTool.executeCommand.mock.calls;
-      const buildCalls = terminalCalls.filter((call) => call[1].command === 'npm run build');
+      const buildCalls = terminalCalls.filter((call) => call[1].command.includes('build'));
       expect(buildCalls.length).toBe(0);
     });
 
-    it('should use commands.start over package.json scripts', async () => {
-      mockExecForRestartCycle({ packageJsonScripts: { dev: 'vite' } });
+    it('should skip build when package.json has start but no build script', async () => {
+      mockExecForRestartCycle({ packageJsonScripts: { dev: 'vite', start: 'node s.js' } });
+
+      const result = await service.performFullRestartCycle(testAppId, testAppPath);
+
+      expect(result.success).toBe(true);
+      expect(result.phases.build).toBe(true);
+    });
+
+    it('should use commands.start over package.json scripts (prefixed with NODE_ENV=production)', async () => {
+      mockExecForRestartCycle({ packageJsonScripts: { build: 'next build', dev: 'vite' } });
 
       await service.performFullRestartCycle(testAppId, testAppPath, {
         commands: { start: 'node custom.js' },
       });
 
       expect(mockDevSupervisor.startProcess).toHaveBeenCalledWith({
-        command: 'sh -c "node custom.js"',
+        command: 'sh -c "NODE_ENV=production node custom.js"',
         working_dir: '/app',
       });
     });
@@ -850,7 +903,7 @@ describe('AppRestartService', () => {
       expect(rmCalls.length).toBeGreaterThanOrEqual(1);
     });
 
-    it('should continue when build fails (build is not critical)', async () => {
+    it('should fail when build fails (build is fatal for PaaS)', async () => {
       // First call is install (success), second is build (fail)
       mockTerminalTool.executeCommand
         .mockResolvedValueOnce({
@@ -868,10 +921,11 @@ describe('AppRestartService', () => {
 
       const result = await service.performFullRestartCycle(testAppId, testAppPath);
 
-      expect(result.success).toBe(true);
+      expect(result.success).toBe(false);
       expect(result.phases.install).toBe(true);
-      expect(result.phases.build).toBe(true); // Still true - build failure is non-critical
-      expect(result.phases.restart).toBe(true);
+      expect(result.phases.build).toBe(false);
+      expect(result.phases.restart).toBe(false);
+      expect(result.error).toBe('Build failed');
     });
 
     it('should fail when restart fails', async () => {
@@ -971,13 +1025,13 @@ describe('AppRestartService', () => {
         const terminalCalls = mockTerminalTool.executeCommand.mock.calls;
         expect(terminalCalls[0][1].command).toBe('pnpm install');
 
-        // Verify pnpm build command was used
-        expect(terminalCalls[1][1].command).toBe('pnpm run build');
+        // Verify pnpm build command was used (production mode)
+        expect(terminalCalls[1][1].command).toBe('NODE_ENV=production pnpm run build');
 
         // Verify config was created with pnpm
         const writeCall = vi.mocked(fs.writeFile).mock.calls[0];
         const writtenConfig = JSON.parse(writeCall[1] as string);
-        expect(writtenConfig.runtime.build.command).toBe('pnpm run build');
+        expect(writtenConfig.runtime.build.command).toBe('NODE_ENV=production pnpm run build');
       });
 
       it('should detect yarn and use yarn commands', async () => {
@@ -1007,17 +1061,17 @@ describe('AppRestartService', () => {
           timeoutSeconds: 5,
         });
 
-        // Verify yarn install command was used
+        // Verify yarn install command was used (with --production=false for devDeps)
         const terminalCalls = mockTerminalTool.executeCommand.mock.calls;
-        expect(terminalCalls[0][1].command).toBe('yarn install');
+        expect(terminalCalls[0][1].command).toBe('yarn install --production=false');
 
-        // Verify yarn build command was used
-        expect(terminalCalls[1][1].command).toBe('yarn run build');
+        // Verify yarn build command was used (production mode)
+        expect(terminalCalls[1][1].command).toBe('NODE_ENV=production yarn run build');
 
         // Verify config was created with yarn
         const writeCall = vi.mocked(fs.writeFile).mock.calls[0];
         const writtenConfig = JSON.parse(writeCall[1] as string);
-        expect(writtenConfig.runtime.build.command).toBe('yarn run build');
+        expect(writtenConfig.runtime.build.command).toBe('NODE_ENV=production yarn run build');
       });
 
       it('should default to npm when no lock file exists', async () => {
@@ -1028,13 +1082,13 @@ describe('AppRestartService', () => {
         const terminalCalls = mockTerminalTool.executeCommand.mock.calls;
         expect(terminalCalls[0][1].command).toBe('npm install --include=dev');
 
-        // Verify npm build command was used
-        expect(terminalCalls[1][1].command).toBe('npm run build');
+        // Verify npm build command was used (production mode)
+        expect(terminalCalls[1][1].command).toBe('NODE_ENV=production npm run build');
 
         // Verify config was created with npm
         const writeCall = vi.mocked(fs.writeFile).mock.calls[0];
         const writtenConfig = JSON.parse(writeCall[1] as string);
-        expect(writtenConfig.runtime.build.command).toBe('npm run build');
+        expect(writtenConfig.runtime.build.command).toBe('NODE_ENV=production npm run build');
       });
 
       it('should fail when workspace is unavailable', async () => {
@@ -1275,8 +1329,8 @@ describe('Package Manager Utilities', () => {
       expect(getInstallCommand('pnpm')).toBe('pnpm install');
     });
 
-    it('should return yarn install for yarn', function yarnDefault() {
-      expect(getInstallCommand('yarn')).toBe('yarn install');
+    it('should return yarn install --production=false for yarn', function yarnDefault() {
+      expect(getInstallCommand('yarn')).toBe('yarn install --production=false');
     });
 
     it('should default to npm', function defaultNpm() {
@@ -1291,8 +1345,8 @@ describe('Package Manager Utilities', () => {
       expect(getInstallCommand('pnpm', { legacyPeerDeps: true })).toBe('pnpm install --no-strict-peer-dependencies');
     });
 
-    it('should not change yarn install with legacyPeerDeps', function yarnLegacy() {
-      expect(getInstallCommand('yarn', { legacyPeerDeps: true })).toBe('yarn install');
+    it('should not add extra flags for yarn with legacyPeerDeps', function yarnLegacy() {
+      expect(getInstallCommand('yarn', { legacyPeerDeps: true })).toBe('yarn install --production=false');
     });
   });
 

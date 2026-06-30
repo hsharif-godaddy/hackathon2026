@@ -143,15 +143,26 @@ if [ -f "$CUSTOMER_APP_DIR/.git/config" ]; then
                     pnpm install --no-strict-peer-dependencies
                     ;;
                 yarn)
-                    yarn install
+                    yarn install --production=false
                     ;;
                 npm)
                     npm install --include=dev --legacy-peer-deps
                     ;;
             esac
             log_step "Dependencies installed"
+
+            # Build output (.next/, dist/) lives on the same ephemeral disk as
+            # node_modules — if one is gone, so is the other. Run production
+            # build when the app defines a build script.
+            if node -e "const p=require('$CUSTOMER_APP_DIR/package.json'); process.exit(p.scripts && p.scripts.build ? 0 : 1)" 2>/dev/null; then
+                log_step "Running production build (ephemeral disk was wiped)..."
+                NODE_ENV=production "$pm" run build
+                log_step "Build complete"
+            else
+                log_step "No build script; skipping build"
+            fi
         else
-            log_step "node_modules present; skipping install"
+            log_step "node_modules present; skipping install and build"
         fi
 
         log_step "=== RESTART SETUP COMPLETE (PaaS) ==="

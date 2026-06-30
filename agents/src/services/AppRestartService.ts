@@ -47,10 +47,9 @@ const INSTALL_FLAGS: Record<keyof InstallCommandOptions, Record<PackageManager, 
 
 /**
  * Get the install command for the given package manager.
- * Note: npm uses --include=dev to ensure devDependencies are installed (needed for build tools like Vite).
- * pnpm and yarn install devDependencies by default unless NODE_ENV=production or --prod flag is used,
- * so no additional flags are needed. These commands run in the preview container which has
- * NODE_ENV=development by default.
+ * All commands ensure devDependencies are installed (needed for build tools like Vite/Next.js)
+ * regardless of NODE_ENV — npm via --include=dev, yarn via --production=false. pnpm ignores
+ * NODE_ENV for install decisions so needs no flag.
  */
 export function getInstallCommand(
   packageManager: PackageManager = 'npm',
@@ -59,7 +58,7 @@ export function getInstallCommand(
   const baseCommands: Record<PackageManager, string[]> = {
     npm: ['npm', 'install', '--include=dev'],
     pnpm: ['pnpm', 'install'],
-    yarn: ['yarn', 'install'],
+    yarn: ['yarn', 'install', '--production=false'],
   };
 
   const parts = [...baseCommands[packageManager]];
@@ -275,24 +274,30 @@ export type ServeCommandSource = 'user' | 'scripts.start' | 'scripts.dev' | 'def
  * Resolve the PaaS start command and attribution. Shared by zip import and
  * git pull restart cycles so both paths use the same fallback chain.
  *
- * Priority: user-provided → scripts.start → scripts.dev → default.
- * Dev-script fallback forces NODE_ENV=development because some Vite/React
- * apps break when `<pm> run dev` runs under NODE_ENV=production.
+ * When production=true (default for PaaS): requires scripts.start, no dev
+ * fallback. All resolved commands are prefixed with NODE_ENV=production.
+ *
+ * When production=false (legacy): falls back to scripts.dev → default.
  */
 export function resolveStartCommand(
   userStart: string | undefined,
   validation: { hasStartScript?: boolean; hasDevScript?: boolean },
-  pm: string
+  pm: string,
+  options?: { production?: boolean }
 ): { startCommand: string; serveCommandSource: ServeCommandSource } {
+  const production: boolean = options?.production ?? false;
+  const prefix: string = production ? 'NODE_ENV=production ' : '';
+
   if (userStart) {
-    return { startCommand: userStart, serveCommandSource: 'user' };
+    return { startCommand: `${prefix}${userStart}`, serveCommandSource: 'user' };
   }
   if (validation.hasStartScript) {
-    return { startCommand: `${pm} start`, serveCommandSource: 'scripts.start' };
+    return { startCommand: `${prefix}${pm} start`, serveCommandSource: 'scripts.start' };
   }
   if (validation.hasDevScript) {
+    const devPrefix: string = production ? 'NODE_ENV=production ' : 'NODE_ENV=development ';
     return {
-      startCommand: `NODE_ENV=development ${pm} run dev`,
+      startCommand: `${devPrefix}${pm} run dev`,
       serveCommandSource: 'scripts.dev',
     };
   }
@@ -375,7 +380,8 @@ export class AppRestartService {
       const { startCommand, serveCommandSource } = resolveStartCommand(
         userStart,
         scripts,
-        packageManager
+        packageManager,
+        { production: true }
       );
 
       this.logger.info('app-restart.start-command.resolved', {
@@ -411,33 +417,31 @@ export class AppRestartService {
         result.phases.install = true; // Mark as success since it was skipped
       }
 
-      // Step 3: Run build when package.json has a build script or caller overrides (matches zip import)
+      // Step 3: Run production build (if build script exists or custom command provided)
       let buildDurationMs: number | undefined;
-      const shouldRunBuild =
-        !options?.skipBuild && (Boolean(options?.commands?.build) || scripts.hasBuildScript);
-
-      if (shouldRunBuild) {
-        const buildCommand = options?.commands?.build || getBuildCommand(packageManager);
+      if (options?.skipBuild) {
+        result.phases.build = true;
+      } else if (!scripts.hasBuildScript && !options?.commands?.build) {
+        result.phases.build = true;
+        this.logger.info('app-restart.build.skipped', { appId, reason: 'no-build-script' });
+      } else {
+        const buildCommand = options?.commands?.build || getBuildCommand(packageManager, true);
         const buildStartTime = Date.now();
         const buildResult = await this.runCommandWithTasks(workspace.tasks, appPath, buildCommand, 'build');
         buildDurationMs = Date.now() - buildStartTime;
         metrics.buildDurationMs = buildDurationMs;
 
         if (!buildResult.success) {
-          // Build failure is not critical - log warning but continue
-          this.logger.warn('app-restart.build.failed', {
+          result.error = buildResult.error || 'build failed';
+          this.logger.error('app-restart.build.failed', {
             appId,
-            error: buildResult.error,
+            error: result.error,
             command: buildCommand,
           });
-          // Still mark as success since build is optional for dev mode
-          result.phases.build = true;
-        } else {
-          result.phases.build = true;
-          this.logger.info('app-restart.build.success', { appId, command: buildCommand });
+          return result;
         }
-      } else {
-        result.phases.build = true; // Mark as success since it was skipped
+        result.phases.build = true;
+        this.logger.info('app-restart.build.success', { appId, command: buildCommand });
       }
 
       // Step 4: Create PaaS config
@@ -770,10 +774,9 @@ export class AppRestartService {
     const airoDir = join(appPath, '.airo');
     const configPath = join(airoDir, 'config.json');
 
-    // Use detected package manager for build command
     const finalStartCmd = customStartCommand || DEFAULT_START_COMMAND;
     const finalDevCmd = customDevCommand || finalStartCmd;
-    const finalBuildCmd = getBuildCommand(packageManager);
+    const finalBuildCmd = getBuildCommand(packageManager, true);
     const resolvedSource: ServeCommandSource =
       serveCommandSource ?? (customStartCommand ? 'user' : 'default');
 

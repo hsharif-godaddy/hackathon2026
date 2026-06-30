@@ -5,6 +5,8 @@ set -euo pipefail
 # shellcheck source=./common.sh
 source /publish/common.sh
 
+export NODE_ENV=production
+
 # PaaS publish runner.
 #
 # Contract:
@@ -89,7 +91,7 @@ log_event "paas.run.config-loaded" "info" "$(
 
 # Recovery path: preview normally ships node_modules in the archive.
 if [[ -d node_modules ]]; then
-    log "PaaS: node_modules present - trusting preview, skipping install + build"
+    log "PaaS: node_modules and build output present from preview - serving directly"
 else
     log "PaaS: node_modules missing - running install (recovery)"
     case "$PACKAGE_MANAGER" in
@@ -97,10 +99,10 @@ else
             pnpm install --frozen-lockfile || error_exit "PaaS: pnpm install failed"
             ;;
         yarn)
-            yarn install --frozen-lockfile || error_exit "PaaS: yarn install failed"
+            yarn install --frozen-lockfile --production=false || error_exit "PaaS: yarn install failed"
             ;;
         npm)
-            npm ci --no-fund --no-audit || error_exit "PaaS: npm ci failed"
+            npm ci --include=dev --no-fund --no-audit || error_exit "PaaS: npm ci failed"
             ;;
     esac
     log "PaaS: dependencies installed"
