@@ -65,6 +65,9 @@ export interface DomainAttachWidgetProps {
   brandName?: string
   appId?: string
   className?: string
+  /** Conversation ID for linking analytics events to the agent session. */
+  conversationId?: string | null
+  messageId?: string
 }
 
 /**
@@ -84,7 +87,9 @@ export interface DomainAttachWidgetProps {
 export default function DomainAttachWidget({
   brandName,
   appId: propAppId,
-  className = ''
+  className = '',
+  conversationId,
+  messageId,
 }: DomainAttachWidgetProps) {
   const t = useTranslations();
   const sendUserMessage = useSendUserMessage();
@@ -375,6 +380,7 @@ export default function DomainAttachWidget({
       if (fqdnIsConnectedOrProvisioningOnSite(appDetails?.domains, fullDomain)) {
         shipAnalyticsLog('domain.attach.widget.case1.skip_already_on_app', {
           appId,
+          conversationId,
           brandName,
           matchedDomain: fullDomain
         });
@@ -385,6 +391,7 @@ export default function DomainAttachWidget({
 
       shipAnalyticsLog('domain.attach.widget.case1.matched_owned', {
         appId,
+        conversationId,
         brandName,
         matchedDomain: fullDomain
       });
@@ -392,6 +399,7 @@ export default function DomainAttachWidget({
       if (fqdnIsConnectedOrProvisioningOnSite(appDetails?.domains, trimmedBrandName)) {
         shipAnalyticsLog('domain.attach.widget.case3.skip_already_on_app', {
           appId,
+          conversationId,
           brandName,
           domain: trimmedBrandName
         });
@@ -402,6 +410,7 @@ export default function DomainAttachWidget({
 
       shipAnalyticsLog('domain.attach.widget.case3.prefill_external', {
         appId,
+        conversationId,
         brandName,
         domain: trimmedBrandName
       });
@@ -474,6 +483,7 @@ export default function DomainAttachWidget({
       });
       shipAnalyticsLog('domain.attach.widget.connect.success', {
         appId,
+        conversationId,
         domainName,
         isGoDaddyDomain
       });
@@ -517,6 +527,7 @@ export default function DomainAttachWidget({
       });
       shipAnalyticsLog('domain.attach.widget.connect.failed', {
         appId,
+        conversationId,
         domainName,
         isGoDaddyDomain,
         error: error instanceof Error ? error.message : String(error)
@@ -533,6 +544,7 @@ export default function DomainAttachWidget({
     if (!appId) return;
     shipAnalyticsLog('domain.attach.widget.disconnect.confirmation_shown', {
       appId,
+      conversationId,
       domainName,
     });
     setDisconnectTarget(domainName);
@@ -550,6 +562,7 @@ export default function DomainAttachWidget({
       });
       shipAnalyticsLog('domain.attach.widget.disconnect.success', {
         appId,
+        conversationId,
         domainName
       });
 
@@ -583,6 +596,7 @@ export default function DomainAttachWidget({
       });
       shipAnalyticsLog('domain.attach.widget.disconnect.failed', {
         appId,
+        conversationId,
         domainName,
         error: error instanceof Error ? error.message : String(error)
       });
@@ -599,6 +613,7 @@ export default function DomainAttachWidget({
     if (!disconnectTarget || !appId) return;
     shipAnalyticsLog('domain.attach.widget.disconnect.confirmed', {
       appId,
+      conversationId,
       domainName: disconnectTarget,
     });
     void executeDisconnectDomain(disconnectTarget);
@@ -610,6 +625,7 @@ export default function DomainAttachWidget({
     if (appId) {
       shipAnalyticsLog('domain.attach.widget.disconnect.cancelled', {
         appId,
+        conversationId,
         domainName: disconnectTarget,
       });
     }
@@ -642,6 +658,7 @@ export default function DomainAttachWidget({
 
     shipAnalyticsLog('domain.attach.widget.custom.submitted', {
       appId,
+      conversationId,
       domain: sanitizeDomainInput(customDomain),
       brandName,
     });
@@ -661,6 +678,7 @@ export default function DomainAttachWidget({
 
     shipAnalyticsLog('domain.attach.widget.purchase.cancelled', {
       appId,
+      conversationId,
       brandName,
     });
   }
@@ -672,6 +690,7 @@ export default function DomainAttachWidget({
 
     shipAnalyticsLog('domain.attach.widget.purchase.completed', {
       appId,
+      conversationId,
       brandName,
       domain,
     });
@@ -683,6 +702,7 @@ export default function DomainAttachWidget({
 
     shipAnalyticsLog('domain.attach.widget.purchase.opened', {
       appId,
+      conversationId,
       brandName,
     });
     logClickEvent('develop.domains.widget_purchase_opened')();
@@ -695,6 +715,7 @@ export default function DomainAttachWidget({
 
     shipAnalyticsLog('domain.attach.widget.owned.confirmed', {
       appId,
+      conversationId,
       domain: matchedOwnedDomain,
       brandName,
     });
@@ -709,6 +730,7 @@ export default function DomainAttachWidget({
 
     shipAnalyticsLog('domain.attach.widget.owned.cancelled', {
       appId,
+      conversationId,
       domain: matchedOwnedDomain,
       brandName,
     });
@@ -778,6 +800,8 @@ export default function DomainAttachWidget({
         onPurchaseComplete={handlePurchaseComplete}
         onCancel={handleCancelPurchase}
         className={className}
+        conversationId={conversationId}
+        messageId={messageId}
       />
     );
   }

@@ -5,6 +5,8 @@
  *
  * Validates that all translation keys used in staged TypeScript/JSX files
  * exist in the i18n API. Runs as part of pre-commit hook via lint-staged.
+ * Keys in defaults files (rebuild-intake, canvas-status, campaign, display-ads, domain-feedback, video-tool)
+ * are accepted even when absent from the API (pending portal publication).
  *
  * Flags:
  * - --strict: Fail when the i18n API is unreachable (used in CI)
@@ -45,13 +47,21 @@ const VIDEO_TOOL_DEFAULTS_PATH = new URL(
   import.meta.url,
 );
 
+const DOMAIN_FEEDBACK_DEFAULTS_PATH = new URL(
+  "../app/src/lib/translations/domain-feedback-defaults.ts",
+  import.meta.url,
+);
+
+
 const API_URL =
   "https://api.i18n.int.gdcorp.tools/api/v2/package/market/en-US/%40airo-app-builder%2Faab";
 const API_TIMEOUT_MS = 10000;
 
 /**
- * Keys listed in rebuild-intake-defaults.ts have English dev fallbacks via
- * defaultMessageForRebuildIntakeKey() until published to @airo-app-builder/aab.
+ * Load pending translation keys from a defaults file as a whitelist.
+ * Keys in defaults files have English dev fallbacks until published to @airo-app-builder/aab.
+ * @param {URL} filePath
+ * @param {string} label
  * @returns {Set<string>}
  */
 function loadFallbackKeysFromDefaultsFile(filePath, label) {
@@ -85,6 +95,11 @@ function loadDisplayAdsFallbackKeys() {
 function loadVideoToolFallbackKeys() {
   return loadFallbackKeysFromDefaultsFile(VIDEO_TOOL_DEFAULTS_PATH, "video-tool-defaults.ts");
 }
+
+function loadDomainFeedbackFallbackKeys() {
+  return loadFallbackKeysFromDefaultsFile(DOMAIN_FEEDBACK_DEFAULTS_PATH, "domain-feedback-defaults.ts");
+}
+
 
 /**
  * Get list of staged files from git
@@ -401,6 +416,10 @@ async function main() {
   }
 
   for (const key of loadVideoToolFallbackKeys()) {
+    availableKeys.add(key);
+  }
+
+  for (const key of loadDomainFeedbackFallbackKeys()) {
     availableKeys.add(key);
   }
 

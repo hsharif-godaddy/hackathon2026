@@ -155,4 +155,8 @@ export interface DomainPurchaseWidgetProps {
   onPurchaseComplete?: (domain: string) => void;
   onCancel?: () => void;
   className?: string;
+  /** Conversation ID for linking analytics events to the agent session. */
+  conversationId?: string | null;
+  /** Tool call ID of the domainPurchase tool invocation (used as feedback targetId). */
+  messageId?: string;
 }

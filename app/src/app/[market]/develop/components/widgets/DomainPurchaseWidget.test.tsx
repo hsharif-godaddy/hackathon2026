@@ -93,6 +93,7 @@ vi.mock('@/utils/getRootDomain', () => ({
 vi.mock('@/utils/instrumentation', () => ({
   logClickEvent: vi.fn(function () { return vi.fn(); }),
   logImpressionEvent: vi.fn(function () { return vi.fn(); }),
+  generateClickEID: vi.fn(function (eid: string) { return eid; }),
 }));
 
 vi.mock('@/utils/reactCompat', () => ({

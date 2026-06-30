@@ -26,6 +26,8 @@ import { useTranslations } from '@/hooks/useTranslations'
  */
 export default function DomainToolRenderer({
   toolStatus,
+  toolId,
+  conversationId,
   input,
   result,
   isLastAssistantMessage
@@ -81,8 +83,8 @@ export default function DomainToolRenderer({
           <ErrorBoundary>
             {isLastAssistantMessage ? (
               isAttach
-                ? <DomainAttachWidget brandName={brandName} appId={appId} />
-                : <DomainPurchaseWidget brandName={brandName} domain={domain} appId={appId} />
+                ? <DomainAttachWidget brandName={brandName} appId={appId} conversationId={conversationId} messageId={toolId} />
+                : <DomainPurchaseWidget brandName={brandName} domain={domain} appId={appId} conversationId={conversationId} messageId={toolId} />
             ) : (
               <Box
                 className="rounded-2xl border border-intents-ux-boxLowContrast-borderColor bg-intents-ux-box-backgroundColor p-4"

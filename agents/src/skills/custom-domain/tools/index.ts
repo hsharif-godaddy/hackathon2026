@@ -1,10 +1,13 @@
 import { fqdnIsConnectedOrProvisioningOnSite, getConnectedOrProvisioningDomain, type SiteDomainForAttachCheck } from '@airo/shared'
+import { emitCustomEvent } from '@godaddy/agent-otel-sdk'
 import { z } from 'zod'
 
 import type { SkillToolDefinition } from '@airo/ai-skills'
 
-import { readAppFqdn } from '../../../lib/app-fqdn.js'
 import { AppRepository } from '../../../database/repositories/AppRepository.js'
+import type { App } from '../../../database/schema.js'
+import { readAppFqdn } from '../../../lib/app-fqdn.js'
+import { selectCacheConversationId } from '../../../server/budget-report-conversation-id.js'
 import { MemoryRepository } from '../../../database/repositories/MemoryRepository.js'
 import { Logger } from '../../../logging/index.js'
 import { customerIdFromContext } from '../../../memory/interfaces/scope.js'
@@ -499,6 +502,23 @@ Rules:
                 message: 'App ID required for domain operations.'
             }
         }
+
+        const app: App | null = appRepo.findById(appId)
+        const conversationId: string | null = selectCacheConversationId(context).value ?? null
+        emitCustomEvent({
+            conversationId: conversationId ?? undefined,
+            eventData: {
+                schemaId: 'urn:shared:ai:event:/agent/domain/task-start/v1',
+                data: {
+                    action: input.action,
+                    brandName: input.brandName ?? null,
+                    domain: input.domain ?? null,
+                    appName: app?.name ?? null,
+                    appInitialPromptSnippet: app?.initialPrompt?.slice(0, 200) ?? null,
+                    conversationId,
+                },
+            },
+        })
 
         if (input.action === 'purchase') return purchase(input, context, appId)
         if (input.action === 'forward') return forward(input, context, appId)

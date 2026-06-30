@@ -37,6 +37,7 @@ import {
   domainSelectionContext,
   selectedDomainSelectionContext,
 } from './domain-search-analytics';
+import DomainSuggestionFeedback from './DomainSuggestionFeedback';
 
 const DynamicCheckout: ComponentType<any> = dynamic(
   async () => {
@@ -67,7 +68,9 @@ export default function DomainPurchaseWidget({
   appId: propAppId,
   onPurchaseComplete,
   onCancel,
-  className = ''
+  className = '',
+  conversationId,
+  messageId,
 }: DomainPurchaseWidgetProps) {
   const t = useTranslations();
   const sendUserMessage = useSendUserMessage();
@@ -83,6 +86,7 @@ export default function DomainPurchaseWidget({
   // Feature flag check
   const isDomainPurchaseEnabled = useSwitchboard('appbuilder-domain-purchase');
   const isOfferIscEnabled = useSwitchboard('appbuilder-domain-offers-isc');
+  const isDomainSuggestionFeedbackEnabled = useSwitchboard('appbuilder-domain-suggestion-feedback');
 
   // Fetch API key name from server (avoids NEXT_PUBLIC_ exposure)
   const { data: domainConfig } = useQuery({
@@ -203,6 +207,7 @@ export default function DomainPurchaseWidget({
 
     shipAnalyticsLog('domain.search.results', {
       appId,
+      conversationId,
       query: searchQuery,
       domainsFound,
       spinsResultCount: searchMeta.spinsResultCount,
@@ -239,6 +244,12 @@ export default function DomainPurchaseWidget({
   function runSearch() {
     const q = searchInput.trim();
     if (q.length < 2) return;
+    shipAnalyticsLog('domain.purchase.widget.search.triggered', {
+      appId,
+      conversationId,
+      query: q,
+      brandName,
+    });
     setSubmittedQuery(q);
     setPurchaseStatus('idle');
     setSelectedDomain(null);
@@ -270,6 +281,7 @@ export default function DomainPurchaseWidget({
 
       shipAnalyticsLog('domain.purchase.widget.add-to-cart', {
         appId,
+        conversationId,
         domain: domain.fqdn,
         basketId: newBasketId,
         ...spinContext,
@@ -331,6 +343,7 @@ export default function DomainPurchaseWidget({
 
     shipAnalyticsLog('domain.purchase.widget.success', {
       appId,
+      conversationId,
       domain: purchasedDomain,
       orderId: order?.orderId,
       ...spinContext,
@@ -371,6 +384,7 @@ export default function DomainPurchaseWidget({
 
     shipAnalyticsLog('domain.purchase.widget.checkout-error', {
       appId,
+      conversationId,
       domain: selectedDomain?.fqdn,
       errorName: error.name,
       reasonCode: error.reasonCode,
@@ -402,6 +416,7 @@ export default function DomainPurchaseWidget({
 
       shipAnalyticsLog('domain.purchase.widget.add-to-cart-error', {
         appId,
+        conversationId,
         domain: domain.fqdn,
         error: error?.message || String(error),
         ...spinContext,
@@ -426,6 +441,7 @@ export default function DomainPurchaseWidget({
 
       shipAnalyticsLog('domain.purchase.widget.unavailable', {
         appId,
+        conversationId,
         domain: domain.fqdn,
         ...spinContext,
       });
@@ -470,6 +486,7 @@ export default function DomainPurchaseWidget({
   function handleGoBack() {
     shipAnalyticsLog('domain.purchase.widget.go_back', {
       appId,
+      conversationId,
       brandName,
     });
 
@@ -654,6 +671,10 @@ export default function DomainPurchaseWidget({
               );
             })}
           </Box>
+        )}
+
+        {hasResults && isDomainSuggestionFeedbackEnabled && !isSearching && purchaseStatus === 'idle' && (
+          <DomainSuggestionFeedback appId={appId || ''} messageId={messageId} conversationId={conversationId} />
         )}
 
         {hasResults && activeIsc && (
