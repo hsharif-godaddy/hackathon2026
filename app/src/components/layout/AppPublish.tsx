@@ -1178,6 +1178,10 @@ export default function AppPublish({ location = 'develop', triggerClassName }: {
     : securityAnalysisResult === 'issues'
       ? 'issues'
       : 'idle';
+  const showSecurityFooter =
+    isSecurityScanUiEnabled &&
+    !securityFooterDismissed &&
+    (isPublishingOrDeploying || isOverriding || isSecurityAnalysisRunning || securityAnalysisResult !== null);
 
   return (
     <>
@@ -1194,7 +1198,11 @@ export default function AppPublish({ location = 'develop', triggerClassName }: {
         onOpenChange={handlePublish}
         isMobile={isMobile}
         placement='bottom-end'
-        popoverClassName={showDomainSelector ? 'w-[400px]' : 'w-[350px]'}
+        className='!rounded-[16px] !overflow-hidden'
+        popoverClassName={cn(
+          showDomainSelector ? 'w-[400px]' : 'w-[350px]',
+          'p-0 overflow-hidden',
+        )}
         showSheetCloseButton={false}
         aria-label={t('builder_publish_popover_title')}
         data-testid='publish-popover'
@@ -1215,7 +1223,7 @@ export default function AppPublish({ location = 'develop', triggerClassName }: {
           />
         )}
       >
-          <Box orientation='vertical' displayType='flex' inlinePadding='lg' blockPadding='lg' gap='md'>
+        <Box orientation='vertical' displayType='flex' inlinePadding='lg' blockPadding='lg' gap='md'>
             <TextLockup
               title={t('builder_publish_popover_title')}
               size={showDomainSelector ? 'md' : 'sm'}
@@ -1451,45 +1459,42 @@ export default function AppPublish({ location = 'develop', triggerClassName }: {
               />
             )}
 
-            {isSecurityScanUiEnabled && !securityFooterDismissed && (isPublishingOrDeploying || isOverriding || isSecurityAnalysisRunning || securityAnalysisResult !== null) && (
-              <>
-                <Separator />
-                <div className='-mx-5 -mb-5 px-5 py-3 bg-intents-ux-boxLowContrast-backgroundColor rounded-b-md flex items-start gap-2'>
-                  <div className='shrink-0 mt-0.5'>
-                    {securityFooterVariant === 'running' ? (
-                      <Spinner size='sm' data-partial='componentAiro' />
-                    ) : securityFooterVariant === 'issues' ? (
-                      <AlertIcon className='size-[1.25em] text-intents-ux-feedbackHighContrastWarning-feedbackColor' />
-                    ) : (
-                      <ShieldCheckIcon className='size-[1.25em] text-intents-ux-textSubtle-textColor' />
-                    )}
-                  </div>
-                  {securityFooterVariant === 'issues' ? (
-                    <Box orientation='vertical' gap='sm' className='min-w-0'>
-                      <text.p size={-1}>
-                        {t('builder_security_scan_complete_issues')}
-                      </text.p>
-                      <button
-                        type='button'
-                        onClick={handleViewSecurityFixes}
-                        data-eid={generateClickEID('security.publish_footer.view_fixes')}
-                        className='inline-flex items-center gap-0.5 self-start text-intents-ux-link-foregroundColor hover:cursor-pointer'
-                      >
-                        <text.span size={-1}>{t('builder_security_scan_view_fixes')}</text.span>
-                        <ArrowRightIcon className='size-2' />
-                      </button>
-                    </Box>
-                  ) : (
-                    <text.p size={-1}>
-                      {securityFooterVariant === 'running'
-                        ? t('builder_security_scan_running_message')
-                        : t('builder_security_scan_prepublish_message')}
-                    </text.p>
-                  )}
-                </div>
-              </>
+        </Box>
+        {showSecurityFooter && (
+          <div className='px-3 py-3 bg-intents-ux-boxLowContrast-backgroundColor flex items-start gap-2'>
+            <div className='shrink-0 mt-0.5'>
+              {securityFooterVariant === 'running' ? (
+                <Spinner size='sm' data-partial='componentAiro' />
+              ) : securityFooterVariant === 'issues' ? (
+                <AlertIcon className='size-[1.25em] text-intents-ux-feedbackHighContrastWarning-feedbackColor' />
+              ) : (
+                <ShieldCheckIcon className='size-[1.25em] text-intents-ux-textSubtle-textColor' />
+              )}
+            </div>
+            {securityFooterVariant === 'issues' ? (
+              <Box orientation='vertical' gap='sm' className='min-w-0'>
+                <text.p size={-1}>
+                  {t('builder_security_scan_complete_issues')}
+                </text.p>
+                <button
+                  type='button'
+                  onClick={handleViewSecurityFixes}
+                  data-eid={generateClickEID('security.publish_footer.view_fixes')}
+                  className='inline-flex items-center gap-0.5 self-start text-intents-ux-link-foregroundColor hover:cursor-pointer'
+                >
+                  <text.span size={-1}>{t('builder_security_scan_view_fixes')}</text.span>
+                  <ArrowRightIcon className='size-2' />
+                </button>
+              </Box>
+            ) : (
+              <text.p size={-1}>
+                {securityFooterVariant === 'running'
+                  ? t('builder_security_scan_running_message')
+                  : t('builder_security_scan_prepublish_message')}
+              </text.p>
             )}
-          </Box>
+          </div>
+        )}
       </ResponsivePopover>
     </>
   )
