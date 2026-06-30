@@ -508,3 +508,98 @@ function workspaceRelative(appPath: string, fullPath: string): string {
   const prefix: string = appPath.endsWith('/') ? appPath : `${appPath}/`;
   return fullPath.startsWith(prefix) ? fullPath.slice(prefix.length) : fullPath;
 }
+
+export interface ScanInput {
+  appId: string;
+  appPath: string;
+  workspaceFactory?: WorkspaceFilesFactory;
+}
+
+export interface ScanSummary {
+  scanned: number;
+  /** Workspace-relative page paths that were actually conformed. */
+  conformed: string[];
+  skipped: number;
+}
+
+/**
+ * One-time, per-app, in-session scan: conform every `src/pages/*.tsx` once.
+ *
+ * The on-create conform only heals pages written via `command === 'create'`.
+ * Pages that pre-date the content layer or only ever get incremental edits keep
+ * their inline arrays. This closes that gap by running the per-page conform
+ * across the whole `src/pages` tree on the first DEVELOP-agent turn.
+ *
+ * Reuses `conformPageToContentLayer` verbatim (with `isPageCreate: true`, since
+ * each existing page is treated like a fresh create for extraction purposes).
+ * That entry no-ops already-conformed / non-extractable pages, so this is
+ * idempotent by construction — a later conversation's scan is cheap, no extra
+ * dedupe needed.
+ *
+ * Fail-safe at two levels: each page call is wrapped so one page failing never
+ * stops the others, and the whole function is wrapped so it never throws.
+ */
+export async function conformExistingPages(input: ScanInput): Promise<ScanSummary> {
+  const { appId, appPath } = input;
+  const factory: WorkspaceFilesFactory = input.workspaceFactory ?? createForWorkspace;
+  const conformed: string[] = [];
+  let scanned: number = 0;
+  let skipped: number = 0;
+
+  try {
+    const files: WorkspaceFiles | null = resolveFiles(appId, factory);
+    if (files === null) {
+      logger.info('content-extract.scan.summary', { appId, scanned: 0, conformed: 0, skipped: 0 });
+      return { scanned: 0, conformed: [], skipped: 0 };
+    }
+
+    const tree: { entries: { path: string; kind: 'file' | 'directory' }[] } = await files.tree({
+      path: 'src/pages',
+      recursive: true,
+      kindFilter: 'file',
+    });
+    const pages: string[] = tree.entries
+      .filter((e: { path: string }): boolean => e.path.endsWith('.tsx'))
+      .map((e: { path: string }): string => e.path);
+
+    for (const pageRel of pages) {
+      scanned += 1;
+      try {
+        const outcome: ConformOutcome = await conformPageToContentLayer({
+          appId,
+          appPath,
+          fullPath: join(appPath, pageRel),
+          command: 'create',
+          isPageCreate: true,
+          workspaceFactory: factory,
+        });
+        if (outcome.note !== null) {
+          conformed.push(pageRel);
+        } else {
+          skipped += 1;
+        }
+      } catch (err) {
+        // Per-page isolation: conformPageToContentLayer is documented never to
+        // throw, but belt-and-suspenders so one bad page can't abort the scan.
+        skipped += 1;
+        logger.warn('content-extract.scan.page-failed', {
+          appId,
+          filePath: pageRel,
+          error: getErrorMessage(err),
+        });
+      }
+    }
+  } catch (err) {
+    // Whole-scan fail-safe: tree enumeration or anything else failing must not
+    // throw into the (fire-and-forget) caller.
+    logger.warn('content-extract.scan.failed', { appId, error: getErrorMessage(err) });
+  }
+
+  logger.info('content-extract.scan.summary', {
+    appId,
+    scanned,
+    conformed: conformed.length,
+    skipped,
+  });
+  return { scanned, conformed, skipped };
+}

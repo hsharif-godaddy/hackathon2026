@@ -123,6 +123,28 @@ vi.mock('../../../services/agent-lifecycle-events/initial-build-post-interaction
   trackPostInteractionIfEligible: (...args: unknown[]) => mockTrackPostInteractionIfEligible(...args),
 }))
 
+// First-turn content-conform scan hook (streamAgentTurn): spy the whole-tree
+// scan so the hook's gating / await-ordering / failure-isolation are observable
+// without running the real AST conform. Defaults to a no-op summary.
+const mockConformExistingPages = vi.hoisted(() => vi.fn().mockResolvedValue({ scanned: 0, conformed: [], skipped: 0 }))
+vi.mock('../../../services/content-conform.js', () => ({
+  conformExistingPages: (...args: unknown[]) => mockConformExistingPages(...args),
+}))
+
+// The hook reads appPath off executionContext.metadata, which executeUnderTrace
+// populates from AppRepository().findById(appId)?.path. Mock the repo so a test
+// can supply (or withhold) the path through the real production code path.
+// Default findById → undefined keeps every existing test's metadata.appPath
+// absent (its prior behavior), so the conform hook stays dormant for them.
+const mockAppRepoFindById = vi.hoisted(() => vi.fn().mockReturnValue(undefined))
+vi.mock('../../../database/repositories/index.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../database/repositories/index.js')>()
+  return {
+    ...actual,
+    AppRepository: vi.fn(function () { return { findById: mockAppRepoFindById }; }),
+  }
+})
+
 // Mock context-builders to avoid heavy dependency chain (AppRepository, KnowB, Langfuse)
 vi.mock('../../context-builders.js', () => ({
   buildDynamicDataMessage: vi.fn().mockReturnValue({
@@ -303,6 +325,10 @@ describe('MessageExecutionService', () => {
     mockSpanSetAttribute.mockClear()
     mockEmitConversationStart.mockClear()
     mockGetAgentFactory.mockReset()
+    mockConformExistingPages.mockClear()
+    mockConformExistingPages.mockResolvedValue({ scanned: 0, conformed: [], skipped: 0 })
+    mockAppRepoFindById.mockReset()
+    mockAppRepoFindById.mockReturnValue(undefined)
     mockCreateForWorkspace.mockReset()
     mockCreateForWorkspace.mockReturnValue({
       files: {
@@ -5703,6 +5729,101 @@ describe('MessageExecutionService', () => {
       // error, or the finally fallback), and the skip is observable.
       expect(budgetClient.createReport).not.toHaveBeenCalled()
       expect(errorEvents).toContain('sse.execution.budget_skipped_persistence_failed')
+    })
+  })
+
+  // streamAgentTurn fires a one-time, per-app content-conform scan on the first
+  // DEVELOP turn when an appPath is resolvable. These lock the three gates
+  // (first-turn + develop + appPath), the failure isolation, and the
+  // await-ordering (scan serialized before the edit stream — the race fix).
+  describe('first-turn content-conform scan hook', () => {
+    const APP_PATH = '/app'
+
+    it('fires once with { appId, appPath } on the first develop turn when appPath is present', async () => {
+      mockAppRepoFindById.mockReturnValue({ path: APP_PATH })
+
+      await service.execute({ ...DEFAULT_PARAMS, agentId: 'develop' })
+
+      expect(mockConformExistingPages).toHaveBeenCalledTimes(1)
+      expect(mockConformExistingPages).toHaveBeenCalledWith({ appId: 'app_1', appPath: APP_PATH })
+    })
+
+    it('skips non-develop agents even with appPath present', async () => {
+      mockAppRepoFindById.mockReturnValue({ path: APP_PATH })
+
+      await service.execute({ ...DEFAULT_PARAMS, agentId: 'marketing' })
+
+      expect(mockConformExistingPages).not.toHaveBeenCalled()
+    })
+
+    it('skips follow-up turns (non-empty conversation history)', async () => {
+      mockAppRepoFindById.mockReturnValue({ path: APP_PATH })
+      // A trailing prompt copy is dropped by dropTrailingPrompt, so seed an
+      // earlier turn too — otherwise the deduped history is still empty and
+      // isFirstTurn stays true.
+      deps.loadConversationHistory.mockResolvedValue([
+        { role: 'user', content: 'earlier message', tags: [] },
+        { role: 'assistant', content: 'earlier reply', tags: [] },
+      ])
+
+      await service.execute({ ...DEFAULT_PARAMS, agentId: 'develop' })
+
+      expect(mockConformExistingPages).not.toHaveBeenCalled()
+    })
+
+    it('skips when appPath is absent (app record has no path)', async () => {
+      mockAppRepoFindById.mockReturnValue(undefined)
+
+      await service.execute({ ...DEFAULT_PARAMS, agentId: 'develop' })
+
+      expect(mockConformExistingPages).not.toHaveBeenCalled()
+    })
+
+    it('isolates a scan failure: the turn still resolves and the failure is logged', async () => {
+      mockAppRepoFindById.mockReturnValue({ path: APP_PATH })
+      mockConformExistingPages.mockRejectedValueOnce(new Error('scan blew up'))
+
+      const loggerMod = await import('../../../logging/index.js')
+      const warnSpy = vi.spyOn(loggerMod.logger, 'warn')
+
+      let executeError: unknown
+      let warnEvents: string[] = []
+      try {
+        await service.execute({ ...DEFAULT_PARAMS, agentId: 'develop' })
+      } catch (e) {
+        executeError = e
+      } finally {
+        warnEvents = warnSpy.mock.calls.map((c) => c[0] as string)
+        warnSpy.mockRestore()
+      }
+
+      expect(executeError).toBeUndefined()
+      expect(mockConformExistingPages).toHaveBeenCalledTimes(1)
+      expect(warnEvents).toContain('content-extract.scan.failed')
+    })
+
+    it('awaits the scan BEFORE the agent edit stream starts (serialized, not racing)', async () => {
+      mockAppRepoFindById.mockReturnValue({ path: APP_PATH })
+
+      const order: string[] = []
+      mockConformExistingPages.mockImplementationOnce(async () => {
+        order.push('scan')
+        return { scanned: 0, conformed: [], skipped: 0 }
+      })
+      // The agent's edit stream runs after the conform inside streamAgentTurn;
+      // record its start so we can assert the scan precedes it.
+      deps.getAgent.mockReturnValue({
+        streamGenerate: vi.fn().mockImplementation(async () => {
+          order.push('stream')
+          return { textStream: (async function* () {})(), baseStream: makeReadableStream([]) }
+        }),
+        getName: vi.fn().mockReturnValue('AI Developer'),
+      })
+      service = new MessageExecutionService(deps as any)
+
+      await service.execute({ ...DEFAULT_PARAMS, agentId: 'develop' })
+
+      expect(order).toEqual(['scan', 'stream'])
     })
   })
 })

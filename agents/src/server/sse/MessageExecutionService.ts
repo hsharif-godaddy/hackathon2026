@@ -104,6 +104,7 @@ import { trackInitialBuildStartedAsync } from '../../services/agent-lifecycle-ev
 import { enrichWithForcedDesignKit, isDesignSystemVariant } from '../../services/design-system/forced-install.js'
 import { createForWorkspace } from '../../workspace/index.js'
 import { buildAppliedSkillsContextMessage } from '../applied-skills-context.js'
+import { conformExistingPages } from '../../services/content-conform.js'
 import { buildWorkflowContextMessage } from '../workflow-context.js'
 
 /** Short timeout for awaiting the classifier on an errored turn — the user is
@@ -1233,6 +1234,34 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
     // success. Prepend them on the first turn.
     if (isFirstTurn && forcedKitMessages && forcedKitMessages.length > 0) {
       preflightMessages = [...preflightMessages, ...forcedKitMessages]
+    }
+
+    // First-turn, per-app, one-time content-conform scan. The on-create conform
+    // only heals pages written via `command === 'create'`; pages that pre-date
+    // the content layer or only get incremental edits keep their inline arrays.
+    // On the first DEVELOP turn we conform the whole `src/pages` tree once.
+    //   - develop-only: skip InitialAgent (scaffolding) and every other agent —
+    //     develop is where existing pages get worked on (agentName is the
+    //     resolved agent id, e.g. 'develop').
+    //   - AWAITED, before the agent's edit stream starts (below), so the scan is
+    //     serialized with this turn's own writes — same effective ordering as the
+    //     on-create conform (a synchronous post-edit handler). Fire-and-forget
+    //     would race the develop agent editing the same `src/pages/*.tsx`: the
+    //     scan reads source, then writes a rewrite of that now-stale source,
+    //     clobbering a concurrent edit or breaking a `str_replace` mid-turn.
+    //     Cost is bounded + one-time: `conformExistingPages` is fail-safe (never
+    //     throws) and idempotent — once an app is conformed, each page hits the
+    //     cheap "no extractable arrays" short-circuit, so steady-state is ~reads.
+    //     Ungated (no feature flag), matching the on-create path.
+    const conformAppPath = (executionContext.metadata as { appPath?: string } | undefined)?.appPath
+    if (isFirstTurn && agentName === 'develop' && conformAppPath) {
+      try {
+        await conformExistingPages({ appId, appPath: conformAppPath })
+      } catch (err) {
+        // conformExistingPages is whole-scan fail-safe; this is belt-and-suspenders
+        // so a scan bug can never break the user's first turn.
+        logger.warn('content-extract.scan.failed', { appId, ...errorFields(err) })
+      }
     }
 
     const assembled = assembleMessages({

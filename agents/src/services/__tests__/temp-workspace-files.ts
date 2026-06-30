@@ -9,8 +9,9 @@
  * writes to `/app`). That lets the tests prove snapshot/restore is byte-exact
  * across the two mechanisms.
  *
- * Only the methods the conform uses are implemented (`stat`, `view`, `write`,
- * `delete`); the rest throw so an accidental new dependency surfaces loudly.
+ * Only the methods the conform/scan path uses are implemented (`stat`, `view`,
+ * `write`, `delete`, `tree`); the rest throw so an accidental new dependency
+ * surfaces loudly.
  */
 
 import { promises as fs } from 'node:fs';
@@ -33,6 +34,7 @@ import type {
   SearchOptions,
   StatOptions,
   StatResult,
+  TreeEntry,
   TreeOptions,
   TreeResult,
   ViewOptions,
@@ -98,10 +100,47 @@ export class TempWorkspaceFiles implements WorkspaceFiles {
     await fs.rm(this.abs(options.path), { recursive: options.recursive ?? false, force: false });
   }
 
-  // ── Unused by the conform path ──────────────────────────────────────────────
-  tree(_options?: TreeOptions): Promise<TreeResult> {
-    return unsupported('tree');
+  /**
+   * Recursive directory walk rooted at the temp dir. Returns workspace-rooted
+   * paths (the request `path` prefix joined in), mirroring the real contract.
+   * Honors `kindFilter`; descent is always recursive (the scan walks the whole
+   * `src/pages` subtree). A missing directory yields an empty result.
+   */
+  async tree(options?: TreeOptions): Promise<TreeResult> {
+    const base: string = options?.path ?? '';
+    const kindFilter: 'file' | 'directory' | undefined = options?.kindFilter;
+    const entries: TreeEntry[] = [];
+
+    const walk = async (relDir: string): Promise<void> => {
+      const absDir: string = this.abs(relDir);
+      let dirents: import('node:fs').Dirent[];
+      try {
+        dirents = await fs.readdir(absDir, { withFileTypes: true });
+      } catch {
+        return;
+      }
+      for (const dirent of dirents) {
+        const childRel: string = relDir ? `${relDir}/${dirent.name}` : dirent.name;
+        const isDir: boolean = dirent.isDirectory();
+        const kind: 'file' | 'directory' = isDir ? 'directory' : 'file';
+        if (!kindFilter || kindFilter === kind) {
+          const stat: import('node:fs').Stats = await fs.stat(this.abs(childRel));
+          entries.push({
+            path: childRel,
+            kind,
+            size: stat.size,
+            modifiedAt: stat.mtime.toISOString(),
+          });
+        }
+        if (isDir) await walk(childRel);
+      }
+    };
+
+    await walk(base);
+    return { entries, truncated: false };
   }
+
+  // ── Unused by the conform/scan path ──────────────────────────────────────────
   search(_options: SearchOptions): Promise<SearchMatch[]> {
     return unsupported('search');
   }
