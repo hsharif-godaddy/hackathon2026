@@ -62,7 +62,7 @@ export class MarketingUtmRepository {
       assertEnumValue(UtmMedium, params.utmMedium, 'utm_medium');
     }
 
-    const id: string = `mutm_${nanoid()}`;
+    const id: string = nanoid();
     const now: string = new Date().toISOString();
     const utmCampaign: string | null = params.simpleCampaignId
       ? buildCampaignToken(params.simpleCampaignId)

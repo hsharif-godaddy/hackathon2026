@@ -13,14 +13,14 @@ const campaignRepo = new SimpleCampaignRepository();
 export const socialPostDelete: Tool = createTool(
   `Delete a campaign social post that is still a pre-launch draft.
 
-  Identify the post by its campaign-content id (starts with "cont_").
+  Identify the post by its campaign-content id.
 
   Rules:
   - You can only delete a social post while it is a pre-launch draft. Once the campaign
     is launched the post is bound to the platform; tell the user it must be removed on the
     platform itself.`,
   z.object({
-    contentId: z.string().describe('The campaign-content id to delete (starts with "cont_").'),
+    contentId: z.string().describe('The campaign-content id to delete.'),
   }),
   async (input, context) => {
     const agentContext = context as AgentsAppContext;

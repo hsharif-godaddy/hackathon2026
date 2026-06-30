@@ -71,7 +71,7 @@ describe('SimpleCampaignRepository', function campaignRepoTests() {
       expect(campaign.name).toBe('Summer Sale');
       expect(campaign.status).toBe(SimpleCampaignStatus.Draft);
       expect(campaign.offer).toBe('25% off');
-      expect(campaign.id).toMatch(/^camp_[0-9a-z]{12}$/);
+      expect(campaign.id).toMatch(/^[0-9a-z]{12}$/);
       expect(mockStatement.run).toHaveBeenCalled();
       expect(mockStatement.get).not.toHaveBeenCalled(); // no SELECT round-trip
     });
@@ -244,7 +244,7 @@ describe('SimpleCampaignRepository', function campaignRepoTests() {
       expect(content.assetType).toBe('blog');
       expect(content.title).toBe('Summer Sale Blog Post');
       expect(content.contentRefId).toBe('/blog/summer-sale');
-      expect(content.id).toMatch(/^cont_[0-9a-z]{12}$/);
+      expect(content.id).toMatch(/^[0-9a-z]{12}$/);
       expect(mockStatement.run).toHaveBeenCalled();
       expect(mockStatement.get).not.toHaveBeenCalled();
     });

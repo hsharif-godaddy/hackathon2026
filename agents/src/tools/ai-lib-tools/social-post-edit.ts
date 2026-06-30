@@ -14,14 +14,14 @@ export const socialPostEdit: Tool = createTool(
   `Edit a campaign social post's content BEFORE the campaign is launched.
 
   Use this to revise a draft social post: change its message, hashtags, or call-to-action.
-  Identify the post by its campaign-content id (starts with "cont_").
+  Identify the post by its campaign-content id.
 
   Rules:
   - You can only edit a social post while it is still a pre-launch draft. Once the
     campaign is launched the post is bound to the platform and is managed there, not here.
   - To change the scheduled date, that is handled separately (rescheduling), not by this tool.`,
   z.object({
-    contentId: z.string().describe('The campaign-content id to edit (starts with "cont_").'),
+    contentId: z.string().describe('The campaign-content id to edit.'),
     message: z.string().optional().describe('New post text/caption.'),
     hashtags: z.array(z.string()).optional().describe('Replacement hashtags (without #).'),
     callToAction: z.string().optional().describe('New call-to-action.'),

@@ -66,7 +66,7 @@ erDiagram
     }
 
     simple_campaign {
-        TEXT id PK "camp_<nanoid> — see Open items"
+        TEXT id PK "<nanoid(12)> — plain id, no type prefix"
         TEXT app_id FK "→ apps.id (no cascade)"
         TEXT marketing_plan_id "nullable — placeholder for a future MarketingPlan parent (no FK yet)"
         TEXT name
@@ -85,7 +85,7 @@ erDiagram
     }
 
     simple_campaign_content {
-        TEXT id PK "cont_<nanoid>"
+        TEXT id PK "<nanoid(12)> — plain id, no type prefix"
         TEXT simple_campaign_id FK "→ simple_campaign.id (CASCADE)"
         TEXT asset_type "landing-page|banner|blog|social|email|ad (app-validated enum)"
         TEXT content_ref_id "soft pointer to content (post id / slug / file path); null until real content exists"
@@ -99,7 +99,7 @@ erDiagram
     }
 
     marketing_utm {
-        TEXT id PK "mutm_<nanoid>"
+        TEXT id PK "<nanoid(12)> — plain id, no type prefix"
         TEXT content_ref_id "→ target content row id (social_posts.id, blog_posts.id, …); polymorphic, no FK"
         TEXT simple_campaign_id FK "→ simple_campaign.id (SET NULL), nullable"
         TEXT utm_source "nullable — platform slug (app-validated; dynamic seo-offsite family)"
@@ -292,10 +292,11 @@ live only in the `CREATE TABLE` definition — no `ALTER TABLE`/backfill scripts
 - **Content resolver.** A function mapping `(asset_type, content_ref_id)` → the live content
   row (`blog_posts` / `social_posts` / app source / future ad/email) is the natural next
   piece. It belongs at the launch/orchestration layer and is not built here.
-- **Global ID uniqueness.** `simple_campaign.id` stays `camp_<nanoid(12)>` (internal PK,
-  unique within a customer's DB). The published key is the salted-hash token, not the raw id,
-  so the warehouse key is opaque and global without changing the PK (the earlier "switch PK
-  to `cmp_<ulid>`" idea was rejected — it would have exposed the internal id).
+- **Global ID uniqueness.** `simple_campaign.id` is a plain `nanoid(12)` (internal PK,
+  unique within a customer's DB) — no type prefix. The published key is the salted-hash token,
+  not the raw id, so the warehouse key is opaque and global without changing the PK. (Type
+  prefixes like `camp_`/`cont_`/`mutm_` were dropped — they were never a requirement, and no
+  code disambiguates ids by prefix.)
 - **`utm_content`** is now minted as the `act_<hash>` token of the content id (RUBICON-500).
   `utm_term` (keyword/segment/topic) population mapping per channel lands with RUBICON-499/501.
 - **Population wiring.** Writing decorated URLs into generated content (and the full

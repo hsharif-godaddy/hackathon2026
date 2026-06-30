@@ -113,7 +113,7 @@ export class SimpleCampaignRepository {
    * layer (not via DB defaults), and run().changes is the authoritative success check.
    */
   create(params: CreateSimpleCampaignParams): SimpleCampaign {
-    const id: string = `camp_${nanoid()}`;
+    const id: string = nanoid();
     const now: string = new Date().toISOString();
     const campaign: SimpleCampaign = {
       id,
@@ -328,7 +328,7 @@ export class SimpleCampaignRepository {
       assertEnumValue(SimpleCampaignContentStatus, params.status, 'status');
     }
 
-    const id: string = `cont_${nanoid()}`;
+    const id: string = nanoid();
     const now: string = new Date().toISOString();
     const content: SimpleCampaignContent = {
       id,

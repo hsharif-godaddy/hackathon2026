@@ -41,11 +41,11 @@ describe('SimpleCampaignRepository Integration Tests', () => {
   describe('id prefixes', () => {
     it('mints camp_ ids for campaigns and cont_ ids for content, round-tripping through find', () => {
       const campaign = repo.create({ appId: APP_ID, name: 'Launch' });
-      expect(campaign.id).toMatch(/^camp_[0-9a-z]{12}$/);
+      expect(campaign.id).toMatch(/^[0-9a-z]{12}$/);
       expect(repo.findById(campaign.id)).not.toBeNull();
 
       const content = repo.addContent({ simpleCampaignId: campaign.id, assetType: 'blog', title: 'Post' });
-      expect(content.id).toMatch(/^cont_[0-9a-z]{12}$/);
+      expect(content.id).toMatch(/^[0-9a-z]{12}$/);
       expect(repo.findContentById(content.id)).not.toBeNull();
     });
   });
