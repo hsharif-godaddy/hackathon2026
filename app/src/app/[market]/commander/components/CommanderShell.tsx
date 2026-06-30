@@ -9,8 +9,6 @@ import { useCanvasSync } from '@/app/[market]/commander/canvas/useCanvasSync'
 import CanvasActionsDock from '@/app/[market]/commander/components/chat/CanvasActionsDock'
 import { CommanderPosition } from '@/app/[market]/commander/types'
 import BrandBookView from '@/app/[market]/develop/components/preview/brand-book'
-import { DesignKitWizard } from '@/app/[market]/develop/components/preview/design-kit-wizard/DesignKitWizard'
-import { useIsDesignKitWizardProfile } from '@/app/[market]/develop/components/preview/design-kit-wizard/isDesignKitWizardProfile'
 import { ViewMode } from '@/app/[market]/develop/components/types'
 import {
   useCommanderActionsBarEnabled,
@@ -59,7 +57,6 @@ export function CommanderShell({
   const isCanvasSettingsOpen = useCommanderStore((state) => state.isCanvasSettingsOpen)
   const isMobileChatOpen = useCommanderStore((state) => state.isMobileChatOpen)
   const closeMobileChat = useCommanderStore((state) => state.closeMobileChat)
-  const showDesignKitWizard = useIsDesignKitWizardProfile()
   useCanvasSync()
 
   const canvasAreaRef = useRef<HTMLDivElement>(null)
@@ -82,11 +79,9 @@ export function CommanderShell({
     ? activeCanvasId === CanvasId.Brand
     : viewMode === ViewMode.BRAND && !isCanvasSettingsOpen
 
-  const brandOverlayContent =
-    appId &&
-    (showDesignKitWizard
-      ? <DesignKitWizard appId={appId} />
-      : <BrandBookView appId={appId} />)
+  // The design-kit wizard runs in its own Immersive BuilderLayout (AIROBUILD-3095);
+  // once the builder takes over, the Brand canvas shows the Brand Book like any app.
+  const brandOverlayContent = appId && <BrandBookView appId={appId} />
 
   if (isMobile) {
     return (

@@ -1574,30 +1574,12 @@ describe('useDevelopPageStore', function useDevelopPageStoreTests() {
       expect(useDevelopPageStore.getState().viewMode).toBe(ViewMode.BRAND);
     });
 
-    it('preserves the BRAND tab for the design-kit wizard profile', function preservesDesignKitBrand() {
-      // The design-kit wizard lands on BRAND via useView.resolveInitialViewMode,
-      // gated on the appbuilder-agent-profile Switchboard value. resetForNewApp
-      // must not override it to PREVIEW during the jobId->realAppId re-init, even
-      // though the app is NOT a logo-designer template.
+    it('resets a design-kit app to PREVIEW (it uses BuilderLayout.Immersive, not the BRAND tab)', function designKitPreview() {
+      // The design-kit flow no longer lands on the BRAND tab — it has its own immersive
+      // layout (useBuilderLayout) — so resetForNewApp treats it like any non-logo-designer
+      // app and lands it on PREVIEW once the build hands off.
       (window as unknown as { gasketData?: unknown }).gasketData = {
         switchboard: { 'appbuilder-agent-profile': 'initial-agent-design-kit' },
-      };
-
-      act(function setup() {
-        useDevelopPageStore.setState({ viewMode: ViewMode.BRAND });
-      });
-
-      act(function reset() {
-        useDevelopPageStore.getState().resetForNewApp('app-design-kit');
-      });
-
-      expect(useDevelopPageStore.getState().viewMode).toBe(ViewMode.BRAND);
-    });
-
-    it('still lands a plain app in PREVIEW when the design-kit profile is not active', function plainAppPreview() {
-      // A non-design-kit agent-profile value must not trigger BRAND preservation.
-      (window as unknown as { gasketData?: unknown }).gasketData = {
-        switchboard: { 'appbuilder-agent-profile': 'initial-agent-design-system' },
       };
 
       act(function setup() {
@@ -1605,7 +1587,7 @@ describe('useDevelopPageStore', function useDevelopPageStoreTests() {
       });
 
       act(function reset() {
-        useDevelopPageStore.getState().resetForNewApp('app-plain');
+        useDevelopPageStore.getState().resetForNewApp('app-design-kit');
       });
 
       const state = useDevelopPageStore.getState();

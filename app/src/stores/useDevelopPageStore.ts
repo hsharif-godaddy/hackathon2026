@@ -2,13 +2,12 @@ import { create } from 'zustand'
 import { devtools, persist } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
 
-import { isDesignKitWizardProfile } from '@/app/[market]/develop/components/preview/design-kit-wizard/isDesignKitWizardProfile'
 import { DEFAULT_DESKTOP_DEVICE, DEFAULT_MOBILE_DEVICE, DEFAULT_TABLET_DEVICE } from '@/app/[market]/develop/components/preview/devicePresets'
 import { buildEditModeEnabledMessage, ChatTab, IframeMessageType, type MarketingView, MobileMode, PreviewViewMode, SettingsSection, ViewMode } from '@/app/[market]/develop/components/types'
 import type { LogoSessionLogo } from '@/app/[market]/develop/components/widgets/logo-utils'
 import type { FeedbackCategory } from '@/components/feedback/types'
 import { SWITCHBOARD_APPBUILDER_CMS_INLINE_EDIT } from '@/config/switchboard-flags'
-import { getSwitchboardFlag, getSwitchboardValue } from '@/hooks/useSwitchboard'
+import { getSwitchboardFlag } from '@/hooks/useSwitchboard'
 import type { SiteInfo } from '@/lib/control-plane/types'
 import { logger } from '@/lib/request-context'
 import { type App, appService } from '@/services/AppService'
@@ -1260,24 +1259,19 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
         state.feedbackInitialStep = null
         state.docsPath = null
 
-        // Reset viewMode to PREVIEW unless a brand-first flow already governs the
-        // tab. Two flows land on (and must stay on) the "Logo & Brand" (BRAND) tab:
-        //   - the logo-designer template — its effect sets ViewMode.BRAND before
-        //     this runs, and
-        //   - the design-kit wizard profile — useView.resolveInitialViewMode lands
-        //     it on BRAND (gated on the appbuilder-agent-profile Switchboard value).
-        // Blindly overriding either causes the "Logo & Brand" tab to flash then
-        // switch to Preview during the create flow's jobId→realAppId re-init.
+        // Reset viewMode to PREVIEW unless the logo-designer template already governs
+        // the tab: its effect sets ViewMode.BRAND before this runs, and overriding it
+        // would flash "Logo & Brand" then yank to Preview during the create flow's
+        // jobId→realAppId re-init. The design-kit flow no longer lands on BRAND — it
+        // has its own BuilderLayout.Immersive (useBuilderLayout) — so it resets to
+        // PREVIEW like any app and lands there once the build hands off.
         const jobId = typeof window !== 'undefined'
           ? sessionStorage.getItem(`initial-job-id-${appId}`)
           : null
         const template = jobId
           ? sessionStorage.getItem(`initial-template-${jobId}`)
           : null
-        const isDesignKitWizard = isDesignKitWizardProfile(
-          getSwitchboardValue('appbuilder-agent-profile')
-        )
-        if (template !== 'logo-designer' && !isDesignKitWizard) {
+        if (template !== 'logo-designer') {
           state.viewMode = ViewMode.PREVIEW
           // Keep isEditModeEnabled in sync with the PREVIEW viewMode. Otherwise a
           // freshly-built app lands on the Preview toggle while the iframe still

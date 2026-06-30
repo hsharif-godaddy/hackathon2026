@@ -9,19 +9,18 @@ import Growl from '@ux/growl'
 
 import { CommanderShell } from '@/app/[market]/commander/components/CommanderShell'
 import { BuilderLayout } from '@/app/[market]/commander/types'
+import { useBuilderLayout } from '@/app/[market]/commander/useBuilderLayout'
 import ChatPane from '@/app/[market]/develop/components/chat/ChatPane'
 import ChatPaneLoader, { ImageReloadLoaderPhase, ResumeLoaderPhase } from '@/app/[market]/develop/components/chat/ChatPaneLoader'
 import ChatToolbar from '@/app/[market]/develop/components/chat/ChatToolbar'
 import DevelopSkeleton from '@/app/[market]/develop/components/DevelopSkeleton'
+import { ImmersiveDesignKitLayout } from '@/app/[market]/develop/components/ImmersiveDesignKitLayout'
 import DevelopHeader from '@/app/[market]/develop/components/layout/Header'
 import PanelSkeleton from '@/app/[market]/develop/components/PanelSkeleton'
 import { DevelopCreditsModal, PaywallErrorFallback, RenewalPollingModal, UpgradePollingModal } from '@/app/[market]/develop/components/paywall'
 import { CdsEsmPreload } from '@/app/[market]/develop/components/paywall/CdsEsmPreload'
 import BrandBookView from '@/app/[market]/develop/components/preview/brand-book'
-import { DesignKitChatHeader } from '@/app/[market]/develop/components/preview/design-kit-wizard/DesignKitChatHeader'
-import { DesignKitWizard } from '@/app/[market]/develop/components/preview/design-kit-wizard/DesignKitWizard'
 import { useIsDesignKitWizardProfile } from '@/app/[market]/develop/components/preview/design-kit-wizard/isDesignKitWizardProfile'
-import { isDesignKitInitialViewResolving, resolveDesignKitInitialView } from '@/app/[market]/develop/components/preview/design-kit-wizard/landing'
 import PreviewPane, { type PublishSnapshotRequestDetail } from '@/app/[market]/develop/components/preview/PreviewPane'
 import ResizableDivider from '@/app/[market]/develop/components/ResizableDivider'
 import { SettingsLoadingState } from '@/app/[market]/develop/components/settings/components/SettingsLoadingState'
@@ -48,7 +47,7 @@ import { FEEDBACK_ID } from '@/components/feedback/utils'
 import { UpgradeModal } from '@/components/upgrade/UpgradeModal'
 import { buildDynamicApiUrl, dynamicApiConfigService } from '@/config/dynamic-api'
 import { EXPERIMENT_IDS } from '@/config/experiments'
-import { SWITCHBOARD_APPBUILDER_CMS_INLINE_EDIT, SWITCHBOARD_APPBUILDER_COMMANDER } from '@/config/switchboard-flags'
+import { SWITCHBOARD_APPBUILDER_CMS_INLINE_EDIT } from '@/config/switchboard-flags'
 import { ChatProvider } from '@/contexts/ChatContext'
 import { prefetchGitRemoteConfig } from '@/hooks/github/useGitRemoteConfig'
 import { activateInitialBuildFunnel, trackFirstView } from '@/hooks/shared/initialBuildFunnel'
@@ -56,7 +55,6 @@ import { useAotPreload } from '@/hooks/useAotPreload'
 import { useAppArchiveRestore } from '@/hooks/useAppArchiveRestore'
 import { useAppDetails } from '@/hooks/useAppDetails'
 import { useAppHibernation } from '@/hooks/useAppHibernation'
-import { useBrandData } from '@/hooks/useBrandData'
 import { useChatTabs } from '@/hooks/useChatTabs'
 import { useChatTransport } from '@/hooks/useChatTransport'
 import { useCombinePublishTrigger } from '@/hooks/useCombinePublishTrigger'
@@ -151,8 +149,10 @@ const aotImports = [importFeedback, importFirstPublishCongratsModal, importPubli
 
 function DevelopPageContent({ layout: layoutProp }: { layout?: BuilderLayout }) {
   const t = useTranslations();
-  const commanderEnabled: boolean | undefined = useSwitchboard(SWITCHBOARD_APPBUILDER_COMMANDER)
-  const layout: BuilderLayout = layoutProp ?? (commanderEnabled ? BuilderLayout.Commander : BuilderLayout.Develop)
+  // The layout this session renders in: Immersive while a design-kit build is in progress,
+  // otherwise Develop/Commander (or an explicit layoutProp). Single source of truth, shared
+  // with the loading skeleton so the placeholder matches the layout it resolves into.
+  const layout: BuilderLayout = useBuilderLayout(layoutProp)
   const searchParams = useSearchParams()
   const todoListIdParam = searchParams.get('todoListId')
   const router = useRouter()
@@ -222,32 +222,16 @@ function DevelopPageContent({ layout: layoutProp }: { layout?: BuilderLayout }) 
     })()
   }, [appId])
 
-  // The design-kit wizard lives in the "Logo & Brand" (BRAND) tab. Resolved here
-  // (rather than at its original site below) because the logo-designer auto-switch
-  // effect just below also consumes it: an app that is BOTH a logo-designer template
-  // AND on the design-kit profile must not have its BRAND tab yanked to Preview by
-  // the wizard's own file writes (showcase HTML, brand-tokens.css).
+  // `showDesignKitWizard` is resolved here (rather than at its original site below)
+  // because the logo-designer auto-switch effect just below consumes it to skip the
+  // file-edit → Preview switch for design-kit apps. (The design-kit flow now renders in
+  // its own BuilderLayout.Immersive — see useBuilderLayout — not the "Logo & Brand" tab.)
   const showDesignKitWizard = useIsDesignKitWizardProfile()
 
   // Immersive design-kit flow (AIROBUILD-2855): a chat-driven phase machine
-  // (gathering → brand → website → ready). Pre-reveal (any phase but 'ready') we
-  // hide the develop-page chrome so only the chat + wizard overlay show.
+  // (gathering → brand → website → ready). The immersive layout (see useBuilderLayout)
+  // runs until phase is 'ready'; `wizardPhase` also drives the immersive chat dock below.
   const wizardPhase = useWizardStore((s) => s.phaseByApp[appId])
-
-  // The immersive wizard is for the *initial build only*. A finished build persists
-  // `wizard.phase === 'ready'` (the agent emits it after the builders complete —
-  // AIROBUILD-2871), so reloading a finished app must land in the normal builder, not
-  // replay "Building your website". Read the persisted phase here (page level) so the
-  // *landing* decision below knows it before the wizard mounts — the wizard's own
-  // `useWizardPhase` only hydrates the store once it's on BRAND, which is too late.
-  // Gated on the wizard profile so non-design-kit apps issue no brand-data fetch.
-  // `data`+`isLoading` come from one hook instance (same commit), so the landing reads
-  // a settled phase with no hydration race. `isLoading` defaults false when disabled.
-  const { data: designKitBrandData, isLoading: designKitBrandLoading } = useBrandData(
-    appId,
-    { enabled: showDesignKitWizard },
-  )
-  const designKitBuildFinished: boolean = designKitBrandData?.wizard?.phase === 'ready'
 
   // Logo-designer handoff → website build: switch Brand → Preview when the
   // first page file edit lands. localStorage-gated per appId so a reload after
@@ -335,19 +319,9 @@ function DevelopPageContent({ layout: layoutProp }: { layout?: BuilderLayout }) 
     },
     [isInboxEnabled, brandId, isLoadingAccount]
   )
-  // Land an *in-progress* design-kit session on the BRAND tab (the immersive flow).
-  // A finished build (phase 'ready') returns null so it lands in the normal builder —
-  // never replaying the wizard. The persisted phase loads async, so hold the landing
-  // (initialViewResolving) until brand-data settles; otherwise a finished app would
-  // briefly flash the wizard before we know to skip it. A fresh create (initial prompt
-  // still pending) is known in-progress up front and lands immediately, no wait.
-  const resolveInitialViewMode = useCallback(
-    (): ViewMode | null => resolveDesignKitInitialView(showDesignKitWizard, designKitBuildFinished),
-    [showDesignKitWizard, designKitBuildFinished]
-  )
-  const initialViewResolving: boolean =
-    isDesignKitInitialViewResolving(showDesignKitWizard, init.context.hasInitialPrompt, designKitBrandLoading)
-  useView({ getViewAvailability, resolveInitialViewMode, initialViewResolving })
+  // The design-kit flow no longer lands on the BRAND tab — it has its own BuilderLayout
+  // (useBuilderLayout above), so useView only owns the generic `?view=` deep-link sync.
+  useView({ getViewAvailability })
 
   // Eval snapshot capture - captures screenshot on first build completion
   const { triggerEvalSnapshot, handleEvalViewportScreenshot } = useEvalSnapshotCapture({ appId })
@@ -443,13 +417,6 @@ function DevelopPageContent({ layout: layoutProp }: { layout?: BuilderLayout }) 
   ])
 
   const viewMode = useDevelopPageStore((state) => state.viewMode)
-  // Hide develop chrome (header + divider, full-width chat) while the immersive
-  // design-kit flow runs in the BRAND tab; reveal normally once phase is 'ready'.
-  const hideDevelopChrome = showDesignKitWizard && viewMode === ViewMode.BRAND && wizardPhase !== 'ready'
-  // Once a vibe is chosen the chat docks to a left sidebar and the wizard panel
-  // ("Building Your Brand" / "Building your website") animates in on the right.
-  // `gathering` keeps the centered immersive chat (chat is full-width, no panel).
-  const chatDockedLeft = hideDevelopChrome && (wizardPhase === 'brand' || wizardPhase === 'website')
   const chatPaneWidth = useDevelopPageStore((state) => state.chatPaneWidth)
   const hasUnsavedChanges = useDevelopPageStore((state) => state.hasUnsavedChanges)
   const isChatPaneCollapsed = useDevelopPageStore((state) => state.isChatPaneCollapsed)
@@ -1485,7 +1452,31 @@ function DevelopPageContent({ layout: layoutProp }: { layout?: BuilderLayout }) 
         onDragEnter={handleDragEnter}
       >
         <PostPublishGoLiveModal appId={appId} />
-        {layout === BuilderLayout.Commander ? (
+        {layout === BuilderLayout.Immersive && appId ? (
+          <ImmersiveDesignKitLayout
+            appId={appId}
+            isMobile={isMobile}
+            wizardPhase={wizardPhase}
+            chatPaneNode={
+              // The immersive takeover always uses the Develop chat (never the
+              // Commander chat dock), even for the commander cohort — it's a
+              // full-screen guided flow, so Commander-specific chat behavior is
+              // intentionally not used here.
+              <ChatPane
+                sendMessage={ws.actions.send}
+                stopGeneration={ws.actions.stop}
+                isCreateFlowSession={isCreateFlowSession}
+                hasInitialPrompt={init.context.hasInitialPrompt}
+                isAwaitingStream={isAwaitingStream}
+                initialPromptText={init.context.initialPromptText}
+                loadingMessage={chatLoadingMessage}
+                layout={BuilderLayout.Develop}
+                hideToolbar
+                onPreviewRefresh={() => handlePreviewRefresh({ lastIframeState })}
+              />
+            }
+          />
+        ) : layout === BuilderLayout.Commander ? (
           <CommanderShell
             appId={appId}
             isMobile={isMobile}
@@ -1533,9 +1524,7 @@ function DevelopPageContent({ layout: layoutProp }: { layout?: BuilderLayout }) 
           />
         ) : (
           <>
-        {hideDevelopChrome
-          ? <DesignKitChatHeader />
-          : <DevelopHeader onPreviewRefresh={() => handlePreviewRefresh({ lastIframeState })} />}
+        <DevelopHeader onPreviewRefresh={() => handlePreviewRefresh({ lastIframeState })} />
 
         {/* Desktop Layout */}
         {!isMobile && (
@@ -1544,31 +1533,20 @@ function DevelopPageContent({ layout: layoutProp }: { layout?: BuilderLayout }) 
             <motion.div
               className="absolute top-0 start-0 bottom-0 isolate"
               animate={{
-                // Only the non-immersive, collapsed pane slides off-screen. In the
-                // immersive design-kit mode the chat fills the row and is centered
-                // below, so it stays at x:0 (the minimal header has no expand control).
-                x: !hideDevelopChrome && isChatPaneCollapsed
+                x: isChatPaneCollapsed
                   ? (isLayoutRtl ? chatPaneWidth + 16 : -(chatPaneWidth + 16))
                   : 0,
-                // gathering: chat fills the row (centered below). Once docked (brand/
-                // website) it narrows to the sidebar width so the wizard panel takes
-                // the rest of the row.
-                width: hideDevelopChrome && !chatDockedLeft ? '100%' : chatPaneWidth
+                width: chatPaneWidth
               }}
               transition={{
                 duration: 0.3,
                 ease: [0.4, 0, 0.2, 1]
               }}
               style={{
-                pointerEvents: !hideDevelopChrome && isChatPaneCollapsed ? 'none' : 'auto'
+                pointerEvents: isChatPaneCollapsed ? 'none' : 'auto'
               }}
             >
-              {/* Centered, constrained column for the gathering (full-width) immersive
-                  chat; once docked left the chat fills the narrow sidebar with its own
-                  horizontal padding (ChatPane drops `md:ps-2` when its toolbar is hidden,
-                  so add it back here). The always-present wrapper keeps ChatPane mounted
-                  across phase changes. */}
-              <div className={cn('h-full w-full', hideDevelopChrome && !chatDockedLeft && 'mx-auto max-w-3xl', chatDockedLeft && 'px-3')}>
+              <div className="h-full w-full">
                 <ChatPane
                   sendMessage={ws.actions.send}
                   stopGeneration={ws.actions.stop}
@@ -1578,14 +1556,13 @@ function DevelopPageContent({ layout: layoutProp }: { layout?: BuilderLayout }) 
                   initialPromptText={init.context.initialPromptText}
                   loadingMessage={chatLoadingMessage}
                   layout={layout}
-                  hideToolbar={hideDevelopChrome}
                   onPreviewRefresh={() => handlePreviewRefresh({ lastIframeState })}
                 />
               </div>
             </motion.div>
 
             {/* Resizable Divider */}
-            {!isChatPaneCollapsed && !hideDevelopChrome && (
+            {!isChatPaneCollapsed && (
               <ResizableDivider
                 onResize={handlePanelResize}
                 minLeftWidth={300}
@@ -1596,18 +1573,12 @@ function DevelopPageContent({ layout: layoutProp }: { layout?: BuilderLayout }) 
               />
             )}
 
-            {/* Content (Preview, Settings, Code, and the BRAND wizard overlay). During
-                `gathering` the chat is full-width and this area is pushed fully off-screen
-                (insetInlineStart 100%). Once a vibe is chosen (brand/website) it animates
-                in beside the docked chat to render the wizard panel. PreviewPane stays
-                MOUNTED throughout, just off-screen, until the flow reveals at 'ready'. */}
+            {/* Content (Preview, Settings, Code, and the Brand Book overlay). */}
             <motion.div
               className="absolute top-0 end-0 bottom-0 flex flex-col"
               initial={false}
               animate={{
-                insetInlineStart: hideDevelopChrome
-                  ? (chatDockedLeft ? chatPaneWidth + 16 : '100%')
-                  : isChatPaneCollapsed ? 8 : chatPaneWidth + 16
+                insetInlineStart: isChatPaneCollapsed ? 8 : chatPaneWidth + 16
               }}
               transition={{
                 duration: 0.3,
@@ -1663,9 +1634,7 @@ function DevelopPageContent({ layout: layoutProp }: { layout?: BuilderLayout }) 
                       exit={{ opacity: 0 }}
                       transition={{ duration: 0.45, ease: 'easeOut' }}
                     >
-                      {showDesignKitWizard
-                        ? <DesignKitWizard appId={appId} />
-                        : <BrandBookView appId={appId} />}
+                      <BrandBookView appId={appId} />
                     </motion.div>
                   )}
                 </AnimatePresence>
@@ -1833,14 +1802,12 @@ function DevelopPageContent({ layout: layoutProp }: { layout?: BuilderLayout }) 
                 </>
               )}
             </div>
-            {!hideDevelopChrome && (
-              <ChatToolbar
-                className="fixed bottom-1 left-0 right-0"
-                onBeforeTabChange={setOptimisticMobileTab}
-                optimisticActiveTab={optimisticMobileTab}
-                onPreviewRefresh={() => handlePreviewRefresh({ lastIframeState })}
-              />
-            )}
+            <ChatToolbar
+              className="fixed bottom-1 left-0 right-0"
+              onBeforeTabChange={setOptimisticMobileTab}
+              optimisticActiveTab={optimisticMobileTab}
+              onPreviewRefresh={() => handlePreviewRefresh({ lastIframeState })}
+            />
           </div>
         )}
           </>

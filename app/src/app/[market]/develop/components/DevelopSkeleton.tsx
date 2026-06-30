@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react'
 
+import { BuilderLayout } from '@/app/[market]/commander/types'
+import { useBuilderLayout } from '@/app/[market]/commander/useBuilderLayout'
 import ChatMessagesSkeleton from '@/app/[market]/develop/components/chat/ChatMessagesSkeleton'
 import PreviewSkeleton from '@/app/[market]/develop/components/preview/PreviewSkeleton'
 import StaticSkeleton from '@/app/[market]/develop/components/StaticSkeleton'
@@ -52,6 +54,41 @@ export default function DevelopSkeleton({ isFallback = false }: { isFallback?: b
   const [mounted, setMounted] = useState(false)
   useEffect(() => { setMounted(true) }, [])
   const isMobileLayout = mounted && isBelowSmBreakpoint
+  // Match the placeholder to the layout this session resolves into — the immersive layout
+  // gets a minimal header + a centered, large chat column, not the full develop chrome.
+  const layout: BuilderLayout = useBuilderLayout()
+
+  // Gate on `mounted` like the mobile/desktop swap below: `useBuilderLayout` reads
+  // client-only switchboard data, so the server renders `Develop` (the normal skeleton)
+  // and only the client knows it's a design-kit (Immersive) session. Without the gate the
+  // client's first render would diverge from the SSR'd fallback → hydration mismatch.
+  if (mounted && layout === BuilderLayout.Immersive) {
+    return (
+      <div
+        data-testid="develop-skeleton"
+        className={`absolute inset-0 flex flex-col overflow-hidden bg-develop-bg transition-opacity duration-200 ${mounted || isFallback ? 'opacity-100' : 'opacity-0'}`}
+      >
+        {/* Minimal header — mirrors DesignKitChatHeader (Airo logo + user menu only). */}
+        <header className="flex shrink-0 items-center justify-between gap-2 p-1.5 md:p-2.5">
+          <div className="flex items-center gap-1">
+            <StaticSkeleton width="60px" height="24px" />
+            <StaticSkeleton width="40px" height="20px" />
+          </div>
+          <StaticSkeleton rounding="full" width="32px" height="32px" />
+        </header>
+
+        {/* Centered, large chat column (the gathering look): messages + composer, no toolbar. */}
+        <div className="relative flex-1 min-h-0 overflow-hidden">
+          <div className="mx-auto flex h-full w-full max-w-3xl flex-col">
+            <div className="flex-1 overflow-hidden pl-2">
+              <ChatMessagesSkeleton />
+            </div>
+            <ChatInputSkeleton />
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div
