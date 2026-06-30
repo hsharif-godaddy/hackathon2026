@@ -131,6 +131,7 @@
     "nanoid": "^5.1.11",
     "openai": "catalog:",
     "qrcode": "^1.5.4",
+    "recast": "0.23.11",
     "sharp": "^0.34.5",
     "tar": "catalog:",
     "undici": "^6.27.0",

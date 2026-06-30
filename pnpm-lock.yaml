@@ -520,6 +520,9 @@ importers:
       qrcode:
         specifier: ^1.5.4
         version: 1.5.4
+      recast:
+        specifier: 0.23.11
+        version: 0.23.11
       sharp:
         specifier: ^0.34.5
         version: 0.34.5
