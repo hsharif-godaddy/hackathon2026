@@ -415,12 +415,18 @@ export class ConversationHistoryLoader {
           tool_calls: [toolCall]
         });
 
-        const toolContent =
+        const serializedResult =
           typeof segment.tool_call.toolResult === 'string'
             ? segment.tool_call.toolResult.trim()
             : safeStringify(segment.tool_call.toolResult);
+        // Legacy healing: rows written before the onToolError fix stored toolResult as {} instead
+        // of the error string. Without this fallback, those rows emit an orphaned tool_use with
+        // no tool_result, causing a permanent 400 from the Anthropic API.
+        const toolContent = (serializedResult && serializedResult !== '{}' && serializedResult !== 'null')
+          ? serializedResult
+          : (segment.tool_call.error ?? null);
 
-        if (toolContent && toolContent !== '{}' && toolContent !== 'null') {
+        if (toolContent) {
           messages.push({
             role: 'tool',
             content: toolContent,

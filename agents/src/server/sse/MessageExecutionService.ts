@@ -1117,7 +1117,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
           ...baseEventData,
           step: processor.currentStep,
           toolName,
-          tool: { id: toolCallId, name: toolName, input, output: {}, error: error.message, is_error: true, ...toolMetadataFields(toolName, this.deps.resolveToolMetadata, logger) },
+          tool: { id: toolCallId, name: toolName, input, output: error.message, error: error.message, is_error: true, ...toolMetadataFields(toolName, this.deps.resolveToolMetadata, logger) },
         }
         const snapshot = trackTurnSnapshotEvent(turnSnapshot, 'tool_result', `${toolName} failed: ${error.message}`, eventData)
         publish({

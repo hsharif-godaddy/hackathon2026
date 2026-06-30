@@ -2178,7 +2178,7 @@ describe('MessageExecutionService', () => {
               id: 'tid1',
               name: 'myTool',
               input: { k: 'v' },
-              result: {},
+              result: 'boom',
               error: 'boom',
               status: 'error',
             }),

@@ -321,6 +321,51 @@ describe('ConversationHistoryLoader', () => {
         expect(toolMsg.content).toBeDefined();
       });
     });
+
+    it('should emit tool_result using error field when toolResult is legacy {}', () => {
+      const dbMessages = [
+        {
+          id: 'msg1',
+          conversationId: 'conv1',
+          sender: 'agent' as const,
+          content: 'Calling tool',
+          segments: [
+            {
+              id: 'seg1',
+              type: 'content' as const,
+              content: 'Calling tool',
+              timestamp: new Date()
+            },
+            {
+              id: 'seg2',
+              type: 'tool_call' as const,
+              tool_call: {
+                id: 'tool1',
+                toolName: 'createPost',
+                toolArgs: { title: 'test' },
+                toolResult: {},
+                error: 'createPost failed: no such table: social_posts',
+                status: 'error' as const
+              },
+              timestamp: new Date()
+            }
+          ],
+          createdAt: new Date()
+        }
+      ];
+
+      const result = loader.convertToLLMMessages(dbMessages);
+
+      const toolMsg = result.find(m => m.role === 'tool');
+      expect(toolMsg).toBeDefined();
+      expect(toolMsg!.content).toBe('createPost failed: no such table: social_posts');
+      expect(toolMsg!.tool_call_id).toBe('tool1');
+      expect(toolMsg!.name).toBe('createPost');
+
+      const assistantToolCall = result.find(m => m.role === 'assistant' && m.tool_calls);
+      expect(assistantToolCall).toBeDefined();
+    });
+
   });
 
   describe('applyTokenLimit', () => {
