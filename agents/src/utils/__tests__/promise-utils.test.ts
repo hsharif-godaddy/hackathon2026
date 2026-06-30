@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { withTimeout } from '../promise-utils.js'
+import { raceAbortGrace, withTimeout } from '../promise-utils.js'
 
 describe('withTimeout', () => {
   beforeEach(() => {
@@ -171,5 +171,59 @@ describe('withTimeout', () => {
 
     expect(onTimeout).not.toHaveBeenCalled()
     expect(onLateRejection).not.toHaveBeenCalled()
+  })
+})
+
+describe('raceAbortGrace', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('resolves with the value when the promise settles before any abort', async () => {
+    const controller = new AbortController()
+    await expect(raceAbortGrace(Promise.resolve('ok'), controller.signal, 5000)).resolves.toBe('ok')
+  })
+
+  it('rejects with the original error when the promise rejects before any abort', async () => {
+    const controller = new AbortController()
+    await expect(
+      raceAbortGrace(Promise.reject(new Error('boom')), controller.signal, 5000),
+    ).rejects.toThrow('boom')
+  })
+
+  it('rejects after the grace when the promise ignores the abort', async () => {
+    const controller = new AbortController()
+    const neverSettles = new Promise<string>(() => undefined)
+    const resultPromise = raceAbortGrace(neverSettles, controller.signal, 5000)
+    // Attach the rejection expectation before advancing timers so the grace
+    // rejection (fired during advanceTimersByTimeAsync) is handled — otherwise
+    // it surfaces as an unhandled rejection.
+    const assertion = expect(resultPromise).rejects.toThrow('did not settle within 5000ms after abort (reason: chunk_timeout)')
+    controller.abort('chunk_timeout')
+    await vi.advanceTimersByTimeAsync(5100)
+    await assertion
+  })
+
+  it('resolves with the value when the promise settles within the grace after abort', async () => {
+    const controller = new AbortController()
+    const settlesLate = new Promise<string>((resolve) => setTimeout(() => resolve('late'), 1000))
+    const resultPromise = raceAbortGrace(settlesLate, controller.signal, 5000)
+    controller.abort('user_stopped')
+    await vi.advanceTimersByTimeAsync(1100)
+    await expect(resultPromise).resolves.toBe('late')
+  })
+
+  it('arms the grace immediately when the signal is already aborted at call time', async () => {
+    const controller = new AbortController()
+    controller.abort('server_shutdown')
+    const neverSettles = new Promise<string>(() => undefined)
+    const resultPromise = raceAbortGrace(neverSettles, controller.signal, 3000)
+    const assertion = expect(resultPromise).rejects.toThrow('did not settle within 3000ms after abort (reason: server_shutdown)')
+    await vi.advanceTimersByTimeAsync(3100)
+    await assertion
   })
 })

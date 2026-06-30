@@ -62,3 +62,33 @@ export function withTimeout<T>(
     }),
   ])
 }
+
+/**
+ * Await `promise`, but once `signal` aborts, bound the remaining wait to
+ * `graceMs`. If the promise has not settled within that window after the abort,
+ * reject with a synthetic error so the caller's abort handling runs instead of
+ * hanging. A cooperative producer that settles on abort resolves/rejects well
+ * within the grace; this only fires when the producer ignores the abort
+ * entirely (e.g. an SDK whose result promises never settle on a dead socket).
+ *
+ * The grace timer is armed only on abort and cleared when the promise settles,
+ * so the non-aborted happy path adds no timer. A late rejection from `promise`
+ * after the grace fired is consumed (the `.then` handler stays attached), so it
+ * does not surface as an unhandled rejection.
+ */
+export function raceAbortGrace<T>(promise: Promise<T>, signal: AbortSignal, graceMs: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    let graceTimer: ReturnType<typeof setTimeout> | undefined
+    const armGrace = (): void => {
+      graceTimer = setTimeout(() => {
+        reject(new Error(`Result did not settle within ${graceMs}ms after abort (reason: ${String(signal.reason ?? 'unknown')})`))
+      }, graceMs)
+    }
+    if (signal.aborted) armGrace()
+    else signal.addEventListener('abort', armGrace, { once: true })
+    promise.then(resolve, reject).finally(() => {
+      signal.removeEventListener('abort', armGrace)
+      if (graceTimer !== undefined) clearTimeout(graceTimer)
+    })
+  })
+}

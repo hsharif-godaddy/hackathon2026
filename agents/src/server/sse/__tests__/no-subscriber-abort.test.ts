@@ -56,7 +56,8 @@ function createMinimalDeps(overrides: Record<string, unknown> = {}) {
     getAgent: vi.fn().mockReturnValue({
       streamGenerate: vi.fn().mockResolvedValue({
         textStream: (async function* () {})(),
-        baseStream: new ReadableStream({ start(c) { c.close() } }),
+        response: Promise.resolve({ id: 'resp_1', timestamp: new Date(0), modelId: 'test-model' }),
+        getFinalResult: async () => ({ finishReason: 'complete' }),
       }),
       getName: vi.fn().mockReturnValue('DevelopAgent'),
     }),

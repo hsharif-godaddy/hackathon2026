@@ -14,12 +14,15 @@ import type {
   Tool,
   ToolExecutionOptions,
   ModelMessage,
-  SystemModelMessage
+  SystemModelMessage,
+  TextStreamPart,
+  ToolSet
 } from 'ai'
 import type { GlobalAgentConfig, AgentContext, ProcessedFile, AgentConfig, ResolverContext } from './types.js'
 import type { PipelineContextMessage, ContextPipeline } from './context-pipeline.js'
 import { createDefaultPipeline } from './context-normalization.js'
 import { createDuplicateResponseStopCondition } from './duplicate-detection.js'
+import { createTerminalAbortPipeline } from './observing-transform.js'
 import { getModelInfo, mergeProviderOptions } from '../utils/model-normalization.js'
 import { createLogger, serializeError, isBudgetExceededAPIError, BudgetExceededError, retryWithBackoff, type RetryContext } from '@airo/ai-common'
 import { describeError } from '@airo/shared/errors'
@@ -931,9 +934,14 @@ export class AgentWrapper {
     files?: ProcessedFile[]
     /** AbortSignal to cancel the stream (propagated to AI SDK) */
     abortSignal?: AbortSignal
+    /** Observe each AI SDK stream part, invoked from the experimental_transform
+     * as the SDK (the sole stream consumer) drives the loop. The chat path uses
+     * this to emit SSE per part in place of reading a teed `baseStream` fork.
+     * Whether or not it is supplied, a terminal `error` part aborts the shared
+     * request and is re-thrown from `getFinalResult` for classification. */
+    observe?: (part: TextStreamPart<ToolSet>) => void | Promise<void>
   }): Promise<{
     textStream: AsyncIterable<string>
-    baseStream?: unknown
 
     response?: PromiseLike<{ id: string; timestamp: Date; modelId: string; headers?: Record<string, string>; body?: any }>
     getFinalResult: () => Promise<{
@@ -968,9 +976,9 @@ export class AgentWrapper {
     files?: ProcessedFile[]
     executionContext?: Record<string, unknown>
     abortSignal?: AbortSignal
+    observe?: (part: TextStreamPart<ToolSet>) => void | Promise<void>
   }): Promise<{
     textStream: AsyncIterable<string>
-    baseStream?: unknown
 
     response?: PromiseLike<{ id: string; timestamp: Date; modelId: string; headers?: Record<string, string>; body?: any }>
     getFinalResult: () => Promise<{
@@ -999,12 +1007,12 @@ export class AgentWrapper {
       files?: ProcessedFile[]
       executionContext?: Record<string, unknown>
       abortSignal?: AbortSignal
+      observe?: (part: TextStreamPart<ToolSet>) => void | Promise<void>
     } | undefined,
     socketId: string | undefined,
     retryCount: number
   ): Promise<{
     textStream: AsyncIterable<string>
-    baseStream?: unknown
 
     response?: PromiseLike<{ id: string; timestamp: Date; modelId: string; headers?: Record<string, string>; body?: any }>
     getFinalResult: () => Promise<{
@@ -1072,6 +1080,18 @@ export class AgentWrapper {
       }
     }
 
+    // Observe + terminal-abort over the AI SDK's stream via experimental_transform.
+    // The SDK is the sole stream consumer; we observe each part as it passes
+    // through (the chat path emits SSE via `observe`). A terminal `error` part
+    // aborts the shared request (composed with the caller's signal) so the
+    // multi-step loop halts at the source instead of running on past a turn the
+    // transport has already terminated. Declared before the stream try so
+    // getFinalResult can re-throw the captured error for classification.
+    const observePipeline = createTerminalAbortPipeline<ToolSet>({
+      ...(options?.observe && { observe: options.observe }),
+      ...(options?.abortSignal && { callerSignal: options.abortSignal }),
+    })
+
     let streamResult
     try {
       const callOptions: AgentCallOptions = {
@@ -1117,7 +1137,8 @@ export class AgentWrapper {
         prompt,
         options: callOptions,
         ...(this.config.timeout && { timeout: this.config.timeout }),
-        ...(options?.abortSignal && { abortSignal: options.abortSignal }),
+        abortSignal: observePipeline.signal,
+        experimental_transform: observePipeline.experimental_transform,
       }
       streamResult = await retryWithBackoff(
         () => litellmMetadata
@@ -1258,17 +1279,24 @@ export class AgentWrapper {
 
 Please retry your tool call with corrected input formatting.`
 
-        // Return a mock stream result with the error message and validation flags
+        // Return a mock stream result with the error message and validation flags.
+        // No real stream runs, so the observing pipeline never fires — drive the
+        // caller's `observe` with the error text in getFinalResult so the SSE path
+        // still emits it (parity with the pre-collapse textStream consumption).
         const mockResult: StreamResultWithValidation = {
           textStream: (async function* () {
             yield errorMessage
           })(),
-          baseStream: null,
-          getFinalResult: async () => ({
-            usage: { totalTokens: 0, promptTokens: 0, completionTokens: 0 },
-            finishReason: 'error',
-            toolCalls: []
-          }),
+          getFinalResult: async () => {
+            if (options?.observe) {
+              await options.observe({ type: 'text-delta', text: errorMessage } as TextStreamPart<ToolSet>)
+            }
+            return {
+              usage: { totalTokens: 0, promptTokens: 0, completionTokens: 0 },
+              finishReason: 'error',
+              toolCalls: []
+            }
+          },
           isToolValidationError: true,
           validationErrorMessage: error.message
         }
@@ -1280,11 +1308,10 @@ Please retry your tool call with corrected input formatting.`
       throw error
     }
 
-    // Preserve getter evaluation order: textStream → response → baseStream.
-    // Accessing .response triggers the AI SDK's internal consumeStream() →
-    // teeStream() which locks the current baseStream fork, so .response must
-    // be read BEFORE .baseStream to ensure baseStream captures the post-tee
-    // unlocked fork.
+    // Accessing .response triggers the AI SDK's internal consumeStream(), which
+    // drives the multi-step loop to completion (and fires the observing
+    // pipeline's transform per part). textStream is exposed for non-chat callers
+    // that consume it directly; the chat path observes via the transform instead.
     const textStream = streamResult.textStream
     const responsePromise = streamResult.response
     // Attach a rejection handler at the library boundary so callers that
@@ -1294,18 +1321,20 @@ Please retry your tool call with corrected input formatting.`
     // `@airo/ai-transport` → `captureResponseMetadata`); this catch is the
     // backstop, kept so the rejection can't crash the agent (PR #3514).
     //
-    // Gate on OUR abort signal, not the error shape: if this turn's controller
-    // was aborted, the rejection is the expected fallout of a deliberate abort
-    // — Stop ('user_stopped'), supersession (bare .abort()), shutdown
-    // ('server_shutdown'), chunk-timeout — however the SDK surfaces it (an
-    // AbortError or the raw reason value). Those go to debug so Stop clicks
-    // don't spam warn. Anything else is a genuine HTTP-layer failure (ECONNRESET,
-    // TLS, 502 before body) or a stray abort we didn't initiate — both worth a
-    // warn. Both carry `describeError` detail (stack/code/cause) for triage.
+    // Gate on OUR composed abort signal, not the error shape: if the pipeline
+    // signal was aborted, the rejection is the expected fallout of a deliberate
+    // abort — either a caller stop (Stop 'user_stopped', supersession bare
+    // .abort(), shutdown 'server_shutdown', chunk-timeout) OR a terminal in-band
+    // `error` part (the transform aborts the internal controller). Using the
+    // composed signal — not just the caller's — keeps a terminal-error abort on
+    // the debug path too; gating on options.abortSignal alone would mis-log it
+    // at warn since that one stays un-aborted. Anything else is a genuine
+    // HTTP-layer failure (ECONNRESET, TLS, 502 before body) or a stray abort we
+    // didn't initiate — both worth a warn, with `describeError` detail for triage.
     void Promise.resolve(responsePromise).catch((err: unknown) => {
-      if (options?.abortSignal?.aborted) {
+      if (observePipeline.signal.aborted) {
         logger.debug('agent.stream.response_promise.rejected.aborted', {
-          reason: String(options.abortSignal.reason),
+          reason: String(observePipeline.signal.reason),
           ...describeError(err),
         })
         return
@@ -1315,7 +1344,6 @@ Please retry your tool call with corrected input formatting.`
         ...describeError(err),
       })
     })
-    const baseStream = (streamResult as any).baseStream
 
     return {
       textStream,
@@ -1323,34 +1351,48 @@ Please retry your tool call with corrected input formatting.`
       // Response metadata promise (includes headers from GoCode/LLM provider)
       response: responsePromise,
 
-      // Raw baseStream for real-time tool call events. Exists at runtime but
-      // not in the AI SDK type definitions.
-      baseStream,
-
       // Function to get final result after streaming is complete
       getFinalResult: async () => {
         // streamResult is the object returned from ToolLoopAgent.stream; its properties are promises to be awaited below
         const finalResult = streamResult
 
-        // Await all promises from ToolLoopAgent
-        const [usage, totalUsage, finishReason, toolCalls, toolResults, steps] = await Promise.all([
-          finalResult.usage,
-          finalResult.totalUsage,
-          finalResult.finishReason,
-          finalResult.toolCalls,
-          finalResult.toolResults,
-          finalResult.steps
-        ])
+        // A terminal `error` part both aborts the request (so the awaits below
+        // may reject with the abort) and is captured by the pipeline — prefer the
+        // original error over the abort fallout in either case so callers classify
+        // the true cause (e.g. CONTENT_FILTERED) rather than a generic AbortError.
+        // Single helper so the resolve and reject arms can't drift: the try-body
+        // call fires only when all promises resolve before the abort propagates;
+        // the catch call covers the (common) reject path.
+        const throwIfTerminal = (): void => {
+          const terminalError: Error | undefined = observePipeline.getTerminalError()
+          if (terminalError) throw terminalError
+        }
 
-        // Use toolResults if available (includes both input and output), otherwise fall back to toolCalls
-        const finalToolCalls = toolResults && toolResults.length > 0 ? toolResults : toolCalls
+        try {
+          const [usage, totalUsage, finishReason, toolCalls, toolResults, steps] = await Promise.all([
+            finalResult.usage,
+            finalResult.totalUsage,
+            finalResult.finishReason,
+            finalResult.toolCalls,
+            finalResult.toolResults,
+            finalResult.steps
+          ])
 
-        return {
-          usage,
-          totalUsage,
-          finishReason,
-          toolCalls: finalToolCalls,
-          steps
+          throwIfTerminal()
+
+          // Use toolResults if available (includes both input and output), otherwise fall back to toolCalls
+          const finalToolCalls = toolResults && toolResults.length > 0 ? toolResults : toolCalls
+
+          return {
+            usage,
+            totalUsage,
+            finishReason,
+            toolCalls: finalToolCalls,
+            steps
+          }
+        } catch (err) {
+          throwIfTerminal()
+          throw err
         }
       }
     }

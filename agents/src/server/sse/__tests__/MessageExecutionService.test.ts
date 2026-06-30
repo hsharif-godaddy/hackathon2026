@@ -156,17 +156,49 @@ vi.mock('../../context-builders.js', () => ({
   dataUrlsToProcessedFiles: vi.fn().mockReturnValue([]),
 }))
 
-function makeReadableStream(parts: any[]): ReadableStream {
-  let index = 0
-  return new ReadableStream({
-    pull(controller) {
-      if (index < parts.length) {
-        controller.enqueue({ part: parts[index++] })
-      } else {
-        controller.close()
+// AIROBUILD-3088 PR2: the chat path consumes via `observe` (driven by the
+// factory's experimental_transform), not a baseStream reader. Mock streamGenerate
+// to drive observe over `parts` from getFinalResult (which the chat awaits),
+// mirroring the real factory. `extra` overrides/extends the result (e.g. the
+// isToolValidationError flags).
+type StreamGenerateOptions = { observe?: (part: any) => unknown; abortSignal?: AbortSignal }
+function streamGenerateImpl(parts: any[] = [], finalResult?: unknown, extra: Record<string, unknown> = {}) {
+  return async (_prompt: string, options?: StreamGenerateOptions) => ({
+    textStream: (async function* () {})(),
+    response: Promise.resolve({ id: 'resp_1', timestamp: new Date(0), modelId: 'test-model' }),
+    getFinalResult: async () => {
+      for (const part of parts) {
+        if (options?.observe) await options.observe(part)
       }
-    }
+      // finalResult: a function (called with the streamGenerate options — may
+      // resolve or reject, mirroring a custom getFinalResult; read options.abortSignal
+      // to model a dead-socket reject on chunk_timeout/abort) or a plain object
+      // to return; defaults to a normal completion when omitted.
+      if (typeof finalResult === 'function') return await finalResult(options)
+      return finalResult ?? {
+        usage: { totalTokens: 0, promptTokens: 0, completionTokens: 0 },
+        totalUsage: { totalTokens: 0 },
+        finishReason: 'stop',
+        toolCalls: [],
+        toolResults: [],
+        steps: [],
+      }
+    },
+    ...extra,
   })
+}
+
+// A finalResult function (for streamGenerateImpl's 2nd arg) that hangs until the
+// turn's AbortSignal fires, then rejects — modelling the dead socket that backs
+// getFinalResult after the chunk-timeout guard (or a user/shutdown abort) cancels
+// the request. Any content parts go in streamGenerateImpl's 1st arg (observed
+// before the stall).
+async function rejectOnAbort(options?: StreamGenerateOptions): Promise<never> {
+  await new Promise<void>((resolve) => {
+    if (options?.abortSignal?.aborted) return resolve()
+    options?.abortSignal?.addEventListener('abort', () => resolve(), { once: true })
+  })
+  throw new Error(String(options?.abortSignal?.reason ?? 'aborted'))
 }
 
 function deferred<T = void>() {
@@ -182,10 +214,7 @@ function deferred<T = void>() {
 function createMockDeps(parts: any[] = []) {
   return {
     getAgent: vi.fn().mockReturnValue({
-      streamGenerate: vi.fn().mockResolvedValue({
-        textStream: (async function* () {})(),
-        baseStream: makeReadableStream(parts)
-      }),
+      streamGenerate: vi.fn().mockImplementation(streamGenerateImpl(parts)),
       getName: vi.fn().mockReturnValue('AI Developer'),
     }),
     contextManager: {
@@ -418,10 +447,7 @@ describe('MessageExecutionService', () => {
     it('runs the forced install exactly once on the initial kit-attach turn', async () => {
       // The install agent must expose getConfig() for the install to proceed.
       const agentWithConfig = {
-        streamGenerate: vi.fn().mockResolvedValue({
-          textStream: (async function* () {})(),
-          baseStream: makeReadableStream([]),
-        }),
+        streamGenerate: vi.fn().mockImplementation(streamGenerateImpl([])),
         getName: vi.fn().mockReturnValue('AI Developer'),
         getConfig: vi.fn().mockReturnValue({
           id: 'initial-design-system-homepage-build-attached',
@@ -457,10 +483,7 @@ describe('MessageExecutionService', () => {
 
     function createDesignKitAgents(ids: string[]): Record<string, { streamGenerate: ReturnType<typeof vi.fn>; getName: ReturnType<typeof vi.fn>; getConfig: ReturnType<typeof vi.fn> }> {
       return Object.fromEntries(ids.map((id) => [id, {
-        streamGenerate: vi.fn().mockResolvedValue({
-          textStream: (async function* () {})(),
-          baseStream: makeReadableStream([]),
-        }),
+        streamGenerate: vi.fn().mockImplementation(streamGenerateImpl([])),
         getName: vi.fn().mockReturnValue(id),
         getConfig: vi.fn().mockReturnValue({
           id,
@@ -574,10 +597,7 @@ describe('MessageExecutionService', () => {
       const base = 'initial-design-system-homepage-build'
       const attached = `${base}-attached`
       const agents = createDesignKitAgents([base, attached])
-      agents[attached]!.streamGenerate.mockResolvedValue({
-        textStream: (async function* () {})(),
-        baseStream: makeReadableStream([{ type: 'tool-call', id: 'ask-1', toolName: 'askQuestion', input: { question: 'What tone?' } }]),
-      })
+      agents[attached]!.streamGenerate.mockImplementation(streamGenerateImpl([{ type: 'tool-call', id: 'ask-1', toolName: 'askQuestion', input: { question: 'What tone?' } }]))
       wireAgents(agents)
 
       await service.execute({ ...DEFAULT_PARAMS, agentId: base, designKitSlug: 'modern-bento', lifecycleContext: { isInitialPrompt: true } })
@@ -644,10 +664,7 @@ describe('MessageExecutionService', () => {
     it('forwards forcedInstallThisTurn=true when the forced install produced messages this turn', async () => {
       const postStreamValidator = vi.fn().mockResolvedValue(undefined)
       const agentWithConfig = {
-        streamGenerate: vi.fn().mockResolvedValue({
-          textStream: (async function* () {})(),
-          baseStream: makeReadableStream([]),
-        }),
+        streamGenerate: vi.fn().mockImplementation(streamGenerateImpl([])),
         getName: vi.fn().mockReturnValue('AI Developer'),
         getConfig: vi.fn().mockReturnValue({ id: 'x', tools: { loadUiKit: {} }, metadata: {} }),
       }
@@ -1010,16 +1027,14 @@ describe('MessageExecutionService', () => {
     })
 
     it('publishes error event and does not throw when stream errors', async () => {
+      // A terminal `error` part is observed → onError records it and the chat
+      // path re-throws it to the outer catch, which publishes error + complete
+      // (AIROBUILD-3088). The factory also aborts the request on this part.
       deps.getAgent.mockReturnValue({
-        streamGenerate: vi.fn().mockResolvedValue({
-          textStream: (async function* () {})(),
-          baseStream: new ReadableStream({
-            start(controller) {
-              controller.enqueue({ part: { type: 'error', error: new Error('stream failure') } })
-              controller.close()
-            }
-          })
-        })
+        streamGenerate: vi.fn().mockImplementation(
+          streamGenerateImpl([{ type: 'error', error: new Error('stream failure') }]),
+        ),
+        getName: vi.fn().mockReturnValue('AI Developer'),
       })
       service = new MessageExecutionService(deps as any)
 
@@ -1044,15 +1059,74 @@ describe('MessageExecutionService', () => {
       )
     })
 
+    it('surfaces the observed terminal error over a rejecting getFinalResult (in-catch branch)', async () => {
+      // Unlike the resolves-path test above (post-catch guard), here getFinalResult
+      // REJECTS after the `error` part is observed — the abort/network fallout of the
+      // factory cancelling the request. The catch's FIRST guard must surface the
+      // recorded terminal error (terminalStreamError), NOT reclassify the rejection.
+      deps.getAgent.mockReturnValue({
+        streamGenerate: vi.fn().mockImplementation(
+          streamGenerateImpl(
+            [{ type: 'error', error: new Error('CONTENT_FILTERED') }],
+            vi.fn().mockRejectedValue(new Error('This operation was aborted')),
+          ),
+        ),
+        getName: vi.fn().mockReturnValue('AI Developer'),
+      })
+      service = new MessageExecutionService(deps as any)
+
+      await expect(service.execute(DEFAULT_PARAMS)).resolves.toBeUndefined()
+
+      expect(deps.eventChannel.publish).toHaveBeenCalledWith(
+        'conv_1',
+        expect.objectContaining({ type: 'error', content: 'CONTENT_FILTERED' }),
+      )
+      // The abort/fetch fallout must NOT win classification.
+      expect(deps.eventChannel.publish).not.toHaveBeenCalledWith(
+        'conv_1',
+        expect.objectContaining({ type: 'error', content: expect.stringContaining('aborted') }),
+      )
+      expect(deps.eventChannel.publish).toHaveBeenCalledWith(
+        'conv_1',
+        expect.objectContaining({ type: 'complete', data: expect.objectContaining({ finishReason: 'error' }) }),
+      )
+    })
+
+    it('hard-fails the turn and logs sse.stream.observe.failed when processing a part throws', async () => {
+      // A synchronous publish failure inside onTextDelta makes processor.processPart
+      // throw → the observe wrapper catches it, logs the distinct event, records it,
+      // and the turn hard-fails ('error') rather than the soft result_fetch_failed
+      // the dashboard reserves for genuine final-result fetch failures.
+      deps = createMockDeps([{ type: 'text-delta', text: 'hi' }])
+      deps.eventChannel.publish.mockImplementation((_conv: string, event: any) => {
+        if (event.type === 'chunk') throw new Error('processing boom')
+        return Promise.resolve({ sequence: 1 })
+      })
+      service = new MessageExecutionService(deps as any)
+
+      const loggerMod = await import('../../../logging/index.js')
+      const errorSpy = vi.spyOn(loggerMod.logger, 'error')
+      let errorCalls: any[][] = []
+      try {
+        await expect(service.execute(DEFAULT_PARAMS)).resolves.toBeUndefined()
+      } finally {
+        errorCalls = errorSpy.mock.calls.slice()
+        errorSpy.mockRestore()
+      }
+
+      expect(errorCalls.some((c) => c[0] === 'sse.stream.observe.failed')).toBe(true)
+      const complete = (deps.eventChannel.publish as any).mock.calls.find((c: any[]) => c[1]?.type === 'complete')
+      expect(complete?.[1]?.data?.finishReason).toBe('error')
+    })
+
     it('publishes non-terminal error event and processes mock stream for resolved tool validation', async () => {
-      const streamGenerate = vi.fn()
-        .mockResolvedValueOnce({
-          isToolValidationError: true,
-          validationErrorMessage: 'JSON parsing failed',
-          textStream: (async function* () { yield 'corrective feedback text' })(),
-          baseStream: null,
-          getFinalResult: vi.fn().mockResolvedValue({ finishReason: 'error', usage: { totalTokens: 0 }, toolCalls: [] }),
-        })
+      const streamGenerate = vi.fn().mockImplementation(
+        streamGenerateImpl(
+          [{ type: 'text-delta', text: 'corrective feedback text' }],
+          undefined,
+          { isToolValidationError: true, validationErrorMessage: 'JSON parsing failed' },
+        ),
+      )
       deps.getAgent.mockReturnValue({
         streamGenerate,
         getName: vi.fn().mockReturnValue('AI Developer'),
@@ -1085,11 +1159,7 @@ describe('MessageExecutionService', () => {
     it('retries with events when streamGenerate throws a tool validation error', async () => {
       const streamGenerate = vi.fn()
         .mockRejectedValueOnce(new Error('toolUse.input is invalid: expected object'))
-        .mockResolvedValueOnce({
-          textStream: (async function* () {})(),
-          baseStream: makeReadableStream([{ type: 'text-delta', text: 'retried response' }]),
-          getFinalResult: vi.fn().mockResolvedValue({ finishReason: 'complete' }),
-        })
+        .mockImplementationOnce(streamGenerateImpl([{ type: 'text-delta', text: 'retried response' }]))
       deps.getAgent.mockReturnValue({
         streamGenerate,
         getName: vi.fn().mockReturnValue('AI Developer'),
@@ -1202,24 +1272,43 @@ describe('MessageExecutionService', () => {
       })
     })
 
+    it('classifies a terminal error part carrying budget-pattern text as BUDGET_EXCEEDED', async () => {
+      deps = createMockDeps()
+      // A terminal `error` part whose payload is a plain Error (NOT a
+      // BudgetExceededError instance, NOT an APICallError) carrying budget text:
+      // onError records it as terminalStreamError → re-thrown → the outer catch's
+      // classifyStreamBudgetError pattern-match normalizes it to BUDGET_EXCEEDED.
+      // classifyTurnError alone only recognizes BudgetExceededError instances, so
+      // dropping that normalization would silently regress this to a generic error.
+      deps.getAgent.mockReturnValue({
+        streamGenerate: vi.fn().mockImplementation(
+          streamGenerateImpl([{ type: 'error', error: new Error('LiteLLM Virtual Key: exceeded budget for model=claude-opus') }]),
+        ),
+        getName: vi.fn().mockReturnValue('AI Developer'),
+      })
+      service = new MessageExecutionService(deps as any)
+
+      await service.execute(DEFAULT_PARAMS)
+
+      const errorCall = deps.eventChannel.publish.mock.calls.find(
+        ([, evt]: [string, any]) => evt.type === 'error'
+      )
+      expect(errorCall).toBeDefined()
+      expect(errorCall![1]).toMatchObject({
+        content: 'Your AI usage budget has been reached.',
+        data: expect.objectContaining({ errorType: 'BUDGET_EXCEEDED' }),
+      })
+    })
+
     it('aborts stalled streams on chunk-timeout and emits terminal error + complete', async () => {
       const previous = process.env.AI_CHUNK_TIMEOUT_MS
       try {
         process.env.AI_CHUNK_TIMEOUT_MS = '5'
         deps = createMockDeps()
+        // No content observed, then getFinalResult hangs until the gap guard
+        // aborts (chunk_timeout) and the dead socket rejects → fail fast.
         deps.getAgent.mockReturnValue({
-          streamGenerate: vi.fn().mockImplementation(function (_message: string, opts: { abortSignal: AbortSignal }) {
-            return {
-              textStream: (async function* () {})(),
-              baseStream: new ReadableStream({
-                start(controller) {
-                  opts.abortSignal.addEventListener('abort', () => {
-                    controller.error(new Error(String(opts.abortSignal.reason ?? 'aborted')))
-                  }, { once: true })
-                },
-              }),
-            }
-          }),
+          streamGenerate: vi.fn().mockImplementation(streamGenerateImpl([], rejectOnAbort)),
           getName: vi.fn().mockReturnValue('AI Developer'),
         })
         service = new MessageExecutionService(deps as any)
@@ -1254,23 +1343,13 @@ describe('MessageExecutionService', () => {
       try {
         process.env.AI_CHUNK_TIMEOUT_MS = '5'
         deps = createMockDeps()
+        // Content observed (resets the guard), then getFinalResult hangs until
+        // the guard aborts (chunk_timeout) and the dead socket rejects →
+        // soft-commit the partial content as incomplete.
         deps.getAgent.mockReturnValue({
-          streamGenerate: vi.fn().mockImplementation(function (_m: string, opts: { abortSignal: AbortSignal }) {
-            return {
-              textStream: (async function* () {})(),
-              baseStream: new ReadableStream({
-                start(controller) {
-                  // Deliver content, then go silent so the guard fires.
-                  controller.enqueue({ part: { type: 'text-delta', text: 'partial answer' } })
-                  opts.abortSignal.addEventListener('abort', () => {
-                    controller.error(new Error(String(opts.abortSignal.reason ?? 'aborted')))
-                  }, { once: true })
-                },
-              }),
-              // Backed by the dead socket — never resolves; must NOT be awaited.
-              getFinalResult: vi.fn().mockImplementation(() => new Promise(() => {})),
-            }
-          }),
+          streamGenerate: vi.fn().mockImplementation(
+            streamGenerateImpl([{ type: 'text-delta', text: 'partial answer' }], rejectOnAbort),
+          ),
           getName: vi.fn().mockReturnValue('AI Developer'),
         })
         service = new MessageExecutionService(deps as any)
@@ -1294,28 +1373,27 @@ describe('MessageExecutionService', () => {
       }
     })
 
-    it('soft-commits as stop when a finish frame was seen before the stall', async () => {
+    it('does not chunk-timeout after a finish frame while getFinalResult settles (completes as stop)', async () => {
       const previous = process.env.AI_CHUNK_TIMEOUT_MS
       try {
         process.env.AI_CHUNK_TIMEOUT_MS = '5'
         deps = createMockDeps()
+        // The terminal finish frame pauses the gap guard; a slow getFinalResult
+        // tail (the SDK settling its result after the stream ended) must NOT trip
+        // a false chunk_timeout. The turn completes with the finish frame's reason.
         deps.getAgent.mockReturnValue({
-          streamGenerate: vi.fn().mockImplementation(function (_m: string, opts: { abortSignal: AbortSignal }) {
-            return {
-              textStream: (async function* () {})(),
-              baseStream: new ReadableStream({
-                start(controller) {
-                  controller.enqueue({ part: { type: 'text-delta', text: 'full answer' } })
-                  controller.enqueue({ part: { type: 'finish', finishReason: 'stop', totalUsage: { inputTokens: 7, outputTokens: 3 } } })
-                  // Frame seen, but socket goes silent — guard fires.
-                  opts.abortSignal.addEventListener('abort', () => {
-                    controller.error(new Error(String(opts.abortSignal.reason ?? 'aborted')))
-                  }, { once: true })
-                },
-              }),
-              getFinalResult: vi.fn().mockImplementation(() => new Promise(() => {})),
-            }
-          }),
+          streamGenerate: vi.fn().mockImplementation(
+            streamGenerateImpl(
+              [
+                { type: 'text-delta', text: 'full answer' },
+                { type: 'finish', finishReason: 'stop', totalUsage: { inputTokens: 7, outputTokens: 3 } },
+              ],
+              async () => {
+                await new Promise((r) => setTimeout(r, 20))
+                return { finishReason: 'stop', totalUsage: { inputTokens: 7, outputTokens: 3 } }
+              },
+            ),
+          ),
           getName: vi.fn().mockReturnValue('AI Developer'),
         })
         service = new MessageExecutionService(deps as any)
@@ -1339,6 +1417,43 @@ describe('MessageExecutionService', () => {
       }
     })
 
+    it('finalizes a chunk-timeout abort even when getFinalResult ignores the abort (post-abort grace)', async () => {
+      const prevTimeout = process.env.AI_CHUNK_TIMEOUT_MS
+      const prevGrace = process.env.AI_GETFINAL_ABORT_GRACE_MS
+      try {
+        process.env.AI_CHUNK_TIMEOUT_MS = '5'
+        process.env.AI_GETFINAL_ABORT_GRACE_MS = '10'
+        deps = createMockDeps()
+        // getFinalResult never settles, even after the abort — models an SDK that
+        // ignores the abort. The pre-collapse reader skipped getFinalResult on a
+        // dead socket; without the post-abort grace the single-consumer await
+        // would hang the SSE connection + activeStreams slot forever. The grace
+        // rejects 10ms after the chunk_timeout abort → catch fails fast.
+        deps.getAgent.mockReturnValue({
+          streamGenerate: vi.fn().mockImplementation(
+            streamGenerateImpl([], () => new Promise<never>(() => undefined)),
+          ),
+          getName: vi.fn().mockReturnValue('AI Developer'),
+        })
+        service = new MessageExecutionService(deps as any)
+
+        await service.execute(DEFAULT_PARAMS)
+
+        expect(deps.eventChannel.publish).toHaveBeenCalledWith(
+          'conv_1',
+          expect.objectContaining({
+            type: 'error',
+            content: expect.stringContaining('Stream chunk timeout'),
+          }),
+        )
+      } finally {
+        if (prevTimeout === undefined) delete process.env.AI_CHUNK_TIMEOUT_MS
+        else process.env.AI_CHUNK_TIMEOUT_MS = prevTimeout
+        if (prevGrace === undefined) delete process.env.AI_GETFINAL_ABORT_GRACE_MS
+        else process.env.AI_GETFINAL_ABORT_GRACE_MS = prevGrace
+      }
+    })
+
     // Premature upstream close (undici `terminated`) — flag-independent: these
     // do NOT set AI_CHUNK_TIMEOUT_MS, so the gap-timer never arms. The soft
     // commit must come from isNetworkError handling in the stream/getFinalResult
@@ -1357,50 +1472,14 @@ describe('MessageExecutionService', () => {
     const make408Error = (): Error =>
       Object.assign(new Error('request timeout'), { statusCode: 408, responseBody: 'request timeout' })
 
-    it('soft-commits accumulated content on a 408 upstream timeout (complete:incomplete, getFinalResult skipped)', async () => {
-      deps = createMockDeps()
-      const getFinalResult = vi.fn().mockImplementation(() => new Promise(() => {}))
-      deps.getAgent.mockReturnValue({
-        streamGenerate: vi.fn().mockReturnValue({
-          textStream: (async function* () {
-            yield 'partial answer'
-            throw make408Error()
-          })(),
-          getFinalResult,
-        }),
-        getName: vi.fn().mockReturnValue('AI Developer'),
-      })
-      service = new MessageExecutionService(deps as any)
-
-      await service.execute(DEFAULT_PARAMS)
-
-      expect(deps.eventChannel.publish).not.toHaveBeenCalledWith(
-        'conv_1',
-        expect.objectContaining({ type: 'error' }),
-      )
-      expect(deps.eventChannel.publish).toHaveBeenCalledWith(
-        'conv_1',
-        expect.objectContaining({
-          type: 'complete',
-          data: expect.objectContaining({ finishReason: 'incomplete' }),
-        }),
-      )
-      expect(getFinalResult).not.toHaveBeenCalled()
-      expect(mockInvocationEnd).toHaveBeenCalledWith(
-        expect.objectContaining({ success: false, finishReason: 'incomplete' }),
-      )
-    })
-
     it('fails fast (error terminal) on a 408 upstream timeout with no content', async () => {
       deps = createMockDeps()
+      // No content observed, then getFinalResult rejects with the 408 — nothing
+      // to salvage, so the turn hard-fails with a terminal error event.
       deps.getAgent.mockReturnValue({
-        streamGenerate: vi.fn().mockReturnValue({
-          // eslint-disable-next-line require-yield
-          textStream: (async function* () {
-            throw make408Error()
-          })(),
-          getFinalResult: vi.fn(),
-        }),
+        streamGenerate: vi.fn().mockImplementation(
+          streamGenerateImpl([], vi.fn().mockRejectedValue(make408Error())),
+        ),
         getName: vi.fn().mockReturnValue('AI Developer'),
       })
       service = new MessageExecutionService(deps as any)
@@ -1410,107 +1489,17 @@ describe('MessageExecutionService', () => {
       expect(deps.eventChannel.publish).toHaveBeenCalledWith(
         'conv_1',
         expect.objectContaining({ type: 'error' }),
-      )
-    })
-
-    it('soft-commits accumulated content on premature close (complete:incomplete, no error, getFinalResult skipped)', async () => {
-      deps = createMockDeps()
-      const getFinalResult = vi.fn().mockImplementation(() => new Promise(() => {}))
-      deps.getAgent.mockReturnValue({
-        streamGenerate: vi.fn().mockReturnValue({
-          // No baseStream → SSE iterates textStream directly. It yields content,
-          // then the upstream drops (terminated) — not an abort.
-          textStream: (async function* () {
-            yield 'partial answer'
-            throw makeTerminatedError()
-          })(),
-          getFinalResult,
-        }),
-        getName: vi.fn().mockReturnValue('AI Developer'),
-      })
-      service = new MessageExecutionService(deps as any)
-
-      await service.execute(DEFAULT_PARAMS)
-
-      expect(deps.eventChannel.publish).not.toHaveBeenCalledWith(
-        'conv_1',
-        expect.objectContaining({ type: 'error' }),
-      )
-      expect(deps.eventChannel.publish).toHaveBeenCalledWith(
-        'conv_1',
-        expect.objectContaining({
-          type: 'complete',
-          data: expect.objectContaining({ finishReason: 'incomplete' }),
-        }),
-      )
-      // Dead socket: getFinalResult would hang — the soft-commit path must skip it.
-      expect(getFinalResult).not.toHaveBeenCalled()
-      // Honest span: the upstream DID fail, so the invocation ends as an error
-      // even though the wire-facing finishReason is the soft 'incomplete'.
-      expect(mockInvocationEnd).toHaveBeenCalledWith(
-        expect.objectContaining({ success: false, finishReason: 'incomplete' }),
-      )
-    })
-
-    it('soft-commits on a premature close via the baseStream reader path (complete:incomplete, honest error span)', async () => {
-      deps = createMockDeps()
-      const getFinalResult = vi.fn().mockImplementation(() => new Promise(() => {}))
-      deps.getAgent.mockReturnValue({
-        streamGenerate: vi.fn().mockReturnValue({
-          textStream: (async function* () {})(),
-          // baseStream delivers content, then the reader errors (terminated) —
-          // exercises the reader.read() catch → handlePrematureClose path. The
-          // chunk must be delivered on a separate pull from the error;
-          // controller.error() resets the queue, so enqueue+error in one tick
-          // would discard the content (and miss the soft-commit path).
-          baseStream: (() => {
-            let sentContent = false
-            return new ReadableStream({
-              pull(controller) {
-                if (!sentContent) {
-                  sentContent = true
-                  controller.enqueue({ part: { type: 'text-delta', text: 'partial answer' } })
-                } else {
-                  controller.error(makeTerminatedError())
-                }
-              },
-            })
-          })(),
-          getFinalResult,
-        }),
-        getName: vi.fn().mockReturnValue('AI Developer'),
-      })
-      service = new MessageExecutionService(deps as any)
-
-      await service.execute(DEFAULT_PARAMS)
-
-      expect(deps.eventChannel.publish).not.toHaveBeenCalledWith(
-        'conv_1',
-        expect.objectContaining({ type: 'error' }),
-      )
-      expect(deps.eventChannel.publish).toHaveBeenCalledWith(
-        'conv_1',
-        expect.objectContaining({
-          type: 'complete',
-          data: expect.objectContaining({ finishReason: 'incomplete' }),
-        }),
-      )
-      expect(getFinalResult).not.toHaveBeenCalled()
-      expect(mockInvocationEnd).toHaveBeenCalledWith(
-        expect.objectContaining({ success: false, finishReason: 'incomplete' }),
       )
     })
 
     it('soft-commits when getFinalResult throws a network error after content (complete:incomplete, honest error span)', async () => {
       deps = createMockDeps()
       deps.getAgent.mockReturnValue({
-        streamGenerate: vi.fn().mockResolvedValue({
-          textStream: (async function* () {})(),
-          // Stream completes cleanly with content, but getFinalResult hits the
-          // upstream close — exercises the getFinalResult catch network-error branch.
-          baseStream: makeReadableStream([{ type: 'text-delta', text: 'partial answer' }]),
-          getFinalResult: vi.fn().mockRejectedValue(makeTerminatedError()),
-        }),
+        // Stream completes with content (observed), but getFinalResult hits the
+        // upstream close — exercises the getFinalResult catch network-error branch.
+        streamGenerate: vi.fn().mockImplementation(
+          streamGenerateImpl([{ type: 'text-delta', text: 'partial answer' }], vi.fn().mockRejectedValue(makeTerminatedError())),
+        ),
         getName: vi.fn().mockReturnValue('AI Developer'),
       })
       service = new MessageExecutionService(deps as any)
@@ -1533,11 +1522,9 @@ describe('MessageExecutionService', () => {
     it('soft-commits when getFinalResult throws a 408 upstream timeout after content (complete:incomplete, honest error span)', async () => {
       deps = createMockDeps()
       deps.getAgent.mockReturnValue({
-        streamGenerate: vi.fn().mockResolvedValue({
-          textStream: (async function* () {})(),
-          baseStream: makeReadableStream([{ type: 'text-delta', text: 'partial answer' }]),
-          getFinalResult: vi.fn().mockRejectedValue(make408Error()),
-        }),
+        streamGenerate: vi.fn().mockImplementation(
+          streamGenerateImpl([{ type: 'text-delta', text: 'partial answer' }], vi.fn().mockRejectedValue(make408Error())),
+        ),
         getName: vi.fn().mockReturnValue('AI Developer'),
       })
       service = new MessageExecutionService(deps as any)
@@ -1558,16 +1545,12 @@ describe('MessageExecutionService', () => {
 
     it('fails fast (error terminal) on a premature close with no content', async () => {
       deps = createMockDeps()
-      const getFinalResult = vi.fn()
+      // Upstream drops before any content arrives: getFinalResult rejects with the
+      // terminated network error and there's nothing to salvage → hard error.
       deps.getAgent.mockReturnValue({
-        streamGenerate: vi.fn().mockReturnValue({
-          // Upstream drops before any content arrives.
-          // eslint-disable-next-line require-yield
-          textStream: (async function* () {
-            throw makeTerminatedError()
-          })(),
-          getFinalResult,
-        }),
+        streamGenerate: vi.fn().mockImplementation(
+          streamGenerateImpl([], vi.fn().mockRejectedValue(makeTerminatedError())),
+        ),
         getName: vi.fn().mockReturnValue('AI Developer'),
       })
       service = new MessageExecutionService(deps as any)
@@ -1593,17 +1576,18 @@ describe('MessageExecutionService', () => {
         process.env.AI_CHUNK_TIMEOUT_MS = '5'
         deps = createMockDeps()
         deps.getAgent.mockReturnValue({
-          streamGenerate: vi.fn().mockImplementation(async function () {
+          streamGenerate: vi.fn().mockImplementation(async function (_message: string, opts: StreamGenerateOptions) {
+            // The 20ms connect delay precedes the guard arming (which happens
+            // after streamGenerate resolves), so it must not count toward the 5ms
+            // chunk timeout. Content is then observed and the turn completes.
             await new Promise(r => setTimeout(r, 20))
             return {
               textStream: (async function* () {})(),
-              baseStream: new ReadableStream({
-                start(controller) {
-                  controller.enqueue({ part: { type: 'text-delta', text: 'connected' } })
-                  controller.close()
-                },
-              }),
-              getFinalResult: vi.fn().mockResolvedValue({ finishReason: 'complete' }),
+              response: Promise.resolve({ id: 'resp_1', timestamp: new Date(0), modelId: 'test-model' }),
+              getFinalResult: async () => {
+                await opts.observe?.({ type: 'text-delta', text: 'connected' })
+                return { finishReason: 'complete' }
+              },
             }
           }),
           getName: vi.fn().mockReturnValue('AI Developer'),
@@ -1630,236 +1614,6 @@ describe('MessageExecutionService', () => {
           process.env.AI_CHUNK_TIMEOUT_MS = previous
         }
       }
-    })
-
-    it('does not keep chunk timeout armed while awaiting getFinalResult', async () => {
-      const previous = process.env.AI_CHUNK_TIMEOUT_MS
-      try {
-        process.env.AI_CHUNK_TIMEOUT_MS = '5'
-        deps = createMockDeps()
-        deps.getAgent.mockReturnValue({
-          streamGenerate: vi.fn().mockResolvedValue({
-            textStream: (async function* () {})(),
-            baseStream: new ReadableStream({
-              start(controller) {
-                controller.enqueue({ part: { type: 'text-delta', text: 'done' } })
-                controller.close()
-              },
-            }),
-            getFinalResult: vi.fn().mockImplementation(async function () {
-              await new Promise(r => setTimeout(r, 20))
-              return { finishReason: 'complete' }
-            }),
-          }),
-          getName: vi.fn().mockReturnValue('AI Developer'),
-        })
-        service = new MessageExecutionService(deps as any)
-
-        await service.execute(DEFAULT_PARAMS)
-
-        expect(deps.eventChannel.publish).not.toHaveBeenCalledWith(
-          'conv_1',
-          expect.objectContaining({ type: 'error' }),
-        )
-        expect(deps.eventChannel.publish).toHaveBeenCalledWith(
-          'conv_1',
-          expect.objectContaining({
-            type: 'complete',
-            data: expect.objectContaining({ finishReason: 'complete' }),
-          }),
-        )
-      } finally {
-        if (previous === undefined) {
-          delete process.env.AI_CHUNK_TIMEOUT_MS
-        } else {
-          process.env.AI_CHUNK_TIMEOUT_MS = previous
-        }
-      }
-    })
-
-    it('resets chunk timeout on non-part baseStream frames', async () => {
-      const previous = process.env.AI_CHUNK_TIMEOUT_MS
-      try {
-        process.env.AI_CHUNK_TIMEOUT_MS = '25'
-        deps = createMockDeps()
-        deps.getAgent.mockReturnValue({
-          streamGenerate: vi.fn().mockResolvedValue({
-            textStream: (async function* () {})(),
-            baseStream: new ReadableStream({
-              start(controller) {
-                setTimeout(() => controller.enqueue({ metadata: { keepalive: true } }), 20)
-                setTimeout(() => {
-                  controller.enqueue({ part: { type: 'text-delta', text: 'alive' } })
-                  controller.close()
-                }, 35)
-              },
-            }),
-            getFinalResult: vi.fn().mockResolvedValue({ finishReason: 'complete' }),
-          }),
-          getName: vi.fn().mockReturnValue('AI Developer'),
-        })
-        service = new MessageExecutionService(deps as any)
-
-        await service.execute(DEFAULT_PARAMS)
-
-        expect(deps.eventChannel.publish).not.toHaveBeenCalledWith(
-          'conv_1',
-          expect.objectContaining({ type: 'error' }),
-        )
-        expect(deps.eventChannel.publish).toHaveBeenCalledWith(
-          'conv_1',
-          expect.objectContaining({ type: 'chunk', content: 'alive' }),
-        )
-      } finally {
-        if (previous === undefined) {
-          delete process.env.AI_CHUNK_TIMEOUT_MS
-        } else {
-          process.env.AI_CHUNK_TIMEOUT_MS = previous
-        }
-      }
-    })
-
-    it('reports chunk-timeout errors from textStream iterator aborts', async () => {
-      const previous = process.env.AI_CHUNK_TIMEOUT_MS
-      try {
-        process.env.AI_CHUNK_TIMEOUT_MS = '5'
-        deps = createMockDeps()
-        deps.getAgent.mockReturnValue({
-          streamGenerate: vi.fn().mockImplementation(function (_message: string, opts: { abortSignal: AbortSignal }) {
-            return {
-              textStream: {
-                [Symbol.asyncIterator]() {
-                  return {
-                    next: () => new Promise<IteratorResult<string>>((_resolve, reject) => {
-                      opts.abortSignal.addEventListener('abort', () => {
-                        reject(new Error(String(opts.abortSignal.reason ?? 'aborted')))
-                      }, { once: true })
-                    }),
-                  }
-                },
-              },
-              getFinalResult: vi.fn().mockResolvedValue({ finishReason: 'complete' }),
-            }
-          }),
-          getName: vi.fn().mockReturnValue('AI Developer'),
-        })
-        service = new MessageExecutionService(deps as any)
-
-        await service.execute(DEFAULT_PARAMS)
-
-        expect(deps.eventChannel.publish).toHaveBeenCalledWith(
-          'conv_1',
-          expect.objectContaining({
-            type: 'error',
-            content: expect.stringContaining('Stream chunk timeout'),
-          }),
-        )
-        expect(deps.eventChannel.publish).toHaveBeenCalledWith(
-          'conv_1',
-          expect.objectContaining({
-            type: 'complete',
-            data: expect.objectContaining({ finishReason: 'error' }),
-          }),
-        )
-      } finally {
-        if (previous === undefined) {
-          delete process.env.AI_CHUNK_TIMEOUT_MS
-        } else {
-          process.env.AI_CHUNK_TIMEOUT_MS = previous
-        }
-      }
-    })
-
-    it('falls back to textStream when baseStream read() throws a retryable error', async () => {
-      deps = createMockDeps()
-      let readCount = 0
-      deps.getAgent.mockReturnValue({
-        streamGenerate: vi.fn().mockResolvedValue({
-          textStream: (async function* () {
-            yield 'fallback chunk 1'
-            yield 'fallback chunk 2'
-          })(),
-          baseStream: new ReadableStream({
-            pull(controller) {
-              readCount++
-              if (readCount === 1) {
-                controller.enqueue({ part: { type: 'text-delta', text: 'base chunk' } })
-              } else {
-                const err: any = new Error('Service Unavailable')
-                err.statusCode = 503
-                throw err
-              }
-            },
-          }),
-          getFinalResult: vi.fn().mockResolvedValue({ finishReason: 'complete' }),
-          response: Promise.resolve({ id: 'resp-1', modelId: 'claude-sonnet-4-6' }),
-        }),
-        getName: vi.fn().mockReturnValue('AI Developer'),
-      })
-      service = new MessageExecutionService(deps as any)
-
-      await service.execute(DEFAULT_PARAMS)
-
-      // Base stream delivered first chunk, then fallback delivered the rest
-      expect(deps.eventChannel.publish).toHaveBeenCalledWith(
-        'conv_1',
-        expect.objectContaining({ type: 'chunk', content: 'base chunk' }),
-      )
-      expect(deps.eventChannel.publish).toHaveBeenCalledWith(
-        'conv_1',
-        expect.objectContaining({ type: 'chunk', content: 'fallback chunk 1' }),
-      )
-      expect(deps.eventChannel.publish).toHaveBeenCalledWith(
-        'conv_1',
-        expect.objectContaining({ type: 'chunk', content: 'fallback chunk 2' }),
-      )
-      // Should complete successfully, not error
-      expect(deps.eventChannel.publish).toHaveBeenCalledWith(
-        'conv_1',
-        expect.objectContaining({
-          type: 'complete',
-          data: expect.objectContaining({ finishReason: 'complete' }),
-        }),
-      )
-    })
-
-    it('does not fallback on non-retryable baseStream read() errors', async () => {
-      deps = createMockDeps()
-      deps.getAgent.mockReturnValue({
-        streamGenerate: vi.fn().mockResolvedValue({
-          textStream: (async function* () { yield 'should not appear' })(),
-          baseStream: new ReadableStream({
-            pull() {
-              // 403 Forbidden is always non-retryable
-              throw new APICallError({
-                message: 'Forbidden',
-                statusCode: 403,
-                url: 'https://api.example.com',
-                requestBodyValues: {},
-              })
-            },
-          }),
-          response: Promise.resolve({}),
-        }),
-        getName: vi.fn().mockReturnValue('AI Developer'),
-      })
-      service = new MessageExecutionService(deps as any)
-
-      await service.execute(DEFAULT_PARAMS)
-
-      // Should produce an error terminal event (non-retryable propagates)
-      expect(deps.eventChannel.publish).toHaveBeenCalledWith(
-        'conv_1',
-        expect.objectContaining({
-          type: 'error',
-          content: 'Forbidden',
-        }),
-      )
-      // Fallback text should NOT appear
-      expect(deps.eventChannel.publish).not.toHaveBeenCalledWith(
-        'conv_1',
-        expect.objectContaining({ content: 'should not appear' }),
-      )
     })
 
     it('unsubscribes SSE subscribers in finally block', async () => {
@@ -1900,7 +1654,6 @@ describe('MessageExecutionService', () => {
       })
       const streamGenerate = vi.fn().mockResolvedValue({
         textStream: (async function* () { yield 'ok' })(),
-        baseStream: null,
         getFinalResult: vi.fn().mockResolvedValue({ finishReason: 'stop', usage: { totalTokens: 0 }, toolCalls: [] }),
       })
       deps.getAgent.mockReturnValue({ streamGenerate, getName: vi.fn().mockReturnValue('AI Developer') })
@@ -1928,7 +1681,6 @@ describe('MessageExecutionService', () => {
       mockResolveRebuildBuildPagePrompt.mockResolvedValueOnce(undefined)
       const streamGenerate = vi.fn().mockResolvedValue({
         textStream: (async function* () { yield 'ok' })(),
-        baseStream: null,
         getFinalResult: vi.fn().mockResolvedValue({ finishReason: 'stop', usage: { totalTokens: 0 }, toolCalls: [] }),
       })
       deps.getAgent.mockReturnValue({ streamGenerate, getName: vi.fn().mockReturnValue('AI Developer') })
@@ -2067,7 +1819,7 @@ describe('MessageExecutionService', () => {
           expect.objectContaining({ type: 'chunk', content: 'Hello ' }),
           expect.objectContaining({ type: 'chunk', content: 'world' }),
         ]),
-        { finishReason: 'result_fetch_failed' }, // getFinalResult not mocked → throws → only finishReason stored
+        { finishReason: 'stop' }, // default mock getFinalResult resolves to a clean 'stop'
         expect.objectContaining({ socketId: 'sse:conv_1' })
       )
     })
@@ -2279,15 +2031,7 @@ describe('MessageExecutionService', () => {
 
     it('calls completeConversation even on error to persist partial results', async () => {
       deps.getAgent.mockReturnValue({
-        streamGenerate: vi.fn().mockResolvedValue({
-          textStream: (async function* () {})(),
-          baseStream: new ReadableStream({
-            start(controller) {
-              controller.enqueue({ part: { type: 'error', error: new Error('stream failure') } })
-              controller.close()
-            }
-          })
-        })
+        streamGenerate: vi.fn().mockImplementation(streamGenerateImpl([{ type: 'error', error: new Error('stream failure') }])),
       })
       service = new MessageExecutionService(deps as any)
 
@@ -2304,15 +2048,7 @@ describe('MessageExecutionService', () => {
 
     it('logs error-path completeConversation failures with the error persistence log event', async () => {
       deps.getAgent.mockReturnValue({
-        streamGenerate: vi.fn().mockResolvedValue({
-          textStream: (async function* () {})(),
-          baseStream: new ReadableStream({
-            start(controller) {
-              controller.enqueue({ part: { type: 'error', error: new Error('stream failure') } })
-              controller.close()
-            }
-          })
-        })
+        streamGenerate: vi.fn().mockImplementation(streamGenerateImpl([{ type: 'error', error: new Error('stream failure') }])),
       })
       deps.conversationPersistence.completeConversation.mockRejectedValueOnce(new Error('DB down on error path'))
       service = new MessageExecutionService(deps as any)
@@ -2665,17 +2401,16 @@ describe('MessageExecutionService', () => {
       const secondGate = new Promise<void>(r => { releaseSecond = r })
 
       deps.getAgent.mockReturnValue({
-        streamGenerate: vi.fn().mockResolvedValue({
+        streamGenerate: vi.fn().mockImplementation(async (_p: string, opts: StreamGenerateOptions) => ({
           textStream: (async function* () {})(),
-          baseStream: new ReadableStream({
-            async pull(controller) {
-              await firstGate
-              controller.enqueue({ part: { type: 'text-delta', text: 'late' } })
-              await secondGate
-              controller.close()
-            }
-          }),
-        }),
+          response: Promise.resolve({ id: 'resp_1', timestamp: new Date(0), modelId: 'test-model' }),
+          getFinalResult: async () => {
+            await firstGate
+            await opts.observe?.({ type: 'text-delta', text: 'late' })
+            await secondGate
+            return { finishReason: 'stop' }
+          },
+        })),
         getName: vi.fn().mockReturnValue('AI Developer'),
       })
       service = new MessageExecutionService(deps as any)
@@ -2734,10 +2469,7 @@ describe('MessageExecutionService', () => {
       deps.stateManager.getLastHandoffPrompt.mockReturnValue('continue on marketing')
 
       deps.getAgent.mockImplementation(function (name?: string) { return {
-        streamGenerate: vi.fn().mockResolvedValue({
-          textStream: (async function* () {})(),
-          baseStream: makeReadableStream([]),
-        }),
+        streamGenerate: vi.fn().mockImplementation(streamGenerateImpl([])),
         getName: vi.fn().mockReturnValue(name ?? 'develop'),
       }; })
       service = new MessageExecutionService(deps as any)
@@ -2796,12 +2528,7 @@ describe('MessageExecutionService', () => {
       deps.stateManager.getLastHandoffPrompt.mockReturnValue('continue on marketing')
 
       deps.getAgent.mockImplementation(function (name?: string) { return {
-        streamGenerate: vi.fn().mockResolvedValue({
-          textStream: (async function* () {})(),
-          baseStream: makeReadableStream([
-            { type: 'text-delta', text: `${name ?? 'develop'} chunk` },
-          ]),
-        }),
+        streamGenerate: vi.fn().mockImplementation(streamGenerateImpl([{ type: 'text-delta', text: `${name ?? 'develop'} chunk` }])),
         getName: vi.fn().mockReturnValue(name ?? 'develop'),
       }; })
       service = new MessageExecutionService(deps as any)
@@ -2840,15 +2567,9 @@ describe('MessageExecutionService', () => {
       deps.stateManager.getCurrentAgent.mockReturnValue('develop')
       deps.stateManager.getLastHandoffPrompt.mockReturnValue('Build the homepage')
 
-      const streamGenerate = vi.fn().mockImplementation(function (_message: string, opts: { executionContext: { metadata: Record<string, unknown> } }) {
+      const streamGenerate = vi.fn().mockImplementation(function (message: string, opts: { executionContext: { metadata: Record<string, unknown> } }) {
         opts.executionContext.metadata.isRebuildFlow = true
-        return Promise.resolve({
-          textStream: (async function* () {})(),
-          baseStream: makeReadableStream([
-            { type: 'text-delta', text: 'chunk' },
-          ]),
-          getFinalResult: vi.fn().mockResolvedValue({ finishReason: 'complete' }),
-        })
+        return streamGenerateImpl([{ type: 'text-delta', text: 'chunk' }])(message, opts as any)
       })
       deps.getAgent.mockImplementation(function (name?: string) {
         return {
@@ -2875,17 +2596,10 @@ describe('MessageExecutionService', () => {
       try {
         process.env.AI_CHUNK_TIMEOUT_MS = '5'
         deps = createMockDeps()
+        // No content, then getFinalResult hangs until the gap guard aborts
+        // (chunk_timeout) → end hooks run with reason 'error'.
         deps.getAgent.mockReturnValue({
-          streamGenerate: vi.fn().mockImplementation(function (_message: string, opts: { abortSignal: AbortSignal }) { return {
-            textStream: (async function* () {})(),
-            baseStream: new ReadableStream({
-              start(controller) {
-                opts.abortSignal.addEventListener('abort', () => {
-                  controller.error(new Error(String(opts.abortSignal.reason ?? 'aborted')))
-                }, { once: true })
-              },
-            }),
-          }; }),
+          streamGenerate: vi.fn().mockImplementation(streamGenerateImpl([], rejectOnAbort)),
           getName: vi.fn().mockReturnValue('AI Developer'),
         })
 
@@ -3003,14 +2717,10 @@ describe('MessageExecutionService', () => {
     function createUsageDeps() {
       const d = createMockDeps()
       d.getAgent.mockReturnValue({
-        streamGenerate: vi.fn().mockResolvedValue({
-          textStream: (async function* () {})(),
-          baseStream: makeReadableStream([{ type: 'text-delta', text: 'hello' }]),
-          getFinalResult: vi.fn().mockResolvedValue({
-            finishReason: 'complete',
-            totalUsage: { inputTokens: 100, outputTokens: 40, totalTokens: 140 },
-          }),
-        }),
+        streamGenerate: vi.fn().mockImplementation(streamGenerateImpl(
+          [{ type: 'text-delta', text: 'hello' }],
+          { finishReason: 'complete', totalUsage: { inputTokens: 100, outputTokens: 40, totalTokens: 140 } },
+        )),
         getName: vi.fn().mockReturnValue('AI Developer'),
       })
       return d
@@ -3060,16 +2770,12 @@ describe('MessageExecutionService', () => {
       d.getAgent.mockReturnValue({
         // ~30ms of pre-stream work (agent init + LLM connect) before the stream
         // handle resolves; timeToStreamStartMs must reflect at least that.
-        streamGenerate: vi.fn().mockImplementation(async () => {
+        streamGenerate: vi.fn().mockImplementation(async (prompt: string, options: any) => {
           await new Promise((resolve) => setTimeout(resolve, 30))
-          return {
-            textStream: (async function* () {})(),
-            baseStream: makeReadableStream([{ type: 'text-delta', text: 'hi' }]),
-            getFinalResult: vi.fn().mockResolvedValue({
-              finishReason: 'complete',
-              totalUsage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
-            }),
-          }
+          return streamGenerateImpl(
+            [{ type: 'text-delta', text: 'hi' }],
+            { finishReason: 'complete', totalUsage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 } },
+          )(prompt, options)
         }),
         getName: vi.fn().mockReturnValue('AI Developer'),
       })
@@ -3109,22 +2815,12 @@ describe('MessageExecutionService', () => {
     })
 
     // Stalls the stream so the chunk-timeout guard aborts, driving
-    // handleChunkTimeout() → tracker.recordTimeout().
+    // handleChunkTimeout() → tracker.recordTimeout(). getFinalResult observes
+    // nothing then hangs until the guard's abort rejects it.
     function createTimeoutDeps() {
       const d = createMockDeps()
       d.getAgent.mockReturnValue({
-        streamGenerate: vi.fn().mockImplementation(function (_message: string, opts: { abortSignal: AbortSignal }) {
-          return {
-            textStream: (async function* () {})(),
-            baseStream: new ReadableStream({
-              start(controller) {
-                opts.abortSignal.addEventListener('abort', () => {
-                  controller.error(new Error(String(opts.abortSignal.reason ?? 'aborted')))
-                }, { once: true })
-              },
-            }),
-          }
-        }),
+        streamGenerate: vi.fn().mockImplementation(streamGenerateImpl([], rejectOnAbort)),
         getName: vi.fn().mockReturnValue('AI Developer'),
       })
       return d
@@ -3234,10 +2930,7 @@ describe('MessageExecutionService', () => {
       deps.stateManager.getLastHandoffPrompt.mockReturnValue('continue')
       deps.onAgentChanged.mockRejectedValueOnce(new Error('notifier down'))
       deps.getAgent.mockImplementation(function (name?: string) { return {
-        streamGenerate: vi.fn().mockResolvedValue({
-          textStream: (async function* () {})(),
-          baseStream: makeReadableStream([]),
-        }),
+        streamGenerate: vi.fn().mockImplementation(streamGenerateImpl([])),
         getName: vi.fn().mockReturnValue(name ?? 'develop'),
       }; })
       service = new MessageExecutionService(deps as any)
@@ -3269,31 +2962,6 @@ describe('MessageExecutionService', () => {
       // Rethrow means outer catch publishes terminal error events.
       expect(deps.eventChannel.publish).toHaveBeenCalledWith(
         'conv_1', expect.objectContaining({ type: 'error', content: 'notifier down' })
-      )
-    })
-  })
-
-  describe('textStream fallback path', () => {
-    it('processes text deltas when streamResult.baseStream is absent', async () => {
-      deps.getAgent.mockReturnValue({
-        streamGenerate: vi.fn().mockResolvedValue({
-          baseStream: undefined,
-          textStream: (async function* () {
-            yield 'hello '
-            yield 'world'
-          })(),
-        }),
-        getName: vi.fn().mockReturnValue('develop'),
-      })
-      service = new MessageExecutionService(deps as any)
-
-      await service.execute(DEFAULT_PARAMS)
-
-      expect(deps.eventChannel.publish).toHaveBeenCalledWith(
-        'conv_1', expect.objectContaining({ type: 'chunk', content: 'hello ' })
-      )
-      expect(deps.eventChannel.publish).toHaveBeenCalledWith(
-        'conv_1', expect.objectContaining({ type: 'chunk', content: 'world' })
       )
     })
   })
@@ -3438,15 +3106,11 @@ describe('MessageExecutionService', () => {
       const streamGate = new Promise<void>(r => { resolveStream = () => r() })
 
       deps.getAgent.mockReturnValue({
-        streamGenerate: vi.fn().mockResolvedValue({
+        streamGenerate: vi.fn().mockImplementation(async (_p: string, _opts: StreamGenerateOptions) => ({
           textStream: (async function* () {})(),
-          baseStream: new ReadableStream({
-            async pull(controller) {
-              await streamGate
-              controller.close()
-            }
-          }),
-        }),
+          response: Promise.resolve({ id: 'resp_1', timestamp: new Date(0), modelId: 'test-model' }),
+          getFinalResult: async () => { await streamGate; return { finishReason: 'complete' } },
+        })),
         getName: vi.fn().mockReturnValue('AI Developer'),
       })
 
@@ -3698,12 +3362,9 @@ describe('MessageExecutionService', () => {
       }]
       const mockDeps = createMockDeps([{ type: 'text-delta', text: 'fixing' }])
       mockDeps.getAgent.mockReturnValue({
-        streamGenerate: vi.fn().mockResolvedValue({
-          textStream: (async function* () { yield 'fixing' })(),
-          baseStream: makeReadableStream([{ type: 'text-delta', text: 'fixing' }]),
-          getFinalResult: vi.fn().mockResolvedValue({ finishReason: 'complete', steps: editSteps }),
-          response: Promise.resolve({ headers: {} }),
-        }),
+        streamGenerate: vi.fn().mockImplementation(
+          streamGenerateImpl([{ type: 'text-delta', text: 'fixing' }], { finishReason: 'complete', steps: editSteps }),
+        ),
         getName: vi.fn().mockReturnValue('AI Developer'),
       })
 
@@ -3757,15 +3418,11 @@ describe('MessageExecutionService', () => {
       const streamGate = new Promise<void>(r => { resolveStream = () => r() })
 
       deps.getAgent.mockReturnValue({
-        streamGenerate: vi.fn().mockResolvedValue({
+        streamGenerate: vi.fn().mockImplementation(async (_p: string, _opts: StreamGenerateOptions) => ({
           textStream: (async function* () {})(),
-          baseStream: new ReadableStream({
-            async pull(controller) {
-              await streamGate
-              controller.close()
-            }
-          }),
-        }),
+          response: Promise.resolve({ id: 'resp_1', timestamp: new Date(0), modelId: 'test-model' }),
+          getFinalResult: async () => { await streamGate; return { finishReason: 'complete' } },
+        })),
         getName: vi.fn().mockReturnValue('AI Developer'),
       })
 
@@ -3844,19 +3501,16 @@ describe('MessageExecutionService', () => {
       const streamGate = new Promise<void>(r => { resolveStream = () => r() })
 
       deps.getAgent.mockReturnValue({
-        streamGenerate: vi.fn().mockImplementation(async function (_content: string, opts: any) { return {
+        streamGenerate: vi.fn().mockImplementation(async function (_content: string, opts: StreamGenerateOptions) { return {
           textStream: (async function* () {})(),
-          baseStream: new ReadableStream({
-            async pull(controller) {
-              // Make the stream error once we're aborted so the catch branch fires.
-              await streamGate
-              if (opts?.abortSignal?.aborted) {
-                controller.error(new Error('AbortError'))
-              } else {
-                controller.close()
-              }
-            }
-          }),
+          response: Promise.resolve({ id: 'resp_1', timestamp: new Date(0), modelId: 'test-model' }),
+          // getFinalResult parks until the gate, then rejects once aborted so the
+          // catch branch fires (mirrors a dead socket on user_stopped).
+          getFinalResult: async () => {
+            await streamGate
+            if (opts?.abortSignal?.aborted) throw new Error('AbortError')
+            return { finishReason: 'complete' }
+          },
         }; }),
         getName: vi.fn().mockReturnValue('AI Developer'),
       })
@@ -3919,21 +3573,17 @@ describe('MessageExecutionService', () => {
       const streamGate = new Promise<void>(r => { resolveStream = () => r() })
 
       deps.getAgent.mockReturnValue({
-        streamGenerate: vi.fn().mockImplementation(async function (_content: string, opts: any) { return {
+        streamGenerate: vi.fn().mockImplementation(async function (_content: string, opts: StreamGenerateOptions) { return {
           textStream: (async function* () {})(),
-          baseStream: new ReadableStream({
-            async pull(controller) {
-              await streamGate
-              // Mirrors the disconnection test: if a disconnect had aborted the
-              // stream this would error. AIROBUILD-2623 removes that abort, so the
-              // signal stays clear and the stream closes normally.
-              if (opts?.abortSignal?.aborted) {
-                controller.error(new Error('AbortError'))
-              } else {
-                controller.close()
-              }
-            }
-          }),
+          response: Promise.resolve({ id: 'resp_1', timestamp: new Date(0), modelId: 'test-model' }),
+          // Mirrors the disconnection test: if a disconnect had aborted the turn
+          // this would reject. AIROBUILD-2623 removes that abort, so the signal
+          // stays clear and getFinalResult resolves normally.
+          getFinalResult: async () => {
+            await streamGate
+            if (opts?.abortSignal?.aborted) throw new Error('AbortError')
+            return { finishReason: 'complete' }
+          },
         }; }),
         getName: vi.fn().mockReturnValue('AI Developer'),
       })
@@ -3988,24 +3638,18 @@ describe('MessageExecutionService', () => {
       let resolveRead: (v: any) => void
       const readPromise = new Promise(r => { resolveRead = r })
 
-      const slowStream = new ReadableStream({
-        async pull(controller) {
-          await readPromise
-          controller.close()
-        }
-      })
-
       deps.getAgent.mockReturnValue({
         streamGenerate: vi.fn().mockResolvedValue({
           textStream: (async function* () {})(),
-          baseStream: slowStream
+          response: Promise.resolve({ id: 'resp_1', timestamp: new Date(0), modelId: 'test-model' }),
+          getFinalResult: async () => { await readPromise; return { finishReason: 'complete' } },
         })
       })
       service = new MessageExecutionService(deps as any)
 
       const execPromise = service.execute(DEFAULT_PARAMS)
 
-      // Abort before the stream resolves - keyed by conversationId
+      // Abort before consumption resolves - keyed by conversationId
       service.stop('conv_1')
       resolveRead!({ done: true, value: undefined })
 
@@ -4029,11 +3673,7 @@ describe('MessageExecutionService', () => {
   describe('Langfuse invocation span lifecycle', () => {
     it('ends the invocation span with success:true on a clean stream', async () => {
       deps.getAgent.mockReturnValue({
-        streamGenerate: vi.fn().mockResolvedValue({
-          textStream: (async function* () {})(),
-          baseStream: makeReadableStream([{ type: 'text-delta', text: 'hi' }]),
-          getFinalResult: vi.fn().mockResolvedValue({ finishReason: 'complete' }),
-        }),
+        streamGenerate: vi.fn().mockImplementation(streamGenerateImpl([{ type: 'text-delta', text: 'hi' }], { finishReason: 'complete' })),
         getName: vi.fn().mockReturnValue('AI Developer'),
       })
       service = new MessageExecutionService(deps as any)
@@ -4063,11 +3703,7 @@ describe('MessageExecutionService', () => {
 
     it('sets the FullStory session id as a langfuse.trace.metadata span attribute when provided', async () => {
       deps.getAgent.mockReturnValue({
-        streamGenerate: vi.fn().mockResolvedValue({
-          textStream: (async function* () {})(),
-          baseStream: makeReadableStream([{ type: 'text-delta', text: 'hi' }]),
-          getFinalResult: vi.fn().mockResolvedValue({ finishReason: 'complete' }),
-        }),
+        streamGenerate: vi.fn().mockImplementation(streamGenerateImpl([{ type: 'text-delta', text: 'hi' }], { finishReason: 'complete' })),
         getName: vi.fn().mockReturnValue('AI Developer'),
       })
       service = new MessageExecutionService(deps as any)
@@ -4086,11 +3722,7 @@ describe('MessageExecutionService', () => {
 
     it('does not set the FullStory span attribute when the id is absent', async () => {
       deps.getAgent.mockReturnValue({
-        streamGenerate: vi.fn().mockResolvedValue({
-          textStream: (async function* () {})(),
-          baseStream: makeReadableStream([{ type: 'text-delta', text: 'hi' }]),
-          getFinalResult: vi.fn().mockResolvedValue({ finishReason: 'complete' }),
-        }),
+        streamGenerate: vi.fn().mockImplementation(streamGenerateImpl([{ type: 'text-delta', text: 'hi' }], { finishReason: 'complete' })),
         getName: vi.fn().mockReturnValue('AI Developer'),
       })
       service = new MessageExecutionService(deps as any)
@@ -4110,15 +3742,15 @@ describe('MessageExecutionService', () => {
       deps.getAgent.mockReturnValue({
         streamGenerate: vi.fn().mockImplementation(async function (_content: string, opts: any) { return {
           textStream: (async function* () {})(),
-          baseStream: new ReadableStream({
-            async pull(controller) {
-              await streamGate
-              // Client aborted -> close cleanly so the happy path falls through
-              // to the `abortSignal.aborted` branch and ends the span as aborted.
-              if (opts?.abortSignal?.aborted) controller.close()
-              else controller.close()
-            },
-          }),
+          response: Promise.resolve({ id: 'resp_1', timestamp: new Date(0), modelId: 'test-model' }),
+          // Gate consumption on the test; once the client aborts (service.stop),
+          // the dead socket rejects the final-result fetch, landing on the
+          // `abortSignal.aborted` branch that ends the span as aborted.
+          getFinalResult: async () => {
+            await streamGate
+            if (opts?.abortSignal?.aborted) throw new Error(String(opts.abortSignal.reason ?? 'aborted'))
+            return { finishReason: 'complete', usage: { totalTokens: 0 }, toolCalls: [] }
+          },
         }; }),
         getName: vi.fn().mockReturnValue('AI Developer'),
       })
@@ -4141,11 +3773,9 @@ describe('MessageExecutionService', () => {
 
     it('ends the invocation span with success:false, finishReason:result_fetch_failed when getFinalResult throws', async () => {
       deps.getAgent.mockReturnValue({
-        streamGenerate: vi.fn().mockResolvedValue({
-          textStream: (async function* () {})(),
-          baseStream: makeReadableStream([{ type: 'text-delta', text: 'partial' }]),
-          getFinalResult: vi.fn().mockRejectedValue(new Error('result fetch boom')),
-        }),
+        streamGenerate: vi.fn().mockImplementation(
+          streamGenerateImpl([{ type: 'text-delta', text: 'partial' }], vi.fn().mockRejectedValue(new Error('result fetch boom'))),
+        ),
         getName: vi.fn().mockReturnValue('AI Developer'),
       })
       service = new MessageExecutionService(deps as any)
@@ -4164,17 +3794,13 @@ describe('MessageExecutionService', () => {
       deps.getAgent.mockReturnValue({
         streamGenerate: vi.fn().mockImplementation(async function (_content: string, opts: any) { return {
           textStream: (async function* () {})(),
-          baseStream: new ReadableStream({
-            async pull(controller) {
-              await streamGate
-              controller.close()
-            },
-          }),
+          response: Promise.resolve({ id: 'resp_1', timestamp: new Date(0), modelId: 'test-model' }),
           // The dead socket rejects the final-result fetch with the abort error,
           // exactly as user_stopped does in prod (non-network, signal aborted).
-          getFinalResult: vi.fn().mockImplementation(async () => {
+          getFinalResult: async () => {
+            await streamGate
             throw new Error(String(opts?.abortSignal?.reason ?? 'This operation was aborted'))
-          }),
+          },
         }; }),
         getName: vi.fn().mockReturnValue('AI Developer'),
       })
@@ -4306,11 +3932,9 @@ describe('MessageExecutionService', () => {
       const steps = [{ stepNumber: 1, content: [], response: { headers: { 'x-correlation-id': 'corr-1' } } }]
       deps = createMockDeps([{ type: 'text-delta', text: 'done' }])
       deps.getAgent.mockReturnValue({
-        streamGenerate: vi.fn().mockResolvedValue({
-          textStream: (async function* () {})(),
-          baseStream: makeReadableStream([{ type: 'text-delta', text: 'done' }]),
-          getFinalResult: vi.fn().mockResolvedValue({ finishReason: 'complete', steps }),
-        }),
+        streamGenerate: vi.fn().mockImplementation(
+          streamGenerateImpl([{ type: 'text-delta', text: 'done' }], { finishReason: 'complete', steps }),
+        ),
         getName: vi.fn().mockReturnValue('AI Developer'),
       })
       service = new MessageExecutionService(deps as any)
@@ -4353,21 +3977,22 @@ describe('MessageExecutionService', () => {
       let resolveStream: (() => void) | undefined
       deps = createMockDeps()
       deps.getAgent.mockReturnValue({
-        streamGenerate: vi.fn().mockImplementation(function (_message: string, opts: { abortSignal: AbortSignal }) { return {
-          textStream: (async function* () {})(),
-          baseStream: new ReadableStream({
-            start(controller) {
-              opts.abortSignal.addEventListener('abort', () => {
-                controller.close()
-              }, { once: true })
-              resolveStream = () => controller.close()
+        streamGenerate: vi.fn().mockImplementation(function (_message: string, opts: StreamGenerateOptions) {
+          // Signal the test's poll that streamGenerate ran, then park getFinalResult
+          // until the client aborts (service.stop) → the SDK returns the aborted result.
+          resolveStream = () => {}
+          return {
+            textStream: (async function* () {})(),
+            response: Promise.resolve({ id: 'resp_1', timestamp: new Date(0), modelId: 'test-model' }),
+            getFinalResult: async () => {
+              await new Promise<void>((resolve) => {
+                if (opts.abortSignal?.aborted) return resolve()
+                opts.abortSignal?.addEventListener('abort', () => resolve(), { once: true })
+              })
+              return { finishReason: 'aborted', steps: [{ stepNumber: 1, content: [] }] }
             },
-          }),
-          getFinalResult: vi.fn().mockResolvedValue({
-            finishReason: 'aborted',
-            steps: [{ stepNumber: 1, content: [] }],
-          }),
-        }; }),
+          }
+        }),
         getName: vi.fn().mockReturnValue('AI Developer'),
       })
       service = new MessageExecutionService(deps as any)
@@ -4604,7 +4229,7 @@ describe('MessageExecutionService', () => {
           }
           return Promise.resolve({
             textStream: (async function* () {})(),
-            baseStream: makeReadableStream([]),
+            response: Promise.resolve({ id: 'resp_1', timestamp: new Date(0), modelId: 'test-model' }),
             getFinalResult: vi.fn().mockResolvedValue({ finishReason: 'complete' }),
           })
         }),
@@ -4628,7 +4253,7 @@ describe('MessageExecutionService', () => {
 
       secondTurnResult.resolve({
         textStream: (async function* () {})(),
-        baseStream: makeReadableStream([]),
+        response: Promise.resolve({ id: 'resp_1', timestamp: new Date(0), modelId: 'test-model' }),
         getFinalResult: vi.fn().mockResolvedValue({ finishReason: 'complete' }),
       })
       await secondExecute
@@ -5163,17 +4788,12 @@ describe('MessageExecutionService', () => {
       const mockTransaction = { setAttribute: vi.fn(), setStatus: vi.fn(), updateName: vi.fn(), end: vi.fn() }
       let resolveRead: (v: any) => void
       const readPromise = new Promise(r => { resolveRead = r })
-      const slowStream = new ReadableStream({
-        async pull(controller) {
-          await readPromise
-          controller.close()
-        },
-      })
       deps = createMockDeps([])
       deps.getAgent.mockReturnValue({
         streamGenerate: vi.fn().mockResolvedValue({
           textStream: (async function* () {})(),
-          baseStream: slowStream,
+          response: Promise.resolve({ id: 'resp_1', timestamp: new Date(0), modelId: 'test-model' }),
+          getFinalResult: async () => { await readPromise; return { finishReason: 'complete' } },
         }),
         getName: vi.fn().mockReturnValue('AI Developer'),
       })
@@ -5210,17 +4830,18 @@ describe('MessageExecutionService', () => {
       deps = createMockDeps([])
       deps.sseRegistry.getSubscribers.mockReturnValue([mockSub])
       deps.getAgent.mockReturnValue({
-        streamGenerate: vi.fn().mockImplementation(function (_message: string, opts: { abortSignal: AbortSignal }) {
-          const baseStream = new ReadableStream({
-            start(controller) {
-              opts.abortSignal.addEventListener('abort', () => controller.error(new Error('AbortError')))
-              streamStarted.resolve()
-            },
-          })
+        streamGenerate: vi.fn().mockImplementation(function (_message: string, opts: StreamGenerateOptions) {
           return Promise.resolve({
             textStream: (async function* () {})(),
-            baseStream,
-            getFinalResult: vi.fn().mockResolvedValue({ finishReason: 'complete' }),
+            response: Promise.resolve({ id: 'resp_1', timestamp: new Date(0), modelId: 'test-model' }),
+            getFinalResult: async () => {
+              streamStarted.resolve()
+              await new Promise<void>((resolve) => {
+                if (opts.abortSignal?.aborted) return resolve()
+                opts.abortSignal?.addEventListener('abort', () => resolve(), { once: true })
+              })
+              return { finishReason: 'complete' }
+            },
           })
         }),
         getName: vi.fn().mockReturnValue('AI Developer'),
@@ -5251,18 +4872,19 @@ describe('MessageExecutionService', () => {
       deps = createMockDeps([])
       deps.sseRegistry.getSubscribers.mockReturnValue([mockSub])
       deps.getAgent.mockReturnValue({
-        streamGenerate: vi.fn().mockImplementation(function (_message: string, opts: { abortSignal: AbortSignal }) {
+        streamGenerate: vi.fn().mockImplementation(function (_message: string, opts: StreamGenerateOptions) {
           capturedSignal = opts.abortSignal
-          const baseStream = new ReadableStream({
-            start(controller) {
-              opts.abortSignal.addEventListener('abort', () => controller.error(new Error('AbortError')))
-              streamStarted.resolve()
-            },
-          })
           return Promise.resolve({
             textStream: (async function* () {})(),
-            baseStream,
-            getFinalResult: vi.fn().mockResolvedValue({ finishReason: 'complete' }),
+            response: Promise.resolve({ id: 'resp_1', timestamp: new Date(0), modelId: 'test-model' }),
+            getFinalResult: async () => {
+              streamStarted.resolve()
+              await new Promise<void>((resolve) => {
+                if (opts.abortSignal?.aborted) return resolve()
+                opts.abortSignal?.addEventListener('abort', () => resolve(), { once: true })
+              })
+              return { finishReason: 'complete' }
+            },
           })
         }),
         getName: vi.fn().mockReturnValue('AI Developer'),
@@ -5434,10 +5056,7 @@ describe('MessageExecutionService', () => {
       })
       deps.stateManager.getLastHandoffPrompt.mockReturnValue('continue')
       deps.getAgent.mockImplementation(function (name?: string) { return {
-        streamGenerate: vi.fn().mockResolvedValue({
-          textStream: (async function* () {})(),
-          baseStream: makeReadableStream([]),
-        }),
+        streamGenerate: vi.fn().mockImplementation(streamGenerateImpl([])),
         getName: vi.fn().mockReturnValue(name ?? 'develop'),
       }; })
       service = new MessageExecutionService(deps as any)
@@ -5487,11 +5106,9 @@ describe('MessageExecutionService', () => {
           imageCount: 7,
         },
       })
-      const streamGenerate = vi.fn().mockResolvedValue({
-        textStream: (async function* () {})(),
-        baseStream: makeReadableStream([{ type: 'text-delta', text: 'ok' }]),
-        getFinalResult: vi.fn().mockResolvedValue({ finishReason: 'complete' }),
-      })
+      const streamGenerate = vi.fn().mockImplementation(
+        streamGenerateImpl([{ type: 'text-delta', text: 'ok' }], { finishReason: 'complete' }),
+      )
       deps.getAgent.mockReturnValue({
         streamGenerate,
         getName: vi.fn().mockReturnValue('AI Developer'),
@@ -5523,11 +5140,9 @@ describe('MessageExecutionService', () => {
 
     it('emits no rebuild lifecycle and uses original content when source is missing', async () => {
       // resolver returns undefined (default) → not source-backed
-      const streamGenerate = vi.fn().mockResolvedValue({
-        textStream: (async function* () {})(),
-        baseStream: makeReadableStream([{ type: 'text-delta', text: 'ok' }]),
-        getFinalResult: vi.fn().mockResolvedValue({ finishReason: 'complete' }),
-      })
+      const streamGenerate = vi.fn().mockImplementation(
+        streamGenerateImpl([{ type: 'text-delta', text: 'ok' }], { finishReason: 'complete' }),
+      )
       deps.getAgent.mockReturnValue({
         streamGenerate,
         getName: vi.fn().mockReturnValue('AI Developer'),
@@ -5543,24 +5158,23 @@ describe('MessageExecutionService', () => {
   })
 
   describe('graceful shutdown finalization (AIROBUILD-2654)', () => {
-    // A stream whose read unblocks only when the turn's AbortSignal fires, then
-    // closes cleanly — models a provider that honors abort on SIGTERM, letting
-    // execute() reach finalization (persistence + budget report).
-    function abortAwareAgent(getFinalResult?: ReturnType<typeof vi.fn>) {
+    // getFinalResult unblocks only when the turn's AbortSignal fires, then
+    // resolves cleanly — models a provider that honors abort on SIGTERM, letting
+    // execute() reach finalization (persistence + budget report). The optional
+    // arg supplies the result returned once unblocked.
+    function abortAwareAgent(resultFn?: ReturnType<typeof vi.fn>) {
       return {
-        streamGenerate: vi.fn().mockImplementation(async function (_content: string, opts: any) {
+        streamGenerate: vi.fn().mockImplementation(async function (_content: string, opts: StreamGenerateOptions) {
           return {
             textStream: (async function* () {})(),
-            baseStream: new ReadableStream({
-              async pull(controller) {
-                await new Promise<void>((resolve) => {
-                  if (opts?.abortSignal?.aborted) return resolve()
-                  opts?.abortSignal?.addEventListener('abort', () => resolve(), { once: true })
-                })
-                controller.close()
-              },
-            }),
-            ...(getFinalResult && { getFinalResult }),
+            response: Promise.resolve({ id: 'resp_1', timestamp: new Date(0), modelId: 'test-model' }),
+            getFinalResult: async () => {
+              await new Promise<void>((resolve) => {
+                if (opts?.abortSignal?.aborted) return resolve()
+                opts?.abortSignal?.addEventListener('abort', () => resolve(), { once: true })
+              })
+              return resultFn ? await resultFn() : { finishReason: 'complete' }
+            },
           }
         }),
         getName: vi.fn().mockReturnValue('AI Developer'),
@@ -5618,15 +5232,16 @@ describe('MessageExecutionService', () => {
         deps.getAgent.mockReturnValue({
           streamGenerate: vi.fn().mockResolvedValue({
             textStream: (async function* () {})(),
-            // Read never resolves and ignores abort → the turn never finalizes.
-            baseStream: new ReadableStream({ pull() { return neverSettles } }),
+            response: Promise.resolve({ id: 'resp_1', timestamp: new Date(0), modelId: 'test-model' }),
+            // getFinalResult never settles and ignores abort → the turn never finalizes.
+            getFinalResult: () => neverSettles,
           }),
           getName: vi.fn().mockReturnValue('AI Developer'),
         })
         service = new MessageExecutionService(deps as any)
 
         // inFlightTurns is populated synchronously by execute(); let the turn
-        // progress to the parked read before shutting down.
+        // progress to the parked getFinalResult before shutting down.
         void service.execute(DEFAULT_PARAMS)
         await vi.advanceTimersByTimeAsync(20)
 
@@ -5657,14 +5272,12 @@ describe('MessageExecutionService', () => {
         mockGetBudgetServiceClient.mockReturnValue(budgetClient as any)
         deps = createMockDeps([{ type: 'text-delta', text: 'done' }])
         deps.getAgent.mockReturnValue({
-          streamGenerate: vi.fn().mockResolvedValue({
-            textStream: (async function* () {})(),
-            baseStream: makeReadableStream([{ type: 'text-delta', text: 'done' }]),
-            getFinalResult: vi.fn().mockResolvedValue({
+          streamGenerate: vi.fn().mockImplementation(
+            streamGenerateImpl([{ type: 'text-delta', text: 'done' }], {
               finishReason: 'complete',
               steps: [{ stepNumber: 1, content: [], response: { headers: { 'x-correlation-id': 'corr-1' } } }],
             }),
-          }),
+          ),
           getName: vi.fn().mockReturnValue('AI Developer'),
         })
         service = new MessageExecutionService(deps as any)
@@ -5697,14 +5310,12 @@ describe('MessageExecutionService', () => {
       mockGetBudgetServiceClient.mockReturnValue(budgetClient as any)
       deps = createMockDeps([{ type: 'text-delta', text: 'done' }])
       deps.getAgent.mockReturnValue({
-        streamGenerate: vi.fn().mockResolvedValue({
-          textStream: (async function* () {})(),
-          baseStream: makeReadableStream([{ type: 'text-delta', text: 'done' }]),
-          getFinalResult: vi.fn().mockResolvedValue({
+        streamGenerate: vi.fn().mockImplementation(
+          streamGenerateImpl([{ type: 'text-delta', text: 'done' }], {
             finishReason: 'complete',
             steps: [{ stepNumber: 1, content: [], response: { headers: { 'x-correlation-id': 'corr-1' } } }],
           }),
-        }),
+        ),
         getName: vi.fn().mockReturnValue('AI Developer'),
       })
       deps.conversationPersistence.completeConversation.mockRejectedValue(new Error('DB down'))
@@ -5813,9 +5424,9 @@ describe('MessageExecutionService', () => {
       // The agent's edit stream runs after the conform inside streamAgentTurn;
       // record its start so we can assert the scan precedes it.
       deps.getAgent.mockReturnValue({
-        streamGenerate: vi.fn().mockImplementation(async () => {
+        streamGenerate: vi.fn().mockImplementation((prompt: string, options?: StreamGenerateOptions) => {
           order.push('stream')
-          return { textStream: (async function* () {})(), baseStream: makeReadableStream([]) }
+          return streamGenerateImpl([])(prompt, options)
         }),
         getName: vi.fn().mockReturnValue('AI Developer'),
       })

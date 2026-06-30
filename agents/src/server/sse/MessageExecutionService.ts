@@ -29,7 +29,6 @@ import {
   assembleMessages,
   dropTrailingPrompt,
   captureResponseMetadata,
-  readTextStreamFallback,
   recordTokenUsageObservability,
   TOOL_VALIDATION_ERROR_TYPE,
   BUSINESS_CONTEXT_SCHEMA_ID,
@@ -95,7 +94,7 @@ import {
   checkAndTriggerSummarization,
 } from '../context-builders.js'
 import { computeDebugTurnStats } from '../../utils/debug-turn-stats.js'
-import { withTimeout } from '../../utils/promise-utils.js'
+import { raceAbortGrace, withTimeout } from '../../utils/promise-utils.js'
 import { interactiveSubAgentManager } from '../../agents/interactive-sub-agent-manager.js'
 import { subAgentJobRegistry } from '../../agents/sub-agent-job-registry.js'
 import { AppRepository } from '../../database/repositories/index.js'
@@ -363,9 +362,29 @@ interface StreamAgentTurnResult {
   steps: ExecutionStep[]
 }
 
+// Post-abort backstop for the single-consumer getFinalResult await. Once a turn
+// aborts (chunk-timeout guard, user_stopped, server_shutdown), getFinalResult
+// must settle within this window or finalization falls through to the catch's
+// abort branches rather than hanging the SSE connection + activeStreams slot on
+// an SDK that ignored the abort. The pre-AIROBUILD-3088 reader skipped
+// getFinalResult on a dead socket; the single-consumer path awaits it, so this
+// restores that deterministic bound. A cooperative abort settles near-instantly,
+// well under the default. Overridable for tests.
+function parseGetFinalAbortGraceMs(): number {
+  const raw: string | undefined = process.env.AI_GETFINAL_ABORT_GRACE_MS
+  const parsed: number = raw !== undefined ? Number(raw) : Number.NaN
+  // Default intentionally exceeds SSE_SHUTDOWN_FINALIZE_TIMEOUT_MS so that on a
+  // server_shutdown abort the shutdown path's own (shorter) finalize bound
+  // governs — abandoning a getFinalResult-ignoring turn within the kill grace —
+  // while this grace stays the sole backstop for chat-path aborts (chunk_timeout
+  // / user_stopped) that have no other bound.
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : SSE_SHUTDOWN_FINALIZE_TIMEOUT_MS * 2
+}
+
 export class MessageExecutionService implements SubscriberLifecycleListener {
   private deps: ExecutionDeps
   private readonly chunkTimeoutMs = parseChunkTimeoutMs()
+  private readonly getFinalAbortGraceMs: number = parseGetFinalAbortGraceMs()
   private abortControllers = new Map<string, AbortController>()
   private activeStreams = new Map<string, ActiveStream>()
   private endedSpans = new WeakSet<NonNullable<ActiveStream['messageSpan']>>()
@@ -955,10 +974,23 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
       turnStartMs,
     } = opts
     const abortSignal = abortController.signal
-    // Wall-clock of the first baseStream read; with turnStartMs this yields the
-    // pre-stream init duration for the timing diagnostic. Defaults to turnStartMs
-    // so a turn that never reads a stream reports 0 rather than a negative delta.
+    // Wall-clock of the first observed stream part; with turnStartMs this yields
+    // the pre-stream init duration for the timing diagnostic. Defaults to
+    // turnStartMs so a turn that never streams reports 0 rather than a negative delta.
     let streamFirstReadMs = turnStartMs
+    // Set by the processor's onError when a terminal `error` part is observed
+    // (the factory also aborts the shared request on that part). The consumption
+    // await below re-throws it so the outer catch classifies + publishes the
+    // terminal error — distinguishing it from a genuine getFinalResult fetch
+    // failure (which stays a soft result_fetch_failed).
+    let terminalStreamError: Error | undefined
+    // Set by `observe` when processing a part throws (a processor-callback bug or
+    // a synchronous publish failure — NOT a provider/network fault). The
+    // consumption await re-throws it so the turn hard-fails (matching the
+    // pre-collapse reader loop, where a processPart throw unwound to the outer
+    // catch) rather than being mislabelled as the soft result_fetch_failed the
+    // dashboard reserves for genuine final-result fetch failures.
+    let streamObserveError: Error | undefined
 
     // Inject the user's current message text into metadata BEFORE loadContextMessages
     // runs so context-manager.processContextAttachments can read it for upload
@@ -1145,11 +1177,13 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
         })
       },
       onError: (error) => {
-        const budget = classifyStreamBudgetError(error)
-        if (budget.type === 'budget_exceeded') {
-          throw budget.budgetError
-        }
-        throw budget.error
+        // Record (don't throw) the terminal `error` part. The factory's
+        // observing pipeline (AIROBUILD-3088 PR1) also aborts the shared request
+        // on this part; the consumption await below re-throws this recorded error
+        // to execute()'s outer catch for classification + terminal-event publish.
+        // Recording rather than throwing keeps the result_fetch_failed soft path
+        // intact for a getFinalResult fetch failure that is NOT a stream error part.
+        terminalStreamError = error
       },
     })
 
@@ -1398,6 +1432,36 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
       return true
     }
 
+    // Single consumer: the AI SDK drives the stream; we observe each part as it
+    // passes through the factory's experimental_transform (AIROBUILD-3088 PR1)
+    // and emit SSE here, replacing the old baseStream reader loop. The SDK is the
+    // sole consumer, so no teed fork can disagree on termination. streamFirstReadMs
+    // defaults to turnStartMs; stamp it on the first part for the
+    // timeToStreamStartMs diagnostic.
+    const observe = async (part: { type: string; [key: string]: unknown }): Promise<void> => {
+      if (abortSignal.aborted) return
+      if (streamFirstReadMs === turnStartMs) streamFirstReadMs = Date.now()
+      tracker.recordChunk()
+      guard?.reset()
+      try {
+        processor.processPart(part)
+        // Once the terminal `finish` frame is seen the stream is done; no further
+        // chunks are legitimate, so pause the gap guard rather than letting it
+        // fire a false chunk_timeout while getFinalResult's promise settles.
+        if (processor.isFinished()) guard?.pause()
+        await flushPendingWork()
+      } catch (observeError: unknown) {
+        // A throw here rejects the factory's observing transform, which rejects
+        // getFinalResult below. Log the origin distinctly so the failure isn't
+        // misattributed to a provider/network fault, record it so the consumption
+        // catch hard-fails the turn (not result_fetch_failed), then rethrow to
+        // reject getFinalResult promptly (the part was being processed, not fetched).
+        streamObserveError = observeError instanceof Error ? observeError : new Error(String(observeError))
+        logger.error('sse.stream.observe.failed', { appId, conversationId, agentName, partType: part.type, ...errorFields(observeError) })
+        throw streamObserveError
+      }
+    }
+
     type StreamResult = Awaited<ReturnType<typeof agent.streamGenerate>>
     const retryAfterToolValidation = async (validationMessage: string): Promise<StreamResult> => {
       logger.error('sse.tool.validation.failure', { appId, message: validationMessage })
@@ -1439,6 +1503,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
             executionContext: executionContextWithTrace,
             ...(processedFiles && processedFiles.length > 0 && { files: processedFiles }),
             abortSignal,
+            observe,
           }),
         )
       } catch (retryError: unknown) {
@@ -1463,6 +1528,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
             executionContext: executionContextWithTrace,
             ...(processedFiles && processedFiles.length > 0 && { files: processedFiles }),
             abortSignal,
+            observe,
           }),
         )
       } catch (generateError: unknown) {
@@ -1540,82 +1606,87 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
         streamState.lastResponseMetadata = meta
       })
 
-      const baseStream = streamResult.baseStream
-      if (baseStream) {
-        streamFirstReadMs = Date.now()
-        const reader: ReadableStreamDefaultReader = (baseStream as ReadableStream).getReader()
-        let readerReleased = false
-        try {
-          while (true) {
-            if (abortSignal.aborted) {
-              if (abortSignal.reason === 'chunk_timeout') { handleChunkTimeout(); break }
-              break
-            }
-            let readResult: ReadableStreamReadResult<any>
-            try {
-              readResult = await reader.read()
-            } catch (readError) {
-              if (abortSignal.reason === 'chunk_timeout') { handleChunkTimeout(); break }
-              // Soft-commit a premature upstream close before the retryable
-              // fallback — the socket is dead, so the textStream fallback below
-              // would only fail again.
-              if (handlePrematureClose(readError)) break
-
-              const classification = classifyError(readError)
-              if (!classification.retryable) throw readError
-
-              logger.warn('sse.stream.base_stream.fallback', {
-                appId, agentName,
-                classification: classification.category,
-                chunksRead: tracker.chunksRead,
-                streamElapsedMs: tracker.streamElapsedMs,
-              })
-              reader.releaseLock()
-              readerReleased = true
-
-              await readTextStreamFallback({
-                textStream: streamResult.textStream,
-                abortSignal,
-                onChunk: async (text) => {
-                  processor.processPart({ type: 'text-delta', text })
-                  await flushPendingWork()
-                },
-                tracker,
-                guard: guard ?? undefined,
-              })
-              break
-            }
-            const { done, value } = readResult
-            if (done) break
-            tracker.recordChunk()
-            guard?.reset()
-            if (value?.part) {
-              processor.processPart(value.part)
-              await flushPendingWork()
-            }
-          }
-        } finally {
-          if (!readerReleased) reader.releaseLock()
-          await flushPendingWork()
+      // The AI SDK is the sole stream consumer: `observe` (passed to
+      // streamGenerate above) emitted SSE per part as the loop ran. Await
+      // getFinalResult to confirm consumption finished and obtain the terminal
+      // result. A terminal `error` part is recorded by onError (terminalStreamError)
+      // and re-thrown to execute()'s outer catch for classification +
+      // terminal-event publishing; chunk-timeout and premature-close soft-commit
+      // as before; and a getFinalResult fetch failure that is NOT a stream error
+      // part stays a soft result_fetch_failed.
+      let finishReason = 'complete'
+      let finalResult: any
+      let finalResultError: unknown
+      try {
+        // raceAbortGrace bounds the wait only after an abort fires: a
+        // non-cooperative SDK that never settles getFinalResult on the
+        // terminal-error / chunk-timeout / shutdown abort rejects here instead
+        // of hanging the connection + activeStreams slot. The catch branches
+        // below (keyed on abortSignal.reason) then finalize as before.
+        finalResult = await raceAbortGrace(streamResult.getFinalResult(), abortSignal, this.getFinalAbortGraceMs)
+        finishReason = finalResult?.finishReason ?? 'complete'
+      } catch (err) {
+        finalResultError = err
+        if (terminalStreamError) {
+          // A terminal `error` part was observed (CONTENT_FILTERED, budget,
+          // validation, …). The factory aborted the request and getFinalResult
+          // rejected as a consequence; surface the original error part for
+          // classification rather than the abort fallout.
+          throw terminalStreamError
         }
-      } else {
-        try {
-          for await (const chunk of streamResult.textStream) {
-            if (abortSignal.aborted) {
-              if (abortSignal.reason === 'chunk_timeout') { handleChunkTimeout(); break }
-              break
-            }
-            tracker.recordChunk()
-            guard?.reset()
-            processor.processPart({ type: 'text-delta', text: chunk })
-            await flushPendingWork()
-          }
-        } catch (textStreamError) {
-          if (abortSignal.reason === 'chunk_timeout') { handleChunkTimeout() }
-          else if (!handlePrematureClose(textStreamError)) throw textStreamError
-        } finally {
-          await flushPendingWork()
+        if (streamObserveError) {
+          // A part failed to process/emit (callback bug or synchronous publish
+          // failure). Hard-fail the turn via the outer catch rather than the soft
+          // result_fetch_failed below — the stream broke, the result fetch didn't.
+          // `observe` already logged sse.stream.observe.failed and is mutually
+          // exclusive with the abort branches (observe no-ops once aborted).
+          throw streamObserveError
         }
+        if (abortSignal.reason === 'chunk_timeout') {
+          // The chunk-timeout guard aborted mid-consumption; soft-commit when
+          // content/finish is present, else throwChunkTimeoutError propagates
+          // out to the outer catch (preserving today's fail-fast behaviour).
+          handleChunkTimeout()
+          finishReason = chunkTimeoutFinishReason ?? finishReason
+          const captured = processor.getFinishResult()
+          finalResult = captured
+            ? { finishReason: captured.finishReason, totalUsage: captured.totalUsage }
+            : { finishReason }
+        } else if (handlePrematureClose(err)) {
+          // Premature upstream close / 408 / 504 with content already streamed:
+          // soft-commit (handlePrematureClose sets prematureCloseError +
+          // chunkTimeoutFinishReason and logs sse.stream.premature_close.soft_commit).
+          finishReason = chunkTimeoutFinishReason ?? 'incomplete'
+          const captured = processor.getFinishResult()
+          finalResult = captured
+            ? { finishReason: captured.finishReason, totalUsage: captured.totalUsage }
+            : { finishReason }
+        } else if (abortSignal.aborted) {
+          // Deliberate abort (user_stopped / server_shutdown) — expected, not a
+          // fetch failure. Logged distinctly so result_fetch_failed (trusted by
+          // the dashboard / sse-rollout-check.py) counts only genuine failures.
+          logger.info('sse.execution.getFinalResult.aborted', {
+            appId, conversationId,
+            reason: String(abortSignal.reason ?? 'unknown'),
+          })
+          finishReason = 'aborted'
+        } else if (isNetworkError(err) || isUpstreamTimeoutError(err)) {
+          // Premature upstream close / 408 / 504 with NO content to salvage
+          // (handlePrematureClose returned false): hard-fail exactly as the old
+          // reader path did — rethrow to the outer catch for network-error
+          // classification + a terminal `error` event, not the soft
+          // result_fetch_failed reserved for non-network fetch failures.
+          throw err
+        } else {
+          logger.warn('sse.execution.getFinalResult.failed', { appId, conversationId, ...errorFields(err) })
+          finishReason = 'result_fetch_failed'
+        }
+      }
+      // An error part can be observed while getFinalResult still resolves (the
+      // factory aborts on the part, but the result promise may settle first);
+      // surface it so the turn errors rather than silently completing.
+      if (terminalStreamError) {
+        throw terminalStreamError
       }
 
       const timingData: StreamTimingData = tracker.finalize()
@@ -1625,7 +1696,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
       // Restore the WS `stream.timing.summary` diagnostic as a first-class SSE
       // event for the gosym-probe eval's LatencyEvaluator (AIROBUILD-2681).
       // timeToStreamStartMs is the agent-init + LLM-connect time before the first
-      // stream read (turnStartMs → streamFirstReadMs), mirroring the WS server's
+      // observed part (turnStartMs → streamFirstReadMs), mirroring the WS server's
       // processStreamStartMs − startTime.
       if (isDiagnosticsEnabled()) {
         this.publishNonTerminal(appId, conversationId, {
@@ -1641,69 +1712,6 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
             streamDurationMs: timingData.streamDurationMs,
           },
         })
-      }
-
-      let finishReason = 'complete'
-      let finalResult: any
-      let finalResultError: unknown
-      if (chunkTimeoutFinishReason !== null) {
-        // Soft-commit: the socket is dead, so getFinalResult() would block on
-        // promises that never settle. Finalize from the captured finish frame
-        // (if any) instead. No usage is captured on the 'incomplete' path —
-        // the turn is effectively unbilled, matching today's terminated turn.
-        finishReason = chunkTimeoutFinishReason
-        const captured = processor.getFinishResult()
-        finalResult = captured
-          ? { finishReason: captured.finishReason, totalUsage: captured.totalUsage }
-          : { finishReason }
-      } else {
-        try {
-          finalResult = await streamResult.getFinalResult()
-          finishReason = finalResult?.finishReason ?? 'complete'
-        } catch (err) {
-          // Preserve the legacy warn log + continue returning a result to the
-          // caller, but do NOT let this fall through to invocation.endSuccess()
-          // below — without usage and with no final result, the span would
-          // misleadingly show a successful turn in Langfuse. Capture the error
-          // and mark finishReason so the branch below ends the span as a
-          // failure via invocation.endError. WS doesn't wrap getFinalResult at
-          // all (its outer catch handles it); SSE keeps the wrap for callers
-          // that inspect finishReason but surfaces the failure to telemetry.
-          finalResultError = err
-          const upstreamTimeout = isUpstreamTimeoutError(err)
-          if ((isNetworkError(err) || upstreamTimeout) && processor.getAccumulatedContent().length > 0) {
-            // Premature close or upstream 408/504 timeout while fetching the
-            // final result, but content already streamed: soft-commit it. The
-            // Langfuse span is still
-            // recorded as endError below (it WAS an upstream failure), while
-            // the wire-facing finishReason carried in the return is
-            // 'incomplete' → client renders the gentle soft advisory.
-            logger.warn('sse.execution.getFinalResult.premature_close', {
-              appId, conversationId,
-              trigger: upstreamTimeout ? 'upstream_timeout' : 'network_close',
-              statusCode: (err as { statusCode?: number }).statusCode,
-              streamDurationMs: timingData.streamDurationMs,
-              maxChunkGapMs: timingData.maxChunkGapMs,
-              timeToFirstTextChunkMs: timingData.timeToFirstTextChunkMs,
-              chunksRead: timingData.chunksRead,
-              ...errorFields(err),
-            })
-            finishReason = 'incomplete'
-          } else if (abortSignal.aborted) {
-            // An aborted turn (user_stopped / server_shutdown) rejects
-            // getFinalResult with a non-network abort error — expected, not a
-            // fetch failure. Log distinctly so result_fetch_failed (trusted by
-            // the dashboard / sse-rollout-check.py) counts only genuine failures.
-            logger.info('sse.execution.getFinalResult.aborted', {
-              appId, conversationId,
-              reason: String(abortSignal.reason ?? 'unknown'),
-            })
-            finishReason = 'aborted'
-          } else {
-            logger.warn('sse.execution.getFinalResult.failed', { appId, conversationId, ...errorFields(err) })
-            finishReason = 'result_fetch_failed'
-          }
-        }
       }
 
       const finalMetadata: ResponseMetadata = await invocation.awaitMetadata(streamResult.response)
@@ -3044,7 +3052,15 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
           ...(turnResponseData() !== undefined && { responseData: turnResponseData() }),
         }
       } else {
-        const err = error instanceof Error ? error : new Error(String(error))
+        const rawErr = error instanceof Error ? error : new Error(String(error))
+        // Preserve the stream-budget PATTERN detection the chat onError did
+        // before AIROBUILD-3088 collapsed the reader: classifyTurnError only
+        // recognizes BudgetExceededError instances, not the budget-text patterns
+        // classifyStreamBudgetError matches (containsBudgetExceededPattern).
+        // Normalize first so a pattern-matched budget error surfaced via
+        // getFinalResult still classifies as BUDGET_EXCEEDED.
+        const streamBudget = classifyStreamBudgetError(rawErr)
+        const err = streamBudget.type === 'budget_exceeded' ? streamBudget.budgetError : rawErr
         const classified = classifyTurnError(err)
         // Prefer classified.clientMessage for errors that sanitize internal
         // detail (BMS API paths). Matches the WS wire contract.
