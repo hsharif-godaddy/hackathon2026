@@ -76,9 +76,11 @@ vi.mock('@/stores/useSiteCreationStore', () => ({
   ),
 }));
 
+const mockGetServerState = vi.fn();
+
 vi.mock('@/stores/useServerPollingStore', () => ({
   useServerPollingStore: vi.fn(function (selector: any) { return selector({
-      getServerState: () => ({ url: 'http://localhost:3000' }),
+      getServerState: mockGetServerState,
     }); }
   ),
 }));
@@ -123,6 +125,7 @@ describe('PreviewCode', () => {
     mockDevelopPageState.loadingPhase = 'ready';
     mockDevelopPageState.loadingError = null;
     mockDevelopPageState.viewMode = ViewMode.PREVIEW;
+    mockGetServerState.mockReturnValue({ url: 'http://localhost:3000' });
   });
 
   it('should render without crashing', async () => {
@@ -711,6 +714,23 @@ describe('PreviewCode', () => {
         const searchPanels = screen.getAllByTestId('search-panel');
         expect(searchPanels).toHaveLength(1);
       });
+    });
+  });
+
+  describe('binary file URL construction', () => {
+    it('places the file path before the share token query string', async () => {
+      mockGetServerState.mockReturnValue({ url: 'http://localhost:3000?airoShareToken=test-token', isReady: true });
+      mockDevelopPageState.viewMode = ViewMode.CODE;
+      mockFileTreeState.files['test-app-123'] = [
+        { name: 'favicon.ico', type: 'file', path: 'public/favicon.ico', extension: 'ico' },
+      ];
+
+      const { user } = renderWithProviders(<PreviewCode appId="test-app-123" />);
+
+      await user.click(await screen.findByText('favicon.ico'));
+
+      const img = await screen.findByRole('img', { name: 'favicon.ico' });
+      expect(img).toHaveAttribute('src', 'http://localhost:3000/favicon.ico?airoShareToken=test-token');
     });
   });
 

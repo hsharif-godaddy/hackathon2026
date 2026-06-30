@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils'
 import { useServerPollingStore } from '@/stores/useServerPollingStore'
+import { withPreviewPath } from '@/utils/previewUrl'
 
 /**
  * Hook to convert relative image URLs to absolute URLs using the app's preview URL
@@ -33,7 +34,7 @@ export function useAppImageUrl(relativeOrAbsoluteUrl: string | null | undefined)
 
     // If URL is relative, construct full URL using app's preview URL
     if (previewUrl) {
-      return `${previewUrl}${relativeOrAbsoluteUrl}`
+      return withPreviewPath(previewUrl, relativeOrAbsoluteUrl)
     }
 
     // Fallback: return relative URL if preview URL not available yet

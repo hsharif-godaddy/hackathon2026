@@ -28,6 +28,7 @@ import { useFileTreeStore } from '@/stores/useFileTreeStore'
 import { useServerPollingStore } from '@/stores/useServerPollingStore'
 import { useSiteCreationStore } from '@/stores/useSiteCreationStore'
 import { BINARY_FILE_REGEX, IMAGE_FILE_REGEX, VIDEO_FILE_REGEX } from '@/utils/file-types'
+import { withPreviewPath } from '@/utils/previewUrl'
 
 const EMPTY_ARRAY: never[] = [];
 
@@ -255,7 +256,7 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
       if (!webPath.startsWith('/')) {
         webPath = '/' + webPath
       }
-      const fullUrl = `${previewUrl}${webPath}`
+      const fullUrl: string = withPreviewPath(previewUrl, webPath)
 
       logger.info('code-editor.binary-file.url-generated', {
         filePath,
