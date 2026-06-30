@@ -190,24 +190,34 @@ jobs:
           } >> $GITHUB_STEP_SUMMARY
 
           if [ "$STRATEGY" = "dark_release" ]; then
-            # Prefer the friendly custom-domain URL (carries the cookie param + redirect);
-            # fall back to the raw artifact URL. promoted_artifact_custom_url is empty when
-            # the env has no custom hostname configured in katana (e.g. prod), but
-            # promoted_artifact_url is always populated — so without the fallback the prod
-            # dark summary printed the heading with no reachable URL. The x-katana-version
-            # selector is the artifact's version/tag (not the numeric id); read it from
-            # whichever URL we have so URL, header, and cookie all reference the same value.
-            URL="${CUSTOM_URL:-$RAW_URL}"
-            SELECTOR=$(printf '%s' "$URL" | sed -n 's/.*[?&]x-katana-version=\([^&]*\).*/\1/p')
+            # The x-katana-version selector is the artifact's version/tag (not the numeric
+            # id). promoted_artifact_custom_url is the env's friendly custom-domain URL (with
+            # cookie) but is empty when no custom hostname is configured in katana (e.g.
+            # prod); promoted_artifact_url is the raw onkatana.net URL. Read the selector
+            # from whichever the action returned.
+            SELECTOR=$(printf '%s' "${CUSTOM_URL:-$RAW_URL}" | sed -n 's/.*[?&]x-katana-version=\([^&]*\).*/\1/p')
+            # Prefer katana's custom URL; otherwise build the friendly builder URL from the
+            # env→host map (same hosts as playwright-e2e / dark-release-dev) with cookie=1 so
+            # the browser sets the persistent x_katana_version cookie — rather than surface
+            # the internal onkatana.net host.
+            URL="$CUSTOM_URL"
+            if [ -z "$URL" ] && [ -n "$SELECTOR" ]; then
+              case "$ENVIRONMENT" in
+                prod)        HOST=airo-builder.godaddy.com ;;
+                test)        HOST=airo-builder.test-godaddy.com ;;
+                pre-test)    HOST=pre-test-airo-builder.test-godaddy.com ;;
+                dev-private) HOST=airo-builder.dev-godaddy.com ;;
+                *)           HOST="" ;;
+              esac
+              if [ -n "$HOST" ]; then
+                URL="https://${HOST}?x-katana-version=${SELECTOR}&cookie=1"
+              fi
+            fi
             {
               printf '## 🌑 Dark release — 0%% traffic\n\n'
               if [ -n "$URL" ]; then
                 printf 'This artifact takes **no live traffic**. Reach it explicitly:\n\n'
-                if [ -n "$CUSTOM_URL" ]; then
-                  printf '**Browser** (sets a persistent `x_katana_version` cookie + redirects):\n\n%s\n\n' "$CUSTOM_URL"
-                else
-                  printf '**Browser** (direct access via the version selector):\n\n%s\n\n' "$RAW_URL"
-                fi
+                printf '**Browser** (sets a persistent `x_katana_version` cookie + redirects):\n\n%s\n\n' "$URL"
                 if [ -n "$SELECTOR" ]; then
                   printf '**Direct (API / curl)** — send the selector on each request:\n```\n'
                   printf 'Header: x-katana-version: %s\n' "$SELECTOR"
