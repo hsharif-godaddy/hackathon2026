@@ -2,16 +2,16 @@
 
 import './docs-themes.css'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import Button from '@ux/button'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Spinner from '@ux/spinner'
 
 import MarkdownRenderer from '@/app/[market]/develop/components/MarkdownRenderer'
-import { ViewMode } from '@/app/[market]/develop/components/types'
 import { logger } from '@/lib/request-context'
 import { appService } from '@/services/AppService'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { useServerPollingStore } from '@/stores/useServerPollingStore'
+
+const DocsEditor = lazy(() => import('./DocsEditor'))
 
 interface DocsViewProps {
   appId: string
@@ -80,6 +80,7 @@ function themeClassFor(path: string): string {
   return 'theme-docs'
 }
 
+
 function DocsContent({ content }: { content: string }) {
   const parsed = useMemo(() => parseFrontmatter(content), [content])
   if (!parsed) return <MarkdownRenderer content={content} variant="docs" />
@@ -94,7 +95,7 @@ function DocsContent({ content }: { content: string }) {
 export default function DocsView({ appId }: DocsViewProps) {
   const docsPath = useDevelopPageStore((state) => state.docsPath)
   const docsReloadToken = useDevelopPageStore((state) => state.docsReloadToken)
-  const setViewMode = useDevelopPageStore((state) => state.setViewMode)
+  const isDocsEditing = useDevelopPageStore((state) => state.isDocsEditing)
   const getServerState = useServerPollingStore((state) => state.getServerState)
   const previewUrl = getServerState(appId)?.url ?? null
   const [loadState, setLoadState] = useState<LoadState>({ status: 'idle' })
@@ -151,6 +152,24 @@ export default function DocsView({ appId }: DocsViewProps) {
     setIframeFailed(false)
   }, [])
 
+  const handleDocSaved = useCallback((content: string) => {
+    setLoadState({ status: 'ready', content })
+  }, [])
+
+  useEffect(() => {
+    const handleDownload = (): void => {
+      if (loadState.status !== 'ready' || !docsPath) return
+      const url: string = URL.createObjectURL(new Blob([loadState.content], { type: 'text/markdown' }))
+      const a: HTMLAnchorElement = document.createElement('a')
+      a.href = url
+      a.download = docsPath.split('/').pop() ?? 'document.md'
+      a.click()
+      URL.revokeObjectURL(url)
+    }
+    window.addEventListener('docs-download', handleDownload)
+    return () => window.removeEventListener('docs-download', handleDownload)
+  }, [loadState, docsPath])
+
   if (!docsPath) {
     return (
       <div
@@ -163,49 +182,20 @@ export default function DocsView({ appId }: DocsViewProps) {
   }
 
   const themeClass = themeClassFor(docsPath)
-  const headerLabel = isDesignPreview ? 'Design Preview' : docsPath
 
   return (
     <div
-      className={`h-full flex flex-col bg-intents-ux-box-backgroundColor ${themeClass}`}
+      className={`h-full flex flex-col bg-intents-ux-box-backgroundColor ${themeClass} ${isDocsEditing ? 'ring-2 ring-inset ring-intents-ux-formControl-borderFocus-borderColor rounded-lg' : ''}`}
       data-testid="docs-view"
       data-doc-path={docsPath}
     >
-      <div className="flex items-center justify-between px-3 py-2 border-b">
-        <span
-          className="text-sm font-mono text-intents-ux-text-color truncate"
-          data-testid="docs-view-path"
-        >
-          {headerLabel}
-        </span>
-        {!isDesignPreview && (
-          <div className="flex items-center gap-1 shrink-0">
-            {loadState.status === 'ready' && (
-              <Button
-                design="tertiary"
-                size="small"
-                text="Download"
-                data-testid="docs-view-download"
-                onClick={() => {
-                  const url = URL.createObjectURL(new Blob([loadState.content], { type: 'text/markdown' }))
-                  const a = document.createElement('a')
-                  a.href = url
-                  a.download = docsPath?.split('/').pop() ?? 'document.md'
-                  a.click()
-                  URL.revokeObjectURL(url)
-                }}
-              />
-            )}
-            <Button
-              design="tertiary"
-              size="small"
-              text="Open in code"
-              onClick={() => setViewMode(ViewMode.CODE)}
-              data-testid="docs-view-open-in-code"
-            />
-          </div>
-        )}
-      </div>
+      {isDesignPreview && (
+        <div className="flex items-center px-3 py-2 border-b">
+          <span className="text-sm font-mono text-intents-ux-text-color truncate" data-testid="docs-view-path">
+            Design Preview
+          </span>
+        </div>
+      )}
       <div className="flex-1 overflow-auto">
         {isDesignPreview && previewUrl && !iframeFailed && (
           <iframe
@@ -245,8 +235,18 @@ export default function DocsView({ appId }: DocsViewProps) {
             Failed to load <span className="font-mono">{docsPath}</span>: {loadState.message}
           </div>
         )}
-        {!isDesignPreview && loadState.status === 'ready' && (
+        {!isDesignPreview && loadState.status === 'ready' && !isDocsEditing && (
           <DocsContent content={loadState.content} />
+        )}
+        {!isDesignPreview && loadState.status === 'ready' && isDocsEditing && (
+          <Suspense fallback={<div className="h-full flex items-center justify-center"><Spinner size="md" /></div>}>
+            <DocsEditor
+              appId={appId}
+              filePath={docsPath}
+              initialContent={loadState.content}
+              onSaved={handleDocSaved}
+            />
+          </Suspense>
         )}
       </div>
     </div>

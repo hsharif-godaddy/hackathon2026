@@ -2,6 +2,8 @@
 
 import { FileText } from 'lucide-react'
 
+import { CanvasId } from '@/app/[market]/commander/canvas/registry'
+import { useCommanderStore } from '@/stores/useCommanderStore'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { useToolDetailsModal } from '@/stores/useToolDetailsModalStore'
 import type { DefaultToolRendererProps } from './DefaultToolRenderer'
@@ -30,6 +32,7 @@ export default function ShowDocToolRenderer({
   const handleClick = (): void => {
     if (path) {
       openDoc(path)
+      useCommanderStore.getState().openCanvas(CanvasId.Docs)
     } else {
       setIsModalOpen(true)
     }

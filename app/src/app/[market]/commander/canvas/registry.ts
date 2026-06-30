@@ -11,6 +11,7 @@ import GraphIcon from '@ux/icon/graph'
 import ImageIcon from '@ux/icon/image'
 import LockedIcon from '@ux/icon/locked'
 import MegaphoneIcon from '@ux/icon/megaphone'
+import PageIcon from '@ux/icon/page'
 import RevertIcon from '@ux/icon/revert'
 import SettingsIcon from '@ux/icon/settings'
 import ShieldIcon from '@ux/icon/shield'
@@ -42,6 +43,7 @@ export enum CanvasId {
   SettingsGitHub = 'settings.github',
   SettingsSso = 'settings.sso',
   Media = 'media',
+  Docs = 'docs',
 }
 
 export interface CanvasActivation {
@@ -245,6 +247,15 @@ export const CANVAS_REGISTRY: Record<CanvasId, CanvasDescriptor> = {
     activation: { settingsSection: SettingsSection.CAMPAIGNS },
     switchboardFlag: 'appbuilder-marketing-campaigns',
   },
+  [CanvasId.Docs]: {
+    id: CanvasId.Docs,
+    labelKey: 'builder_canvas_docs',
+    fallbackLabel: 'Docs',
+    Icon: PageIcon,
+    dismissible: true,
+    defaultOpen: false,
+    activation: { viewMode: ViewMode.DOCS },
+  },
 }
 
 export const DEFAULT_OPEN_CANVAS_IDS: readonly CanvasId[] = Object.values(CANVAS_REGISTRY)
@@ -262,6 +273,7 @@ export const CANVAS_MENU_ORDER: readonly CanvasId[] = [
   CanvasId.Brand,
   CanvasId.SettingsCampaigns,
   CanvasId.Code,
+  CanvasId.Docs,
   CanvasId.Domain,
   CanvasId.SettingsDatabase,
   CanvasId.SettingsGitHub,

@@ -6,6 +6,7 @@
  * (Code view file-op state, todo-list updates, project-name sync).
  */
 
+import { CanvasId } from '@/app/[market]/commander/canvas/registry';
 import { ViewMode } from '@/app/[market]/develop/components/types';
 import {
   extractLogosFromToolResult,
@@ -29,6 +30,7 @@ import { getSwitchboardFlag } from '@/hooks/useSwitchboard';
 import { shipAnalyticsLog } from '@/lib/logging';
 import { logger } from '@/lib/request-context';
 import { type FileOperationType, useCodeSyncStore } from '@/stores/useCodeSyncStore';
+import { useCommanderStore } from '@/stores/useCommanderStore';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { useGitStore } from '@/stores/useGitStore';
 import { useStreamingConversationStore } from '@/stores/useStreamingConversationStore';
@@ -253,6 +255,7 @@ export function handleToolCallSideEffects(
         return;
       }
       useDevelopPageStore.getState().openDoc(path);
+      useCommanderStore.getState().openCanvas(CanvasId.Docs);
     } else if (type === 'page') {
       if (typeof path === 'string' && path.length > 0) {
         useDevelopPageStore.getState().openPreviewPage(path);
@@ -379,6 +382,9 @@ export async function handleToolResultSideEffects(
         } else {
           clearFileChange(filePath);
         }
+      }
+      if (!hasError && filePaths.some((p) => p.startsWith('docs/') && p.endsWith('.md'))) {
+        window.dispatchEvent(new CustomEvent('docs-list-changed'));
       }
     }
   }

@@ -251,6 +251,8 @@ interface DevelopPageStore {
   viewMode: ViewMode
   docsPath: string | null
   docsReloadToken: number
+  isDocsEditing: boolean
+  isDocsDirty: boolean
   previewReloadToken: number
   previewNavigatePath: string | null
   mobileMode: MobileMode
@@ -406,6 +408,8 @@ interface DevelopPageStore {
   // UI setters
   setViewMode: (mode: ViewMode) => void
   setDocsPath: (path: string | null) => void
+  setDocsEditing: (editing: boolean) => void
+  setDocsDirty: (dirty: boolean) => void
   openDoc: (path: string) => void
   openPreviewPage: (path: string) => void
   setMobileMode: (mode: MobileMode) => void
@@ -616,6 +620,8 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     viewMode: ViewMode.EDIT,
     docsPath: null,
     docsReloadToken: 0,
+    isDocsEditing: false,
+    isDocsDirty: false,
     previewReloadToken: 0,
     previewNavigatePath: null,
     mobileMode: MobileMode.TOOLS,
@@ -703,10 +709,14 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     // UI setters
     setViewMode: (mode) => set((state) => { state.viewMode = mode }),
     setDocsPath: (path) => set((state) => { state.docsPath = path }),
+    setDocsEditing: (editing) => set((state) => { state.isDocsEditing = editing }),
+    setDocsDirty: (dirty) => set((state) => { state.isDocsDirty = dirty }),
     openDoc: (path) => set((state) => {
       state.docsPath = path
       state.viewMode = ViewMode.DOCS
       state.docsReloadToken += 1
+      state.isDocsEditing = false
+      state.isDocsDirty = false
     }),
     openPreviewPage: (path) => set((state) => {
       state.previewNavigatePath = path

@@ -40,12 +40,12 @@ catalog:
   # plugins/configs.
   '@ai-sdk/openai': ^3.0.63
   '@ai-sdk/provider': ^3.0.10
-  '@aws-sdk/client-dynamodb': ^3.1073.0
-  '@aws-sdk/client-lambda': ^3.1048.0
-  '@aws-sdk/lib-dynamodb': ^3.1073.0
 
   # Shared runtime
   '@airo-care/client': 1.0.2
+  '@aws-sdk/client-dynamodb': ^3.1073.0
+  '@aws-sdk/client-lambda': ^3.1048.0
+  '@aws-sdk/lib-dynamodb': ^3.1073.0
   '@babel/generator': ^7.29.1
   '@babel/parser': ^7.29.3
   '@babel/traverse': ^7.29.0
@@ -60,6 +60,11 @@ catalog:
 
   # Observability
   '@langfuse/tracing': ^4.6.1
+  '@lexical/link': ^0.42.0
+  '@lexical/list': ^0.42.0
+  '@lexical/markdown': ^0.42.0
+  '@lexical/react': ^0.42.0
+  '@lexical/rich-text': ^0.42.0
   '@opentelemetry/api': ^1.9.1
   '@opentelemetry/core': ^2.7.1
   '@opentelemetry/instrumentation': ^0.217.0
@@ -114,6 +119,7 @@ catalog:
   jszip: ^3.10.1
   jwt-decode: ^4.0.0
   knip: ^6.16.1
+  lexical: ^0.42.0
   lucide-react: ^0.577.0
   magic-string: 0.30.17
   multer: ^2.2.0

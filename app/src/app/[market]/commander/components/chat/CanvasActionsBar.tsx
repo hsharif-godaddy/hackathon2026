@@ -68,14 +68,25 @@ function CanvasActionMenuView({ menu }: { menu: CanvasActionMenu }): ReactElemen
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <IconButton
-          icon={menu.icon}
-          label={menu.label}
-          showLabelWhenActive={false}
-          size="sm"
-          ghost
-          dataEid={`commander.canvas_action.${menu.id}`}
-        />
+        {menu.labelHidden ? (
+          <IconButton
+            icon={menu.icon}
+            label={menu.label}
+            showLabelWhenActive={false}
+            size="sm"
+            ghost
+            dataEid={`commander.canvas_action.${menu.id}`}
+          />
+        ) : (
+          <Button
+            design="control"
+            size="sm"
+            icon={menu.icon}
+            text={menu.label}
+            data-eid={`commander.canvas_action.${menu.id}`}
+            className="px-1.5!"
+          />
+        )}
       </PopoverTrigger>
       <PopoverContent
         side="top"
