@@ -117,7 +117,6 @@ interface ChatInputProps {
   onRemoveStagedFile?: (id: string) => void
   onScreenshotCaptured?: (dataUrl: string) => void | Promise<void>
   onFileReferencesSelected?: (filePaths: string[]) => void
-  onMediaLibrary?: () => void
   onUploadError?: (errorMessage?: string) => void
   /** Staged file ids currently uploading — shows overlay spinner on each matching thumbnail */
   uploadingStagedFileIds?: readonly string[]
@@ -165,7 +164,6 @@ export default function ChatInput({
   onRemoveStagedFile,
   onScreenshotCaptured,
   onFileReferencesSelected,
-  onMediaLibrary,
   onUploadError,
   uploadingStagedFileIds = [],
   referencedFiles = [],
@@ -915,7 +913,6 @@ export default function ChatInput({
                       onStageFiles={onStageFiles}
                       onScreenshotCaptured={onScreenshotCaptured}
                       onFileReferencesSelected={onFileReferencesSelected}
-                      onMediaLibrary={onMediaLibrary}
                       onUploadError={onUploadError}
                       disabled={(Boolean(isDisabled) && !isStreaming) || Boolean(isBudgetExceeded) || !canAddAsset}
                     />

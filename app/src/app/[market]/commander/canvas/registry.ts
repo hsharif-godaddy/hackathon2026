@@ -293,6 +293,7 @@ export const CANVAS_MENU_ORDER: readonly CanvasId[] = [
   CanvasId.SettingsGitHub,
   CanvasId.Inbox,
   CanvasId.SettingsMarketing,
+  CanvasId.Media,
   CanvasId.SettingsSecrets,
   CanvasId.SettingsSecurity,
   CanvasId.SettingsSocial,

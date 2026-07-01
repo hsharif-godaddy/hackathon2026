@@ -4,13 +4,10 @@ import { ChangeEvent, useEffect, useMemo, useRef, useState } from 'react';
 import Button from '@ux/button';
 import CloudUploadIcon from '@ux/icon/cloud-upload';
 import ImageIcon from '@ux/icon/image';
-import ImageGalleryIcon from '@ux/icon/image-gallery';
 import PageIcon from '@ux/icon/page';
 import PlusIcon from '@ux/icon/plus';
 
 import FileReferenceModal from '@/app/[market]/develop/components/chat/FileReferenceModal';
-import { SWITCHBOARD_APPBUILDER_MEDIA_CANVAS } from '@/config/switchboard-flags';
-import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
 import { logger } from '@/lib/request-context';
 import { Popover, PopoverContent, PopoverTrigger } from '@/lib/shadcn/popover';
@@ -26,7 +23,6 @@ interface ChatAttachmentMenuProps {
   onStageFiles: (files: File[]) => void;
   onScreenshotCaptured?: (dataUrl: string) => void | Promise<void>;
   onFileReferencesSelected?: (filePaths: string[]) => void;
-  onMediaLibrary?: () => void;
   onUploadError?: (errorMessage?: string) => void;
   disabled?: boolean;
 }
@@ -36,12 +32,10 @@ export default function ChatAttachmentMenu({
   onStageFiles,
   onScreenshotCaptured,
   onFileReferencesSelected,
-  onMediaLibrary,
   onUploadError,
   disabled = false
 }: ChatAttachmentMenuProps) {
   const t = useTranslations();
-  const isMediaCanvasEnabled = useSwitchboard(SWITCHBOARD_APPBUILDER_MEDIA_CANVAS) === true;
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [open, setOpen] = useState(false);
   const [isCapturing, setIsCapturing] = useState(false);
@@ -262,17 +256,6 @@ export default function ChatAttachmentMenu({
                 disabled={isCapturing || disabled}
                 className="!justify-start"
                 onClick={handleScreenshotClick}
-              />
-            )}
-            {isMediaCanvasEnabled && onMediaLibrary && (
-              <Button
-                design="option"
-                size="sm"
-                icon={<ImageGalleryIcon />}
-                text={t('builder_chatfiles_media_library', undefined, 'Media Library')}
-                disabled={disabled}
-                className="!justify-start"
-                onClick={() => { logClickEvent('develop.attachment_menu.media_library', clickContext)(); setOpen(false); onMediaLibrary() }}
               />
             )}
             <Button

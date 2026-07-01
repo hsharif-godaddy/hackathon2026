@@ -3,6 +3,7 @@
 import { type MutableRefObject, useEffect, useRef } from 'react'
 import Growl from '@ux/growl'
 
+import { CommanderPosition } from '@/app/[market]/commander/types'
 import type { AiEditContext } from '@/app/[market]/develop/components/types'
 import { ChatTab, MobileMode } from '@/app/[market]/develop/components/types'
 import {
@@ -17,6 +18,7 @@ import { buildDynamicApiUrl } from '@/config/dynamic-api'
 import { agentFetch } from '@/lib/agent-fetch'
 import { logger } from '@/lib/request-context'
 import type { AIEditContext, SendMessageOptions } from '@/services/transport/messageTypes'
+import { useCommanderStore } from '@/stores/useCommanderStore'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { useMediaSlotDialogStore } from '@/stores/useMediaSlotDialogStore'
 import { useStreamingConversationStore } from '@/stores/useStreamingConversationStore'
@@ -32,6 +34,13 @@ import {
   saveMediaSlotOccurrenceIndex,
 } from '@/utils/media-slot-fork'
 import { postMessageToIframe } from '@/utils/postMessage'
+
+/** Tracks auto-dock from floating→left-dock triggered by OPEN_MEDIA_SLOT_DIALOG. */
+let mediaAutoDocked = false
+export function consumeMediaAutoDocked(): boolean {
+  if (mediaAutoDocked) { mediaAutoDocked = false; return true }
+  return false
+}
 
 interface SpeechBridge {
   broadcastSupport: () => void
@@ -707,6 +716,12 @@ export function useDevToolsBusBindings(deps: DevToolsBusBindingsDeps): void {
       develop.setActiveChatTab(ChatTab.MEDIAS)
       if (develop.isMobile) {
         develop.handleMobileModeChange(MobileMode.TOOLS)
+      }
+
+      // Auto-dock the commander so the replace panel is always in the side panel.
+      if (useCommanderStore.getState().position === CommanderPosition.Floating) {
+        useCommanderStore.getState().setPosition(CommanderPosition.LeftDock)
+        mediaAutoDocked = true
       }
     })
 

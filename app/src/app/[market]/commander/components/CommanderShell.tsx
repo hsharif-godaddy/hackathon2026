@@ -14,8 +14,7 @@ import { DesignKitPanels } from '@/app/[market]/develop/components/preview/desig
 import { useIsDesignKitWizardProfile } from '@/app/[market]/develop/components/preview/design-kit-wizard/isDesignKitWizardProfile'
 import { ViewMode } from '@/app/[market]/develop/components/types'
 import { useTranslations } from '@/hooks/useTranslations'
-import {
-  useCommanderActionsBarEnabled,
+import { useCommanderActionsBarEnabled,
   useCommanderCanvasEnabled,
   useCommanderCanvasTabsEnabled,
   useCommanderStore,

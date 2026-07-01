@@ -308,11 +308,9 @@ export class ASTImageEditor extends ASTEditorBase {
     const normalizedCurrent = normalize(currentUrl);
     const normalizedExpected = normalize(expectedUrl);
 
-    // Check for exact match or path match
+    // Check for exact match or normalized path match
     return currentUrl === expectedUrl ||
-           normalizedCurrent === normalizedExpected ||
-           currentUrl.endsWith(normalizedExpected) ||
-           normalizedCurrent.endsWith(normalizedExpected);
+           normalizedCurrent === normalizedExpected;
   }
 
   /**
@@ -1028,19 +1026,15 @@ export class ASTImageEditor extends ASTEditorBase {
       const ast = this.parseAST(sourceCode);
       let replaced = false;
 
-      // Find the Nth <img>/<video> whose src matches the old slot URL and rewrite it
       this.traverse(ast, {
         JSXElement: (nodePath: { node: t.JSXElement }): void => {
           if (replaced) return;
           const tag = this.getTagName(nodePath.node)?.toLowerCase();
           if (tag !== 'img' && tag !== 'video') return;
-          const { value: src, attr } = this.getSrcAttribute(nodePath.node);
+          const { value: src } = this.getSrcAttribute(nodePath.node);
           if (!src || !this.urlsMatch(src, options.oldUrl)) return;
           if (matchIndex++ !== options.occurrenceIndex) return;
-          if (attr && this.t.isStringLiteral(attr.value)) {
-            attr.value.value = options.newUrl;
-            replaced = true;
-          }
+          replaced = this.updateSrcAttribute(nodePath.node, options.newUrl);
         },
       });
 
@@ -1057,6 +1051,89 @@ export class ASTImageEditor extends ASTEditorBase {
     }
 
     return { success: false, filePath: '', error: 'Could not find media element with matching src URL' };
+  }
+
+  /**
+   * Convert an <img> element to <video> (or vice versa) in source code when
+   * the slot's mediaType changes. Also swaps the URL prefix between
+   * /airo-assets/images/ and /airo-assets/videos/.
+   */
+  async convertMediaTag(
+    appPath: string,
+    options: { slotPath: string; toVideo: boolean },
+    appId: string
+  ): Promise<ImageReplaceResult> {
+    const oldPrefix = options.toVideo ? '/airo-assets/images/' : '/airo-assets/videos/';
+    const newPrefix = options.toVideo ? '/airo-assets/videos/' : '/airo-assets/images/';
+    const oldUrl = `${oldPrefix}${options.slotPath}`;
+    const newUrl = `${newPrefix}${options.slotPath}`;
+    const oldTag = options.toVideo ? 'img' : 'video';
+    const newTag = options.toVideo ? 'video' : 'img';
+
+    const files = await this.collectSourceFilePaths(appPath);
+
+    for (const relativePath of files) {
+      const sourceCode = await readFile(path.join(appPath, relativePath), 'utf-8');
+      const ast = this.parseAST(sourceCode);
+      let converted = false;
+
+      this.traverse(ast, {
+        JSXElement: (nodePath: { node: t.JSXElement; replaceWith: (node: t.JSXElement) => void }): void => {
+          if (converted) return;
+          const tag = this.getTagName(nodePath.node)?.toLowerCase();
+          if (tag !== oldTag) return;
+          const { value: src } = this.getSrcAttribute(nodePath.node);
+          if (!src || !this.urlsMatch(src, oldUrl)) return;
+
+          const opening = nodePath.node.openingElement;
+          opening.name = this.t.jsxIdentifier(newTag);
+          if (nodePath.node.closingElement) {
+            nodePath.node.closingElement.name = this.t.jsxIdentifier(newTag);
+          }
+
+          this.updateSrcAttribute(nodePath.node, newUrl);
+
+          if (options.toVideo) {
+            // Add video attributes: autoPlay, muted, loop, playsInline
+            const existingNames = new Set(
+              opening.attributes
+                .filter((a): a is t.JSXAttribute => this.t.isJSXAttribute(a))
+                .map((a) => a.name.name)
+            );
+            for (const attr of ['autoPlay', 'muted', 'loop', 'playsInline']) {
+              if (!existingNames.has(attr)) {
+                opening.attributes.push(this.t.jsxAttribute(this.t.jsxIdentifier(attr)));
+              }
+            }
+            // Remove alt attribute (not valid on video)
+            opening.attributes = opening.attributes.filter(
+              (a) => !(this.t.isJSXAttribute(a) && a.name.name === 'alt')
+            );
+          } else {
+            // Remove video-specific attributes when converting to img
+            const videoAttrs = new Set(['autoPlay', 'muted', 'loop', 'playsInline', 'controls']);
+            opening.attributes = opening.attributes.filter(
+              (a) => !(this.t.isJSXAttribute(a) && typeof a.name.name === 'string' && videoAttrs.has(a.name.name))
+            );
+          }
+
+          converted = true;
+        },
+      });
+
+      if (!converted) continue;
+
+      const { files: workspaceFiles } = this.getWorkspace(appId);
+      await this.writeSourceFile(workspaceFiles, relativePath, this.generateCode(ast).code);
+      logger.info('ast.image-editor.convert-media-tag', {
+        filePath: relativePath,
+        slotPath: options.slotPath,
+        toVideo: options.toVideo,
+      });
+      return { success: true, filePath: relativePath, changes: { oldUrl, newUrl, imageType: 'img' } };
+    }
+
+    return { success: false, filePath: '', error: `Could not find <${oldTag}> element with slot URL` };
   }
 
   /**

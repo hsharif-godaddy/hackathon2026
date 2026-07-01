@@ -295,7 +295,7 @@ export function MediaReplacePanel({ slotName, onClose }: MediaReplacePanelProps)
       // Reload preview — send both RELOAD_MEDIA_SLOT and a full HMR nudge
       const iframe = document.getElementById('preview-iframe') as HTMLIFrameElement
       if (iframe) {
-        const isVideo = !!selectedGettyResult?.videoUrl
+        const isVideo = !!selectedGettyResult?.videoUrl || !!selectedUpload?.mimeType?.startsWith('video/')
         postMessageToIframe(iframe, { type: 'RELOAD_MEDIA_SLOT', slotPath: slotName, ...(isVideo && { isVideo: true }) })
         postMessageToIframe(iframe, { type: 'CLEAR_SELECTION' })
         // Force iframe reload for cases where HMR doesn't pick up the asset change
@@ -411,7 +411,7 @@ export function MediaReplacePanel({ slotName, onClose }: MediaReplacePanelProps)
   }
 
   return (
-    <div className="flex flex-col h-full media-replace-panel" style={{ containerType: 'inline-size' }}>
+    <div className="flex flex-col h-full media-replace-panel rounded-2xl overflow-hidden" style={{ containerType: 'inline-size' }}>
       {/* Scrollable content */}
       <div className="flex-1 overflow-y-auto px-3 py-2">
         {/* Header — inline with X */}
@@ -617,7 +617,7 @@ export function MediaReplacePanel({ slotName, onClose }: MediaReplacePanelProps)
           onClick={() => { void handleUseImage() }}
           disabled={!hasSelection || isSwapping}
           icon={isSwapping ? <RefreshIcon className="size-3 animate-spin" /> : undefined}
-          text={isSwapping ? 'Replacing...' : selectedGettyResult?.videoUrl ? 'Use this Video' : 'Use this Image'}
+          text={isSwapping ? 'Replacing...' : (selectedGettyResult?.videoUrl || selectedUpload?.mimeType?.startsWith('video/')) ? 'Use this Video' : 'Use this Image'}
         />
       </div>
 

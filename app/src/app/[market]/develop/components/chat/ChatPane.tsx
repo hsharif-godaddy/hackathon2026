@@ -8,7 +8,6 @@ import { isEmployeeAuthType } from '@airo/shared/auth';
 import Growl from '@ux/growl';
 
 import { CanvasActionsVariant } from '@/app/[market]/commander/canvas/actions';
-import { CanvasId } from '@/app/[market]/commander/canvas/registry';
 import CanvasActionsHost from '@/app/[market]/commander/components/chat/CanvasActionsHost';
 import CommanderChatRow from '@/app/[market]/commander/components/chat/CommanderChatRow';
 import CommanderComposerLeft from '@/app/[market]/commander/components/chat/CommanderComposerLeft';
@@ -44,7 +43,7 @@ import PlanTracker from '@/app/[market]/develop/components/PlanTracker';
 import { SettingsLoadingState } from '@/app/[market]/develop/components/settings/components/SettingsLoadingState';
 import GitHubSyncSettingsSavedSnackbar from '@/app/[market]/develop/components/settings/GitHubPanel/GitHubSyncSettingsSavedSnackbar';
 import StreamingMessageList from '@/app/[market]/develop/components/StreamingMessageList';
-import { ChatTab, MobileMode, ViewMode } from '@/app/[market]/develop/components/types';
+import { ChatTab } from '@/app/[market]/develop/components/types';
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils';
 import { isColorSuggestPanelVisible } from '@/app/[market]/develop/components/utils/colorSuggestPanelVisibility';
 import { isDesignKitSuggestPanelVisible } from '@/app/[market]/develop/components/utils/designKitSuggestPanelVisibility';
@@ -52,6 +51,7 @@ import { findLatestColorSchemeSuggest } from '@/app/[market]/develop/components/
 import { findLatestDesignKitSuggest } from '@/app/[market]/develop/components/utils/findLatestDesignKitSuggest';
 import { findLatestFontThemeSuggest } from '@/app/[market]/develop/components/utils/findLatestFontThemeSuggest';
 import { isFontSuggestPanelVisible } from '@/app/[market]/develop/components/utils/fontSuggestPanelVisibility';
+import { consumeMediaAutoDocked } from '@/app/[market]/develop/hooks/useDevToolsBusBindings';
 import { useUpfrontRebuildBuildQueue } from '@/app/[market]/develop/hooks/useUpfrontRebuildBuildQueue';
 import { useAuthContext } from '@/components/providers/AuthProvider';
 import { SWITCHBOARD_APPBUILDER_GO_LIVE_FEATURE, SWITCHBOARD_APPBUILDER_MEDIA_CANVAS, SWITCHBOARD_APPBUILDER_PURCHASE_INTENT_CLASSIFIER } from '@/config/switchboard-flags';
@@ -323,7 +323,6 @@ function ChatPaneInner({
   const isActionsBarEnabled = useCommanderActionsBarEnabled();
   const effectiveCommanderPosition = useEffectiveCommanderPosition();
   const actionsBarShownBeside = useCommanderStore((state) => state.actionsBarShownBeside);
-  const openCanvas = useCommanderStore((state) => state.openCanvas);
   const isMediaCanvasEnabled = useSwitchboard(SWITCHBOARD_APPBUILDER_MEDIA_CANVAS) === true;
   const mediaCurrentSlotName = useMediaSlotDialogStore((state) => state.currentSlotName);
   const mediaPanelSlotName = useMediaSlotDialogStore((state) => state.panelSlotName);
@@ -377,19 +376,6 @@ function ChatPaneInner({
   const expandedPlan = useDevelopPageStore((state) => state.expandedPlan);
   const toggleExpandedPlan = useDevelopPageStore((state) => state.toggleExpandedPlan);
   const isMobile = useDevelopPageStore((state) => state.isMobile);
-  const setViewMode = useDevelopPageStore((state) => state.setViewMode);
-  const handleMobileModeChange = useDevelopPageStore((state) => state.handleMobileModeChange);
-  const handleOpenMediaLibrary = useCallback((): void => {
-    if (isCommanderChatEnabled) {
-      openCanvas(CanvasId.Media)
-      return
-    }
-    navigateToSlot(MEDIA_GRID_VIEW);
-    setViewMode(ViewMode.MEDIA);
-    if (isMobile) {
-      handleMobileModeChange(MobileMode.PREVIEW);
-    }
-  }, [isCommanderChatEnabled, openCanvas, handleMobileModeChange, isMobile, navigateToSlot, setViewMode]);
   const showResponseFeedbackThanksBanner = useDevelopPageStore(
     (state) => state.showResponseFeedbackThanksBanner
   );
@@ -1603,7 +1589,6 @@ function ChatPaneInner({
         onStageFiles={handleStageFiles}
         onScreenshotCaptured={handleScreenshotCaptured}
         onFileReferencesSelected={handleFileReferencesSelected}
-        onMediaLibrary={handleOpenMediaLibrary}
         onUploadError={handleAttachmentMenuError}
         disabled={isProcessing || budgetExceeded}
       />
@@ -1638,7 +1623,6 @@ function ChatPaneInner({
     handleStageFiles,
     handleScreenshotCaptured,
     handleFileReferencesSelected,
-    handleOpenMediaLibrary,
     handleAttachmentMenuError,
     isProcessing,
     budgetExceeded,
@@ -1783,7 +1767,6 @@ function ChatPaneInner({
             onRemoveStagedFile={handleRemoveStagedFile}
             onScreenshotCaptured={handleScreenshotCaptured}
             onFileReferencesSelected={handleFileReferencesSelected}
-            onMediaLibrary={handleOpenMediaLibrary}
             onUploadError={handleAttachmentMenuError}
             uploadingStagedFileIds={uploadingStagedFileIds}
             referencedFiles={referencedFiles}
@@ -1934,7 +1917,6 @@ function ChatPaneInner({
               onRemoveStagedFile={handleRemoveStagedFile}
               onScreenshotCaptured={handleScreenshotCaptured}
               onFileReferencesSelected={handleFileReferencesSelected}
-              onMediaLibrary={handleOpenMediaLibrary}
               onUploadError={handleAttachmentMenuError}
               uploadingStagedFileIds={uploadingStagedFileIds}
               referencedFiles={referencedFiles}
@@ -1989,11 +1971,14 @@ function ChatPaneInner({
 
         {/* Media Replace Panel — full takeover when FF is on and a slot replace is requested */}
         {isMediaCanvasEnabled && mediaPanelSlotName && mediaPanelSlotName !== MEDIA_GRID_VIEW && (
-          <div className="absolute inset-0 z-20 flex flex-col bg-intents-ux-box-backgroundColor">
+          <div className="absolute inset-0 z-20 flex flex-col bg-intents-ux-box-backgroundColor rounded-2xl">
             <MediaReplacePanel slotName={mediaPanelSlotName} onClose={() => {
               clearPanelSlot()
               const returnTab = mediaReturnTab === ChatTab.MEDIAS ? ChatTab.CHAT : (mediaReturnTab ?? ChatTab.CHAT)
               setActiveChatTab(returnTab)
+              if (consumeMediaAutoDocked()) {
+                useCommanderStore.getState().setPosition(CommanderPosition.Floating)
+              }
             }} />
           </div>
         )}
