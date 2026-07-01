@@ -704,11 +704,27 @@ export class ScrapePipeline {
 
   private async processHomepageAssets(appId: string, homePage: PageScrapeResult, output: AtlasCrawlOutput): Promise<void> {
     const assetService = new AssetProcessingService(this.deps.appPath);
-    const { assetMap, homeAssets } = bucketAssetsForProcessing(output.assets, homePage.url);
+    const { assetMap, homeAssets, otherAssets } = bucketAssetsForProcessing(output.assets, homePage.url);
+
+    // Diagnostic logging to trace asset flow from Atlas to manifest
+    logger.info('rebuild-orchestration.homepage-assets-bucketed', {
+      appId,
+      homepageUrl: homePage.url,
+      atlasAssetCount: output.assets.length,
+      homeAssetCount: homeAssets.length,
+      otherAssetCount: otherAssets.length,
+      sampleAtlasSourceUrls: output.assets.slice(0, 5).map(a => a.sourceUrl),
+    });
+
     let homeAssetInfos: ReadonlyArray<AssetInfo> = [];
     if (homeAssets.length > 0) {
       const manifest = await assetService.process(homeAssets, assetMap, { merge: false });
       homeAssetInfos = manifest.assets;
+      logger.info('rebuild-orchestration.homepage-assets-processed', {
+        appId,
+        manifestAssetCount: manifest.totalAssets,
+        byType: manifest.byType,
+      });
       try {
         await assetService.analyzePageAssets(homePage.url, manifest);
       } catch (error) {
@@ -717,6 +733,13 @@ export class ScrapePipeline {
           error: error instanceof Error ? error.message : String(error),
         });
       }
+    } else {
+      logger.warn('rebuild-orchestration.homepage-assets-empty', {
+        appId,
+        homepageUrl: homePage.url,
+        atlasAssetCount: output.assets.length,
+        message: 'No homepage assets to process — manifest will not be saved',
+      });
     }
     await this.selfHostHomepageFavicon(appId, output.favicon, homeAssetInfos);
   }

@@ -385,18 +385,58 @@ describe('AtlasCrawlerAdapter', () => {
         .rejects.toThrow('SiteAnalyzer crashed');
     });
 
-    it('fetches screenshot on final result when homepage_ready never fires (callback provided but unused)', async () => {
+    it('fires callback via fallback when completed seen but homepage_ready missed', async () => {
       const mockResult = createMockCrawlResult({
         pages: [createMockPage({ url: 'https://example.com/', path: '/' })],
         screenshots: [{ path: 'screenshots/job-skip/homepage.png', url: 'https://s3.example.com/screenshot.png', format: 'png', size: 1000, viewport: { width: 1440, height: 900 } }],
       });
-
-      // Goes straight to completed — no homepage_ready
-      fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ jobId: 'job-no-hp', status: 'pending' }) });
-      fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ status: 'completed' }) });
-      fetchMock.mockResolvedValueOnce({ ok: true, json: async () => mockResult });
-      // Screenshot fetch
       const pngBytes = Buffer.from('fake-png');
+
+      // Goes straight to completed — no homepage_ready (fast crawl scenario)
+      // Fetch sequence with fallback fix:
+      // 1. Submit job → jobId + pending
+      fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ jobId: 'job-no-hp', status: 'pending' }) });
+      // 2. Poll status → completed (skipped homepage_ready)
+      fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ status: 'completed' }) });
+      // 3. Fetch /home (fallback when completed seen but callback not fired)
+      fetchMock.mockResolvedValueOnce({ ok: true, json: async () => mockResult });
+      // 4. Fetch screenshot (inside mapCrawlResult for /home)
+      fetchMock.mockResolvedValueOnce({
+        ok: true,
+        arrayBuffer: async () => pngBytes.buffer,
+        headers: new Map([['content-type', 'image/png']]) as any,
+      });
+      // 5. Fetch /results (final, skipScreenshot=true because callback fired)
+      fetchMock.mockResolvedValueOnce({ ok: true, json: async () => mockResult });
+
+      const onHomepageReady = vi.fn();
+      await adapter.crawlSite('https://example.com', {}, { onHomepageReady });
+
+      // Callback should fire via fallback even when homepage_ready was missed
+      expect(onHomepageReady).toHaveBeenCalledTimes(1);
+      // The callback receives the screenshot (used for style analysis in scrape-pipeline)
+      const callbackOutput = onHomepageReady.mock.calls[0][0];
+      expect(callbackOutput.homepageScreenshotBase64).toContain('data:image/png;base64,');
+    });
+
+    it('recovers screenshot from /results when fallback /home fetch fails', async () => {
+      const mockResult = createMockCrawlResult({
+        pages: [createMockPage({ url: 'https://example.com/', path: '/' })],
+        screenshots: [{ path: 'screenshots/job-recover/homepage.png', url: 'https://s3.example.com/screenshot.png', format: 'png', size: 1000, viewport: { width: 1440, height: 900 } }],
+      });
+      const pngBytes = Buffer.from('fake-png');
+
+      // Goes straight to completed, and /home fetch fails (e.g., job expired)
+      // Fetch sequence:
+      // 1. Submit job → jobId + pending
+      fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ jobId: 'job-home-fail', status: 'pending' }) });
+      // 2. Poll status → completed (skipped homepage_ready)
+      fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ status: 'completed' }) });
+      // 3. Fetch /home fails (fallback path)
+      fetchMock.mockResolvedValueOnce({ ok: false, status: 500, text: async () => 'Internal error' });
+      // 4. Fetch /results (skipScreenshot=false because callback never fired)
+      fetchMock.mockResolvedValueOnce({ ok: true, json: async () => mockResult });
+      // 5. Fetch screenshot (recovered from /results since /home failed)
       fetchMock.mockResolvedValueOnce({
         ok: true,
         arrayBuffer: async () => pngBytes.buffer,
@@ -406,8 +446,26 @@ describe('AtlasCrawlerAdapter', () => {
       const onHomepageReady = vi.fn();
       const output = await adapter.crawlSite('https://example.com', {}, { onHomepageReady });
 
+      // Callback must NOT fire when /home failed — no partial data to the callback
       expect(onHomepageReady).not.toHaveBeenCalled();
+      // Screenshot must still be recovered from /results
       expect(output.homepageScreenshotBase64).toContain('data:image/png;base64,');
+    });
+
+    it('propagates callback errors from fallback path', async () => {
+      const mockResult = createMockCrawlResult({
+        pages: [createMockPage({ url: 'https://example.com/', path: '/' })],
+      });
+
+      // Goes straight to completed, /home succeeds, but callback throws
+      fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ jobId: 'job-cb-err', status: 'pending' }) });
+      fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ status: 'completed' }) });
+      fetchMock.mockResolvedValueOnce({ ok: true, json: async () => mockResult });
+
+      const onHomepageReady = vi.fn().mockRejectedValue(new Error('SiteAnalyzer crashed'));
+
+      await expect(adapter.crawlSite('https://example.com', {}, { onHomepageReady }))
+        .rejects.toThrow('SiteAnalyzer crashed');
     });
 
     it('propagates page metadata from Atlas pages to PageScrapeResult', async () => {

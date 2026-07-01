@@ -455,10 +455,50 @@ export class AtlasCrawlerAdapter {
       const job = await this.parseAtlasJson(response, AtlasJobStatusResponseSchema, 'job-status');
 
       if (job.status === 'completed') {
+        // If we missed homepage_ready (fast crawl), try to fetch /home
+        // anyway. The /home endpoint typically remains available after completion, so we
+        // can still fire the callback even though we never saw the intermediate status.
+        // If /home is unavailable (e.g., job expired or homepage never processed), we
+        // fall through and the final /results fetch will still recover the screenshot.
+        if (!homepageCallbackFired && !homepageHandlerAttempted && callbacks?.onHomepageReady) {
+          homepageHandlerAttempted = true;
+          let homeOutput: AtlasCrawlOutput | undefined;
+          try {
+            const homeResult = await this.fetchHomeResults(jobId);
+            // Don't skip screenshot — this is the only chance to fetch it since
+            // homepageCallbackFired will skip it on the final /results fetch.
+            homeOutput = await this.mapCrawlResult(homeResult, rootPath);
+          } catch (error) {
+            // /home may not exist if the job expired or homepage was never processed.
+            // Fall through — the final /results fetch will still recover the screenshot.
+            logger.warn('atlas-crawler-adapter.homepage-ready-fallback-fetch-failed', {
+              jobId,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }
+          // Callback awaited outside try/catch so callback errors propagate (matching
+          // the homepage_ready branch behavior). Callback failures should not be swallowed.
+          if (homeOutput) {
+            logger.info('atlas-crawler-adapter.homepage-ready-callback-start', {
+              jobId,
+              pollCount,
+              missedStatus: true,
+            });
+            await callbacks.onHomepageReady(homeOutput);
+            homepageCallbackFired = true;
+            logger.info('atlas-crawler-adapter.homepage-ready-callback-complete', {
+              jobId,
+              pollCount,
+              elapsedMs: Date.now() - startTime,
+              missedStatus: true,
+            });
+          }
+        }
         logger.info('atlas-crawler-adapter.job-complete', {
           jobId,
           pollCount,
           elapsedMs: Date.now() - startTime,
+          homepageCallbackFired,
         });
         return homepageCallbackFired;
       }
