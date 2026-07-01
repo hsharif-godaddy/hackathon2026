@@ -57,6 +57,7 @@ vi.mock('next/navigation', () => ({
   useRouter: () => mockRouter,
   useParams: () => mockParams,
   usePathname: () => '/develop/app-123',
+  useSearchParams: () => ({ get: () => null }),
 }));
 vi.mock('@/app/[market]/develop/components/utils', () => ({
   useAppIdFromParams: () => 'app-123',

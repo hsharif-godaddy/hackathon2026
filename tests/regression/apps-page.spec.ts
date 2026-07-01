@@ -89,10 +89,10 @@ test.describe('Apps Page & Navigation', () => {
     await expect(page.getByTestId('airo-header')).toBeVisible();
     console.log('  ✓ Header visible');
 
-    // Publish control in header: match by accessible name (not test id — toolbar may duplicate AppPublish)
+    // Publish control in header: scoped to airo-header to avoid the chat-toolbar AppPublish duplicate.
     const publishButton = page
       .getByTestId('airo-header')
-      .getByRole('button', { name: /publish/i });
+      .getByTestId('publish-trigger-button');
     await expect(publishButton).toBeVisible({ timeout: DEFAULT_TIMEOUT });
     await expect(publishButton).not.toBeDisabled();
     console.log('  ✓ Publish button visible and enabled');

@@ -86,7 +86,7 @@ test.describe('E2E v2 - Develop page UI', () => {
     testInfo.setTimeout(180_000);
 
     const airoHeader = page.getByTestId('airo-header');
-    const publishButton = airoHeader.getByRole('button', { name: /publish/i });
+    const publishButton = airoHeader.getByTestId('publish-trigger-button');
     const chatInput = page.getByTestId('chat-input-textarea');
 
     await expect(airoHeader).toBeVisible();
@@ -330,7 +330,7 @@ test.describe('E2E v2 - Develop page UI', () => {
     await ensureAuthenticated(page);
 
     const airoHeader = page.getByTestId('airo-header');
-    const publishButton = airoHeader.getByRole('button', { name: /publish/i });
+    const publishButton = airoHeader.getByTestId('publish-trigger-button');
 
     // We do NOT click publish here — clicking would mutate state (trigger
     // a deploy) and violate this file's no-mutation invariant. Publish UI

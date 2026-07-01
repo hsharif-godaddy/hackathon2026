@@ -113,6 +113,7 @@ let mockDnsConflictModal: ReactNode = null;
 vi.mock('next/navigation', () => ({
   useRouter: () => mockRouterInstance,
   usePathname: () => mockPathname,
+  useSearchParams: () => ({ get: () => null }),
 }));
 
 vi.mock('@/hooks/useTranslations', () => ({

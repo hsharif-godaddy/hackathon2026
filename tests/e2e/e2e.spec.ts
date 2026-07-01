@@ -99,7 +99,7 @@ test.describe('E2E - Critical Path', () => {
     });
 
     const airoHeader = page.getByTestId('airo-header');
-    const publishButton = airoHeader.getByRole('button', { name: /publish/i });
+    const publishButton = airoHeader.getByTestId('publish-trigger-button');
     const chatInput = page.getByTestId('chat-input-textarea');
     const transcript = page.getByTestId('chat-transcript');
 

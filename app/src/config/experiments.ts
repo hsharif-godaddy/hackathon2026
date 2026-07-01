@@ -18,6 +18,8 @@ export const EXPERIMENT_IDS = {
   defaultDomainSelection: 'aab_default_domain_selection',
   /** Upgrade banner placement: chat panel (off) vs preview bar (on). Free users only. */
   upgradeBannerPlacement: 'aab-upgrade-banner-placement',
+  /** Publish button label: 3-way A/B/C test on button copy to improve publish rate. */
+  publishButtonLabel: 'aab_publish_button_label',
 } as const
 
 /**

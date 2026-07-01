@@ -33,6 +33,7 @@ import PublishUpsellPopover from '@/components/layout/PublishUpsellPopover';
 import SeoQualityRegressionAlert from '@/components/layout/SeoQualityRegressionAlert';
 import { COHORT_OFF, COHORT_ON, EXPERIMENT_IDS } from '@/config/experiments';
 import { SWITCHBOARD_APPBUILDER_GO_LIVE_FEATURE } from '@/config/switchboard-flags';
+import { usePublishButtonLabel } from '@/experiments/publish-button-label/usePublishButtonLabel'
 import { useAppSsoStatus } from '@/hooks/useAppSsoStatus';
 import { useChatTabs } from '@/hooks/useChatTabs';
 import { useDeploymentsQuery } from '@/hooks/useDeploymentsQuery';
@@ -546,6 +547,7 @@ export default function AppPublish({ location = 'develop', triggerClassName }: {
 
   // Check if this is first-time publishing
   const isFirstTimePublishing = !hasBeenPublished(site);
+  const publishButtonLabelKey = usePublishButtonLabel(isFirstTimePublishing);
 
   // Treatment publish-button click: emit the SAME canonical click EID control logs at its publish
   // button (publishTriggerClickEid), at the same funnel position (the upsell open, pre-paywall), so
@@ -1119,13 +1121,12 @@ export default function AppPublish({ location = 'develop', triggerClassName }: {
     return null;
   };
 
-  // Publish button label: "Publishing…" while a publish/deploy is in flight, otherwise "Publish".
   const getPublishButtonText = () => {
     if (isPublishingOrDeploying) {
       return t('builder_publish_button_publishing');
     }
 
-    return t('builder_publish_button');
+    return t(publishButtonLabelKey);
   };
 
   const handlePublish = async (shouldOpen: boolean) => {

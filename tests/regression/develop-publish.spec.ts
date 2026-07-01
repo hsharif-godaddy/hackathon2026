@@ -111,7 +111,7 @@ test.describe('Publish Flow', () => {
     // Verify publish button is enabled and interactive after deploy
     const publishButton = page
       .getByTestId('airo-header')
-      .getByRole('button', { name: /publish/i });
+      .getByTestId('publish-trigger-button');
     await expect(publishButton).not.toBeDisabled({ timeout: DEPLOYMENT_TIMEOUT_MS });
     console.log('  ✓ Publish button enabled');
 
@@ -201,7 +201,7 @@ test.describe('Publish Flow', () => {
     await approveAgentPublish(page, PUBLISH_TIMEOUT_MS);
     console.log('  ✓ Approved agent publish confirmation');
 
-    const publishButton = page.getByTestId('airo-header').getByRole('button', { name: /publish/i });
+    const publishButton = page.getByTestId('airo-header').getByTestId('publish-trigger-button');
     await expect(publishButton).not.toBeDisabled({ timeout: DEPLOYMENT_TIMEOUT_MS });
 
     const publishedUrl = await waitForPublishedUrl(page, appId, { timeoutMs: PUBLISH_TIMEOUT_MS + 300_000 });
@@ -413,7 +413,7 @@ test.describe('Publish Flow', () => {
     await expect(page.getByTestId('chat-send-button')).toBeVisible({ timeout: DEFAULT_TIMEOUT });
     await ensureAuthenticated(page);
 
-    const publishTrigger = page.getByTestId('airo-header').getByRole('button', { name: /publish/i });
+    const publishTrigger = page.getByTestId('airo-header').getByTestId('publish-trigger-button');
     await expect(publishTrigger).not.toBeDisabled({ timeout: DEPLOYMENT_TIMEOUT_MS });
 
     console.log('🧪 Step 3: Publish with DNS checkbox unchecked should send dnsUpdateConsent=false...');
