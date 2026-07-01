@@ -3,9 +3,10 @@
 import React, { useState } from 'react';
 
 import {
-  CARD, FunnelBars, IntervalChart, MetricCard, Section, StatCard, SkeletonChart,
+  FunnelBars, IntervalChart, MetricCard, Section, StatCard, SkeletonChart,
   ScorecardHelpBadge,
 } from '../components';
+import { SkeletonBlock, SkeletonCardGrid } from '../components/Skeleton';
 import type { IntervalDataPoint, IntervalSeries, ScorecardHelpInfo } from '../components';
 import type { ScorecardLokiData } from '@/lib/analytics/scorecard/loki';
 
@@ -13,7 +14,7 @@ import { bmpVal } from '../hooks/useBmpData';
 import type { BmpKV, BmpMetric, ScorecardBmpFeedbackData } from '../hooks/useBmpData';
 import type { PdnaTlaFilter } from '../hooks/usePdnaData';
 import type { ScorecardS3FeedbackData } from '../hooks/useS3Feedback';
-import type { FunnelStep, MetricValue, ScorecardChartSize, ScorecardData, ScorecardRange, TabId, TrendView } from '../types';
+import type { FunnelStep, MetricValue, ScorecardChartSize, ScorecardData, TabId, TrendView } from '../types';
 import { aggregateByView, viewLabel as trendViewLabel } from '../trendAggregation';
 
 // ── KR Status Banner ──────────────────────────────────────────────────────────
@@ -220,36 +221,36 @@ function sumMetric(metrics: BmpMetric[], name: string): number {
 // ── Audience Breakdown ────────────────────────────────────────────────────────
 
 interface DimRow {
-  value:          string;
-  genCount:       number;
-  genPct:         number;
-  firstPublish:   number;
-  publishAttempt: number;
-  completionRate: number | null;
+  value:             string;
+  buildStartedCount: number;
+  buildCompleted:    number;
+  firstPublish:      number;
+  publishAttempt:    number;
+  completionRate:    number | null;
 }
 
 function buildDimRows(metrics: BmpMetric[], dimKey: string): DimRow[] {
-  const groups = new Map<string, { gen: number; firstPublish: number; publishAttempt: number }>();
+  const groups = new Map<string, { buildStarted: number; buildCompleted: number; firstPublish: number; publishAttempt: number }>();
   for (const m of metrics) {
     const dim: BmpKV | undefined = (m.dimensions ?? []).find((d) => d.name === dimKey);
     const val: string = dim != null && String(dim.value).trim() !== '' ? String(dim.value) : 'unknown';
-    const existing = groups.get(val) ?? { gen: 0, firstPublish: 0, publishAttempt: 0 };
-    existing.gen            += bmpVal(m.aggregatedSummary, 'generation_triggered');
+    const existing = groups.get(val) ?? { buildStarted: 0, buildCompleted: 0, firstPublish: 0, publishAttempt: 0 };
+    existing.buildStarted   += bmpVal(m.aggregatedSummary, 'initial_build_started');
+    existing.buildCompleted += bmpVal(m.aggregatedSummary, 'initial_build_completed');
     existing.firstPublish   += bmpVal(m.aggregatedSummary, 'first_publish_success');
     existing.publishAttempt += bmpVal(m.aggregatedSummary, 'publish_attempt');
     groups.set(val, existing);
   }
-  const totalGen: number = Array.from(groups.values()).reduce((a, v) => a + v.gen, 0);
   return Array.from(groups.entries())
     .map(([value, counts]): DimRow => ({
       value,
-      genCount:       counts.gen,
-      genPct:         totalGen > 0 ? Math.round((counts.gen / totalGen) * 100) : 0,
-      firstPublish:   counts.firstPublish,
-      publishAttempt: counts.publishAttempt,
-      completionRate: counts.gen > 0 ? Math.round((counts.firstPublish / counts.gen) * 100) : null,
+      buildStartedCount: counts.buildStarted,
+      buildCompleted:    counts.buildCompleted,
+      firstPublish:      counts.firstPublish,
+      publishAttempt:    counts.publishAttempt,
+      completionRate:    counts.buildStarted > 0 ? Math.round((counts.firstPublish / counts.buildStarted) * 100) : null,
     }))
-    .sort((a, b) => b.genCount - a.genCount);
+    .sort((a, b) => b.buildStartedCount - a.buildStartedCount);
 }
 
 interface AudienceBreakdownProps {
@@ -271,9 +272,9 @@ function dropColor(pct: number): string {
 }
 
 const BREAKDOWN_HELP: ScorecardHelpInfo = {
-  what: 'Funnel breakdown by dimension — how each segment (e.g. each entry point) progresses from AI generation through to a first published website.',
-  how: 'Each row is one dimension value from BMP website_core_events. Columns show raw event counts. The → drop% arrows between columns show what percentage of users fell off at that step: Gen Triggered → Publish Attempts (did they try to publish?), Publish Attempts → First Publish Success (did the publish work?). Conv % = First Publish Success ÷ Generation Triggered × 100.',
-  reading: 'High drop at Gen → Attempts: users trigger AI generation but never click publish — engagement problem. High drop at Attempts → Published: users try to publish but fail or abandon — reliability problem. Compare segments to identify which entry points or plan types convert best.',
+  what: 'Funnel breakdown by dimension — how each segment (e.g. each entry point) progresses from initial build start through to a first published website.',
+  how: 'Each row is one dimension value from BMP website_core_events. Columns show raw event counts. The → drop% arrows show falloff at each step: Build Started → Build Completed (did the build finish?), Build Completed → Publish Attempts (did they try to publish?), Publish Attempts → First Publish Success (did the publish work?). Conv % = First Publish Success ÷ Build Started × 100.',
+  reading: 'High drop at Started → Completed: builds starting but not finishing — AI build reliability problem. High drop at Completed → Attempts: users build but never click publish — engagement problem. High drop at Attempts → Published: publish pipeline failures or user abandon. Compare segments to identify which entry points or plan types convert best.',
 };
 
 
@@ -331,7 +332,9 @@ function AudienceBreakdown({ entryPointMetrics, planTypeMetrics, creationSourceM
             <thead>
               <tr style={{ borderBottom: '2px solid var(--sp-border)' }}>
                 <th style={{ ...HDR, textAlign: 'left' }}>Value</th>
-                <th style={{ ...HDR, color: '#6366f1' }}>Generation Triggered</th>
+                <th style={{ ...HDR, color: '#6366f1' }}>Build Started</th>
+                <th style={DHDR}>→ drop</th>
+                <th style={{ ...HDR, color: '#8b5cf6' }}>Build Completed</th>
                 <th style={DHDR}>→ drop</th>
                 <th style={{ ...HDR, color: '#f59e0b' }}>Publish Attempts</th>
                 <th style={DHDR}>→ drop</th>
@@ -341,16 +344,21 @@ function AudienceBreakdown({ entryPointMetrics, planTypeMetrics, creationSourceM
             </thead>
             <tbody>
               {visibleRows.map((r) => {
-                const dGA: number | null = dropPct(r.genCount, r.publishAttempt);
+                const dGB: number | null = dropPct(r.buildStartedCount, r.buildCompleted);
+                const dBP: number | null = r.buildCompleted > 0 ? dropPct(r.buildCompleted, r.publishAttempt) : dropPct(r.buildStartedCount, r.publishAttempt);
                 const dAP: number | null = dropPct(r.publishAttempt, r.firstPublish);
                 return (
                   <tr key={r.value} style={{ borderBottom: '1px solid var(--sp-border)' }}>
                     <td style={{ padding: '0.3rem 0.5rem', fontSize: '0.62rem', color: 'var(--sp-tx2)', fontWeight: 500, textTransform: 'capitalize', maxWidth: '130px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {r.value.replace(/_/g, ' ') || '(unknown)'}
                     </td>
-                    <td style={{ ...COL, color: '#6366f1' }}>{r.genCount.toLocaleString()}</td>
-                    <td style={{ ...DCOL, color: dGA != null ? dropColor(dGA) : '#d1d5db' }}>
-                      {dGA != null ? `↓ ${dGA}%` : '—'}
+                    <td style={{ ...COL, color: '#6366f1' }}>{r.buildStartedCount.toLocaleString()}</td>
+                    <td style={{ ...DCOL, color: dGB != null ? dropColor(dGB) : '#d1d5db' }}>
+                      {dGB != null ? `↓ ${dGB}%` : '—'}
+                    </td>
+                    <td style={{ ...COL, color: '#8b5cf6' }}>{r.buildCompleted.toLocaleString()}</td>
+                    <td style={{ ...DCOL, color: dBP != null ? dropColor(dBP) : '#d1d5db' }}>
+                      {dBP != null ? `↓ ${dBP}%` : '—'}
                     </td>
                     <td style={{ ...COL, color: '#f59e0b' }}>{r.publishAttempt.toLocaleString()}</td>
                     <td style={{ ...DCOL, color: dAP != null ? dropColor(dAP) : '#d1d5db' }}>
@@ -404,7 +412,7 @@ function buildDimTimeSeries(
     const dim: BmpKV | undefined = (m.dimensions ?? []).find((d) => d.name === dimKey);
     const val: string = dim != null && String(dim.value).trim() !== '' ? String(dim.value) : 'unknown';
     if (allowlist && !allowlist.has(val)) continue;
-    totals.set(val, (totals.get(val) ?? 0) + bmpVal(m.aggregatedSummary, 'generation_triggered'));
+    totals.set(val, (totals.get(val) ?? 0) + bmpVal(m.aggregatedSummary, 'initial_build_started'));
   }
 
   const topValues: Set<string> = allowlist
@@ -423,7 +431,7 @@ function buildDimTimeSeries(
       const dateKey: string = (interval.startTime ?? '').slice(0, 10);
       if (!dateMap.has(dateKey)) dateMap.set(dateKey, new Map());
       const entry: Map<string, number> = dateMap.get(dateKey)!;
-      entry.set(val, (entry.get(val) ?? 0) + bmpVal(interval.intervalSummary, 'generation_triggered'));
+      entry.set(val, (entry.get(val) ?? 0) + bmpVal(interval.intervalSummary, 'initial_build_started'));
     }
   }
 
@@ -522,14 +530,12 @@ interface Props {
   trendView?:             TrendView;
   tlaFilter?:             PdnaTlaFilter;
   onTlaChange?:           (v: PdnaTlaFilter) => void;
-  rawRange?:              ScorecardRange;
-  customFrom?:            string;
-  customTo?:              string;
   s3Loading?:             boolean;
   s3Progress?:            { done: number; total: number } | null;
+  bmpLoading?:            boolean;
 }
 
-export function OverviewTab({ data, range, onTabChange, s3Feedback, s3Loading, s3Progress, lokiData, websiteData, dimEntryPointData, dimPlanTypeData, dimCreationSourceData, dimIntentData, bmpData, paywallData, chartSize = 'large', trendView = 'daily', tlaFilter = 'non-tla', onTlaChange, rawRange, customFrom = '', customTo = '' }: Props) {
+export function Overview({ data, range, onTabChange, s3Feedback, s3Loading, s3Progress, lokiData, websiteData, dimEntryPointData, dimPlanTypeData, dimCreationSourceData, dimIntentData, bmpData, paywallData, chartSize = 'large', trendView = 'daily', tlaFilter = 'non-tla', onTlaChange, bmpLoading = false }: Props) {
   const f  = data.funnel;
   const rv = data.revenue;
   const fb = data.feedback;
@@ -546,12 +552,14 @@ export function OverviewTab({ data, range, onTabChange, s3Feedback, s3Loading, s
   const dimIntError: string | null       = (dimIntentData     && !dimIntentData.configMissing)     ? (dimIntentData.error     ?? null) : null;
 
   const ctxStart         = wv('context_gathering_started');
+  const ctxCompleted     = wv('context_gathering_completed');
   const buildStart       = wv('initial_build_started');
-  const genTriggered     = wv('generation_triggered');
+  const buildCompleted   = wv('initial_build_completed');
   const chatStart        = wv('chat_start');
   const chatSubmit       = wv('chat_submit');
   const chatComplete     = wv('chat_complete');
   const chatFailed       = wv('chat_failed');
+  const promptStop       = wv('prompt_stop');
   const chatDelete       = wv('chat_delete');
   const editTriggered    = wv('edit_triggered');
   const rebuildStarted   = wv('rebuild_started');
@@ -560,14 +568,13 @@ export function OverviewTab({ data, range, onTabChange, s3Feedback, s3Loading, s
   const republishSuccess   = wv('republish_success');
   const totalPublishSuccess: number = firstPublish + republishSuccess;
 
-  const funnelFirst: number = ctxStart > 0 ? ctxStart : buildStart > 0 ? buildStart : genTriggered;
+  const funnelFirst: number = buildStart;
   const bmpFunnel: FunnelStep[] = funnelFirst > 0 ? (() => {
     type RawStep = { key: string; label: string; count: number; description: string };
     const raw: RawStep[] = [
-      ...(ctxStart > 0   ? [{ key: 'context_gathering_started', label: 'Context Gathered',      count: ctxStart,   description: 'User provided context about their website — industry, business type, and goals. Fires when the initial onboarding context step begins.' }] : []),
-      ...(buildStart > 0 ? [{ key: 'initial_build_started',     label: 'Initial Build Started', count: buildStart, description: 'The AI started generating the first version of the website. Fires after context is gathered and the first full-page build begins.' }] : []),
-      { key: 'generation_triggered',  label: 'Generation Triggered',  count: genTriggered,   description: 'A user triggered an AI generation — includes the initial build plus any subsequent edits, rebuilds, and inline edits. The primary engagement signal.' },
-      { key: 'publish_attempt',       label: 'Publish Attempted',     count: publishAttempt, description: 'User clicked Publish to deploy their website. Counts every attempt including retries. Drop from Generation Triggered shows how many users never tried to publish.' },
+      { key: 'initial_build_started', label: 'Initial Build Started', count: buildStart, description: 'The AI started generating the first version of the website. Fires after context is gathered and the first full-page build begins.' },
+      { key: 'initial_build_completed',  label: 'Initial Build Completed',  count: buildCompleted, description: 'The AI finished generating the first version of the website. Drop from Initial Build Started = builds that were started but never completed (cancelled or failed).' },
+      { key: 'publish_attempt',       label: 'Publish Attempted',     count: publishAttempt, description: 'User clicked Publish to deploy their website. Counts every attempt including retries. Drop from Initial Build Completed shows how many users never tried to publish.' },
       { key: 'first_publish_success', label: 'First Published',       count: firstPublish,   description: 'The website was successfully published live for the first time. Primary conversion event and KR1 leading indicator. Drop here indicates publish reliability issues.' },
     ];
     return raw.map((s, i) => ({
@@ -576,9 +583,20 @@ export function OverviewTab({ data, range, onTabChange, s3Feedback, s3Loading, s
       count:        s.count,
       description:  s.description,
       pctOfFirst:   Math.round((s.count / funnelFirst) * 100),
-      dropFromPrev: i === 0 || s.key === 'publish_attempt' ? null : raw[i - 1]!.count > 0 ? Math.round(((raw[i - 1]!.count - s.count) / raw[i - 1]!.count) * 100) : null,
+      dropFromPrev: i === 0 ? null : raw[i - 1]!.count > 0 ? Math.round(((raw[i - 1]!.count - s.count) / raw[i - 1]!.count) * 100) : null,
     }));
   })() : [];
+
+  const buildSuccessRate: MetricValue = buildStart > 0
+    ? { rate: Math.round((buildCompleted / buildStart) * 100), numerator: buildCompleted, denominator: buildStart }
+    : { rate: null, numerator: 0, denominator: 0 };
+
+  const ctxCompletionRate: MetricValue = ctxStart > 0
+    ? { rate: Math.round((ctxCompleted / ctxStart) * 100), numerator: ctxCompleted, denominator: ctxStart }
+    : { rate: null, numerator: 0, denominator: 0 };
+  const ctxDropPct: number | null = ctxStart > 0
+    ? Math.round(((ctxStart - ctxCompleted) / ctxStart) * 100)
+    : null;
 
   const bmpPublishRate: MetricValue = publishAttempt > 0
     ? { rate: Math.round((totalPublishSuccess / publishAttempt) * 100), numerator: totalPublishSuccess, denominator: publishAttempt }
@@ -586,9 +604,7 @@ export function OverviewTab({ data, range, onTabChange, s3Feedback, s3Loading, s
 
   const bmpTaskCompletion: MetricValue = buildStart > 0
     ? { rate: Math.round((firstPublish / buildStart) * 100), numerator: firstPublish, denominator: buildStart }
-    : genTriggered > 0
-      ? { rate: Math.round((firstPublish / genTriggered) * 100), numerator: firstPublish, denominator: genTriggered }
-      : { rate: null, numerator: 0, denominator: 0 };
+    : { rate: null, numerator: 0, denominator: 0 };
 
   const agentFailureMetric: MetricValue = chatStart > 0
     ? { rate: Math.round((chatFailed / chatStart) * 100), numerator: chatFailed, denominator: chatStart }
@@ -627,17 +643,18 @@ export function OverviewTab({ data, range, onTabChange, s3Feedback, s3Loading, s
   const avgEditsPerPublish:    string | null = firstPublish > 0 && editTriggered > 0 ? (editTriggered / firstPublish).toFixed(1) : null;
   const avgRebuildsPerPublish: string | null = firstPublish > 0 && rebuildStarted > 0 ? (rebuildStarted / firstPublish).toFixed(1) : null;
 
-  const engEditRate:       number | null = chatComplete > 0 ? Math.round(editTriggered  / chatComplete * 100) : null;
-  const engRebuildRate:    number | null = chatComplete > 0 ? Math.round(rebuildStarted / chatComplete * 100) : null;
-  const engAbandonRate:    number | null = chatSubmit   > 0 ? Math.round(chatDelete     / chatSubmit   * 100) : null;
-  const engSuccessRate:    number | null = chatStart    > 0 ? Math.round(chatComplete   / chatStart    * 100) : null;
+  const engEditRate:        number | null = chatComplete > 0 ? Math.round(editTriggered  / chatComplete * 100) : null;
+  const engRebuildRate:     number | null = chatComplete > 0 ? Math.round(rebuildStarted / chatComplete * 100) : null;
+  const engAbandonRate:     number | null = chatSubmit   > 0 ? Math.round(chatDelete     / chatSubmit   * 100) : null;
+  const engSuccessRate:     number | null = chatStart    > 0 ? Math.round(chatComplete   / chatStart    * 100) : null;
+  const engPromptStopRate:  number | null = chatStart    > 0 ? Math.round(promptStop     / chatStart    * 100) : null;
   const displayPublishRate:     MetricValue  = bmpPublishRate.rate    !== null ? bmpPublishRate    : f.publishRate;
   const displayTaskCompletion:  MetricValue  = bmpTaskCompletion.rate !== null ? bmpTaskCompletion : f.taskCompletion;
   const displayAgentFeedback:   MetricValue  = bmpThumbsUpMetric.rate !== null
     ? bmpThumbsUpMetric
     : { rate: fb.positiveRate, numerator: Math.round(((fb.positiveRate ?? 0) / 100) * fb.totalSubmits), denominator: fb.totalSubmits };
   const displayFunnel:          FunnelStep[] = bmpFunnel.length > 0 ? bmpFunnel : f.steps;
-  const hasBmpWebsite:          boolean      = !websiteData?.configMissing && genTriggered > 0;
+  const hasBmpWebsite:          boolean      = !websiteData?.configMissing && buildStart > 0;
   const hasEngData:             boolean      = hasBmpWebsite && (chatSubmit > 0 || editTriggered > 0 || rebuildStarted > 0);
 
   return (
@@ -648,16 +665,21 @@ export function OverviewTab({ data, range, onTabChange, s3Feedback, s3Loading, s
 
       {/* Core Metrics — headline signals */}
       <Section title="Core Metrics" sub={`${hasBmpWebsite ? 'BMP · website_core_events + agent_feedback_count' : 'Performance snapshot'} · last ${range}`}>
-        {(websiteError || paywallError || bmpFeedbackError) && (
-          <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginBottom: '0.4rem' }}>
-            {websiteError     && <BmpErrBadge msg={`website_core_events: ${websiteError}`} />}
-            {paywallError     && <BmpErrBadge msg={`paywall_conversion_events: ${paywallError}`} />}
-            {bmpFeedbackError && <BmpErrBadge msg={`agent_feedback_count: ${bmpFeedbackError}`} />}
-          </div>
-        )}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.5rem' }}>
-          <StatCard     label="Task Starts"               value={buildStart > 0 ? buildStart : genTriggered} description={buildStart > 0 ? 'initial_build_started · BMP' : 'generation_triggered · BMP'} accent="info" help={{ what: 'Number of apps that started the AI build process in the selected range — the primary task start signal (Leading Indicator, KR1).', how: 'initial_build_started event count · BMP website_core_events. Falls back to generation_triggered when initial_build_started is unavailable.', reading: 'Use alongside Task Completion Rate to understand funnel size.' }} />
-          <MetricCard label="Task Completion Rate"      metric={displayTaskCompletion}  description="first_publish ÷ task starts · BMP"         green={65} amber={50} help={{ what: '% of task starts that resulted in a first website publish — the primary task completion metric (Leading Indicator, KR2).', how: 'first_publish_success ÷ initial_build_started × 100 · BMP website_core_events (airo-instrumentation). Falls back to generation_triggered as denominator when no initial_build_started events exist in the range.', reading: 'Target ≥65%. Low rate = users start but do not complete.' }} />
+        {bmpLoading ? (
+          <SkeletonCardGrid count={10} columns="repeat(5, 1fr)" />
+        ) : (
+          <>
+            {(websiteError || paywallError || bmpFeedbackError) && (
+              <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginBottom: '0.4rem' }}>
+                {websiteError     && <BmpErrBadge msg={`website_core_events: ${websiteError}`} />}
+                {paywallError     && <BmpErrBadge msg={`paywall_conversion_events: ${paywallError}`} />}
+                {bmpFeedbackError && <BmpErrBadge msg={`agent_feedback_count: ${bmpFeedbackError}`} />}
+              </div>
+            )}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '0.5rem' }}>
+          <StatCard     label="Task Starts"               value={buildStart} description="initial_build_started · BMP" accent="info" help={{ what: 'Number of apps that started the AI build process in the selected range — the primary task start signal (Leading Indicator, KR1).', how: 'initial_build_started event count · BMP website_core_events.', reading: 'Use alongside Task Completion Rate to understand funnel size.' }} />
+          <MetricCard label="Initial Build Rate"        metric={buildSuccessRate}        description="initial_build_completed ÷ initial_build_started · BMP" green={80} amber={60} help={{ what: '% of initial builds that started and successfully completed — measures AI build reliability at the first generation step.', how: 'initial_build_completed ÷ initial_build_started × 100 · BMP website_core_events.', reading: 'Green ≥80%, amber ≥60%, red <60%. Low rate indicates builds are starting but failing or being abandoned before completing.' }} />
+          <MetricCard label="Task Completion Rate"      metric={displayTaskCompletion}  description="first_publish ÷ task starts · BMP"         green={65} amber={50} help={{ what: '% of task starts that resulted in a first website publish — the primary task completion metric (Leading Indicator, KR2).', how: 'first_publish_success ÷ initial_build_started × 100 · BMP website_core_events (airo-instrumentation).', reading: 'Target ≥65%. Low rate = users start but do not complete.' }} />
           <MetricCard label="Purchase Conversion Rate"  metric={paywallConversionMetric} description="Purchases ÷ paywall views · BMP" green={10} amber={5} help={{ what: '% of users who saw the upgrade paywall and completed a plan purchase — the purchase funnel conversion rate (Leading Indicator, KR1).', how: 'purchase_success ÷ paywall_view × 100 · BMP paywall_conversion_events (airo-instrumentation).', reading: 'Target ≥10%. Low rate = paywall is not converting.' }} />
           <MetricCard label="Failure/Error Rate"        metric={agentFailureMetric} description="chat_failed ÷ chat_start · BMP" lowerIsBetter green={5} amber={10} help={{ what: '% of AI generation requests that failed with an error — covers streaming errors, timeouts, and budget exceeded (Leading Indicator, KR2).', how: 'chat_failed ÷ chat_start × 100 · BMP website_core_events (airo-instrumentation). Lower is better.', reading: 'Target <5%. High rate signals AI reliability issues.' }} />
           <MetricCard label="Publish Rate"              metric={displayPublishRate}     description="(first_publish + republish) ÷ attempts · BMP" green={60} amber={40} help={{ what: 'Publish pipeline reliability — share of publish attempts that succeeded (first publish or republish).', how: '(first_publish_success + republish_success) ÷ publish_attempt × 100 · BMP website_core_events (airo-instrumentation).', reading: 'Target ≥60%. Low values indicate publish pipeline failures, not user drop-off.' }} />
@@ -665,43 +687,98 @@ export function OverviewTab({ data, range, onTabChange, s3Feedback, s3Loading, s
           {avgChatsPerPublish    !== null && <StatCard label="Avg Chats / Published App"    value={avgChatsPerPublish}    description="chat_submit ÷ first_publish · BMP"    help={{ what: 'Average number of chat turns a user submits before their app is first published.', how: 'chat_submit ÷ first_publish_success · BMP website_core_events.', reading: 'Higher values mean users iterate more before publishing. Compare across date ranges to spot quality changes.' }} />}
           {avgEditsPerPublish    !== null && <StatCard label="Avg Edits / Published App"    value={avgEditsPerPublish}    description="edit_triggered ÷ first_publish · BMP"    help={{ what: 'Average number of inline edits per successfully published app.', how: 'edit_triggered ÷ first_publish_success · BMP website_core_events.', reading: 'Measures iteration depth. Rising trend means users are refining output more before publishing.' }} />}
           {avgRebuildsPerPublish !== null && <StatCard label="Avg Rebuilds / Published App" value={avgRebuildsPerPublish} description="rebuild_started ÷ first_publish · BMP" help={{ what: 'Average number of full regenerations per successfully published app.', how: 'rebuild_started ÷ first_publish_success · BMP website_core_events.', reading: 'High values signal users are dissatisfied with output quality and regenerating from scratch.' }} />}
-        </div>
+            </div>
+          </>
+        )}
       </Section>
+
+      {/* Q&A Drop-off — only when context gathering data exists */}
+      {ctxStart > 0 && (
+        <Section title="Onboarding Q&A Drop-off" sub="BMP · context_gathering_started → context_gathering_completed → initial_build_started · users who abandoned before the AI build">
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.5rem' }}>
+            <StatCard
+              label="Q&A Started"
+              value={ctxStart}
+              description="context_gathering_started · BMP"
+              help={{ what: 'Users who began the onboarding Q&A — answering questions about their website type, industry, and goals.', how: 'context_gathering_started · BMP website_core_events.', reading: 'Entry point to the context-gathering flow. Compare to Initial Build Started to see how many bypassed the Q&A.' }}
+            />
+            <StatCard
+              label="Q&A Completed"
+              value={ctxCompleted}
+              description="context_gathering_completed · BMP"
+              help={{ what: 'Users who finished all the onboarding Q&A questions and proceeded.', how: 'context_gathering_completed · BMP website_core_events.', reading: 'Drop from Q&A Started shows users who abandoned mid-questionnaire.' }}
+            />
+            <MetricCard
+              label="Q&A Completion Rate"
+              metric={ctxCompletionRate}
+              description="completed ÷ started · BMP"
+              green={80} amber={60}
+              help={{ what: '% of users who started the onboarding Q&A and completed it. Low rate = users abandoning the context-gathering step before the AI build.', how: 'context_gathering_completed ÷ context_gathering_started × 100 · BMP website_core_events.', reading: 'Green ≥80%, amber ≥60%, red <60%. A low rate is a leading signal of onboarding friction.' }}
+            />
+            <StatCard
+              label="Q&A Drop-off"
+              value={ctxDropPct !== null ? `${ctxDropPct}%` : '—'}
+              description={ctxDropPct !== null ? `${(ctxStart - ctxCompleted).toLocaleString()} users abandoned` : 'no data'}
+              help={{ what: '% of users who started the Q&A but never completed it — the raw abandon rate.', how: '(context_gathering_started − context_gathering_completed) ÷ context_gathering_started × 100.', reading: '>40% is a red flag for onboarding UX friction. Compare across date ranges to spot regressions.' }}
+            />
+          </div>
+        </Section>
+      )}
 
       {/* Row: Creation Funnel + Audience Breakdown — stretch so both cells are equal height */}
       <div style={{ display: 'grid', gridTemplateColumns: chartSize === 'full' ? '1fr' : '1fr 1fr', gap: '1rem', alignItems: 'stretch' }}>
-        <Section title={<>Funnel Analysis{websiteError ? <> &nbsp;<BmpErrBadge msg={`website_core_events: ${websiteError}`} /></> : null}</>} sub={hasBmpWebsite ? 'BMP · website_core_events · generation_triggered → first_publish_success' : 'Entry Prompt → Output → Refinement → Publish'} style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-          <FunnelBars steps={displayFunnel} size={chartSize} defaultSelectedKey="generation_triggered" />
+        <Section title={<>Funnel Analysis{websiteError ? <> &nbsp;<BmpErrBadge msg={`website_core_events: ${websiteError}`} /></> : null}</>} sub={hasBmpWebsite ? 'BMP · website_core_events · initial_build_started → first_publish_success' : 'Entry Prompt → Output → Refinement → Publish'} style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+          {bmpLoading
+            ? <SkeletonBlock w="100%" h="180px" radius="8px" />
+            : <FunnelBars steps={displayFunnel} size={chartSize} defaultSelectedKey="initial_build_started" />
+          }
         </Section>
         <Section
           title={<>Audience Breakdown <ScorecardHelpBadge info={BREAKDOWN_HELP} />{(dimEPError || dimPTError || dimCSError) ? <> &nbsp;<BmpErrBadge msg="dim query failed" /></> : null}</>}
-          sub="BMP · generation_triggered → publish_attempt → first_publish_success · tab per dimension"
+          sub="BMP · initial_build_started → publish_attempt → first_publish_success · tab per dimension"
           style={{ display: 'flex', flexDirection: 'column', height: '100%' }}
         >
-          <AudienceBreakdown
-            entryPointMetrics={dimEntryPointData?.metrics ?? []}
-            planTypeMetrics={dimPlanTypeData?.metrics ?? []}
-            creationSourceMetrics={dimCreationSourceData?.metrics ?? []}
-          />
+          {bmpLoading ? (
+            <SkeletonBlock w="100%" h="180px" radius="8px" />
+          ) : (
+            <AudienceBreakdown
+              entryPointMetrics={dimEntryPointData?.metrics ?? []}
+              planTypeMetrics={dimPlanTypeData?.metrics ?? []}
+              creationSourceMetrics={dimCreationSourceData?.metrics ?? []}
+            />
+          )}
         </Section>
       </div>
 
       {/* Dimension Trends — 2×2 grid */}
-      <Section title={<>Audience Signals{(dimEPError || dimPTError || dimCSError || dimIntError) ? <> &nbsp;<BmpErrBadge msg="dim query failed" /></> : null}</>} sub="BMP · generation_triggered event count · day-wise by segment · bar / line toggle">
-        <div style={{ display: 'grid', gridTemplateColumns: chartSize === 'small' ? 'repeat(4, 1fr)' : chartSize === 'full' ? '1fr' : '1fr 1fr', gap: '0.75rem' }}>
-          <DimChartCard title="Intent" sub="edit · rebuild · new build" metrics={dimIntentData?.metrics ?? []} dimKey="intent_category" allowlist={INTENT_ALLOWLIST} trendView={trendView} />
-          <DimChartCard title="Plan Type" sub={`top ${DIM_TOP_N} by generation`} metrics={dimPlanTypeData?.metrics ?? []} dimKey="plan_type" trendView={trendView} />
-          <DimChartCard title="Entry Point" sub={`top ${DIM_TOP_N} by generation`} metrics={dimEntryPointData?.metrics ?? []} dimKey="entry_point" trendView={trendView} />
-          <DimChartCard title="Creation Source" sub={`top ${DIM_TOP_N} by generation`} metrics={dimCreationSourceData?.metrics ?? []} dimKey="creation_source" trendView={trendView} />
-        </div>
+      <Section title={<>Audience Signals{(dimEPError || dimPTError || dimCSError || dimIntError) ? <> &nbsp;<BmpErrBadge msg="dim query failed" /></> : null}</>} sub="BMP · initial_build_started event count · day-wise by segment · bar / line toggle">
+        {bmpLoading ? (
+          <div style={{ display: 'grid', gridTemplateColumns: chartSize === 'small' ? 'repeat(4, 1fr)' : chartSize === 'full' ? '1fr' : '1fr 1fr', gap: '0.75rem' }}>
+            {Array.from({ length: 4 }).map((_, i) => <SkeletonChart key={i} height="148px" style={{ animationDelay: `${i * 80}ms` }} />)}
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: chartSize === 'small' ? 'repeat(4, 1fr)' : chartSize === 'full' ? '1fr' : '1fr 1fr', gap: '0.75rem' }}>
+            <DimChartCard title="Intent" sub="edit · rebuild · new build" metrics={dimIntentData?.metrics ?? []} dimKey="intent_category" allowlist={INTENT_ALLOWLIST} trendView={trendView} />
+            <DimChartCard title="Plan Type" sub={`top ${DIM_TOP_N} by generation`} metrics={dimPlanTypeData?.metrics ?? []} dimKey="plan_type" trendView={trendView} />
+            <DimChartCard title="Entry Point" sub={`top ${DIM_TOP_N} by generation`} metrics={dimEntryPointData?.metrics ?? []} dimKey="entry_point" trendView={trendView} />
+            <DimChartCard title="Creation Source" sub={`top ${DIM_TOP_N} by generation`} metrics={dimCreationSourceData?.metrics ?? []} dimKey="creation_source" trendView={trendView} />
+          </div>
+        )}
       </Section>
 
       {/* Engagement Signals */}
-      {!hasEngData && websiteError && (
+      {bmpLoading ? (
+        <Section title="Engagement Signals" sub="BMP · loading…">
+          <div style={{ display: 'grid', gridTemplateColumns: chartSize === 'full' ? '1fr' : '1fr 1fr', gap: '0.75rem' }}>
+            <SkeletonChart height="148px" />
+            <SkeletonChart height="148px" />
+          </div>
+        </Section>
+      ) : !hasEngData && websiteError ? (
         <Section title={<>Engagement Signals &nbsp;<BmpErrBadge msg={`website_core_events: ${websiteError}`} /></>} sub={`BMP query failed · last ${range}`}>
           <p style={{ margin: 0, fontSize: '0.72rem', color: 'var(--sp-tx2)' }}>Chat activity and publish outcome charts unavailable — BMP website_core_events returned an error.</p>
         </Section>
-      )}
+      ) : null}
       {hasEngData && (() => {
         const { points: rawChatPoints,    series: chatSeries    } = buildMeasureTimeSeries(wMetrics, CHAT_MEASURES);
         const { points: rawPublishPoints, series: publishSeries } = buildMeasureTimeSeries(wMetrics, PUBLISH_MEASURES);
@@ -727,6 +804,8 @@ export function OverviewTab({ data, range, onTabChange, s3Feedback, s3Loading, s
                   help: { what: 'Percentage of completed chat turns that triggered a full regeneration — a measure of how often users discard and restart AI output (Diagnostic: Number of regenerations).', how: 'rebuild_started ÷ chat_complete × 100 · BMP website_core_events', reading: '≤5% healthy · >15% elevated — high regeneration rates increase infrastructure cost and slow perceived responsiveness.' } satisfies ScorecardHelpInfo }] : []),
                 ...(engAbandonRate !== null ? [{ label: 'Abandon Rate',  value: `${engAbandonRate}%`, desc: 'chat_delete ÷ submit',      color: engAbandonRate  <= 10 ? '#10b981' : engAbandonRate  <= 20 ? '#f59e0b' : '#ef4444',
                   help: { what: 'Percentage of submitted prompts that the user subsequently deleted before completion.', how: 'chat_delete ÷ chat_submit × 100 · BMP website_core_events', reading: '≤10% healthy · >20% users are frequently cancelling prompts, possibly due to slow response or incorrect output.' } satisfies ScorecardHelpInfo }] : []),
+                ...(engPromptStopRate !== null ? [{ label: 'Prompt Stop Rate', value: `${engPromptStopRate}%`, desc: 'prompt_stop ÷ chat_start', color: engPromptStopRate <= 10 ? '#10b981' : engPromptStopRate <= 20 ? '#f59e0b' : '#ef4444',
+                  help: { what: 'Percentage of started AI generations that the user manually stopped mid-run — a signal of impatience or wrong direction (Diagnostic: failure/error drivers).', how: 'prompt_stop ÷ chat_start × 100 · BMP website_core_events · element_action_event_cln', reading: '≤10% healthy · >20% users are frequently stopping AI mid-generation — investigate prompt quality or response speed.' } satisfies ScorecardHelpInfo }] : []),
               ] as { label: string; value: string | number; desc: string; color: string; help: ScorecardHelpInfo }[]).map(({ label, value, desc, color, help }) => (
                 <div key={label} style={{ background: 'var(--sp-s1)', border: '1px solid var(--sp-border)', borderRadius: '8px', padding: '0.6rem 0.75rem' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', marginBottom: '0.2rem' }}>

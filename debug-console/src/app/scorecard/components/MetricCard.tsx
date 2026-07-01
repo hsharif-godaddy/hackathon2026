@@ -1,6 +1,5 @@
 'use client';
 
-import React from 'react';
 
 import { ScorecardHelpBadge } from './ScorecardHelpBadge';
 import type { ScorecardHelpInfo } from './ScorecardHelpBadge';

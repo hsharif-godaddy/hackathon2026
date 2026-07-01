@@ -82,11 +82,11 @@ interface S3AggResult {
   neutral: number;
   negative: number;
   distribution: Record<string, number>;
+  dailyDistribution: Record<string, Record<string, number>>;
   mergedTruncated: boolean;
   itemsLoaded: number;
   itemsInWindow: number;
   partitionErrors: number;
-  topComments: ScorecardS3CommentRow[];
   perAppRatings: Array<{ appId: string; avg: number; count: number }>;
   categoryCounts: Record<string, number>;
 }
@@ -100,10 +100,10 @@ function aggregateItems(
   let ratingSum: number = 0;
   let ratingCount: number = 0;
   const dist: Record<string, number> = { '1': 0, '2': 0, '3': 0, '4': 0, '5': 0, '6': 0, '7': 0 };
+  const dailyDist: Record<string, Record<string, number>> = {};
   let fbPositive: number = 0;
   let fbNeutral: number = 0;
   let fbNegative: number = 0;
-  const topComments: ScorecardS3CommentRow[] = [];
   const appRatings = new Map<string, { sum: number; count: number }>();
   const categoryCounts: Record<string, number> = {};
 
@@ -118,6 +118,12 @@ function aggregateItems(
       if (r >= 6) fbPositive += 1;
       else if (r >= 4) fbNeutral += 1;
       else fbNegative += 1;
+      const dateKey: string | undefined = typeof item.feedback_utc_ts === 'string' ? item.feedback_utc_ts.slice(0, 10) : undefined;
+      if (dateKey) {
+        if (!dailyDist[dateKey]) dailyDist[dateKey] = {};
+        const bucket: Record<string, number> = dailyDist[dateKey]!;
+        bucket[String(ri)] = (bucket[String(ri)] ?? 0) + 1;
+      }
     }
     const cat: string = (item['feedback_category'] as string | undefined)?.toLowerCase().trim() || 'feedback';
     categoryCounts[cat] = (categoryCounts[cat] ?? 0) + 1;
@@ -127,18 +133,6 @@ function aggregateItems(
       slot.sum += Number(item.rating);
       slot.count += 1;
       appRatings.set(appId, slot);
-    }
-    if (topComments.length < 20) {
-      const textRaw: unknown = item['feedback_text'] ?? item['comment'] ?? item['message'];
-      const text: string = typeof textRaw === 'string' ? textRaw.trim() : '';
-      if (text) {
-        topComments.push({
-          text: text.slice(0, 500),
-          rating: rValid ? r : null,
-          ts: typeof item.feedback_utc_ts === 'string' ? item.feedback_utc_ts : null,
-          appId: appId ?? null,
-        });
-      }
     }
   }
 
@@ -154,11 +148,11 @@ function aggregateItems(
     neutral: fbNeutral,
     negative: fbNegative,
     distribution: dist,
+    dailyDistribution: dailyDist,
     mergedTruncated: merged_truncated,
     itemsLoaded: items.length,
     itemsInWindow: inWindow.length,
     partitionErrors: partition_errors,
-    topComments,
     perAppRatings,
     categoryCounts,
   };
@@ -239,11 +233,11 @@ export interface ScorecardS3Data {
   neutral: number;
   negative: number;
   distribution: Record<string, number>;
+  dailyDistribution: Record<string, Record<string, number>>;
   mergedTruncated: boolean;
   itemsLoaded: number;
   itemsInWindow: number;
   partitionErrors: number;
-  topComments: ScorecardS3CommentRow[];
   perAppRatings: Array<{ appId: string; avg: number; count: number }>;
   categoryCounts: Record<string, number>;
 }
@@ -288,7 +282,7 @@ export interface ScorecardFeedbackCommentsResult {
   pageSize?: number;
 }
 
-const COMMENTS_PAGE_SIZE = 10;
+const COMMENTS_PAGE_SIZE = 15;
 
 export async function getScorecardFeedbackComments(sp: URLSearchParams): Promise<ScorecardFeedbackCommentsResult> {
   if (!getFeedbackS3Bucket()) return { configMissing: true };
@@ -304,7 +298,7 @@ export async function getScorecardFeedbackComments(sp: URLSearchParams): Promise
   }
 
   const targetRating: number = Math.round(ratingParam);
-  const page: number = Math.max(0, Number(sp.get('page')) || 0);
+  const page: number = Math.max(0, Math.min(1000, Number(sp.get('page')) || 0));
 
   type CommentsPage = {
     comments: Array<{ text: string; rating: number; ts: string | null; appId: string | null }>;

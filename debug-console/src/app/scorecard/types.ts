@@ -109,6 +109,14 @@ export interface ScorecardData {
   prevKR: KRDelta | null;
 }
 
+/** How an individual FullStory event is categorized for segregated display. */
+export type JourneyEventCategory =
+  | 'navigation'     // page navigations and route changes
+  | 'interaction'    // clicks, scrolls, element visibility
+  | 'error'          // rage-click, dead-click, console errors, exceptions
+  | 'feedback'       // explicit feedback events
+  | 'instrumentation'; // custom events fired by Airo app instrumentation code
+
 export interface JourneyEvent {
   timestamp: string;
   event: string;
@@ -117,10 +125,20 @@ export interface JourneyEvent {
   fullstoryUrl: string | null;
   isKeyEvent: boolean;
   status: 'success' | 'error' | 'warning' | 'info';
+  category: JourneyEventCategory;
+}
+
+/** Lightweight session metadata — no events. Returned by the journey-list endpoint. */
+export interface JourneySessionMeta {
+  sessionId: string;
+  deviceId: string;
+  startTime: string;
+  fullstorySessionUrl: string | null;
 }
 
 export interface JourneySession {
   sessionId: string;
+  deviceId: string;
   startTime: string;
   endTime: string;
   durationMs: number;
@@ -139,20 +157,44 @@ export interface AppJourneyData {
   businessName: string | null;
 }
 
+/** Response shape for the journey-list action (session metadata only, no events). */
+export interface JourneyListData {
+  appId: string;
+  /** Number of sessions in this page response (not cumulative). */
+  totalSessions: number;
+  lookbackDays: number;
+  sessions: JourneySessionMeta[];
+  /** Opaque cursor — present when more pages are available. Pass as pageToken for the next request. */
+  nextPageToken?: string;
+  /** FullStory segment ID built for this appId. Pass as segmentId to skip rebuilding on subsequent pages. */
+  segmentId?: string;
+}
+
 // ── UI-only types ─────────────────────────────────────────────────────────────
 
 export type ScorecardRange      = '24h' | '7d' | '14d' | '30d' | '90d' | 'custom';
 export type ScorecardChartSize  = 'small' | 'large' | 'full';
 export type TrendView           = 'daily' | 'weekly' | 'monthly' | 'yearly';
 export const TAB_IDS = [
-  'overview', 'feedback', 'revenue', 'appprovisioning', 'journey',
+  'overview', 'appprovisioning',
+  'revenue', 'revenuefunnel', 'subscriptions',
+  'feedback', 'journey',
 ] as const;
 export type TabId = typeof TAB_IDS[number];
 
 export const TAB_LABELS: Record<TabId, string> = {
-  overview:         'Overview',
-  feedback:         'Feedback',
-  revenue:          'Revenue',
-  appprovisioning:  'Apps',
-  journey:          'Journey',
+  overview:        'Overview',
+  appprovisioning: 'Apps',
+  revenue:         'Overview',
+  revenuefunnel:   'Funnel',
+  subscriptions:   'Subscriptions',
+  feedback:        'Feedback',
+  journey:         'Journey',
+};
+
+export const FEEDBACK_SUB_IDS = ['overview', 'deep-dive'] as const;
+export type FeedbackSubTab = typeof FEEDBACK_SUB_IDS[number];
+export const FEEDBACK_SUB_LABELS: Record<FeedbackSubTab, string> = {
+  'overview':   'Overview',
+  'deep-dive':  'Deep Dive',
 };

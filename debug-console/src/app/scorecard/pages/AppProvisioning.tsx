@@ -111,7 +111,7 @@ const DUMMY_PDNA_APPS_DATA: PdnaAppsData = {
   subscriptionPlans: {},
 };
 
-interface AppProvisioningTabProps {
+interface AppProvisioningProps {
   rawRange:   ScorecardRange;
   customFrom: string;
   customTo:   string;
@@ -119,7 +119,7 @@ interface AppProvisioningTabProps {
   trendView?: TrendView;
 }
 
-export function AppProvisioningTab({ rawRange, customFrom, customTo, chartSize, trendView = 'daily' }: AppProvisioningTabProps) {
+export function AppProvisioning({ rawRange, customFrom, customTo, chartSize, trendView = 'daily' }: AppProvisioningProps) {
   const [tla, setTla]     = useState<PdnaTlaFilter>('non-tla');
   const [plans, setPlans] = useState<PlanOption[]>([]);
 

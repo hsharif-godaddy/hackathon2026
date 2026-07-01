@@ -87,6 +87,7 @@ export const WEBSITE_CORE_MEASURES: string[] = [
   'context_gathering_started',
   'context_gathering_completed',
   'initial_build_started',
+  'initial_build_completed',
   'generation_triggered',
   'chat_start',
   'chat_complete',
@@ -103,6 +104,7 @@ export const WEBSITE_CORE_MEASURES: string[] = [
   'first_publish_success',
   'republish_success',
   'publish_button_click',
+  'prompt_stop',
 ];
 
 // ── Metric: paywall_conversion_events (namespace: airo-instrumentation) ──────
@@ -146,10 +148,11 @@ export function useScorecardWebsiteCoreEvents(
 }
 
 // ── Metric: website_core_events broken down by dimension (one call per dim) ───
-// Order matters: generation_triggered → publish_attempt → first_publish_success
+// Order matters: initial_build_started → initial_build_completed → publish_attempt → first_publish_success
 
 export const WEBSITE_DIM_MEASURES: string[] = [
-  'generation_triggered',
+  'initial_build_started',
+  'initial_build_completed',
   'publish_attempt',
   'first_publish_success',
 ];

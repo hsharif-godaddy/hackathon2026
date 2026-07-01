@@ -1,4 +1,6 @@
 import type { IntervalDataPoint } from './components';
+import { bmpVal } from './hooks/useBmpData';
+import type { BmpMetric } from './hooks/useBmpData';
 import type { TrendView } from './types';
 
 export function getBucketKey(fullDate: string, view: TrendView): string {
@@ -58,4 +60,32 @@ export function viewLabel(view: TrendView): string {
   if (view === 'monthly') return 'month-wise';
   if (view === 'yearly')  return 'year-wise';
   return 'day-wise';
+}
+
+export interface PeriodDelta {
+  current:  number;
+  prev:     number;
+  deltaPct: number | null;
+}
+
+export function computePeriodDelta(metrics: BmpMetric[], measureName: string): PeriodDelta {
+  const dateMap = new Map<string, number>();
+  for (const m of metrics) {
+    for (const interval of (m.intervals ?? [])) {
+      const dateKey: string = (interval.startTime ?? '').slice(0, 10);
+      if (!dateKey) continue;
+      const val: number = bmpVal(interval.intervalSummary, measureName);
+      dateMap.set(dateKey, (dateMap.get(dateKey) ?? 0) + val);
+    }
+  }
+  const sortedDates: string[] = Array.from(dateMap.keys()).sort();
+  const n: number = sortedDates.length;
+  if (n < 2) return { current: 0, prev: 0, deltaPct: null };
+  const midpoint: number = Math.ceil(n / 2);
+  const prevDates: string[]    = sortedDates.slice(0, midpoint);
+  const currentDates: string[] = sortedDates.slice(midpoint);
+  const prev: number    = prevDates.reduce((s, d) => s + (dateMap.get(d) ?? 0), 0);
+  const current: number = currentDates.reduce((s, d) => s + (dateMap.get(d) ?? 0), 0);
+  const deltaPct: number | null = prev > 0 ? Math.round(((current - prev) / prev) * 100) : null;
+  return { current, prev, deltaPct };
 }

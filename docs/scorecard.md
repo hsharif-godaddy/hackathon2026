@@ -82,12 +82,15 @@ Based on the [Airo Task Metric Goal doc](./airo-task-metric-goal.md). Each metri
 | Metric | Data Source | Measure / Formula | Status |
 | --- | --- | --- | --- |
 | Task starts | BMP `website_core_events` | `initial_build_started` | ✅ Live |
+| Initial build completion rate | BMP `website_core_events` | `initial_build_completed ÷ initial_build_started` | ✅ Live |
 | Task completion rate | BMP `website_core_events` | `first_publish_success ÷ initial_build_started` | ✅ Live |
 | Publish rate | BMP `website_core_events` | `(first_publish_success + republish_success) ÷ publish_attempt` | ✅ Live |
 | Purchase conversion rate | BMP `paywall_conversion_events` | `purchase_success ÷ paywall_view` | ✅ Live |
 | Paid units (supplementary) | BMP `paywall_conversion_events` | `purchase_success` + tier breakdown | ✅ Live |
 
 > **Task completion rate vs Publish rate:** Task completion rate measures user funnel drop-off (did users who started a task ever publish?). Publish rate measures pipeline reliability (of the users who clicked Publish, how many succeeded?). A low publish rate at a high task completion rate points to a publish infrastructure problem, not user drop-off.
+
+> **`initial_build_started` vs `generation_triggered`:** `initial_build_started` (`appbuilder.develop.initialbuild.start.impression`) fires exactly once — when the AI begins the very first website build for an app. `generation_triggered` fires for every subsequent generation (edits, rebuilds) and is no longer used as a task-start proxy. All "Task Starts" metrics across every view now use `initial_build_started`.
 
 #### Quality / Satisfaction (KR2)
 
@@ -102,13 +105,187 @@ Based on the [Airo Task Metric Goal doc](./airo-task-metric-goal.md). Each metri
 
 | Metric | Data Source | Measure / Formula | Status |
 | --- | --- | --- | --- |
-| Funnel analysis (up to 5-step) | BMP `website_core_events` | `context_gathering_started` → `first_publish_success` | ✅ Live |
+| Funnel analysis (4-step) | BMP `website_core_events` | `initial_build_started` → `initial_build_completed` → `publish_attempt` → `first_publish_success` | ✅ Live |
+| Onboarding Q&A drop-off | BMP `website_core_events` | `context_gathering_started` → `context_gathering_completed` (completion rate + abandon count) | ✅ Live |
+| Initial build success rate | BMP `website_core_events` | `initial_build_completed ÷ initial_build_started` | ✅ Live |
 | Top failures — publish | Loki + BMP | `publish_failed` count + `buildFailed`/`archiveFailed` log reasons | ✅ Live |
 | Number of iterations / regenerations | BMP `website_core_events` | `rebuild_started`, `edit_triggered`, `chat_delete` | ✅ Live |
 | Entry point + intent tracking | BMP `website_core_events` | `entry_point`, `intent_category` dimensions | ✅ Live |
 | Thumbs up/down feedback rate | BMP `agent_feedback_count` | `positive_count ÷ total_count × 100` | ✅ Live |
 | Free-text feedback + category breakdown | S3 Parquet | Raw text + positive / neutral / negative buckets | ✅ Live |
 | Cross-session analysis | — | No cross-session identity stitching available | ❌ Not possible |
+
+---
+
+## Navigation Structure
+
+The scorecard uses a collapsible left sidebar with four navigation groups:
+
+### 📊 Analytics
+| Page | Route key | Description |
+| --- | --- | --- |
+| **Overview** | `overview` | Core metrics grid (5-per-row), audience breakdown by `entry_point`/`plan_type`/`creation_source`/`intent`, funnel analysis, Q&A drop-off diagnostic |
+| **Apps** | `appprovisioning` | App provisioning counts and growth trends |
+
+### 💰 Revenue
+| Page | Route key | Description |
+| --- | --- | --- |
+| **Overview** | `revenue` | Revenue summary — paywall hits, purchases, tier breakdown, PDNA paid units |
+| **Funnel** | `revenuefunnel` | Full journey funnel with **free / paid / all** lens switcher. Steps: Task Starts → Initial Build → Publish Intent → Paywall → Purchase → Task Complete. Includes per-step drill-down by intent. |
+| **Subscriptions** | `subscriptions` | Subscription lifecycle — new, cancelled, suspended, downgraded |
+
+### ⭐ Feedback
+| Page | Route key | Description |
+| --- | --- | --- |
+| **Overview** | `feedback` (sub: `overview`) | Love score summary, thumbs up/down rate, rating distribution |
+| **Deep Dive** | `feedback` (sub: `deep-dive`) | Free-text comments with category + sentiment breakdown |
+
+### 🔍 Journey
+| Page | Route key | Description |
+| --- | --- | --- |
+| **Journey** | `journey` | Per-app FullStory session timeline — events, navigation, and outcomes |
+
+---
+
+## Overview Page Sections
+
+### Core Metrics (5-per-row grid)
+Ten stat/metric cards showing the most important numbers at a glance:
+
+| Card | Source | Notes |
+| --- | --- | --- |
+| Task Starts | BMP `initial_build_started` | Entry to the AI build funnel |
+| Initial Build Rate | BMP `initial_build_completed ÷ initial_build_started` | AI generation success rate |
+| Task Completion | BMP `first_publish_success ÷ initial_build_started` | Full funnel conversion |
+| Publish Rate | BMP publish success/attempt | Pipeline reliability |
+| Chat Success | BMP `chat_complete ÷ chat_start` | Chat queue health |
+| Paywall Hits | BMP `paywall_conversion_events` | Upgrade funnel entry |
+| Purchases | BMP `purchase_success` | Supplementary to PDNA |
+| Purchase Rate | BMP `purchase_success ÷ paywall_view` | Paywall conversion |
+| Love Score | S3 Parquet | Avg 1–7 rating |
+| Feedback Rate | BMP `agent_feedback_count` | Thumbs up/down engagement |
+
+### Onboarding Q&A Drop-off (conditional)
+Shown only when `context_gathering_started > 0`. Displays four cards:
+- **Q&A Started** — `context_gathering_started` count
+- **Q&A Completed** — `context_gathering_completed` count
+- **Q&A Completion Rate** — `completed ÷ started` (green ≥ 80%, amber ≥ 60%)
+- **Q&A Drop-off** — percentage and raw user count who abandoned before the AI build
+
+### Funnel Analysis
+4-step funnel starting at `initial_build_started` (Context Gathering is shown separately in Q&A Drop-off, not as a funnel step):
+
+```
+initial_build_started → initial_build_completed → publish_attempt → first_publish_success
+```
+
+Each step shows absolute count, conversion rate from previous step, and a `dropFromPrev` connector showing the drop percentage.
+
+### Audience Breakdown
+Dimension tables segmented by `entry_point`, `plan_type`, `creation_source`, and `intent_category`, each showing `initial_build_started` counts and publish completion rates per dimension value.
+
+---
+
+## Revenue Funnel Page — Lens Switcher
+
+The Revenue Funnel page (`revenuefunnel`) has a **free / paid / all** lens:
+
+| Lens | Data source | Description |
+| --- | --- | --- |
+| **all** | `websiteData` (no dimension) | Full population |
+| **free** | `dimPlanTypeData` filtered `plan_type = 'free'` | Free-tier users only |
+| **paid** | `dimPlanTypeData` filtered `plan_type ∈ {starter, professional, ultimate}` | Paying users only |
+
+The dimension data (`dimPlanTypeData`) is fetched by the server-side route with measures `['initial_build_started', 'initial_build_completed', 'publish_attempt', 'first_publish_success']` and dimension `['plan_type']`.
+
+Paywall and purchase metrics are always shown from the all-user paywall dataset (no plan-type split available at paywall time — users upgrade during that step).
+
+`suspended_nonpayment` count is shown in the Subscriptions view and is retained in paywall data regardless of lens.
+
+---
+
+## Troubleshooting
+
+**BMP data empty** → Sign in via the prod hostname (`local.console.airo-builder.gdcorp.tools`). BMP requires a prod `auth_jomax` cookie — dev hostname won't work.
+
+**PDNA shows 0** → `PDNA_ES_ENDPOINT` or `PDNA_ES_API_KEY` not set. Ask in `#airo-eng`.
+
+**S3 "not configured"** → `FEEDBACK_S3_BUCKET` missing. Ask in `#airo-eng`. Authenticate via `aws sso login` so the SDK default credential chain resolves.
+
+**S3 shows `avgRating: null`** → No numeric ratings in the range. Try `30d` or `90d`.
+
+**S3 shows `mergedTruncated: true`** → More than 2000 feedback items in the range. Narrow the date window.
+
+**Feedback comments show "Failed to load comments: …"** → The comment fetch returned an error (HTTP non-200 or network failure). The message shown is the server-side error string or HTTP status code. Check `FEEDBACK_S3_BUCKET` config and AWS credentials.
+
+**Loki data missing** → `LOKI_ENDPOINT` not set. See credentials section above.
+
+**Journey tab shows 503** → `FULLSTORY_API_KEY` not configured. Add it to `.env.local` and restart.
+
+**SSO redirect loop** → Check `/etc/hosts` has the hostname entry. Restart after any `.env.local` change.
+
+**Free/paid lens shows 0 for task starts** → `initial_build_started` events include `plan_type` from the instrumentation context. If the context isn't set when the event fires (new user, no plan loaded yet), events go to the "unknown" bucket. Check that `setInstrumentationPlanType` is called before `activateInitialBuildFunnel` in the develop page lifecycle.
+
+---
+
+## Key Files
+
+```
+debug-console/src/
+├── app/api/analytics/scorecard/
+│   └── route.ts                        # All scorecard server-side actions (/api/analytics/scorecard)
+│                                       # runBmpQuery() — fans out 7 BMP queries via Promise.allSettled
+│                                       # SCORECARD_WEBSITE_CORE_MEASURES — full measure list for overview
+│                                       # SCORECARD_WEBSITE_DIM_MEASURES — dimension query measures
+│                                       #   ['initial_build_started', 'initial_build_completed',
+│                                       #    'publish_attempt', 'first_publish_success']
+│                                       # SCORECARD_PAYWALL_MEASURES — paywall/purchase measures
+│                                       # actions: bmp, bmp-feedback, feedback-s3, pdna,
+│                                       #          loki, datasource-status, c1-events, journey,
+│                                       #          feedback-comments
+├── app/scorecard/
+│   ├── page.tsx                        # Scorecard root — sidebar + page router + range picker
+│   ├── ScorecardSidebar.tsx            # Collapsible sidebar with Analytics/Revenue/Feedback/Journey groups
+│   ├── types.ts                        # All scorecard types — ScorecardData, MetricValue, TabId, etc.
+│   ├── hooks/
+│   │   ├── useFetch.ts                 # Generic AbortController fetch hook (StrictMode-safe)
+│   │   ├── useScorecardBmp.ts          # Single fetch → { bmp, website, dimEntryPoint,
+│   │   │                               #   dimPlanType, dimCreationSource, dimIntent, paywall }
+│   │   ├── useBmpData.ts               # BMP types (ScorecardBmpFeedbackData, BmpMetric, bmpVal)
+│   │   │                               # WEBSITE_DIM_MEASURES constant (client-side ref)
+│   │   ├── usePdnaData.ts              # PDNA paid units
+│   │   ├── useLokiData.ts              # Loki publish + WS error data
+│   │   ├── useS3Feedback.ts            # S3 Parquet numeric love score (action=feedback-s3)
+│   │   └── useDatasourceStatus.ts      # Polls /api/analytics/scorecard?action=datasource-status
+│   ├── components/
+│   │   ├── FunnelBars.tsx              # Funnel renderer — steps + dropFromPrev connectors
+│   │   ├── IntervalChart.tsx           # Time-series chart (ECharts)
+│   │   ├── MetricCard.tsx              # Rate card with green/amber/red threshold colouring
+│   │   ├── StatCard.tsx                # Simple count card (accent: default | premium | info)
+│   │   ├── Section.tsx                 # Titled section wrapper
+│   │   ├── Skeleton.tsx                # Loading skeletons
+│   │   └── SessionTimeline.tsx         # FullStory session event renderer
+│   └── pages/
+│       ├── Overview.tsx                # Analytics > Overview — core metrics, Q&A drop-off,
+│       │                               #   funnel analysis, audience breakdown
+│       ├── AppProvisioning.tsx         # Analytics > Apps
+│       ├── C1LiveFeed.tsx              # ClickHouse C1 live event feed
+│       ├── Journey.tsx                 # Journey tab — FullStory per-app timeline
+│       ├── feedback/
+│       │   ├── Overview.tsx            # Feedback > Overview — love score + thumbs
+│       │   ├── DeepDive.tsx            # Feedback > Deep Dive — free-text + categories
+│       │   └── shared.tsx              # Shared feedback helpers
+│       └── revenue/
+│           ├── Overview.tsx            # Revenue > Overview — paywall, purchases, PDNA units
+│           ├── Funnel.tsx              # Revenue > Funnel — journey funnel with free/paid/all lens
+│           └── Subscriptions.tsx       # Revenue > Subscriptions — lifecycle metrics
+└── lib/analytics/scorecard/
+    ├── cache.ts                        # Scorecard-specific stale-while-revalidate cache (5 min TTL)
+    ├── loki.ts                         # Loki query logic for scorecard
+    ├── s3-feedback.ts                  # S3 Parquet aggregation
+    ├── fs-journey.ts                   # FullStory MCP calls → AppJourneyData (per-app)
+    └── fs-utils.ts                     # FullStory URL helpers
+```
 
 ---
 
@@ -144,71 +321,3 @@ Domain setup is another distinct JTBD. Planned instrumentation:
 - **Structured failure reasons** — product-level failure categories (not raw technical codes) for publish and chat failures; requires a classification layer or structured enum from the agent
 - **Per-asset feedback** — feedback tagged to the specific asset type (logo vs domain vs page section); requires product-side feedback flow changes
 - **Task-level customer feedback** — JTBD-aware feedback prompt; current prompt is generic; requires both product and instrumentation changes
-
----
-
-## Troubleshooting
-
-**BMP data empty** → Sign in via the prod hostname (`local.console.airo-builder.gdcorp.tools`). BMP requires a prod `auth_jomax` cookie — dev hostname won't work.
-
-**PDNA shows 0** → `PDNA_ES_ENDPOINT` or `PDNA_ES_API_KEY` not set. Ask in `#airo-eng`.
-
-**S3 "not configured"** → `FEEDBACK_S3_BUCKET` missing. Ask in `#airo-eng`. Authenticate via `aws sso login` so the SDK default credential chain resolves.
-
-**S3 shows `avgRating: null`** → No numeric ratings in the range. Try `30d` or `90d`.
-
-**S3 shows `mergedTruncated: true`** → More than 2000 feedback items in the range. Narrow the date window.
-
-**Feedback comments show "Failed to load comments: …"** → The comment fetch returned an error (HTTP non-200 or network failure). The message shown is the server-side error string or HTTP status code. Check `FEEDBACK_S3_BUCKET` config and AWS credentials.
-
-**Loki data missing** → `LOKI_ENDPOINT` not set. See credentials section above.
-
-**Journey tab shows 503** → `FULLSTORY_API_KEY` not configured. Add it to `.env.local` and restart.
-
-**SSO redirect loop** → Check `/etc/hosts` has the hostname entry. Restart after any `.env.local` change.
-
----
-
-## Key Files
-
-```
-debug-console/src/
-├── app/api/analytics/
-│   ├── route.ts                        # Existing shared analytics route (unchanged)
-│   └── scorecard/
-│       └── route.ts                    # All scorecard server-side actions (/api/analytics/scorecard)
-│                                       # runBmpQuery() + SCORECARD_*_MEASURES constants
-│                                       # bmp: fans out 7 BMP queries via Promise.allSettled
-│                                       # feedback-s3: S3 Parquet love score
-│                                       # pdna / loki / datasource-status / c1-events / journey / feedback-comments
-├── app/scorecard/
-│   ├── page.tsx                        # Scorecard root — tab router + range picker
-│   ├── types.ts                        # All scorecard types (data + UI)
-│   ├── hooks/
-│   │   ├── useFetch.ts                 # Generic AbortController fetch hook (StrictMode-safe)
-│   │   │                               # calls /api/analytics/scorecard?${queryString}
-│   │   ├── useScorecardBmp.ts          # Single call → { bmp, website, dimEntryPoint,
-│   │   │                               #   dimPlanType, dimCreationSource, dimIntent, paywall }
-│   │   ├── useBmpData.ts               # BMP types (ScorecardBmpFeedbackData, BmpMetric, bmpVal)
-│   │   │                               # + individual hooks used by tab components
-│   │   ├── usePdnaData.ts              # PDNA paid units
-│   │   ├── useLokiData.ts              # Loki publish + WS error data
-│   │   ├── useS3Feedback.ts            # S3 Parquet numeric love score (action=feedback-s3)
-│   │   └── useDatasourceStatus.ts      # Polls /api/analytics/scorecard?action=datasource-status
-│   ├── tabs/
-│   │   ├── OverviewTab.tsx
-│   │   ├── FeedbackTab.tsx
-│   │   ├── RevenueTab.tsx
-│   │   ├── EngagementTab.tsx
-│   │   ├── JourneyTab.tsx              # FullStory per-app session timeline
-│   │   └── C1LiveFeed.tsx              # ClickHouse C1 live event feed
-│   └── components/
-│       ├── SessionTimeline.tsx         # FullStory session event renderer
-│       └── BreakdownTable.tsx
-└── lib/analytics/scorecard/
-    ├── cache.ts                        # Scorecard-specific stale-while-revalidate cache
-    ├── loki.ts                         # Loki query logic for scorecard
-    ├── s3-feedback.ts                  # S3 Parquet aggregation (imports from shared feedback-s3.ts)
-    ├── fs-journey.ts                   # FullStory MCP calls → AppJourneyData (per-app)
-    └── fs-utils.ts                     # FullStory URL helpers (buildFsSearchUrl, buildFsDeepLink)
-```

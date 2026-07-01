@@ -25,11 +25,11 @@ export interface ScorecardS3FeedbackData {
   neutral: number;
   negative: number;
   distribution: Record<string, number>;
+  dailyDistribution?: Record<string, Record<string, number>>;
   mergedTruncated: boolean;
   itemsLoaded?: number;
   itemsInWindow?: number;
   partitionErrors?: number;
-  topComments?: S3CommentRow[];
   perAppRatings?: S3AppRatingRow[];
   categoryCounts?: Record<string, number>;
 }

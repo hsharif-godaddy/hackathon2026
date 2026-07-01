@@ -9,11 +9,12 @@ import { useAuth } from '@/hooks/useAuth';
 
 import ScorecardSidebar from './ScorecardSidebar';
 import {
-  AppProvisioningTab, FeedbackTab, JourneyTab, OverviewTab, RevenueTab,
-} from './tabs';
-import { C1LiveFeed } from './tabs/C1LiveFeed';
-import type { MetricValue, ScorecardChartSize, ScorecardData, ScorecardRange, TabId, TrendView } from './types';
-import { TAB_LABELS } from './types';
+  AppProvisioning, FeedbackDeepDive, FeedbackOverview, Journey, Overview,
+  RevenueOverview, RevenueFunnel, RevenueSubscriptions,
+} from './pages';
+import { C1LiveFeed } from './pages/C1LiveFeed';
+import type { FeedbackSubTab, MetricValue, ScorecardChartSize, ScorecardData, ScorecardRange, TabId, TrendView } from './types';
+import { FEEDBACK_SUB_LABELS, TAB_LABELS } from './types';
 import { useDatasourceStatus } from './hooks/useDatasourceStatus';
 import { useScorecardBmp } from './hooks/useScorecardBmp';
 import { useLokiData } from './hooks/useLokiData';
@@ -153,6 +154,16 @@ interface DsEntry {
   color: string;
 }
 
+function deriveDsStatus(
+  loading: boolean,
+  data: { configMissing: boolean; error?: string } | null,
+): boolean | undefined {
+  if (loading) return undefined;
+  if (data === null) return false;
+  if (data.configMissing || data.error) return false;
+  return true;
+}
+
 function SourceHealthBar({ sources }: { sources: DsEntry[] }) {
   return (
     <div className={sp.healthBar}>
@@ -188,7 +199,13 @@ function ScorecardContent() {
   const [range, setRange]         = useState<ScorecardRange>('7d');
   const [customFrom, setFrom]     = useState('');
   const [customTo, setTo]         = useState('');
-  const [activeTab, setTab]       = useState<TabId>('overview');
+  const [activePage, setActivePage]         = useState<TabId>('overview');
+  const [feedbackPage, setFeedbackPage]     = useState<FeedbackSubTab>('overview');
+
+  const selectFeedback = useCallback((sub: FeedbackSubTab): void => {
+    setActivePage('feedback');
+    setFeedbackPage(sub);
+  }, []);
   const [journeyId, setJourneyId] = useState('');
   const [chartSize, setChartSize] = useState<ScorecardChartSize>('small');
   const [trendView, setTrendView] = useState<TrendView>('daily');
@@ -220,10 +237,10 @@ function ScorecardContent() {
   }, []);
 
   const dsStatus = useDatasourceStatus();
-  const { data: bmpAllData }                        = useScorecardBmp(range, customFrom, customTo);
-  const { data: pdnaData }                          = usePdnaData(range, customFrom, customTo, tlaFilter);
-  const { data: s3Feedback, loading: s3Loading, progress: s3Progress } = useS3Feedback(range, customFrom, customTo);
-  const { data: lokiData }                          = useLokiData(range, customFrom, customTo);
+  const { data: bmpAllData, loading: bmpLoading }                                         = useScorecardBmp(range, customFrom, customTo);
+  const { data: pdnaData, loading: pdnaLoading }                                          = usePdnaData(range, customFrom, customTo, tlaFilter);
+  const { data: s3Feedback, loading: s3Loading, error: s3Error, progress: s3Progress }    = useS3Feedback(range, customFrom, customTo);
+  const { data: lokiData, loading: lokiLoading, error: lokiHookError }                    = useLokiData(range, customFrom, customTo);
   const bmpData              = bmpAllData?.bmp              ?? null;
   const websiteData          = bmpAllData?.website          ?? null;
   const dimEntryPointData    = bmpAllData?.dimEntryPoint    ?? null;
@@ -235,7 +252,7 @@ function ScorecardContent() {
 
   const goToJourney = useCallback((appId: string) => {
     setJourneyId(appId);
-    setTab('journey');
+    setActivePage('journey');
   }, []);
 
   const rangeLabel: string = range === 'custom'
@@ -266,21 +283,37 @@ function ScorecardContent() {
     borderRadius: '8px', padding: '4px 8px',
   };
 
+  const bmpStatus: boolean | undefined  = deriveDsStatus(bmpLoading,  bmpAllData?.bmp  ?? null);
+  const pdnaStatus: boolean | undefined = deriveDsStatus(pdnaLoading, pdnaData         ?? null);
+  const lokiStatus: boolean | undefined = deriveDsStatus(lokiLoading, lokiData         ?? null);
+  const s3Status: boolean | undefined   = s3Loading ? undefined
+    : s3Error            ? false
+    : s3Feedback === null ? undefined
+    : s3Feedback.configMissing ? false
+    : true;
+
+  const bmpErrDetail: string  = bmpAllData?.bmp?.error  ?? (bmpAllData?.bmp?.configMissing ? 'no auth cookie — open via local.console.airo-builder.gdcorp.tools:3443 with prod SSO' : 'fetch failed');
+  const pdnaErrDetail: string = pdnaData?.configMissing ? 'set PDNA_ES_ENDPOINT and PDNA_ES_API_KEY in .env.local' : 'fetch failed';
+  const s3ErrDetail: string   = s3Error ?? (s3Feedback?.configMissing ? 'set FEEDBACK_S3_BUCKET in .env.local' : 'no data');
+  const lokiErrDetail: string = lokiHookError ?? lokiData?.error ?? (lokiData?.configMissing ? 'set LOKI_ENDPOINT in .env.local' : 'fetch failed');
+
   const sources: DsEntry[] = [
-    { label: 'BMP',       configured: dsStatus?.bmp.configured,       color: '#7c3aed', titleOn: 'BMP — connected (prod SSO)',                     titleOff: 'BMP — not connected. Open via local.console.airo-builder.gdcorp.tools:3443 with prod SSO.'      },
-    { label: 'S3',        configured: dsStatus?.s3.configured,        color: '#0891b2', titleOn: 'S3 Parquet — connected. Numeric love score enabled.', titleOff: 'S3 Parquet — not connected. Set FEEDBACK_S3_BUCKET in .env.local.'                           },
-    { label: 'PDNA',      configured: dsStatus?.pdna.configured,      color: '#7c3aed', titleOn: 'PDNA — connected. Paid units enabled.',              titleOff: 'PDNA — not connected. Set PDNA_ES_ENDPOINT and PDNA_ES_API_KEY in .env.local.'                },
-    { label: 'Loki',      configured: dsStatus?.loki.configured,      color: '#ea580c', titleOn: 'Loki — connected. Publish outcomes enabled.',         titleOff: 'Loki — not connected. Set LOKI_ENDPOINT in .env.local.'                                      },
-    { label: 'C1',        configured: dsStatus?.c1.configured,        color: '#0d9488', titleOn: 'C1 ClickHouse — connected. Live Event Feed enabled.',  titleOff: 'C1 ClickHouse — not connected. Set CLICKHOUSE_HOST and CLICKHOUSE_USER in .env.local.'      },
-    { label: 'FullStory', configured: dsStatus?.fullstory.configured, color: '#d97706', titleOn: 'FullStory — connected. Journey tab enabled.',           titleOff: 'FullStory — not connected. Set FULLSTORY_API_KEY in .env.local.'                           },
+    { label: 'BMP',       configured: bmpStatus,                        color: '#7c3aed', titleOn: 'BMP — connected (prod SSO)',                        titleOff: `BMP — ${bmpErrDetail}`                                                                       },
+    { label: 'S3',        configured: s3Status,                         color: '#0891b2', titleOn: 'S3 Parquet — connected. Love score enabled.',        titleOff: `S3 — ${s3ErrDetail}`                                                                         },
+    { label: 'PDNA',      configured: pdnaStatus,                       color: '#7c3aed', titleOn: 'PDNA — connected. Paid units enabled.',               titleOff: `PDNA — ${pdnaErrDetail}`                                                                     },
+    { label: 'Loki',      configured: lokiStatus,                       color: '#ea580c', titleOn: 'Loki — connected. Publish outcomes enabled.',         titleOff: `Loki — ${lokiErrDetail}`                                                                     },
+    { label: 'C1',        configured: dsStatus?.c1.configured,          color: '#0d9488', titleOn: 'C1 ClickHouse — connected. Live Event Feed enabled.', titleOff: 'C1 — not connected. Set CLICKHOUSE_HOST and CLICKHOUSE_USER in .env.local.'                  },
+    { label: 'FullStory', configured: dsStatus?.fullstory.configured,   color: '#d97706', titleOn: 'FullStory — connected. Journey tab enabled.',         titleOff: 'FullStory — not connected. Set FULLSTORY_API_KEY in .env.local.'                            },
   ];
 
   return (
     <div ref={containerRef} className={sp.sp} data-theme={theme}>
       <ScorecardSidebar
-        active={activeTab}
+        active={activePage}
         collapsed={collapsed}
-        onSelect={setTab}
+        feedbackSubTab={feedbackPage}
+        onSelect={setActivePage}
+        onSelectFeedbackSubTab={selectFeedback}
         onToggle={toggleSidebar}
       />
 
@@ -291,7 +324,15 @@ function ScorecardContent() {
             <span className={sp.panelBreadcrumb}>
               Scorecard
               <span className={sp.breadcrumbSep}>/</span>
-              <span className={sp.breadcrumbLeaf}>{TAB_LABELS[activeTab]}</span>
+              {activePage === 'feedback' ? (
+                <>
+                  <span className={sp.breadcrumbLeaf}>Feedback</span>
+                  <span className={sp.breadcrumbSep}>/</span>
+                  <span className={sp.breadcrumbLeaf}>{FEEDBACK_SUB_LABELS[feedbackPage]}</span>
+                </>
+              ) : (
+                <span className={sp.breadcrumbLeaf}>{TAB_LABELS[activePage]}</span>
+              )}
             </span>
           </div>
           {/* Centre: data sources health bar */}
@@ -310,80 +351,86 @@ function ScorecardContent() {
         <div className={sp.content}>
           <div className={sp.panelRoot}>
 
-            {/* Controls — sticky toolbar */}
-            <div style={{
-              position: 'sticky', top: 0, zIndex: 10,
-              background: 'var(--sp-bg)', borderBottom: '1px solid var(--sp-border)',
-              margin: '-24px -28px 20px', padding: '10px 28px',
-              display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center',
-            }}>
-              <div style={ctrlGroup}>
-                <span style={ctrlLabel}>Range</span>
-                {(Object.keys(RANGE_LABELS) as ScorecardRange[]).map((v) => (
-                  <button key={v} type="button" onClick={() => setRange(v)} style={pillStyle(range === v)}>
-                    {v === 'custom' ? (range === 'custom' && customFrom && customTo ? dateLabel(customFrom, customTo) : 'Custom') : RANGE_LABELS[v]}
-                  </button>
-                ))}
-              </div>
-
-              {range === 'custom' && (
-                <div style={{ ...ctrlGroup, gap: '6px' }}>
-                  <span style={ctrlLabel}>From</span>
-                  <input
-                    type="date"
-                    value={customFrom}
-                    onChange={(e) => setFrom(e.target.value)}
-                    className={sp.searchInput}
-                    style={{ width: '128px', padding: '3px 7px', fontSize: '11.5px', colorScheme: theme }}
-                  />
-                  <span style={ctrlLabel}>To</span>
-                  <input
-                    type="date"
-                    value={customTo}
-                    min={customFrom}
-                    onChange={(e) => setTo(e.target.value)}
-                    className={sp.searchInput}
-                    style={{ width: '128px', padding: '3px 7px', fontSize: '11.5px', colorScheme: theme }}
-                  />
+            {/* Controls — sticky toolbar (hidden on Journey page which manages its own context) */}
+            {activePage !== 'journey' && (
+              <div style={{
+                position: 'sticky', top: 0, zIndex: 10,
+                background: 'var(--sp-bg)', borderBottom: '1px solid var(--sp-border)',
+                margin: '-24px -28px 20px', padding: '10px 28px',
+                display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center',
+              }}>
+                <div style={ctrlGroup}>
+                  <span style={ctrlLabel}>Range</span>
+                  {(Object.keys(RANGE_LABELS) as ScorecardRange[]).map((v) => (
+                    <button key={v} type="button" onClick={() => setRange(v)} style={pillStyle(range === v)}>
+                      {v === 'custom' ? (range === 'custom' && customFrom && customTo ? dateLabel(customFrom, customTo) : 'Custom') : RANGE_LABELS[v]}
+                    </button>
+                  ))}
                 </div>
-              )}
 
-              <div style={ctrlGroup}>
-                <span style={ctrlLabel}>Chart Size</span>
-                {SIZE_OPTIONS.map((opt) => (
-                  <button key={opt.id} type="button" title={opt.hint} onClick={() => setChartSize(opt.id)} style={pillStyle(chartSize === opt.id)}>
-                    {opt.label}
-                  </button>
-                ))}
+                {range === 'custom' && (
+                  <div style={{ ...ctrlGroup, gap: '6px' }}>
+                    <span style={ctrlLabel}>From</span>
+                    <input
+                      type="date"
+                      value={customFrom}
+                      onChange={(e) => setFrom(e.target.value)}
+                      className={sp.searchInput}
+                      style={{ width: '128px', padding: '3px 7px', fontSize: '11.5px', colorScheme: theme }}
+                    />
+                    <span style={ctrlLabel}>To</span>
+                    <input
+                      type="date"
+                      value={customTo}
+                      min={customFrom}
+                      onChange={(e) => setTo(e.target.value)}
+                      className={sp.searchInput}
+                      style={{ width: '128px', padding: '3px 7px', fontSize: '11.5px', colorScheme: theme }}
+                    />
+                  </div>
+                )}
+
+                {!(activePage === 'feedback' && feedbackPage === 'deep-dive') && (
+                  <>
+                    <div style={ctrlGroup}>
+                      <span style={ctrlLabel}>Chart Size</span>
+                      {SIZE_OPTIONS.map((opt) => (
+                        <button key={opt.id} type="button" title={opt.hint} onClick={() => setChartSize(opt.id)} style={pillStyle(chartSize === opt.id)}>
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    <div style={ctrlGroup}>
+                      <span style={ctrlLabel}>Trend</span>
+                      {TREND_VIEW_OPTIONS.map((opt) => (
+                        <button key={opt.id} type="button" onClick={() => setTrendView(opt.id)} style={pillStyle(trendView === opt.id)}>
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+
+                <span style={{ fontSize: '11px', color: 'var(--sp-txm)', marginLeft: 'auto', fontWeight: 500 }}>
+                  {rangeLabel}
+                </span>
               </div>
+            )}
 
-              <div style={ctrlGroup}>
-                <span style={ctrlLabel}>Trend</span>
-                {TREND_VIEW_OPTIONS.map((opt) => (
-                  <button key={opt.id} type="button" onClick={() => setTrendView(opt.id)} style={pillStyle(trendView === opt.id)}>
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-
-              <span style={{ fontSize: '11px', color: 'var(--sp-txm)', marginLeft: 'auto', fontWeight: 500 }}>
-                {rangeLabel}
-              </span>
-            </div>
-
-            {/* Tab content */}
-            {activeTab === 'journey' ? (
-              <JourneyTab initialAppId={journeyId} s3Feedback={s3Feedback} />
+            {/* Page content */}
+            {activePage === 'journey' ? (
+              <Journey initialAppId={journeyId} s3Feedback={s3Feedback} />
             ) : range === 'custom' && (!customFrom || !customTo) ? (
               <div className={sp.emptyState}>
                 <p style={{ margin: 0 }}>Pick a From and To date above to load data.</p>
               </div>
             ) : (
               <>
-                {activeTab === 'overview' && (
+                {activePage === 'overview' && (
                   <>
-                    <OverviewTab
-                      data={data} range={rangeLabel} onTabChange={setTab}
+                    <Overview
+                      data={data} range={rangeLabel} onTabChange={setActivePage}
                       s3Feedback={s3Feedback} s3Loading={s3Loading} s3Progress={s3Progress} lokiData={lokiData}
                       websiteData={websiteData}
                       dimEntryPointData={dimEntryPointData}
@@ -393,31 +440,60 @@ function ScorecardContent() {
                       bmpData={bmpData} paywallData={paywallData}
                       chartSize={chartSize} trendView={trendView}
                       tlaFilter={tlaFilter} onTlaChange={setTlaFilter}
-                      rawRange={range} customFrom={customFrom} customTo={customTo}
+                      bmpLoading={bmpLoading}
                     />
                     <div style={{ marginTop: '1rem' }}>
                       <C1LiveFeed onSelectApp={goToJourney} />
                     </div>
                   </>
                 )}
-                {activeTab === 'feedback' && (
-                  <FeedbackTab
-                    data={data} range={rangeLabel} feedRange={range} customFrom={customFrom} customTo={customTo}
-                    chartSize={chartSize} trendView={trendView} onSelectApp={goToJourney} s3Feedback={s3Feedback} s3Loading={s3Loading}
-                    bmpData={bmpData} lokiData={lokiData}
+                {activePage === 'feedback' && feedbackPage === 'overview' && (
+                  <FeedbackOverview
+                    data={data} range={rangeLabel}
+                    chartSize={chartSize} trendView={trendView}
+                    s3Feedback={s3Feedback} s3Loading={s3Loading}
+                    bmpData={bmpData}
                   />
                 )}
-                {activeTab === 'revenue' && (
-                  <RevenueTab
-                    data={data} range={rangeLabel} rawRange={range} customFrom={customFrom} customTo={customTo}
-                    chartSize={chartSize} trendView={trendView} paywallData={paywallData}
+                {activePage === 'feedback' && feedbackPage === 'deep-dive' && (
+                  <FeedbackDeepDive
+                    data={data} feedRange={range} customFrom={customFrom} customTo={customTo}
+                    chartSize={chartSize} onSelectApp={goToJourney}
+                    s3Feedback={s3Feedback} s3Loading={s3Loading}
                   />
                 )}
-                {activeTab === 'appprovisioning' && (
-                  <AppProvisioningTab
+                {activePage === 'revenue' && (
+                  <RevenueOverview
+                    data={data} range={rangeLabel} paywallData={paywallData}
+                    chartSize={chartSize} trendView={trendView}
+                    bmpLoading={bmpLoading}
+                  />
+                )}
+                {activePage === 'revenuefunnel' && (
+                  <RevenueFunnel
+                    data={data} range={rangeLabel}
+                    websiteData={websiteData}
+                    dimPlanTypeData={dimPlanTypeData}
+                    dimIntentData={dimIntentData}
+                    paywallData={paywallData}
+                    chartSize={chartSize} trendView={trendView}
+                    bmpLoading={bmpLoading}
+                  />
+                )}
+                {activePage === 'subscriptions' && (
+                  <RevenueSubscriptions
+                    paywallData={paywallData}
+                    rawRange={range} customFrom={customFrom} customTo={customTo}
+                    chartSize={chartSize} trendView={trendView}
+                    bmpLoading={bmpLoading}
+                  />
+                )}
+                {activePage === 'appprovisioning' && (
+                  <AppProvisioning
                     rawRange={range} customFrom={customFrom} customTo={customTo} chartSize={chartSize} trendView={trendView}
                   />
                 )}
+
               </>
             )}
           </div>
