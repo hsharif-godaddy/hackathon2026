@@ -67,6 +67,15 @@ const SYNC_MANIFEST = [
     known_hashes: [],
     force: false,
   },
+  // Listed before entry.ts so this file exists in the customer app before entry.ts
+  // imports it. With force:false and empty known_hashes the file is created on first
+  // sync but never overwritten if a customer has customised it.
+  {
+    file: 'src/server/indexnow-key.ts',
+    description: 'Runtime loader for the per-site IndexNow ownership key file',
+    known_hashes: [],
+    force: false,
+  },
   // Intentionally NOT in syncGroup: 'ssrMigration'. Unlike index.html (which agents edit
   // interactively), entry.ts is rewritten by the migrate-to-ssr-entry migration with
   // per-app API route imports — producing a unique hash per app. Including it in the group
@@ -86,7 +95,9 @@ const SYNC_MANIFEST = [
       '12a5f4baadf6ce4963913fe37384e51e', // SEO: add must-revalidate to cache directives
       '678c3a987122a8266df30b6c970f862b', // before /llms.txt route (RUBICON-365)
       'be66082ac860f2e80a2c2282f78fc9c7', // RUBICON-365 branch tip (llms.txt, pre-AdSense) before main merge
-      'd91be310d9ced4697eea5b146201806e'  // main tip (AdSense, pre-llms.txt) before RUBICON-365 merge
+      'd91be310d9ced4697eea5b146201806e', // before IndexNow /<key>.txt route
+      'a2f362505ef881c1b1ec94fdecb4fe72', // before removing isSystemHost guard from /<key>.txt
+      '711a79257db581a06b4085b7f80b3fc4', // RUBICON-363+main merge tip (IndexNow + llms.txt combined)
     ],
     force: false,
   },

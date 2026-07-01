@@ -621,7 +621,7 @@ describe('Publish Route Authorization', () => {
         .send({})
         .expect(200);
 
-      expect(capturedContext.runtimeArtifactHooks).toHaveLength(1);
+      expect(capturedContext.runtimeArtifactHooks).toHaveLength(2);
 
       await capturedContext.runtimeArtifactHooks[0](capturedContext);
 

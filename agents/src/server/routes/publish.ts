@@ -21,6 +21,12 @@ import { getPublishStrategy, BuildError, PreviewNotRunningError, MissingStartCom
 import type { PublishContext } from './publish/strategies/index.js';
 import { getGitHookService } from '../agent-runtime.js';
 import { AdSensePublishManifestService } from '../../services/AdSensePublishManifestService.js';
+import {
+  buildIndexNowUrlList,
+  getOrCreateIndexNowKey,
+  isIndexNowEligibleHost,
+  pingIndexNow,
+} from '../../services/IndexNowService.js';
 import { logSeoAuditReport, runSeoAudit, invalidateSeoAuditCache } from '../../services/seo-audit.js';
 import type { SeoAuditReport } from '../../services/seo-audit.js';
 import { reportPublishedComplianceStatus } from '../../services/compliance-publish-report.js';
@@ -38,6 +44,17 @@ const seoQualityRepo = new SeoQualityRepository();
 // Tracks appIds with an in-progress SEO audit to prevent concurrent audits
 // from producing out-of-order snapshots that break regression detection.
 const seoAuditInProgress = new Set<string>();
+
+async function triggerIndexNowPing(
+  appId: string,
+  appPath: string,
+  fqdn: string,
+  logger: Pick<ILogger, 'info' | 'warn' | 'error'>,
+): Promise<void> {
+  const key = getOrCreateIndexNowKey(appId, appRepository);
+  const urlList = buildIndexNowUrlList(appPath, fqdn);
+  await pingIndexNow(appId, fqdn, key, urlList, logger);
+}
 
 async function captureSeoQuality(
   appId: string,
@@ -234,6 +251,42 @@ function runAsyncPublish(params: AsyncPublishParams): void {
           });
         });
       }
+
+      // IndexNow ping — best-effort, must not affect the deployed phase.
+      try {
+        const domainsResultAsync = await memoryRepository.get(appId, 'site.domains');
+        const allDomainsAsync = Array.isArray(domainsResultAsync.value) ? (domainsResultAsync.value as PublishStateDomain[]) : [];
+        const activeDomainsAsync = allDomainsAsync.filter(
+          (d) => d.status === 'active' && isIndexNowEligibleHost(d.fqdn),
+        );
+        const appRecord = appRepository.findById(appId);
+        let asyncTargetFqdn: string | null = null;
+        if (activeDomainsAsync.length > 0) {
+          asyncTargetFqdn = (activeDomainsAsync.find((d) => d.isPrimary) ?? activeDomainsAsync[0]!).fqdn;
+        } else if (!process.env.NOMAD_ALLOC_DIR && appRecord?.publishedUrl) {
+          try {
+            asyncTargetFqdn = new URL(appRecord.publishedUrl).host;
+          } catch {
+            // invalid URL, skip
+          }
+        }
+        if (asyncTargetFqdn) {
+          await triggerIndexNowPing(appId, publishContext.appPath, asyncTargetFqdn, contextLogger).catch((err) => {
+            contextLogger.warn('indexnow.ping.exception', {
+              appId,
+              error: err instanceof Error ? err.message : String(err),
+            });
+          });
+        } else {
+          contextLogger.info('indexnow.ping.skipped', { appId, reason: 'no active custom domains' });
+        }
+      } catch (err) {
+        contextLogger.warn('indexnow.ping.exception', {
+          appId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+
       const totalMs = Date.now() - startedAt;
       contextLogger.info('route.publish.async.complete', { phase: 'deployed', totalMs });
       contextLogger.info('publish.flow.success', {
@@ -440,6 +493,14 @@ router.post('/apps/:id/publish', requirePermission('canPublish'), requireSsoConf
             runtimeArtifactHooks: [
               async () => {
                 await new AdSensePublishManifestService().writeForPublish(id, workspace);
+              },
+              async () => {
+                const indexNowKey = getOrCreateIndexNowKey(id, appRepository);
+                await workspace.files.write({
+                  path: 'dist/airo-indexnow.json',
+                  content: `${JSON.stringify({ key: indexNowKey }, null, 2)}\n`,
+                });
+                contextLogger.info('indexnow.key.written', { appId: id, key: indexNowKey });
               },
             ],
           }
@@ -713,6 +774,37 @@ router.post('/apps/:id/publish', requirePermission('canPublish'), requireSsoConf
       log.error(contextLogger, 'seo.audit.exception', err, { appId: id });
     });
 
+    // IndexNow ping — fire-and-forget after publish; never blocks the response.
+    (async (): Promise<void> => {
+      const domainsResult = await memoryRepository.get(id, 'site.domains');
+      const allDomains = Array.isArray(domainsResult.value) ? (domainsResult.value as PublishStateDomain[]) : [];
+      const activeDomains = allDomains.filter(
+        (d) => d.status === 'active' && isIndexNowEligibleHost(d.fqdn),
+      );
+      let targetFqdn: string | null = null;
+      if (activeDomains.length > 0) {
+        targetFqdn = (activeDomains.find((d) => d.isPrimary) ?? activeDomains[0]!).fqdn;
+      } else if (isLocalDev && app.publishedUrl) {
+        // In local dev there are no custom domains — fall back to the publishedUrl
+        // host so the full ping flow can be exercised end-to-end.
+        try {
+          targetFqdn = new URL(app.publishedUrl).host;
+        } catch {
+          // invalid URL, skip
+        }
+      }
+      if (!targetFqdn) {
+        contextLogger.info('indexnow.ping.skipped', { appId: id, reason: 'no active custom domains' });
+        return;
+      }
+      await triggerIndexNowPing(id, app.path, targetFqdn, contextLogger);
+    })().catch((err) => {
+      contextLogger.warn('indexnow.ping.exception', {
+        appId: id,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
+
     // Compliance document status — fire-and-forget after response; never blocks
     // publish. Reports the published/deleted state of any compliance docs the
     // app generated. Requires a real customerId (the AppRepository default of
@@ -889,9 +981,31 @@ router.post('/apps/:id/publish-state', requirePermission('canPublish'), requireS
       const rawUrl = typeof body.publishedUrl === 'string' ? body.publishedUrl.trim() : null;
       publishedUrl = rawUrl && rawUrl.length < 2048 && /^https?:\/\//.test(rawUrl) ? rawUrl : null;
       appRepository.updatePublishedUrl(id, publishedUrl);
+
+      // First publish: app.publishedUrl was null so the async path had nothing to ping against.
+      // Fire here once the URL is first written. In local dev there are no custom domains so
+      // we use the publishedUrl host directly; in production custom domains are the ping target
+      // and are handled by the domain-attach trigger below.
+      if (publishedUrl && !app.publishedUrl && !process.env.NOMAD_ALLOC_DIR) {
+        try {
+          const firstPublishHost = new URL(publishedUrl).host;
+          triggerIndexNowPing(id, app.path, firstPublishHost, contextLogger).catch((err) => {
+            contextLogger.warn('indexnow.first-publish.ping.exception', {
+              appId: id,
+              error: err instanceof Error ? err.message : String(err),
+            });
+          });
+        } catch {
+          // invalid URL, skip
+        }
+      }
     }
 
     if (Array.isArray(body.domains)) {
+      const oldDomainsResult = await memoryRepository.get(id, 'site.domains');
+      const oldDomains = Array.isArray(oldDomainsResult.value) ? (oldDomainsResult.value as PublishStateDomain[]) : [];
+      const oldFqdns = new Set(oldDomains.map((d) => d.fqdn));
+
       const domains: PublishStateDomain[] = body.domains
         .filter(d => typeof d.fqdn === 'string' && d.fqdn.trim().length > 0 && d.fqdn.length < 256)
         .slice(0, 50)
@@ -901,6 +1015,22 @@ router.post('/apps/:id/publish-state', requirePermission('canPublish'), requireS
           status: d.status ?? 'active',
         }));
       await memoryRepository.set(id, 'site.domains', domains);
+
+      // Fire IndexNow when a new active custom domain attaches to an already-published site.
+      const newActiveDomains = domains.filter(
+        (d) => d.status === 'active' && !oldFqdns.has(d.fqdn) && isIndexNowEligibleHost(d.fqdn),
+      );
+      const currentApp = appRepository.findById(id);
+      const targetDomain = newActiveDomains.find((d) => d.isPrimary) ?? newActiveDomains[0];
+      if (targetDomain && currentApp?.publishedUrl) {
+        triggerIndexNowPing(id, currentApp.path, targetDomain.fqdn, contextLogger).catch((err) => {
+          contextLogger.warn('indexnow.domain-attach.ping.exception', {
+            appId: id,
+            fqdn: targetDomain.fqdn,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        });
+      }
     }
 
     contextLogger.info('route.publishState.updated', {

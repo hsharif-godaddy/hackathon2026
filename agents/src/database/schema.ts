@@ -34,6 +34,7 @@ export interface App {
   shopperId?: string; // GoDaddy Shopper ID from JWT claim (typically numeric in production)
   status: 'creating' | 'created' | 'error';
   publishedUrl: string | null; // Published site URL (set after successful publish)
+  indexnowKey?: string;
   initialBuildComplete?: boolean; // True when first git commit has been made
   createdAt: Date;
   updatedAt: Date;
@@ -627,6 +628,7 @@ function createAppsTable(db: Database): void {
       subscription_id TEXT,
       customer_id TEXT,
       shopper_id TEXT,
+      indexnow_key TEXT,
       status TEXT NOT NULL DEFAULT 'creating' CHECK(status IN ('creating', 'created', 'error')),
       initial_build_complete BOOLEAN DEFAULT FALSE,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -2156,6 +2158,13 @@ function applyMigrations(db: Database): void {
     db.exec(`ALTER TABLE apps ADD COLUMN shopper_id TEXT`);
   } catch (err) {
     // Column might already exist, that's fine
+  }
+
+  // Add indexnow_key column if it doesn't exist — RUBICON-363
+  try {
+    db.exec(`ALTER TABLE apps ADD COLUMN indexnow_key TEXT`);
+  } catch {
+    // Column already exists
   }
 
   // Add context_attachments column if it doesn't exist (for generic context attachments)

@@ -423,7 +423,7 @@ export class AppRepository {
    */
   findById(id: string): App | null {
     const stmt = this.db.prepare(`
-      SELECT id, name, path, port, socket_path, publish_supervisor_path, preview_url, published_url, initial_prompt, template_version, subscription_id, customer_id, shopper_id, status, initial_build_complete, created_at, updated_at
+      SELECT id, name, path, port, socket_path, publish_supervisor_path, preview_url, published_url, initial_prompt, template_version, subscription_id, customer_id, shopper_id, status, indexnow_key, initial_build_complete, created_at, updated_at
       FROM apps
       WHERE id = ?
     `);
@@ -446,6 +446,7 @@ export class AppRepository {
       customerId: row.customer_id,
       shopperId: row.shopper_id,
       status: row.status,
+      indexnowKey: row.indexnow_key ?? undefined,
       initialBuildComplete: !!row.initial_build_complete,
       createdAt: new Date(row.created_at),
       updatedAt: new Date(row.updated_at),
@@ -457,7 +458,7 @@ export class AppRepository {
    */
   findByPath(path: string): App | null {
     const stmt = this.db.prepare(`
-      SELECT id, name, path, port, socket_path, publish_supervisor_path, preview_url, published_url, initial_prompt, template_version, subscription_id, customer_id, shopper_id, status, initial_build_complete, created_at, updated_at
+      SELECT id, name, path, port, socket_path, publish_supervisor_path, preview_url, published_url, initial_prompt, template_version, subscription_id, customer_id, shopper_id, status, indexnow_key, initial_build_complete, created_at, updated_at
       FROM apps
       WHERE path = ?
     `);
@@ -480,6 +481,7 @@ export class AppRepository {
       customerId: row.customer_id,
       shopperId: row.shopper_id,
       status: row.status,
+      indexnowKey: row.indexnow_key ?? undefined,
       initialBuildComplete: !!row.initial_build_complete,
       createdAt: new Date(row.created_at),
       updatedAt: new Date(row.updated_at),
@@ -491,7 +493,7 @@ export class AppRepository {
    */
   findAll(limit = 50, offset = 0): App[] {
     const stmt = this.db.prepare(`
-      SELECT id, name, path, port, socket_path, publish_supervisor_path, preview_url, published_url, initial_prompt, template_version, subscription_id, customer_id, shopper_id, status, initial_build_complete, created_at, updated_at
+      SELECT id, name, path, port, socket_path, publish_supervisor_path, preview_url, published_url, initial_prompt, template_version, subscription_id, customer_id, shopper_id, status, indexnow_key, initial_build_complete, created_at, updated_at
       FROM apps
       ORDER BY created_at DESC
       LIMIT ? OFFSET ?
@@ -514,6 +516,7 @@ export class AppRepository {
       customerId: row.customer_id,
       shopperId: row.shopper_id,
       status: row.status,
+      indexnowKey: row.indexnow_key ?? undefined,
       initialBuildComplete: !!row.initial_build_complete,
       createdAt: new Date(row.created_at),
       updatedAt: new Date(row.updated_at),
@@ -623,6 +626,20 @@ export class AppRepository {
         error: getErrorMessage(error)
       });
       return null;
+    }
+  }
+
+  setIndexNowKey(id: string, key: string): boolean {
+    try {
+      const stmt = this.db.prepare(`UPDATE apps SET indexnow_key = ?, updated_at = ? WHERE id = ?`);
+      const result = stmt.run(key, new Date().toISOString(), id);
+      return result.changes > 0;
+    } catch (error) {
+      this.logger.warn('app.indexnow-key.update.failed', {
+        appId: id,
+        error: getErrorMessage(error),
+      });
+      return false;
     }
   }
 

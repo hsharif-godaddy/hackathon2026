@@ -12,6 +12,7 @@ import {
 	resolveAdSenseTextFile,
 	type AdSenseRuntimeConfig,
 } from "./adsense-manifest";
+import { loadIndexNowKey } from "./indexnow-key";
 import { isSystemHost } from "./seo-host";
 import { llmsTxtHandler } from "./llms-txt";
 
@@ -157,8 +158,15 @@ if (import.meta.env.PROD) {
 	const __dirname = dirname(fileURLToPath(import.meta.url));
 	const clientDir = join(__dirname, "client");
 	const adSenseRuntimeConfig = loadAdSenseRuntimeConfig(__dirname);
+	const indexNowKey = loadIndexNowKey(__dirname);
 
 	registerAdSenseTextRoutes(app, adSenseRuntimeConfig);
+
+	if (indexNowKey !== null) {
+		app.get(`/${indexNowKey}.txt`, (_req, res) => {
+			res.type("text/plain").set("Cache-Control", "public, max-age=86400").send(indexNowKey);
+		});
+	}
 
 	app.use(
 		express.static(clientDir, {
