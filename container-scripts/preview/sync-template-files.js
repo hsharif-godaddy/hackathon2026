@@ -98,6 +98,7 @@ const SYNC_MANIFEST = [
       'd91be310d9ced4697eea5b146201806e', // before IndexNow /<key>.txt route
       'a2f362505ef881c1b1ec94fdecb4fe72', // before removing isSystemHost guard from /<key>.txt
       '711a79257db581a06b4085b7f80b3fc4', // RUBICON-363+main merge tip (IndexNow + llms.txt combined)
+      '80d6692b1da24b32a0d2b61b961553d0', // before IndexNow key file loader extraction
     ],
     force: false,
   },

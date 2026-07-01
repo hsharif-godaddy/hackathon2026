@@ -7,6 +7,7 @@ import PlusIcon from '@ux/icon/plus'
 import SearchIcon from '@ux/icon/search'
 
 import { HeaderTooltip } from '@/components/ui/HeaderTooltip'
+import { useIsMobile } from '@/hooks/use-mobile'
 import { useTranslations } from '@/hooks/useTranslations'
 import { Popover, PopoverContent, PopoverTrigger } from '@/lib/shadcn/popover'
 import { useCommanderStore } from '@/stores/useCommanderStore'
@@ -84,6 +85,7 @@ export function CanvasMenu({ clickContext }: CanvasMenuProps) {
   const [showTooltip, setShowTooltip] = useState<boolean>(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const buttonRef = useRef<HTMLButtonElement | null>(null)
+  const isMobile = useIsMobile()
   const openCanvasIds = useCommanderStore((state) => state.openCanvasIds)
   const openCanvas = useCommanderStore((state) => state.openCanvas)
   const isFlagAllowed = useCanvasFlagFilter()
@@ -131,6 +133,8 @@ export function CanvasMenu({ clickContext }: CanvasMenuProps) {
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
   }, [])
+
+  if (!isMobile && items.length === 0) return null
 
   const handleSelect = (canvasId: CanvasId) => {
     logClickEvent(`commander.canvas_menu.select.${canvasId}`, clickContext)()
