@@ -78,6 +78,8 @@ In the results, flag any of these as self-containment violations:
 - Per-skill gating like `if (skillName === '<skill-name>')`
 - Deterministic triggers in shared prompts ("if user says X, load Y")
 - Per-skill instructions in shared system prompts
+- Hardcoded template path routing in `getDestinationPath` or shared
+  loader code — use `templateMappings` frontmatter instead
 
 Exemptions: test fixtures, `skill-deps` frontmatter in other skills,
 generic capability lists in template-descriptions. For short/common
@@ -106,6 +108,7 @@ names (email, blog, social), confirm hits are actual skill references.
 - Trigger overlap worth investigating
 - Pattern choice question (standalone vs chained vs routed)
 - Missing `whenToUse` when `intents` are declared
+- Skill has templates that need non-default placement but no `templateMappings` declared
 
 ## Output Format
 

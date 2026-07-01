@@ -206,6 +206,12 @@ ${skillEntries}
  * only happen if a skill.md is edited mid-process. Call `clearFrontmatterCache()`
  * when that matters (e.g., tests).
  */
+/** A single template-path mapping rule: prefix → destination directory. */
+interface TemplateMappingRule {
+  prefix: string;
+  destination: string;
+}
+
 interface SkillFrontmatter {
   name: string;
   description: string;
@@ -215,6 +221,7 @@ interface SkillFrontmatter {
   intents: string[] | undefined;
   skillMarkets: string[] | undefined;
   allowedAgents: string[] | undefined;
+  templateMappings: TemplateMappingRule[] | undefined;
 }
 
 export class SkillLoaderTool {
@@ -279,6 +286,8 @@ export class SkillLoaderTool {
           })
         : undefined;
 
+      const templateMappings: TemplateMappingRule[] | undefined = this.parseTemplateMappings(data.templateMappings);
+
       const fm: SkillFrontmatter = {
         name: typeof data.name === 'string' && data.name ? data.name : skillName,
         description: typeof data.description === 'string' ? data.description : '',
@@ -294,6 +303,7 @@ export class SkillLoaderTool {
         allowedAgents: Array.isArray(data.allowedAgents)
           ? (data.allowedAgents as unknown[]).filter((a): a is string => typeof a === 'string')
           : undefined,
+        templateMappings,
       };
       this.frontmatterCache.set(skillName, fm);
       return fm;
@@ -654,8 +664,11 @@ export class SkillLoaderTool {
           this.logger.info('skill.install.empty_templates', { skill });
         }
 
+        const fm = await this.getSkillFrontmatter(skill);
+        const mappings: TemplateMappingRule[] | undefined = fm?.templateMappings;
+
         for (const template of templates) {
-          const destRelPath = this.getDestinationPath(skill, template.path);
+          const destRelPath = this.getDestinationPath(template.path, mappings);
 
           try {
             if (config.overwrite !== true) {
@@ -794,27 +807,32 @@ export class SkillLoaderTool {
     }
   }
 
+  private parseTemplateMappings(raw: unknown): TemplateMappingRule[] | undefined {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+    const entries: TemplateMappingRule[] = Object.entries(raw as Record<string, unknown>)
+      .filter((entry): entry is [string, string] => typeof entry[1] === 'string')
+      .map(([prefix, destination]) => ({ prefix, destination }));
+    return entries.length > 0 ? entries : undefined;
+  }
+
   /**
-   * Get destination path for a template file
-   * Maps template paths to app paths (e.g., components/BlogCard.tsx -> src/components/blog/BlogCard.tsx)
+   * Get destination path for a template file using frontmatter-driven mappings.
+   * Falls back to `src/{templatePath}` when no mapping matches.
    */
-  private getDestinationPath(skill: string, templatePath: string): string {
-    if (skill === 'blog') {
-      let destPath = templatePath;
-      if (templatePath.startsWith('components/')) {
-        destPath = templatePath.replace('components/', 'components/blog/');
-      } else if (templatePath.startsWith('content/')) {
-        destPath = templatePath.replace('content/', 'content/blog/');
+  private getDestinationPath(templatePath: string, mappings: TemplateMappingRule[] | undefined): string {
+    if (mappings) {
+      for (const rule of mappings) {
+        if (rule.prefix === '*') {
+          return `${rule.destination}${templatePath}`;
+        }
+        if (templatePath === rule.prefix || templatePath.startsWith(`${rule.prefix}/`)) {
+          const remainder: string = templatePath === rule.prefix
+            ? path.basename(templatePath)
+            : templatePath.slice(rule.prefix.length + 1);
+          return `${rule.destination}${remainder}`;
+        }
       }
-      return `src/${destPath}`;
     }
-
-    // Database skill: drizzle.config.ts goes to app root
-    if (skill === 'database' && templatePath === 'drizzle.config.ts') {
-      return templatePath;
-    }
-
-    // Default: copy to src/{templatePath}
     return `src/${templatePath}`;
   }
 

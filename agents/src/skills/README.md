@@ -72,6 +72,63 @@ markets:
 
 **When to use:** Apply `markets` when skill content, legal requirements, or tool behaviour is specific to a country or region — for example, legal document generation that assumes US law and US states, or payment integrations that only work in certain markets.
 
+### Template Mappings
+
+By default, `skill install` copies template files to `src/{templatePath}`. When a skill needs files placed elsewhere (e.g., at the project root or in a subdirectory), use `templateMappings` in frontmatter to declare prefix-based routing rules:
+
+```yaml
+---
+name: database
+templateMappings:
+  drizzle.config.ts: ""
+  "*": "src/"
+---
+```
+
+**How rules are evaluated:**
+
+Rules are matched top-to-bottom; the first match wins.
+
+| Rule prefix | Template path | Result |
+| --- | --- | --- |
+| `drizzle.config.ts` (exact match) | `drizzle.config.ts` | `drizzle.config.ts` (project root — empty destination) |
+| `components` (prefix match) | `components/BlogCard.tsx` | `src/components/blog/BlogCard.tsx` (if destination is `src/components/blog/`) |
+| `*` (wildcard catch-all) | `lib/utils.ts` | `src/lib/utils.ts` |
+
+**Rule types:**
+
+1. **Exact match** — `templatePath === rule.prefix`: the destination is `{destination}{basename}`. Use for individual files that need special placement.
+2. **Prefix match** — `templatePath.startsWith("{prefix}/")`: the destination is `{destination}{remainder}` where remainder is everything after the prefix.
+3. **Wildcard (`*`)** — matches any path not matched above: the destination is `{destination}{templatePath}`.
+
+**If no rule matches** (or `templateMappings` is omitted), the default `src/{templatePath}` applies.
+
+**Examples:**
+
+```yaml
+# Blog skill: remap components/ and content/ into subdirectories
+templateMappings:
+  components: "src/components/blog/"
+  content: "src/content/blog/"
+  "*": "src/"
+
+# Database skill: put drizzle.config.ts at project root, everything else in src/
+templateMappings:
+  drizzle.config.ts: ""
+  "*": "src/"
+
+# Simple skill: all templates go to a custom directory
+templateMappings:
+  "*": "lib/generated/"
+```
+
+**Key points:**
+
+- Order matters — put specific rules before the wildcard.
+- An empty string (`""`) destination means "project root."
+- Destination strings should end with `/` for directory targets (exception: exact-match files mapping to root use `""`).
+- This follows the Self-Containment Rule: each skill declares its own routing without touching shared code.
+
 ## Architecture
 
 ### Directory Structure
@@ -206,6 +263,7 @@ intents:
 - `intents` (optional) — array of short trigger phrases (slash-separated synonyms allowed in a single entry). Each phrase becomes one entry in the system-prompt "Quick intent map" routing to this skill. Add intents only when this skill should be discoverable from a user's first-message wording. See "Self-Containment Rule" — routing data lives here, not in shared code.
 - `enablementId` (optional) — feature flag gating skill availability.
 - `markets` (optional) — array of BCP-47 locale strings (e.g., `["en-US", "en-CA"]`) that restricts the skill to specific markets. When set, the skill is only listed and loadable when the request's market matches one of the listed values. When the request market is absent or not in the list, the skill is excluded from `listSkills` results and `loadSkill` returns an error. Skills with no `markets` field are available in all markets.
+- `templateMappings` (optional) — object mapping template path prefixes to destination directories. Controls where `skill install` places template files instead of the default `src/` prefix. See "Template Mappings" below.
 - `dependencies` / `devDependencies` (optional) — npm packages installed when the skill is loaded.
 - `skill-deps` (optional) — other skills this skill depends on.
 - `post-install-notes` (optional) — text surfaced to the agent after install.

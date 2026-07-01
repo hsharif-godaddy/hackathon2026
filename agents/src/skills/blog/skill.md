@@ -4,6 +4,9 @@ description: Install and activate the blog system (routes, pages, components)
 whenToUse: User wants a blog, news section, or articles feature on their site. Phrases like "add a blog", "create a blog", "set up a blog", "I want a blog feature", "news section", "articles page", "post articles", "content section for articles".
 intents:
   - set up blog/blog system/news section
+templateMappings:
+  components: "src/components/blog/"
+  content: "src/content/blog/"
 ---
 
 # Blog System Setup Skill

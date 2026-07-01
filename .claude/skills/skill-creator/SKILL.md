@@ -164,8 +164,33 @@ dependencies:      # npm packages (if needed)
 skill-deps:        # other skills this depends on (if needed)
   - <other-skill>
 enablementId: <feature-flag>  # if feature-gated
+templateMappings:  # custom template destination paths (if needed)
+  <prefix>: <destination>
 ---
 ```
+
+#### templateMappings
+
+When a skill's templates need to land somewhere other than the
+default `src/{templatePath}`, declare `templateMappings` in
+frontmatter. This keeps path-routing self-contained in the skill
+instead of adding branches to shared loader code.
+
+```yaml
+templateMappings:
+  components: "src/components/blog/"   # prefix match
+  drizzle.config.ts: ""                # exact match → project root
+```
+
+Rules are evaluated top-to-bottom, first match wins:
+- **Exact match** (`templatePath === prefix`): destination + basename
+- **Prefix match** (`templatePath` starts with `prefix/`): destination + remainder after prefix
+- **Wildcard `*`**: destination + full templatePath (catch-all)
+
+If no rule matches (or field is omitted), the default `src/{templatePath}` applies.
+An empty string destination (`""`) means project root. Only add
+`templateMappings` when the default `src/` prefix is wrong for some
+templates — most skills don't need it.
 
 Required fields: `name`, `description`, `whenToUse`.
 

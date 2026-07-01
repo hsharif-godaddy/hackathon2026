@@ -1370,4 +1370,129 @@ description: Unrestricted skill
       expect(result.instructions).toBe(content);
     });
   });
+
+  describe('#parseTemplateMappings', function parseMappingsTests() {
+    let tool: SkillLoaderTool;
+
+    beforeEach(() => {
+      tool = new SkillLoaderTool();
+    });
+
+    function parse(raw: unknown): Array<{ prefix: string; destination: string }> | undefined {
+      return (tool as any).parseTemplateMappings(raw);
+    }
+
+    it('should return undefined for falsy input', function falsyInput() {
+      expect(parse(undefined)).toBeUndefined();
+      expect(parse(null)).toBeUndefined();
+      expect(parse('')).toBeUndefined();
+      expect(parse(0)).toBeUndefined();
+    });
+
+    it('should return undefined for arrays', function arrayInput() {
+      expect(parse(['components', 'src/'])).toBeUndefined();
+    });
+
+    it('should return undefined for non-object types', function nonObject() {
+      expect(parse('components: src/')).toBeUndefined();
+      expect(parse(42)).toBeUndefined();
+      expect(parse(true)).toBeUndefined();
+    });
+
+    it('should parse a valid mapping object', function validObject() {
+      const result = parse({ components: 'src/components/blog/', '*': 'src/' });
+      expect(result).toEqual([
+        { prefix: 'components', destination: 'src/components/blog/' },
+        { prefix: '*', destination: 'src/' },
+      ]);
+    });
+
+    it('should filter out non-string values', function nonStringValues() {
+      const result = parse({ components: 'src/components/', bad: 123, also_bad: null });
+      expect(result).toEqual([{ prefix: 'components', destination: 'src/components/' }]);
+    });
+
+    it('should return undefined when all values are non-string', function allNonString() {
+      expect(parse({ a: 123, b: true, c: null })).toBeUndefined();
+    });
+
+    it('should return undefined for an empty object', function emptyObject() {
+      expect(parse({})).toBeUndefined();
+    });
+  });
+
+  describe('#getDestinationPath', function destinationPathTests() {
+    let tool: SkillLoaderTool;
+
+    beforeEach(() => {
+      tool = new SkillLoaderTool();
+    });
+
+    function resolve(templatePath: string, mappings: Array<{ prefix: string; destination: string }> | undefined): string {
+      return (tool as any).getDestinationPath(templatePath, mappings);
+    }
+
+    it('should fall back to src/ when no mappings provided', function noMappings() {
+      expect(resolve('components/Button.tsx', undefined)).toBe('src/components/Button.tsx');
+    });
+
+    it('should apply prefix-based mapping', function prefixMapping() {
+      const mappings = [
+        { prefix: 'components', destination: 'src/components/blog/' },
+        { prefix: '*', destination: 'src/' },
+      ];
+      expect(resolve('components/BlogCard.tsx', mappings)).toBe('src/components/blog/BlogCard.tsx');
+    });
+
+    it('should apply wildcard fallback mapping', function wildcardFallback() {
+      const mappings = [
+        { prefix: 'components', destination: 'src/components/blog/' },
+        { prefix: '*', destination: 'src/' },
+      ];
+      expect(resolve('pages/index.tsx', mappings)).toBe('src/pages/index.tsx');
+    });
+
+    it('should support exact file match with empty destination (app root)', function exactFileRoot() {
+      const mappings = [
+        { prefix: 'drizzle.config.ts', destination: '' },
+        { prefix: '*', destination: 'src/' },
+      ];
+      expect(resolve('drizzle.config.ts', mappings)).toBe('drizzle.config.ts');
+    });
+
+    it('should preserve nested subdirectories within a prefix match', function nestedSubdirs() {
+      const mappings = [
+        { prefix: 'content', destination: 'src/content/blog/' },
+        { prefix: '*', destination: 'src/' },
+      ];
+      expect(resolve('content/data/posts.json', mappings)).toBe('src/content/blog/data/posts.json');
+    });
+
+    it('should match first rule when multiple prefixes could apply', function firstRuleWins() {
+      const mappings = [
+        { prefix: 'components', destination: 'src/components/blog/' },
+        { prefix: 'components', destination: 'src/components/other/' },
+        { prefix: '*', destination: 'src/' },
+      ];
+      expect(resolve('components/Card.tsx', mappings)).toBe('src/components/blog/Card.tsx');
+    });
+  });
+
+  describe('self-containment enforcement', function selfContainmentTests() {
+    it('should not have hardcoded skill-name branches in getDestinationPath', async function noHardcodedSkills() {
+      const toolFilePath = path.resolve(
+        path.dirname(fileURLToPath(import.meta.url)),
+        '..',
+        'skill-loader-tool.ts'
+      );
+      const content: string = readFileSync(toolFilePath, 'utf-8');
+
+      const getDestMatch = content.match(/private getDestinationPath[\s\S]*?^\s{2}\}/m);
+      expect(getDestMatch).not.toBeNull();
+      const methodBody: string = getDestMatch![0];
+
+      const skillNameLiterals: RegExpMatchArray | null = methodBody.match(/skill\s*===\s*['"][^'"]+['"]/g);
+      expect(skillNameLiterals).toBeNull();
+    });
+  });
 });

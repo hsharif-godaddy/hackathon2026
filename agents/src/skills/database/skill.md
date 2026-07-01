@@ -8,6 +8,8 @@ dependencies:
   - mysql2
 intents:
   - database/MySQL/save data/persist records/data model/schema/tables/CRUD/Drizzle/ORM/seed
+templateMappings:
+  drizzle.config.ts: ""
 ---
 
 # MySQL Database Skill
