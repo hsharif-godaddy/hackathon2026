@@ -10,6 +10,7 @@ import { logImpressionEvent } from '@/utils/instrumentation';
 import { InboxConversationDetailHeader } from './InboxConversationDetailHeader';
 import { InboxConversationMessageThread } from './InboxConversationMessageThread';
 import { InboxReplyComposer } from './InboxReplyComposer';
+import { InboxConversationDetailSkeleton } from './InboxSkeletons';
 
 interface InboxConversationDetailProps {
   conversationId: IntString;
@@ -48,11 +49,7 @@ export function InboxConversationDetail({
   }, [conversation, conversationId, consumeEntryRef]);
 
   if (conversationLoading) {
-    return (
-      <div className='flex flex-1 items-center justify-center'>
-        <div className='text-ux-text-primary'>{t('builder_common_loading')}</div>
-      </div>
-    );
+    return <InboxConversationDetailSkeleton />;
   }
 
   if (conversationIsError || !conversation) {
@@ -60,16 +57,6 @@ export function InboxConversationDetail({
       <div className='flex flex-1 items-center justify-center px-4'>
         <div className='text-center text-ux-text-error'>
           {conversationError instanceof Error ? conversationError.message : t('builder_inbox_conversation_load_error')}
-        </div>
-      </div>
-    );
-  }
-
-  if (!conversation) {
-    return (
-      <div className='flex flex-1 items-center justify-center px-4'>
-        <div className='text-center text-ux-text-error'>
-          {t('builder_inbox_conversation_load_error')}
         </div>
       </div>
     );

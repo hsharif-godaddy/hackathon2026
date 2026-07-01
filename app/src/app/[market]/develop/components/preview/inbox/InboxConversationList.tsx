@@ -13,6 +13,7 @@ import { InboxConversationListPagination } from './InboxConversationListPaginati
 import { InboxConversationRow } from './InboxConversationRow';
 import { InboxConversationStatusFilters } from './InboxConversationStatusFilters';
 import { InboxNotificationSettings } from './InboxNotificationSettings';
+import { InboxConversationListSkeleton } from './InboxSkeletons';
 import { slideMotionProps, slideTransition } from './slideView';
 import { useInboxConversations } from '../../../hooks/useInbox';
 
@@ -78,14 +79,6 @@ export function InboxConversationList({
     })();
   }, [isLoading, error, conversations.length, statusFilter, consumeEntryRef]);
 
-  if (isLoading) {
-    return (
-      <div className='flex items-center justify-center h-full'>
-        <div className='text-ux-text-secondary'>{t('builder_inbox_list_loading')}</div>
-      </div>
-    );
-  }
-
   if (error) {
     return (
       <div className='flex items-center justify-center h-full'>
@@ -104,17 +97,19 @@ export function InboxConversationList({
         <InboxConversationStatusFilters
           value={statusFilter}
           onChange={handleFilterChange}
-          disabled={statusFilter === 'all' && conversations.length === 0}
+          disabled={isLoading || (statusFilter === 'all' && conversations.length === 0)}
         />
 
-        <InboxNotificationSettings brandId={brandId} />
+        <InboxNotificationSettings brandId={brandId} disabled={isLoading} />
       </div>
-      
+
       <div
         ref={listScrollRef}
         className='relative min-h-0 flex-1 overflow-x-hidden overflow-y-auto bg-ux-surface-base'
       >
-        {conversations.length === 0 ? (
+        {isLoading ? (
+          <InboxConversationListSkeleton />
+        ) : conversations.length === 0 ? (
           <InboxConversationListEmptyState
             statusFilter={statusFilter}
             embeddableId={embeddableId}
@@ -143,11 +138,13 @@ export function InboxConversationList({
         )}
       </div>
 
-      <InboxConversationListPagination
-        currentPage={currentPage}
-        totalPages={pageCount}
-        onPageChange={handlePageChange}
-      />
+      {pageCount > 1 && (
+        <InboxConversationListPagination
+          currentPage={currentPage}
+          totalPages={pageCount}
+          onPageChange={handlePageChange}
+        />
+      )}
     </div>
   );
 }

@@ -191,4 +191,63 @@ describe('InboxConversationList', () => {
       expect.not.objectContaining({ ref: expect.anything() }),
     );
   });
+
+  it('renders skeleton in list body on initial load with toolbar visible and disabled', () => {
+    hoisted.result = {
+      data: null,
+      isLoading: true,
+      error: null,
+    };
+
+    render(
+      <InboxConversationList brandId={brandId} embeddableId={null} categoryId={null} onConversationClick={vi.fn()} consumeEntryRef={() => null} />,
+    );
+
+    expect(screen.getByTestId('inbox-list-skeleton')).toBeInTheDocument();
+    expect(screen.getByTestId('stub-filters')).toBeInTheDocument();
+    expect(screen.getByTestId('stub-filters')).toHaveAttribute('data-disabled', 'true');
+  });
+
+  it('keeps toolbar interactive when data is loaded', () => {
+    hoisted.result = {
+      data: { conversations: [{ id: '1' }], pageCount: 1, droppedCount: 0 },
+      isLoading: false,
+      error: null,
+    };
+
+    render(
+      <InboxConversationList brandId={brandId} embeddableId={null} categoryId={null} onConversationClick={vi.fn()} consumeEntryRef={() => null} />,
+    );
+
+    expect(screen.queryByTestId('inbox-list-skeleton')).not.toBeInTheDocument();
+    expect(screen.getByTestId('stub-filters')).toHaveAttribute('data-disabled', 'false');
+  });
+
+  it('shows pagination only when there are multiple pages', () => {
+    hoisted.result = {
+      data: { conversations: [{ id: '1' }], pageCount: 3, droppedCount: 0 },
+      isLoading: false,
+      error: null,
+    };
+
+    render(
+      <InboxConversationList brandId={brandId} embeddableId={null} categoryId={null} onConversationClick={vi.fn()} consumeEntryRef={() => null} />,
+    );
+
+    expect(screen.getByTestId('stub-pagination')).toBeInTheDocument();
+  });
+
+  it('hides pagination when there is only one page', () => {
+    hoisted.result = {
+      data: { conversations: [{ id: '1' }], pageCount: 1, droppedCount: 0 },
+      isLoading: false,
+      error: null,
+    };
+
+    render(
+      <InboxConversationList brandId={brandId} embeddableId={null} categoryId={null} onConversationClick={vi.fn()} consumeEntryRef={() => null} />,
+    );
+
+    expect(screen.queryByTestId('stub-pagination')).not.toBeInTheDocument();
+  });
 });

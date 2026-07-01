@@ -8,6 +8,7 @@ import { useTranslations } from '@/hooks/useTranslations';
 import { Conversation } from '@/types/inbox/local/conversation';
 import { IntString, UuidString } from '@/types/inbox/local/core';
 import { InboxMessageBubble } from './InboxMessageBubble';
+import { InboxMessagePaginationSkeleton, InboxMessageThreadSkeleton } from './InboxSkeletons';
 import { useInfiniteInboxConversationMessages } from '../../../hooks/useInbox';
 
 interface InboxConversationMessageThreadProps {
@@ -59,11 +60,7 @@ export function InboxConversationMessageThread({
 
   function renderContent() {
     if (isLoading) {
-      return (
-        <div className='flex flex-1 items-center justify-center'>
-          <span className='text-ux-text-secondary'>{t('builder_common_loading')}</span>
-        </div>
-      );
+      return <InboxMessageThreadSkeleton />;
     }
 
     if (isError && !hasLoadedMessages) {
@@ -87,11 +84,7 @@ export function InboxConversationMessageThread({
           />
         ))}
 
-        {isFetchingNextPage && (
-          <div className='flex justify-center py-2'>
-            <span className='text-xs text-ux-text-secondary'>{t('builder_common_loading')}</span>
-          </div>
-        )}
+        {isFetchingNextPage && <InboxMessagePaginationSkeleton />}
       </>
     );
   }

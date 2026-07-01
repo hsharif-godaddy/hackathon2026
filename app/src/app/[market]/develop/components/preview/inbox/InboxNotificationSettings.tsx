@@ -33,9 +33,10 @@ type NotificationSettingsView = 'list' | 'edit-email';
 
 interface InboxNotificationSettingsProps {
   brandId: UuidString;
+  disabled?: boolean;
 }
 
-export function InboxNotificationSettings({ brandId }: InboxNotificationSettingsProps) {
+export function InboxNotificationSettings({ brandId, disabled }: InboxNotificationSettingsProps) {
   const [open, setOpen] = useState(false);
   const t = useTranslations();
   const [view, setView] = useState<NotificationSettingsView>('list');
@@ -253,6 +254,7 @@ export function InboxNotificationSettings({ brandId }: InboxNotificationSettings
           design='tertiary'
           size='sm'
           icon={<BellIcon />}
+          disabled={disabled}
           aria-label={t('builder_inbox_notifications_manage_aria', undefined, 'Manage notifications')}
           data-testid='inbox-manage-notifications'
         />

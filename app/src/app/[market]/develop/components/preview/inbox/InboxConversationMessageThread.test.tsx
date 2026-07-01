@@ -77,6 +77,51 @@ describe('InboxConversationMessageThread', () => {
     capturedBubbleProps = [];
   });
 
+  it('renders thread skeleton on initial load', () => {
+    mockUseInfiniteInboxConversationMessages.mockReturnValue({
+      data: undefined,
+      fetchNextPage: vi.fn(),
+      hasNextPage: false,
+      isFetchingNextPage: false,
+      isLoading: true,
+      isError: false,
+      error: null,
+    });
+
+    render(
+      <InboxConversationMessageThread
+        conversationId='1'
+        brandId='brand-1'
+        conversation={makeConversation()}
+      />,
+    );
+
+    expect(screen.getByTestId('inbox-thread-skeleton')).toBeInTheDocument();
+  });
+
+  it('renders pagination skeleton when fetching next page', () => {
+    const messages = [makeMessage('newest', '2026-06-10T12:00:00.000Z')];
+    mockUseInfiniteInboxConversationMessages.mockReturnValue({
+      data: { pages: [{ messages }], pageParams: [] },
+      fetchNextPage: vi.fn(),
+      hasNextPage: true,
+      isFetchingNextPage: true,
+      isLoading: false,
+      isError: false,
+      error: null,
+    });
+
+    render(
+      <InboxConversationMessageThread
+        conversationId='1'
+        brandId='brand-1'
+        conversation={makeConversation()}
+      />,
+    );
+
+    expect(screen.getByTestId('inbox-thread-pagination-skeleton')).toBeInTheDocument();
+  });
+
   it('renders messages in the order returned by the API (newest first for flex-col-reverse)', () => {
     const messages = [
       makeMessage('newest', '2026-06-10T12:00:00.000Z'),

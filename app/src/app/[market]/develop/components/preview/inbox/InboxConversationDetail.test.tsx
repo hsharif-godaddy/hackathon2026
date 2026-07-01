@@ -24,6 +24,8 @@ vi.mock('@/utils/instrumentation', async (importOriginal) => {
   };
 });
 
+const mockUseInboxConversation = vi.hoisted(() => vi.fn());
+
 vi.mock('@/app/[market]/develop/hooks/useInbox', () => ({
   useInboxConversationMessages: () => ({
     isLoading: false,
@@ -31,12 +33,7 @@ vi.mock('@/app/[market]/develop/hooks/useInbox', () => ({
     error: null,
     data: { messages: [] },
   }),
-  useInboxConversation: () => ({
-    isLoading: false,
-    isError: false,
-    error: null,
-    data: { id: 'conv-1', originalChannel: 'WebChat', category: { id: 1, name: 'Chat', slug: 'chat', type: 'WebChat' }, channel: 'email', customer: { name: 'Test' } },
-  }),
+  useInboxConversation: (...args: unknown[]) => mockUseInboxConversation(...args),
   useSendInboxReply: () => ({
     mutate: vi.fn(),
     isPending: false,
@@ -60,6 +57,33 @@ vi.mock('./InboxReplyComposer', () => ({
 describe('InboxConversationDetail', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockUseInboxConversation.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      error: null,
+      data: { id: 'conv-1', originalChannel: 'WebChat', category: { id: 1, name: 'Chat', slug: 'chat', type: 'WebChat' }, channel: 'email', customer: { name: 'Test' } },
+    });
+  });
+
+  it('renders skeleton while conversation is loading', () => {
+    mockUseInboxConversation.mockReturnValue({
+      isLoading: true,
+      isError: false,
+      error: null,
+      data: undefined,
+    });
+
+    renderWithProviders(
+      <InboxConversationDetail
+        conversationId="conv-1"
+        brandId="brand-1"
+        onBack={vi.fn()}
+        consumeEntryRef={() => null}
+      />,
+    );
+
+    expect(screen.getByTestId('inbox-detail-skeleton')).toBeInTheDocument();
+    expect(screen.queryByTestId('stub-header')).not.toBeInTheDocument();
   });
 
   it('renders header, thread, and composer', () => {
