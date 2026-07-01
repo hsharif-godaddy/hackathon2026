@@ -1,7 +1,7 @@
 /**
  * Brand Data Parsers
  *
- * Parse design-agent markdown memory entries into structured brand data.
+ * Parse brand markdown memory entries into structured brand data.
  * Used by the brand-data route to assemble BrandData from memory.
  *
  * Type definitions live in @airo/shared/brand-data and are re-exported here

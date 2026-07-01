@@ -27,11 +27,6 @@ export const templateRegistry: Record<string, InitialAgentTemplate> = {
     name: 'Deep Build',
     description: 'Deliberate interview → design → plan → build pipeline with sub-agent orchestration',
   },
-  'design-spec': {
-    id: 'design-spec',
-    name: 'Design Spec Builder',
-    description: 'Builds directly from a design.md specification, skipping design questioning',
-  },
   'zip-import': {
     id: 'zip-import',
     name: 'ZIP Import',

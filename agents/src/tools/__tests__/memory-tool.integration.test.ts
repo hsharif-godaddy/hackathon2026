@@ -17,7 +17,7 @@ import { MemoryTool } from '../memory-tool.js';
 import { AppRepository } from '../../database/repositories/AppRepository.js';
 import { nanoid } from 'nanoid';
 import { memorySetAITool, memoryReadAITool, memoryListKeysAITool } from '../ai-lib-tools/memory-tool.js';
-import type { AgentExecutionContext } from '../../base/base-agent.js';
+import type { AgentExecutionContext } from '../../base/agent.interface.js';
 
 describe('MemoryTool Integration Tests', () => {
   let testDir: string;

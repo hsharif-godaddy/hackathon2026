@@ -29,13 +29,14 @@ graph TB
     NextJS -->|WebSocket| AgentService[Agents Service :4000]
     NextJS -->|HTTPS REST| AgentService
 
-    AgentService --> AgentRegistry[Agent Registry]
+    AgentService --> AgentFactory[Agent Factory]
     AgentService --> Tools[Tool Suite]
     AgentService --> SQLite[(SQLite DB)]
 
-    AgentRegistry --> DevelopAgent[Develop Agent]
-    AgentRegistry --> ColorAgent[Color Scheme Agent]
-    AgentRegistry --> ExampleAgent[Example Agent]
+    AgentFactory --> DevelopAgent[Develop Agent]
+    AgentFactory --> InitialAgent[Initial Agent]
+    AgentFactory --> MarketingAgent[Marketing Agent]
+    AgentFactory --> DeepBuildAgent[Deep Build Agent]
 
     Tools --> CoreTools[Core Development Tools]
     Tools --> SystemTools[System & Server Tools]
@@ -388,7 +389,6 @@ sequenceDiagram
 #### Health & Monitoring
 
 - `GET /health` - Basic health check
-- `GET /health/agents` - Detailed agent health status
 
 **Authentication**: All endpoints require JWT Bearer token in Authorization header
 
@@ -1754,10 +1754,10 @@ graph TB
 
     subgraph "Shared Agents Service (Multi-Tenant)"
         AgentService[Agents Service :4000]
-        AgentRegistry[Agent Registry]
+        AgentFactory[Agent Factory]
         Tools[Tool Suite]
 
-        AgentService --> AgentRegistry
+        AgentService --> AgentFactory
         AgentService --> Tools
     end
 

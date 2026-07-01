@@ -310,13 +310,6 @@ export async function createInitialAgent(
     delete tools.websiteRebuild
   }
 
-  // Design-spec template: apply design tokens directly, write files to disk
-  if (templateId === 'design-spec') {
-    tools.colorScheme = allAILibTools.colorScheme
-    tools.fontTheme = allAILibTools.fontTheme
-    tools.str_replace_based_edit_tool = allAILibTools.str_replace_based_edit_tool
-  }
-
   // ZIP import template: write uploaded files to disk
   if (templateId === 'zip-import') {
     tools.str_replace_based_edit_tool = allAILibTools.str_replace_based_edit_tool

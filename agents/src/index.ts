@@ -1,6 +1,5 @@
 // Core exports
 export * from './base/index.js';
-export * from './registry/index.js';
 export * from './agents/index.js';
 export * from './tools/index.js';
 

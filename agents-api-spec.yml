@@ -487,39 +487,6 @@ components:
           description: Service version
           example: '0.1.0'
 
-    AgentHealth:
-      type: object
-      properties:
-        status:
-          type: string
-          enum: [healthy, degraded]
-          description: Agent system health status
-          example: 'healthy'
-        timestamp:
-          type: string
-          format: date-time
-          description: Health check timestamp
-          example: '2024-12-28T10:30:00Z'
-        agents:
-          type: object
-          properties:
-            valid:
-              type: array
-              items:
-                type: string
-              description: List of valid/healthy agent IDs
-              example: ['develop', 'color-scheme', 'marketing']
-            invalid:
-              type: array
-              items:
-                type: string
-              description: List of invalid/unhealthy agent IDs
-              example: []
-            total:
-              type: integer
-              description: Total number of agents checked
-              example: 3
-
     # Trace and Debug Schemas
     TraceEvent:
       type: object
@@ -1278,53 +1245,6 @@ paths:
                   totalAgents: 5
                   activeAgents: 3
                 version: '0.1.0'
-        '500':
-          description: Health check failed
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-
-  /health/agents:
-    get:
-      tags: [Health]
-      summary: Agent System Health Check
-      description: |
-        Perform detailed health validation of all registered agents.
-        Checks agent availability, configuration, and operational status.
-      responses:
-        '200':
-          description: Agent health information
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AgentHealth'
-              example:
-                status: 'healthy'
-                timestamp: '2024-12-28T10:30:00Z'
-                agents:
-                  valid:
-                    - 'develop'
-                    - 'color-scheme'
-                    - 'marketing'
-                  invalid: []
-                  total: 3
-        '200 (degraded)':
-          description: Some agents are unhealthy
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AgentHealth'
-              example:
-                status: 'degraded'
-                timestamp: '2024-12-28T10:30:00Z'
-                agents:
-                  valid:
-                    - 'develop'
-                    - 'color-scheme'
-                  invalid:
-                    - 'marketing'
-                  total: 3
         '500':
           description: Health check failed
           content:

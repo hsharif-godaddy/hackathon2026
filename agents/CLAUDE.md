@@ -48,18 +48,15 @@ When a user sends a message (`src/server/sse/routes.ts` `POST /:appId/:conversat
 | **InitialAgent**      | First-time app scaffolding        | develop         |
 | **DevelopAgent**      | Feature development, code changes | marketing       |
 | **MarketingAgent**    | SEO/marketing content             | develop         |
-| **DesignAgent**       | UI/UX design                      | develop         |
+| **DeepBuildAgent**    | Orchestrated interview→plan→build | (sub-agents)    |
 | **PagePromptAgent**   | Page-level prompt generation      | —               |
 | **SiteAnalyzerAgent** | Site analysis                     | —               |
-| **ExampleAgent**      | Example/demo agent                | —               |
 
 Implementations: `src/agents/`. Factory: `src/agents/ai-lib-agents/index.ts`.
 
 ### Prompt Composition
 
 Prompts assembled from markdown fragments in `src/prompts/` via `createPromptBuilder()`. Per-agent subdirectories (e.g. `develop/`, `initial/`) plus `shared/` for cross-agent fragments and `template-descriptions/` for per-template context. Dynamic content injected at runtime: skills list, commerce rules (feature-flagged), visual context (page, scroll position, viewport).
-
-Base class: `src/base/base-agent.ts` — `getSystemPrompt()` → `loadSystemPromptFromFile()` → `composePrompt()`.
 
 ### Tool System
 

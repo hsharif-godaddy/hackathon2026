@@ -40,9 +40,6 @@
 - [mediasearch.md](mediasearch.md) — Getty Images media search integration
 - [knowb-knowledge-base.md](knowb-knowledge-base.md) — KnowB RAG service configuration
 - [site-publish-doc.md](site-publish-doc.md) — Publish workflow via StepFunctions
-- [design-agent-design.md](design-agent-design.md) — Design agent architecture
-- [design-agent-examples.md](design-agent-examples.md) — Design agent usage examples
-- [design-agent-summary.md](design-agent-summary.md) — Design agent overview
 - [manual-recovery-analysis.md](manual-recovery-analysis.md) — Manual recovery flow safety
 - [commerce-cart-cache-issue.md](commerce-cart-cache-issue.md) — Known cart caching issue
 - [agent-tool-inventory.md](agent-tool-inventory.md) — Agent tool and service inventory

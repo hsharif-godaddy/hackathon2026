@@ -17,15 +17,11 @@ import {
   createMarketingAgent,
   createInitialAgent,
   createDebugAgent,
-  DevelopAgent,
-  MarketingAgent,
-  ExampleAgent,
   discoverNamedInitialVariants
 } from '../index.js'
 import { createAgentHandoffTool } from '../../tools/create-agent-handoff-tool.js'
 import { createDeepBuildAgent } from '../deep-build-agent.js'
 import { getTemplateIds } from '../template-registry.js'
-import type { EnhancedAgentContext } from './types.js'
 import { skillToolManager } from '../../tools/skill-tool-manager.js'
 import { errorFields, logger } from '../../logging/index.js'
 import { getProfileRegistry, runWithProfile, profileValue } from '../../profiles/index.js'
@@ -206,27 +202,6 @@ export async function createUnifiedAgentFactory(options?: {
 }
 
 /**
- * Agent factory functions for backward compatibility
- */
-export const aiLibAgentFactories = {
-  develop: async (_context?: EnhancedAgentContext) => {
-    const agent = new DevelopAgent()
-    await agent.initialize()
-    return agent.getAgent()
-  },
-  marketing: async (_context?: EnhancedAgentContext) => {
-    const agent = new MarketingAgent()
-    await agent.initialize()
-    return agent.getAgent()
-  },
-  example: async (_context?: EnhancedAgentContext) => {
-    const agent = new ExampleAgent()
-    await agent.initialize()
-    return agent.getAgent()
-  }
-} as const
-
-/**
  * Agent metadata registry
  */
 export const aiLibAgentMetadata: Record<string, AILibAgentMetadata> = {
@@ -246,14 +221,6 @@ export const aiLibAgentMetadata: Record<string, AILibAgentMetadata> = {
     tags: ['developer', 'coding', 'web-development', 'ai-assistant', 'frontend'],
     toolGroups: ['core', 'system', 'media', 'debug'],
   },
-  example: {
-    id: 'example',
-    name: 'Example Agent',
-    description: 'A basic example agent for testing and demonstration purposes using AgentFactory.',
-    version: '2.0.0',
-    tags: ['example', 'demo', 'testing'],
-    toolGroups: ['core'],
-  },
   marketing: {
     id: 'marketing',
     name: 'Marketing Manager',
@@ -262,63 +229,6 @@ export const aiLibAgentMetadata: Record<string, AILibAgentMetadata> = {
     tags: ['marketing', 'seo', 'content', 'optimization', 'search', 'social-media'],
     toolGroups: ['core', 'planning', 'content'],
   },
-}
-
-/**
- * Create an agent by ID with enhanced context (backward compatibility)
- */
-export async function createAgent(agentId: string, context?: EnhancedAgentContext) {
-  const factory = aiLibAgentFactories[agentId as keyof typeof aiLibAgentFactories]
-
-  if (!factory) {
-    throw new Error(`Unknown agent ID: ${agentId}`)
-  }
-
-  return await factory(context)
-}
-
-/**
- * Get all available agent IDs (filtered by feature flags)
- */
-export function getAvailableAgentIds(): string[] {
-  return Object.keys(aiLibAgentFactories)
-}
-
-/**
- * Get agent metadata by ID
- */
-export function getAgentMetadata(agentId: string): AILibAgentMetadata | undefined {
-  return aiLibAgentMetadata[agentId]
-}
-
-/**
- * Get all agent metadata (filtered by feature flags)
- */
-export function getAllAgentMetadata(): AILibAgentMetadata[] {
-  const availableIds = getAvailableAgentIds()
-  return Object.values(aiLibAgentMetadata).filter(metadata =>
-    availableIds.includes(metadata.id)
-  )
-}
-
-/**
- * Find agents by tag
- */
-export function findAgentsByTag(tag: string): AILibAgentMetadata[] {
-  return Object.values(aiLibAgentMetadata).filter(metadata =>
-    metadata.tags.includes(tag)
-  )
-}
-
-/**
- * Search agents by name or description
- */
-export function searchAgents(query: string): AILibAgentMetadata[] {
-  const lowerQuery = query.toLowerCase()
-  return Object.values(aiLibAgentMetadata).filter(metadata =>
-    metadata.name.toLowerCase().includes(lowerQuery) ||
-    metadata.description.toLowerCase().includes(lowerQuery)
-  )
 }
 
 /**
@@ -335,12 +245,6 @@ export async function createWebSocketAgentFactory(options?: {
     stateManager,
     // WebSocket server compatibility methods
     getAgent: (id: string) => agents.get(id as any),
-    getAvailableAgents: () => getAvailableAgentIds().map(id => ({
-      id,
-      name: aiLibAgentMetadata[id]?.name || id,
-      description: aiLibAgentMetadata[id]?.description || ''
-    })),
-    getAgentCount: () => getAvailableAgentIds().length,
     isMultiAgentMode: () => true
   }
 }

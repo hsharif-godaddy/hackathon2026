@@ -2,31 +2,14 @@ import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import request from 'supertest';
 import express, { type Express } from 'express';
 
-const { mockGetLastMessageTimestamp, mockGetStats, mockValidateAll } = vi.hoisted(() => ({
+const { mockGetLastMessageTimestamp } = vi.hoisted(() => ({
   mockGetLastMessageTimestamp: vi.fn().mockResolvedValue('2024-01-01T00:00:00.000Z'),
-  mockGetStats: vi.fn().mockReturnValue({
-    totalAgents: 5,
-    activeAgents: 3,
-  }),
-  mockValidateAll: vi.fn().mockResolvedValue({
-    valid: ['agent1', 'agent2'],
-    invalid: [],
-  }),
 }));
 
 vi.mock('../../../memory/adapters/index.js', () => ({
   getConversationTokenStore: vi.fn(function () { return {
     getLastMessageTimestamp: mockGetLastMessageTimestamp,
   }; }),
-}));
-
-vi.mock('../../../registry/index.js', () => ({
-  AgentRegistry: {
-    getInstance: vi.fn(function () { return {
-      getStats: mockGetStats,
-      validateAll: mockValidateAll,
-    }; }),
-  },
 }));
 
 import { healthRouter } from '../health.js';
@@ -55,7 +38,6 @@ describe('Health Router', () => {
       expect(response.body).toHaveProperty('timestamp');
       expect(response.body).toHaveProperty('uptime');
       expect(response.body).toHaveProperty('memory');
-      expect(response.body).toHaveProperty('registry');
       expect(response.body).toHaveProperty('version');
       expect(response.body).toHaveProperty('last_message_at');
 
@@ -156,37 +138,6 @@ describe('Health Router', () => {
       expect(response.body).toHaveProperty('timestamp');
       expect(response.body).toHaveProperty('uptime');
       expect(response.body).toHaveProperty('memory');
-    });
-  });
-
-  describe('GET /health/agents', () => {
-    it('should return agent validation status', async () => {
-      mockValidateAll.mockResolvedValueOnce({
-        valid: ['agent1', 'agent2'],
-        invalid: [],
-      });
-
-      const response = await request(app).get('/health/agents');
-
-      expect(response.status).toBe(200);
-      expect(response.body).toHaveProperty('status', 'healthy');
-      expect(response.body).toHaveProperty('timestamp');
-      expect(response.body.agents).toHaveProperty('valid');
-      expect(response.body.agents).toHaveProperty('invalid');
-      expect(response.body.agents).toHaveProperty('total', 2);
-    });
-
-    it('should return degraded status when agents are invalid', async () => {
-      mockValidateAll.mockResolvedValueOnce({
-        valid: ['agent1'],
-        invalid: ['agent2'],
-      });
-
-      const response = await request(app).get('/health/agents');
-
-      expect(response.status).toBe(200);
-      expect(response.body.status).toBe('degraded');
-      expect(response.body.agents.invalid.length).toBe(1);
     });
   });
 });

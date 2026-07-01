@@ -1,10 +1,8 @@
 import { Router, IRouter } from 'express';
 import { logger } from '../../logging/index.js';
 import { getConversationTokenStore } from '../../memory/adapters/index.js';
-import { AgentRegistry } from '../../registry/index.js';
 
 const router: IRouter = Router();
-const registry = AgentRegistry.getInstance();
 const tokens = getConversationTokenStore();
 
 /**
@@ -14,7 +12,6 @@ const tokens = getConversationTokenStore();
  */
 router.get('/', async (req, res) => {
   let status = 'healthy';
-  const stats = registry.getStats();
 
   let lastMessage: string | null = null;
   try {
@@ -31,7 +28,6 @@ router.get('/', async (req, res) => {
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
     memory: process.memoryUsage(),
-    registry: stats,
     version: process.env.npm_package_version || '0.1.0',
     agent_version: process.env.AGENT_IMAGE_TAG || 'unknown',
     // Remove dev_app_version once we have switched to preview_app_version
@@ -41,27 +37,6 @@ router.get('/', async (req, res) => {
     pre_start_version: process.env.PRE_START_IMAGE_TAG || 'unknown',
     last_message_at: lastMessage,
   });
-});
-
-/**
- * GET /health/agents - Detailed agent health check
- */
-router.get('/agents', async (req, res, next) => {
-  try {
-    const validation = await registry.validateAll();
-
-    res.json({
-      status: validation.invalid.length === 0 ? 'healthy' : 'degraded',
-      timestamp: new Date().toISOString(),
-      agents: {
-        valid: validation.valid,
-        invalid: validation.invalid,
-        total: validation.valid.length + validation.invalid.length,
-      },
-    });
-  } catch (error) {
-    next(error);
-  }
 });
 
 export const healthRouter = router;

@@ -157,7 +157,7 @@ When a message arrives, the agent is selected by priority:
 | InitialAgent   | First-time app scaffolding        | develop         |
 | DevelopAgent   | Feature development, code changes | marketing       |
 | MarketingAgent | SEO/marketing content             | develop         |
-| DesignAgent    | UI/UX design                      | develop         |
+| DeepBuildAgent | Orchestrated interview→plan→build | (sub-agents)    |
 
 Factory: `agents/src/agents/ai-lib-agents/index.ts` (`createUnifiedAgentFactory()`).
 
@@ -620,7 +620,6 @@ Budget-exceeded errors emit a `budget_exceeded` event to the client with remaini
 | WebSocket server    | `agents/src/server/ai-lib-websocket-server.ts`                                               | `setupAILibWebSocketServer()`, `contextProvider`, `onTokenUsage` |
 | Base WebSocket      | `packages/ai-transport/src/experimental-websocket-server.ts`                                 | `handleChatMessage()`, `processStreamWithToolEvents()`           |
 | Agent factory       | `agents/src/agents/ai-lib-agents/index.ts`                                                   | `createUnifiedAgentFactory()`                                    |
-| Base agent          | `agents/src/base/base-agent.ts`                                                              | `getSystemPrompt()`, `composePrompt()`                           |
 | Context manager     | `agents/src/agents/ai-lib-agents/context-manager.ts`                                         | `buildContextMessages()`                                         |
 | History loader      | `agents/src/services/ConversationHistoryLoader.ts`                                           | `loadMessagesWithTokenLimitByConversationId()`                   |
 | Provider + S2S auth | `packages/ai-lib/src/providers/unified-provider.ts`, `packages/ai-lib/src/utils/s2s-auth.ts` | `getModel()`, `getS2SToken()`, `createS2SFetchWrapper()`         |
