@@ -711,20 +711,26 @@ export class ASTTextEditor extends ASTEditorBase {
     let newBody: string;
 
     if (body.includes(request.oldText)) {
-      // Pass 1: exact match
-      newBody = body.replace(request.oldText, request.newText);
+      // Pass 1: exact match. Function replacement bypasses String.replace's
+      // pattern expansion, so `$`-sequences ($$, $&, $`, $') in newText are
+      // written verbatim rather than corrupting this data-write path.
+      newBody = body.replace(request.oldText, () => request.newText);
     } else {
       // Pass 2: find the paragraph block whose stripped plain text matches oldText.
-      // The regex splits on blank lines (one or more empty lines), preserving the
-      // separating whitespace so we can do a targeted substring replacement rather
-      // than re-joining (which would normalise multi-blank-line gaps).
-      const blocks = body.split(/\n{2,}/);
+      // Split on blank lines while CAPTURING the separators so the blocks rebuild
+      // losslessly (multi-blank-line gaps preserved). Even indices are blocks,
+      // odd indices are the separating whitespace.
+      const parts = body.split(/(\n{2,})/);
       const normalizedOld = request.oldText.trim();
-      const matchIndex = blocks.findIndex(
-        b => ASTTextEditor.stripInlineMarkdown(b) === normalizedOld,
-      );
+      let matchPart = -1;
+      for (let i = 0; i < parts.length; i += 2) {
+        if (ASTTextEditor.stripInlineMarkdown(parts[i]!) === normalizedOld) {
+          matchPart = i;
+          break;
+        }
+      }
 
-      if (matchIndex === -1) {
+      if (matchPart === -1) {
         return {
           success: false,
           filePath: relativePath,
@@ -734,9 +740,11 @@ export class ASTTextEditor extends ASTEditorBase {
         };
       }
 
-      // Replace the matched block in-place inside body to preserve surrounding whitespace.
-      // matchIndex !== -1 guarantees a valid index; the non-null assertion is safe.
-      newBody = body.replace(blocks[matchIndex]!, request.newText);
+      // Replace the matched block BY POSITION, not via body.replace (which would
+      // hit the first raw occurrence — wrong when the block text also appears in
+      // an earlier paragraph — and would pattern-expand `$` in newText).
+      parts[matchPart] = request.newText;
+      newBody = parts.join('');
     }
 
     const newContent = content.slice(0, bodyStart) + newBody;

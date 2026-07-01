@@ -1276,3 +1276,102 @@ export default function I18nPage() {
     });
   });
 });
+
+describe('ASTTextEditor — markdown blog edits (editMarkdownText)', () => {
+  let editor: ASTTextEditor;
+  const TEST_APP_ID = 'test-app-id';
+  const MD_PATH = 'src/content/data/blog/test-post.md';
+
+  beforeEach(async () => {
+    editor = new ASTTextEditor();
+    testAppPath = `/tmp/ast-md-test-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    await mkdir(join(testAppPath, 'src', 'content', 'data', 'blog'), { recursive: true });
+  });
+
+  afterEach(async () => {
+    if (testAppPath && existsSync(testAppPath)) {
+      await rm(testAppPath, { recursive: true, force: true });
+    }
+  });
+
+  async function writeMd(body: string): Promise<void> {
+    await writeFile(join(testAppPath, MD_PATH), body);
+  }
+
+  async function editMd(oldText: string, newText: string) {
+    const result = await editor.editElementText(
+      testAppPath,
+      {
+        selector: 'p',
+        oldText,
+        newText,
+        devContext: { fileName: MD_PATH, componentName: 'BlogPost', lineNumber: 1, devId: 'md0001' },
+      },
+      TEST_APP_ID,
+    );
+    const updated = await readFile(join(testAppPath, MD_PATH), 'utf-8');
+    return { result, updated };
+  }
+
+  it('Pass 1: edits a plain-text paragraph by exact match, preserving frontmatter', async () => {
+    await writeMd(`---\ntitle: My Post\nslug: test-post\n---\nThe quick brown fox.\n\nA second paragraph.\n`);
+    const { result, updated } = await editMd('The quick brown fox.', 'A slow red fox.');
+    expect(result.success).toBe(true);
+    expect(updated).toContain('A slow red fox.');
+    expect(updated).not.toContain('The quick brown fox.');
+    expect(updated).toContain('title: My Post'); // frontmatter untouched
+    expect(updated).toContain('A second paragraph.');
+  });
+
+  it('Pass 2: matches a block by stripped markdown when the raw source has inline markers', async () => {
+    await writeMd(`---\ntitle: My Post\n---\nIntro paragraph.\n\nThis has **bold** words.\n`);
+    // element.textContent strips the ** markers, so oldText has none.
+    const { result, updated } = await editMd('This has bold words.', 'Replaced entirely.');
+    expect(result.success).toBe(true);
+    expect(updated).toContain('Replaced entirely.');
+    expect(updated).not.toContain('This has **bold** words.');
+    expect(updated).toContain('Intro paragraph.');
+  });
+
+  it('returns not-found (no write) when the text is absent', async () => {
+    await writeMd(`---\ntitle: My Post\n---\nSome paragraph.\n`);
+    const { result, updated } = await editMd('Text that does not exist.', 'X');
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/not found/i);
+    expect(updated).toContain('Some paragraph.'); // unchanged
+  });
+
+  it('edits body when there is no frontmatter (bodyStart = 0)', async () => {
+    await writeMd(`Just a body paragraph, no frontmatter.\n`);
+    const { result, updated } = await editMd('Just a body paragraph, no frontmatter.', 'Now edited.');
+    expect(result.success).toBe(true);
+    expect(updated).toContain('Now edited.');
+  });
+
+  // Guard for CI finding #1: newText is the replacement arg to String.replace,
+  // so `$`-sequences ($$ $& $` $') get pattern-expanded and silently corrupt a
+  // data-write path unless the function form is used.
+  it('writes newText verbatim even when it contains $-replacement patterns', async () => {
+    await writeMd(`---\ntitle: My Post\n---\nOriginal price line.\n`);
+    const dollarText = "Now $5, with $$ special, $& match, $` before and $' after.";
+    const { result, updated } = await editMd('Original price line.', dollarText);
+    expect(result.success).toBe(true);
+    expect(updated).toContain(dollarText); // exact, not pattern-expanded
+  });
+
+  // Guard for CI finding #2: the matched block is replaced by POSITION, not by a
+  // first-occurrence substring scan. Here the matched block's raw text also
+  // appears earlier as a substring of another paragraph — the wrong paragraph
+  // must NOT be edited.
+  it('replaces the matched block by index, not the first raw substring occurrence', async () => {
+    await writeMd(
+      `---\ntitle: My Post\n---\nPrefix **bold** suffix here.\n\nMiddle paragraph.\n\n**bold** suffix here.\n`,
+    );
+    // Stripped form of the LAST block; Pass 1 fails (raw has ** markers).
+    const { result, updated } = await editMd('bold suffix here.', 'CLEAN REPLACEMENT.');
+    expect(result.success).toBe(true);
+    expect(updated).toContain('Prefix **bold** suffix here.'); // earlier block intact
+    expect(updated).not.toContain('Prefix CLEAN REPLACEMENT.'); // did NOT edit inside block 0
+    expect(updated).toContain('CLEAN REPLACEMENT.'); // matched (last) block replaced
+  });
+});
