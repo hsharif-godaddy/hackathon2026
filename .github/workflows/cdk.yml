@@ -44,6 +44,7 @@ on:
           - 'SupportplaneDynamoStack'
           - 'TransactionalEventsKinesisStack'
           - 'TransactionalEventsKMSStack'
+          - 'WatchtowerStack'
         default: '--all'
       DEFAULT_ACTION:
         description: 'Default action to take'
@@ -149,6 +150,9 @@ jobs:
           echo "//gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/:_authToken=${{ env.ARTIFACTORY_NPM_TOKEN }}" >> .npmrc
           cp .npmrc lambda/gocode-spend-essp-exporter/.npmrc
           cp .npmrc lambda/langfuse-metrics-essp-exporter/.npmrc
+          cp .npmrc lambda/watchtower/.npmrc
+          # watchtower uses gd-auth-client (unscoped) — same fix as investigator below
+          echo "registry=https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/" >> lambda/watchtower/.npmrc
           # investigator is a Docker Lambda image (not esbuild-bundled);
           # its Dockerfile bind-mounts this .npmrc to install gd-auth-client
           # from the private GoDaddy Artifactory registry. gd-auth-client

@@ -232,6 +232,7 @@ const devConfig: Config = {
     'arn:aws:iam::418549769352:role/GD-AWS-USA-GD-PioneerC1-Dev-Private-PowerUser',
     'arn:aws:iam::418549769352:role/GD-AWS-USA-GD-PioneerC1-Ops',
     'arn:aws:iam::694282668781:role/airobuilde-custom-dev-gocode-spend-sync-role',
+    'arn:aws:iam::694282668781:role/airobuilde-custom-dev-watchtower-role',
   ],
   s2sIamJwtAssumeRoleArns: [
     'arn:aws:iam::418549769352:role/pioneerc1-custom-pioneerc1-hybrid-instance-c4-onegroup',
@@ -357,7 +358,8 @@ const testConfig: Config = {
   gocodeAssumeRoleArns: [
     'arn:aws:iam::418549769352:role/pioneerc1-custom-pioneerc1-hybrid-instance-c4-onegroup',
     'arn:aws:iam::418549769352:role/GD-AWS-USA-GD-PioneerC1-Dev-Private-PowerUser',
-    'arn:aws:iam::418549769352:role/GD-AWS-USA-GD-PioneerC1-Ops'
+    'arn:aws:iam::418549769352:role/GD-AWS-USA-GD-PioneerC1-Ops',
+    'arn:aws:iam::694282668781:role/airobuilde-custom-test-watchtower-role',
   ],
   s2sIamJwtAssumeRoleArns: [
     'arn:aws:iam::418549769352:role/pioneerc1-custom-pioneerc1-hybrid-instance-c4-onegroup',
@@ -463,6 +465,7 @@ const prodConfig: Config = {
     'arn:aws:iam::506695300582:role/pioneerc1-custom-pioneerc1-hybrid-instance-c40-onegroup',
     'arn:aws:iam::506695300582:role/pioneerc1-custom-pioneerc1-hybrid-instance-c41-onegroup',
     'arn:aws:iam::644094189644:role/airobuilde-custom-prod-gocode-spend-sync-role',
+    'arn:aws:iam::644094189644:role/airobuilde-custom-prod-watchtower-role',
   ],
   s2sIamJwtAssumeRoleArns: [
     'arn:aws:iam::506695300582:role/pioneerc1-custom-pioneerc1-hybrid-instance-c24-onegroup',
@@ -515,6 +518,7 @@ const prodConfig: Config = {
   monitoring: {
     ecsClusterName: 'katanaRuntime',
     rdsClusterIdentifier: 'prod-mysql-v2-cluster',
+    appAlbArn: 'arn:aws:elasticloadbalancing:us-west-2:644094189644:loadbalancer/app/airobuildeappprodecsdirefc55c0c6/8940ddb390c9987c',
     wafWebAclNames: [
       'airobuilde-budget-service-prod-Regional-WebACL',
       'airobuilde-app-prod-ecs-Regional-WebACL',

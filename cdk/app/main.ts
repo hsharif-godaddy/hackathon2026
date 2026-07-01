@@ -9,6 +9,7 @@ import { MonitoringStack } from '../lib/monitoring-stack';
 import { GocaasSpendLambdaStack } from "../lib/gocaas-spend-lambda-stack";
 import { BudgetServiceLakeExportStack } from "../lib/budget-service-lake-export-stack";
 import { LangfuseMetricsEsspExporterStack } from "../lib/langfuse-metrics-essp-exporter-stack";
+import { WatchtowerStack } from "../lib/watchtower-stack";
 import { EvalSnapshotsStack } from "../lib/eval-snapshots-stack";
 import { EventsS3Stack } from "../lib/events-s3-stack";
 import { FeedbackS3Stack } from "../lib/feedback-s3-stack";
@@ -81,6 +82,9 @@ async function main() {
 
   // Create Langfuse Metrics ESSP Exporter Lambda stack (5-min cron, hourly buckets)
   new LangfuseMetricsEsspExporterStack(app, 'LangfuseMetricsEsspExporterStack', { env });
+
+  // Watchtower observability agent — hourly tripwire + daily digest (Phase 1).
+  new WatchtowerStack(app, 'WatchtowerStack', { env });
 
   // Create Eval Snapshots infrastructure (S3 bucket for evaluation screenshots + data)
   new EvalSnapshotsStack(app, 'EvalSnapshotsStack', { env });

@@ -51,6 +51,7 @@ next-env.d.ts
 /lib/*.d.ts
 /lambda/**/*.js
 /lambda/**/*.d.ts
+!/lambda/**/src/gd-auth-client.d.ts
 /test/*.js
 /test/*.d.ts
 !/lib/*.config.js
