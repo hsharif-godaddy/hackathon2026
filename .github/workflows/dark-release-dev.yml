@@ -61,9 +61,9 @@ on:
         type: string
         default: 'v4'
       preprov_count:
-        description: 'Warm RG-tagged preprovs to create per inventory target (capped at the stable row target_count). ~35 covers all cells so the dark stack (AI Chat, etc.) is responsive on first load; 0 = none.'
+        description: 'Warm RG-tagged preprovs per inventory target (capped at the stable row target_count) so the dark stack (AI Chat, etc.) is responsive on first load. 5 suits a dev dark release; raise toward the stable target_count to cover more cells; 0 = none.'
         type: string
-        default: '35'
+        default: '5'
       release_group_id:
         description: 'Release Group ID to roll back (REQUIRED when action=Rollback)'
         type: string
