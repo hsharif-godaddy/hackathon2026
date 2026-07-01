@@ -8,6 +8,7 @@ import { CANVAS_REGISTRY, CanvasId } from '@/app/[market]/commander/canvas/regis
 import { useCanvasSync } from '@/app/[market]/commander/canvas/useCanvasSync'
 import CanvasActionsDock from '@/app/[market]/commander/components/chat/CanvasActionsDock'
 import { CommanderPosition } from '@/app/[market]/commander/types'
+import AutomationsPanel from '@/app/[market]/develop/components/automations/AutomationsPanel'
 import BrandBookView from '@/app/[market]/develop/components/preview/brand-book'
 import { DesignKitPanels } from '@/app/[market]/develop/components/preview/design-kit-wizard/DesignKitPanels'
 import { useIsDesignKitWizardProfile } from '@/app/[market]/develop/components/preview/design-kit-wizard/isDesignKitWizardProfile'
@@ -85,6 +86,10 @@ export function CommanderShell({
     ? activeCanvasId === CanvasId.Brand
     : viewMode === ViewMode.BRAND && !isCanvasSettingsOpen
 
+  const isAutomationsActive = isCanvasTabsEnabled
+    ? activeCanvasId === CanvasId.Automations
+    : viewMode === ViewMode.AUTOMATIONS
+
   // The design-kit wizard runs in its own Immersive BuilderLayout (AIROBUILD-3095);
   // once the builder takes over, the Brand canvas content is gated by flow
   // (AIROBUILD-2075): the design-kit flow gets the editable Brand Design Kit (the
@@ -103,6 +108,15 @@ export function CommanderShell({
             {isBrandActive && brandOverlayContent && (
               <div className="absolute inset-0 z-20 overflow-hidden" data-testid="brand-book-overlay">
                 {brandOverlayContent}
+              </div>
+            )}
+            {isAutomationsActive && (
+              <div className="absolute inset-0 z-20 overflow-hidden" data-testid="automations-overlay">
+                <div className="h-full flex flex-col pr-1 pl-1">
+                  <div className="relative h-full overflow-auto rounded-lg border bg-intents-ux-box-backgroundColor">
+                    <AutomationsPanel />
+                  </div>
+                </div>
               </div>
             )}
             <CommanderCanvasSettingsOverlay edgeToEdge />
@@ -139,6 +153,22 @@ export function CommanderShell({
               data-testid="brand-book-overlay"
             >
               {brandOverlayContent}
+            </div>
+          )}
+          {isAutomationsActive && (
+            <div
+              className={
+                isCanvasTabsEnabled
+                  ? 'absolute top-0 bottom-0 right-1 left-1 rounded-t-lg overflow-hidden shadow-lg'
+                  : 'absolute inset-0 z-20 overflow-hidden rounded-lg md:rounded-b-none'
+              }
+              data-testid="automations-overlay"
+            >
+              <div className="h-full flex flex-col pr-1 pl-1">
+                <div className="relative h-full overflow-auto rounded-lg border bg-intents-ux-box-backgroundColor">
+                  <AutomationsPanel />
+                </div>
+              </div>
             </div>
           )}
           {isCanvasEnabled && <CommanderCanvasSettingsOverlay />}

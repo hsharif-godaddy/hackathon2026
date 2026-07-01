@@ -16,6 +16,7 @@ import RevertIcon from '@ux/icon/revert'
 import SettingsIcon from '@ux/icon/settings'
 import ShieldIcon from '@ux/icon/shield'
 import SocialIcon from '@ux/icon/social'
+import SparklesIcon from '@ux/icon/sparkles'
 import UserLockedIcon from '@ux/icon/user-locked'
 import WebsiteFilledIcon from '@ux/icon/website-filled'
 import WorldIcon from '@ux/icon/world'
@@ -27,6 +28,7 @@ export type CanvasIconComponent = ComponentType<SVGProps<SVGSVGElement> & { clas
 
 export enum CanvasId {
   Preview = 'preview',
+  Automations = 'automations',
   Code = 'code',
   Brand = 'brand',
   Domain = 'domain',
@@ -79,6 +81,16 @@ export const CANVAS_REGISTRY: Record<CanvasId, CanvasDescriptor> = {
     defaultOpen: true,
     defaultOrder: 0,
     activation: { viewMode: ViewMode.PREVIEW },
+  },
+  [CanvasId.Automations]: {
+    id: CanvasId.Automations,
+    labelKey: 'builder_header_button_automations',
+    fallbackLabel: 'Automations',
+    Icon: SparklesIcon,
+    dismissible: true,
+    defaultOpen: false,
+    activation: { viewMode: ViewMode.AUTOMATIONS },
+    switchboardFlag: 'appbuilder-automations',
   },
   [CanvasId.SettingsProject]: {
     id: CanvasId.SettingsProject,
@@ -270,6 +282,7 @@ export const PINNED_CANVAS_ID: CanvasId = CanvasId.Preview
 export const CANVAS_MENU_ORDER: readonly CanvasId[] = [
   CanvasId.SettingsProject,
   CanvasId.SettingsAnalytics,
+  CanvasId.Automations,
   CanvasId.SettingsBackups,
   CanvasId.Brand,
   CanvasId.SettingsCampaigns,

@@ -6,6 +6,7 @@ import Box from '@ux/box';
 import CodeIcon from '@ux/icon/code'
 import ColorPaletteIcon from '@ux/icon/color-palette'
 import ConversationsIcon from '@ux/icon/conversations'
+import SparklesIcon from '@ux/icon/sparkles'
 import WebsiteFilledIcon from '@ux/icon/website-filled'
 import WorldIcon from '@ux/icon/world'
 
@@ -41,6 +42,7 @@ export default function CommanderHeader() {
   const t = useTranslations();
   const isTopLevelDomainEnabled = useSwitchboard('appbuilder-domain-top-level');
   const isInboxEnabled = useSwitchboard('app-builder-inbox-button');
+  const isAutomationsEnabled = useSwitchboard('appbuilder-automations');
   const isCanvasEnabled = useCommanderCanvasEnabled();
   const isCanvasTabsEnabled = useCommanderCanvasTabsEnabled();
   const isCanvasSettingsOpen = useCommanderStore((state) => state.isCanvasSettingsOpen);
@@ -163,6 +165,17 @@ export default function CommanderHeader() {
                       label={t('builder_preview_button_inbox')}
                       active={viewMode === ViewMode.INBOX}
                       onClick={() => handleViewModeButtonChange(ViewMode.INBOX)}
+                      showLabelAlways
+                      ghost
+                    />
+                  )}
+
+                  {isAutomationsEnabled && (
+                    <IconButton
+                      icon={<SparklesIcon className="size-2.5" />}
+                      label={t('builder_header_button_automations', undefined, 'Automations')}
+                      active={viewMode === ViewMode.AUTOMATIONS}
+                      onClick={() => handleViewModeButtonChange(ViewMode.AUTOMATIONS)}
                       showLabelAlways
                       ghost
                     />
