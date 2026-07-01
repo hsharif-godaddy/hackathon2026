@@ -254,6 +254,96 @@ describe('ScrapePipeline.runAtlas — homepage-first path', () => {
     expect(mergedUrls).toContain('home-hero.jpg');
     expect(mergedUrls).toContain('shared-logo.png');
   });
+
+  it('analyzes late-discovered homepage assets after the post-crawl merge', async () => {
+    // Sentinel manifest to verify the exact object is passed through.
+    const sentinelManifest = {
+      assets: [{ url: 'sentinel' }],
+      totalAssets: 1,
+      byType: { image: 1, font: 0, icon: 0, other: 0 },
+      generatedAt: 'sentinel-time',
+    };
+    const { pipeline, process, analyzePageAssets } = setupAtlasPipeline({
+      fullSitemapPages: [
+        sitemapEntry('https://example.com/', 'homepage'),
+        sitemapEntry('https://example.com/about', 'about'),
+      ],
+      fullPages: [
+        scrapedPage('https://example.com/', '<h1>Home</h1>'),
+        scrapedPage('https://example.com/about', '<h1>About</h1>'),
+      ],
+      // Homepage-ready callback is asset-thin (real Atlas /home behavior).
+      callbackAssets: [],
+      // Full crawl: late-discovered homepage assets.
+      fullAssets: [
+        { url: 'home-hero.jpg', sourceUrl: 'https://example.com/' },
+        { url: 'about-banner.png', sourceUrl: 'https://example.com/about' },
+      ],
+    });
+    // Override process mock to return sentinel on merge call.
+    process.mockImplementation(async (_assets: unknown, _map: unknown, opts?: { merge?: boolean }) =>
+      opts?.merge ? sentinelManifest : { assets: [], totalAssets: 0, byType: { image: 0, font: 0, icon: 0, other: 0 }, generatedAt: '' },
+    );
+
+    await pipeline.run('test-app', 'https://example.com');
+
+    // analyzePageAssets should be called after the post-crawl merge to analyze
+    // late-discovered homepage assets. The early callback path skips analysis
+    // when there are no assets (callbackAssets: []), so we expect exactly one
+    // call from the post-crawl merge.
+    expect(analyzePageAssets).toHaveBeenCalledTimes(1);
+
+    // The call should pass the homepage URL and the manifest from the merge call.
+    expect(analyzePageAssets).toHaveBeenCalledWith('https://example.com/', sentinelManifest);
+
+    // Verify ordering: merge (process with merge:true) must happen before analyze.
+    const mergeCallOrder = process.mock.invocationCallOrder.find((_order, idx) => {
+      const call = process.mock.calls[idx];
+      return (call[2] as { merge?: boolean } | undefined)?.merge === true;
+    });
+    const analyzeCallOrder = analyzePageAssets.mock.invocationCallOrder[0];
+    expect(mergeCallOrder).toBeDefined();
+    expect(mergeCallOrder).toBeLessThan(analyzeCallOrder!);
+  });
+
+  it('skips analyzePageAssets when homepage is not in full crawl successfulPages', async () => {
+    // Homepage fails in the full crawl (success: false), but the callback had it.
+    // The post-crawl branch recomputes homePage from fullPages, so it will be undefined.
+    const failedHomepage: PageScrapeResult = {
+      url: 'https://example.com/',
+      success: false,
+      sanitizedContent: undefined,
+      html: undefined,
+    };
+    const { pipeline, process, analyzePageAssets } = setupAtlasPipeline({
+      fullSitemapPages: [
+        sitemapEntry('https://example.com/', 'homepage'),
+        sitemapEntry('https://example.com/about', 'about'),
+      ],
+      fullPages: [
+        failedHomepage,
+        scrapedPage('https://example.com/about', '<h1>About</h1>'),
+      ],
+      // Callback gets the homepage successfully (before it fails in full crawl).
+      callbackPages: [scrapedPage('https://example.com/', '<h1>Home</h1>')],
+      callbackAssets: [],
+      fullAssets: [
+        { url: 'home-hero.jpg', sourceUrl: 'https://example.com/' },
+      ],
+    });
+
+    await pipeline.run('test-app', 'https://example.com');
+
+    // process should still be called with merge:true for the assets.
+    const mergeCall = process.mock.calls.find(
+      (call: unknown[]) => (call[2] as { merge?: boolean } | undefined)?.merge === true,
+    );
+    expect(mergeCall).toBeDefined();
+
+    // But analyzePageAssets should NOT be called because homePage is undefined
+    // (the homepage failed in the full crawl).
+    expect(analyzePageAssets).not.toHaveBeenCalled();
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -393,7 +483,7 @@ function setupAtlasPipeline(opts: SetupOpts) {
   };
 
   const pipeline = new ScrapePipeline(deps);
-  return { pipeline, persistScrapedPages, saveState, saveSitemap, saveMetadata, getStatus, process };
+  return { pipeline, persistScrapedPages, saveState, saveSitemap, saveMetadata, getStatus, process, analyzePageAssets };
 }
 
 describe('ScrapePipeline.runAtlas — finding 1: persist before advertising in sitemap', () => {

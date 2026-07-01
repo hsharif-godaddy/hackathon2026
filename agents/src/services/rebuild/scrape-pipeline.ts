@@ -625,7 +625,22 @@ export class ScrapePipeline {
         const { assetMap } = bucketAssetsForProcessing(crawlOutput.assets, homePage?.url ?? '');
         if (crawlOutput.assets.length > 0) {
           try {
-            await assetService.process(crawlOutput.assets, assetMap, { merge: true });
+            const manifest = await assetService.process(crawlOutput.assets, assetMap, { merge: true });
+            // Analyze late-discovered homepage assets. The early homepage_ready
+            // callback may have seen an asset-thin set; this pass ensures any
+            // newly merged homepage assets also get AI descriptions. The method
+            // skips assets that already have descriptions, so no duplicates.
+            // Note: analyzePageAssets catches internally and returns a safe default,
+            // so no outer try/catch needed.
+            if (homePage) {
+              const { pageAssets, analyzedImageCount } = await assetService.analyzePageAssets(homePage.url, manifest);
+              logger.info('rebuild-orchestration.late-homepage-assets-analyzed', {
+                appId,
+                pageUrl: homePage.url,
+                pageAssetCount: pageAssets.length,
+                analyzedImageCount,
+              });
+            }
           } catch (error) {
             logger.error('rebuild-orchestration.inner-assets-process-failed', {
               appId,
