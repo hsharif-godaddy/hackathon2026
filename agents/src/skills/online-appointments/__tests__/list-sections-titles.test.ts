@@ -3,18 +3,23 @@ import { listSectionsTool } from '../tools/index.js';
 
 const EXPECTED_SECTIONS: Array<{ slug: string; title: string }> = [
   { slug: '01-discovery-questions', title: 'Discovery Questions' },
-  { slug: '02-configuration-examples', title: 'Configuration Examples' },
-  { slug: '03-database-setup', title: 'Database Setup' },
-  { slug: '04-authentication-integration', title: 'Authentication Integration' },
-  { slug: '05-admin-user-seed', title: 'Admin User Seed' },
-  { slug: '06-ui-components', title: 'UI Components' },
-  { slug: '07-booking-page-flow', title: 'Booking Page Flow' },
-  { slug: '08-payment-integration', title: 'Payment Integration ⚠️ COMPLEX' },
-  { slug: '09-email-notifications', title: 'Email Notifications' },
-  { slug: '10-admin-dashboard', title: 'Admin Dashboard' },
-  { slug: '11-customer-portal', title: 'Customer Portal' },
-  { slug: '12-class-credits-system', title: 'Class Credits System' },
-  { slug: '13-troubleshooting', title: 'Troubleshooting' },
+  { slug: '02-install-and-configure', title: 'Install & Configure' },
+  { slug: '03-feature-bookings', title: 'Feature: Admin Bookings' },
+  { slug: '04-feature-services', title: 'Feature: Services' },
+  { slug: '05-feature-clients', title: 'Feature: Clients' },
+  { slug: '06-feature-staff', title: 'Feature: Staff' },
+  { slug: '07-feature-coupons', title: 'Feature: Coupons' },
+  { slug: '08-feature-categories-questions', title: 'Feature: Categories & Custom Questions' },
+  { slug: '09-feature-settings', title: 'Feature: Business Settings' },
+  { slug: '10-feature-customer-portal', title: 'Feature: Customer Portal (My Bookings)' },
+  { slug: '11-seeding', title: 'Seeding' },
+  { slug: '12-user-journeys', title: 'User Journeys' },
+  { slug: '13-customization', title: 'Customization' },
+  { slug: '14-admin-system', title: 'Admin System' },
+  { slug: '15-authentication', title: 'Authentication' },
+  { slug: '16-database-setup', title: 'Database Setup' },
+  { slug: '17-ui-design', title: 'UI Design — Rich, Modern Interfaces' },
+  { slug: 'IMPLEMENTATION', title: 'Online Appointments v2 — Section Index' },
 ];
 
 describe('listSectionsTool (real section files)', () => {
@@ -32,5 +37,22 @@ describe('listSectionsTool (real section files)', () => {
     const result = await listSectionsTool.execute({}, {});
 
     expect(result.sections).toEqual(EXPECTED_SECTIONS);
+  });
+
+  it('computeState returns sections catalog and routing_rule from execute output', async () => {
+    const output = await listSectionsTool.execute({}, {});
+    const state = listSectionsTool.computeState?.({}, output) as { sections: Array<{ slug: string; title: string }>; routing_rule: string } | null;
+
+    expect(state).not.toBeNull();
+    expect(Array.isArray(state?.sections)).toBe(true);
+    expect(state?.sections.some(s => s.slug === '01-discovery-questions')).toBe(true);
+    expect(state?.sections.some(s => s.slug === 'IMPLEMENTATION')).toBe(true);
+    expect(typeof state?.routing_rule).toBe('string');
+    expect(state?.routing_rule.length).toBeGreaterThan(0);
+  });
+
+  it('computeState returns null when output has no sections', () => {
+    const state = listSectionsTool.computeState?.({}, { sections: [] });
+    expect(state).toBeNull();
   });
 });

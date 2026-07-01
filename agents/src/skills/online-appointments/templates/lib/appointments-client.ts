@@ -1,164 +1,155 @@
-import type { TimeSlot, Appointment } from './appointments';
+const API_BASE = "/api/appointments";
 
-/**
- * API response types
- */
-export interface AvailabilityResponse {
-  date: string;
-  slots: TimeSlot[];
-  /** IANA timezone identifier for the business (e.g., "America/New_York") */
-  timezone: string;
-}
+// ── Types ──────────────────────────────────────────────────────────────────
 
-export interface CreateAppointmentRequest {
-  customerName: string;
-  customerEmail: string;
-  customerPhone?: string;
-  date: string; // YYYY-MM-DD
-  time: string; // HH:mm
-  notes?: string;
-}
-
-export interface CreateAppointmentResponse {
+export interface Service {
   id: string;
-  customerName: string;
-  customerEmail: string;
-  date: string;
-  time: string;
-  endTime: string;
-  status: 'confirmed';
-  serviceName: string;
-  duration: number;
-  /** IANA timezone identifier for the business (e.g., "America/New_York") */
-  timezone: string;
-  /** ISO 4217 currency code from config (display formatting). */
-  currency?: string;
-  requiresPayment?: boolean;
-  /** GoDaddy Commerce checkout URL — present when payment is required. */
-  checkoutUrl?: string;
-  /** Draft order id from the payment provider — present when payment is required. */
-  orderId?: string;
+  name: string;
+  description: string | null;
+  cost: string | null;
+  duration: string | null;
+  visible: boolean;
+  slug: string | null;
+  recurrenceType: string | null;
+  startTime: string | null;
+  endTime: string | null;
+  imageUrl: string | null;
+  categories?: Array<{ id: string; name: string | null }>;
 }
 
-export interface ApiError {
-  error: string;
-  message: string;
-  messageKey?: string; // i18n key for client-side translation
+export interface PaginatedResponse<T> {
+  results: T[];
+  page: number;
+  per_page: number;
+  total_count: number;
+  total_pages: number;
 }
 
-/**
- * Appointments API client
- *
- * Centralized API calls for appointment operations.
- * Easy for LLM to extend for new features.
- */
-export class AppointmentsClient {
-  private baseUrl: string;
-
-  constructor(baseUrl = '/api/appointments') {
-    this.baseUrl = baseUrl;
-  }
-
-  /**
-   * Fetch available time slots for a specific date
-   *
-   * @param date - Date in YYYY-MM-DD format
-   * @returns Available time slots
-   * @throws Error with message from API
-   */
-  async getAvailability(date: string): Promise<AvailabilityResponse> {
-    const response = await fetch(`${this.baseUrl}/availability?date=${encodeURIComponent(date)}`);
-
-    if (!response.ok) {
-      const error = await this.parseError(response);
-      throw new Error(error.message);
-    }
-
-    return response.json();
-  }
-
-  /**
-   * Create a new appointment
-   *
-   * @param data - Appointment data
-   * @returns Created appointment details
-   * @throws Error with message from API
-   */
-  async createAppointment(data: CreateAppointmentRequest): Promise<CreateAppointmentResponse> {
-    const response = await fetch(this.baseUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-    });
-
-    if (!response.ok) {
-      const error = await this.parseError(response);
-      throw new Error(error.message);
-    }
-
-    return response.json();
-  }
-
-  /**
-   * Get all appointments (for admin views)
-   *
-   * @param filters - Optional filters
-   * @returns List of appointments
-   */
-  async getAppointments(filters?: {
-    startDate?: string;
-    endDate?: string;
-    status?: 'confirmed' | 'cancelled' | 'completed';
-  }): Promise<Appointment[]> {
-    const params = new URLSearchParams();
-    if (filters?.startDate) params.append('startDate', filters.startDate);
-    if (filters?.endDate) params.append('endDate', filters.endDate);
-    if (filters?.status) params.append('status', filters.status);
-
-    const url = params.toString() ? `${this.baseUrl}?${params}` : this.baseUrl;
-    const response = await fetch(url);
-
-    if (!response.ok) {
-      const error = await this.parseError(response);
-      throw new Error(error.message);
-    }
-
-    return response.json();
-  }
-
-  /**
-   * Cancel an appointment
-   *
-   * @param appointmentId - Appointment ID
-   * @returns Updated appointment
-   */
-  async cancelAppointment(appointmentId: string): Promise<Appointment> {
-    const response = await fetch(`${this.baseUrl}/${encodeURIComponent(appointmentId)}/cancel`, {
-      method: 'POST',
-    });
-
-    if (!response.ok) {
-      const error = await this.parseError(response);
-      throw new Error(error.message);
-    }
-
-    return response.json();
-  }
-
-  /**
-   * Parse error response from API
-   */
-  private async parseError(response: Response): Promise<ApiError> {
-    try {
-      return await response.json();
-    } catch {
-      return {
-        error: 'Error',
-        message: `Request failed with status ${response.status}`,
-      };
-    }
-  }
+export interface Question {
+  id: string;
+  body: string;
+  required: boolean;
 }
 
-// Default client instance
-export const appointmentsClient = new AppointmentsClient();
+export interface PublicStaffMember {
+  id: string;
+  name: string | null;
+  role: string;
+}
+
+export interface Booking {
+  id: string;
+  confirmation_code: string;
+  status: string;
+  start_time: string;
+  end_time: string;
+}
+
+export interface CreateBookingPayload {
+  service_id: string;
+  availability_time: string;
+  quantity?: number;
+  staff_ids?: string[];
+  client: {
+    first_name: string;
+    last_name: string;
+    email: string;
+    phone_number?: string;
+    notes?: string;
+  };
+  answers?: Array<{ question_id: string; body: string }>;
+  marketing_consent?: boolean;
+  coupon_code?: string;
+  discount_amount?: number;
+}
+
+// ── Core fetcher ───────────────────────────────────────────────────────────
+
+export async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
+  const response = await fetch(`${API_BASE}${path}`, {
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    ...options,
+  });
+  if (!response.ok) {
+    const body = (await response.json().catch(() => ({}))) as { message?: string };
+    throw new Error(body.message ?? `Request failed: ${response.status}`);
+  }
+  if (response.status === 204) {
+    return undefined as T;
+  }
+  return response.json() as Promise<T>;
+}
+
+// ── Health ─────────────────────────────────────────────────────────────────
+
+export function checkHealth() {
+  return apiFetch<{ status: string; timestamp: string; message: string }>("/health");
+}
+
+// ── Public: services ───────────────────────────────────────────────────────
+
+export function getPublicServices(page = 1, perPage = 50) {
+  return apiFetch<PaginatedResponse<Service>>(`/public/services?page=${page}&per_page=${perPage}`);
+}
+
+export function getPublicService(id: string) {
+  return apiFetch<{ service: Service }>(`/public/services/${id}`);
+}
+
+export function getAvailableDates(serviceId: string, startTime: string, endTime: string) {
+  return apiFetch<{ available_dates: Array<{ date: string; available: boolean }> }>(
+    `/public/services/${serviceId}/available-slots-by-date-range?start_time=${encodeURIComponent(startTime)}&end_time=${encodeURIComponent(endTime)}`,
+  );
+}
+
+export function getAvailabilityTimes(serviceId: string, date: string) {
+  return apiFetch<{
+    availability_times: Array<{
+      start_time: string;
+      end_time: string;
+      available: boolean;
+      remaining_capacity: number | null;
+    }>;
+  }>(`/public/services/${serviceId}/availability-times?date=${date}`);
+}
+
+// ── Public: config ───────────────────────────────────────────────────────
+
+export function getPublicServiceStaff(serviceId: string) {
+  return apiFetch<{ staff: PublicStaffMember[]; staffRole: string | null }>(
+    `/public/services/${serviceId}/staff`,
+  );
+}
+
+export function getPublicConfig() {
+  return apiFetch<{ config: Record<string, string | null> }>("/public/config");
+}
+
+// ── Public: questions ──────────────────────────────────────────────────────
+
+export function getPublicQuestions() {
+  return apiFetch<{ questions: Question[] }>("/public/questions");
+}
+
+// ── Public: bookings ───────────────────────────────────────────────────────
+
+export function createPublicBooking(data: CreateBookingPayload) {
+  return apiFetch<{ booking: Booking }>("/public/bookings", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+// ── Public: coupons ────────────────────────────────────────────────────────
+
+export function incrementCouponUsage(code: string) {
+  return apiFetch<void>(`/appointments/customer/coupons/${encodeURIComponent(code)}/incrementUse`, {
+    method: "POST",
+  });
+}
+
+export function decrementCouponUsage(code: string) {
+  return apiFetch<void>(`/appointments/customer/coupons/${encodeURIComponent(code)}/decrementUse`, {
+    method: "POST",
+  });
+}

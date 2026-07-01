@@ -1,0 +1,132 @@
+{
+  "features": {
+    "admin": {
+      "dashboard": {
+        "enabled": false,
+        "description": "Admin dashboard overview with widgets.",
+        "widgets": {
+          "enabled": false,
+          "description": "Feature-gated dashboard widget panel.",
+          "bookings_trend": {
+            "enabled": false,
+            "description": "Area chart showing booking volume over the past 30 days."
+          },
+          "revenue_chart": {
+            "enabled": false,
+            "description": "Bar chart showing estimated revenue collected over the past 30 days."
+          },
+          "top_services": {
+            "enabled": false,
+            "description": "Horizontal bar chart ranking services by booking count."
+          },
+          "recent_bookings_table": {
+            "enabled": false,
+            "description": "Sortable and filterable data table of recent bookings."
+          },
+          "staff_bookings": {
+            "enabled": false,
+            "description": "Horizontal bar chart showing bookings assigned per staff member."
+          },
+          "active_staff": {
+            "enabled": false,
+            "description": "Grid of active staff members with role and contact info."
+          },
+          "active_coupons": {
+            "enabled": false,
+            "description": "Table of currently active discount coupons."
+          },
+          "today_availability": {
+            "enabled": false,
+            "description": "Today's business hours and open time blocks."
+          },
+          "total_clients": {
+            "enabled": false,
+            "description": "Stat card showing total registered client count."
+          }
+        }
+      },
+      "bookings": {
+        "enabled": false,
+        "description": "View, create, update, and cancel appointments from the admin panel."
+      },
+      "services": {
+        "enabled": false,
+        "description": "Manage bookable services including name, price, duration, and availability."
+      },
+      "clients": {
+        "enabled": false,
+        "description": "Browse and manage the client directory with per-client booking history."
+      },
+      "staff": {
+        "enabled": false,
+        "description": "Manage staff members who can be assigned to appointments."
+      },
+      "availability": {
+        "enabled": false,
+        "description": "Configure business hours and recurring weekly availability windows."
+      },
+      "categories": {
+        "enabled": false,
+        "description": "Organise services into a nested category hierarchy."
+      },
+      "questions": {
+        "enabled": false,
+        "description": "Define intake form questions collected from customers at booking time."
+      },
+      "coupons": {
+        "enabled": false,
+        "description": "Create and manage discount coupon codes redeemable during checkout."
+      },
+      "settings": {
+        "enabled": false,
+        "description": "Top-level group for business configuration options.",
+        "business_info": {
+          "enabled": false,
+          "description": "Set the business name, contact details, and public-facing description."
+        },
+        "business_location": {
+          "enabled": false,
+          "description": "Set the physical address displayed to customers."
+        },
+        "timezone": {
+          "enabled": false,
+          "description": "Choose the timezone used for all appointment scheduling and display."
+        },
+        "booking_interval": {
+          "enabled": false,
+          "description": "Set the slot granularity (e.g. 15 min, 30 min) shown in the booking calendar."
+        }
+      }
+    },
+    "customer": {
+      "my_bookings": {
+        "enabled": false,
+        "description": "Let authenticated customers view and manage their own upcoming and past bookings."
+      },
+      "booking_flow": {
+        "enabled": false,
+        "description": "End-to-end public booking wizard: service selection, date/time picking, and checkout.",
+        "coupons": {
+          "enabled": false,
+          "description": "Allow customers to enter a coupon code during checkout to receive a discount."
+        },
+        "staff_selection": {
+          "enabled": false,
+          "description": "Show an optional staff preference picker in the booking flow when the service has a staff role assigned."
+        }
+      }
+    },
+    "public": {
+      "services_browse": {
+        "enabled": false,
+        "description": "Public-facing page listing all visible services so customers can explore offerings before booking."
+      }
+    },
+    "staff": {
+      "exception_times": {
+        "enabled": false,
+        "description": "Allow staff members to block out time ranges (holidays, breaks) that override normal availability."
+      }
+    }
+  }
+}

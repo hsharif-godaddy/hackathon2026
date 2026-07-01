@@ -1,20 +1,114 @@
 ---
 name: online-appointments
 description: Full-featured appointment/booking system for service businesses. Includes date/time selection with availability checking, customer intake form, optional GoDaddy Commerce payment integration (free or paid appointments), email confirmations with calendar invites, admin dashboard for appointment management, and customer portal. Supports single pricing (e.g., "$100 consultation") or multiple pricing tiers (e.g., 30min/$50, 60min/$90, 90min/$120). Handles business hours, working days, timezone-aware scheduling, buffer time between appointments, and customizable appointment durations.
-whenToUse: Load IMMEDIATELY for ANY new booking, appointment, scheduling, or reservation intent — do not evaluate fit or gaps. The skill itself will determine whether to use its templates or recommend custom implementation. Also load for troubleshooting existing booking systems (calendar not showing, slots not available, booking form broken). Keywords - "booking", "appointment", "schedule", "reservation", "calendar", "time slot", "class booking", "availability", "slots". Covers services, classes, consultations, rentals, class credits or any time-slot reservations.
+whenToUse: Load immediately for ANY request related to appointments, bookings, or scheduling — whether it is a new install, a bug fix, a UI change, a feature request, a data question, an admin question, or a configuration change. This skill is the single source of truth for everything appointments-related. If this skill has already been loaded for this app (visible in applied_skills context), load it again to get the sections needed for the current request rather than solving from general knowledge. Never attempt to build, fix, or explain any part of a booking system without loading this skill first.
 dependencies:
   - date-fns
   - date-fns-tz
   - zod
+  - uuidv7
+  - mysql2
+  - drizzle-orm
+  - "@dnd-kit/core"
+  - "@dnd-kit/sortable"
+  - "@dnd-kit/utilities"
+  - recharts
 intents:
   - booking/appointments/scheduling/reservation/time slots/class booking/book a spot/waitlist/classes
-  - clinic scheduling/salon booking/consultation calendar/availability system/appointment calendar
-  - spa booking/therapy sessions/coaching sessions/personal training/tutoring schedule
-  - booking not working/appointments broken/calendar not showing/slots not available/booking page error
-  - schedule appointments/book online/online scheduling/appointment system/reservation system
+  - add data/seed data/sample data/test data/seed bookings/add sample/populate data/try it out
+  - admin/admin login/admin setup/admin password/admin dashboard/admin access/fix admin/improve admin/admin panel/admin layout/admin not working
+  - booking system bug/booking error/appointment not working/fix booking/debug appointment/fix/not working/broken/error
+  - customer portal/customer login/my bookings/view bookings/cancel booking/booking history
+  - business hours/availability/timezone/working days/opening hours
+  - services/service/add services/edit services/improve services/update services/fix services/service price/service duration/manage services/services not showing/service cards/service list/service page/service design/service UI/service images/service API
+  - staff/staff member/assign staff/staff management/add staff
+  - coupon/discount code/promo code/voucher/add coupon
+  - booking page/book page/booking form/book now/booking flow
+  - improve UI/redesign/make it look better/modernize/UI/styling/theme/branding/booking UI
+  - settings/configure/business info/business location/booking interval
 ---
 
 # Online Appointments Skill
+
+## Communication rule — keep technical details internal
+
+All technical decisions — which files to read, which sections to load, which API endpoints to call, which flags to enable, which components to edit — are **internal reasoning**. Do not narrate them to the user.
+
+Communicate only outcomes and questions. Tell the user what is being built or what you need from them, not how it works under the hood.
+
+| Instead of | Say |
+|---|---|
+| "I'm loading section 14-admin-system to understand the admin auth flow" | Say nothing — just do it |
+| "I need to edit `src/appointment-features.json` to enable `admin.coupons`" | "I'll turn on discount codes for you" |
+| "The API endpoint is `/api/appointments/public/services`" | "I'll pull your real services from the system" |
+| "I'm setting `customer.my_bookings: true` in the feature flags" | "I'll add the customer login portal" |
+
+When you do speak to the user, use plain business language — the language of their industry, not the language of code.
+
+---
+
+## 🔴 FIRST ACTION — Before anything else
+
+**Execute all of the following in the same turn — do not stop after loading the skill:**
+
+```typescript
+skill({ action: 'load', skill: 'online-appointments' })
+online_appointments__listSections({})
+skill({ action: 'loadReference', path: 'online-appointments/sections/01-discovery-questions' })
+skill({ action: 'loadReference', path: 'online-appointments/sections/02-install-and-configure' })
+skill({ action: 'loadReference', path: 'online-appointments/sections/04-feature-services' })
+skill({ action: 'loadReference', path: 'online-appointments/sections/14-admin-system' })
+skill({ action: 'loadReference', path: 'online-appointments/sections/17-ui-design' })
+```
+
+Loading the skill without immediately loading these sections is incomplete. All seven calls are a single unit — the skill is not ready to use until all of them have returned.
+
+---
+
+## Reasoning pattern — repeat for every task and every new area within a session
+
+**Check `<applied_skills>` state first.** After `listSections` has been called at least once, the section catalog (slug + title) is persisted in state and visible in every turn's `<applied_skills>` XML:
+
+```xml
+<skill name="online-appointments" ...>
+  <current_state>
+    {"sections":[{"slug":"14-admin-system","title":"Admin System"},{"slug":"07-feature-coupons","title":"Coupons"},...]}
+  </current_state>
+</skill>
+```
+
+**For every task, run these two steps before reading any file or writing any code:**
+
+**Step 1 — List sections**
+
+```typescript
+online_appointments__listSections({})
+```
+
+**Step 2 — Load the matching section plus any mandatory sections**
+
+Find the section whose title matches the current task and load it. Then check whether the mandatory sections below apply and load those too:
+
+```typescript
+skill({ action: 'loadReference', path: 'online-appointments/sections/<matching-slug>' })
+```
+
+**Mandatory sections — always load these when the task involves their area:**
+
+| Task area | Always load |
+|---|---|
+| New install or any configuration change | `01-discovery-questions`, `02-install-and-configure` |
+| Anything in `/admin` — layout, dashboard, sidebar, navigation, bug fixes | `02-install-and-configure`, `14-admin-system` |
+| Anything related to bookings — booking flow, booking list, booking status, booking API | `03-feature-bookings` |
+| Anything related to services — improve services, service cards, service list, service page, service design, service UI, service images, pricing, duration, service API, services not showing | `04-feature-services` |
+| Any UI change — styling, components, layout, theme, spacing, animations | `17-ui-design` |
+| Any feature work or bug fix | `02-install-and-configure` |
+
+Step 1 is mandatory every time — do not skip `listSections` and jump straight to `loadReference`. The catalog must be consulted first so you pick the right section. Only after all relevant sections are loaded may you read files or make edits.
+
+This applies to every task, every turn — admin layout, my bookings, coupons, seeding, auth, bug fixes. Every area has its own section with codebase-specific patterns that are not visible from the code alone.
+
+---
 
 Full appointment booking system with payment integration, email confirmations, and admin dashboard.
 
@@ -37,559 +131,245 @@ Full appointment booking system with payment integration, email confirmations, a
 
 ---
 
-## Proactive suggestions (server-driven)
+## 🚨 CRITICAL: Never validate TypeScript on installed templates
 
-You do **not** generate, rank, version, or track booking next-steps yourself — the
-platform does it automatically from this skill's feature catalog, in two places:
-
-- **Pending capabilities** the customer hasn't built yet appear in the "Continue
-  building" panel after a build. Nothing for you to do.
-- **"What's new" for a returning customer:** when they reopen a site that already has a
-  booking system, the platform injects a short "What's new for this site" note listing
-  capabilities that are new, or that they started toward but never finished.
-
-When a "What's new for this site" note is present, follow it: if it fits the
-conversation, mention the items in plain English and offer them as clickable next-step
-buttons — `askQuestion` with `type: 'chips_single'` and `allowOther: true` (or
-`suggestedResponse` if your agent lacks `askQuestion`). If it doesn't fit, stay silent
-and handle the customer's actual request. **Never** read or write a version/last-seen
-memory marker — that bookmark is owned by the server. Per the confidentiality rule,
-describe each capability in plain English; never mention tool names, skill names, or
-`§` section numbers to the customer.
-
-### How a built capability leaves the suggestions
-
-What stays *pending* (and what counts as *new*) is decided server-side by detecting each
-optional capability's canonical artifacts on disk against the skill's feature catalog.
-**Build every capability at the path its section documents** — saving it elsewhere means
-the customer keeps being offered a feature they already have:
-
-| Capability | Recognised as built when the app has |
-| --- | --- |
-| Charge at booking (§8) | `pricingTiers` in `src/lib/appointments.config.ts` |
-| Email confirmations (§9) | `src/server/utils/appointment-email.ts` or `src/lib/calendar-invite.ts` |
-| Owner dashboard (§10) | `src/pages/AdminDashboard.tsx` (or the admin `…/[id]/PATCH.ts` route) |
-| Customer portal (§11) | `src/pages/Account.tsx` or `src/server/api/account/credits/GET.ts` |
-| Class packs & credits (§12) | `classPackages` in `src/lib/appointments.config.ts` |
-
-Adding a *future* capability is therefore a data-only change to the skill (its section
-plus one catalog entry in `tools/feature-catalog.ts`); the agent core never changes.
+**Do NOT run the validate code tool (typecheck / tsc) on the installed templates at any point.** The templates are pre-built and ship with TypeScript that is intentionally not checked at install time — running typecheck on them will produce false errors, waste time, and may cause the agent to attempt incorrect "fixes" to working code. This prohibition applies at every step: after `skill({ action: 'install' })`, after feature-flag edits, after seeding, and after any other modification within this skill's scope.
 
 ---
 
-## 🚨 CRITICAL: Implementation Style
+## Section Reference
 
-**Discovery → Confirm → Implement.** Do Step 1 (Discovery), then Step 2 (Review &
-Confirm), and only after the customer says yes do you start touching files.
+All implementation details live in `sections/`. Load sections on demand using `loadReference`.
 
-- **One business-level confirmation, then no more approval prompts.** Step 2 is the
-  customer's chance to correct everything in plain English. Once they confirm, just build
-  it — do not re-ask about technical implementation choices.
-- **Do NOT discuss technical details** with the user (API endpoints, file edits, schemas, etc.)
-- **Assume users are NOT technical** — they don't need to know about APIs, database
-  schemas, or code structure.
-- **Only ask clarifying questions** if discovery answers were unclear or missing, or if
-  the customer rejected the Step 2 summary.
+| Slug | Content |
+|---|---|
+| `01-discovery-questions` | Feature flag mapping from discovery answers |
+| `02-install-and-configure` | Install flow, package setup, DB connection, admin nav, API wiring |
+| `03-feature-bookings` | Admin bookings management |
+| `04-feature-services` | Service catalog management |
+| `05-feature-clients` | Client CRM |
+| `06-feature-staff` | Staff management and exception times |
+| `07-feature-coupons` | Discount coupon system |
+| `08-feature-categories-questions` | Service categories and custom intake questions |
+| `09-feature-settings` | Business settings panel |
+| `10-feature-customer-portal` | Customer my-bookings portal |
+| `11-seeding` | Seeding initial data |
+| `12-user-journeys` | Complete user flow documentation |
+| `13-customization` | Labels, colors, branding, theme |
+| `17-ui-design` | Rich modern UI — reading the theme, creative direction, component styling |
+| `14-admin-system` | Admin auth, layout, navigation, troubleshooting |
+| `15-authentication` | Customer and admin auth systems |
+| `16-database-setup` | drizzle.config.ts, migrations, SSL config, troubleshooting |
+| `IMPLEMENTATION` | Section index and minimum install path |
 
-**What to show users:**
-- ✅ The Step 2 summary (plain English, every captured value, ends with yes/no question).
-- ✅ Progress updates: "Setting up booking page...", "Configuring payment...", "Testing the booking flow..."
-- ✅ Final result: "Booking system is ready at /book"
-- ✅ Business-level decisions during discovery: "Do you want email confirmations?"
-
-**What NOT to show users:**
-- ❌ Technical implementation details: "I'll create an API endpoint at /api/appointments/POST.ts"
-- ❌ Code explanations: "The schema uses a paymentStatus field..."
-- ❌ File-by-file narration: "Now editing src/components/BookingForm.tsx"
-
-**Exception:** Only discuss technical details if the user explicitly asks technical questions or is clearly a developer.
-
----
-
-## How to load detailed sections
-
-Detailed implementation lives in `sections/`. Use the `listSections` tool and `loadReference`
-together as follows:
-
-1. **Collect user requirements** — ask the user about their booking intent before touching any sections.
-2. **Call `listSections`** — returns a table of contents (slug + title) of every available section.
-3. **Choose relevant sections** — based on the user's requirements, identify which sections apply (e.g. payment sections only if the user wants paid bookings).
-4. **Load each relevant section** via `loadReference`:
-
-```typescript
-skill({ action: 'loadReference', path: 'online-appointments/sections/NN-slug' })
-```
+**Do NOT attempt to load any path not in this table.**
 
 ---
 
-## Implementation Flow
+## Setup sequence — all 8 steps are mandatory
 
-Discovery → Review & Confirm (**gate** — do not proceed without explicit yes) → Configure
-→ Install Templates → Database (+ Auth if needed) → UI Components → Booking Page → Payment
-⚠️ (conditional) → Class Credits ⚠️ (conditional) → Email → Admin Dashboard (optional) →
-Customer Portal (conditional).
+Execute every step in order. The only valid reason to pause between steps is to wait for user input (e.g. discovery answers, a yes/no confirmation). Do not stop, summarise, or ask "what next?" between steps — complete the step and immediately move to the next one. All 8 steps must finish before the setup is considered done.
 
 ---
 
 ## Step 1: Discovery ✓
 
-**For full conversational scripts:**
-Call `listSections` to see all available sections, then:
+### 1a. Register the skill and load core sections
+
 ```typescript
+online_appointments__listSections({})
 skill({ action: 'loadReference', path: 'online-appointments/sections/01-discovery-questions' })
+skill({ action: 'loadReference', path: 'online-appointments/sections/02-install-and-configure' })
+skill({ action: 'loadReference', path: 'online-appointments/sections/03-feature-bookings' })
+skill({ action: 'loadReference', path: 'online-appointments/sections/04-feature-services' })
 ```
 
-### Quick Discovery Checklist
-
-Gather the answers below. The shipped `AppointmentsConfigSchema` validates
-`serviceName`, `duration`, `businessHoursStart`/`businessHoursEnd`, `workingDays`,
-`timezone`, `currency`, and optional `pricingTiers[]` (each with `label`, `duration`,
-`amount`, **`skuId`**). Anything else listed below is either a per-booking input (not
-stored on config) or requires a schema extension before it can be used. See
-`sections/02-configuration-examples.md` § 2.0 for the authoritative table.
-
-1. **Business type:** "What type of appointments are you offering?"
-   → Used by discovery to pick suggestions; not stored on config.
-
-2. **Service name:** "What's the name as customers will see it?"
-   → Stored in `config.serviceName`.
-
-3. **Duration:** "How long does each appointment take? (minutes)"
-   → Stored in `config.duration`. Per-tier duration overrides this.
-
-4. **Buffer time:** "Time between appointments for prep/cleanup? (minutes, or 0)"
-   → **Schema extension required.** Not in the shipped schema; the slot generator does not
-   subtract a buffer.
-
-5. **Business hours:** "What days and times are you open?"
-   → Stored in `config.workingDays` (0=Sun..6=Sat), `businessHoursStart`,
-   `businessHoursEnd`.
-
-6. **Timezone (ALWAYS ASK):** Auto-detect from browser, then confirm:
-   "I've detected your timezone as {{detected_timezone}}. Is this correct for your
-   business hours?"
-   → Stored in `config.timezone` as IANA format (e.g., `'America/New_York'`).
-   → All business hours and slot availability are calculated in this timezone.
-   → Customers see times labeled with this timezone.
-
-7. **Payment (CRITICAL — ALWAYS ASK):** "Do customers pay when they book? (Yes or No)"
-   → If yes, this is expressed as `pricingTiers[]` on config (one entry for fixed price).
-   The booking request body sends `requiresPayment: true` and `amount: <tier.amount>`. There
-   is no `config.requiresPayment`.
-   → If any price is mentioned at any point, treat payment as required.
-
-8. **Pricing structure (if payment required):**
-   - Fixed price → `pricingTiers: [{ label, duration, amount, skuId }]` (one entry; `amount`
-     in the smallest unit of the chosen currency — see step 9).
-   - Variable pricing → `pricingTiers[]` with one entry per option. `skuId` is required on
-     every tier.
-   - Class packages → **Schema extension required** (`classPackages[]`). See § 12.
-
-9. **Currency (CRITICAL when payment is required):** "What currency are your prices in?"
-   → Stored in `config.currency` as an ISO 4217 code (`'USD'`, `'EUR'`, `'GBP'`, `'JPY'`,
-   etc.). Defaults to `'USD'`.
-   → **Must match the currency the SKUs are priced in inside your GoDaddy Commerce
-   store.** GoDaddy derives the actual checkout currency from the SKU; this config field
-   drives display formatting only.
-   → `amount` values on `pricingTiers` are in the smallest unit of this currency: cents
-   for USD/EUR/GBP, yen for JPY, fils for KWD.
-
-10. **Free first consultation (conditional):** If coaching/consulting AND payment required
-    → **Schema extension required.** Add `freeFirstAppointment: boolean` to
-    `AppointmentsConfigSchema` before relying on it.
-
-The full `sections/01-discovery-questions.md` section covers conversational scripts, context-aware
-suggestions per service type, payment detection patterns, and edge cases.
-
----
-
-## Step 2: Review & Confirm with Customer ✓
-
-**This step is a gate. Do not start any setup, file edits, or skill installs until the
-customer has explicitly confirmed the summary below.** It exists to catch
-mishearings/misnamings before they get baked into config, SKUs, and emails.
-
-### What to do
-
-1. Read every captured discovery answer back to the customer in a single, plain-English
-   summary. No code, no field names, no file paths — they're not technical.
-2. Use only what was actually captured — never invent defaults, never paper over a missing
-   answer with "we'll figure it out". If something is missing, ask it now and re-summarise.
-3. Quote money in the customer's currency using the right symbol (`$80`, `€80`, `£80`,
-   `¥8,000`) — never raw cents.
-4. End with a direct yes/no question. Wait for confirmation before proceeding.
-
-### Summary template
-
-> Here's what I'm setting up for you. Please tell me if anything is wrong:
->
-> - **Business:** {{serviceName}} ({{serviceType}})
-> - **Service length:** {{duration}} minutes per appointment{{#if bufferTime}}, with {{bufferTime}} minutes between bookings{{/if}}
-> - **Hours:** {{businessHoursStart}}–{{businessHoursEnd}}, {{workingDaysReadable}} ({{timezone}})
-> - **Payment:** {{#if requiresPayment}}Yes — customers pay when they book{{else}}No — bookings are free{{/if}}
-> - **Price:** {{priceSummaryReadable}}  ← e.g. "$80 per session", "tiers of $50/$90/$140 by length", "class packs of $20 / $90 / $150", or "Free"
-> - **Currency:** {{currency}}{{#if requiresPayment}} (your GoDaddy Commerce SKUs must be priced in {{currency}}){{/if}}
-> - **Free first appointment:** {{#if freeFirstAppointment}}Yes — first session is on the house, follow-ups are paid{{else}}No{{/if}}
-> - **Customer accounts:** {{#if requiresCustomerPortal or classPackages}}Yes — customers will need to sign in{{else}}No — anyone can book without an account{{/if}}
-> - **Admin dashboard:** {{#if requiresAdminDashboard}}Yes — you'll have a private page to manage bookings{{else}}No{{/if}}
->
-> Does this match what you want? **(yes / no — and if no, tell me what to change)**
-
-Hide fields the customer didn't mention rather than printing "n/a" or `undefined` — empty
-rows look like bugs. Render `workingDays` as human days ("Monday to Friday", "Tuesday
-through Sunday") rather than `[1,2,3,4,5]`.
-
-### What NOT to do here
-
-- Do not show technical details (no SKU IDs, no `pricingTiers` objects, no schema field
-  names, no file paths).
-- Do not auto-progress on silence. If the customer doesn't answer, prompt once more.
-- Do not split the summary into multiple messages — keep it scannable.
-
----
-
-## Step 3: Configuration Examples
+### 1b. Generate and ask discovery questions
 
 ```typescript
-skill({ action: 'loadReference', path: 'online-appointments/sections/02-configuration-examples' })
+online_appointments__generateDiscoveryQuestions({ userRequirements: '<user message verbatim>' })
 ```
 
-Shows:
-- Single fixed price config (coaching at $80/session)
-- Variable pricing config (massage with 3 tiers)
-- Class packages config (yoga with credit packs)
-- Free service config (restaurant reservations)
+Pass the returned `questions` array **directly** to `askQuestion` — do not modify it:
+
+```typescript
+askQuestion({ questions: <questions from generateDiscoveryQuestions> })
+```
+
+**Stop here.** Wait for the user's answers before proceeding.
+
+### 1c. Review answers with the user
+
+Read every captured answer back in a single plain-English summary (no field names, no code).
+End with a direct yes/no question. **Do not touch any file until the user confirms.**
+
+**→ Once the user confirms, immediately proceed to Step 2.**
+
+---
+
+## Step 2: Install Templates + Configure ✓
+
+### 2a. Install templates
+
+```typescript
+online_appointments__prepareInstall({})
+skill({ action: 'install', skill: 'online-appointments' })
+```
+
+### 2b. Install packages
+
+Read `src/.appointments.package.json` and install every package at its exact version
+(strip `^`/`~`). Run `dependencies` and `devDependencies` as separate npm calls:
+
+```bash
+npm install --save-exact <dep1>@<version> <dep2>@<version> ...
+npm install --save-dev --save-exact <devDep1>@<version> ...
+```
+
+### 2c. Configure
+
+Follow all instructions in §2 (`loadReference 02-install-and-configure`):
+- Edit `src/appointment-features.json` with default flags
+- Configure DB connection
+- Wire homepage CTA buttons to `/book` — find every "Book Now" or primary CTA on the homepage and ensure it navigates to `/book`; add a "Book Now" link to the site header
+- Add admin navigation (customer login page + footer)
+- Wire `src/lib/api-client.ts` exports
+
+**→ Immediately proceed to Step 3.**
+
+---
+
+## Step 3: Enable Features ✓
+
+For each feature the user asked for in discovery:
+
+1. Load the relevant section
+2. Follow its instructions to enable the feature flag in `src/appointment-features.json`
+
+| User asked for | Load section | Flag to set `true` |
+|---|---|---|
+| Staff management | `06-feature-staff` | `admin.staff` |
+| Discount codes | `07-feature-coupons` | `admin.coupons`, `customer.booking_flow.coupons` |
+| Custom intake questions | `08-feature-categories-questions` | `admin.questions` |
+| Service categories | `08-feature-categories-questions` | `admin.categories` |
+| Business settings | `09-feature-settings` | `admin.settings` |
+| Customer booking history portal | `10-feature-customer-portal` | `customer.my_bookings` |
+| Clients CRM | `05-feature-clients` | `admin.clients` (already true by default) |
+
+A flag flip in `src/appointment-features.json` is all that's needed — guards and gates are already wired.
+
+**→ Immediately proceed to Step 4.**
 
 ---
 
 ## Step 4: Database Setup 📖
 
-**CRITICAL: Install database skill FIRST - templates depend on it.**
-
 ```typescript
-skill({ action: 'install', skill: 'database' });
+skill({ action: 'loadReference', path: 'online-appointments/sections/16-database-setup' })
 ```
 
-This installs MySQL + Drizzle ORM. The database skill creates:
-- `src/server/db/client.ts` - Database connection (exports `db`)
-- `src/server/db/config.ts` - Configuration loader
-- `src/server/db/schema.ts` - Schema definitions (you'll add the `appointment` table here)
-- `drizzle.config.ts` - Drizzle configuration
+Follow all instructions in §16. It loads the database skill internally and covers `drizzle.config.ts`, migrations, SSL configuration, and troubleshooting.
 
-**After database skill is installed, add the `appointment` table to `src/server/db/schema.ts`.**
-
-**For the authoritative schema + migrations:**
-```typescript
-skill({ action: 'loadReference', path: 'online-appointments/sections/03-database-setup' })
-```
-The columns mirror what `templates/server/api/appointments/POST.ts` and `GET.ts` write.
-
-**CRITICAL CONCEPT: orderId is the draft-order handle**
-
-- GoDaddy Commerce `createPaymentSession` returns `{ paymentUrl, orderId }` where `orderId` is the **draftOrderId** of an unpaid order.
-- Store that value directly in `appointment.orderId`.
-- Final paid status is fetched on demand via `provider.getOrderStatus(orderId)` — there is no separate "real orderId" written back to the row.
-- **Free-first check:** any prior row for the same email with `orderId IS NOT NULL` AND `provider.getOrderStatus(orderId).status === 'paid'` counts as a paid appointment.
-
-**For authentication tables (only if needed for credits/portal):**
-```typescript
-skill({ action: 'loadReference', path: 'online-appointments/sections/04-authentication-integration' })
-```
-
-Then run: `npx drizzle-kit generate && npx drizzle-kit migrate`
+**→ Immediately proceed to Step 5.**
 
 ---
 
-## Step 5: Install Templates ✓
+## Step 5: Admin System 📖
 
-**After database is set up, install appointment templates:**
+Ask the user:
 
 ```typescript
-skill({ action: 'install', skill: 'online-appointments' });
+askQuestion({
+  questions: [{
+    question: 'Would you like an admin dashboard to manage bookings, services, and clients?',
+    type: 'chips_single',
+    suggestions: ['Yes, set up admin', 'No thanks'],
+    allowOther: false,
+    multiSelect: false,
+  }]
+})
 ```
 
-This installs:
-- `src/lib/appointments.ts` - Utility functions, types, config schema
-- `src/lib/appointments-client.ts` - API client
-- `src/server/api/appointments/availability/GET.ts` - Get available slots
-- `src/server/api/appointments/POST.ts` - Create appointment (imports `db` from `../../db/client`)
-- `src/server/api/appointments/GET.ts` - List appointments with optional payment-status enrichment
-- `src/server/utils/payment-provider.ts` and `godaddy-commerce-provider.ts` - Provider abstraction
+If yes:
 
-**Templates import from `src/server/db/client` - the database skill must be installed first.**
+```typescript
+skill({ action: 'loadReference', path: 'online-appointments/sections/14-admin-system' })
+```
+
+Follow all instructions in §14 to build the admin UI and navigation.
+
+**Auto-redirect to setup:** Implement the first-admin redirect pattern described in §14/§15 — when no admin exists, visiting `/admin` or `/admin/login` must redirect to `/admin/setup` automatically. Do **not** tell the user to navigate there manually.
+
+**→ Immediately proceed to Step 6.**
 
 ---
 
-## Step 6: UI Components ✓
+## Step 6: Authentication ⚠️
 
 ```typescript
-skill({ action: 'loadReference', path: 'online-appointments/sections/06-ui-components' })
+skill({ action: 'loadReference', path: 'online-appointments/sections/15-authentication' })
 ```
 
-### Components to Create
+Follow all instructions in §15. Key points:
+- **Admin auth:** JWT token in `localStorage`, bcrypt passwords, `Authorization: Bearer` header
+- **Customer auth:** HttpOnly cookie session (no password — email-only lookup)
+- The auto-redirect to `/admin/setup` (Step 5) is documented in §14/§15 — implement exactly what those sections describe
 
-1. **PricingTierSelector** (variable pricing only) - Show pricing options
-2. **Calendar** - Calendar with working day filtering
-3. **TimeSlotPicker** - Fetch and display available slots
-4. **BookingForm** - Customer info + submission
-
-Place under `src/components/appointments/` (Vite + React Router; no `'use client'` directive).
+**→ Immediately proceed to Step 7.**
 
 ---
 
-## Step 7: Booking Page Flow ✓
+## Step 7: Data Seeding 📖 (Optional)
+
+Ask the user:
 
 ```typescript
-skill({ action: 'loadReference', path: 'online-appointments/sections/07-booking-page-flow' })
+askQuestion({
+  questions: [{
+    question: 'Would you like to add some sample data so you can try the booking system right away?',
+    type: 'chips_single',
+    suggestions: ['Yes, add sample data', 'No, I\'ll add my own'],
+    allowOther: false,
+    multiSelect: false,
+  }]
+})
 ```
 
-**Flow:** Select Date → Time → Fill Form → Confirmation. Variable pricing prepends a
-"Select Tier" step.
+If yes:
 
-The v8 template uses Vite + React Router. Create the page at `src/pages/BookAppointment.tsx`
-and register it as the `/book` route in `src/App.tsx`. Do **not** use Next.js `app/page.tsx`
-or `'use client'` directives.
+```typescript
+skill({ action: 'loadReference', path: 'online-appointments/sections/11-seeding' })
+```
+
+Use `database__list_tables` (from the database skill) to confirm all tables exist, then use `askQuestion` to gather the details needed for seeding — business name, timezone, and 2–3 services (name, duration, price). Follow §11 to execute the seeding API calls.
+
+**→ Immediately proceed to Step 8.**
 
 ---
 
-## Step 8: Payment Integration ⚠️ COMPLEX
-
-**ONLY if `requiresPayment === true` OR `pricingTiers` exists.**
-
-**CRITICAL: Payment is complex. Read the full section before implementing.**
+## Step 8: UI/UX Customisation 📖
 
 ```typescript
-skill({ action: 'loadReference', path: 'online-appointments/sections/08-payment-integration' })
+skill({ action: 'loadReference', path: 'online-appointments/sections/12-user-journeys' })
+skill({ action: 'loadReference', path: 'online-appointments/sections/13-customization' })
+skill({ action: 'loadReference', path: 'online-appointments/sections/17-ui-design' })
 ```
 
-### Key Concepts (Read Full Section First!)
+Read the app's existing Tailwind config or CSS variables to identify the current theme (border-radius, font family, colour tokens). Apply §13 instructions to update the booking pages so they match the user's existing site design.
 
-1. **No webhooks.** GoDaddy Commerce does not deliver webhooks. The success page is the
-   confirmation point — it polls `provider.getOrderStatus(orderId)` and updates the row.
-
-2. **`createPaymentSession` returns `{ paymentUrl, orderId }`** (not `{ id, checkoutUrl }`).
-   Redirect the browser to `paymentUrl`; persist `orderId` to `appointment.orderId`.
-
-3. **No `customer` field on `CreatePaymentSessionParams`.** The shipped provider does not
-   forward customer info to checkout. Do not pre-fill name/email/phone via the payment
-   session.
-
-4. **sessionStorage is required across the redirect**:
-   - Before `window.location.href = data.paymentUrl`, store both `appointmentId` and
-     `orderId` (which is the draftOrderId).
-   - On the success page, read them back and call the confirm endpoint.
-
-5. **Free-first appointment check (server side):**
-   - Look up prior rows for the same `customerEmail` with `orderId IS NOT NULL`.
-   - For each, call `provider.getOrderStatus(orderId)`; only count `status === 'paid'`.
-   - Abandoned drafts therefore do not give the customer another free slot.
-
-6. **Currency is determined by the SKU, not by our request body.** GoDaddy Commerce uses
-   the SKU's native currency at checkout. The `currency` field on `CreatePaymentSessionParams`
-   is advisory and is ignored by the GoDaddy provider; we keep it for parity with
-   non-GoDaddy providers (Stripe, etc.). Use `config.currency` for display formatting via
-   `formatMoney(amount, config.currency)` from `lib/appointments`.
-
-### Quick Setup Steps
-
-1. Load `commerce` first for the Commerce store/channel context and any SKU/catalog/cart
-   setup needed by appointment payments or class-credit/cart flows.
-2. Then load `payment/godaddy-payments`, reuse the Commerce store/channel context, complete
-   any remaining setup/env workflow, and install its checkout templates.
-3. Set `config.currency` to the same ISO 4217 code (e.g. `'EUR'`) the merchant's GoDaddy
-   Commerce store SKUs are priced in. The store catalog is the source of truth at checkout
-   time; this field drives display formatting on our side.
-4. Create SKUs for each tier with the `commerce` skill: call `commerce__search_tools`
-   to find the product/SKU creation tool, then call `commerce__execute_tool` with the
-   MCP tool name and arguments. Price those SKUs **in that currency**. Each
-   `pricingTiers[]` entry **requires** a `skuId` — Zod rejects the config otherwise. Tier
-   amounts are integers in the smallest unit of the chosen currency:
-   ```typescript
-   pricingTiers: [
-     // EUR example — 80,00 € is 8000 cents (EUR has 2 decimals).
-     { label: '60-min Coaching', duration: 60, amount: 8000, skuId: '<set-after-commerce-skill>' },
-     // JPY example would be `amount: 8000` for ¥8,000 (JPY has 0 decimals).
-   ],
-   ```
-5. Wire the booking form to redirect to `paymentUrl` after `POST /api/appointments`
-6. Create success/cancel pages
-7. Implement the first-appointment check endpoint (if `freeFirstAppointment === true` —
-   requires schema extension; see § 8.7)
+**→ Proceed to the Completion Message.**
 
 ---
 
-## Step 9: Email Notifications ✓
+## Completion Message
 
-```typescript
-skill({ action: 'loadReference', path: 'online-appointments/sections/09-email-notifications' })
-```
+After all steps are done, summarise in plain English. **Never mention raw URLs.** Describe how to reach each thing through the UI instead.
 
-### Quick Setup
-
-1. Install email skill: `skill({ action: 'install', skill: 'email' })`
-2. The email skill is a recipe (nodemailer + local SMTP relay) — it does not export a
-   shared `sendEmail` module. Each consumer constructs its own `nodemailer.createTransport`
-   call inline, as documented in the email skill's `skill.md`.
-3. Generate an .ics calendar invite (helper in `§ 9.1`) and attach it to the confirmation
-   email.
-
-**Timing:**
-- Free appointments → Send immediately after creation
-- Paid appointments → Send after the success page has confirmed `getOrderStatus === 'paid'`
-
----
-
-## Step 10: Admin Dashboard 📖 (Optional)
-
-```typescript
-skill({ action: 'loadReference', path: 'online-appointments/sections/10-admin-dashboard' })
-```
-
-Shows:
-- Appointment list view (uses `GET /api/appointments?includeOrderStatus=true` for live payment status)
-- Order details modal (handles both paid and free appointments)
-- Admin authentication setup
-
-**Admin seed:**
-```typescript
-skill({ action: 'loadReference', path: 'online-appointments/sections/05-admin-user-seed' })
-```
-
----
-
-## Step 11: Customer Portal 📖 (Conditional)
-
-**Only if `requiresCustomerPortal === true`.**
-
-```typescript
-skill({ action: 'loadReference', path: 'online-appointments/sections/11-customer-portal' })
-```
-
-Features:
-- Login/signup pages (provided by authentication skill)
-- View upcoming/past appointments
-- Cancel appointments
-- Credit balance (if class packages)
-
----
-
-## Step 12: Class Credits System ⚠️ (Conditional)
-
-**Only if `classPackages` array exists.**
-
-**CRITICAL: Load and read the full section before implementing.**
-
-```typescript
-skill({ action: 'loadReference', path: 'online-appointments/sections/12-class-credits-system' })
-```
-
-Shows:
-- Purchase flow for class packages (redirect to GoDaddy Commerce)
-- Credit balance tracking
-- Booking with credits instead of payment
-- Atomic credit deduction on the success page after polling `getOrderStatus`
-
----
-
-## Troubleshooting
-
-```typescript
-skill({ action: 'loadReference', path: 'online-appointments/sections/13-troubleshooting' })
-```
-
-Covers:
-- Race-condition double-booking
-- Customer charged but appointment not confirmed (success-page polling failed)
-- Free first appointment not working
-- Timezone issues
-- Build failures
-
----
-
-## Quick Decisions
-
-- **Payment required?** YES iff `config.pricingTiers` has ≥1 entry. There is no
-  `config.requiresPayment` — for a fixed price, write a single-entry `pricingTiers` array.
-- **Authentication required?** YES if any of `requiresCustomerPortal`,
-  `requiresAdminDashboard`, or `classPackages` is set. Otherwise anonymous booking only.
-- **Free first appointment:** see `sections/08-payment-integration.md` § 8.7 for
-  the authoritative `getOrderStatus`-based check.
-
----
-
-## After Setup Complete
-
-### Completion Message
-
-Tailor message based on configuration:
-
-**For paid appointments:**
-
-> "Appointment booking is now set up!
+> "Your booking system is live!
 >
-> - **Booking page:** `/book`
-> - **Service:** {{serviceName}}
-> - **Price:** {{formatMoney(tier.amount, config.currency)}} (or tiers list)
-> - **Hours:** {{businessHoursStart}}-{{businessHoursEnd}} on {{workingDays}}
+> - Customers can **browse and book** using the Book Now button on your homepage
+> - **Staff login** is available via the Staff Login button on the sign-in page [or wherever it was placed]
+> - Click Staff Login → you'll be taken straight to the admin setup page to claim your account
+> - **Features enabled:** [list what was turned on, in plain language — e.g. "discount codes", "customer booking history", "staff scheduling"]
 >
-> Payment integration is live with GoDaddy Commerce. Customers will receive email confirmations with calendar invites."
-
-**For free appointments:**
-
-> "Appointment booking is now set up!
->
-> - **Booking page:** `/book`
-> - **Service:** {{serviceName}}
-> - **Price:** Free
-> - **Hours:** {{businessHoursStart}}-{{businessHoursEnd}} on {{workingDays}}
->
-> Customers will receive email confirmations with calendar invites."
-
----
-
-## Key Takeaways
-
-1. **Discovery is critical** - Load full scripts via ````typescript
-skill({ action: 'loadReference', path: 'online-appointments/sections/01-discovery-questions' })
-````
-2. **Always confirm before building** - Step 2 reads every captured answer back in plain
-   English and waits for an explicit yes. Do not start file edits or skill installs until
-   the customer confirms.
-3. **ALWAYS ask about payment AND currency** - When payment is required, also ask the
-   currency; it must match what the merchant's GoDaddy Commerce SKUs are priced in
-4. **Payment is complex** - Read the full payment section before implementing
-5. **`orderId` column = draftOrderId** - Store what `createPaymentSession` returns; the row never holds a separate "real" orderId
-6. **Currency is SKU-driven** — GoDaddy Commerce uses the SKU's native currency at
-   checkout. `config.currency` is for display only; use `formatMoney(amount, currency)`
-   from `lib/appointments` for all UI/email money rendering
-7. **Authentication is conditional** - Only needed for portals or class credits
-8. **Email skill is a recipe** - Construct the nodemailer transport inline; do not import a `sendEmail` module
-9. **`sections/` is your detailed guide** - Use `skill({ action: 'loadReference', path: 'online-appointments/sections/NN-slug' })` to load any section on demand
-
----
-
-## Implementation Notes
-
-### Section Loading
-
-Sections under `sections/` are loaded on demand via `loadReference`. Each section is
-self-contained. Load only the section you need; do not pre-load all of them.
-
-**Approximate context cost:**
-- Skill.md only: ~5K tokens
-- Skill.md + payment section: ~10K tokens
-- All sections combined: ~19K tokens (only if needed)
-
-### When This Skill Applies
-
-- **DO use** for: Creating NEW appointment/booking systems
-- **DON'T use** for: Bug fixes, integrations with existing systems, 3rd-party booking tools
-
-### Edge Cases Covered
-
-All edge cases documented in `sections/13-troubleshooting.md`:
-- Race-condition double-booking prevention
-- Success-page polling and the lack of webhooks
-- Free-first appointment edge cases (verifies via `getOrderStatus`, not draft presence)
-- Timezone handling across regions
-- Build failures and debugging
+> [Add anything specific to their configuration in plain business language — no paths, no technical terms.]"
