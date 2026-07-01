@@ -296,6 +296,15 @@ describe("completionSideEffects", () => {
       expect(mockLogImpressionEvent).toHaveBeenCalledWith("develop.tool.skill", {});
     });
 
+    it("includes path in props for a loadReference action", () => {
+      trackToolResult({ name: "skill", input: { action: "loadReference", path: "online-appointments/sections/01-discovery-questions" } });
+
+      expect(mockLogImpressionEvent).toHaveBeenCalledWith("develop.tool.skill", {
+        action: "loadReference",
+        path: "online-appointments/sections/01-discovery-questions",
+      });
+    });
+
     it("fires develop.tool.skill_tool AND the legacy per-name impression for a per-skill tool", () => {
       trackToolResult({ name: "commerce__commerce_store_list", skillName: "commerce" });
 

@@ -290,7 +290,7 @@ export function trackStepStart(): void {
  */
 export function trackToolResult(tool: {
   name: string
-  input?: { action?: string; skill?: string }
+  input?: { action?: string; skill?: string; path?: string }
   skillName?: string
 }): void {
   // Wrapper `skill` tool: fires for every action (list/load/install) exactly as
@@ -300,6 +300,7 @@ export function trackToolResult(tool: {
     const props: Record<string, string> = {}
     if (typeof tool.input?.action === 'string') props.action = tool.input.action
     if (typeof tool.input?.skill === 'string') props.skillName = tool.input.skill
+    if (typeof tool.input?.path === 'string') props.path = tool.input.path
     logImpressionEvent('develop.tool.skill', props)()
     return
   }
