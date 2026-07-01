@@ -160,8 +160,8 @@ pipeline:
             fail-on-threshold: 'true'
             score-threshold: '70'
 
-    # ===== PROD-DARK (opt-in: only runs when dispatched with run_dark=true) =====
-    # release.yml's dark-phase job (gated on run_dark) runs this env BEFORE the approve-prod gate:
+    # ===== PROD-DARK (on by default; a manual dispatch can opt out with run_dark=false) =====
+    # release.yml's dark-phase job runs this env BEFORE the approve-prod gate:
     # dark-deploy the new builder (Katana dark_release @ 0% traffic) + bind agent/preview/publish to
     # the build's commit SHA via a cohort-less Release Group, then advisory dark e2e/regression
     # against the dark URL so the approver reviews a live, already-tested dark build. dark_url +

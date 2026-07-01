@@ -41,8 +41,8 @@ on:
         default: false
         type: boolean
       run_dark:
-        description: 'Run the dark phase (dark-deploy + advisory dark e2e/regression) before the prod gate'
-        default: false
+        description: 'Run the dark phase (dark-deploy + advisory dark e2e/regression) before the prod gate. On by default; uncheck to skip. Scheduled runs always run it.'
+        default: true
         type: boolean
       notify_slack:
         description: 'Post Slack updates (uncheck to run silently — would-be messages print to the run log)'
@@ -151,7 +151,7 @@ jobs:
           SLACK_CHANNEL_ID: ${{ (inputs.notify_slack || github.event_name != 'workflow_dispatch') && secrets.SLACK_CHANNEL_ID || '' }}
           BRANCH: ${{ needs.preflight.outputs.branch }}
           DRY_RUN: ${{ inputs.dry_run == true }}
-          RUN_DARK: ${{ inputs.run_dark == true }}
+          RUN_DARK: ${{ github.event_name != 'workflow_dispatch' || inputs.run_dark == true }}
         run: |
           DRY=""
           [ "$DRY_RUN" = "true" ] && DRY="--dry-run"
@@ -191,15 +191,16 @@ jobs:
           if-no-files-found: error
 
   # ---------------------------------------------------------------------------
-  # DARK PHASE (opt-in: run_dark=true) — dark-deploy the new builder + bind images
+  # DARK PHASE (on by default) — dark-deploy the new builder + bind images
   # via a cohort-less Release Group + advisory dark e2e/regression, BEFORE the prod
-  # gate, so the approver reviews a live, already-tested dark build. Skipped on
-  # classic runs and on cron. Re-uploads state.json (now carrying the dark RG id)
-  # so the prod phase can tear the RG down.
+  # gate, so the approver reviews a live, already-tested dark build. Runs on every
+  # release; a manual dispatch can opt out with run_dark=false. Scheduled runs carry
+  # no inputs, so they're gated on the event name (always dark). Re-uploads state.json
+  # (now carrying the dark RG id) so the prod phase can tear the RG down.
   # ---------------------------------------------------------------------------
   dark-phase:
     needs: [preflight, test-phase]
-    if: needs.preflight.outputs.should_release == 'true' && inputs.run_dark == true
+    if: needs.preflight.outputs.should_release == 'true' && (github.event_name != 'workflow_dispatch' || inputs.run_dark == true)
     runs-on:
       labels:
         - airo-cicd-runners
@@ -269,10 +270,11 @@ jobs:
   # ---------------------------------------------------------------------------
   approve-prod:
     needs: [preflight, test-phase, dark-phase]
-    # always() is REQUIRED: dark-phase is skipped on classic (run_dark=false) runs,
-    # and a skipped `needs` dependency would otherwise auto-skip this gate. So gate
-    # explicitly on test-phase success + dark-phase success-or-skipped. Pauses for a
-    # reviewer on schedule, manual dispatch, AND push; only a dry_run skips it.
+    # always() is REQUIRED: dark-phase can still be skipped when a manual dispatch
+    # opts out (run_dark=false), and a skipped `needs` dependency would otherwise
+    # auto-skip this gate. So gate explicitly on test-phase success + dark-phase
+    # success-or-skipped. Pauses for a reviewer on schedule, manual dispatch, AND
+    # push; only a dry_run skips it.
     if: |
       always() &&
       needs.preflight.outputs.should_release == 'true' &&
