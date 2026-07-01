@@ -3,10 +3,11 @@
 import { Video } from 'lucide-react'
 import { useParams } from 'next/navigation'
 
-import { getPreviewOrigin, getSlotImageUrl } from '@/app/[market]/develop/components/media/slotImageUrl'
+import { resolveGeneratedVideoPlaybackUrl } from '@/app/[market]/develop/components/media/slotImageUrl'
 import MessageToolCallsRenderer from '@/app/[market]/develop/components/MessageToolCallsRenderer'
 import {
   isVideoGenerateToolName,
+  type ParsedGenerateVideoTool,
   parseGenerateVideoTool,
 } from '@/app/[market]/develop/components/tool-renderers/parseGenerateVideoTool'
 import ToolHeader from '@/app/[market]/develop/components/tool-renderers/ToolHeader'
@@ -21,22 +22,37 @@ interface VideoGroupRendererProps {
   isLastAssistantMessage?: boolean
 }
 
-function resolvePlaybackUrl(
-  videoUrl: string,
-  slotUrl: string | undefined,
-  slotPath: string | undefined,
-  previewBaseUrl: string | null,
-): string {
-  if (!previewBaseUrl) {
-    return videoUrl
+function isFailedVideoTool(item: ParsedGenerateVideoTool): boolean {
+  if (item.toolCall.status === 'running') {
+    return false
   }
-  if (slotUrl?.startsWith('/airo-assets/videos/')) {
-    return `${getPreviewOrigin(previewBaseUrl)}${slotUrl}`
+  return Boolean(item.error)
+    || item.toolCall.status === 'incomplete'
+    || (item.toolCall.status === 'completed' && !item.videoUrl)
+}
+
+function getVideoToolFailureMessage(
+  item: ParsedGenerateVideoTool,
+  translate: (key: string, values?: Record<string, unknown>, defaultMessage?: string) => string,
+): string | undefined {
+  if (item.error) {
+    return item.error
   }
-  if (videoUrl.startsWith('/airo-assets/uploads/')) {
-    return `${getPreviewOrigin(previewBaseUrl)}${videoUrl}`
+  if (item.toolCall.status === 'incomplete') {
+    return translate(
+      'builder_tools_video_generation_interrupted',
+      undefined,
+      defaultMessageForVideoToolKey('builder_tools_video_generation_interrupted'),
+    )
   }
-  return getSlotImageUrl(slotPath ?? null, videoUrl, previewBaseUrl, 'video')
+  if (item.toolCall.status === 'completed' && !item.videoUrl) {
+    return translate(
+      'builder_tools_video_generate_failed_count',
+      { count: 1 },
+      defaultMessageForVideoToolKey('builder_tools_video_generate_failed_count'),
+    )
+  }
+  return undefined
 }
 
 export default function VideoGroupRenderer({
@@ -66,15 +82,12 @@ export default function VideoGroupRenderer({
   const parsed = videoTools.map(parseGenerateVideoTool)
   const runningCount = parsed.filter((item) => item.toolCall.status === 'running').length
   const succeeded = parsed.filter((item) => item.toolCall.status === 'completed' && item.videoUrl && !item.error)
-  const failed = parsed.filter((item) => {
-    if (item.toolCall.status === 'running') {
-      return false
-    }
-    return Boolean(item.error) || (item.toolCall.status === 'completed' && !item.videoUrl)
-  })
+  const failed = parsed.filter(isFailedVideoTool)
 
   const uniqueErrors = [...new Set(
-    failed.map((item) => item.error).filter((error): error is string => Boolean(error)),
+    failed
+      .map((item) => getVideoToolFailureMessage(item, t))
+      .filter((error): error is string => Boolean(error)),
   )]
 
   const generatingLabel = (count: number): string =>
@@ -103,7 +116,7 @@ export default function VideoGroupRenderer({
   }
 
   if (failed.length > 0 && succeeded.length === 0 && runningCount === 0) {
-    const summary = uniqueErrors.length === 1
+    const summary: string = uniqueErrors.length === 1
       ? uniqueErrors[0]
       : failedCountLabel(failed.length)
     return (
@@ -140,7 +153,10 @@ export default function VideoGroupRenderer({
           {succeeded.map((item) => (
             <div key={item.toolCall.id} className="flex-shrink-0 w-24">
               <video
-                src={resolvePlaybackUrl(item.videoUrl!, item.slotUrl, item.slotPath, previewBaseUrl)}
+                src={resolveGeneratedVideoPlaybackUrl(item.videoUrl!, previewBaseUrl, {
+                  slotUrl: item.slotUrl,
+                  slotPath: item.slotPath,
+                })}
                 className="w-full aspect-video object-cover rounded-md bg-intents-ux-boxLowContrast-backgroundColor"
                 muted
                 playsInline

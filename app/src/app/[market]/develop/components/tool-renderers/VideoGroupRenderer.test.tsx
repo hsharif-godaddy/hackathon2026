@@ -81,6 +81,17 @@ describe('VideoGroupRenderer', () => {
     expect(screen.getByText('Generating 1 video…')).toBeInTheDocument()
   })
 
+  it('counts incomplete tools as failed when none are running', () => {
+    const toolCalls = [
+      makeVideoToolCall('v1', { status: 'incomplete' }),
+      makeVideoToolCall('v2', { status: 'incomplete' }),
+    ]
+
+    renderWithProviders(<VideoGroupRenderer toolCalls={toolCalls} />)
+
+    expect(screen.getByText('Video generation was interrupted')).toBeInTheDocument()
+  })
+
   it('proxies grouped video thumbnails through the preview origin', () => {
     const toolCalls = [
       makeVideoToolCall('v1', {

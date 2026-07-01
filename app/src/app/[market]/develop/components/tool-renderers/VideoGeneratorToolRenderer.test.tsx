@@ -106,4 +106,19 @@ describe('VideoGeneratorToolRenderer', () => {
     expect(screen.getByText('Video generation timed out after 300 seconds')).toBeInTheDocument()
     expect(screen.queryByText('Generating video…')).not.toBeInTheDocument()
   })
+
+  it('shows failure header when completed without video url or error', () => {
+    renderWithProviders(
+      <VideoGeneratorToolRenderer
+        toolName="media-video__generate_video"
+        toolStatus="completed"
+        toolId="tool-5"
+        input={{ prompt: 'Empty result' }}
+        result={{ sessionId: 'vid-empty' }}
+      />
+    )
+
+    expect(screen.getByText('1 video generation failed')).toBeInTheDocument()
+    expect(screen.queryByText('Generating video…')).not.toBeInTheDocument()
+  })
 })

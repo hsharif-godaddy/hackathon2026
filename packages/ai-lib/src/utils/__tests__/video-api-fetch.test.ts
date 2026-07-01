@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { llmMetadataContext } from '@airo/ai-common';
 
 const mockGetS2SToken = vi.fn();
+const mockRefreshS2SToken = vi.fn();
 const mockFetch = vi.fn();
 const mockGetCurrentUserId = vi.fn();
 const mockHasGrants = vi.fn();
@@ -11,6 +12,7 @@ const mockRequestGrantRefreshAndWait = vi.fn();
 
 vi.mock('../s2s-auth.js', () => ({
   getS2SToken: mockGetS2SToken,
+  refreshS2SToken: mockRefreshS2SToken,
   isS2SAuthEnabled: vi.fn().mockReturnValue(true),
 }));
 
@@ -27,12 +29,86 @@ describe('video-api-fetch', function packageTests() {
   beforeEach(() => {
     vi.clearAllMocks();
     mockGetS2SToken.mockResolvedValue('token-abc');
+    mockRefreshS2SToken.mockResolvedValue('token-refreshed');
     mockGetCurrentUserId.mockReturnValue(undefined);
     mockHasGrants.mockReturnValue(false);
     mockAdvanceToNextGrant.mockReturnValue(false);
     mockRequestGrantRefreshAndWait.mockResolvedValue(false);
     mockFetch.mockResolvedValue(new Response('ok', { status: 200 }));
     vi.stubGlobal('fetch', mockFetch);
+  });
+
+  it('sends Authorization with sso-jwt scheme when S2S auth is enabled', async function ssoJwtScheme() {
+    const { videoApiFetch } = await import('../video-api-fetch.js');
+    const openaiClient = { baseURL: 'https://api.test/v1' };
+
+    await videoApiFetch(openaiClient as never, '/videos', { method: 'POST' });
+
+    const headers = mockFetch.mock.calls[0][1].headers as Record<string, string>;
+    expect(headers.Authorization).toBe('sso-jwt token-abc');
+    expect(headers.Authorization).not.toMatch(/^Bearer /);
+  });
+
+  it('retries with refreshed sso-jwt token on 401', async function ssoJwtRefresh() {
+    mockFetch
+      .mockResolvedValueOnce(new Response('unauthorized', { status: 401 }))
+      .mockResolvedValueOnce(new Response('ok', { status: 200 }));
+
+    const { videoApiFetch } = await import('../video-api-fetch.js');
+    const openaiClient = { baseURL: 'https://api.test/v1' };
+
+    const response = await videoApiFetch(openaiClient as never, '/videos', { method: 'POST' });
+
+    expect(mockRefreshS2SToken).toHaveBeenCalledTimes(1);
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+    expect(response.status).toBe(200);
+    const retryHeaders = mockFetch.mock.calls[1][1].headers as Record<string, string>;
+    expect(retryHeaders.Authorization).toBe('sso-jwt token-refreshed');
+  });
+
+  it('preserves rotated grant billing on auth refresh after grant fallback 401', async function grantFallbackAuthRefresh() {
+    mockHasGrants.mockReturnValue(true);
+    mockAdvanceToNextGrant.mockReturnValue(true);
+    mockGetCurrentUserId
+      .mockReturnValueOnce('airo-builder:grant:grant-1')
+      .mockReturnValueOnce('airo-builder:grant:grant-2')
+      .mockReturnValueOnce('airo-builder:grant:grant-2');
+
+    mockFetch
+      .mockResolvedValueOnce(new Response('exceededbudget', { status: 400 }))
+      .mockResolvedValueOnce(new Response('unauthorized', { status: 401 }))
+      .mockResolvedValueOnce(new Response('ok', { status: 200 }));
+
+    const { videoApiFetch } = await import('../video-api-fetch.js');
+    const openaiClient = { baseURL: 'https://api.test/v1' };
+
+    const response = await llmMetadataContext.run(
+      {
+        user: 'airo-builder:grant:grant-1',
+        tags: ['source:tool:video-generate'],
+        _internal: { socketId: 'socket-1', customerId: 'cust-1' },
+      },
+      async () => videoApiFetch(openaiClient as never, '/videos', { method: 'POST' }),
+    );
+
+    expect(mockFetch).toHaveBeenCalledTimes(3);
+    expect(response.status).toBe(200);
+    const authRefreshHeaders = mockFetch.mock.calls[2][1].headers as Record<string, string>;
+    expect(authRefreshHeaders['x-budget-user-id']).toBe('airo-builder:grant:grant-2');
+    expect(authRefreshHeaders.Authorization).toBe('sso-jwt token-refreshed');
+  });
+
+  it('does not auth-refresh on budget-exceeded 401', async function skipAuthRefreshBudget401() {
+    mockFetch.mockResolvedValueOnce(new Response('exceededbudget', { status: 401 }));
+
+    const { videoApiFetch } = await import('../video-api-fetch.js');
+    const openaiClient = { baseURL: 'https://api.test/v1' };
+
+    const response = await videoApiFetch(openaiClient as never, '/videos', { method: 'POST' });
+
+    expect(mockRefreshS2SToken).not.toHaveBeenCalled();
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(response.status).toBe(401);
   });
 
   it('prefers live grant user over stale metadata.user', async function liveGrantUser() {

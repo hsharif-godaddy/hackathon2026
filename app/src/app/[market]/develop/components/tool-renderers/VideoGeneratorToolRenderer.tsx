@@ -4,7 +4,7 @@ import { Play, Video } from 'lucide-react'
 import { useParams } from 'next/navigation'
 import { useEffect, useRef, useState } from 'react'
 
-import { getPreviewOrigin, getSlotImageUrl } from '@/app/[market]/develop/components/media/slotImageUrl'
+import { resolveGeneratedVideoPlaybackUrl } from '@/app/[market]/develop/components/media/slotImageUrl'
 import type { DefaultToolRendererProps } from '@/app/[market]/develop/components/tool-renderers/DefaultToolRenderer'
 import MediaModal from '@/app/[market]/develop/components/tool-renderers/MediaModal'
 import { parseGenerateVideoTool } from '@/app/[market]/develop/components/tool-renderers/parseGenerateVideoTool'
@@ -17,25 +17,8 @@ import { postMessageToIframe } from '@/utils/postMessage'
 
 interface VideoResult {
   url: string
-  description?: string
   slotPath?: string
   slotUrl?: string
-}
-
-function resolveVideoPlaybackUrl(
-  video: VideoResult,
-  previewBaseUrl: string | null,
-): string {
-  if (!previewBaseUrl) {
-    return video.url
-  }
-  if (video.slotUrl?.startsWith('/airo-assets/videos/')) {
-    return `${getPreviewOrigin(previewBaseUrl)}${video.slotUrl}`
-  }
-  if (video.url.startsWith('/airo-assets/uploads/')) {
-    return `${getPreviewOrigin(previewBaseUrl)}${video.url}`
-  }
-  return getSlotImageUrl(video.slotPath ?? null, video.url, previewBaseUrl, 'video')
 }
 
 /**
@@ -80,10 +63,17 @@ export default function VideoGeneratorToolRenderer({
     : null
 
   const hasVideo = video !== null
+  const isTerminalFailure: boolean = !hasVideo
+    && !generationError
+    && (toolStatus === 'completed' || toolStatus === 'incomplete')
   const hasDetails = hasVideo || Boolean(generationError)
-  const playbackUrl = video ? resolveVideoPlaybackUrl(video, previewBaseUrl) : ''
+  const playbackUrl = video
+    ? resolveGeneratedVideoPlaybackUrl(video.url, previewBaseUrl, {
+        slotUrl: video.slotUrl,
+        slotPath: video.slotPath,
+      })
+    : ''
 
-  // Notify the preview iframe to reload the media slot when the video is generated
   const hasNotifiedRef = useRef(false)
   const slotPath = video?.slotPath
   useEffect(() => {
@@ -114,7 +104,6 @@ export default function VideoGeneratorToolRenderer({
 
   const handleModalOpen = () => {
     if (inlineVideoRef.current) {
-      // Pause inline video when opening modal
       inlineVideoRef.current.pause()
       setIsPlaying(false)
     }
@@ -123,13 +112,11 @@ export default function VideoGeneratorToolRenderer({
 
   const handleModalClose = () => {
     if (modalVideoRef.current) {
-      // Pause modal video when closing
       modalVideoRef.current.pause()
     }
     setIsModalOpen(false)
   }
 
-  // Only show header when not completed with video, or when running/errored
   const shouldShowHeader = toolStatus !== 'completed' || !hasVideo
 
   const headerLabel = generationError
@@ -140,13 +127,25 @@ export default function VideoGeneratorToolRenderer({
           { prompt: generationPrompt },
           defaultMessageForVideoToolKey('builder_tools_video_generated_prompt'),
         )
-      : t(
-          'builder_tools_active_video_generate',
-          undefined,
-          defaultMessageForVideoToolKey('builder_tools_active_video_generate'),
-        )
+      : isTerminalFailure
+        ? t(
+            'builder_tools_video_generate_failed_count',
+            { count: 1 },
+            defaultMessageForVideoToolKey('builder_tools_video_generate_failed_count'),
+          )
+        : t(
+            'builder_tools_active_video_generate',
+            undefined,
+            defaultMessageForVideoToolKey('builder_tools_active_video_generate'),
+          )
 
-  const headerStatus = generationError ? 'error' : toolStatus
+  const headerStatus = generationError || isTerminalFailure ? 'error' : toolStatus
+
+  const videoAriaLabel = t(
+    'builder_tools_video_ai_generated_aria',
+    undefined,
+    defaultMessageForVideoToolKey('builder_tools_video_ai_generated_aria'),
+  )
 
   return (
     <div>
@@ -160,7 +159,6 @@ export default function VideoGeneratorToolRenderer({
         />
       )}
 
-      {/* Video player - inline display when completed */}
       {toolStatus === 'completed' && hasVideo && video && (
         <div className="my-2">
           <div className="text-sm text-foreground/70 mb-2 flex items-center gap-1">
@@ -187,15 +185,10 @@ export default function VideoGeneratorToolRenderer({
               onPause={() => setIsPlaying(false)}
               playsInline
               preload="metadata"
-              aria-label={video.description || t(
-                'builder_tools_video_ai_generated_aria',
-                undefined,
-                defaultMessageForVideoToolKey('builder_tools_video_ai_generated_aria'),
-              )}
+              aria-label={videoAriaLabel}
             >
               <track kind="descriptions" label="Description" srcLang="en" default />
             </video>
-            {/* Play/Pause overlay */}
             {!isPlaying && (
               <button
                 onClick={handleInlinePlayPause}
@@ -206,7 +199,6 @@ export default function VideoGeneratorToolRenderer({
                 </div>
               </button>
             )}
-            {/* Expand button */}
             <button
               onClick={handleModalOpen}
               className="absolute top-1.5 right-1.5 w-7 h-7 rounded-full bg-black/90 flex items-center justify-center cursor-pointer shadow-lg"
@@ -217,12 +209,6 @@ export default function VideoGeneratorToolRenderer({
               </svg>
             </button>
           </div>
-          {/* Description below video */}
-          {video.description && (
-            <p className="text-sm text-foreground/60 mt-2 line-clamp-2">
-              {video.description}
-            </p>
-          )}
         </div>
       )}
 
@@ -237,14 +223,6 @@ export default function VideoGeneratorToolRenderer({
       >
         {video && (
           <div className="flex flex-col items-center">
-            {/* Description */}
-            {video.description && (
-              <p className="text-sm text-foreground/70 mb-3 text-center max-w-2xl">
-                {video.description}
-              </p>
-            )}
-
-            {/* Video player */}
             <div className="bg-intents-ux-boxLowContrast-backgroundColor rounded-lg overflow-hidden w-full">
               <video
                 ref={modalVideoRef}
@@ -253,11 +231,7 @@ export default function VideoGeneratorToolRenderer({
                 controls
                 autoPlay
                 playsInline
-                aria-label={video.description || t(
-                'builder_tools_video_ai_generated_aria',
-                undefined,
-                defaultMessageForVideoToolKey('builder_tools_video_ai_generated_aria'),
-              )}
+                aria-label={videoAriaLabel}
               >
                 <track kind="descriptions" label="Description" srcLang="en" default />
               </video>

@@ -8,7 +8,7 @@ import {
 } from '@airo/ai-common';
 import { grantSessionManager } from '@airo/ai-grants';
 
-import { getS2SToken, isS2SAuthEnabled } from './s2s-auth.js';
+import { getS2SToken, isS2SAuthEnabled, refreshS2SToken } from './s2s-auth.js';
 
 const logger = createLogger('video-api-fetch');
 
@@ -25,6 +25,14 @@ export async function getVideoAuthToken(openaiClient: OpenAI): Promise<string> {
     throw new Error('OpenAI apiKey is not set and S2S auth is disabled');
   }
   return openaiClient.apiKey;
+}
+
+/** GoCode (authz-gdjwt-all) requires `sso-jwt`; Bearer is rejected by the API gateway. */
+function buildVideoAuthorizationHeader(token: string): string {
+  if (isS2SAuthEnabled()) {
+    return `sso-jwt ${token}`;
+  }
+  return `Bearer ${token}`;
 }
 
 function resolveVideoBudgetUserId(metadata: LitellmMetadata): string | undefined {
@@ -176,9 +184,12 @@ export async function videoApiFetch(
   const resolvedBilling = resolveVideoApiBilling(billing);
   const url = `${openaiClient.baseURL}${endpoint}`;
 
-  const buildInit = function buildVideoRequestInit(billingOverride?: VideoApiBilling): RequestInit {
+  const buildInit = function buildVideoRequestInit(
+    authToken: string,
+    billingOverride?: VideoApiBilling,
+  ): RequestInit {
     const headers: Record<string, string> = {
-      Authorization: `Bearer ${token}`,
+      Authorization: buildVideoAuthorizationHeader(authToken),
       ...(options.headers as Record<string, string> | undefined),
     };
     if (metadata?.traceId) {
@@ -189,21 +200,50 @@ export async function videoApiFetch(
     return { ...options, headers };
   };
 
-  let response = await fetch(url, buildInit());
+  let response: Response = await fetch(url, buildInit(token));
+  let activeBilling: VideoApiBilling | undefined = resolvedBilling;
 
   if (metadata) {
-    const failedBudgetUserId = resolvedBilling?.budgetUserId
-      ?? (resolvedBilling?.budgetSessionId ? undefined : resolveVideoBudgetUserId(metadata));
+    const failedBudgetUserId = activeBilling?.budgetUserId
+      ?? (activeBilling?.budgetSessionId ? undefined : resolveVideoBudgetUserId(metadata));
     const retryResponse = await handleVideoBudgetExceededWithGrantFallback(
       response,
       metadata,
       url,
-      buildInit,
+      (billingOverride?: VideoApiBilling) => buildInit(token, billingOverride),
       failedBudgetUserId
     );
     if (retryResponse) {
       response = retryResponse;
+      if (!activeBilling?.budgetSessionId) {
+        const rotatedUserId = resolveVideoBudgetUserId(metadata);
+        if (rotatedUserId) {
+          activeBilling = { budgetUserId: rotatedUserId };
+        }
+      }
     }
+  }
+
+  if (isS2SAuthEnabled() && (response.status === 401 || response.status === 403)) {
+    const authFailureBody: string = await response.clone().text();
+    if (isVideoBudgetExceededResponse(response.status, authFailureBody)) {
+      return response;
+    }
+    logger.warn('video-api-fetch.s2s.refresh_retry', {
+      status: response.status,
+      endpoint,
+    });
+    try {
+      await response.arrayBuffer();
+    } catch {
+      // Ignore errors consuming the failed response body
+    }
+    const refreshedToken: string = await refreshS2SToken();
+    response = await fetch(url, buildInit(refreshedToken, activeBilling));
+    logger.info('video-api-fetch.s2s.refresh_retry.result', {
+      status: response.status,
+      endpoint,
+    });
   }
 
   return response;

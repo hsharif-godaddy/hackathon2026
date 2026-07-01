@@ -60,6 +60,25 @@ export function getSlotImageUrl(
   return `${getPreviewOrigin(previewBaseUrl)}${assetPrefix}${slotName}?src=${encodeURIComponent(imageUrl)}`
 }
 
+/** Chat playback URL for AI-generated videos (Sora upload paths and slot URLs). */
+export function resolveGeneratedVideoPlaybackUrl(
+  videoUrl: string,
+  previewBaseUrl: string | null,
+  options?: { slotUrl?: string; slotPath?: string },
+): string {
+  if (!previewBaseUrl) {
+    return videoUrl
+  }
+  const slotUrl: string | undefined = options?.slotUrl
+  if (slotUrl?.startsWith('/airo-assets/videos/')) {
+    return `${getPreviewOrigin(previewBaseUrl)}${slotUrl}`
+  }
+  if (videoUrl.startsWith('/airo-assets/uploads/')) {
+    return `${getPreviewOrigin(previewBaseUrl)}${videoUrl}`
+  }
+  return getSlotImageUrl(options?.slotPath ?? null, videoUrl, previewBaseUrl, 'video')
+}
+
 /**
  * Builds the thumbnail URL for a slot in the Media Manager panel.
  * Unlike getSlotImageUrl, this ALWAYS routes through the slot resolver
