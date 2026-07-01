@@ -18,3 +18,12 @@ export type {
   BrandDataWizard,
   BrandKitTokens,
 } from './types.js'
+
+export { assembleDesignKitSpec } from './design-kit-spec.js'
+export type {
+  AssembleDesignKitSpecInput,
+  DesignKitSpec,
+  KitFont,
+  KitPaletteInput,
+  KitTypographyInput,
+} from './design-kit-spec.js'
