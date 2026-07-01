@@ -3,6 +3,7 @@
 import clsx from 'clsx'
 import { animate, motion, useMotionValue } from 'framer-motion'
 import dynamic from 'next/dynamic'
+import { useSearchParams } from 'next/navigation'
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useIntl } from 'react-intl'
@@ -22,10 +23,12 @@ import { MediaCanvas } from '@/app/[market]/develop/components/preview/media-can
 import { useCanvasStatusLabel } from '@/app/[market]/develop/components/preview/useCanvasStatusLabel'
 import PreviewBanners from '@/app/[market]/develop/components/preview-banners/PreviewBanners'
 const DocsView = lazy(() => import('@/app/[market]/develop/components/preview/DocsView'))
+import { getForcedPreviewError } from '@/app/[market]/develop/components/preview/forcePreviewError'
 import PreviewCode from '@/app/[market]/develop/components/preview/PreviewCode'
 import PreviewError from '@/app/[market]/develop/components/preview/PreviewError'
 import PreviewLoadingState from '@/app/[market]/develop/components/preview/PreviewLoadingState'
 import PreviewSkeleton from '@/app/[market]/develop/components/preview/PreviewSkeleton'
+import type { PreviewFixContext } from '@/app/[market]/develop/components/preview/types'
 import Tips from '@/app/[market]/develop/components/tips/Tips'
 import { MobileMode, PreviewViewMode, ViewMode } from '@/app/[market]/develop/components/types'
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils'
@@ -256,7 +259,7 @@ interface PreviewPaneProps {
   imageReloadFailed?: boolean
   onRetryImageReload?: () => void
   onPublishSnapshot?: (screenshotDataUrl: string, detail: PublishSnapshotRequestDetail) => void
-  onAskAiroToFix?: () => void
+  onPreviewFix?: (context: PreviewFixContext) => void
   chatLoadingMessage?: string | null
 }
 
@@ -280,10 +283,12 @@ export default function PreviewPane({
   imageReloadFailed = false,
   onRetryImageReload,
   onPublishSnapshot,
-  onAskAiroToFix,
+  onPreviewFix,
   chatLoadingMessage = null,
 }: PreviewPaneProps) {
   const t = useTranslations();
+  const searchParams = useSearchParams()
+  const forcedPreviewError = getForcedPreviewError(searchParams)
   const thinkerLabel = useThinkerLabel()
   const canvasStatusLabel = useCanvasStatusLabel(isMutatingFiles, isProcessing)
   const thinkerIndicator = useThinkerIndicator()
@@ -1281,6 +1286,24 @@ export default function PreviewPane({
     setBootstrapRetryCount(0)
   }
 
+  const handleFixClick = () => {
+    const context: PreviewFixContext =
+      forcedPreviewError === 'iframe' || (iframeError && previewUrl)
+        ? { source: 'iframe' }
+        : {
+            source: 'server',
+            status: forcedPreviewError === 'server'
+              ? 'failed'
+              : serverState?.status === 'failed' || serverState?.status === 'error'
+                ? serverState.status
+                : undefined,
+            failureKind: serverState?.failureKind,
+          }
+
+    handleManualRetry()
+    onPreviewFix?.(context)
+  }
+
   const handleIframeError = () => {
     logger.warn('preview-pane.iframe.error', { message: 'Iframe error', appId })
     setIframeError(true)
@@ -1422,6 +1445,28 @@ export default function PreviewPane({
   // its server-readiness branches during generation. While BRAND is active this
   // component still renders the preview/code underneath (mounted-but-inert), so
   // tab/iframe state is preserved; the parent overlay covers it.
+  if (forcedPreviewError === 'server') {
+    return (
+      <PreviewError
+        title={t('builder_preview_server_error')}
+        error={t('builder_preview_server_error_text')}
+        buttonText={t('builder_preview_fix_this', undefined, 'Fix this')}
+        buttonOnClick={handleFixClick}
+      />
+    )
+  }
+
+  if (forcedPreviewError === 'iframe') {
+    return (
+      <PreviewError
+        title={t('builder_preview_error_title')}
+        error={t('builder_preview_error_text')}
+        buttonText={t('builder_preview_fix_this', undefined, 'Fix this')}
+        buttonOnClick={handleFixClick}
+      />
+    )
+  }
+
   if (!serverState || (isPollingServer(appId) && !serverState.isReady)) {
     let loadingMessage: string;
     if (showBuildingOverlay && isAwaitingAskQuestion) {
@@ -1434,22 +1479,13 @@ export default function PreviewPane({
     return <PreviewLoadingState message={loadingMessage} isMobile={isMobile} showProgressTracker={showProgressTracker} timeEstimateMinutes={buildEstimateMinutes} onTimeEstimateShown={markBuildEstimateShown} />
   }
 
-  // Error state when server failed — show "Ask Airo to fix" alongside "Try Again"
-  // for any failure surface the user reaches here, including BFF/network errors
-  // (status='error' from the polling catch block) and the crash-loop escalation.
-  // The user can't easily tell which path triggered the error UI, and Airo can
-  // investigate broadly via the viewLogs tool even when the root cause turns
-  // out to be infra-side.
   if (serverState?.status === 'failed' || serverState?.status === 'error') {
     return (
       <PreviewError
         title={t('builder_preview_server_error')}
-        error={serverState.error || t('builder_preview_server_error_text')}
-        buttonText={t('builder_common_try_again')}
-        buttonOnClick={handleManualRetry}
-        secondaryButtonText={onAskAiroToFix ? t('builder_preview_ask_airo_to_fix') : undefined}
-        secondaryButtonOnClick={onAskAiroToFix}
-        secondaryButtonDisabled={isProcessing}
+        error={t('builder_preview_server_error_text')}
+        buttonText={t('builder_preview_fix_this', undefined, 'Fix this')}
+        buttonOnClick={handleFixClick}
       />
     )
   }
@@ -1516,17 +1552,13 @@ export default function PreviewPane({
     )
   }
 
-  // Error state when iframe fails to load
   if (iframeError && previewUrl) {
     return (
       <PreviewError
         title={t('builder_preview_error_title')}
         error={t('builder_preview_error_text')}
-        buttonText={t('builder_preview_error_button')}
-        buttonOnClick={handleManualRetry}
-        secondaryButtonText={onAskAiroToFix ? t('builder_preview_ask_airo_to_fix') : undefined}
-        secondaryButtonOnClick={onAskAiroToFix}
-        secondaryButtonDisabled={isProcessing}
+        buttonText={t('builder_preview_fix_this', undefined, 'Fix this')}
+        buttonOnClick={handleFixClick}
       />
     )
   }

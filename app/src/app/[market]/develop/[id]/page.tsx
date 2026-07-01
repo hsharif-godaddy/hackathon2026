@@ -23,11 +23,13 @@ import BrandBookView from '@/app/[market]/develop/components/preview/brand-book'
 import { DesignKitPanels } from '@/app/[market]/develop/components/preview/design-kit-wizard/DesignKitPanels'
 import { useIsDesignKitWizardProfile } from '@/app/[market]/develop/components/preview/design-kit-wizard/isDesignKitWizardProfile'
 import PreviewPane, { type PublishSnapshotRequestDetail } from '@/app/[market]/develop/components/preview/PreviewPane'
+import type { PreviewFixContext } from '@/app/[market]/develop/components/preview/types'
 import ResizableDivider from '@/app/[market]/develop/components/ResizableDivider'
 import { SettingsLoadingState } from '@/app/[market]/develop/components/settings/components/SettingsLoadingState'
 import { buildEditModeEnabledMessage, ChatTab, IframeMessageType, MobileMode, SettingsSection, ViewMode } from '@/app/[market]/develop/components/types'
 import { handlePreviewRefresh, useAppIdFromParams } from '@/app/[market]/develop/components/utils'
 import { clearExpiredWidgetStates } from '@/app/[market]/develop/components/widgets'
+import { runPreviewFixRequest } from '@/app/[market]/develop/hooks/runPreviewFixRequest'
 import { sendPendingAutoSendMessage } from '@/app/[market]/develop/hooks/sendPendingAutoSendMessage'
 import { useAgentWorkFeedbackTrigger } from '@/app/[market]/develop/hooks/useAgentWorkFeedbackTrigger'
 import { useAppGenerationFeedbackTrigger } from '@/app/[market]/develop/hooks/useAppGenerationFeedbackTrigger'
@@ -863,30 +865,27 @@ function DevelopPageContent({ layout: layoutProp }: { layout?: BuilderLayout }) 
   // crash-looping or the iframe failed to load. Mirrors sendUserRequestedFix
   // but originates from the builder rather than the iframe overlay, since
   // the iframe couldn't load to surface its own overlay.
-  const sendPreviewFixRequest = useCallback(() => {
-    if (isProcessingRef.current) {
-      logger.info('develop-page.preview-fix-request.skipped-processing', { appId })
-      return
-    }
-    const promptText = t(
-      'builder_develop_fix_preview',
-      undefined,
-      "My preview isn't working — it's either not loading or failing to start. Please check the container logs and fix the issue."
-    )
-    scheduleMicrotask(() => {
-      void ws.actions.send({
-        content: promptText,
-        aiEditContext: null,
-        isActionRequest: false,
-        customContext: {
-          type: 'preview_fix',
-          data: { appId, timestamp: Date.now() },
-          persistence: 'ephemeral',
-          source: 'preview-error-button',
-        }
-      })
+  const handlePreviewFix = useCallback((ctx: PreviewFixContext) => {
+    runPreviewFixRequest({
+      ctx,
+      appId,
+      isMobile,
+      isProcessing: isProcessingRef.current,
+      setActiveChatTab,
+      setOptimisticMobileTab,
+      handleMobileModeChange: (mode) => useDevelopPageStore.getState().handleMobileModeChange(mode),
+      scheduleMicrotask,
+      send: ws.actions.send,
+      getPromptText: () => t(
+        'builder_develop_fix_preview',
+        undefined,
+        "My preview isn't working — it's either not loading or failing to start. Please check the container logs and fix the issue."
+      ),
+      onSkippedProcessing: (skipCtx) => {
+        logger.info('develop-page.preview-fix-request.skipped-processing', { appId, ...skipCtx })
+      },
     })
-  }, [scheduleMicrotask, ws.actions, t, appId])
+  }, [scheduleMicrotask, ws.actions, t, appId, isMobile, setActiveChatTab, setOptimisticMobileTab])
 
   const handleScreenshotUpload = useCallback(async (screenshotDataUrl: string) => {
     if (!appId) return
@@ -1448,7 +1447,7 @@ function DevelopPageContent({ layout: layoutProp }: { layout?: BuilderLayout }) 
                 isMobile={isMobile}
                 edgeToEdge={layout === BuilderLayout.Commander && isMobile}
                 onPublishSnapshot={handlePublishSnapshot}
-                onAskAiroToFix={sendPreviewFixRequest}
+                onPreviewFix={handlePreviewFix}
                 chatLoadingMessage={chatLoadingMessage}
               />
             }
@@ -1543,7 +1542,7 @@ function DevelopPageContent({ layout: layoutProp }: { layout?: BuilderLayout }) 
                     onRetryImageReload={() => imageReadiness.retry()}
                     isMobile={false}
                     onPublishSnapshot={handlePublishSnapshot}
-                    onAskAiroToFix={sendPreviewFixRequest}
+                    onPreviewFix={handlePreviewFix}
                     chatLoadingMessage={chatLoadingMessage}
                   />
                 </div>
@@ -1650,7 +1649,7 @@ function DevelopPageContent({ layout: layoutProp }: { layout?: BuilderLayout }) 
                         onRetryImageReload={() => imageReadiness.retry()}
                         isMobile={true}
                         onPublishSnapshot={handlePublishSnapshot}
-                        onAskAiroToFix={sendPreviewFixRequest}
+                        onPreviewFix={handlePreviewFix}
                         chatLoadingMessage={chatLoadingMessage}
                       />
                     </div>

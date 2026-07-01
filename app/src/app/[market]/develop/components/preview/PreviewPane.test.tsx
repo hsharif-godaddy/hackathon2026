@@ -24,23 +24,13 @@ vi.mock('./PreviewError', () => ({
     error,
     buttonText,
     buttonOnClick,
-    secondaryButtonText,
-    secondaryButtonOnClick,
-    secondaryButtonDisabled,
   }: any) => (
     <div data-testid="preview-error">
       <h1>{title}</h1>
       <p>{error}</p>
-      <button onClick={buttonOnClick}>{buttonText}</button>
-      {secondaryButtonText && secondaryButtonOnClick && (
-        <button
-          data-testid="preview-error-secondary"
-          onClick={secondaryButtonOnClick}
-          disabled={secondaryButtonDisabled}
-        >
-          {secondaryButtonText}
-        </button>
-      )}
+      <button onClick={buttonOnClick}>
+        {buttonText}
+      </button>
     </div>
   ),
 }));
@@ -1210,11 +1200,11 @@ describe('PreviewPane — iframe bootstrap-timeout auto-remount', () => {
       await Promise.resolve();
     });
 
-    // PreviewError mock renders a button with the i18n key as text.
-    // Use getByText (sync) — findByText polls on real timers and would
+    // PreviewError mock renders buttonText directly (defaults resolve via IntlProvider).
+    // Use getByRole (sync) — findByText polls on real timers and would
     // hang under vi.useFakeTimers(). State has flushed via the act()
     // above, so the DOM is current.
-    const retryButton = screen.getByText('builder_preview_error_button');
+    const retryButton = screen.getByRole('button', { name: /Fix this/i });
     await act(async () => {
       fireEvent.click(retryButton);
       await Promise.resolve();
@@ -1932,13 +1922,13 @@ describe('restoreIframeState', function restoreTests() {
   });
 });
 
-describe('PreviewPane — Ask Airo to fix button', () => {
+describe('PreviewPane — Fix this button', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockDevelopPageStore.viewMode = ViewMode.PREVIEW;
   });
 
-  it('shows "Ask Airo to fix" alongside Try Again when failureKind is crash-loop', async () => {
+  it('calls onPreviewFix with server context when failureKind is crash-loop', async () => {
     mockServerPollingStore.getServerState = vi.fn(function () { return {
       isReady: false,
       url: null,
@@ -1946,72 +1936,78 @@ describe('PreviewPane — Ask Airo to fix button', () => {
       failureKind: 'crash-loop',
       error: undefined,
     }; });
-    const onAskAiroToFix = vi.fn();
+    const onPreviewFix = vi.fn();
     const { user } = renderWithProviders(
-      <PreviewPane onPreviewRefresh={vi.fn()} onAskAiroToFix={onAskAiroToFix} />
+      <PreviewPane onPreviewRefresh={vi.fn()} onPreviewFix={onPreviewFix} />
     );
 
     await waitFor(() => {
       expect(screen.getByTestId('preview-error')).toBeInTheDocument();
     });
 
-    const secondary = screen.getByTestId('preview-error-secondary');
-    expect(secondary).toBeInTheDocument();
-
-    await user.click(secondary);
-    expect(onAskAiroToFix).toHaveBeenCalledOnce();
+    await user.click(screen.getByRole('button', { name: /Fix this/i }));
+    expect(onPreviewFix).toHaveBeenCalledOnce();
+    expect(onPreviewFix).toHaveBeenCalledWith({
+      source: 'server',
+      status: 'failed',
+      failureKind: 'crash-loop',
+    });
   });
 
-  it('shows "Ask Airo to fix" on any status=error|failed (incl. BFF/network failures)', async () => {
+  it('calls onPreviewFix with server context on status=error', async () => {
     mockServerPollingStore.getServerState = vi.fn(function () { return {
       isReady: false,
       url: null,
       status: 'error',
       error: 'Network error',
     }; });
-    const onAskAiroToFix = vi.fn();
+    const onPreviewFix = vi.fn();
     const { user } = renderWithProviders(
-      <PreviewPane onPreviewRefresh={vi.fn()} onAskAiroToFix={onAskAiroToFix} />
+      <PreviewPane onPreviewRefresh={vi.fn()} onPreviewFix={onPreviewFix} />
     );
 
     await waitFor(() => {
       expect(screen.getByTestId('preview-error')).toBeInTheDocument();
     });
 
-    const secondary = screen.getByTestId('preview-error-secondary');
-    expect(secondary).toBeInTheDocument();
-
-    await user.click(secondary);
-    expect(onAskAiroToFix).toHaveBeenCalledOnce();
+    await user.click(screen.getByRole('button', { name: /Fix this/i }));
+    expect(onPreviewFix).toHaveBeenCalledOnce();
+    expect(onPreviewFix).toHaveBeenCalledWith({
+      source: 'server',
+      status: 'error',
+      failureKind: undefined,
+    });
   });
 
-  it('does NOT show "Ask Airo to fix" when onAskAiroToFix prop is not provided', async () => {
+  it('does not call onPreviewFix when prop is not provided', async () => {
     mockServerPollingStore.getServerState = vi.fn(function () { return {
       isReady: false,
       url: null,
       status: 'failed',
       failureKind: 'crash-loop',
     }; });
-    renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} />);
+    const { user } = renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} />);
 
     await waitFor(() => {
       expect(screen.getByTestId('preview-error')).toBeInTheDocument();
     });
 
-    expect(screen.queryByTestId('preview-error-secondary')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /Fix this/i }));
+    expect(mockServerPollingStore.startPollingForServer).toHaveBeenCalled();
   });
 
-  it('disables "Ask Airo to fix" button while agent is processing', async () => {
+  it('still calls onPreviewFix while agent is processing', async () => {
     mockServerPollingStore.getServerState = vi.fn(function () { return {
       isReady: false,
       url: null,
       status: 'failed',
       failureKind: 'crash-loop',
     }; });
-    renderWithProviders(
+    const onPreviewFix = vi.fn();
+    const { user } = renderWithProviders(
       <PreviewPane
         onPreviewRefresh={vi.fn()}
-        onAskAiroToFix={vi.fn()}
+        onPreviewFix={onPreviewFix}
         isProcessing={true}
       />
     );
@@ -2020,8 +2016,8 @@ describe('PreviewPane — Ask Airo to fix button', () => {
       expect(screen.getByTestId('preview-error')).toBeInTheDocument();
     });
 
-    const secondary = screen.getByTestId('preview-error-secondary');
-    expect(secondary).toBeDisabled();
+    await user.click(screen.getByRole('button', { name: /Fix this/i }));
+    expect(onPreviewFix).toHaveBeenCalledOnce();
   });
 
   describe('build overlay askQuestion behavior', () => {
