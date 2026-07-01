@@ -233,6 +233,56 @@ describe('InputActionsPanel', () => {
     })
   })
 
+  describe('boot-up thinking indicator (AIROBUILD-3228)', () => {
+    it('renders the thinking card when isBooting even though not streaming/loading (theme-selection variant)', () => {
+      vi.mocked(StreamingStore.useIsActivelyStreaming).mockReturnValue(false)
+      vi.mocked(StreamingStore.useIsLoading).mockReturnValue(false)
+
+      renderWithProviders(<InputActionsPanel isBooting />)
+
+      expect(screen.getByTestId('thinking-indicator')).toBeInTheDocument()
+    })
+
+    it('renders the thinking card when isBooting in the legacy variant', () => {
+      vi.mocked(Switchboard.useSwitchboard).mockImplementation(function (flag: string) {
+        if (flag === 'airo-builder-theme-selection-chat') return false
+        if (flag === 'airo-builder-font-selection-chat') return false
+        return false
+      })
+      vi.mocked(StreamingStore.useIsActivelyStreaming).mockReturnValue(false)
+      vi.mocked(StreamingStore.useIsLoading).mockReturnValue(false)
+
+      renderWithProviders(<InputActionsPanel isBooting />)
+
+      expect(screen.getByTestId('thinking-indicator')).toBeInTheDocument()
+    })
+
+    it('renders nothing when idle and not booting (isBooting defaults false)', () => {
+      vi.mocked(StreamingStore.useIsActivelyStreaming).mockReturnValue(false)
+      vi.mocked(StreamingStore.useIsLoading).mockReturnValue(false)
+
+      renderWithProviders(<InputActionsPanel />)
+
+      expect(screen.queryByTestId('thinking-indicator')).not.toBeInTheDocument()
+    })
+
+    it('keeps the thinking card mounted across the boot→stream seam (no flicker)', () => {
+      // AIROBUILD-3228: the card must not blink out between boot-up (isBooting) and
+      // the first stream chunk (isStreaming). isProcessing = isStreaming || isLoading
+      // || isBooting has no gap as long as one term is always true across the handoff.
+      vi.mocked(StreamingStore.useIsActivelyStreaming).mockReturnValue(false)
+      vi.mocked(StreamingStore.useIsLoading).mockReturnValue(false)
+
+      const { rerender } = renderWithProviders(<InputActionsPanel isBooting />)
+      expect(screen.getByTestId('thinking-indicator')).toBeInTheDocument()
+
+      // Stream starts: isBooting flips false the same commit isStreaming flips true.
+      vi.mocked(StreamingStore.useIsActivelyStreaming).mockReturnValue(true)
+      rerender(<InputActionsPanel isBooting={false} />)
+      expect(screen.getByTestId('thinking-indicator')).toBeInTheDocument()
+    })
+  })
+
   describe('ThinkingTip post-build gate', () => {
     beforeEach(() => {
       vi.mocked(Switchboard.useSwitchboard).mockImplementation(function (flag: string) {

@@ -752,6 +752,7 @@ export default function ChatInput({
         activeFontThemeSuggest={activeFontThemeSuggest}
         shouldCollapse={isMultilineCollapseEnabled ? shouldCollapseUI : false}
         onHideComposerPromptChange={handleHideComposerPromptChange}
+        isBooting={Boolean(loadingMessage) || isAwaitingStream}
       />
     ) : null
 

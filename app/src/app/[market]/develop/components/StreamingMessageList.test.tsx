@@ -277,6 +277,21 @@ describe('StreamingMessageList', function packageTests() {
         unmount();
       });
     });
+
+    it('echoes the initial prompt without an in-transcript thinking indicator', function initialPromptNoTopThinker() {
+      // AIROBUILD-3228: the top "Thinking…" indicator was removed so it no longer
+      // "flicks" down to the bottom InputActionsPanel card once history loads. The
+      // echoed prompt still renders; the sole indicator now lives above the input.
+      mockDevelopPageStore.loadingPhase = 'ready';
+      mockStreamingStore.isLoading = false;
+
+      renderWithProviders(
+        <StreamingMessageList allMessages={[]} hasInitialPrompt initialPromptText="Build me a bakery site" />,
+      );
+
+      expect(screen.getByTestId('message-initial-prompt')).toBeInTheDocument();
+      expect(screen.queryByTestId('thinking-indicator')).not.toBeInTheDocument();
+    });
   });
 
   describe('with messages', function withMessages() {

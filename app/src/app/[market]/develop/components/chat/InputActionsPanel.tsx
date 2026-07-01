@@ -102,6 +102,21 @@ type InputActionsPanelProps = {
    * including post-build design feedback askQuestion — do not hide the prompt.
    */
   onHideComposerPromptChange?: (hidden: boolean) => void
+  /**
+   * True while the composer is preparing before the first stream chunk:
+   * a loadingMessage is shown (booting, archive restore, hibernation resume,
+   * image readiness) OR we're awaiting the initial-prompt stream. Treated as
+   * "processing" so the thinking card is the single indicator during boot-up
+   * too (AIROBUILD-3228) — the in-transcript indicator was removed, so without
+   * this the boot window shows no animation at all.
+   *
+   * Both terms are needed for continuity: loadingMessage clears at
+   * `ready.websocketConnected` a render before the auto-send flips
+   * isStreaming/isLoading, so awaiting-stream bridges that seam and prevents a
+   * one-frame flicker; loadingMessage covers the non-create-flow resume cases
+   * (archive/hibernation/image) where there is no initial prompt.
+   */
+  isBooting?: boolean
   // FBF props (internal, passed from wrapper to variants)
   feedbackActive?: boolean
   feedback?: import('./useFirstBuildFeedback').UseFirstBuildFeedbackResult | null
@@ -176,6 +191,7 @@ function InputActionsPanelLegacy({
   shouldCollapse: _shouldCollapse,
   feedbackActive = false,
   onHideComposerPromptChange,
+  isBooting = false,
 }: InputActionsPanelProps) {
   const t = useTranslations()
   const thinkerLabel = useThinkerLabel()
@@ -186,7 +202,7 @@ function InputActionsPanelLegacy({
   const viewState = useViewState()
   const isStreaming = useIsActivelyStreaming()
   const isLoading = useIsLoading()
-  const isProcessing = isStreaming || isLoading
+  const isProcessing: boolean = isStreaming || isLoading || isBooting
   const initialBuildComplete = useDevelopPageStore((state) => state.app?.initialBuildComplete)
   const hasQueuedMessages = useStreamingConversationStore(state => (state.queuedMessages?.length ?? 0) > 0)
 
@@ -664,6 +680,7 @@ function InputActionsPanelThemeSelection({
   onHideComposerPromptChange,
   feedbackActive = false,
   feedback = null,
+  isBooting = false,
 }: InputActionsPanelProps) {
   const t = useTranslations()
   const thinkerLabel = useThinkerLabel()
@@ -675,7 +692,7 @@ function InputActionsPanelThemeSelection({
   const viewState = useViewState()
   const isStreaming = useIsActivelyStreaming()
   const isLoading = useIsLoading()
-  const isProcessing = isStreaming || isLoading
+  const isProcessing: boolean = isStreaming || isLoading || isBooting
   const secretsComposerTakeover = useSecretsComposerTakeover()
   const messages = useMessages()
   const viewMode = useDevelopPageStore((state) => state.viewMode)
@@ -1488,6 +1505,7 @@ export default function InputActionsPanel({
   activeFontThemeSuggest = null,
   shouldCollapse = false,
   onHideComposerPromptChange,
+  isBooting = false,
 }: InputActionsPanelProps) {
   const isThemeSelectionChatEnabled = useSwitchboard('airo-builder-theme-selection-chat')
   const isFontSelectionChatEnabled = useSwitchboard('airo-builder-font-selection-chat')
@@ -1559,6 +1577,7 @@ export default function InputActionsPanel({
         onHideComposerPromptChange={onHideComposerPromptChange}
         feedbackActive={suppressNBA}
         feedback={feedback}
+        isBooting={isBooting}
       />
     )
   }
@@ -1570,6 +1589,7 @@ export default function InputActionsPanel({
         shouldCollapse={shouldCollapse}
         onHideComposerPromptChange={onHideComposerPromptChange}
         feedbackActive={suppressNBA}
+        isBooting={isBooting}
       />
     </>
   )

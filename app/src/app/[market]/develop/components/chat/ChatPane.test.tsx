@@ -1340,6 +1340,30 @@ describe('ChatPane', () => {
         expect.objectContaining({ queueLength: expect.any(Number) }),
       );
     });
+
+    it('does not enqueue while busy during immersive design-kit onboarding (hideToolbar)', async () => {
+      // AIROBUILD-3228: queuing is disabled during the design-kit onboarding takeover
+      // (hideToolbar) so a busy user can't pile up messages that overwhelm the initial
+      // plan/agent. Contrast with the sibling test above where the identical busy submit
+      // enqueues — here the same interaction must NOT reach the queue.
+      mockSwitchboardValues['appbuilder-queue'] = true;
+      mockStreamingStore.isActivelyStreaming = true;
+      mockStreamingStore.inputValue = 'hello';
+
+      const enqueueMessage = useStreamingConversationStore.getState().enqueueMessage;
+
+      const { user } = renderWithProviders(
+        <ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} hideToolbar />
+      );
+
+      await user.click(screen.getByRole('button', { name: 'Send' }));
+
+      expect(enqueueMessage).not.toHaveBeenCalled();
+      // Queuing off must NOT silently drop the busy submit — it falls through to a
+      // live send (ChatPane.tsx). Pins intended behavior so a regression that drops
+      // the message can't pass on the enqueue assertion alone.
+      expect(mockSendMessage).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe('uploadError context reset', function uploadErrorContextReset() {

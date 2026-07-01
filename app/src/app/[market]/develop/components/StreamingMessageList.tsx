@@ -757,17 +757,15 @@ export default function StreamingMessageList({
   const isAppTransitioning = currentAppId !== appIdFromParams
 
   if (allMessages.length === 0 || isAppTransitioning) {
-    // Creation flow with initial prompt: show the user's prompt as a real message + thinking indicator
+    // Creation flow with initial prompt: echo the user's prompt as a real message.
+    // The thinking indicator is intentionally NOT rendered here — it lives in the
+    // InputActionsPanel card above the input. Rendering it in the transcript too made it
+    // "flick" from the top down to the bottom card once history loaded (AIROBUILD-3228).
     if (hasInitialPrompt && initialPromptText && allMessages.length === 0) {
       return (
         <div ref={containerRef} data-testid="chat-transcript" className={`${CHAT_TRANSCRIPT_SCROLL_CLASS} pb-4 ${CHAT_TRANSCRIPT_MASK_CLASS}`} onScroll={handleScroll}>
           <StreamingMessage
             message={{ id: 'initial-prompt', role: 'user', content: initialPromptText, timestamp: new Date() } satisfies ChatMessage}
-          />
-          <Thinker
-            label={thinkerLabel}
-            indicator={thinkerIndicator}
-            className="airo-chat-thinker--initial-inset"
           />
         </div>
       )

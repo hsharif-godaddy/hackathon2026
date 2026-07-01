@@ -146,7 +146,7 @@ describe('Thinker', () => {
 
     it('default indicator does not set an inline size multiplier', () => {
       const { container } = render(<Thinker />);
-      const root = container.querySelector('.airo-primitives-thinking-indicator');
+      const root: HTMLElement | null = container.querySelector('.airo-primitives-thinking-indicator');
 
       expect(root).toBeTruthy();
       expect(
