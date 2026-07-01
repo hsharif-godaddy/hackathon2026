@@ -1,8 +1,10 @@
 import { SWITCHBOARD_APPBUILDER_WAKE_AWARE_VAT_RECOVERY } from '@/config/switchboard-flags';
 import { getSwitchboardFlag } from '@/hooks/useSwitchboard';
+import { getSsoHost } from '@/lib/gasket-config';
 import { logger } from '@/lib/request-context';
 import { isReturningUser } from '@/lib/returningUser';
 
+const NETWORK_WAIT_MS: number = 5_000;
 const INITIAL_DELAY_MS: number = 2_000;
 const RETRY_INTERVAL_MS: number = 1_000;
 const MAX_RETRIES: number = 3;
@@ -48,6 +50,56 @@ export function shouldAttemptHeartbeatPatience(): boolean {
 export async function awaitHeartbeatRecovery(
   signal: AbortSignal,
 ): Promise<HeartbeatPatienceResult> {
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    await new Promise<void>((resolve) => {
+      const onOnline = (): void => { window.removeEventListener('online', onOnline); resolve(); };
+      window.addEventListener('online', onOnline);
+      const timeout: ReturnType<typeof setTimeout> = setTimeout(() => {
+        window.removeEventListener('online', onOnline);
+        resolve();
+      }, NETWORK_WAIT_MS);
+      signal.addEventListener('abort', () => {
+        window.removeEventListener('online', onOnline);
+        clearTimeout(timeout);
+        resolve();
+      }, { once: true });
+    });
+    if (signal.aborted) {
+      markAttempted();
+      return { recovered: false };
+    }
+  }
+
+  if (signal.aborted) {
+    markAttempted();
+    return { recovered: false };
+  }
+
+  try {
+    const ssoHost: string = await getSsoHost();
+    const res: Response = await fetch(`https://${ssoHost}/v1/api/token/ui_heartbeat`, {
+      method: 'POST',
+      credentials: 'include',
+      signal,
+    });
+    if (!res.ok) {
+      logger.warn('auth.heartbeat-patience.heartbeat-error', {
+        status: res.status,
+      });
+    }
+  } catch (err: unknown) {
+    if (!signal.aborted) {
+      logger.warn('auth.heartbeat-patience.heartbeat-error', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  if (signal.aborted) {
+    markAttempted();
+    return { recovered: false };
+  }
+
   await new Promise<void>((resolve) => {
     const timer: ReturnType<typeof setTimeout> = setTimeout(resolve, INITIAL_DELAY_MS);
     signal.addEventListener('abort', () => { clearTimeout(timer); resolve(); }, { once: true });
