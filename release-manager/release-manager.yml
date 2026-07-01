@@ -225,6 +225,11 @@ pipeline:
             publishImageTag: '{{test.build-images.publish_image_tag}}'
             compositionId: ai-builder
             compositionVersion: v4
+            # Warm RG-tagged preprovs on all cells (capped at the stable row's
+            # target_count) so the dark stack is responsive on first load — mirrors
+            # the dark-release-dev default. 0 (the release-group-simple default) would
+            # leave the dark stack cold (AI Chat, etc. unresponsive).
+            preProvsPerInventoryTarget: '35'
           outputs:
             release_group_id:
               from: run-log
