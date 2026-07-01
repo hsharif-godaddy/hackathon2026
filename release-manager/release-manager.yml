@@ -233,7 +233,11 @@ pipeline:
           outputs:
             release_group_id:
               from: run-log
-              pattern: "RELEASE_GROUP_ID=(\\S+)"
+              # Match the id charset, not \S+: \S+ also captured the CREATE step's
+              # source-echo line (RELEASE_GROUP_ID=$RG_ID") + its trailing ANSI reset,
+              # storing a garbage id ($RG_ID"<ESC>[0m) that later failed the Rollback's
+              # ^[A-Za-z0-9_-]{1,64}$ validation. release-group-simple ids are [A-Za-z0-9_-].
+              pattern: "RELEASE_GROUP_ID=([A-Za-z0-9_-]+)"
 
         - id: dark-e2e
           name: Dark E2E (Prod)
