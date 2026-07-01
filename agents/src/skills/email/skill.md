@@ -107,6 +107,7 @@ The gateway resolves the sender per-app from configuration the app cannot see:
 1. **Default sender.** When `from` is omitted, the gateway uses `<appId>@<primaryDomain>`.
 2. **Attached custom domains.** When the customer attaches a domain via Settings, the gateway updates automatically — no code change required.
 3. **Unverified `from` rejection.** If you pass a `from` address on an unverified domain, the gateway returns 400.
+4. **Same-domain delivery fallback.** If any recipient shares the same domain as the From address, the gateway rewrites From to the default platform sender to prevent mail-filter quarantine.
 
 ---
 
