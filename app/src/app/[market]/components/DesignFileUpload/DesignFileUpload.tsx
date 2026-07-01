@@ -2,6 +2,7 @@ import { useCallback, useRef } from 'react'
 import Button from '@ux/button'
 import AttachmentIcon from '@ux/icon/attachment'
 
+import { MutedIconButton } from '@/components/home/MutedIconButton'
 import { useBreakpoints } from '@/hooks/useBreakpoints'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
@@ -16,9 +17,11 @@ interface DesignFileUploadProps {
   onProcessingChange?: (processing: boolean) => void
   onProcessingFilesChange?: (names: string[]) => void
   disabled?: boolean
+  /** 'muted' renders a grey @ux/icon/attachment (prompt-starter design) instead of the @ux button. */
+  appearance?: 'default' | 'muted'
 }
 
-export default function DesignFileUpload({ currentFilesRef, onFilesChange, onError, isProcessing, onProcessingChange, onProcessingFilesChange, disabled }: DesignFileUploadProps) {
+export default function DesignFileUpload({ currentFilesRef, onFilesChange, onError, isProcessing, onProcessingChange, onProcessingFilesChange, disabled, appearance = 'default' }: DesignFileUploadProps) {
   const isEnabled = useSwitchboard('appbuilder-design-upload')
   const inputRef = useRef<HTMLInputElement>(null)
   const { isBelowSmBreakpoint } = useBreakpoints()
@@ -71,15 +74,28 @@ export default function DesignFileUpload({ currentFilesRef, onFilesChange, onErr
         className="hidden"
         disabled={disabled || isProcessing}
       />
-      <Button
-        onClick={() => inputRef.current?.click()}
-        data-eid={generateClickEID('homepage.prompt.attach')}
-        size={isBelowSmBreakpoint ? 'sm' : 'md'}
-        data-partial="componentAiro"
-        icon={<AttachmentIcon />}
-        aria-label={t('builder_common_upload_file')}
-        disabled={disabled || isProcessing}
-      />
+      {appearance === 'muted' ? (
+        <MutedIconButton
+          onClick={() => inputRef.current?.click()}
+          data-eid={generateClickEID('homepage.prompt.attach')}
+          data-partial="componentAiro"
+          aria-label={t('builder_common_upload_file')}
+          disabled={disabled || isProcessing}
+          className="text-intents-ux-feedbackHighContrastPassive-feedbackColor"
+        >
+          <AttachmentIcon width={20} height={20} aria-hidden="true" />
+        </MutedIconButton>
+      ) : (
+        <Button
+          onClick={() => inputRef.current?.click()}
+          data-eid={generateClickEID('homepage.prompt.attach')}
+          size={isBelowSmBreakpoint ? 'sm' : 'md'}
+          data-partial="componentAiro"
+          icon={<AttachmentIcon />}
+          aria-label={t('builder_common_upload_file')}
+          disabled={disabled || isProcessing}
+        />
+      )}
     </>
   )
 }

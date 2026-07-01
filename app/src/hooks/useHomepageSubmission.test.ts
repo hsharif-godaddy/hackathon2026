@@ -235,7 +235,7 @@ describe('useHomepageSubmission', () => {
       mockFetchQuickCreate.mockRejectedValue(new MockAuthDismissedError())
 
       const { result } = renderHook(() => useHomepageSubmission())
-      await act(async () => { await result.current.handleStartBuilding('build me a site') })
+      await act(async () => { await result.current.handleStartBuilding({ overridePrompt: 'build me a site' }) })
 
       expect(result.current.isLoading).toBe(false)
       expect(result.current.error).toBeNull()
@@ -253,7 +253,7 @@ describe('useHomepageSubmission', () => {
       persistPendingDesignChoice(presetForDirection('modernize'))
 
       const { result } = renderHook(() => useHomepageSubmission())
-      await act(async () => { await result.current.handleStartBuilding('rebuild my site') })
+      await act(async () => { await result.current.handleStartBuilding({ overridePrompt: 'rebuild my site' }) })
 
       // Pending cleared; choice keyed under the resolved site id.
       expect(readPendingDesignChoice()).toBeNull()
@@ -262,7 +262,7 @@ describe('useHomepageSubmission', () => {
 
     it('is a no-op when there is no pending choice', async () => {
       const { result } = renderHook(() => useHomepageSubmission())
-      await act(async () => { await result.current.handleStartBuilding('build me a site') })
+      await act(async () => { await result.current.handleStartBuilding({ overridePrompt: 'build me a site' }) })
 
       expect(readDesignChoiceForId('site-1', null)).toBeNull()
     })
@@ -275,7 +275,7 @@ describe('useHomepageSubmission', () => {
       const { result } = renderHook(() => useHomepageSubmission())
 
       await act(async () => {
-        await result.current.handleStartBuilding('build me a site')
+        await result.current.handleStartBuilding({ overridePrompt: 'build me a site' })
       })
 
       expect(logImpressionEvent).toHaveBeenCalledWith('budget.newUser.eligible')
@@ -287,7 +287,7 @@ describe('useHomepageSubmission', () => {
       const { result } = renderHook(() => useHomepageSubmission())
 
       await act(async () => {
-        await result.current.handleStartBuilding('build me a site')
+        await result.current.handleStartBuilding({ overridePrompt: 'build me a site' })
       })
 
       expect(logImpressionEvent).not.toHaveBeenCalledWith('budget.newUser.eligible')
@@ -299,7 +299,7 @@ describe('useHomepageSubmission', () => {
       const { result } = renderHook(() => useHomepageSubmission())
 
       await act(async () => {
-        await result.current.handleStartBuilding('build me a site')
+        await result.current.handleStartBuilding({ overridePrompt: 'build me a site' })
       })
 
       expect(logImpressionEvent).not.toHaveBeenCalledWith('budget.newUser.eligible')
@@ -315,7 +315,7 @@ describe('useHomepageSubmission', () => {
       const { result } = renderHook(() => useHomepageSubmission())
 
       await act(async () => {
-        await result.current.handleStartBuilding('build me a site')
+        await result.current.handleStartBuilding({ overridePrompt: 'build me a site' })
       })
 
       expect(logImpressionEvent).not.toHaveBeenCalledWith('budget.newUser.eligible')
@@ -336,7 +336,7 @@ describe('useHomepageSubmission', () => {
       const { result } = renderHook(() => useHomepageSubmission())
       act(() => { result.current.setAttachedKit(KIT) })
 
-      await act(async () => { await result.current.handleStartBuilding('build me a site') })
+      await act(async () => { await result.current.handleStartBuilding({ overridePrompt: 'build me a site' }) })
 
       expect(localStorage.getItem('airo-pending-design-kit')).toBe('golden-hour')
     })
@@ -345,7 +345,7 @@ describe('useHomepageSubmission', () => {
       mockAuthContext.mockReturnValue({ isAuthenticated: false, isLoading: false })
       const { result } = renderHook(() => useHomepageSubmission())
 
-      await act(async () => { await result.current.handleStartBuilding('build me a site') })
+      await act(async () => { await result.current.handleStartBuilding({ overridePrompt: 'build me a site' }) })
 
       expect(localStorage.getItem('airo-pending-design-kit')).toBeNull()
     })
@@ -366,12 +366,52 @@ describe('useHomepageSubmission', () => {
     })
   })
 
+  // AIROBUILD-1859 (2661): the selected prompt-starter category is reported as its
+  // own starter_category analytics dimension on submit — NOT written to the shared
+  // intent_category field (which keeps its new_build/edit vocabulary).
+  describe('starter category attribution', () => {
+    it('stamps the selected starter category on the submit event', async () => {
+      const { result } = renderHook(() => useHomepageSubmission())
+
+      await act(async () => {
+        await result.current.handleStartBuilding({ overridePrompt: 'build me a site', analytics: { starter_category: 'logo' } })
+      })
+
+      const call = mockLogAnalytics.mock.calls.find(c => c[0] === 'homepage.redirect.develop')
+      expect(call).toBeDefined()
+      expect(call![1]).toMatchObject({ starter_category: 'logo' })
+      expect(call![2]).toMatchObject({ impressionProps: { starter_category: 'logo' } })
+    })
+
+    it('does not pollute intent_category (quick-create gets no starter value)', async () => {
+      const { result } = renderHook(() => useHomepageSubmission())
+
+      await act(async () => {
+        await result.current.handleStartBuilding({ overridePrompt: 'build me a site', analytics: { starter_category: 'logo' } })
+      })
+
+      const flagsMock = setQuickCreateSessionFlags as unknown as Mock
+      const lastCall = flagsMock.mock.calls[flagsMock.mock.calls.length - 1]
+      expect(lastCall[3]?.intentCategory).toBeUndefined()
+    })
+
+    it('omits the starter dimension when no category is provided (control)', async () => {
+      const { result } = renderHook(() => useHomepageSubmission())
+
+      await act(async () => { await result.current.handleStartBuilding({ overridePrompt: 'build me a site' }) })
+
+      const call = mockLogAnalytics.mock.calls.find(c => c[0] === 'homepage.redirect.develop')
+      expect(call![1].starter_category).toBeUndefined()
+      expect(call![2].impressionProps?.starter_category).toBeUndefined()
+    })
+  })
+
   describe('homepage.redirect.develop impression', () => {
     it('includes entryPoint in both data and impressionProps when location param is present', async () => {
       mockSearchParams.value = new URLSearchParams('location=godaddy.com%2Fhosting')
 
       const { result } = renderHook(() => useHomepageSubmission())
-      await act(async () => { await result.current.handleStartBuilding('build me a site') })
+      await act(async () => { await result.current.handleStartBuilding({ overridePrompt: 'build me a site' }) })
 
       const call = mockLogAnalytics.mock.calls.find(c => c[0] === 'homepage.redirect.develop')
       expect(call).toBeDefined()
@@ -383,7 +423,7 @@ describe('useHomepageSubmission', () => {
       mockSearchParams.value = new URLSearchParams()
 
       const { result } = renderHook(() => useHomepageSubmission())
-      await act(async () => { await result.current.handleStartBuilding('build me a site') })
+      await act(async () => { await result.current.handleStartBuilding({ overridePrompt: 'build me a site' }) })
 
       const call = mockLogAnalytics.mock.calls.find(c => c[0] === 'homepage.redirect.develop')
       expect(call).toBeDefined()

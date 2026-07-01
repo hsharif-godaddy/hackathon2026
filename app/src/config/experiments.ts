@@ -12,6 +12,8 @@ export const EXPERIMENT_IDS = {
   aabProgressTracker: 'aab_progress_tracker',
   /** Combine Upgrade + Publish into a single Publish button with an educational upsell popup. */
   combineUpgradeWithPublish: 'aab_combine_upgrade_with_publish',
+  /** Prompt starter buttons: homepage hero category buttons (treatment cohort `on`) vs not (control `off`). Read via usePromptStarter. */
+  promptStarter: 'prompt_starter',
   /** Default domain selection: pick which custom domain the publish modal targets. */
   defaultDomainSelection: 'aab_default_domain_selection',
   /** Upgrade banner placement: chat panel (off) vs preview bar (on). Free users only. */

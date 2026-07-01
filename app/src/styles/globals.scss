@@ -289,6 +289,12 @@
     color: var(--color-ai);
   }
 
+  /* Prompt-starter treatment uses a neutral grey ghost-type placeholder (matches
+     the redesign) instead of the purple default; scoped so control is unchanged. */
+  .glowing-input.glowing-input--starter textarea::placeholder {
+    color: rgba(20, 20, 40, 0.4);
+  }
+
   .glowing-input .ux-box {
     position: relative;
     z-index: 1;

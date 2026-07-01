@@ -39,7 +39,7 @@ export interface UploadedDesignFile {
 export interface HeroSectionProps {
   promptText: string
   setPromptText: (text: string) => void
-  onStartBuilding: () => void
+  onStartBuilding: (options?: { analytics?: Record<string, unknown> }) => void
   isLoading: boolean
   error: string | null
   setError: (error: string | null) => void

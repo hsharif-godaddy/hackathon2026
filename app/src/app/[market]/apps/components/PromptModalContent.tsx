@@ -12,6 +12,7 @@ import { useAnimatedPlaceholder } from '@/hooks/home/useAnimatedPlaceholder'
 import { useFileUploadState } from '@/hooks/home/useFileUploadState'
 import { useHeroPromptState } from '@/hooks/home/useHeroPromptState'
 import { useTextareaAutoResize } from '@/hooks/home/useTextareaAutoResize'
+import { type StartBuildingOptions } from '@/hooks/useHomepageSubmission'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 
@@ -19,7 +20,7 @@ interface PromptModalContentProps {
   hp: {
     promptText: string
     setPromptText: (text: string) => void
-    handleStartBuilding: (overridePrompt?: string, overrideFqdn?: string) => Promise<void>
+    handleStartBuilding: (options?: StartBuildingOptions) => Promise<void>
     handleExampleClick: (examplePrompt: string) => void
     setSelectedTemplate: (template: string) => void
     isLoading: boolean

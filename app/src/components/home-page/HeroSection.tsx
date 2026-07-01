@@ -9,6 +9,7 @@ import DesignKitGallery, { DesignKitChip } from '@/app/[market]/components/Desig
 import TemplateSelector from '@/app/[market]/components/TemplateSelector'
 import type { HeroSectionProps, HeroSectionRef } from '@/app/[market]/components/types'
 import { AnimatedDisclaimer } from '@/components/home/AnimatedDisclaimer'
+import { GenerateButton } from '@/components/home/GenerateButton'
 import { HeroBenefits } from '@/components/home/HeroBenefits'
 import { HeroScrollButton } from '@/components/home/HeroScrollButton'
 import { PromptErrorAlert } from '@/components/home/PromptErrorAlert'
@@ -16,6 +17,8 @@ import { PromptInputErrors } from '@/components/home/PromptInputErrors'
 import { SpeechToggleButton } from '@/components/home/SpeechToggleButton'
 import { SubmitInitialPrompt } from '@/components/home/SubmitInitialPrompt'
 import ExamplesSection from '@/components/home-page/HeroExamples'
+import { StarterButtons } from '@/components/home-page/StarterButtons'
+import { STARTER_PLACEHOLDERS } from '@/components/home-page/starterCategories'
 import { useAnimatedPlaceholder } from '@/hooks/home/useAnimatedPlaceholder'
 import { useFileUploadState } from '@/hooks/home/useFileUploadState'
 import { useHeroPromptState } from '@/hooks/home/useHeroPromptState'
@@ -23,6 +26,7 @@ import { useTextareaAutoResize } from '@/hooks/home/useTextareaAutoResize'
 import { useBreakpoints } from '@/hooks/useBreakpoints'
 import { useImpression } from '@/hooks/useImpression'
 import { useTranslations } from '@/hooks/useTranslations'
+import { generateClickEID } from '@/utils/instrumentation'
 
 const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
   promptText,
@@ -64,10 +68,17 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
     onPromptBoxMouseLeave,
     bytesRemaining,
     isOverLimit,
+    isPromptStarterEnabled,
+    selectedStarterCategory,
+    selectCategory,
   } = useHeroPromptState({ promptText, setPromptText, onStartBuilding, isLoading, error, setError })
 
   const promptTextareaRef = useTextareaAutoResize({ displayText })
-  const animatedPlaceholder = useAnimatedPlaceholder({ isFocused, displayText })
+  const animatedPlaceholder = useAnimatedPlaceholder({
+    isFocused,
+    displayText,
+    examples: isPromptStarterEnabled ? STARTER_PLACEHOLDERS[selectedStarterCategory ?? 'new_website'] : undefined,
+  })
   const {
     fileUploadError, setFileUploadError,
     isPickerProcessing, setIsPickerProcessing,
@@ -117,16 +128,27 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
           <div
             className={clsx('relative transition-all duration-300 ease-out glowing-input', {
               'glowing-input--disabled': isLoading,
+              'glowing-input--starter': isPromptStarterEnabled,
               'ring-2 ring-intents-ux-action-borderColor bg-intents-ux-action-backgroundColor/5': isFileDragOver,
             })}
             onMouseEnter={onPromptBoxMouseEnter}
             onMouseLeave={onPromptBoxMouseLeave}
           >
             <Box
-              className="p-2 transition-all duration-300 ease-out bg-intents-ux-box-backgroundColor outline-4 outline-solid outline-[rgba(0,0,0,0.15)]"
+              className={clsx(
+                'transition-all duration-300 ease-out bg-intents-ux-box-backgroundColor outline-4 outline-solid outline-[rgba(0,0,0,0.15)] p-2',
+                { 'px-[32px] py-[24px]': isPromptStarterEnabled },
+              )}
               elevation="float"
               gap={isBelowSmBreakpoint ? 'sm' : 'md'}
             >
+              {isPromptStarterEnabled && (
+                <>
+                  <StarterButtons selected={selectedStarterCategory} onSelect={selectCategory} />
+                  <div className="border-b border-intents-ux-box-borderColor" />
+                </>
+              )}
+
               {((uploadedFiles ?? []).length > 0 || processingFiles.length > 0) && onFilesChange && (
                 <div aria-live="polite" className="flex flex-wrap gap-2">
                   {(uploadedFiles ?? []).map((file, idx) => (
@@ -152,7 +174,10 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
                 onBlur={handleTextareaBlur}
                 dir="auto"
                 disabled={isLoading || isListening}
-                className="w-full min-h-6 md:min-h-8 max-h-20 md:max-h-24 bg-transparent overflow-y-auto text-md sm:text-xl font-light resize-none focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed transition-opacity duration-300"
+                className={clsx(
+                  'w-full min-h-6 md:min-h-8 max-h-20 md:max-h-24 bg-transparent overflow-y-auto font-light resize-none focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed transition-opacity duration-300',
+                  isPromptStarterEnabled ? 'text-base' : 'text-md sm:text-xl',
+                )}
                 placeholder={isTyping ? "" : animatedPlaceholder}
               />
 
@@ -169,8 +194,7 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
                     fileUploadError={fileUploadError}
                   />
                 </div>
-                {/* Action Buttons Container */}
-                <Box orientation="horizontal" gap="sm">
+                <div className={clsx('flex items-center', { 'gap-[4px]': isPromptStarterEnabled, 'gap-1': !isPromptStarterEnabled })}>
                   {onFilesChange && (
                     <DesignFileUpload
                       currentFilesRef={uploadedFilesRef}
@@ -180,6 +204,7 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
                       onProcessingChange={setIsPickerProcessing}
                       onProcessingFilesChange={setProcessingFiles}
                       disabled={isLoading}
+                      appearance={isPromptStarterEnabled ? 'muted' : 'default'}
                     />
                   )}
                   {isSpeechSupported && (
@@ -188,15 +213,25 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
                       isLoading={isLoading}
                       isTyping={isTyping}
                       onToggle={handleSpeechToggle}
+                      appearance={isPromptStarterEnabled ? 'muted' : 'default'}
                     />
                   )}
-                  <SubmitInitialPrompt
-                    onClick={handleStartBuilding}
-                    disabled={!displayText.trim() || isLoading || isTyping || isOverLimit}
-                    isLoading={isLoading}
-                    text={t('builder_homepage_submit_cta_generate', undefined, 'Generate')}
-                  />
-                </Box>
+                  {isPromptStarterEnabled ? (
+                    <GenerateButton
+                      onClick={handleStartBuilding}
+                      disabled={!displayText.trim() || isLoading || isTyping || isOverLimit}
+                      data-eid={generateClickEID('homepage.prompt.submit')}
+                      label={t('builder_homepage_submit_cta_generate', undefined, 'Generate')}
+                    />
+                  ) : (
+                    <SubmitInitialPrompt
+                      onClick={handleStartBuilding}
+                      disabled={!displayText.trim() || isLoading || isTyping || isOverLimit}
+                      isLoading={isLoading}
+                      text={t('builder_homepage_submit_cta_generate', undefined, 'Generate')}
+                    />
+                  )}
+                </div>
               </Box>
             </Box>
           </div>

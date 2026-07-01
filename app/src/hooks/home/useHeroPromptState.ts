@@ -2,7 +2,9 @@
 
 import { type ChangeEvent, type KeyboardEvent, type RefObject, useCallback, useEffect, useRef, useState } from 'react'
 
+import { type StarterCategory } from '@/components/home-page/starterCategories'
 import { useAuthContext } from '@/components/providers/AuthProvider'
+import { usePromptStarter } from '@/experiments/prompt-starter/usePromptStarter'
 import { useAnalytics } from '@/hooks/useAnalytics'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTextareaHoverTracking } from '@/hooks/useTextareaHoverTracking'
@@ -17,7 +19,7 @@ const PROMPT_IDLE_MS = 30_000
 interface UseHeroPromptStateParams {
   promptText: string
   setPromptText: (text: string) => void
-  onStartBuilding: () => void
+  onStartBuilding: (options?: { analytics?: Record<string, unknown> }) => void
   isLoading: boolean
   error: string | null
   setError: (error: string | null) => void
@@ -43,6 +45,9 @@ interface UseHeroPromptStateReturn {
   onPromptBoxMouseLeave: () => void
   bytesRemaining: number
   isOverLimit: boolean
+  isPromptStarterEnabled: boolean
+  selectedStarterCategory: StarterCategory | null
+  selectCategory: (category: StarterCategory) => void
 }
 
 export function useHeroPromptState({
@@ -59,9 +64,11 @@ export function useHeroPromptState({
   const { logAnalytics } = useAnalytics({
     baseData: { isAuthenticated },
   })
+  const isPromptStarterEnabled: boolean = usePromptStarter()
   const [isTyping, setIsTyping] = useState(false)
   const [displayText, setDisplayText] = useState(promptText)
   const [isFocused, setIsFocused] = useState(false)
+  const [selectedStarterCategory, setSelectedStarterCategory] = useState<StarterCategory | null>(null)
 
   const animationQueueRef = useRef<string[]>([])
   const lastErrorClearRef = useRef<string>('')
@@ -177,7 +184,14 @@ export function useHeroPromptState({
     JourneyTracker.current()?.trackMilestone('homepage_prompt_submitted', {
       promptLength: displayText.trim().length,
     })
-    onStartBuilding()
+    const analytics: Record<string, unknown> = isPromptStarterEnabled && selectedStarterCategory
+      ? { starter_category: selectedStarterCategory }
+      : {}
+    onStartBuilding({ analytics })
+  }
+
+  function selectCategory(category: StarterCategory): void {
+    setSelectedStarterCategory(selectedStarterCategory === category ? null : category)
   }
 
   function handleTextareaChange(e: ChangeEvent<HTMLTextAreaElement>): void {
@@ -347,5 +361,8 @@ export function useHeroPromptState({
     onPromptBoxMouseLeave,
     bytesRemaining,
     isOverLimit,
+    isPromptStarterEnabled,
+    selectedStarterCategory,
+    selectCategory,
   }
 }

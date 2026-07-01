@@ -30,6 +30,13 @@ import { resolveCreationSource, resolveEntryPoint } from '@/utils/traffic-signal
 type SubmitSource = 'example' | 'text'
 type SubmissionRoute = 'homepage' | 'apps'
 
+export interface StartBuildingOptions {
+  overridePrompt?: string
+  overrideFqdn?: string
+  overrideDesignKitSlug?: string
+  analytics?: Record<string, unknown>
+}
+
 interface HomepageSubmissionOptions {
   route?: SubmissionRoute
 }
@@ -263,7 +270,7 @@ export function useHomepageSubmission(options?: HomepageSubmissionOptions) {
     }
   }, [isHomepage])
 
-  const handleStartBuilding = useCallback(async (overridePrompt?: string, overrideFqdn?: string, overrideDesignKitSlug?: string) => {
+  const handleStartBuilding = useCallback(async ({ overridePrompt, overrideFqdn, overrideDesignKitSlug, analytics = {} }: StartBuildingOptions = {}) => {
     let promptToUse = (typeof overridePrompt === 'string' ? overridePrompt : promptTextRef.current).trim()
     promptToUse = promptToUse.replace(/https?:\/\/example\.com\s*/gi, '').trim()
     const fqdnToUse = typeof overrideFqdn === 'string' ? overrideFqdn : fqdnRef.current
@@ -394,7 +401,15 @@ export function useHomepageSubmission(options?: HomepageSubmissionOptions) {
       const redirectUrl = buildDevelopUrl(siteData.id, siteData.type)
 
       logger.info('page.site.redirect', { message: 'Redirecting to develop page', siteId: siteData.id, idType: siteData.type, redirectUrl })
-      logAnalytics('homepage.redirect.develop', { submitSource, entryPoint }, { kind: 'impression', eid: 'homepage.redirect.develop', impressionProps: { entry_point: entryPoint } })
+      logAnalytics(
+        'homepage.redirect.develop',
+        { submitSource, entryPoint, ...analytics },
+        {
+          kind: 'impression',
+          eid: 'homepage.redirect.develop',
+          impressionProps: { entry_point: entryPoint, ...analytics },
+        },
+      )
 
       pendingHomepageErrorRef.current = null
       router.push(redirectUrl)
@@ -490,7 +505,7 @@ export function useHomepageSubmission(options?: HomepageSubmissionOptions) {
         })
       }
 
-      handleStartBuilding(validated.text, restoredFqdn, restoredDesignKitSlug)
+      handleStartBuilding({ overridePrompt: validated.text, overrideFqdn: restoredFqdn, overrideDesignKitSlug: restoredDesignKitSlug })
     }
   }, [authIsLoading, handleStartBuilding, isAuthenticated, isHomepage, logAnalytics, promptText, subscriptionsLoading])
 
