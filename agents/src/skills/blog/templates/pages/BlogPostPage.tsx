@@ -1,9 +1,7 @@
 import { useParams, Link, Navigate } from 'react-router-dom';
-import { useEffect, useState } from 'react';
 import BlogPost from '../components/blog/BlogPost';
 import BlogGrid from '../components/blog/BlogGrid';
 import { getPostBySlug, getRelatedPosts } from '../lib/blog';
-import type { BlogPost as BlogPostType } from '../lib/blog';
 
 /**
  * Blog post detail page component
@@ -13,39 +11,11 @@ import type { BlogPost as BlogPostType } from '../lib/blog';
  */
 export default function BlogPostPage() {
   const { slug } = useParams<{ slug: string }>();
-  const [post, setPost] = useState<BlogPostType | null>(null);
-  const [relatedPosts, setRelatedPosts] = useState<BlogPostType[]>([]);
-  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    if (!slug) {
-      setLoading(false);
-      return;
-    }
+  // Synchronous lookup — no useEffect/state so HMR content updates re-render immediately
+  const post = slug ? getPostBySlug(slug) : null;
+  const relatedPosts = post ? getRelatedPosts(post, 3) : [];
 
-    const foundPost = getPostBySlug(slug);
-    setPost(foundPost);
-
-    if (foundPost) {
-      setRelatedPosts(getRelatedPosts(foundPost, 3));
-    }
-
-    setLoading(false);
-  }, [slug]);
-
-  // Show loading state
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4" />
-          <p className="text-muted-foreground">Loading post...</p>
-        </div>
-      </div>
-    );
-  }
-
-  // Post not found - redirect to blog
   if (!post) {
     return <Navigate to="/blog" replace />;
   }

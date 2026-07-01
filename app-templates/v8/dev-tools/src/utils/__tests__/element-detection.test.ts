@@ -296,6 +296,39 @@ describe('element-detection', () => {
     });
   });
 
+  // ─── isTextEditable — data-dev-bound-text render-prop exception ───────────────
+
+  describe('isTextEditable — data-dev-bound-text render-prop exception', () => {
+    it('allows a bound-text element with data-dev-dynamic on itself to be editable', () => {
+      const element = buildElement('<p data-dev-dynamic="true" data-dev-bound-text="true">Paragraph text</p>');
+      expect(isTextEditable(element, true)).toBe(true);
+    });
+
+    it('allows a bound-text element with inline children and data-dev-dynamic on itself', () => {
+      const element = buildElement(
+        '<p data-dev-dynamic="true" data-dev-bound-text="true">Text with <em>italic</em> and <strong>bold</strong></p>',
+      );
+      expect(isTextEditable(element, true)).toBe(true);
+    });
+
+    it('allows a bound-text element when only its ancestor has data-dev-dynamic', () => {
+      // Page-level conditional renders (e.g. {items.length > 0 && <Section>}) make
+      // ancestor divs data-dev-dynamic, but bound-text elements inside are still
+      // user-authored text. The source mapper never adds data-dev-bound-text inside
+      // .map() calls (genericMapDepth > 0), so ancestor checks are not needed.
+      const parent = buildElement('<div data-dev-dynamic="true"><p data-dev-bound-text="true">text</p></div>');
+      const element = parent.querySelector('p') as HTMLElement;
+      expect(isTextEditable(element, true)).toBe(true);
+    });
+
+    it('blocks a bound-text element that contains a descendant with data-dev-dynamic', () => {
+      const element = buildElement(
+        '<p data-dev-dynamic="true" data-dev-bound-text="true"><span data-dev-dynamic="true">computed</span></p>',
+      );
+      expect(isTextEditable(element, true)).toBe(false);
+    });
+  });
+
   // ─── isTextEditable — CMS inline-edit flag gate ───────────────────────────────
 
   describe('isTextEditable — CMS inline-edit flag gate', () => {

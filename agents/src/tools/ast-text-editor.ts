@@ -634,7 +634,9 @@ export class ASTTextEditor extends ASTEditorBase {
   }
 
   /**
-   * Edit element text content using AST parsing and manipulation
+   * Edit element text content using AST parsing and manipulation.
+   * For markdown files (.md), bypasses JSX AST and performs a plain-text
+   * find-and-replace in the markdown body (after the frontmatter block).
    *
    * @param appPath - Path to the app directory
    * @param request - Text edit request
@@ -644,6 +646,10 @@ export class ASTTextEditor extends ASTEditorBase {
   async editElementText(appPath: string, request: TextEditRequest, appId: string): Promise<TextEditResult> {
     this.lastProcessResult = null;
     this.lastDiagnostics = null;
+
+    if (request.devContext.fileName.endsWith('.md')) {
+      return this.editMarkdownText(appPath, request, appId);
+    }
 
     const baseResult = await this.editTemplate<TextEditRequest, TextEditResult>(
       appPath,
@@ -659,6 +665,104 @@ export class ASTTextEditor extends ASTEditorBase {
       ...baseResult,
       oldText: processResult?.oldText || request.oldText,
       newText: processResult?.newText || request.newText
+    };
+  }
+
+  /**
+   * Strips common inline markdown markers and normalizes soft-wrap newlines to spaces,
+   * producing the plain text that a browser would render from the markdown source.
+   */
+  private static stripInlineMarkdown(text: string): string {
+    return text
+      .replace(/\*\*\*(.+?)\*\*\*/gs, '$1')
+      .replace(/\*\*(.+?)\*\*/gs, '$1')
+      .replace(/\*(.+?)\*/gs, '$1')
+      .replace(/___(.+?)___/gs, '$1')
+      .replace(/__(.+?)__/gs, '$1')
+      .replace(/_(.+?)_/gs, '$1')
+      .replace(/`(.+?)`/gs, '$1')
+      .replace(/~~(.+?)~~/gs, '$1')
+      .replace(/\[([^\]]+)\]\([^)]+\)/gs, '$1')
+      .replace(/\n/g, ' ')
+      .trim();
+  }
+
+  /**
+   * Edit text in a markdown file using plain-text find-and-replace.
+   * Searches only the markdown body (content after the frontmatter separator).
+   *
+   * Two-pass strategy:
+   *   1. Exact substring match (fast path for plain-text paragraphs).
+   *   2. Paragraph-block match after stripping inline markdown markers
+   *      (handles paragraphs that contain **bold**, *italic*, etc., where
+   *      element.textContent strips the markers but the source retains them).
+   */
+  private async editMarkdownText(appPath: string, request: TextEditRequest, appId: string): Promise<TextEditResult> {
+    const relativePath = this.resolveRelativePath(request.devContext.fileName);
+    const { files, gitTool } = this.getWorkspace(appId);
+
+    const content = await this.readSourceFile(files, relativePath);
+
+    // Split at the closing frontmatter delimiter (---) to search only the body
+    const frontmatterEndIndex = content.indexOf('\n---\n', 3);
+    const bodyStart = frontmatterEndIndex >= 0 ? frontmatterEndIndex + 5 : 0;
+    const body = content.slice(bodyStart);
+
+    let newBody: string;
+
+    if (body.includes(request.oldText)) {
+      // Pass 1: exact match
+      newBody = body.replace(request.oldText, request.newText);
+    } else {
+      // Pass 2: find the paragraph block whose stripped plain text matches oldText.
+      // The regex splits on blank lines (one or more empty lines), preserving the
+      // separating whitespace so we can do a targeted substring replacement rather
+      // than re-joining (which would normalise multi-blank-line gaps).
+      const blocks = body.split(/\n{2,}/);
+      const normalizedOld = request.oldText.trim();
+      const matchIndex = blocks.findIndex(
+        b => ASTTextEditor.stripInlineMarkdown(b) === normalizedOld,
+      );
+
+      if (matchIndex === -1) {
+        return {
+          success: false,
+          filePath: relativePath,
+          error: `Text not found in markdown file: "${request.oldText.slice(0, 80)}${request.oldText.length > 80 ? '...' : ''}"`,
+          oldText: request.oldText,
+          newText: request.newText,
+        };
+      }
+
+      // Replace the matched block in-place inside body to preserve surrounding whitespace.
+      // matchIndex !== -1 guarantees a valid index; the non-null assertion is safe.
+      newBody = body.replace(blocks[matchIndex]!, request.newText);
+    }
+
+    const newContent = content.slice(0, bodyStart) + newBody;
+
+    if (newContent === content) {
+      return {
+        success: true,
+        filePath: relativePath,
+        diff: 'No changes made',
+        oldText: request.oldText,
+        newText: request.newText,
+      };
+    }
+
+    await this.writeSourceFile(files, relativePath, newContent);
+
+    const commitMessage = `Update blog content in ${relativePath}`;
+    const commitHash = await this.commitChanges(appPath, relativePath, commitMessage, gitTool);
+
+    return {
+      success: true,
+      filePath: relativePath,
+      diff: this.generateDiff(content, newContent),
+      oldText: request.oldText,
+      newText: request.newText,
+      ...(commitHash && { commitHash }),
     };
   }
 }

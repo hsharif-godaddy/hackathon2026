@@ -138,7 +138,7 @@ export default function BlogPost({ post }: BlogPostProps) {
             {/* Side decoration line */}
             <div className="hidden lg:block absolute -left-20 top-0 bottom-0 w-1 bg-gradient-to-b from-transparent via-primary/30 to-transparent" />
 
-            <div className="blog-content prose-custom">
+            <div className="blog-content prose-custom" data-dev-content-file={`src/content/data/blog/${post.slug}.md`}>
               <style dangerouslySetInnerHTML={{ __html: `
                 .prose-custom > :first-child::first-letter {
                   float: left;
@@ -172,8 +172,8 @@ export default function BlogPost({ post }: BlogPostProps) {
                     <h4 className="text-2xl md:text-3xl font-bold text-foreground mt-12 mb-4 leading-tight" {...props} />
                   ),
                   // Enhanced paragraphs
-                  p: ({node, ...props}) => (
-                    <p className="text-lg md:text-xl text-muted-foreground leading-[1.8] mb-8 tracking-wide" {...props} />
+                  p: ({node, children, ...rest}) => (
+                    <p className="text-lg md:text-xl text-muted-foreground leading-[1.8] mb-8 tracking-wide" {...rest}>{children}</p>
                   ),
                   // Beautiful blockquotes
                   blockquote: ({node, ...props}) => (

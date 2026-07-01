@@ -155,7 +155,7 @@ export function useTextEditing(isEditModeActive: boolean, cmsInlineEditEnabled: 
         return;
       }
 
-      const devContext = extractDevContext(element);
+      let devContext = extractDevContext(element);
       const selector = generateSelector(element);
       const preciseSelector = generatePreciseSelector(element);
 
@@ -189,6 +189,16 @@ export function useTextEditing(isEditModeActive: boolean, cmsInlineEditEnabled: 
         }
         commitCleanup();
         return;
+      }
+
+      // For bound-text elements backed by a markdown content file (e.g. ReactMarkdown
+      // blog paragraphs), redirect the save to that file so the AST editor performs
+      // plain-text replacement in the markdown body rather than failing on {children}.
+      if (element.getAttribute("data-dev-bound-text") === "true") {
+        const contentFile = element.closest("[data-dev-content-file]")?.getAttribute("data-dev-content-file");
+        if (contentFile) {
+          devContext = { fileName: contentFile, componentName: "content", lineNumber: 1 };
+        }
       }
 
       const payload: BusTextUpdatePayload = {
