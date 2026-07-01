@@ -569,6 +569,26 @@ describe('useInitialization', function hookTests() {
       expect(checkHasInitialPrompt(null, 'app-1', null, null)).toBe(true);
     });
 
+    it('returns true when localStorage flags are set on initialJobId (cross-origin receive bridge)', function localStorageJobIdFlags() {
+      localStorage.setItem('initial-prompt-pending-job-1', 'true');
+      localStorage.setItem('in-creation-flow-job-1', 'true');
+      expect(checkHasInitialPrompt('job-1', 'app-1', null, null)).toBe(true);
+    });
+
+    it('returns true when localStorage flags are set on appId (cross-origin receive bridge)', function localStorageAppIdFlags() {
+      localStorage.setItem('initial-prompt-pending-app-1', 'true');
+      localStorage.setItem('in-creation-flow-app-1', 'true');
+      expect(checkHasInitialPrompt(null, 'app-1', null, null)).toBe(true);
+    });
+
+    it('prefers sessionStorage over localStorage for initial-prompt flags', function sessionOverLocal() {
+      sessionStorage.setItem('initial-prompt-pending-job-1', 'true');
+      sessionStorage.setItem('in-creation-flow-job-1', 'true');
+      localStorage.setItem('initial-prompt-pending-job-1', 'false');
+      localStorage.setItem('in-creation-flow-job-1', 'false');
+      expect(checkHasInitialPrompt('job-1', 'app-1', null, null)).toBe(true);
+    });
+
     it('returns true when site has initial_prompt for current app and flags are absent (DPP cold redirect)', function siteAware() {
       const site = makeSite({ id: 'app-1', initial_prompt: 'Build me a portfolio' });
       expect(checkHasInitialPrompt(null, 'app-1', site, null)).toBe(true);
@@ -633,6 +653,7 @@ describe('useInitialization', function hookTests() {
       sessionStorage.setItem('initial-prompt-text-job-1', 'Build me a site');
       sessionStorage.setItem('initial-template-job-1', 'portfolio');
       sessionStorage.setItem('initial-upload-file-job-1', 'data:image/png;base64,...');
+      sessionStorage.setItem('initial-upload-files-job-1', JSON.stringify([{ name: 'a.png', content: '' }]));
 
       applyMarkInitialPromptSentEffects('job-1', 'app-1');
 
@@ -641,6 +662,31 @@ describe('useInitialization', function hookTests() {
       expect(sessionStorage.getItem('initial-prompt-text-job-1')).toBeNull();
       expect(sessionStorage.getItem('initial-template-job-1')).toBeNull();
       expect(sessionStorage.getItem('initial-upload-file-job-1')).toBeNull();
+      expect(sessionStorage.getItem('initial-upload-files-job-1')).toBeNull();
+    });
+
+    it('clears all localStorage bridge keys for initialJobId (cross-origin receive bridge)', function clearsLocalStorageBridgeKeys() {
+      localStorage.setItem('initial-prompt-pending-job-1', 'true');
+      localStorage.setItem('in-creation-flow-job-1', 'true');
+      localStorage.setItem('initial-upload-files-job-1', JSON.stringify([{ name: 'a.png', content: '' }]));
+
+      applyMarkInitialPromptSentEffects('job-1', 'app-1');
+
+      expect(localStorage.getItem('initial-prompt-pending-job-1')).toBeNull();
+      expect(localStorage.getItem('in-creation-flow-job-1')).toBeNull();
+      expect(localStorage.getItem('initial-upload-files-job-1')).toBeNull();
+    });
+
+    it('does not clear localStorage bridge keys when initialJobId is null', function nullJobIdSkipsLocalStorageClear() {
+      localStorage.setItem('initial-prompt-pending-null', 'true');
+      localStorage.setItem('in-creation-flow-null', 'true');
+      localStorage.setItem('initial-upload-files-null', JSON.stringify([{ name: 'a.png', content: '' }]));
+
+      applyMarkInitialPromptSentEffects(null, 'app-1');
+
+      expect(localStorage.getItem('initial-prompt-pending-null')).not.toBeNull();
+      expect(localStorage.getItem('in-creation-flow-null')).not.toBeNull();
+      expect(localStorage.getItem('initial-upload-files-null')).not.toBeNull();
     });
 
     it('clears rebuild-mode sessionStorage keys for appId', function clearsAppIdKeys() {
@@ -653,6 +699,18 @@ describe('useInitialization', function hookTests() {
       expect(sessionStorage.getItem('initial-prompt-text-app-1')).toBeNull();
       expect(sessionStorage.getItem('initial-template-app-1')).toBeNull();
       expect(sessionStorage.getItem('initial-upload-file-app-1')).toBeNull();
+    });
+
+    it('clears localStorage bridge keys for appId', function clearsAppIdLocalStorageKeys() {
+      localStorage.setItem('initial-prompt-pending-app-1', 'true');
+      localStorage.setItem('in-creation-flow-app-1', 'true');
+      localStorage.setItem('initial-upload-files-app-1', JSON.stringify([{ name: 'a.png', content: '' }]));
+
+      applyMarkInitialPromptSentEffects('job-1', 'app-1');
+
+      expect(localStorage.getItem('initial-prompt-pending-app-1')).toBeNull();
+      expect(localStorage.getItem('in-creation-flow-app-1')).toBeNull();
+      expect(localStorage.getItem('initial-upload-files-app-1')).toBeNull();
     });
 
     it('clears the initial-job-id creation-handoff marker for the appId', function clearsHandoffMarker() {

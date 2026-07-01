@@ -14,10 +14,37 @@ vi.mock('./itc', () => ({
 }))
 
 import { getItcOverride } from './itc'
-import { buildDevelopUrl, extractApiError, fetchQuickCreate, getStoredDesignKitSlug, getStoredUploadedFiles, setQuickCreateSessionFlags } from './quick-create'
+import { buildDevelopUrl, extractApiError, fetchQuickCreate, getStorageItem, getStoredDesignKitSlug, getStoredUploadedFiles, setQuickCreateSessionFlags } from './quick-create'
 
 const mockAppFetch = appFetch as Mock
 const mockGetItcOverride = getItcOverride as Mock
+
+describe('getStorageItem', () => {
+  beforeEach(() => {
+    sessionStorage.clear()
+    localStorage.clear()
+  })
+
+  it('returns sessionStorage value when present', () => {
+    sessionStorage.setItem('test-key', 'session-val')
+    expect(getStorageItem('test-key')).toBe('session-val')
+  })
+
+  it('falls back to localStorage when sessionStorage has no value', () => {
+    localStorage.setItem('test-key', 'local-val')
+    expect(getStorageItem('test-key')).toBe('local-val')
+  })
+
+  it('prefers sessionStorage over localStorage when both have the key', () => {
+    sessionStorage.setItem('test-key', 'session-val')
+    localStorage.setItem('test-key', 'local-val')
+    expect(getStorageItem('test-key')).toBe('session-val')
+  })
+
+  it('returns null when neither storage has the key', () => {
+    expect(getStorageItem('missing-key')).toBeNull()
+  })
+})
 
 describe('fetchQuickCreate', () => {
   beforeEach(() => {
@@ -255,7 +282,10 @@ describe('setQuickCreateSessionFlags (multi-file)', () => {
 })
 
 describe('getStoredUploadedFiles', () => {
-  beforeEach(() => sessionStorage.clear())
+  beforeEach(() => {
+    sessionStorage.clear()
+    localStorage.clear()
+  })
 
   it('reads new plural key', () => {
     sessionStorage.setItem('initial-upload-files-job-1', JSON.stringify([
@@ -278,6 +308,76 @@ describe('getStoredUploadedFiles', () => {
   it('returns empty array when no keys exist', () => {
     const result = getStoredUploadedFiles('nope', 'nada')
     expect(result).toEqual([])
+  })
+
+  it('falls back to localStorage when sessionStorage plural key is absent (cross-origin receive bridge)', () => {
+    // The /api/receive iframe bridge writes to localStorage because sessionStorage is
+    // not shared across origins. getStoredUploadedFiles must read it when sessionStorage
+    // has no value for the same key.
+    localStorage.setItem('initial-upload-files-job-1', JSON.stringify([
+      { name: 'bridge.png', content: '', isDesignMd: false, isImage: true },
+    ]))
+    const result = getStoredUploadedFiles('job-1', 'app-1')
+    expect(result).toHaveLength(1)
+    expect(result[0].name).toBe('bridge.png')
+  })
+
+  it('prefers sessionStorage over localStorage when both have the plural key', () => {
+    sessionStorage.setItem('initial-upload-files-job-1', JSON.stringify([
+      { name: 'session.txt', content: '', isDesignMd: false },
+    ]))
+    localStorage.setItem('initial-upload-files-job-1', JSON.stringify([
+      { name: 'local.txt', content: '', isDesignMd: false },
+    ]))
+    const result = getStoredUploadedFiles('job-1', 'app-1')
+    expect(result[0].name).toBe('session.txt')
+  })
+
+  it('falls back to appId localStorage key when initialJobId has nothing in either storage', () => {
+    localStorage.setItem('initial-upload-files-app-1', JSON.stringify([
+      { name: 'appid.png', content: '', isDesignMd: false },
+    ]))
+    const result = getStoredUploadedFiles('job-x', 'app-1')
+    expect(result).toHaveLength(1)
+    expect(result[0].name).toBe('appid.png')
+  })
+
+  it('returns empty array when localStorage plural key contains malformed JSON', () => {
+    localStorage.setItem('initial-upload-files-job-1', 'not valid json{{{')
+    const result = getStoredUploadedFiles('job-1', 'app-1')
+    expect(result).toEqual([])
+  })
+
+  it('returns empty array when appId plural key contains malformed JSON', () => {
+    localStorage.setItem('initial-upload-files-app-1', 'not valid json{{{')
+    const result = getStoredUploadedFiles('job-x', 'app-1')
+    expect(result).toEqual([])
+  })
+
+  it('returns empty array when singular key contains malformed JSON', () => {
+    localStorage.setItem('initial-upload-file-job-1', 'not valid json{{{')
+    const result = getStoredUploadedFiles('job-1', 'app-1')
+    expect(result).toEqual([])
+  })
+
+  it('falls back to localStorage for singular key (cross-origin receive bridge)', () => {
+    localStorage.setItem('initial-upload-file-job-1', JSON.stringify(
+      { name: 'bridge-single.txt', content: 'data', isDesignMd: false },
+    ))
+    const result = getStoredUploadedFiles('job-1', 'app-1')
+    expect(result).toHaveLength(1)
+    expect(result[0].name).toBe('bridge-single.txt')
+  })
+
+  it('prefers sessionStorage over localStorage for singular key', () => {
+    sessionStorage.setItem('initial-upload-file-job-1', JSON.stringify(
+      { name: 'session-single.txt', content: '', isDesignMd: false },
+    ))
+    localStorage.setItem('initial-upload-file-job-1', JSON.stringify(
+      { name: 'local-single.txt', content: '', isDesignMd: false },
+    ))
+    const result = getStoredUploadedFiles('job-1', 'app-1')
+    expect(result[0].name).toBe('session-single.txt')
   })
 })
 

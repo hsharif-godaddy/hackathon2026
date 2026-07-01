@@ -84,6 +84,10 @@ describe('middleware', () => {
       expect(matcherRe.test('/notification-beep.wav')).toBe(false);
     });
 
+    it('should not match /scripts paths so receive-bridge.js is publicly served without auth middleware', () => {
+      expect(matcherRe.test('/scripts/receive-bridge.js')).toBe(false);
+    });
+
     it('should not match /.well-known paths', () => {
       expect(matcherRe.test('/.well-known/jwks.json')).toBe(false);
       expect(matcherRe.test('/.well-known/openid-configuration')).toBe(false);

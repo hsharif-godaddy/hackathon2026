@@ -9,10 +9,11 @@ export const CORS_ROUTES = Object.freeze({
   GET_SITES: 'GET_SITES',
   GET_SUBSCRIPTIONS: 'GET_SUBSCRIPTIONS',
   QUICK_CREATE: 'QUICK_CREATE',
-  GET_SWITCHBOARD: 'GET_SWITCHBOARD'
+  GET_SWITCHBOARD: 'GET_SWITCHBOARD',
+  GET_RECEIVE: 'GET_RECEIVE'
 } as const)
 
-const aiPromptLibOrigins = new Set([
+export const aiPromptLibOrigins = new Set([
   'https://www.dev-godaddy.com',
   'https://www.test-godaddy.com',
   'https://www.godaddy.com',
@@ -47,6 +48,10 @@ const ALLOWED_ORIGINS_MAP: Record<keyof typeof CORS_ROUTES, AllowedOrigin> = {
     methods: 'POST, OPTIONS'
   },
   [CORS_ROUTES.GET_SWITCHBOARD]: {
+    origins: aiPromptLibOrigins,
+    methods: 'GET, OPTIONS'
+  },
+  [CORS_ROUTES.GET_RECEIVE]: {
     origins: aiPromptLibOrigins,
     methods: 'GET, OPTIONS'
   }

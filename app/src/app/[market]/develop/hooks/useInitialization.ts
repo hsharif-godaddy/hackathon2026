@@ -2,7 +2,7 @@ import { useRouter } from 'next/navigation'
 import { useEffect, useRef, useState } from 'react'
 import { useMachine } from '@xstate/react'
 
-import { getStoredDesignKitSlug, getStoredUploadedFiles } from '@/lib/quick-create'
+import { getStorageItem, getStoredDesignKitSlug, getStoredUploadedFiles } from '@/lib/quick-create'
 import { logger } from '@/lib/request-context'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { cleanupSiteCreationStore, useSiteCreationStore } from '@/stores/useSiteCreationStore'
@@ -118,6 +118,12 @@ export function applyMarkInitialPromptSentEffects(
     sessionStorage.removeItem(`initial-upload-file-${initialJobId}`)
     sessionStorage.removeItem(`initial-upload-files-${initialJobId}`)
     sessionStorage.removeItem(`initial-design-kit-${initialJobId}`)
+    // The receive bridge (cross-origin) at GET /api/receive (which uses receive-bridge.js)
+    // sets these in localStorage since sessionStorage is not shared between tabs/origins.
+    // Clean up both storage locations.
+    localStorage.removeItem(`initial-prompt-pending-${initialJobId}`)
+    localStorage.removeItem(`in-creation-flow-${initialJobId}`)
+    localStorage.removeItem(`initial-upload-files-${initialJobId}`)
   }
   if (appId) {
     sessionStorage.removeItem(`initial-prompt-text-${appId}`)
@@ -127,6 +133,9 @@ export function applyMarkInitialPromptSentEffects(
     sessionStorage.removeItem(`initial-design-kit-${appId}`)
     // Clear the creation-handoff marker so subsequent same-tab reloads rely on the strict gate.
     sessionStorage.removeItem(`initial-job-id-${appId}`)
+    localStorage.removeItem(`initial-prompt-pending-${appId}`)
+    localStorage.removeItem(`in-creation-flow-${appId}`)
+    localStorage.removeItem(`initial-upload-files-${appId}`)
     setInitialPromptAutoSentFlag(appId)
   }
 }
@@ -143,15 +152,21 @@ export function checkHasInitialPrompt(
 
   // Check with initialJobId first (normal creation flow)
   if (initialJobId) {
-    const hasPromptPending = sessionStorage.getItem(`initial-prompt-pending-${initialJobId}`) === 'true'
-    const inCreationFlow = sessionStorage.getItem(`in-creation-flow-${initialJobId}`) === 'true'
+    // The receive bridge (cross-origin) at GET /api/receive (which uses receive-bridge.js)
+    // sets these in localStorage since sessionStorage is not shared between tabs/origins,
+    // so we use getStorageItem to check for both sessionStorage and localStorage.
+    const hasPromptPending = getStorageItem(`initial-prompt-pending-${initialJobId}`) === 'true'
+    const inCreationFlow = getStorageItem(`in-creation-flow-${initialJobId}`) === 'true'
     if (hasPromptPending && inCreationFlow) return true
   }
 
   // Also check with appId (for rebuild mode where we navigate directly to appId)
   if (appId) {
-    const hasPromptPending = sessionStorage.getItem(`initial-prompt-pending-${appId}`) === 'true'
-    const inCreationFlow = sessionStorage.getItem(`in-creation-flow-${appId}`) === 'true'
+    // The receive bridge (cross-origin) at GET /api/receive (which uses receive-bridge.js)
+    // sets these in localStorage since sessionStorage is not shared between tabs/origins,
+    // so we use getStorageItem to check for both sessionStorage and localStorage.
+    const hasPromptPending = getStorageItem(`initial-prompt-pending-${appId}`) === 'true'
+    const inCreationFlow = getStorageItem(`in-creation-flow-${appId}`) === 'true'
     if (hasPromptPending && inCreationFlow) return true
   }
 

@@ -1,5 +1,21 @@
+/**
+ * Any time this file is updated, check if the changes need to be mirrored in
+ * app/public/scripts/receive-bridge.js (used by GET /api/receive). Specifically,
+ * logic related to storing the uploaded files in IndexedDB and writing data to
+ * sessionStorage (mirrored as localStorage in the receive bridge).
+ */
+
 import { appFetch, type AppFetchOptions } from '@/lib/gasket-config'
 import { getItcOverride } from '@/lib/itc'
+
+/**
+ * Read from sessionStorage first, falling back to localStorage.
+ * The receive bridge (cross-origin) can only write to localStorage since
+ * sessionStorage is not shared between tabs/origins.
+ */
+export function getStorageItem(key: string): string | null {
+  return sessionStorage.getItem(key) ?? localStorage.getItem(key)
+}
 
 export interface QuickCreateResponse {
   id: string
@@ -68,6 +84,9 @@ export function setQuickCreateSessionFlags(
 ) {
   const { uploadedFiles, entryPoint, creationSource, intentCategory = 'new_build', designKitSlug } = options
   sessionStorage.setItem(`name-registration-pending-${siteId}`, 'true')
+  // Any changes to the following two keys (initial-prompt-pending-${siteId} and in-creation-flow-${siteId}) must be mirrored
+  // in app/public/scripts/receive-bridge.js (which is used by GET /api/receive). It should have the same key and data there
+  // but uses localStorage instead of sessionStorage.
   sessionStorage.setItem(`initial-prompt-pending-${siteId}`, 'true')
   sessionStorage.setItem(`in-creation-flow-${siteId}`, 'true')
   sessionStorage.setItem(`initial-prompt-text-${siteId}`, prompt)
@@ -75,6 +94,8 @@ export function setQuickCreateSessionFlags(
     sessionStorage.setItem(`initial-template-${siteId}`, templateId)
   }
   if (uploadedFiles && uploadedFiles.length > 0) {
+    // Any changes to the key (initial-upload-files-${siteId}) or data shape must be mirrored in app/public/scripts/receive-bridge.js,
+    // (which is used by GET /api/receive) It should have the same key and data there but uses localStorage instead of sessionStorage.
     const serializable = uploadedFiles.map(({ zipRaw: _, ...rest }) => rest)
     sessionStorage.setItem(`initial-upload-files-${siteId}`, JSON.stringify(serializable))
   }
@@ -96,11 +117,17 @@ export function getStoredUploadedFiles(
 ): Array<{ name: string; content: string; isDesignMd: boolean; isZip?: boolean; isUiKit?: boolean; isAppImport?: boolean; isImage?: boolean }> {
   const keysToTry = [initialJobId, appId].filter(Boolean) as string[]
   for (const key of keysToTry) {
-    const pluralRaw = sessionStorage.getItem(`initial-upload-files-${key}`)
+    // The receive bridge (cross-origin) at GET /api/receive (which uses receive-bridge.js)
+    // sets these in localStorage since sessionStorage is not shared between tabs/origins,
+    // so we use getStorageItem to check for both sessionStorage and localStorage.
+    const pluralRaw = getStorageItem(`initial-upload-files-${key}`)
     if (pluralRaw) {
       try { return JSON.parse(pluralRaw) } catch { /* fall through */ }
     }
-    const singularRaw = sessionStorage.getItem(`initial-upload-file-${key}`)
+    // The receive bridge (cross-origin) at GET /api/receive (which uses receive-bridge.js)
+    // sets these in localStorage since sessionStorage is not shared between tabs/origins,
+    // so we use getStorageItem to check for both sessionStorage and localStorage.
+    const singularRaw = getStorageItem(`initial-upload-file-${key}`)
     if (singularRaw) {
       try { return [JSON.parse(singularRaw)] } catch { /* fall through */ }
     }
@@ -121,8 +148,11 @@ export function getStoredDesignKitSlug(
   return null
 }
 
-const UPLOAD_DB_NAME = 'airo-file-uploads'
-const UPLOAD_STORE = 'files'
+// The DB name, store name, record shape, and open/write logic below are duplicated as
+// in app/public/scripts/receive-bridge.js (used by GET /api/receive). Any change here
+// must be mirrored there, and vice versa.
+export const UPLOAD_DB_NAME = 'airo-file-uploads'
+export const UPLOAD_STORE = 'files'
 
 function openUploadDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
