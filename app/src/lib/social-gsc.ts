@@ -9,12 +9,14 @@ const VERIFY_RETRY_DELAY_MS = 3000
 const sleep = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms))
 
 /**
- * Webmasters API path params must reach Google single-encoded (e.g. https%3A%2F%2F…).
- * social-v2's google proxy decodes path segments once before forwarding, so encode twice here.
+ * Webmasters calls use /google/proxy/www/webmasters/… (www subdomain, like siteVerification).
+ * Site URL path segments must reach Google single-encoded; social-v2 decodes once, so encode twice.
  */
 export function encodeWebmastersPathParam(value: string): string {
   return encodeURIComponent(encodeURIComponent(value))
 }
+
+const WEBMASTERS_SITES_BASE = '/google/proxy/www/webmasters/v3/sites'
 
 export class GscClient {
   async getGscVerificationToken(siteUrl: string, userTokenId: string): Promise<string> {
@@ -76,7 +78,7 @@ export class GscClient {
   async addGscSite(siteUrl: string, userTokenId: string): Promise<boolean> {
     const normalizedUrl: string = siteUrl.endsWith('/') ? siteUrl : `${siteUrl}/`
     const encodedSite = encodeWebmastersPathParam(normalizedUrl)
-    const url = `${SOCIAL_V2_BASE_URL}/google/proxy/webmasters/v3/sites/${encodedSite}`
+    const url = `${SOCIAL_V2_BASE_URL}${WEBMASTERS_SITES_BASE}/${encodedSite}`
 
     for (let attempt = 1; attempt <= MAX_VERIFY_RETRIES; attempt++) {
       if (attempt > 1) {
@@ -106,7 +108,7 @@ export class GscClient {
     const sitemapUrl = `${normalizedSiteUrl}sitemap.xml`
     const encodedSite = encodeWebmastersPathParam(normalizedSiteUrl)
     const encodedSitemap = encodeWebmastersPathParam(sitemapUrl)
-    const url = `${SOCIAL_V2_BASE_URL}/google/proxy/webmasters/v3/sites/${encodedSite}/sitemaps/${encodedSitemap}`
+    const url = `${SOCIAL_V2_BASE_URL}${WEBMASTERS_SITES_BASE}/${encodedSite}/sitemaps/${encodedSitemap}`
     const response = await fetch(url, {
       method: 'PUT',
       credentials: 'include',

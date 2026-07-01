@@ -130,10 +130,11 @@ describe('GscClient', () => {
   })
 
   describe('addGscSite', () => {
-    it('calls PUT with trailing-slash-normalized encoded site URL', async () => {
+    it('calls PUT with www webmasters path and double-encoded site URL', async () => {
       vi.mocked(fetch).mockResolvedValueOnce(okResponse())
       const result = await client.addGscSite(SITE_URL, TOKEN_ID)
       const [url, opts] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit]
+      expect(url).toContain('/google/proxy/www/webmasters/v3/sites/')
       expect(url).toContain(webmastersPathParam(SITE_URL_TRAILING))
       expect(opts.method).toBe('PUT')
       expect(result).toBe(true)
@@ -179,10 +180,11 @@ describe('GscClient', () => {
   })
 
   describe('submitGscSitemap', () => {
-    it('constructs sitemap URL from site URL', async () => {
+    it('constructs sitemap URL via www webmasters path with double encoding', async () => {
       vi.mocked(fetch).mockResolvedValueOnce(okResponse())
       await client.submitGscSitemap(SITE_URL, TOKEN_ID)
       const [url] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit]
+      expect(url).toContain('/google/proxy/www/webmasters/v3/sites/')
       expect(url).toContain(webmastersPathParam(`${SITE_URL_TRAILING}sitemap.xml`))
     })
 
