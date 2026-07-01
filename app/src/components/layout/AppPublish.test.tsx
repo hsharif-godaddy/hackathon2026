@@ -31,12 +31,14 @@ vi.mock('@ux/icon/async-icon.js', () => ({
   default: ({ icon }: { icon: string }) => <svg data-testid={`icon-${icon}`} />,
 }));
 
+import { CanvasId } from '@/app/[market]/commander/canvas/registry';
 import { ChatTab, MobileMode, SettingsSection, ViewMode } from '@/app/[market]/develop/components/types';
 import AppPublish from '@/components/layout/AppPublish';
 import { shipAnalyticsLog } from '@/lib/logging';
 import { DeploymentStatus } from '@/lib/mgmt-airo/types';
 import { openPostPublishFeatureSelectionInChat } from '@/lib/post-publish-feature-selection';
 import { logger } from '@/lib/request-context';
+import { useCommanderStore } from '@/stores/useCommanderStore';
 import { usePaywallStore } from '@/stores/usePaywallStore';
 import { createMockSite, mockRouter } from '@/tests/mocks';
 import { renderWithProviders } from '@/tests/test-utils';
@@ -336,6 +338,10 @@ describe('AppPublish', () => {
     for (const key of Object.keys(mockSwitchboardOverrides)) {
       delete mockSwitchboardOverrides[key];
     }
+    useCommanderStore.setState({
+      openCanvasIds: [CanvasId.Preview, CanvasId.Brand, CanvasId.Domain],
+      activeCanvasId: CanvasId.Preview,
+    });
     mockComplianceGateState.isBlocked = false;
     mockComplianceGateState.blockReason = null;
     mockDismissSeoRegressionAlert.mockReset();
@@ -1753,6 +1759,7 @@ describe('AppPublish', () => {
     expect(mockDevelopStore.handleMobileModeChange).not.toHaveBeenCalled();
     expect(mockSetActiveSettingsSection).not.toHaveBeenCalled();
     expect(mockSetActiveChatTab).not.toHaveBeenCalled();
+    expect(useCommanderStore.getState().activeCanvasId).toBe(CanvasId.Preview);
   });
 
   it('should call handleMobileModeChange with PREVIEW on mobile when domain edit is clicked and top-level flag is on', async function domainEditMobile() {
@@ -1779,7 +1786,30 @@ describe('AppPublish', () => {
     expect(mockDevelopStore.handleMobileModeChange).toHaveBeenCalledWith(MobileMode.PREVIEW);
   });
 
-  it('should navigate to settings DOMAIN section when domain edit is clicked and top-level flag is off', async function domainEditFlagOff() {
+  it('should make the Domain canvas tab active when domain edit is clicked with canvas tabs on', async function domainEditActivatesCanvasTab() {
+    mockSwitchboardOverrides['appbuilder-domain-top-level'] = true;
+    mockSwitchboardOverrides['appbuilder-commander-canvas-tabs'] = true;
+    mockSiteStore.getSite.mockReturnValue(createMockSite({
+      id: 'app-123',
+      agent_url: 'https://app-123.agent.test',
+      published_url: 'https://test.airoapp.ai',
+      variants: ['publish'],
+    }));
+
+    const { user } = renderWithProviders(<AppPublish />);
+
+    await user.click(document.getElementById('tour-publish-button')!);
+
+    await waitFor(() => {
+      expect(screen.getByText('builder_domain_title')).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole('button', { name: 'builder_common_edit' }));
+
+    expect(useCommanderStore.getState().activeCanvasId).toBe(CanvasId.Domain);
+  });
+
+  it('should open legacy settings domain when domain edit is clicked and top-level flag is off', async function domainEditFlagOff() {
     mockSwitchboardOverrides['appbuilder-domain-top-level'] = false;
     mockSiteStore.getSite.mockReturnValue(createMockSite({
       id: 'app-123',
@@ -1798,10 +1828,11 @@ describe('AppPublish', () => {
 
     await user.click(screen.getByRole('button', { name: 'builder_common_edit' }));
 
+    expect(mockDevelopStore.handleViewModeChange).not.toHaveBeenCalled();
     expect(mockSetActiveSettingsSection).toHaveBeenCalledWith(SettingsSection.DOMAIN);
     expect(mockSetActiveChatTab).toHaveBeenCalledWith(ChatTab.SETTINGS);
-    expect(mockDevelopStore.handleViewModeChange).not.toHaveBeenCalled();
     expect(mockDevelopStore.handleMobileModeChange).not.toHaveBeenCalled();
+    expect(useCommanderStore.getState().activeCanvasId).toBe(CanvasId.Preview);
   });
 
   describe('upgrade polling and publish popover', () => {

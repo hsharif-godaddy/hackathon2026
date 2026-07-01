@@ -23,6 +23,7 @@ import text from '@ux/text';
 import TextInput from '@ux/text-input';
 import TextLockup from '@ux/text-lockup';
 
+import { CanvasId } from '@/app/[market]/commander/canvas/registry';
 import IconButton from '@/app/[market]/develop/components/IconButton';
 import { ChatTab, MobileMode, SettingsSection, ViewMode } from '@/app/[market]/develop/components/types';
 import { FEEDBACK_ID } from '@/components/feedback/utils';
@@ -72,6 +73,7 @@ import { markSettingsNotification } from '@/lib/settings-notifications-storage';
 import { Separator } from '@/lib/shadcn/separator';
 import { PublishComplianceBlockReason } from '@/lib/subscription';
 import { cn } from '@/lib/utils';
+import { useCommanderCanvasTabsEnabled, useCommanderStore } from '@/stores/useCommanderStore';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { usePaywallStore } from '@/stores/usePaywallStore';
 import { useSiteStore } from '@/stores/useSiteStore';
@@ -167,6 +169,8 @@ export default function AppPublish({ location = 'develop', triggerClassName }: {
   const hasUnsavedChanges = useDevelopPageStore((state) => state.hasUnsavedChanges);
   const handleViewModeChange = useDevelopPageStore((state) => state.handleViewModeChange);
   const handleMobileModeChange = useDevelopPageStore((state) => state.handleMobileModeChange);
+  const isCanvasTabsEnabled = useCommanderCanvasTabsEnabled();
+  const openCanvas = useCommanderStore((state) => state.openCanvas);
   const clickContext = useMemo(
     () => (currentAppId ? { appId: currentAppId } : undefined),
     [currentAppId],
@@ -196,7 +200,7 @@ export default function AppPublish({ location = 'develop', triggerClassName }: {
   const isSecretsEnabled = useSwitchboard('appbuilder-settings-secrets');
   const isPostPublishFeatureSelectionEnabled = useSwitchboard('appbuilder-post-publish-feature-selection');
   const isGoLiveFeatureEnabled = useSwitchboard(SWITCHBOARD_APPBUILDER_GO_LIVE_FEATURE) === true;
-  const isTopLevelDomainEnabled = useSwitchboard('appbuilder-domain-top-level');
+  const isTopLevelDomainEnabled = useSwitchboard('appbuilder-domain-top-level') === true;
   const isSecurityScanUiEnabled = useSwitchboard('appbuilder-security-scan-ui') === true;
   const isGscEnabled = useSeoSettingsEnabled() === true;
 
@@ -1004,12 +1008,13 @@ export default function AppPublish({ location = 'develop', triggerClassName }: {
     closePopover();
     if (isTopLevelDomainEnabled) {
       handleViewModeChange(ViewMode.DOMAIN, hasUnsavedChanges);
+      if (isCanvasTabsEnabled) openCanvas(CanvasId.Domain);
       if (isMobile) handleMobileModeChange(MobileMode.PREVIEW);
     } else {
       setActiveSettingsSection(SettingsSection.DOMAIN);
       setActiveChatTab(ChatTab.SETTINGS);
     }
-  }, [clickContext, closePopover, handleMobileModeChange, handleViewModeChange, hasUnsavedChanges, isMobile, isTopLevelDomainEnabled, location, setActiveChatTab, setActiveSettingsSection]);
+  }, [clickContext, closePopover, handleMobileModeChange, handleViewModeChange, hasUnsavedChanges, isCanvasTabsEnabled, isMobile, isTopLevelDomainEnabled, location, openCanvas, setActiveChatTab, setActiveSettingsSection]);
 
   const handleViewSecurityFixes = useCallback(() => {
     shipAnalyticsLog('security.publish_footer.view_fixes_clicked', { ...(clickContext ?? {}) });
