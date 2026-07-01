@@ -5,7 +5,7 @@ import * as echarts from 'echarts/core';
 import { BarChart, LineChart } from 'echarts/charts';
 import { DataZoomComponent, GridComponent, LegendComponent, MarkAreaComponent, MarkLineComponent, TooltipComponent } from 'echarts/components';
 import { CanvasRenderer } from 'echarts/renderers';
-import ReactECharts from 'echarts-for-react/lib/core';
+import ReactECharts, { type EChartsReactCoreRef } from 'echarts-for-react/lib/core';
 
 import { HelpBadge, type HelpInfo } from './HelpBadge';
 
@@ -116,7 +116,7 @@ export function EChartsMiniChart({
   markAverage, weekendIndices, areaMode, size = 'small',
   zoomStart, zoomEnd, onZoomChange,
 }: EChartsMiniChartProps) {
-  const chartRef = useRef<InstanceType<typeof ReactECharts> | null>(null);
+  const chartRef = useRef<EChartsReactCoreRef | null>(null);
   const showZoom = data.length > DATA_ZOOM_MIN_POINTS;
 
   const option = useMemo<echarts.EChartsCoreOption>(() => {

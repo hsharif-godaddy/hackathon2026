@@ -62,6 +62,12 @@ export const CAMPAIGN_DEFAULT_MESSAGES: Record<string, string> = {
   builder_campaign_asset_social: 'Social Post',
   builder_campaign_asset_email: 'Email',
   builder_campaign_asset_ad: 'Ad Copy',
+  builder_campaigns_suggestion_title: 'Ready to grow your business with campaigns?',
+  builder_campaigns_suggestion_dismiss: 'Dismiss campaign suggestions',
+  builder_campaigns_suggestion_other: 'Something else...',
+  builder_campaigns_suggestion_other_placeholder: 'Describe your campaign idea',
+  builder_campaigns_suggestion_other_aria_label: 'Custom campaign idea',
+  builder_campaigns_suggestion_other_prompt: 'Create a marketing campaign: {idea}',
 }
 
 export function defaultMessageForCampaignKey(key: string): string | undefined {

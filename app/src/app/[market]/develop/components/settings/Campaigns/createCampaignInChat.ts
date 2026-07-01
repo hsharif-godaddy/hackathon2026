@@ -6,10 +6,10 @@ import type { useTranslations } from '@/hooks/useTranslations'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { useStreamingConversationStore } from '@/stores/useStreamingConversationStore'
 
-export function focusChatWithCreateCampaignPrompt(t: ReturnType<typeof useTranslations>) {
+export function focusChatWithCreateCampaignPrompt(t: ReturnType<typeof useTranslations>, prompt?: string) {
   useDevelopPageStore.getState().setActiveChatTab(ChatTab.CHAT)
   useStreamingConversationStore.getState().setInputValue(
-    translateCampaignKey(t, CAMPAIGN_KEYS.campaignsCreatePrompt),
+    prompt ?? translateCampaignKey(t, CAMPAIGN_KEYS.campaignsCreatePrompt),
   )
   const editor = document.getElementById('chat-input-textarea')
   editor?.focus()

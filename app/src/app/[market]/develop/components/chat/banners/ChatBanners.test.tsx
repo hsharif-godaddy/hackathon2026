@@ -94,6 +94,12 @@ vi.mock('@/utils/instrumentation', () => ({
   generateClickEID: (id: string) => id,
 }));
 
+vi.mock('./CampaignSuggestionBanner', () => ({
+  default: function MockCampaignSuggestionBanner() {
+    return null;
+  },
+}));
+
 vi.mock('@/hooks/useCreditThresholdEvents', () => ({
   useCreditThresholdEvents: vi.fn(),
 }));

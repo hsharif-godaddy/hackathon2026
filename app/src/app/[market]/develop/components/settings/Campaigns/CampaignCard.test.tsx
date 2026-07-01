@@ -9,8 +9,14 @@ import { screen } from '@testing-library/react'
 import { CAMPAIGN_KEYS } from '@/app/[market]/develop/components/settings/Campaigns/copy'
 import { CAMPAIGN_DEFAULT_MESSAGES } from '@/lib/translations/campaign-defaults'
 import { renderWithProviders } from '@/tests/test-utils'
+import { logClickEvent, logImpressionEvent } from '@/utils/instrumentation'
 import CampaignCard from './CampaignCard'
 import type { Campaign } from './types'
+
+vi.mock('@/utils/instrumentation', () => ({
+  logClickEvent: vi.fn(() => vi.fn()),
+  logImpressionEvent: vi.fn(() => vi.fn()),
+}))
 
 const mockCampaign: Campaign = {
   id: 'camp-1',
@@ -33,11 +39,21 @@ describe('CampaignCard', function cardTests() {
     expect(screen.getByRole('button', { name: CAMPAIGN_DEFAULT_MESSAGES[CAMPAIGN_KEYS.seeDetails] })).toBeInTheDocument()
   })
 
+  it('logs card view impression on mount', function impression() {
+    renderWithProviders(<CampaignCard campaign={mockCampaign} onDetails={vi.fn()} />)
+
+    expect(logImpressionEvent).toHaveBeenCalledWith('settings.campaigns.cardView', {
+      campaignId: 'camp-1',
+      campaignStatus: 'ready',
+    })
+  })
+
   it('calls onDetails when See details is clicked', function detailsClick() {
     const onDetails = vi.fn()
     renderWithProviders(<CampaignCard campaign={mockCampaign} onDetails={onDetails} />)
 
     screen.getByRole('button', { name: CAMPAIGN_DEFAULT_MESSAGES[CAMPAIGN_KEYS.seeDetails] }).click()
+    expect(logClickEvent).toHaveBeenCalledWith('settings.campaigns.cardDetails', { campaignId: 'camp-1' })
     expect(onDetails).toHaveBeenCalledOnce()
   })
 })

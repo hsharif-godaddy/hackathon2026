@@ -193,6 +193,15 @@ describe('OptionInput', () => {
     expect(wrapper).toHaveClass('rounded-md')
   })
 
+  it('should apply solid white container when solidBackground is set', () => {
+    const { container } = renderWithProviders(<OptionInput {...mockProps} solidBackground />)
+
+    const wrapper = container.querySelector('.flex.items-center.gap-2')
+    expect(wrapper).toHaveStyle({ backgroundColor: '#fff' })
+    expect(wrapper).toHaveClass('rounded-lg')
+    expect(wrapper).not.toHaveClass('bg-intents-ux-box-backgroundColor')
+  })
+
   it('should apply input styles', () => {
     renderWithProviders(<OptionInput {...mockProps} />)
 

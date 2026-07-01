@@ -1,7 +1,9 @@
 import { Router, Request, Response, NextFunction, IRouter } from 'express'
+import { generateTextWithTracking } from '@airo/ai-lib'
 import { z } from 'zod'
 import { SimpleCampaignRepository } from '../../database/repositories/SimpleCampaignRepository.js'
 import type { CreateSimpleCampaignContentParams } from '../../database/repositories/SimpleCampaignRepository.js'
+import { AppRepository } from '../../database/repositories/AppRepository.js'
 import { SimpleCampaignStatus, SimpleCampaignContentType, isCampaignPreLaunch } from '../../database/schema.js'
 import type { SimpleCampaign, SimpleCampaignContent } from '../../database/schema.js'
 import { editSocialDraft, deleteSocialDraft } from '../../services/social/social-draft-sync.js'
@@ -10,10 +12,73 @@ import { Logger } from '../../logging/index.js'
 import type { AuthenticatedRequest } from '../middleware/jwt-auth.js'
 import { validateAppOwnership } from '../middleware/app-ownership.js'
 import { buildCampaignToken } from '../../utils/campaign-utm-signer.js'
+import { getAgentModelWithName } from '../../utils/model-selection.js'
 
 const router: IRouter = Router()
 const campaignRepo = new SimpleCampaignRepository()
+const appRepo = new AppRepository()
 const logger = Logger.create({ component: 'campaigns-routes' })
+
+export interface CampaignSuggestionPayload {
+  text: string
+  prompt: string
+}
+
+export function isValidCampaignSuggestionItem(item: unknown): item is CampaignSuggestionPayload {
+  if (typeof item !== 'object' || item === null) return false
+  const candidate = item as CampaignSuggestionPayload
+  return typeof candidate.text === 'string'
+    && candidate.text.trim().length > 0
+    && typeof candidate.prompt === 'string'
+    && candidate.prompt.trim().length > 0
+}
+
+export function parseCampaignSuggestions(rawText: string): CampaignSuggestionPayload[] {
+  const parsed = JSON.parse(rawText) as { suggestions?: unknown }
+  if (!Array.isArray(parsed?.suggestions)) return []
+
+  return parsed.suggestions.filter(isValidCampaignSuggestionItem)
+}
+
+function logSuggestionParseWarnings(
+  appId: string,
+  parsed: { suggestions?: unknown },
+  suggestions: CampaignSuggestionPayload[],
+): void {
+  if (!Array.isArray(parsed?.suggestions)) {
+    logger.warn('campaigns.suggestions.invalid_shape', { appId, reason: 'suggestions_not_array' })
+    return
+  }
+
+  if (parsed.suggestions.length > 0 && suggestions.length === 0) {
+    logger.warn('campaigns.suggestions.invalid_shape', {
+      appId,
+      reason: 'all_items_invalid',
+      rawCount: parsed.suggestions.length,
+    })
+    return
+  }
+
+  if (suggestions.length < parsed.suggestions.length) {
+    logger.warn('campaigns.suggestions.filtered_items', {
+      appId,
+      rawCount: parsed.suggestions.length,
+      validCount: suggestions.length,
+    })
+  }
+}
+
+const SUGGESTIONS_SYSTEM_PROMPT = `You generate marketing campaign suggestions for a business owner. Return ONLY valid JSON, no other text or formatting.
+
+Given a business name and optional description, produce exactly 3 short campaign suggestions.
+
+Format: {"suggestions":[{"text":"...","prompt":"..."}]}
+
+Rules:
+- text: 4-6 words shown as a clickable button label (e.g., "Run a holiday sale")
+- prompt: 8-15 words the owner sends to start the campaign (e.g., "Create a Black Friday sale campaign for my store")
+- Each suggestion must be a distinct campaign type (e.g., seasonal promotion, email newsletter, social media, product launch)
+- Be specific to the business type described`
 
 router.use((req: Request, res: Response, next: NextFunction): void => {
   const authReq = req as AuthenticatedRequest
@@ -141,6 +206,48 @@ router.get('/:id', (req: Request, res: Response): void => {
   } catch (error) {
     logger.error('campaigns.list.error', { error: error instanceof Error ? error.message : String(error) })
     res.status(500).json({ error: 'Failed to list campaigns' })
+  }
+})
+
+/**
+ * GET /campaigns/:id/suggestions - AI-generated campaign suggestions for the app
+ */
+router.get('/:id/suggestions', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  const appId = req.params.id as string
+
+  try {
+    const app = appRepo.findById(appId)
+    const businessContext = [
+      `Business name: ${app?.name ?? 'Unknown'}`,
+      app?.initialPrompt ? `Description: ${app.initialPrompt.slice(0, 500)}` : null,
+    ].filter(Boolean).join('\n')
+
+    const { model, modelName } = await getAgentModelWithName('fast')
+    const result = await generateTextWithTracking({
+      model,
+      modelName,
+      system: SUGGESTIONS_SYSTEM_PROMPT,
+      prompt: businessContext,
+      maxOutputTokens: 200,
+      context: {
+        appId,
+        toolName: 'campaignSuggestions',
+        description: 'Marketing campaign suggestions',
+      },
+    })
+
+    const parsedJson = JSON.parse(result.text) as { suggestions?: unknown }
+    const suggestions = Array.isArray(parsedJson?.suggestions)
+      ? parsedJson.suggestions.filter(isValidCampaignSuggestionItem)
+      : []
+    logSuggestionParseWarnings(appId, parsedJson, suggestions)
+    res.json({ suggestions })
+  } catch (error) {
+    logger.error('campaigns.suggestions.error', {
+      appId,
+      error: error instanceof Error ? error.message : String(error),
+    })
+    res.status(500).json({ error: 'Failed to generate campaign suggestions' })
   }
 })
 

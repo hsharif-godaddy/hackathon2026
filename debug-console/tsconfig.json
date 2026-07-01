@@ -12,7 +12,8 @@
     "jsx": "react-jsx",
     "strict": true,
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "echarts-for-react/lib/core": ["./src/shims/echarts-for-react-core.ts"]
     },
     "baseUrl": ".",
     "plugins": [
@@ -26,6 +27,7 @@
   },
   "include": [
     "next-env.d.ts",
+    "recharts-react19.d.ts",
     "**/*.ts",
     "**/*.tsx",
     ".next/types/**/*.ts",
