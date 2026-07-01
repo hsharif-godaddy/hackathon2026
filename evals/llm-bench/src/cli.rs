@@ -4,8 +4,8 @@ use std::path::PathBuf;
 
 use clap::Parser;
 
-/// Replay captured mitmproxy LLM workloads against an OpenAI-compatible
-/// endpoint and report load/latency metrics.
+/// Replay captured mitmproxy LLM workloads (OpenAI Chat Completions or Anthropic
+/// Messages) against a target endpoint and report load/latency metrics.
 #[derive(Debug, Parser)]
 #[command(name = "llm-bench", version, about)]
 pub struct Cli {
@@ -61,8 +61,9 @@ pub struct Cli {
     #[arg(long, env = "LLMBENCH_API_KEY", value_name = "KEY")]
     pub api_key: Option<String>,
 
-    /// Forward the captured `Authorization` header (replay against the endpoint
-    /// the workload was captured from). The captured token may be expired.
+    /// Forward the captured credential header(s) — `Authorization` and/or
+    /// Anthropic's `x-api-key` (replay against the endpoint the workload was
+    /// captured from). The captured token may be expired.
     #[arg(long)]
     pub forward_auth: bool,
 

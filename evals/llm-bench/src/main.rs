@@ -9,6 +9,7 @@ mod probe;
 mod replay;
 mod report;
 mod sse;
+mod wire;
 
 use std::time::Duration;
 
@@ -110,9 +111,10 @@ fn maybe_hint_auth(config: &RunConfig, report: &report::Report, dump_has_auth: b
     let no_credential = config.target.api_key.is_none() && !config.target.forward_auth;
     if auth_errors && no_credential && dump_has_auth {
         eprintln!(
-            "\nhint: requests were rejected with 401/403. The dump contains an Authorization \
-             header — re-run with --forward-auth to replay the captured token, or pass \
-             --api-key <KEY> (or set LLMBENCH_API_KEY) to authenticate against the target."
+            "\nhint: requests were rejected with 401/403. The dump contains a credential \
+             header (Authorization or x-api-key) — re-run with --forward-auth to replay the \
+             captured token, or pass --api-key <KEY> (or set LLMBENCH_API_KEY) to authenticate \
+             against the target."
         );
     }
 }
@@ -144,6 +146,9 @@ fn print_dump_summary(sessions: &[Session]) {
                 }
                 if let Some(tps) = baseline.output_tps {
                     print!(" {tps:.1}tok/s");
+                }
+                if baseline.malformed_chunks > 0 {
+                    print!(" ⚠ {} malformed chunk(s)", baseline.malformed_chunks);
                 }
             }
             println!();

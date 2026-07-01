@@ -6,10 +6,7 @@ use std::time::{Duration, Instant};
 use tokio_stream::StreamExt;
 
 use crate::metrics::record::{RequestOutcome, RequestStatus};
-use crate::model::{
-    CapturedRequest, TargetConfig, Usage, any_delta_text, content_delta, error_message_from_chunk,
-    usage_from_chunk,
-};
+use crate::model::{CapturedRequest, TargetConfig, Usage, error_message_from_chunk};
 use crate::sse::{SseDecoder, SseEvent};
 
 /// Rough fallback when the server omits a usage chunk: average bytes per token.
@@ -96,16 +93,17 @@ pub async fn execute_request(
 
 /// What [`stream_request`] accumulates on success.
 struct StreamResult {
-    /// Send → first visible `content` delta (the user-facing TTFT).
-    ttft: Option<Duration>,
-    /// Send → first generated token of any kind (content or reasoning); marks
-    /// the end of prefill and the start of decode.
+    /// Send → first generated token of any kind — visible content, reasoning, or
+    /// a tool-call fragment. This is the moment the stream starts returning data:
+    /// the reported TTFT, which also marks the end of prefill / start of decode.
+    /// Tool-call and reasoning-only responses (common in agent traffic) count,
+    /// so TTFT is never silently dropped for them.
     first_token: Option<Duration>,
-    /// Send → last visible `content` delta (time-to-last-token); the
-    /// user-perceived completion time, before the trailing usage/[DONE] frames.
+    /// Send → last generated token of any kind (time-to-last-token), before the
+    /// trailing usage/[DONE] frames.
     last_token: Option<Duration>,
     usage: Option<Usage>,
-    content_bytes: usize,
+    generated_bytes: usize,
 }
 
 /// A non-success path with the status to record.
@@ -114,7 +112,7 @@ struct StreamFailure {
     message: String,
 }
 
-/// Sends the request and drains the SSE stream, timing the first content token.
+/// Sends the request and drains the SSE stream, timing the first generated token.
 async fn stream_request(
     client: &reqwest::Client,
     target: &TargetConfig,
@@ -143,30 +141,25 @@ async fn stream_request(
     }
 
     let mut decoder = SseDecoder::new();
-    let mut ttft: Option<Duration> = None;
     let mut first_token: Option<Duration> = None;
     let mut last_token: Option<Duration> = None;
     let mut usage: Option<Usage> = None;
-    let mut content_bytes: usize = 0;
+    let mut generated_bytes: usize = 0;
     let mut error_message: Option<String> = None;
 
+    let wire = request.wire;
     let mut handle_event = |event: SseEvent| match event {
         SseEvent::Data(value) => {
             if let Some(message) = error_message_from_chunk(&value) {
                 error_message.get_or_insert(message);
                 return;
             }
-            if any_delta_text(&value).is_some() {
+            if let Some(text) = wire.any_delta_text(&value) {
                 first_token.get_or_insert_with(|| sent_at.elapsed());
-            }
-            if let Some(content) = content_delta(&value) {
-                ttft.get_or_insert_with(|| sent_at.elapsed());
                 last_token = Some(sent_at.elapsed());
-                content_bytes += content.len();
+                generated_bytes += text.len();
             }
-            if let Some(found) = usage_from_chunk(&value) {
-                usage = Some(found);
-            }
+            wire.update_usage(&mut usage, &value);
         }
         SseEvent::Malformed(text) => {
             error_message.get_or_insert(text);
@@ -195,11 +188,10 @@ async fn stream_request(
     }
 
     Ok(StreamResult {
-        ttft,
         first_token,
         last_token,
         usage,
-        content_bytes,
+        generated_bytes,
     })
 }
 
@@ -223,15 +215,15 @@ fn finish_ok(ctx: FinishContext<'_>) -> RequestOutcome {
         .usage
         .map(|u| u.completion_tokens)
         .unwrap_or_else(|| {
-            (ctx.stream.content_bytes as f64 / BYTES_PER_TOKEN_ESTIMATE).round() as u64
+            (ctx.stream.generated_bytes as f64 / BYTES_PER_TOKEN_ESTIMATE).round() as u64
         });
 
-    let ttft_ms = ctx.stream.ttft.map(|d| d.as_secs_f64() * 1000.0);
+    // TTFT is the first generated token of any kind, which is also where decode
+    // begins — so the throughput denominator (prefill excluded) starts at the
+    // same instant, keeping the numerator's token count and this denominator
+    // consistent for reasoning- and tool-heavy responses.
+    let ttft_ms = ctx.stream.first_token.map(|d| d.as_secs_f64() * 1000.0);
     let ttlt_ms = ctx.stream.last_token.map(|d| d.as_secs_f64() * 1000.0);
-    // Decode throughput excludes prefill only: measure from the first generated
-    // token (reasoning included), not the first visible content token, so the
-    // reasoning phase isn't wrongly excluded from a denominator whose numerator
-    // counts reasoning tokens.
     let generation_secs = ctx
         .stream
         .first_token
@@ -317,6 +309,7 @@ mod tests {
 
     fn sample_request() -> CapturedRequest {
         CapturedRequest {
+            wire: crate::wire::Wire::OpenAi,
             path: "/v1/chat/completions".into(),
             headers: Vec::new(),
             body: serde_json::json!({ "model": "test-model", "messages": [] }),
@@ -325,6 +318,58 @@ mod tests {
             ts_end: 0.0,
             baseline: None,
         }
+    }
+
+    /// Spawns a one-route mock server that replays `body` as an SSE stream on
+    /// `path`, and replays the given wire's request against it.
+    async fn replay_canned(
+        wire: crate::wire::Wire,
+        path: &'static str,
+        body: &'static str,
+    ) -> RequestOutcome {
+        let app = axum::Router::new().route(
+            path,
+            axum::routing::post(move || async move {
+                (
+                    [(axum::http::header::CONTENT_TYPE, "text/event-stream")],
+                    body,
+                )
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        let target = TargetConfig {
+            base_url: format!("http://{addr}"),
+            model_override: None,
+            api_key: None,
+            forward_auth: false,
+            bust_system_prompt: false,
+        };
+        let request = CapturedRequest {
+            wire,
+            path: path.into(),
+            headers: Vec::new(),
+            body: serde_json::json!({ "model": "test-model", "messages": [] }),
+            model: Some("test-model".into()),
+            ts_start: 0.0,
+            ts_end: 0.0,
+            baseline: None,
+        };
+        let client = build_client(1).unwrap();
+        execute_request(
+            &client,
+            &target,
+            &request,
+            "mock",
+            0,
+            Instant::now(),
+            Duration::from_secs(10),
+            None,
+        )
+        .await
     }
 
     #[tokio::test]
@@ -360,6 +405,157 @@ mod tests {
             "last-token time must be at or after first-token time"
         );
         assert!(outcome.total_ms > 0.0);
+    }
+
+    const CANNED_ANTHROPIC_STREAM: &str = concat!(
+        "event: message_start\n",
+        "data: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":40,",
+        "\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":10,\"output_tokens\":2}}}\n\n",
+        "event: content_block_start\n",
+        "data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n",
+        "event: content_block_delta\n",
+        "data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"Hello\"}}\n\n",
+        "event: content_block_delta\n",
+        "data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\" world\"}}\n\n",
+        "event: message_delta\n",
+        "data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":7}}\n\n",
+        "event: message_stop\n",
+        "data: {\"type\":\"message_stop\"}\n\n",
+    );
+
+    #[tokio::test]
+    async fn replays_anthropic_stream_and_measures_metrics() {
+        let app = axum::Router::new().route(
+            "/v1/messages",
+            axum::routing::post(|| async {
+                (
+                    [(axum::http::header::CONTENT_TYPE, "text/event-stream")],
+                    CANNED_ANTHROPIC_STREAM,
+                )
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+
+        let target = TargetConfig {
+            base_url: format!("http://{addr}"),
+            model_override: None,
+            api_key: None,
+            forward_auth: false,
+            bust_system_prompt: false,
+        };
+        let request = CapturedRequest {
+            wire: crate::wire::Wire::Anthropic,
+            path: "/v1/messages".into(),
+            headers: Vec::new(),
+            body: serde_json::json!({ "model": "claude-sonnet-4-6", "messages": [] }),
+            model: Some("claude-sonnet-4-6".into()),
+            ts_start: 0.0,
+            ts_end: 0.0,
+            baseline: None,
+        };
+        let client = build_client(1).unwrap();
+
+        let outcome = execute_request(
+            &client,
+            &target,
+            &request,
+            "mock",
+            0,
+            Instant::now(),
+            Duration::from_secs(10),
+            None,
+        )
+        .await;
+
+        assert_eq!(outcome.status, RequestStatus::Ok);
+        assert_eq!(
+            outcome.completion_tokens, 7,
+            "final cumulative output_tokens from message_delta"
+        );
+        let usage = outcome.usage.expect("usage from the Anthropic stream");
+        assert_eq!(usage.prompt_tokens, 50, "input_tokens + cache_read_tokens");
+        assert_eq!(usage.cached_tokens, Some(10));
+        assert!(outcome.ttft_ms.is_some(), "expected a time-to-first-token");
+    }
+
+    // A response that is entirely tool calls — no visible `content` — is the
+    // norm for agent traffic. TTFT/TTLT must still be recorded (the tool call
+    // *is* the first token back), or these turns would silently drop out of the
+    // latency aggregates. Both wires must behave identically.
+    const OPENAI_TOOL_ONLY_STREAM: &str = concat!(
+        "data: {\"choices\":[{\"delta\":{\"role\":\"assistant\",\"tool_calls\":[{\"index\":0,",
+        "\"id\":\"call_1\",\"function\":{\"name\":\"get_weather\",\"arguments\":\"\"}}]}}]}\n\n",
+        "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,",
+        "\"function\":{\"arguments\":\"{\\\"city\\\":\"}}]}}]}\n\n",
+        "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,",
+        "\"function\":{\"arguments\":\"\\\"SF\\\"}\"}}]}}]}\n\n",
+        "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":8,\"completion_tokens\":5,\"total_tokens\":13}}\n\n",
+        "data: [DONE]\n\n",
+    );
+
+    #[tokio::test]
+    async fn openai_tool_only_stream_records_ttft() {
+        let outcome = replay_canned(
+            crate::wire::Wire::OpenAi,
+            "/v1/chat/completions",
+            OPENAI_TOOL_ONLY_STREAM,
+        )
+        .await;
+
+        assert_eq!(outcome.status, RequestStatus::Ok);
+        assert!(
+            outcome.ttft_ms.is_some(),
+            "a tool-only stream must still record TTFT"
+        );
+        assert!(
+            outcome.ttlt_ms.is_some(),
+            "a tool-only stream must still record TTLT"
+        );
+        assert!(outcome.ttlt_ms >= outcome.ttft_ms);
+    }
+
+    const ANTHROPIC_TOOL_ONLY_STREAM: &str = concat!(
+        "event: message_start\n",
+        "data: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":40,",
+        "\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":0,\"output_tokens\":2}}}\n\n",
+        "event: content_block_start\n",
+        "data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"tool_use\",",
+        "\"id\":\"toolu_1\",\"name\":\"get_weather\",\"input\":{}}}\n\n",
+        "event: content_block_delta\n",
+        "data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",",
+        "\"partial_json\":\"{\\\"city\\\":\"}}\n\n",
+        "event: content_block_delta\n",
+        "data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",",
+        "\"partial_json\":\"\\\"SF\\\"}\"}}\n\n",
+        "event: message_delta\n",
+        "data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"tool_use\"},\"usage\":{\"output_tokens\":9}}\n\n",
+        "event: message_stop\n",
+        "data: {\"type\":\"message_stop\"}\n\n",
+    );
+
+    #[tokio::test]
+    async fn anthropic_tool_only_stream_records_ttft() {
+        let outcome = replay_canned(
+            crate::wire::Wire::Anthropic,
+            "/v1/messages",
+            ANTHROPIC_TOOL_ONLY_STREAM,
+        )
+        .await;
+
+        assert_eq!(outcome.status, RequestStatus::Ok);
+        assert!(
+            outcome.ttft_ms.is_some(),
+            "a tool-only stream must still record TTFT"
+        );
+        assert!(
+            outcome.ttlt_ms.is_some(),
+            "a tool-only stream must still record TTLT"
+        );
+        assert!(outcome.ttlt_ms >= outcome.ttft_ms);
     }
 
     #[tokio::test]

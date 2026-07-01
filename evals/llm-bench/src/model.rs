@@ -3,6 +3,8 @@
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use serde::Serialize;
 
+use crate::wire::Wire;
+
 /// Where and how replayed requests are sent.
 #[derive(Debug, Clone)]
 pub struct TargetConfig {
@@ -13,8 +15,9 @@ pub struct TargetConfig {
     /// Sent as `Authorization: Bearer <key>` when set; overrides any forwarded
     /// captured credential.
     pub api_key: Option<String>,
-    /// Forward the captured `Authorization` header as-is (for replaying against
-    /// the endpoint the workload was captured from). Ignored when `api_key` is set.
+    /// Forward the captured credential header as-is — `Authorization` (OpenAI) or
+    /// Anthropic's `x-api-key` / `api-key` — for replaying against the endpoint the
+    /// workload was captured from. Ignored when `api_key` is set.
     pub forward_auth: bool,
     /// When a unique-session cache-buster is injected, also place it ahead of the
     /// system prompt (defeating the shared system-prompt cache). Off by default,
@@ -23,11 +26,24 @@ pub struct TargetConfig {
 }
 
 impl TargetConfig {
-    /// Whether the captured `Authorization` header should be forwarded for a
-    /// request: only when explicitly opted in and no override key is supplied.
+    /// Whether captured credential headers should be forwarded for a request:
+    /// only when explicitly opted in and no override key is supplied.
     fn forwards_captured_auth(&self) -> bool {
         self.forward_auth && self.api_key.is_none()
     }
+}
+
+/// Captured request headers that carry a credential. They are forwarded only
+/// under `--forward-auth` (and never alongside an `--api-key` override), so a
+/// stale captured token is not leaked to a re-pointed target by default. Covers
+/// OpenAI-style `authorization` and Anthropic's `x-api-key` / `api-key`.
+const CAPTURED_CREDENTIAL_HEADERS: [&str; 3] = ["authorization", "x-api-key", "api-key"];
+
+/// Whether a header name is one of the [`CAPTURED_CREDENTIAL_HEADERS`].
+fn is_credential_header(name: &str) -> bool {
+    CAPTURED_CREDENTIAL_HEADERS
+        .iter()
+        .any(|candidate| name.eq_ignore_ascii_case(candidate))
 }
 
 /// Token accounting reported by an OpenAI-compatible server in its final
@@ -224,16 +240,25 @@ pub struct RecordedBaseline {
     /// Completion tokens / total response latency (end-to-end, prefill
     /// included), when usage is present.
     pub output_tps: Option<f64>,
+    /// Count of recorded `data:` payloads that failed to parse as JSON. Non-zero
+    /// means the recorded token accounting is incomplete — surfaced (rather than
+    /// silently dropped, as the live-replay path also refuses to do) so a
+    /// partially-unparseable recorded body can't masquerade as a clean baseline.
+    pub malformed_chunks: usize,
 }
 
 /// A single captured chat-completion request, ready to be re-pointed at a
 /// target endpoint.
 #[derive(Debug, Clone)]
 pub struct CapturedRequest {
-    /// Request path as captured, e.g. `/v1/chat/completions`.
+    /// Which LLM API this request speaks (derived from its path), so the body
+    /// rewrite and stream interpretation match the protocol.
+    pub wire: Wire,
+    /// Request path as captured, e.g. `/v1/chat/completions` or `/v1/messages`.
     pub path: String,
-    /// Captured request headers (hop-by-hop stripped; `Authorization` kept and
-    /// forwarded only when `--forward-auth` is set).
+    /// Captured request headers (hop-by-hop stripped; credential headers —
+    /// `Authorization` / `x-api-key` / `api-key` — kept and forwarded only when
+    /// `--forward-auth` is set).
     pub headers: Vec<(String, String)>,
     /// Parsed request body; rewritten at replay time.
     pub body: serde_json::Value,
@@ -270,10 +295,15 @@ impl CapturedRequest {
         builder
     }
 
-    /// The request body exactly as it will be sent: `stream` + `include_usage`
-    /// forced on, `model` overridden when configured, and any cache-buster marker
-    /// injected. Split out from [`build_request`] so probe mode can display the
-    /// real outgoing prompt without duplicating the rewrite logic.
+    /// The request body exactly as it will be sent: streaming forced on, `model`
+    /// overridden when configured, and any cache-buster marker injected. Split
+    /// out from [`build_request`] so probe mode can display the real outgoing
+    /// prompt without duplicating the rewrite logic.
+    ///
+    /// `stream_options.include_usage` is forced only for OpenAI — it makes the
+    /// server emit a trailing usage chunk. Anthropic streams usage natively
+    /// (`message_start` / `message_delta`) and rejects the unknown field, so it
+    /// is omitted there.
     pub fn rewritten_body(
         &self,
         target: &TargetConfig,
@@ -282,31 +312,40 @@ impl CapturedRequest {
         let mut body = self.body.clone();
         if let Some(object) = body.as_object_mut() {
             object.insert("stream".into(), serde_json::Value::Bool(true));
-            object.insert(
-                "stream_options".into(),
-                serde_json::json!({ "include_usage": true }),
-            );
+            if self.wire == Wire::OpenAi {
+                object.insert(
+                    "stream_options".into(),
+                    serde_json::json!({ "include_usage": true }),
+                );
+            }
             if let Some(model) = &target.model_override {
                 object.insert("model".into(), serde_json::Value::String(model.clone()));
             }
         }
         if let Some(marker) = cache_buster {
-            inject_cache_buster(&mut body, marker, target.bust_system_prompt);
+            match self.wire {
+                Wire::OpenAi => inject_cache_buster(&mut body, marker, target.bust_system_prompt),
+                Wire::Anthropic => {
+                    inject_anthropic_cache_buster(&mut body, marker, target.bust_system_prompt)
+                }
+            }
         }
         body
     }
 
     /// Builds a [`HeaderMap`] of captured headers, dropping HTTP/2 pseudo-headers
     /// (`:authority`, …), `content-type` (set by the JSON body), and any header
-    /// whose name or value is not valid for an outbound request. The captured
-    /// `Authorization` header is included only when the target opts to forward it.
+    /// whose name or value is not valid for an outbound request. Captured
+    /// credential headers ([`CAPTURED_CREDENTIAL_HEADERS`] — including Anthropic's
+    /// `x-api-key`) are included only when the target opts to forward them, so a
+    /// stale token is never sent to a re-pointed host by default.
     fn forwardable_headers(&self, target: &TargetConfig) -> HeaderMap {
         let mut map = HeaderMap::new();
         for (name, value) in &self.headers {
             if name.starts_with(':') || name.eq_ignore_ascii_case("content-type") {
                 continue;
             }
-            if name.eq_ignore_ascii_case("authorization") && !target.forwards_captured_auth() {
+            if is_credential_header(name) && !target.forwards_captured_auth() {
                 continue;
             }
             let (Ok(header_name), Ok(header_value)) = (
@@ -320,11 +359,13 @@ impl CapturedRequest {
         map
     }
 
-    /// Whether this request carried an `Authorization` header in the capture.
+    /// Whether this request carried any captured credential header
+    /// ([`CAPTURED_CREDENTIAL_HEADERS`]) — used to decide whether the
+    /// 401/403 auth hint applies.
     pub fn has_captured_auth(&self) -> bool {
         self.headers
             .iter()
-            .any(|(name, _)| name.eq_ignore_ascii_case("authorization"))
+            .any(|(name, _)| is_credential_header(name))
     }
 }
 
@@ -354,7 +395,48 @@ fn inject_cache_buster(body: &mut serde_json::Value, marker: &str, bust_system_p
     let Some(index) = cache_buster_index(messages, bust_system_prompt) else {
         return;
     };
-    match messages[index].get_mut("content") {
+    prepend_marker_to_content(&mut messages[index], marker);
+}
+
+/// Injects `marker` into an Anthropic Messages body. The system prompt is a
+/// top-level `system` field (not a message), so the placement differs from
+/// OpenAI: by default the marker goes into the first message, leaving the shared
+/// `system` prompt byte-identical and cacheable. With `bust_system_prompt` it is
+/// prepended to the `system` field itself (string or array of text blocks),
+/// defeating that shared cache for the conservative worst case.
+fn inject_anthropic_cache_buster(
+    body: &mut serde_json::Value,
+    marker: &str,
+    bust_system_prompt: bool,
+) {
+    if bust_system_prompt {
+        match body.get_mut("system") {
+            Some(serde_json::Value::String(text)) => {
+                *text = format!("{marker}{text}");
+                return;
+            }
+            Some(serde_json::Value::Array(parts)) => {
+                parts.insert(0, serde_json::json!({ "type": "text", "text": marker }));
+                return;
+            }
+            // No top-level system prompt to bust — fall through to the first
+            // message so a marker is still injected.
+            _ => {}
+        }
+    }
+    if let Some(first) = body
+        .get_mut("messages")
+        .and_then(serde_json::Value::as_array_mut)
+        .and_then(|messages| messages.first_mut())
+    {
+        prepend_marker_to_content(first, marker);
+    }
+}
+
+/// Prepends `marker` to a message's `content`, handling both a plain string and
+/// the multimodal-array form (a leading `text` part is inserted).
+fn prepend_marker_to_content(message: &mut serde_json::Value, marker: &str) {
+    match message.get_mut("content") {
         Some(serde_json::Value::String(text)) => *text = format!("{marker}{text}"),
         Some(serde_json::Value::Array(parts)) => {
             parts.insert(0, serde_json::json!({ "type": "text", "text": marker }));
@@ -446,6 +528,146 @@ mod tests {
         });
         inject_cache_buster(&mut body, "[s7] ", false);
         assert_eq!(body["messages"][0]["content"], "[s7] hello");
+    }
+
+    fn anthropic_request(body: serde_json::Value) -> CapturedRequest {
+        CapturedRequest {
+            wire: Wire::Anthropic,
+            path: "/v1/messages".into(),
+            headers: Vec::new(),
+            body,
+            model: Some("claude-sonnet-4-6".into()),
+            ts_start: 0.0,
+            ts_end: 0.0,
+            baseline: None,
+        }
+    }
+
+    fn target(bust_system_prompt: bool) -> TargetConfig {
+        TargetConfig {
+            base_url: "http://localhost:8000".into(),
+            model_override: None,
+            api_key: None,
+            forward_auth: false,
+            bust_system_prompt,
+        }
+    }
+
+    #[test]
+    fn captured_credentials_are_gated_by_forward_auth() {
+        let request = CapturedRequest {
+            wire: Wire::Anthropic,
+            path: "/v1/messages".into(),
+            headers: vec![
+                ("authorization".into(), "Bearer captured".into()),
+                ("x-api-key".into(), "sk-captured".into()),
+                ("anthropic-version".into(), "2023-06-01".into()),
+            ],
+            body: serde_json::json!({}),
+            model: None,
+            ts_start: 0.0,
+            ts_end: 0.0,
+            baseline: None,
+        };
+
+        let base = |api_key: Option<&str>, forward_auth: bool| TargetConfig {
+            base_url: "http://localhost:8000".into(),
+            model_override: None,
+            api_key: api_key.map(str::to_owned),
+            forward_auth,
+            bust_system_prompt: false,
+        };
+
+        let dropped = request.forwardable_headers(&base(None, false));
+        assert!(
+            !dropped.contains_key("authorization") && !dropped.contains_key("x-api-key"),
+            "captured credentials must not be forwarded by default"
+        );
+        assert!(
+            dropped.contains_key("anthropic-version"),
+            "non-credential headers are always forwarded"
+        );
+
+        let forwarded = request.forwardable_headers(&base(None, true));
+        assert!(
+            forwarded.contains_key("authorization") && forwarded.contains_key("x-api-key"),
+            "--forward-auth forwards every captured credential, incl. x-api-key"
+        );
+
+        let overridden = request.forwardable_headers(&base(Some("fresh"), true));
+        assert!(
+            !overridden.contains_key("authorization") && !overridden.contains_key("x-api-key"),
+            "an --api-key override drops the stale captured credentials"
+        );
+    }
+
+    #[test]
+    fn anthropic_body_streams_without_stream_options() {
+        let request = anthropic_request(serde_json::json!({
+            "model": "claude-sonnet-4-6",
+            "max_tokens": 8000,
+            "system": [{ "type": "text", "text": "You are helpful." }],
+            "messages": [{ "role": "user", "content": "Build me an app." }],
+        }));
+        let body = request.rewritten_body(&target(false), None);
+        assert_eq!(body["stream"], true);
+        assert!(
+            body.get("stream_options").is_none(),
+            "Anthropic rejects stream_options; it must not be added"
+        );
+    }
+
+    #[test]
+    fn anthropic_cache_buster_targets_first_message_by_default() {
+        let request = anthropic_request(serde_json::json!({
+            "system": [{ "type": "text", "text": "You are helpful." }],
+            "messages": [{ "role": "user", "content": "Build me an app." }],
+        }));
+        let body = request.rewritten_body(&target(false), Some("[s7] "));
+        assert_eq!(
+            body["system"][0]["text"], "You are helpful.",
+            "the top-level system prompt stays byte-identical and cacheable"
+        );
+        assert_eq!(body["messages"][0]["content"], "[s7] Build me an app.");
+    }
+
+    #[test]
+    fn anthropic_cache_buster_busts_system_array_when_requested() {
+        let request = anthropic_request(serde_json::json!({
+            "system": [{ "type": "text", "text": "You are helpful." }],
+            "messages": [{ "role": "user", "content": "Build me an app." }],
+        }));
+        let body = request.rewritten_body(&target(true), Some("[s7] "));
+        assert_eq!(body["system"][0]["text"], "[s7] ");
+        assert_eq!(body["system"][1]["text"], "You are helpful.");
+        assert_eq!(
+            body["messages"][0]["content"], "Build me an app.",
+            "busting the system prompt leaves the first message untouched"
+        );
+    }
+
+    #[test]
+    fn anthropic_cache_buster_busts_system_string_when_requested() {
+        // A string `system` prompt is the common shape; the marker must prepend
+        // to the string itself and leave the first message untouched.
+        let request = anthropic_request(serde_json::json!({
+            "system": "You are helpful.",
+            "messages": [{ "role": "user", "content": "Build me an app." }],
+        }));
+        let body = request.rewritten_body(&target(true), Some("[s7] "));
+        assert_eq!(body["system"], "[s7] You are helpful.");
+        assert_eq!(body["messages"][0]["content"], "Build me an app.");
+    }
+
+    #[test]
+    fn anthropic_cache_buster_falls_back_to_message_without_system() {
+        // With no top-level `system` to bust, the marker must still land — on
+        // the first message — rather than being silently dropped.
+        let request = anthropic_request(serde_json::json!({
+            "messages": [{ "role": "user", "content": "Build me an app." }],
+        }));
+        let body = request.rewritten_body(&target(true), Some("[s7] "));
+        assert_eq!(body["messages"][0]["content"], "[s7] Build me an app.");
     }
 
     #[test]

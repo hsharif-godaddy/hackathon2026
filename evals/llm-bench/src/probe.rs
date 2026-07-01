@@ -11,10 +11,7 @@ use std::time::{Duration, Instant};
 use anyhow::{Context, Result};
 use tokio_stream::StreamExt;
 
-use crate::model::{
-    CapturedRequest, Session, TargetConfig, Usage, any_delta_text, content_delta,
-    error_message_from_chunk, reasoning_delta, tool_call_fragments, usage_from_chunk,
-};
+use crate::model::{CapturedRequest, Session, TargetConfig, Usage, error_message_from_chunk};
 use crate::replay::build_client;
 use crate::sse::{SseDecoder, SseEvent};
 
@@ -154,29 +151,30 @@ async fn exchange(
     let mut printed: bool = false;
 
     {
+        let wire = request.wire;
         let mut handle = |event: SseEvent| match event {
             SseEvent::Data(value) => {
                 if let Some(message) = error_message_from_chunk(&value) {
                     error_message.get_or_insert(message);
                     return;
                 }
-                if any_delta_text(&value).is_some() {
+                if wire.any_delta_text(&value).is_some() {
                     first_token.get_or_insert_with(|| sent_at.elapsed());
                     last_token = Some(sent_at.elapsed());
                 }
-                if let Some(reasoning) = reasoning_delta(&value) {
+                if let Some(reasoning) = wire.reasoning_delta(&value) {
                     reasoning_bytes += reasoning.len();
                     generated_bytes += reasoning.len();
                     print_fragment(reasoning, dim);
                     printed = true;
                 }
-                if let Some(content) = content_delta(&value) {
+                if let Some(content) = wire.content_delta(&value) {
                     generated_bytes += content.len();
                     print!("{content}");
                     let _ = std::io::stdout().flush();
                     printed = true;
                 }
-                for fragment in tool_call_fragments(&value) {
+                for fragment in wire.tool_call_fragments(&value) {
                     if let Some(name) = fragment.name {
                         tool_names.push(name.to_owned());
                         print!("\n  → {name} ");
@@ -189,9 +187,7 @@ async fn exchange(
                     }
                     let _ = std::io::stdout().flush();
                 }
-                if let Some(found) = usage_from_chunk(&value) {
-                    usage = Some(found);
-                }
+                wire.update_usage(&mut usage, &value);
             }
             SseEvent::Malformed(text) => {
                 error_message.get_or_insert(text);

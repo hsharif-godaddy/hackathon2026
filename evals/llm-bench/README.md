@@ -1,16 +1,26 @@
 # llm-bench
 
-Replay a **real, captured** LLM workload against an OpenAI-compatible endpoint
-and report load/latency metrics — built to find the concurrency level at which
-candidate GPU hardware starts to degrade, using traffic recorded from the
-actual agent instead of a synthetic prompt.
+Replay a **real, captured** LLM workload against a target endpoint and report
+load/latency metrics — built to find the concurrency level at which candidate
+GPU hardware starts to degrade, using traffic recorded from the actual agent
+instead of a synthetic prompt.
 
-It reads mitmproxy flow dumps (the same `POST /v1/chat/completions` traffic the
-agent already produces), re-points each request at a target endpoint, replays
-the sessions at configurable concurrency (fixed, timed, or ramping), and prints
-a per-concurrency breakdown of time-to-first-token, per-request and aggregate
+It reads mitmproxy flow dumps (the same chat traffic the agent already
+produces), re-points each request at a target endpoint, replays the sessions at
+configurable concurrency (fixed, timed, or ramping), and prints a
+per-concurrency breakdown of time-to-first-token, per-request and aggregate
 tokens/sec, request rate, and error rate — plus a comparison against the
 metrics recorded in the dump.
+
+**Two wire formats** are supported and detected per request from the captured
+path, so a dump (or mix of dumps) replays without configuration:
+
+- **OpenAI-compatible** Chat Completions — `POST .../chat/completions`.
+- **Anthropic Messages** — `POST /v1/messages` (e.g. Claude via the GoCode proxy
+  or Bedrock). Usage is read from the native `message_start` / `message_delta`
+  frames; `stream_options` is omitted (Anthropic rejects it); the
+  `--unique-sessions` cache-buster lands in the first message and
+  `--bust-system-prompt` rewrites the top-level `system` field.
 
 Written in Rust (tokio) so a single laptop can drive high concurrency with a
 flat memory profile.
@@ -88,8 +98,9 @@ cargo build --release
 
 ### Authentication
 
-The captured `Authorization` header is **not** sent by default (it may be stale,
-and you are often re-pointing at a different host). Choose one:
+Captured credential headers — `Authorization` and Anthropic's `x-api-key` — are
+**not** sent by default (they may be stale, and you are often re-pointing at a
+different host). Choose one:
 
 ```sh
 # Replay the token captured in the dump (same endpoint, token not yet expired)
@@ -181,8 +192,8 @@ queue waits needs steps far longer than 60s to produce stable numbers.
 | --- | --- |
 | `--target <URL>` | Endpoint under test, e.g. `http://localhost:8000` |
 | `--model <NAME>` | Override the `model` field in every request |
-| `--api-key <KEY>` | `Authorization: Bearer` (or `LLMBENCH_API_KEY` env) |
-| `--forward-auth` | Forward the captured `Authorization` header as-is |
+| `--api-key <KEY>` | Sent as `Authorization: Bearer <key>` on every request, either wire (or `LLMBENCH_API_KEY` env); overrides any forwarded credential |
+| `--forward-auth` | Forward the captured credential header as-is — `Authorization` for OpenAI, or Anthropic's `x-api-key` / `api-key`. Ignored when `--api-key` is set |
 | `--fixed` / `--duration <S>` / `--ramp` | Load mode (mutually exclusive) |
 | `--concurrency <C>` | Concurrent virtual users (fixed/duration) |
 | `--ramp-start/-end/-step/-step-duration/-warmup` | Ramp shape + per-step warmup |
@@ -209,16 +220,20 @@ the cap are aborted and excluded from the report.
 
 ## How metrics are defined
 
-- **TTFT** — send → first SSE chunk carrying non-empty `delta.content`
-  (reasoning deltas are excluded).
-- **TTLT** (time-to-last-token) — send → *last* SSE chunk carrying non-empty
-  `delta.content`: the user-perceived completion time. It is slightly less than
-  `total` latency, which also counts the trailing `usage` and `[DONE]` frames.
-- **Per-request tok/s** — `completion_tokens / (total − first_token_time)`,
-  where first_token_time is the first generated token of any kind (reasoning or
-  content), using the server's final `usage` chunk (we force
-  `stream_options.include_usage`); falls back to estimating from streamed content
-  bytes if usage is absent.
+- **TTFT** — send → first SSE chunk carrying a generated token of **any** kind:
+  visible content, reasoning, or a tool-call fragment. This is the moment the
+  stream starts returning data (the end of prefill). Tool-call- and
+  reasoning-only responses — the norm for agent traffic — count, so their turns
+  aren't silently dropped from the TTFT aggregate.
+- **TTLT** (time-to-last-token) — send → *last* SSE chunk carrying a generated
+  token of any kind. It is slightly less than `total` latency, which also counts
+  the trailing `usage` and `[DONE]` frames.
+- **Per-request tok/s** — `completion_tokens / (total − TTFT)`: decode
+  throughput with prefill excluded (TTFT marks the decode start, so numerator
+  and denominator stay consistent). Uses the server's final usage counts
+  (OpenAI: forced `stream_options.include_usage`; Anthropic: the native
+  `message_start` / `message_delta` usage frames); falls back to estimating from
+  streamed generated-text bytes if usage is absent.
 - **Aggregate tok/s** — sum of completion tokens started in a step's
   post-warmup window ÷ that window's wall-clock seconds. This is the
   saturation signal.
