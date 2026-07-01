@@ -9,8 +9,8 @@ import {
   detectHighConfidencePatterns,
   severityCurve,
 } from '../pattern-detection.js'
-import { PatternType } from '../types.js'
-import type { ExecutionStep, StepContentItem } from '../types.js'
+import { PatternType, ZERO_PATTERN_COUNTS } from '../types.js'
+import type { ExecutionStep, PatternCounts, StepContentItem } from '../types.js'
 
 // HELPERS
 
@@ -73,7 +73,7 @@ describe('repeated_reads pattern', () => {
       createStep([toolResult('read_file', { path: 'src/a.ts' })], 'call-1'),
       createStep([toolResult('read_file', { path: 'src/a.ts' })], 'call-2'),
     ]
-    const patterns = detectHighConfidencePatterns(steps)
+    const { patterns } = detectHighConfidencePatterns(steps)
     expect(patterns.find(p => p.type === PatternType.RepeatedReads)).toBeUndefined()
   })
 
@@ -84,7 +84,7 @@ describe('repeated_reads pattern', () => {
       createStep([toolResult('read_file', { path: 'src/a.ts' })], 'call-3'),
       createStep([toolResult('read_file', { path: 'src/a.ts' })], 'call-4'),
     ]
-    const patterns = detectHighConfidencePatterns(steps)
+    const { patterns } = detectHighConfidencePatterns(steps)
     const pattern = patterns.find(p => p.type === PatternType.RepeatedReads)
     expect(pattern).toBeDefined()
     // severity_curve(4, 3) ≈ 0.18
@@ -101,7 +101,7 @@ describe('repeated_reads pattern', () => {
       createStep([toolResult('read_file', { path: 'src/b.ts' })], 'call-6'),
       createStep([toolResult('read_file', { path: 'src/b.ts' })], 'call-7'),
     ]
-    const patterns = detectHighConfidencePatterns(steps)
+    const { patterns } = detectHighConfidencePatterns(steps)
     const pattern = patterns.find(p => p.type === PatternType.RepeatedReads)
     expect(pattern).toBeDefined()
     // Max is 5 reads of b.ts → severity_curve(5, 3) ≈ 0.32
@@ -114,7 +114,7 @@ describe('repeated_reads pattern', () => {
       createStep([toolResult('read_file', { path: 'src/a.ts' })], 'call-2'),
       createStep([toolResult('read_file', { path: 'src/a.ts' })], 'call-3'),
     ]
-    const patterns = detectHighConfidencePatterns(steps)
+    const { patterns } = detectHighConfidencePatterns(steps)
     // At exactly threshold, severity_curve returns 0 → filtered out
     expect(patterns.find(p => p.type === PatternType.RepeatedReads)).toBeUndefined()
   })
@@ -127,7 +127,7 @@ describe('repeated_edits pattern', () => {
     const steps = Array.from({ length: 4 }, (_, i) =>
       createStep([toolResult('str_replace_based_edit_tool', { path: 'src/a.ts' })], `call-${i}`)
     )
-    const patterns = detectHighConfidencePatterns(steps)
+    const { patterns } = detectHighConfidencePatterns(steps)
     expect(patterns.find(p => p.type === PatternType.RepeatedEdits)).toBeUndefined()
   })
 
@@ -135,7 +135,7 @@ describe('repeated_edits pattern', () => {
     const steps = Array.from({ length: 6 }, (_, i) =>
       createStep([toolResult('str_replace_based_edit_tool', { path: 'src/a.ts' })], `call-${i}`)
     )
-    const patterns = detectHighConfidencePatterns(steps)
+    const { patterns } = detectHighConfidencePatterns(steps)
     const pattern = patterns.find(p => p.type === PatternType.RepeatedEdits)
     expect(pattern).toBeDefined()
     // severity_curve(6, 5) ≈ 0.11
@@ -146,7 +146,7 @@ describe('repeated_edits pattern', () => {
     const steps = Array.from({ length: 6 }, (_, i) =>
       createStep([toolResult('write_to_file', { path: 'src/a.ts' })], `call-${i}`)
     )
-    const patterns = detectHighConfidencePatterns(steps)
+    const { patterns } = detectHighConfidencePatterns(steps)
     expect(patterns.find(p => p.type === PatternType.RepeatedEdits)).toBeUndefined()
   })
 })
@@ -158,7 +158,7 @@ describe('grep_spiral pattern', () => {
     const steps = Array.from({ length: 4 }, (_, i) =>
       createStep([toolResult('grep', { pattern: 'test' }, '')], `call-${i}`)
     )
-    const patterns = detectHighConfidencePatterns(steps)
+    const { patterns } = detectHighConfidencePatterns(steps)
     expect(patterns.find(p => p.type === PatternType.GrepSpiral)).toBeUndefined()
   })
 
@@ -166,7 +166,7 @@ describe('grep_spiral pattern', () => {
     const steps = Array.from({ length: 10 }, (_, i) =>
       createStep([toolResult('grep', { pattern: 'test' }, 'found something')], `call-${i}`)
     )
-    const patterns = detectHighConfidencePatterns(steps)
+    const { patterns } = detectHighConfidencePatterns(steps)
     // empty_result_ratio = 0 → severity = (10/5) * 0 = 0 → filtered out
     expect(patterns.find(p => p.type === PatternType.GrepSpiral)).toBeUndefined()
   })
@@ -175,7 +175,7 @@ describe('grep_spiral pattern', () => {
     const steps = Array.from({ length: 19 }, (_, i) =>
       createStep([toolResult('grep', { pattern: 'test' }, '')], `call-${i}`)
     )
-    const patterns = detectHighConfidencePatterns(steps)
+    const { patterns } = detectHighConfidencePatterns(steps)
     const pattern = patterns.find(p => p.type === PatternType.GrepSpiral)
     expect(pattern).toBeDefined()
     // min((19/5) * 1.0, 1.0) = min(3.8, 1.0) = 1.0
@@ -192,7 +192,7 @@ describe('grep_spiral pattern', () => {
       createStep([toolResult('grep', { pattern: 'e' }, '')], 'call-5'),
       createStep([toolResult('grep', { pattern: 'f' }, 'found')], 'call-6'),
     ]
-    const patterns = detectHighConfidencePatterns(steps)
+    const { patterns } = detectHighConfidencePatterns(steps)
     const pattern = patterns.find(p => p.type === PatternType.GrepSpiral)
     expect(pattern).toBeDefined()
     // min((6/5) * 0.5, 1.0) = min(0.6, 1.0) = 0.6
@@ -203,7 +203,7 @@ describe('grep_spiral pattern', () => {
     const steps = Array.from({ length: 6 }, (_, i) =>
       createStep([toolResult('search_files', { query: 'test' }, '')], `call-${i}`)
     )
-    const patterns = detectHighConfidencePatterns(steps)
+    const { patterns } = detectHighConfidencePatterns(steps)
     expect(patterns.find(p => p.type === PatternType.GrepSpiral)).toBeDefined()
   })
 })
@@ -216,7 +216,7 @@ describe('terminal_failures pattern', () => {
       createStep([toolError('terminal', { command: 'npm test' })], 'call-1'),
       createStep([toolError('terminal', { command: 'npm test' })], 'call-2'),
     ]
-    const patterns = detectHighConfidencePatterns(steps)
+    const { patterns } = detectHighConfidencePatterns(steps)
     expect(patterns.find(p => p.type === PatternType.TerminalFailures)).toBeUndefined()
   })
 
@@ -224,7 +224,7 @@ describe('terminal_failures pattern', () => {
     const steps = Array.from({ length: 4 }, (_, i) =>
       createStep([toolError('terminal', { command: 'npm test' })], `call-${i}`)
     )
-    const patterns = detectHighConfidencePatterns(steps)
+    const { patterns } = detectHighConfidencePatterns(steps)
     const pattern = patterns.find(p => p.type === PatternType.TerminalFailures)
     expect(pattern).toBeDefined()
     // severity_curve(4, 3) * (4/4) ≈ 0.18 * 1.0 = 0.18
@@ -239,7 +239,7 @@ describe('terminal_failures pattern', () => {
     const successes = Array.from({ length: 16 }, (_, i) =>
       createStep([toolResult('terminal', { command: 'npm test' }, 'ok')], `ok-${i}`)
     )
-    const patterns = detectHighConfidencePatterns([...failures, ...successes])
+    const { patterns } = detectHighConfidencePatterns([...failures, ...successes])
     const pattern = patterns.find(p => p.type === PatternType.TerminalFailures)
     expect(pattern).toBeDefined()
     // severity_curve(4, 3) * 0.2 ≈ 0.18 * 0.2 = 0.036
@@ -250,7 +250,7 @@ describe('terminal_failures pattern', () => {
     const steps = Array.from({ length: 4 }, (_, i) =>
       createStep([toolError('bash', { command: 'make build' })], `call-${i}`)
     )
-    const patterns = detectHighConfidencePatterns(steps)
+    const { patterns } = detectHighConfidencePatterns(steps)
     expect(patterns.find(p => p.type === PatternType.TerminalFailures)).toBeDefined()
   })
 
@@ -262,7 +262,7 @@ describe('terminal_failures pattern', () => {
         stderr: 'tests failed',
       }))], `call-${i}`)
     )
-    const patterns = detectHighConfidencePatterns(steps)
+    const { patterns } = detectHighConfidencePatterns(steps)
     const pattern = patterns.find(p => p.type === PatternType.TerminalFailures)
     expect(pattern).toBeDefined()
     expect(pattern!.callIds).toEqual(['call-0', 'call-1', 'call-2', 'call-3'])
@@ -272,7 +272,7 @@ describe('terminal_failures pattern', () => {
     const steps = Array.from({ length: 4 }, (_, i) =>
       createStep([toolResult('terminalCommand', { command: 'npm test' }, { exitCode: 1 })], `call-${i}`)
     )
-    const patterns = detectHighConfidencePatterns(steps)
+    const { patterns } = detectHighConfidencePatterns(steps)
     expect(patterns.find(p => p.type === PatternType.TerminalFailures)).toBeDefined()
   })
 
@@ -283,7 +283,7 @@ describe('terminal_failures pattern', () => {
         exitCode: 1,
       })], `call-${i}`)
     )
-    const patterns = detectHighConfidencePatterns(steps)
+    const { patterns } = detectHighConfidencePatterns(steps)
     expect(patterns.find(p => p.type === PatternType.TerminalFailures)).toBeUndefined()
   })
 })
@@ -298,7 +298,7 @@ describe('edit_read_loops pattern', () => {
       createStep([toolResult('read_file', { path: 'src/a.ts' })], 'call-2'),
       createStep([toolResult('str_replace_based_edit_tool', { path: 'src/a.ts' })], 'call-3'),
     ]
-    const patterns = detectHighConfidencePatterns(steps)
+    const { patterns } = detectHighConfidencePatterns(steps)
     expect(patterns.find(p => p.type === PatternType.EditReadLoop)).toBeUndefined()
   })
 
@@ -314,7 +314,7 @@ describe('edit_read_loops pattern', () => {
       createStep([toolResult('read_file', { path: 'src/a.ts' })], 'call-6'),
       createStep([toolResult('str_replace_based_edit_tool', { path: 'src/a.ts' })], 'call-7'),
     ]
-    const patterns = detectHighConfidencePatterns(steps)
+    const { patterns } = detectHighConfidencePatterns(steps)
     expect(patterns.find(p => p.type === PatternType.EditReadLoop)).toBeUndefined()
   })
 
@@ -331,7 +331,7 @@ describe('edit_read_loops pattern', () => {
       createStep([toolResult('read_file', { path: 'src/a.ts' })], 'call-8'),
       createStep([toolResult('str_replace_based_edit_tool', { path: 'src/a.ts' })], 'call-9'),
     ]
-    const patterns = detectHighConfidencePatterns(steps)
+    const { patterns } = detectHighConfidencePatterns(steps)
     const pattern = patterns.find(p => p.type === PatternType.EditReadLoop)
     expect(pattern).toBeDefined()
     // severity_curve(4, 3) ≈ 0.18
@@ -349,7 +349,7 @@ describe('edit_read_loops pattern', () => {
         return createStep([toolResult(tool, { path: 'src/b.ts' })], `b-${i}`)
       }),
     ]
-    const patterns = detectHighConfidencePatterns(steps)
+    const { patterns } = detectHighConfidencePatterns(steps)
     const pattern = patterns.find(p => p.type === PatternType.EditReadLoop)
     expect(pattern).toBeDefined()
     // b.ts: 8 transitions → 4 cycles → severity_curve(4, 3) ≈ 0.18
@@ -361,7 +361,7 @@ describe('edit_read_loops pattern', () => {
 
 describe('edge cases', () => {
   it('handles empty steps array', () => {
-    const patterns = detectHighConfidencePatterns([])
+    const { patterns } = detectHighConfidencePatterns([])
     expect(patterns).toEqual([])
   })
 
@@ -372,7 +372,7 @@ describe('edge cases', () => {
       createStep([toolResult('read_file', { path: 'src/a.ts' })]),
       createStep([toolResult('read_file', { path: 'src/a.ts' })]),
     ]
-    const patterns = detectHighConfidencePatterns(steps)
+    const { patterns } = detectHighConfidencePatterns(steps)
     expect(patterns).toEqual([])
   })
 
@@ -380,7 +380,7 @@ describe('edge cases', () => {
     const steps = Array.from({ length: 5 }, (_, i) =>
       createStep([toolResult('read_file', {})], `call-${i}`) // no path → 'unknown'
     )
-    const patterns = detectHighConfidencePatterns(steps)
+    const { patterns } = detectHighConfidencePatterns(steps)
     expect(patterns.find(p => p.type === PatternType.RepeatedReads)).toBeUndefined()
   })
 
@@ -395,7 +395,7 @@ describe('edge cases', () => {
         createStep([toolResult('grep', { pattern: 'x' }, '')], `grep-${i}`)
       ),
     ]
-    const patterns = detectHighConfidencePatterns(steps)
+    const { patterns } = detectHighConfidencePatterns(steps)
     expect(patterns.find(p => p.type === PatternType.RepeatedReads)).toBeDefined()
     expect(patterns.find(p => p.type === PatternType.GrepSpiral)).toBeDefined()
   })
@@ -409,7 +409,7 @@ describe('tool_retry pattern', () => {
       createStep([toolResult('oauthConnect', {})], 'call-1'),
       createStep([toolResult('oauthConnect', {})], 'call-2'),
     ]
-    const patterns = detectHighConfidencePatterns(steps)
+    const { patterns } = detectHighConfidencePatterns(steps)
     expect(patterns.find(p => p.type === PatternType.ToolRetry)).toBeUndefined()
   })
 
@@ -417,7 +417,7 @@ describe('tool_retry pattern', () => {
     const steps = Array.from({ length: 4 }, (_, i) =>
       createStep([toolResult('oauthConnect', { provider: 'godaddy' })], `call-${i}`)
     )
-    const patterns = detectHighConfidencePatterns(steps)
+    const { patterns } = detectHighConfidencePatterns(steps)
     const pattern = patterns.find(p => p.type === PatternType.ToolRetry)
     expect(pattern).toBeDefined()
     expect(pattern!.severity).toBeCloseTo(0.18, 1)
@@ -428,7 +428,7 @@ describe('tool_retry pattern', () => {
     const steps = Array.from({ length: 4 }, (_, i) =>
       createStep([toolResult('read_file', { path: `src/file-${i}.ts` })], `call-${i}`)
     )
-    const patterns = detectHighConfidencePatterns(steps)
+    const { patterns } = detectHighConfidencePatterns(steps)
     expect(patterns.find(p => p.type === PatternType.ToolRetry)).toBeUndefined()
   })
 
@@ -436,7 +436,7 @@ describe('tool_retry pattern', () => {
     const steps = Array.from({ length: 4 }, (_, i) =>
       createStep([toolError('oauthConnect', {})], `call-${i}`)
     )
-    const patterns = detectHighConfidencePatterns(steps)
+    const { patterns } = detectHighConfidencePatterns(steps)
     expect(patterns.find(p => p.type === PatternType.ToolRetry)).toBeDefined()
   })
 
@@ -452,7 +452,7 @@ describe('tool_retry pattern', () => {
         toolResult('oauthConnect', {}),
       ], 'call-2'),
     ]
-    const patterns = detectHighConfidencePatterns(steps)
+    const { patterns } = detectHighConfidencePatterns(steps)
     expect(patterns.find(p => p.type === PatternType.ToolRetry)).toBeUndefined()
   })
 
@@ -465,7 +465,7 @@ describe('tool_retry pattern', () => {
         createStep([toolResult('develop__suggestedResponse', { text: 'Try this' })], `suggested-${i}`)
       ),
     ]
-    const patterns = detectHighConfidencePatterns(steps)
+    const { patterns } = detectHighConfidencePatterns(steps)
     expect(patterns.find(p => p.type === PatternType.ToolRetry)).toBeUndefined()
   })
 })
@@ -482,7 +482,7 @@ describe('real production tool names', () => {
     const steps = Array.from({ length: 4 }, (_, i) =>
       createStep([toolError('terminalCommand', { command: 'npm test' })], `call-${i}`)
     )
-    const patterns = detectHighConfidencePatterns(steps)
+    const { patterns } = detectHighConfidencePatterns(steps)
     expect(patterns.find(p => p.type === PatternType.TerminalFailures)).toBeDefined()
   })
 
@@ -490,7 +490,7 @@ describe('real production tool names', () => {
     const steps = Array.from({ length: 4 }, (_, i) =>
       createStep([toolError('publishing__bash', { command: 'make build' })], `call-${i}`)
     )
-    const patterns = detectHighConfidencePatterns(steps)
+    const { patterns } = detectHighConfidencePatterns(steps)
     expect(patterns.find(p => p.type === PatternType.TerminalFailures)).toBeDefined()
   })
 
@@ -498,7 +498,7 @@ describe('real production tool names', () => {
     const steps = Array.from({ length: 6 }, (_, i) =>
       createStep([toolResult('grepSearch', { pattern: 'test' }, 'No matches found')], `call-${i}`)
     )
-    const patterns = detectHighConfidencePatterns(steps)
+    const { patterns } = detectHighConfidencePatterns(steps)
     expect(patterns.find(p => p.type === PatternType.GrepSpiral)).toBeDefined()
   })
 
@@ -506,7 +506,7 @@ describe('real production tool names', () => {
     const steps = Array.from({ length: 5 }, (_, i) =>
       createStep([toolResult('readFile', { path: 'src/a.ts' })], `call-${i}`)
     )
-    const patterns = detectHighConfidencePatterns(steps)
+    const { patterns } = detectHighConfidencePatterns(steps)
     expect(patterns.find(p => p.type === PatternType.RepeatedReads)).toBeDefined()
   })
 })
@@ -525,7 +525,7 @@ describe('command-aware editor classification', () => {
         `call-${i}`
       )
     )
-    const patterns = detectHighConfidencePatterns(steps)
+    const { patterns } = detectHighConfidencePatterns(steps)
     expect(patterns.find(p => p.type === PatternType.RepeatedReads)).toBeDefined()
     // ...and must NOT be miscounted as repeated edits
     expect(patterns.find(p => p.type === PatternType.RepeatedEdits)).toBeUndefined()
@@ -538,7 +538,7 @@ describe('command-aware editor classification', () => {
         `call-${i}`
       )
     )
-    const patterns = detectHighConfidencePatterns(steps)
+    const { patterns } = detectHighConfidencePatterns(steps)
     expect(patterns.find(p => p.type === PatternType.RepeatedEdits)).toBeUndefined()
   })
 
@@ -549,7 +549,7 @@ describe('command-aware editor classification', () => {
         `call-${i}`
       )
     )
-    const patterns = detectHighConfidencePatterns(steps)
+    const { patterns } = detectHighConfidencePatterns(steps)
     expect(patterns.find(p => p.type === PatternType.RepeatedEdits)).toBeDefined()
   })
 
@@ -560,7 +560,7 @@ describe('command-aware editor classification', () => {
         `call-${i}`
       )
     )
-    const patterns = detectHighConfidencePatterns(steps)
+    const { patterns } = detectHighConfidencePatterns(steps)
     expect(patterns.find(p => p.type === PatternType.RepeatedEdits)).toBeUndefined()
   })
 
@@ -575,7 +575,7 @@ describe('command-aware editor classification', () => {
         `call-${i}`
       )
     )
-    const patterns = detectHighConfidencePatterns(steps)
+    const { patterns } = detectHighConfidencePatterns(steps)
     expect(patterns.find(p => p.type === PatternType.EditReadLoop)).toBeDefined()
   })
 
@@ -583,7 +583,164 @@ describe('command-aware editor classification', () => {
     const steps = Array.from({ length: 6 }, (_, i) =>
       createStep([toolResult('str_replace_based_edit_tool', { path: 'src/a.ts' })], `call-${i}`)
     )
-    const patterns = detectHighConfidencePatterns(steps)
+    const { patterns } = detectHighConfidencePatterns(steps)
     expect(patterns.find(p => p.type === PatternType.RepeatedEdits)).toBeDefined()
+  })
+})
+
+// PATTERN COUNTS (threshold optimality dashboarding)
+
+describe('patternCounts', () => {
+  it('returns all zeros for empty steps', () => {
+    const { counts } = detectHighConfidencePatterns([])
+    expect(counts).toEqual(ZERO_PATTERN_COUNTS)
+  })
+
+  it('tracks repeated_reads count below threshold (pattern does not fire)', () => {
+    const steps: ExecutionStep[] = [
+      createStep([toolResult('read_file', { path: 'src/a.ts' })], 'call-1'),
+      createStep([toolResult('read_file', { path: 'src/a.ts' })], 'call-2'),
+    ]
+    const { patterns, counts } = detectHighConfidencePatterns(steps)
+    expect(patterns.find(p => p.type === PatternType.RepeatedReads)).toBeUndefined()
+    expect(counts.repeated_reads).toBe(2)
+  })
+
+  it('tracks repeated_reads count at threshold (severity = 0, pattern filtered)', () => {
+    const steps: ExecutionStep[] = [
+      createStep([toolResult('read_file', { path: 'src/a.ts' })], 'call-1'),
+      createStep([toolResult('read_file', { path: 'src/a.ts' })], 'call-2'),
+      createStep([toolResult('read_file', { path: 'src/a.ts' })], 'call-3'),
+    ]
+    const { patterns, counts } = detectHighConfidencePatterns(steps)
+    expect(patterns.find(p => p.type === PatternType.RepeatedReads)).toBeUndefined()
+    expect(counts.repeated_reads).toBe(3)
+  })
+
+  it('tracks repeated_reads max across files', () => {
+    const steps: ExecutionStep[] = [
+      createStep([toolResult('read_file', { path: 'src/a.ts' })], 'call-1'),
+      createStep([toolResult('read_file', { path: 'src/a.ts' })], 'call-2'),
+      createStep([toolResult('read_file', { path: 'src/b.ts' })], 'call-3'),
+      createStep([toolResult('read_file', { path: 'src/b.ts' })], 'call-4'),
+      createStep([toolResult('read_file', { path: 'src/b.ts' })], 'call-5'),
+      createStep([toolResult('read_file', { path: 'src/b.ts' })], 'call-6'),
+      createStep([toolResult('read_file', { path: 'src/b.ts' })], 'call-7'),
+    ]
+    const { counts } = detectHighConfidencePatterns(steps)
+    expect(counts.repeated_reads).toBe(5)
+  })
+
+  it('tracks repeated_edits count below threshold', () => {
+    const steps: ExecutionStep[] = Array.from({ length: 4 }, (_, i) =>
+      createStep([toolResult('str_replace_based_edit_tool', { path: 'src/a.ts' })], `call-${i}`)
+    )
+    const { patterns, counts } = detectHighConfidencePatterns(steps)
+    expect(patterns.find(p => p.type === PatternType.RepeatedEdits)).toBeUndefined()
+    expect(counts.repeated_edits).toBe(4)
+  })
+
+  it('tracks grep_spiral as total grep count', () => {
+    const steps: ExecutionStep[] = [
+      createStep([toolResult('grep', { pattern: 'a' }, '')], 'call-1'),
+      createStep([toolResult('grep', { pattern: 'b' }, 'found')], 'call-2'),
+      createStep([toolResult('grep', { pattern: 'c' }, '')], 'call-3'),
+    ]
+    const { counts } = detectHighConfidencePatterns(steps)
+    expect(counts.grep_spiral).toBe(3)
+  })
+
+  it('tracks terminal_failures as count of failed commands', () => {
+    const steps: ExecutionStep[] = [
+      createStep([toolError('terminal', { command: 'npm test' })], 'call-1'),
+      createStep([toolResult('terminal', { command: 'npm build' }, 'ok')], 'call-2'),
+      createStep([toolError('terminal', { command: 'npm lint' })], 'call-3'),
+    ]
+    const { counts } = detectHighConfidencePatterns(steps)
+    expect(counts.terminal_failures).toBe(2)
+  })
+
+  it('tracks edit_read_loop as max cycle count across files', () => {
+    // edit->read->edit->read->edit = 4 transitions = 2 cycles (below threshold)
+    const steps: ExecutionStep[] = [
+      createStep([toolResult('str_replace_based_edit_tool', { path: 'src/a.ts' })], 'call-1'),
+      createStep([toolResult('read_file', { path: 'src/a.ts' })], 'call-2'),
+      createStep([toolResult('str_replace_based_edit_tool', { path: 'src/a.ts' })], 'call-3'),
+      createStep([toolResult('read_file', { path: 'src/a.ts' })], 'call-4'),
+      createStep([toolResult('str_replace_based_edit_tool', { path: 'src/a.ts' })], 'call-5'),
+    ]
+    const { patterns, counts } = detectHighConfidencePatterns(steps)
+    expect(patterns.find(p => p.type === PatternType.EditReadLoop)).toBeUndefined()
+    expect(counts.edit_read_loop).toBe(2)
+  })
+
+  it('tracks tool_retry as max unique-step count for identical calls', () => {
+    const steps: ExecutionStep[] = [
+      createStep([toolResult('oauthConnect', { provider: 'godaddy' })], 'call-1'),
+      createStep([toolResult('oauthConnect', { provider: 'godaddy' })], 'call-2'),
+    ]
+    const { patterns, counts } = detectHighConfidencePatterns(steps)
+    expect(patterns.find(p => p.type === PatternType.ToolRetry)).toBeUndefined()
+    expect(counts.tool_retry).toBe(2)
+  })
+
+  it('counts are correct when multiple patterns fire', () => {
+    const steps: ExecutionStep[] = [
+      ...Array.from({ length: 4 }, (_, i) =>
+        createStep([toolResult('read_file', { path: 'src/a.ts' })], `read-${i}`)
+      ),
+      ...Array.from({ length: 6 }, (_, i) =>
+        createStep([toolResult('grep', { pattern: 'x' }, '')], `grep-${i}`)
+      ),
+      ...Array.from({ length: 4 }, (_, i) =>
+        createStep([toolError('terminal', { command: 'npm test' })], `term-${i}`)
+      ),
+    ]
+    const { counts } = detectHighConfidencePatterns(steps)
+    expect(counts.repeated_reads).toBe(4)
+    expect(counts.grep_spiral).toBe(6)
+    expect(counts.terminal_failures).toBe(4)
+    expect(counts.repeated_edits).toBe(0)
+    expect(counts.edit_read_loop).toBe(0)
+    // 6 greps with same pattern+result > 4 terminal errors with same command
+    expect(counts.tool_retry).toBe(6)
+  })
+
+  it('ignores unknown file paths in counts', () => {
+    const steps: ExecutionStep[] = Array.from({ length: 5 }, (_, i) =>
+      createStep([toolResult('read_file', {})], `call-${i}`)
+    )
+    const { counts } = detectHighConfidencePatterns(steps)
+    expect(counts.repeated_reads).toBe(0)
+  })
+
+  it('skips steps without correlation ID in counts', () => {
+    const steps: ExecutionStep[] = [
+      createStep([toolResult('read_file', { path: 'src/a.ts' })]),
+      createStep([toolResult('read_file', { path: 'src/a.ts' })]),
+      createStep([toolResult('read_file', { path: 'src/a.ts' })]),
+      createStep([toolResult('read_file', { path: 'src/a.ts' })]),
+    ]
+    const { counts } = detectHighConfidencePatterns(steps)
+    expect(counts.repeated_reads).toBe(0)
+  })
+
+  it('excludes workflow tools from tool_retry count', () => {
+    const steps: ExecutionStep[] = Array.from({ length: 5 }, (_, i) =>
+      createStep([toolResult('initial__todoList', { items: [] })], `call-${i}`)
+    )
+    const { counts } = detectHighConfidencePatterns(steps)
+    expect(counts.tool_retry).toBe(0)
+  })
+
+  it('returns expected shape matching PatternCounts type', () => {
+    const { counts } = detectHighConfidencePatterns([])
+    const expectedKeys: (keyof PatternCounts)[] = [
+      'repeated_reads', 'repeated_edits', 'grep_spiral',
+      'terminal_failures', 'edit_read_loop', 'tool_retry',
+    ]
+    for (const key of expectedKeys) {
+      expect(typeof counts[key]).toBe('number')
+    }
   })
 })

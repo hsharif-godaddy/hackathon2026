@@ -354,11 +354,21 @@ export interface CostOverrideData {
   actions: Map<string, CostOverrideActionType>
 }
 
+/** Per-pattern max count regardless of whether the pattern fired (threshold gate value). */
+export type PatternCounts = Record<PatternTypeName, number>
+
+export interface PatternDetectionResult {
+  patterns: PatternResult[]
+  counts: PatternCounts
+}
+
 export interface ExecutionData {
   /** Set of correlation IDs for calls with direct tool errors */
   failedCallIds: Set<string>
   /** Detected patterns with severity scores (only severity > 0) */
   patterns: PatternResult[]
+  /** Per-pattern max counts regardless of firing (for threshold optimality dashboarding) */
+  patternCounts: PatternCounts
   /** Detected causal chains */
   causalChains: CausalChain[]
   /** Failed targets for retry detection */
@@ -381,10 +391,20 @@ export interface ExecutionData {
  * Empty `ExecutionData` for paths that never ran the analyzer (e.g. attribution crashed).
  * Returned as a fresh object so callers can mutate the Sets/Map without polluting siblings.
  */
+export const ZERO_PATTERN_COUNTS: PatternCounts = {
+  repeated_reads: 0,
+  repeated_edits: 0,
+  grep_spiral: 0,
+  terminal_failures: 0,
+  edit_read_loop: 0,
+  tool_retry: 0,
+}
+
 export function emptyExecutionData(): ExecutionData {
   return {
     failedCallIds: new Set(),
     patterns: [],
+    patternCounts: { ...ZERO_PATTERN_COUNTS },
     causalChains: [],
     failedTargets: [],
     hadFailures: false,

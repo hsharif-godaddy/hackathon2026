@@ -21,6 +21,14 @@ function createExecutionData(overrides: Partial<ExecutionData> = {}): ExecutionD
   return {
     failedCallIds: new Set<string>(),
     patterns: [],
+    patternCounts: {
+      repeated_reads: 0,
+      repeated_edits: 0,
+      grep_spiral: 0,
+      terminal_failures: 0,
+      edit_read_loop: 0,
+      tool_retry: 0,
+    },
     causalChains: [],
     failedTargets: [],
     hadFailures: false,

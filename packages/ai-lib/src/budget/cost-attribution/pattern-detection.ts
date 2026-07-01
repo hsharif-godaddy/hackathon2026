@@ -17,6 +17,7 @@ import {
   PATTERN_THRESHOLDS,
   PatternType,
   StepContentType,
+  ZERO_PATTERN_COUNTS,
   isTerminalTool,
   isSearchTool,
   isWorkflowTool,
@@ -24,6 +25,8 @@ import {
   getToolInput,
   getToolOutput,
   type ExecutionStep,
+  type PatternCounts,
+  type PatternDetectionResult,
   type PatternResult,
 } from './types.js'
 import { getCorrelationId, isSoftToolFailure } from './failure-extraction.js'
@@ -412,16 +415,64 @@ function detectToolRetry(allToolCalls: ToolCallOp[]): PatternResult | null {
   }
 }
 
+// COUNT EXTRACTION
+
+function computePatternCounts(
+  fileOps: FileOp[],
+  grepOps: GrepOp[],
+  terminalOps: TerminalOp[],
+  allToolCalls: ToolCallOp[]
+): PatternCounts {
+  const counts: PatternCounts = { ...ZERO_PATTERN_COUNTS }
+
+  const readsByFile: Map<string, FileOp[]> = groupBy(fileOps.filter(op => op.toolType === 'read'), op => op.filePath)
+  for (const [filePath, ops] of readsByFile) {
+    if (filePath === 'unknown') continue
+    if (ops.length > counts.repeated_reads) counts.repeated_reads = ops.length
+  }
+
+  const editsByFile: Map<string, FileOp[]> = groupBy(fileOps.filter(op => op.toolType === 'edit'), op => op.filePath)
+  for (const [filePath, ops] of editsByFile) {
+    if (filePath === 'unknown') continue
+    if (ops.length > counts.repeated_edits) counts.repeated_edits = ops.length
+  }
+
+  counts.grep_spiral = grepOps.length
+
+  counts.terminal_failures = terminalOps.filter(op => op.failed).length
+
+  const opsByFile: Map<string, FileOp[]> = groupBy(fileOps, op => op.filePath)
+  for (const [filePath, ops] of opsByFile) {
+    if (filePath === 'unknown') continue
+    const sorted: FileOp[] = [...ops].sort((a, b) => a.stepIdx - b.stepIdx)
+    let transitions: number = 0
+    for (let i: number = 1; i < sorted.length; i++) {
+      const curr: FileOp | undefined = sorted[i]
+      const prev: FileOp | undefined = sorted[i - 1]
+      if (curr && prev && curr.toolType !== prev.toolType) transitions++
+    }
+    const loopCount: number = Math.floor(transitions / 2)
+    if (loopCount > counts.edit_read_loop) counts.edit_read_loop = loopCount
+  }
+
+  const filteredCalls: ToolCallOp[] = allToolCalls.filter(op => !isWorkflowTool(op.toolName))
+  const bySignature: Map<string, ToolCallOp[]> = groupBy(filteredCalls, op => `${op.toolName}::${op.argsSignature}`)
+  for (const [, ops] of bySignature) {
+    const uniqueSteps: number = new Set(ops.map(op => op.stepIdx)).size
+    if (uniqueSteps > counts.tool_retry) counts.tool_retry = uniqueSteps
+  }
+
+  return counts
+}
+
 // MAIN DETECTION
 
 /**
  * Detect behavioral patterns with severity scoring.
- * Returns only patterns with severity > 0 (fired patterns for attribution).
- *
- * @param steps - Array of SDK execution steps
- * @returns Array of detected patterns with severity scores
+ * Returns fired patterns (severity > 0) and raw counts for all patterns
+ * regardless of whether they fired (for threshold optimality dashboarding).
  */
-export function detectHighConfidencePatterns(steps: ExecutionStep[]): PatternResult[] {
+export function detectHighConfidencePatterns(steps: ExecutionStep[]): PatternDetectionResult {
   const { terminalOps, fileOps, grepOps, allToolCalls } = collectOperations(steps)
 
   const reads = fileOps.filter(op => op.toolType === 'read')
@@ -438,6 +489,8 @@ export function detectHighConfidencePatterns(steps: ExecutionStep[]): PatternRes
     uniqueReadFiles: new Set(reads.map(op => op.filePath)).size,
     uniqueEditFiles: new Set(edits.map(op => op.filePath)).size,
   })
+
+  const counts: PatternCounts = computePatternCounts(fileOps, grepOps, terminalOps, allToolCalls)
 
   const patterns: PatternResult[] = []
 
@@ -472,6 +525,6 @@ export function detectHighConfidencePatterns(steps: ExecutionStep[]): PatternRes
     logger.debug('pattern_detection.no_patterns_fired')
   }
 
-  return patterns
+  return { patterns, counts }
 }
 

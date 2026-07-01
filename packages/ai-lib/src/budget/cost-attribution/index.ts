@@ -28,6 +28,7 @@ import {
   type CausalChain,
   type CostOverrideData,
   type InfrastructureToolTypeName,
+  type PatternDetectionResult,
 } from './types.js'
 import { extractFailedCallIds, extractFailedTargets } from './failure-extraction.js'
 import { detectHighConfidencePatterns } from './pattern-detection.js'
@@ -60,7 +61,7 @@ const CAUSAL_CHAIN_REASONS: AttributionReasonType[] = [
  */
 export function analyzeExecution(steps: ExecutionStep[]): ExecutionData {
   const failedCallIds = extractFailedCallIds(steps)
-  const patterns = detectHighConfidencePatterns(steps)
+  const { patterns, counts: patternCounts }: PatternDetectionResult = detectHighConfidencePatterns(steps)
   const causalChains = detectCausalChains(steps)
   const failedTargets = extractFailedTargets(steps)
   const costOverride = analyzeCostOverrideActions(steps)
@@ -87,6 +88,7 @@ export function analyzeExecution(steps: ExecutionStep[]): ExecutionData {
   return {
     failedCallIds,
     patterns,
+    patternCounts,
     causalChains,
     failedTargets,
     hadFailures,
@@ -578,6 +580,7 @@ export function logExecutionCompleted(
     failedCallCount: executionData.failedCallIds.size,
     failedCallIds: Array.from(executionData.failedCallIds),
     patternsDetected: executionData.patterns.length,
+    patternCounts: executionData.patternCounts,
     patterns: executionData.patterns.map(p => ({
       type: p.type,
       details: p.details,
