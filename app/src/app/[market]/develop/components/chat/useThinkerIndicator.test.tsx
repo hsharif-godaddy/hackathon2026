@@ -8,37 +8,31 @@ import { renderHook } from '@testing-library/react';
 
 import { useThinkerIndicator } from '@/app/[market]/develop/components/chat/useThinkerIndicator';
 
-const mockUseAuth = vi.fn();
+const mockUseSwitchboard = vi.fn();
 
-vi.mock('@/hooks/useAuth', () => ({
-  useAuth: () => mockUseAuth(),
+vi.mock('@/hooks/useSwitchboard', () => ({
+  useSwitchboard: (featureName: string) => mockUseSwitchboard(featureName),
 }));
 
 describe('useThinkerIndicator', () => {
-  it('returns godaddy variant for general accounts', function generalAccount() {
-    mockUseAuth.mockReturnValue({
-      getUserInfo: () => ({ shopperId: '12345678' }),
-    });
-
-    const { result } = renderHook(() => useThinkerIndicator());
-
-    expect(result.current.props.variant).toBe('godaddy');
-  });
-
-  it('returns thinking-daddy variant for TLA accounts', function tlaAccount() {
-    mockUseAuth.mockReturnValue({
-      getUserInfo: () => ({ shopperId: 'abc' }),
-    });
+  it('returns thinking-daddy variant when the flag is enabled', function flagEnabled() {
+    mockUseSwitchboard.mockReturnValue(true);
 
     const { result } = renderHook(() => useThinkerIndicator());
 
     expect(result.current.props.variant).toBe('thinking-daddy');
   });
 
-  it('defaults to godaddy when shopperId is missing', function missingShopperId() {
-    mockUseAuth.mockReturnValue({
-      getUserInfo: () => ({}),
-    });
+  it('returns godaddy variant when the flag is disabled', function flagDisabled() {
+    mockUseSwitchboard.mockReturnValue(false);
+
+    const { result } = renderHook(() => useThinkerIndicator());
+
+    expect(result.current.props.variant).toBe('godaddy');
+  });
+
+  it('defaults to godaddy when the flag is undefined', function flagUndefined() {
+    mockUseSwitchboard.mockReturnValue(undefined);
 
     const { result } = renderHook(() => useThinkerIndicator());
 

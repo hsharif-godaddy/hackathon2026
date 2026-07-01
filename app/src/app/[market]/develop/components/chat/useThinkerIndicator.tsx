@@ -1,25 +1,23 @@
-import { useMemo } from 'react';
+import { type ReactElement,useMemo } from 'react';
 import { ThinkingIndicator } from '@airo-ux/pattern-library/primitives/thinking-indicator';
 
-import { useAuth } from '@/hooks/useAuth';
-import { isTLAShopper } from '@/lib/is-tla-shopper';
+import { useSwitchboard } from '@/hooks/useSwitchboard';
 
 /**
- * Branded Thinker graphic for agent-working surfaces — Thinking Daddy for
- * internal TLA accounts, GoDaddy mark for general customers.
+ * Branded Thinker graphic for agent-working surfaces — Thinking Daddy when the
+ * `appbuilder-thinking-daddy` flag is on, GoDaddy mark otherwise.
  */
-export function useThinkerIndicator() {
-  const { getUserInfo } = useAuth();
-  const shopperId = getUserInfo()?.shopperId;
+export function useThinkerIndicator(): ReactElement {
+  const isThinkingDaddyEnabled: boolean = useSwitchboard('appbuilder-thinking-daddy') === true;
 
   return useMemo(
-    function buildThinkerIndicator() {
+    function buildThinkerIndicator(): ReactElement {
       return (
         <ThinkingIndicator
-          variant={isTLAShopper(shopperId) ? 'thinking-daddy' : 'godaddy'}
+          variant={isThinkingDaddyEnabled ? 'thinking-daddy' : 'godaddy'}
         />
       );
     },
-    [shopperId],
+    [isThinkingDaddyEnabled],
   );
 }
