@@ -14,7 +14,7 @@ import type { TurnscriptFailureKind, TurnscriptResult, DispatchRecord } from './
  * orchestration function, write the combined script to the shared workspace under
  * `.airo/`, run `node .airo/turnscript-<id>.mjs` via the workspace tasks API, and parse
  * the base64 `__TURNSCRIPT_CHUNK` envelope the shim prints on stdout. The shim re-creates
- * the `turnscript.*` API over node fs/child_process and ports the edit guards, so the
+ * the `turnscript.*` API over node's `fs` and child-process APIs and ports the edit guards, so the
  * model's contract is unchanged while the orchestration runs in the sandbox.
  *
  * Result transport is 100% Workspace-API-native: the script is staged via
