@@ -50,7 +50,7 @@ export default function DesignKitSelectorPanel({
     if (!kit || isProcessing || submitting || !sendUserMessage) return
     setSubmitting(true)
     sendUserMessage(
-      t('builder_design_kit_vibe_use', { name: kit.displayName }, `Use the ${kit.displayName} design kit`),
+      t('builder_design_kit_vibe_use', { name: kit.displayName }, `Use the ${kit.displayName} vibe`),
       { isActionRequest: true }
     )
   }
@@ -59,7 +59,7 @@ export default function DesignKitSelectorPanel({
     if (isProcessing || submitting || !sendUserMessage) return
     setSubmitting(true)
     sendUserMessage(
-      t('builder_design_kit_vibe_skip', undefined, 'Skip — pick the best design kit for me'),
+      t('builder_design_kit_vibe_skip', undefined, 'Skip — pick the best vibe for me'),
       { isActionRequest: true }
     )
   }
@@ -76,9 +76,14 @@ export default function DesignKitSelectorPanel({
       inlinePadding="sm"
       gap="sm"
     >
-      <text.span size={0} className="font-semibold text-intents-ux-box-foregroundColor">
-        {t('builder_design_kit_vibe_title', undefined, 'Pick a vibe that best fits your brand')}
-      </text.span>
+      <div className="flex flex-col gap-0.5">
+        <text.span size={0} className="font-semibold text-intents-ux-box-foregroundColor">
+          {t('builder_design_kit_vibe_title', undefined, 'Pick a vibe that best fits your brand')}
+        </text.span>
+        <text.span size={-1} className="text-intents-ux-boxLowContrast-foregroundColor">
+          {t('builder_design_kit_vibe_subtitle', undefined, 'You can always change it later.')}
+        </text.span>
+      </div>
 
       {submitting ? (
         <div className="flex items-center gap-1.5 px-1 py-3 text-sm text-intents-ux-boxLowContrast-foregroundColor" aria-live="polite">

@@ -39,8 +39,8 @@ user to choose from; never silently install one.**
 2. **STOP after `suggestDesignKits`.** Output no text — the cards speak for themselves — and do
    not install or apply anything yet. The chat input is hidden while the picker is up, so the
    user has exactly two outcomes:
-   - **Pick a card** — their message is `Use the <name> design kit`; that kit is their choice.
-   - **Skip** — their message is `Skip — pick the best design kit for me`; your own top match
+   - **Pick a card** — their message is `Use the <name> vibe`; that kit is their choice.
+   - **Skip** — their message is `Skip — pick the best vibe for me`; your own top match
      (the first slug you suggested) is the choice.
    If the `suggestDesignKits` call errors (catalog unavailable, or none of your slugs matched),
    don't stall: retry once with corrected slugs from `listDesignSystems`, or move on and assemble

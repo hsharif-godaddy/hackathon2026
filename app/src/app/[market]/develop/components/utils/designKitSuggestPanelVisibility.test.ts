@@ -33,7 +33,7 @@ describe('isDesignKitSuggestPanelVisible', () => {
   it('returns false once the user picks (any user message after the suggest hides it)', () => {
     const messages: ChatMessage[] = [
       { id: 'msg1', role: 'assistant', content: 'Here are some vibes', timestamp: new Date() },
-      { id: 'msg2', role: 'user', content: 'Use the Bold Studio design kit', timestamp: new Date() },
+      { id: 'msg2', role: 'user', content: 'Use the Bold Studio vibe', timestamp: new Date() },
     ]
     expect(isDesignKitSuggestPanelVisible(messages, suggest)).toBe(false)
   })
@@ -41,7 +41,7 @@ describe('isDesignKitSuggestPanelVisible', () => {
   it('returns false once the user skips', () => {
     const messages: ChatMessage[] = [
       { id: 'msg1', role: 'assistant', content: 'Here are some vibes', timestamp: new Date() },
-      { id: 'msg2', role: 'user', content: 'Skip — pick the best design kit for me', timestamp: new Date() },
+      { id: 'msg2', role: 'user', content: 'Skip — pick the best vibe for me', timestamp: new Date() },
     ]
     expect(isDesignKitSuggestPanelVisible(messages, suggest)).toBe(false)
   })

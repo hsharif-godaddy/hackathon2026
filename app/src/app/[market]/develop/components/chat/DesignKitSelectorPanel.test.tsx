@@ -72,6 +72,11 @@ describe('DesignKitSelectorPanel', () => {
       expect(screen.getByTestId('design-kit-selector-panel')).toBeInTheDocument()
     })
 
+    it('shows the "you can change it later" subtitle under the title', () => {
+      renderWithProviders(<DesignKitSelectorPanel toolCallId="tc1" kits={mockKits} />)
+      expect(screen.getByText(/change it later/i)).toBeInTheDocument()
+    })
+
     it('renders only the first 3 kits even when more are returned', () => {
       renderWithProviders(<DesignKitSelectorPanel toolCallId="tc1" kits={mockKits} />)
       const options = screen.getAllByTestId('design-kit-option')
@@ -156,6 +161,9 @@ describe('DesignKitSelectorPanel', () => {
       })
       const [message, options] = mockSendUserMessage.mock.calls[0]
       expect(message).toContain('Bold Studio')
+      // AIROBUILD-3229: customer-facing copy is "vibe", not "design kit".
+      expect(message).toMatch(/\bvibe\b/i)
+      expect(message).not.toMatch(/design kit/i)
       expect(options).toEqual({ isActionRequest: true })
     })
 
