@@ -45,7 +45,6 @@ import UserMenu from '@/components/layout/UserMenu';
 import { SWITCHBOARD_APPBUILDER_MEDIA_CANVAS } from '@/config/switchboard-flags';
 import { useHeadUndoAction } from '@/hooks/useHeadUndoAction';
 import { usePaywallModal } from '@/hooks/usePaywallModal';
-import { usePublishUpsellEligibility } from '@/hooks/usePublishUpsellEligibility';
 import { useRedoAction } from '@/hooks/useRedoAction';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
@@ -79,8 +78,6 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
   const location = 'develop';
   const appId = useAppIdFromParams();
   const clickContext = useMemo(() => (appId ? { appId } : undefined), [appId]);
-  const { isTreatment } = usePublishUpsellEligibility();
-
   const { checkAndShowPaywall, paywallModal, isPaywallLoading } = usePaywallModal({
     appId,
     source: 'code_editor',
@@ -369,7 +366,6 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
               label={t('builder_preview_button_preview')}
             />
           </ButtonGroup>
-          {isTreatment && <AppPublish location="develop" />}
           <UserMenu location="develop" />
           <IframeCloseButton location="develop" />
         </div>

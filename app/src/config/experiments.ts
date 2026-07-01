@@ -10,8 +10,6 @@ export const EXPERIMENT_IDS = {
   buildingTipsVariant: 'endgame_first_build_action_h1_update',
   /** First-build progress tracker: shows the 5-stage stepper during the first build (treatment cohort `on`) vs not (control). Gated in PreviewPane via useAabProgressTracker. */
   aabProgressTracker: 'aab_progress_tracker',
-  /** Combine Upgrade + Publish into a single Publish button with an educational upsell popup. */
-  combineUpgradeWithPublish: 'aab_combine_upgrade_with_publish',
   /** Prompt starter buttons: homepage hero category buttons (treatment cohort `on`) vs not (control `off`). Read via usePromptStarter. */
   promptStarter: 'prompt_starter',
   /** Default domain selection: pick which custom domain the publish modal targets. */

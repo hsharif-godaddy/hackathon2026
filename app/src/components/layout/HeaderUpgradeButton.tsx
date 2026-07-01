@@ -10,7 +10,6 @@ import text from '@ux/text';
 
 import { useBreakpoints } from '@/hooks/useBreakpoints';
 import { usePaywallEligibility } from '@/hooks/usePaywallEligibility';
-import { usePublishUpsellEligibility } from '@/hooks/usePublishUpsellEligibility';
 import { useSubscription } from '@/hooks/useSubscription';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
@@ -43,7 +42,6 @@ export default function HeaderUpgradeButton({ location = 'unknown' }: HeaderUpgr
 
   const featureEnabled = useSwitchboard('appbuilder-airoplus-upgrade-button');
   const { showPaywall, isLoading: isPaywallLoading } = usePaywallEligibility(currentAppId);
-  const { isOnCohort } = usePublishUpsellEligibility();
   const { data: subscription } = useSubscription();
   const currentPlan = subscription ? getPlanFromSubscription(subscription) : undefined;
   const clickContext = useMemo(
@@ -52,7 +50,7 @@ export default function HeaderUpgradeButton({ location = 'unknown' }: HeaderUpgr
   );
 
   // Only show on develop page, when feature enabled, and user can upgrade (non-Ultimate users)
-  if (!isDevelopPage || isPaywallLoading || !featureEnabled || isSharedApp || isOnCohort ||
+  if (!isDevelopPage || isPaywallLoading || !featureEnabled || isSharedApp ||
       (!showPaywall && !canUpgradePlan(currentPlan))) return null;
 
   const handleUpgradeClick = () => {

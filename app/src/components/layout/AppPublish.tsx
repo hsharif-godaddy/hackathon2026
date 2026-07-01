@@ -30,7 +30,6 @@ import { FEEDBACK_ID } from '@/components/feedback/utils';
 import PublishDomainConflict from '@/components/layout/PublishDomainConflict';
 import PublishDomainSelector, { type SelectableDomain } from '@/components/layout/PublishDomainSelector';
 import PublishedDomainCard from '@/components/layout/PublishedDomainCard';
-import PublishUpsellPopover from '@/components/layout/PublishUpsellPopover';
 import SeoQualityRegressionAlert from '@/components/layout/SeoQualityRegressionAlert';
 import { COHORT_OFF, COHORT_ON, EXPERIMENT_IDS } from '@/config/experiments';
 import { SWITCHBOARD_APPBUILDER_GO_LIVE_FEATURE } from '@/config/switchboard-flags';
@@ -49,7 +48,6 @@ import { usePaywallEligibility } from '@/hooks/usePaywallEligibility';
 import { usePaywallModal } from '@/hooks/usePaywallModal';
 import { usePublishApp } from '@/hooks/usePublishApp';
 import { usePublishComplianceGate } from '@/hooks/usePublishComplianceGate';
-import { usePublishUpsellEligibility } from '@/hooks/usePublishUpsellEligibility';
 import { useSecretsDiff } from '@/hooks/useSecretsDiff';
 import { useSeoQualityCheck } from '@/hooks/useSeoQualityCheck';
 import { useSeoSettingsEnabled } from '@/hooks/useSeoSettingsEnabled';
@@ -75,7 +73,6 @@ import { PublishComplianceBlockReason } from '@/lib/subscription';
 import { cn } from '@/lib/utils';
 import { useCommanderCanvasTabsEnabled, useCommanderStore } from '@/stores/useCommanderStore';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
-import { usePaywallStore } from '@/stores/usePaywallStore';
 import { useSiteStore } from '@/stores/useSiteStore';
 import { useIsLoading, useStreamingState } from '@/stores/useStreamingConversationStore';
 import { getPlanDisplayLabelKey } from '@/utils/credits';
@@ -175,7 +172,6 @@ export default function AppPublish({ location = 'develop', triggerClassName }: {
     () => (currentAppId ? { appId: currentAppId } : undefined),
     [currentAppId],
   );
-  const { isTreatment } = usePublishUpsellEligibility();
   const { cohort: defaultDomainSelectionCohort } = useHivemind(EXPERIMENT_IDS.defaultDomainSelection);
   const isDefaultDomainSelectionTreatment: boolean = defaultDomainSelectionCohort === COHORT_ON;
   const { isDisabled: isHistoryDisabled } = useIsHistoryDisabled(currentAppId || '');
@@ -213,8 +209,6 @@ export default function AppPublish({ location = 'develop', triggerClassName }: {
   const isUpgradePolling = useIsUpgradePolling();
   const fetchSite = useSiteStore((state) => state.fetchSite);
   const { showPaywall } = usePaywallEligibility();
-  const publishOpenAfterUpgradeAppId = usePaywallStore((state) => state.publishOpenAfterUpgradeAppId);
-  const clearPublishOpenAfterUpgrade = usePaywallStore((state) => state.clearPublishOpenAfterUpgrade);
   const [pendingOpenAfterUpgrade, setPendingOpenAfterUpgrade] = useState(false);
   const [isAgentInitiatedPublish, setIsAgentInitiatedPublish] = useState(false);
   const { triggerAnalysis } = useTriggerSecurityAnalysis();
@@ -296,35 +290,6 @@ export default function AppPublish({ location = 'develop', triggerClassName }: {
     setPendingOpenAfterUpgrade(false);
     void openPopoverWithFreshSite();
   }, [pendingOpenAfterUpgrade, isUpgradePolling, openPopoverWithFreshSite]);
-
-  // Combine-upgrade-with-publish treatment: auto-open the publish popover after the upsell upgrade.
-  // PublishUpsellPopover arms `publishOpenAfterUpgradeAppId` on "See Plans"; once that app is paid
-  // (showPaywall false) and post-purchase polling has settled (!isUpgradePolling), open the popover.
-  // The arm is cleared HERE — at the actual open — not when showPaywall flips, so the intent survives
-  // a remount during the polling window (e.g. mobile TOOLS<->PREVIEW toggle remounts the chat-toolbar
-  // instance). The active-instance guard ensures exactly one instance acts (desktop -> header,
-  // mobile -> chat toolbar); the arm lives in the store so the surviving instance picks it up.
-  useEffect(() => {
-    if (!isActivePublishInstance || !isDevelopPage) return;
-    if (!currentAppId || publishOpenAfterUpgradeAppId !== currentAppId) return;
-    if (showPaywall || isUpgradePolling) return;
-    clearPublishOpenAfterUpgrade();
-    void openPopoverWithFreshSite();
-  }, [isActivePublishInstance, isDevelopPage, currentAppId, publishOpenAfterUpgradeAppId, showPaywall, isUpgradePolling, clearPublishOpenAfterUpgrade, openPopoverWithFreshSite]);
-
-  // Safeguard: scope the arm to the current app. If the user moves to a different app without
-  // completing the upgrade, drop the stale intent so it can't auto-open later on an unrelated
-  // paid-state read. Keyed on app identity (not unmount), so mobile mode toggles that remount this
-  // component for the same app do not clear a legitimately-armed intent.
-  // The clear is deferred until `currentAppId` is known (non-null): on a post-purchase hard reload
-  // the persisted arm rehydrates synchronously BEFORE the develop store hydrates currentAppId (it
-  // starts null), so clearing while null would wipe the just-restored arm before the auto-open
-  // effect above can consume it.
-  useEffect(() => {
-    if (currentAppId && publishOpenAfterUpgradeAppId && publishOpenAfterUpgradeAppId !== currentAppId) {
-      clearPublishOpenAfterUpgrade();
-    }
-  }, [currentAppId, publishOpenAfterUpgradeAppId, clearPublishOpenAfterUpgrade]);
 
   // Use shared paywall modal hook (includes publish limit check)
   const { checkAndShowPaywall, paywallModal, isPaywallLoading, isPublishLimitLoading } = usePaywallModal({
@@ -552,13 +517,6 @@ export default function AppPublish({ location = 'develop', triggerClassName }: {
   // Check if this is first-time publishing
   const isFirstTimePublishing = !hasBeenPublished(site);
   const publishButtonLabelKey = usePublishButtonLabel(isFirstTimePublishing);
-
-  // Treatment publish-button click: emit the SAME canonical click EID control logs at its publish
-  // button (publishTriggerClickEid), at the same funnel position (the upsell open, pre-paywall), so
-  // the event is comparable across arms. publish_upsell.publish_click stays as the treatment intent.
-  const handleUpsellPublishClick = useCallback(() => {
-    logClickEvent(publishTriggerClickEid(location, isFirstTimePublishing), clickContext)();
-  }, [location, isFirstTimePublishing, clickContext]);
 
   // Publish mutation + post-publish security scan; shared by the normal and override paths.
   const performPublish = useCallback(async (appId: string, consent?: boolean): Promise<void> => {
@@ -1056,27 +1014,6 @@ export default function AppPublish({ location = 'develop', triggerClassName }: {
 
   if (!isDevelopPage) {
     return null;
-  }
-
-  // aab_combine_upgrade_with_publish treatment: replace the normal publish popover with the
-  // educational upsell. Safe as an early return — for a free treatment user the security/SEO/build
-  // alerts and growls are inactive and paywallModal/dnsConflictModal are null; "See Plans" opens the
-  // globally-mounted <UpgradeModal>, not this component's local modal. Chat-toolbar keeps today's
-  // behavior (icon-only button has no room for the labeled upsell trigger). A free treatment user is
-  // never mid-publish, so the label is the static "Publish" string.
-  if (isTreatment && !isChatToolbar) {
-    return (
-      <>
-        {paywallModal}
-        {dnsConflictModal}
-        <PublishUpsellPopover
-          appId={currentAppId ?? undefined}
-          triggerLabel={t('builder_publish_button')}
-          triggerClassName="!rounded-xmd !pl-1.5 !pr-1.5 sm:!p-1 !border-none md:!border-solid"
-          onPublishClick={handleUpsellPublishClick}
-        />
-      </>
-    );
   }
 
   // Button is disabled when:

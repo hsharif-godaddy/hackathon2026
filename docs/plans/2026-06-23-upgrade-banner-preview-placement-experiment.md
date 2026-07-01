@@ -114,7 +114,7 @@ Result: chat banner shows when feature flag ON + free user + cohort is OFF/ineli
 
 ### 7. Add trigger event for experiment bucketing
 
-Fire a Hivemind trigger impression when the user is a free user (`showPaywall === true`), so only free users get bucketed into the experiment. This can be done in a shared location (e.g., a `useUpgradeBannerExperiment` hook) that both ChatBanners and PreviewPane consume, or inline where the cohort is checked. Follow the existing `useCombinePublishTrigger` pattern.
+Fire a Hivemind trigger impression when the user is a free user (`showPaywall === true`), so only free users get bucketed into the experiment. This can be done in a shared location (e.g., a `useUpgradeBannerExperiment` hook) that both ChatBanners and PreviewPane consume, or inline where the cohort is checked. Follow the existing `usePublishButtonLabel` trigger hook pattern (`app/src/experiments/publish-button-label/usePublishButtonLabel.ts`).
 
 ### 8. Add tests
 
