@@ -13,7 +13,7 @@
     "lint:fix": "pnpm exec eslint --fix src/"
   },
   "dependencies": {
-    "@aws-sdk/client-kinesis": "^3.1048.0",
+    "@aws-sdk/client-kinesis": "^3.1075.0",
     "@switchboard/client": "^2.7.0",
     "gd-auth-client": "catalog:",
     "zod": "catalog:"

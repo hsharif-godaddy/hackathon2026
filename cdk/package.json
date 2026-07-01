@@ -22,7 +22,7 @@
     "vitest": "catalog:"
   },
   "dependencies": {
-    "@aws-sdk/client-secrets-manager": "^3.1049.0",
+    "@aws-sdk/client-secrets-manager": "^3.1075.0",
     "@gd-datalake/local-admins": "1.1.1",
     "@gd-safeguard/godaddy-constructs": "^11.1.0",
     "aws-cdk-lib": "^2.253.1",
