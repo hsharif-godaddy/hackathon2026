@@ -73,6 +73,7 @@ All slog output is automatically written to `local-control-plane/dev.log` alongs
 
 - Go 1.25
 - Docker (for container management)
+- rsync (for live template sync)
 - golangci-lint (for `make lint`)
 
 `make fmt` / `make fmt-fix` only need `gofmt -s` from the standard Go toolchain.
@@ -81,4 +82,4 @@ All slog output is automatically written to `local-control-plane/dev.log` alongs
 
 - **Logging fields use snake_case** (matching dev-supervisor, not the TypeScript monorepo's camelCase)
 - **Structured logging** uses `log/slog`
-- **Pure Go** -- no Node.js/pnpm dependencies
+- **Pure Go service** -- no Node.js/pnpm dependencies; live template sync shells out to `rsync`

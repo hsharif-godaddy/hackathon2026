@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -16,6 +17,7 @@ import (
 	"github.com/airo-ai-builder/local-control-plane/internal/auth"
 	"github.com/airo-ai-builder/local-control-plane/internal/docker"
 	"github.com/airo-ai-builder/local-control-plane/internal/store"
+	"github.com/airo-ai-builder/local-control-plane/internal/templatesync"
 
 	"github.com/rs/cors"
 )
@@ -73,7 +75,11 @@ func run() error {
 		return fmt.Errorf("jwt init failed (run: aws sso login --profile %s): %w", awsProfile(), err)
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	docker.NewManager().Reconcile(db)
+	templatesync.Start(ctx, logger)
 
 	authType := getEnv("AUTH_TYPE", "none")
 	ssoHost := getEnv("SSO_HOST", "sso.dev-godaddy.com")
@@ -101,6 +107,7 @@ func run() error {
 		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 		<-sigCh
 		slog.Info("shutting down")
+		cancel()
 		_ = server.Close()
 	}()
 
