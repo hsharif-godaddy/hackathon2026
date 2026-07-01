@@ -437,17 +437,26 @@ async function probeAuthValidate(level: 1 | 2 | 3): Promise<Response | 'timeout'
 }
 
 /**
- * Bridge a transient stale-vat (authReason 3) 401. The browser ui_heartbeat
- * refreshes `vat` out-of-band shortly after the tab wakes, but it has no wake
- * trigger, so the first validate after wake can 401 before the heartbeat
- * lands. Re-probe a few times, spaced out, so a stale vat that refreshes
- * within the budget recovers silently instead of bouncing the user to the SSO
- * modal. A re-probe that throws (transient network blip — likely in this exact
- * just-online window) counts as a failed attempt rather than aborting recovery
- * and rejecting resolveAuth. This is a bounded best-effort bridge, not a
- * guarantee: wakes that refresh slower than the budget fall through to the
- * modal. Returns true once a re-probe confirms the token is valid, false when
- * the budget is exhausted.
+ * Bridge a transient stale-vat (authReason 3) 401. During wake, heartbeat.js
+ * may fail (ERR_NETWORK_CHANGED) leaving the JWT stale. This function fires a
+ * direct POST to the SSO heartbeat endpoint (when in the wake window) so SSO
+ * issues a fresh JWT via Set-Cookie, then re-probes a few times, spaced out,
+ * so the refreshed token is picked up silently instead of bouncing the user to
+ * the SSO modal. A re-probe that throws (transient network blip — likely in
+ * this exact just-online window) counts as a failed attempt rather than
+ * aborting recovery and rejecting resolveAuth. This is a bounded best-effort
+ * bridge, not a guarantee: wakes that refresh slower than the budget fall
+ * through to the modal. Returns true once a re-probe confirms the token is
+ * valid, false when the budget is exhausted.
+ *
+ * Wake-VAT recovery layers (defense in depth):
+ *  1. onlineManager 1s gate (wakeTracker IIFE) — delays TQ refetches so
+ *     heartbeat.js can land Set-Cookie first.
+ *  2. Direct heartbeat POST here — fires when heartbeat.js failed on wake.
+ *  3. awaitHeartbeatRecovery in AuthProvider — cold-launch unauthenticated.
+ *  4. awaitHeartbeatRecovery in SsoLoginPrompt — protected-route fallback.
+ * Layers 3-4 share a sessionStorage dedup key; layers 1-2 are independent.
+ * All log under app-fetch.auth-resolve.* with msSinceWake for correlation.
  */
 async function recoverStaleVat(level: 1 | 2 | 3, url: string): Promise<boolean> {
   const wakeAwareEnabled: boolean =
@@ -465,6 +474,33 @@ async function recoverStaleVat(level: 1 | 2 | 3, url: string): Promise<boolean> 
       maxAttempts,
       msSinceWake: wakeTracker.msSinceWake(),
     });
+
+    // getSsoHost() is async but resolves from globalThis.__gasketConfigCache
+    // (populated on first page load, persists through sleep). The async variant
+    // is required client-side — getSsoHostSync() reads process.env which is
+    // unavailable in the browser and falls back to sso.test-godaddy.com.
+    const controller: AbortController = new AbortController();
+    const timer: ReturnType<typeof setTimeout> = setTimeout(
+      () => controller.abort(), AUTH_PROBE_TIMEOUT_MS,
+    );
+    try {
+      const ssoHost: string = await getSsoHost();
+      const heartbeatRes: Response = await fetch(
+        `https://${ssoHost}/v1/api/token/ui_heartbeat`,
+        { method: 'POST', credentials: 'include', signal: controller.signal },
+      );
+      if (!heartbeatRes.ok) {
+        logger.warn('app-fetch.auth-resolve.vat-recovery-heartbeat-error', {
+          url, level, status: heartbeatRes.status,
+        });
+      }
+    } catch (err) {
+      logger.warn('app-fetch.auth-resolve.vat-recovery-heartbeat-error', {
+        url, level, error: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   let lastOutcome: string = 'unknown';

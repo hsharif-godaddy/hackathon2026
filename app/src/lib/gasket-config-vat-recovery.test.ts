@@ -75,6 +75,24 @@ function make200(): Response {
   return new Response('{}', { status: 200 });
 }
 
+function makeHeartbeat201(): Response {
+  return new Response('{"message":"Ok","code":1}', { status: 201 });
+}
+
+function seedConfigCache(): void {
+  (globalThis as any).__gasketConfigCache = {
+    auth: { realm: 'idp', risk: 'low', type: ['basic'], allowHeartbeat: false, use12HourExpiration: true },
+    sso: { loginUrl: 'https://sso.godaddy.com/login', logoutUrl: 'https://sso.godaddy.com/logout', appName: 'airo-builder' },
+    redirects: { loginRedirectUrl: '/', logoutRedirectUrl: '/' },
+    supportUrl: 'https://www.godaddy.com/help/contact-us',
+  };
+}
+
+function clearConfigCache(): void {
+  delete (globalThis as any).__gasketConfigCache;
+  delete (globalThis as any).__gasketConfigPromise;
+}
+
 describe('recoverStaleVat wake-aware extension', function vatRecoveryWakeTests() {
   let fetchSpy: ReturnType<typeof vi.fn>;
 
@@ -84,12 +102,14 @@ describe('recoverStaleVat wake-aware extension', function vatRecoveryWakeTests()
     mockSwitchboardValue = undefined;
     fetchSpy = vi.fn();
     vi.stubGlobal('fetch', fetchSpy);
+    seedConfigCache();
     vi.resetModules();
   });
 
   afterEach(function teardown() {
     vi.useRealTimers();
     vi.unstubAllGlobals();
+    clearConfigCache();
   });
 
   it('uses default 3-attempt budget when flag is off', async function defaultBudget() {
@@ -120,11 +140,12 @@ describe('recoverStaleVat wake-aware extension', function vatRecoveryWakeTests()
     const { resolveAuth, wakeTracker } = await import('@/lib/gasket-config');
     wakeTracker.mark();
 
-    fetchSpy.mockResolvedValueOnce(make401());
+    fetchSpy.mockResolvedValueOnce(make401());       // initial probe → 401 (authReason=3)
+    fetchSpy.mockResolvedValueOnce(makeHeartbeat201()); // direct heartbeat POST
     for (let i = 0; i < 6; i++) {
-      fetchSpy.mockResolvedValueOnce(make401());
+      fetchSpy.mockResolvedValueOnce(make401());     // recovery probes 1-6
     }
-    fetchSpy.mockResolvedValueOnce(make200());
+    fetchSpy.mockResolvedValueOnce(make200());       // recovery probe 7
 
     const result = await resolveAuth({ level: 2 });
 
@@ -163,6 +184,8 @@ describe('recoverStaleVat wake-aware extension', function vatRecoveryWakeTests()
 
     // Initial probe: 401
     fetchSpy.mockResolvedValueOnce(make401());
+    // Direct heartbeat POST
+    fetchSpy.mockResolvedValueOnce(makeHeartbeat201());
     // Attempt 1: network error (fetch rejects)
     fetchSpy.mockRejectedValueOnce(new TypeError('Failed to fetch'));
     // Attempt 2: network error again
@@ -195,6 +218,8 @@ describe('recoverStaleVat wake-aware extension', function vatRecoveryWakeTests()
 
     // Initial probe: 401 with VAT authReason (3) to enter recoverStaleVat
     fetchSpy.mockResolvedValueOnce(make401());
+    // Direct heartbeat POST
+    fetchSpy.mockResolvedValueOnce(makeHeartbeat201());
     // All subsequent probes in recoverStaleVat throw network errors
     fetchSpy.mockRejectedValue(new TypeError('Failed to fetch'));
 
@@ -220,11 +245,12 @@ describe('recoverStaleVat wake-aware extension', function vatRecoveryWakeTests()
     // Advance to 14,999ms — just inside the 15s window (strict < comparison)
     vi.advanceTimersByTime(14_999);
 
-    fetchSpy.mockResolvedValueOnce(make401());
+    fetchSpy.mockResolvedValueOnce(make401());          // initial probe
+    fetchSpy.mockResolvedValueOnce(makeHeartbeat201()); // direct heartbeat POST
     for (let i = 0; i < 6; i++) {
-      fetchSpy.mockResolvedValueOnce(make401());
+      fetchSpy.mockResolvedValueOnce(make401());        // recovery probes 1-6
     }
-    fetchSpy.mockResolvedValueOnce(make200());
+    fetchSpy.mockResolvedValueOnce(make200());          // recovery probe 7
 
     const result = await resolveAuth({ level: 2 });
 
@@ -271,11 +297,12 @@ describe('recoverStaleVat wake-aware extension', function vatRecoveryWakeTests()
     });
     document.dispatchEvent(new Event('visibilitychange'));
 
-    fetchSpy.mockResolvedValueOnce(make401());
+    fetchSpy.mockResolvedValueOnce(make401());          // initial probe
+    fetchSpy.mockResolvedValueOnce(makeHeartbeat201()); // direct heartbeat POST
     for (let i = 0; i < 6; i++) {
-      fetchSpy.mockResolvedValueOnce(make401());
+      fetchSpy.mockResolvedValueOnce(make401());        // recovery probes 1-6
     }
-    fetchSpy.mockResolvedValueOnce(make200());
+    fetchSpy.mockResolvedValueOnce(make200());          // recovery probe 7
 
     const result = await resolveAuth({ level: 2 });
 
@@ -284,6 +311,121 @@ describe('recoverStaleVat wake-aware extension', function vatRecoveryWakeTests()
       'app-fetch.auth-resolve.vat-recovery-wake-extended',
       expect.objectContaining({ url: '<preflight>', authReason: 3, maxAttempts: 7 }),
     );
+  });
+
+  it('fires direct heartbeat POST to SSO during wake before probe loop', async function directHeartbeatPost() {
+    mockSwitchboardValue = true;
+
+    const { resolveAuth, wakeTracker } = await import('@/lib/gasket-config');
+    wakeTracker.mark();
+
+    fetchSpy.mockResolvedValueOnce(make401());          // initial probe → 401 (authReason=3)
+    fetchSpy.mockResolvedValueOnce(makeHeartbeat201()); // direct heartbeat POST
+    fetchSpy.mockResolvedValueOnce(make200());          // first recovery probe succeeds
+
+    const result = await resolveAuth({ level: 2 });
+
+    expect(result).toEqual({ kind: 'valid' });
+    // Verify the heartbeat POST fired at call index 1 (after initial probe, before recovery probe)
+    const secondCallUrl: string = fetchSpy.mock.calls[1][0] as string;
+    expect(secondCallUrl).toBe('https://sso.godaddy.com/v1/api/token/ui_heartbeat');
+    expect(fetchSpy.mock.calls[1][1]).toEqual(
+      expect.objectContaining({ method: 'POST', credentials: 'include' }),
+    );
+  });
+
+  it('logs warning when heartbeat POST fails but continues recovery', async function heartbeatPostFails() {
+    mockSwitchboardValue = true;
+
+    const { resolveAuth, wakeTracker } = await import('@/lib/gasket-config');
+    wakeTracker.mark();
+
+    fetchSpy.mockResolvedValueOnce(make401());                            // initial probe
+    fetchSpy.mockRejectedValueOnce(new TypeError('net::ERR_NETWORK_CHANGED')); // heartbeat POST fails
+    fetchSpy.mockResolvedValueOnce(make200());                            // first recovery probe succeeds
+
+    const result = await resolveAuth({ level: 2 });
+
+    expect(result).toEqual({ kind: 'valid' });
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      'app-fetch.auth-resolve.vat-recovery-heartbeat-error',
+      expect.objectContaining({ url: '<preflight>', level: 2, error: 'net::ERR_NETWORK_CHANGED' }),
+    );
+  });
+
+  it('logs warning when heartbeat POST returns non-ok status', async function heartbeatPostNonOk() {
+    mockSwitchboardValue = true;
+
+    const { resolveAuth, wakeTracker } = await import('@/lib/gasket-config');
+    wakeTracker.mark();
+
+    fetchSpy.mockResolvedValueOnce(make401());                                    // initial probe
+    fetchSpy.mockResolvedValueOnce(new Response('{}', { status: 401 }));          // heartbeat POST → SSO rejected
+    fetchSpy.mockResolvedValueOnce(make200());                                    // first recovery probe succeeds
+
+    const result = await resolveAuth({ level: 2 });
+
+    expect(result).toEqual({ kind: 'valid' });
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      'app-fetch.auth-resolve.vat-recovery-heartbeat-error',
+      expect.objectContaining({ url: '<preflight>', level: 2, status: 401 }),
+    );
+  });
+
+  it('aborts heartbeat POST after 5s timeout and continues recovery', async function heartbeatPostTimeout() {
+    mockSwitchboardValue = true;
+
+    const { resolveAuth, wakeTracker } = await import('@/lib/gasket-config');
+    wakeTracker.mark();
+
+    // Initial probe: 401
+    fetchSpy.mockResolvedValueOnce(make401());
+    // Heartbeat POST hangs until aborted
+    fetchSpy.mockImplementationOnce((_url: string, opts: RequestInit) => {
+      return new Promise((_resolve, reject) => {
+        opts.signal?.addEventListener('abort', () => {
+          reject(new DOMException('The operation was aborted.', 'AbortError'));
+        });
+      });
+    });
+    // First recovery probe succeeds
+    fetchSpy.mockResolvedValueOnce(make200());
+
+    const promise = resolveAuth({ level: 2 });
+    // Flush microtasks so the async flow reaches the hanging heartbeat fetch
+    // and the 5s AbortController setTimeout is scheduled.
+    await vi.advanceTimersByTimeAsync(0);
+    // Now advance past the 5s timeout to fire controller.abort().
+    await vi.advanceTimersByTimeAsync(6_000);
+
+    const result = await promise;
+
+    expect(result).toEqual({ kind: 'valid' });
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      'app-fetch.auth-resolve.vat-recovery-heartbeat-error',
+      expect.objectContaining({ url: '<preflight>', level: 2, error: expect.stringContaining('aborted') }),
+    );
+  });
+
+  it('does not fire heartbeat POST when outside wake window', async function noHeartbeatOutsideWake() {
+    mockSwitchboardValue = true;
+
+    const { resolveAuth } = await import('@/lib/gasket-config');
+    // No wakeTracker.mark() — outside wake window
+
+    fetchSpy.mockResolvedValueOnce(make401());  // initial probe
+    fetchSpy.mockResolvedValue(make401());      // recovery probes (no heartbeat in between)
+
+    const promise = resolveAuth({ level: 2 });
+    await vi.advanceTimersByTimeAsync(100);
+
+    // Verify NO call to SSO heartbeat endpoint
+    const heartbeatCalls: unknown[] = fetchSpy.mock.calls.filter(
+      (call: unknown[]) => typeof call[0] === 'string' && call[0].includes('ui_heartbeat'),
+    );
+    expect(heartbeatCalls).toHaveLength(0);
+
+    void promise.catch(() => {});
   });
 
   it('does not extend budget when flag is undefined (Switchboard unavailable)', async function flagUndefined() {
@@ -316,12 +458,14 @@ describe('resolveAuth wake-patience (probe timeout path)', function probeTimeout
     mockSwitchboardValue = undefined;
     fetchSpy = vi.fn();
     vi.stubGlobal('fetch', fetchSpy);
+    seedConfigCache();
     vi.resetModules();
   });
 
   afterEach(function teardown() {
     vi.useRealTimers();
     vi.unstubAllGlobals();
+    clearConfigCache();
   });
 
   it('probe timeout during wake → attempts recoverStaleVat → succeeds', async function timeoutWakeRecovery() {
@@ -336,6 +480,8 @@ describe('resolveAuth wake-patience (probe timeout path)', function probeTimeout
         opts.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')));
       });
     });
+    // Direct heartbeat POST inside recoverStaleVat
+    fetchSpy.mockResolvedValueOnce(makeHeartbeat201());
     // recoverStaleVat retry probes: first fails, second succeeds
     fetchSpy.mockResolvedValueOnce(make401());
     fetchSpy.mockResolvedValueOnce(make200());
@@ -416,12 +562,14 @@ describe('resolveAuth wake-patience (null authReason path)', function nullAuthRe
     mockSwitchboardValue = undefined;
     fetchSpy = vi.fn();
     vi.stubGlobal('fetch', fetchSpy);
+    seedConfigCache();
     vi.resetModules();
   });
 
   afterEach(function teardown() {
     vi.useRealTimers();
     vi.unstubAllGlobals();
+    clearConfigCache();
   });
 
   it('null authReason during wake → attempts recoverStaleVat → succeeds', async function nullReasonWakeRecovery() {
@@ -437,6 +585,8 @@ describe('resolveAuth wake-patience (null authReason path)', function nullAuthRe
         headers: { 'Content-Type': 'text/html' },
       }),
     );
+    // Direct heartbeat POST inside recoverStaleVat
+    fetchSpy.mockResolvedValueOnce(makeHeartbeat201());
     // recoverStaleVat probes: first still 401, second succeeds
     fetchSpy.mockResolvedValueOnce(make401());
     fetchSpy.mockResolvedValueOnce(make200());
@@ -538,6 +688,8 @@ describe('resolveAuth wake-patience (null authReason path)', function nullAuthRe
         headers: { 'Content-Type': 'text/html' },
       }),
     );
+    // Direct heartbeat POST inside recoverStaleVat
+    fetchSpy.mockResolvedValueOnce(makeHeartbeat201());
     // recoverStaleVat: first retry succeeds
     fetchSpy.mockResolvedValueOnce(make200());
 
@@ -584,12 +736,14 @@ describe('wakeTracker onlineManager gate', function onlineManagerGateTests() {
     vi.clearAllMocks();
     mockSwitchboardValue = undefined;
     vi.stubGlobal('fetch', vi.fn());
+    seedConfigCache();
     vi.resetModules();
   });
 
   afterEach(function teardown() {
     vi.useRealTimers();
     vi.unstubAllGlobals();
+    clearConfigCache();
   });
 
   it('delays setOnline by 1s when flag is ON (heartbeat head start)', async function delayWhenFlagOn() {
