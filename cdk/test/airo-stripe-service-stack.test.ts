@@ -75,6 +75,53 @@ describe('SecretsManager resource policies — Resource element must be present'
   });
 });
 
+describe('SecretsManager resource policies — Deny GetSecretValue on live platform key only', () => {
+  const getLivePolicy = (): any => {
+    const policies = devTemplate.findResources('AWS::SecretsManager::ResourcePolicy');
+    const [, policy] = Object.entries(policies).find(([id]) => id.includes('Live')) ?? [];
+    if (!policy) throw new Error('StripePlatformKeyLiveSecret resource policy not found');
+    return policy;
+  };
+
+  it('only the live platform key policy has a Deny statement', () => {
+    const policies = devTemplate.findResources('AWS::SecretsManager::ResourcePolicy');
+    for (const [logicalId, policy] of Object.entries(policies)) {
+      const statements: any[] = (policy as any).Properties.ResourcePolicy.Statement;
+      const denyCount = statements.filter((s: any) => s.Effect === 'Deny').length;
+      if (logicalId.includes('Live')) {
+        expect(denyCount, `${logicalId} should have exactly one Deny statement`).toBe(1);
+      } else {
+        expect(denyCount, `${logicalId} should have no Deny statements`).toBe(0);
+      }
+    }
+  });
+
+  it('the Deny covers GetSecretValue but not DescribeSecret', () => {
+    const statements: any[] = getLivePolicy().Properties.ResourcePolicy.Statement;
+    const deny = statements.find((s: any) => s.Effect === 'Deny');
+    const actions: string[] = Array.isArray(deny.Action) ? deny.Action : [deny.Action];
+    expect(actions).toContain('secretsmanager:GetSecretValue');
+    expect(actions).not.toContain('secretsmanager:DescribeSecret');
+  });
+
+  it('the Deny principal is the account root ARN', () => {
+    const statements: any[] = getLivePolicy().Properties.ResourcePolicy.Statement;
+    const deny = statements.find((s: any) => s.Effect === 'Deny');
+    const principal: string = deny.Principal?.AWS ?? deny.Principal;
+    expect(principal).toMatch(/^arn:aws:iam::\d+:root$/);
+  });
+
+  it('the Deny exempts the task role via StringNotEquals on aws:PrincipalArn', () => {
+    const statements: any[] = getLivePolicy().Properties.ResourcePolicy.Statement;
+    const deny = statements.find((s: any) => s.Effect === 'Deny');
+    const exempted: string[] = deny.Condition?.StringNotEquals?.['aws:PrincipalArn'] ?? [];
+    expect(exempted.length).toBeGreaterThan(0);
+    for (const arn of exempted) {
+      expect(arn).toMatch(/^arn:aws:iam::\d+:role\/.+/);
+    }
+  });
+});
+
 describe('KMS CMK key policy — kms:GetPublicKey grant is present', () => {
   // key.grant() inlines actions into the key policy (no AWS::KMS::Grant
   // resource is created). Verify the managed-keys CMK policy contains all

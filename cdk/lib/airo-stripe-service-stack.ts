@@ -217,6 +217,29 @@ export class AiroStripeServiceStack extends GDStack {
         );
         this.managedKeysCmk.grant(principal, 'kms:Decrypt', 'kms:DescribeKey', 'kms:GetPublicKey');
       }
+
+      // Deny GetSecretValue on the live platform key to every principal except
+      // the stripe-service task role(s). The live key (sk_live_*) enables real
+      // financial transactions, so it warrants the tightest access control.
+      // DescribeSecret is excluded so CloudFormation can inspect secret state
+      // during stack updates without requiring the deploying role here.
+      //
+      // Note: if stripeServiceTaskRoleArns is ever empty this block is skipped
+      // entirely. StringNotEquals against an empty list would match every
+      // principal and lock the secret to everyone, including the task role.
+      this.platformKeyLiveSecret.addToResourcePolicy(
+        new iam.PolicyStatement({
+          effect: iam.Effect.DENY,
+          principals: [new iam.ArnPrincipal(`arn:aws:iam::${cdk.Stack.of(this).account}:root`)],
+          actions: ['secretsmanager:GetSecretValue'],
+          resources: ['*'],
+          conditions: {
+            StringNotEquals: {
+              'aws:PrincipalArn': config.stripeServiceTaskRoleArns,
+            },
+          },
+        })
+      );
     }
 
     // WAFv2 WebACL restricting ALB ingress to the Edge Gateway egress IPs.
