@@ -138,7 +138,19 @@ export function isTextEditable(element: HTMLElement, cmsInlineEditEnabled: boole
         return tag === "br" || tag === "span" || tag === "strong" || tag === "em" || tag === "b" || tag === "i" || tag === "a";
       });
 
-  return (TEXT_TAGS.has(tagName) || isListContainer) && hasText && hasOnlyText;
+  // Authoritative shut-off: the text-tag (AST/static-literal) edit path requires
+  // the source-mapper's per-node data-dev-editable="text" marker, computed from
+  // the same AST the server inspects on save. This can only REMOVE editability —
+  // it never makes more nodes editable — eliminating the open-then-400 divergence
+  // where the DOM heuristic disagreed with the server's
+  // hasUnsupportedDynamicTextExpression.
+  //
+  // List containers (ul/ol) are exempt: the source-mapper only marks intrinsic
+  // text tags (getIntrinsicTextTagName excludes ul/ol), so requiring the marker
+  // there would regress list editing rather than shut off a server-rejected node.
+  const passesMarkerGate = isListContainer || element.getAttribute("data-dev-editable") === "text";
+
+  return (TEXT_TAGS.has(tagName) || isListContainer) && hasText && hasOnlyText && passesMarkerGate;
 }
 
 /**

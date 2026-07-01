@@ -1190,3 +1190,98 @@ describe('jsxSourceMapper — indexed and derived content keys', () => {
     expect(output).not.toContain('data-dev-content-derived');
   });
 });
+
+describe('jsxSourceMapper — data-dev-editable authoritative marker', () => {
+  it('marks a static text element', () => {
+    const output = transform('<h1>Hi</h1>');
+    expect(output).toContain('data-dev-editable="text"');
+  });
+
+  it('marks a static element with inline-formatting children', () => {
+    const output = transform('<h2>Static <strong>bold</strong></h2>');
+    expect(output).toContain('data-dev-editable="text"');
+  });
+
+  it('does NOT mark an element with dynamic expression children', () => {
+    const output = transform('<span>{prefix}{display}{suffix}</span>');
+    expect(output).not.toContain('data-dev-editable');
+  });
+
+  it('does NOT mark an element with mixed static text and a dynamic expression', () => {
+    const output = transform('<p>Label {x}</p>');
+    expect(output).not.toContain('data-dev-editable');
+  });
+
+  it('does NOT mark a content-keyed element (content path owns it)', () => {
+    const output = transform(`
+      import { home } from 'virtual:content';
+      export default () => <h2>{home.x}</h2>;
+    `);
+    expect(output).not.toContain('data-dev-editable');
+    expect(output).toContain('data-dev-content-key="home.x"');
+  });
+
+  it('does NOT mark a data-dev-dynamic element', () => {
+    const output = transform('<p>{product.price}</p>');
+    expect(output).toContain('data-dev-dynamic="true"');
+    expect(output).not.toContain('data-dev-editable');
+  });
+
+  it('does NOT mark a non-text container tag', () => {
+    const output = transform('<div>Hi</div>');
+    expect(output).not.toContain('data-dev-editable');
+  });
+
+  it('marks a static element whose only child is a static expression container', () => {
+    const output = transform('<p>{"static string"}</p>');
+    expect(output).toContain('data-dev-editable="text"');
+  });
+
+  // Regression guards: these shapes are editable today via the client's
+  // hasOnlyText path — the marker MUST be emitted for them or clicking them
+  // would silently go read-only with no test failing.
+  it('marks a static <li> (list-item click path)', () => {
+    const output = transform('<li>Item</li>');
+    expect(output).toContain('data-dev-editable="text"');
+  });
+
+  it('marks a heading containing a <br/>', () => {
+    const output = transform('<h1>Shop better.<br />Spend less.</h1>');
+    expect(output).toContain('data-dev-editable="text"');
+  });
+
+  it('marks an element with a JSX whitespace expression among static text', () => {
+    const output = transform("<h1>Hi{' '}there</h1>");
+    expect(output).toContain('data-dev-editable="text"');
+  });
+
+  // Contract guards for the inline-child tag list — a future edit to the tag set
+  // (here vs the client's hasOnlyText) breaks a test instead of silently going
+  // read-only.
+  it('marks a heading with a plain inline-format child', () => {
+    const output = transform('<span>Hi</span>');
+    expect(output).toContain('data-dev-editable="text"');
+  });
+
+  it('marks a heading whose only child is an <a>', () => {
+    const output = transform('<h2>Read <a>more</a></h2>');
+    expect(output).toContain('data-dev-editable="text"');
+  });
+
+  // Regression: motion.* inline wrappers must NOT lose the marker (server accepts
+  // them; pre-fix they were disqualified as JSXMemberExpression children).
+  it('marks a static heading with a motion.* inline-format child', () => {
+    const output = transform('<h1>Shop <motion.span>smarter</motion.span></h1>');
+    expect(output).toContain('data-dev-editable="text"');
+  });
+
+  it('does NOT mark a heading with a motion.* BLOCK child (not inline-format)', () => {
+    const output = transform('<h1>Big <motion.div>block</motion.div></h1>');
+    expect(output).not.toContain('data-dev-editable');
+  });
+
+  it('does NOT mark a heading with a custom-component child (unknown render)', () => {
+    const output = transform('<h1>Text <Highlight>word</Highlight></h1>');
+    expect(output).not.toContain('data-dev-editable');
+  });
+});

@@ -275,13 +275,13 @@ describe('element-detection', () => {
       expect(isTextEditable(formatted)).toBe(false);
     });
 
-    it('should allow plain text elements without data-dev-dynamic', () => {
-      const element = buildElement('<p>Hello World</p>');
+    it('should allow plain text elements without data-dev-dynamic (with editable marker)', () => {
+      const element = buildElement('<p data-dev-editable="text">Hello World</p>');
       expect(isTextEditable(element, true)).toBe(true);
     });
 
-    it('should allow elements with inline formatting but no data-dev-dynamic', () => {
-      const element = buildElement('<p><strong>Bold text</strong></p>');
+    it('should allow elements with inline formatting but no data-dev-dynamic (with editable marker)', () => {
+      const element = buildElement('<p data-dev-editable="text"><strong>Bold text</strong></p>');
       expect(isTextEditable(element, true)).toBe(true);
     });
 
@@ -320,8 +320,9 @@ describe('element-detection', () => {
       expect(isTextEditable(el, false)).toBe(false);
     });
 
-    it('non-content text element is editable regardless of the flag', () => {
+    it('non-content text element (with editable marker) is editable regardless of the flag', () => {
       const el = document.createElement('p');
+      el.setAttribute('data-dev-editable', 'text');
       el.textContent = 'Plain text';
       expect(isTextEditable(el, false)).toBe(true);
       expect(isTextEditable(el, true)).toBe(true);
@@ -334,6 +335,35 @@ describe('element-detection', () => {
         </article>
       `);
       expect(isTextEditable(root.querySelector('h2') as HTMLElement, true)).toBe(false);
+    });
+  });
+
+  // ─── isTextEditable — authoritative data-dev-editable marker ─────────────────
+
+  describe('isTextEditable — authoritative data-dev-editable marker', () => {
+    it('a static element WITH the marker is editable', () => {
+      const element = buildElement('<h1 data-dev-editable="text">Hello</h1>');
+      expect(isTextEditable(element, true)).toBe(true);
+    });
+
+    it('the SAME element WITHOUT the marker is NOT editable', () => {
+      const element = buildElement('<h1>Hello</h1>');
+      expect(isTextEditable(element, true)).toBe(false);
+    });
+
+    it('inline-formatting element is editable only with the marker', () => {
+      expect(isTextEditable(buildElement('<p data-dev-editable="text"><strong>Bold</strong></p>'), true)).toBe(true);
+      expect(isTextEditable(buildElement('<p><strong>Bold</strong></p>'), true)).toBe(false);
+    });
+
+    it('content-keyed elements are unaffected by the marker (content fork owns them)', () => {
+      // Content-keyed nodes never carry data-dev-editable; the content fork
+      // decides editability purely from the flag, regardless of the marker.
+      const el = document.createElement('p');
+      el.setAttribute('data-dev-content-key', 'home.hero.title');
+      el.textContent = 'Welcome';
+      expect(isTextEditable(el, true)).toBe(true);
+      expect(isTextEditable(el, false)).toBe(false);
     });
   });
 

@@ -518,6 +518,57 @@ export default function jsxSourceMapper(babel: { types: typeof types }): PluginO
     );
   }
 
+  // Inline-formatting tags that may appear as direct children of an editable
+  // text element without disqualifying it. Mirrors the client's hasOnlyText
+  // allowlist in dev-tools/element-detection.ts.
+  const INLINE_FORMAT_TAGS = new Set(['span', 'strong', 'em', 'b', 'i', 'a', 'br']);
+
+  // Resolve the intrinsic tag of an inline-formatting child element, or null if
+  // it isn't statically knowable. `<span>` → "span"; a native-tag wrapper like
+  // `<motion.span>`/`<motion.strong>` (lowercase member-expression root) → its
+  // leaf property ("span"); a real component (`<Highlight>`, `<Foo.Bar>`) → null,
+  // because we can't know what it renders.
+  function inlineChildTagName(opening: JSXElement['openingElement']): string | null {
+    const name = opening.name;
+    if (t.isJSXIdentifier(name)) return name.name;
+    if (t.isJSXMemberExpression(name)) {
+      let root: types.JSXMemberExpression['object'] = name;
+      while (t.isJSXMemberExpression(root)) root = root.object;
+      const isNativeWrapper: boolean = t.isJSXIdentifier(root) && /^[a-z]/.test(root.name);
+      return isNativeWrapper ? name.property.name : null;
+    }
+    return null;
+  }
+
+  // Authoritative editability predicate for the additive data-dev-editable="text"
+  // marker. Direct-children-only. A CONSERVATIVE SUBSET of server-acceptance
+  // (hasUnsupportedDynamicTextExpression, ast-text-editor.ts): it never marks a
+  // node the server would reject, but it may withhold the marker on a node the
+  // server WOULD accept — the server ignores element children entirely, whereas
+  // this also requires every element child to resolve to an intrinsic inline tag
+  // (so an unresolvable component child — unknown render — shuts editing off
+  // rather than risk an accept-then-reject). A non-static JSXExpressionContainer
+  // child (identifier/member/call/conditional/template-with-substitutions)
+  // disqualifies; JSXText, static expression containers (string literal / empty
+  // template / comment), and intrinsic inline-format child elements (incl.
+  // `motion.*` wrappers, resolved to their leaf tag) are all editable.
+  function isStaticallyTextEditable(jsxElement: JSXElement): boolean {
+    return jsxElement.children.every((child) => {
+      if (t.isJSXText(child)) return true;
+      if (t.isJSXExpressionContainer(child)) {
+        return t.isJSXEmptyExpression(child.expression) ||
+          t.isStringLiteral(child.expression) ||
+          (t.isTemplateLiteral(child.expression) && child.expression.expressions.length === 0);
+      }
+      if (t.isJSXElement(child)) {
+        const tag: string | null = inlineChildTagName(child.openingElement);
+        return tag !== null && INLINE_FORMAT_TAGS.has(tag);
+      }
+      // JSXFragment / JSXSpreadChild — not statically editable.
+      return false;
+    });
+  }
+
   return {
     name: 'jsx-source-mapper',
     visitor: {
@@ -776,6 +827,22 @@ export default function jsxSourceMapper(babel: { types: typeof types }): PluginO
                 t.jsxAttribute(
                   t.jsxIdentifier('data-dev-dynamic'),
                   t.stringLiteral('true')
+                )
+              );
+            } else if (
+              textTagName &&
+              !hasDynamic &&
+              isStaticallyTextEditable(path.node) &&
+              !hasAttr(openingElement.attributes, 'data-dev-editable')
+            ) {
+              // Authoritative per-node signal: this intrinsic text element is
+              // statically editable by the same rule the server uses to accept a
+              // save. Purely additive — never emitted for content-keyed or
+              // dynamic nodes. The client trusts this only to shut OFF editing.
+              openingElement.attributes.push(
+                t.jsxAttribute(
+                  t.jsxIdentifier('data-dev-editable'),
+                  t.stringLiteral('text')
                 )
               );
             }

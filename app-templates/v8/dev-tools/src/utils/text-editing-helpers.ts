@@ -55,8 +55,19 @@ export function findEditableContainer(el: HTMLElement, cmsInlineEditEnabled: boo
     } else {
       if (best) return best;
       // Fallback: the outermost inline element (e.g. motion.i used as a heading)
-      // may not be in textTags but still looks like a text container.
-      if (outermostInline && outermostInline.textContent?.trim() && !outermostInline.querySelector("br") && hasOnlyInlineChildren(outermostInline)) {
+      // may not be in textTags but still looks like a text container. This path
+      // bypasses isTextEditable, so it must re-apply the dynamic shut-off itself —
+      // otherwise a data-dev-dynamic inline node (e.g. an animated counter's
+      // bound-expression <span>) opens an editor here and the save 400s on the
+      // server (UNSUPPORTED_DYNAMIC_TEXT_CONTENT).
+      if (
+        outermostInline &&
+        outermostInline.textContent?.trim() &&
+        !outermostInline.querySelector("br") &&
+        hasOnlyInlineChildren(outermostInline) &&
+        !outermostInline.closest("[data-dev-dynamic]") &&
+        !outermostInline.querySelector("[data-dev-dynamic]")
+      ) {
         return outermostInline;
       }
       return null;

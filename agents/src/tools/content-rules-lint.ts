@@ -261,6 +261,11 @@ function collectViolations(
   // content-prop-drill: tracks .map() callback params whose iterated value is
   // content-rooted, so we can detect when those params are drilled into components.
   const contentMapParams = new Set<string>();
+  // Locals aliased from a content-rooted expression (`const v = stat.field` /
+  // `const v = home.x`). Drilling such an alias into a component is the same
+  // uneditable mistake as drilling the original — agents have been observed
+  // extracting to a local (or an IIFE) specifically to dodge this rule.
+  const contentAliases = new Set<string>();
   // Maps each content-rooted .map() call to the param name it pushed, so exit()
   // pops exactly what enter() added — without monkey-patching the path node.
   const pushedMapParam = new WeakMap<CallExpression, string>();
@@ -287,7 +292,7 @@ function collectViolations(
   function isContentRooted(node: Expression): boolean {
     const root = rootIdentifier(node);
     if (root === null) return false;
-    return contentBindings.has(root) || contentMapParams.has(root);
+    return contentBindings.has(root) || contentMapParams.has(root) || contentAliases.has(root);
   }
 
   try {
@@ -345,6 +350,21 @@ function collectViolations(
         // derived content collection (find/filter/slice/computed) for the map check.
         if (p.node.id.type === 'Identifier' && p.node.init && isContentDerivedInit(p.node.init, contentBindings)) {
           contentDerivedLocals.add(p.node.id.name);
+        }
+
+        // content-prop-drill alias tracking: a local assigned directly from a
+        // content-rooted expression (`const v = stat.field`/`home.x`) carries the
+        // content origin, so drilling `v` into a component is the same mistake.
+        // Must run after any enclosing .map() registered its param (enter order).
+        // A non-content (re)binding of the same name shadows an earlier alias and
+        // clears it, so a generic name (list/title/data) reused for a non-content
+        // local elsewhere in the file doesn't falsely trip the rule.
+        if (p.node.id.type === 'Identifier') {
+          if (isContentRooted(p.node.init as Expression)) {
+            contentAliases.add(p.node.id.name);
+          } else {
+            contentAliases.delete(p.node.id.name);
+          }
         }
 
         // Destructured content bindings

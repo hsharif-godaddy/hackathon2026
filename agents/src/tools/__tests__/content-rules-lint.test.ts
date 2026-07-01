@@ -424,6 +424,70 @@ describe('content-prop-drill rule', () => {
     expect(violations.some((v) => v.rule === 'content-prop-drill')).toBe(true);
   });
 
+  it('flags a content value extracted to a local (IIFE) then drilled into a component', () => {
+    // The "dodge": agents extract `const endVal = stat.value` before passing it,
+    // believing it breaks the prop-drill detection. It does not change editability.
+    const source = `
+      import { home } from 'virtual:content';
+      export default function Stats() {
+        return (
+          <div>
+            {home.stats.items.map((stat) => {
+              const endVal = stat.value;
+              return <AnimatedCounter key={stat.id} endValue={endVal} />;
+            })}
+          </div>
+        );
+      }
+    `;
+    const violations = checkContentRulesForFile(source, 'src/pages/index.tsx');
+    expect(violations.some((v) => v.rule === 'content-prop-drill')).toBe(true);
+  });
+
+  it('flags a direct content binding aliased to a local then drilled', () => {
+    const source = `
+      import { products } from 'virtual:content';
+      export default function Shop() {
+        const list = products;
+        return <ProductGrid products={list} />;
+      }
+    `;
+    const violations = checkContentRulesForFile(source, 'src/pages/shop.tsx');
+    expect(violations.some((v) => v.rule === 'content-prop-drill')).toBe(true);
+  });
+
+  it('does NOT flag a non-content local drilled into a component', () => {
+    const source = `
+      export default function Box() {
+        const size = computeSize();
+        return <Widget size={size} />;
+      }
+    `;
+    const violations = checkContentRulesForFile(source, 'src/pages/box.tsx');
+    expect(violations.filter((v) => v.rule === 'content-prop-drill')).toEqual([]);
+  });
+
+  it('does NOT flag a non-content local reusing an alias name from another scope', () => {
+    // `list` is a content alias in A, then a plain non-content local in B —
+    // the second binding must shadow the first, not taint the name file-wide.
+    const source = `
+      import { products } from 'virtual:content';
+      export function A() {
+        const list = products;
+        return <ProductGrid products={list} />;
+      }
+      export function B() {
+        const list = computeThings();
+        return <Other items={list} />;
+      }
+    `;
+    const violations = checkContentRulesForFile(source, 'src/pages/shop.tsx').filter(
+      (v) => v.rule === 'content-prop-drill',
+    );
+    // A is still (correctly) flagged; B must not be.
+    expect(violations).toHaveLength(1);
+  });
+
   it('does NOT flag inline rendering of map params in page elements', () => {
     const source = `
       import { home } from 'virtual:content';
