@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { FormattedMessage } from 'react-intl'
-import EditIcon from '@ux/icon/edit'
+import CodeIcon from '@ux/icon/code'
 import Tag from '@ux/tag'
 import text from '@ux/text'
 
@@ -752,7 +752,7 @@ export default function FileEditToolRenderer({
   return (
     <div>
       <ToolHeader
-        icon={<EditIcon width={16} height={16} />}
+        icon={<CodeIcon width={16} height={16} />}
         displayName={displayMessage}
         toolStatus={toolStatus}
         hasDetails={hasDetails}

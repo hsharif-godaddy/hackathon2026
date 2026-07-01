@@ -2,7 +2,7 @@
 
 import { diffLines } from 'diff'
 import { useEffect, useRef, useState } from 'react'
-import EditIcon from '@ux/icon/edit'
+import CodeIcon from '@ux/icon/code'
 import Tag from '@ux/tag'
 import text from '@ux/text'
 
@@ -377,7 +377,7 @@ export default function TextEditorToolRenderer({
   return (
     <div>
       <ToolHeader
-        icon={<EditIcon width={16} height={16} />}
+        icon={<CodeIcon width={16} height={16} />}
         displayName={displayMessage}
         toolStatus={toolStatus}
         hasDetails={hasDetails}

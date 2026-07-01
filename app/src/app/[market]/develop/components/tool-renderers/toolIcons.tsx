@@ -8,6 +8,7 @@
 import {
   Activity,
   Bot,
+  Code2,
   Database,
   File,
   FileCode,
@@ -17,7 +18,6 @@ import {
   ListTodo,
   Package,
   Palette,
-  Pencil,
   ScrollText,
   Server,
   SquareTerminal,
@@ -43,7 +43,7 @@ export function getToolIcon(toolName: string | undefined): React.ReactNode {
     case 'strReplaceBasedEditTool':
     case 'textEditor':
     case 'text_editor':
-      return <Pencil className={ICON_CLASS} aria-hidden="true" />
+      return <Code2 className={ICON_CLASS} aria-hidden="true" />
 
     case 'terminalCommand':
     case 'terminal_command':

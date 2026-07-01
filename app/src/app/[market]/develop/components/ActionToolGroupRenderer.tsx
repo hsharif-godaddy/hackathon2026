@@ -106,11 +106,11 @@ export default function ActionToolGroupRenderer({
         onClick={() => setIsExpanded((currentValue) => !currentValue)}
       >
         <span className="flex min-w-0 flex-1 items-center gap-1.5">
-          <span className="flex items-center gap-0.5 text-foreground/50 overflow-hidden flex-shrink min-w-0">
+          <span className="flex items-center gap-1 text-foreground/50 overflow-hidden flex-shrink min-w-0">
             {visibleToolCalls.slice(0, 15).map((toolCall, index) => (
               <span
                 key={toolCall.id || index}
-                className="inline-flex flex-shrink-0 items-center justify-center rounded border border-foreground/20 bg-intents-ux-box-backgroundColor p-[3px]"
+                className="inline-flex flex-shrink-0 items-center justify-center"
               >
                 {getToolIcon(toolCall.name)}
               </span>
