@@ -10,7 +10,7 @@ Two things most service businesses and freelancers deal with every week: custome
 
 Both of these turn into a working web app with one prompt in [Airo AI Builder](https://social.godaddy/3REyagr). No coding. No plugins. No hiring a developer. This post shows you exactly how, step by step.
 
-[![Watch the full tutorial](https://img.youtube.com/vi/uM6hy2ItdFw/maxresdefault.jpg)](https://youtu.be/uM6hy2ItdFw?si=lgy2lnD87Axpim2f)
+<iframe width="100%" style="aspect-ratio: 16/9;" src="https://www.youtube.com/embed/uM6hy2ItdFw" title="I Built a Booking Page That Schedules Customers For Me" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen loading="lazy"></iframe>
 
 ---
 
@@ -63,6 +63,8 @@ Most of your customers will book from their phone. Airo AI Builder generates res
 ## Build a Client Login with a Private Dashboard
 
 If you deliver work to clients (designs, files, reports, tracks, proposals), you know the cycle: you send a link, they lose it, they ask for it again, they open the wrong version. You spend 20 minutes a week just finding the right file for someone.
+
+<iframe width="100%" style="aspect-ratio: 16/9;" src="https://www.youtube.com/embed/rEkfAMDrSDo" title="How to Add Login and User Accounts to Your App" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen loading="lazy"></iframe>
 
 The fix is a private dashboard. Each client logs in and sees only their own stuff. You upload new versions once. They always know where to look.
 

@@ -8,6 +8,8 @@ heroImage: "/images/chatgpt-prompts-vs-airo-ai-builder-hero.png"
 
 <iframe width="100%" style="aspect-ratio: 16/9;" src="https://www.youtube.com/embed/o-ee0lVbptE" title="ChatGPT vs Airo AI Builder: Waste of Tokens or One-Shot Vibe Coding? | Inside Airo AI Builder" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
 
+<iframe width="100%" style="aspect-ratio: 16/9;" src="https://www.youtube.com/embed/dnZAyshRLVA" title="Stop Wasting AI Credits: 5 Prompting Mistakes Everyone Makes" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen loading="lazy"></iframe>
+
 ## TL;DR
 
 If you have been using ChatGPT, your brain is trained to write short, open-ended prompts and let the AI fill in the blanks. That works for chat. It does not work for building websites and apps. In [Airo AI Builder](https://www.godaddy.com/airo/ai-builder), vague prompts trigger a back-and-forth Q&A loop that burns credits and time. Front-load your context (what you are building, who it is for, what it needs to do) and you skip straight to results.

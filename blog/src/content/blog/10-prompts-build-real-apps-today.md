@@ -14,6 +14,8 @@ The hardest part of using any no-code app builder is knowing what to type first.
 
 These 10 prompts are ready to copy and paste. Each one is based on the most common use cases we see in the product, pulled from real prompt data and the verticals our users build for most. This is vibe coding at its best: paste a prompt, customize a few details for your business, and you'll have a working app in minutes.
 
+<iframe width="100%" style="aspect-ratio: 16/9;" src="https://www.youtube.com/embed/1dkMmsiAOKc" title="5 AI Prompting Tips That Save You Time and Get Better Results" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen loading="lazy"></iframe>
+
 ---
 
 ## 1. Restaurant Website with Online Ordering

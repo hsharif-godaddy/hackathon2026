@@ -8,6 +8,8 @@ heroImage: "/images/add-booking-system-hero.png"
 
 <iframe width="100%" style="aspect-ratio: 16/9;" src="https://www.youtube.com/embed/tGhar2mpHfc" title="I Vibe Coded a Pet Grooming Booking App - No Code Airo AI Builder" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
 
+<iframe width="100%" style="aspect-ratio: 16/9;" src="https://www.youtube.com/embed/PVkjNDdXnw0" title="How to Build a Salon Website with Online Booking in Minutes (No Coding)" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen loading="lazy"></iframe>
+
 ## TL;DR
 
 You can add a **full booking system** to an existing [Airo AI Builder](https://www.godaddy.com/airo/ai-builder) site without touching your current pages. Three prompts get you: service selection with pricing, scheduling logic with availability rules, email confirmations, and an admin dashboard. The key is naming your constraints upfront ("do not change existing pages") and describing your design system so the new pages match.

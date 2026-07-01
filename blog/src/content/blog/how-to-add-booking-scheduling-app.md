@@ -16,6 +16,10 @@ The traditional approach requires plugins, third-party tools, or custom code. Wi
 
 This guide walks you through the exact prompts to get a working booking system, how to customize it, and how to handle the edge cases.
 
+<iframe width="100%" style="aspect-ratio: 16/9;" src="https://www.youtube.com/embed/uM6hy2ItdFw" title="I Built a Booking Page That Schedules Customers For Me" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen loading="lazy"></iframe>
+
+<iframe width="100%" style="aspect-ratio: 16/9;" src="https://www.youtube.com/embed/dYIynkzqGi8" title="Build a Booking Page That Syncs to Google, Outlook and Apple Calendar" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen loading="lazy"></iframe>
+
 ---
 
 ## What You Can Build
