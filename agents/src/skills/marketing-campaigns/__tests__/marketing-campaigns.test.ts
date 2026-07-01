@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { z } from 'zod'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
@@ -498,6 +499,101 @@ describe('campaignPlanCreate social-connection prerequisite (deterministic)', ()
     expect(result.socialConnected).toBe(false)
     expect(result.pendingActions).toHaveLength(1)
     expect(result.pendingActions[0]).toMatch(/Connect Facebook\/Instagram/)
+  })
+})
+
+const parse = <T extends { parameters: z.ZodTypeAny }>(tool: T, input: unknown): z.infer<T['parameters']> =>
+  tool.parameters.parse(input)
+
+describe('jsonArray preprocess — LLM double-encoded string inputs', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockGet.mockResolvedValue({ success: true, exists: false })
+    mockSet.mockResolvedValue({ success: true })
+    mockCampaignFindByAppId.mockReturnValue([])
+    mockCampaignCreate.mockReturnValue({ id: 'camp_x' })
+    mockCampaignTransition.mockReturnValue({ id: 'camp_x', status: 'ready' })
+    mockMediaSearch.searchMedia.mockResolvedValue({ success: false })
+    mockSocialFindByAppId.mockReturnValue([])
+  })
+
+  it('campaignPlanPropose accepts assets as a JSON-encoded string', async () => {
+    const parsed: z.infer<typeof campaignPlanPropose['parameters']> = parse(campaignPlanPropose, {
+      ...samplePlan,
+      assets: JSON.stringify([{ assetType: 'social', title: 'Teaser post' }]),
+    })
+    const result = await run(campaignPlanPropose, parsed, enabledContext)
+    expect(result.success).toBe(true)
+    expect(result.widgetData.plan.assets).toHaveLength(1)
+  })
+
+  it('campaignPlanPropose accepts assumptions as a JSON-encoded string', async () => {
+    const parsed: z.infer<typeof campaignPlanPropose['parameters']> = parse(campaignPlanPropose, {
+      ...samplePlan,
+      assumptions: JSON.stringify(['Your audience is collectors', 'Your main goal is sales']),
+    })
+    const result = await run(campaignPlanPropose, parsed, enabledContext)
+    expect(result.success).toBe(true)
+    expect(result.widgetData.plan.assumptions).toHaveLength(2)
+  })
+
+  it('campaignPlanPropose accepts a native array without modification', () => {
+    const assets: z.infer<typeof campaignPlanPropose['parameters']>['assets'] = [{ assetType: 'social', title: 'Teaser post' }]
+    const parsed: z.infer<typeof campaignPlanPropose['parameters']> = parse(campaignPlanPropose, { ...samplePlan, assets })
+    expect(parsed.assets).toEqual(assets)
+  })
+
+  it('campaignPlanPropose rejects malformed JSON with a ZodError', () => {
+    expect(() => parse(campaignPlanPropose, { ...samplePlan, assets: '[not json' })).toThrow(z.ZodError)
+  })
+
+  it('campaignPlanPropose rejects a JSON-encoded non-array with a ZodError', () => {
+    expect(() => parse(campaignPlanPropose, { ...samplePlan, assets: '{}' })).toThrow(z.ZodError)
+  })
+
+  it('campaignPlanPropose rejects an empty JSON-encoded array with a ZodError (min(1))', () => {
+    expect(() => parse(campaignPlanPropose, { ...samplePlan, assets: '[]' })).toThrow(z.ZodError)
+  })
+
+  it('campaignPlanPropose rejects malformed JSON in assumptions with a ZodError', () => {
+    expect(() => parse(campaignPlanPropose, { ...samplePlan, assumptions: '[not json' })).toThrow(z.ZodError)
+  })
+
+  it('campaignPlanPropose rejects a JSON-encoded non-array for assumptions with a ZodError', () => {
+    expect(() => parse(campaignPlanPropose, { ...samplePlan, assumptions: '{}' })).toThrow(z.ZodError)
+  })
+
+  it('campaignPlanPropose rejects an empty JSON-encoded array for assumptions with a ZodError (min(1))', () => {
+    expect(() => parse(campaignPlanPropose, { ...samplePlan, assumptions: '[]' })).toThrow(z.ZodError)
+  })
+
+  it('campaignApplyBlogUtm accepts blogPosts as a JSON-encoded string', () => {
+    const parsed: z.infer<typeof campaignApplyBlogUtm['parameters']> = parse(campaignApplyBlogUtm, {
+      landingPageSlug: 'summer-sale',
+      blogPosts: JSON.stringify([{ slug: 'baking-tips', topicSlug: 'baking' }]),
+    })
+    expect(parsed.blogPosts).toHaveLength(1)
+    expect(parsed.blogPosts[0].slug).toBe('baking-tips')
+  })
+
+  it('campaignPlanCreate accepts plannedContent as a JSON-encoded string', async () => {
+    const raw: z.infer<typeof campaignPlanCreate['parameters']> = parse(campaignPlanCreate, {
+      name: 'Spring', offer: 'Save', startDate: '2026-07-01', endDate: '2026-07-31',
+      plannedContent: JSON.stringify([{ assetType: 'blog', title: 'SEO post', status: 'scheduled', imageUrl: 'http://img' }]),
+    })
+    const result = await run(campaignPlanCreate, raw, enabledContext)
+    expect(result.success).toBe(true)
+    expect(mockCampaignAddContent).toHaveBeenCalledWith(expect.objectContaining({ assetType: 'blog' }))
+  })
+
+  it('campaignCreate accepts assets as a JSON-encoded string', async () => {
+    const raw: z.infer<typeof campaignCreate['parameters']> = parse(campaignCreate, {
+      name: 'Spring', offer: 'Save', startDate: '2026-07-01', endDate: '2026-07-31',
+      assets: JSON.stringify([{ assetType: 'blog', externalRef: 'src/content/blog/post.md', title: 'SEO post' }]),
+    })
+    const result = await run(campaignCreate, raw, enabledContext)
+    expect(result.success).toBe(true)
+    expect(mockCampaignAddContent).toHaveBeenCalledWith(expect.objectContaining({ assetType: 'blog' }))
   })
 })
 

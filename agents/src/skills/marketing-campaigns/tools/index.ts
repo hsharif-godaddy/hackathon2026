@@ -25,6 +25,27 @@ import path from 'node:path'
 
 const logger = Logger.create({ component: 'marketing-campaigns-tools' })
 
+function jsonArray<T extends z.ZodTypeAny>(field: string, schema: T): z.ZodType<z.output<T>> {
+  return z.preprocess((v: unknown): unknown => {
+    if (typeof v !== 'string') return v
+    try {
+      const parsed: unknown = JSON.parse(v)
+      if (!Array.isArray(parsed)) {
+        logger.warn('marketing-campaigns.json_array_not_array', {
+          field,
+          receivedType: parsed === null ? 'null' : typeof parsed,
+          length: v.length,
+        })
+        return v
+      }
+      return parsed
+    } catch (e) {
+      logger.warn('marketing-campaigns.json_array_parse_failed', { field, length: v.length, parseError: e instanceof Error ? e.message : String(e) })
+      return v
+    }
+  }, schema)
+}
+
 const campaignRepo = new SimpleCampaignRepository()
 const socialAssociationRepo = new SocialAssociationRepository()
 const socialPostRepo = new SocialPostRepository()
@@ -180,9 +201,9 @@ CRITICAL RULES:
     offer: z.string().describe('The campaign offer or goal — keep to 5 words or fewer (e.g. "Increase revenue by 2x")'),
     startDate: z.string().describe('Campaign start date (YYYY-MM-DD)'),
     endDate: z.string().describe('Campaign end date (YYYY-MM-DD)'),
-    assets: z.array(plannedAssetSchema).min(1).describe('List of planned content pieces'),
+    assets: jsonArray('assets', z.array(plannedAssetSchema).min(1)).describe('List of planned content pieces'),
     landingPagePath: z.string().describe('Desired slug for the landing page (e.g. "summer-sale", "halloween"). Will be sanitized and frozen as the canonical slug used across all CTAs and the route.'),
-    assumptions: z.array(z.string()).min(1).describe('3-4 short plain-language assumptions you inferred about the business (audience, main goal, what to feature). Rendered on the card under "Here\'s what I\'m assuming — tell me if any of this is off" so the owner can correct a wrong guess before anything is built.'),
+    assumptions: jsonArray('assumptions', z.array(z.string()).min(1)).describe('3-4 short plain-language assumptions you inferred about the business (audience, main goal, what to feature). Rendered on the card under "Here\'s what I\'m assuming — tell me if any of this is off" so the owner can correct a wrong guess before anything is built.'),
     whyThisMix: z.string().describe('One or two plain sentences explaining why this channel mix serves their goal and what the key assets do (e.g. landing page = one place to buy, blog = search traffic over time, social = reach your followers). No jargon.'),
     expectation: z.string().describe('A rough, directional, honest expectation — a ballpark, NEVER precise numbers or guarantees (e.g. "a small first wave of visitors and a handful of early sales, with the blog building over the following weeks"). Frame as depending on their audience and offer.'),
     vertical: z.string().optional().describe('The business vertical/industry you confirmed or inferred in CLARIFY (e.g. "coffee roaster", "law firm"). Pass it on every campaign — an inferred value is fine. Persisted to the brand book so future campaigns reuse it.'),
@@ -320,7 +341,7 @@ CRITICAL TIMING: Call this tool ONLY in SUMMARY, after the build handoff has com
     startDate: z.string().describe('Campaign start date (YYYY-MM-DD)'),
     endDate: z.string().describe('Campaign end date (YYYY-MM-DD)'),
     landingPageSlug: z.string().optional().describe('The canonical campaign slug (the same plan.landingPageSlug used at PLAN — the /lp/<slug> all CTAs point to). Pass it so social post captions get UTM tracking added to their landing-page link.'),
-    plannedContent: z.array(z.object({
+    plannedContent: jsonArray('plannedContent', z.array(z.object({
       assetType: z.enum(['landing-page', 'banner', 'blog', 'social', 'email', 'ad']).describe('Content channel'),
       title: z.string().describe('Planned content title or headline'),
       scheduledDate: z.string().optional().describe('Planned publish date (YYYY-MM-DD)'),
@@ -336,7 +357,7 @@ CRITICAL TIMING: Call this tool ONLY in SUMMARY, after the build handoff has com
     }).refine(
       (item): boolean => item.assetType !== 'social' || item.rawContent !== undefined,
       { message: 'rawContent is required for social assets — copy the message/hashtags/callToAction/platform you produced with socialPostCreate (a social post cannot be persisted or UTM-tracked without it).' },
-    )).describe('List of planned content items for the campaign'),
+    ))).describe('List of planned content items for the campaign'),
   }),
   async execute(args, context) {
     if (!isCampaignsEnabled(context)) {
@@ -463,7 +484,7 @@ This tool persists the campaign record together with its actual generated assets
     offer: z.string().describe('The campaign offer or goal — keep to 5 words or fewer (e.g. "Increase revenue by 2x")'),
     startDate: z.string().describe('Campaign start date (YYYY-MM-DD)'),
     endDate: z.string().describe('Campaign end date (YYYY-MM-DD)'),
-    assets: z.array(z.object({
+    assets: jsonArray('assets', z.array(z.object({
       assetType: z.enum(['landing-page', 'banner', 'blog', 'social', 'email', 'ad']).describe('Type of asset'),
       externalRef: z.string().describe('Reference: file path for blogs/pages, post ID for social, or description for email/ad'),
       title: z.string().describe('Asset title or headline'),
@@ -471,7 +492,7 @@ This tool persists the campaign record together with its actual generated assets
       status: z.enum(['draft', 'scheduled', 'published', 'failed']).optional().describe('Current status'),
       contentPreview: z.string().optional().describe('Brief content preview'),
       imageUrl: z.string().optional().describe('URL of the image used for this content'),
-    })).describe('All campaign assets to track'),
+    }))).describe('All campaign assets to track'),
   }),
   async execute(args, context) {
     if (!isCampaignsEnabled(context)) {
@@ -556,10 +577,10 @@ export const campaignApplyBlogUtm: SkillToolDefinition = {
   description: `Decorate the campaign landing-page CTA inside the generated blog posts with UTM tracking. Call this in SUMMARY, AFTER campaignPlanCreate and AFTER the blog posts were created in the build handoff. For each blog post it records UTM attribution and rewrites the bare /lp/<slug> CTA in the markdown to the tracked link; incidental links are left untouched. Pass the campaign's landing slug and the slugs of the blog posts that were created.`,
   parameters: z.object({
     landingPageSlug: z.string().describe('The canonical campaign slug (plan.landingPageSlug) — the /lp/<slug> the CTAs point to.'),
-    blogPosts: z.array(z.object({
+    blogPosts: jsonArray('blogPosts', z.array(z.object({
       slug: z.string().describe('The blog post slug — its src/content/data/blog/<slug>.md filename.'),
       topicSlug: z.string().optional().describe('Topic for utm_term (e.g. the blog topic). Defaults to none.'),
-    })).min(1).describe('The blog posts created for this campaign.'),
+    })).min(1)).describe('The blog posts created for this campaign.'),
   }),
   async execute(args, context) {
     if (!isCampaignsEnabled(context)) {
