@@ -60,6 +60,10 @@ on:
         description: 'Composition version'
         type: string
         default: 'v4'
+      preprov_count:
+        description: 'Warm RG-tagged preprovs to create per inventory target (capped at the stable row target_count). ~35 covers all cells so the dark stack (AI Chat, etc.) is responsive on first load; 0 = none.'
+        type: string
+        default: '35'
       release_group_id:
         description: 'Release Group ID to roll back (REQUIRED when action=Rollback)'
         type: string
@@ -110,6 +114,7 @@ jobs:
           MGMT_ENV: ${{ inputs.mgmt_environment }}
           COMPOSITION_ID: ${{ inputs.composition_id }}
           COMPOSITION_VERSION: ${{ inputs.composition_version }}
+          PREPROV_COUNT: ${{ inputs.preprov_count }}
           PUBLISH_IMAGE: ${{ inputs.publish_image }}
           RG_ID_INPUT: ${{ inputs.release_group_id }}
         run: |
@@ -270,7 +275,8 @@ jobs:
             -f previewImageTag="${BUILD_TAG[preview]}" \
             -f publishImageTag="${BUILD_TAG[publish]}" \
             -f compositionId="$COMPOSITION_ID" \
-            -f compositionVersion="$COMPOSITION_VERSION"
+            -f compositionVersion="$COMPOSITION_VERSION" \
+            -f preProvsPerInventoryTarget="$PREPROV_COUNT"
           rg_rid=$(discover_run "$PIONEER_INFRA_TOKEN" "$PIONEER_REPO" "$RG_WF" "$before") \
             || { echo "::error::could not find the dispatched $RG_WF run"; exit 1; }
           echo "release-group run: https://github.com/$PIONEER_REPO/actions/runs/$rg_rid"
@@ -311,6 +317,7 @@ jobs:
             echo "| Preview image tag | \`${BUILD_TAG[preview]}\` |"
             echo "| Publish image tag | \`${BUILD_TAG[publish]}\` |"
             echo "| Release Group ID | \`${RG_ID:-<not found — see release-group run>}\` |"
+            echo "| Warm preprovs (per inventory target) | \`$PREPROV_COUNT\` |"
             echo "| Dark URL ($APP_ENV) | https://$DARK_HOST?x-katana-version=$SHA&cookie=1 |"
             echo
             echo "Runs: build [agent](https://github.com/$PIONEER_REPO/actions/runs/${BUILD_RID[agent]}) · [preview](https://github.com/$PIONEER_REPO/actions/runs/${BUILD_RID[preview]}) · [publish](https://github.com/$PIONEER_REPO/actions/runs/${BUILD_RID[publish]}) · [dark-release](https://github.com/$AGENT_REPO/actions/runs/$dark_rid) · [release-group](https://github.com/$PIONEER_REPO/actions/runs/$rg_rid)"
