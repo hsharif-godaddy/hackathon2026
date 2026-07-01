@@ -1,9 +1,11 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -20,6 +22,31 @@ import (
 )
 
 const configFileName = "release-manager/release-manager.yml"
+
+// releaseWorkflowURL is where releases actually run now. The interactive CLI is
+// retained for emergency break-glass only, so a real (non-dry-run) release
+// points the operator here first.
+const releaseWorkflowURL = "https://github.com/gdcorp-partners/airo-app-builder/actions/workflows/release.yml"
+
+// confirmBreakGlass prints the "use GitHub Actions" notice and returns true only
+// if the operator explicitly confirms they want the break-glass CLI. It reads a
+// single line from `in`; anything other than y/yes (case-insensitive) is a no.
+func confirmBreakGlass(in io.Reader, out io.Writer) bool {
+	fmt.Fprintf(out, "\n⚠️  Releases run through GitHub Actions now — not this CLI.\n\n")
+	fmt.Fprintf(out, "    ▶ Start one here: %s\n", releaseWorkflowURL)
+	fmt.Fprintf(out, "      (Run workflow → choose branch → Run)\n\n")
+	fmt.Fprintf(out, "    This interactive CLI is kept for emergency BREAK-GLASS only (e.g. when\n")
+	fmt.Fprintf(out, "    Actions itself is down). It bypasses the scheduled cadence, the single\n")
+	fmt.Fprintf(out, "    Slack release thread, and the prod approval gate.\n\n")
+	fmt.Fprint(out, "Continue with the break-glass CLI anyway? [y/N]: ")
+
+	scanner := bufio.NewScanner(in)
+	if !scanner.Scan() {
+		return false
+	}
+	answer := strings.ToLower(strings.TrimSpace(scanner.Text()))
+	return answer == "y" || answer == "yes"
+}
 
 func main() {
 	// `release-manager run --headless ...` drives a release with no TUI, for
@@ -47,6 +74,16 @@ func main() {
 
 	if len(failStages) > 0 && !*dryRun {
 		fmt.Fprintln(os.Stderr, "Warning: --fail-stage has no effect without --dry-run")
+	}
+
+	// Releases run through GitHub Actions; this interactive CLI is break-glass
+	// only. For a real (non-dry-run) release, redirect to the workflow and make
+	// the operator acknowledge break-glass before we launch the TUI. --dry-run
+	// (a safe local rehearsal) and --auto-approve ("don't prompt me") skip it.
+	// The headless GHA path is `run --headless`, handled earlier — never here.
+	if !*dryRun && !*autoApprove && !confirmBreakGlass(os.Stdin, os.Stderr) {
+		fmt.Fprintf(os.Stderr, "\nAborted — start the release from GitHub Actions:\n  %s\n", releaseWorkflowURL)
+		os.Exit(0)
 	}
 
 	overrides := pipeline.SnapshotOverrides{
