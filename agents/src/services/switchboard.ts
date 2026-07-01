@@ -31,6 +31,7 @@ export async function initSwitchboard(): Promise<void> {
     await switchboardModule.startClient({
       callingService: 'airo-agents',
       env,
+      cacheRefreshMs: 3_600_000,
       auth: {
         primaryRegion: 'us-west-2',
         secondaryRegion: 'us-east-1',
