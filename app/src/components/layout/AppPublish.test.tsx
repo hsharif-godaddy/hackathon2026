@@ -62,6 +62,7 @@ type MockPublishSlice = {
 
 const mockDismissSeoRegressionAlert = vi.fn();
 const mockLogImpressionEvent = vi.fn(() => vi.fn());
+const mockHivemindCohort: { value: string | undefined } = { value: undefined };
 
 const mockDevelopStore = {
   currentAppId: 'app-123',
@@ -241,6 +242,10 @@ vi.mock('@/lib/logging', () => ({
   shipAnalyticsLog: vi.fn(),
 }));
 
+vi.mock('@/hooks/useHivemind', () => ({
+  useHivemind: () => ({ cohort: mockHivemindCohort.value }),
+}));
+
 vi.mock('@/lib/post-publish-feature-selection', () => ({
   openPostPublishFeatureSelectionInChat: vi.fn(),
 }));
@@ -335,6 +340,7 @@ describe('AppPublish', () => {
     mockDismissSeoRegressionAlert.mockReset();
     mockLogImpressionEvent.mockReset();
     mockLogImpressionEvent.mockReturnValue(vi.fn());
+    mockHivemindCohort.value = undefined;
   });
 
   it('should render nothing when pathname is not the develop page', function notDevelopPage() {
@@ -389,6 +395,81 @@ describe('AppPublish', () => {
 
     await waitFor(() => {
       expect(screen.getByText('builder_publish_popover_title')).toBeInTheDocument();
+    });
+  });
+
+  describe('default-domain-selection experiment exposure', () => {
+    function exposureCalls(): unknown[][] {
+      return mockLogImpressionEvent.mock.calls.filter(
+        ([eid]: unknown[]) => eid === 'develop.domain_selection.trigger',
+      );
+    }
+
+    it('fires the trigger exposure on modal open for the on cohort', async function exposureOn() {
+      mockHivemindCohort.value = 'on';
+      mockDevelopStore.currentAppId = 'app-exposure-on';
+
+      const { user } = renderWithProviders(<AppPublish />);
+      await user.click(await screen.findByRole('button', { name: 'builder_publish_button' }));
+
+      await waitFor(() => {
+        expect(mockLogImpressionEvent).toHaveBeenCalledWith('develop.domain_selection.trigger', {
+          appId: 'app-exposure-on',
+          cohort: 'on',
+        });
+      });
+      expect(vi.mocked(shipAnalyticsLog)).toHaveBeenCalledWith('develop.domain_selection.trigger', {
+        appId: 'app-exposure-on',
+        cohort: 'on',
+      });
+    });
+
+    it('fires the trigger exposure for the off cohort too', async function exposureOff() {
+      mockHivemindCohort.value = 'off';
+      mockDevelopStore.currentAppId = 'app-exposure-off';
+
+      const { user } = renderWithProviders(<AppPublish />);
+      await user.click(await screen.findByRole('button', { name: 'builder_publish_button' }));
+
+      await waitFor(() => {
+        expect(mockLogImpressionEvent).toHaveBeenCalledWith('develop.domain_selection.trigger', {
+          appId: 'app-exposure-off',
+          cohort: 'off',
+        });
+      });
+    });
+
+    it('does not fire the exposure when the user is not bucketed', async function exposureIneligible() {
+      mockHivemindCohort.value = undefined;
+      mockDevelopStore.currentAppId = 'app-exposure-none';
+
+      const { user } = renderWithProviders(<AppPublish />);
+      await user.click(await screen.findByRole('button', { name: 'builder_publish_button' }));
+
+      await waitFor(() => {
+        expect(screen.getByText('builder_publish_popover_title')).toBeInTheDocument();
+      });
+      expect(exposureCalls()).toHaveLength(0);
+    });
+
+    it('fires the exposure once per app across remounts', async function exposureDedup() {
+      mockHivemindCohort.value = 'on';
+      mockDevelopStore.currentAppId = 'app-exposure-dedup';
+
+      const first = renderWithProviders(<AppPublish />);
+      await first.user.click(await screen.findByRole('button', { name: 'builder_publish_button' }));
+      await waitFor(() => {
+        expect(exposureCalls()).toHaveLength(1);
+      });
+      first.unmount();
+
+      const second = renderWithProviders(<AppPublish />);
+      await second.user.click(await screen.findByRole('button', { name: 'builder_publish_button' }));
+      await waitFor(() => {
+        expect(screen.getByText('builder_publish_popover_title')).toBeInTheDocument();
+      });
+
+      expect(exposureCalls()).toHaveLength(1);
     });
   });
 

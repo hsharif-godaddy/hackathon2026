@@ -25,6 +25,7 @@ interface DomainRadioRowProps {
   onSelect: () => void;
   testId: string;
   tabIndex: number;
+  dataEid: string;
   subtitle?: string;
   badgeLabel?: string;
 }
@@ -35,6 +36,7 @@ function DomainRadioRow({
   onSelect,
   testId,
   tabIndex,
+  dataEid,
   subtitle,
   badgeLabel,
 }: DomainRadioRowProps): ReactElement {
@@ -45,6 +47,7 @@ function DomainRadioRow({
       aria-checked={selected}
       tabIndex={tabIndex}
       data-testid={testId}
+      data-eid={dataEid}
       onClick={onSelect}
       className={cn(
         'flex w-full items-start gap-2 py-1 text-left transition-colors duration-100',
@@ -167,6 +170,7 @@ export default function PublishDomainSelector({
                 label={domain.fqdn.replace(/^https?:\/\//, '')}
                 selected={selectedFqdn === domain.fqdn}
                 tabIndex={index === rovingIndex ? 0 : -1}
+                dataEid={generateClickEID('develop.publish.domain_select')}
                 onSelect={() => onSelect(domain.fqdn)}
                 subtitle={
                   matchesProjectFqdn === domain.fqdn
@@ -241,6 +245,7 @@ export default function PublishDomainSelector({
               label={freeProjectUrl}
               selected={selectedFqdn === freeProjectUrl}
               tabIndex={0}
+              dataEid={generateClickEID('develop.publish.free_url_select')}
               onSelect={() => onSelect(freeProjectUrl)}
             />
           </div>

@@ -31,7 +31,7 @@ import PublishDomainSelector, { type SelectableDomain } from '@/components/layou
 import PublishedDomainCard from '@/components/layout/PublishedDomainCard';
 import PublishUpsellPopover from '@/components/layout/PublishUpsellPopover';
 import SeoQualityRegressionAlert from '@/components/layout/SeoQualityRegressionAlert';
-import { COHORT_ON, EXPERIMENT_IDS } from '@/config/experiments';
+import { COHORT_OFF, COHORT_ON, EXPERIMENT_IDS } from '@/config/experiments';
 import { SWITCHBOARD_APPBUILDER_GO_LIVE_FEATURE } from '@/config/switchboard-flags';
 import { useAppSsoStatus } from '@/hooks/useAppSsoStatus';
 import { useChatTabs } from '@/hooks/useChatTabs';
@@ -99,6 +99,10 @@ function publishSubmitClickEid(surfaceLocation: string): string {
 function normalizeDomainToken(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]/g, '');
 }
+
+// Module-level (shared across both AppPublish instances) so the exposure fires once per app. Holds
+// only the last app it fired for — bounded memory, and re-fires when the app changes (a new landing).
+const lastDomainSelectionExposure: { appId: string | null } = { appId: null };
 
 
 function PublishFailedMessage({
@@ -1143,6 +1147,18 @@ export default function AppPublish({ location = 'develop', triggerClassName }: {
       publishTriggerClickEid(location, isFirstTimePublishing),
       clickContext,
     )();
+
+    // Experiment exposure: the publish-button click that opens the modal is the trigger. Fire once
+    // per app for both cohorts (module-level dedup; re-fires on app switch — a new landing).
+    if (
+      currentAppId &&
+      (defaultDomainSelectionCohort === COHORT_ON || defaultDomainSelectionCohort === COHORT_OFF) &&
+      lastDomainSelectionExposure.appId !== currentAppId
+    ) {
+      lastDomainSelectionExposure.appId = currentAppId;
+      logImpressionEvent('develop.domain_selection.trigger', { appId: currentAppId, cohort: defaultDomainSelectionCohort })();
+      shipAnalyticsLog('develop.domain_selection.trigger', { appId: currentAppId, cohort: defaultDomainSelectionCohort });
+    }
 
     // Refetch git history and secrets diff to ensure counts are accurate
     refetchGitHistory();

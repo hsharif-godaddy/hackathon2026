@@ -56,7 +56,7 @@ export default function PublishDomainConflict({
         size='sm'
         disabled={isOverriding}
         onClick={onChangeDomain}
-        data-eid={generateClickEID('develop.publish.domain_conflict.change_domain')}
+        data-eid={generateClickEID('develop.publish.conflict_change_domain')}
         data-testid='publish-conflict-change-domain'
         text={t('builder_publish_change_domain')}
       />
@@ -68,7 +68,7 @@ export default function PublishDomainConflict({
         disabled={isOverriding}
         onClick={onOverride}
         icon={isOverriding ? <Spinner size='sm' /> : undefined}
-        data-eid={generateClickEID('develop.publish.domain_conflict.override')}
+        data-eid={generateClickEID('develop.publish.conflict_override')}
         data-testid='publish-conflict-override'
         text={isOverriding
           ? t('builder_publish_overriding')
