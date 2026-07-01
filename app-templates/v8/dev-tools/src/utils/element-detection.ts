@@ -162,7 +162,10 @@ export function isTextEditable(element: HTMLElement, cmsInlineEditEnabled: boole
   // List containers (ul/ol) are exempt: the source-mapper only marks intrinsic
   // text tags (getIntrinsicTextTagName excludes ul/ol), so requiring the marker
   // there would regress list editing rather than shut off a server-rejected node.
-  const passesMarkerGate = isListContainer || element.getAttribute("data-dev-editable") === "text";
+  // Bound-text elements use the markdown save path, not the AST path, so the
+  // data-dev-editable="text" marker is irrelevant to whether their save succeeds.
+  // Their guard is the dynamic-descendant check above.
+  const passesMarkerGate = isListContainer || hasBoundText || element.getAttribute("data-dev-editable") === "text";
 
   return (TEXT_TAGS.has(tagName) || isListContainer) && hasText && hasOnlyText && passesMarkerGate;
 }
