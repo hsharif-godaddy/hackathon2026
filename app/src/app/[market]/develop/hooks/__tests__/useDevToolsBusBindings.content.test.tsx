@@ -52,6 +52,23 @@ describe('CONTENT_UPDATED bus handler', () => {
     expect(JSON.parse(opts.body)).toEqual({ contentKey: 'products[1].name', kind: 'copy', value: 'B2' })
   })
 
+  it('includes expectedCurrent in the POST body when the bus event carries it (derived node)', async () => {
+    const derivedEvt = { type: 'CONTENT_UPDATED', data: { contentKey: 'hero.title', kind: 'copy', oldText: 'Welcome', newText: 'Welcome!', expectedCurrent: 'Welcome' } }
+    renderHook(() => useDevToolsBusBindings(deps(true)))
+    dispatch(derivedEvt as never)
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+    const [, opts] = fetchMock.mock.calls[0] as [string, { body: string }]
+    expect(JSON.parse(opts.body)).toEqual({ contentKey: 'hero.title', kind: 'copy', value: 'Welcome!', expectedCurrent: 'Welcome' })
+  })
+
+  it('omits expectedCurrent from the POST body when the bus event has none (normal edit unchanged)', async () => {
+    renderHook(() => useDevToolsBusBindings(deps(true)))
+    dispatch(evt as never)
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+    const [, opts] = fetchMock.mock.calls[0] as [string, { body: string }]
+    expect(JSON.parse(opts.body)).not.toHaveProperty('expectedCurrent')
+  })
+
   it('does not forward or ACK when flag OFF', () => {
     renderHook(() => useDevToolsBusBindings(deps(false)))
     dispatch(evt as never)

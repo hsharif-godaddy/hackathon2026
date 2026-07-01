@@ -244,10 +244,21 @@ describe('jsxSourceMapper — data-dev-content-key', () => {
     expect(output).toContain('data-dev-dynamic="true"');
   });
 
-  it('falls through for computed member access', () => {
+  it('attributes a numeric computed member access in canonical bracket form', () => {
     const output = transform(`
       import { site } from 'virtual:content';
       export default () => <p>{site.nav[0].label}</p>;
+    `);
+    expect(output).toContain('data-dev-content-key="site.nav[0].label"');
+    expect(output).not.toContain('data-dev-dynamic');
+  });
+
+  it('falls through for a non-numeric computed member access', () => {
+    const output = transform(`
+      import { site } from 'virtual:content';
+      export default function Nav({ i }) {
+        return <p>{site.nav[i].label}</p>;
+      }
     `);
     expect(output).not.toContain('data-dev-content-key');
     expect(output).toContain('data-dev-dynamic="true"');
@@ -1066,5 +1077,116 @@ describe('jsxSourceMapper — per-item list instrumentation (gap 2b)', () => {
     `);
     expect(out).not.toContain('data-dev-item-id');
     expect(out).not.toContain('data-dev-content-list');
+  });
+});
+
+describe('jsxSourceMapper — indexed and derived content keys', () => {
+  it('attributes a direct indexed array access in canonical bracket form', () => {
+    const output = transform(`
+      import { home } from 'virtual:content';
+      export default () => <span>{home.about.stats[0].value}</span>;
+    `);
+    expect(output).toContain('data-dev-content-key="home.about.stats[0].value"');
+    expect(output).not.toContain('data-dev-dynamic');
+    expect(output).not.toContain('data-dev-content-derived');
+  });
+
+  it('attributes a value derived through a single-arg call (destructured)', () => {
+    const output = transform(`
+      import { home } from 'virtual:content';
+      export default function StatCounter0() {
+        const { display } = useCounter(home.about.stats[0].value);
+        return <span ref={ref}>{display}</span>;
+      }
+    `);
+    expect(output).toContain('data-dev-content-key="home.about.stats[0].value"');
+    expect(output).toContain('data-dev-content-derived="true"');
+    expect(output).not.toContain('data-dev-dynamic');
+    expect(output).not.toContain('data-dev-bound-source-kind');
+    expect(output).not.toContain('FormattedBoundText');
+  });
+
+  it('attributes a value derived through a single-arg call (non-destructured scalar)', () => {
+    const output = transform(`
+      import { home } from 'virtual:content';
+      export default function Title() {
+        const x = animate(home.hero.title);
+        return <h1>{x}</h1>;
+      }
+    `);
+    expect(output).toContain('data-dev-content-key="home.hero.title"');
+    expect(output).toContain('data-dev-content-derived="true"');
+    expect(output).not.toContain('data-dev-dynamic');
+  });
+
+  it('does not attribute when multiple args resolve to content keys (ambiguous)', () => {
+    const output = transform(`
+      import { home } from 'virtual:content';
+      export default function Combined() {
+        const x = combine(home.a.b, home.c.d);
+        return <span>{x}</span>;
+      }
+    `);
+    expect(output).toContain('data-dev-dynamic="true"');
+    expect(output).not.toContain('data-dev-content-key');
+    expect(output).not.toContain('data-dev-content-derived');
+  });
+
+  it('attributes a multi-arg call with exactly one content arg (e.g. useCountUp(key, duration, started))', () => {
+    const output = transform(`
+      import { home } from 'virtual:content';
+      export default function Counter() {
+        const count = useCountUp(home.about.stats[0].value, 2000, true);
+        return <span>{count}</span>;
+      }
+    `);
+    expect(output).toContain('data-dev-content-key="home.about.stats[0].value"');
+    expect(output).toContain('data-dev-content-derived="true"');
+    expect(output).not.toContain('data-dev-dynamic="true"');
+  });
+
+  it('does not attribute a value derived through a call with no content arg', () => {
+    const output = transform(`
+      import { home } from 'virtual:content';
+      export default function Counter() {
+        const x = useState(0);
+        return <span>{x}</span>;
+      }
+    `);
+    expect(output).toContain('data-dev-dynamic="true"');
+    expect(output).not.toContain('data-dev-content-key');
+    expect(output).not.toContain('data-dev-content-derived');
+  });
+
+  it('does not attribute a non-numeric computed index', () => {
+    const output = transform(`
+      import { home } from 'virtual:content';
+      export default function List({ i }) {
+        return <span>{home.items[i].name}</span>;
+      }
+    `);
+    expect(output).toContain('data-dev-dynamic="true"');
+    expect(output).not.toContain('data-dev-content-key');
+    expect(output).not.toContain('data-dev-content-derived');
+  });
+
+  it('leaves a plain content key byte-identical (no derived attr)', () => {
+    const output = transform(`
+      import { home } from 'virtual:content';
+      export default () => <h2>{home.about.heading}</h2>;
+    `);
+    expect(output).toContain('data-dev-content-key="home.about.heading"');
+    expect(output).not.toContain('data-dev-content-derived');
+  });
+
+  it('keeps mapped array template keys unchanged', () => {
+    const output = transform(`
+      import { products } from 'virtual:content';
+      export default () => (
+        <ul>{products.map((p) => <li>{p.name}</li>)}</ul>
+      );
+    `);
+    expect(output).toContain('data-dev-content-key-template="products[].name"');
+    expect(output).not.toContain('data-dev-content-derived');
   });
 });

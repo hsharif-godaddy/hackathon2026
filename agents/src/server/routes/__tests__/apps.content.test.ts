@@ -128,6 +128,15 @@ describe('POST /apps/:id/content/edit', () => {
     expect(content[0].price).toBe(29.95);
   });
 
+  it('rejects a non-string expectedCurrent with 400 invalid-value', async () => {
+    const response = await request(app)
+      .post(`/apps/${testAppId}/content/edit`)
+      .send({ contentKey: 'home.hero.title', kind: 'copy', value: 'Hi', expectedCurrent: 123 });
+
+    expect(response.status).toBe(400);
+    expect(response.body).toMatchObject({ ok: false, error: { code: 'invalid-value' } });
+  });
+
   it('rejects a non-numeric string for a numeric collection field with invalid-value', async () => {
     const productsPath = join(testAppPath, 'src', 'content', 'data', 'products.json');
     await writeFile(
@@ -210,6 +219,18 @@ describe('POST /apps/:id/content/edit', () => {
       .post('/apps/abcdefghij/content/edit')
       .send({ contentKey: 'site.brand', kind: 'copy', value: 'x' });
     expect(response.status).toBe(404);
+  });
+
+  it('returns 400 derived-mismatch when expectedCurrent does not match the stored value', async () => {
+    const response = await request(app)
+      .post(`/apps/${testAppId}/content/edit`)
+      .send({ contentKey: 'home.hero.title', kind: 'copy', value: 'New Title', expectedCurrent: 'Stale Value' });
+
+    expect(response.status).toBe(400);
+    expect(response.body).toMatchObject({ ok: false, error: { code: 'derived-mismatch' } });
+
+    const content = JSON.parse(await readFile(join(testAppPath, 'src', 'content', 'pages', 'home.json'), 'utf8'));
+    expect(content.hero.title).toBe('Welcome');
   });
 
   it('rejects cross-tenant access with non-bypass siteId', async () => {

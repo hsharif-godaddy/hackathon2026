@@ -110,6 +110,9 @@ export interface BusContentUpdatePayload {
   kind: 'copy' | 'richText'
   oldText?: string
   newText: string
+  /** Present only for derived/animated nodes: the rendered text the user started
+   *  from, forwarded so the server can reject the save on a derived mismatch. */
+  expectedCurrent?: string
 }
 
 export interface BusStyleUpdatePayload {

@@ -21,12 +21,21 @@ export interface ContentEditRequest {
   contentKey: string;
   kind: ContentKind;
   value: string;
+  /**
+   * For derived content nodes (rendered through an animation/computation), the
+   * rendered text the user started editing from. When set, the edit is written
+   * only if the currently-stored value equals this (a pass-through render);
+   * otherwise it is rejected as `derived-mismatch` to avoid corrupting a value
+   * the render transforms (e.g. `formatCurrency(5)` → "$5.00").
+   */
+  expectedCurrent?: string;
 }
 
 export type ContentEditErrorCode =
   | 'invalid-key'
   | 'unknown-root'
   | 'missing-path'
+  | 'derived-mismatch'
   | 'read-failed'
   | 'parse-failed'
   | 'write-failed'
@@ -294,6 +303,30 @@ export async function editContent(
       ok: false,
       error: { code: 'parse-failed', message: `invalid JSON in ${file}: ${getErrorMessage(err)}` },
     };
+  }
+
+  if (request.expectedCurrent !== undefined) {
+    let cursor: unknown = doc;
+    for (const seg of parsed.path) {
+      cursor = navigate(cursor, seg);
+    }
+    // Only guard scalar values: a missing/object/array/null value falls through
+    // so setAtPath produces the existing error codes (missing-path / type-unsupported).
+    if (typeof cursor === 'string' || typeof cursor === 'number' || typeof cursor === 'boolean') {
+      function normalize(s: string): string {
+        return s.replace(/\s+/g, ' ').trim();
+      }
+      if (normalize(String(cursor)) !== normalize(request.expectedCurrent)) {
+        return {
+          ok: false,
+          error: {
+            code: 'derived-mismatch',
+            message:
+              'stored content value no longer matches the text being edited; the displayed value is computed or animated, so the edit was not applied',
+          },
+        };
+      }
+    }
   }
 
   const setError = setAtPath(doc, parsed.path, request.value);

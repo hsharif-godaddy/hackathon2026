@@ -1054,7 +1054,7 @@ router.post('/:id/content/edit', async (req: Request, res: Response) => {
     if (!id) {
       return res.status(400).json({ ok: false, error: { code: 'invalid-key', message: 'App ID is required' } });
     }
-    const { contentKey, kind, value } = req.body ?? {};
+    const { contentKey, kind, value, expectedCurrent } = req.body ?? {};
     const contextLogger = log.forApp(id);
 
     if (typeof contentKey !== 'string' || typeof value !== 'string' || (kind !== 'copy' && kind !== 'richText')) {
@@ -1067,6 +1067,14 @@ router.post('/:id/content/edit', async (req: Request, res: Response) => {
       });
     }
 
+    if (expectedCurrent !== undefined && typeof expectedCurrent !== 'string') {
+      contextLogger.warn('route.apps.content-edit.validation.failed', { expectedCurrentType: typeof expectedCurrent });
+      return res.status(400).json({
+        ok: false,
+        error: { code: 'invalid-value', message: 'expectedCurrent, when present, must be a string' },
+      });
+    }
+
     const app = appRepo.findById(id);
     if (!app) {
       contextLogger.warn('route.apps.content-edit.app-not-found', { appId: id });
@@ -1074,7 +1082,7 @@ router.post('/:id/content/edit', async (req: Request, res: Response) => {
     }
 
     const contentDir = path.join(app.path, 'src', 'content');
-    const result = await editContent(contentDir, { contentKey, kind, value });
+    const result = await editContent(contentDir, { contentKey, kind, value, expectedCurrent });
 
     if (!result.ok) {
       contextLogger.warn('route.apps.content-edit.rejected', { contentKey, kind, errorCode: result.error.code });

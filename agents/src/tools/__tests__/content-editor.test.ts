@@ -470,6 +470,135 @@ describe('editContent', () => {
   });
 });
 
+describe('editContent derived-edit guard (expectedCurrent)', () => {
+  let dir: string;
+  beforeEach(async () => { dir = await mkTempContentDir(); });
+  afterEach(async () => { await fs.rm(dir, { recursive: true, force: true }); });
+
+  it('writes when expectedCurrent matches the stored string', async () => {
+    const file = await writeJson(dir, 'pages/home.json', { hero: { title: 'Welcome' } });
+    const result = await editContent(dir, {
+      contentKey: 'home.hero.title',
+      kind: 'copy',
+      value: 'Hello',
+      expectedCurrent: 'Welcome',
+    });
+    expect(result.ok).toBe(true);
+    const read = JSON.parse(await fs.readFile(file, 'utf8'));
+    expect(read.hero.title).toBe('Hello');
+  });
+
+  it('writes when expectedCurrent matches a stored number via String coercion (still coerces to number)', async () => {
+    const file = await writeJson(dir, 'data/products.json', [{ id: 'a', count: 5 }]);
+    const result = await editContent(dir, {
+      contentKey: 'products[0].count',
+      kind: 'copy',
+      value: '6',
+      expectedCurrent: '5',
+    });
+    expect(result.ok).toBe(true);
+    const read = JSON.parse(await fs.readFile(file, 'utf8'));
+    expect(read[0].count).toBe(6);
+    expect(typeof read[0].count).toBe('number');
+  });
+
+  it('returns derived-mismatch and leaves the file unchanged when expectedCurrent does not match', async () => {
+    const file = await writeJson(dir, 'pages/home.json', { price: 5 });
+    const result = await editContent(dir, {
+      contentKey: 'home.price',
+      kind: 'copy',
+      value: '6',
+      expectedCurrent: '$5.00',
+    });
+    expect(result).toMatchObject({ ok: false, error: { code: 'derived-mismatch' } });
+    const read = JSON.parse(await fs.readFile(file, 'utf8'));
+    expect(read.price).toBe(5);
+  });
+
+  it('a matching stored boolean passes the guard, then coerce rejects with type-unsupported (not derived-mismatch)', async () => {
+    // The guard only compares stringified scalars; a boolean that matches
+    // expectedCurrent gets past it and is then correctly refused by
+    // coerceToExistingType (booleans aren't inline-editable).
+    const file = await writeJson(dir, 'pages/home.json', { flags: { active: true } });
+    const result = await editContent(dir, {
+      contentKey: 'home.flags.active',
+      kind: 'copy',
+      value: 'false',
+      expectedCurrent: 'true',
+    });
+    expect(result).toMatchObject({ ok: false, error: { code: 'type-unsupported' } });
+    const read = JSON.parse(await fs.readFile(file, 'utf8'));
+    expect(read.flags.active).toBe(true);
+  });
+
+  it('behaves exactly as before when expectedCurrent is omitted (backward-compat)', async () => {
+    const file = await writeJson(dir, 'pages/home.json', { hero: { title: 'Old' } });
+    const result = await editContent(dir, {
+      contentKey: 'home.hero.title',
+      kind: 'copy',
+      value: 'New',
+    });
+    expect(result.ok).toBe(true);
+    const read = JSON.parse(await fs.readFile(file, 'utf8'));
+    expect(read.hero.title).toBe('New');
+  });
+
+  it('matches whitespace-insensitively (settled animated value)', async () => {
+    const file = await writeJson(dir, 'pages/home.json', { stat: '500+' });
+    const result = await editContent(dir, {
+      contentKey: 'home.stat',
+      kind: 'copy',
+      value: '600+',
+      expectedCurrent: '  500+ ',
+    });
+    expect(result.ok).toBe(true);
+    const read = JSON.parse(await fs.readFile(file, 'utf8'));
+    expect(read.stat).toBe('600+');
+  });
+
+  it('writes an indexed key when the guard matches', async () => {
+    const file = await writeJson(dir, 'pages/home.json', {
+      about: { stats: [{ value: '500+' }, { value: '20+' }] },
+    });
+    const result = await editContent(dir, {
+      contentKey: 'home.about.stats[0].value',
+      kind: 'copy',
+      value: '600+',
+      expectedCurrent: '500+',
+    });
+    expect(result.ok).toBe(true);
+    const read = JSON.parse(await fs.readFile(file, 'utf8'));
+    expect(read.about.stats[0].value).toBe('600+');
+    expect(read.about.stats[1].value).toBe('20+');
+  });
+
+  it('returns derived-mismatch on an indexed key when the guard does not match, file unchanged', async () => {
+    const file = await writeJson(dir, 'pages/home.json', {
+      about: { stats: [{ value: '500+' }] },
+    });
+    const result = await editContent(dir, {
+      contentKey: 'home.about.stats[0].value',
+      kind: 'copy',
+      value: '600+',
+      expectedCurrent: '999+',
+    });
+    expect(result).toMatchObject({ ok: false, error: { code: 'derived-mismatch' } });
+    const read = JSON.parse(await fs.readFile(file, 'utf8'));
+    expect(read.about.stats[0].value).toBe('500+');
+  });
+
+  it('returns missing-path (guard skipped), not derived-mismatch, when the path is absent', async () => {
+    await writeJson(dir, 'pages/home.json', { hero: {} });
+    const result = await editContent(dir, {
+      contentKey: 'home.hero.title',
+      kind: 'copy',
+      value: 'x',
+      expectedCurrent: 'anything',
+    });
+    expect(result).toMatchObject({ ok: false, error: { code: 'missing-path' } });
+  });
+});
+
 describe('editContent → scaffoldContent lock round-trip (CP1 read agrees with CP3 write)', () => {
   let dir: string;
   beforeEach(async () => { dir = await mkTempContentDir(); });

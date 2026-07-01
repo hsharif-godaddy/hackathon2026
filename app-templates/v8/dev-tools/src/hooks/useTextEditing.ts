@@ -15,6 +15,7 @@ import {
   resolveContentKey,
   isInsideNavSurface,
 } from "../utils/element-detection";
+import { buildContentUpdatePayload } from "../utils/content-edit-payload";
 import InlineLexicalEditor from "../components/InlineLexicalEditor";
 import { htmlToJsxStructured } from "../utils/html-to-jsx";
 import { insertPlainTextOnPaste } from "../utils/contenteditable-paste";
@@ -167,12 +168,7 @@ export function useTextEditing(isEditModeActive: boolean, cmsInlineEditEnabled: 
         trackInlineEdit("save", contentTarget);
         safePostMessage(window.parent, {
           type: "CONTENT_UPDATED",
-          data: {
-            contentKey: contentTarget.key,
-            kind: contentTarget.kind,
-            oldText: originalText,
-            newText,
-          },
+          data: buildContentUpdatePayload(element, contentTarget, originalText, newText),
         });
 
         cleanupOverlay();

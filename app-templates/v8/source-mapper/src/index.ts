@@ -203,13 +203,27 @@ export default function jsxSourceMapper(babel: { types: typeof types }): PluginO
   }
 
   // Walk a MemberExpression / Identifier chain and return `["root", "a", "b"]`
-  // iff every hop is an identifier-typed, non-computed property access.
-  // Returns null for any unsupported shape (computed indices, destructuring, etc.).
-  function readChain(node: Expression): string[] | null {
-    const parts: string[] = [];
+  // iff every hop is an identifier-typed, non-computed property access OR a
+  // computed access whose property is a non-negative integer NumericLiteral
+  // (captured as a numeric index segment, e.g. `stats[0]` → `["stats", 0]`).
+  // Returns null for any other unsupported shape (string-literal/identifier/
+  // expression computed indices, destructuring, etc.).
+  function readChain(node: Expression): (string | number)[] | null {
+    const parts: (string | number)[] = [];
     let cur: Expression = node;
     while (t.isMemberExpression(cur)) {
-      if (cur.computed) return null;
+      if (cur.computed) {
+        if (
+          t.isNumericLiteral(cur.property) &&
+          Number.isInteger(cur.property.value) &&
+          cur.property.value >= 0
+        ) {
+          parts.unshift(cur.property.value);
+          cur = cur.object as Expression;
+          continue;
+        }
+        return null;
+      }
       if (!t.isIdentifier(cur.property)) return null;
       parts.unshift(cur.property.name);
       cur = cur.object as Expression;
@@ -217,6 +231,23 @@ export default function jsxSourceMapper(babel: { types: typeof types }): PluginO
     if (!t.isIdentifier(cur)) return null;
     parts.unshift(cur.name);
     return parts;
+  }
+
+  // Render a chain of name/index segments to canonical content-key form:
+  // numeric segments become `[N]` with no leading dot, string segments are
+  // dot-joined. e.g. `["home", "about", "stats", 0, "value"]` →
+  // `home.about.stats[0].value`. The first segment is always a string (root).
+  function renderChain(parts: (string | number)[]): string {
+    let out = '';
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i];
+      if (typeof part === 'number') {
+        out += `[${part}]`;
+      } else {
+        out += i === 0 ? part : `.${part}`;
+      }
+    }
+    return out;
   }
 
   // If `node` is a `.map()` call on a content-rooted chain, return the frame
@@ -378,18 +409,64 @@ export default function jsxSourceMapper(babel: { types: typeof types }): PluginO
     const chain = readChain(node);
     if (!chain) return null;
     const root = chain[0];
+    // The root segment is the identifier name; a numeric root is impossible
+    // (readChain always unshifts an Identifier name first), but narrow for type.
+    if (typeof root !== 'string') return null;
     if (s.contentBindings.has(root)) {
-      return chain.join('.');
+      return renderChain(chain);
     }
     for (let i = s.mapStack.length - 1; i >= 0; i--) {
       if (s.mapStack[i].paramName === root) {
         const rest = chain.slice(1);
         return rest.length === 0
           ? `${s.mapStack[i].pathBase}[]`
-          : `${s.mapStack[i].pathBase}[].${rest.join('.')}`;
+          : `${s.mapStack[i].pathBase}[].${renderChain(rest)}`;
       }
     }
     return null;
+  }
+
+  // Resolve a content key reached indirectly through a call, e.g.
+  // `const { display } = useCounter(home.about.stats[0].value)` rendered as
+  // `<span>{display}</span>`. Conservative: only a bare Identifier bound to a
+  // VariableDeclarator whose init is a CallExpression where exactly ONE argument
+  // resolves to a NON-template content key (no `[]`); other args (durations,
+  // options, flags) are ignored, and ≥2 content args is ambiguous → skip.
+  // Indexed keys (`home.about.stats[0].value`) are allowed. Returns the key or null.
+  //
+  // This matches by call SHAPE, so it also attributes e.g. `const [v] =
+  // useState(home.x)` — intentionally. Whether the value is a genuine
+  // pass-through or a transform is decided at edit time by the server guard
+  // (it writes only when the stored content still equals the rendered text),
+  // NOT here. So a false match is safe: a transforming hook simply gets its
+  // edit refused rather than corrupting content.
+  function resolveDerivedContentKey(
+    expression: Expression,
+    path: NodePath<JSXElement>,
+    s: PluginState,
+  ): string | null {
+    if (!t.isIdentifier(expression)) return null;
+    const binding = path.scope.getBinding(expression.name);
+    if (!binding) return null;
+    const declarator: NodePath | null = binding.path.isVariableDeclarator()
+      ? binding.path
+      : binding.path.findParent((p: NodePath): boolean => p.isVariableDeclarator());
+    if (!declarator || !declarator.isVariableDeclarator()) return null;
+    const init = declarator.node.init;
+    if (!init || !t.isCallExpression(init)) return null;
+    // Exactly ONE argument must resolve to a (non-template) content key; other
+    // args (durations, options, flags — e.g. `useCountUp(home.x, 2000, started)`)
+    // are ignored. Zero content args = nothing to attribute; two or more =
+    // ambiguous which one the rendered value derives from, so skip.
+    const contentKeys: string[] = init.arguments
+      .filter(
+        (a): a is Expression =>
+          !t.isSpreadElement(a) && !t.isJSXNamespacedName(a) && !t.isArgumentPlaceholder(a),
+      )
+      .map((a: Expression): string | null => resolveContentKey(a, s))
+      .filter((k: string | null): k is string => k !== null && !k.includes('[]'));
+    if (contentKeys.length !== 1) return null;
+    return contentKeys[0]!;
   }
 
   function pickSoleExpressionContainer(jsxElement: JSXElement): types.JSXExpressionContainer | null {
@@ -629,6 +706,10 @@ export default function jsxSourceMapper(babel: { types: typeof types }): PluginO
           const expressionContainer = pickSoleExpressionContainer(path.node);
           const expression = expressionContainer?.expression as Expression | undefined;
           const contentKey = expression ? resolveContentKey(expression, state) : null;
+          const derivedContentKey =
+            isDevBuild && !contentKey && expression
+              ? resolveDerivedContentKey(expression, path, state)
+              : null;
           const hasDynamic = hasDynamicChildExpression(path.node);
           const lineNumber = openingElement.loc ? openingElement.loc.start.line : 0;
 
@@ -643,6 +724,7 @@ export default function jsxSourceMapper(babel: { types: typeof types }): PluginO
             textTagName &&
             expression &&
             !isStaticLiteralExpression(expression) &&
+            !derivedContentKey &&
             state.formatBoundTextRuntimeAvailable &&
             state.genericMapDepth === 0
               ? {
@@ -679,6 +761,13 @@ export default function jsxSourceMapper(babel: { types: typeof types }): PluginO
             if (!hasAttr(openingElement.attributes, attrName)) {
               openingElement.attributes.push(
                 t.jsxAttribute(t.jsxIdentifier(attrName), t.stringLiteral(contentKey)),
+              );
+            }
+          } else if (derivedContentKey) {
+            if (!hasAttr(openingElement.attributes, 'data-dev-content-key')) {
+              openingElement.attributes.push(
+                t.jsxAttribute(t.jsxIdentifier('data-dev-content-key'), t.stringLiteral(derivedContentKey)),
+                t.jsxAttribute(t.jsxIdentifier('data-dev-content-derived'), t.stringLiteral('true')),
               );
             }
           } else {

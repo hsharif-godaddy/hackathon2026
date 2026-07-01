@@ -48,3 +48,5 @@ For full reasoning and examples, load the `content-system` skill.
 6. **Two-element composition around dynamic values.** `<span>Label </span><span>{value}</span>`, not `<p>Label {value}</p>` (a content value must be the sole expression child of its element).
 
 7. **Collection items carry a managed `id`.** The `content_scaffold` tool adds a stable `id` to every item in a list (e.g. each menu item, each product). Keep it: it anchors inline edits so a user's change stays attached to the right item when the list is reordered. Do not hand-author, renumber, or strip these ids — the tool manages them. You never need to reference `id` in JSX.
+
+8. **Animated/computed values stay editable only through a single content field.** Drive an animation/formatter from exactly one content field rendered directly (`const { display } = useCounter(home.stats[0].value); <span>{display}</span>`); combining fields or transforming the value (e.g. `formatCurrency`) severs editing. Store display-ready strings in content (`"500+"`) and echo them verbatim. (Full reasoning + example in the content-system skill.)

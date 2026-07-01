@@ -132,6 +132,24 @@ source-mapper auto-tags each item with its content field + per-item index, so ed
 
 The `content_scaffold` tool adds a stable `id` to every item in a list. Keep it — it anchors inline edits to the right item even when the list is reordered. Do not hand-author, renumber, or strip these ids; the tool manages them completely. The `id` field never needs to appear in your JSX.
 
+### 8. Animated/computed values stay editable only through a single content field
+
+When a content value is rendered through an animation hook or formatter (e.g. an animated counter), call it with exactly ONE content field and render the result directly — the build traces the returned local back to its content key, and an edit re-drives the animation.
+
+```tsx
+// ✅ editable — single content field through one call, rendered as the sole child
+function StatCounter() {
+  const { display } = useCounter(home.stats[0].value); // home.stats[0].value = "124,000+"
+  return <span>{display}</span>;
+}
+
+// ❌ severs editing — transforms the value (displayed "124,000" ≠ stored 124000),
+//    so the edit is refused and the user is told to ask the agent
+const display = formatNumber(useCountUp(home.stats[0].value)); // "124,000"
+```
+
+Two things sever it: combining multiple content fields in the call, or transforming the value so the displayed text no longer matches the stored content. So store the **display-ready** string in content (`"124,000+"`, `"$5.00"`, `"4.9★"`) and echo it verbatim through the animation rather than formatting a raw number at render time.
+
 ---
 
 ## Schema Authoring
@@ -205,3 +223,4 @@ Retrofit is behavior-preserving: the rendered output should be identical byte-fo
 - **MDX/rich-text deferred.** Rich-text fields (`kind: 'richText'`) are stored as markdown strings but v1 has no inline Lexical editor. They're edited via the agent or a plain textarea. Full Lexical integration comes in Phase 4 alongside the Lexical branch merge.
 - **No schema-primitive sharing across apps.** `src/content/schemas.ts` is per-app. Schema edits in one app don't propagate.
 - **`.map()` attribution requires `ContentListContext`.** Without it, items render but can't be clicked for edit.
+- **Derived values are editable only when pass-through.** A content value rendered through a single-field animation/hook is editable (see rule 8), but a value the render *transforms* (formatters, multi-field combinations) is not — the edit is refused at save time. Store the display-ready string in content instead.

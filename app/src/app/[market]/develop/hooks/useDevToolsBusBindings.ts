@@ -242,7 +242,7 @@ export function useDevToolsBusBindings(deps: DevToolsBusBindingsDeps): void {
     on('CONTENT_UPDATED', (m) => {
       const cur = d()
       if (!cur.cmsInlineEditEnabled) return
-      const { contentKey, kind, newText } = m.data
+      const { contentKey, kind, newText, expectedCurrent } = m.data
       logger.info('develop-page.content-updated-from-iframe', { appId: cur.appId, contentKey, kind })
       void (async () => {
         try {
@@ -250,7 +250,7 @@ export function useDevToolsBusBindings(deps: DevToolsBusBindingsDeps): void {
           const res = await agentFetch(url, {
             method: 'POST',
             siteId: cur.appId,
-            body: JSON.stringify({ contentKey, kind, value: newText }),
+            body: JSON.stringify({ contentKey, kind, value: newText, ...(expectedCurrent !== undefined ? { expectedCurrent } : {}) }),
           })
           if (!res.ok) {
             logger.error('develop-page.content-updated.failed', { appId: cur.appId, contentKey, status: res.status })
