@@ -87,6 +87,26 @@ describe('FileUploadService.registerLocalFilesAsUpload', () => {
     expect(listed[0]?.filename).toBe('stable-hash.png')
   })
 
+  it('skips empty files but registers siblings (unlike multipart validateUpload)', async () => {
+    const empty = await writeSource('empty.png', Buffer.alloc(0))
+    const present = await writeSource('present.png', Buffer.from('png'))
+    const files: LocalFileToRegister[] = [
+      { absoluteSourcePath: empty, originalName: 'empty.png', mimeType: 'image/png' },
+      { absoluteSourcePath: present, originalName: 'present.png', mimeType: 'image/png' },
+    ]
+
+    const result = await service.registerLocalFilesAsUpload('app1', files, {
+      uploadId: 'crawled-source',
+      source: 'crawled',
+    })
+
+    expect(result.files).toHaveLength(1)
+    expect(result.files[0]?.filename).toBe('present.png')
+    expect(result.failedFiles).toHaveLength(1)
+    expect(result.failedFiles[0]?.originalName).toBe('empty.png')
+    expect(result.failedFiles[0]?.error).toMatch(/File is empty/)
+  })
+
   it('skips missing source files but registers the rest', async () => {
     const present = await writeSource('present.png', Buffer.from('png'))
     const files: LocalFileToRegister[] = [

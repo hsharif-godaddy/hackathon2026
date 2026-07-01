@@ -33,6 +33,17 @@ describe('FileUploadService - File Type Validation', () => {
     expect(() => service.validateFile(file)).toThrow('not allowed for security reasons');
   });
 
+  it('should reject empty files', () => {
+    const file = {
+      originalname: 'photo.png',
+      mimetype: 'image/png',
+      size: 0,
+      buffer: Buffer.alloc(0)
+    } as Express.Multer.File;
+
+    expect(() => service.validateFile(file)).toThrow('File is empty');
+  });
+
   it('should accept image files', () => {
     const file = {
       originalname: 'photo.png',
@@ -160,6 +171,39 @@ describe('FileUploadService - Per-File Error Handling', () => {
     expect(result.files).toHaveLength(2);
     expect(result.files.some(f => f.originalName === 'photo.jpg')).toBe(true);
     expect(result.files.some(f => f.originalName === 'icon.svg')).toBe(true);
+  });
+
+  it('should reject processUpload when every file is empty', async () => {
+    const service = new FileUploadService(batchTestDir);
+
+    const emptyFile = {
+      originalname: 'empty.jpg',
+      mimetype: 'image/jpeg',
+      size: 0,
+      buffer: Buffer.alloc(0),
+    } as Express.Multer.File;
+
+    await expect(service.processUpload('test-app-batch', [emptyFile])).rejects.toThrow('File is empty');
+  });
+
+  it('should reject processUpload when a batch includes an empty file', async () => {
+    const service = new FileUploadService(batchTestDir);
+
+    const validJpeg = {
+      originalname: 'photo.jpg',
+      mimetype: 'image/jpeg',
+      size: 1024,
+      buffer: Buffer.from('fake-jpeg'),
+    } as Express.Multer.File;
+
+    const emptyFile = {
+      originalname: 'empty.jpg',
+      mimetype: 'image/jpeg',
+      size: 0,
+      buffer: Buffer.alloc(0),
+    } as Express.Multer.File;
+
+    await expect(service.processUpload('test-app-batch', [validJpeg, emptyFile])).rejects.toThrow('File is empty');
   });
 });
 

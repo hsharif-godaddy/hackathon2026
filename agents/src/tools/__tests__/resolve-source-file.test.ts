@@ -131,14 +131,14 @@ describe('resolveSourceFile - upload auto-resolve (exact match + rename-tolerant
     ] as Express.Multer.File[])
 
     const result = await resolveSourceFile(testAppId, 'public/assets/logo.png', '', mockFiles)
-    expect(result).toBeNull()
+    expect(result).toEqual({ skip: true, reason: 'no-match' })
   })
 
   it('should NOT fall back to an SVG upload for a raster target (would corrupt the file)', async () => {
     await seedUpload('icon.svg', '<svg xmlns="http://www.w3.org/2000/svg"></svg>')
 
     const result = await resolveSourceFile(testAppId, 'public/assets/logo.png', '', mockFiles)
-    expect(result).toBeNull()
+    expect(result).toEqual({ skip: true, reason: 'no-match' })
   })
 
   it('should PRESERVE an existing file (skip) rather than guess-fill it when no exact match', async () => {
@@ -165,14 +165,14 @@ describe('resolveSourceFile - upload auto-resolve (exact match + rename-tolerant
     expect(result).toBeNull()
   })
 
-  it('should return null when no uploads exist', async () => {
+  it('should return no-match skip when no uploads exist for a new raster target', async () => {
     const result = await resolveSourceFile(
       testAppId,
       'public/assets/logo.png',
       '',
       mockFiles
     )
-    expect(result).toBeNull()
+    expect(result).toEqual({ skip: true, reason: 'no-match' })
   })
 
   it('should resolve text files by reading content', async () => {

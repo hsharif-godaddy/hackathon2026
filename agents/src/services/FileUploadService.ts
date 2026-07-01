@@ -250,6 +250,10 @@ export class FileUploadService {
    * FileValidationError on a blocked extension/mime type or oversize file.
    */
   private assertAllowedFile(params: { originalName: string; mimeType: string | null; size: number }): void {
+    if (params.size === 0) {
+      throw new FileValidationError('File is empty. Please upload a file with content.')
+    }
+
     const ext = extname(params.originalName).toLowerCase()
     if (BLOCKED_EXTENSIONS.has(ext)) {
       throw new FileValidationError(

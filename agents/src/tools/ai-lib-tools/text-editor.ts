@@ -22,7 +22,10 @@ import { validateNoHardcodedFonts } from '../../services/rebuild/validate-inline
 import { DevSupervisorError } from '../../services/DevSupervisorClient.js';
 import { runPostEditHandlers } from './post-edit-handlers.js';
 import { isFileBlocked } from '../read-file.js';
+import { fileUploadService } from '../../services/FileUploadService.js';
+import type { UploadedFile } from '../../services/FileUploadService.js';
 import {
+  shouldRejectEmptyBinaryCreate,
   isProtectedWorkspacePath,
   validateNoApiPaths,
   resolveSourceFile,
@@ -40,6 +43,27 @@ import { createForWorkspace } from '../../workspace/index.js';
 import type { WorkspaceFiles } from '../../workspace/files.js';
 
 const appRepo = new AppRepository();
+
+const MAX_LISTED_UPLOAD_NAMES = 5;
+
+const IMPORT_UPLOAD_RECOVERY: string =
+  'Use media({ action: "import_upload", filename: "<storedUploadFilename>", slot: "<semantic-slot>" }). Replace <semantic-slot> with a slot matching the intended placement (e.g., "pages/home/hero", "products/item-name"). Use the exact stored filename from Upload handling, or ask the user to re-attach via the + button.';
+
+async function buildNoMatchingUploadError(appId: string, targetPath: string): Promise<string> {
+  const uploads: UploadedFile[] = await fileUploadService.listUploadedFiles(appId);
+  const listedNames: string = uploads
+    .slice(0, MAX_LISTED_UPLOAD_NAMES)
+    .map((upload: UploadedFile) => upload.filename)
+    .join(', ');
+  const availableHint: string = uploads.length > 0
+    ? ` Available uploads: ${listedNames}.`
+    : '';
+  return `Cannot create ${basename(targetPath)}: no matching upload found.${availableHint} ${IMPORT_UPLOAD_RECOVERY}`;
+}
+
+function assertNever(value: never): never {
+  throw new Error(`Unhandled auto-resolve skip reason: ${String(value)}`);
+}
 
 interface TextEditorInput {
   command: 'view' | 'str_replace' | 'create' | 'insert';
@@ -176,8 +200,13 @@ async function executeTextEditor(input: TextEditorInput, context: AgentContext |
         // so the agent knows to try again rather than treating this as final.
         return `Could not copy the uploaded file to ${basename(path)} due to a temporary error — the existing file was preserved. Please try again.`;
       }
-      // 'no-upload': file exists but there is no matching upload to fill it.
-      return `Left ${basename(path)} unchanged — it already exists and there is no matching upload to refresh it.`;
+      if (resolvedFile.reason === 'no-match') {
+        return `No upload available to fill ${basename(path)} — do not create an empty file. ${IMPORT_UPLOAD_RECOVERY}`;
+      }
+      if (resolvedFile.reason === 'no-upload') {
+        return `Left ${basename(path)} unchanged — it already exists and there is no matching upload to refresh it.`;
+      }
+      return assertNever(resolvedFile.reason);
     }
     if (resolvedFile) {
       if (resolvedFile.binaryCopied) {
@@ -186,6 +215,10 @@ async function executeTextEditor(input: TextEditorInput, context: AgentContext |
         resolvedFileText = resolvedFile.content;
         textUploadIdentity = resolvedFile.uploadIdentity ?? null;
       }
+    } else if (file_text === '' && shouldRejectEmptyBinaryCreate(path)) {
+      // Non-raster binaries (pdf, woff2, …): resolveSourceFile returns null, not
+      // no-match. Throw so the agent sees a tool error; rasters are handled above.
+      throw new Error(await buildNoMatchingUploadError(appId, path));
     }
   }
 

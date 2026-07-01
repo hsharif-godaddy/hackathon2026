@@ -81,12 +81,29 @@ async function workspaceFileExists(files: WorkspaceFiles, path: string): Promise
   }
 }
 
+/**
+ * True when an empty `create` (`file_text: ""`) on this path should be rejected
+ * (throw or skip) rather than fall through to `handleCreate`. Targets binary
+ * paths (image, pdf, font, …) with no bytes to write. SVG is excluded: logos
+ * are text and resolved via the non-binary branch of {@link resolveSourceFile}.
+ * An empty `.svg` with no matching upload may still reach `handleCreate('')`;
+ * that is intentional (text, cheap, non-corrupting) unlike a 0-byte raster stub.
+ */
+export function shouldRejectEmptyBinaryCreate(filePath: string): boolean {
+  if (filePath.toLowerCase().endsWith('.svg')) {
+    return false;
+  }
+  return BINARY_FILE_REGEX.test(filePath);
+}
+
+export type AutoResolveSkipReason = 'no-upload' | 'no-match' | 'copy-error';
+
 export async function resolveSourceFile(
   appId: string,
   targetPath: string,
   content: string,
   files: WorkspaceFiles
-): Promise<{ content: string; binaryCopied?: boolean; uploadIdentity?: { storedFilename: string; fileName: string } } | { skip: true; reason: 'no-upload' | 'copy-error' } | null> {
+): Promise<{ content: string; binaryCopied?: boolean; uploadIdentity?: { storedFilename: string; fileName: string } } | { skip: true; reason: AutoResolveSkipReason } | null> {
   if (content !== '') {
     return null;
   }
@@ -117,6 +134,13 @@ export async function resolveSourceFile(
 
     if (!match) {
       logger.debug('file-edit.auto-resolve.no-match', { appId, filename });
+      if (fallbackEligible && !targetExists) {
+        // New raster target with no upload to fill — return a retryable skip
+        // instead of null. null lets text-editor fall through to handleCreate('')
+        // for non-image binaries only; rasters get this skip so the agent sees
+        // guidance without a thrown tool error.
+        return { skip: true, reason: 'no-match' };
+      }
       return null;
     }
     if (!exactMatch) {
