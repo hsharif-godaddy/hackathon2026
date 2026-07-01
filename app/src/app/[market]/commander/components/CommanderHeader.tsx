@@ -89,12 +89,13 @@ export default function CommanderHeader() {
         </AnimatePresence>
       </motion.div>
 
-      <div className="px-1.5 py-1 md:px-2.5 md:py-1 grow">
+      <div className="px-1.5 py-1 md:px-2.5 md:py-1 grow overflow-hidden">
         <Box
           orientation="horizontal"
           blockAlignChildren="spaceBetween"
           inlineAlignChildren="center"
           gap="sm"
+          className="overflow-x-auto"
         >
           <Box
             orientation="horizontal"
