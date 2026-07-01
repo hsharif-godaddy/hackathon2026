@@ -112,9 +112,9 @@ export default function HeaderUpgradeButton({ location = 'unknown' }: HeaderUpgr
           </text.h4>
           <ul className='flex flex-col gap-1 mb-3'>
             {benefits.map((benefit, index) => (
-              <li key={index} className='flex items-center gap-1'>
+              <li key={index} className='flex items-center gap-1 !my-0'>
                 <CheckIcon className='w-3 h-3 text-intents-ux-feedbackHighContrastSuccess-feedbackColor flex-shrink-0' />
-                <text.p size={-1}>{benefit}</text.p>
+                <text.p size={-1} className="!mb-0">{benefit}</text.p>
               </li>
             ))}
           </ul>
