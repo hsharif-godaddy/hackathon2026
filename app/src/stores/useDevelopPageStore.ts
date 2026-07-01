@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { devtools, persist } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
 
+import { CANVAS_REGISTRY } from '@/app/[market]/commander/canvas/registry'
 import { DEFAULT_DESKTOP_DEVICE, DEFAULT_MOBILE_DEVICE, DEFAULT_TABLET_DEVICE } from '@/app/[market]/develop/components/preview/devicePresets'
 import { buildEditModeEnabledMessage, ChatTab, IframeMessageType, type MarketingView, MobileMode, PreviewViewMode, SettingsSection, ViewMode } from '@/app/[market]/develop/components/types'
 import type { LogoSessionLogo } from '@/app/[market]/develop/components/widgets/logo-utils'
@@ -1278,11 +1279,12 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
           ? sessionStorage.getItem(`initial-template-${jobId}`)
           : null
         if (template !== 'logo-designer') {
-          state.viewMode = ViewMode.PREVIEW
-          // Keep isEditModeEnabled in sync with the PREVIEW viewMode. Otherwise a
-          // freshly-built app lands on the Preview toggle while the iframe still
-          // receives EDIT_MODE_ENABLED on IFRAME_READY and shows the hover bar.
-          state.isEditModeEnabled = false
+          const persistedCanvasId = useCommanderStore.getState().activeCanvasId
+          const persistedViewMode = CANVAS_REGISTRY[persistedCanvasId]?.activation?.viewMode
+          if (!persistedViewMode || persistedViewMode === ViewMode.PREVIEW) {
+            state.viewMode = ViewMode.PREVIEW
+            state.isEditModeEnabled = false
+          }
         }
       })
     },

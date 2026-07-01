@@ -1869,6 +1869,9 @@ router.post(
           }
         }
 
+        // Bump lastUpdated so client thumbnails invalidate on refetch
+        await mediaManifestService.markSlotsModified(appId, [slotName, ...affectedSlots]);
+
         // Commit the rewritten bytes now (no manifest change to carry it), so a
         // workspace recycle before session-end can't revert the edit. Best-effort.
         const committed = await mediaManifestService.commitMediaFiles(appId, editedMediaPaths);

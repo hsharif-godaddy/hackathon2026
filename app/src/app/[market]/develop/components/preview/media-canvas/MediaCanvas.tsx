@@ -120,6 +120,9 @@ export function MediaCanvas() {
   // Virtual "Site Files" folder always first
   const allFolders = useMemo(() => [SITE_FILES_FOLDER, ...folders], [folders])
 
+  // Folders available as move targets — excludes the active folder and the virtual Site Files entry
+  const moveFolders = useMemo(() => allFolders.filter((f) => f.id !== activeFolder?.id && f.id !== SITE_FILES_FOLDER.id), [allFolders, activeFolder])
+
   // Get fresh folder data from the hook (activeFolder state is a stale snapshot)
   const currentFolderSlots = useMemo(() => {
     if (!activeFolder) return []
@@ -144,7 +147,7 @@ export function MediaCanvas() {
         <ImageEditorPanel
           appId={appId}
           slotName={editorSlotName}
-          onDone={() => { setIsEditorOpen(false); void refetch() }}
+          onDone={() => { setIsEditorOpen(false); void refetch(); void refetchUploads() }}
           onCancel={() => setIsEditorOpen(false)}
         />
       </MediaCanvasShell>
@@ -223,7 +226,7 @@ export function MediaCanvas() {
                 <UploadCard onClick={triggerFileInput} isUploading={isUploading} />
                 {(isSiteFilesActive ? allSiteFiles : allSiteFiles.filter(({ name }) => currentFolderSlots.includes(name)))
                   .map(({ name, slot }) => (
-                    <MediaThumbnail key={name} name={name} slot={slot} previewBaseUrl={previewBaseUrl} folders={allFolders} onMoveToFolder={(slotName, folderId) => {
+                    <MediaThumbnail key={name} name={name} slot={slot} previewBaseUrl={previewBaseUrl} folders={moveFolders} onMoveToFolder={(slotName, folderId) => {
                       if (folderId === SITE_FILES_FOLDER.id) {
                         if (activeFolder && !isSiteFilesActive) void removeFromFolder({ folderId: activeFolder.id, slotName })
                         return
@@ -242,7 +245,7 @@ export function MediaCanvas() {
               limit={showAllUploads ? undefined : RECENT_UPLOADS_LIMIT}
               onShowMore={() => setShowAllUploads(true)}
               hasMore={!showAllUploads && recentUploads.length > RECENT_UPLOADS_LIMIT}
-              folders={allFolders}
+              folders={moveFolders}
               onMoveUploadToFolder={(filename, folderId) => { void handleMoveUploadToFolder(filename, folderId) }}
               onModifyUpload={(file) => {
                 void (async () => {

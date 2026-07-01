@@ -116,6 +116,7 @@ export function MediaReplacePanel({ slotName, onClose }: MediaReplacePanelProps)
   }, [manifest, slotNames])
 
   const allFolders = useMemo(() => [SITE_FILES_FOLDER, ...folders], [folders])
+  const moveFolders = useMemo(() => allFolders.filter((f) => f.id !== activeFolder?.id && f.id !== SITE_FILES_FOLDER.id), [allFolders, activeFolder])
   const isSiteFilesActive = activeFolder?.id === SITE_FILES_FOLDER.id
   const currentFolderSlots = useMemo(() => {
     if (!activeFolder || isSiteFilesActive) return []
@@ -466,7 +467,7 @@ export function MediaReplacePanel({ slotName, onClose }: MediaReplacePanelProps)
                   name={name}
                   slot={s}
                   previewBaseUrl={previewBaseUrl}
-                  folders={allFolders}
+                  folders={moveFolders}
                   onMoveToFolder={(slotName, folderId) => {
                     if (folderId === SITE_FILES_FOLDER.id) {
                       if (activeFolder && !isSiteFilesActive) void removeFromFolder({ folderId: activeFolder.id, slotName })
@@ -498,7 +499,7 @@ export function MediaReplacePanel({ slotName, onClose }: MediaReplacePanelProps)
             hasMore={!showAllUploads && recentUploads.length > 5}
             onSelectUpload={handleSelectUpload}
             selectedUploadId={selectedUpload?.id ?? null}
-            folders={allFolders}
+            folders={moveFolders}
             onModifyUpload={(file) => { void handleModifyUpload(file) }}
             onMoveUploadToFolder={(filename, folderId) => {
               void (async () => {
@@ -578,7 +579,7 @@ export function MediaReplacePanel({ slotName, onClose }: MediaReplacePanelProps)
               hasMore={gettySearch.hasMore}
               isLoadingMore={gettySearch.isLoadingMore}
               onLoadMore={() => { void gettySearch.loadMore() }}
-              folders={allFolders}
+              folders={moveFolders}
               onModifyResult={(result) => { void handleModifyGetty(result) }}
               onMoveResultToFolder={(result, folderId) => { void handleMoveGettyToFolder(result, folderId) }}
               onCreateFolderForResult={async (result, folderName) => {

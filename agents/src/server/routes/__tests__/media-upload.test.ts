@@ -36,6 +36,7 @@ vi.mock('../../../services/MediaManifestService.js', () => ({
     removeUploadedUrls: vi.fn(),
     removeUploadedUrlsFromSlot: vi.fn(),
     commitMediaFiles: vi.fn().mockResolvedValue(true),
+    markSlotsModified: vi.fn().mockResolvedValue(true),
   },
 }));
 
@@ -476,6 +477,8 @@ describe('POST /media/:appId/slots/:slotName/upload — overwriteFilename', () =
     expect(response.body.affectedSlots).toEqual([]);
     // Manifest must NOT be updated for an in-place overwrite
     expect(mediaManifestService.updateSlotWithUpload).not.toHaveBeenCalled();
+    // Slot timestamps must be bumped so client thumbnails refresh
+    expect(mediaManifestService.markSlotsModified).toHaveBeenCalledWith('test-app', ['hero']);
     // ...but the rewritten bytes MUST be committed (no manifest diff carries it),
     // so a workspace recycle before session-end can't revert the edit.
     expect(mediaManifestService.commitMediaFiles).toHaveBeenCalledWith(

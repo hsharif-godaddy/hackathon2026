@@ -2761,6 +2761,37 @@ export class MediaManifestService {
   }
 
   /**
+   * Bump `lastUpdated` on slots whose bytes changed in-place (URL unchanged).
+   * Clients use `lastUpdated` as a cache key to show fresh thumbnails.
+   */
+  async markSlotsModified(appId: string, slotNames: string[]): Promise<boolean> {
+    if (slotNames.length === 0) return false;
+    const app = this.appRepository.findById(appId);
+    if (!app) return false;
+    const manifestPath = this.getManifestPath(app.path);
+    const releaseLock = await acquireLock(appId);
+    try {
+      const content = await fs.readFile(manifestPath, 'utf-8');
+      const manifest: MediaManifest = JSON.parse(content);
+      const now: string = new Date().toISOString();
+      for (const name of slotNames) {
+        if (manifest[name]) manifest[name].lastUpdated = now;
+      }
+      await this.writeManifest(manifestPath, manifest);
+      return true;
+    } catch (error) {
+      logger.warn('media_manifest.mark_slots_modified.error', {
+        appId,
+        slotNames,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return false;
+    } finally {
+      releaseLock();
+    }
+  }
+
+  /**
    * Commit manifest changes to git
    * @param additionalFiles - Optional array of additional files to stage (relative to app.path)
    */

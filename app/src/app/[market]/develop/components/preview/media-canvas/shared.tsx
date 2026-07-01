@@ -445,6 +445,7 @@ export function MediaThumbnail({ name, slot, previewBaseUrl, folders, onMoveToFo
         ) : isVideo ? (
           <div className="relative w-full h-full">
             <video
+              key={slot.lastUpdated}
               src={proxiedUrl}
               poster={posterUrl}
               className="w-full h-full object-cover"
@@ -463,6 +464,7 @@ export function MediaThumbnail({ name, slot, previewBaseUrl, folders, onMoveToFo
         ) : (
           /* eslint-disable-next-line @next/next/no-img-element */
           <img
+            key={slot.lastUpdated}
             src={proxiedUrl}
             alt=""
             className={`w-full h-full ${slot.mediaType === 'logo' ? 'object-contain' : 'object-cover'}`}

@@ -113,11 +113,12 @@ export function HoverBarButton({
           cursor: disabled ? "not-allowed" : "pointer",
           boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
           color: textColor,
+          whiteSpace: "nowrap",
           ...(label ? { fontSize: "12px", fontWeight: 600, letterSpacing: "-0.01em" } : {}),
         }}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
-        onClick={(e) => { e.stopPropagation(); if (!disabled) onClick(); }}
+        onClick={(e: { stopPropagation: () => void; }) => { e.stopPropagation(); if (!disabled) onClick(); }}
       >
         <span style={{
           display: "flex",
