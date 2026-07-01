@@ -16,6 +16,7 @@ import { useSecretsComposerTakeover } from '@/app/[market]/develop/components/ch
 import { PanelSectionTitle } from '@/app/[market]/develop/components/chat/StepProgressTag'
 import ThemePreviewInputPanel from '@/app/[market]/develop/components/chat/ThemePreviewInputPanel'
 import ThinkingTip from '@/app/[market]/develop/components/chat/ThinkingTip'
+import { useCollapseActionsPanelOnCommanderFloat } from '@/app/[market]/develop/components/chat/useCollapseActionsPanelOnCommanderFloat'
 import { useFirstBuildFeedback } from '@/app/[market]/develop/components/chat/useFirstBuildFeedback'
 import { type LatestNBAData, useLatestNBAs } from '@/app/[market]/develop/components/chat/useLatestNBAs'
 import { useThinkerIndicator } from '@/app/[market]/develop/components/chat/useThinkerIndicator'
@@ -924,6 +925,17 @@ function InputActionsPanelThemeSelection({
   useEffect(() => {
     fullPlanExpandedRef.current = fullPlanExpanded
   }, [fullPlanExpanded])
+
+  useCollapseActionsPanelOnCommanderFloat({
+    isAskQuestionActive,
+    isProcessing,
+    continueBuildingExpanded,
+    setContinueBuildingExpanded,
+    setFullPlanExpanded,
+    clearAutoExpanded: () => {
+      autoExpandedRef.current = false
+    },
+  })
 
   // Clean up auto-collapse timer on unmount only
   useEffect(() => {

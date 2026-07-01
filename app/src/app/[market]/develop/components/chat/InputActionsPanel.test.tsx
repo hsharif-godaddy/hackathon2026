@@ -6,6 +6,7 @@ import '@testing-library/jest-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, screen, waitFor } from '@testing-library/react'
 
+import { CommanderPosition } from '@/app/[market]/commander/types'
 import * as useSecretsComposerTakeoverModule from '@/app/[market]/develop/components/chat/secrets/useSecretsComposerTakeover'
 import { ViewMode } from '@/app/[market]/develop/components/types'
 import type { ColorSchemePaletteOption } from '@/app/[market]/develop/components/utils/findLatestColorSchemeSuggest'
@@ -98,6 +99,22 @@ vi.mock('@/app/[market]/develop/components/utils', () => ({
 vi.mock('@/app/[market]/develop/hooks/useNextActions', () => ({
   useNextActions: vi.fn(function () { return { data: null, isLoading: false, isError: false }; })
 }))
+
+const mockCommanderLayout = { reportNonMessagesHeight: vi.fn() }
+const mockUseCommanderLayout = vi.fn<() => typeof mockCommanderLayout | null>()
+let mockCommanderPosition = CommanderPosition.LeftDock
+
+vi.mock('@/app/[market]/commander/components/CommanderLayoutContext', () => ({
+  useCommanderLayout: () => mockUseCommanderLayout(),
+}))
+
+vi.mock('@/stores/useCommanderStore', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/stores/useCommanderStore')>()
+  return {
+    ...actual,
+    useEffectiveCommanderPosition: vi.fn(() => mockCommanderPosition),
+  }
+})
 
 vi.mock('@airo-ux/pattern-library/chat/thinker', () => ({
   Thinker: () => <div data-testid="thinking-indicator" />,
@@ -205,6 +222,8 @@ describe('InputActionsPanel', () => {
     vi.mocked(TodoListStore.useViewState).mockReturnValue(null)
     vi.mocked(useLatestNBAsModule.useLatestNBAs).mockReturnValue(null)
     vi.mocked(useSecretsComposerTakeoverModule.useSecretsComposerTakeover).mockReturnValue(null)
+    mockUseCommanderLayout.mockReturnValue(null)
+    mockCommanderPosition = CommanderPosition.LeftDock
     vi.mocked(DevelopPageStore.useDevelopPageStore).mockImplementation(function (selector: any) {
       return selector({
         viewMode: ViewMode.PREVIEW,
@@ -1420,6 +1439,92 @@ describe('InputActionsPanel', () => {
 
       // Should remain collapsed (falling edge doesn't expand)
       expect(chevronButton.getAttribute('aria-expanded')).toBe('false')
+    })
+  })
+
+  describe('commander float collapse', () => {
+    const mockTodoList = {
+      id: 'list-1',
+      appId: 'test-app-id',
+      name: 'Build Website',
+      items: [
+        { id: 'item-1', listId: 'list-1', title: 'Full menu page', completed: false, order: 0, createdAt: new Date(), updatedAt: new Date() },
+      ],
+      createdAt: new Date('2024-01-01T00:00:00.000Z'),
+      updatedAt: new Date('2024-01-01T00:00:00.000Z'),
+    }
+
+    const askQuestionResult = {
+      output: {
+        widgetType: 'ask-question',
+        widgetData: {
+          type: 'ask-question',
+          currentQuestionIndex: 0,
+          answers: [],
+          questions: [{
+            question: 'What do you think of the design?',
+            suggestions: [{ text: 'Love it' }, { text: 'Change colors' }],
+            allowOther: false,
+          }],
+        },
+      },
+    }
+
+    beforeEach(() => {
+      mockUseCommanderLayout.mockReturnValue(mockCommanderLayout)
+      mockCommanderPosition = CommanderPosition.LeftDock
+      vi.mocked(TodoListStore.useCurrentList).mockReturnValue(mockTodoList)
+      vi.mocked(TodoListStore.useViewState).mockReturnValue(null)
+      vi.mocked(useLatestNBAsModule.useLatestNBAs).mockReturnValue(null)
+    })
+
+    it('collapses continue building when commander switches from sidebar to floating', () => {
+      const { rerender } = renderWithProviders(<InputActionsPanel />)
+
+      const collapsibleSection = screen.getByTestId('collapsible-section-continue-building')
+      const chevronButton = collapsibleSection.querySelector('button[aria-expanded]') as HTMLButtonElement
+      expect(chevronButton.getAttribute('aria-expanded')).toBe('true')
+
+      mockCommanderPosition = CommanderPosition.Floating
+      rerender(<InputActionsPanel />)
+
+      expect(chevronButton.getAttribute('aria-expanded')).toBe('false')
+    })
+
+    it('keeps askQuestion expanded when commander switches to floating', () => {
+      vi.mocked(useLatestNBAsModule.useLatestNBAs).mockReturnValue({
+        question: 'What do you think of the design?',
+        suggestions: [{ text: 'Love it' }, { text: 'Change colors' }],
+        source: 'askQuestion',
+        toolResult: askQuestionResult,
+      })
+
+      const { rerender } = renderWithProviders(<InputActionsPanel />)
+
+      const collapsibleSection = screen.getByTestId('collapsible-section-continue-building')
+      const chevronButton = collapsibleSection.querySelector('button[aria-expanded]') as HTMLButtonElement
+      expect(chevronButton.getAttribute('aria-expanded')).toBe('true')
+
+      mockCommanderPosition = CommanderPosition.Floating
+      rerender(<InputActionsPanel />)
+
+      expect(chevronButton.getAttribute('aria-expanded')).toBe('true')
+    })
+
+    it('expands continue building when commander switches from floating back to sidebar', () => {
+      const { rerender } = renderWithProviders(<InputActionsPanel />)
+
+      const collapsibleSection = screen.getByTestId('collapsible-section-continue-building')
+      const chevronButton = collapsibleSection.querySelector('button[aria-expanded]') as HTMLButtonElement
+      expect(chevronButton.getAttribute('aria-expanded')).toBe('true')
+
+      mockCommanderPosition = CommanderPosition.Floating
+      rerender(<InputActionsPanel />)
+      expect(chevronButton.getAttribute('aria-expanded')).toBe('false')
+
+      mockCommanderPosition = CommanderPosition.LeftDock
+      rerender(<InputActionsPanel />)
+      expect(chevronButton.getAttribute('aria-expanded')).toBe('true')
     })
   })
 
