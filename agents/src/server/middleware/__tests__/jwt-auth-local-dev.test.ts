@@ -70,5 +70,24 @@ describe('JWTAuthMiddleware local dev auth', function localDevSuite() {
       expect((mockReq as AuthenticatedRequest).agentContext?.modelOverride).toBeUndefined();
       expect(mockNext).toHaveBeenCalled();
     });
+
+    it('forwards shopperId decoded from the mock token (gates turnscript TLA-only locally)', async function forwardsShopperId() {
+      const payload = Buffer.from(JSON.stringify({ shopperId: 'abc' })).toString('base64url');
+      mockReq.headers = { authorization: `Bearer header.${payload}.sig` };
+
+      await middleware.authenticate(mockReq as Request, mockRes as Response, mockNext);
+
+      expect((mockReq as AuthenticatedRequest).agentContext?.shopperId).toBe('abc');
+      expect(mockNext).toHaveBeenCalled();
+    });
+
+    it('leaves shopperId undefined when the mock token omits it', async function noShopperId() {
+      const payload = Buffer.from(JSON.stringify({ agentProfile: 'x' })).toString('base64url');
+      mockReq.headers = { authorization: `Bearer header.${payload}.sig` };
+
+      await middleware.authenticate(mockReq as Request, mockRes as Response, mockNext);
+
+      expect((mockReq as AuthenticatedRequest).agentContext?.shopperId).toBeUndefined();
+    });
   });
 });

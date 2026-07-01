@@ -539,6 +539,14 @@ const SYNC_MANIFEST = [
       'abb2e6d76e9d7665f6244f3ffb51df05', // before undici 7.28.0 security upgrade (GHSA-vmh5-mc38-953g)
     ],
     force: false
+  },
+  {
+    file: '.gitignore',
+    description: 'Ignore turnscript platform execution scripts (.airo/turnscript-*) so they are never committed to customer app repos',
+    known_hashes: [
+      '94d013b24a8cc29588ffdf1dc0687458', // before .airo/turnscript-* ignore (turnscript release)
+    ],
+    force: false
   }
 ];
 

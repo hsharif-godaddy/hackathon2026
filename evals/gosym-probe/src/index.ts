@@ -184,11 +184,19 @@ async function main(): Promise<void> {
   const makeAgentClient = async (scenario?: Scenario) => {
     // Single source for the profile claims so the structured agentContext and
     // the mock token below can't drift apart.
-    const agentContext = scenario?.agentProfile
+    // EVAL_SHOPPER_ID lets a run set the mock token's shopperId so the agent's
+    // turnscript TLA gate (TURNSCRIPT_TLA_ONLY / appbuilder-turnscript-tla-only) can be
+    // exercised: a 3-char value is treated as an internal TLA account, longer is non-TLA.
+    // Turnscript enable itself comes from the agent process env (TURNSCRIPT_ENABLED) or
+    // the Switchboard flag, NOT from the token — so it is not injected here.
+    const evalShopperId = process.env.EVAL_SHOPPER_ID;
+    const agentContext = (scenario?.agentProfile || evalShopperId)
       ? {
           siteId: 'bypass-site',
-          agentProfile: scenario.agentProfile,
-          agentProfileSelectorEnabled: true,
+          ...(scenario?.agentProfile
+            ? { agentProfile: scenario.agentProfile, agentProfileSelectorEnabled: true }
+            : {}),
+          ...(evalShopperId ? { shopperId: evalShopperId } : {}),
         }
       : undefined;
     const client = new AABClient({

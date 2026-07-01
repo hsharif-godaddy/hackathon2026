@@ -272,4 +272,25 @@ describe('isFileBlocked', () => {
       expect(isFileBlocked('npm-debug.log.0').blocked).toBe(true);
     });
   });
+
+  describe('Protected .airo directory', () => {
+    it('should block files at the .airo root', () => {
+      const result = isFileBlocked('.airo/config.json');
+      expect(result.blocked).toBe(true);
+      expect(result.reason).toContain('.airo');
+    });
+
+    it('should block nested .airo paths', () => {
+      expect(isFileBlocked('apps/foo/.airo/state.json').blocked).toBe(true);
+    });
+
+    it('should block case-variant .AIRO', () => {
+      expect(isFileBlocked('.AIRO/config.json').blocked).toBe(true);
+    });
+
+    it('should not block lookalike names that merely contain "airo"', () => {
+      expect(isFileBlocked('src/airoutes.ts').blocked).toBe(false);
+      expect(isFileBlocked('cairo-renderer.ts').blocked).toBe(false);
+    });
+  });
 });

@@ -1,9 +1,15 @@
-import { createDevelopAgent } from '../develop-agent.js';
+import { createDevelopAgent, directToolsAdmitted, __resetTurnscriptConversationState } from '../develop-agent.js';
+import { logger } from '../../logging/index.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { mockGetAgentModelWithName, mockPromptBuilders } = vi.hoisted(() => ({
+const { mockGetAgentModelWithName, mockPromptBuilders, mockIsTurnscriptEnabled } = vi.hoisted(() => ({
   mockGetAgentModelWithName: vi.fn(),
   mockPromptBuilders: [] as any[],
+  mockIsTurnscriptEnabled: vi.fn(() => false),
+}));
+
+vi.mock('../turnscript-context.js', () => ({
+  isTurnscriptEnabled: mockIsTurnscriptEnabled,
 }));
 
 vi.mock('../../utils/model-selection.js', () => ({
@@ -62,6 +68,8 @@ describe('develop-agent', function developAgentTests() {
       model: { generate: vi.fn(), streamGenerate: vi.fn() },
       modelName: 'claude-sonnet-4-6'
     });
+    mockIsTurnscriptEnabled.mockReturnValue(false);
+    __resetTurnscriptConversationState();
   });
 
   describe('#createDevelopAgent', function createTests() {
@@ -206,6 +214,146 @@ describe('develop-agent', function developAgentTests() {
         await fireSystemResolver(config);
 
         expect(mockPromptBuilders[0].files.some((path: string) => path.endsWith('consent-requirements.md'))).toBe(true);
+      });
+  });
+
+  // Turnscript visibility is gated by the activeTools resolver, which reads
+  // isTurnscriptEnabled() (the ALS context, mocked here). The enable/TLA decision
+  // itself is covered in turnscript-context.test.ts; these tests only verify how the
+  // resolver shapes the tool set given that decision + the sticky admit state.
+  describe('#activeTools turnscript gating', function turnscriptGating() {
+    const DIRECT_TOOLS = ['directoryListing', 'grepSearch', 'readFile', 'str_replace_based_edit_tool'];
+
+    async function activeToolSet(ctx: { conversationId?: string } = {}): Promise<Set<string>> {
+      const config = await createDevelopAgent();
+      const tools = await (config.activeTools as (c: typeof ctx) => Promise<string[]>)(ctx);
+      return new Set(tools);
+    }
+
+    it('disabled: hides turnscript and keeps the direct discovery/edit tools (== plain main)',
+      async function disabled() {
+        mockIsTurnscriptEnabled.mockReturnValue(false);
+        const tools = await activeToolSet();
+
+        expect(tools.has('turnscript')).toBe(false);
+        for (const t of DIRECT_TOOLS) expect(tools.has(t)).toBe(true);
+      });
+
+    it('enabled (pre-failure): exposes turnscript and removes the 4 direct tools',
+      async function enabled() {
+        mockIsTurnscriptEnabled.mockReturnValue(true);
+        const tools = await activeToolSet({ conversationId: 'conv-1' });
+
+        expect(tools.has('turnscript')).toBe(true);
+        for (const t of DIRECT_TOOLS) expect(tools.has(t)).toBe(false);
+      });
+
+    it('enabled + admitted: a turnscript failure admits the 4 direct tools for the rest of the conversation',
+      async function admitted() {
+        mockIsTurnscriptEnabled.mockReturnValue(true);
+        const config = await createDevelopAgent();
+        const conversationId = 'conv-admit';
+
+        // A failed turnscript step flips the sticky admit flag via afterToolExecution.
+        const failureOutput = '[turnscript failed: timeout] script exceeded 30s';
+        await (config.afterToolExecution as (
+          name: string, args: unknown, result: unknown, err: unknown, ctx: unknown,
+        ) => Promise<unknown>)('turnscript', { code: '...' }, failureOutput, undefined, { metadata: { conversationId } });
+
+        expect(directToolsAdmitted(conversationId)).toBe(true);
+
+        const tools = new Set(
+          await (config.activeTools as (c: { conversationId?: string }) => Promise<string[]>)({ conversationId }),
+        );
+        expect(tools.has('turnscript')).toBe(true);
+        for (const t of DIRECT_TOOLS) expect(tools.has(t)).toBe(true);
+      });
+
+    it('flag OFF is inert: the only tool-set delta vs ON is {turnscript} ⇄ the 4 direct tools',
+      async function inertWhenOff() {
+        // Risk guard: with turnscript off the develop agent must be plain main — every
+        // tool other than turnscript + the 4 direct discovery/edit tools is identical
+        // between off and on (pre-failure).
+        const MOVABLE = new Set(['turnscript', ...DIRECT_TOOLS]);
+
+        mockIsTurnscriptEnabled.mockReturnValue(false);
+        const offSet = await activeToolSet();
+        mockIsTurnscriptEnabled.mockReturnValue(true);
+        const onSet = await activeToolSet({ conversationId: 'conv-2' });
+
+        const offFixed = [...offSet].filter(t => !MOVABLE.has(t)).sort();
+        const onFixed = [...onSet].filter(t => !MOVABLE.has(t)).sort();
+        expect(offFixed).toEqual(onFixed);
+        expect(offSet.has('turnscript')).toBe(false);
+      });
+
+    it('enabled: adds the turnscript nudge to the system prompt',
+      async function nudge() {
+        mockIsTurnscriptEnabled.mockReturnValue(true);
+        const config = await createDevelopAgent();
+        await (config.system as (ctx: object) => Promise<string>)({});
+
+        const textCalls = mockPromptBuilders[0].text.mock.calls.map((c: unknown[]) => String(c[0]));
+        expect(textCalls.some((t: string) => t.includes('## Turnscript'))).toBe(true);
+      });
+
+    it('disabled: omits the turnscript nudge from the system prompt',
+      async function noNudge() {
+        mockIsTurnscriptEnabled.mockReturnValue(false);
+        const config = await createDevelopAgent();
+        await (config.system as (ctx: object) => Promise<string>)({});
+
+        const textCalls = mockPromptBuilders[0].text.mock.calls.map((c: unknown[]) => String(c[0]));
+        expect(textCalls.some((t: string) => t.includes('## Turnscript'))).toBe(false);
+      });
+
+    // afterToolExecution drives the sticky admit + fallback telemetry. The admit
+    // must fire for EVERY turnscript failure kind (not just timeout), and never on
+    // success; the fallback event fires when a direct tool runs after a failure.
+    async function runAfterTool(
+      config: Awaited<ReturnType<typeof createDevelopAgent>>,
+      toolName: string,
+      result: unknown,
+      conversationId: string,
+    ): Promise<void> {
+      await (config.afterToolExecution as (
+        n: string, a: unknown, r: unknown, e: unknown, c: unknown,
+      ) => Promise<unknown>)(toolName, {}, result, undefined, { metadata: { conversationId } });
+    }
+
+    it('admits direct tools on a runtime_throw turnscript failure',
+      async function admitRuntimeThrow() {
+        const config = await createDevelopAgent();
+        await runAfterTool(config, 'turnscript', '[turnscript runtime error] old_str not found', 'conv-rt');
+        expect(directToolsAdmitted('conv-rt')).toBe(true);
+      });
+
+    it('admits direct tools on a generic turnscript error',
+      async function admitGeneric() {
+        const config = await createDevelopAgent();
+        await runAfterTool(config, 'turnscript', '[turnscript error] harness failure', 'conv-generic');
+        expect(directToolsAdmitted('conv-generic')).toBe(true);
+      });
+
+    it('does NOT admit direct tools on a successful turnscript',
+      async function noAdmitOnSuccess() {
+        const config = await createDevelopAgent();
+        await runAfterTool(config, 'turnscript', 'edited 2 files\n[turnscript] 2 dispatch(es) {"readFile":1}', 'conv-ok');
+        expect(directToolsAdmitted('conv-ok')).toBe(false);
+      });
+
+    it('emits fallback telemetry when a direct tool runs after a failed turnscript',
+      async function fallbackTelemetry() {
+        const infoSpy = vi.spyOn(logger, 'info');
+        try {
+          const config = await createDevelopAgent();
+          await runAfterTool(config, 'turnscript', '[turnscript failed: timeout] exceeded 30s', 'conv-fb');
+          infoSpy.mockClear();
+          await runAfterTool(config, 'readFile', 'file contents', 'conv-fb');
+          expect(infoSpy).toHaveBeenCalledWith('develop_agent.turnscript.fallback', { toolName: 'readFile' });
+        } finally {
+          infoSpy.mockRestore();
+        }
       });
   });
 });

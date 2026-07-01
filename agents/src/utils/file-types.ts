@@ -25,10 +25,16 @@ export const SOURCE_FILE_EXTENSIONS = [
   'svelte'
 ] as const
 
-/** Raster image extensions (excludes svg, which is text). Used by IMAGE_FILE_REGEX. */
-export const IMAGE_FILE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'ico'] as const
+/**
+ * Raster image extensions (excludes svg, which is text). Used by IMAGE_FILE_REGEX.
+ *
+ * SYNC: these sets are mirrored in the turnscript shim (turnscript/runtime/shim.mjs —
+ * IMAGE_EXT / DOCUMENT_EXT / BINARY_EXT). The parity test in turnscript/__tests__/shim.test.ts
+ * fails CI on any drift between the shim's isFileBlocked and the canonical read-file tool.
+ */
+export const IMAGE_FILE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'ico', 'tiff', 'avif'] as const
 export const DOCUMENT_FILE_EXTENSIONS = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'] as const
-export const OTHER_BINARY_EXTENSIONS = ['zip', 'tar', 'gz', 'rar', '7z', 'db', 'sqlite', 'sqlite3', 'bin', 'exe', 'dll', 'so'] as const
+export const OTHER_BINARY_EXTENSIONS = ['zip', 'tar', 'gz', 'rar', '7z', 'db', 'sqlite', 'sqlite3', 'bin', 'exe', 'dll', 'so', 'wasm'] as const
 
 export const BINARY_FILE_EXTENSIONS = [
   // Images (+ svg which is text but handled as binary for copy logic)
@@ -38,7 +44,7 @@ export const BINARY_FILE_EXTENSIONS = [
   // Audio
   'mp3', 'wav', 'ogg', 'm4a', 'aac',
   // Video
-  'mp4', 'webm', 'mov',
+  'mp4', 'webm', 'mov', 'avi',
   // Documents
   ...DOCUMENT_FILE_EXTENSIONS,
 ] as const

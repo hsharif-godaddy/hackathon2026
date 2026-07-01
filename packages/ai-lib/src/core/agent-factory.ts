@@ -224,6 +224,7 @@ export class AgentWrapper {
             ...(typeof metadata?.profileName === 'string' ? { profileName: metadata.profileName } : {}),
             ...(typeof metadata?.market === 'string' ? { market: metadata.market } : {}),
             ...(metadata ? { contextMetadata: metadata as Record<string, unknown> } : {}),
+            ...(typeof this.currentConversationId === 'string' ? { conversationId: this.currentConversationId } : {}),
           }
           if (typeof this.config.system === 'function') {
             try {

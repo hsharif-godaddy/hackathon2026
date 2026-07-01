@@ -547,6 +547,9 @@ importers:
       tar:
         specifier: 'catalog:'
         version: 7.5.16
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
       undici:
         specifier: ^6.27.0
         version: 6.27.0
@@ -617,9 +620,6 @@ importers:
       tsx:
         specifier: 'catalog:'
         version: 4.21.0
-      typescript:
-        specifier: 'catalog:'
-        version: 5.9.3
       vitest:
         specifier: 4.1.0
         version: 4.1.0(@opentelemetry/api@1.9.1)(@types/node@22.19.18)(jsdom@26.1.0(bufferutil@4.1.0))(vite@6.4.3(@types/node@22.19.18)(jiti@2.7.0)(lightningcss@1.32.0)(sass@1.99.0)(terser@5.47.1)(tsx@4.21.0)(yaml@2.9.0))
@@ -5903,26 +5903,26 @@ packages:
       react: 19.1.0
       react-dom: 19.1.0
 
-  '@react-spring/animated@10.1.2':
-    resolution: {integrity: sha512-yAsQ/bbp6+vko7WNCI1M00c6KLE9XKTGCrgRhQqS4JcK3oF5qBV4rHYrQEprvEvYXxt+1H5FsLS2eVValEPfFw==}
+  '@react-spring/animated@10.1.1':
+    resolution: {integrity: sha512-kqdtIzr1GfBmbojnYhNdEhgu23f1rQ9H98K6KGmWHpNBP0gGZWN8KEIzGYwCAon7Q8ktGmsR1dCyy6QTI4egug==}
     peerDependencies:
       react: 19.1.0
 
-  '@react-spring/core@10.1.2':
-    resolution: {integrity: sha512-lPGOAg0V+PV3ucopOajD+YCxoe8twALqAeG4c/+sqVjBsyUNNdx8qfz/DcNSPKA8PV3+AyQELlCxlDfap9cmBQ==}
+  '@react-spring/core@10.1.1':
+    resolution: {integrity: sha512-eCxEJuJzNxbfFXEr+BuMqp+LYv0fdvIO/lk6B+A/aUDxD4M4EBKizPqhCkMz/B+U12d99KTAUSmWaGul/Lly+w==}
     peerDependencies:
       react: 19.1.0
 
-  '@react-spring/rafz@10.1.2':
-    resolution: {integrity: sha512-KC6vSFZyPnRJ2rXqipV9QqR4SaYbYXjvKfdYKWipNK2mWuV79gr20WmpVUOsTiEHGRY3WSOdWCHN+P9Pdaqb7Q==}
+  '@react-spring/rafz@10.1.1':
+    resolution: {integrity: sha512-F7n2fU8EO8OokBkUHivU/tJ9HnL/QTIgd8V/2BhHFSrszt+OaLUoqEinomNeedLPIs24skiXQtki4APJHxghDQ==}
 
-  '@react-spring/shared@10.1.2':
-    resolution: {integrity: sha512-47/8bNQ/o0uEmxEnPBuERlC29VSqiTn5P9ln9tUMSVkYKYxBtouYE686F5kAGj+eHRPoNCw7drxWE9nv2d1LMw==}
+  '@react-spring/shared@10.1.1':
+    resolution: {integrity: sha512-pOoQPoOa+EPWrRndqIYlIms71fNB1p0IQVJcCi5xHtErqL8N0+jS1V9pExHfryqn9aUhHv0+7kMiVrcb6U+IBQ==}
     peerDependencies:
       react: 19.1.0
 
-  '@react-spring/types@10.1.2':
-    resolution: {integrity: sha512-G4CWowmVPz+rDG1y9QRVq/prZNxiNwQaHC0kgT/MgY6jAGgdRgTV4VThpvJDwWvUitk3xZB4soP4d36fjeQ09g==}
+  '@react-spring/types@10.1.1':
+    resolution: {integrity: sha512-C35b9XigBnwv1fZsUGR/lWzAKBskGhdAmf0LIBvqhwwHTYMtat4DXHZEnFyJQvfCAmpVc/d9Yug7j2Lbv2GDEA==}
 
   '@react-spring/web@10.1.0':
     resolution: {integrity: sha512-mIj/lJ+1eI4tLSkIloaSNjmuriTDZY9bbQ/GFGcbVGfOKzWb5JOMMKiuHACh8J3m0+se3KqcWdg/JoALVloE7g==}
@@ -19229,35 +19229,35 @@ snapshots:
       react-dom: 19.1.0(react@19.1.0)
       react-stately: 3.46.0(react@19.1.0)
 
-  '@react-spring/animated@10.1.2(react@19.1.0)':
+  '@react-spring/animated@10.1.1(react@19.1.0)':
     dependencies:
-      '@react-spring/shared': 10.1.2(react@19.1.0)
-      '@react-spring/types': 10.1.2
+      '@react-spring/shared': 10.1.1(react@19.1.0)
+      '@react-spring/types': 10.1.1
       react: 19.1.0
 
-  '@react-spring/core@10.1.2(react@19.1.0)':
+  '@react-spring/core@10.1.1(react@19.1.0)':
     dependencies:
-      '@react-spring/animated': 10.1.2(react@19.1.0)
-      '@react-spring/shared': 10.1.2(react@19.1.0)
-      '@react-spring/types': 10.1.2
+      '@react-spring/animated': 10.1.1(react@19.1.0)
+      '@react-spring/shared': 10.1.1(react@19.1.0)
+      '@react-spring/types': 10.1.1
       react: 19.1.0
 
-  '@react-spring/rafz@10.1.2': {}
+  '@react-spring/rafz@10.1.1': {}
 
-  '@react-spring/shared@10.1.2(react@19.1.0)':
+  '@react-spring/shared@10.1.1(react@19.1.0)':
     dependencies:
-      '@react-spring/rafz': 10.1.2
-      '@react-spring/types': 10.1.2
+      '@react-spring/rafz': 10.1.1
+      '@react-spring/types': 10.1.1
       react: 19.1.0
 
-  '@react-spring/types@10.1.2': {}
+  '@react-spring/types@10.1.1': {}
 
   '@react-spring/web@10.1.0(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
-      '@react-spring/animated': 10.1.2(react@19.1.0)
-      '@react-spring/core': 10.1.2(react@19.1.0)
-      '@react-spring/shared': 10.1.2(react@19.1.0)
-      '@react-spring/types': 10.1.2
+      '@react-spring/animated': 10.1.1(react@19.1.0)
+      '@react-spring/core': 10.1.1(react@19.1.0)
+      '@react-spring/shared': 10.1.1(react@19.1.0)
+      '@react-spring/types': 10.1.1
       csstype: 3.2.3
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
@@ -21906,7 +21906,7 @@ snapshots:
     dependencies:
       tslib: 2.8.1
 
-  '@wsb/advanced-apm-rum@1.2.0(@reduxjs/toolkit@1.9.7(react-redux@7.2.9(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(react@19.1.0))(react-redux@8.1.3(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(redux@5.0.1))(react@19.1.0)':
+  '@wsb/advanced-apm-rum@1.2.0(@reduxjs/toolkit@1.9.7(react-redux@8.1.3(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(redux@5.0.1))(react@19.1.0))(react-redux@8.1.3(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(redux@5.0.1))(react@19.1.0)':
     dependencies:
       '@elastic/apm-rum': 5.17.4
       '@elastic/apm-rum-core': 5.25.2
@@ -21936,7 +21936,7 @@ snapshots:
       '@ux/text-input': 2500.11.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/text-lockup': 2400.19.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/util': 2400.11.0(encoding@0.1.13)
-      '@wsb/advanced-apm-rum': 1.2.0(@reduxjs/toolkit@1.9.7(react-redux@7.2.9(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(react@19.1.0))(react-redux@8.1.3(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(redux@5.0.1))(react@19.1.0)
+      '@wsb/advanced-apm-rum': 1.2.0(@reduxjs/toolkit@1.9.7(react-redux@8.1.3(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(redux@5.0.1))(react@19.1.0))(react-redux@8.1.3(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(redux@5.0.1))(react@19.1.0)
       '@wsb/modal-loader': 5.1.3(@ux/intents@2500.9.0)(@ux/modal@2500.11.1(@types/react@19.2.14)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(@ux/spinner@2500.9.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react-intl@5.25.1(react@19.1.0)(typescript@5.9.3))(react-transition-group@4.4.5(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(react@19.1.0)
       buffer: 6.0.3
       diagnostics: 2.0.2
@@ -23651,7 +23651,7 @@ snapshots:
       eslint: 9.28.0(jiti@2.7.0)
       eslint-import-resolver-node: 0.3.10
       eslint-import-resolver-typescript: 3.10.1(eslint-plugin-import@2.32.0(eslint@9.28.0(jiti@2.7.0)))(eslint@9.28.0(jiti@2.7.0))
-      eslint-plugin-import: 2.32.0(eslint-import-resolver-typescript@3.10.1)(eslint@9.28.0(jiti@2.7.0))
+      eslint-plugin-import: 2.32.0(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(eslint@9.28.0(jiti@2.7.0)))(eslint@9.28.0(jiti@2.7.0)))(eslint@9.28.0(jiti@2.7.0))
       eslint-plugin-jsx-a11y: 6.10.2(eslint@9.28.0(jiti@2.7.0))
       eslint-plugin-react: 7.37.5(eslint@9.28.0(jiti@2.7.0))
       eslint-plugin-react-hooks: 7.1.1(eslint@9.28.0(jiti@2.7.0))
@@ -23671,7 +23671,7 @@ snapshots:
       eslint: 9.28.0(jiti@2.7.0)
       eslint-import-resolver-node: 0.3.10
       eslint-import-resolver-typescript: 3.10.1(eslint-plugin-import@2.32.0(eslint@9.28.0(jiti@2.7.0)))(eslint@9.28.0(jiti@2.7.0))
-      eslint-plugin-import: 2.32.0(eslint-import-resolver-typescript@3.10.1)(eslint@9.28.0(jiti@2.7.0))
+      eslint-plugin-import: 2.32.0(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(eslint@9.28.0(jiti@2.7.0)))(eslint@9.28.0(jiti@2.7.0)))(eslint@9.28.0(jiti@2.7.0))
       eslint-plugin-jsx-a11y: 6.10.2(eslint@9.28.0(jiti@2.7.0))
       eslint-plugin-react: 7.37.5(eslint@9.28.0(jiti@2.7.0))
       eslint-plugin-react-hooks: 7.1.1(eslint@9.28.0(jiti@2.7.0))
@@ -23708,7 +23708,7 @@ snapshots:
       tinyglobby: 0.2.16
       unrs-resolver: 1.11.1
     optionalDependencies:
-      eslint-plugin-import: 2.32.0(eslint-import-resolver-typescript@3.10.1)(eslint@9.28.0(jiti@2.7.0))
+      eslint-plugin-import: 2.32.0(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(eslint@9.28.0(jiti@2.7.0)))(eslint@9.28.0(jiti@2.7.0)))(eslint@9.28.0(jiti@2.7.0))
     transitivePeerDependencies:
       - supports-color
 
@@ -23736,7 +23736,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  eslint-plugin-import@2.32.0(eslint-import-resolver-typescript@3.10.1)(eslint@9.28.0(jiti@2.7.0)):
+  eslint-plugin-import@2.32.0(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(eslint@9.28.0(jiti@2.7.0)))(eslint@9.28.0(jiti@2.7.0)))(eslint@9.28.0(jiti@2.7.0)):
     dependencies:
       '@rtsao/scc': 1.1.0
       array-includes: 3.1.9

@@ -76,3 +76,6 @@ pids
 
 # Agent memory store
 .memory/
+
+# Turnscript platform execution scripts (never commit/deploy)
+.airo/turnscript-*

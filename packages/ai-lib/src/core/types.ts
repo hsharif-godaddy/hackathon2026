@@ -81,6 +81,9 @@ export interface ResolverContext {
   readonly market?: string
   /** Per-request metadata from executionContext (switchboard flags, etc.). */
   readonly contextMetadata?: Record<string, unknown>
+  /** Conversation id for this turn, when set. Lets a resolver read per-conversation
+   * state (e.g. the develop agent's sticky turnscript direct-tool admit). */
+  readonly conversationId?: string
 }
 
 /**

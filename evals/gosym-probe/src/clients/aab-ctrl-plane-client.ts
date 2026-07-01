@@ -88,8 +88,14 @@ export class AABCtrlPlaneClient {
 
   constructor(config: AABCtrlPlaneClientConfig) {
     this.baseUrl = config.baseUrl;
+    // Only honor PROVISION_TIMEOUT_MS when it parses to a positive finite number;
+    // a typo/0/negative would otherwise become an immediate provision timeout.
+    const envProvisionTimeout: number = Number(process.env.PROVISION_TIMEOUT_MS);
     this.provisionTimeoutMs =
-      config.provisionTimeoutMs ?? DEFAULT_PROVISION_TIMEOUT_MS;
+      config.provisionTimeoutMs ??
+      (Number.isFinite(envProvisionTimeout) && envProvisionTimeout > 0
+        ? envProvisionTimeout
+        : DEFAULT_PROVISION_TIMEOUT_MS);
     this.pollIntervalMs =
       config.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
     this.requestTimeoutMs =

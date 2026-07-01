@@ -39,7 +39,7 @@
     "local:test": "GASKET_ENV=local.test NODE_OPTIONS='--max-old-space-size=1536' node load-env.cjs pnpm run dev:watch",
     "local:prod": "GASKET_ENV=local.prod NODE_OPTIONS='--max-old-space-size=1536' node load-env.cjs pnpm run dev:watch",
     "build:deps": "pnpm exec turbo run build --filter=@airo/agents^...",
-    "build": "tsc && node scripts/copy-assessment-agent-models.mjs && node scripts/copy-prompts.mjs && node scripts/copy-reference.mjs",
+    "build": "tsc && node scripts/copy-assessment-agent-models.mjs && node scripts/copy-prompts.mjs && node scripts/copy-reference.mjs && node scripts/copy-turnscript-shim.mjs",
     "typecheck": "tsc --noEmit",
     "start": "node --import ./dist/server/instrumentation.js --env-file=.env dist/server/app.js",
     "test": "NODE_OPTIONS='--max-old-space-size=512' vitest run --exclude='**/*.integration.test.ts'",
@@ -134,6 +134,7 @@
     "recast": "0.23.11",
     "sharp": "^0.34.5",
     "tar": "catalog:",
+    "typescript": "catalog:",
     "undici": "^6.27.0",
     "uuid": "catalog:",
     "yauzl": "^2.10.0",
@@ -159,7 +160,6 @@
     "prettier": "catalog:",
     "supertest": "catalog:",
     "tsx": "catalog:",
-    "typescript": "catalog:",
     "vitest": "catalog:"
   },
   "engines": {

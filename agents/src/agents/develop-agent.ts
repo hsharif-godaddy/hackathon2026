@@ -18,10 +18,12 @@ import { SkillLoaderTool, buildSkillsPromptSection } from '../tools/skill-loader
 import { skillToolManager } from '../tools/skill-tool-manager.js'
 import { allAILibTools } from '../tools/ai-lib-tools/index.js'
 import { createAgentHandoffTool } from '../tools/create-agent-handoff-tool.js'
+import { turnscriptAITool, turnscriptReportedFailure } from '../tools/ai-lib-tools/turnscript/turnscript-tool.js'
 import { getPersistentAssetPaths } from '../utils/persistent-assets.js'
 import { skills } from '../services/features.js'
 import { profileFlag, activeProfileName } from '../profiles/profile-accessor.js'
 import { isAutomationsEnabled } from './automations-context.js'
+import { isTurnscriptEnabled } from './turnscript-context.js'
 import {
   EVAL_PROMPT_VARIANTS,
   resolveEvalPromptVariants,
@@ -49,6 +51,62 @@ const beforeToolExecution: BeforeToolExecutionHook = async (toolName: string, ar
   });
 
   return args;
+}
+
+/**
+ * Tracks, per conversation, whether the most recent `turnscript` step ended in a
+ * failure that advised a direct-tool fallback. When a direct discovery/edit tool
+ * then runs in the same conversation we emit one `develop_agent.turnscript.fallback`
+ * event and clear the flag (one fallback counted per failed turnscript step). Mirrors
+ * the in-memory, conversationId-keyed pattern used by skillToolManager.
+ */
+const lastTurnscriptFailedByConversation = new Map<string, boolean>()
+const DIRECT_FALLBACK_TOOLS = new Set([
+  'readFile',
+  'grepSearch',
+  'directoryListing',
+  'str_replace_based_edit_tool',
+])
+
+/**
+ * Direct-tool admit state. Tracks, per conversation, whether a `turnscript` call
+ * has reported a failure and thereby ADMITTED the 4 direct discovery/edit tools
+ * for the rest of that conversation. Reset scope is sticky-for-conversation: once
+ * a turnscript failure occurs the direct tools stay admitted until the conversation
+ * ends (its entry is never cleared). The activeTools resolver reads this map (keyed
+ * by ResolverContext.conversationId) only when turnscript is enabled.
+ *
+ * Admit trigger: ANY turnscript failure output (`turnscriptReportedFailure()` true) —
+ * recoverable kinds (blocked/compile/not_a_function/dispatch_cap/timeout),
+ * `runtime_throw` (a genuine tool error, e.g. old_str not found — exactly where a
+ * single-shot direct edit helps recover), and generic harness errors. All are cases
+ * where letting the model finish directly aids recovery, so admit on all of them.
+ */
+const directToolsAdmittedByConversation = new Map<string, boolean>()
+
+/**
+ * Bound the per-conversation maps so this long-lived per-app agent process can't grow them
+ * without limit. FIFO eviction (Map preserves insertion order) once over the cap — the
+ * evicted (oldest) conversation just loses its sticky fallback/admit state, which is benign.
+ */
+const MAX_CONVERSATION_ENTRIES = 1000
+function boundedSet<V>(map: Map<string, V>, key: string, value: V): void {
+  if (!map.has(key) && map.size >= MAX_CONVERSATION_ENTRIES) {
+    const oldest = map.keys().next().value
+    if (oldest !== undefined) map.delete(oldest)
+  }
+  map.set(key, value)
+}
+
+/** Whether the 4 direct discovery/edit tools have been admitted for this conversation. */
+export function directToolsAdmitted(conversationId: string | undefined): boolean {
+  return typeof conversationId === 'string' && directToolsAdmittedByConversation.get(conversationId) === true
+}
+
+/** Test-only: clear the per-conversation turnscript fallback + admit maps. */
+export function __resetTurnscriptConversationState(): void {
+  lastTurnscriptFailedByConversation.clear()
+  directToolsAdmittedByConversation.clear()
 }
 
 /**
@@ -88,6 +146,30 @@ const afterToolExecution: AfterToolExecutionHook = async (
 
   if (toolName === 'serverRestart' && resultObj?.success) {
     contextLogger.info('develop_agent.tool.server_restart.success', {});
+  }
+
+  // Turnscript fallback tracking (spike telemetry): record when a direct tool runs
+  // after a failed turnscript step so the eval can compute fallback-rate.
+  const conversationId = context?.metadata?.conversationId
+  if (typeof conversationId === 'string') {
+    if (toolName === 'turnscript') {
+      const failed = typeof result === 'string' && turnscriptReportedFailure(result)
+      boundedSet(lastTurnscriptFailedByConversation, conversationId, failed)
+
+      // A turnscript call just ran, so turnscript is enabled. On failure, admit the 4
+      // direct tools for the rest of this conversation (sticky), emitting one admit
+      // event on the false→true edge.
+      if (failed && !directToolsAdmittedByConversation.get(conversationId)) {
+        boundedSet(directToolsAdmittedByConversation, conversationId, true)
+        contextLogger.info('develop_agent.turnscript.admit', {
+          conversationId,
+          trigger: (typeof result === 'string' ? result.match(/^\[turnscript[^\]]*\]/m)?.[0] : undefined) ?? 'turnscript_failure',
+        })
+      }
+    } else if (DIRECT_FALLBACK_TOOLS.has(toolName) && lastTurnscriptFailedByConversation.get(conversationId)) {
+      contextLogger.info('develop_agent.turnscript.fallback', { toolName })
+      boundedSet(lastTurnscriptFailedByConversation, conversationId, false)
+    }
   }
 
   // Track skill tool usage for step-based inactivity management
@@ -237,6 +319,30 @@ async function buildDevelopSystemPrompt(
     promptBuilder.file(paths.getAgentFile('develop', 'suggested-response.md'))
   }
 
+  // Turnscript nudge — added when turnscript is enabled for this turn (resolved
+  // upstream from the Switchboard flag + shopperId, read here via the ALS context).
+  if (isTurnscriptEnabled()) {
+    promptBuilder.text([
+      '',
+      '## Turnscript (PREFERRED for discovering, reading and editing files)',
+      'A `turnscript` tool is available. Instead of separate discovery/read/edit tool calls',
+      '(each a round-trip), write ONE async orchestration script that calls the typed',
+      '`turnscript.directoryListing / turnscript.grepSearch / turnscript.readFile /',
+      'turnscript.str_replace_based_edit_tool` API (the SAME tools you know) and returns a',
+      'short summary. Batch independent up-front reads with Promise.all, then loop the',
+      'editor over every change. The direct directoryListing, grepSearch, readFile and',
+      'str_replace_based_edit_tool start UNAVAILABLE — do file discovery, reads and edits',
+      'through `turnscript`.',
+      '',
+      'If a `turnscript` call reports a recoverable failure, the direct directoryListing,',
+      'grepSearch, readFile and str_replace_based_edit_tool tools become available for the',
+      'remainder of this conversation — use them to finish that turn\'s remaining edits',
+      'directly (do NOT rewrite the failed script). Other tools (terminal, media, skills,',
+      'requestSecrets, handoff, etc.) are called normally.',
+      '',
+    ].join('\n'))
+  }
+
   promptBuilder
     .file(resolveFragment('handoff.md', paths.getAgentFile('develop', 'handoff.md')))
     .file(resolveFragment('backend.md', paths.getAgentFile('develop', 'backend.md')))
@@ -367,6 +473,13 @@ export async function createDevelopAgent(options?: { appPath?: string }): Promis
 
     // Secrets management (for API keys, credentials)
     requestSecrets: allAILibTools.requestSecrets,
+
+    // Turnscript — gated by the appbuilder-turnscript Switchboard flag (+ optional
+    // appbuilder-turnscript-tla-only) via the activeTools resolver below. Exposes main's
+    // existing directoryListing/grepSearch/readFile/str_replace_based_edit_tool as a
+    // callable turnscript.* API so the model orchestrates discovery + edits in ONE turn
+    // instead of per-call round-trips.
+    turnscript: turnscriptAITool,
   }
 
   return {
@@ -377,13 +490,28 @@ export async function createDevelopAgent(options?: { appPath?: string }): Promis
     model,
     modelName,
     tools: baseTools,
-    activeTools: async (): Promise<string[]> => {
+    activeTools: async (ctx: ResolverContext): Promise<string[]> => {
       const allow = new Set(Object.keys(baseTools))
       if (!profileFlag('develop.promptOptimization', true)) {
         allow.delete('askQuestion')
       }
       if (!profileFlag('develop.suggestedResponse', false)) {
         allow.delete('suggestedResponse')
+      }
+      // Turnscript on/off (resolved upstream from the Switchboard flag + shopperId and
+      // read here via the ALS context):
+      //   disabled — hide `turnscript`, keep the direct tools (== plain main).
+      //   enabled  — start with turnscript only; admit the 4 direct tools for the rest of the
+      //              conversation once a turnscript call has failed (see
+      //              directToolsAdmittedByConversation, flipped in afterToolExecution and
+      //              keyed by ctx.conversationId).
+      if (!isTurnscriptEnabled()) {
+        allow.delete('turnscript')
+      } else if (!directToolsAdmitted(ctx?.conversationId)) {
+        allow.delete('directoryListing')
+        allow.delete('grepSearch')
+        allow.delete('readFile')
+        allow.delete('str_replace_based_edit_tool')
       }
       return Array.from(allow)
     },

@@ -229,6 +229,7 @@ export class JWTAuthMiddleware {
           modelSelectorEnabled: true,
           agentProfileSelectorEnabled: true,
           skillSuggestionsEnabled: true,
+          shopperId: tokenClaims.shopperId as string | undefined,
           agentProfile: tokenClaims.agentProfile as string | undefined,
           asmDualWriteEnabled: (tokenClaims.asmDualWriteEnabled as boolean) ?? false,
           googleBusinessProfileSyncEnabled: (tokenClaims.googleBusinessProfileSyncEnabled as boolean) ?? false,

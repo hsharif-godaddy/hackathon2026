@@ -89,8 +89,11 @@ describe('AgentWrapper resolver-callable system and activeTools', () => {
     expect(capturedCtx?.profileName).toBe('experimental')
     expect(capturedCtx?.market).toBe('en-US')
     expect(capturedCtx?.contextMetadata).toEqual({ profileName: 'experimental', market: 'en-US', conversationId: 'c1' })
-    // ResolverContext does NOT carry a raw `metadata` alias — access is via
-    // the typed fields (profileName, market) and the contextMetadata bag.
+    // conversationId is also promoted to a typed field (lets resolvers read per-conversation
+    // state, e.g. the develop agent's sticky turnscript direct-tool admit).
+    expect(capturedCtx?.conversationId).toBe('c1')
+    // ResolverContext exposes typed fields (profileName, market, conversationId) plus the
+    // contextMetadata bag — but NOT a raw `metadata` alias (asserted below).
     expect((capturedCtx as Record<string, unknown>)?.metadata).toBeUndefined()
   })
 

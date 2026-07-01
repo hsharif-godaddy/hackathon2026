@@ -83,6 +83,15 @@ export function isFileBlocked(filePath: string): { blocked: boolean; reason?: st
     };
   }
 
+  // Protected platform directory — internal agent/turnscript artifacts and config.
+  // Case-insensitive so `.AIRO` can't bypass it on case-insensitive filesystems.
+  if (/(^|\/)\.airo(\/|$)/i.test(normalizedPath)) {
+    return {
+      blocked: true,
+      reason: 'Protected platform directory (.airo) — not readable'
+    };
+  }
+
   // Log files
   if (fileName.endsWith('.log') || 
       fileName.includes('.log.') ||

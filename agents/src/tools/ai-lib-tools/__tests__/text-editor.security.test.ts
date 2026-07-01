@@ -308,6 +308,25 @@ describe('textEditorAITool — blocked path wiring', function textEditorSecurity
     );
   });
 
+  it('rejects str_replace with a null new_str before handleStrReplace', async function strReplaceNullNewStr() {
+    // Regression: the old `new_str === undefined` guard let an explicit null
+    // through. handleStrReplace serializes null → "" downstream, silently DELETING
+    // old_str instead of replacing it. `== null` rejects both null and undefined.
+    await expect(
+      textEditorAITool.execute(
+        {
+          command: 'str_replace',
+          path: 'src/app.tsx',
+          old_str: 'foo',
+          new_str: null as unknown as string,
+        },
+        createExecutionOptions(appId),
+      ),
+    ).rejects.toThrow(/str_replace requires old_str and new_str/);
+
+    expect(handleStrReplace).not.toHaveBeenCalled();
+  });
+
   it('syncs seo routes after routes.tsx writes', async function syncRoutes() {
     vi.mocked(handleStrReplace).mockResolvedValue('ok');
 

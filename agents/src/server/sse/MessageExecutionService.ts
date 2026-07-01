@@ -65,6 +65,7 @@ import { parseChunkTimeoutMs, runWithModelOverride, buildTokenUsage, calculateCo
 import { resolveProfile, runWithProfile } from '../../profiles/index.js'
 import matter from 'gray-matter'
 import { runWithAutomations } from '../../agents/automations-context.js'
+import { resolveTurnscriptEnabled, runWithTurnscript } from '../../agents/turnscript-context.js'
 import { getShopperFlag } from '../../services/switchboard.js'
 import { guardAllowedOverrideModel, resolveOverride } from '../model-override.js'
 import type { AssessmentOutcome } from '../../agents/assessment-agent/index.js'
@@ -2729,9 +2730,13 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
         : runWithOverride
 
       const automationsEnabled = getShopperFlag('appbuilder-automations', agentCtx?.shopperId)
+      // Resolve turnscript per turn from the Switchboard flag + shopperId (+ env fallback)
+      // and wrap the loop so the develop agent's resolvers can read it via the ALS. Nested
+      // inside runWithAutomations so resolvers see both contexts; off by default.
+      const turnscriptOn = resolveTurnscriptEnabled(agentCtx?.shopperId)
       const loopResult = profile
-        ? await runWithProfile(profile, () => runWithAutomations(automationsEnabled, runner, automationId))
-        : await runWithAutomations(automationsEnabled, runner, automationId)
+        ? await runWithProfile(profile, () => runWithAutomations(automationsEnabled, () => runWithTurnscript(turnscriptOn, runner), automationId))
+        : await runWithAutomations(automationsEnabled, () => runWithTurnscript(turnscriptOn, runner), automationId)
 
       const finalAgentName = loopResult.finalAgentName
       // A chunk_timeout soft-commit aborts the controller but is NOT a turn

@@ -228,7 +228,10 @@ async function executeTextEditor(input: TextEditorInput, context: AgentContext |
     }
 
     case 'str_replace':
-      if (!old_str || new_str === undefined) {
+      // new_str == null catches null too: === undefined let null through, and a null
+      // replacement serializes to "" downstream → silently DELETES old_str instead of
+      // replacing it.
+      if (!old_str || new_str == null) {
         throw new Error('str_replace requires old_str and new_str');
       }
       return await runPostEditHandlers(
