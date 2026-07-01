@@ -41,7 +41,7 @@ jobs:
     uses: ./.github/workflows/_quality-checks.yml
     with:
       package-name: agents
-      pnpm-filter: "@airo/agents"
+      pnpm-filter: '@airo/agents'
       working-directory: ./agents
       testla-pcp-app-id: '7548'
       testla-run-name: 'Agents - Unit Tests'
@@ -52,7 +52,12 @@ jobs:
     uses: ./.github/workflows/_quality-checks.yml
     with:
       package-name: app
-      pnpm-filter: website
+      # website... = website plus its workspace dependencies (pattern-library,
+      # shared, ai-lib, etc.) so their own lint/typecheck/build run here. The
+      # turbo `typecheck` task depends on `^build` (not `^typecheck`), so a bare
+      # `website` filter only builds deps and never typechecks their sources
+      # (including test files) — this closes that gap.
+      pnpm-filter: website...
       working-directory: ./app
       cache-next-build: true
       skip-tests: true
