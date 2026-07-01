@@ -142,6 +142,13 @@ export default function AppPublish({ location = 'develop', triggerClassName }: {
   // Drives the "domain in use" override confirmation when the picked domain is used elsewhere.
   const [domainConflict, setDomainConflict] = useState<DomainMutationDetails['conflictDetails'] | null>(null);
   const [isOverriding, setIsOverriding] = useState(false);
+
+  const closePopover = useCallback(() => {
+    setOpen(false);
+    setPublishResult(null);
+    setDomainConflict(null);
+  }, []);
+
   const openRef = useRef(false);
   const prevAppIdRef = useRef<string | null>(null);
   const prevPublishingRef = useRef(false);
@@ -988,7 +995,7 @@ export default function AppPublish({ location = 'develop', triggerClassName }: {
 
   const handleViewDomain = useCallback(() => {
     logClickEvent(`${location}.header.publish_domain_edit`, clickContext)();
-    setOpen(false);
+    closePopover();
     if (isTopLevelDomainEnabled) {
       handleViewModeChange(ViewMode.DOMAIN, hasUnsavedChanges);
       if (isMobile) handleMobileModeChange(MobileMode.PREVIEW);
@@ -996,17 +1003,17 @@ export default function AppPublish({ location = 'develop', triggerClassName }: {
       setActiveSettingsSection(SettingsSection.DOMAIN);
       setActiveChatTab(ChatTab.SETTINGS);
     }
-  }, [clickContext, handleMobileModeChange, handleViewModeChange, hasUnsavedChanges, isMobile, isTopLevelDomainEnabled, location, setActiveChatTab, setActiveSettingsSection, setOpen]);
+  }, [clickContext, closePopover, handleMobileModeChange, handleViewModeChange, hasUnsavedChanges, isMobile, isTopLevelDomainEnabled, location, setActiveChatTab, setActiveSettingsSection]);
 
   const handleViewSecurityFixes = useCallback(() => {
     shipAnalyticsLog('security.publish_footer.view_fixes_clicked', { ...(clickContext ?? {}) });
     logClickEvent('security.publish_footer.view_fixes', clickContext)();
-    setOpen(false);
+    closePopover();
     setActiveChatTab(ChatTab.SETTINGS);
     setActiveSettingsSection(SettingsSection.SECURITY);
     if (currentAppId) setSecurityAnalysisResult(currentAppId, null);
     setSecurityFooterDismissed(true);
-  }, [clickContext, setOpen, setActiveChatTab, setActiveSettingsSection, currentAppId, setSecurityAnalysisResult]);
+  }, [clickContext, closePopover, setActiveChatTab, setActiveSettingsSection, currentAppId, setSecurityAnalysisResult]);
 
   const handleGoLiveInChat = useCallback(() => {
     if (!currentAppId || !isGoLiveFeatureEnabled || isPreLaunchCheckFromPublishDisabled) {
@@ -1014,8 +1021,8 @@ export default function AppPublish({ location = 'develop', triggerClassName }: {
     }
     openPostPublishFeatureSelectionInChat(currentAppId);
     shipAnalyticsLog('go_live.chat.opened_from_publish_popover', { appId: currentAppId });
-    setOpen(false);
-  }, [currentAppId, isGoLiveFeatureEnabled, isPreLaunchCheckFromPublishDisabled, setOpen]);
+    closePopover();
+  }, [currentAppId, isGoLiveFeatureEnabled, isPreLaunchCheckFromPublishDisabled, closePopover]);
 
   // Register deployments refetch function in store for retry functionality
   useEffect(() => {
@@ -1119,9 +1126,7 @@ export default function AppPublish({ location = 'develop', triggerClassName }: {
 
   const handlePublish = async (shouldOpen: boolean) => {
     if (!shouldOpen) {
-      setOpen(false);
-      setPublishResult(null);
-      setDomainConflict(null);
+      closePopover();
       return;
     }
     // No early-return on `isSsoBlocked` here — by design, the popover MUST
@@ -1436,7 +1441,7 @@ export default function AppPublish({ location = 'develop', triggerClassName }: {
                 <AlertIcon className='text-intents-ux-feedbackHighContrastCritical-feedbackColor' />
                 <text.span as='action' size={-1}>
                   <PublishFailedMessage
-                    onFix={() => { setOpen(false); handleFixBuildError(); }}
+                    onFix={() => { closePopover(); handleFixBuildError(); }}
                     onRetry={() => void handleDeploy()}
                     isFix={!!buildErrorDetails}
                   />

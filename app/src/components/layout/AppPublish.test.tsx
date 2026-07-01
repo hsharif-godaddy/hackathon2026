@@ -52,6 +52,7 @@ type MockPublishSlice = {
   publishPopoverRequestNonce?: number;
   buildErrorDetails?: { error: string; details: string; exitCode?: number } | null;
   showPostPublishFeatureSelection?: boolean;
+  securityAnalysisResult?: 'safe' | 'issues' | null;
   seoRegressionAlert?: {
     scoreDelta: number;
     currentScore: number;
@@ -2108,5 +2109,134 @@ describe('AppPublish — combine-publish treatment', () => {
     mockDevelopStore.currentAppId = 'app-123';
     renderWithProviders(<AppPublish location="develop" />);
     expect(mockLogClickEvent).not.toHaveBeenCalledWith('develop.header.app_first_publish', { appId: 'app-123' });
+  });
+});
+
+// Regression tests for closePopover state clearing — must live outside the
+// combine-publish describe so the upsell treatment is not active.
+describe('AppPublish — closePopover state clearing', () => {
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    localStorage.removeItem('airo-feedback-shown:airo#app-builder');
+    mockPathname = '/develop/app-123';
+    mockDevelopStore.currentAppId = 'app-123';
+    mockDevelopStore.isMobile = false;
+    mockDevelopStore.publishStates = {};
+    mockDeploymentsData = [];
+    mockStreaming.isLoading = false;
+    mockStreaming.streamingState = 'idle';
+    appPublishSwitchboardTestState.goLiveFeatureEnabled = true;
+    mockRunGate.mockReset();
+    mockRunGate.mockResolvedValue({ proceed: true });
+    mockMutateAsync.mockReset();
+    mockMutateAsync.mockResolvedValue(undefined);
+    mockDnsConflictModal = null;
+    mockIsUpgradePolling.value = false;
+    // Ensure paywall/upsell treatment is off so the normal publish trigger renders
+    mockShowPaywall.value = false;
+    const { usePublishUpsellEligibility } = await import('@/hooks/usePublishUpsellEligibility');
+    vi.mocked(usePublishUpsellEligibility).mockReturnValue({ isExperimentEligible: false, isTreatment: false, isOnCohort: false });
+    usePaywallStore.setState({ publishOpenAfterUpgradeAppId: null, showUpgradeModal: false, paywallLoading: false });
+    mockSiteStore.getSite.mockReturnValue(
+      createMockSite({ id: 'app-123', agent_url: 'https://app-123.agent.test' })
+    );
+    global.ResizeObserver = vi.fn().mockImplementation(function () { return {
+      observe: vi.fn(),
+      unobserve: vi.fn(),
+      disconnect: vi.fn(),
+    }; });
+    mockComplianceGateState.isBlocked = false;
+    mockComplianceGateState.blockReason = null;
+    mockLogImpressionEvent.mockReset();
+    mockLogImpressionEvent.mockReturnValue(vi.fn());
+  });
+
+  it('should clear success state when View Fixes is clicked so popover shows Publish on reopen', async function clearSuccessOnViewFixes() {
+    mockSwitchboardOverrides['appbuilder-security-scan-ui'] = true;
+    mockDevelopStore.publishStates['app-123'] = { isPublishing: true };
+    mockDeploymentsData = [{ id: 'dep-1', status: 'IN_PROGRESS' }];
+
+    const { user, rerender } = renderWithProviders(<AppPublish />);
+
+    const trigger = await screen.findByRole('button', { name: 'builder_publish_button_publishing' });
+    await user.click(trigger);
+
+    await waitFor(() => {
+      expect(screen.getByText('builder_publish_popover_title')).toBeInTheDocument();
+    });
+
+    // Publish completes; security scan finds issues simultaneously — the exact race the bug describes
+    mockDevelopStore.publishStates['app-123'] = {
+      isPublishing: false,
+      publishError: false,
+      securityAnalysisResult: 'issues',
+    };
+    mockDeploymentsData = [{ id: 'dep-1', status: DeploymentStatus.DEPLOYED }];
+    rerender(<AppPublish />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('publish-success-alert')).toBeInTheDocument();
+    });
+    const viewFixes = await screen.findByText('builder_security_scan_view_fixes');
+    await user.click(viewFixes);
+
+    await waitFor(() => {
+      expect(screen.queryByText('builder_publish_popover_title')).not.toBeInTheDocument();
+    });
+
+    // Reopen — stale success state must be cleared
+    const reopenTrigger = await screen.findByRole('button', { name: 'builder_publish_button' });
+    await user.click(reopenTrigger);
+
+    await waitFor(() => {
+      expect(screen.getByText('builder_publish_popover_title')).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId('publish-success-alert')).not.toBeInTheDocument();
+  });
+
+  it('should clear success state when Go Live in Chat is clicked so popover shows Publish on reopen', async function clearSuccessOnGoLive() {
+    mockSiteStore.getSite.mockReturnValue(
+      createMockSite({
+        id: 'app-123',
+        agent_url: 'https://app-123.agent.test',
+        variants: ['publish'],
+      })
+    );
+    mockDevelopStore.publishStates['app-123'] = { isPublishing: true };
+    mockDeploymentsData = [{ id: 'dep-1', status: 'IN_PROGRESS' }];
+
+    const { user, rerender } = renderWithProviders(<AppPublish />);
+
+    const trigger = await screen.findByRole('button', { name: 'builder_publish_button_publishing' });
+    await user.click(trigger);
+
+    await waitFor(() => {
+      expect(screen.getByText('builder_publish_popover_title')).toBeInTheDocument();
+    });
+
+    // Publish completes
+    mockDevelopStore.publishStates['app-123'] = { isPublishing: false, publishError: false };
+    mockDeploymentsData = [{ id: 'dep-1', status: DeploymentStatus.DEPLOYED }];
+    rerender(<AppPublish />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('publish-success-alert')).toBeInTheDocument();
+    });
+
+    const goLive = await screen.findByRole('button', { name: 'Check SEO and Health' });
+    await user.click(goLive);
+
+    await waitFor(() => {
+      expect(screen.queryByText('builder_publish_popover_title')).not.toBeInTheDocument();
+    });
+
+    // Reopen — stale success state must be cleared
+    const reopenTrigger = await screen.findByRole('button', { name: 'builder_publish_button' });
+    await user.click(reopenTrigger);
+
+    await waitFor(() => {
+      expect(screen.getByText('builder_publish_popover_title')).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId('publish-success-alert')).not.toBeInTheDocument();
   });
 });
