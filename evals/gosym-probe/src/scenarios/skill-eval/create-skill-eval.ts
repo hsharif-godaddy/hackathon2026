@@ -17,6 +17,7 @@ import type {
   SkillInstruction,
   ExpectedArtifactSpec,
   ToolCallAssertion,
+  Claims,
 } from '../types.js';
 import type { Persona } from '../../personas/types.js';
 import type { Evaluator } from '../../evaluators/evaluator.js';
@@ -34,6 +35,7 @@ export interface SkillEvalConfig {
   suite?: string;
   persona?: Persona;
   extraEvaluators?: Evaluator[];
+  contextClaims?: Claims;
 }
 
 function validateConfig(config: SkillEvalConfig): void {
@@ -110,6 +112,7 @@ export function createSkillEval(
       suite: config.suite ?? 'skill-eval',
       skillInstructions: config.skillInstructions,
       expectedTools: config.expectedTools,
+      contextClaims: config.contextClaims,
     },
     gocode,
     ctrlPlane,

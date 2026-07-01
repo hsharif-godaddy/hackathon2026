@@ -75,8 +75,8 @@ describe('seo suite scenarios', () => {
       expect(scenario.suite).toBe('seo');
     });
 
-    it('has 3 goals', () => {
-      expect(scenario.goals).toHaveLength(3);
+    it('has 4 goals', () => {
+      expect(scenario.goals).toHaveLength(4);
     });
 
     it('includes all required evaluators', () => {

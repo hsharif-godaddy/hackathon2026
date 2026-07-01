@@ -1,7 +1,8 @@
 import { parseArgs } from 'node:util';
 import { randomUUID } from 'node:crypto';
 import { loadConfig } from '../config/index.js';
-import { AABClient, mockAuthToken } from './clients/aab-client.js';
+import { AABClient, mockAuthToken, type AgentContext } from './clients/aab-client.js';
+import { resolveAgentAuth, type ResolvedAgentAuth } from './clients/agent-auth.js';
 import { AABCtrlPlaneClient } from './clients/aab-ctrl-plane-client.js';
 import { GocodeClient } from './clients/gocode-client.js';
 import { PerTrialGocodeClient } from './clients/per-trial-gocode-client.js';
@@ -181,7 +182,7 @@ async function main(): Promise<void> {
     ? parseInt(values['max-routes'], 10)
     : undefined;
 
-  const makeAgentClient = async (scenario?: Scenario) => {
+  const makeAgentClient = async (scenario?: Scenario): Promise<AABClient> => {
     // Single source for the profile claims so the structured agentContext and
     // the mock token below can't drift apart.
     // EVAL_SHOPPER_ID lets a run set the mock token's shopperId so the agent's
@@ -190,7 +191,7 @@ async function main(): Promise<void> {
     // Turnscript enable itself comes from the agent process env (TURNSCRIPT_ENABLED) or
     // the Switchboard flag, NOT from the token — so it is not injected here.
     const evalShopperId = process.env.EVAL_SHOPPER_ID;
-    const agentContext = (scenario?.agentProfile || evalShopperId)
+    const agentContext: AgentContext | undefined = (scenario?.agentProfile || evalShopperId)
       ? {
           siteId: 'bypass-site',
           ...(scenario?.agentProfile
@@ -199,19 +200,25 @@ async function main(): Promise<void> {
           ...(evalShopperId ? { shopperId: evalShopperId } : {}),
         }
       : undefined;
-    const client = new AABClient({
-      // SSE/HTTP base URL of the agents server; the client drives chat over SSE.
+    // AUTH_TYPE=mock rebuilds the agent's request context from the token's
+    // claims, so a scenario's agentProfile AND its switchboard claims
+    // (e.g. marketingCampaignsEnabled) must both ride in the token or they
+    // never reach the develop agent. resolveAgentAuth is the single source so
+    // the structured agentContext and the minted token can't drift apart.
+    const auth: ResolvedAgentAuth = resolveAgentAuth(
+      agentContext,
+      scenario?.contextClaims,
+    );
+    const client: AABClient = new AABClient({
       agentsUrl: config.aab.agentsUrl,
-      ...(agentContext ? {
-        auth: {
-          agentContext,
-          // AUTH_TYPE=mock rebuilds agentContext from this token's claims and
-          // ignores the structured field above, so the profile MUST ride along
-          // in the token or it never reaches the develop agent. Built from the
-          // same object so the two can't diverge.
-          token: mockAuthToken(agentContext),
-        },
-      } : {}),
+      ...(auth.needsAuth
+        ? {
+            auth: {
+              ...(agentContext ? { agentContext } : {}),
+              token: mockAuthToken(auth.claims),
+            },
+          }
+        : {}),
     });
     await client.waitForConnection();
     return client;

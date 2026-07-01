@@ -70,6 +70,16 @@ import {
   noManualApiFetchScenario,
   socialProofTriggeringScenario,
 } from './skills/google-reviews/index.js';
+import {
+  campaignClarifyFirstScenario,
+  campaignNoChannelPromptScenario,
+  campaignVagueIntentCustomersScenario,
+  campaignVagueIntentGrowScenario,
+} from './skills/marketing-campaigns/index.js';
+import {
+  socialCreatePostsScenario,
+  socialInferNotInterrogateScenario,
+} from './skills/social-posts/index.js';
 import type { IGocodeClient } from '../clients/gocode-client.js';
 import type {
   AABCtrlPlaneClient,
@@ -83,6 +93,16 @@ export function createAllScenarios(
   config?: Config,
   calibrate: boolean = false,
 ): Scenario[] {
+  // The AAB agent gates the social tools behind ENABLE_SOCIAL, so the
+  // social-posts scenarios are only meaningful when the flag is on.
+  const socialScenarios: Scenario[] =
+    process.env.ENABLE_SOCIAL === 'true'
+      ? [
+          socialCreatePostsScenario(gocode, ctrlPlane),
+          socialInferNotInterrogateScenario(gocode, ctrlPlane),
+        ]
+      : [];
+
   return [
     simplePortfolioScenario(gocode, ctrlPlane),
     buildWithExplicitNameScenario(gocode, ctrlPlane),
@@ -141,5 +161,10 @@ export function createAllScenarios(
     oauthConnectionFlowScenario(gocode, ctrlPlane),
     noManualApiFetchScenario(gocode, ctrlPlane),
     socialProofTriggeringScenario(gocode, ctrlPlane),
+    campaignClarifyFirstScenario(gocode, ctrlPlane),
+    campaignNoChannelPromptScenario(gocode, ctrlPlane),
+    campaignVagueIntentCustomersScenario(gocode, ctrlPlane),
+    campaignVagueIntentGrowScenario(gocode, ctrlPlane),
+    ...socialScenarios,
   ].filter((scenario): scenario is Scenario => scenario !== null);
 }

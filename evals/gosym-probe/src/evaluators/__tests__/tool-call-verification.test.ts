@@ -376,4 +376,141 @@ describe('ToolCallVerificationEvaluator', () => {
       },
     );
   });
+
+  describe('args matching', () => {
+    it('fails when a forbidden call matches the args subset', async () => {
+      const turns = [
+        makeTurn('assistant', [
+          makeToolCall('handoff', {
+            input: { targetAgent: 'marketing', reason: 'campaign' },
+          }),
+        ]),
+      ];
+      const result = await evaluator.evaluate(
+        makeTranscript({ turns }),
+        makeScenario({
+          expectedTools: [
+            { tool: 'handoff', called: false, args: { targetAgent: 'marketing' } },
+          ],
+        }),
+      );
+      expect(result.verdict).toBe('fail');
+      expect(result.score).toBe(0);
+    });
+
+    it('passes when a handoff targets a different agent (args do not match)', async () => {
+      const turns = [
+        makeTurn('assistant', [
+          makeToolCall('handoff', { input: { targetAgent: 'care' } }),
+        ]),
+      ];
+      const result = await evaluator.evaluate(
+        makeTranscript({ turns }),
+        makeScenario({
+          expectedTools: [
+            { tool: 'handoff', called: false, args: { targetAgent: 'marketing' } },
+          ],
+        }),
+      );
+      expect(result.verdict).toBe('pass');
+      expect(result.score).toBe(1.0);
+    });
+
+    it('passes the no-marketing-handoff guard when handoff was never called', async () => {
+      const result = await evaluator.evaluate(
+        makeTranscript({ turns: [] }),
+        makeScenario({
+          expectedTools: [
+            { tool: 'handoff', called: false, args: { targetAgent: 'marketing' } },
+          ],
+        }),
+      );
+      expect(result.verdict).toBe('pass');
+    });
+
+    it('matches a required call only when the args subset is satisfied', async () => {
+      const turns = [
+        makeTurn('assistant', [
+          makeToolCall('handoff', { input: { targetAgent: 'develop' } }),
+        ]),
+      ];
+      const result = await evaluator.evaluate(
+        makeTranscript({ turns }),
+        makeScenario({
+          expectedTools: [
+            { tool: 'handoff', called: true, args: { targetAgent: 'develop' } },
+          ],
+        }),
+      );
+      expect(result.verdict).toBe('pass');
+    });
+
+    it('treats non-object input as non-matching for args assertions', async () => {
+      const turns = [
+        makeTurn('assistant', [makeToolCall('handoff', { input: 'marketing' })]),
+      ];
+      const result = await evaluator.evaluate(
+        makeTranscript({ turns }),
+        makeScenario({
+          expectedTools: [
+            { tool: 'handoff', called: false, args: { targetAgent: 'marketing' } },
+          ],
+        }),
+      );
+      expect(result.verdict).toBe('pass');
+    });
+
+    it('includes the args in the violation reason', async () => {
+      const turns = [
+        makeTurn('assistant', [
+          makeToolCall('handoff', { input: { targetAgent: 'marketing' } }),
+        ]),
+      ];
+      const result = await evaluator.evaluate(
+        makeTranscript({ turns }),
+        makeScenario({
+          expectedTools: [
+            { tool: 'handoff', called: false, args: { targetAgent: 'marketing' } },
+          ],
+        }),
+      );
+      expect(result.reason).toContain('marketing');
+    });
+
+    it('matches when the recorded input has EXTRA keys beyond args (subset)', async () => {
+      const turns = [
+        makeTurn('assistant', [
+          makeToolCall('handoff', {
+            input: { targetAgent: 'marketing', reason: 'campaign', step: 2 },
+          }),
+        ]),
+      ];
+      const result = await evaluator.evaluate(
+        makeTranscript({ turns }),
+        makeScenario({
+          expectedTools: [
+            { tool: 'handoff', called: true, args: { targetAgent: 'marketing' } },
+          ],
+        }),
+      );
+      expect(result.verdict).toBe('pass');
+    });
+
+    it('matches a null-valued arg against a null input value', async () => {
+      const turns = [
+        makeTurn('assistant', [
+          makeToolCall('configure', { input: { fallback: null } }),
+        ]),
+      ];
+      const result = await evaluator.evaluate(
+        makeTranscript({ turns }),
+        makeScenario({
+          expectedTools: [
+            { tool: 'configure', called: true, args: { fallback: null } },
+          ],
+        }),
+      );
+      expect(result.verdict).toBe('pass');
+    });
+  });
 });

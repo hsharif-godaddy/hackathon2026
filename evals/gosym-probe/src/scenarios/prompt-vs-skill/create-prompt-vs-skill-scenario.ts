@@ -25,6 +25,7 @@ import type {
   ExpectedArtifactSpec,
   SkillInstruction,
   ToolCallAssertion,
+  Claims,
 } from '../types.js';
 import type { Persona } from '../../personas/types.js';
 import type { Evaluator } from '../../evaluators/evaluator.js';
@@ -48,6 +49,8 @@ export interface PromptVsSkillConfig {
   suite?: string;
   skillInstructions?: SkillInstruction[];
   expectedTools?: ToolCallAssertion[];
+  /** Per-request switchboard claims minted into the scenario's mock JWT. */
+  contextClaims?: Claims;
   /**
    * Evaluators included ONLY under --calibrate (the narrow LLM judge is
    * the canonical one): expensive, calibration-time signals that the
@@ -107,6 +110,7 @@ export function createPromptVsSkillScenario(
     expectedAgent: config.expectedAgent,
     skillInstructions: config.skillInstructions,
     expectedTools: config.expectedTools,
+    contextClaims: config.contextClaims,
     staticFirstMessage: config.staticFirstMessage,
     trials: config.trials ?? 1,
 

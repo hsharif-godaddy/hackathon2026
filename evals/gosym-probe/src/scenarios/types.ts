@@ -21,6 +21,15 @@ export type StabilityLevel = 'low' | 'medium' | 'high';
  */
 export const DEVELOP_AGENT_DISPLAY_NAME = 'AI Developer';
 
+/**
+ * The marketing sub-agent's DISPLAY name, as it appears on toolCall.agentId
+ * (the agent config's `name`, surfaced via agent.getName() → step_start
+ * agentName → toolCall.agentId — NOT the slug 'marketing'). Used as
+ * expectedAgent on baseline scenarios that assert the current behavior
+ * (marketing handled by the standalone marketing agent), before its deprecation.
+ */
+export const MARKETING_AGENT_DISPLAY_NAME = 'Airo Marketer';
+
 export const DEFAULT_STABILITY_LEVEL: StabilityLevel = 'low';
 
 export const STABILITY_TRIALS: Record<StabilityLevel, number> = {
@@ -41,11 +50,55 @@ export interface ScenarioGoal {
   assertion: 'positive' | 'negative';
 }
 
+/**
+ * Allowed value types for a {@link ToolCallAssertion} `args` matcher. Constrained
+ * to primitives because the tool-call-verification evaluator compares with strict
+ * `===`: an object/array value could never structurally match a recorded tool
+ * input and would silently mis-score (a `called: false` guard always "passes,"
+ * a `called: true` always "fails"). Authoring a non-primitive arg is therefore a
+ * compile error, not a latent runtime footgun.
+ */
+export type AssertionArgValue = string | number | boolean | null;
+
 export interface ToolCallAssertion {
   tool: string;
+  /** Whether this tool MUST have been called (true) or MUST NOT (false). */
   called: boolean;
   match?: 'exact' | 'prefix';
   toolPattern?: RegExp;
+  /**
+   * When set, the assertion matches a tool call only if its recorded `input`
+   * contains every key/value in `args` (shallow subset, strict equality per
+   * key). Lets one assertion target a specific call of a tool — e.g. `handoff`
+   * with `{ targetAgent: 'marketing' }` — instead of any call by name alone.
+   */
+  args?: Record<string, AssertionArgValue>;
+}
+
+/**
+ * Baseline (pre-deprecation) assertion: a marketing/social request IS handed
+ * off to the standalone marketing agent. `called: true` + the `targetAgent`
+ * arg captures the CURRENT routing as a baseline (GREEN today); the suite flips
+ * to a no-handoff assertion once marketing migrates onto the develop agent.
+ * Exported so every marketing/social baseline scenario asserts the same
+ * invariant from one definition.
+ */
+export const MARKETING_HANDOFF: ToolCallAssertion = {
+  tool: 'handoff',
+  called: true,
+  args: { targetAgent: 'marketing' },
+};
+
+/**
+ * Per-request switchboard flags forwarded into the mock JWT a scenario mints
+ * (see `resolveAgentAuth` / `makeAgentClient`). Under AUTH_TYPE=mock the agent
+ * rebuilds its request context from the token's claims, so a claim-gated skill
+ * (e.g. marketing-campaigns) only becomes available to the develop agent when
+ * its flag rides here. Extension point for future claim-gated skills.
+ */
+export interface Claims {
+  /** Gates the marketing-campaigns skill (switchboard: appbuilder-marketing-campaigns). */
+  marketingCampaignsEnabled?: boolean;
 }
 
 /**
@@ -150,6 +203,13 @@ export interface Scenario {
    * least one tool call must carry this agentId.
    */
   expectedAgent?: string;
+  /**
+   * Per-request switchboard claims forwarded into this scenario's mock JWT,
+   * making a claim-gated skill available to the develop agent for this
+   * scenario only. Consumed by `resolveAgentAuth` in `src/clients/agent-auth.ts`
+   * (wired in `makeAgentClient`). Absent → default (skill ungated/unavailable).
+   */
+  contextClaims?: Claims;
   /**
    * Skill-specific instructions the agent is expected to follow.
    * Consumed by SkillOutcomeEvaluator at eval time. Required for
