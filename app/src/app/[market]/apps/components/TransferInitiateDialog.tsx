@@ -167,12 +167,12 @@ export default function TransferInitiateDialog({
           <ul className="list-disc space-y-1 pl-5">
             <li>
               <text.span size={-1}>
-                {t('builder_transfer_bullet_unpublish')}
+                {t('builder_transfer_bullet_unpublish\t')}
               </text.span>
             </li>
             <li>
               <text.span size={-1}>
-                {t('builder_transfer_bullet_domain')}
+                {t('builder_transfer_bullet_domain\t')}
               </text.span>
             </li>
             <li>
@@ -188,7 +188,7 @@ export default function TransferInitiateDialog({
           </ul>
 
           <text.p size={-1} emphasis="passive">
-            {t('builder_transfer_initiate_description_2')}
+            {t('builder_transfer_initiate_description_2\t')}
           </text.p>
 
           <TextInput
@@ -207,7 +207,7 @@ export default function TransferInitiateDialog({
             }}
             errorMessage={error || undefined}
             disabled={isLoading}
-            placeholder={t('builder_transfer_email_placeholder')}
+            placeholder={t('builder_transfer_email_placeholder\t')}
             multiline={false}
           />
         </Box>
