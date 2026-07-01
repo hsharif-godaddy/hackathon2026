@@ -8,9 +8,21 @@ name: Release Supersede
 # Runs on the SAME cron as release.yml but in its OWN concurrency group, so it
 # can act WHILE a release holds airo-release-main. It only touches runs in
 # `waiting` status (paused at the gate) — never an actively-deploying release
-# (`in_progress`) or a rollback (a different workflow). For each stale run it
-# cancels the run (which frees the lock so the pending next release starts) and
-# then finalizes that run's single Slack message in place to "Superseded".
+# (`in_progress`) or a rollback (a different workflow).
+#
+# How it frees a stuck run: it REJECTS the run's pending deployment. This is the
+# only thing that works — `gh run cancel` is a no-op against a run held by a
+# required-reviewers gate (GitHub keeps it `waiting` until a reviewer acts or the
+# 30-day timeout). Rejecting requires a REVIEWER-authorized token: the ambient
+# GITHUB_TOKEN (github-actions[bot]) is NOT a release-prod-approval reviewer and
+# gets 403, so the reject uses the `RELEASE_SUPERSEDE_TOKEN` secret (a PAT / App
+# token belonging to a release-prod-approval reviewer, with actions:write). The
+# reject makes approve-prod fail, which triggers the release run's OWN
+# gate-declined job to finalize its single Slack message — no Slack work here.
+#
+# Without RELEASE_SUPERSEDE_TOKEN set, the janitor can't free the lock itself
+# (cancel doesn't work); it emits a loud warning with the run URL so the oncall
+# rejects the gate manually. See docs/release-pipeline.md → "Don't-approve".
 #
 # Asymmetry note: a hard "Cancel workflow run" can't be superseded this way
 # (it cancels this janitor too); this targets the explicit gate-wait case.
@@ -26,8 +38,7 @@ on:
         type: string
 
 permissions:
-  actions: write # gh run cancel / list / download
-  contents: read # checkout
+  actions: write # gh run list + fallback `gh run cancel` (the reject uses RELEASE_SUPERSEDE_TOKEN)
 
 concurrency:
   # Deliberately NOT airo-release-main — the janitor must run while a release
@@ -42,19 +53,16 @@ jobs:
         - airo-cicd-runners
         - self-hosted
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
-        with:
-          go-version: '1.26'
-          cache-dependency-path: release-manager/go.sum
-      - name: Build release-manager
-        working-directory: release-manager
-        run: go build -o "$RUNNER_TEMP/release-manager" ./cmd/release-manager/
+      # No checkout/build: this job only calls the GitHub API via `gh`. Freeing a
+      # gate-stuck run is a reject (below), and the release run's own gate-declined
+      # job finalizes Slack — so the release-manager binary isn't needed here.
       - name: Supersede stale gate-stuck releases
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
-          SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }} # reads runs + fallback cancel
+          # Reviewer-authorized token used ONLY to reject the pending deployment.
+          # Must belong to a release-prod-approval reviewer (a PAT or App token)
+          # with actions:write; the ambient GITHUB_TOKEN can't reject the gate.
+          SUPERSEDE_TOKEN: ${{ secrets.RELEASE_SUPERSEDE_TOKEN }}
           MIN_AGE_MINUTES: ${{ inputs.min_age_minutes || '30' }}
         run: |
           set -uo pipefail
@@ -91,25 +99,35 @@ jobs:
               continue
             fi
 
+            RUN_URL="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$RUN_ID"
             echo "Superseding gate-stuck run $RUN_ID (waiting ${AGE}s)…"
 
-            # Cancel FIRST — freeing airo-release-main is the critical action, so
-            # a later Slack hiccup never leaves the lock held.
-            gh run cancel "$RUN_ID" --repo "$GITHUB_REPOSITORY" \
-              || echo "::warning::could not cancel run $RUN_ID (it may resolve on its own)"
+            # `gh run cancel` does NOT clear a reviewer-gated run — the only thing
+            # that frees the airo-release-main lock is REJECTING the pending
+            # deployment, which needs a reviewer-authorized token. Rejecting makes
+            # approve-prod fail → the release run's gate-declined job finalizes the
+            # Slack message (and the /approvals API records this comment as the
+            # reason), so there's nothing to post here.
+            if [ -z "${SUPERSEDE_TOKEN:-}" ]; then
+              # cancel is a no-op on a reviewer gate; flag it for manual action.
+              echo "::warning::run $RUN_ID is stuck at the prod gate but RELEASE_SUPERSEDE_TOKEN is not set — it can't be auto-superseded (gh run cancel doesn't clear a reviewer-gated run). Approve or reject it manually to free the release lock: $RUN_URL"
+              continue
+            fi
 
-            # Then finalize THAT run's Slack message in place (best-effort):
-            # download ITS phase-state artifact (holds the message ts) and edit
-            # it via --mode abort. Reason bypasses the approval lookup.
-            STATE_DIR="$RUNNER_TEMP/superseded-$RUN_ID"
-            mkdir -p "$STATE_DIR"
-            if gh run download "$RUN_ID" --repo "$GITHUB_REPOSITORY" \
-                 -n release-phase-state -D "$STATE_DIR" 2>/dev/null; then
-              "$RUNNER_TEMP/release-manager" run --headless --mode abort \
-                --state-file "$STATE_DIR/state.json" \
-                --reason "Superseded — no approval before the next scheduled release" \
-                || echo "::warning::Slack finalize failed for run $RUN_ID"
+            ENV_IDS=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/pending_deployments" \
+              --jq '[.[].environment.id]' 2>/dev/null || echo '[]')
+            if [ "$ENV_IDS" = "[]" ]; then
+              echo "::warning::run $RUN_ID has no pending deployments to reject; skipping"
+              continue
+            fi
+
+            BODY=$(jq -nc --argjson ids "$ENV_IDS" \
+              '{environment_ids: $ids, state: "rejected", comment: "Superseded — no approval before the next scheduled release"}')
+            if GH_TOKEN="$SUPERSEDE_TOKEN" gh api \
+                 "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/pending_deployments" \
+                 --method POST --input - <<<"$BODY" >/dev/null; then
+              echo "Rejected the gate for run $RUN_ID — lock freed; its gate-declined job finalizes Slack."
             else
-              echo "::warning::no state artifact for run $RUN_ID (expired?); cancelled without a Slack update"
+              echo "::warning::reject failed for run $RUN_ID — is RELEASE_SUPERSEDE_TOKEN a release-prod-approval reviewer with actions:write? Approve/reject manually: $RUN_URL"
             fi
           done
