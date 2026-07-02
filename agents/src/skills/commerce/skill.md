@@ -45,6 +45,11 @@ For `needs_store_choice`: the response includes a `stores` array. Call `askQuest
 11. When reporting a connected store to the user, include full Store ID, Channel ID, Business ID when available, and Commerce Home link when available. Do not abbreviate or truncate UUIDs.
 12. If the original request includes cart checkout, buy buttons, hosted checkout, place order, order confirmation, or a complete shop, follow `commerce__provision`'s `capabilityChecklists.fullShopWithCheckout`.
 13. Before reporting checkout as complete, run `commerce__validate_checkout` and fix every finding.
+14. Once the Commerce work is fully done — the store/business is selected, the channel is ensured (`commerce__provision` returned `status: 'ready'`), all required files are created (templates installed, catalog/UI/checkout wired), and any checkout has passed `commerce__validate_checkout` — signal completion as the final step:
+    ```typescript
+    skill({ action: 'complete', skill: 'commerce' });
+    ```
+    Do this exactly once per app, after everything above is finished and before your final summary to the user.
 
 ## Catalog Data Decisions
 

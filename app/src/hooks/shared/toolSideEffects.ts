@@ -24,6 +24,7 @@ import {
   trackPaymentSetupVerified,
   trackPaymentSetupVerifyFailed,
   trackPaymentSkillInvoked,
+  trackSkillCompleted,
 } from '@/hooks/shared/paymentFunnel';
 import { BRAND_DATA_UPDATED_EVENT } from '@/hooks/useBrandData';
 import { getSwitchboardFlag } from '@/hooks/useSwitchboard';
@@ -208,6 +209,12 @@ export function handleToolCallSideEffects(
           trackPaymentIntent(appId, skillName);
         }
         trackPaymentSkillInvoked(appId, skillName, action);
+      } else if (
+        typeof skillName === 'string' &&
+        isPaymentRelatedSkill(skillName) &&
+        action === 'complete'
+      ) {
+        trackSkillCompleted(appId, skillName);
       }
     } else if (tool.name === 'stripe__setup') {
       trackPaymentSetupStarted(appId, 'stripe');

@@ -261,6 +261,77 @@ describe('handleToolCallSideEffects — funnel.rebuild.started', () => {
   });
 });
 
+describe('handleToolCallSideEffects — skill completion funnel', () => {
+  it('emits commerce.skill.completed when the commerce skill is marked complete', () => {
+    handleToolCallSideEffects(
+      { name: 'skill', input: { action: 'complete', skill: 'commerce' } },
+      'app-1'
+    );
+
+    expect(mockShipAnalyticsLog).toHaveBeenCalledWith(
+      'commerce.skill.completed',
+      expect.objectContaining({
+        appId: 'app-1',
+        provider: 'godaddy_payments',
+        skillName: 'commerce',
+      })
+    );
+    expect(mockLogImpressionEvent).toHaveBeenCalledWith(
+      'develop.commerce.skill_completed',
+      expect.objectContaining({
+        appId: 'app-1',
+        provider: 'godaddy_payments',
+        skillName: 'commerce',
+      })
+    );
+    expect(mockLogImpressionEventInner).toHaveBeenCalled();
+  });
+
+  it('emits payment.skill.completed when the stripe skill is marked complete', () => {
+    handleToolCallSideEffects(
+      { name: 'skill', input: { action: 'complete', skill: 'payment/stripe' } },
+      'app-1'
+    );
+
+    expect(mockShipAnalyticsLog).toHaveBeenCalledWith(
+      'payment.skill.completed',
+      expect.objectContaining({ appId: 'app-1', provider: 'stripe', skillName: 'payment/stripe' })
+    );
+    expect(mockLogImpressionEvent).toHaveBeenCalledWith(
+      'develop.payment.skill_completed',
+      expect.objectContaining({ appId: 'app-1', provider: 'stripe', skillName: 'payment/stripe' })
+    );
+  });
+
+  it('is idempotent per provider per app', () => {
+    handleToolCallSideEffects(
+      { name: 'skill', input: { action: 'complete', skill: 'commerce' } },
+      'app-1'
+    );
+    handleToolCallSideEffects(
+      { name: 'skill', input: { action: 'complete', skill: 'commerce' } },
+      'app-1'
+    );
+
+    const completedCalls = mockShipAnalyticsLog.mock.calls.filter(
+      ([event]) => event === 'commerce.skill.completed'
+    );
+    expect(completedCalls).toHaveLength(1);
+  });
+
+  it('does not emit a completion event for non-payment skills', () => {
+    handleToolCallSideEffects(
+      { name: 'skill', input: { action: 'complete', skill: 'blog' } },
+      'app-1'
+    );
+
+    const call = mockShipAnalyticsLog.mock.calls.find(
+      ([event]) => event === 'commerce.skill.completed' || event === 'payment.skill.completed'
+    );
+    expect(call).toBeUndefined();
+  });
+});
+
 describe('handleToolResultSideEffects — post-rebuild intent restore', () => {
   it('restores intent_category from session after websiteRebuild completes', async () => {
     mockReadIntentCategoryFromSession.mockReturnValue('edit');

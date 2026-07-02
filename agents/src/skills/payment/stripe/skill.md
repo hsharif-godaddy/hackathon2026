@@ -295,6 +295,12 @@ For all apps (even when a cart already existed):
 - [ ] i18n initialized in **both** `main.tsx` and `entry-server.tsx`; `locales/<lang>.json` has the `stripe` namespace
 - [ ] Step 6 verification passes (type-check + CartProvider + i18n + page renders real text)
 
+Once every box above is checked — the Stripe setup is done and all required files are created — signal completion as the final step, exactly once per app and before your final summary to the user:
+
+```typescript
+skill({ action: 'complete', skill: 'payment/stripe' });
+```
+
 ---
 
 ## Testing

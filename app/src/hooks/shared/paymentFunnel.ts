@@ -8,6 +8,11 @@
  *   4. payment.setup.completed   — provider setup tool succeeds with a usable result
  *   5. payment.setup.verified    — end-to-end ready signal (channel ensured / live keys)
  *
+ * A terminal skill-completion signal is emitted separately when the agent marks a
+ * payment/commerce skill's full workflow complete (all files scaffolded, store/channel
+ * ready): `commerce.skill.completed` for GoDaddy Commerce, `payment.skill.completed`
+ * for Stripe. Both carry a `provider` field.
+ *
  * Idempotency is per-provider per app: switching providers replays the funnel.
  */
 
@@ -30,6 +35,7 @@ interface ProviderState {
   setupFailed: boolean;
   setupVerified: boolean;
   setupVerifyFailed: boolean;
+  skillCompleted: boolean;
   setupStartedAt: number | null;
 }
 
@@ -46,6 +52,7 @@ function ensureProviderState(provider: PaymentProvider): ProviderState {
       setupFailed: false,
       setupVerified: false,
       setupVerifyFailed: false,
+      skillCompleted: false,
       setupStartedAt: null,
     };
     providerState.set(provider, state);
@@ -239,6 +246,41 @@ export function trackPaymentSetupVerifyFailed(
     ...(details.flow && { flow: details.flow }),
     ...(details.errorType && { errorType: details.errorType }),
     ...(details.errorCode !== undefined && { errorCode: details.errorCode }),
+    ...(durationMs !== undefined && { durationMs }),
+  })();
+}
+
+/**
+ * Terminal skill-completion signal: the agent has marked a payment/commerce skill's
+ * full workflow complete (store/business chosen, channel ensured, all required files
+ * scaffolded). Emits a provider-specific event:
+ *   - Stripe            → `payment.skill.completed`
+ *   - GoDaddy Commerce  → `commerce.skill.completed`
+ * Idempotent per-provider per app so a repeated `skill complete` call fires once.
+ */
+export function trackSkillCompleted(appId: string | null, skillName: string): void {
+  ensureAppScope(appId);
+  const provider = detectPaymentProvider(skillName);
+  const state = ensureProviderState(provider);
+  if (state.skillCompleted) return;
+  state.skillCompleted = true;
+
+  const analyticsEvent =
+    provider === 'stripe' ? 'payment.skill.completed' : 'commerce.skill.completed';
+  const impressionEvent =
+    provider === 'stripe' ? 'develop.payment.skill_completed' : 'develop.commerce.skill_completed';
+  const durationMs = state.setupStartedAt ? Date.now() - state.setupStartedAt : undefined;
+  const payload = {
+    appId,
+    provider,
+    skillName,
+    ...(durationMs !== undefined && { durationMs }),
+  };
+  shipAnalyticsLog(analyticsEvent, payload);
+  logImpressionEvent(impressionEvent, {
+    appId: appId ?? '',
+    provider,
+    skillName,
     ...(durationMs !== undefined && { durationMs }),
   })();
 }
