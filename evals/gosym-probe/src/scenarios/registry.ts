@@ -80,6 +80,11 @@ import {
   socialCreatePostsScenario,
   socialInferNotInterrogateScenario,
 } from './skills/social-posts/index.js';
+import {
+  addGoogleAnalyticsScenario,
+  noManualRootlayoutEditScenario,
+  noCustomApiRouteScenario,
+} from './skills/google-analytics/index.js';
 import type { IGocodeClient } from '../clients/gocode-client.js';
 import type {
   AABCtrlPlaneClient,
@@ -166,5 +171,8 @@ export function createAllScenarios(
     campaignVagueIntentCustomersScenario(gocode, ctrlPlane),
     campaignVagueIntentGrowScenario(gocode, ctrlPlane),
     ...socialScenarios,
+    addGoogleAnalyticsScenario(gocode, ctrlPlane),
+    noManualRootlayoutEditScenario(gocode, ctrlPlane),
+    noCustomApiRouteScenario(gocode, ctrlPlane),
   ].filter((scenario): scenario is Scenario => scenario !== null);
 }
