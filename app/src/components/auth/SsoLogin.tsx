@@ -1,7 +1,7 @@
 'use client';
 
 import dynamic from 'next/dynamic';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Alert from '@ux/alert';
 import Button from '@ux/button';
 import Modal from '@ux/modal';
@@ -39,6 +39,7 @@ interface SsoDeckComponentProps {
   onError?: (error?: unknown) => void;
   autoResize?: boolean;
   enableCheckoutLite?: boolean;
+  trafficFunc?: (eventType: string, eventId: string) => void;
 }
 
 /**
@@ -70,6 +71,23 @@ const SsoDeckDynamic = dynamic<SsoDeckComponentProps>(
 // Network Access / network block, etc.) we surface a retry + full-page-redirect
 // fallback instead of leaving the user stranded on an indefinite spinner.
 const SSO_LOAD_TIMEOUT_MS = 15_000;
+
+// Shorter threshold for auto-advance: if the handshake hasn't completed within
+// this window, automatically invoke the full-page redirect instead of waiting
+// the full SSO_LOAD_TIMEOUT_MS. The fallback UI still renders at SSO_LOAD_TIMEOUT_MS
+// as a secondary affordance for users who dismissed the redirect or it was blocked.
+const SSO_AUTO_ADVANCE_MS = 8_000;
+
+// PostMessage actions from @sso/deck's bilateral handshake protocol. Used by the
+// parallel instrumentation listener to classify handshake phases without forking
+// the deck's control flow.
+const SSODECK_ACTION = {
+  HANDSHAKE_REQUEST: 'ssodeck_handshake_request',
+  ON_LOAD: 'on_load',
+  ON_AUTH: 'on_auth',
+  ON_ERROR: 'on_error',
+  ON_TRAFFIC: 'on_traffic',
+} as const;
 
 /**
  * Global SsoDeck wrapper component for in-app SSO authentication
@@ -103,7 +121,20 @@ export default function SsoLogin() {
   const gasketAuthReason = (authState as { authReason?: number } | null)?.authReason;
   const authReason = ssoAuthReason ?? gasketAuthReason ?? null;
 
+  // Tracks whether auto-advance has already fired for this mount cycle so it
+  // doesn't re-trigger on re-renders or after a retry resets loadFailed.
+  const autoAdvancedRef = useRef<boolean>(false);
+  // Stable ref to the auto-advance action so the timer effect doesn't need the
+  // callback in its dependency array (avoids forward-reference issues and
+  // unnecessary effect re-arms when authReason changes).
+  const autoAdvanceActionRef = useRef<(() => void) | null>(null);
+  // Distinguishes user-initiated dismiss from genuine handshake timeout in the
+  // instrumentation cleanup. Set synchronously before closeSsoLogin triggers
+  // the effect cleanup via isSsoLoginOpen change.
+  const dismissedRef = useRef<boolean>(false);
+
   function dismissSsoModal() {
+    dismissedRef.current = true;
     closeSsoLogin('dismiss');
   }
 
@@ -114,6 +145,90 @@ export default function SsoLogin() {
   useEffect(function determineSsoHost() {
     setSsoHost(getRootDomain() || 'godaddy.com');
   }, []);
+
+  // --- Parallel handshake instrumentation ---
+  // Additive listener on 'message' that observes the SsoDeck ↔ SSO iframe
+  // postMessage handshake without forking the deck's control flow. Failure
+  // events (on-error, origin-mismatch, timeout) at warn for ESSP indexing;
+  // success events (on-load, on-auth) at info for local debugging.
+  useEffect(function ssoHandshakeInstrumentation() {
+    if (!isSsoLoginOpen || !ssoHost) return;
+
+    const expectedOrigin: string = `https://sso.${ssoHost}`;
+    const openedAt: number = performance.now();
+    let onLoadReceivedAt: number = 0;
+    let onAuthReceivedAt: number = 0;
+    let settled: boolean = false;
+
+    function handleMessage(event: MessageEvent): void {
+      const data: unknown = event.data;
+      if (!data || typeof data !== 'object') return;
+
+      const action: unknown = (data as Record<string, unknown>).action;
+      if (typeof action !== 'string') return;
+
+      // Origin gate: log mismatches that the deck silently drops
+      if (event.origin !== expectedOrigin) {
+        // Only log SSO-deck-shaped messages from wrong origins
+        if (Object.values(SSODECK_ACTION).includes(action as typeof SSODECK_ACTION[keyof typeof SSODECK_ACTION])) {
+          logger.warn('sso-login.handshake.origin-mismatch', {
+            expectedOrigin,
+            actualOrigin: event.origin,
+            action,
+            elapsedMs: Math.round(performance.now() - openedAt),
+          });
+        }
+        return;
+      }
+
+      switch (action) {
+        case SSODECK_ACTION.ON_LOAD: {
+          onLoadReceivedAt = performance.now();
+          const timeToReady: number = Math.round(onLoadReceivedAt - openedAt);
+          settled = true;
+          logger.info('sso-login.handshake.on-load', {
+            timeToReadyMs: timeToReady,
+          });
+          break;
+        }
+        case SSODECK_ACTION.ON_AUTH: {
+          onAuthReceivedAt = performance.now();
+          logger.info('sso-login.handshake.on-auth', {
+            timeToAuthMs: Math.round(onAuthReceivedAt - openedAt),
+            timeSinceOnLoadMs: onLoadReceivedAt
+              ? Math.round(onAuthReceivedAt - onLoadReceivedAt)
+              : null,
+          });
+          break;
+        }
+        case SSODECK_ACTION.ON_ERROR: {
+          logger.warn('sso-login.handshake.on-error', {
+            elapsedMs: Math.round(performance.now() - openedAt),
+            hadOnLoad: onLoadReceivedAt > 0,
+          });
+          break;
+        }
+      }
+    }
+
+    window.addEventListener('message', handleMessage);
+
+    return function cleanupHandshakeListener() {
+      window.removeEventListener('message', handleMessage);
+
+      // On unmount (close or retry), if we never received ON_LOAD and the user
+      // didn't manually dismiss, classify as handshake-timeout. dismissedRef
+      // distinguishes user-initiated close from genuine load failure.
+      if (!settled && isSsoLoginOpen && !dismissedRef.current) {
+        const elapsed: number = Math.round(performance.now() - openedAt);
+        logger.warn('sso-login.handshake.timeout', {
+          elapsedMs: elapsed,
+          hadOnLoad: false,
+          hadAuth: onAuthReceivedAt > 0,
+        });
+      }
+    };
+  }, [isSsoLoginOpen, ssoHost, reloadKey]);
 
   // Guard against a stuck spinner: if the iframe hasn't loaded within the
   // timeout while the modal is open, treat it as a load failure so the fallback
@@ -134,6 +249,29 @@ export default function SsoLogin() {
     };
   }, [ssoFallbackEnabled, isSsoLoginOpen, ssoHost, isSsoLoading, reloadKey]);
 
+  // Auto-advance: if the handshake hasn't completed within SSO_AUTO_ADVANCE_MS,
+  // automatically invoke the full-page redirect. This fires before the longer
+  // SSO_LOAD_TIMEOUT_MS fallback UI — users who would have loaded fine see a
+  // brief full-page redirect instead of being stranded on a spinner for 15s.
+  // Gated behind the same ssoFallbackEnabled flag for safe rollout.
+  useEffect(function ssoAutoAdvance() {
+    if (!ssoFallbackEnabled || !isSsoLoginOpen || !ssoHost || !isSsoLoading) {
+      return;
+    }
+    const timer = window.setTimeout(function onSsoAutoAdvance() {
+      if (autoAdvancedRef.current) return;
+      autoAdvancedRef.current = true;
+      logger.warn('sso-login.iframe.auto-advance', {
+        message: 'SSO handshake not completed within auto-advance threshold; redirecting to full-page SSO',
+        thresholdMs: SSO_AUTO_ADVANCE_MS,
+      });
+      autoAdvanceActionRef.current?.();
+    }, SSO_AUTO_ADVANCE_MS);
+    return function clearAutoAdvanceTimer() {
+      window.clearTimeout(timer);
+    };
+  }, [ssoFallbackEnabled, isSsoLoginOpen, ssoHost, isSsoLoading, reloadKey]);
+
   // SsoLogin stays mounted at the root and only returns null when closed, so
   // local state persists across opens. Clear the failure flag on close so a
   // prior failed attempt doesn't show the fallback immediately on the next open.
@@ -143,11 +281,15 @@ export default function SsoLogin() {
   useEffect(function resetFallbackOnClose() {
     if (!isSsoLoginOpen) {
       setLoadFailed(false);
+      autoAdvancedRef.current = false;
+      dismissedRef.current = false;
     }
   }, [isSsoLoginOpen]);
 
   const handleLoad = useCallback(function onSsoLoad() {
     setLoadFailed(false);
+    // Handshake succeeded — suppress any pending auto-advance timer callback
+    autoAdvancedRef.current = true;
     setSsoLoaded();
   }, [setSsoLoaded]);
 
@@ -394,6 +536,7 @@ export default function SsoLogin() {
   const handleRetrySso = useCallback(function retrySso() {
     logger.info('sso-login.iframe.retry', { message: 'Retrying SSO Deck load' });
     setLoadFailed(false);
+    autoAdvancedRef.current = false;
     // Re-open resets isSsoLoading to true so the timeout effect re-arms for
     // this attempt. Without this, an onLoad→onError→retry sequence leaves
     // isSsoLoading false and the timer early-returns, creating a dead-end if
@@ -417,6 +560,20 @@ export default function SsoLogin() {
     });
     await handleSignIn(target.fullUrl, authReason);
   }, [getSsoReturnTarget, handleSignIn, authReason]);
+
+  // Keep the ref in sync so the timer effect can call the latest version.
+  // Assigned in useEffect (not render body) for concurrent-mode correctness.
+  useEffect(function syncAutoAdvanceRef() {
+    autoAdvanceActionRef.current = handleContinueToSignIn;
+  }, [handleContinueToSignIn]);
+
+  // Wire SsoDeck's internal traffic events (sso.ssodeck.*) to our logger so
+  // they reach ESSP. The deck calls trafficFunc(eventType, eventId) for its own
+  // internal events (e.g. iframe.error.redirect) and for ON_TRAFFIC messages
+  // forwarded from the SSO iframe.
+  const handleTraffic = useCallback(function onSsoDeckTraffic(eventType: string, eventId: string) {
+    logger.info('sso-login.deck.traffic', { eventType, eventId });
+  }, []);
 
   // Don't render if not open
   if (!isSsoLoginOpen) {
@@ -483,6 +640,7 @@ export default function SsoLogin() {
                   onAuth={handleAuth}
                   onLoad={handleLoad}
                   onError={ssoFallbackEnabled ? handleSsoError : undefined}
+                  trafficFunc={handleTraffic}
                   autoResize
                   {...(ssoLiteEnabled && { enableCheckoutLite: true })}
                 />

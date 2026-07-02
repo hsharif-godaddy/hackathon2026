@@ -23,6 +23,7 @@ const mockHandleSignIn = vi.hoisted(() => vi.fn());
 const originalLocation = window.location;
 
 let latestOnAuth: ((data?: unknown) => void) | null = null;
+let latestOnLoad: (() => void) | null = null;
 let latestOnError: ((err?: unknown) => void) | null = null;
 let latestPageToLoadParams: Record<string, unknown> | null = null;
 let latestPageToLoad: string | null = null;
@@ -56,6 +57,7 @@ function overrideWindowLocation(urlString: string) {
 vi.mock('next/dynamic', () => ({
   default: () => function MockSsoDeck(props: any) {
     latestOnAuth = props.onAuth;
+    latestOnLoad = props.onLoad;
     latestOnError = props.onError;
     latestPageToLoadParams = props.pageToLoadParams;
     latestPageToLoad = props.pageToLoad;
@@ -663,6 +665,7 @@ describe('SsoLogin iframe load failure fallback', function ssoLoadFailureTests()
     vi.clearAllMocks();
     overrideWindowLocation('https://airo-builder.test/');
     latestOnAuth = null;
+    latestOnLoad = null;
     latestOnError = null;
     mockAuthUIState.redirectUrl = null;
     mockAuthUIState.ssoAuthReason = null;
@@ -778,5 +781,100 @@ describe('SsoLogin iframe load failure fallback', function ssoLoadFailureTests()
     // Timer didn't fire — fallback never renders
     expect(screen.queryByText('builder_common_try_again')).not.toBeInTheDocument();
     expect(screen.getByTestId('sso-deck')).toBeInTheDocument();
+  });
+
+  it('auto-advances to full-page redirect at 8s before the 15s fallback UI', async function autoAdvanceAt8s() {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    mockAuthUIState.isSsoLoading = true;
+
+    renderWithProviders(<SsoLogin />);
+
+    await waitFor(function waitForDeck() {
+      expect(screen.getByTestId('sso-deck')).toBeInTheDocument();
+    });
+
+    // At 7.9s — no redirect yet
+    act(function advanceBefore() {
+      vi.advanceTimersByTime(7_900);
+    });
+    expect(mockHandleSignIn).not.toHaveBeenCalled();
+
+    // At 8s — auto-advance fires
+    act(function advanceToThreshold() {
+      vi.advanceTimersByTime(100);
+    });
+
+    expect(mockHandleSignIn).toHaveBeenCalledWith('https://airo-builder.test/', null);
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      'sso-login.iframe.auto-advance',
+      expect.objectContaining({ thresholdMs: 8_000 }),
+    );
+  });
+
+  it('suppresses auto-advance when onLoad fires before 8s', async function noAutoAdvanceOnLoad() {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    mockAuthUIState.isSsoLoading = true;
+
+    renderWithProviders(<SsoLogin />);
+
+    await waitFor(function waitForDeck() {
+      expect(screen.getByTestId('sso-deck')).toBeInTheDocument();
+    });
+
+    // Simulate successful handshake at 3s by calling the onLoad prop
+    act(function advanceTo3s() {
+      vi.advanceTimersByTime(3_000);
+    });
+    act(function simulateLoad() {
+      latestOnLoad?.();
+    });
+
+    // Advance past the 8s auto-advance threshold
+    act(function advancePast8s() {
+      vi.advanceTimersByTime(6_000);
+    });
+
+    // Auto-advance should not fire because onLoad set autoAdvancedRef = true
+    expect(mockHandleSignIn).not.toHaveBeenCalled();
+  });
+
+  it('resets auto-advance on retry so it can re-fire', async function autoAdvanceResetsOnRetry() {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    mockAuthUIState.isSsoLoading = true;
+
+    renderWithProviders(<SsoLogin />);
+
+    await waitFor(function waitForDeck() {
+      expect(screen.getByTestId('sso-deck')).toBeInTheDocument();
+    });
+
+    // First auto-advance at 8s
+    act(function advanceTo8s() {
+      vi.advanceTimersByTime(8_000);
+    });
+    expect(mockHandleSignIn).toHaveBeenCalledTimes(1);
+
+    // Advance to 15s to show fallback
+    act(function advanceTo15s() {
+      vi.advanceTimersByTime(7_000);
+    });
+
+    await waitFor(function waitForFallback() {
+      expect(screen.getByText('builder_common_try_again')).toBeInTheDocument();
+    });
+
+    // User clicks retry
+    mockHandleSignIn.mockClear();
+    fireEvent.click(screen.getByText('builder_common_try_again'));
+
+    await waitFor(function deckBack() {
+      expect(screen.getByTestId('sso-deck')).toBeInTheDocument();
+    });
+
+    // Second auto-advance fires after another 8s
+    act(function advanceAgain() {
+      vi.advanceTimersByTime(8_000);
+    });
+    expect(mockHandleSignIn).toHaveBeenCalledTimes(1);
   });
 });
