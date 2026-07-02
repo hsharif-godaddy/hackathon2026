@@ -10,6 +10,7 @@ import StartSection from '@/components/home-page/StartSection'
 import FAQSection from '@/components/layout/FAQSection'
 import FeaturesSection from '@/components/layout/Features'
 import Header from '@/components/layout/Header'
+import LegalFooter from '@/components/layout/LegalFooter'
 import PricingSection from '@/components/layout/PricingSection'
 import { UpgradeModal } from '@/components/upgrade/UpgradeModal'
 import { useHomepageSubmission } from '@/hooks/useHomepageSubmission'
@@ -109,6 +110,8 @@ export function HomePage({ serverFeatures }: HomeContentProps) {
           <FAQSection />
 
           <HelpSection />
+
+          <LegalFooter />
 
           {isFeatureEnabled.mockLogin() && (
             <MockLoginDialog
