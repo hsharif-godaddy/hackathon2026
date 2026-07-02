@@ -1,6 +1,5 @@
 import { SWITCHBOARD_APPBUILDER_WAKE_AWARE_VAT_RECOVERY } from '@/config/switchboard-flags';
 import { getSwitchboardFlag } from '@/hooks/useSwitchboard';
-import { getSsoHost } from '@/lib/gasket-config';
 import { logger } from '@/lib/request-context';
 import { isReturningUser } from '@/lib/returningUser';
 
@@ -75,29 +74,17 @@ export async function awaitHeartbeatRecovery(
     return { recovered: false };
   }
 
+  // Kick an immediate vat refresh before probing, via heartbeat-js dispatch()
+  // (window.heartbeat) rather than a hand-rolled ui_heartbeat POST. Fire-and-forget:
+  // the INITIAL_DELAY_MS wait below (abortable) gives the refresh time to land
+  // before the probe loop; redirectOn401:false suppresses navigation on failure.
+  // Guarded like gasket-auth's own call: dispatch() runs synchronously up to a
+  // cookie decode that can throw (URIError on a malformed info_idp); a throw
+  // here must not skip the probe loop / markAttempted below.
   try {
-    const ssoHost: string = await getSsoHost();
-    const res: Response = await fetch(`https://${ssoHost}/v1/api/token/ui_heartbeat`, {
-      method: 'POST',
-      credentials: 'include',
-      signal,
-    });
-    if (!res.ok) {
-      logger.warn('auth.heartbeat-patience.heartbeat-error', {
-        status: res.status,
-      });
-    }
-  } catch (err: unknown) {
-    if (!signal.aborted) {
-      logger.warn('auth.heartbeat-patience.heartbeat-error', {
-        error: err instanceof Error ? err.message : String(err),
-      });
-    }
-  }
-
-  if (signal.aborted) {
-    markAttempted();
-    return { recovered: false };
+    window.heartbeat?.dispatch?.({ redirectOn401: false })?.catch(() => {});
+  } catch {
+    // fall through to the probe loop
   }
 
   await new Promise<void>((resolve) => {

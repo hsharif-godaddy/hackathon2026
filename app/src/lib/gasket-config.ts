@@ -248,15 +248,6 @@ export function getSsoHostSync(): string {
   }
 }
 
-export async function getSsoHost(): Promise<string> {
-  const config = await getGasketConfig();
-  try {
-    return new URL(config.sso.loginUrl).hostname;
-  } catch {
-    return 'sso.test-godaddy.com';
-  }
-}
-
 /**
  * Options for appFetch beyond standard RequestInit
  */
@@ -307,10 +298,12 @@ export const SSO_TIMEOUT_OVERRIDE_KEY = '__airo_sso_timeout';
 export const AUTH_PROBE_TIMEOUT_MS = 5_000;
 
 // authReason returned by gd-auth when the SSO `vat` (validated-at) claim is
-// stale. The browser ui_heartbeat refreshes vat out-of-band after the tab
-// wakes, but it has no wake trigger, so the first validate after wake can 401
-// before the heartbeat lands. These bound a spaced re-probe that bridges the
-// common fast-recovery window before we show the SSO modal:
+// stale. The browser ui_heartbeat refreshes vat out-of-band: heartbeat-js now
+// re-checks on tab wake (visibilitychange/pageshow/focus) and gasket-auth
+// (3.5.5+) actively calls window.heartbeat.dispatch() on a stale-VAT 401, but
+// the first validate after wake can still 401 in the brief window before the
+// refresh lands. These bound a spaced re-probe that bridges that window before
+// we show the SSO modal:
 //   default: 3 × 2s = 6s ceiling
 //   wake-aware (flag on + within wake window): 7 × 2s = 14s ceiling
 // Wakes that refresh slower than the budget still fall through to the modal.
@@ -438,9 +431,10 @@ async function probeAuthValidate(level: 1 | 2 | 3): Promise<Response | 'timeout'
 
 /**
  * Bridge a transient stale-vat (authReason 3) 401. During wake, heartbeat.js
- * may fail (ERR_NETWORK_CHANGED) leaving the JWT stale. This function fires a
- * direct POST to the SSO heartbeat endpoint (when in the wake window) so SSO
- * issues a fresh JWT via Set-Cookie, then re-probes a few times, spaced out,
+ * may fail (ERR_NETWORK_CHANGED) leaving the JWT stale. This function triggers
+ * an immediate vat refresh via window.heartbeat.dispatch() (when in the wake
+ * window) so SSO issues a fresh JWT via Set-Cookie, then re-probes a few times,
+ * spaced out,
  * so the refreshed token is picked up silently instead of bouncing the user to
  * the SSO modal. A re-probe that throws (transient network blip — likely in
  * this exact just-online window) counts as a failed attempt rather than
@@ -452,7 +446,7 @@ async function probeAuthValidate(level: 1 | 2 | 3): Promise<Response | 'timeout'
  * Wake-VAT recovery layers (defense in depth):
  *  1. onlineManager 1s gate (wakeTracker IIFE) — delays TQ refetches so
  *     heartbeat.js can land Set-Cookie first.
- *  2. Direct heartbeat POST here — fires when heartbeat.js failed on wake.
+ *  2. heartbeat.dispatch() here — immediate refresh when in the wake window.
  *  3. awaitHeartbeatRecovery in AuthProvider — cold-launch unauthenticated.
  *  4. awaitHeartbeatRecovery in SsoLoginPrompt — protected-route fallback.
  * Layers 3-4 share a sessionStorage dedup key; layers 1-2 are independent.
@@ -475,31 +469,21 @@ async function recoverStaleVat(level: 1 | 2 | 3, url: string): Promise<boolean> 
       msSinceWake: wakeTracker.msSinceWake(),
     });
 
-    // getSsoHost() is async but resolves from globalThis.__gasketConfigCache
-    // (populated on first page load, persists through sleep). The async variant
-    // is required client-side — getSsoHostSync() reads process.env which is
-    // unavailable in the browser and falls back to sso.test-godaddy.com.
-    const controller: AbortController = new AbortController();
-    const timer: ReturnType<typeof setTimeout> = setTimeout(
-      () => controller.abort(), AUTH_PROBE_TIMEOUT_MS,
-    );
+    // Kick an immediate vat refresh before re-probing. Delegates to heartbeat-js
+    // dispatch() (heartbeat-js 1.5.2+ / gasket-auth 3.5.5+) rather than POSTing
+    // ui_heartbeat by hand: dispatch sends the {infotoken,realm,calling_host}
+    // body + Content-Type the endpoint requires (a bare POST 400s), is exempt
+    // from the 3:50 heartbeat throttle, and de-dupes against gasket-auth's own
+    // dispatch on this same 401. Fire-and-forget — the spaced re-probe below
+    // (2s head start) picks up the refreshed cookie; redirectOn401:false keeps
+    // a failed refresh from navigating away mid-recovery. Guarded like
+    // gasket-auth's own call: dispatch() runs synchronously up to a cookie
+    // decode that can throw (URIError on a malformed info_idp), and a rejected
+    // promise must not reject resolveAuth or surface as an unhandled rejection.
     try {
-      const ssoHost: string = await getSsoHost();
-      const heartbeatRes: Response = await fetch(
-        `https://${ssoHost}/v1/api/token/ui_heartbeat`,
-        { method: 'POST', credentials: 'include', signal: controller.signal },
-      );
-      if (!heartbeatRes.ok) {
-        logger.warn('app-fetch.auth-resolve.vat-recovery-heartbeat-error', {
-          url, level, status: heartbeatRes.status,
-        });
-      }
-    } catch (err) {
-      logger.warn('app-fetch.auth-resolve.vat-recovery-heartbeat-error', {
-        url, level, error: err instanceof Error ? err.message : String(err),
-      });
-    } finally {
-      clearTimeout(timer);
+      window.heartbeat?.dispatch?.({ redirectOn401: false })?.catch(() => {});
+    } catch {
+      // fall through to the spaced re-probe
     }
   }
 

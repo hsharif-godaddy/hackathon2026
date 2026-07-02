@@ -18,10 +18,6 @@ vi.mock('@/lib/returningUser', () => ({
   isReturningUser: () => mockIsReturning,
 }));
 
-vi.mock('@/lib/gasket-config', () => ({
-  getSsoHost: () => Promise.resolve('sso.godaddy.com'),
-}));
-
 const mockLogger = vi.hoisted(() => ({
   info: vi.fn(),
   warn: vi.fn(),
@@ -73,17 +69,27 @@ describe('shouldAttemptHeartbeatPatience', () => {
 describe('awaitHeartbeatRecovery', () => {
   let fetchSpy: ReturnType<typeof vi.fn>;
   let reloadSpy: ReturnType<typeof vi.fn>;
+  let dispatchSpy: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     vi.clearAllMocks();
     fetchSpy = vi.fn();
     vi.stubGlobal('fetch', fetchSpy);
+    // Heartbeat refresh is delegated to heartbeat-js dispatch() (window.heartbeat),
+    // not a hand-rolled ui_heartbeat POST. dispatch never rejects — it resolves a
+    // { status, serviceCode } result — so the recovery loop only depends on the probe.
+    dispatchSpy = vi.fn().mockResolvedValue({ status: 201, serviceCode: 1 });
+    vi.stubGlobal('heartbeat', { dispatch: dispatchSpy });
     reloadSpy = vi.fn();
     Object.defineProperty(window, 'location', {
       configurable: true,
       value: { ...window.location, reload: reloadSpy },
     });
+    // Reset onLine each test: vi.unstubAllGlobals does not revert
+    // Object.defineProperty, so an onLine=false test would otherwise leak into
+    // the next and push it down the 5s offline-wait branch.
+    Object.defineProperty(navigator, 'onLine', { configurable: true, value: true });
     sessionStorage.clear();
   });
 
@@ -92,8 +98,7 @@ describe('awaitHeartbeatRecovery', () => {
     vi.unstubAllGlobals();
   });
 
-  it('POSTs heartbeat then waits 2s then probes — reloads on 200', async () => {
-    fetchSpy.mockResolvedValueOnce(new Response('{"message":"Ok","code":1}', { status: 201 }));
+  it('dispatches heartbeat then waits 2s then probes — reloads on 200', async () => {
     fetchSpy.mockResolvedValueOnce(new Response('{}', { status: 200 }));
     const controller: AbortController = new AbortController();
 
@@ -103,10 +108,7 @@ describe('awaitHeartbeatRecovery', () => {
     const result = await promise;
 
     expect(result).toEqual({ recovered: true });
-    expect(fetchSpy).toHaveBeenCalledWith(
-      'https://sso.godaddy.com/v1/api/token/ui_heartbeat',
-      expect.objectContaining({ method: 'POST', credentials: 'include', signal: expect.any(AbortSignal) }),
-    );
+    expect(dispatchSpy).toHaveBeenCalledWith({ redirectOn401: false });
     expect(fetchSpy).toHaveBeenCalledWith(
       '/api/auth/validate?level=1',
       expect.objectContaining({ credentials: 'include' }),
@@ -120,7 +122,6 @@ describe('awaitHeartbeatRecovery', () => {
   });
 
   it('retries on 401 and recovers on second attempt', async () => {
-    fetchSpy.mockResolvedValueOnce(new Response('{"message":"Ok","code":1}', { status: 201 }));
     fetchSpy.mockResolvedValueOnce(new Response('{}', { status: 401 }));
     fetchSpy.mockResolvedValueOnce(new Response('{}', { status: 200 }));
     const controller: AbortController = new AbortController();
@@ -134,7 +135,7 @@ describe('awaitHeartbeatRecovery', () => {
     const result = await promise;
 
     expect(result).toEqual({ recovered: true });
-    expect(fetchSpy).toHaveBeenCalledTimes(3);
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
     expect(mockLogger.info).toHaveBeenCalledWith(
       'auth.heartbeat-patience.recovered',
       { attempt: 1 },
@@ -142,7 +143,6 @@ describe('awaitHeartbeatRecovery', () => {
   });
 
   it('returns recovered=false when all retries exhausted', async () => {
-    fetchSpy.mockResolvedValueOnce(new Response('{"message":"Ok","code":1}', { status: 201 }));
     fetchSpy.mockResolvedValue(new Response('{}', { status: 401 }));
     const controller: AbortController = new AbortController();
 
@@ -153,14 +153,13 @@ describe('awaitHeartbeatRecovery', () => {
     const result = await promise;
 
     expect(result).toEqual({ recovered: false });
-    // 1 heartbeat + 4 probes = 5
-    expect(fetchSpy).toHaveBeenCalledTimes(5);
+    // 4 probes (dispatch is not a fetch)
+    expect(fetchSpy).toHaveBeenCalledTimes(4);
     expect(reloadSpy).not.toHaveBeenCalled();
     expect(mockLogger.warn).toHaveBeenCalledWith('auth.heartbeat-patience.exhausted');
   });
 
-  it('logs warning on network error and continues retrying', async () => {
-    fetchSpy.mockResolvedValueOnce(new Response('{"message":"Ok","code":1}', { status: 201 }));
+  it('logs warning on probe network error and continues retrying', async () => {
     fetchSpy.mockRejectedValueOnce(new TypeError('Failed to fetch'));
     fetchSpy.mockResolvedValueOnce(new Response('{}', { status: 200 }));
     const controller: AbortController = new AbortController();
@@ -185,11 +184,11 @@ describe('awaitHeartbeatRecovery', () => {
     const result = await awaitHeartbeatRecovery(controller.signal);
 
     expect(result).toEqual({ recovered: false });
+    expect(dispatchSpy).not.toHaveBeenCalled();
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
   it('stops probing when aborted mid-retry', async () => {
-    fetchSpy.mockResolvedValueOnce(new Response('{"message":"Ok","code":1}', { status: 201 }));
     fetchSpy.mockResolvedValueOnce(new Response('{}', { status: 401 }));
     const controller: AbortController = new AbortController();
 
@@ -205,14 +204,13 @@ describe('awaitHeartbeatRecovery', () => {
     const result = await promise;
 
     expect(result).toEqual({ recovered: false });
-    // 1 heartbeat + 1 probe = 2
-    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    // 1 probe (dispatch is not a fetch)
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
     expect(reloadSpy).not.toHaveBeenCalled();
   });
 
-  it('waits for online event when navigator.onLine is false then POSTs heartbeat', async () => {
+  it('waits for online event when navigator.onLine is false then dispatches heartbeat', async () => {
     Object.defineProperty(navigator, 'onLine', { configurable: true, value: false });
-    fetchSpy.mockResolvedValueOnce(new Response('{"message":"Ok","code":1}', { status: 201 }));
     fetchSpy.mockResolvedValueOnce(new Response('{}', { status: 200 }));
     const controller: AbortController = new AbortController();
 
@@ -220,140 +218,105 @@ describe('awaitHeartbeatRecovery', () => {
 
     // Nothing should happen yet — waiting for online
     await vi.advanceTimersByTimeAsync(1_000);
+    expect(dispatchSpy).not.toHaveBeenCalled();
     expect(fetchSpy).not.toHaveBeenCalled();
 
     // Simulate WiFi reconnect
     Object.defineProperty(navigator, 'onLine', { configurable: true, value: true });
     window.dispatchEvent(new Event('online'));
 
-    // Two microticks: one for online handler, one for await getSsoHost()
+    // Flush the online-handler resolution so execution reaches the dispatch call
     await Promise.resolve();
     await Promise.resolve();
 
-    expect(fetchSpy).toHaveBeenCalledWith(
-      'https://sso.godaddy.com/v1/api/token/ui_heartbeat',
-      expect.objectContaining({ method: 'POST', credentials: 'include' }),
-    );
+    expect(dispatchSpy).toHaveBeenCalledWith({ redirectOn401: false });
 
     await vi.advanceTimersByTimeAsync(2_000);
     const result = await promise;
 
     expect(result).toEqual({ recovered: true });
-    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 
-  it('POSTs heartbeat directly when navigator.onLine is true', async () => {
+  it('dispatches heartbeat directly when navigator.onLine is true', async () => {
     Object.defineProperty(navigator, 'onLine', { configurable: true, value: true });
-    fetchSpy.mockResolvedValueOnce(new Response('{"message":"Ok","code":1}', { status: 201 }));
     fetchSpy.mockResolvedValueOnce(new Response('{}', { status: 200 }));
     const controller: AbortController = new AbortController();
 
     const promise = awaitHeartbeatRecovery(controller.signal);
 
     await Promise.resolve();
-    expect(fetchSpy).toHaveBeenCalledWith(
-      'https://sso.godaddy.com/v1/api/token/ui_heartbeat',
-      expect.objectContaining({ method: 'POST', credentials: 'include' }),
-    );
+    expect(dispatchSpy).toHaveBeenCalledWith({ redirectOn401: false });
 
     await vi.advanceTimersByTimeAsync(2_000);
     const result = await promise;
 
     expect(result).toEqual({ recovered: true });
-    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 
-  it('continues to probe loop even if heartbeat POST fails', async () => {
-    fetchSpy.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+  it('continues to probe loop even if heartbeat dispatch reports failure', async () => {
+    // Fire-and-forget: a failed refresh must not block or reject recovery.
+    dispatchSpy.mockResolvedValue({ status: 0, error: true });
     fetchSpy.mockResolvedValueOnce(new Response('{}', { status: 200 }));
     const controller: AbortController = new AbortController();
 
     const promise = awaitHeartbeatRecovery(controller.signal);
 
-    await Promise.resolve();
-    await Promise.resolve();
+    await vi.advanceTimersByTimeAsync(2_000);
+    const result = await promise;
+
+    expect(result).toEqual({ recovered: true });
+  });
+
+  it('skips heartbeat dispatch when window.heartbeat is absent and still probes', async () => {
+    // Release-ordering guard: heartbeat-js dispatch() may not yet be on the CDN.
+    vi.stubGlobal('heartbeat', undefined);
+    fetchSpy.mockResolvedValueOnce(new Response('{}', { status: 200 }));
+    const controller: AbortController = new AbortController();
+
+    const promise = awaitHeartbeatRecovery(controller.signal);
 
     await vi.advanceTimersByTimeAsync(2_000);
     const result = await promise;
 
     expect(result).toEqual({ recovered: true });
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('recovers when dispatch throws synchronously (malformed info_idp cookie)', async () => {
+    // dispatch() runs synchronously up to a cookie decode that can throw URIError.
+    // The try/catch guard must contain it so the probe loop + markAttempted still run.
+    // function form dodges vitest arrow/constructor mock quirks.
+    dispatchSpy.mockImplementation(function throwingDispatch(): never {
+      throw new URIError('URI malformed');
+    });
+    fetchSpy.mockResolvedValueOnce(new Response('{}', { status: 200 }));
+    const controller: AbortController = new AbortController();
+
+    const promise = awaitHeartbeatRecovery(controller.signal);
+
+    await vi.advanceTimersByTimeAsync(2_000);
+    const result = await promise;
+
+    expect(result).toEqual({ recovered: true });
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(reloadSpy).toHaveBeenCalled();
+    expect(sessionStorage.getItem(HEARTBEAT_PATIENCE_RELOAD_KEY)).toBe('1');
   });
 
   it('proceeds after network wait timeout if online never fires', async () => {
     Object.defineProperty(navigator, 'onLine', { configurable: true, value: false });
-    fetchSpy.mockRejectedValueOnce(new TypeError('Failed to fetch'));
     fetchSpy.mockResolvedValue(new Response('{}', { status: 401 }));
     const controller: AbortController = new AbortController();
 
     const promise = awaitHeartbeatRecovery(controller.signal);
 
-    // 5s network wait timeout + heartbeat POST attempt + 2s initial delay + 3s retries
+    // 5s network wait timeout + 2s initial delay + 3s retries
     await vi.advanceTimersByTimeAsync(5_000 + 2_000 + 3_000);
     const result = await promise;
 
     expect(result).toEqual({ recovered: false });
     Object.defineProperty(navigator, 'onLine', { configurable: true, value: true });
-  });
-
-  it('logs warning when heartbeat POST returns non-ok status', async () => {
-    fetchSpy.mockResolvedValueOnce(new Response('{}', { status: 401 }));
-    fetchSpy.mockResolvedValueOnce(new Response('{}', { status: 200 }));
-    const controller: AbortController = new AbortController();
-
-    const promise = awaitHeartbeatRecovery(controller.signal);
-
-    await vi.advanceTimersByTimeAsync(2_000);
-    const result = await promise;
-
-    expect(result).toEqual({ recovered: true });
-    expect(mockLogger.warn).toHaveBeenCalledWith(
-      'auth.heartbeat-patience.heartbeat-error',
-      { status: 401 },
-    );
-  });
-
-  it('logs warning when heartbeat POST throws network error', async () => {
-    fetchSpy.mockRejectedValueOnce(new TypeError('Failed to fetch'));
-    fetchSpy.mockResolvedValueOnce(new Response('{}', { status: 200 }));
-    const controller: AbortController = new AbortController();
-
-    const promise = awaitHeartbeatRecovery(controller.signal);
-
-    await Promise.resolve();
-    await Promise.resolve();
-
-    await vi.advanceTimersByTimeAsync(2_000);
-    const result = await promise;
-
-    expect(result).toEqual({ recovered: true });
-    expect(mockLogger.warn).toHaveBeenCalledWith(
-      'auth.heartbeat-patience.heartbeat-error',
-      { error: 'Failed to fetch' },
-    );
-  });
-
-  it('aborts heartbeat POST when signal fires during fetch', async () => {
-    fetchSpy.mockImplementationOnce((_url: string, opts: { signal: AbortSignal }) => {
-      return new Promise((_resolve, reject) => {
-        opts.signal.addEventListener('abort', () => {
-          reject(new DOMException('The operation was aborted.', 'AbortError'));
-        });
-      });
-    });
-    const controller: AbortController = new AbortController();
-
-    const promise = awaitHeartbeatRecovery(controller.signal);
-
-    // Let the heartbeat POST start
-    await Promise.resolve();
-    controller.abort();
-    await Promise.resolve();
-    await Promise.resolve();
-
-    const result = await promise;
-
-    expect(result).toEqual({ recovered: false });
-    expect(fetchSpy).toHaveBeenCalledTimes(1);
-    expect(reloadSpy).not.toHaveBeenCalled();
   });
 });
