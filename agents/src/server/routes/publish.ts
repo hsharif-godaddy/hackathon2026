@@ -35,6 +35,7 @@ import { SeoQualityRepository } from '../../database/repositories/SeoQualityRepo
 import type { ILogger } from '../../logging/types.js';
 import { resolvePublicHttpsFetchUrl } from '../../utils/public-fetch-url.js';
 import { publishJobRegistry, ConflictError } from './publish/job-registry.js';
+import { appliedSkillsRegistry } from '../../tools/applied-skills-registry.js';
 
 const router: Router = Router();
 const appRepository = new AppRepository();
@@ -919,6 +920,20 @@ router.post('/apps/:id/unpublish', requirePermission('canPublish'), async (req, 
     }
     await memoryRepository.set(id, 'site.domains', []);
 
+    try {
+      const skillState = await appliedSkillsRegistry.readSkillState('custom-domain', id);
+      if (skillState?.connectedDomain) {
+        await appliedSkillsRegistry.mergeSkillState('custom-domain', id, {
+          connectedDomain: null,
+          status: null,
+        });
+      }
+    } catch (skillStateError) {
+      contextLogger.warn('route.unpublish.skill-state-sync-failed', {
+        error: skillStateError instanceof Error ? skillStateError.message : String(skillStateError),
+      });
+    }
+
     contextLogger.info('route.unpublish.success', {
       status: response.status,
     });
@@ -1015,6 +1030,24 @@ router.post('/apps/:id/publish-state', requirePermission('canPublish'), requireS
           status: d.status ?? 'active',
         }));
       await memoryRepository.set(id, 'site.domains', domains);
+
+      try {
+        const skillState = await appliedSkillsRegistry.readSkillState('custom-domain', id);
+        if (skillState?.connectedDomain) {
+          const connectedFqdn = String(skillState.connectedDomain).toLowerCase();
+          const stillConnected = domains.some(d => d.fqdn === connectedFqdn);
+          if (!stillConnected) {
+            await appliedSkillsRegistry.mergeSkillState('custom-domain', id, {
+              connectedDomain: null,
+              status: null,
+            });
+          }
+        }
+      } catch (skillStateError) {
+        contextLogger.warn('route.publishState.skill-state-sync-failed', {
+          error: skillStateError instanceof Error ? skillStateError.message : String(skillStateError),
+        });
+      }
 
       // Fire IndexNow when a new active custom domain attaches to an already-published site.
       const newActiveDomains = domains.filter(

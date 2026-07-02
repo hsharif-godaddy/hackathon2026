@@ -157,6 +157,15 @@ vi.mock('../../logging/index.js', () => ({
   }
 }));
 
+const mockReadSkillState = vi.fn();
+const mockMergeSkillState = vi.fn();
+vi.mock('../../tools/applied-skills-registry.js', () => ({
+  appliedSkillsRegistry: {
+    readSkillState: mockReadSkillState,
+    mergeSkillState: mockMergeSkillState,
+  },
+}));
+
 // Import after mocks
 const publishRouter = await import('./publish.js').then(m => m.default);
 import { DevSupervisorClientFactory } from '../../utils/dev-supervisor-client-factory.js';
@@ -963,6 +972,96 @@ describe('POST /apps/:id/publish-state', () => {
 
     expect(response.body.error).toContain('not allowed');
   });
+
+  describe('#skill state sync', () => {
+    beforeEach(() => {
+      vi.mocked(mockReadSkillState).mockResolvedValue(null);
+      vi.mocked(mockMergeSkillState).mockResolvedValue(undefined);
+    });
+
+    it('should clear skill state when connected domain is removed', async () => {
+      mockFindById.mockReturnValue({ id: 'test-app-id', path: '/tmp/test-app' });
+      vi.mocked(mockReadSkillState).mockResolvedValue({
+        connectedDomain: 'example.com',
+        status: 'connected',
+      });
+
+      await request(app)
+        .post('/apps/test-app-id/publish-state')
+        .send({ domains: [{ fqdn: 'other.com', isPrimary: true, status: 'active' }] })
+        .expect(200);
+
+      expect(mockReadSkillState).toHaveBeenCalledWith('custom-domain', 'test-app-id');
+      expect(mockMergeSkillState).toHaveBeenCalledWith('custom-domain', 'test-app-id', {
+        connectedDomain: null,
+        status: null,
+      });
+    });
+
+    it('should not clear skill state when connected domain is still present', async () => {
+      mockFindById.mockReturnValue({ id: 'test-app-id', path: '/tmp/test-app' });
+      vi.mocked(mockReadSkillState).mockResolvedValue({
+        connectedDomain: 'example.com',
+        status: 'connected',
+      });
+
+      await request(app)
+        .post('/apps/test-app-id/publish-state')
+        .send({
+          domains: [
+            { fqdn: 'example.com', isPrimary: true, status: 'active' },
+            { fqdn: 'other.com', isPrimary: false, status: 'active' },
+          ],
+        })
+        .expect(200);
+
+      expect(mockReadSkillState).toHaveBeenCalledWith('custom-domain', 'test-app-id');
+      expect(mockMergeSkillState).not.toHaveBeenCalled();
+    });
+
+    it('should not call merge when no skill state exists', async () => {
+      mockFindById.mockReturnValue({ id: 'test-app-id', path: '/tmp/test-app' });
+      vi.mocked(mockReadSkillState).mockResolvedValue(null);
+
+      await request(app)
+        .post('/apps/test-app-id/publish-state')
+        .send({ domains: [{ fqdn: 'example.com', isPrimary: true, status: 'active' }] })
+        .expect(200);
+
+      expect(mockReadSkillState).toHaveBeenCalledWith('custom-domain', 'test-app-id');
+      expect(mockMergeSkillState).not.toHaveBeenCalled();
+    });
+
+    it('should succeed even when skill state sync fails', async () => {
+      mockFindById.mockReturnValue({ id: 'test-app-id', path: '/tmp/test-app' });
+      vi.mocked(mockReadSkillState).mockRejectedValue(new Error('Skill state read failed'));
+
+      await request(app)
+        .post('/apps/test-app-id/publish-state')
+        .send({ domains: [{ fqdn: 'example.com', isPrimary: true, status: 'active' }] })
+        .expect(200);
+
+      expect(mockMemorySet).toHaveBeenCalledWith('test-app-id', 'site.domains', [
+        { fqdn: 'example.com', isPrimary: true, status: 'active' },
+      ]);
+    });
+
+    it('should handle case-insensitive domain comparison', async () => {
+      mockFindById.mockReturnValue({ id: 'test-app-id', path: '/tmp/test-app' });
+      vi.mocked(mockReadSkillState).mockResolvedValue({
+        connectedDomain: 'Example.COM',
+        status: 'connected',
+      });
+
+      await request(app)
+        .post('/apps/test-app-id/publish-state')
+        .send({ domains: [{ fqdn: 'example.com', isPrimary: true, status: 'active' }] })
+        .expect(200);
+
+      expect(mockReadSkillState).toHaveBeenCalledWith('custom-domain', 'test-app-id');
+      expect(mockMergeSkillState).not.toHaveBeenCalled();
+    });
+  });
 });
 
 describe('GET /apps/:id/publish/status', () => {
@@ -1192,6 +1291,52 @@ describe('POST /apps/:id/unpublish', () => {
 
     expect(response.body.error).toBe('Failed to unpublish');
     expect(response.body.details).toBe('connection refused');
+  });
+
+  it('clears custom-domain skill state when connectedDomain is set', async () => {
+    const mockUnpublish = vi.fn().mockResolvedValue({ status: 'stopped' });
+    mockFindById.mockReturnValue({ id: 'test-app-id', path: '/tmp/test-app', publishSupervisorPath: '/tmp/sock' });
+    mockCreateForSocketPath.mockReturnValue({ unpublish: mockUnpublish });
+    mockExistsSync.mockReturnValue(false);
+    mockUpdatePublishedUrl.mockReturnValue({ id: 'test-app-id', publishedUrl: null });
+    mockReadSkillState.mockResolvedValue({ connectedDomain: 'example.com', status: 'active' });
+    mockMergeSkillState.mockResolvedValue(undefined);
+
+    await request(app).post('/apps/test-app-id/unpublish').send({}).expect(200);
+
+    expect(mockReadSkillState).toHaveBeenCalledWith('custom-domain', 'test-app-id');
+    expect(mockMergeSkillState).toHaveBeenCalledWith('custom-domain', 'test-app-id', {
+      connectedDomain: null,
+      status: null,
+    });
+  });
+
+  it('skips mergeSkillState when connectedDomain is not set', async () => {
+    const mockUnpublish = vi.fn().mockResolvedValue({ status: 'stopped' });
+    mockFindById.mockReturnValue({ id: 'test-app-id', path: '/tmp/test-app', publishSupervisorPath: '/tmp/sock' });
+    mockCreateForSocketPath.mockReturnValue({ unpublish: mockUnpublish });
+    mockExistsSync.mockReturnValue(false);
+    mockUpdatePublishedUrl.mockReturnValue({ id: 'test-app-id', publishedUrl: null });
+    mockReadSkillState.mockResolvedValue(null);
+
+    await request(app).post('/apps/test-app-id/unpublish').send({}).expect(200);
+
+    expect(mockReadSkillState).toHaveBeenCalledWith('custom-domain', 'test-app-id');
+    expect(mockMergeSkillState).not.toHaveBeenCalled();
+  });
+
+  it('succeeds even when skill-state read throws', async () => {
+    const mockUnpublish = vi.fn().mockResolvedValue({ status: 'stopped' });
+    mockFindById.mockReturnValue({ id: 'test-app-id', path: '/tmp/test-app', publishSupervisorPath: '/tmp/sock' });
+    mockCreateForSocketPath.mockReturnValue({ unpublish: mockUnpublish });
+    mockExistsSync.mockReturnValue(false);
+    mockUpdatePublishedUrl.mockReturnValue({ id: 'test-app-id', publishedUrl: null });
+    mockReadSkillState.mockRejectedValue(new Error('registry unavailable'));
+
+    const response = await request(app).post('/apps/test-app-id/unpublish').send({}).expect(200);
+
+    expect(response.body.success).toBe(true);
+    expect(mockMergeSkillState).not.toHaveBeenCalled();
   });
 });
 
