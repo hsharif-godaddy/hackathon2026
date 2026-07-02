@@ -87,3 +87,18 @@ export function extractShopperId(token: string): string | null {
 
   return null;
 }
+
+/**
+ * Extract the delegating employee (care agent) account name from an impersonation token.
+ * For e2s/e2s2s tokens the impersonating employee lives in the `del` claim
+ * (e.g. `{ accountName: 'fgoodwrk' }`) — distinct from the impersonated shopper
+ * in the `e2s` claim. Returns null when no `del.accountName` is present
+ * (non-impersonation tokens). Unvalidated decode for observability only.
+ */
+export function extractDelegatedEmployee(token: string): string | null {
+  const payload = decodeJWT(token);
+  const del = payload?.del;
+  if (!del || typeof del !== 'object') return null;
+
+  return typeof del.accountName === 'string' ? del.accountName : null;
+}

@@ -150,6 +150,23 @@ vi.mock('../../../database/repositories/index.js', async (importOriginal) => {
   }
 })
 
+// Recorder spy for safeProcessBudgetReport that always calls through, so the
+// careContext-attribution tests can assert what each filing branch forwards
+// while still getting a real BudgetReportResult back.
+const mockSafeProcessBudgetReport = vi.hoisted(() => vi.fn())
+vi.mock('../../budget-report-handler.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../budget-report-handler.js')>()
+  return {
+    ...actual,
+    safeProcessBudgetReport: (
+      ...args: Parameters<typeof actual.safeProcessBudgetReport>
+    ): ReturnType<typeof actual.safeProcessBudgetReport> => {
+      mockSafeProcessBudgetReport(...args)
+      return actual.safeProcessBudgetReport(...args)
+    },
+  }
+})
+
 // Mock context-builders to avoid heavy dependency chain (AppRepository, KnowB, Langfuse)
 vi.mock('../../context-builders.js', () => ({
   buildDynamicDataMessage: vi.fn().mockReturnValue({
@@ -5170,6 +5187,140 @@ describe('MessageExecutionService', () => {
           data: expect.objectContaining({ refreshRequired: true }),
         }),
       )
+    })
+  })
+
+  describe('careContext attribution', () => {
+    // The care context is built once in executeUnderTrace and forwarded into
+    // reconcileBudgetReport (→ safeProcessBudgetReport) on all three filing
+    // branches. These tests pin that careAgentId propagates from agentCtx and
+    // that each branch forwards it — a dropped spread on the error/fallback path
+    // would silently lose attribution exactly when a session fails.
+    const AGENT_CTX = {
+      customerId: 'cust-789',
+      careAgentId: 'worker-guid-123',
+    }
+    const EXPECTED_CARE_CONTEXT: ReturnType<typeof expect.objectContaining> = expect.objectContaining({
+      careAgentId: 'worker-guid-123',
+      appId: 'app_1',
+      conversationId: 'conv_1',
+    })
+
+    it('forwards careContext on the success branch', async () => {
+      mockSafeProcessBudgetReport.mockClear()
+      const budgetClient = createBudgetClient()
+      mockGetBudgetServiceClient.mockReturnValue(budgetClient as any)
+      deps = createMockDeps()
+      deps.getAgent.mockReturnValue({
+        streamGenerate: vi.fn().mockImplementation(
+          streamGenerateImpl([{ type: 'text-delta', text: 'done' }], { finishReason: 'complete', steps: [] }),
+        ),
+        getName: vi.fn().mockReturnValue('AI Developer'),
+      })
+      service = new MessageExecutionService(deps as any)
+
+      await service.execute({
+        ...DEFAULT_PARAMS,
+        bmsBudgetId: 'budget-abc',
+        budgetSessionId: 'session-xyz',
+        subscriptionId: 'sub-123',
+        authType: 'e2s',
+        lifecycleContext: { agentContext: AGENT_CTX },
+      })
+
+      expect(mockSafeProcessBudgetReport).toHaveBeenCalledTimes(1)
+      expect(mockSafeProcessBudgetReport.mock.calls[0][0]).toEqual(
+        expect.objectContaining({ careContext: EXPECTED_CARE_CONTEXT }),
+      )
+    })
+
+    it('forwards careContext on the error branch', async () => {
+      mockSafeProcessBudgetReport.mockClear()
+      const budgetClient = createBudgetClient()
+      mockGetBudgetServiceClient.mockReturnValue(budgetClient as any)
+      deps = createMockDeps()
+      deps.getAgent.mockReturnValue({
+        streamGenerate: vi.fn().mockRejectedValue(new Error('stream failed')),
+        getName: vi.fn().mockReturnValue('AI Developer'),
+      })
+      service = new MessageExecutionService(deps as any)
+
+      await service.execute({
+        ...DEFAULT_PARAMS,
+        bmsBudgetId: 'budget-abc',
+        budgetSessionId: 'session-xyz',
+        subscriptionId: 'sub-123',
+        authType: 'e2s',
+        lifecycleContext: { agentContext: AGENT_CTX },
+      })
+
+      expect(mockSafeProcessBudgetReport).toHaveBeenCalledTimes(1)
+      expect(mockSafeProcessBudgetReport.mock.calls[0][0]).toEqual(
+        expect.objectContaining({ careContext: EXPECTED_CARE_CONTEXT }),
+      )
+    })
+
+    it('forwards careContext on the fallback branch', async () => {
+      mockSafeProcessBudgetReport.mockClear()
+      // createReport rejects (non-409) → success-branch reconcile returns
+      // filed:false → the finally fallback reconciles again. Both invocations
+      // reach safeProcessBudgetReport; the last one is the fallback call site.
+      const budgetClient = createBudgetClient({
+        createReport: vi.fn().mockRejectedValue(new Error('bms down')),
+      })
+      mockGetBudgetServiceClient.mockReturnValue(budgetClient as any)
+      deps = createMockDeps()
+      deps.getAgent.mockReturnValue({
+        streamGenerate: vi.fn().mockImplementation(
+          streamGenerateImpl([{ type: 'text-delta', text: 'done' }], { finishReason: 'complete', steps: [] }),
+        ),
+        getName: vi.fn().mockReturnValue('AI Developer'),
+      })
+      service = new MessageExecutionService(deps as any)
+
+      await service.execute({
+        ...DEFAULT_PARAMS,
+        bmsBudgetId: 'budget-abc',
+        budgetSessionId: 'session-xyz',
+        subscriptionId: 'sub-123',
+        authType: 'e2s',
+        lifecycleContext: { agentContext: AGENT_CTX },
+      })
+
+      expect(mockSafeProcessBudgetReport).toHaveBeenCalledTimes(2)
+      const fallbackArgs: { careContext?: unknown } = mockSafeProcessBudgetReport.mock.calls.at(-1)![0]
+      expect(fallbackArgs).toEqual(
+        expect.objectContaining({ careContext: EXPECTED_CARE_CONTEXT }),
+      )
+    })
+
+    it('leaves care fields undefined when no agentContext is present', async () => {
+      mockSafeProcessBudgetReport.mockClear()
+      const budgetClient = createBudgetClient()
+      mockGetBudgetServiceClient.mockReturnValue(budgetClient as any)
+      deps = createMockDeps()
+      deps.getAgent.mockReturnValue({
+        streamGenerate: vi.fn().mockImplementation(
+          streamGenerateImpl([{ type: 'text-delta', text: 'done' }], { finishReason: 'complete', steps: [] }),
+        ),
+        getName: vi.fn().mockReturnValue('AI Developer'),
+      })
+      service = new MessageExecutionService(deps as any)
+
+      await service.execute({
+        ...DEFAULT_PARAMS,
+        bmsBudgetId: 'budget-abc',
+        budgetSessionId: 'session-xyz',
+        authType: 'e2s',
+      })
+
+      expect(mockSafeProcessBudgetReport).toHaveBeenCalledTimes(1)
+      expect(mockSafeProcessBudgetReport.mock.calls[0][0].careContext).toEqual({
+        careAgentId: undefined,
+        careAgentUsernameHash: undefined,
+        appId: 'app_1',
+        conversationId: 'conv_1',
+      })
     })
   })
 

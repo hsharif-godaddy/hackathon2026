@@ -60,7 +60,7 @@ import {
   type AttributionContext,
   type ExecutionStep,
 } from '@airo/ai-lib/budget'
-import { checkCorrelationIdRace, safeProcessBudgetReport } from '../budget-report-handler.js'
+import { checkCorrelationIdRace, safeProcessBudgetReport, type BudgetReportContext } from '../budget-report-handler.js'
 import { parseChunkTimeoutMs, runWithModelOverride, buildTokenUsage, calculateCostEstimate } from '@airo/ai-lib'
 import { resolveProfile, runWithProfile } from '../../profiles/index.js'
 import matter from 'gray-matter'
@@ -226,6 +226,8 @@ interface LifecycleContext {
     canPurchaseDomain?: boolean
     isE2S?: boolean
     authType?: string
+    careAgentId?: string
+    careAgentUsernameHash?: string
     useTestBudget?: boolean
     budgetServiceEnabled?: boolean
     subscriptionId?: string
@@ -736,8 +738,9 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
     wasUserAborted: boolean
     subscriptionId?: string
     hadSelfRepair?: boolean
+    careContext?: BudgetReportContext['careContext']
   }): Promise<{ filed: boolean; sessionWasFree?: boolean }> {
-    const { appId, conversationId, budgetId, sessionId, streamState, steps, assessmentOutcome, wasUserAborted, subscriptionId, hadSelfRepair } = opts
+    const { appId, conversationId, budgetId, sessionId, streamState, steps, assessmentOutcome, wasUserAborted, subscriptionId, hadSelfRepair, careContext } = opts
     let sessionWasFreeForRefresh: boolean | undefined
 
     const publishBudgetEvent = async (event: Parameters<typeof this.deps.eventChannel.publish>[1]): Promise<void> => {
@@ -801,6 +804,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
           wasUserAborted,
           subscriptionId,
           hadSelfRepair,
+          careContext,
         },
         { budgetId, sessionId },
       )
@@ -2135,6 +2139,13 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
     let turnResult: TurnExecutionResult = { success: false }
     const sseSocketId = sseSessionKey(conversationId)
     const agentCtx = lifecycleContext?.agentContext
+    // Impersonation context for attributing care-agent (BMS override) spend at report time.
+    const careContext: BudgetReportContext['careContext'] = {
+      careAgentId: agentCtx?.careAgentId,
+      careAgentUsernameHash: agentCtx?.careAgentUsernameHash,
+      appId,
+      conversationId,
+    }
     const enableAssessmentAgent = !!agentCtx?.enableAssessmentAgent
     const enableAssessmentOverride = !!agentCtx?.enableAssessmentOverride
     const enableFixSession = !!agentCtx?.enableFixSession
@@ -2929,6 +2940,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
           wasUserAborted: loopAborted,
           subscriptionId,
           hadSelfRepair,
+          careContext,
         })
         budgetReportFiled = budgetReport.filed
         // BMS mode: reconciliation is the source of truth for free-task billing.
@@ -3093,6 +3105,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
           wasUserAborted: abortController.signal.aborted && !chunkTimeoutAborted,
           subscriptionId,
           hadSelfRepair,
+          careContext,
         })
         budgetReportFiled = errorBudgetReport.filed
       } else if (bmsBudgetId && budgetSessionId) {
@@ -3255,6 +3268,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
               && abortController.signal.reason !== 'chunk_timeout',
             subscriptionId,
             hadSelfRepair,
+            careContext,
           })
           if (!fallbackResult.filed) {
             logger.error('budget.report.fallback_also_failed', {

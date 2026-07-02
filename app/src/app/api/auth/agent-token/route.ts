@@ -24,6 +24,7 @@ import {
   fetchHivemindCohorts,
   normalizeHivemindCohort,
 } from '@/lib/budget-service-experiment';
+import { resolveCareAgentIdentity } from '@/lib/care-agent-identity';
 import { getControlPlaneAdapter } from '@/lib/control-plane';
 import type { SiteInfo } from '@/lib/control-plane/types';
 import { createCustomerAuthError, type CustomerAuthContext, customerHasAccount, type CustomerUser, withCustomerAuth } from '@/lib/customer-auth';
@@ -36,6 +37,7 @@ import { isPaidPlanForGrants, PaywallDenialReason } from '@/lib/paywall/shared';
 import { logger } from '@/lib/request-context';
 import { resolveSsoPointerNames } from '@/lib/sso/pointer-names';
 import { checkSwitchboardFlag, checkSwitchboardValue } from '@/lib/switchboard/server';
+import { extractDelegatedEmployee } from '@/lib/utils/jwt-utils';
 import { getPlanFromSubscription } from '@/utils/credits';
 import { trafficPathwaySessionId } from '@/utils/traffic-signals';
 import { visitorIdFromVisitorCookieRaw } from '@/utils/visitor-id';
@@ -754,6 +756,8 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
     // CRM skip / impersonation sessions (e2s, e2s2s) always get the model selector
     // regardless of the switchboard flag — matches the bypass patterns used in
     // Feedback.tsx and ChatPane.tsx for impersonated sessions.
+    let careAgentId: string | undefined;
+    let careAgentUsernameHash: string | undefined;
     if (isEmployeeAuthType(user.authType)) {
       if (!modelSelectorEnabled) {
         logger.info('agent-token.model-selector-forced-for-impersonation', {
@@ -763,6 +767,19 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
         });
       }
       modelSelectorEnabled = true;
+
+      if (authContext.jwt) {
+        // careAgentId gets resolved using workers-service api call
+        // careAgentUsernameHash is used as fallback, only available when
+        // workers-service api call fails
+        const careAgentUsername: string | undefined =
+          extractDelegatedEmployee(authContext.jwt) ?? undefined;
+        ({ careAgentId, careAgentUsernameHash } = await resolveCareAgentIdentity({
+          jwt: authContext.jwt,
+          headers: request.headers,
+          accountName: careAgentUsername,
+        }));
+      }
     }
 
     timing.siteAccessMs = Date.now() - siteAccessStart;
@@ -889,6 +906,8 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
         : {}),
       authType: user.authType || 'basic',
       isE2S: user.isE2S ?? false,
+      ...(careAgentId && { careAgentId }),
+      ...(careAgentUsernameHash && { careAgentUsernameHash }),
       useTestBudget,
       budgetServiceEnabled,
       subscriptionId,

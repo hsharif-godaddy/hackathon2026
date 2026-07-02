@@ -795,6 +795,8 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
           canPurchaseDomain: agentContext?.canPurchaseDomain,
           isE2S: agentContext?.isE2S,
           authType: agentContext?.authType,
+          careAgentId: agentContext?.careAgentId,
+          careAgentUsernameHash: agentContext?.careAgentUsernameHash,
           useTestBudget: agentContext?.useTestBudget,
           budgetServiceEnabled: agentContext?.budgetServiceEnabled,
           subscriptionId: agentContext?.subscriptionId,

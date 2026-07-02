@@ -17,8 +17,9 @@ import { clearSiteValidationCache } from '../site-validation-cache';
 /**
  * Mock dependencies using vi.hoisted to avoid hoisting issues
  */
-const { mockJWTService, mockAuthenticateCustomer, mockControlPlaneAdapter, mockCheckSwitchboardFlag, mockCheckSwitchboardValue, mockMgmtClient, mockEnforceAabMultiUserCanBuild, mockGetExperimentCohorts, mockLogger, mockFgaListObjects } = vi.hoisted(function setup() {
+const { mockJWTService, mockAuthenticateCustomer, mockControlPlaneAdapter, mockCheckSwitchboardFlag, mockCheckSwitchboardValue, mockMgmtClient, mockEnforceAabMultiUserCanBuild, mockGetExperimentCohorts, mockLogger, mockFgaListObjects, mockResolveCareAgentIdentity } = vi.hoisted(function setup() {
   return {
+    mockResolveCareAgentIdentity: vi.fn(),
     mockJWTService: {
       getToken: vi.fn(),
       createToken: vi.fn()
@@ -80,6 +81,17 @@ vi.mock('@/lib/authz-fga/config', function mockAuthzFgaConfig() {
 vi.mock('@/lib/jwt-service', function mockJWTServiceModule() {
   return {
     getJWTService: vi.fn().mockReturnValue(mockJWTService)
+  };
+});
+
+/**
+ * Mock care-agent identity resolution — the route resolves the care agent's
+ * worker GUID (or hashed-username fallback) at mint time. Default: no identity
+ * resolved.
+ */
+vi.mock('@/lib/care-agent-identity', function mockCareAgentIdentityModule() {
+  return {
+    resolveCareAgentIdentity: mockResolveCareAgentIdentity
   };
 });
 
@@ -256,6 +268,9 @@ describe('agent-token', function packageTests() {
         expires: MOCK_TOKEN_EXPIRES
       });
       mockEnforceAabMultiUserCanBuild.mockResolvedValue(null);
+      // Workers Service lookup defaults to no identity resolved; employee-session
+      // tests override this to assert the GUID or hashed-username fallback.
+      mockResolveCareAgentIdentity.mockResolvedValue({});
       // SSO presence check defaults to "not configured" (auth group empty).
       // Every existing test uses the default site (no ssoRequired flag), so
       // the BFF skips the auth-group GET entirely. SSO-specific tests below
@@ -690,6 +705,103 @@ describe('agent-token', function packageTests() {
         ssoRequired: false,
         ssoConfigured: false,
         });
+      });
+
+      function e2sJwtFixture(): string {
+        const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
+        const body = Buffer.from(JSON.stringify({
+          auth: 'e2s',
+          e2s: { shopperId: '67890', cid: 'customer-789' },
+          del: { accountName: 'fgoodwrk', typ: 'jomax' },
+        })).toString('base64url');
+        return `${header}.${body}.fakesig`;
+      }
+
+      it('resolves the care agent via the delegated JWT username and mints the worker GUID for e2s sessions', async function e2sCareAgentGuid() {
+        const e2sJwt = e2sJwtFixture();
+        mockAuthenticateCustomer.mockResolvedValue({
+          isAuthenticated: true,
+          user: { ...MOCK_USER, authType: 'e2s', isE2S: true },
+          jwt: e2sJwt,
+        });
+        mockControlPlaneAdapter.appExists.mockResolvedValue(true);
+        mockResolveCareAgentIdentity.mockResolvedValue({ careAgentId: 'worker-guid-123' });
+
+        const request = createMockRequest({ siteId: MOCK_SITE_ID });
+        const response = await POST(request);
+
+        expect(response.status).toBe(200);
+        // accountName from `del.accountName` is passed to the lookup, never minted.
+        expect(mockResolveCareAgentIdentity).toHaveBeenCalledWith(
+          expect.objectContaining({ jwt: e2sJwt, accountName: 'fgoodwrk' }),
+        );
+        const passedOptions = mockJWTService.getToken.mock.calls[0]![0];
+        expect(passedOptions).toMatchObject({ authType: 'e2s', isE2S: true, careAgentId: 'worker-guid-123' });
+        expect(passedOptions).not.toHaveProperty('careAgentUsername');
+        expect(passedOptions).not.toHaveProperty('careAgentUsernameHash');
+      });
+
+      it('mints the hashed-username fallback when the worker-GUID lookup fails', async function e2sCareAgentHashFallback() {
+        mockAuthenticateCustomer.mockResolvedValue({
+          isAuthenticated: true,
+          user: { ...MOCK_USER, authType: 'e2s', isE2S: true },
+          jwt: e2sJwtFixture(),
+        });
+        mockControlPlaneAdapter.appExists.mockResolvedValue(true);
+        mockResolveCareAgentIdentity.mockResolvedValue({ careAgentUsernameHash: 'sha256hex' });
+
+        const request = createMockRequest({ siteId: MOCK_SITE_ID });
+        const response = await POST(request);
+
+        expect(response.status).toBe(200);
+        const passedOptions = mockJWTService.getToken.mock.calls[0]![0];
+        expect(passedOptions).toMatchObject({ careAgentUsernameHash: 'sha256hex' });
+        expect(passedOptions).not.toHaveProperty('careAgentId');
+        expect(passedOptions).not.toHaveProperty('careAgentUsername');
+      });
+
+      it('still mints a token when the lookup resolves no identity', async function e2sCareAgentNoIdentity() {
+        mockAuthenticateCustomer.mockResolvedValue({
+          isAuthenticated: true,
+          user: { ...MOCK_USER, authType: 'e2s', isE2S: true },
+          jwt: e2sJwtFixture(),
+        });
+        mockControlPlaneAdapter.appExists.mockResolvedValue(true);
+        mockResolveCareAgentIdentity.mockResolvedValue({});
+
+        const request = createMockRequest({ siteId: MOCK_SITE_ID });
+        const response = await POST(request);
+
+        expect(response.status).toBe(200);
+        const passedOptions = mockJWTService.getToken.mock.calls[0]![0];
+        expect(passedOptions).not.toHaveProperty('careAgentId');
+        expect(passedOptions).not.toHaveProperty('careAgentUsernameHash');
+      });
+
+      it('should NOT resolve or mint care-agent claims for non-employee (basic) sessions', async function basicNoCareAgent() {
+        const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
+        const body = Buffer.from(JSON.stringify({
+          shopperId: 'sh-basic',
+          cid: 'customer-789',
+          del: { accountName: 'fgoodwrk', typ: 'jomax' },
+        })).toString('base64url');
+        const basicJwt = `${header}.${body}.fakesig`;
+
+        mockAuthenticateCustomer.mockResolvedValue({
+          isAuthenticated: true,
+          user: { ...MOCK_USER, authType: 'basic', isE2S: false },
+          jwt: basicJwt,
+        });
+        mockControlPlaneAdapter.appExists.mockResolvedValue(true);
+
+        const request = createMockRequest({ siteId: MOCK_SITE_ID });
+        const response = await POST(request);
+
+        expect(response.status).toBe(200);
+        expect(mockResolveCareAgentIdentity).not.toHaveBeenCalled();
+        const passedOptions = mockJWTService.getToken.mock.calls[0]![0];
+        expect(passedOptions).not.toHaveProperty('careAgentId');
+        expect(passedOptions).not.toHaveProperty('careAgentUsernameHash');
       });
 
       it('should pass s2s auth type without isE2S flag', async function s2sAuthType() {

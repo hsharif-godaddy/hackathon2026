@@ -911,6 +911,85 @@ describe('processBudgetReport', () => {
       expect(result.labels).toEqual([ReportLabel.CareAgent])
     })
 
+    it('logs care-agent identity and session context on the override_session event', () => {
+      vi.mocked(logger.info).mockClear()
+      const context: BudgetReportContext = {
+        budgetId: 'customer-budget-uuid',
+        sessionId: 'sess-care',
+        totalCost: 10.0,
+        sessionItems: createSessionItems(1, 10.0),
+        subscriptionId: 'airo-builder:care-agent',
+        careContext: {
+          careAgentId: 'worker-guid-123',
+          appId: 'app-123',
+          conversationId: 'conv-456',
+        },
+      }
+
+      processBudgetReport(context)
+
+      expect(logger.info).toHaveBeenCalledWith(
+        'budget.report.override_session',
+        expect.objectContaining({
+          subscriptionId: 'airo-builder:care-agent',
+          label: ReportLabel.CareAgent,
+          careAgentId: 'worker-guid-123',
+          appId: 'app-123',
+          conversationId: 'conv-456',
+        }),
+      )
+    })
+
+    it('logs the hashed-username fallback when only careAgentUsernameHash is present', () => {
+      vi.mocked(logger.info).mockClear()
+      const context: BudgetReportContext = {
+        budgetId: 'customer-budget-uuid',
+        sessionId: 'sess-care-hash',
+        totalCost: 10.0,
+        sessionItems: createSessionItems(1, 10.0),
+        subscriptionId: 'airo-builder:care-agent',
+        careContext: {
+          careAgentUsernameHash: 'sha256hex',
+          appId: 'app-123',
+          conversationId: 'conv-456',
+        },
+      }
+
+      processBudgetReport(context)
+
+      expect(logger.info).toHaveBeenCalledWith(
+        'budget.report.override_session',
+        expect.objectContaining({
+          label: ReportLabel.CareAgent,
+          careAgentId: undefined,
+          careAgentUsernameHash: 'sha256hex',
+        }),
+      )
+    })
+
+    it('logs override_session with undefined care fields when careContext is absent', () => {
+      vi.mocked(logger.info).mockClear()
+      const context: BudgetReportContext = {
+        budgetId: 'customer-budget-uuid',
+        sessionId: 'sess-test',
+        totalCost: 5.0,
+        sessionItems: createSessionItems(1, 5.0),
+        subscriptionId: 'airo-builder:test-accounts',
+      }
+
+      processBudgetReport(context)
+
+      expect(logger.info).toHaveBeenCalledWith(
+        'budget.report.override_session',
+        expect.objectContaining({
+          label: ReportLabel.TestAccounts,
+          careAgentId: undefined,
+          careAgentUsernameHash: undefined,
+          appId: undefined,
+        }),
+      )
+    })
+
     it('skips execution analysis for override sessions', () => {
       // Even with steps that would normally trigger per-call attribution,
       // override sessions short-circuit to 100% GoDaddy

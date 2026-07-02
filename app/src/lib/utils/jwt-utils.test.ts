@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { extractCustomerId, extractShopperId } from './jwt-utils';
+import { extractCustomerId, extractDelegatedEmployee, extractShopperId } from './jwt-utils';
 
 function makeJWT(payload: Record<string, unknown>): string {
   const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
@@ -107,5 +107,33 @@ describe('extractCustomerId', () => {
 
   it('returns null for an invalid token', () => {
     expect(extractCustomerId('not.a.jwt')).toBeNull();
+  });
+});
+
+describe('extractDelegatedEmployee', () => {
+  it('returns accountName from the del claim of an e2s token', () => {
+    const token = makeJWT({
+      auth: 'e2s',
+      e2s: { shopperId: '67890', cid: 'customerId' },
+      del: { accountName: 'fgoodwrk', typ: 'jomax', auth: 'basic' },
+    });
+    expect(extractDelegatedEmployee(token)).toBe('fgoodwrk');
+  });
+
+  it('returns null when del.accountName is a non-string type', () => {
+    expect(extractDelegatedEmployee(makeJWT({ del: { accountName: 123, typ: 'jomax' } }))).toBeNull();
+  });
+
+  it('returns null when there is no del claim (non-impersonation token)', () => {
+    expect(extractDelegatedEmployee(makeJWT({ shopperId: 'sh-top', cid: 'cid-top' }))).toBeNull();
+  });
+
+  it('returns null when del is not an object', () => {
+    expect(extractDelegatedEmployee(makeJWT({ del: 'fgoodwrk' }))).toBeNull();
+  });
+
+  it('returns null for an invalid token', () => {
+    expect(extractDelegatedEmployee('not.a.jwt')).toBeNull();
+    expect(extractDelegatedEmployee('')).toBeNull();
   });
 });

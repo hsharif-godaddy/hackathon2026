@@ -85,4 +85,32 @@ describe('JWTService cache key separation', function cacheKeySuite() {
 
     expect(createTokenSpy).toHaveBeenCalledTimes(2);
   });
+
+  it('produces different cache entries for different careAgentId values', async function separatesCareAgentId() {
+    await service.getToken({ ...baseOptions, careAgentId: 'worker-guid-1' });
+    await service.getToken({ ...baseOptions, careAgentId: 'worker-guid-2' });
+
+    expect(createTokenSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it('reuses cached token when careAgentId is the same', async function reusesSameCareAgentId() {
+    await service.getToken({ ...baseOptions, careAgentId: 'worker-guid-1' });
+    await service.getToken({ ...baseOptions, careAgentId: 'worker-guid-1' });
+
+    expect(createTokenSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('produces different cache entries for different careAgentUsernameHash values', async function separatesCareAgentUsernameHash() {
+    await service.getToken({ ...baseOptions, careAgentUsernameHash: 'hash-1' });
+    await service.getToken({ ...baseOptions, careAgentUsernameHash: 'hash-2' });
+
+    expect(createTokenSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it('separates the GUID and hashed-username fallback for the same care agent', async function separatesGuidFromHash() {
+    await service.getToken({ ...baseOptions, careAgentId: 'worker-guid-1' });
+    await service.getToken({ ...baseOptions, careAgentUsernameHash: 'hash-1' });
+
+    expect(createTokenSpy).toHaveBeenCalledTimes(2);
+  });
 });

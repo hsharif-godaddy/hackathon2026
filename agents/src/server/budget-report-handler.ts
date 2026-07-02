@@ -40,6 +40,16 @@ export interface BudgetReportContext {
   subscriptionId?: string
   /** True if post-stream-validator fired a continuation (agent self-repair) */
   hadSelfRepair?: boolean
+  /**
+   * Impersonation context for attributing care-agent (BMS override) spend.
+   * Populated for employee (e2s/e2s2s) sessions; logged on the override_session branch.
+   */
+  careContext?: {
+    careAgentId?: string
+    careAgentUsernameHash?: string
+    appId?: string
+    conversationId?: string
+  }
 }
 
 export interface BudgetReportResult {
@@ -67,7 +77,7 @@ export interface BudgetReportResult {
  * 5. Default (no failures, no overrides, no infrastructure) -> 100% Customer
  */
 export function processBudgetReport(context: BudgetReportContext): BudgetReportResult {
-  const { budgetId, sessionId, totalCost, sessionItems, steps, assessmentOutcome, wasUserAborted, subscriptionId } = context
+  const { budgetId, sessionId, totalCost, sessionItems, steps, assessmentOutcome, wasUserAborted, subscriptionId, careContext } = context
 
   // Override sessions (care agents, test accounts): 100% GoDaddy attribution
   // Only CareAgent and TestAccounts trigger BMS override attribution - other BudgetOverride
@@ -97,6 +107,12 @@ export function processBudgetReport(context: BudgetReportContext): BudgetReportR
       totalCost,
       label: overrideLabel,
       reason: 'Budget override session - all costs attributed to GoDaddy',
+      // careAgentId is the worker GUID, care agent who initiated the override
+      careAgentId: careContext?.careAgentId,
+      // careAgentUsernameHash is fallback minted when the GUID lookup failed.
+      careAgentUsernameHash: careContext?.careAgentUsernameHash,
+      appId: careContext?.appId,
+      conversationId: careContext?.conversationId,
     })
 
     return {

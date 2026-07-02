@@ -24,6 +24,8 @@ export interface CreateTokenOptions {
   canPurchaseDomain?: boolean;
   authType?: AuthType;
   isE2S: boolean; // Backward compatibility
+  careAgentId?: string; // Impersonating employee's Workers Service worker GUID — only on e2s/e2s2s
+  careAgentUsernameHash?: string; // Keyed HMAC-SHA256 of JOMAX accountName; fallback when the worker-GUID lookup fails — only on e2s/e2s2s
   useTestBudget?: boolean; // Bypass grants and use test-accounts budget
   budgetServiceEnabled?: boolean; // Use Budget Service flow instead of legacy grants
   subscriptionId?: string; // Subscription ID for Budget Service API calls
@@ -215,6 +217,8 @@ export class JWTService {
       canPurchaseDomain: options.canPurchaseDomain ?? false,
       authType: options.authType || 'basic',
       isE2S: options.isE2S,
+      ...(options.careAgentId && { careAgentId: options.careAgentId }),
+      ...(options.careAgentUsernameHash && { careAgentUsernameHash: options.careAgentUsernameHash }),
       useTestBudget: options.useTestBudget ?? false,
       budgetServiceEnabled: options.budgetServiceEnabled ?? false,
       subscriptionId: options.subscriptionId,
@@ -309,7 +313,7 @@ export class JWTService {
    */
   private getCacheKey(options: CreateTokenOptions): string {
     const authType = options.authType || 'basic';
-    return `${options.siteId}:${options.customerId || ''}:${options.canDownload}:${options.canPublish}:${options.canPurchaseDomain ?? false}:${authType}:${options.useTestBudget ?? false}:${options.budgetServiceEnabled ?? false}:${options.subscriptionId || ''}:${options.enableAssessmentAgent ?? false}:${options.enableAssessmentOverride ?? false}:${options.assessmentClassifier || ''}:${options.product || 'AiroAppBuilder'}:${options.modelOverride || ''}:${options.modelSelectorEnabled ?? false}:${options.agentProfile || ''}:${options.agentProfileSelectorEnabled ?? false}:${options.costAttributionDryRun ?? false}:${options.bmsBudgetId || ''}:${options.useAtlasCrawler ?? false}:${options.rebuildIntakeFormEnabled ?? false}:${options.rebuildSourceImagesEnabled ?? false}:${options.debugStatsEnabled ?? false}:${options.market || ''}:${options.fqdn || ''}:${options.marketingCampaignsEnabled ?? false}:${options.googleBusinessProfileSyncEnabled ?? false}:${options.asmDualWriteEnabled ?? false}:${options.logoBrandColorsEnabled ?? false}:${options.purchaseIntentClassifierEnabled ?? false}:${options.skillSuggestionsEnabled ?? false}:${options.ssoRequired ?? false}:${options.ssoConfigured ?? false}:${options.ownerProduct ?? ''}`;
+    return `${options.siteId}:${options.customerId || ''}:${options.canDownload}:${options.canPublish}:${options.canPurchaseDomain ?? false}:${authType}:${options.useTestBudget ?? false}:${options.budgetServiceEnabled ?? false}:${options.subscriptionId || ''}:${options.enableAssessmentAgent ?? false}:${options.enableAssessmentOverride ?? false}:${options.assessmentClassifier || ''}:${options.product || 'AiroAppBuilder'}:${options.modelOverride || ''}:${options.modelSelectorEnabled ?? false}:${options.agentProfile || ''}:${options.agentProfileSelectorEnabled ?? false}:${options.costAttributionDryRun ?? false}:${options.bmsBudgetId || ''}:${options.useAtlasCrawler ?? false}:${options.rebuildIntakeFormEnabled ?? false}:${options.rebuildSourceImagesEnabled ?? false}:${options.debugStatsEnabled ?? false}:${options.market || ''}:${options.fqdn || ''}:${options.marketingCampaignsEnabled ?? false}:${options.googleBusinessProfileSyncEnabled ?? false}:${options.asmDualWriteEnabled ?? false}:${options.logoBrandColorsEnabled ?? false}:${options.purchaseIntentClassifierEnabled ?? false}:${options.skillSuggestionsEnabled ?? false}:${options.ssoRequired ?? false}:${options.ssoConfigured ?? false}:${options.ownerProduct ?? ''}:${options.careAgentId || ''}:${options.careAgentUsernameHash || ''}`;
   }
 
   /**

@@ -45,6 +45,8 @@ export interface AgentContext {
   canPurchaseDomain?: boolean; // Permission to purchase and attach custom domains
   isE2S: boolean; // deprecated: use authType === 'e2s' instead. Only true for e2s (care), NOT s2s (delegation)
   authType?: TokenAuthType; // Authentication type
+  careAgentId?: string; // Impersonating care agent's Workers Service worker GUID — only on e2s/e2s2s
+  careAgentUsernameHash?: string; // Keyed HMAC-SHA256 of JOMAX accountName; fallback when the worker-GUID lookup failed — only on e2s/e2s2s
   useTestBudget?: boolean; // Bypass grants and use test-accounts budget
   budgetServiceEnabled?: boolean; // Use Budget Service flow instead of legacy grants
   subscriptionId?: string; // Subscription ID for Budget Service API calls
@@ -109,6 +111,8 @@ export function buildAgentContext(raw: Record<string, unknown>): AgentContext {
     canPurchaseDomain: (raw.canPurchaseDomain as boolean) ?? false,
     isE2S: (raw.isE2S as boolean) ?? false,
     authType: (raw.authType as TokenAuthType) ?? 'basic',
+    careAgentId: raw.careAgentId as string | undefined,
+    careAgentUsernameHash: raw.careAgentUsernameHash as string | undefined,
     useTestBudget: (raw.useTestBudget as boolean) ?? false,
     budgetServiceEnabled: (raw.budgetServiceEnabled as boolean) ?? false,
     subscriptionId: raw.subscriptionId as string | undefined,

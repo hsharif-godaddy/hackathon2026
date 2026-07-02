@@ -28,6 +28,8 @@ export interface JWTClaims {
   canPurchaseDomain: boolean; // Permission to purchase and attach custom domains
   authType?: AuthType; // Authentication type: basic (normal), e2s (care/employee impersonation), s2s (shopper delegation)
   isE2S: boolean; // DEPRECATED: Use authType === 'e2s' instead. Only true for e2s (care), NOT s2s (delegation)
+  careAgentId?: string; // Impersonating employee's Workers Service worker GUID (resolved from SSO `del.accountName`) — only on e2s/e2s2s
+  careAgentUsernameHash?: string; // Keyed HMAC-SHA256 of the JOMAX accountName; fallback minted only when the worker-GUID lookup fails — only on e2s/e2s2s
   useTestBudget?: boolean; // When true, bypass grants and use test-accounts budget (switchboard: appbuilder-test-budget)
   budgetServiceEnabled?: boolean; // When true, use Budget Service flow instead of legacy grants (switchboard: app-builder-budget-service)
   subscriptionId?: string; // Subscription ID for Budget Service API calls
