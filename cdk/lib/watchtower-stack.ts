@@ -52,11 +52,41 @@ export class WatchtowerStack extends GDStack {
     // ALB ARN format: arn:aws:...:loadbalancer/app/<name>/<id>  →  app/<name>/<id>
     const albLoadBalancerName = appAlbArn ? (appAlbArn.split('loadbalancer/')[1] ?? '') : '';
 
+    // Agents ESSP log index — only dev-private exists on the non-prod cluster.
+    // Point both dev and test Watchtower at dev-private (same pattern as app-test).
+    // Prod index is assumed but not yet verified against the prod cluster.
+    const AGENTS_LOG_INDEX_BY_ENV: Record<string, string> = {
+      dev: 'logs-gdelastic.katana.agents-dev-private-ecs*',
+      test: 'logs-gdelastic.katana.agents-dev-private-ecs*',
+      prod: 'logs-gdelastic.katana.agents-prod-ecs*',
+    };
+    const agentsLogIndex = AGENTS_LOG_INDEX_BY_ENV[config.envName] ?? 'logs-gdelastic.katana.agents-prod-ecs*';
+
+    // Loki env label — verified from live Loki label API (only "dev" and "prod" exist):
+    // dev-private Nomad containers → env="dev"
+    // test + prod Nomad containers → env="prod"
+    const LOKI_ENV_BY_ENV: Record<string, string> = { dev: 'dev', test: 'prod', prod: 'prod' };
+    const lokiEnv = LOKI_ENV_BY_ENV[config.envName] ?? 'prod';
+    const lokiApiKeySecretName = `${config.envName}-watchtower-loki-api-key`;
+
     // ---- Slack webhook secret (CDK-owned, ops fills via console once) ----
     // `generateStringKey: 'initialValue'` is intentional — it must NOT be a key
     // already present in `secretStringTemplate`. CDK appends a random string at
     // this key; if it matched `webhookUrl`, CDK would overwrite the REPLACE_ME
     // placeholder with a random value, producing 401 errors before ops fills it.
+    // Loki API key secret (Grafana service account token). Ops fills after deploy:
+    // set SecretString to the glsa_... token from Grafana → Service Accounts.
+    const lokiApiKeySecret = new secretsmanager.Secret(this, 'WatchtowerLokiApiKeySecret', {
+      secretName: lokiApiKeySecretName,
+      description: 'Grafana Loki API key for Watchtower. Populate with glsa_... token from Grafana service account.',
+      generateSecretString: {
+        generateStringKey: 'initialValue',
+        secretStringTemplate: JSON.stringify({ placeholder: 'REPLACE_ME' }),
+        excludeCharacters: '"@/\\\\',
+      },
+      removalPolicy: config.envName === 'dev' ? cdk.RemovalPolicy.DESTROY : cdk.RemovalPolicy.RETAIN,
+    });
+
     const slackWebhookSecret = new secretsmanager.Secret(this, 'WatchtowerSlackWebhookSecret', {
       secretName: slackSecretName,
       description: 'Slack incoming webhook URL for Watchtower digest. Populated manually post-deploy.',
@@ -96,6 +126,7 @@ export class WatchtowerStack extends GDStack {
                 `arn:aws:secretsmanager:${cdk.Aws.REGION}:${cdk.Aws.ACCOUNT_ID}:secret:${ES_SECRET_NAME}*`,
                 `arn:aws:secretsmanager:${cdk.Aws.REGION}:${cdk.Aws.ACCOUNT_ID}:secret:${slackSecretName}*`,
                 `arn:aws:secretsmanager:${cdk.Aws.REGION}:${cdk.Aws.ACCOUNT_ID}:secret:${config.airoBuilderEsApiKeySecret}*`,
+                `arn:aws:secretsmanager:${cdk.Aws.REGION}:${cdk.Aws.ACCOUNT_ID}:secret:${lokiApiKeySecretName}*`,
               ],
             }),
             new iam.PolicyStatement({
@@ -154,6 +185,14 @@ export class WatchtowerStack extends GDStack {
         // ALB_LOAD_BALANCER_NAME is empty string when appAlbArn is unset (prod TBD);
         // the Lambda skips CloudWatch collection gracefully when this is empty.
         ALB_LOAD_BALANCER_NAME: albLoadBalancerName,
+        APM_TRACES_INDEX: 'traces-apm*',
+        AGENTS_LOG_INDEX: agentsLogIndex,
+        // Loki: Grafana datasource proxy for the prod monitoring cluster.
+        // Both prod and non-prod Watchtower stacks point at the same Grafana instance;
+        // LOKI_ENV controls which container env label is queried.
+        LOKI_ENDPOINT: 'https://grafana.monitoring.gd3p.tools/api/datasources/proxy/uid/ff18mpwxpc7wgd',
+        LOKI_API_KEY_SECRET: lokiApiKeySecretName,
+        LOKI_ENV: lokiEnv,
         // GoCode S2S for LLM daily reasoner (Phase 2)
         // Use cdk.Aws.ACCOUNT_ID (deployment account) not config.account —
         // config.account differs from the deployment account in test (269423819379 vs 694282668781).
@@ -182,6 +221,7 @@ export class WatchtowerStack extends GDStack {
     this.fn.node.addDependency(this.fnRole);
     this.fn.node.addDependency(logGroup);
     this.fn.node.addDependency(slackWebhookSecret);
+    this.fn.node.addDependency(lokiApiKeySecret);
 
     cdk.Tags.of(this).add('Service', 'airo-app-builder');
     cdk.Tags.of(this).add('Component', 'watchtower');

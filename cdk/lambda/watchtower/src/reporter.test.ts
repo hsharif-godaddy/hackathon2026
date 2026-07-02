@@ -35,6 +35,24 @@ describe('buildDigestBlocks', () => {
     expect(s).toContain('8.00%'); // observed 0.08 → 8.00%, not the raw fraction
     expect(s).toContain('1.00%'); // median 0.01 → 1.00%
   });
+
+  it('renders trend candidates with escalating-trend format instead of z-score', () => {
+    const s = JSON.stringify(buildDigestBlocks(withTraffic, [
+      {
+        stat: 'alb_5xx_count',
+        observed: 1701,
+        median: 76,
+        robustZ: 0,
+        severity: 'P2',
+        trend_streak: 3,
+        trend_values: [76, 164, 664, 1701],
+      },
+    ]));
+    expect(s).toContain('3-day escalating trend');
+    expect(s).toContain('76');
+    expect(s).toContain('1701');
+    expect(s).not.toContain('z=');
+  });
 });
 
 describe('postSlack', () => {

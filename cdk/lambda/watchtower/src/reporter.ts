@@ -9,6 +9,17 @@ function fmtStat(stat: Candidate['stat'], value: number): string {
   return String(stat).endsWith('_rate') ? `${(value * 100).toFixed(2)}%` : String(value);
 }
 
+function fmtCandidate(c: Candidate): string {
+  if (c.trend_streak != null) {
+    const vals = (c.trend_values ?? []).map((v) => fmtStat(c.stat, v)).join('→');
+    return `*${c.severity}* \`${c.stat}\` — ${c.trend_streak}-day escalating trend: ${vals}`;
+  }
+  if (c.robustZ === 0) {
+    return `*${c.severity}* \`${c.stat}\` — observed ${fmtStat(c.stat, c.observed)} (threshold alert)`;
+  }
+  return `*${c.severity}* \`${c.stat}\` — observed ${fmtStat(c.stat, c.observed)} vs median ${fmtStat(c.stat, c.median)} (z=${c.robustZ.toFixed(1)})`;
+}
+
 const SEVERITY_EMOJI: Record<string, string> = {
   P1: ':red_circle:',
   P2: ':large_yellow_circle:',
@@ -64,9 +75,7 @@ export function buildDigestBlocks(today: StatData, candidates: Candidate[], verd
           type: 'section',
           text: {
             type: 'mrkdwn',
-            text: c.robustZ === 0
-              ? `*${c.severity}* \`${c.stat}\` — observed ${fmtStat(c.stat, c.observed)} (threshold alert)`
-              : `*${c.severity}* \`${c.stat}\` — observed ${fmtStat(c.stat, c.observed)} vs median ${fmtStat(c.stat, c.median)} (z=${c.robustZ.toFixed(1)})`,
+            text: fmtCandidate(c),
           },
         });
       }
@@ -84,9 +93,7 @@ export function buildDigestBlocks(today: StatData, candidates: Candidate[], verd
         type: 'section',
         text: {
           type: 'mrkdwn',
-          text: c.robustZ === 0
-            ? `*${c.severity}* \`${c.stat}\` — observed ${fmtStat(c.stat, c.observed)} (threshold alert)`
-            : `*${c.severity}* \`${c.stat}\` — observed ${fmtStat(c.stat, c.observed)} vs median ${fmtStat(c.stat, c.median)} (z=${c.robustZ.toFixed(1)})`,
+          text: fmtCandidate(c),
         },
       });
     }
@@ -104,9 +111,7 @@ export function buildDigestBlocks(today: StatData, candidates: Candidate[], verd
         type: 'section',
         text: {
           type: 'mrkdwn',
-          text: c.robustZ === 0
-            ? `*${c.severity}* \`${c.stat}\` — observed ${fmtStat(c.stat, c.observed)} (threshold alert)`
-            : `*${c.severity}* \`${c.stat}\` — observed ${fmtStat(c.stat, c.observed)} vs median ${fmtStat(c.stat, c.median)} (z=${c.robustZ.toFixed(1)})`,
+          text: fmtCandidate(c),
         },
       });
     }
@@ -123,6 +128,34 @@ export function buildDigestBlocks(today: StatData, candidates: Candidate[], verd
         `create_ok ${(today.create_success + today.create_failure) > 0 ? `${(today.create_success_rate * 100).toFixed(1)}%` : 'N/A'}`,
         `ttft_p95 ${Math.round(today.sse_first_response_p95_ms)}ms`,
         `alb_5xx ${today.alb_5xx_count}`,
+      ].join(' · '),
+    }],
+  });
+  blocks.push({
+    type: 'context',
+    elements: [{
+      type: 'mrkdwn',
+      text: [
+        `agents_http ${today.agents_http_throughput}req err=${(today.agents_http_error_rate * 100).toFixed(1)}% p95=${today.agents_http_p95_ms}ms`,
+        `chat ${today.agents_chat_throughput}sess p95=${today.agents_chat_p95_ms}ms`,
+        `invocations ${today.agents_invocation_count} fail=${today.agents_invocation_failure_count} abort=${today.agents_invocation_abort_count}`,
+        `ai_calls ${today.agents_ai_call_count}(dev-priv)`,
+        `outbound_timeouts ${today.agents_outbound_timeout_count}`,
+      ].join(' · '),
+    }],
+  });
+  blocks.push({
+    type: 'context',
+    elements: [{
+      type: 'mrkdwn',
+      text: [
+        `agent_runs ${today.agent_run_count}`,
+        `tool_fail ${today.tool_failure_count}`,
+        `skill_fail ${today.skill_activation_failure_count}`,
+        `typecheck_fail ${today.typecheck_failure_count}`,
+        `budget_exhausted ${today.budget_exhaustion_count}`,
+        `preview_5xx ${today.preview_http_5xx_count}(502:${today.preview_http_502_count})`,
+        `publish_5xx ${today.publish_http_5xx_count}`,
       ].join(' · '),
     }],
   });

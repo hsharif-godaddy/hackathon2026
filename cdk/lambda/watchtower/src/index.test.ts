@@ -21,9 +21,11 @@ vi.mock('./writer.js', () => ({
 vi.mock('./detector.js', () => ({
   loadBaselines: vi.fn().mockResolvedValue({}),
   loadRecentRows: vi.fn().mockResolvedValue([]),
+  loadRecentDailyStats: vi.fn().mockResolvedValue([]),
   loadRecentDailyNotes: vi.fn().mockResolvedValue([]),
   loadEventNameBaseline: vi.fn().mockResolvedValue(new Set<string>()),
   detectSeries: vi.fn().mockReturnValue([]),
+  detectTrends: vi.fn().mockReturnValue([]),
 }));
 vi.mock('./aggregate.js', () => ({ aggregateDay: vi.fn().mockReturnValue({ log_count: 10 }) }));
 vi.mock('./reporter.js', () => ({ buildDigestBlocks: () => [], postSlack: vi.fn().mockResolvedValue(true) }));
@@ -77,14 +79,15 @@ describe('handler', () => {
     expect(writeStatsDoc).toHaveBeenCalledOnce();
   });
 
-  it('daily mode calls loadRecentRows + loadBaselines + detectSeries + aggregateDay + postSlack, never collectHour', async () => {
+  it('daily mode calls loadRecentRows + loadBaselines + detectSeries + aggregateDay + postSlack; calls collectHour once for fresh 24h latency', async () => {
     expect(await handler({ mode: 'daily' })).toEqual({ ok: true, mode: 'daily', posted: true });
     expect(loadRecentRows).toHaveBeenCalledOnce();
     expect(loadBaselines).toHaveBeenCalledOnce();
     expect(detectSeries).toHaveBeenCalledOnce();
     expect(aggregateDay).toHaveBeenCalledOnce();
     expect(postSlack).toHaveBeenCalledOnce();
-    expect(collectHour).not.toHaveBeenCalled();
+    // collectHour is called once in daily mode for fresh 24h SSE latency (not to write a row)
+    expect(collectHour).toHaveBeenCalledOnce();
     expect(writeStatsDoc).not.toHaveBeenCalled();
   });
 

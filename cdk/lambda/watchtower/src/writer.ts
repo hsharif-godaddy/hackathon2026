@@ -7,8 +7,18 @@ export function buildStatsDoc(
   atIso: string,
   notes: string,
   errorEventNames: string[] = [],
+  agentToolNames: string[] = [],
+  failedSkillNames: string[] = [],
+  topToolNames: string[] = [],
 ): StatsDoc {
-  return { '@timestamp': atIso, window, data, error_event_names: errorEventNames, notes };
+  return {
+    '@timestamp': atIso, window, data,
+    error_event_names: errorEventNames,
+    agent_tool_names: agentToolNames,
+    failed_skill_names: failedSkillNames,
+    top_tool_names: topToolNames,
+    notes,
+  };
 }
 
 export async function writeStatsDoc(client: Client, statsIndex: string, doc: StatsDoc): Promise<void> {

@@ -13,6 +13,13 @@ export interface WatchtowerConfig {
   apmServiceName: string;
   // Source C: CloudWatch ALB — empty string means skip CloudWatch collection
   albLoadBalancerName: string;
+  // Source D/E: Agents APM + traces
+  tracesIndex: string;
+  agentsLogIndex: string;
+  // Source G: Loki — empty strings mean skip Loki collection (graceful degradation)
+  lokiEndpoint: string;
+  lokiApiKey: string;
+  lokiEnv: string;
   // GoCode S2S for LLM reasoner — empty string means skip LLM (graceful degradation)
   gocodeRoleArn: string;
   gocodeEndpoint: string;
@@ -47,6 +54,12 @@ export async function loadConfig(env: NodeJS.ProcessEnv): Promise<WatchtowerConf
   const esApiKeySecret = env.AIRO_BUILDER_ES_API_KEY_SECRET;
   if (!node || !esApiKeySecret) throw new Error('missing AIRO_BUILDER_ES_ENDPOINT/AIRO_BUILDER_ES_API_KEY_SECRET');
   const apiKey = await getSecret(client, esApiKeySecret);
+  // Loki API key lives in ASM as a plain string (the glsa_... token directly,
+  // not JSON-wrapped). Empty secret name means skip Loki collection.
+  const lokiApiKeySecretName = env.LOKI_API_KEY_SECRET ?? '';
+  const lokiApiKeyRaw = lokiApiKeySecretName ? (await getSecret(client, lokiApiKeySecretName)).trim() : '';
+  // Guard: CDK placeholder secret is JSON; a real token starts with "glsa_"
+  const lokiApiKey = lokiApiKeyRaw.startsWith('glsa_') ? lokiApiKeyRaw : '';
   return {
     esWrite,
     esRead: { node, apiKey },
@@ -56,6 +69,11 @@ export async function loadConfig(env: NodeJS.ProcessEnv): Promise<WatchtowerConf
     apmIndex: env.APM_INDEX ?? 'metrics-apm.service_transaction.1m*',
     apmServiceName: env.APM_SERVICE_NAME ?? '',
     albLoadBalancerName: env.ALB_LOAD_BALANCER_NAME ?? '',
+    tracesIndex: env.APM_TRACES_INDEX ?? 'traces-apm*',
+    agentsLogIndex: env.AGENTS_LOG_INDEX ?? '',
+    lokiEndpoint: env.LOKI_ENDPOINT ?? '',
+    lokiApiKey,
+    lokiEnv: env.LOKI_ENV ?? 'prod',
     gocodeRoleArn: env.GOCODE_ROLE_ARN ?? '',
     gocodeEndpoint: env.GOCODE_ENDPOINT ?? '',
     ssoHost: env.SSO_HOST ?? 'sso.test-godaddy.com',

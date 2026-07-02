@@ -74,8 +74,16 @@ describe('aggregateDay', () => {
     expect(result.alb_p95_ms).toBe(1500);
   });
 
-  it('averages req_error_rate over APM-active hours only', () => {
-    // r1 has APM traffic; r2 has no APM traffic (throughput=0)
+  it('computes req_error_rate as traffic-weighted average, not unweighted', () => {
+    // r1: 10000 req at 10% error = 1000 errors
+    // r2:  1000 req at 50% error =  500 errors
+    // weighted: 1500 / 11000 ≈ 13.6% (unweighted average would be 30%)
+    const r1 = { ...emptyStatData(), req_throughput: 10000, req_error_rate: 0.1 };
+    const r2 = { ...emptyStatData(), req_throughput: 1000, req_error_rate: 0.5 };
+    expect(aggregateDay([r1, r2]).req_error_rate).toBeCloseTo(1500 / 11000, 5);
+  });
+
+  it('excludes zero-throughput hours from req_error_rate (collector failure guard)', () => {
     const r1 = { ...emptyStatData(), req_throughput: 5000, req_error_rate: 0.1 };
     const r2 = { ...emptyStatData(), req_throughput: 0, req_error_rate: 0 };
     expect(aggregateDay([r1, r2]).req_error_rate).toBeCloseTo(0.1, 5);
