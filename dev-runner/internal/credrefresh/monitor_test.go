@@ -28,6 +28,38 @@ func (r *mockRunner) Run(ctx context.Context, name string, args ...string) error
 	return nil
 }
 
+type mockRefresher struct {
+	mu       sync.Mutex
+	calls    int
+	failNext bool
+	newTTL   time.Duration
+	homeDir  string
+	session  string
+}
+
+func (r *mockRefresher) Refresh(ctx context.Context, profile string) (time.Duration, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.calls++
+	if r.failNext {
+		return 0, fmt.Errorf("mock: OIDC refresh failed")
+	}
+	// Write a new token to disk so CheckToken sees the refreshed TTL
+	if r.homeDir != "" && r.session != "" {
+		writeTokenToCache(r.homeDir, r.session, time.Now().Add(r.newTTL))
+	}
+	return r.newTTL, nil
+}
+
+func writeTokenToCache(homeDir string, sessionName string, expiresAt time.Time) {
+	cacheDir := filepath.Join(homeDir, ".aws", "sso", "cache")
+	_ = os.MkdirAll(cacheDir, 0755)
+	hash := fmt.Sprintf("%x", sha1.Sum([]byte(sessionName)))
+	token := map[string]string{"expiresAt": expiresAt.UTC().Format(time.RFC3339)}
+	data, _ := json.Marshal(token)
+	_ = os.WriteFile(filepath.Join(cacheDir, hash+".json"), data, 0644)
+}
+
 func writeTestToken(t *testing.T, homeDir string, sessionName string, expiresAt time.Time) {
 	t.Helper()
 	cacheDir := filepath.Join(homeDir, ".aws", "sso", "cache")
@@ -69,6 +101,7 @@ func TestMonitor_HealthyToken(t *testing.T) {
 	writeTestToken(t, homeDir, "test-sess", time.Now().Add(45*time.Minute))
 
 	runner := &mockRunner{}
+	refresher := &mockRefresher{newTTL: 8 * time.Hour, homeDir: homeDir, session: "test-sess"}
 	cfg := Config{
 		CheckInterval:    50 * time.Millisecond,
 		RefreshThreshold: 10 * time.Minute,
@@ -87,7 +120,7 @@ func TestMonitor_HealthyToken(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
 
-	mon := NewMonitor(cfg, runner, homeDir)
+	mon := NewMonitorWithRefresher(cfg, runner, refresher, homeDir)
 	mon.Start(ctx, send)
 
 	<-ctx.Done()
@@ -103,10 +136,10 @@ func TestMonitor_HealthyToken(t *testing.T) {
 		t.Errorf("expected StatusMsg, got %T", msgs[0])
 	}
 	// No refresh should have been attempted
-	runner.mu.Lock()
-	defer runner.mu.Unlock()
-	if len(runner.calls) != 0 {
-		t.Errorf("expected no refresh calls, got %d", len(runner.calls))
+	refresher.mu.Lock()
+	defer refresher.mu.Unlock()
+	if refresher.calls != 0 {
+		t.Errorf("expected no refresh calls, got %d", refresher.calls)
 	}
 }
 
@@ -116,6 +149,7 @@ func TestMonitor_NearExpiry_RefreshSuccess(t *testing.T) {
 	writeTestToken(t, homeDir, "test-sess", time.Now().Add(8*time.Minute))
 
 	runner := &mockRunner{}
+	refresher := &mockRefresher{newTTL: 8 * time.Hour, homeDir: homeDir, session: "test-sess"}
 	cfg := Config{
 		CheckInterval:    50 * time.Millisecond,
 		RefreshThreshold: 10 * time.Minute,
@@ -134,7 +168,7 @@ func TestMonitor_NearExpiry_RefreshSuccess(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
 
-	mon := NewMonitor(cfg, runner, homeDir)
+	mon := NewMonitorWithRefresher(cfg, runner, refresher, homeDir)
 	mon.Start(ctx, send)
 
 	<-ctx.Done()
@@ -150,13 +184,13 @@ func TestMonitor_NearExpiry_RefreshSuccess(t *testing.T) {
 		}
 	}
 	if !hasRefreshed {
-		t.Error("expected RefreshedMsg after near-expiry silent refresh")
+		t.Error("expected RefreshedMsg after near-expiry OIDC refresh")
 	}
 
-	runner.mu.Lock()
-	defer runner.mu.Unlock()
-	if len(runner.calls) == 0 {
-		t.Error("expected at least one STS call")
+	refresher.mu.Lock()
+	defer refresher.mu.Unlock()
+	if refresher.calls == 0 {
+		t.Error("expected at least one OIDC refresh call")
 	}
 }
 
@@ -165,7 +199,9 @@ func TestMonitor_NearExpiry_RefreshFails(t *testing.T) {
 	writeTestConfig(t, homeDir, "test-prof", "test-sess")
 	writeTestToken(t, homeDir, "test-sess", time.Now().Add(8*time.Minute))
 
+	// Both OIDC refresh and CLI fallback fail
 	runner := &mockRunner{failNext: true}
+	refresher := &mockRefresher{failNext: true, homeDir: homeDir, session: "test-sess"}
 	cfg := Config{
 		CheckInterval:    50 * time.Millisecond,
 		RefreshThreshold: 10 * time.Minute,
@@ -184,7 +220,7 @@ func TestMonitor_NearExpiry_RefreshFails(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
 
-	mon := NewMonitor(cfg, runner, homeDir)
+	mon := NewMonitorWithRefresher(cfg, runner, refresher, homeDir)
 	mon.Start(ctx, send)
 
 	<-ctx.Done()
@@ -235,6 +271,8 @@ func TestMonitor_PostRefreshLowTTL_ReasonRefreshFailed(t *testing.T) {
 	writeTestToken(t, homeDir, "test-sess", time.Now().Add(8*time.Minute))
 
 	runner := &mockRunner{}
+	// OIDC refresh "succeeds" but only extends to 8 minutes (below MinUsableTTL of 15m)
+	refresher := &mockRefresher{newTTL: 8 * time.Minute, homeDir: homeDir, session: "test-sess"}
 	cfg := Config{
 		CheckInterval:    50 * time.Millisecond,
 		RefreshThreshold: 10 * time.Minute,
@@ -254,7 +292,7 @@ func TestMonitor_PostRefreshLowTTL_ReasonRefreshFailed(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
 
-	mon := NewMonitor(cfg, runner, homeDir)
+	mon := NewMonitorWithRefresher(cfg, runner, refresher, homeDir)
 	mon.Start(ctx, send)
 
 	<-ctx.Done()
@@ -308,6 +346,7 @@ func TestMonitor_MultiProfile_NoEarlyReturn(t *testing.T) {
 	writeTestToken(t, homeDir, "healthy-sess", time.Now().Add(45*time.Minute))
 
 	runner := &mockRunner{}
+	refresher := &mockRefresher{failNext: true, homeDir: homeDir, session: "expired-sess"}
 	cfg := Config{
 		CheckInterval:    50 * time.Millisecond,
 		RefreshThreshold: 10 * time.Minute,
@@ -327,7 +366,7 @@ func TestMonitor_MultiProfile_NoEarlyReturn(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
 
-	mon := NewMonitor(cfg, runner, homeDir)
+	mon := NewMonitorWithRefresher(cfg, runner, refresher, homeDir)
 	mon.Start(ctx, send)
 
 	<-ctx.Done()
@@ -364,6 +403,7 @@ func TestMonitor_ContextCancelled(t *testing.T) {
 	writeTestToken(t, homeDir, "test-sess", time.Now().Add(45*time.Minute))
 
 	runner := &mockRunner{}
+	refresher := &mockRefresher{newTTL: 8 * time.Hour, homeDir: homeDir, session: "test-sess"}
 	cfg := Config{
 		CheckInterval:    1 * time.Second,
 		RefreshThreshold: 10 * time.Minute,
@@ -372,7 +412,7 @@ func TestMonitor_ContextCancelled(t *testing.T) {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	mon := NewMonitor(cfg, runner, homeDir)
+	mon := NewMonitorWithRefresher(cfg, runner, refresher, homeDir)
 
 	done := make(chan struct{})
 	go func() {
@@ -386,5 +426,60 @@ func TestMonitor_ContextCancelled(t *testing.T) {
 		// goroutine exited
 	case <-time.After(1 * time.Second):
 		t.Fatal("monitor did not exit after context cancel")
+	}
+}
+
+func TestMonitor_NearExpiry_OIDCFails_CLINoExtend_ReportsFailure(t *testing.T) {
+	homeDir := t.TempDir()
+	writeTestConfig(t, homeDir, "test-prof", "test-sess")
+	writeTestToken(t, homeDir, "test-sess", time.Now().Add(8*time.Minute))
+
+	// OIDC fails; CLI succeeds but cannot extend the SSO token TTL
+	runner := &mockRunner{}
+	refresher := &mockRefresher{failNext: true, homeDir: homeDir, session: "test-sess"}
+	cfg := Config{
+		CheckInterval:    50 * time.Millisecond,
+		RefreshThreshold: 10 * time.Minute,
+		MinUsableTTL:     5 * time.Minute,
+		Profiles:         []string{"test-prof"},
+		ProjectRoot:      homeDir,
+	}
+
+	var msgs []Msg
+	var mu sync.Mutex
+	send := func(m Msg) {
+		mu.Lock()
+		msgs = append(msgs, m)
+		mu.Unlock()
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+
+	mon := NewMonitorWithRefresher(cfg, runner, refresher, homeDir)
+	mon.Start(ctx, send)
+
+	<-ctx.Done()
+	time.Sleep(50 * time.Millisecond)
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	// CLI did not extend the token, so no RefreshedMsg should be emitted
+	for _, m := range msgs {
+		if _, ok := m.(RefreshedMsg); ok {
+			t.Error("should not emit RefreshedMsg when CLI did not extend token TTL")
+		}
+	}
+
+	// Should report the OIDC failure via ExpiredMsg
+	hasExpired := false
+	for _, m := range msgs {
+		if _, ok := m.(ExpiredMsg); ok {
+			hasExpired = true
+		}
+	}
+	if !hasExpired {
+		t.Error("expected ExpiredMsg surfacing the OIDC refresh failure")
 	}
 }

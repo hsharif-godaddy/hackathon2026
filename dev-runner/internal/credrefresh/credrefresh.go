@@ -52,7 +52,7 @@ type Config struct {
 func DefaultConfig(profiles []string, projectRoot string) Config {
 	return Config{
 		CheckInterval:    2 * time.Minute,
-		RefreshThreshold: 10 * time.Minute,
+		RefreshThreshold: 30 * time.Minute,
 		MinUsableTTL:     5 * time.Minute,
 		Profiles:         profiles,
 		ProjectRoot:      projectRoot,
@@ -82,6 +82,39 @@ type Status struct {
 	Message   string
 }
 
+// SSOTokenCache represents the SSO token cache file contents.
+// Uses a raw map to preserve unknown fields that other AWS tooling may depend on.
+type SSOTokenCache struct {
+	raw map[string]any
+}
+
+func (c *SSOTokenCache) AccessToken() string  { return c.getString("accessToken") }
+func (c *SSOTokenCache) ExpiresAt() string    { return c.getString("expiresAt") }
+func (c *SSOTokenCache) RefreshToken() string { return c.getString("refreshToken") }
+func (c *SSOTokenCache) ClientID() string     { return c.getString("clientId") }
+func (c *SSOTokenCache) ClientSecret() string { return c.getString("clientSecret") }
+
+func (c *SSOTokenCache) SetAccessToken(v string)  { c.raw["accessToken"] = v }
+func (c *SSOTokenCache) SetExpiresAt(v string)    { c.raw["expiresAt"] = v }
+func (c *SSOTokenCache) SetRefreshToken(v string) { c.raw["refreshToken"] = v }
+
+func (c *SSOTokenCache) getString(key string) string {
+	v, _ := c.raw[key].(string)
+	return v
+}
+
+func ParseSSOTokenCache(data []byte) (*SSOTokenCache, error) {
+	var raw map[string]any
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return nil, err
+	}
+	return &SSOTokenCache{raw: raw}, nil
+}
+
+func (c *SSOTokenCache) Marshal() ([]byte, error) {
+	return json.Marshal(c.raw)
+}
+
 // ssoTokenInfo is the subset of an SSO access token cache file we need.
 type ssoTokenInfo struct {
 	ExpiresAt string `json:"expiresAt"`
@@ -93,6 +126,134 @@ type ssoTokenInfo struct {
 func cachedTokenFilepath(homeDir string, cacheKey string) string {
 	hash := fmt.Sprintf("%x", sha1.Sum([]byte(cacheKey)))
 	return filepath.Join(homeDir, ".aws", "sso", "cache", hash+".json")
+}
+
+// ResolveSSO resolves the SSO session name and region for a profile.
+// Returns (sessionName, ssoRegion, error).
+func ResolveSSO(profile string, homeDir string) (string, string, error) {
+	if homeDir == "" {
+		var err error
+		homeDir, err = os.UserHomeDir()
+		if err != nil {
+			return "", "", fmt.Errorf("cannot determine home directory: %w", err)
+		}
+	}
+
+	awsDir := filepath.Join(homeDir, ".aws")
+	configPath := filepath.Join(awsDir, "config")
+
+	cfg, err := awsconfig.LoadSharedConfigProfile(context.Background(), profile,
+		func(o *awsconfig.LoadSharedConfigOptions) {
+			o.ConfigFiles = []string{configPath}
+			o.CredentialsFiles = []string{filepath.Join(awsDir, "credentials")}
+		},
+	)
+	if err != nil {
+		return "", "", fmt.Errorf("profile %q: %w", profile, err)
+	}
+
+	switch {
+	case cfg.SSOSession != nil:
+		return cfg.SSOSession.Name, cfg.SSOSession.SSORegion, nil
+	case cfg.SSOStartURL != "":
+		return cfg.SSOStartURL, cfg.SSORegion, nil
+	default:
+		return "", "", fmt.Errorf("profile %q is not an SSO profile", profile)
+	}
+}
+
+// ReadTokenCache reads the full SSO token cache file for a profile.
+func ReadTokenCache(profile string, homeDir string) (*SSOTokenCache, string, error) {
+	homeDirOverride := homeDir != ""
+	if !homeDirOverride {
+		var err error
+		homeDir, err = os.UserHomeDir()
+		if err != nil {
+			return nil, "", fmt.Errorf("cannot determine home directory: %w", err)
+		}
+	}
+
+	awsDir := filepath.Join(homeDir, ".aws")
+	configPath := filepath.Join(awsDir, "config")
+
+	cfg, err := awsconfig.LoadSharedConfigProfile(context.Background(), profile,
+		func(o *awsconfig.LoadSharedConfigOptions) {
+			o.ConfigFiles = []string{configPath}
+			o.CredentialsFiles = []string{filepath.Join(awsDir, "credentials")}
+		},
+	)
+	if err != nil {
+		return nil, "", fmt.Errorf("profile %q: %w", profile, err)
+	}
+
+	var cacheKey string
+	switch {
+	case cfg.SSOSession != nil:
+		cacheKey = cfg.SSOSession.Name
+	case cfg.SSOStartURL != "":
+		cacheKey = cfg.SSOStartURL
+	default:
+		return nil, "", fmt.Errorf("profile %q is not an SSO profile", profile)
+	}
+
+	var cachePath string
+	if homeDirOverride {
+		cachePath = cachedTokenFilepath(homeDir, cacheKey)
+	} else {
+		cachePath, err = ssocreds.StandardCachedTokenFilepath(cacheKey)
+		if err != nil {
+			return nil, "", fmt.Errorf("cache path: %w", err)
+		}
+	}
+
+	data, err := os.ReadFile(cachePath)
+	if err != nil {
+		return nil, "", fmt.Errorf("reading cache: %w", err)
+	}
+
+	cache, err := ParseSSOTokenCache(data)
+	if err != nil {
+		return nil, "", fmt.Errorf("parsing cache: %w", err)
+	}
+
+	return cache, cachePath, nil
+}
+
+// WriteTokenCache atomically writes the SSO token cache back to disk.
+// Uses write-to-temp + rename to avoid corrupting the cache if a crash or
+// concurrent reader observes a partial write.
+func WriteTokenCache(cachePath string, cache *SSOTokenCache) error {
+	data, err := cache.Marshal()
+	if err != nil {
+		return fmt.Errorf("marshaling cache: %w", err)
+	}
+
+	dir := filepath.Dir(cachePath)
+	tmp, err := os.CreateTemp(dir, ".sso-cache-*.tmp")
+	if err != nil {
+		return fmt.Errorf("creating temp file: %w", err)
+	}
+	tmpPath := tmp.Name()
+
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		os.Remove(tmpPath)
+		return fmt.Errorf("writing temp file: %w", err)
+	}
+	if err := tmp.Chmod(0600); err != nil {
+		tmp.Close()
+		os.Remove(tmpPath)
+		return fmt.Errorf("setting permissions: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		os.Remove(tmpPath)
+		return fmt.Errorf("closing temp file: %w", err)
+	}
+	if err := os.Rename(tmpPath, cachePath); err != nil {
+		os.Remove(tmpPath)
+		return fmt.Errorf("renaming temp to cache: %w", err)
+	}
+	return nil
 }
 
 // CheckToken reads the SSO cache for the given profile and returns its status.

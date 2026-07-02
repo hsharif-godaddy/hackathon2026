@@ -52,19 +52,31 @@ func (ExpiredMsg) credrefreshMsg() {}
 
 // Monitor periodically checks AWS SSO token validity and refreshes as needed.
 type Monitor struct {
-	cfg     Config
-	runner  CommandRunner
-	homeDir string // override for testing; "" uses os.UserHomeDir
-	paused  atomic.Bool
+	cfg       Config
+	runner    CommandRunner
+	refresher TokenRefresher
+	homeDir   string // override for testing; "" uses os.UserHomeDir
+	paused    atomic.Bool
 }
 
 // NewMonitor creates a new credential refresh monitor.
 // Pass homeDir="" for production (uses os.UserHomeDir).
 func NewMonitor(cfg Config, runner CommandRunner, homeDir string) *Monitor {
 	return &Monitor{
-		cfg:     cfg,
-		runner:  runner,
-		homeDir: homeDir,
+		cfg:       cfg,
+		runner:    runner,
+		refresher: NewOIDCRefresher(homeDir),
+		homeDir:   homeDir,
+	}
+}
+
+// NewMonitorWithRefresher creates a monitor with a custom TokenRefresher (for testing).
+func NewMonitorWithRefresher(cfg Config, runner CommandRunner, refresher TokenRefresher, homeDir string) *Monitor {
+	return &Monitor{
+		cfg:       cfg,
+		runner:    runner,
+		refresher: refresher,
+		homeDir:   homeDir,
 	}
 }
 
@@ -116,20 +128,34 @@ func (m *Monitor) check(ctx context.Context, send func(Msg)) {
 			continue
 		}
 
-		// Attempt silent refresh if within threshold
+		// Attempt silent OIDC token refresh if within threshold
 		if status.OK && status.TTL <= m.cfg.RefreshThreshold && status.TTL > 0 {
-			err := m.runner.Run(ctx, "aws", "sts", "get-caller-identity", "--profile", profile)
-			if err == nil {
+			preTTL := status.TTL
+			newTTL, refreshErr := m.refresher.Refresh(ctx, profile)
+			if refreshErr == nil {
 				status = CheckToken(profile, m.homeDir)
 				if status.TTL <= m.cfg.MinUsableTTL {
 					expiredProfiles = append(expiredProfiles, profile)
 					status = Status{Profile: profile, OK: false, Reason: ReasonRefreshFailed, TTL: status.TTL, Message: fmt.Sprintf("refreshed but TTL still too low (%s)", status.TTL.Truncate(time.Minute))}
 				} else {
-					send(RefreshedMsg{Profile: profile, TTL: status.TTL})
+					send(RefreshedMsg{Profile: profile, TTL: newTTL})
 				}
 			} else {
-				expiredProfiles = append(expiredProfiles, profile)
-				status = Status{Profile: profile, OK: false, Reason: ReasonRefreshFailed, Message: fmt.Sprintf("silent refresh failed: %s", err)}
+				// OIDC refresh failed — fall back to CLI (may trigger SDK-level refresh if token is expired)
+				cliErr := m.runner.Run(ctx, "aws", "sts", "get-caller-identity", "--profile", profile)
+				if cliErr == nil {
+					status = CheckToken(profile, m.homeDir)
+					if status.TTL > preTTL {
+						send(RefreshedMsg{Profile: profile, TTL: status.TTL})
+					} else {
+						// CLI succeeded but did not extend the token — OIDC is the real problem
+						expiredProfiles = append(expiredProfiles, profile)
+						status = Status{Profile: profile, OK: false, Reason: ReasonRefreshFailed, TTL: status.TTL, Message: fmt.Sprintf("OIDC refresh failed (%s), CLI did not extend token", refreshErr)}
+					}
+				} else {
+					expiredProfiles = append(expiredProfiles, profile)
+					status = Status{Profile: profile, OK: false, Reason: ReasonRefreshFailed, Message: fmt.Sprintf("silent refresh failed: %s", refreshErr)}
+				}
 			}
 		} else if !status.OK {
 			expiredProfiles = append(expiredProfiles, profile)
