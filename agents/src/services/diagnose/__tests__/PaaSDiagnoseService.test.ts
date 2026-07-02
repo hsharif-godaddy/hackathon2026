@@ -233,15 +233,13 @@ const llm = new FakeClassifier('llm', async () => ({ handled: true, issues: [] }
 
       expect(response.success).toBe(true);
       expect(response.analysis.status).toBe('noerrlog');
-      expect(response.analysis.issues[0]!.id).toBe('no-failure-detected');
-      // Summary counters must stay consistent with issues[].
-      expect(response.analysis.summary.totalIssues).toBe(response.analysis.issues.length);
-      expect(response.analysis.summary.warnings).toBe(
-        response.analysis.issues.filter((i) => i.severity === 'warning').length,
-      );
-      expect(response.analysis.summary.errors).toBe(
-        response.analysis.issues.filter((i) => i.severity === 'error').length,
-      );
+      // No actionable result: issues[] is empty so consumers render the single
+      // "unable to diagnose" state (issues.length === 0) rather than a synthetic finding.
+      expect(response.analysis.issues).toHaveLength(0);
+      // Summary counters must stay consistent with the empty issues[].
+      expect(response.analysis.summary.totalIssues).toBe(0);
+      expect(response.analysis.summary.warnings).toBe(0);
+      expect(response.analysis.summary.errors).toBe(0);
       expect(llm.calls).toBe(0);
     });
 
@@ -452,7 +450,7 @@ const llm = new FakeClassifier('llm', async () => ({ handled: true, issues: [] }
 
       expect(agentLogs.getFailureLogs).toHaveBeenCalled();
       expect(response.analysis.status).toBe('noerrlog');
-      expect(response.analysis.issues[0]!.message).toContain('Agent import/build history was also checked');
+      expect(response.analysis.issues).toHaveLength(0);
       expect(llm.calls).toBe(0);
     });
   });
@@ -487,6 +485,35 @@ const llm = new FakeClassifier('llm', async () => ({ handled: true, issues: [] }
 
       expect(response.analysis.status).toBe('healthy');
       expect(response.analysis.summary.totalIssues).toBe(0);
+    });
+
+    it('unifies the LLM insufficient-evidence sentinel into the empty "unable to diagnose" signal', async () => {
+      const logs = makeLogsService({ success: true, logs: makeLogs(), total: 1 });
+      const llm = new FakeClassifier('llm', async () => ({
+        handled: true,
+        status: 'unknown',
+        primaryRecommendation: 'Deploy again to produce fresh logs, then run diagnose again.',
+        issues: [
+          issue({
+            id: 'insufficient-log-evidence',
+            severity: 'warning',
+            message: 'Not enough logs to pinpoint a fix.',
+            source: 'llm',
+          }),
+        ],
+      }));
+
+      const svc = makeSvc({ customerLogsService: logs, llmClassifier: llm });
+      const response = await svc.diagnose(makeRequest());
+
+      // Issues emptied so the UI renders the same "unable to diagnose" state as noerrlog…
+      expect(response.analysis.issues).toHaveLength(0);
+      expect(response.analysis.summary.totalIssues).toBe(0);
+      // …but status stays 'unknown' (NOT noerrlog) so auto-fix never reads it as a verified success.
+      expect(response.analysis.status).toBe('unknown');
+      expect(response.analysis.summary.primaryRecommendation).toBe(
+        'Deploy again to produce fresh logs, then run diagnose again.',
+      );
     });
 
     it('captures analysisTimeMs via injected clock', async () => {

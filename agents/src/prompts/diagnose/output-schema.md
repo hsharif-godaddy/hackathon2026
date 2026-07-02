@@ -40,21 +40,21 @@ Rules:
 
 ### Platform-Outage Sentinel
 
-Use only when logs show platform/infrastructure failure with **no** customer code fix:
+Use whenever the failure is in a platform-owned step rather than the user's app — infrastructure/upstream outages, or provisioning, source synchronization, internal build orchestration, or artifact transfer the platform runs on the user's behalf. The user did not cause it and cannot fix it by editing their app, so do not hand them a workaround. Reassure them it's on our side and that retrying is the right move:
 
 ```json
 {
   "status": "unknown",
-  "primaryRecommendation": "The deployment platform is temporarily unavailable. Retry in a few minutes or contact support if the issue persists.",
+  "primaryRecommendation": "This failed on our side, not in your app. Please try deploying again in a few minutes — if it keeps failing, contact GoDaddy support.",
   "issues": [
     {
       "id": "platform-outage",
       "category": "Platform",
       "severity": "warning",
-      "message": "Logs indicate a platform or upstream infrastructure issue, not an application configuration problem.",
-      "recommendation": "Wait a few minutes and retry deployment. If failures continue, contact GoDaddy support with the cited log lines.",
+      "message": "This failure happened in a step we run for you, not in your application. There's nothing to change in your project.",
+      "recommendation": "Try deploying again in a few minutes. If it keeps failing, contact GoDaddy support with the cited log lines so we can look into it.",
       "confidence": 0,
-      "relatedLogs": ["verbatim infrastructure error line"]
+      "relatedLogs": ["verbatim platform error line"]
     }
   ]
 }
@@ -64,19 +64,19 @@ Use `id: 'platform-outage'` verbatim for this case.
 
 ### Insufficient-Evidence Response
 
-When logs exist but are too sparse for any concrete fix:
+This is the single, unified response for every case where there is too little to act on: the logs are empty, or they exist but contain no failure you can tie to a specific user-side fix. Return it **verbatim** rather than guessing at a cause or emitting a generic "check the logs" message:
 
 ```json
 {
   "status": "unknown",
-  "primaryRecommendation": "Re-trigger the failure to capture fresh logs, then run diagnose again.",
+  "primaryRecommendation": "We couldn't find a clear cause in the logs yet. Deploy again to produce fresh logs, then run diagnose again right away.",
   "issues": [
     {
       "id": "insufficient-log-evidence",
       "category": "Insufficient Evidence",
       "severity": "warning",
-      "message": "Not enough log or project context to determine a specific fix.",
-      "recommendation": "Re-run the failing deploy/build, then call diagnose again immediately while logs are fresh.",
+      "message": "There aren't enough logs yet to pinpoint a specific fix in your app.",
+      "recommendation": "Trigger the deploy or build again, then run diagnose again immediately while the logs are fresh.",
       "confidence": 15,
       "relatedLogs": ["up to 3 verbatim lines"]
     }

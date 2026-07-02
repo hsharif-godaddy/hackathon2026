@@ -223,7 +223,6 @@ export class PaaSDiagnoseService implements DiagnoseService {
           logsAnalyzed,
           startedAt,
           clock: this.clock,
-          checkedAgentImportLogs,
         }),
       };
     }
@@ -333,7 +332,7 @@ export class PaaSDiagnoseService implements DiagnoseService {
     }
 
     const analysis = this.assembleAnalysis({
-      result: llmResult,
+      result: normalizeNoActionableResult(llmResult),
       tierUsed: 'llm',
       logsAnalyzed,
       startedAt,
@@ -429,39 +428,22 @@ export function buildNoErrorLogAnalysis(args: {
   logsAnalyzed: number;
   startedAt: number;
   clock: () => number;
-  checkedAgentImportLogs?: boolean;
 }): Analysis {
-  const agentCheckedSuffix = args.checkedAgentImportLogs
-    ? ' Agent import/build history was also checked.'
-    : '';
-
   return {
     status: 'noerrlog',
-    issues: [
-      {
-        id: 'no-failure-detected',
-        category: 'No Failure Detected',
-        severity: 'warning',
-        message:
-          'No error-level or error-token log entries were found in the last 3 hours. ' +
-          'Possible reasons: (a) the deployment succeeded, (b) the failure is older than 3 hours, ' +
-          '(c) the container is still starting up.' +
-          agentCheckedSuffix,
-        recommendation:
-          'Wait a few minutes and retry, or re-trigger the failure to produce fresh logs.',
-        confidence: 100,
-        source: 'llm',
-      },
-    ],
-    // Summary counters must match issues[] so consumers that render badges
-    // from summary and consumers that iterate issues see the same state.
+    // No actionable issue to surface: the recent logs contained no failure we
+    // can diagnose. Return an empty issues[] so consumers render their single
+    // "unable to diagnose" state (issues.length === 0) rather than showing a
+    // synthetic finding. Status stays 'noerrlog' — auto-fix keys on it to treat
+    // this as "nothing to fix", and it's the one consistent signal for callers.
+    issues: [],
     summary: {
-      totalIssues: 1,
+      totalIssues: 0,
       errors: 0,
-      warnings: 1,
+      warnings: 0,
       primaryRecommendation:
-        'No error signals found in the last 3 hours. Retry in a few minutes or re-trigger the failure.' +
-        agentCheckedSuffix,
+        'No errors were found in the recent logs, so there is nothing to fix automatically. ' +
+        'Check your app logs manually if the app still is not working as expected.',
     },
     metadata: {
       logsAnalyzed: args.logsAnalyzed,
@@ -473,6 +455,24 @@ export function buildNoErrorLogAnalysis(args: {
 
 function hasFailureSignalInLogs(logs: SanitizedLogEntry[]): boolean {
   return logs.some((l) => l.level === 'error' || ERROR_TOKEN_RE.test(l.message));
+}
+
+// Unify the "no actionable result" outcomes into one signal. When the LLM
+// reports insufficient evidence (logs were present but nothing could be pinned
+// to a specific fix), drop its sentinel issue so the analysis carries the same
+// empty issues[] as the no-error-signal path — consumers then render a single
+// "unable to diagnose" state (issues.length === 0) for both. The LLM's status
+// ('unknown') and primaryRecommendation are preserved: 'unknown' (unlike
+// 'noerrlog') is never read as a verified success by auto-fix, which is correct
+// because errors WERE present, just not diagnosable.
+function normalizeNoActionableResult(result: ClassifierResult): ClassifierResult {
+  const isInsufficientEvidence: boolean =
+    result.issues.length > 0 &&
+    result.issues.every((issue) => issue.id === 'insufficient-log-evidence');
+  if (!isInsufficientEvidence) {
+    return result;
+  }
+  return { ...result, issues: [] };
 }
 
 function mapLogsErrorCode(code: string | undefined): DiagnoseErrorCode {

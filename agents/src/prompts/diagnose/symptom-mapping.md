@@ -6,7 +6,7 @@ The `Handling` column tells you what response shape to produce:
 
 - `error` / `warning` — emit a normal issue with that severity.
 - `actionable-app` — application/build/runtime bug; propose specific commands and file edits (use project context when available).
-- `platform-outage` — infrastructure failure with no customer fix (see Output Contract).
+- `platform-outage` — failure in a platform-owned step (infrastructure, provisioning, source synchronization, internal build orchestration, artifact transfer) that the user did not cause and cannot fix by editing their app. Use the platform-outage sentinel (see Output Contract); do not hand the user a workaround.
 
 | Log symptom | Maps to | Handling |
 | --- | --- | --- |
@@ -25,11 +25,12 @@ The `Handling` column tells you what response shape to produce:
 | `SyntaxError`, `ReferenceError`, `TypeError` in app stack | Runtime bug | actionable-app — cite stack frame file:line |
 | Supervisor timeout, no listen, no app error | Slow startup | warning |
 | Platform/supervisor unavailable, 503 upstream | Platform outage | platform-outage |
+| Failure inside a platform-owned step the user can't edit their way out of (provisioning, source sync/merge, internal build orchestration, artifact transfer) | Platform-side failure | platform-outage |
 
 Rules:
 
 - `Cannot find module 'lodash'` → npm package → `npm install lodash`.
 - `Cannot find module './routes'` → local path → fix import or add file.
-- Every recommendation must include a **concrete next step** (command, file path, or code change).
+- Every user-fixable recommendation must include a **concrete next step the user can take** (command, file path, or code change). If there is no such step because the failure is platform-side, use the platform-outage sentinel instead.
 - When multiple symptoms appear, surface only the proximate root cause as `error`.
 - Populate `actions` array when you can structure commands or file edits.
