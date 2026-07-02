@@ -80,7 +80,7 @@ export async function checkPaywallEligibility(
     }
 
     // Step 2: Check account-level subscription
-    logger.info('paywall.eligibility.subscription.fetch.start', { appId });
+    logger.info('paywall.eligibility.subscription.fetch.start', { appId, action });
     const accountSubscription = await provider.getAccountSubscription();
 
     if (!accountSubscription) {
@@ -94,6 +94,7 @@ export async function checkPaywallEligibility(
 
     logger.info('paywall.eligibility.subscription.fetch.success', {
       appId,
+      action,
       subscriptionId: accountSubscription.id,
       plan: accountSubscription.plan,
       status: accountSubscription.status,
@@ -107,6 +108,7 @@ export async function checkPaywallEligibility(
     const hasAccessByPlan = isPaidPlanForGrants(accountSubscription.plan);
     logger.info('paywall.eligibility.plan-tier-check', {
       appId,
+      action,
       plan: accountSubscription.plan,
       isPaidPlan: hasAccessByPlan,
     });
@@ -118,6 +120,7 @@ export async function checkPaywallEligibility(
       if (action === PaywallAction.Publish && !flags.bypassPublishLimit) {
         logger.info('paywall.eligibility.publish-limit-check.start', {
           appId,
+          action,
           plan: accountSubscription.plan,
         });
 
@@ -163,6 +166,7 @@ export async function checkPaywallEligibility(
 
         logger.info('paywall.eligibility.publish-limit-evaluated', {
           appId,
+          action,
           plan: accountSubscription.plan,
           effectivePlan,
           currentCount: publishedApps.count,
@@ -200,6 +204,7 @@ export async function checkPaywallEligibility(
         const durationMs = Date.now() - startTime;
         logger.info('paywall.eligibility.access-granted', {
           appId,
+          action,
           reason: 'user-has-paid-plan-under-limit',
           subscriptionId: accountSubscription.id,
           plan: accountSubscription.plan,
@@ -212,6 +217,7 @@ export async function checkPaywallEligibility(
         const durationMs = Date.now() - startTime;
         logger.info('paywall.eligibility.access-granted', {
           appId,
+          action,
           reason: flags.bypassPublishLimit ? 'bypass-publish-limit-enabled' : 'user-has-paid-plan',
           subscriptionId: accountSubscription.id,
           plan: accountSubscription.plan,

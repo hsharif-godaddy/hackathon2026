@@ -73,6 +73,7 @@ async function validateSiteAccess(siteId: string, user: CustomerUser, jwt: strin
     logger.error('agent-token.control-plane.app-exists-failed', {
       siteId,
       customerId: user.customerId,
+      action: PaywallAction.Publish,
       error: error instanceof Error ? error.message : String(error),
       errorType: error instanceof Error ? error.constructor.name : typeof error,
     });
@@ -83,6 +84,7 @@ async function validateSiteAccess(siteId: string, user: CustomerUser, jwt: strin
     logger.warn('agent-token.control-plane.site-not-found', {
       siteId,
       customerId: user.customerId,
+      action: PaywallAction.Publish,
     });
     return NextResponse.json({
       error: 'Site not found'
@@ -98,12 +100,14 @@ async function validateSiteAccess(siteId: string, user: CustomerUser, jwt: strin
 function resolvePaywallResult(
   result: PromiseSettledResult<Awaited<ReturnType<typeof checkPaywallEligibility>>>,
   siteId: string,
-  customerId: string
+  customerId: string,
+  action: PaywallAction
 ): { canDownload: boolean; canPublish: boolean } {
   if (result.status === 'rejected') {
     logger.error('agent-token.paywall-check.rejected', {
       siteId,
       customerId,
+      action,
       error: result.reason instanceof Error ? result.reason.message : String(result.reason),
       errorType: result.reason instanceof Error ? result.reason.constructor.name : typeof result.reason,
     });
@@ -132,6 +136,7 @@ function resolvePaywallResult(
     logger.info('agent-token.paywall-check.success', {
       siteId,
       customerId,
+      action,
       canPublish,
       canDownload,
       environment: process.env.NODE_ENV,
@@ -141,6 +146,7 @@ function resolvePaywallResult(
     logger.warn('agent-token.paywall-check.denied', {
       siteId,
       customerId,
+      action,
       ...eligibilityDetails,
     });
   }
@@ -268,6 +274,7 @@ function resolveSiteInfoFromGetSite(
     logger.warn('agent-token.get-site-info-failed', {
       siteId,
       customerId,
+      action: PaywallAction.Publish,
       error: result.reason instanceof Error ? result.reason.message : String(result.reason),
     });
     return null;
@@ -373,6 +380,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       logger.info('agent-token.paywall-check.start', {
         appId: body.siteId,
         customerId: user.customerId,
+        action: PaywallAction.Publish,
         cacheHit: true,
       });
       setApmAppId(body.siteId);
@@ -411,7 +419,14 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       ]);
       timing.parallelChecksMs = Date.now() - parallelStart;
 
-      ({ canDownload, canPublish } = resolvePaywallResult(paywallResult, body.siteId, user.customerId));
+      ({ canDownload, canPublish } = resolvePaywallResult(paywallResult, body.siteId, user.customerId, PaywallAction.Publish));
+      logger.info('agent-token.control-plane.check-passed', {
+        siteId: body.siteId,
+        customerId: user.customerId,
+        action: PaywallAction.Publish,
+        cacheHit: true,
+        durationMs: Date.now() - routeStart,
+      });
       canPurchaseDomain = resolveBooleanFlag(domainPurchaseResult, 'agent-token.domain-purchase-flag-check-failed', body.siteId, user.customerId);
       useTestBudget = resolveBooleanFlag(testBudgetResult, 'agent-token.test-budget-flag-check-failed', body.siteId, user.customerId);
       budgetServiceEnabled = resolveBooleanFlag(budgetServiceResult, 'agent-token.budget-service-flag-check-failed', body.siteId, user.customerId);
@@ -450,6 +465,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       logger.info('agent-token.paywall-check.start', {
         appId: body.siteId,
         customerId: user.customerId,
+        action: PaywallAction.Publish,
         cacheHit: false,
       });
       setApmAppId(body.siteId);
@@ -498,7 +514,16 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
         setSiteValidationCache(user.customerId, body.siteId, body.owningProduct);
       }
 
-      ({ canDownload, canPublish } = resolvePaywallResult(paywallResult, body.siteId, user.customerId));
+      ({ canDownload, canPublish } = resolvePaywallResult(paywallResult, body.siteId, user.customerId, PaywallAction.Publish));
+      if (!validationError) {
+        logger.info('agent-token.control-plane.check-passed', {
+          siteId: body.siteId,
+          customerId: user.customerId,
+          action: PaywallAction.Publish,
+          cacheHit: false,
+          durationMs: Date.now() - routeStart,
+        });
+      }
       canPurchaseDomain = resolveBooleanFlag(domainPurchaseResult, 'agent-token.domain-purchase-flag-check-failed', body.siteId, user.customerId);
       useTestBudget = resolveBooleanFlag(testBudgetResult, 'agent-token.test-budget-flag-check-failed', body.siteId, user.customerId);
       budgetServiceEnabled = resolveBooleanFlag(budgetServiceResult, 'agent-token.budget-service-flag-check-failed', body.siteId, user.customerId);
@@ -630,6 +655,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
             logger.warn('agent-token.shared-app-owner-subscription-missing', {
               siteId: body.siteId,
               customerId: user.customerId,
+              action: PaywallAction.Publish,
               ventureId,
             });
             canPublish = false;
@@ -658,6 +684,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
           logger.warn('agent-token.shared-app-fga-check-failed', {
             siteId: body.siteId,
             customerId: user.customerId,
+            action: PaywallAction.Publish,
             error: err instanceof Error ? err.message : String(err),
           });
           // Fail closed on FGA error — don't grant permissions we can't verify
@@ -923,7 +950,9 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
     // produce a 500 with no log line) and return a GENERIC detail — the raw
     // message can carry internal FGA / mgmt-airo error text we don't echo to clients.
     logger.error('agent-token.unhandled-error', {
+      action: PaywallAction.Publish,
       error: error instanceof Error ? error.message : 'Unknown error',
+      errorType: error instanceof Error ? error.constructor.name : typeof error,
       stack: error instanceof Error ? error.stack : undefined,
     });
     return NextResponse.json({
