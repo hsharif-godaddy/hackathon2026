@@ -13,6 +13,7 @@ import { BRAND_DATA_UPDATED_EVENT } from '@/hooks/useBrandData';
 import { useMediaManifest } from '@/hooks/useMediaManifest';
 import { useServerPollingStore } from '@/stores/useServerPollingStore';
 import { useBrandData } from './useBrandData';
+import { useLazyFontFaces } from './useLazyFontFaces';
 
 // The design-kit wizard generates a single horizontal logo (slot `logo/horizontal`);
 // the other slots are the fallback order the brand book / LogoPanel also use.
@@ -119,6 +120,8 @@ export function AssemblingKit({
     };
   }, [appId, refetch]);
 
+  const requestFonts = useLazyFontFaces();
+
   const kit = data?.kit?.name ? data.kit : undefined;
   const projectName = data?.brandName && data.brandName !== 'Your Brand' ? data.brandName : undefined;
   const swatches = [
@@ -128,13 +131,14 @@ export function AssemblingKit({
     data?.palette?.background,
     data?.palette?.muted,
   ].filter((c): c is string => typeof c === 'string');
-  const paletteName = data?.palette?.name;
   const headingFamily = data?.typography?.heading?.family;
   const bodyFamily = data?.typography?.body?.family;
-  const pairingName = data?.typography?.name;
-  const fontFamilies = headingFamily && bodyFamily && headingFamily !== bodyFamily
-    ? `${headingFamily} / ${bodyFamily}`
-    : headingFamily;
+
+  // Load the kit's heading + body faces so the Fonts row renders in the real
+  // typefaces (the "Aa" specimen + the family names), not a browser fallback.
+  useEffect(() => {
+    requestFonts([headingFamily, bodyFamily].filter((f): f is string => !!f));
+  }, [requestFonts, headingFamily, bodyFamily]);
   const moodImages = data?.imagery?.moodImages ?? [];
   const voiceWords = (data?.voice?.weAre ?? []).filter(Boolean).slice(0, 4);
   const summaryText = data?.summary?.text;
@@ -181,7 +185,6 @@ export function AssemblingKit({
               />
             ))}
           </div>
-          {paletteName && <text.span as="caption" emphasis="passive" className="truncate">{paletteName}</text.span>}
         </div>
       ),
     },
@@ -193,8 +196,17 @@ export function AssemblingKit({
       content: (
         <div className="flex min-w-0 items-baseline gap-2.5 leading-none">
           <span className="shrink-0 text-xl font-semibold tracking-tight" style={headingFamily ? { fontFamily: headingFamily } : undefined}>Aa</span>
-          {pairingName && <text.span className="shrink-0 font-medium">{pairingName}</text.span>}
-          {fontFamilies && <text.span as="caption" emphasis="passive" className="truncate">{fontFamilies}</text.span>}
+          {headingFamily && (
+            <text.span as="caption" emphasis="passive" className="truncate">
+              <span style={{ fontFamily: headingFamily }}>{headingFamily}</span>
+              {bodyFamily && bodyFamily !== headingFamily && (
+                <>
+                  {' / '}
+                  <span style={{ fontFamily: bodyFamily }}>{bodyFamily}</span>
+                </>
+              )}
+            </text.span>
+          )}
         </div>
       ),
     },

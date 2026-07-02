@@ -6,10 +6,12 @@ import { createMediaConfig } from './media.js'
 import { createDesignConfig } from './design.js'
 import { createBuilderConfig } from './builder.js'
 import { createDesignKitBuildConfig } from './design-kit-build.js'
+import { createTaskWorkerConfig } from './task-worker.js'
+import { createBrandShowcaseConfig } from './brand-showcase.js'
 import { createVerificationConfig } from './verification.js'
 import { createWorkflowInitConfig } from './workflow-init.js'
 
-type SubAgentName = 'discovery' | 'planning' | 'plan-review' | 'media' | 'design' | 'builder' | 'design-kit-build' | 'verification' | 'workflow-init'
+type SubAgentName = 'discovery' | 'planning' | 'plan-review' | 'media' | 'design' | 'builder' | 'design-kit-build' | 'task-worker' | 'brand-showcase' | 'verification' | 'workflow-init'
 
 const configFactories: Record<SubAgentName, () => Promise<SubAgentConfig>> = {
   discovery: createDiscoveryConfig,
@@ -19,6 +21,8 @@ const configFactories: Record<SubAgentName, () => Promise<SubAgentConfig>> = {
   design: createDesignConfig,
   builder: createBuilderConfig,
   'design-kit-build': createDesignKitBuildConfig,
+  'task-worker': createTaskWorkerConfig,
+  'brand-showcase': createBrandShowcaseConfig,
   verification: createVerificationConfig,
   'workflow-init': createWorkflowInitConfig,
 }

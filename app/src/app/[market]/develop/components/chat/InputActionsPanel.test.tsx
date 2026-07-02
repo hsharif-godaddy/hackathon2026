@@ -40,6 +40,7 @@ vi.mock('@/stores/useStreamingConversationStore', () => ({
   useActiveStream: vi.fn(function () { return null; }),
   useActiveRunningToolName: vi.fn(function () { return null; }),
   useActiveAwaitAgentsCount: vi.fn(function () { return 0; }),
+  useInterimStatus: vi.fn(function () { return null; }),
   useAwaitedJobResult: vi.fn(function () { return undefined; })
 }))
 

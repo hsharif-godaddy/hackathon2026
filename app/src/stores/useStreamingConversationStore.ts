@@ -63,6 +63,7 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
   activeStream: null,
   streamingState: 'idle',
   currentStep: 0,
+  interimStatus: null,
   currentAppId: null,
   inputValue: '',
   isLoading: false,
@@ -202,6 +203,7 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
       activeStream: streamingMessage,
       streamingState: 'streaming',
       currentStep: 1,
+      interimStatus: null,
       inputValue: state.inputValue.trim() === userMessage ? '' : state.inputValue,
       isLoading: true,
       // NOTE: do NOT clear subagentEvents here. Sub-agent jobs are detached and
@@ -788,6 +790,7 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
         activeStream: null,
         streamingState: 'idle',
         isLoading: false,
+        interimStatus: null,
       }
     })
   },
@@ -796,7 +799,8 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
     set({
       activeStream: null,
       streamingState: 'idle',
-      isLoading: false
+      isLoading: false,
+      interimStatus: null,
     })
   },
 
@@ -839,6 +843,7 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
         streamingState: 'idle' as const, // Always idle - recovery will set streaming if needed
         isLoading: false, // Always false - recovery will set loading if needed
         currentStep: 0,
+        interimStatus: null,
         inputValue: '',
         aiEditContext: null,
         aiEditContexts: [],
@@ -891,6 +896,11 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
   },
 
   setStreamingState: (state) => set({ streamingState: state }),
+
+  setInterimStatus: (status) => {
+    if (get().interimStatus === status) return
+    set({ interimStatus: status })
+  },
 
   setError: (error) => set({ lastError: error }),
 
@@ -968,6 +978,7 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
       messages: [],
       activeStream: null,
       streamingState: 'idle',
+      interimStatus: null,
       resolvedSecretsComposerToolCallIds: {},
       subagentEvents: {},
     })
@@ -979,6 +990,7 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
       activeStream: null,
       streamingState: 'idle',
       currentStep: 0,
+      interimStatus: null,
       currentAppId: null,
       inputValue: '',
       isLoading: false,

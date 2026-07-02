@@ -536,6 +536,8 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
                 clearStreamValidationRetry()
                 trackStepStart()
               } else if (type === 'step_complete') {
+                // Real content boundary — drop any design-kit gathering narration.
+                store.setInterimStatus(null)
                 if ((event.data as any)?.maxStepsReached === true) {
                   logger.warn('sse.steps.max-reached', { appId: store.currentAppId })
                   store.markMaxStepsReached()
@@ -558,6 +560,10 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
                   scheduleToolDeltaFlush()
                 }
               } else if (type === 'tool_call') {
+                // The vibe picker (suggestDesignKits) and any other tool ends the
+                // gathering pause — clear the interim narration so it can't sit
+                // above the picker.
+                store.setInterimStatus(null)
                 const tool = (event.data as any)?.tool ?? (event.data as any)?.data?.tool
                 if (tool) {
                   flushStoreUpdateBufferImmediate()
@@ -565,6 +571,7 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
                   handleToolCallSideEffects(tool, store.currentAppId)
                 }
               } else if (type === 'tool_result') {
+                store.setInterimStatus(null)
                 const tool = (event.data as any)?.tool ?? (event.data as any)?.data?.tool
                 if (tool) {
                   flushStoreUpdateBufferImmediate()
@@ -954,6 +961,17 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
                   clientAppId: store.currentAppId,
                   logPrefix: 'sse.media_caption',
                 })
+              } else if (type === 'status_narration') {
+                // Ephemeral server-narrated pending status for the design-kit
+                // gathering pause (AIROBUILD-3232): shown as the thinker label
+                // until real content arrives (cleared on step_complete / tool_call
+                // / tool_result / finalize). Never persisted.
+                const raw = event.data as { text?: unknown; appId?: unknown }
+                const text = typeof raw?.text === 'string' ? raw.text : ''
+                const narrationAppId = typeof raw?.appId === 'string' ? raw.appId : store.currentAppId
+                if (text && narrationAppId === store.currentAppId) {
+                  store.setInterimStatus(text)
+                }
               } else if (type === 'recovery_status') {
                 const payload = event.data as any
                 recoveryHandshakePendingRef.current = false

@@ -73,12 +73,16 @@ describe('AssemblingKit', () => {
     expect(refetchSpy).toHaveBeenCalledTimes(1);
   });
 
-  it('fills the summary tile and shows the palette + font-pairing names', () => {
+  it('fills the summary tile and shows the actual font families, not the kit/pairing name', () => {
     render(<AssemblingKit appId="app1234567" step={2} />);
 
     expect(screen.getByTestId('assemble-tile-summary')).toHaveAttribute('data-filled', 'true');
-    expect(screen.getByText('Vibrant Indigo Light')).toBeInTheDocument();
-    expect(screen.getByText('Modern Professional')).toBeInTheDocument();
+    // Fonts row shows the real families (rendered in their own typefaces) — the kit
+    // name is only on the Design kit row, not repeated on Color/Fonts (AIROBUILD-3232).
+    expect(screen.getByText('Oswald')).toBeInTheDocument();
+    expect(screen.getByText('Inter')).toBeInTheDocument();
+    expect(screen.queryByText('Modern Professional')).not.toBeInTheDocument();
+    expect(screen.queryByText('Vibrant Indigo Light')).not.toBeInTheDocument();
   });
 
   it('releases the wizard immediately (onAssembled) when it advances to step 3 with nothing left to package', () => {

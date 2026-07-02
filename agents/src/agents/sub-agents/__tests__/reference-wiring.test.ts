@@ -51,6 +51,10 @@ import { createMediaConfig } from '../media.js'
 import { createDesignConfig } from '../design.js'
 import { createPlanReviewConfig } from '../plan-review.js'
 import { createDesignKitBuildConfig } from '../design-kit-build.js'
+import { createTaskWorkerConfig } from '../task-worker.js'
+import { createBrandShowcaseConfig } from '../brand-showcase.js'
+import { getSubAgentConfig } from '../index.js'
+import { docExtractor, mediaExtractor } from '../visual-output-extractors.js'
 
 describe('reference tool wiring', () => {
   it('planning/builder/discovery/media/plan-review/design-kit-build expose the reference tool', async () => {
@@ -63,6 +67,36 @@ describe('reference tool wiring', () => {
   it('design does NOT expose the reference tool', async () => {
     const cfg = await createDesignConfig()
     expect(cfg.tools.reference).toBeUndefined()
+  })
+
+  it('brand-showcase is programmatically file-only — no media/skill, so it cannot re-generate assets (AIROBUILD-3234)', async () => {
+    const cfg = await createBrandShowcaseConfig()
+    // File tools present so it can write the static page + surface it.
+    expect(cfg.tools.str_replace_based_edit_tool).toBeDefined()
+    expect(cfg.tools.showDoc).toBeDefined()
+    // The regression guard: the dedicated agent has NO media/skill tools baked in, so it can only
+    // reference the already-generated logo/mood slots by URL — no allow-list the model could forget.
+    expect(cfg.tools.media).toBeUndefined()
+    expect(cfg.tools.skill).toBeUndefined()
+    // Its doc extractor surfaces the written page in the runAgent card.
+    expect(cfg.visualOutputExtractors).toContain(docExtractor)
+  })
+
+  it('task-worker is programmatically media/skill-only — cannot write source files (AIROBUILD-3234)', async () => {
+    const cfg = await createTaskWorkerConfig()
+    expect(cfg.tools.media).toBeDefined()
+    expect(cfg.tools.skill).toBeDefined()
+    // No file-write tool, so a media side-task can't wander into editing the app.
+    expect(cfg.tools.str_replace_based_edit_tool).toBeUndefined()
+    // Its media extractor surfaces searched/generated images in the runAgent card.
+    expect(cfg.visualOutputExtractors).toContain(mediaExtractor)
+  })
+
+  it('registers task-worker + brand-showcase so runAgent can resolve them (AIROBUILD-3234)', async () => {
+    // reference-wiring exercises the factories directly; this guards config-map / VALID_AGENTS
+    // drift by confirming the two new names also resolve through the getSubAgentConfig registry.
+    expect((await getSubAgentConfig('task-worker')).id).toBe('task-worker')
+    expect((await getSubAgentConfig('brand-showcase')).id).toBe('brand-showcase')
   })
 
   it('design-kit-build wires its core build tools and a raised output-token cap', async () => {

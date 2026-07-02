@@ -152,6 +152,13 @@ export interface BrandKitTokens {
 export interface BrandDataKit {
   /** Friendly name of the chosen design system / kit, e.g. "Volt". */
   name?: string;
+  /** Element "shape language" tokens parsed from the kit's anchor.json (radius /
+   *  flatness / button casing) — lets the website-build animation mirror the kit. */
+  tokens?: BrandKitTokens;
+  /** Absolute URL to the kit's preview screenshot (resolved from the catalog
+   *  `images.preview` path, or the kit's thumbnail when no full preview exists).
+   *  The animation reveals it as the site assembles. */
+  previewUrl?: string;
 }
 
 export interface BrandData {

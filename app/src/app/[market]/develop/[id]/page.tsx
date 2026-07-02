@@ -20,6 +20,7 @@ import PanelSkeleton from '@/app/[market]/develop/components/PanelSkeleton'
 import { DevelopCreditsModal, PaywallErrorFallback, RenewalPollingModal, UpgradePollingModal } from '@/app/[market]/develop/components/paywall'
 import { CdsEsmPreload } from '@/app/[market]/develop/components/paywall/CdsEsmPreload'
 import BrandBookView from '@/app/[market]/develop/components/preview/brand-book'
+import { BuildCompleteCelebration } from '@/app/[market]/develop/components/preview/design-kit-wizard/BuildCompleteCelebration'
 import { DesignKitPanels } from '@/app/[market]/develop/components/preview/design-kit-wizard/DesignKitPanels'
 import { useIsDesignKitWizardProfile } from '@/app/[market]/develop/components/preview/design-kit-wizard/isDesignKitWizardProfile'
 import PreviewPane, { type PublishSnapshotRequestDetail } from '@/app/[market]/develop/components/preview/PreviewPane'
@@ -1379,6 +1380,10 @@ function DevelopPageContent({ layout: layoutProp }: { layout?: BuilderLayout }) 
         onDragEnter={handleDragEnter}
       >
         <PostPublishGoLiveModal appId={appId} />
+        {/* Build-complete celebration lives at the layout root (not inside the immersive
+            wizard, which unmounts the instant the phase turns `ready`) so it survives the
+            hand-off to the builder. */}
+        {appId && <BuildCompleteCelebration appId={appId} />}
         {layout === BuilderLayout.Immersive && appId ? (
           <ImmersiveDesignKitLayout
             appId={appId}

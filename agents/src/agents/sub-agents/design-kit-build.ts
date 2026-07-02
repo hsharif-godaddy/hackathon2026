@@ -3,8 +3,10 @@ import { buildSystemPrompt, pickTools, GROUND_TRUTH_HEADING } from './sub-agent-
 import { pageExtractor, docExtractor } from './visual-output-extractors.js'
 
 /**
- * Design-Kit Build sub-agent (AIROBUILD-2871). Builds the homepage so it faithfully
- * realizes an installed design kit, rather than re-deriving a generic layout. It
+ * Design-Kit Build sub-agent (AIROBUILD-2871, AIROBUILD-3234). Builds one slice of a
+ * website — the site chrome (shared header/footer/layout) or the homepage body — so it
+ * faithfully realizes an installed design kit, rather than re-deriving a generic layout.
+ * The dispatching task names the slice; the two run in parallel on disjoint files. It
  * self-loads the kit from `docs/ui-kit/` (via `loadUiKit` + reading `anchor.json`)
  * instead of receiving the kit content in its task — so the dispatch stays small and
  * the kit's authoritative spec drives the build. Distinct from the deep-build `builder`

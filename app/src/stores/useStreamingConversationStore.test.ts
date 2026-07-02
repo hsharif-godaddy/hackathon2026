@@ -1456,4 +1456,37 @@ describe('useStreamingConversationStore', function packageTests() {
       expect(state.messages[1].metadata?.feedback).toBe('negative');
     });
   });
+
+  describe('interimStatus', function interimStatus() {
+    it('defaults to null and is set/cleared by setInterimStatus', function setClear() {
+      const store = useStreamingConversationStore.getState();
+      expect(store.interimStatus).toBeNull();
+
+      act(() => {
+        store.setInterimStatus('Setting up your project…');
+      });
+      expect(useStreamingConversationStore.getState().interimStatus).toBe('Setting up your project…');
+
+      act(() => {
+        store.setInterimStatus(null);
+      });
+      expect(useStreamingConversationStore.getState().interimStatus).toBeNull();
+    });
+
+    it('is reset to null by startNewStream and finalizeStream', function resetOnLifecycle() {
+      const store = useStreamingConversationStore.getState();
+
+      act(() => {
+        store.setInterimStatus('Finding vibes that match your brand…');
+        store.startNewStream('hello');
+      });
+      expect(useStreamingConversationStore.getState().interimStatus).toBeNull();
+
+      act(() => {
+        store.setInterimStatus('Finding vibes that match your brand…');
+        store.finalizeStream();
+      });
+      expect(useStreamingConversationStore.getState().interimStatus).toBeNull();
+    });
+  });
 });

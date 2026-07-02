@@ -39,6 +39,7 @@ vi.mock('@/stores/useStreamingConversationStore', () => ({
   useIsLoading: vi.fn(() => false),
   useActiveRunningToolName: vi.fn(() => null),
   useActiveAwaitAgentsCount: vi.fn(() => 0),
+  useInterimStatus: vi.fn(() => null),
   useAwaitedJobResult: vi.fn(() => undefined),
   useStreamingConversationStore: (selector: (s: { resolvedSecretsComposerToolCallIds: Record<string, true> }) => unknown) =>
     selector({ resolvedSecretsComposerToolCallIds: {} }),

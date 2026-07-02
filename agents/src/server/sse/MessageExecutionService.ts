@@ -103,6 +103,8 @@ import { trackPostInteractionIfEligible } from '../../services/agent-lifecycle-e
 import { trackInitialBuildStartedAsync } from '../../services/agent-lifecycle-events/initial-build-funnel.js'
 import { enrichWithForcedDesignKit, isDesignSystemVariant } from '../../services/design-system/forced-install.js'
 import { createForWorkspace } from '../../workspace/index.js'
+import { getKvMemoryStore } from '../../memory/adapters/index.js'
+import { workspaceScopeFromAppId, customerIdFromContext } from '../../memory/interfaces/scope.js'
 import { buildAppliedSkillsContextMessage } from '../applied-skills-context.js'
 import { recordRolloutsOnSpan } from '../../lib/feature-rollouts.js'
 import { conformExistingPages } from '../../services/content-conform.js'
@@ -112,6 +114,15 @@ import { buildWorkflowContextMessage } from '../workflow-context.js'
  *  already seeing a failure, so don't delay terminal events for a slow classifier.
  *  usedFreeGrants defaults to false when the outcome is unavailable. */
 const ERRORED_TURN_ASSESSMENT_TIMEOUT_MS = 500
+
+/** Design-kit onboarding: after the user submits their business name the agent
+ *  is silent for several seconds while it assembles the vibe picker
+ *  (suggestDesignKits). These server-narrated, ephemeral `status_narration`
+ *  texts fill that pause in the "Thinking…" indicator. The second is scheduled
+ *  ~1.6s after the first and cancelled the instant real content arrives. */
+const DESIGN_KIT_NARRATION_FIRST = 'Setting up your project…'
+const DESIGN_KIT_NARRATION_SECOND = 'Finding vibes that match your brand…'
+const DESIGN_KIT_NARRATION_SECOND_DELAY_MS = 1_600
 
 /** Server-side eval-only diagnostics gate. Single source of truth for the
  *  SOCKET_DIAGNOSTICS flag so the call sites can't drift on the var name. The
@@ -1026,6 +1037,14 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
       )
     }
 
+    // Design-kit onboarding: narrate the silent pre-picker pause BEFORE the LLM
+    // stream begins. Cancelled as soon as any tool starts/completes (below) and,
+    // best-effort, in the finally at turn end. No-op for every non-design-kit /
+    // non-gathering turn.
+    const clearStatusNarration = await this.startDesignKitStatusNarration({
+      agent, appId, conversationId, executionContext, publish,
+    })
+
     const modelName = agent?.getConfig?.()?.modelName ?? 'unknown'
     // Forward the tracker's incremental diagnostics (stream.chunk.slow_gap from
     // recordChunk; stream.chunk.timeout from recordTimeout in handleChunkTimeout)
@@ -1107,6 +1126,10 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
         logger.error('tool.input.parse_failure', { toolCallId, toolName, fullInput: rawInput.slice(0, 200) })
       },
       onToolCall: (toolCallId, toolName, parsedInput) => {
+        // Once any tool starts the pre-picker silence is over — cancel the scheduled
+        // narration here (not only on tool_result) so a fast tool that errors, or a slow
+        // one that runs past the 2nd-emit delay, can't flash "Finding vibes…" mid-turn.
+        clearStatusNarration()
         guard?.pause()
         tracker.pauseGapTracking(toolName)
         const input = typeof parsedInput === 'string' ? {} : parsedInput
@@ -1118,6 +1141,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
         })
       },
       onToolResult: (toolCallId, result, sdkInput, sdkToolName) => {
+        clearStatusNarration()
         guard?.reset()
         tracker.resumeGapTracking()
         const toolCall = processor.getToolCall(toolCallId)
@@ -1140,6 +1164,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
         if (snapshot.shouldUpdateAgentTurn) scheduleAgentTurnUpdate(snapshot.update)
       },
       onToolError: (toolCallId, error, sdkInput, sdkToolName) => {
+        clearStatusNarration()
         guard?.reset()
         tracker.resumeGapTracking()
         const toolCall = processor.getToolCall(toolCallId)
@@ -1816,8 +1841,62 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
       }
       throw err
     } finally {
+      clearStatusNarration()
       guard?.dispose()
     }
+  }
+
+  /**
+   * Design-kit onboarding narration. On a design-kit gathering turn the agent
+   * goes silent for several seconds while it assembles the vibe picker; emit a
+   * dedicated, ephemeral `status_narration` event immediately and schedule a
+   * second ~1.6s later so the "Thinking…" indicator shows progress text.
+   *
+   * Returns a canceller the caller invokes as soon as the first tool starts/completes
+   * and, best-effort, at turn end, so a late status can't flash after the picker renders.
+   * (If setup throws before the stream's try/finally the canceller may be skipped; the
+   * ownership-guarded publish still drops the superseded emit, so a leaked timer is benign.)
+   * Returns a no-op canceller (and emits nothing) unless BOTH gates hold:
+   *   (a) the resolved agent is the design-kit initial agent (id
+   *       'initial-design-kit'), and
+   *   (b) the wizard phase (KV `brand.wizard.phase`) is unset or 'gathering' —
+   *       never brand/website/ready, which have their own progress UI.
+   *
+   * The emit rides the guarded `publish` closure, so a superseded stream drops
+   * the event even if the scheduled timer outlives the ownership handover.
+   * status_narration is ephemeral: it is not tracked in the turn snapshot and
+   * falls through the persistence switch, so it is never saved as assistant text.
+   */
+  private async startDesignKitStatusNarration(opts: {
+    agent: { getConfig?: () => { id?: string } | undefined } | undefined
+    appId: string
+    conversationId: string
+    executionContext: Record<string, unknown>
+    publish: (event: Parameters<ConversationEventChannel['publish']>[1]) => void
+  }): Promise<() => void> {
+    const noop = (): void => {}
+    const { agent, appId, conversationId, executionContext, publish } = opts
+    if (agent?.getConfig?.()?.id !== 'initial-design-kit') return noop
+
+    const scope = workspaceScopeFromAppId(appId, customerIdFromContext(executionContext as { metadata?: Record<string, unknown> }))
+    let phase: string | undefined
+    try {
+      const result = await getKvMemoryStore().get(scope, 'brand.wizard.phase')
+      phase = result.exists ? (result.value as { phase?: string } | undefined)?.phase : undefined
+    } catch (err) {
+      logger.warn('sse.status_narration.phase_read_failed', { appId, conversationId, ...errorFields(err) })
+      return noop
+    }
+    if (phase !== undefined && phase !== 'gathering') return noop
+
+    const emit = (text: string): void => {
+      publish({ conversationId, type: 'status_narration', content: '', data: { text, appId }, agentName: 'system' })
+      logger.debug('sse.status_narration.emit', { appId, conversationId, text })
+    }
+
+    emit(DESIGN_KIT_NARRATION_FIRST)
+    const timer: ReturnType<typeof setTimeout> = setTimeout(() => emit(DESIGN_KIT_NARRATION_SECOND), DESIGN_KIT_NARRATION_SECOND_DELAY_MS)
+    return () => clearTimeout(timer)
   }
 
   private createChunkTimeoutGuard(

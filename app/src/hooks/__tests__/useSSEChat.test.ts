@@ -39,6 +39,7 @@ const mockSetHistoryLoadingComplete = vi.fn()
 const mockSetHistoryPagination = vi.fn()
 const mockSetHistoryLoadingMore = vi.fn()
 const mockClearMessages = vi.fn()
+const mockSetInterimStatus = vi.fn()
 
 let currentAppId: string | null = 'test-app-123'
 let storeState: Record<string, unknown> = {}
@@ -70,6 +71,7 @@ function getStoreState() {
     setHistoryPagination: mockSetHistoryPagination,
     setHistoryLoadingMore: mockSetHistoryLoadingMore,
     clearMessages: mockClearMessages,
+    setInterimStatus: mockSetInterimStatus,
     ...storeState,
   }
 }
@@ -1264,6 +1266,45 @@ describe('useSSEChat', () => {
       id: 't3', name: 'read_file', input: { path: '/bar' }, result: 'content',
       error: undefined, status: 'completed', startTime: 123, endTime: expect.any(Number),
     })
+  })
+
+  it('status_narration sets interimStatus; a later tool_call and step_complete clear it', async () => {
+    await setupHook()
+
+    act(() => {
+      lastTransport.callbacks?.onEvent({
+        type: 'status_narration',
+        data: { text: 'Setting up your project…', appId: 'test-app-123' },
+      })
+    })
+    expect(mockSetInterimStatus).toHaveBeenCalledWith('Setting up your project…')
+
+    mockSetInterimStatus.mockClear()
+    act(() => {
+      lastTransport.callbacks?.onEvent({
+        type: 'tool_call',
+        data: { tool: { id: 'kit1', name: 'suggestDesignKits', input: {}, status: 'running' } },
+      })
+    })
+    expect(mockSetInterimStatus).toHaveBeenCalledWith(null)
+
+    mockSetInterimStatus.mockClear()
+    act(() => {
+      lastTransport.callbacks?.onEvent({ type: 'step_complete', data: {} })
+    })
+    expect(mockSetInterimStatus).toHaveBeenCalledWith(null)
+  })
+
+  it('ignores status_narration for a different app', async () => {
+    await setupHook()
+
+    act(() => {
+      lastTransport.callbacks?.onEvent({
+        type: 'status_narration',
+        data: { text: 'Setting up your project…', appId: 'some-other-app' },
+      })
+    })
+    expect(mockSetInterimStatus).not.toHaveBeenCalled()
   })
 
   it('validation_message running event adds a validateCode tool-start segment', async () => {

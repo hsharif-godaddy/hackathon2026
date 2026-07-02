@@ -1,7 +1,7 @@
 'use client';
 
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
-import { type JSX, useEffect, useRef } from 'react';
+import { type JSX, useRef } from 'react';
 import WandIcon from '@ux/icon/wand';
 import text from '@ux/text';
 
@@ -9,17 +9,13 @@ import { ViewMode } from '@/app/[market]/develop/components/types';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { AssemblingKit } from './AssemblingKit';
 import { useWizardPhase } from './useWizardPhase';
-import { WebsiteHandoff, WebsiteHandoffDone, WebsiteReadyCelebration } from './WebsiteHandoff';
+import { WebsiteHandoff, WebsiteHandoffDone } from './WebsiteHandoff';
 
 // The wizard chrome is Airo-branded (`--color-ai`), not the user's generated
 // brand colour — those appear only once the site is built.
 const AIRO = 'var(--color-ai)';
 
-// How long the "your website is ready" celebration holds before we reveal the
-// finished site on the Preview tab.
-const CELEBRATE_MS = 2600;
-
-type WizardVisual = 'building-brand' | 'building-website' | 'celebrating' | 'resume-done';
+type WizardVisual = 'building-brand' | 'building-website' | 'resume-done';
 
 /**
  * Design Kit Wizard shell (AIROBUILD-2679 Phase 2; AIROBUILD-2855 immersive flow).
@@ -32,16 +28,16 @@ type WizardVisual = 'building-brand' | 'building-website' | 'celebrating' | 'res
  *   the agent assembles the kit (AssemblingKit in steady `progress` mode — no seal).
  * - `website`: the agent has handed off; the website-assembly animation plays while
  *   the build runs (chat still docked left).
- * - build complete: a brief "your website is ready" celebration, then we reveal the
- *   finished site on the Preview tab (chrome returns as the view leaves BRAND).
  * - resume: returning to an already-finished build shows a calm "watch it build"
  *   panel instead of replaying the assembly.
  *
- * The reveal is driven by the agent emitting the `ready` phase once the website build
- * finishes (AIROBUILD-2871: the design-kit agent orchestrates the build via sub-agents,
- * so it knows when it's done). `initialBuildComplete` is used ONLY for the mount-time
- * resume check — never as the live reveal trigger, because it flips on the first git
- * commit (e.g. setProjectName's page-title commit during brand assembly), far too early.
+ * The `ready` build-complete beat is NOT handled here: this component unmounts the instant
+ * the phase becomes `ready` (the immersive layout hands off to the builder — see
+ * `useBuilderLayout`), so the "your website is ready" celebration + Preview reveal live in
+ * the page-level `BuildCompleteCelebration`, driven by the live completion event.
+ * `initialBuildComplete` is used ONLY for the mount-time resume check — never as a reveal
+ * trigger, because it flips on the first git commit (e.g. setProjectName's page-title commit
+ * during brand assembly), far too early.
  */
 export function DesignKitWizard({
   appId,
@@ -53,15 +49,14 @@ export function DesignKitWizard({
 
   const setViewMode = useDevelopPageStore((s) => s.setViewMode);
 
-  // The website build is done when the agent emits the `ready` phase (it orchestrates the
-  // build and emits `ready` once the builders finish). This is the authoritative live
-  // signal — NOT `initialBuildComplete`, which flips on the first git commit (e.g.
-  // setProjectName's title commit during brand assembly) and would reveal mid-assembly.
+  // The website build is done when the agent emits the `ready` phase. Used only for the
+  // mount-time resume check below — NOT `initialBuildComplete`, which flips on the first git
+  // commit (e.g. setProjectName's title commit during brand assembly), far too early.
   const buildComplete = phase === 'ready';
 
   // Scope to this app so a stale store entry for another app can't flip us. Used only for
   // the mount-time resume check below (a resumed, already-finished session may have no live
-  // `ready` event), never as the live reveal trigger.
+  // `ready` event).
   const initialBuildComplete = useDevelopPageStore(
     (s) => (s.app?.id === appId ? (s.app?.initialBuildComplete ?? false) : false),
   );
@@ -73,24 +68,14 @@ export function DesignKitWizard({
   const startedAtReadyRef = useRef<boolean | null>(null);
   if (startedAtReadyRef.current === null) startedAtReadyRef.current = buildComplete || initialBuildComplete;
 
-  // The website-assembly animation plays *during* the build (the `website` phase). When the
-  // agent emits `ready` we play a brief "your website is ready" beat, then reveal the
-  // finished site on the Preview tab — PreviewPane's build overlay carries any remaining
-  // loading there. Resuming into a finished build shows the calm panel and waits for the
-  // user, so only auto-reveal for a live build.
-  useEffect(() => {
-    if (!(buildComplete && startedAtReadyRef.current === false)) return undefined;
-    const t = window.setTimeout(() => setViewMode(ViewMode.PREVIEW), CELEBRATE_MS);
-    return () => window.clearTimeout(t);
-  }, [buildComplete, setViewMode]);
-
-  // Which visual to render. The website-assembly animation plays during the build; the
-  // moment the agent emits `ready` we celebrate, then (via the effect above) reveal the
-  // finished site. Resuming into a finished build shows the calm "watch it build" panel.
+  // Which visual to render. The website-assembly animation plays during the build. The
+  // `ready` build-complete beat (celebration + Preview reveal) is owned by the page-level
+  // `BuildCompleteCelebration`, since this component unmounts when the phase turns `ready`;
+  // we keep the assembly animation up until then. Resuming into a finished build shows the
+  // calm "watch it build" panel.
   const visual: WizardVisual = ((): WizardVisual => {
     if (startedAtReadyRef.current) return 'resume-done';
-    if (buildComplete) return 'celebrating';
-    if (phase === 'website') return 'building-website';
+    if (phase === 'website' || phase === 'ready') return 'building-website';
     return 'building-brand';
   })();
 
@@ -143,11 +128,6 @@ export function DesignKitWizard({
               // Stage c (AIROBUILD-2856): the website-assembly animation plays during
               // the build, holding until the real build completes.
               <WebsiteHandoff appId={appId} />
-            )}
-
-            {visual === 'celebrating' && (
-              // Build done: a short "your website is ready" payoff before the reveal.
-              <WebsiteReadyCelebration />
             )}
 
             {visual === 'resume-done' && (

@@ -141,7 +141,7 @@ describe('DesignKitWizard — website phase ("Building your website")', () => {
   });
 });
 
-describe('DesignKitWizard — build reveal → celebration → Preview tab', () => {
+describe('DesignKitWizard — build complete + resume', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     // Reduced motion off so the full launch sequence (not the instant path) runs.
@@ -170,7 +170,7 @@ describe('DesignKitWizard — build reveal → celebration → Preview tab', () 
     vi.useRealTimers();
   });
 
-  it('ignores an early initialBuildComplete flip, then celebrates + reveals when the agent emits ready', () => {
+  it('keeps the assembly animation when the build completes — celebration + reveal are page-level, not the wizard', () => {
     // Mount mid-build (website phase, build not yet complete): the assembly
     // animation plays and the view stays on the Logo & Brand (BRAND) tab.
     mockPhase = 'website';
@@ -186,7 +186,7 @@ describe('DesignKitWizard — build reveal → celebration → Preview tab', () 
 
     // AIROBUILD-2871 regression guard: initialBuildComplete flips early (e.g.
     // setProjectName's title commit during brand assembly). That must NOT reveal —
-    // the animation keeps playing and the view stays on BRAND until the agent says ready.
+    // the animation keeps playing and the view stays on BRAND.
     act(() => {
       useDevelopPageStore.setState({
         app: { id: 'app1234567', initialBuildComplete: true },
@@ -194,23 +194,23 @@ describe('DesignKitWizard — build reveal → celebration → Preview tab', () 
       rerender(<DesignKitWizard appId="app1234567" />);
     });
     expect(screen.getByTestId('design-kit-finalizing')).toBeInTheDocument();
-    expect(screen.queryByTestId('design-kit-website-ready')).not.toBeInTheDocument();
-    act(() => { vi.advanceTimersByTime(2700); });
-    expect(useDevelopPageStore.getState().viewMode).toBe(ViewMode.BRAND);
 
-    // The agent emits `ready` once the website build actually finishes → celebrate,
-    // view still on BRAND for the beat.
+    // The agent emits `ready`. In production the wizard unmounts on this edge (the immersive
+    // layout hands off to the builder — see useBuilderLayout); rendered in isolation it just
+    // keeps the assembly visual and never renders the celebration or switches the view. The
+    // "your website is ready" beat + Preview reveal are owned by the page-level
+    // BuildCompleteCelebration, driven by the live build-completion event.
     act(() => {
       mockPhase = 'ready';
       useWizardStore.setState({ phaseByApp: { app1234567: 'ready' } });
       rerender(<DesignKitWizard appId="app1234567" />);
     });
-    expect(screen.getByTestId('design-kit-website-ready')).toBeInTheDocument();
-    expect(useDevelopPageStore.getState().viewMode).toBe(ViewMode.BRAND);
+    expect(screen.getByTestId('design-kit-finalizing')).toBeInTheDocument();
+    expect(screen.queryByTestId('design-kit-website-ready')).not.toBeInTheDocument();
 
-    // After the celebration beat we reveal the finished site on the Preview tab.
+    // No timer-driven view switch lives in the wizard anymore.
     act(() => { vi.advanceTimersByTime(2700); }); // > CELEBRATE_MS (2600)
-    expect(useDevelopPageStore.getState().viewMode).toBe(ViewMode.PREVIEW);
+    expect(useDevelopPageStore.getState().viewMode).toBe(ViewMode.BRAND);
   });
 
   it('resuming directly into a finished build shows the watch-build panel, does not auto-switch, and the button goes to Preview', () => {

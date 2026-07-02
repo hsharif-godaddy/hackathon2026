@@ -39,6 +39,11 @@ const mockCreateAgentInvocationSpan = vi.fn(function () { return {
 }; })
 const mockGetBudgetServiceClient = vi.hoisted(() => vi.fn(function () { return null; }))
 const mockEmitConversationStart = vi.hoisted(() => vi.fn())
+// item 3: status-narration reads the wizard phase from KV. Mock getKvMemoryStore so the
+// design-kit gathering-pause narration can be driven deterministically. Existing execute()
+// tests never reach it — their mock agent has no getConfig, so the agent-id gate returns first.
+const mockGetKvMemoryStore = vi.hoisted(() => vi.fn())
+vi.mock('../../../memory/adapters/index.js', () => ({ getKvMemoryStore: mockGetKvMemoryStore }))
 vi.mock('@godaddy/agent-otel-sdk', async () => {
   const actual = await vi.importActual<Record<string, unknown>>('@godaddy/agent-otel-sdk')
   return {
@@ -366,6 +371,129 @@ describe('MessageExecutionService', () => {
     })
     deps = createMockDeps()
     service = new MessageExecutionService(deps as any)
+  })
+
+  // item 3 (AIROBUILD-3232): the design-kit gathering-pause status narration. The method
+  // is private and effectively pure (reads only its opts + the mocked getKvMemoryStore),
+  // so we invoke it directly with an injected publish spy and drive the timer with fake timers.
+  describe('startDesignKitStatusNarration', () => {
+    const appId = 'app-dk-1'
+    const conversationId = 'conv-dk-1'
+    const executionContext = { metadata: {} }
+    const designKitAgent = { getConfig: () => ({ id: 'initial-design-kit' }) }
+    const otherAgent = { getConfig: () => ({ id: 'develop' }) }
+
+    const start = (agent: unknown, publish: (e: unknown) => void): Promise<() => void> =>
+      (service as any).startDesignKitStatusNarration({ agent, appId, conversationId, executionContext, publish })
+
+    const kvReturning = (get: () => Promise<unknown>): void => {
+      mockGetKvMemoryStore.mockReturnValue({ get })
+    }
+
+    beforeEach(() => {
+      mockGetKvMemoryStore.mockReset()
+    })
+
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    it('is a no-op for a non-design-kit agent (never reads the phase)', async () => {
+      const publish = vi.fn()
+      const cancel = await start(otherAgent, publish)
+      expect(publish).not.toHaveBeenCalled()
+      expect(mockGetKvMemoryStore).not.toHaveBeenCalled()
+      expect(() => cancel()).not.toThrow()
+    })
+
+    it('emits the first narration immediately and the second after ~1.6s when the phase is unset', async () => {
+      vi.useFakeTimers()
+      kvReturning(vi.fn().mockResolvedValue({ exists: false }))
+      const publish = vi.fn()
+
+      const cancel = await start(designKitAgent, publish)
+
+      expect(publish).toHaveBeenCalledTimes(1)
+      expect(publish).toHaveBeenLastCalledWith(
+        expect.objectContaining({ type: 'status_narration', data: expect.objectContaining({ text: 'Setting up your project…', appId }) }),
+      )
+
+      vi.advanceTimersByTime(1600)
+      expect(publish).toHaveBeenCalledTimes(2)
+      expect(publish).toHaveBeenLastCalledWith(
+        expect.objectContaining({ type: 'status_narration', data: expect.objectContaining({ text: 'Finding vibes that match your brand…' }) }),
+      )
+      cancel()
+    })
+
+    it('emits during the gathering phase', async () => {
+      kvReturning(vi.fn().mockResolvedValue({ exists: true, value: { phase: 'gathering' } }))
+      const publish = vi.fn()
+      await start(designKitAgent, publish)
+      expect(publish).toHaveBeenCalledTimes(1)
+      expect(publish).toHaveBeenLastCalledWith(expect.objectContaining({ type: 'status_narration' }))
+    })
+
+    it('is a no-op once the wizard has moved past gathering (e.g. brand)', async () => {
+      kvReturning(vi.fn().mockResolvedValue({ exists: true, value: { phase: 'brand' } }))
+      const publish = vi.fn()
+      await start(designKitAgent, publish)
+      expect(publish).not.toHaveBeenCalled()
+    })
+
+    it('degrades to a no-op (no emit, no throw) when the phase read fails', async () => {
+      kvReturning(vi.fn().mockRejectedValue(new Error('kv unavailable')))
+      const publish = vi.fn()
+      const cancel = await start(designKitAgent, publish)
+      expect(publish).not.toHaveBeenCalled()
+      expect(() => cancel()).not.toThrow()
+    })
+
+    it('cancels the scheduled second narration (never flashes after the picker renders)', async () => {
+      vi.useFakeTimers()
+      kvReturning(vi.fn().mockResolvedValue({ exists: false }))
+      const publish = vi.fn()
+
+      const cancel = await start(designKitAgent, publish)
+      expect(publish).toHaveBeenCalledTimes(1)
+
+      cancel()
+      vi.advanceTimersByTime(5000)
+      expect(publish).toHaveBeenCalledTimes(1)
+    })
+
+    // Guards the execute() wiring the direct tests above can't reach: on a design-kit
+    // gathering turn the narration is armed, and the first tool event must cancel the
+    // scheduled second emit (clearStatusNarration in onToolCall). Deleting that call would
+    // let "Finding vibes…" flash mid-turn — this test would then fail.
+    it('cancels the scheduled narration via the tool-event wiring in execute()', async () => {
+      vi.useFakeTimers()
+      kvReturning(vi.fn().mockResolvedValue({ exists: false })) // phase unset → narration armed
+      const dkAgent = {
+        streamGenerate: vi.fn().mockImplementation(
+          streamGenerateImpl([{ type: 'tool-call', id: 't1', toolName: 'suggestDesignKits', input: {} }]),
+        ),
+        getName: vi.fn().mockReturnValue('initial-design-kit'),
+        getConfig: vi.fn().mockReturnValue({ id: 'initial-design-kit', tools: {}, metadata: {} }),
+      }
+      deps.getAgent.mockImplementation((id: string) => {
+        if (id !== 'initial-design-kit') throw new Error(`Agent config not found for id: ${id}`)
+        return dkAgent
+      })
+      mockGetAgentFactory.mockReturnValue({ agents: { has: (id: string) => id === 'initial-design-kit' } })
+
+      await service.execute({ ...DEFAULT_PARAMS, agentId: 'initial-design-kit', lifecycleContext: { isInitialPrompt: false } })
+
+      const narrationsOf = (): unknown[] =>
+        (deps.eventChannel.publish as unknown as { mock: { calls: unknown[][] } }).mock.calls
+          .filter((c) => (c[1] as { type?: string } | undefined)?.type === 'status_narration')
+      // Only the immediate first narration published; the tool-call cancelled the second.
+      expect(narrationsOf()).toHaveLength(1)
+      expect((narrationsOf()[0] as unknown[])[1]).toMatchObject({ data: { text: 'Setting up your project…' } })
+
+      vi.advanceTimersByTime(5000)
+      expect(narrationsOf()).toHaveLength(1) // still only the first — the second stays cancelled
+    })
   })
 
   it('registers SSE subscribers on the event channel', async () => {

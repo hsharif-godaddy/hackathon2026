@@ -29,6 +29,12 @@ vi.mock('../../../database/index.js', () => ({
   AppMetadataRepository: class { get = mockMetadataGet },
 }));
 
+// resolveDesignSystemAssetUrl turns a catalog-relative path into an absolute URL; stub it
+// deterministically so the previewPath -> previewUrl seam is assertable without a base-URL config.
+vi.mock('../../../services/design-system/catalog.js', () => ({
+  resolveDesignSystemAssetUrl: (p: string) => `https://assets.test/${p}`,
+}));
+
 // Mock validateAppOwnership as passthrough
 vi.mock('../../middleware/app-ownership.js', () => ({
   validateAppOwnership: (_req: Request, _res: Response, next: NextFunction) => next(),
@@ -150,6 +156,28 @@ describe('Brand Data Route', () => {
 
       expect(response.status).toBe(200);
       expect(response.body.kit).toEqual({ name: 'Modern Bento' });
+    });
+
+    it('surfaces the kit shape tokens and resolves previewPath to an absolute previewUrl', async () => {
+      mockMemoryGet.mockResolvedValue(noResult);
+      const tokens = { radius: 'sharp', flat: true, uppercaseLabels: true, tracking: 'wide' };
+      mockMetadataGet.mockReturnValue({
+        designKit: {
+          source: 'catalog', id: 'kit-1', displayName: 'Modern Bento',
+          tokens,
+          previewPath: 'kits/modern-bento/preview.png',
+        },
+      });
+
+      const response = await request(app).get(`/apps/${testAppId}/brand-data`);
+
+      expect(response.status).toBe(200);
+      // tokens forwarded verbatim; previewPath fed through resolveDesignSystemAssetUrl -> previewUrl.
+      expect(response.body.kit).toEqual({
+        name: 'Modern Bento',
+        tokens,
+        previewUrl: 'https://assets.test/kits/modern-bento/preview.png',
+      });
     });
 
     it('should fall back to parsed markdown when no structured identity data exists', async () => {

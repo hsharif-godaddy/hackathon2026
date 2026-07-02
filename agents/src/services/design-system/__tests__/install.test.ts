@@ -248,6 +248,59 @@ describe('installDesignKitForApp', () => {
     })
   })
 
+  // AIROBUILD-3232 item 7: the stamp also carries the kit's shape tokens (from
+  // anchor.json), preview screenshot path, and palette so the website-build animation
+  // can mirror the kit. All guarded — a kit without them stamps the identity alone.
+  it('stamps tokens and previewPath when the kit carries them', async () => {
+    await primeRealInstallWithFiles(
+      {
+        'colors.md': '# palette',
+        'anchor.json': JSON.stringify({
+          radius: { base: 12, subtle: 4 },
+          shadow: { rest: 'none' },
+          buttons: { primary: 'DM Sans 700, UPPERCASE, 0.12em tracking' },
+        }),
+      },
+      {
+        images: { preview: 'previews/modern-bento/abc.webp' },
+      },
+    )
+    const { installDesignKitForApp } = await import('../install.js')
+    await installDesignKitForApp('app1', 'modern-bento')
+    expect(mockMerge).toHaveBeenCalledWith('app1', {
+      designKit: {
+        source: 'catalog',
+        id: '3e4848a8-912b-44e9-81ba-1cfaf058d458',
+        displayName: 'Modern Bento',
+        tokens: { radiusBase: 12, radiusButton: 4, flat: true, uppercase: true, tracking: '0.12em' },
+        previewPath: 'previews/modern-bento/abc.webp',
+      },
+    })
+  })
+
+  // Many catalog entries (e.g. Ascent) ship only a thumbnail, no full preview — the
+  // stamp falls back to it so the build animation still gets a real kit screenshot.
+  it('falls back to the kit thumbnail for previewPath when there is no preview image', async () => {
+    await primeRealInstallWithFiles({ 'colors.md': '# palette' }, { thumbnail: 'thumbnails/ascent/xyz.png' })
+    const { installDesignKitForApp } = await import('../install.js')
+    await installDesignKitForApp('app1', 'modern-bento')
+    expect(mockMerge).toHaveBeenCalledWith('app1', {
+      designKit: expect.objectContaining({ previewPath: 'thumbnails/ascent/xyz.png' }),
+    })
+  })
+
+  // Third fallback: some entries carry the thumbnail nested under `images` rather than at
+  // the top level — the stamp still finds it (entry.images.preview → entry.thumbnail →
+  // entry.images.thumbnail).
+  it('falls back to entry.images.thumbnail when there is no preview or top-level thumbnail', async () => {
+    await primeRealInstallWithFiles({ 'colors.md': '# palette' }, { images: { thumbnail: 'thumbnails/ascent/nested.png' } })
+    const { installDesignKitForApp } = await import('../install.js')
+    await installDesignKitForApp('app1', 'modern-bento')
+    expect(mockMerge).toHaveBeenCalledWith('app1', {
+      designKit: expect.objectContaining({ previewPath: 'thumbnails/ascent/nested.png' }),
+    })
+  })
+
   it('never stamps when the install fails (slug not found)', async () => {
     const { installDesignKitForApp } = await import('../install.js')
     await installDesignKitForApp('app1', 'nonexistent')
@@ -322,8 +375,13 @@ async function primeRealInstall(
   return entry
 }
 
-/** Like primeRealInstall but with a caller-supplied file set (e.g. to inject an anchor.json). */
-async function primeRealInstallWithFiles(files: Record<string, string>): Promise<void> {
+/** Like primeRealInstall but with a caller-supplied file set (e.g. to inject an anchor.json).
+ * `entryOverride` lets a test attach catalog-entry fields (e.g. `images.preview`,
+ * `design.palette`) that the stamp reads alongside the anchor-derived tokens. */
+async function primeRealInstallWithFiles(
+  files: Record<string, string>,
+  entryOverride: Record<string, unknown> = {},
+): Promise<void> {
   const tmpDir = mkdtempSync(join(tmpdir(), 'install-kit-files-'))
   const tarPath = join(tmpDir, 'kit.tar.gz')
   const tarBuf = await makeTarball(tarPath, files)
@@ -335,7 +393,7 @@ async function primeRealInstallWithFiles(files: Record<string, string>): Promise
     arrayBuffer: async () => tarBuf.buffer.slice(tarBuf.byteOffset, tarBuf.byteOffset + tarBuf.byteLength),
   } as unknown as Response))
 
-  mockFetchCatalog.mockResolvedValue({ version: 1, generatedAt: '', kits: [{ ...ENTRY, tarballHash: `sha256-${hash}` }] })
+  mockFetchCatalog.mockResolvedValue({ version: 1, generatedAt: '', kits: [{ ...ENTRY, ...entryOverride, tarballHash: `sha256-${hash}` }] })
 }
 
 async function makeTarball(targetTar: string, files: Record<string, string>): Promise<Buffer> {

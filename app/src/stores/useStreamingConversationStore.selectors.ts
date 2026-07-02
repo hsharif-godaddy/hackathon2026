@@ -112,6 +112,7 @@ const awaitedJobResultSelector = (jobId: string | undefined) =>
 
 export const useAwaitedJobResult = (jobId: string | undefined) =>
   useStreamingConversationStore(awaitedJobResultSelector(jobId))
+export const useInterimStatus = () => useStreamingConversationStore(state => state.interimStatus)
 export const useInputValue = () => useStreamingConversationStore(state => state.inputValue)
 export const useIsLoading = () => useStreamingConversationStore(state => state.isLoading)
 export const useCurrentAppId = () => useStreamingConversationStore(state => state.currentAppId)

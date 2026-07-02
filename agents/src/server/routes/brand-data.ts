@@ -14,6 +14,7 @@ import { workspaceScopeFromAppId } from '../../memory/interfaces/scope.js';
 import { getBrandMoodImages } from '../../services/media/brand-mood-images.js';
 import { AppMetadataRepository } from '../../database/index.js';
 import type { DesignKitRef } from '../../types/design-kit.js';
+import { resolveDesignSystemAssetUrl } from '../../services/design-system/catalog.js';
 import { validateAppOwnership } from '../middleware/app-ownership.js';
 import type { AuthenticatedRequest } from '../middleware/jwt-auth.js';
 import {
@@ -158,7 +159,16 @@ router.get('/apps/:id/brand-data', validateAppOwnership, async (req: Request, re
         const phase = wizardResult.exists ? (wizardResult.value as { phase?: unknown }).phase : undefined;
         return phase === 'gathering' || phase === 'brand' || phase === 'website' || phase === 'ready' ? { phase } : undefined;
       })(),
-      kit: designKit?.displayName ? { name: designKit.displayName } : undefined,
+      // Surface the kit's shape language + full-page preview (AIROBUILD-3232 item 7)
+      // so the website-build animation mirrors the chosen kit. Each field is only
+      // included when stamped; previewPath is resolved to an absolute URL.
+      kit: designKit?.displayName
+        ? {
+            name: designKit.displayName,
+            ...(designKit.tokens ? { tokens: designKit.tokens } : {}),
+            ...(designKit.previewPath ? { previewUrl: resolveDesignSystemAssetUrl(designKit.previewPath) } : {}),
+          }
+        : undefined,
     };
 
     res.json(brandData);

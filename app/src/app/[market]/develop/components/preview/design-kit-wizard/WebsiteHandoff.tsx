@@ -1,7 +1,8 @@
 'use client';
 
-import { motion, useReducedMotion } from 'framer-motion';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { type CSSProperties, type JSX, type ReactNode, useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import Button from '@ux/button';
 import SparklesIcon from '@ux/icon/sparkles';
 import text from '@ux/text';
@@ -107,6 +108,21 @@ export function WebsiteHandoff({ appId }: { appId: string }): JSX.Element {
   const heroImageUrl = moodImages[0] ? getSlotImageUrl(moodImages[0].slot, moodImages[0].url, previewBaseUrl) : null;
   const galleryImages = moodImages.slice(0, 3);
 
+  // --- Kit shape language (AIROBUILD-3232 item 7) ---
+  // Mirror the chosen kit's actual shape instead of a fixed soft-rounded card: its
+  // corner radii, flatness and label casing drive the mock, and its full-page preview
+  // screenshot (when present) becomes the primary "constructing" visual so there's no
+  // jarring switch when the real kit-built site appears. Absent tokens fall back to the
+  // current generic geometry; absent preview falls back to the generic skeleton below.
+  const kitTokens = data?.kit?.tokens;
+  const previewUrl = data?.kit?.previewUrl ?? null;
+  const radiusCard: string | null = kitTokens?.radiusBase !== undefined ? `${kitTokens.radiusBase}px` : null;
+  const radiusPill: string | null = kitTokens?.radiusButton !== undefined ? `${kitTokens.radiusButton}px` : null;
+  const flat: boolean = kitTokens?.flat === true;
+  const labelCase: CSSProperties = kitTokens?.uppercase
+    ? { textTransform: 'uppercase', letterSpacing: kitTokens.tracking }
+    : {};
+
   // Load the brand's heading + body faces so the blueprint renders in them.
   useEffect(() => {
     requestFonts([headingFamily, bodyFamily].filter((f): f is string => !!f));
@@ -190,7 +206,9 @@ export function WebsiteHandoff({ appId }: { appId: string }): JSX.Element {
 
       {/* ---- the website blueprint ---- */}
       <motion.div
-        className="relative w-[340px] overflow-hidden rounded-xl border border-intents-ux-box-borderColor bg-white shadow-[0_18px_44px_-18px_rgba(0,0,0,0.4)]"
+        data-testid="design-kit-blueprint-card"
+        className={`relative w-[340px] overflow-hidden rounded-xl border border-intents-ux-box-borderColor bg-white ${flat ? '' : 'shadow-[0_18px_44px_-18px_rgba(0,0,0,0.4)]'}`}
+        style={radiusCard ? { borderRadius: radiusCard } : undefined}
         {...pop(0, { scale: 0.94 })}
       >
         {/* browser chrome */}
@@ -201,6 +219,50 @@ export function WebsiteHandoff({ appId }: { appId: string }): JSX.Element {
           <span className="ms-2 h-[9px] w-[130px] rounded-full bg-[#e6e4ea]" />
         </div>
 
+        {previewUrl ? (
+          /* The kit's real full-page preview screenshot — the primary "constructing"
+             visual, so there's no jarring switch when the finished kit-built site
+             appears. It reveals top→bottom across the assembly beats (a receding
+             curtain), while the brand palette washes in and the logo monogram lands as
+             light overlays; the feeder chips above carry the rest of the ingredient
+             motion. Reduced motion shows it fully revealed. */
+          <div className="relative h-[350px] w-full overflow-hidden bg-white">
+            <motion.img
+              data-testid="design-kit-preview-image"
+              src={previewUrl}
+              alt=""
+              draggable={false}
+              className="pointer-events-none absolute inset-x-0 top-0 w-full select-none"
+              {...mp(BEAT.kit + 200, 600, { scale: 1.03 })}
+            />
+            {/* palette wash — the brand colours pour over the page at the colours beat */}
+            <motion.div
+              aria-hidden
+              className="pointer-events-none absolute inset-0 mix-blend-multiply"
+              style={{ background: heroGradient }}
+              {...mp(BEAT.colours + 300, 700, {}, { opacity: 0.16 })}
+            />
+            {/* logo monogram lands top-left at the logo beat */}
+            <motion.span
+              aria-hidden
+              className="absolute left-2 top-2 grid h-[20px] w-[20px] place-items-center text-[11px] font-semibold shadow-sm"
+              style={{ background: primary, color: primaryFg, borderRadius: radiusPill ?? '6px', ...headFont }}
+              {...pop(BEAT.logo + 200, { scale: 0.6 })}
+            >
+              {monogram}
+            </motion.span>
+            {/* receding curtain reveals the screenshot top→bottom as the site assembles */}
+            <motion.div
+              aria-hidden
+              className="absolute inset-x-0 bottom-0 bg-white"
+              style={{ boxShadow: '0 -1px 14px 2px var(--color-ai-glow)' }}
+              initial={reduce ? false : { height: '100%' }}
+              animate={{ height: '0%' }}
+              transition={reduce ? { duration: 0 } : { delay: (BEAT.kit + 300) / 1000, duration: (BEAT.building - (BEAT.kit + 300)) / 1000, ease: 'easeInOut' }}
+            />
+          </div>
+        ) : (
+          <>
         {/* header — the bar lays in with the structure; the logo + nav fill at the logo beat */}
         <motion.div className="flex h-[34px] items-center justify-between border-b border-[#efedf1] px-3" {...mp(BEAT.kit + 300, 420, { y: 6 })}>
           <motion.div className="flex items-center gap-1.5" {...pop(BEAT.logo + 200, { scale: 0.6 })}>
@@ -209,7 +271,7 @@ export function WebsiteHandoff({ appId }: { appId: string }): JSX.Element {
           </motion.div>
           <div className="flex gap-2.5">
             {[BEAT.logo + 500, BEAT.logo + 650, BEAT.logo + 800].map((d) => (
-              <motion.span key={d} className="block h-1.5 w-[22px] rounded-full bg-[#e6e4ea]" {...mp(d, 240, { y: -3 })} />
+              <motion.span key={d} className="block h-1.5 w-[22px] rounded-full bg-[#e6e4ea]" style={radiusPill ? { borderRadius: radiusPill } : undefined} {...mp(d, 240, { y: -3 })} />
             ))}
           </div>
         </motion.div>
@@ -233,8 +295,8 @@ export function WebsiteHandoff({ appId }: { appId: string }): JSX.Element {
               {truncate(headline, 42)}
             </motion.div>
             <motion.span
-              className="self-start rounded-full px-3 py-1 text-[10.5px] font-medium"
-              style={{ background: primary, color: primaryFg, ...bodyFont }}
+              className="self-start px-3 py-1 text-[10.5px] font-medium"
+              style={{ background: primary, color: primaryFg, ...bodyFont, borderRadius: radiusPill ?? '9999px', ...labelCase }}
               {...mp(BEAT.type + 800, 450, { y: 6 })}
             >
               Get started
@@ -252,6 +314,7 @@ export function WebsiteHandoff({ appId }: { appId: string }): JSX.Element {
               <motion.div
                 key={i}
                 className="relative h-[52px] flex-1 overflow-hidden rounded-[7px] bg-[#e6e4ea] shadow-[inset_0_0_0_1px_rgba(0,0,0,0.04)]"
+                style={radiusCard ? { borderRadius: radiusCard } : undefined}
                 {...mp(BEAT.kit + 600 + i * 120, 420, { y: 10, rotate: rot })}
               >
                 <motion.div
@@ -287,6 +350,8 @@ export function WebsiteHandoff({ appId }: { appId: string }): JSX.Element {
           <span className="relative h-[5px] w-[30px] rounded-full bg-white/45" />
           <span className="relative h-[5px] w-[30px] rounded-full bg-white/45" />
         </motion.div>
+          </>
+        )}
 
         {/* closing shimmer sweep (CSS loop while we hold on the building beat) */}
         {building && !reduce && (
@@ -308,6 +373,9 @@ export function WebsiteHandoff({ appId }: { appId: string }): JSX.Element {
           <span className="relative block h-1 w-[220px] overflow-hidden rounded-full" style={{ background: 'color-mix(in srgb, var(--color-ai) 14%, transparent)' }}>
             <span className="dk-bp-indet absolute h-1 w-[38%] rounded-full" style={{ background: 'linear-gradient(90deg, var(--color-ai-light), var(--color-ai-muted))' }} />
           </span>
+        )}
+        {building && (
+          <text.p as="caption" emphasis="passive">This usually takes about 5 minutes.</text.p>
         )}
       </div>
     </div>
@@ -364,78 +432,135 @@ export function WebsiteHandoffDone({ onGo }: { onGo: () => void }): JSX.Element 
  *
  * data-testid: `design-kit-website-ready`.
  */
+// How long the celebration overlay holds before it fades out; the page-level
+// BuildCompleteCelebration reveals the Preview tab on the same beat (imported there so the
+// timing stays in one place).
+export const CELEBRATE_MS = 2600;
+
+// The overlay's fade-out duration (matches the AnimatePresence exit transition below). The
+// host waits this long after CELEBRATE_MS before unmounting the overlay so the fade plays
+// out instead of being cut short by an immediate unmount.
+export const CELEBRATE_EXIT_MS = 450;
+
 // Radial sparkle burst directions (degrees) for the celebration payoff.
 const BURST_DEGREES = [0, 36, 72, 108, 144, 180, 216, 252, 288, 324];
 
-export function WebsiteReadyCelebration(): JSX.Element {
+/**
+ * Build-complete celebration: a full-screen overlay with a confetti burst and a blurred
+ * scrim over the builder, which plays once and then fades to reveal the finished site.
+ *
+ * Portaled to `document.body` so it truly covers the viewport (the wizard content sits
+ * inside transformed/animated ancestors, where `position: fixed` would be scoped to the
+ * ancestor rather than the viewport). It self-dismisses after {@link CELEBRATE_MS} — the
+ * wizard reveals the Preview tab on the same beat and normally unmounts this, but the
+ * self-dismiss guarantees a full-screen overlay can never linger if a host only hides it.
+ *
+ * data-testid: `design-kit-website-ready`.
+ */
+export function WebsiteReadyCelebration(): JSX.Element | null {
   const reduce = useReducedMotion();
-  return (
-    <div
-      data-testid="design-kit-website-ready"
-      className="relative mx-auto flex min-h-[60vh] w-full max-w-3xl flex-col items-center justify-center gap-5 px-4 text-center"
-    >
-      {/* Pulsing ambient Airo burst behind the payoff. */}
-      <motion.div
-        aria-hidden
-        className="pointer-events-none absolute inset-0"
-        style={{ background: 'radial-gradient(48% 42% at 50% 40%, var(--color-ai-glow), transparent 70%)' }}
-        initial={reduce ? false : { opacity: 0.4, scale: 0.85 }}
-        animate={reduce ? { opacity: 1 } : { opacity: [0.4, 1, 0.85], scale: [0.85, 1.08, 1] }}
-        transition={{ duration: 1.8, ease: 'easeOut' }}
-      />
+  const [visible, setVisible] = useState<boolean>(true);
 
-      <div className="relative flex h-16 w-16 items-center justify-center">
-        {/* Expanding ring ripple. */}
-        {!reduce && (
-          <motion.span
-            aria-hidden
-            className="absolute inset-0 rounded-full"
-            style={{ border: '2px solid var(--color-ai-light)' }}
-            initial={{ scale: 0.5, opacity: 0.9 }}
-            animate={{ scale: 2.4, opacity: 0 }}
-            transition={{ duration: 1.2, ease: 'easeOut' }}
-          />
-        )}
+  // One-shot confetti burst on mount (skipped for reduced motion). zIndex sits above the
+  // overlay scrim so the particles render crisp over the blur.
+  useEffect(() => {
+    if (reduce) return undefined;
+    let cancelled = false;
+    void import('canvas-confetti')
+      .then((confetti) => {
+        if (cancelled || typeof window === 'undefined') return;
+        confetti.default({ particleCount: 140, spread: 100, startVelocity: 45, origin: { y: 0.6 }, scalar: 1.1, zIndex: 200 });
+      })
+      .catch(() => {
+        // confetti is decorative; a failed chunk load is non-fatal
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [reduce]);
 
-        {/* Radial sparkle burst — dots fly out from the badge and fade. */}
-        {!reduce &&
-          BURST_DEGREES.map((deg) => {
-            const rad = (deg * Math.PI) / 180;
-            return (
-              <motion.span
-                key={deg}
-                aria-hidden
-                data-testid="design-kit-celebration-spark"
-                className="absolute left-1/2 top-1/2 h-1.5 w-1.5 rounded-full"
-                style={{ background: deg % 72 === 0 ? 'var(--color-ai)' : 'var(--color-ai-light)' }}
-                initial={{ x: 0, y: 0, scale: 0, opacity: 1 }}
-                animate={{ x: Math.cos(rad) * 52, y: Math.sin(rad) * 52, scale: [0, 1, 0], opacity: [1, 1, 0] }}
-                transition={{ duration: 0.95, delay: 0.12, ease: 'easeOut' }}
-              />
-            );
-          })}
+  useEffect(() => {
+    const t = window.setTimeout(() => setVisible(false), CELEBRATE_MS);
+    return () => window.clearTimeout(t);
+  }, []);
 
-        {/* The badge pops with a springy, slightly over-rotated entrance. */}
+  if (typeof document === 'undefined') return null;
+
+  return createPortal(
+    <AnimatePresence>
+      {visible && (
         <motion.div
-          initial={reduce ? false : { scale: 0.3, opacity: 0, rotate: -18 }}
-          animate={{ scale: 1, opacity: 1, rotate: 0 }}
-          transition={{ type: 'spring', stiffness: 280, damping: 11 }}
-          className="relative flex h-16 w-16 items-center justify-center rounded-full text-white"
-          style={{ background: 'linear-gradient(135deg, var(--color-ai-dark), var(--color-ai-light))', boxShadow: '0 0 52px 10px var(--color-ai-glow)' }}
+          data-testid="design-kit-website-ready"
+          className="fixed inset-0 z-[100] flex items-center justify-center px-4 text-center"
+          initial={reduce ? false : { opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.4, ease: 'easeOut' }}
         >
-          <SparklesIcon className="h-7 w-7" />
-        </motion.div>
-      </div>
+          {/* Blurred scrim over the builder; the finished site is revealed as this fades. */}
+          <div
+            aria-hidden
+            className="absolute inset-0 backdrop-blur-md"
+            style={{ background: 'color-mix(in srgb, var(--color-ai-glow) 26%, rgba(20, 18, 24, 0.34))' }}
+          />
 
-      <motion.div
-        initial={reduce ? false : { opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.22, duration: 0.45, ease: 'easeOut' }}
-        className="relative flex flex-col gap-1.5"
-      >
-        <text.span className="text-xl font-semibold text-intents-ux-box-foregroundColor">Your website is ready!</text.span>
-        <text.p as="caption" emphasis="passive">You&rsquo;re going to love it — bringing it in now…</text.p>
-      </motion.div>
-    </div>
+          <div className="relative flex flex-col items-center gap-5">
+            <div className="relative flex h-16 w-16 items-center justify-center">
+              {/* Expanding ring ripple. */}
+              {!reduce && (
+                <motion.span
+                  aria-hidden
+                  className="absolute inset-0 rounded-full"
+                  style={{ border: '2px solid var(--color-ai-light)' }}
+                  initial={{ scale: 0.5, opacity: 0.9 }}
+                  animate={{ scale: 2.4, opacity: 0 }}
+                  transition={{ duration: 1.2, ease: 'easeOut' }}
+                />
+              )}
+
+              {/* Radial sparkle burst — dots fly out from the badge and fade. */}
+              {!reduce &&
+                BURST_DEGREES.map((deg) => {
+                  const rad = (deg * Math.PI) / 180;
+                  return (
+                    <motion.span
+                      key={deg}
+                      aria-hidden
+                      data-testid="design-kit-celebration-spark"
+                      className="absolute left-1/2 top-1/2 h-1.5 w-1.5 rounded-full"
+                      style={{ background: deg % 72 === 0 ? 'var(--color-ai)' : 'var(--color-ai-light)' }}
+                      initial={{ x: 0, y: 0, scale: 0, opacity: 1 }}
+                      animate={{ x: Math.cos(rad) * 52, y: Math.sin(rad) * 52, scale: [0, 1, 0], opacity: [1, 1, 0] }}
+                      transition={{ duration: 0.95, delay: 0.12, ease: 'easeOut' }}
+                    />
+                  );
+                })}
+
+              {/* The badge pops with a springy, slightly over-rotated entrance. */}
+              <motion.div
+                initial={reduce ? false : { scale: 0.3, opacity: 0, rotate: -18 }}
+                animate={{ scale: 1, opacity: 1, rotate: 0 }}
+                transition={{ type: 'spring', stiffness: 280, damping: 11 }}
+                className="relative flex h-16 w-16 items-center justify-center rounded-full text-white"
+                style={{ background: 'linear-gradient(135deg, var(--color-ai-dark), var(--color-ai-light))', boxShadow: '0 0 52px 10px var(--color-ai-glow)' }}
+              >
+                <SparklesIcon className="h-7 w-7" />
+              </motion.div>
+            </div>
+
+            <motion.div
+              initial={reduce ? false : { opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.22, duration: 0.45, ease: 'easeOut' }}
+              className="relative flex flex-col gap-1.5"
+            >
+              <text.span className="text-xl font-semibold text-white [text-shadow:0_1px_10px_rgba(0,0,0,0.35)]">Your website is ready!</text.span>
+              <text.p as="caption" className="text-white/85">You&rsquo;re going to love it — bringing it in now…</text.p>
+            </motion.div>
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>,
+    document.body,
   );
 }

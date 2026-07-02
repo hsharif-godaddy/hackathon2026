@@ -313,6 +313,7 @@ export const STREAMING_EVENT_TYPES = [
   'stream_retry',
   'video',
   'build_phase',
+  'status_narration',
   'logo',
   'request_grant_refresh',
   'skill_diagnostics',

@@ -189,6 +189,11 @@ export interface StreamingConversationState {
   streamingState: 'idle' | 'streaming' | 'completing' | 'error'
   currentStep: number
 
+  /** Ephemeral, server-narrated status shown in the thinker label during the
+   *  design-kit gathering pause (status_narration events); null when inactive.
+   *  Reset on stream start / clear / finalize / app switch. */
+  interimStatus: string | null
+
   // App context
   currentAppId: string | null
   inputValue: string
@@ -298,6 +303,8 @@ export interface StreamingConversationState {
 
   setConnectionState: (state: Partial<ConnectionState>) => void
   setStreamingState: (state: 'idle' | 'streaming' | 'completing' | 'error') => void
+  /** Sets the ephemeral design-kit narration status (or null to clear). No-op when unchanged. */
+  setInterimStatus: (status: string | null) => void
   setError: (error: Error) => void
   startStream: (conversationId: string, messageId: string) => void
 

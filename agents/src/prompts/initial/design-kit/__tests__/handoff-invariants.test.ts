@@ -46,16 +46,20 @@ describe('design-kit prompt fan-out invariants (AIROBUILD-2871)', () => {
     }
   })
 
-  it('wizard-flow.md brand phase fans out mood-imagery + logo media sub-agents, logo with background:false', () => {
+  it('wizard-flow.md brand phase fans out mood-imagery + logo task-worker sub-agents, logo with background:false', () => {
     const wf = read('wizard-flow.md')
     const brandIdx = wf.indexOf('## Brand')
     const websiteIdx = wf.indexOf('## Create website')
     expect(brandIdx).toBeGreaterThan(0)
     expect(websiteIdx).toBeGreaterThan(brandIdx)
     const brand = wf.slice(brandIdx, websiteIdx)
-    // The two slow pieces fan out to background `media` sub-agents, then awaitAgents.
+    // AIROBUILD-3234: the two slow pieces fan out to neutral `task-worker` sub-agents (driven
+    // entirely by the inline task), NOT the deep-build `media` agent, then awaitAgents.
     expect(brand).toContain('runAgent')
-    expect(brand).toContain('agent: "media"')
+    // AIROBUILD-3234: mood + logo run on the neutral `task-worker` (media/skill tools only,
+    // fixed in its config — not the deep-build `media` agent, and not a caller-passed allow-list).
+    expect(brand).toContain('agent: "task-worker"')
+    expect(brand).not.toContain('agent: "media"')
     expect(brand).toContain('awaitAgents')
     // The logo MUST be generated with background:false (the whole point — wait for the
     // real logo before the website builds) and as the horizontal layout.
@@ -63,20 +67,32 @@ describe('design-kit prompt fan-out invariants (AIROBUILD-2871)', () => {
     expect(brand).toContain('horizontal')
   })
 
-  it('wizard-flow.md website phase fans out a design-kit-build homepage + showcase builder, kit-driven (no plan, no handoff)', () => {
+  it('wizard-flow.md website phase fans out chrome + homepage design-kit-build slices + brand-showcase, kit-driven (no plan, no handoff)', () => {
     const wf = read('wizard-flow.md')
     const sectionIdx = wf.indexOf('## Create website')
     expect(sectionIdx).toBeGreaterThan(0)
     const section = wf.slice(sectionIdx)
-    // Fan-out: dispatch the kit-faithful homepage builder + the showcase builder, await both.
+    // Fan-out: dispatch the kit-faithful chrome + homepage builders + the showcase builder, await all.
     expect(section).toContain('runAgent')
     expect(section).toContain('awaitAgents')
-    // AIROBUILD-2871: the homepage is built by the dedicated design-kit-build sub-agent, which
-    // self-loads the kit (docs/ui-kit/ + anchor.json) — the kit IS the spec, so NO plan file.
+    // AIROBUILD-2871: the site is built by dedicated design-kit-build sub-agents, which
+    // self-load the kit (docs/ui-kit/ + anchor.json) — the kit IS the spec, so NO plan file.
     expect(section).toContain('agent: "design-kit-build"')
     expect(section).not.toContain('docs/plans/homepage.md')
-    // The showcase is a parallel `builder` sub-agent (writes public/brand-showcase.html).
-    expect(section).toContain('agent: "builder"')
+    // AIROBUILD-3234: the build is split into TWO design-kit-build slices on disjoint files —
+    // the site chrome (shared header/footer/layout) and the homepage body — so the shared layout
+    // is rebranded (real logo, footer, title) even when the homepage build runs long.
+    expect(section.match(/agent: "design-kit-build"/g) ?? []).toHaveLength(2)
+    expect(section).toContain('src/layouts/parts/Header.tsx') // chrome slice owns the layout files
+    expect(section).toContain('src/pages/index.tsx') // homepage slice is the page body only
+    // The homepage slice must NOT rebuild the chrome (RootLayout owns it) — guards the
+    // double-chrome regression that motivated the split.
+    expect(section).toMatch(/do NOT build your own header/i)
+    // AIROBUILD-3234: the showcase is built by the dedicated, file-only `brand-showcase` agent
+    // (NOT the deep-build `builder`, and NOT the media-capable task-worker that re-ran generation).
+    // Its file-only toolset is fixed in config, so it can't re-generate the logo/mood assets.
+    expect(section).toContain('agent: "brand-showcase"')
+    expect(section).not.toContain('agent: "builder"')
     expect(section).toContain('public/brand-showcase.html')
     // AIROBUILD-2855: agent-driven — the phase is emitted by the agent, no manual buttons.
     expect(section).toContain('setWizardStep({ phase: "website" })')

@@ -166,11 +166,20 @@ export async function installDesignKitForApp(appId: string, slug: string): Promi
       // plus kitId when the kit has one. This is the single source of truth for
       // the chosen kit: the brand-data route reads `designKit` to surface the
       // wizard's "Design kit" row, and it doubles as provenance/instrumentation.
+      // AIROBUILD-3232 item 7: prefer the kit's full-page preview screenshot, but fall
+      // back to its thumbnail so EVERY kit has a real screenshot for the build animation
+      // to assemble — many catalog entries ship only a thumbnail (e.g. Ascent), and
+      // without this the animation silently fell back to the generic skeleton.
+      const previewPath = entry.images?.preview ?? entry.thumbnail ?? entry.images?.thumbnail
       const designKit: DesignKitRef = {
         source: 'catalog',
         id: entry.id,
         displayName: entry.displayName,
         ...(entry.kitId ? { kitId: entry.kitId } : {}),
+        // Also stamp the kit's anchor.json shape tokens so the animation mirrors the
+        // kit's radius/flatness/casing. Guarded — a kit missing tokens omits the field.
+        ...(result.tokens ? { tokens: result.tokens } : {}),
+        ...(previewPath ? { previewPath } : {}),
       }
       new AppMetadataRepository().merge(appId, { designKit })
     } catch (metaErr) {
