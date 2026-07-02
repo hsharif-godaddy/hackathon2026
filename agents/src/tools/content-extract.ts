@@ -21,9 +21,12 @@ const PARSE_OPTS: { sourceType: 'module'; plugins: ['jsx', 'typescript'] } = {
 /** A literal value JSON can represent: string, number, boolean, or null. */
 type LiteralValue = string | number | boolean | null;
 
+/** A scalar-array heal lifts to LiteralValue[]; an object-array heal to Record<…>[]. */
+export type ExtractedData = LiteralValue[] | Record<string, LiteralValue>[];
+
 export interface ExtractableArray {
   arrayName: string;
-  data: Record<string, LiteralValue>[];
+  data: ExtractedData;
   retainedKeys: string[];
   locId: string | null;
 }
@@ -138,8 +141,30 @@ function validateElement(el: t.Node): ElementSplit {
 interface ArrayShapeCheck {
   ok: boolean;
   reason: string | null;
-  data: Record<string, LiteralValue>[] | null;
+  data: ExtractedData | null;
   retainedKeys: string[];
+}
+
+/**
+ * Validate a bare scalar array (`['a','b']`, `[1,2,3]`) — every element must be
+ * a JSON literal. Returns the literal values in source order; scalar arrays have
+ * no fields, so `retainedKeys` is always empty.
+ */
+function validateScalarArray(arrayExpr: t.ArrayExpression): ArrayShapeCheck {
+  const data: LiteralValue[] = [];
+  for (const el of arrayExpr.elements) {
+    if (el === null) {
+      return { ok: false, reason: 'array contains a hole/elision', data: null, retainedKeys: [] };
+    }
+    if (t.isSpreadElement(el)) {
+      return { ok: false, reason: 'array uses a spread element', data: null, retainedKeys: [] };
+    }
+    if (!literalKind(el)) {
+      return { ok: false, reason: 'array mixes scalar and non-scalar elements', data: null, retainedKeys: [] };
+    }
+    data.push(literalValue(el));
+  }
+  return { ok: true, reason: null, data, retainedKeys: [] };
 }
 
 /**
@@ -150,6 +175,10 @@ interface ArrayShapeCheck {
 function validateArray(arrayExpr: t.ArrayExpression): ArrayShapeCheck {
   if (arrayExpr.elements.length === 0) {
     return { ok: false, reason: 'array is empty (no element shape to infer)', data: null, retainedKeys: [] };
+  }
+  const firstEl: t.ArrayExpression['elements'][number] | undefined = arrayExpr.elements[0];
+  if (firstEl != null && !t.isSpreadElement(firstEl) && literalKind(firstEl)) {
+    return validateScalarArray(arrayExpr);
   }
   const data: Record<string, LiteralValue>[] = [];
   let retainedSignature: string | null = null;
@@ -1228,7 +1257,7 @@ export interface ExtractionPlan {
    */
   arraysWithRetained: ArrayWithRetained[];
   /** Content payload keyed by array name, ready for the content layer. Present iff extractedNames is non-empty. */
-  content?: Record<string, Record<string, LiteralValue>[]>;
+  content?: Record<string, ExtractedData>;
   /** The recast-rewritten page source. Present iff extractedNames is non-empty. */
   newPageSource?: string;
   /**
@@ -1316,7 +1345,7 @@ export function planPageExtraction(
       arrayName: p.arrayName,
       retainedKeys: p.retainedKeys,
     }));
-  const content: Record<string, Record<string, LiteralValue>[]> = {};
+  const content: Record<string, ExtractedData> = {};
   for (const extraction of toExtract) {
     content[extraction.arrayName] = extraction.data;
   }
@@ -1372,7 +1401,7 @@ function planIdAddressed(
     target.retainedKeys.length > 0
       ? [{ arrayName: target.arrayName, retainedKeys: target.retainedKeys }]
       : [];
-  const content: Record<string, Record<string, LiteralValue>[]> = {
+  const content: Record<string, ExtractedData> = {
     [target.arrayName]: target.data,
   };
   const newPageSource: string = rewritePageBindingPrecise(source, binding, target, conformId);

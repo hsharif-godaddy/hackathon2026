@@ -96,16 +96,21 @@ describe('analyzeExtractable — declines with a reason', () => {
     expect(v.reason).toMatch(/spread|non-object|element/i);
   });
 
-  it('array of non-object elements (strings)', () => {
+  it('array of scalar strings — now extracts (CP2: scalar arrays accepted)', () => {
+    // CP2 promoted bare scalar arrays; a string[] with a single .map is now
+    // extractable. The old "object literal" decline no longer fires.
     const code: string = `
       const colors = ['Purple', 'Cyan', 'Pink'];
       export default function P() {
         return <div>{colors.map((c) => <option key={c}>{c}</option>)}</div>;
       }
     `;
-    const v: { extracted: boolean; reason: string | null } = verdict(code, 'colors');
-    expect(v.extracted).toBe(false);
-    expect(v.reason).toMatch(/object literal/i);
+    const report: ReturnType<typeof analyzeExtractable> = analyzeExtractable(code, 'home');
+    const extraction: ReturnType<typeof analyzeExtractable>['extractions'][number] | undefined =
+      report.extractions.find((e) => e.arrayName === 'colors');
+    expect(extraction).toBeDefined();
+    expect(extraction!.data).toEqual(['Purple', 'Cyan', 'Pink']);
+    expect(extraction!.retainedKeys).toEqual([]);
   });
 
   it('object element holds ONLY a non-serializable value (identifier / component ref) with no literal fields', () => {
@@ -1105,18 +1110,18 @@ describe('real customer bundle shapes (S1 boundary)', () => {
   describe('boundary case — Hot Ham Communications portfolio.tsx: function-local nested + string-array (S3/S4 shapes)', () => {
     // portfolioItems: function-local, nested projects array (S3), icon component
     //   ref per-category (S1 retained-key shape but disqualified by nested field).
-    // capabilities: function-local bare string[] (S4).
-    // All are invisible to the module-level scanner — clean no-op, not a crash.
-    // These shapes are committed follow-up slices; the decline is intentional.
-    it('extracts nothing and does not throw', () => {
+    // capabilities: function-local bare string[] — CP2 now extracts it.
+    // portfolioItems still declines (nested array-valued property, S3 shape).
+    it('extracts capabilities (CP2) and does not throw; portfolioItems still declined (S3)', () => {
       expect(() => {
         const plan: ExtractionPlan = planPageExtraction(
           HOT_HAM_PORTFOLIO,
           'src/pages/portfolio.tsx',
         );
-        expect(plan.extractedNames).toEqual([]);
-        expect(plan.newPageSource).toBeUndefined();
-        expect(plan.content).toBeUndefined();
+        // capabilities is now extracted by CP2
+        expect(plan.extractedNames).toContain('capabilities');
+        // portfolioItems still declines — nested array-valued property (S3)
+        expect(plan.extractedNames).not.toContain('portfolioItems');
       }).not.toThrow();
     });
   });
@@ -1434,21 +1439,23 @@ describe('real customer bundle shapes (S2 — function-local)', () => {
     });
   });
 
-  // S4 STILL DECLINES: capabilities is a bare string[] — non-object elements,
-  // hard-skipped. This is intentional; S4 will handle non-object arrays.
-  describe('STILL DECLINES — capabilities (function-local string[], S4 shape)', () => {
-    it('analyzeExtractable does NOT include capabilities — non-object elements skip it', () => {
+  // S4 NOW EXTRACTS: capabilities is a bare string[] — CP2 accepts scalar arrays.
+  describe('NOW EXTRACTS — capabilities (function-local string[], S4 shape shipped in CP2)', () => {
+    it('analyzeExtractable DOES include capabilities — CP2 accepts scalar arrays', () => {
       const report: ReturnType<typeof analyzeExtractable> = analyzeExtractable(
         HOT_HAM_PORTFOLIO_S2,
         'portfolio',
       );
-      const found: boolean = report.extractions.some((e) => e.arrayName === 'capabilities');
-      expect(found).toBe(false);
-      // Skipped with a non-object-element reason.
-      const skip: ReturnType<typeof analyzeExtractable>['skipped'][number] | undefined =
-        report.skipped.find((s) => s.name === 'capabilities');
-      expect(skip).toBeDefined();
-      expect(skip!.reason).toMatch(/object literal/i);
+      const extraction: ReturnType<typeof analyzeExtractable>['extractions'][number] | undefined =
+        report.extractions.find((e) => e.arrayName === 'capabilities');
+      expect(extraction).toBeDefined();
+      expect(extraction!.data).toEqual([
+        'Strategic Communications Planning',
+        'Executive Messaging & Positioning',
+        'Internal Communications Programs',
+        'Thought Leadership Development',
+      ]);
+      expect(extraction!.retainedKeys).toEqual([]);
     });
   });
 
@@ -1473,5 +1480,148 @@ describe('real customer bundle shapes (S2 — function-local)', () => {
       expect(pattern.test(bindingForPage('src/pages/secret-sauce.tsx'))).toBe(true);
       expect(pattern.test(bindingForPage('src/pages/about-us.tsx'))).toBe(true);
     });
+  });
+});
+
+// ── CP2: scalar arrays (string[], number[], boolean[]) ────────────────────────
+//
+// A bare scalar array (`const tags = ['a','b','c']`) iterated by a single
+// `.map` with a simple param read (`{t}`) should be extracted. The element is
+// a scalar, so `retainedKeys` is always empty. The map-callback body token
+// `{t}` (a plain read of the item param) must be left BYTE-UNCHANGED by the
+// rewrite — it is not `{t.value}`.
+
+describe('analyzeExtractable — scalar array (CP2)', () => {
+  it('string[] — extracts with data equal to the literal values and retainedKeys === []', () => {
+    const code: string = `
+      const tags = ['a', 'b', 'c'];
+      export default function P() {
+        return <ul>{tags.map((t) => <li key={t}>{t}</li>)}</ul>;
+      }
+    `;
+    const report: ReturnType<typeof analyzeExtractable> = analyzeExtractable(code, 'home');
+    const extraction: ReturnType<typeof analyzeExtractable>['extractions'][number] | undefined =
+      report.extractions.find((e) => e.arrayName === 'tags');
+    expect(extraction).toBeDefined();
+    expect(extraction!.data).toEqual(['a', 'b', 'c']);
+    expect(extraction!.retainedKeys).toEqual([]);
+  });
+
+  it('number[] — [2021, 2022, 2023] extracts with numeric data', () => {
+    const code: string = `
+      const years = [2021, 2022, 2023];
+      export default function P() {
+        return <ul>{years.map((y) => <li key={y}>{y}</li>)}</ul>;
+      }
+    `;
+    const report: ReturnType<typeof analyzeExtractable> = analyzeExtractable(code, 'home');
+    const extraction: ReturnType<typeof analyzeExtractable>['extractions'][number] | undefined =
+      report.extractions.find((e) => e.arrayName === 'years');
+    expect(extraction).toBeDefined();
+    expect(extraction!.data).toEqual([2021, 2022, 2023]);
+    expect(extraction!.retainedKeys).toEqual([]);
+  });
+
+  it('boolean[] — [true, false] extracts with boolean data', () => {
+    const code: string = `
+      const flags = [true, false];
+      export default function P() {
+        return <ul>{flags.map((f) => <li key={String(f)}>{String(f)}</li>)}</ul>;
+      }
+    `;
+    const report: ReturnType<typeof analyzeExtractable> = analyzeExtractable(code, 'home');
+    const extraction: ReturnType<typeof analyzeExtractable>['extractions'][number] | undefined =
+      report.extractions.find((e) => e.arrayName === 'flags');
+    expect(extraction).toBeDefined();
+    expect(extraction!.data).toEqual([true, false]);
+    expect(extraction!.retainedKeys).toEqual([]);
+  });
+
+  it('mixed scalar+object array — skipped with reason mentioning "mixes scalar"', () => {
+    const code: string = `
+      const mixed = ['a', { b: 1 }];
+      export default function P() {
+        return <ul>{mixed.map((m) => <li>{m}</li>)}</ul>;
+      }
+    `;
+    const v: { extracted: boolean; reason: string | null } = verdict(code, 'mixed');
+    expect(v.extracted).toBe(false);
+    expect(v.reason).toMatch(/mixes scalar/i);
+  });
+
+  it('empty [] — still skipped (empty array guard unchanged)', () => {
+    const code: string = `
+      const items = [];
+      export default function P() {
+        return <ul>{items.map((i) => <li>{i}</li>)}</ul>;
+      }
+    `;
+    const v: { extracted: boolean; reason: string | null } = verdict(code, 'items');
+    expect(v.extracted).toBe(false);
+    expect(v.reason).toMatch(/empty/i);
+  });
+
+  it('scalar array used beyond .map (indexed access) — still declined', () => {
+    const code: string = `
+      const t = ['a', 'b'];
+      const first = t[0];
+      export default function P() {
+        return <ul>{t.map((x) => <li>{x}</li>)}</ul>;
+      }
+    `;
+    const v: { extracted: boolean; reason: string | null } = verdict(code, 't');
+    expect(v.extracted).toBe(false);
+    expect(v.reason).toMatch(/referenced|index|beyond|map/i);
+  });
+
+  it('object-array regression: existing object-array extracts identically after CP2', () => {
+    const code: string = `
+      const testimonials = [
+        { quote: "great", name: "Jordan" },
+        { quote: "love it", name: "Priya" },
+      ];
+      export default function P() {
+        return <div>{testimonials.map((t) => <p key={t.name}>{t.quote}</p>)}</div>;
+      }
+    `;
+    const report: ReturnType<typeof analyzeExtractable> = analyzeExtractable(code, 'home');
+    const extraction: ReturnType<typeof analyzeExtractable>['extractions'][number] | undefined =
+      report.extractions.find((e) => e.arrayName === 'testimonials');
+    expect(extraction).toBeDefined();
+    expect(extraction!.data).toEqual([
+      { quote: 'great', name: 'Jordan' },
+      { quote: 'love it', name: 'Priya' },
+    ]);
+    expect(extraction!.retainedKeys).toEqual([]);
+  });
+});
+
+describe('planPageExtraction — scalar array rewrite (CP2)', () => {
+  it('batch rewrite: scalar const removed, .map callee prefixed, loop-var body {c} unchanged', () => {
+    const src: string = `const capabilities = ['Strategic Planning', 'Executive Messaging', 'Internal Programs'];
+
+export default function P() {
+  return (
+    <ul>
+      {capabilities.map((c) => <li key={c}>{c}</li>)}
+    </ul>
+  );
+}
+`;
+    const plan: ExtractionPlan = planPageExtraction(src, 'src/pages/index.tsx');
+    expect(plan.extractedNames).toEqual(['capabilities']);
+    expect(plan.content!.capabilities).toEqual([
+      'Strategic Planning',
+      'Executive Messaging',
+      'Internal Programs',
+    ]);
+    const out: string = plan.newPageSource!;
+    // declarator is gone
+    expect(out).not.toMatch(/const capabilities =/);
+    // .map callee updated
+    expect(out).toMatch(/home\.capabilities\.map\(/);
+    // loop-var body token unchanged — NOT {c.value}
+    expect(out).toMatch(/\{c\}/);
+    expect(out).not.toMatch(/c\.value/);
   });
 });

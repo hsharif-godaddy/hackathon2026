@@ -194,7 +194,7 @@ interface ValidationContext {
   pageRel: string;
   plan: ExtractionPlan;
   /** Pristine pre-scaffold clone of the extracted data (ids not yet minted). */
-  expected: Record<string, Record<string, unknown>[]>;
+  expected: Record<string, unknown[]>;
   /**
    * Array names that already existed in the page's content JSON before this
    * conform. For these, scaffold's `merge` semantics legitimately preserve
@@ -299,12 +299,15 @@ async function validateConform(ctx: ValidationContext): Promise<string | null> {
     // misalign at index `i`. Acceptable for now — a full re-conform is a rare
     // heal path and the user can correct it via the content editor.
     if (ctx.preExistingArrays.has(name)) continue;
-    const want: Record<string, unknown>[] = expected[name]!.map(withoutId);
-    const got: Record<string, unknown>[] = actual.map((item: unknown): Record<string, unknown> =>
-      item !== null && typeof item === 'object'
-        ? withoutId(item as Record<string, unknown>)
-        : (item as Record<string, unknown>),
-    );
+    // `withoutId` strips the minted `id` off object items; scalar items (S4
+    // scalar arrays — plain strings/numbers) carry no id and pass through
+    // untouched. Both sides MUST apply the same guard or a scalar array's
+    // `want` would destructure each string into `{0:'…',1:'…'}` and every
+    // scalar heal would false-fail the round-trip and roll back.
+    const stripId: (item: unknown) => unknown = (item: unknown): unknown =>
+      item !== null && typeof item === 'object' ? withoutId(item as Record<string, unknown>) : item;
+    const want: unknown[] = expected[name]!.map(stripId);
+    const got: unknown[] = actual.map(stripId);
     if (JSON.stringify(got) !== JSON.stringify(want)) {
       return `round-trip mismatch for '${name}' in pages/${plan.binding}.json`;
     }
@@ -512,9 +515,9 @@ async function tryConform(
 
   // Pristine pre-scaffold clone: scaffold mints ids by mutating `plan.content`
   // in place, so comparing on-disk JSON against it later would be circular.
-  const expected: Record<string, Record<string, unknown>[]> = JSON.parse(
+  const expected: Record<string, unknown[]> = JSON.parse(
     JSON.stringify(plan.content),
-  ) as Record<string, Record<string, unknown>[]>;
+  ) as Record<string, unknown[]>;
 
   const contentDir: string = join(appPath, 'src', 'content');
   const pageJson: string = `src/content/pages/${plan.binding}.json`;
