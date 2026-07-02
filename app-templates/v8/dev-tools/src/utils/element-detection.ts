@@ -127,13 +127,22 @@ export function isTextEditable(element: HTMLElement, cmsInlineEditEnabled: boole
   // expression rendered via a render-prop pattern (e.g. ReactMarkdown renderers:
   // `p: ({children}) => <p>{children}</p>`). These elements carry data-dev-dynamic
   // on *themselves* because {children} is a dynamic expression, but their actual
-  // DOM content is user-authored text that is safe to inline-edit.
+  // DOM content is user-authored text.
+  // Such a node is only SAVEABLE when it lives under a [data-dev-content-file]
+  // ancestor: the save path (useTextEditing) redirects the write to that markdown
+  // file. Today that ancestor is emitted only by the blog-post component. WITHOUT
+  // it, the save falls through to the AST editor, which rejects the {expr} child
+  // (hasUnsupportedDynamicTextExpression) → the user edits then gets a 400 on blur.
+  // The classic offender is prop-drilled copy: `<Banner headline="…"/>` →
+  // `<h2>{headline}</h2>`. So editability requires the content-file ancestor,
+  // mirroring the save path's own success condition (strictly-restrictive).
   // The source mapper only adds data-dev-bound-text when genericMapDepth === 0
   // (not inside any .map() call), so ancestor dynamic checks are unnecessary —
   // a dynamic ancestor is always a page-level conditional render, not a list.
   // Block only when a descendant is dynamic (nested programmatic subtrees).
   const hasBoundText = element.getAttribute("data-dev-bound-text") === "true";
   if (hasBoundText) {
+    if (!element.closest("[data-dev-content-file]")) return false;
     if (element.querySelector("[data-dev-dynamic]")) return false;
   } else {
     if (element.closest("[data-dev-dynamic]") || element.querySelector("[data-dev-dynamic]")) return false;
