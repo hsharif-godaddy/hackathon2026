@@ -1,12 +1,12 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 import { agentFetch } from '@/lib/agent-fetch';
-import { DomainType } from '@/lib/control-plane/types';
+import { DomainType, type SiteDomain } from '@/lib/control-plane/types';
 import { appFetch } from '@/lib/gasket-config';
 import { MWP_V2_APP_OWNER_TYPE } from '@/lib/mgmt-airo/types';
 import { logger } from '@/lib/request-context';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
-import { useSiteStore } from '@/stores/useSiteStore';
+import { type Site, useSiteStore } from '@/stores/useSiteStore';
 import { normalizeFqdn } from '@/utils/domain';
 
 /**
@@ -270,10 +270,26 @@ export function useModifyDomains() {
         });
       }
 
+      // Single store read shared by the delete-sync below and the agent push.
+      const site: Site | null = useSiteStore.getState().getSite(variables.siteId);
+
+      // Reflect domain deletions in useSiteStore synchronously so the agent's
+      // getSiteData client action (its attach-gate source) no longer sees the
+      // removed domain as active. Filters the store's own full SiteDomain[] so
+      // prefix domains and all SiteDomain fields are preserved.
+      const deletedStoreFqdns: Set<string> = new Set(
+        (variables.payload.domainsToDelete ?? []).map(d => d.fqdn.trim().toLowerCase())
+      );
+      if (deletedStoreFqdns.size > 0 && site?.domains) {
+        const nextDomains: SiteDomain[] = site.domains.filter(
+          d => !deletedStoreFqdns.has(d.fqdn.trim().toLowerCase())
+        );
+        useSiteStore.getState().updateSite(variables.siteId, { domains: nextDomains });
+      }
+
       // Push domain state to agent so context reflects the change
       void (async () => {
         try {
-          const site = useSiteStore.getState().getSite(variables.siteId);
           if (!site?.agent_url) return;
 
           const existingDomains = (site.domains ?? [])

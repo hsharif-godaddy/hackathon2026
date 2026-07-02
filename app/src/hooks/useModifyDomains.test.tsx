@@ -6,14 +6,20 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, waitFor } from '@testing-library/react';
 
+import { DomainStatus, DomainType, type SiteDomain } from '@/lib/control-plane/types';
 import { appFetch } from '@/lib/gasket-config';
 import { logger } from '@/lib/request-context';
+import { type Site, useSiteStore } from '@/stores/useSiteStore';
 import { DomainMutationError, useModifyDomains } from './useModifyDomains';
 
 const setDomainJobInProgress = vi.fn();
 
 vi.mock('@/lib/gasket-config', () => ({
   appFetch: vi.fn(),
+}));
+
+vi.mock('@/lib/agent-fetch', () => ({
+  agentFetch: vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) }),
 }));
 
 vi.mock('@/lib/request-context', () => ({
@@ -47,7 +53,37 @@ describe('useModifyDomains', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    useSiteStore.setState({ sites: {}, loading: {}, error: null, _pendingRequests: {} });
   });
+
+  const makeDomain = (overrides: Partial<SiteDomain>): SiteDomain => ({
+    fqdn: 'custom.example.com',
+    isPrimary: false,
+    domainType: DomainType.CUSTOM,
+    prefix: '',
+    status: DomainStatus.ACTIVE,
+    createdAt: '2024-01-01T00:00:00Z',
+    updatedAt: '2024-01-01T00:00:00Z',
+    ...overrides,
+  });
+
+  const seedStore = (domains: SiteDomain[]): void => {
+    useSiteStore.setState({
+      sites: {
+        'app-123': { id: 'app-123', status: 'active', account_id: 'acc-1', domains } as unknown as Site,
+      },
+      loading: {},
+      error: null,
+      _pendingRequests: {},
+    });
+  };
+
+  const mockDeleteSuccess = (): void => {
+    vi.mocked(appFetch).mockResolvedValue({
+      ok: true,
+      json: async () => ({ statusJobId: 'job-del', status: 'pending', message: 'Delete started' }),
+    } as Response);
+  };
 
   async function mutateAndGetError({
     responseBody,
@@ -139,6 +175,96 @@ describe('useModifyDomains', () => {
     });
 
     expect(setDomainJobInProgress).not.toHaveBeenCalled();
+  });
+
+  it('should remove a deleted fqdn from useSiteStore and preserve prefix domains', async function deleteSyncsStore() {
+    seedStore([
+      makeDomain({ fqdn: 'custom.example.com', isPrimary: true, domainType: DomainType.CUSTOM }),
+      makeDomain({ fqdn: 'myapp.airoapp.ai', domainType: DomainType.PREFIX, prefix: 'myapp' }),
+    ]);
+    mockDeleteSuccess();
+
+    const { result } = renderHook(() => useModifyDomains(), {
+      wrapper: createWrapper(),
+    });
+
+    result.current.mutate({
+      siteId: 'app-123',
+      payload: { domainsToDelete: [{ fqdn: 'custom.example.com' }] },
+    });
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true);
+    });
+
+    const storedDomains = useSiteStore.getState().sites['app-123']?.domains;
+    expect(storedDomains).toHaveLength(1);
+    expect(storedDomains?.find(d => d.fqdn === 'custom.example.com')).toBeUndefined();
+    expect(storedDomains?.find(d => d.domainType === DomainType.PREFIX)?.fqdn).toBe('myapp.airoapp.ai');
+  });
+
+  it('should remove a domain from useSiteStore case-insensitively', async function deleteSyncsStoreCaseInsensitive() {
+    seedStore([makeDomain({ fqdn: 'Custom.Example.com' })]);
+    mockDeleteSuccess();
+
+    const { result } = renderHook(() => useModifyDomains(), {
+      wrapper: createWrapper(),
+    });
+
+    result.current.mutate({
+      siteId: 'app-123',
+      payload: { domainsToDelete: [{ fqdn: 'CUSTOM.EXAMPLE.COM' }] },
+    });
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true);
+    });
+
+    expect(useSiteStore.getState().sites['app-123']?.domains).toHaveLength(0);
+  });
+
+  it('should not throw when deleting and the site is not cached in useSiteStore', async function deleteNoCachedSite() {
+    mockDeleteSuccess();
+
+    const { result } = renderHook(() => useModifyDomains(), {
+      wrapper: createWrapper(),
+    });
+
+    result.current.mutate({
+      siteId: 'app-123',
+      payload: { domainsToDelete: [{ fqdn: 'custom.example.com' }] },
+    });
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true);
+    });
+
+    expect(useSiteStore.getState().sites['app-123']).toBeUndefined();
+  });
+
+  it('should leave useSiteStore domains unchanged for a connect-only mutation', async function connectLeavesStore() {
+    seedStore([makeDomain({ fqdn: 'existing.example.com', isPrimary: true })]);
+    vi.mocked(appFetch).mockResolvedValue({
+      ok: true,
+      json: async () => ({ statusJobId: 'job-con', status: 'pending', message: 'Connect started' }),
+    } as Response);
+
+    const { result } = renderHook(() => useModifyDomains(), {
+      wrapper: createWrapper(),
+    });
+
+    result.current.mutate({
+      siteId: 'app-123',
+      payload: { domainsToCreate: [{ fqdn: 'new.example.com', primary: false }] },
+    });
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true);
+    });
+
+    const storedDomains = useSiteStore.getState().sites['app-123']?.domains;
+    expect(storedDomains).toHaveLength(1);
+    expect(storedDomains?.[0]?.fqdn).toBe('existing.example.com');
   });
 
   it('should throw DomainMutationError on non-ok response', async function throwsMutationError() {
