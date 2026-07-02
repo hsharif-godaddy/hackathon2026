@@ -18,7 +18,6 @@ export function getTargetOrigin(): string {
     return iframeOrigin
   }
 
-  logger.warn('post-message.no-origin-configured', { message: 'NEXT_PUBLIC_IFRAME_ORIGIN not set, using wildcard origin for postMessage (security risk)' })
   return '*'
 }
 

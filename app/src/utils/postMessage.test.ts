@@ -37,19 +37,8 @@ describe('postMessage utilities', () => {
       expect(getTargetOrigin()).toBe('*');
     });
 
-    it('should log warning when using wildcard', () => {
+    it('should not log when using wildcard fallback', () => {
       delete process.env.NEXT_PUBLIC_IFRAME_ORIGIN;
-      getTargetOrigin();
-      expect(logger.warn).toHaveBeenCalledWith(
-        'post-message.no-origin-configured',
-        expect.objectContaining({
-          message: expect.stringContaining('security risk'),
-        })
-      );
-    });
-
-    it('should not log warning when origin is configured', () => {
-      process.env.NEXT_PUBLIC_IFRAME_ORIGIN = 'https://app.example.com';
       getTargetOrigin();
       expect(logger.warn).not.toHaveBeenCalled();
     });
@@ -318,10 +307,6 @@ describe('postMessage utilities', () => {
         postMessageToIframe(iframe, { type: 'ping' });
 
         expect(mockContentWindow.postMessage).toHaveBeenCalledWith({ type: 'ping' }, '*');
-        expect(logger.warn).toHaveBeenCalledWith(
-          'post-message.no-origin-configured',
-          expect.any(Object),
-        );
       });
 
       it('falls back to wildcard when iframe.src is unparseable', () => {
@@ -333,7 +318,6 @@ describe('postMessage utilities', () => {
         postMessageToIframe(iframe, { type: 'ping' });
 
         expect(mockContentWindow.postMessage).toHaveBeenCalledWith({ type: 'ping' }, '*');
-        expect(logger.warn).toHaveBeenCalled();
       });
 
       it('does not override origin outside development', () => {
@@ -346,7 +330,6 @@ describe('postMessage utilities', () => {
         postMessageToIframe(iframe, { type: 'ping' });
 
         expect(mockContentWindow.postMessage).toHaveBeenCalledWith({ type: 'ping' }, '*');
-        expect(logger.warn).toHaveBeenCalled();
       });
     });
   });
