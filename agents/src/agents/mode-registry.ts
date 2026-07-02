@@ -1,17 +1,17 @@
 /**
- * Template Registry — maps template IDs to metadata.
+ * Mode Registry — maps mode IDs to metadata.
  *
- * Each registered template must have a corresponding prompt directory at:
- *   agents/src/prompts/initial/templates/<templateId>/core.md
+ * Each registered mode must have a corresponding prompt directory at:
+ *   agents/src/prompts/initial/modes/<modeId>/core.md
  */
 
-export interface InitialAgentTemplate {
+export interface InitialAgentMode {
   id: string
   name: string
   description: string
 }
 
-export const templateRegistry: Record<string, InitialAgentTemplate> = {
+export const modeRegistry: Record<string, InitialAgentMode> = {
   'business-plan': {
     id: 'business-plan',
     name: 'Business Plan Website',
@@ -45,15 +45,15 @@ export const templateRegistry: Record<string, InitialAgentTemplate> = {
 }
 
 /**
- * Get a template by ID, or undefined if not registered.
+ * Get a mode by ID, or undefined if not registered.
  */
-export function getTemplate(templateId: string): InitialAgentTemplate | undefined {
-  return Object.hasOwn(templateRegistry, templateId) ? templateRegistry[templateId] : undefined
+export function getMode(modeId: string): InitialAgentMode | undefined {
+  return Object.hasOwn(modeRegistry, modeId) ? modeRegistry[modeId] : undefined
 }
 
 /**
- * Get all registered template IDs.
+ * Get all registered mode IDs.
  */
-export function getTemplateIds(): string[] {
-  return Object.keys(templateRegistry)
+export function getModeIds(): string[] {
+  return Object.keys(modeRegistry)
 }

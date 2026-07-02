@@ -11,7 +11,7 @@ import { getModularPromptPaths } from '../utils/prompt-utils.js'
 import { allAILibTools } from '../tools/ai-lib-tools/index.js'
 import { createAgentTelemetryLogger } from '../utils/agent-logger.js'
 import { errorFields, logger } from '../logging/index.js'
-import { getTemplate } from './template-registry.js'
+import { getMode } from './mode-registry.js'
 import { skillToolManager } from '../tools/skill-tool-manager.js'
 import { SkillLoaderTool } from '../tools/skill-loader-tool.js'
 import { createAgentHandoffTool } from '../tools/create-agent-handoff-tool.js'
@@ -41,7 +41,7 @@ export {
  * Shared files (communication.md, security.md) are appended from the shared/ directory.
  *
  * When a templateId is provided, prompt files are loaded from
- * agents/src/prompts/initial/templates/<templateId>/ instead.
+ * agents/src/prompts/initial/modes/<templateId>/ instead.
  *
  * Endgame / profile experiments: set profile property `initial.modularPromptFiles` to a
  * comma-separated list of module filenames (under initial/<version>/) to override the
@@ -53,14 +53,14 @@ const DEFAULT_PROMPT_VERSION = '1.0'
 
 /**
  * Directory names under `agents/src/prompts/initial/` that are NOT named manifest
- * variants — numbered versions, templates sub-tree, anything else is scanned.
+ * variants — numbered versions, modes sub-tree, anything else is scanned.
  */
-const NON_VARIANT_INITIAL_SUBDIRS = new Set(['1.0', '3.0', 'templates'])
+const NON_VARIANT_INITIAL_SUBDIRS = new Set(['1.0', '3.0', 'modes'])
 
 /**
  * Discover named manifest-based initial agent variants. A named variant is any
  * subdirectory of `agents/src/prompts/initial/` (other than numbered versions
- * and `templates/`) that contains a `manifest.json`. The directory name is the
+ * and `modes/`) that contains a `manifest.json`. The directory name is the
  * variant's promptVersion string (e.g. `'prompt-enhancer'`).
  */
 export function discoverNamedInitialVariants(): string[] {
@@ -156,7 +156,7 @@ async function buildInitialSystemPrompt(
   const paths = getModularPromptPaths(import.meta.url)
 
   if (templateId) {
-    const templateDir = `initial/templates/${templateId}`
+    const templateDir = `initial/modes/${templateId}`
     const manifestPath = paths.getAgentFile(templateDir, 'manifest.json')
 
     if (existsSync(manifestPath)) {
@@ -240,7 +240,7 @@ export async function createInitialAgent(
   templateId?: string,
   promptVersion?: string
 ): Promise<AgentConfig> {
-  if (templateId && !getTemplate(templateId)) {
+  if (templateId && !getMode(templateId)) {
     throw new Error(`Unknown template: ${templateId}`)
   }
 

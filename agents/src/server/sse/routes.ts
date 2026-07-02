@@ -42,7 +42,7 @@ interface SSERouteDeps {
   executionService?: MessageExecutionService
   resolveAgent: (params: AgentRouterParams) => string | Promise<string>
   getStateManager: () => AgentStateManager | null
-  getTemplateIds: () => string[]
+  getModeIds: () => string[]
   lifecycle: ConversationLifecycleStore
   messages: MessageStore
 }
@@ -121,7 +121,7 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
         appId,
         templateId,
         jwtAgentProfile: agentContext?.agentProfile,
-        getTemplateIds: deps.getTemplateIds,
+        getModeIds: deps.getModeIds,
       })
       const customerId = agentContext?.customerId
       const { conversation, isNew } = await deps.lifecycle.getOrCreateForApp(workspaceScopeFromAppId(appId, customerId), resolvedAgentId)
@@ -716,7 +716,7 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
     // revert a post-handoff agent (the `startsWith('initial')` guard skips anything
     // already handed off).
     if (isInitialPrompt && resolvedAgentId.startsWith('initial')) {
-      const validTemplate = typeof templateId === 'string' && deps.getTemplateIds().includes(templateId)
+      const validTemplate = typeof templateId === 'string' && deps.getModeIds().includes(templateId)
         ? templateId
         : undefined
       const templateAgentId = validTemplate ? `initial-${validTemplate}` : undefined

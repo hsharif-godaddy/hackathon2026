@@ -8,7 +8,7 @@ interface AgentRouterDeps {
    * fresh initial agent; messages → best-effort `develop`. Never the primary path.
    */
   hasMessagesForApp: (appId: string) => boolean | Promise<boolean>
-  getTemplateIds: () => string[]
+  getModeIds: () => string[]
   /**
    * The authoritative per-app agent: `conversations.agentId` of the app's latest
    * conversation, frozen as a concrete id at create/handoff. Returned verbatim —
@@ -87,7 +87,7 @@ export function createAgentRouter(deps: AgentRouterDeps) {
         appId,
         templateId,
         jwtAgentProfile: agentContext?.agentProfile,
-        getTemplateIds: deps.getTemplateIds,
+        getModeIds: deps.getModeIds,
       })
     }
 

@@ -68,7 +68,7 @@ function createMockDeps() {
     }),
     resolveAgent: vi.fn().mockResolvedValue('develop'),
     getStateManager: vi.fn().mockReturnValue(null),
-    getTemplateIds: vi.fn().mockReturnValue([]),
+    getModeIds: vi.fn().mockReturnValue([]),
     lifecycle: {
       create: vi.fn().mockImplementation(function (scope: { appId: string }, agentId: string) { return Promise.resolve({ id: 'conv_new', appId: scope.appId, agentId }); }
       ),
@@ -134,7 +134,7 @@ describe('SSE routes', () => {
     })
 
     it('freezes initial-<templateId> when a registered template is provided', async () => {
-      deps.getTemplateIds = vi.fn().mockReturnValue(['v8'])
+      deps.getModeIds = vi.fn().mockReturnValue(['v8'])
 
       await request(app)
         .post('/api/conversations/abcdefghij')
@@ -1072,7 +1072,7 @@ describe('SSE routes', () => {
       const depsWithService = {
         ...deps,
         resolveAgent: vi.fn().mockResolvedValue('initial-design-system'),
-        getTemplateIds: vi.fn().mockReturnValue(['logo-designer']),
+        getModeIds: vi.fn().mockReturnValue(['logo-designer']),
         executionService: { execute: mockExecute, hasActiveStream: vi.fn().mockReturnValue(false) },
       }
       const appWithService = express()
@@ -1098,7 +1098,7 @@ describe('SSE routes', () => {
       const depsWithService = {
         ...deps,
         resolveAgent: vi.fn().mockResolvedValue('develop'),
-        getTemplateIds: vi.fn().mockReturnValue(['logo-designer']),
+        getModeIds: vi.fn().mockReturnValue(['logo-designer']),
         executionService: { execute: mockExecute, hasActiveStream: vi.fn().mockReturnValue(false) },
       }
       const appWithService = express()
@@ -1129,7 +1129,7 @@ describe('SSE routes', () => {
         ...deps,
         lifecycle: failingLifecycle,
         resolveAgent: vi.fn().mockResolvedValue('initial-design-system'),
-        getTemplateIds: vi.fn().mockReturnValue(['logo-designer']),
+        getModeIds: vi.fn().mockReturnValue(['logo-designer']),
         executionService: { execute: mockExecute, hasActiveStream: vi.fn().mockReturnValue(false) },
       }
       const appWithService = express()

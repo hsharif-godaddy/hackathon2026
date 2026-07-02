@@ -28,7 +28,7 @@ export interface ResolveInitialAgentParams {
    * per-message client profile.
    */
   jwtAgentProfile?: string
-  getTemplateIds: () => string[]
+  getModeIds: () => string[]
 }
 
 /**
@@ -43,10 +43,10 @@ export interface ResolveInitialAgentParams {
  *   3. Default base `initial`
  */
 export function resolveInitialAgentId(params: ResolveInitialAgentParams): string {
-  const { appId, templateId, jwtAgentProfile, getTemplateIds } = params
+  const { appId, templateId, jwtAgentProfile, getModeIds } = params
 
   // 1. ?template= — a distinct registered agent (e.g. initial-v8), not a flag on base initial.
-  const validTemplate = typeof templateId === 'string' && getTemplateIds().includes(templateId)
+  const validTemplate = typeof templateId === 'string' && getModeIds().includes(templateId)
     ? templateId
     : undefined
   if (validTemplate) {

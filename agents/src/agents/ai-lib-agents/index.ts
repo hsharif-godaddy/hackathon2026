@@ -21,7 +21,7 @@ import {
 } from '../index.js'
 import { createAgentHandoffTool } from '../../tools/create-agent-handoff-tool.js'
 import { createDeepBuildAgent } from '../deep-build-agent.js'
-import { getTemplateIds } from '../template-registry.js'
+import { getModeIds } from '../mode-registry.js'
 import { skillToolManager } from '../../tools/skill-tool-manager.js'
 import { errorFields, logger } from '../../logging/index.js'
 import { getProfileRegistry, runWithProfile, profileValue } from '../../profiles/index.js'
@@ -75,9 +75,9 @@ export async function createUnifiedAgentFactory(options?: {
   initialV3Config.name = 'Initial (v3.0)'
 
   // Pre-create template-specific initial agent variants
-  const templateInitialConfigs: Record<string, AgentConfig> = {}
-  for (const templateId of getTemplateIds()) {
-    templateInitialConfigs[`initial-${templateId}`] = await createInitialAgent(stateManager, templateId)
+  const modeInitialConfigs: Record<string, AgentConfig> = {}
+  for (const templateId of getModeIds()) {
+    modeInitialConfigs[`initial-${templateId}`] = await createInitialAgent(stateManager, templateId)
   }
 
   // Pre-create named manifest variants (e.g. initial-prompt-enhancer). Each variant is
@@ -92,7 +92,7 @@ export async function createUnifiedAgentFactory(options?: {
   // invisible until request-time routing.
   const reservedInitialAgentIds = new Set<string>([
     'initial', 'initial-v3',
-    ...Object.keys(templateInitialConfigs),
+    ...Object.keys(modeInitialConfigs),
   ])
   for (const variantName of discoverNamedInitialVariants()) {
     try {
@@ -171,7 +171,7 @@ export async function createUnifiedAgentFactory(options?: {
   initialConfig.contextPipeline = contextPipeline
   initialV3Config.contextPipeline = contextPipeline
 
-  for (const config of Object.values(templateInitialConfigs)) {
+  for (const config of Object.values(modeInitialConfigs)) {
     config.contextPipeline = contextPipeline
   }
 
@@ -190,7 +190,7 @@ export async function createUnifiedAgentFactory(options?: {
     marketing: marketingConfig,
     debug: debugConfig,
     'deep-build': deepBuildConfig,
-    ...templateInitialConfigs,
+    ...modeInitialConfigs,
   }
 
   // Now define agents with handoff tools already included

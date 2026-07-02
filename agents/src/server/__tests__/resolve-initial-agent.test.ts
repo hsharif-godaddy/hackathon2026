@@ -31,7 +31,7 @@ describe('resolveInitialAgentId', function resolveInitialAgentTests() {
         appId: 'app_new',
         templateId: 'v8',
         jwtAgentProfile: 'jwtp',
-        getTemplateIds: () => ['v8'],
+        getModeIds: () => ['v8'],
       })
       expect(id).toBe('initial-v8')
       // The JWT profile branch must not have been consulted once the template matched.
@@ -44,14 +44,14 @@ describe('resolveInitialAgentId', function resolveInitialAgentTests() {
       const id = resolveInitialAgentId({
         appId: 'app_new',
         jwtAgentProfile: 'jwtp',
-        getTemplateIds: noTemplates,
+        getModeIds: noTemplates,
       })
       expect(id).toBe('initial-v3')
     })
 
     it('3. defaults to base initial when nothing applies', function defaultInitial() {
       resolveProfileSpy.mockReturnValue(null)
-      const id = resolveInitialAgentId({ appId: 'app_new', getTemplateIds: noTemplates })
+      const id = resolveInitialAgentId({ appId: 'app_new', getModeIds: noTemplates })
       expect(id).toBe('initial')
     })
 
@@ -60,7 +60,7 @@ describe('resolveInitialAgentId', function resolveInitialAgentTests() {
       const id = resolveInitialAgentId({
         appId: 'app_new',
         templateId: 'not-a-template',
-        getTemplateIds: () => ['v8'],
+        getModeIds: () => ['v8'],
       })
       expect(id).toBe('initial')
     })
@@ -69,7 +69,7 @@ describe('resolveInitialAgentId', function resolveInitialAgentTests() {
   describe('concrete initial variant from a resolved profile', function variants() {
     function withJwtProfile(p: ProfileData) {
       resolveProfileSpy.mockReturnValue(p)
-      return resolveInitialAgentId({ appId: 'app_new', jwtAgentProfile: p.name, getTemplateIds: noTemplates })
+      return resolveInitialAgentId({ appId: 'app_new', jwtAgentProfile: p.name, getModeIds: noTemplates })
     }
 
     it('routes to base initial-v3 when modularPromptFiles is configured (variants flattened)', function modularFlattened() {

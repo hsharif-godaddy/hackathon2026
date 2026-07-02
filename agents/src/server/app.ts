@@ -44,7 +44,7 @@ import {
 } from '../memory/adapters/index.js';
 import { workspaceScopeFromAppId } from '../memory/interfaces/scope.js';
 import { ConversationContextManager } from '../services/ConversationContextManager.js';
-import { getTemplateIds } from '../agents/template-registry.js';
+import { getModeIds } from '../agents/mode-registry.js';
 import { createAgentRouter } from './agent-router.js';
 import { createCareBridge } from '../care/index.js';
 import { getSwitchboardFlag } from '../services/switchboard.js';
@@ -86,7 +86,7 @@ const { validator: ssePostStreamValidator, resetRetries: sseResetPostStreamRetri
 
 const resolveAgent = createAgentRouter({
   hasMessagesForApp: (appId) => getMessageStore().hasMessagesForApp(workspaceScopeFromAppId(appId)),
-  getTemplateIds,
+  getModeIds,
   // Durable per-conversation agent fallback (transport parity with the WS router).
   // SSE has no in-memory session, so this is what keeps a conversation in its
   // persisted phase instead of defaulting to `develop` once messages exist.
@@ -328,7 +328,7 @@ protectedRouter.use('/api/conversations', createSSERoutes({
     if (!factory) return null
     return factory.stateManager as import('./agent-router.js').AgentStateManager
   },
-  getTemplateIds,
+  getModeIds,
   lifecycle: getConversationLifecycleStore(),
   messages: getMessageStore(),
 }));

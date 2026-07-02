@@ -9,7 +9,7 @@ import type { ProfileData } from '../../profiles/types.js'
 describe('agent-router', function agentRouterTests() {
   const resolveAgent = createAgentRouter({
     hasMessagesForApp: () => false,
-    getTemplateIds: () => [],
+    getModeIds: () => [],
   })
 
   let resolveProfileSpy: ReturnType<typeof vi.spyOn>
@@ -280,7 +280,7 @@ describe('agent-router', function agentRouterTests() {
       // hasMessagesForApp=true would have wrongly promoted to develop pre-fix.
       const resolve = createAgentRouter({
         hasMessagesForApp: () => true,
-        getTemplateIds: () => [],
+        getModeIds: () => [],
         getPersistedAgentForApp: async () => 'initial',
       })
 
@@ -291,7 +291,7 @@ describe('agent-router', function agentRouterTests() {
     it('preserves the persisted initial variant verbatim (no re-resolution)', async function persistedInitialVariant() {
       const resolve = createAgentRouter({
         hasMessagesForApp: () => true,
-        getTemplateIds: () => [],
+        getModeIds: () => [],
         getPersistedAgentForApp: async () => 'initial-v3-exp',
       })
 
@@ -306,7 +306,7 @@ describe('agent-router', function agentRouterTests() {
       }))
       const resolve = createAgentRouter({
         hasMessagesForApp: () => true,
-        getTemplateIds: () => [],
+        getModeIds: () => [],
         getPersistedAgentForApp: async () => 'develop',
       })
 
@@ -324,7 +324,7 @@ describe('agent-router', function agentRouterTests() {
       }))
       const resolve = createAgentRouter({
         hasMessagesForApp: () => true,
-        getTemplateIds: () => [],
+        getModeIds: () => [],
         getPersistedAgentForApp: async () => 'develop',
       })
 
@@ -338,7 +338,7 @@ describe('agent-router', function agentRouterTests() {
       // verbatim regardless of the current JWT profile.
       const resolve = createAgentRouter({
         hasMessagesForApp: () => true,
-        getTemplateIds: () => [],
+        getModeIds: () => [],
         getPersistedAgentForApp: async () => 'initial-v3-initial-agent-design-system',
       })
 
@@ -349,7 +349,7 @@ describe('agent-router', function agentRouterTests() {
     it('falls through to hasMessagesForApp when there is no persisted agent (brand-new app)', async function noPersistedFallsThrough() {
       const resolve = createAgentRouter({
         hasMessagesForApp: () => false,
-        getTemplateIds: () => [],
+        getModeIds: () => [],
         getPersistedAgentForApp: async () => undefined,
       })
 
@@ -361,7 +361,7 @@ describe('agent-router', function agentRouterTests() {
       const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(function () {})
       const resolve = createAgentRouter({
         hasMessagesForApp: () => false,
-        getTemplateIds: () => [],
+        getModeIds: () => [],
         getPersistedAgentForApp: async () => { throw new Error('sqlite locked') },
       })
 
@@ -378,7 +378,7 @@ describe('agent-router', function agentRouterTests() {
       const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(function () {})
       const resolve = createAgentRouter({
         hasMessagesForApp: () => true,
-        getTemplateIds: () => [],
+        getModeIds: () => [],
         getPersistedAgentForApp: async () => { throw new Error('sqlite locked') },
       })
 
@@ -392,7 +392,7 @@ describe('agent-router', function agentRouterTests() {
       const errorSpy = vi.spyOn(logger, 'error').mockImplementation(function () {})
       const resolve = createAgentRouter({
         hasMessagesForApp: () => { throw new Error('heuristic down') },
-        getTemplateIds: () => [],
+        getModeIds: () => [],
         getPersistedAgentForApp: async () => { throw new Error('sqlite locked') },
       })
 
@@ -410,7 +410,7 @@ describe('agent-router', function agentRouterTests() {
       const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(function () {})
       const resolve = createAgentRouter({
         hasMessagesForApp: () => true,
-        getTemplateIds: () => [],
+        getModeIds: () => [],
         getPersistedAgentForApp: async () => 'initial',
       })
       const stateManager = {
@@ -436,7 +436,7 @@ describe('agent-router', function agentRouterTests() {
     it('rehydrates the cold session with the raw persisted id', async function rehydratesSession() {
       const resolve = createAgentRouter({
         hasMessagesForApp: () => true,
-        getTemplateIds: () => [],
+        getModeIds: () => [],
         getPersistedAgentForApp: async () => 'initial',
       })
       const session = coldSession()
@@ -453,7 +453,7 @@ describe('agent-router', function agentRouterTests() {
       const getPersistedAgentForApp = vi.fn(async () => 'develop')
       const resolve = createAgentRouter({
         hasMessagesForApp: () => true,
-        getTemplateIds: () => [],
+        getModeIds: () => [],
         getPersistedAgentForApp,
       })
       const stateManager = {
@@ -477,7 +477,7 @@ describe('agent-router', function agentRouterTests() {
       const getPersistedAgentForApp = vi.fn(async () => persistedAgent)
       const resolve = createAgentRouter({
         hasMessagesForApp: () => true,
-        getTemplateIds: () => [],
+        getModeIds: () => [],
         getPersistedAgentForApp,
       })
       const stateManager = createSessionStateManager({ defaultAgentId: 'initial' })
@@ -508,7 +508,7 @@ describe('agent-router', function agentRouterTests() {
   it('honors a /agent override above the stored agent', async function manualOverrideWins() {
     const resolve = createAgentRouter({
       hasMessagesForApp: () => true,
-      getTemplateIds: () => [],
+      getModeIds: () => [],
       getPersistedAgentForApp: async () => 'develop',
     })
 
@@ -520,7 +520,7 @@ describe('agent-router', function agentRouterTests() {
     const getPersistedAgentForApp = vi.fn(async () => 'develop')
     const resolve = createAgentRouter({
       hasMessagesForApp: () => true,
-      getTemplateIds: () => [],
+      getModeIds: () => [],
       getPersistedAgentForApp,
     })
     const stateManager = {
