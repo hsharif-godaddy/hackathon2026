@@ -441,6 +441,61 @@ func TestProdDarkPromotesBeforeBind(t *testing.T) {
 	}
 }
 
+// TestFleetReloadRunsBeforeValidate guards the fleet-reload ordering in the real
+// config: in both test and prod, the fleet-reload stage must land in a group AFTER
+// the deploy/promote group and BEFORE the validate (e2e/regression) group — so the
+// reload runs on the freshly-deployed images and the subsequent tests exercise the
+// reloaded fleet.
+func TestFleetReloadRunsBeforeValidate(t *testing.T) {
+	cfg, err := config.Load("../../release-manager.yml")
+	if err != nil {
+		t.Skipf("skipping actual config test: %v", err)
+	}
+
+	cases := []struct {
+		env, reload, afterDeploy, beforeValidate string
+	}{
+		{"test", "fleet-reload-test", "build-images", "e2e-test"},
+		{"prod", "fleet-reload-prod", "upsert-reload-preprov", "e2e-prod"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.env, func(t *testing.T) {
+			p := New(cfg, &mockRunner{}, false, "main", nil)
+			if err := p.BuildStages(tc.env); err != nil {
+				t.Fatalf("BuildStages(%s): %v", tc.env, err)
+			}
+			idxByID := map[string]int{}
+			for i, sr := range p.Stages() {
+				idxByID[sr.Stage.ID] = i
+			}
+			groups := p.StageGroups(tc.env)
+			groupOf := func(id string) int {
+				idx, ok := idxByID[id]
+				if !ok {
+					return -1
+				}
+				for g, members := range groups {
+					for _, m := range members {
+						if m == idx {
+							return g
+						}
+					}
+				}
+				return -1
+			}
+			deployG, reloadG, validateG := groupOf(tc.afterDeploy), groupOf(tc.reload), groupOf(tc.beforeValidate)
+			if deployG < 0 || reloadG < 0 || validateG < 0 {
+				t.Fatalf("%s: stage not found — %s=%d %s=%d %s=%d",
+					tc.env, tc.afterDeploy, deployG, tc.reload, reloadG, tc.beforeValidate, validateG)
+			}
+			if deployG >= reloadG || reloadG >= validateG {
+				t.Errorf("%s: fleet-reload group (%d) must be AFTER the deploy group (%d, %s) and BEFORE the validate group (%d, %s)",
+					tc.env, reloadG, deployG, tc.afterDeploy, validateG, tc.beforeValidate)
+			}
+		})
+	}
+}
+
 func TestSetValueAndValues(t *testing.T) {
 	p := New(testConfig(), &mockRunner{}, false, "main", nil)
 

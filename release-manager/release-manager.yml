@@ -92,6 +92,27 @@ pipeline:
               job_match: 'build-airo-app-builder-publish.*Send Notifications'
               pattern: 'MOST_SPECIFIC_IMMUTABLE_TAG_SUFFIX=(pi-[a-f0-9]+-ext-[a-f0-9]+)'
 
+        # --- Fleet reload — last deploy step, BEFORE the validate group, so
+        # e2e/regression/sim-eval exercise the reloaded fleet. Advisory: surfaced
+        # in Slack, never fails the release. tlaOnly omitted in dev (no TLA apps).
+        - id: fleet-reload-test
+          name: Fleet Reload (Test)
+          group: fleet-reload
+          advisory: true
+          active_run_check: false
+          repo: gdcorp-commerce/pioneer-infra
+          workflow: airo-fleet-reload.yml
+          inputs:
+            environment: mgmt-dev-private-us-west-2
+            reason: release-train-tla
+            create_change: 'false'
+            compositionId: ai-builder
+            compositionVersion: v4
+            variant: preview
+            imageTagsMode: current
+            activeUserThresholdMinutes: '60'
+            # tlaOnly omitted → default false (dev has no TLA apps)
+
         # --- E2E + regression + manual checklist run in parallel after deploy group finishes ---
         # e2e and regression dispatch as two independent playwright-e2e.yml runs (separate run URLs,
         # independent retry) rather than one combined e2e-then-regression run.
@@ -318,6 +339,27 @@ pipeline:
             compositionVersion: v4
             appTemplateName: default
             batchConcurrency: '5'
+
+        # --- Fleet reload — last deploy step, BEFORE the validate group, so
+        # e2e/regression exercise the reloaded fleet. Advisory: surfaced in Slack,
+        # never fails the release. tlaOnly=true (prod TLA apps).
+        - id: fleet-reload-prod
+          name: Fleet Reload (Prod)
+          group: fleet-reload
+          advisory: true
+          active_run_check: false
+          repo: gdcorp-commerce/pioneer-infra
+          workflow: airo-fleet-reload.yml
+          inputs:
+            environment: mgmt-prod-us-west-2
+            reason: release-train-tla
+            create_change: 'true'
+            compositionId: ai-builder
+            compositionVersion: v4
+            variant: preview
+            imageTagsMode: current
+            activeUserThresholdMinutes: '60'
+            tlaOnly: 'true'
 
         # --- E2E + regression + manual checklist run in parallel. These are
         # advisory: prod is already live by this point (images promoted, app
