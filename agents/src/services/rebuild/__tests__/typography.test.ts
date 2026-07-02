@@ -100,7 +100,7 @@ describe('rebuild-typography', function packageTests() {
     clampWeightsToAvailableMock.mockImplementation(async (_family: string, weights: string[]) => weights);
     validateFontPairingMock.mockResolvedValue({ valid: true, networkError: false });
     updateCssFontVariablesMock.mockResolvedValue({ success: true, message: 'ok' });
-    createForWorkspaceMock.mockReturnValue({ files: { view: vi.fn(), write: vi.fn() } });
+    createForWorkspaceMock.mockReturnValue({ files: { view: vi.fn(), write: vi.fn(), readText: vi.fn().mockResolvedValue('') } });
     memorySetMock.mockResolvedValue({ success: true });
     appPlanExecuteMock.mockResolvedValue({ success: true });
     syncBrandTokensCssMock.mockResolvedValue(undefined);

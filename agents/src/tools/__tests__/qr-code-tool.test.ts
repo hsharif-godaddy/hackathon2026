@@ -7,7 +7,7 @@ const mockUpload = vi.fn().mockResolvedValue({ bytesWritten: 1024 })
 // Mock workspace
 vi.mock('../../workspace/index.js', () => ({
   createForWorkspace: vi.fn().mockReturnValue({
-    files: { upload: (...args: unknown[]) => mockUpload(...args) }
+    files: { upload: (...args: unknown[]) => mockUpload(...args), readText: vi.fn().mockResolvedValue('') }
   })
 }))
 

@@ -35,7 +35,7 @@ const disabledSettings: AdSenseSettings = {
 };
 
 describe('AdSensePublishManifestService', () => {
-  const view = vi.fn();
+  const readText = vi.fn();
   const write = vi.fn();
   const logger = {
     debug: vi.fn(),
@@ -56,7 +56,7 @@ describe('AdSensePublishManifestService', () => {
   function createWorkspace() {
     return {
       files: {
-        view,
+        readText,
         write,
       },
     };
@@ -70,11 +70,11 @@ describe('AdSensePublishManifestService', () => {
   }
 
   it('writes the generated runtime manifest into dist for the next publish', async () => {
-    view.mockResolvedValue({ content: JSON.stringify(enabledSettings) });
+    readText.mockResolvedValue(JSON.stringify(enabledSettings));
 
     await createService().writeForPublish(appId, createWorkspace() as any);
 
-    expect(view).toHaveBeenCalledWith({ path: ADSENSE_AUTHORING_CONFIG_PATH });
+    expect(readText).toHaveBeenCalledWith({ path: ADSENSE_AUTHORING_CONFIG_PATH });
     expectRuntimeManifest({
       version: 1,
       enabled: true,
@@ -86,19 +86,17 @@ describe('AdSensePublishManifestService', () => {
   });
 
   it('converts an authoring .airo/adsense.json fixture into the generated dist manifest', async () => {
-    view.mockResolvedValue({
-      content: `${JSON.stringify({
-        enabled: true,
-        scriptSnippet: canonicalScript.replace(' crossorigin="anonymous"', ''),
-        adsTxt: { enabled: true, content: 'google.com, pub-123, DIRECT, f08c47fec0942fa0' },
-        appAdsTxt: { enabled: true, content: 'app.example.com, pub-123, DIRECT' },
-        updatedAt: '2026-06-04T12:00:00.000Z',
-      }, null, 2)}\n`,
-    });
+    readText.mockResolvedValue(`${JSON.stringify({
+      enabled: true,
+      scriptSnippet: canonicalScript.replace(' crossorigin="anonymous"', ''),
+      adsTxt: { enabled: true, content: 'google.com, pub-123, DIRECT, f08c47fec0942fa0' },
+      appAdsTxt: { enabled: true, content: 'app.example.com, pub-123, DIRECT' },
+      updatedAt: '2026-06-04T12:00:00.000Z',
+    }, null, 2)}\n`);
 
     await createService().writeForPublish(appId, createWorkspace() as any);
 
-    expect(view).toHaveBeenCalledWith({ path: ADSENSE_AUTHORING_CONFIG_PATH });
+    expect(readText).toHaveBeenCalledWith({ path: ADSENSE_AUTHORING_CONFIG_PATH });
     expectRuntimeManifest({
       version: 1,
       enabled: true,
@@ -110,7 +108,7 @@ describe('AdSensePublishManifestService', () => {
   });
 
   it('writes a disabled runtime manifest when settings are disabled so stale output cannot survive', async () => {
-    view.mockResolvedValue({ content: JSON.stringify(disabledSettings) });
+    readText.mockResolvedValue(JSON.stringify(disabledSettings));
 
     await createService().writeForPublish(appId, createWorkspace() as any);
 
@@ -125,7 +123,7 @@ describe('AdSensePublishManifestService', () => {
   });
 
   it('writes a disabled runtime manifest when the authoring file is missing', async () => {
-    view.mockRejectedValue(
+    readText.mockRejectedValue(
       new DevSupervisorError('not_found', 404, `${ADSENSE_AUTHORING_CONFIG_PATH}: no such file`),
     );
 
@@ -143,13 +141,11 @@ describe('AdSensePublishManifestService', () => {
   });
 
   it('regenerates the script from publisher ID instead of trusting stale stored script text', async () => {
-    view.mockResolvedValue({
-      content: JSON.stringify({
-        ...enabledSettings,
-        scriptSnippet:
-          '<script async src="https://evil.example/ads.js?client=ca-pub-0000000000000000"></script>',
-      }),
-    });
+    readText.mockResolvedValue(JSON.stringify({
+      ...enabledSettings,
+      scriptSnippet:
+        '<script async src="https://evil.example/ads.js?client=ca-pub-0000000000000000"></script>',
+    }));
 
     await createService().writeForPublish(appId, createWorkspace() as any);
 
@@ -164,14 +160,12 @@ describe('AdSensePublishManifestService', () => {
   });
 
   it('writes an empty disabled runtime manifest when Display Ads are globally disabled', async () => {
-    view.mockResolvedValue({
-      content: JSON.stringify({
-        ...enabledSettings,
-        enabled: false,
-        adsTxt: { enabled: true, content: 'google.com, pub-123, DIRECT, f08c47fec0942fa0' },
-        appAdsTxt: { enabled: true, content: 'app.example.com, pub-123, DIRECT' },
-      }),
-    });
+    readText.mockResolvedValue(JSON.stringify({
+      ...enabledSettings,
+      enabled: false,
+      adsTxt: { enabled: true, content: 'google.com, pub-123, DIRECT, f08c47fec0942fa0' },
+      appAdsTxt: { enabled: true, content: 'app.example.com, pub-123, DIRECT' },
+    }));
 
     await createService().writeForPublish(appId, createWorkspace() as any);
 
@@ -186,7 +180,7 @@ describe('AdSensePublishManifestService', () => {
   });
 
   it('rejects malformed authoring JSON instead of publishing a disabled manifest', async () => {
-    view.mockResolvedValue({ content: '{not-json' });
+    readText.mockResolvedValue('{not-json');
 
     await expect(createService().writeForPublish(appId, createWorkspace() as any)).rejects.toBeInstanceOf(
       AdSensePublishManifestInvalidConfigError,
@@ -204,16 +198,14 @@ describe('AdSensePublishManifestService', () => {
   });
 
   it('rejects invalid stored payloads instead of publishing a disabled manifest', async () => {
-    view.mockResolvedValue({
-      content: JSON.stringify({
-        enabled: true,
-        publisherId,
-        scriptSnippet: canonicalScript,
-        adsTxt: { enabled: true, content: null },
-        appAdsTxt: { enabled: 'yes', content: 'draft app ads' },
-        updatedAt: '2026-06-04T12:00:00.000Z',
-      }),
-    });
+    readText.mockResolvedValue(JSON.stringify({
+      enabled: true,
+      publisherId,
+      scriptSnippet: canonicalScript,
+      adsTxt: { enabled: true, content: null },
+      appAdsTxt: { enabled: 'yes', content: 'draft app ads' },
+      updatedAt: '2026-06-04T12:00:00.000Z',
+    }));
 
     await expect(createService().writeForPublish(appId, createWorkspace() as any)).rejects.toMatchObject({
       reason: 'settings_normalization_failed',
@@ -226,12 +218,10 @@ describe('AdSensePublishManifestService', () => {
   });
 
   it('rejects inconsistent disabled payloads instead of publishing a disabled manifest', async () => {
-    view.mockResolvedValue({
-      content: JSON.stringify({
-        ...disabledSettings,
-        scriptSnippet: canonicalScript,
-      }),
-    });
+    readText.mockResolvedValue(JSON.stringify({
+      ...disabledSettings,
+      scriptSnippet: canonicalScript,
+    }));
 
     await expect(createService().writeForPublish(appId, createWorkspace() as any)).rejects.toMatchObject({
       reason: 'publisher_id_script_mismatch',
@@ -244,12 +234,10 @@ describe('AdSensePublishManifestService', () => {
   });
 
   it('rejects disabled payloads with non-string script snippets', async () => {
-    view.mockResolvedValue({
-      content: JSON.stringify({
-        ...disabledSettings,
-        scriptSnippet: null,
-      }),
-    });
+    readText.mockResolvedValue(JSON.stringify({
+      ...disabledSettings,
+      scriptSnippet: null,
+    }));
 
     await expect(createService().writeForPublish(appId, createWorkspace() as any)).rejects.toMatchObject({
       reason: 'script_snippet_not_string',
@@ -262,7 +250,7 @@ describe('AdSensePublishManifestService', () => {
   });
 
   it('propagates settings transport errors', async () => {
-    view.mockRejectedValue(
+    readText.mockRejectedValue(
       new DevSupervisorError('permission_denied', 403, `${ADSENSE_AUTHORING_CONFIG_PATH}: permission denied`),
     );
 
@@ -274,7 +262,7 @@ describe('AdSensePublishManifestService', () => {
   });
 
   it('propagates manifest write errors', async () => {
-    view.mockResolvedValue({ content: JSON.stringify(enabledSettings) });
+    readText.mockResolvedValue(JSON.stringify(enabledSettings));
     write.mockRejectedValue(new Error('write failed'));
 
     await expect(createService().writeForPublish(appId, createWorkspace() as any)).rejects.toThrow(

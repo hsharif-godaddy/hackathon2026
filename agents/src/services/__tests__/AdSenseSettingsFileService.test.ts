@@ -14,6 +14,7 @@ const {
   mockCreateForWorkspace: vi.fn(),
   mockFiles: {
     view: vi.fn(),
+    readText: vi.fn().mockResolvedValue('{}'),
     write: vi.fn(),
   },
   mockLogger: {
@@ -80,19 +81,19 @@ describe('AdSenseSettingsFileService', () => {
   });
 
   it('returns disabled defaults when the settings file is missing', async () => {
-    mockFiles.view.mockRejectedValue(
+    mockFiles.readText.mockRejectedValue(
       new MockDevSupervisorError('not_found', 404, `${ADSENSE_AUTHORING_CONFIG_PATH}: no such file`),
     );
 
     await expect(createService().readSettings(appId)).resolves.toEqual(disabledDefaults);
 
     expect(mockCreateForWorkspace).toHaveBeenCalledWith(appId, 'preview');
-    expect(mockFiles.view).toHaveBeenCalledWith({ path: ADSENSE_AUTHORING_CONFIG_PATH });
+    expect(mockFiles.readText).toHaveBeenCalledWith({ path: ADSENSE_AUTHORING_CONFIG_PATH });
     expect(mockLogger.warn).not.toHaveBeenCalled();
   });
 
   it('returns disabled defaults and logs a warning for malformed JSON', async () => {
-    mockFiles.view.mockResolvedValue({ content: '{not-json' });
+    mockFiles.readText.mockResolvedValue('{not-json');
 
     await expect(createService().readSettings(appId)).resolves.toEqual(disabledDefaults);
 
@@ -103,16 +104,14 @@ describe('AdSenseSettingsFileService', () => {
   });
 
   it('normalizes a valid stored file and preserves updatedAt', async () => {
-    mockFiles.view.mockResolvedValue({
-      content: JSON.stringify({
-        enabled: true,
-        scriptSnippet: canonicalScript.replace(' async ', ' '),
-        adsTxt: { enabled: true, content: 'google.com, pub-123, DIRECT, f08c47fec0942fa0' },
-        appAdsTxt: { enabled: false, content: 'draft app ads' },
-        updatedAt: '2026-06-03T10:00:00.000Z',
-        ignored: 'field',
-      }),
-    });
+    mockFiles.readText.mockResolvedValue(JSON.stringify({
+      enabled: true,
+      scriptSnippet: canonicalScript.replace(' async ', ' '),
+      adsTxt: { enabled: true, content: 'google.com, pub-123, DIRECT, f08c47fec0942fa0' },
+      appAdsTxt: { enabled: false, content: 'draft app ads' },
+      updatedAt: '2026-06-03T10:00:00.000Z',
+      ignored: 'field',
+    }));
 
     await expect(createService().readSettings(appId)).resolves.toEqual({
       enabled: true,
@@ -125,13 +124,11 @@ describe('AdSenseSettingsFileService', () => {
   });
 
   it('returns disabled defaults and logs a warning for invalid stored payloads', async () => {
-    mockFiles.view.mockResolvedValue({
-      content: JSON.stringify({
-        enabled: true,
-        scriptSnippet: '<script src="https://example.com/ads.js?client=ca-pub-1234567890123456"></script>',
-        adsTxt: { enabled: true, content: '' },
-      }),
-    });
+    mockFiles.readText.mockResolvedValue(JSON.stringify({
+      enabled: true,
+      scriptSnippet: '<script src="https://example.com/ads.js?client=ca-pub-1234567890123456"></script>',
+      adsTxt: { enabled: true, content: '' },
+    }));
 
     await expect(createService().readSettings(appId)).resolves.toEqual(disabledDefaults);
 
@@ -223,7 +220,7 @@ describe('AdSenseSettingsFileService', () => {
   });
 
   it('surfaces workspace transport failures instead of returning disabled defaults', async () => {
-    mockFiles.view.mockRejectedValue(
+    mockFiles.readText.mockRejectedValue(
       new MockDevSupervisorError('permission_denied', 403, `${ADSENSE_AUTHORING_CONFIG_PATH}: permission denied`),
     );
 

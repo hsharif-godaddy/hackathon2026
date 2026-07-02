@@ -16,22 +16,22 @@ function makeJob(overrides: Partial<LogoJob> = {}): LogoJob {
 }
 
 describe('logo-job-state', () => {
-  let workspace: { view: ReturnType<typeof vi.fn>; write: ReturnType<typeof vi.fn> }
-  beforeEach(() => { workspace = { view: vi.fn(), write: vi.fn() } })
+  let workspace: { readText: ReturnType<typeof vi.fn>; write: ReturnType<typeof vi.fn> }
+  beforeEach(() => { workspace = { readText: vi.fn(), write: vi.fn() } })
 
   it('readLogoJob parses the job file', async () => {
-    workspace.view.mockResolvedValueOnce({ content: JSON.stringify(makeJob({ status: 'generating' })) })
+    workspace.readText.mockResolvedValueOnce(JSON.stringify(makeJob({ status: 'generating' })))
     const job = await readLogoJob(workspace as never, 'app-1')
     expect(job?.status).toBe('generating')
   })
 
   it('readLogoJob returns null when the file is missing', async () => {
-    workspace.view.mockRejectedValueOnce(new DevSupervisorError('not_found', 404, 'missing'))
+    workspace.readText.mockRejectedValueOnce(new DevSupervisorError('not_found', 404, 'missing'))
     expect(await readLogoJob(workspace as never, 'app-1')).toBeNull()
   })
 
   it('readLogoJob rethrows non-not_found errors', async () => {
-    workspace.view.mockRejectedValueOnce(new DevSupervisorError('internal', 500, 'boom'))
+    workspace.readText.mockRejectedValueOnce(new DevSupervisorError('internal', 500, 'boom'))
     await expect(readLogoJob(workspace as never, 'app-1')).rejects.toThrow('boom')
   })
 

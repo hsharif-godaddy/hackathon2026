@@ -133,7 +133,7 @@ async function validateFile(files: WorkspaceFiles, file: string): Promise<FileVa
 
   let code: string;
   try {
-    ({ content: code } = await files.view({ path: file }));
+    code = await files.readText({ path: file });
   } catch (err) {
     if (isDevSupervisorNotFound(err)) {
       result.warnings.push({ file, message: 'Could not read file: not found' });

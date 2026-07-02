@@ -50,40 +50,22 @@ describe('GET /apps/:id/files/read', () => {
     expect(mockCreateForWorkspace).toHaveBeenCalledWith('abc1234567', 'preview');
   });
 
-  it('should return 422 for binary files', async () => {
+  it('should return 422 for binary files based on extension', async () => {
     mockCreateForWorkspace.mockReturnValue({
-      files: {
-        view: vi.fn().mockResolvedValue({
-          path: 'logo.png',
-          content: 'iVBORw0KGgo=',
-          encoding: 'base64',
-          lines: 0,
-          size: 1024,
-          truncated: false,
-        }),
-      },
+      files: { readText: vi.fn() },
     } as any);
 
     const response = await request(app)
-      .get('/apps/abc1234567/files/read?path=logo.png')
+      .get('/apps/abc1234567/files/read?path=public/assets/logo.png')
       .expect(422);
 
     expect(response.body.error).toContain('Binary file');
-    expect(response.body.encoding).toBe('base64');
   });
 
   it('should return file content with totalLines', async () => {
+    const content = 'import React from "react";\n\nexport default function App() {}';
     mockCreateForWorkspace.mockReturnValue({
-      files: {
-        view: vi.fn().mockResolvedValue({
-          path: 'src/app.tsx',
-          content: 'import React from "react";\n\nexport default function App() {}',
-          encoding: 'utf-8',
-          lines: 3,
-          size: 59,
-          truncated: false,
-        }),
-      },
+      files: { readText: vi.fn().mockResolvedValue(content) },
     } as any);
 
     const response = await request(app)
@@ -97,61 +79,46 @@ describe('GET /apps/:id/files/read', () => {
     expect(response.body.truncated).toBe(false);
   });
 
-  it('should propagate truncated flag', async () => {
+  it('reads .ts files as text (not video/mp2t)', async () => {
     mockCreateForWorkspace.mockReturnValue({
-      files: {
-        view: vi.fn().mockResolvedValue({
-          path: 'big-file.ts',
-          content: 'line1\nline2',
-          encoding: 'utf-8',
-          lines: 5000,
-          size: 50000,
-          truncated: true,
-        }),
-      },
+      files: { readText: vi.fn().mockResolvedValue('const x: number = 1;') },
     } as any);
 
     const response = await request(app)
-      .get('/apps/abc1234567/files/read?path=big-file.ts')
+      .get('/apps/abc1234567/files/read?path=src/utils.ts')
       .expect(200);
 
-    expect(response.body.truncated).toBe(true);
-    expect(response.body.totalLines).toBe(5000);
-    expect(response.body.linesRead).toEqual({ start: 1, end: 2 });
+    expect(response.body.content).toBe('const x: number = 1;');
   });
 
-  it('forwards a valid limit to view() so whole-file reads bypass the default cap', async () => {
-    const view = vi.fn().mockResolvedValue({
-      path: '.source-site/assets/manifest.json',
-      content: '{}',
-      encoding: 'utf-8',
-      lines: 1,
-      size: 2,
-      truncated: false,
-    });
-    mockCreateForWorkspace.mockReturnValue({ files: { view } } as any);
+  it('reads .svg files as text (XML, not binary)', async () => {
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg"><rect width="10" height="10"/></svg>';
+    mockCreateForWorkspace.mockReturnValue({
+      files: { readText: vi.fn().mockResolvedValue(svg) },
+    } as any);
 
-    await request(app)
-      .get('/apps/abc1234567/files/read?path=.source-site/assets/manifest.json&limit=1000000')
+    const response = await request(app)
+      .get('/apps/abc1234567/files/read?path=public/assets/logo.svg')
       .expect(200);
 
-    expect(view).toHaveBeenCalledWith({ path: '.source-site/assets/manifest.json', limit: 1000000 });
+    expect(response.body.content).toBe(svg);
   });
 
-  it('omits limit (uses supervisor default) when the param is absent or invalid', async () => {
-    const view = vi.fn().mockResolvedValue({
-      path: 'src/app.tsx', content: 'x', encoding: 'utf-8', lines: 1, size: 1, truncated: false,
-    });
-    mockCreateForWorkspace.mockReturnValue({ files: { view } } as any);
+  it('reads extensionless files as text', async () => {
+    mockCreateForWorkspace.mockReturnValue({
+      files: { readText: vi.fn().mockResolvedValue('FROM node:20') },
+    } as any);
 
-    await request(app).get('/apps/abc1234567/files/read?path=src/app.tsx&limit=abc').expect(200);
+    const response = await request(app)
+      .get('/apps/abc1234567/files/read?path=Dockerfile')
+      .expect(200);
 
-    expect(view).toHaveBeenCalledWith({ path: 'src/app.tsx' });
+    expect(response.body.content).toBe('FROM node:20');
   });
 
   it('maps a dev-supervisor not_found to 404 (benign absence, not a 500)', async () => {
     mockCreateForWorkspace.mockReturnValue({
-      files: { view: vi.fn().mockRejectedValue(new DevSupervisorError('not_found', 404, 'no such file')) },
+      files: { readText: vi.fn().mockRejectedValue(new DevSupervisorError('not_found', 404, 'no such file')) },
     } as any);
 
     const response = await request(app)
@@ -163,7 +130,7 @@ describe('GET /apps/:id/files/read', () => {
 
   it('maps a dev-supervisor permission_denied to 403', async () => {
     mockCreateForWorkspace.mockReturnValue({
-      files: { view: vi.fn().mockRejectedValue(new DevSupervisorError('permission_denied', 403, 'denied')) },
+      files: { readText: vi.fn().mockRejectedValue(new DevSupervisorError('permission_denied', 403, 'denied')) },
     } as any);
 
     await request(app).get('/apps/abc1234567/files/read?path=secret').expect(403);
@@ -171,9 +138,23 @@ describe('GET /apps/:id/files/read', () => {
 
   it('returns 500 for a non-dev-supervisor error', async () => {
     mockCreateForWorkspace.mockReturnValue({
-      files: { view: vi.fn().mockRejectedValue(new Error('boom')) },
+      files: { readText: vi.fn().mockRejectedValue(new Error('boom')) },
     } as any);
 
     await request(app).get('/apps/abc1234567/files/read?path=src/app.tsx').expect(500);
+  });
+
+  it('returns raw content suitable for JSON.parse (no line-number prefixes)', async () => {
+    const jsonContent = '{"skills":["stripe","google-analytics"],"version":1}';
+    mockCreateForWorkspace.mockReturnValue({
+      files: { readText: vi.fn().mockResolvedValue(jsonContent) },
+    } as any);
+
+    const response = await request(app)
+      .get('/apps/abc1234567/files/read?path=.airo/skills/applied.json')
+      .expect(200);
+
+    const parsed: unknown = JSON.parse(response.body.content);
+    expect(parsed).toEqual({ skills: ['stripe', 'google-analytics'], version: 1 });
   });
 });

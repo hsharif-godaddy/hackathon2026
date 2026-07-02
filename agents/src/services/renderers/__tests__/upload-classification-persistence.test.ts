@@ -24,14 +24,14 @@ interface Entry {
 /**
  * In-memory workspace backing `docs/.upload-classifications.json` so read-
  * modify-write (and the lock that protects it) are observable. A small async
- * delay on view forces interleaving in the concurrency test.
+ * delay on readText forces interleaving in the concurrency test.
  */
-function makeWorkspace(initial: Entry[], viewDelayMs = 0): { files: { view: ReturnType<typeof vi.fn>; write: ReturnType<typeof vi.fn> }; current: () => Entry[] } {
+function makeWorkspace(initial: Entry[], readDelayMs = 0): { files: { readText: ReturnType<typeof vi.fn>; write: ReturnType<typeof vi.fn> }; current: () => Entry[] } {
   let store: { files: Entry[] } = { files: initial }
   const files = {
-    view: vi.fn(async () => {
-      if (viewDelayMs) await new Promise((r) => setTimeout(r, viewDelayMs))
-      return { content: JSON.stringify(store), encoding: 'utf-8', path: 'docs/.upload-classifications.json', lines: 1, size: 1, truncated: false }
+    readText: vi.fn(async () => {
+      if (readDelayMs) await new Promise((r) => setTimeout(r, readDelayMs))
+      return JSON.stringify(store)
     }),
     write: vi.fn(async ({ content }: { content: string }) => {
       store = JSON.parse(content)

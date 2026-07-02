@@ -5,17 +5,21 @@ import type {
   StatResult,
   TreeOptions,
   TreeResult,
-  ViewResult,
   WorkspaceFiles,
 } from '../../workspace/files.js';
 
 /**
  * Strict WorkspaceFiles mock: only the methods icons-validator is allowed to
- * touch (`tree`, `stat`, `view`) are implemented. Every other member throws,
- * so an accidental host-fs-style access or unexpected call fails loudly.
+ * touch (`tree`, `stat`, `view`, `readText`) are implemented. Every other
+ * member throws, so an accidental host-fs-style access or unexpected call
+ * fails loudly.
  */
 function makeFiles(overrides: Partial<WorkspaceFiles>): WorkspaceFiles {
-  return new Proxy(overrides, {
+  const defaults: Partial<WorkspaceFiles> = {
+    readText: (async () => '') as WorkspaceFiles['readText'],
+  };
+  const merged: Partial<WorkspaceFiles> = { ...defaults, ...overrides };
+  return new Proxy(merged, {
     get(target, prop) {
       if (prop in target) return target[prop as keyof WorkspaceFiles];
       return () => {
@@ -25,9 +29,6 @@ function makeFiles(overrides: Partial<WorkspaceFiles>): WorkspaceFiles {
   }) as WorkspaceFiles;
 }
 
-function viewResult(content: string): ViewResult {
-  return { path: 'x', content, encoding: 'utf-8', lines: content.split('\n').length, size: content.length, truncated: false };
-}
 
 const VALID_IMPORT = `import { Check, Circle } from 'lucide-react';\nexport const A = 1;\n`;
 const INVALID_IMPORT = `import { NotARealIconXyz } from 'lucide-react';\n`;
@@ -41,8 +42,8 @@ describe('validateLucideIcons', () => {
         truncated: false,
       }),
     );
-    const view = vi.fn(async () => viewResult(VALID_IMPORT));
-    const files = makeFiles({ tree, view });
+    const readText = vi.fn(async () => VALID_IMPORT);
+    const files = makeFiles({ tree, readText });
 
     const result = await validateLucideIcons(files);
 
@@ -63,7 +64,7 @@ describe('validateLucideIcons', () => {
         entries: [{ path: 'src/Bad.tsx', kind: 'file', size: 10, modifiedAt: '2026-06-01T00:00:00Z' }],
         truncated: false,
       }),
-      view: async () => viewResult(INVALID_IMPORT),
+      readText: async () => INVALID_IMPORT,
     });
 
     const result = await validateLucideIcons(files);
@@ -84,15 +85,15 @@ describe('validateLucideIcons', () => {
         ],
       }),
     );
-    const view = vi.fn(async () => viewResult(VALID_IMPORT));
-    const files = makeFiles({ stat, view });
+    const readText = vi.fn(async () => VALID_IMPORT);
+    const files = makeFiles({ stat, readText });
 
     const result = await validateLucideIcons(files, ['src/A.tsx', 'src/dir', 'src/missing.tsx']);
 
     expect(stat).toHaveBeenCalledWith({ paths: ['src/A.tsx', 'src/dir', 'src/missing.tsx'] });
     // Only the regular file is scanned; the directory and missing path drop out.
     expect(result.scannedFiles).toEqual(['src/A.tsx']);
-    expect(view).toHaveBeenCalledTimes(1);
+    expect(readText).toHaveBeenCalledTimes(1);
   });
 
   it('returns a single warning (valid) when nothing matches', async () => {
@@ -115,7 +116,7 @@ describe('validateLucideIcons', () => {
         entries: [{ path: 'src/App.tsx', kind: 'file', size: 10, modifiedAt: '2026-06-01T00:00:00Z' }],
         truncated: true,
       }),
-      view: async () => viewResult(VALID_IMPORT),
+      readText: async () => VALID_IMPORT,
     });
 
     const result = await validateLucideIcons(files);
@@ -134,20 +135,20 @@ describe('validateLucideIcons', () => {
     // and that every file is read (not just the first batch).
     const paths = Array.from({ length: 25 }, (_, i) => `src/f${String(i).padStart(2, '0')}.tsx`);
     const badPath = paths[20]!;
-    const view = vi.fn(async ({ path }: { path: string }) =>
-      viewResult(path === badPath ? INVALID_IMPORT : VALID_IMPORT),
+    const readText = vi.fn(async ({ path }: { path: string }) =>
+      path === badPath ? INVALID_IMPORT : VALID_IMPORT,
     );
     const files = makeFiles({
       tree: async () => ({
         entries: paths.map((path) => ({ path, kind: 'file' as const, size: 10, modifiedAt: '2026-06-01T00:00:00Z' })),
         truncated: false,
       }),
-      view,
+      readText,
     });
 
     const result = await validateLucideIcons(files);
 
-    expect(view).toHaveBeenCalledTimes(25);
+    expect(readText).toHaveBeenCalledTimes(25);
     expect(result.scannedFiles).toHaveLength(25);
     expect(result.valid).toBe(false);
     expect(result.errors).toHaveLength(1);
@@ -160,7 +161,7 @@ describe('validateLucideIcons', () => {
         entries: [{ path: 'src/Plain.ts', kind: 'file', size: 10, modifiedAt: '2026-06-01T00:00:00Z' }],
         truncated: false,
       }),
-      view: async () => viewResult(NO_ICONS),
+      readText: async () => NO_ICONS,
     });
 
     const result = await validateLucideIcons(files);
@@ -178,11 +179,11 @@ describe('validateLucideIcons', () => {
         ],
         truncated: false,
       }),
-      view: vi.fn(async ({ path }: { path: string }) => {
+      readText: vi.fn(async ({ path }: { path: string }) => {
         if (path === 'src/Gone.tsx') {
           throw new DevSupervisorError('not_found', 404, 'gone');
         }
-        return viewResult(INVALID_IMPORT);
+        return INVALID_IMPORT;
       }),
     });
 
@@ -199,7 +200,7 @@ describe('validateLucideIcons', () => {
         entries: [{ path: 'src/A.tsx', kind: 'file', size: 10, modifiedAt: '2026-06-01T00:00:00Z' }],
         truncated: false,
       }),
-      view: async () => {
+      readText: async () => {
         throw new DevSupervisorError('transport_error', 500, 'connection refused');
       },
     });

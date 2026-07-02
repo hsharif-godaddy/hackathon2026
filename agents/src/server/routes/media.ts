@@ -35,6 +35,7 @@ import { validateAppOwnership } from '../middleware/app-ownership.js';
 import { validateVideoMagicBytes, VIDEO_MIME_TYPE } from '../../services/media-upload-video.js';
 import { getPersistentPublicDir } from '../../utils/persistent-assets.js';
 import { createForWorkspace } from '../../workspace/index.js';
+import { collectBoundedBuffer } from '../../workspace/files.js';
 import { generateImageCaptionFromBuffer, generateVideoCaptionFromBuffer } from '../../services/MediaCaptionService.js';
 import { emitMediaCaption } from '../media-caption-emit.js';
 
@@ -1251,9 +1252,10 @@ router.put('/:appId/slots/:slotName(*)', async (req: Request, res: Response) => 
           ? async () => {
               const workspace = createForWorkspace(appId, 'preview');
               if (!workspace) return null;
-              const mediaPath = `public/assets/media/${swapFilename}`;
-              const { data, contentType } = await workspace.files.download({ path: mediaPath });
-              return { buffer: data, mimeType: contentType, filename: swapFilename };
+              const mediaPath: string = `public/assets/media/${swapFilename}`;
+              const { stream, contentType, contentLength } = await workspace.files.download({ path: mediaPath });
+              const buffer: Buffer = await collectBoundedBuffer(stream, contentLength);
+              return { buffer, mimeType: contentType, filename: swapFilename };
             }
           : () => Promise.resolve(null),
       });

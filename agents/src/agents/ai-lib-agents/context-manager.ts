@@ -32,7 +32,6 @@ import {
   sanitizeUploadFileNameForDisplay,
   type UploadPlacementIntent,
 } from '../../services/upload-handling-guidance.js'
-import type { ViewResult } from '../../workspace/files.js'
 import type { PersistedUploadClassification } from '../../services/renderers/upload-classification-persistence.js'
 
 const swallowNotFound = <T>(fallback: T) => (err: unknown): T => {
@@ -257,10 +256,10 @@ export class AILibContextManager {
                     }),
                 // Combined multi-file classification (preferred) plus the legacy
                 // single-file fallback for already-deployed apps. Parsed below.
-                workspaceForApp.files.view({ path: 'docs/.upload-classifications.json', limit: 65536 })
-                    .catch(swallowNotFound<ViewResult | null>(null)),
-                workspaceForApp.files.view({ path: 'docs/.upload-classification.json', limit: 65536 })
-                    .catch(swallowNotFound<ViewResult | null>(null)),
+                workspaceForApp.files.readText({ path: 'docs/.upload-classifications.json' })
+                    .catch(swallowNotFound<string | null>(null)),
+                workspaceForApp.files.readText({ path: 'docs/.upload-classification.json' })
+                    .catch(swallowNotFound<string | null>(null)),
             ])
             : [stashedKitMetaExists ?? false, null, null]
 
@@ -294,12 +293,12 @@ export class AILibContextManager {
         const classificationEntries: PersistedUploadClassification[] = []
         try {
             if (combinedClassification) {
-                const parsed: { files?: PersistedUploadClassification[] } = JSON.parse(combinedClassification.content)
+                const parsed: { files?: PersistedUploadClassification[] } = JSON.parse(combinedClassification)
                 if (Array.isArray(parsed?.files)) {
                     classificationEntries.push(...parsed.files)
                 }
             } else if (legacyClassification) {
-                const legacyEntry: unknown = JSON.parse(legacyClassification.content)
+                const legacyEntry: unknown = JSON.parse(legacyClassification)
                 if (legacyEntry !== null && typeof legacyEntry === 'object' && typeof (legacyEntry as PersistedUploadClassification).fileName === 'string') {
                     classificationEntries.push(legacyEntry as PersistedUploadClassification)
                 }

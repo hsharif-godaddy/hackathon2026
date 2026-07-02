@@ -239,8 +239,7 @@ async function readExistingMetadata(files: WorkspaceFiles): Promise<{
 }> {
   let source: string;
   try {
-    const result = await files.view({ path: SEO_ROUTES_PATH });
-    source = result.content;
+    source = await files.readText({ path: SEO_ROUTES_PATH });
   } catch (error) {
     // First sync (no registry yet) is the only swallowed case. Any other
     // transport failure propagates rather than silently dropping metadata.
@@ -332,8 +331,7 @@ export async function synchronizeSeoRoutes(
 
   let source: string;
   try {
-    const result = await files.view({ path: ROUTES_PATH });
-    source = result.content;
+    source = await files.readText({ path: ROUTES_PATH });
   } catch (error) {
     // A missing routes.tsx is a legitimate skip; any other transport failure
     // propagates so it is not masked as a benign skip.

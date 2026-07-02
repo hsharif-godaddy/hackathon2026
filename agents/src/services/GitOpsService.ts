@@ -582,8 +582,8 @@ export class GitOpsService {
       // rollback the user can't tell apart from a real schema problem.
       let packageJson: PackageJsonDeps = {};
       try {
-        const pkgView = await workspace.files.view({ path: 'package.json' });
-        packageJson = JSON.parse(pkgView.content);
+        const pkgText: string = await workspace.files.readText({ path: 'package.json' });
+        packageJson = JSON.parse(pkgText);
       } catch (err) {
         if (!isDevSupervisorNotFound(err)) {
           throw err;

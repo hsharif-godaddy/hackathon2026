@@ -18,6 +18,13 @@ vi.mock('../../workspace/index.js', () => ({
         const content = hoistedFs.readFileSync(fullPath, 'utf-8');
         return { content, encoding: 'utf-8', path: filePath, lines: content.split('\n').length, size: content.length, truncated: false };
       }),
+      readText: vi.fn(async function ({ path: filePath }: { path: string }) {
+        const fullPath = hoistedPath.join(testAppPath, filePath);
+        if (!hoistedFs.existsSync(fullPath)) {
+          throw new Error(`ENOENT: file not found: ${filePath}`);
+        }
+        return hoistedFs.readFileSync(fullPath, 'utf-8');
+      }),
       write: vi.fn(async function ({ path: filePath, content }: { path: string; content: string }) {
         const fullPath = hoistedPath.join(testAppPath, filePath);
         hoistedFs.mkdirSync(hoistedPath.dirname(fullPath), { recursive: true });

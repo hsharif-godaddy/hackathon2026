@@ -24,7 +24,7 @@ vi.mock('../../css-color-tool.js', () => ({
 }))
 
 vi.mock('../../../workspace/index.js', () => ({
-  createForWorkspace: vi.fn(() => ({ files: { view: vi.fn(), write: vi.fn() } })),
+  createForWorkspace: vi.fn(() => ({ files: { view: vi.fn(), write: vi.fn(), readText: vi.fn().mockResolvedValue('') } })),
 }))
 
 vi.mock('../../../database/repositories/AppRepository.js', () => ({

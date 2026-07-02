@@ -73,7 +73,7 @@ describe('set-project-name', function setProjectNameTests() {
     mockMemorySet.mockResolvedValue({ success: true })
     // Default: workspace available, edit succeeds, git succeeds
     mockCreateForWorkspace.mockReturnValue({
-      files: { edit: mockFilesEdit },
+      files: { edit: mockFilesEdit, readText: vi.fn().mockResolvedValue('') },
       tasks: {},
     })
     mockFilesEdit.mockResolvedValue({ applied: 1 })

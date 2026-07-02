@@ -1,7 +1,7 @@
 import { basename, extname } from 'node:path';
 
 import { DevSupervisorError } from '../services/DevSupervisorClient.js';
-import type { WorkspaceFiles, ViewResult, TreeEntry } from '../workspace/files.js';
+import type { WorkspaceFiles, TreeEntry } from '../workspace/files.js';
 import {
   BINARY_FILE_REGEX,
   IMAGE_FILE_EXTENSIONS,
@@ -172,6 +172,10 @@ function isDirectoryError(err: unknown): boolean {
   return msg.includes('is a directory') || msg.includes('EISDIR');
 }
 
+function isBinaryFileError(err: unknown): boolean {
+  return err instanceof DevSupervisorError && err.code === 'binary_file';
+}
+
 function isNoMatchError(err: unknown): boolean {
   return err instanceof DevSupervisorError && err.code === 'no_match';
 }
@@ -194,8 +198,7 @@ export async function handleView(
 ): Promise<string> {
   const ext = extname(path).slice(1).toLowerCase();
 
-  // SVG is XML text despite being in BINARY_FILE_REGEX
-  if ((BINARY_FILE_REGEX.test(path) && ext !== 'svg') || (OTHER_BINARY_EXTENSIONS as readonly string[]).includes(ext)) {
+  if (BINARY_FILE_REGEX.test(path) || (OTHER_BINARY_EXTENSIONS as readonly string[]).includes(ext)) {
     const name = basename(path);
     if ((IMAGE_FILE_EXTENSIONS as readonly string[]).includes(ext)) {
       return `Cannot read ${name} — image file. Reference by path in code. Ask the user to describe visual content if needed.`;
@@ -206,7 +209,6 @@ export async function handleView(
     return `Cannot read ${name} — binary file. Reference by path in code.`;
   }
 
-  let result: ViewResult;
   try {
     const viewOptions: { path: string; offset?: number; limit?: number } = { path };
     if (viewRange) {
@@ -215,26 +217,18 @@ export async function handleView(
         viewOptions.limit = viewRange[1] - viewRange[0] + 1;
       }
     }
-    result = await files.view(viewOptions);
+    const result = await files.view(viewOptions);
+    return result.content;
   } catch (err: unknown) {
     if (isDirectoryError(err)) {
       const treeResult = await files.tree({ path, recursive: false });
       return formatTreeEntries(treeResult.entries);
     }
+    if (isBinaryFileError(err)) {
+      return `Cannot read ${basename(path)} — binary file. Reference by path in code.`;
+    }
     throw err;
   }
-
-  if (result.encoding === 'base64') {
-    return `Cannot read ${basename(path)} — binary file. Reference by path in code.`;
-  }
-
-  const startLine = viewRange ? viewRange[0] : 1;
-  const lines = result.content.split('\n');
-  const formatted = lines
-    .map((line: string, i: number): string => `${startLine + i}: ${line}`)
-    .join('\n');
-
-  return formatted;
 }
 
 export async function handleStrReplace(
@@ -248,8 +242,8 @@ export async function handleStrReplace(
     return 'Successfully replaced text.';
   } catch (err: unknown) {
     if (isNoMatchError(err)) {
-      const viewResult = await files.view({ path });
-      const lines = viewResult.content.split('\n');
+      const content: string = await files.readText({ path });
+      const lines = content.split('\n');
       const snippet = buildErrorSnippet(lines, oldStr);
       throw new Error(
         `No match found for old_str in this file.\n\n` +
@@ -258,8 +252,7 @@ export async function handleStrReplace(
     }
 
     if (isAmbiguousMatchError(err)) {
-      const viewResult = await files.view({ path });
-      const content = viewResult.content;
+      const content: string = await files.readText({ path });
       const lines = content.split('\n');
       throw new Error(buildMultiMatchError(content, oldStr, lines));
     }

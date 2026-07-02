@@ -1,5 +1,33 @@
 import type { Readable } from 'node:stream';
 
+const DEFAULT_MAX_BUFFER_BYTES: number = 10 * 1024 * 1024; // 10 MB
+
+/** Collect a Readable stream into a single Buffer (unbounded). */
+export async function collectBuffer(stream: Readable): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    stream.on('data', (chunk: Buffer) => chunks.push(chunk));
+    stream.on('end', () => resolve(Buffer.concat(chunks)));
+    stream.on('error', reject);
+  });
+}
+
+/**
+ * Collect a download stream into a Buffer, bounded by contentLength check
+ * (default cap 10 MB). Rejects before reading if the file exceeds the limit.
+ */
+export async function collectBoundedBuffer(
+  stream: Readable,
+  contentLength: number,
+  maxBytes: number = DEFAULT_MAX_BUFFER_BYTES,
+): Promise<Buffer> {
+  if (contentLength > maxBytes) {
+    stream.destroy();
+    throw new Error(`File too large to buffer (${contentLength} bytes, max ${maxBytes})`);
+  }
+  return collectBuffer(stream);
+}
+
 /**
  * Named storage root resolved server-side. The agent selects a root by name;
  * the server maps it to an absolute path and confines operations within it.
@@ -78,10 +106,13 @@ export interface ViewOptions {
 
 export interface ViewResult {
   path: string;
+  /** Pre-formatted content with line numbers (format: "%Nd|line"). */
   content: string;
-  encoding: 'utf-8' | 'base64';
+  /** Total number of lines in the file. */
   lines: number;
+  /** File size in bytes. */
   size: number;
+  /** True when the response was capped by the line limit. */
   truncated: boolean;
 }
 
@@ -155,14 +186,20 @@ export interface FileUploadOptions {
   data: Buffer | Uint8Array;
 }
 
+export interface ReadTextOptions {
+  root?: StorageRoot;
+  path: string;
+}
+
 export interface DownloadOptions {
   root?: StorageRoot;
   path: string;
 }
 
 export interface DownloadResult {
-  data: Buffer;
+  stream: Readable;
   contentType: string;
+  contentLength: number;
 }
 
 export interface ArchiveOptions {
@@ -226,6 +263,11 @@ export interface WorkspaceFiles {
    * for stat-only probes (no file read or base64 round-trip).
    */
   stat(options: StatOptions): Promise<StatResult>;
+  /**
+   * Agentic file view with line numbering and windowing. Returns pre-formatted
+   * content with line numbers (format: "%Nd|line"). Use for AI tool responses.
+   * For system/internal reads without agentic constraints, use readText().
+   */
   view(options: ViewOptions): Promise<ViewResult>;
   search(options: SearchOptions): Promise<SearchMatch[]>;
   write(options: WriteOptions): Promise<WriteResult>;
@@ -234,10 +276,20 @@ export interface WorkspaceFiles {
   delete(options: DeleteOptions): Promise<void>;
   move(options: MoveOptions): Promise<void>;
   upload(options: FileUploadOptions): Promise<WriteResult>;
+  /**
+   * Read a text file's full content as a UTF-8 string. No line numbering,
+   * no windowing, no agentic guardrails. For system/internal code that needs
+   * file content directly. Uses the streaming download endpoint under the hood.
+   */
+  readText(options: ReadTextOptions): Promise<string>;
+  /**
+   * Stream raw file content from the workspace. Returns a Readable stream —
+   * callers that need full content in memory should collect it; callers that
+   * can pipe (media serving) avoid heap pressure entirely.
+   */
   download(options: DownloadOptions): Promise<DownloadResult>;
   /**
-   * Stream a zip of the given dirs/files, assembled server-side. Unlike
-   * download(), there is no per-file size cap — use this for bulk export.
+   * Stream a zip of the given dirs/files, assembled server-side.
    */
   archive(options: ArchiveOptions): Promise<ArchiveResult>;
 }

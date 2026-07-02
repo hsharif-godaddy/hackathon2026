@@ -30,6 +30,7 @@ import type {
   InsertOptions,
   InsertResult,
   MoveOptions,
+  ReadTextOptions,
   SearchMatch,
   SearchOptions,
   StatOptions,
@@ -79,7 +80,6 @@ export class TempWorkspaceFiles implements WorkspaceFiles {
     return {
       path: options.path,
       content,
-      encoding: 'utf-8',
       lines: content.split('\n').length,
       size: Buffer.byteLength(content),
       truncated: false,
@@ -138,6 +138,10 @@ export class TempWorkspaceFiles implements WorkspaceFiles {
 
     await walk(base);
     return { entries, truncated: false };
+  }
+
+  async readText(options: ReadTextOptions): Promise<string> {
+    return fs.readFile(this.abs(options.path), 'utf8');
   }
 
   // ── Unused by the conform/scan path ──────────────────────────────────────────

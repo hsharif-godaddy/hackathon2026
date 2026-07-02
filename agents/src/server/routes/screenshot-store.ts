@@ -4,6 +4,7 @@ import { basename, join, normalize, resolve, sep } from 'path';
 
 import type { App } from '../../database/index.js';
 import { createForWorkspace, type WorkspaceClient } from '../../workspace/index.js';
+import { collectBoundedBuffer } from '../../workspace/files.js';
 import { logger } from '../../logging/index.js';
 
 /**
@@ -110,8 +111,8 @@ class WorkspaceScreenshotStore implements ScreenshotStore {
 
   async read(appId: string): Promise<Buffer> {
     const path: string = screenshotFilename(appId);
-    const result = await this.workspace.files.download({ path });
-    return result.data;
+    const { stream, contentLength } = await this.workspace.files.download({ path });
+    return collectBoundedBuffer(stream, contentLength);
   }
 
   async exists(appId: string): Promise<boolean> {

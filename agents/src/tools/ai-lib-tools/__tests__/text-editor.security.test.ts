@@ -17,6 +17,7 @@ const { mockFindById, mockFiles, mockSynchronizeSeoRoutes, mockLoggerWarn, mockL
     move: vi.fn(),
     upload: vi.fn(),
     download: vi.fn(),
+    readText: vi.fn().mockResolvedValue(''),
   },
   mockSynchronizeSeoRoutes: vi.fn(),
   mockLoggerWarn: vi.fn(),

@@ -3,6 +3,7 @@ import { basename, extname } from 'node:path';
 import type { WorkspaceFiles } from '../workspace/files.js';
 
 import { BINARY_FILE_REGEX, DOCUMENT_FILE_EXTENSIONS, IMAGE_FILE_EXTENSIONS, OTHER_BINARY_EXTENSIONS } from '../utils/file-types.js';
+import { DevSupervisorError } from '../services/DevSupervisorClient.js';
 import { getErrorMessage } from '../utils/error.js';
 import { translateDockerPath } from '../utils/path-helper.js';
 
@@ -13,8 +14,6 @@ export interface ReadFileOptions {
   startLine?: number;
   /** Number of lines to read from start line (optional, reads to end if not specified) */
   numLines?: number;
-  /** Return raw content without line number prefixes (default: false) */
-  raw?: boolean;
 }
 
 export interface ReadFileResult {
@@ -22,7 +21,7 @@ export interface ReadFileResult {
   success: boolean;
   /** Path that was read */
   path: string;
-  /** File content (line-numbered by default, raw when raw option is used) */
+  /** Pre-formatted content with line numbers from the server. */
   content: string;
   /** Total number of lines in the file */
   totalLines: number;
@@ -105,10 +104,8 @@ export function isFileBlocked(filePath: string): { blocked: boolean; reason?: st
     };
   }
 
-  // Binary files (images, fonts, audio, video, PDF, archives, databases, executables)
-  // SVG is excluded — it's XML text despite being in BINARY_FILE_REGEX.
   const ext = extname(fileName).slice(1).toLowerCase();
-  if ((BINARY_FILE_REGEX.test(fileName) && ext !== 'svg') || (OTHER_BINARY_EXTENSIONS as readonly string[]).includes(ext)) {
+  if (BINARY_FILE_REGEX.test(fileName) || (OTHER_BINARY_EXTENSIONS as readonly string[]).includes(ext)) {
 
     if ((IMAGE_FILE_EXTENSIONS as readonly string[]).includes(ext)) {
       return {
@@ -172,16 +169,6 @@ export class ReadFileTool {
 
       const result = await this.files.view({ path: normalizedPath, offset, limit });
 
-      if (result.encoding === 'base64') {
-        return {
-          success: false,
-          path: options.path,
-          content: '',
-          totalLines: 0,
-          error: 'File blocked: binary file detected. Reference by path in code.',
-        };
-      }
-
       const totalLines = result.lines;
 
       if (options.startLine && startLine > totalLines) {
@@ -194,26 +181,15 @@ export class ReadFileTool {
         };
       }
 
-      let content: string;
-      let endLine: number;
-
-      if (options.raw) {
-        content = result.content;
-        endLine = Math.min(offset + result.content.split('\n').length, totalLines);
-      } else {
-        const lines = result.content.split('\n');
-        endLine = Math.min(offset + lines.length, totalLines);
-        content = lines
-          .map((line, index) => `${String(startLine + index).padStart(6)}|${line}`)
-          .join('\n');
-      }
-
+      // Content arrives pre-formatted with line numbers from the server.
+      const lineCount = result.content === '' ? 0 : result.content.split('\n').length;
+      const endLine = Math.min(offset + lineCount, totalLines);
       const includeRange = options.startLine || options.numLines || result.truncated;
 
       return {
         success: true,
         path: options.path,
-        content,
+        content: result.content,
         totalLines,
         ...(includeRange ? {
           linesRead: {
@@ -224,6 +200,19 @@ export class ReadFileTool {
         ...(result.truncated ? { truncated: true } : {}),
       };
     } catch (error) {
+      if (error instanceof DevSupervisorError && error.code === 'binary_file') {
+        const ext: string = extname(options.path).slice(1).toLowerCase();
+        const reason: string = (IMAGE_FILE_EXTENSIONS as readonly string[]).includes(ext)
+          ? `Cannot read image as text. Reference by path in code (e.g. src="${options.path}"). Ask the user to describe visual content if needed.`
+          : 'Binary file — not readable as text. Reference by path in code.';
+        return {
+          success: false,
+          path: options.path,
+          content: '',
+          totalLines: 0,
+          error: reason,
+        };
+      }
       return {
         success: false,
         path: options.path,

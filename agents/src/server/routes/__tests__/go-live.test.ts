@@ -2,9 +2,10 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import request from 'supertest';
 import express, { type Request, type Response, type NextFunction } from 'express';
 
-const { mockView, mockWrite, mockCreateForWorkspace } = vi.hoisted(() => ({
+const { mockView, mockWrite, mockReadText, mockCreateForWorkspace } = vi.hoisted(() => ({
   mockView: vi.fn(),
   mockWrite: vi.fn(),
+  mockReadText: vi.fn().mockResolvedValue(''),
   mockCreateForWorkspace: vi.fn(),
 }));
 
@@ -45,24 +46,24 @@ function createTestApp(canPublish = true): express.Express {
 describe('go-live routes', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockCreateForWorkspace.mockReturnValue({ files: { view: mockView, write: mockWrite } });
+    mockCreateForWorkspace.mockReturnValue({ files: { view: mockView, write: mockWrite, readText: mockReadText } });
   });
 
   describe('GET /apps/:id/go-live-status', () => {
     it('returns the persisted status when live.json exists', async () => {
-      mockView.mockResolvedValue({
-        content: JSON.stringify({ hasGoneLive: true, wentLiveAt: '2026-01-01T00:00:00.000Z' }),
-      });
+      mockReadText.mockResolvedValue(
+        JSON.stringify({ hasGoneLive: true, wentLiveAt: '2026-01-01T00:00:00.000Z' }),
+      );
 
       const res = await request(createTestApp()).get('/apps/test-app-id/go-live-status');
 
       expect(res.status).toBe(200);
       expect(res.body).toEqual({ hasGoneLive: true, wentLiveAt: '2026-01-01T00:00:00.000Z' });
-      expect(mockView).toHaveBeenCalledWith({ path: '.airo/live.json' });
+      expect(mockReadText).toHaveBeenCalledWith({ path: '.airo/live.json' });
     });
 
     it('returns default status when live.json does not exist', async () => {
-      mockView.mockRejectedValue(
+      mockReadText.mockRejectedValue(
         new MockDevSupervisorError('not_found', 404, '.airo/live.json: no such file or directory'),
       );
 
@@ -73,7 +74,7 @@ describe('go-live routes', () => {
     });
 
     it('returns default status when live.json is corrupted JSON', async () => {
-      mockView.mockResolvedValue({ content: '{not-valid-json' });
+      mockReadText.mockResolvedValue('{not-valid-json');
 
       const res = await request(createTestApp()).get('/apps/test-app-id/go-live-status');
 
@@ -93,7 +94,7 @@ describe('go-live routes', () => {
     it('returns 500 on a non-not-found supervisor error', async () => {
       // Pins the catch narrow: permission_denied / 5xx / network errors must
       // not be confused with a missing file.
-      mockView.mockRejectedValue(
+      mockReadText.mockRejectedValue(
         new MockDevSupervisorError('permission_denied', 403, '.airo/live.json: permission denied'),
       );
 

@@ -529,8 +529,8 @@ describe('FormatOverrideService', () => {
     expect(files.write).not.toHaveBeenCalled();
   });
 
-  it('propagates non-not_found transport failures from view', async () => {
-    files.view.mockRejectedValueOnce(
+  it('propagates non-not_found transport failures from readText', async () => {
+    files.readText.mockRejectedValueOnce(
       new DevSupervisorError('permission_denied', 403, `${indexSidecarPath}: permission denied`),
     );
 

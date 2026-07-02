@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const view = vi.hoisted(() => vi.fn());
 const write = vi.hoisted(() => vi.fn());
+const readText = vi.hoisted(() => vi.fn());
 const createForWorkspace = vi.hoisted(() => vi.fn());
 // Pass-through by default; the cross-tenant test overrides it to reject.
 const validateAppOwnership = vi.hoisted(() =>
@@ -47,7 +48,7 @@ beforeEach(() => {
   view.mockReset();
   write.mockReset();
   createForWorkspace.mockReset();
-  createForWorkspace.mockReturnValue({ files: { view, write } });
+  createForWorkspace.mockReturnValue({ files: { view, write, readText } });
   write.mockResolvedValue({ bytesWritten: 1 });
   // Default: ownership passes. Individual tests can override to simulate a
   // cross-tenant request.
@@ -71,7 +72,7 @@ describe('tenant isolation', () => {
 
 describe('POST /apps/:id/compliance/field', () => {
   it('patches the page file and returns success', async () => {
-    view.mockResolvedValue({ content: FIELD_PAGE });
+    readText.mockResolvedValue(FIELD_PAGE);
     const res = await request(createTestApp())
       .post('/apps/app1234567/compliance/field')
       .send({ documentType: 'privacy-policy', fieldKey: 'businessName', newValue: 'Beta LLC' })
@@ -99,7 +100,7 @@ describe('POST /apps/:id/compliance/field', () => {
   });
 
   it('returns 409 when the field span is absent', async () => {
-    view.mockResolvedValue({ content: `const markdown = \`no spans\`;` });
+    readText.mockResolvedValue(`const markdown = \`no spans\`;`);
     await request(createTestApp())
       .post('/apps/app1234567/compliance/field')
       .send({ documentType: 'privacy-policy', fieldKey: 'businessName', newValue: 'Beta LLC' })
@@ -116,7 +117,7 @@ describe('POST /apps/:id/compliance/field', () => {
   });
 
   it('returns 500 when the workspace write throws', async () => {
-    view.mockResolvedValue({ content: FIELD_PAGE });
+    readText.mockResolvedValue(FIELD_PAGE);
     write.mockRejectedValue(new Error('disk full'));
     await request(createTestApp())
       .post('/apps/app1234567/compliance/field')
@@ -127,7 +128,7 @@ describe('POST /apps/:id/compliance/field', () => {
 
 describe('POST /apps/:id/compliance/section', () => {
   it('toggles the section and returns success', async () => {
-    view.mockResolvedValue({ content: SECTION_PAGE });
+    readText.mockResolvedValue(SECTION_PAGE);
     const res = await request(createTestApp())
       .post('/apps/app1234567/compliance/section')
       .send({ documentType: 'privacy-policy', sectionKey: 'children', value: true })
@@ -145,7 +146,7 @@ describe('POST /apps/:id/compliance/section', () => {
   });
 
   it('returns 409 when the section is absent', async () => {
-    view.mockResolvedValue({ content: `const markdown = \`no sections\`;` });
+    readText.mockResolvedValue(`const markdown = \`no sections\`;`);
     await request(createTestApp())
       .post('/apps/app1234567/compliance/section')
       .send({ documentType: 'privacy-policy', sectionKey: 'children', value: false })
@@ -170,7 +171,7 @@ describe('POST /apps/:id/compliance/section', () => {
   });
 
   it('returns 500 when the workspace write throws', async () => {
-    view.mockResolvedValue({ content: SECTION_PAGE });
+    readText.mockResolvedValue(SECTION_PAGE);
     write.mockRejectedValue(new Error('disk full'));
     await request(createTestApp())
       .post('/apps/app1234567/compliance/section')

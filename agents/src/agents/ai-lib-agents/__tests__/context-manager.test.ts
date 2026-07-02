@@ -66,6 +66,7 @@ const { workspaceFilesMock, MockDevSupervisorError, mockLogger } = vi.hoisted(()
   return {
     workspaceFilesMock: {
       view: vi.fn(),
+      readText: vi.fn(),
       tree: vi.fn(),
       stat: vi.fn(),
     },
@@ -99,12 +100,14 @@ describe('AILibContextManager', () => {
     mockedRegistryRender.mockClear()
     appContextResult.value = null
     workspaceFilesMock.view.mockReset()
+    workspaceFilesMock.readText.mockReset()
     workspaceFilesMock.tree.mockReset()
     workspaceFilesMock.stat.mockReset()
     mockLogger.warn.mockClear()
     // Default: every workspace.files.* call signals "not found" (no UI kit, no classification).
     // stat() returns inline per-path errors; view/tree throw not_found errors.
     workspaceFilesMock.view.mockRejectedValue(new MockDevSupervisorError('not_found', 'no such file'))
+    workspaceFilesMock.readText.mockRejectedValue(new MockDevSupervisorError('not_found', 'no such file'))
     workspaceFilesMock.tree.mockRejectedValue(new MockDevSupervisorError('not_found', 'no such directory'))
     workspaceFilesMock.stat.mockImplementation(async ({ paths }: { paths: string[] }) => ({
       entries: paths.map((path) => ({ path, error: 'not_found' as const })),
@@ -341,6 +344,13 @@ describe('AILibContextManager', () => {
         }
         return { path, content, encoding: 'utf-8', lines: content.split('\n').length, size: content.length, truncated: false }
       })
+      workspaceFilesMock.readText.mockImplementation(async ({ path }: { path: string }) => {
+        const content = byPath[path]
+        if (content === undefined) {
+          throw new MockDevSupervisorError('not_found', `no such file: ${path}`)
+        }
+        return content
+      })
     }
 
     function statHasFile(filePath: string): void {
@@ -438,7 +448,7 @@ describe('AILibContextManager', () => {
       expect(classification?.content).not.toContain('src/assets/logo.png')
       expect(classification?.content).toContain('upload store')
       expect(classification?.content).toContain('## Upload handling')
-      expect(workspaceFilesMock.view).toHaveBeenCalledWith({ path: 'docs/.upload-classification.json', limit: 65536 })
+      expect(workspaceFilesMock.readText).toHaveBeenCalledWith({ path: 'docs/.upload-classification.json' })
     })
 
     it('passive note for an unattached image points to the upload store, not src/assets', async () => {
@@ -781,8 +791,8 @@ describe('AILibContextManager', () => {
       expect(anyActionBlock).toBeUndefined()
     })
 
-    it('propagates non-not-found errors from workspace.files.view (no silent fallback)', async () => {
-      workspaceFilesMock.view.mockRejectedValue(new MockDevSupervisorError('transport_error', 'connection refused'))
+    it('propagates non-not-found errors from workspace.files.readText (no silent fallback)', async () => {
+      workspaceFilesMock.readText.mockRejectedValue(new MockDevSupervisorError('transport_error', 'connection refused'))
 
       const cm = new AILibContextManager()
       await expect(cm.buildContextMessages(

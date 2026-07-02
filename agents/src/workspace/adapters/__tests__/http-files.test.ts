@@ -1,9 +1,14 @@
+import { Readable } from 'node:stream';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { DevSupervisorClient } from '../../../services/DevSupervisorClient.js';
 import { HttpFiles } from '../http-files.js';
 
 function makeClient() {
-  return { post: vi.fn() } as unknown as DevSupervisorClient;
+  return { post: vi.fn(), postStream: vi.fn(), getStream: vi.fn() } as unknown as DevSupervisorClient;
+}
+
+function bufferStream(content: string): Readable {
+  return Readable.from([Buffer.from(content)]);
 }
 
 describe('HttpFiles', () => {
@@ -41,24 +46,72 @@ describe('HttpFiles', () => {
   });
 
   describe('view()', () => {
-    it('calls /workspace/files/view with path and line range', async () => {
-      const mockResponse = {
-        path: 'index.ts',
-        content: 'const x = 1;',
-        encoding: 'utf-8' as const,
-        lines: 100,
-        truncated: false,
-      };
-      (client.post as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse);
-
-      const result = await files.view({ path: 'index.ts', offset: 10, limit: 50 });
-
-      expect(client.post).toHaveBeenCalledWith('/workspace/files/view', {
-        path: 'index.ts',
-        offset: 10,
-        limit: 50,
+    it('parses headers and plain text body from postStream', async () => {
+      (client.postStream as ReturnType<typeof vi.fn>).mockResolvedValue({
+        stream: bufferStream(' 1|const x = 1;\n 2|const y = 2;'),
+        headers: {
+          'x-file-path': 'index.ts',
+          'x-file-lines': '100',
+          'x-file-size': '2048',
+          'x-truncated': 'true',
+        },
       });
-      expect(result).toEqual(mockResponse);
+
+      const result = await files.view({ path: 'index.ts', offset: 0, limit: 50 });
+
+      expect(client.postStream).toHaveBeenCalledWith(
+        '/workspace/files/view',
+        { path: 'index.ts', offset: 0, limit: 50 },
+        { Accept: '*/*' },
+      );
+      expect(result).toEqual({
+        path: 'index.ts',
+        content: ' 1|const x = 1;\n 2|const y = 2;',
+        lines: 100,
+        size: 2048,
+        truncated: true,
+      });
+    });
+
+    it('falls back to options.path when header missing', async () => {
+      (client.postStream as ReturnType<typeof vi.fn>).mockResolvedValue({
+        stream: bufferStream('1|hello'),
+        headers: {},
+      });
+
+      const result = await files.view({ path: 'fallback.ts' });
+
+      expect(result.path).toBe('fallback.ts');
+      expect(result.lines).toBe(0);
+      expect(result.size).toBe(0);
+      expect(result.truncated).toBe(false);
+    });
+  });
+
+  describe('readText()', () => {
+    it('collects stream from getStream into UTF-8 string', async () => {
+      (client.getStream as ReturnType<typeof vi.fn>).mockResolvedValue({
+        stream: bufferStream('{"key": "value"}'),
+        contentType: 'application/json',
+        contentLength: 16,
+        headers: {},
+      });
+
+      const result = await files.readText({ path: 'data.json' });
+
+      expect(result).toBe('{"key": "value"}');
+    });
+
+    it('rejects files exceeding 10 MB', async () => {
+      const oversized: Readable = bufferStream('x');
+      (client.getStream as ReturnType<typeof vi.fn>).mockResolvedValue({
+        stream: oversized,
+        contentType: 'application/octet-stream',
+        contentLength: 11 * 1024 * 1024,
+        headers: {},
+      });
+
+      await expect(files.readText({ path: 'huge.bin' })).rejects.toThrow('File too large');
     });
   });
 

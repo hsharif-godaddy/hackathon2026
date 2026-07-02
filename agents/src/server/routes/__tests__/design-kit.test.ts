@@ -37,7 +37,7 @@ vi.mock('../../../memory/adapters/index.js', () => ({
 
 // Workspace mock. createForWorkspace returns an object with files.write / files.view.
 vi.mock('../../../workspace/index.js', () => ({
-  createForWorkspace: () => ({ files: { write: filesWrite, view: vi.fn() } }),
+  createForWorkspace: () => ({ files: { write: filesWrite, view: vi.fn(), readText: vi.fn().mockResolvedValue('') } }),
 }));
 
 // CSS writers reused by the colors + fonts routes.

@@ -1,12 +1,14 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 import { ReadFileTool, isFileBlocked } from '../read-file';
+import { DevSupervisorError } from '../../services/DevSupervisorClient';
 import type { WorkspaceFiles, ViewResult } from '../../workspace/files';
 
 function createMockFiles(overrides?: Partial<WorkspaceFiles>): WorkspaceFiles {
   return {
     tree: vi.fn(),
     view: vi.fn(),
+    readText: vi.fn(),
     search: vi.fn(),
     write: vi.fn(),
     edit: vi.fn(),
@@ -15,13 +17,16 @@ function createMockFiles(overrides?: Partial<WorkspaceFiles>): WorkspaceFiles {
     move: vi.fn(),
     upload: vi.fn(),
     download: vi.fn(),
+    stat: vi.fn(),
+    archive: vi.fn(),
     ...overrides,
   } as unknown as WorkspaceFiles;
 }
 
+/** Simulate server-formatted view response (pre-numbered lines). */
 function viewResult(content: string, lines?: number): ViewResult {
-  const lineCount = lines ?? content.split('\n').length;
-  return { path: 'test.txt', content, encoding: 'utf-8', lines: lineCount, size: content.length, truncated: false };
+  const lineCount: number = lines ?? content.split('\n').length;
+  return { path: 'test.txt', content, lines: lineCount, size: content.length, truncated: false };
 }
 
 describe('ReadFileTool', () => {
@@ -29,8 +34,9 @@ describe('ReadFileTool', () => {
   let mockFiles: WorkspaceFiles;
 
   beforeEach(() => {
+    // view() now returns pre-numbered content from the server.
     mockFiles = createMockFiles({
-      view: vi.fn().mockResolvedValue(viewResult('line1\nline2\nline3', 3)),
+      view: vi.fn().mockResolvedValue(viewResult('1|line1\n2|line2\n3|line3', 3)),
     });
     readFileTool = new ReadFileTool(mockFiles);
   });
@@ -64,35 +70,33 @@ describe('ReadFileTool', () => {
     });
   });
 
-  describe('binary detection from view response', () => {
-    it('should block files returned as base64', async () => {
+  describe('binary detection from server error', () => {
+    it('should return friendly error when server rejects binary file', async () => {
+      const binaryErr = new DevSupervisorError('binary_file', 422, 'file is binary');
       mockFiles = createMockFiles({
-        view: vi.fn().mockResolvedValue({
-          path: 'data.custom', content: 'AAEC/w==', encoding: 'base64', lines: 0, size: 6, truncated: false,
-        }),
+        view: vi.fn().mockRejectedValue(binaryErr),
       });
       readFileTool = new ReadFileTool(mockFiles);
 
       const result = await readFileTool.readFile({ path: 'data.custom' });
       expect(result.success).toBe(false);
-      expect(result.error).toContain('binary file detected');
+      expect(result.error).toContain('Binary file');
+    });
+
+    it('should return image-specific message for image extensions', async () => {
+      const binaryErr = new DevSupervisorError('binary_file', 422, 'file is binary');
+      mockFiles = createMockFiles({
+        view: vi.fn().mockRejectedValue(binaryErr),
+      });
+      readFileTool = new ReadFileTool(mockFiles);
+
+      const result = await readFileTool.readFile({ path: 'photo.png' });
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Cannot read image as text');
     });
   });
 
-  describe('line number formatting', () => {
-    it('should include line number prefixes by default', async () => {
-      const result = await readFileTool.readFile({ path: 'config.txt' });
-      expect(result.success).toBe(true);
-      expect(result.content).toMatch(/^\s+1\|line1/);
-      expect(result.content).toMatch(/\s+2\|line2/);
-    });
 
-    it('should return raw content when raw is true', async () => {
-      const result = await readFileTool.readFile({ path: 'config.txt', raw: true });
-      expect(result.success).toBe(true);
-      expect(result.content).toBe('line1\nline2\nline3');
-    });
-  });
 
   describe('line range selection', () => {
     it('should pass offset and limit to view', async () => {

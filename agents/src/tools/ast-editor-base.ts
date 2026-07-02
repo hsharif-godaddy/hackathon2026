@@ -87,8 +87,7 @@ export abstract class ASTEditorBase {
   }
 
   protected async readSourceFile(files: WorkspaceFiles, relativePath: string): Promise<string> {
-    const result = await files.view({ path: relativePath });
-    return result.content;
+    return files.readText({ path: relativePath });
   }
 
   protected async writeSourceFile(files: WorkspaceFiles, relativePath: string, content: string): Promise<void> {

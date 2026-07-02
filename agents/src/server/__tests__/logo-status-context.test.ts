@@ -5,7 +5,7 @@ vi.mock('../../logging/index.js', () => ({
 }))
 const mockRead = vi.fn()
 vi.mock('../../services/logo/logo-job-state.js', () => ({ readLogoJob: () => mockRead() }))
-vi.mock('../../workspace/index.js', () => ({ createForWorkspace: () => ({ files: {} }) }))
+vi.mock('../../workspace/index.js', () => ({ createForWorkspace: () => ({ files: { readText: vi.fn().mockResolvedValue('') } }) }))
 
 import { buildLogoStatusContextMessage } from '../logo-status-context.js'
 

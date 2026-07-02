@@ -32,8 +32,8 @@ export interface LogoJob {
  *  non-not_found error so a supervisor outage isn't masked as "no job". */
 export async function readLogoJob(workspace: WorkspaceFiles, appId: string): Promise<LogoJob | null> {
   try {
-    const result = await workspace.view({ path: LOGO_JOB_PATH })
-    return JSON.parse(result.content) as LogoJob
+    const content: string = await workspace.readText({ path: LOGO_JOB_PATH })
+    return JSON.parse(content) as LogoJob
   } catch (err) {
     if (isDevSupervisorNotFound(err)) return null
     logger.warn('logo.metadata.read_error', {

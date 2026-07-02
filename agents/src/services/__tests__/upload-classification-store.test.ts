@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-const { viewMock, writeMock, createForWorkspaceMock } = vi.hoisted(() => ({
+const { viewMock, readTextMock, writeMock, createForWorkspaceMock } = vi.hoisted(() => ({
   viewMock: vi.fn(),
+  readTextMock: vi.fn(),
   writeMock: vi.fn(),
   createForWorkspaceMock: vi.fn(),
 }))
@@ -22,6 +23,10 @@ function workspaceWith(content: string | (() => never)) {
       view: viewMock.mockImplementation(async () => {
         if (typeof content === 'function') content()
         return { content, encoding: 'utf-8', path: 'docs/.upload-classifications.json', lines: 1, size: 1, truncated: false }
+      }),
+      readText: readTextMock.mockImplementation(async () => {
+        if (typeof content === 'function') content()
+        return content as string
       }),
       write: writeMock.mockResolvedValue(undefined),
     },

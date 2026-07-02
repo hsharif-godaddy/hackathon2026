@@ -37,8 +37,7 @@ export const DOCUMENT_FILE_EXTENSIONS = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'p
 export const OTHER_BINARY_EXTENSIONS = ['zip', 'tar', 'gz', 'rar', '7z', 'db', 'sqlite', 'sqlite3', 'bin', 'exe', 'dll', 'so', 'wasm'] as const
 
 export const BINARY_FILE_EXTENSIONS = [
-  // Images (+ svg which is text but handled as binary for copy logic)
-  ...IMAGE_FILE_EXTENSIONS, 'svg',
+  ...IMAGE_FILE_EXTENSIONS,
   // Fonts
   'woff', 'woff2', 'ttf', 'otf', 'eot',
   // Audio

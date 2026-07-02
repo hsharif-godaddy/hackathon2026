@@ -672,15 +672,12 @@ export class SkillLoaderTool {
 
           try {
             if (config.overwrite !== true) {
-              try {
-                await workspace.files.view({ path: destRelPath, limit: 1 });
+              const statResult = await workspace.files.stat({ paths: [destRelPath] });
+              const statEntry = statResult.entries[0];
+              if (statEntry && !('error' in statEntry && statEntry.error !== undefined)) {
                 this.logger.info('skill.install.skip_existing', { skill, path: destRelPath });
                 filesSkipped++;
                 continue;
-              } catch (error) {
-                if (!(error instanceof DevSupervisorError && error.code === 'not_found')) {
-                  throw error;
-                }
               }
             }
 

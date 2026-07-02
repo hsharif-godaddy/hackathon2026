@@ -3,7 +3,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { AppliedSkillsRegistry, writeSkillState } from '../applied-skills-registry.js';
 import { DevSupervisorError } from '../../services/DevSupervisorClient.js';
 import type { CreateForWorkspace, WorkspaceClient } from '../../workspace/client.js';
-import type { ViewOptions, ViewResult, WriteOptions, WriteResult } from '../../workspace/files.js';
+import type { ReadTextOptions, ViewOptions, ViewResult, WriteOptions, WriteResult } from '../../workspace/files.js';
 
 /**
  * Map-backed in-memory workspace stand-in. `view` throws a REAL
@@ -35,6 +35,14 @@ class InMemoryWorkspace {
       size: content.length,
       truncated: false,
     };
+  };
+
+  readText = async (options: ReadTextOptions): Promise<string> => {
+    const content: string | undefined = this.files.get(options.path);
+    if (content === undefined) {
+      throw new DevSupervisorError('not_found', 404, `${options.path}: no such file`);
+    }
+    return content;
   };
 
   write = async (options: WriteOptions): Promise<WriteResult> => {
@@ -231,6 +239,9 @@ describe('applied-skills-registry', () => {
         makeFactory({
           ...new InMemoryWorkspace(),
           view: async () => {
+            throw new DevSupervisorError('permission_denied', 403, 'denied');
+          },
+          readText: async () => {
             throw new DevSupervisorError('permission_denied', 403, 'denied');
           },
           write: async (o: WriteOptions): Promise<WriteResult> => ({ bytesWritten: o.content.length }),

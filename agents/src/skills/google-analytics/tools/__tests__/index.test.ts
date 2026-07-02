@@ -4,6 +4,7 @@ const mockListSecretNames = vi.fn();
 const mockFindById = vi.fn();
 const mockInstallTemplates = vi.fn();
 const mockView = vi.fn();
+const mockReadText = vi.fn();
 const mockInsert = vi.fn();
 
 vi.mock('../../../../logging/index.js', () => ({
@@ -63,6 +64,7 @@ function makeWorkspace() {
     tasks: {},
     files: {
       view: mockView,
+      readText: mockReadText,
       insert: mockInsert,
       write: vi.fn(),
     },
@@ -236,6 +238,7 @@ describe('google-analytics tools', () => {
         installedFiles: ['src/components/GoogleAnalytics.tsx', 'src/server/api/analytics/config/GET.ts'],
       });
       mockView.mockResolvedValue({ content: ROOTLAYOUT_CONTENT });
+      mockReadText.mockResolvedValue(ROOTLAYOUT_CONTENT);
       mockInsert.mockResolvedValue({ lines: 1 });
 
       const result = await installAnalyticsTool.execute({}, makeContext('app-123'));
@@ -268,6 +271,7 @@ describe('google-analytics tools', () => {
         installedFiles: [],
       });
       mockView.mockResolvedValue({ content: alreadyPatched });
+      mockReadText.mockResolvedValue(alreadyPatched);
 
       const result = await installAnalyticsTool.execute({}, makeContext('app-123'));
 
@@ -285,6 +289,7 @@ describe('google-analytics tools', () => {
         installedFiles: ['src/components/GoogleAnalytics.tsx', 'src/server/api/analytics/config/GET.ts'],
       });
       mockView.mockRejectedValue(new DevSupervisorError('not found', 'not_found'));
+      mockReadText.mockRejectedValue(new DevSupervisorError('not found', 'not_found'));
 
       const result = await installAnalyticsTool.execute({}, makeContext('app-123'));
 
@@ -306,11 +311,11 @@ describe('google-analytics tools', () => {
         filesInstalled: 2,
         installedFiles: ['src/components/GoogleAnalytics.tsx'],
       });
-      // First view: no import, no component — triggers import insert
-      mockView.mockResolvedValueOnce({ content: noWebsite });
+      // First readText: no import, no component — triggers import insert
+      mockReadText.mockResolvedValueOnce(noWebsite);
       mockInsert.mockResolvedValue({ lines: 1 });
-      // Second view (after import insert): still no <Website>
-      mockView.mockResolvedValueOnce({ content: `import GoogleAnalytics from '@/components/GoogleAnalytics';\n${noWebsite}` });
+      // Second readText (after import insert): still no <Website>
+      mockReadText.mockResolvedValueOnce(`import GoogleAnalytics from '@/components/GoogleAnalytics';\n${noWebsite}`);
 
       const result = await installAnalyticsTool.execute({}, makeContext('app-123'));
 

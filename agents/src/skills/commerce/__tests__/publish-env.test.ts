@@ -112,13 +112,14 @@ describe('getCommercePublishEnv', () => {
     insertApp(db);
     vi.mocked(createForWorkspace).mockReturnValue({
       files: {
-        view: vi.fn().mockResolvedValue({
-          content: [
+        view: vi.fn(),
+        readText: vi.fn().mockResolvedValue(
+          [
             'GODADDY_STORE_ID=store-env',
             'GODADDY_CHANNEL_ID=channel-env',
             'GODADDY_API_BASE_URL=https://api.dev-godaddy.com',
           ].join('\n'),
-        }),
+        ),
       },
     } as any);
 

@@ -27,8 +27,8 @@ router.get('/apps/:id/go-live-status', async (req: Request, res: Response) => {
   }
 
   try {
-    const result = await workspace.files.view({ path: LIVE_JSON_PATH });
-    const status: LiveStatus = JSON.parse(result.content);
+    const content: string = await workspace.files.readText({ path: LIVE_JSON_PATH });
+    const status: LiveStatus = JSON.parse(content);
 
     contextLogger.info('go-live.status.read', {
       appId,

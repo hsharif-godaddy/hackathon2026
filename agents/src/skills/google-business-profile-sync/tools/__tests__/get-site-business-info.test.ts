@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 const mockSearch = vi.fn();
 const mockView = vi.fn();
+const mockReadText = vi.fn();
 const mockCreateForWorkspace = vi.fn();
 
 vi.mock('../../../../logging/index.js', () => {
@@ -33,6 +34,10 @@ function matches(...paths: string[]) {
   return paths.map((path) => ({ path, line: 1, column: 1, preview: '' }));
 }
 
+function readTextOf(map: Record<string, string>) {
+  return ({ path }: { path: string }) => Promise.resolve(map[path] ?? '');
+}
+
 function viewOf(map: Record<string, string>) {
   return ({ path }: { path: string }) =>
     Promise.resolve({ path, content: map[path] ?? '', encoding: 'utf-8', lines: 1, size: 1, truncated: false });
@@ -46,8 +51,9 @@ function run(context: Record<string, unknown> = CTX) {
 describe('google-business-profile-sync getSiteBusinessInfo tool (source-first)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockCreateForWorkspace.mockReturnValue({ files: { search: mockSearch, view: mockView } });
+    mockCreateForWorkspace.mockReturnValue({ files: { search: mockSearch, view: mockView, readText: mockReadText } });
     mockSearch.mockResolvedValue(matches('src/Layout.tsx'));
+    mockReadText.mockImplementation(readTextOf({ 'src/Layout.tsx': JSONLD_SOURCE }));
     mockView.mockImplementation(viewOf({ 'src/Layout.tsx': JSONLD_SOURCE }));
   });
 
@@ -88,7 +94,7 @@ describe('google-business-profile-sync getSiteBusinessInfo tool (source-first)',
 
     it('falls back to a text blob (Phone/Address) when the source has no JSON-LD', async () => {
       mockSearch.mockResolvedValue(matches('src/Footer.tsx'));
-      mockView.mockImplementation(viewOf({ 'src/Footer.tsx': CONTACT_SOURCE }));
+      mockReadText.mockImplementation(readTextOf({ 'src/Footer.tsx': CONTACT_SOURCE }));
       const result = await run();
       expect(result.success).toBe(true);
       expect(result.jsonLd).toBeNull();
@@ -97,9 +103,9 @@ describe('google-business-profile-sync getSiteBusinessInfo tool (source-first)',
     });
 
     it('concatenates multiple matched files and dedupes paths across patterns', async () => {
-      // Every pattern search returns the same two files → deduped to two views.
+      // Every pattern search returns the same two files → deduped to two reads.
       mockSearch.mockResolvedValue(matches('src/Footer.tsx', 'src/Layout.tsx'));
-      mockView.mockImplementation(viewOf({ 'src/Footer.tsx': CONTACT_SOURCE, 'src/Layout.tsx': JSONLD_SOURCE }));
+      mockReadText.mockImplementation(readTextOf({ 'src/Footer.tsx': CONTACT_SOURCE, 'src/Layout.tsx': JSONLD_SOURCE }));
       const result = await run();
       expect(result.success).toBe(true);
       expect(result.filesScanned.sort()).toEqual(['src/Footer.tsx', 'src/Layout.tsx']);
@@ -111,14 +117,14 @@ describe('google-business-profile-sync getSiteBusinessInfo tool (source-first)',
     it('caps files read at MAX_SOURCE_FILES and truncates deterministically (#6)', async () => {
       const paths = Array.from({ length: 17 }, (_, i) => `src/f${String(i).padStart(2, '0')}.tsx`);
       mockSearch.mockResolvedValue(matches(...paths));
-      mockView.mockImplementation(viewOf({ 'src/f00.tsx': JSONLD_SOURCE }));
+      mockReadText.mockImplementation(readTextOf({ 'src/f00.tsx': JSONLD_SOURCE }));
 
       const result = await run();
 
       expect(result.success).toBe(true);
       // Sorted, so the first 15 (f00..f14) are read; f15/f16 dropped (logged).
       expect(result.filesScanned).toEqual(paths.slice(0, 15));
-      expect(mockView).toHaveBeenCalledTimes(15);
+      expect(mockReadText).toHaveBeenCalledTimes(15);
     });
 
     it('merges fields across Organization + LocalBusiness JSON-LD nodes (#3)', async () => {
@@ -133,7 +139,7 @@ describe('google-business-profile-sync getSiteBusinessInfo tool (source-first)',
       });
       const source = `<script type="application/ld+json">${orgNode}</script><script type="application/ld+json">${localNode}</script>`;
       mockSearch.mockResolvedValue(matches('src/Layout.tsx'));
-      mockView.mockImplementation(viewOf({ 'src/Layout.tsx': source }));
+      mockReadText.mockImplementation(readTextOf({ 'src/Layout.tsx': source }));
 
       const result = await run();
 
@@ -153,7 +159,7 @@ describe('google-business-profile-sync getSiteBusinessInfo tool (source-first)',
         description: 'Family-owned plumbing since 1990.',
       })}</script>`;
       mockSearch.mockResolvedValue(matches('src/Layout.tsx'));
-      mockView.mockImplementation(viewOf({ 'src/Layout.tsx': src }));
+      mockReadText.mockImplementation(readTextOf({ 'src/Layout.tsx': src }));
 
       const result = await run();
 
@@ -163,16 +169,16 @@ describe('google-business-profile-sync getSiteBusinessInfo tool (source-first)',
     it('falls back to the meta description when JSON-LD has none (#description)', async () => {
       const src = '<meta name="description" content="Best tacos in town."><footer>Call (555) 999-0000</footer>'
       mockSearch.mockResolvedValue(matches('src/index.html'));
-      mockView.mockImplementation(viewOf({ 'src/index.html': src }));
+      mockReadText.mockImplementation(readTextOf({ 'src/index.html': src }));
 
       const result = await run();
 
       expect(result.textBlob).toContain('Description: Best tacos in town.');
     });
 
-    it('tolerates a per-file view failure', async () => {
+    it('tolerates a per-file readText failure', async () => {
       mockSearch.mockResolvedValue(matches('src/Footer.tsx'));
-      mockView.mockRejectedValue(new Error('locked'));
+      mockReadText.mockRejectedValue(new Error('locked'));
       const result = await run();
       // No content read, but it still returns ok with an empty extraction rather than throwing.
       expect(result).toMatchObject({ success: true, source: 'source' });

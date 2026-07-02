@@ -41,6 +41,17 @@ function createMockFiles(): WorkspaceFiles {
         throw err;
       }
     },
+    readText: async ({ path: filePath }) => {
+      const full = path.join(tmp, filePath);
+      try {
+        return await fs.readFile(full, 'utf-8');
+      } catch (err: unknown) {
+        if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+          throw new DevSupervisorError('not_found', 404, `${filePath}: no such file or directory`);
+        }
+        throw err;
+      }
+    },
     write: async ({ path: filePath, content }) => {
       const full = path.join(tmp, filePath);
       await fs.mkdir(path.dirname(full), { recursive: true });
@@ -222,6 +233,9 @@ export default app;
       view: async () => {
         throw new DevSupervisorError('permission_denied', 403, 'entry.ts: permission denied');
       },
+      readText: async () => {
+        throw new DevSupervisorError('permission_denied', 403, 'entry.ts: permission denied');
+      },
       tree: async () => ({ entries: [], truncated: false }),
     } as unknown as WorkspaceFiles;
     await expect(regenerateEntryApiRegistrations(files)).rejects.toThrow(/permission denied/);
@@ -230,6 +244,9 @@ export default app;
   it('propagates generic Error from view()', async () => {
     const files = {
       view: async () => {
+        throw new Error('socket hang up');
+      },
+      readText: async () => {
         throw new Error('socket hang up');
       },
       tree: async () => ({ entries: [], truncated: false }),

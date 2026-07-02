@@ -1,3 +1,4 @@
+import { Readable } from 'node:stream'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { DevSupervisorError } from '../../../services/DevSupervisorClient.js'
 import { FileUploadContextRenderer, classifyUploadImage } from '../FileUploadContextRenderer.js'
@@ -52,7 +53,7 @@ import { logger } from '../../../logging/index.js'
 
 describe('FileUploadContextRenderer', () => {
   let renderer: FileUploadContextRenderer
-  const mockView = vi.fn()
+  const mockReadText = vi.fn()
   const mockDownload = vi.fn()
   const mockWrite = vi.fn()
 
@@ -61,7 +62,7 @@ describe('FileUploadContextRenderer', () => {
     renderer = new FileUploadContextRenderer()
     mockWrite.mockResolvedValue({ bytesWritten: 0 })
     ;(createForWorkspace as ReturnType<typeof vi.fn>).mockReturnValue({
-      files: { view: mockView, download: mockDownload, write: mockWrite },
+      files: { readText: mockReadText, download: mockDownload, write: mockWrite },
     })
   })
 
@@ -69,15 +70,8 @@ describe('FileUploadContextRenderer', () => {
     expect(renderer.canHandle('file_upload')).toBe(true)
   })
 
-  it('reads text files via workspace.files.view()', async () => {
-    mockView.mockResolvedValue({
-      path: 'docs/brief.md',
-      content: '# Site Brief\nBuild me a portfolio site.',
-      encoding: 'utf-8',
-      lines: 2,
-      size: 40,
-      truncated: false,
-    })
+  it('reads text files via workspace.files.readText()', async () => {
+    mockReadText.mockResolvedValue('# Site Brief\nBuild me a portfolio site.')
 
     const result = await renderer.render(
       { type: 'file_upload', data: { name: 'brief.md', isImage: false } },
@@ -85,7 +79,7 @@ describe('FileUploadContextRenderer', () => {
       { appId: 'abc123', appPath: '/app' },
     )
 
-    expect(mockView).toHaveBeenCalledWith({ path: 'docs/brief.md', limit: 10000 })
+    expect(mockReadText).toHaveBeenCalledWith({ path: 'docs/brief.md' })
     expect(result).not.toBeNull()
     expect(result?.content).toContain('brief.md')
   })
@@ -93,8 +87,9 @@ describe('FileUploadContextRenderer', () => {
   it('reads image files via workspace.files.download()', async () => {
     const pngData = Buffer.from([0x89, 0x50, 0x4e, 0x47])
     mockDownload.mockResolvedValue({
-      data: pngData,
+      stream: Readable.from(pngData),
       contentType: 'image/png',
+      contentLength: pngData.length,
     })
 
     const result = await renderer.render(
@@ -110,8 +105,9 @@ describe('FileUploadContextRenderer', () => {
   it('auto-registers hero_image uploads into a media slot', async () => {
     const pngData = Buffer.from([0x89, 0x50, 0x4e, 0x47])
     mockDownload.mockResolvedValue({
-      data: pngData,
+      stream: Readable.from(pngData),
       contentType: 'image/png',
+      contentLength: pngData.length,
     })
     vi.mocked(generateText).mockResolvedValue({
       text: JSON.stringify({
@@ -170,8 +166,9 @@ describe('FileUploadContextRenderer', () => {
   it('does not auto-register hero images shared as reference only', async () => {
     const pngData = Buffer.from([0x89, 0x50, 0x4e, 0x47])
     mockDownload.mockResolvedValue({
-      data: pngData,
+      stream: Readable.from(pngData),
       contentType: 'image/png',
+      contentLength: pngData.length,
     })
     vi.mocked(generateText).mockResolvedValue({
       text: JSON.stringify({
@@ -201,8 +198,9 @@ describe('FileUploadContextRenderer', () => {
   it('does not auto-register logo uploads', async () => {
     const pngData = Buffer.from([0x89, 0x50, 0x4e, 0x47])
     mockDownload.mockResolvedValue({
-      data: pngData,
+      stream: Readable.from(pngData),
       contentType: 'image/png',
+      contentLength: pngData.length,
     })
     vi.mocked(generateText).mockResolvedValue({
       text: JSON.stringify({
@@ -241,8 +239,8 @@ describe('FileUploadContextRenderer', () => {
     expect(result?.content).toContain('not found')
   })
 
-  it('returns not-found message when workspace view throws for text', async () => {
-    mockView.mockRejectedValue(new DevSupervisorError('not_found', 404, 'docs/missing.md'))
+  it('returns not-found message when workspace readText throws for text', async () => {
+    mockReadText.mockRejectedValue(new DevSupervisorError('not_found', 404, 'docs/missing.md'))
 
     const result = await renderer.render(
       { type: 'file_upload', data: { name: 'missing.md', isImage: false } },
@@ -270,7 +268,7 @@ describe('FileUploadContextRenderer', () => {
   })
 
   it('logs per-file failure and skips when non-404 text error occurs', async () => {
-    mockView.mockRejectedValue(new Error('connection refused'))
+    mockReadText.mockRejectedValue(new Error('connection refused'))
 
     const result = await renderer.render(
       { type: 'file_upload', data: { name: 'doc.md', isImage: false } },
@@ -311,14 +309,14 @@ describe('FileUploadContextRenderer', () => {
 
   describe('multi-file format', () => {
     it('handles data.files array with multiple text files', async () => {
-      mockView
-        // First view is the persisted-classifications read (skip-known gate);
+      mockReadText
+        // First readText is the persisted-classifications read (skip-known gate);
         // return empty so both files are treated as fresh.
-        .mockResolvedValueOnce({ content: '{"files":[]}', lines: 1, size: 12, truncated: false })
-        .mockResolvedValueOnce({ content: '# Brief\nPortfolio site.', lines: 2, size: 25, truncated: false })
-        .mockResolvedValueOnce({ content: 'Brand colors: blue, green.', lines: 1, size: 26, truncated: false })
-        // Final view is persistClassifications re-reading under its write lock.
-        .mockResolvedValueOnce({ content: '{"files":[]}', lines: 1, size: 12, truncated: false })
+        .mockResolvedValueOnce('{"files":[]}')
+        .mockResolvedValueOnce('# Brief\nPortfolio site.')
+        .mockResolvedValueOnce('Brand colors: blue, green.')
+        // Final readText is persistClassifications re-reading under its write lock.
+        .mockResolvedValueOnce('{"files":[]}')
 
       const result = await renderer.render(
         {
@@ -335,7 +333,7 @@ describe('FileUploadContextRenderer', () => {
       )
 
       // 1 persisted-classifications read + 2 file reads + 1 persist re-read (lock)
-      expect(mockView).toHaveBeenCalledTimes(4)
+      expect(mockReadText).toHaveBeenCalledTimes(4)
       expect(result).not.toBeNull()
       expect(result?.content).toContain('brief.md')
       expect(result?.content).toContain('brand.txt')
@@ -345,10 +343,9 @@ describe('FileUploadContextRenderer', () => {
       // isContinuation=true (handoff/auto-continue): the same attachment is
       // re-fed with a non-user prompt. The persisted entry is reused (context
       // manager re-injects it) — no classifier call, no per-file read.
-      mockView.mockResolvedValueOnce({
-        content: JSON.stringify({ files: [{ fileName: 'brief.md', placementIntent: 'unclear' }] }),
-        lines: 1, size: 50, truncated: false,
-      })
+      mockReadText.mockResolvedValueOnce(
+        JSON.stringify({ files: [{ fileName: 'brief.md', placementIntent: 'unclear' }] }),
+      )
 
       const result = await renderer.render(
         { type: 'file_upload', data: { files: [{ name: 'brief.md', isImage: false }] } },
@@ -356,8 +353,8 @@ describe('FileUploadContextRenderer', () => {
         { appId: 'abc123', appPath: '/app', isContinuation: true },
       )
 
-      // Only the persisted-classifications read happened — no per-file view.
-      expect(mockView).toHaveBeenCalledTimes(1)
+      // Only the persisted-classifications read happened — no per-file readText.
+      expect(mockReadText).toHaveBeenCalledTimes(1)
       expect(generateText).not.toHaveBeenCalled()
       expect(result).toBeNull()
     })
@@ -367,11 +364,10 @@ describe('FileUploadContextRenderer', () => {
       // (isContinuation falsy) — the user is acting on the upload again, so it
       // must be classified against the current message regardless of the prior
       // persisted result.
-      mockView
-        .mockResolvedValueOnce({
-          content: JSON.stringify({ files: [{ fileName: 'mood.jpg', placementIntent: 'reference_only' }] }),
-          lines: 1, size: 60, truncated: false,
-        })
+      mockReadText
+        .mockResolvedValueOnce(
+          JSON.stringify({ files: [{ fileName: 'mood.jpg', placementIntent: 'reference_only' }] }),
+        )
       // Image download fails with DevSupervisorError not_found → short-circuits
       // to the not-found fallback, proving the file was NOT skipped.
       mockDownload.mockRejectedValueOnce(new DevSupervisorError('not_found', 404, 'src/assets/mood.jpg'))
@@ -388,10 +384,10 @@ describe('FileUploadContextRenderer', () => {
 
     it('handles data.files array with mixed image and text', async () => {
       const pngData = Buffer.from([0x89, 0x50, 0x4e, 0x47])
-      mockView
-        .mockResolvedValueOnce({ content: '{"files":[]}', lines: 1, size: 12, truncated: false })
-        .mockResolvedValueOnce({ content: '# Notes', lines: 1, size: 7, truncated: false })
-      mockDownload.mockResolvedValueOnce({ data: pngData, contentType: 'image/png' })
+      mockReadText
+        .mockResolvedValueOnce('{"files":[]}')
+        .mockResolvedValueOnce('# Notes')
+      mockDownload.mockResolvedValueOnce({ stream: Readable.from(pngData), contentType: 'image/png', contentLength: pngData.length })
 
       const result = await renderer.render(
         {
@@ -408,16 +404,16 @@ describe('FileUploadContextRenderer', () => {
       )
 
       expect(mockDownload).toHaveBeenCalledWith({ path: 'src/assets/logo.png' })
-      expect(mockView).toHaveBeenCalledWith({ path: 'docs/notes.md', limit: 10000 })
+      expect(mockReadText).toHaveBeenCalledWith({ path: 'docs/notes.md' })
       expect(result).not.toBeNull()
       expect(result?.content).toContain('logo.png')
       expect(result?.content).toContain('notes.md')
     })
 
     it('falls back to legacy data.name format', async () => {
-      mockView
-        .mockResolvedValueOnce({ content: '{"files":[]}', lines: 1, size: 12, truncated: false })
-        .mockResolvedValueOnce({ content: '# Old format', lines: 1, size: 12, truncated: false })
+      mockReadText
+        .mockResolvedValueOnce('{"files":[]}')
+        .mockResolvedValueOnce('# Old format')
 
       const result = await renderer.render(
         { type: 'file_upload', data: { name: 'legacy.md', isImage: false } },
@@ -425,7 +421,7 @@ describe('FileUploadContextRenderer', () => {
         { appId: 'abc123', appPath: '/app' },
       )
 
-      expect(mockView).toHaveBeenCalledWith({ path: 'docs/legacy.md', limit: 10000 })
+      expect(mockReadText).toHaveBeenCalledWith({ path: 'docs/legacy.md' })
       expect(result?.content).toContain('legacy.md')
     })
 
@@ -440,10 +436,10 @@ describe('FileUploadContextRenderer', () => {
     })
 
     it('skips individual files that fail and includes successes', async () => {
-      mockView
-        .mockResolvedValueOnce({ content: '{"files":[]}', lines: 1, size: 12, truncated: false })
+      mockReadText
+        .mockResolvedValueOnce('{"files":[]}')
         .mockRejectedValueOnce(new DevSupervisorError('not_found', 404, 'docs/missing.md'))
-        .mockResolvedValueOnce({ content: '# Good file', lines: 1, size: 11, truncated: false })
+        .mockResolvedValueOnce('# Good file')
 
       const result = await renderer.render(
         {

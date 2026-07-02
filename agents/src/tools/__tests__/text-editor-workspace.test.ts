@@ -6,7 +6,9 @@ import { handleView, handleStrReplace, handleCreate, handleInsert } from '../tex
 function createMockFiles(overrides?: Partial<WorkspaceFiles>): WorkspaceFiles {
   return {
     tree: vi.fn(),
+    stat: vi.fn(),
     view: vi.fn(),
+    readText: vi.fn(),
     search: vi.fn(),
     write: vi.fn(),
     edit: vi.fn(),
@@ -15,33 +17,17 @@ function createMockFiles(overrides?: Partial<WorkspaceFiles>): WorkspaceFiles {
     move: vi.fn(),
     upload: vi.fn(),
     download: vi.fn(),
+    archive: vi.fn(),
     ...overrides,
   } as unknown as WorkspaceFiles;
 }
 
 describe('text-editor-workspace', () => {
   describe('handleView', () => {
-    it('formats content with line numbers', async () => {
-      const mockView = vi.fn<() => Promise<ViewResult>>().mockResolvedValue({
-        path: 'src/index.ts',
-        content: 'line one\nline two\nline three',
-        encoding: 'utf-8',
-        lines: 3,
-        size: 28,
-        truncated: false,
-      });
-      const files = createMockFiles({ view: mockView });
-
-      const result = await handleView(files, 'src/index.ts');
-
-      expect(result).toBe('1: line one\n2: line two\n3: line three');
-      expect(mockView).toHaveBeenCalledWith({ path: 'src/index.ts' });
-    });
-
     it('passes offset and limit for view_range', async () => {
       const mockView = vi.fn<() => Promise<ViewResult>>().mockResolvedValue({
         path: 'src/index.ts',
-        content: 'line five\nline six\nline seven',
+        content: '5|line five\n6|line six\n7|line seven',
         encoding: 'utf-8',
         lines: 3,
         size: 29,
@@ -51,14 +37,14 @@ describe('text-editor-workspace', () => {
 
       const result = await handleView(files, 'src/index.ts', [5, 7]);
 
-      expect(result).toBe('5: line five\n6: line six\n7: line seven');
+      expect(result).toBe('5|line five\n6|line six\n7|line seven');
       expect(mockView).toHaveBeenCalledWith({ path: 'src/index.ts', offset: 4, limit: 3 });
     });
 
     it('passes no limit when view_range end is -1', async () => {
       const mockView = vi.fn<() => Promise<ViewResult>>().mockResolvedValue({
         path: 'src/index.ts',
-        content: 'line ten\nline eleven',
+        content: '10|line ten\n11|line eleven',
         encoding: 'utf-8',
         lines: 2,
         size: 20,
@@ -68,19 +54,14 @@ describe('text-editor-workspace', () => {
 
       const result = await handleView(files, 'src/index.ts', [10, -1]);
 
-      expect(result).toBe('10: line ten\n11: line eleven');
+      expect(result).toBe('10|line ten\n11|line eleven');
       expect(mockView).toHaveBeenCalledWith({ path: 'src/index.ts', offset: 9 });
     });
 
-    it('detects binary via base64 encoding in response', async () => {
-      const mockView = vi.fn<() => Promise<ViewResult>>().mockResolvedValue({
-        path: 'image.dat',
-        content: 'AAAA',
-        encoding: 'base64',
-        lines: 0,
-        size: 3,
-        truncated: false,
-      });
+    it('detects binary via server error', async () => {
+      const mockView = vi.fn().mockRejectedValue(
+        new DevSupervisorError('binary_file', 422, 'file is binary'),
+      );
       const files = createMockFiles({ view: mockView });
 
       const result = await handleView(files, 'image.dat');
@@ -144,7 +125,7 @@ describe('text-editor-workspace', () => {
     it('allows SVG files to be viewed', async () => {
       const mockView = vi.fn<() => Promise<ViewResult>>().mockResolvedValue({
         path: 'icon.svg',
-        content: '<svg></svg>',
+        content: '1|<svg></svg>',
         encoding: 'utf-8',
         lines: 1,
         size: 11,
@@ -154,7 +135,7 @@ describe('text-editor-workspace', () => {
 
       const result = await handleView(files, 'icon.svg');
 
-      expect(result).toBe('1: <svg></svg>');
+      expect(result).toBe('1|<svg></svg>');
       expect(mockView).toHaveBeenCalled();
     });
   });
@@ -176,40 +157,26 @@ describe('text-editor-workspace', () => {
 
     it('throws enriched error on no_match', async () => {
       const mockEdit = vi.fn().mockRejectedValue(new DevSupervisorError('no_match', 400, 'oldString not found in file'));
-      const mockView = vi.fn<() => Promise<ViewResult>>().mockResolvedValue({
-        path: 'src/index.ts',
-        content: 'actual content\nof the file',
-        encoding: 'utf-8',
-        lines: 2,
-        size: 27,
-        truncated: false,
-      });
-      const files = createMockFiles({ edit: mockEdit, view: mockView });
+      const mockReadText = vi.fn().mockResolvedValue('actual content\nof the file');
+      const files = createMockFiles({ edit: mockEdit, readText: mockReadText });
 
       await expect(handleStrReplace(files, 'src/index.ts', 'missing text', 'new text'))
         .rejects.toThrow('No match found for old_str');
 
-      expect(mockView).toHaveBeenCalledWith({ path: 'src/index.ts' });
+      expect(mockReadText).toHaveBeenCalledWith({ path: 'src/index.ts' });
     });
 
     it('throws enriched error on ambiguous_match', async () => {
       const mockEdit = vi.fn().mockRejectedValue(
         new DevSupervisorError('ambiguous_match', 400, 'oldString found 3 times'),
       );
-      const mockView = vi.fn<() => Promise<ViewResult>>().mockResolvedValue({
-        path: 'src/index.ts',
-        content: 'foo\nfoo\nfoo\nbar',
-        encoding: 'utf-8',
-        lines: 4,
-        size: 15,
-        truncated: false,
-      });
-      const files = createMockFiles({ edit: mockEdit, view: mockView });
+      const mockReadText = vi.fn().mockResolvedValue('foo\nfoo\nfoo\nbar');
+      const files = createMockFiles({ edit: mockEdit, readText: mockReadText });
 
       await expect(handleStrReplace(files, 'src/index.ts', 'foo', 'baz'))
         .rejects.toThrow(/Found \d+ matches/);
 
-      expect(mockView).toHaveBeenCalledWith({ path: 'src/index.ts' });
+      expect(mockReadText).toHaveBeenCalledWith({ path: 'src/index.ts' });
     });
 
     it('rethrows unexpected errors without enrichment', async () => {

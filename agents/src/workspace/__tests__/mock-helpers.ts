@@ -8,7 +8,7 @@
 import { vi } from 'vitest';
 
 import { DevSupervisorError } from '../../services/DevSupervisorClient.js';
-import type { DeleteOptions, ViewOptions, ViewResult, WorkspaceFiles, WriteOptions, WriteResult } from '../files.js';
+import type { DeleteOptions, ReadTextOptions, ViewOptions, ViewResult, WorkspaceFiles, WriteOptions, WriteResult } from '../files.js';
 import type { RunCommandResult } from '../tasks.js';
 
 /**
@@ -39,9 +39,10 @@ export function makeRunCommandResult(overrides: Partial<RunCommandResult> = {}):
 
 export interface MockWorkspaceFiles {
   store: Map<string, string>;
-  files: Pick<WorkspaceFiles, 'view' | 'write' | 'delete'>;
+  files: Pick<WorkspaceFiles, 'view' | 'readText' | 'write' | 'delete'>;
   spies: {
     view: ReturnType<typeof vi.fn>;
+    readText: ReturnType<typeof vi.fn>;
     write: ReturnType<typeof vi.fn>;
     delete: ReturnType<typeof vi.fn>;
   };
@@ -58,11 +59,18 @@ export function createMockWorkspaceFiles(seed: Record<string, string> = {}): Moc
     return {
       path: options.path,
       content,
-      encoding: 'utf-8',
       lines: content.split('\n').length,
       size: Buffer.byteLength(content),
       truncated: false,
     };
+  });
+
+  const readText = vi.fn(async (options: ReadTextOptions): Promise<string> => {
+    const content: string | undefined = store.get(options.path);
+    if (content === undefined) {
+      throw new DevSupervisorError('not_found', 404, `${options.path}: no such file`);
+    }
+    return content;
   });
 
   const write = vi.fn(async (options: WriteOptions): Promise<WriteResult> => {
@@ -76,7 +84,7 @@ export function createMockWorkspaceFiles(seed: Record<string, string> = {}): Moc
 
   return {
     store,
-    files: { view, write, delete: del } as Pick<WorkspaceFiles, 'view' | 'write' | 'delete'>,
-    spies: { view, write, delete: del },
+    files: { view, readText, write, delete: del } as Pick<WorkspaceFiles, 'view' | 'readText' | 'write' | 'delete'>,
+    spies: { view, readText, write, delete: del },
   };
 }

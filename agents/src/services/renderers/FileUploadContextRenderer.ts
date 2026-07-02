@@ -16,6 +16,7 @@ import { mediaManifestService } from '../../services/MediaManifestService.js'
 import { resizeForVision } from '../../utils/image-resize.js'
 import { isDevSupervisorNotFound } from '../../services/DevSupervisorClient.js'
 import { createForWorkspace } from '../../workspace/index.js'
+import { collectBoundedBuffer } from '../../workspace/files.js'
 import {
   readPersistedClassifications,
   persistClassifications,
@@ -419,8 +420,8 @@ export class FileUploadContextRenderer implements ContextAttachmentRenderer {
     if (isImage) {
       let buffer: Buffer
       try {
-        const downloadResult = await workspace.files.download({ path: `src/assets/${fileName}` })
-        buffer = downloadResult.data
+        const { stream, contentLength } = await workspace.files.download({ path: `src/assets/${fileName}` })
+        buffer = await collectBoundedBuffer(stream, contentLength)
       } catch (err) {
         if (isDevSupervisorNotFound(err)) {
           logger.warn('context.renderer.file_upload.image_not_found', {
@@ -518,8 +519,7 @@ export class FileUploadContextRenderer implements ContextAttachmentRenderer {
     // Text file
     let content: string
     try {
-      const viewResult = await workspace.files.view({ path: `docs/${fileName}`, limit: 10000 })
-      content = viewResult.content
+      content = await workspace.files.readText({ path: `docs/${fileName}` })
     } catch (err) {
       if (isDevSupervisorNotFound(err)) {
         logger.warn('context.renderer.file_upload.text_not_found', {

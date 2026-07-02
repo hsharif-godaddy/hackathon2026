@@ -123,22 +123,20 @@ export interface RegenerateResult {
  * in src/server/entry.ts.
  */
 export async function regenerateEntryApiRegistrations(files: WorkspaceFiles): Promise<RegenerateResult> {
-  const [viewResult, entries] = await Promise.all([
-    files.view({ path: 'src/server/entry.ts' }).catch((error: unknown) => {
+  const [original, entries] = await Promise.all([
+    files.readText({ path: 'src/server/entry.ts' }).catch((error: unknown) => {
       if (error instanceof DevSupervisorError && error.code === 'not_found') return null;
       throw error;
     }),
     scanApiDir(files),
   ]);
 
-  if (!viewResult) {
+  if (!original) {
     return { changed: false, reason: 'no-entry', routeCount: 0 };
   }
   if (entries.length === 0) {
     return { changed: false, reason: 'no-api-dir', routeCount: 0 };
   }
-
-  const original = viewResult.content;
 
   const { imports, registrations } = generateEntryApiBlocks(entries);
 

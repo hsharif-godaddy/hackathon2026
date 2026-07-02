@@ -105,11 +105,10 @@ async function isFileImmutableViaWorkspace(
 ): Promise<boolean> {
   try {
     const result = await files.view({ path, limit: 1 });
-    if (result.encoding === 'base64') return false;
     const firstLine = result.content.split('\n')[0] ?? '';
     return firstLine.includes('TREAT AS IMMUTABLE');
   } catch (err: unknown) {
-    if (err instanceof DevSupervisorError && err.code === 'not_found') {
+    if (err instanceof DevSupervisorError && (err.code === 'not_found' || err.code === 'binary_file')) {
       return false;
     }
     throw err;

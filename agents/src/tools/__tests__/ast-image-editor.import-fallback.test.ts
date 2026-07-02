@@ -22,6 +22,10 @@ vi.mock('../../workspace/index.js', () => ({
           truncated: false,
         };
       }),
+      readText: vi.fn(async function ({ path: filePath }: { path: string }) {
+        const fullPath = hoistedPath.join(appPath, filePath);
+        return await hoistedFs.readFile(fullPath, 'utf-8');
+      }),
       write: vi.fn(async function ({ path: filePath, content }: { path: string; content: string }) {
         const fullPath = hoistedPath.join(appPath, filePath);
         await hoistedFs.writeFile(fullPath, content);

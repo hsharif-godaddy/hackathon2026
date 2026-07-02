@@ -3,12 +3,13 @@ import { mkdir, writeFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
-const { workspaceView, createForWorkspaceMock } = vi.hoisted(() => {
+const { workspaceView, workspaceReadText, createForWorkspaceMock } = vi.hoisted(() => {
   const workspaceView = vi.fn();
+  const workspaceReadText = vi.fn().mockResolvedValue('');
   const createForWorkspaceMock = vi.fn(function () { return {
-    files: { view: workspaceView },
+    files: { view: workspaceView, readText: workspaceReadText },
   }; });
-  return { workspaceView, createForWorkspaceMock };
+  return { workspaceView, workspaceReadText, createForWorkspaceMock };
 });
 
 vi.mock('../../../workspace/index.js', () => ({

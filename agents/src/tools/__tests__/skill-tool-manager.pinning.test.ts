@@ -17,6 +17,10 @@ function mockWorkspaceForPath(basePath: string): void {
         const content = await fs.readFile(full, 'utf-8');
         return { content, encoding: 'utf-8' as const, path: filePath, lines: content.split('\n').length, size: content.length, truncated: false };
       },
+      readText: async ({ path: filePath }: { path: string }) => {
+        const full = join(basePath, filePath);
+        return fs.readFile(full, 'utf-8');
+      },
       write: async ({ path: filePath, content }: { path: string; content: string }) => {
         const full = join(basePath, filePath);
         await fs.mkdir(join(full, '..'), { recursive: true });
@@ -37,6 +41,10 @@ function mockWorkspaceForPaths(paths: Map<string, string>): void {
         const full = join(basePath, filePath);
         const content = await fs.readFile(full, 'utf-8');
         return { content, encoding: 'utf-8' as const, path: filePath, lines: content.split('\n').length, size: content.length, truncated: false };
+      },
+      readText: async ({ path: filePath }: { path: string }) => {
+        const full = join(basePath, filePath);
+        return fs.readFile(full, 'utf-8');
       },
       write: async ({ path: filePath, content }: { path: string; content: string }) => {
         const full = join(basePath, filePath);

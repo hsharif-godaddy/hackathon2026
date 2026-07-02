@@ -37,7 +37,7 @@ vi.mock('../../../utils/dev-supervisor-client-factory.js', () => ({
 }));
 
 vi.mock('../../../workspace/index.js', () => ({
-  createForWorkspace: vi.fn(function () { return { tasks: {} }; }),
+  createForWorkspace: vi.fn(function () { return { tasks: {}, files: { readText: vi.fn().mockResolvedValue('') } }; }),
 }));
 
 vi.mock('../../middleware/app-ownership.js', () => ({
@@ -83,7 +83,7 @@ describe('git-remote routes', function gitRemoteTests() {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(createForWorkspace).mockReturnValue({ tasks: {} } as any);
+    vi.mocked(createForWorkspace).mockReturnValue({ tasks: {}, files: { readText: vi.fn().mockResolvedValue('') } } as any);
     app = createTestApp();
   });
 

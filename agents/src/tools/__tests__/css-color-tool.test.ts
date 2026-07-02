@@ -6,6 +6,7 @@ import { describe, it, expect } from 'vitest'
 function fakeFiles(content: string): WorkspaceFiles {
   return {
     view: async () => ({ content }),
+    readText: async () => content,
     write: async () => undefined,
   } as unknown as WorkspaceFiles
 }

@@ -135,8 +135,8 @@ export class AppliedSkillsRegistry {
     const path: string = skillStatePath(skillName);
     try {
       const files: WorkspaceFiles = resolveWorkspaceFiles(appId, this.workspaceFactory);
-      const result = await files.view({ path });
-      const parsed: unknown = JSON.parse(result.content);
+      const raw: string = await files.readText({ path });
+      const parsed: unknown = JSON.parse(raw);
       if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
         return parsed as Record<string, unknown>;
       }
@@ -226,8 +226,7 @@ export class AppliedSkillsRegistry {
     let raw: string;
     try {
       const files: WorkspaceFiles = resolveWorkspaceFiles(appId, this.workspaceFactory);
-      const result = await files.view({ path: APPLIED_SKILLS_PATH });
-      raw = result.content;
+      raw = await files.readText({ path: APPLIED_SKILLS_PATH });
     } catch (error) {
       if (isDevSupervisorNotFound(error)) return;
       // An unbound preview supervisor is an expected-transient state (e.g. just

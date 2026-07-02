@@ -13,6 +13,7 @@ const {
   mockWorkspaceTree,
   mockWorkspaceWrite,
   mockWorkspaceView,
+  mockWorkspaceReadText,
 } = vi.hoisted(() => ({
   mockExecuteAction: vi.fn(),
   mockFindBindingByAppId: vi.fn(),
@@ -23,6 +24,7 @@ const {
   mockWorkspaceTree: vi.fn(),
   mockWorkspaceWrite: vi.fn(),
   mockWorkspaceView: vi.fn(),
+  mockWorkspaceReadText: vi.fn(),
 }));
 
 vi.mock('../../../../server/agent-runtime.js', () => ({
@@ -67,6 +69,7 @@ describe('commerce skill MCP tools', () => {
     mockFindBindingByAppId.mockReset();
     mockGetActionService.mockReset();
     mockUpsertBinding.mockReset();
+    mockWorkspaceReadText.mockReset();
     mockGetActionService.mockReturnValue({
       executeAction: mockExecuteAction,
     });
@@ -75,12 +78,14 @@ describe('commerce skill MCP tools', () => {
         stat: mockWorkspaceStat,
         tree: mockWorkspaceTree,
         view: mockWorkspaceView,
+        readText: mockWorkspaceReadText,
         write: mockWorkspaceWrite,
       },
     });
     mockWorkspaceStat.mockResolvedValue({ entries: [] });
     mockWorkspaceTree.mockResolvedValue({ entries: [], truncated: false });
     mockWorkspaceWrite.mockResolvedValue({ bytesWritten: 100 });
+    mockWorkspaceReadText.mockResolvedValue('');
     mockWorkspaceView.mockResolvedValue({
       content: '',
       encoding: 'utf-8',
@@ -586,6 +591,7 @@ describe('commerce skill MCP tools', () => {
     });
 
     it('env file merge: existing .env with other vars gets commerce keys added without clobbering', async () => {
+      mockWorkspaceReadText.mockResolvedValueOnce('PORT=3000\nNEXT_PUBLIC_FOO=bar\n');
       mockWorkspaceView.mockResolvedValueOnce({
         content: 'PORT=3000\nNEXT_PUBLIC_FOO=bar\n',
         encoding: 'utf-8',
@@ -806,6 +812,13 @@ describe('commerce skill MCP tools', () => {
           },
         ],
       });
+      mockWorkspaceReadText.mockImplementation(({ path }: { path: string }) =>
+        Promise.resolve(
+          path === 'src/routes/cart.tsx'
+            ? "const data = await fetch('/api/commerce/checkout'); window.location.href = data.redirectUrl;"
+            : 'export default async function handler() {}'
+        )
+      );
       mockWorkspaceView.mockImplementation(({ path }: { path: string }) =>
         Promise.resolve({
           content:
@@ -878,6 +891,13 @@ describe('commerce skill MCP tools', () => {
           },
         ],
       });
+      mockWorkspaceReadText.mockImplementation(({ path }: { path: string }) =>
+        Promise.resolve(
+          path === 'src/routes/cart.tsx'
+            ? "const data = await fetch('/api/commerce/checkout'); window.location.assign(data.url);"
+            : 'export default async function handler() {}'
+        )
+      );
       mockWorkspaceView.mockImplementation(({ path }: { path: string }) =>
         Promise.resolve({
           content:
@@ -945,6 +965,17 @@ describe('commerce skill MCP tools', () => {
           },
         ],
       });
+      mockWorkspaceReadText.mockImplementation(({ path }: { path: string }) =>
+        Promise.resolve(
+          path === 'src/components/CartDrawer.tsx'
+            ? "const data = await fetch('/api/commerce/checkout'); window.location.assign(data.url);"
+            : `/**
+                   * Checkout returns { url, id, draftOrderId }.
+                   * It does not return redirectUrl.
+                   */
+                  export async function POST() {}`
+        )
+      );
       mockWorkspaceView.mockImplementation(({ path }: { path: string }) =>
         Promise.resolve({
           content:
@@ -1010,6 +1041,9 @@ describe('commerce skill MCP tools', () => {
           },
         ],
       });
+      mockWorkspaceReadText.mockResolvedValue(
+        "const data = await fetch('/api/commerce/checkout'); window.location.assign(data.redirectUrl);"
+      );
       mockWorkspaceView.mockResolvedValue({
         content:
           "const data = await fetch('/api/commerce/checkout'); window.location.assign(data.redirectUrl);",

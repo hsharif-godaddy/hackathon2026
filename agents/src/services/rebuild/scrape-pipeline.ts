@@ -788,8 +788,7 @@ export class ScrapePipeline {
         readFaviconBytes: (absPath: string): Promise<Buffer> => readFile(absPath),
         readWorkspaceText: async (workspaceRelPath: string): Promise<string | null> => {
           try {
-            const view = await workspace.files.view({ path: workspaceRelPath });
-            return view.content;
+            return await workspace.files.readText({ path: workspaceRelPath });
           } catch {
             return null;
           }

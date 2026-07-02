@@ -59,8 +59,8 @@ router.post('/:id/compliance/field', async (req: Request, res: Response) => {
   }
 
   try {
-    const file = await workspace.files.view({ path: pagePath });
-    const { content, replaced } = patchFieldValue(file.content, fieldKey, newValue);
+    const fileContent: string = await workspace.files.readText({ path: pagePath });
+    const { content, replaced } = patchFieldValue(fileContent, fieldKey, newValue);
     if (replaced === 0) {
       contextLogger.warn('compliance.field.patch.not-found', { appId, documentType, fieldKey });
       return res.status(409).json({ error: 'Field not found in document' });
@@ -99,8 +99,8 @@ router.post('/:id/compliance/section', async (req: Request, res: Response) => {
   }
 
   try {
-    const file = await workspace.files.view({ path: pagePath });
-    const { content, matched } = setSectionValue(file.content, sectionKey, value);
+    const fileContent: string = await workspace.files.readText({ path: pagePath });
+    const { content, matched } = setSectionValue(fileContent, sectionKey, value);
     if (matched === 0) {
       contextLogger.warn('compliance.section.toggle.not-found', { appId, documentType, sectionKey });
       return res.status(409).json({ error: 'Section not found in document' });

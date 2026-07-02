@@ -8,8 +8,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 const mockKitTokensLocked = vi.hoisted(() => vi.fn())
 const mockView = vi.fn()
+const mockReadText = vi.fn().mockResolvedValue('')
 const mockWrite = vi.fn().mockResolvedValue({ bytesWritten: 100 })
-const mockFiles = { view: mockView, write: mockWrite } as any
+const mockFiles = { view: mockView, write: mockWrite, readText: mockReadText } as any
 const mockGenerateTextWithTracking = vi.fn()
 
 vi.mock('../../../services/design-system/kit-tokens-locked.js', () => ({
@@ -60,7 +61,7 @@ describe('fontTheme — kit lock (Fix B)', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
-    mockView.mockResolvedValue({ content: mockCss, encoding: 'utf-8' })
+    mockReadText.mockResolvedValue(mockCss)
     mockWrite.mockResolvedValue({ bytesWritten: 100 })
     originalFetch = global.fetch
     // Google Fonts validation: accept everything so the unlocked path can write.

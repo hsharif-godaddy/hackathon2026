@@ -65,8 +65,8 @@ async function saveQARunFile(files: WorkspaceFiles, runFile: QARunFile): Promise
 
 async function readQARunFile(files: WorkspaceFiles, runId: string): Promise<QARunFile | null> {
     try {
-        const result = await files.view({ path: getQARunPath(runId) })
-        return JSON.parse(result.content) as QARunFile
+        const content: string = await files.readText({ path: getQARunPath(runId) })
+        return JSON.parse(content) as QARunFile
     } catch (error) {
         if (error instanceof DevSupervisorError && error.code === 'not_found') return null
         logger.warn('qa_analyze.run_file.read_error', {
@@ -146,8 +146,8 @@ interface QAHistory {
 
 async function readQAHistory(files: WorkspaceFiles): Promise<QAHistory> {
     try {
-        const result = await files.view({ path: QA_HISTORY_PATH })
-        const history: QAHistory = JSON.parse(result.content)
+        const raw: string = await files.readText({ path: QA_HISTORY_PATH })
+        const history: QAHistory = JSON.parse(raw)
 
         if (!history.runs || !Array.isArray(history.runs)) {
             return { runs: [], fixedIssues: {}, lastRun: null }
@@ -531,8 +531,7 @@ async function readAppFiles(files: WorkspaceFiles): Promise<FileWithPriority[]> 
         const results = await Promise.all(
             relevantEntries.map(async (entry) => {
                 try {
-                    const result = await files.view({ path: entry.path })
-                    const content = result.content
+                    const content: string = await files.readText({ path: entry.path })
                     const filename = entry.path.split('/').pop() || ''
 
                     if (filename.startsWith('DemoContent.') ||

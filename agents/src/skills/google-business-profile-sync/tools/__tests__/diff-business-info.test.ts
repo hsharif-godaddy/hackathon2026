@@ -173,7 +173,7 @@ describe('diffBusinessInfoTool.execute', () => {
     mockMemGet.mockResolvedValue({ success: true, exists: true, value: [{ domainType: 'custom', status: 'active', fqdn: 'acme-plumbing.com' }] });
     // Defaults for the self-read path (only exercised when site/gbp aren't passed explicitly):
     // the site read scans the source via the workspace files client.
-    mockCreateForWorkspace.mockReturnValue({ files: { search: mockSearch, view: mockView } });
+    mockCreateForWorkspace.mockReturnValue({ files: { search: mockSearch, view: mockView, readText: vi.fn().mockResolvedValue('') } });
     mockSearch.mockResolvedValue([{ path: 'src/Footer.tsx', line: 1, column: 1, preview: '' }]);
     mockView.mockResolvedValue({ path: 'src/Footer.tsx', content: SITE_HTML_PHONE_MISMATCH, encoding: 'utf-8', lines: 1, size: 1, truncated: false });
   });

@@ -180,12 +180,12 @@ export async function buildLandingPage(slug: string): Promise<string> {
 // treating them as "file not found".
 async function readWorkspaceFile(files: WorkspaceFiles, filePath: string): Promise<string | undefined> {
   try {
-    const result = await files.view({ path: filePath })
-    return result?.content
+    const content: string = await files.readText({ path: filePath });
+    return content;
   } catch (error) {
-    if (isDevSupervisorNotFound(error)) return undefined
-    logger.warn('campaign-scaffold.workspace_read_failed', { filePath, error })
-    throw error
+    if (isDevSupervisorNotFound(error)) return undefined;
+    logger.warn('campaign-scaffold.workspace_read_failed', { filePath, error });
+    throw error;
   }
 }
 
@@ -778,7 +778,7 @@ export const campaignApplyBlogUtm: SkillToolDefinition = {
       const filePath: string = `src/content/data/blog/${post.slug}.md`
       let markdown: string
       try {
-        markdown = (await workspace.files.view({ path: filePath })).content
+        markdown = await workspace.files.readText({ path: filePath })
       } catch (error: unknown) {
         // A missing file is a legitimate skip (the post doesn't exist for this app); any other
         // error (supervisor restart, 5xx, permission) means a real CTA may have gone undecorated,

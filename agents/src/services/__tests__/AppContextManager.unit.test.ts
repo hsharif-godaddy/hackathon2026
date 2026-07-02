@@ -160,7 +160,7 @@ describe('AppContextManager publish state', () => {
   });
 
   describe('getPackageInfo', () => {
-    const mockView = vi.fn();
+    const mockReadText = vi.fn();
     const mockStat = vi.fn();
 
     beforeEach(() => {
@@ -173,26 +173,19 @@ describe('AppContextManager publish state', () => {
         entries: paths.map((path) => ({ path, error: 'not_found' as const })),
       }));
       (createForWorkspace as ReturnType<typeof vi.fn>).mockReturnValue({
-        files: { view: mockView, stat: mockStat },
+        files: { readText: mockReadText, stat: mockStat },
       });
     });
 
-    it('should return package info via workspace.files.view()', async () => {
-      mockView.mockResolvedValue({
-        path: 'package.json',
-        content: JSON.stringify({
-          name: 'test-app',
-          version: '1.0.0',
-          description: 'A test app',
-          dependencies: { react: '^18.0.0', 'react-dom': '^18.0.0' },
-          devDependencies: { vitest: '^1.0.0' },
-          scripts: { dev: 'vite', build: 'vite build' },
-        }),
-        encoding: 'utf-8',
-        lines: 12,
-        size: 200,
-        truncated: false,
-      });
+    it('should return package info via workspace.files.readText()', async () => {
+      mockReadText.mockResolvedValue(JSON.stringify({
+        name: 'test-app',
+        version: '1.0.0',
+        description: 'A test app',
+        dependencies: { react: '^18.0.0', 'react-dom': '^18.0.0' },
+        devDependencies: { vitest: '^1.0.0' },
+        scripts: { dev: 'vite', build: 'vite build' },
+      }));
 
       const context = {
         metadata: { appId: 'app-123', appPath: '/app' },
@@ -201,7 +194,7 @@ describe('AppContextManager publish state', () => {
       const result = await (manager as any).getPackageInfo(context);
 
       expect(createForWorkspace).toHaveBeenCalledWith('app-123', 'preview');
-      expect(mockView).toHaveBeenCalledWith({ path: 'package.json', limit: 10000 });
+      expect(mockReadText).toHaveBeenCalledWith({ path: 'package.json' });
       expect(result).toMatchObject({
         name: 'test-app',
         version: '1.0.0',
@@ -220,8 +213,8 @@ describe('AppContextManager publish state', () => {
       expect(result).toBeNull();
     });
 
-    it('should return null when view throws (e.g. file not found)', async () => {
-      mockView.mockRejectedValue(new DevSupervisorError('not_found', 404, 'file not found'));
+    it('should return null when readText throws (e.g. file not found)', async () => {
+      mockReadText.mockRejectedValue(new DevSupervisorError('not_found', 404, 'file not found'));
 
       const context = { metadata: { appId: 'app-123' } } as any;
       const result = await (manager as any).getPackageInfo(context);
@@ -232,21 +225,14 @@ describe('AppContextManager publish state', () => {
     it('propagates non-not-found errors instead of silently swallowing them', async () => {
       // Parse failures and supervisor outages must not be hidden behind a
       // silent null — only DevSupervisorError(not_found) is "no info."
-      mockView.mockResolvedValue({
-        path: 'package.json',
-        content: 'not valid json {{{',
-        encoding: 'utf-8',
-        lines: 1,
-        size: 18,
-        truncated: false,
-      });
+      mockReadText.mockResolvedValue('not valid json {{{');
 
       const context = { metadata: { appId: 'app-123' } } as any;
       await expect((manager as any).getPackageInfo(context)).rejects.toThrow();
     });
 
     it('propagates supervisor transport failures', async () => {
-      mockView.mockRejectedValue(new Error('supervisor unreachable'));
+      mockReadText.mockRejectedValue(new Error('supervisor unreachable'));
 
       const context = { metadata: { appId: 'app-123' } } as any;
       await expect((manager as any).getPackageInfo(context))

@@ -19,16 +19,16 @@ import { createForWorkspace } from '../../../workspace/index.js'
 
 describe('DeepBuildDocContextRenderer', () => {
   let renderer: DeepBuildDocContextRenderer
-  const mockView = vi.fn()
+  const mockReadText = vi.fn()
   const mockWrite = vi.fn()
 
   beforeEach(() => {
     vi.clearAllMocks()
     renderer = new DeepBuildDocContextRenderer()
-    mockView.mockResolvedValue({ content: '# Brief\nbody', path: 'docs/x.md', lines: 2, size: 12 })
+    mockReadText.mockResolvedValue('# Brief\nbody')
     mockWrite.mockResolvedValue({ bytesWritten: 0 })
     ;(createForWorkspace as ReturnType<typeof vi.fn>).mockReturnValue({
-      files: { view: mockView, write: mockWrite },
+      files: { readText: mockReadText, write: mockWrite },
     })
   })
 
@@ -46,7 +46,7 @@ describe('DeepBuildDocContextRenderer', () => {
 
   it('routes a canonically-named brief to docs/brief.md', async () => {
     const result = await render(['brief.md'])
-    expect(mockView).toHaveBeenCalledWith({ path: 'docs/brief.md', limit: 100000 })
+    expect(mockReadText).toHaveBeenCalledWith({ path: 'docs/brief.md' })
     expect(mockWrite).toHaveBeenCalledWith({ path: 'docs/brief.md', content: '# Brief\nbody' })
     expect(result?.content).toContain('docs/brief.md')
     expect(result?.content).toContain('**interview** stage is already complete')
@@ -56,7 +56,7 @@ describe('DeepBuildDocContextRenderer', () => {
 
   it('routes a suffixed brief (brief-yoga.md) to docs/brief.md', async () => {
     await render(['brief-yoga.md'])
-    expect(mockView).toHaveBeenCalledWith({ path: 'docs/brief-yoga.md', limit: 100000 })
+    expect(mockReadText).toHaveBeenCalledWith({ path: 'docs/brief-yoga.md' })
     expect(mockWrite).toHaveBeenCalledWith({ path: 'docs/brief.md', content: '# Brief\nbody' })
   })
 
@@ -89,7 +89,7 @@ describe('DeepBuildDocContextRenderer', () => {
   })
 
   it('reports seed failures separately from unmatched files', async () => {
-    mockView.mockRejectedValueOnce(new Error('not found'))
+    mockReadText.mockRejectedValueOnce(new Error('not found'))
     const result = await render(['brief.md'])
     expect(mockWrite).not.toHaveBeenCalled()
     expect(result?.content).toContain('Failed to seed')

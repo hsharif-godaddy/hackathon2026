@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { Readable } from 'node:stream'
 
 vi.mock('../../../workspace/index.js', () => ({
   createForWorkspace: vi.fn(),
@@ -24,8 +25,9 @@ function createMockWorkspace(overrides?: {
     workspaceId: 'test-ws',
     variant: 'preview' as const,
     files: {
+      readText: vi.fn().mockResolvedValue(''),
       upload: overrides?.upload ?? vi.fn().mockResolvedValue({ bytesWritten: 100 }),
-      download: overrides?.download ?? vi.fn().mockResolvedValue({ data: Buffer.from('PNG') }),
+      download: overrides?.download ?? vi.fn().mockResolvedValue({ stream: Readable.from(Buffer.from('PNG')), contentType: 'image/png', contentLength: 3 }),
       stat: overrides?.stat ?? vi.fn().mockResolvedValue({ entries: [{ path: 'x', kind: 'file', size: 100, modifiedAt: '' }] }),
     },
   } as unknown as WorkspaceClient
@@ -79,14 +81,14 @@ describe('screenshot-store', () => {
 
     it('read calls workspace.files.download and returns buffer', async () => {
       const buf = Buffer.from('png-bytes')
-      const downloadFn = vi.fn().mockResolvedValue({ data: buf })
+      const downloadFn = vi.fn().mockResolvedValue({ stream: Readable.from(buf), contentType: 'image/png', contentLength: buf.length })
       mockedCreateForWorkspace.mockReturnValue(createMockWorkspace({ download: downloadFn }))
       const store = getScreenshotStore({ id: 'abc1234567', path: '/data/apps/abc1234567' } as any)
 
       const result = await store.read('abc1234567')
 
       expect(downloadFn).toHaveBeenCalledWith({ path: 'abc1234567-screenshot.png' })
-      expect(result).toBe(buf)
+      expect(Buffer.compare(result, buf)).toBe(0)
     })
 
     it('exists returns true when stat entry has no error', async () => {

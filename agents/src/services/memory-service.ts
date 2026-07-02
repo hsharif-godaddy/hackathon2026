@@ -32,8 +32,8 @@ export class MemoryService {
 
     let existingEntry: MemoryEntry | null = null;
     try {
-      const result = await files.view({ path: relativePath });
-      existingEntry = this.parseMemoryContent(result.content);
+      const content: string = await files.readText({ path: relativePath });
+      existingEntry = this.parseMemoryContent(content);
     } catch (err: unknown) {
       if (!(err instanceof DevSupervisorError && err.code === 'not_found')) {
         logger.warn('memory.set.read_existing_error', { appId, key, error: err instanceof Error ? err.message : String(err) });
@@ -72,8 +72,8 @@ export class MemoryService {
     const relativePath = this.buildRelativePath(key);
 
     try {
-      const result = await files.view({ path: relativePath });
-      return this.parseMemoryContent(result.content);
+      const content: string = await files.readText({ path: relativePath });
+      return this.parseMemoryContent(content);
     } catch (err: unknown) {
       if (err instanceof DevSupervisorError && err.code === 'not_found') return null;
       logger.warn('memory.get.read_error', { appId, key, error: err instanceof Error ? err.message : String(err) });
@@ -115,8 +115,8 @@ export class MemoryService {
 
     for (const filePath of fileNames) {
       try {
-        const result = await files.view({ path: filePath });
-        const entry = this.parseMemoryContent(result.content);
+        const content: string = await files.readText({ path: filePath });
+        const entry = this.parseMemoryContent(content);
 
         if (prefix && !entry.fullKey.startsWith(prefix)) continue;
         entries.push(entry);

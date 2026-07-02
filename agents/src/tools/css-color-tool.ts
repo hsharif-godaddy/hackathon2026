@@ -474,8 +474,7 @@ function definedOnly(obj: Record<string, unknown>): Record<string, unknown> {
  */
 export async function updateCssColors(files: WorkspaceFiles, palette: GeneratedPalette): Promise<void> {
   const cssRelativePath = 'src/styles/globals.css'
-  const viewResult = await files.view({ path: cssRelativePath })
-  let content = viewResult.content
+  let content: string = await files.readText({ path: cssRelativePath })
 
   // Map palette to CSS variables (shadcn/ui structure)
   const colorMap: Record<string, string> = {

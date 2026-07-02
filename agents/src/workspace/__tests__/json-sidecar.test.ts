@@ -6,7 +6,7 @@ import type { WorkspaceFiles } from '../files.js';
 import type { ViewResult } from '../files.js';
 
 function makeFiles(viewImpl: () => Promise<ViewResult>): WorkspaceFiles {
-  return { view: vi.fn(viewImpl) } as unknown as WorkspaceFiles;
+  return { view: vi.fn(viewImpl), readText: vi.fn(async () => (await viewImpl()).content) } as unknown as WorkspaceFiles;
 }
 
 function viewReturning(content: string): () => Promise<ViewResult> {

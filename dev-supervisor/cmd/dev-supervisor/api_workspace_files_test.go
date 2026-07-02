@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/airo-ai-builder/dev-supervisor/internal/config"
@@ -60,14 +61,22 @@ func TestWorkspaceFilesView_Basic(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
 
-	var resp wsFilesViewResponse
-	json.Unmarshal(w.Body.Bytes(), &resp)
-
-	if resp.Encoding != "utf-8" {
-		t.Errorf("expected utf-8 encoding, got %s", resp.Encoding)
+	// Text files return plain text with line numbers and metadata in headers.
+	if ct := w.Header().Get("Content-Type"); ct != "text/plain; charset=utf-8" {
+		t.Errorf("expected text/plain content-type, got %s", ct)
 	}
-	if resp.Lines != 4 { // "line1\nline2\nline3\n" splits to 4 (trailing empty)
-		t.Errorf("expected 4 lines, got %d", resp.Lines)
+	// bufio.Scanner yields 3 lines for "line1\nline2\nline3\n" (no trailing empty).
+	if lines := w.Header().Get("X-File-Lines"); lines != "3" {
+		t.Errorf("expected X-File-Lines=3, got %s", lines)
+	}
+	// Default limit (2000) covers all 3 lines, so not truncated.
+	if trunc := w.Header().Get("X-Truncated"); trunc != "" {
+		t.Errorf("expected no X-Truncated header, got %s", trunc)
+	}
+	// Body should be numbered lines (1-indexed).
+	expected := "1|line1\n2|line2\n3|line3"
+	if w.Body.String() != expected {
+		t.Errorf("body mismatch:\n  got:  %q\n  want: %q", w.Body.String(), expected)
 	}
 }
 
@@ -80,14 +89,13 @@ func TestWorkspaceFilesView_OffsetLimit(t *testing.T) {
 		"path": "lines.txt", "offset": 1, "limit": 2,
 	})
 
-	var resp wsFilesViewResponse
-	json.Unmarshal(w.Body.Bytes(), &resp)
-
-	if resp.Content != "b\nc" {
-		t.Errorf("expected 'b\\nc', got %q", resp.Content)
+	// Lines 2-3 (offset=1 means skip first line, limit=2 means return 2 lines).
+	expected := "2|b\n3|c"
+	if w.Body.String() != expected {
+		t.Errorf("body mismatch:\n  got:  %q\n  want: %q", w.Body.String(), expected)
 	}
-	if !resp.Truncated {
-		t.Error("expected truncated=true")
+	if trunc := w.Header().Get("X-Truncated"); trunc != "true" {
+		t.Errorf("expected X-Truncated=true, got %q", trunc)
 	}
 }
 
@@ -117,16 +125,26 @@ func TestWorkspaceFilesView_Directory(t *testing.T) {
 	}
 }
 
-func TestWorkspaceFilesView_FileTooLarge(t *testing.T) {
+func TestWorkspaceFilesView_LargeFile(t *testing.T) {
 	server, dir := newTestServerWithDir(t)
-	// Create a file just over 10MB
-	f, _ := os.Create(filepath.Join(dir, "big.bin"))
-	f.Truncate(11 * 1024 * 1024)
-	f.Close()
+	// Large text file — no size cap, uses streaming scanner.
+	var lines []string
+	for i := range 3000 {
+		lines = append(lines, fmt.Sprintf("line %d", i+1))
+	}
+	os.WriteFile(filepath.Join(dir, "big.txt"), []byte(strings.Join(lines, "\n")), 0o644)
 
-	w := postJSON(t, server.handleWorkspaceFilesView, map[string]any{"path": "big.bin"})
-	if w.Code != http.StatusRequestEntityTooLarge {
-		t.Errorf("expected 413, got %d", w.Code)
+	w := postJSON(t, server.handleWorkspaceFilesView, map[string]any{"path": "big.txt"})
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	// Default limit is 2000 lines, so truncated.
+	if trunc := w.Header().Get("X-Truncated"); trunc != "true" {
+		t.Errorf("expected X-Truncated=true, got %q", trunc)
+	}
+	if totalLines := w.Header().Get("X-File-Lines"); totalLines != "3000" {
+		t.Errorf("expected X-File-Lines=3000, got %s", totalLines)
 	}
 }
 
@@ -137,15 +155,138 @@ func TestWorkspaceFilesView_Binary(t *testing.T) {
 
 	w := postJSON(t, server.handleWorkspaceFilesView, map[string]any{"path": "img.png"})
 
-	var resp wsFilesViewResponse
-	json.Unmarshal(w.Body.Bytes(), &resp)
-
-	if resp.Encoding != "base64" {
-		t.Errorf("expected base64 encoding, got %s", resp.Encoding)
+	if w.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("expected 422 for binary file, got %d: %s", w.Code, w.Body.String())
 	}
-	decoded, _ := base64.StdEncoding.DecodeString(resp.Content)
-	if !bytes.Equal(decoded, binaryData) {
-		t.Error("decoded content doesn't match original")
+	var errResp struct {
+		Error   string `json:"error"`
+		Message string `json:"message"`
+	}
+	json.Unmarshal(w.Body.Bytes(), &errResp)
+	if errResp.Error != "binary_file" {
+		t.Errorf("expected error code 'binary_file', got %q", errResp.Error)
+	}
+}
+
+func TestWorkspaceFilesView_UTF8ProbeBoundary(t *testing.T) {
+	server, dir := newTestServerWithDir(t)
+	// 515 ASCII bytes followed by é (U+00E9, 2 bytes: 0xC3 0xA9). The 512-byte
+	// probe reads 512 bytes — the é starts at byte 515 which is past the probe,
+	// but a simpler case: 511 ASCII + 3-byte rune starting at 511 means only 1
+	// byte of the rune lands in the probe. Both cases must pass.
+	//
+	// Case 1: 511 ASCII + 世 (3 bytes, E4 B8 96) — first byte at offset 511,
+	// only E4 in the 512-byte probe.
+	content1 := strings.Repeat("a", 511) + "世界Hello\n"
+	os.WriteFile(filepath.Join(dir, "boundary1.txt"), []byte(content1), 0o644)
+
+	w := postJSON(t, server.handleWorkspaceFilesView, map[string]any{"path": "boundary1.txt"})
+	if w.Code != http.StatusOK {
+		t.Fatalf("case 1: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "世界Hello") {
+		t.Errorf("case 1: expected CJK content in output")
+	}
+
+	// Case 2: 515 ASCII + é (2 bytes, C3 A9) — the probe fills exactly 512
+	// bytes (all ASCII), the é is never read into probe, so this always worked.
+	// But if the file is exactly 512 bytes with a split rune:
+	// 510 ASCII + 世 (3 bytes) = 513 total, probe gets 512 = 510 ASCII + E4 B8
+	// (first 2 bytes of 世), the third byte 96 is missing.
+	content3 := strings.Repeat("b", 510) + "世end\n"
+	os.WriteFile(filepath.Join(dir, "boundary3.txt"), []byte(content3), 0o644)
+
+	w = postJSON(t, server.handleWorkspaceFilesView, map[string]any{"path": "boundary3.txt"})
+	if w.Code != http.StatusOK {
+		t.Fatalf("case 2 (510+世): expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "世end") {
+		t.Errorf("case 2: expected CJK content in output")
+	}
+}
+
+func TestWorkspaceFilesView_LongLineTruncation(t *testing.T) {
+	server, dir := newTestServerWithDir(t)
+	// Line exceeding the 64KB reader buffer — should be truncated, not errored.
+	longLine := strings.Repeat("x", 100*1024) // 100KB
+	content := "short line\n" + longLine + "\nafter long\n"
+	os.WriteFile(filepath.Join(dir, "minified.js"), []byte(content), 0o644)
+
+	w := postJSON(t, server.handleWorkspaceFilesView, map[string]any{"path": "minified.js"})
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if totalLines := w.Header().Get("X-File-Lines"); totalLines != "3" {
+		t.Errorf("expected X-File-Lines=3, got %s", totalLines)
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, "… [truncated]") {
+		t.Error("expected truncation marker in output for long line")
+	}
+	if !strings.Contains(body, "3|after long") {
+		t.Error("expected line after long line to be present")
+	}
+}
+
+func TestWorkspaceFilesView_EmptyFile(t *testing.T) {
+	server, dir := newTestServerWithDir(t)
+	os.WriteFile(filepath.Join(dir, "empty.txt"), []byte{}, 0o644)
+
+	w := postJSON(t, server.handleWorkspaceFilesView, map[string]any{"path": "empty.txt"})
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if lines := w.Header().Get("X-File-Lines"); lines != "0" {
+		t.Errorf("expected X-File-Lines=0, got %s", lines)
+	}
+	if body := w.Body.String(); body != "" {
+		t.Errorf("expected empty body, got %q", body)
+	}
+}
+
+func TestWorkspaceFilesView_PaddingWidth(t *testing.T) {
+	server, dir := newTestServerWithDir(t)
+	// 10 lines — padding width should be 2 digits for lines 1-10.
+	var lines []string
+	for i := range 10 {
+		lines = append(lines, fmt.Sprintf("L%d", i+1))
+	}
+	os.WriteFile(filepath.Join(dir, "ten.txt"), []byte(strings.Join(lines, "\n")), 0o644)
+
+	w := postJSON(t, server.handleWorkspaceFilesView, map[string]any{"path": "ten.txt"})
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	body := w.Body.String()
+	// Line 1 should be padded to 2 chars: " 1|L1"
+	if !strings.HasPrefix(body, " 1|L1") {
+		t.Errorf("expected padding width 2 for line 1, got prefix %q", body[:min(10, len(body))])
+	}
+	// Line 10 should be "10|L10"
+	if !strings.Contains(body, "10|L10") {
+		t.Errorf("expected '10|L10' in body")
+	}
+}
+
+func TestWorkspaceFilesView_NoTrailingNewline(t *testing.T) {
+	server, dir := newTestServerWithDir(t)
+	// File without trailing newline — should still count last line.
+	os.WriteFile(filepath.Join(dir, "noeol.txt"), []byte("first\nsecond"), 0o644)
+
+	w := postJSON(t, server.handleWorkspaceFilesView, map[string]any{"path": "noeol.txt"})
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if lines := w.Header().Get("X-File-Lines"); lines != "2" {
+		t.Errorf("expected X-File-Lines=2, got %s", lines)
+	}
+	expected := "1|first\n2|second"
+	if w.Body.String() != expected {
+		t.Errorf("body mismatch:\n  got:  %q\n  want: %q", w.Body.String(), expected)
 	}
 }
 
@@ -350,8 +491,10 @@ func TestWorkspaceFilesInsert_Middle(t *testing.T) {
 
 	var resp wsFilesInsertResponse
 	json.Unmarshal(w.Body.Bytes(), &resp)
-	if resp.Lines != 5 {
-		t.Errorf("expected 5 lines, got %d", resp.Lines)
+	// 4 lines: line1, inserted, line2, line3 (trailing newline doesn't add a line,
+	// matching countLines/view semantics).
+	if resp.Lines != 4 {
+		t.Errorf("expected 4 lines, got %d", resp.Lines)
 	}
 
 	data, _ := os.ReadFile(filepath.Join(dir, "app.ts"))
@@ -1051,15 +1194,18 @@ func TestWorkspaceFilesDownload_MissingPath(t *testing.T) {
 	}
 }
 
-func TestWorkspaceFilesDownload_TooLarge(t *testing.T) {
+func TestWorkspaceFilesDownload_LargeFile(t *testing.T) {
 	server, dir := newTestServerWithDir(t)
 	f, _ := os.Create(filepath.Join(dir, "huge.bin"))
-	f.Truncate(11 * 1024 * 1024) // 11MB > 10MB limit
+	f.Truncate(11 * 1024 * 1024) // 11MB — no size cap on download
 	f.Close()
 
 	w := getRaw(t, server.handleWorkspaceFilesDownload, "huge.bin")
-	if w.Code != http.StatusRequestEntityTooLarge {
-		t.Errorf("expected 413, got %d", w.Code)
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200 (no size cap), got %d: %s", w.Code, w.Body.String())
+	}
+	if cl := w.Header().Get("Content-Length"); cl != "11534336" {
+		t.Errorf("expected Content-Length 11534336, got %s", cl)
 	}
 }
 
@@ -1500,10 +1646,10 @@ func TestWorkspaceFilesView_PublicAssetsRoot(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
 
-	var resp wsFilesViewResponse
-	json.Unmarshal(w.Body.Bytes(), &resp)
-	if resp.Content != "asset content" {
-		t.Errorf("expected 'asset content', got %q", resp.Content)
+	// Single-line file: "1|asset content"
+	expected := "1|asset content"
+	if w.Body.String() != expected {
+		t.Errorf("expected %q, got %q", expected, w.Body.String())
 	}
 }
 

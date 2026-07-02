@@ -35,7 +35,6 @@ const (
 	wsFilesKindFile      = "file"
 	wsFilesKindDirectory = "directory"
 
-	wsFilesMaxReadBytes   = 10 * 1024 * 1024  // 10MB max file read (view)
 	wsFilesMaxEditBytes   = 1 * 1024 * 1024   // 1MB max file for edit (full in-memory replacement)
 	wsFilesMaxBodySize    = 10 * 1024 * 1024  // 10MB max request body (JSON endpoints)
 	wsFilesMaxUploadBytes = 100 * 1024 * 1024 // 100MB max binary upload
@@ -194,15 +193,6 @@ type wsFilesViewRequest struct {
 	Path   string `json:"path"`
 	Offset int    `json:"offset,omitempty"` // 0-based line number
 	Limit  int    `json:"limit,omitempty"`  // max lines to return
-}
-
-type wsFilesViewResponse struct {
-	Path      string `json:"path"`
-	Content   string `json:"content"`
-	Encoding  string `json:"encoding"`
-	Lines     int    `json:"lines"`     // total line count in file
-	Size      int64  `json:"size"`      // file size in bytes
-	Truncated bool   `json:"truncated"` // whether content was clipped
 }
 
 type wsFilesSearchRequest struct {
@@ -655,47 +645,42 @@ func (s *Server) handleWorkspaceFilesView(w http.ResponseWriter, r *http.Request
 		s.sendError(w, http.StatusBadRequest, "validation_failed", "path is a directory")
 		return
 	}
-	if info.Size() > wsFilesMaxReadBytes {
-		s.sendError(
-			w, http.StatusRequestEntityTooLarge, "file_too_large",
-			fmt.Sprintf("file size %d exceeds maximum %d", info.Size(), wsFilesMaxReadBytes),
-		)
-		return
-	}
 
-	data, err := os.ReadFile(resolved)
+	f, err := os.Open(resolved)
 	if err != nil {
 		s.sendWsFilesError(w, "workspace.files.view", req.Path, err)
 		return
 	}
+	defer f.Close()
 
-	// Binary files: return base64 without line-range support
-	if !utf8.Valid(data) {
-		w.Header().Set("Content-Type", "application/json")
-		if encErr := json.NewEncoder(w).Encode(wsFilesViewResponse{
-			Path:      req.Path,
-			Content:   base64.StdEncoding.EncodeToString(data),
-			Encoding:  wsFilesEncodingBase64,
-			Lines:     0,
-			Size:      info.Size(),
-			Truncated: false,
-		}); encErr != nil {
-			slog.Error("workspace.files.view.encode_failed", "error", encErr)
-		}
+	isBinary, probeErr := isBinaryFile(f)
+	if probeErr != nil {
+		s.sendWsFilesError(w, "workspace.files.view", req.Path, probeErr)
+		return
+	}
+	if isBinary {
+		s.sendError(w, http.StatusUnprocessableEntity, "binary_file",
+			fmt.Sprintf("file %q is binary; use download for binary content", req.Path))
 		return
 	}
 
-	content := string(data)
-	allLines := strings.Split(content, "\n")
-	totalLines := len(allLines)
+	// Text file: two-pass streaming approach.
+	// Pass 1: count total lines by counting newline bytes (no line-length limit).
+	if _, seekErr := f.Seek(0, io.SeekStart); seekErr != nil {
+		s.sendWsFilesError(w, "workspace.files.view", req.Path, seekErr)
+		return
+	}
+	totalLines, countErr := countLines(f, info.Size())
+	if countErr != nil {
+		s.sendWsFilesError(w, "workspace.files.view", req.Path, countErr)
+		return
+	}
 
 	offset := min(max(req.Offset, 0), totalLines)
-
 	limit := req.Limit
 	if limit <= 0 {
 		limit = wsFilesDefaultMaxLines
 	}
-
 	end := offset + limit
 	truncated := false
 	if end > totalLines {
@@ -704,22 +689,128 @@ func (s *Server) handleWorkspaceFilesView(w http.ResponseWriter, r *http.Request
 		truncated = true
 	}
 
-	selectedLines := allLines[offset:end]
-	resultContent := strings.Join(selectedLines, "\n")
+	// Padding width for line numbers: widest number in the output window.
+	padWidth := len(strconv.Itoa(end))
 
 	slog.Debug("workspace.files.view.completed", "path", req.Path, "lines", totalLines)
 
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(wsFilesViewResponse{
-		Path:      req.Path,
-		Content:   resultContent,
-		Encoding:  wsFilesEncodingUTF8,
-		Lines:     totalLines,
-		Size:      info.Size(),
-		Truncated: truncated,
-	}); err != nil {
-		slog.Error("workspace.files.view.encode_failed", "error", err)
+	// Write metadata headers before body.
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("X-File-Path", req.Path)
+	w.Header().Set("X-File-Lines", strconv.Itoa(totalLines))
+	w.Header().Set("X-File-Size", strconv.FormatInt(info.Size(), 10))
+	if truncated {
+		w.Header().Set("X-Truncated", envTrue)
 	}
+
+	// Pass 2: seek back, skip to offset, emit numbered lines.
+	// Uses bufio.Reader.ReadLine which returns partial data (isPrefix=true) for
+	// lines exceeding the buffer rather than erroring. Long lines are truncated
+	// with a marker so the agent gets context without unbounded memory use.
+	//
+	// Contract: headers are committed before body streaming begins, so a late I/O
+	// error during pass 2 results in a 200 with a partial body (logged, not
+	// signalled to the client). Pass 1 catches structural errors (read failures)
+	// before headers are sent.
+	if _, seekErr := f.Seek(0, io.SeekStart); seekErr != nil {
+		slog.Error("workspace.files.view.seek_failed", "path", req.Path, "error", seekErr)
+		return
+	}
+
+	const viewLineBufSize = 64 * 1024
+	reader := bufio.NewReaderSize(f, viewLineBufSize)
+	lineNum := 0
+	first := true
+	for {
+		line, isPrefix, readErr := reader.ReadLine()
+		if readErr != nil {
+			if readErr != io.EOF {
+				slog.Error("workspace.files.view.read_failed", "path", req.Path, "error", readErr)
+			}
+			break
+		}
+		lineNum++
+
+		// Drain remaining chunks of a long line. ReadLine returns a slice into the
+		// reader's internal buffer — invalidated by the next call — so copy first.
+		lineTruncated := isPrefix
+		if isPrefix {
+			line = append([]byte(nil), line...)
+			for isPrefix {
+				_, isPrefix, readErr = reader.ReadLine()
+				if readErr != nil {
+					break
+				}
+			}
+		}
+
+		if lineNum <= offset {
+			continue
+		}
+		if lineNum > end {
+			break
+		}
+		if !first {
+			_, _ = w.Write([]byte{'\n'})
+		}
+		first = false
+
+		if lineTruncated {
+			_, _ = fmt.Fprintf(w, "%*d|%s… [truncated]", padWidth, lineNum, line)
+		} else {
+			_, _ = fmt.Fprintf(w, "%*d|%s", padWidth, lineNum, line)
+		}
+	}
+}
+
+// isBinaryFile reads up to 512 bytes from f and returns true if the content is
+// not valid UTF-8. Handles multi-byte runes split at the probe boundary by
+// trimming incomplete trailing sequences when the probe is full (not EOF).
+// The file position is NOT reset; callers must seek back after this returns.
+func isBinaryFile(f *os.File) (bool, error) {
+	probe := make([]byte, 512)
+	n, readErr := io.ReadFull(f, probe)
+	if readErr != nil && readErr != io.EOF && readErr != io.ErrUnexpectedEOF {
+		return false, readErr
+	}
+	buf := probe[:n]
+	if readErr == nil {
+		for i := len(buf) - 1; i >= 0 && i > len(buf)-utf8.UTFMax; i-- {
+			if utf8.RuneStart(buf[i]) {
+				if r, size := utf8.DecodeRune(buf[i:]); r == utf8.RuneError && size == 1 {
+					buf = buf[:i]
+				}
+				break
+			}
+		}
+	}
+	return !utf8.Valid(buf), nil
+}
+
+// countLines counts newline bytes in r using a fixed buffer (O(1) memory).
+// Accounts for a missing trailing newline as an additional line.
+func countLines(r io.Reader, fileSize int64) (int, error) {
+	count := 0
+	buf := make([]byte, 32*1024)
+	newline := []byte{'\n'}
+	lastByte := byte(0)
+	for {
+		n, err := r.Read(buf)
+		if n > 0 {
+			count += bytes.Count(buf[:n], newline)
+			lastByte = buf[n-1]
+		}
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return 0, err
+		}
+	}
+	if fileSize > 0 && lastByte != '\n' {
+		count++
+	}
+	return count, nil
 }
 
 func (s *Server) handleWorkspaceFilesSearch(w http.ResponseWriter, r *http.Request) {
@@ -1149,7 +1240,8 @@ func (s *Server) handleWorkspaceFilesInsert(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	totalLines := len(strings.Split(newContent, "\n"))
+	// Match countLines semantics: trailing newline doesn't count as an extra line.
+	totalLines := len(result)
 	slog.Debug("workspace.files.insert.completed", "path", req.Path, "lines", totalLines)
 
 	w.Header().Set("Content-Type", "application/json")
@@ -1361,13 +1453,6 @@ func (s *Server) handleWorkspaceFilesDownload(w http.ResponseWriter, r *http.Req
 		s.sendError(w, http.StatusBadRequest, "validation_failed", "path is a directory")
 		return
 	}
-	if info.Size() > wsFilesMaxReadBytes {
-		s.sendError(
-			w, http.StatusRequestEntityTooLarge, "file_too_large",
-			fmt.Sprintf("file size %d exceeds maximum %d", info.Size(), wsFilesMaxReadBytes),
-		)
-		return
-	}
 
 	contentType := mime.TypeByExtension(filepath.Ext(resolved))
 	if contentType == "" {
@@ -1386,8 +1471,7 @@ func (s *Server) handleWorkspaceFilesDownload(w http.ResponseWriter, r *http.Req
 
 // handleWorkspaceFilesArchive streams a zip of the requested dirs/files built
 // directly from the workspace filesystem. It writes the zip to the response as
-// it walks (O(1) memory) and applies NO per-file size cap — unlike view/download,
-// which cap at wsFilesMaxReadBytes.
+// it walks (O(1) memory) and applies no per-file size cap.
 //
 // Failure model:
 //   - A file that fails to OPEN is logged and skipped (no bytes written for it),

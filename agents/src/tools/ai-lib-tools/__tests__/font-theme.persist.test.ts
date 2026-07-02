@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mockView = vi.fn()
+const mockReadText = vi.fn().mockResolvedValue('')
 const mockWrite = vi.fn().mockResolvedValue({ bytesWritten: 100 })
 
 vi.mock('../../../workspace/index.js', () => ({
   createForWorkspace: vi.fn(function () { return {
-    files: { view: mockView, write: mockWrite }
+    files: { view: mockView, write: mockWrite, readText: mockReadText }
   }; })
 }))
 vi.mock('../../../logging/index.js', () => ({
@@ -78,7 +79,7 @@ describe('font-theme persistence', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
-    mockView.mockResolvedValue({ content: mockCss, encoding: 'utf-8', lines: 8, size: mockCss.length, truncated: false, path: 'src/styles/globals.css' })
+    mockReadText.mockResolvedValue(mockCss)
     mockWrite.mockResolvedValue({ bytesWritten: 100 })
     mockAppPlanExecute.mockResolvedValue({ success: true })
 

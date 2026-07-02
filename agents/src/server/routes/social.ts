@@ -404,8 +404,7 @@ router.post('/apps/:id/seo/verification-tag', withApp, asyncHandler(async (req: 
 
   logger.info('route.social.gsc-verification-tag.begin', { appId });
 
-  const viewResult = await workspace.files.view({ path: 'index.html' });
-  const original = viewResult.content;
+  const original: string = await workspace.files.readText({ path: 'index.html' });
 
   const metaTag = `<meta name="google-site-verification" content="${verificationToken}">`;
   const MARKER = '<!--app-head-->';

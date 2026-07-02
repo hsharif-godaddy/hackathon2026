@@ -47,7 +47,7 @@ describe('code-search', () => {
   describe('#searchCode', () => {
     it('should pass "." to ripgrep instead of the host directory path', async () => {
       const mockTasks = { runCommandSync: vi.fn() };
-      const mockWorkspace = { tasks: mockTasks };
+      const mockWorkspace = { tasks: mockTasks, files: { readText: vi.fn().mockResolvedValue('') } };
       vi.mocked(createForWorkspace).mockReturnValue(mockWorkspace as any);
       vi.mocked(RipgrepUtil.isAvailable).mockResolvedValue(true);
       vi.mocked(RipgrepUtil.search).mockResolvedValue({
@@ -86,7 +86,7 @@ describe('code-search', () => {
 
     it('should fall back to Node.js when ripgrep is not available', async () => {
       const mockTasks = { runCommandSync: vi.fn() };
-      vi.mocked(createForWorkspace).mockReturnValue({ tasks: mockTasks } as any);
+      vi.mocked(createForWorkspace).mockReturnValue({ tasks: mockTasks, files: { readText: vi.fn().mockResolvedValue('') } } as any);
       vi.mocked(RipgrepUtil.isAvailable).mockResolvedValue(false);
       vi.mocked(FileSearch.search).mockResolvedValue({
         matches: [],
@@ -106,7 +106,7 @@ describe('code-search', () => {
 
     it('should propagate the error field from ripgrep results', async () => {
       const mockTasks = { runCommandSync: vi.fn() };
-      vi.mocked(createForWorkspace).mockReturnValue({ tasks: mockTasks } as any);
+      vi.mocked(createForWorkspace).mockReturnValue({ tasks: mockTasks, files: { readText: vi.fn().mockResolvedValue('') } } as any);
       vi.mocked(RipgrepUtil.isAvailable).mockResolvedValue(true);
       vi.mocked(RipgrepUtil.search).mockResolvedValue({
         matches: [],
@@ -123,7 +123,7 @@ describe('code-search', () => {
 
     it('should not include error field when ripgrep succeeds', async () => {
       const mockTasks = { runCommandSync: vi.fn() };
-      vi.mocked(createForWorkspace).mockReturnValue({ tasks: mockTasks } as any);
+      vi.mocked(createForWorkspace).mockReturnValue({ tasks: mockTasks, files: { readText: vi.fn().mockResolvedValue('') } } as any);
       vi.mocked(RipgrepUtil.isAvailable).mockResolvedValue(true);
       vi.mocked(RipgrepUtil.search).mockResolvedValue({
         matches: [{ path: 'index.ts', line: 1, column: 1, text: 'test', matchStart: 0, matchEnd: 4, contextBefore: [], contextAfter: [] }],
@@ -139,7 +139,7 @@ describe('code-search', () => {
 
     it('should forward SearchOptions to ripgrep', async () => {
       const mockTasks = { runCommandSync: vi.fn() };
-      vi.mocked(createForWorkspace).mockReturnValue({ tasks: mockTasks } as any);
+      vi.mocked(createForWorkspace).mockReturnValue({ tasks: mockTasks, files: { readText: vi.fn().mockResolvedValue('') } } as any);
       vi.mocked(RipgrepUtil.isAvailable).mockResolvedValue(true);
       vi.mocked(RipgrepUtil.search).mockResolvedValue({
         matches: [],
@@ -171,7 +171,7 @@ describe('code-search', () => {
 
     it('should exclude platform infrastructure paths from the fileBlockChecker', async () => {
       const mockTasks = { runCommandSync: vi.fn() };
-      vi.mocked(createForWorkspace).mockReturnValue({ tasks: mockTasks } as any);
+      vi.mocked(createForWorkspace).mockReturnValue({ tasks: mockTasks, files: { readText: vi.fn().mockResolvedValue('') } } as any);
       vi.mocked(RipgrepUtil.isAvailable).mockResolvedValue(true);
       vi.mocked(RipgrepUtil.search).mockResolvedValue({
         matches: [],

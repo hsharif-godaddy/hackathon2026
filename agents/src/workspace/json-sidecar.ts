@@ -12,8 +12,8 @@ export interface ReadJsonSidecarOptions<T> {
 export async function readJsonSidecar<T>(options: ReadJsonSidecarOptions<T>): Promise<T> {
   const { files, path, fallback, validate, onMalformed } = options;
   try {
-    const result = await files.view({ path });
-    const parsed: unknown = JSON.parse(result.content);
+    const content: string = await files.readText({ path });
+    const parsed: unknown = JSON.parse(content);
     if (validate) {
       const validated: T | null | undefined = validate(parsed);
       return validated ?? fallback;

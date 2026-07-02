@@ -202,10 +202,8 @@ export async function readSiteBusinessInfo(appId: string): Promise<ReadSiteResul
   let combined = '';
   for (const path of filesScanned) {
     try {
-      const view = await files.view({ path });
-      if (view.encoding === 'utf-8') {
-        combined += `\n${view.content}`;
-      }
+      const text: string = await files.readText({ path });
+      combined += `\n${text}`;
     } catch (err: unknown) {
       logger.warn('google-business-profile-sync.getSiteBusinessInfo.view-failed', {
         appId,

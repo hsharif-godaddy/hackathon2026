@@ -15,6 +15,7 @@ const mockMemGet = vi.fn();
 const mockScrape = vi.fn();
 const mockSearch = vi.fn();
 const mockView = vi.fn();
+const mockReadText = vi.fn();
 const mockEdit = vi.fn();
 const mockCreateForWorkspace = vi.fn();
 
@@ -99,9 +100,10 @@ describe('google-business-profile-sync — full flow composition', () => {
     mockScrape.mockResolvedValue({ success: true, html: SITE_HTML, sanitizedContent: 'Call (555) 123-4567' });
     // Site read (getSiteBusinessInfo / diff) + gbp-to-site edit go through the workspace files client.
     mockSearch.mockResolvedValue([{ path: 'src/components/Footer.tsx', line: 1, column: 1, preview: '' }]);
+    mockReadText.mockResolvedValue(SITE_HTML);
     mockView.mockResolvedValue({ path: 'src/components/Footer.tsx', content: SITE_HTML, encoding: 'utf-8', lines: 1, size: 1, truncated: false });
     mockEdit.mockResolvedValue({ applied: 1 });
-    mockCreateForWorkspace.mockReturnValue({ files: { search: mockSearch, view: mockView, edit: mockEdit } });
+    mockCreateForWorkspace.mockReturnValue({ files: { search: mockSearch, view: mockView, edit: mockEdit, readText: mockReadText } });
   });
 
   it('connects, reads both sides, diffs, and syncs the phone both directions', async () => {
@@ -160,7 +162,7 @@ describe('google-business-profile-sync — full flow composition', () => {
     // Site source now carries a phone matching GBP.
     const matchingJsonLd = { ...SITE_JSONLD, telephone: '(555) 123-9999' };
     const matchingSource = `<script type="application/ld+json">${JSON.stringify(matchingJsonLd)}</script>`;
-    mockView.mockResolvedValue({ path: 'src/components/Footer.tsx', content: matchingSource, encoding: 'utf-8', lines: 1, size: 1, truncated: false });
+    mockReadText.mockResolvedValue(matchingSource);
 
     const diff = await diffBusinessInfoTool.execute({}, ctx([{ type: GBP_PROFILE_READY, data: { profile: GBP_PROFILE } }]));
 

@@ -37,8 +37,8 @@ export function slugToTitle(slug: string): string {
 
 export async function loadWorkflowState(files: WorkspaceFiles): Promise<RebuildWorkflowState | null> {
   try {
-    const result = await files.view({ path: '.source-site/workflow-state.json' })
-    return JSON.parse(result.content)
+    const content: string = await files.readText({ path: '.source-site/workflow-state.json' })
+    return JSON.parse(content)
   } catch (error) {
     if (error instanceof DevSupervisorError && error.code === 'not_found') return null
     logger.warn('rebuild-page-selector.workflow-state-read-error', { error })
@@ -48,8 +48,8 @@ export async function loadWorkflowState(files: WorkspaceFiles): Promise<RebuildW
 
 export async function loadSitemap(files: WorkspaceFiles): Promise<SitemapData | null> {
   try {
-    const result = await files.view({ path: '.source-site/sitemap.json' })
-    return JSON.parse(result.content)
+    const content: string = await files.readText({ path: '.source-site/sitemap.json' })
+    return JSON.parse(content)
   } catch (error) {
     if (error instanceof DevSupervisorError && error.code === 'not_found') return null
     logger.warn('rebuild-page-selector.sitemap-read-error', { error })

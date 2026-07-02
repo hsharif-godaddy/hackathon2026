@@ -100,17 +100,11 @@ export class DeepBuildDocContextRenderer implements ContextAttachmentRenderer {
         continue
       }
       try {
-        const view = await workspace.files.view({ path: `docs/${file.name}`, limit: 100000 })
-        if (view.truncated) {
-          logger.warn('context.renderer.deep_build_doc.truncated', {
-            appId, fileName: file.name, linesRead: view.lines,
-          })
-        }
-        await workspace.files.write({ path: match.slot.path, content: view.content })
+        const content: string = await workspace.files.readText({ path: `docs/${file.name}` })
+        await workspace.files.write({ path: match.slot.path, content })
         seeded.push({ slot: match.slot, from: file.name })
         logger.info('context.renderer.deep_build_doc.seeded', {
           appId, from: file.name, to: match.slot.path, stage: match.slot.stage,
-          truncated: view.truncated ?? false,
         })
       } catch (err) {
         const reason: string = err instanceof Error ? err.message : String(err)

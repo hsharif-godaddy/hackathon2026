@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mockView = vi.fn()
+const mockReadText = vi.fn().mockResolvedValue('')
 const mockWrite = vi.fn().mockResolvedValue({ bytesWritten: 100 })
-const mockFiles = { view: mockView, write: mockWrite } as any
+const mockFiles = { view: mockView, write: mockWrite, readText: mockReadText } as any
 
 vi.mock('../../../workspace/index.js', () => ({
   createForWorkspace: vi.fn(function () { return { files: mockFiles }; })
@@ -86,7 +87,7 @@ describe('font-theme', function packageTests() {
   }
 }`
 
-      mockView.mockResolvedValue({ content: mockCss, encoding: 'utf-8' })
+      mockReadText.mockResolvedValue(mockCss)
       mockWrite.mockResolvedValue({ bytesWritten: 100 })
 
       const result = await updateCssFontVariables(mockFiles, testFont, testFont)
@@ -105,7 +106,7 @@ describe('font-theme', function packageTests() {
   }
 }`
 
-      mockView.mockResolvedValue({ content: mockCss, encoding: 'utf-8' })
+      mockReadText.mockResolvedValue(mockCss)
       mockWrite.mockResolvedValue({ bytesWritten: 100 })
 
       await updateCssFontVariables(mockFiles, testFont, testFont)
@@ -127,7 +128,7 @@ describe('font-theme', function packageTests() {
   }
 }`
 
-      mockView.mockResolvedValue({ content: mockCss, encoding: 'utf-8' })
+      mockReadText.mockResolvedValue(mockCss)
       mockWrite.mockResolvedValue({ bytesWritten: 100 })
 
       await updateCssFontVariables(mockFiles, testFont, testFont)
@@ -144,7 +145,7 @@ describe('font-theme', function packageTests() {
   }
 }`
 
-      mockView.mockResolvedValue({ content: mockCss, encoding: 'utf-8' })
+      mockReadText.mockResolvedValue(mockCss)
       mockWrite.mockResolvedValue({ bytesWritten: 100 })
 
       await updateCssFontVariables(mockFiles, testFont, testFont)
@@ -161,7 +162,7 @@ describe('font-theme', function packageTests() {
   }
 }`
 
-      mockView.mockResolvedValue({ content: mockCss, encoding: 'utf-8' })
+      mockReadText.mockResolvedValue(mockCss)
       mockWrite.mockResolvedValue({ bytesWritten: 100 })
 
       await updateCssFontVariables(mockFiles, testFont, testFont)
@@ -181,7 +182,7 @@ describe('font-theme', function packageTests() {
   }
 }`
 
-      mockView.mockResolvedValue({ content: mockCss, encoding: 'utf-8' })
+      mockReadText.mockResolvedValue(mockCss)
       mockWrite.mockResolvedValue({ bytesWritten: 100 })
 
       await updateCssFontVariables(mockFiles, testFont, testFont)
@@ -198,7 +199,7 @@ describe('font-theme', function packageTests() {
   }
 }`
 
-      mockView.mockResolvedValue({ content: mockCss, encoding: 'utf-8' })
+      mockReadText.mockResolvedValue(mockCss)
       mockWrite.mockResolvedValue({ bytesWritten: 100 })
 
       const result = await updateCssFontVariables(mockFiles, testFont, testFont)
@@ -210,7 +211,7 @@ describe('font-theme', function packageTests() {
     })
 
     it('should handle file read errors gracefully', async function handleReadError() {
-      mockView.mockRejectedValue(new Error('ENOENT: no such file or directory'))
+      mockReadText.mockRejectedValue(new Error('ENOENT: no such file or directory'))
 
       const result = await updateCssFontVariables(mockFiles, testFont, testFont)
 
@@ -226,7 +227,7 @@ describe('font-theme', function packageTests() {
   }
 }`
 
-      mockView.mockResolvedValue({ content: mockCss, encoding: 'utf-8' })
+      mockReadText.mockResolvedValue(mockCss)
       mockWrite.mockRejectedValue(new Error('EACCES: permission denied'))
 
       const result = await updateCssFontVariables(mockFiles, testFont, testFont)
@@ -248,7 +249,7 @@ describe('font-theme', function packageTests() {
   }
 }`
 
-      mockView.mockResolvedValue({ content: mockCss, encoding: 'utf-8' })
+      mockReadText.mockResolvedValue(mockCss)
       mockWrite.mockResolvedValue({ bytesWritten: 100 })
 
       // Test with serif and sans-serif themes
@@ -293,7 +294,7 @@ describe('font-theme', function packageTests() {
   }
 }`
 
-      mockView.mockResolvedValue({ content: mockCss, encoding: 'utf-8' })
+      mockReadText.mockResolvedValue(mockCss)
       mockWrite.mockResolvedValue({ bytesWritten: 100 })
 
       await updateCssFontVariables(mockFiles, testFont, testFont)
@@ -321,7 +322,7 @@ describe('font-theme', function packageTests() {
   }
 }`
 
-      mockView.mockResolvedValue({ content: mockCss, encoding: 'utf-8' })
+      mockReadText.mockResolvedValue(mockCss)
       mockWrite.mockResolvedValue({ bytesWritten: 100 })
 
       await updateCssFontVariables(mockFiles, testFont, testFont)
@@ -346,7 +347,7 @@ describe('font-theme', function packageTests() {
   }
 }`
 
-      mockView.mockResolvedValue({ content: mockCss, encoding: 'utf-8' })
+      mockReadText.mockResolvedValue(mockCss)
       mockWrite.mockResolvedValue({ bytesWritten: 100 })
 
       await updateCssFontVariables(mockFiles, testFont, testFont)
@@ -376,7 +377,7 @@ describe('font-theme', function packageTests() {
   }
 }`
 
-      mockView.mockResolvedValue({ content: mockCss, encoding: 'utf-8' })
+      mockReadText.mockResolvedValue(mockCss)
       mockWrite.mockResolvedValue({ bytesWritten: 100 })
 
       await updateCssFontVariables(mockFiles, testFont, testFont)
@@ -397,7 +398,7 @@ describe('font-theme', function packageTests() {
   }
 }`
 
-      mockView.mockResolvedValue({ content: mockCss, encoding: 'utf-8' })
+      mockReadText.mockResolvedValue(mockCss)
       mockWrite.mockResolvedValue({ bytesWritten: 100 })
 
       await updateCssFontVariables(mockFiles, testFont, testFont)
@@ -428,7 +429,7 @@ describe('font-theme', function packageTests() {
   }
 }`
 
-      mockView.mockResolvedValue({ content: mockCss, encoding: 'utf-8' })
+      mockReadText.mockResolvedValue(mockCss)
       mockWrite.mockResolvedValue({ bytesWritten: 100 })
 
       await updateCssFontVariables(mockFiles, testFont, testFont)
@@ -519,7 +520,7 @@ describe('font-theme', function packageTests() {
   }
 }`
 
-      mockView.mockResolvedValue({ content: mockCss, encoding: 'utf-8' })
+      mockReadText.mockResolvedValue(mockCss)
       mockWrite.mockResolvedValue({ bytesWritten: 100 })
 
       const { updateCssFontVariables } = await import('../font-theme.js')
@@ -552,7 +553,7 @@ describe('font-theme', function packageTests() {
   }
 }`
 
-      mockView.mockResolvedValue({ content: mockCss, encoding: 'utf-8' })
+      mockReadText.mockResolvedValue(mockCss)
       mockWrite.mockResolvedValue({ bytesWritten: 100 })
 
       const { updateCssFontVariables } = await import('../font-theme.js')
@@ -583,7 +584,7 @@ describe('font-theme', function packageTests() {
   }
 }`
 
-      mockView.mockResolvedValue({ content: mockCss, encoding: 'utf-8' })
+      mockReadText.mockResolvedValue(mockCss)
       mockWrite.mockResolvedValue({ bytesWritten: 100 })
 
       const { updateCssFontVariables } = await import('../font-theme.js')
@@ -617,7 +618,7 @@ describe('font-theme', function packageTests() {
 
     beforeEach(() => {
       vi.clearAllMocks()
-      mockView.mockResolvedValue({ content: mockCss, encoding: 'utf-8' })
+      mockReadText.mockResolvedValue(mockCss)
       mockWrite.mockResolvedValue({ bytesWritten: 100 })
 
       // Mock fetch to return success for all Google Fonts validation requests
@@ -782,7 +783,7 @@ describe('font-theme', function packageTests() {
     beforeEach(() => {
       vi.clearAllMocks()
       clearFontValidationCache() // Prevent cache pollution from other tests
-      mockView.mockResolvedValue({ content: mockCss, encoding: 'utf-8' })
+      mockReadText.mockResolvedValue(mockCss)
       mockWrite.mockResolvedValue({ bytesWritten: 100 })
 
       fetchCallCount = 0
@@ -1085,7 +1086,7 @@ describe('font-theme', function packageTests() {
     beforeEach(() => {
       vi.clearAllMocks()
       clearFontValidationCache()
-      mockView.mockResolvedValue({ content: mockCss, encoding: 'utf-8' })
+      mockReadText.mockResolvedValue(mockCss)
       mockWrite.mockResolvedValue({ bytesWritten: 100 })
       originalFetch = global.fetch
       global.fetch = vi.fn(function () {
@@ -1282,7 +1283,7 @@ describe('font-theme', function packageTests() {
     });
 
     it('allows set mode when isRebuildFlow is true and typographyStyle is not keep-original', async function allowSetWhenFreshFonts() {
-      mockView.mockResolvedValue({ content: JSON.stringify({ status: 'building', stylePreferences: { typographyStyle: 'modern' } }) });
+      mockReadText.mockResolvedValue(JSON.stringify({ status: 'building', stylePreferences: { typographyStyle: 'modern' } }));
 
       try {
         await (fontThemeAITool as any).execute(
@@ -1294,7 +1295,7 @@ describe('font-theme', function packageTests() {
       }
 
       // Workspace must have been consulted for font state regardless of outcome
-      expect(mockView).toHaveBeenCalled();
+      expect(mockReadText).toHaveBeenCalled();
     });
   });
 })
@@ -1306,23 +1307,17 @@ describe('rebuildKeepsSourceFonts — typography gate', function keepFontsGate()
   });
 
   it('returns true (block) when typographyStyle is keep-original', async function blockKeepOriginal() {
-    mockView.mockResolvedValue({
-      content: JSON.stringify({ stylePreferences: { typographyStyle: 'keep-original' } }),
-    });
+    mockReadText.mockResolvedValue(JSON.stringify({ stylePreferences: { typographyStyle: 'keep-original' } }));
     expect(await rebuildKeepsSourceFonts('app1')).toBe(true);
   });
 
   it('returns false (allow) when typographyStyle is modern', async function allowModern() {
-    mockView.mockResolvedValue({
-      content: JSON.stringify({ stylePreferences: { typographyStyle: 'modern' } }),
-    });
+    mockReadText.mockResolvedValue(JSON.stringify({ stylePreferences: { typographyStyle: 'modern' } }));
     expect(await rebuildKeepsSourceFonts('app1')).toBe(false);
   });
 
   it('returns true (block) when typographyStyle is absent (legacy state, default-safe)', async function defaultBlock() {
-    mockView.mockResolvedValue({
-      content: JSON.stringify({ stylePreferences: {} }),
-    });
+    mockReadText.mockResolvedValue(JSON.stringify({ stylePreferences: {} }));
     expect(await rebuildKeepsSourceFonts('app1')).toBe(true);
   });
 

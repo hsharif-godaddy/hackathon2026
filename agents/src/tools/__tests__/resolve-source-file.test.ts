@@ -16,10 +16,11 @@ describe('resolveSourceFile - upload auto-resolve (exact match + rename-tolerant
   const testProjectDir = `/tmp/test-project-resolve/${testAppId}`
 
   const mockFiles: WorkspaceFiles = {
-    // The real workspace view() throws a not_found DevSupervisorError when a
-    // path doesn't exist; default to that so the existence check treats targets
-    // as new files (a generic error would fail-safe to "exists").
+    // stat returns not_found so the existence check treats targets as new files
+    // (a generic error would fail-safe to "exists").
+    stat: vi.fn().mockResolvedValue({ entries: [{ error: 'not_found' }] }),
     view: vi.fn().mockRejectedValue(new DevSupervisorError('not_found', 404, 'not found')),
+    readText: vi.fn().mockResolvedValue(''),
     tree: vi.fn(),
     search: vi.fn(),
     write: vi.fn(),
@@ -29,6 +30,7 @@ describe('resolveSourceFile - upload auto-resolve (exact match + rename-tolerant
     move: vi.fn(),
     upload: vi.fn().mockResolvedValue(undefined),
     download: vi.fn(),
+    archive: vi.fn(),
   };
 
   async function seedUpload(originalName: string, content: string | Buffer): Promise<string> {
@@ -146,7 +148,7 @@ describe('resolveSourceFile - upload auto-resolve (exact match + rename-tolerant
     // logo.png (empty). The fallback must NOT overwrite it with the newest
     // upload — it returns skip so the create site leaves the file untouched.
     await seedUpload('background.jpg', Buffer.from('BG'))
-    vi.mocked(mockFiles.view).mockResolvedValueOnce({ content: 'existing-logo-bytes' } as never)
+    vi.mocked(mockFiles.stat).mockResolvedValueOnce({ entries: [{ path: 'public/assets/logo.png', kind: 'file', size: 100, modifiedAt: '2026-01-01T00:00:00.000Z' }] })
 
     const result = await resolveSourceFile(testAppId, 'public/assets/logo.png', '', mockFiles)
 
@@ -247,7 +249,7 @@ describe('resolveSourceFile - upload auto-resolve (exact match + rename-tolerant
 
   it('returns { skip, reason: copy-error } when the copy fails for an EXISTING file', async () => {
     await seedUpload('logo.png', Buffer.from('PNG_DATA'))
-    vi.mocked(mockFiles.view).mockResolvedValueOnce({ content: 'existing' } as never)
+    vi.mocked(mockFiles.stat).mockResolvedValueOnce({ entries: [{ path: 'public/assets/logo.png', kind: 'file', size: 100, modifiedAt: '2026-01-01T00:00:00.000Z' }] })
     vi.mocked(mockFiles.upload).mockRejectedValueOnce(new Error('disk full'))
 
     const result = await resolveSourceFile(testAppId, 'public/assets/logo.png', '', mockFiles)

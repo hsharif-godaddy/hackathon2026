@@ -218,8 +218,8 @@ export class VideoGenerationTool {
     try {
       let existingMetadata: Record<string, unknown> = {};
       try {
-        const result = await this.workspace.view({ path: '.airo/video.json' });
-        existingMetadata = JSON.parse(result.content);
+        const raw: string = await this.workspace.readText({ path: '.airo/video.json' });
+        existingMetadata = JSON.parse(raw);
       } catch (err: unknown) {
         if (!(err instanceof DevSupervisorError && err.code === 'not_found')) {
           logger.warn('video-generation.metadata-read-error', { appId: this.appId, error: err instanceof Error ? err.message : String(err) });
@@ -289,8 +289,8 @@ export class VideoGenerationTool {
 
     if (this.workspace) {
       try {
-        const result = await this.workspace.view({ path: '.airo/video.json' });
-        const videoMetadata = JSON.parse(result.content);
+        const raw: string = await this.workspace.readText({ path: '.airo/video.json' });
+        const videoMetadata = JSON.parse(raw);
 
         if (videoMetadata.status === 'completed' && videoMetadata.url) {
           // URL is /airo-assets/uploads/{filename}; check existence via stat —
@@ -522,8 +522,8 @@ export class VideoGenerationTool {
 
         if (this.workspace) {
           try {
-            const viewResult = await this.workspace.view({ path: '.airo/video.json' });
-            const currentMetadata = JSON.parse(viewResult.content);
+            const raw: string = await this.workspace.readText({ path: '.airo/video.json' });
+            const currentMetadata = JSON.parse(raw);
             currentMetadata.status = openaiStatus === 'queued' ? 'pending' : openaiStatus;
             currentMetadata.updatedAt = new Date().toISOString();
             await this.workspace.write({

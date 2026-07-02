@@ -19,6 +19,7 @@ function makeFiles(initial: string) {
   return {
     files: {
       view: async () => ({ content }),
+      readText: async () => content,
       write: async ({ content: c }: { content: string }) => { content = c; return { bytesWritten: c.length } },
     } as unknown as Parameters<typeof updateCssColorPalette>[0],
     get: () => content,

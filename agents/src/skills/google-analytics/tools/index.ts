@@ -197,8 +197,7 @@ export const installAnalyticsTool: SkillToolDefinition = {
       // Step 2: Patch RootLayout.tsx using line-based insertion for robust editing
       let rootLayoutPatched = false;
       try {
-        const rootLayoutResult = await workspace.files.view({ path: ROOTLAYOUT_PATH });
-        const rootLayoutContent = rootLayoutResult.content;
+        const rootLayoutContent: string = await workspace.files.readText({ path: ROOTLAYOUT_PATH });
 
         const hasImport = rootLayoutContent.includes(GA_COMPONENT_IMPORT);
         const hasComponent = rootLayoutContent.includes('<GoogleAnalytics');
@@ -217,8 +216,8 @@ export const installAnalyticsTool: SkillToolDefinition = {
           }
 
           if (!hasComponent) {
-            const refreshedLayout = await workspace.files.view({ path: ROOTLAYOUT_PATH });
-            const websiteMatch = refreshedLayout.content.match(/<Website[\s>]/);
+            const refreshedContent: string = await workspace.files.readText({ path: ROOTLAYOUT_PATH });
+            const websiteMatch: RegExpMatchArray | null = refreshedContent.match(/<Website[\s>]/);
             if (!websiteMatch) {
               logger.warn('google-analytics.installAnalytics.no-website-element', { appId });
               return {
@@ -227,7 +226,7 @@ export const installAnalyticsTool: SkillToolDefinition = {
                 recoverable: false,
               };
             }
-            const websiteLineIndex = refreshedLayout.content
+            const websiteLineIndex: number = refreshedContent
               .slice(0, websiteMatch.index)
               .split('\n').length;
             await workspace.files.insert({

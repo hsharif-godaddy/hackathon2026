@@ -75,6 +75,13 @@ vi.mock('../../workspace/index.js', () => ({
         const content = hoistedFs.readFileSync(fullPath, 'utf-8');
         return { content, encoding: 'utf-8', path: filePath, lines: content.split('\n').length, size: content.length, truncated: false };
       }),
+      readText: vi.fn(async function ({ path: filePath }: { path: string }) {
+        const fullPath = hoistedPath.join(testAppPath, filePath);
+        if (!hoistedFs.existsSync(fullPath)) {
+          throw new MockDevSupervisorError(`file not found: ${filePath}`);
+        }
+        return hoistedFs.readFileSync(fullPath, 'utf-8');
+      }),
       write: vi.fn(async function ({ path: filePath, content }: { path: string; content: string }) {
         const fullPath = hoistedPath.join(testAppPath, filePath);
         hoistedFs.mkdirSync(hoistedPath.dirname(fullPath), { recursive: true });
@@ -224,20 +231,20 @@ describe('video-generation-tool', function packageTests() {
     });
 
     it('propagates transport errors from the .airo/video.json metadata read (no silent regenerate)', async function metadataTransportError() {
-      // Don't write video.json to disk. Override workspace.view for that exact path
+      // Don't write video.json to disk. Override workspace.readText for that exact path
       // to throw a non-not_found error; the outer catch must rethrow rather than
       // fall through to a fresh generation.
       const tool = createTool();
       const tools: any = tool;
       const initiateSpy = vi.spyOn(tools, 'initiateGeneration').mockResolvedValue({ status: 'pending' as const });
-      const originalView = tools.workspace.view;
-      tools.workspace.view = vi.fn(async ({ path: filePath }: { path: string }) => {
+      const originalReadText = tools.workspace.readText;
+      tools.workspace.readText = vi.fn(async ({ path: filePath }: { path: string }) => {
         if (filePath === '.airo/video.json') {
           const err = new MockDevSupervisorError('connection refused');
           err.code = 'transport_error';
           throw err;
         }
-        return originalView({ path: filePath });
+        return originalReadText({ path: filePath });
       });
 
       await expect(tool.startGeneration({})).rejects.toMatchObject({ code: 'transport_error' });

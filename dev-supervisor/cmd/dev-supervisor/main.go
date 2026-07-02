@@ -1271,12 +1271,10 @@ func isSuspendedPublishContainer() bool {
 	return envSuspended() && sandbox.DetectProcessVariant() == sandbox.VariantPublish
 }
 
-// envSuspended reads the SUSPENDED env var and returns true only for the
-// canonical "true" value. Centralized so the literal isn't repeated across
-// the package (and to make later changes -- e.g. accepting "1" or "yes" --
-// trivially scoped).
+const envTrue = "true"
+
 func envSuspended() bool {
-	return os.Getenv("SUSPENDED") == "true"
+	return os.Getenv("SUSPENDED") == envTrue
 }
 
 func main() {

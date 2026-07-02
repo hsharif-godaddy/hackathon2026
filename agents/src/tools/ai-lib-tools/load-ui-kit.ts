@@ -9,10 +9,7 @@ import { UI_KIT_COPY_GUARDRAIL } from '../../prompts/ui-kit-guardrail.js'
 const AUTO_LOAD_DIRS = ['primitives', 'components']
 const LIST_ONLY_DIRS = ['layouts', 'showcase']
 const KIT_PATH = 'docs/ui-kit'
-// `view.limit` on the supervisor is a LINE count, not bytes. 65,536 lines is
-// effectively unbounded for kit docs but bounded enough to fit a single tool
-// turn even in pathological cases. See dev-supervisor's wsFilesDefaultMaxLines.
-const VIEW_MAX_LINES = 65_536
+
 // dev-supervisor caps `stat({ paths })` at wsFilesMaxStatPaths = 100. The
 // schema's `.describe()` advertises a soft limit so the LLM doesn't request
 // hundreds of includes in one call; we still chunk defensively below so a
@@ -57,11 +54,7 @@ async function readKitFile(
   path: string,
 ): Promise<string | null> {
   try {
-    const result = await files.view({ path, limit: VIEW_MAX_LINES })
-    if (result.truncated) {
-      logger.warn('tool.load_ui_kit.view_truncated', { path, lines: result.lines })
-    }
-    return result.content
+    return await files.readText({ path })
   } catch (err) {
     if (isDevSupervisorNotFound(err)) return null
     throw err

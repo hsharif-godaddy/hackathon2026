@@ -6,7 +6,7 @@ const { setMock, publishMock, getConversationsByAppMock, syncBrandTokensCssMock,
   publishMock: vi.fn(),
   getConversationsByAppMock: vi.fn(() => ['conv-1']),
   syncBrandTokensCssMock: vi.fn(async () => undefined),
-  createForWorkspaceMock: vi.fn(() => ({ files: { write: vi.fn() } })),
+  createForWorkspaceMock: vi.fn(() => ({ files: { write: vi.fn(), readText: vi.fn().mockResolvedValue('') } })),
 }))
 
 // The tool builds its memory store at module load via a module-level

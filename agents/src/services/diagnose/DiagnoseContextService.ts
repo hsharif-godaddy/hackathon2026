@@ -157,7 +157,6 @@ export class DiagnoseContextService {
 
       try {
         const result = await workspace.files.view(viewOpts);
-        if (result.encoding === 'base64') continue;
 
         let content = redactSecrets(result.content);
         let truncated = result.truncated;

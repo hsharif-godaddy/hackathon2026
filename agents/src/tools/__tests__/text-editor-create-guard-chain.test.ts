@@ -9,6 +9,8 @@ const { mockFindById, mockFiles } = vi.hoisted(() => ({
   mockFindById: vi.fn(),
   mockFiles: {
     view: vi.fn(),
+    readText: vi.fn(),
+    stat: vi.fn(),
     tree: vi.fn(),
     search: vi.fn(),
     write: vi.fn(),
@@ -67,6 +69,7 @@ describe('text-editor create guard integration', function textEditorCreateGuardI
     mkdirSync(appPath, { recursive: true });
     mockFindById.mockReturnValue({ id: appId, path: appPath });
     mockFiles.view.mockRejectedValue(new DevSupervisorError('not_found', 404, 'not found'));
+    mockFiles.stat.mockResolvedValue({ entries: [{ error: 'not_found' }] });
 
     const uploadsDir = fileUploadService.getAppUploadsDir(appId);
     if (existsSync(uploadsDir)) {

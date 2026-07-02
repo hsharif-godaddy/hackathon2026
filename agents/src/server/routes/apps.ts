@@ -21,6 +21,7 @@ import multer from 'multer';
 import { AppRepository } from '../../database/index.js';
 import type { App, CreateAppRequest, UpdateAppRequest } from '../../database/index.js';
 import { DirectoryListingTool, DirectoryListingNotFoundError } from '../../tools/directory-listing.js';
+import { BINARY_FILE_REGEX } from '../../utils/file-types.js';
 import { createForWorkspace } from '../../workspace/index.js';
 import { DevSupervisorError } from '../../services/DevSupervisorClient.js';
 import { GitUtils } from '../../utils/git.js';
@@ -647,7 +648,7 @@ router.get('/:id/files', async (req: Request, res: Response) => {
 router.get('/:id/files/read', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { path: filePath, limit: limitRaw } = req.query;
+    const { path: filePath } = req.query;
 
     if (!id) {
       return res.status(400).json({ error: 'App ID is required' });
@@ -662,29 +663,21 @@ router.get('/:id/files/read', async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'App not found' });
     }
 
-    // Optional `limit` (max lines). Callers reading a whole JSON snapshot pass a
-    // large value to defeat the supervisor's default line cap, which would
-    // otherwise clip a large file (e.g. the rebuild asset manifest) into invalid
-    // JSON. Omitted → supervisor default applies, so code-preview reads stay capped.
-    const limit = typeof limitRaw === 'string' ? Number.parseInt(limitRaw, 10) : Number.NaN;
-    const result = await workspace.files.view({
-      path: filePath,
-      ...(Number.isInteger(limit) && limit > 0 ? { limit } : {}),
-    });
-
-    if (result.encoding === 'base64') {
-      return res.status(422).json({ error: 'Binary file — not readable as text', encoding: 'base64', path: result.path });
+    if (BINARY_FILE_REGEX.test(filePath)) {
+      return res.status(422).json({
+        error: 'Binary file — not readable as text',
+        path: filePath,
+      });
     }
 
-    const linesReturned = result.content.split('\n').length;
+    const content: string = await workspace.files.readText({ path: filePath });
 
     return res.json({
       success: true,
-      path: result.path,
-      content: result.content,
-      totalLines: result.lines,
-      truncated: result.truncated,
-      ...(result.truncated ? { linesRead: { start: 1, end: linesReturned } } : {}),
+      path: filePath,
+      content,
+      totalLines: content.split('\n').length,
+      truncated: false,
     });
   } catch (error) {
     const contextLogger = req.params.id ? log.forApp(req.params.id) : logger;

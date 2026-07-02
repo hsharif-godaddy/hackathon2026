@@ -79,6 +79,7 @@ vi.mock('../../workspace/index.js', () => ({
     tasks: {},
     files: {
       view: vi.fn().mockResolvedValue({ content: '{}' }),
+      readText: vi.fn().mockResolvedValue('{}'),
     },
   }; }),
 }));
@@ -110,7 +111,7 @@ import { GitRemoteTokenManager } from '../GitRemoteTokenManager.js';
 // Minimal bindable workspace stub: a no-op tasks handle plus a package.json
 // read that returns `{}`, enough for the availability guard and background job.
 const stubWorkspace = () =>
-  ({ tasks: {}, files: { view: vi.fn().mockResolvedValue({ content: '{}' }) } }) as any;
+  ({ tasks: {}, files: { view: vi.fn().mockResolvedValue({ content: '{}' }), readText: vi.fn().mockResolvedValue('{}') } }) as any;
 
 describe('GitOpsService', () => {
   let service: GitOpsService;
@@ -533,6 +534,7 @@ describe('GitOpsService', () => {
         tasks: {},
         files: {
           view: vi.fn().mockRejectedValue(transportErr),
+          readText: vi.fn().mockRejectedValue(transportErr),
         },
       } as any);
 
@@ -645,7 +647,7 @@ describe('GitOpsService', () => {
       mockRunCommandSync = vi.fn().mockResolvedValue({ exitCode: 0, stdout: '', stderr: '' });
       vi.mocked(createForWorkspace).mockReturnValue({
         tasks: { runCommandSync: mockRunCommandSync },
-        files: { view: vi.fn().mockResolvedValue({ content: '{}' }) },
+        files: { view: vi.fn().mockResolvedValue({ content: '{}' }), readText: vi.fn().mockResolvedValue('{}') },
       } as any);
 
       mockGitTool.executeGitOperation.mockResolvedValue({ success: true, output: 'Pull successful' });

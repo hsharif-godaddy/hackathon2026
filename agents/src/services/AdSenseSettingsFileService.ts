@@ -49,8 +49,8 @@ export class AdSenseSettingsFileService {
     const files = resolveWorkspaceFiles(appId, 'preview', this.workspaceFactory);
 
     try {
-      const result = await files.view({ path: ADSENSE_AUTHORING_CONFIG_PATH });
-      const parsed = JSON.parse(result.content) as unknown;
+      const content: string = await files.readText({ path: ADSENSE_AUTHORING_CONFIG_PATH });
+      const parsed = JSON.parse(content) as unknown;
       const settings: AdSenseSettings | null = this.normalizeStoredSettings(parsed);
 
       if (!settings) {

@@ -437,7 +437,7 @@ describe('Publish Route Authorization', () => {
       } as any);
 
       mockFindById.mockReturnValue({ id: 'test-app-id', path: '/tmp/test-app' });
-      mockCreateForWorkspace.mockReturnValue({ tasks: { runCommandSync: vi.fn() } });
+      mockCreateForWorkspace.mockReturnValue({ tasks: { runCommandSync: vi.fn() }, files: { readText: vi.fn().mockResolvedValue('') } });
       vi.mocked(getPublishStrategy).mockReturnValue({
         key: 'default',
         prepareBuild: vi.fn().mockResolvedValue({
@@ -485,7 +485,7 @@ describe('Publish Route Authorization', () => {
       } as any);
 
       mockFindById.mockReturnValue({ id: 'test-app-id', path: '/tmp/test-app' });
-      mockCreateForWorkspace.mockReturnValue({ tasks: { runCommandSync: vi.fn() } });
+      mockCreateForWorkspace.mockReturnValue({ tasks: { runCommandSync: vi.fn() }, files: { readText: vi.fn().mockResolvedValue('') } });
 
       const preflight = {
         hasAiroConfig: false,
@@ -537,7 +537,7 @@ describe('Publish Route Authorization', () => {
         clearBranchTracking: vi.fn(),
       } as any);
       mockFindById.mockReturnValue({ id: 'test-app-id', path: '/tmp/test-app' });
-      mockCreateForWorkspace.mockReturnValue({ tasks: { runCommandSync: vi.fn() } });
+      mockCreateForWorkspace.mockReturnValue({ tasks: { runCommandSync: vi.fn() }, files: { readText: vi.fn().mockResolvedValue('') } });
       vi.mocked(getPublishStrategy).mockReturnValue({
         key: 'default',
         prepareBuild: vi.fn().mockResolvedValue({
@@ -602,7 +602,7 @@ describe('Publish Route Authorization', () => {
       mockFindById.mockReturnValue({ id: 'test-app-id', path: '/tmp/test-app' });
       mockCreateForWorkspace.mockReturnValue({
         tasks: { runCommandSync: vi.fn() },
-        files: { write: vi.fn() },
+        files: { readText: vi.fn().mockResolvedValue(''), write: vi.fn() },
       });
       mockAdSenseWriteForPublish.mockResolvedValue(undefined);
     });
@@ -1542,7 +1542,7 @@ describe('POST /apps/:id/publish (async mode)', () => {
 
   it('returns 202 with jobId and phase when async:true', async () => {
     mockFindById.mockReturnValue({ id: 'test-app-id', path: '/tmp/app' });
-    mockCreateForWorkspace.mockReturnValue({ tasks: { runCommandSync: vi.fn() }, runtime: {} });
+    mockCreateForWorkspace.mockReturnValue({ tasks: { runCommandSync: vi.fn() }, files: { readText: vi.fn().mockResolvedValue('') }, runtime: {} });
     vi.mocked(getPublishStrategy).mockReturnValue({
       key: 'default',
       prepareBuild: vi.fn().mockResolvedValue({ commitHash: 'abc123', archivePath: '/dist/abc123.tar.gz' }),
@@ -1560,7 +1560,7 @@ describe('POST /apps/:id/publish (async mode)', () => {
 
   it('returns 409 when publish already in progress', async () => {
     mockFindById.mockReturnValue({ id: 'test-app-id', path: '/tmp/app' });
-    mockCreateForWorkspace.mockReturnValue({ tasks: { runCommandSync: vi.fn() }, runtime: {} });
+    mockCreateForWorkspace.mockReturnValue({ tasks: { runCommandSync: vi.fn() }, files: { readText: vi.fn().mockResolvedValue('') }, runtime: {} });
     vi.mocked(getPublishStrategy).mockReturnValue({
       key: 'default',
       prepareBuild: vi.fn().mockImplementation(() => new Promise(() => {})),
@@ -1606,7 +1606,7 @@ describe('GET /apps/:id/publish/status (with active job)', () => {
 
   it('returns job phase when publish is in-flight', async () => {
     mockFindById.mockReturnValue({ id: 'test-app-id', path: '/tmp/app' });
-    mockCreateForWorkspace.mockReturnValue({ tasks: { runCommandSync: vi.fn() }, runtime: {} });
+    mockCreateForWorkspace.mockReturnValue({ tasks: { runCommandSync: vi.fn() }, files: { readText: vi.fn().mockResolvedValue('') }, runtime: {} });
     vi.mocked(getPublishStrategy).mockReturnValue({
       key: 'default',
       prepareBuild: vi.fn().mockImplementation(() => new Promise(() => {})),
@@ -1631,7 +1631,7 @@ describe('GET /apps/:id/publish/status (with active job)', () => {
     process.env.NOMAD_ALLOC_DIR = '/fake-alloc';
     try {
       mockFindById.mockReturnValue({ id: 'test-app-id', path: '/tmp/app' });
-      mockCreateForWorkspace.mockReturnValue({ tasks: { runCommandSync: vi.fn() }, runtime: {} });
+      mockCreateForWorkspace.mockReturnValue({ tasks: { runCommandSync: vi.fn() }, files: { readText: vi.fn().mockResolvedValue('') }, runtime: {} });
       vi.mocked(getGitHookService).mockReturnValue({
         hasActiveBranch: vi.fn().mockReturnValue(false),
         clearBranchTracking: vi.fn(),
@@ -1662,7 +1662,7 @@ describe('GET /apps/:id/publish/status (with active job)', () => {
 
   it('returns failed phase when build throws', async () => {
     mockFindById.mockReturnValue({ id: 'test-app-id', path: '/tmp/app' });
-    mockCreateForWorkspace.mockReturnValue({ tasks: { runCommandSync: vi.fn() }, runtime: {} });
+    mockCreateForWorkspace.mockReturnValue({ tasks: { runCommandSync: vi.fn() }, files: { readText: vi.fn().mockResolvedValue('') }, runtime: {} });
     vi.mocked(getPublishStrategy).mockReturnValue({
       key: 'default',
       prepareBuild: vi.fn().mockRejectedValue(new Error('npm build failed')),
@@ -1690,7 +1690,7 @@ describe('GET /apps/:id/publish/status (with active job)', () => {
     mockExistsSync.mockReturnValue(true);
     try {
       mockFindById.mockReturnValue({ id: 'test-app-id', path: '/tmp/app' });
-      mockCreateForWorkspace.mockReturnValue({ tasks: { runCommandSync: vi.fn() }, runtime: {} });
+      mockCreateForWorkspace.mockReturnValue({ tasks: { runCommandSync: vi.fn() }, files: { readText: vi.fn().mockResolvedValue('') }, runtime: {} });
       vi.mocked(getGitHookService).mockReturnValue({
         hasActiveBranch: vi.fn().mockReturnValue(true),
         clearBranchTracking: vi.fn(),
@@ -1727,7 +1727,7 @@ describe('GET /apps/:id/publish/status (with active job)', () => {
     mockExistsSync.mockReturnValue(true);
     try {
       mockFindById.mockReturnValue({ id: 'test-app-id', path: '/tmp/app' });
-      mockCreateForWorkspace.mockReturnValue({ tasks: { runCommandSync: vi.fn() }, runtime: {} });
+      mockCreateForWorkspace.mockReturnValue({ tasks: { runCommandSync: vi.fn() }, files: { readText: vi.fn().mockResolvedValue('') }, runtime: {} });
       vi.mocked(getGitHookService).mockReturnValue({
         hasActiveBranch: vi.fn().mockReturnValue(false),
         clearBranchTracking: vi.fn(),
@@ -1763,7 +1763,7 @@ describe('GET /apps/:id/publish/status (with active job)', () => {
     process.env.NOMAD_ALLOC_DIR = '/fake-alloc';
     try {
       mockFindById.mockReturnValue({ id: 'test-app-id', path: '/tmp/app', publishedUrl: 'https://app.test.com', customerId: 'cust-1' });
-      mockCreateForWorkspace.mockReturnValue({ tasks: { runCommandSync: vi.fn() }, runtime: {} });
+      mockCreateForWorkspace.mockReturnValue({ tasks: { runCommandSync: vi.fn() }, files: { readText: vi.fn().mockResolvedValue('') }, runtime: {} });
       vi.mocked(getGitHookService).mockReturnValue({
         hasActiveBranch: vi.fn().mockReturnValue(false),
         clearBranchTracking: vi.fn(),
@@ -1794,7 +1794,7 @@ describe('GET /apps/:id/publish/status (with active job)', () => {
 
   it('returns null-checked fields in status response', async () => {
     mockFindById.mockReturnValue({ id: 'test-app-id', path: '/tmp/app' });
-    mockCreateForWorkspace.mockReturnValue({ tasks: { runCommandSync: vi.fn() }, runtime: {} });
+    mockCreateForWorkspace.mockReturnValue({ tasks: { runCommandSync: vi.fn() }, files: { readText: vi.fn().mockResolvedValue('') }, runtime: {} });
     vi.mocked(getPublishStrategy).mockReturnValue({
       key: 'default',
       prepareBuild: vi.fn().mockImplementation(() => new Promise(() => {})),
@@ -1890,7 +1890,7 @@ describe('POST /apps/:id/publish (unified-job deploy path)', () => {
 
   it('returns success with supervisor details when deploy succeeds', async () => {
     mockFindById.mockReturnValue({ id: 'test-app-id', path: '/tmp/app', publishedUrl: 'https://app.example.com', customerId: 'cust-123' });
-    mockCreateForWorkspace.mockReturnValue({ tasks: { runCommandSync: vi.fn() }, runtime: {} });
+    mockCreateForWorkspace.mockReturnValue({ tasks: { runCommandSync: vi.fn() }, files: { readText: vi.fn().mockResolvedValue('') }, runtime: {} });
     vi.mocked(getGitHookService).mockReturnValue({
       hasActiveBranch: vi.fn().mockReturnValue(false),
       clearBranchTracking: vi.fn(),
@@ -1931,7 +1931,7 @@ describe('POST /apps/:id/publish (unified-job deploy path)', () => {
 
   it('returns 500 when deploy returns error status', async () => {
     mockFindById.mockReturnValue({ id: 'test-app-id', path: '/tmp/app' });
-    mockCreateForWorkspace.mockReturnValue({ tasks: { runCommandSync: vi.fn() } });
+    mockCreateForWorkspace.mockReturnValue({ tasks: { runCommandSync: vi.fn() }, files: { readText: vi.fn().mockResolvedValue('') } });
     vi.mocked(getGitHookService).mockReturnValue({
       hasActiveBranch: vi.fn().mockReturnValue(false),
       clearBranchTracking: vi.fn(),
@@ -1968,7 +1968,7 @@ describe('POST /apps/:id/publish (unified-job deploy path)', () => {
 
   it('returns 500 when deploy throws', async () => {
     mockFindById.mockReturnValue({ id: 'test-app-id', path: '/tmp/app' });
-    mockCreateForWorkspace.mockReturnValue({ tasks: { runCommandSync: vi.fn() } });
+    mockCreateForWorkspace.mockReturnValue({ tasks: { runCommandSync: vi.fn() }, files: { readText: vi.fn().mockResolvedValue('') } });
     vi.mocked(getGitHookService).mockReturnValue({
       hasActiveBranch: vi.fn().mockReturnValue(false),
       clearBranchTracking: vi.fn(),
@@ -1997,7 +1997,7 @@ describe('POST /apps/:id/publish (unified-job deploy path)', () => {
 
   it('returns 500 when no supervisor client can be created', async () => {
     mockFindById.mockReturnValue({ id: 'test-app-id', path: '/tmp/app' });
-    mockCreateForWorkspace.mockReturnValue({ tasks: { runCommandSync: vi.fn() } });
+    mockCreateForWorkspace.mockReturnValue({ tasks: { runCommandSync: vi.fn() }, files: { readText: vi.fn().mockResolvedValue('') } });
     vi.mocked(getGitHookService).mockReturnValue({
       hasActiveBranch: vi.fn().mockReturnValue(false),
       clearBranchTracking: vi.fn(),
@@ -2030,7 +2030,7 @@ describe('POST /apps/:id/publish (unified-job deploy path)', () => {
     mockExistsSync.mockReturnValue(false);
 
     mockFindById.mockReturnValue({ id: 'test-app-id', path: '/tmp/app', publishSupervisorPath: '/tmp/local.sock' });
-    mockCreateForWorkspace.mockReturnValue({ tasks: { runCommandSync: vi.fn() } });
+    mockCreateForWorkspace.mockReturnValue({ tasks: { runCommandSync: vi.fn() }, files: { readText: vi.fn().mockResolvedValue('') } });
     vi.mocked(getGitHookService).mockReturnValue({
       hasActiveBranch: vi.fn().mockReturnValue(false),
       clearBranchTracking: vi.fn(),
@@ -2090,7 +2090,7 @@ describe('POST /apps/:id/publish (fire-and-forget async paths)', () => {
       clearBranchTracking: vi.fn(),
     } as any);
 
-    mockCreateForWorkspace.mockReturnValue({ tasks: { runCommandSync: vi.fn() } });
+    mockCreateForWorkspace.mockReturnValue({ tasks: { runCommandSync: vi.fn() }, files: { readText: vi.fn().mockResolvedValue('') } });
     vi.mocked(getPublishStrategy).mockReturnValue({
       key: 'default',
       prepareBuild: vi.fn().mockResolvedValue({

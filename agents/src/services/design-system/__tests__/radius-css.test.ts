@@ -6,7 +6,7 @@ import { updateCssRadius } from '../radius-css.js'
  * just the `view`/`write` surface updateCssRadius uses.
  */
 function mockFiles(initial: Record<string, string>): {
-  files: { view: (o: { path: string }) => Promise<{ content: string }>; write: (o: { path: string; content: string }) => Promise<void> }
+  files: { view: (o: { path: string }) => Promise<{ content: string }>; readText: (o: { path: string }) => Promise<string>; write: (o: { path: string; content: string }) => Promise<void> }
   store: Record<string, string>
 } {
   const store: Record<string, string> = { ...initial }
@@ -16,6 +16,10 @@ function mockFiles(initial: Record<string, string>): {
       view: vi.fn(async ({ path }: { path: string }) => {
         if (!(path in store)) throw new Error(`not found: ${path}`)
         return { content: store[path]! }
+      }),
+      readText: vi.fn(async ({ path }: { path: string }) => {
+        if (!(path in store)) throw new Error(`not found: ${path}`)
+        return store[path]!
       }),
       write: vi.fn(async ({ path, content }: { path: string; content: string }) => {
         store[path] = content

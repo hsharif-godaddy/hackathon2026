@@ -20,6 +20,7 @@ function expectValidTypeScript(source: string): void {
 interface MockWorkspace {
   store: Map<string, string>;
   view: ReturnType<typeof vi.fn>;
+  readText: ReturnType<typeof vi.fn>;
   write: ReturnType<typeof vi.fn>;
   factory: CreateForWorkspace;
 }
@@ -29,7 +30,7 @@ function setup(routesSource: string, seoRoutesSource?: string): MockWorkspace {
   if (seoRoutesSource !== undefined) seed[SEO_ROUTES_PATH] = seoRoutesSource;
   const mock: MockWorkspaceFiles = createMockWorkspaceFiles(seed);
   const factory = vi.fn(() => ({ files: mock.files })) as unknown as CreateForWorkspace;
-  return { store: mock.store, view: mock.spies.view, write: mock.spies.write, factory };
+  return { store: mock.store, view: mock.spies.view, readText: mock.spies.readText, write: mock.spies.write, factory };
 }
 
 describe('SeoRoutesSynchronizer', function syncTests() {
@@ -279,7 +280,7 @@ export const seoRoutes = [
 
   it('propagates non-not_found transport failures reading routes.tsx', async function routesTransportFailure() {
     const ws = setup('export const routes = [];');
-    ws.view.mockRejectedValueOnce(
+    ws.readText.mockRejectedValueOnce(
       new DevSupervisorError('permission_denied', 403, `${ROUTES_PATH}: permission denied`),
     );
 
@@ -295,14 +296,14 @@ export const routes = [
   { path: '/', element: <Home /> },
 ];
 `;
-    const view = vi.fn(async ({ path }: { path: string }) => {
+    const readText = vi.fn(async ({ path }: { path: string }) => {
       if (path === ROUTES_PATH) {
-        return { path, content: routesSource, encoding: 'utf-8', lines: 0, size: 0, truncated: false };
+        return routesSource;
       }
       throw new DevSupervisorError('permission_denied', 403, `${path}: permission denied`);
     });
     const write = vi.fn();
-    const factory = vi.fn(() => ({ files: { view, write } })) as unknown as CreateForWorkspace;
+    const factory = vi.fn(() => ({ files: { readText, write } })) as unknown as CreateForWorkspace;
 
     await expect(
       synchronizeSeoRoutes(appId, { workspaceFactory: factory }),

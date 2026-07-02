@@ -24,7 +24,7 @@ function makeTreeResult(entries: TreeResult['entries'], truncated = false): Tree
 }
 
 function makeFiles(impl: (opts?: TreeOptions) => Promise<TreeResult>): WorkspaceFiles {
-  return { tree: vi.fn(impl) } as unknown as WorkspaceFiles;
+  return { tree: vi.fn(impl), readText: vi.fn().mockResolvedValue('') } as unknown as WorkspaceFiles;
 }
 
 describe('DirectoryListingTool', () => {

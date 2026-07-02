@@ -734,8 +734,7 @@ export async function updateCssFontVariables(
   const cssPath = 'src/styles/globals.css'
 
   try {
-    const viewResult = await files.view({ path: cssPath })
-    let cssContent = viewResult.content
+    let cssContent: string = await files.readText({ path: cssPath })
 
     // Remove ALL existing Google Fonts imports to avoid stacking
     cssContent = cssContent.replace(/@import url\('https:\/\/fonts\.googleapis\.com\/css2\?[^']+'\);\s*/g, '')

@@ -603,8 +603,7 @@ export class SkillToolManager {
 
     let raw: string;
     try {
-      const result = await files.view({ path: PINNED_SKILLS_PATH });
-      raw = result.content;
+      raw = await files.readText({ path: PINNED_SKILLS_PATH });
     } catch (error) {
       if (error instanceof DevSupervisorError && error.code === 'not_found') return;
       logger.warn('skill.pinned.hydrate.read_failed', {

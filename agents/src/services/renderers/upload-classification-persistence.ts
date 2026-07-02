@@ -47,8 +47,8 @@ async function withClassificationLock<T>(appId: string, fn: () => Promise<T>): P
 
 async function readEntries(workspace: WorkspaceClient): Promise<PersistedUploadClassification[]> {
   try {
-    const view: { content: string } = await workspace.files.view({ path: UPLOAD_CLASSIFICATIONS_PATH, limit: 65536 })
-    const parsed: { files?: PersistedUploadClassification[] } = JSON.parse(view.content)
+    const content: string = await workspace.files.readText({ path: UPLOAD_CLASSIFICATIONS_PATH })
+    const parsed: { files?: PersistedUploadClassification[] } = JSON.parse(content)
     if (!Array.isArray(parsed?.files)) return []
     return parsed.files.filter(
       (entry: PersistedUploadClassification): boolean => !!entry && typeof entry.fileName === 'string',

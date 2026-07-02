@@ -138,8 +138,7 @@ async function readMaybe(files: WorkspaceFiles, relPath: string): Promise<string
   const stat = await files.stat({ paths: [relPath] });
   const entry = stat.entries[0];
   if (!entry || ('error' in entry && entry.error)) return null;
-  const view = await files.view({ path: relPath });
-  return view.content;
+  return await files.readText({ path: relPath });
 }
 
 /** Snapshot current bytes (or absence) so the file can be restored verbatim. */
@@ -239,7 +238,7 @@ interface ValidationContext {
 async function validateConform(ctx: ValidationContext): Promise<string | null> {
   const { files, pageRel, plan, expected } = ctx;
 
-  const newPage: string = (await files.view({ path: pageRel })).content;
+  const newPage: string = await files.readText({ path: pageRel });
   let ast: t.File;
   try {
     ast = babelParse(newPage, PARSE_OPTS) as unknown as t.File;

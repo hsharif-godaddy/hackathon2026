@@ -1115,7 +1115,7 @@ export class DevSupervisorClient {
     requestPath: string,
     headers?: Record<string, string>,
     body?: string,
-  ): Promise<{ stream: http.IncomingMessage; contentType: string; contentLength: number }> {
+  ): Promise<{ stream: http.IncomingMessage; contentType: string; contentLength: number; headers: http.IncomingHttpHeaders }> {
     return new Promise((resolve, reject) => {
       const reqHeaders: Record<string, string> = { ...headers };
       if (body !== undefined) {
@@ -1148,7 +1148,7 @@ export class DevSupervisorClient {
         if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
           const contentType = res.headers['content-type'] || 'application/octet-stream';
           const contentLength = parseInt(res.headers['content-length'] || '0', 10);
-          resolve({ stream: res, contentType, contentLength });
+          resolve({ stream: res, contentType, contentLength, headers: res.headers });
         } else {
           // Consume error body and reject
           const chunks: Buffer[] = [];
@@ -1201,24 +1201,37 @@ export class DevSupervisorClient {
   async postStream(
     requestPath: string,
     data: unknown,
-  ): Promise<{ stream: http.IncomingMessage; contentType: string; contentLength: number }> {
+    extraHeaders?: Record<string, string>,
+  ): Promise<{ stream: http.IncomingMessage; contentType: string; contentLength: number; headers: http.IncomingHttpHeaders }> {
     return this.requestStream(
       'POST',
       requestPath,
-      { 'Content-Type': 'application/json', Accept: 'application/zip' },
+      { 'Content-Type': 'application/json', Accept: 'application/zip', ...extraHeaders },
       JSON.stringify(data ?? {}),
     );
   }
 
   /**
-   * Raw GET returning response body as a Buffer. For callers that need the full
-   * binary content in memory (e.g. image classification). For streaming to an
-   * HTTP response, use requestStream() directly.
+   * Raw GET returning the response as a Readable stream. Callers that need the
+   * full content in memory should collect the stream themselves; callers that
+   * can pipe (media serving, archive) avoid heap pressure entirely.
+   */
+  async getStream(
+    requestPath: string,
+    extraHeaders?: Record<string, string>,
+  ): Promise<{ stream: http.IncomingMessage; contentType: string; contentLength: number; headers: http.IncomingHttpHeaders }> {
+    return this.requestStream('GET', requestPath, {
+      Accept: 'application/octet-stream',
+      ...extraHeaders,
+    });
+  }
+
+  /**
+   * Raw GET returning response body as a Buffer. Convenience wrapper over
+   * getStream() for callers that need the full binary content in memory.
    */
   async getRaw(path: string): Promise<{ data: Buffer; contentType: string }> {
-    const { stream, contentType } = await this.requestStream('GET', path, {
-      Accept: 'application/octet-stream',
-    });
+    const { stream, contentType } = await this.getStream(path);
 
     return new Promise((resolve, reject) => {
       const chunks: Buffer[] = [];

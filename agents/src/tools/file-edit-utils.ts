@@ -5,7 +5,6 @@ import { logger } from '../logging/index.js';
 import { fileUploadService } from '../services/FileUploadService.js';
 import { isSourceFile, BINARY_FILE_REGEX, IMAGE_FILE_REGEX } from '../utils/file-types.js';
 import { markUploadsPlaced } from '../services/renderers/upload-classification-persistence.js';
-import { isDevSupervisorNotFound } from '../services/DevSupervisorClient.js';
 import type { WorkspaceFiles } from '../workspace/files.js';
 
 const PROTECTED_PATH_PREFIXES = ['.airo'];
@@ -63,20 +62,15 @@ export function resolveFilePath(appPath: string, relativePath: string): string {
 
 async function workspaceFileExists(files: WorkspaceFiles, path: string): Promise<boolean> {
   try {
-    await files.view({ path, limit: 1 });
+    const result = await files.stat({ paths: [path] });
+    const entry = result.entries[0];
+    if (!entry) return true;
+    if ('error' in entry && entry.error === 'not_found') return false;
+    // Any other error (permission_denied, etc.) → fail safe toward "exists"
+    // to avoid clobbering a file that may actually be present.
     return true;
-  } catch (err) {
-    // Only a genuine not-found means "does not exist". A transient/unknown error
-    // must fail SAFE toward "exists" — otherwise a flaky read would let the
-    // image fallback (or the catch's empty write) clobber a file that is
-    // actually there, the very "wrong image over existing file" hazard we guard.
-    if (isDevSupervisorNotFound(err)) {
-      return false;
-    }
-    logger.debug('file-edit.exists-check.ambiguous', {
-      path,
-      error: err instanceof Error ? err.message : String(err),
-    });
+  } catch {
+    // Transport failure — fail safe toward "exists" to avoid clobbering files.
     return true;
   }
 }

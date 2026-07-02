@@ -441,7 +441,7 @@ export async function writeCommerceEnvVars(
 
   let existingContent = '';
   try {
-    existingContent = (await workspace.files.view({ path: '.env' })).content;
+    existingContent = await workspace.files.readText({ path: '.env' });
   } catch (err) {
     if (!isDevSupervisorNotFound(err)) {
       throw err;

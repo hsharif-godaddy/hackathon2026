@@ -15,14 +15,14 @@ import { createForWorkspace } from '../../workspace/index.js';
 describe('MemoryService.list error handling', () => {
   let service: MemoryService;
   let mockTree: ReturnType<typeof vi.fn>;
-  let mockView: ReturnType<typeof vi.fn>;
+  let mockReadText: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     vi.clearAllMocks();
     mockTree = vi.fn();
-    mockView = vi.fn();
+    mockReadText = vi.fn();
     vi.mocked(createForWorkspace).mockReturnValue({
-      files: { tree: mockTree, view: mockView },
+      files: { tree: mockTree, readText: mockReadText },
     } as any);
     service = new MemoryService();
   });
@@ -40,28 +40,26 @@ describe('MemoryService.list error handling', () => {
     await expect(service.list('app-123')).rejects.toThrow('connection refused');
   });
 
-  it('should skip entries that throw DevSupervisorError not_found on view', async () => {
+  it('should skip entries that throw DevSupervisorError not_found on readText', async () => {
     mockTree.mockResolvedValue({
       entries: [
         { kind: 'file', path: '.memory/ns/key1.md' },
         { kind: 'file', path: '.memory/ns/key2.md' },
       ],
     });
-    mockView
+    mockReadText
       .mockRejectedValueOnce(new DevSupervisorError('not_found', 404, 'file gone'))
-      .mockResolvedValueOnce({
-        content: '---\nkey: ns/key2\nnamespace: ns\n---\nvalue content',
-      });
+      .mockResolvedValueOnce('---\nkey: ns/key2\nnamespace: ns\n---\nvalue content');
 
     const result = await service.list('app-123');
     expect(result).toHaveLength(1);
   });
 
-  it('should propagate non-not-found errors from per-entry view', async () => {
+  it('should propagate non-not-found errors from per-entry readText', async () => {
     mockTree.mockResolvedValue({
       entries: [{ kind: 'file', path: '.memory/ns/key1.md' }],
     });
-    mockView.mockRejectedValue(new Error('supervisor unavailable'));
+    mockReadText.mockRejectedValue(new Error('supervisor unavailable'));
 
     await expect(service.list('app-123')).rejects.toThrow('supervisor unavailable');
   });

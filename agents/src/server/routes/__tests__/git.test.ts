@@ -72,7 +72,7 @@ vi.mock('../../../utils/dev-supervisor-client-factory.js', () => ({
 }));
 
 vi.mock('../../../workspace/index.js', () => ({
-  createForWorkspace: vi.fn(function () { return { tasks: {} }; }),
+  createForWorkspace: vi.fn(function () { return { tasks: {}, files: { readText: vi.fn().mockResolvedValue('') } }; }),
 }));
 
 vi.mock('../../../logging/index.js', async (importOriginal) => {
@@ -105,7 +105,7 @@ describe('git routes', function gitRouteTests() {
   beforeEach(function resetMocks() {
     vi.clearAllMocks();
 
-    vi.mocked(createForWorkspace).mockReturnValue({ tasks: {} } as ReturnType<typeof createForWorkspace>);
+    vi.mocked(createForWorkspace).mockReturnValue({ tasks: {}, files: { readText: vi.fn().mockResolvedValue('') } } as ReturnType<typeof createForWorkspace>);
     mocks.findById.mockReturnValue({ path: '/app' });
     mocks.getCurrentBranch.mockResolvedValue('main');
     mocks.getStatus.mockResolvedValue({ stagedFiles: 0 });

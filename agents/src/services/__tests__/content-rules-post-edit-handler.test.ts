@@ -53,6 +53,9 @@ function memoryFactory(
       const content: string = pageReader ? await pageReader() : (files[options.path] ?? '');
       return { path: options.path, content, encoding: 'utf-8', lines: 1, size: content.length, truncated: false };
     },
+    async readText(options: { path: string }): Promise<string> {
+      return pageReader ? pageReader() : (files[options.path] ?? '');
+    },
   } as unknown as WorkspaceFiles;
   return (): WorkspaceClient => ({ files: api } as unknown as WorkspaceClient);
 }

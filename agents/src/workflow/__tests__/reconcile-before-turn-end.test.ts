@@ -64,6 +64,10 @@ function setupWorkspaceMock(state: WorkflowState | null, overrides?: {
     ? vi.fn().mockResolvedValue({ content: JSON.stringify(state) })
     : vi.fn().mockRejectedValue(new Error('not_found'))
 
+  const mockReadText = state
+    ? vi.fn().mockResolvedValue(JSON.stringify(state))
+    : vi.fn().mockRejectedValue(new Error('not_found'))
+
   const mockRunCommandSync = overrides?.runCommandSync ?? vi.fn().mockResolvedValue({
     exitCode: 0, stdout: '', stderr: '', taskId: 't1', timedOut: false, executionTimeMs: 10,
   })
@@ -71,7 +75,7 @@ function setupWorkspaceMock(state: WorkflowState | null, overrides?: {
 
   mockCreateForWorkspace.mockReturnValue({
     tasks: { runCommandSync: mockRunCommandSync } as never,
-    files: { view: mockView, delete: mockDelete } as never,
+    files: { view: mockView, readText: mockReadText, delete: mockDelete } as never,
   } as never)
 
   mockFindById.mockReturnValue({ id: 'test-app', path: '/app' })

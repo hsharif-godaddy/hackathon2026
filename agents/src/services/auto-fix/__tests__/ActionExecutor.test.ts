@@ -42,7 +42,7 @@ function makeWorkspace(overrides?: {
     variant: 'preview',
     summary: vi.fn(),
     capabilities: vi.fn(),
-    files: { edit, write } as unknown as WorkspaceClient['files'],
+    files: { edit, write, readText: vi.fn().mockResolvedValue('') } as unknown as WorkspaceClient['files'],
     tasks: { runCommandSync } as unknown as WorkspaceClient['tasks'],
     runtime: {} as WorkspaceClient['runtime'],
     diagnostics: {} as WorkspaceClient['diagnostics'],

@@ -163,9 +163,8 @@ export class AppContextManager {
     let packageJson: Record<string, unknown>;
     let viewedContent: string | null = null;
     try {
-      const viewResult = await workspace.files.view({ path: 'package.json', limit: 10000 });
-      viewedContent = viewResult.content;
-      packageJson = JSON.parse(viewResult.content);
+      viewedContent = await workspace.files.readText({ path: 'package.json' });
+      packageJson = JSON.parse(viewedContent);
     } catch (error) {
       // No package.json yet (e.g. fresh template) is a legitimate "no info"
       // signal — return null. Anything else (transport, parse error)

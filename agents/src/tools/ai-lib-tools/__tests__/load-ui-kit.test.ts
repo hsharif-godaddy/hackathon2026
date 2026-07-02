@@ -17,6 +17,7 @@ const { workspaceFilesMock, workspaceMockState, MockDevSupervisorError, mockLogg
     stat: vi.fn(),
     tree: vi.fn(),
     view: vi.fn(),
+    readText: vi.fn().mockResolvedValue(''),
   }
   return {
     workspaceFilesMock: filesMock,
@@ -82,6 +83,8 @@ describe('loadUiKitAITool', () => {
     workspaceFilesMock.stat.mockReset()
     workspaceFilesMock.tree.mockReset()
     workspaceFilesMock.view.mockReset()
+    workspaceFilesMock.readText.mockReset()
+    workspaceFilesMock.readText.mockResolvedValue('')
     mockLogger.info.mockClear()
     mockLogger.warn.mockClear()
     mockLogger.error.mockClear()
@@ -105,7 +108,7 @@ describe('loadUiKitAITool', () => {
     const out = await runTool({}, ctx('app-1'))
     expect(out).toContain('No UI kit found')
     expect(workspaceFilesMock.tree).not.toHaveBeenCalled()
-    expect(workspaceFilesMock.view).not.toHaveBeenCalled()
+    expect(workspaceFilesMock.readText).not.toHaveBeenCalled()
   })
 
   it("returns 'No UI kit found' when docs/ui-kit is a file (defensive)", async () => {
@@ -168,10 +171,10 @@ describe('loadUiKitAITool', () => {
         if (!result) throw new MockDevSupervisorError('not_found', 404, `no such dir: ${path}`)
         return result
       })
-      workspaceFilesMock.view.mockImplementation(async ({ path }: { path: string }): Promise<ViewResult> => {
+      workspaceFilesMock.readText.mockImplementation(async ({ path }: { path: string }): Promise<string> => {
         const content = viewByPath[path]
         if (content === undefined) throw new MockDevSupervisorError('not_found', 404, `no such file: ${path}`)
-        return { path, content, encoding: 'utf-8', lines: content.split('\n').length, size: content.length, truncated: false }
+        return content
       })
     }
 
@@ -194,12 +197,12 @@ describe('loadUiKitAITool', () => {
       // Copy-reuse guardrail injected verbatim from the single shared source.
       expect(out).toContain(UI_KIT_COPY_GUARDRAIL)
 
-      const viewedPaths = workspaceFilesMock.view.mock.calls.map(
+      const readPaths = workspaceFilesMock.readText.mock.calls.map(
         (c) => (c[0] as { path: string }).path,
       )
-      expect(viewedPaths).toContain('docs/ui-kit/primitives/button.md')
-      expect(viewedPaths).toContain('docs/ui-kit/components/card.md')
-      expect(viewedPaths).not.toContain('docs/ui-kit/layouts/recipe-editorial.md')
+      expect(readPaths).toContain('docs/ui-kit/primitives/button.md')
+      expect(readPaths).toContain('docs/ui-kit/components/card.md')
+      expect(readPaths).not.toContain('docs/ui-kit/layouts/recipe-editorial.md')
     })
 
     it('omits "Additional References" section when no list-only files exist', async () => {
@@ -210,14 +213,7 @@ describe('loadUiKitAITool', () => {
         }
         throw new MockDevSupervisorError('not_found', 404, `no such dir: ${path}`)
       })
-      workspaceFilesMock.view.mockResolvedValue({
-        path: 'docs/ui-kit/primitives/button.md',
-        content: '# Button',
-        encoding: 'utf-8',
-        lines: 1,
-        size: 8,
-        truncated: false,
-      })
+      workspaceFilesMock.readText.mockResolvedValue('# Button')
 
       const out = await runTool({}, ctx('app-1'))
       expect(out).toContain('## primitives/button.md')
@@ -238,11 +234,11 @@ describe('loadUiKitAITool', () => {
         }
         throw new MockDevSupervisorError('not_found', 404, `no such dir: ${path}`)
       })
-      workspaceFilesMock.view.mockImplementation(async ({ path }: { path: string }): Promise<ViewResult> => {
+      workspaceFilesMock.readText.mockImplementation(async ({ path }: { path: string }): Promise<string> => {
         if (path === 'docs/ui-kit/primitives/gone.md') {
           throw new MockDevSupervisorError('not_found', 404, `vanished mid-call`)
         }
-        return { path, content: '# Button', encoding: 'utf-8', lines: 1, size: 8, truncated: false }
+        return '# Button'
       })
 
       const out = await runTool({}, ctx('app-1'))
@@ -267,14 +263,7 @@ describe('loadUiKitAITool', () => {
         }
         throw new MockDevSupervisorError('not_found', 404, `no such dir: ${path}`)
       })
-      workspaceFilesMock.view.mockResolvedValue({
-        path: 'docs/ui-kit/primitives/button.md',
-        content: '# Button',
-        encoding: 'utf-8',
-        lines: 1,
-        size: 8,
-        truncated: false,
-      })
+      workspaceFilesMock.readText.mockResolvedValue('# Button')
 
       await runTool({}, ctx('app-1'))
       expect(mockLogger.warn).toHaveBeenCalledWith(
@@ -283,7 +272,7 @@ describe('loadUiKitAITool', () => {
       )
     })
 
-    it('logs tool.load_ui_kit.view_truncated when the supervisor caps view results', async () => {
+    it('returns content from readText for large files (truncation is now handled upstream)', async () => {
       workspaceFilesMock.stat.mockResolvedValue({ entries: [dirEntry('docs/ui-kit')] })
       workspaceFilesMock.tree.mockImplementation(async ({ path }: { path: string }): Promise<TreeResult> => {
         if (path === 'docs/ui-kit/primitives') {
@@ -291,20 +280,11 @@ describe('loadUiKitAITool', () => {
         }
         throw new MockDevSupervisorError('not_found', 404, `no such dir: ${path}`)
       })
-      workspaceFilesMock.view.mockResolvedValue({
-        path: 'docs/ui-kit/primitives/huge.md',
-        content: '# Huge',
-        encoding: 'utf-8',
-        lines: 65536,
-        size: 9999,
-        truncated: true,
-      })
+      workspaceFilesMock.readText.mockResolvedValue('# Huge')
 
-      await runTool({}, ctx('app-1'))
-      expect(mockLogger.warn).toHaveBeenCalledWith(
-        'tool.load_ui_kit.view_truncated',
-        expect.objectContaining({ path: 'docs/ui-kit/primitives/huge.md' }),
-      )
+      const out = await runTool({}, ctx('app-1'))
+      expect(out).toContain('## primitives/huge.md')
+      expect(out).toContain('# Huge')
     })
 
     it('propagates non-not-found errors from tree()', async () => {
@@ -314,7 +294,7 @@ describe('loadUiKitAITool', () => {
       await expect(runTool({}, ctx('app-1'))).rejects.toMatchObject({ code: 'transport_error' })
     })
 
-    it('propagates non-not-found errors from view()', async () => {
+    it('propagates non-not-found errors from readText()', async () => {
       workspaceFilesMock.stat.mockResolvedValue({ entries: [dirEntry('docs/ui-kit')] })
       workspaceFilesMock.tree.mockImplementation(async ({ path }: { path: string }): Promise<TreeResult> => {
         if (path === 'docs/ui-kit/primitives') {
@@ -322,7 +302,7 @@ describe('loadUiKitAITool', () => {
         }
         throw new MockDevSupervisorError('not_found', 404, `no such dir: ${path}`)
       })
-      workspaceFilesMock.view.mockRejectedValue(new MockDevSupervisorError('permission_denied', 403, 'nope'))
+      workspaceFilesMock.readText.mockRejectedValue(new MockDevSupervisorError('permission_denied', 403, 'nope'))
 
       await expect(runTool({}, ctx('app-1'))).rejects.toMatchObject({ code: 'permission_denied' })
     })
@@ -347,9 +327,8 @@ describe('loadUiKitAITool', () => {
           ),
         }
       })
-      workspaceFilesMock.view.mockImplementation(async ({ path }: { path: string }): Promise<ViewResult> => {
-        const content = path.endsWith('recipe-editorial.md') ? '# Recipe' : '# Showcase'
-        return { path, content, encoding: 'utf-8', lines: 1, size: content.length, truncated: false }
+      workspaceFilesMock.readText.mockImplementation(async ({ path }: { path: string }): Promise<string> => {
+        return path.endsWith('recipe-editorial.md') ? '# Recipe' : '# Showcase'
       })
 
       const out = await runTool(
@@ -393,7 +372,7 @@ describe('loadUiKitAITool', () => {
       expect(out).toContain('**../../etc/passwd**: Skipped (invalid path)')
       expect(out).toContain('**/etc/shadow**: Skipped (invalid path)')
       expect(workspaceFilesMock.stat).toHaveBeenCalledTimes(1)
-      expect(workspaceFilesMock.view).not.toHaveBeenCalled()
+      expect(workspaceFilesMock.readText).not.toHaveBeenCalled()
     })
 
     it("returns 'Not found' for a missing include path", async () => {
@@ -404,7 +383,7 @@ describe('loadUiKitAITool', () => {
 
       const out = await runTool({ include: ['layouts/missing.md'] }, ctx('app-1'))
       expect(out).toContain('**layouts/missing.md**: Not found')
-      expect(workspaceFilesMock.view).not.toHaveBeenCalled()
+      expect(workspaceFilesMock.readText).not.toHaveBeenCalled()
     })
 
     it("returns 'Not found' when an include points at a directory", async () => {
@@ -415,7 +394,7 @@ describe('loadUiKitAITool', () => {
 
       const out = await runTool({ include: ['layouts'] }, ctx('app-1'))
       expect(out).toContain('**layouts**: Not found')
-      expect(workspaceFilesMock.view).not.toHaveBeenCalled()
+      expect(workspaceFilesMock.readText).not.toHaveBeenCalled()
     })
 
     it('produces only the heading when every include is invalid', async () => {
@@ -424,7 +403,7 @@ describe('loadUiKitAITool', () => {
       const out = await runTool({ include: ['../foo', '/bar'] }, ctx('app-1'))
       expect(out).toContain('# UI Kit — Requested References')
       expect(workspaceFilesMock.stat).toHaveBeenCalledTimes(1)
-      expect(workspaceFilesMock.view).not.toHaveBeenCalled()
+      expect(workspaceFilesMock.readText).not.toHaveBeenCalled()
     })
 
     it('treats include: [] as default mode (no requested-references heading)', async () => {

@@ -7,7 +7,7 @@ import { appsRouter } from '../apps.js';
 import { AppRepository } from '../../../database/index.js';
 
 vi.mock('../../../workspace/index.js', () => ({
-  createForWorkspace: vi.fn(),
+  createForWorkspace: vi.fn(function () { return { files: { readText: vi.fn().mockResolvedValue('') } }; }),
 }));
 
 vi.mock('../../../utils/git.js', () => {

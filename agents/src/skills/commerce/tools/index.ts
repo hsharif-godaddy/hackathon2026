@@ -402,10 +402,8 @@ RETURNS:
       const files: CommerceCheckoutGuardFile[] = [];
       for (const path of candidatePaths) {
         try {
-          const viewed = await workspace.files.view({ path, limit: 20_000 });
-          if (viewed.encoding === 'utf-8') {
-            files.push({ path, content: viewed.content });
-          }
+          const content: string = await workspace.files.readText({ path });
+          files.push({ path, content });
         } catch (err) {
           logger.warn('commerce_checkout_guard.view_failed', {
             appId,

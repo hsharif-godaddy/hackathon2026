@@ -59,6 +59,24 @@ vi.mock('../../workspace/index.js', () => {
           nodeFs.writeFileSync(full, content);
           return { bytesWritten: content.length };
         },
+        stat: async ({ paths }: { paths: string[] }) => {
+          const entries = paths.map((p: string) => {
+            const full = nodePath.join(basePath, p);
+            if (nodeFs.existsSync(full)) {
+              const s = nodeFs.statSync(full);
+              return { path: p, kind: s.isDirectory() ? 'directory' : 'file', size: s.size, modifiedAt: '' };
+            }
+            return { path: p, error: 'not_found' };
+          });
+          return { entries };
+        },
+        readText: async ({ path: filePath }: { path: string }) => {
+          const full = nodePath.join(basePath, filePath);
+          if (!nodeFs.existsSync(full)) {
+            throw new MockDevSupervisorError('not_found', 404, `${filePath}: no such file or directory`);
+          }
+          return nodeFs.readFileSync(full, 'utf-8');
+        },
         tree: async ({ path: treePath, recursive }: { path?: string; recursive?: boolean } = {}) => {
           const base = nodePath.join(basePath, treePath ?? '');
           const entries: Array<{ path: string; kind: string; size: number; modifiedAt: string }> = [];

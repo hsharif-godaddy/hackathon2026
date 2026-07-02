@@ -62,8 +62,8 @@ export async function readWorkflowState(appId: string): Promise<WorkflowState | 
     return null
   }
   try {
-    const result = await workspace.files.view({ path: WORKFLOW_PATH })
-    const state: unknown = JSON.parse(result.content)
+    const content: string = await workspace.files.readText({ path: WORKFLOW_PATH })
+    const state: unknown = JSON.parse(content)
     if (!isValidWorkflowState(state)) {
       logger.warn('workflow_store.read.invalid_schema', { appId })
       return null

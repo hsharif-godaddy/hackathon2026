@@ -8,6 +8,7 @@ const { mockFindById, mockFiles, mockResolveSourceFile, mockListUploadedFiles } 
   mockFindById: vi.fn(),
   mockFiles: {
     view: vi.fn(),
+    readText: vi.fn(),
     tree: vi.fn(),
     search: vi.fn(),
     write: vi.fn(),

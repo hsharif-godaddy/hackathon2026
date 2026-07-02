@@ -116,7 +116,7 @@ async function readEnvFallbackValues(appId: string): Promise<CommercePublishEnvV
 
   let content = '';
   try {
-    content = (await workspace.files.view({ path: '.env' })).content;
+    content = await workspace.files.readText({ path: '.env' });
   } catch (err) {
     if (!isDevSupervisorNotFound(err)) {
       logger.warn('commerce_publish_env.env_fallback_read_failed', {

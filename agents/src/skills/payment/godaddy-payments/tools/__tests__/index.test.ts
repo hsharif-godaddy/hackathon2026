@@ -11,6 +11,7 @@ const {
   mockUpsertBinding,
   mockWorkspaceWrite,
   mockWorkspaceView,
+  mockWorkspaceReadText,
 } = vi.hoisted(() => ({
   mockExecuteAction: vi.fn(),
   mockFindBindingByAppId: vi.fn(),
@@ -19,6 +20,7 @@ const {
   mockUpsertBinding: vi.fn(),
   mockWorkspaceWrite: vi.fn(),
   mockWorkspaceView: vi.fn(),
+  mockWorkspaceReadText: vi.fn(),
 }));
 
 vi.mock('../../../../../server/agent-runtime.js', () => ({
@@ -69,9 +71,11 @@ describe('GoDaddy Payments skill MCP tools', () => {
       files: {
         view: mockWorkspaceView,
         write: mockWorkspaceWrite,
+        readText: mockWorkspaceReadText,
       },
     });
     mockWorkspaceWrite.mockResolvedValue({ bytesWritten: 100 });
+    mockWorkspaceReadText.mockResolvedValue('');
     mockWorkspaceView.mockResolvedValue({
       content: '',
       encoding: 'utf-8',

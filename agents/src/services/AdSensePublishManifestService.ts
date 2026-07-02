@@ -58,10 +58,10 @@ export class AdSensePublishManifestService {
     workspace: Pick<WorkspaceClient, 'files'>,
   ): Promise<AdSenseAuthoringConfigReadResult> {
     try {
-      const result = await workspace.files.view({ path: ADSENSE_AUTHORING_CONFIG_PATH });
+      const content: string = await workspace.files.readText({ path: ADSENSE_AUTHORING_CONFIG_PATH });
 
       try {
-        return { status: 'ok', value: JSON.parse(result.content) as unknown };
+        return { status: 'ok', value: JSON.parse(content) as unknown };
       } catch (error) {
         if (error instanceof SyntaxError) {
           return {

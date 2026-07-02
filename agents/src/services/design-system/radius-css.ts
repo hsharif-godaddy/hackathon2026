@@ -29,7 +29,7 @@ export async function updateCssRadius(files: WorkspaceFiles, radiusBasePx: numbe
     return false
   }
   try {
-    const { content } = await files.view({ path: GLOBALS_CSS_PATH })
+    const content: string = await files.readText({ path: GLOBALS_CSS_PATH })
     const updated: string = content.replace(RADIUS_VAR_REGEX, `$1--radius: ${radiusBasePx}px;`)
     if (updated === content) {
       logger.warn('design_system.radius.skipped', { reason: 'no_radius_declaration' })

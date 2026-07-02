@@ -19,8 +19,9 @@ vi.mock('../../../services/RebuildOrchestrationService.js', () => ({
 }));
 
 const mockView = vi.fn();
+const mockReadText = vi.fn();
 vi.mock('../../../workspace/index.js', () => ({
-  createForWorkspace: vi.fn(() => ({ files: { view: mockView } })),
+  createForWorkspace: vi.fn(() => ({ files: { view: mockView, readText: mockReadText } })),
 }));
 
 vi.mock('../../../services/DevSupervisorClient.js', () => ({
@@ -43,10 +44,10 @@ function setWorkspace(opts: { workflowState?: WorkflowState | null; sitemap?: Si
     ? { pages: [{ slug: 'about', title: 'About', url: 'https://x.com/about', scraped: true }], totalPages: 2 }
     : opts.sitemap;
 
-  mockView.mockImplementation(({ path }: { path: string }) => {
+  mockReadText.mockImplementation(({ path }: { path: string }) => {
     const data = path.includes('workflow-state') ? workflowState : sitemap;
     if (data === null) throw new Error('not_found');
-    return { content: JSON.stringify(data) };
+    return JSON.stringify(data);
   });
 }
 

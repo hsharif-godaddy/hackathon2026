@@ -671,7 +671,7 @@ describe('campaignScaffoldPage scaffold behavior', () => {
 
   it('returns success:false with no files when the write throws', async () => {
     vi.mocked(createForWorkspace).mockReturnValue({
-      files: { write: vi.fn().mockRejectedValue(new Error('disk full')) },
+      files: { write: vi.fn().mockRejectedValue(new Error('disk full')), readText: vi.fn().mockResolvedValue('') },
     } as any)
     const result = await run(campaignScaffoldPage, {
       startDate: '2026-07-01',
@@ -693,16 +693,18 @@ describe('campaignScaffoldPage scaffold behavior', () => {
     ].join('\n')
 
     const write = vi.fn().mockResolvedValue(undefined)
-    // The real workspace read API is `view`; a missing path throws. Return '[]'
-    // for the manifest and the v8 routes for routes.tsx; throw for infra paths so
-    // the write-if-absent branch runs.
+    const readText = vi.fn(async ({ path }: { path: string }): Promise<string> => {
+      if (path === 'src/content/data/landingPages.json') return '[]';
+      if (path === 'src/routes.tsx') return ROUTES_CONTENT;
+      notFound();
+      return '';
+    });
     const view = vi.fn(async ({ path }: { path: string }) => {
       if (path === 'src/content/data/landingPages.json') return { content: '[]' }
       if (path === 'src/routes.tsx') return { content: ROUTES_CONTENT }
       notFound()
     })
-    vi.mocked(createForWorkspace).mockReturnValue({ files: { write, view } } as any)
-
+    vi.mocked(createForWorkspace).mockReturnValue({ files: { write, view, readText } } as any)
     const result = await run(campaignScaffoldPage, {
       startDate: '2026-07-01',
       endDate: '2026-07-07',
@@ -738,12 +740,18 @@ describe('campaignScaffoldPage scaffold behavior', () => {
     ].join('\n')
 
     const write = vi.fn().mockResolvedValue(undefined)
+    const readText = vi.fn(async ({ path }: { path: string }): Promise<string> => {
+      if (path === 'src/content/data/landingPages.json') return '[]';
+      if (path === 'src/routes.tsx') return ROUTES_CONTENT_NO_CATCH_ALL;
+      notFound();
+      return '';
+    });
     const view = vi.fn(async ({ path }: { path: string }) => {
       if (path === 'src/content/data/landingPages.json') return { content: '[]' }
       if (path === 'src/routes.tsx') return { content: ROUTES_CONTENT_NO_CATCH_ALL }
       notFound()
     })
-    vi.mocked(createForWorkspace).mockReturnValue({ files: { write, view } } as any)
+    vi.mocked(createForWorkspace).mockReturnValue({ files: { write, view, readText } } as any)
 
     const result = await run(campaignScaffoldPage, {
       startDate: '2026-07-01',
@@ -892,6 +900,10 @@ describe('campaignApplyBlogUtm', () => {
           return { path, content: markdownByPath[path] }
         }),
         write: vi.fn(async (opts: { path: string; content: string }) => { writes.push(opts); return {} }),
+        readText: vi.fn(async ({ path }: { path: string }) => {
+          if (markdownByPath[path] === undefined) throw new Error('not found')
+          return markdownByPath[path]
+        }),
       },
     } as never)
     return { writes }
