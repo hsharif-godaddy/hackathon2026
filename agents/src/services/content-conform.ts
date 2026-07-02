@@ -167,10 +167,29 @@ async function restore(files: WorkspaceFiles, snap: Snapshot): Promise<void> {
   await files.write({ path: snap.relPath, content: snap.before });
 }
 
-/** Strip the content-layer `id` minted onto each collection item. */
-function withoutId(item: Record<string, unknown>): Record<string, unknown> {
-  const { id: _id, ...rest } = item;
-  return rest;
+/**
+ * Recursively strip the content-layer `id` minted onto every collection item at
+ * ANY depth, returning a deep copy. Mirrors scaffold's `ensureCollectionIds`,
+ * which mints ids on every object that is an array element at any depth (S3
+ * nested collections). The round-trip comparison MUST strip both the on-disk
+ * value (ids minted at all depths) and the pre-scaffold clone (no ids) with the
+ * same recursion, or a nested heal false-fails and rolls back. Scalars pass
+ * through untouched (subsumes the S4 scalar-array guard); a flat object array
+ * loses only its top-level `id` (identical to the prior top-level strip).
+ */
+function stripCollectionIds(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(stripCollectionIds);
+  }
+  if (value !== null && typeof value === 'object') {
+    const entries: [string, unknown][] = Object.entries(value as Record<string, unknown>).filter(
+      ([key]: [string, unknown]): boolean => key !== 'id',
+    );
+    return Object.fromEntries(
+      entries.map(([key, v]: [string, unknown]): [string, unknown] => [key, stripCollectionIds(v)]),
+    );
+  }
+  return value;
 }
 
 /** Keys whose value is an array in a content JSON blob (null/invalid ⇒ empty). */
@@ -299,15 +318,11 @@ async function validateConform(ctx: ValidationContext): Promise<string | null> {
     // misalign at index `i`. Acceptable for now — a full re-conform is a rare
     // heal path and the user can correct it via the content editor.
     if (ctx.preExistingArrays.has(name)) continue;
-    // `withoutId` strips the minted `id` off object items; scalar items (S4
-    // scalar arrays — plain strings/numbers) carry no id and pass through
-    // untouched. Both sides MUST apply the same guard or a scalar array's
-    // `want` would destructure each string into `{0:'…',1:'…'}` and every
-    // scalar heal would false-fail the round-trip and roll back.
-    const stripId: (item: unknown) => unknown = (item: unknown): unknown =>
-      item !== null && typeof item === 'object' ? withoutId(item as Record<string, unknown>) : item;
-    const want: unknown[] = expected[name]!.map(stripId);
-    const got: unknown[] = actual.map(stripId);
+    // Strip minted ids at ALL depths from both sides before comparing — nested
+    // collections (S3) get ids minted on inner array-element objects too, so a
+    // top-level-only strip would leave inner ids on `got` and false-fail.
+    const want: unknown = stripCollectionIds(expected[name]!);
+    const got: unknown = stripCollectionIds(actual);
     if (JSON.stringify(got) !== JSON.stringify(want)) {
       return `round-trip mismatch for '${name}' in pages/${plan.binding}.json`;
     }

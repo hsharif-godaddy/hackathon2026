@@ -21,8 +21,16 @@ const PARSE_OPTS: { sourceType: 'module'; plugins: ['jsx', 'typescript'] } = {
 /** A literal value JSON can represent: string, number, boolean, or null. */
 type LiteralValue = string | number | boolean | null;
 
-/** A scalar-array heal lifts to LiteralValue[]; an object-array heal to Record<…>[]. */
-export type ExtractedData = LiteralValue[] | Record<string, LiteralValue>[];
+/** Any JSON-representable value: a literal, a nested array, or a nested object. */
+type JsonValue = LiteralValue | JsonValue[] | { [key: string]: JsonValue };
+
+/**
+ * The extracted content payload for one array. A flat scalar array is a
+ * `LiteralValue[]` (S4), a flat object array a `Record<string, LiteralValue>[]`
+ * (S1), and a nested collection an array of nested objects/arrays (S3) — all
+ * subsumed by `JsonValue[]`.
+ */
+export type ExtractedData = JsonValue[];
 
 export interface ExtractableArray {
   arrayName: string;
@@ -72,21 +80,78 @@ function literalValue(node: t.Node): LiteralValue {
 interface ElementSplit {
   ok: boolean;
   reason: string | null;
-  extractable: Record<string, LiteralValue> | null;
+  extractable: Record<string, JsonValue> | null;
   retainedKeys: string[];
 }
 
+type LiftResult = { ok: true; value: JsonValue } | { ok: false; reason: string };
+
 /**
- * Partition one array element's fields into extractable literals (lifted to the
- * content layer) and retained non-literal refs (e.g. `icon: Target`, left local).
- * Nested array/object, JSX, functions, spreads, methods, and computed/non-literal
- * keys remain HARD skips of the whole array — deferred to a later slice.
+ * Recursively lift a nested value (an array or object prop inside an array
+ * element) into serializable JSON. Everything below the top level must be
+ * pure-liftable: literals, nested literal arrays/objects, and nested scalar
+ * arrays. A component/const ref, JSX, function, spread, method, or computed key
+ * found at any nested depth declines the whole array — refs are lifted-vs-
+ * retained only at the TOP level (that split stays non-recursive). Never throws.
+ */
+function liftValue(node: t.Node): LiftResult {
+  if (literalKind(node)) {
+    return { ok: true, value: literalValue(node) };
+  }
+  if (t.isArrayExpression(node)) {
+    const out: JsonValue[] = [];
+    for (const el of node.elements) {
+      if (el === null) return { ok: false, reason: 'a nested array with a hole/elision' };
+      if (t.isSpreadElement(el)) return { ok: false, reason: 'a nested array with a spread element' };
+      const lifted: LiftResult = liftValue(el);
+      if (!lifted.ok) return lifted;
+      out.push(lifted.value);
+    }
+    return { ok: true, value: out };
+  }
+  if (t.isObjectExpression(node)) {
+    const out: Record<string, JsonValue> = {};
+    for (const prop of node.properties) {
+      if (t.isSpreadElement(prop) || t.isObjectMethod(prop)) {
+        return { ok: false, reason: 'a nested object with a spread or method' };
+      }
+      if (prop.computed) return { ok: false, reason: 'a nested object with a computed key' };
+      const key: string | null = t.isIdentifier(prop.key)
+        ? prop.key.name
+        : t.isStringLiteral(prop.key)
+          ? prop.key.value
+          : null;
+      if (key === null) return { ok: false, reason: 'a nested object with a non-literal key' };
+      const lifted: LiftResult = liftValue(prop.value);
+      if (!lifted.ok) return lifted;
+      out[key] = lifted.value;
+    }
+    return { ok: true, value: out };
+  }
+  if (t.isJSXElement(node) || t.isJSXFragment(node)) {
+    return { ok: false, reason: 'nested JSX (non-serializable)' };
+  }
+  if (t.isFunction(node) || t.isArrowFunctionExpression(node)) {
+    return { ok: false, reason: 'a nested function (non-serializable)' };
+  }
+  if (t.isIdentifier(node) || t.isMemberExpression(node)) {
+    return { ok: false, reason: 'a nested component/const ref (only top-level refs are retained)' };
+  }
+  return { ok: false, reason: 'a nested unsupported value' };
+}
+
+/**
+ * Partition one array element's fields into extractable content (literals plus,
+ * per S3, recursively-lifted nested arrays/objects) and retained top-level
+ * non-literal refs (e.g. `icon: Target`, left local). JSX, functions, spreads,
+ * methods, computed/non-literal keys, and refs found NESTED (below the top
+ * level) remain HARD skips of the whole array.
  */
 function validateElement(el: t.Node): ElementSplit {
   if (!t.isObjectExpression(el)) {
     return { ok: false, reason: 'array element is not an object literal', extractable: null, retainedKeys: [] };
   }
-  const extractable: Record<string, LiteralValue> = {};
+  const extractable: Record<string, JsonValue> = {};
   const retainedKeys: string[] = [];
   for (const prop of el.properties) {
     if (t.isSpreadElement(prop) || t.isObjectMethod(prop)) {
@@ -104,14 +169,6 @@ function validateElement(el: t.Node): ElementSplit {
       return { ok: false, reason: 'object element has a non-literal key', extractable: null, retainedKeys: [] };
     }
     const propValue: t.Node = prop.value;
-    if (t.isArrayExpression(propValue) || t.isObjectExpression(propValue)) {
-      return {
-        ok: false,
-        reason: `property "${key}" holds a nested array/object (non-flat)`,
-        extractable: null,
-        retainedKeys: [],
-      };
-    }
     if (t.isJSXElement(propValue) || t.isJSXFragment(propValue)) {
       return { ok: false, reason: `property "${key}" holds JSX (non-serializable)`, extractable: null, retainedKeys: [] };
     }
@@ -125,8 +182,16 @@ function validateElement(el: t.Node): ElementSplit {
     }
     if (literalKind(propValue)) {
       extractable[key] = literalValue(propValue);
+    } else if (t.isArrayExpression(propValue) || t.isObjectExpression(propValue)) {
+      // S3: recursively lift a nested array/object. Declines (nested ref/JSX/
+      // function/spread) propagate as a whole-array skip with the reason.
+      const lifted: LiftResult = liftValue(propValue);
+      if (!lifted.ok) {
+        return { ok: false, reason: `property "${key}" holds ${lifted.reason}`, extractable: null, retainedKeys: [] };
+      }
+      extractable[key] = lifted.value;
     } else if (t.isIdentifier(propValue) || (t.isMemberExpression(propValue) && !propValue.computed)) {
-      // Component/const ref (e.g. `icon: Target`) — retained locally, not lifted.
+      // Top-level component/const ref (e.g. `icon: Target`) — retained locally, not lifted.
       retainedKeys.push(key);
     } else {
       return { ok: false, reason: `property "${key}" holds an unsupported value`, extractable: null, retainedKeys: [] };
@@ -180,7 +245,7 @@ function validateArray(arrayExpr: t.ArrayExpression): ArrayShapeCheck {
   if (firstEl != null && !t.isSpreadElement(firstEl) && literalKind(firstEl)) {
     return validateScalarArray(arrayExpr);
   }
-  const data: Record<string, LiteralValue>[] = [];
+  const data: Record<string, JsonValue>[] = [];
   let retainedSignature: string | null = null;
   let retainedKeys: string[] = [];
   for (const el of arrayExpr.elements) {
@@ -745,6 +810,30 @@ function redirectRetainedReadsForCall(
         (parentNode as t.MemberExpression).object === (node as unknown as t.Node) &&
         !(parentNode as t.MemberExpression).computed;
       if (isSafeNonComputedMember) {
+        this.traverse(idPath);
+        return undefined;
+      }
+      // Non-computed member PROPERTY `x.<itemName>` — the identifier is a
+      // property name that merely collides with the item param name (e.g. a
+      // `category` param over items whose lifted field is also `category`), not a
+      // reference to the param. Safe. (Guards the property side of a member; the
+      // object side is handled above.)
+      const isNonComputedMemberProperty: boolean =
+        t.isMemberExpression(parentNode) &&
+        (parentNode as t.MemberExpression).property === (node as unknown as t.Node) &&
+        !(parentNode as t.MemberExpression).computed;
+      if (isNonComputedMemberProperty) {
+        this.traverse(idPath);
+        return undefined;
+      }
+      // Object-property key `{ <itemName>: … }` (non-computed, non-shorthand) —
+      // likewise a key name colliding with the param, not a reference.
+      const isNonComputedObjectKey: boolean =
+        t.isObjectProperty(parentNode) &&
+        (parentNode as t.ObjectProperty).key === (node as unknown as t.Node) &&
+        !(parentNode as t.ObjectProperty).computed &&
+        !(parentNode as t.ObjectProperty).shorthand;
+      if (isNonComputedObjectKey) {
         this.traverse(idPath);
         return undefined;
       }
@@ -1330,12 +1419,28 @@ export function planPageExtraction(
       .filter((c: ArrayConst): boolean => c.scopeBlockType === 'Program')
       .map((c: ArrayConst): string => c.name),
   );
-  const toExtract: ExtractableArray[] = analysis.extractions.filter(
-    (p) => !(alreadyImports && !existingConsts.has(p.arrayName)),
-  );
+  // The batch (S1, name-based) retained-split only locates MODULE-LEVEL
+  // declarators, so a function-local array with retained fields (e.g. Hot Ham
+  // `portfolioItems` — function-local, `icon` retained) cannot be split here and
+  // must heal via the id-addressed path (S2). Skip it rather than let the split
+  // throw and poison sibling extractions in the same batch. `existingConsts` is
+  // exactly the set of module-level array-const names, so absence ⇒ function-local.
+  const batchSkips: ExtractSkip[] = [];
+  const toExtract: ExtractableArray[] = [];
+  for (const p of analysis.extractions) {
+    if (alreadyImports && !existingConsts.has(p.arrayName)) continue; // already extracted (idempotent no-op)
+    if (p.retainedKeys.length > 0 && !existingConsts.has(p.arrayName)) {
+      batchSkips.push({
+        name: p.arrayName,
+        reason: 'function-local array with retained fields — heal via id-addressed conform (batch path is module-level only)',
+      });
+      continue;
+    }
+    toExtract.push(p);
+  }
 
   if (toExtract.length === 0) {
-    return { binding, extractedNames: [], arraysWithRetained: [], skipped: analysis.skipped };
+    return { binding, extractedNames: [], arraysWithRetained: [], skipped: [...analysis.skipped, ...batchSkips] };
   }
 
   const extractedNames: string[] = toExtract.map((p) => p.arrayName);
@@ -1355,7 +1460,7 @@ export function planPageExtraction(
     binding,
     extractedNames,
     arraysWithRetained,
-    skipped: analysis.skipped,
+    skipped: [...analysis.skipped, ...batchSkips],
     content,
     newPageSource,
   };

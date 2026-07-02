@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { analyzeExtractable, bindingForPage, planPageExtraction } from '../content-extract.js';
-import type { ExtractionPlan, ExtractableArray } from '../content-extract.js';
+import type { ExtractionPlan, ExtractableArray, ExtractSkip } from '../content-extract.js';
 
 // ── analyzeExtractable: the safe-or-skip gate ─────────────────────────────────
 //
@@ -157,7 +157,7 @@ describe('analyzeExtractable — declines with a reason', () => {
     expect(v.reason).toMatch(/non-serializable|function/i);
   });
 
-  it('nested non-serializable: array-valued property (nested objects)', () => {
+  it('nested array-valued property (nested objects) — now lifts recursively (S3)', () => {
     const code: string = `
       const faqGroups = [
         { topic: "T", faqs: [{ q: "a", a: "b" }] },
@@ -166,9 +166,13 @@ describe('analyzeExtractable — declines with a reason', () => {
         return <div>{faqGroups.map((g) => <h3 key={g.topic}>{g.topic}</h3>)}</div>;
       }
     `;
-    const v: { extracted: boolean; reason: string | null } = verdict(code, 'faqGroups');
-    expect(v.extracted).toBe(false);
-    expect(v.reason).toMatch(/nested|array/i);
+    const report: ReturnType<typeof analyzeExtractable> = analyzeExtractable(code, 'home');
+    const extraction: ExtractableArray | undefined = report.extractions.find(
+      (p: ExtractableArray): boolean => p.arrayName === 'faqGroups',
+    );
+    expect(extraction).toBeDefined();
+    expect(extraction!.data).toEqual([{ topic: 'T', faqs: [{ q: 'a', a: 'b' }] }]);
+    expect(extraction!.retainedKeys).toEqual([]);
   });
 
   it('computed (dynamic) key in an element object', () => {
@@ -513,12 +517,13 @@ export default function P() { return <>{only.map((s, i) => <span key={i}><s.icon
     expect(out.skipped[0].reason).toMatch(/no extractable/i);
   });
 
-  it('still hard-skips nested array/object/JSX/function fields (defer to S3)', () => {
+  it('lifts nested array/object fields recursively (S3)', () => {
     const src: string = `const items = [{ title: 'x', projects: [1,2] }];
 export default function P() { return <>{items.map((s, i) => <span key={i}>{s.title}</span>)}</>; }`;
     const out: ReturnType<typeof analyzeExtractable> = analyzeExtractable(src, 'home');
-    expect(out.extractions).toHaveLength(0);
-    expect(out.skipped[0].reason).toMatch(/non-flat/);
+    expect(out.extractions).toHaveLength(1);
+    expect(out.extractions[0].data).toEqual([{ title: 'x', projects: [1, 2] }]);
+    expect(out.extractions[0].retainedKeys).toEqual([]);
   });
 
   it('requires retained keys to be identical across elements', () => {
@@ -1420,22 +1425,52 @@ describe('real customer bundle shapes (S2 — function-local)', () => {
     });
   });
 
-  // S3 STILL DECLINES: portfolioItems has a nested `projects: [...]` array-valued
-  // property — hard-skipped as non-flat regardless of function-local scope.
-  // This is intentional; S3 will handle nested arrays.
-  describe('STILL DECLINES — portfolioItems (function-local + nested projects array, S3 shape)', () => {
-    it('analyzeExtractable does NOT include portfolioItems — nested array-valued property skips it', () => {
+  // S3 NOW HEALS portfolioItems: nested `projects[]` (with a nested `testimonial`
+  // object and `tags[]` scalar array) is recursively lifted; the top-level `icon`
+  // ref is retained. Because it is function-local AND retained, the batch path
+  // defers it (module-level only) — it heals via the id-addressed path.
+  describe('NOW HEALS — portfolioItems (function-local nested, S3 shape)', () => {
+    it('analyzeExtractable DOES include portfolioItems with fully-lifted nested data + retained icon', () => {
       const report: ReturnType<typeof analyzeExtractable> = analyzeExtractable(
         HOT_HAM_PORTFOLIO_S2,
         'portfolio',
       );
-      const found: boolean = report.extractions.some((e) => e.arrayName === 'portfolioItems');
-      expect(found).toBe(false);
-      // Skipped with a non-flat reason (nested array/object property).
-      const skip: ReturnType<typeof analyzeExtractable>['skipped'][number] | undefined =
-        report.skipped.find((s) => s.name === 'portfolioItems');
+      const extraction: ExtractableArray | undefined = report.extractions.find(
+        (e: ExtractableArray): boolean => e.arrayName === 'portfolioItems',
+      );
+      expect(extraction).toBeDefined();
+      expect(extraction!.retainedKeys).toEqual(['icon']);
+      // Nested projects[] lifted, including the nested tags[] scalar array.
+      const first: Record<string, unknown> = extraction!.data[0] as Record<string, unknown>;
+      const projects: Record<string, unknown>[] = first.projects as Record<string, unknown>[];
+      expect(Array.isArray(projects)).toBe(true);
+      expect(projects[0].title).toBe('Government Affairs Advocacy');
+      expect(Array.isArray(projects[0].tags)).toBe(true);
+      expect(projects[0].tags).toEqual(['Government Affairs', 'Advocacy']);
+      // icon (a component ref) is NOT lifted — retained locally.
+      expect(first.icon).toBeUndefined();
+    });
+
+    it('id-addressed plan heals it: nested content lifted, declarator dropped, icon remainder kept', () => {
+      const id: string = analyzeExtractable(HOT_HAM_PORTFOLIO_S2, 'portfolio').extractions.find(
+        (e: ExtractableArray): boolean => e.arrayName === 'portfolioItems',
+      )!.locId!;
+      const plan: ExtractionPlan = planPageExtraction(HOT_HAM_PORTFOLIO_S2, 'src/pages/portfolio.tsx', id);
+      expect(plan.extractedNames).toContain('portfolioItems');
+      const out: string = plan.newPageSource!;
+      expect(out).toMatch(/portfolio\.portfolioItems\.map/);
+      expect(out).not.toMatch(/const portfolioItems\s*[:=]/);
+      expect(out).toMatch(/portfolioItemsMeta/); // icon remainder retained
+    });
+
+    it('batch path defers it (function-local + retained) instead of throwing', () => {
+      const plan: ExtractionPlan = planPageExtraction(HOT_HAM_PORTFOLIO_S2, 'src/pages/portfolio.tsx');
+      expect(plan.extractedNames).not.toContain('portfolioItems');
+      const skip: ExtractSkip | undefined = plan.skipped.find(
+        (s: ExtractSkip): boolean => s.name === 'portfolioItems',
+      );
       expect(skip).toBeDefined();
-      expect(skip!.reason).toMatch(/non-flat/i);
+      expect(skip!.reason).toMatch(/id-addressed/i);
     });
   });
 
@@ -1623,5 +1658,91 @@ export default function P() {
     // loop-var body token unchanged — NOT {c.value}
     expect(out).toMatch(/\{c\}/);
     expect(out).not.toMatch(/c\.value/);
+  });
+});
+
+// ── S3: nested collections (recursive lift) ───────────────────────────────────
+// A nested collection (`[{…, projects:[{…, testimonial:{…}, tags:[…]}]}]`) lifts
+// its full nested structure into the content layer. Retained refs (`icon`) are
+// allowed ONLY at the top level; a ref/JSX/function found NESTED declines the
+// whole array. Mirrors the real Hot Ham `portfolioItems` shape.
+describe('analyzeExtractable — nested collections (S3)', () => {
+  const PORTFOLIO_SHAPE: string = `import { Users } from 'lucide-react';
+const portfolioItems = [
+  {
+    category: 'Government Affairs',
+    icon: Users,
+    color: 'bg-primary',
+    projects: [
+      {
+        title: 'Advocacy',
+        description: 'Led outreach',
+        testimonial: { quote: 'Great', author: 'Kim' },
+        tags: ['Advocacy', 'Comms'],
+      },
+    ],
+  },
+];
+export default function P() {
+  return <>{portfolioItems.map((cat, i) => <section key={i}>{cat.category}</section>)}</>;
+}`;
+
+  it('lifts nested object + nested scalar array; retains a top-level ref', () => {
+    const out: ReturnType<typeof analyzeExtractable> = analyzeExtractable(PORTFOLIO_SHAPE, 'home');
+    const extraction: ExtractableArray | undefined = out.extractions.find(
+      (p: ExtractableArray): boolean => p.arrayName === 'portfolioItems',
+    );
+    expect(extraction).toBeDefined();
+    expect(extraction!.retainedKeys).toEqual(['icon']);
+    expect(extraction!.data).toEqual([
+      {
+        category: 'Government Affairs',
+        color: 'bg-primary',
+        projects: [
+          {
+            title: 'Advocacy',
+            description: 'Led outreach',
+            testimonial: { quote: 'Great', author: 'Kim' },
+            tags: ['Advocacy', 'Comms'],
+          },
+        ],
+      },
+    ]);
+  });
+
+  it('lifts deep nesting (array → object → array → object)', () => {
+    const src: string = `const groups = [{ name: 'g', rows: [{ cells: [{ v: 1 }, { v: 2 }] }] }];
+export default function P() { return <>{groups.map((g, i) => <p key={i}>{g.name}</p>)}</>; }`;
+    const out: ReturnType<typeof analyzeExtractable> = analyzeExtractable(src, 'home');
+    expect(out.extractions).toHaveLength(1);
+    expect(out.extractions[0].data).toEqual([
+      { name: 'g', rows: [{ cells: [{ v: 1 }, { v: 2 }] }] },
+    ]);
+  });
+
+  it('declines when a component/const ref is nested (refs are top-level only)', () => {
+    const src: string = `import { Star } from 'lucide-react';
+const items = [{ title: 't', projects: [{ label: 'p', icon: Star }] }];
+export default function P() { return <>{items.map((s, i) => <span key={i}>{s.title}</span>)}</>; }`;
+    const out: ReturnType<typeof analyzeExtractable> = analyzeExtractable(src, 'home');
+    expect(out.extractions).toHaveLength(0);
+    expect(out.skipped[0].reason).toMatch(/nested component\/const ref/i);
+  });
+
+  it('declines when JSX is nested', () => {
+    const src: string = `const items = [{ title: 't', kids: [<b key="x">hi</b>] }];
+export default function P() { return <>{items.map((s, i) => <span key={i}>{s.title}</span>)}</>; }`;
+    const out: ReturnType<typeof analyzeExtractable> = analyzeExtractable(src, 'home');
+    expect(out.extractions).toHaveLength(0);
+    expect(out.skipped[0].reason).toMatch(/nested JSX/i);
+  });
+
+  it('declines a nested spread', () => {
+    const src: string = `const base = { a: 1 };
+const items = [{ title: 't', meta: { ...base, b: 2 } }];
+export default function P() { return <>{items.map((s, i) => <span key={i}>{s.title}</span>)}</>; }`;
+    const out: ReturnType<typeof analyzeExtractable> = analyzeExtractable(src, 'home');
+    expect(out.extractions).toHaveLength(0);
+    expect(out.skipped[0].reason).toMatch(/spread/i);
   });
 });
