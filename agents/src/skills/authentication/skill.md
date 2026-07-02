@@ -1,378 +1,234 @@
 ---
 name: authentication
 description: Add BetterAuth authentication (Email/Password, OAuth, or both).
-whenToUse: User wants login, signup, user accounts, authentication, or to restrict access to pages. Phrases like "add login", "user accounts", "sign up page", "authentication", "password protection", "password protect this site", "password protect a page", "require login", "restrict access", "lock down", "admin access", "members only", "private page", "secure this page".
+whenToUse: User wants login, signup, user accounts, authentication, or to restrict access to pages. Phrases like "add login", "user accounts", "sign up page", "authentication", "password protection", "password protect this site", "password protect a page", "require login", "restrict access", "lock down", "admin access", "members only", "private page", "secure this page", "OAuth", "Google login", "GitHub login", "social login", "SSO", "session management".
+skill-deps:
+  database:
+    templates: true
+    instructions: false
 dependencies:
-  # MAINTAINER: when bumping either pin below, also update the manual
-  # `npm install` command in the "Note" under Step 1 (search for
-  # `better-auth@`). Both versions appear in this file in two places.
-  #
-  # Pinned, not ranged — better-auth's transitive surface (kysely,
-  # @better-auth/core, OAuth providers) has broken builds on silent
-  # minor bumps before (#9554, #9811). Bump deliberately; smoke-test
-  # sign-up, sign-in, OAuth callback after each rev.
+  # MAINTAINER: when bumping this pin, also update the fallback
+  # `npm install` command in § Installation Flow → Step 1.
+  # Pinned. Newer 1.6.12+ ships the kysely 0.29 upgrade which raises
+  # Node floor to 22 and breaks Turbopack/strict-ESM builds. Hold until
+  # better-auth/better-auth#9811 lands in a published release.
   - better-auth@1.6.15
-  # Required peer of @better-auth/core (declared in its peerDependencies
-  # as @opentelemetry/api ^1.9.0). npm doesn't auto-install peers, so
-  # without this line every auth request crashes with `getTracer is not
-  # a function` (better-auth/better-auth#9365). Pinned to 1.9.1 to match
-  # the monorepo catalog (`pnpm-workspace.yaml`); bump both together.
+  # Required peer of @better-auth/core (@opentelemetry/api ^1.9.0).
+  # Without it, auth requests crash with `getTracer is not a function`.
   - '@opentelemetry/api@1.9.1'
 
 post-install-notes: 'Auth API route files are included in the templates — do NOT create additional route files under src/server/api/auth/. Do NOT install better-call or other better-auth sub-dependencies. The installed template files are complete — configure auth.ts and create login/signup pages only.'
 intents:
   - login/signup/user accounts/members-only/restrict access/admin
+  - OAuth/Google login/social auth/password protect
 ---
 
-# BetterAuth Authentication Skill
+# BetterAuth Authentication
 
-**Purpose:** Add BetterAuth authentication system with Email/Password, OAuth providers, or both.
+Add authentication with Email/Password, OAuth providers (Google, GitHub, etc.), or both.
 
-> **Note:** This skill provides authentication setup instructions. Some skills may also provide specialized tools that are automatically loaded when you activate the skill. Tools are prefixed with the skill name (e.g., `skillname__toolname`) to prevent naming conflicts. You can unload a skill's tools with `skill({ action: 'unload', skill: 'name' })` when no longer needed.
+## Guardrails
+
+These are the high-failure-rate mistakes for this skill. Each exists because the templates are designed as a complete, self-contained auth system:
+
+- **Always install via `skill({ action: 'install' })` first** — the templates provide all route files, middleware, and client code. Manually creating auth files leads to duplicates and routing conflicts.
+- **Call `requestSecrets` once, then move on** — secrets persist automatically. Re-requesting or verifying via terminal commands causes duplicate entries or blocks the flow.
+- **No extra route files under `src/server/api/auth/`** — the dynamic `[action]` route files already forward every BetterAuth endpoint. Additional files shadow them.
+- **No `better-call` or other BetterAuth sub-deps** — they're transitive. Explicit installs cause version conflicts with the pinned `better-auth@1.6.15`.
+- **No custom auth context providers** — `useSession` and cookie-based sessions handle state internally. Adding a provider layer causes stale-state bugs.
+
+## Prerequisite
+
+The database skill must be installed first — BetterAuth stores users, sessions, and accounts there. If missing, auth API calls return a 503 with guidance.
+
+## Discovery
+
+Ask the user before proceeding:
+
+> "What authentication method would you like: Email/Password, OAuth (Google/GitHub/etc.), or both?"
+
+If OAuth: ask which provider(s).
 
 ---
 
-## CRITICAL — Read Before Doing Anything
+## Installation Flow
 
-- **ALWAYS run `skill({ action: 'install', skill: 'authentication' })` first** — even when re-applying or changing auth. Never manually create auth files.
-- **Do NOT create additional API route files** under `src/server/api/auth/`. The skill templates include dynamic route files that forward all requests to BetterAuth automatically.
-- **Do NOT install `better-call` or other better-auth sub-dependencies** — they are transitive dependencies installed automatically.
-- **Do NOT create custom auth context providers** — use the provided auth-client imports directly.
-
----
-
-## Ask User First
-
-> "What authentication method: Email/Password, OAuth (Google/GitHub/etc.), or both?"
-
-If OAuth: "Which provider?"
-
----
-
-## Prerequisites
-
-**The database skill must be installed before authentication.** BetterAuth uses the database for users, sessions, and accounts. If the database skill is not installed, auth API calls will return a clear 503 error explaining what to do.
-
-## Installation
-
-### Step 1: Install Skill Templates (includes dependencies)
+### 1. Install Skill Templates
 
 ```typescript
 skill({ action: 'install', skill: 'authentication' });
 ```
 
-This automatically:
+This copies all template files and installs dependencies:
+- `auth.ts` — server-side BetterAuth configuration (lazy-initialized singleton)
+- `auth-client.tsx` — client hooks and components (`useSession`, `ProtectedRoute`, `LogoutButton`)
+- `auth-middleware.ts` — centralized handler called by the dynamic route files
+- Dynamic route files under `src/server/api/auth/` — already complete, forward all requests to BetterAuth
 
-- Installs the `better-auth` package and the `@opentelemetry/api` peer dependency
-- Copies all template files (auth library, dynamic route files, pages)
+The template route files handle all BetterAuth endpoints dynamically. Creating additional route files under that path would cause routing conflicts.
 
-No manual server-side route setup is needed — all BetterAuth API routes (sign-in, sign-up, sign-out, session, CSRF, OAuth callbacks, etc.) are handled automatically by the dynamic route files under `src/server/api/auth/`.
+If package installation fails, fall back to: `npm install better-auth@1.6.15 @opentelemetry/api@1.9.1`. Do not install `better-call` or other BetterAuth sub-dependencies — they are transitive and adding them causes version conflicts.
 
-**CRITICAL:** The skill templates include dynamic route files under `src/server/api/auth/[action]/` that handle all BetterAuth requests. Do NOT create additional API route files, catch-all routes (`[...all]`), or endpoint-specific route files (`sign-in/POST.ts`, `get-session/GET.ts`, etc.) — these will conflict with the existing dynamic routes. Do NOT install `better-call` or any other better-auth sub-dependencies manually — they are installed automatically as transitive dependencies of `better-auth`.
+### 2. Request Secrets
 
-**Note**: If package installation fails (e.g., network issues), the skill templates are still installed. You can manually install the packages — pinned versions are required — with `npm install better-auth@1.6.15 @opentelemetry/api@1.9.1`. Do NOT install `better-auth` unpinned or omit `@opentelemetry/api`; see the `dependencies:` block in the frontmatter for the rationale.
+Call `requestSecrets` once. After it returns, secrets are persisted and available at runtime via `getSecret()` — no further verification or re-request is needed.
 
-### Step 2: Configure Secrets
-
-**IMPORTANT:** Always request the auth secret first, regardless of auth method chosen.
-
-#### For Email/Password Only:
+**Email/Password only:**
 
 ```typescript
 requestSecrets({
   title: 'Authentication Secret',
   description: 'Session encryption key for secure authentication.',
   secrets: [
-    {
-      name: 'BETTER_AUTH_SECRET',
-      description: 'Session encryption key (auto-generated)',
-      required: true,
-      defaultValue: 'auto:hex64',
-    },
+    { name: 'BETTER_AUTH_SECRET', description: 'Session encryption key (auto-generated)', required: true, defaultValue: 'auto:hex64' },
   ],
   mode: 'add',
   autoSubmit: true,
 });
 ```
 
-#### For OAuth (Google, GitHub, etc.):
+**OAuth (example: Google):**
 
 ```typescript
 requestSecrets({
   title: 'Authentication Configuration',
-  description:
-    'Session secret + OAuth credentials.\n\nSet authorized redirect URI in Google Console to:\n{your-app-url}/api/auth/callback/google',
+  description: 'Session secret + OAuth credentials.\n\nSet authorized redirect URI in Google Console to:\n{your-app-url}/api/auth/callback/google',
   secrets: [
-    {
-      name: 'BETTER_AUTH_SECRET',
-      description: 'Session encryption key (auto-generated)',
-      required: true,
-      defaultValue: 'auto:hex64',
-    },
-    {
-      name: 'GOOGLE_CLIENT_ID',
-      description:
-        'OAuth 2.0 Client ID (no https://; e.g. 1234567890-abcdef.apps.googleusercontent.com)',
-      required: true,
-    },
-    {
-      name: 'GOOGLE_CLIENT_SECRET',
-      description: 'OAuth 2.0 Client Secret (typically starts with GOCSPX-)',
-      required: true,
-    },
+    { name: 'BETTER_AUTH_SECRET', description: 'Session encryption key (auto-generated)', required: true, defaultValue: 'auto:hex64' },
+    { name: 'GOOGLE_CLIENT_ID', description: 'OAuth 2.0 Client ID (e.g. 1234567890-abcdef.apps.googleusercontent.com)', required: true },
+    { name: 'GOOGLE_CLIENT_SECRET', description: 'OAuth 2.0 Client Secret (typically starts with GOCSPX-)', required: true },
   ],
   mode: 'add',
 });
 ```
 
-**OAuth Callback URL:** `{your-app-url}/api/auth/callback/{provider}`
+OAuth callback URL pattern: `{your-app-url}/api/auth/callback/{provider}`
 
-Configure `auth.ts` based on user's choice.
+### 3. Configure auth.ts
 
-**IMPORTANT:** Do NOT create custom auth context providers, auth wrappers, or auth-context.tsx files. The skill templates provide everything needed:
-
-- `auth-client.tsx` (or `auth-core.ts` + `auth-hooks.ts`) — client-side auth functions and hooks
-- `auth.ts` — server-side BetterAuth configuration
-- `auth-middleware.ts` — centralized BetterAuth handler called by the dynamic route files
-
-Use `signIn`, `signUp`, `signOut`, `useSession` directly from the auth-client imports. BetterAuth handles session context internally via cookies — no React context provider is needed.
-
-`useSession()` returns `{ user, isAuthenticated, isPending }` — use `isAuthenticated` for conditional rendering and `user?.name` for display. Example for a header:
+Uncomment and configure the relevant section in `src/lib/auth/auth.ts`:
 
 ```typescript
-const { user, isAuthenticated, isPending } = useSession();
-// In JSX: isAuthenticated ? <span>{user?.name}</span> : <a href="/login">Sign In</a>
-```
-
----
-
-## Configure auth.ts
-
-### Email Only
-
-```typescript
+// Email/Password
 emailAndPassword: { enabled: true },
-```
 
-### OAuth Only
-
-```typescript
+// OAuth
 socialProviders: {
   google: {
     clientId: getSecret('GOOGLE_CLIENT_ID')!,
     clientSecret: getSecret('GOOGLE_CLIENT_SECRET')!,
   },
 },
+
+// Both — combine the sections above
 ```
 
-### Both
+### 4. Set Up Routes
+
+**If user wants to protect specific pages** (e.g., "password protect the admin dashboard"), protect only those — keep `/` and other pages public. Login is a standalone route, not the landing page.
+
+**If user wants full site authentication** (login required everywhere), make login the landing page and protect all other routes.
+
+Unauthenticated pages (login, signup) must render independently — they cannot be nested inside layouts that depend on session state. Components that render before authentication resolves should use optional chaining (`session?.user?.name`).
+
+**Email-only (most common):**
 
 ```typescript
-emailAndPassword: { enabled: true },
-socialProviders: {
-  google: { clientId: getSecret('GOOGLE_CLIENT_ID')!, clientSecret: getSecret('GOOGLE_CLIENT_SECRET')! },
-},
-```
-
-### Optional: Session Lifetime
-
-BetterAuth defaults: sessions expire after **7 days**, refresh window resets after **1 day** of activity. Override if the user needs shorter/longer sessions:
-
-```typescript
-session: {
-  expiresIn: 60 * 60 * 24 * 7, // 7 days
-  updateAge: 60 * 60 * 24,      // extend on activity after 1 day
-},
-```
-
-### Custom Domains
-
-`auth.ts` trusts `.airoapp.ai` subdomains by default. If the user connects a custom domain, add it to `trustedOrigins`:
-
-```typescript
-if (hostname === 'their-custom-domain.com') return [origin];
-```
-
----
-
-## Configure Routes
-
-**Important:** Login should be the landing page. Home and other routes should be protected.
-
-**Unauthenticated pages (login, signup) must render independently** — never nest them inside layouts or components that depend on session state. Session data is null until loaded; any component that renders before authentication must handle that gracefully with optional chaining (`session?.user?.name`).
-
-**Built-in redirect preservation:** `ProtectedRoute` automatically saves the page a user tried to visit and restores it after login — no extra code needed. OAuth sign-in also uses this destination as the `callbackURL`.
-
-```typescript
-// Login as default landing page (redirect unauthenticated users here)
+// Public auth pages
 { path: '/login', element: <AuthPage mode="login" /> },
 { path: '/signup', element: <AuthPage mode="signup" /> },
 
-// Home and all other routes are PROTECTED (require authentication)
-{ path: '/', element: <ProtectedRoute><Home /></ProtectedRoute> },
+// Protected routes — ProtectedRoute auto-saves intended destination and restores it after login
 { path: '/dashboard', element: <ProtectedRoute><Dashboard /></ProtectedRoute> },
-// ... wrap all app routes with ProtectedRoute
 ```
 
-### Route Examples by Auth Type
-
-**Email only:**
-
-```typescript
-{ path: '/login', element: <AuthPage mode="login" /> },
-{ path: '/signup', element: <AuthPage mode="signup" /> },
-{ path: '/', element: <ProtectedRoute><Home /></ProtectedRoute> },
-```
-
-**OAuth only:**
-
-```typescript
-{ path: '/login', element: <AuthPage providers={['google']} /> },
-{ path: '/', element: <ProtectedRoute><Home /></ProtectedRoute> },
-```
-
-**Both Email + OAuth:**
+**OAuth:**
 
 ```typescript
 { path: '/login', element: <AuthPage mode="login" providers={['google']} /> },
 { path: '/signup', element: <AuthPage mode="signup" providers={['google']} /> },
-{ path: '/', element: <ProtectedRoute><Home /></ProtectedRoute> },
 ```
+
+Omit signup route for OAuth-only.
+
+---
+
+## Using the Auth Client
+
+Import `signIn`, `signUp`, `signOut`, `useSession` from the auth-client. BetterAuth manages session state via cookies — no React context provider is needed.
+
+```typescript
+const { user, isAuthenticated, isPending } = useSession();
+```
+
+Logout:
+```typescript
+import { LogoutButton } from '@/lib/auth/auth-client';
+<LogoutButton className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700">Sign Out</LogoutButton>
+```
+
+Do not create custom auth context providers — the provided `useSession` hook and cookie-based session management handle all state internally.
 
 ---
 
 ## Database Schema
 
-Add to `src/server/db/schema.ts`:
+Load the schema reference for the full Drizzle table definitions and migration command:
 
 ```typescript
-export const user = mysqlTable('user', {
-  id: varchar('id', { length: 36 }).primaryKey(),
-  name: varchar('name', { length: 255 }),
-  email: varchar('email', { length: 255 }).notNull().unique(),
-  emailVerified: boolean('email_verified').default(false),
-  image: text('image'),
-  isAdmin: boolean('is_admin').default(false),
-  createdAt: timestamp('created_at').defaultNow(),
-  updatedAt: timestamp('updated_at').defaultNow().onUpdateNow(),
-});
-
-export const session = mysqlTable('session', {
-  id: varchar('id', { length: 36 }).primaryKey(),
-  expiresAt: timestamp('expires_at').notNull(),
-  token: varchar('token', { length: 255 }).notNull().unique(),
-  ipAddress: varchar('ip_address', { length: 45 }),
-  userAgent: text('user_agent'),
-  userId: varchar('user_id', { length: 36 })
-    .notNull()
-    .references(() => user.id, { onDelete: 'cascade' }),
-  createdAt: timestamp('created_at').defaultNow(),
-  updatedAt: timestamp('updated_at').defaultNow().onUpdateNow(),
-});
-
-export const account = mysqlTable('account', {
-  id: varchar('id', { length: 36 }).primaryKey(),
-  accountId: varchar('account_id', { length: 255 }).notNull(),
-  providerId: varchar('provider_id', { length: 255 }).notNull(), // 'credential' for email/password, or OAuth provider name
-  userId: varchar('user_id', { length: 36 })
-    .notNull()
-    .references(() => user.id, { onDelete: 'cascade' }),
-  // OAuth tokens (only used for OAuth providers)
-  accessToken: text('access_token'),
-  refreshToken: text('refresh_token'),
-  idToken: text('id_token'),
-  accessTokenExpiresAt: timestamp('access_token_expires_at'),
-  refreshTokenExpiresAt: timestamp('refresh_token_expires_at'),
-  scope: text('scope'),
-  // Hashed password (only used when providerId='credential' for email/password auth)
-  // BetterAuth handles hashing automatically - never store plaintext
-  password: varchar('password', { length: 255 }),
-  createdAt: timestamp('created_at').defaultNow(),
-  updatedAt: timestamp('updated_at').defaultNow().onUpdateNow(),
-});
-
-export const verification = mysqlTable('verification', {
-  id: varchar('id', { length: 36 }).primaryKey(),
-  identifier: varchar('identifier', { length: 255 }).notNull(),
-  value: varchar('value', { length: 255 }).notNull(),
-  expiresAt: timestamp('expires_at').notNull(),
-  createdAt: timestamp('created_at').defaultNow(),
-  updatedAt: timestamp('updated_at').defaultNow().onUpdateNow(),
-});
-```
-
-Run: `npm run db:generate && npm run db:migrate`
-
----
-
-## Logout Button
-
-Add a logout button to any protected page using the `LogoutButton` component:
-
-```typescript
-import { LogoutButton } from '@/lib/auth/auth-client';
-
-// Basic usage
-<LogoutButton />
-
-// With custom styling
-<LogoutButton className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700">
-  Sign Out
-</LogoutButton>
-
-// In a header/navbar
-<header className="flex justify-between items-center p-4">
-  <h1>My App</h1>
-  <LogoutButton />
-</header>
+skill({ action: 'loadReference', path: 'authentication/references/database-schema' })
 ```
 
 ---
 
-## After Setup: Ask User
+## After Setup
 
-Once authentication is configured, ask the user:
+Ask the user:
 
-> "Authentication is set up! Which routes do you want to protect? By default, the home page (`/`) is protected. Do you want to:
->
-> 1. Protect additional routes (e.g., `/dashboard`, `/settings`, `/profile`)?
+> "Authentication is set up! Which routes do you want to protect? By default, `/` is protected. Would you like to:
+> 1. Protect additional routes (e.g., `/dashboard`, `/settings`)?
 > 2. Add public routes that don't require login?
-> 3. Add the logout button to a specific location (header, sidebar, etc.)?"
-
-Based on user response, wrap routes with `ProtectedRoute`:
-
-```typescript
-// Protected routes - require authentication
-{ path: '/dashboard', element: <ProtectedRoute><Dashboard /></ProtectedRoute> },
-{ path: '/settings', element: <ProtectedRoute><Settings /></ProtectedRoute> },
-{ path: '/profile', element: <ProtectedRoute><Profile /></ProtectedRoute> },
-
-// Public routes - accessible without login
-{ path: '/about', element: <About /> },
-{ path: '/pricing', element: <Pricing /> },
-```
+> 3. Place the logout button somewhere specific (header, sidebar)?"
 
 ---
 
 ## Verification
+
 ```typescript
 httpCheck({ url: '/api/auth/session', expectStatus: 200 })
 ```
 
-A 200 confirms the session route is registered. If it fails, the response body contains a diagnostic message — follow its instructions to resolve.
+A 200 confirms the session route is live. If it fails, the response body contains a diagnostic.
 
 ---
 
-## Known Behaviors & Edge Cases
+## Custom Domains & Sessions
 
-| Situation                                | What to do                                                                                                                                                                     |
-| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Auth works in preview but 500 in publish | `getAuth()` defers `betterAuth()` construction to the first request so secrets are available — verify `BETTER_AUTH_SECRET` is set and the publish build completed successfully |
-| `BETTER_AUTH_SECRET` not set             | Failure happens on the first auth request, and the middleware returns a 503 diagnostic — always run `requestSecrets` before starting                                           |
-| OAuth redirect goes to wrong page        | `callbackURL` is set automatically by the template from the user's intended destination                                                                                        |
-| Session check times out (30s)            | User sees a retry button — check network and that `src/server/api/auth/` route files exist                                                                                     |
-| User connects a custom domain            | Add hostname to `trustedOrigins` in `auth.ts` — BetterAuth blocks cross-origin requests by default                                                                             |
-| Want shorter sessions (e.g. banking)     | Add `session.expiresIn` + `session.updateAge` to `auth.ts` (see Configure auth.ts above)                                                                                       |
-| OAuth token access after login           | Use `authClient.getAccessToken({ providerId: 'google' })` — handles refresh automatically                                                                                      |
+`auth.ts` trusts `.airoapp.ai` subdomains by default. For custom domains, add to the `trustedOrigins` function:
+
+```typescript
+if (hostname === 'their-custom-domain.com') return [origin];
+```
+
+Session defaults: 7-day expiration, refresh after 1 day of activity. Override with:
+
+```typescript
+session: {
+  expiresIn: 60 * 60 * 24 * 7,
+  updateAge: 60 * 60 * 24,
+},
+```
 
 ---
+
+## Troubleshooting
+
+| Symptom | Cause & Fix |
+| --- | --- |
+| 500 in publish but works in preview | Most common: `BETTER_AUTH_SECRET` not set in publish env. Also possible: `getAuth()` defers initialization — check publish build logs for init errors even if secret exists |
+| 503 from auth endpoints | Secret missing — run `requestSecrets` during setup (once only) |
+| OAuth redirect goes to wrong page | `callbackURL` is set automatically from intended destination — check route config |
+| Session check times out (30s) | User sees retry button — verify route files exist and network is accessible |
+| Custom domain auth fails | Add hostname to `trustedOrigins` in `auth.ts` |
+| Need shorter sessions (e.g., banking) | Add `session.expiresIn` + `session.updateAge` to auth config |
+| Access OAuth token post-login | `authClient.getAccessToken({ providerId: 'google' })` |

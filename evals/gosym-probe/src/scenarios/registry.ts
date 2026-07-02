@@ -85,6 +85,14 @@ import {
   noManualRootlayoutEditScenario,
   noCustomApiRouteScenario,
 } from './skills/google-analytics/index.js';
+import {
+  addEmailAuthScenario,
+  addOAuthAuthScenario,
+  addBothAuthScenario,
+  passwordProtectPageScenario,
+  noCustomProvidersScenario,
+  databasePrerequisiteScenario,
+} from './skills/authentication/index.js';
 import type { IGocodeClient } from '../clients/gocode-client.js';
 import type {
   AABCtrlPlaneClient,
@@ -174,5 +182,11 @@ export function createAllScenarios(
     addGoogleAnalyticsScenario(gocode, ctrlPlane),
     noManualRootlayoutEditScenario(gocode, ctrlPlane),
     noCustomApiRouteScenario(gocode, ctrlPlane),
+    addEmailAuthScenario(gocode, ctrlPlane),
+    addOAuthAuthScenario(gocode, ctrlPlane),
+    addBothAuthScenario(gocode, ctrlPlane),
+    passwordProtectPageScenario(gocode, ctrlPlane),
+    noCustomProvidersScenario(gocode, ctrlPlane),
+    databasePrerequisiteScenario(gocode, ctrlPlane),
   ].filter((scenario): scenario is Scenario => scenario !== null);
 }
