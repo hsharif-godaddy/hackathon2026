@@ -28,6 +28,7 @@ export interface SendMessageParams {
   isActionRequest?: boolean
   customContext?: unknown
   templateId?: string
+  overrideAgentId?: string
   designKitSlug?: string
   modelOverride?: string
   /** Rebuild page-selector "Build Page" slug — server builds it from source (AIROBUILD-2104) */

@@ -41,7 +41,7 @@ export interface JWTClaims {
   modelOverride?: string; // When set, override the default agent model (switchboard: appbuilder-model-override)
   modelSelectorEnabled?: boolean; // When true, allow per-project model selection from frontend (switchboard: appbuilder-model-selector)
   agentProfile?: string; // When set, activate the named agent profile (switchboard: appbuilder-agent-profile)
-  agentProfileSelectorEnabled?: boolean; // When true, allow per-project profile selection from frontend (switchboard: appbuilder-agent-profile-selector)
+  agentStartOverrideEnabled?: boolean; // Internal only: honor the ?agent= start-as override at conversation create (switchboard: appbuilder-agent-start-override, or employee auth)
   costAttributionDryRun?: boolean; // When true, run cost attribution analysis and log results but skip BMS reconciliation (switchboard: appbuilder-cost-attribution-dry-run)
   isOwner?: boolean; // When hosting returned owner id: JWT customer is app owner (multi-user)
   useAtlasCrawler?: boolean; // When true, route rebuild scraping through the Atlas REST API instead of the external web-scraper API (switchboard: appbuilder-atlas-crawler)

@@ -14,7 +14,7 @@ vi.mock('./itc', () => ({
 }))
 
 import { getItcOverride } from './itc'
-import { buildDevelopUrl, extractApiError, fetchQuickCreate, getStorageItem, getStoredDesignKitSlug, getStoredUploadedFiles, setQuickCreateSessionFlags } from './quick-create'
+import { buildDevelopUrl, extractApiError, fetchQuickCreate, getStorageItem, getStoredDesignKitSlug, getStoredStartProfile, getStoredUploadedFiles, migrateStartProfileToAppId, setQuickCreateSessionFlags } from './quick-create'
 
 const mockAppFetch = appFetch as Mock
 const mockGetItcOverride = getItcOverride as Mock
@@ -391,6 +391,36 @@ describe('setQuickCreateSessionFlags designKitSlug', () => {
   it('stores nothing when slug omitted', () => {
     setQuickCreateSessionFlags('site2', 'build me a site')
     expect(sessionStorage.getItem('initial-design-kit-site2')).toBeNull()
+  })
+})
+
+describe('migrateStartProfileToAppId', () => {
+  beforeEach(() => sessionStorage.clear())
+
+  it('copies the job-id profile onto the app id so the app-id-keyed mint resolves it', () => {
+    // Profile is stored under the job id at create; the agent-token mint after the
+    // job→app flip reads getStoredStartProfile(appId), which would otherwise miss it.
+    sessionStorage.setItem('initial-profile-job-1', 'prompt-enhancer')
+    migrateStartProfileToAppId('job-1', 'app-1')
+    expect(getStoredStartProfile('app-1')).toBe('prompt-enhancer')
+  })
+
+  it('does not overwrite an existing app-id profile', () => {
+    sessionStorage.setItem('initial-profile-job-1', 'prompt-enhancer')
+    sessionStorage.setItem('initial-profile-app-1', 'experimental')
+    migrateStartProfileToAppId('job-1', 'app-1')
+    expect(getStoredStartProfile('app-1')).toBe('experimental')
+  })
+
+  it('is a no-op when there is no job-id profile', () => {
+    migrateStartProfileToAppId('job-1', 'app-1')
+    expect(getStoredStartProfile('app-1')).toBeNull()
+  })
+
+  it('is a no-op when jobId equals appId', () => {
+    sessionStorage.setItem('initial-profile-app-1', 'prompt-enhancer')
+    migrateStartProfileToAppId('app-1', 'app-1')
+    expect(getStoredStartProfile('app-1')).toBe('prompt-enhancer')
   })
 })
 

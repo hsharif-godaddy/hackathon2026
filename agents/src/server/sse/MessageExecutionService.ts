@@ -2434,11 +2434,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
     // switchboard/hivemind profile is the sole source. There is no per-message
     // client profile (the ProfileSelector was removed); model override still
     // honors its own per-project metadata + flag below.
-    const profile = resolveProfile({
-      agentProfileSelectorEnabled: false,
-      perProjectProfile: undefined,
-      jwtAgentProfile: agentCtx?.agentProfile,
-    })
+    const profile = resolveProfile({ jwtAgentProfile: agentCtx?.agentProfile })
     if (profile) {
       logger.info('sse.profile.resolve.active', { profileName: profile.name, socketId: sseSocketId })
     }

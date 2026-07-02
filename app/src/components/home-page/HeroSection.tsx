@@ -6,6 +6,7 @@ import { text } from '@ux/text'
 
 import DesignFileUpload, { DesignFileUploadCard, DesignFileUploadSkeleton } from '@/app/[market]/components/DesignFileUpload'
 import DesignKitGallery, { DesignKitChip } from '@/app/[market]/components/DesignKitGallery'
+import StartAsControls from '@/app/[market]/components/StartAsControls'
 import TemplateSelector from '@/app/[market]/components/TemplateSelector'
 import type { HeroSectionProps, HeroSectionRef } from '@/app/[market]/components/types'
 import { AnimatedDisclaimer } from '@/components/home/AnimatedDisclaimer'
@@ -38,6 +39,10 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
   onExampleClick,
   selectedTemplate = 'default',
   onTemplateChange,
+  selectedProfile = '',
+  onProfileChange,
+  selectedStartOverride = '',
+  onStartOverrideChange,
   headingText,
   subheadingText,
   uploadedFiles,
@@ -183,6 +188,14 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
 
               <Box orientation="horizontal" blockAlignChildren="spaceBetween" inlineAlignChildren="end">
                 <div className="flex min-w-0 items-center gap-2">
+                  {onProfileChange && onStartOverrideChange && (
+                    <StartAsControls
+                      selectedProfile={selectedProfile}
+                      onProfileChange={onProfileChange}
+                      selectedStartOverride={selectedStartOverride}
+                      onStartOverrideChange={onStartOverrideChange}
+                    />
+                  )}
                   {onAttachedKitChange && (attachedKit ? (
                     <DesignKitChip kit={attachedKit} onRemove={() => onAttachedKitChange(null)} disabled={isLoading} />
                   ) : (

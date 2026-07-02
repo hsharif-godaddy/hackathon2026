@@ -27,7 +27,6 @@ import { GitUtils } from '../utils/git.js'
 import { logger, log } from '../logging/index.js'
 import { toolGitEvents } from '../logging/events/index.js'
 import { createForWorkspace } from '../workspace/index.js'
-import { aiLibAgentMetadata, type AILibAgentMetadata } from '../agents/ai-lib-agents/index.js'
 import { AppNotFoundError } from './errors/app-not-found-error.js'
 import { getMessageOriginForAuthType, type MessageOrigin } from '@airo/shared/auth'
 import type { ContextAttachment } from '@airo/shared/context-attachment'
@@ -745,93 +744,6 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
     // path (recordTokenUsageObservability in MessageExecutionService). This
     // ensures 100% capture regardless of conversation state and eliminates
     // any risk of double counting.
-
-    // Track handoff token usage from tool results
-    if (toolCalls.length > 0 && context.appId) {
-      await Promise.all(
-        toolCalls
-          .filter((toolCall) => toolCall.toolName === 'handoff' && toolCall.toolResult)
-          .map(async (toolCall) => {
-            try {
-              // Parse the handoff result to extract usage data
-              let handoffResult: any;
-              if (typeof toolCall.toolResult === 'string') {
-                try {
-                  handoffResult = JSON.parse(toolCall.toolResult);
-                } catch {
-                  // If parsing fails, try to extract from the string
-                  handoffResult = toolCall.toolResult;
-                }
-              } else {
-                handoffResult = toolCall.toolResult;
-              }
-
-              // Extract usage from handoff result
-              if (handoffResult?.result?.usage) {
-                const handoffUsage = handoffResult.result.usage;
-                const handoffCaching = handoffResult.result.caching;
-                // Read targetAgent from tool input (what was sent TO the tool), not output
-                const targetAgent = (toolCall.toolArgs as any)?.targetAgent ?? 'unknown';
-                // Get model name from target agent metadata
-                const targetMetadata = aiLibAgentMetadata[targetAgent] as AILibAgentMetadata & { modelName?: string };
-                const modelName = targetMetadata?.modelName || 'claude-sonnet-4-6';
-
-                // Calculate accurate cost for handoff
-                const handoffCostEstimate = calculateCostEstimate(
-                  {
-                    inputTokens: handoffUsage.inputTokens || 0,
-                    outputTokens: handoffUsage.outputTokens || 0,
-                    totalTokens: handoffUsage.totalTokens || 0,
-                    ...(handoffCaching?.cachedInputTokens !== undefined && { cachedInputTokensRead: handoffCaching.cachedInputTokens }),
-                    ...(handoffCaching?.cacheWriteInputTokens !== undefined && { cachedInputTokensWrite: handoffCaching.cacheWriteInputTokens })
-                  },
-                  modelName
-                )
-
-                // Track handoff in APM for monitoring
-                this.trackTokenUsageInAPM(
-                  'handoff',
-                  {
-                    inputTokens: handoffUsage.inputTokens || 0,
-                    outputTokens: handoffUsage.outputTokens || 0,
-                    totalTokens: handoffUsage.totalTokens || 0,
-                    cacheReadTokens: handoffCaching?.cachedInputTokens || 0,
-                    cacheWriteTokens: handoffCaching?.cacheWriteInputTokens || 0,
-                  },
-                  {
-                    conversationId,
-                    appId: context.appId!,
-                    agentName: context.agentName,
-                    modelName,
-                    targetAgent,
-                  }
-                );
-
-                logger.info('conversation.handoff_usage.recorded', {
-                  conversationId,
-                  appId: context.appId,
-                  sourceAgent: context.agentName,
-                  targetAgent,
-                  modelName,
-                  inputTokens: handoffUsage.inputTokens,
-                  outputTokens: handoffUsage.outputTokens,
-                  totalTokens: handoffUsage.totalTokens,
-                  cacheReadTokens: handoffCaching?.cachedInputTokens,
-                  cacheWriteTokens: handoffCaching?.cacheWriteInputTokens,
-                  cost: handoffCostEstimate.totalCost
-                });
-              }
-            } catch (handoffError) {
-              logger.warn('conversation.handoff_usage.parse_failed', {
-                conversationId,
-                appId: context.appId,
-                toolName: toolCall.toolName,
-                error: handoffError instanceof Error ? handoffError.message : String(handoffError),
-              });
-            }
-          })
-      );
-    }
 
     // Create git commit if there are changes and store hash on context
     if (context.appId) {

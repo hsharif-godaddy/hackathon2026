@@ -22,7 +22,6 @@ export interface AgentContext {
   siteId: string;
   /** Optional: only set for scenarios that pin an agent profile. */
   agentProfile?: string;
-  agentProfileSelectorEnabled?: boolean;
   /** Optional: EVAL_SHOPPER_ID, to exercise the turnscript TLA gate (3-char = TLA). */
   shopperId?: string;
 }

@@ -74,16 +74,14 @@ describe('JWTAuthMiddleware', function jwtAuthMiddlewareSuite() {
         canDownload: true,
         canPublish: true,
         agentProfile: 'experimental',
-        agentProfileSelectorEnabled: true,
         exp: 9999999999,
         iat: 1000000000,
       };
       const context = buildAgentContext(raw);
       expect(context.agentProfile).toBe('experimental');
-      expect(context.agentProfileSelectorEnabled).toBe(true);
     });
 
-    it('defaults agentProfileSelectorEnabled to false when missing', function defaultsFalse() {
+    it('defaults agentProfile to undefined when missing', function defaultsUndefined() {
       const raw = {
         siteId: 'test-site',
         canDownload: true,
@@ -93,7 +91,6 @@ describe('JWTAuthMiddleware', function jwtAuthMiddlewareSuite() {
       };
       const context = buildAgentContext(raw);
       expect(context.agentProfile).toBeUndefined();
-      expect(context.agentProfileSelectorEnabled).toBe(false);
     });
 
     it('extracts fqdn from raw claims', function extractsFqdn() {

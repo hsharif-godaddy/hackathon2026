@@ -59,7 +59,7 @@ export interface AgentContext {
   modelOverride?: string; // Override the default agent model (switchboard: appbuilder-model-override)
   modelSelectorEnabled?: boolean; // Allow per-project model selection from frontend (switchboard: appbuilder-model-selector)
   agentProfile?: string; // Active agent profile identifier
-  agentProfileSelectorEnabled?: boolean; // Allow per-project agent profile selection from frontend
+  agentStartOverrideEnabled?: boolean; // Internal only: honor the ?agent= start-as override at conversation create (switchboard: appbuilder-agent-start-override, or employee auth)
   useAtlasCrawler?: boolean; // Route rebuild scraping through Atlas REST API instead of legacy WebsiteScraperDriver (switchboard: appbuilder-atlas-crawler)
   rebuildIntakeFormEnabled?: boolean; // Initial-rebuild intake form before scraping (switchboard: appbuilder-rebuild-intake-form)
   rebuildSourceImagesEnabled?: boolean; // Register crawled source images into the Media tab during rebuild (switchboard: appbuilder-rebuild-source-images)
@@ -125,7 +125,7 @@ export function buildAgentContext(raw: Record<string, unknown>): AgentContext {
     modelOverride: raw.modelOverride as string | undefined,
     modelSelectorEnabled: (raw.modelSelectorEnabled as boolean) ?? false,
     agentProfile: raw.agentProfile as string | undefined,
-    agentProfileSelectorEnabled: (raw.agentProfileSelectorEnabled as boolean) ?? false,
+    agentStartOverrideEnabled: (raw.agentStartOverrideEnabled as boolean) ?? false,
     useAtlasCrawler: (raw.useAtlasCrawler as boolean) ?? false,
     rebuildIntakeFormEnabled: (raw.rebuildIntakeFormEnabled as boolean) ?? false,
     rebuildSourceImagesEnabled: (raw.rebuildSourceImagesEnabled as boolean) ?? false,
@@ -231,7 +231,7 @@ export class JWTAuthMiddleware {
           isE2S: false,
           product: 'AiroAppBuilder',
           modelSelectorEnabled: true,
-          agentProfileSelectorEnabled: true,
+          agentStartOverrideEnabled: true,
           skillSuggestionsEnabled: true,
           shopperId: tokenClaims.shopperId as string | undefined,
           agentProfile: tokenClaims.agentProfile as string | undefined,

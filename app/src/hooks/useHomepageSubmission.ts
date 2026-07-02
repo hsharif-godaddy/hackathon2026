@@ -68,6 +68,53 @@ export function useHomepageSubmission(options?: HomepageSubmissionOptions) {
     router.replace(queryString ? `${pathname}?${queryString}` : pathname, { scroll: false })
   }, [pathname, router, searchParams])
   const isTemplateSelectorEnabled = useSwitchboard('appbuilder-template-selector')
+
+  // Internal-only "start-as" axes (both gated + validated server-side; a
+  // non-internal user setting these has no effect).
+  //
+  // Profile axis (`?profile=`) — the proper abstraction: sets session model/skills
+  // + default initial. Rides the agent-token request → JWT `agentProfile`.
+  const selectedProfile = searchParams.get('profile') ?? ''
+  const setSelectedProfile = useCallback((profile: string) => {
+    const params = new URLSearchParams(searchParams.toString())
+    if (profile) {
+      params.set('profile', profile)
+    } else {
+      params.delete('profile')
+    }
+    const queryString = params.toString()
+    router.replace(queryString ? `${pathname}?${queryString}` : pathname, { scroll: false })
+  }, [pathname, router, searchParams])
+
+  // Freeze axis (`?template=` XOR `?agent=`) — pin the initial agent by template or
+  // raw agent id (mutually exclusive). Encoded `template:<id>` | `agent:<id>` | ''.
+  const agentParam = searchParams.get('agent')
+  const selectedStartOverride = agentParam
+    ? `agent:${agentParam}`
+    : templateParam && templateParam !== 'default'
+      ? `template:${templateParam}`
+      : ''
+  const setStartOverride = useCallback((encoded: string) => {
+    const params = new URLSearchParams(searchParams.toString())
+    // Clear the whole freeze axis: the agent param plus both the canonical `mode`
+    // and legacy `template` params (reads are mode-first via getModeParam, so a
+    // stale `mode` would otherwise shadow a new template selection).
+    params.delete('agent')
+    params.delete(MODE_PARAM)
+    params.delete(LEGACY_MODE_PARAM)
+    if (encoded) {
+      const separator = encoded.indexOf(':')
+      const kind = encoded.slice(0, separator)
+      const value = encoded.slice(separator + 1)
+      if (kind === 'template') {
+        params.set(MODE_PARAM, value)
+      } else if (kind === 'agent') {
+        params.set('agent', value)
+      }
+    }
+    const queryString = params.toString()
+    router.replace(queryString ? `${pathname}?${queryString}` : pathname, { scroll: false })
+  }, [pathname, router, searchParams])
   const [uploadedFiles, setUploadedFiles] = useState<UploadedDesignFile[]>([])
   const [attachedKit, setAttachedKit] = useState<DesignKit | null>(null)
   const [isLoading, setIsLoading] = useState(false)
@@ -384,6 +431,10 @@ export function useHomepageSubmission(options?: HomepageSubmissionOptions) {
         entryPoint,
         creationSource: resolveCreationSource(primaryUploadedFile, selectedTemplate, submitSourceRef.current),
         designKitSlug: designKitSlugToUse,
+        // Internal-only "start-as" overrides, carried verbatim from ?agent= / ?profile=.
+        // The server ignores them unless the caller is internal.
+        overrideAgentId: searchParams.get('agent') ?? undefined,
+        startProfile: searchParams.get('profile') ?? undefined,
       })
       promotePendingDesignChoice(siteData.id)
 
@@ -466,7 +517,7 @@ export function useHomepageSubmission(options?: HomepageSubmissionOptions) {
       setIsLoading(false)
       setIsRedirecting(false)
     }
-  }, [attachedKit, authIsLoading, isAuthenticated, isLoading, isNewUser, isRedirecting, logAnalytics, markHomepageEngaged, router, savePromptForRetry, selectedTemplate, signIn, t, uploadedFiles])
+  }, [attachedKit, authIsLoading, isAuthenticated, isLoading, isNewUser, isRedirecting, logAnalytics, markHomepageEngaged, router, savePromptForRetry, searchParams, selectedTemplate, signIn, t, uploadedFiles])
 
   useEffect(() => {
     if (!isHomepage || !isAuthenticated || authIsLoading || subscriptionsLoading) return
@@ -565,6 +616,10 @@ export function useHomepageSubmission(options?: HomepageSubmissionOptions) {
     setPromptText,
     selectedTemplate,
     setSelectedTemplate,
+    selectedProfile,
+    setSelectedProfile,
+    selectedStartOverride,
+    setStartOverride,
     isLogoMode,
     isTemplateSelectorEnabled,
     uploadedFiles,

@@ -195,7 +195,7 @@ async function main(): Promise<void> {
       ? {
           siteId: 'bypass-site',
           ...(scenario?.agentProfile
-            ? { agentProfile: scenario.agentProfile, agentProfileSelectorEnabled: true }
+            ? { agentProfile: scenario.agentProfile }
             : {}),
           ...(evalShopperId ? { shopperId: evalShopperId } : {}),
         }

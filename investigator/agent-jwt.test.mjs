@@ -30,7 +30,6 @@ test('mintAgentToken signs RS256 with agents-service claims (static key)', async
   assert.equal(claims.enableAssessmentOverride, false);
   assert.equal(claims.product, 'AiroAppBuilder');
   assert.equal(claims.modelSelectorEnabled, false);
-  assert.equal(claims.agentProfileSelectorEnabled, false);
   assert.equal(claims.costAttributionDryRun, false);
   assert.equal(typeof claims.iat, 'number');
   assert.equal(claims.exp, claims.iat + 300);

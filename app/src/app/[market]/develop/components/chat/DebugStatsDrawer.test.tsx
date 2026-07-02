@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { type ReactNode,useEffect } from 'react'
 import { describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 
 import { DebugStatsProvider, useDebugStats } from './DebugStatsContext'
 import { DebugStatsPanel, DebugStatsToggleButton } from './DebugStatsDrawer'
@@ -40,10 +40,20 @@ vi.mock('@/hooks/useSwitchboard', () => ({
 
 const mockUseConnectionState = vi.fn(function () { return { connected: true, status: 'idle' }; })
 const mockUseStreamingState = vi.fn(function () { return 'idle'; })
+const mockUseCurrentAppId = vi.fn<[], string | undefined>(function () { return undefined; })
+const mockPeekAgentToken = vi.fn<[string], string | null>(function () { return null; })
+const mockJwtDecode = vi.fn<[string], unknown>(function () { return {}; })
 
 vi.mock('@/stores/useStreamingConversationStore', () => ({
   useConnectionState: () => mockUseConnectionState(),
   useStreamingState: () => mockUseStreamingState(),
+  useCurrentAppId: () => mockUseCurrentAppId(),
+}))
+vi.mock('@/lib/agent-fetch', () => ({
+  peekAgentToken: (siteId: string) => mockPeekAgentToken(siteId),
+}))
+vi.mock('jwt-decode', () => ({
+  jwtDecode: (token: string) => mockJwtDecode(token),
 }))
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 
@@ -103,8 +113,11 @@ describe('DebugStats UI', () => {
     render(<Mount withHistory />)
     fireEvent.click(screen.getByTestId('debug-stats-toggle'))
     expect(screen.getByTestId('debug-stats-panel')).toBeInTheDocument()
-    expect(screen.getByText('sub:design')).toBeInTheDocument()
-    expect(screen.getByText('So4.6')).toBeInTheDocument()
+    // 'sub:design' and 'So4.6' now appear both in the session-info summary
+    // ("Agent (current)" / "Model (current)") and in the call-table row; the row
+    // itself is pinned by the unique '$0.0042' cost cell below.
+    expect(screen.getAllByText('sub:design').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('So4.6').length).toBeGreaterThan(0)
     expect(screen.getByText('$0.0042')).toBeInTheDocument()
   })
 
@@ -155,6 +168,42 @@ describe('DebugStats UI', () => {
     render(<Mount />)
     fireEvent.click(screen.getByTestId('debug-stats-toggle'))
     expect(screen.getByText('streaming')).toBeInTheDocument()
+  })
+
+  describe('session-info (decoded agent JWT claims)', () => {
+    it('decodes the cached agent token and shows the resolved profile + init model', () => {
+      vi.mocked(useSwitchboard).mockReturnValue(true)
+      mockUseCurrentAppId.mockReturnValue('app-1')
+      mockPeekAgentToken.mockReturnValue('header.payload.sig')
+      mockJwtDecode.mockReturnValue({ agentProfile: 'prompt-enhancer', modelOverride: 'claude-sonnet-4-6' })
+      render(<Mount />)
+      fireEvent.click(screen.getByTestId('debug-stats-toggle'))
+      const info = within(screen.getByTestId('debug-stats-session-info'))
+      expect(info.getByText('prompt-enhancer')).toBeInTheDocument()
+      expect(info.getByText('claude-sonnet-4-6')).toBeInTheDocument()
+    })
+
+    it('falls back to default placeholders when no cached token exists', () => {
+      vi.mocked(useSwitchboard).mockReturnValue(true)
+      mockUseCurrentAppId.mockReturnValue('app-1')
+      mockPeekAgentToken.mockReturnValue(null)
+      render(<Mount />)
+      fireEvent.click(screen.getByTestId('debug-stats-toggle'))
+      const info = within(screen.getByTestId('debug-stats-session-info'))
+      // Profile + Init model both fall back to 'default'.
+      expect(info.getAllByText('default').length).toBeGreaterThanOrEqual(2)
+    })
+
+    it('falls back to default when the token fails to decode (catch -> null)', () => {
+      vi.mocked(useSwitchboard).mockReturnValue(true)
+      mockUseCurrentAppId.mockReturnValue('app-1')
+      mockPeekAgentToken.mockReturnValue('not-a-jwt')
+      mockJwtDecode.mockImplementation(() => { throw new Error('bad token') })
+      render(<Mount />)
+      fireEvent.click(screen.getByTestId('debug-stats-toggle'))
+      const info = within(screen.getByTestId('debug-stats-session-info'))
+      expect(info.getAllByText('default').length).toBeGreaterThanOrEqual(2)
+    })
   })
 
 })

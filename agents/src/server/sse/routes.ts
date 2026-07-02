@@ -19,7 +19,7 @@ import { getBudgetServiceClient } from '../../services/budget-service-instance.j
 import { BudgetExceededError } from '@airo/ai-common'
 import { ConnectionInitializer } from '../connection-initializer.js'
 import type { AgentRouterParams, AgentStateManager } from '../agent-router.js'
-import { resolveInitialAgentId } from '../resolve-initial-agent.js'
+import { resolveInitialAgentId, resolveStartOverrideAgentId } from '../resolve-initial-agent.js'
 import { buildContextAttachments } from '@airo/shared/context-attachment'
 
 import { context, trace, SpanKind, SpanStatusCode } from '@opentelemetry/api'
@@ -43,6 +43,8 @@ interface SSERouteDeps {
   resolveAgent: (params: AgentRouterParams) => string | Promise<string>
   getStateManager: () => AgentStateManager | null
   getModeIds: () => string[]
+  /** Registered/startable agent ids (factory `agents.list()`) — allowlist for the `?agent=` override. */
+  getStartableAgentIds: () => string[]
   lifecycle: ConversationLifecycleStore
   messages: MessageStore
 }
@@ -113,12 +115,15 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
   // so a stale client `agentId`/profile can never re-route an existing app.
   router.post('/:appId', deps.authenticate, validateAppOwnershipFromParam('appId'), asyncHandler(async (req: Request, res: Response) => {
     const appId = req.params.appId!
-    const { templateId } = req.body
+    const { templateId, overrideAgentId } = req.body
 
     try {
       const agentContext = (req as AuthenticatedRequest).agentContext
       const resolvedAgentId = resolveInitialAgentId({
         appId,
+        overrideAgentId,
+        startOverrideEnabled: agentContext?.agentStartOverrideEnabled,
+        getStartableAgentIds: deps.getStartableAgentIds,
         templateId,
         jwtAgentProfile: agentContext?.agentProfile,
         getModeIds: deps.getModeIds,
@@ -493,7 +498,7 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
     const conversationId = req.params.conversationId!
     const {
       content,
-      templateId, modelOverride, rebuildBuildPageSlug, rebuildDesignDirection, rebuildBringOverChoice,
+      templateId, overrideAgentId, modelOverride, rebuildBuildPageSlug, rebuildDesignDirection, rebuildBringOverChoice,
       visualContext, aiEditContext, aiEditContexts, selectedAssets,
       todoListContext, isActionRequest, customContext, buildErrorContext,
       uploadedFileName, automationId,
@@ -678,7 +683,7 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
     let resolvedAgentId: string
     try {
       resolvedAgentId = await deps.resolveAgent({
-        appId, manualAgentOverride, templateId, agentContext,
+        appId, manualAgentOverride, templateId, overrideAgentId, agentContext,
         ...(stateManager && { session: { sessionId: sseSocketId, stateManager } }),
       })
     } catch (err) {
@@ -709,18 +714,27 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
     // does not send `templateId` at create — only with the message (sendMessage) —
     // so a `?template=` app freezes on the JWT profile instead of
     // `initial-<templateId>`. WS does not hit this because it freezes lazily on the
-    // first message. Finalize here: on the initial prompt, if a valid template was
-    // supplied, re-freeze to the template agent (template wins over the JWT
-    // profile, per the create-time priority). Template-only by design — we never
-    // re-derive the profile here, so this can neither re-cohort a profile nor
-    // revert a post-handoff agent (the `startsWith('initial')` guard skips anything
-    // already handed off).
+    // first message. Finalize here: on the initial prompt, if a valid start-as
+    // override (`?agent=`) or template was supplied, re-freeze to it — the override
+    // wins over the template, which in turn wins over the JWT profile (same
+    // create-time priority). We never re-derive the profile here, so this can
+    // neither re-cohort a profile nor revert a post-handoff agent (the
+    // `startsWith('initial')` guard skips anything already handed off).
     if (isInitialPrompt && resolvedAgentId.startsWith('initial')) {
+      // Internal start-as override (?agent=) wins over ?template=. Gated + validated
+      // exactly like the create-time resolver; a customer-sent value is ignored
+      // because their JWT lacks agentStartOverrideEnabled.
+      const overrideFinalizeId = resolveStartOverrideAgentId({
+        overrideAgentId,
+        startOverrideEnabled: agentContext?.agentStartOverrideEnabled,
+        getStartableAgentIds: deps.getStartableAgentIds,
+      })
       const validTemplate = typeof templateId === 'string' && deps.getModeIds().includes(templateId)
         ? templateId
         : undefined
       const templateAgentId = validTemplate ? `initial-${validTemplate}` : undefined
-      if (templateAgentId && templateAgentId !== resolvedAgentId) {
+      const finalizeAgentId = overrideFinalizeId ?? templateAgentId
+      if (finalizeAgentId && finalizeAgentId !== resolvedAgentId) {
         const previousAgentId = resolvedAgentId
         try {
           // The durable store is the source of truth — write it first. Only once
@@ -729,13 +743,14 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
           // correct and the next message's store read self-corrects (transient
           // one-message window). If the durable write itself throws, we keep the
           // already-frozen agent for this turn so store and session stay aligned.
-          await deps.lifecycle.updateAgentId(conversationId, templateAgentId)
-          resolvedAgentId = templateAgentId
-          logger.info('sse.initial_prompt.template_finalized', {
-            appId, conversationId, from: previousAgentId, to: templateAgentId,
+          await deps.lifecycle.updateAgentId(conversationId, finalizeAgentId)
+          resolvedAgentId = finalizeAgentId
+          logger.info('sse.initial_prompt.agent_finalized', {
+            appId, conversationId, from: previousAgentId, to: finalizeAgentId,
+            reason: overrideFinalizeId ? 'start_override' : 'template',
           })
           try {
-            await stateManager?.switchAgent(sseSocketId, templateAgentId)
+            await stateManager?.switchAgent(sseSocketId, finalizeAgentId)
           } catch (sessionErr) {
             logger.warn('sse.initial_prompt.template_finalize_session_warn', { appId, conversationId, ...errorFields(sessionErr) })
           }

@@ -8,6 +8,7 @@
  */
 
 import { appFetch, AuthDismissedError } from '@/lib/gasket-config'
+import { getStoredStartProfile } from '@/lib/quick-create'
 import { logger } from '@/lib/request-context'
 import { useBillingModeStore } from '@/stores/useBillingModeStore'
 
@@ -148,7 +149,9 @@ async function requestBrowserAgentToken(siteId: string): Promise<string> {
     const response = await appFetch('/api/auth/agent-token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ siteId }),
+      // Internal-only "start-as" profile (?profile=); server ignores it unless the
+      // caller is internal. undefined for normal users.
+      body: JSON.stringify({ siteId, agentProfileOverride: getStoredStartProfile(siteId) ?? undefined }),
     }, { handle401: true });
 
     if (!response.ok) {
@@ -207,6 +210,16 @@ export async function getAgentToken(siteId: string): Promise<string> {
   pendingTokenRequests.set(siteId, tokenPromise);
 
   return tokenPromise;
+}
+
+/**
+ * Passive read of the cached agent JWT for a site — returns the token string
+ * without minting/fetching one. For read-only client inspection of non-secret
+ * claims (e.g. the debug drawer decoding `agentProfile` / `modelOverride`);
+ * returns null until a token has been fetched by normal agent traffic.
+ */
+export function peekAgentToken(siteId: string): string | null {
+  return tokenCache.get(siteId)?.token ?? null;
 }
 
 /**

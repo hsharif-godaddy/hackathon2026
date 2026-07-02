@@ -29,18 +29,6 @@ import { AgentContextPipeline } from './agent-context-pipeline.js'
 import { setRegisteredInitialNamedVariantIds } from '../registered-initial-named-variant-ids.js'
 
 /**
- * Agent metadata for discovery and management
- */
-export interface AILibAgentMetadata {
-  id: string
-  name: string
-  description: string
-  version: string
-  tags: string[]
-  toolGroups: string[]
-}
-
-/**
  * Create a unified agent factory with all agents
  */
 export async function createUnifiedAgentFactory(options?: {
@@ -199,36 +187,6 @@ export async function createUnifiedAgentFactory(options?: {
   setRegisteredInitialNamedVariantIds(namedVariantByVersion)
 
   return { factory, agents, stateManager }
-}
-
-/**
- * Agent metadata registry
- */
-export const aiLibAgentMetadata: Record<string, AILibAgentMetadata> = {
-  initial: {
-    id: 'initial',
-    name: 'Initial Preview Builder',
-    description: 'Creates a simple preview page for new apps to help users review and refine the style before building all features.',
-    version: '1.0.0',
-    tags: ['preview', 'initial', 'onboarding', 'planning'],
-    toolGroups: ['core', 'planning'],
-  },
-  develop: {
-    id: 'develop',
-    name: 'AI Developer',
-    description: 'An AI developer agent that helps build web applications, websites, and digital solutions. Specializes in full-stack development and modern web technologies.',
-    version: '2.0.0',
-    tags: ['developer', 'coding', 'web-development', 'ai-assistant', 'frontend'],
-    toolGroups: ['core', 'system', 'media', 'debug'],
-  },
-  marketing: {
-    id: 'marketing',
-    name: 'Marketing Manager',
-    description: 'SEO specialist and social media manager that helps optimize websites for better visibility and performance in search engines. Can connect to social platforms including Facebook and Instagram.',
-    version: '1.0.0',
-    tags: ['marketing', 'seo', 'content', 'optimization', 'search', 'social-media'],
-    toolGroups: ['core', 'planning', 'content'],
-  },
 }
 
 /**

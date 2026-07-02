@@ -24,7 +24,7 @@ import compression from 'compression';
 
 import { create as createServer } from './server-factory.js';
 import { corsMiddleware, timingAllowOriginMiddleware, errorHandler, notFoundHandler, requestLogger, jwtAuthMiddleware, validateProductAccess } from './middleware/index.js';
-import { agentsRouter, appsRouter, chatRouter, healthRouter, diagnosticsRouter, gitRouter, debugRouter, filesRouter, filesPublicRouter, publishRouter, publishEnvRouter, downloadRouter, dbRouter, dbImportRouter, todoListRouter, securityMisconfigScanRouter, vulnerabilityScanRouter, securityReportRouter, secretsScanRouter, videoRouter, conversationsRouter, qaAnalyzeRouter, gitRemoteRouter, goLiveRouter, adsenseRouter, complianceRouter, socialRouter, customerLogsRouter, diagnoseRouter, autoFixRouter, zipImportRouter, uiKitRouter, shareRouter, mediaRouter, modelsRouter, profilesRouter, transferValidateRouter, runtimeErrorsRouter, formatOverridesRouter, brandDataRouter, designKitRouter, rebuildRouter, nextActionsRouter, captureScreenshotRouter, feedbackRouter, inboxAccountRouter, seoQualityRouter, campaignsRouter, appMetadataRouter, commerceRouter, dkimRouter, workflowStateRouter } from './routes/index.js';
+import { appsRouter, chatRouter, healthRouter, diagnosticsRouter, gitRouter, debugRouter, filesRouter, filesPublicRouter, publishRouter, publishEnvRouter, downloadRouter, dbRouter, dbImportRouter, todoListRouter, securityMisconfigScanRouter, vulnerabilityScanRouter, securityReportRouter, secretsScanRouter, videoRouter, conversationsRouter, qaAnalyzeRouter, gitRemoteRouter, goLiveRouter, adsenseRouter, complianceRouter, socialRouter, customerLogsRouter, diagnoseRouter, autoFixRouter, zipImportRouter, uiKitRouter, shareRouter, mediaRouter, modelsRouter, transferValidateRouter, runtimeErrorsRouter, formatOverridesRouter, brandDataRouter, designKitRouter, rebuildRouter, nextActionsRouter, captureScreenshotRouter, feedbackRouter, inboxAccountRouter, seoQualityRouter, campaignsRouter, appMetadataRouter, commerceRouter, dkimRouter, workflowStateRouter } from './routes/index.js';
 import { initAgentRuntime, getEventChannel, getAgentFactory, getMessageLifecycleDeps } from './agent-runtime.js';
 import { EventStreamRegistry } from './sse/EventStreamRegistry.js';
 import { initSSERegistry } from './sse/registry-singleton.js';
@@ -87,6 +87,10 @@ const { validator: ssePostStreamValidator, resetRetries: sseResetPostStreamRetri
 const resolveAgent = createAgentRouter({
   hasMessagesForApp: (appId) => getMessageStore().hasMessagesForApp(workspaceScopeFromAppId(appId)),
   getModeIds,
+  // Allowlist for the internal `?agent=` start-as override: every registered
+  // (startable) agent. Lazy — the factory is created after this router. Excludes
+  // sub-agents (never registered in the factory).
+  getStartableAgentIds: () => (getAgentFactory()?.agents.list() ?? []) as string[],
   // Durable per-conversation agent fallback (transport parity with the WS router).
   // SSE has no in-memory session, so this is what keeps a conversation in its
   // persisted phase instead of defaulting to `develop` once messages exist.
@@ -246,8 +250,6 @@ app.get('/', (req, res) => {
     description: 'Class-based AI agent library with HTTP streaming endpoints',
     endpoints: {
       health: '/health',
-      agents: '/agents',
-      agentDetails: '/agents/{agent-id}',
       apps: '/apps',
       appDetails: '/apps/{app-id}',
       chat: '/agent/{agent-id}/chat',
@@ -269,7 +271,6 @@ app.use('/', shareRouter);
 const protectedRouter = Router();
 protectedRouter.use(jwtAuthMiddleware.authenticate, validateProductAccess);
 
-protectedRouter.use('/agents', agentsRouter);
 protectedRouter.use('/apps', publishEnvRouter);
 protectedRouter.use('/apps', appsRouter);
 protectedRouter.use('/apps', appMetadataRouter);
@@ -307,7 +308,6 @@ protectedRouter.use('/', socialRouter);
 protectedRouter.use('/media', mediaRouter);
 protectedRouter.use('/', transferValidateRouter);
 protectedRouter.use('/', modelsRouter);
-protectedRouter.use('/', profilesRouter);
 protectedRouter.use('/', brandDataRouter);
 protectedRouter.use('/', designKitRouter);
 protectedRouter.use('/', inboxAccountRouter);
@@ -329,6 +329,7 @@ protectedRouter.use('/api/conversations', createSSERoutes({
     return factory.stateManager as import('./agent-router.js').AgentStateManager
   },
   getModeIds,
+  getStartableAgentIds: () => (getAgentFactory()?.agents.list() ?? []) as string[],
   lifecycle: getConversationLifecycleStore(),
   messages: getMessageStore(),
 }));
@@ -539,7 +540,6 @@ async function initialize() {
         port,
         secure,
         healthCheck: `${scheme}://${localHost}:${port}/health`,
-        agentsList: `${scheme}://${localHost}:${port}/agents`,
       });
 
       logger.info('server.migration.complete', {
@@ -560,10 +560,6 @@ async function initialize() {
       });
 
       logger.info('server.endpoints.available', {
-        agents: {
-          list: 'GET /agents - List all available AI agents with capabilities',
-          details: 'GET /agents/{id} - Get specific agent details and configuration',
-        },
         apps: {
           list: 'GET /apps - List all user applications with metadata',
           create: 'POST /apps - Create new application project',

@@ -350,6 +350,7 @@ export class SSETransport implements ChatTransport {
         sessionId: params.sessionId,
         userTimezone: params.userTimezone,
         templateId: params.templateId,
+        overrideAgentId: params.overrideAgentId,
         designKitSlug: params.designKitSlug,
         modelOverride: params.modelOverride,
         visualContext: params.visualContext,

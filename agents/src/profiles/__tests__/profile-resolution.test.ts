@@ -35,49 +35,18 @@ describe('profile-registry', function registryTests() {
 
   describe('resolveProfile', function resolveTests() {
     it('returns null when no override specified', function noOverride() {
-      const result = resolveProfile({
-        agentProfileSelectorEnabled: true,
-        perProjectProfile: undefined,
-        jwtAgentProfile: undefined,
-      })
+      const result = resolveProfile({ jwtAgentProfile: undefined })
       expect(result).toBeNull()
     })
 
     it('returns profile from JWT claim', function jwtProfile() {
-      const result = resolveProfile({
-        agentProfileSelectorEnabled: false,
-        perProjectProfile: undefined,
-        jwtAgentProfile: 'experimental',
-      })
+      const result = resolveProfile({ jwtAgentProfile: 'experimental' })
       expect(result).not.toBeNull()
       expect(result!.name).toBe('experimental')
-    })
-
-    it('per-project overrides JWT when selector enabled', function perProjectPriority() {
-      const result = resolveProfile({
-        agentProfileSelectorEnabled: true,
-        perProjectProfile: 'experimental',
-        jwtAgentProfile: undefined,
-      })
-      expect(result).not.toBeNull()
-      expect(result!.name).toBe('experimental')
-    })
-
-    it('ignores per-project when selector disabled', function selectorDisabled() {
-      const result = resolveProfile({
-        agentProfileSelectorEnabled: false,
-        perProjectProfile: 'experimental',
-        jwtAgentProfile: undefined,
-      })
-      expect(result).toBeNull()
     })
 
     it('returns null and logs warning for unknown profile', function unknownProfile() {
-      const result = resolveProfile({
-        agentProfileSelectorEnabled: true,
-        perProjectProfile: 'nonexistent',
-        jwtAgentProfile: undefined,
-      })
+      const result = resolveProfile({ jwtAgentProfile: 'nonexistent' })
       expect(result).toBeNull()
       expect(mockLogger.warn).toHaveBeenCalledWith(
         'profile.resolve.unknown',
@@ -86,20 +55,12 @@ describe('profile-registry', function registryTests() {
     })
 
     it('returns null for "default" profile name from JWT', function defaultProfile() {
-      const result = resolveProfile({
-        agentProfileSelectorEnabled: false,
-        perProjectProfile: undefined,
-        jwtAgentProfile: 'default',
-      })
+      const result = resolveProfile({ jwtAgentProfile: 'default' })
       expect(result).toBeNull()
     })
 
     it('returns null for empty string profile name', function emptyString() {
-      const result = resolveProfile({
-        agentProfileSelectorEnabled: false,
-        perProjectProfile: undefined,
-        jwtAgentProfile: '',
-      })
+      const result = resolveProfile({ jwtAgentProfile: '' })
       expect(result).toBeNull()
     })
   })

@@ -183,7 +183,6 @@ export async function mintAgentToken(options: AgentTokenOptions): Promise<TokenR
         enableAssessmentOverride: false,
         product: 'AiroAppBuilder' as const,
         modelSelectorEnabled: false,
-        agentProfileSelectorEnabled: false,
         costAttributionDryRun: false,
     };
 

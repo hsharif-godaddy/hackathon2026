@@ -1,4 +1,3 @@
-export * from './agents.js';
 export * from './apps.js';
 export * from './chat.js';
 export * from './health.js';
@@ -33,7 +32,6 @@ export { default as uiKitRouter } from './ui-kit.js';
 export { default as shareRouter } from './share.js';
 export { default as mediaRouter } from './media.js';
 export { default as modelsRouter } from './models.js';
-export { default as profilesRouter } from './profiles.js';
 export { default as transferValidateRouter } from './transfer-validate.js';
 export { default as dbImportRouter } from './db-import.js';
 export { runtimeErrorsRouter } from './runtime-errors.js';

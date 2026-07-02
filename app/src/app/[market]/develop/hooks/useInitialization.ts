@@ -2,7 +2,8 @@ import { useRouter } from 'next/navigation'
 import { useEffect, useRef, useState } from 'react'
 import { useMachine } from '@xstate/react'
 
-import { getStorageItem, getStoredDesignKitSlug, getStoredUploadedFiles } from '@/lib/quick-create'
+import { clearAgentTokenCache, getAgentToken } from '@/lib/agent-fetch'
+import { getStorageItem, getStoredDesignKitSlug, getStoredOverrideAgentId, getStoredUploadedFiles, migrateStartProfileToAppId } from '@/lib/quick-create'
 import { logger } from '@/lib/request-context'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { cleanupSiteCreationStore, useSiteCreationStore } from '@/stores/useSiteCreationStore'
@@ -118,6 +119,7 @@ export function applyMarkInitialPromptSentEffects(
     sessionStorage.removeItem(`initial-upload-file-${initialJobId}`)
     sessionStorage.removeItem(`initial-upload-files-${initialJobId}`)
     sessionStorage.removeItem(`initial-design-kit-${initialJobId}`)
+    sessionStorage.removeItem(`initial-override-agent-${initialJobId}`)
     // The receive bridge (cross-origin) at GET /api/receive (which uses receive-bridge.js)
     // sets these in localStorage since sessionStorage is not shared between tabs/origins.
     // Clean up both storage locations.
@@ -131,6 +133,7 @@ export function applyMarkInitialPromptSentEffects(
     sessionStorage.removeItem(`initial-upload-file-${appId}`)
     sessionStorage.removeItem(`initial-upload-files-${appId}`)
     sessionStorage.removeItem(`initial-design-kit-${appId}`)
+    sessionStorage.removeItem(`initial-override-agent-${appId}`)
     // Clear the creation-handoff marker so subsequent same-tab reloads rely on the strict gate.
     sessionStorage.removeItem(`initial-job-id-${appId}`)
     localStorage.removeItem(`initial-prompt-pending-${appId}`)
@@ -296,6 +299,7 @@ export interface InitializationUIState {
   templateId: string | null
   uploadedFiles: Array<{ name: string; content: string; isDesignMd: boolean; isZip?: boolean; isUiKit?: boolean; isAppImport?: boolean; isImage?: boolean }>
   designKitSlug: string | null
+  overrideAgentId: string | null
 
   // Error handling
   hasError: boolean
@@ -578,6 +582,7 @@ function computeUIState(
     templateId: getStoredTemplateId(context.initialJobId, context.appId),
     uploadedFiles: getStoredUploadedFiles(context.initialJobId, context.appId),
     designKitSlug: getStoredDesignKitSlug(context.initialJobId, context.appId),
+    overrideAgentId: getStoredOverrideAgentId(context.initialJobId, context.appId),
 
     hasError,
     errorMessage: creationError || 'Initialization failed',
@@ -903,6 +908,17 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
         const initialPromptText = sessionStorage.getItem(`initial-prompt-text-${jobId}`)
         if (initialPromptText) {
           sessionStorage.setItem(`initial-prompt-text-${realAppId}`, initialPromptText)
+        }
+        // The internal start-as profile is stored under the job id at create but the
+        // agent-token mints under the real app id after this flip; carry it across so
+        // getStoredStartProfile resolves it on every later mint/refresh (see quick-create).
+        // The first app-id token mint can win the race against this effect (it's triggered
+        // by a separate effect on the same realAppId render) and cache a profile-less token
+        // for 12h; when we actually migrate the key, drop that stale token and re-mint so
+        // the override lands.
+        if (migrateStartProfileToAppId(jobId, realAppId)) {
+          clearAgentTokenCache(realAppId)
+          void getAgentToken(realAppId).catch(() => {})
         }
         // Copy all analytics context fields directly under the real app ID so they
         // survive after applyMarkInitialPromptSentEffects removes the initial-job-id

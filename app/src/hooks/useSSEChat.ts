@@ -1384,6 +1384,7 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
         sessionId: activeAppId,
         userTimezone: BROWSER_TIMEZONE,
         templateId: options.templateId,
+        overrideAgentId: options.overrideAgentId,
         designKitSlug: options.designKitSlug,
         modelOverride: defaults.modelOverride,
         visualContext: defaults.visualContext,

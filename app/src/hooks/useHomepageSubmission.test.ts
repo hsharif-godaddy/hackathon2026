@@ -20,6 +20,7 @@ const mockAuthContext = vi.hoisted(() => vi.fn(function () { return { isAuthenti
 const mockUseSubscription = vi.hoisted(() => vi.fn(function () { return { subscriptions: [] as { id: string }[], isLoading: false, isError: false }; }))
 const mockFetchQuickCreate = vi.hoisted(() => vi.fn())
 const mockRouterPush = vi.hoisted(() => vi.fn())
+const mockRouterReplace = vi.hoisted(() => vi.fn())
 const mockT = vi.hoisted(() => vi.fn((key: string) => key))
 const mockLogAnalytics = vi.hoisted(() => vi.fn())
 const MockAuthDismissedError = vi.hoisted(() => class AuthDismissedError extends Error {
@@ -65,7 +66,7 @@ vi.mock('@/lib/quick-create', () => ({
   extractApiError: (e: unknown) => e,
 }))
 vi.mock('next/navigation', () => ({
-  useRouter: () => ({ push: mockRouterPush, replace: vi.fn() }),
+  useRouter: () => ({ push: mockRouterPush, replace: mockRouterReplace }),
   usePathname: () => '/',
   useSearchParams: () => ({
     get: (k: string) => mockSearchParams.value.get(k),
@@ -429,6 +430,57 @@ describe('useHomepageSubmission', () => {
       expect(call).toBeDefined()
       expect(call![1]).toMatchObject({ entryPoint: 'aab_homepage' })
       expect(call![2]).toMatchObject({ impressionProps: { entry_point: 'aab_homepage' } })
+    })
+  })
+
+  // AIROBUILD-3301: internal "start-as" overrides carried on ?profile= / ?agent=.
+  describe('internal start-as override carry', () => {
+    it('carries ?profile= and ?agent= into the session flags', async () => {
+      mockSearchParams.value = new URLSearchParams('profile=prompt-enhancer&agent=marketing')
+
+      const { result } = renderHook(() => useHomepageSubmission())
+      await act(async () => { await result.current.handleStartBuilding({ overridePrompt: 'build me a site' }) })
+
+      const flagsMock = setQuickCreateSessionFlags as unknown as Mock
+      const options = flagsMock.mock.calls[flagsMock.mock.calls.length - 1]?.[3]
+      expect(options).toMatchObject({ startProfile: 'prompt-enhancer', overrideAgentId: 'marketing' })
+    })
+  })
+
+  // AIROBUILD-3301: setStartOverride must write the canonical `mode` param (reads are
+  // mode-first via getModeParam), else a stale `?mode=` shadows a new template pick.
+  describe('setStartOverride canonical mode param', () => {
+    function lastReplaceQuery(): URLSearchParams {
+      const url = mockRouterReplace.mock.calls[mockRouterReplace.mock.calls.length - 1]?.[0] as string
+      return new URLSearchParams(url.split('?')[1] ?? '')
+    }
+
+    it('writes ?mode= and clears a stale ?mode= when re-selecting a template', () => {
+      mockSearchParams.value = new URLSearchParams('mode=logo-designer')
+      const { result } = renderHook(() => useHomepageSubmission())
+      act(() => { result.current.setStartOverride('template:deep-build') })
+      const qs = lastReplaceQuery()
+      expect(qs.get('mode')).toBe('deep-build')
+      expect(qs.get('template')).toBeNull()
+    })
+
+    it('clears the whole freeze axis (mode + template + agent) on default', () => {
+      mockSearchParams.value = new URLSearchParams('mode=logo-designer')
+      const { result } = renderHook(() => useHomepageSubmission())
+      act(() => { result.current.setStartOverride('') })
+      const qs = lastReplaceQuery()
+      expect(qs.get('mode')).toBeNull()
+      expect(qs.get('template')).toBeNull()
+      expect(qs.get('agent')).toBeNull()
+    })
+
+    it('agent kind clears a stale ?mode= (freeze axes are mutually exclusive)', () => {
+      mockSearchParams.value = new URLSearchParams('mode=logo-designer')
+      const { result } = renderHook(() => useHomepageSubmission())
+      act(() => { result.current.setStartOverride('agent:marketing') })
+      const qs = lastReplaceQuery()
+      expect(qs.get('agent')).toBe('marketing')
+      expect(qs.get('mode')).toBeNull()
     })
   })
 

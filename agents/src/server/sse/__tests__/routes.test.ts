@@ -1091,6 +1091,64 @@ describe('SSE routes', () => {
       expect(mockExecute).toHaveBeenCalledWith(expect.objectContaining({ agentId: 'initial-logo-designer' }))
     })
 
+    it('finalizes to the start-as override agent (?agent=) and it beats a concurrent ?template= on the initial prompt', async () => {
+      // Internal start-as override re-freezes at the finalize step and wins over the
+      // template, gated by agentStartOverrideEnabled (JWT) + the startable allowlist.
+      const mockExecute = vi.fn().mockResolvedValue(undefined)
+      const depsWithService = {
+        ...deps,
+        authenticate: vi.fn(function (req: any, _res: any, next: any) {
+          req.agentContext = { siteId: req.params.appId ?? 'abcdefghij', agentStartOverrideEnabled: true }
+          next()
+        }),
+        resolveAgent: vi.fn().mockResolvedValue('initial-agent-v3'),
+        getModeIds: vi.fn().mockReturnValue(['logo-designer']),
+        getStartableAgentIds: vi.fn().mockReturnValue(['marketing']),
+        executionService: { execute: mockExecute, hasActiveStream: vi.fn().mockReturnValue(false) },
+      }
+      const appWithService = express()
+      appWithService.use(express.json())
+      appWithService.use('/api/conversations', createSSERoutes(depsWithService as any))
+
+      const res = await request(appWithService)
+        .post('/api/conversations/abcdefghij/conv_1/messages')
+        .send({ content: 'Build it', overrideAgentId: 'marketing', templateId: 'logo-designer' })
+
+      expect(res.status).toBe(202)
+      for (let i = 0; i < 50 && mockExecute.mock.calls.length === 0; i++) {
+        await new Promise(r => setTimeout(r, 5))
+      }
+      // Override wins over the concurrently-supplied template.
+      expect(depsWithService.lifecycle.updateAgentId).toHaveBeenCalledWith('conv_1', 'marketing')
+      expect(mockExecute).toHaveBeenCalledWith(expect.objectContaining({ agentId: 'marketing' }))
+    })
+
+    it('ignores the start-as override at finalize when agentStartOverrideEnabled is absent (non-internal caller)', async () => {
+      // Same body, but the JWT lacks the gate → override rejected, template still wins.
+      const mockExecute = vi.fn().mockResolvedValue(undefined)
+      const depsWithService = {
+        ...deps,
+        resolveAgent: vi.fn().mockResolvedValue('initial-agent-v3'),
+        getModeIds: vi.fn().mockReturnValue(['logo-designer']),
+        getStartableAgentIds: vi.fn().mockReturnValue(['marketing']),
+        executionService: { execute: mockExecute, hasActiveStream: vi.fn().mockReturnValue(false) },
+      }
+      const appWithService = express()
+      appWithService.use(express.json())
+      appWithService.use('/api/conversations', createSSERoutes(depsWithService as any))
+
+      const res = await request(appWithService)
+        .post('/api/conversations/abcdefghij/conv_1/messages')
+        .send({ content: 'Build it', overrideAgentId: 'marketing', templateId: 'logo-designer' })
+
+      expect(res.status).toBe(202)
+      for (let i = 0; i < 50 && mockExecute.mock.calls.length === 0; i++) {
+        await new Promise(r => setTimeout(r, 5))
+      }
+      expect(depsWithService.lifecycle.updateAgentId).toHaveBeenCalledWith('conv_1', 'initial-logo-designer')
+      expect(depsWithService.lifecycle.updateAgentId).not.toHaveBeenCalledWith('conv_1', 'marketing')
+    })
+
     it('does not finalize to a template agent once past the initial phase (e.g. develop)', async () => {
       // Guard: a handed-off conversation (develop) must not be reverted to a
       // template initial agent, even if a templateId rides the message.

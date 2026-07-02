@@ -5,7 +5,6 @@ import type { AgentContext } from '../aab-client.js';
 const profile: AgentContext = {
   siteId: 'bypass-site',
   agentProfile: 'develop',
-  agentProfileSelectorEnabled: true,
 };
 
 describe('resolveAgentAuth', () => {

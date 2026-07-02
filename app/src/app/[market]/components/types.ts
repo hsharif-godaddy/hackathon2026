@@ -46,6 +46,10 @@ export interface HeroSectionProps {
   onExampleClick?: (prompt: string) => void
   selectedTemplate?: string
   onTemplateChange?: (template: string) => void
+  selectedProfile?: string
+  onProfileChange?: (profile: string) => void
+  selectedStartOverride?: string
+  onStartOverrideChange?: (encoded: string) => void
   headingText?: string
   subheadingText?: string
   uploadedFiles?: UploadedDesignFile[]

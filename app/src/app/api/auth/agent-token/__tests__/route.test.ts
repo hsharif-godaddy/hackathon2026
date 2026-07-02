@@ -320,7 +320,7 @@ describe('agent-token', function packageTests() {
         product: 'AiroAppBuilder',
         modelSelectorEnabled: false,
         modelOverride: undefined,
-        agentProfileSelectorEnabled: false,
+        agentStartOverrideEnabled: false,
         agentProfile: undefined,
         costAttributionDryRun: false,
 
@@ -602,7 +602,7 @@ describe('agent-token', function packageTests() {
         expect(response.status).toBe(200);
         expect(data.expiresInSeconds).toBe(expiresInSeconds);
         expect(mockJWTService.createToken).toHaveBeenCalledWith(
-          { shopperId: 'shopper-789', siteId: MOCK_SITE_ID, customerId: 'customer-789', market: 'en-US', canDownload: false, canPublish: false, canPurchaseDomain: false, authType: 'basic', isE2S: false, useTestBudget: false, budgetServiceEnabled: false, subscriptionId: undefined, bmsBudgetId: undefined, enableAssessmentAgent: false, enableAssessmentOverride: false, assessmentClassifier: undefined, product: 'AiroAppBuilder', modelSelectorEnabled: false, modelOverride: undefined, agentProfileSelectorEnabled: false, agentProfile: undefined, costAttributionDryRun: false, useAtlasCrawler: false, rebuildIntakeFormEnabled: false, rebuildSourceImagesEnabled: false, debugStatsEnabled: false, marketingCampaignsEnabled: false, googleBusinessProfileSyncEnabled: false, asmDualWriteEnabled: false, logoBrandColorsEnabled: false, purchaseIntentClassifierEnabled: false, skillSuggestionsEnabled: false, enableFixSession: false, ssoRequired: false, ssoConfigured: false },
+          { shopperId: 'shopper-789', siteId: MOCK_SITE_ID, customerId: 'customer-789', market: 'en-US', canDownload: false, canPublish: false, canPurchaseDomain: false, authType: 'basic', isE2S: false, useTestBudget: false, budgetServiceEnabled: false, subscriptionId: undefined, bmsBudgetId: undefined, enableAssessmentAgent: false, enableAssessmentOverride: false, assessmentClassifier: undefined, product: 'AiroAppBuilder', modelSelectorEnabled: false, modelOverride: undefined, agentStartOverrideEnabled: false, agentProfile: undefined, costAttributionDryRun: false, useAtlasCrawler: false, rebuildIntakeFormEnabled: false, rebuildSourceImagesEnabled: false, debugStatsEnabled: false, marketingCampaignsEnabled: false, googleBusinessProfileSyncEnabled: false, asmDualWriteEnabled: false, logoBrandColorsEnabled: false, purchaseIntentClassifierEnabled: false, skillSuggestionsEnabled: false, enableFixSession: false, ssoRequired: false, ssoConfigured: false },
           expiresInSeconds
         );
         expect(mockJWTService.getToken).not.toHaveBeenCalled();
@@ -688,7 +688,7 @@ describe('agent-token', function packageTests() {
           product: 'AiroAppBuilder',
           modelSelectorEnabled: true,
           modelOverride: undefined,
-          agentProfileSelectorEnabled: false,
+          agentStartOverrideEnabled: true,
           agentProfile: undefined,
           costAttributionDryRun: false,
 
@@ -841,7 +841,7 @@ describe('agent-token', function packageTests() {
           product: 'AiroAppBuilder',
           modelSelectorEnabled: false,
           modelOverride: undefined,
-          agentProfileSelectorEnabled: false,
+          agentStartOverrideEnabled: false,
           agentProfile: undefined,
           costAttributionDryRun: false,
 
@@ -1565,6 +1565,68 @@ describe('agent-token', function packageTests() {
         expect(mockLogger.warn).toHaveBeenCalledWith('hivemind.cohorts.fetch-error', expect.objectContaining({
           error: 'switchboard unreachable',
         }));
+      });
+    });
+
+    describe('internal start-as override (agentStartOverrideEnabled + agentProfileOverride)', function startAsTests() {
+      beforeEach(function authedUser() {
+        mockAuthenticateCustomer.mockResolvedValue({
+          isAuthenticated: true,
+          user: MOCK_USER,
+          jwt: 'user-jwt-token',
+        });
+      });
+
+      function enableStartOverrideFlag(): void {
+        mockCheckSwitchboardFlag.mockImplementation((flag: string) =>
+          Promise.resolve(flag === 'appbuilder-agent-start-override')
+        );
+      }
+
+      it('appbuilder-agent-start-override flag on → token carries agentStartOverrideEnabled: true', async function flagOn() {
+        enableStartOverrideFlag();
+
+        const response = await POST(createMockRequest({ siteId: MOCK_SITE_ID }));
+
+        expect(response.status).toBe(200);
+        expect(mockJWTService.getToken).toHaveBeenCalledWith(
+          expect.objectContaining({ agentStartOverrideEnabled: true })
+        );
+      });
+
+      it('internal caller + known agentProfileOverride → token carries that profile', async function knownProfile() {
+        enableStartOverrideFlag();
+
+        const response = await POST(createMockRequest({ siteId: MOCK_SITE_ID, agentProfileOverride: 'prompt-enhancer' }));
+
+        expect(response.status).toBe(200);
+        expect(mockJWTService.getToken).toHaveBeenCalledWith(
+          expect.objectContaining({ agentProfile: 'prompt-enhancer' })
+        );
+      });
+
+      it('internal caller + unknown agentProfileOverride → ignored with warn (falls through)', async function unknownProfile() {
+        enableStartOverrideFlag();
+
+        const response = await POST(createMockRequest({ siteId: MOCK_SITE_ID, agentProfileOverride: 'not-a-real-profile' }));
+
+        expect(response.status).toBe(200);
+        expect(mockJWTService.getToken).toHaveBeenCalledWith(
+          expect.objectContaining({ agentProfile: undefined })
+        );
+        expect(mockLogger.warn).toHaveBeenCalledWith('agent-token.start-profile-override-invalid', expect.objectContaining({
+          requested: 'not-a-real-profile',
+        }));
+      });
+
+      it('non-internal caller (flag off) + known agentProfileOverride → ignored', async function nonInternal() {
+        // flag defaults to false (top-level beforeEach) → agentStartOverrideEnabled false
+        const response = await POST(createMockRequest({ siteId: MOCK_SITE_ID, agentProfileOverride: 'prompt-enhancer' }));
+
+        expect(response.status).toBe(200);
+        expect(mockJWTService.getToken).toHaveBeenCalledWith(
+          expect.objectContaining({ agentStartOverrideEnabled: false, agentProfile: undefined })
+        );
       });
     });
 

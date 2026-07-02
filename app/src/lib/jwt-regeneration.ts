@@ -6,6 +6,7 @@
  */
 
 import { appFetch } from '@/lib/gasket-config';
+import { getStoredStartProfile } from '@/lib/quick-create';
 import { logger } from '@/lib/request-context';
 
 export interface RegenerateTokenOptions {
@@ -54,6 +55,8 @@ export async function regenerateToken(
       body: JSON.stringify({
         siteId,
         expiresInSeconds,
+        // Internal-only "start-as" profile (?profile=); server ignores it unless internal.
+        agentProfileOverride: getStoredStartProfile(siteId) ?? undefined,
       }),
     });
 

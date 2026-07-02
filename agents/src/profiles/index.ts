@@ -18,8 +18,8 @@ import initialAgentDesignSystemHomepageBuildProfile from './initial-agent-design
 import initialAgentDesignKitProfile from './initial-agent-design-kit.json' with { type: 'json' }
 
 // NOTE: develop-agent eval prompt variants (develop-prompt-variants.ts) are
-// deliberately NOT registered here. This registry is the allowlist for both
-// `GET /profiles` and JWT `resolveProfile` on real WS/SSE sessions, so a profile
+// deliberately NOT registered here. This registry is the allowlist for JWT
+// `resolveProfile` on real WS/SSE sessions, so a profile
 // added here is selectable in production. To run an eval variant, register a
 // profile in your eval setup; do not add it to this shipped list. See
 // agents/src/prompts/develop/experiments/README.md.
@@ -73,13 +73,8 @@ export function getProfileRegistry(): Map<string, ProfileData> {
   return registry
 }
 
-export function resolveProfile(params: {
-  agentProfileSelectorEnabled: boolean
-  perProjectProfile?: string
-  jwtAgentProfile?: string
-}): ProfileData | null {
-  const perProject = params.agentProfileSelectorEnabled ? params.perProjectProfile : undefined
-  const profileName = perProject || params.jwtAgentProfile || undefined
+export function resolveProfile(params: { jwtAgentProfile?: string }): ProfileData | null {
+  const profileName = params.jwtAgentProfile || undefined
 
   if (!profileName || profileName === 'default') {
     logger.debug('profile.resolve.none', { reason: profileName ? 'default' : 'no profile specified' })

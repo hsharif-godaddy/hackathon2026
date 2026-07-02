@@ -172,7 +172,6 @@ export async function mintAgentToken(options) {
     enableAssessmentOverride: false,
     product: 'AiroAppBuilder',
     modelSelectorEnabled: false,
-    agentProfileSelectorEnabled: false,
     costAttributionDryRun: false,
   };
 

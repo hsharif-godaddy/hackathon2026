@@ -49,6 +49,8 @@ export interface SendMessageOptions {
 
   /** Template ID for custom initial agent prompts */
   templateId?: string
+  /** Internal-only "start-as" override (?agent=). Server honors it only when the JWT carries agentStartOverrideEnabled. */
+  overrideAgentId?: string
 
   /** Design kit slug for initial build (AIROBUILD-2072) */
   designKitSlug?: string

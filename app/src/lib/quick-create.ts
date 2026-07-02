@@ -74,6 +74,10 @@ export interface QuickCreateSessionOptions {
   intentCategory?: string
   /** Catalog slug of a design kit the user attached on the home page, threaded into the initial build. */
   designKitSlug?: string
+  /** Internal-only "start-as" override (the `?agent=` param): freeze this agent id at creation. Only honored server-side when the JWT carries agentStartOverrideEnabled. */
+  overrideAgentId?: string
+  /** Internal-only "start-as" profile (the `?profile=` param): sent on the agent-token request → JWT `agentProfile`. Only honored server-side when the caller is internal. */
+  startProfile?: string
 }
 
 export function setQuickCreateSessionFlags(
@@ -82,7 +86,7 @@ export function setQuickCreateSessionFlags(
   templateId?: string,
   options: QuickCreateSessionOptions = {},
 ) {
-  const { uploadedFiles, entryPoint, creationSource, intentCategory = 'new_build', designKitSlug } = options
+  const { uploadedFiles, entryPoint, creationSource, intentCategory = 'new_build', designKitSlug, overrideAgentId, startProfile } = options
   sessionStorage.setItem(`name-registration-pending-${siteId}`, 'true')
   // Any changes to the following two keys (initial-prompt-pending-${siteId} and in-creation-flow-${siteId}) must be mirrored
   // in app/public/scripts/receive-bridge.js (which is used by GET /api/receive). It should have the same key and data there
@@ -101,6 +105,14 @@ export function setQuickCreateSessionFlags(
   }
   if (designKitSlug) {
     sessionStorage.setItem(`initial-design-kit-${siteId}`, designKitSlug)
+  }
+  if (overrideAgentId) {
+    sessionStorage.setItem(`initial-override-agent-${siteId}`, overrideAgentId)
+  }
+  // Session-long (not cleared after the first message like template/agent): the
+  // profile must survive for every agent-token mint/refresh for this app.
+  if (startProfile) {
+    sessionStorage.setItem(`initial-profile-${siteId}`, startProfile)
   }
   if (entryPoint) {
     sessionStorage.setItem(`entry-point-${siteId}`, entryPoint)
@@ -146,6 +158,55 @@ export function getStoredDesignKitSlug(
     if (val) return val
   }
   return null
+}
+
+export function getStoredOverrideAgentId(
+  initialJobId: string | null | undefined,
+  appId: string | null | undefined,
+): string | null {
+  if (typeof window === 'undefined') return null
+  const keysToTry = [initialJobId, appId].filter(Boolean) as string[]
+  for (const key of keysToTry) {
+    const val = sessionStorage.getItem('initial-override-agent-' + key)
+    if (val) return val
+  }
+  return null
+}
+
+/**
+ * Internal "start-as" profile carried for the agent-token request (→ JWT
+ * `agentProfile`). Keyed by the app/site id used to mint the token.
+ */
+export function getStoredStartProfile(siteId: string | null | undefined): string | null {
+  if (typeof window === 'undefined' || !siteId) return null
+  return sessionStorage.getItem('initial-profile-' + siteId)
+}
+
+/**
+ * Job-based creates store the start profile under the job id, but the agent-token
+ * mints under the real app id after the job→app flip — so getStoredStartProfile
+ * (app-id keyed) would miss it and the JWT would fall back to the switchboard
+ * profile for the rest of the session. Copy it across at the flip so every later
+ * mint/refresh resolves it. Unlike the one-time agent freeze, the profile key is
+ * intentionally NOT cleared by applyMarkInitialPromptSentEffects, so once migrated
+ * it persists for the app's session.
+ *
+ * Returns true when it actually wrote the app-id key. The caller uses that to bust
+ * any app-id agent-token that was already minted (profile-less) before this ran —
+ * the first app-id mint can win the race against this migration. No-op (returns
+ * false) when there is nothing to migrate or the target already has a value.
+ */
+export function migrateStartProfileToAppId(
+  jobId: string | null | undefined,
+  appId: string | null | undefined,
+): boolean {
+  if (typeof window === 'undefined' || !jobId || !appId || jobId === appId) return false
+  const profile = sessionStorage.getItem('initial-profile-' + jobId)
+  if (profile && sessionStorage.getItem('initial-profile-' + appId) == null) {
+    sessionStorage.setItem('initial-profile-' + appId, profile)
+    return true
+  }
+  return false
 }
 
 // The DB name, store name, record shape, and open/write logic below are duplicated as

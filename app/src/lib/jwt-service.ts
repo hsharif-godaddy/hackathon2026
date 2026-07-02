@@ -38,7 +38,7 @@ export interface CreateTokenOptions {
   modelOverride?: string; // Override the default agent model (switchboard: appbuilder-model-override)
   modelSelectorEnabled?: boolean; // Allow per-project model selection from frontend (switchboard: appbuilder-model-selector)
   agentProfile?: string; // Activate the named agent profile (switchboard: appbuilder-agent-profile)
-  agentProfileSelectorEnabled?: boolean; // Allow per-project profile selection from frontend (switchboard: appbuilder-agent-profile-selector)
+  agentStartOverrideEnabled?: boolean; // Internal only: honor the ?agent= start-as override at conversation create (switchboard: appbuilder-agent-start-override, or employee auth)
   costAttributionDryRun?: boolean; // Log cost attribution results but skip BMS reconciliation (switchboard: appbuilder-cost-attribution-dry-run)
   useAtlasCrawler?: boolean; // Route rebuild scraping through the Atlas REST API instead of the external web-scraper API (switchboard: appbuilder-atlas-crawler)
   rebuildIntakeFormEnabled?: boolean; // Show initial-rebuild intake form before scraping (switchboard: appbuilder-rebuild-intake-form)
@@ -231,7 +231,7 @@ export class JWTService {
       ...(options.modelOverride && { modelOverride: options.modelOverride }),
       modelSelectorEnabled: options.modelSelectorEnabled ?? false,
       ...(options.agentProfile && { agentProfile: options.agentProfile }),
-      agentProfileSelectorEnabled: options.agentProfileSelectorEnabled ?? false,
+      agentStartOverrideEnabled: options.agentStartOverrideEnabled ?? false,
       costAttributionDryRun: options.costAttributionDryRun ?? false,
       ...(options.isOwner !== undefined && { isOwner: options.isOwner }),
       useAtlasCrawler: options.useAtlasCrawler ?? false,
@@ -313,7 +313,7 @@ export class JWTService {
    */
   private getCacheKey(options: CreateTokenOptions): string {
     const authType = options.authType || 'basic';
-    return `${options.siteId}:${options.customerId || ''}:${options.canDownload}:${options.canPublish}:${options.canPurchaseDomain ?? false}:${authType}:${options.useTestBudget ?? false}:${options.budgetServiceEnabled ?? false}:${options.subscriptionId || ''}:${options.enableAssessmentAgent ?? false}:${options.enableAssessmentOverride ?? false}:${options.assessmentClassifier || ''}:${options.product || 'AiroAppBuilder'}:${options.modelOverride || ''}:${options.modelSelectorEnabled ?? false}:${options.agentProfile || ''}:${options.agentProfileSelectorEnabled ?? false}:${options.costAttributionDryRun ?? false}:${options.bmsBudgetId || ''}:${options.useAtlasCrawler ?? false}:${options.rebuildIntakeFormEnabled ?? false}:${options.rebuildSourceImagesEnabled ?? false}:${options.debugStatsEnabled ?? false}:${options.market || ''}:${options.fqdn || ''}:${options.marketingCampaignsEnabled ?? false}:${options.googleBusinessProfileSyncEnabled ?? false}:${options.asmDualWriteEnabled ?? false}:${options.logoBrandColorsEnabled ?? false}:${options.purchaseIntentClassifierEnabled ?? false}:${options.skillSuggestionsEnabled ?? false}:${options.ssoRequired ?? false}:${options.ssoConfigured ?? false}:${options.ownerProduct ?? ''}:${options.careAgentId || ''}:${options.careAgentUsernameHash || ''}`;
+    return `${options.siteId}:${options.customerId || ''}:${options.canDownload}:${options.canPublish}:${options.canPurchaseDomain ?? false}:${authType}:${options.useTestBudget ?? false}:${options.budgetServiceEnabled ?? false}:${options.subscriptionId || ''}:${options.enableAssessmentAgent ?? false}:${options.enableAssessmentOverride ?? false}:${options.assessmentClassifier || ''}:${options.product || 'AiroAppBuilder'}:${options.modelOverride || ''}:${options.modelSelectorEnabled ?? false}:${options.agentProfile || ''}:${options.agentStartOverrideEnabled ?? false}:${options.costAttributionDryRun ?? false}:${options.bmsBudgetId || ''}:${options.useAtlasCrawler ?? false}:${options.rebuildIntakeFormEnabled ?? false}:${options.rebuildSourceImagesEnabled ?? false}:${options.debugStatsEnabled ?? false}:${options.market || ''}:${options.fqdn || ''}:${options.marketingCampaignsEnabled ?? false}:${options.googleBusinessProfileSyncEnabled ?? false}:${options.asmDualWriteEnabled ?? false}:${options.logoBrandColorsEnabled ?? false}:${options.purchaseIntentClassifierEnabled ?? false}:${options.skillSuggestionsEnabled ?? false}:${options.ssoRequired ?? false}:${options.ssoConfigured ?? false}:${options.ownerProduct ?? ''}:${options.careAgentId || ''}:${options.careAgentUsernameHash || ''}`;
   }
 
   /**

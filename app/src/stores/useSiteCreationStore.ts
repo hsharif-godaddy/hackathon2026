@@ -2,10 +2,11 @@ import { create } from 'zustand'
 import { devtools } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
 
-import { agentFetch } from '@/lib/agent-fetch'
+import { agentFetch, clearAgentTokenCache, getAgentToken } from '@/lib/agent-fetch'
 import { SiteStatus } from '@/lib/control-plane/types'
 import { appFetch, AuthDismissedError } from '@/lib/gasket-config'
 import { shipAnalyticsLog } from '@/lib/logging'
+import { migrateStartProfileToAppId } from '@/lib/quick-create'
 import { logger } from '@/lib/request-context'
 import { appService } from '@/services/AppService'
 import { useSiteStore } from './useSiteStore'
@@ -348,6 +349,16 @@ export const useSiteCreationStore = create<SiteCreationStore>()(
           state.lastPollTime = Date.now()
         })
 
+        // Carry the internal start-as profile from the job id to the resolved app id
+        // at this polling transition — the authoritative job→app resolution point.
+        // The URL-flip effect in useInitialization also migrates, but some navigation
+        // paths (e.g. ?siteId= full page loads) bypass it; this runs regardless. When
+        // it actually migrates, drop any profile-less token already cached under the
+        // app id (a mint can win the race against this) and re-mint with the override.
+        if (previousSiteId && previousSiteId !== newSiteId && migrateStartProfileToAppId(previousSiteId, newSiteId)) {
+          clearAgentTokenCache(newSiteId)
+          void getAgentToken(newSiteId).catch(() => {})
+        }
         // Check if this is still a job ID - if so, don't mark as complete yet
         // Job IDs are 7 chars, V2 app IDs are 10 chars
         // CRITICAL: Check the ACTUAL site data ID, not the store's siteId which might be stale

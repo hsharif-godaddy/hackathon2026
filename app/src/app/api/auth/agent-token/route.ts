@@ -12,6 +12,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { isEmployeeAuthType, type ProductType } from '@airo/shared/auth';
 
 import { EXPERIMENT_IDS, INITIAL_AGENT_COHORT_TO_PROFILE } from '@/config/experiments';
+import { isKnownProfile } from '@/config/start-as-catalog';
 import { setApmAppId, setApmCustomerId } from '@/lib/apm-context';
 import { getAuthzFgaConfig } from '@/lib/authz-fga/config';
 import { enforceAabMultiUserCanBuild } from '@/lib/authz-fga/enforce-can-build';
@@ -47,6 +48,12 @@ export interface CreateAgentTokenRequest {
   siteId: string;
   expiresInSeconds?: number;
   owningProduct?: ProductType;
+  /**
+   * Internal-only "start-as" profile override (from the home-page `?profile=`).
+   * Only honored when the caller is internal (agentStartOverrideEnabled) and the
+   * value is a known profile; then it becomes the JWT `agentProfile`.
+   */
+  agentProfileOverride?: string;
 }
 
 export const dynamic = 'force-dynamic';
@@ -347,7 +354,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
     let assessmentClassifier: string | undefined;
     let modelSelectorEnabled = false;
     let modelOverride: string | undefined;
-    let agentProfileSelectorEnabled = false;
+    let agentStartOverrideEnabled = false;
     let agentProfile: string | undefined;
     let costAttributionDryRun = false;
     let siteInfo: SiteInfo | null = null;
@@ -388,7 +395,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       setApmAppId(body.siteId);
       setApmCustomerId(user.customerId);
       const parallelStart = Date.now();
-      const [paywallResult, domainPurchaseResult, testBudgetResult, budgetServiceResult, bmsExistingResult, siteInfoResult, assessmentAgentResult, assessmentOverrideResult, assessmentClassifierResult, modelSelectorResult, modelOverrideResult, agentProfileSelectorResult, agentProfileResult, costAttributionDryRunResult, useAtlasCrawlerResult, rebuildIntakeFormResult, debugDrawerResult, marketingCampaignsResult, googleBusinessProfileSyncResult, asmDualWriteResult, logoBrandColorsResult, purchaseIntentClassifierResult, skillSuggestionsResult, rebuildSourceImagesResult, fixSessionResult] = await Promise.allSettled([
+      const [paywallResult, domainPurchaseResult, testBudgetResult, budgetServiceResult, bmsExistingResult, siteInfoResult, assessmentAgentResult, assessmentOverrideResult, assessmentClassifierResult, modelSelectorResult, modelOverrideResult, agentProfileResult, costAttributionDryRunResult, useAtlasCrawlerResult, rebuildIntakeFormResult, debugDrawerResult, marketingCampaignsResult, googleBusinessProfileSyncResult, asmDualWriteResult, logoBrandColorsResult, purchaseIntentClassifierResult, skillSuggestionsResult, rebuildSourceImagesResult, fixSessionResult, agentStartOverrideResult] = await Promise.allSettled([
         checkPaywallEligibility(
           new ServerPaywallProvider(authContext.jwt || '', user.customerId, request.headers),
           body.siteId,
@@ -404,7 +411,6 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
         checkSwitchboardValue('appbuilder-assessment-classifier', request),
         checkSwitchboardFlag('appbuilder-model-selector', request),
         checkSwitchboardValue('appbuilder-model-override', request),
-        checkSwitchboardFlag('appbuilder-agent-profile-selector', request),
         checkSwitchboardValue('appbuilder-agent-profile', request),
         checkSwitchboardFlag('appbuilder-cost-attribution-dry-run', request),
         checkSwitchboardFlag('appbuilder-atlas-crawler', request),
@@ -418,6 +424,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
         checkSwitchboardFlag('appbuilder-skill-suggestions', request),
         checkSwitchboardFlag('appbuilder-rebuild-source-images', request),
         checkSwitchboardFlag('appbuilder-fix-session', request),
+        checkSwitchboardFlag('appbuilder-agent-start-override', request),
       ]);
       timing.parallelChecksMs = Date.now() - parallelStart;
 
@@ -442,7 +449,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       modelSelectorEnabled = resolveBooleanFlag(modelSelectorResult, 'agent-token.model-selector-flag-check-failed', body.siteId, user.customerId);
       const rawModelOverride = resolveStringFlag(modelOverrideResult, 'agent-token.model-override-flag-check-failed', body.siteId, user.customerId);
       modelOverride = rawModelOverride && rawModelOverride !== 'default' ? rawModelOverride : undefined;
-      agentProfileSelectorEnabled = resolveBooleanFlag(agentProfileSelectorResult, 'agent-token.agent-profile-selector-flag-check-failed', body.siteId, user.customerId);
+      agentStartOverrideEnabled = resolveBooleanFlag(agentStartOverrideResult, 'agent-token.agent-start-override-flag-check-failed', body.siteId, user.customerId);
       const rawAgentProfile = resolveStringFlag(agentProfileResult, 'agent-token.agent-profile-flag-check-failed', body.siteId, user.customerId);
       // Sentinels 'default' and 'hivemind' both mean "no operator override — let the
       // initial-agent Hivemind experiment decide". Any other value is an explicit
@@ -473,7 +480,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       setApmAppId(body.siteId);
       setApmCustomerId(user.customerId);
       const parallelStart = Date.now();
-      const [siteResult, paywallResult, domainPurchaseResult, testBudgetResult, budgetServiceResult, bmsExistingResult, siteInfoResult, assessmentAgentResult, assessmentOverrideResult, assessmentClassifierResult, modelSelectorResult, modelOverrideResult, agentProfileSelectorResult, agentProfileResult, costAttributionDryRunResult, useAtlasCrawlerResult, rebuildIntakeFormResult, debugDrawerResult, marketingCampaignsResult, googleBusinessProfileSyncResult, asmDualWriteResult, logoBrandColorsResult, purchaseIntentClassifierResult, skillSuggestionsResult, rebuildSourceImagesResult, fixSessionResult] = await Promise.allSettled([
+      const [siteResult, paywallResult, domainPurchaseResult, testBudgetResult, budgetServiceResult, bmsExistingResult, siteInfoResult, assessmentAgentResult, assessmentOverrideResult, assessmentClassifierResult, modelSelectorResult, modelOverrideResult, agentProfileResult, costAttributionDryRunResult, useAtlasCrawlerResult, rebuildIntakeFormResult, debugDrawerResult, marketingCampaignsResult, googleBusinessProfileSyncResult, asmDualWriteResult, logoBrandColorsResult, purchaseIntentClassifierResult, skillSuggestionsResult, rebuildSourceImagesResult, fixSessionResult, agentStartOverrideResult] = await Promise.allSettled([
         validateSiteAccess(body.siteId, user, authContext.jwt || '', body.owningProduct, multiUserEnabled),
         checkPaywallEligibility(
           new ServerPaywallProvider(authContext.jwt || '', user.customerId, request.headers),
@@ -490,7 +497,6 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
         checkSwitchboardValue('appbuilder-assessment-classifier', request),
         checkSwitchboardFlag('appbuilder-model-selector', request),
         checkSwitchboardValue('appbuilder-model-override', request),
-        checkSwitchboardFlag('appbuilder-agent-profile-selector', request),
         checkSwitchboardValue('appbuilder-agent-profile', request),
         checkSwitchboardFlag('appbuilder-cost-attribution-dry-run', request),
         checkSwitchboardFlag('appbuilder-atlas-crawler', request),
@@ -504,6 +510,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
         checkSwitchboardFlag('appbuilder-skill-suggestions', request),
         checkSwitchboardFlag('appbuilder-rebuild-source-images', request),
         checkSwitchboardFlag('appbuilder-fix-session', request),
+        checkSwitchboardFlag('appbuilder-agent-start-override', request),
       ]);
       timing.parallelChecksMs = Date.now() - parallelStart;
 
@@ -539,7 +546,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       modelSelectorEnabled = resolveBooleanFlag(modelSelectorResult, 'agent-token.model-selector-flag-check-failed', body.siteId, user.customerId);
       const rawModelOverride = resolveStringFlag(modelOverrideResult, 'agent-token.model-override-flag-check-failed', body.siteId, user.customerId);
       modelOverride = rawModelOverride && rawModelOverride !== 'default' ? rawModelOverride : undefined;
-      agentProfileSelectorEnabled = resolveBooleanFlag(agentProfileSelectorResult, 'agent-token.agent-profile-selector-flag-check-failed', body.siteId, user.customerId);
+      agentStartOverrideEnabled = resolveBooleanFlag(agentStartOverrideResult, 'agent-token.agent-start-override-flag-check-failed', body.siteId, user.customerId);
       const rawAgentProfile = resolveStringFlag(agentProfileResult, 'agent-token.agent-profile-flag-check-failed', body.siteId, user.customerId);
       // Sentinels 'default' and 'hivemind' both mean "no operator override — let the
       // initial-agent Hivemind experiment decide". Any other value is an explicit
@@ -767,6 +774,9 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
         });
       }
       modelSelectorEnabled = true;
+      // Internal "start-as" override (?agent= / ?profile=): impersonation sessions
+      // always get it, matching the model-selector bypass above.
+      agentStartOverrideEnabled = true;
 
       if (authContext.jwt) {
         // careAgentId gets resolved using workers-service api call
@@ -779,6 +789,23 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
           headers: request.headers,
           accountName: careAgentUsername,
         }));
+      }
+    }
+
+    // Internal "start-as" PROFILE override (?profile=): when the caller is internal
+    // (switchboard flag or employee) and supplies a known profile, it wins over the
+    // switchboard/hivemind-resolved value. This is the proper whole-session lever —
+    // it drives model/skills/develop config and the default initial agent. Unknown
+    // profile or non-internal caller → ignored (falls through to normal resolution).
+    if (agentStartOverrideEnabled && body.agentProfileOverride) {
+      if (isKnownProfile(body.agentProfileOverride)) {
+        agentProfile = body.agentProfileOverride;
+      } else {
+        logger.warn('agent-token.start-profile-override-invalid', {
+          siteId: body.siteId,
+          customerId: user.customerId,
+          requested: body.agentProfileOverride,
+        });
       }
     }
 
@@ -919,7 +946,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       product,
       modelSelectorEnabled,
       modelOverride,
-      agentProfileSelectorEnabled,
+      agentStartOverrideEnabled,
       agentProfile,
       costAttributionDryRun,
       useAtlasCrawler,

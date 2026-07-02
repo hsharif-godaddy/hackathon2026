@@ -19,7 +19,7 @@ describe('buildAgentContext', function suite() {
     modelOverride: 'claude-sonnet-4-5',
     modelSelectorEnabled: true,
     agentProfile: 'experimental',
-    agentProfileSelectorEnabled: true,
+    agentStartOverrideEnabled: true,
     useAtlasCrawler: true,
     exp: 1700000000,
     iat: 1699999000,
@@ -48,7 +48,7 @@ describe('buildAgentContext', function suite() {
       modelOverride: 'claude-sonnet-4-5',
       modelSelectorEnabled: true,
       agentProfile: 'experimental',
-      agentProfileSelectorEnabled: true,
+      agentStartOverrideEnabled: true,
       useAtlasCrawler: true,
       rebuildIntakeFormEnabled: false,
       rebuildSourceImagesEnabled: false,
@@ -135,7 +135,6 @@ describe('buildAgentContext', function suite() {
     expect(ctx.enableAssessmentAgent).toBe(false);
     expect(ctx.enableAssessmentOverride).toBe(false);
     expect(ctx.modelSelectorEnabled).toBe(false);
-    expect(ctx.agentProfileSelectorEnabled).toBe(false);
   });
 
   it('defaults authType to basic when missing', function defaultAuth() {
@@ -210,7 +209,7 @@ describe('buildAgentContext', function suite() {
       'modelOverride',
       'modelSelectorEnabled',
       'agentProfile',
-      'agentProfileSelectorEnabled',
+      'agentStartOverrideEnabled',
       'debugStatsEnabled',
       'useAtlasCrawler',
       'rebuildIntakeFormEnabled',

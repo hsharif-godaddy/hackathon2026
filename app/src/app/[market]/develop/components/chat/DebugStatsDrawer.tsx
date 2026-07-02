@@ -1,17 +1,36 @@
 'use client'
 
-import { type ReactElement,useState } from 'react'
+import { jwtDecode } from 'jwt-decode'
+import { type ReactElement, useMemo, useState } from 'react'
 import { FloatingPanel } from '@airo-ux/pattern-library/surfaces/floating-panel'
 import Button from '@ux/button'
 import Tag from '@ux/tag'
 
 import { SWITCHBOARD_APPBUILDER_DEBUG_DRAWER } from '@/config/switchboard-flags'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
-import { useConnectionState, useStreamingState } from '@/stores/useStreamingConversationStore'
+import { peekAgentToken } from '@/lib/agent-fetch'
+import { useConnectionState, useCurrentAppId, useStreamingState } from '@/stores/useStreamingConversationStore'
 import { useWorkflowArchetype, useWorkflowSteps, type WorkflowProgressStep } from '@/stores/useWorkflowProgressStore'
 import { type LLMCallRecord, useDebugStats } from './DebugStatsContext'
 
 type DebugTab = 'stats' | 'workflow' | 'settings'
+
+/** Non-secret agent-JWT claims we surface for monitoring (read client-side, unverified). */
+interface AgentTokenClaims {
+  /** Resolved profile baked into the token (session/app-lifetime config). */
+  agentProfile?: string
+  /** Configured model override baked into the token, if any. */
+  modelOverride?: string
+}
+
+function InfoRow({ label, value }: { label: string; value: string }): ReactElement {
+  return (
+    <>
+      <span className="text-muted-foreground">{label}</span>
+      <span className="min-w-0 truncate text-right" title={value}>{value}</span>
+    </>
+  )
+}
 
 function FlaskIcon(): ReactElement {
   return (
@@ -85,8 +104,38 @@ function StatsTab({ state, connectionState, streamingState }: {
   connectionState: { connected: boolean; status: string }
   streamingState: string
 }): ReactElement {
+  const siteId = useCurrentAppId()
+  const callCount = state.calls.length
+  const claims = useMemo<AgentTokenClaims | null>(() => {
+    const token = siteId ? peekAgentToken(siteId) : null
+    if (!token) return null
+    try {
+      return jwtDecode<AgentTokenClaims>(token)
+    } catch {
+      return null
+    }
+  }, [siteId, callCount])
+  const initialTemplate = useMemo<string | null>(() => {
+    if (!siteId || typeof window === 'undefined') return null
+    return window.sessionStorage.getItem(`initial-template-${siteId}`)
+  }, [siteId])
+  const latestCall: LLMCallRecord | undefined = callCount > 0 ? state.calls[callCount - 1] : undefined
+  const profile: string = claims?.agentProfile ?? 'default'
+  const initialModel: string = claims?.modelOverride ?? 'default'
+  const currentAgent: string = latestCall?.agentName ?? '—'
+  const currentModel: string = latestCall?.modelName ? abbreviateModel(latestCall.modelName) : '—'
   return (
     <div className="text-[10px] font-mono">
+      <section
+        className="mb-2 grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 border-b border-border/50 pb-2"
+        data-testid="debug-stats-session-info"
+      >
+        <InfoRow label="Profile" value={profile} />
+        <InfoRow label="Init model" value={initialModel} />
+        {initialTemplate && <InfoRow label="Init template" value={initialTemplate} />}
+        <InfoRow label="Agent (current)" value={currentAgent} />
+        <InfoRow label="Model (current)" value={currentModel} />
+      </section>
       <section className="mb-2 flex flex-wrap items-center gap-1" data-testid="debug-stats-connection-info">
         <Tag size="sm" emphasis={connectionState.connected ? 'success' : 'critical'}>
           {connectionState.connected ? 'connected' : connectionState.status}

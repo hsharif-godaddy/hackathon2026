@@ -61,6 +61,10 @@ export function HomePage({ serverFeatures }: HomeContentProps) {
             {...(hp.isTemplateSelectorEnabled && {
               selectedTemplate: hp.selectedTemplate,
             })}
+            selectedProfile={hp.selectedProfile}
+            onProfileChange={hp.setSelectedProfile}
+            selectedStartOverride={hp.selectedStartOverride}
+            onStartOverrideChange={hp.setStartOverride}
             {...(hp.isLogoMode && {
               headingText: t('builder_homepage_experiment_logo_header', undefined, 'Design a logo that defines your brand'),
               subheadingText: t('builder_homepage_experiment_logo_subheader', undefined, 'Describe your style and our AI will craft a unique logo in minutes'),

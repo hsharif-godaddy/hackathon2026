@@ -66,6 +66,76 @@ describe('resolveInitialAgentId', function resolveInitialAgentTests() {
     })
   })
 
+  describe('internal start-as override (?agent=)', function startOverride() {
+    const startable = () => ['initial', 'initial-v3', 'develop', 'marketing', 'deep-build', 'initial-logo-designer']
+
+    it('overrides ?template= AND the JWT profile when enabled + valid', function overrideWins() {
+      resolveProfileSpy.mockReturnValue(profile({ name: 'jwtp', properties: { 'initial.promptVersion': '3.0' } }))
+      const id = resolveInitialAgentId({
+        appId: 'app_new',
+        overrideAgentId: 'develop',
+        startOverrideEnabled: true,
+        getStartableAgentIds: startable,
+        templateId: 'logo-designer',
+        jwtAgentProfile: 'jwtp',
+        getModeIds: () => ['logo-designer'],
+      })
+      expect(id).toBe('develop')
+      // Winning at priority 0 means neither the template nor the profile branch runs.
+      expect(resolveProfileSpy).not.toHaveBeenCalled()
+    })
+
+    it('can start any registered top-level agent, e.g. deep-build', function anyStartable() {
+      const id = resolveInitialAgentId({
+        appId: 'app_new',
+        overrideAgentId: 'deep-build',
+        startOverrideEnabled: true,
+        getStartableAgentIds: startable,
+        getModeIds: noTemplates,
+      })
+      expect(id).toBe('deep-build')
+    })
+
+    it('is ignored when not gated (falls through to template)', function notGated() {
+      resolveProfileSpy.mockReturnValue(null)
+      const id = resolveInitialAgentId({
+        appId: 'app_new',
+        overrideAgentId: 'develop',
+        startOverrideEnabled: false,
+        getStartableAgentIds: startable,
+        templateId: 'logo-designer',
+        getModeIds: () => ['logo-designer'],
+      })
+      expect(id).toBe('initial-logo-designer')
+    })
+
+    it('is ignored + warns when the id is not a startable agent (falls through to default)', function invalidId() {
+      const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(function () {})
+      resolveProfileSpy.mockReturnValue(null)
+      const id = resolveInitialAgentId({
+        appId: 'app_new',
+        overrideAgentId: 'discovery', // a sub-agent — never in the startable set
+        startOverrideEnabled: true,
+        getStartableAgentIds: startable,
+        getModeIds: noTemplates,
+      })
+      expect(id).toBe('initial')
+      expect(warnSpy).toHaveBeenCalledWith('agent_router.start_override_invalid', expect.objectContaining({ overrideAgentId: 'discovery' }))
+      warnSpy.mockRestore()
+    })
+
+    it('is ignored when overrideAgentId is absent (normal resolution)', function absent() {
+      resolveProfileSpy.mockReturnValue(null)
+      const id = resolveInitialAgentId({
+        appId: 'app_new',
+        startOverrideEnabled: true,
+        getStartableAgentIds: startable,
+        getModeIds: noTemplates,
+      })
+      expect(id).toBe('initial')
+    })
+  })
+
   describe('concrete initial variant from a resolved profile', function variants() {
     function withJwtProfile(p: ProfileData) {
       resolveProfileSpy.mockReturnValue(p)

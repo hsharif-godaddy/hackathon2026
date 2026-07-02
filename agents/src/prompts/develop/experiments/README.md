@@ -52,7 +52,7 @@ so each run is attributable and reproducible.
 
 These variants currently activate via a profile flag, but the example profile is
 **deliberately not registered** in `agents/src/profiles/index.ts` — that registry
-is the allowlist for `GET /profiles` and JWT `resolveProfile` on real sessions,
+is the allowlist for JWT `resolveProfile` on real sessions,
 so anything registered there is selectable in production. The intended direction
 is an eval-only request field gated to eval/mock-auth so a variant can never
 reach a real session by construction; until then, register a variant's profile

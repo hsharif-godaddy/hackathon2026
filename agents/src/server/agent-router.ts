@@ -10,6 +10,11 @@ interface AgentRouterDeps {
   hasMessagesForApp: (appId: string) => boolean | Promise<boolean>
   getModeIds: () => string[]
   /**
+   * The registered/startable agent ids (factory `agents.list()`) — the allowlist
+   * for the internal `?agent=` start-as override. Sub-agents are excluded.
+   */
+  getStartableAgentIds: () => string[]
+  /**
    * The authoritative per-app agent: `conversations.agentId` of the app's latest
    * conversation, frozen as a concrete id at create/handoff. Returned verbatim —
    * a stale JWT profile or client field can never re-route an existing app.
@@ -48,13 +53,18 @@ export interface AgentRouterParams {
    */
   manualAgentOverride?: string
   templateId?: string
-  agentContext?: { agentProfile?: string }
+  /**
+   * Internal "start-as" override (`?agent=<id>`). Only honored for a brand-new app
+   * and only when the JWT sets `agentContext.agentStartOverrideEnabled`.
+   */
+  overrideAgentId?: string
+  agentContext?: { agentProfile?: string; agentStartOverrideEnabled?: boolean }
   session?: SessionContext
 }
 
 export function createAgentRouter(deps: AgentRouterDeps) {
   return async function resolveAgent(params: AgentRouterParams): Promise<string> {
-    const { appId, manualAgentOverride, templateId, agentContext, session } = params
+    const { appId, manualAgentOverride, templateId, overrideAgentId, agentContext, session } = params
 
     // `/agent <name>` is the top-priority override. SSE passes the parsed target;
     // WS handles it upstream and returns before the router is consulted.
@@ -85,6 +95,9 @@ export function createAgentRouter(deps: AgentRouterDeps) {
     function freezeInitialAgent(): string {
       return resolveInitialAgentId({
         appId,
+        overrideAgentId,
+        startOverrideEnabled: agentContext?.agentStartOverrideEnabled,
+        getStartableAgentIds: deps.getStartableAgentIds,
         templateId,
         jwtAgentProfile: agentContext?.agentProfile,
         getModeIds: deps.getModeIds,

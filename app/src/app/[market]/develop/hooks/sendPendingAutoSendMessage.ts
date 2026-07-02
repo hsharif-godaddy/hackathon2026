@@ -7,6 +7,7 @@ export interface SendPendingAutoSendMessageOptions {
   appId: string
   jobId?: string | null
   templateId: string | null
+  overrideAgentId?: string | null
   uploadedFiles?: Array<{ name: string; content: string; isDesignMd: boolean; isZip?: boolean; isUiKit?: boolean; isAppImport?: boolean; isImage?: boolean }> | null
   designKitSlug?: string | null
   send: (options: SendMessageOptions) => Promise<void>
@@ -52,6 +53,7 @@ export async function sendPendingAutoSendMessage(
     appId,
     jobId,
     templateId,
+    overrideAgentId,
     uploadedFiles,
     send,
     setInputValue,
@@ -109,6 +111,7 @@ export async function sendPendingAutoSendMessage(
       content: messageToSend,
       aiEditContext: null,
       templateId: effectiveTemplateId,
+      overrideAgentId: overrideAgentId ?? undefined,
       designKitSlug: designKitSlug ?? undefined,
       ...(uploaded.length > 0 && {
         uploadedFileName: uploaded[0].fileName,
