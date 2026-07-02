@@ -28,6 +28,7 @@ interface Service {
   startTime: string | null;
   endTime: string | null;
   recurrenceLimit: number | null;
+  imageUrl: string | null;
 }
 
 interface StaffInfo {
@@ -400,6 +401,16 @@ export default function AdminServiceDetailPage() {
         </div>
       </div>
 
+      {service.imageUrl && (
+        <div className="overflow-hidden rounded-xl border border-border">
+          <img
+            src={service.imageUrl}
+            alt={service.name}
+            className="h-48 w-full object-cover"
+          />
+        </div>
+      )}
+
       {service.description && (
         <p className="rounded-xl bg-muted p-4 text-sm text-muted-foreground">
           {service.description}
@@ -425,7 +436,9 @@ export default function AdminServiceDetailPage() {
         <Row
           label="Staff"
           value={
-            staffInfo ? (staffInfo.name ?? `Staff #${staffInfo.id} (${staffInfo.role})`) : "None"
+            staffInfo
+              ? (staffInfo.name ?? staffInfo.role)
+              : "None"
           }
         />
         {bookingsCount !== null && <Row label="Total Bookings" value={bookingsCount} />}

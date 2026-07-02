@@ -1,7 +1,15 @@
 import type { Request, Response } from "express";
 import { db } from "../../../../../db/client.js";
-import { booking, answeredQuestion, serviceSnapshot } from "../../../../../db/schema.js";
-import { eq } from "drizzle-orm";
+import {
+  booking,
+  answeredQuestion,
+  serviceSnapshot,
+  client,
+  contactDetail,
+  bookedInstance,
+  staff,
+} from "../../../../../db/schema.js";
+import { and, eq, isNull } from "drizzle-orm";
 
 export default async function handler(req: Request, res: Response) {
   try {
@@ -14,6 +22,8 @@ export default async function handler(req: Request, res: Response) {
       .select({
         booking,
         serviceCost: serviceSnapshot.cost,
+        serviceName: serviceSnapshot.name,
+        serviceDuration: serviceSnapshot.duration,
       })
       .from(booking)
       .leftJoin(serviceSnapshot, eq(booking.serviceSnapshotId, serviceSnapshot.id))
@@ -24,15 +34,59 @@ export default async function handler(req: Request, res: Response) {
       return res.status(404).json({ error: "Not found" });
     }
 
-    const answers = await db
-      .select()
-      .from(answeredQuestion)
-      .where(eq(answeredQuestion.bookingId, id));
+    const [answers, clientName, clientEmail, staffName] = await Promise.all([
+      db.select().from(answeredQuestion).where(eq(answeredQuestion.bookingId, id)),
+      (async (): Promise<string | null> => {
+        if (result.booking.bookerType !== "Client" || !result.booking.bookerId) return null;
+        const [c] = await db
+          .select({ firstName: client.firstName, lastName: client.lastName })
+          .from(client)
+          .where(eq(client.id, result.booking.bookerId))
+          .limit(1);
+        if (!c) return null;
+        return [c.firstName, c.lastName].filter(Boolean).join(" ") || null;
+      })(),
+      (async (): Promise<string | null> => {
+        if (result.booking.bookerType !== "Client" || !result.booking.bookerId) return null;
+        const [cd] = await db
+          .select({ email: contactDetail.email })
+          .from(contactDetail)
+          .where(
+            and(
+              eq(contactDetail.contactableId, result.booking.bookerId),
+              eq(contactDetail.contactableType, "Client"),
+              isNull(contactDetail.deletedAt),
+            ),
+          )
+          .limit(1);
+        return cd?.email ?? null;
+      })(),
+      (async (): Promise<string | null> => {
+        if (!result.booking.bookedInstanceId) return null;
+        const [inst] = await db
+          .select({ staffId: bookedInstance.staffId })
+          .from(bookedInstance)
+          .where(eq(bookedInstance.id, result.booking.bookedInstanceId))
+          .limit(1);
+        if (!inst?.staffId) return null;
+        const [s] = await db
+          .select({ name: staff.name })
+          .from(staff)
+          .where(eq(staff.id, inst.staffId))
+          .limit(1);
+        return s?.name ?? null;
+      })(),
+    ]);
 
     return res.json({
       booking: {
         ...result.booking,
         serviceCost: result.serviceCost,
+        serviceName: result.serviceName,
+        serviceDuration: result.serviceDuration,
+        clientName,
+        clientEmail,
+        staffName,
         answered_questions: answers,
       },
     });

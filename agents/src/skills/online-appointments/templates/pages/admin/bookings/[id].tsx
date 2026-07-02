@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 import { useAdminAuth, adminFetch } from "@/contexts/AdminAuthContext";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, CreditCard, Trash2 } from "lucide-react";
+import { ArrowLeft, CreditCard, Trash2, Clock, Tag, User } from "lucide-react";
 import { getPublicConfig } from "@/lib/api-client";
 import { useAppConfig } from "@/contexts/AppConfigContext";
 import { formatCost } from "@/components/booking/service-utils";
@@ -23,6 +23,11 @@ interface BookingDetail {
   serviceCost?: string;
   couponCode?: string;
   discountAmount?: string;
+  serviceName?: string | null;
+  serviceDuration?: string | null;
+  clientName?: string | null;
+  clientEmail?: string | null;
+  staffName?: string | null;
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -30,6 +35,17 @@ const STATUS_COLORS: Record<string, string> = {
   unpaid: "bg-yellow-50 text-yellow-700 dark:bg-yellow-950 dark:text-yellow-400",
   cancelled: "bg-red-50 text-red-700 dark:bg-red-950 dark:text-red-400",
 };
+
+function fromIsoDuration(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  if (!iso.startsWith("PT")) return null;
+  const hourMatch = iso.match(/(\d+)H/);
+  const minuteMatch = iso.match(/(\d+)M/);
+  const hours = parseInt(hourMatch?.[1] ?? "0");
+  const mins = parseInt(minuteMatch?.[1] ?? "0");
+  const total = hours * 60 + mins;
+  return total > 0 ? `${total} min` : null;
+}
 
 function Row({ label, value }: { label: string; value: ReactNode }) {
   return (
@@ -100,6 +116,7 @@ export default function AdminBookingDetailPage() {
     return (
       <div className="max-w-2xl space-y-4">
         <Skeleton className="h-8 w-48" />
+        <Skeleton className="h-32 rounded-xl" />
         <Skeleton className="h-48 rounded-xl" />
       </div>
     );
@@ -122,8 +139,21 @@ export default function AdminBookingDetailPage() {
     );
   }
 
+  const statusLabel =
+    booking.status.charAt(0).toUpperCase() + booking.status.slice(1);
+  const clientDisplayName = booking.clientName ?? (booking.bookerType === "Client" ? "Guest" : booking.bookerType);
+  const clientInitial = clientDisplayName.charAt(0).toUpperCase();
+  const durationLabel = fromIsoDuration(booking.serviceDuration);
+  const finalPrice = booking.serviceCost
+    ? String(
+        parseFloat(booking.serviceCost) -
+          (booking.discountAmount ? parseFloat(booking.discountAmount) : 0),
+      )
+    : null;
+
   return (
     <div className="max-w-2xl space-y-6">
+      {/* Header */}
       <div className="flex items-center gap-3">
         <Button
           variant="ghost"
@@ -144,11 +174,50 @@ export default function AdminBookingDetailPage() {
               STATUS_COLORS[booking.status] ?? "bg-muted text-muted-foreground",
             )}
           >
-            {booking.status}
+            {statusLabel}
           </span>
         </div>
       </div>
 
+      {/* Service card */}
+      {booking.serviceName && (
+        <div className="rounded-xl border border-border bg-card p-5">
+          <h2 className="mb-3 font-semibold text-foreground">Service</h2>
+          <p className="mb-3 text-base font-medium text-foreground">{booking.serviceName}</p>
+          <div className="flex flex-wrap gap-2">
+            {booking.serviceCost && (
+              <span className="flex items-center gap-1.5 rounded-full bg-muted px-3 py-1 text-xs font-medium text-foreground">
+                <Tag className="h-3 w-3" />
+                {formatCost(booking.serviceCost, currency)}
+              </span>
+            )}
+            {durationLabel && (
+              <span className="flex items-center gap-1.5 rounded-full bg-muted px-3 py-1 text-xs font-medium text-foreground">
+                <Clock className="h-3 w-3" />
+                {durationLabel}
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Client card */}
+      <div className="rounded-xl border border-border bg-card p-5">
+        <h2 className="mb-3 font-semibold text-foreground">Client</h2>
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
+            {clientInitial}
+          </div>
+          <div>
+            <p className="text-sm font-medium text-foreground">{clientDisplayName}</p>
+            {booking.clientEmail && (
+              <p className="text-xs text-muted-foreground">{booking.clientEmail}</p>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Booking details */}
       <div className="rounded-xl border border-border bg-card p-5">
         <h2 className="mb-3 font-semibold text-foreground">Details</h2>
         <Row
@@ -190,7 +259,17 @@ export default function AdminBookingDetailPage() {
           }
         />
         <Row label="Quantity" value={booking.quantity} />
-        <Row label="Booker" value={`${booking.bookerType} #${booking.bookerId}`} />
+        {booking.staffName && (
+          <Row
+            label="Staff"
+            value={
+              <span className="flex items-center gap-1.5">
+                <User className="h-3.5 w-3.5 text-muted-foreground" />
+                {booking.staffName}
+              </span>
+            }
+          />
+        )}
         {booking.serviceCost && (
           <Row label="Service Cost" value={formatCost(booking.serviceCost, currency)} />
         )}
@@ -216,18 +295,12 @@ export default function AdminBookingDetailPage() {
             )}
           </>
         )}
-        {booking.serviceCost && (
+        {finalPrice !== null && (
           <Row
             label="Final Price"
             value={
               <span className="font-semibold text-zinc-900 dark:text-zinc-100">
-                {formatCost(
-                  String(
-                    parseFloat(booking.serviceCost) -
-                    (booking.discountAmount ? parseFloat(booking.discountAmount) : 0)
-                  ),
-                  currency,
-                )}
+                {formatCost(finalPrice, currency)}
               </span>
             }
           />
