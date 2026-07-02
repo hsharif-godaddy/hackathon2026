@@ -55,6 +55,7 @@ export interface Conversation extends DataEntity {
   readonly isStarred: boolean
   readonly isImportant: boolean
   readonly importantReason?: string
+  readonly isStaffOnly: boolean
   // readonly isUnread: boolean
   readonly form?: Form
   // readonly lead?: Lead

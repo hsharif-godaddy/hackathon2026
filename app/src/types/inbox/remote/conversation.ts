@@ -86,4 +86,5 @@ export interface RemoteConversation extends BasicEntity {
   sort_timestamp: IsoDateTimeString
   message_count: number
   hold_until?: IsoDateTimeString
+  staff_only?: boolean
 }

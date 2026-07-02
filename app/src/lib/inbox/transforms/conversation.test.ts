@@ -288,6 +288,18 @@ describe('convertConversation starred / important gating', () => {
   })
 })
 
+describe('convertConversation staff-only mapping', () => {
+  it('maps staff_only true to isStaffOnly true', () => {
+    const result = convertConversation(makeRemoteConversation({ staff_only: true }))
+    expect(result.isStaffOnly).toBe(true)
+  })
+
+  it('defaults isStaffOnly to false when staff_only is omitted', () => {
+    const result = convertConversation(makeRemoteConversation())
+    expect(result.isStaffOnly).toBe(false)
+  })
+})
+
 describe('convertForm', () => {
   it('returns undefined when there is no form data', () => {
     expect(convertForm(undefined)).toBeUndefined()

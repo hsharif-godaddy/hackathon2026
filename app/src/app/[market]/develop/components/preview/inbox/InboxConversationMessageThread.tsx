@@ -2,6 +2,7 @@
 
 import { useInView } from 'framer-motion';
 import { useEffect, useRef } from 'react';
+import Alert from '@ux/alert';
 import Growl from '@ux/growl';
 
 import { useTranslations } from '@/hooks/useTranslations';
@@ -90,13 +91,20 @@ export function InboxConversationMessageThread({
   }
 
   return (
-    <div
-      ref={containerRef}
-      className='flex flex-1 flex-col-reverse gap-1 overflow-y-auto bg-ux-surface-base px-3 py-3'
-      data-testid='conversation-message-thread'
-    >
-      {renderContent()}
-      <div ref={sentinelRef} className='h-px shrink-0' aria-hidden='true' />
+    <div className='flex flex-1 flex-col overflow-hidden'>
+      {conversation.isStaffOnly && (
+        <div className='shrink-0 px-3 pt-3' data-testid='conversation-staff-only-banner'>
+          <Alert emphasis='info'>{t('builder_inbox_staff_only_banner')}</Alert>
+        </div>
+      )}
+      <div
+        ref={containerRef}
+        className='flex flex-1 flex-col-reverse gap-1 overflow-y-auto bg-ux-surface-base px-3 py-3'
+        data-testid='conversation-message-thread'
+      >
+        {renderContent()}
+        <div ref={sentinelRef} className='h-px shrink-0' aria-hidden='true' />
+      </div>
     </div>
   );
 }

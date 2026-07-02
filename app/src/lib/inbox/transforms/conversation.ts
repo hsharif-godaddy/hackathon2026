@@ -230,5 +230,6 @@ export const convertConversation = (
     updatedAt: conversation.updated_at,
     bumpedAt,
     holdUntil: conversation.hold_until,
+    isStaffOnly: conversation.staff_only ?? false,
   }
 }
