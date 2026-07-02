@@ -31,6 +31,8 @@ describe('actionToolGrouping', () => {
   it('treats compact action tools as eligible and rich inline tools as ineligible', () => {
     expect(isActionToolGroupEligible(createToolCall({ name: 'viewLogs' }))).toBe(true)
     expect(isActionToolGroupEligible(createToolCall({ name: 'readFile' }))).toBe(true)
+    expect(isActionToolGroupEligible(createToolCall({ name: 'runAgent' }))).toBe(true)
+    expect(isActionToolGroupEligible(createToolCall({ name: 'awaitAgents' }))).toBe(true)
     expect(isActionToolGroupEligible(createToolCall({ name: 'unknownNewTool' }))).toBe(false)
     expect(isActionToolGroupEligible(createToolCall({ name: 'media-image__generate_image' }))).toBe(false)
     expect(isActionToolGroupEligible(createToolCall({ name: 'widgetRender' }))).toBe(false)
@@ -159,6 +161,36 @@ describe('actionToolGrouping', () => {
 
     expect(grouped.map((block) => block.type)).toEqual(['tool', 'tool', 'tool', 'tool-group', 'action-group'])
     expect(grouped[4]?.toolCalls?.map((toolCall) => toolCall.id)).toEqual(['git', 'status'])
+  })
+
+  it('groups edit, read, runAgent, and awaitAgents into one action-group', () => {
+    const blocks: ContentBlock[] = [
+      createToolBlock(0, createToolCall({ id: 'edit', name: 'textEditor', status: 'completed' })),
+      createToolBlock(1, createToolCall({ id: 'read', name: 'readFile', status: 'completed' })),
+      createToolBlock(2, createToolCall({ id: 'run', name: 'runAgent', status: 'completed' })),
+      createToolBlock(3, createToolCall({ id: 'await', name: 'awaitAgents', status: 'completed' })),
+    ]
+
+    const grouped = groupConsecutiveActionTools(blocks)
+
+    expect(grouped).toHaveLength(1)
+    expect(grouped[0]).toMatchObject({ type: 'action-group' })
+    expect(grouped[0]?.toolCalls?.map((toolCall) => toolCall.id)).toEqual(['edit', 'read', 'run', 'await'])
+  })
+
+  it('keeps running awaitAgents inside the action group', () => {
+    const blocks: ContentBlock[] = [
+      createToolBlock(0, createToolCall({ id: 'edit', name: 'textEditor', status: 'completed' })),
+      createToolBlock(1, createToolCall({ id: 'read', name: 'readFile', status: 'completed' })),
+      createToolBlock(2, createToolCall({ id: 'run', name: 'runAgent', status: 'completed' })),
+      createToolBlock(3, createToolCall({ id: 'await', name: 'awaitAgents', status: 'running' })),
+    ]
+
+    const grouped = groupConsecutiveActionTools(blocks)
+
+    expect(grouped).toHaveLength(1)
+    expect(grouped[0]).toMatchObject({ type: 'action-group' })
+    expect(grouped[0]?.toolCalls?.map((toolCall) => toolCall.id)).toEqual(['edit', 'read', 'run', 'await'])
   })
 
   it('groups consecutive generate_video tools into a video-group block', () => {

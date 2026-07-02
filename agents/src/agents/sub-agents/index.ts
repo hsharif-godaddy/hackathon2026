@@ -10,8 +10,9 @@ import { createTaskWorkerConfig } from './task-worker.js'
 import { createBrandShowcaseConfig } from './brand-showcase.js'
 import { createVerificationConfig } from './verification.js'
 import { createWorkflowInitConfig } from './workflow-init.js'
+import { createDeveloperTypecheckConfig } from './developer-typecheck.js'
 
-type SubAgentName = 'discovery' | 'planning' | 'plan-review' | 'media' | 'design' | 'builder' | 'design-kit-build' | 'task-worker' | 'brand-showcase' | 'verification' | 'workflow-init'
+type SubAgentName = 'discovery' | 'planning' | 'plan-review' | 'media' | 'design' | 'builder' | 'design-kit-build' | 'task-worker' | 'brand-showcase' | 'verification' | 'workflow-init' | 'developer-typecheck'
 
 const configFactories: Record<SubAgentName, () => Promise<SubAgentConfig>> = {
   discovery: createDiscoveryConfig,
@@ -25,6 +26,7 @@ const configFactories: Record<SubAgentName, () => Promise<SubAgentConfig>> = {
   'brand-showcase': createBrandShowcaseConfig,
   verification: createVerificationConfig,
   'workflow-init': createWorkflowInitConfig,
+  'developer-typecheck': createDeveloperTypecheckConfig,
 }
 
 export async function getSubAgentConfig(name: SubAgentName): Promise<SubAgentConfig> {

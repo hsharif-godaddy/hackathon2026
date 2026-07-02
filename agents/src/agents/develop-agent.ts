@@ -21,6 +21,7 @@ import { createAgentHandoffTool } from '../tools/create-agent-handoff-tool.js'
 import { turnscriptAITool, turnscriptReportedFailure } from '../tools/ai-lib-tools/turnscript/turnscript-tool.js'
 import { getPersistentAssetPaths } from '../utils/persistent-assets.js'
 import { skills } from '../services/features.js'
+import { getSwitchboardFlag } from '../services/switchboard.js'
 import { profileFlag, activeProfileName } from '../profiles/profile-accessor.js'
 import { isAutomationsEnabled } from './automations-context.js'
 import { isTurnscriptEnabled } from './turnscript-context.js'
@@ -32,6 +33,10 @@ import {
 } from './develop-prompt-variants.js'
 import { readFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
+
+function developSubAgentsEnabled(): boolean {
+  return getSwitchboardFlag('airo-builder-develop-subagents', false)
+}
 
 /**
  * Develop Agent - AI developer for building web applications
@@ -311,6 +316,13 @@ async function buildDevelopSystemPrompt(
   // the develop agent authors content-backed, inline-editable markup for every app.
   promptBuilder.file(paths.getAgentFile('develop', 'content-layer.md'))
 
+  // Sub-agent orchestration guidance — only when the develop sub-agents
+  // feature is enabled (otherwise the post-stream validator still asks the
+  // agent to fix inline, so this delegation guidance would contradict it).
+  if (developSubAgentsEnabled()) {
+    promptBuilder.file(paths.getAgentFile('develop', 'sub-agent-orchestration.md'))
+  }
+
   if (profileFlag('develop.promptOptimization', true)) {
     promptBuilder.file(paths.getAgentFile('develop', 'prompt-optimization.md'))
   }
@@ -418,6 +430,31 @@ function shouldStopAfterSuggestMode(result: unknown): boolean {
 }
 
 /**
+ * Compute the develop agent's active tool allow-list from the raw tool names
+ * and the resolved feature flags. Pure so it is unit-testable without the
+ * profile/Switchboard runtime. runAgent/awaitAgents are hidden unless the
+ * develop sub-agents flag is on, keeping the off-state byte-identical to the
+ * pre-feature tool set.
+ */
+export function developActiveToolNames(
+  allToolNames: string[],
+  flags: { promptOptimization: boolean; suggestedResponse: boolean; developSubAgents: boolean },
+): string[] {
+  const allow = new Set(allToolNames)
+  if (!flags.promptOptimization) {
+    allow.delete('askQuestion')
+  }
+  if (!flags.suggestedResponse) {
+    allow.delete('suggestedResponse')
+  }
+  if (!flags.developSubAgents) {
+    allow.delete('runAgent')
+    allow.delete('awaitAgents')
+  }
+  return Array.from(allow)
+}
+
+/**
  * Create the Develop Agent configuration. A single agent serves every profile;
  * profile-driven differences are resolved per turn via callable `system` and
  * `activeTools`. profileFlag() works inside resolvers because both transports
@@ -474,6 +511,11 @@ export async function createDevelopAgent(options?: { appPath?: string }): Promis
     // Secrets management (for API keys, credentials)
     requestSecrets: allAILibTools.requestSecrets,
 
+    // Sub-agent delegation — visibility controlled by the activeTools resolver
+    // below (gated on the develop sub-agents Switchboard flag).
+    runAgent: allAILibTools.runAgent,
+    awaitAgents: allAILibTools.awaitAgents,
+
     // Turnscript — gated by the appbuilder-turnscript Switchboard flag (+ optional
     // appbuilder-turnscript-tla-only) via the activeTools resolver below. Exposes main's
     // existing directoryListing/grepSearch/readFile/str_replace_based_edit_tool as a
@@ -491,13 +533,13 @@ export async function createDevelopAgent(options?: { appPath?: string }): Promis
     modelName,
     tools: baseTools,
     activeTools: async (ctx: ResolverContext): Promise<string[]> => {
-      const allow = new Set(Object.keys(baseTools))
-      if (!profileFlag('develop.promptOptimization', true)) {
-        allow.delete('askQuestion')
-      }
-      if (!profileFlag('develop.suggestedResponse', false)) {
-        allow.delete('suggestedResponse')
-      }
+      const allow = new Set(
+        developActiveToolNames(Object.keys(baseTools), {
+          promptOptimization: profileFlag('develop.promptOptimization', true),
+          suggestedResponse: profileFlag('develop.suggestedResponse', false),
+          developSubAgents: developSubAgentsEnabled(),
+        }),
+      )
       // Turnscript on/off (resolved upstream from the Switchboard flag + shopperId and
       // read here via the ALS context):
       //   disabled — hide `turnscript`, keep the direct tools (== plain main).

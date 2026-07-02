@@ -40,6 +40,9 @@ const ACTION_GROUP_TOOL_NAMES = new Set([
   'listDesignSystems',
   'installDesignSystem',
   'loadUiKit',
+  // Sub-agent orchestration — group with preceding compact actions (edit, read, …)
+  'runAgent',
+  'awaitAgents',
   // Commerce MCP skill tools
   'commerceSearchTools',
   'commerceExecuteTool',
@@ -113,6 +116,11 @@ function groupConsecutiveToolBlocks(
     if (splitTrailingRunning && toGroup.length > 0) {
       let splitIndex = toGroup.length
       while (splitIndex > 0 && toGroup[splitIndex - 1]!.toolCall?.status === 'running') {
+        // awaitAgents blocks while sub-agent jobs finish — keep it inside the
+        // collapsed group with runAgent and any preceding actions.
+        if (toCamelCase(toGroup[splitIndex - 1]!.toolCall?.name ?? '') === 'awaitAgents') {
+          break
+        }
         splitIndex--
       }
       if (splitIndex < toGroup.length) {

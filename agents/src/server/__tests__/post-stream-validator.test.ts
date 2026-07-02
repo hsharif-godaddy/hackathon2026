@@ -1714,3 +1714,72 @@ describe('createPostStreamValidator', () => {
     });
   });
 });
+
+describe('typecheck continuation delegation', () => {
+  function depsWith(delegate: boolean | undefined) {
+    const logger = { info: () => {}, warn: () => {} }
+    return {
+      typecheck: {
+        typecheckService: {
+          runTypecheck: async () => ({
+            ok: false,
+            skipped: false,
+            durationMs: 1,
+            errors: [{ file: 'src/a.ts', line: 3, column: 5, code: 'TS2345', message: 'bad type' }],
+          }),
+        },
+        retryCounters: new Map<string, number>(),
+        maxRetries: 2,
+        ...(delegate !== undefined && { delegateTypeFixes: () => delegate }),
+        logger,
+      },
+      runtimeErrors: {
+        runtimeErrorService: {
+          pollRuntimeErrors: async () => ({ ok: true, errors: [] }),
+          hasCycleEstablished: () => true,
+          getCurrentCycleId: () => undefined,
+          waitForCycleAdvance: async () => ({ advanced: true, newCycleId: 1, durationMs: 1 }),
+        },
+        retryCounters: new Map<string, number>(),
+        maxRetries: 2,
+        logger,
+      },
+      contentRules: {
+        retryCounters: new Map<string, number>(),
+        maxRetries: 2,
+        resolveAppPath: () => null,
+        logger,
+      },
+      hasUncommittedChanges: async () => true,
+      logger,
+    }
+  }
+
+  function args() {
+    const ac = new AbortController()
+    return {
+      socketId: 's1',
+      context: { metadata: { appId: 'app1' }, conversation: { conversationId: 'c1' } },
+      agentName: 'develop',
+      toolCalls: [{ toolName: 'str_replace_based_edit_tool' }],
+      abortSignal: ac.signal,
+      emitChunk: async () => {},
+      emitValidationStart: async () => {},
+    }
+  }
+
+  it('emits spawn-developer-typecheck instructions when delegation is on', async () => {
+    const validator = createPostStreamValidator(depsWith(true) as any)
+    const result = await validator(args() as any)
+    expect(result && 'continuationPrompt' in result).toBe(true)
+    expect((result as { continuationPrompt: string }).continuationPrompt).toContain('developer-typecheck')
+    expect((result as { continuationPrompt: string }).continuationPrompt).toContain('confirm the fix in one short sentence')
+  })
+
+  it('keeps inline-fix instructions when delegation is off', async () => {
+    const validator = createPostStreamValidator(depsWith(false) as any)
+    const result = await validator(args() as any)
+    expect((result as { continuationPrompt: string }).continuationPrompt).toContain('Fix each one')
+    expect((result as { continuationPrompt: string }).continuationPrompt).not.toContain('developer-typecheck')
+  })
+})

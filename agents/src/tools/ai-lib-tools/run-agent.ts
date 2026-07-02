@@ -13,7 +13,7 @@ import { detectStaleFiles } from '../../agents/sub-agent-transcript.js'
 
 const logger = Logger.create({ component: 'run-agent-tool' })
 
-const VALID_AGENTS = ['discovery', 'planning', 'plan-review', 'media', 'design', 'builder', 'design-kit-build', 'task-worker', 'brand-showcase', 'interview', 'verification', 'workflow-init'] as const
+const VALID_AGENTS = ['discovery', 'planning', 'plan-review', 'media', 'design', 'builder', 'design-kit-build', 'task-worker', 'brand-showcase', 'interview', 'verification', 'workflow-init', 'developer-typecheck'] as const
 type AgentName = typeof VALID_AGENTS[number]
 
 export const runAgentAITool: Tool = createTool(

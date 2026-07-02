@@ -49,6 +49,7 @@ import {
   checkContentRulesForFile,
   type RuleViolation
 } from '../tools/content-rules-lint.js';
+import { getSwitchboardFlag } from '../services/switchboard.js';
 
 type PhaseLogger = Pick<ILogger, 'info' | 'warn'>;
 
@@ -96,11 +97,17 @@ type PhaseOutcome =
 const MAX_ERRORS_IN_VALIDATION_MESSAGE = 50;
 const MAX_RUNTIME_STACK_FRAMES_IN_VALIDATION_MESSAGE = 4;
 
-function formatTscErrorsForValidation(errors: TypecheckResult['errors']): string {
+function formatTscErrorsForValidation(
+  errors: TypecheckResult['errors'],
+  delegateToSubAgent: boolean,
+): string {
   const total = errors.length;
   const shown = errors.slice(0, MAX_ERRORS_IN_VALIDATION_MESSAGE);
   const hidden = total - shown.length;
-  const header = `### Type errors after your last edit\n\nThe ${total} TypeScript error${total === 1 ? '' : 's'} below were found by \`tsc --noEmit\` run against the live preview workspace after your most recent tool calls. Fix each one — just make the minimum changes needed to make \`tsc\` pass. Do not explain.\n`;
+  const intro = `The ${total} TypeScript error${total === 1 ? '' : 's'} below were found by \`tsc --noEmit\` run against the live preview workspace after your most recent tool calls.`;
+  const header = delegateToSubAgent
+    ? `### Type errors after your last edit\n\n${intro}\n\nDo NOT fix these yourself. Dispatch the \`developer-typecheck\` sub-agent to fix them: call \`runAgent\` with agent="developer-typecheck", mode="background", a short title, a task telling it to fix the TypeScript errors below with minimal changes, and inputs with \`errors\` (the list below) and optionally \`editedFiles\` (files you edited this turn); then call \`awaitAgents\` with jobIds: [<returned jobId>]. Once it finishes, confirm the fix in one short sentence — do not re-summarize the whole build.\n`
+    : `### Type errors after your last edit\n\n${intro} Fix each one — just make the minimum changes needed to make \`tsc\` pass. Do not explain.\n`;
   const body = shown
     .map((error) => `- ${error.file}:${error.line}:${error.column} ${error.code}: ${error.message}`)
     .join('\n');
@@ -183,6 +190,13 @@ export interface TypecheckPhaseDeps {
   retryCounters: Map<string, number>;
   maxRetries: number;
   logger: PhaseLogger;
+  /**
+   * Per-call thunk. When it returns true, the typecheck continuation tells the
+   * agent to spawn the developer-typecheck sub-agent instead of fixing inline.
+   * Optional and evaluated per-call so the Switchboard flag can flip without a
+   * restart; absent => inline-fix (today's behavior).
+   */
+  delegateTypeFixes?: () => boolean;
 }
 
 export interface RuntimeErrorPhaseDeps {
@@ -261,7 +275,7 @@ export async function runTypecheckPhase(
 ): Promise<PhaseOutcome> {
   const { socketId, agentName, abortSignal } = args;
   const { appId, conversationId } = meta;
-  const { typecheckService, retryCounters, maxRetries, logger } = deps;
+  const { typecheckService, retryCounters, maxRetries, logger, delegateTypeFixes } = deps;
 
   const retryCount = retryCounters.get(socketId) ?? 0;
 
@@ -352,7 +366,7 @@ export async function runTypecheckPhase(
 
   return {
     kind: 'continue',
-    message: formatTscErrorsForValidation(result.errors)
+    message: formatTscErrorsForValidation(result.errors, delegateTypeFixes?.() ?? false)
   };
 }
 
@@ -1264,6 +1278,7 @@ export function buildSharedPostStreamValidator(logger: PhaseLogger): {
       retryCounters: typecheckRetries,
       maxRetries: POST_STREAM_VALIDATOR_DEFAULTS.maxTypecheckRetries,
       logger,
+      delegateTypeFixes: () => getSwitchboardFlag('airo-builder-develop-subagents', false),
     },
     runtimeErrors: {
       runtimeErrorService,

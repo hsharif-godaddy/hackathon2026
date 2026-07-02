@@ -32,6 +32,7 @@ export interface SubAgentConfig {
   maxOutputTokens?: number
   visualOutputExtractors?: VisualOutputExtractor[]
   enablePromptCaching?: boolean
+  providerOptions?: Record<string, unknown>
 }
 
 export interface SubAgentEvent {
@@ -180,7 +181,7 @@ export class SubAgentRunner {
     signal?: AbortSignal,
     priorMessages?: ModelMessage[]
   ): Promise<SubAgentResult> {
-    const { id, name, system, tools, model, maxSteps, temperature, maxOutputTokens, visualOutputExtractors, enablePromptCaching } = this.config
+    const { id, name, system, tools, model, maxSteps, temperature, maxOutputTokens, visualOutputExtractors, enablePromptCaching, providerOptions } = this.config
 
     onEvent({ event: 'started', agent: name, detail: priorMessages ? 'Resuming prior context' : 'Starting task execution' })
 
@@ -200,6 +201,7 @@ export class SubAgentRunner {
         temperature: temperature ?? 0.3,
         maxOutputTokens: maxOutputTokens ?? 16000,
         enablePromptCaching: enablePromptCaching ?? false,
+        ...(providerOptions && { providerOptions }),
         logger,
         afterToolExecution: (toolName: string, args: unknown, result: unknown) => {
           const detail = formatToolDetail(toolName, args, result)
