@@ -82,7 +82,7 @@ func (m *Monitor) Resume() {
 func (m *Monitor) Start(ctx context.Context, send func(Msg)) {
 	if _, err := exec.LookPath("aws"); err != nil {
 		send(StatusMsg{
-			Statuses: []Status{{Profile: "unknown", OK: false}},
+			Statuses: []Status{{Profile: "unknown", OK: false, Reason: ReasonNoData, Message: "aws CLI not found"}},
 			Bracket:  BracketCritical,
 		})
 		return
@@ -105,38 +105,51 @@ func (m *Monitor) Start(ctx context.Context, send func(Msg)) {
 
 func (m *Monitor) check(ctx context.Context, send func(Msg)) {
 	var statuses []Status
+	var expiredProfiles []string
 	worstBracket := BracketHealthy
 
 	for _, profile := range m.cfg.Profiles {
 		status := CheckToken(profile, m.homeDir)
-		statuses = append(statuses, status)
 
-		bracket := BracketFor(status.TTL)
-		if bracket > worstBracket {
-			worstBracket = bracket
+		if status.Reason == ReasonNotSSO {
+			statuses = append(statuses, status)
+			continue
 		}
 
 		// Attempt silent refresh if within threshold
 		if status.OK && status.TTL <= m.cfg.RefreshThreshold && status.TTL > 0 {
 			err := m.runner.Run(ctx, "aws", "sts", "get-caller-identity", "--profile", profile)
 			if err == nil {
-				refreshed := CheckToken(profile, m.homeDir)
-				send(RefreshedMsg{Profile: profile, TTL: refreshed.TTL})
-				statuses[len(statuses)-1] = refreshed
-				continue
+				status = CheckToken(profile, m.homeDir)
+				if status.TTL <= m.cfg.MinUsableTTL {
+					expiredProfiles = append(expiredProfiles, profile)
+					status = Status{Profile: profile, OK: false, Reason: ReasonRefreshFailed, TTL: status.TTL, Message: fmt.Sprintf("refreshed but TTL still too low (%s)", status.TTL.Truncate(time.Minute))}
+				} else {
+					send(RefreshedMsg{Profile: profile, TTL: status.TTL})
+				}
+			} else {
+				expiredProfiles = append(expiredProfiles, profile)
+				status = Status{Profile: profile, OK: false, Reason: ReasonRefreshFailed, Message: fmt.Sprintf("silent refresh failed: %s", err)}
 			}
-			if !m.paused.Load() {
-				send(ExpiredMsg{Profile: profile, Err: fmt.Errorf("silent refresh failed: %w", err)})
-			}
-			return
+		} else if !status.OK {
+			expiredProfiles = append(expiredProfiles, profile)
 		}
 
-		// Token already expired
-		if !status.OK && !m.paused.Load() {
-			send(ExpiredMsg{Profile: profile, Err: fmt.Errorf("token expired for profile %q", profile)})
-			return
+		statuses = append(statuses, status)
+		bracket := BracketFor(status.TTL)
+		if bracket > worstBracket {
+			worstBracket = bracket
 		}
 	}
 
+	// Always emit status so the TUI stays current
 	send(StatusMsg{Statuses: statuses, Bracket: worstBracket})
+
+	// After reporting status, notify about expired profiles
+	if len(expiredProfiles) > 0 && !m.paused.Load() {
+		send(ExpiredMsg{
+			Profile: expiredProfiles[0],
+			Err:     fmt.Errorf("token expired for profile %q", expiredProfiles[0]),
+		})
+	}
 }

@@ -45,6 +45,7 @@ func (m *Model) startCredMonitor() tea.Cmd {
 	runner := credrefresh.ExecRunner{}
 	monitor := credrefresh.NewMonitor(cfg, runner, "")
 	m.credMonitor = monitor
+	m.credMinUsableTTL = cfg.MinUsableTTL
 
 	ctx, cancel := context.WithCancel(context.Background())
 	m.credMonitorCancel = cancel
@@ -55,12 +56,15 @@ func (m *Model) startCredMonitor() tea.Cmd {
 		m.logToAllPane(fmt.Sprintf("[aws] monitoring token for profile %q", profile))
 	}
 
-	go monitor.Start(ctx, func(msg credrefresh.Msg) {
-		select {
-		case ch <- msg:
-		case <-ctx.Done():
-		}
-	})
+	go func() {
+		defer close(ch)
+		monitor.Start(ctx, func(msg credrefresh.Msg) {
+			select {
+			case ch <- msg:
+			case <-ctx.Done():
+			}
+		})
+	}()
 
 	m.credMsgCh = ch
 	return waitForCredMsg(ch)
@@ -85,12 +89,19 @@ func (m *Model) handleAwsAuthMsg(msg awsAuthMsg) tea.Cmd {
 		newBracket := inner.Bracket
 		if newBracket != m.credLastBracket {
 			m.credLastBracket = newBracket
-			if len(inner.Statuses) > 0 {
-				ttl := inner.Statuses[0].TTL.Truncate(time.Minute)
-				m.logToAllPane(fmt.Sprintf("[aws] token valid, %s remaining", ttl))
+			for _, s := range inner.Statuses {
+				if s.OK && s.TTL > 0 {
+					bracket := credrefresh.BracketFor(s.TTL)
+					if bracket >= credrefresh.BracketCritical {
+						m.logToAllPane(fmt.Sprintf("[aws] ⚠ token for %q nearly expired, %s remaining", s.Profile, s.TTL.Truncate(time.Minute)))
+					} else {
+						m.logToAllPane(fmt.Sprintf("[aws] token valid for %q, %s remaining", s.Profile, s.TTL.Truncate(time.Minute)))
+					}
+				} else if !s.OK {
+					m.logToAllPane(fmt.Sprintf("[aws] ⚠ %s: %s", s.Profile, s.Message))
+				}
 			}
 		}
-		m.credBracket = newBracket
 
 	case credrefresh.RefreshedMsg:
 		ttl := inner.TTL.Truncate(time.Minute)
@@ -105,6 +116,7 @@ func (m *Model) handleAwsAuthMsg(msg awsAuthMsg) tea.Cmd {
 		if !m.credOverlayActive {
 			m.credOverlayActive = true
 			m.credOverlayMode = awsOverlayExpired
+			m.credExpiredProfile = inner.Profile
 			m.credLoginErr = nil
 			if m.credMonitor != nil {
 				m.credMonitor.Pause()
@@ -168,7 +180,7 @@ func (m *Model) runSilentRefresh() tea.Cmd {
 	}
 }
 
-// runInteractiveLogin spawns `aws sso login` for the first profile.
+// runInteractiveLogin spawns `aws sso login` for the expired profile.
 func (m *Model) runInteractiveLogin() tea.Cmd {
 	if len(m.credProfiles) == 0 {
 		return func() tea.Msg {
@@ -176,7 +188,11 @@ func (m *Model) runInteractiveLogin() tea.Cmd {
 		}
 	}
 	m.credLoginRunning = true
-	profile := m.credProfiles[0]
+	profile := m.credExpiredProfile
+	if profile == "" {
+		profile = m.credProfiles[0]
+	}
+	minTTL := m.credMinUsableTTL
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 		defer cancel()
@@ -187,7 +203,7 @@ func (m *Model) runInteractiveLogin() tea.Cmd {
 		deadline := time.Now().Add(120 * time.Second)
 		for time.Now().Before(deadline) {
 			status := credrefresh.CheckToken(profile, "")
-			if status.OK && status.TTL > 5*time.Minute {
+			if status.OK && status.TTL > minTTL {
 				return awsLoginDoneMsg{Err: nil}
 			}
 			time.Sleep(2 * time.Second)
@@ -211,8 +227,12 @@ func (m *Model) handleAwsLoginDone(msg awsLoginDoneMsg) tea.Cmd {
 	if m.credMonitor != nil {
 		m.credMonitor.Resume()
 	}
-	if len(m.credProfiles) > 0 {
-		status := credrefresh.CheckToken(m.credProfiles[0], "")
+	profile := m.credExpiredProfile
+	if profile == "" && len(m.credProfiles) > 0 {
+		profile = m.credProfiles[0]
+	}
+	if profile != "" {
+		status := credrefresh.CheckToken(profile, "")
 		m.logToAllPane(fmt.Sprintf("[aws] token refreshed (manual), valid %s", status.TTL.Truncate(time.Minute)))
 	}
 	return nil

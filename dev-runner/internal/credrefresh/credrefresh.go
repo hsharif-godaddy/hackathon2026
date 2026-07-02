@@ -43,6 +43,7 @@ func BracketFor(ttl time.Duration) Bracket {
 type Config struct {
 	CheckInterval    time.Duration
 	RefreshThreshold time.Duration
+	MinUsableTTL     time.Duration
 	Profiles         []string
 	ProjectRoot      string
 }
@@ -52,10 +53,24 @@ func DefaultConfig(profiles []string, projectRoot string) Config {
 	return Config{
 		CheckInterval:    2 * time.Minute,
 		RefreshThreshold: 10 * time.Minute,
+		MinUsableTTL:     5 * time.Minute,
 		Profiles:         profiles,
 		ProjectRoot:      projectRoot,
 	}
 }
+
+// StatusReason classifies why a Status has its OK value.
+type StatusReason int
+
+const (
+	ReasonValid         StatusReason = iota // Token is valid with usable TTL
+	ReasonExpired                           // Token exists but TTL <= 0
+	ReasonNotSSO                            // Profile uses static creds, not SSO
+	ReasonNoData                            // Cannot inspect (no home dir, no config)
+	ReasonNotFound                          // Profile or cache file not found
+	ReasonParseError                        // Cache file malformed
+	ReasonRefreshFailed                     // Silent refresh attempted and failed
+)
 
 // Status represents the current state of a profile's SSO token.
 type Status struct {
@@ -63,6 +78,7 @@ type Status struct {
 	ExpiresAt time.Time
 	TTL       time.Duration
 	OK        bool
+	Reason    StatusReason
 	Message   string
 }
 
@@ -87,7 +103,7 @@ func CheckToken(profile string, homeDir string) Status {
 		var err error
 		homeDir, err = os.UserHomeDir()
 		if err != nil {
-			return Status{Profile: profile, OK: false, Message: "cannot determine home directory"}
+			return Status{Profile: profile, OK: false, Reason: ReasonNoData, Message: "cannot determine home directory"}
 		}
 	}
 
@@ -95,7 +111,7 @@ func CheckToken(profile string, homeDir string) Status {
 	configPath := filepath.Join(awsDir, "config")
 
 	if _, err := os.Stat(configPath); errors.Is(err, fs.ErrNotExist) {
-		return Status{Profile: profile, OK: false, Message: "~/.aws/config not found"}
+		return Status{Profile: profile, OK: false, Reason: ReasonNoData, Message: "~/.aws/config not found"}
 	}
 
 	cfg, err := awsconfig.LoadSharedConfigProfile(context.Background(), profile,
@@ -105,7 +121,7 @@ func CheckToken(profile string, homeDir string) Status {
 		},
 	)
 	if err != nil {
-		return Status{Profile: profile, OK: false, Message: fmt.Sprintf("profile %q: %s", profile, err)}
+		return Status{Profile: profile, OK: false, Reason: ReasonNotFound, Message: fmt.Sprintf("profile %q: %s", profile, err)}
 	}
 
 	var cacheKey string
@@ -115,7 +131,7 @@ func CheckToken(profile string, homeDir string) Status {
 	case cfg.SSOStartURL != "":
 		cacheKey = cfg.SSOStartURL
 	default:
-		return Status{Profile: profile, OK: true, Message: "not an SSO profile"}
+		return Status{Profile: profile, OK: true, Reason: ReasonNotSSO, Message: "not an SSO profile"}
 	}
 
 	var cachePath string
@@ -125,39 +141,49 @@ func CheckToken(profile string, homeDir string) Status {
 		var pathErr error
 		cachePath, pathErr = ssocreds.StandardCachedTokenFilepath(cacheKey)
 		if pathErr != nil {
-			return Status{Profile: profile, OK: false, Message: fmt.Sprintf("cache path: %s", pathErr)}
+			return Status{Profile: profile, OK: false, Reason: ReasonParseError, Message: fmt.Sprintf("cache path: %s", pathErr)}
 		}
 	}
 
 	data, err := os.ReadFile(cachePath)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
-			return Status{Profile: profile, OK: false, Message: fmt.Sprintf("SSO token not found for %q", profile)}
+			return Status{Profile: profile, OK: false, Reason: ReasonNotFound, Message: fmt.Sprintf("SSO token not found for %q", profile)}
 		}
-		return Status{Profile: profile, OK: false, Message: fmt.Sprintf("reading cache: %s", err)}
+		return Status{Profile: profile, OK: false, Reason: ReasonParseError, Message: fmt.Sprintf("reading cache: %s", err)}
 	}
 
 	var token ssoTokenInfo
 	if err := json.Unmarshal(data, &token); err != nil {
-		return Status{Profile: profile, OK: false, Message: fmt.Sprintf("parsing cache: %s", err)}
+		return Status{Profile: profile, OK: false, Reason: ReasonParseError, Message: fmt.Sprintf("parsing cache: %s", err)}
 	}
 	if token.ExpiresAt == "" {
-		return Status{Profile: profile, OK: false, Message: "cache missing expiresAt"}
+		return Status{Profile: profile, OK: false, Reason: ReasonParseError, Message: "cache missing expiresAt"}
 	}
 
 	expiresAt, err := time.Parse(time.RFC3339, token.ExpiresAt)
 	if err != nil {
-		return Status{Profile: profile, OK: false, Message: fmt.Sprintf("parsing expiresAt: %s", err)}
+		return Status{Profile: profile, OK: false, Reason: ReasonParseError, Message: fmt.Sprintf("parsing expiresAt: %s", err)}
 	}
 
 	ttl := time.Until(expiresAt)
-	ok := ttl > 0
+	if ttl <= 0 {
+		return Status{
+			Profile:   profile,
+			ExpiresAt: expiresAt,
+			TTL:       ttl,
+			OK:        false,
+			Reason:    ReasonExpired,
+			Message:   fmt.Sprintf("expired %s ago", (-ttl).Truncate(time.Minute)),
+		}
+	}
 
 	return Status{
 		Profile:   profile,
 		ExpiresAt: expiresAt,
 		TTL:       ttl,
-		OK:        ok,
+		OK:        true,
+		Reason:    ReasonValid,
 		Message:   fmt.Sprintf("expires in %s", ttl.Truncate(time.Minute)),
 	}
 }

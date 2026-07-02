@@ -204,6 +204,160 @@ func TestMonitor_NearExpiry_RefreshFails(t *testing.T) {
 	}
 }
 
+func writeTestConfigMulti(t *testing.T, homeDir string, profiles []struct{ Profile, Session string }) {
+	t.Helper()
+	configDir := filepath.Join(homeDir, ".aws")
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	var content string
+	for _, p := range profiles {
+		content += fmt.Sprintf(`[profile %s]
+sso_session = %s
+sso_account_id = 123456789
+sso_role_name = PowerUser
+region = us-west-2
+
+[sso-session %s]
+sso_start_url = https://%s.awsapps.com/start
+sso_region = us-west-2
+
+`, p.Profile, p.Session, p.Session, p.Session)
+	}
+	if err := os.WriteFile(filepath.Join(configDir, "config"), []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestMonitor_PostRefreshLowTTL_ReasonRefreshFailed(t *testing.T) {
+	homeDir := t.TempDir()
+	writeTestConfig(t, homeDir, "test-prof", "test-sess")
+	writeTestToken(t, homeDir, "test-sess", time.Now().Add(8*time.Minute))
+
+	runner := &mockRunner{}
+	cfg := Config{
+		CheckInterval:    50 * time.Millisecond,
+		RefreshThreshold: 10 * time.Minute,
+		MinUsableTTL:     15 * time.Minute,
+		Profiles:         []string{"test-prof"},
+		ProjectRoot:      homeDir,
+	}
+
+	var msgs []Msg
+	var mu sync.Mutex
+	send := func(m Msg) {
+		mu.Lock()
+		msgs = append(msgs, m)
+		mu.Unlock()
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+
+	mon := NewMonitor(cfg, runner, homeDir)
+	mon.Start(ctx, send)
+
+	<-ctx.Done()
+	time.Sleep(50 * time.Millisecond)
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	for _, m := range msgs {
+		if _, ok := m.(RefreshedMsg); ok {
+			t.Error("should not emit RefreshedMsg when post-refresh TTL is below MinUsableTTL")
+		}
+	}
+
+	hasExpired := false
+	for _, m := range msgs {
+		if _, ok := m.(ExpiredMsg); ok {
+			hasExpired = true
+		}
+	}
+	if !hasExpired {
+		t.Error("expected ExpiredMsg when post-refresh TTL is below MinUsableTTL")
+	}
+
+	var statusMsg StatusMsg
+	for _, m := range msgs {
+		if s, ok := m.(StatusMsg); ok {
+			statusMsg = s
+			break
+		}
+	}
+	if len(statusMsg.Statuses) == 0 {
+		t.Fatal("expected StatusMsg with statuses")
+	}
+	if statusMsg.Statuses[0].Reason != ReasonRefreshFailed {
+		t.Errorf("expected Reason=ReasonRefreshFailed, got %d", statusMsg.Statuses[0].Reason)
+	}
+	if statusMsg.Statuses[0].TTL == 0 {
+		t.Error("expected non-zero TTL preserved in failed status")
+	}
+}
+
+func TestMonitor_MultiProfile_NoEarlyReturn(t *testing.T) {
+	homeDir := t.TempDir()
+	profiles := []struct{ Profile, Session string }{
+		{"expired-prof", "expired-sess"},
+		{"healthy-prof", "healthy-sess"},
+	}
+	writeTestConfigMulti(t, homeDir, profiles)
+	writeTestToken(t, homeDir, "expired-sess", time.Now().Add(-5*time.Minute))
+	writeTestToken(t, homeDir, "healthy-sess", time.Now().Add(45*time.Minute))
+
+	runner := &mockRunner{}
+	cfg := Config{
+		CheckInterval:    50 * time.Millisecond,
+		RefreshThreshold: 10 * time.Minute,
+		MinUsableTTL:     5 * time.Minute,
+		Profiles:         []string{"expired-prof", "healthy-prof"},
+		ProjectRoot:      homeDir,
+	}
+
+	var msgs []Msg
+	var mu sync.Mutex
+	send := func(m Msg) {
+		mu.Lock()
+		msgs = append(msgs, m)
+		mu.Unlock()
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+
+	mon := NewMonitor(cfg, runner, homeDir)
+	mon.Start(ctx, send)
+
+	<-ctx.Done()
+	time.Sleep(50 * time.Millisecond)
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	var statusMsg StatusMsg
+	for _, m := range msgs {
+		if s, ok := m.(StatusMsg); ok {
+			statusMsg = s
+			break
+		}
+	}
+	if len(statusMsg.Statuses) != 2 {
+		t.Fatalf("expected 2 statuses (both profiles), got %d", len(statusMsg.Statuses))
+	}
+
+	hasExpired := false
+	for _, m := range msgs {
+		if _, ok := m.(ExpiredMsg); ok {
+			hasExpired = true
+		}
+	}
+	if !hasExpired {
+		t.Error("expected ExpiredMsg for the expired profile")
+	}
+}
+
 func TestMonitor_ContextCancelled(t *testing.T) {
 	homeDir := t.TempDir()
 	writeTestConfig(t, homeDir, "test-prof", "test-sess")

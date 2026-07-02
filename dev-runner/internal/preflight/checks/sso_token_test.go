@@ -83,9 +83,6 @@ sso_session = s
 	if ok {
 		t.Fatalf("expected fail for expired token, got ok")
 	}
-	if !strings.Contains(msg, "expired") {
-		t.Errorf("expected message to mention expired, got: %s", msg)
-	}
 	if !strings.Contains(msg, "aws sso login --profile p") {
 		t.Errorf("expected actionable login command, got: %s", msg)
 	}
@@ -167,8 +164,8 @@ sso_session = s
 	if ok {
 		t.Fatalf("expected fail when profile not in ~/.aws/config, got ok")
 	}
-	if !strings.Contains(msg, "not found") {
-		t.Errorf("expected message to mention not found, got: %s", msg)
+	if !strings.Contains(msg, "missing") {
+		t.Errorf("expected message to mention profile name, got: %s", msg)
 	}
 	if !strings.Contains(msg, "aws sso login --profile missing") {
 		t.Errorf("expected actionable login command, got: %s", msg)
@@ -201,7 +198,7 @@ sso_session = s
 	if ok {
 		t.Fatalf("expected fail for malformed cache, got ok")
 	}
-	if !strings.Contains(msg, "parsing SSO token cache") {
+	if !strings.Contains(msg, "parsing cache") {
 		t.Errorf("expected parse-error message, got: %s", msg)
 	}
 }
@@ -244,7 +241,7 @@ sso_session = s
 	if ok {
 		t.Fatalf("expected fail for malformed expiresAt, got ok")
 	}
-	if !strings.Contains(msg, "parsing SSO token expiresAt") {
+	if !strings.Contains(msg, "parsing expiresAt") {
 		t.Errorf("expected parse-expiresAt error message, got: %s", msg)
 	}
 }

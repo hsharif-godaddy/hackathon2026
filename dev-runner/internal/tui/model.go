@@ -235,17 +235,18 @@ type Model struct {
 	faultPollScheduled bool
 
 	// AWS credential refresh state
-	credMonitor       *credrefresh.Monitor
-	credMonitorCancel context.CancelFunc
-	credStatuses      []credrefresh.Status
-	credBracket       credrefresh.Bracket
-	credLastBracket   credrefresh.Bracket
-	credOverlayActive bool
-	credOverlayMode   awsOverlayMode
-	credLoginRunning  bool
-	credLoginErr      error
-	credProfiles      []string
-	credMsgCh         <-chan credrefresh.Msg
+	credMonitor        *credrefresh.Monitor
+	credMonitorCancel  context.CancelFunc
+	credStatuses       []credrefresh.Status
+	credLastBracket    credrefresh.Bracket
+	credOverlayActive  bool
+	credOverlayMode    awsOverlayMode
+	credLoginRunning   bool
+	credLoginErr       error
+	credExpiredProfile string
+	credMinUsableTTL   time.Duration
+	credProfiles       []string
+	credMsgCh          <-chan credrefresh.Msg
 
 	// Inline env form state (huh-based)
 	envForm        *huh.Form
