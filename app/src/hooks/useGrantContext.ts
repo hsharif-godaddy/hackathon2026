@@ -47,7 +47,7 @@ function computeGrantHash(grants: CreditGrant[] | undefined): string {
  * Sends grants to agent via grant_context event:
  * - On initial connection
  * - When grants data changes (purchase, consumption)
- * - On tab visibility change (handles stale data)
+ * - When the stream completes (credits consumed this turn)
  * - When agent requests refresh
  *
  * Refetch handlers call send(force=true, result.data): the agent must receive grant_context after
@@ -120,7 +120,7 @@ export function useGrantContext({
   const emitAfterRefetch = useCallback(
     function emitAfterRefetch(
       result: QueryObserverResult<CreditGrant[], Error>,
-      source: 'agent_refresh' | 'stream_complete' | 'visibility',
+      source: 'agent_refresh' | 'stream_complete',
     ): void {
       if (result.data === undefined) {
         logger.warn('websocket.grant_context.refresh_no_data', {
@@ -185,39 +185,6 @@ export function useGrantContext({
       })
     },
     [controller, effectiveEnabled, emitAfterRefetch, refetchGrants]
-  )
-
-  // Re-send on visibility change (user returns to tab)
-  useEffect(
-    function handleVisibilityChange() {
-      if (!controller || !isConnected || !effectiveEnabled) return
-
-      function onVisibilityChange() {
-        if (document.visibilityState === 'visible') {
-          logger.debug('websocket.grant_context.visibility_refresh')
-          // Refetch and force send
-          refetchGrants()
-            .then(function afterVisibilityRefetch(result: QueryObserverResult<CreditGrant[], Error>) {
-              if (result.isError && result.error) {
-                logger.warn('websocket.grant_context.visibility_refresh_failed', {
-                  error: result.error instanceof Error ? result.error.message : String(result.error),
-                })
-                return
-              }
-              emitAfterRefetch(result, 'visibility')
-            })
-            .catch((error) => {
-              logger.warn('websocket.grant_context.visibility_refresh_failed', {
-                error: error instanceof Error ? error.message : String(error),
-              })
-            })
-        }
-      }
-
-      document.addEventListener('visibilitychange', onVisibilityChange)
-      return () => document.removeEventListener('visibilitychange', onVisibilityChange)
-    },
-    [controller, effectiveEnabled, emitAfterRefetch, isConnected, refetchGrants]
   )
 
   // Refetch grants when stream completes (credits have been consumed).
