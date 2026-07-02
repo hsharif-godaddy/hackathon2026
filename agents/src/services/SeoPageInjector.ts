@@ -12,7 +12,9 @@ export const SEO_SOURCE_CHECKS: Array<{ name: string; blocking: boolean; test: (
   { name: 'title',        blocking: true,  test: (c) => c.includes('<title>') || c.includes('<title ') },
   { name: 'description',  blocking: true,  test: (c) => c.includes('name="description"') },
   { name: 'canonical',    blocking: true,  test: (c) => c.includes('rel="canonical"') },
-  { name: 'h1',           blocking: true,  test: (c) => c.includes('<h1') },
+  // Accept a plain <h1> or a member-expression wrapper (e.g. Framer Motion's
+  // <motion.h1>, styled-components' <styled.h1>) which render to a real <h1>. (RUBICON-545)
+  { name: 'h1',           blocking: true,  test: (c) => /<(?:[A-Za-z_$][\w$]*\.)?h1[\s/>]/.test(c) },
   { name: 'og:title',     blocking: false, test: (c) => c.includes('og:title') },
   { name: 'og:image',     blocking: false, test: (c) => c.includes('og:image') },
   { name: 'twitter:card', blocking: false, test: (c) => c.includes('twitter:card') },

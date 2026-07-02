@@ -80,6 +80,19 @@ describe('validateSeoSource', () => {
     expect(validateSeoSource(src).blocking).toContain('h1');
   });
 
+  it('accepts motion.h1 (Framer Motion) as a valid h1 (RUBICON-545)', () => {
+    const src = FULL_SEO_PAGE.replace(
+      /<h1>.*<\/h1>/,
+      '<motion.h1 className="text-4xl" initial={{ opacity: 0 }}>Contact Us</motion.h1>',
+    );
+    expect(validateSeoSource(src).blocking).not.toContain('h1');
+  });
+
+  it('accepts a member-expression heading wrapper (e.g. styled.h1) as a valid h1', () => {
+    const src = FULL_SEO_PAGE.replace(/<h1>.*<\/h1>/, '<styled.h1>Contact Us</styled.h1>');
+    expect(validateSeoSource(src).blocking).not.toContain('h1');
+  });
+
   // ── advisory elements ──────────────────────────────────────────────────────
 
   it('reports missing og:title in advisory, not blocking', () => {
