@@ -137,7 +137,7 @@ export function CanvasMenu({ clickContext }: CanvasMenuProps) {
   if (!isMobile && items.length === 0) return null
 
   const handleSelect = (canvasId: CanvasId) => {
-    logClickEvent(`commander.canvas_menu.select.${canvasId}`, clickContext)()
+    logClickEvent('commander.canvas_menu.select', { ...clickContext, canvasId })()
     openCanvas(canvasId)
     setOpen(false)
   }

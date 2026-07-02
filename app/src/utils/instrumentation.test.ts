@@ -183,6 +183,34 @@ describe('instrumentation utilities', () => {
       });
     });
 
+    it('fires a 3-segment eid even when customProperties carries a dotted value (canvas click regression)', () => {
+      // Regression guard: per-canvas eids used to append the canvasId as a 4th
+      // segment (e.g. commander.canvas_tab.activate.settings.project), which
+      // parseEID rejected — dropping every per-canvas click event. The canvasId
+      // now rides in customProperties, which never affects eid parsing; even a
+      // dotted value must still push.
+      const logClick = logClickEvent('commander.canvas_tab.activate', { canvasId: 'settings.project' });
+      logClick();
+
+      expect(mockDataLayer).toHaveLength(1);
+      expect(mockDataLayer[0]).toEqual({
+        schema: 'add_click',
+        data: {
+          element: {
+            area: 'appbuilder',
+            product: 'commander',
+            section: 'canvas_tab',
+            widget: 'activate',
+          },
+          traffic: {
+            eid: 'appbuilder.commander.canvas_tab.activate.click',
+            customProperties: { canvasId: 'settings.project' },
+          },
+        },
+        targets: ['fullstory'],
+      });
+    });
+
     it('should include custom_properties when provided', () => {
       const logClick = logClickEvent('product.section.widget', { userId: 'test123' });
       logClick();

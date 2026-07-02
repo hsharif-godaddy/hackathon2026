@@ -54,8 +54,10 @@ vi.mock('@/hooks/useSwitchboard', () => ({
   useSwitchboard: () => true,
 }))
 
+const { logClickEventSpy } = vi.hoisted(() => ({ logClickEventSpy: vi.fn(() => vi.fn()) }))
+
 vi.mock('@/utils/instrumentation', () => ({
-  logClickEvent: () => () => {},
+  logClickEvent: logClickEventSpy,
 }))
 
 const resetCommanderStore = (openCanvasIds: CanvasId[], activeCanvasId: CanvasId = PINNED_CANVAS_ID) => {
@@ -91,6 +93,37 @@ describe('CanvasTabs', () => {
       expect(
         screen.getByRole('button', { name: 'builder_commander_canvas_tab_close_named' }),
       ).toBeInTheDocument()
+    })
+  })
+
+  describe('click tracking eids', () => {
+    // parseEID drops any eid whose dot-count !== 2, so the canvasId must ride in
+    // customProperties, not as a fourth eid segment. These lock that contract in
+    // (the mock is a no-op at runtime, so only the call shape is asserted here).
+    it('tracks activation with a static 3-segment eid and canvasId in customProperties', async () => {
+      resetCommanderStore([CanvasId.Preview, CanvasId.Brand, CanvasId.Domain], CanvasId.Preview)
+      const { user } = renderWithProviders(<CanvasTabs />)
+      logClickEventSpy.mockClear()
+
+      await user.click(screen.getByRole('tab', { name: 'Brand' }))
+
+      expect(logClickEventSpy).toHaveBeenCalledWith(
+        'commander.canvas_tab.activate',
+        expect.objectContaining({ canvasId: CanvasId.Brand }),
+      )
+    })
+
+    it('tracks close with a static 3-segment eid and canvasId in customProperties', async () => {
+      resetCommanderStore([CanvasId.Preview, CanvasId.Brand, CanvasId.Domain], CanvasId.Brand)
+      const { user } = renderWithProviders(<CanvasTabs />)
+      logClickEventSpy.mockClear()
+
+      await user.click(screen.getByRole('button', { name: 'builder_common_close' }))
+
+      expect(logClickEventSpy).toHaveBeenCalledWith(
+        'commander.canvas_tab.close',
+        expect.objectContaining({ canvasId: CanvasId.Brand }),
+      )
     })
   })
 })

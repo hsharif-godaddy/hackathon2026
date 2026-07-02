@@ -35,7 +35,7 @@ export function CommanderCanvasSheet({ open, onOpenChange, clickContext }: Comma
   )
 
   const handleSelect = (canvasId: CanvasId): void => {
-    logClickEvent(`commander.mobile_canvas_sheet.select.${canvasId}`, clickContext)()
+    logClickEvent('commander.mobile_canvas_sheet.select', { ...clickContext, canvasId })()
     closeMobileChat()
     openCanvas(canvasId)
     onOpenChange(false)

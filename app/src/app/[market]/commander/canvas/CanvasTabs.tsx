@@ -56,14 +56,14 @@ export function CanvasTabs({ clickContext }: CanvasTabsProps) {
             testId={`commander-canvas-tab-${descriptor.id}`}
             onActivate={() => {
               if (!isActive) {
-                logClickEvent(`commander.canvas_tab.activate.${descriptor.id}`, clickContext)()
+                logClickEvent('commander.canvas_tab.activate', { ...clickContext, canvasId: descriptor.id })()
               }
               setActiveCanvas(descriptor.id as CanvasId)
             }}
             onClose={
               descriptor.dismissible
                 ? () => {
-                    logClickEvent(`commander.canvas_tab.close.${descriptor.id}`, clickContext)()
+                    logClickEvent('commander.canvas_tab.close', { ...clickContext, canvasId: descriptor.id })()
                     closeCanvas(descriptor.id as CanvasId)
                   }
                 : undefined
