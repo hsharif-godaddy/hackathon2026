@@ -30,6 +30,7 @@ vi.mock('./ThinkingTip', () => ({
 }))
 
 vi.mock('@/stores/useStreamingConversationStore', () => ({
+  useHistoryLoadingComplete: vi.fn(function () { return true; }),
   useIsActivelyStreaming: vi.fn(),
   useIsLoading: vi.fn(),
   useMessages: vi.fn(),

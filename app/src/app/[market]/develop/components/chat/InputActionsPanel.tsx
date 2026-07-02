@@ -48,7 +48,7 @@ import { logger } from '@/lib/request-context'
 import { cn } from '@/lib/utils'
 import { todoListService } from '@/services/TodoListService'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
-import { useIsActivelyStreaming, useIsLoading, useMessages, useStreamingConversationStore } from '@/stores/useStreamingConversationStore'
+import { useHistoryLoadingComplete, useIsActivelyStreaming, useIsLoading, useMessages, useStreamingConversationStore } from '@/stores/useStreamingConversationStore'
 import type { TodoItem } from '@/stores/useTodoListStore'
 import { useCurrentList, useTodoListStore, useViewState } from '@/stores/useTodoListStore'
 import { useUpfrontRebuildBuildQueueStore } from '@/stores/useUpfrontRebuildBuildQueueStore'
@@ -1515,6 +1515,7 @@ export default function InputActionsPanel({
   const messages = useMessages()
   const feedback = useFirstBuildFeedback(appId ?? '')
   const feedbackActive = feedback !== null
+  const historyLoadingComplete = useHistoryLoadingComplete()
 
   // After FBF is answered/skipped, suppress stale askQuestion NBAs (e.g. the initial
   // build interview) so they do not snap back when the user picks a close chip.
@@ -1554,9 +1555,15 @@ export default function InputActionsPanel({
       feedbackJustActivatedRef.current = false
       return
     }
+    // Wait for history to hydrate before calibrating: on reload the survey
+    // re-activates before messages load, so calibrating now would misread the
+    // hydrating history as chatting past and falsely dismiss it.
+    if (!historyLoadingComplete) {
+      return
+    }
     const currentCount = messages.filter((m) => m.role === 'user').length
     if (!feedbackJustActivatedRef.current) {
-      // First render with feedback active — calibrate baseline to now, do not dismiss.
+      // First settled render — calibrate baseline, don't dismiss.
       feedbackJustActivatedRef.current = true
       userMessageCountRef.current = currentCount
       return
@@ -1566,7 +1573,7 @@ export default function InputActionsPanel({
       feedback.dismiss('chatted-past')
     }
     userMessageCountRef.current = currentCount
-  }, [messages, feedback])
+  }, [messages, feedback, historyLoadingComplete])
 
   if (isThemeSelectionChatEnabled || isFontSelectionChatEnabled) {
     return (

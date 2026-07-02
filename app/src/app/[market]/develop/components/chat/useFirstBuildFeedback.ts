@@ -28,17 +28,40 @@ export function useFirstBuildFeedback(appId: string): UseFirstBuildFeedbackResul
     setStep('prompt')
   }, [appId])
 
-  const alreadyResolved = useMemo(
-    () =>
+  // Snapshotted at mount (re-read only on app change) so an in-session `advance`
+  // write can't hide the in-progress follow-up; on reload it keeps an
+  // already-engaged survey from re-appearing.
+  const readResolved = useCallback(
+    (): boolean =>
       Boolean(
-        safeGetItem(`fbf_answered_${appId}`) || safeGetItem(`fbf_skipped_${appId}`)
+        safeGetItem(`fbf_answered_${appId}`) ||
+          safeGetItem(`fbf_skipped_${appId}`) ||
+          safeGetItem(`fbf_responded_${appId}`)
       ),
+    [appId],
+  )
+  const [alreadyResolved, setAlreadyResolved] = useState<boolean>(readResolved)
+  useEffect(() => {
+    setAlreadyResolved(readResolved())
+  }, [readResolved])
+
+  // `initialBuildComplete` is only an optimistic in-session flag (the refetched
+  // agent record can come back false on reload), so persist that the survey was
+  // shown and treat that as an equivalent signal to re-show it after a refresh.
+  // Only written once all other gates have passed, so it can't bypass deferral.
+  const wasShown: boolean = useMemo(
+    () => Boolean(safeGetItem(`fbf_shown_${appId}`)),
     [appId],
   )
 
   const advance = useCallback(
-    (to: Exclude<FeedbackStep, 'prompt'>) => setStep(to),
-    [],
+    (to: Exclude<FeedbackStep, 'prompt'>) => {
+      // A rating selection answers the main question (analytics fire on click);
+      // persist it so a refresh mid-follow-up doesn't re-prompt.
+      safeSetItem(`fbf_responded_${appId}`, 'true')
+      setStep(to)
+    },
+    [appId],
   )
 
   const dismiss = useCallback(
@@ -55,14 +78,22 @@ export function useFirstBuildFeedback(appId: string): UseFirstBuildFeedbackResul
     [appId],
   )
 
-  if (
-    !flagEnabled ||
-    !initialBuildComplete ||
-    !firstFileEdit ||
-    alreadyResolved ||
-    step === 'done' ||
-    isLogoDesignerApp(appId)
-  ) {
+  const shouldShow: boolean =
+    Boolean(flagEnabled) &&
+    (Boolean(initialBuildComplete) || wasShown) &&
+    firstFileEdit &&
+    !alreadyResolved &&
+    step !== 'done' &&
+    !isLogoDesignerApp(appId)
+
+  useEffect(() => {
+    if (shouldShow && !wasShown) {
+      safeSetItem(`fbf_shown_${appId}`, 'true')
+    }
+  }, [shouldShow, wasShown, appId])
+
+  // Re-check `step` (already covered by `shouldShow`) so TS narrows the union.
+  if (!shouldShow || step === 'done') {
     return null
   }
 

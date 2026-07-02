@@ -29,10 +29,12 @@ import InputActionsPanel from './InputActionsPanel'
 //     useIsActivelyStreaming / useIsLoading. ───────────────────────────────────
 let mockMessages: ChatMessage[] = []
 let mockActiveStream: StreamingMessage | null = null
+let mockHistoryLoadingComplete = true
 
 vi.mock('@/stores/useStreamingConversationStore', () => ({
   useMessages: vi.fn(() => mockMessages),
   useActiveStream: vi.fn(() => mockActiveStream),
+  useHistoryLoadingComplete: vi.fn(() => mockHistoryLoadingComplete),
   useIsActivelyStreaming: vi.fn(() => false),
   useIsLoading: vi.fn(() => false),
   useActiveRunningToolName: vi.fn(() => null),
@@ -243,5 +245,79 @@ describe('InputActionsPanel — FBF must not suppress the kit-attach interview c
     renderWithProviders(<InputActionsPanel />)
 
     expect(screen.getByText(INTERVIEW_QUESTION)).toBeInTheDocument()
+  })
+})
+
+// Regression: the chatted-past dismiss (which writes a permanent `fbf_skipped`)
+// misfired on reload — the baseline calibrated before history hydrated, so the
+// hydrating messages looked like chatting past. Gating on `historyLoadingComplete`
+// fixes it. Exercises the real useFirstBuildFeedback + chatted-past effect.
+describe('InputActionsPanel — chatted-past must not falsely dismiss FBF during reload hydration', () => {
+  function userMessage(id: string): ChatMessage {
+    return { id, role: 'user', content: 'prompt', timestamp: new Date() }
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    localStorage.clear()
+    mockActiveStream = null
+    mockHistoryLoadingComplete = true
+    setFlags()
+    // FBF legitimately active: build complete + first file edit recorded.
+    setStoreApp(true)
+    markFeedbackRevealMilestone('test-app-id', 'firstFileEdit')
+    vi.mocked(ChatContext.useSendUserMessage).mockReturnValue(vi.fn())
+    vi.mocked(TodoListStore.useCurrentList).mockReturnValue(null)
+    vi.mocked(TodoListStore.useViewState).mockReturnValue(null)
+  })
+
+  it('does not dismiss the survey when history hydrates after it activates (no skip written)', () => {
+    // Reload shape: survey active from persisted markers, history not yet loaded.
+    mockHistoryLoadingComplete = false
+    mockMessages = []
+
+    const { rerender } = renderWithProviders(<InputActionsPanel />)
+
+    // History streams in while loading is still in progress — must NOT calibrate yet.
+    mockMessages = [userMessage('u1')]
+    rerender(<InputActionsPanel />)
+
+    // History finishes: baseline calibrates to the hydrated count, no dismiss.
+    mockHistoryLoadingComplete = true
+    rerender(<InputActionsPanel />)
+
+    expect(localStorage.getItem('fbf_skipped_test-app-id')).toBeNull()
+  })
+
+  it('still dismisses the survey as chatted-past when the user sends a new message after it appears', () => {
+    mockHistoryLoadingComplete = true
+    mockMessages = [userMessage('u1')]
+
+    const { rerender } = renderWithProviders(<InputActionsPanel />)
+
+    // A genuine live send after the survey is shown.
+    mockMessages = [userMessage('u1'), userMessage('u2')]
+    rerender(<InputActionsPanel />)
+
+    expect(localStorage.getItem('fbf_skipped_test-app-id')).toBe('true')
+  })
+
+  it('calibrates to the hydrated count, then re-arms and dismisses on a later genuine send', () => {
+    // Reload, then hydrate history to completion.
+    mockHistoryLoadingComplete = false
+    mockMessages = []
+    const { rerender } = renderWithProviders(<InputActionsPanel />)
+
+    mockMessages = [userMessage('u1')]
+    rerender(<InputActionsPanel />)
+    mockHistoryLoadingComplete = true
+    rerender(<InputActionsPanel />)
+    expect(localStorage.getItem('fbf_skipped_test-app-id')).toBeNull()
+
+    // A genuine send after settling must dismiss — proving the baseline calibrated
+    // to the hydrated count (1), not 0, and the detector re-armed.
+    mockMessages = [userMessage('u1'), userMessage('u2')]
+    rerender(<InputActionsPanel />)
+    expect(localStorage.getItem('fbf_skipped_test-app-id')).toBe('true')
   })
 })
