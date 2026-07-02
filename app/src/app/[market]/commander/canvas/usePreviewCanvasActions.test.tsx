@@ -198,4 +198,30 @@ describe('usePreviewCanvasActions', () => {
     const { result } = renderHook(() => usePreviewCanvasActions())
     expect(idsOf(result.current)).toEqual(['edit', 'separator', 'refresh', 'device'])
   })
+
+  it('omits the device menu on mobile in preview mode', () => {
+    setDevelopState({ viewMode: ViewMode.PREVIEW, isMobile: true })
+    const { result } = renderHook(() => usePreviewCanvasActions())
+    expect(idsOf(result.current)).not.toContain('device')
+    expect(idsOf(result.current)).toContain('edit')
+  })
+
+  it('omits the select (annotation) action on mobile in edit mode', () => {
+    setDevelopState({ viewMode: ViewMode.EDIT, isMobile: true })
+    const { result } = renderHook(() => usePreviewCanvasActions())
+    expect(idsOf(result.current)).not.toContain('select')
+    expect(idsOf(result.current)).toContain('edit')
+    expect(idsOf(result.current)).toContain('undo')
+    expect(idsOf(result.current)).toContain('redo')
+  })
+
+  it('includes device menu and select action on desktop', () => {
+    setDevelopState({ viewMode: ViewMode.PREVIEW, isMobile: false })
+    const { result } = renderHook(() => usePreviewCanvasActions())
+    expect(idsOf(result.current)).toContain('device')
+
+    setDevelopState({ viewMode: ViewMode.EDIT, isMobile: false })
+    const { result: editResult } = renderHook(() => usePreviewCanvasActions())
+    expect(idsOf(editResult.current)).toContain('select')
+  })
 })

@@ -80,9 +80,10 @@ export function usePreviewCanvasActions(): CanvasActionItem[] {
     }
 
     if (isEditMode) {
-      return [
-        editAction,
-        {
+      const editModeItems: CanvasActionItem[] = [editAction]
+
+      if (!isMobile) {
+        editModeItems.push({
           type: CanvasActionItemType.Button,
           id: 'select',
           icon: <SelectIcon className="size-2.5" />,
@@ -92,7 +93,10 @@ export function usePreviewCanvasActions(): CanvasActionItem[] {
             toggleAnnotationMode()
             if (isCanvasTabsEnabled) setActiveCanvas(CanvasId.Preview)
           },
-        },
+        })
+      }
+
+      editModeItems.push(
         { type: CanvasActionItemType.Separator },
         {
           type: CanvasActionItemType.Button,
@@ -112,7 +116,9 @@ export function usePreviewCanvasActions(): CanvasActionItem[] {
           disabled: redo.isLocked,
           onTrigger: redo.triggerRedo,
         },
-      ]
+      )
+
+      return editModeItems
     }
 
     const items: CanvasActionItem[] = [editAction, { type: CanvasActionItemType.Separator }]
@@ -129,20 +135,22 @@ export function usePreviewCanvasActions(): CanvasActionItem[] {
       })
     }
 
-    items.push({
-      type: CanvasActionItemType.Menu,
-      id: 'device',
-      icon: getViewportIcon(previewViewMode),
-      label: t('builder_preview_button_device'),
-      labelHidden: true,
-      options: VIEWPORT_ITEMS.map((item) => ({
-        id: item.value,
-        label: t(item.labelKey),
-        icon: item.icon,
-        active: previewViewMode === item.value,
-        onSelect: () => setPreviewViewMode(item.value),
-      })),
-    })
+    if (!isMobile) {
+      items.push({
+        type: CanvasActionItemType.Menu,
+        id: 'device',
+        icon: getViewportIcon(previewViewMode),
+        label: t('builder_preview_button_device'),
+        labelHidden: true,
+        options: VIEWPORT_ITEMS.map((item) => ({
+          id: item.value,
+          label: t(item.labelKey),
+          icon: item.icon,
+          active: previewViewMode === item.value,
+          onSelect: () => setPreviewViewMode(item.value),
+        })),
+      })
+    }
 
     if (previewUrl) {
       items.push({

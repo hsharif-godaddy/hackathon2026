@@ -795,7 +795,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     }),
     setInboxAccountId: (accountId) => set((state) => { state.inboxAccountId = accountId }),
     setIsMobile: (isMobile) => {
-      const { isMobile: wasMobile, viewMode } = get()
+      const { isMobile: wasMobile, viewMode, isAnnotationModeEnabled } = get()
 
       set((state) => {
         const wasMobileGoingToDesktop = state.isMobile === true && isMobile === false
@@ -808,12 +808,30 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
       // Mobile UI doesn't support ViewMode.EDIT, so coerce to PREVIEW first,
       // then switch the mobile UI to TOOLS.
       const enteringMobile = !wasMobile && isMobile
-      if (enteringMobile && viewMode === ViewMode.EDIT) {
-        set((state) => {
-          state.viewMode = ViewMode.PREVIEW
-          state.isEditModeEnabled = false
-        })
-        get().handleMobileModeChange(MobileMode.TOOLS)
+      if (enteringMobile) {
+        const needsAnnotationCleanup = isAnnotationModeEnabled
+        const needsEditCleanup = viewMode === ViewMode.EDIT
+
+        if (needsAnnotationCleanup || needsEditCleanup) {
+          set((state) => {
+            if (needsAnnotationCleanup) state.isAnnotationModeEnabled = false
+            if (needsEditCleanup) {
+              state.viewMode = ViewMode.PREVIEW
+              state.isEditModeEnabled = false
+            }
+          })
+        }
+
+        if (needsAnnotationCleanup) {
+          const iframe = document.getElementById('preview-iframe') as HTMLIFrameElement
+          if (iframe) {
+            postMessageToIframe(iframe, { type: IframeMessageType.ANNOTATION_MODE_DISABLED })
+          }
+        }
+
+        if (needsEditCleanup) {
+          get().handleMobileModeChange(MobileMode.TOOLS)
+        }
       }
     },
     setIsVersionHistoryOpen: (open) => {

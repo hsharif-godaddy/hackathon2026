@@ -32,6 +32,7 @@ export default function CommanderComposerLeft({ appId }: CommanderComposerLeftPr
   const hasUnsavedChanges = useDevelopPageStore((state) => state.hasUnsavedChanges)
   const isAnnotationActive = useDevelopPageStore((state) => state.isAnnotationModeEnabled)
   const toggleAnnotationMode = useDevelopPageStore((state) => state.toggleAnnotationMode)
+  const isMobile = useDevelopPageStore((state) => state.isMobile)
   const isCommandPaletteEnabled = useSwitchboard('appbuilder-commander-command-palette') === true
   const isAnnotationEnabled = useSwitchboard('appbuilder-commander-annotation') === true
   const isCanvasTabsEnabled = useCommanderCanvasTabsEnabled()
@@ -99,7 +100,7 @@ export default function CommanderComposerLeft({ appId }: CommanderComposerLeftPr
         />
       )}
 
-      {isAnnotationEnabled && !isActionsBarEnabled && (
+      {isAnnotationEnabled && !isActionsBarEnabled && !isMobile && (
         <Button
           design="control"
           size="sm"
