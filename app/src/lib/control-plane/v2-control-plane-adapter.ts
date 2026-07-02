@@ -319,6 +319,7 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
         jobId: response.statusJobId,
         bmsActive: isBmsEnabled,
         fqdn: !!params.fqdn,
+        itc: params.itc,
       }, {
         tags: ['security']
       });

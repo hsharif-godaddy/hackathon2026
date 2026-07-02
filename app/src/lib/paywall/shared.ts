@@ -223,6 +223,8 @@ export const PAYWALL_ITC = {
   ATTACH_DOMAIN: 'airo_ai_builder_attach_domain',
   /** ITC for code editor paywall (when code view is blocked) */
   CODE_EDITOR: 'upp_airo_ai_builder_code_editor',
+  /** ITC for care-agent-initiated purchasing. Overrides frontend-supplied ITC for purchase channel attribution. */
+  CARE_PURCHASE: 'aab_care_purchase',
 } as const;
 
 export type PaywallItcValue = (typeof PAYWALL_ITC)[keyof typeof PAYWALL_ITC];

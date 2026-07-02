@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { isEmployeeAuthType } from '@airo/shared/auth';
 
 import { fetchHivemindCohorts, getBmsLaunchAACohort } from '@/lib/budget-service-experiment';
 import { getControlPlaneAdapter } from '@/lib/control-plane';
@@ -15,6 +16,7 @@ import { validateDomainName } from '@/lib/domain-validation';
 import { resolveMarketId } from '@/lib/market/resolve-market';
 import { mgmtAiro401Response } from '@/lib/mgmt-airo/auth-error';
 import { AIRO_PRODUCT_IDS } from '@/lib/mgmt-airo/types';
+import { PAYWALL_ITC } from '@/lib/paywall/shared';
 import { logger } from '@/lib/request-context';
 import { getByteLength, MAX_PROMPT_BYTES } from '@/lib/waf-validation';
 
@@ -43,6 +45,11 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       return trimmed;
     })();
     const { user } = authContext;
+
+    // Care agents (e2s/e2s2s) override ITC to aab_care_purchase for first-app signups.
+    // Only signup path forwards ITC to mgmt; createApp ignores it.
+    const isCarePurchase: boolean = isEmployeeAuthType(user.authType);
+    const effectiveItc: string | undefined = isCarePurchase ? PAYWALL_ITC.CARE_PURCHASE : validItc;
 
     // Validate productId if provided
     if (productId) {
@@ -119,7 +126,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       marketId,
       headers: request.headers,
       bmsLaunchAACohort: validSource === 'homepage' ? getBmsLaunchAACohort(hivemindCohorts) : undefined,
-      ...(validItc && { itc: validItc }),
+      ...(effectiveItc && { itc: effectiveItc }),
       ...(validDatacenter && { datacenter: validDatacenter }),
       ...(validFqdn && { fqdn: validFqdn }),
     };

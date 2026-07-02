@@ -17,12 +17,14 @@ vi.mock('@/lib/budget-service-experiment', () => ({
 
 const mockCreateSite = vi.fn();
 
+const authState: { authType: string | undefined } = { authType: undefined };
+
 vi.mock('@/lib/customer-auth', () => ({
   withCustomerAuth: (handler: any) => {
     return async (request: any) => {
       return handler(request, {
         jwt: 'test-jwt',
-        user: { accountId: 'acc-1', customerId: 'cust-1', email: 'test@test.com', shopperId: 'shopper-1' }
+        user: { accountId: 'acc-1', customerId: 'cust-1', email: 'test@test.com', shopperId: 'shopper-1', authType: authState.authType }
       });
     };
   },
@@ -416,5 +418,71 @@ describe('/api/sites/quick-create downstream error propagation', () => {
     const body = await response.json();
     expect(body.error).toBe('Failed to create site record');
     expect(body).not.toHaveProperty('authReason');
+  });
+});
+
+describe('/api/sites/quick-create care purchase ITC override', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    authState.authType = undefined;
+    mockCreateSite.mockResolvedValue({
+      success: true, siteId: 'app-1', name: 'Test', status: 'active',
+      type: 'job', account_id: 'acc-1',
+    });
+  });
+
+  it('overrides frontend ITC with aab_care_purchase for e2s sessions', async () => {
+    authState.authType = 'e2s';
+
+    const { POST } = await import('../route');
+    await POST(makeRequest({ initialPrompt: 'test', itc: 'summer_2026' }));
+
+    expect(mockCreateSite).toHaveBeenCalledWith(
+      expect.objectContaining({ itc: 'aab_care_purchase' })
+    );
+  });
+
+  it('overrides frontend ITC with aab_care_purchase for e2s2s sessions', async () => {
+    authState.authType = 'e2s2s';
+
+    const { POST } = await import('../route');
+    await POST(makeRequest({ initialPrompt: 'test', itc: 'summer_2026' }));
+
+    expect(mockCreateSite).toHaveBeenCalledWith(
+      expect.objectContaining({ itc: 'aab_care_purchase' })
+    );
+  });
+
+  it('sends aab_care_purchase for e2s sessions even when no ITC is provided', async () => {
+    authState.authType = 'e2s';
+
+    const { POST } = await import('../route');
+    await POST(makeRequest({ initialPrompt: 'test' }));
+
+    expect(mockCreateSite).toHaveBeenCalledWith(
+      expect.objectContaining({ itc: 'aab_care_purchase' })
+    );
+  });
+
+  it('preserves the frontend ITC for basic (non-employee) sessions', async () => {
+    authState.authType = 'basic';
+
+    const { POST } = await import('../route');
+    await POST(makeRequest({ initialPrompt: 'test', itc: 'summer_2026' }));
+
+    expect(mockCreateSite).toHaveBeenCalledWith(
+      expect.objectContaining({ itc: 'summer_2026' })
+    );
+  });
+
+  it('does not override ITC for s2s delegation sessions', async () => {
+    authState.authType = 's2s';
+
+    const { POST } = await import('../route');
+    await POST(makeRequest({ initialPrompt: 'test', itc: 'summer_2026' }));
+
+    expect(mockCreateSite).toHaveBeenCalledWith(
+      expect.objectContaining({ itc: 'summer_2026' })
+    );
   });
 });
