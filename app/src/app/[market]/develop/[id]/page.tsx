@@ -309,11 +309,11 @@ function DevelopPageContent({ layout: layoutProp }: { layout?: BuilderLayout }) 
   const getViewAvailability = useCallback(
     (mode: ViewMode): ViewAvailability => {
       if (mode === ViewMode.INBOX) {
-        return { available: Boolean(isInboxEnabled && brandId), resolving: isLoadingAccount }
+        return { available: Boolean(isInboxEnabled), resolving: false }
       }
       return { available: true, resolving: false }
     },
-    [isInboxEnabled, brandId, isLoadingAccount]
+    [isInboxEnabled]
   )
   // The design-kit flow no longer lands on the BRAND tab — it has its own BuilderLayout
   // (useBuilderLayout above), so useView only owns the generic `?view=` deep-link sync.

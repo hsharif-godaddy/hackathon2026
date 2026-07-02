@@ -1594,6 +1594,21 @@ describe('useDevelopPageStore', function useDevelopPageStoreTests() {
       expect(state.viewMode).toBe(ViewMode.PREVIEW);
       expect(state.isEditModeEnabled).toBe(false);
     });
+
+    it('preserves INBOX viewMode when useView already initialized from a deep-link', function preservesDeepLinkedInbox() {
+      act(function setup() {
+        useDevelopPageStore.setState({
+          viewMode: ViewMode.INBOX,
+          viewInitializedForPathname: '/en/develop',
+        });
+      });
+
+      act(function reset() {
+        useDevelopPageStore.getState().resetForNewApp('app-inbox-deeplink');
+      });
+
+      expect(useDevelopPageStore.getState().viewMode).toBe(ViewMode.INBOX);
+    });
   });
 
   describe('marketing canvas navigation', function marketingNavigationTests() {

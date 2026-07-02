@@ -1296,19 +1296,24 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
         state.feedbackInitialStep = null
         state.docsPath = null
 
-        // Reset viewMode to PREVIEW unless the logo-designer template already governs
-        // the tab: its effect sets ViewMode.BRAND before this runs, and overriding it
-        // would flash "Logo & Brand" then yank to Preview during the create flow's
-        // jobId→realAppId re-init. The design-kit flow no longer lands on BRAND — it
-        // has its own BuilderLayout.Immersive (useBuilderLayout) — so it resets to
-        // PREVIEW like any app and lands there once the build hands off.
+        // Reset viewMode to PREVIEW unless:
+        // 1. The logo-designer template already governs the tab: its effect sets
+        //    ViewMode.BRAND before this runs, and overriding it would flash
+        //    "Logo & Brand" then yank to Preview during the create flow's
+        //    jobId→realAppId re-init.
+        // 2. useView already initialized from a URL deep-link (e.g. ?view=inbox)
+        //    AND set a URL-synced mode: viewInitializedForPathname is non-null and
+        //    viewMode is INBOX. Clobbering it would strip the deep-link param via
+        //    useView's store→URL sync effect.
         const jobId = typeof window !== 'undefined'
           ? sessionStorage.getItem(`initial-job-id-${appId}`)
           : null
         const template = jobId
           ? sessionStorage.getItem(`initial-template-${jobId}`)
           : null
-        if (template !== 'logo-designer') {
+        const deepLinkedToUrlSyncedView: boolean = state.viewInitializedForPathname !== null
+          && state.viewMode === ViewMode.INBOX
+        if (template !== 'logo-designer' && !deepLinkedToUrlSyncedView) {
           const persistedCanvasId = useCommanderStore.getState().activeCanvasId
           const persistedViewMode = CANVAS_REGISTRY[persistedCanvasId]?.activation?.viewMode
           if (!persistedViewMode || persistedViewMode === ViewMode.PREVIEW) {

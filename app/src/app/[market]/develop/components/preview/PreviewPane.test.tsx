@@ -66,8 +66,8 @@ vi.mock('@/app/[market]/develop/components/settings/DomainPanel', () => ({
 }));
 
 vi.mock('@/app/[market]/develop/components/preview/inbox/Inbox', () => ({
-  default: ({ brandId }: { brandId: string }) => (
-    <div data-testid="inbox-iframe">Inbox: {brandId}</div>
+  default: () => (
+    <div data-testid="inbox-iframe">Inbox</div>
   ),
 }));
 
@@ -917,12 +917,9 @@ describe('PreviewPane', () => {
   });
 
   describe('INBOX view accessibility during preview server issues', () => {
-    const mockInboxBrandId = 'test-brand-123';
-
     it('should render INBOX when resumeFailed and viewMode is INBOX', () => {
       mockSwitchboardResults['app-builder-inbox-button'] = true;
       mockDevelopPageStore.viewMode = ViewMode.INBOX;
-      (mockDevelopPageStore as any).inboxBrandId = mockInboxBrandId;
       // resumeFailed prop causes early-return guards to trigger, but INBOX should bypass them
       mockServerPollingStore.getServerState = vi.fn(function () { return { isReady: false, url: null }; });
 
@@ -940,7 +937,6 @@ describe('PreviewPane', () => {
     it('should render INBOX when isHibernated and viewMode is INBOX', () => {
       mockSwitchboardResults['app-builder-inbox-button'] = true;
       mockDevelopPageStore.viewMode = ViewMode.INBOX;
-      (mockDevelopPageStore as any).inboxBrandId = mockInboxBrandId;
       mockServerPollingStore.getServerState = vi.fn(function () { return { isReady: false, url: null }; });
 
       renderWithProviders(
@@ -957,7 +953,6 @@ describe('PreviewPane', () => {
     it('should render INBOX when isResuming and viewMode is INBOX', () => {
       mockSwitchboardResults['app-builder-inbox-button'] = true;
       mockDevelopPageStore.viewMode = ViewMode.INBOX;
-      (mockDevelopPageStore as any).inboxBrandId = mockInboxBrandId;
       mockServerPollingStore.getServerState = vi.fn(function () { return { isReady: false, url: null }; });
 
       renderWithProviders(
@@ -974,7 +969,6 @@ describe('PreviewPane', () => {
     it('should render INBOX when imageReloadFailed and viewMode is INBOX', () => {
       mockSwitchboardResults['app-builder-inbox-button'] = true;
       mockDevelopPageStore.viewMode = ViewMode.INBOX;
-      (mockDevelopPageStore as any).inboxBrandId = mockInboxBrandId;
 
       renderWithProviders(
         <PreviewPane
@@ -990,7 +984,6 @@ describe('PreviewPane', () => {
     it('should render INBOX when isImageReloading and viewMode is INBOX', () => {
       mockSwitchboardResults['app-builder-inbox-button'] = true;
       mockDevelopPageStore.viewMode = ViewMode.INBOX;
-      (mockDevelopPageStore as any).inboxBrandId = mockInboxBrandId;
 
       renderWithProviders(
         <PreviewPane

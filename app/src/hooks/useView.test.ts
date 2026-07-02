@@ -41,40 +41,25 @@ describe('useView', () => {
     expect(replaceStateSpy).not.toHaveBeenCalled();
   });
 
-  it('holds while resolving, then opens inbox once available', async () => {
+  it('opens inbox immediately without a resolving phase', async () => {
     window.history.replaceState(null, '', '/develop/app-123?view=inbox');
+    replaceStateSpy.mockClear();
 
-    // The URL->store effect re-evaluates availability only when
-    // getViewAvailability's *identity* changes. In page.tsx that identity is a
-    // useCallback keyed on the inbox-account query (isLoadingAccount/brandId),
-    // so it flips when the query settles. Mirror that here by passing a FRESH
-    // function per render via renderHook props — NOT a stable closure over a
-    // mutable `resolving` (a stable ref would never re-trigger the effect, and
-    // the post-resolve assertion would hang).
-    const makeAvailability =
-      (resolving: boolean) =>
-      (mode: ViewMode): ViewAvailability =>
-        mode === ViewMode.INBOX ? { available: true, resolving } : allAvailable();
+    // Inbox availability returns resolving: false on the first call — no deferred re-render.
+    const getViewAvailability = (mode: ViewMode): ViewAvailability =>
+      mode === ViewMode.INBOX
+        ? { available: true, resolving: false }
+        : { available: true, resolving: false };
 
-    const { rerender } = renderHook(
-      ({ getViewAvailability }) => useView({ getViewAvailability }),
-      { initialProps: { getViewAvailability: makeAvailability(true) } }
-    );
-
-    // Still resolving: no change, param preserved, not initialized.
-    await waitFor(() => {
-      expect(useDevelopPageStore.getState().viewInitializedForPathname).toBeNull();
-    });
-    expect(useDevelopPageStore.getState().viewMode).toBe(ViewMode.EDIT);
-    expect(window.location.search).toBe('?view=inbox');
-
-    // Resolve as available — a new function identity re-runs the effect.
-    rerender({ getViewAvailability: makeAvailability(false) });
+    renderHook(() => useView({ getViewAvailability }));
 
     await waitFor(() => {
       expect(useDevelopPageStore.getState().viewMode).toBe(ViewMode.INBOX);
     });
+    // Initialized in a single tick — no second rerender required.
+    expect(useDevelopPageStore.getState().viewInitializedForPathname).toBe('/develop/app-123');
     expect(window.location.search).toBe('?view=inbox');
+    expect(replaceStateSpy).not.toHaveBeenCalled();
   });
 
   it('falls back to default and strips ?view=inbox when unavailable', async () => {

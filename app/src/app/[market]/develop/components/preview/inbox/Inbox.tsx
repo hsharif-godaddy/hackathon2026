@@ -2,52 +2,84 @@
 
 import { AnimatePresence, motion } from 'framer-motion';
 import { useState } from 'react';
+import Button from '@ux/button';
 
+import { useAppIdFromParams } from '@/app/[market]/develop/components/utils';
 import { useConversationId } from '@/hooks/useConversationId';
+import { useInboxAccount } from '@/hooks/useInboxAccount';
 import { useInboxEntryRef } from '@/hooks/useInboxEntryRef';
-import { IntString, UuidString } from '@/types/inbox/local/core';
+import { useSwitchboard } from '@/hooks/useSwitchboard';
+import { useTranslations } from '@/hooks/useTranslations';
+import type { IntString } from '@/types/inbox/local/core';
 import { InboxConversationDetail } from './InboxConversationDetail';
 import { InboxConversationList } from './InboxConversationList';
+import { InboxConversationListEmptyState } from './InboxConversationListEmptyState';
+import { InboxConversationListSkeleton } from './InboxSkeletons';
 import { slideMotionProps } from './slideView';
 
-interface InboxProps {
-  brandId: UuidString;
-  embeddableId: number | null;
-  categoryId: number | string | null;
-}
-
-export default function Inbox({ brandId, embeddableId, categoryId }: InboxProps) {
-  const [direction, setDirection] = useState(1);
-
-  // The active conversation is synced to the `?conversationId=` URL param, so
-  // selecting/closing a conversation, reloading, and Back/Forward stay in sync.
+export default function Inbox() {
+  const appId: string | undefined = useAppIdFromParams();
+  const isInboxEnabled: boolean | undefined = useSwitchboard('app-builder-inbox-button');
+  const { brandId, embeddableId, categoryId, isLoading, error, refetch } = useInboxAccount(
+    isInboxEnabled ? appId : undefined,
+  );
+  const t = useTranslations();
+  const [direction, setDirection] = useState<number>(1);
   const { activeConversationId, setActiveConversationId } = useConversationId();
-
-  // Captures the `?ref=` deep-link entry point (e.g. email) once and strips it
-  // from the URL; consumed by whichever landing impression fires first.
   const { consumeEntryRef } = useInboxEntryRef();
 
-  function handleConversationClick(conversationId: IntString) {
+  if (isLoading) {
+    return (
+      <div className="h-full p-3" data-testid="inbox-loading">
+        <InboxConversationListSkeleton />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div
+        className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center"
+        data-testid="inbox-error"
+      >
+        <p className="text-sm text-ux-text-secondary">
+          {t('builder_common_error_generic', undefined, 'Something went wrong. Please try again.')}
+        </p>
+        <Button design="secondary" size="sm" onClick={() => void refetch()}>
+          {t('builder_common_try_again', undefined, 'Try again')}
+        </Button>
+      </div>
+    );
+  }
+
+  if (!brandId) {
+    return (
+      <InboxConversationListEmptyState
+        statusFilter="all"
+        embeddableId={null}
+        categoryId={null}
+      />
+    );
+  }
+
+  function handleConversationClick(conversationId: IntString): void {
     setDirection(1);
     setActiveConversationId(conversationId);
   }
 
-  function handleBack() {
+  function handleBack(): void {
     setDirection(-1);
     setActiveConversationId(null);
   }
 
   return (
-    <div className='relative h-full min-h-0 overflow-hidden bg-ux-surface-base'>
-      <AnimatePresence
-        initial={false}
-        custom={direction}
-      >
+    <div className="relative h-full min-h-0 overflow-hidden bg-ux-surface-base">
+      <AnimatePresence initial={false} custom={direction}>
         {activeConversationId ? (
           <motion.div
-            key='conversation-detail'
+            key="conversation-detail"
             {...slideMotionProps(direction)}
-            className='absolute inset-0 flex flex-col bg-ux-surface-base'
+            className="absolute inset-0 flex flex-col bg-ux-surface-base"
           >
             <InboxConversationDetail
               conversationId={activeConversationId}
@@ -58,9 +90,9 @@ export default function Inbox({ brandId, embeddableId, categoryId }: InboxProps)
           </motion.div>
         ) : (
           <motion.div
-            key='conversation-list'
+            key="conversation-list"
             {...slideMotionProps(direction)}
-            className='absolute inset-0 flex flex-col bg-ux-surface-base'
+            className="absolute inset-0 flex flex-col bg-ux-surface-base"
           >
             <InboxConversationList
               brandId={brandId}
