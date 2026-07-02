@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 
+import { TASK_COMPLETION_FEEDBACK_BANNER_FLAG } from '@/app/[market]/develop/components/invocation-feedback';
 import type { FeedbackRevealState } from '@/app/[market]/develop/hooks/useInitialBuildRevealSignals';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
 import {
@@ -96,7 +97,7 @@ function shownAgentWorkMilestones(
  */
 export function useAgentWorkFeedbackTrigger(reveal: FeedbackRevealState): void {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const flagEnabled = useSwitchboard('appbuilder-agent-work-feedback-banner') ?? false;
+  const flagEnabled = useSwitchboard(TASK_COMPLETION_FEEDBACK_BANNER_FLAG) ?? false;
   const streamingState = useStreamingConversationStore((state) => state.streamingState);
   const lastAssistantSignature = useStreamingConversationStore((state) => {
     const lastAssistant = lastAssistantMessage(state.messages);

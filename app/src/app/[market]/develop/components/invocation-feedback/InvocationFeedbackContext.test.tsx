@@ -9,6 +9,7 @@ import { screen, waitFor } from '@testing-library/react';
 
 import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { renderWithProviders } from '@/tests/test-utils';
+import { INLINE_FEEDBACK_FREE_TEXT_FLAG } from './constants';
 import { InvocationFeedbackProvider, useInvocationFeedback } from './InvocationFeedbackContext';
 import InvocationFeedbackControls from './InvocationFeedbackControls';
 import InvocationFeedbackPanel from './InvocationFeedbackPanel';
@@ -20,7 +21,11 @@ const mockPatchMessageFeedbackMetadata = vi.fn();
 const mockMergeMessageMetadata = vi.fn();
 
 vi.mock('@/hooks/useSwitchboard', () => ({
-  useSwitchboard: vi.fn(function () {
+  useSwitchboard: vi.fn(function (flag: string) {
+    // vi.mock factories are hoisted before imports — use the literal string.
+    // Free-text defaults to enabled so existing tests that interact with the
+    // Other chip / free-text input continue to work unchanged.
+    if (flag === 'appbuilder-inline-feedback-free-text') return true;
     return false;
   }),
   getSwitchboardFlag: vi.fn(function () {
@@ -99,6 +104,13 @@ function renderPerMessageProvider() {
 describe('InvocationFeedbackContext', function contextTests() {
   beforeEach(function setup() {
     vi.clearAllMocks();
+    // Restore the default implementation after clearAllMocks (which does not
+    // reset implementations, only call history). Without this, a test that
+    // calls mockImplementation() leaks its override into subsequent tests.
+    vi.mocked(useSwitchboard).mockImplementation(function (flag: string) {
+      if (flag === 'appbuilder-inline-feedback-free-text') return true;
+      return false;
+    });
     mockSubmitFeedback.mockResolvedValue({ ok: true });
     mockStoreToS3.mockResolvedValue({ ok: true, status: 200 });
     mockPatchMessageFeedbackMetadata.mockResolvedValue({ ok: true });
@@ -470,6 +482,42 @@ describe('InvocationFeedbackContext', function contextTests() {
     });
   });
 
+  it('submits skill-invoke negative feedback directly without opening panel when free-text is disabled', async function skillInvokeDirectSubmit() {
+    vi.mocked(useSwitchboard).mockImplementation(function (flag: string) {
+      if (flag === INLINE_FEEDBACK_FREE_TEXT_FLAG) return false;
+      return false;
+    });
+
+    const { user } = renderWithProviders(
+      <InvocationFeedbackProvider
+        appId="app-1"
+        messageId="agent-work-feedback"
+        flow="skill-invoke"
+        agentTargetId="airo-app-builder-InitialAgent"
+        thanksMode="none"
+      >
+        <InvocationFeedbackControls />
+        <InvocationFeedbackPanel />
+      </InvocationFeedbackProvider>
+    );
+
+    const thumbsDown = document.querySelector('[data-eid="chat.response_metadata.thumbs_down"]');
+    expect(thumbsDown).toBeTruthy();
+    await user.click(thumbsDown!);
+
+    await waitFor(function waitDirectSubmit() {
+      expect(mockSubmitFeedback).toHaveBeenCalledWith(
+        expect.objectContaining({
+          feedback: 'negative',
+          feedbackCategory: 'Other',
+          targetLevel: 'invocation',
+        })
+      );
+    });
+
+    expect(screen.queryByPlaceholderText(/Share your feedback/i)).not.toBeInTheDocument();
+  });
+
   it('does not store negative other text to S3 when submitFeedback fails', async function noS3OnSubmitFailure() {
     mockSubmitFeedback.mockResolvedValue({ ok: false, reason: 'http_error' });
     const onSubmitFailed = vi.fn();
@@ -531,6 +579,65 @@ describe('InvocationFeedbackContext', function contextTests() {
         expect.objectContaining({
           feedback_text: 'artifact issue',
           feedback_origin_name: 'inline-customer-feedback',
+        })
+      );
+    });
+  });
+
+  it('uses airo-app-builder-{type} as targetId for artifact flow without instance id', async function artifactTargetIdNoInstance() {
+    const { user } = renderWithProviders(
+      <InvocationFeedbackProvider
+        appId="app-1"
+        messageId="msg-artifact-1"
+        flow="artifact"
+        artifactType="logo"
+        thanksMode="none"
+      >
+        <InvocationFeedbackControls />
+        <InvocationFeedbackPanel />
+      </InvocationFeedbackProvider>
+    );
+
+    const thumbsDown = document.querySelector('[data-eid="chat.response_metadata.thumbs_down"]');
+    expect(thumbsDown).toBeTruthy();
+    await user.click(thumbsDown!);
+    await user.click(screen.getByRole('radio', { name: /^Doesn't match my brand$/i }));
+
+    await waitFor(function waitArtifactTargetId() {
+      expect(mockSubmitFeedback).toHaveBeenCalledWith(
+        expect.objectContaining({
+          targetId: 'airo-app-builder-logo',
+          targetLevel: 'artifact',
+        })
+      );
+    });
+  });
+
+  it('appends :{artifactId} suffix to targetId when artifact instance id is provided', async function artifactTargetIdWithInstance() {
+    const { user } = renderWithProviders(
+      <InvocationFeedbackProvider
+        appId="app-1"
+        messageId="msg-artifact-2"
+        flow="artifact"
+        artifactType="logo"
+        artifactId="logo-uuid-abc"
+        thanksMode="none"
+      >
+        <InvocationFeedbackControls />
+        <InvocationFeedbackPanel />
+      </InvocationFeedbackProvider>
+    );
+
+    const thumbsDown = document.querySelector('[data-eid="chat.response_metadata.thumbs_down"]');
+    expect(thumbsDown).toBeTruthy();
+    await user.click(thumbsDown!);
+    await user.click(screen.getByRole('radio', { name: /^Doesn't match my brand$/i }));
+
+    await waitFor(function waitArtifactTargetIdWithSuffix() {
+      expect(mockSubmitFeedback).toHaveBeenCalledWith(
+        expect.objectContaining({
+          targetId: 'airo-app-builder-logo:logo-uuid-abc',
+          targetLevel: 'artifact',
         })
       );
     });

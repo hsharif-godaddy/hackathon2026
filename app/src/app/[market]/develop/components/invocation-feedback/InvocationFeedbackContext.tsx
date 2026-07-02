@@ -11,6 +11,7 @@ import {
   useState,
 } from 'react';
 
+import type { GeneratedArtifactType } from '@/app/[market]/develop/components/utils';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
 import {
   type FeedbackValue,
@@ -18,6 +19,7 @@ import {
   submitFeedback,
   type SubmitFeedbackResult,
 } from '@/lib/feedback-client';
+import { AGENT_ID_PREFIX } from '@/lib/format-agent-id';
 import { jtbdFeedbackTargetIdFromMilestone } from '@/lib/initial-build-reveal';
 import { shipAnalyticsLog } from '@/lib/logging';
 import { patchMessageFeedbackMetadata } from '@/lib/message-metadata-client';
@@ -25,7 +27,7 @@ import { logger } from '@/lib/request-context';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { useStreamingConversationStore } from '@/stores/useStreamingConversationStore';
 import { logClickEvent } from '@/utils/instrumentation';
-import { INVOCATION_FEEDBACK_FLYOUT_HEIGHT_FLAG } from './constants';
+import { INLINE_FEEDBACK_FREE_TEXT_FLAG, INVOCATION_FEEDBACK_FLYOUT_HEIGHT_FLAG } from './constants';
 import { getScrollParent } from './getScrollParent';
 import { store as storeInlineOtherFeedback } from './inlineFeedbackS3';
 import {
@@ -70,6 +72,19 @@ export interface InvocationFeedbackProviderProps {
   flow?: InvocationFeedbackFlow;
   /** Canonical agent id (`airo-app-builder-*`) when flow is `skill-invoke`. */
   agentTargetId?: string;
+  /**
+   * Classified artifact track when flow is `artifact` (logo|website|brand|domain).
+   * Drives the artifact-specific reason set and a homogeneous
+   * `airo-app-builder-{type}` targetId.
+   */
+  artifactType?: GeneratedArtifactType | null;
+  /**
+   * Specific artifact instance id (logoId, FQDN, palette/theme name, page route,
+   * or the turn's commit hash). When present, the artifact `targetId` becomes
+   * `airo-app-builder-{type}:{artifactId}` so a thumbs-down traces to the exact
+   * artifact rather than just its type.
+   */
+  artifactId?: string | null;
   thanksMode?: InvocationFeedbackThanksMode;
   onSubmitted?: () => void;
   onSubmitFailed?: (reason: NonNullable<SubmitFeedbackResult['reason']>) => void;
@@ -77,11 +92,14 @@ export interface InvocationFeedbackProviderProps {
 }
 
 interface InvocationFeedbackContextValue {
+  flow: InvocationFeedbackFlow;
+  artifactType: GeneratedArtifactType | null;
   feedback: InvocationFeedbackVote;
   isNegativeFeedbackOpen: boolean;
   negativeFeedbackReason: FeedbackReason | null;
   otherFeedback: string;
   isSubmittingFeedback: boolean;
+  isFreeTextEnabled: boolean;
   feedbackPanelRef: React.RefObject<HTMLDivElement | null>;
   togglePositive: () => void;
   toggleNegative: () => void;
@@ -108,6 +126,8 @@ export function InvocationFeedbackProvider({
   traceIds,
   flow = 'per-message',
   agentTargetId,
+  artifactType = null,
+  artifactId = null,
   thanksMode = 'global-banner',
   onSubmitted,
   onSubmitFailed,
@@ -118,6 +138,7 @@ export function InvocationFeedbackProvider({
   );
   const mergeMessageMetadata = useStreamingConversationStore((state) => state.mergeMessageMetadata);
   const isFlyoutHeightEnabled = useSwitchboard(INVOCATION_FEEDBACK_FLYOUT_HEIGHT_FLAG) ?? false;
+  const isFreeTextEnabled = useSwitchboard(INLINE_FEEDBACK_FREE_TEXT_FLAG) ?? false;
 
   const [feedback, setFeedback] = useState<InvocationFeedbackVote>(initialFeedback);
   const [isNegativeFeedbackOpen, setIsNegativeFeedbackOpen] = useState(false);
@@ -211,7 +232,11 @@ export function InvocationFeedbackProvider({
        *                               (`airo-app-builder-logo|website|domain`), with fallback to
        *                               agentTargetId (then `airo-app-builder-unknown`), targetLevel = 'invocation'
        * flow === 'per-message'     => targetId = messageId, targetLevel = 'conversation'
-       * flow === 'artifact'        => targetId = traceIds.observationId or messageId, targetLevel = 'artifact'
+       * flow === 'artifact'        => targetId = `airo-app-builder-{artifactType}` (homogeneous
+       *                               with skill-invoke), suffixed with `:{artifactId}` when the
+       *                               instance id is known so feedback traces to the exact
+       *                               artifact; else traceIds.observationId or messageId;
+       *                               targetLevel = 'artifact'
        *
        * targetLevel is the events-schema aggregation bucket; targetId is the rated unit
        * within that bucket. For skill-invoke every branch resolves to an
@@ -225,12 +250,16 @@ export function InvocationFeedbackProvider({
           ? useDevelopPageStore.getState().agentWorkFeedbackRevealMilestone
           : null;
       const jtbdTargetId = jtbdFeedbackTargetIdFromMilestone(revealMilestone);
+      const artifactTargetId: string | null =
+        flow === 'artifact' && artifactType
+          ? `${AGENT_ID_PREFIX}${artifactType}${artifactId ? `:${artifactId}` : ''}`
+          : null;
       const targetId =
         flow === 'skill-invoke'
           ? (jtbdTargetId ?? agentTargetId ?? 'airo-app-builder-unknown')
           : flow === 'per-message'
             ? messageId
-            : (traceIds?.observationId ?? messageId);
+            : (artifactTargetId ?? traceIds?.observationId ?? messageId);
       const trimmedOther = otherFeedbackText?.trim();
 
       const hasDetailedFeedback = analyticsReason !== 'other' || Boolean(trimmedOther);
@@ -252,6 +281,8 @@ export function InvocationFeedbackProvider({
         feedback: feedbackValue,
         targetId,
         flow,
+        ...(artifactType && { artifactType }),
+        ...(artifactId && { artifactId }),
         ...(analyticsReason && { analyticsReason }),
       });
 
@@ -325,7 +356,7 @@ export function InvocationFeedbackProvider({
 
       return result;
     },
-    [agentTargetId, appId, flow, messageId, onSubmitFailed, traceIds]
+    [agentTargetId, appId, artifactType, artifactId, flow, messageId, onSubmitFailed, traceIds]
   );
 
   const completePositiveFeedback = useCallback(
@@ -482,6 +513,10 @@ export function InvocationFeedbackProvider({
         clearNegativeFeedbackDraft();
         setFeedback('negative');
         if (flow === 'skill-invoke') {
+          if (!isFreeTextEnabled) {
+            void completeNegativeFeedback('other');
+            return;
+          }
           if (isFlyoutHeightEnabled) {
             selectedReasonRef.current = 'other';
           }
@@ -496,10 +531,11 @@ export function InvocationFeedbackProvider({
     [
       clearNegativeFeedbackDraft,
       clearPersistedFeedback,
+      completeNegativeFeedback,
       feedback,
       flow,
-      persistMessageFeedbackMetadata,
       isFlyoutHeightEnabled,
+      isFreeTextEnabled,
     ]
   );
 
@@ -552,11 +588,14 @@ export function InvocationFeedbackProvider({
 
   const value = useMemo(
     () => ({
+      flow,
+      artifactType,
       feedback,
       isNegativeFeedbackOpen,
       negativeFeedbackReason,
       otherFeedback,
       isSubmittingFeedback,
+      isFreeTextEnabled,
       feedbackPanelRef,
       togglePositive,
       toggleNegative,
@@ -566,11 +605,14 @@ export function InvocationFeedbackProvider({
       closeNegativePanel,
     }),
     [
+      flow,
+      artifactType,
       feedback,
       isNegativeFeedbackOpen,
       negativeFeedbackReason,
       otherFeedback,
       isSubmittingFeedback,
+      isFreeTextEnabled,
       togglePositive,
       toggleNegative,
       handleReasonSelect,

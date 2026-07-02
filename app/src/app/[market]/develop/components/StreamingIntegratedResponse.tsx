@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useEffect, useMemo } from 'react'
 import { isEmployeeAuthType } from '@airo/shared/auth'
 
 import { groupConsecutiveActionTools, groupConsecutiveMediaTools, groupConsecutiveVideoTools, isSystemHiddenToolCall } from '@/app/[market]/develop/components/actionToolGrouping'
@@ -10,12 +10,36 @@ import MessageContentRenderer from '@/app/[market]/develop/components/MessageCon
 import MessageToolCallsRenderer from '@/app/[market]/develop/components/MessageToolCallsRenderer'
 import ResponseMetadata from '@/app/[market]/develop/components/ResponseMetadata'
 import StreamingAlertMessage from '@/app/[market]/develop/components/StreamingAlertMessage'
-import { hasValidSegments, isStreamingMessage } from '@/app/[market]/develop/components/utils'
+import {
+  type ClassifiedArtifact,
+  classifyGeneratedArtifact,
+  type GeneratedArtifactType,
+  getToolCallsFromMessage,
+  hasValidSegments,
+  isStreamingMessage,
+} from '@/app/[market]/develop/components/utils'
 import { useAuthContext } from '@/components/providers/AuthProvider'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
+import { logger } from '@/lib/request-context'
 import { traceIdsFromMessage } from '@/lib/trace-ids-from-message'
 import type { ChatMessage, StreamingMessage as StreamingMessageType, ToolCall } from '@/stores/useStreamingConversationStore'
+
+/**
+ * Opt-in verification logging for artifact-type feedback. Enable in the browser
+ * console with:
+ *   localStorage.setItem('appbuilder-debug-artifact-feedback', 'true')
+ * Mirrors the `appbuilder-debug-jtbd-feedback` gate so completed-message logs
+ * don't spam on every history re-mount unless explicitly turned on.
+ */
+function isArtifactFeedbackDebugEnabled(): boolean {
+  if (typeof window === 'undefined') return false
+  try {
+    return window.localStorage.getItem('appbuilder-debug-artifact-feedback') === 'true'
+  } catch {
+    return false
+  }
+}
 
 interface StreamingIntegratedResponseProps {
   message: ChatMessage | StreamingMessageType
@@ -46,6 +70,31 @@ export default function StreamingIntegratedResponse({
   const isImpersonating = isEmployeeAuthType(tokenAuthType)
   const hasSegments = hasValidSegments(message)
   const isComplete = isStreamingMessage(message) ? message.isComplete : true
+  const classifiedArtifact: ClassifiedArtifact | null = useMemo(
+    () => (isComplete ? classifyGeneratedArtifact(getToolCallsFromMessage(message)) : null),
+    [isComplete, message]
+  )
+  const artifactType: GeneratedArtifactType | null = classifiedArtifact?.type ?? null
+  const turnCommitHash: string | null = isStreamingMessage(message) ? null : (message.commitHash ?? null)
+  const artifactId: string | null = classifiedArtifact ? (classifiedArtifact.id ?? turnCommitHash) : null
+
+  useEffect(
+    function logAgentArtifactClassification() {
+      if (!isComplete || message.role !== 'assistant') return
+      if (!isArtifactFeedbackDebugEnabled()) return
+      const toolCalls = getToolCallsFromMessage(message)
+      logger.info('artifact_feedback.agent_message.classified', {
+        messageId: message.id,
+        artifactType,
+        artifactId,
+        toolNames: toolCalls.map((tc) => tc.name),
+        completedToolNames: toolCalls
+          .filter((tc) => tc.status === 'completed' && !tc.error)
+          .map((tc) => tc.name),
+      })
+    },
+    [isComplete, message, artifactType, artifactId]
+  )
   /**
    * Extract tool calls directly from segments as a fallback when chronologicalContent is empty
    * This should only be needed if chronologicalContent processing fails for some reason
@@ -357,6 +406,8 @@ export default function StreamingIntegratedResponse({
           traceIds={traceIdsFromMessage(message)}
           onUndo={onUndo}
           onRestore={onRestore}
+          artifactType={artifactType}
+          artifactId={artifactId}
         />
       )}
     </div>

@@ -2,6 +2,20 @@ export const invocationFeedbackIconClass = 'w-2 h-2';
 
 export const INVOCATION_FEEDBACK_FLYOUT_HEIGHT_FLAG = 'airo-builder-flyout-height';
 
+export const INLINE_FEEDBACK_FREE_TEXT_FLAG = 'appbuilder-inline-feedback-free-text';
+
+// Flag to enable/disable per-message inline customer feedback functionality in the application
+export const PER_MESSAGE_FEEDBACK_FLAG = 'appbuilder-per-message-feedback';
+
+// Flag for enabling artifact type inline customer feedback functionality in the application
+export const ARTIFACT_TYPE_FEEDBACK_FLAG = 'appbuilder-artifact-type-feedback';
+
+// Flag for enabling the task completion inline customer feedback banner.
+export const TASK_COMPLETION_FEEDBACK_BANNER_FLAG = 'appbuilder-agent-work-feedback-banner';
+
+// Flag for displaying the app generation feedback banner. (legacy one, only for first file edit )
+export const APP_GENERATION_FEEDBACK_BANNER_FLAG = 'appbuilder-app-generation-feedback-banner';
+
 export const invocationFeedbackActionIconClass = 'h-2.5 w-2.5 shrink-0 opacity-80';
 
 export const invocationFeedbackPanelHeaderClass =

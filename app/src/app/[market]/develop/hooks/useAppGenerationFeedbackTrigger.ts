@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react'
 
+import { APP_GENERATION_FEEDBACK_BANNER_FLAG } from '@/app/[market]/develop/components/invocation-feedback';
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import {
   hasShownAppGenerationFeedback,
@@ -34,7 +35,7 @@ import { useStreamingConversationStore } from '@/stores/useStreamingConversation
  * subsequent visits.
  */
 export function useAppGenerationFeedbackTrigger(hasSeenFirstFileEdit: boolean): void {
-  const flagEnabled = useSwitchboard('appbuilder-app-generation-feedback-banner')
+  const flagEnabled = useSwitchboard(APP_GENERATION_FEEDBACK_BANNER_FLAG) ?? false
   const streamingState = useStreamingConversationStore((s) => s.streamingState)
   const appId = useDevelopPageStore((s) => s.currentAppId)
   const lastCompleteTraceIds = useDevelopPageStore((s) => s.lastCompleteTraceIds)

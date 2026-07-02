@@ -11,6 +11,7 @@ import OkIcon from '@ux/icon/ok';
 import RevertIcon from '@ux/icon/revert';
 
 import ResponseMetadataActionButton from '@/app/[market]/develop/components/ResponseMetadataActionButton';
+import type { GeneratedArtifactType } from '@/app/[market]/develop/components/utils';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
 import type { InvocationFeedbackTraceIds, SubmitFeedbackResult } from '@/lib/feedback-client';
@@ -18,11 +19,14 @@ import { logger } from '@/lib/request-context';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { generateClickEID, logClickEvent } from '@/utils/instrumentation';
 import {
+  ARTIFACT_TYPE_FEEDBACK_FLAG,
   invocationFeedbackActionIconClass,
   InvocationFeedbackControls,
+  type InvocationFeedbackFlow,
   InvocationFeedbackPanel,
   InvocationFeedbackProvider,
   invocationFeedbackVoteFromMetadata,
+  PER_MESSAGE_FEEDBACK_FLAG,
 } from './invocation-feedback';
 
 /** Per-turn footer: completion status, copy/undo/restore, and invocation feedback controls. */
@@ -49,6 +53,19 @@ export interface ResponseMetadataProps {
    * Used on older assistant turns — callers bind the target commit hash.
    */
   onRestore?: () => void;
+  /**
+   * Artifact track this turn produced (logo|website|brand|domain), classified
+   * from the message's tool calls. When set and the
+   * `appbuilder-artifact-type-feedback` flag is on, the footer feedback runs in
+   * `artifact` flow (artifact-specific reason set) instead of per-message.
+   */
+  artifactType?: GeneratedArtifactType | null;
+  /**
+   * Specific artifact instance id for this turn (logoId, FQDN, palette/theme
+   * name, page route, or commit hash). Encoded into the artifact `targetId` so
+   * feedback traces to the exact artifact.
+   */
+  artifactId?: string | null;
 }
 
 export default function ResponseMetadata({
@@ -60,6 +77,8 @@ export default function ResponseMetadata({
   traceIds,
   onUndo,
   onRestore,
+  artifactType = null,
+  artifactId = null,
 }: ResponseMetadataProps) {
   const initialFeedback = invocationFeedbackVoteFromMetadata(messageMetadata);
   const t = useTranslations();
@@ -67,15 +86,21 @@ export default function ResponseMetadata({
   const isMessageContentEmpty = content.trim() === '';
   // NOTE: This is a switchboard feature flag for per-message feedback.
   const enablePerMessageFeedback =
-    (useSwitchboard('appbuilder-per-message-feedback') ?? false) && !isMessageContentEmpty;
+    (useSwitchboard(PER_MESSAGE_FEEDBACK_FLAG) ?? false) && !isMessageContentEmpty;
+  // Artifact-type feedback: gated by Switchboard (or the local debug override)
+  // and only when the turn produced a recognizable artifact. Takes precedence
+  // over per-message for that turn.
+  const artifactFlagEnabled = useSwitchboard(ARTIFACT_TYPE_FEEDBACK_FLAG) ?? false;
+  const enableArtifactFeedback =
+    artifactFlagEnabled && artifactType !== null && !isMessageContentEmpty;
+  const showFeedbackControls = enablePerMessageFeedback || enableArtifactFeedback;
+  const feedbackFlow: InvocationFeedbackFlow = enableArtifactFeedback ? 'artifact' : 'per-message';
 
   /**
    * Notify the user that the feedback was not saved
    */
-    const notifyFeedbackPersistFailed = useCallback(
-    function notifyFeedbackPersistFailed(
-      reason: NonNullable<SubmitFeedbackResult['reason']>
-    ) {
+  const notifyFeedbackPersistFailed = useCallback(
+    function notifyFeedbackPersistFailed(reason: NonNullable<SubmitFeedbackResult['reason']>) {
       if (
         reason !== 'http_error' &&
         reason !== 'network_error' &&
@@ -200,51 +225,55 @@ export default function ResponseMetadata({
           </div>
         </div>
 
-          <div className="flex h-4 shrink-0 items-center gap-0">
-            {enablePerMessageFeedback && <InvocationFeedbackControls />}
-            <AnimatePresence>
-              <ResponseMetadataActionButton
-                key="copy"
-                label={copiedToClipboard ? t('builder_chat_response_copied') : t('builder_chat_copy_clipboard')}
-                data-eid={generateClickEID('chat.response_metadata.copy')}
-                onClick={handleCopyResponse}
-                icon={
-                  <motion.div
-                    initial={{ opacity: 0, scale: 0.5 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.5 }}
-                    transition={{ duration: 0.2, ease: 'easeOut' }}
-                  >
-                    {copiedToClipboard ? (
-                      <CheckIcon className={invocationFeedbackActionIconClass} />
-                    ) : (
-                      <ClipboardIcon className={invocationFeedbackActionIconClass} />
-                    )}
-                  </motion.div>
-                }
-              />
-            </AnimatePresence>
-            {onUndo ? (
-              <ResponseMetadataActionButton
-                label={t('builder_chat_undo', undefined, 'Undo')}
-                onClick={onUndo}
-                icon={<Undo2 className={invocationFeedbackActionIconClass} />}
-              />
-            ) : onRestore ? (
-              <ResponseMetadataActionButton
-                label={t('builder_chat_restore', undefined, 'Restore')}
-                onClick={onRestore}
-                icon={<RevertIcon className={invocationFeedbackActionIconClass} />}
-              />
-            ) : null}
-          </div>
+        <div className="flex h-4 shrink-0 items-center gap-0">
+          {showFeedbackControls && <InvocationFeedbackControls />}
+          <AnimatePresence>
+            <ResponseMetadataActionButton
+              key="copy"
+              label={
+                copiedToClipboard
+                  ? t('builder_chat_response_copied')
+                  : t('builder_chat_copy_clipboard')
+              }
+              data-eid={generateClickEID('chat.response_metadata.copy')}
+              onClick={handleCopyResponse}
+              icon={
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.5 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.5 }}
+                  transition={{ duration: 0.2, ease: 'easeOut' }}
+                >
+                  {copiedToClipboard ? (
+                    <CheckIcon className={invocationFeedbackActionIconClass} />
+                  ) : (
+                    <ClipboardIcon className={invocationFeedbackActionIconClass} />
+                  )}
+                </motion.div>
+              }
+            />
+          </AnimatePresence>
+          {onUndo ? (
+            <ResponseMetadataActionButton
+              label={t('builder_chat_undo', undefined, 'Undo')}
+              onClick={onUndo}
+              icon={<Undo2 className={invocationFeedbackActionIconClass} />}
+            />
+          ) : onRestore ? (
+            <ResponseMetadataActionButton
+              label={t('builder_chat_restore', undefined, 'Restore')}
+              onClick={onRestore}
+              icon={<RevertIcon className={invocationFeedbackActionIconClass} />}
+            />
+          ) : null}
         </div>
+      </div>
 
-      {enablePerMessageFeedback && <InvocationFeedbackPanel />}
+      {showFeedbackControls && <InvocationFeedbackPanel />}
     </div>
   );
 
-  if (!enablePerMessageFeedback) {
+  if (!showFeedbackControls) {
     return metadata;
   }
 
@@ -254,6 +283,9 @@ export default function ResponseMetadata({
       messageId={messageId}
       initialFeedback={initialFeedback}
       traceIds={traceIds}
+      flow={feedbackFlow}
+      artifactType={enableArtifactFeedback ? artifactType : null}
+      artifactId={enableArtifactFeedback ? artifactId : null}
       onSubmitFailed={notifyFeedbackPersistFailed}
     >
       {metadata}

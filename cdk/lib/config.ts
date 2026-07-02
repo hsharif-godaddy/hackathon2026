@@ -178,6 +178,8 @@ interface Config {
    * Lightning instance differs from prod.
    */
   salesforceLightningBase: string;
+  /** Set to 'false' to suppress Slack posts for 'customer-feedback' category into slack channel. */
+  slackCustomerFeedbackEnabled: string;
   monitoring: MonitoringConfig;
   jwt: {
     rotationIntervalDays: number;
@@ -325,6 +327,7 @@ const devConfig: Config = {
   // `https://godaddy-corp.atlassian.net/wiki/spaces/CARESFINT/pages/3863389051`.
   // If a sandbox-specific Lightning URL ever ships, override per env.
   salesforceLightningBase: 'https://godaddy2.lightning.force.com',
+  slackCustomerFeedbackEnabled: 'true',
   budgetServiceLakeExport: {
     // Katana-managed DATABASE_URL secret (libpq connection URL).
     // SuperUser credentials for now — swap to a read-only role secret
@@ -429,6 +432,7 @@ const testConfig: Config = {
   jiraCloudId: '1f012970-03f4-4025-b750-cbaa332d8a3b',
   jiraProjectKey: 'AABSP',
   salesforceLightningBase: 'https://godaddy2.lightning.force.com',
+  slackCustomerFeedbackEnabled: 'true',
   budgetServiceLakeExport: {
     dbUrlSecretName: '/Katana/Secrets/airobuilde/budget-service/test/DATABASE_URL',
   },
@@ -550,6 +554,7 @@ const prodConfig: Config = {
   jiraCloudId: '1f012970-03f4-4025-b750-cbaa332d8a3b',
   jiraProjectKey: 'AABSP',
   salesforceLightningBase: 'https://godaddy2.lightning.force.com',
+  slackCustomerFeedbackEnabled: 'true',
   budgetServiceLakeExport: {
     dbUrlSecretName: '/Katana/Secrets/airobuilde/budget-service/prod/DATABASE_URL',
   },

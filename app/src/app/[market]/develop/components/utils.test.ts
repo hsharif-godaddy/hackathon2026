@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
 import type { ToolCall } from '@/stores/useStreamingConversationStore';
-import { extractDevelopBuiltSlugsFromToolCalls, extractNewPageRoute } from './utils';
+import {
+  classifyArtifactFromToolCalls,
+  classifyGeneratedArtifact,
+  extractDevelopBuiltSlugsFromToolCalls,
+  extractNewPageRoute,
+} from './utils';
 
 function toolCall(overrides: Partial<ToolCall> & Pick<ToolCall, 'name' | 'input'>): ToolCall {
   return {
@@ -539,5 +544,132 @@ describe('extractDevelopBuiltSlugsFromToolCalls', function developBuiltSlugs() {
     ])
 
     expect(result).toEqual([])
+  })
+})
+
+describe('classifyArtifactFromToolCalls', function classifyArtifact() {
+  const substantivePage = 'x'.repeat(120)
+
+  it('classifies an AI logo generation as logo', function logo() {
+    expect(
+      classifyArtifactFromToolCalls([
+        toolCall({ name: 'media-logo__generate_logo', input: { prompt: 'a fox' } }),
+      ])
+    ).toBe('logo')
+  })
+
+  it('classifies brand-book generation as brand', function brand() {
+    expect(
+      classifyArtifactFromToolCalls([toolCall({ name: 'brandBook', input: { mode: 'set' } })])
+    ).toBe('brand')
+  })
+
+  it('classifies a custom-domain skill tool as domain', function domain() {
+    expect(
+      classifyArtifactFromToolCalls([
+        toolCall({ name: 'custom-domain__purchase_domain', input: { domain: 'x.com' } }),
+      ])
+    ).toBe('domain')
+  })
+
+  it('classifies a substantive page create as website', function website() {
+    expect(
+      classifyArtifactFromToolCalls([
+        toolCall({
+          name: 'textEditor',
+          input: { command: 'create', path: 'src/pages/about.tsx', file_text: substantivePage },
+        }),
+      ])
+    ).toBe('website')
+  })
+
+  it('returns null when no artifact tools ran', function none() {
+    expect(
+      classifyArtifactFromToolCalls([toolCall({ name: 'readFile', input: { path: 'a.ts' } })])
+    ).toBeNull()
+  })
+
+  it('ignores failed and in-progress tool calls', function onlyCompleted() {
+    expect(
+      classifyArtifactFromToolCalls([
+        toolCall({ name: 'media-logo__generate_logo', input: {}, status: 'error', error: 'boom' }),
+        toolCall({ name: 'brandBook', input: {}, status: 'running' }),
+      ])
+    ).toBeNull()
+  })
+
+  it('applies precedence (domain > logo > brand) on a multi-artifact turn', function precedence() {
+    expect(
+      classifyArtifactFromToolCalls([
+        toolCall({ name: 'brandBook', input: {} }),
+        toolCall({ name: 'media-logo__generate_logo', input: {} }),
+        toolCall({ name: 'custom-domain__attach_domain', input: {} }),
+      ])
+    ).toBe('domain')
+  })
+})
+
+describe('classifyGeneratedArtifact (instance id)', function classifyWithId() {
+  const substantivePage = 'x'.repeat(120)
+
+  it('extracts logoId from the logo tool result structuredContent', function logoId() {
+    expect(
+      classifyGeneratedArtifact([
+        toolCall({
+          name: 'media-logo__generate_logo',
+          input: { prompt: 'a fox' },
+          result: { structuredContent: { status: 'completed', logoId: 'logo-uuid-1', jobId: 'job-1' } },
+        }),
+      ])
+    ).toEqual({ type: 'logo', id: 'logo-uuid-1' })
+  })
+
+  it('falls back to jobId when logoId is absent', function logoJobId() {
+    expect(
+      classifyGeneratedArtifact([
+        toolCall({
+          name: 'media-logo__generate_logo',
+          input: {},
+          result: { structuredContent: { status: 'queued', jobId: 'job-9' } },
+        }),
+      ])
+    ).toEqual({ type: 'logo', id: 'job-9' })
+  })
+
+  it('extracts the FQDN from a domain purchase result', function domainFqdn() {
+    expect(
+      classifyGeneratedArtifact([
+        toolCall({
+          name: 'custom-domain__domainPurchase',
+          input: { brandName: 'Sweet' },
+          result: { widgetType: 'domain-purchase', widgetData: { domain: 'sweet-store.com' } },
+        }),
+      ])
+    ).toEqual({ type: 'domain', id: 'sweet-store.com' })
+  })
+
+  it('extracts the palette name from a brand color result', function brandPalette() {
+    expect(
+      classifyGeneratedArtifact([
+        toolCall({ name: 'colorScheme', input: { mode: 'apply' }, result: { paletteName: 'Vibrant Purple' } })
+      ])
+    ).toEqual({ type: 'brand', id: 'Vibrant Purple' })
+  })
+
+  it('uses the new page route as the website id', function websiteRoute() {
+    expect(
+      classifyGeneratedArtifact([
+        toolCall({
+          name: 'textEditor',
+          input: { command: 'create', path: 'src/pages/about.tsx', file_text: substantivePage },
+        }),
+      ])
+    ).toEqual({ type: 'website', id: '/about' })
+  })
+
+  it('returns a null id when the producing tool exposes none', function brandNoId() {
+    expect(
+      classifyGeneratedArtifact([toolCall({ name: 'brandBook', input: { mode: 'set' } })])
+    ).toEqual({ type: 'brand', id: null })
   })
 })

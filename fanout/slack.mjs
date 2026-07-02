@@ -22,7 +22,7 @@ const PLACEHOLDER_VALUE = 'REPLACE_ME';
  * silently skips Slack so dev/test deploys don't error.
  *
  * @param {object} args
- * @param {string} args.category - 'issue' | 'support' | 'feedback'
+ * @param {string} args.category - 'issue' | 'support' | 'feedback' | 'customer-feedback'
  * @param {object} args.formData - { topics, description?, comment?, rating?, followUp?, customerConsent? }
  * @param {string|undefined} args.origin
  * @param {object} args.ctx - DiagnosticContext shape (see app/src/components/feedback/types.ts DiagnosticContext)
@@ -43,6 +43,11 @@ export async function postSlackMessage({ category, formData, origin, ctx, enrich
 
   const url = await resolveWebhookUrl(arn);
   if (!url) return;
+
+  if (category === 'customer-feedback' && process.env.SLACK_CUSTOMER_FEEDBACK_ENABLED === 'false') {
+    skipLog('SLACK_CUSTOMER_FEEDBACK_ENABLED=false; skipping customer-feedback');
+    return;
+  }
 
   let blockMessage;
   switch (category) {

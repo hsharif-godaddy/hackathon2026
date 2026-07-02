@@ -1,6 +1,11 @@
 export {
+  APP_GENERATION_FEEDBACK_BANNER_FLAG,
+  ARTIFACT_TYPE_FEEDBACK_FLAG,
+  INLINE_FEEDBACK_FREE_TEXT_FLAG,
   invocationFeedbackActionIconClass,
   invocationFeedbackIconClass,
+  PER_MESSAGE_FEEDBACK_FLAG,
+  TASK_COMPLETION_FEEDBACK_BANNER_FLAG,
 } from './constants';
 export type {
   InvocationFeedbackFlow,

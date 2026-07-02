@@ -21,14 +21,16 @@ import {
 } from './constants';
 import { useInvocationFeedback } from './InvocationFeedbackContext';
 import InvocationFeedbackOtherForm from './InvocationFeedbackOtherForm';
-import type { FeedbackReason } from './types';
+import { ARTIFACT_FEEDBACK_REASONS, type FeedbackReason } from './types';
 
 export default function InvocationFeedbackPanel() {
   const t = useTranslations();
   const isFlyoutHeightEnabled = useSwitchboard(INVOCATION_FEEDBACK_FLYOUT_HEIGHT_FLAG) ?? false;
   const {
+    flow,
     isNegativeFeedbackOpen,
     negativeFeedbackReason,
+    isFreeTextEnabled,
     feedbackPanelRef,
     handleReasonSelect,
     closeNegativePanel,
@@ -130,27 +132,80 @@ export default function InvocationFeedbackPanel() {
     [t]
   );
 
-  const feedbackReasons = isFlyoutHeightEnabled
-    ? flyoutHeightFeedbackReasons
-    : legacyFeedbackReasons;
+  const artifactReasonLabels: Record<FeedbackReason, string> = useMemo(
+    () => ({
+      not_factually_correct: t(
+        'builder_chat_feedback_reason_not_factually_correct',
+        undefined,
+        'Not factually correct'
+      ),
+      not_relevant: t('builder_chat_feedback_reason_not_relevant', undefined, 'Not relevant'),
+      did_not_follow_instructions: t(
+        'builder_chat_feedback_reason_did_not_follow_instructions',
+        undefined,
+        "Didn't follow instructions"
+      ),
+      poor_quality_or_too_generic: t(
+        'builder_chat_feedback_reason_poor_quality_or_too_generic',
+        undefined,
+        'Poor quality or too generic'
+      ),
+      confusing_or_unclear: t(
+        'builder_chat_feedback_reason_confusing_or_unclear',
+        undefined,
+        'Confusing or unclear'
+      ),
+      dont_match_my_brand: t(
+        'builder_chat_feedback_reason_dont_match_my_brand',
+        undefined,
+        "Doesn't match my brand"
+      ),
+      generic_or_unoriginal: t(
+        'builder_chat_feedback_reason_generic_or_unoriginal',
+        undefined,
+        'Generic or unoriginal'
+      ),
+      other: t('builder_chat_feedback_reason_other', undefined, 'Other'),
+    }),
+    [t]
+  );
 
-  useLayoutEffect(function measureChipBodyHeight() {
-    if (!isFlyoutHeightEnabled) {
-      return;
-    }
-    if (!isNegativeFeedbackOpen) {
-      setBodyHeight(undefined);
-      return;
-    }
-    if (showOtherForm) {
-      return;
-    }
-    const node = bodyRef.current;
-    if (!node) {
-      return;
-    }
-    setBodyHeight(node.getBoundingClientRect().height);
-  }, [feedbackReasons, isFlyoutHeightEnabled, isNegativeFeedbackOpen, showOtherForm]);
+  const artifactFeedbackReasons: Array<{ id: FeedbackReason; label: string }> = useMemo(
+    () =>
+      ARTIFACT_FEEDBACK_REASONS.map(function toLabeledReason(id: FeedbackReason) {
+        return { id, label: artifactReasonLabels[id] };
+      }),
+    [artifactReasonLabels]
+  );
+
+  const feedbackReasons = (
+    flow === 'artifact'
+      ? artifactFeedbackReasons
+      : isFlyoutHeightEnabled
+        ? flyoutHeightFeedbackReasons
+        : legacyFeedbackReasons
+  ).filter((r) => isFreeTextEnabled || r.id !== 'other');
+
+  useLayoutEffect(
+    function measureChipBodyHeight() {
+      if (!isFlyoutHeightEnabled) {
+        return;
+      }
+      if (!isNegativeFeedbackOpen) {
+        setBodyHeight(undefined);
+        return;
+      }
+      if (showOtherForm) {
+        return;
+      }
+      const node = bodyRef.current;
+      if (!node) {
+        return;
+      }
+      setBodyHeight(node.getBoundingClientRect().height);
+    },
+    [feedbackReasons, isFlyoutHeightEnabled, isNegativeFeedbackOpen, showOtherForm]
+  );
 
   return (
     <AnimatePresence>

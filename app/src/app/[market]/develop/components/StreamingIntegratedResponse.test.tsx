@@ -1123,5 +1123,102 @@ describe('StreamingIntegratedResponse', function streamingIntegratedResponseTest
         })
       );
     });
+
+    it('passes classified artifactType and artifactId to ResponseMetadata', function artifactTypeAndId() {
+      mockResponseMetadata.mockClear();
+      const startTime = new Date('2026-01-01T00:00:00.000Z');
+
+      renderWithProviders(
+        <StreamingIntegratedResponse
+          message={{
+            id: 'msg-logo-1',
+            role: 'assistant',
+            content: 'Here is your logo',
+            timestamp: new Date('2026-01-01T00:01:00.000Z'),
+            toolCalls: [
+              {
+                id: 'tc-logo-1',
+                name: 'generate_logo',
+                status: 'completed',
+                input: {},
+                result: { structuredContent: { logoId: 'logo-uuid-123' } },
+              },
+            ],
+          }}
+          startTime={startTime}
+          streamingState="idle"
+        />
+      );
+
+      expect(mockResponseMetadata).toHaveBeenCalledWith(
+        expect.objectContaining({
+          artifactType: 'logo',
+          artifactId: 'logo-uuid-123',
+        })
+      );
+    });
+
+    it('falls back to commitHash as artifactId when tool call exposes no instance id', function commitHashFallback() {
+      mockResponseMetadata.mockClear();
+      const startTime = new Date('2026-01-01T00:00:00.000Z');
+
+      renderWithProviders(
+        <StreamingIntegratedResponse
+          message={{
+            id: 'msg-logo-2',
+            role: 'assistant',
+            content: 'Done',
+            timestamp: new Date('2026-01-01T00:01:00.000Z'),
+            commitHash: 'abc123def456',
+            toolCalls: [
+              {
+                id: 'tc-logo-2',
+                name: 'generate_logo',
+                status: 'completed',
+                input: {},
+                result: {},
+              },
+            ],
+          }}
+          startTime={startTime}
+          streamingState="idle"
+        />
+      );
+
+      expect(mockResponseMetadata).toHaveBeenCalledWith(
+        expect.objectContaining({
+          artifactType: 'logo',
+          artifactId: 'abc123def456',
+        })
+      );
+    });
+
+    it('passes null artifactType and artifactId when no artifact tool calls exist', function noArtifact() {
+      mockResponseMetadata.mockClear();
+      const startTime = new Date('2026-01-01T00:00:00.000Z');
+
+      renderWithProviders(
+        <StreamingIntegratedResponse
+          message={{
+            id: 'msg-no-artifact-1',
+            role: 'assistant',
+            content: 'Just text',
+            timestamp: new Date('2026-01-01T00:01:00.000Z'),
+            toolCalls: [
+              { id: 'tc-read-1', name: 'fileRead', status: 'completed', input: {}, result: {} },
+            ],
+          }}
+          startTime={startTime}
+          streamingState="idle"
+        />
+      );
+
+      expect(mockResponseMetadata).toHaveBeenCalledWith(
+        expect.objectContaining({
+          artifactType: null,
+          artifactId: null,
+        })
+      );
+    });
   });
 });

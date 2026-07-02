@@ -6,7 +6,10 @@ import '@testing-library/jest-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 
-import { INVOCATION_FEEDBACK_FLYOUT_HEIGHT_FLAG } from '@/app/[market]/develop/components/invocation-feedback/constants';
+import {
+  INVOCATION_FEEDBACK_FLYOUT_HEIGHT_FLAG,
+  PER_MESSAGE_FEEDBACK_FLAG,
+} from '@/app/[market]/develop/components/invocation-feedback/constants';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { renderWithProviders } from '@/tests/test-utils';
 import * as instrumentation from '@/utils/instrumentation';
@@ -148,7 +151,7 @@ function mockSwitchboardFlags({
   flyoutHeight?: boolean;
 } = {}) {
   vi.mocked(useSwitchboard).mockImplementation(function (feature: string) {
-    if (feature === 'appbuilder-per-message-feedback') {
+    if (feature === PER_MESSAGE_FEEDBACK_FLAG) {
       return perMessageFeedback;
     }
     if (feature === INVOCATION_FEEDBACK_FLYOUT_HEIGHT_FLAG) {
@@ -167,7 +170,7 @@ describe('ResponseMetadata', function responseMetadataTests() {
   });
 
   describe('switchboard gating', function switchboardGatingTests() {
-    it('should hide thumbs feedback when appbuilder-per-message-feedback is off', function flagOff() {
+    it('should hide thumbs feedback when per-message-feedback flag is off', function flagOff() {
       vi.mocked(useSwitchboard).mockReturnValue(false);
 
       renderMetadata();
@@ -181,7 +184,7 @@ describe('ResponseMetadata', function responseMetadataTests() {
       expect(getCopyButton()).toBeInTheDocument();
     });
 
-    it('should show thumbs feedback when appbuilder-per-message-feedback is on', function flagOn() {
+    it('should show thumbs feedback when per-message-feedback flag is on', function flagOn() {
       renderMetadata();
 
       expect(getThumbsUpButton()).toBeInTheDocument();

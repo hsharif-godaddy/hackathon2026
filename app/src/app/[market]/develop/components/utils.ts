@@ -375,3 +375,162 @@ export function extractDevelopBuiltSlugsFromToolCalls(toolCalls: ToolCall[]): st
 
   return [...slugs]
 }
+
+/**
+ * Artifact kinds a single assistant turn can produce. Mirrors the JTBD
+ * feedback tracks (`lib/initial-build-reveal.ts`) plus an explicit `brand`
+ * track for brand-book / color / font generation.
+ */
+export type GeneratedArtifactType = 'logo' | 'website' | 'brand' | 'domain'
+
+/**
+ * Single-artifact precedence when one turn touches more than one track
+ * (e.g. the initial build emits logo + brand together). The most specific,
+ * user-recognizable artifact wins; `website` is the page-edit catch-all and is
+ * resolved separately as the fallback below.
+ */
+const ARTIFACT_TYPE_PRECEDENCE: readonly GeneratedArtifactType[] = ['domain', 'logo', 'brand']
+
+/** Bare (un-prefixed) AI-logo generation tool names. */
+const LOGO_TOOL_NAMES: ReadonlySet<string> = new Set([
+  'generate_logo',
+  'edit_logo',
+  'logoCompletionSuggestions',
+])
+
+/** Bare brand-identity generation tool names. */
+const BRAND_TOOL_NAMES: ReadonlySet<string> = new Set([
+  'brandBook',
+  'brand',
+  'colorScheme',
+  'fontTheme',
+  'cssColor',
+])
+
+/** Skill prefix whose tools all operate on the domain artifact track. */
+const DOMAIN_TOOL_NAME_PREFIX: string = 'custom-domain__'
+
+/**
+ * Strips the `{skill}__` wire prefix from a tool name. Skill tools arrive as
+ * e.g. `media-logo__generate_logo`; base tools have no prefix. The persisted
+ * `ToolCall` carries no `skillName`, so the prefix is the only skill signal.
+ */
+function bareToolName(toolName: string): string {
+  const separatorIndex: number = toolName.lastIndexOf('__')
+  return separatorIndex >= 0 ? toolName.slice(separatorIndex + 2) : toolName
+}
+
+/** Maps one tool name to its artifact track, or null if it generates none. */
+function artifactTypeForToolName(toolName: string): GeneratedArtifactType | null {
+  if (toolName.startsWith(DOMAIN_TOOL_NAME_PREFIX)) return 'domain'
+  const bare: string = bareToolName(toolName)
+  if (LOGO_TOOL_NAMES.has(bare)) return 'logo'
+  if (BRAND_TOOL_NAMES.has(bare)) return 'brand'
+  return null
+}
+
+/** A classified artifact plus a best-effort instance id for tracing. */
+export interface ClassifiedArtifact {
+  type: GeneratedArtifactType
+  /**
+   * Specific instance identifier so a thumbs-down can be traced to the exact
+   * artifact: logo → `logoId` (UUID), domain → FQDN, brand → palette/theme
+   * name, website → the new page route. Null when the producing tool exposed
+   * no identifier (callers can fall back to the turn's commit hash).
+   */
+  id: string | null
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null
+}
+
+function asNonEmptyString(value: unknown): string | null {
+  return typeof value === 'string' && value.length > 0 ? value : null
+}
+
+/**
+ * Pulls the instance id for a logo/brand/domain tool call from its result
+ * (preferred) or input. Field shapes mirror the agent tool returns:
+ * `media-logo__*` → `structuredContent.{logoId,jobId,sessionId}`,
+ * `custom-domain__domainPurchase` → `widgetData.domain` / input `domain`,
+ * brand tools → `paletteName` / `themeName` / `themeId`.
+ */
+function extractArtifactId(tc: ToolCall, type: GeneratedArtifactType): string | null {
+  const result: Record<string, unknown> | null = asRecord(tc.result)
+  const input: Record<string, unknown> | null = asRecord(tc.input)
+
+  if (type === 'logo') {
+    const structured: Record<string, unknown> | null = asRecord(result?.structuredContent) ?? result
+    return (
+      asNonEmptyString(structured?.logoId) ??
+      asNonEmptyString(structured?.jobId) ??
+      asNonEmptyString(structured?.sessionId)
+    )
+  }
+
+  if (type === 'domain') {
+    const widgetData: Record<string, unknown> | null = asRecord(result?.widgetData)
+    return asNonEmptyString(widgetData?.domain) ?? asNonEmptyString(input?.domain)
+  }
+
+  if (type === 'brand') {
+    return (
+      asNonEmptyString(result?.paletteName) ??
+      asNonEmptyString(result?.themeName) ??
+      asNonEmptyString(result?.themeId) ??
+      asNonEmptyString(asRecord(result?.appliedFont)?.name)
+    )
+  }
+
+  return null
+}
+
+/**
+ * Infers which artifact a completed assistant turn produced from its tool
+ * calls, plus a best-effort instance id. Only completed, error-free calls
+ * count — an attempted-but-failed generation is not an artifact. Returns null
+ * when the turn produced no recognizable artifact; that null is the trigger
+ * gate for artifact-type feedback (no artifact → no feedback prompt).
+ *
+ * Website detection reuses `extractDevelopBuiltSlugsFromToolCalls` (substantive
+ * page creates) so a turn that only edits prose or config is not treated as a
+ * website artifact; its id is the new page route.
+ */
+export function classifyGeneratedArtifact(toolCalls: ToolCall[]): ClassifiedArtifact | null {
+  const firstByType = new Map<GeneratedArtifactType, ToolCall>()
+  const firstWithIdByType = new Map<GeneratedArtifactType, ToolCall>()
+
+  for (const tc of toolCalls) {
+    if (tc.status !== 'completed' || tc.error) continue
+    const type: GeneratedArtifactType | null = artifactTypeForToolName(tc.name)
+    if (!type) continue
+    if (!firstByType.has(type)) firstByType.set(type, tc)
+    if (!firstWithIdByType.has(type) && extractArtifactId(tc, type) !== null) {
+      firstWithIdByType.set(type, tc)
+    }
+  }
+
+  for (const type of ARTIFACT_TYPE_PRECEDENCE) {
+    const tc = firstWithIdByType.get(type) ?? firstByType.get(type)
+    if (tc) return { type, id: extractArtifactId(tc, type) }
+  }
+
+  const slugs: string[] = extractDevelopBuiltSlugsFromToolCalls(toolCalls)
+  if (slugs.length > 0) {
+    const route = extractNewPageRoute(toolCalls)
+    const fallbackId = slugs[0] === 'homepage' ? '/' : `/${slugs[0]}`
+    return { type: 'website', id: route ?? fallbackId }
+  }
+
+  return null
+}
+
+/** Type-only convenience wrapper over {@link classifyGeneratedArtifact}. */
+export function classifyArtifactFromToolCalls(
+  toolCalls: ToolCall[]
+): GeneratedArtifactType | null {
+  return classifyGeneratedArtifact(toolCalls)?.type ?? null
+}

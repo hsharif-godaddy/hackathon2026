@@ -38,6 +38,9 @@ beforeEach(() => {
   fetchCalls.length = 0;
   fetchHandler = null;
   process.env.SLACK_WEBHOOK_SECRET_ARN = 'arn:test';
+  // Reset kill-switch so tests don't bleed state into each other.
+  // node:test does not auto-reset process.env between tests.
+  delete process.env.SLACK_CUSTOMER_FEEDBACK_ENABLED;
   getSecretStringImpl = async () => '{"webhookUrl":"https://hooks.slack.com/services/T/B/X"}';
 });
 
@@ -117,6 +120,45 @@ await test('routes customer-feedback category to buildCustomerFeedbackBlocks', a
   );
   assert.ok(Array.isArray(body.blocks));
   assert.equal(body.blocks[body.blocks.length - 1].type, 'divider');
+});
+
+await test('skips customer-feedback when SLACK_CUSTOMER_FEEDBACK_ENABLED is false', async () => {
+  process.env.SLACK_CUSTOMER_FEEDBACK_ENABLED = 'false';
+  await postSlackMessage({
+    category: 'customer-feedback',
+    formData: { rating: 3, topics: [], comment: 'meh', customerConsent: true },
+    origin: undefined,
+    ctx: CTX,
+  });
+  assert.equal(fetchCalls.length, 0);
+});
+
+await test('posts customer-feedback when SLACK_CUSTOMER_FEEDBACK_ENABLED is unset (fail-open)', async () => {
+  // env var deliberately absent (deleted in beforeEach)
+  await postSlackMessage({
+    category: 'customer-feedback',
+    formData: { rating: 5, topics: [], comment: 'good', customerConsent: true },
+    origin: undefined,
+    ctx: CTX,
+  });
+  assert.equal(fetchCalls.length, 1);
+});
+
+await test('posts customer-feedback when SLACK_CUSTOMER_FEEDBACK_ENABLED is true', async () => {
+  process.env.SLACK_CUSTOMER_FEEDBACK_ENABLED = 'true';
+  await postSlackMessage({
+    category: 'customer-feedback',
+    formData: { rating: 6, topics: [], comment: 'nice', customerConsent: true },
+    origin: undefined,
+    ctx: CTX,
+  });
+  assert.equal(fetchCalls.length, 1);
+});
+
+await test('kill-switch only affects customer-feedback, not other categories', async () => {
+  process.env.SLACK_CUSTOMER_FEEDBACK_ENABLED = 'false';
+  await postSlackMessage({ category: 'issue', formData: FORM, origin: undefined, ctx: CTX });
+  assert.equal(fetchCalls.length, 1);
 });
 
 // Restore fetch when this test file completes

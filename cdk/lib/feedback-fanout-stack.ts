@@ -281,6 +281,7 @@ export class FeedbackFanoutStack extends GDStack {
         // renders as plain text). Pattern verified against Confluence
         // page 3863389051 (DIFY Salesforce Bug Reporting SOP).
         SALESFORCE_LIGHTNING_BASE: config.salesforceLightningBase,
+        SLACK_CUSTOMER_FEEDBACK_ENABLED: config.slackCustomerFeedbackEnabled,
         LOG_LEVEL: config.envName === 'prod' ? 'info' : 'debug',
       },
     });
