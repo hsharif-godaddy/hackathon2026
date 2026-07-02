@@ -109,6 +109,7 @@ import { buildAppliedSkillsContextMessage } from '../applied-skills-context.js'
 import { recordRolloutsOnSpan } from '../../lib/feature-rollouts.js'
 import { conformExistingPages } from '../../services/content-conform.js'
 import { buildWorkflowContextMessage } from '../workflow-context.js'
+import { runClassification } from '../prompt-classification.js'
 
 /** Short timeout for awaiting the classifier on an errored turn — the user is
  *  already seeing a failure, so don't delay terminal events for a slow classifier.
@@ -1253,16 +1254,38 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
 
     const dynamicDataMessage = buildDynamicDataMessage(metadata)
 
-    const appliedSkillsMessage = await buildAppliedSkillsContextMessage(appId)
+    // Derive first-turn status from the EFFECTIVE history. The current message
+    // is persisted (continueConversation) before history is loaded, so on a
+    // genuine first turn it is the sole trailing history entry.
+    const isFirstTurn: boolean = dropTrailingPrompt(historyMessages, message).length === 0
 
-    const workflowContextMessage = agentName === 'deep-build'
-      ? await buildWorkflowContextMessage(appId).catch(err => {
-        logger.warn('sse.execution.workflow_context_failed', { appId, conversationId, ...errorFields(err) })
-        return null
-      })
-      : null
+    // Run classification, applied skills, and workflow context in parallel.
+    // Classification needs historyMessages (for continuation detection) so it
+    // fires after history is loaded but concurrently with other context builders.
+    const agentConfig = agent?.getConfig?.()
+    const [appliedSkillsMessage, workflowContextMessage, classificationMessage] = await Promise.all([
+      buildAppliedSkillsContextMessage(appId),
+      agentName === 'deep-build'
+        ? buildWorkflowContextMessage(appId).catch(err => {
+          logger.warn('sse.execution.workflow_context_failed', { appId, conversationId, ...errorFields(err) })
+          return null
+        })
+        : null,
+      agentConfig
+        ? runClassification({
+          agentConfig,
+          prompt: message,
+          historyMessages,
+          isInitialPrompt: isFirstTurn,
+          appId,
+          conversationId,
+          templateId: metadata.templateId as string | undefined,
+          uploadedFileName: metadata.uploadedFileName as string | undefined,
+        })
+        : null,
+    ])
 
-    const extraAfterHistory = [todoContextMessage, memoryContextMessage, dynamicDataMessage, appliedSkillsMessage, workflowContextMessage]
+    const extraAfterHistory = [todoContextMessage, memoryContextMessage, dynamicDataMessage, appliedSkillsMessage, workflowContextMessage, classificationMessage]
       .filter((m): m is NonNullable<typeof m> => m != null)
       .map(m => ({ role: m.role, content: m.content, ...(m.cachePoint && { cachePoint: m.cachePoint }) }))
 
@@ -1270,12 +1293,6 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
     // preflightTools in its metadata, run them server-side and prepend synthesized
     // assistant tool_call + tool result pairs so the model sees the result on turn 1.
     let preflightMessages: Array<{ role: string; content: unknown }> = []
-    // Derive first-turn status from the EFFECTIVE history. The current message
-    // is persisted (continueConversation) before history is loaded here, so on a
-    // genuine first turn it is the sole trailing history entry. assembleMessages
-    // drops that trailing copy, so isFirstTurn must use the same deduped view or
-    // preflight tools would never run on the first turn.
-    const isFirstTurn = dropTrailingPrompt(historyMessages, message).length === 0
     if (isFirstTurn && agent && typeof agent.getConfig === 'function') {
       try {
         const agentConfig = agent.getConfig()

@@ -189,6 +189,59 @@ export interface AgentConfig {
   /** Called during prepareStep to allow injecting additional content (e.g. images) between steps.
    *  Return { messages } to override the messages array for the next LLM call. */
   onPrepareStep?: (opts: { stepNumber: number; messages: unknown[] }) => { messages?: unknown[] } | undefined
+
+  /**
+   * Pre-turn prompt classification. Runs in parallel with context assembly.
+   * Result is injected as a context message (after history) before the agent turn.
+   *
+   * Runs ONLY on the first message of a new app/conversation.
+   * Use for richer classification (plan detection, vagueness, archetype inference).
+   *
+   * Returns null to skip classification. Throwing is equivalent to returning null
+   * (classification never blocks a turn).
+   */
+  classifyInitialPrompt?: (opts: ClassifyPromptOptions) => Promise<ClassificationResult | null>
+
+  /**
+   * Pre-turn prompt classification for subsequent turns. Runs in parallel with
+   * context assembly. Skipped automatically by the framework when the previous
+   * assistant turn ended with a stop tool (askQuestion, interactive runAgent, etc.)
+   * — those are continuations, not new requests, so the previous classification
+   * carries forward.
+   *
+   * Returns null to skip classification. Throwing is equivalent to returning null.
+   */
+  classifyPrompt?: (opts: ClassifyPromptOptions) => Promise<ClassificationResult | null>
+}
+
+/**
+ * Options passed to prompt classification methods on AgentConfig.
+ */
+export interface ClassifyPromptOptions {
+  /** The user's message text */
+  prompt: string
+  /** App identifier */
+  appId?: string
+  /** Conversation identifier */
+  conversationId?: string
+  /** True when this is the first message on a new app (no prior conversation history) */
+  isInitialPrompt: boolean
+  /** Template that triggered app creation (e.g. "deep-build") */
+  templateId?: string
+  /** Attached files metadata (for plan/document detection) */
+  attachments?: ReadonlyArray<{ name: string; mimeType?: string }>
+}
+
+/**
+ * Result from a prompt classification method.
+ */
+export interface ClassificationResult {
+  /** The classification label (agent-defined, e.g. "general" | "simple" | "complex") */
+  class: string
+  /** Short explanation injected into the agent's context */
+  reason: string
+  /** Optional structured metadata the agent can use (e.g. archetype hint, detected plan path) */
+  metadata?: Record<string, unknown>
 }
 
 /**
