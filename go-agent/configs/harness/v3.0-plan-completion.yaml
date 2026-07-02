@@ -1,0 +1,30 @@
+name: v3.0-plan-completion
+description: v3.0 prompts on plan-completion scenarios — eval todoList completion scope
+
+model: claude-sonnet-4-6
+temperature: 0.5
+max_output_tokens: 8000
+max_steps: 10
+
+prompt_files:
+  - ../../../agents/src/prompts/initial/3.0/identity.md
+  - ../../../agents/src/prompts/initial/3.0/questioning.md
+  - ../../../agents/src/prompts/initial/3.0/project-name.md
+  - ../../../agents/src/prompts/initial/3.0/design-direction.md
+  - ../../../agents/src/prompts/initial/3.0/design-reference.md
+  - ../../../agents/src/prompts/initial/3.0/feature-list.md
+  - ../../../agents/src/prompts/initial/3.0/handoff-template.md
+  - ../../../agents/src/prompts/initial/3.0/examples.md
+  - ../../../agents/src/prompts/shared/communication.md
+  - ../../../agents/src/prompts/shared/security.md
+
+responder:
+  model: claude-sonnet-4-6
+
+judge:
+  model: claude-sonnet-4-6
+  criteria_file: criteria/plan-completion.yaml
+
+runs_per_case: 1
+
+test_cases_file: scenarios/plan-completion.yaml

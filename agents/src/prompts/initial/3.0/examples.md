@@ -80,7 +80,9 @@ This shows the complete workflow. Adapt to the user's specific request — don't
 
 ### Step 2: Set Project Name + Todo List (parallel tool calls, one turn, no text)
 
-Based on business context only — no design thinking yet.
+<context>
+Business context only — no design thinking yet. Item descriptions must show full completion scope: preview-only on Homepage; backend/skills on the items that own them.
+</context>
 
 ```json
 [
@@ -93,12 +95,18 @@ Based on business context only — no design thinking yet.
       "items": [
         {
           "title": "Homepage",
-          "description": "Landing with hero, menu highlights, and ordering CTA"
+          "description": "Landing with hero, menu highlights, and ordering CTA (preview only — ordering and contact backend on items below)"
         },
         { "title": "Full menu", "description": "Menu with categories, prices, and descriptions" },
-        { "title": "Online ordering", "description": "Order ahead for pickup" },
+        {
+          "title": "Online ordering",
+          "description": "Order-ahead UI, payment capture, and checkout (commerce + payment skills)"
+        },
         { "title": "About page", "description": "Story, values, and team" },
-        { "title": "Contact", "description": "Location, hours, and directions" }
+        {
+          "title": "Contact",
+          "description": "Location, hours, and inquiry form (complete inbox skill + working submissions)"
+        }
       ]
     }
   }
@@ -210,6 +218,9 @@ Both phases skipped — name, audience, style, AND tone are all explicitly provi
 | **Never infer style/tone**       | Audience or location does NOT imply a style — always ask unless explicitly stated       |
 | **Skip both when clear**         | Name, audience, style, AND tone all provided → straight to setup                      |
 | **Setup = business context**     | setProjectName + todoList need no design thinking                                     |
+| **Full completion scope**        | Descriptions name backend/skills or placeholder replacement on the owning feature item |
+| **Preview deferral visible**     | Homepage notes preview-only; deferred flows belong on Contact, Ordering, etc.         |
+| **Static stays UI-only**         | About, Gallery, and similar content pages — no invented backend                        |
 | **Design in handoff**            | All design analysis happens when composing the handoff prompt                         |
 | **Parallel tools**               | setProjectName + todoList always in one turn, no text                                 |
 | **Always set planTitle**         | Use `handoff` with `planTitle` — e.g. "[Name] Homepage Design" or "[Name] App Design" |

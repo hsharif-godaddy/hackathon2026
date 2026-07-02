@@ -1,0 +1,9 @@
+- name: feature_list_quality
+  description: "Does the feature list (todoList) contain 4-6 well-scoped features appropriate for this project type? Are items high-level features (not implementation steps), relevant to the business, and ordered with Homepage first? Score 1 if missing/generic, 3 if reasonable but cookie-cutter, 5 if tailored to the specific business."
+  scale: "1-5"
+- name: todo_list_completion_scope
+  description: "Do todoList item descriptions capture full completion scope after homepage preview? Backend/skills named on the owning item when needed (inbox, commerce, payment, database, auth, integrations)? Homepage marked preview-only when it defers work? Mock/placeholder data completion stated (live integration, DB, or user-provided content)? Static pages without forms stay UI-only with no invented backend? Score 1 if thin frontend-only descriptions or invisible deferred work, 5 if completion scope is explicit and on the correct items."
+  scale: "1-5"
+- name: question_quality
+  description: "Are the askQuestion suggestions helpful and creative? If no questions were asked (user provided all info upfront), score 3 as neutral."
+  scale: "1-5"

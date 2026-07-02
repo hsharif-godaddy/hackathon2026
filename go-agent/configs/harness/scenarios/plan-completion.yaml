@@ -1,0 +1,15 @@
+- id: coffee-shop-ordering
+  persona: Coffee shop owner in Portland who wants online ordering and a contact form for catering inquiries
+  user_message: Website for my coffee shop — we want online ordering and a contact form for catering
+- id: restaurant-google-reviews
+  persona: Restaurant owner who wants live Google reviews on the site and online reservation requests
+  user_message: Restaurant website with live Google reviews and a reservation request form
+- id: portfolio-no-form
+  persona: Photographer who wants a portfolio with gallery and contact page — email link only, no inquiry form
+  user_message: Photography portfolio with gallery and contact page — studio email only, no contact form
+- id: cleaning-testimonials
+  persona: Home cleaning business owner who wants a testimonials section with real client quotes later
+  user_message: Home cleaning business website with a testimonials section on the homepage
+- id: saas-database
+  persona: Startup founder building a SaaS with kanban boards and user accounts
+  user_message: Build a project management SaaS called TaskFlow with kanban boards and user login
