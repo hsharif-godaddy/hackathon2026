@@ -143,13 +143,13 @@ export function createPublicBooking(data: CreateBookingPayload) {
 // ── Public: coupons ────────────────────────────────────────────────────────
 
 export function incrementCouponUsage(code: string) {
-  return apiFetch<void>(`/appointments/customer/coupons/${encodeURIComponent(code)}/incrementUse`, {
+  return apiFetch<void>(`/customer/coupons/${encodeURIComponent(code)}/incrementUse`, {
     method: "POST",
   });
 }
 
 export function decrementCouponUsage(code: string) {
-  return apiFetch<void>(`/appointments/customer/coupons/${encodeURIComponent(code)}/decrementUse`, {
+  return apiFetch<void>(`/customer/coupons/${encodeURIComponent(code)}/decrementUse`, {
     method: "POST",
   });
 }
