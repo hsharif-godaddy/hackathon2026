@@ -12,7 +12,7 @@ The hand-off prompt gives the deep-build orchestrator agent the project context 
 {
   "targetAgent": "deep-build",
   "planTitle": "<Project Name> — Deep Build Intake",
-  "prompt": "Deep Build Mode — begin the interview phase.\n\nProject name: <Project Name>\nOne-sentence summary: <summary>\n\nDispatch the interview sub-agent in interactive mode to conduct a structured Q&A with the user. The interview should produce docs/brief.md."
+  "prompt": "Deep Build Mode — triage the project and initialize a workflow.\n\nProject name: <Project Name>\nOne-sentence summary: <summary>\n\nDetermine the archetype (site/app/game/custom) from the summary, then dispatch the interview sub-agent in interactive mode. After the interview produces docs/brief.md, call workflow({ operation: 'init' }) with the step plan to begin orchestrated building."
 }
 ```
 

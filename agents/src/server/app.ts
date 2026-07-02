@@ -24,7 +24,7 @@ import compression from 'compression';
 
 import { create as createServer } from './server-factory.js';
 import { corsMiddleware, timingAllowOriginMiddleware, errorHandler, notFoundHandler, requestLogger, jwtAuthMiddleware, validateProductAccess } from './middleware/index.js';
-import { agentsRouter, appsRouter, chatRouter, healthRouter, diagnosticsRouter, gitRouter, debugRouter, filesRouter, filesPublicRouter, publishRouter, publishEnvRouter, downloadRouter, dbRouter, dbImportRouter, todoListRouter, securityMisconfigScanRouter, vulnerabilityScanRouter, securityReportRouter, secretsScanRouter, videoRouter, conversationsRouter, qaAnalyzeRouter, gitRemoteRouter, goLiveRouter, adsenseRouter, complianceRouter, socialRouter, customerLogsRouter, diagnoseRouter, autoFixRouter, zipImportRouter, uiKitRouter, shareRouter, mediaRouter, modelsRouter, profilesRouter, transferValidateRouter, runtimeErrorsRouter, formatOverridesRouter, brandDataRouter, designKitRouter, rebuildRouter, nextActionsRouter, captureScreenshotRouter, feedbackRouter, inboxAccountRouter, seoQualityRouter, campaignsRouter, appMetadataRouter, commerceRouter, dkimRouter } from './routes/index.js';
+import { agentsRouter, appsRouter, chatRouter, healthRouter, diagnosticsRouter, gitRouter, debugRouter, filesRouter, filesPublicRouter, publishRouter, publishEnvRouter, downloadRouter, dbRouter, dbImportRouter, todoListRouter, securityMisconfigScanRouter, vulnerabilityScanRouter, securityReportRouter, secretsScanRouter, videoRouter, conversationsRouter, qaAnalyzeRouter, gitRemoteRouter, goLiveRouter, adsenseRouter, complianceRouter, socialRouter, customerLogsRouter, diagnoseRouter, autoFixRouter, zipImportRouter, uiKitRouter, shareRouter, mediaRouter, modelsRouter, profilesRouter, transferValidateRouter, runtimeErrorsRouter, formatOverridesRouter, brandDataRouter, designKitRouter, rebuildRouter, nextActionsRouter, captureScreenshotRouter, feedbackRouter, inboxAccountRouter, seoQualityRouter, campaignsRouter, appMetadataRouter, commerceRouter, dkimRouter, workflowStateRouter } from './routes/index.js';
 import { initAgentRuntime, getEventChannel, getAgentFactory, getMessageLifecycleDeps } from './agent-runtime.js';
 import { EventStreamRegistry } from './sse/EventStreamRegistry.js';
 import { initSSERegistry } from './sse/registry-singleton.js';
@@ -313,6 +313,7 @@ protectedRouter.use('/', designKitRouter);
 protectedRouter.use('/', inboxAccountRouter);
 protectedRouter.use('/apps', rebuildRouter);
 protectedRouter.use('/apps', nextActionsRouter);
+protectedRouter.use('/apps', workflowStateRouter);
 protectedRouter.use('/', feedbackRouter);
 protectedRouter.use('/', seoQualityRouter);
 protectedRouter.use('/campaigns', campaignsRouter);

@@ -2,6 +2,7 @@
 
 import { Check, Circle, GitBranch, Loader2, Lock, SkipForward, XCircle } from 'lucide-react'
 
+import { useDebugStats } from '@/app/[market]/develop/components/chat/DebugStatsContext'
 import { useToolDetailsModal } from '@/stores/useToolDetailsModalStore'
 import type { DefaultToolRendererProps } from './DefaultToolRenderer'
 import KeyValueTable from './KeyValueTable'
@@ -138,7 +139,10 @@ export default function WorkflowToolRenderer({
   input,
   result,
 }: DefaultToolRendererProps) {
+  const { showToolCalls } = useDebugStats()
   const [isModalOpen, setIsModalOpen] = useToolDetailsModal(toolId)
+
+  if (!showToolCalls) return null
   const operation: string = (input && typeof input === 'object' && (input as Record<string, unknown>).operation as string) || 'workflow'
   const stepId: string | undefined = (input && typeof input === 'object' && (input as Record<string, unknown>).stepId as string) || undefined
 

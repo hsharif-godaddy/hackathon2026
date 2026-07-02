@@ -1,6 +1,6 @@
 'use client'
 
-import { type ReactElement } from 'react'
+import { type ReactElement,useState } from 'react'
 import { FloatingPanel } from '@airo-ux/pattern-library/surfaces/floating-panel'
 import Button from '@ux/button'
 import Tag from '@ux/tag'
@@ -8,7 +8,10 @@ import Tag from '@ux/tag'
 import { SWITCHBOARD_APPBUILDER_DEBUG_DRAWER } from '@/config/switchboard-flags'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useConnectionState, useStreamingState } from '@/stores/useStreamingConversationStore'
+import { useWorkflowArchetype, useWorkflowSteps, type WorkflowProgressStep } from '@/stores/useWorkflowProgressStore'
 import { type LLMCallRecord, useDebugStats } from './DebugStatsContext'
+
+type DebugTab = 'stats' | 'workflow' | 'settings'
 
 function FlaskIcon(): ReactElement {
   return (
@@ -41,7 +44,7 @@ function formatTokens(n: number): string {
 }
 
 function CallRow({ call }: { call: LLMCallRecord }): ReactElement {
-  const cachePercent = Math.round(call.cacheHitRate * 100)
+  const cachePercent: number = Math.round(call.cacheHitRate * 100)
   return (
     <tr className="border-b border-border/50 last:border-0">
       <td className="py-0.5 pr-2 truncate max-w-[72px]">{call.agentName}</td>
@@ -54,8 +57,117 @@ function CallRow({ call }: { call: LLMCallRecord }): ReactElement {
   )
 }
 
+const STATUS_LABELS: Record<string, { label: string; emphasis: 'success' | 'critical' | 'warning' | 'neutral' }> = {
+  done: { label: 'done', emphasis: 'success' },
+  skipped: { label: 'skipped', emphasis: 'neutral' },
+  in_progress: { label: 'active', emphasis: 'warning' },
+  failed: { label: 'failed', emphasis: 'critical' },
+  blocked: { label: 'blocked', emphasis: 'warning' },
+  pending: { label: 'pending', emphasis: 'neutral' },
+}
+
+function WorkflowStepRow({ step }: { step: WorkflowProgressStep }): ReactElement {
+  const statusInfo = STATUS_LABELS[step.status] ?? { label: step.status, emphasis: 'neutral' as const }
+  return (
+    <tr className="border-b border-border/50 last:border-0">
+      <td className="py-0.5 pr-2">
+        <Tag size="sm" emphasis={statusInfo.emphasis}>{statusInfo.label}</Tag>
+      </td>
+      <td className="py-0.5 pr-2 truncate max-w-[140px]">{step.title}</td>
+      <td className="py-0.5 pr-2 text-muted-foreground">{step.type}</td>
+      <td className="py-0.5 text-muted-foreground truncate max-w-[80px]">{step.assignedBuilder ?? '—'}</td>
+    </tr>
+  )
+}
+
+function StatsTab({ state, connectionState, streamingState }: {
+  state: { calls: LLMCallRecord[] }
+  connectionState: { connected: boolean; status: string }
+  streamingState: string
+}): ReactElement {
+  return (
+    <div className="text-[10px] font-mono">
+      <section className="mb-2 flex flex-wrap items-center gap-1" data-testid="debug-stats-connection-info">
+        <Tag size="sm" emphasis={connectionState.connected ? 'success' : 'critical'}>
+          {connectionState.connected ? 'connected' : connectionState.status}
+        </Tag>
+        {streamingState !== 'idle' && (
+          <Tag size="sm" emphasis="warning">
+            {streamingState}
+          </Tag>
+        )}
+      </section>
+
+      {state.calls.length === 0 ? (
+        <div className="text-muted-foreground text-center py-4 font-sans text-xs">No LLM calls yet</div>
+      ) : (
+        <table className="w-full tabular-nums">
+          <thead className="sticky top-0 bg-intents-ux-box-backgroundColor">
+            <tr className="border-b border-border text-muted-foreground text-left">
+              <th className="py-0.5 pr-2 font-medium">Agent</th>
+              <th className="py-0.5 pr-2 font-medium">Model</th>
+              <th className="py-0.5 pr-2 font-medium text-right">Turns</th>
+              <th className="py-0.5 pr-2 font-medium text-right">In/Out</th>
+              <th className="py-0.5 pr-2 font-medium text-right">Cache</th>
+              <th className="py-0.5 font-medium text-right">Cost</th>
+            </tr>
+          </thead>
+          <tbody>
+            {state.calls.map((call: LLMCallRecord, i: number) => (
+              <CallRow key={`${call.timestamp}-${i}`} call={call} />
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  )
+}
+
+function WorkflowTab(): ReactElement {
+  const steps: WorkflowProgressStep[] = useWorkflowSteps()
+  const archetype: string | null = useWorkflowArchetype()
+
+  if (steps.length === 0) {
+    return (
+      <div className="text-muted-foreground text-center py-4 font-sans text-xs">No workflow active</div>
+    )
+  }
+
+  const doneCount: number = steps.filter((s: WorkflowProgressStep) => s.status === 'done' || s.status === 'skipped').length
+  const inProgressCount: number = steps.filter((s: WorkflowProgressStep) => s.status === 'in_progress').length
+  const failedCount: number = steps.filter((s: WorkflowProgressStep) => s.status === 'failed').length
+
+  return (
+    <div className="text-[10px] font-mono">
+      <section className="mb-2 flex flex-wrap items-center gap-1">
+        {archetype && <Tag size="sm" emphasis="neutral">{archetype}</Tag>}
+        <Tag size="sm" emphasis="success">{`${doneCount} done`}</Tag>
+        {inProgressCount > 0 && <Tag size="sm" emphasis="warning">{`${inProgressCount} active`}</Tag>}
+        {failedCount > 0 && <Tag size="sm" emphasis="critical">{`${failedCount} failed`}</Tag>}
+        <span className="text-muted-foreground ml-auto">{doneCount}/{steps.length}</span>
+      </section>
+
+      <table className="w-full tabular-nums">
+        <thead className="sticky top-0 bg-intents-ux-box-backgroundColor">
+          <tr className="border-b border-border text-muted-foreground text-left">
+            <th className="py-0.5 pr-2 font-medium">Status</th>
+            <th className="py-0.5 pr-2 font-medium">Step</th>
+            <th className="py-0.5 pr-2 font-medium">Type</th>
+            <th className="py-0.5 font-medium">Builder</th>
+          </tr>
+        </thead>
+        <tbody>
+          {steps.map((step: WorkflowProgressStep) => (
+            <WorkflowStepRow key={step.id} step={step} />
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 export function DebugStatsToggleButton(): ReactElement | null {
-  const enabled = useSwitchboard(SWITCHBOARD_APPBUILDER_DEBUG_DRAWER)
+  const enabled: boolean | undefined = useSwitchboard(SWITCHBOARD_APPBUILDER_DEBUG_DRAWER)
   const { open, setOpen, hidden } = useDebugStats()
 
   if (!enabled || hidden) return null
@@ -75,80 +187,104 @@ export function DebugStatsToggleButton(): ReactElement | null {
 }
 
 export function DebugStatsPanel(): ReactElement | null {
-  const enabled = useSwitchboard(SWITCHBOARD_APPBUILDER_DEBUG_DRAWER)
-  const { state, dispatch, open, setOpen, hidden, setHidden } = useDebugStats()
+  const enabled: boolean | undefined = useSwitchboard(SWITCHBOARD_APPBUILDER_DEBUG_DRAWER)
+  const { state, dispatch, open, setOpen, hidden, setHidden, showToolCalls, setShowToolCalls } = useDebugStats()
   const connectionState = useConnectionState()
   const streamingState = useStreamingState()
+  const [activeTab, setActiveTab] = useState<DebugTab>('stats')
 
   if (!enabled) return null
 
-  const totalCost = state.calls.reduce((sum, c) => sum + c.costUsd, 0)
+  const totalCost: number = state.calls.reduce((sum: number, c: LLMCallRecord) => sum + c.costUsd, 0)
 
   return (
     <FloatingPanel
       show={open}
       onClose={() => setOpen(false)}
-      title="Debug stats"
+      title="Debug"
       data-testid="debug-stats-panel"
-      defaultSize={{ width: 360, height: 480 }}
+      defaultSize={{ width: 380, height: 480 }}
       defaultPosition={{ x: 24, y: 96 }}
       footer={
-        <div className="flex flex-col gap-1 text-[10px] font-mono">
-          <div className="flex items-center justify-between gap-2">
-            <span className="font-semibold tabular-nums">Total: ${totalCost.toFixed(4)}</span>
-            <button
-              type="button"
-              className="text-muted-foreground hover:text-foreground font-sans"
-              onClick={() => dispatch({ type: 'CLEAR' })}
-            >
-              Clear
-            </button>
-          </div>
-          <label className="flex items-center gap-1 font-sans text-muted-foreground cursor-pointer">
-            <input
-              type="checkbox"
-              checked={hidden}
-              onChange={(e) => setHidden(e.target.checked)}
-              className="accent-current"
-            />
-            Hide button (for screenshots)
-          </label>
+        <div className="flex items-center justify-between gap-2 text-[10px] font-mono">
+          <span className="font-semibold tabular-nums">Total: ${totalCost.toFixed(4)}</span>
+          <button
+            type="button"
+            className="text-muted-foreground hover:text-foreground font-sans"
+            onClick={() => dispatch({ type: 'CLEAR' })}
+          >
+            Clear
+          </button>
         </div>
       }
     >
-      <div className="text-[10px] font-mono">
-        <section className="mb-2 flex flex-wrap items-center gap-1" data-testid="debug-stats-connection-info">
-          <Tag size="sm" emphasis={connectionState.connected ? 'success' : 'critical'}>
-            {connectionState.connected ? 'connected' : connectionState.status}
-          </Tag>
-          {streamingState !== 'idle' && (
-            <Tag size="sm" emphasis="warning">
-              {streamingState}
-            </Tag>
-          )}
-        </section>
+      <div className="flex flex-col h-full">
+        {/* Tab bar */}
+        <div className="flex border-b border-border mb-2 shrink-0">
+          <button
+            type="button"
+            className={`px-3 py-1 text-xs font-medium transition-colors ${
+              activeTab === 'stats'
+                ? 'border-b-2 border-current text-foreground'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+            onClick={() => setActiveTab('stats')}
+          >
+            Stats
+          </button>
+          <button
+            type="button"
+            className={`px-3 py-1 text-xs font-medium transition-colors ${
+              activeTab === 'workflow'
+                ? 'border-b-2 border-current text-foreground'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+            onClick={() => setActiveTab('workflow')}
+          >
+            Workflow
+          </button>
+          <button
+            type="button"
+            className={`px-3 py-1 text-xs font-medium transition-colors ${
+              activeTab === 'settings'
+                ? 'border-b-2 border-current text-foreground'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+            onClick={() => setActiveTab('settings')}
+          >
+            Settings
+          </button>
+        </div>
 
-        {state.calls.length === 0 ? (
-          <div className="text-muted-foreground text-center py-4 font-sans text-xs">No LLM calls yet</div>
-        ) : (
-          <table className="w-full tabular-nums">
-            <thead className="sticky top-0 bg-intents-ux-box-backgroundColor">
-              <tr className="border-b border-border text-muted-foreground text-left">
-                <th className="py-0.5 pr-2 font-medium">Agent</th>
-                <th className="py-0.5 pr-2 font-medium">Model</th>
-                <th className="py-0.5 pr-2 font-medium text-right">Turns</th>
-                <th className="py-0.5 pr-2 font-medium text-right">In/Out</th>
-                <th className="py-0.5 pr-2 font-medium text-right">Cache</th>
-                <th className="py-0.5 font-medium text-right">Cost</th>
-              </tr>
-            </thead>
-            <tbody>
-              {state.calls.map((call, i) => (
-                <CallRow key={`${call.timestamp}-${i}`} call={call} />
-              ))}
-            </tbody>
-          </table>
-        )}
+        {/* Tab content */}
+        <div className="flex-1 overflow-y-auto">
+          {activeTab === 'stats' && (
+            <StatsTab state={state} connectionState={connectionState} streamingState={streamingState} />
+          )}
+          {activeTab === 'workflow' && <WorkflowTab />}
+          {activeTab === 'settings' && (
+            <div className="flex flex-col gap-3 px-1 py-2">
+              <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={showToolCalls}
+                  onChange={(e) => setShowToolCalls(e.target.checked)}
+                  className="accent-current"
+                />
+                Show tool calls in chat
+              </label>
+              <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={hidden}
+                  onChange={(e) => setHidden(e.target.checked)}
+                  className="accent-current"
+                />
+                Hide debug button (for screenshots)
+              </label>
+            </div>
+          )}
+        </div>
       </div>
     </FloatingPanel>
   )

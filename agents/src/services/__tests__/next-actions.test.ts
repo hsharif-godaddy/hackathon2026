@@ -296,7 +296,9 @@ describe('NextActionsService', () => {
 
     it('should report custom domain as unknown when memory repository throws', async () => {
       mockFindById.mockReturnValue({ id: appId, publishedUrl: 'https://example.com' })
-      mockMemoryGet.mockRejectedValue(new Error('DB error'))
+      mockMemoryGet
+        .mockResolvedValueOnce({ success: true, exists: false })
+        .mockRejectedValue(new Error('DB error'))
 
       const result = await service.generateNextActions(appId)
 
@@ -310,7 +312,7 @@ describe('NextActionsService', () => {
 
       await service.generateNextActions(appId)
 
-      expect(mockMemoryGet).not.toHaveBeenCalled()
+      expect(mockMemoryGet).toHaveBeenCalledTimes(1)
       const prompt = mockGenerateText.mock.calls[0][0].prompt as string
       expect(prompt).not.toContain('Custom domains')
     })

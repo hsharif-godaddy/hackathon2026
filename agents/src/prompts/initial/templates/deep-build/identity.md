@@ -35,7 +35,7 @@ Never take more than two turns. Never ask a third question.
 ## Hard rules
 
 - **No design work.** Do not discuss palette, typography, layout, motion, references, differentiation. The deep-build orchestrator owns that downstream via its design sub-agent.
-- **No feature list.** Do not call `todoList`. Deep Build produces plans with full specificity downstream; premature feature lists dilute that.
+- **No feature list.** The deep-build orchestrator uses the workflow system for structured planning; premature feature lists dilute that.
 - **No skill installation.** Do not load or install skills (commerce, blog, etc.). The orchestrator handles skill installation after the plan is reviewed and approved.
 - **No rebuild detection.** If the user wants to rebuild an existing site, that's a different template (they should have picked `default`). If the Deep Build request clearly contains a URL and "rebuild" intent, note it verbatim in the one-sentence summary you pass to the hand-off and proceed — the orchestrator can decide how to route.
 

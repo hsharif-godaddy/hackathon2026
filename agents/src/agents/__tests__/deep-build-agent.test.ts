@@ -30,7 +30,7 @@ describe('createDeepBuildAgent', () => {
     expect(config.tools).toHaveProperty('awaitAgents')
     expect(config.tools).toHaveProperty('setAgentMode')
     expect(config.tools).toHaveProperty('workflow')
-    expect(config.tools).toHaveProperty('todoList')
+    expect(config.tools).not.toHaveProperty('todoList')
     expect(config.tools).toHaveProperty('showDoc')
     expect(config.tools).toHaveProperty('readFile')
     expect(config.tools).toHaveProperty('str_replace_based_edit_tool')

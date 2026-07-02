@@ -36,6 +36,7 @@ import { useGitStore } from '@/stores/useGitStore';
 import { useStreamingConversationStore } from '@/stores/useStreamingConversationStore';
 import { useTodoListStore } from '@/stores/useTodoListStore';
 import { useUpfrontRebuildBuildQueueStore } from '@/stores/useUpfrontRebuildBuildQueueStore';
+import { useWorkflowProgressStore } from '@/stores/useWorkflowProgressStore';
 import {
   logImpressionEvent,
   setInstrumentationBusinessName,
@@ -399,6 +400,39 @@ export async function handleToolResultSideEffects(
         appId,
         error: error instanceof Error ? error.message : String(error),
       });
+    }
+  }
+
+  // Workflow progress bar state update
+  if (tool.name === 'workflow' && !hasError) {
+    try {
+      const operation: string = tool.input?.operation ?? '';
+      const raw: unknown = tool.output ?? tool.result;
+      if (raw != null) {
+        const resultStr: string = typeof raw === 'string' ? raw : JSON.stringify(raw);
+
+        if (operation === 'init') {
+          window.dispatchEvent(new CustomEvent('workflow-refresh', { detail: { appId } }));
+        } else {
+          const { updateFromToolResult } = useWorkflowProgressStore.getState();
+          updateFromToolResult(operation, resultStr);
+        }
+      }
+    } catch (error: unknown) {
+      logger.debug('toolSideEffects.workflow.update.failure', {
+        appId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  // Workflow state refresh after sub-agent completion — workflow tool calls happen
+  // inside sub-agents (not on the main SSE stream), so we re-fetch state when
+  // awaitAgents or runAgent completes to pick up any workflow transitions.
+  if ((tool.name === 'awaitAgents' || tool.name === 'runAgent') && !hasError && appId) {
+    const { steps } = useWorkflowProgressStore.getState();
+    if (steps.length > 0) {
+      window.dispatchEvent(new CustomEvent('workflow-refresh', { detail: { appId } }));
     }
   }
 

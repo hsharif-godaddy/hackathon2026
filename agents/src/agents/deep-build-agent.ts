@@ -51,7 +51,6 @@ export async function createDeepBuildAgent(): Promise<AgentConfig> {
       askQuestion: allAILibTools.askQuestion,
       runAgent: allAILibTools.runAgent,
       awaitAgents: allAILibTools.awaitAgents,
-      todoList: allAILibTools.todoList,
       showDoc: allAILibTools.showDoc,
       readFile: allAILibTools.readFile,
       str_replace_based_edit_tool: allAILibTools['str_replace_based_edit_tool'],

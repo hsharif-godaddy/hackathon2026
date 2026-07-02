@@ -52,6 +52,7 @@ import { useHistoryLoadingComplete, useIsActivelyStreaming, useIsLoading, useMes
 import type { TodoItem } from '@/stores/useTodoListStore'
 import { useCurrentList, useTodoListStore, useViewState } from '@/stores/useTodoListStore'
 import { useUpfrontRebuildBuildQueueStore } from '@/stores/useUpfrontRebuildBuildQueueStore'
+import { useWorkflowSteps, type WorkflowProgressStep } from '@/stores/useWorkflowProgressStore'
 import { safeGetItem } from '@/utils/localStorage'
 
 const MAX_COMBINED_ITEMS = 4
@@ -700,6 +701,14 @@ function InputActionsPanelThemeSelection({
   const initialBuildComplete = useDevelopPageStore((state) => state.app?.initialBuildComplete)
   const hasQueuedMessages = useStreamingConversationStore(state => (state.queuedMessages?.length ?? 0) > 0)
   const appId = useAppIdFromParams()
+  const workflowSteps: WorkflowProgressStep[] = useWorkflowSteps()
+  const hasWorkflow: boolean = workflowSteps.length > 0
+  const currentWorkflowStep: WorkflowProgressStep | undefined = workflowSteps.find(
+    (s: WorkflowProgressStep) => s.status === 'in_progress'
+  )
+  const workflowDoneCount: number = workflowSteps.filter(
+    (s: WorkflowProgressStep) => s.status === 'done' || s.status === 'skipped'
+  ).length
 
   const nbaDataRaw = useLatestNBAs(feedbackActive)
   const nbaData = askQuestionDismissed ? null : nbaDataRaw
@@ -1187,13 +1196,29 @@ function InputActionsPanelThemeSelection({
 
   // ── Mode C: Agent working ────────────────────────────────────────────────
   if (isProcessing) {
-    const thinkingHeaderOnly = !(hasPlan && fullPlanExpanded && !showAnySuggest)
+    const hasExpandableContent: boolean = hasWorkflow || (hasPlan && !showAnySuggest)
+    const thinkingHeaderOnly: boolean = !hasExpandableContent || !fullPlanExpanded
     return (
       <InputActionsPanelCard headerOnly={thinkingHeaderOnly}>
         <div className="flex flex-col gap-1">
           <div className="flex items-center justify-between gap-2 px-1 py-0.5 my-[4px] min-h-[22px]">
             <Thinker label={thinkerLabel} indicator={thinkerIndicator} className="shrink-0" />
-            {hasPlan && !showAnySuggest && (
+            {hasWorkflow ? (
+              <button
+                type="button"
+                className="flex items-center gap-0.5 text-xs text-muted-foreground hover:text-foreground transition-colors min-w-0"
+                onClick={() => {
+                  setFullPlanExpanded(v => !v)
+                  autoExpandedRef.current = false
+                }}
+              >
+                <span className="truncate">
+                  {currentWorkflowStep?.title ?? 'Build progress'}
+                </span>
+                <span className="text-muted-foreground/60 ml-1 shrink-0">{workflowDoneCount}/{workflowSteps.length}</span>
+                <CollapseChevron expanded={fullPlanExpanded} />
+              </button>
+            ) : hasPlan && !showAnySuggest ? (
               <button
                 type="button"
                 className="flex items-center gap-0.5 text-xs text-muted-foreground hover:text-foreground transition-colors min-w-0"
@@ -1205,12 +1230,45 @@ function InputActionsPanelThemeSelection({
                 <span className="truncate">{currentList.name}</span>
                 <CollapseChevron expanded={fullPlanExpanded} />
               </button>
-            )}
+            ) : null}
           </div>
-          {initialBuildComplete && !fullPlanExpanded && !hasQueuedMessages && <ThinkingTip />}
+          {initialBuildComplete && !fullPlanExpanded && !hasQueuedMessages && !hasWorkflow && <ThinkingTip />}
 
           <AnimatePresence initial={false}>
-            {hasPlan && fullPlanExpanded && !showAnySuggest && (
+            {hasWorkflow && fullPlanExpanded && (
+              <motion.div
+                key="workflow-steps-processing"
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
+                className="overflow-hidden"
+              >
+                <div className="max-h-48 overflow-y-auto flex flex-col gap-0.5 px-1">
+                  {workflowSteps.map((step: WorkflowProgressStep) => (
+                    <div
+                      key={step.id}
+                      className={cn(
+                        'flex items-center gap-1.5 px-1.5 py-0.5 rounded-lg',
+                        step.status === 'in_progress' && 'bg-intents-ux-boxLowContrast-backgroundColor',
+                        (step.status === 'pending' || step.status === 'blocked') && 'opacity-50',
+                      )}
+                    >
+                      <CircularCheckbox checked={step.status === 'done' || step.status === 'skipped'} />
+                      <span className={cn(
+                        'text-sm truncate',
+                        (step.status === 'done' || step.status === 'skipped') && 'line-through text-muted-foreground',
+                        step.status === 'in_progress' && 'font-medium',
+                        step.status === 'failed' && 'text-intents-ux-error-textColor',
+                      )}>
+                        {step.title}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </motion.div>
+            )}
+            {!hasWorkflow && hasPlan && fullPlanExpanded && !showAnySuggest && (
               <motion.div
                 key="full-plan-processing"
                 initial={{ height: 0, opacity: 0 }}

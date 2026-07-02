@@ -33,6 +33,7 @@ import Tips from '@/app/[market]/develop/components/tips/Tips'
 import { MobileMode, PreviewViewMode, ViewMode } from '@/app/[market]/develop/components/types'
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils'
 import { useFirstBuildEstimateImpression } from '@/app/[market]/develop/hooks/useFirstBuildEstimateImpression'
+import { useWorkflowHydration } from '@/app/[market]/develop/hooks/useWorkflowHydration'
 import ErrorBoundary from '@/components/ErrorBoundary'
 import { buildDynamicApiUrl } from '@/config/dynamic-api'
 import { EXPERIMENT_IDS, INITIAL_AGENT_V3_COHORT } from '@/config/experiments'
@@ -353,6 +354,7 @@ export default function PreviewPane({
   )
 
   const appId = useAppIdFromParams()
+  useWorkflowHydration(appId)
   const previewUnsupportedFeatureWarnings = useDevelopPageStore(
     (state) => state.publishStates[appId]?.previewUnsupportedFeatureWarnings ?? EMPTY_UNSUPPORTED_WARNINGS
   )

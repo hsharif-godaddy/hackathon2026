@@ -3,6 +3,7 @@
 import { CheckCircle2, CircleSlash, XCircle } from 'lucide-react'
 import { useState } from 'react'
 
+import { useDebugStats } from '@/app/[market]/develop/components/chat/DebugStatsContext'
 import { useTranslations } from '@/hooks/useTranslations'
 import { type AwaitedJobResult } from '@/stores/useStreamingConversationStore'
 import type { DefaultToolRendererProps } from './DefaultToolRenderer'
@@ -27,8 +28,11 @@ export default function AwaitAgentsToolRenderer({
   input,
   result,
 }: DefaultToolRendererProps): React.ReactElement | null {
+  const { showToolCalls } = useDebugStats()
   const t = useTranslations()
   const [isModalOpen, setIsModalOpen] = useState(false)
+
+  if (!showToolCalls) return null
 
   const jobIds = (input as { jobIds?: string[] } | undefined)?.jobIds ?? []
   const waitingCount = jobIds.length

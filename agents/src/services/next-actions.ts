@@ -89,6 +89,15 @@ export class NextActionsService {
       throw new Error(`App not found: ${appId}`)
     }
 
+    try {
+      const agentModeResult = await this.memoryRepository.get(appId, 'app.agent_mode')
+      if (agentModeResult.success && agentModeResult.exists && agentModeResult.value === 'deep-build') {
+        return { suggestions: [] }
+      }
+    } catch (error: unknown) {
+      logger.warn('next-actions.agent-mode.lookup-failed', { appId, error })
+    }
+
     const scope = workspaceScopeFromAppId(appId, customerId)
     const contextParts: string[] = []
 

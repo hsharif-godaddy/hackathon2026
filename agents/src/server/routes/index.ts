@@ -49,3 +49,4 @@ export { default as seoQualityRouter } from './seo-quality.js';
 export { default as campaignsRouter } from './campaigns.js';
 export { appMetadataRouter } from './app-metadata.js';
 export { default as commerceRouter } from './commerce.js';
+export { default as workflowStateRouter } from './workflow-state.js';
