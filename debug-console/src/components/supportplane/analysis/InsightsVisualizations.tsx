@@ -30,17 +30,6 @@ interface Props {
   onInsightClick: (insight: InsightRow) => void;
 }
 
-interface TooltipContentState<T> {
-  active?: boolean;
-  payload?: Array<{ payload: T }>;
-}
-
-interface PatternTooltipRow {
-  name: string;
-  count: number;
-  contacts: number;
-}
-
 export default function InsightsVisualizations({ patterns, bugs, features, onInsightClick }: Props) {
   const allInsights: InsightRow[] = [...patterns, ...bugs, ...features];
 
@@ -145,7 +134,7 @@ export default function InsightsVisualizations({ patterns, bugs, features, onIns
                 <YAxis stroke="var(--sp-txm)" tick={{ fill: 'var(--sp-txm)', fontSize: 10 }} />
                 <Tooltip
                   cursor={{ fill: 'var(--sp-s2)' }}
-                  content={({ active, payload }: TooltipContentState<PatternTooltipRow>) => {
+                  content={({ active, payload }) => {
                     if (active && payload && payload.length > 0) {
                       const data = payload[0].payload;
                       return (
@@ -763,7 +752,7 @@ export default function InsightsVisualizations({ patterns, bugs, features, onIns
               />
               <Tooltip
                 cursor={{ strokeDasharray: '3 3' }}
-                content={({ active, payload }: TooltipContentState<InsightRow>) => {
+                content={({ active, payload }) => {
                   if (active && payload && payload.length > 0) {
                     const data: InsightRow = payload[0].payload as InsightRow;
                     return (
@@ -851,7 +840,7 @@ export default function InsightsVisualizations({ patterns, bugs, features, onIns
               />
               <Tooltip
                 cursor={{ strokeDasharray: '3 3' }}
-                content={({ active, payload }: TooltipContentState<InsightRow>) => {
+                content={({ active, payload }) => {
                   if (active && payload && payload.length > 0) {
                     const data: InsightRow = payload[0].payload as InsightRow;
                     return (

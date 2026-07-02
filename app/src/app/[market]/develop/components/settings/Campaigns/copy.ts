@@ -69,17 +69,7 @@ export const CAMPAIGN_KEYS = {
   progress: 'builder_campaign_progress',
   summary: 'builder_campaign_summary',
   leadsGenerated: 'builder_campaign_leads_generated',
-  suggestionTitle: 'builder_campaigns_suggestion_title',
-  suggestionDismiss: 'builder_campaigns_suggestion_dismiss',
-  suggestionOther: 'builder_campaigns_suggestion_other',
-  suggestionOtherPlaceholder: 'builder_campaigns_suggestion_other_placeholder',
-  suggestionOtherAriaLabel: 'builder_campaigns_suggestion_other_aria_label',
-  suggestionOtherPrompt: 'builder_campaigns_suggestion_other_prompt',
 } as const
-
-export function buildCustomCampaignPrompt(t: Translate, idea: string): string {
-  return translateCampaignKey(t, CAMPAIGN_KEYS.suggestionOtherPrompt, { idea: idea.trim() })
-}
 
 function campaignT(t: Translate, key: string, values?: Record<string, unknown>): string {
   const fallback = defaultMessageForCampaignKey(key)

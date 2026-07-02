@@ -34,32 +34,10 @@ const { mockCampaignRepo, mockSocialPostRepo, mockUtmRepo, mockSkills } = vi.hoi
   mockSkills: { isEnabled: vi.fn().mockReturnValue(true), isProfileGated: vi.fn().mockReturnValue(false) },
 }))
 
-const { mockAppRepo, mockGenerateTextWithTracking, mockGetAgentModelWithName } = vi.hoisted(() => ({
-  mockAppRepo: {
-    findById: vi.fn(),
-  },
-  mockGenerateTextWithTracking: vi.fn(),
-  mockGetAgentModelWithName: vi.fn(),
-}))
-
 vi.mock('../../../database/repositories/SimpleCampaignRepository.js', () => ({
   SimpleCampaignRepository: vi.fn(function () {
     return mockCampaignRepo
   }),
-}))
-
-vi.mock('../../../database/repositories/AppRepository.js', () => ({
-  AppRepository: vi.fn(function () {
-    return mockAppRepo
-  }),
-}))
-
-vi.mock('@airo/ai-lib', () => ({
-  generateTextWithTracking: (...args: unknown[]) => mockGenerateTextWithTracking(...args),
-}))
-
-vi.mock('../../../utils/model-selection.js', () => ({
-  getAgentModelWithName: (...args: unknown[]) => mockGetAgentModelWithName(...args),
 }))
 
 vi.mock('../../../database/repositories/SocialPostRepository.js', () => ({
@@ -103,7 +81,6 @@ vi.mock('../../../logging/index.js', () => ({
 }))
 
 import campaignsRouter from '../campaigns.js'
-import { parseCampaignSuggestions } from '../campaigns.js'
 
 /**
  * Build an app with agentContext injected the way jwtAuthMiddleware would. The real
@@ -176,138 +153,9 @@ const socialDraft: SimpleCampaignContent = {
 describe('campaigns routes', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockGetAgentModelWithName.mockResolvedValue({ model: {}, modelName: 'fast-model' })
     // clearAllMocks resets call history but not implementations; re-assert the social flag on
     // so the gate-off test below cannot bleed into the others.
     mockSkills.isEnabled.mockReturnValue(true)
-  })
-
-  describe('parseCampaignSuggestions', () => {
-    it('keeps only items with non-empty string text and prompt', () => {
-      const raw = JSON.stringify({
-        suggestions: [
-          { text: 'Holiday sale', prompt: 'Create a holiday sale campaign' },
-          { text: { bad: true }, prompt: 'bad' },
-          { text: 'Newsletter', prompt: 123 },
-          { text: '   ', prompt: 'Create a newsletter campaign' },
-          { text: 'Launch promo', prompt: '   ' },
-        ],
-      })
-
-      expect(parseCampaignSuggestions(raw)).toEqual([
-        { text: 'Holiday sale', prompt: 'Create a holiday sale campaign' },
-      ])
-    })
-
-    it('returns an empty array when suggestions is missing or not an array', () => {
-      expect(parseCampaignSuggestions(JSON.stringify({ suggestions: 'nope' }))).toEqual([])
-      expect(parseCampaignSuggestions(JSON.stringify({}))).toEqual([])
-    })
-  })
-
-  describe('GET /:id/suggestions', () => {
-    it('returns validated suggestions from the LLM response', async () => {
-      const app = buildApp()
-      mockAppRepo.findById.mockReturnValue({ name: 'Taco Shop', initialPrompt: 'Best tacos in town' })
-      mockGenerateTextWithTracking.mockResolvedValue({
-        text: JSON.stringify({
-          suggestions: [
-            { text: 'Holiday sale', prompt: 'Create a holiday sale campaign' },
-            { text: { bad: true }, prompt: 'ignored' },
-          ],
-        }),
-      })
-
-      const res = await request(app).get(`/${APP_ID}/suggestions`)
-
-      expect(res.status).toBe(200)
-      expect(res.body.suggestions).toEqual([
-        { text: 'Holiday sale', prompt: 'Create a holiday sale campaign' },
-      ])
-      expect(mockGenerateTextWithTracking).toHaveBeenCalledWith(
-        expect.objectContaining({
-          prompt: expect.stringContaining('Taco Shop'),
-          maxOutputTokens: 200,
-          context: {
-            appId: APP_ID,
-            toolName: 'campaignSuggestions',
-            description: 'Marketing campaign suggestions',
-          },
-        }),
-      )
-    })
-
-    it('truncates initialPrompt to 500 characters', async () => {
-      const app = buildApp()
-      const longPrompt = 'x'.repeat(600)
-      mockAppRepo.findById.mockReturnValue({ name: 'Taco Shop', initialPrompt: longPrompt })
-      mockGenerateTextWithTracking.mockResolvedValue({
-        text: JSON.stringify({ suggestions: [] }),
-      })
-
-      await request(app).get(`/${APP_ID}/suggestions`)
-
-      expect(mockGenerateTextWithTracking).toHaveBeenCalledWith(
-        expect.objectContaining({
-          prompt: expect.stringContaining('x'.repeat(500)),
-        }),
-      )
-      expect(mockGenerateTextWithTracking).toHaveBeenCalledWith(
-        expect.objectContaining({
-          prompt: expect.not.stringContaining('x'.repeat(501)),
-        }),
-      )
-    })
-
-    it('uses Unknown when the app record is missing', async () => {
-      const app = buildApp()
-      mockAppRepo.findById.mockReturnValue(null)
-      mockGenerateTextWithTracking.mockResolvedValue({
-        text: JSON.stringify({ suggestions: [] }),
-      })
-
-      const res = await request(app).get(`/${APP_ID}/suggestions`)
-
-      expect(res.status).toBe(200)
-      expect(mockGenerateTextWithTracking).toHaveBeenCalledWith(
-        expect.objectContaining({
-          prompt: 'Business name: Unknown',
-        }),
-      )
-    })
-
-    it('returns 200 with an empty array when suggestions is the wrong shape', async () => {
-      const app = buildApp()
-      mockAppRepo.findById.mockReturnValue({ name: 'Taco Shop' })
-      mockGenerateTextWithTracking.mockResolvedValue({
-        text: JSON.stringify({ suggestions: 'not-an-array' }),
-      })
-
-      const res = await request(app).get(`/${APP_ID}/suggestions`)
-
-      expect(res.status).toBe(200)
-      expect(res.body.suggestions).toEqual([])
-    })
-
-    it('returns 500 when the LLM response is not valid JSON', async () => {
-      const app = buildApp()
-      mockAppRepo.findById.mockReturnValue({ name: 'Taco Shop' })
-      mockGenerateTextWithTracking.mockResolvedValue({ text: 'Here are some ideas:' })
-
-      const res = await request(app).get(`/${APP_ID}/suggestions`)
-
-      expect(res.status).toBe(500)
-      expect(res.body.error).toBe('Failed to generate campaign suggestions')
-    })
-
-    it('returns 403 when the feature is not enabled', async () => {
-      const app = buildApp({ campaignsEnabled: false })
-
-      const res = await request(app).get(`/${APP_ID}/suggestions`)
-
-      expect(res.status).toBe(403)
-      expect(mockGenerateTextWithTracking).not.toHaveBeenCalled()
-    })
   })
 
   describe('marketingCampaignsEnabled gate', () => {

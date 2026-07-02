@@ -6,13 +6,8 @@ export function numberedLabel(index: number, text: string): string {
   return `${index + 1}. ${text}`
 }
 
-export function choiceRowClassName(isSelected: boolean, solidBackground = false): string {
-  const padding = solidBackground ? 'px-3 py-2' : 'px-2 py-1.5'
-  const background = solidBackground
-    ? 'enabled:hover:!bg-intents-ux-actionHovered-backgroundColor'
-    : 'bg-intents-ux-boxLowContrast-backgroundColor enabled:hover:bg-intents-ux-actionHovered-backgroundColor'
-
-  return `flex w-full items-center justify-between gap-2 ${padding} rounded-lg border-solid text-sm text-intents-ux-box-foregroundColor ${background} text-left transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
+export function choiceRowClassName(isSelected: boolean): string {
+  return `flex w-full items-center justify-between gap-2 px-2 py-1.5 rounded-lg border-solid text-sm text-intents-ux-box-foregroundColor bg-intents-ux-boxLowContrast-backgroundColor text-left transition-colors cursor-pointer enabled:hover:bg-intents-ux-actionHovered-backgroundColor disabled:opacity-50 disabled:cursor-not-allowed ${
     isSelected
       ? 'border-2 border-intents-ux-box-foregroundColor'
       : 'border-2 border-transparent'
@@ -57,7 +52,6 @@ interface ChoiceOptionRowProps {
   isMulti: boolean
   isSelected: boolean
   disabled?: boolean
-  solidBackground?: boolean
   onClick: () => void
 }
 
@@ -67,7 +61,6 @@ export function ChoiceOptionRow({
   isMulti,
   isSelected,
   disabled,
-  solidBackground = false,
   onClick,
 }: ChoiceOptionRowProps) {
   return (
@@ -78,8 +71,7 @@ export function ChoiceOptionRow({
       disabled={disabled}
       onClick={onClick}
       data-testid="choice-option-row"
-      className={choiceRowClassName(isSelected, solidBackground)}
-      style={solidBackground ? { backgroundColor: '#fff' } : undefined}
+      className={choiceRowClassName(isSelected)}
     >
       <span className="flex-1 min-w-0 text-sm text-left">
         {numberedLabel(index, text)}

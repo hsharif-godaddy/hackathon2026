@@ -17,7 +17,6 @@ import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { useSiteStore } from '@/stores/useSiteStore';
 import AgentWorkFeedbackBanner from './AgentWorkFeedbackBanner';
 import AppGenerationFeedbackBanner from './AppGenerationFeedbackBanner';
-import CampaignSuggestionBanner from './CampaignSuggestionBanner';
 import FeedbackBanner from './FeedbackBanner';
 import ImpersonationBanner from './ImpersonationBanner';
 import SuspendedComplianceBanner from './SuspendedComplianceBanner';
@@ -120,7 +119,5 @@ export default function ChatBanners({ appId }: ChatBannersProps) {
     return <AgentWorkFeedbackBanner />;
   }
 
-  // Priority 8: Campaign suggestion (lowest — stays visible once shown until dismissed; hidden while NBA is active).
-  // Switchboard gating and dismiss state are handled in useCampaignSuggestions, consumed by CampaignSuggestionBanner.
-  return <CampaignSuggestionBanner />;
+  return null;
 }

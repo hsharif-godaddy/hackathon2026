@@ -12,9 +12,7 @@ import CampaignStatusBadge from '@/app/[market]/develop/components/settings/Camp
 import { CAMPAIGN_KEYS, translateCampaignKey } from '@/app/[market]/develop/components/settings/Campaigns/copy'
 import { formatCampaignScheduleRange } from '@/app/[market]/develop/components/settings/Campaigns/dates'
 import type { Campaign } from '@/app/[market]/develop/components/settings/Campaigns/types'
-import { useImpression } from '@/hooks/useImpression'
 import { useTranslations } from '@/hooks/useTranslations'
-import { logClickEvent } from '@/utils/instrumentation'
 
 interface CampaignCardProps {
   campaign: Campaign
@@ -34,15 +32,6 @@ export default function CampaignCard({ campaign, onDetails, className, showLabel
   const showProgress = campaign.status === 'active' && (campaign.assets?.length ?? 0) > 0
   const showCompletedSections = campaign.status === 'completed'
 
-  useImpression('settings.campaigns.cardView', {
-    customProperties: { campaignId: campaign.id, campaignStatus: campaign.status },
-  })
-
-  const handleDetails = () => {
-    logClickEvent('settings.campaigns.cardDetails', { campaignId: campaign.id })()
-    onDetails()
-  }
-
   return (
     <Card
       id={`campaign-card-${campaign.id}`}
@@ -60,7 +49,7 @@ export default function CampaignCard({ campaign, onDetails, className, showLabel
           <Button
             design="secondary"
             size="small"
-            onClick={handleDetails}
+            onClick={onDetails}
             text={translateCampaignKey(t, CAMPAIGN_KEYS.seeDetails)}
           />
         </Box>

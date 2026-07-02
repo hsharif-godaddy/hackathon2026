@@ -12,7 +12,6 @@ interface OptionInputProps {
   onSubmit: () => void
   onKeyDown: (event: React.KeyboardEvent) => void
   keyboardShortcut?: number
-  solidBackground?: boolean
 }
 
 export default function OptionInput({
@@ -26,7 +25,6 @@ export default function OptionInput({
   onSubmit,
   onKeyDown,
   keyboardShortcut,
-  solidBackground = false,
 }: OptionInputProps) {
   const canSubmit = value.trim().length > 0
 
@@ -34,14 +32,7 @@ export default function OptionInput({
   // @ux/tag letter badge (size="sm", emphasis="passive"). Keeps the Other row
   // visually aligned with the ChoiceList items above it.
   return (
-    <div
-      className={`flex items-center gap-2 w-full ${
-        solidBackground
-          ? 'rounded-lg border-2 border-transparent px-3 py-2'
-          : 'rounded-md border border-border bg-intents-ux-box-backgroundColor p-1'
-      }`}
-      style={solidBackground ? { backgroundColor: '#fff' } : undefined}
-    >
+    <div className="flex items-center gap-2 p-1 bg-intents-ux-box-backgroundColor rounded-md border border-border w-full">
       {keyboardShortcut !== undefined && (
         <Tag size="sm" emphasis="passive" aria-hidden="true">
           {String(keyboardShortcut)}
@@ -56,9 +47,7 @@ export default function OptionInput({
           placeholder={placeholder}
           disabled={disabled}
           aria-label={ariaLabel}
-          className={`text-sm grow border-0 border-b border-intents-ux-boxHighContrast-borderColor focus:border-intents-ux-boxHighContrast-borderColor focus:outline-none${
-            solidBackground ? ' bg-white' : ''
-          }`}
+          className="text-sm grow border-0 border-b border-intents-ux-boxHighContrast-borderColor focus:border-intents-ux-boxHighContrast-borderColor focus:outline-none"
         />
         <button
           aria-label={submitLabel}
