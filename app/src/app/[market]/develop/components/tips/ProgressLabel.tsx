@@ -9,14 +9,15 @@ interface ProgressLabelProps {
 /** Centered caption under a stepper circle; emphasis tracks the stage state. */
 export function ProgressLabel({ label, isActive, isCompleted }: ProgressLabelProps) {
   return (
-    <div className="flex flex-1 justify-center px-[4px]">
+    <div className="flex flex-1 min-w-0 justify-center">
       <span
         className={clsx(
-          'inline-block max-w-[88px] text-center text-[12px] leading-[1.25] transition-colors duration-500',
+          'w-full text-center text-xs leading-[1.25] transition-colors duration-500',
           {
             'font-semibold text-[rgba(20,20,40,0.9)]': isActive,
             'text-[rgba(20,20,40,0.75)]': !isActive && isCompleted,
             'text-[rgba(20,20,40,0.4)]': !isActive && !isCompleted,
+            'hidden lg:block': !isActive,
           },
         )}
       >

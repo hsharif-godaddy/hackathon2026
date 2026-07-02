@@ -27,7 +27,7 @@ export function ProgressTrackerCard({ title, timeEstimateMinutes, tip, onPrev, o
 
   return (
     <div className="flex w-full max-w-2xl flex-col items-center px-3">
-      <div className="flex w-full flex-col items-center gap-0 rounded-[20px] bg-[#ffffff] px-[36px] pb-[28px] pt-[32px] shadow-[0_4px_32px_rgba(20,20,40,0.08)]">
+      <div className="flex w-full flex-col items-center gap-0 rounded-2xl bg-[#ffffff] px-2 py-4 sm:px-9 sm:py-8 shadow-[0_4px_32px_rgba(20,20,40,0.08)]">
         {/* Title */}
         <div className="mb-[12px] text-center text-[22px] font-bold leading-[1.3] text-[rgba(20,20,40,0.9)]">
           {title}

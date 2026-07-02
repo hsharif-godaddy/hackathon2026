@@ -67,7 +67,7 @@ export default function BuildProgressTracker() {
       </div>
 
       {/* ── Label row ────────────────────────────────────────── */}
-      <div className="flex" style={{ marginTop: 12 }}>
+      <div className="flex mt-3">
         <div className="flex-none" style={{ width: CAP_PX }} />
         {STAGES.map(({ id, labelKey, labelDefault }, index) => (
           <ProgressLabel
