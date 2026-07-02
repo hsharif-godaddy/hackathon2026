@@ -1401,7 +1401,14 @@ export default function Dashboard() {
                   flags, and the payment/commerce event history. Reads from
                   the agents service via /api/agent/commerce/{appId}. */}
               {visitedTabs.has('commerce') && (
-                <div style={{ display: activeTab === 'commerce' ? 'block' : 'none' }}>
+                <div
+                  style={{
+                    display: activeTab === 'commerce' ? 'block' : 'none',
+                    maxWidth: '1200px',
+                    margin: '0 auto',
+                    width: '100%',
+                  }}
+                >
                   <CommercePanel
                     appId={submittedAppId}
                     refreshKey={refreshKeys.commerce}

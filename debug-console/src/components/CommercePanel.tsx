@@ -22,9 +22,21 @@ interface CommerceBinding {
   updatedAt: string;
 }
 
-interface CommerceBindingResponse {
+interface StripeStatus {
+  detected: boolean;
+  skillInstalled: boolean;
+  configured: boolean;
+  sandboxId: string | null;
+  claimStatus: string | null;
+  lastSeenAt: string | null;
+}
+
+interface CommerceResponse {
   configured: boolean;
   binding: CommerceBinding | null;
+  stripe: StripeStatus;
+  paymentProvider: string;
+  commerceIntent: boolean;
 }
 
 interface Props {
@@ -39,8 +51,15 @@ const PROVIDER_LABELS: Record<string, string> = {
   unknown: 'Unknown',
 };
 
+const CLAIM_STATUS_LABELS: Record<string, string> = {
+  provisioned: 'Provisioned (unclaimed)',
+  claimed: 'Claimed',
+  live: 'Live',
+  legacy: 'Legacy (own key)',
+};
+
 export default function CommercePanel({ appId, refreshKey, onRefresh }: Props) {
-  const [status, setStatus] = useState<CommerceBindingResponse | null>(null);
+  const [status, setStatus] = useState<CommerceResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -55,7 +74,7 @@ export default function CommercePanel({ appId, refreshKey, onRefresh }: Props) {
         if (!res.ok) {
           throw new Error(json?.error || `HTTP ${res.status}`);
         }
-        setStatus(json as CommerceBindingResponse);
+        setStatus(json as CommerceResponse);
       } catch (err) {
         if ((err as Error).name === 'AbortError') return;
         setError(err instanceof Error ? err.message : 'Failed to load commerce binding');
@@ -94,7 +113,7 @@ export default function CommercePanel({ appId, refreshKey, onRefresh }: Props) {
     );
   }
 
-  if (!status || !status.configured || !status.binding) {
+  if (!status) {
     return (
       <div>
         <PanelHeader onRefresh={onRefresh} loading={loading} />
@@ -104,7 +123,16 @@ export default function CommercePanel({ appId, refreshKey, onRefresh }: Props) {
   }
 
   const binding = status.binding;
-  const paymentProvider = binding ? 'godaddy_payments' : 'unknown';
+  const stripe = status.stripe;
+
+  if (!status.commerceIntent && !binding && !stripe.detected) {
+    return (
+      <div>
+        <PanelHeader onRefresh={onRefresh} loading={loading} />
+        <div style={emptyStyle}>No commerce configuration found for this app.</div>
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -114,40 +142,115 @@ export default function CommercePanel({ appId, refreshKey, onRefresh }: Props) {
         <h3 style={cardTitleStyle}>Commerce Overview</h3>
         <div style={gridStyle}>
           <Field label="Commerce Intent">
-            <Badge color="#1d4ed8" bg="#dbeafe">
-              {status.configured ? 'Detected' : 'None'}
+            <Badge
+              color={status.commerceIntent ? '#1d4ed8' : '#6b7280'}
+              bg={status.commerceIntent ? '#dbeafe' : '#f3f4f6'}
+            >
+              {status.commerceIntent ? 'Detected' : 'None'}
             </Badge>
           </Field>
           <Field label="Payment Provider">
             <Badge color="#6b21a8" bg="#f3e8ff">
-              {PROVIDER_LABELS[paymentProvider] ?? paymentProvider}
+              {PROVIDER_LABELS[status.paymentProvider] ?? status.paymentProvider}
             </Badge>
           </Field>
-          <Field label="Status">
-            <StatusBadge value={binding.status} />
-          </Field>
-          <Field label="Connected Store ID">
-            <Mono>{binding.storeId ?? '—'}</Mono>
-          </Field>
-          <Field label="Connected Store Name">{binding.storeName ?? '—'}</Field>
-          <Field label="Connected Channel ID">
-            <Mono>{binding.channelId ?? '—'}</Mono>
-          </Field>
-          <Field label="Connected Business ID">
-            <Mono>{binding.businessId ?? '—'}</Mono>
-          </Field>
-          <Field label="Connected Business Name">{binding.businessName ?? '—'}</Field>
-          <Field label="Source">
-            <Mono>{binding.source}</Mono>
-          </Field>
-          <Field label="Last Verified">
-            {binding.lastVerifiedAt ? formatTimestamp(binding.lastVerifiedAt) : '—'}
-          </Field>
         </div>
-        {binding.verificationError && (
-          <div style={verificationErrorStyle}>Verification error: {binding.verificationError}</div>
-        )}
       </section>
+
+      {stripe.detected && (
+        <section style={cardStyle}>
+          <h3 style={cardTitleStyle}>Stripe</h3>
+          <div style={gridStyle}>
+            <Field label="Provider">
+              <Badge color="#6b21a8" bg="#f3e8ff">
+                {PROVIDER_LABELS.stripe}
+              </Badge>
+            </Field>
+            <Field label="Setup">
+              {stripe.configured ? (
+                <Badge color="#16a34a" bg="#f0fdf4">
+                  Configured
+                </Badge>
+              ) : stripe.skillInstalled ? (
+                <Badge color="#1d4ed8" bg="#dbeafe">
+                  Skill installed
+                </Badge>
+              ) : (
+                <Badge color="#d97706" bg="#fffbeb">
+                  Intent only · not completed
+                </Badge>
+              )}
+            </Field>
+            <Field label="Claim Status">
+              {stripe.claimStatus ? (
+                <StripeClaimBadge value={stripe.claimStatus} />
+              ) : (
+                <span style={{ color: '#6b7280' }}>—</span>
+              )}
+            </Field>
+            <Field label="Sandbox ID">
+              <Mono>{stripe.sandboxId ?? '—'}</Mono>
+            </Field>
+            <Field label="Last Seen">
+              {stripe.lastSeenAt ? formatTimestamp(stripe.lastSeenAt) : '—'}
+            </Field>
+          </div>
+          <div style={sourceNoteStyle}>Derived from agent Stripe logs (Loki).</div>
+        </section>
+      )}
+
+      {binding && (
+        <section style={cardStyle}>
+          <h3 style={cardTitleStyle}>GoDaddy Commerce</h3>
+          <div style={gridStyle}>
+            <Field label="Status">
+              <StatusBadge value={binding.status} />
+            </Field>
+            <Field label="Connected Store ID">
+              <Mono>{binding.storeId ?? '—'}</Mono>
+            </Field>
+            <Field label="Connected Store Name">
+              {binding.storeName ?? binding.businessName ?? '—'}
+              {!binding.storeName && binding.businessName && (
+                <span style={fallbackHintStyle}> (from business)</span>
+              )}
+            </Field>
+            <Field label="Store URL">
+              {binding.storeUrl ? (
+                <a
+                  href={binding.storeUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={linkStyle}
+                >
+                  Open store ↗
+                </a>
+              ) : (
+                '—'
+              )}
+            </Field>
+            <Field label="Connected Channel ID">
+              <Mono>{binding.channelId ?? '—'}</Mono>
+            </Field>
+            <Field label="Connected Channel Name">{binding.channelName ?? '—'}</Field>
+            <Field label="Connected Business ID">
+              <Mono>{binding.businessId ?? '—'}</Mono>
+            </Field>
+            <Field label="Connected Business Name">{binding.businessName ?? '—'}</Field>
+            <Field label="Source">
+              <Mono>{binding.source}</Mono>
+            </Field>
+            <Field label="Last Verified">
+              {binding.lastVerifiedAt ? formatTimestamp(binding.lastVerifiedAt) : '—'}
+            </Field>
+          </div>
+          {binding.verificationError && (
+            <div style={verificationErrorStyle}>
+              Verification error: {binding.verificationError}
+            </div>
+          )}
+        </section>
+      )}
     </div>
   );
 }
@@ -216,6 +319,18 @@ function StatusBadge({ value }: { value: string }) {
   );
 }
 
+function StripeClaimBadge({ value }: { value: string }) {
+  const isGreen = value === 'live' || value === 'claimed';
+  const isAmber = value === 'provisioned';
+  const color = isGreen ? '#16a34a' : isAmber ? '#d97706' : '#6b7280';
+  const bg = isGreen ? '#f0fdf4' : isAmber ? '#fffbeb' : '#f3f4f6';
+  return (
+    <Badge color={color} bg={bg}>
+      {CLAIM_STATUS_LABELS[value] ?? value}
+    </Badge>
+  );
+}
+
 const emptyStyle: React.CSSProperties = {
   color: '#6b7280',
   fontSize: '0.875rem',
@@ -264,9 +379,10 @@ const refreshButtonStyle: React.CSSProperties = {
 };
 
 const cardStyle: React.CSSProperties = {
-  backgroundColor: 'white',
+  backgroundColor: '#f9fafb',
   border: '1px solid #e5e7eb',
   borderRadius: '6px',
+  boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
   padding: '1rem',
   marginBottom: '0.75rem',
 };
@@ -300,4 +416,24 @@ const verificationErrorStyle: React.CSSProperties = {
   borderRadius: '6px',
   fontSize: '0.8rem',
   color: '#dc2626',
+};
+
+const sourceNoteStyle: React.CSSProperties = {
+  marginTop: '0.75rem',
+  fontSize: '0.7rem',
+  color: '#9ca3af',
+  fontStyle: 'italic',
+};
+
+const linkStyle: React.CSSProperties = {
+  color: '#3b82f6',
+  fontSize: '0.8rem',
+  fontWeight: 600,
+  textDecoration: 'none',
+};
+
+const fallbackHintStyle: React.CSSProperties = {
+  color: '#9ca3af',
+  fontSize: '0.7rem',
+  fontStyle: 'italic',
 };
