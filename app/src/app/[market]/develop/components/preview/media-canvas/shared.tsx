@@ -297,25 +297,66 @@ export function ThumbnailMenu({ showModify, onModify, folders, onMoveToFolder, f
 interface FoldersSectionProps {
   folders: MediaFolder[]
   onSelectFolder: (folder: MediaFolder) => void
+  onCreateFolder?: () => void
 }
 
-export function FoldersSection({ folders, onSelectFolder }: FoldersSectionProps) {
+export function FoldersSection({ folders, onSelectFolder, onCreateFolder }: FoldersSectionProps) {
+  const t = useTranslations()
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const [showLeftFade, setShowLeftFade] = useState(false)
+  const [showRightFade, setShowRightFade] = useState(false)
+
+  const updateFades = useCallback(() => {
+    const el = scrollRef.current
+    if (!el) return
+    setShowLeftFade(el.scrollLeft > 4)
+    setShowRightFade(el.scrollLeft + el.clientWidth < el.scrollWidth - 4)
+  }, [])
+
+  useEffect(() => {
+    updateFades()
+    const el = scrollRef.current
+    if (!el) return
+    el.addEventListener('scroll', updateFades, { passive: true })
+    const observer = new ResizeObserver(updateFades)
+    observer.observe(el)
+    return () => { el.removeEventListener('scroll', updateFades); observer.disconnect() }
+  }, [updateFades, folders])
+
   return (
     <section className="mb-1">
       <h2 className="text-lg font-semibold mb-1">Folders</h2>
-      <div className="flex gap-2 overflow-x-auto pb-0">
-        {folders.map((folder) => (
-          <button
-            key={folder.id}
-            type="button"
-            onClick={() => onSelectFolder(folder)}
-            className="media-folder-pill inline-flex items-center gap-[8px] px-3 py-1.5 rounded-[8px] transition-colors text-sm shrink-0 cursor-pointer"
-            style={{ backgroundColor: 'rgba(230, 233, 236, 1)' }}
-          >
-            <FolderIcon className="size-3.5 text-intents-ux-textSubtle-textColor" />
-            <span>{folder.name}</span>
-          </button>
-        ))}
+      <div className="relative">
+        <div ref={scrollRef} className="flex gap-1 overflow-x-auto pb-0 [&::-webkit-scrollbar]:hidden" style={{ scrollbarWidth: 'none' }}>
+          {onCreateFolder && (
+            <button
+              type="button"
+              onClick={onCreateFolder}
+              className="media-folder-pill inline-flex items-center gap-[6px] px-3 py-1.5 rounded-[8px] transition-colors text-sm shrink-0 cursor-pointer border border-dashed border-intents-ux-box-borderColor hover:bg-intents-ux-box-borderColor"
+            >
+              <PlusIcon className="size-3.5" />
+              <span>{t('builder_media_canvas_new_folder', undefined, 'New Folder')}</span>
+            </button>
+          )}
+          {folders.map((folder) => (
+            <button
+              key={folder.id}
+              type="button"
+              onClick={() => onSelectFolder(folder)}
+              className="media-folder-pill inline-flex items-center gap-[8px] px-3 py-1.5 rounded-[8px] transition-colors text-sm shrink-0 cursor-pointer"
+              style={{ backgroundColor: 'rgba(230, 233, 236, 1)' }}
+            >
+              <FolderIcon className="size-3.5 text-intents-ux-textSubtle-textColor" />
+              <span>{folder.name}</span>
+            </button>
+          ))}
+        </div>
+        {showLeftFade && (
+          <div className="pointer-events-none absolute top-0 left-0 h-full w-6" style={{ background: 'linear-gradient(to right, var(--color-intents-ux-box-backgroundColor, #fff) 0%, transparent 100%)' }} />
+        )}
+        {showRightFade && (
+          <div className="pointer-events-none absolute top-0 right-0 h-full w-6" style={{ background: 'linear-gradient(to left, var(--color-intents-ux-box-backgroundColor, #fff) 0%, transparent 100%)' }} />
+        )}
       </div>
     </section>
   )

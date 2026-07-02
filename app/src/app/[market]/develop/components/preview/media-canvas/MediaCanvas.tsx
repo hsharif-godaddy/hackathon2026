@@ -3,7 +3,7 @@
 import '@/app/[market]/develop/components/preview/media-canvas/media-grid.css'
 
 import type { ReactNode } from 'react'
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import Button from '@ux/button'
 import PlusIcon from '@ux/icon/plus'
 import SearchIcon from '@ux/icon/search'
@@ -11,6 +11,7 @@ import Search from '@ux/search'
 
 import { ImageEditorPanel } from '@/app/[market]/develop/components/media/ImageEditorPanel'
 import type { MediaSlot } from '@/app/[market]/develop/components/media/types'
+import type { MediaFormatFilter } from '@/app/[market]/develop/components/preview/media-canvas/GettySearchSection'
 import { GettyResultsGrid, useGettySearch } from '@/app/[market]/develop/components/preview/media-canvas/GettySearchSection'
 import {
   Breadcrumb,
@@ -28,9 +29,12 @@ import { SITE_FILES_FOLDER, useMediaFolders } from '@/hooks/useMediaFolders'
 import { useMediaManifest } from '@/hooks/useMediaManifest'
 import { useMediaUpload } from '@/hooks/useMediaUpload'
 import { useRecentUploads } from '@/hooks/useRecentUploads'
+import { useTranslations } from '@/hooks/useTranslations'
 import { regenerateToken } from '@/lib/jwt-regeneration'
+import { shipAnalyticsLog } from '@/lib/logging'
 import { logger } from '@/lib/request-context'
 import { useServerPollingStore } from '@/stores/useServerPollingStore'
+import { logClickEvent, logImpressionEvent } from '@/utils/instrumentation'
 
 const RECENT_UPLOADS_LIMIT = 30
 
@@ -50,6 +54,7 @@ interface RecentFileEntry {
 }
 
 export function MediaCanvas() {
+  const t = useTranslations()
   const appId = useAppIdFromParams()
   const { manifest, slotNames, isLoading, refetch } = useMediaManifest({ appId: appId || null })
   const { uploads: recentUploads, isLoading: uploadsLoading, refetch: refetchUploads } = useRecentUploads({ appId: appId || null })
@@ -67,7 +72,7 @@ export function MediaCanvas() {
   const importAsSlot = useImportAsSlot(appId || null)
   const { isUploading, uploadError, setUploadError, fileInputRef, triggerFileInput, handleFileSelect, acceptString } = useMediaUpload({
     appId: appId || null,
-    onSuccess: async (): Promise<void> => { await Promise.all([refetch(), refetchUploads()]) },
+    onSuccess: async (): Promise<void> => { shipAnalyticsLog('media.upload.completed', { appId }); await Promise.all([refetch(), refetchUploads()]) },
     onFilesUploaded: async (filenames: string[]): Promise<void> => {
       if (!activeFolder || isSiteFilesActive) return
       for (const filename of filenames) {
@@ -89,6 +94,17 @@ export function MediaCanvas() {
     logPrefix: 'media_canvas',
   })
   const gettySearch = useGettySearch({ appId: appId || '', imagePageSize: 17, videoPageSize: 3, singleModePageSize: 20 })
+
+  // Track canvas open
+  useState(() => { logImpressionEvent('media.canvas.view')(); shipAnalyticsLog('media.canvas.opened', { appId }) })
+
+  // Track search no results
+  useEffect(() => {
+    if (gettySearch.hasSearched && !gettySearch.isSearching && gettySearch.results.length === 0) {
+      logImpressionEvent('media.search.noresults')()
+      shipAnalyticsLog('media.search.no_results', { appId, query: gettySearch.searchQuery, format: gettySearch.formatFilter })
+    }
+  }, [gettySearch.hasSearched, gettySearch.isSearching, gettySearch.results.length])
 
   const handleMoveUploadToFolder = useCallback(async (filename: string, folderId: string): Promise<void> => {
     try {
@@ -123,6 +139,9 @@ export function MediaCanvas() {
   // Folders available as move targets — excludes the active folder and the virtual Site Files entry
   const moveFolders = useMemo(() => allFolders.filter((f) => f.id !== activeFolder?.id && f.id !== SITE_FILES_FOLDER.id), [allFolders, activeFolder])
 
+  // Folders shown in Getty results dropdown — includes active folder so users can save to current folder
+  const gettyTargetFolders = useMemo(() => allFolders.filter((f) => f.id !== SITE_FILES_FOLDER.id), [allFolders])
+
   // Get fresh folder data from the hook (activeFolder state is a stale snapshot)
   const currentFolderSlots = useMemo(() => {
     if (!activeFolder) return []
@@ -134,11 +153,12 @@ export function MediaCanvas() {
   const handleCreateFolder = useCallback(async (name: string) => {
     try {
       await createFolder(name)
+      logClickEvent('media.folders.create')()
       setIsNewFolderModalOpen(false)
     } catch {
       // Error handled by the hook
     }
-  }, [createFolder])
+  }, [appId, createFolder])
 
   // Editor replaces the grid via early return (not the old navigateToSlot dialog flow)
   if (isEditorOpen && editorSlotName && appId) {
@@ -147,8 +167,8 @@ export function MediaCanvas() {
         <ImageEditorPanel
           appId={appId}
           slotName={editorSlotName}
-          onDone={() => { setIsEditorOpen(false); void refetch(); void refetchUploads() }}
-          onCancel={() => setIsEditorOpen(false)}
+          onDone={() => { logClickEvent('media.editor.save')(); setIsEditorOpen(false); void refetch(); void refetchUploads() }}
+          onCancel={() => { logClickEvent('media.editor.cancel')(); setIsEditorOpen(false) }}
         />
       </MediaCanvasShell>
     )
@@ -156,35 +176,36 @@ export function MediaCanvas() {
 
   return (
     <MediaCanvasShell>
-        <div className="p-4">
-          <div className="flex items-center justify-between mb-1">
-            <h1 className="text-2xl font-semibold">Media Library</h1>
+        <div className="p-4" style={{ containerType: 'inline-size' }}>
+          <div className="flex items-center justify-between mb-2">
+            <h1 className="text-2xl font-semibold">{t('builder_chatfiles_media_library', undefined, 'Media Library')}</h1>
             <div className="flex items-center gap-2">
-              <Search
-                id="media-library-search"
-                visualSize="sm"
-                className="w-36 max-w-[200px] h-[38px] [&_.ux-search-clear-button]:!hidden [&_.ux-text-input:only-child]:!rounded-r-none [&_*]:!h-[38px] [&_*]:!min-h-0 [&_*]:!max-h-[38px] [&_input]:!py-0"
-                value={gettySearch.searchQuery}
-                onChange={(value: string) => gettySearch.setSearchQuery(value)}
-                onConfirm={() => { void gettySearch.triggerSearch() }}
-                clearable={false}
-                placeholder="Search media..."
-                button={
-                  <Button
-                    design="primary"
-                    size="small"
-                    className="!px-2 !h-[38px]"
-                    onClick={() => { if (gettySearch.searchQuery.trim()) void gettySearch.triggerSearch() }}
-                    disabled={!gettySearch.searchQuery.trim() || gettySearch.isSearching}
-                    icon={<SearchIcon className="size-2.5" />}
-                    aria-label="Search"
-                  />
-                }
-              />
-              <Button design="secondary" size="small" onClick={() => setIsNewFolderModalOpen(true)} disabled={isCreating} className="!h-[38px]">
-                New Folder
-              </Button>
-              <Button design="primary" size="small" onClick={triggerFileInput} disabled={isUploading} className="!h-[38px] !px-3" icon={<PlusIcon className="size-2.5" />} text="Upload" />
+              <div className="hidden @[640px]:block">
+                <Search
+                  id="media-library-search"
+                  visualSize="sm"
+                  className="w-[204px] max-w-[260px] h-[38px] [&_.ux-search-clear-button]:!hidden [&_.ux-text-input:only-child]:!rounded-r-none [&_*]:!h-[38px] [&_*]:!min-h-0 [&_*]:!max-h-[38px] [&_input]:!py-0"
+                  value={gettySearch.searchQuery}
+                  onChange={(value: string) => gettySearch.setSearchQuery(value)}
+                  onConfirm={() => { logClickEvent('media.canvas.search')(); shipAnalyticsLog('media.search.triggered', { appId, query: gettySearch.searchQuery, format: gettySearch.formatFilter }); void gettySearch.triggerSearch() }}
+                  clearable={false}
+                  placeholder={t('builder_media_canvas_search_placeholder', undefined, 'Search media...')}
+                  button={
+                    <Button
+                      design="primary"
+                      size="small"
+                      className="!px-2 !h-[38px]"
+                      onClick={() => { if (gettySearch.searchQuery.trim()) { logClickEvent('media.canvas.search')(); shipAnalyticsLog('media.search.triggered', { appId, query: gettySearch.searchQuery, format: gettySearch.formatFilter }); void gettySearch.triggerSearch() } }}
+                      disabled={!gettySearch.searchQuery.trim() || gettySearch.isSearching}
+                      icon={<SearchIcon className="size-2.5" />}
+                      aria-label={t('builder_media_canvas_search_action', undefined, 'Search')}
+                    />
+                  }
+                />
+              </div>
+              <div className="hidden @[640px]:block">
+                <Button design="primary" size="small" onClick={() => { logClickEvent('media.canvas.upload')(); shipAnalyticsLog('media.upload.initiated', { appId }); triggerFileInput() }} disabled={isUploading} className="!h-[38px] !px-3" icon={<PlusIcon className="size-2.5" />} text={t('builder_mediaslot_upload', undefined, 'Upload')} />
+              </div>
             </div>
           </div>
 
@@ -194,29 +215,48 @@ export function MediaCanvas() {
             </div>
           )}
 
-          {/* Format filter — above folders */}
-          {!activeFolder && (
-            <div className="mb-1">
-              <select
-                value={gettySearch.formatFilter}
-                onChange={(e) => gettySearch.setFormatFilter(e.target.value as 'all' | 'images' | 'videos')}
-                className="h-[32px] px-2 text-sm rounded-md border border-intents-ux-box-borderColor bg-intents-ux-box-backgroundColor"
-              >
-                <option value="all">All Formats</option>
-                <option value="images">Images</option>
-                <option value="videos">Videos</option>
-              </select>
+          {/* Search + format filter — at <640 search drops here inline with All Formats */}
+          <div className="flex items-center gap-2 mb-1">
+            <div className="flex-1 min-w-0 @[640px]:hidden">
+              <Search
+                id="media-library-search-sm"
+                visualSize="sm"
+                className="h-[38px] [&_.ux-search-clear-button]:!hidden [&_.ux-text-input:only-child]:!rounded-r-none [&_*]:!h-[38px] [&_*]:!min-h-0 [&_*]:!max-h-[38px] [&_input]:!py-0"
+                value={gettySearch.searchQuery}
+                onChange={(value: string) => gettySearch.setSearchQuery(value)}
+                onConfirm={() => { logClickEvent('media.canvas.search')(); shipAnalyticsLog('media.search.triggered', { appId, query: gettySearch.searchQuery, format: gettySearch.formatFilter }); void gettySearch.triggerSearch() }}
+                clearable={false}
+                placeholder={t('builder_media_canvas_search_placeholder', undefined, 'Search media...')}
+                button={
+                  <Button
+                    design="primary"
+                    size="small"
+                    className="!px-2 !h-[38px]"
+                    onClick={() => { if (gettySearch.searchQuery.trim()) { logClickEvent('media.canvas.search')(); shipAnalyticsLog('media.search.triggered', { appId, query: gettySearch.searchQuery, format: gettySearch.formatFilter }); void gettySearch.triggerSearch() } }}
+                    disabled={!gettySearch.searchQuery.trim() || gettySearch.isSearching}
+                    icon={<SearchIcon className="size-2.5" />}
+                    aria-label={t('builder_media_canvas_search_action', undefined, 'Search')}
+                  />
+                }
+              />
             </div>
-          )}
+            <select
+              value={gettySearch.formatFilter}
+              onChange={(e) => { const format = e.target.value as MediaFormatFilter; logClickEvent('media.canvas.filter')(); gettySearch.setFormatFilter(format) }}
+              className="h-[38px] px-2 text-sm rounded-md border border-intents-ux-box-borderColor bg-intents-ux-box-backgroundColor shrink-0"
+            >
+              <option value="all">{t('builder_media_canvas_format_all', undefined, 'All Formats')}</option>
+              <option value="images">{t('builder_media_images', undefined, 'Images')}</option>
+              <option value="videos">{t('builder_media_videos', undefined, 'Videos')}</option>
+            </select>
+          </div>
 
-          {/* Folders section — always shown, even when empty */}
-          {!activeFolder && (
-            <FoldersSection folders={allFolders} onSelectFolder={setActiveFolder} />
-          )}
+          {/* Folders section — always visible */}
+          <FoldersSection folders={allFolders} onSelectFolder={(folder) => { logClickEvent('media.folders.open')(); setActiveFolder(folder) }} onCreateFolder={() => { logClickEvent('media.folders.create')(); setIsNewFolderModalOpen(true) }} />
 
           {/* Breadcrumb — only when inside a folder */}
           {activeFolder && (
-            <Breadcrumb activeFolder={activeFolder} onNavigateRoot={() => setActiveFolder(null)} />
+            <Breadcrumb activeFolder={activeFolder} onNavigateRoot={() => { logClickEvent('media.breadcrumb.root')(); setActiveFolder(null) }} />
           )}
 
           {/* Content */}
@@ -232,7 +272,7 @@ export function MediaCanvas() {
                         return
                       }
                       void moveToFolder({ folderId, slotName })
-                    }} onModify={(slotName) => { setEditorSlotName(slotName); setIsEditorOpen(true) }} onSelect={(n) => { setSelectedSlotName(n); setSelectedUploadId(null); setSelectedGettyUrl(null) }} isSelected={selectedSlotName === name} isInsideFolder={!isSiteFilesActive} onRemoveFromFolder={(slotName) => { if (activeFolder) void removeFromFolder({ folderId: activeFolder.id, slotName }) }} />
+                    }} onModify={(slotName) => { logClickEvent('media.editor.open')(); shipAnalyticsLog('media.editor.opened', { appId, slotName, source: 'folder_view' }); setEditorSlotName(slotName); setIsEditorOpen(true) }} onSelect={(n) => { setSelectedSlotName(n); setSelectedUploadId(null); setSelectedGettyUrl(null) }} isSelected={selectedSlotName === name} isInsideFolder={!isSiteFilesActive} onRemoveFromFolder={(slotName) => { logClickEvent('media.folders.remove')(); if (activeFolder) void removeFromFolder({ folderId: activeFolder.id, slotName }) }} />
                   ))}
               </div>
             </section>
@@ -284,8 +324,10 @@ export function MediaCanvas() {
                     const data = await response.json().catch(() => ({ error: 'Failed to delete upload' }))
                     throw new Error(data.error || 'Failed to delete upload')
                   }
+                  logClickEvent('media.uploads.delete')(); shipAnalyticsLog('media.upload.deleted', { appId, filename })
                   await Promise.all([refetch(), refetchUploads()])
                 } catch (err) {
+                  shipAnalyticsLog('media.upload.deleted_failed', { appId, filename, error: err instanceof Error ? err.message : String(err) })
                   logger.error('media_canvas.delete_upload.error', { appId, filename, error: err instanceof Error ? err.message : String(err) })
                   setUploadError(err instanceof Error ? err.message : 'Failed to delete upload')
                 }
@@ -296,18 +338,64 @@ export function MediaCanvas() {
           {/* Getty Results — shown after user searches, regardless of folder context */}
           {appId && gettySearch.hasSearched && (
             <section className="mb-3">
-              <h2 className="text-lg font-semibold mb-2">Recommendations by <span className="font-bold">getty</span>images</h2>
+              <h2 className="text-lg font-semibold mb-2">{t('builder_media_canvas_getty_heading', undefined, 'Recommendations by <b>getty</b>images').split(/<b>|<\/b>/).map((part, i) => i === 1 ? <span key={i} className="font-bold">{part}</span> : part)}</h2>
               <GettyResultsGrid
                 results={gettySearch.results}
                 gettyIds={gettySearch.gettyIds}
                 videoUrls={gettySearch.videoUrls}
                 isSearching={gettySearch.isSearching}
                 hasSearched={gettySearch.hasSearched}
-                onSelectResult={(result) => { setSelectedGettyUrl(result.url); setSelectedSlotName(null); setSelectedUploadId(null) }}
+                onSelectResult={(result) => { logClickEvent('media.getty.select')(); setSelectedGettyUrl(result.url); setSelectedSlotName(null); setSelectedUploadId(null) }}
                 selectedUrl={selectedGettyUrl}
                 hasMore={gettySearch.hasMore}
                 isLoadingMore={gettySearch.isLoadingMore}
-                onLoadMore={() => { void gettySearch.loadMore() }}
+                onLoadMore={() => { logClickEvent('media.getty.loadmore')(); void gettySearch.loadMore() }}
+                folders={gettyTargetFolders}
+                onModifyResult={(result) => {
+                  logClickEvent('media.editor.open')()
+                  shipAnalyticsLog('media.editor.opened', { appId, source: 'getty' })
+                  void (async () => {
+                    try {
+                      const slotPath: string = await importAsSlot({ imageUrl: result.url })
+                      await refetch()
+                      setEditorSlotName(slotPath)
+                      setIsEditorOpen(true)
+                    } catch (err) {
+                      logger.warn('media_canvas.modify_getty.failed', { appId, error: err instanceof Error ? err.message : String(err) })
+                      setUploadError(t('builder_mediaslot_error_fail_use', undefined, 'Failed to open editor'))
+                    }
+                  })()
+                }}
+                onMoveResultToFolder={(result, folderId) => {
+                  logClickEvent('media.folders.move')()
+                  shipAnalyticsLog('media.folder.moved_to', { appId, folderId, source: 'getty' })
+                  void (async () => {
+                    try {
+                      const slotPath: string = await importAsSlot({ imageUrl: result.url })
+                      await refetch()
+                      if (folderId !== SITE_FILES_FOLDER.id) {
+                        await moveToFolder({ folderId, slotName: slotPath })
+                      }
+                    } catch (err) {
+                      logger.warn('media_canvas.move_getty_to_folder.failed', { appId, folderId, error: err instanceof Error ? err.message : String(err) })
+                      setUploadError(t('builder_media_canvas_move_to_folder_failed', undefined, 'Media was imported but could not be moved to folder. It is available in Site Files.'))
+                    }
+                  })()
+                }}
+                onCreateFolderForResult={async (result, folderName) => {
+                  try {
+                    const newFolder = await createFolder(folderName)
+                    if (!newFolder?.id) {
+                      throw new Error('Folder creation did not return an id')
+                    }
+                    const slotPath: string = await importAsSlot({ imageUrl: result.url })
+                    await refetch()
+                    await moveToFolder({ folderId: newFolder.id, slotName: slotPath })
+                  } catch (err) {
+                    logger.warn('media_canvas.create_folder_for_getty.failed', { appId, folderName, error: err instanceof Error ? err.message : String(err) })
+                    setUploadError(t('builder_media_canvas_move_to_folder_failed', undefined, 'Media was imported but could not be moved to folder. It is available in Site Files.'))
+                  }
+                }}
               />
             </section>
           )}

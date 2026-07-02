@@ -37,11 +37,13 @@ import { useMediaManifest } from '@/hooks/useMediaManifest'
 import { useRecentUploads } from '@/hooks/useRecentUploads'
 import { useTranslations } from '@/hooks/useTranslations'
 import { regenerateToken } from '@/lib/jwt-regeneration'
+import { shipAnalyticsLog } from '@/lib/logging'
 import { logger } from '@/lib/request-context'
 import { uploadImages } from '@/services/file-upload'
 import { useMediaSlotDialogStore } from '@/stores/useMediaSlotDialogStore'
 import { useServerPollingStore } from '@/stores/useServerPollingStore'
 import { compressImageFiles } from '@/utils/image-compression'
+import { logClickEvent, logImpressionEvent } from '@/utils/instrumentation'
 import { postMessageToIframe } from '@/utils/postMessage'
 
 const ACCEPT_STRING = ALL_MEDIA_FORMATS.join(',')
@@ -54,6 +56,10 @@ interface MediaReplacePanelProps {
 export function MediaReplacePanel({ slotName, onClose }: MediaReplacePanelProps) {
   const t = useTranslations()
   const appId = useAppIdFromParams()
+
+  // Track panel open
+  useState(() => { logImpressionEvent('media.replace.view')(); shipAnalyticsLog('media.replace_panel.opened', { appId, slotName }) })
+
   const { manifest, slotNames, refetch } = useMediaManifest({ appId: appId || null })
   const { uploads: recentUploads, isLoading: uploadsLoading, refetch: refetchUploads } = useRecentUploads({ appId: appId || null })
   const { folders, createFolder, isCreating, moveToFolder, removeFromFolder } = useMediaFolders({ appId: appId || null })
@@ -215,6 +221,8 @@ export function MediaReplacePanel({ slotName, onClose }: MediaReplacePanelProps)
 
   const handleUseImage = useCallback(async () => {
     if (!appId || !slot) return
+    logClickEvent('media.replace.start')()
+    shipAnalyticsLog('media.replace.started', { appId, slotName, source: selectedUpload ? 'upload' : selectedGettyResult ? 'getty' : 'slot' })
 
     const forkBody: Record<string, unknown> = { skipFork: true }
 
@@ -306,6 +314,8 @@ export function MediaReplacePanel({ slotName, onClose }: MediaReplacePanelProps)
       }
 
       logger.info('media_replace_panel.swap.success', { appId, slotName })
+      logClickEvent('media.replace.complete')()
+      shipAnalyticsLog('media.replace.completed', { appId, slotName, source: selectedUpload ? 'upload' : selectedGettyResult ? 'getty' : 'slot' })
       await refetch()
       setSelectedSlotName(null)
       setSelectedUpload(null)
@@ -377,6 +387,7 @@ export function MediaReplacePanel({ slotName, onClose }: MediaReplacePanelProps)
         await uploadImages(appId, chunk)
       }
 
+      shipAnalyticsLog('media.upload.completed', { appId, fileCount: allFiles.length, source: 'replace_panel' })
       await Promise.all([refetch(), refetchUploads()])
 
       // If inside a non-virtual folder, import as slots and move into folder
@@ -439,7 +450,7 @@ export function MediaReplacePanel({ slotName, onClose }: MediaReplacePanelProps)
           <MediaSearchBar
             query={gettySearch.searchQuery}
             onQueryChange={gettySearch.setSearchQuery}
-            onSearch={() => { void gettySearch.triggerSearch() }}
+            onSearch={() => { shipAnalyticsLog('media.search.triggered', { appId, query: gettySearch.searchQuery, format: gettySearch.formatFilter, source: 'replace_panel' }); void gettySearch.triggerSearch() }}
             isSearching={gettySearch.isSearching}
             formatFilter={gettySearch.formatFilter}
             onFormatChange={gettySearch.setFormatFilter}
@@ -448,7 +459,7 @@ export function MediaReplacePanel({ slotName, onClose }: MediaReplacePanelProps)
 
         {/* Folders */}
         {!activeFolder && (
-          <FoldersSection folders={allFolders} onSelectFolder={setActiveFolder} />
+          <FoldersSection folders={allFolders} onSelectFolder={setActiveFolder} onCreateFolder={() => setIsNewFolderModalOpen(true)} />
         )}
 
         {/* Breadcrumb — only shown when inside a folder */}
@@ -567,7 +578,7 @@ export function MediaReplacePanel({ slotName, onClose }: MediaReplacePanelProps)
         {/* Recommendations by Getty Images — shown when searched, even inside folders */}
         {appId && gettySearch.hasSearched && (
           <section className="mb-6" ref={gettyResultsRef}>
-            <h2 className="text-lg font-semibold mb-3">Recommendations by <span className="font-bold">getty</span>images</h2>
+            <h2 className="text-lg font-semibold mb-3">{t('builder_media_canvas_getty_heading', undefined, 'Recommendations by <b>getty</b>images').split(/<b>|<\/b>/).map((part, i) => i === 1 ? <span key={i} className="font-bold">{part}</span> : part)}</h2>
             <GettyResultsGrid
               results={gettySearch.results}
               gettyIds={gettySearch.gettyIds}
@@ -618,7 +629,7 @@ export function MediaReplacePanel({ slotName, onClose }: MediaReplacePanelProps)
           onClick={() => { void handleUseImage() }}
           disabled={!hasSelection || isSwapping}
           icon={isSwapping ? <RefreshIcon className="size-3 animate-spin" /> : undefined}
-          text={isSwapping ? 'Replacing...' : (selectedGettyResult?.videoUrl || selectedUpload?.mimeType?.startsWith('video/')) ? 'Use this Video' : 'Use this Image'}
+          text={isSwapping ? t('builder_mediaslot_swapping', undefined, 'Replacing...') : (selectedGettyResult?.videoUrl || selectedUpload?.mimeType?.startsWith('video/')) ? t('builder_mediaslot_use_vid', undefined, 'Use this Video') : t('builder_mediaslot_use_image', undefined, 'Use this Image')}
         />
       </div>
 
