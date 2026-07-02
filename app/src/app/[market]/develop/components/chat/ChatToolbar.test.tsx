@@ -264,13 +264,27 @@ describe('ChatToolbar', () => {
     expect(screen.getByRole('radio', { name: 'builder_chat_toolbar_button_settings' })).toBeInTheDocument();
   });
 
-  it('should render settings menu control in mobile preview mode', () => {
+  it('should render overflow menu in mobile preview mode', () => {
     mockDevelopStore.isMobile = true;
     mockDevelopStore.mobileMode = MobileMode.PREVIEW;
 
     renderWithProviders(<ChatToolbar {...defaultProps} />);
 
-    expect(screen.getByTestId('chat-toolbar-settings-button')).toBeInTheDocument();
+    expect(screen.getByTestId('preview-overflow-menu')).toBeInTheDocument();
+    expect(screen.queryByTestId('chat-toolbar-settings-button')).not.toBeInTheDocument();
+  });
+
+  it('should open overflow sheet when clicking menu trigger in mobile preview mode', async () => {
+    mockDevelopStore.isMobile = true;
+    mockDevelopStore.mobileMode = MobileMode.PREVIEW;
+
+    const { user } = renderWithProviders(<ChatToolbar {...defaultProps} onPreviewRefresh={() => {}} />);
+
+    const menuTrigger = screen.getByTestId('preview-overflow-menu');
+    await user.click(menuTrigger);
+
+    // Sheet should open and show at least one action item
+    expect(screen.getByTestId('preview-overflow-refresh')).toBeInTheDocument();
   });
 
   it('should log toolbar tab clicks via logClickEvent', async () => {

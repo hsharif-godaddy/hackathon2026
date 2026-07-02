@@ -1,21 +1,15 @@
 'use client'
 
-import { AnimatePresence, motion } from 'framer-motion'
 import { useEffect, useMemo, useRef } from 'react'
 import Box from '@ux/box'
 import ChatIcon from '@ux/icon/chat'
-import CodeIcon from '@ux/icon/code'
-import ConversationsIcon from '@ux/icon/conversations'
 import GraphIcon from '@ux/icon/graph'
 import HistoryIcon from '@ux/icon/history'
 import ImageIcon from '@ux/icon/image'
-import InlineEditIcon from '@ux/icon/inline-edit'
-import RefreshIcon from '@ux/icon/refresh'
 import ShowIcon from '@ux/icon/show'
 
 import { ButtonGroup } from '@/app/[market]/develop/components/ButtonGroup'
-import { EditNudgeTooltip } from '@/app/[market]/develop/components/EditNudgeTooltip'
-import IconButton from '@/app/[market]/develop/components/IconButton'
+import PreviewOverflowSheet, { type PreviewOverflowSheetRef } from '@/app/[market]/develop/components/chat/PreviewOverflowSheet'
 import ShareLink from '@/app/[market]/develop/components/layout/ShareLink'
 import SettingsMenu, { SettingsMenuRef } from '@/app/[market]/develop/components/settings/SettingsMenu'
 import { ChatTab, MobileMode, ViewMode } from '@/app/[market]/develop/components/types'
@@ -64,9 +58,8 @@ export default function ChatToolbar({
   const mobileMode = useDevelopPageStore((state) => state.mobileMode);
   const hasUnsavedChanges = useDevelopPageStore((state) => state.hasUnsavedChanges);
   const handleViewModeChange = useDevelopPageStore((state) => state.handleViewModeChange);
-  const isMobileInlineEditActive = useDevelopPageStore((state) => state.isMobileInlineEditActive);
   const toggleMobileInlineEdit = useDevelopPageStore((state) => state.toggleMobileInlineEdit);
-  const inboxBrandId = useDevelopPageStore((state) => state.inboxBrandId)
+  const inboxBrandId = useDevelopPageStore((state) => state.inboxBrandId);
 
   // Use optimistic tab for UI selection state, fall back to URL-based state
   const displayActiveTab = optimisticActiveTab ?? activeChatTab
@@ -74,12 +67,10 @@ export default function ChatToolbar({
   const returnToMain = useGitStore((state) => state.returnToMain);
   const setSelectedCommitHash = useGitStore((state) => state.setSelectedCommitHash);
   const isAnalyticsEnabled = useSwitchboard('appbuilder-analytics');
-  const isEditModeCueEnabled = useSwitchboard('appbuilder-edit-mode-cue') === true;
   const isMobileInlineEditEnabled = useSwitchboard('airo-builder-mobile-inline-edit');
   const isInboxEnabled = useSwitchboard('app-builder-inbox-button');
   const isMediaCanvasEnabled = useSwitchboard(SWITCHBOARD_APPBUILDER_MEDIA_CANVAS) === true;
-  const mobileEditButtonRef = useRef<HTMLDivElement>(null);
-  const { visible: editNudgeVisible, dismissForever: dismissEditNudge } = useEditNudgeTooltip();
+  const { dismissForever: dismissEditNudge } = useEditNudgeTooltip();
 
   const { data: gitHistoryData } = useGitHistoryQuery({
     appId: appId || '',
@@ -92,6 +83,7 @@ export default function ChatToolbar({
   const prevViewModeRef = useRef<ViewMode>(viewMode)
   const prevChatTabRef = useRef<ChatTab>(activeChatTab)
   const settingsMenuRef = useRef<SettingsMenuRef>(null)
+  const previewOverflowRef = useRef<PreviewOverflowSheetRef>(null)
 
   // Auto-return to main branch when:
   useEffect(function autoReturnToMain() {
@@ -239,98 +231,48 @@ export default function ChatToolbar({
         </>
       )}
 
-      {/* PREVIEW mode: View/Code + Wand + Refresh + Domain + Publish */}
+      {/* PREVIEW mode (mobile): [View] [⋮] ... [Share] [Publish] */}
       {showPreviewMode && (
         <>
-          <Box orientation="horizontal" gap="sm">
-            {/* View/Code ButtonGroup */}
-            <ButtonGroup
-              value={viewMode}
-              onChange={(value) => {
-                handleViewModeChange(value as ViewMode, hasUnsavedChanges)
-                const eidMap: Partial<Record<ViewMode, string>> = {
-                  [ViewMode.PREVIEW]: 'develop.chat_toolbar.view',
-                  [ViewMode.CODE]: 'develop.chat_toolbar.code',
-                }
-                const eid = eidMap[value as ViewMode]
-                if (eid) logClickEvent(eid, clickContext)()
+          <ButtonGroup
+            value={viewMode}
+            onChange={(value) => {
+              if (value === 'preview-actions') {
+                previewOverflowRef.current?.toggle()
+                return
+              }
+              handleViewModeChange(value as ViewMode, hasUnsavedChanges)
+              logClickEvent('develop.chat_toolbar.view', clickContext)()
+            }}
+          >
+            <ButtonGroup.Item
+              value={ViewMode.PREVIEW}
+              icon={<ShowIcon className="size-2.5" />}
+              label={t('builder_chat_toolbar_button_view')}
+            />
+            <PreviewOverflowSheet
+              ref={previewOverflowRef}
+              showEdit={isMobileInlineEditEnabled}
+              onEdit={() => {
+                logClickEvent('develop.chat_toolbar.inline_edit', clickContext)()
+                dismissEditNudge()
+                toggleMobileInlineEdit()
               }}
-            >
-              <ButtonGroup.Item
-                value={ViewMode.PREVIEW}
-                icon={<ShowIcon className="size-2.5" />}
-                label={t('builder_chat_toolbar_button_view')}
-              />
-              <ButtonGroup.Item
-                value={ViewMode.CODE}
-                icon={<CodeIcon className="size-2.5" />}
-                label={t('builder_chat_toolbar_button_code')}
-              />
-              {isInboxEnabled && inboxBrandId && (
-                <ButtonGroup.Item
-                  value={ViewMode.INBOX}
-                  icon={<ConversationsIcon className="size-2.5" />}
-                  label={t('builder_preview_button_inbox')}
-                />
-              )}
-            </ButtonGroup>
-
-            <AnimatePresence>
-              {viewMode === ViewMode.PREVIEW && isMobileInlineEditEnabled && (
-                <motion.div
-                  ref={mobileEditButtonRef}
-                  initial={{ x: -20, opacity: 0 }}
-                  animate={{ x: 0, opacity: 1 }}
-                  exit={{ x: -20, opacity: 0 }}
-                  transition={{ duration: 0.2, ease: 'easeInOut', delay: 0.5 }}
-                  className="relative"
-                >
-                  <IconButton
-                    icon={<InlineEditIcon className="size-2.5" />}
-                    onClick={() => {
-                      logClickEvent('develop.chat_toolbar.inline_edit', clickContext)()
-                      dismissEditNudge()
-                      toggleMobileInlineEdit()
-                    }}
-                    label={t('builder_preview_button_edit')}
-                    showLabelWhenActive={false}
-                    active={isMobileInlineEditActive}
-                  />
-                  {isEditModeCueEnabled && editNudgeVisible && (
-                    <EditNudgeTooltip anchorRef={mobileEditButtonRef} placement="top" />
-                  )}
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            <AnimatePresence>
-              {viewMode === ViewMode.PREVIEW && onPreviewRefresh && (
-                <motion.div
-                  initial={{ x: -20, opacity: 0 }}
-                  animate={{ x: 0, opacity: 1 }}
-                  exit={{ x: -20, opacity: 0 }}
-                  transition={{ duration: 0.2, ease: 'easeInOut', delay: 0.5 }}
-                >
-                  <IconButton
-                    icon={<RefreshIcon className="size-2.5" />}
-                    onClick={() => {
-                      logClickEvent('develop.chat_toolbar.refresh', clickContext)()
-                      if (onPreviewRefresh) {
-                        onPreviewRefresh()
-                      }
-                    }}
-                    label={t('builder_preview_button_refresh')}
-                    showLabelWhenActive={false}
-                  />
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </Box>
+              onRefresh={onPreviewRefresh ? () => {
+                logClickEvent('develop.chat_toolbar.refresh', clickContext)()
+                onPreviewRefresh()
+              } : undefined}
+              showInbox={isInboxEnabled === true && !!inboxBrandId}
+              onInbox={() => {
+                logClickEvent('develop.chat_toolbar.inbox', clickContext)()
+                handleViewModeChange(ViewMode.INBOX, hasUnsavedChanges)
+              }}
+            />
+          </ButtonGroup>
 
           <Box orientation="horizontal" gap="sm">
             <ShareLink location="develop.chat_toolbar" />
             <AppPublish location="develop.chat_toolbar" />
-            <SettingsMenu />
           </Box>
         </>
       )}
