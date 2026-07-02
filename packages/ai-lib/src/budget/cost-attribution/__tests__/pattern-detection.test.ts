@@ -7,10 +7,16 @@
 import { describe, it, expect } from 'vitest'
 import {
   detectHighConfidencePatterns,
+  longestSameTypeRun,
   severityCurve,
+  type FileOp,
 } from '../pattern-detection.js'
 import { PatternType, ZERO_PATTERN_COUNTS } from '../types.js'
 import type { ExecutionStep, PatternCounts, StepContentItem } from '../types.js'
+
+function fileOp(toolType: FileOp['toolType'], callId: string, stepIdx: number, filePath = 'src/a.ts'): FileOp {
+  return { callId, toolType, filePath, stepIdx }
+}
 
 // HELPERS
 
@@ -62,6 +68,72 @@ describe('severityCurve', () => {
 
   it('handles threshold of 0', () => {
     expect(severityCurve(5, 0)).toBe(0)
+  })
+})
+
+// LONGEST SAME-TYPE RUN
+
+describe('longestSameTypeRun', () => {
+  it('returns run 1 for verify-interleaved reads [read, edit, read, edit, read]', () => {
+    const ops = [
+      fileOp('read', 'c1', 0),
+      fileOp('edit', 'c2', 1),
+      fileOp('read', 'c3', 2),
+      fileOp('edit', 'c4', 3),
+      fileOp('read', 'c5', 4),
+    ]
+    expect(longestSameTypeRun(ops, 'read').length).toBe(1)
+  })
+
+  it('returns 4 for consecutive reads [read, read, read, read]', () => {
+    const ops = Array.from({ length: 4 }, (_, i) => fileOp('read', `c${i}`, i))
+    expect(longestSameTypeRun(ops, 'read').length).toBe(4)
+  })
+
+  it('edit side: [edit, read, edit, read, edit] returns longest edit-run 1', () => {
+    const ops = [
+      fileOp('edit', 'c1', 0),
+      fileOp('read', 'c2', 1),
+      fileOp('edit', 'c3', 2),
+      fileOp('read', 'c4', 3),
+      fileOp('edit', 'c5', 4),
+    ]
+    expect(longestSameTypeRun(ops, 'edit').length).toBe(1)
+  })
+
+  it('edit side: [edit, edit, edit] returns 3', () => {
+    const ops = Array.from({ length: 3 }, (_, i) => fileOp('edit', `c${i}`, i))
+    expect(longestSameTypeRun(ops, 'edit').length).toBe(3)
+  })
+
+  it('single op returns 1', () => {
+    expect(longestSameTypeRun([fileOp('read', 'c1', 0)], 'read').length).toBe(1)
+  })
+
+  it('empty list returns 0', () => {
+    expect(longestSameTypeRun([], 'read').length).toBe(0)
+  })
+
+  it('ties in stepIdx do not inflate the run beyond the real count', () => {
+    const ops = [
+      fileOp('read', 'c1', 0),
+      fileOp('read', 'c2', 0),
+      fileOp('edit', 'c3', 1),
+    ]
+    expect(longestSameTypeRun(ops, 'read').length).toBe(2)
+  })
+
+  it('returns the callIds of the winning run only, not all ops', () => {
+    const ops = [
+      fileOp('read', 'c1', 0),
+      fileOp('read', 'c2', 1),
+      fileOp('read', 'c3', 2),
+      fileOp('edit', 'c4', 3),
+      fileOp('read', 'c5', 4),
+    ]
+    const run = longestSameTypeRun(ops, 'read')
+    expect(run.length).toBe(3)
+    expect(run.callIds).toEqual(['c1', 'c2', 'c3'])
   })
 })
 
@@ -148,6 +220,100 @@ describe('repeated_edits pattern', () => {
     )
     const { patterns } = detectHighConfidencePatterns(steps)
     expect(patterns.find(p => p.type === PatternType.RepeatedEdits)).toBeUndefined()
+  })
+})
+
+// TEMPORAL COUNTING: verify-interleaved iteration is not a stuck loop
+
+describe('temporal counting (verify-interleaved vs consecutive)', () => {
+  function readStep(): StepContentItem[] {
+    return [toolResult('read_file', { path: 'src/a.ts' })]
+  }
+  function editStep(): StepContentItem[] {
+    return [toolResult('str_replace_based_edit_tool', { command: 'str_replace', path: 'src/a.ts' })]
+  }
+
+  it('productive read iteration does NOT fire repeated_reads (4 reads each separated by an edit)', () => {
+    const steps = [
+      createStep(readStep(), 'r1'),
+      createStep(editStep(), 'e1'),
+      createStep(readStep(), 'r2'),
+      createStep(editStep(), 'e2'),
+      createStep(readStep(), 'r3'),
+      createStep(editStep(), 'e3'),
+      createStep(readStep(), 'r4'),
+    ]
+    const { patterns } = detectHighConfidencePatterns(steps)
+    expect(patterns.find(p => p.type === PatternType.RepeatedReads)).toBeUndefined()
+  })
+
+  it('genuine stuck reads still fire repeated_reads (4 consecutive, no edits) at unchanged severity', () => {
+    const steps = Array.from({ length: 4 }, (_, i) =>
+      createStep([toolResult('read_file', { path: 'src/a.ts' })], `call-${i}`)
+    )
+    const { patterns } = detectHighConfidencePatterns(steps)
+    const pattern = patterns.find(p => p.type === PatternType.RepeatedReads)
+    expect(pattern).toBeDefined()
+    expect(pattern!.severity).toBeCloseTo(0.18, 1)
+  })
+
+  it('productive edit iteration does NOT fire repeated_edits (6 edits interleaved with reads)', () => {
+    const steps = Array.from({ length: 12 }, (_, i) =>
+      i % 2 === 0
+        ? createStep(editStep(), `e${i}`)
+        : createStep([toolResult('read_file', { path: 'src/a.ts' })], `r${i}`)
+    )
+    const { patterns } = detectHighConfidencePatterns(steps)
+    expect(patterns.find(p => p.type === PatternType.RepeatedEdits)).toBeUndefined()
+  })
+
+  it('genuine stuck edits still fire repeated_edits (6 consecutive)', () => {
+    const steps = Array.from({ length: 6 }, (_, i) =>
+      createStep(editStep(), `call-${i}`)
+    )
+    const { patterns } = detectHighConfidencePatterns(steps)
+    const pattern = patterns.find(p => p.type === PatternType.RepeatedEdits)
+    expect(pattern).toBeDefined()
+    expect(pattern!.severity).toBeCloseTo(0.11, 1)
+  })
+
+  it('threshold boundary: run exactly at threshold (3 reads) does not fire', () => {
+    const steps = Array.from({ length: 3 }, (_, i) =>
+      createStep([toolResult('read_file', { path: 'src/a.ts' })], `call-${i}`)
+    )
+    const { patterns } = detectHighConfidencePatterns(steps)
+    expect(patterns.find(p => p.type === PatternType.RepeatedReads)).toBeUndefined()
+  })
+
+  it('max run is taken across files', () => {
+    const steps = [
+      createStep([toolResult('read_file', { path: 'src/a.ts' })], 'a1'),
+      createStep([toolResult('read_file', { path: 'src/a.ts' })], 'a2'),
+      ...Array.from({ length: 4 }, (_, i) =>
+        createStep([toolResult('read_file', { path: 'src/b.ts' })], `b${i}`)
+      ),
+    ]
+    const { patterns } = detectHighConfidencePatterns(steps)
+    const pattern = patterns.find(p => p.type === PatternType.RepeatedReads)
+    expect(pattern).toBeDefined()
+    expect(pattern!.details).toContain('src/b.ts')
+    expect(pattern!.severity).toBeCloseTo(0.18, 1)
+  })
+
+  it('callIds narrow to the firing run, excluding a post-edit verify read', () => {
+    const steps = [
+      createStep([toolResult('read_file', { path: 'src/a.ts' })], 'run1'),
+      createStep([toolResult('read_file', { path: 'src/a.ts' })], 'run2'),
+      createStep([toolResult('read_file', { path: 'src/a.ts' })], 'run3'),
+      createStep([toolResult('read_file', { path: 'src/a.ts' })], 'run4'),
+      createStep(editStep(), 'edit1'),
+      createStep([toolResult('read_file', { path: 'src/a.ts' })], 'verify'),
+    ]
+    const { patterns } = detectHighConfidencePatterns(steps)
+    const pattern = patterns.find(p => p.type === PatternType.RepeatedReads)
+    expect(pattern).toBeDefined()
+    expect(pattern!.callIds).toEqual(['run1', 'run2', 'run3', 'run4'])
+    expect(pattern!.callIds).not.toContain('verify')
   })
 })
 

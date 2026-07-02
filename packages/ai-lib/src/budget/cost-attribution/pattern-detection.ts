@@ -6,8 +6,8 @@
  * Only patterns with severity > 0 are returned as fired patterns.
  *
  * Patterns detected:
- * - repeated_reads: Same file read excessively (threshold: 3)
- * - repeated_edits: Same file edited excessively (threshold: 5)
+ * - repeated_reads: Same file read repeatedly without intervening edits (threshold: 3)
+ * - repeated_edits: Same file edited repeatedly without intervening reads (threshold: 5)
  * - grep_spiral: High-volume searching with empty results (threshold: 5)
  * - terminal_failures: Terminal commands failing with high ratio (threshold: 3)
  * - edit_read_loops: Edit→read→edit cycles on same file (threshold: 3)
@@ -25,6 +25,7 @@ import {
   getToolInput,
   getToolOutput,
   type ExecutionStep,
+  type FileOpKind,
   type PatternCounts,
   type PatternDetectionResult,
   type PatternResult,
@@ -57,9 +58,9 @@ interface TerminalOp {
   stepIdx: number
 }
 
-interface FileOp {
+export interface FileOp {
   callId: string
-  toolType: 'edit' | 'read'
+  toolType: FileOpKind
   filePath: string
   stepIdx: number
 }
@@ -104,6 +105,36 @@ function groupBy<T>(arr: T[], keyFn: (item: T) => string): Map<string, T[]> {
 
 function unique<T>(arr: T[]): T[] {
   return [...new Set(arr)]
+}
+
+/** Longest consecutive run of targetType ops, reset by the opposite type. */
+export interface RunResult {
+  length: number
+  callIds: string[]
+}
+
+export function longestSameTypeRun(
+  ops: FileOp[],
+  targetType: FileOpKind
+): RunResult {
+  const sorted: FileOp[] = [...ops].sort((a, b) => a.stepIdx - b.stepIdx)
+  let maxLength = 0
+  let maxCallIds: string[] = []
+  let runCallIds: string[] = []
+
+  for (const op of sorted) {
+    if (op.toolType === targetType) {
+      runCallIds.push(op.callId)
+      if (runCallIds.length > maxLength) {
+        maxLength = runCallIds.length
+        maxCallIds = [...runCallIds]
+      }
+    } else {
+      runCallIds = []
+    }
+  }
+
+  return { length: maxLength, callIds: maxCallIds }
 }
 
 // OPERATION COLLECTION
@@ -207,23 +238,26 @@ function collectOperations(steps: ExecutionStep[]): CollectedOperations {
 // INDIVIDUAL PATTERN DETECTION
 
 /**
- * Repeated reads: severity_curve(max_reads_same_file, 3)
+ * Repeated reads: severity_curve(max_read_run_same_file, 3)
+ *
+ * Counts the longest run of reads of one file uninterrupted by an edit of that
+ * file, not the raw read count. A verify-after-edit read starts a new run, so
+ * normal "edit, verify, edit, verify" iteration does not inflate the count;
+ * only genuine consecutive re-reading (no intervening progress) trips it.
  */
 function detectRepeatedReads(fileOps: FileOp[]): PatternResult | null {
-  const reads = fileOps.filter(op => op.toolType === 'read')
-  if (reads.length === 0) return null
-
-  const readsByFile = groupBy(reads, op => op.filePath)
+  const opsByFile = groupBy(fileOps, op => op.filePath)
   let maxReads = 0
   let maxFile = ''
   let maxCallIds: string[] = []
 
-  for (const [filePath, ops] of readsByFile) {
+  for (const [filePath, ops] of opsByFile) {
     if (filePath === 'unknown') continue
-    if (ops.length > maxReads) {
-      maxReads = ops.length
+    const run = longestSameTypeRun(ops, 'read')
+    if (run.length > maxReads) {
+      maxReads = run.length
       maxFile = filePath
-      maxCallIds = ops.map(op => op.callId)
+      maxCallIds = run.callIds
     }
   }
 
@@ -241,23 +275,25 @@ function detectRepeatedReads(fileOps: FileOp[]): PatternResult | null {
 }
 
 /**
- * Repeated edits: severity_curve(max_edits_same_file, 5)
+ * Repeated edits: severity_curve(max_edit_run_same_file, 5)
+ *
+ * Same temporal rule as repeated reads, inverted: counts the longest run of
+ * edits uninterrupted by a read of that file, so verify-interleaved editing
+ * does not read as a stuck loop.
  */
 function detectRepeatedEdits(fileOps: FileOp[]): PatternResult | null {
-  const edits = fileOps.filter(op => op.toolType === 'edit')
-  if (edits.length === 0) return null
-
-  const editsByFile = groupBy(edits, op => op.filePath)
+  const opsByFile = groupBy(fileOps, op => op.filePath)
   let maxEdits = 0
   let maxFile = ''
   let maxCallIds: string[] = []
 
-  for (const [filePath, ops] of editsByFile) {
+  for (const [filePath, ops] of opsByFile) {
     if (filePath === 'unknown') continue
-    if (ops.length > maxEdits) {
-      maxEdits = ops.length
+    const run = longestSameTypeRun(ops, 'edit')
+    if (run.length > maxEdits) {
+      maxEdits = run.length
       maxFile = filePath
-      maxCallIds = ops.map(op => op.callId)
+      maxCallIds = run.callIds
     }
   }
 
