@@ -6,6 +6,7 @@ import {
   isTextEditable,
   isBodyTextElement,
   resolveContentKey,
+  resolveConformTarget,
   getMediaSlotPath,
   isTextElement,
   isTextBlockElement,
@@ -730,6 +731,47 @@ describe('element-detection', () => {
       expect(isManagedPath('/about')).toBe(false);
       expect(isManagedPath('/contact')).toBe(false);
       expect(isManagedPath('/pricing')).toBe(false);
+    });
+  });
+
+  // ─── resolveConformTarget ─────────────────────────────────────────────────────
+
+  describe('resolveConformTarget', () => {
+    it('returns {page, arrayName} for the conformable root itself', () => {
+      const el = document.createElement('div');
+      el.setAttribute('data-dev-conformable-array', 'stats');
+      el.setAttribute('data-dev-conformable-page', 'src/pages/index.tsx');
+      document.body.appendChild(el);
+      expect(resolveConformTarget(el)).toEqual({ page: 'src/pages/index.tsx', arrayName: 'stats' });
+      el.remove();
+    });
+
+    it('returns {page, arrayName} for a child inside a conformable root', () => {
+      const host = document.createElement('div');
+      host.setAttribute('data-dev-conformable-array', 'features');
+      host.setAttribute('data-dev-conformable-page', 'src/pages/about.tsx');
+      const child = document.createElement('p');
+      child.textContent = 'child';
+      host.appendChild(child);
+      document.body.appendChild(host);
+      expect(resolveConformTarget(child)).toEqual({ page: 'src/pages/about.tsx', arrayName: 'features' });
+      host.remove();
+    });
+
+    it('returns null when data-dev-conformable-page is missing', () => {
+      const el = document.createElement('div');
+      el.setAttribute('data-dev-conformable-array', 'stats');
+      document.body.appendChild(el);
+      expect(resolveConformTarget(el)).toBeNull();
+      el.remove();
+    });
+
+    it('returns null when neither attribute is present', () => {
+      const el = document.createElement('p');
+      el.textContent = 'plain text';
+      document.body.appendChild(el);
+      expect(resolveConformTarget(el)).toBeNull();
+      el.remove();
     });
   });
 

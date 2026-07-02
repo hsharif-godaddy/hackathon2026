@@ -181,6 +181,12 @@ export interface BusComplianceSectionTogglePayload {
   value: boolean;
 }
 
+/** Payload identifying a conformable array target — mirrors the dev-tools ConformTarget. */
+export interface ConformTarget {
+  page: string;
+  arrayName: string;
+}
+
 // ── Event map ─────────────────────────────────────────────────────────────
 
 export interface BusEventMap {
@@ -249,6 +255,10 @@ export interface BusEventMap {
       prompt: string;
     };
   };
+  /** Sent by dev-tools when the user edits a `.map`-backed array item and the
+   *  page has not yet been conformed to the content layer. The builder runs the
+   *  heal conform and replies with CONFORM_SUCCEEDED or CONFORM_FAILED. */
+  CONFORM_REQUEST: { data: ConformTarget; requestId: string };
 }
 
 export type BusUnsupportedFeature = 'payment' | 'push-notification' | 'oauth-popup';

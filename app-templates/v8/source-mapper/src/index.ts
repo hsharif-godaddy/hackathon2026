@@ -641,6 +641,31 @@ export default function jsxSourceMapper(babel: { types: typeof types }): PluginO
             // Must happen in enter (before child JSX visitors run) so the attrs are present
             // when the JSX visitor checks for existing content-list attributes.
             injectListAttrs(path, frame);
+          } else if (process.env.NODE_ENV !== 'production' && isAnyMapCall(path.node)) {
+            const callee = path.node.callee as types.MemberExpression;
+            if (t.isIdentifier(callee.object)) {
+              const ident: types.Identifier = callee.object;
+              const binding = path.scope.getBinding(ident.name);
+              const init = binding?.path.isVariableDeclarator() ? binding.path.node.init : null;
+              const isLocalObjectArray: boolean =
+                !!init && t.isArrayExpression(init) &&
+                init.elements.length > 0 &&
+                init.elements.every((e) => t.isObjectExpression(e));
+              if (isLocalObjectArray) {
+                const cb = path.node.arguments[0];
+                if (t.isArrowFunctionExpression(cb) || t.isFunctionExpression(cb)) {
+                  const pageRel: string = normalizeFileName(state.filename ?? state.file.opts.filename ?? '');
+                  for (const root of collectCallbackRootElements(cb)) {
+                    const attrs = root.openingElement.attributes;
+                    if (hasAttr(attrs, 'data-dev-conformable-array')) continue;
+                    attrs.push(
+                      t.jsxAttribute(t.jsxIdentifier('data-dev-conformable-array'), t.stringLiteral(ident.name)),
+                      t.jsxAttribute(t.jsxIdentifier('data-dev-conformable-page'), t.stringLiteral(pageRel)),
+                    );
+                  }
+                }
+              }
+            }
           }
         },
         exit(path: NodePath<CallExpression>, state: PluginState) {

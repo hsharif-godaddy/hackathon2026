@@ -17,6 +17,7 @@ import { handle as handleProcessingState } from '@/app/[market]/develop/utils/if
 import { buildDynamicApiUrl } from '@/config/dynamic-api'
 import { agentFetch } from '@/lib/agent-fetch'
 import { logger } from '@/lib/request-context'
+import { appService } from '@/services/AppService'
 import type { AIEditContext, SendMessageOptions } from '@/services/transport/messageTypes'
 import { useCommanderStore } from '@/stores/useCommanderStore'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
@@ -127,6 +128,7 @@ const REGISTERED_TYPES: readonly BusEventType[] = [
   'MEDIA_SLOT_SCROLL_RESULT',
   'PREVIEW_UNSUPPORTED_FEATURE',
   'ANNOTATION_SELECTION_CREATED',
+  'CONFORM_REQUEST',
 ] as const
 
 function getPreviewIframe(): HTMLIFrameElement | null {
@@ -284,6 +286,36 @@ export function useDevToolsBusBindings(deps: DevToolsBusBindingsDeps): void {
           })
           notifyContentEditFailed(cur.t, contentKey, undefined)
           handlePreviewRefresh({ lastIframeState: cur.lastIframeState })
+        }
+      })()
+    })
+
+    // heal runs regardless of cmsInlineEditEnabled (intentional — unlike CONTENT_UPDATED)
+    on('CONFORM_REQUEST', (m) => {
+      const cur = d()
+      logger.info('develop-page.conform-request-from-iframe', { appId: cur.appId, page: m.data.page, arrayName: m.data.arrayName })
+      void (async () => {
+        // Resolve the iframe AFTER the await so we use the live DOM at reply
+        // time, not a potentially stale/replaced reference captured before the
+        // async call. If the iframe is absent at reply time we still attempt
+        // CONFORM_FAILED (best-effort) so the client ref can clear.
+        try {
+          const res = await appService.conformPage(cur.appId, { page: m.data.page })
+          // applied===false means the page was already conformed or has no extractable
+          // arrays — treat as a dead-end so dev-tools doesn't spin waitForContentBacked.
+          // OUTBOUND-to-iframe only — intentionally not in builder BusEventMap
+          const replyType: 'CONFORM_SUCCEEDED' | 'CONFORM_FAILED' =
+            res.ok && res.applied === true ? 'CONFORM_SUCCEEDED' : 'CONFORM_FAILED'
+          const iframe: HTMLIFrameElement | null = getPreviewIframe()
+          if (iframe) postMessageToIframe(iframe, { type: replyType, requestId: m.requestId })
+        } catch (err) {
+          logger.error('develop-page.conform-request.error', {
+            appId: cur.appId,
+            error: err instanceof Error ? err.message : String(err),
+          })
+          // OUTBOUND-to-iframe only — intentionally not in builder BusEventMap
+          const iframe: HTMLIFrameElement | null = getPreviewIframe()
+          if (iframe) postMessageToIframe(iframe, { type: 'CONFORM_FAILED', requestId: m.requestId })
         }
       })()
     })

@@ -1,4 +1,5 @@
 import { safePostMessage } from "./postMessage";
+import { type ConformTarget } from "./element-detection";
 
 /**
  * Cross-iframe `eventBus` — sender side.
@@ -237,6 +238,10 @@ export interface BusEventMap {
       prompt: string;
     };
   };
+  /** Sent when the user clicks a `.map`-backed element that is not yet content-backed.
+   *  The builder runs the heal conform and replies with CONFORM_SUCCEEDED or
+   *  CONFORM_FAILED via raw window 'message' (not the bus — outbound-to-iframe only). */
+  CONFORM_REQUEST: { data: ConformTarget; requestId: string };
 }
 
 export type BusUnsupportedFeature = "payment" | "push-notification" | "oauth-popup";

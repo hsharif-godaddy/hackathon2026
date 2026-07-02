@@ -40,6 +40,7 @@ import {
 // barrel-removal mirror reuses the same wrapper the AI tool uses.
 import * as contentScaffold from '../tools/content-scaffold.js';
 import { getErrorMessage } from '../utils/error.js';
+import { GitUtils } from '../utils/git.js';
 import { createForWorkspace } from '../workspace/index.js';
 import { resolveWorkspaceFiles } from '../workspace/resolve.js';
 import type { CreateForWorkspace } from '../workspace/client.js';
@@ -56,14 +57,28 @@ export interface ConformInput {
   command: PostEditCommand;
   /** Precomputed `command === 'create' && src/pages/*.tsx`. */
   isPageCreate: boolean;
+  /**
+   * 'create' (default) — skip when `!isPageCreate` as before.
+   * 'heal'   — skip the isPageCreate gate; run extractable-check → tryConform
+   *            for the named page regardless of how it was written.
+   */
+  trigger?: 'create' | 'heal';
   workspaceFactory?: WorkspaceFilesFactory;
 }
+
+/** Why a conform declined (not user-facing; used for diagnosability in logs/responses). */
+export type ConformDeclineReason = 'workspace-unavailable' | 'no-extractable' | 'validation-failed';
 
 export interface ConformOutcome {
   /** Conformed-note to append on success; `null` when nothing was conformed. */
   note: string | null;
   /** On-disk page source (post-rollback if applicable) for the caller's advisory pass; `null` when unreadable. */
   source: string | null;
+  /**
+   * Why the conform declined — present iff `note` is null.
+   * Not user-facing; forwarded to the route response and logs for diagnosability.
+   */
+  declineReason?: ConformDeclineReason;
 }
 
 const PARSE_OPTS: { sourceType: 'module'; plugins: ['jsx', 'typescript'] } = {
@@ -214,6 +229,14 @@ async function validateConform(ctx: ValidationContext): Promise<string | null> {
     }
   }
 
+  // 2b. Partial-split arrays must keep their local `<name>Meta` remainder const,
+  //     or the retained (icon/component) render would vanish after conform.
+  for (const partial of plan.arraysWithRetained) {
+    if (!surfaceConsts.has(`${partial.arrayName}Meta`)) {
+      return `rewritten page dropped local remainder \`${partial.arrayName}Meta\``;
+    }
+  }
+
   // 3. Round-trip fidelity: each array re-read from JSON, ids stripped,
   //    deep-equals the PRE-scaffold clone (independent of scaffold's mutation).
   let onDisk: Record<string, unknown>;
@@ -230,6 +253,14 @@ async function validateConform(ctx: ValidationContext): Promise<string | null> {
     // Pre-existing arrays go through scaffold's merge/lock path, which may
     // legitimately keep on-disk values over the inlined ones — structural check
     // only. Newly-introduced arrays must round-trip exactly.
+    //
+    // Second-order alignment gap (documented, not fixed here): for a PARTIAL split
+    // `statsMeta[i]` is source-order (the original array order) while
+    // `content.<name>[i]` is content-order (scaffold's write order, which may
+    // differ if the user has reordered items via the content editor). If a
+    // pre-existing/reordered content array is re-conformed, icon↔text could
+    // misalign at index `i`. Acceptable for now — a full re-conform is a rare
+    // heal path and the user can correct it via the content editor.
     if (ctx.preExistingArrays.has(name)) continue;
     const want: Record<string, unknown>[] = expected[name]!.map(withoutId);
     const got: Record<string, unknown>[] = actual.map((item: unknown): Record<string, unknown> =>
@@ -327,12 +358,13 @@ function conformedNote(plan: ExtractionPlan): string {
  */
 export async function conformPageToContentLayer(input: ConformInput): Promise<ConformOutcome> {
   const { appId, appPath, fullPath, isPageCreate } = input;
+  const trigger: 'create' | 'heal' = input.trigger ?? 'create';
   const factory: WorkspaceFilesFactory = input.workspaceFactory ?? createForWorkspace;
 
   const files: WorkspaceFiles | null = resolveFiles(appId, factory);
   if (files === null) {
     // No usable client — fail-safe: caller leaves the result untouched.
-    return { note: null, source: null };
+    return { note: null, source: null, declineReason: 'workspace-unavailable' };
   }
 
   const pageRel: string = workspaceRelative(appPath, fullPath);
@@ -346,11 +378,12 @@ export async function conformPageToContentLayer(input: ConformInput): Promise<Co
       filePath: pageRel,
       error: getErrorMessage(err),
     });
-    return { note: null, source: null };
+    return { note: null, source: null, declineReason: 'workspace-unavailable' };
   }
-  if (source === null) return { note: null, source: null };
+  if (source === null) return { note: null, source: null, declineReason: 'workspace-unavailable' };
 
-  if (!isPageCreate) return { note: null, source };
+  // heal bypasses the isPageCreate guard; create (default) keeps the existing behaviour.
+  if (trigger !== 'heal' && !isPageCreate) return { note: null, source };
 
   // Cheap gate before the snapshot boundary: any strictly-safe extractable array?
   let hasExtractable: boolean = false;
@@ -359,16 +392,58 @@ export async function conformPageToContentLayer(input: ConformInput): Promise<Co
   } catch (err) {
     logger.info('content-extract.skipped', { appId, filePath: pageRel, reason: getErrorMessage(err) });
   }
-  if (!hasExtractable) return { note: null, source };
+  if (!hasExtractable) return { note: null, source, declineReason: 'no-extractable' };
 
   const note: string | null = await tryConform(files, appId, appPath, pageRel, source);
   if (note !== null) return { note, source: null };
 
   // Declined or rolled back — re-read the restored page for the advisory pass.
   try {
-    return { note: null, source: await readMaybe(files, pageRel) };
+    return {
+      note: null,
+      source: await readMaybe(files, pageRel),
+      declineReason: 'validation-failed',
+    };
   } catch {
-    return { note: null, source: null };
+    return { note: null, source: null, declineReason: 'validation-failed' };
+  }
+}
+
+/**
+ * Commit all files touched by a successful conform so the result survives a
+ * container restart (`git reset --hard`). Mirrors `commitContentFile` in apps.ts:
+ * stages the file set, skips when already committed (no-op), logs on failure.
+ */
+async function commitConform(
+  appId: string,
+  appPath: string,
+  pageRel: string,
+  binding: string,
+  contextLogger: typeof logger,
+): Promise<void> {
+  try {
+    const workspace = createForWorkspace(appId, 'preview');
+    if (!workspace) return;
+    const gitUtils: GitUtils = new GitUtils(workspace.tasks);
+    // Stage all paths the conform may have written: the page, vite config,
+    // all content-layer files (JSON, schema, .d.ts, user-edits lock), and the
+    // barrel path (deletion or absence — git add handles both).
+    const paths: string[] = [
+      pageRel,
+      VITE_CONFIG,
+      `src/content/pages/${binding}.json`,
+      CONTENT_SCHEMAS,
+      CONTENT_DTS,
+      CONTENT_USER_EDITS,
+      CONTENT_BARREL,
+    ];
+    await gitUtils.commitFilesIfChanged(appPath, `chore: conform ${pageRel} to content layer`, paths);
+  } catch (err) {
+    contextLogger.warn('content-extract.conform.commit-failed', {
+      appId,
+      filePath: pageRel,
+      error: getErrorMessage(err),
+    });
   }
 }
 
@@ -494,6 +569,12 @@ async function tryConform(
       binding: plan.binding,
       extracted: plan.extractedNames,
     });
+
+    // Commit all touched paths so the conform survives a container restart
+    // (git reset --hard). Best-effort: a commit failure is logged but does
+    // not roll back the already-validated workspace state.
+    await commitConform(appId, appPath, pageRel, plan.binding, logger);
+
     return conformedNote(plan);
   } catch (err) {
     return await rollback(`unexpected error: ${getErrorMessage(err)}`);

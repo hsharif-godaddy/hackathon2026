@@ -32,6 +32,7 @@ import { TextFixAgent } from '../../agents/text-fix-agent.js';
 import { astImageEditor } from '../../tools/ast-image-editor.js';
 import { editContent } from '../../tools/content-editor.js';
 import { mutateContent, type MutateRequest } from '../../tools/content-mutation.js';
+import { conformPageToContentLayer } from '../../services/content-conform.js';
 import { USER_EDITS_FILE } from '../../tools/content-user-edits.js';
 import { astElementRemover } from '../../tools/ast-element-remover.js';
 import { mediaManifestService } from '../../services/MediaManifestService.js';
@@ -1141,6 +1142,59 @@ router.post('/:id/content/mutate', async (req: Request, res: Response) => {
   } catch (error) {
     const contextLogger = req.params.id ? log.forApp(req.params.id) : logger;
     log.error(contextLogger, 'route.apps.content-mutate.error', error as Error, {});
+    return res.status(500).json({ ok: false, error: { code: 'internal-error', message: 'Internal server error' } });
+  }
+});
+
+/**
+ * POST /apps/:id/content/conform-page - Run the on-edit heal conform for a named page.
+ * Body: { page: string } — must match `src/pages/<name>.tsx`.
+ * Returns: { ok: true, applied: boolean } | { ok: false, error: { code, message } }.
+ *
+ * This route is ADDITIVE — it is not consumed by the paas BFF and does not
+ * change any existing route shape. Protected by the `validateAppOwnership`
+ * middleware already applied via `router.use('/:id([a-z0-9]{10})', ...)`.
+ */
+router.post('/:id/content/conform-page', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    if (!id) {
+      return res.status(400).json({ ok: false, error: { code: 'invalid-key', message: 'App ID is required' } });
+    }
+    const { page } = req.body ?? {};
+    const contextLogger = log.forApp(id);
+    if (typeof page !== 'string' || !/^src\/pages\/[^/]+\.tsx$/.test(page)) {
+      return res.status(400).json({
+        ok: false,
+        error: { code: 'invalid-value', message: 'page (src/pages/*.tsx) is required' },
+      });
+    }
+    const app = appRepo.findById(id);
+    if (!app) {
+      return res.status(404).json({ ok: false, error: { code: 'app-not-found', message: 'App not found' } });
+    }
+    const outcome = await conformPageToContentLayer({
+      appId: id,
+      appPath: app.path,
+      fullPath: path.join(app.path, page),
+      command: 'str_replace',
+      isPageCreate: false,
+      trigger: 'heal',
+    });
+    const applied: boolean = outcome.note !== null;
+    contextLogger.info('route.apps.conform-page.done', {
+      page,
+      applied,
+      ...(outcome.declineReason ? { reason: outcome.declineReason } : {}),
+    });
+    return res.json({
+      ok: true,
+      applied,
+      ...(outcome.declineReason ? { reason: outcome.declineReason } : {}),
+    });
+  } catch (error) {
+    const contextLogger = req.params.id ? log.forApp(req.params.id) : logger;
+    log.error(contextLogger, 'route.apps.conform-page.error', error as Error, {});
     return res.status(500).json({ ok: false, error: { code: 'internal-error', message: 'Internal server error' } });
   }
 });

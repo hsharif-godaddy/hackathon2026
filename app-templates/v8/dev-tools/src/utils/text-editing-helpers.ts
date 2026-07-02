@@ -629,6 +629,72 @@ export function watchTextReflected(
   return () => observer.disconnect();
 }
 
+/** Resolve the nearest content-keyed node at-or-within `el`, or null. */
+function resolveContentKeyAtOrWithin(el: HTMLElement): HTMLElement | null {
+  if (resolveContentKey(el) !== null) return el;
+  const descendant = el.querySelector(
+    "[data-dev-content-key], [data-dev-content-key-template]",
+  ) as HTMLElement | null;
+  if (descendant && resolveContentKey(descendant) !== null) return descendant;
+  return null;
+}
+
+/**
+ * After a CONFORM_SUCCEEDED HMR re-render, poll briefly for the element
+ * matching `selector` to reappear with a content attribution marker (i.e.
+ * resolveContentKey returns non-null). Calls `cb` the moment it does, or
+ * silently times out. Mirrors `watchTextReflected` but watches for the
+ * content-backed signal rather than a specific text value.
+ *
+ * Degrades gracefully: when auto-open proves unreliable the user can
+ * click the now-content-backed element themselves.
+ */
+export function waitForContentBacked(
+  selector: string,
+  cb: (el: HTMLElement) => void,
+  timeoutMs: number,
+): () => void {
+  const check = (): HTMLElement | null => {
+    const el = document.querySelector(selector) as HTMLElement | null;
+    if (!el) return null;
+    return resolveContentKeyAtOrWithin(el);
+  };
+
+  const already = check();
+  if (already) {
+    cb(already);
+    return () => {};
+  }
+
+  let cancelled = false;
+
+  const observer = new MutationObserver(() => {
+    const el = check();
+    if (el) {
+      observer.disconnect();
+      if (timeoutHandle !== null) clearTimeout(timeoutHandle);
+      if (!cancelled) cb(el);
+    }
+  });
+  observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["data-dev-content-key", "data-dev-content-key-template"] });
+
+  // eslint-disable-next-line prefer-const
+  let timeoutHandle: ReturnType<typeof setTimeout> | null = setTimeout(() => {
+    console.debug('[conform] waitForContentBacked timed out', selector);
+    observer.disconnect();
+  }, timeoutMs);
+
+  return () => {
+    if (cancelled) return;
+    cancelled = true;
+    observer.disconnect();
+    if (timeoutHandle !== null) {
+      clearTimeout(timeoutHandle);
+      timeoutHandle = null;
+    }
+  };
+}
+
 // ── Theme color extraction ──
 
 const THEME_TEXT_SELECTOR = "p, h1, h2, h3, h4, h5, h6, span, a, li, button, label";

@@ -20,7 +20,9 @@ import {
   ensureBoldFontLoaded,
   INLINE_TAGS,
   watchTextReflected,
+  waitForContentBacked,
 } from "../text-editing-helpers";
+import { resolveContentKey } from "../element-detection";
 
 vi.mock("../translations", () => ({
   t: (_key: string, fallback: string) => fallback,
@@ -1061,5 +1063,88 @@ describe("watchTextReflected", () => {
     const onReflected = vi.fn();
     watchTextReflected(el, "$8.50", onReflected);
     expect(onReflected).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ── waitForContentBacked ──
+
+describe("waitForContentBacked", () => {
+  const tick = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
+
+  it("fires synchronously with the element itself when the selector element already has a content key (clean-leaf case)", () => {
+    const container = html('<span data-dev-content-key=\'{"key":"hero.title","kind":"copy"}\' id="target">Hello</span>');
+    const span = container.querySelector("span") as HTMLElement;
+    span.id = "wait-target-clean";
+    const cb = vi.fn();
+    waitForContentBacked("#wait-target-clean", cb, 200);
+    expect(cb).toHaveBeenCalledTimes(1);
+    expect(cb).toHaveBeenCalledWith(span);
+  });
+
+  it("fires synchronously with the DESCENDANT when the selector element's content key lives on an inner span (wrapped/adjacent-text case)", () => {
+    // Source-mapper wraps a read adjacent to literal text in a new inner span:
+    //   <p id="outer">  <span data-dev-content-key-template="...">value</span>+  </p>
+    // The selector resolves to <p> (no content-key attr) but the editable node
+    // is the inner <span>. waitForContentBacked must resolve at-or-within and
+    // pass the DESCENDANT to the callback.
+    const container = html(
+      '<p id="wait-target-wrapped">' +
+        '<span data-dev-content-key-template="stats[0].value" data-dev-content-list="stats" data-dev-content-list-index="0">42</span>' +
+        '+' +
+      '</p>',
+    );
+    const outer = container.querySelector("p") as HTMLElement;
+    const inner = container.querySelector("span") as HTMLElement;
+    // Sanity: the outer element itself must NOT resolve a content key.
+    expect(resolveContentKey(outer)).toBeNull();
+    // The inner span has a template key; with a content-list ancestor it resolves.
+    expect(resolveContentKey(inner)).not.toBeNull();
+
+    const cb = vi.fn();
+    waitForContentBacked("#wait-target-wrapped", cb, 200);
+    expect(cb).toHaveBeenCalledTimes(1);
+    expect(cb).toHaveBeenCalledWith(inner);
+  });
+
+  it("fires with the descendant after a DOM mutation adds the content key below the selector element", async () => {
+    const container = html('<p id="wait-target-mutation">placeholder</p>');
+    const outer = container.querySelector("p") as HTMLElement;
+    const cb = vi.fn();
+    waitForContentBacked("#wait-target-mutation", cb, 500);
+    expect(cb).not.toHaveBeenCalled();
+
+    // Simulate HMR re-render: replace content with a content-keyed inner span.
+    outer.innerHTML = '<span data-dev-content-key=\'{"key":"hero.stat","kind":"copy"}\'>99</span>';
+    const inner = outer.querySelector("span") as HTMLElement;
+    await tick();
+    expect(cb).toHaveBeenCalledTimes(1);
+    expect(cb).toHaveBeenCalledWith(inner);
+  });
+
+  it("does not fire when neither the selector element nor any descendant has a content key within the timeout", async () => {
+    vi.useFakeTimers();
+    const container = html('<p id="wait-target-timeout">plain text</p>');
+    // Confirm element is in DOM so selector resolution works.
+    expect(document.querySelector("#wait-target-timeout")).toBe(container.querySelector("p"));
+    const cb = vi.fn();
+    waitForContentBacked("#wait-target-timeout", cb, 100);
+    vi.advanceTimersByTime(200);
+    await Promise.resolve();
+    expect(cb).not.toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
+  it("does not ascend past the selector element to resolve an unrelated sibling's content key", () => {
+    // A sibling with a content key must not trigger the callback — we stay at-or-within.
+    const container = html(
+      '<div>' +
+        '<p id="wait-target-sibling">no key here</p>' +
+        '<span data-dev-content-key=\'{"key":"other.key","kind":"copy"}\'>sibling value</span>' +
+      '</div>',
+    );
+    expect(container.querySelector("#wait-target-sibling")).not.toBeNull();
+    const cb = vi.fn();
+    waitForContentBacked("#wait-target-sibling", cb, 200);
+    expect(cb).not.toHaveBeenCalled();
   });
 });

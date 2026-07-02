@@ -229,14 +229,17 @@ describe('contentRulesPostEditHandler — auto-conform (gates)', () => {
   });
 
   it('nothing extractable: a page with only declinable arrays does not conform and keeps the advisory unchanged', async () => {
+    // Every field is a non-literal component ref, so no field lifts to the
+    // content layer (a partial split still needs at least one literal field).
     const ONLY_DECLINABLE: string = `import { Zap } from 'lucide-react';
 
 const features = [
-  { icon: Zap, title: "A", desc: "d" },
+  { icon: Zap },
+  { icon: Zap },
 ];
 
 export default function HomePage() {
-  return <div>{features.map((f) => <h3 key={f.title}>{f.title}</h3>)}</div>;
+  return <div>{features.map((f, i) => <h3 key={i}><f.icon/></h3>)}</div>;
 }
 `;
     const layout: AppLayout = setupApp('src/pages/index.tsx', ONLY_DECLINABLE);

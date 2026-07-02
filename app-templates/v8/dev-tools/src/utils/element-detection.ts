@@ -326,7 +326,7 @@ export function detectImage(element: HTMLElement): {
   if (bg && bg !== "none") {
     const match = bg.match(/url\(["']?([^"')]+)["']?\)/);
     if (match?.[1])
-      return { isImage: true, imageUrl: match[1], imageElement: element, type: "background" };
+      return { isImage: true, imageUrl: match[1], imageElement: element, type: "background", isVideo: false };
   }
 
   const siblings = element.parentElement ? Array.from(element.parentElement.children) : [];
@@ -387,6 +387,26 @@ export function detectImage(element: HTMLElement): {
   }
 
   return none;
+}
+
+/** Payload identifying a conformable array target — shared by resolveConformTarget,
+ *  CONFORM_REQUEST bus data, and the in-flight PendingConform state. */
+export interface ConformTarget {
+  page: string;
+  arrayName: string;
+}
+
+/**
+ * Resolve the nearest conformable-array ancestor for `element`. Returns the
+ * page file path and array name needed to fire CONFORM_REQUEST, or null when
+ * the element is not inside a conformable array wrapper.
+ */
+export function resolveConformTarget(element: HTMLElement): ConformTarget | null {
+  const host = element.closest("[data-dev-conformable-array]") as HTMLElement | null;
+  if (!host) return null;
+  const arrayName = host.getAttribute("data-dev-conformable-array");
+  const page = host.getAttribute("data-dev-conformable-page");
+  return arrayName && page ? { page, arrayName } : null;
 }
 
 /** Check if a URL is a media slot and extract the slot path */

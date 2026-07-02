@@ -1285,3 +1285,60 @@ describe('jsxSourceMapper — data-dev-editable authoritative marker', () => {
     expect(output).not.toContain('data-dev-editable');
   });
 });
+
+describe('jsxSourceMapper — data-dev-conformable-array heal hint', () => {
+  it('marks a raw local-array .map item as conformable', () => {
+    const code = `const stats = [{ value: 'DOJ', icon: Target }];
+export default function P() { return <>{stats.map((s, i) => <div><span>{s.value}</span></div>)}</>; }`;
+    const out = transform(code, 'src/pages/index.tsx');
+    expect(out).toMatch(/data-dev-conformable-array="stats"/);
+    expect(out).toMatch(/data-dev-conformable-page="src\/pages\/index\.tsx"/);
+  });
+
+  it('does NOT mark content-rooted maps (already attributed)', () => {
+    const code = `import { home } from 'virtual:content';
+export default function P() { return <>{home.stats.map((s, i) => <div><span>{s.value}</span></div>)}</>; }`;
+    const out = transform(code, 'src/pages/index.tsx');
+    expect(out).not.toMatch(/data-dev-conformable-array/);
+    expect(out).toMatch(/data-dev-content-list/); // existing attribution still fires
+  });
+
+  it('does NOT mark a map over a non-array-literal local (e.g. API/derived)', () => {
+    const code = `export default function P({ data }) { return <>{data.map((s, i) => <div>{s.value}</div>)}</>; }`;
+    const out = transform(code, 'src/pages/index.tsx');
+    expect(out).not.toMatch(/data-dev-conformable-array/);
+  });
+
+  it('strips absolute path prefix so data-dev-conformable-page is src-relative', () => {
+    const code = `const items = [{ label: 'A' }];
+export default function P() { return <>{items.map((x, i) => <div>{x.label}</div>)}</>; }`;
+    const out = transform(code, '/workspace/myapp/src/pages/index.tsx');
+    expect(out).toMatch(/data-dev-conformable-page="src\/pages\/index\.tsx"/);
+  });
+
+  it('does NOT mark children of a fragment-returning callback (unwrapToJsxElements skips JSXFragment)', () => {
+    // collectCallbackRootElements → unwrapToJsxElements only handles JSXElement, not JSXFragment,
+    // so a callback returning <><div/><span/></> yields no roots and nothing is marked.
+    const code = `const cards = [{ label: 'A', desc: 'B' }];
+export default function P() { return <>{cards.map((s) => <><div>{s.label}</div><span>{s.desc}</span></>)}</>; }`;
+    const out: string = transform(code, 'src/pages/index.tsx');
+    expect(out).not.toMatch(/data-dev-conformable-array/);
+  });
+
+  it('does NOT mark a map over an empty array literal (length guard)', () => {
+    // isLocalObjectArray requires init.elements.length > 0, so empty arrays are excluded.
+    const code = `const items = [];
+export default function P() { return <>{items.map((x) => <div>{x.label}</div>)}</>; }`;
+    const out: string = transform(code, 'src/pages/index.tsx');
+    expect(out).not.toMatch(/data-dev-conformable-array/);
+  });
+
+  it('does NOT double-mark when data-dev-conformable-array is already present (hasAttr guard)', () => {
+    // The hasAttr check skips elements that already carry the attribute, preventing duplication.
+    const code = `const opts = [{ name: 'X' }];
+export default function P() { return <>{opts.map((o) => <div data-dev-conformable-array="opts">{o.name}</div>)}</>; }`;
+    const out: string = transform(code, 'src/pages/index.tsx');
+    const occurrences: number = (out.match(/data-dev-conformable-array/g) ?? []).length;
+    expect(occurrences).toBe(1);
+  });
+});

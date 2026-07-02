@@ -1232,6 +1232,29 @@ export class AppService {
       })
     }
   }
+
+  /**
+   * Trigger the on-edit heal conform for a named page.
+   *
+   * Calls `POST /apps/:id/content/conform-page` on the agents service.
+   * Returns `{ ok: true, applied }` on success (applied=true when the page
+   * was actually conformed, false when there was nothing to extract).
+   * Returns `{ ok: false }` on any non-2xx response.
+   */
+  async conformPage(appId: string, body: { page: string }): Promise<{ ok: boolean; applied?: boolean }> {
+    const apiUrl = await buildDynamicApiUrl('content/conform-page', appId)
+    const response = await agentFetch(apiUrl, {
+      siteId: appId,
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    if (!response.ok) {
+      logger.warn('app-service.conform-page.failed', { appId, status: response.status })
+      return { ok: false }
+    }
+    return response.json()
+  }
 }
 
 // Export a singleton instance for convenience

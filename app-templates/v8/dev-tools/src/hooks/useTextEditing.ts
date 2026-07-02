@@ -13,7 +13,9 @@ import {
   generateSelector,
   isBodyTextElement,
   resolveContentKey,
+  resolveConformTarget,
   isInsideNavSurface,
+  type ConformTarget,
 } from "../utils/element-detection";
 import { buildContentUpdatePayload } from "../utils/content-edit-payload";
 import InlineLexicalEditor from "../components/InlineLexicalEditor";
@@ -35,11 +37,45 @@ import {
   showIndicator,
   createFixedOverlay,
   watchTextReflected,
+  waitForContentBacked,
   mergeRootAttrsOntoOverlay,
   mergeOriginalClasses,
   injectEditorCss,
   ensureBoldFontLoaded,
 } from "../utils/text-editing-helpers";
+
+export interface PendingConform extends ConformTarget {
+  selector: string;
+  requestId: string;
+}
+
+export function handleConformReply(
+  eventType: string,
+  incomingRequestId: string | undefined,
+  pendingConformRef: { current: PendingConform | null },
+  startEditing: (el: HTMLElement) => void,
+  waitForContentBackedFn: (selector: string, cb: (el: HTMLElement) => void, timeout: number) => () => void,
+  isEditModeActive: boolean,
+): () => void {
+  if (eventType === "CONFORM_SUCCEEDED") {
+    // Ignore stale replies from a previous click (A's reply arriving after user clicked B)
+    if (incomingRequestId !== pendingConformRef.current?.requestId) return () => {};
+    const pend: PendingConform | null = pendingConformRef.current;
+    pendingConformRef.current = null;
+    if (pend && isEditModeActive) {
+      // After HMR re-render, the same element is now content-backed. Poll briefly
+      // for the element to reappear with a content marker, then open it.
+      return waitForContentBackedFn(pend.selector, (el: HTMLElement) => {
+        if (isEditModeActive) startEditing(el);
+      }, 4000);
+    }
+  } else if (eventType === "CONFORM_FAILED") {
+    // Ignore stale failures — don't clear the ref for a different pending conform
+    if (incomingRequestId !== pendingConformRef.current?.requestId) return () => {};
+    pendingConformRef.current = null; // silent — stays shut off, no error surfaced
+  }
+  return () => {};
+}
 
 interface TextEditingState {
   editingElement: HTMLElement | null;
@@ -65,8 +101,10 @@ export function useTextEditing(isEditModeActive: boolean, cmsInlineEditEnabled: 
     stateRef.current = { ...stateRef.current, ...patch };
     setState((prev) => ({ ...prev, ...patch }));
   }, []);
+  const pendingConformRef = useRef<PendingConform | null>(null);
   const pendingSaveRef = useRef<PendingSave | null>(null);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const conformWaitCancelRef = useRef<(() => void) | null>(null);
 
   // Lexical overlay management
   const editorContainerRef = useRef<HTMLDivElement | null>(null);
@@ -551,7 +589,17 @@ export function useTextEditing(isEditModeActive: boolean, cmsInlineEditEnabled: 
       } else {
         target = findEditableContainer(rawTarget, cmsInlineEditEnabled);
       }
-      if (!target) return;
+      if (!target) {
+        const conform = resolveConformTarget(rawTarget);
+        if (conform && !pendingConformRef.current) {
+          e.preventDefault();
+          e.stopPropagation();
+          const requestId: string = Math.random().toString(36).slice(2);
+          pendingConformRef.current = { ...conform, selector: generatePreciseSelector(rawTarget), requestId };
+          send({ type: "CONFORM_REQUEST", data: conform, requestId });
+        }
+        return;
+      }
 
       e.preventDefault();
       e.stopPropagation();
@@ -568,6 +616,18 @@ export function useTextEditing(isEditModeActive: boolean, cmsInlineEditEnabled: 
     const handleEditResult = (event: MessageEvent) => {
       if (!isOriginAllowed(event)) return;
       if (!event.data?.type) return;
+
+      if (event.data.type === "CONFORM_SUCCEEDED" || event.data.type === "CONFORM_FAILED") {
+        conformWaitCancelRef.current = handleConformReply(
+          event.data.type,
+          event.data.requestId as string | undefined,
+          pendingConformRef,
+          startEditing,
+          waitForContentBacked,
+          isEditModeActive,
+        );
+        return;
+      }
 
       const pending = pendingSaveRef.current;
       if (!pending) return;
@@ -625,13 +685,18 @@ export function useTextEditing(isEditModeActive: boolean, cmsInlineEditEnabled: 
 
     window.addEventListener("message", handleEditResult);
     return () => window.removeEventListener("message", handleEditResult);
-  }, [cleanupOverlay, updateState]);
+  }, [cleanupOverlay, updateState, startEditing]);
 
   // ── Cleanup on deactivation ──
 
   useEffect(() => {
-    if (!isEditModeActive && stateRef.current.editingElement) {
-      stopEditing(false);
+    if (!isEditModeActive) {
+      conformWaitCancelRef.current?.();
+      conformWaitCancelRef.current = null;
+      pendingConformRef.current = null;
+      if (stateRef.current.editingElement) {
+        stopEditing(false);
+      }
     }
   }, [isEditModeActive, stopEditing]);
 
@@ -653,6 +718,8 @@ export function useTextEditing(isEditModeActive: boolean, cmsInlineEditEnabled: 
 
   useEffect(() => {
     return () => {
+      conformWaitCancelRef.current?.();
+      conformWaitCancelRef.current = null;
       cleanupEditor();
       cleanupOverlay();
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);

@@ -39,16 +39,18 @@ export default function HomePage() {
 }
 `;
 
-// A page whose only array is declinable (icon holds a non-literal identifier) —
-// the scan must leave it untouched.
+// A page whose only array is genuinely declinable: every field is a non-literal
+// component ref, so nothing lifts to the content layer (a partial split needs at
+// least one literal field). The scan must leave it untouched.
 const DECLINABLE_PAGE: string = `import { Zap } from 'lucide-react';
 
 const features = [
-  { icon: Zap, title: "A", desc: "d" },
+  { icon: Zap },
+  { icon: Zap },
 ];
 
 export default function FeaturesPage() {
-  return <div>{features.map((f) => <h3 key={f.title}>{f.title}</h3>)}</div>;
+  return <div>{features.map((f, i) => <h3 key={i}><f.icon/></h3>)}</div>;
 }
 `;
 
