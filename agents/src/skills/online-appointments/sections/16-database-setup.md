@@ -48,9 +48,18 @@ The `drizzle.config.ts` passes these as individual credentials with `ssl: { reje
 
 ---
 
-## Step 2 — Verify the appointments schema is installed
+## Step 2 — Wire the appointments schema into schema.ts
 
-The online-appointments template installs `src/server/db/schema.ts` with all appointments tables. After `skill({ action: 'install', skill: 'online-appointments' })`, confirm the file exists and contains the appointments schema.
+The online-appointments template installs `src/server/db/schema.appointments.ts` with all appointments table definitions. After `skill({ action: 'install', skill: 'online-appointments' })`:
+
+1. Confirm `src/server/db/schema.appointments.ts` exists.
+2. Open (or create) `src/server/db/schema.ts` and add this line if it is not already present:
+
+```typescript
+export * from './schema.appointments';
+```
+
+`drizzle.config.ts` points at `schema.ts` as its schema entry point — the re-export makes all appointments tables visible to Drizzle without merging the two files. If `schema.ts` already exports other tables, append the line; do not replace existing exports.
 
 The appointments schema defines these tables:
 

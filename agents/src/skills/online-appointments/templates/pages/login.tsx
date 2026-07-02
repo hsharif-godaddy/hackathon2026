@@ -3,11 +3,11 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { CalendarDays, Mail, AlertCircle, ArrowRight, ShieldCheck } from "lucide-react";
+import { CalendarDays, Mail, AlertCircle, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth, AuthProvider } from "@/contexts/AuthContext";
 import { useAppConfig } from "@/contexts/AppConfigContext";
 import PasswordInput from "@/components/admin/auth/PasswordInput";
 
@@ -17,7 +17,7 @@ const schema = z.object({
 });
 type FormData = z.infer<typeof schema>;
 
-export default function LoginPage() {
+function LoginPageInner() {
   const { login, isAuthenticated, isLoading } = useAuth();
   const { brand } = useAppConfig();
   const BrandIcon = brand.icon ?? CalendarDays;
@@ -165,5 +165,13 @@ export default function LoginPage() {
         </p>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <AuthProvider>
+      <LoginPageInner />
+    </AuthProvider>
   );
 }

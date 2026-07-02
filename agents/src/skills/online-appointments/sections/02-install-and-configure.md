@@ -32,7 +32,23 @@ Read `src/appointment-features.json`. Based on discovery answers, set each featu
 
 ---
 
-## Step 4 — Wire API client exports
+## Step 4 — Add AuthProvider to App.tsx
+
+Customer authentication (`/login`, `/signup`, `/my-bookings`) requires `AuthProvider` to be in the app tree. Read `src/App.tsx` and add it wrapping `RouterProvider` if not already present:
+
+```tsx
+import { AuthProvider } from "./contexts/AuthContext";
+// wrap RouterProvider:
+<AuthProvider>
+  <RouterProvider router={router} />
+</AuthProvider>
+```
+
+`AuthProvider` must wrap `RouterProvider` so the site header and all customer-facing pages share the same auth session. Without this, `useAuth` will throw on the login page, signup page, my-bookings page, and anywhere the header renders.
+
+---
+
+## Step 5 — Wire API client exports
 
 Edit `src/lib/api-client.ts` and add a re-export of the appointments client so all appointments API functions are accessible app-wide:
 
@@ -54,10 +70,13 @@ Add `export * from './appointments-client';` to the file.
 | Button / link | Destination | Notes |
 |---|---|---|
 | "Book Now" or "Book" | `/book` | Primary CTA — must be prominent, ideally a filled button |
-| "Sign In" | `/login` | For customers to log into their portal |
-| "Sign Up" | `/signup` | For new customers to create an account |
-| "My Bookings" | `/my-bookings` | Show only when the customer is authenticated |
-| "Staff Login" or "Staff" | `/admin/login` | Subtle link — icon-only or small text; not a primary CTA |
+| "Sign In" | `/login` | Only when `customer.my_bookings` is enabled — single button, not two side-by-side |
+| "My Bookings" | `/my-bookings` | Only when `customer.my_bookings` is enabled AND authenticated |
+| "Staff" / shield icon | `/admin/login` | Always — subtle, footer or faint nav icon only, never a prominent button |
+
+Sign Up does not need its own header button — the login page links to it. Two auth buttons side by side in the header looks cluttered.
+
+For full wiring details and UX patterns (dropdown vs single button, mobile menu, admin link placement), load `10-feature-customer-portal` when enabling the customer portal.
 
 Check each one: if it already exists, verify it points to the right path. If it's missing, add it. Never duplicate an existing link — read first, then decide.
 

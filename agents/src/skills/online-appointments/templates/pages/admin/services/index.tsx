@@ -10,7 +10,6 @@ import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import {
   Clock,
-  DollarSign,
   Eye,
   EyeOff,
   Plus,

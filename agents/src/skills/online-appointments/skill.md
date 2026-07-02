@@ -42,6 +42,9 @@ Communicate only outcomes and questions. Tell the user what is being built or wh
 | "I need to edit `src/appointment-features.json` to enable `admin.coupons`" | "I'll turn on discount codes for you" |
 | "The API endpoint is `/api/appointments/public/services`" | "I'll pull your real services from the system" |
 | "I'm setting `customer.my_bookings: true` in the feature flags" | "I'll add the customer login portal" |
+| Listing routes at the end: "/login — sign in, /signup — create account, /my-bookings — view bookings" | Show what the user will see in the UI — e.g. "Sign In button is now in your header" |
+
+**Never end a task by listing URLs.** The user wants working UI, not a route map. If a feature adds buttons or pages, describe what they can now click — not where the pages live.
 
 When you do speak to the user, use plain business language — the language of their industry, not the language of code.
 

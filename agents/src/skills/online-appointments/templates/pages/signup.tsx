@@ -7,7 +7,7 @@ import { CalendarDays, Mail, User, AlertCircle, ArrowRight } from "lucide-react"
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth, AuthProvider } from "@/contexts/AuthContext";
 import { useAppConfig } from "@/contexts/AppConfigContext";
 import PasswordInput from "@/components/admin/auth/PasswordInput";
 import PasswordStrength from "@/components/admin/auth/PasswordStrength";
@@ -20,7 +20,7 @@ const schema = z.object({
 });
 type FormData = z.infer<typeof schema>;
 
-export default function SignupPage() {
+function SignupPageInner() {
   const { signup, isAuthenticated, isLoading } = useAuth();
   const { brand } = useAppConfig();
   const BrandIcon = brand.icon ?? CalendarDays;
@@ -202,5 +202,13 @@ export default function SignupPage() {
         </p>
       </div>
     </div>
+  );
+}
+
+export default function SignupPage() {
+  return (
+    <AuthProvider>
+      <SignupPageInner />
+    </AuthProvider>
   );
 }

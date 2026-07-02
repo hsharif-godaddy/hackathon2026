@@ -140,6 +140,7 @@ const router = createBrowserRouter([
 ```
 
 **Common mistakes:**
+- Importing `AdminLayout` as a named import (`{ AdminLayout }`) — it is a **default export**. Use `import AdminLayout from "./layouts/AdminLayout"` or `lazy(() => import("./layouts/AdminLayout"))`.
 - Nesting admin routes inside `RootLayout` — they will render with the public header/footer around them.
 - Creating a `ProtectedAdminRoute` component and wrapping `AdminLayout` with it — `ProtectedAdminRoute` calls `useAdminAuth()` but sits outside `AdminLayout` which owns `AdminAuthProvider`, causing "useAdminAuth must be used within AdminAuthProvider". **Do not create `ProtectedAdminRoute`. `AdminLayout` handles auth protection internally.**
 - Adding `AdminAuthProvider` to `App.tsx` or `RootLayout` separately — `AdminLayout` already includes it; a duplicate provider causes context conflicts.

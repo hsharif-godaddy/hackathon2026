@@ -61,6 +61,37 @@ When `my_bookings` is **enabled**:
 
 ---
 
+## Wire navigation in the site header — do this now, do not just describe it
+
+Read `src/layouts/parts/Header.tsx`. Make the following code changes directly. Do not summarise the routes to the user — they want to see buttons, not a list of paths.
+
+**Step 1 — Add imports at the top of `Header.tsx`:**
+- `useFeatureFlags` from `@/contexts/FeatureFlagsContext`
+- `useAuth` from `@/contexts/AuthContext` (if not already present)
+
+**Step 2 — Inside the component, read the flag:**
+```tsx
+const { isEnabled } = useFeatureFlags();
+const hasPortal = isEnabled("customer.my_bookings");
+const { user, isAuthenticated, logout } = useAuth();
+```
+
+**Step 3 — Add to the desktop nav (conditionally):**
+- If `hasPortal && isAuthenticated`: show a "My Bookings" nav link → `/my-bookings`
+- If `hasPortal && !isAuthenticated`: show a single "Sign In" button → `/login`
+- If `hasPortal && isAuthenticated`: show user's name + "Sign Out" button (replaces Sign In)
+- Do NOT add Sign Up as a separate header button — the login page already links to it
+
+**Step 4 — Staff login link:**
+- Add a subtle staff link at the END of the nav — a small `ShieldCheck` icon or "Staff" text that navigates to `/admin/login`
+- Never make it a prominent button alongside Book Now — it must be understated
+
+**Step 5 — Repeat the same conditional logic in the mobile menu**
+
+**Step 6 — After editing:** do not list routes to the user. Instead confirm the feature is live by describing what they will see in the UI — e.g. "The Sign In button now appears in your header when logged out, and shows your name with a Sign Out option when logged in."
+
+---
+
 ## Customize
 
 ### Cancellation window

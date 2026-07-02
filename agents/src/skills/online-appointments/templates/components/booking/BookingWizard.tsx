@@ -37,6 +37,7 @@ interface ServiceInfoPanelProps {
   selectedDate?: Date;
   selectedTime?: string;
   selectedStaffId?: string;
+  currency: string;
 }
 
 function ServiceInfoPanel({
@@ -45,6 +46,7 @@ function ServiceInfoPanel({
   selectedDate,
   selectedTime,
   selectedStaffId,
+  currency,
 }: ServiceInfoPanelProps) {
   const visibleCategories = (service.categories ?? []).filter((c) => c.name);
   const selectedStaff = selectedStaffId ? staff.find((s) => s.id === selectedStaffId) : undefined;
@@ -257,6 +259,7 @@ export function BookingWizard({
               selectedDate={selectedDate}
               selectedTime={selectedTime}
               selectedStaffId={selectedStaffId}
+              currency={currency}
             />
           </div>
 
