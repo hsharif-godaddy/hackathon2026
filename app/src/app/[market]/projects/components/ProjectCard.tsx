@@ -375,7 +375,7 @@ export default function ProjectCard({
           aria-label={t('builder_apps_menu_actions')}
           data-testid="project-card-menu-button"
         />
-        <MenuList stretch>
+        <MenuList stretch placement="bottom-end" flip>
           <MenuItem href={editHref} isLink data-eid={generateClickEID('projects.card.menu_edit')}>
             <Box orientation="horizontal" gap="sm">
               <EditIcon />

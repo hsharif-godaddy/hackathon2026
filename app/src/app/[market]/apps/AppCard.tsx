@@ -603,7 +603,7 @@ export default function AppCard({ site, transferAllowed = false }: { site: SiteI
           size="sm"
           icon={<MenuIcon />}
         />
-        <MenuList stretch>
+        <MenuList stretch placement="bottom-end" flip>
           <MenuItem
             data-eid={generateClickEID('apps.app.menu_edit')}
             href={`/develop/${site.id}?siteId=${site.id}`}

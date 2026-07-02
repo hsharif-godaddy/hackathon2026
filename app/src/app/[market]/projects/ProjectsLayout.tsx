@@ -98,7 +98,7 @@ export default function ProjectsLayout({ sites, transferAllowed = false, onCreat
                 aria-label={t('builder_apps_menu_actions')}
                 data-testid="projects-header-menu-button"
               />
-              <MenuList stretch>
+              <MenuList stretch placement="bottom-end" flip>
                 <MenuItem
                   onClick={() => setIsAcceptOpen(true)}
                   data-eid={generateClickEID('projects.header.accept_transfer')}
