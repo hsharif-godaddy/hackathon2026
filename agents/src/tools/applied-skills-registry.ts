@@ -9,7 +9,7 @@
  *
  * ─── Layer 1: Installed skills ────────────────────────────────────────────────
  *   Records which skills have had their templates scaffolded into the app.
- *   Stored in: <appPath>/.airo/applied-skills.json
+ *   Stored in: <workspace>/.airo/applied-skills.json
  *
  * ─── Layer 2: Current state (mutable, skill-owned) ───────────────────────────
  *   Skills write their own state file reflecting CURRENT configuration.
@@ -17,20 +17,30 @@
  *   Handles modification scenarios (e.g., Google OAuth replaced with GitHub):
  *   the skill tool overwrites its state.json when configuration changes, so the
  *   LLM always sees the current setup, not a historical log of past actions.
- *   Stored in: <appPath>/.airo/skills/<skillName>/state.json
+ *   Stored in: <workspace>/.airo/skills/<skillName>/state.json
  *   Written by: individual skill tools via writeSkillState()
  *
  * What is NOT recorded: tool invocation history. Audit logs of which tools were
  * called are misleading after configuration changes — e.g. switching from GitHub
  * to Google OAuth would leave stale GitHub entries in the log. The current state
  * written by writeSkillState() is the authoritative source of truth.
+ *
+ * Persistence boundary: all file I/O goes through the Workspace File API
+ * (`createForWorkspace(appId, 'preview').files`) rather than `node:fs`. Paths are
+ * workspace-relative POSIX. The write endpoint creates parent directories and
+ * writes atomically (tmp + same-dir rename) server-side, so no client-side
+ * mkdir or temp-file dance is needed — a single `write()` is atomic.
  */
 
-import { join } from 'node:path';
-import { promises as fs } from 'node:fs';
 import { logger } from '../logging/index.js';
+import { createForWorkspace } from '../workspace/index.js';
+import { WorkspaceUnavailableError } from '../workspace/errors.js';
+import { isDevSupervisorNotFound } from '../services/DevSupervisorClient.js';
+import type { CreateForWorkspace } from '../workspace/client.js';
+import type { WorkspaceFiles } from '../workspace/files.js';
 
 const REGISTRY_FILE_VERSION = 1;
+const APPLIED_SKILLS_PATH = '.airo/applied-skills.json';
 
 export interface AppliedSkillEntry {
   /** ISO timestamp of the first `skill install` call for this skill in this app. */
@@ -44,50 +54,72 @@ interface AppliedSkillsFile {
   skills: Record<string, AppliedSkillEntry>;
 }
 
+function skillStatePath(skillName: string): string {
+  return `.airo/skills/${skillName}/state.json`;
+}
+
+/**
+ * Resolve the preview workspace's file API for an app, or throw
+ * WorkspaceUnavailableError when no bindable supervisor exists.
+ */
+function resolveWorkspaceFiles(appId: string, workspaceFactory: CreateForWorkspace): WorkspaceFiles {
+  const workspace = workspaceFactory(appId, 'preview');
+  if (!workspace) {
+    throw new WorkspaceUnavailableError(appId, 'preview');
+  }
+  return workspace.files;
+}
+
 export class AppliedSkillsRegistry {
-  /** appPath → Map<skillName, entry> */
-  private byAppPath = new Map<string, Map<string, AppliedSkillEntry>>();
+  private readonly workspaceFactory: CreateForWorkspace;
+
+  /** appId → Map<skillName, entry> */
+  private byAppId = new Map<string, Map<string, AppliedSkillEntry>>();
   private hydrationPromises = new Map<string, Promise<void>>();
-  private persistChainByAppPath = new Map<string, Promise<void>>();
+  private persistChainByAppId = new Map<string, Promise<void>>();
   /**
-   * Serializes concurrent mergeSkillState calls per (appPath, skillName).
-   * Key: `${appPath}::${skillName}`
+   * Serializes concurrent mergeSkillState calls per (appId, skillName).
+   * Key: `${appId}::${skillName}`
    */
   private stateWriteChain = new Map<string, Promise<Record<string, unknown> | undefined>>();
+
+  constructor(workspaceFactory: CreateForWorkspace = createForWorkspace) {
+    this.workspaceFactory = workspaceFactory;
+  }
 
   /**
    * Record that a skill's templates were installed into the app.
    * Idempotent: the installedAt timestamp is set only on the first call.
    */
-  recordInstall(skillName: string, appPath: string): void {
-    const skills = this.getOrCreate(appPath);
-    const existing = skills.get(skillName) ?? {};
+  recordInstall(skillName: string, appId: string): void {
+    const skills = this.getOrCreate(appId);
+    const existing: AppliedSkillEntry = skills.get(skillName) ?? {};
     skills.set(skillName, {
       ...existing,
       installedAt: existing.installedAt ?? new Date().toISOString(),
     });
-    this.schedulePersist(appPath);
-    logger.info('applied_skills.install.recorded', { skillName, appPath });
+    this.schedulePersist(appId);
+    logger.info('applied_skills.install.recorded', { skillName, appId });
   }
 
   /**
    * Record that a skill's full workflow has been completed in the app.
    * Idempotent: the completedAt timestamp is set only on the first call.
    */
-  recordComplete(skillName: string, appPath: string): void {
-    const skills = this.getOrCreate(appPath);
-    const existing = skills.get(skillName) ?? {};
+  recordComplete(skillName: string, appId: string): void {
+    const skills: Map<string, AppliedSkillEntry> = this.getOrCreate(appId);
+    const existing: AppliedSkillEntry = skills.get(skillName) ?? {};
     skills.set(skillName, {
       ...existing,
       completedAt: existing.completedAt ?? new Date().toISOString(),
     });
-    this.schedulePersist(appPath);
-    logger.info('applied_skills.complete.recorded', { skillName, appPath });
+    this.schedulePersist(appId);
+    logger.info('applied_skills.complete.recorded', { skillName, appId });
   }
 
   /** Return all installed skill entries for an app. */
-  getInstalledSkills(appPath: string): Map<string, AppliedSkillEntry> {
-    return this.byAppPath.get(appPath) ?? new Map();
+  getInstalledSkills(appId: string): Map<string, AppliedSkillEntry> {
+    return this.byAppId.get(appId) ?? new Map();
   }
 
   /**
@@ -97,22 +129,31 @@ export class AppliedSkillsRegistry {
    * the skill has not written any state. The schema is skill-defined — the
    * registry treats it as an opaque value and passes it through to the LLM.
    *
-   * Path: <appPath>/.airo/skills/<skillName>/state.json
+   * Path: <workspace>/.airo/skills/<skillName>/state.json
    */
-  async readSkillState(skillName: string, appPath: string): Promise<Record<string, unknown> | null> {
-    const file = join(appPath, '.airo', 'skills', skillName, 'state.json');
+  async readSkillState(skillName: string, appId: string): Promise<Record<string, unknown> | null> {
+    const path: string = skillStatePath(skillName);
     try {
-      const raw = await fs.readFile(file, 'utf8');
-      const parsed = JSON.parse(raw);
+      const files: WorkspaceFiles = resolveWorkspaceFiles(appId, this.workspaceFactory);
+      const result = await files.view({ path });
+      const parsed: unknown = JSON.parse(result.content);
       if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
         return parsed as Record<string, unknown>;
       }
       return null;
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+      // A missing state file is the "no persisted state" case — return null.
+      if (isDevSupervisorNotFound(error)) return null;
+      // An unbound preview supervisor is an expected-transient state (e.g. just
+      // after app creation), not a real error — log at debug so it does not add
+      // per-turn warn noise; still treated as "no persisted state".
+      if (error instanceof WorkspaceUnavailableError) {
+        logger.debug('applied_skills.state.workspace_unavailable', { skillName, appId });
+        return null;
+      }
       logger.warn('applied_skills.state.read_failed', {
         skillName,
-        appPath,
+        appId,
         error: error instanceof Error ? error.message : String(error),
       });
       return null;
@@ -122,7 +163,7 @@ export class AppliedSkillsRegistry {
   /**
    * Atomically merge a state patch into a skill's state file.
    *
-   * Concurrent calls for the same (appPath, skillName) are serialized via a
+   * Concurrent calls for the same (appId, skillName) are serialized via a
    * per-key promise chain — the same pattern used by schedulePersist for
    * applied-skills.json. This prevents a lost-update race where two tools of
    * the same skill fire concurrently: both read the same existing state, then
@@ -132,17 +173,17 @@ export class AppliedSkillsRegistry {
    * method guarantees those fields are shallow-merged without dropping keys
    * written by other tools of the same skill.
    */
-  mergeSkillState(skillName: string, appPath: string, patch: Record<string, unknown>): Promise<Record<string, unknown> | undefined> {
-    const key = `${appPath}::${skillName}`;
-    const prev = this.stateWriteChain.get(key) ?? Promise.resolve(undefined);
-    const next = prev.then(() => this.applyStatePatch(skillName, appPath, patch)).catch(() => undefined);
+  mergeSkillState(skillName: string, appId: string, patch: Record<string, unknown>): Promise<Record<string, unknown> | undefined> {
+    const key: string = `${appId}::${skillName}`;
+    const prev: Promise<Record<string, unknown> | undefined> = this.stateWriteChain.get(key) ?? Promise.resolve(undefined);
+    const next: Promise<Record<string, unknown> | undefined> = prev.then(() => this.applyStatePatch(skillName, appId, patch)).catch(() => undefined);
     this.stateWriteChain.set(key, next);
     return next;
   }
 
   private async applyStatePatch(
     skillName: string,
-    appPath: string,
+    appId: string,
     patch: Record<string, unknown>
   ): Promise<Record<string, unknown>> {
     // Guarantee a registry entry exists so the skill surfaces in the applied-skills
@@ -150,12 +191,12 @@ export class AppliedSkillsRegistry {
     // Guidance-only skills (e.g. online-conferencing) define computeState tools but
     // never copy templates, so applied-skills.json would otherwise have no entry for
     // them and their state would be written to disk but never injected into the LLM.
-    if (!this.getOrCreate(appPath).has(skillName)) {
-      this.recordInstall(skillName, appPath);
+    if (!this.getOrCreate(appId).has(skillName)) {
+      this.recordInstall(skillName, appId);
     }
-    const existing = await this.readSkillState(skillName, appPath) ?? {};
-    const merged = { ...existing, ...patch };
-    await writeSkillState(skillName, appPath, merged);
+    const existing: Record<string, unknown> = await this.readSkillState(skillName, appId) ?? {};
+    const merged: Record<string, unknown> = { ...existing, ...patch };
+    await writeSkillState(skillName, appId, merged, this.workspaceFactory);
     return merged;
   }
 
@@ -167,29 +208,37 @@ export class AppliedSkillsRegistry {
    * applied-skills.json is mutable — skills are installed and state is written
    * while the process is running, so we must re-read on every turn.
    *
-   * Concurrent callers for the same appPath share a single in-flight read to
+   * Concurrent callers for the same appId share a single in-flight read to
    * avoid redundant disk I/O within a single context-loading cycle.
    * Missing or unreadable files are silently ignored.
    */
-  hydrateFromAppPath(appPath: string): Promise<void> {
-    let inFlight = this.hydrationPromises.get(appPath);
+  hydrateFromAppId(appId: string): Promise<void> {
+    const inFlight: Promise<void> | undefined = this.hydrationPromises.get(appId);
     if (inFlight) return inFlight;
-    inFlight = this.hydrateInner(appPath).finally(() => {
-      this.hydrationPromises.delete(appPath);
+    const started: Promise<void> = this.hydrateInner(appId).finally(() => {
+      this.hydrationPromises.delete(appId);
     });
-    this.hydrationPromises.set(appPath, inFlight);
-    return inFlight;
+    this.hydrationPromises.set(appId, started);
+    return started;
   }
 
-  private async hydrateInner(appPath: string): Promise<void> {
-    const file = join(appPath, '.airo', 'applied-skills.json');
+  private async hydrateInner(appId: string): Promise<void> {
     let raw: string;
     try {
-      raw = await fs.readFile(file, 'utf8');
+      const files: WorkspaceFiles = resolveWorkspaceFiles(appId, this.workspaceFactory);
+      const result = await files.view({ path: APPLIED_SKILLS_PATH });
+      raw = result.content;
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
+      if (isDevSupervisorNotFound(error)) return;
+      // An unbound preview supervisor is an expected-transient state (e.g. just
+      // after app creation), not a real error — log at debug so it does not add
+      // per-turn warn noise on every context build.
+      if (error instanceof WorkspaceUnavailableError) {
+        logger.debug('applied_skills.hydrate.workspace_unavailable', { appId });
+        return;
+      }
       logger.warn('applied_skills.hydrate.read_failed', {
-        appPath,
+        appId,
         error: error instanceof Error ? error.message : String(error),
       });
       return;
@@ -199,53 +248,53 @@ export class AppliedSkillsRegistry {
     try {
       parsed = JSON.parse(raw);
     } catch {
-      logger.warn('applied_skills.hydrate.parse_failed', { appPath });
+      logger.warn('applied_skills.hydrate.parse_failed', { appId });
       return;
     }
 
     if (!parsed || typeof parsed !== 'object') return;
-    const obj = parsed as Record<string, unknown>;
-    const map = this.getOrCreate(appPath);
+    const obj: Record<string, unknown> = parsed as Record<string, unknown>;
+    const map: Map<string, AppliedSkillEntry> = this.getOrCreate(appId);
 
     if (obj.version !== REGISTRY_FILE_VERSION) {
       logger.warn('applied_skills.hydrate.unknown_version', {
-        appPath,
+        appId,
         fileVersion: obj.version,
         supportedVersion: REGISTRY_FILE_VERSION,
       });
       return;
     }
 
-    const skills = obj.skills;
+    const skills: unknown = obj.skills;
     if (!skills || typeof skills !== 'object') return;
     for (const [skillName, entry] of Object.entries(skills as Record<string, unknown>)) {
       if (!entry || typeof entry !== 'object') continue;
-      const e = entry as Record<string, unknown>;
+      const e: Record<string, unknown> = entry as Record<string, unknown>;
       map.set(skillName, {
         ...(typeof e.installedAt === 'string' && { installedAt: e.installedAt }),
         ...(typeof e.completedAt === 'string' && { completedAt: e.completedAt }),
       });
     }
-    logger.info('applied_skills.hydrated', { appPath, skillCount: map.size });
+    logger.info('applied_skills.hydrated', { appId, skillCount: map.size });
   }
 
-  private getOrCreate(appPath: string): Map<string, AppliedSkillEntry> {
-    let map = this.byAppPath.get(appPath);
+  private getOrCreate(appId: string): Map<string, AppliedSkillEntry> {
+    let map: Map<string, AppliedSkillEntry> | undefined = this.byAppId.get(appId);
     if (!map) {
       map = new Map();
-      this.byAppPath.set(appPath, map);
+      this.byAppId.set(appId, map);
     }
     return map;
   }
 
-  private schedulePersist(appPath: string): void {
-    const prev = this.persistChainByAppPath.get(appPath) ?? Promise.resolve();
-    const next = prev.then(() => this.persist(appPath)).catch(() => {});
-    this.persistChainByAppPath.set(appPath, next);
+  private schedulePersist(appId: string): void {
+    const prev: Promise<void> = this.persistChainByAppId.get(appId) ?? Promise.resolve();
+    const next: Promise<void> = prev.then(() => this.persist(appId)).catch(() => {});
+    this.persistChainByAppId.set(appId, next);
   }
 
-  private async persist(appPath: string): Promise<void> {
-    const skillsMap = this.byAppPath.get(appPath);
+  private async persist(appId: string): Promise<void> {
+    const skillsMap: Map<string, AppliedSkillEntry> | undefined = this.byAppId.get(appId);
     if (!skillsMap || skillsMap.size === 0) return;
 
     const payload: AppliedSkillsFile = {
@@ -253,17 +302,16 @@ export class AppliedSkillsRegistry {
       skills: Object.fromEntries(skillsMap),
     };
 
-    const dir = join(appPath, '.airo');
-    const file = join(dir, 'applied-skills.json');
-
     try {
-      await fs.mkdir(dir, { recursive: true });
-      const tmp = `${file}.tmp.${process.pid}.${Date.now()}`;
-      await fs.writeFile(tmp, JSON.stringify(payload, null, 2), 'utf8');
-      await fs.rename(tmp, file);
+      const files: WorkspaceFiles = resolveWorkspaceFiles(appId, this.workspaceFactory);
+      // The write endpoint creates parent dirs and writes atomically server-side.
+      await files.write({
+        path: APPLIED_SKILLS_PATH,
+        content: JSON.stringify(payload, null, 2),
+      });
     } catch (error) {
       logger.warn('applied_skills.persist_failed', {
-        appPath,
+        appId,
         error: error instanceof Error ? error.message : String(error),
       });
     }
@@ -280,28 +328,27 @@ export const appliedSkillsRegistry = new AppliedSkillsRegistry();
  * this is intentional, as it ensures the LLM always sees current configuration,
  * not a historical accumulation of past states.
  *
- * Path: <appPath>/.airo/skills/<skillName>/state.json
+ * Path: <workspace>/.airo/skills/<skillName>/state.json
  *
  * Usage in a skill tool:
- *   await writeSkillState('auth', appPath, { provider: 'google', sessionStrategy: 'jwt' });
+ *   await writeSkillState('auth', appId, { provider: 'google', sessionStrategy: 'jwt' });
  */
 export async function writeSkillState(
   skillName: string,
-  appPath: string,
-  state: Record<string, unknown>
+  appId: string,
+  state: Record<string, unknown>,
+  workspaceFactory: CreateForWorkspace = createForWorkspace
 ): Promise<void> {
-  const dir = join(appPath, '.airo', 'skills', skillName);
-  const file = join(dir, 'state.json');
+  const path: string = skillStatePath(skillName);
   try {
-    await fs.mkdir(dir, { recursive: true });
-    const tmp = `${file}.tmp.${process.pid}.${Date.now()}`;
-    await fs.writeFile(tmp, JSON.stringify(state, null, 2), 'utf8');
-    await fs.rename(tmp, file);
-    logger.info('applied_skills.state.written', { skillName, appPath });
+    const files: WorkspaceFiles = resolveWorkspaceFiles(appId, workspaceFactory);
+    // The write endpoint creates parent dirs and writes atomically server-side.
+    await files.write({ path, content: JSON.stringify(state, null, 2) });
+    logger.info('applied_skills.state.written', { skillName, appId });
   } catch (error) {
     logger.warn('applied_skills.state.write_failed', {
       skillName,
-      appPath,
+      appId,
       error: error instanceof Error ? error.message : String(error),
     });
   }

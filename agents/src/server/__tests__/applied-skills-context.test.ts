@@ -1,19 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // ── Mocks ──────────────────────────────────────────────────────────────────
-const mockFindById = vi.fn();
-
-vi.mock('../../database/repositories/index.js', () => ({
-  appRepository: { findById: mockFindById },
-}));
-
 const mockHydrate = vi.fn().mockResolvedValue(undefined);
 const mockGetInstalledSkills = vi.fn();
 const mockReadSkillState = vi.fn();
 
 vi.mock('../../tools/applied-skills-registry.js', () => ({
   appliedSkillsRegistry: {
-    hydrateFromAppPath: mockHydrate,
+    hydrateFromAppId: mockHydrate,
     getInstalledSkills: mockGetInstalledSkills,
     readSkillState: mockReadSkillState,
   },
@@ -28,26 +22,15 @@ vi.mock('../../logging/index.js', () => ({
 
 const { buildAppliedSkillsContextMessage } = await import('../applied-skills-context.js');
 
-const APP_PATH = '/apps/myapp';
-
 describe('applied-skills-context', () => {
   describe('#buildAppliedSkillsContextMessage', () => {
     beforeEach(() => {
       vi.clearAllMocks();
       mockHydrate.mockResolvedValue(undefined);
-      mockFindById.mockReturnValue({ path: APP_PATH });
     });
 
     it('returns null when appId is undefined', async function noId() {
       const result = await buildAppliedSkillsContextMessage(undefined);
-      expect(result).toBeNull();
-      expect(mockHydrate).not.toHaveBeenCalled();
-    });
-
-    it('returns null when appId is not found in the repository', async function notFound() {
-      mockFindById.mockReturnValue(null);
-
-      const result = await buildAppliedSkillsContextMessage('app-unknown');
       expect(result).toBeNull();
       expect(mockHydrate).not.toHaveBeenCalled();
     });
@@ -59,13 +42,12 @@ describe('applied-skills-context', () => {
       expect(result).toBeNull();
     });
 
-    it('resolves appPath from the repository and hydrates the registry', async function hydrates() {
+    it('hydrates the registry by appId', async function hydrates() {
       mockGetInstalledSkills.mockReturnValue(new Map());
 
       await buildAppliedSkillsContextMessage('app-1');
 
-      expect(mockFindById).toHaveBeenCalledWith('app-1');
-      expect(mockHydrate).toHaveBeenCalledWith(APP_PATH);
+      expect(mockHydrate).toHaveBeenCalledWith('app-1');
     });
 
     it('returns a user message with role and after_history insertionOrder', async function structure() {
@@ -164,8 +146,8 @@ describe('applied-skills-context', () => {
 
       const result = await buildAppliedSkillsContextMessage('app-1');
 
-      expect(mockReadSkillState).toHaveBeenCalledWith('stripe-v2', APP_PATH);
-      expect(mockReadSkillState).toHaveBeenCalledWith('conversations', APP_PATH);
+      expect(mockReadSkillState).toHaveBeenCalledWith('stripe-v2', 'app-1');
+      expect(mockReadSkillState).toHaveBeenCalledWith('conversations', 'app-1');
       expect(result?.content).toContain('"sandboxId": "cbsbx_test"');
       expect(result?.content).toContain('"accountId": "acc-123"');
     });

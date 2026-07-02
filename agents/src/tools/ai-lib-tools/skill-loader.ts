@@ -411,7 +411,7 @@ export const skillAITool: Tool = createTool(
         response.message = `${response.message}\n\nIMPORTANT: ${result.postInstallNotes}`;
       }
 
-      appliedSkillsRegistry.recordInstall(input.skill, app.path);
+      appliedSkillsRegistry.recordInstall(input.skill, appId);
 
       safeEmitEvent(input.skill, 'install');
 
@@ -426,12 +426,7 @@ export const skillAITool: Tool = createTool(
         throw new Error('App ID not found in context. Complete action requires app context.');
       }
 
-      const app = appRepo.findById(appId);
-      if (!app) {
-        throw new Error(`App not found: ${appId}`);
-      }
-
-      appliedSkillsRegistry.recordComplete(input.skill, app.path);
+      appliedSkillsRegistry.recordComplete(input.skill, appId);
 
       safeEmitEvent(input.skill, 'complete');
 

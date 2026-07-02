@@ -356,10 +356,10 @@ describe('skillAITool hooks', () => {
       }));
     });
 
-    it('calls recordComplete on the registry with the skill name and app path', async function callsRecordComplete() {
+    it('calls recordComplete on the registry with the skill name and appId', async function callsRecordComplete() {
       await executeTool({ action: 'complete', skill: 'authentication' }, mockContext);
 
-      expect(mockRecordComplete).toHaveBeenCalledWith('authentication', '/tmp/apps/test-app');
+      expect(mockRecordComplete).toHaveBeenCalledWith('authentication', 'app-456');
     });
 
     it('throws when appId is missing from context', async function requiresAppId() {
@@ -368,13 +368,6 @@ describe('skillAITool hooks', () => {
       ).rejects.toThrow('App ID not found in context');
     });
 
-    it('throws when the app cannot be found in the repository', async function appNotFound() {
-      mockFindById.mockReturnValueOnce(undefined);
-
-      await expect(
-        executeTool({ action: 'complete', skill: 'authentication' }, mockContext)
-      ).rejects.toThrow('App not found');
-    });
   });
 
   describe('emitSkillAction calls', () => {

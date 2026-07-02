@@ -400,9 +400,6 @@ describe('SkillToolManager', () => {
 
   describe('onStateComputed — updateState emission', () => {
     it('emits updateState event with stateSnapshot and statePatch after mergeSkillState', async function emitUpdateState() {
-      const { appRepository } = await import('../../database/repositories/index.js');
-      vi.mocked(appRepository.findById).mockReturnValueOnce({ path: '/tmp/app' } as any);
-
       const snapshot = { provisioned: true, accountId: 'acc-123' };
       mockMergeSkillState.mockResolvedValueOnce(snapshot);
       mockCreateSkillAction.mockReturnValueOnce({ schemaId: 'urn:skill-action', data: snapshot });
@@ -412,7 +409,7 @@ describe('SkillToolManager', () => {
 
       await options?.onStateComputed?.('stripe', 'app-abc', { accountId: 'acc-123' });
 
-      expect(mockMergeSkillState).toHaveBeenCalledWith('stripe', '/tmp/app', { accountId: 'acc-123' });
+      expect(mockMergeSkillState).toHaveBeenCalledWith('stripe', 'app-abc', { accountId: 'acc-123' });
       expect(mockCreateSkillAction).toHaveBeenCalledWith(
         expect.objectContaining({
           skillName: 'stripe',
@@ -427,9 +424,6 @@ describe('SkillToolManager', () => {
     });
 
     it('does not emit updateState when mergeSkillState returns undefined (error path)', async function noEmitOnError() {
-      const { appRepository } = await import('../../database/repositories/index.js');
-      vi.mocked(appRepository.findById).mockReturnValueOnce({ path: '/tmp/app' } as any);
-
       mockMergeSkillState.mockResolvedValueOnce(undefined);
 
       const calls = vi.mocked(buildAllSkillTools).mock.calls;
@@ -450,8 +444,6 @@ describe('SkillToolManager', () => {
     });
 
     it('does not throw when emitSkillAction throws on updateState', async function guardUpdateState() {
-      const { appRepository } = await import('../../database/repositories/index.js');
-      vi.mocked(appRepository.findById).mockReturnValueOnce({ path: '/tmp/app' } as any);
       mockMergeSkillState.mockResolvedValueOnce({ provisioned: true });
       mockEmitSkillAction.mockImplementationOnce(() => { throw new Error('OTel unavailable'); });
 

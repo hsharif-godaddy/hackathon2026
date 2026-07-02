@@ -19,7 +19,6 @@ import { ConversationSkillState, buildAllSkillTools, buildSkillToolName, type Sk
 import { join } from 'path';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
-import { appRepository } from '../database/repositories/index.js';
 import { appliedSkillsRegistry } from './applied-skills-registry.js';
 import { createForWorkspace } from '../workspace/index.js';
 import type { WorkspaceFiles } from '../workspace/files.js';
@@ -130,9 +129,7 @@ export class SkillToolManager {
       this.toolRegistry = await buildAllSkillTools(this.skillsDir, {
         onStateComputed: async (skillName, appId, statePatch) => {
           if (!appId) return;
-          const appPath = appRepository.findById(appId)?.path;
-          if (!appPath) return;
-          const stateSnapshot = await appliedSkillsRegistry.mergeSkillState(skillName, appPath, statePatch);
+          const stateSnapshot = await appliedSkillsRegistry.mergeSkillState(skillName, appId, statePatch);
           if (stateSnapshot) {
             try {
               emitSkillAction({

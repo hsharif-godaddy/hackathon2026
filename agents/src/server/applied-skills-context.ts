@@ -4,7 +4,7 @@
  *
  * ─── installed_at ─────────────────────────────────────────────────────────────
  *   When the skill's template files were first scaffolded into the app.
- *   Source: <appPath>/.airo/applied-skills.json
+ *   Source: <workspace>/.airo/applied-skills.json
  *
  * ─── current_state ────────────────────────────────────────────────────────────
  *   Lightweight context the skill considers important enough to survive
@@ -14,10 +14,9 @@
  *   summarized history. This is a mutable snapshot, not a log: skill tools
  *   overwrite it when something changes (e.g. switching OAuth providers), so
  *   the LLM always sees current reality, not stale history.
- *   Source: <appPath>/.airo/skills/<skillName>/state.json
+ *   Source: <workspace>/.airo/skills/<skillName>/state.json
  */
 
-import { appRepository } from '../database/repositories/index.js';
 import { logger } from '../logging/index.js';
 import { appliedSkillsRegistry } from '../tools/applied-skills-registry.js';
 import type { AppliedSkillsContextMessage } from './pinned-skills-context.js';
@@ -32,12 +31,9 @@ export async function buildAppliedSkillsContextMessage(
   if (!appId) return null;
 
   try {
-    const appPath = appRepository.findById(appId)?.path;
-    if (!appPath) return null;
+    await appliedSkillsRegistry.hydrateFromAppId(appId);
 
-    await appliedSkillsRegistry.hydrateFromAppPath(appPath);
-
-    const installedSkills = appliedSkillsRegistry.getInstalledSkills(appPath);
+    const installedSkills = appliedSkillsRegistry.getInstalledSkills(appId);
     if (installedSkills.size === 0) return null;
 
     const skillElements: string[] = [];
@@ -48,7 +44,7 @@ export async function buildAppliedSkillsContextMessage(
         if (entry.installedAt) attrs.push(`installed_at="${entry.installedAt}"`);
         if (entry.completedAt) attrs.push(`completed_at="${entry.completedAt}"`);
 
-        const currentState = await appliedSkillsRegistry.readSkillState(name, appPath);
+        const currentState = await appliedSkillsRegistry.readSkillState(name, appId);
         const body = currentState
           ? `\n    <current_state>\n${JSON.stringify(currentState, null, 2).replace(/^/gm, '      ')}\n    </current_state>\n  `
           : '';
