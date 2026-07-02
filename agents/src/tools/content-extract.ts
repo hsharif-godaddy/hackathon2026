@@ -5,6 +5,7 @@ import traverseDefault from '@babel/traverse';
 import * as t from '@babel/types';
 import * as recast from 'recast';
 import * as recastBabelTs from 'recast/parsers/babel-ts.js';
+import { arrayDeclaratorLocId } from './content-loc-id.js';
 
 // @babel/traverse ships a CJS default-export interop quirk under ESM bundlers.
 // Matches the sanctioned `any` unwrap in content-rules-lint.ts: the upstream
@@ -24,6 +25,7 @@ export interface ExtractableArray {
   arrayName: string;
   data: Record<string, LiteralValue>[];
   retainedKeys: string[];
+  locId: string | null;
 }
 
 export interface ExtractSkip {
@@ -183,12 +185,19 @@ interface ReferenceCheck {
 }
 
 /**
- * Inspect every reference to `name`. The only allowed use is being the callee
- * object of `name.map(...)`. Anything else (index, prop-drill, spread, `.length`,
- * passed as an argument) disqualifies. A `name` binding shadowed by an inner
- * scope (e.g. a nested map param) is not counted as a reference to the const.
+ * Inspect every reference to `name` that resolves to `candidateBinding`. The only
+ * allowed use is being the callee object of `name.map(...)`. Anything else (index,
+ * prop-drill, spread, `.length`, passed as an argument) disqualifies. Only
+ * references whose resolved binding is that exact binding are counted — this both
+ * enforces the shadowing guard (a nested map param resolves to a different
+ * binding) and lets two same-named arrays in different function bodies each count
+ * only their own `.map`.
  */
-function analyzeReferences(ast: t.File, name: string): ReferenceCheck {
+function analyzeReferences(
+  ast: t.File,
+  name: string,
+  candidateBinding: ReturnType<NodePath['scope']['getBinding']>,
+): ReferenceCheck {
   let mapCount: number = 0;
   let badReason: string | null = null;
 
@@ -198,10 +207,9 @@ function analyzeReferences(ast: t.File, name: string): ReferenceCheck {
       if (!refPath.isReferencedIdentifier()) return;
       // Skip the binding id in `const NAME = ...`.
       if (refPath.parentPath?.isVariableDeclarator({ id: refPath.node })) return;
-      // Only references that resolve to the module-level binding count; a shadowed
-      // `name` (nested-map param) resolves to a different binding and is ignored.
+      // Binding-scoped shadowing guard: only count refs to THIS specific binding.
       const binding: ReturnType<typeof refPath.scope.getBinding> = refPath.scope.getBinding(name);
-      if (binding && binding.scope.block.type !== 'Program') return;
+      if (binding !== candidateBinding) return;
 
       const parent: t.Node = refPath.parent;
       const grandParent: t.Node | null = refPath.parentPath?.parent ?? null;
@@ -234,19 +242,34 @@ function analyzeReferences(ast: t.File, name: string): ReferenceCheck {
 interface ArrayConst {
   name: string;
   init: t.ArrayExpression;
+  locId: string | null;
+  scopeBlockType: string;
+  binding: ReturnType<NodePath['scope']['getBinding']>;
 }
 
-/** Find module-level `const NAME = [ ... ]` declarations (Program body only). */
-function collectModuleLevelArrayConsts(ast: t.File): ArrayConst[] {
+/**
+ * Traverse ALL `VariableDeclarator` nodes (at any nesting depth) whose `id` is an
+ * Identifier and `init` is an ArrayExpression — this captures both module-level
+ * and function-local `const NAME = [...]` declarations.
+ */
+export function collectArrayConsts(ast: t.File): ArrayConst[] {
   const out: ArrayConst[] = [];
-  for (const stmt of ast.program.body) {
-    if (!t.isVariableDeclaration(stmt) || stmt.kind !== 'const') continue;
-    for (const decl of stmt.declarations) {
-      if (t.isIdentifier(decl.id) && decl.init && t.isArrayExpression(decl.init)) {
-        out.push({ name: decl.id.name, init: decl.init });
-      }
-    }
-  }
+  traverse(ast, {
+    VariableDeclarator(declPath: NodePath<t.VariableDeclarator>): void {
+      const node: t.VariableDeclarator = declPath.node;
+      if (!t.isIdentifier(node.id) || !node.init || !t.isArrayExpression(node.init)) return;
+      // Only collect `const` declarations.
+      if (!t.isVariableDeclaration(declPath.parent, { kind: 'const' })) return;
+      const name: string = node.id.name;
+      out.push({
+        name,
+        init: node.init,
+        locId: arrayDeclaratorLocId(node.loc),
+        scopeBlockType: declPath.scope.block.type,
+        binding: declPath.scope.getBinding(name),
+      });
+    },
+  });
   return out;
 }
 
@@ -262,18 +285,23 @@ export function analyzeExtractable(source: string, pageBinding: string): Extract
   const extractions: ExtractableArray[] = [];
   const skipped: ExtractSkip[] = [];
 
-  for (const candidate of collectModuleLevelArrayConsts(ast)) {
+  for (const candidate of collectArrayConsts(ast)) {
     const shape: ArrayShapeCheck = validateArray(candidate.init);
     if (!shape.ok || shape.data === null) {
       skipped.push({ name: candidate.name, reason: shape.reason ?? 'unknown' });
       continue;
     }
-    const refs: ReferenceCheck = analyzeReferences(ast, candidate.name);
+    const refs: ReferenceCheck = analyzeReferences(ast, candidate.name, candidate.binding);
     if (refs.reason) {
       skipped.push({ name: candidate.name, reason: refs.reason });
       continue;
     }
-    extractions.push({ arrayName: candidate.name, data: shape.data, retainedKeys: shape.retainedKeys });
+    extractions.push({
+      arrayName: candidate.name,
+      data: shape.data,
+      retainedKeys: shape.retainedKeys,
+      locId: candidate.locId,
+    });
   }
 
   return { extractions, skipped };
@@ -289,10 +317,24 @@ export function analyzeExtractable(source: string, pageBinding: string): Extract
  */
 const CONTENT_BINDING_PATTERN: RegExp = /^[a-z_][a-z0-9_]*$/;
 
-/** A page's content binding: `index` → `home`, otherwise the file's slug. */
-function bindingForPage(pageRelPath: string): string {
+/**
+ * A page's content binding: `index` → `home`, otherwise the file's slug with
+ * kebab-case collapsed to underscores so it forms a valid binding (`secret-sauce`
+ * → `secret_sauce`, `about-us` → `about_us`). Already-valid slugs pass through
+ * unchanged (`about` → `about`).
+ *
+ * Underscore — not camelCase — because both CONTENT_BINDING_PATTERN and
+ * content-scaffold's NAME_PATTERN are lowercase-only (`/^[a-z_][a-z0-9_]*$/`);
+ * the binding becomes the `virtual:content` export name (`export const
+ * secret_sauce`), so an uppercase letter (`secretSauce`) would be rejected by the
+ * scaffold. A slug that still can't form a valid binding after normalization
+ * (e.g. `2024-report`, leading digit) is caught by CONTENT_BINDING_PATTERN at the
+ * caller and declines cleanly.
+ */
+export function bindingForPage(pageRelPath: string): string {
   const base: string = path.basename(pageRelPath).replace(/\.(tsx|jsx|ts|js)$/, '');
-  return base === 'index' ? 'home' : base;
+  if (base === 'index') return 'home';
+  return base.replace(/-+/g, '_');
 }
 
 // ── Already-extracted detection (idempotency) ─────────────────────────────────
@@ -386,6 +428,92 @@ function collectModuleScopeNames(program: t.Program): Set<string> {
 }
 
 /**
+ * Collect const binding names declared in the direct body of the function (or
+ * block) that immediately owns `targetDeclarator`. When the declarator is at
+ * module level, returns an empty set (module scope is handled by
+ * `collectModuleScopeNames`). Used to prevent `uniqueMetaName` from picking a
+ * name that collides with a same-scope pre-existing `const <name>Meta`.
+ */
+function collectEnclosingFunctionNames(program: t.Program, targetDeclarator: t.VariableDeclarator): Set<string> {
+  const names: Set<string> = new Set<string>();
+  recast.types.visit(program, {
+    visitFunction(fnPath: FunctionDeclarationPath): boolean {
+      const body: t.Node = fnPath.node.body as unknown as t.Node;
+      if (!t.isBlockStatement(body)) {
+        this.traverse(fnPath);
+        return false;
+      }
+      const stmts: t.Statement[] = (body as t.BlockStatement).body;
+      // Check if targetDeclarator is a direct-child const in this function body.
+      for (const stmt of stmts) {
+        if (!t.isVariableDeclaration(stmt)) continue;
+        for (const decl of stmt.declarations) {
+          if (decl !== (targetDeclarator as unknown as typeof decl)) continue;
+          // Found the function that directly owns our declarator — collect its bindings.
+          for (const s of stmts) {
+            if (t.isVariableDeclaration(s)) {
+              for (const d of s.declarations) {
+                if (t.isIdentifier(d.id)) names.add(d.id.name);
+              }
+            }
+          }
+          return false;
+        }
+      }
+      this.traverse(fnPath);
+      return false;
+    },
+  });
+  return names;
+}
+
+/**
+ * Shared retained-split body: rename `declarator.id` to a unique `<name>Meta`,
+ * filter each element down to retained props, and redirect reads inside `mapCall`'s
+ * callback. Called by both `splitRetainedArray` (module-level, after resolving by
+ * name) and `splitRetainedDeclarator` (scope-agnostic, already resolved by loc-id).
+ * Throws the shared "unsafe rewrite" error on any unresolvable callback shape.
+ */
+function applyRetainedSplit(
+  declarator: t.VariableDeclarator,
+  mapCall: t.CallExpression,
+  plan: ExtractableArray,
+  program: t.Program,
+  builders: typeof recast.types.builders,
+): void {
+  if (!t.isArrayExpression(declarator.init)) {
+    throw new Error(`unsafe rewrite: \`${plan.arrayName}\` init is not an array literal`);
+  }
+
+  // Uniquify the remainder name against the current module scope AND the
+  // enclosing function scope (for function-local declarators) so an existing
+  // `const statsMeta` in either scope doesn't produce a duplicate lexical binding.
+  const moduleScope: Set<string> = collectModuleScopeNames(program);
+  const enclosingNames: Set<string> = collectEnclosingFunctionNames(program, declarator);
+  const combinedScope: Set<string> = new Set([...moduleScope, ...enclosingNames]);
+  const resolvedMetaName: string = uniqueMetaName(plan.arrayName, combinedScope);
+
+  const retained: Set<string> = new Set(plan.retainedKeys);
+  declarator.id = builders.identifier(resolvedMetaName) as unknown as t.Identifier;
+  declarator.init.elements = declarator.init.elements.map((el: t.ArrayExpression['elements'][number]) => {
+    if (!t.isObjectExpression(el)) {
+      throw new Error(`unsafe rewrite: \`${plan.arrayName}\` element is not an object literal`);
+    }
+    const kept: t.ObjectExpression['properties'] = el.properties.filter(
+      (prop: t.ObjectExpression['properties'][number]): boolean =>
+        t.isObjectProperty(prop) &&
+        ((t.isIdentifier(prop.key) && retained.has(prop.key.name)) ||
+          (t.isStringLiteral(prop.key) && retained.has(prop.key.value))),
+    );
+    return builders.objectExpression(
+      kept as unknown as recast.types.namedTypes.ObjectExpression['properties'],
+    ) as unknown as t.ObjectExpression;
+  });
+
+  redirectRetainedReadsForCall(program, mapCall, plan, retained, builders, resolvedMetaName);
+}
+
+/**
  * Split one retained-field array declarator in place: keep only the retained
  * props in each element, rename the binding to `<name>Meta`, and redirect every
  * `<param>.<retainedKey>` read inside the `.map` callback to
@@ -405,31 +533,11 @@ function splitRetainedArray(
   if (declarator === null || !t.isArrayExpression(declarator.init)) {
     throw new Error(`unsafe rewrite: could not locate \`const ${plan.arrayName}\` to split`);
   }
-
-  // Uniquify the remainder name against the current module scope so an existing
-  // `const statsMeta` or `import { statsMeta }` doesn't produce a duplicate
-  // lexical binding (a scope error that @babel/parser may not flag).
-  const moduleScope: Set<string> = collectModuleScopeNames(program);
-  const resolvedMetaName: string = uniqueMetaName(plan.arrayName, moduleScope);
-
-  const retained: Set<string> = new Set(plan.retainedKeys);
-  declarator.id = builders.identifier(resolvedMetaName) as unknown as t.Identifier;
-  declarator.init.elements = declarator.init.elements.map((el: t.ArrayExpression['elements'][number]) => {
-    if (!t.isObjectExpression(el)) {
-      throw new Error(`unsafe rewrite: \`${plan.arrayName}\` element is not an object literal`);
-    }
-    const kept: t.ObjectExpression['properties'] = el.properties.filter(
-      (prop: t.ObjectExpression['properties'][number]): boolean =>
-        t.isObjectProperty(prop) &&
-        ((t.isIdentifier(prop.key) && retained.has(prop.key.name)) ||
-          (t.isStringLiteral(prop.key) && retained.has(prop.key.value))),
-    );
-    return builders.objectExpression(
-      kept as unknown as recast.types.namedTypes.ObjectExpression['properties'],
-    ) as unknown as t.ObjectExpression;
-  });
-
-  redirectRetainedReads(program, plan, retained, builders, resolvedMetaName);
+  const mapCall: t.CallExpression | null = findMapCall(program, plan.arrayName);
+  if (mapCall === null) {
+    throw new Error(`unsafe rewrite: could not locate \`${plan.arrayName}.map\` call`);
+  }
+  applyRetainedSplit(declarator, mapCall, plan, program, builders);
 }
 
 /** Find the `.map` CallExpression whose callee object is the named identifier. */
@@ -473,37 +581,20 @@ function indexedRetainedRead(
 }
 
 /**
- * Redirect every retained-field read inside the array's `.map` callback so the
- * page keeps rendering identically after the literal fields move to the content
- * layer. Two read positions:
- *
- *  - Expression position (`{s.icon}`, `className={s.icon}`, `icon={s.icon}`): the
- *    `<param>.<key>` MemberExpression is rewritten in place to
- *    `<name>Meta[<idx>].<key>`.
- *  - JSX-tag position (`<s.icon/>`, a JSXMemberExpression tag name — the common
- *    lucide pattern): `statsMeta[i].icon` is not a valid JSX tag, so we hoist a
- *    uniquely-named `const <Cap> = <name>Meta[<idx>].<key>` at the top of the
- *    callback and rewrite the tag to `<Cap/>`. One binding per retained key used
- *    as a tag.
- *
- * Behavior-preservation invariant: we split ONE source array element-wise, so
- * `<name>Meta[i]` is the same element index as `content.<name>[i]` (same order,
- * same length). `<s.icon/>` with `s.icon === Target` rendered `<Target/>`; after
- * conform `const Icon = statsMeta[i].icon (=== Target)` + `<Icon/>` renders the
- * identical element.
- *
- * Throws the shared "unsafe rewrite" error (→ conform declines, element stays
- * shut off) when the callback is not an inline arrow/function, has no item
- * identifier param, or has an unresolvable index param.
+ * The call-based core of `redirectRetainedReads`: given the array's `.map`
+ * CallExpression (already resolved by name at module scope OR by scope identity
+ * for the id-addressed path), redirect the retained reads inside its callback.
+ * `program` is used only to collect module-scope names for hoisted-local
+ * collision avoidance.
  */
-function redirectRetainedReads(
+function redirectRetainedReadsForCall(
   program: t.Program,
+  mapCall: t.CallExpression | null,
   plan: ExtractableArray,
   retained: Set<string>,
   builders: typeof recast.types.builders,
   resolvedMetaName?: string,
 ): void {
-  const mapCall: t.CallExpression | null = findMapCall(program, plan.arrayName);
   const callback: t.Node | undefined = mapCall?.arguments[0];
   if (
     !callback ||
@@ -792,6 +883,234 @@ function findArrayDeclarator(program: t.Program, name: string): t.VariableDeclar
   return null;
 }
 
+// ── Binding-precise rewrite (id-addressed, scope-agnostic) ────────────────────
+
+/**
+ * The `import { <binding> } from 'virtual:content'` statement is ensured (added
+ * to an existing line or prepended). Shared by the batch and binding-precise
+ * rewrite paths.
+ */
+function ensureContentImport(
+  program: t.Program,
+  binding: string,
+  builders: typeof recast.types.builders,
+): void {
+  let hasImport: boolean = false;
+  for (const node of program.body) {
+    if (!t.isImportDeclaration(node) || node.source.value !== VIRTUAL_CONTENT_MODULE) continue;
+    hasImport = true;
+    if (
+      !node.specifiers.some(
+        (s) => t.isImportSpecifier(s) && t.isIdentifier(s.imported, { name: binding }),
+      )
+    ) {
+      node.specifiers.push(
+        builders.importSpecifier(builders.identifier(binding)) as unknown as t.ImportSpecifier,
+      );
+    }
+  }
+  if (!hasImport) {
+    const decl: t.ImportDeclaration = builders.importDeclaration(
+      [builders.importSpecifier(builders.identifier(binding))],
+      builders.stringLiteral(VIRTUAL_CONTENT_MODULE),
+    ) as unknown as t.ImportDeclaration;
+    program.body.unshift(decl);
+  }
+}
+
+/**
+ * Locate the single target `VariableDeclarator` NodePath whose `id` name and
+ * source loc-id match `conformId`, along with its enclosing scope block node
+ * (Program or a function/block). Returns `null` when no declarator matches — the
+ * caller declines cleanly.
+ *
+ * Matching on loc-id (not just name) is the whole point of the id-addressed path:
+ * two same-named arrays in different scopes have distinct declarator locs, so
+ * only the addressed one is ever selected.
+ */
+function findTargetDeclaratorPath(
+  ast: recast.types.ASTNode,
+  arrayName: string,
+  conformId: string,
+): { declPath: VariableDeclaratorPath; scopeNode: t.Node } | null {
+  let match: { declPath: VariableDeclaratorPath; scopeNode: t.Node } | null = null;
+  recast.types.visit(ast, {
+    visitVariableDeclarator(declPath: VariableDeclaratorPath): boolean | undefined {
+      const node: t.VariableDeclarator = declPath.node as unknown as t.VariableDeclarator;
+      if (
+        match === null &&
+        t.isIdentifier(node.id, { name: arrayName }) &&
+        node.init &&
+        t.isArrayExpression(node.init) &&
+        arrayDeclaratorLocId(node.loc) === conformId
+      ) {
+        match = {
+          declPath,
+          scopeNode: (declPath.scope as unknown as { node: t.Node }).node,
+        };
+        return false;
+      }
+      this.traverse(declPath);
+      return undefined;
+    },
+  });
+  return match;
+}
+
+/**
+ * Find the single `<name>.map(...)` CallExpression whose `<name>` reference
+ * resolves to `scopeNode`'s binding. A same-named array bound in another scope
+ * resolves elsewhere and is ignored. Returns the node plus a count of matches so
+ * the caller can refuse an ambiguous (>1) or missing (0) target.
+ */
+function findScopedMapCall(
+  ast: recast.types.ASTNode,
+  arrayName: string,
+  scopeNode: t.Node,
+): { call: t.CallExpression | null; count: number } {
+  let call: t.CallExpression | null = null;
+  let count: number = 0;
+  recast.types.visit(ast, {
+    visitCallExpression(callPath: CallPath): boolean | undefined {
+      const node: t.CallExpression = callPath.node as unknown as t.CallExpression;
+      const callee: t.Node = node.callee;
+      if (
+        t.isMemberExpression(callee) &&
+        !callee.computed &&
+        t.isIdentifier(callee.property, { name: 'map' }) &&
+        t.isIdentifier(callee.object, { name: arrayName })
+      ) {
+        const resolved: { node: t.Node } | null =
+          (callPath.scope.lookup(arrayName) as unknown as { node: t.Node } | null) ?? null;
+        if (resolved !== null && resolved.node === scopeNode) {
+          call = node;
+          count += 1;
+        }
+      }
+      this.traverse(callPath);
+      return undefined;
+    },
+  });
+  return { call, count };
+}
+
+/**
+ * Rewrite one resolved `<name>.map` callee → `<binding>.<name>.map` by replacing
+ * the callee's object identifier with a `<binding>.<name>` MemberExpression.
+ */
+function rewriteMapCallee(
+  call: t.CallExpression,
+  arrayName: string,
+  binding: string,
+  builders: typeof recast.types.builders,
+): void {
+  const callee: t.MemberExpression = call.callee as t.MemberExpression;
+  callee.object = builders.memberExpression(
+    builders.identifier(binding),
+    builders.identifier(arrayName),
+    false,
+  ) as unknown as t.MemberExpression;
+}
+
+/**
+ * Remove the target declarator from its enclosing statement list (Program body
+ * OR a function/block body). When the declaration shares a statement with other
+ * declarators (`const a = 1, items = [...]`), only the target declarator is
+ * dropped so sibling bindings survive.
+ */
+function removeTargetDeclarator(declPath: VariableDeclaratorPath): void {
+  // In ast-types, a VariableDeclarator's `parentPath` is the `declarations`
+  // array path; the enclosing VariableDeclaration statement is one level up.
+  const declaration: t.VariableDeclaration = (
+    declPath.parentPath.parentPath as unknown as { node: t.VariableDeclaration }
+  ).node;
+  if (declaration.declarations.length > 1) {
+    // Sibling bindings survive — drop only this declarator from the array.
+    (declPath as unknown as { prune: () => void }).prune();
+    return;
+  }
+  // Lone declarator — prune the whole statement so no empty `const;` remains.
+  (declPath.parentPath.parentPath as unknown as { prune: () => void }).prune();
+}
+
+/**
+ * The id-addressed, binding-precise rewrite. Unlike the batch path (global
+ * `MAP_CALLEE_PATTERN` text-sub), this rewrites ONLY the addressed binding's
+ * `.map` via scope reference resolution and drops ONLY that binding's declarator
+ * from its own scope — a same-named array elsewhere is byte-unchanged.
+ *
+ * Retained-field targets reuse the S1 split machinery scoped to the declarator's
+ * own `.map` call (found by node identity, not name). Throws the shared "unsafe
+ * rewrite" error → caller declines to a no-op.
+ */
+function rewritePageBindingPrecise(
+  source: string,
+  binding: string,
+  plan: ExtractableArray,
+  conformId: string,
+): string {
+  const ast: recast.types.ASTNode = recast.parse(source, { parser: recastBabelTs });
+  const builders: typeof recast.types.builders = recast.types.builders;
+  const program: t.Program = (ast as unknown as { program: t.Program }).program;
+
+  const target: { declPath: VariableDeclaratorPath; scopeNode: t.Node } | null =
+    findTargetDeclaratorPath(ast, plan.arrayName, conformId);
+  if (target === null) {
+    throw new Error(
+      `unsafe rewrite: could not locate \`const ${plan.arrayName}\` at conform-id ${conformId}`,
+    );
+  }
+
+  // Resolve the addressed `.map` call while the binding still has its original
+  // name (a retained split renames the declarator to `<name>Meta`, and rewriting
+  // the callee below repoints it to `<binding>.<name>` — either would break a
+  // later name-based lookup). Refuse an ambiguous or missing target.
+  const scoped: { call: t.CallExpression | null; count: number } = findScopedMapCall(
+    ast,
+    plan.arrayName,
+    target.scopeNode,
+  );
+  if (scoped.call === null || scoped.count !== 1) {
+    throw new Error(
+      `unsafe rewrite: expected exactly one \`${plan.arrayName}.map\` for the addressed binding, found ${scoped.count}`,
+    );
+  }
+  const mapCall: t.CallExpression = scoped.call;
+
+  if (plan.retainedKeys.length > 0) {
+    splitRetainedDeclarator(program, target.declPath, mapCall, plan, builders);
+  }
+
+  rewriteMapCallee(mapCall, plan.arrayName, binding, builders);
+
+  // All-literal targets drop the declarator entirely; retained-field targets keep
+  // the reduced `<name>Meta` remainder produced by the split.
+  if (plan.retainedKeys.length === 0) {
+    removeTargetDeclarator(target.declPath);
+  }
+
+  ensureContentImport(program, binding, builders);
+
+  return recast.print(ast, { quote: 'single' }).code;
+}
+
+/**
+ * Split ONE addressed retained-field declarator in place (scope-agnostic): rename
+ * it to a unique `<name>Meta`, drop the extractable fields per element, and
+ * redirect retained reads inside `mapCall`'s callback. `mapCall` is resolved by
+ * the caller (by scope identity, name intact) so this stays correct after the
+ * rename. Delegates the shared mutation body to `applyRetainedSplit`.
+ */
+function splitRetainedDeclarator(
+  program: t.Program,
+  declPath: VariableDeclaratorPath,
+  mapCall: t.CallExpression,
+  plan: ExtractableArray,
+  builders: typeof recast.types.builders,
+): void {
+  applyRetainedSplit(declPath.node as unknown as t.VariableDeclarator, mapCall, plan, program, builders);
+}
+
 /**
  * Rewrite the page so extracted arrays read from `virtual:content`: ensure the
  * `import { <binding> } from 'virtual:content'` line, and for each extracted
@@ -847,27 +1166,7 @@ function rewritePage(source: string, binding: string, plans: ExtractableArray[])
   });
 
   // 2. Ensure the virtual:content import (add binding to an existing line, or prepend).
-  let hasImport: boolean = false;
-  for (const node of program.body) {
-    if (!t.isImportDeclaration(node) || node.source.value !== VIRTUAL_CONTENT_MODULE) continue;
-    hasImport = true;
-    if (
-      !node.specifiers.some(
-        (s) => t.isImportSpecifier(s) && t.isIdentifier(s.imported, { name: binding }),
-      )
-    ) {
-      node.specifiers.push(
-        builders.importSpecifier(builders.identifier(binding)) as unknown as t.ImportSpecifier,
-      );
-    }
-  }
-  if (!hasImport) {
-    const decl: t.ImportDeclaration = builders.importDeclaration(
-      [builders.importSpecifier(builders.identifier(binding))],
-      builders.stringLiteral(VIRTUAL_CONTENT_MODULE),
-    ) as unknown as t.ImportDeclaration;
-    program.body.unshift(decl);
-  }
+  ensureContentImport(program, binding, builders);
 
   // `quote: 'single'` only formats nodes recast had to reprint (the new import);
   // untouched nodes keep their original source verbatim.
@@ -932,6 +1231,14 @@ export interface ExtractionPlan {
   content?: Record<string, Record<string, LiteralValue>[]>;
   /** The recast-rewritten page source. Present iff extractedNames is non-empty. */
   newPageSource?: string;
+  /**
+   * A hard decline distinct from a per-candidate skip: the addressed extraction
+   * cannot proceed even though the array itself is extractable. Currently only
+   * `content-key-collision` — the target's content key (`<binding>.<name>`)
+   * already belongs to a DIFFERENT declarator's extraction on disk, so writing
+   * would clobber it. `extractedNames` is empty when set.
+   */
+  declineReason?: 'content-key-collision';
 }
 
 /**
@@ -940,8 +1247,26 @@ export interface ExtractionPlan {
  * delegates the snapshot/write/validate/rollback boundary to the caller. Throws
  * only on an unsafe rewrite; callers must not persist a partial result when this
  * throws.
+ *
+ * When `conformId` is supplied (the id-addressed heal-on-edit path), the plan
+ * targets ONLY the array whose declarator loc-id matches — rewriting its binding
+ * precisely via scope reference paths so a same-named array elsewhere is never
+ * touched. When absent, the S1 module-level batch behavior is unchanged.
+ *
+ * `existingContentKeys` are the content-layer keys already on disk for this
+ * binding (from a prior extraction of a DIFFERENT declarator). Used only in the
+ * id-addressed path to decline a `content-key-collision` rather than clobber.
  */
-export function planPageExtraction(source: string, pageRelPath: string): ExtractionPlan {
+export function planPageExtraction(
+  source: string,
+  pageRelPath: string,
+  conformId?: string,
+  // Content-key collision hook: keys already on disk for this binding (from a prior
+  // extraction of a DIFFERENT declarator). Always [] today — the on-disk content
+  // JSON reader isn't wired yet (follow-up will populate it). Kept as the intended
+  // extension point; a test exercises the collision path directly.
+  existingContentKeys?: readonly string[],
+): ExtractionPlan {
   const binding: string = bindingForPage(pageRelPath);
   const analysis: ExtractAnalysis = analyzeExtractable(source, binding);
 
@@ -961,12 +1286,20 @@ export function planPageExtraction(source: string, pageRelPath: string): Extract
     };
   }
 
+  if (conformId !== undefined) {
+    return planIdAddressed(source, binding, conformId, analysis, existingContentKeys ?? []);
+  }
+
   // Idempotency: when the binding is already imported, drop any candidate whose
   // const is gone — it is already extracted, neither an extraction nor a skip.
+  // Narrow to module-level consts only: a function-local `items` binding must
+  // not prevent the module-level `items` from being recognised as already-extracted.
   const ast: t.File = parseBabel(source);
   const alreadyImports: boolean = importsBinding(ast, binding);
   const existingConsts: Set<string> = new Set(
-    collectModuleLevelArrayConsts(ast).map((c) => c.name),
+    collectArrayConsts(ast)
+      .filter((c: ArrayConst): boolean => c.scopeBlockType === 'Program')
+      .map((c: ArrayConst): string => c.name),
   );
   const toExtract: ExtractableArray[] = analysis.extractions.filter(
     (p) => !(alreadyImports && !existingConsts.has(p.arrayName)),
@@ -992,6 +1325,61 @@ export function planPageExtraction(source: string, pageRelPath: string): Extract
   return {
     binding,
     extractedNames,
+    arraysWithRetained,
+    skipped: analysis.skipped,
+    content,
+    newPageSource,
+  };
+}
+
+/**
+ * The id-addressed plan: select the single extractable candidate whose declarator
+ * loc-id matches `conformId`, decline on collision, and rewrite it binding-precise.
+ * A non-matching id is a clean decline (`conform-id-not-found`), not a throw.
+ */
+function planIdAddressed(
+  source: string,
+  binding: string,
+  conformId: string,
+  analysis: ExtractAnalysis,
+  existingContentKeys: readonly string[],
+): ExtractionPlan {
+  const target: ExtractableArray | undefined = analysis.extractions.find(
+    (p: ExtractableArray): boolean => p.locId === conformId,
+  );
+  if (target === undefined) {
+    return {
+      binding,
+      extractedNames: [],
+      arraysWithRetained: [],
+      skipped: [...analysis.skipped, { name: '(conform-id)', reason: 'conform-id-not-found' }],
+    };
+  }
+
+  // Content-key collision: the target's key already belongs to a DIFFERENT
+  // declarator's extraction on disk. Writing would clobber it — decline instead.
+  if (existingContentKeys.includes(target.arrayName)) {
+    return {
+      binding,
+      extractedNames: [],
+      arraysWithRetained: [],
+      skipped: analysis.skipped,
+      declineReason: 'content-key-collision',
+    };
+  }
+
+  const arraysWithRetained: ArrayWithRetained[] =
+    target.retainedKeys.length > 0
+      ? [{ arrayName: target.arrayName, retainedKeys: target.retainedKeys }]
+      : [];
+  const content: Record<string, Record<string, LiteralValue>[]> = {
+    [target.arrayName]: target.data,
+  };
+  const newPageSource: string = rewritePageBindingPrecise(source, binding, target, conformId);
+
+  return {
+    binding,
+    extractedNames: [target.arrayName],
     arraysWithRetained,
     skipped: analysis.skipped,
     content,

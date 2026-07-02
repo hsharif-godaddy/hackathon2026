@@ -293,14 +293,14 @@ export function useDevToolsBusBindings(deps: DevToolsBusBindingsDeps): void {
     // heal runs regardless of cmsInlineEditEnabled (intentional — unlike CONTENT_UPDATED)
     on('CONFORM_REQUEST', (m) => {
       const cur = d()
-      logger.info('develop-page.conform-request-from-iframe', { appId: cur.appId, page: m.data.page, arrayName: m.data.arrayName })
+      logger.info('develop-page.conform-request-from-iframe', { appId: cur.appId, page: m.data.page, arrayName: m.data.arrayName, conformId: m.data.conformId })
       void (async () => {
         // Resolve the iframe AFTER the await so we use the live DOM at reply
         // time, not a potentially stale/replaced reference captured before the
         // async call. If the iframe is absent at reply time we still attempt
         // CONFORM_FAILED (best-effort) so the client ref can clear.
         try {
-          const res = await appService.conformPage(cur.appId, { page: m.data.page })
+          const res = await appService.conformPage(cur.appId, { page: m.data.page, conformId: m.data.conformId })
           // applied===false means the page was already conformed or has no extractable
           // arrays — treat as a dead-end so dev-tools doesn't spin waitForContentBacked.
           // OUTBOUND-to-iframe only — intentionally not in builder BusEventMap

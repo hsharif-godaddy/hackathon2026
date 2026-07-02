@@ -16,8 +16,19 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { CreateForWorkspace } from '../../workspace/client.js';
+import { analyzeExtractable, type ExtractableArray } from '../../tools/content-extract.js';
 import { conformPageToContentLayer, type ConformOutcome } from '../content-conform.js';
 import { tempWorkspaceFactory } from './temp-workspace-files.js';
+
+vi.mock('../../utils/git.js', () => ({
+  GitUtils: vi.fn().mockImplementation(function (this: Record<string, unknown>) {
+    this.commitFilesIfChanged = vi.fn().mockResolvedValue(true);
+  }),
+}));
+
+vi.mock('../../workspace/index.js', () => ({
+  createForWorkspace: vi.fn().mockReturnValue({ tasks: {} }),
+}));
 
 const VITE_CONFIG: string = `import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
@@ -133,5 +144,64 @@ describe('conformPageToContentLayer — partial split', () => {
     expect(outcome.note).toBeNull();
     expect(readFileSync(join(dir, 'src/pages/index.tsx'), 'utf8')).toBe(OUTSIDE_CALLBACK_PAGE);
     expect(existsSync(join(dir, 'src/content/pages/home.json'))).toBe(false);
+  });
+});
+
+// ── F1 guard: function-local retained array + conformId must not fail check 2b ──
+//
+// validateConform check 2b used to look only in `surfaceConsts` (module-level)
+// for the `<name>Meta` remainder. For a function-local retained array, the
+// remainder lives INSIDE the function body — surfaceConsts never sees it, so
+// the validate always returned "dropped local remainder" and heals were silently
+// rolled back. Fix: use `allDepthConsts` when `conformId` is present.
+
+const FUNCTION_LOCAL_RETAINED_PAGE: string = `import { Target } from 'lucide-react';
+export default function P() {
+  const stats = [{ value: 'a', icon: Target }, { value: 'b', icon: Target }];
+  return <>{stats.map((s, i) => <div key={i}><span>{s.value}</span><s.icon/></div>)}</>;
+}
+`;
+
+function locIdFor(source: string, arrayName: string): string {
+  const target: ExtractableArray | undefined = analyzeExtractable(source, 'home').extractions.find(
+    (p: ExtractableArray): boolean => p.arrayName === arrayName,
+  );
+  if (!target || target.locId === null) {
+    throw new Error(`no extractable array '${arrayName}' with a loc-id in test fixture`);
+  }
+  return target.locId;
+}
+
+describe('conformPageToContentLayer — function-local retained array heal (F1)', () => {
+  it('heals a function-local retained array via conformId without rolling back (check 2b allDepthConsts)', async () => {
+    const conformId: string = locIdFor(FUNCTION_LOCAL_RETAINED_PAGE, 'stats');
+    const layout: AppLayout = setupApp(FUNCTION_LOCAL_RETAINED_PAGE);
+    dir = layout.appPath;
+
+    const outcome: ConformOutcome = await conformPageToContentLayer({
+      appId: 'app-f1',
+      appPath: layout.appPath,
+      fullPath: join(layout.appPath, 'src/pages/index.tsx'),
+      command: 'edit',
+      isPageCreate: false,
+      trigger: 'heal',
+      conformId,
+      workspaceFactory: layout.factory,
+    });
+
+    // Applied — not rolled back. Before the fix, note was null (rollback).
+    expect(outcome.note).not.toBeNull();
+
+    const page: string = readFileSync(join(layout.appPath, 'src/pages/index.tsx'), 'utf8');
+    // The renamed remainder must be inside the function body.
+    expect(page).toMatch(/const statsMeta =/);
+    // The content is iterated from virtual:content.
+    expect(page).toMatch(/home\.stats\.map/);
+    // Content JSON has the value fields.
+    const json: string = readFileSync(join(layout.appPath, 'src/content/pages/home.json'), 'utf8');
+    const parsed: Record<string, unknown> = JSON.parse(json) as Record<string, unknown>;
+    const rows: Record<string, unknown>[] = parsed.stats as Record<string, unknown>[];
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toMatchObject({ value: 'a' });
   });
 });

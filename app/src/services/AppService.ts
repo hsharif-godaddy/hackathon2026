@@ -1241,7 +1241,7 @@ export class AppService {
    * was actually conformed, false when there was nothing to extract).
    * Returns `{ ok: false }` on any non-2xx response.
    */
-  async conformPage(appId: string, body: { page: string }): Promise<{ ok: boolean; applied?: boolean }> {
+  async conformPage(appId: string, body: { page: string; conformId?: string }): Promise<{ ok: boolean; applied?: boolean }> {
     const apiUrl = await buildDynamicApiUrl('content/conform-page', appId)
     const response = await agentFetch(apiUrl, {
       siteId: appId,

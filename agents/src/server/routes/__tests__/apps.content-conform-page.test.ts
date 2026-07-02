@@ -99,6 +99,41 @@ describe('POST /apps/:id/content/conform-page', () => {
     );
   });
 
+  it('valid page + well-formed conformId returns 200 and forwards conformId', async () => {
+    vi.mocked(conformPageToContentLayer).mockResolvedValueOnce({ note: 'Conformed.', source: null });
+
+    const response = await request(app)
+      .post(`/apps/${testAppId}/content/conform-page`)
+      .send({ page: 'src/pages/services.tsx', conformId: 'L2C8' });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ ok: true, applied: true });
+    expect(vi.mocked(conformPageToContentLayer)).toHaveBeenCalledWith(
+      expect.objectContaining({ conformId: 'L2C8', trigger: 'heal' }),
+    );
+  });
+
+  it('malformed conformId returns 400 invalid-value', async () => {
+    const response = await request(app)
+      .post(`/apps/${testAppId}/content/conform-page`)
+      .send({ page: 'src/pages/services.tsx', conformId: 'bad' });
+
+    expect(response.status).toBe(400);
+    expect(response.body.ok).toBe(false);
+    expect(response.body.error.code).toBe('invalid-value');
+    expect(vi.mocked(conformPageToContentLayer)).not.toHaveBeenCalled();
+  });
+
+  it('non-string conformId returns 400 invalid-value', async () => {
+    const response = await request(app)
+      .post(`/apps/${testAppId}/content/conform-page`)
+      .send({ page: 'src/pages/services.tsx', conformId: 42 });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error.code).toBe('invalid-value');
+    expect(vi.mocked(conformPageToContentLayer)).not.toHaveBeenCalled();
+  });
+
   it('valid page returns 200 { ok: true, applied: false } when nothing to conform', async () => {
     vi.mocked(conformPageToContentLayer).mockResolvedValueOnce({ note: null, source: 'const x = 1;' });
 

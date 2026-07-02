@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { analyzeExtractable, planPageExtraction } from '../content-extract.js';
-import type { ExtractionPlan } from '../content-extract.js';
+import { analyzeExtractable, bindingForPage, planPageExtraction } from '../content-extract.js';
+import type { ExtractionPlan, ExtractableArray } from '../content-extract.js';
 
 // ── analyzeExtractable: the safe-or-skip gate ─────────────────────────────────
 //
@@ -241,7 +241,9 @@ describe('analyzeExtractable — declines with a reason', () => {
     expect(v.reason).toMatch(/more than once|ambiguous/i);
   });
 
-  it('const array declared inside a function (not module-level)', () => {
+  it('const array declared inside a function is now collected (CP3: function-local arrays are visible)', () => {
+    // CP3 widens the scanner to include function-local arrays; a function-local
+    // const that passes all other checks (flat objects, single .map, etc.) extracts.
     const code: string = `
       export default function P() {
         const items = [ { name: "A" } ];
@@ -249,7 +251,8 @@ describe('analyzeExtractable — declines with a reason', () => {
       }
     `;
     const report: ReturnType<typeof analyzeExtractable> = analyzeExtractable(code, 'home');
-    expect(report.extractions).toHaveLength(0);
+    expect(report.extractions).toHaveLength(1);
+    expect(report.extractions[0].arrayName).toBe('items');
     expect(report.skipped).toHaveLength(0);
   });
 
@@ -459,6 +462,28 @@ export default function HomePage() {
     const plan: ExtractionPlan = planPageExtraction(already, 'src/pages/index.tsx');
     expect(plan.extractedNames).toEqual([]);
     expect(plan.content).toBeUndefined();
+    expect(plan.newPageSource).toBeUndefined();
+  });
+
+  it('batch idempotency: a same-named function-local const does not prevent re-extraction of module-level one (F3)', () => {
+    // After a successful batch extraction, the module-level `items` const is gone
+    // (virtual:content is imported instead). A function-local `items` const remains
+    // in the page (unrelated). With the bug, `existingConsts` (all-depth) sees the
+    // function-local `items` → thinks the module-level one is still there → tries
+    // to re-extract → broken. Fix: narrow existingConsts to module scope only.
+    const already: string = `import { home } from 'virtual:content';
+
+export default function P() {
+  const items = [{ name: 'local' }]; // function-local, same name as the extracted array
+  return (
+    <div>{home.items.map((i: { name: string }) => <p key={i.name}>{i.name}</p>)}{items.map((i: { name: string }) => <span>{i.name}</span>)}</div>
+  );
+}
+`;
+    const plan: ExtractionPlan = planPageExtraction(already, 'src/pages/index.tsx');
+    // The module-level items was already extracted (virtual:content imported, no module-level const).
+    // The function-local items must NOT fool the idempotency check.
+    expect(plan.extractedNames).toEqual([]);
     expect(plan.newPageSource).toBeUndefined();
   });
 });
@@ -686,6 +711,27 @@ export default function P() {
     // The original <Icon/> (the export) stays rendered as <Icon/>.
     expect(out).toMatch(/<Icon\s*\/>/);
   });
+
+  it('function-local: pre-existing statsMeta in same function scope forces remainder to statsMeta2 (F4)', () => {
+    const src: string = `import { Target } from 'lucide-react';
+export default function P() {
+  const statsMeta = [{ icon: Target }]; // pre-existing in same function scope
+  const stats = [{ value: 'DOJ', icon: Target }];
+  return <>{stats.map((s, i) => <div key={i}><span>{s.value}</span><s.icon/></div>)}</>;
+}`;
+    const id: string = analyzeExtractable(src, 'home').extractions.find(
+      (e: ExtractableArray): boolean => e.arrayName === 'stats',
+    )!.locId!;
+    const out: string = planPageExtraction(src, 'src/pages/index.tsx', id).newPageSource!;
+    // The rename must not collide with pre-existing function-local statsMeta
+    expect(out).toMatch(/const statsMeta2 = /);
+    expect(out).toMatch(/statsMeta2\[i\]\.icon/);
+    // Pre-existing statsMeta stays
+    expect(out).toMatch(/const statsMeta = \[/);
+    // No duplicate const statsMeta declaration (the new one uses statsMeta2)
+    const metaMatches: RegExpMatchArray | null = out.match(/const statsMeta(?!2)\s*=/g);
+    expect((metaMatches ?? []).length).toBeLessThanOrEqual(1);
+  });
 });
 
 describe('redirectRetainedReads — unhandled item-param shapes throw (B2)', () => {
@@ -779,19 +825,37 @@ export default function About() {
   });
 
   it('declines cleanly when the page slug is not a valid content binding', () => {
+    // A leading digit can't form a valid binding even after hyphen→underscore
+    // normalization (`2024-report` → `2024_report`, still fails NAME_PATTERN).
     const slugPage: string = `const tips = [{ text: "a" }];
 
-export default function Pricing() {
+export default function Report() {
   return <ul>{tips.map((x) => <li key={x.text}>{x.text}</li>)}</ul>;
 }
 `;
-    const plan: ExtractionPlan = planPageExtraction(slugPage, 'src/pages/pricing-plans.tsx');
+    const plan: ExtractionPlan = planPageExtraction(slugPage, 'src/pages/2024-report.tsx');
     // No throw, no extraction — `tips` declines with a reason.
     expect(plan.extractedNames).toEqual([]);
     expect(plan.newPageSource).toBeUndefined();
     expect(
       plan.skipped.some((s) => s.name === 'tips' && /not a valid content binding/.test(s.reason)),
     ).toBe(true);
+  });
+
+  it('normalizes a hyphenated slug to an underscore binding and extracts', () => {
+    // Regression for the S2 fix: `pricing-plans` → `pricing_plans` is now a valid
+    // binding, so a hyphenated page extracts rather than declining.
+    const slugPage: string = `const tips = [{ text: "a" }, { text: "b" }];
+
+export default function Pricing() {
+  return <ul>{tips.map((x) => <li key={x.text}>{x.text}</li>)}</ul>;
+}
+`;
+    const plan: ExtractionPlan = planPageExtraction(slugPage, 'src/pages/pricing-plans.tsx');
+    expect(plan.binding).toBe('pricing_plans');
+    expect(plan.extractedNames).toEqual(['tips']);
+    expect(plan.newPageSource).toMatch(/import \{ pricing_plans \} from 'virtual:content'/);
+    expect(plan.newPageSource).toMatch(/pricing_plans\.tips\.map/);
   });
 });
 
@@ -952,6 +1016,39 @@ export default function PortfolioPage() {
 }
 `;
 
+// ── CP3: function-local array collection + binding-scoped reference analysis ──
+
+describe('analyzeExtractable — function-local arrays (CP3)', () => {
+  it('collects a function-local const array with its loc-id', () => {
+    const src: string = `export default function P(){ const stats=[{v:'a'}]; return <>{stats.map((s,i)=><span key={i}>{s.v}</span>)}</>; }`;
+    const out: ReturnType<typeof analyzeExtractable> = analyzeExtractable(src, 'home');
+    expect(out.extractions).toHaveLength(1);
+    expect(out.extractions[0].arrayName).toBe('stats');
+    expect(out.extractions[0].locId).toMatch(/^L\d+C\d+$/);
+  });
+
+  it('two same-named function-local arrays are BOTH collected as distinct candidates', () => {
+    const src: string = `export function A(){const items=[{t:'a'}];return items.map((s,i)=><span key={i}>{s.t}</span>);}\nexport function B(){const items=[{t:'b'}];return items.map((s,i)=><span key={i}>{s.t}</span>);}`;
+    const out: ReturnType<typeof analyzeExtractable> = analyzeExtractable(src, 'home');
+    expect(out.extractions.map((e) => e.locId).filter(Boolean)).toHaveLength(2);
+  });
+
+  it('function-local array referenced beyond .map declines', () => {
+    const src: string = `export default function P(){ const stats=[{v:'a'}]; const first=stats[0]; return <>{stats.map((s,i)=><span key={i}>{s.v}</span>)}{first.v}</>; }`;
+    const out: ReturnType<typeof analyzeExtractable> = analyzeExtractable(src, 'home');
+    expect(out.extractions).toHaveLength(0);
+  });
+
+  it('loc-id cross-side consistency: L1C6 for const stats = [...] on line 1', () => {
+    // Source-mapper computes locId from the VariableDeclarator node.
+    // `const stats = [{v:'a'}]` on line 1 col 0: declarator id `stats` starts at col 6 (after "const ").
+    const src: string = `const stats = [{v:'a'}];\nexport default function P(){ return <>{stats.map((s,i)=><span key={i}>{s.v}</span>)}</>; }`;
+    const out: ReturnType<typeof analyzeExtractable> = analyzeExtractable(src, 'home');
+    expect(out.extractions).toHaveLength(1);
+    expect(out.extractions[0].locId).toBe('L1C6');
+  });
+});
+
 describe('real customer bundle shapes (S1 boundary)', () => {
   describe('positive case — 227SPARC index.tsx: module-level stats with icon component refs', () => {
     it('extracts stats and strips icon from the content payload', () => {
@@ -987,19 +1084,20 @@ describe('real customer bundle shapes (S1 boundary)', () => {
     });
   });
 
-  describe('boundary case — Hot Ham Communications secret-sauce.tsx: function-local articles (S2 shape)', () => {
-    // articles is declared INSIDE the component body. The module-level scanner
-    // is blind to function-local consts, so this is a clean no-op, not a skip
-    // with a reason. This is intentional — S2 will address function-local arrays.
-    it('extracts nothing and does not throw', () => {
+  describe('boundary case — Hot Ham Communications secret-sauce.tsx: function-local articles (now heals, S2)', () => {
+    // articles is declared INSIDE the component body. Under S1 this was invisible;
+    // CP3 function-local scanning + the S2 slug-normalization fix (secret-sauce →
+    // secret_sauce) now heal it. The dedicated positive assertions live in the
+    // "real customer bundle shapes (S2 — function-local)" block below; here we just
+    // confirm the S1-era no-op has flipped to an extraction and does not throw.
+    it('now extracts articles and does not throw', () => {
       expect(() => {
         const plan: ExtractionPlan = planPageExtraction(
           HOT_HAM_SECRET_SAUCE,
           'src/pages/secret-sauce.tsx',
         );
-        expect(plan.extractedNames).toEqual([]);
-        expect(plan.newPageSource).toBeUndefined();
-        expect(plan.content).toBeUndefined();
+        expect(plan.binding).toBe('secret_sauce');
+        expect(plan.extractedNames).toEqual(['articles']);
       }).not.toThrow();
     });
   });
@@ -1020,6 +1118,360 @@ describe('real customer bundle shapes (S1 boundary)', () => {
         expect(plan.newPageSource).toBeUndefined();
         expect(plan.content).toBeUndefined();
       }).not.toThrow();
+    });
+  });
+
+  // ── CP4: id-addressed, binding-precise, collision-aware rewrite ──────────────
+  //
+  // When a `conformId` (declarator loc-id) is supplied, extract ONLY the array
+  // whose declarator matches and rewrite ITS binding's `.map` via scope reference
+  // paths — never the global name text-sub. A same-named array in another scope
+  // must be byte-unchanged. Scope-agnostic: module-level OR function-local.
+  describe('planPageExtraction — id-addressed binding-precise rewrite', () => {
+    it('id-addressed rewrite touches only the targeted binding, leaving a same-named sibling intact', () => {
+      const src: string = `export function A(){const items=[{t:'a'}];return <>{items.map((s,i)=><span key={i}>{s.t}</span>)}</>;}\nexport function B(){const items=[{t:'b'}];return <>{items.map((s,i)=><span key={i}>{s.t}</span>)}</>;}`;
+      const targetId: string = analyzeExtractable(src, 'home').extractions[0].locId!;
+      const plan: ExtractionPlan = planPageExtraction(src, 'src/pages/index.tsx', targetId);
+      expect(plan.extractedNames).toEqual(['items']);
+      const out: string = plan.newPageSource!;
+      expect(out).toMatch(/home\.items\.map/); // A rewritten
+      expect((out.match(/home\.items\.map/g) || []).length).toBe(1); // only ONE rewritten
+      // B's const intact (recast prints untouched nodes verbatim).
+      expect(out).toMatch(/const items=\[\{ ?t: ?'b' ?\}\]|const items = \[\{\s*t: 'b'/);
+    });
+
+    it('function-local single heals: declarator dropped from function body, content-backed map', () => {
+      const src: string = `export default function P(){ const stats=[{v:'a'}]; return <>{stats.map((s,i)=><span key={i}>{s.v}</span>)}</>; }`;
+      const id: string = analyzeExtractable(src, 'home').extractions[0].locId!;
+      const plan: ExtractionPlan = planPageExtraction(src, 'src/pages/index.tsx', id);
+      expect(plan.content!.stats).toEqual([{ v: 'a' }]);
+      expect(plan.newPageSource!).toMatch(/home\.stats\.map/);
+      expect(plan.newPageSource!).not.toMatch(/const stats\s*=/);
+    });
+
+    it('no conformId → S1 module-level batch behavior unchanged (regression)', () => {
+      const withId: ExtractionPlan = planPageExtraction(PAGE, 'src/pages/index.tsx');
+      const withUndefined: ExtractionPlan = planPageExtraction(PAGE, 'src/pages/index.tsx', undefined);
+      expect(withUndefined.extractedNames).toEqual(withId.extractedNames);
+      expect(withUndefined.newPageSource).toEqual(withId.newPageSource);
+    });
+
+    it('unknown conformId → clean decline (extractedNames empty)', () => {
+      const plan: ExtractionPlan = planPageExtraction(PAGE, 'src/pages/index.tsx', 'L999C99');
+      expect(plan.extractedNames).toEqual([]);
+      expect(plan.newPageSource).toBeUndefined();
+      expect(plan.skipped.some((s) => s.reason === 'conform-id-not-found')).toBe(true);
+    });
+
+    it('id-addressed retained-field split heals only the targeted binding (scope-local Meta remainder)', () => {
+      const src: string = `import { Target } from 'lucide-react';
+export function A() {
+  const stats = [{ value: 'a', icon: Target }];
+  return <>{stats.map((s, i) => <div key={i}><span>{s.value}</span><s.icon/></div>)}</>;
+}
+export function B() {
+  const stats = [{ value: 'b', icon: Target }];
+  return <>{stats.map((s, i) => <div key={i}><span>{s.value}</span><s.icon/></div>)}</>;
+}`;
+      const targetId: string = analyzeExtractable(src, 'home').extractions[0].locId!;
+      const plan: ExtractionPlan = planPageExtraction(src, 'src/pages/index.tsx', targetId);
+      expect(plan.extractedNames).toEqual(['stats']);
+      expect(plan.content!.stats).toEqual([{ value: 'a' }]);
+      const out: string = plan.newPageSource!;
+      // Only ONE binding is rewritten to the content map.
+      expect((out.match(/home\.stats\.map/g) || []).length).toBe(1);
+      // A's declarator became a statsMeta remainder; B's `const stats` is intact.
+      expect(out).toMatch(/const statsMeta = \[\{\s*icon: Target/);
+      expect((out.match(/const stats = \[/g) || []).length).toBe(1); // B's stays
+    });
+
+    it('content-key collision: same-named sibling already on disk declines the id target', () => {
+      // Two same-named `items` arrays in different scopes. Target A's declarator,
+      // but a content key `home.items` already exists from a DIFFERENT declarator.
+      const src: string = `export function A(){const items=[{t:'a'}];return <>{items.map((s,i)=><span key={i}>{s.t}</span>)}</>;}\nexport function B(){const items=[{t:'b'}];return <>{items.map((s,i)=><span key={i}>{s.t}</span>)}</>;}`;
+      const targetId: string = analyzeExtractable(src, 'home').extractions[0].locId!;
+      const plan: ExtractionPlan = planPageExtraction(src, 'src/pages/index.tsx', targetId, ['items']);
+      expect(plan.extractedNames).toEqual([]);
+      expect(plan.declineReason).toBe('content-key-collision');
+      expect(plan.newPageSource).toBeUndefined();
+    });
+
+    it('id-addressed retained: unsafe callback (whole-object fn pass) throws unsafe rewrite (Gap 2)', () => {
+      const src: string = `import { Target } from 'lucide-react';
+export default function P() {
+  const stats = [{ value: 'DOJ', icon: Target }];
+  function render(item: { value: string; icon: typeof Target }) { return item.icon; }
+  return <>{stats.map((s, i) => <div key={i}>{render(s)}</div>)}</>;
+}`;
+      const id: string = analyzeExtractable(src, 'home').extractions.find(
+        (e: ExtractableArray): boolean => e.arrayName === 'stats',
+      )!.locId!;
+      expect(() => planPageExtraction(src, 'src/pages/index.tsx', id)).toThrow(/unsafe rewrite/);
+    });
+
+    it('id-addressed retained: unsafe callback (destructured index param) throws unsafe rewrite (Gap 2)', () => {
+      const src: string = `import { Target } from 'lucide-react';
+export default function P() {
+  const stats = [{ value: 'DOJ', icon: Target }];
+  return <>{stats.map((s, { x }: { x: number }) => <div key={x}><s.icon/></div>)}</>;
+}`;
+      const id: string = analyzeExtractable(src, 'home').extractions.find(
+        (e: ExtractableArray): boolean => e.arrayName === 'stats',
+      )!.locId!;
+      expect(() => planPageExtraction(src, 'src/pages/index.tsx', id)).toThrow(
+        /unsafe rewrite.*index param is not a plain identifier/,
+      );
+    });
+  });
+});
+
+// ── Real customer bundle shapes (S2 — function-local) ────────────────────────
+//
+// These fixtures are distilled from the actual Hot Ham Communications bundle
+// (appId_1g342scsqm). They verify:
+//
+//   S2 POSITIVE: Hot Ham secret-sauce.tsx — function-local `articles` (flat
+//   all-scalar objects, one .map) IS collected by CP3 function-local scanning AND
+//   heals via planPageExtraction. The page slug `secret-sauce` is normalized to
+//   the valid binding `secret_sauce` by bindingForPage (a general fix surfaced by
+//   this end-check — previously the hyphenated slug failed CONTENT_BINDING_PATTERN
+//   and declined). Underscore, not camelCase: the binding is lowercase-only
+//   (it becomes the virtual:content export name, validated by NAME_PATTERN).
+//
+//   S3 STILL DECLINES: `portfolioItems` — function-local with nested `projects: [...]`
+//   (array-valued property). Hard-skipped as non-flat; S3 follow-up needed.
+//
+//   S4 STILL DECLINES: `capabilities` — function-local `string[]` (non-object
+//   elements). Hard-skipped; S4 follow-up needed.
+
+// Faithful minimal fixture for Hot Ham secret-sauce.tsx.
+// Preserves: function-local scope, flat all-scalar object elements
+// (id/slug/title/author/company/excerpt/image/imagePosition/date are all strings),
+// and one `articles.map(...)` render. Surrounding boilerplate stripped to what
+// the extractor sees.
+const HOT_HAM_SECRET_SAUCE_S2: string = `import { ChevronRight } from 'lucide-react';
+
+export default function SecretSaucePage() {
+  const articles = [
+    {
+      id: 'joy-bus',
+      slug: 'joy-bus-diner-jennifer-caraway',
+      title: "When Cooking Meals for 'Joy' Became Delivering Meals With Purpose",
+      author: 'Jennifer Caraway',
+      company: 'The Joy Bus Diner',
+      excerpt: 'Walking into The Joy Bus Diner...',
+      image: 'https://img1.wsimg.com/isteam/ip/ad9316ab/Joy%20Bus.JPG',
+      imagePosition: 'object-[center_35%]',
+      date: 'January 2026',
+    },
+    {
+      id: 'herschede',
+      slug: 'herschede-menswear-eric',
+      title: 'From Mortgages to Menswear',
+      author: 'Eric Herschede',
+      company: 'Herschede',
+      excerpt: 'After 26 years as a mortgage broker...',
+      image: 'https://img1.wsimg.com/isteam/ip/ad9316ab/Founder.JPEG',
+      imagePosition: 'object-[center_40%]',
+      date: 'December 2025',
+    },
+  ];
+
+  return (
+    <div>
+      {articles.map((article) => (
+        <div key={article.id}>
+          <h2>{article.title}</h2>
+          <p>{article.author} • {article.company}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
+`;
+
+// Faithful minimal fixture for Hot Ham portfolio.tsx (S3 + S4 shapes).
+// portfolioItems: function-local, each element has a nested `projects: [...]`
+//   (array-valued property → non-flat hard-skip, S3).
+// capabilities: function-local `string[]` (non-object elements → hard-skip, S4).
+const HOT_HAM_PORTFOLIO_S2: string = `import { FileText, Users } from 'lucide-react';
+
+export default function PortfolioPage() {
+  const portfolioItems = [
+    {
+      category: 'Government Affairs Advocacy',
+      icon: Users,
+      color: 'bg-primary',
+      projects: [
+        {
+          title: 'Government Affairs Advocacy',
+          client: 'Sonora Quest Laboratories',
+          description: 'Led advocacy outreach...',
+          results: 'Content Creation / Lab Tours',
+          tags: ['Government Affairs', 'Advocacy'],
+        },
+      ],
+    },
+    {
+      category: 'Content & Storytelling',
+      icon: FileText,
+      color: 'bg-primary',
+      projects: [
+        {
+          title: 'Brand Narrative Development',
+          client: 'B2B Manufacturing Company',
+          description: 'Crafted complete brand story...',
+          results: '45% increase in website engagement',
+          tags: ['Brand Voice', 'Messaging Strategy'],
+        },
+      ],
+    },
+  ];
+
+  const capabilities = [
+    'Strategic Communications Planning',
+    'Executive Messaging & Positioning',
+    'Internal Communications Programs',
+    'Thought Leadership Development',
+  ];
+
+  return (
+    <div>
+      {portfolioItems.map((category, categoryIndex) => (
+        <div key={categoryIndex}>
+          <h2>{category.category}</h2>
+        </div>
+      ))}
+      <div>
+        {capabilities.map((capability, index) => (
+          <div key={index}>{capability}</div>
+        ))}
+      </div>
+    </div>
+  );
+}
+`;
+
+describe('real customer bundle shapes (S2 — function-local)', () => {
+  // S2 POSITIVE: the CP3 function-local scanner finds `articles` from
+  // secret-sauce.tsx (flat all-scalar objects, one .map), and planPageExtraction
+  // heals it — the page slug `secret-sauce` is normalized to the valid binding
+  // `secret_sauce`.
+  describe('HEALS — Hot Ham secret-sauce.tsx articles (function-local, flat all-scalar)', () => {
+    const ARTICLES_DATA: Record<string, string>[] = [
+      {
+        id: 'joy-bus',
+        slug: 'joy-bus-diner-jennifer-caraway',
+        title: "When Cooking Meals for 'Joy' Became Delivering Meals With Purpose",
+        author: 'Jennifer Caraway',
+        company: 'The Joy Bus Diner',
+        excerpt: 'Walking into The Joy Bus Diner...',
+        image: 'https://img1.wsimg.com/isteam/ip/ad9316ab/Joy%20Bus.JPG',
+        imagePosition: 'object-[center_35%]',
+        date: 'January 2026',
+      },
+      {
+        id: 'herschede',
+        slug: 'herschede-menswear-eric',
+        title: 'From Mortgages to Menswear',
+        author: 'Eric Herschede',
+        company: 'Herschede',
+        excerpt: 'After 26 years as a mortgage broker...',
+        image: 'https://img1.wsimg.com/isteam/ip/ad9316ab/Founder.JPEG',
+        imagePosition: 'object-[center_40%]',
+        date: 'December 2025',
+      },
+    ];
+
+    it('analyzeExtractable finds articles with a valid locId and scalar data (CP3 function-local scan)', () => {
+      const report: ReturnType<typeof analyzeExtractable> = analyzeExtractable(
+        HOT_HAM_SECRET_SAUCE_S2,
+        'secret_sauce',
+      );
+      const extraction: ReturnType<typeof analyzeExtractable>['extractions'][number] | undefined =
+        report.extractions.find((e) => e.arrayName === 'articles');
+      expect(extraction).toBeDefined();
+      expect(extraction!.locId).toMatch(/^L\d+C\d+$/);
+      expect(extraction!.data).toEqual(ARTICLES_DATA);
+    });
+
+    it('planPageExtraction heals: extracts articles, content-backs the map, drops the const', () => {
+      const id: string = analyzeExtractable(
+        HOT_HAM_SECRET_SAUCE_S2,
+        'secret_sauce',
+      ).extractions.find((e) => e.arrayName === 'articles')!.locId!;
+      const plan: ExtractionPlan = planPageExtraction(
+        HOT_HAM_SECRET_SAUCE_S2,
+        'src/pages/secret-sauce.tsx',
+        id,
+      );
+      expect(plan.binding).toBe('secret_sauce');
+      expect(plan.extractedNames).toContain('articles');
+      expect(plan.content!.articles).toEqual(ARTICLES_DATA);
+      const out: string = plan.newPageSource!;
+      expect(out).toMatch(/import \{ secret_sauce \} from 'virtual:content'/);
+      expect(out).toMatch(/secret_sauce\.articles\.map/);
+      expect(out).not.toMatch(/const articles =/);
+    });
+  });
+
+  // S3 STILL DECLINES: portfolioItems has a nested `projects: [...]` array-valued
+  // property — hard-skipped as non-flat regardless of function-local scope.
+  // This is intentional; S3 will handle nested arrays.
+  describe('STILL DECLINES — portfolioItems (function-local + nested projects array, S3 shape)', () => {
+    it('analyzeExtractable does NOT include portfolioItems — nested array-valued property skips it', () => {
+      const report: ReturnType<typeof analyzeExtractable> = analyzeExtractable(
+        HOT_HAM_PORTFOLIO_S2,
+        'portfolio',
+      );
+      const found: boolean = report.extractions.some((e) => e.arrayName === 'portfolioItems');
+      expect(found).toBe(false);
+      // Skipped with a non-flat reason (nested array/object property).
+      const skip: ReturnType<typeof analyzeExtractable>['skipped'][number] | undefined =
+        report.skipped.find((s) => s.name === 'portfolioItems');
+      expect(skip).toBeDefined();
+      expect(skip!.reason).toMatch(/non-flat/i);
+    });
+  });
+
+  // S4 STILL DECLINES: capabilities is a bare string[] — non-object elements,
+  // hard-skipped. This is intentional; S4 will handle non-object arrays.
+  describe('STILL DECLINES — capabilities (function-local string[], S4 shape)', () => {
+    it('analyzeExtractable does NOT include capabilities — non-object elements skip it', () => {
+      const report: ReturnType<typeof analyzeExtractable> = analyzeExtractable(
+        HOT_HAM_PORTFOLIO_S2,
+        'portfolio',
+      );
+      const found: boolean = report.extractions.some((e) => e.arrayName === 'capabilities');
+      expect(found).toBe(false);
+      // Skipped with a non-object-element reason.
+      const skip: ReturnType<typeof analyzeExtractable>['skipped'][number] | undefined =
+        report.skipped.find((s) => s.name === 'capabilities');
+      expect(skip).toBeDefined();
+      expect(skip!.reason).toMatch(/object literal/i);
+    });
+  });
+
+  // bindingForPage normalization — the general fix surfaced by the S2 end-check.
+  // Kebab-case slugs collapse to underscores (lowercase-only binding); index →
+  // home; already-valid slugs pass through unchanged.
+  describe('bindingForPage — slug → content binding normalization', () => {
+    it('index → home', () => {
+      expect(bindingForPage('src/pages/index.tsx')).toBe('home');
+    });
+    it('secret-sauce → secret_sauce', () => {
+      expect(bindingForPage('src/pages/secret-sauce.tsx')).toBe('secret_sauce');
+    });
+    it('about-us → about_us', () => {
+      expect(bindingForPage('src/pages/about-us.tsx')).toBe('about_us');
+    });
+    it('about → about (already valid, unchanged)', () => {
+      expect(bindingForPage('src/pages/about.tsx')).toBe('about');
+    });
+    it('normalized bindings satisfy CONTENT_BINDING_PATTERN', () => {
+      const pattern: RegExp = /^[a-z_][a-z0-9_]*$/;
+      expect(pattern.test(bindingForPage('src/pages/secret-sauce.tsx'))).toBe(true);
+      expect(pattern.test(bindingForPage('src/pages/about-us.tsx'))).toBe(true);
     });
   });
 });

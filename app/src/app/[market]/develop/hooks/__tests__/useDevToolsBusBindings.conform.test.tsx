@@ -114,6 +114,28 @@ describe('CONFORM_REQUEST bus handler', () => {
   })
 })
 
+describe('CONFORM_REQUEST bus handler — conformId forwarding', () => {
+  it('forwards conformId to appService.conformPage when present', async () => {
+    conformPageMock.mockResolvedValueOnce({ ok: true, applied: true })
+    renderHook(() => useDevToolsBusBindings(deps()))
+    dispatch({
+      type: 'CONFORM_REQUEST',
+      data: { page: 'src/pages/services.tsx', arrayName: 'services', conformId: 'L2C8' },
+      requestId: 'req-conformid-1',
+    } as never)
+    await vi.waitFor(() => expect(conformPageMock).toHaveBeenCalled())
+    expect(conformPageMock).toHaveBeenCalledWith('app-test', { page: 'src/pages/services.tsx', conformId: 'L2C8' })
+  })
+
+  it('forwards conformId as undefined when absent (S1 fallback)', async () => {
+    conformPageMock.mockResolvedValueOnce({ ok: true, applied: true })
+    renderHook(() => useDevToolsBusBindings(deps()))
+    dispatch(conformEvt as never)
+    await vi.waitFor(() => expect(conformPageMock).toHaveBeenCalled())
+    expect(conformPageMock).toHaveBeenCalledWith('app-test', { page: 'src/pages/index.tsx', conformId: undefined })
+  })
+})
+
 describe('CONFORM_REQUEST bus handler — requestId threading', () => {
   it('echoes requestId on CONFORM_SUCCEEDED reply', async () => {
     conformPageMock.mockResolvedValueOnce({ ok: true, applied: true })

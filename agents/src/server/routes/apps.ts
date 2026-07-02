@@ -1161,12 +1161,21 @@ router.post('/:id/content/conform-page', async (req: Request, res: Response) => 
     if (!id) {
       return res.status(400).json({ ok: false, error: { code: 'invalid-key', message: 'App ID is required' } });
     }
-    const { page } = req.body ?? {};
+    const { page, conformId } = req.body ?? {};
     const contextLogger = log.forApp(id);
     if (typeof page !== 'string' || !/^src\/pages\/[^/]+\.tsx$/.test(page)) {
       return res.status(400).json({
         ok: false,
         error: { code: 'invalid-value', message: 'page (src/pages/*.tsx) is required' },
+      });
+    }
+    // conformId is optional (older dev-tools omit it → S1 batch fallback). When
+    // present it MUST be a declarator loc-id (`L<line>C<col>`) — reject a
+    // malformed value rather than pass it through to a silent no-match decline.
+    if (conformId !== undefined && (typeof conformId !== 'string' || !/^L\d+C\d+$/.test(conformId))) {
+      return res.status(400).json({
+        ok: false,
+        error: { code: 'invalid-value', message: 'conformId, when present, must match L<line>C<col>' },
       });
     }
     const app = appRepo.findById(id);
@@ -1180,6 +1189,7 @@ router.post('/:id/content/conform-page', async (req: Request, res: Response) => 
       command: 'str_replace',
       isPageCreate: false,
       trigger: 'heal',
+      conformId,
     });
     const applied: boolean = outcome.note !== null;
     contextLogger.info('route.apps.conform-page.done', {

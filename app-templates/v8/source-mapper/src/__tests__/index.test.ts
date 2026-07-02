@@ -1341,4 +1341,18 @@ export default function P() { return <>{opts.map((o) => <div data-dev-conformabl
     const occurrences: number = (out.match(/data-dev-conformable-array/g) ?? []).length;
     expect(occurrences).toBe(1);
   });
+
+  it('stamps a stable conformable-id (declarator loc) on the item root', () => {
+    const code = `const stats = [{ value: 'DOJ' }];\nexport default function P(){ return <>{stats.map((s,i)=><div><span>{s.value}</span></div>)}</>; }`;
+    const out = transform(code, 'src/pages/index.tsx');
+    // binding.path is the VariableDeclarator node (`stats = [...]`); `stats` starts at col 6 (after `const `)
+    expect(out).toMatch(/data-dev-conformable-id="L1C6"/);
+  });
+
+  it('stamps distinct ids for two same-named function-local arrays', () => {
+    const code = `export function A(){ const items=[{t:'a'}]; return items.map((s,i)=><span key={i}>{s.t}</span>); }\nexport function B(){ const items=[{t:'b'}]; return items.map((s,i)=><span key={i}>{s.t}</span>); }`;
+    const out = transform(code, 'src/pages/x.tsx');
+    const ids = [...out.matchAll(/data-dev-conformable-id="(L\d+C\d+)"/g)].map((m) => m[1]);
+    expect(new Set(ids).size).toBe(2); // two distinct declarator locs
+  });
 });

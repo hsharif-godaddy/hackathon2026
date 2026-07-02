@@ -8,6 +8,7 @@ import {
   isFormatBoundTextRuntimeAvailable,
   type BoundTextCandidate,
 } from './format-bound-text.js';
+import { arrayDeclaratorLocId } from './loc-id.js';
 
 interface PluginOptions {
   excludePaths?: string[];
@@ -655,6 +656,7 @@ export default function jsxSourceMapper(babel: { types: typeof types }): PluginO
                 const cb = path.node.arguments[0];
                 if (t.isArrowFunctionExpression(cb) || t.isFunctionExpression(cb)) {
                   const pageRel: string = normalizeFileName(state.filename ?? state.file.opts.filename ?? '');
+                  const locId: string | null = arrayDeclaratorLocId(binding?.path.node.loc);
                   for (const root of collectCallbackRootElements(cb)) {
                     const attrs = root.openingElement.attributes;
                     if (hasAttr(attrs, 'data-dev-conformable-array')) continue;
@@ -662,6 +664,7 @@ export default function jsxSourceMapper(babel: { types: typeof types }): PluginO
                       t.jsxAttribute(t.jsxIdentifier('data-dev-conformable-array'), t.stringLiteral(ident.name)),
                       t.jsxAttribute(t.jsxIdentifier('data-dev-conformable-page'), t.stringLiteral(pageRel)),
                     );
+                    if (locId) attrs.push(t.jsxAttribute(t.jsxIdentifier('data-dev-conformable-id'), t.stringLiteral(locId)));
                   }
                 }
               }

@@ -33,7 +33,9 @@ import * as t from '@babel/types';
 import { logger } from '../logging/index.js';
 import {
   analyzeExtractable,
+  collectArrayConsts,
   planPageExtraction,
+  type ArrayWithRetained,
   type ExtractionPlan,
 } from '../tools/content-extract.js';
 // Namespace import so the in-process call sites stay spy-able in tests and the
@@ -63,6 +65,13 @@ export interface ConformInput {
    *            for the named page regardless of how it was written.
    */
   trigger?: 'create' | 'heal';
+  /**
+   * Declarator loc-id (`L<line>C<col>`) of the clicked conformable array. When
+   * present, the heal targets ONLY that declarator (id-addressed binding-precise
+   * rewrite — a same-named array in another scope is never touched). Absent → the
+   * S1 module-level batch path. Backward-compatible: older dev-tools omit it.
+   */
+  conformId?: string;
   workspaceFactory?: WorkspaceFilesFactory;
 }
 
@@ -194,6 +203,13 @@ interface ValidationContext {
    * Strict fidelity is enforced on newly-introduced arrays.
    */
   preExistingArrays: Set<string>;
+  /**
+   * The declarator loc-id targeted by an id-addressed heal, or `undefined` for
+   * the S1 batch path. When present, validation confirms the targeted declarator
+   * is gone from ANY scope (function-local declarators live below Program level,
+   * so the module-level `const` check alone would pass vacuously for them).
+   */
+  conformId?: string;
 }
 
 /**
@@ -218,21 +234,42 @@ async function validateConform(ctx: ValidationContext): Promise<string | null> {
   }
 
   // 2. For each extracted array: exactly one `<binding>.<name>.map` member/call
-  //    chain survives, and no top-level `const <name>` remains.
+  //    chain survives, and the extracted `const <name>` declarator is gone.
+  //
+  //    The id-addressed heal (CP4) targets a single declarator that may live in a
+  //    FUNCTION scope, not at module level — checking only module-level consts
+  //    would pass vacuously for a function-local target and let a failed removal
+  //    slip through. So when `conformId` is present we assert the declarator is
+  //    gone at ANY depth. The S1 batch path only ever extracts module-level
+  //    consts, so its scope check stays module-level (unchanged behaviour).
   const surfaceConsts: Set<string> = moduleLevelConstNames(ast);
+  const allDepthConsts: Set<string> | null =
+    ctx.conformId !== undefined
+      ? new Set(collectArrayConsts(ast).map((c) => c.name))
+      : null;
   for (const name of plan.extractedNames) {
     if (countBindingMapChain(ast, plan.binding, name) !== 1) {
       return `rewritten page is missing \`${plan.binding}.${name}.map\``;
     }
-    if (surfaceConsts.has(name)) {
+    // Retained-field targets keep a `<name>Meta` remainder (the `<name>` const is
+    // renamed, not deleted), so the "declarator gone" assertion applies only to
+    // all-literal extractions — 2b below checks the remainder for retained ones.
+    const isRetained: boolean = plan.arraysWithRetained.some(
+      (p: ArrayWithRetained): boolean => p.arrayName === name,
+    );
+    const declaratorScope: Set<string> = allDepthConsts ?? surfaceConsts;
+    if (!isRetained && declaratorScope.has(name)) {
       return `rewritten page still declares \`const ${name}\``;
     }
   }
 
   // 2b. Partial-split arrays must keep their local `<name>Meta` remainder const,
   //     or the retained (icon/component) render would vanish after conform.
+  //     For function-local targets (conformId present), the remainder lives inside
+  //     the function body — use allDepthConsts to find it, not surfaceConsts.
   for (const partial of plan.arraysWithRetained) {
-    if (!surfaceConsts.has(`${partial.arrayName}Meta`)) {
+    const metaScope: Set<string> = allDepthConsts ?? surfaceConsts;
+    if (!metaScope.has(`${partial.arrayName}Meta`)) {
       return `rewritten page dropped local remainder \`${partial.arrayName}Meta\``;
     }
   }
@@ -394,7 +431,7 @@ export async function conformPageToContentLayer(input: ConformInput): Promise<Co
   }
   if (!hasExtractable) return { note: null, source, declineReason: 'no-extractable' };
 
-  const note: string | null = await tryConform(files, appId, appPath, pageRel, source);
+  const note: string | null = await tryConform(files, appId, appPath, pageRel, source, input.conformId);
   if (note !== null) return { note, source: null };
 
   // Declined or rolled back — re-read the restored page for the advisory pass.
@@ -458,10 +495,11 @@ async function tryConform(
   appPath: string,
   pageRel: string,
   source: string,
+  conformId?: string,
 ): Promise<string | null> {
   let plan: ExtractionPlan;
   try {
-    plan = planPageExtraction(source, pageRel);
+    plan = planPageExtraction(source, pageRel, conformId);
   } catch (err) {
     // An unsafe-rewrite throw means nothing was written — nothing to roll back.
     logger.info('content-extract.skipped', { appId, filePath: pageRel, reason: getErrorMessage(err) });
@@ -558,6 +596,7 @@ async function tryConform(
       plan,
       expected,
       preExistingArrays,
+      conformId,
     });
     if (failure !== null) {
       return await rollback(failure);

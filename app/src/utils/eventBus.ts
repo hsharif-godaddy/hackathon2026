@@ -185,6 +185,8 @@ export interface BusComplianceSectionTogglePayload {
 export interface ConformTarget {
   page: string;
   arrayName: string;
+  /** Declarator loc-id (`L<line>C<col>`) for the id-addressed heal; absent → S1 batch. */
+  conformId?: string;
 }
 
 // ── Event map ─────────────────────────────────────────────────────────────
