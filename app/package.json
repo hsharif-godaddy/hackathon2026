@@ -77,6 +77,7 @@
     "@godaddy/react-mintl": "^3.2.0",
     "@godaddy/user-analytics-js": "^4.0.1",
     "@heroicons/react": "^2.2.0",
+    "@lexical/code": "catalog:",
     "@lexical/link": "catalog:",
     "@lexical/list": "catalog:",
     "@lexical/markdown": "catalog:",

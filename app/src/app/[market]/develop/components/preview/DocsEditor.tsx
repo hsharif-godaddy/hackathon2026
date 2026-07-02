@@ -2,6 +2,7 @@
 
 import { type EditorState, type LexicalEditor } from 'lexical'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { CodeNode } from '@lexical/code'
 import { AutoLinkNode, LinkNode } from '@lexical/link'
 import { ListItemNode, ListNode } from '@lexical/list'
 import {
@@ -11,6 +12,7 @@ import {
   BOLD_ITALIC_UNDERSCORE,
   BOLD_STAR,
   BOLD_UNDERSCORE,
+  CODE,
   HEADING,
   HIGHLIGHT,
   INLINE_CODE,
@@ -23,6 +25,7 @@ import {
   type Transformer,
   UNORDERED_LIST,
 } from '@lexical/markdown'
+import { type InitialConfigType } from '@lexical/react/LexicalComposer'
 import { LexicalComposer } from '@lexical/react/LexicalComposer'
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext'
 import { ContentEditable } from '@lexical/react/LexicalContentEditable'
@@ -38,8 +41,10 @@ import { HeadingNode, QuoteNode } from '@lexical/rich-text'
 import { logger } from '@/lib/request-context'
 import { appService } from '@/services/AppService'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
+import { extractFrontmatter } from './docsFrontmatter'
 
 const DOCS_TRANSFORMERS: Transformer[] = [
+  CODE,
   HEADING,
   QUOTE,
   UNORDERED_LIST,
@@ -56,14 +61,6 @@ const DOCS_TRANSFORMERS: Transformer[] = [
   LINK,
 ]
 
-const FRONTMATTER_RE = /^---\n[\s\S]*?\n---\n?/
-
-function extractFrontmatter(content: string): { frontmatter: string; body: string } {
-  const match: RegExpMatchArray | null = content.match(FRONTMATTER_RE)
-  if (!match) return { frontmatter: '', body: content }
-  return { frontmatter: match[0], body: content.slice(match[0].length) }
-}
-
 interface DocsEditorProps {
   appId: string
   filePath: string
@@ -78,7 +75,7 @@ function SavePlugin({ appId, filePath, editorRef, frontmatter, onSaved }: {
   frontmatter: string
   onSaved: (content: string) => void
 }): null {
-  const save = useCallback(() => {
+  const save = useCallback((exitOnSuccess: boolean = false) => {
     const editor: LexicalEditor | null = editorRef.current
     if (!editor) return
     editor.update(() => {
@@ -87,6 +84,7 @@ function SavePlugin({ appId, filePath, editorRef, frontmatter, onSaved }: {
       appService.writeFile(appId, filePath, fullContent)
         .then(() => {
           useDevelopPageStore.getState().setDocsDirty(false)
+          if (exitOnSuccess) useDevelopPageStore.getState().setDocsEditing(false)
           onSaved(fullContent)
         })
         .catch((err: unknown) => {
@@ -99,15 +97,18 @@ function SavePlugin({ appId, filePath, editorRef, frontmatter, onSaved }: {
     const handleKeyDown = (e: KeyboardEvent): void => {
       if ((e.metaKey || e.ctrlKey) && e.key === 's') {
         e.preventDefault()
-        save()
+        save(false)
       }
     }
-    const handleSaveEvent = (): void => { save() }
+    const handleSaveEvent = (): void => { save(false) }
+    const handleSaveAndExitEvent = (): void => { save(true) }
     document.addEventListener('keydown', handleKeyDown)
     window.addEventListener('docs-save', handleSaveEvent)
+    window.addEventListener('docs-save-and-exit', handleSaveAndExitEvent)
     return () => {
       document.removeEventListener('keydown', handleKeyDown)
       window.removeEventListener('docs-save', handleSaveEvent)
+      window.removeEventListener('docs-save-and-exit', handleSaveAndExitEvent)
     }
   }, [save])
 
@@ -118,9 +119,9 @@ export default function DocsEditor({ appId, filePath, initialContent, onSaved }:
   const editorRef = useRef<LexicalEditor | null>(null)
   const { frontmatter, body: initialBody } = useMemo(() => extractFrontmatter(initialContent), [initialContent])
 
-  const initialConfig = {
+  const initialConfig: InitialConfigType = {
     namespace: 'docs-editor',
-    nodes: [HeadingNode, QuoteNode, ListNode, ListItemNode, LinkNode, AutoLinkNode],
+    nodes: [CodeNode, HeadingNode, QuoteNode, ListNode, ListItemNode, LinkNode, AutoLinkNode],
     editorState: () => {
       $convertFromMarkdownString(initialBody, DOCS_TRANSFORMERS)
     },

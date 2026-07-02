@@ -34,16 +34,11 @@ function useDocsList(appId: string | null): string[] {
   useEffect(() => {
     if (!appId) return
     let cancelled = false
-    appService.getFiles(appId, 2)
+    appService.getFiles(appId, 3)
       .then(({ entries }) => {
         if (cancelled) return
         const docFiles: string[] = entries
-          .filter((e) => {
-            if (e.isDirectory || !e.path.startsWith('docs/') || !e.path.endsWith('.md')) return false
-            const filename: string = e.path.split('/').pop() ?? ''
-            const stem: string = filename.replace(/\.md$/, '')
-            return stem !== stem.toUpperCase()
-          })
+          .filter((e) => !e.isDirectory && e.path.startsWith('docs/') && e.path.endsWith('.md'))
           .map((e) => e.path)
           .sort()
         setDocs(docFiles)
@@ -61,6 +56,7 @@ function useDocsList(appId: string | null): string[] {
 export function useDocsCanvasActions(): CanvasActionItem[] {
   const appId = useAppIdFromParams()
   const isDocsEditing = useDevelopPageStore((state) => state.isDocsEditing)
+  const isDocsTruncated = useDevelopPageStore((state) => state.isDocsTruncated)
   const docsPath = useDevelopPageStore((state) => state.docsPath)
   const setDocsEditing = useDevelopPageStore((state) => state.setDocsEditing)
   const openDoc = useDevelopPageStore((state) => state.openDoc)
@@ -93,8 +89,7 @@ export function useDocsCanvasActions(): CanvasActionItem[] {
           icon: <CheckmarkIcon className="size-2.5" />,
           label: 'Done',
           onTrigger: () => {
-            window.dispatchEvent(new CustomEvent('docs-save'))
-            setDocsEditing(false)
+            window.dispatchEvent(new CustomEvent('docs-save-and-exit'))
           },
         },
         {
@@ -108,7 +103,7 @@ export function useDocsCanvasActions(): CanvasActionItem[] {
           },
         },
       )
-    } else {
+    } else if (!isDocsTruncated) {
       items.push({
         type: CanvasActionItemType.Button,
         id: 'edit',
@@ -133,5 +128,5 @@ export function useDocsCanvasActions(): CanvasActionItem[] {
     )
 
     return items
-  }, [docs, docsPath, isDocsEditing, setDocsEditing, openDoc])
+  }, [docs, docsPath, isDocsEditing, isDocsTruncated, setDocsEditing, openDoc])
 }

@@ -61,6 +61,7 @@ catalog:
 
   # Observability
   '@langfuse/tracing': ^4.6.1
+  '@lexical/code': ^0.42.0
   '@lexical/link': ^0.42.0
   '@lexical/list': ^0.42.0
   '@lexical/markdown': ^0.42.0

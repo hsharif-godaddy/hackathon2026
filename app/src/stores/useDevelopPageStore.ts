@@ -254,6 +254,7 @@ interface DevelopPageStore {
   docsReloadToken: number
   isDocsEditing: boolean
   isDocsDirty: boolean
+  isDocsTruncated: boolean
   previewReloadToken: number
   previewNavigatePath: string | null
   mobileMode: MobileMode
@@ -410,6 +411,7 @@ interface DevelopPageStore {
   setDocsPath: (path: string | null) => void
   setDocsEditing: (editing: boolean) => void
   setDocsDirty: (dirty: boolean) => void
+  setDocsTruncated: (truncated: boolean) => void
   openDoc: (path: string) => void
   openPreviewPage: (path: string) => void
   setMobileMode: (mode: MobileMode) => void
@@ -621,6 +623,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     docsReloadToken: 0,
     isDocsEditing: false,
     isDocsDirty: false,
+    isDocsTruncated: false,
     previewReloadToken: 0,
     previewNavigatePath: null,
     mobileMode: MobileMode.TOOLS,
@@ -709,13 +712,22 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     setDocsPath: (path) => set((state) => { state.docsPath = path }),
     setDocsEditing: (editing) => set((state) => { state.isDocsEditing = editing }),
     setDocsDirty: (dirty) => set((state) => { state.isDocsDirty = dirty }),
-    openDoc: (path) => set((state) => {
-      state.docsPath = path
-      state.viewMode = ViewMode.DOCS
-      state.docsReloadToken += 1
-      state.isDocsEditing = false
-      state.isDocsDirty = false
-    }),
+    setDocsTruncated: (truncated) => set((state) => { state.isDocsTruncated = truncated }),
+    openDoc: (path) => {
+      const { isDocsEditing, isDocsDirty } = get()
+      if (isDocsEditing && isDocsDirty) {
+        const confirmed = window.confirm('You have unsaved changes. Discard them and switch documents?')
+        if (!confirmed) return
+      }
+      set((state) => {
+        state.docsPath = path
+        state.viewMode = ViewMode.DOCS
+        state.docsReloadToken += 1
+        state.isDocsEditing = false
+        state.isDocsDirty = false
+        state.isDocsTruncated = false
+      })
+    },
     openPreviewPage: (path) => set((state) => {
       state.previewNavigatePath = path
       state.viewMode = ViewMode.PREVIEW

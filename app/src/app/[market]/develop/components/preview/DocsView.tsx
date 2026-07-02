@@ -10,6 +10,7 @@ import { logger } from '@/lib/request-context'
 import { appService } from '@/services/AppService'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { useServerPollingStore } from '@/stores/useServerPollingStore'
+import { type FrontmatterEntry, parseFrontmatter } from './docsFrontmatter'
 
 const DocsEditor = lazy(() => import('./DocsEditor'))
 
@@ -20,31 +21,11 @@ interface DocsViewProps {
 type LoadState =
   | { status: 'idle' }
   | { status: 'loading' }
-  | { status: 'ready'; content: string }
+  | { status: 'ready'; content: string; truncated: boolean }
   | { status: 'error'; message: string }
 
 const DESIGN_PREVIEW_KEYWORD = 'design-preview'
 const IFRAME_FALLBACK_TIMEOUT_MS = 8000
-const FRONTMATTER_RE = /^---\n([\s\S]*?)\n---\n?/
-
-interface FrontmatterEntry {
-  key: string
-  value: string
-}
-
-function parseFrontmatter(content: string): { entries: FrontmatterEntry[]; body: string } | null {
-  const match = content.match(FRONTMATTER_RE)
-  if (!match) return null
-  const raw = match[1]!
-  const entries: FrontmatterEntry[] = []
-  for (const line of raw.split('\n')) {
-    const colonIdx = line.indexOf(':')
-    if (colonIdx > 0) {
-      entries.push({ key: line.slice(0, colonIdx).trim(), value: line.slice(colonIdx + 1).trim() })
-    }
-  }
-  return { entries, body: content.slice(match[0].length) }
-}
 
 function FrontmatterTable({ entries }: { entries: FrontmatterEntry[] }) {
   const [open, setOpen] = useState(false)
@@ -96,6 +77,7 @@ export default function DocsView({ appId }: DocsViewProps) {
   const docsPath = useDevelopPageStore((state) => state.docsPath)
   const docsReloadToken = useDevelopPageStore((state) => state.docsReloadToken)
   const isDocsEditing = useDevelopPageStore((state) => state.isDocsEditing)
+  const setDocsTruncated = useDevelopPageStore((state) => state.setDocsTruncated)
   const getServerState = useServerPollingStore((state) => state.getServerState)
   const previewUrl = getServerState(appId)?.url ?? null
   const [loadState, setLoadState] = useState<LoadState>({ status: 'idle' })
@@ -114,12 +96,14 @@ export default function DocsView({ appId }: DocsViewProps) {
 
     const controller = new AbortController()
     let cancelled = false
+    setDocsTruncated(false)
     setLoadState({ status: 'loading' })
 
-    appService.readFile(appId, docsPath)
+    appService.readFile(appId, docsPath, { maxLines: 100_000 })
       .then((result) => {
         if (cancelled || controller.signal.aborted) return
-        setLoadState({ status: 'ready', content: result.content })
+        setDocsTruncated(result.truncated)
+        setLoadState({ status: 'ready', content: result.content, truncated: result.truncated })
       })
       .catch((error: unknown) => {
         if (cancelled || controller.signal.aborted) return
@@ -153,7 +137,7 @@ export default function DocsView({ appId }: DocsViewProps) {
   }, [])
 
   const handleDocSaved = useCallback((content: string) => {
-    setLoadState({ status: 'ready', content })
+    setLoadState({ status: 'ready', content, truncated: false })
   }, [])
 
   useEffect(() => {
@@ -238,7 +222,15 @@ export default function DocsView({ appId }: DocsViewProps) {
         {!isDesignPreview && loadState.status === 'ready' && !isDocsEditing && (
           <DocsContent content={loadState.content} />
         )}
-        {!isDesignPreview && loadState.status === 'ready' && isDocsEditing && (
+        {!isDesignPreview && loadState.status === 'ready' && loadState.truncated && isDocsEditing && (
+          <div
+            className="text-intents-ux-feedbackCritical-feedbackColor text-sm px-4 py-3"
+            data-testid="docs-view-truncated-warning"
+          >
+            This document is too large to edit safely.
+          </div>
+        )}
+        {!isDesignPreview && loadState.status === 'ready' && !loadState.truncated && isDocsEditing && (
           <Suspense fallback={<div className="h-full flex items-center justify-center"><Spinner size="md" /></div>}>
             <DocsEditor
               appId={appId}
