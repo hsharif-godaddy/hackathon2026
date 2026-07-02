@@ -28,7 +28,6 @@ export const tips: string[] = [
  */
 export const thinkingTipsContent: string[] = [
   'builder_tips_select_edit_description',
-  'builder_tips_logo_description',
   'builder_tips_continue_description',
   'builder_tips_upload_media_description',
   'builder_tips_media_tab_description',

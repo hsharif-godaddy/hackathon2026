@@ -18,7 +18,7 @@ vi.mock('@/hooks/useSwitchboard', () => ({
 }));
 
 vi.mock('@/app/[market]/develop/components/chat/thinking-tips-content', () => ({
-  THINKING_TIPS: ['builder_tips_select_edit_description', 'builder_tips_logo_description'],
+  THINKING_TIPS: ['builder_tips_select_edit_description', 'builder_tips_continue_description'],
 }));
 
 vi.mock('@/app/[market]/develop/components/tips/tips-content', async (importOriginal) => {
@@ -36,7 +36,7 @@ import ThinkingTip from './ThinkingTip';
 const messages = {
   builder_thinking_tip_label: 'Tip:',
   builder_tips_select_edit_description: 'Click any element to select it, then edit directly.',
-  builder_tips_logo_description: 'Upload your logo in Settings to brand your site.',
+  builder_tips_continue_description: 'Keep chatting to refine your site.',
 };
 
 function renderWithIntl(ui: ReactElement) {
