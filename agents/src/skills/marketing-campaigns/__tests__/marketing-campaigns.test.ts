@@ -3,6 +3,9 @@ import { z } from 'zod'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
+import { DevSupervisorError } from '../../../services/DevSupervisorClient.js'
+
+const notFound = () => { throw new DevSupervisorError('not_found', 404, 'file not found') }
 
 // Stable mocks for the KV memory store backing the brand-signal persist side effect.
 const { mockGet, mockSet } = vi.hoisted(() => ({
@@ -94,6 +97,7 @@ vi.mock('../../../database/repositories/SimpleCampaignRepository.js', () => ({
 
 import { tools, campaignPlanPropose, campaignPlanCreate, campaignCreate, campaignScaffoldPage, campaignApplyBlogUtm, sanitizeSlug, buildLandingPage } from '../tools/index.js'
 import { createForWorkspace } from '../../../workspace/index.js'
+import { setLandingPages, getPageBySlug, getPageById, getAllPages } from '../templates/lib/landing-pages.js'
 import { SocialPlatform } from '../../../types/social.js'
 
 const skillRoot = join(dirname(fileURLToPath(import.meta.url)), '..')
@@ -624,16 +628,18 @@ describe('sanitizeSlug', () => {
 })
 
 describe('buildLandingPage', () => {
-  it('injects dates via JSON.stringify and derives the component name', async () => {
-    const result = await buildLandingPage('summer-sale', '2026-07-01', '2026-07-07')
-    expect(result).toContain(JSON.stringify('2026-07-01T00:00:00Z'))
-    expect(result).toContain(JSON.stringify('2026-07-07T23:59:59Z'))
-    // Component name is PascalCase from the slug + 'Page'.
+  it('derives the PascalCase component name from the slug and accepts date props at runtime', async () => {
+    const result = await buildLandingPage('summer-sale')
+    // Dates are no longer injected at scaffold time — they come from the manifest at runtime.
+    expect(result).not.toContain('__SALE_START__')
+    expect(result).not.toContain('__SALE_END__')
     expect(result).toContain('SummerSalePage')
+    expect(result).toContain('startDate')
+    expect(result).toContain('endDate')
   })
 
   it("digit-prefixes the component name ('2024-deal' -> 'C2024DealPage')", async () => {
-    const result = await buildLandingPage('2024-deal', '2026-07-01', '2026-07-07')
+    const result = await buildLandingPage('2024-deal')
     expect(result).toContain('C2024DealPage')
   })
 })
@@ -676,17 +682,121 @@ describe('campaignScaffoldPage scaffold behavior', () => {
     expect(result.filesWritten).toEqual([])
   })
 
-  it('returns success:true and writes the page when the write resolves', async () => {
+  it('writes the per-campaign TSX + manifest, wires the route, and returns a stable pageId', async () => {
+    const ROUTES_CONTENT = [
+      "import { RouteObject } from 'react-router-dom';",
+      "import HomePage from './pages/index';",
+      'export const routes: RouteObject[] = [',
+      "  { path: '/', element: <HomePage /> },",
+      "  { path: '*', element: <NotFoundPage /> },",
+      '];',
+    ].join('\n')
+
     const write = vi.fn().mockResolvedValue(undefined)
-    vi.mocked(createForWorkspace).mockReturnValue({ files: { write } } as any)
+    // The real workspace read API is `view`; a missing path throws. Return '[]'
+    // for the manifest and the v8 routes for routes.tsx; throw for infra paths so
+    // the write-if-absent branch runs.
+    const view = vi.fn(async ({ path }: { path: string }) => {
+      if (path === 'src/content/data/landingPages.json') return { content: '[]' }
+      if (path === 'src/routes.tsx') return { content: ROUTES_CONTENT }
+      notFound()
+    })
+    vi.mocked(createForWorkspace).mockReturnValue({ files: { write, view } } as any)
+
     const result = await run(campaignScaffoldPage, {
       startDate: '2026-07-01',
       endDate: '2026-07-07',
       landingPagePath: '/summer-sale',
     }, enabledContext)
+
     expect(result.success).toBe(true)
-    expect(result.filesWritten).toEqual(['src/pages/lp/summer-sale.tsx'])
-    expect(write).toHaveBeenCalledWith(expect.objectContaining({ path: 'src/pages/lp/summer-sale.tsx' }))
+    expect(result.pageId).toMatch(/^page-[0-9a-z]{12}$/)
+    expect(write).toHaveBeenCalledWith(
+      expect.objectContaining({ path: 'src/pages/lp/summer-sale.tsx' }),
+    )
+    expect(write).toHaveBeenCalledWith(
+      expect.objectContaining({ path: 'src/content/data/landingPages.json' }),
+    )
+    // The route was injected into routes.tsx before the catch-all.
+    const routesWrite = write.mock.calls
+      .map(([arg]) => arg)
+      .find((arg: any) => arg.path === 'src/routes.tsx')
+    expect(routesWrite).toBeDefined()
+    expect(routesWrite.content).toContain("{ path: '/lp/:slug', element: <LandingPage /> },")
+    expect(routesWrite.content).toContain("import LandingPage from './pages/lp';")
+  })
+
+  it('returns success:false and flags manual wiring when the route cannot be wired', async () => {
+    // routes.tsx has no catch-all `path: '*'` entry to anchor to, so route wiring
+    // fails even though the TSX + manifest writes succeed.
+    const ROUTES_CONTENT_NO_CATCH_ALL = [
+      "import { RouteObject } from 'react-router-dom';",
+      "import HomePage from './pages/index';",
+      'export const routes: RouteObject[] = [',
+      "  { path: '/', element: <HomePage /> },",
+      '];',
+    ].join('\n')
+
+    const write = vi.fn().mockResolvedValue(undefined)
+    const view = vi.fn(async ({ path }: { path: string }) => {
+      if (path === 'src/content/data/landingPages.json') return { content: '[]' }
+      if (path === 'src/routes.tsx') return { content: ROUTES_CONTENT_NO_CATCH_ALL }
+      notFound()
+    })
+    vi.mocked(createForWorkspace).mockReturnValue({ files: { write, view } } as any)
+
+    const result = await run(campaignScaffoldPage, {
+      startDate: '2026-07-01',
+      endDate: '2026-07-07',
+      landingPagePath: '/summer-sale',
+    }, enabledContext)
+
+    // The TSX + manifest were written, but the route could not be wired.
+    expect(result.success).toBe(false)
+    expect(result.routeStatus).toBe('failed')
+    expect(result.filesWritten).toContain('src/pages/lp/summer-sale.tsx')
+    expect(result.filesWritten).toContain('src/content/data/landingPages.json')
+    expect(result.filesWritten).not.toContain('src/routes.tsx')
+    expect(result.message).toContain('src/routes.tsx')
+    expect(result.message.toLowerCase()).toContain('manual')
+  })
+})
+
+describe('landing-pages render-time gate', () => {
+  const past = '2020-01-01T00:00:00Z'
+  const pastEnd = '2020-01-07T00:00:00Z'
+  const future = '2999-01-01T00:00:00Z'
+  const futureEnd = '2999-01-07T00:00:00Z'
+
+  beforeEach(() => setLandingPages([]))
+
+  it('getPageBySlug returns null for a draft entry', () => {
+    setLandingPages([{ id: 'page-aaaaaaaaaaaa', slug: 'draft-page', startDate: past, endDate: pastEnd, status: 'draft' }])
+    expect(getPageBySlug('draft-page')).toBeNull()
+  })
+
+  it('getPageBySlug returns a published-but-future entry (page handles coming-soon state)', () => {
+    setLandingPages([{ id: 'page-bbbbbbbbbbbb', slug: 'future-page', startDate: future, endDate: futureEnd, status: 'scheduled' }])
+    expect(getPageBySlug('future-page')?.slug).toBe('future-page')
+  })
+
+  it('getPageBySlug returns a published entry with a past startDate', () => {
+    setLandingPages([{ id: 'page-cccccccccccc', slug: 'live-page', startDate: past, endDate: pastEnd, status: 'published' }])
+    expect(getPageBySlug('live-page')?.slug).toBe('live-page')
+  })
+
+  it('getPageById returns a draft entry (ungated)', () => {
+    setLandingPages([{ id: 'page-dddddddddddd', slug: 'draft-page', startDate: future, endDate: futureEnd, status: 'draft' }])
+    expect(getPageById('page-dddddddddddd')?.id).toBe('page-dddddddddddd')
+  })
+
+  it('getAllPages excludes ONLY drafts (scheduled/future-dated included)', () => {
+    setLandingPages([
+      { id: 'page-1', slug: 'live', startDate: past, endDate: pastEnd, status: 'published' },
+      { id: 'page-2', slug: 'draft', startDate: past, endDate: pastEnd, status: 'draft' },
+      { id: 'page-3', slug: 'future', startDate: future, endDate: futureEnd, status: 'scheduled' },
+    ])
+    expect(getAllPages().map(p => p.slug)).toEqual(['live', 'future'])
   })
 })
 

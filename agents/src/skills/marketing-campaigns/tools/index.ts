@@ -14,16 +14,23 @@ import { mergeBrandIdentity, MEMORY_KEY, type BrandIdentity } from '../../../too
 import { getKvMemoryStore } from '../../../memory/adapters/index.js'
 import { workspaceScopeFromAppId, customerIdFromContext } from '../../../memory/interfaces/scope.js'
 import { createForWorkspace } from '../../../workspace/index.js'
+import { readJsonSidecar } from '../../../workspace/json-sidecar.js'
+import type { WorkspaceFiles } from '../../../workspace/files.js'
+import { isDevSupervisorNotFound } from '../../../services/DevSupervisorClient.js'
 import { serializeSocialRawContent } from '../../../services/social/social-raw-content.js'
 import type { SocialRawContent } from '../../../services/social/social-raw-content.js'
 import { resolvePublishedUrlFromToolContext } from '../../../services/site-published-url.js'
 import { decorateBlogCta, decorateSocialCta, decorateConversionCtaLinks, hasCampaignConversionCta } from '../../../services/campaign-link-decorator.js'
-import { isDevSupervisorNotFound } from '../../../services/DevSupervisorClient.js'
 import { readFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
+import { customAlphabet } from 'nanoid'
 
 const logger = Logger.create({ component: 'marketing-campaigns-tools' })
+
+// Stable page id (`page-<nanoid>`), same alphabet/length as social post ids.
+const nano = customAlphabet('0123456789abcdefghijklmnopqrstuvwxyz', 12)
+const generatePageId = (): string => `page-${nano()}`
 
 function jsonArray<T extends z.ZodTypeAny>(field: string, schema: T): z.ZodType<z.output<T>> {
   return z.preprocess((v: unknown): unknown => {
@@ -125,6 +132,25 @@ function materializeSocialDraft(
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const LANDING_PAGE_TEMPLATE_PATH = path.resolve(__dirname, '../templates/pages/campaign-landing.tsx')
 
+// Customer-workspace destination -> agent-side template source.
+const LANDING_PAGE_INFRA: ReadonlyArray<{ dest: string; template: string }> = [
+  { dest: 'src/pages/lp/index.tsx', template: '../templates/landing-pages/index.tsx' },
+  { dest: 'src/lib/landing-pages.ts', template: '../templates/lib/landing-pages.ts' },
+]
+
+const MANIFEST_PATH = 'src/content/data/landingPages.json'
+const ROUTES_PATH = 'src/routes.tsx'
+
+interface LandingPageManifestEntry {
+  id: string
+  slug: string
+  componentPath: string
+  startDate?: string
+  endDate?: string
+  status?: 'published' | 'scheduled' | 'draft'
+  campaignId?: string
+}
+
 export function sanitizeSlug(raw: string): string {
   const slug = raw
     .replace(/^\/+/, '')
@@ -136,7 +162,7 @@ export function sanitizeSlug(raw: string): string {
   return slug || 'campaign'
 }
 
-export async function buildLandingPage(slug: string, startDate: string, endDate: string): Promise<string> {
+export async function buildLandingPage(slug: string): Promise<string> {
   const safe = slug.replace(/^(\d)/, 'c$1')
   const componentName = safe
     .split('-')
@@ -145,32 +171,150 @@ export async function buildLandingPage(slug: string, startDate: string, endDate:
 
   const template = await readFile(LANDING_PAGE_TEMPLATE_PATH, 'utf-8')
 
-  return template
-    .replace(/__SALE_END__/g, JSON.stringify(`${endDate}T23:59:59Z`))
-    .replace(/__SALE_START__/g, JSON.stringify(`${startDate}T00:00:00Z`))
-    .replace(/__COMPONENT_NAME__/g, componentName)
+  return template.replace(/__COMPONENT_NAME__/g, componentName)
 }
 
-async function scaffoldLandingPage(appId: string, landingPagePath: string, startDate: string, endDate: string): Promise<{ success: boolean; filesWritten: string[] }> {
+// Read a workspace file's text content, returning undefined only when the file
+// is genuinely absent. Real I/O errors (transport faults, permission denied) are
+// logged and rethrown so the caller surfaces them correctly rather than silently
+// treating them as "file not found".
+async function readWorkspaceFile(files: WorkspaceFiles, filePath: string): Promise<string | undefined> {
+  try {
+    const result = await files.view({ path: filePath })
+    return result?.content
+  } catch (error) {
+    if (isDevSupervisorNotFound(error)) return undefined
+    logger.warn('campaign-scaffold.workspace_read_failed', { filePath, error })
+    throw error
+  }
+}
+
+// Write each infra file only if it does not already exist (idempotent).
+async function ensureInfraFiles(files: WorkspaceFiles, filesWritten: string[]): Promise<void> {
+  for (const { dest, template } of LANDING_PAGE_INFRA) {
+    const existing = await readWorkspaceFile(files, dest)
+    if (existing !== undefined) continue
+    const content = await readFile(path.resolve(__dirname, template), 'utf-8')
+    await files.write({ path: dest, content })
+    filesWritten.push(dest)
+  }
+}
+
+// Read-modify-write the manifest, upserting the page entry by slug.
+// Uses readJsonSidecar so "file absent" safely returns [] while real errors throw
+// (prevents silently clobbering existing campaigns on transient read failures).
+async function upsertManifestEntry(
+  files: WorkspaceFiles,
+  entry: LandingPageManifestEntry,
+  filesWritten: string[],
+): Promise<void> {
+  const manifest = await readJsonSidecar<LandingPageManifestEntry[]>({
+    files,
+    path: MANIFEST_PATH,
+    fallback: [],
+    validate: (parsed) => Array.isArray(parsed) ? (parsed as LandingPageManifestEntry[]) : null,
+  })
+  const idx = manifest.findIndex(e => e.slug === entry.slug)
+  if (idx >= 0) manifest[idx] = entry
+  else manifest.push(entry)
+  await files.write({ path: MANIFEST_PATH, content: JSON.stringify(manifest, null, 2) })
+  filesWritten.push(MANIFEST_PATH)
+}
+
+// Inject the single permanent /lp/:slug route into routes.tsx if not present.
+// The route + its component are permanent and manifest-driven — the builder
+// never edits routes for landing pages. Returns a status so the caller can
+// distinguish a genuine wiring failure (routes unreadable / no catch-all) from
+// a benign no-op (route already present).
+async function ensureLandingPageRoute(
+  files: WorkspaceFiles,
+  filesWritten: string[],
+): Promise<'wired' | 'already-present' | 'failed'> {
+  const routes = await readWorkspaceFile(files, ROUTES_PATH)
+  if (routes === undefined) return 'failed'
+  if (routes.includes("'/lp/:slug'")) return 'already-present' // already wired — no-op
+
+  const importLine = "import LandingPage from './pages/lp';"
+  const routeEntry = "  { path: '/lp/:slug', element: <LandingPage /> },"
+
+  let updated = routes
+  if (!updated.includes("from './pages/lp'")) {
+    // Add the eager import after the final existing import line.
+    const importRegex = /^import .*$/gm
+    let lastImportEnd = -1
+    let m: RegExpExecArray | null
+    while ((m = importRegex.exec(updated)) !== null) {
+      lastImportEnd = m.index + m[0].length
+    }
+    if (lastImportEnd >= 0) {
+      updated = `${updated.slice(0, lastImportEnd)}\n${importLine}${updated.slice(lastImportEnd)}`
+    } else {
+      updated = `${importLine}\n${updated}`
+    }
+  }
+
+  // Insert the route immediately before the catch-all `path: '*'` entry.
+  const catchAllRegex = /^[^\n]*\{\s*path:\s*'\*'/m
+  const catchAll = catchAllRegex.exec(updated)
+  if (catchAll) {
+    updated = `${updated.slice(0, catchAll.index)}${routeEntry}\n${updated.slice(catchAll.index)}`
+  } else {
+    logger.warn('campaign-scaffold.route_catch_all_not_found', {})
+    return 'failed'
+  }
+
+  await files.write({ path: ROUTES_PATH, content: updated })
+  filesWritten.push(ROUTES_PATH)
+  return 'wired'
+}
+
+async function scaffoldLandingPage(appId: string, landingPagePath: string, startDate: string, endDate: string): Promise<{ success: boolean; filesWritten: string[]; pageId: string; routeStatus: 'wired' | 'already-present' | 'failed' }> {
   const workspace = createForWorkspace(appId, 'preview')
   if (!workspace) {
     logger.warn('campaign-scaffold.workspace_unavailable', { appId })
-    return { success: false, filesWritten: [] }
+    return { success: false, filesWritten: [], pageId: '', routeStatus: 'failed' }
   }
 
   const slug = sanitizeSlug(landingPagePath)
+  const pageId = generatePageId()
   const filesWritten: string[] = []
+  let routeStatus: 'wired' | 'already-present' | 'failed' = 'failed'
 
   try {
-    const content = await buildLandingPage(slug, startDate, endDate)
-    await workspace.files.write({ path: `src/pages/lp/${slug}.tsx`, content })
-    filesWritten.push(`src/pages/lp/${slug}.tsx`)
+    // 1. Write the per-campaign TSX, co-located with the loader so the glob finds it.
+    const tsxPath = `src/pages/lp/${slug}.tsx`
+    const content = await buildLandingPage(slug)
+    await workspace.files.write({ path: tsxPath, content })
+    filesWritten.push(tsxPath)
+
+    // 2. Idempotently install the shared infra (loader, lib, router).
+    await ensureInfraFiles(workspace.files, filesWritten)
+
+    // 3. Upsert the manifest entry. campaignId is OMITTED at scaffold time (not yet known).
+    await upsertManifestEntry(workspace.files, {
+      id: pageId,
+      slug,
+      componentPath: `./${slug}.tsx`,
+      startDate: startDate || undefined,
+      endDate: endDate || undefined,
+      status: 'draft',
+    }, filesWritten)
+
+    // 4. Wire the permanent /lp/:slug route (tool-driven, not builder-driven).
+    routeStatus = await ensureLandingPageRoute(workspace.files, filesWritten)
   } catch (err) {
     logger.error('campaign-scaffold.write_failed', { appId, error: err instanceof Error ? err.message : String(err) })
   }
 
-  logger.info('campaign-scaffold.complete', { appId, filesWritten })
-  return { success: filesWritten.length === 1, filesWritten }
+  logger.info('campaign-scaffold.complete', { appId, filesWritten, pageId, routeStatus })
+  // Success requires the page TSX and the manifest to have been written, and the
+  // route NOT to have failed wiring. An 'already-present' route (e.g. a 2nd
+  // campaign) is a legitimate no-op and must still count as success.
+  const success =
+    filesWritten.includes(`src/pages/lp/${slug}.tsx`) &&
+    filesWritten.includes(MANIFEST_PATH) &&
+    routeStatus !== 'failed'
+  return { success, filesWritten, pageId, routeStatus }
 }
 
 const plannedAssetSchema = z.object({
@@ -314,13 +458,27 @@ CRITICAL TIMING: Call this tool in GENERATE Step 3, after socialPostCreate and e
       return { success: false, error: 'No appId in context' }
     }
 
+    const slug = sanitizeSlug(args.landingPagePath)
     const result = await scaffoldLandingPage(appId, args.landingPagePath, args.startDate, args.endDate)
+
+    let message: string
+    if (result.routeStatus === 'failed') {
+      // The page TSX/manifest may have been written, but the /lp/:slug route could
+      // not be injected into src/routes.tsx (unreadable or no catch-all to anchor
+      // to). The page will 404 until the route is wired manually.
+      message = `Landing page created at src/pages/lp/${slug}.tsx with stable ID ${result.pageId}, but the /lp/:slug route could NOT be wired into src/routes.tsx — it needs to be added manually or the page will 404.`
+    } else if (result.success) {
+      message = `Landing page scaffolded at src/pages/lp/${slug}.tsx with stable ID ${result.pageId}. The /lp/${slug} route is permanent and manifest-driven — the builder EDITS the page's creative content but does NOT touch routes.tsx.`
+    } else {
+      message = 'Failed to scaffold landing page — check logs.'
+    }
+
     return {
       success: result.success,
       filesWritten: result.filesWritten,
-      message: result.success
-        ? `Landing page scaffolded at ${result.filesWritten[0]}. Route: /lp/${sanitizeSlug(args.landingPagePath)}. Import path for routes.tsx: ./pages/lp/${sanitizeSlug(args.landingPagePath)}.tsx. The builder will EDIT this file to add creative content.`
-        : 'Failed to scaffold landing page — check logs.',
+      pageId: result.pageId,
+      routeStatus: result.routeStatus,
+      message,
     }
   }
 }

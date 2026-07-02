@@ -79,7 +79,7 @@ In the SAME message after calling `socialPostCreate`, write email and ad copy as
 
 **Only do this AFTER steps 1–2 (social posts + email/ad) are done.** Call `marketing-campaigns__campaignScaffoldPage` with the campaign name, start date, end date, and landing page path from the approved plan.
 
-This tool writes the landing page at `src/pages/lp/[campaign-slug].tsx` with a countdown timer, coming-soon state, and sale-ended state already built in. The landing page MUST exist before the handoff in Step 4. Do NOT skip this step.
+This tool writes the landing page at `src/pages/lp/[campaign-slug].tsx` with a countdown timer, coming-soon state, and sale-ended state already built in. It ALSO registers the page in `src/content/data/landingPages.json` (status: draft) and adds the permanent `/lp/[campaign-slug]` route automatically — the page is gated (returns 404) until the campaign is published, so it will NOT leak if the site is published while the campaign is still a draft. The landing page MUST exist before the handoff in Step 4. Do NOT skip this step.
 
 ---
 
@@ -105,7 +105,7 @@ Build the following for our [campaign type] campaign.
 
 The landing page already exists with a working countdown timer and "sale ended" state. EDIT this file — replace the placeholder campaign content section (marked with a comment) with a full creative landing page.
 
-DO NOT recreate the file from scratch. DO NOT remove the countdown timer, the useCountdown hook, the SALE_END/SALE_START constants, or any of the three date-gated states (active sale, sale-ended, and coming-soon). Each non-active state contains a placeholder comment — fill in its content, but do not delete the state branches or the countdown logic. Only replace the placeholder content areas.
+DO NOT recreate the file from scratch. DO NOT remove the countdown timer, the useCountdown hook, or any of the three date-gated states (active sale, sale-ended, and coming-soon). The component receives `startDate` and `endDate` as props from the /lp/:slug loader — do NOT replace these props with hardcoded constants. Each non-active state contains a placeholder comment — fill in its content, but do not delete the state branches or the countdown logic. Only replace the placeholder content areas.
 
 Creative content to add (replacing the placeholder):
 - Hero with compelling background image (call media() FIRST to get real image URL)
@@ -117,12 +117,7 @@ Creative content to add (replacing the placeholder):
 
 Images: Use media() tool to search, use returned URLs directly. No placeholders.
 
-Route registration (REQUIRED — without this the page 404s):
-- Read src/routes.tsx (or the app's route config file)
-- Add a lazy import for the campaign page: `const CampaignPage = lazy(() => import('./pages/lp/[campaign-slug].tsx'))`
-- Add a route entry: `{ path: '/lp/[campaign-slug]', element: <CampaignPage /> }`
-- This app does NOT use filesystem-based routing — an explicit route entry is mandatory
-- The /lp/ prefix is REQUIRED for marketing attribution (UTM tracking, data-lake ingestion)
+Routing: already handled. The /lp/[campaign-slug] route is permanent and was registered automatically by the scaffold step — do NOT read or edit src/routes.tsx, and do NOT add a lazy import or route entry for the landing page.
 
 Site discovery: Add an announcement banner / link in the main layout pointing to /lp/[campaign-slug].
 
@@ -168,26 +163,25 @@ Brand voice: [voice]
 - Do NOT create summary/planning documents
 - Do NOT put social posts, email copy, or ad copy into any file (already created before this handoff)
 - Do NOT recreate src/pages/lp/[campaign-slug].tsx from scratch — EDIT it (replace the placeholder content)
+- Do NOT edit src/routes.tsx — the /lp/:slug landing-page route is permanent and registered by the scaffold tool.
 - Files to EDIT: src/pages/lp/[campaign-slug].tsx
 - Files to CREATE: blog index/listing + route (if missing), and the blog post(s)
 ```
 
 **Post-build verification:**
 
-After the handoff returns, verify BOTH the countdown AND the route registration:
+After the handoff returns, verify the countdown is intact:
 
 **Check 1 — Countdown intact:**
 1. Use `grepSearch` or `readFile` on `src/pages/lp/[campaign-slug].tsx` to confirm it contains `useCountdown`.
 2. **If missing** (builder overwrote the file): re-handoff with a SHORT correction brief:
-   "The landing page at src/pages/lp/[campaign-slug].tsx is missing the countdown timer. Edit the file: add `import { useState, useEffect } from 'react';` and the useCountdown hook, define `const SALE_END = '[endDate]T23:59:59Z';`, and add a countdown bar above the main content. When the countdown reaches zero, show 'This Sale Has Ended' instead of the page content."
+   "The landing page at src/pages/lp/[campaign-slug].tsx is missing the countdown timer. Edit the file: add `import { useState, useEffect } from 'react';` and the useCountdown hook driven by the `endDate` prop (the component receives `{ startDate?: string; endDate?: string }` as props — do NOT introduce a hardcoded SALE_END constant), and add a countdown bar above the main content. When the countdown reaches zero, show 'This Sale Has Ended' instead of the page content."
 
-**Check 2 — Route registered:**
-3. Use `grepSearch` or `readFile` on `src/routes.tsx` to confirm it contains `/lp/[campaign-slug]`.
-4. **If missing** (builder skipped route registration): re-handoff with a SHORT correction brief:
-   "The campaign landing page route is missing. Edit src/routes.tsx: add a lazy import `const CampaignPage = lazy(() => import('./pages/lp/[campaign-slug].tsx'))` and a route entry `{ path: '/lp/[campaign-slug]', element: <CampaignPage /> }`. Without this route the page 404s."
+**Manifest sanity check:**
+3. Confirm `src/content/data/landingPages.json` contains an entry whose slug is `[campaign-slug]` (written by the scaffold step). If absent, the scaffold step failed — note it and proceed; this is NOT a builder task.
 
 **Retry rules:**
-5. **Maximum 1 retry** (for either or both failures). If the correction also fails, continue to SUMMARY anyway — do not loop.
-6. **If both checks pass:** proceed to SUMMARY.
+4. **Maximum 1 retry** for the countdown check (Check 1). If the correction also fails, continue to SUMMARY anyway — do not loop.
+5. **If the countdown check passes:** proceed to SUMMARY.
 
 **Wait for the handoff to complete and verification to pass, then proceed to SUMMARY.**

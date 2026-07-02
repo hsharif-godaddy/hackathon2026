@@ -1,9 +1,5 @@
 import { useState, useEffect } from 'react';
 
-// Full ISO instants in UTC (e.g. "2026-07-07T23:59:59Z") — injected by the scaffold tool.
-const SALE_END = __SALE_END__;
-const SALE_START = __SALE_START__;
-
 function useCountdown(targetDate: string) {
   const [timeLeft, setTimeLeft] = useState(getTimeLeft(targetDate));
 
@@ -18,6 +14,7 @@ function useCountdown(targetDate: string) {
 }
 
 function getTimeLeft(targetDate: string) {
+  if (!targetDate) return { days: 0, hours: 0, minutes: 0, seconds: 0, ended: true };
   const end = new Date(targetDate).getTime();
   const now = Date.now();
   const diff = end - now;
@@ -33,12 +30,15 @@ function getTimeLeft(targetDate: string) {
   };
 }
 
-export default function __COMPONENT_NAME__() {
+export default function __COMPONENT_NAME__({ startDate, endDate }: { startDate?: string; endDate?: string }) {
+  const saleStart = startDate ? `${startDate}T00:00:00Z` : '';
+  const saleEnd = endDate ? `${endDate}T23:59:59Z` : '';
+
   const now = Date.now();
-  const hasStarted = now >= new Date(SALE_START).getTime();
-  const hasEnded = now >= new Date(SALE_END).getTime();
-  const saleCountdown = useCountdown(SALE_END);
-  const startCountdown = useCountdown(SALE_START);
+  const hasStarted = saleStart ? now >= new Date(saleStart).getTime() : true;
+  const hasEnded = saleEnd ? now >= new Date(saleEnd).getTime() : false;
+  const saleCountdown = useCountdown(saleEnd);
+  const startCountdown = useCountdown(saleStart);
 
   // SALE ENDED
   if (hasEnded) {
