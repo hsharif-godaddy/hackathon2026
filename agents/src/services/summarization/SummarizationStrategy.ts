@@ -7,6 +7,10 @@ import type { BudgetOverride } from '@airo/ai-grants';
 export interface SummarizationContext {
   /** ID of the app */
   appId: string;
+  /** Conversation that triggered summarization (for OTel/Langfuse correlation) */
+  conversationId?: string;
+  /** Site ID owning this app (for OTel/Langfuse correlation) */
+  siteId?: string;
   /** Session ID (optional, for Langfuse tracking) */
   sessionId?: string;
   /** Budget override from triggering session (E2S care or test-accounts) */

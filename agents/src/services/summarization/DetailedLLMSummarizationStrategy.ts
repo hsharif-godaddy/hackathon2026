@@ -1,7 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { basename } from 'node:path';
 
-import { propagateAttributes } from '@langfuse/tracing';
 import { generateText } from 'ai';
 import { llmMetadataContext, type LitellmMetadata } from '@airo/ai-common';
 import { buildLitellmMetadataFromContext, BudgetOverride, LlmCallSource, type ExecutionContext } from '@airo/ai-grants';
@@ -18,6 +17,7 @@ import {
   MAX_USER_MESSAGE_CONTENT_LENGTH,
   truncateContent,
 } from './summarization-guards.js';
+import { withSummarizationTelemetry } from './summarization-telemetry.js';
 
 /**
  * Detailed LLM-based summarization strategy
@@ -176,6 +176,8 @@ export class DetailedLLMSummarizationStrategy implements SummarizationStrategy {
         modelName,
         appId,
         context.sessionId,
+        context.conversationId,
+        context.siteId,
       );
       result.summaryText = enforced.text;
       result.summaryTokenCount = enforced.tokenCount;
@@ -292,6 +294,8 @@ export class DetailedLLMSummarizationStrategy implements SummarizationStrategy {
       modelName,
       appId,
       context.sessionId,
+      context.conversationId,
+      context.siteId,
     );
     cumulativeSummary = enforced.text;
     totalSummaryTokens = enforced.tokenCount;
@@ -511,13 +515,11 @@ export class DetailedLLMSummarizationStrategy implements SummarizationStrategy {
       });
     }
 
-    const attributes: { userId: string; sessionId?: string; metadata?: Record<string, string> } = { userId: appId };
-    if (sessionId) attributes.sessionId = sessionId;
-    if (customerId) attributes.metadata = { customerId };
+    const telemetryParams = { appId, sessionId, customerId, conversationId: context.conversationId, siteId: context.siteId };
 
     // Extract generateText call to avoid duplication
-    const generateTextWithAttributes = async () =>
-      propagateAttributes(attributes, async () =>
+    const generateTextWithAttributes = () =>
+      withSummarizationTelemetry(telemetryParams, async () =>
         generateText({
           model,
           system: systemPrompt,
@@ -595,6 +597,8 @@ export class DetailedLLMSummarizationStrategy implements SummarizationStrategy {
     modelName: string,
     appId: string,
     sessionId: string | undefined,
+    conversationId?: string,
+    siteId?: string,
   ): Promise<EnforcedSummary> {
     if (originalTokenCount <= SUMMARY_TOKEN_BUDGET) {
       logger.debug('summarization.detailed_llm.token_budget_enforced', {
@@ -608,7 +612,7 @@ export class DetailedLLMSummarizationStrategy implements SummarizationStrategy {
     }
 
     try {
-      const recompressed: string = await this.recompressSummary(summaryText, model, modelName, appId, sessionId);
+      const recompressed: string = await this.recompressSummary(summaryText, model, modelName, appId, sessionId, conversationId, siteId);
 
       // Count tokens before the plausibility check so we can reject both empty output and
       // implausibly small output (e.g. a refusal stub) in one guard. Either would trivially
@@ -678,6 +682,8 @@ export class DetailedLLMSummarizationStrategy implements SummarizationStrategy {
     modelName: string,
     appId: string,
     sessionId: string | undefined,
+    conversationId?: string,
+    siteId?: string,
   ): Promise<string> {
     const system: string = `You compress software-development conversation summaries to fit a strict token budget.
 The summary you are given exceeds the token budget. Rewrite it to ${SUMMARY_TARGET_TOKENS} tokens or fewer.
@@ -707,12 +713,10 @@ Output ONLY the rewritten summary. Do not add commentary, code blocks, or XML ta
           tags: ['source:tool-llm', 'source:detailed-summarization', 'source:summarization-recompress'],
         };
 
-    const attributes: { userId: string; sessionId?: string; metadata?: Record<string, string> } = { userId: appId };
-    if (sessionId) attributes.sessionId = sessionId;
-    if (customerId) attributes.metadata = { customerId };
+    const telemetryParams = { appId, sessionId, customerId, conversationId, siteId };
 
-    const generateRecompress = async () =>
-      propagateAttributes(attributes, async () =>
+    const generateRecompress = () =>
+      withSummarizationTelemetry(telemetryParams, async () =>
         generateText({
           model,
           system,

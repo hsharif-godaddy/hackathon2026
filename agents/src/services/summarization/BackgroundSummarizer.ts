@@ -29,6 +29,10 @@ interface PendingJob {
   budgetOverride?: BudgetOverride;
   /** CustomerId captured from the triggering session for tenant-scoped store access */
   customerId?: string;
+  /** Conversation that triggered summarization (for OTel/Langfuse correlation) */
+  conversationId?: string;
+  /** Site ID owning this app (for OTel/Langfuse correlation) */
+  siteId?: string;
 }
 
 /**
@@ -135,8 +139,10 @@ export class BackgroundSummarizer {
    * @param triggerTokenCount - Optional token count that triggered the check
    * @param budgetOverride - Optional budget override from triggering session (E2S or test-accounts)
    * @param customerId - Optional customerId from triggering session for tenant-scoped store access
+   * @param conversationId - Optional conversationId that triggered the check (for OTel correlation)
+   * @param siteId - Optional site ID owning this app (for OTel correlation)
    */
-  async checkAndSummarize(appId: string, triggerTokenCount?: number, budgetOverride?: BudgetOverride, customerId?: string): Promise<void> {
+  async checkAndSummarize(appId: string, triggerTokenCount?: number, budgetOverride?: BudgetOverride, customerId?: string, conversationId?: string, siteId?: string): Promise<void> {
     // Debounce: cancel existing job for this app
     const existingJob = this.pendingJobs.get(appId);
     if (existingJob) {
@@ -149,6 +155,9 @@ export class BackgroundSummarizer {
     const effectiveBudgetOverride = budgetOverride ?? existingJob?.budgetOverride;
     // Same race-prevention rationale applies to customerId.
     const effectiveCustomerId = customerId ?? existingJob?.customerId;
+    // Preserve most recent known conversationId/siteId for OTel correlation
+    const effectiveConversationId = conversationId ?? existingJob?.conversationId;
+    const effectiveSiteId = siteId ?? existingJob?.siteId;
 
     // Schedule new job with debounce
     // Capture the budget override from the triggering session
@@ -161,7 +170,7 @@ export class BackgroundSummarizer {
         return;
       }
       this.pendingJobs.delete(appId);
-      await this.processSummarization(appId, job.triggerTokenCount, job.budgetOverride, job.customerId);
+      await this.processSummarization(appId, job.triggerTokenCount, job.budgetOverride, job.customerId, job.conversationId, job.siteId);
     }, this.config.debounceMs);
 
     this.pendingJobs.set(appId, {
@@ -169,6 +178,8 @@ export class BackgroundSummarizer {
       triggerTokenCount,
       budgetOverride: effectiveBudgetOverride,
       customerId: effectiveCustomerId,
+      conversationId: effectiveConversationId,
+      siteId: effectiveSiteId,
     });
   }
 
@@ -180,8 +191,10 @@ export class BackgroundSummarizer {
    * @param triggerTokenCount - Optional token count that triggered the check
    * @param budgetOverride - Optional budget override from triggering session (E2S or test-accounts)
    * @param customerId - Optional customerId from triggering session for tenant-scoped store access
+   * @param conversationId - Optional conversationId that triggered the check (for OTel correlation)
+   * @param siteId - Optional site ID owning this app (for OTel correlation)
    */
-  private async processSummarization(appId: string, triggerTokenCount?: number, budgetOverride?: BudgetOverride, customerId?: string): Promise<void> {
+  private async processSummarization(appId: string, triggerTokenCount?: number, budgetOverride?: BudgetOverride, customerId?: string, conversationId?: string, siteId?: string): Promise<void> {
     // Prevent duplicate processing
     if (this.processingJobs.has(appId)) {
       logger.debug('summarization.background.skip_duplicate', { appId });
@@ -541,6 +554,8 @@ export class BackgroundSummarizer {
 
       const context: SummarizationContext = {
         appId,
+        conversationId,
+        siteId,
         messages: fullHistoryMessages,
         fullMessageHistory: fullHistoryMessages,
         messageRange: {

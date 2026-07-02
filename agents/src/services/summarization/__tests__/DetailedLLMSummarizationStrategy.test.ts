@@ -57,6 +57,7 @@ vi.mock('../SkillInstructionFilter.js', () => ({
 }))
 
 import { generateText } from 'ai'
+import { propagateAttributes } from '@langfuse/tracing'
 import { countTokens } from '../../../utils/token-counter.js'
 import { logger } from '../../../logging/index.js'
 
@@ -547,6 +548,42 @@ describe('DetailedLLMSummarizationStrategy', () => {
       // Below the threshold: still an incremental merge, existing summary must reach the LLM.
       const { system } = vi.mocked(generateText).mock.calls[0]![0]!
       expect(system).toContain('previous summary')
+    })
+  })
+
+  describe('Langfuse metadata propagation', () => {
+    beforeEach(() => {
+      vi.clearAllMocks()
+      vi.mocked(generateText).mockResolvedValue({ text: 'summary' } as never)
+      vi.mocked(countTokens).mockResolvedValue({ tokenCount: 100, provider: 'anthropic' as const, normalizedModelName: 'sonnet' })
+    })
+
+    it('propagates conversationId, siteId, and specialistKey in attributes metadata', async () => {
+      const strategy = new DetailedLLMSummarizationStrategy()
+      const context: SummarizationContext = {
+        appId: 'app-abcdefghij',
+        conversationId: 'conv-123',
+        siteId: 'site-456',
+        messages: [
+          { role: 'user', content: 'Hello' },
+          { role: 'assistant', content: 'Hi' },
+        ],
+        messageRange: { startId: 'msg1', endId: 'msg2' },
+        originalTokenCount: 5000,
+      }
+
+      await strategy.summarize(context)
+
+      const attrs = vi.mocked(propagateAttributes).mock.calls[0]![0] as {
+        userId: string
+        sessionId?: string
+        metadata?: Record<string, string>
+      }
+      expect(attrs.userId).toBe('app-abcdefghij')
+      expect(attrs.metadata?.conversationId).toBe('conv-123')
+      expect(attrs.metadata?.siteId).toBe('site-456')
+      expect(attrs.metadata?.specialistKey).toBe('summarization')
+      expect(attrs.metadata?.customerId).toBe('cust-1')
     })
   })
 })

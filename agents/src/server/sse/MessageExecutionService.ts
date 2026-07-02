@@ -153,7 +153,7 @@ interface ExecutionDeps {
   }
   onAgentChanged?: (conversationId: string, oldAgent: string, newAgent: string, appId?: string) => Promise<void>
   backgroundSummarizer?: {
-    checkAndSummarize(appId: string, triggerTokenCount?: number, budgetOverride?: string, customerId?: string): Promise<void>
+    checkAndSummarize(appId: string, triggerTokenCount?: number, budgetOverride?: string, customerId?: string, conversationId?: string, siteId?: string): Promise<void>
     getMaxPromptTokens(): number
   } | null
   /** Post-stream validator (tsc + runtime-error checks). Returns a continuation prompt to retry, or null to finish. */
@@ -2902,6 +2902,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
           appId, conversationId,
           subscriptionId: metadata.subscriptionId as string | undefined,
           customerId: metadata.customerId as string | undefined,
+          siteId,
           summarizer: this.deps.backgroundSummarizer,
         })
       }

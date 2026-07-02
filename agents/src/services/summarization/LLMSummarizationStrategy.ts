@@ -1,6 +1,5 @@
 import { basename } from 'node:path';
 
-import { propagateAttributes } from '@langfuse/tracing';
 import { generateText, type LanguageModel } from 'ai';
 import { logCachingStats } from '@airo/ai-lib';
 import { llmMetadataContext, type LitellmMetadata } from '@airo/ai-common';
@@ -17,6 +16,7 @@ import {
   MAX_USER_MESSAGE_CONTENT_LENGTH,
   truncateContent,
 } from './summarization-guards.js';
+import { withSummarizationTelemetry } from './summarization-telemetry.js';
 
 /**
  * LLM-based summarization strategy using AI SDK
@@ -217,13 +217,11 @@ export class LLMSummarizationStrategy implements SummarizationStrategy {
       };
     }
 
-    const attributes: { userId: string; sessionId?: string; metadata?: Record<string, string> } = { userId: appId };
-    if (context.sessionId) attributes.sessionId = context.sessionId;
-    if (customerId) attributes.metadata = { customerId };
+    const telemetryParams = { appId, sessionId: context.sessionId, customerId, conversationId: context.conversationId, siteId: context.siteId };
 
     // Extract generateText call to avoid duplication
-    const generateTextWithAttributes = async () =>
-      propagateAttributes(attributes, async () =>
+    const generateTextWithAttributes = () =>
+      withSummarizationTelemetry(telemetryParams, async () =>
         generateText({
           model,
           system: systemPrompt,

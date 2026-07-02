@@ -1101,5 +1101,115 @@ describe('BackgroundSummarizer', () => {
       const contextArg = vi.mocked(strategy.summarize).mock.calls[0][0];
       expect(contextArg.budgetOverride).toBe(BudgetOverride.TestAccounts);
     });
+
+    it('should preserve existing conversationId/siteId when second call has undefined values', async () => {
+      const mockConversations = [
+        { id: 'conv1', appId: 'app-123', agentId: 'initial', title: 'Conv 1' }
+      ];
+      const mockMessages: DatabaseMessage[] = [
+        {
+          id: 'msg1',
+          conversationId: 'conv1',
+          sender: 'user',
+          origin: 'customer' as const,
+          content: 'Hello',
+          createdAt: new Date('2024-01-01T10:00:00Z')
+        },
+        {
+          id: 'msg2',
+          conversationId: 'conv1',
+          sender: 'agent',
+          origin: 'customer' as const,
+          content: 'Hi there!',
+          createdAt: new Date('2024-01-01T10:01:00Z')
+        }
+      ];
+
+      vi.mocked(summaryRepo.findLatestForApp).mockResolvedValue(null);
+      vi.mocked(conversationRepo.getByAppId).mockResolvedValue(mockConversations);
+      vi.mocked(conversationRepo.getMessagesBatch).mockResolvedValue(mockMessages);
+
+      const { countTokens } = await import('../../../utils/token-counter.js');
+      vi.mocked(countTokens).mockResolvedValue({ tokenCount: 1200 });
+
+      const debounceSummarizer = new BackgroundSummarizer(
+        conversationRepo,
+        summaryRepo,
+        strategy,
+        {
+          maxPromptTokens: 1000,
+          debounceMs: 50,
+          keepRecentTurns: 0
+        }
+      );
+
+      // First call with conversationId and siteId
+      await debounceSummarizer.checkAndSummarize('app-123', undefined, undefined, undefined, 'conv-abc', 'site-xyz');
+
+      // Second call within debounce window without conversationId/siteId
+      await debounceSummarizer.checkAndSummarize('app-123', undefined, undefined, undefined, undefined, undefined);
+
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      expect(strategy.summarize).toHaveBeenCalled();
+      const contextArg = vi.mocked(strategy.summarize).mock.calls[0][0];
+      expect(contextArg.conversationId).toBe('conv-abc');
+      expect(contextArg.siteId).toBe('site-xyz');
+    });
+
+    it('should replace conversationId/siteId when second call provides new values', async () => {
+      const mockConversations = [
+        { id: 'conv1', appId: 'app-123', agentId: 'initial', title: 'Conv 1' }
+      ];
+      const mockMessages: DatabaseMessage[] = [
+        {
+          id: 'msg1',
+          conversationId: 'conv1',
+          sender: 'user',
+          origin: 'customer' as const,
+          content: 'Hello',
+          createdAt: new Date('2024-01-01T10:00:00Z')
+        },
+        {
+          id: 'msg2',
+          conversationId: 'conv1',
+          sender: 'agent',
+          origin: 'customer' as const,
+          content: 'Hi there!',
+          createdAt: new Date('2024-01-01T10:01:00Z')
+        }
+      ];
+
+      vi.mocked(summaryRepo.findLatestForApp).mockResolvedValue(null);
+      vi.mocked(conversationRepo.getByAppId).mockResolvedValue(mockConversations);
+      vi.mocked(conversationRepo.getMessagesBatch).mockResolvedValue(mockMessages);
+
+      const { countTokens } = await import('../../../utils/token-counter.js');
+      vi.mocked(countTokens).mockResolvedValue({ tokenCount: 1200 });
+
+      const debounceSummarizer = new BackgroundSummarizer(
+        conversationRepo,
+        summaryRepo,
+        strategy,
+        {
+          maxPromptTokens: 1000,
+          debounceMs: 50,
+          keepRecentTurns: 0
+        }
+      );
+
+      // First call with initial values
+      await debounceSummarizer.checkAndSummarize('app-123', undefined, undefined, undefined, 'conv-old', 'site-old');
+
+      // Second call with new values (should replace)
+      await debounceSummarizer.checkAndSummarize('app-123', undefined, undefined, undefined, 'conv-new', 'site-new');
+
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      expect(strategy.summarize).toHaveBeenCalled();
+      const contextArg = vi.mocked(strategy.summarize).mock.calls[0][0];
+      expect(contextArg.conversationId).toBe('conv-new');
+      expect(contextArg.siteId).toBe('site-new');
+    });
   });
 });
