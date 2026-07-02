@@ -231,6 +231,206 @@ export async function waitForAppsPage(page: Page): Promise<void> {
 }
 
 /**
+ * Preview-gate failure signatures — the M1 decision gate for the regression
+ * stability plan (docs/plans/2026-06-29-regression-preview-stability.md
+ * §Milestone 1). When the preview gate in `waitForChatInput` times out, we
+ * classify *why* so 2–3 scheduled cron cycles produce an actionable dominant
+ * signature before any pool/account work begins.
+ */
+type PreviewGateSignature =
+  | 'build-latency' // develop-skeleton/loader still visible → first build never completed
+  | 'job-unresolved' // URL still ?type=job, or /api/sites still returns a job-shaped id
+  | 'preview-cold-start' // app id resolved, skeleton gone, iframe never became visible
+  | 'unknown'; // signals don't match a known bucket — inspect the dump
+
+/**
+ * A real V2 app id is 10 chars (APP_ID_LENGTH in
+ * app/src/lib/control-plane/v2-control-plane-adapter.ts); a quick-create job
+ * id is shorter (~7). The front-end uses the same length test
+ * (`finalSiteData.id.length <= 8` → still a job) in useSiteCreationStore.ts.
+ * Inlined rather than imported from api.ts to avoid a ui.ts↔api.ts cycle
+ * (api.ts already imports dismissOverlays from this file).
+ */
+const JOB_ID_MAX_LENGTH = 8;
+
+interface SitesProbeResult {
+  ok: boolean;
+  status: number;
+  resolvedId: string;
+  bodySnippet: string;
+}
+
+/** The classifying signals captured at a preview-gate timeout. */
+interface PreviewGateSignals {
+  isTypeJob: boolean;
+  resolvedIsJob: boolean;
+  skeletonVisible: boolean;
+  loaderVisible: boolean;
+  iframeVisible: boolean;
+}
+
+/**
+ * Pure classification of the M1 preview-gate signals into a dominant
+ * signature. Extracted from the logging path so the decision-gate logic is
+ * side-effect free — kept pure so it can be exported and unit-tested once a
+ * runner exists for tests/ (none today). Order matters: build-stage
+ * (skeleton/loader still up) is checked first because a stuck build can also
+ * carry a stale ?type=job — see the "also present" hint in the dump.
+ */
+function classifyPreviewGate(signals: PreviewGateSignals): PreviewGateSignature {
+  if (signals.skeletonVisible || signals.loaderVisible) return 'build-latency';
+  if (signals.isTypeJob || signals.resolvedIsJob) return 'job-unresolved';
+  if (!signals.iframeVisible) return 'preview-cold-start';
+  return 'unknown';
+}
+
+/**
+ * Parse a develop URL into the id segment and whether it is still a
+ * quick-create job (`?type=job`). Pure; falls back to a substring check if the
+ * URL is somehow unparseable (shouldn't happen for page.url()).
+ */
+function parseDevelopUrl(url: string): { isTypeJob: boolean; developId: string } {
+  try {
+    const parsed: URL = new URL(url);
+    const match: RegExpMatchArray | null = parsed.pathname.match(/\/develop\/([^/]+)/);
+    return { isTypeJob: parsed.searchParams.get('type') === 'job', developId: match ? match[1] : '' };
+  } catch {
+    return { isTypeJob: url.includes('type=job'), developId: '' };
+  }
+}
+
+/** Bound the diagnostic probe — it runs on an already-wedged page, so an unbounded fetch could hang until the global test timeout. */
+const SITES_PROBE_TIMEOUT_MS = 10000;
+
+/**
+ * One-shot `GET /api/sites?site_id=<id>` probe used only for timeout
+ * diagnostics. Mirrors the evaluate shape in `waitForJobResolution` (api.ts)
+ * but with an AbortController bound so it can't extend the failure it is
+ * diagnosing. Returns null only when there is no id to probe; on fetch/abort
+ * failure it returns a result with `status: -1` and the error text in
+ * `bodySnippet`, so the caller prints it in-order inside the diagnostics block
+ * (never a stray line, never a masked timeout).
+ */
+async function probeSitesForId(page: Page, id: string): Promise<SitesProbeResult | null> {
+  if (!id) return null;
+  try {
+    const result: { ok: boolean; status: number; body: string } = await page.evaluate(
+      async ({ siteId, timeoutMs }) => {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), timeoutMs);
+        try {
+          const response = await fetch(`/api/sites?site_id=${encodeURIComponent(siteId)}`, {
+            signal: controller.signal,
+          });
+          const body = await response.text();
+          return { ok: response.ok, status: response.status, body };
+        } finally {
+          clearTimeout(timer);
+        }
+      },
+      { siteId: id, timeoutMs: SITES_PROBE_TIMEOUT_MS },
+    );
+
+    let resolvedId: string = '';
+    try {
+      const parsed: { id?: unknown } = JSON.parse(result.body);
+      resolvedId = typeof parsed.id === 'string' ? parsed.id : '';
+    } catch {
+      // Non-JSON body — leave resolvedId empty; bodySnippet still surfaces it.
+    }
+    return { ok: result.ok, status: result.status, resolvedId, bodySnippet: result.body.slice(0, 200) };
+  } catch (error) {
+    return { ok: false, status: -1, resolvedId: '', bodySnippet: `probe threw: ${String(error).slice(0, 200)}` };
+  }
+}
+
+/** Where the fix for a given signature lives — printed as the last diagnostic line. */
+function previewGateSignatureOwner(signature: PreviewGateSignature): string {
+  switch (signature) {
+    case 'build-latency':
+      return 'product (first-build latency) — M3 pools may help';
+    case 'job-unresolved':
+      return 'create helper (M2 waitForJobResolution) + product (DPP-handoff orphan)';
+    case 'preview-cold-start':
+      return 'product/infra — preview container cold-start (out of scope; escalate to preview/mhp-core owners)';
+    default:
+      return 'unknown — inspect the signals above';
+  }
+}
+
+/**
+ * On a preview-gate timeout, dump the three signals from the M1 plan (URL /
+ * job-resolution state, /api/sites probe, skeleton/loader/iframe visibility)
+ * and the classified signature to stdout. Stdout is the decision-gate channel:
+ * it shows in Actions job logs and in the HTML/blob per-test stdout. A
+ * machine-readable channel for the M5 adjusted-rate report (parse blob stdout,
+ * or add a JUnit annotation) is deferred to M5, when that classifier is built.
+ * Best-effort: any internal error is swallowed so this never masks the
+ * original timeout.
+ */
+async function logPreviewGateTimeout(page: Page, startedAtMs: number, caughtError: unknown): Promise<void> {
+  try {
+    const elapsedSec: number = Math.round((Date.now() - startedAtMs) / 1000);
+    const url: string = page.url();
+    const { isTypeJob, developId }: { isTypeJob: boolean; developId: string } = parseDevelopUrl(url);
+
+    const skeletonVisible: boolean = await page
+      .getByTestId('develop-skeleton')
+      .isVisible()
+      .catch((): boolean => false);
+    const loaderVisible: boolean = await page
+      .getByTestId('develop-chat-pane-loader')
+      .isVisible()
+      .catch((): boolean => false);
+    const iframeVisible: boolean = await page
+      .getByTestId('preview-iframe')
+      .isVisible()
+      .catch((): boolean => false);
+
+    const probe: SitesProbeResult | null = await probeSitesForId(page, developId);
+    const resolvedIsJob: boolean =
+      probe !== null && probe.resolvedId.length > 0 && probe.resolvedId.length <= JOB_ID_MAX_LENGTH;
+
+    const signals: PreviewGateSignals = { isTypeJob, resolvedIsJob, skeletonVisible, loaderVisible, iframeVisible };
+    const signature: PreviewGateSignature = classifyPreviewGate(signals);
+    // Derive the stage label from the signature so build-stage has a single
+    // definition (in classifyPreviewGate), not a second copy here.
+    const stage: string = signature === 'build-latency' ? 'build-stage' : 'preview-boot-stage';
+    // Strip ANSI color codes — Playwright colorizes matcher messages, and this
+    // line is part of the stdout contract the M5 classifier will parse.
+    const rawFailure: string = caughtError instanceof Error ? caughtError.message : String(caughtError);
+    const failedAt: string = rawFailure.split('\n')[0].replace(/\x1b\[[0-9;]*m/g, '');
+
+    console.log('  [PREVIEW GATE TIMEOUT DIAGNOSTICS]');
+    console.log(`    signature: ${signature}`);
+    console.log(`    failed at: ${failedAt.slice(0, 200)}`);
+    console.log(`    stage: ${stage} (elapsed ~${elapsedSec}s)`);
+    console.log(`    url: ${url}`);
+    console.log(`    type=job in url: ${isTypeJob} (develop id: ${developId || '<none>'})`);
+    if (probe === null) {
+      console.log('    GET /api/sites?site_id: <not probed>');
+    } else {
+      console.log(
+        `    GET /api/sites?site_id: HTTP ${probe.status} ok=${probe.ok} ` +
+          `resolvedId=${probe.resolvedId || '<none>'} jobShaped=${resolvedIsJob}`,
+      );
+      if (!probe.ok) console.log(`    /api/sites body: ${probe.bodySnippet}`);
+    }
+    console.log(`    develop-skeleton visible: ${skeletonVisible}`);
+    console.log(`    develop-chat-pane-loader visible: ${loaderVisible}`);
+    console.log(`    preview-iframe visible: ${iframeVisible}`);
+    // A build-stage timeout that still carries job signals may hide unresolved
+    // jobs inside the build-latency bucket — flag it for cron analysis.
+    if (signature === 'build-latency' && (isTypeJob || resolvedIsJob)) {
+      console.log('    note: job-unresolved signals also present under this build-stage timeout');
+    }
+    console.log(`    → fix lives in: ${previewGateSignatureOwner(signature)}`);
+  } catch (error) {
+    console.log(`  [PREVIEW GATE TIMEOUT DIAGNOSTICS] capture failed: ${String(error).slice(0, 200)}`);
+  }
+}
+
+/**
  * Wait for develop page to be fully ready
  */
 export async function waitForDevelopPage(page: Page): Promise<void> {
@@ -249,11 +449,22 @@ export async function waitForChatInput(page: Page, options?: WaitForChatInputOpt
   const requirePreview = options?.requirePreview !== false;
 
   if (requirePreview) {
-    await expect(page.getByTestId('develop-skeleton')).not.toBeVisible({ timeout: PREVIEW_TIMEOUT });
-    await expect(page.getByTestId('develop-chat-pane-loader')).not.toBeVisible({ timeout: PREVIEW_TIMEOUT });
+    // M1 diagnostics: on any preview-gate timeout, dump the classifying signals
+    // to stdout and re-throw the ORIGINAL error unchanged. Purely additive —
+    // control flow, the error, its stack, and pass/fail are identical to
+    // before; only extra stdout is produced. Machine-readable classification
+    // for the M5 adjusted-rate report is deferred to M5.
+    const previewGateStartedAt: number = Date.now();
+    try {
+      await expect(page.getByTestId('develop-skeleton')).not.toBeVisible({ timeout: PREVIEW_TIMEOUT });
+      await expect(page.getByTestId('develop-chat-pane-loader')).not.toBeVisible({ timeout: PREVIEW_TIMEOUT });
 
-    await page.getByTestId('preview-iframe').waitFor({ state: 'visible', timeout: PREVIEW_TIMEOUT });
-    await expect(page.getByTestId('preview-iframe')).toHaveAttribute('src', /.+/);
+      await page.getByTestId('preview-iframe').waitFor({ state: 'visible', timeout: PREVIEW_TIMEOUT });
+      await expect(page.getByTestId('preview-iframe')).toHaveAttribute('src', /.+/);
+    } catch (error) {
+      await logPreviewGateTimeout(page, previewGateStartedAt, error);
+      throw error;
+    }
   }
 
   // A MULTI-STEP clarifying-question card ("...1/3", "...2/3", "...3/3") can
