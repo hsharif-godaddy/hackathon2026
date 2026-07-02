@@ -9,7 +9,7 @@
  */
 import { test, expect } from '../helpers/test-fixtures';
 
-import { clearAuthState, detectSsoType, handleSsoLogin, openUserMenu, userMenuTrigger, verifyAuthenticated } from '../helpers/auth';
+import { clearAuthState, detectSsoType, loginViaSsoDirect, openUserMenu, userMenuTrigger, verifyAuthenticated } from '../helpers/auth';
 import { LONG_TIMEOUT, DEFAULT_TIMEOUT } from '../helpers/constants';
 import { logTestResult, logTestStart } from '../helpers/ui';
 
@@ -31,19 +31,9 @@ test.describe('Authentication', () => {
     // STEP 1: Login and verify homepage
     // ========================================
     console.log('🔐 Step 1: Logging in...');
+    await loginViaSsoDirect(page);
+
     await page.goto('/');
-    await page.getByTestId('homepage-prompt-input').waitFor({ state: 'visible', timeout: LONG_TIMEOUT });
-
-    // Trigger login via user menu
-    await openUserMenu(page);
-    await page
-      .locator('[data-slot="popover-content"][data-state="open"]')
-      .getByRole('button', { name: /sign\s*in|builder_common_signin/i })
-      .click();
-    await handleSsoLogin(page);
-
-    // Wait for redirect back to homepage
-    await page.waitForURL('**/', { timeout: LONG_TIMEOUT });
     await page.getByTestId('homepage-prompt-input').waitFor({ state: 'visible', timeout: LONG_TIMEOUT });
     console.log('✅ Logged in successfully');
 
