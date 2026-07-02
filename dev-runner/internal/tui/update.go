@@ -30,6 +30,9 @@ func ringBellCmd() tea.Cmd {
 
 // shutdownCmd cancels hooks, waits for them to exit, stops all processes, then quits.
 func (m *Model) shutdownCmd() tea.Cmd {
+	if m.credMonitorCancel != nil {
+		m.credMonitorCancel()
+	}
 	if m.hookCancel != nil {
 		m.hookCancel()
 	}
@@ -201,6 +204,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.refreshPrewarmViewport()
 		}
 
+	case awsAuthMsg:
+		cmd := m.handleAwsAuthMsg(msg)
+		if cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+		if m.credMsgCh != nil {
+			cmds = append(cmds, waitForCredMsg(m.credMsgCh))
+		}
+
+	case awsLoginDoneMsg:
+		cmd := m.handleAwsLoginDone(msg)
+		if cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+
 	case cleanDoneMsg:
 		m.cleanRunning = false
 		m.cleanOutput = msg.Output
@@ -290,6 +308,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.faultPollScheduled = true
 				cmds = append(cmds, scheduleFaultPoll())
 			}
+			cmds = append(cmds, m.startCredMonitor())
 		}
 
 	case healthCheckMsg:
@@ -785,6 +804,11 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		return m.updateProbeEnvEdit(msg)
 	}
 
+	// AWS overlay intercepts all keys while open.
+	if m.credOverlayActive {
+		return m.updateAwsOverlay(msg)
+	}
+
 	// Fault picker intercepts all keys while open.
 	if m.faultPickerForm != nil {
 		return m.updateFaultPicker(msg)
@@ -906,6 +930,10 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	case key.Matches(msg, m.keys.Inject):
 		if m.phase == PhaseRunning && m.activeTab == m.llmProxyTabIndex() {
 			return m.openFaultPicker()
+		}
+	case key.Matches(msg, m.keys.AWSAuth):
+		if m.phase == PhaseRunning {
+			return m.openAwsOverlay()
 		}
 	case key.Matches(msg, m.keys.Follow):
 		pane := m.activePanePtr()

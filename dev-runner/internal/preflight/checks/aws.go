@@ -81,7 +81,7 @@ func (c *AWSSSOCheck) Name() string     { return "AWS SSO" }
 func (c *AWSSSOCheck) Category() string { return preflight.CategoryEnvironment }
 
 func (c *AWSSSOCheck) Run(ctx context.Context, projectRoot string) preflight.CheckResult {
-	profiles := c.resolveProfiles(projectRoot)
+	profiles := c.ResolveProfiles(projectRoot)
 
 	for _, profile := range profiles {
 		// The Go SDK's SSO token provider refreshes an expired access token
@@ -142,9 +142,9 @@ func (c *AWSSSOCheck) Run(ctx context.Context, projectRoot string) preflight.Che
 	}
 }
 
-// resolveProfiles reads AWS_PROFILE from app/.env and agents/.env, returning
+// ResolveProfiles reads AWS_PROFILE from app/.env and agents/.env, returning
 // a deduplicated list. Falls back to the default profile if neither file exists.
-func (c *AWSSSOCheck) resolveProfiles(projectRoot string) []string {
+func (c *AWSSSOCheck) ResolveProfiles(projectRoot string) []string {
 	seen := make(map[string]bool)
 	var profiles []string
 

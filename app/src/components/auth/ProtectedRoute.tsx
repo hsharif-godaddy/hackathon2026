@@ -27,6 +27,7 @@ export default function ProtectedRoute({
 }: ProtectedRouteProps) {
   const [isClient, setIsClient] = useState(false);
   const hasInitiallyRendered = useRef(false);
+  const hasEverAuthenticated = useRef(false);
 
   // Get gasket configuration and auth state
   const { isLoading: configLoading } = useGasketConfig();
@@ -44,6 +45,14 @@ export default function ProtectedRoute({
   // Track when initial loading completes
   if (!configLoading && isClient && !authLoading) {
     hasInitiallyRendered.current = true;
+  }
+
+  // Track if the user was ever authenticated in this mount cycle.
+  // Once true, we bypass AuthRequired to prevent mid-session unmounts
+  // (e.g. passive token expiry tearing down WebSocket connections).
+  // Mid-session re-auth is handled by GlobalSsoLogin + authPreflight.
+  if (isAuthenticated) {
+    hasEverAuthenticated.current = true;
   }
 
   // Only gate rendering on initial load. After initial auth completes, keep children
@@ -64,6 +73,14 @@ export default function ProtectedRoute({
 
   if (isMockAuth) {
     return isAuthenticated ? <>{children}</> : <SsoLoginPrompt />;
+  }
+
+  // After the user has authenticated at least once, render children directly
+  // to avoid AuthRequired tearing them down on passive token expiry.
+  // GlobalSsoLogin (mounted at the layout level) + authPreflight handle
+  // mid-session re-auth without unmounting the page.
+  if (hasEverAuthenticated.current) {
+    return <>{children}</>;
   }
 
   return (

@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 
+import { getCurrentRelativePath } from '@/utils/getCurrentRelativePath';
+
 interface AuthUIStore {
   // === SSO Modal State ===
   isSsoLoginOpen: boolean;
@@ -20,6 +22,14 @@ interface AuthUIStore {
    * back in" UI flow keeps its expected reload behavior.
    */
   inFlightReauth: boolean;
+  /**
+   * True when redirectUrl was auto-captured by openSsoLogin (passive session
+   * re-auth). On success, SsoLogin skips navigation — the page is still
+   * mounted (ProtectedRoute bypasses AuthRequired after first auth) and the
+   * fresh cookie is sufficient for subsequent API calls.
+   * Explicit redirectUrl (create/explore flows) leaves this false.
+   */
+  isSessionReauth: boolean;
 
   // === Redirect State ===
   redirectUrl: string | null;
@@ -48,16 +58,25 @@ export const useAuthUIStore = create<AuthUIStore>((set, get) => ({
   ssoCloseReason: null,
   ssoAuthReason: null,
   inFlightReauth: false,
+  isSessionReauth: false,
 
   redirectUrl: null,
 
   openSsoLogin: () => {
     if (get().isSsoLoginOpen) return;
-    set({ isSsoLoginOpen: true, isSsoLoading: true, ssoCloseReason: null });
+    let isSessionReauth = false;
+    if (!get().redirectUrl && typeof window !== 'undefined') {
+      const path = getCurrentRelativePath();
+      if (path !== '/') {
+        set({ redirectUrl: path });
+        isSessionReauth = true;
+      }
+    }
+    set({ isSsoLoginOpen: true, isSsoLoading: true, ssoCloseReason: null, isSessionReauth });
   },
   // Reset all transient open-state in one place so no close path can leak
   // stale ssoAuthReason / redirectUrl / inFlightReauth into a later open.
-  closeSsoLogin: (reason = 'dismiss') => set({ isSsoLoginOpen: false, ssoCloseReason: reason, ssoAuthReason: null, inFlightReauth: false, redirectUrl: null }),
+  closeSsoLogin: (reason = 'dismiss') => set({ isSsoLoginOpen: false, ssoCloseReason: reason, ssoAuthReason: null, inFlightReauth: false, isSessionReauth: false, redirectUrl: null }),
   clearSsoCloseReason: () => set({ ssoCloseReason: null }),
   setSsoLoaded: () => set({ isSsoLoading: false }),
   setSsoAuthReason: (reason) => set({ ssoAuthReason: reason }),

@@ -96,6 +96,8 @@ func (m Model) View() tea.View {
 			content = m.overlayModal(base, m.renderPrewarming())
 		case m.faultPickerForm != nil:
 			content = m.overlayModal(base, m.renderFaultPicker())
+		case m.credOverlayActive:
+			content = m.overlayModal(base, m.renderAwsOverlay())
 		default:
 			content = base
 		}

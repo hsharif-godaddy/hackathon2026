@@ -19,6 +19,7 @@ import (
 
 	"github.com/airo-ai-builder/dev-runner/internal/clean"
 	"github.com/airo-ai-builder/dev-runner/internal/config"
+	"github.com/airo-ai-builder/dev-runner/internal/credrefresh"
 	"github.com/airo-ai-builder/dev-runner/internal/e2e"
 	"github.com/airo-ai-builder/dev-runner/internal/hooks"
 	"github.com/airo-ai-builder/dev-runner/internal/preflight"
@@ -233,6 +234,19 @@ type Model struct {
 	// every restart would add another parallel chain.
 	faultPollScheduled bool
 
+	// AWS credential refresh state
+	credMonitor       *credrefresh.Monitor
+	credMonitorCancel context.CancelFunc
+	credStatuses      []credrefresh.Status
+	credBracket       credrefresh.Bracket
+	credLastBracket   credrefresh.Bracket
+	credOverlayActive bool
+	credOverlayMode   awsOverlayMode
+	credLoginRunning  bool
+	credLoginErr      error
+	credProfiles      []string
+	credMsgCh         <-chan credrefresh.Msg
+
 	// Inline env form state (huh-based)
 	envForm        *huh.Form
 	envFormBuilder *envFormBuilder
@@ -366,6 +380,7 @@ func NewModel(cfg *config.Config, projectRoot string, openCleanPicker, cleanAllA
 		cleanPickerReturnPhase: cleanPickerReturnFromStart(openCleanPicker, cleanAllAtStartup),
 		cleanRunning:           cleanAllAtStartup,
 		cleanOnly:              cleanOnly,
+		credProfiles:           resolveAWSProfiles(projectRoot),
 		preflightRunner:        buildPreflightRunner(projectRoot),
 		preflightFixErrors:     make(map[string]error),
 		preflightViewport:      newSoftWrapViewport(80, 24),
@@ -537,6 +552,12 @@ func buildPreflightRunner(projectRoot string) *preflight.Runner {
 			},
 		},
 	}
+}
+
+// resolveAWSProfiles returns the AWS SSO profiles configured for this project.
+func resolveAWSProfiles(projectRoot string) []string {
+	ssoCheck := &checks.AWSSSOCheck{}
+	return ssoCheck.ResolveProfiles(projectRoot)
 }
 
 // runPreStartHooks creates a new cancellable context and starts hooks.

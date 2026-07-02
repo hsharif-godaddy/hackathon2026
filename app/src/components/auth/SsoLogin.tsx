@@ -87,7 +87,7 @@ export default function SsoLogin() {
   const [reloadKey, setReloadKey] = useState(0);
   const { isSmBreakpoint } = useBreakpoints();
 
-  const { isSsoLoginOpen, isSsoLoading, closeSsoLogin, setSsoLoaded, redirectUrl, setRedirectUrl, ssoAuthReason, inFlightReauth } = useAuthUIStore();
+  const { isSsoLoginOpen, isSsoLoading, closeSsoLogin, setSsoLoaded, redirectUrl, setRedirectUrl, ssoAuthReason, inFlightReauth, isSessionReauth } = useAuthUIStore();
   const clearRequiresAuth = useSitesStore((state) => state.clearRequiresAuth);
   const { authState, handleSignIn } = useAuthContext();
   const ssoLiteEnabled = useSwitchboard(SWITCHBOARD_APPBUILDER_SSO_LITE) ?? false;
@@ -328,12 +328,12 @@ export default function SsoLogin() {
       inFlightReauth,
     });
 
-    // In-flight step-up: an awaiting authPreflight call is parked on this modal.
-    // Closing with 'success' lets gasket-config's waitForSsoOutcome() resolve so
-    // the post-auth verify probe + the original fetch run in place. Navigating
-    // here would unmount the page mid-mutation, destroying React form state and
-    // abandoning the request. closeSsoLogin clears the flag.
-    if (inFlightReauth) {
+    // In-flight step-up (authPreflight awaiting) or passive session re-auth
+    // (AuthRequired/SsoLoginPrompt path): the page is still mounted behind
+    // the modal — close without navigation. The fresh cookie is sufficient
+    // for subsequent API calls; ProtectedRoute keeps children rendered after
+    // first auth so the page was never unmounted.
+    if (inFlightReauth || isSessionReauth) {
       clearRequiresAuth();
       closeSsoLogin('success');
       return;
@@ -351,7 +351,7 @@ export default function SsoLogin() {
     // Skipped above because applyRedirect() navigates away entirely.
     setError(null);
     closeSsoLogin('success');
-    clearRequiresAuth(); // Allow sites store to refetch
+    clearRequiresAuth();
 
     // Priority 2: Use redirect_url from SSO if provided AND it matches our origin
     // This is a fallback for flows where no store redirect was captured (e.g. direct
@@ -380,7 +380,7 @@ export default function SsoLogin() {
       message: 'No redirect available, reloading page to pick up new auth cookie',
     });
     window.location.reload();
-  }, [closeSsoLogin, clearRequiresAuth, applyRedirect, isValidRedirectUrl, inFlightReauth]);
+  }, [closeSsoLogin, clearRequiresAuth, applyRedirect, isValidRedirectUrl, inFlightReauth, isSessionReauth]);
 
   const handleSsoError = useCallback(function onSsoError(err?: unknown) {
     logger.warn('sso-login.iframe.error', {

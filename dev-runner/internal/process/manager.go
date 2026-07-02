@@ -274,6 +274,15 @@ func (p *ManagedProcess) ClearErrors() {
 	p.ErrorCount = 0
 }
 
+// AddSystemLine appends an informational line to the process output buffer.
+// Used by the TUI to inject system messages (e.g. credential status) into the
+// "All" pane without a backing subprocess write.
+func (p *ManagedProcess) AddSystemLine(text string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.addLine(OutputLine{Text: text, IsError: false, Time: time.Now()})
+}
+
 // GetLines returns a copy of current output lines.
 func (p *ManagedProcess) GetLines() []OutputLine {
 	p.mu.RLock()

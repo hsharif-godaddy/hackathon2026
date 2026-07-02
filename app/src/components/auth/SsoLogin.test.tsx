@@ -127,6 +127,7 @@ const mockAuthUIState = {
   setRedirectUrl: vi.fn(),
   ssoAuthReason: null as number | null,
   inFlightReauth: false,
+  isSessionReauth: false,
   setInFlightReauth: vi.fn(),
 };
 
@@ -194,6 +195,7 @@ describe('SsoLogin redirect handling', function ssoLoginRedirectTests() {
     mockAuthUIState.redirectUrl = null;
     mockAuthUIState.ssoAuthReason = null;
     mockAuthUIState.inFlightReauth = false;
+    mockAuthUIState.isSessionReauth = false;
   });
 
   it('navigates to same-origin redirect path', async function redirectsToSameOrigin() {
@@ -513,6 +515,7 @@ describe('SsoLogin in-flight reauth', function inFlightReauthTests() {
     mockAuthUIState.redirectUrl = null;
     mockAuthUIState.ssoAuthReason = null;
     mockAuthUIState.inFlightReauth = false;
+    mockAuthUIState.isSessionReauth = false;
   });
 
   it('closes with success and does not navigate when inFlightReauth is true', async function inFlightSkipsNav() {
@@ -535,8 +538,9 @@ describe('SsoLogin in-flight reauth', function inFlightReauthTests() {
     reloadSpy.mockRestore();
   });
 
-  it('takes the navigation path when inFlightReauth is false (existing behavior)', async function nonInFlightStillNavigates() {
+  it('takes the navigation path when neither inFlightReauth nor isSessionReauth', async function explicitRedirectNavigates() {
     mockAuthUIState.inFlightReauth = false;
+    mockAuthUIState.isSessionReauth = false;
     mockAuthUIState.redirectUrl = 'https://airo-builder.test/develop/abc123';
     const assignSpy = vi.spyOn(window.location, 'assign').mockImplementation(function () {});
 
@@ -546,6 +550,23 @@ describe('SsoLogin in-flight reauth', function inFlightReauthTests() {
     expect(assignSpy).toHaveBeenCalledWith('https://airo-builder.test/develop/abc123');
     expect(mockAuthUIState.closeSsoLogin).not.toHaveBeenCalled();
     assignSpy.mockRestore();
+  });
+
+  it('closes without navigation when isSessionReauth is true (passive re-auth)', async function sessionReauthSkipsNav() {
+    mockAuthUIState.inFlightReauth = false;
+    mockAuthUIState.isSessionReauth = true;
+    mockAuthUIState.redirectUrl = '/develop/abc123';
+    const assignSpy = vi.spyOn(window.location, 'assign').mockImplementation(function () {});
+    const reloadSpy = vi.spyOn(window.location, 'reload').mockImplementation(function () {});
+
+    renderWithProviders(<SsoLogin />);
+    await triggerAuth();
+
+    expect(assignSpy).not.toHaveBeenCalled();
+    expect(reloadSpy).not.toHaveBeenCalled();
+    expect(mockAuthUIState.closeSsoLogin).toHaveBeenCalledWith('success');
+    assignSpy.mockRestore();
+    reloadSpy.mockRestore();
   });
 });
 
