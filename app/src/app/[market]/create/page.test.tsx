@@ -174,6 +174,27 @@ describe('CreatePage', () => {
     })
   })
 
+  it('passes templateId to createSiteAndRedirect when mode param is present', async () => {
+    mockSearchParams.get.mockImplementation(function (key: string) {
+      if (key === 'initialPrompt') return 'test prompt'
+      if (key === 'mode') return 'logo-designer'
+      return null
+    })
+
+    render(<CreatePage />)
+
+    await waitFor(() => {
+      expect(createSiteAndRedirect).toHaveBeenCalledWith(
+        expect.objectContaining({
+          prompt: 'test prompt',
+          source: 'create-page',
+          templateId: 'logo-designer',
+        }),
+        mockRouter
+      )
+    })
+  })
+
   it('treats template=default as no template', async () => {
     mockSearchParams.get.mockImplementation(function (key: string) {
       if (key === 'initialPrompt') return 'test prompt'
@@ -216,7 +237,7 @@ describe('CreatePage', () => {
     })
   })
 
-  it('preserves template param in redirect URL on auth required', async () => {
+  it('emits mode param in redirect URL when legacy template param is present on auth required', async () => {
     mockSearchParams.get.mockImplementation(function (key: string) {
       if (key === 'initialPrompt') return 'test prompt'
       if (key === 'template') return 'logo-designer'
@@ -237,10 +258,10 @@ describe('CreatePage', () => {
     onAuthRequiredCallback('test prompt')
 
     expect(mockSetRedirectUrl).toHaveBeenCalledWith(
-      '/create?initialPrompt=test+prompt&template=logo-designer'
+      '/create?initialPrompt=test+prompt&mode=logo-designer'
     )
     expect(mockSignIn).toHaveBeenCalledWith({
-      redirectUrl: '/create?initialPrompt=test+prompt&template=logo-designer',
+      redirectUrl: '/create?initialPrompt=test+prompt&mode=logo-designer',
     })
   })
 

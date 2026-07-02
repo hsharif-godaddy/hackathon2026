@@ -7,6 +7,7 @@ import { HeroSectionRef, LOGO_DESIGNER_TEMPLATE, type UploadedDesignFile, valida
 import { useAuthContext } from '@/components/providers/AuthProvider'
 import { useAnalytics } from '@/hooks/useAnalytics'
 import { useAuthGateTracking } from '@/hooks/useAuthGateTracking'
+import { useCanonicalizeModeParam } from '@/hooks/useCanonicalizeModeParam'
 import { useDeeplinkPromptPrefill } from '@/hooks/useDeeplinkPromptPrefill'
 import { useHomepageBounceTracking } from '@/hooks/useHomepageBounceTracking'
 import { useLogoDesignerEntryTracking } from '@/hooks/useLogoDesignerEntryTracking'
@@ -20,6 +21,7 @@ import { validateDomainName } from '@/lib/domain-validation'
 import { getErrorMessage } from '@/lib/errors'
 import { AuthDismissedError } from '@/lib/gasket-config'
 import { shipAnalyticsLog } from '@/lib/logging'
+import { getModeParam, LEGACY_MODE_PARAM, MODE_PARAM } from '@/lib/mode-param'
 import { buildDevelopUrl, extractApiError, fetchQuickCreate, type QuickCreateResponse, setQuickCreateSessionFlags, storeUploadedFiles } from '@/lib/quick-create'
 import { promotePendingDesignChoice } from '@/lib/rebuild-design-choice'
 import { logger } from '@/lib/request-context'
@@ -49,16 +51,18 @@ export function useHomepageSubmission(options?: HomepageSubmissionOptions) {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
-  const templateParam = searchParams.get('template')
+  useCanonicalizeModeParam()
+  const templateParam = getModeParam(searchParams)
   const selectedTemplate = validateTemplate(templateParam)
   const isLogoMode = templateParam === LOGO_DESIGNER_TEMPLATE
 
   const setSelectedTemplate = useCallback((template: string) => {
     const params = new URLSearchParams(searchParams.toString())
     if (template === 'default') {
-      params.delete('template')
+      params.delete(MODE_PARAM)
+      params.delete(LEGACY_MODE_PARAM)
     } else {
-      params.set('template', template)
+      params.set(MODE_PARAM, template)
     }
     const queryString = params.toString()
     router.replace(queryString ? `${pathname}?${queryString}` : pathname, { scroll: false })

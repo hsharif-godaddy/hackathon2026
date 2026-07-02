@@ -31,8 +31,17 @@ describe('useLogoDesignerEntryTracking', () => {
     })
   })
 
-  describe('when template=logo-designer is present', () => {
-    it("logs the entry with source 'deeplink'", () => {
+  describe('when logo-designer mode is present', () => {
+    it("logs the entry with source 'deeplink' for the canonical ?mode= param", () => {
+      window.location.search = '?mode=logo-designer'
+
+      renderHook(() => useLogoDesignerEntryTracking())
+
+      expect(mockLogLogoDesignerEntry).toHaveBeenCalledTimes(1)
+      expect(mockLogLogoDesignerEntry).toHaveBeenCalledWith('deeplink')
+    })
+
+    it("logs the entry with source 'deeplink' for the legacy ?template= alias", () => {
       window.location.search = '?template=logo-designer'
 
       renderHook(() => useLogoDesignerEntryTracking())

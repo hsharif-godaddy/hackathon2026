@@ -12,6 +12,7 @@ import { useSsoSignIn } from '@/hooks/useSsoSignIn'
 import { useSubscription } from '@/hooks/useSubscription'
 import { ITC_QUERY_PARAM } from '@/lib/itc'
 import { shipAnalyticsLog } from '@/lib/logging'
+import { getModeParam, LEGACY_MODE_PARAM, MODE_PARAM } from '@/lib/mode-param'
 import { logger } from '@/lib/request-context'
 import { createSiteAndRedirect } from '@/lib/site-creation'
 import { useAuthUIStore } from '@/stores/useAuthUIStore'
@@ -28,15 +29,27 @@ function CreatePageContent() {
   const hasInitialized = useRef(false)
 
   const initialPrompt = searchParams.get('initialPrompt')
-  const rawTemplate = searchParams.get('template')
+  const rawTemplate = getModeParam(searchParams)
   const template = validateTemplate(rawTemplate) !== 'default' ? rawTemplate : null
 
   const { isAuthenticated } = useAuthContext()
   const { subscriptions, isLoading: subscriptionsLoading, isError: subscriptionsError } = useSubscription({ enabled: isAuthenticated })
   const isNewUser = isAuthenticated && !subscriptionsLoading && !subscriptionsError && subscriptions.length === 0
   const hasLoggedNewUserRef = useRef(false)
+  const hasLoggedLegacyModeRef = useRef(false)
 
   useLogoDesignerEntryTracking()
+
+  // Retirement log for the legacy `?template=` param. The create page is a
+  // transient create-and-redirect stub, so we don't canonicalize here (it would
+  // race the redirect) — we only record that legacy traffic was seen, once.
+  useEffect(() => {
+    if (hasLoggedLegacyModeRef.current) return
+    const legacyMode = searchParams.get(LEGACY_MODE_PARAM)
+    if (legacyMode === null) return
+    hasLoggedLegacyModeRef.current = true
+    shipAnalyticsLog('mode_param.legacy_used', { param: LEGACY_MODE_PARAM, value: legacyMode })
+  }, [searchParams])
 
   useEffect(() => {
     logImpressionEvent('create.page.view')();
@@ -130,7 +143,7 @@ function CreatePageContent() {
           // `redirectUrl` arg to signIn below. Preserve `itc` so attribution
           // survives even if localStorage is cleared during the SSO bounce.
           const params = new URLSearchParams({ initialPrompt: trimmedPrompt })
-          if (template) params.set('template', template)
+          if (template) params.set(MODE_PARAM, template)
           const itc = searchParams.get(ITC_QUERY_PARAM)
           if (itc) params.set(ITC_QUERY_PARAM, itc)
           const redirectUrl = `/create?${params.toString()}`

@@ -105,14 +105,14 @@ describe('authPreflight', () => {
     const { useAuthUIStore } = await import('@/stores/useAuthUIStore');
 
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response401()));
-    useAuthUIStore.getState().setRedirectUrl('/create?initialPrompt=hello&template=logo-designer');
+    useAuthUIStore.getState().setRedirectUrl('/create?initialPrompt=hello&mode=logo-designer');
 
     const preflightPromise = authPreflight(3);
 
     await vi.advanceTimersByTimeAsync(0);
 
     expect(useAuthUIStore.getState().isSsoLoginOpen).toBe(true);
-    expect(useAuthUIStore.getState().redirectUrl).toBe('/create?initialPrompt=hello&template=logo-designer');
+    expect(useAuthUIStore.getState().redirectUrl).toBe('/create?initialPrompt=hello&mode=logo-designer');
 
     useAuthUIStore.getState().closeSsoLogin('dismiss');
 

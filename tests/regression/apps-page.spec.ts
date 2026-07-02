@@ -508,6 +508,12 @@ test.describe('Apps Page & Navigation', () => {
     await promptInput.waitFor({ state: 'visible', timeout: LONG_TIMEOUT });
     console.log('  ✓ Homepage loaded');
 
+    // Legacy ?template= links must still activate logo mode (read alias) and
+    // canonicalize to ?mode= in the address bar during the rename transition.
+    await expect(page).toHaveURL(/[?&]mode=logo-designer\b/);
+    await expect(page).not.toHaveURL(/[?&]template=/);
+    console.log('  ✓ Legacy ?template= canonicalized to ?mode=logo-designer');
+
     // ========================================
     // STEP 2: Verify custom hero heading
     // ========================================
@@ -568,18 +574,18 @@ test.describe('Apps Page & Navigation', () => {
 
     console.log('🎨 Step 2: Click "Logo Designer" chip and verify URL updates...');
     await logoChip.click();
-    await expect(page).toHaveURL(/[?&]template=logo-designer\b/);
-    console.log('  ✓ URL contains ?template=logo-designer');
+    await expect(page).toHaveURL(/[?&]mode=logo-designer\b/);
+    console.log('  ✓ URL contains ?mode=logo-designer');
 
     console.log('🔄 Step 3: Reload and verify selection persists...');
     await page.reload();
-    await expect(page).toHaveURL(/[?&]template=logo-designer\b/);
-    console.log('  ✓ Template URL param survived reload');
+    await expect(page).toHaveURL(/[?&]mode=logo-designer\b/);
+    console.log('  ✓ Mode URL param survived reload');
 
     console.log('↩️  Step 4: Click "Default" chip removes the param...');
     await page.getByTestId('template-chip-default').click();
-    await expect(page).not.toHaveURL(/[?&]template=/);
-    console.log('  ✓ Default selection clears the template param');
+    await expect(page).not.toHaveURL(/[?&]mode=/);
+    console.log('  ✓ Default selection clears the mode param');
 
     console.log('🎉 Template URL sync test passed!');
   });
