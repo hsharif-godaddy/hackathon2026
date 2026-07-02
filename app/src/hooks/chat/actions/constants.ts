@@ -8,6 +8,7 @@ export const CLIENT_ACTIONS = {
   PUBLISH: 'publish',
   GET_SITE_DATA: 'getSiteData',
   ATTACH_DOMAIN: 'attachDomain',
+  CHECK_DOMAIN_OWNERSHIP: 'checkDomainOwnership',
   MCP_CALL: 'mcp_call',
   INBOX_CALL: 'inboxCall',
   SCREENSHOT: 'screenshot',

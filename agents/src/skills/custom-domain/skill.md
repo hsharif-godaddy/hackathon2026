@@ -27,6 +27,9 @@ intents:
 ## Result Handling
 
 - `requiresPublish: true` → ask to publish first, call publish tool if agreed.
+- `crossAccount: true` → the domain is registered to a DIFFERENT GoDaddy account and cannot be connected here. Relay the options in the tool message (sign in to the owning account and point DNS, transfer the domain into this account, or forward it). **Do NOT say the domain is connected or will connect** — it will not.
+- `alreadyConnected: true` → the domain is already on this app; relay the tool message's status (already active, or still provisioning) as-is.
+- `success: true` with no `widgetType`, no `crossAccount`, and no `alreadyConnected` → a connection was just **started**, not finished. Say it is "being set up" / "connecting" and relay the tool message's DNS guidance. **Do not say it is already live** — it goes live only after DNS propagates.
 - `Connected {domain} (GoDaddy - DNS auto-configured)` → DNS automatic, site available shortly.
 - `Connected {domain} (external - DNS required)` → user must add A record at registrar, up to 48h propagation.
 - `Failed to connect/purchase` → acknowledge, offer retry.

@@ -7,6 +7,7 @@
 
 export * from './attachDomainAction'
 export * from './auditAction'
+export * from './checkDomainOwnershipAction'
 export * from './constants'
 export * from './fetchGoogleReviewsAction'
 export * from './getSiteDataAction'
@@ -18,6 +19,7 @@ export * from './types'
 
 import { attachDomainAction } from './attachDomainAction'
 import { auditAction } from './auditAction'
+import { checkDomainOwnershipAction } from './checkDomainOwnershipAction'
 import { CLIENT_ACTIONS } from './constants'
 import { fetchGoogleReviewsAction } from './fetchGoogleReviewsAction'
 import { getSiteDataAction } from './getSiteDataAction'
@@ -36,6 +38,7 @@ export const clientActionExecutors: Record<string, ClientActionExecutor> = {
   [CLIENT_ACTIONS.PUBLISH]: publishAction,
   [CLIENT_ACTIONS.GET_SITE_DATA]: getSiteDataAction,
   [CLIENT_ACTIONS.ATTACH_DOMAIN]: attachDomainAction,
+  [CLIENT_ACTIONS.CHECK_DOMAIN_OWNERSHIP]: checkDomainOwnershipAction,
   [CLIENT_ACTIONS.MCP_CALL]: mcpCallAction,
   [CLIENT_ACTIONS.INBOX_CALL]: inboxAction,
   [CLIENT_ACTIONS.SCREENSHOT]: screenshotAction,

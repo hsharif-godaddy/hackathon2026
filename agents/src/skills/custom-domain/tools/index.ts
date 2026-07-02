@@ -165,6 +165,31 @@ async function attach(
     const domain = input.domain?.trim() || undefined
 
     const { published, domains: siteDomains } = await getSiteContextForAttach(clientActionService, appId)
+
+    if (domain && fqdnIsConnectedOrProvisioningOnSite(siteDomains, domain)) {
+        logger.info('domain.attach.skip-already-on-app', { appId, domain })
+        return {
+            success: true,
+            alreadyConnected: true,
+            message: `${domain} already on this app (active or provisioning). Confirm with user — no attach needed.`
+        }
+    }
+
+    // Cross-account gate (AIROBUILD-2952): before storing or attaching, refuse a
+    // domain registered to a DIFFERENT GoDaddy account — it cannot be connected
+    // from here, and reporting success would be false. Fails open on any error.
+    const ownership: DomainOwnership | undefined = domain
+        ? await checkDomainOwnership(clientActionService, appId, domain)
+        : undefined
+    if (ownership?.crossAccount) {
+        logger.warn('domain.attach.cross-account', { appId, domain })
+        return {
+            success: false,
+            crossAccount: true,
+            message: `${domain} is registered to a different GoDaddy account, so it can't be connected from this account. To use it, the user must either: (1) sign in to the GoDaddy account that owns ${domain} and point its DNS at this app, (2) transfer ${domain} into this account first, or (3) leave it where it is and set up domain forwarding to the published site. Do NOT tell the user the domain is or will be connected.`,
+        }
+    }
+
     if (!published) {
         if (domain) {
             await storePurchasedDomain(appId, domain, context)
@@ -184,15 +209,8 @@ async function attach(
     }
 
     if (domain) {
-        if (fqdnIsConnectedOrProvisioningOnSite(siteDomains, domain)) {
-            logger.info('domain.attach.skip-already-on-app', { appId, domain })
-            return {
-                success: true,
-                message: `${domain} already on this app (active or provisioning). Confirm with user — no attach needed.`
-            }
-        }
         await storePurchasedDomain(appId, domain, context)
-        return autoAttach(clientActionService, appId, domain)
+        return autoAttach(clientActionService, appId, domain, ownership)
     }
 
     const primaryEntry = getConnectedOrProvisioningDomain(siteDomains)
@@ -229,6 +247,49 @@ async function attach(
     }
 }
 
+interface DomainOwnership {
+    crossAccount: boolean
+    isGdDomain?: boolean
+    isGDDomainOwner?: boolean
+}
+
+/**
+ * Pre-attach ownership check (AIROBUILD-2952). Asks the client action service to
+ * look up the domain's GoDaddy registration/ownership via the BFF
+ * domain-dns-ownership endpoint. `crossAccount` is true only when the domain is
+ * registered at GoDaddy but owned by a different account
+ * (isGdDomain && !isGDDomainOwner) — the case that must NOT be reported as
+ * connected. Fails open (crossAccount: false) on any error so a transient lookup
+ * failure never blocks a legitimate attach.
+ */
+async function checkDomainOwnership(
+    clientActionService: NonNullable<ReturnType<typeof getActionService>>,
+    appId: string,
+    domain: string
+): Promise<DomainOwnership> {
+    try {
+        const result = await clientActionService.executeAction({
+            action: 'checkDomainOwnership',
+            params: { appId, domainName: domain },
+            timeoutMs: 10000,
+        })
+        if (!result.success || !result.result) return { crossAccount: false }
+        const data = result.result as { isGdDomain?: boolean; isGDDomainOwner?: boolean }
+        return {
+            crossAccount: data.isGdDomain === true && data.isGDDomainOwner === false,
+            isGdDomain: data.isGdDomain,
+            isGDDomainOwner: data.isGDDomainOwner,
+        }
+    } catch (error) {
+        logger.warn('domain.attach.ownership-check-failed', {
+            appId,
+            domain,
+            error: error instanceof Error ? error.message : String(error),
+        })
+        return { crossAccount: false }
+    }
+}
+
 /**
  * Auto-attach a domain to a published app via the client action service.
  * Falls back to the widget when the client-side action fails.
@@ -236,7 +297,8 @@ async function attach(
 async function autoAttach(
     clientActionService: NonNullable<ReturnType<typeof getActionService>>,
     appId: string,
-    domain: string
+    domain: string,
+    ownership?: DomainOwnership
 ) {
     try {
         logger.info('domain.attach.auto', { appId, domain })
@@ -266,9 +328,12 @@ async function autoAttach(
                 })
             }
 
+            const successMessage = ownership?.isGdDomain === true
+                ? `${domain} connection started — GoDaddy is configuring the DNS automatically. The site goes live at ${domain} once DNS propagates (usually a few minutes). Do not claim it is already live; tell the user it is being set up.`
+                : `${domain} connection started. Because ${domain} is registered outside GoDaddy, the user must point its DNS (A record) to this app at their registrar; propagation can take up to 48 hours. Do not claim it is already live; tell the user what they still need to do.`
             return {
                 success: true,
-                message: `${domain} attached. DNS propagation may take a few minutes.`
+                message: successMessage,
             }
         }
 
@@ -526,9 +591,9 @@ Rules:
     },
     computeState(input: any, output: any) {
         if (input.action !== 'attach') return null;
-        if (!output?.success || output?.widgetType || output?.requiresPublish) return null;
+        if (!output?.success || output?.widgetType || output?.requiresPublish || output?.alreadyConnected) return null;
         const domain = input?.domain?.trim();
         if (!domain) return null;
-        return { connectedDomain: domain, status: 'active' };
+        return { connectedDomain: domain, status: 'provisioning' };
     },
 }

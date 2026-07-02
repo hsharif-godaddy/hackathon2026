@@ -628,6 +628,178 @@ describe('custom-domain', function packageTests() {
         })
     })
 
+    describe('#attach action — cross-account ownership', function ownershipTests() {
+        type OwnershipMock = Record<string, unknown> | 'throw' | 'fail' | 'noresult'
+        function mockActions(ownership: OwnershipMock, opts: { published?: boolean; domains?: unknown[] } = {}) {
+            const published = opts.published ?? true
+            const siteDomains = opts.domains ?? []
+            return vi.fn().mockImplementation(function ({ action }: { action: string }) {
+                if (action === 'getSiteData') {
+                    return Promise.resolve({ success: true, result: { variants: published ? ['publish'] : [], domains: siteDomains } })
+                }
+                if (action === 'checkDomainOwnership') {
+                    if (ownership === 'throw') return Promise.reject(new Error('ownership timeout'))
+                    if (ownership === 'fail') return Promise.resolve({ success: false, error: 'lookup failed' })
+                    if (ownership === 'noresult') return Promise.resolve({ success: true })
+                    return Promise.resolve({ success: true, result: ownership })
+                }
+                return Promise.resolve({ success: true }) // attachDomain
+            })
+        }
+
+        it('should block a domain owned by a different GoDaddy account', async function crossAccountBlocks() {
+            const mockExecuteAction = mockActions({ isGdDomain: true, isGDDomainOwner: false, isGoDaddyDns: true })
+            mockGetClientActionService.mockReturnValue({ executeAction: mockExecuteAction } as any)
+
+            const result = await execute(
+                { action: 'attach', domain: 'foreign.com' },
+                { metadata: { appId: 'app-123', permissions: { canPurchaseDomain: true } }, socketId: 'socket-123' }
+            )
+
+            expect(result.success).toBe(false)
+            expect(result.crossAccount).toBe(true)
+            expect(result.message).toContain('different GoDaddy account')
+            expect(mockExecuteAction).not.toHaveBeenCalledWith(expect.objectContaining({ action: 'attachDomain' }))
+            expect(mockSetMemory).not.toHaveBeenCalled()
+        })
+
+        it('should block a cross-account domain even when unpublished (no store, no publish promise)', async function crossAccountUnpublished() {
+            const mockExecuteAction = mockActions({ isGdDomain: true, isGDDomainOwner: false }, { published: false })
+            mockGetClientActionService.mockReturnValue({ executeAction: mockExecuteAction } as any)
+
+            const result = await execute(
+                { action: 'attach', domain: 'foreign.com' },
+                { metadata: { appId: 'app-123', permissions: { canPurchaseDomain: true } }, socketId: 'socket-123' }
+            )
+
+            expect(result.success).toBe(false)
+            expect(result.crossAccount).toBe(true)
+            expect(result.requiresPublish).toBeUndefined()
+            expect(mockSetMemory).not.toHaveBeenCalled()
+            expect(mockExecuteAction).not.toHaveBeenCalledWith(expect.objectContaining({ action: 'attachDomain' }))
+        })
+
+        it('should proceed to attach for a domain owned by this account', async function ownedProceeds() {
+            const mockExecuteAction = mockActions({ isGdDomain: true, isGDDomainOwner: true })
+            mockGetClientActionService.mockReturnValue({ executeAction: mockExecuteAction } as any)
+
+            const result = await execute(
+                { action: 'attach', domain: 'mine.com' },
+                { metadata: { appId: 'app-123', permissions: { canPurchaseDomain: true } }, socketId: 'socket-123' }
+            )
+
+            expect(result.success).toBe(true)
+            expect(result.crossAccount).toBeUndefined()
+            expect(result.widgetType).toBeUndefined()
+            expect(mockExecuteAction).toHaveBeenCalledWith(
+                expect.objectContaining({ action: 'attachDomain', params: { appId: 'app-123', domainName: 'mine.com' } })
+            )
+            expect(result.message).toContain('GoDaddy is configuring')
+        })
+
+        it('should proceed to attach for an external (non-GoDaddy) domain', async function externalProceeds() {
+            const mockExecuteAction = mockActions({ isGdDomain: false, isGDDomainOwner: false })
+            mockGetClientActionService.mockReturnValue({ executeAction: mockExecuteAction } as any)
+
+            const result = await execute(
+                { action: 'attach', domain: 'external.io' },
+                { metadata: { appId: 'app-123', permissions: { canPurchaseDomain: true } }, socketId: 'socket-123' }
+            )
+
+            expect(result.success).toBe(true)
+            expect(result.crossAccount).toBeUndefined()
+            expect(mockExecuteAction).toHaveBeenCalledWith(expect.objectContaining({ action: 'attachDomain' }))
+            expect(result.message).toContain('registered outside GoDaddy')
+        })
+
+        it('should fail open and attach when the ownership check throws', async function failOpenThrow() {
+            const mockExecuteAction = mockActions('throw')
+            mockGetClientActionService.mockReturnValue({ executeAction: mockExecuteAction } as any)
+
+            const result = await execute(
+                { action: 'attach', domain: 'mydomain.com' },
+                { metadata: { appId: 'app-123', permissions: { canPurchaseDomain: true } }, socketId: 'socket-123' }
+            )
+
+            expect(result.success).toBe(true)
+            expect(result.crossAccount).toBeUndefined()
+            expect(mockExecuteAction).toHaveBeenCalledWith(expect.objectContaining({ action: 'attachDomain' }))
+        })
+
+        it('should fail open and attach when the ownership check returns success:false', async function failOpenFalse() {
+            const mockExecuteAction = mockActions('fail')
+            mockGetClientActionService.mockReturnValue({ executeAction: mockExecuteAction } as any)
+
+            const result = await execute(
+                { action: 'attach', domain: 'mydomain.com' },
+                { metadata: { appId: 'app-123', permissions: { canPurchaseDomain: true } }, socketId: 'socket-123' }
+            )
+
+            expect(result.success).toBe(true)
+            expect(mockExecuteAction).toHaveBeenCalledWith(expect.objectContaining({ action: 'attachDomain' }))
+        })
+
+        it('should fail open and attach when the ownership check succeeds with no result payload', async function failOpenNoResult() {
+            const mockExecuteAction = mockActions('noresult')
+            mockGetClientActionService.mockReturnValue({ executeAction: mockExecuteAction } as any)
+
+            const result = await execute(
+                { action: 'attach', domain: 'mydomain.com' },
+                { metadata: { appId: 'app-123', permissions: { canPurchaseDomain: true } }, socketId: 'socket-123' }
+            )
+
+            expect(result.success).toBe(true)
+            expect(result.crossAccount).toBeUndefined()
+            expect(mockExecuteAction).toHaveBeenCalledWith(expect.objectContaining({ action: 'attachDomain' }))
+        })
+
+        it('should skip the ownership check when the domain is already on the app', async function skipWhenAlreadyOnApp() {
+            const mockExecuteAction = mockActions(
+                { isGdDomain: true, isGDDomainOwner: false },
+                { domains: [{ fqdn: 'mine.com', domainType: 'custom', status: 'active' }] }
+            )
+            mockGetClientActionService.mockReturnValue({ executeAction: mockExecuteAction } as any)
+
+            const result = await execute(
+                { action: 'attach', domain: 'mine.com' },
+                { metadata: { appId: 'app-123', permissions: { canPurchaseDomain: true } }, socketId: 'socket-123' }
+            )
+
+            expect(result.success).toBe(true)
+            expect(result.message).toContain('already on this app')
+            expect(mockExecuteAction).not.toHaveBeenCalledWith(expect.objectContaining({ action: 'checkDomainOwnership' }))
+        })
+    })
+
+    describe('#computeState', function computeStateTests() {
+        const computeState = (domainPurchaseTool as any).computeState
+
+        it('should record a started attach as provisioning, not active', function provisioning() {
+            const state = computeState({ action: 'attach', domain: 'mydomain.com' }, { success: true })
+            expect(state).toEqual({ connectedDomain: 'mydomain.com', status: 'provisioning' })
+        })
+
+        it('should not record state for a cross-account (blocked) result', function crossAccountNoState() {
+            const state = computeState({ action: 'attach', domain: 'foreign.com' }, { success: false, crossAccount: true })
+            expect(state).toBeNull()
+        })
+
+        it('should not record state for a widget fallback', function widgetNoState() {
+            const state = computeState({ action: 'attach', domain: 'x.com' }, { success: true, widgetType: 'domain-attach' })
+            expect(state).toBeNull()
+        })
+
+        it('should not record state for a requires-publish result', function requiresPublishNoState() {
+            const state = computeState({ action: 'attach', domain: 'x.com' }, { success: true, requiresPublish: true })
+            expect(state).toBeNull()
+        })
+
+        it('should not record state for an already-connected result', function alreadyConnectedNoState() {
+            const state = computeState({ action: 'attach', domain: 'x.com' }, { success: true, alreadyConnected: true })
+            expect(state).toBeNull()
+        })
+    })
+
     describe('#forward action', function forwardTests() {
         it('should not be blocked by canPurchaseDomain: false', async function permissionBypass() {
             mockGetClientActionService.mockReturnValue({
