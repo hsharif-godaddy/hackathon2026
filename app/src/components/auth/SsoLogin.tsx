@@ -107,7 +107,7 @@ export default function SsoLogin() {
 
   const { isSsoLoginOpen, isSsoLoading, closeSsoLogin, setSsoLoaded, redirectUrl, setRedirectUrl, ssoAuthReason, inFlightReauth, isSessionReauth } = useAuthUIStore();
   const clearRequiresAuth = useSitesStore((state) => state.clearRequiresAuth);
-  const { authState, handleSignIn } = useAuthContext();
+  const { authState, handleSignIn, isAuthenticated } = useAuthContext();
   const ssoLiteEnabled = useSwitchboard(SWITCHBOARD_APPBUILDER_SSO_LITE) ?? false;
   // Gates the iframe error/timeout fallback (retry + full-page redirect). When
   // off, the modal keeps its prior behavior: spinner until onLoad, no timeout,
@@ -477,7 +477,18 @@ export default function SsoLogin() {
     // the modal — close without navigation. The fresh cookie is sufficient
     // for subsequent API calls; ProtectedRoute keeps children rendered after
     // first auth so the page was never unmounted.
-    if (inFlightReauth || isSessionReauth) {
+    //
+    // The passive (isSessionReauth) path is only safe to resume in place when
+    // the app is ALREADY authenticated behind the modal. On a cold load into a
+    // protected route with an expired session (deep-link or refresh), the page
+    // renders unauthenticated: Gasket's authState is invalid and ProtectedRoute
+    // is sitting on its auth gate, not the app. Closing the modal without a
+    // reload there strands the user on a blank loading gate because nothing
+    // re-runs the auth check to pick up the fresh cookie — so fall through to
+    // the redirect/reload path instead. inFlightReauth is exempt: it is set
+    // only by resolveAuth when a mid-mutation fetch 401s, which means the app
+    // was live and mounted, and reloading would abandon the awaiting request.
+    if (inFlightReauth || (isSessionReauth && isAuthenticated)) {
       clearRequiresAuth();
       closeSsoLogin('success');
       return;
@@ -524,7 +535,7 @@ export default function SsoLogin() {
       message: 'No redirect available, reloading page to pick up new auth cookie',
     });
     window.location.reload();
-  }, [closeSsoLogin, clearRequiresAuth, applyRedirect, isValidRedirectUrl, inFlightReauth, isSessionReauth]);
+  }, [closeSsoLogin, clearRequiresAuth, applyRedirect, isValidRedirectUrl, inFlightReauth, isSessionReauth, isAuthenticated]);
 
   const handleSsoError = useCallback(function onSsoError(err?: unknown) {
     logger.warn('sso-login.iframe.error', {

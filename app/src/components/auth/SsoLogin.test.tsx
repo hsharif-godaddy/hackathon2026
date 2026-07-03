@@ -20,6 +20,10 @@ const mockLogger = vi.hoisted(() => ({
 
 const mockHandleSignIn = vi.hoisted(() => vi.fn());
 
+// Mutable auth-context state so tests can flip isAuthenticated (cold
+// unauthenticated load vs. already-mounted authenticated page).
+const mockAuthContext = vi.hoisted(() => ({ isAuthenticated: true }));
+
 const originalLocation = window.location;
 
 let latestOnAuth: ((data?: unknown) => void) | null = null;
@@ -102,7 +106,7 @@ vi.mock('@/lib/request-context', () => ({
 
 vi.mock('@/components/providers/AuthProvider', () => ({
   useAuthContext: () => ({
-    isAuthenticated: true,
+    isAuthenticated: mockAuthContext.isAuthenticated,
     isLoading: false,
     authState: null,
     isMockAuth: false,
@@ -518,6 +522,7 @@ describe('SsoLogin in-flight reauth', function inFlightReauthTests() {
     mockAuthUIState.ssoAuthReason = null;
     mockAuthUIState.inFlightReauth = false;
     mockAuthUIState.isSessionReauth = false;
+    mockAuthContext.isAuthenticated = true;
   });
 
   it('closes with success and does not navigate when inFlightReauth is true', async function inFlightSkipsNav() {
@@ -554,10 +559,65 @@ describe('SsoLogin in-flight reauth', function inFlightReauthTests() {
     assignSpy.mockRestore();
   });
 
-  it('closes without navigation when isSessionReauth is true (passive re-auth)', async function sessionReauthSkipsNav() {
+  it('closes without navigation when isSessionReauth is true and app is authenticated (passive re-auth)', async function sessionReauthSkipsNav() {
     mockAuthUIState.inFlightReauth = false;
     mockAuthUIState.isSessionReauth = true;
+    mockAuthContext.isAuthenticated = true;
     mockAuthUIState.redirectUrl = '/develop/abc123';
+    const assignSpy = vi.spyOn(window.location, 'assign').mockImplementation(function () {});
+    const reloadSpy = vi.spyOn(window.location, 'reload').mockImplementation(function () {});
+
+    renderWithProviders(<SsoLogin />);
+    await triggerAuth();
+
+    expect(assignSpy).not.toHaveBeenCalled();
+    expect(reloadSpy).not.toHaveBeenCalled();
+    expect(mockAuthUIState.closeSsoLogin).toHaveBeenCalledWith('success');
+    assignSpy.mockRestore();
+    reloadSpy.mockRestore();
+  });
+
+  it('navigates instead of resuming in place when isSessionReauth is true but app is NOT authenticated (cold load)', async function sessionReauthColdLoadReloads() {
+    // Cold load / refresh into a protected route with an expired session:
+    // the app rendered unauthenticated, so resuming in place would strand the
+    // user on a blank auth gate. Must navigate to re-run the auth check.
+    mockAuthUIState.inFlightReauth = false;
+    mockAuthUIState.isSessionReauth = true;
+    mockAuthContext.isAuthenticated = false;
+    mockAuthUIState.redirectUrl = '/develop/abc123';
+    const assignSpy = vi.spyOn(window.location, 'assign').mockImplementation(function () {});
+
+    renderWithProviders(<SsoLogin />);
+    await triggerAuth();
+
+    expect(assignSpy).toHaveBeenCalledWith('/develop/abc123');
+    expect(mockAuthUIState.closeSsoLogin).not.toHaveBeenCalled();
+    assignSpy.mockRestore();
+  });
+
+  it('reloads when app is NOT authenticated and no redirect target is available (cold load)', async function sessionReauthColdLoadNoRedirect() {
+    mockAuthUIState.inFlightReauth = false;
+    mockAuthUIState.isSessionReauth = true;
+    mockAuthContext.isAuthenticated = false;
+    mockAuthUIState.redirectUrl = null;
+    setRedirectParam(null);
+    const reloadSpy = vi.spyOn(window.location, 'reload').mockImplementation(function () {});
+
+    renderWithProviders(<SsoLogin />);
+    await triggerAuth();
+
+    expect(reloadSpy).toHaveBeenCalled();
+    reloadSpy.mockRestore();
+  });
+
+  it('still resumes in place for inFlightReauth even when app is not yet authenticated', async function inFlightReauthUnauthStillSkipsNav() {
+    // inFlightReauth is set only by resolveAuth on a mid-mutation 401 — the app
+    // was live and mounted, so we must NOT reload (that would abandon the
+    // awaiting request), regardless of Gasket's transient authState.
+    mockAuthUIState.inFlightReauth = true;
+    mockAuthUIState.isSessionReauth = false;
+    mockAuthContext.isAuthenticated = false;
+    mockAuthUIState.redirectUrl = 'https://airo-builder.test/develop/abc123';
     const assignSpy = vi.spyOn(window.location, 'assign').mockImplementation(function () {});
     const reloadSpy = vi.spyOn(window.location, 'reload').mockImplementation(function () {});
 
