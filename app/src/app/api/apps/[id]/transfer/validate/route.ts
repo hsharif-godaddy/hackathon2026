@@ -1,10 +1,11 @@
 /**
  * Transfer Validation Proxy
  *
- * Proxies to the agent's /apps/:id/transfer/validate endpoint to check
- * whether an app is eligible for ownership transfer (e.g. no GD Commerce).
+ * Derives transfer eligibility from the agent's /apps/:id/commerce/binding
+ * endpoint (the current source of truth for GoDaddy Commerce). An app is
+ * ineligible for ownership transfer when a Commerce binding is configured.
  *
- * GET /api/apps/:id/transfer/validate
+ * GET /api/apps/:id/transfer/validate → { canTransfer, gdCommerce }
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -41,7 +42,7 @@ export const GET = withCustomerAuth(async (
 
     const agentBaseUrl: string = resolveAgentsBaseUrl(site);
     const response = await agentFetch(
-      `${agentBaseUrl}/apps/${appId}/transfer/validate`,
+      `${agentBaseUrl}/apps/${appId}/commerce/binding`,
       { siteId: appId }
     );
 
@@ -58,16 +59,17 @@ export const GET = withCustomerAuth(async (
       );
     }
 
-    const data = await response.json();
+    const binding: { configured?: boolean } = await response.json();
+    const gdCommerce: boolean = Boolean(binding.configured);
 
-    if (!data.canTransfer && data.gdCommerce) {
+    if (gdCommerce) {
       logger.warn('transfer.validate.commerce.blocked', {
         appId,
-        gdCommerce: data.gdCommerce,
+        gdCommerce,
       });
     }
 
-    return NextResponse.json(data);
+    return NextResponse.json({ canTransfer: !gdCommerce, gdCommerce });
   } catch (error) {
     logger.error('transfer.validate.proxy.error', {
       appId: (await params).id,

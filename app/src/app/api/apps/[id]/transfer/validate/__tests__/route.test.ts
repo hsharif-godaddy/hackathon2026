@@ -56,12 +56,13 @@ describe('/api/apps/[id]/transfer/validate', function validateRouteTests() {
   });
 
   describe('GET - Validate transfer eligibility', function getTests() {
-    it('should return canTransfer true when no commerce integration', async function noCommerce() {
+    it('should return canTransfer true when no commerce binding is configured', async function noCommerce() {
       mockAgentFetch.mockResolvedValue({
         ok: true,
-        json: async () => ({ canTransfer: true, gdCommerce: false }),
+        json: async () => ({ configured: false, binding: null }),
       });
 
+      const { logger } = await import('@/lib/request-context');
       const { GET } = await import('../route');
       const response = await GET(
         createRequest('http://localhost:3000/api/apps/app-1/transfer/validate'),
@@ -72,16 +73,17 @@ describe('/api/apps/[id]/transfer/validate', function validateRouteTests() {
       expect(response.status).toBe(200);
       expect(body.canTransfer).toBe(true);
       expect(body.gdCommerce).toBe(false);
+      expect(logger.warn).not.toHaveBeenCalled();
       expect(mockAgentFetch).toHaveBeenCalledWith(
-        'https://agent.example.com/apps/app-1/transfer/validate',
+        'https://agent.example.com/apps/app-1/commerce/binding',
         { siteId: 'app-1' }
       );
     });
 
-    it('should return canTransfer false and log commerce block when commerce integration exists', async function hasCommerce() {
+    it('should return canTransfer false and log commerce block when a binding is configured', async function hasCommerce() {
       mockAgentFetch.mockResolvedValue({
         ok: true,
-        json: async () => ({ canTransfer: false, gdCommerce: true }),
+        json: async () => ({ configured: true, binding: { appId: 'app-1', status: 'channel_ready' } }),
       });
 
       const { logger } = await import('@/lib/request-context');
@@ -99,25 +101,6 @@ describe('/api/apps/[id]/transfer/validate', function validateRouteTests() {
         appId: 'app-1',
         gdCommerce: true,
       });
-    });
-
-    it('should not log commerce block when canTransfer is false for non-commerce reasons', async function nonCommerceBlock() {
-      mockAgentFetch.mockResolvedValue({
-        ok: true,
-        json: async () => ({ canTransfer: false, gdCommerce: false }),
-      });
-
-      const { logger } = await import('@/lib/request-context');
-      const { GET } = await import('../route');
-      const response = await GET(
-        createRequest('http://localhost:3000/api/apps/app-1/transfer/validate'),
-        { params: Promise.resolve({ id: 'app-1' }) }
-      );
-      const body = await response.json();
-
-      expect(response.status).toBe(200);
-      expect(body.canTransfer).toBe(false);
-      expect(logger.warn).not.toHaveBeenCalled();
     });
 
     it('should return 404 when site not found', async function siteNotFound() {
@@ -170,7 +153,7 @@ describe('/api/apps/[id]/transfer/validate', function validateRouteTests() {
       mockGetSite.mockResolvedValue({ id: 'app-1', status: 'running', agent_url: null });
       mockAgentFetch.mockResolvedValue({
         ok: true,
-        json: async () => ({ canTransfer: true, gdCommerce: false }),
+        json: async () => ({ configured: false, binding: null }),
       });
 
       const { GET } = await import('../route');
@@ -181,7 +164,7 @@ describe('/api/apps/[id]/transfer/validate', function validateRouteTests() {
 
       expect(response.status).toBe(200);
       expect(mockAgentFetch).toHaveBeenCalledWith(
-        'http://localhost:4000/apps/app-1/transfer/validate',
+        'http://localhost:4000/apps/app-1/commerce/binding',
         { siteId: 'app-1' }
       );
     });

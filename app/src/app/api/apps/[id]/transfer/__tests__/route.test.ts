@@ -107,7 +107,7 @@ const MOCK_SITE_WITH_SUBSCRIPTION = {
 function mockPassingValidation() {
   mockAgentFetch.mockResolvedValue({
     ok: true,
-    json: async () => ({ canTransfer: true, gdCommerce: false }),
+    json: async () => ({ configured: false, binding: null }),
   });
 }
 
@@ -155,16 +155,16 @@ describe('/api/apps/[id]/transfer', function transferRouteTests() {
       expect(response.status).toBe(201);
       expect(body.status).toBe('initiated');
       expect(mockAgentFetch).toHaveBeenCalledWith(
-        'https://agent.example.com/apps/app-1/transfer/validate',
+        'https://agent.example.com/apps/app-1/commerce/binding',
         { siteId: 'app-1' }
       );
       expect(mockInitiateTransfer).toHaveBeenCalledWith('app-1', 'test@godaddy.com');
     });
 
-    it('should return 403 when canTransfer is false', async function blocked() {
+    it('should return 403 when a commerce binding is configured', async function blocked() {
       mockAgentFetch.mockResolvedValue({
         ok: true,
-        json: async () => ({ canTransfer: false, gdCommerce: true }),
+        json: async () => ({ configured: true, binding: { appId: 'app-1', status: 'channel_ready' } }),
       });
 
       const { POST } = await import('../route');
@@ -242,7 +242,7 @@ describe('/api/apps/[id]/transfer', function transferRouteTests() {
 
       expect(response.status).toBe(201);
       expect(mockAgentFetch).toHaveBeenCalledWith(
-        'http://localhost:4000/apps/app-1/transfer/validate',
+        'http://localhost:4000/apps/app-1/commerce/binding',
         { siteId: 'app-1' }
       );
     });

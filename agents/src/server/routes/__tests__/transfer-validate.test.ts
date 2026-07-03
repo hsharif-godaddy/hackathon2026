@@ -4,8 +4,8 @@ import { Response } from 'express';
 import type { AuthenticatedRequest } from '../../middleware/jwt-auth.js';
 
 vi.mock('../../../database/repositories/index.js', () => ({
-  oauthTokenRepository: {
-    findOne: vi.fn(),
+  appCommerceBindingRepository: {
+    findByAppId: vi.fn(),
   },
 }));
 
@@ -24,9 +24,9 @@ vi.mock('../../middleware/app-ownership.js', () => ({
   validateAppOwnership: (_req: any, _res: any, next: any) => next(),
 }));
 
-import { oauthTokenRepository } from '../../../database/repositories/index.js';
+import { appCommerceBindingRepository } from '../../../database/repositories/index.js';
 
-const mockOAuthRepo = vi.mocked(oauthTokenRepository);
+const mockBindingRepo = vi.mocked(appCommerceBindingRepository);
 
 describe('Transfer Validate Routes', function transferValidateTests() {
   let mockReq: Partial<AuthenticatedRequest>;
@@ -57,8 +57,8 @@ describe('Transfer Validate Routes', function transferValidateTests() {
   });
 
   describe('GET /apps/:id/transfer/validate', function validateTests() {
-    it('should return canTransfer true when no godaddy token exists', async function noToken() {
-      mockOAuthRepo.findOne.mockReturnValue(null);
+    it('should return canTransfer true when no commerce binding exists', async function noBinding() {
+      mockBindingRepo.findByAppId.mockReturnValue(null);
 
       const { default: router } = await import('../transfer-validate.js');
       const handler = router.stack
@@ -68,21 +68,28 @@ describe('Transfer Validate Routes', function transferValidateTests() {
       expect(handler).toBeDefined();
       handler!(mockReq as any, mockRes as any);
 
-      expect(mockOAuthRepo.findOne).toHaveBeenCalledWith(testAppId, 'godaddy');
+      expect(mockBindingRepo.findByAppId).toHaveBeenCalledWith(testAppId);
       expect(jsonSpy).toHaveBeenCalledWith({ canTransfer: true, gdCommerce: false });
     });
 
-    it('should return canTransfer false when godaddy token exists', async function hasToken() {
-      mockOAuthRepo.findOne.mockReturnValue({
-        id: 1,
+    it('should return canTransfer false when a commerce binding exists', async function hasBinding() {
+      mockBindingRepo.findByAppId.mockReturnValue({
         appId: testAppId,
-        provider: 'godaddy',
-        scopes: 'commerce',
-        accessTokenEncrypted: 'encrypted',
-        accessTokenIv: 'iv',
-        accessTokenTag: 'tag',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+        businessId: 'biz-1',
+        businessName: null,
+        storeId: 'store-1',
+        storeName: null,
+        storeUrl: null,
+        channelId: 'channel-1',
+        channelName: null,
+        defaultLocationId: null,
+        currencyCode: null,
+        status: 'channel_ready',
+        source: 'user_selected',
+        lastVerifiedAt: null,
+        verificationError: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
       } as any);
 
       const { default: router } = await import('../transfer-validate.js');
@@ -93,12 +100,12 @@ describe('Transfer Validate Routes', function transferValidateTests() {
       expect(handler).toBeDefined();
       handler!(mockReq as any, mockRes as any);
 
-      expect(mockOAuthRepo.findOne).toHaveBeenCalledWith(testAppId, 'godaddy');
+      expect(mockBindingRepo.findByAppId).toHaveBeenCalledWith(testAppId);
       expect(jsonSpy).toHaveBeenCalledWith({ canTransfer: false, gdCommerce: true });
     });
 
     it('should return 500 when repository throws', async function repoError() {
-      mockOAuthRepo.findOne.mockImplementation(function () {
+      mockBindingRepo.findByAppId.mockImplementation(function () {
         throw new Error('Database error');
       });
 

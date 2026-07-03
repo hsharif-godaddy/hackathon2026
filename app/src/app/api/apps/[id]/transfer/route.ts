@@ -131,13 +131,14 @@ export const POST = withCustomerAuth(async (
 
     try {
       const validateResponse = await agentFetch(
-        `${agentBaseUrl}/apps/${id}/transfer/validate`,
+        `${agentBaseUrl}/apps/${id}/commerce/binding`,
         { siteId: id }
       );
       if (validateResponse.ok) {
-        const validation = await validateResponse.json();
-        if (!validation.canTransfer) {
-          logger.warn('transfer.initiate.blocked', { appId: id, gdCommerce: validation.gdCommerce });
+        const binding: { configured?: boolean } = await validateResponse.json();
+        const gdCommerce: boolean = Boolean(binding.configured);
+        if (gdCommerce) {
+          logger.warn('transfer.initiate.blocked', { appId: id, gdCommerce });
           return NextResponse.json(
             { error: 'Transfer is unavailable for apps with GoDaddy Commerce integration' },
             { status: 403 }
