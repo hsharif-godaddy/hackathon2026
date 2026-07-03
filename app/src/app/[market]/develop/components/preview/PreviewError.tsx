@@ -5,6 +5,7 @@ interface PreviewErrorProps {
   error: string
   buttonText: string
   buttonOnClick: () => void
+  buttonTestId?: string
 }
 
 export default function PreviewError({
@@ -12,6 +13,7 @@ export default function PreviewError({
   error,
   buttonText,
   buttonOnClick,
+  buttonTestId,
 }: PreviewErrorProps) {
   return (
     <div className="h-full flex flex-col items-center justify-center">
@@ -23,6 +25,7 @@ export default function PreviewError({
         onClick={buttonOnClick}
         design="primary"
         text={buttonText}
+        data-testid={buttonTestId}
       />
     </div>
   )

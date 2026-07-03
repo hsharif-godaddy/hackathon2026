@@ -72,7 +72,7 @@ async function createDevelopApp(page: Page): Promise<string> {
   await promptInput.fill(`${getSpecPrefix('develop')} Hello world app - do it very quickly and keep it minimal, no other sections, do not ask follow up questions`);
 
   await dismissOverlays(page);
-  await page.locator('[data-eid*="homepage.prompt.submit"]').click();
+  await page.getByTestId('homepage-prompt-submit').click();
 
   // Already authenticated in beforeEach (fast standalone-SSO login), so the
   // submit normally redirects straight to /develop/. Only drive the SSO flow
@@ -119,7 +119,7 @@ async function openHistoryTab(page: Page): Promise<void> {
     await toolsButton.click();
   }
 
-  await page.getByRole('radio', { name: /history|builder_chat_toolbar_button_history/i }).click({ force: true });
+  await page.getByTestId('chat-toolbar-history-tab').click({ force: true });
   await expect(page.getByTestId('airo-header')).toBeVisible();
 }
 
@@ -146,7 +146,7 @@ test.describe('Develop Page', () => {
 
     await openHistoryTab(page);
 
-    const headerPublishButton = page.locator('#tour-publish-button');
+    const headerPublishButton = page.getByTestId('publish-trigger-button');
     // Make sure no earlier publish is still in flight before we start ours.
     await expect(headerPublishButton).not.toHaveAttribute(
       'aria-label',
@@ -181,15 +181,13 @@ test.describe('Develop Page', () => {
     await headerPublishButton.click({ force: true });
 
     // Anchor "popover opened" on the popover container + its publish button
-    // (role-based) rather than the localized title text. The publish UI is now a
+    // rather than the localized title text. The publish UI is now a
     // ResponsivePopover (@ux/flyout on desktop), so scope to its stable test id
     // rather than the old shadcn `data-slot="popover-content"` it no longer emits.
     const publishPopover = page.locator('[data-testid="publish-popover"]');
     await expect(publishPopover).toBeVisible({ timeout: DEFAULT_TIMEOUT });
 
-    const popoverPublishButton = publishPopover.getByRole('button', {
-      name: /^(?:builder_publish_button|publish|republish)$/i,
-    });
+    const popoverPublishButton = publishPopover.getByTestId('publish-confirm-button');
     await expect(popoverPublishButton).toBeVisible({ timeout: DEFAULT_TIMEOUT });
     await popoverPublishButton.click({ force: true });
 
@@ -208,7 +206,7 @@ test.describe('Develop Page', () => {
     await expect(commitSelectionButton).toBeDisabled();
     console.log('  ✓ Date-group toggle and commit selection disabled during publish');
 
-    const loadMoreButton = page.getByRole('button', { name: /load more/i });
+    const loadMoreButton = page.getByTestId('version-history-load-more');
     if ((await loadMoreButton.count()) > 0) {
       await expect(loadMoreButton).toBeDisabled();
       console.log('  ✓ Load more disabled during publish');

@@ -67,13 +67,10 @@ test.describe('Auth-at-Edge SSO (ent persona)', () => {
 
       // Settings → SSO must be visible only when ssoRequired === true.
       // useSettingsNavItems hides the entry for non-ent apps.
-      await page.getByTestId('settings-menu-button').click();
-      // Nav items don't carry testids today; match by accessible name.
-      const ssoNavEntry = page.getByRole('button', { name: /^SSO$/ }).or(
-        page.getByRole('menuitem', { name: /^SSO$/ }),
-      );
-      await expect(ssoNavEntry.first()).toBeVisible({ timeout: DEFAULT_TIMEOUT });
-      await ssoNavEntry.first().click();
+      await page.getByTestId('chat-toolbar-settings-button').click();
+      const ssoNavEntry = page.getByTestId('settings-nav-sso');
+      await expect(ssoNavEntry).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+      await ssoNavEntry.click();
 
       // Locked alert + intro + form are present.
       await expect(page.getByTestId('sso-policy-block')).toBeVisible();

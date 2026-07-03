@@ -73,7 +73,7 @@ test.describe('Edit Interactions', () => {
 
     // Wait for React hydration before clicking (the disabled→enabled flip is
     // server-rendered so it doesn't prove hydration; a fixed 10s wait does).
-    const submitButton = page.locator('[data-eid*="homepage.prompt.submit"]');
+    const submitButton = page.getByTestId('homepage-prompt-submit');
     await expect(submitButton).toBeEnabled({ timeout: DEFAULT_TIMEOUT });
     await page.waitForTimeout(10_000);
     await submitButton.click();
@@ -191,7 +191,7 @@ test.describe('Edit Interactions', () => {
 
     // Wait for React hydration before clicking (the disabled→enabled flip is
     // server-rendered so it doesn't prove hydration; a fixed 10s wait does).
-    const submitButton = page.locator('[data-eid*="homepage.prompt.submit"]');
+    const submitButton = page.getByTestId('homepage-prompt-submit');
     await expect(submitButton).toBeEnabled({ timeout: DEFAULT_TIMEOUT });
     await page.waitForTimeout(10_000);
     await submitButton.click();

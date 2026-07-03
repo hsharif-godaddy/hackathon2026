@@ -136,7 +136,7 @@ test.describe('Analytics Custom Period', () => {
     );
 
     await dismissOverlays(page);
-    await page.locator('[data-eid*="homepage.prompt.submit"]').click();
+    await page.getByTestId('homepage-prompt-submit').click();
 
     // Already authenticated in beforeEach, so the submit normally redirects
     // straight to /develop/. Only drive the SSO flow if the session refreshed
@@ -165,7 +165,7 @@ test.describe('Analytics Custom Period', () => {
     await dismissOverlays(page);
 
     console.log('Step 3: Open Analytics tab...');
-    const analyticsTab = page.getByRole('radio', { name: /analytics|builder_settings_nav_analytics/i });
+    const analyticsTab = page.getByTestId('chat-toolbar-analytics-tab');
     const analyticsVisible = await analyticsTab.isVisible({ timeout: DEFAULT_TIMEOUT }).catch(() => false);
     test.skip(!analyticsVisible, 'Analytics tab not available (appbuilder-analytics flag off)');
 
@@ -198,7 +198,7 @@ test.describe('Analytics Custom Period', () => {
         request.postData()?.includes(toDate) === true,
     );
 
-    await page.getByRole('button', { name: /apply|builder_analytics_period_apply/i }).click();
+    await flyout.getByTestId('analytics-period-apply').click();
 
     await expect(flyout).not.toBeVisible({ timeout: DEFAULT_TIMEOUT });
     await expect(page.getByRole('dialog')).not.toBeVisible({ timeout: DEFAULT_TIMEOUT });

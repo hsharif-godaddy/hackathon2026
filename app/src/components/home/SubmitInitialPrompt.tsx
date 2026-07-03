@@ -29,6 +29,7 @@ export function SubmitInitialPrompt({
   return (
     <Button
       onClick={onClick}
+      data-testid="homepage-prompt-submit"
       data-eid={generateClickEID('homepage.prompt.submit')}
       disabled={disabled}
       design="primary"

@@ -195,12 +195,14 @@ export default function ChatToolbar({
               value={ChatTab.CHAT}
               icon={<ChatIcon className="size-2.5 rtl:scale-x-[-1]" />}
               label={t('builder_chat_toolbar_button_chat')}
+              data-testid="chat-toolbar-tab-chat"
             />
             {!isMediaCanvasEnabled && (
               <ButtonGroup.Item
                 value={ChatTab.MEDIAS}
                 icon={<ImageIcon />}
                 label={t('builder_chat_toolbar_button_media')}
+                data-testid="chat-toolbar-tab-media"
               />
             )}
             {!isMobile && (
@@ -209,12 +211,14 @@ export default function ChatToolbar({
                   value={ChatTab.HISTORY}
                   icon={<HistoryIcon className="size-2.5" />}
                   label={t('builder_chat_toolbar_button_history')}
+                  data-testid="chat-toolbar-history-tab"
                 />
                 {isAnalyticsEnabled && (
                   <ButtonGroup.Item
                     value={ChatTab.ANALYTICS}
                     icon={<GraphIcon className="size-2.5 rtl:scale-x-[-1]" />}
                     label={t('builder_settings_nav_analytics')}
+                    data-testid="chat-toolbar-analytics-tab"
                   />
                 )}
               </>

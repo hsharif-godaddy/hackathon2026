@@ -507,68 +507,6 @@ export async function handleSsoLogin(page: Page, timeout: number = SSO_TIMEOUT):
 }
 
 /**
- * Authenticate via cookie injection (faster than UI login)
- */
-export async function authenticate(page: Page, context: BrowserContext): Promise<void> {
-  const { username, password } = getCredentials();
-
-  // For now, use UI-based authentication
-  // Navigate to homepage and trigger login if needed
-  await page.goto('/');
-
-  // Check if already authenticated by looking for homepage content
-  try {
-    await page.getByTestId('homepage-prompt-input').waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT });
-
-    // Check if Sign Out exists in user menu (indicates authenticated)
-    const menuTrigger = userMenuTrigger(page);
-
-    // Wait for button to be visible before clicking (fixes race condition)
-    await menuTrigger.waitFor({ state: 'visible', timeout: SHORT_TIMEOUT });
-    await menuTrigger.click({ force: true });
-
-    const signOutButton = page.getByRole('button', { name: /sign out/i });
-    if (await signOutButton.isVisible({ timeout: SHORT_TIMEOUT }).catch(() => false)) {
-      console.log('Already authenticated');
-      await page.keyboard.press('Escape');
-      return;
-    }
-    await page.keyboard.press('Escape');
-  } catch (error) {
-    // Not authenticated or page structure different
-    console.log('Auth check failed, proceeding with login');
-  }
-
-  // Need to authenticate - trigger sign in
-  console.log('🔐 Authenticating...');
-  await triggerSignIn(page);
-  await handleSsoLogin(page);
-
-  // Wait for redirect back to app
-  await page.waitForURL('**/', { timeout: 60000 });
-  console.log('✅ Authentication complete');
-}
-
-/**
- * Trigger sign in by clicking the Sign In button in user menu
- */
-async function triggerSignIn(page: Page): Promise<void> {
-  // Open user menu
-  const menuTrigger = userMenuTrigger(page);
-
-  await menuTrigger.click({ force: true });
-
-  // Click Sign In
-  const signInButton = page.locator('[data-testid="user-menu-item-sign-in"]');
-  if (await signInButton.isVisible({ timeout: DEFAULT_TIMEOUT }).catch(() => false)) {
-    await signInButton.click();
-  } else {
-    // Try alternative - click directly on "Sign In" text
-    await page.getByRole('button', { name: /sign in/i }).click();
-  }
-}
-
-/**
  * Clear all authentication state
  */
 export async function clearAuthState(context: BrowserContext): Promise<void> {
@@ -608,7 +546,7 @@ export async function verifyAuthenticated(page: Page): Promise<void> {
     // — observed deterministically when develop-ui's beforeAll added an
     // earlier SSO login from the same shopper, which made the popover
     // settle slightly slower than it used to.
-    await expect(page.getByRole('button', { name: /sign out/i })).toBeVisible({ timeout: 2_000 });
+    await expect(page.getByTestId('user-menu-item-sign-out')).toBeVisible({ timeout: 2_000 });
   }).toPass({ timeout: DEFAULT_TIMEOUT });
 
   await page.keyboard.press('Escape');
@@ -632,10 +570,7 @@ export async function signOut(page: Page): Promise<void> {
   const menuTrigger = userMenuTrigger(page);
 
   await menuTrigger.click({ force: true });
-  await page
-    .locator('[data-slot="popover-content"][data-state="open"]')
-    .getByRole('button', { name: /sign\s*in|builder_common_signin/i })
-    .click();
+  await page.getByTestId('user-menu-item-sign-out').click();
 }
 
 /**
@@ -645,10 +580,7 @@ export async function signIn(page: Page): Promise<void> {
   const menuTrigger = userMenuTrigger(page);
 
   await menuTrigger.click({ force: true });
-  await page
-    .locator('[data-slot="popover-content"][data-state="open"]')
-    .getByRole('button', { name: /sign\s*in|builder_common_signin/i })
-    .click();
+  await page.getByTestId('user-menu-item-sign-in').click();
 }
 
 /**
@@ -789,10 +721,10 @@ export async function loginIfNeeded(page: Page, timeout: number = SSO_TIMEOUT): 
     }
   }
 
-  // Now that we know the popover is open, both Sign Out (authed) and
-  // Sign In (unauthed) live inside it. Scope to the popover so we don't
-  // pick up a header-chrome Sign In button.
-  const signOutInPopover = openPopover.getByRole('button', { name: /sign\s*out|builder_user_menu_signout/i });
+  // Now that we know the popover is open, check for the Sign Out menu item
+  // (present only when authed). The user-menu item testid is globally unique,
+  // so it needs no popover-scoping to avoid header-chrome ambiguity.
+  const signOutInPopover = page.getByTestId('user-menu-item-sign-out');
   const alreadyAuthed = await signOutInPopover.isVisible({ timeout: SHORT_TIMEOUT });
   await page.keyboard.press('Escape');
 

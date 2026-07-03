@@ -168,7 +168,7 @@ test.describe('Authentication', () => {
     await openUserMenu(page);
     console.log('  [7.2] User menu opened');
 
-    const signOutLocator = page.locator('[data-slot="popover-content"][data-state="open"]').getByRole('button', { name: /sign\s*out|builder_common_signout/i });
+    const signOutLocator = page.getByTestId('user-menu-item-sign-out');
     await expect(signOutLocator).toBeVisible();
     console.log('  [7.3] Sign Out button visible');
 
@@ -213,7 +213,7 @@ test.describe('Authentication', () => {
     console.log('👤 Step 2: Checking user menu (unauthenticated)...');
     const menuTrigger = userMenuTrigger(page);
     await menuTrigger.click({ force: true });
-    await page.getByRole('button', { name: /sign in/i }).waitFor({ state: 'visible', timeout: 5000 });
+    await page.getByTestId('user-menu-item-sign-in').waitFor({ state: 'visible', timeout: 5000 });
     console.log('  ✓ Sign In option visible in user menu');
     await page.click('body', { position: { x: 0, y: 0 } });
 
@@ -229,10 +229,7 @@ test.describe('Authentication', () => {
     // ========================================
     console.log('🔐 Step 4: Testing Sign In button triggers SSO...');
     await menuTrigger.click({ force: true });
-    await page
-      .locator('[data-slot="popover-content"][data-state="open"]')
-      .getByRole('button', { name: /sign\s*in|builder_common_signin/i })
-      .click();
+    await page.getByTestId('user-menu-item-sign-in').click();
 
     // SSO can appear as the post-29-Apr-2026 in-page modal (prod), the legacy
     // SsoDeck cross-origin iframe, the new <dialog>-wrapped unnamed iframe,
@@ -261,7 +258,7 @@ test.describe('Authentication', () => {
     // is server-rendered, so toBeEnabled alone isn't proof; pair with a
     // fixed wait. Without this, clicks before hydration silently no-op and
     // detectSsoType below times out with `null`.
-    const submitButton = page.locator('[data-eid*="homepage.prompt.submit"]');
+    const submitButton = page.getByTestId('homepage-prompt-submit');
     await expect(submitButton).toBeEnabled({ timeout: DEFAULT_TIMEOUT });
     await page.waitForTimeout(10_000);
     await submitButton.click();

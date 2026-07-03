@@ -541,7 +541,7 @@ export async function createNewApp(page: Page, prompt: string): Promise<void> {
   await promptInput.waitFor({ state: 'visible', timeout: LONG_TIMEOUT });
   await promptInput.fill(prompt);
 
-  const submitButton = page.locator('[data-eid*="homepage.prompt.submit"]');
+  const submitButton = page.getByTestId('homepage-prompt-submit');
   await expect(submitButton).not.toBeDisabled();
   await submitButton.click();
 
@@ -563,7 +563,7 @@ export async function createAppAndGetId(page: Page, prompt: string): Promise<str
   await promptInput.waitFor({ state: 'visible', timeout: LONG_TIMEOUT });
   await promptInput.fill(prompt);
 
-  const submitButton = page.locator('[data-eid*="homepage.prompt.submit"]');
+  const submitButton = page.getByTestId('homepage-prompt-submit');
   await expect(submitButton).not.toBeDisabled();
   await submitButton.click();
 
@@ -593,7 +593,7 @@ export async function setupIsolatedApp(page: Page, specPrefix: string, appDescri
   await promptInput.waitFor({ state: 'visible', timeout: LONG_TIMEOUT });
   await promptInput.fill(appName);
 
-  const submitButton = page.locator('[data-eid*="homepage.prompt.submit"]');
+  const submitButton = page.getByTestId('homepage-prompt-submit');
   await expect(submitButton).not.toBeDisabled();
   await submitButton.click();
 

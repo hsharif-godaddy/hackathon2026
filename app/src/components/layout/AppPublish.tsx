@@ -1353,6 +1353,7 @@ export default function AppPublish({ location = 'develop', triggerClassName }: {
                 className='w-full'
                 design='secondary'
                 size='sm'
+                data-testid='custom-domain-button'
                 onClick={handleViewDomain}
                 text={t('builder_common_custom_domain_button')}
               />
@@ -1364,6 +1365,7 @@ export default function AppPublish({ location = 'develop', triggerClassName }: {
                 design='primary'
                 size='sm'
                 data-partial='componentAiro'
+                data-testid='publish-confirm-button'
                 disabled={isButtonDisabled || isPublishingOrDeploying || isConversationInProgress}
                 onClick={handleDeploy}
                 text={getPublishButtonText()}

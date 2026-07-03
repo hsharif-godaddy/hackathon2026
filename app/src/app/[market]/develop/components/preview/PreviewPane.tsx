@@ -1323,6 +1323,7 @@ export default function PreviewPane({
           error={t('builder_preview_archive_restore_failed_message')}
           buttonText={t('builder_common_try_again')}
           buttonOnClick={onRetryArchiveRestore || onPreviewRefresh}
+          buttonTestId="develop-preview-archive-restore-retry"
         />
       </div>
     )

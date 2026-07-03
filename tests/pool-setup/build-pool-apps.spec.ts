@@ -63,7 +63,7 @@ async function createPoolApp(
 
   // 10 s fixed hydration wait — see create-flow.spec.ts for the rationale
   // (data-eid present before hydration; networkidle unreliable here).
-  const submitButton = page.locator('[data-eid*="homepage.prompt.submit"]');
+  const submitButton = page.getByTestId('homepage-prompt-submit');
   await expect(submitButton).toBeEnabled({ timeout: DEFAULT_TIMEOUT });
   await page.waitForTimeout(10_000);
   await submitButton.click();

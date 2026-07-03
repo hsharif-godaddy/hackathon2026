@@ -124,7 +124,7 @@ test.describe('E2E - Critical Path', () => {
       // requests prevent the page from ever going idle. If a hydration marker is
       // ever exposed (e.g. a data-hydrated attribute on the form), prefer
       // page.waitForFunction over this fixed wait.
-      const submitButton = page.locator('[data-eid*="homepage.prompt.submit"]');
+      const submitButton = page.getByTestId('homepage-prompt-submit');
       await expect(submitButton).toBeEnabled({ timeout: DEFAULT_TIMEOUT });
       await page.waitForTimeout(10_000);
       console.log('  Submit button ready');
@@ -198,12 +198,8 @@ test.describe('E2E - Critical Path', () => {
 
       await ensureAuthenticated(page);
 
-      const headerRefreshButton = airoHeader.getByRole('button', {
-        name: /refresh|builder_preview_button_refresh/i,
-      });
-      const deviceSelectorTrigger = airoHeader.getByRole('button', {
-        name: /device|builder_preview_button_device/i,
-      });
+      const headerRefreshButton = airoHeader.getByTestId('header-refresh-button');
+      const deviceSelectorTrigger = airoHeader.getByTestId('preview-device-selector-trigger');
 
       await expect(headerRefreshButton).toBeVisible({ timeout: DEFAULT_TIMEOUT });
       await expect(deviceSelectorTrigger).toBeVisible();
@@ -214,24 +210,24 @@ test.describe('E2E - Critical Path', () => {
       console.log('  Refresh works');
 
       await deviceSelectorTrigger.click({ force: true });
-      const devicePopover = page.locator('[data-slot="popover-content"][data-state="open"]');
+      const devicePopover = page.getByTestId('device-selector-popover');
       await devicePopover.waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT });
-      await expect(devicePopover.getByRole('button')).toHaveCount(3);
-      await devicePopover.getByRole('button', { name: /mobile|builder_analytics_mobile/i }).click({ force: true });
+      await expect(devicePopover.getByTestId('device-option-mobile')).toBeVisible();
+      await expect(devicePopover.getByTestId('device-option-tablet')).toBeVisible();
+      await expect(devicePopover.getByTestId('device-option-desktop')).toBeVisible();
+      await devicePopover.getByTestId('device-option-mobile').click({ force: true });
       await expect(page.getByTestId('preview-iframe')).toBeVisible();
       console.log('  Mobile view works');
 
       await deviceSelectorTrigger.click({ force: true });
       await devicePopover.waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT });
-      await devicePopover.getByRole('button', { name: /tablet|builder_analytics_tablet/i }).click({ force: true });
+      await devicePopover.getByTestId('device-option-tablet').click({ force: true });
       await expect(page.getByTestId('preview-iframe')).toBeVisible();
       console.log('  Tablet view works');
 
       await deviceSelectorTrigger.click({ force: true });
       await devicePopover.waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT });
-      await devicePopover
-        .getByRole('button', { name: /desktop.*laptop|builder_analytics_desktop_laptop/i })
-        .click({ force: true });
+      await devicePopover.getByTestId('device-option-desktop').click({ force: true });
       await expect(page.getByTestId('preview-iframe')).toBeVisible();
       console.log('  Desktop view restored');
     });
@@ -301,12 +297,7 @@ test.describe('E2E - Critical Path', () => {
     await test.step('Step 7: Edit mode toggle', async () => {
       await dismissOverlays(page);
 
-      // The header EDIT toggle is a `role=radio` ButtonGroup item (see
-      // app/src/app/[market]/develop/components/layout/Header.tsx). The
-      // `develop.header.edit_mode` string is an analytics event id fired from
-      // onChange, NOT a `data-eid` DOM attribute, so locating by data-eid
-      // matches nothing and used to silently no-op under the soft skip.
-      const editModeButton = page.getByRole('radio', { name: /builder_preview_button_edit|Edit/i });
+      const editModeButton = airoHeader.getByTestId('header-tab-edit');
 
       if (optionalFeaturesAreRequired) {
         // GA on prod — a missing selector here is a regression, not a flag.
@@ -320,7 +311,7 @@ test.describe('E2E - Critical Path', () => {
       await expect(page.getByTestId('preview-iframe')).toBeVisible();
       console.log('  Edit mode on');
 
-      const previewModeButton = page.getByRole('radio', { name: /builder_preview_button_preview|Preview/i });
+      const previewModeButton = airoHeader.getByTestId('header-tab-preview');
       if (await previewModeButton.isVisible().catch(() => false)) {
         await previewModeButton.click({ force: true });
       } else {
@@ -333,7 +324,7 @@ test.describe('E2E - Critical Path', () => {
     await test.step('Step 8: Code view + unified search', async () => {
       await dismissOverlays(page);
 
-      const codeViewButton = page.getByTestId('airo-header').getByRole('button', { name: /builder_preview_button_code|Code/i });
+      const codeViewButton = airoHeader.getByTestId('header-tab-code');
       await expect(codeViewButton).toBeVisible({ timeout: DEFAULT_TIMEOUT });
       await codeViewButton.click({ force: true });
 
@@ -404,10 +395,7 @@ test.describe('E2E - Critical Path', () => {
         await expect(searchPanel).toBeVisible({ timeout: DEFAULT_TIMEOUT });
       }
       await searchInput.fill('test');
-      const clearButton = page
-        .getByTestId('search-input-header')
-        .locator('xpath=..')
-        .locator('button[aria-label="Clear"]');
+      const clearButton = page.getByTestId('search-clear-button');
       await expect(clearButton).toBeVisible({ timeout: DEFAULT_TIMEOUT });
       await clearButton.click();
       await expect(searchInput).toHaveValue('', { timeout: DEFAULT_TIMEOUT });
@@ -495,9 +483,7 @@ test.describe('E2E - Critical Path', () => {
         await expect(publishButton).toBeVisible({ timeout: DEFAULT_TIMEOUT });
         await publishButton.click();
 
-        const connectCustomDomainButton = page.getByRole('button', {
-          name: /Connect a Custom Domain|builder_common_custom_domain_button/i,
-        });
+        const connectCustomDomainButton = page.getByTestId('custom-domain-button');
 
         // If the "Connect a Custom Domain" button isn't visible, the domain
         // may already be connected from a previous attempt (the button only

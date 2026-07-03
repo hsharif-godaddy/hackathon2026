@@ -81,7 +81,7 @@ test.describe('Share Link', () => {
     // overlays the prompt submit — dismiss it so the click registers and the
     // app-create navigation fires.
     await dismissOverlays(page);
-    await page.locator('[data-eid*="homepage.prompt.submit"]').click();
+    await page.getByTestId('homepage-prompt-submit').click();
 
     // Already authenticated in beforeEach, so the submit normally redirects
     // straight to /develop/. Only drive the SSO flow if the session refreshed
@@ -134,7 +134,7 @@ test.describe('Share Link', () => {
     // overlays the prompt submit — dismiss it so the click registers and the
     // app-create navigation fires.
     await dismissOverlays(page);
-    await page.locator('[data-eid*="homepage.prompt.submit"]').click();
+    await page.getByTestId('homepage-prompt-submit').click();
 
     // Already authenticated in beforeEach, so the submit normally redirects
     // straight to /develop/. Only drive the SSO flow if the session refreshed
@@ -194,7 +194,7 @@ test.describe('Share Link', () => {
     // overlays the prompt submit — dismiss it so the click registers and the
     // app-create navigation fires.
     await dismissOverlays(page);
-    await page.locator('[data-eid*="homepage.prompt.submit"]').click();
+    await page.getByTestId('homepage-prompt-submit').click();
 
     // Already authenticated in beforeEach, so the submit normally redirects
     // straight to /develop/. Only drive the SSO flow if the session refreshed

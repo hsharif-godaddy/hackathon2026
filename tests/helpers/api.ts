@@ -282,20 +282,6 @@ interface DeploymentPollResult {
 }
 
 /**
- * Get an existing app ID from the API or create one if none exist
- */
-export async function getExistingAppId(page: Page): Promise<string | null> {
-  const response = await page.evaluate(async () => {
-    const res = await fetch('/api/sites');
-    if (!res.ok) return null;
-    const sites = await res.json();
-    return sites.length > 0 ? sites[0].id : null;
-  });
-
-  return response;
-}
-
-/**
  * Poll `GET /api/sites?site_id=<jobId>` until the response's `id` flips
  * from the short job ID (~7 chars) to a real V2 app ID (`APP_ID_LENGTH`
  * chars) — i.e. the moment mgmt-airo finishes provisioning and binds the

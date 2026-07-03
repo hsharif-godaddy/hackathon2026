@@ -41,9 +41,7 @@ async function navigateToProjectDomainCard(page: Page): Promise<ReturnType<Page[
   await ensureAuthenticated(page);
 
   const airoHeader = page.getByTestId('airo-header');
-  const domainViewButton = airoHeader.getByRole('button', {
-    name: /^Domain$|builder_domain_title/i,
-  });
+  const domainViewButton = airoHeader.getByTestId('develop-view-domain');
 
   const domainButtonVisible = await domainViewButton
     .waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT })

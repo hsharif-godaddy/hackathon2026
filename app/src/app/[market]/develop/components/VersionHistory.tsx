@@ -727,6 +727,7 @@ export default function VersionHistory() {
         {hasMoreCommits && !loading && allCommits.length > 0 && (
           <div className="flex justify-center pt-2 pb-2">
             <Button
+              data-testid="version-history-load-more"
               design="tertiary"
               size="md"
               onClick={() => setOffset(prev => prev + GIT_HISTORY_PAGE_SIZE)}

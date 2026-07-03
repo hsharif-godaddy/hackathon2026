@@ -954,6 +954,7 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
                   }}
                   className="flex-shrink-0 p-1 opacity-60 hover:opacity-100 transition-opacity"
                   aria-label={t('builder_common_clear', undefined, 'Clear')}
+                  data-testid="search-clear-button"
                 >
                   <XIcon className="w-1.5 h-1.5" />
                 </button>

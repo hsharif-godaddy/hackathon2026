@@ -74,7 +74,7 @@ test.describe('Brand Book Tab', () => {
     await promptInput.waitFor({ state: 'visible', timeout: LONG_TIMEOUT });
     await promptInput.fill(`${getSpecPrefix('brand-book')} Simple pet photography business - do not ask follow up questions`);
 
-    const submitButton = page.locator('[data-eid*="homepage.prompt.submit"]');
+    const submitButton = page.getByTestId('homepage-prompt-submit');
     await expect(submitButton).toBeEnabled({ timeout: DEFAULT_TIMEOUT });
     // The disabled→enabled flip is server-rendered, so toBeEnabled alone is not
     // proof that React has hydrated. Without this wait, clicks land on the shell
@@ -100,9 +100,7 @@ test.describe('Brand Book Tab', () => {
     await dismissOverlays(page);
     console.log('Step 2: Switching to Brand Book tab...');
 
-    // Brand tab is a button in the header ButtonGroup (role="group" wrapper since #4291).
-    // Renamed from "Logo & Brand" to "Brand" in AIROBUILD-2075.
-    const brandBookTab = page.getByRole('button', { name: /^brand$/i });
+    const brandBookTab = page.getByTestId('header-tab-brand');
 
     // Defensive: if the Brand tab isn't present for any reason, skip gracefully
     const tabVisible = await brandBookTab.isVisible().catch(() => false);
@@ -144,7 +142,7 @@ test.describe('Brand Book Tab', () => {
     // ========================================
     console.log('Step 4: Switching back to Preview...');
 
-    const previewTab = page.getByRole('radio', { name: /preview/i });
+    const previewTab = page.getByTestId('header-tab-preview');
     await previewTab.click();
 
     await previewIframe.waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT });

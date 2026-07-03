@@ -193,9 +193,7 @@ test.describe('E2E v2 - Publish and custom domain', () => {
     // the publish query (`appbuilder-publish-button` flag + async `site` load)
     // and rendered unreliably for the pooled app. The header Domain button is a
     // direct, stable entry point. Domain coverage is unchanged — same panel.
-    const domainViewButton = airoHeader.getByRole('button', {
-      name: /^Domain$|builder_domain_title/i,
-    });
+    const domainViewButton = airoHeader.getByTestId('develop-view-domain');
     await expect(domainViewButton).toBeVisible({ timeout: DEFAULT_TIMEOUT });
     await domainViewButton.click();
 

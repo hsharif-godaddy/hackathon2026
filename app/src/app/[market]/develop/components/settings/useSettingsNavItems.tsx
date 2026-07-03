@@ -164,6 +164,7 @@ export function useSettingsNavItems(): SettingsNavItem[] {
       label: t('builder_settings_nav_sso'),
       icon: <UserLockedIcon />,
       disabled: false,
+      testId: 'settings-nav-sso',
     }] : []),
     ...(seo ? [{
       id: SettingsSection.SEO,

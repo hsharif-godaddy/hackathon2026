@@ -85,6 +85,7 @@ export default function DeviceSelector({ disabled = false }: DeviceSelectorProps
         align="center"
         className="w-max max-w-[320px] p-1"
         onOpenAutoFocus={(e) => e.preventDefault()}
+        data-testid="device-selector-popover"
       >
         <div className="flex flex-col gap-0.5">
           {BREAKPOINT_MENU_ITEMS.map((item) => (
@@ -96,6 +97,7 @@ export default function DeviceSelector({ disabled = false }: DeviceSelectorProps
               icon={getCategoryIcon(item.category)}
               text={t(item.labelKey)}
               className="!justify-start"
+              data-testid={`device-option-${item.instrumentationId}`}
               onClick={breakpointRowClick(item.category, item.instrumentationId)}
             />
           ))}

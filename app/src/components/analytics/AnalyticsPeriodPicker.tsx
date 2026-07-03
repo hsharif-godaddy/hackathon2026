@@ -196,6 +196,7 @@ export function AnalyticsPeriodPicker({ value, onChange, showLast15Days = false 
               text={t('builder_analytics_period_apply')}
               disabled={!canApply}
               onClick={handleApply}
+              data-testid="analytics-period-apply"
             />
           </Box>
         </Flyout>

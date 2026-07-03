@@ -89,7 +89,7 @@ test.describe('E2E v2 - Create flow', () => {
     // requests prevent the page from ever going idle. If a hydration marker is
     // ever exposed (e.g. a data-hydrated attribute on the form), prefer
     // page.waitForFunction over this fixed wait.
-    const submitButton = page.locator('[data-eid*="homepage.prompt.submit"]');
+    const submitButton = page.getByTestId('homepage-prompt-submit');
     await expect(submitButton).toBeEnabled({ timeout: DEFAULT_TIMEOUT });
     await page.waitForTimeout(10_000);
     console.log('  Submit button ready');

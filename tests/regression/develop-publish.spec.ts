@@ -71,7 +71,7 @@ test.describe('Publish Flow', () => {
     await promptInput.fill(`${getSpecPrefix('publish')} Single page hello world app - do not ask follow up questions and publish this app`);
 
     await dismissOverlays(page);
-    await page.locator('[data-eid*="homepage.prompt.submit"]').click();
+    await page.getByTestId('homepage-prompt-submit').click();
 
     // Already authenticated in beforeEach; only drive SSO if it reappeared.
     const ssoResult = await detectSsoType(page, true);
@@ -179,7 +179,7 @@ test.describe('Publish Flow', () => {
     );
 
     await dismissOverlays(page);
-    await page.locator('[data-eid*="homepage.prompt.submit"]').click();
+    await page.getByTestId('homepage-prompt-submit').click();
 
     // Already authenticated in beforeEach; only drive SSO if it reappeared.
     const ssoResult = await detectSsoType(page, true);
@@ -210,9 +210,7 @@ test.describe('Publish Flow', () => {
     console.log('📋 Step 3: Open publish popover → Pre-Launch Check → SEO prompt');
     await publishButton.click();
 
-    await expect(
-      page.getByText(/builder_publish_popover_title|Publish your (app|project)/i).first(),
-    ).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+    await expect(page.getByTestId('publish-popover')).toBeVisible({ timeout: DEFAULT_TIMEOUT });
 
     const preLaunchCheck = page.getByRole('button', {
       name: /builder_publish_prelaunch_check_button|Check SEO and Health|Run Pre-Launch Check/i,
@@ -282,7 +280,7 @@ test.describe('Publish Flow', () => {
       `${getSpecPrefix('publish-dns-conflict')} Single page hello world app - do not ask follow up questions`,
     );
 
-    const submitBtn = page.locator('[data-eid*="homepage.prompt.submit"]');
+    const submitBtn = page.getByTestId('homepage-prompt-submit');
     await submitBtn.scrollIntoViewIfNeeded();
     await submitBtn.click({ force: true });
     console.log(`  Submit clicked, waiting for navigation...`);
@@ -431,7 +429,7 @@ test.describe('Publish Flow', () => {
     // app/src/components/layout/AppPublish.tsx:833). Wait for it to actually
     // become enabled — the publish state machine settles a couple of
     // seconds after the dialog opens.
-    const dialogPublishButton = publishPopover.getByRole('button', { name: /^publish$/i });
+    const dialogPublishButton = publishPopover.getByTestId('publish-confirm-button');
     await expect(dialogPublishButton).toBeEnabled({ timeout: DEPLOYMENT_TIMEOUT_MS });
     await dialogPublishButton.click();
 

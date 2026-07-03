@@ -50,7 +50,7 @@ test.describe('Apps Page & Navigation', () => {
     // The authenticated homepage auto-opens the "Projects" popover which can
     // overlay the prompt area and intercept clicks. Dismiss it before Submit.
     await dismissOverlays(page);
-    await page.locator('[data-eid*="homepage.prompt.submit"]').click();
+    await page.getByTestId('homepage-prompt-submit').click();
 
     // Already authenticated in beforeEach, so the submit normally redirects
     // straight to /develop/. Only drive the SSO flow if the session refreshed
@@ -439,7 +439,7 @@ test.describe('Apps Page & Navigation', () => {
     await expect(promptInput).toHaveValue('');
 
     // Submit should be disabled when empty
-    await expect(page.locator('[data-eid*="homepage.prompt.submit"]')).toBeDisabled();
+    await expect(page.getByTestId('homepage-prompt-submit')).toBeDisabled();
     console.log('  ✓ Submit disabled when prompt is empty');
 
     // ========================================
@@ -458,7 +458,7 @@ test.describe('Apps Page & Navigation', () => {
     }, longPrompt);
 
     // Submit should be disabled for too-long prompt
-    await expect(page.locator('[data-eid*="homepage.prompt.submit"]')).toBeDisabled();
+    await expect(page.getByTestId('homepage-prompt-submit')).toBeDisabled();
     console.log('  ✓ Submit disabled when prompt exceeds 40000 chars');
 
     // Clear for next test
@@ -491,7 +491,7 @@ test.describe('Apps Page & Navigation', () => {
     console.log('  ✓ Suggestion populates prompt');
 
     // Submit should be enabled
-    await expect(page.locator('[data-eid*="homepage.prompt.submit"]')).not.toBeDisabled();
+    await expect(page.getByTestId('homepage-prompt-submit')).not.toBeDisabled();
     console.log('  ✓ Submit enabled after suggestion click');
 
     console.log('🎉 All input validation tests passed!');
@@ -535,7 +535,7 @@ test.describe('Apps Page & Navigation', () => {
     // ========================================
     console.log('✍️ Step 3: Verifying prompt input works with template...');
     await promptInput.fill('A minimalist tech startup logo with a geometric icon');
-    await expect(page.locator('[data-eid*="homepage.prompt.submit"]')).not.toBeDisabled();
+    await expect(page.getByTestId('homepage-prompt-submit')).not.toBeDisabled();
     console.log('  ✓ Submit enabled with prompt text');
 
     console.log('🎉 Logo designer template test passed!');

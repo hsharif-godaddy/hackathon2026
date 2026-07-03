@@ -107,12 +107,8 @@ test.describe('E2E v2 - Develop page UI', () => {
     await dismissOverlays(page);
 
     const airoHeader = page.getByTestId('airo-header');
-    const headerRefreshButton = airoHeader.getByRole('button', {
-      name: /refresh|builder_preview_button_refresh/i,
-    });
-    const deviceSelectorTrigger = airoHeader.getByRole('button', {
-      name: /device|builder_preview_button_device/i,
-    });
+    const headerRefreshButton = airoHeader.getByTestId('header-refresh-button');
+    const deviceSelectorTrigger = airoHeader.getByTestId('preview-device-selector-trigger');
 
     await expect(headerRefreshButton).toBeVisible({ timeout: DEFAULT_TIMEOUT });
     await expect(deviceSelectorTrigger).toBeVisible();
@@ -120,18 +116,10 @@ test.describe('E2E v2 - Develop page UI', () => {
     await headerRefreshButton.click({ force: true });
     await expect(page.getByTestId('preview-iframe')).toBeVisible();
 
-    // PR #4557 replaced the long device list (iPhone SE, Pixel, etc.) with
-    // a 3-row breakpoint menu: Desktop / Laptop, Tablet, Mobile. The button
-    // labels come from translation keys `builder_analytics_{desktop_laptop,
-    // tablet, mobile}` (DeviceSelector.tsx); match either the rendered text
-    // or the key directly so the test works against both translated and
-    // un-translated environments.
     await deviceSelectorTrigger.click({ force: true });
-    const devicePopover = page.locator('[data-slot="popover-content"][data-state="open"]');
+    const devicePopover = page.getByTestId('device-selector-popover');
     await devicePopover.waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT });
-    await devicePopover
-      .getByRole('button', { name: /^mobile$|builder_analytics_mobile/i })
-      .click({ force: true });
+    await devicePopover.getByTestId('device-option-mobile').click({ force: true });
     await expect(page.getByTestId('preview-iframe')).toBeVisible();
 
     // Restore desktop so we don't leave the shared app's preview pinned to
@@ -140,9 +128,7 @@ test.describe('E2E v2 - Develop page UI', () => {
     // Step 3.
     await deviceSelectorTrigger.click({ force: true });
     await devicePopover.waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT });
-    await devicePopover
-      .getByRole('button', { name: /desktop\s*\/\s*laptop|builder_analytics_desktop_laptop/i })
-      .click({ force: true });
+    await devicePopover.getByTestId('device-option-desktop').click({ force: true });
     await expect(page.getByTestId('preview-iframe')).toBeVisible();
   });
 
@@ -198,12 +184,7 @@ test.describe('E2E v2 - Develop page UI', () => {
 
     await dismissOverlays(page);
 
-    // The header EDIT toggle is a `role=radio` ButtonGroup item (see
-    // app/src/app/[market]/develop/components/layout/Header.tsx). The
-    // `develop.header.edit_mode` string is an analytics event id fired from
-    // onChange, NOT a `data-eid` DOM attribute, so locating by data-eid
-    // matches nothing and used to silently no-op under the soft skip.
-    const editModeButton = page.getByRole('radio', { name: /builder_preview_button_edit|Edit/i });
+    const editModeButton = page.getByTestId('header-tab-edit');
 
     if (optionalFeaturesAreRequired) {
       await expect(editModeButton).toBeVisible({ timeout: DEFAULT_TIMEOUT });
@@ -215,7 +196,7 @@ test.describe('E2E v2 - Develop page UI', () => {
     await editModeButton.click({ force: true });
     await expect(page.getByTestId('preview-iframe')).toBeVisible();
 
-    const previewModeButton = page.getByRole('radio', { name: /builder_preview_button_preview|Preview/i });
+    const previewModeButton = page.getByTestId('header-tab-preview');
     if (await previewModeButton.isVisible().catch(() => false)) {
       await previewModeButton.click({ force: true });
     } else {
@@ -229,15 +210,7 @@ test.describe('E2E v2 - Develop page UI', () => {
 
     await dismissOverlays(page);
 
-    // Code view lives in the secondary `ButtonGroup` (Header.tsx:182) which
-    // has `role="group"` set — its items are <button>s, NOT radios. The
-    // primary Edit/Preview ButtonGroup above leaves role unset and defaults
-    // to radiogroup, which is why the Edit-mode test correctly uses
-    // `getByRole('radio')` and this one cannot. Match legacy e2e.spec.ts:332
-    // exactly: scoped to airo-header, role=button.
-    const codeViewButton = page
-      .getByTestId('airo-header')
-      .getByRole('button', { name: /builder_preview_button_code|Code/i });
+    const codeViewButton = page.getByTestId('header-tab-code');
     await expect(codeViewButton).toBeVisible({ timeout: DEFAULT_TIMEOUT });
     await codeViewButton.click({ force: true });
 
@@ -288,7 +261,7 @@ test.describe('E2E v2 - Develop page UI', () => {
     // Switch away to preview and back to code, then search again.
     // This verifies that typing in the header input re-activates the
     // search tab when a file result was previously selected.
-    const previewTab = page.getByRole('radio', { name: /preview/i });
+    const previewTab = page.getByTestId('header-tab-preview');
     if (await previewTab.isVisible().catch(() => false)) {
       await previewTab.click();
       await page.getByTestId('preview-iframe').waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT });
@@ -306,10 +279,7 @@ test.describe('E2E v2 - Develop page UI', () => {
       await expect(searchPanel).toBeVisible({ timeout: DEFAULT_TIMEOUT });
     }
     await searchInput.fill('test');
-    const clearButton = page
-      .getByTestId('search-input-header')
-      .locator('xpath=..')
-      .locator('button[aria-label="Clear"]');
+    const clearButton = page.getByTestId('search-clear-button');
     await expect(clearButton).toBeVisible({ timeout: DEFAULT_TIMEOUT });
     await clearButton.click();
     await expect(searchInput).toHaveValue('');

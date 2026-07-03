@@ -233,6 +233,7 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
                     <GenerateButton
                       onClick={handleStartBuilding}
                       disabled={!displayText.trim() || isLoading || isTyping || isOverLimit}
+                      data-testid="homepage-prompt-submit"
                       data-eid={generateClickEID('homepage.prompt.submit')}
                       label={t('builder_homepage_submit_cta_generate', undefined, 'Generate')}
                     />

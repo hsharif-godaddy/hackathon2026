@@ -63,7 +63,7 @@ test.describe('Develop Page - Media Tab', () => {
     await promptInput.waitFor({ state: 'visible', timeout: LONG_TIMEOUT });
     await promptInput.fill(`${getSpecPrefix('media')} Simple yoga studio website with hero image and about section - do not ask follow up questions`);
 
-    await page.locator('[data-eid*="homepage.prompt.submit"]').click();
+    await page.getByTestId('homepage-prompt-submit').click();
 
     await page.waitForURL(/\/develop\//, { timeout: LONG_TIMEOUT });
     await waitForDevelopPage(page);
@@ -83,7 +83,7 @@ test.describe('Develop Page - Media Tab', () => {
     // ========================================
     console.log('🖼️ Step 2: Opening Media tab...');
 
-    const mediaTabButton = page.getByRole('radio', { name: /media|builder_chat_toolbar_button_media/i });
+    const mediaTabButton = page.getByTestId('chat-toolbar-tab-media');
     await expect(mediaTabButton).toBeVisible({ timeout: DEFAULT_TIMEOUT });
     await mediaTabButton.click({ force: true });
     console.log('  ✓ Media tab clicked');
@@ -166,7 +166,8 @@ test.describe('Develop Page - Media Tab', () => {
     // STEP 4: Switch back to chat tab
     // ========================================
     console.log('💬 Step 4: Switching back to chat...');
-    const chatTabButton = page.getByRole('radio', { name: /chat|builder_chat_toolbar_button_chat/i });
+    const chatTabButton = page.getByTestId('chat-toolbar-tab-chat');
+    await expect(chatTabButton).toBeVisible({ timeout: DEFAULT_TIMEOUT });
     await chatTabButton.click({ force: true });
 
     await waitForChatInput(page);

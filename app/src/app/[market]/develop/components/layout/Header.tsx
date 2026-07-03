@@ -209,6 +209,7 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
                   icon={<WebsiteFilledIcon className="size-2.5" />}
                   label={t('builder_preview_button_preview')}
                   className={PREVIEW_EDIT_TOGGLE_INACTIVE_TRANSPARENT}
+                  data-testid="header-tab-preview"
                 />
                 <div ref={editButtonRef} className="relative inline-flex">
                   <ButtonGroup.Item
@@ -220,6 +221,7 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
                       isEditModeCueEnabled && PREVIEW_EDIT_TOGGLE_EDIT_ACTIVE_ACCENT,
                     )}
                     disabled={isVersionHistoryOpen}
+                    data-testid="header-tab-edit"
                   />
                   {isEditModeCueEnabled && editNudgeVisible && (
                     <EditNudgeTooltip anchorRef={editButtonRef} placement="bottom" />
@@ -238,6 +240,7 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
                   icon={<CodeIcon className="size-2.5" />}
                   label={t('builder_preview_button_code')}
                   disabled={isVersionHistoryOpen || isPaywallLoading}
+                  data-testid="header-tab-code"
                 />
                 {isTopLevelDomainEnabled && (
                   <ButtonGroup.Item
@@ -245,6 +248,7 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
                     icon={<WorldIcon className="size-2.5" />}
                     label={t('builder_domain_title')}
                     disabled={isVersionHistoryOpen}
+                    data-testid="develop-view-domain"
                   />
                 )}
                 <ButtonGroup.Item
@@ -252,6 +256,7 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
                   icon={<ColorPaletteIcon className="size-2.5" />}
                   label={t('builder_canvas_brand')}
                   disabled={isVersionHistoryOpen}
+                  data-testid="header-tab-brand"
                 />
                 {isMediaCanvasEnabled && (
                   <ButtonGroup.Item

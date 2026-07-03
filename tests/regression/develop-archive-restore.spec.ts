@@ -160,7 +160,7 @@ test.describe('Cold archive restore', () => {
       `${getSpecPrefix('archive-restore')} Single page hello world - do not ask follow up questions`
     );
     await dismissOverlays(page);
-    await page.locator('[data-eid*="homepage.prompt.submit"]').click();
+    await page.getByTestId('homepage-prompt-submit').click();
 
     // Already authenticated in beforeEach, so the submit normally redirects
     // straight to /develop/. Only drive the in-body SSO flow if the session
@@ -202,7 +202,7 @@ test.describe('Cold archive restore', () => {
       `${getSpecPrefix('archive-retry')} Single page hello world - do not ask follow up questions`
     );
     await dismissOverlays(page);
-    await page.locator('[data-eid*="homepage.prompt.submit"]').click();
+    await page.getByTestId('homepage-prompt-submit').click();
 
     // Already authenticated in beforeEach, so the submit normally redirects
     // straight to /develop/. Only drive the in-body SSO flow if the session
@@ -227,9 +227,7 @@ test.describe('Cold archive restore', () => {
     const failedPanel = page.getByTestId('develop-preview-archive-restore-failed');
     await expect(failedPanel).toBeVisible({ timeout: DEFAULT_TIMEOUT });
 
-    await failedPanel
-      .getByRole('button', { name: /try again|builder_common_try_again/i })
-      .click();
+    await failedPanel.getByTestId('develop-preview-archive-restore-retry').click();
 
     await expect(page.getByTestId('develop-preview-archive-restoring')).toBeVisible({
       timeout: DEFAULT_TIMEOUT,
