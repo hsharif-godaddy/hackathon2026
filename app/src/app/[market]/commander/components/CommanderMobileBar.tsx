@@ -6,9 +6,12 @@ import { useMemo, useState } from 'react'
 import Button from '@ux/button'
 import ConversationsIcon from '@ux/icon/conversations'
 
+import { type LatestNBAData, useLatestNBAs } from '@/app/[market]/develop/components/chat/useLatestNBAs'
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils'
+import { isInitialBuildComplete, isInitialBuildFunnelActive } from '@/hooks/shared/initialBuildFunnel'
 import { useTranslations } from '@/hooks/useTranslations'
 import { useCommanderCanvasTabsEnabled, useCommanderStore } from '@/stores/useCommanderStore'
+import { useActiveRunningToolName, useIsLoading } from '@/stores/useStreamingConversationStore'
 import { logClickEvent } from '@/utils/instrumentation'
 import { COMMANDER_PILL_INNER_SURFACE_CLASS, COMMANDER_PILL_OUTER_SURFACE_CLASS } from './commanderSurface'
 import { CommanderCanvasSheet } from '../canvas/CommanderCanvasSheet'
@@ -24,6 +27,13 @@ export function CommanderMobileBar() {
   const activeCanvasId = useCommanderStore((state) => state.activeCanvasId)
   const openMobileChat = useCommanderStore((state) => state.openMobileChat)
   const [sheetOpen, setSheetOpen] = useState(false)
+  const latestNBA: LatestNBAData | null = useLatestNBAs()
+  const activeRunningToolName: string | null = useActiveRunningToolName()
+  const isLoading: boolean = useIsLoading()
+  const isInitialBuildQuestion: boolean = isInitialBuildFunnelActive() && !isInitialBuildComplete()
+  const isProcessing: boolean = isLoading || activeRunningToolName !== null
+  const showQuestionBadge: boolean =
+    latestNBA?.source === 'askQuestion' && isInitialBuildQuestion && !isProcessing
 
   const descriptor = CANVAS_REGISTRY[activeCanvasId]
   const ActiveIcon = descriptor.Icon
@@ -63,14 +73,30 @@ export function CommanderMobileBar() {
                 <span aria-hidden="true" className="inline-block w-px h-3 bg-intents-ux-box-borderColor mx-0.5 shrink-0" />
               </>
             )}
-            <Button
-              design="secondary"
-              size="sm"
-              icon={<ConversationsIcon className="size-2.5" />}
-              text={t('builder_chat_toolbar_button_chat')}
-              onClick={handleOpenChat}
-              data-testid="commander-mobile-chat-button"
-            />
+            <span className="relative inline-flex">
+              <Button
+                design="secondary"
+                size="sm"
+                icon={<ConversationsIcon className="size-2.5" />}
+                text={t('builder_chat_toolbar_button_chat')}
+                onClick={handleOpenChat}
+                data-testid="commander-mobile-chat-button"
+                aria-label={showQuestionBadge ? t('builder_chat_toolbar_button_chat_attention') : undefined}
+              />
+              {showQuestionBadge && (
+                <span
+                  className="pointer-events-none absolute -top-[3px] -right-[3px] flex size-1.5 items-center justify-center overflow-visible"
+                  aria-hidden="true"
+                  data-testid="commander-mobile-chat-question-badge"
+                >
+                  <span className="absolute inset-0 rounded-full bg-ai animate-commander-chat-badge-pulse" />
+                  <span
+                    className="relative size-1.5 rounded-full bg-ai"
+                    data-testid="commander-mobile-chat-button-badge"
+                  />
+                </span>
+              )}
+            </span>
           </div>
         </div>
       </motion.div>

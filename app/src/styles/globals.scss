@@ -803,6 +803,36 @@ body:has(#UpgradeLibraryPortal .ux-modal) .tooltip[role="tooltip"] {
     animation: agent-pulse 1.8s infinite linear;
   }
 
+  @keyframes commander-chat-badge-pulse {
+    /* 2 × 1.75s pulses, then 5s pause (8.5s total cycle) */
+    0% {
+      transform: scale(1);
+      opacity: 0.45;
+    }
+    20.59% {
+      transform: scale(2.5);
+      opacity: 0;
+    }
+    20.6% {
+      transform: scale(1);
+      opacity: 0.45;
+    }
+    41.18% {
+      transform: scale(2.5);
+      opacity: 0;
+    }
+    41.19%, 100% {
+      transform: scale(2.5);
+      opacity: 0;
+    }
+  }
+
+  .animate-commander-chat-badge-pulse {
+    animation: commander-chat-badge-pulse 8.5s cubic-bezier(0, 0, 0.2, 1) infinite;
+    transform-origin: center;
+    will-change: transform, opacity;
+  }
+
   @keyframes thumb-bounce-up {
     0%   { transform: translateY(0); }
     50%  { transform: translateY(-.4em) rotate(-10deg); }
