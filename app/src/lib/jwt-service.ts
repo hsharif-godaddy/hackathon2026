@@ -47,6 +47,7 @@ export interface CreateTokenOptions {
   isOwner?: boolean; // App owner vs collaborator when owner id is known from hosting
   market?: string; // User's resolved market locale (e.g. 'en-US', 'es-MX')
   fqdn?: string; // Purchased domain carried in from the DPP handoff (SiteInfo.fqdn); readable by agent tools
+  automationsEnabled?: boolean; // Enable Automations skill (switchboard: appbuilder-automations)
   marketingCampaignsEnabled?: boolean; // Enable Marketing Campaigns feature (switchboard: appbuilder-marketing-campaigns)
   googleBusinessProfileSyncEnabled?: boolean; // Enable Google Business Profile sync skill (switchboard: appbuilder-google-business-profile-sync)
   asmDualWriteEnabled?: boolean; // Mirror SQLite conversation writes to ASM (switchboard: appbuilder-asm-dual-write)
@@ -240,6 +241,7 @@ export class JWTService {
       debugStatsEnabled: options.debugStatsEnabled ?? false,
       ...(options.market && { market: options.market }),
       ...(options.fqdn && { fqdn: options.fqdn }),
+      automationsEnabled: options.automationsEnabled ?? false,
       marketingCampaignsEnabled: options.marketingCampaignsEnabled ?? false,
       googleBusinessProfileSyncEnabled: options.googleBusinessProfileSyncEnabled ?? false,
       asmDualWriteEnabled: options.asmDualWriteEnabled ?? false,
@@ -313,7 +315,8 @@ export class JWTService {
    */
   private getCacheKey(options: CreateTokenOptions): string {
     const authType = options.authType || 'basic';
-    return `${options.siteId}:${options.customerId || ''}:${options.canDownload}:${options.canPublish}:${options.canPurchaseDomain ?? false}:${authType}:${options.useTestBudget ?? false}:${options.budgetServiceEnabled ?? false}:${options.subscriptionId || ''}:${options.enableAssessmentAgent ?? false}:${options.enableAssessmentOverride ?? false}:${options.assessmentClassifier || ''}:${options.product || 'AiroAppBuilder'}:${options.modelOverride || ''}:${options.modelSelectorEnabled ?? false}:${options.agentProfile || ''}:${options.agentStartOverrideEnabled ?? false}:${options.costAttributionDryRun ?? false}:${options.bmsBudgetId || ''}:${options.useAtlasCrawler ?? false}:${options.rebuildIntakeFormEnabled ?? false}:${options.rebuildSourceImagesEnabled ?? false}:${options.debugStatsEnabled ?? false}:${options.market || ''}:${options.fqdn || ''}:${options.marketingCampaignsEnabled ?? false}:${options.googleBusinessProfileSyncEnabled ?? false}:${options.asmDualWriteEnabled ?? false}:${options.logoBrandColorsEnabled ?? false}:${options.purchaseIntentClassifierEnabled ?? false}:${options.skillSuggestionsEnabled ?? false}:${options.ssoRequired ?? false}:${options.ssoConfigured ?? false}:${options.ownerProduct ?? ''}:${options.careAgentId || ''}:${options.careAgentUsernameHash || ''}`;
+    return `${options.siteId}:${options.customerId || ''}:${options.canDownload}:${options.canPublish}:${options.canPurchaseDomain ?? false}:${authType}:${options.useTestBudget ?? false}:${options.budgetServiceEnabled ?? false}:${options.subscriptionId || ''}:${options.enableAssessmentAgent ?? false}:${options.enableAssessmentOverride ?? false}:${options.assessmentClassifier || ''}:${options.product || 'AiroAppBuilder'}:${options.modelOverride || ''}:${options.modelSelectorEnabled ?? false}:${options.agentProfile || ''}:${options.agentStartOverrideEnabled ?? false}:${options.costAttributionDryRun ?? false}:${options.bmsBudgetId || ''}:${options.useAtlasCrawler ?? false}:${options.rebuildIntakeFormEnabled ?? false}:${options.rebuildSourceImagesEnabled ?? false}:${options.debugStatsEnabled ?? false}:${options.market || ''}:${options.fqdn || ''}:${options.automationsEnabled ?? false}:${options.marketingCampaignsEnabled ?? false}:${options.googleBusinessProfileSyncEnabled ?? false}:${options.asmDualWriteEnabled ?? false}:${options.logoBrandColorsEnabled ?? false}:${options.purchaseIntentClassifierEnabled ?? false}:${options.skillSuggestionsEnabled ?? false}:${options.ssoRequired ?? false}:${options.ssoConfigured ?? false}:${options.ownerProduct ?? ''}:${options.careAgentId || ''}:${options.careAgentUsernameHash || ''}`;
+
   }
 
   /**

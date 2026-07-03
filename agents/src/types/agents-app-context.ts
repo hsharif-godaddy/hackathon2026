@@ -14,6 +14,7 @@ export interface AgentsAppContext extends BaseAgentsAppContext {
     clientActionService?: IClientActionService
     budgetServiceEnabled?: boolean
     subscriptionId?: string
+    automationsEnabled?: boolean
     marketingCampaignsEnabled?: boolean
     googleBusinessProfileSyncEnabled?: boolean
     asmDualWriteEnabled?: boolean

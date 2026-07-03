@@ -57,6 +57,7 @@ export interface JWTClaims {
   useAtlasCrawler?: boolean;
   rebuildSourceImagesEnabled?: boolean;
   debugStatsEnabled?: boolean;
+  automationsEnabled?: boolean;
   marketingCampaignsEnabled?: boolean;
   asmDualWriteEnabled?: boolean;
   fqdn?: string;

@@ -1,0 +1,172 @@
+metadata:
+  name: Skill Loader - Automations
+  version: 1.0.0
+
+cases:
+  # --- Positive: automations skill should load ---
+
+  - id: create-broken-links-automation
+    prompt: 'I want to create an automation for checking broken links'
+    expectedSkill: automations
+    tags: [positive, core]
+    rationale: Explicit create intent with a named task — clearest signal to load automations
+
+  - id: add-seo-automation
+    prompt: 'Can you add an automation that runs SEO checks weekly?'
+    expectedSkill: automations
+    tags: [positive, core]
+    rationale: Add automation with a recurring schedule — maps directly to create intent
+
+  - id: save-as-reusable-automation
+    prompt: 'Help me save this prompt as a reusable automation'
+    expectedSkill: automations
+    tags: [positive, core]
+    rationale: save automation / saved prompt intent — core use case for the skill
+
+  - id: new-job-content-analysis
+    prompt: 'I need to create a new job for content analysis'
+    expectedSkill: automations
+    tags: [positive, core]
+    rationale: job is an alias for automation per the skill description and whenToUse
+
+  - id: edit-existing-automation
+    prompt: 'How do I edit my existing automation?'
+    expectedSkill: automations
+    tags: [positive, core]
+    rationale: Edit automation — maps directly to the update/edit intent surface
+
+  - id: update-seo-automation
+    prompt: 'Update my SEO automation to include more checks'
+    expectedSkill: automations
+    tags: [positive, core]
+    rationale: Update automation — named update intent with the automation keyword
+
+  - id: delete-broken-links-automation
+    prompt: 'Delete the broken links automation I created yesterday'
+    expectedSkill: automations
+    tags: [positive, core]
+    rationale: Delete automation — direct delete intent, should load for CRUD operation
+
+  - id: remove-performance-automation
+    prompt: 'Remove my old performance check automation'
+    expectedSkill: automations
+    tags: [positive, core]
+    rationale: Remove is listed as an alias for delete in the intent surface
+
+  - id: show-all-automations
+    prompt: 'Show me all my automations'
+    expectedSkill: automations
+    tags: [positive, core]
+    rationale: List/show automations — maps to the list intent
+
+  - id: list-saved-automations
+    prompt: 'List what automations I have saved'
+    expectedSkill: automations
+    tags: [positive, core]
+    rationale: List automations with "saved" qualifier — still a list operation
+
+  - id: what-automations-exist
+    prompt: 'What automations exist in my app?'
+    expectedSkill: automations
+    tags: [positive, core]
+    rationale: '"what automations" phrase is explicitly listed in the intent surface'
+
+  - id: automation-history
+    prompt: 'Can I see my automation history?'
+    expectedSkill: automations
+    tags: [positive, core]
+    rationale: Run history is listed in whenToUse — automation + history keyword pair
+
+  - id: last-automation-run-results
+    prompt: 'Show me the results from my last automation run'
+    expectedSkill: automations
+    tags: [positive, core]
+    rationale: '"automation results / last run" maps directly to the run history intent'
+
+  - id: previous-runs-seo
+    prompt: 'I want to see previous runs of my SEO automation'
+    expectedSkill: automations
+    tags: [positive, core]
+    rationale: '"previous runs" is an explicit intent phrase in the skill frontmatter'
+
+  - id: automate-security-scans
+    prompt: 'Help me automate my security scans'
+    expectedSkill: automations
+    tags: [positive, core]
+    rationale: '"automate" verb + task type — maps to the automation/AI automation intent'
+
+  - id: turn-into-saved-prompt
+    prompt: 'Turn this into a saved prompt I can reuse'
+    expectedSkill: automations
+    tags: [positive, core]
+    rationale: '"saved prompt" is an explicit alias in the intent surface'
+
+  - id: modify-content-check-automation
+    prompt: 'I need to modify my content check automation'
+    expectedSkill: automations
+    tags: [positive, variation]
+    rationale: Modify is a variation of edit/update — should still route to automations
+
+  - id: rename-accessibility-automation
+    prompt: 'Rename my accessibility automation to something clearer'
+    expectedSkill: automations
+    tags: [positive, variation]
+    rationale: '"rename automation" is explicitly listed in the edit/update intent surface'
+
+  - id: change-performance-automation
+    prompt: 'Can you change my performance automation settings?'
+    expectedSkill: automations
+    tags: [positive, variation]
+    rationale: '"change automation" maps to the edit intent; automation keyword present'
+
+  - id: automations-panel-inquiry
+    prompt: "What's in the Automations panel?"
+    expectedSkill: automations
+    tags: [positive, panel_reference]
+    rationale: whenToUse explicitly covers "anything related to the Automations panel"
+
+  # --- Hard: buried intent or keyword near-miss ---
+
+  - id: reusable-workflow-buried-intent
+    prompt: "I want to create a reusable workflow for checking my app's performance and security regularly"
+    expectedSkill: automations
+    tags: [positive, hard, buried_intent]
+    rationale: '"reusable workflow" maps to "reusable automation" — intent buried in broader phrasing'
+
+  - id: save-complex-analysis-buried
+    prompt: "How can I save this complex analysis so I don't have to type it out each time?"
+    expectedSkill: automations
+    tags: [positive, hard, buried_intent]
+    rationale: '"save ... so I don''t have to type it each time" is the saved-prompt use case in disguise'
+
+  # --- Negative: should NOT trigger automations skill ---
+
+  - id: job-posting-near-miss
+    prompt: 'I need to apply for a job at this company'
+    expectedSkill: null
+    tags: [negative]
+    rationale: '"job" near-miss — this is a job application request, not an automation job'
+
+  - id: background-jobs-near-miss
+    prompt: 'Set up background jobs for processing uploads'
+    expectedSkill: null
+    tags: [negative]
+    rationale: '"jobs" near-miss — background processing jobs are infrastructure, not automations'
+
+  - id: save-work-near-miss
+    prompt: 'I want to save my work and continue later'
+    expectedSkill: null
+    tags: [negative]
+    rationale: '"save" near-miss — saving progress is unrelated to saving automation prompts'
+
+  - id: save-file-as-template
+    prompt: 'How do I save this file as a template?'
+    expectedSkill: null
+    tags: [negative]
+    rationale: File templates are not automations; "save" near-miss should not trigger skill
+
+  - id: one-time-performance-test
+    prompt: 'I need to run a quick performance test'
+    expectedSkill: null
+    tags: [negative, hard]
+    rationale: '"run" near-miss — a one-time test is not a saved/reusable automation'

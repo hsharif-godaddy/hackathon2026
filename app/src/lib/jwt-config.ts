@@ -50,6 +50,7 @@ export interface JWTClaims {
   debugStatsEnabled?: boolean; // When true, agents service emits per-LLM-call debug_turn_stats events to this client (switchboard: appbuilder-debug-drawer)
   market?: string; // User's resolved market locale (e.g. 'en-US', 'es-MX') from gasket visitor
   fqdn?: string; // Purchased domain carried in from the DPP handoff (SiteInfo.fqdn); readable by agent tools
+  automationsEnabled?: boolean; // When true, enable Automations skill (switchboard: appbuilder-automations)
   marketingCampaignsEnabled?: boolean; // When true, enable Marketing Campaigns feature (switchboard: appbuilder-marketing-campaigns)
   googleBusinessProfileSyncEnabled?: boolean; // When true, enable Google Business Profile sync skill (switchboard: appbuilder-google-business-profile-sync)
   asmDualWriteEnabled?: boolean; // When true, agents service mirrors SQLite conversation writes to ASM (switchboard: appbuilder-asm-dual-write)

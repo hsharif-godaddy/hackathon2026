@@ -23,7 +23,6 @@ import { getPersistentAssetPaths } from '../utils/persistent-assets.js'
 import { skills } from '../services/features.js'
 import { getSwitchboardFlag } from '../services/switchboard.js'
 import { profileFlag, activeProfileName } from '../profiles/profile-accessor.js'
-import { isAutomationsEnabled } from './automations-context.js'
 import { isTurnscriptEnabled } from './turnscript-context.js'
 import {
   EVAL_PROMPT_VARIANTS,
@@ -361,10 +360,6 @@ async function buildDevelopSystemPrompt(
     .file(resolveFragment('frontend.md', paths.getAgentFile('develop', 'frontend.md')))
     .file(resolveFragment('seo.md', paths.getAgentFile('develop', 'seo.md')))
     .file(resolveFragment('secrets.md', paths.getAgentFile('develop', 'secrets.md'))) // Secrets management for API keys and credentials
-
-  if (isAutomationsEnabled()) {
-    promptBuilder.file(paths.getAgentFile('develop', 'automations.md'))
-  }
 
   // APPEND variants run after the technical fragments. Log hard evidence of what
   // this build actually did: which variant flags applied, and the concrete files

@@ -64,6 +64,7 @@ export interface AgentContext {
   rebuildIntakeFormEnabled?: boolean; // Initial-rebuild intake form before scraping (switchboard: appbuilder-rebuild-intake-form)
   rebuildSourceImagesEnabled?: boolean; // Register crawled source images into the Media tab during rebuild (switchboard: appbuilder-rebuild-source-images)
   debugStatsEnabled?: boolean; // Allow per-LLM-call debug stats events to flow to this client (switchboard: appbuilder-debug-drawer)
+  automationsEnabled?: boolean; // Enable Automations skill (switchboard: appbuilder-automations)
   marketingCampaignsEnabled?: boolean; // Enable Marketing Campaigns feature (switchboard: appbuilder-marketing-campaigns)
   googleBusinessProfileSyncEnabled?: boolean; // Enable Google Business Profile sync skill (switchboard: appbuilder-google-business-profile-sync)
   logoBrandColorsEnabled?: boolean; // Send structured brand colors to the logo API (switchboard: appbuilder-logo-brand-colors)
@@ -130,6 +131,7 @@ export function buildAgentContext(raw: Record<string, unknown>): AgentContext {
     rebuildIntakeFormEnabled: (raw.rebuildIntakeFormEnabled as boolean) ?? false,
     rebuildSourceImagesEnabled: (raw.rebuildSourceImagesEnabled as boolean) ?? false,
     debugStatsEnabled: (raw.debugStatsEnabled as boolean) ?? false,
+    automationsEnabled: (raw.automationsEnabled as boolean) ?? false,
     marketingCampaignsEnabled: (raw.marketingCampaignsEnabled as boolean) ?? false,
     googleBusinessProfileSyncEnabled: (raw.googleBusinessProfileSyncEnabled as boolean) ?? false,
     logoBrandColorsEnabled: (raw.logoBrandColorsEnabled as boolean) ?? false,

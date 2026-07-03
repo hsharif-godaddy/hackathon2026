@@ -808,6 +808,7 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
           debugStatsEnabled: agentContext?.debugStatsEnabled,
           market: agentContext?.market,
           fqdn: agentContext?.fqdn,
+          automationsEnabled: agentContext?.automationsEnabled,
           marketingCampaignsEnabled: agentContext?.marketingCampaignsEnabled,
           googleBusinessProfileSyncEnabled: agentContext?.googleBusinessProfileSyncEnabled,
           skillSuggestionsEnabled: agentContext?.skillSuggestionsEnabled,

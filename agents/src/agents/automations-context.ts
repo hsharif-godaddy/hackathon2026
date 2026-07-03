@@ -11,10 +11,6 @@ export function runWithAutomations<T>(enabled: boolean, fn: () => T, automationI
   return als.run({ enabled, automationId }, fn)
 }
 
-export function isAutomationsEnabled(): boolean {
-  return als.getStore()?.enabled ?? false
-}
-
 export function getAutomationId(): string | undefined {
   return als.getStore()?.automationId
 }

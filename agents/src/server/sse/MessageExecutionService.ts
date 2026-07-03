@@ -66,7 +66,6 @@ import { resolveProfile, runWithProfile } from '../../profiles/index.js'
 import matter from 'gray-matter'
 import { runWithAutomations } from '../../agents/automations-context.js'
 import { resolveTurnscriptEnabled, runWithTurnscript } from '../../agents/turnscript-context.js'
-import { getShopperFlag } from '../../services/switchboard.js'
 import { guardAllowedOverrideModel, resolveOverride } from '../model-override.js'
 import type { AssessmentOutcome } from '../../agents/assessment-agent/index.js'
 import { AssessmentTaskType, ClassifierMode, AssessmentReason, ConversationRole, FixSessionPhase } from '../../agents/assessment-agent/index.js'
@@ -239,6 +238,7 @@ interface LifecycleContext {
     debugStatsEnabled?: boolean
     market?: string
     fqdn?: string
+    automationsEnabled?: boolean
     marketingCampaignsEnabled?: boolean
     googleBusinessProfileSyncEnabled?: boolean
     skillSuggestionsEnabled?: boolean
@@ -2375,6 +2375,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
         },
         isE2S: agentCtx?.isE2S ?? false,
         authType,
+        automationsEnabled: agentCtx?.automationsEnabled ?? false,
         marketingCampaignsEnabled: agentCtx?.marketingCampaignsEnabled ?? false,
         googleBusinessProfileSyncEnabled: agentCtx?.googleBusinessProfileSyncEnabled ?? false,
         ...(agentCtx?.useTestBudget !== undefined && { useTestBudget: agentCtx.useTestBudget }),
@@ -2388,6 +2389,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
         ...(rebuildBuildPageSlug && { rebuildBuildPageSlug, isRebuildFlow: true }),
         ...(isEmbedded !== undefined && { isEmbedded }),
         ...(content && { _userMessage: content }),
+        ...(agentCtx?.automationsEnabled && { automationsEnabled: true }),
         ...(agentCtx?.marketingCampaignsEnabled && { marketingCampaignsEnabled: true }),
       },
       ...(contextAttachments.length > 0 && { contextAttachments }),
@@ -2832,7 +2834,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
         ? () => otelContext.with(extendedCtx, runWithOverride)
         : runWithOverride
 
-      const automationsEnabled = getShopperFlag('appbuilder-automations', agentCtx?.shopperId)
+      const automationsEnabled = agentCtx?.automationsEnabled ?? false
       // Resolve turnscript per turn from the Switchboard flag + shopperId (+ env fallback)
       // and wrap the loop so the develop agent's resolvers can read it via the ALS. Nested
       // inside runWithAutomations so resolvers see both contexts; off by default.
