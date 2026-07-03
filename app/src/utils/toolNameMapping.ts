@@ -91,6 +91,7 @@ export function getCanvasStatusKey(toolName: string): CanvasStatusKey {
     case 'seoAnalysis':
     case 'run_tests':
     case 'runTests':
+    case 'security__runSecurityVerification':
       return 'builder_canvas_status_checking_project'
     case 'terminal':
     case 'terminal_command':
@@ -209,6 +210,8 @@ export function getToolActiveDisplayName(toolName: string, t: Translator): strin
       return t('builder_tools_active_icons_validator')
     case 'validateCode':
       return t('builder_tools_validate_code_running')
+    case 'security__runSecurityVerification':
+      return t('builder_security_scan_running_status')
     case 'todo_list':
     case 'todoList':
       return t('builder_tools_active_todo_list')
@@ -293,6 +296,8 @@ export function getToolDisplayName(toolName: string): string {
       return 'Icons Validator'
     case 'validateCode':
       return 'Validate Code'
+    case 'security__runSecurityVerification':
+      return 'Security Analysis'
     case 'httpCheck':
     case 'http_check':
       return 'Validate Endpoint'

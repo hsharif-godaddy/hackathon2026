@@ -93,6 +93,8 @@ import {
   noCustomProvidersScenario,
   databasePrerequisiteScenario,
 } from './skills/authentication/index.js';
+import { postFixVerificationScenario }
+  from './skills/security/index.js';
 import type { IGocodeClient } from '../clients/gocode-client.js';
 import type {
   AABCtrlPlaneClient,
@@ -188,5 +190,6 @@ export function createAllScenarios(
     passwordProtectPageScenario(gocode, ctrlPlane),
     noCustomProvidersScenario(gocode, ctrlPlane),
     databasePrerequisiteScenario(gocode, ctrlPlane),
+    postFixVerificationScenario(gocode, ctrlPlane, config?.aab.agentsUrl),
   ].filter((scenario): scenario is Scenario => scenario !== null);
 }
