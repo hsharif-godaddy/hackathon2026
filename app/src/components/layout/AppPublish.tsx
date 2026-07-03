@@ -26,8 +26,9 @@ import TextLockup from '@ux/text-lockup';
 import { CanvasId } from '@/app/[market]/commander/canvas/registry';
 import IconButton from '@/app/[market]/develop/components/IconButton';
 import { ChatTab, MobileMode, SettingsSection, ViewMode } from '@/app/[market]/develop/components/types';
+import { DomainConflictModal } from '@/app/[market]/develop/components/widgets/DomainConflictModal';
+import { DomainConnectConfirmationModal } from '@/app/[market]/develop/components/widgets/DomainConnectConfirmationModal';
 import { FEEDBACK_ID } from '@/components/feedback/utils';
-import PublishDomainConflict from '@/components/layout/PublishDomainConflict';
 import PublishDomainSelector, { type SelectableDomain } from '@/components/layout/PublishDomainSelector';
 import PublishedDomainCard from '@/components/layout/PublishedDomainCard';
 import SeoQualityRegressionAlert from '@/components/layout/SeoQualityRegressionAlert';
@@ -61,7 +62,7 @@ import { DomainStatus, DomainType } from '@/lib/control-plane/types';
 import { markFeedbackRevealMilestone } from '@/lib/initial-build-reveal-storage';
 import { JourneyTracker } from '@/lib/journeyTracker';
 import { shipAnalyticsLog } from '@/lib/logging';
-import { DeploymentStatus, MWP_V2_APP_OWNER_TYPE } from '@/lib/mgmt-airo/types';
+import { AIRO_SUBSCRIPTION_OWNER_TYPE, DeploymentStatus, MWP_V2_APP_OWNER_TYPE } from '@/lib/mgmt-airo/types';
 import { shouldSuppressPublishError } from '@/lib/paywall/publish-permission-denied';
 import { PAYWALL_ITC } from '@/lib/paywall/shared';
 import { openPostPublishFeatureSelectionInChat } from '@/lib/post-publish-feature-selection';
@@ -73,6 +74,7 @@ import { PublishComplianceBlockReason } from '@/lib/subscription';
 import { cn } from '@/lib/utils';
 import { useCommanderCanvasTabsEnabled, useCommanderStore } from '@/stores/useCommanderStore';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
+import { useSitesStore } from '@/stores/useSitesStore';
 import { useSiteStore } from '@/stores/useSiteStore';
 import { useIsLoading, useStreamingState } from '@/stores/useStreamingConversationStore';
 import { getPlanDisplayLabelKey } from '@/utils/credits';
@@ -146,12 +148,16 @@ export default function AppPublish({ location = 'develop', triggerClassName }: {
   // Drives the "domain in use" override confirmation when the picked domain is used elsewhere.
   const [domainConflict, setDomainConflict] = useState<DomainMutationDetails['conflictDetails'] | null>(null);
   const [isOverriding, setIsOverriding] = useState(false);
+  // Drives the "Are you sure you want to connect this domain?" confirmation before attaching.
+  const [showConnectConfirm, setShowConnectConfirm] = useState(false);
 
   const closePopover = useCallback(() => {
     setOpen(false);
     setPublishResult(null);
-    setDomainConflict(null);
+    // Don't clear domainConflict here: opening the Move Domain modal auto-closes the popover, which
+    // would wipe the conflict and hide the modal. It's reset by the modal's handlers + on app change.
   }, []);
+
 
   const openRef = useRef(false);
   const prevAppIdRef = useRef<string | null>(null);
@@ -352,16 +358,50 @@ export default function AppPublish({ location = 'develop', triggerClassName }: {
   const hostnameFqdn: string = fqdn.replace(/^https?:\/\//, '');
   // The picker lists the user's account-owned domains; fetch only for the treatment cohort.
   const { data: accountDomains = [] } = useDomainsQuery({ enabled: isDefaultDomainSelectionTreatment });
-  // Domains already connected to this app (active, non-prefix) — used to flag the "in use" row.
+  // Domains already connected to this app (active, non-prefix) — used for default selection and to
+  // skip a redundant attach on publish.
   const connectedFqdns: Set<string> = new Set(
     (site?.domains ?? [])
       .filter((d) => d.domainType !== DomainType.PREFIX && d.status === DomainStatus.ACTIVE && !!d.fqdn)
       .map((d) => d.fqdn.replace(/^https?:\/\//, '').toLowerCase()),
   );
+  // Domains active on the customer's OTHER AAB apps — drives the "in use" tag + Move Domain modal.
+  // Fetched lazily since the develop page doesn't hydrate the sites list.
+  const allSites = useSitesStore((state) => state.allSites);
+  const sitesLastFetched = useSitesStore((state) => state.lastFetchedAll);
+  const fetchAllSites = useSitesStore((state) => state.fetchAllSites);
+  useEffect(() => {
+    if (!isDefaultDomainSelectionTreatment || sitesLastFetched !== null) return;
+    void fetchAllSites();
+  }, [isDefaultDomainSelectionTreatment, sitesLastFetched, fetchAllSites]);
+  const otherAppByFqdn: Map<string, { appId: string; systemId: string; ownerId: string; appName?: string }> =
+    useMemo(() => {
+      const map = new Map<string, { appId: string; systemId: string; ownerId: string; appName?: string }>();
+      const sites: typeof allSites = Array.isArray(allSites) ? allSites : [];
+      for (const otherSite of sites) {
+        // Skip apps missing the transfer IDs: a Move would send an empty transferFrom and the BFF
+        // rejects it (400). Those domains fall through to connect-confirm, whose attach surfaces a
+        // server-validated conflict descriptor instead.
+        if (otherSite.id === currentAppId || !otherSite.system_id || !otherSite.subscription_id) continue;
+        for (const d of otherSite.domains ?? []) {
+          if (d.domainType === DomainType.PREFIX || d.status !== DomainStatus.ACTIVE || !d.fqdn) continue;
+          const key: string = d.fqdn.replace(/^https?:\/\//, '').toLowerCase();
+          if (!map.has(key)) {
+            map.set(key, {
+              appId: otherSite.id,
+              systemId: otherSite.system_id,
+              ownerId: otherSite.subscription_id,
+              appName: otherSite.name,
+            });
+          }
+        }
+      }
+      return map;
+    }, [allSites, currentAppId]);
   const selectableDomains: SelectableDomain[] = accountDomains
     .map((d) => d.domain || d.name)
     .filter((domainFqdn): domainFqdn is string => !!domainFqdn)
-    .map((domainFqdn) => ({ fqdn: domainFqdn, inUse: connectedFqdns.has(domainFqdn.toLowerCase()) }));
+    .map((domainFqdn) => ({ fqdn: domainFqdn, inUse: otherAppByFqdn.has(domainFqdn.toLowerCase()) }));
   const prefixDomain = site?.domains?.find(
     (d) => d.domainType === DomainType.PREFIX && d.status === DomainStatus.ACTIVE,
   );
@@ -370,12 +410,13 @@ export default function AppPublish({ location = 'develop', triggerClassName }: {
   const matchesProjectFqdn: string | undefined = projectToken
     ? selectableDomains.find((d) => normalizeDomainToken(d.fqdn.split('.')[0]) === projectToken)?.fqdn
     : undefined;
-  const inUseFqdn: string | undefined = selectableDomains.find((d) => d.inUse)?.fqdn;
+  // Default to the domain connected to THIS app (not one merely in use by another app).
+  const connectedFqdn: string | undefined = selectableDomains.find((d) => connectedFqdns.has(d.fqdn.toLowerCase()))?.fqdn;
   const [selectedDomainFqdn, setSelectedDomainFqdn] = useState<string>('');
   // Default to the currently-connected ("in use") domain so the untouched pre-selection matches the
   // domain publish actually targets; fall back to the project-name match, then the first owned domain.
   const effectiveSelectedFqdn: string =
-    selectedDomainFqdn || inUseFqdn || matchesProjectFqdn || selectableDomains[0]?.fqdn || hostnameFqdn;
+    selectedDomainFqdn || connectedFqdn || matchesProjectFqdn || selectableDomains[0]?.fqdn || hostnameFqdn;
   const showDomainSelector: boolean = isDefaultDomainSelectionTreatment;
   const { modal: dnsConflictModal, runGate } = useDnsConflictGate({ appId: currentAppId, site });
 
@@ -644,8 +685,7 @@ export default function AppPublish({ location = 'develop', triggerClassName }: {
             shipAnalyticsLog('publish.domain_attach.conflict', { appId: currentAppId, fqdn: selectedDomainFqdn });
             setDomainConflict(attachError.details.conflictDetails);
             setIsPublishing(currentAppId, false);
-            // The DNS gate may have closed the popover; reopen it for the override confirmation.
-            setOpen(true);
+            // Don't setOpen here — it closes the popover and clears domainConflict (see closePopover).
             return;
           } else {
             // Real attach failure — keep the typed conflict detail and abort publish.
@@ -745,7 +785,54 @@ export default function AppPublish({ location = 'develop', triggerClassName }: {
   const handleChangeDomain = useCallback(() => {
     setDomainConflict(null);
     modifyDomains.reset();
+    // Cancelling the move modal returns the user to the picker so they can choose another domain.
+    setOpen(true);
   }, [modifyDomains]);
+
+  // Route the publish CTA for a newly-picked custom domain: if it's already on another AAB app, go
+  // straight to the "Move Domain" modal; otherwise confirm the connect (DNS repoint). A free-URL /
+  // already-on-this-app publish skips both and deploys directly (control users are unaffected).
+  const handlePublishClick = useCallback(() => {
+    // Act on the domain the picker SHOWS as selected (effectiveSelectedFqdn), not just an explicit
+    // click — otherwise publishing the default-highlighted domain skips the connect/move modal.
+    const targetFqdn: string = effectiveSelectedFqdn;
+    const normalizedSelected: string = targetFqdn.replace(/^https?:\/\//, '').toLowerCase();
+    const needsDomainConnect: boolean =
+      showDomainSelector &&
+      !!targetFqdn &&
+      normalizedSelected !== freeProjectUrl.replace(/^https?:\/\//, '').toLowerCase() &&
+      !(site?.domains ?? []).some(
+        (d) =>
+          d.domainType !== DomainType.PREFIX &&
+          !!d.fqdn &&
+          d.fqdn.replace(/^https?:\/\//, '').toLowerCase() === normalizedSelected,
+      );
+    const owner = otherAppByFqdn.get(normalizedSelected);
+    if (!needsDomainConnect) {
+      void handleDeploy();
+      return;
+    }
+    // Commit the highlighted selection so handleDeploy attaches this domain on "Yes, Continue".
+    setSelectedDomainFqdn(targetFqdn);
+    if (owner) {
+      // On another AAB app -> Move Domain modal (don't setOpen; see closePopover for why).
+      setDomainConflict({
+        existingAppId: owner.appId,
+        existingSystemId: owner.systemId,
+        existingOwnerType: AIRO_SUBSCRIPTION_OWNER_TYPE,
+        existingOwnerId: owner.ownerId,
+        ...(owner.appName && { existingAppName: owner.appName }),
+        domain: normalizedSelected,
+      });
+      return;
+    }
+    setShowConnectConfirm(true);
+  }, [effectiveSelectedFqdn, showDomainSelector, freeProjectUrl, site, otherAppByFqdn, handleDeploy]);
+
+  const handleConfirmConnect = useCallback(() => {
+    setShowConnectConfirm(false);
+    void handleDeploy();
+  }, [handleDeploy]);
 
   // Flush the deferred security growl only once publish is fully resolved.
   useEffect(() => {
@@ -1157,6 +1244,21 @@ export default function AppPublish({ location = 'develop', triggerClassName }: {
       )}
       {paywallModal}
       {dnsConflictModal}
+      <DomainConnectConfirmationModal
+        isOpen={showConnectConfirm}
+        isConnecting={isPublishingOrDeploying}
+        onClose={() => setShowConnectConfirm(false)}
+        onConfirm={handleConfirmConnect}
+      />
+      <DomainConflictModal
+        isOpen={!!domainConflict}
+        domain={domainConflict?.domain ?? ''}
+        existingAppName={domainConflict?.existingAppName}
+        existingAppId={domainConflict?.existingAppId ?? ''}
+        isTransferring={isOverriding}
+        onClose={() => { if (!isOverriding) handleChangeDomain(); }}
+        onConfirm={handleOverrideAndPublish}
+      />
       <ResponsivePopover
         open={open}
         onOpenChange={handlePublish}
@@ -1203,15 +1305,7 @@ export default function AppPublish({ location = 'develop', triggerClassName }: {
               )}
             </TextLockup>
 
-            {domainConflict ? (
-              <PublishDomainConflict
-                domain={domainConflict.domain}
-                existingProjectName={domainConflict.existingAppName || domainConflict.existingAppId}
-                isOverriding={isOverriding}
-                onChangeDomain={handleChangeDomain}
-                onOverride={handleOverrideAndPublish}
-              />
-            ) : (
+            {(
               <>
             {lastDeployedDate && !(showDomainSelector && (isPublishedOnCustomDomain || isPublishedOnFreeUrl)) && (
               <button
@@ -1367,7 +1461,7 @@ export default function AppPublish({ location = 'develop', triggerClassName }: {
                 data-partial='componentAiro'
                 data-testid='publish-confirm-button'
                 disabled={isButtonDisabled || isPublishingOrDeploying || isConversationInProgress}
-                onClick={handleDeploy}
+                onClick={handlePublishClick}
                 text={getPublishButtonText()}
                 icon={isPublishingOrDeploying ? <Spinner size='sm' /> : undefined}
               />

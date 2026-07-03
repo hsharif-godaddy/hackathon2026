@@ -9,6 +9,24 @@ import { PublishDenialReason, PublishUpgradeRequiredError } from '@airo/shared/p
 import { screen, waitFor } from '@testing-library/react';
 import Growl from '@ux/growl';
 
+import { DomainStatus, DomainType } from '@/lib/control-plane/types';
+
+vi.mock('@ux/modal', () => ({
+  default: ({ title, children }: { title?: ReactNode; children?: ReactNode }) => (
+    <div data-testid='mock-modal'>{title}{children}</div>
+  ),
+}));
+
+vi.mock('@/hooks/useDomainsQuery', () => ({
+  useDomainsQuery: () => ({ data: mockAccountDomains.value }),
+}));
+
+vi.mock('@/stores/useSitesStore', () => ({
+  useSites: () => ({ sites: [], isLoading: false }),
+  useSitesStore: (selector: (state: { allSites: unknown[]; lastFetchedAll: number | null; fetchAllSites: () => void }) => unknown) =>
+    selector({ allSites: mockAllSites.value, lastFetchedAll: 1, fetchAllSites: () => undefined }),
+}));
+
 vi.mock('react-intl', async (importOriginal) => {
   const actual = await importOriginal<typeof import('react-intl')>();
   return {
@@ -65,6 +83,8 @@ type MockPublishSlice = {
 const mockDismissSeoRegressionAlert = vi.fn();
 const mockLogImpressionEvent = vi.fn(() => vi.fn());
 const mockHivemindCohort: { value: string | undefined } = { value: undefined };
+const mockAccountDomains: { value: Array<{ domain?: string; name?: string }> } = { value: [] };
+const mockAllSites: { value: Array<Record<string, unknown>> } = { value: [] };
 
 const mockDevelopStore = {
   currentAppId: 'app-123',
@@ -344,6 +364,8 @@ describe('AppPublish', () => {
     mockLogImpressionEvent.mockReset();
     mockLogImpressionEvent.mockReturnValue(vi.fn());
     mockHivemindCohort.value = undefined;
+    mockAccountDomains.value = [];
+    mockAllSites.value = [];
   });
 
   it('should render nothing when pathname is not the develop page', function notDevelopPage() {
@@ -398,6 +420,93 @@ describe('AppPublish', () => {
 
     await waitFor(() => {
       expect(screen.getByText('builder_publish_popover_title')).toBeInTheDocument();
+    });
+  });
+
+  describe('default-domain-selection publish gate', () => {
+    async function openAndSubmit(user: ReturnType<typeof renderWithProviders>['user']): Promise<void> {
+      await user.click(await screen.findByRole('button', { name: 'builder_publish_button' }));
+      await waitFor(() => {
+        expect(screen.getByText('builder_publish_popover_title')).toBeInTheDocument();
+      });
+      const submit: HTMLElement | undefined = screen
+        .getAllByRole('button', { name: 'builder_publish_button' })
+        .find((button) => button.id !== 'tour-publish-button');
+      expect(submit).toBeDefined();
+      await user.click(submit as HTMLElement);
+    }
+
+    it('shows the Move Domain modal when the selected domain is on another AAB app', async function moveGate() {
+      mockHivemindCohort.value = 'on';
+      mockAccountDomains.value = [{ domain: 'onanotherapp.com' }];
+      mockAllSites.value = [{
+        id: 'other-app',
+        system_id: 'sys-2',
+        subscription_id: 'sub-2',
+        name: 'DailyDesk',
+        domains: [{ fqdn: 'onanotherapp.com', domainType: DomainType.CUSTOM, status: DomainStatus.ACTIVE }],
+      }];
+      mockSiteStore.getSite.mockReturnValue(
+        createMockSite({ id: 'app-123', name: 'My App', agent_url: 'https://app-123.agent.test', domains: [], published_url: 'app-123.c4.test-airoapp.ai' }),
+      );
+
+      const { user } = renderWithProviders(<AppPublish />);
+      await openAndSubmit(user);
+
+      await waitFor(() => {
+        expect(screen.getByText('Move Domain')).toBeInTheDocument();
+      });
+      expect(screen.queryByText('builder_domain_connect_confirmation_title')).not.toBeInTheDocument();
+      expect(mockMutateAsync).not.toHaveBeenCalled();
+    });
+
+    it('shows the connect-confirm modal for a fresh domain not on any AAB app', async function connectGate() {
+      mockHivemindCohort.value = 'on';
+      mockAccountDomains.value = [{ domain: 'freshdomain.com' }];
+      mockAllSites.value = [];
+      mockSiteStore.getSite.mockReturnValue(
+        createMockSite({ id: 'app-123', name: 'My App', agent_url: 'https://app-123.agent.test', domains: [], published_url: 'app-123.c4.test-airoapp.ai' }),
+      );
+
+      const { user } = renderWithProviders(<AppPublish />);
+      await openAndSubmit(user);
+
+      await waitFor(() => {
+        expect(screen.getByText('builder_domain_connect_confirmation_title')).toBeInTheDocument();
+      });
+      expect(screen.queryByText('Move Domain')).not.toBeInTheDocument();
+      expect(mockMutateAsync).not.toHaveBeenCalled();
+    });
+
+    it('publishes directly (no modal) when the selected domain is already on this app', async function directPublish() {
+      mockHivemindCohort.value = 'on';
+      mockAccountDomains.value = [{ domain: 'connectedhere.com' }];
+      mockAllSites.value = [];
+      mockSiteStore.getSite.mockReturnValue(
+        createMockSite({
+          id: 'app-123',
+          name: 'My App',
+          agent_url: 'https://app-123.agent.test',
+          domains: [{
+            fqdn: 'connectedhere.com',
+            isPrimary: true,
+            domainType: DomainType.CUSTOM,
+            prefix: '',
+            status: DomainStatus.ACTIVE,
+            createdAt: '',
+            updatedAt: '',
+          }],
+        }),
+      );
+
+      const { user } = renderWithProviders(<AppPublish />);
+      await openAndSubmit(user);
+
+      await waitFor(() => {
+        expect(mockMutateAsync).toHaveBeenCalled();
+      });
+      expect(screen.queryByText('builder_domain_connect_confirmation_title')).not.toBeInTheDocument();
+      expect(screen.queryByText('Move Domain')).not.toBeInTheDocument();
     });
   });
 
