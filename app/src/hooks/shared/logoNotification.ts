@@ -11,7 +11,7 @@
 
 import Growl from '@ux/growl'
 
-import { type LogoSessionLogo,mapLogoSessionToLogoData } from '@/app/[market]/develop/components/widgets/logo-utils'
+import { getLogoDisplayUrl, type LogoSessionLogo, mapLogoSessionToLogoData } from '@/app/[market]/develop/components/widgets/logo-utils'
 import { getQueryClient } from '@/components/providers/QueryClientProvider'
 import { logger } from '@/lib/request-context'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
@@ -73,6 +73,15 @@ export function handleLogoNotification(params: HandleLogoNotificationParams): vo
         ...(slotSaveFailed ? { slotSaveFailed: true, failedLayouts: failedLayouts ?? [] } : {}),
       })
 
+      // Persist display URL so old chat cards survive page reload (the in-memory
+      // store is gone on reload and the slot only has the LATEST logo).
+      if (status === 'completed' && eventLogo && jobId) {
+        try {
+          const displayUrl: string | undefined = getLogoDisplayUrl(mapLogoSessionToLogoData(eventLogo))
+          if (displayUrl) localStorage.setItem(`logo-result-${jobId}`, displayUrl)
+        } catch { /* best effort */ }
+      }
+
       // Invalidate the media manifest query so Brand Book + media surfaces refetch
       // the new slot state (clears pendingJobId / shows the real logo) without a tab nav.
       const qc = getQueryClient()
@@ -95,8 +104,10 @@ export function handleLogoNotification(params: HandleLogoNotificationParams): vo
       // Mirror the synchronous flow (toolSideEffects): preview the new logo in the
       // Brand Book immediately via the 'logo-generated' window event (sets its
       // previewLogoUrl), rather than relying solely on the manifest refetch above.
+      // Skipped for background followUpVariants (suppressGrowl) — those shouldn't
+      // override the primary logo being displayed.
       const completedLogo = raw.logo as LogoSessionLogo | undefined
-      if (completedLogo && typeof window !== 'undefined') {
+      if (completedLogo && !raw.suppressGrowl && typeof window !== 'undefined') {
         try {
           window.dispatchEvent(
             new CustomEvent('logo-generated', { detail: mapLogoSessionToLogoData(completedLogo) }),

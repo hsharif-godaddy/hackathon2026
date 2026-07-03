@@ -27,12 +27,13 @@ import { appPlanTool } from '../../../tools/app-plan-tool.js';
 import { mediaManifestService } from '../../../services/MediaManifestService.js';
 import { getKvMemoryStore } from '../../../memory/adapters/index.js';
 import { workspaceScopeFromAppId } from '../../../memory/interfaces/scope.js';
-import { LOGO_SLOT_PATHS, ALL_LAYOUTS } from '../../../services/logo/logo-slots.js';
+import { LOGO_SLOT_PATHS, FAVICON_SLOT_PATH, ALL_LAYOUTS } from '../../../services/logo/logo-slots.js';
 import { logoGenerationService } from '../../../services/logo/LogoGenerationService.js';
 import { createForWorkspace } from '../../../workspace/index.js';
 import { readLogoJob } from '../../../services/logo/logo-job-state.js';
 import {
   type LogoLayout,
+  type LogoVariant,
   type LogoColors,
 } from '../../../services/LogoService.js';
 
@@ -70,6 +71,14 @@ const GenerateLogoInputSchema = z.object({
         'returns — required when your very next step depends on the logo being done (e.g. you ' +
         'will immediately ask the user about it or act on it in the same flow).',
     ),
+  followUpVariants: z
+    .array(z.enum(['favicon', 'square', 'horizontal', 'vertical']))
+    .optional()
+    .describe(
+      'Additional variants to derive after this logo finishes generating. ' +
+        'Populated sibling slots are always re-derived automatically; use this ' +
+        "to request variants that don't exist yet (e.g. favicon on first generation).",
+    ),
 });
 
 type GenerateLogoInput = z.infer<typeof GenerateLogoInputSchema>;
@@ -98,6 +107,14 @@ const EditLogoInputSchema = z.object({
         'returns — required when your very next step depends on the logo being done (e.g. you ' +
         'will immediately ask the user about it or act on it in the same flow).',
     ),
+  followUpVariants: z
+    .array(z.enum(['favicon', 'square', 'horizontal', 'vertical']))
+    .optional()
+    .describe(
+      'Additional variants to derive after this logo finishes generating. ' +
+        'Populated sibling slots are always re-derived automatically; use this ' +
+        "to request variants that don't exist yet (e.g. favicon on first generation).",
+    ),
 });
 
 type EditLogoInput = z.infer<typeof EditLogoInputSchema>;
@@ -122,6 +139,41 @@ function resolveInspirationFromContext(context: unknown): string[] {
   return assets
     .filter((a) => a.sourceType === 'upload' && a.mediaType === 'IMAGE' && a.imageUrl?.startsWith('https://'))
     .map((a) => a.imageUrl);
+}
+
+/**
+ * Auto-detect populated sibling logo slots that should be re-derived after a
+ * new logo finishes. Merges with any explicit followUpVariants from the LLM.
+ */
+async function resolveFollowUpVariants(
+  appId: string,
+  generatingLayouts: LogoLayout[],
+  explicitVariants: LogoVariant[] | undefined,
+): Promise<LogoVariant[]> {
+  const variants: Set<LogoVariant> = new Set(explicitVariants ?? [])
+  const generatingSlots: Set<string> = new Set(generatingLayouts.map((l) => LOGO_SLOT_PATHS[l]))
+
+  const candidates: Array<[LogoVariant, string]> = [
+    ['square', LOGO_SLOT_PATHS.square],
+    ['horizontal', LOGO_SLOT_PATHS.horizontal],
+    ['vertical', LOGO_SLOT_PATHS.vertical],
+    ['favicon', FAVICON_SLOT_PATH],
+  ]
+  for (const [variant, slotPath] of candidates) {
+    if (generatingSlots.has(slotPath)) continue
+    if (variants.has(variant)) continue
+    try {
+      const r = await mediaManifestService.getSlot(appId, slotPath)
+      if (r.success && r.slot?.currentUrl && r.slot.logoSourceMap?.[r.slot.currentUrl]) {
+        variants.add(variant)
+      }
+    } catch (err) {
+      logger.warn('skill.media-logo.followUp.slot_lookup_failed', {
+        appId, slotPath, error: err instanceof Error ? err.message : String(err),
+      })
+    }
+  }
+  return [...variants]
 }
 
 /** Five core palette tokens we surface to the model. */
@@ -480,27 +532,14 @@ export const generateLogoTool: SkillToolDefinition = {
     const suffix: string = buildPaletteSuffix(palette);
     const finalPrompt: string = assembleFinalPrompt(input.prompt, suffix, appId);
 
-    // Structured brand colors, gated by the `appbuilder-logo-brand-colors`
-    // switchboard flag (surfaced on context.metadata via the agent JWT; default
-    // off) until the logo API accepts them. The prose suffix above is unaffected
-    // and remains the functional path. Send-if-present: omitted when nothing
-    // resolved.
-    const logoBrandColorsEnabled: boolean =
-      (context as { metadata?: { logoBrandColorsEnabled?: boolean } })?.metadata
-        ?.logoBrandColorsEnabled === true;
-    const colors: LogoColors | undefined = logoBrandColorsEnabled ? buildLogoColors(palette) : undefined;
-    if (colors) {
-      logger.info('skill.media-logo.colors.resolved', {
-        appId,
-        keys: Object.keys(colors),
-        hasBackground: Boolean(colors.background),
-      });
-    }
+    const colors: LogoColors | undefined = buildLogoColors(palette);
 
     const layouts: LogoLayout[] = expandLayouts(input.layout);
     const references: { inspiration: string[] } | undefined = inspirationUrls.length > 0
       ? { inspiration: inspirationUrls }
       : undefined;
+
+    const followUpVariants: LogoVariant[] = await resolveFollowUpVariants(appId, layouts, input.followUpVariants as LogoVariant[] | undefined);
 
     const result = await logoGenerationService.start({
       appId,
@@ -515,6 +554,7 @@ export const generateLogoTool: SkillToolDefinition = {
       ...(input.background === false ? { suppressGrowl: true } : {}),
       ...(traceparent !== undefined ? { traceparent } : {}),
       ...(conversationId !== undefined ? { conversationId } : {}),
+      ...(followUpVariants.length ? { followUpVariants } : {}),
     });
 
     return handleLogoResult(result, input, layouts, 'skill.media-logo.generate_logo', appId);
@@ -595,27 +635,14 @@ export const editLogoTool: SkillToolDefinition = {
     const suffix: string = buildPaletteSuffix(palette);
     const finalPrompt: string = assembleFinalPrompt(input.prompt, suffix, appId);
 
-    // Structured brand colors, gated by the `appbuilder-logo-brand-colors`
-    // switchboard flag (surfaced on context.metadata via the agent JWT; default
-    // off) until the logo API accepts them. The prose suffix above is unaffected
-    // and remains the functional path. Send-if-present: omitted when nothing
-    // resolved.
-    const logoBrandColorsEnabled: boolean =
-      (context as { metadata?: { logoBrandColorsEnabled?: boolean } })?.metadata
-        ?.logoBrandColorsEnabled === true;
-    const colors: LogoColors | undefined = logoBrandColorsEnabled ? buildLogoColors(palette) : undefined;
-    if (colors) {
-      logger.info('skill.media-logo.colors.resolved', {
-        appId,
-        keys: Object.keys(colors),
-        hasBackground: Boolean(colors.background),
-      });
-    }
+    const colors: LogoColors | undefined = buildLogoColors(palette);
 
     const references: { logo: string; inspiration?: string[] } = {
       logo: resolved.url,
       ...(inspirationUrls.length > 0 ? { inspiration: inspirationUrls } : {}),
     };
+
+    const followUpVariants: LogoVariant[] = await resolveFollowUpVariants(appId, layouts, input.followUpVariants as LogoVariant[] | undefined);
 
     const result = await logoGenerationService.start({
       appId,
@@ -630,9 +657,127 @@ export const editLogoTool: SkillToolDefinition = {
       ...(input.background === false ? { suppressGrowl: true } : {}),
       ...(traceparent !== undefined ? { traceparent } : {}),
       ...(conversationId !== undefined ? { conversationId } : {}),
+      ...(followUpVariants.length ? { followUpVariants } : {}),
     });
 
     return handleLogoResult(result, input, layouts, 'skill.media-logo.edit_logo', appId);
+  },
+
+  toModelOutput: toLogoModelOutput,
+
+  config: {
+    timeout: 240_000,
+  },
+};
+
+const GenerateLogoVariantInputSchema = z.object({
+  variant: z
+    .enum(['square', 'horizontal', 'vertical', 'favicon'])
+    .describe(
+      'Target variant to derive from the existing logo. ' +
+        'favicon — extract a compact square icon (saved to logo/favicon slot). ' +
+        'square/horizontal/vertical — reformat the logo to that layout.',
+    ),
+  prompt: z
+    .string()
+    .max(PROMPT_SCHEMA_MAX)
+    .optional()
+    .describe('Optional additional direction for the variant (e.g. "simplify the icon for small sizes").'),
+  background: z
+    .boolean()
+    .default(true)
+    .describe(
+      'Run generation in the background (default true): the tool returns immediately with ' +
+        'an animated placeholder slot that updates when the variant is ready. ' +
+        'Set false to wait for the finished variant before the tool returns.',
+    ),
+});
+
+type GenerateLogoVariantInput = z.infer<typeof GenerateLogoVariantInputSchema>;
+
+export const generateLogoVariantTool: SkillToolDefinition = {
+  name: 'generate_logo_variant',
+  description:
+    'Derive a variant of the existing logo (e.g. a favicon, or a reformatted layout). ' +
+    'Requires an existing logo in the brand slots. The source logo is resolved automatically.',
+
+  parameters: GenerateLogoVariantInputSchema,
+
+  async execute(input: GenerateLogoVariantInput, context?: unknown) {
+    const appId = (context as { metadata?: { appId?: string } })?.metadata?.appId;
+    const socketId = (context as { socketId?: string })?.socketId;
+    const conversationId = (context as { metadata?: { conversationId?: string } })?.metadata?.conversationId;
+
+    const traceIds = getCurrentTraceIds();
+    const traceparent: string | undefined = traceIds ? `00-${traceIds.traceId}-${traceIds.observationId}-01` : undefined;
+
+    logger.info('skill.media-logo.generate_logo_variant.start', {
+      appId,
+      variant: input.variant,
+    });
+
+    if (!appId) {
+      logger.error('skill.media-logo.generate_logo_variant.no_app_id');
+      return { error: 'Unable to determine app id for logo variant generation' };
+    }
+
+    const app = appRepository.findById(appId);
+    const customerId: string | undefined = app?.customerId;
+    if (!customerId) {
+      logger.error('skill.media-logo.generate_logo_variant.no_customer', { appId });
+      return { error: 'Unable to determine customer identity for logo variant generation' };
+    }
+
+    const budgetUserId: string | null | undefined = socketId
+      ? grantSessionManager.getCurrentUserId(socketId, customerId)
+      : customerId;
+    if (!budgetUserId) {
+      logger.error('skill.media-logo.generate_logo_variant.grants_exhausted', { appId, socketId, customerId });
+      return { error: 'All credit grants have been exhausted. Please purchase additional credits to generate logo variants.' };
+    }
+
+    const sourceCandidates: string[] = [LOGO_SLOT_PATHS.square, LOGO_SLOT_PATHS.horizontal, LOGO_SLOT_PATHS.vertical];
+    let sourceUrl: string | undefined;
+    for (const path of sourceCandidates) {
+      try {
+        const r = await mediaManifestService.getSlot(appId, path);
+        if (!r.success || !r.slot?.currentUrl) continue;
+        const sourceMap = r.slot.logoSourceMap;
+        if (sourceMap && sourceMap[r.slot.currentUrl]) {
+          sourceUrl = r.slot.currentUrl;
+          logger.info('skill.media-logo.generate_logo_variant.source_resolved', { appId, slotPath: path });
+          break;
+        }
+      } catch (err) {
+        logger.warn('skill.media-logo.generate_logo_variant.slot_lookup_failed', {
+          appId, slotPath: path, error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
+    if (!sourceUrl) {
+      return { error: 'No existing logo found in brand slots. Use generate_logo to create one first.' };
+    }
+
+    const { palette, brandName } = await readBrandContext(appId);
+    const colors: LogoColors | undefined = buildLogoColors(palette);
+
+    const result = await logoGenerationService.startVariant({
+      appId,
+      sourceUrl,
+      variant: input.variant as LogoVariant,
+      ...(input.prompt ? { prompt: input.prompt } : {}),
+      ...(colors !== undefined ? { colors } : {}),
+      ...(brandName !== undefined ? { brandName } : {}),
+      customerId,
+      budgetUserId,
+      ...(input.background === false ? { suppressGrowl: true } : {}),
+      ...(traceparent !== undefined ? { traceparent } : {}),
+      ...(conversationId !== undefined ? { conversationId } : {}),
+    });
+
+    const layouts: LogoLayout[] = input.variant === 'favicon' ? [] : [input.variant as LogoLayout];
+    return handleLogoResult(result, input, layouts, 'skill.media-logo.generate_logo_variant', appId);
   },
 
   toModelOutput: toLogoModelOutput,
@@ -651,7 +796,8 @@ export const setVentureLogoTool: SkillToolDefinition = {
   name: 'set_venture_logo',
   description:
     'Sends the current horizontal and square logos to the Venture Home dashboard via the chat-side renderer. ' +
-    'Call this only after edit_logo has produced a fresh square version. No arguments required.',
+    'Requires both horizontal and square logo slots to be populated. If a layout is missing, ' +
+    'use generate_logo_variant to derive it from an existing logo first. No arguments required.',
   parameters: z.object({}),
   async execute(_input, context?: unknown) {
     const appId = (context as { metadata?: { appId?: string } })?.metadata?.appId;
@@ -693,15 +839,24 @@ export const setVentureLogoTool: SkillToolDefinition = {
     const horizontalUrl = horizontalResult.success ? horizontalResult.slot?.currentUrl : undefined;
     const squareUrl = squareResult.success ? squareResult.slot?.currentUrl : undefined;
 
-    if (!horizontalUrl || !squareUrl) {
-      logger.warn('skill.media-logo.set_venture_logo.slot_missing', {
-        appId,
-        hasHorizontal: !!horizontalUrl,
-        hasSquare: !!squareUrl,
-      });
+    if (!horizontalUrl && !squareUrl) {
+      logger.warn('skill.media-logo.set_venture_logo.slot_missing', { appId, hasHorizontal: false, hasSquare: false });
+      return { error: 'No logos found in brand slots. Use generate_logo to create one first.' };
+    }
+
+    if (!squareUrl) {
+      logger.warn('skill.media-logo.set_venture_logo.slot_missing', { appId, hasHorizontal: true, hasSquare: false });
       return {
         error:
-          'Could not find both horizontal and square logos. Generate a logo first, then run generate_logo with layout: "square".',
+          'Square logo not found. Use generate_logo_variant with variant "square" to derive one from the existing horizontal logo, then retry set_venture_logo.',
+      };
+    }
+
+    if (!horizontalUrl) {
+      logger.warn('skill.media-logo.set_venture_logo.slot_missing', { appId, hasHorizontal: false, hasSquare: true });
+      return {
+        error:
+          'Horizontal logo not found. Use generate_logo_variant with variant "horizontal" to derive one from the existing square logo, then retry set_venture_logo.',
       };
     }
 

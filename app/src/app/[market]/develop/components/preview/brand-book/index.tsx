@@ -95,6 +95,31 @@ export default function BrandBookView({ appId }: BrandBookViewProps) {
     };
   }, [appId]);
 
+  // Stable logo-slot resolution: pick the first non-pending slot with content, but once
+  // resolved, keep showing that same slot across manifest refetches. This prevents the
+  // displayed logo from swapping when followUpVariants populates a higher-priority slot.
+  const resolvedSlotRef = useRef<string | null>(null);
+  const activeLogoSlot: string | null = useMemo(() => {
+    if (previewLogoUrl || isManifestLoading || !manifest) return null;
+
+    const prev: string | null = resolvedSlotRef.current;
+    if (prev) {
+      const slot = manifest[prev];
+      if (slot?.currentUrl && !slot.pendingJobId) return prev;
+    }
+
+    for (const slotName of LOGO_SLOT_NAMES) {
+      const slot = manifest[slotName];
+      if (slot?.pendingJobId) continue;
+      if (slot?.currentUrl) return slotName;
+    }
+    return null;
+  }, [previewLogoUrl, isManifestLoading, manifest]);
+
+  useEffect(() => {
+    if (activeLogoSlot) resolvedSlotRef.current = activeLogoSlot;
+  }, [activeLogoSlot]);
+
   const primaryLogoUrl = useMemo(() => {
     if (previewLogoUrl) return previewLogoUrl;
     if (isManifestLoading) return null;
@@ -104,12 +129,10 @@ export default function BrandBookView({ appId }: BrandBookViewProps) {
       return undefined;
     }
 
-    for (const slotName of LOGO_SLOT_NAMES) {
-      const slot = manifest?.[slotName];
-      if (slot?.currentUrl) return getSlotImageUrl(slotName, slot.currentUrl, previewBaseUrl);
-    }
-    return undefined;
-  }, [previewLogoUrl, isManifestLoading, manifestError, manifest, previewBaseUrl, appId]);
+    if (!activeLogoSlot) return undefined;
+    const slot = manifest?.[activeLogoSlot];
+    return slot?.currentUrl ? getSlotImageUrl(activeLogoSlot, slot.currentUrl, previewBaseUrl) : undefined;
+  }, [previewLogoUrl, isManifestLoading, manifestError, manifest, previewBaseUrl, appId, activeLogoSlot]);
 
   // Solid-variant logo for the brand book light panel (falls back to transparent if no solid mapping exists)
   const primarySolidLogoUrl = useMemo(() => {
@@ -119,16 +142,13 @@ export default function BrandBookView({ appId }: BrandBookViewProps) {
 
     if (manifestError && !manifest) return undefined;
 
-    for (const slotName of LOGO_SLOT_NAMES) {
-      const slot = manifest?.[slotName];
-      const transparentUrl = slot?.currentUrl;
-      if (!transparentUrl) continue;
-      const url = slot?.solidUrlMap?.[transparentUrl] || transparentUrl;
-      return getSlotImageUrl(slotName, url, previewBaseUrl);
-    }
-
-    return undefined;
-  }, [previewSolidUrl, previewLogoUrl, isManifestLoading, manifestError, manifest, previewBaseUrl]);
+    if (!activeLogoSlot) return undefined;
+    const slot = manifest?.[activeLogoSlot];
+    const transparentUrl = slot?.currentUrl;
+    if (!transparentUrl) return undefined;
+    const url = slot?.solidUrlMap?.[transparentUrl] || transparentUrl;
+    return getSlotImageUrl(activeLogoSlot, url, previewBaseUrl);
+  }, [previewSolidUrl, previewLogoUrl, isManifestLoading, manifestError, manifest, previewBaseUrl, activeLogoSlot]);
 
   const primaryMockupUrl = useMemo(() => {
     if (previewMockupUrl) return previewMockupUrl;
@@ -139,8 +159,14 @@ export default function BrandBookView({ appId }: BrandBookViewProps) {
       return undefined;
     }
 
-    for (const slotName of LOGO_SLOT_NAMES) {
+    // Prefer active slot's mockup, fall through to others if it doesn't have one
+    const slotOrder: readonly string[] = activeLogoSlot
+      ? [activeLogoSlot, ...LOGO_SLOT_NAMES.filter((n) => n !== activeLogoSlot)]
+      : LOGO_SLOT_NAMES;
+
+    for (const slotName of slotOrder) {
       const slot = manifest?.[slotName];
+      if (slot?.pendingJobId) continue;
       const transparentUrl = slot?.currentUrl;
       if (!transparentUrl) continue;
       const url = slot?.landscapeMockupUrlMap?.[transparentUrl] || slot?.mockupUrlMap?.[transparentUrl];
@@ -149,29 +175,27 @@ export default function BrandBookView({ appId }: BrandBookViewProps) {
     }
 
     return undefined;
-  }, [previewMockupUrl, isManifestLoading, manifestError, manifest, previewBaseUrl, appId]);
+  }, [previewMockupUrl, isManifestLoading, manifestError, manifest, previewBaseUrl, appId, activeLogoSlot]);
 
   const { isLogoPending, priorLightLogoUrl } = useMemo(() => {
     if (previewLogoUrl) {
       return { isLogoPending: false, priorLightLogoUrl: undefined };
     }
-    for (const slotName of LOGO_SLOT_NAMES) {
-      const slot = manifest?.[slotName];
-      if (!slot) continue;
-      if (slot.pendingJobId) {
-        const prior = slot.currentUrl;
-        if (prior && (prior.startsWith('http://') || prior.startsWith('https://'))) {
-          const light = getSlotImageUrl(slotName, slot.solidUrlMap?.[prior] || prior, previewBaseUrl);
-          return { isLogoPending: true, priorLightLogoUrl: light };
-        }
-        return { isLogoPending: true, priorLightLogoUrl: undefined };
-      }
-      if (slot.currentUrl) {
-        return { isLogoPending: false, priorLightLogoUrl: undefined };
-      }
+    // No resolved slot: show shimmer if manifest is still loading (brand data exists
+    // so logos are expected) or ANY slot is mid-generation
+    if (!activeLogoSlot) {
+      const anyPending: boolean = isManifestLoading
+        || LOGO_SLOT_NAMES.some((name) => !!manifest?.[name]?.pendingJobId);
+      return { isLogoPending: anyPending, priorLightLogoUrl: undefined };
+    }
+    // Active slot exists: only pending if THAT slot is mid-generation
+    const slot = manifest?.[activeLogoSlot];
+    if (slot?.pendingJobId) {
+      const prior: string | undefined = slot.priorUrl;
+      return { isLogoPending: true, priorLightLogoUrl: slot.solidUrlMap?.[prior ?? ''] ?? prior ?? undefined };
     }
     return { isLogoPending: false, priorLightLogoUrl: undefined };
-  }, [previewLogoUrl, manifest, previewBaseUrl]);
+  }, [previewLogoUrl, manifest, activeLogoSlot, isManifestLoading]);
 
   // Fire book_view impression once all brand data sections are populated
   useEffect(() => {

@@ -14,8 +14,10 @@ Pick the right tool based on whether a logo already exists:
 | No logo exists yet, user uploads image(s): "make me a logo like this" | `generate_logo` |
 | Logo exists, user wants to change it ("make it blue", "remove the tagline") | `edit_logo` |
 | Logo exists, user uploads image(s): "make it more like this one" | `edit_logo` |
+| Logo exists, user wants a favicon | `generate_logo_variant` with `variant: "favicon"` |
+| Logo exists, user wants it in a different layout | `generate_logo_variant` with `variant: "square"/"horizontal"/"vertical"` |
 
-**When in doubt:** If the user has a saved logo and is asking for a modification, use `edit_logo`. If they want something completely new or there's no existing logo, use `generate_logo`.
+**When in doubt:** If the user has a saved logo and is asking for a modification, use `edit_logo`. If they want something completely new or there's no existing logo, use `generate_logo`. For favicon or layout reformatting, use `generate_logo_variant`.
 
 **Inspiration images are handled automatically.** If the user uploaded images in the current message, both tools detect them from context and use them as style references — you do not need to pass any URLs.
 
@@ -84,9 +86,34 @@ Generated logos auto-save to per-orientation media slots. **Use the slot URL in 
 // Hero / sidebar — vertical slot
 <img src="/airo-assets/images/logo/vertical" alt="Logo" />
 
-// Favicon / app icon — square slot
+// App icon — square slot
 <img src="/airo-assets/images/logo/primary" alt="Logo" />
+
+// Favicon — derived favicon slot (use generate_logo_variant to create)
+<link rel="icon" href="/airo-assets/images/logo/favicon" />
 ```
+
+## Follow-up variants (automatic)
+
+When `generate_logo` or `edit_logo` runs, any populated sibling logo slots (square, horizontal, vertical, favicon) are automatically re-derived after the new logo finishes. This keeps all logo slots in sync without a second tool call.
+
+On **first-time generation** (no existing logo slots), pass `followUpVariants: ['favicon']` to create the initial favicon:
+
+```typescript
+media-logo__generate_logo({
+  prompt: '...',
+  layout: 'horizontal',
+  followUpVariants: ['favicon'],
+});
+```
+
+To derive a favicon manually (or any variant on demand):
+
+```typescript
+media-logo__generate_logo_variant({ variant: 'favicon' });
+```
+
+The source logo is resolved automatically from whichever slot is populated (square, horizontal, or vertical).
 
 ## Placement decision
 
@@ -100,12 +127,13 @@ After generation, decide based on context:
 <example>
 User: "Make me a logo for Sunrise Cafe — a cozy neighborhood coffee shop."
 
-Correct — descriptive prompt, default horizontal layout:
+Correct — descriptive prompt, default horizontal layout, favicon follow-up for first-time generation:
 
 ```typescript
 media-logo__generate_logo({
   prompt: 'A warm, hand-drawn logo for Sunrise Cafe — a stylized coffee cup with a small sunrise rising behind it, friendly monoline strokes, generous padding, cozy neighborhood feel.',
   layout: 'horizontal',
+  followUpVariants: ['favicon'],
 });
 ```
 </example>
@@ -145,6 +173,31 @@ Correct — edit_logo (existing logo auto-resolved from slot, uploaded image aut
 media-logo__edit_logo({
   prompt: 'Restyle the existing logo with a vintage distressed texture and aged color palette inspired by the uploaded reference image, preserving the current icon and brand name.',
   layout: 'horizontal',
+});
+```
+</example>
+
+<example>
+User: "I need a favicon for my site"
+
+Correct — generate_logo_variant with variant 'favicon' (source logo auto-resolved from primary slot):
+
+```typescript
+media-logo__generate_logo_variant({
+  variant: 'favicon',
+});
+```
+</example>
+
+<example>
+User: "Can you make a square version of my logo for social media?"
+
+Correct — generate_logo_variant to derive a square layout from the existing logo:
+
+```typescript
+media-logo__generate_logo_variant({
+  variant: 'square',
+  prompt: 'Optimize for social media profile picture — center the icon mark, generous padding.',
 });
 ```
 </example>

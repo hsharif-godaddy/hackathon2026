@@ -761,11 +761,7 @@ export function MediaSlotDetail({
   // a fresh generation — render a bare shimmer. Either way exclude currentUrl from the alternatives
   // grid while pending (a fresh placeholder renders broken; a regen prior is shown in the preview).
   const isSlotPending = !!slot?.pendingJobId
-  const priorLogoUrl =
-    isSlotPending && slot?.currentUrl &&
-    (slot.currentUrl.startsWith('http://') || slot.currentUrl.startsWith('https://'))
-      ? slot.currentUrl
-      : undefined
+  const priorLogoUrl: string | undefined = isSlotPending ? slot?.priorUrl : undefined
   const allImages = slot
     ? [...new Set([...(isSlotPending ? [] : [slot.currentUrl]), ...slot.alternatives])]
     : []

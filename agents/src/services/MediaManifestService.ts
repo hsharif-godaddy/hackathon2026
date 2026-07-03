@@ -200,12 +200,18 @@ export interface MediaSlot {
   /** Maps transparent URL → landscape mockup URL for logo variants.
    *  Only populated when mediaType === 'logo'. */
   landscapeMockupUrlMap?: Record<string, string>;
-  logoSourceMap?: Record<string, { sessionId: string; logoId: string }>;
+  logoSourceMap?: Record<string, { sessionId?: string; logoId?: string; groupId?: string }>;
+  /** Group identifier linking logo variants generated together. Assigned by
+   *  variant generation, the automatic follow-up chain, and restore-group. */
+  logoGroupId?: string;
   /** Aspect-ratio classification of the upload, set when dimensions are available. */
   naturalOrientation?: LogoOrientation;
   /** Set while a background logo job is populating this slot (shimmer placeholder /
    *  mid-regeneration). Cleared on completion, cancel, or failure. */
   pendingJobId?: string;
+  /** Previous hosted URL before shimmer was placed (regeneration only).
+   *  Used by the client to show a dimmed overlay during regeneration. */
+  priorUrl?: string;
 }
 
 export type LogoOrientation = 'square' | 'horizontal' | 'vertical';
@@ -236,7 +242,10 @@ export function classifyOrientation({ width, height }: { width: number; height: 
 }
 
 function clearLogoVariantMaps(): Partial<MediaSlot> {
-  return Object.fromEntries(LOGO_VARIANT_MAP_FIELDS.map((field) => [field, undefined])) as Partial<MediaSlot>;
+  return {
+    ...Object.fromEntries(LOGO_VARIANT_MAP_FIELDS.map((field) => [field, undefined])),
+    logoGroupId: undefined,
+  } as Partial<MediaSlot>;
 }
 
 function buildSiblingLogoSlot(
@@ -2218,8 +2227,8 @@ export class MediaManifestService {
     };
 
     const pruneLogoSourceMap = (
-      map?: Record<string, { sessionId: string; logoId: string }>
-    ): Record<string, { sessionId: string; logoId: string }> | undefined => {
+      map?: Record<string, { sessionId?: string; logoId?: string; groupId?: string }>
+    ): Record<string, { sessionId?: string; logoId?: string; groupId?: string }> | undefined => {
       if (!map) return undefined;
       const next = Object.fromEntries(Object.entries(map).filter(([key]) => !removeSet.has(key)));
       return Object.keys(next).length > 0 ? next : undefined;

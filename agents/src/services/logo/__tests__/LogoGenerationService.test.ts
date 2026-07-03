@@ -20,7 +20,10 @@ const {
   mockPlaceShimmer,
   mockRevert,
   mockSaveSlots,
+  mockSaveSingleSlot,
   mockReconcileStale,
+  mockManifestGetSlot,
+  mockManifestSetSlot,
 } = vi.hoisted(() => {
   class FakeBudgetError extends Error {
     static isInstance(e: unknown): e is FakeBudgetError { return e instanceof FakeBudgetError }
@@ -37,16 +40,19 @@ const {
       vertical: '/airo-assets/uploads/airo-logo-shimmer-vertical.svg',
     })),
     mockSnapshot: vi.fn(async () => ({ previousSlots: {}, isRegeneration: false })),
-    mockPlaceShimmer: vi.fn(async () => {}),
-    mockRevert: vi.fn(async () => {}),
+    mockPlaceShimmer: vi.fn(async () => { }),
+    mockRevert: vi.fn(async () => { }),
     mockSaveSlots: vi.fn(async () => ({ savedSlots: { horizontal: '/airo-assets/images/logo/horizontal' }, slotSaveFailed: false, failedLayouts: [], skippedLayouts: [] })),
-    mockReconcileStale: vi.fn(async () => {}),
+    mockReconcileStale: vi.fn(async () => { }),
+    mockSaveSingleSlot: vi.fn(async () => true),
+    mockManifestGetSlot: vi.fn(async () => ({ success: false })),
+    mockManifestSetSlot: vi.fn(async () => ({ success: true })),
   }
 })
 
 vi.mock('@airo/ai-common', () => ({ BudgetExceededError: FakeBudgetError }))
 
-vi.mock('../../LogoService.js', () => ({ logoService: { generate: mockGenerate } }))
+vi.mock('../../LogoService.js', () => ({ logoService: { generateV3: mockGenerate, editV3: mockGenerate, generateVariantV3: mockGenerate } }))
 
 vi.mock('../../../server/sse/registry-singleton.js', () => ({
   getSSERegistry: () => ({ sendToApp: mockSendToApp }),
@@ -65,14 +71,27 @@ vi.mock('../logo-job-state.js', () => ({
 
 vi.mock('../logo-shimmer.js', () => ({
   ensureShimmerAssets: mockEnsureShimmer,
+  ensureShimmerAsset: vi.fn(async () => '/airo-assets/uploads/airo-logo-shimmer-square.svg'),
+  LOGO_SHIMMER_SLOT_URLS: {
+    square: '/airo-assets/uploads/airo-logo-shimmer-square.svg',
+    horizontal: '/airo-assets/uploads/airo-logo-shimmer-horizontal.svg',
+    vertical: '/airo-assets/uploads/airo-logo-shimmer-vertical.svg',
+  },
 }))
 
 vi.mock('../logo-slots.js', () => ({
   LOGO_SLOT_PATHS: { square: 'logo/primary', horizontal: 'logo/horizontal', vertical: 'logo/vertical' },
+  FAVICON_SLOT_PATH: 'logo/favicon',
+  ALL_LOGO_SLOT_PATHS: ['logo/primary', 'logo/horizontal', 'logo/vertical', 'logo/favicon'],
   saveLogoToSlots: mockSaveSlots,
+  saveSingleLogoSlot: mockSaveSingleSlot,
   snapshotSlots: mockSnapshot,
   placeShimmerSlots: mockPlaceShimmer,
   revertSlots: mockRevert,
+}))
+
+vi.mock('../../MediaManifestService.js', () => ({
+  mediaManifestService: { getSlot: mockManifestGetSlot, setSlot: mockManifestSetSlot },
 }))
 
 vi.mock('../logo-reconciler.js', () => ({
@@ -287,5 +306,253 @@ describe('LogoGenerationService.start restart backstop', () => {
     const second = await logoGenerationService.start(baseParams)
     expect(mockReconcileStale).not.toHaveBeenCalled()
     await Promise.allSettled([first.done, second.done])
+  })
+})
+
+describe('LogoGenerationService followUpVariants', () => {
+  const flushAsync = async (): Promise<void> => {
+    for (let i = 0; i < 10; i++) await new Promise((r) => setImmediate(r))
+  }
+
+  const variantOkResponse = {
+    sessionId: 'vs',
+    logo: { id: 'vl', generatedAt: 'now', prompt: 'p', modelUsed: 'm', urls: { square: { transparent: 'https://cdn/fav.png' } } },
+  }
+
+  it('chains startVariant after parent completes when followUpVariants present', async () => {
+    mockGenerate.mockResolvedValueOnce(okResponse).mockResolvedValue(variantOkResponse)
+    mockManifestGetSlot.mockImplementation(async (_appId: string, path: string) => {
+      if (path === 'logo/horizontal') {
+        return {
+          success: true,
+          slot: {
+            currentUrl: 'https://cdn/horizontal.png',
+            logoSourceMap: { 'https://cdn/horizontal.png': { sessionId: 's', logoId: 'l', groupId: 'g1' } },
+            logoGroupId: 'g1',
+          },
+        }
+      }
+      return { success: false }
+    })
+
+    const res = await logoGenerationService.start({ ...baseParams, followUpVariants: ['favicon'] })
+    await res.done
+    await flushAsync()
+
+    // Parent generate + variant generate = 2 calls
+    expect(mockGenerate).toHaveBeenCalledTimes(2)
+    // Variant uses saveSingleSlot (not saveSlots)
+    expect(mockSaveSingleSlot).toHaveBeenCalledTimes(1)
+  })
+
+  it('skips follow-ups when slotSaveFailed is true', async () => {
+    mockGenerate.mockResolvedValue(okResponse)
+    mockSaveSlots.mockResolvedValueOnce({
+      savedSlots: { horizontal: '/airo-assets/images/logo/horizontal' },
+      slotSaveFailed: true,
+      failedLayouts: ['horizontal'],
+      skippedLayouts: [],
+    })
+
+    const res = await logoGenerationService.start({ ...baseParams, followUpVariants: ['favicon'] })
+    await res.done
+    await flushAsync()
+
+    // Only parent generate, no variant
+    expect(mockGenerate).toHaveBeenCalledTimes(1)
+    expect(mockSaveSingleSlot).not.toHaveBeenCalled()
+  })
+
+  it('skips follow-ups when no source URL can be resolved from saved slots', async () => {
+    mockGenerate.mockResolvedValue(okResponse)
+    mockManifestGetSlot.mockResolvedValue({ success: false })
+
+    const res = await logoGenerationService.start({ ...baseParams, followUpVariants: ['favicon'] })
+    await res.done
+    await flushAsync()
+
+    // Only parent generate
+    expect(mockGenerate).toHaveBeenCalledTimes(1)
+    expect(mockSaveSingleSlot).not.toHaveBeenCalled()
+  })
+
+  it('isolates per-variant errors — one failure does not block subsequent variants', async () => {
+    let generateCallCount = 0
+    mockGenerate.mockImplementation(async () => {
+      generateCallCount++
+      // Call 1: parent succeeds with okResponse
+      if (generateCallCount === 1) return okResponse
+      // Call 2: first variant (square) fails with hard error (no retry)
+      if (generateCallCount === 2) throw new FakeBudgetError('budget exceeded')
+      // Call 3+: subsequent variants succeed with variant response
+      return variantOkResponse
+    })
+    mockManifestGetSlot.mockImplementation(async (_appId: string, path: string) => {
+      if (path === 'logo/horizontal') {
+        return {
+          success: true,
+          slot: {
+            currentUrl: 'https://cdn/horizontal.png',
+            logoSourceMap: { 'https://cdn/horizontal.png': { sessionId: 's', logoId: 'l', groupId: 'g1' } },
+            logoGroupId: 'g1',
+          },
+        }
+      }
+      return { success: false }
+    })
+
+    const res = await logoGenerationService.start({
+      ...baseParams, followUpVariants: ['square', 'favicon'],
+    })
+    await res.done
+    await flushAsync()
+
+    // Parent (1) + variant-square fails hard (2) + variant-favicon succeeds (3)
+    expect(mockGenerate).toHaveBeenCalledTimes(3)
+    // Only favicon variant saved (square failed during generate)
+    expect(mockSaveSingleSlot).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not fire follow-ups when parent is cancelled', async () => {
+    abortable()
+
+    const res = await logoGenerationService.start({ ...baseParams, followUpVariants: ['favicon'] })
+    await Promise.all([logoGenerationService.cancel('app-1', res.jobId), res.done])
+    await flushAsync()
+
+    // Parent was cancelled — followUpVariants check is never reached
+    expect(mockSaveSingleSlot).not.toHaveBeenCalled()
+    expect(mockSaveSlots).not.toHaveBeenCalled()
+  })
+
+  it('aborts follow-up chain when a user job registers between variants', async () => {
+    let generateCallCount = 0
+    mockGenerate.mockImplementation(async ({ signal }: { signal?: AbortSignal }) => {
+      generateCallCount++
+      if (generateCallCount === 1) return okResponse
+      if (generateCallCount === 2) {
+        // First variant (square): block until the abort signal fires.
+        // A user job starting for the same app will supersede this variant.
+        return new Promise((resolve, reject) => {
+          if (signal?.aborted) { reject(new DOMException('aborted', 'AbortError')); return }
+          signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')))
+          // If never aborted, hang forever (test would time out — signals the test is wrong)
+        })
+      }
+      // Call 3: user job's generate
+      return okResponse
+    })
+    mockManifestGetSlot.mockImplementation(async (_appId: string, path: string) => {
+      if (path === 'logo/horizontal') {
+        return {
+          success: true,
+          slot: {
+            currentUrl: 'https://cdn/horizontal.png',
+            logoSourceMap: { 'https://cdn/horizontal.png': { sessionId: 's', logoId: 'l', groupId: 'g1' } },
+            logoGroupId: 'g1',
+          },
+        }
+      }
+      return { success: false }
+    })
+
+    const res = await logoGenerationService.start({
+      ...baseParams, followUpVariants: ['square', 'favicon'],
+    })
+    await res.done
+    await flushAsync()
+
+    // Variant 'square' is now in-flight, paused in generate (waiting on abort).
+    // Start a user job — it supersedes the variant (aborts it) and registers in inFlight.
+    const userRes = await logoGenerationService.start({ ...baseParams, layouts: ['horizontal'] })
+    await flushAsync()
+
+    // Chain should have detected the user job in inFlight and bailed before favicon.
+    // Calls: parent (1) + square variant aborted (2) + user job (3). No favicon (4).
+    expect(generateCallCount).toBe(3)
+    // saveSingleSlot is only called for successful follow-up variants — none completed.
+    expect(mockSaveSingleSlot).not.toHaveBeenCalled()
+
+    await userRes.done
+  })
+})
+
+describe('LogoGenerationService.startVariant groupId', () => {
+  const variantResponse = {
+    sessionId: 'vs',
+    logo: { id: 'vl', generatedAt: 'now', prompt: 'p', modelUsed: 'm', urls: { square: { transparent: 'https://cdn/fav.png' } } },
+  }
+  const variantParams = {
+    appId: 'app-1', variant: 'favicon' as const, sourceUrl: 'https://cdn/source.png',
+    customerId: 'c', budgetUserId: 'u',
+  }
+
+  it('inherits logoGroupId from source slot when it already has one', async () => {
+    mockGenerate.mockResolvedValue(variantResponse)
+    mockManifestGetSlot.mockImplementation(async (_appId: string, path: string) => {
+      if (path === 'logo/primary') {
+        return {
+          success: true,
+          slot: {
+            currentUrl: 'https://cdn/source.png',
+            logoGroupId: 'existing-group',
+            logoSourceMap: { 'https://cdn/source.png': { sessionId: 's1', logoId: 'l1', groupId: 'existing-group' } },
+          },
+        }
+      }
+      return { success: false }
+    })
+
+    const res = await logoGenerationService.startVariant(variantParams)
+    await res.done
+
+    expect(mockSaveSingleSlot).toHaveBeenCalledTimes(1)
+    const groupArg: string = mockSaveSingleSlot.mock.calls[0][7]
+    expect(groupArg).toBe('existing-group')
+    // Should NOT back-annotate (source already has group)
+    expect(mockManifestSetSlot).not.toHaveBeenCalled()
+  })
+
+  it('creates a new groupId and back-annotates source when source has no groupId', async () => {
+    mockGenerate.mockResolvedValue(variantResponse)
+    mockManifestGetSlot.mockImplementation(async (_appId: string, path: string) => {
+      if (path === 'logo/primary') {
+        return {
+          success: true,
+          slot: {
+            currentUrl: 'https://cdn/source.png',
+            logoSourceMap: { 'https://cdn/source.png': { sessionId: 's1', logoId: 'l1' } },
+          },
+        }
+      }
+      return { success: false }
+    })
+
+    const res = await logoGenerationService.startVariant(variantParams)
+    await res.done
+
+    // Should back-annotate source
+    expect(mockManifestSetSlot).toHaveBeenCalledTimes(1)
+    const [, path, slot] = mockManifestSetSlot.mock.calls[0]
+    expect(path).toBe('logo/primary')
+    expect(slot.logoGroupId).toEqual(expect.any(String))
+    expect(slot.logoSourceMap['https://cdn/source.png'].groupId).toBe(slot.logoGroupId)
+
+    // Should pass the new groupId to saveSingleLogoSlot
+    const groupArg: string = mockSaveSingleSlot.mock.calls[0][7]
+    expect(groupArg).toBe(slot.logoGroupId)
+  })
+
+  it('uses fallback UUID when source URL is not found in any slot', async () => {
+    mockGenerate.mockResolvedValue(variantResponse)
+    mockManifestGetSlot.mockResolvedValue({ success: false })
+
+    const res = await logoGenerationService.startVariant(variantParams)
+    await res.done
+
+    expect(mockSaveSingleSlot).toHaveBeenCalledTimes(1)
+    const groupArg: string = mockSaveSingleSlot.mock.calls[0][7]
+    // Falls back to jobId as the groupId
+    expect(groupArg).toBe(res.jobId)
   })
 })

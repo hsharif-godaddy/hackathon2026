@@ -10,7 +10,11 @@ export const LOGO_SLOT_PATHS: Record<LogoLayout, string> = {
   vertical: 'logo/vertical',
 }
 
+export const FAVICON_SLOT_PATH = 'logo/favicon'
+
 export const ALL_LAYOUTS: LogoLayout[] = ['square', 'horizontal', 'vertical']
+
+export const ALL_LOGO_SLOT_PATHS: string[] = [...Object.values(LOGO_SLOT_PATHS), FAVICON_SLOT_PATH]
 
 export interface SaveSlotsResult {
   savedSlots: Partial<Record<LogoLayout, string>>
@@ -42,9 +46,9 @@ export async function saveLogoToSlots(
     const slotPath = LOGO_SLOT_PATHS[layout]
     const transparent = variants.transparent
 
-    const solidUrlMap = { [transparent]: variants.solid }
-    const mockupUrlMap = { [transparent]: variants.mockup }
-    const landscapeMockupUrlMap = { [transparent]: variants.landscapeMockup }
+    const solidUrlMap: Record<string, string> = variants.solid ? { [transparent]: variants.solid } : {}
+    const mockupUrlMap: Record<string, string> = variants.mockup ? { [transparent]: variants.mockup } : {}
+    const landscapeMockupUrlMap: Record<string, string> = variants.landscapeMockup ? { [transparent]: variants.landscapeMockup } : {}
     const logoSourceMap = {
       [transparent]: { sessionId: response.sessionId, logoId: response.logo.id },
     }
@@ -53,7 +57,7 @@ export async function saveLogoToSlots(
     let mergedSolidUrlMap = { ...solidUrlMap }
     let mergedMockupUrlMap = { ...mockupUrlMap }
     let mergedLandscapeMockupUrlMap = { ...landscapeMockupUrlMap }
-    let mergedLogoSourceMap = { ...logoSourceMap }
+    let mergedLogoSourceMap: Record<string, { sessionId?: string; logoId?: string; groupId?: string }> = { ...logoSourceMap }
     let createdAt = now
 
     try {
@@ -77,7 +81,7 @@ export async function saveLogoToSlots(
       if (existing.success && existing.slot) {
         const old = existing.slot
         const oldUrls = [old.currentUrl, ...(old.alternatives ?? [])].filter(
-          (u) => u && u !== transparent,
+          (u) => u && u !== transparent && !isShimmerUrl(u),
         )
         mergedAlternatives = oldUrls
         mergedSolidUrlMap = { ...(old.solidUrlMap ?? {}), ...solidUrlMap }
@@ -117,9 +121,105 @@ export async function saveLogoToSlots(
     }
   }
 
+  // Cascade: a new generate_logo has no groupId, so any sibling slot still
+  // carrying a logoGroupId belongs to an old set and is now stale.
+  const writtenSlotPaths: Set<string> = new Set(
+    Object.keys(savedSlots).map((l) => LOGO_SLOT_PATHS[l as LogoLayout]),
+  )
+  const allLogoSlotPaths: string[] = [...Object.values(LOGO_SLOT_PATHS), FAVICON_SLOT_PATH]
+  for (const siblingPath of allLogoSlotPaths) {
+    if (writtenSlotPaths.has(siblingPath)) continue
+    try {
+      const siblingResult = await mediaManifestService.getSlot(appId, siblingPath)
+      if (
+        siblingResult.success &&
+        siblingResult.slot?.logoGroupId &&
+        siblingResult.slot.logoSourceMap
+      ) {
+        await mediaManifestService.setSlot(appId, siblingPath, {
+          ...siblingResult.slot,
+          logoGroupId: undefined,
+          lastUpdated: now,
+        })
+        logger.info('skill.media-logo.cascade_clear_group', { appId, siblingPath })
+      }
+    } catch (err) {
+      logger.warn('skill.media-logo.cascade_clear_group_failed', { appId, siblingPath, error: err instanceof Error ? err.message : String(err) })
+    }
+  }
+
   return { savedSlots, slotSaveFailed: failedLayouts.length > 0, failedLayouts, skippedLayouts }
 }
 // --- END moved block ---
+
+/** Save a single logo URL to an arbitrary slot path. Used by variant jobs
+ *  (favicon, layout re-derive) where only one slot is affected. Respects the
+ *  userModified guard: skips slots the user manually overrode unless THIS job
+ *  owns the pending marker. Returns true when saved, false when skipped. */
+export async function saveSingleLogoSlot(
+  appId: string,
+  slotPath: string,
+  transparentUrl: string,
+  sessionId: string,
+  logoId: string,
+  ownerJobId: string,
+  searchQuery: string,
+  groupId?: string,
+): Promise<boolean> {
+  const now = new Date().toISOString()
+
+  let createdAt = now
+  let mergedAlternatives: string[] = []
+  let mergedLogoSourceMap: Record<string, { sessionId?: string; logoId?: string; groupId?: string }> = {}
+
+  try {
+    const existing = await mediaManifestService.getSlot(appId, slotPath)
+    if (
+      existing.success &&
+      existing.slot?.userModified === true &&
+      existing.slot.pendingJobId !== ownerJobId
+    ) {
+      logger.info('skill.media-logo.variant_slot_skipped_user_modified', {
+        appId,
+        slotPath,
+        ownerJobId,
+      })
+      return false
+    }
+    if (existing.success && existing.slot) {
+      const old = existing.slot
+      const oldUrls = [old.currentUrl, ...(old.alternatives ?? [])].filter(
+        (u) => u && u !== transparentUrl,
+      )
+      mergedAlternatives = oldUrls
+      mergedLogoSourceMap = { ...(old.logoSourceMap ?? {}) }
+      createdAt = old.createdAt || now
+    }
+
+    mergedLogoSourceMap[transparentUrl] = { sessionId, logoId, ...(groupId ? { groupId } : {}) }
+
+    await mediaManifestService.setSlot(appId, slotPath, {
+      mediaType: 'logo',
+      currentUrl: transparentUrl,
+      searchQuery,
+      alternatives: mergedAlternatives,
+      logoSourceMap: mergedLogoSourceMap,
+      ...(groupId ? { logoGroupId: groupId } : {}),
+      userModified: false,
+      createdAt,
+      lastUpdated: now,
+    })
+    logger.info('skill.media-logo.variant_slot_saved', { appId, slotPath, sessionId })
+    return true
+  } catch (err) {
+    logger.error('skill.media-logo.variant_slot_save_failed', {
+      appId,
+      slotPath,
+      error: err instanceof Error ? err.message : String(err),
+    })
+    return false
+  }
+}
 
 /** Snapshot the current real logos for the given slots (so cancel/failure can
  *  restore them). A shimmer placeholder or missing slot is NOT snapshotted.
@@ -149,10 +249,10 @@ export async function snapshotSlots(
 }
 
 /** Tag each requested slot with the owning jobId so app-UI can show progress.
- *  Regeneration (a real prior logo exists in `previousSlots`) KEEPS the prior
- *  hosted currentUrl + all variant maps, so the UI can show the existing logo
- *  under an "updating" shimmer overlay. A fresh slot points at the shimmer asset
- *  so the UI shows a bare animated shimmer. */
+ *  Always writes the shimmer SVG as currentUrl so the BrandBook sidebar never
+ *  flashes the old logo during regeneration. The old state is preserved in
+ *  `previousSlots` for revert on cancel/failure. Variant maps are carried forward
+ *  so saveLogoToSlots can still merge them. */
 export async function placeShimmerSlots(
   appId: string,
   slotPaths: string[],
@@ -163,26 +263,23 @@ export async function placeShimmerSlots(
   const now = new Date().toISOString()
   for (const slotPath of slotPaths) {
     const prior = previousSlots[slotPath]
-    if (prior) {
-      await mediaManifestService.setSlot(appId, slotPath, {
-        ...prior,
-        pendingJobId: jobId,
-        lastUpdated: now,
-      })
-      logger.info('logo.slots.precreate', { appId, jobId, slot: slotPath, regeneration: true })
-    } else {
-      await mediaManifestService.setSlot(appId, slotPath, {
-        mediaType: 'logo',
-        currentUrl: shimmerUrlBySlot[slotPath] ?? LOGO_SHIMMER_SLOT_URLS.square,
-        searchQuery: '',
-        alternatives: [],
-        userModified: false,
-        pendingJobId: jobId,
-        createdAt: now,
-        lastUpdated: now,
-      })
-      logger.info('logo.slots.precreate', { appId, jobId, slot: slotPath, regeneration: false })
-    }
+    await mediaManifestService.setSlot(appId, slotPath, {
+      mediaType: 'logo',
+      currentUrl: shimmerUrlBySlot[slotPath] ?? LOGO_SHIMMER_SLOT_URLS.square,
+      searchQuery: prior?.searchQuery ?? '',
+      alternatives: prior?.alternatives ?? [],
+      ...(prior?.solidUrlMap ? { solidUrlMap: prior.solidUrlMap } : {}),
+      ...(prior?.mockupUrlMap ? { mockupUrlMap: prior.mockupUrlMap } : {}),
+      ...(prior?.landscapeMockupUrlMap ? { landscapeMockupUrlMap: prior.landscapeMockupUrlMap } : {}),
+      ...(prior?.logoSourceMap ? { logoSourceMap: prior.logoSourceMap } : {}),
+      ...(prior?.logoGroupId ? { logoGroupId: prior.logoGroupId } : {}),
+      ...(prior?.currentUrl?.startsWith('http') ? { priorUrl: prior.currentUrl } : {}),
+      userModified: false,
+      pendingJobId: jobId,
+      createdAt: prior?.createdAt ?? now,
+      lastUpdated: now,
+    })
+    logger.info('logo.slots.precreate', { appId, jobId, slot: slotPath, regeneration: !!prior })
   }
 }
 

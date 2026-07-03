@@ -440,11 +440,7 @@ interface MediaThumbnailProps {
 
 export function MediaThumbnail({ name, slot, previewBaseUrl, folders, onMoveToFolder, onCreateFolder, onModify, onDelete, onSelect, isSelected, isInsideFolder, onRemoveFromFolder }: MediaThumbnailProps) {
   const isPending = !!slot.pendingJobId
-  const priorLogoUrl =
-    isPending && slot.currentUrl &&
-    (slot.currentUrl.startsWith('http://') || slot.currentUrl.startsWith('https://'))
-      ? slot.currentUrl
-      : undefined
+  const priorLogoUrl: string | undefined = isPending ? slot.priorUrl : undefined
 
   const isVideo = slot.mediaType === 'video'
   const isImage = slot.mediaType === 'image' || slot.mediaType === 'generated' || slot.mediaType === 'logo'

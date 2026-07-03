@@ -533,3 +533,243 @@ describe('LogoService', () => {
     ).rejects.toThrow(/no logos/)
   })
 })
+
+describe('LogoService V3 methods', () => {
+  let logoService: typeof import('../LogoService.js').logoService
+  let BudgetExceededError: typeof import('@airo/ai-common').BudgetExceededError
+
+  const v3BaseInput = {
+    appId: 'app-1',
+    customerId: 'cust-1',
+    budgetUserId: 'bu-1',
+  }
+
+  const v3ApiOk = {
+    id: 'sess-v3',
+    sessionId: 'sess-v3',
+    logos: [{ id: 'logo-v3', transparentUrl: 'https://cdn/transparent.png', mockupUrl: 'https://cdn/mockup.png' }],
+  }
+
+  beforeEach(async () => {
+    vi.clearAllMocks()
+    fetchMock.mockReset()
+    process.env.LOGO_API_URL = 'https://logo-agent.test/'
+    ;({ logoService } = await import('../LogoService.js'))
+    ;({ BudgetExceededError } = await import('@airo/ai-common'))
+  })
+
+  afterEach(() => {
+    if (PREV_LOGO_API_URL === undefined) delete process.env.LOGO_API_URL
+    else process.env.LOGO_API_URL = PREV_LOGO_API_URL
+  })
+
+  describe('generateV3', () => {
+    it('POSTs to /api/v3/logo/generate with variant field and correct headers', async () => {
+      fetchMock.mockResolvedValueOnce(apiResponse(v3ApiOk))
+
+      const result = await logoService.generateV3({
+        ...v3BaseInput,
+        prompt: 'a modern mark',
+        layout: 'horizontal',
+      })
+
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+      const [url, opts] = fetchMock.mock.calls[0]
+      expect(url).toBe('https://logo-agent.test/api/v3/logo/generate')
+      expect(opts.method).toBe('POST')
+      expect(JSON.parse(opts.body)).toEqual({ prompt: 'a modern mark', variant: 'horizontal' })
+      expect(opts.headers).toMatchObject({
+        Authorization: 'Bearer s2s-token',
+        'x-app-key': 'airo-app-builder',
+        'x-app-builder-app-id': 'app-1',
+        'x-customer-id': 'cust-1',
+        'x-budget-user-id': 'bu-1',
+      })
+      expect(result.sessionId).toBe('sess-v3')
+      expect(result.logo.id).toBe('logo-v3')
+    })
+
+    it('maps V3 response into LogoSessionResponse with correct layout key', async () => {
+      fetchMock.mockResolvedValueOnce(apiResponse(v3ApiOk))
+
+      const result = await logoService.generateV3({
+        ...v3BaseInput,
+        prompt: 'logo',
+        layout: 'vertical',
+      })
+
+      expect(result.logo.urls.vertical).toEqual({
+        transparent: 'https://cdn/transparent.png',
+        mockup: 'https://cdn/mockup.png',
+      })
+      expect(result.logo.urls.square).toBeUndefined()
+      expect(result.logo.urls.horizontal).toBeUndefined()
+    })
+
+    it('includes inspiration and colors when provided', async () => {
+      fetchMock.mockResolvedValueOnce(apiResponse(v3ApiOk))
+
+      await logoService.generateV3({
+        ...v3BaseInput,
+        prompt: 'logo',
+        layout: 'square',
+        inspiration: ['https://example.com/ref.png'],
+        colors: { primary: '#FF0000', background: '#FFFFFF' },
+      })
+
+      const body = JSON.parse(fetchMock.mock.calls[0][1].body)
+      expect(body.inspiration).toEqual(['https://example.com/ref.png'])
+      expect(body.colors).toEqual({ primary: '#FF0000', background: '#FFFFFF' })
+    })
+
+    it('omits optional fields when not provided', async () => {
+      fetchMock.mockResolvedValueOnce(apiResponse(v3ApiOk))
+
+      await logoService.generateV3({ ...v3BaseInput, prompt: 'simple', layout: 'square' })
+
+      const body = JSON.parse(fetchMock.mock.calls[0][1].body)
+      expect(body).not.toHaveProperty('inspiration')
+      expect(body).not.toHaveProperty('colors')
+      expect(body).not.toHaveProperty('brandName')
+    })
+
+    it('maps 402 to BudgetExceededError', async () => {
+      fetchMock.mockResolvedValueOnce(apiResponse('budget gone', { status: 402 }))
+
+      await expect(
+        logoService.generateV3({ ...v3BaseInput, prompt: 'logo', layout: 'square' }),
+      ).rejects.toBeInstanceOf(BudgetExceededError)
+    })
+
+    it('throws on 500 without leaking upstream body', async () => {
+      fetchMock.mockResolvedValueOnce(apiResponse('secret-detail', { status: 500 }))
+
+      const err = await logoService
+        .generateV3({ ...v3BaseInput, prompt: 'logo', layout: 'square' })
+        .catch((e: Error) => e)
+
+      expect(err.message).toMatch(/Logo API call failed \(status 500\)/)
+      expect(err.message).not.toContain('secret-detail')
+    })
+
+    it('throws when API returns empty logos array', async () => {
+      fetchMock.mockResolvedValueOnce(apiResponse({ id: 's', sessionId: 's', logos: [] }))
+
+      await expect(
+        logoService.generateV3({ ...v3BaseInput, prompt: 'logo', layout: 'square' }),
+      ).rejects.toThrow(/no logos/)
+    })
+
+    it('throws when logo has no transparentUrl', async () => {
+      fetchMock.mockResolvedValueOnce(
+        apiResponse({ id: 's', sessionId: 's', logos: [{ id: 'x', mockupUrl: 'https://cdn/m.png' }] }),
+      )
+
+      await expect(
+        logoService.generateV3({ ...v3BaseInput, prompt: 'logo', layout: 'square' }),
+      ).rejects.toThrow(/no transparent URL/)
+    })
+
+    it('falls back to transparentUrl for mockup when mockupUrl is missing', async () => {
+      fetchMock.mockResolvedValueOnce(
+        apiResponse({ id: 's', sessionId: 's', logos: [{ id: 'x', transparentUrl: 'https://cdn/t.png' }] }),
+      )
+
+      const result = await logoService.generateV3({ ...v3BaseInput, prompt: 'logo', layout: 'square' })
+      expect(result.logo.urls.square!.mockup).toBe('https://cdn/t.png')
+    })
+
+    it('forwards traceparent and conversationId headers', async () => {
+      fetchMock.mockResolvedValueOnce(apiResponse(v3ApiOk))
+
+      await logoService.generateV3({
+        ...v3BaseInput,
+        prompt: 'logo',
+        layout: 'square',
+        traceparent: '00-abc-def-01',
+        conversationId: 'conv-123',
+      })
+
+      const headers = fetchMock.mock.calls[0][1].headers
+      expect(headers.traceparent).toBe('00-abc-def-01')
+      expect(headers['x-conversation-id']).toBe('conv-123')
+    })
+  })
+
+  describe('editV3', () => {
+    it('POSTs to /api/v3/logo/edit with sourceUrl and variant', async () => {
+      fetchMock.mockResolvedValueOnce(apiResponse(v3ApiOk))
+
+      await logoService.editV3({
+        ...v3BaseInput,
+        sourceUrl: 'https://cdn/source.png',
+        prompt: 'make it blue',
+        layout: 'horizontal',
+      })
+
+      const [url, opts] = fetchMock.mock.calls[0]
+      expect(url).toBe('https://logo-agent.test/api/v3/logo/edit')
+      const body = JSON.parse(opts.body)
+      expect(body.sourceUrl).toBe('https://cdn/source.png')
+      expect(body.prompt).toBe('make it blue')
+      expect(body.variant).toBe('horizontal')
+    })
+
+    it('maps 402 to BudgetExceededError', async () => {
+      fetchMock.mockResolvedValueOnce(apiResponse('budget', { status: 402 }))
+
+      await expect(
+        logoService.editV3({ ...v3BaseInput, sourceUrl: 'u', prompt: 'p', layout: 'square' }),
+      ).rejects.toBeInstanceOf(BudgetExceededError)
+    })
+  })
+
+  describe('generateVariantV3', () => {
+    it('POSTs to /api/v3/logo/generate_variant with variant and sourceUrl', async () => {
+      fetchMock.mockResolvedValueOnce(apiResponse(v3ApiOk))
+
+      await logoService.generateVariantV3({
+        ...v3BaseInput,
+        sourceUrl: 'https://cdn/source.png',
+        variant: 'favicon',
+      })
+
+      const [url, opts] = fetchMock.mock.calls[0]
+      expect(url).toBe('https://logo-agent.test/api/v3/logo/generate_variant')
+      const body = JSON.parse(opts.body)
+      expect(body.sourceUrl).toBe('https://cdn/source.png')
+      expect(body.variant).toBe('favicon')
+    })
+
+    it('includes optional prompt and brandName when provided', async () => {
+      fetchMock.mockResolvedValueOnce(apiResponse(v3ApiOk))
+
+      await logoService.generateVariantV3({
+        ...v3BaseInput,
+        sourceUrl: 'https://cdn/source.png',
+        variant: 'horizontal',
+        prompt: 'wider version',
+        brandName: 'Acme Co',
+      })
+
+      const body = JSON.parse(fetchMock.mock.calls[0][1].body)
+      expect(body.prompt).toBe('wider version')
+      expect(body.brandName).toBe('Acme Co')
+    })
+
+    it('maps response to square layout key (variant endpoint convention)', async () => {
+      fetchMock.mockResolvedValueOnce(apiResponse(v3ApiOk))
+
+      const result = await logoService.generateVariantV3({
+        ...v3BaseInput,
+        sourceUrl: 'https://cdn/source.png',
+        variant: 'favicon',
+      })
+
+      expect(result.logo.urls.square).toEqual({
+        transparent: 'https://cdn/transparent.png',
+        mockup: 'https://cdn/mockup.png',
+      })
+    })
+  })
+})

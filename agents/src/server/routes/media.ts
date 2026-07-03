@@ -38,6 +38,7 @@ import { createForWorkspace } from '../../workspace/index.js';
 import { collectBoundedBuffer } from '../../workspace/files.js';
 import { generateImageCaptionFromBuffer, generateVideoCaptionFromBuffer } from '../../services/MediaCaptionService.js';
 import { emitMediaCaption } from '../media-caption-emit.js';
+import { ALL_LOGO_SLOT_PATHS } from '../../services/logo/logo-slots.js';
 
 // Image-level caption cache: persistent URL → caption.
 // Prevents re-captioning the same image across slots or on swap-back.
@@ -1153,6 +1154,97 @@ router.get('/:appId/slots/:slotName(*)', async (req: Request, res: Response) => 
 });
 
 /**
+ * GET /media/:appId/logo/group/:groupId
+ * Returns which logo slots have alternatives from this groupId.
+ */
+router.get('/:appId/logo/group/:groupId', async (req: Request, res: Response) => {
+  const { appId, groupId } = req.params;
+  if (!appId || !groupId) {
+    return res.status(400).json({ success: false, error: 'appId and groupId are required' });
+  }
+
+  try {
+    const slots: Record<string, { currentGroupId?: string; hasGroupUrl: boolean; url?: string }> = {};
+    for (const slotPath of ALL_LOGO_SLOT_PATHS) {
+      const result = await mediaManifestService.getSlot(appId, slotPath);
+      if (!result.success || !result.slot) continue;
+      const matchingEntry = Object.entries(result.slot.logoSourceMap ?? {}).find(
+        ([, meta]) => meta.groupId === groupId,
+      );
+      slots[slotPath] = {
+        currentGroupId: result.slot.logoGroupId,
+        hasGroupUrl: !!matchingEntry,
+        url: matchingEntry?.[0],
+      };
+    }
+    return res.json({ success: true, groupId, slots });
+  } catch (error) {
+    logger.error('route.media.logo_group_info.error', {
+      appId, groupId, error: error instanceof Error ? error.message : String(error),
+    });
+    return res.status(500).json({ success: false, error: 'Failed to get group info' });
+  }
+});
+
+/**
+ * PUT /media/:appId/logo/restore-group
+ * Restore all logo slots to the versions from a specific generation group.
+ */
+router.put('/:appId/logo/restore-group', async (req: Request, res: Response) => {
+  const appId = req.params.appId;
+  const { groupId } = req.body;
+  if (!appId || !groupId || typeof groupId !== 'string') {
+    return res.status(400).json({ success: false, error: 'appId and groupId are required' });
+  }
+
+  const restoredSlots: string[] = [];
+  try {
+    for (const slotPath of ALL_LOGO_SLOT_PATHS) {
+      const result = await mediaManifestService.getSlot(appId, slotPath);
+      if (!result.success || !result.slot?.logoSourceMap) continue;
+
+      const matchingEntry = Object.entries(result.slot.logoSourceMap).find(
+        ([, meta]) => meta.groupId === groupId,
+      );
+      if (!matchingEntry) continue;
+
+      const [targetUrl] = matchingEntry;
+      if (result.slot.currentUrl === targetUrl) {
+        // Already showing this URL — just ensure logoGroupId is set
+        if (result.slot.logoGroupId !== groupId) {
+          await mediaManifestService.setSlot(appId, slotPath, {
+            ...result.slot,
+            logoGroupId: groupId,
+            lastUpdated: new Date().toISOString(),
+          });
+        }
+        continue;
+      }
+
+      // Swap: promote target, move current to alternatives
+      const allUrls: string[] = [result.slot.currentUrl, ...(result.slot.alternatives ?? [])].filter(
+        (u) => u && u !== targetUrl,
+      );
+      await mediaManifestService.setSlot(appId, slotPath, {
+        ...result.slot,
+        currentUrl: targetUrl,
+        alternatives: allUrls,
+        logoGroupId: groupId,
+        userModified: false,
+        lastUpdated: new Date().toISOString(),
+      });
+      restoredSlots.push(slotPath);
+    }
+    return res.json({ success: true, restoredSlots });
+  } catch (error) {
+    logger.error('route.media.restore_group.error', {
+      appId, groupId, error: error instanceof Error ? error.message : String(error),
+    });
+    return res.status(500).json({ success: false, error: 'Failed to restore group' });
+  }
+});
+
+/**
  * PUT /media/:appId/slots/:slotName
  * Update a slot's current image (swap with an alternative)
  *
@@ -1259,6 +1351,33 @@ router.put('/:appId/slots/:slotName(*)', async (req: Request, res: Response) => 
             }
           : () => Promise.resolve(null),
       });
+    }
+
+    // Cascade: if a logo slot was swapped and the promoted URL has a different
+    // groupId than sibling slots, mark siblings as stale (clear their logoGroupId).
+    if (isLogo && slotName.startsWith('logo/') && result.slot?.logoSourceMap) {
+      const promotedMeta = result.slot.logoSourceMap[result.slot.currentUrl];
+      const promotedGroupId: string | undefined = promotedMeta?.groupId;
+      for (const siblingPath of ALL_LOGO_SLOT_PATHS) {
+        if (siblingPath === slotName) continue;
+        try {
+          const sibResult = await mediaManifestService.getSlot(appId, siblingPath);
+          if (
+            sibResult.success &&
+            sibResult.slot?.logoGroupId &&
+            sibResult.slot.logoSourceMap &&
+            sibResult.slot.logoGroupId !== promotedGroupId
+          ) {
+            await mediaManifestService.setSlot(appId, siblingPath, {
+              ...sibResult.slot,
+              logoGroupId: undefined,
+              lastUpdated: new Date().toISOString(),
+            });
+          }
+        } catch (err) {
+          logger.warn('route.media.swap_cascade_failed', { appId, siblingPath, error: err instanceof Error ? err.message : String(err) });
+        }
+      }
     }
 
     return res.json({
@@ -1822,7 +1941,7 @@ router.post(
             if (name === slotName) continue;
 
             // Case A: both slots point at the same persistent file
-            const sharesUrl = s.currentUrl === uploadedUrl || s.alternatives.includes(uploadedUrl);
+            const sharesUrl = s.currentUrl === uploadedUrl || (s.alternatives ?? []).includes(uploadedUrl);
 
             // Case B: different persistent file but produced from the same chat upload
             const sharesChatSource = !!(

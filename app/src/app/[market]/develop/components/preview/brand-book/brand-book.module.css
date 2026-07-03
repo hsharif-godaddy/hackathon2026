@@ -110,6 +110,7 @@
   border-radius: 0.75rem;
   border: 1px solid var(--border);
   overflow: hidden;
+  padding: 1.5rem;
 }
 
 .logoPanelMedia {

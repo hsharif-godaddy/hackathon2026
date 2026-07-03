@@ -117,15 +117,8 @@ export function MediaSlotsGrid({
         if (!slot) return null
 
         // In-flight async logo job. SHARED CONTRACT: when currentUrl is a real hosted https logo
-        // this is a regeneration — show the existing logo (dimmed) under an animated overlay. When
-        // currentUrl is the /airo-assets/* shimmer placeholder (not http, does not resolve on the
-        // builder origin), it's a fresh generation — render a bare shimmer and skip URL resolution.
         const isPending = !!slot.pendingJobId
-        const priorLogoUrl =
-          isPending && slot.currentUrl &&
-          (slot.currentUrl.startsWith('http://') || slot.currentUrl.startsWith('https://'))
-            ? slot.currentUrl
-            : undefined
+        const priorLogoUrl: string | undefined = isPending ? slot.priorUrl : undefined
 
         const isVideo = slot.mediaType === 'video'
         // For videos: thumbnailUrl is a static poster image, currentUrl is the actual video MP4

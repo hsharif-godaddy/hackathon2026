@@ -103,42 +103,45 @@ export function LogoSection({
   const downloadImage = useDownloadImage();
   const brandClickProps = { flow: 'logo-designer' as const };
 
-  // In-flight async logo job: shimmer the logo panel and never load the live currentUrl.
-  // Takes precedence over both the loaded and empty/placeholder states below.
+  // In-flight async logo job: regeneration shows the prior logo dimmed under an overlay;
+  // fresh generation shows a text placeholder (consistent with BrandApplicationsSection).
   if (isPending) {
     const isRegen = !!priorLightLogoUrl;
+    if (isRegen) {
+      return (
+        <SectionWrapper palette={palette}>
+          <SectionHeader num="01" label="Primary Mark" title="Logo" brand={brand} />
+          <Box gap="lg">
+            <div className={styles.logoPanelCard}>
+              <div
+                className={`${styles.logoPanelImage} relative`}
+                style={{ backgroundColor: palette.background ?? '#FFFFFF' }}
+              >
+                <Image
+                  src={priorLightLogoUrl}
+                  alt="Logo on light background"
+                  width={0}
+                  height={0}
+                  sizes="(max-width: 768px) 100vw, 50vw"
+                  unoptimized
+                  className={`${styles.logoPanelMedia} opacity-60`}
+                />
+                <LogoShimmerOverlay data-testid="logo-shimmer-overlay-light" />
+              </div>
+            </div>
+          </Box>
+        </SectionWrapper>
+      );
+    }
     return (
       <SectionWrapper palette={palette}>
         <SectionHeader num="01" label="Primary Mark" title="Logo" brand={brand} />
-        <Box gap="lg">
-          <div className={styles.logoPanelCard}>
-            <div
-              className={`${styles.logoPanelImage} relative`}
-              style={{ backgroundColor: '#FFFFFF' }}
-            >
-              {isRegen ? (
-                <>
-                  <Image
-                    src={priorLightLogoUrl}
-                    alt="Logo on light background"
-                    width={0}
-                    height={0}
-                    sizes="(max-width: 768px) 100vw, 50vw"
-                    unoptimized
-                    className={`${styles.logoPanelMedia} opacity-60`}
-                  />
-                  <LogoShimmerOverlay data-testid="logo-shimmer-overlay-light" />
-                </>
-              ) : (
-                <LogoShimmer
-                  className="w-full aspect-video"
-                  orientation="horizontal"
-                  data-testid="logo-shimmer-light"
-                />
-              )}
-            </div>
-          </div>
-        </Box>
+        <div className={styles.placeholderCard}>
+          <Spinner />
+          <text.span as="caption" style={{ opacity: 0.5 }}>
+            Generating your logo...
+          </text.span>
+        </div>
       </SectionWrapper>
     );
   }
@@ -173,7 +176,7 @@ export function LogoSection({
       {logoUrl ? (
         <Box gap="lg">
           <div className={styles.logoPanelCard}>
-            <div className={styles.logoPanelImage} style={{ backgroundColor: '#FFFFFF' }}>
+            <div className={styles.logoPanelImage} style={{ backgroundColor: palette.background ?? '#FFFFFF' }}>
               <Image
                 src={logoUrl}
                 alt="Logo on light background"

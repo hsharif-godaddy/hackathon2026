@@ -39,9 +39,9 @@ const TYPE_ATTR_RE: RegExp = /\btype=["'][^"']*["']/i;
 
 /**
  * Set the `type` attribute of the `/favicon.ico` `<link rel="icon">` to
- * `mimeType` so the declared type matches the bytes we self-hosted (the stock
- * template hard-codes `image/svg+xml`, which is wrong once we drop in a PNG/ICO
- * favicon). No-op when there's no such link or the type already matches.
+ * `mimeType` so the declared type matches the bytes we self-hosted. The stock
+ * template omits `type` — this adds it. No-op when there's no such link or the
+ * type already matches.
  */
 export function setFaviconLinkType(html: string, mimeType: string): string {
   const match: RegExpMatchArray | null = html.match(FAVICON_LINK_RE);

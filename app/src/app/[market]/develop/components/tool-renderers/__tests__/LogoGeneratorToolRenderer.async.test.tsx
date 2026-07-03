@@ -13,6 +13,12 @@ vi.mock('@/stores/useDevelopPageStore', () => ({
 vi.mock('@/hooks/useTranslations', () => ({
   useTranslations: () => (id: string) => id,
 }))
+vi.mock('@/hooks/useMediaSlot', () => ({
+  useMediaSlot: () => ({ slot: null, isLoading: false, refetch: () => {} }),
+}))
+vi.mock('@/hooks/useBrandData', () => ({
+  useBrandData: () => ({ data: null, isLoading: false, error: null }),
+}))
 
 import LogoGeneratorToolRenderer from '../LogoGeneratorToolRenderer'
 
@@ -52,8 +58,8 @@ describe('LogoGeneratorToolRenderer (async)', () => {
     }
     render(<LogoGeneratorToolRenderer toolName="media-logo__generate_logo" toolStatus="completed" toolId="t1" input={{}} result={startedResult as never} />)
     const img = screen.getByTestId('logo-result-image') as HTMLImageElement
-    // Solid variant preferred over transparent (matches the Brand Book light panel).
-    expect(img.getAttribute('src')).toBe('https://cdn.example/h-solid.png')
+    // Transparent preferred — rendered on brand-palette background via style prop.
+    expect(img.getAttribute('src')).toBe('https://cdn.example/h-transparent.png')
     expect(screen.queryByTestId('logo-generating-placeholder')).not.toBeInTheDocument()
   })
 
@@ -72,13 +78,13 @@ describe('LogoGeneratorToolRenderer (async)', () => {
             jobId: 'job-1',
             status: 'completed',
             slots: ['logo/horizontal'],
-            logo: { id: 'l1', urls: { horizontal: { solid: 'https://cdn.example/j1-solid.png' } } },
+            logo: { id: 'l1', urls: { horizontal: { transparent: 'https://cdn.example/j1-transparent.png' } } },
           },
           'job-2': {
             jobId: 'job-2',
             status: 'completed',
             slots: ['logo/horizontal'],
-            logo: { id: 'l2', urls: { horizontal: { solid: 'https://cdn.example/j2-solid.png' } } },
+            logo: { id: 'l2', urls: { horizontal: { transparent: 'https://cdn.example/j2-transparent.png' } } },
           },
         },
       },
@@ -89,7 +95,7 @@ describe('LogoGeneratorToolRenderer (async)', () => {
       <LogoGeneratorToolRenderer toolName="media-logo__generate_logo" toolStatus="completed" toolId="t1" input={{}} result={startedResult as never} />,
     )
     expect(screen.queryByTestId('logo-generating-placeholder')).not.toBeInTheDocument()
-    expect((screen.getByTestId('logo-result-image') as HTMLImageElement).getAttribute('src')).toBe('https://cdn.example/j1-solid.png')
+    expect((screen.getByTestId('logo-result-image') as HTMLImageElement).getAttribute('src')).toBe('https://cdn.example/j1-transparent.png')
     unmount()
 
     // Newer card (job-2) — shows its own logo.
@@ -97,7 +103,7 @@ describe('LogoGeneratorToolRenderer (async)', () => {
       <LogoGeneratorToolRenderer toolName="media-logo__generate_logo" toolStatus="completed" toolId="t2" input={{}} result={startedResult2 as never} />,
     )
     expect(screen.queryByTestId('logo-generating-placeholder')).not.toBeInTheDocument()
-    expect((screen.getByTestId('logo-result-image') as HTMLImageElement).getAttribute('src')).toBe('https://cdn.example/j2-solid.png')
+    expect((screen.getByTestId('logo-result-image') as HTMLImageElement).getAttribute('src')).toBe('https://cdn.example/j2-transparent.png')
   })
 
   it('renders a warning caption listing failed layouts when slotSaveFailed is set, while still showing the logo', () => {
@@ -110,7 +116,7 @@ describe('LogoGeneratorToolRenderer (async)', () => {
             slots: ['logo/horizontal'],
             slotSaveFailed: true,
             failedLayouts: ['vertical'],
-            logo: { id: 'l', urls: { horizontal: { solid: 'https://cdn.example/h-solid.png' } } },
+            logo: { id: 'l', urls: { horizontal: { transparent: 'https://cdn.example/h-transparent.png' } } },
           },
         },
       },

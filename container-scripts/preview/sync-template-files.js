@@ -312,7 +312,8 @@ const SYNC_MANIFEST = [
       '9170b78302b5d16948b51b7acdae6d72', // before airoShareToken-strip script + same-origin referrer-policy
       '17827fb25e25787b2f7bd0fd7d5e0e37', // before airo-video-slots.js script tag + share-token rationale comments removed
       'ba06ea07c92a093f90d70b2b52199652', // before airo-video-slots.js script tag (corrects mis-hashed entry above)
-      'f2329d6a7b9a53f769a160487908c3bd'  // before airo-logo-orientation.js script tag
+      'f2329d6a7b9a53f769a160487908c3bd', // before airo-logo-orientation.js script tag
+      'b9ec2dcfbdac457fd85bdc06f15261cd'  // before favicon link type attr removal
     ],
     force: false
   },

@@ -1,15 +1,15 @@
 /**
- * Logo Service — calls POST /api/logo/create on gai-logo-agent.
+ * Logo Service — HTTP client for gai-logo-agent.
  *
- * The endpoint takes a natural-language prompt + layouts (+ optional
- * `referenceUrl` for edits) and returns hosted variant URLs per layout.
- * No OpenAI calls or workspace uploads happen here — the API owns image
- * generation and hosting end-to-end.
+ * V1 (legacy): `generate()` calls POST /api/logo/create (multi-layout, flat-keyed response).
+ * V3: `generateV3()`, `editV3()`, `generateVariantV3()` call the v3 endpoints
+ *     (single-layout per call; response uses flat `transparentUrl`/`mockupUrl` keys
+ *     mapped into `urls[requestedLayout]`).
  *
  * The media-logo skill tool consumes the public types (LayoutUrls,
- * ProcessedLogo, LogoSessionResponse). Internally we map the API's
- * flat-keyed ProcessedLogo (e.g. `horizontalTransparentUrl`) into
- * per-layout `urls.{square,horizontal,vertical}` bundles.
+ * ProcessedLogo, LogoSessionResponse). V3 methods share a private
+ * `callV3Endpoint` helper for auth, timeout, retry-eligible error handling,
+ * and response mapping.
  */
 
 import { getS2SToken } from '@airo/ai-lib'
@@ -19,12 +19,13 @@ import { logger } from '../logging/index.js'
 import { resolveEnv } from '../utils/gd-env.js'
 
 export type LogoLayout = 'square' | 'horizontal' | 'vertical'
+export type LogoVariant = LogoLayout | 'favicon'
 
 export interface LayoutUrls {
   transparent: string
-  solid: string
-  mockup: string
-  landscapeMockup: string
+  solid?: string
+  mockup?: string
+  landscapeMockup?: string
 }
 
 /**
@@ -41,6 +42,36 @@ export interface LogoColors {
   secondary?: string
   accent?: string
   background?: string
+}
+
+interface BaseV3Input {
+  appId: string
+  customerId: string
+  budgetUserId: string
+  colors?: LogoColors
+  brandName?: string
+  traceparent?: string
+  conversationId?: string
+  signal?: AbortSignal
+}
+
+export interface GenerateV3Input extends BaseV3Input {
+  prompt: string
+  layout: LogoLayout
+  inspiration?: string[]
+}
+
+export interface EditV3Input extends BaseV3Input {
+  sourceUrl: string
+  prompt: string
+  layout: LogoLayout
+  inspiration?: string[]
+}
+
+export interface GenerateVariantV3Input extends BaseV3Input {
+  sourceUrl: string
+  variant: LogoVariant
+  prompt?: string
 }
 
 export interface GenerateLogoInput {
@@ -118,6 +149,21 @@ interface ApiResponse {
   id: string
   sessionId: string
   logos: ApiProcessedLogo[]
+}
+
+interface V3ApiProcessedLogo {
+  id: string
+  generatedAt?: string
+  prompt?: string
+  modelUsed?: string
+  transparentUrl?: string
+  mockupUrl?: string
+}
+
+interface V3ApiResponse {
+  id: string
+  sessionId: string
+  logos: V3ApiProcessedLogo[]
 }
 
 /**
@@ -304,6 +350,162 @@ class LogoService {
         prompt: input.prompt,
         modelUsed: MODEL_USED_LABEL,
         urls,
+      },
+    }
+  }
+
+  async generateV3(input: GenerateV3Input): Promise<LogoSessionResponse> {
+    const hasColors = Boolean(input.colors && Object.keys(input.colors).length > 0)
+    const body: Record<string, unknown> = {
+      prompt: input.prompt,
+      variant: input.layout,
+      ...(input.inspiration?.length && { inspiration: input.inspiration }),
+      ...(hasColors && { colors: input.colors }),
+      ...(input.brandName && { brandName: input.brandName }),
+    }
+
+    logger.info('logo.generateV3.begin', {
+      appId: input.appId,
+      customerId: input.customerId,
+      budgetUserId: input.budgetUserId,
+      promptLength: input.prompt.length,
+      variant: input.layout,
+      inspirationCount: input.inspiration?.length ?? 0,
+      hasColors,
+    })
+
+    return this.callV3Endpoint('/api/v3/logo/generate', body, input, 'logo.generateV3', input.layout)
+  }
+
+  async editV3(input: EditV3Input): Promise<LogoSessionResponse> {
+    const hasColors = Boolean(input.colors && Object.keys(input.colors).length > 0)
+    const body: Record<string, unknown> = {
+      sourceUrl: input.sourceUrl,
+      prompt: input.prompt,
+      variant: input.layout,
+      ...(input.inspiration?.length && { inspiration: input.inspiration }),
+      ...(hasColors && { colors: input.colors }),
+      ...(input.brandName && { brandName: input.brandName }),
+    }
+
+    logger.info('logo.editV3.begin', {
+      appId: input.appId,
+      customerId: input.customerId,
+      budgetUserId: input.budgetUserId,
+      promptLength: input.prompt.length,
+      layout: input.layout,
+      hasColors,
+    })
+
+    return this.callV3Endpoint('/api/v3/logo/edit', body, input, 'logo.editV3', input.layout)
+  }
+
+  async generateVariantV3(input: GenerateVariantV3Input): Promise<LogoSessionResponse> {
+    const hasColors = Boolean(input.colors && Object.keys(input.colors).length > 0)
+    const body: Record<string, unknown> = {
+      sourceUrl: input.sourceUrl,
+      variant: input.variant,
+      ...(input.brandName && { brandName: input.brandName }),
+      ...(input.prompt && { prompt: input.prompt }),
+      ...(hasColors && { colors: input.colors }),
+    }
+
+    logger.info('logo.generateVariantV3.begin', {
+      appId: input.appId,
+      customerId: input.customerId,
+      budgetUserId: input.budgetUserId,
+      variant: input.variant,
+      hasColors,
+    })
+
+    return this.callV3Endpoint('/api/v3/logo/generate_variant', body, input, 'logo.generateVariantV3', 'square')
+  }
+
+  private async callV3Endpoint(
+    path: string,
+    body: Record<string, unknown>,
+    input: { appId: string; customerId: string; budgetUserId: string; prompt?: string; traceparent?: string; conversationId?: string; signal?: AbortSignal },
+    logPrefix: string,
+    targetLayout: LogoLayout,
+  ): Promise<LogoSessionResponse> {
+    const url = `${getLogoApiBaseUrl().replace(/\/$/, '')}${path}`
+
+    let response: Response
+    try {
+      const token = await getS2SToken()
+      const timeoutSignal = AbortSignal.timeout(REQUEST_TIMEOUT_MS)
+      const signal = input.signal
+        ? AbortSignal.any([timeoutSignal, input.signal])
+        : timeoutSignal
+      response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+          Authorization: `Bearer ${token}`,
+          'x-app-key': this.appKey,
+          'x-app-builder-app-id': input.appId,
+          'x-customer-id': input.customerId,
+          'x-budget-user-id': input.budgetUserId,
+          ...(input.traceparent && { traceparent: input.traceparent }),
+          ...(input.conversationId && { 'x-conversation-id': input.conversationId }),
+        },
+        body: JSON.stringify(body),
+        signal,
+      })
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'TimeoutError') {
+        logger.error(`${logPrefix}.timeout`, { customerId: input.customerId, timeoutMs: REQUEST_TIMEOUT_MS })
+      } else if (err instanceof DOMException && err.name === 'AbortError') {
+        logger.error(`${logPrefix}.aborted`, { customerId: input.customerId })
+      } else {
+        logger.error(`${logPrefix}.error`, { customerId: input.customerId, error: err instanceof Error ? err.message : String(err) })
+      }
+      throw err instanceof Error ? err : new Error(String(err))
+    }
+
+    if (!response.ok) {
+      const text = await response.text().catch(() => '')
+      if (response.status === 402) {
+        logger.warn(`${logPrefix}.budget_exceeded`, { customerId: input.customerId, budgetUserId: input.budgetUserId })
+        throw new BudgetExceededError('Logo generation budget exceeded', 402, text)
+      }
+      logger.error(`${logPrefix}.api_error`, { status: response.status, error: text.slice(0, 500), customerId: input.customerId })
+      throw new Error(`Logo API call failed (status ${response.status})`)
+    }
+
+    const result = (await response.json()) as V3ApiResponse
+    if (!result.sessionId) {
+      logger.error(`${logPrefix}.missing_session_id`, { customerId: input.customerId })
+      throw new Error('Logo API returned no sessionId')
+    }
+    const apiLogo = result.logos?.[0]
+    if (!apiLogo) {
+      logger.error(`${logPrefix}.empty_logos`, { sessionId: result.sessionId, customerId: input.customerId })
+      throw new Error('Logo API returned no logos')
+    }
+
+    const transparentUrl = apiLogo.transparentUrl
+    if (!transparentUrl) {
+      logger.error(`${logPrefix}.no_transparent`, { sessionId: result.sessionId, customerId: input.customerId })
+      throw new Error('Logo API returned no transparent URL')
+    }
+
+    logger.info(`${logPrefix}.success`, { appId: input.appId, sessionId: result.sessionId, logoId: apiLogo.id })
+
+    return {
+      sessionId: result.sessionId,
+      logo: {
+        id: apiLogo.id,
+        generatedAt: apiLogo.generatedAt ?? new Date().toISOString(),
+        prompt: apiLogo.prompt ?? input.prompt ?? '',
+        modelUsed: apiLogo.modelUsed ?? MODEL_USED_LABEL,
+        urls: {
+          [targetLayout]: {
+            transparent: transparentUrl,
+            mockup: apiLogo.mockupUrl ?? transparentUrl,
+          },
+        },
       },
     }
   }

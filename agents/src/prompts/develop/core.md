@@ -286,6 +286,7 @@ For chat-uploaded images, follow **Upload handling** in message context when pre
 - **When changing an image, UPDATE the existing slot via the `media` tool** - don't create a new slot or change HTML to a different URL
 - **Logos and AI-generated images auto-save to slots** — use the returned `slotUrl` in source code (`media-logo` / `media-image` skills); always pass `slotName` to `generate_image`.
 - **NEVER use `media-image__edit_image` on logo URLs** — regenerate with `media-logo__generate_logo` instead.
+- **Logo variant follow-ups are automatic.** When you call `generate_logo` or `edit_logo`, populated sibling logo slots are re-derived automatically after the new logo finishes. On first-time generation (no existing slots), include `followUpVariants: ['favicon']` so the browser tab icon is created.
 
 ### Animations
 

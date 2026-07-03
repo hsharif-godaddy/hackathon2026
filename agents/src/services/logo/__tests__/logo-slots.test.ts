@@ -12,7 +12,7 @@ vi.mock('../../../logging/index.js', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }))
 
-import { saveLogoToSlots, snapshotSlots, placeShimmerSlots, revertSlots } from '../logo-slots.js'
+import { saveLogoToSlots, saveSingleLogoSlot, snapshotSlots, placeShimmerSlots, revertSlots } from '../logo-slots.js'
 import { LOGO_SHIMMER_SLOT_URLS } from '../logo-shimmer.js'
 import type { LogoJob } from '../logo-job-state.js'
 import type { LogoSessionResponse } from '../../LogoService.js'
@@ -104,14 +104,35 @@ describe('placeShimmerSlots', () => {
     expect(mockSetSlot).toHaveBeenCalledTimes(1)
     const [, slotPath, slot] = mockSetSlot.mock.calls[0]
     expect(slotPath).toBe('logo/horizontal')
-    // KEEPS the prior hosted currentUrl, NOT the shimmer URL.
-    expect(slot.currentUrl).toBe('https://cdn/old-logo.png')
-    expect(slot.currentUrl).not.toBe(LOGO_SHIMMER_SLOT_URL)
-    // Variant maps + logo source preserved for app-UI overlay rendering.
+    // Always writes shimmer URL so the old logo never flashes during regeneration.
+    expect(slot.currentUrl).toBe(LOGO_SHIMMER_SLOT_URLS.horizontal)
+    // Variant maps + logo source preserved so saveLogoToSlots can merge them.
     expect(slot.solidUrlMap).toEqual(prior.solidUrlMap)
     expect(slot.logoSourceMap).toEqual(prior.logoSourceMap)
     expect(slot.alternatives).toEqual(prior.alternatives)
     expect(slot.pendingJobId).toBe('job-9')
+    expect(slot.createdAt).toBe('earlier')
+  })
+
+  it('sets priorUrl from a hosted prior URL (regeneration)', async () => {
+    const prior = { mediaType: 'logo', currentUrl: 'https://cdn/old-logo.png', searchQuery: '', alternatives: [], userModified: false, createdAt: 'now', lastUpdated: 'now' }
+    await placeShimmerSlots(
+      'app-1', ['logo/horizontal'], 'job-9',
+      { 'logo/horizontal': LOGO_SHIMMER_SLOT_URLS.horizontal },
+      { 'logo/horizontal': prior as never },
+    )
+    const [, , slot] = mockSetSlot.mock.calls[0]
+    expect(slot.priorUrl).toBe('https://cdn/old-logo.png')
+  })
+
+  it('omits priorUrl when prior has a local/shimmer currentUrl (fresh gen)', async () => {
+    await placeShimmerSlots(
+      'app-1', ['logo/horizontal'], 'job-9',
+      { 'logo/horizontal': LOGO_SHIMMER_SLOT_URLS.horizontal },
+      {},
+    )
+    const [, , slot] = mockSetSlot.mock.calls[0]
+    expect(slot.priorUrl).toBeUndefined()
   })
 
   it('handles a mix of regeneration and fresh slots in one call', async () => {
@@ -125,7 +146,8 @@ describe('placeShimmerSlots', () => {
     )
     const [, , regenSlot] = mockSetSlot.mock.calls[0]
     const [, , freshSlot] = mockSetSlot.mock.calls[1]
-    expect(regenSlot.currentUrl).toBe('https://cdn/old.png')
+    // Both paths write shimmer URL (old logo preserved only in previousSlots for revert)
+    expect(regenSlot.currentUrl).toBe(LOGO_SHIMMER_SLOT_URLS.square)
     expect(regenSlot.pendingJobId).toBe('job-9')
     expect(freshSlot.currentUrl).toBe(LOGO_SHIMMER_SLOT_URLS.horizontal)
     expect(freshSlot.pendingJobId).toBe('job-9')
@@ -216,5 +238,154 @@ describe('saveLogoToSlots userModified guard', () => {
     const result = await saveLogoToSlots('app-1', response(), 'q', 'owner-job')
     expect(mockSetSlot).toHaveBeenCalledTimes(1)
     expect(result.skippedLayouts).toEqual([])
+  })
+})
+
+describe('saveSingleLogoSlot groupId propagation', () => {
+  it('writes groupId to logoSourceMap entry and slot-level logoGroupId', async () => {
+    mockGetSlot.mockResolvedValue({ success: false })
+    await saveSingleLogoSlot('app-1', 'logo/favicon', 'https://cdn/fav.png', 's1', 'l1', 'job-1', 'favicon', 'group-abc')
+    expect(mockSetSlot).toHaveBeenCalledTimes(1)
+    const [, , slot] = mockSetSlot.mock.calls[0]
+    expect(slot.logoGroupId).toBe('group-abc')
+    expect(slot.logoSourceMap['https://cdn/fav.png']).toMatchObject({ sessionId: 's1', logoId: 'l1', groupId: 'group-abc' })
+  })
+
+  it('omits logoGroupId from slot when groupId not provided', async () => {
+    mockGetSlot.mockResolvedValue({ success: false })
+    await saveSingleLogoSlot('app-1', 'logo/favicon', 'https://cdn/fav.png', 's1', 'l1', 'job-1', 'favicon')
+    const [, , slot] = mockSetSlot.mock.calls[0]
+    expect(slot.logoGroupId).toBeUndefined()
+    expect(slot.logoSourceMap['https://cdn/fav.png']).toEqual({ sessionId: 's1', logoId: 'l1' })
+  })
+
+  it('merges groupId into existing logoSourceMap entries', async () => {
+    mockGetSlot.mockResolvedValue({
+      success: true,
+      slot: {
+        mediaType: 'logo',
+        currentUrl: 'https://cdn/old.png',
+        alternatives: [],
+        logoSourceMap: { 'https://cdn/old.png': { sessionId: 'old-s', logoId: 'old-l' } },
+        userModified: false,
+        createdAt: '2026-01-01T00:00:00Z',
+        lastUpdated: '2026-01-01T00:00:00Z',
+      },
+    })
+    await saveSingleLogoSlot('app-1', 'logo/primary', 'https://cdn/new.png', 's2', 'l2', 'job-2', 'q', 'group-xyz')
+    const [, , slot] = mockSetSlot.mock.calls[0]
+    // Old entry preserved, new entry has groupId
+    expect(slot.logoSourceMap['https://cdn/old.png']).toEqual({ sessionId: 'old-s', logoId: 'old-l' })
+    expect(slot.logoSourceMap['https://cdn/new.png']).toEqual({ sessionId: 's2', logoId: 'l2', groupId: 'group-xyz' })
+  })
+})
+
+describe('saveLogoToSlots cascade clears sibling logoGroupId', () => {
+  const response = (): LogoSessionResponse =>
+    ({
+      sessionId: 's1',
+      logo: {
+        id: 'logo-1',
+        generatedAt: 'now',
+        prompt: 'p',
+        modelUsed: 'm',
+        urls: {
+          horizontal: {
+            transparent: 'https://cdn/new.png',
+            solid: 'https://cdn/new-solid.png',
+            mockup: 'https://cdn/new-mockup.png',
+            landscapeMockup: 'https://cdn/new-lm.png',
+          },
+        },
+      },
+    }) as unknown as LogoSessionResponse
+
+  it('clears logoGroupId on sibling slots that have logoSourceMap', async () => {
+    let callCount = 0
+    mockGetSlot.mockImplementation(async (_appId: string, path: string) => {
+      // First call: the written slot (horizontal) — fresh, no existing
+      if (path === 'logo/horizontal' && callCount === 0) {
+        callCount++
+        return { success: false }
+      }
+      // Cascade reads: siblings with group + sourceMap
+      if (path === 'logo/primary') {
+        return {
+          success: true,
+          slot: {
+            mediaType: 'logo',
+            currentUrl: 'https://cdn/sq.png',
+            logoGroupId: 'old-group',
+            logoSourceMap: { 'https://cdn/sq.png': { sessionId: 's0', logoId: 'l0', groupId: 'old-group' } },
+            userModified: false,
+          },
+        }
+      }
+      if (path === 'logo/favicon') {
+        return {
+          success: true,
+          slot: {
+            mediaType: 'logo',
+            currentUrl: 'https://cdn/fav.png',
+            logoGroupId: 'old-group',
+            logoSourceMap: { 'https://cdn/fav.png': { sessionId: 's0', logoId: 'l0', groupId: 'old-group' } },
+            userModified: false,
+          },
+        }
+      }
+      return { success: false }
+    })
+
+    await saveLogoToSlots('app-1', response(), 'q', 'owner-job')
+
+    // 1 write for horizontal + 2 cascade clears (primary, favicon)
+    expect(mockSetSlot).toHaveBeenCalledTimes(3)
+    const cascadeCalls = mockSetSlot.mock.calls.slice(1)
+    for (const [, , slot] of cascadeCalls) {
+      expect(slot.logoGroupId).toBeUndefined()
+    }
+  })
+
+  it('does not cascade-clear siblings without logoSourceMap', async () => {
+    mockGetSlot.mockImplementation(async (_appId: string, path: string) => {
+      if (path === 'logo/horizontal') return { success: false }
+      // Sibling with logoGroupId but NO logoSourceMap (user-uploaded, no AI metadata)
+      if (path === 'logo/primary') {
+        return {
+          success: true,
+          slot: { mediaType: 'logo', currentUrl: 'https://cdn/uploaded.png', logoGroupId: 'some-group', userModified: true },
+        }
+      }
+      return { success: false }
+    })
+
+    await saveLogoToSlots('app-1', response(), 'q', 'owner-job')
+
+    // Only the horizontal write; no cascade write for primarysince it lacks logoSourceMap
+    expect(mockSetSlot).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not cascade-clear siblings without logoGroupId', async () => {
+    mockGetSlot.mockImplementation(async (_appId: string, path: string) => {
+      if (path === 'logo/horizontal') return { success: false }
+      // Sibling with logoSourceMap but NO logoGroupId (never linked)
+      if (path === 'logo/primary') {
+        return {
+          success: true,
+          slot: {
+            mediaType: 'logo',
+            currentUrl: 'https://cdn/sq.png',
+            logoSourceMap: { 'https://cdn/sq.png': { sessionId: 's0', logoId: 'l0' } },
+            userModified: false,
+          },
+        }
+      }
+      return { success: false }
+    })
+
+    await saveLogoToSlots('app-1', response(), 'q', 'owner-job')
+
+    // Only the horizontal write; no cascade needed
+    expect(mockSetSlot).toHaveBeenCalledTimes(1)
   })
 })

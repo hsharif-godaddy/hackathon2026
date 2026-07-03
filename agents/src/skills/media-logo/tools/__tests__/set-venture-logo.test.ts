@@ -78,12 +78,11 @@ describe('media-logo set_venture_logo tool', () => {
     expect(result.structuredContent).toBeUndefined();
   });
 
-  it('returns an error when the square logo is missing', async () => {
+  it('returns an error suggesting generate_logo_variant when square logo is missing', async () => {
     mockGetSlot.mockImplementation((_appId: string, path: string) => {
       if (path === HORIZONTAL_PATH) {
         return Promise.resolve({ success: true, slot: { currentUrl: 'https://cdn/h.png' } });
       }
-      // square slot has no current logo yet
       return Promise.resolve({ success: false });
     });
 
@@ -91,7 +90,34 @@ describe('media-logo set_venture_logo tool', () => {
 
     const result = await setVentureLogoTool.execute({}, baseContext);
 
-    expect(result.error).toMatch(/could not find both/i);
+    expect(result.error).toMatch(/generate_logo_variant/i);
+    expect(result.error).toMatch(/square/i);
+  });
+
+  it('returns an error suggesting generate_logo_variant when horizontal logo is missing', async () => {
+    mockGetSlot.mockImplementation((_appId: string, path: string) => {
+      if (path === SQUARE_PATH) {
+        return Promise.resolve({ success: true, slot: { currentUrl: 'https://cdn/s.png' } });
+      }
+      return Promise.resolve({ success: false });
+    });
+
+    const { setVentureLogoTool } = await import('../index.js');
+
+    const result = await setVentureLogoTool.execute({}, baseContext);
+
+    expect(result.error).toMatch(/generate_logo_variant/i);
+    expect(result.error).toMatch(/horizontal/i);
+  });
+
+  it('returns an error when both logos are missing', async () => {
+    mockGetSlot.mockResolvedValue({ success: false });
+
+    const { setVentureLogoTool } = await import('../index.js');
+
+    const result = await setVentureLogoTool.execute({}, baseContext);
+
+    expect(result.error).toMatch(/no logos found/i);
   });
 
   it('sends both URLs to the dashboard on success', async () => {

@@ -6,8 +6,10 @@ import { useEffect, useRef, useState } from 'react'
 import type { DefaultToolRendererProps } from '@/app/[market]/develop/components/tool-renderers/DefaultToolRenderer'
 import MediaModal from '@/app/[market]/develop/components/tool-renderers/MediaModal'
 import ToolHeader from '@/app/[market]/develop/components/tool-renderers/ToolHeader'
-import { extractLogosFromToolResult, getLogoDisplayUrl, getLogoSolidDisplayUrl, type LogoData,mapLogoSessionToLogoData } from '@/app/[market]/develop/components/widgets/logo-utils'
+import { extractLogosFromToolResult, getLogoDisplayUrl, type LogoData, mapLogoSessionToLogoData } from '@/app/[market]/develop/components/widgets/logo-utils'
 import LogoGridWidget from '@/app/[market]/develop/components/widgets/LogoGridWidget'
+import { useBrandData } from '@/hooks/useBrandData'
+import { useMediaSlot } from '@/hooks/useMediaSlot'
 import { useTranslations } from '@/hooks/useTranslations'
 import { logger } from '@/lib/request-context'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
@@ -34,6 +36,8 @@ export default function LogoGeneratorToolRenderer({
   result
 }: DefaultToolRendererProps) {
   const currentAppId = useStreamingConversationStore((s) => s.currentAppId)
+  const { data: brandData } = useBrandData(currentAppId)
+  const logoBgColor: string = brandData?.palette?.background ?? '#ffffff'
 
   // New async shape: { started: true, jobId, slots }. Pure derivation (no hooks) —
   // computed BEFORE the store selector so the selector can key off THIS card's jobId.
@@ -46,6 +50,27 @@ export default function LogoGeneratorToolRenderer({
   const logoJobResult = useDevelopPageStore((s) =>
     currentAppId ? s.logoJobResults[currentAppId]?.[startedJobId ?? ''] : undefined,
   )
+
+  // Fallback: after reload the in-memory store is gone but the slot has the real URL.
+  const asyncSlotPath: string | null = structured?.slots?.[0] ?? null
+  const needsSlotFallback: boolean = !!startedJobId && !logoJobResult
+  const { slot: fallbackSlot, refetch: refetchSlot } = useMediaSlot({
+    appId: currentAppId,
+    slotName: asyncSlotPath,
+    enabled: needsSlotFallback,
+  })
+
+  // When a new job starts, the react-query cache may still hold stale slot data
+  // (from before placeShimmerSlots set pendingJobId). Force a refetch so the
+  // renderer sees the pending marker and shows shimmer instead of the old logo.
+  const prevJobIdRef = useRef<string | undefined>(undefined)
+  useEffect(() => {
+    if (startedJobId && startedJobId !== prevJobIdRef.current && needsSlotFallback) {
+      prevJobIdRef.current = startedJobId
+      refetchSlot()
+    }
+  }, [startedJobId, needsSlotFallback, refetchSlot])
+
   const t = useTranslations()
 
   const [isModalOpen, setIsModalOpen] = useToolDetailsModal(toolId)
@@ -136,6 +161,25 @@ export default function LogoGeneratorToolRenderer({
     const matched = logoJobResult ?? null
 
     if (!matched || matched.status === undefined) {
+      // After reload: prefer per-job cached URL (each card shows its own logo)
+      // over the slot (which only has the LATEST logo).
+      const cachedUrl: string | null = (() => {
+        try { return localStorage.getItem(`logo-result-${startedJobId}`) } catch { return null }
+      })()
+      const resolvedUrl: string | undefined = cachedUrl
+        ?? (fallbackSlot && !fallbackSlot.pendingJobId ? fallbackSlot.currentUrl : undefined)
+
+      if (resolvedUrl) {
+        return (
+          <div data-testid="logo-result">
+            <ToolHeader icon={<Sparkles className="w-2 h-2" />} displayName={t('builder_logo_ready_title')} toolStatus="completed" hasDetails={false} />
+            <div className="mt-2 w-full overflow-hidden rounded-md border-2 border-intents-ux-boxHighContrast-borderColor shadow-md p-2" style={{ backgroundColor: logoBgColor }}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img data-testid="logo-result-image" src={resolvedUrl} alt="Generated logo" />
+            </div>
+          </div>
+        )
+      }
       return (
         <div data-testid="logo-generating-placeholder">
           <ToolHeader icon={<Sparkles className="w-2 h-2" />} displayName={t('builder_logo_generating')} toolStatus="running" hasDetails={false} />
@@ -144,11 +188,7 @@ export default function LogoGeneratorToolRenderer({
     }
 
     if (matched.status === 'completed') {
-      // Solid variant (same as the Brand Book light panel) — a transparent logo with
-      // light strokes can vanish on the chat surface; solid carries its own background.
-      const displayUrl = matched.logo ? getLogoSolidDisplayUrl(mapLogoSessionToLogoData(matched.logo)) : undefined
-      // Partial completion: some slots were not updated. Show the (valid) logo but warn
-      // about the layouts that did not apply, rather than claiming an unqualified success.
+      const displayUrl = matched.logo ? getLogoDisplayUrl(mapLogoSessionToLogoData(matched.logo)) : undefined
       const slotSaveFailed = matched.slotSaveFailed === true
       const failedLayouts = matched.failedLayouts ?? []
       return (
@@ -165,7 +205,7 @@ export default function LogoGeneratorToolRenderer({
             </p>
           )}
           {displayUrl && (
-            <div className="mt-2 w-full overflow-hidden rounded-md border-2 border-intents-ux-boxHighContrast-borderColor shadow-md bg-intents-ux-boxLowContrast-backgroundColor">
+            <div className="mt-2 w-full overflow-hidden rounded-md border-2 border-intents-ux-boxHighContrast-borderColor shadow-md p-2" style={{ backgroundColor: logoBgColor }}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img data-testid="logo-result-image" src={displayUrl} alt="Generated logo" />
             </div>
@@ -234,9 +274,8 @@ export default function LogoGeneratorToolRenderer({
                 key={logo.id || index}
                 ref={(el) => { thumbnailRefs.current[index] = el }}
                 onClick={() => setSelectedLogoIndex(index)}
-                className={`flex-shrink-0 w-16 h-16 rounded-lg border-4 overflow-hidden transition-all hover:cursor-pointer hover:opacity-100 bg-intents-ux-boxLowContrast-backgroundColor ${
-                  selectedLogoIndex === index ? 'border-primary ring-2 ring-primary/30' : 'border-border opacity-70'
-                }`}
+                className={`flex-shrink-0 w-16 h-16 rounded-lg border-4 overflow-hidden transition-all hover:cursor-pointer hover:opacity-100 bg-intents-ux-boxLowContrast-backgroundColor ${selectedLogoIndex === index ? 'border-primary ring-2 ring-primary/30' : 'border-border opacity-70'
+                  }`}
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img

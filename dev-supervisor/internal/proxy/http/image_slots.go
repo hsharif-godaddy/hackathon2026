@@ -1,6 +1,7 @@
 package httpproxy
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"log/slog"
@@ -285,6 +286,12 @@ func (h *mediaSlotHandler) serveSlot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Handle data: URIs inline (e.g. shimmer SVG placeholders during logo generation)
+	if strings.HasPrefix(targetURL, "data:") {
+		h.serveDataURI(w, slotPath, targetURL)
+		return
+	}
+
 	// Validate redirect URL against allowlist to prevent open redirect
 	// Must be HTTPS with a trusted host to prevent javascript:, data:, or other scheme attacks
 	redirectURL, err := url.Parse(targetURL)
@@ -400,6 +407,50 @@ func (h *mediaSlotHandler) serveLocalUpload(w http.ResponseWriter, r *http.Reque
 
 	// Serve the file
 	http.ServeFile(w, r, cleanPath)
+}
+
+// serveDataURI decodes a data: URI and serves its content inline.
+// Used for transient placeholder content (e.g. shimmer SVGs during logo generation).
+func (h *mediaSlotHandler) serveDataURI(w http.ResponseWriter, slotPath, dataURI string) {
+	// Format: data:[<mediatype>][;base64],<data>
+	rest := strings.TrimPrefix(dataURI, "data:")
+	meta, encoded, found := strings.Cut(rest, ",")
+	if !found {
+		slog.Error(h.mediaType+"_slot.invalid_data_uri", "slot", slotPath, "reason", "no_comma")
+		h.respondError(w, "invalid data URI", http.StatusInternalServerError)
+		return
+	}
+
+	isBase64 := strings.HasSuffix(meta, ";base64")
+	contentType := strings.TrimSuffix(meta, ";base64")
+	if contentType == "" {
+		contentType = "text/plain;charset=US-ASCII"
+	}
+
+	var body []byte
+	if isBase64 {
+		var err error
+		body, err = base64.StdEncoding.DecodeString(encoded)
+		if err != nil {
+			slog.Error(h.mediaType+"_slot.data_uri_decode_error", "slot", slotPath, "error", err.Error())
+			h.respondError(w, "invalid data URI encoding", http.StatusInternalServerError)
+			return
+		}
+	} else {
+		unescaped, err := url.PathUnescape(encoded)
+		if err != nil {
+			unescaped = encoded
+		}
+		body = []byte(unescaped)
+	}
+
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(body)
+
+	slog.Debug(h.mediaType+"_slot.serve_data_uri", "slot", slotPath, "content_type", contentType, "size", len(body))
 }
 
 // respondError writes a JSON error response using proper JSON encoding.

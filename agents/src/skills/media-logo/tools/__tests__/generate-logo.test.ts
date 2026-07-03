@@ -243,37 +243,7 @@ describe('media-logo generate_logo tool', () => {
       },
     };
 
-    // Flag arrives on context.metadata (set by the agent JWT from the
-    // `appbuilder-logo-brand-colors` switchboard flag).
-    const flagOnContext = {
-      ...baseContext,
-      metadata: { ...baseContext.metadata, logoBrandColorsEnabled: true },
-    };
-
-    it('passes background + brand colors (no foreground) when the flag is on', async () => {
-      mockAppPlanExecute.mockResolvedValueOnce(paletteData);
-
-      const { generateLogoTool } = await import('../index.js');
-
-      await generateLogoTool.execute(
-        { prompt: 'a coffee cup logo', layout: 'horizontal' },
-        flagOnContext,
-      );
-
-      const callArg = mockStart.mock.calls[0][0];
-      expect(callArg.colors).toEqual({
-        primary: '#B96B3C',
-        secondary: '#2A4D3E',
-        accent: '#F2C94C',
-        background: '#FAF8F5',
-      });
-      expect(callArg.colors).not.toHaveProperty('foreground');
-      // Prompt suffix is independent of the flag and still includes everything.
-      expect(callArg.prompt).toContain('Brand colors');
-      expect(callArg.prompt).toContain('foreground #1F1F1F');
-    });
-
-    it('does not pass colors when the flag is off', async () => {
+    it('passes background + brand colors (no foreground) when palette available', async () => {
       mockAppPlanExecute.mockResolvedValueOnce(paletteData);
 
       const { generateLogoTool } = await import('../index.js');
@@ -284,17 +254,23 @@ describe('media-logo generate_logo tool', () => {
       );
 
       const callArg = mockStart.mock.calls[0][0];
-      expect(callArg).not.toHaveProperty('colors');
-      // Suffix path is unaffected by the flag.
+      expect(callArg.colors).toEqual({
+        primary: '#B96B3C',
+        secondary: '#2A4D3E',
+        accent: '#F2C94C',
+        background: '#FAF8F5',
+      });
+      expect(callArg.colors).not.toHaveProperty('foreground');
       expect(callArg.prompt).toContain('Brand colors');
+      expect(callArg.prompt).toContain('foreground #1F1F1F');
     });
 
-    it('omits colors when the flag is on but no palette resolved', async () => {
+    it('omits colors when no palette resolved', async () => {
       const { generateLogoTool } = await import('../index.js');
 
       await generateLogoTool.execute(
         { prompt: 'a logo', layout: 'horizontal' },
-        flagOnContext,
+        baseContext,
       );
 
       const callArg = mockStart.mock.calls[0][0];

@@ -65,6 +65,9 @@ export interface MediaSlot {
   /** Maps transparent URL to source logo metadata for logo variants.
    *  Only populated when mediaType === 'logo'. */
   logoSourceMap?: Record<string, { sessionId: string; logoId: string }>;
+  /** Previous hosted URL before shimmer was placed (regeneration only).
+   *  Used to show a dimmed overlay during regeneration. */
+  priorUrl?: string;
 }
 
 /**

@@ -271,6 +271,10 @@ func (p *HTTPProxy) Start() error {
 		backendAddr:           targetURL.Host, // host:port for TCP readiness probes
 	}
 
+	// Favicon handler — resolves /favicon.ico from the logo/favicon media slot,
+	// falling through to the router (Vite serves public/favicon.ico) on miss.
+	mux.Handle("/favicon.ico", NewFaviconHandler(mediaSlotCache, allowedImageRedirectHosts, router))
+
 	// Route all other requests to the router
 	mux.Handle("/", router)
 

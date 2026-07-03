@@ -434,13 +434,72 @@ func TestHandleImageSlot_InvalidScheme(t *testing.T) {
 	}
 }
 
-func TestHandleImageSlot_DataScheme(t *testing.T) {
+func TestHandleImageSlot_DataScheme_SVG(t *testing.T) {
 	tmpDir := t.TempDir()
 	manifestPath := filepath.Join(tmpDir, "airo-media.json")
 
-	// Use data: scheme to test scheme validation
+	svgContent := "<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100'><rect fill='gray'/></svg>"
+	dataURI := "data:image/svg+xml," + svgContent
 	manifest := httpproxy.ImageManifest{
-		"pages/home/hero": {CurrentURL: "data:text/html,<script>alert('xss')</script>"},
+		"pages/home/hero": {CurrentURL: dataURI},
+	}
+	data, _ := json.Marshal(manifest)
+	_ = os.WriteFile(manifestPath, data, 0600)
+
+	cache := httpproxy.NewManifestCache(manifestPath)
+	handler := httpproxy.NewImageSlotHandler(cache, []string{filepath.Join(tmpDir, "public", "media")})
+
+	req := httptest.NewRequest(http.MethodGet, "/airo-assets/images/pages/home/hero", nil)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected status 200 for data: URI, got: %d", rec.Code)
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "image/svg+xml" {
+		t.Errorf("expected Content-Type image/svg+xml, got: %s", ct)
+	}
+	if cc := rec.Header().Get("Cache-Control"); cc != "no-store" {
+		t.Errorf("expected Cache-Control no-store, got: %s", cc)
+	}
+	if !strings.Contains(rec.Body.String(), "<svg") {
+		t.Errorf("expected SVG body, got: %s", rec.Body.String())
+	}
+}
+
+func TestHandleImageSlot_DataScheme_Base64(t *testing.T) {
+	tmpDir := t.TempDir()
+	manifestPath := filepath.Join(tmpDir, "airo-media.json")
+
+	manifest := httpproxy.ImageManifest{
+		"pages/home/hero": {CurrentURL: "data:image/png;base64,iVBORw0KGgo="},
+	}
+	data, _ := json.Marshal(manifest)
+	_ = os.WriteFile(manifestPath, data, 0600)
+
+	cache := httpproxy.NewManifestCache(manifestPath)
+	handler := httpproxy.NewImageSlotHandler(cache, []string{filepath.Join(tmpDir, "public", "media")})
+
+	req := httptest.NewRequest(http.MethodGet, "/airo-assets/images/pages/home/hero", nil)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected status 200 for base64 data: URI, got: %d", rec.Code)
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "image/png" {
+		t.Errorf("expected Content-Type image/png, got: %s", ct)
+	}
+}
+
+func TestHandleImageSlot_DataScheme_InvalidFormat(t *testing.T) {
+	tmpDir := t.TempDir()
+	manifestPath := filepath.Join(tmpDir, "airo-media.json")
+
+	manifest := httpproxy.ImageManifest{
+		"pages/home/hero": {CurrentURL: "data:no-comma-here"},
 	}
 	data, _ := json.Marshal(manifest)
 	_ = os.WriteFile(manifestPath, data, 0600)
@@ -454,7 +513,7 @@ func TestHandleImageSlot_DataScheme(t *testing.T) {
 	handler.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusInternalServerError {
-		t.Errorf("expected status 500 for data: scheme, got: %d", rec.Code)
+		t.Errorf("expected status 500 for malformed data: URI, got: %d", rec.Code)
 	}
 }
 

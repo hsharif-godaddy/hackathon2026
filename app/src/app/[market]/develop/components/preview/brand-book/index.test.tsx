@@ -98,11 +98,12 @@ describe('BrandBookView', function brandBookTests() {
     expect(screen.getByTestId('logo-img-Logo on light background')).toHaveAttribute('src', 'https://cdn.example.com/logo.png');
   });
 
-  it('shows placeholder while manifest is loading', function loadingState() {
+  it('shows shimmer (not placeholder) while manifest is loading', function loadingState() {
     mockManifest.value = null;
     mockIsManifestLoading.value = true;
     renderWithProviders(<BrandBookView appId="app-123" />);
-    expect(screen.queryByText('Your logo will appear here once generated.')).toBeInTheDocument();
+    // With brand data present, manifest loading → isPending=true → shimmer, not placeholder text
+    expect(screen.queryByText('Your logo will appear here once generated.')).not.toBeInTheDocument();
   });
 
   it('renders section headers', function sectionHeaders() {

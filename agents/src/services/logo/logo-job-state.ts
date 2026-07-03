@@ -2,7 +2,7 @@ import { logger } from '../../logging/index.js'
 import { isDevSupervisorNotFound } from '../DevSupervisorClient.js'
 import type { WorkspaceFiles } from '../../workspace/files.js'
 import type { MediaSlot } from '../MediaManifestService.js'
-import type { LogoLayout } from '../LogoService.js'
+import type { LogoLayout, LogoVariant } from '../LogoService.js'
 
 export const LOGO_JOB_PATH = '.airo/logo.json'
 
@@ -21,6 +21,8 @@ export interface LogoJob {
   /** Full prior slot snapshot, keyed by slot path, for cancel/failure revert. */
   previousSlots: Record<string, MediaSlot>
   attempt: number
+  /** Set for variant jobs (startVariant). Layout jobs leave this unset. */
+  variant?: LogoVariant
   sessionId?: string
   logoId?: string
   error?: string
