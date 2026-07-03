@@ -13,24 +13,17 @@ Before enabling the flags, configure Stripe:
    skill({ action: 'load', skill: 'payment/stripe' })
    ```
 2. Follow the Stripe setup flow (it will configure keys automatically)
-3. Add webhook raw body middleware to `src/server/entry.ts` BEFORE `app.use(express.json())`:
+3. Update the `express.json()` call in `src/server/entry.ts` to capture the raw body:
    ```typescript
-   type RequestWithRawBody = Request & { rawBody?: Buffer };
-   
-   app.post(
-     "/api/appointments/payments/webhook",
-     express.raw({ type: "application/json" }),
-     (req, _res, next) => {
-       (req as RequestWithRawBody).rawBody = req.body as Buffer;
-       next();
-     },
-     paymentsWebhookPost,
+   app.use(
+     express.json({
+       verify: (req: import("express").Request & { rawBody?: Buffer }, _res, buf) => {
+         req.rawBody = buf;
+       },
+     })
    );
    ```
-   Import at the top:
-   ```typescript
-   import paymentsWebhookPost from "./api/appointments/payments/webhook/POST";
-   ```
+   This captures the raw body for ALL routes (including the webhook) while still parsing JSON, which is exactly what Stripe webhook verification requires.
 4. Request the webhook secret from the user:
    ```typescript
    requestSecrets({
