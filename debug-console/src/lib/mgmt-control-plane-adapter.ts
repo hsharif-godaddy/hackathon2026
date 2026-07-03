@@ -93,6 +93,7 @@ export {
     type MgmtSubscriptionGrants,
     type MgmtDomainErrorDetail,
     type MgmtDomainError,
+    type MgmtDomainLookup,
     type MgmtCustomerApp,
 } from '@/lib/mgmt-types';
 
@@ -104,6 +105,7 @@ import type {
     MgmtSubscriptionGrants,
     MgmtGrant,
     MgmtDomainError,
+    MgmtDomainLookup,
     MgmtReloadResponse,
     MgmtDeployResponse,
     MgmtCustomerApp,
@@ -163,6 +165,12 @@ export class MgmtControlPlaneAdapter {
         const cacheKey = `getAppDetails:${appId}`;
         const path = `/api/airo/v1/apps/${encodeURIComponent(appId)}?includeResources=true`;
         return memoizeRead(cacheKey, () => this.request<MgmtAppDetails>(path));
+    }
+
+    getAppByDomain(fqdn: string): Promise<MgmtDomainLookup> {
+        const cacheKey = `getAppByDomain:${fqdn}`;
+        const path = `/api/hosting/v1/domains/${encodeURIComponent(fqdn)}/app`;
+        return memoizeRead(cacheKey, () => this.request<MgmtDomainLookup>(path));
     }
 
     async getAgentUrl(appId: string): Promise<string> {

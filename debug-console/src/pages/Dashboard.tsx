@@ -14,7 +14,7 @@ import type {
   MgmtSubscriptionGrants,
 } from '@/lib/mgmt-types';
 import type { BmsSpendData, LlmSpendData } from '@/lib/spend-types';
-import { CUSTOMER_ID_RE, SHOPPER_ID_RE } from '@/lib/mgmt-helpers';
+import { CUSTOMER_ID_RE, DOMAIN_RE, SHOPPER_ID_RE } from '@/lib/mgmt-helpers';
 import LogsPanel, { type LogSource, type LogsView } from '@/components/LogsPanel';
 import TrafficPanel from '@/components/TrafficPanel';
 import InvestigatePanel from '@/components/InvestigatePanel';
@@ -480,22 +480,59 @@ export default function Dashboard() {
 
   const isUUID = (value: string) => CUSTOMER_ID_RE.test(value);
   const isShopperId = (value: string) => SHOPPER_ID_RE.test(value);
+  const isDomain = (value: string) => DOMAIN_RE.test(value);
 
   const [searchError, setSearchError] = useState<string | null>(null);
   const [resolvingShopper, setResolvingShopper] = useState(false);
+  const [resolvingDomain, setResolvingDomain] = useState(false);
 
   const handleSearch = async () => {
     // Resolution precedence (intentional):
+    //   0. Domain (contains a dot) → resolved to an appId via /api/domain/:fqdn,
+    //      then handled like (3).
     //   1. UUID  → treated as a customerId, loads that customer's apps.
     //   2. Numeric shopperId → resolved to a customerId via /api/shopper/:id,
     //      then handled like (1).
     //   3. Otherwise → treated as a literal appId.
-    // Shopper IDs are constrained to 4-12 digits (SHOPPER_ID_RE) and UUIDs
-    // never collide with that, so the order is unambiguous.
+    // Shopper IDs are constrained to 4-12 digits (SHOPPER_ID_RE), UUIDs never
+    // collide with that, and only domains contain a dot, so the order is
+    // unambiguous.
     const trimmed = appId.trim();
     if (!trimmed) return;
 
     setSearchError(null);
+
+    if (isDomain(trimmed)) {
+      setResolvingDomain(true);
+      try {
+        const res = await fetch(`/api/domain/${encodeURIComponent(trimmed)}`, {
+          cache: 'no-store',
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          setSearchError(
+            res.status === 404
+              ? `No app found for domain ${trimmed}`
+              : `Failed to resolve domain (HTTP ${res.status})`
+          );
+          return;
+        }
+        const resolvedAppId = data?.appId;
+        if (!resolvedAppId) {
+          setSearchError(`No appId returned for domain ${trimmed}`);
+          return;
+        }
+        setSubmittedCustomerId('');
+        setSubmittedAppId(resolvedAppId);
+        setActiveTab('details');
+        updateUrl({ appId: resolvedAppId, customerId: null, tab: 'details' });
+      } catch (err) {
+        setSearchError(err instanceof Error ? err.message : 'Failed to resolve domain');
+      } finally {
+        setResolvingDomain(false);
+      }
+      return;
+    }
 
     if (isUUID(trimmed)) {
       setSubmittedAppId('');
@@ -701,7 +738,7 @@ export default function Dashboard() {
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') handleSearch();
                 }}
-                placeholder="App ID, Customer ID, or Shopper ID..."
+                placeholder="App ID, Customer ID, Shopper ID, or Domain..."
                 style={{
                   width: '100%',
                   padding: appId.trim()
@@ -725,24 +762,30 @@ export default function Dashboard() {
                     letterSpacing: '0.04em',
                     padding: '0.1rem 0.3rem',
                     borderRadius: '3px',
-                    backgroundColor: isUUID(appId.trim())
-                      ? '#dbeafe'
-                      : isShopperId(appId.trim())
-                        ? '#fef3c7'
-                        : '#f0fdf4',
-                    color: isUUID(appId.trim())
-                      ? '#1d4ed8'
-                      : isShopperId(appId.trim())
-                        ? '#92400e'
-                        : '#15803d',
+                    backgroundColor: isDomain(appId.trim())
+                      ? '#ede9fe'
+                      : isUUID(appId.trim())
+                        ? '#dbeafe'
+                        : isShopperId(appId.trim())
+                          ? '#fef3c7'
+                          : '#f0fdf4',
+                    color: isDomain(appId.trim())
+                      ? '#6d28d9'
+                      : isUUID(appId.trim())
+                        ? '#1d4ed8'
+                        : isShopperId(appId.trim())
+                          ? '#92400e'
+                          : '#15803d',
                     pointerEvents: 'none',
                   }}
                 >
-                  {isUUID(appId.trim())
-                    ? 'customerId'
-                    : isShopperId(appId.trim())
-                      ? 'shopperId'
-                      : 'appId'}
+                  {isDomain(appId.trim())
+                    ? 'domain'
+                    : isUUID(appId.trim())
+                      ? 'customerId'
+                      : isShopperId(appId.trim())
+                        ? 'shopperId'
+                        : 'appId'}
                 </span>
               )}
               {appId && (
@@ -774,7 +817,7 @@ export default function Dashboard() {
             </div>
             <button
               onClick={handleSearch}
-              disabled={!appId.trim() || resolvingShopper}
+              disabled={!appId.trim() || resolvingShopper || resolvingDomain}
               style={{
                 padding: '0.375rem 0.75rem',
                 backgroundColor: appId.trim() ? '#3b82f6' : '#9ca3af',
@@ -784,10 +827,10 @@ export default function Dashboard() {
                 cursor: appId.trim() ? 'pointer' : 'not-allowed',
                 fontSize: '0.875rem',
                 fontWeight: 500,
-                opacity: appId.trim() && !resolvingShopper ? 1 : 0.6,
+                opacity: appId.trim() && !resolvingShopper && !resolvingDomain ? 1 : 0.6,
               }}
             >
-              {resolvingShopper ? 'Resolving…' : 'Search'}
+              {resolvingShopper || resolvingDomain ? 'Resolving…' : 'Search'}
             </button>
           </div>
           {searchError && (

@@ -11,6 +11,9 @@ export const CUSTOMER_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-
 // This regex is the canonical contract — proxy routes that forward shopper IDs
 // upstream MUST validate against it before doing anything else.
 export const SHOPPER_ID_RE = /^([a-zA-Z]{3}|[0-9]{4,12})$/;
+// Dotted hostname. None of the other identifier patterns above allow a dot,
+// so a domain never collides with customerId/shopperId/appId detection.
+export const DOMAIN_RE = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$/i;
 
 export function validateId(value: string, name: string, re: RegExp): NextResponse | null {
     if (!re.test(value)) {

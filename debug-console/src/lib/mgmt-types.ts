@@ -88,6 +88,11 @@ export interface MgmtDomain {
     updatedAt: string;
 }
 
+export interface MgmtDomainLookup {
+    appId: string;
+    fqdn: string;
+}
+
 export interface MgmtAppDetails {
     id: string;
     appTemplateName: string;

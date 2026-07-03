@@ -13,6 +13,14 @@ import { fullStorySessionUrl, langfuseTraceUrl } from '@/lib/langfuse-ui';
 const ExpandStepsContext = React.createContext(false);
 const EXPAND_STEPS_STORAGE_KEY = 'aab.eb.expandSteps';
 
+const PRESET_DAYS = [1, 7, 30, 90] as const;
+type PresetDays = (typeof PRESET_DAYS)[number];
+
+// Shown when the upstream public REST list query exceeds its server-side budget
+// (HTTP 422) — usually a wide window over a high-volume customer.
+const EB_TIMEOUT_MESSAGE =
+    'Query timed out. Try again in a few minutes, or narrow the range — otherwise use the agent conversation view instead.';
+
 const LOAD_ALL_CONFIRM = (remaining: number): string =>
     `Load all ${remaining} remaining pages?\n\n` +
     `This may take a while and is rarely needed. ` +
@@ -121,6 +129,7 @@ export default function LangfuseEbPanel({ globalAppId, refreshKey = 0, onRefresh
     const [totalPages, setTotalPages] = useState(1);
     const [totalItems, setTotalItems] = useState<number | null>(null);
     const [hasMore, setHasMore] = useState(true);
+    const [days, setDays] = useState<PresetDays>(7);
     // Toolbar prefs: default-expand the steps block (persisted) + terms legend.
     const [expandSteps, setExpandSteps] = useState(false);
     const [showLegend, setShowLegend] = useState(false);
@@ -197,8 +206,9 @@ export default function LangfuseEbPanel({ globalAppId, refreshKey = 0, onRefresh
             const startedFor = globalAppId;
             prefetchingRef.current.add(target);
             try {
+                const from: string = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
                 const res = await fetch(
-                    `/api/eb-langfuse/sessions/${encodeURIComponent(globalAppId)}?page=${target}`,
+                    `/api/eb-langfuse/sessions/${encodeURIComponent(globalAppId)}?page=${target}&fromTimestamp=${encodeURIComponent(from)}`,
                     { credentials: 'include', cache: 'no-store' },
                 );
                 if (!res.ok) return;
@@ -212,7 +222,7 @@ export default function LangfuseEbPanel({ globalAppId, refreshKey = 0, onRefresh
                 prefetchingRef.current.delete(target);
             }
         },
-        [globalAppId],
+        [globalAppId, days],
     );
 
     const fetchPage = useCallback(
@@ -244,11 +254,13 @@ export default function LangfuseEbPanel({ globalAppId, refreshKey = 0, onRefresh
                 if (body) {
                     prefetchedRef.current.delete(target);
                 } else {
+                    const from: string = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
                     const res = await fetch(
-                        `/api/eb-langfuse/sessions/${encodeURIComponent(globalAppId)}?page=${target}`,
+                        `/api/eb-langfuse/sessions/${encodeURIComponent(globalAppId)}?page=${target}&fromTimestamp=${encodeURIComponent(from)}`,
                         { credentials: 'include', cache: 'no-store', signal: controller.signal },
                     );
                     if (!res.ok) {
+                        if (res.status === 422) throw new Error(EB_TIMEOUT_MESSAGE);
                         const errBody = await res.json().catch(function safe() { return null; });
                         throw new Error((errBody && (errBody.error as string)) || `HTTP ${res.status}`);
                     }
@@ -278,7 +290,7 @@ export default function LangfuseEbPanel({ globalAppId, refreshKey = 0, onRefresh
                 }
             }
         },
-        [globalAppId, mergeSessions, prefetch],
+        [globalAppId, days, mergeSessions, prefetch],
     );
 
     const fetchAllPages = useCallback(async function fetchAll() {
@@ -291,15 +303,19 @@ export default function LangfuseEbPanel({ globalAppId, refreshKey = 0, onRefresh
         loadingMoreRef.current = true;
 
         try {
+            const from: string = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
             let next = currentPage + 1;
             while (next <= totalPages) {
                 if (controller.signal.aborted) break;
                 setLoadAllProgress({ loaded: next - currentPage, total: totalPages - currentPage });
                 const res = await fetch(
-                    `/api/eb-langfuse/sessions/${encodeURIComponent(globalAppId)}?page=${next}`,
+                    `/api/eb-langfuse/sessions/${encodeURIComponent(globalAppId)}?page=${next}&fromTimestamp=${encodeURIComponent(from)}`,
                     { credentials: 'include', cache: 'no-store', signal: controller.signal },
                 );
-                if (!res.ok) throw new Error(`Failed to fetch page ${next}: ${res.status}`);
+                if (!res.ok) {
+                    if (res.status === 422) throw new Error(EB_TIMEOUT_MESSAGE);
+                    throw new Error(`Failed to fetch page ${next}: ${res.status}`);
+                }
                 const body = (await res.json()) as SessionsResponse;
 
                 const totalPagesValue = body.pagination?.totalPages ?? 1;
@@ -326,7 +342,7 @@ export default function LangfuseEbPanel({ globalAppId, refreshKey = 0, onRefresh
             loadAllAbortRef.current = null;
             setLoadAllProgress({ loaded: 0, total: 0 });
         }
-    }, [globalAppId, currentPage, totalPages, mergeSessions]);
+    }, [globalAppId, currentPage, totalPages, mergeSessions, days]);
 
     const stopLoadAll = useCallback(function stop() {
         loadAllAbortRef.current?.abort();
@@ -388,6 +404,21 @@ export default function LangfuseEbPanel({ globalAppId, refreshKey = 0, onRefresh
                     {loading && <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Loading…</span>}
                 </div>
                 <div style={toolbarRightStyle}>
+                    <div style={presetChipsWrapperStyle}>
+                        {PRESET_DAYS.map(function chip(d) {
+                            return (
+                                <button
+                                    key={d}
+                                    type="button"
+                                    onClick={function select() { setDays(d); }}
+                                    style={presetChipStyle(d === days)}
+                                    title={`Show last ${d} days`}
+                                >
+                                    {d}d
+                                </button>
+                            );
+                        })}
+                    </div>
                     <label style={toggleLabelStyle} title="Expand the steps block by default in every turn">
                         <input type="checkbox" checked={expandSteps} onChange={toggleExpandSteps} />
                         Expand steps
@@ -2003,4 +2034,23 @@ const scoreCommentStyle: React.CSSProperties = {
     color: '#475569',
     lineHeight: 1.4,
 };
+
+const presetChipsWrapperStyle: React.CSSProperties = {
+    display: 'inline-flex',
+    gap: '0.2rem',
+    alignItems: 'center',
+};
+
+function presetChipStyle(active: boolean): React.CSSProperties {
+    return {
+        padding: '0.15rem 0.45rem',
+        fontSize: '0.7rem',
+        fontWeight: active ? 700 : 400,
+        borderRadius: '4px',
+        border: `1px solid ${active ? '#3b82f6' : '#d1d5db'}`,
+        backgroundColor: active ? '#dbeafe' : '#f9fafb',
+        color: active ? '#1d4ed8' : '#6b7280',
+        cursor: active ? 'default' : 'pointer',
+    };
+}
 

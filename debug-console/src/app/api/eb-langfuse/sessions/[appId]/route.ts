@@ -67,16 +67,16 @@ interface EbSession {
 
 const PAGE_SIZE = 20;
 const DETAIL_BATCH_SIZE = 20;
+const DEFAULT_FROM_DAYS = 7;
 // Same shape as the agent routes' APP_ID_RE: alphanumeric + `_-`, 1..128 chars.
 const APP_ID_RE = /^[A-Za-z0-9_-]{1,128}$/;
 
 /**
- * Fetch one page of an app's traces by combining the indexed `userId`
- * (= customerId) with the `metadata.business_data_appId` filter in a single
- * query. The userId index narrows to one customer's traces first, so the
- * metadata predicate runs on a small set rather than scanning all history —
- * fast, and with accurate pagination totals. Throws (with `.status`) on an
- * upstream non-OK so the caller can surface it (or fall back to the scan).
+ * Fetch one page of an app's traces: indexed `userId` (= customerId) AND the
+ * `metadata.business_data_appId` filter, over a bounded timestamp range. The
+ * public REST list endpoint has a ~30s server-side query budget and 422s on
+ * wide windows regardless of this filter, so callers cap the range (see the
+ * preset in LangfuseEbPanel). Throws (with `.status`) on an upstream non-OK.
  */
 async function fetchAppPageByCustomer(
   lf: { baseUrl: string; authHeader: string },
@@ -84,8 +84,8 @@ async function fetchAppPageByCustomer(
   customerId: string,
   page: number,
   limit: number,
-  fromTimestamp: string | null,
-  toTimestamp: string | null,
+  fromTimestamp: string,
+  toTimestamp: string,
   signal: AbortSignal,
 ): Promise<{ ids: string[]; totalPages: number; totalItems: number | null }> {
   const params = new URLSearchParams({
@@ -93,9 +93,9 @@ async function fetchAppPageByCustomer(
     limit: String(limit),
     userId: customerId,
     filter: buildAppIdFilter(appId),
+    fromTimestamp,
+    toTimestamp,
   });
-  if (fromTimestamp) params.append('fromTimestamp', fromTimestamp);
-  if (toTimestamp) params.append('toTimestamp', toTimestamp);
   const res = await fetch(`${lf.baseUrl}/api/public/traces?${params}`, {
     headers: {
       Authorization: lf.authHeader,
@@ -141,8 +141,14 @@ export const GET = withAuth<{ appId: string }>(async function ebSessions(request
     }
     appIdForLog = appId;
     const searchParams = request.nextUrl.searchParams;
-    const toTimestamp = searchParams.get('toTimestamp');
+    const explicitTo = searchParams.get('toTimestamp');
     const explicitFrom = searchParams.get('fromTimestamp');
+    const fromTimestamp =
+      explicitFrom ??
+      new Date(Date.now() - DEFAULT_FROM_DAYS * 24 * 60 * 60 * 1000).toISOString();
+    // Always bound the upper end (the UI does too); an open-ended range makes the
+    // upstream more likely to reject wide windows.
+    const toTimestamp = explicitTo ?? new Date().toISOString();
     const pageRaw = parseInt(searchParams.get('page') || '1', 10);
     const requestedPage = Number.isFinite(pageRaw) && pageRaw > 0 ? Math.min(pageRaw, 10_000) : 1;
 
@@ -150,14 +156,15 @@ export const GET = withAuth<{ appId: string }>(async function ebSessions(request
       appId,
       page: requestedPage,
       pageSize: PAGE_SIZE,
-      hasFromTimestamp: !!explicitFrom,
-      hasToTimestamp: !!toTimestamp,
+      fromTimestamp,
+      toTimestamp,
+      hasExplicitFromTimestamp: !!explicitFrom,
+      hasExplicitToTimestamp: !!explicitTo,
     });
 
     // Resolve the BMS cost→credit ratio (best-effort, null on failure) and the
-    // customerId in parallel. The customerId is EB's indexed `userId`; pairing it
-    // with the appId metadata filter lets the index narrow the set before the
-    // metadata predicate runs, so the query is fast and not 422-prone.
+    // customerId in parallel. The customerId is EB's indexed `userId`, paired with
+    // the appId metadata filter to scope traces to this app.
     const creditRatioPromise = resolveCreditRatio(appId, request).catch(() => NOT_BMS_RATIO);
     const customerId = await resolveCustomerId(appId);
     if (!customerId) {
@@ -177,7 +184,7 @@ export const GET = withAuth<{ appId: string }>(async function ebSessions(request
         customerId,
         requestedPage,
         PAGE_SIZE,
-        explicitFrom,
+        fromTimestamp,
         toTimestamp,
         request.signal,
       );
