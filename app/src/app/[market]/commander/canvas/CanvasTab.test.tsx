@@ -32,6 +32,11 @@ const baseProps = {
 }
 
 describe('CanvasTab', () => {
+  it('does not shrink when the tab strip overflows horizontally', () => {
+    renderWithProviders(<CanvasTab {...baseProps} />)
+    expect(screen.getByRole('tab', { name: 'Brand & Logo' })).toHaveClass('shrink-0')
+  })
+
   it('calls onActivate when the tab is clicked', async () => {
     const onActivate = vi.fn()
     const { user } = renderWithProviders(

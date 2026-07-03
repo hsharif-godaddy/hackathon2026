@@ -104,8 +104,8 @@ vi.mock('@/stores/useCodeSyncStore', () => {
   return { useCodeSyncStore: store };
 });
 
-vi.mock('@/hooks/useBreakpoints', () => ({
-  useBreakpoints: () => ({ isBelowSmBreakpoint: false }),
+vi.mock('@/hooks/useIsMobile', () => ({
+  useIsMobile: () => false,
 }));
 
 // Mock logger

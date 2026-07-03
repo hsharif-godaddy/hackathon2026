@@ -212,12 +212,17 @@ export function mockSearchParams(params: Record<string, string | null> = {}) {
  * @returns Object with all breakpoint booleans matching the real hook shape
  *
  * @example
+ * vi.mock('@/hooks/useIsMobile', () => ({
+ *   useIsMobile: () => true,
+ * }));
+ * // Or for breakpoint hook tests:
  * vi.mock('@/hooks/useBreakpoints', () => ({
- *   useBreakpoints: () => mockBreakpoints({ isBelowSmBreakpoint: true }),
+ *   useBreakpoints: () => mockBreakpoints({ isMdBreakpoint: false, isBelowMdBreakpoint: true }),
  * }));
  */
 export function mockBreakpoints(overrides: {
   isBelowSmBreakpoint?: boolean;
+  isBelowMdBreakpoint?: boolean;
   isSmBreakpoint?: boolean;
   isMdBreakpoint?: boolean;
   isLgBreakpoint?: boolean;
@@ -225,6 +230,7 @@ export function mockBreakpoints(overrides: {
 } = {}) {
   return {
     isBelowSmBreakpoint: false,
+    isBelowMdBreakpoint: false,
     isSmBreakpoint: true,
     isMdBreakpoint: true,
     isLgBreakpoint: true,

@@ -13,7 +13,7 @@ import text from '@ux/text';
 
 import { ButtonBar } from '@/components/layout/PostPublishGoLiveModal/components/ButtonBar';
 import { useChatContext } from '@/contexts/ChatContext';
-import { useBreakpoints } from '@/hooks/useBreakpoints';
+import { useIsMobile } from '@/hooks/useIsMobile';
 import { useTranslations } from '@/hooks/useTranslations';
 import { shipAnalyticsLog } from '@/lib/logging';
 import { logger } from '@/lib/request-context';
@@ -39,7 +39,7 @@ export function QAStep({ appId, isAnalyzing, analysisError, analysisResults, upd
   const [selectedIssues, setSelectedIssues] = useState<Set<string>>(new Set());
   const [isMarkingFixed, setIsMarkingFixed] = useState(false);
   const { sendMessage } = useChatContext();
-  const { isMdBreakpoint } = useBreakpoints();
+  const isMobile = useIsMobile();
 
   const hasErrors = (analysisResults?.report?.summary?.errors || 0) > 0;
   const hasWarnings = (analysisResults?.report?.summary?.warnings || 0) > 0;
@@ -216,7 +216,7 @@ export function QAStep({ appId, isAnalyzing, analysisError, analysisResults, upd
       {/* Footer with selection info */}
       <Box
         orientation="horizontal"
-        blockAlignChildren={(showSelectedIssueCount && isMdBreakpoint) ? "spaceBetween" : "end"}
+        blockAlignChildren={(showSelectedIssueCount && !isMobile) ? "spaceBetween" : "end"}
         inlineAlignChildren="center"
         gap="md"
         wrap

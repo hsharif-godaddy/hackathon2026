@@ -7,7 +7,7 @@ import PlusIcon from '@ux/icon/plus'
 import SearchIcon from '@ux/icon/search'
 
 import { HeaderTooltip } from '@/components/ui/HeaderTooltip'
-import { useIsMobile } from '@/hooks/use-mobile'
+import { useIsMobile } from '@/hooks/useIsMobile'
 import { useTranslations } from '@/hooks/useTranslations'
 import { Popover, PopoverContent, PopoverTrigger } from '@/lib/shadcn/popover'
 import { useCommanderStore } from '@/stores/useCommanderStore'

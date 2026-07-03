@@ -27,7 +27,7 @@ const meta: Meta<typeof ResponsiveMenu> = {
     docs: {
       description: {
         component:
-          'An action menu that adapts to viewport size: an anchored **`@ux/menu`** flyout on desktop, and a **`BottomSheet`** action list on mobile (< 640px). Both surfaces are driven by the same `items` array, so links, destructive styling, disabled state, separators, and `data-*` instrumentation stay in sync. The `isMobile` prop forces a rendering (defaults to an internal `matchMedia` breakpoint).',
+          'An action menu that adapts to viewport size: an anchored **`@ux/menu`** flyout on desktop, and a **`BottomSheet`** action list on mobile (< 768px). Both surfaces are driven by the same `items` array, so links, destructive styling, disabled state, separators, and `data-*` instrumentation stay in sync. The `isMobile` prop forces a rendering (defaults to an internal `matchMedia` breakpoint).',
       },
     },
   },
@@ -51,7 +51,7 @@ type Story = StoryObj<typeof ResponsiveMenu>;
  * Viewport-driven — no `isMobile` override, so the component uses its internal
  * `matchMedia` breakpoint and the desktop flyout / mobile sheet is chosen by the
  * story iframe's width. Defaults to iPhone SE here; use the **Viewport** toolbar
- * to toggle — ≥ 640px shows the flyout, < 640px shows the bottom sheet. (Chrome
+ * to toggle — ≥ 768px shows the flyout, < 768px shows the bottom sheet. (Chrome
  * DevTools device mode resizes the page, not the iframe, so use the toolbar.)
  */
 export const Responsive: Story = {

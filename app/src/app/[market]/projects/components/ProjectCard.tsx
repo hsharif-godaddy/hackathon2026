@@ -33,7 +33,7 @@ import { getProjectType } from '@/app/[market]/projects/lib/projectType'
 import { useLongPress } from '@/app/[market]/projects/lib/useLongPress'
 import UnpublishConfirmationModal from '@/components/layout/UnpublishConfirmationModal'
 import { useAppRename } from '@/hooks/useAppRename'
-import { useBreakpoints } from '@/hooks/useBreakpoints'
+import { useIsMobile } from '@/hooks/useIsMobile'
 import { useTranslations } from '@/hooks/useTranslations'
 import { useUnpublishApp } from '@/hooks/useUnpublishApp'
 import { SiteInfo, SiteStatus } from '@/lib/control-plane/types'
@@ -100,8 +100,8 @@ export default function ProjectCard({
   const [renameError, setRenameError] = useState<string | null>(null)
   const [deleting, setDeleting] = useState(false)
   const menuClosedRef = useRef(false)
-  const { isMdBreakpoint } = useBreakpoints()
-  const mobileSelectionEnabled = !isMdBreakpoint && !!onToggleSelect
+  const isMobile = useIsMobile()
+  const mobileSelectionEnabled = isMobile && !!onToggleSelect
 
   const deleteSite = useSitesStore((state) => state.deleteSite)
   const fetchAllSites = useSitesStore((state) => state.fetchAllSites)
@@ -470,7 +470,7 @@ export default function ProjectCard({
     </div>
   )
 
-  const cardFooterActions = isMdBreakpoint ? desktopActions : mobileActions
+  const cardFooterActions = isMobile ? mobileActions : desktopActions
 
   const modals = (
     <>
@@ -598,7 +598,7 @@ export default function ProjectCard({
     return (
       <>
         <div {...listRowProps} className={listRowClassName}>
-          {isMdBreakpoint ? (
+          {!isMobile ? (
             <div className="grid grid-cols-[128px_1fr_180px_96px] items-center gap-[12px] rounded-lg">
               <div className="relative h-12 w-16 shrink-0 overflow-hidden rounded-md">
                 <AppThumbnail key={screenshotUrl} {...thumbnailProps} />

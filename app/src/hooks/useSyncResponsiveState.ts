@@ -15,14 +15,12 @@ import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
  * Call this hook once at the top level of a page that needs responsive state.
  */
 export function useSyncResponsiveState() {
-  const { isBelowSmBreakpoint, isMdBreakpoint } = useBreakpoints()
+  const { isBelowMdBreakpoint } = useBreakpoints()
   const setIsMobile = useDevelopPageStore((state) => state.setIsMobile)
 
   useEffect(() => {
-    // isMobile in the store represents "should show mobile UI layout"
-    // which happens when the viewport is mobile-sized (< 640px)
-    setIsMobile(isBelowSmBreakpoint)
-  }, [isBelowSmBreakpoint, setIsMobile])
+    setIsMobile(isBelowMdBreakpoint)
+  }, [isBelowMdBreakpoint, setIsMobile])
 
-  return { isBelowSmBreakpoint, isMdBreakpoint }
+  return { isBelowMdBreakpoint }
 }

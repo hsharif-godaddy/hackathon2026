@@ -1,7 +1,7 @@
 # ResponsiveMenu
 
 An action menu that adapts to viewport size: an anchored `@ux/menu` flyout on
-desktop, and a `BottomSheet` action list on mobile (< 640px). Both surfaces are
+desktop, and a `BottomSheet` action list on mobile (< 768px). Both surfaces are
 driven by the same `items` array, so links, destructive styling, disabled
 state, separators, and `data-*` instrumentation stay in sync across breakpoints.
 

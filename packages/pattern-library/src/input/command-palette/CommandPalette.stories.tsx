@@ -54,7 +54,7 @@ const meta: Meta<typeof CommandPalette> = {
     docs: {
       description: {
         component:
-          'A responsive command-palette popover: an anchored **`@ux/flyout`** on desktop and a **`BottomSheet`** on mobile (< 640px). A `CommandPalette.Search` field filters **both** the `CommandPalette.Card` quick-actions and the `CommandPalette.Item` rows; empty groups and the cards row hide themselves. Keyboard follows the combobox + listbox pattern (Arrow Up/Down move the highlight, Enter activates).',
+          'A responsive command-palette popover: an anchored **`@ux/flyout`** on desktop and a **`BottomSheet`** on mobile (< 768px). A `CommandPalette.Search` field filters **both** the `CommandPalette.Card` quick-actions and the `CommandPalette.Item` rows; empty groups and the cards row hide themselves. Keyboard follows the combobox + listbox pattern (Arrow Up/Down move the highlight, Enter activates).',
       },
     },
   },
@@ -104,7 +104,7 @@ export const Mobile: Story = {
 
 /**
  * Viewport-driven — no `isMobile` override, so the internal `matchMedia`
- * breakpoint chooses the flyout (≥ 640px) or the bottom sheet (< 640px). Use the
+ * breakpoint chooses the flyout (≥ 768px) or the bottom sheet (< 768px). Use the
  * **Viewport** toolbar to toggle.
  */
 export const Responsive: Story = {

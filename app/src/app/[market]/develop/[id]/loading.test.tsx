@@ -34,7 +34,7 @@ describe('Loading', () => {
   });
 
   it('should render the develop skeleton with mobile layout', () => {
-    mockUseBreakpoints.mockReturnValue(mockBreakpoints({ isBelowSmBreakpoint: true }));
+    mockUseBreakpoints.mockReturnValue(mockBreakpoints({ isBelowMdBreakpoint: true }));
     renderWithProviders(<Loading />);
 
     expect(screen.getByTestId('develop-skeleton')).toBeInTheDocument();

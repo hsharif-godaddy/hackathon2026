@@ -14,7 +14,7 @@ import {
 } from 'react';
 
 import { BottomSheet } from '../../surfaces/bottom-sheet';
-import { useIsMobile } from '../../utils/use-is-mobile';
+import { useIsMobile } from '../../utils/useIsMobile';
 
 // ─── Item + trigger model ───────────────────────────────────────────────────
 
@@ -107,7 +107,7 @@ export interface ResponsiveMenuProps {
   onSelect?: ResponsiveMenuSelectHandler;
   /**
    * Force the desktop (`false`) or mobile (`true`) rendering. Defaults to an
-   * internal `matchMedia` breakpoint (< 640px). Pass the app's own breakpoint
+   * internal `matchMedia` breakpoint (< 768px). Pass the app's own breakpoint
    * hook result here for a single source of truth.
    */
   isMobile?: boolean;
@@ -173,7 +173,7 @@ function ItemContent({
 /**
  * `ResponsiveMenu` renders an action menu that adapts to viewport size: an
  * anchored `@ux/menu` flyout on desktop, and a `BottomSheet` action list on
- * mobile (< 640px). Both surfaces are driven by the same `items` array, so
+ * mobile (< 768px). Both surfaces are driven by the same `items` array, so
  * instrumentation (`data-eid` / `data-testid`), destructive styling, links,
  * disabled state, and separators stay in sync across breakpoints.
  *

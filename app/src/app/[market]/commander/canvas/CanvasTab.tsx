@@ -65,7 +65,7 @@ export function CanvasTab({
         data-testid={testId}
         data-canvas-id={canvasId}
         className={clsx(
-          'group relative flex items-center p-1 leading-none rounded-lg',
+          'group relative flex shrink-0 items-center p-1 leading-none rounded-lg',
           'transition-[background-color,color] duration-200',
           'focus:outline-none focus-visible:ring-1 focus-visible:ring-intents-ux-action-borderColor',
           {

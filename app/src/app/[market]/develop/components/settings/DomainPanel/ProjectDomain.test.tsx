@@ -117,11 +117,12 @@ describe('ProjectDomain input validation', function projectDomainValidationTests
   it('opens a bottom sheet on mobile when Edit URL is clicked', async function opensEditSheetOnMobile() {
     const { useBreakpoints } = await import('@/hooks/useBreakpoints');
     vi.mocked(useBreakpoints).mockReturnValue({
-      isBelowSmBreakpoint: true,
-      isSmBreakpoint: false,
+      isBelowSmBreakpoint: false,
+      isSmBreakpoint: true,
       isMdBreakpoint: false,
       isLgBreakpoint: false,
       isXlBreakpoint: false,
+      isBelowMdBreakpoint: true,
     });
 
     await renderProjectDomain();

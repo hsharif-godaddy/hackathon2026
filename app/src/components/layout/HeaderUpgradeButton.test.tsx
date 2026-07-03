@@ -36,10 +36,6 @@ vi.mock('@/hooks/useSwitchboard', () => ({
   }),
 }));
 
-vi.mock('@/hooks/useBreakpoints', () => ({
-  useBreakpoints: vi.fn(function () { return { isBelowSmBreakpoint: false, isSmBreakpoint: false, isMdBreakpoint: false, isLgBreakpoint: false }; }),
-}));
-
 vi.mock('@/stores/useDevelopPageStore', () => ({
   useDevelopPageStore: (selector: any) => selector({
     currentAppId: 'test-app-id',
@@ -197,17 +193,15 @@ describe('HeaderUpgradeButton', function headerUpgradeButtonTests() {
       expect(container.firstChild).toBeNull();
     });
 
-    it('should show text on desktop', async function showTextOnDesktop() {
+    it('should show upgrade button label', async function showUpgradeLabel() {
       const { usePaywallEligibility } = await import('@/hooks/usePaywallEligibility');
       const { useSwitchboard } = await import('@/hooks/useSwitchboard');
-      const { useBreakpoints } = await import('@/hooks/useBreakpoints');
 
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false, isError: false, error: null });
       vi.mocked(useSwitchboard).mockImplementation(function (flag: string) {
         if (flag === 'appbuilder-airoplus-upgrade-button') return true;
         return false;
       });
-      vi.mocked(useBreakpoints).mockReturnValue({ isBelowSmBreakpoint: false } as ReturnType<typeof useBreakpoints>);
 
       renderWithProviders(<HeaderUpgradeButton location="test" />);
 
@@ -216,24 +210,6 @@ describe('HeaderUpgradeButton', function headerUpgradeButtonTests() {
       });
     });
 
-    it('should show text on mobile', async function showTextOnMobile() {
-      const { usePaywallEligibility } = await import('@/hooks/usePaywallEligibility');
-      const { useSwitchboard } = await import('@/hooks/useSwitchboard');
-      const { useBreakpoints } = await import('@/hooks/useBreakpoints');
-
-      vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false, isError: false, error: null });
-      vi.mocked(useSwitchboard).mockImplementation(function (flag: string) {
-        if (flag === 'appbuilder-airoplus-upgrade-button') return true;
-        return false;
-      });
-      vi.mocked(useBreakpoints).mockReturnValue({ isBelowSmBreakpoint: true } as ReturnType<typeof useBreakpoints>);
-
-      renderWithProviders(<HeaderUpgradeButton location="test" />);
-
-      await waitFor(function waitForText() {
-        expect(screen.getByText('builder_upgrade_button')).toBeInTheDocument();
-      });
-    });
   });
 
   describe('popover interactions', function popoverTests() {

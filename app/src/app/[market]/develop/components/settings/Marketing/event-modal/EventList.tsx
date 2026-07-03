@@ -5,7 +5,7 @@ import Button from '@ux/button';
 import text from '@ux/text';
 import TextLockup from '@ux/text-lockup';
 
-import { useIsMobile } from '@/hooks/use-mobile';
+import { useIsMobile } from '@/hooks/useIsMobile';
 import { useTranslations } from '@/hooks/useTranslations';
 import { CalendarEvent } from '@/types/marketing';
 import { ContentType } from './types';

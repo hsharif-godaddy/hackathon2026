@@ -16,7 +16,7 @@ const meta: Meta<typeof ResponsivePopover> = {
     docs: {
       description: {
         component:
-          'Rich popover content that adapts to viewport size: an anchored **`@ux/flyout`** popover on desktop, and a **`BottomSheet`** on mobile (< 640px). The same `children` render in both surfaces. Content-agnostic sibling of **`ResponsiveMenu`**. Controlled-or-uncontrolled; `onOpenChange` reports the next desired state for every dismissal path (trigger, outside-click, Escape, scrim tap, sheet X).',
+          'Rich popover content that adapts to viewport size: an anchored **`@ux/flyout`** popover on desktop, and a **`BottomSheet`** on mobile (< 768px). The same `children` render in both surfaces. Content-agnostic sibling of **`ResponsiveMenu`**. Controlled-or-uncontrolled; `onOpenChange` reports the next desired state for every dismissal path (trigger, outside-click, Escape, scrim tap, sheet X).',
       },
     },
   },
@@ -37,7 +37,7 @@ function PublishBody() {
 }
 
 /**
- * Controlled. Resize the preview across 640px to swap between the desktop
+ * Controlled. Resize the preview across 768px to swap between the desktop
  * flyout and the mobile bottom sheet.
  */
 export const Default: Story = {

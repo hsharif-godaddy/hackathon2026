@@ -1,7 +1,7 @@
 # ResponsivePopover
 
 Rich popover content that adapts to viewport size: an anchored `@ux/flyout`
-popover on desktop, and a `BottomSheet` on mobile (< 640px). The **same
+popover on desktop, and a `BottomSheet` on mobile (< 768px). The **same
 `children`** render in both surfaces, so a consumer authors its popover body
 once and gets the right surface per breakpoint. It is the content-agnostic
 sibling of **`ResponsiveMenu`** (which is specialized for action lists).

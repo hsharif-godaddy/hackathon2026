@@ -4,8 +4,8 @@
 import '@testing-library/jest-dom'
 
 import { forwardRef, type ReactNode } from 'react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
-import { screen } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { act, screen } from '@testing-library/react'
 
 import { useCommanderStore } from '@/stores/useCommanderStore'
 import { renderWithProviders } from '@/tests/test-utils'
@@ -68,11 +68,67 @@ const resetCommanderStore = (openCanvasIds: CanvasId[], activeCanvasId: CanvasId
   })
 }
 
+beforeEach(() => {
+  Element.prototype.scrollIntoView = vi.fn()
+})
+
 afterEach(() => {
   resetCommanderStore([CanvasId.Preview, CanvasId.Brand, CanvasId.Domain])
+  vi.clearAllMocks()
 })
 
 describe('CanvasTabs', () => {
+  describe('overflow layout', () => {
+    it('scrolls tabs horizontally while keeping the add-canvas menu outside the scroll area', function scrollLayout() {
+      resetCommanderStore([CanvasId.Preview, CanvasId.Brand, CanvasId.Domain], CanvasId.Brand)
+
+      renderWithProviders(<CanvasTabs />)
+
+      const root = screen.getByTestId('commander-canvas-tabs')
+      const scrollContainer = root.querySelector('.overflow-x-auto')
+      const menuTrigger = screen.getByTestId('commander-canvas-tabs-menu-trigger')
+
+      expect(scrollContainer).toBeInTheDocument()
+      expect(scrollContainer).toHaveStyle({ scrollbarWidth: 'thin' })
+      expect(scrollContainer).toContainElement(screen.getByTestId('commander-canvas-tab-brand'))
+      expect(scrollContainer).not.toContainElement(menuTrigger)
+      expect(root).toContainElement(menuTrigger)
+    })
+  })
+
+  describe('active tab visibility', () => {
+    it('scrolls the active tab into view on mount', function scrollOnMount() {
+      resetCommanderStore([CanvasId.Preview, CanvasId.Brand, CanvasId.Domain], CanvasId.Brand)
+
+      renderWithProviders(<CanvasTabs />)
+
+      expect(Element.prototype.scrollIntoView).toHaveBeenCalledWith({
+        inline: 'nearest',
+        block: 'nearest',
+        behavior: 'smooth',
+      })
+    })
+
+    it('scrolls the newly active tab into view when selection changes', function scrollOnChange() {
+      const scrollIntoView = vi.fn()
+      Element.prototype.scrollIntoView = scrollIntoView
+      resetCommanderStore([CanvasId.Preview, CanvasId.Brand, CanvasId.Domain], CanvasId.Preview)
+
+      renderWithProviders(<CanvasTabs />)
+      scrollIntoView.mockClear()
+
+      act(() => {
+        useCommanderStore.setState({ activeCanvasId: CanvasId.Brand })
+      })
+
+      expect(scrollIntoView).toHaveBeenCalledWith({
+        inline: 'nearest',
+        block: 'nearest',
+        behavior: 'smooth',
+      })
+    })
+  })
+
   describe('close label', () => {
     it('uses builder_common_close when tab labels are expanded', function expandedCloseLabel() {
       resetCommanderStore([CanvasId.Preview, CanvasId.Brand, CanvasId.Domain], CanvasId.Brand)

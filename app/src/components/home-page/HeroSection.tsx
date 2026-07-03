@@ -26,6 +26,7 @@ import { useHeroPromptState } from '@/hooks/home/useHeroPromptState'
 import { useTextareaAutoResize } from '@/hooks/home/useTextareaAutoResize'
 import { useBreakpoints } from '@/hooks/useBreakpoints'
 import { useImpression } from '@/hooks/useImpression'
+import { useIsMobile } from '@/hooks/useIsMobile'
 import { useTranslations } from '@/hooks/useTranslations'
 import { generateClickEID } from '@/utils/instrumentation'
 
@@ -52,7 +53,8 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
 }, ref) => {
   useImpression('homepage.firstprompt.view')
   const t = useTranslations()
-  const { isBelowSmBreakpoint, isMdBreakpoint } = useBreakpoints()
+  const isMobile = useIsMobile()
+  const { isBelowSmBreakpoint, isMdBreakpoint } = useBreakpoints() // sm/md/lg heading tiers only
 
   const {
     isTemplateSelectorEnabled,
@@ -129,7 +131,7 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
       <PromptErrorAlert error={error} onDismiss={() => setError(null)} />
 
       <div className="w-full max-w-2xl mx-auto my-2 md:my-4">
-        <Box gap={isMdBreakpoint ? 'md' : 'lg'}>
+        <Box gap={isMobile ? 'lg' : 'md'}>
           <div
             className={clsx('relative transition-all duration-300 ease-out glowing-input', {
               'glowing-input--disabled': isLoading,
@@ -145,7 +147,7 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
                 { 'px-[32px] py-[24px]': isPromptStarterEnabled },
               )}
               elevation="float"
-              gap={isBelowSmBreakpoint ? 'sm' : 'md'}
+              gap={isMobile ? 'sm' : 'md'}
             >
               {isPromptStarterEnabled && (
                 <>

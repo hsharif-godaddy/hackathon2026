@@ -29,7 +29,7 @@ import { CommandPaletteGroup } from './CommandPaletteGroup';
 import { CommandPaletteItem } from './CommandPaletteItem';
 import { CommandPaletteMuted } from './CommandPaletteMuted';
 import { CommandPaletteSearch } from './CommandPaletteSearch';
-import { useIsMobile } from './use-is-mobile';
+import { useIsMobile } from '../../utils/useIsMobile';
 
 // ─── Trigger ──────────────────────────────────────────────────────────────
 
@@ -98,7 +98,7 @@ export interface CommandPaletteProps {
   closeOnSelect?: boolean;
   /**
    * Force the desktop (`false`) or mobile (`true`) rendering. Defaults to an
-   * internal `matchMedia` breakpoint (< 640px).
+   * internal `matchMedia` breakpoint (< 768px).
    */
   isMobile?: boolean;
   /** Content shown when a non-empty search matches nothing. Defaults to a muted "No results." */
@@ -148,7 +148,7 @@ interface CommandPaletteComponent {
 
 /**
  * `CommandPalette` is a responsive command-palette popover: an anchored `@ux/flyout`
- * on desktop and a `BottomSheet` on mobile (< 640px), composed from slot
+ * on desktop and a `BottomSheet` on mobile (< 768px), composed from slot
  * children. A `CommandPalette.Search` field at the top filters **both** the
  * `CommandPalette.Card` quick-actions and the `CommandPalette.Item` rows; empty groups
  * and the cards row hide themselves when nothing under them matches.

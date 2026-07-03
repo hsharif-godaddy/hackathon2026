@@ -12,6 +12,7 @@ import Spinner from '@ux/spinner'
 import { text } from '@ux/text'
 
 import { useBreakpoints } from '@/hooks/useBreakpoints'
+import { useIsMobile } from '@/hooks/useIsMobile'
 import { useSpeechRecognition } from '@/hooks/useSpeechRecognition'
 import { useTranslations } from '@/hooks/useTranslations'
 import { MAX_PROMPT_LENGTH } from '@/lib/features'
@@ -101,7 +102,8 @@ const LandingHero = forwardRef<LandingHeroRef, LandingHeroProps>(({
     return /^((?!chrome|android).)*safari/i.test(navigator.userAgent)
   }, [])
 
-  const { isBelowSmBreakpoint: isMobile, isLgBreakpoint } = useBreakpoints()
+  const isMobile = useIsMobile()
+  const { isLgBreakpoint } = useBreakpoints()
   const isTablet = !isMobile && !isLgBreakpoint
 
   const placeholders = useMemo(() => {

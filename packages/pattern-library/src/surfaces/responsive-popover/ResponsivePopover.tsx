@@ -11,7 +11,7 @@ import {
 } from 'react';
 
 import { BottomSheet } from '../bottom-sheet';
-import { useIsMobile } from '../../utils/use-is-mobile';
+import { useIsMobile } from '../../utils/useIsMobile';
 
 // ─── Trigger model ──────────────────────────────────────────────────────────
 
@@ -67,7 +67,7 @@ interface ResponsivePopoverBaseProps
   children?: ReactNode;
   /**
    * Force the desktop (`false`) or mobile (`true`) rendering. Defaults to an
-   * internal `matchMedia` breakpoint (< 640px). Pass the app's own breakpoint
+   * internal `matchMedia` breakpoint (< 768px). Pass the app's own breakpoint
    * here for a single source of truth.
    */
   isMobile?: boolean;
@@ -130,7 +130,7 @@ export type ResponsivePopoverProps = ResponsivePopoverBaseProps & ResponsivePopo
 /**
  * `ResponsivePopover` renders rich popover content that adapts to viewport
  * size: an anchored `@ux/flyout` popover on desktop, and a `BottomSheet` on
- * mobile (< 640px). The **same `children`** render in both surfaces, so a
+ * mobile (< 768px). The **same `children`** render in both surfaces, so a
  * consumer writes its popover body once and gets the right surface per
  * breakpoint — the content-agnostic sibling of `ResponsiveMenu` (which is
  * specialized for action lists).

@@ -8,6 +8,7 @@ import { buildEditModeEnabledMessage, ChatTab, IframeMessageType, type Marketing
 import type { LogoSessionLogo } from '@/app/[market]/develop/components/widgets/logo-utils'
 import type { FeedbackCategory } from '@/components/feedback/types'
 import { SWITCHBOARD_APPBUILDER_CMS_INLINE_EDIT } from '@/config/switchboard-flags'
+import { MD_BREAKPOINT } from '@/hooks/useBreakpoints'
 import { getSwitchboardFlag } from '@/hooks/useSwitchboard'
 import type { SiteInfo } from '@/lib/control-plane/types'
 import { logger } from '@/lib/request-context'
@@ -1531,7 +1532,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
 
     initializeMobileDetection: () => {
       const checkMobile = () => {
-        const newIsMobile = window.innerWidth < 768 // md breakpoint
+        const newIsMobile = window.innerWidth < MD_BREAKPOINT
         get().setIsMobile(newIsMobile)
       }
 

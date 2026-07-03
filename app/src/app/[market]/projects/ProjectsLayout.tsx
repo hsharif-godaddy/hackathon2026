@@ -15,7 +15,7 @@ import { KebabIcon } from '@/app/[market]/projects/components/icons'
 import ProjectCardActionsSheet from '@/app/[market]/projects/components/ProjectCardActionsSheet'
 import ProjectsListSection from '@/app/[market]/projects/components/ProjectsListSection'
 import { useProjectsView } from '@/app/[market]/projects/lib/useProjectsView'
-import { useBreakpoints } from '@/hooks/useBreakpoints'
+import { useIsMobile } from '@/hooks/useIsMobile'
 import { useTranslations } from '@/hooks/useTranslations'
 import { SiteInfo } from '@/lib/control-plane/types'
 import { generateClickEID } from '@/utils/instrumentation'
@@ -35,7 +35,7 @@ export default function ProjectsLayout({ sites, transferAllowed = false, showTra
   const [isHeaderActionsSheetOpen, setIsHeaderActionsSheetOpen] = useState(false)
   const [isSelectionActive, setIsSelectionActive] = useState(false)
   const [isMounted, setIsMounted] = useState(false)
-  const { isMdBreakpoint } = useBreakpoints()
+  const isMobile = useIsMobile()
   // `showTransfer` (menu visibility) and `transferAllowed` (initiation eligibility)
   // are always equal today, but every transfer-related gate below derives from
   // this combined flag so a future show-but-not-allowed combo can't leave the
@@ -63,7 +63,7 @@ export default function ProjectsLayout({ sites, transferAllowed = false, showTra
     },
   ]
 
-  const showMobileStickyFooter = !isMdBreakpoint && !hideMobileStickyFooter
+  const showMobileStickyFooter = isMobile && !hideMobileStickyFooter
 
   return (
     <main
@@ -83,7 +83,7 @@ export default function ProjectsLayout({ sites, transferAllowed = false, showTra
             {t('builder_apps_title')}
           </text.p>
         </div>
-        {isMdBreakpoint && (
+        {!isMobile && (
           <div className="flex shrink-0 items-center gap-2">
             <div data-partial="componentAiro">
               <Button
@@ -163,7 +163,7 @@ export default function ProjectsLayout({ sites, transferAllowed = false, showTra
         />
       )}
 
-      {!isMdBreakpoint && (
+      {isMobile && (
         <ProjectCardActionsSheet
           open={isHeaderActionsSheetOpen}
           onOpenChange={setIsHeaderActionsSheetOpen}

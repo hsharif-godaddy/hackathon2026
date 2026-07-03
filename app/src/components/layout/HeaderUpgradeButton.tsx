@@ -8,7 +8,6 @@ import CheckIcon from '@ux/icon/checkmark';
 import DiamondIcon from '@ux/icon/diamond';
 import text from '@ux/text';
 
-import { useBreakpoints } from '@/hooks/useBreakpoints';
 import { usePaywallEligibility } from '@/hooks/usePaywallEligibility';
 import { useSubscription } from '@/hooks/useSubscription';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
@@ -30,7 +29,6 @@ interface HeaderUpgradeButtonProps {
 export default function HeaderUpgradeButton({ location = 'unknown' }: HeaderUpgradeButtonProps) {
   const t = useTranslations();
   const [open, setOpen] = useState(false);
-  const { isBelowSmBreakpoint } = useBreakpoints();
   const pathname = usePathname();
   const isDevelopPage = isBuilderPagePath(pathname);
   const currentAppId = useDevelopPageStore((state) => state.currentAppId);
@@ -86,7 +84,6 @@ export default function HeaderUpgradeButton({ location = 'unknown' }: HeaderUpgr
           data-partial='componentAiro'
           icon={<DiamondIcon className="!size-2.5" />}
           text={t('builder_upgrade_button')}
-          aria-label={isBelowSmBreakpoint ? t('builder_upgrade_button') : undefined}
           className={clsx(
             "!rounded-lg !pt-0 !pb-0 !pl-0.5 !pr-0.5 md:!px-1 md:!py-[6px]",
             isDevelopPage ? '!rounded-xmd md:!py-[8px]' : '!rounded-lg md:!py-[6px]'

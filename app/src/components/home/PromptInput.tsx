@@ -7,7 +7,7 @@ import type { UploadedDesignFile } from '@/app/[market]/components/types'
 import { PromptInputErrors } from '@/components/home/PromptInputErrors'
 import { SpeechToggleButton } from '@/components/home/SpeechToggleButton'
 import { SubmitInitialPrompt } from '@/components/home/SubmitInitialPrompt'
-import { useBreakpoints } from '@/hooks/useBreakpoints'
+import { useIsMobile } from '@/hooks/useIsMobile'
 
 export interface PromptInputProps {
   className?: string
@@ -81,7 +81,7 @@ export function PromptInput({
   submitText,
   submitIcon,
 }: PromptInputProps) {
-  const { isBelowSmBreakpoint } = useBreakpoints()
+  const isMobile = useIsMobile()
 
   return (
     <div
@@ -95,7 +95,7 @@ export function PromptInput({
       <Box
         className="p-2 transition-all duration-300 ease-out bg-intents-ux-box-backgroundColor outline-4 outline-solid outline-[rgba(0,0,0,0.15)]"
         elevation="float"
-        gap={isBelowSmBreakpoint ? 'sm' : 'md'}
+        gap={isMobile ? 'sm' : 'md'}
       >
         {((uploadedFiles ?? []).length > 0 || processingFiles.length > 0) && onFilesChange && (
           <div aria-live="polite" className="flex flex-wrap gap-2">

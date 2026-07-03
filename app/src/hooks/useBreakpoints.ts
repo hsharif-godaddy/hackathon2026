@@ -10,18 +10,40 @@ export const LG_BREAKPOINT = 1024
 export const XL_BREAKPOINT = 1280
 
 /**
- * Hook to detect different screen sizes based on Tailwind breakpoints
+ * Multi-tier viewport flags aligned with Tailwind breakpoints.
  *
- * Uses react-responsive's useMediaQuery for optimized media query handling.
+ * **Mobile layout** (< 768px): use {@link useIsMobile}, not flags from this hook.
+ * `useIsMobile` is the canonical layout boundary and matches
+ * `useDevelopPageStore.isMobile` (via {@link useSyncResponsiveState}).
  *
- * @returns Object with isBelowSmBreakpoint (< 640px), isSmBreakpoint (640px+), isMdBreakpoint (768px+), isLgBreakpoint (1024px+), and isXlBreakpoint (1280px+)
+ * **Pure spacing** (gaps, padding with no JS branching): prefer Tailwind
+ * responsive classes (`gap-1 sm:gap-2`, `md:gap-3`) over this hook.
+ *
+ * **`isBelowSmBreakpoint`** (< 640px, below Tailwind `sm`): mobile-first default
+ * range — tighter density and the smallest typography step in multi-tier ladders.
+ * Not for mobile layout or prompt-card spacing — those use {@link useIsMobile}.
+ *
+ * **`isMdBreakpoint` / `isLgBreakpoint`**: min-width tiers for typography or
+ * layout that needs more than two steps (e.g., sm → md → lg heading sizes).
+ *
+ * **`isBelowMdBreakpoint`**: internal composition only (`useIsMobile`,
+ * `useSyncResponsiveState`). Call sites should use `useIsMobile()` instead.
  */
 export function useBreakpoints() {
   const isBelowSmBreakpoint = useMediaQuery({ maxWidth: SM_BREAKPOINT - 1 })
+  const isBelowMdBreakpoint = useMediaQuery({ maxWidth: MD_BREAKPOINT - 1 })
   const isSmBreakpoint = useMediaQuery({ minWidth: SM_BREAKPOINT })
   const isMdBreakpoint = useMediaQuery({ minWidth: MD_BREAKPOINT })
   const isLgBreakpoint = useMediaQuery({ minWidth: LG_BREAKPOINT })
   const isXlBreakpoint = useMediaQuery({ minWidth: XL_BREAKPOINT })
 
-  return { isBelowSmBreakpoint, isSmBreakpoint, isMdBreakpoint, isLgBreakpoint, isXlBreakpoint }
+  return {
+    /** Below sm (< 640px). Not mobile layout — use {@link useIsMobile}. */
+    isBelowSmBreakpoint,
+    isBelowMdBreakpoint,
+    isSmBreakpoint,
+    isMdBreakpoint,
+    isLgBreakpoint,
+    isXlBreakpoint,
+  }
 }

@@ -18,7 +18,6 @@ import InviteFriends from '@/components/layout/InviteFriends';
 import { HeaderProps } from '@/components/layout/types';
 import UserMenu from '@/components/layout/UserMenu';
 import { useAuthContext } from '@/components/providers/AuthProvider';
-import { useBreakpoints } from '@/hooks/useBreakpoints';
 import { useTranslations } from '@/hooks/useTranslations';
 import { isBuilderPagePath } from '@/lib/builder-route';
 import { generateClickEID } from '@/utils/instrumentation';
@@ -31,7 +30,6 @@ const BELL_APP_KEYS: Record<string, string | undefined> = {
 export default function Header({ actions, onShowMockLogin, location = 'unknown', className }: HeaderProps) {
   const t = useTranslations();
   const { isAuthenticated, isLoading } = useAuthContext();
-  const { isBelowSmBreakpoint } = useBreakpoints();
   const pathname = usePathname();
   const isDevelopPage = isBuilderPagePath(pathname);
 
@@ -67,9 +65,9 @@ export default function Header({ actions, onShowMockLogin, location = 'unknown',
             </Link>
             <Tag emphasis="highlight" highcontrast>{t('builder_beta')}</Tag>
           </div>
-          <Box orientation="horizontal" className={isBelowSmBreakpoint ? 'gap-1 ml-2' : 'gap-2'}>
+          <Box orientation="horizontal" className="gap-1 ml-2 sm:gap-2 sm:ml-0">
             {actions && actions}
-            <Box orientation="horizontal" inlineAlignChildren="center" className={isBelowSmBreakpoint ? 'gap-0.5' : 'gap-1'}>
+            <Box orientation="horizontal" inlineAlignChildren="center" className="gap-0.5 sm:gap-1">
               {showAuthenticatedUI && !isDevelopPage && <InviteFriends location={location} />}
               {!isDevelopPage && <DiscordLink location={location} />}
               {showAuthenticatedUI && bellAppKey && (

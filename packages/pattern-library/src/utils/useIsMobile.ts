@@ -3,9 +3,9 @@ import { useEffect, useState } from 'react';
 /**
  * Internal media-query breakpoint for the package's desktop↔mobile surface
  * swaps (e.g. `ResponsiveMenu`, `ResponsivePopover`). Matches the consuming
- * app's `sm` breakpoint (< 640px ⇒ mobile).
+ * app's `md` breakpoint (< 768px ⇒ mobile).
  */
-const MOBILE_QUERY = '(max-width: 639px)';
+const MOBILE_QUERY = '(max-width: 767px)';
 
 /**
  * SSR-safe `matchMedia` hook. Returns `false` during server render and the

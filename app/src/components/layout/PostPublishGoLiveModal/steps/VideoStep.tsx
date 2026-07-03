@@ -15,7 +15,7 @@ import TextLockup from '@ux/text-lockup';
 
 import { ButtonBar } from '@/components/layout/PostPublishGoLiveModal/components/ButtonBar';
 import { Loader } from '@/components/layout/PostPublishGoLiveModal/components/Loader';
-import { useBreakpoints } from '@/hooks/useBreakpoints';
+import { useIsMobile } from '@/hooks/useIsMobile';
 import { useTranslations } from '@/hooks/useTranslations';
 import { logger } from '@/lib/request-context';
 
@@ -41,7 +41,7 @@ export function VideoStep({
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
-  const { isMdBreakpoint } = useBreakpoints();
+  const isMobile = useIsMobile();
 
   const handleDownloadVideo = async () => {
     if (!launchVideoUrl || isDownloading) return;
@@ -116,7 +116,7 @@ export function VideoStep({
           <div className="flex md:flex-1 flex-col items-center md:items-start md:justify-center gap-4">
             <TextLockup
               title={t('golive_video_ready_title')}
-              centered={!isMdBreakpoint}
+              centered={isMobile}
             >
               <text.p>
                 {t('golive_video_optimized_for')}
@@ -137,7 +137,7 @@ export function VideoStep({
               {/* Mute and Download Controls */}
               <Box
                 orientation="horizontal"
-                blockAlignChildren={isMdBreakpoint ? 'start' : 'center'}
+                blockAlignChildren={isMobile ? 'center' : 'start'}
                 gap="sm"
                 wrap
               >

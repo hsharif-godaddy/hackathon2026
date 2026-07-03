@@ -1,5 +1,6 @@
 'use client';
 
+import clsx from 'clsx';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useMemo } from 'react';
 import Box from '@ux/box';
@@ -21,6 +22,7 @@ import AppPublish from '@/components/layout/AppPublish';
 import HeaderUpgradeButton from '@/components/layout/HeaderUpgradeButton';
 import IframeCloseButton from '@/components/layout/IframeCloseButton';
 import UserMenu from '@/components/layout/UserMenu';
+import { useBreakpoints } from '@/hooks/useBreakpoints';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
 import {
@@ -40,6 +42,7 @@ const LOCATION = 'develop';
 
 export default function CommanderHeader() {
   const t = useTranslations();
+  const { isLgBreakpoint } = useBreakpoints();
   const isTopLevelDomainEnabled = useSwitchboard('appbuilder-domain-top-level');
   const isInboxEnabled = useSwitchboard('app-builder-inbox-button');
   const isAutomationsEnabled = useSwitchboard('appbuilder-automations');
@@ -67,7 +70,7 @@ export default function CommanderHeader() {
     !isCanvasSettingsOpen && (viewMode === ViewMode.PREVIEW || viewMode === ViewMode.EDIT)
 
   return (
-    <header data-testid="commander-header" className="flex">
+    <header data-testid="commander-header" className="flex min-w-0">
       <motion.div
         className="shrink-0 flex items-center gap-1.5"
         animate={{ width: 'auto' }}
@@ -89,25 +92,25 @@ export default function CommanderHeader() {
         </AnimatePresence>
       </motion.div>
 
-      <div className="px-1.5 py-1 md:px-2.5 md:py-1 grow overflow-hidden">
+      <div className={clsx("min-w-0 grow overflow-hidden px-1.5 py-1", isLeftDock ? 'md:px-2' : 'md:px-2.5')}>
         <Box
           orientation="horizontal"
           blockAlignChildren="spaceBetween"
           inlineAlignChildren="center"
           gap="sm"
-          className="overflow-x-auto"
+          className="min-w-0"
         >
           <Box
             orientation="horizontal"
             gap="sm"
             inlineAlignChildren="center"
-            blockAlignChildren={isLeftDock ? 'start' : 'center'}
             stretch
+            className="min-w-0 flex-1"
           >
             <motion.div
               layout="position"
               transition={{ type: 'spring', stiffness: 280, damping: 32, mass: 0.9 }}
-              className="flex items-center gap-1.5"
+              className={clsx('flex items-center gap-1.5', isCanvasTabsEnabled ? 'min-w-0 w-full' : 'w-auto')}
             >
               {isCanvasTabsEnabled ? (
                 <CanvasTabs clickContext={clickContext} />
@@ -188,7 +191,7 @@ export default function CommanderHeader() {
             </motion.div>
           </Box>
 
-          <Box orientation="horizontal" gap="sm" inlineAlignChildren="center">
+          <Box orientation="horizontal" gap="sm" inlineAlignChildren="center" className="shrink-0">
             {!isCanvasEnabled && (viewMode === ViewMode.PREVIEW || viewMode === ViewMode.EDIT) && (
               <span className="hidden lg:block">
                 <DeviceSelector disabled={isVersionHistoryOpen} />
@@ -197,7 +200,7 @@ export default function CommanderHeader() {
             <ShareLink />
 
             <ButtonGroup>
-              <HeaderUpgradeButton location={LOCATION} />
+              {isLgBreakpoint ? <HeaderUpgradeButton location={LOCATION} /> : !isLeftDock && <HeaderUpgradeButton location={LOCATION} />}
               <AppPublish location={LOCATION} />
             </ButtonGroup>
 

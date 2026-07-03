@@ -9,216 +9,203 @@ import { renderHook } from '@testing-library/react';
 
 import { LG_BREAKPOINT, MD_BREAKPOINT, SM_BREAKPOINT, useBreakpoints, XL_BREAKPOINT } from './useBreakpoints';
 
-const XS_BREAKPOINT_MAX = SM_BREAKPOINT - 1;
+const BELOW_SM_MAX = SM_BREAKPOINT - 1;
+const BELOW_MD_MAX = MD_BREAKPOINT - 1;
 
-// Mock react-responsive
 vi.mock('react-responsive', () => ({
   useMediaQuery: vi.fn(),
 }));
 
 const mockUseMediaQuery = vi.mocked(useMediaQuery);
 
+function mockMediaQuery(matches: {
+  belowSm: boolean;
+  belowMd: boolean;
+  smAndUp: boolean;
+  mdAndUp: boolean;
+  lgAndUp: boolean;
+  xlAndUp: boolean;
+}): void {
+  mockUseMediaQuery.mockImplementation(function (query) {
+    if (query.maxWidth === BELOW_SM_MAX) return matches.belowSm;
+    if (query.maxWidth === BELOW_MD_MAX) return matches.belowMd;
+    if (query.minWidth === SM_BREAKPOINT) return matches.smAndUp;
+    if (query.minWidth === MD_BREAKPOINT) return matches.mdAndUp;
+    if (query.minWidth === LG_BREAKPOINT) return matches.lgAndUp;
+    if (query.minWidth === XL_BREAKPOINT) return matches.xlAndUp;
+    return false;
+  });
+}
+
 describe('useBreakpoints', function useBreakpointsTests() {
-  beforeEach(() => {
+  beforeEach(function reset() {
     vi.clearAllMocks();
   });
 
-  afterEach(() => {
+  afterEach(function cleanup() {
     vi.clearAllMocks();
   });
 
-  it('should return correct values for mobile width (< 640px)', function mobile() {
-    mockUseMediaQuery.mockImplementation(function (query) {
-      if (query.maxWidth === XS_BREAKPOINT_MAX) return true; // isBelowSmBreakpoint
-      if (query.minWidth === SM_BREAKPOINT) return false; // isSmBreakpoint
-      if (query.minWidth === MD_BREAKPOINT) return false; // isMdBreakpoint
-      if (query.minWidth === LG_BREAKPOINT) return false; // isLgBreakpoint
-      if (query.minWidth === XL_BREAKPOINT) return false; // isXlBreakpoint
-      return false;
+  describe('below sm (< 640px, pre-sm default range)', function belowSmTests() {
+    it('should flag isBelowSmBreakpoint and isBelowMdBreakpoint at 639px', function at639() {
+      mockMediaQuery({
+        belowSm: true,
+        belowMd: true,
+        smAndUp: false,
+        mdAndUp: false,
+        lgAndUp: false,
+        xlAndUp: false,
+      });
+
+      const { result } = renderHook(() => useBreakpoints());
+
+      expect(result.current.isBelowSmBreakpoint).toBe(true);
+      expect(result.current.isBelowMdBreakpoint).toBe(true);
+      expect(result.current.isSmBreakpoint).toBe(false);
+      expect(result.current.isMdBreakpoint).toBe(false);
     });
-
-    const { result } = renderHook(() => useBreakpoints());
-
-    expect(result.current.isBelowSmBreakpoint).toBe(true);
-    expect(result.current.isSmBreakpoint).toBe(false);
-    expect(result.current.isMdBreakpoint).toBe(false);
-    expect(result.current.isLgBreakpoint).toBe(false);
-    expect(result.current.isXlBreakpoint).toBe(false);
   });
 
-  it('should return correct values for sm breakpoint (640px)', function sm640() {
-    mockUseMediaQuery.mockImplementation(function (query) {
-      if (query.maxWidth === XS_BREAKPOINT_MAX) return false; // isBelowSmBreakpoint
-      if (query.minWidth === SM_BREAKPOINT) return true; // isSmBreakpoint
-      if (query.minWidth === MD_BREAKPOINT) return false; // isMdBreakpoint
-      if (query.minWidth === LG_BREAKPOINT) return false; // isLgBreakpoint
-      if (query.minWidth === XL_BREAKPOINT) return false; // isXlBreakpoint
-      return false;
+  describe('between sm and md (640–767px)', function betweenSmAndMdTests() {
+    it('should not flag isBelowSmBreakpoint at 767px', function at767() {
+      mockMediaQuery({
+        belowSm: false,
+        belowMd: true,
+        smAndUp: true,
+        mdAndUp: false,
+        lgAndUp: false,
+        xlAndUp: false,
+      });
+
+      const { result } = renderHook(() => useBreakpoints());
+
+      expect(result.current.isBelowSmBreakpoint).toBe(false);
+      expect(result.current.isBelowMdBreakpoint).toBe(true);
+      expect(result.current.isSmBreakpoint).toBe(true);
+      expect(result.current.isMdBreakpoint).toBe(false);
     });
 
-    const { result } = renderHook(() => useBreakpoints());
+    it('should flag isBelowMdBreakpoint at 640px (mobile layout, not below sm)', function at640() {
+      mockMediaQuery({
+        belowSm: false,
+        belowMd: true,
+        smAndUp: true,
+        mdAndUp: false,
+        lgAndUp: false,
+        xlAndUp: false,
+      });
 
-    expect(result.current.isBelowSmBreakpoint).toBe(false);
-    expect(result.current.isSmBreakpoint).toBe(true);
-    expect(result.current.isMdBreakpoint).toBe(false);
-    expect(result.current.isLgBreakpoint).toBe(false);
-    expect(result.current.isXlBreakpoint).toBe(false);
+      const { result } = renderHook(() => useBreakpoints());
+
+      expect(result.current.isBelowSmBreakpoint).toBe(false);
+      expect(result.current.isBelowMdBreakpoint).toBe(true);
+    });
   });
 
-  it('should return correct values for md breakpoint (768px)', function md768() {
-    mockUseMediaQuery.mockImplementation(function (query) {
-      if (query.maxWidth === XS_BREAKPOINT_MAX) return false; // isBelowSmBreakpoint
-      if (query.minWidth === SM_BREAKPOINT) return true; // isSmBreakpoint
-      if (query.minWidth === MD_BREAKPOINT) return true; // isMdBreakpoint
-      if (query.minWidth === LG_BREAKPOINT) return false; // isLgBreakpoint
-      if (query.minWidth === XL_BREAKPOINT) return false; // isXlBreakpoint
-      return false;
+  describe('at md and above (≥ 768px, desktop layout)', function mdAndAboveTests() {
+    it('should clear isBelowMdBreakpoint at 768px', function at768() {
+      mockMediaQuery({
+        belowSm: false,
+        belowMd: false,
+        smAndUp: true,
+        mdAndUp: true,
+        lgAndUp: false,
+        xlAndUp: false,
+      });
+
+      const { result } = renderHook(() => useBreakpoints());
+
+      expect(result.current.isBelowSmBreakpoint).toBe(false);
+      expect(result.current.isBelowMdBreakpoint).toBe(false);
+      expect(result.current.isSmBreakpoint).toBe(true);
+      expect(result.current.isMdBreakpoint).toBe(true);
     });
 
-    const { result } = renderHook(() => useBreakpoints());
+    it('should flag lg at 1024px', function at1024() {
+      mockMediaQuery({
+        belowSm: false,
+        belowMd: false,
+        smAndUp: true,
+        mdAndUp: true,
+        lgAndUp: true,
+        xlAndUp: false,
+      });
 
-    expect(result.current.isBelowSmBreakpoint).toBe(false);
-    expect(result.current.isSmBreakpoint).toBe(true);
-    expect(result.current.isMdBreakpoint).toBe(true);
-    expect(result.current.isLgBreakpoint).toBe(false);
-    expect(result.current.isXlBreakpoint).toBe(false);
+      const { result } = renderHook(() => useBreakpoints());
+
+      expect(result.current.isLgBreakpoint).toBe(true);
+      expect(result.current.isXlBreakpoint).toBe(false);
+    });
+
+    it('should flag xl at 1280px', function at1280() {
+      mockMediaQuery({
+        belowSm: false,
+        belowMd: false,
+        smAndUp: true,
+        mdAndUp: true,
+        lgAndUp: true,
+        xlAndUp: true,
+      });
+
+      const { result } = renderHook(() => useBreakpoints());
+
+      expect(result.current.isXlBreakpoint).toBe(true);
+    });
+
+    it('should not flag xl at 1279px', function at1279() {
+      mockMediaQuery({
+        belowSm: false,
+        belowMd: false,
+        smAndUp: true,
+        mdAndUp: true,
+        lgAndUp: true,
+        xlAndUp: false,
+      });
+
+      const { result } = renderHook(() => useBreakpoints());
+
+      expect(result.current.isLgBreakpoint).toBe(true);
+      expect(result.current.isXlBreakpoint).toBe(false);
+    });
+
+    it('should not flag lg at 1023px', function at1023() {
+      mockMediaQuery({
+        belowSm: false,
+        belowMd: false,
+        smAndUp: true,
+        mdAndUp: true,
+        lgAndUp: false,
+        xlAndUp: false,
+      });
+
+      const { result } = renderHook(() => useBreakpoints());
+
+      expect(result.current.isLgBreakpoint).toBe(false);
+      expect(result.current.isMdBreakpoint).toBe(true);
+    });
   });
 
-  it('should return correct values for lg breakpoint (1024px)', function lg1024() {
-    mockUseMediaQuery.mockImplementation(function (query) {
-      if (query.maxWidth === XS_BREAKPOINT_MAX) return false; // isBelowSmBreakpoint
-      if (query.minWidth === SM_BREAKPOINT) return true; // isSmBreakpoint
-      if (query.minWidth === MD_BREAKPOINT) return true; // isMdBreakpoint
-      if (query.minWidth === LG_BREAKPOINT) return true; // isLgBreakpoint
-      if (query.minWidth === XL_BREAKPOINT) return false; // isXlBreakpoint
-      return false;
+  describe('return shape', function returnShapeTests() {
+    it('should expose all breakpoint boolean properties', function returnType() {
+      mockMediaQuery({
+        belowSm: false,
+        belowMd: false,
+        smAndUp: false,
+        mdAndUp: false,
+        lgAndUp: false,
+        xlAndUp: false,
+      });
+
+      const { result } = renderHook(() => useBreakpoints());
+
+      expect(result.current).toHaveProperty('isBelowSmBreakpoint');
+      expect(result.current).toHaveProperty('isBelowMdBreakpoint');
+      expect(result.current).toHaveProperty('isSmBreakpoint');
+      expect(result.current).toHaveProperty('isMdBreakpoint');
+      expect(result.current).toHaveProperty('isLgBreakpoint');
+      expect(result.current).toHaveProperty('isXlBreakpoint');
+      expect(typeof result.current.isBelowSmBreakpoint).toBe('boolean');
+      expect(typeof result.current.isBelowMdBreakpoint).toBe('boolean');
     });
-
-    const { result } = renderHook(() => useBreakpoints());
-
-    expect(result.current.isBelowSmBreakpoint).toBe(false);
-    expect(result.current.isSmBreakpoint).toBe(true);
-    expect(result.current.isMdBreakpoint).toBe(true);
-    expect(result.current.isLgBreakpoint).toBe(true);
-    expect(result.current.isXlBreakpoint).toBe(false);
-  });
-
-  it('should return correct values at 639px (just below sm)', function belowSm639() {
-    mockUseMediaQuery.mockImplementation(function (query) {
-      if (query.maxWidth === XS_BREAKPOINT_MAX) return true; // isBelowSmBreakpoint
-      if (query.minWidth === SM_BREAKPOINT) return false; // isSmBreakpoint
-      if (query.minWidth === MD_BREAKPOINT) return false; // isMdBreakpoint
-      if (query.minWidth === LG_BREAKPOINT) return false; // isLgBreakpoint
-      if (query.minWidth === XL_BREAKPOINT) return false; // isXlBreakpoint
-      return false;
-    });
-
-    const { result } = renderHook(() => useBreakpoints());
-
-    expect(result.current.isBelowSmBreakpoint).toBe(true);
-    expect(result.current.isSmBreakpoint).toBe(false);
-    expect(result.current.isMdBreakpoint).toBe(false);
-    expect(result.current.isLgBreakpoint).toBe(false);
-    expect(result.current.isXlBreakpoint).toBe(false);
-  });
-
-  it('should return correct values at 767px (just below md)', function belowMd767() {
-    mockUseMediaQuery.mockImplementation(function (query) {
-      if (query.maxWidth === XS_BREAKPOINT_MAX) return false; // isBelowSmBreakpoint
-      if (query.minWidth === SM_BREAKPOINT) return true; // isSmBreakpoint
-      if (query.minWidth === MD_BREAKPOINT) return false; // isMdBreakpoint
-      if (query.minWidth === LG_BREAKPOINT) return false; // isLgBreakpoint
-      if (query.minWidth === XL_BREAKPOINT) return false; // isXlBreakpoint
-      return false;
-    });
-
-    const { result } = renderHook(() => useBreakpoints());
-
-    expect(result.current.isBelowSmBreakpoint).toBe(false);
-    expect(result.current.isSmBreakpoint).toBe(true);
-    expect(result.current.isMdBreakpoint).toBe(false);
-    expect(result.current.isLgBreakpoint).toBe(false);
-    expect(result.current.isXlBreakpoint).toBe(false);
-  });
-
-  it('should return correct values at 1023px (just below lg)', function belowLg1023() {
-    mockUseMediaQuery.mockImplementation(function (query) {
-      if (query.maxWidth === XS_BREAKPOINT_MAX) return false; // isBelowSmBreakpoint
-      if (query.minWidth === SM_BREAKPOINT) return true; // isSmBreakpoint
-      if (query.minWidth === MD_BREAKPOINT) return true; // isMdBreakpoint
-      if (query.minWidth === LG_BREAKPOINT) return false; // isLgBreakpoint
-      if (query.minWidth === XL_BREAKPOINT) return false; // isXlBreakpoint
-      return false;
-    });
-
-    const { result } = renderHook(() => useBreakpoints());
-
-    expect(result.current.isBelowSmBreakpoint).toBe(false);
-    expect(result.current.isSmBreakpoint).toBe(true);
-    expect(result.current.isMdBreakpoint).toBe(true);
-    expect(result.current.isLgBreakpoint).toBe(false);
-    expect(result.current.isXlBreakpoint).toBe(false);
-  });
-
-  it('should return correct values for xl breakpoint (1280px)', function xl1280() {
-    mockUseMediaQuery.mockImplementation(function (query) {
-      if (query.maxWidth === XS_BREAKPOINT_MAX) return false; // isBelowSmBreakpoint
-      if (query.minWidth === SM_BREAKPOINT) return true; // isSmBreakpoint
-      if (query.minWidth === MD_BREAKPOINT) return true; // isMdBreakpoint
-      if (query.minWidth === LG_BREAKPOINT) return true; // isLgBreakpoint
-      if (query.minWidth === XL_BREAKPOINT) return true; // isXlBreakpoint
-      return false;
-    });
-
-    const { result } = renderHook(() => useBreakpoints());
-
-    expect(result.current.isBelowSmBreakpoint).toBe(false);
-    expect(result.current.isSmBreakpoint).toBe(true);
-    expect(result.current.isMdBreakpoint).toBe(true);
-    expect(result.current.isLgBreakpoint).toBe(true);
-    expect(result.current.isXlBreakpoint).toBe(true);
-  });
-
-  it('should return correct values at 1279px (just below xl)', function belowXl1279() {
-    mockUseMediaQuery.mockImplementation(function (query) {
-      if (query.maxWidth === XS_BREAKPOINT_MAX) return false; // isBelowSmBreakpoint
-      if (query.minWidth === SM_BREAKPOINT) return true; // isSmBreakpoint
-      if (query.minWidth === MD_BREAKPOINT) return true; // isMdBreakpoint
-      if (query.minWidth === LG_BREAKPOINT) return true; // isLgBreakpoint
-      if (query.minWidth === XL_BREAKPOINT) return false; // isXlBreakpoint
-      return false;
-    });
-
-    const { result } = renderHook(() => useBreakpoints());
-
-    expect(result.current.isBelowSmBreakpoint).toBe(false);
-    expect(result.current.isSmBreakpoint).toBe(true);
-    expect(result.current.isMdBreakpoint).toBe(true);
-    expect(result.current.isLgBreakpoint).toBe(true);
-    expect(result.current.isXlBreakpoint).toBe(false);
-  });
-
-  it('should return object with all breakpoint boolean properties', function returnType() {
-    mockUseMediaQuery.mockImplementation(function (query) {
-      if (query.maxWidth === XS_BREAKPOINT_MAX) return false; // isBelowSmBreakpoint
-      if (query.minWidth === SM_BREAKPOINT) return false; // isSmBreakpoint
-      if (query.minWidth === MD_BREAKPOINT) return false; // isMdBreakpoint
-      if (query.minWidth === LG_BREAKPOINT) return false; // isLgBreakpoint
-      if (query.minWidth === XL_BREAKPOINT) return false; // isXlBreakpoint
-      return false;
-    });
-
-    const { result } = renderHook(() => useBreakpoints());
-
-    expect(result.current).toHaveProperty('isBelowSmBreakpoint');
-    expect(result.current).toHaveProperty('isSmBreakpoint');
-    expect(result.current).toHaveProperty('isMdBreakpoint');
-    expect(result.current).toHaveProperty('isLgBreakpoint');
-    expect(result.current).toHaveProperty('isXlBreakpoint');
-    expect(typeof result.current.isBelowSmBreakpoint).toBe('boolean');
-    expect(typeof result.current.isSmBreakpoint).toBe('boolean');
-    expect(typeof result.current.isMdBreakpoint).toBe('boolean');
-    expect(typeof result.current.isLgBreakpoint).toBe('boolean');
-    expect(typeof result.current.isXlBreakpoint).toBe('boolean');
   });
 });

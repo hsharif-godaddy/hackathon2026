@@ -1,7 +1,7 @@
 # CommandPalette
 
 A responsive command-palette popover. On desktop it renders as an anchored
-`@ux/flyout`; below 640px it renders as a `BottomSheet`. It is composed from
+`@ux/flyout`; below 768px it renders as a `BottomSheet`. It is composed from
 slot children: a search field, a row of quick-action cards, and grouped command
 rows. The search field filters **both** the cards and the rows, and empty
 groups (and the cards row) hide themselves.

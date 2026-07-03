@@ -2,7 +2,7 @@
 
 import { ShareLinkContent } from '@/app/[market]/develop/components/layout/ShareLink';
 import ProjectsActionModal from '@/app/[market]/projects/components/ProjectsActionModal';
-import { useBreakpoints } from '@/hooks/useBreakpoints';
+import { useIsMobile } from '@/hooks/useIsMobile';
 import { useTranslations } from '@/hooks/useTranslations';
 import type { SiteInfo } from '@/lib/control-plane/types';
 
@@ -19,7 +19,7 @@ interface ShareLinkModalProps {
  */
 export default function ShareLinkModal({ site, onClose, location = 'projects' }: ShareLinkModalProps) {
   const t = useTranslations();
-  const { isMdBreakpoint } = useBreakpoints();
+  const isMobile = useIsMobile();
 
   return (
     <ProjectsActionModal
@@ -32,7 +32,7 @@ export default function ShareLinkModal({ site, onClose, location = 'projects' }:
         <ShareLinkContent
           appId={site.id}
           site={site}
-          isMobile={!isMdBreakpoint}
+          isMobile={isMobile}
           open
           location={location}
         />

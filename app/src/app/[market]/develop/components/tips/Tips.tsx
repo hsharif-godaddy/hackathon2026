@@ -32,7 +32,7 @@ import { useAppIdFromParams } from '@/app/[market]/develop/components/utils'
 import { EXPERIMENT_IDS } from '@/config/experiments'
 import { useBuildingTipsVariant } from '@/experiments/building-tips-variant/useBuildingTipsVariant'
 import { useAnalytics } from '@/hooks/useAnalytics'
-import { useBreakpoints } from '@/hooks/useBreakpoints'
+import { useIsMobile } from '@/hooks/useIsMobile'
 import { useTranslations } from '@/hooks/useTranslations'
 import { logger } from '@/lib/request-context'
 
@@ -74,9 +74,9 @@ export default function Tips({
 }: TipsProps) {
   const hasStaticTip = staticTipTitle != null && staticTipDescription != null
   const t = useTranslations()
-  const { isMdBreakpoint } = useBreakpoints()
+  const isMobile = useIsMobile()
   const reduceMotion = useReducedMotion()
-  const isHorizontalStack = !isMdBreakpoint
+  const isHorizontalStack = isMobile
   const { tipIds, tipCopyDefaults } = useBuildingTipsVariant()
   const appId: string = useAppIdFromParams()
   const { logAnalytics } = useAnalytics({ experimentId: EXPERIMENT_IDS.aabProgressTracker })

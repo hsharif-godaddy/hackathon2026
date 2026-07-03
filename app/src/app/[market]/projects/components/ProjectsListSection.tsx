@@ -15,7 +15,7 @@ import ProjectsTabs from '@/app/[market]/projects/components/ProjectsTabs'
 import ProjectsToolbar from '@/app/[market]/projects/components/ProjectsToolbar'
 import { PROJECTS_GRID_PAGE_SIZE } from '@/app/[market]/projects/constants'
 import type { ProjectsViewState } from '@/app/[market]/projects/lib/useProjectsView'
-import { useBreakpoints } from '@/hooks/useBreakpoints'
+import { useIsMobile } from '@/hooks/useIsMobile'
 import { useTranslations } from '@/hooks/useTranslations'
 import { SiteInfo } from '@/lib/control-plane/types'
 import { useSitesStore } from '@/stores/useSitesStore'
@@ -39,7 +39,7 @@ export default function ProjectsListSection({
   onSelectionActiveChange,
 }: ProjectsListSectionProps) {
   const t = useTranslations()
-  const { isMdBreakpoint } = useBreakpoints()
+  const isMobile = useIsMobile()
   const [page, setPage] = useState(1)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [isBulkDeleting, setIsBulkDeleting] = useState(false)
@@ -156,7 +156,7 @@ export default function ProjectsListSection({
     <div className="flex flex-col gap-4">
       {showTabs && <ProjectsTabs active={tab} counts={tabCounts} onChange={setTab} />}
 
-      {isMdBreakpoint ? (
+      {!isMobile ? (
         <ProjectsStickyToolbar>
           <ProjectsToolbar
             search={search}

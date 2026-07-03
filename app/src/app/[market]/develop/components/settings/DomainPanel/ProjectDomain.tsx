@@ -28,8 +28,8 @@ import ProjectsActionModal, {
   ProjectsActionModalFooter,
 } from '@/app/[market]/projects/components/ProjectsActionModal';
 import { useAppNameUpdate } from '@/hooks/useAppName';
-import { useBreakpoints } from '@/hooks/useBreakpoints';
 import { useDomainValidationQuery } from '@/hooks/useDomainValidationQuery';
+import { useIsMobile } from '@/hooks/useIsMobile';
 import { useTranslations } from '@/hooks/useTranslations';
 import { DomainStatus, DomainType } from "@/lib/control-plane/types";
 import { shipAnalyticsLog } from '@/lib/logging';
@@ -52,7 +52,7 @@ const PROJECT_DOMAIN_INVALID_BOUNDS_MESSAGE =
 
 export default function ProjectDomain() {
   const t = useTranslations();
-  const { isMdBreakpoint } = useBreakpoints();
+  const isMobile = useIsMobile();
   const currentAppId = useAppIdFromParams();
 
   const site = useSiteStore((state) => {
@@ -462,8 +462,8 @@ export default function ProjectDomain() {
   const projectDomainStatus = getProjectDomainStatus();
   const isMutationBusy = isDomainPending || shouldPoll || updateAppNameMutation.isPending;
   const canStartEditing = !disableProjectDomain && !isMutationBusy;
-  const showInlineEdit = isEditing && isMdBreakpoint;
-  const showEditSheet = isEditing && !isMdBreakpoint;
+  const showInlineEdit = isEditing && !isMobile;
+  const showEditSheet = isEditing && isMobile;
 
   const handleStartEditing = () => {
     if (!canStartEditing) {

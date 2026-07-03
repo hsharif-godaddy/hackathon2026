@@ -216,7 +216,7 @@ function FloatingChatHeader({ title, onClose }: { title: string; onClose: () => 
  * edit / open-in-new-tab actions, and the primary publish action. This mirrors
  * the app's `AppPublish` body with literal copy (the pattern library is
  * i18n-agnostic). Hosted in a `ResponsivePopover`, it renders as the anchored
- * flyout on desktop and the bottom sheet under 640px.
+ * flyout on desktop and the bottom sheet under 768px.
  */
 function PublishPopoverBody({ onPublish }: { onPublish: () => void }) {
   return (
@@ -824,7 +824,7 @@ function BuilderSplitDemo({ initialShow = false }: { initialShow?: boolean }) {
         trailing={
           <Box displayType="flex" orientation="horizontal" gap="sm" inlineAlignChildren="center">
             {/* Publish opens the real publish popover (ResponsivePopover): an
-             * anchored flyout on desktop, a bottom sheet under 640px. The
+             * anchored flyout on desktop, a bottom sheet under 768px. The
              * header's own publish button is suppressed (`showPublish={false}`)
              * so this popover-driven trigger takes its place. */}
             <ResponsivePopover

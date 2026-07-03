@@ -18,7 +18,7 @@ import FileTree, { FileItem, FileStatus } from '@/app/[market]/develop/component
 import { markdownComponents } from '@/app/[market]/develop/components/preview/markdownComponents'
 import { ViewMode } from '@/app/[market]/develop/components/types'
 import UnifiedSearch, { SearchState } from '@/app/[market]/develop/components/UnifiedSearch'
-import { useBreakpoints } from '@/hooks/useBreakpoints'
+import { useIsMobile } from '@/hooks/useIsMobile'
 import { useTranslations } from '@/hooks/useTranslations'
 import { logger } from '@/lib/request-context'
 import { appService } from '@/services/AppService'
@@ -119,9 +119,9 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
   const [isSearchExpanded, setIsSearchExpanded] = useState(false)
   const searchInputRef = useRef<HTMLInputElement>(null)
 
-  const { isBelowSmBreakpoint } = useBreakpoints()
+  const isMobile = useIsMobile()
   // On mobile, start with file tree open so users know it exists
-  const [showFileTree, setShowFileTree] = useState(isBelowSmBreakpoint)
+  const [showFileTree, setShowFileTree] = useState(isMobile)
   const setHasUnsavedChanges = useDevelopPageStore((state) => state.setHasUnsavedChanges)
 
   // Subscribe to page initialization state - only load files when page is ready
@@ -578,7 +578,7 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
       setShowMarkdownPreview(false)
 
       // On mobile, close file tree after selection
-      if (isBelowSmBreakpoint) {
+      if (isMobile) {
         setShowFileTree(false)
       }
       return
@@ -613,7 +613,7 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
       }
 
       // On mobile, close file tree after selection
-      if (isBelowSmBreakpoint) {
+      if (isMobile) {
         setShowFileTree(false)
       }
     } catch (error) {
@@ -626,7 +626,7 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
     } finally {
       loadingFilesRef.current.delete(path)
     }
-  }, [openFiles, loadFileContent, isBelowSmBreakpoint])
+  }, [openFiles, loadFileContent, isMobile])
 
   const handleCloseFile = useCallback((path: string) => {
     setOpenFiles(prev => prev.filter(f => f.path !== path))
@@ -659,10 +659,10 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
     setActiveFile(SEARCH_PATH)
 
     // On mobile, close file tree after opening search
-    if (isBelowSmBreakpoint) {
+    if (isMobile) {
       setShowFileTree(false)
     }
-  }, [openFiles, isBelowSmBreakpoint, t])
+  }, [openFiles, isMobile, t])
 
   // Expand search input in header and open search tab
   const expandSearch = useCallback(() => {
@@ -833,7 +833,7 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
     <>
       <div className="h-full w-full flex overflow-hidden relative border rounded-md bg-intents-ux-box-backgroundColor">
         {/* File Tree - Desktop: sidebar, Mobile: overlay */}
-      {isBelowSmBreakpoint ? (
+      {isMobile ? (
         // Mobile: Slide-in overlay
         <>
           {showFileTree && (
@@ -977,7 +977,7 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
         {/* Tabs */}
         <div className="flex items-center border-b overflow-x-auto">
           {/* Mobile: File tree toggle button */}
-          {isBelowSmBreakpoint && (
+          {isMobile && (
             <Button
               onClick={() => setShowFileTree(true)}
               className="!px-2 !py-0.5 flex-shrink-0"
@@ -1001,7 +1001,7 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
                   onClick={() => setActiveFile(file.path)}
                 >
                   {file.isSearch ? <SearchIcon /> : <PageIcon />}
-                  <span className={clsx(isBelowSmBreakpoint ? "max-w-[80px] truncate" : "")}>{file.name}</span>
+                  <span className={clsx(isMobile ? "max-w-[80px] truncate" : "")}>{file.name}</span>
 
                   {/* Save status indicators - not shown for search tab */}
                   {!file.isSearch && (saving === file.path || recentlySaved === file.path || file.isDirty) && (
@@ -1029,7 +1029,7 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
               ))}
 
               {/* Save all button - hide on mobile if space is tight */}
-              {openFiles.some(f => f.isDirty) && !isBelowSmBreakpoint && (
+              {openFiles.some(f => f.isDirty) && !isMobile && (
                 <Button
                   onClick={() => {
                     openFiles.forEach(file => {

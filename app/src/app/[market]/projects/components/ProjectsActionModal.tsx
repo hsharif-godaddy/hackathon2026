@@ -7,7 +7,7 @@ import Button from '@ux/button'
 import Modal from '@ux/modal'
 import text from '@ux/text'
 
-import { useBreakpoints } from '@/hooks/useBreakpoints'
+import { useIsMobile } from '@/hooks/useIsMobile'
 import { useVisualViewportBottomInset } from '@/hooks/useVisualViewportBottomInset'
 import {
   Sheet,
@@ -67,7 +67,7 @@ export default function ProjectsActionModal({
   testId,
   applyAiroTheme = true,
 }: ProjectsActionModalProps) {
-  const { isMdBreakpoint } = useBreakpoints()
+  const isMobile = useIsMobile()
   const { bottomInset, viewportHeight } = useVisualViewportBottomInset()
   const sheetContentRef = useRef<HTMLDivElement>(null)
 
@@ -81,7 +81,7 @@ export default function ProjectsActionModal({
   }, [])
 
   useEffect(() => {
-    if (isMdBreakpoint) return
+    if (!isMobile) return
 
     const sheet = sheetContentRef.current
     if (!sheet) return
@@ -97,10 +97,10 @@ export default function ProjectsActionModal({
 
     sheet.addEventListener('focusin', onFocusIn)
     return () => sheet.removeEventListener('focusin', onFocusIn)
-  }, [isMdBreakpoint, scrollTextEntryIntoView])
+  }, [isMobile, scrollTextEntryIntoView])
 
   useEffect(() => {
-    if (isMdBreakpoint || bottomInset === 0) return
+    if (!isMobile || bottomInset === 0) return
 
     const active = document.activeElement
     if (
@@ -110,9 +110,9 @@ export default function ProjectsActionModal({
     ) {
       scrollTextEntryIntoView(active)
     }
-  }, [bottomInset, isMdBreakpoint, scrollTextEntryIntoView])
+  }, [bottomInset, isMobile, scrollTextEntryIntoView])
 
-  if (!isMdBreakpoint) {
+  if (isMobile) {
     const keyboardOpen = bottomInset > 0
 
     return (

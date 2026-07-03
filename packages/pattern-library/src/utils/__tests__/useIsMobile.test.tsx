@@ -1,7 +1,7 @@
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { useIsMobile } from '../use-is-mobile';
+import { useIsMobile } from '../useIsMobile';
 
 type ChangeListener = (event: MediaQueryListEvent) => void;
 
@@ -55,10 +55,10 @@ describe('useIsMobile', () => {
     expect(result.current).toBe(true);
   });
 
-  it('queries the < 640px breakpoint', () => {
+  it('queries the < 768px breakpoint', () => {
     const { matchMedia } = stubMatchMedia(false);
     renderHook(() => useIsMobile());
-    expect(matchMedia).toHaveBeenCalledWith('(max-width: 639px)');
+    expect(matchMedia).toHaveBeenCalledWith('(max-width: 767px)');
   });
 
   it('updates when the viewport crosses the breakpoint', () => {

@@ -7,7 +7,7 @@ import { useBuilderLayout } from '@/app/[market]/commander/useBuilderLayout'
 import ChatMessagesSkeleton from '@/app/[market]/develop/components/chat/ChatMessagesSkeleton'
 import PreviewSkeleton from '@/app/[market]/develop/components/preview/PreviewSkeleton'
 import StaticSkeleton from '@/app/[market]/develop/components/StaticSkeleton'
-import { useBreakpoints } from '@/hooks/useBreakpoints'
+import { useIsMobile } from '@/hooks/useIsMobile'
 import { DEFAULT_CHAT_PANE_WIDTH } from '@/stores/useDevelopPageStore'
 
 function ChatInputSkeleton() {
@@ -44,16 +44,16 @@ function ToolbarSkeleton() {
   )
 }
 
-// useBreakpoints relies on window.matchMedia, unavailable during SSR.
+// useIsMobile relies on window.matchMedia, unavailable during SSR.
 // The server always renders the desktop tree; on mobile clients the mounted
 // guard delays layout resolution until after hydration. The root element
 // starts at opacity-0 and fades in once mounted is true, so the brief
 // desktop-to-mobile swap is invisible to the user.
 export default function DevelopSkeleton({ isFallback = false }: { isFallback?: boolean }) {
-  const { isBelowSmBreakpoint } = useBreakpoints()
+  const isMobile = useIsMobile()
   const [mounted, setMounted] = useState(false)
   useEffect(() => { setMounted(true) }, [])
-  const isMobileLayout = mounted && isBelowSmBreakpoint
+  const isMobileLayout = mounted && isMobile
   // Match the placeholder to the layout this session resolves into — the immersive layout
   // gets a minimal header + a centered, large chat column, not the full develop chrome.
   const layout: BuilderLayout = useBuilderLayout()

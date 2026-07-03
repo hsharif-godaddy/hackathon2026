@@ -40,7 +40,7 @@ vi.mock('@/hooks/useAnalytics', () => ({
   useAnalytics: () => ({ cohort: 'on', logAnalytics: mockLogAnalytics }),
 }))
 
-let mockIsMdBreakpoint = true
+let mockIsMobile = false
 let mockShuffleStrategy: 'identity' | 'reverse' = 'identity'
 
 const { frontCardAnimationCallback } = vi.hoisted(() => ({
@@ -84,14 +84,8 @@ vi.mock('@ux/box', () => ({
   ),
 }))
 
-vi.mock('@/hooks/useBreakpoints', () => ({
-  useBreakpoints: () => ({
-    isBelowSmBreakpoint: false,
-    isSmBreakpoint: true,
-    isMdBreakpoint: mockIsMdBreakpoint,
-    isLgBreakpoint: true,
-    isXlBreakpoint: true,
-  }),
+vi.mock('@/hooks/useIsMobile', () => ({
+  useIsMobile: () => mockIsMobile,
 }))
 
 vi.mock('@/app/[market]/develop/components/tips/tips-content', async () => {
@@ -108,7 +102,7 @@ vi.mock('@/app/[market]/develop/components/tips/tips-content', async () => {
 describe('Tips', () => {
   beforeEach(() => {
     mockReduceMotion = false
-    mockIsMdBreakpoint = true
+    mockIsMobile = false
     mockShuffleStrategy = 'identity'
     mockVariantPackage = {
       tipIds: tips,
@@ -576,7 +570,7 @@ describe('Tips', () => {
 
   describe('below md breakpoint', () => {
     beforeEach(() => {
-      mockIsMdBreakpoint = false
+      mockIsMobile = true
     })
 
     // NOTE: the framer-motion mock strips `animate`/`variants`/`transition`, so
