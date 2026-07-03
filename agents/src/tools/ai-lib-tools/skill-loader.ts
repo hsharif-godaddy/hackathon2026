@@ -32,13 +32,17 @@ function emitSkillDiagnostics(
   emitter?.emit('skill_diagnostics', payload);
 }
 
-type LifecycleAction = 'load' | 'unload' | 'install' | 'complete';
+type LifecycleAction = 'load' | 'loadReference' | 'unload' | 'install' | 'complete';
 
 // Guarded wrapper: a throw from createSkillAction/emitSkillAction must not
 // convert an already-successful action into an error for the caller.
-function safeEmitEvent(skillName: string, skillAction: LifecycleAction): void {
+function safeEmitEvent(skillName: string, skillAction: LifecycleAction, referencePath?: string): void {
   try {
-    emitSkillAction({ eventData: createSkillAction({ skillName, skillAction }) });
+    if (skillAction === 'loadReference') {
+      emitSkillAction({ eventData: createSkillAction({ skillName, skillAction: 'loadReference', referencePath: referencePath! }) });
+    } else {
+      emitSkillAction({ eventData: createSkillAction({ skillName, skillAction }) });
+    }
   } catch (err) {
     logger.warn('skill.otel.emit_failed', { skillName, skillAction, error: err });
   }
@@ -98,6 +102,11 @@ export const skillAITool: Tool = createTool(
       if (!result.success) {
         throw new Error(result.error);
       }
+      const [skillName, ...refParts] = input.path.split('/');
+      if (skillName) {
+        safeEmitEvent(skillName, 'loadReference', refParts.join('/'));
+      }
+
       return {
         path: input.path,
         instructions: result.instructions,

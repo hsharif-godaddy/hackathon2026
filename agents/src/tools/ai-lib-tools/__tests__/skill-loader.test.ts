@@ -18,13 +18,14 @@ vi.mock('../../../logging/index.js', () => ({
 }));
 
 // Hoisted mocks for use inside vi.mock factories
-const { mockRunHook, mockRegisterSkill, mockUnloadSkill, mockLoadSkill, mockListSkills, mockInstallTemplates, mockFindById, mockIsSkillAvailableInMarket, mockEmitSkillAction, mockCreateSkillAction, mockRecordInstall, mockRecordComplete } = vi.hoisted(() => ({
+const { mockRunHook, mockRegisterSkill, mockUnloadSkill, mockLoadSkill, mockListSkills, mockInstallTemplates, mockLoadReference, mockFindById, mockIsSkillAvailableInMarket, mockEmitSkillAction, mockCreateSkillAction, mockRecordInstall, mockRecordComplete } = vi.hoisted(() => ({
   mockRunHook: vi.fn().mockResolvedValue(undefined),
   mockRegisterSkill: vi.fn().mockReturnValue({ success: true, tools: ['test__tool1'] }),
   mockUnloadSkill: vi.fn().mockReturnValue(true),
   mockLoadSkill: vi.fn().mockResolvedValue({ success: true, skill: 'test-skill', instructions: 'test instructions' }),
   mockListSkills: vi.fn().mockResolvedValue({ success: true, skills: [] }),
   mockInstallTemplates: vi.fn().mockResolvedValue({ success: true, skill: 'test-skill', filesInstalled: 1, installedFiles: ['file.ts'] }),
+  mockLoadReference: vi.fn().mockResolvedValue({ success: true, instructions: 'reference instructions' }),
   mockFindById: vi.fn().mockReturnValue({ path: '/tmp/apps/test-app' }),
   mockIsSkillAvailableInMarket: vi.fn().mockResolvedValue(true),
   mockEmitSkillAction: vi.fn(),
@@ -63,6 +64,7 @@ vi.mock('../../skill-loader-tool.js', () => ({
     loadSkill: mockLoadSkill,
     listSkills: mockListSkills,
     installTemplates: mockInstallTemplates,
+    loadReference: mockLoadReference,
     isSkillAvailableInMarket: mockIsSkillAvailableInMarket
   }; })
 }));
@@ -97,6 +99,7 @@ describe('skillAITool hooks', () => {
     mockUnloadSkill.mockReturnValue(true);
     mockLoadSkill.mockResolvedValue({ success: true, skill: 'test-skill', instructions: 'test instructions' });
     mockInstallTemplates.mockResolvedValue({ success: true, skill: 'test-skill', filesInstalled: 1, installedFiles: ['file.ts'] });
+    mockLoadReference.mockResolvedValue({ success: true, instructions: 'reference instructions' });
     mockFindById.mockReturnValue({ path: '/tmp/apps/test-app' });
     mockCreateSkillAction.mockReturnValue({ schemaId: 'test-schema', data: {} });
   });
@@ -370,6 +373,88 @@ describe('skillAITool hooks', () => {
 
   });
 
+  describe('loadReference action', () => {
+    it('returns path, instructions and message on success', async function successResult() {
+      const result = await executeTool({ action: 'loadReference', path: 'connecting-calendars/sections/02a-google-setup' }, mockContext);
+
+      expect(result).toEqual({
+        path: 'connecting-calendars/sections/02a-google-setup',
+        instructions: 'reference instructions',
+        message: "Reference 'connecting-calendars/sections/02a-google-setup' loaded.",
+      });
+    });
+
+    it('calls loadReference on the skill loader with the given path', async function callsLoader() {
+      await executeTool({ action: 'loadReference', path: 'connecting-calendars/sections/02a-google-setup' }, mockContext);
+
+      expect(mockLoadReference).toHaveBeenCalledWith('connecting-calendars/sections/02a-google-setup');
+    });
+
+    it('throws when path is not provided', async function requiresPath() {
+      await expect(
+        executeTool({ action: 'loadReference' }, mockContext),
+      ).rejects.toThrow('loadReference requires the `path` parameter');
+    });
+
+    it('throws when loadReference returns failure', async function propagatesError() {
+      mockLoadReference.mockResolvedValueOnce({ success: false, error: 'File not found' });
+
+      await expect(
+        executeTool({ action: 'loadReference', path: 'bad/path' }, mockContext),
+      ).rejects.toThrow('File not found');
+    });
+
+    it('uses first path segment as skillName and strips it from referencePath', async function firstSegment() {
+      await executeTool({ action: 'loadReference', path: 'connecting-calendars/sections/02a-google-setup' }, mockContext);
+
+      expect(mockCreateSkillAction).toHaveBeenCalledWith(
+        expect.objectContaining({
+          skillName: 'connecting-calendars',
+          skillAction: 'loadReference',
+          referencePath: 'sections/02a-google-setup',
+        }),
+      );
+    });
+
+    it('uses the full path as skillName and passes empty string as referencePath when path has no slashes', async function singleSegment() {
+      await executeTool({ action: 'loadReference', path: 'authentication' }, mockContext);
+
+      expect(mockCreateSkillAction).toHaveBeenCalledWith(
+        expect.objectContaining({
+          skillName: 'authentication',
+          skillAction: 'loadReference',
+          referencePath: '',
+        }),
+      );
+    });
+
+    it('ignores the skill field and always uses the first path segment as skillName', async function skillFieldIgnored() {
+      await executeTool({ action: 'loadReference', skill: 'some-other-skill', path: 'connecting-calendars/sections/02a-google-setup' }, mockContext);
+
+      expect(mockCreateSkillAction).toHaveBeenCalledWith(
+        expect.objectContaining({
+          skillName: 'connecting-calendars',
+          skillAction: 'loadReference',
+        }),
+      );
+    });
+
+    it('skips emit when the first path segment is empty', async function emptySegmentSkipsEmit() {
+      // Path starting with '/' produces '' as first segment — guarded by if (skillName)
+      await executeTool({ action: 'loadReference', path: '/sections/02a-google-setup' }, mockContext);
+
+      expect(mockEmitSkillAction).not.toHaveBeenCalled();
+    });
+
+    it('does not throw when emitSkillAction throws', async function guardedEmit() {
+      mockEmitSkillAction.mockImplementationOnce(() => { throw new Error('OTel unavailable'); });
+
+      await expect(
+        executeTool({ action: 'loadReference', path: 'connecting-calendars/sections/02a-google-setup' }, mockContext),
+      ).resolves.toMatchObject({ path: 'connecting-calendars/sections/02a-google-setup' });
+    });
+  });
+
   describe('emitSkillAction calls', () => {
     it('emits load event after successful load', async function emitLoad() {
       await executeTool({ action: 'load', skill: 'authentication' }, mockContext);
@@ -411,6 +496,19 @@ describe('skillAITool hooks', () => {
 
       expect(mockCreateSkillAction).toHaveBeenCalledWith(
         expect.objectContaining({ skillName: 'authentication', skillAction: 'complete' })
+      );
+      expect(mockEmitSkillAction).toHaveBeenCalledTimes(1);
+    });
+
+    it('emits loadReference event with skillName and referencePath without the skill prefix', async function emitLoadReference() {
+      await executeTool({ action: 'loadReference', path: 'authentication/sections/02-oauth' }, mockContext);
+
+      expect(mockCreateSkillAction).toHaveBeenCalledWith(
+        expect.objectContaining({
+          skillName: 'authentication',
+          skillAction: 'loadReference',
+          referencePath: 'sections/02-oauth',
+        })
       );
       expect(mockEmitSkillAction).toHaveBeenCalledTimes(1);
     });
