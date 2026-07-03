@@ -11,7 +11,7 @@ Call `generateDiscoveryQuestions` with the full conversation so far as `userRequ
 The tool returns 12 questions covering two areas:
 
 **Foundation** (questions 1–6): business type, location, services, pricing/duration, hours/timezone, team size.
-**Feature discovery** (questions 7–12): staff scheduling, coupons, customer portal, categories, intake questions, cancellation policy.
+**Feature discovery** (questions 7–12): staff scheduling, coupons, payments, customer portal, categories, intake questions, cancellation policy.
 
 ---
 
@@ -57,6 +57,7 @@ Here's what I'll set up for your [business type]:
 ✓ Timezone: [timezone], open [hours]
 ✓ [If team: Multiple staff members — each can manage their own schedule]
 ✓ [If coupons: Discount codes — you'll be able to create and share promo codes]
+✓ [If payments: Payment integration — customers pay when booking, you track transactions]
 ✓ [If customer portal: Customer accounts — customers can log in and manage their bookings]
 ✓ [If categories: Services grouped into categories]
 ✓ [If intake questions: Custom questions in the booking form]
@@ -75,6 +76,7 @@ Wait for explicit **yes** (or equivalent) before proceeding to §2.
 |---|---|
 | Multiple staff members / each has their own schedule | `admin.staff`, `staff.exception_times` |
 | Wants discount / coupon codes | `admin.coupons`, `customer.booking_flow.coupons` |
+| Wants to accept payments / paid appointments | `admin.payments`, `admin.settings.payment`, `customer.booking_flow.payment` |
 | Wants customer login / booking history portal | `customer.my_bookings` |
 | Wants to group services into categories | `admin.categories` |
 | Wants custom intake questions in booking form | `admin.questions` |
@@ -90,6 +92,7 @@ Always enable by default (core experience):
 
 Always disable by default unless explicitly requested:
 - `customer.my_bookings` — adds login friction; only enable if user asks
+- `admin.payments`, `admin.settings.payment`, `customer.booking_flow.payment` — requires payment provider setup; only enable if user wants paid appointments
 
 ---
 

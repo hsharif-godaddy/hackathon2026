@@ -73,7 +73,7 @@ export function TopServicesWidget({ data, loading = false }: TopServicesWidgetPr
                 hideLabel
                 formatter={(value, name) => {
                   if (typeof name === "string" && name.startsWith(PAD_PREFIX)) return null;
-                  return [value as React.ReactNode, "Bookings"];
+                  return [value, "Bookings"];
                 }}
               />
             }

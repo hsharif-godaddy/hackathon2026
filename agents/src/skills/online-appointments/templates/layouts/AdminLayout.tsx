@@ -9,6 +9,7 @@ import {
   Settings,
   UserCog,
   BriefcaseBusiness,
+  CreditCard,
 } from "lucide-react";
 import Dashboard, { type DashboardConfig } from "./AdminDashboard";
 import { AdminAuthProvider, useAdminAuth } from "@/contexts/AdminAuthContext";
@@ -87,6 +88,13 @@ function AdminLayoutInner() {
       icon: Tag,
       active: location.pathname.startsWith("/admin/coupons"),
       featureKey: "admin.coupons",
+    },
+    {
+      title: "Payments",
+      href: "/admin/payments",
+      icon: CreditCard,
+      active: location.pathname.startsWith("/admin/payments"),
+      featureKey: "admin.payments",
     },
     {
       title: "Settings",

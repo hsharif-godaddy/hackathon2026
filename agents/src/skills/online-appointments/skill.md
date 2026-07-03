@@ -23,6 +23,7 @@ intents:
   - services/service/add services/edit services/improve services/update services/fix services/service price/service duration/manage services/services not showing/service cards/service list/service page/service design/service UI/service images/service API
   - staff/staff member/assign staff/staff management/add staff
   - coupon/discount code/promo code/voucher/add coupon
+  - payment/payments/stripe/checkout/paid appointments/accept payments/payment integration/transaction
   - booking page/book page/booking form/book now/booking flow
   - improve UI/redesign/make it look better/modernize/UI/styling/theme/branding/booking UI
   - settings/configure/business info/business location/booking interval
@@ -160,6 +161,7 @@ All implementation details live in `sections/`. Load sections on demand using `l
 | `12-user-journeys` | Complete user flow documentation |
 | `13-customization` | Labels, colors, branding, theme |
 | `17-ui-design` | Rich modern UI — reading the theme, creative direction, component styling |
+| `18-feature-payments` | Payment integration — setup, checkout, transaction dashboard |
 | `14-admin-system` | Admin auth, layout, navigation, troubleshooting |
 | `15-authentication` | Customer and admin auth systems |
 | `16-database-setup` | drizzle.config.ts, migrations, SSL config, troubleshooting |
@@ -253,6 +255,7 @@ For each feature the user asked for in discovery:
 |---|---|---|
 | Staff management | `06-feature-staff` | `admin.staff` |
 | Discount codes | `07-feature-coupons` | `admin.coupons`, `customer.booking_flow.coupons` |
+| Payment integration | `18-feature-payments` | `admin.payments`, `admin.settings.payment`, `customer.booking_flow.payment` |
 | Custom intake questions | `08-feature-categories-questions` | `admin.questions` |
 | Service categories | `08-feature-categories-questions` | `admin.categories` |
 | Business settings | `09-feature-settings` | `admin.settings` |

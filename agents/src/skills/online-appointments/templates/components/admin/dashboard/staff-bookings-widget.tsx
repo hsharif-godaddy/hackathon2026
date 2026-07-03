@@ -75,7 +75,7 @@ export function StaffBookingsWidget({ data, loading = false }: StaffBookingsWidg
                 hideLabel
                 formatter={(value, name) => {
                   if (typeof name === "string" && name.startsWith(PAD_PREFIX)) return null;
-                  return [value as React.ReactNode, "Bookings"];
+                  return [value, "Bookings"];
                 }}
               />
             }

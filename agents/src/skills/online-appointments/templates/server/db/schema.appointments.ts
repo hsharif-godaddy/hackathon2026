@@ -99,13 +99,13 @@ export const booking = mysqlTable(
     paidAmount: decimal("paid_amount", { precision: 10, scale: 2 }).default("0.00"),
     currency: varchar("currency", { length: 3 }).notNull().default("USD"),
     paidAmountUpdatedAt: datetime("paid_amount_updated_at"),
-    securepayReferenceId: varchar("securepay_reference_id", { length: 255 }),
-    extOrderId: varchar("ext_order_id", { length: 255 }),
     extContactId: varchar("ext_contact_id", { length: 255 }),
     c2Auth: boolean("c2_auth").notNull().default(false),
     couponCode: varchar("coupon_code", { length: 50 }),
     discountAmount: decimal("discount_amount", { precision: 10, scale: 2 }).default("0.00"),
     confirmationCode: varchar("confirmation_code", { length: 12 }),
+    paymentSessionId: varchar("payment_session_id", { length: 255 }),
+    paymentTransactionId: varchar("payment_transaction_id", { length: 255 }),
     createdAt: datetime("created_at"),
     updatedAt: datetime("updated_at"),
     deletedAt: datetime("deleted_at"),
@@ -114,12 +114,10 @@ export const booking = mysqlTable(
     index("idx_booking_booked_instance").on(table.bookedInstanceId),
     index("idx_booking_deleted").on(table.deletedAt),
     index("idx_booking_membership").on(table.extContactId, table.c2Auth),
-    index("idx_booking_ext_order").on(table.extOrderId),
     index("idx_booking_bookable").on(table.bookableType, table.bookableId),
     index("idx_booking_booker").on(table.bookerType, table.bookerId),
-    uniqueIndex("idx_booking_securepay_reference").on(table.securepayReferenceId),
-    uniqueIndex("idx_booking_confirmation_code").on(table.confirmationCode),
     index("idx_booking_start_end_time").on(table.startTime, table.endTime),
+    index("idx_booking_payment_session").on(table.paymentSessionId),
   ],
 );
 
@@ -677,3 +675,50 @@ export const coupons = mysqlTable(
 
 // Type inference for coupons table
 export type Coupon = typeof coupons.$inferSelect;
+
+// ---------------------------------------------------------------------------
+// Transaction (provider-agnostic payment record)
+// ---------------------------------------------------------------------------
+
+export const transaction = mysqlTable(
+  "transaction",
+  {
+    id: varchar("id", { length: 36 })
+      .primaryKey()
+      .$defaultFn(() => generateId()),
+    bookingId: varchar("booking_id", { length: 36 }).notNull(),
+    provider: varchar("provider", { length: 50 }).notNull(),
+    type: varchar("type", { length: 50 }).notNull(),
+    status: varchar("status", { length: 50 }).notNull(),
+    amount: int("amount").notNull(),
+    currency: varchar("currency", { length: 3 }).notNull(),
+    transactionId: varchar("transaction_id", { length: 255 }),
+    sessionId: varchar("session_id", { length: 255 }),
+    paymentMethod: varchar("payment_method", { length: 50 }),
+    createdAt: datetime("created_at").notNull(),
+    updatedAt: datetime("updated_at").notNull(),
+  },
+  (table) => [
+    index("idx_transaction_booking").on(table.bookingId),
+    index("idx_transaction_session").on(table.sessionId),
+    index("idx_transaction_txn").on(table.transactionId),
+  ],
+);
+
+// ---------------------------------------------------------------------------
+// Payment Provider (which providers are configured and enabled)
+// ---------------------------------------------------------------------------
+
+export const paymentProvider = mysqlTable(
+  "payment_provider",
+  {
+    id: varchar("id", { length: 36 })
+      .primaryKey()
+      .$defaultFn(() => generateId()),
+    provider: varchar("provider", { length: 50 }).notNull(),
+    enabled: boolean("enabled").notNull().default(true),
+    createdAt: datetime("created_at").notNull(),
+    updatedAt: datetime("updated_at").notNull(),
+  },
+  (table) => [uniqueIndex("idx_payment_provider_provider").on(table.provider)],
+);

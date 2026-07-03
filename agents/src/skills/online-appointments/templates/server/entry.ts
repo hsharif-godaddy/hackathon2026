@@ -85,6 +85,17 @@ import authSignupPost from "./api/auth/signup/POST";
 import authLoginPost from "./api/auth/login/POST";
 import authLogoutPost from "./api/auth/logout/POST";
 import authMeGet from "./api/auth/me/GET";
+// payments
+import paymentsCheckoutPost from "./api/appointments/payments/create-checkout-session/POST";
+import paymentsWebhookPost from "./api/appointments/payments/webhook/POST";
+import { requirePaymentProvider } from "./api/appointments/payments/middleware";
+// admin — payments
+import adminPaymentsTransactionsGet from "./api/appointments/admin/payments/transactions/GET";
+// admin — payment providers
+import adminPaymentProvidersGet from "./api/appointments/admin/payment-providers/GET";
+import adminPaymentProvidersPost from "./api/appointments/admin/payment-providers/POST";
+import adminPaymentProviderPatch from "./api/appointments/admin/payment-providers/[id]/PATCH";
+import adminPaymentProviderDelete from "./api/appointments/admin/payment-providers/[id]/DELETE";
 // </api-imports>
 import cookieParser from "cookie-parser";
 import { requireAdmin } from "./api/appointments/admin/auth/middleware";
@@ -107,6 +118,8 @@ function normalizeCommerceApiBaseUrlEnv() {
 
 normalizeCommerceApiBaseUrlEnv();
 
+type RequestWithRawBody = Request & { rawBody?: Buffer };
+
 const app = express();
 
 // Honour x-forwarded-* from the load balancer so req.protocol/req.hostname
@@ -116,7 +129,25 @@ const app = express();
 app.set("trust proxy", true);
 
 app.use(cookieParser());
-app.use(express.json());
+
+// Stripe webhook needs raw body for signature verification — must come BEFORE express.json()
+app.post(
+  "/api/appointments/payments/webhook",
+  express.raw({ type: "application/json" }),
+  (req, _res, next) => {
+    (req as RequestWithRawBody).rawBody = req.body as Buffer;
+    next();
+  },
+  paymentsWebhookPost,
+);
+
+app.use(
+  express.json({
+    verify: (req, _res, buf) => {
+      (req as RequestWithRawBody).rawBody = buf;
+    },
+  }),
+);
 app.use(express.urlencoded({ extended: true }));
 // Resolve the session cookie → req.authUser for all downstream handlers
 app.use(sessionMiddleware);
@@ -437,6 +468,24 @@ app.get(
   requireFeature("customer.my_bookings"),
   customerMyBookingsGet,
 );
+// payments
+app.post(
+  "/api/appointments/payments/create-checkout-session",
+  requirePaymentProvider("stripe"),
+  paymentsCheckoutPost,
+);
+// admin — payments
+app.get(
+  "/api/appointments/admin/payments/transactions",
+  requireAdmin,
+  requireFeature("admin.payments"),
+  adminPaymentsTransactionsGet,
+);
+// admin — payment providers
+app.get("/api/appointments/admin/payment-providers", requireAdmin, adminPaymentProvidersGet);
+app.post("/api/appointments/admin/payment-providers", requireAdmin, adminPaymentProvidersPost);
+app.patch("/api/appointments/admin/payment-providers/:id", requireAdmin, adminPaymentProviderPatch);
+app.delete("/api/appointments/admin/payment-providers/:id", requireAdmin, adminPaymentProviderDelete);
 // </api-registrations>
 
 // ── Feature flag startup summary ───────────────────────────────────────────
@@ -471,11 +520,16 @@ function baseUrl(req: Request): string {
   return `${req.protocol}://${req.hostname}`;
 }
 
+const XML_ESCAPE: Record<string, string> = {
+  "&": "&amp;",
+  "<": "&lt;",
+  ">": "&gt;",
+  '"': "&quot;",
+  "'": "&apos;",
+};
+
 function escapeXml(s: string): string {
-  return s.replace(
-    /[&<>"']/g,
-    (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&apos;" })[c] ?? c,
-  );
+  return s.replace(/[&<>"']/g, (c) => XML_ESCAPE[c] ?? c);
 }
 
 app.get("/robots.txt", (req, res) => {

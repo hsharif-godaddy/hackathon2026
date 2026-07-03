@@ -11,6 +11,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useAppConfig } from "@/contexts/AppConfigContext";
 import {
   createPublicBooking,
+  createCheckoutSession,
   getPublicQuestions,
   getPublicServiceStaff,
   incrementCouponUsage,
@@ -23,7 +24,7 @@ import {
 import { formatSlotTime, formatFullDate } from "./slot-utils";
 import { formatCost } from "./service-utils";
 import CouponValidator from "@/components/coupons/CouponValidator";
-import { FeatureGate } from "@/contexts/FeatureFlagsContext";
+import { FeatureGate, useFeatureFlags } from "@/contexts/FeatureFlagsContext";
 
 const detailsSchema = z.object({
   first_name: z.string().min(1, "Required"),
@@ -68,6 +69,7 @@ export function BookingDetailsForm({
   timezone,
 }: BookingDetailsFormProps) {
   const { booking: bookingConfig, currency } = useAppConfig();
+  const { isEnabled } = useFeatureFlags();
   const [questions, setQuestions] = useState<Question[]>([]);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [appliedCouponCode, setAppliedCouponCode] = useState<string | null>(null);
@@ -101,6 +103,9 @@ export function BookingDetailsForm({
     })();
   }, [form]);
 
+  // Only require payment if the payment feature is enabled
+  const requiresPayment = isEnabled("customer.booking_flow.payment");
+
   useEffect(() => {
     if (preloadedStaff) {
       setEligibleStaff(preloadedStaff);
@@ -118,13 +123,21 @@ export function BookingDetailsForm({
 
   async function onSubmit(values: DetailsValues) {
     setSubmitError(null);
-    try {
-      // Increment coupon usage if one was applied
-      if (appliedCouponCode) {
-        await incrementCouponUsage(appliedCouponCode);
-      }
 
-      const result = await createPublicBooking({
+    // Increment coupon usage if one was applied
+    if (appliedCouponCode) {
+      try {
+        await incrementCouponUsage(appliedCouponCode);
+      } catch (err) {
+        setSubmitError(err instanceof Error ? err.message : "Failed to apply coupon");
+        return;
+      }
+    }
+
+    // Try to create the booking
+    let result;
+    try {
+      result = await createPublicBooking({
         service_id: service.id,
         availability_time: selectedTime,
         quantity: 1,
@@ -138,11 +151,10 @@ export function BookingDetailsForm({
         },
         answers: values.answers.filter((a) => a.body.trim()),
         coupon_code: appliedCouponCode ?? undefined,
-        discount_amount: discount !== 0 ? discount : undefined,
+        // discount_amount removed - discount is validated and applied server-side at checkout
       });
-      onSuccess(result.booking);
     } catch (err) {
-      // If booking failed but coupon was incremented, roll back
+      // Booking failed - roll back coupon increment
       if (appliedCouponCode) {
         try {
           await decrementCouponUsage(appliedCouponCode);
@@ -151,7 +163,29 @@ export function BookingDetailsForm({
         }
       }
       setSubmitError(err instanceof Error ? err.message : "Booking failed. Please try again.");
+      return;
     }
+
+    // Booking succeeded, now handle payment if required
+    if (requiresPayment) {
+      try {
+        const { checkoutUrl } = await createCheckoutSession(result.booking.id, service.id);
+        if (checkoutUrl) {
+          window.location.href = checkoutUrl;
+          return;
+        }
+        // No checkout URL returned means payment not required after all
+      } catch (err) {
+        // Payment setup failed, but booking was already created
+        // Show error but don't roll back - user can contact support to pay
+        setSubmitError(
+          "Your booking was created, but we couldn't set up payment. Please contact us to complete payment."
+        );
+        return;
+      }
+    }
+
+    onSuccess(result.booking);
   }
 
   function handleCouponApplied(code: string, discountAmount: number) {
@@ -304,8 +338,10 @@ export function BookingDetailsForm({
             {form.formState.isSubmitting ? (
               <>
                 <Loader2 size={14} className="mr-2 animate-spin" />
-                Booking…
+                {requiresPayment ? "Redirecting to payment…" : "Booking…"}
               </>
+            ) : requiresPayment ? (
+              `Pay $${parseFloat(service.cost ?? "0").toFixed(2)}`
             ) : (
               (submitLabel ?? bookingConfig.submitLabel)
             )}

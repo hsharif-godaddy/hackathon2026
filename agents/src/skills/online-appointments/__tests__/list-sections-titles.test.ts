@@ -19,6 +19,7 @@ const EXPECTED_SECTIONS: Array<{ slug: string; title: string }> = [
   { slug: '15-authentication', title: 'Authentication' },
   { slug: '16-database-setup', title: 'Database Setup' },
   { slug: '17-ui-design', title: 'UI Design — Rich, Modern Interfaces' },
+  { slug: '18-feature-payments', title: 'Feature: Payments' },
   { slug: 'IMPLEMENTATION', title: 'Online Appointments v2 — Section Index' },
 ];
 

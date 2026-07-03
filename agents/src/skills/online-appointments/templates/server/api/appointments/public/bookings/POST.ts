@@ -24,7 +24,7 @@ const CreateBookingSchema = z.object({
     .optional(),
   marketing_consent: z.boolean().optional(),
   coupon_code: z.string().optional(),
-  discount_amount: z.number().optional(),
+  // discount_amount removed - discount is calculated server-side at checkout
 });
 
 export default async function handler(req: Request, res: Response) {

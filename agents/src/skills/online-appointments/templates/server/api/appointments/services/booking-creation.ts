@@ -40,7 +40,7 @@ interface CreateBookingInput {
   answers?: AnswerInput[];
   marketing_consent?: boolean;
   coupon_code?: string;
-  discount_amount?: number;
+  // discount_amount removed - discount is calculated server-side at checkout
 }
 
 interface BookingResult {
@@ -223,7 +223,7 @@ export async function createBooking(input: CreateBookingInput): Promise<BookingR
       endTimeDisplay: endTime,
       status: "unpaid",
       couponCode: input.coupon_code ?? null,
-      discountAmount: input.discount_amount ? (input.discount_amount / 100).toFixed(2) : "0.00",
+      discountAmount: "0.00", // Discount will be calculated and stored at checkout time
       confirmationCode,
       createdAt: now,
       updatedAt: now,

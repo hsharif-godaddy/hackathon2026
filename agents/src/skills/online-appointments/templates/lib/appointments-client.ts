@@ -15,6 +15,8 @@ export interface Service {
   endTime: string | null;
   imageUrl: string | null;
   categories?: Array<{ id: string; name: string | null }>;
+  salesPrice: string | null;
+  paymentOption: string | null;
 }
 
 export interface PaginatedResponse<T> {
@@ -60,7 +62,7 @@ export interface CreateBookingPayload {
   answers?: Array<{ question_id: string; body: string }>;
   marketing_consent?: boolean;
   coupon_code?: string;
-  discount_amount?: number;
+  // discount_amount removed - discount is calculated server-side at checkout
 }
 
 // ── Core fetcher ───────────────────────────────────────────────────────────
@@ -151,5 +153,12 @@ export function incrementCouponUsage(code: string) {
 export function decrementCouponUsage(code: string) {
   return apiFetch<void>(`/customer/coupons/${encodeURIComponent(code)}/decrementUse`, {
     method: "POST",
+  });
+}
+
+export function createCheckoutSession(bookingId: string, serviceId: string) {
+  return apiFetch<{ checkoutUrl: string | null }>("/payments/create-checkout-session", {
+    method: "POST",
+    body: JSON.stringify({ bookingId, serviceId }),
   });
 }

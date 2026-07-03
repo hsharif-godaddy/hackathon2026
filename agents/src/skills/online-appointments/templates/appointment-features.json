@@ -1,6 +1,10 @@
 {
   "features": {
     "admin": {
+      "payments": {
+        "enabled": false,
+        "description": "Admin payments dashboard showing all transactions with status, amount, provider, and customer details."
+      },
       "dashboard": {
         "enabled": false,
         "description": "Admin dashboard overview with widgets.",
@@ -95,6 +99,10 @@
         "booking_interval": {
           "enabled": false,
           "description": "Set the slot granularity (e.g. 15 min, 30 min) shown in the booking calendar."
+        },
+        "payment": {
+          "enabled": false,
+          "description": "Payment provider configuration panel in admin settings. Allows enabling or disabling payment providers without a code change."
         }
       }
     },
@@ -113,6 +121,10 @@
         "staff_selection": {
           "enabled": false,
           "description": "Show an optional staff preference picker in the booking flow when the service has a staff role assigned."
+        },
+        "payment": {
+          "enabled": false,
+          "description": "Redirect to payment checkout after booking confirmation."
         }
       }
     },

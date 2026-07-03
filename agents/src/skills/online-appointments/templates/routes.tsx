@@ -15,6 +15,8 @@ const NotFoundPage = import.meta.env.DEV
 // Public booking pages
 const BookPage = lazy(() => import("./pages/book/index"));
 const BookServicePage = lazy(() => import("./pages/book/[serviceId]"));
+const BookPaymentSuccessPage = lazy(() => import("./pages/book/payment-success"));
+const BookPaymentCancelPage = lazy(() => import("./pages/book/payment-cancel"));
 
 // Customer my-bookings pages
 const MyBookingsPage = lazy(() => import("./pages/my-bookings/index"));
@@ -36,6 +38,7 @@ const AdminCouponDetailPage = lazy(() => import("./pages/admin/coupons/[id]"));
 const AdminSettingsPage = lazy(() => import("./pages/admin/settings"));
 const AdminAvailabilityPage = lazy(() => import("./pages/admin/availability"));
 const AdminStaffPage = lazy(() => import("./pages/admin/staff/index"));
+const AdminPaymentsPage = lazy(() => import("./pages/admin/payments/index"));
 const AdminStaffDetailPage = lazy(() => import("./pages/admin/staff/[id]"));
 
 // Auth pages
@@ -66,6 +69,23 @@ export const routes: RouteObject[] = [
     element: (
       <FeatureGate feature="customer.booking_flow" fallback={<Navigate to="/" replace />}>
         <BookPage />
+      </FeatureGate>
+    ),
+  },
+  // These static paths must come before /book/:serviceId so the param doesn't swallow them
+  {
+    path: "/book/payment-success",
+    element: (
+      <FeatureGate feature="customer.booking_flow.payment" fallback={<Navigate to="/" replace />}>
+        <BookPaymentSuccessPage />
+      </FeatureGate>
+    ),
+  },
+  {
+    path: "/book/payment-cancel",
+    element: (
+      <FeatureGate feature="customer.booking_flow.payment" fallback={<Navigate to="/" replace />}>
+        <BookPaymentCancelPage />
       </FeatureGate>
     ),
   },
@@ -203,6 +223,14 @@ export const adminRoutes: RouteObject[] = [
         element: (
           <FeatureGate feature="admin.coupons" fallback={<Navigate to="/admin" replace />}>
             <AdminCouponDetailPage />
+          </FeatureGate>
+        ),
+      },
+      {
+        path: "/admin/payments",
+        element: (
+          <FeatureGate feature="admin.payments" fallback={<Navigate to="/admin" replace />}>
+            <AdminPaymentsPage />
           </FeatureGate>
         ),
       },
