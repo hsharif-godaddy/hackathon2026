@@ -758,9 +758,11 @@ describe('SsoLogin iframe load failure fallback', function ssoLoadFailureTests()
 
     expect(screen.getByText('builder_common_signin')).toBeInTheDocument();
     expect(screen.queryByTestId('sso-deck')).not.toBeInTheDocument();
+    // auto-advance fires at 8s (before the 15s timeout), suppressing the
+    // load-timeout log. The fallback UI still renders as a safety net.
     expect(mockLogger.warn).toHaveBeenCalledWith(
-      'sso-login.iframe.load-timeout',
-      expect.objectContaining({ timeoutMs: 15_000 }),
+      'sso-login.iframe.auto-advance',
+      expect.objectContaining({ thresholdMs: 8_000 }),
     );
   });
 

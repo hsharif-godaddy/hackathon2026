@@ -3,6 +3,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { getAgentToken } from '@/lib/agent-fetch'
 import { logger } from '@/lib/request-context'
 import { SSETransport } from '../SSETransport'
 import type { ChatTransportCallbacks } from '../types'
@@ -461,6 +462,63 @@ describe('SSETransport', () => {
       latestInstance?.onerror?.({ message: 'transport_failure' })
 
       expect(callbacks.onStateChange).not.toHaveBeenCalledWith('error')
+      t.destroy()
+    })
+
+    it('enters dormant when auth refresh fails while idle', async () => {
+      const mockGetAgentToken = vi.mocked(getAgentToken)
+
+      const t = new SSETransport({ baseUrl: 'http://localhost:4000' })
+      t.on(callbacks)
+      t.connect('app_1', 'token_123', 'conv_1')
+
+      await vi.waitFor(() => {
+        expect(callbacks.onStateChange).toHaveBeenCalledWith('connected')
+      })
+
+      // Make the next getAgentToken call reject (the refresh attempt)
+      mockGetAgentToken.mockRejectedValueOnce(new Error('auth_failed'))
+
+      // Fire a 401 on the EventSource — triggers refreshTokenAndReopen
+      lastEventSourceInstance?.onerror?.({ status: 401 })
+
+      await vi.waitFor(() => {
+        expect(callbacks.onStateChange).toHaveBeenCalledWith('dormant')
+      })
+      expect(callbacks.onError).toHaveBeenCalledWith(
+        expect.any(Error),
+      )
+      expect(logger.error).toHaveBeenCalledWith('sse.transport.auth_refresh.failed', expect.any(Object))
+      t.destroy()
+    })
+
+    it('enters active cooldown when auth refresh fails while streaming', async () => {
+      const mockGetAgentToken = vi.mocked(getAgentToken)
+
+      const t = new SSETransport({ baseUrl: 'http://localhost:4000', cooldownMs: 500 })
+      t.on(callbacks)
+      t.connect('app_1', 'token_123', 'conv_1')
+
+      await vi.waitFor(() => {
+        expect(callbacks.onStateChange).toHaveBeenCalledWith('connected')
+      })
+
+      // Enter streaming state via sendMessage
+      await t.sendMessage({ content: 'go', sessionId: 's' })
+      expect(t.state).toBe('streaming')
+
+      // Make the next getAgentToken call reject (the refresh attempt)
+      mockGetAgentToken.mockRejectedValueOnce(new Error('auth_failed'))
+
+      // Fire a 401 — triggers refreshTokenAndReopen while streaming
+      lastEventSourceInstance?.onerror?.({ status: 401 })
+
+      await vi.waitFor(() => {
+        expect(callbacks.onError).toHaveBeenCalled()
+      })
+      // Should NOT go dormant — active cooldown keeps the turn recoverable
+      expect(callbacks.onStateChange).not.toHaveBeenCalledWith('dormant')
+      expect(logger.warn).toHaveBeenCalledWith('sse.transport.cooldown.entered', expect.any(Object))
       t.destroy()
     })
 

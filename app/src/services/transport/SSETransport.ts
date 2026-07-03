@@ -156,8 +156,22 @@ export class SSETransport implements ChatTransport {
       logger.error('sse.transport.auth_refresh.failed', {
         appId: this.appId, conversationId: this.conversationId, error: errMessage(err),
       })
-      this.setState('error')
-      this.callbacks?.onError(err instanceof Error ? err : new Error('auth_refresh_failed'))
+      // Auth failure requires user action — stop the unbounded retry loop.
+      // Active turn: bounded cooldown (gives the user time to re-auth and
+      // recover the stream). Idle: dormant (no point retrying without user
+      // action; re-armed by the next sendMessage).
+      // Reading _state is safe here — no cooldown cycle has mutated it yet;
+      // the 401 handler closed the EventSource synchronously before awaiting.
+      if (this._state === 'streaming') {
+        this.enterActiveCooldown()
+      } else {
+        this.enterDormant()
+      }
+      // enterActiveCooldown may call enterUnreachable (budget exhausted) which
+      // already fires onError — avoid a double-fire.
+      if (this._state !== 'error') {
+        this.callbacks?.onError(err instanceof Error ? err : new Error('auth_refresh_failed'))
+      }
     }
   }
 

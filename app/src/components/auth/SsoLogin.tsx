@@ -238,10 +238,12 @@ export default function SsoLogin() {
       return;
     }
     const timer = window.setTimeout(function onSsoLoadTimeout() {
-      logger.warn('sso-login.iframe.load-timeout', {
-        message: 'SSO Deck iframe did not load within timeout; showing fallback',
-        timeoutMs: SSO_LOAD_TIMEOUT_MS,
-      });
+      if (!autoAdvancedRef.current) {
+        logger.warn('sso-login.iframe.load-timeout', {
+          message: 'SSO Deck iframe did not load within timeout; showing fallback',
+          timeoutMs: SSO_LOAD_TIMEOUT_MS,
+        });
+      }
       setLoadFailed(true);
     }, SSO_LOAD_TIMEOUT_MS);
     return function clearSsoLoadTimer() {
