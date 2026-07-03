@@ -116,10 +116,6 @@ export type {
   TurnSnapshotUpdate,
 } from './turn-snapshot-tracker.js'
 
-// First-line /agent override parsing (shared by WS + SSE transports and related prompt consumers)
-export { parseAgentCommand } from './agent-command-parser.js'
-export type { AgentCommandParseResult } from './agent-command-parser.js'
-
 // Non-idempotent tool detection (for mid-stream budget retry decisions)
 export { hasNonIdempotentTools } from './non-idempotent-tools.js'
 

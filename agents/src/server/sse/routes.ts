@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import type { Request, Response, NextFunction } from 'express'
 import type { ConversationEventChannel, EventSubscriber, StreamingEvent } from '@airo/ai-transport'
-import { createSSEWriter, computeRecoveryPlan, parseAgentCommand, stringPayloadLength } from '@airo/ai-transport'
+import { createSSEWriter, computeRecoveryPlan, stringPayloadLength } from '@airo/ai-transport'
 import { grantSessionManager, resolveBmsSubscriptionId, allowSessionOverage } from '@airo/ai-grants'
 import { EventStreamRegistry } from './EventStreamRegistry.js'
 import { MessageExecutionService } from './MessageExecutionService.js'
@@ -509,10 +509,10 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
       isEmbedded,
     } = req.body
 
-    // WS permits empty content after stripping /agent markers and when the
-    // prompt is carried entirely by asset/file references — mirror that here
-    // so asset-only prompts reach the agent. The client (useSSEChat) already
-    // refuses truly-empty submissions (no text, assets, or referenced files).
+    // Empty content is allowed when the prompt is carried entirely by
+    // asset/file references, so asset-only prompts reach the agent. The client
+    // (useSSEChat) already refuses truly-empty submissions (no text, assets, or
+    // referenced files).
     if (typeof content !== 'string') {
       res.status(400).json({ error: 'content must be a string' })
       return
@@ -575,24 +575,10 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
     })
 
     await context.with(trace.setSpan(context.active(), messageSpan), async (): Promise<void> => {
-    const parsedAgentCommand = parseAgentCommand(content)
-    if (parsedAgentCommand.hasCommand && !parsedAgentCommand.hasBody) {
-      logger.info('sse.agent_override.bodyless_passthrough', { appId, conversationId, requestedAgent: parsedAgentCommand.agentId })
-    }
-    const effectiveContent = parsedAgentCommand.hasCommand && parsedAgentCommand.hasBody
-      ? parsedAgentCommand.strippedContent ?? content
-      : content
-    // `/agent <name>` override only — the top-priority routing bypass. A client-sent
-    // body `agentId` no longer steers routing: post-create the frozen
-    // `conversations.agentId` is authoritative.
-    const manualAgentOverride = parsedAgentCommand.hasCommand && parsedAgentCommand.hasBody
-      ? parsedAgentCommand.agentId
-      : undefined
-
     if (messageSpan) {
       messageSpan.setAttribute('requestId', (req as any).requestId ?? 'unknown')
       messageSpan.setAttribute('conversationId', conversationId)
-      messageSpan.setAttribute('message_length', effectiveContent.length)
+      messageSpan.setAttribute('message_length', content.length)
       messageSpan.setAttribute('isInitialPrompt', 'false')
       if (fullStorySessionId) messageSpan.setAttribute('fullStorySessionId', fullStorySessionId)
     }
@@ -636,7 +622,7 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
           purchaseIntentClassifierEnabled: agentContext?.purchaseIntentClassifierEnabled === true,
         },
         { getClient: getBudgetServiceClient, logger },
-        effectiveContent,
+        content,
       )
       if (budgetResult) {
         bmsBudgetId = budgetResult.budgetId
@@ -683,7 +669,7 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
     let resolvedAgentId: string
     try {
       resolvedAgentId = await deps.resolveAgent({
-        appId, manualAgentOverride, templateId, overrideAgentId, agentContext,
+        appId, templateId, overrideAgentId, agentContext,
         ...(stateManager && { session: { sessionId: sseSocketId, stateManager } }),
       })
     } catch (err) {
@@ -763,7 +749,7 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
     deps.executionService.execute({
       appId,
       conversationId,
-      content: effectiveContent,
+      content,
       siteId,
       agentId: resolvedAgentId,
       templateId,

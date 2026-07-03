@@ -13,7 +13,7 @@ import { detectStaleFiles } from '../../agents/sub-agent-transcript.js'
 
 const logger = Logger.create({ component: 'run-agent-tool' })
 
-const VALID_AGENTS = ['discovery', 'planning', 'plan-review', 'media', 'design', 'builder', 'design-kit-build', 'task-worker', 'brand-showcase', 'interview', 'verification', 'workflow-init', 'developer-typecheck'] as const
+const VALID_AGENTS = ['planning', 'plan-review', 'media', 'design', 'builder', 'design-kit-build', 'task-worker', 'brand-showcase', 'interview', 'workflow-init', 'developer-typecheck'] as const
 type AgentName = typeof VALID_AGENTS[number]
 
 export const runAgentAITool: Tool = createTool(
@@ -23,7 +23,7 @@ Modes:
 - "background" (default): Sub-agent is dispatched NON-BLOCKING. Returns { jobId, status: "running" } immediately. You MUST call awaitAgents([jobId]) to get results before using them. Multiple background calls can be dispatched in the same turn for true parallelism, then awaited together.
 - "interactive": Sub-agent takes over the conversation temporarily. It CAN ask the user questions via askQuestion. Only one interactive agent at a time. Use for tasks requiring user input (e.g. interview).
 
-Available agents: discovery (research/scraping), planning (write implementation plans), plan-review (review and fix plans against quality criteria), media (find/generate images), design (create/update design.md + CSS), builder (execute plans, write code), design-kit-build (build one slice of a website — the site chrome or the homepage — faithfully from an installed design kit; self-loads docs/ui-kit/ + anchor.json), task-worker (generic worker with no built-in prompt — executes a single self-contained task exactly as written in the task string, e.g. searching media into slots or running a skill; media/skill tools only, cannot write source files), brand-showcase (write the standalone public/brand-showcase.html brand-specimen page from inlined brand content; file-only, never generates media), interview (structured Q&A with user to produce docs/brief.md), verification (run automated checks against built app), workflow-init (produce a step DAG for workflow initialization — returns JSON with archetype, northStar, steps).`,
+Available agents: planning (write implementation plans), plan-review (review and fix plans against quality criteria), media (find/generate images), design (create/update design.md + CSS), builder (execute plans, write code), design-kit-build (build one slice of a website — the site chrome or the homepage — faithfully from an installed design kit; self-loads docs/ui-kit/ + anchor.json), task-worker (generic worker with no built-in prompt — executes a single self-contained task exactly as written in the task string, e.g. searching media into slots or running a skill; media/skill tools only, cannot write source files), brand-showcase (write the standalone public/brand-showcase.html brand-specimen page from inlined brand content; file-only, never generates media), interview (structured Q&A with user to produce docs/brief.md), workflow-init (produce a step DAG for workflow initialization — returns JSON with archetype, northStar, steps).`,
   z.object({
     agent: z.enum(VALID_AGENTS).describe('Which sub-agent to dispatch to'),
     title: z.string().describe('Short display title for the task (shown to user in the UI card)'),

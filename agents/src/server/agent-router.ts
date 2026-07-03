@@ -51,13 +51,6 @@ export interface SessionContext {
 
 export interface AgentRouterParams {
   appId: string
-  /**
-   * A validated `/agent <name>` override parsed from the message — the top-priority
-   * bypass (QA/debug). SSE passes the parsed target here; WS resolves it upstream
-   * (manual-agent-override) and returns before reaching the router. NOT a channel
-   * for client-sent `data.agentId/agentName`, which no longer steer routing.
-   */
-  manualAgentOverride?: string
   templateId?: string
   /**
    * Internal "start-as" override (`?agent=<id>`). Only honored for a brand-new app
@@ -70,11 +63,7 @@ export interface AgentRouterParams {
 
 export function createAgentRouter(deps: AgentRouterDeps) {
   return async function resolveAgent(params: AgentRouterParams): Promise<string> {
-    const { appId, manualAgentOverride, templateId, overrideAgentId, agentContext, session } = params
-
-    // `/agent <name>` is the top-priority override. SSE passes the parsed target;
-    // WS handles it upstream and returns before the router is consulted.
-    if (manualAgentOverride) return manualAgentOverride
+    const { appId, templateId, overrideAgentId, agentContext, session } = params
 
     // Per-profile develop variants were flattened (#4346): a single `develop`
     // agent serves every profile and resolves prompt/tool differences per turn

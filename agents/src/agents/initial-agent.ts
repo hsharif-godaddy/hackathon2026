@@ -376,18 +376,19 @@ export async function createInitialAgent(
     tools.skill = allAILibTools.skill
     tools.media = allAILibTools.media
     tools.setWizardStep = allAILibTools.setWizardStep
-    // The homepage and brand showcase are built by sub-agents (design-kit-build +
-    // builder), and the kit at docs/ui-kit/ is the build spec — the wizard authors no
-    // plan file. The file editor stays wired for ad-hoc refinements (e.g. the user asks
-    // to tweak a specific file mid-wizard) so the agent edits directly rather than
-    // improvising (it was once observed loading a nonexistent "file-edit" skill).
+    // The website (site chrome + homepage) is built by `design-kit-build` sub-agents
+    // and the brand showcase by a `brand-showcase` sub-agent, and the kit at
+    // docs/ui-kit/ is the build spec — the wizard authors no plan file. The file editor
+    // stays wired for ad-hoc refinements (e.g. the user asks to tweak a specific file
+    // mid-wizard) so the agent edits directly rather than improvising (it was once
+    // observed loading a nonexistent "file-edit" skill).
     tools.str_replace_based_edit_tool = allAILibTools.str_replace_based_edit_tool
-    // AIROBUILD-2871: parallel showcase + website generation. Instead of the old
-    // sequential handoff to `develop`, the wizard dispatches TWO background sub-agents
-    // with runAgent — `design-kit-build` for the homepage and `builder` for the brand
-    // showcase — then blocks on awaitAgents, so the showcase and the website are produced
-    // concurrently. `develop` is not dispatchable as a sub-agent (not in VALID_AGENTS),
-    // which is why the website is built by `design-kit-build`/`builder`.
+    // AIROBUILD-2871/3234: parallel showcase + website generation. Instead of the old
+    // sequential handoff to `develop`, the wizard fans out background sub-agents with
+    // runAgent — two `design-kit-build` agents (site chrome + homepage) and a
+    // `brand-showcase` agent — then blocks on awaitAgents, so the showcase and the
+    // website are produced concurrently. `develop` is not dispatchable as a sub-agent
+    // (not in VALID_AGENTS), which is why the website is built by `design-kit-build`.
     tools.runAgent = allAILibTools.runAgent
     tools.awaitAgents = allAILibTools.awaitAgents
     // The wizard never rebuilds an existing site. websiteRebuild performs an
@@ -398,7 +399,7 @@ export async function createInitialAgent(
   }
 
   // AIROBUILD-2871: the design-kit wizard no longer hands off to `develop` — it
-  // fans out the website build to a background `builder` sub-agent (see the
+  // fans out the website build to background `design-kit-build` sub-agents (see the
   // design-kit tool block above). Withholding the handoff tool keeps the model from
   // taking the legacy sequential route. To restore the handoff fallback (spike
   // off-ramp), drop the `!isDesignKitVariant` guard here and revert the "Create
@@ -474,14 +475,14 @@ export async function createInitialAgent(
     ],
 
     // The Design Kit Wizard runs the brand and website phases as one continuous turn
-    // and orchestrates several sub-agents along the way. AIROBUILD-2871: the brand
-    // phase fans out mood-imagery + logo `media` sub-agents (then awaitAgents), and
-    // the website phase fans out homepage + showcase `builder` sub-agents (then
-    // awaitAgents) — on top of the foreground token writes (install/colors/fonts/
-    // brand/setProjectName/todoList/setWizardStep). No plan is authored; the kit at
-    // docs/ui-kit/ is the build spec. That's a lot of steps in one turn, so the budget
-    // is raised well above the standard initial agent (awaitAgents blocks within a
-    // single step, not many).
+    // and orchestrates several sub-agents along the way. AIROBUILD-2871/3234: the brand
+    // phase fans out mood-imagery + logo `task-worker` sub-agents (then awaitAgents),
+    // and the website phase fans out site-chrome + homepage `design-kit-build`
+    // sub-agents plus a `brand-showcase` sub-agent (then awaitAgents) — on top of the
+    // foreground token writes (install/colors/fonts/brand/setProjectName/todoList/
+    // setWizardStep). No plan is authored; the kit at docs/ui-kit/ is the build spec.
+    // That's a lot of steps in one turn, so the budget is raised well above the
+    // standard initial agent (awaitAgents blocks within a single step, not many).
     maxSteps: isDesignKitVariant ? 40 : 10,
     temperature: 0.5,
     maxOutputTokens: 8000,

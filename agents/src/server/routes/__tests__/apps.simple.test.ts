@@ -108,24 +108,14 @@ describe('Apps Routes Basic Tests', () => {
     expect([400, 404]).toContain(response.status);
   });
 
-  it('strips hyphenated /agent commands before suggesting a name', async () => {
+  it('passes the prompt through verbatim (the /agent command was removed)', async () => {
     const response = await request(app)
       .post('/apps/suggest-name')
       .send({ prompt: '/agent initial-v3\nBuild a pricing page' })
       .expect(200);
 
-    expect(mockSuggestName).toHaveBeenCalledWith('Build a pricing page');
-    expect(response.body.prompt).toBe('Build a pricing page');
-  });
-
-  it('passes bodyless /agent commands through when suggesting a name', async () => {
-    const response = await request(app)
-      .post('/apps/suggest-name')
-      .send({ prompt: '/agent initial-v3' })
-      .expect(200);
-
-    expect(mockSuggestName).toHaveBeenCalledWith('/agent initial-v3');
-    expect(response.body.prompt).toBe('/agent initial-v3');
+    expect(mockSuggestName).toHaveBeenCalledWith('/agent initial-v3\nBuild a pricing page');
+    expect(response.body.prompt).toBe('/agent initial-v3\nBuild a pricing page');
   });
 });
 

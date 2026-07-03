@@ -35,11 +35,10 @@ router.use('/:id([a-z0-9]{10})', validateAppOwnership);
 
 When a user sends a message (`src/server/sse/routes.ts` `POST /:appId/:conversationId/messages` → `src/server/sse/MessageExecutionService.ts`):
 
-1. **Manual override** — message starts with `/agent <name>`
-2. **Session state** — existing active agent for this socket/app
-3. **App context** — no conversations yet → `InitialAgent`, otherwise → `DevelopAgent`
-4. **Client-specified** — `data.agentId` or `data.agentName`
-5. **Default** → `DevelopAgent`
+1. **Session state** — existing active agent for this socket/app
+2. **App context** — no conversations yet → `InitialAgent`, otherwise → `DevelopAgent`
+3. **Client-specified** — `data.agentId` or `data.agentName`
+4. **Default** → `DevelopAgent`
 
 ### Agents
 

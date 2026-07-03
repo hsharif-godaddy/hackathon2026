@@ -520,39 +520,6 @@ describe('agent-router', function agentRouterTests() {
     })
   })
 
-  it('honors a /agent override above the stored agent', async function manualOverrideWins() {
-    const resolve = createAgentRouter({
-      hasMessagesForApp: () => true,
-      getModeIds: () => [],
-      getStartableAgentIds: () => allAgentIds,
-      getPersistedAgentForApp: async () => 'develop',
-    })
-
-    const id = await resolve({ appId: 'app_existing', manualAgentOverride: 'marketing' })
-    expect(id).toBe('marketing')
-  })
-
-  it('honors a /agent override above a session agent without reading the store', async function manualOverrideBeatsSession() {
-    const getPersistedAgentForApp = vi.fn(async () => 'develop')
-    const resolve = createAgentRouter({
-      hasMessagesForApp: () => true,
-      getModeIds: () => [],
-      getStartableAgentIds: () => allAgentIds,
-      getPersistedAgentForApp,
-    })
-    const stateManager = {
-      getCurrentAgent: vi.fn().mockReturnValue('develop'),
-      getSessionMetadata: vi.fn().mockReturnValue({ appId: 'app_existing' }),
-      switchAgent: vi.fn().mockResolvedValue(undefined),
-      setSessionMetadata: vi.fn(),
-    }
-
-    const id = await resolve({ appId: 'app_existing', manualAgentOverride: 'marketing', session: { sessionId: 'sock-1', stateManager } })
-    expect(id).toBe('marketing')
-    expect(stateManager.getCurrentAgent).not.toHaveBeenCalled()
-    expect(getPersistedAgentForApp).not.toHaveBeenCalled()
-  })
-
   it('routes to initial-v3 when modularPromptFiles is set even if promptVersion is 2.0', async function modularBeatsLegacyV2() {
     resolveProfileSpy.mockReturnValue(profile({
       name: 'mixed',

@@ -16,7 +16,6 @@ import {
   createDevelopAgent,
   createMarketingAgent,
   createInitialAgent,
-  createDebugAgent,
   discoverNamedInitialVariants
 } from '../index.js'
 import { createAgentHandoffTool } from '../../tools/create-agent-handoff-tool.js'
@@ -53,7 +52,6 @@ export async function createUnifiedAgentFactory(options?: {
 
   const developConfig = await createDevelopAgent()
 
-  const debugConfig = await createDebugAgent()
   const marketingConfig = await createMarketingAgent()
   const deepBuildConfig = await createDeepBuildAgent()
   const initialConfig = await createInitialAgent(stateManager)
@@ -176,7 +174,6 @@ export async function createUnifiedAgentFactory(options?: {
     ...namedVariantInitialConfigs,
     develop: developConfig,
     marketing: marketingConfig,
-    debug: debugConfig,
     'deep-build': deepBuildConfig,
     ...modeInitialConfigs,
   }

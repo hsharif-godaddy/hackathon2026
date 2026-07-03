@@ -68,7 +68,7 @@ export function resolveStartOverrideAgentId(params: {
 /**
  * Resolve the concrete initial agent id to FREEZE at conversation-create.
  *
- * Priority (top wins; `/agent <name>` is handled upstream and bypasses this):
+ * Priority (top wins):
  *   0. Internal `?agent=<id>` start-as override (gated by `startOverrideEnabled`
  *      + validated against the startable-agent allowlist) — highest priority,
  *      above `?template=` and the profile. Only reachable for internal callers.

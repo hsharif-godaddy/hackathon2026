@@ -5,9 +5,9 @@
  *
  * ─────────────────────────────────────────────────────────────────────────────
  * MAINTENANCE: this is a hand-curated, front-end-only list. When you add a new
- *   • profile   → `agents/src/profiles/<name>.json`
- *   • template  → `agents/src/agents/template-registry.ts`
- *   • agent     → `agents/src/agents/ai-lib-agents/index.ts` (factory agentDefinitions)
+ *   • profile        → `agents/src/profiles/<name>.json`
+ *   • template (mode) → `agents/src/agents/mode-registry.ts` (`modeRegistry` / `getModeIds`)
+ *   • agent           → `agents/src/agents/ai-lib-agents/index.ts` (factory agentDefinitions)
  * add a matching entry here so it shows up in the internal picker. It is NOT
  * auto-derived from those registries (they don't carry display labels, and the
  * home page can't reach the per-app agents service). Drift is safe, not a
@@ -45,7 +45,10 @@ export const START_SELECTIONS: readonly StartSelection[] = [
   { kind: 'profile', value: 'initial-agent-design-kit', label: 'Design Kit Wizard', description: 'Interactive design-kit wizard.' },
   { kind: 'profile', value: 'experimental', label: 'Experimental', description: 'Model + skill overrides for internal testing.' },
 
-  // Templates — freeze `initial-<templateId>` (?template=).
+  // Templates — freeze `initial-<templateId>` (?mode=, legacy ?template=). NB the
+  // homepage submit path only honors default/business-plan/logo-designer/deep-build
+  // (validateTemplate); zip-import/ui-kit-import/file-upload are inferred from uploads
+  // (computeTemplateId), so their rows below don't resolve via the homepage URL.
   { kind: 'template', value: 'logo-designer', label: 'Logo Designer', description: 'Brand identity and logo showcase.' },
   { kind: 'template', value: 'deep-build', label: 'Deep Build', description: 'Interview → design → plan → build pipeline.' },
   { kind: 'template', value: 'business-plan', label: 'Business Plan', description: 'Guided business-plan website.' },
@@ -57,7 +60,6 @@ export const START_SELECTIONS: readonly StartSelection[] = [
   { kind: 'agent', value: 'develop', label: 'Develop', description: 'Full-stack development agent.' },
   { kind: 'agent', value: 'marketing', label: 'Marketing', description: 'SEO, marketing, and social.' },
   { kind: 'agent', value: 'deep-build', label: 'Deep Build (orchestrator)', description: 'Deep-build orchestrator agent.' },
-  { kind: 'agent', value: 'debug', label: 'Debug', description: 'Internal debugging agent.' },
   { kind: 'agent', value: 'initial', label: 'Initial (base)', description: 'Base initial agent (v1 prompt).' },
   { kind: 'agent', value: 'initial-v3', label: 'Initial v3', description: 'Modular v3 initial agent.' },
   { kind: 'agent', value: 'initial-prompt-enhancer', label: 'Initial · Prompt Enhancer', description: 'Prompt-enhancer initial variant.' },

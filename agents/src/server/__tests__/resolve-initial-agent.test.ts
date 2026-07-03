@@ -114,13 +114,13 @@ describe('resolveInitialAgentId', function resolveInitialAgentTests() {
       resolveProfileSpy.mockReturnValue(null)
       const id = resolveInitialAgentId({
         appId: 'app_new',
-        overrideAgentId: 'discovery', // a sub-agent — never in the startable set
+        overrideAgentId: 'planning', // a sub-agent — never in the startable set
         startOverrideEnabled: true,
         getStartableAgentIds: startable,
         getModeIds: noTemplates,
       })
       expect(id).toBe('initial')
-      expect(warnSpy).toHaveBeenCalledWith('agent_router.start_override_invalid', expect.objectContaining({ overrideAgentId: 'discovery' }))
+      expect(warnSpy).toHaveBeenCalledWith('agent_router.start_override_invalid', expect.objectContaining({ overrideAgentId: 'planning' }))
       warnSpy.mockRestore()
     })
 

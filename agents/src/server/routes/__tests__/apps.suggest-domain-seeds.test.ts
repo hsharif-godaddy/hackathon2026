@@ -92,11 +92,11 @@ describe('POST /apps/suggest-domain-seeds', () => {
     expect(res.body.error).toMatch(/failed/i)
   })
 
-  it('strips /agent <name> command from first line of prompt', async () => {
+  it('passes the prompt through verbatim (the /agent command was removed)', async () => {
     mockSuggestDomainSeeds.mockResolvedValue(['aaa', 'bbb', 'ccc', 'ddd'])
     await request(buildApp())
       .post('/apps/suggest-domain-seeds')
       .send({ prompt: '/agent develop\nMy coffee shop in Seattle' })
-    expect(mockSuggestDomainSeeds).toHaveBeenCalledWith('My coffee shop in Seattle')
+    expect(mockSuggestDomainSeeds).toHaveBeenCalledWith('/agent develop\nMy coffee shop in Seattle')
   })
 })

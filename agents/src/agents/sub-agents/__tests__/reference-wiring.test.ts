@@ -46,7 +46,6 @@ vi.mock('../../template-context.js', () => ({
 
 import { createPlanningConfig } from '../planning.js'
 import { createBuilderConfig } from '../builder.js'
-import { createDiscoveryConfig } from '../discovery.js'
 import { createMediaConfig } from '../media.js'
 import { createDesignConfig } from '../design.js'
 import { createPlanReviewConfig } from '../plan-review.js'
@@ -57,8 +56,8 @@ import { getSubAgentConfig } from '../index.js'
 import { docExtractor, mediaExtractor } from '../visual-output-extractors.js'
 
 describe('reference tool wiring', () => {
-  it('planning/builder/discovery/media/plan-review/design-kit-build expose the reference tool', async () => {
-    for (const factory of [createPlanningConfig, createBuilderConfig, createDiscoveryConfig, createMediaConfig, createPlanReviewConfig, createDesignKitBuildConfig]) {
+  it('planning/builder/media/plan-review/design-kit-build expose the reference tool', async () => {
+    for (const factory of [createPlanningConfig, createBuilderConfig, createMediaConfig, createPlanReviewConfig, createDesignKitBuildConfig]) {
       const cfg = await factory()
       expect(cfg.tools.reference).toBeDefined()
     }

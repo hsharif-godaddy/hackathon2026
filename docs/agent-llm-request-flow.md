@@ -12,10 +12,9 @@ The Next.js app (`app/`, port 3000) has a chat UI that opens a **Socket.IO** con
 
 - **JWT validated** via `jwtAuthMiddleware`
 - **Agent selected** by the `agentRouter` callback (~line 1146):
-  1. `/agent <name>` manual override in message text?
-  2. Session already has an active agent for this socket?
-  3. No conversations yet for this app? → `InitialAgent` (scaffolding)
-  4. Otherwise → **`DevelopAgent`** (the most common path)
+  1. Session already has an active agent for this socket?
+  2. No conversations yet for this app? → `InitialAgent` (scaffolding)
+  3. Otherwise → **`DevelopAgent`** (the most common path)
 
 ## 3. Context Assembly
 

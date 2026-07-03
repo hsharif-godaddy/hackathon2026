@@ -1010,11 +1010,14 @@ describe('SSE routes', () => {
       expect(mockExecute).toHaveBeenCalledWith(expect.objectContaining({ content: '' }))
     })
 
-    it('parses hyphenated /agent override from first line and strips it from submitted content', async () => {
+    it('treats a /agent-prefixed message as literal chat content (the command was removed)', async () => {
       const mockExecute = vi.fn().mockResolvedValue(undefined)
       const depsWithService = {
         ...deps,
-        resolveAgent: vi.fn().mockResolvedValue('initial-v3'),
+        // Resolver returns an agent that DIFFERS from the client-sent body agentId
+        // below, so the assertions can distinguish "resolver wins" from "client body
+        // agentId steers routing".
+        resolveAgent: vi.fn().mockResolvedValue('marketing'),
         executionService: { execute: mockExecute, hasActiveStream: vi.fn().mockReturnValue(false) },
       }
       const appWithService = express()
@@ -1029,18 +1032,21 @@ describe('SSE routes', () => {
       for (let i = 0; i < 50 && mockExecute.mock.calls.length === 0; i++) {
         await new Promise(r => setTimeout(r, 5))
       }
-      expect(depsWithService.resolveAgent).toHaveBeenCalledWith(expect.objectContaining({ manualAgentOverride: 'initial-v3' }))
+      // The /agent command no longer steers routing or gets stripped: the resolver
+      // sees no manual override, the client body agentId is ignored (execute runs
+      // the resolver's agent), and the full message is passed through verbatim.
+      expect(depsWithService.resolveAgent).toHaveBeenCalledWith(expect.not.objectContaining({ manualAgentOverride: expect.anything() }))
       expect(mockExecute).toHaveBeenCalledWith(expect.objectContaining({
-        agentId: 'initial-v3',
-        content: 'Build me a pricing page',
+        agentId: 'marketing',
+        content: '/agent initial-v3\nBuild me a pricing page',
       }))
     })
 
-    it('does not convert a bodyless /agent command into an empty prompt', async () => {
+    it('passes a bodyless /agent line through as content (no override, client agentId ignored)', async () => {
       const mockExecute = vi.fn().mockResolvedValue(undefined)
       const depsWithService = {
         ...deps,
-        resolveAgent: vi.fn().mockResolvedValue('develop'),
+        resolveAgent: vi.fn().mockResolvedValue('marketing'),
         executionService: { execute: mockExecute, hasActiveStream: vi.fn().mockReturnValue(false) },
       }
       const appWithService = express()
@@ -1055,11 +1061,11 @@ describe('SSE routes', () => {
       for (let i = 0; i < 50 && mockExecute.mock.calls.length === 0; i++) {
         await new Promise(r => setTimeout(r, 5))
       }
-      // A bodyless /agent yields no override, and a client-sent body agentId no
-      // longer steers routing — the resolver is consulted with no manual override.
-      expect(depsWithService.resolveAgent).toHaveBeenCalledWith(expect.objectContaining({ manualAgentOverride: undefined }))
+      // A bodyless `/agent` line also yields no manual override; the client body
+      // agentId is ignored and the line is passed through as content.
+      expect(depsWithService.resolveAgent).toHaveBeenCalledWith(expect.not.objectContaining({ manualAgentOverride: expect.anything() }))
       expect(mockExecute).toHaveBeenCalledWith(expect.objectContaining({
-        agentId: 'develop',
+        agentId: 'marketing',
         content: '/agent initial-v3',
       }))
     })

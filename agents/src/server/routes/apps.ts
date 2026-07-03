@@ -15,7 +15,6 @@
 
 import path from 'node:path';
 import { Router, Request, Response, IRouter } from 'express';
-import { parseAgentCommand } from '@airo/ai-transport';
 
 import multer from 'multer';
 import { AppRepository } from '../../database/index.js';
@@ -1547,20 +1546,10 @@ router.post('/:id/elements/remove', async (req: Request, res: Response) => {
  */
 router.post('/suggest-name', async (req: Request, res: Response) => {
   try {
-    let { prompt } = req.body;
+    const { prompt } = req.body;
 
     if (!prompt || typeof prompt !== 'string' || prompt.trim().length === 0) {
       return res.status(400).json({ error: 'Prompt is required and must be a non-empty string' });
-    }
-
-    // Strip /agent command from first line if present
-    const parsedAgentCommand = parseAgentCommand(prompt);
-    if (parsedAgentCommand.hasCommand && parsedAgentCommand.hasBody) {
-      prompt = parsedAgentCommand.strippedContent;
-    } else if (parsedAgentCommand.hasCommand) {
-      logger.info('route.apps.name-suggest.agent_command_bodyless_passthrough', {
-        requestedAgent: parsedAgentCommand.agentId,
-      });
     }
 
     logger.info('route.apps.name-suggest.begin', {
@@ -1603,13 +1592,7 @@ router.post('/suggest-domain-seeds', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Prompt is required and must be a non-empty string' });
     }
 
-    // Strip /agent command using shared parseAgentCommand (matches /suggest-name)
-    const parsedAgentCommand = parseAgentCommand(rawPrompt);
-    const stripped: string = (parsedAgentCommand.hasCommand && parsedAgentCommand.hasBody)
-      ? parsedAgentCommand.strippedContent
-      : rawPrompt;
-
-    const trimmedPrompt = stripped.trim();
+    const trimmedPrompt = rawPrompt.trim();
 
     if (trimmedPrompt.length === 0) {
       return res.status(400).json({ error: 'Prompt is required and must be a non-empty string' });

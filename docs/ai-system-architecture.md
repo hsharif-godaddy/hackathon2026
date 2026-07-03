@@ -146,11 +146,10 @@ sequenceDiagram
 
 When a message arrives, the agent is selected by priority:
 
-1. **Manual override** - message starts with `/agent <name>`
-2. **Session state** - existing active agent for this socket/app
-3. **App context** - no conversations yet -> `InitialAgent`, otherwise -> `DevelopAgent`
-4. **Client-specified** - `data.agentId` or `data.agentName`
-5. **Default** -> `DevelopAgent`
+1. **Session state** - existing active agent for this socket/app
+2. **App context** - no conversations yet -> `InitialAgent`, otherwise -> `DevelopAgent`
+3. **Client-specified** - `data.agentId` or `data.agentName`
+4. **Default** -> `DevelopAgent`
 
 | Agent          | Purpose                           | Handoff targets |
 | -------------- | --------------------------------- | --------------- |
