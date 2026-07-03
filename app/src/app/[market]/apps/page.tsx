@@ -1,7 +1,7 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { Suspense, useEffect, useMemo, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import Box from '@ux/box'
 import Button from '@ux/button'
 import Spinner from '@ux/spinner'
@@ -11,12 +11,11 @@ import ProjectsLayout from '@/app/[market]/projects/ProjectsLayout'
 import { ProtectedRoute } from '@/components/auth'
 import { DevelopmentAdminSection } from '@/components/development'
 import Header from '@/components/layout/Header'
-import { useAuth } from '@/hooks/useAuth'
+import { UpgradeModal } from '@/components/upgrade/UpgradeModal'
+import { useCanTransferOwnership } from '@/hooks/useCanTransferOwnership'
 import { useHomepageSubmission } from '@/hooks/useHomepageSubmission'
-import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 import { SiteStatus } from '@/lib/control-plane/types'
-import { isTLAShopper } from '@/lib/is-tla-shopper'
 import { logger } from '@/lib/request-context'
 import { useSitesStore } from '@/stores/useSitesStore'
 import { logImpressionEvent } from '@/utils/instrumentation'
@@ -24,7 +23,6 @@ import { logImpressionEvent } from '@/utils/instrumentation'
 function SitesPageContent() {
   const router = useRouter()
   const t = useTranslations()
-  const { authState } = useAuth()
   const [adminActionLoading, setAdminActionLoading] = useState<string | null>(null)
   const [isPromptModalOpen, setIsPromptModalOpen] = useState(false)
   const hp = useHomepageSubmission({ route: 'apps' })
@@ -34,7 +32,10 @@ function SitesPageContent() {
   const stopAllSites = useSitesStore((state) => state.stopAllSites)
   const deleteAllSites = useSitesStore((state) => state.deleteAllSites)
   const refreshSites = useSitesStore((state) => state.refreshSites)
-  const isTransferEnabled = useSwitchboard('appbuilder-transfer-ownership')
+  const {
+    showTransfer,
+    canInitiateTransfer,
+  } = useCanTransferOwnership()
 
   const totalSites = sites ? sites.length : 0
   const runningCount = sites
@@ -52,16 +53,6 @@ function SitesPageContent() {
     },
     [router, firstSiteId]
   )
-
-  const isTLA = useMemo(() => isTLAShopper(authState?.details?.shopperId), [authState])
-
-  // Allow transfer when flag is loaded and true, or fall back to TLA check while loading
-  const canUseTransfer = useMemo(() => {
-    if (isTransferEnabled !== undefined) {
-      return isTransferEnabled
-    }
-    return !isTLA
-  }, [isTransferEnabled, isTLA])
 
   useEffect(() => {
     logImpressionEvent('apps.page.view')()
@@ -153,9 +144,12 @@ function SitesPageContent() {
 
       <ProjectsLayout
         sites={sites}
-        transferAllowed={canUseTransfer}
+        transferAllowed={canInitiateTransfer}
+        showTransfer={showTransfer}
         onCreateProject={() => setIsPromptModalOpen(true)}
       />
+
+      <UpgradeModal analyticsData={{ source: 'projects' }} />
 
       {isPromptModalOpen && (
         <PromptModalContent hp={hp} onClose={() => setIsPromptModalOpen(false)} />

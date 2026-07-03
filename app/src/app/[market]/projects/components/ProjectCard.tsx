@@ -27,6 +27,7 @@ import ProjectCardActionsSheet, {
 import ProjectsActionModal, {
   ProjectsActionModalFooter,
 } from '@/app/[market]/projects/components/ProjectsActionModal'
+import { TransferMenuLabel } from '@/app/[market]/projects/components/transfer-menu-label'
 import type { ViewMode } from '@/app/[market]/projects/constants'
 import { getProjectType } from '@/app/[market]/projects/lib/projectType'
 import { useLongPress } from '@/app/[market]/projects/lib/useLongPress'
@@ -68,7 +69,7 @@ function SelectionCheckbox({ checked, onChange, label, className }: SelectionChe
 interface ProjectCardProps {
   site: SiteInfo
   view?: ViewMode
-  transferAllowed?: boolean
+  showTransfer?: boolean
   onTransfer?: (site: SiteInfo) => void
   /** Whether this card is currently selected (multi-select mode). */
   selected?: boolean
@@ -81,7 +82,7 @@ interface ProjectCardProps {
 export default function ProjectCard({
   site,
   view = 'grid',
-  transferAllowed = false,
+  showTransfer = false,
   onTransfer,
   selected = false,
   selectionActive = false,
@@ -106,6 +107,8 @@ export default function ProjectCard({
   const fetchAllSites = useSitesStore((state) => state.fetchAllSites)
   const { mutate: renameApp, isPending: isRenamePending } = useAppRename()
   const unpublishMutation = useUnpublishApp()
+
+  const transferLabel = t('builder_transfer_menu_item')
 
   const type = getProjectType(site)
   const isLogo = type === 'logo'
@@ -272,6 +275,10 @@ export default function ProjectCard({
     }
   }
 
+  const handleTransferClick = () => {
+    onTransfer?.(site)
+  }
+
   const cardActions: ProjectCardAction[] = [
     {
       id: 'edit',
@@ -290,7 +297,7 @@ export default function ProjectCard({
           } satisfies ProjectCardAction,
         ]
       : []),
-    ...(isPublished
+    ...(!isLogo
       ? [
           {
             id: 'share',
@@ -306,13 +313,13 @@ export default function ProjectCard({
       icon: <EditIcon />,
       onClick: () => runSheetAction(openRename),
     },
-    ...(isPublished && transferAllowed
+    ...(showTransfer
       ? [
           {
             id: 'transfer',
-            label: t('builder_transfer_menu_item'),
+            label: transferLabel,
             icon: <LinkIcon />,
-            onClick: () => runSheetAction(() => onTransfer?.(site)),
+            onClick: () => runSheetAction(handleTransferClick),
           } satisfies ProjectCardAction,
         ]
       : []),
@@ -394,7 +401,7 @@ export default function ProjectCard({
               </Box>
             </MenuItem>
           )}
-          {isPublished && (
+          {!isLogo && (
             <MenuItem onClick={() => setIsShareOpen(true)} data-eid={generateClickEID('projects.card.share')}>
               <Box orientation="horizontal" gap="sm">
                 <ShareIcon />
@@ -408,15 +415,12 @@ export default function ProjectCard({
               <text.span>{t('builder_common_rename')}</text.span>
             </Box>
           </MenuItem>
-          {isPublished && transferAllowed && (
+          {showTransfer && (
             <MenuItem
-              onClick={() => onTransfer?.(site)}
+              onClick={handleTransferClick}
               data-eid={generateClickEID('projects.card.transfer')}
             >
-              <Box orientation="horizontal" gap="sm">
-                <LinkIcon />
-                <text.span>{t('builder_transfer_menu_item')}</text.span>
-              </Box>
+              <TransferMenuLabel label={transferLabel} />
             </MenuItem>
           )}
           {!isLogo && isPublished && (

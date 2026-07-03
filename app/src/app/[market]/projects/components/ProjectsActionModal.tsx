@@ -1,12 +1,14 @@
 'use client'
 
 import clsx from 'clsx'
+import { useCallback, useEffect, useRef } from 'react'
 import Box from '@ux/box'
 import Button from '@ux/button'
 import Modal from '@ux/modal'
 import text from '@ux/text'
 
 import { useBreakpoints } from '@/hooks/useBreakpoints'
+import { useVisualViewportBottomInset } from '@/hooks/useVisualViewportBottomInset'
 import {
   Sheet,
   SheetContent,
@@ -23,6 +25,23 @@ const SHEET_CONTENT_CLASS =
 /** Focus ring / border for @ux TextInput fields inside action modals */
 const ACTION_MODAL_INPUT_FOCUS_CLASS =
   '[&_.ux-text-entry-shell:has(:focus)]:!outline [&_.ux-text-entry-shell:has(:focus)]:!outline-2 [&_.ux-text-entry-shell:has(:focus)]:![outline-color:#1976D2] [&_.ux-field-frame:has(:focus)]:!border-[#1976D2]'
+
+export function isTextEntryElement(element: Element): boolean {
+  if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
+    return true
+  }
+
+  return element.closest('.ux-text-input, .ux-text-entry-shell, [contenteditable="true"]') !== null
+}
+
+export function resolveTextEntryElement(element: Element): HTMLElement | null {
+  if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
+    return element
+  }
+
+  const shell = element.closest('.ux-text-entry-shell, .ux-text-input')
+  return shell instanceof HTMLElement ? shell : null
+}
 
 interface ProjectsActionModalProps {
   title: string
@@ -49,8 +68,53 @@ export default function ProjectsActionModal({
   applyAiroTheme = true,
 }: ProjectsActionModalProps) {
   const { isMdBreakpoint } = useBreakpoints()
+  const { bottomInset, viewportHeight } = useVisualViewportBottomInset()
+  const sheetContentRef = useRef<HTMLDivElement>(null)
+
+  const scrollTextEntryIntoView = useCallback((target: Element) => {
+    const entry = resolveTextEntryElement(target)
+    if (!entry) return
+
+    requestAnimationFrame(() => {
+      entry.scrollIntoView({ block: 'center', inline: 'nearest' })
+    })
+  }, [])
+
+  useEffect(() => {
+    if (isMdBreakpoint) return
+
+    const sheet = sheetContentRef.current
+    if (!sheet) return
+
+    const onFocusIn = (event: FocusEvent) => {
+      const target = event.target
+      if (!(target instanceof Element) || !sheet.contains(target) || !isTextEntryElement(target)) {
+        return
+      }
+
+      scrollTextEntryIntoView(target)
+    }
+
+    sheet.addEventListener('focusin', onFocusIn)
+    return () => sheet.removeEventListener('focusin', onFocusIn)
+  }, [isMdBreakpoint, scrollTextEntryIntoView])
+
+  useEffect(() => {
+    if (isMdBreakpoint || bottomInset === 0) return
+
+    const active = document.activeElement
+    if (
+      active instanceof Element &&
+      sheetContentRef.current?.contains(active) &&
+      isTextEntryElement(active)
+    ) {
+      scrollTextEntryIntoView(active)
+    }
+  }, [bottomInset, isMdBreakpoint, scrollTextEntryIntoView])
 
   if (!isMdBreakpoint) {
+    const keyboardOpen = bottomInset > 0
+
     return (
       <Sheet
         open
@@ -58,7 +122,17 @@ export default function ProjectsActionModal({
           if (!open) onClose()
         }}
       >
-        <SheetContent side="bottom" className={SHEET_CONTENT_CLASS}>
+        <SheetContent
+          ref={sheetContentRef}
+          side="bottom"
+          className={SHEET_CONTENT_CLASS}
+          style={{
+            bottom: bottomInset,
+            ...(keyboardOpen && viewportHeight > 0
+              ? { maxHeight: viewportHeight }
+              : undefined),
+          }}
+        >
           <SheetHeader className="gap-0 border-b border-intents-ux-borderColor p-0 px-[16px] py-[16px] pr-[40px] text-left">
             <SheetTitle className="text-sm font-semibold leading-tight text-intents-ux-box-foregroundColor whitespace-normal break-words">
               {title}

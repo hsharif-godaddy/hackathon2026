@@ -23,10 +23,11 @@ import { generateClickEID } from '@/utils/instrumentation'
 interface ProjectsLayoutProps {
   sites: SiteInfo[]
   transferAllowed?: boolean
+  showTransfer?: boolean
   onCreateProject?: () => void
 }
 
-export default function ProjectsLayout({ sites, transferAllowed = false, onCreateProject }: ProjectsLayoutProps) {
+export default function ProjectsLayout({ sites, transferAllowed = false, showTransfer = false, onCreateProject }: ProjectsLayoutProps) {
   const t = useTranslations()
   const viewState = useProjectsView({ sites })
   const [transferTarget, setTransferTarget] = useState<SiteInfo | null>(null)
@@ -35,6 +36,11 @@ export default function ProjectsLayout({ sites, transferAllowed = false, onCreat
   const [isSelectionActive, setIsSelectionActive] = useState(false)
   const [isMounted, setIsMounted] = useState(false)
   const { isMdBreakpoint } = useBreakpoints()
+  // `showTransfer` (menu visibility) and `transferAllowed` (initiation eligibility)
+  // are always equal today, but every transfer-related gate below derives from
+  // this combined flag so a future show-but-not-allowed combo can't leave the
+  // "Transfer" menu item visible while the dialog silently refuses to open.
+  const shouldShowTransferMenu = showTransfer || transferAllowed
 
   useEffect(() => {
     setIsMounted(true)
@@ -43,7 +49,7 @@ export default function ProjectsLayout({ sites, transferAllowed = false, onCreat
   const hideMobileStickyFooter =
     isAcceptOpen ||
     isSelectionActive ||
-    (transferAllowed && transferTarget !== null)
+    (shouldShowTransferMenu && transferTarget !== null)
 
   const headerSheetActions = [
     {
@@ -143,12 +149,12 @@ export default function ProjectsLayout({ sites, transferAllowed = false, onCreat
         viewState={viewState}
         gridClassName="grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
         showTabs={false}
-        transferAllowed={transferAllowed}
+        showTransfer={showTransfer}
         onTransfer={setTransferTarget}
         onSelectionActiveChange={setIsSelectionActive}
       />
 
-      {transferAllowed && transferTarget && (
+      {shouldShowTransferMenu && transferTarget && (
         <TransferInitiateDialog
           appId={transferTarget.id}
           appName={transferTarget.name || t('builder_apps_alert_delete_untitled', undefined, 'Untitled')}

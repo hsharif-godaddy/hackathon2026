@@ -19,9 +19,10 @@ import { createMockSite, mockInstrumentation, mockRouter } from '@/tests/mocks';
 import { renderWithProviders } from '@/tests/test-utils';
 import * as instrumentation from '@/utils/instrumentation';
 import AppCard from './AppCard';
+import TransferInitiateDialog from './components/TransferInitiateDialog';
 
 vi.mock('@/lib/gasket-config');
-vi.mock('@/app/[market]/apps/components/TransferInitiateDialog', () => ({ default: () => null }));
+vi.mock('@/app/[market]/apps/components/TransferInitiateDialog', () => ({ default: vi.fn(() => null) }));
 
 vi.mock('@/hooks/useSwitchboard', () => ({
   useSwitchboard: vi.fn(function () { return true; }),
@@ -1199,7 +1200,7 @@ describe('AppCard', () => {
       await user.click(actionsMenuButton);
 
       await waitFor(() => {
-        expect(screen.getByText('Transfer')).toBeInTheDocument();
+        expect(screen.getByText('builder_transfer_menu_item')).toBeInTheDocument();
       });
 
       expect(screen.queryByText('Copy Code')).not.toBeInTheDocument();
@@ -1442,6 +1443,27 @@ describe('AppCard', () => {
 
       await waitFor(() => {
         expect(screen.queryByTestId('transfer-blocked-reason')).not.toBeInTheDocument();
+      });
+    });
+
+    it('should open transfer dialog when showTransfer is true but transferAllowed is false', async function orBranchOpensDialog() {
+      mockTransferValidation(true, false);
+
+      const { user } = renderWithProviders(
+        <AppCard site={mockSite} showTransfer={true} transferAllowed={false} />
+      );
+
+      const actionsMenuButton = screen.getByRole('button', { name: 'builder_apps_menu_actions' });
+      await user.click(actionsMenuButton);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('app-card-transfer-button')).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByTestId('app-card-transfer-button'));
+
+      await waitFor(() => {
+        expect(TransferInitiateDialog).toHaveBeenCalled();
       });
     });
 

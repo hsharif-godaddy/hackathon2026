@@ -14,6 +14,7 @@ export interface ProjectCardAction {
   id: string
   label: string
   icon: React.ReactNode
+  trailingIcon?: React.ReactNode
   onClick: () => void
   emphasis?: 'critical'
   showSeparatorBefore?: boolean
@@ -68,7 +69,12 @@ export default function ProjectCardActionsSheet({
                 >
                   {action.icon}
                 </span>
-                <text.span emphasis={action.emphasis}>{action.label}</text.span>
+                <span className="flex min-w-0 flex-1 items-center gap-2">
+                  <text.span emphasis={action.emphasis} className="min-w-0 flex-1">
+                    {action.label}
+                  </text.span>
+                  {action.trailingIcon}
+                </span>
               </button>
             </div>
           ))}

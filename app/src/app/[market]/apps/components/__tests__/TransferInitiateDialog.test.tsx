@@ -42,7 +42,7 @@ describe('TransferInitiateDialog', function dialogTests() {
   it('should render the input form', function renderForm() {
     renderWithProviders(<TransferInitiateDialog {...defaultProps} />);
 
-    expect(screen.getByText(/Transfer \u201CMy Test App\u201D/)).toBeInTheDocument();
+    expect(screen.getByText(/builder_transfer_initiate_title \u201CMy Test App\u201D/)).toBeInTheDocument();
     expect(screen.getByRole('textbox')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'builder_transfer_initiate_submit' })).toBeInTheDocument();
   });

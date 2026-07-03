@@ -12,7 +12,6 @@ import EditIcon from '@ux/icon/edit'
 import MenuIcon from '@ux/icon/menu'
 import PlusIcon from '@ux/icon/plus'
 import SettingsIcon from '@ux/icon/settings'
-import ShareIcon from '@ux/icon/share'
 import ShowIcon from '@ux/icon/show'
 import TrashIcon from '@ux/icon/trash'
 import UnlinkIcon from '@ux/icon/unlink'
@@ -29,6 +28,7 @@ import AppThumbnail from '@/app/[market]/apps/AppThumbnail'
 import DeleteProjectConfirmationModal from '@/app/[market]/apps/components/DeleteProjectConfirmationModal'
 import { transferEventProps } from '@/app/[market]/apps/components/transfer-constants'
 import TransferInitiateDialog from '@/app/[market]/apps/components/TransferInitiateDialog'
+import { TransferMenuLabel } from '@/app/[market]/projects/components/transfer-menu-label'
 import { getProjectType } from '@/app/[market]/projects/lib/projectType'
 import UnpublishConfirmationModal from '@/components/layout/UnpublishConfirmationModal'
 import { SWITCHBOARD_APPBUILDER_APP_DELETE_MODAL } from '@/config/switchboard-flags'
@@ -109,9 +109,24 @@ interface ActiveTransfer {
   expiresAt?: string
 }
 
-export default function AppCard({ site, transferAllowed = false }: { site: SiteInfo; transferAllowed?: boolean }) {
+export default function AppCard({
+  site,
+  transferAllowed = false,
+  showTransfer = false,
+}: {
+  site: SiteInfo
+  transferAllowed?: boolean
+  showTransfer?: boolean
+}) {
   const router = useRouter();
   const t = useTranslations();
+  // Menu visibility (`showTransfer`) and initiation eligibility (`transferAllowed`)
+  // are separate concepts so a future plan tier can show Transfer while still
+  // gating the actual initiation behind an upgrade prompt; today the caller
+  // always passes them equal. Every other transfer-related gate below derives
+  // from this combined flag so a show-but-not-allowed combo can't dead-end
+  // (menu visible, dialog silently refusing to open).
+  const shouldShowTransferMenu = showTransfer || transferAllowed
 
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [alertState, setAlertState] = useState<AlertState>({ siteId: null, type: null, message: '' })
@@ -285,11 +300,11 @@ export default function AppCard({ site, transferAllowed = false }: { site: SiteI
   }, [site.id])
 
   useEffect(function loadTransferStatus() {
-    if (!transferAllowed) return
+    if (!shouldShowTransferMenu) return
     const controller = new AbortController()
     fetchTransferStatus(controller.signal)
     return () => controller.abort()
-  }, [site.id, fetchTransferStatus, transferAllowed])
+  }, [site.id, fetchTransferStatus, shouldShowTransferMenu])
 
   const handleDeleteSite = async (siteId: string) => {
     setActionLoading(siteId)
@@ -547,6 +562,9 @@ export default function AppCard({ site, transferAllowed = false }: { site: SiteI
   )
 
   const hasActiveTransfer = activeTransfer !== null
+  const transferLabel = transferValidating
+    ? t('builder_transfer_validating')
+    : t('builder_transfer_menu_item')
 
   const transferMenuItem = (
     <MenuItem
@@ -558,10 +576,7 @@ export default function AppCard({ site, transferAllowed = false }: { site: SiteI
       data-eid={generateClickEID('apps.app.transfer')}
       disabled={transferValidating}
     >
-      <Box orientation="horizontal" gap="sm">
-        <ShareIcon />
-        <text.span>{transferValidating ? t('builder_transfer_validating', undefined, 'Validating...') : t('builder_transfer_menu_item', undefined, 'Transfer')}</text.span>
-      </Box>
+      <TransferMenuLabel label={transferLabel} />
     </MenuItem>
   )
 
@@ -671,7 +686,7 @@ export default function AppCard({ site, transferAllowed = false }: { site: SiteI
               <text.span>{t('builder_common_rename')}</text.span>
             </Box>
           </MenuItem>
-          {transferAllowed && !hasActiveTransfer && transferMenuItem}
+          {shouldShowTransferMenu && !hasActiveTransfer && transferMenuItem}
           <MenuSeparator />
           <MenuItem
             onClick={handleDeleteClick}
@@ -754,7 +769,7 @@ export default function AppCard({ site, transferAllowed = false }: { site: SiteI
     </div>
   )
 
-  if (transferAllowed && hasActiveTransfer) {
+  if (shouldShowTransferMenu && hasActiveTransfer) {
     return (
       <>
         <Card className="relative">
@@ -868,7 +883,7 @@ export default function AppCard({ site, transferAllowed = false }: { site: SiteI
       </div>
 
       {/* Transfer Dialog */}
-      {transferAllowed && isTransferDialogOpen && (
+      {shouldShowTransferMenu && isTransferDialogOpen && (
         <TransferInitiateDialog
           appId={site.id}
           appName={site.name || t('builder_apps_alert_delete_untitled')}

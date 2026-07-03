@@ -110,7 +110,7 @@ export default function TransferInitiateDialog({
     }
   }
 
-  const modalTitle = `${t('builder_transfer_initiate_title', undefined, 'Transfer')} \u201C${appName}\u201D`
+  const modalTitle = `${t('builder_transfer_initiate_title')} \u201C${appName}\u201D`
 
   const handleClose = () => {
     if (transferToken) onTransferCreated(transferToken, transferExpiresAt)
