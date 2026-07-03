@@ -125,7 +125,7 @@ catalog:
   lucide-react: ^0.577.0
   magic-string: 0.30.17
   multer: ^2.2.0
-  next: ^16.2.6
+  next: ^16.2.9
   openai: ^6.37.0
   parquetjs: ^0.11.2
   prettier: 3.8.3
