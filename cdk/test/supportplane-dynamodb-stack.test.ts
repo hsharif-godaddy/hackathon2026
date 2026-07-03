@@ -17,8 +17,8 @@ beforeAll(async () => {
 });
 
 describe('SupportPlane DynamoDB stack (dev)', () => {
-  it('creates eleven tables for SupportPlane', () => {
-    devTemplate.resourceCountIs('AWS::DynamoDB::Table', 11);
+  it('creates twelve tables for SupportPlane', () => {
+    devTemplate.resourceCountIs('AWS::DynamoDB::Table', 12);
   });
 
   it('transcripts table uses interaction_id and created_at keys', () => {
@@ -143,6 +143,33 @@ describe('SupportPlane DynamoDB stack (dev)', () => {
       KeySchema: [
         { AttributeName: 'ticket_key', KeyType: 'HASH' },
         { AttributeName: 'created_at', KeyType: 'RANGE' },
+      ],
+    });
+  });
+
+  it('inline feedback table uses feedback_id and created_at keys', () => {
+    devTemplate.hasResourceProperties('AWS::DynamoDB::Table', {
+      TableName: 'airo-builde-supportplane-inline-feedback-dev',
+      BillingMode: 'PAY_PER_REQUEST',
+      KeySchema: [
+        { AttributeName: 'feedback_id', KeyType: 'HASH' },
+        { AttributeName: 'created_at', KeyType: 'RANGE' },
+      ],
+    });
+  });
+
+  it('inline feedback table has env-ts-index GSI for date-scoped browse queries', () => {
+    devTemplate.hasResourceProperties('AWS::DynamoDB::Table', {
+      TableName: 'airo-builde-supportplane-inline-feedback-dev',
+      GlobalSecondaryIndexes: [
+        {
+          IndexName: 'env-ts-index',
+          KeySchema: [
+            { AttributeName: 'env', KeyType: 'HASH' },
+            { AttributeName: 'feedback_utc_ts', KeyType: 'RANGE' },
+          ],
+          Projection: { ProjectionType: 'ALL' },
+        },
       ],
     });
   });

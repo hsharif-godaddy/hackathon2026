@@ -25,6 +25,7 @@ export class SupportplaneDynamoStack extends GDStack {
   public readonly feedbackIngestTable: dynamodb.Table;
   public readonly ticketsTable: dynamodb.Table;
   public readonly insightsTable: dynamodb.Table;
+  public readonly inlineFeedbackTable: dynamodb.Table;
 
   constructor(scope: Construct, id: string, props: GDStackProps) {
     super(scope, id, props);
@@ -40,6 +41,7 @@ export class SupportplaneDynamoStack extends GDStack {
     this.feedbackIngestTable = this.buildFeedbackIngest();
     this.ticketsTable = this.buildTickets();
     this.insightsTable = this.buildInsights();
+    this.inlineFeedbackTable = this.buildInlineFeedback();
 
     this.grant();
     this.output();
@@ -326,6 +328,35 @@ export class SupportplaneDynamoStack extends GDStack {
     return table;
   }
 
+  private buildInlineFeedback(): dynamodb.Table {
+    // Stores per-message , artifact thumbs-down and task completion feedback submitted inline
+    // from the chat UI. One item per submission, sorted by creation time.
+    // PK: feedback_id  SK: created_at
+    const table = new dynamodb.Table(this, 'SupportplaneInlineFeedbackTable', {
+      tableName: `airo-builde-supportplane-inline-feedback-${config.envName}`,
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      partitionKey: { name: 'feedback_id', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'created_at', type: dynamodb.AttributeType.STRING },
+      pointInTimeRecovery: true,
+      encryption: dynamodb.TableEncryption.AWS_MANAGED,
+      deletionProtection: config.envName === 'prod',
+      removalPolicy:
+        config.envName === 'prod' ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
+    });
+
+    // env-ts-index: scoped browse queries by env without a full table scan.
+    // PK=env filters prod/dev rows; SK=feedback_utc_ts supports date-range
+    // KeyConditionExpression for the inline feedback browse panel.
+    table.addGlobalSecondaryIndex({
+      indexName: 'env-ts-index',
+      partitionKey: { name: 'env', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'feedback_utc_ts', type: dynamodb.AttributeType.STRING },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+
+    return table;
+  }
+
   private grant(): void {
     const consoleWriterRoleArns = config.katanaEcsTaskRoleArn.filter(
       (arn) => arn.includes('7794') || arn.includes('7797')
@@ -360,6 +391,8 @@ export class SupportplaneDynamoStack extends GDStack {
       `${this.ticketsTable.tableArn}/index/*`,
       this.insightsTable.tableArn,
       `${this.insightsTable.tableArn}/index/*`,
+      this.inlineFeedbackTable.tableArn,
+      `${this.inlineFeedbackTable.tableArn}/index/*`,
     ];
 
     uniqueRoleArns.forEach((roleArn, index) => {
@@ -493,6 +526,16 @@ export class SupportplaneDynamoStack extends GDStack {
       value: this.insightsTable.tableArn,
       description: 'SupportPlane derived insights DynamoDB table ARN',
       exportName: `airo-builde-supportplane-insights-table-arn-${config.envName}`,
+    });
+    new cdk.CfnOutput(this, 'SupportplaneInlineFeedbackTableName', {
+      value: this.inlineFeedbackTable.tableName,
+      description: 'SupportPlane inline thumbs-down feedback DynamoDB table name',
+      exportName: `airo-builde-supportplane-inline-feedback-table-name-${config.envName}`,
+    });
+    new cdk.CfnOutput(this, 'SupportplaneInlineFeedbackTableArn', {
+      value: this.inlineFeedbackTable.tableArn,
+      description: 'SupportPlane inline thumbs-down feedback DynamoDB table ARN',
+      exportName: `airo-builde-supportplane-inline-feedback-table-arn-${config.envName}`,
     });
   }
 }
