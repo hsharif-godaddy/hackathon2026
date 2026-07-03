@@ -418,6 +418,7 @@ describe('AppRestartService', () => {
       const writtenConfig = JSON.parse(writeCall[1] as string);
       expect(writtenConfig.runtime.build.command).toBe('NODE_ENV=production npm run build');
       expect(writtenConfig.runtime.serve.command).toBe('npm start');
+      expect(writtenConfig.runtime.packageManager).toBe('npm');
       expect(writtenConfig.cleanAppDirBeforeExtract).toBeUndefined();
       expect(writtenConfig.productId).toBeUndefined();
     });
@@ -467,6 +468,7 @@ describe('AppRestartService', () => {
       expect(writtenConfig.runtime.build.command).toBe('NODE_ENV=production pnpm run build');
       expect(writtenConfig.runtime.serve.command).toBe('pnpm start');
       expect(writtenConfig.runtime.dev.command).toBe('pnpm run dev');
+      expect(writtenConfig.runtime.packageManager).toBe('pnpm');
     });
 
     it('should use yarn build command when packageManager is yarn', async () => {
@@ -477,6 +479,74 @@ describe('AppRestartService', () => {
       expect(writtenConfig.runtime.build.command).toBe('NODE_ENV=production yarn run build');
       expect(writtenConfig.runtime.serve.command).toBe('yarn start');
       expect(writtenConfig.runtime.dev.command).toBe('yarn run dev');
+      expect(writtenConfig.runtime.packageManager).toBe('yarn');
+    });
+  });
+
+  describe('patchPaasPackageManager', () => {
+    it('should add packageManager when missing from existing config', async () => {
+      vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify({
+        runtime: {
+          build: { command: 'npm run build' },
+          serve: { command: 'node server.js' },
+          dev: { command: 'npm run dev' },
+        },
+      }));
+
+      const patched = await service.patchPaasPackageManager(testAppPath, 'pnpm', testAppId);
+
+      expect(patched).toBe(true);
+      expect(fs.writeFile).toHaveBeenCalledWith(
+        `${testAppPath}/.airo/config.json`,
+        expect.stringContaining('"packageManager": "pnpm"'),
+        'utf-8'
+      );
+    });
+
+    it('should not rewrite config when packageManager is already set', async () => {
+      vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify({
+        runtime: {
+          build: { command: 'npm run build' },
+          serve: { command: 'node server.js' },
+          dev: { command: 'npm run dev' },
+          packageManager: 'npm',
+        },
+      }));
+
+      const patched = await service.patchPaasPackageManager(testAppPath, 'pnpm', testAppId);
+
+      expect(patched).toBe(false);
+      expect(fs.writeFile).not.toHaveBeenCalled();
+    });
+
+    it('should reject malformed config JSON', async () => {
+      vi.mocked(fs.readFile).mockResolvedValue('{ not json');
+
+      await expect(service.patchPaasPackageManager(testAppPath, 'pnpm', testAppId))
+        .rejects.toThrow(SyntaxError);
+    });
+
+    it('should no-op when config file is missing', async () => {
+      const enoent = Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
+      vi.mocked(fs.readFile).mockRejectedValue(enoent);
+
+      const patched = await service.patchPaasPackageManager(testAppPath, 'pnpm', testAppId);
+
+      expect(patched).toBe(false);
+      expect(fs.writeFile).not.toHaveBeenCalled();
+      expect(mockLoggerWarn).toHaveBeenCalledWith(
+        'app-restart.paas-config.package-manager-patch-skipped',
+        expect.objectContaining({ reason: 'ENOENT', appId: testAppId, appPath: testAppPath })
+      );
+    });
+
+    it('should no-op when runtime object is absent', async () => {
+      vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify({}));
+
+      const patched = await service.patchPaasPackageManager(testAppPath, 'pnpm', testAppId);
+
+      expect(patched).toBe(false);
+      expect(fs.writeFile).not.toHaveBeenCalled();
     });
   });
 

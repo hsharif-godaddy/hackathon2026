@@ -13,6 +13,8 @@ export default defineConfig({
     alias: {
       // Point to source to avoid loading the broken dist/experimental-websocket-server.js
       '@airo/ai-transport': path.resolve(__dirname, '../packages/ai-transport/src/index.ts'),
+      '@airo/shared/chat': path.resolve(__dirname, '../packages/shared/src/chat/index.ts'),
+      '@airo/shared/api-error-code': path.resolve(__dirname, '../packages/shared/src/api-error-code/index.ts'),
     },
   },
   test: {

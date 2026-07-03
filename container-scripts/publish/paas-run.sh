@@ -58,8 +58,7 @@ if [[ ! -f package.json ]]; then
     error_exit "PaaS: package.json missing"
 fi
 
-# PaaS supports pnpm, yarn, and npm — mirrors preview's nomad_setup.sh priority.
-detect_package_manager "pnpm yarn npm"
+PACKAGE_MANAGER=""
 
 # Custom build/serve commands from .airo/config.json. Preview always writes
 # these during import (AppRestartService.createPaasConfig); prefer them when
@@ -89,10 +88,12 @@ log_event "paas.run.config-loaded" "info" "$(
         '{hasAiroConfig: ($hasAiroConfig == "true"), serveCommand: $serveCommand, buildCommand: $buildCommand, packageManager: $packageManager}'
 )"
 
-# Recovery path: preview normally ships node_modules in the archive.
 if [[ -d node_modules ]]; then
     log "PaaS: node_modules and build output present from preview - serving directly"
-else
+elif [[ -n "$CUSTOM_SERVE_CMD" ]] && ! lockfile_present; then
+    log "PaaS: no node_modules and no lockfile - skipping install, using serve command"
+elif lockfile_present; then
+    resolve_package_manager "$AIRO_CONFIG_PATH"
     log "PaaS: node_modules missing - running install (recovery)"
     case "$PACKAGE_MANAGER" in
         pnpm)
@@ -114,6 +115,8 @@ else
         log "PaaS: running build (recovery)"
         "$PACKAGE_MANAGER" run build || error_exit "PaaS: build failed"
     fi
+else
+    error_exit "PaaS: node_modules missing and no lockfile - cannot install dependencies"
 fi
 
 # Environment. Do NOT create_env_file — PaaS apps read process.env.PORT directly.
@@ -152,6 +155,8 @@ if [[ -z "$PKG_START_CMD" ]]; then
     )"
     error_exit "PaaS: package.json must define a non-empty scripts.start (or runtime.serve.command in .airo/config.json)"
 fi
+
+resolve_package_manager "$AIRO_CONFIG_PATH"
 
 log_event "paas.run.start-command-resolved" "info" "$(
     jq -cn --arg source "package.json" --arg command "$PKG_START_CMD" \

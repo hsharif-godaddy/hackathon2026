@@ -141,6 +141,40 @@ detect_package_manager() {
     log "$PACKAGE_MANAGER version: $($PACKAGE_MANAGER --version)"
 }
 
+lockfile_present() {
+    [[ -f pnpm-lock.yaml || -f yarn.lock || -f package-lock.json ]]
+}
+
+# Sets PACKAGE_MANAGER. Call only when install recovery or pm start fallback needs it.
+resolve_package_manager() {
+    local airo_config="${1:-.airo/config.json}"
+    local pm=""
+
+    if [[ -f "$airo_config" ]] && jq -e '.' "$airo_config" >/dev/null 2>&1; then
+        pm=$(jq -r '.runtime.packageManager // empty' "$airo_config")
+    fi
+
+    if [[ -z "$pm" && -f package.json ]]; then
+        # Corepack "packageManager" field uses <pm>@<version> (e.g. pnpm@9.1.0).
+        pm=$(jq -r '.packageManager // empty' package.json | sed 's/@.*//')
+    fi
+
+    if [[ -n "$pm" ]]; then
+        case "$pm" in
+            pnpm|yarn|npm) ;;
+            *) error_exit "PaaS: unsupported package manager: $pm (expected npm, yarn, or pnpm)" ;;
+        esac
+        if ! command -v "$pm" >/dev/null 2>&1; then
+            error_exit "$pm command not found. Ensure $pm is installed."
+        fi
+        PACKAGE_MANAGER="$pm"
+        log "Resolved package manager: $pm"
+        return 0
+    fi
+
+    detect_package_manager "pnpm yarn npm"
+}
+
 # Validate the archive and distribution directory, extract to $APP_DIR, then cd.
 # Requires globals: DIST_DIR, ARCHIVE_PATH, APP_DIR.
 process_archive() {

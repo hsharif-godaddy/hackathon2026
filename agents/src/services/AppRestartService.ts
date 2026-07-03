@@ -7,7 +7,7 @@
  * Extracted from ProjectImportService to allow reuse in git pull and other operations.
  */
 
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { Logger } from '../logging/index.js';
 import { TerminalTool } from '../tools/terminal.js';
@@ -260,6 +260,7 @@ export interface PaasConfig {
     build: { command: string };
     serve: { command: string };
     dev: { command: string };
+    packageManager?: PackageManager;
   };
 }
 
@@ -778,6 +779,7 @@ export class AppRestartService {
         serve: {
           command: finalStartCmd,
         },
+        packageManager,
       },
     };
     if (productId) {
@@ -821,6 +823,46 @@ export class AppRestartService {
       productId: productId ?? null,
       cleanAppDirBeforeExtract: paasConfig.cleanAppDirBeforeExtract ?? false,
     });
+  }
+
+  /**
+   * Backfill runtime.packageManager on an existing config without touching other fields.
+   * No-ops if the field is already set, the config file is missing, or runtime is absent.
+   */
+  async patchPaasPackageManager(
+    appPath: string,
+    packageManager: PackageManager,
+    appId?: string
+  ): Promise<boolean> {
+    const configPath = join(appPath, '.airo', 'config.json');
+    try {
+      const content: string = await readFile(configPath, 'utf-8');
+      const config = JSON.parse(content) as PaasConfig;
+      if (config.runtime?.packageManager) {
+        return false;
+      }
+      if (!config.runtime) {
+        return false;
+      }
+      config.runtime.packageManager = packageManager;
+      await writeFile(configPath, JSON.stringify(config, null, 2), 'utf-8');
+      this.logger.info('app-restart.paas-config.package-manager-patched', {
+        appId,
+        appPath,
+        packageManager,
+      });
+      return true;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        this.logger.warn('app-restart.paas-config.package-manager-patch-skipped', {
+          reason: 'ENOENT',
+          appId,
+          appPath,
+        });
+        return false;
+      }
+      throw error;
+    }
   }
 
   /**

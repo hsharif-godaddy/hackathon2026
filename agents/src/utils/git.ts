@@ -95,6 +95,16 @@ export interface ArchiveOptions extends GitCommandOptions {
   includeNodeModules?: boolean;
 }
 
+const PREVIEW_BUILD_OUTPUT_ROOTS = ['.next', 'dist', 'build', '.output', '.svelte-kit'] as const;
+
+function isPreviewBuildOutputPath(file: string): boolean {
+  return PREVIEW_BUILD_OUTPUT_ROOTS.some((root) => file === root || file.startsWith(`${root}/`));
+}
+
+function archiveHasBuildOutput(has: (suffix: string) => boolean): boolean {
+  return PREVIEW_BUILD_OUTPUT_ROOTS.some((root) => has(root));
+}
+
 /**
  * Git Utility Class
  * Provides convenient methods for common Git operations
@@ -1219,6 +1229,9 @@ export class GitUtils {
         hasAiroConfig: has('.airo/config.json'),
         hasPackageJson: has('package.json'),
         hasNodeModules: has('node_modules'),
+        hasBuildOutput: archiveHasBuildOutput(has),
+        hasLockfile:
+          has('package-lock.json') || has('pnpm-lock.yaml') || has('yarn.lock'),
         entryCount: entries.length,
         // Distinguishes "config is genuinely absent" from "listing was
         // truncated and the config may be past the 20k cap".
@@ -1253,8 +1266,10 @@ export class GitUtils {
       // - repo-root .env* files: customer environment variables needed for runtime
       //   (only root-level, e.g. .env, .env.local - nested like subdir/.env are still excluded)
       // - .airo/ directory: platform configuration (runtime commands for PaaS)
+      // - preview build output: gitignored dirs produced by install/build in preview
       .filter(file => !file.startsWith('.env'))
       .filter(file => !file.startsWith('.airo/') && file !== '.airo')
+      .filter(file => !isPreviewBuildOutputPath(file))
       .filter(file => file.length > 0);
   }
 

@@ -104,6 +104,7 @@ interface PaasPreflightResult {
   hasPackageJson: boolean;
   hasStartScript: boolean;
   startScript: string | null;
+  packageManager: string | null;
 }
 
 /**
@@ -252,6 +253,7 @@ export class PaaSPublishStrategy implements PublishStrategy {
 
     const serveCommand = extractNonEmptyString(airoConfig, ['runtime', 'serve', 'command']);
     const startScript = extractNonEmptyString(packageJson, ['scripts', 'start']);
+    const packageManager = extractNonEmptyString(airoConfig, ['runtime', 'packageManager']);
 
     return {
       hasAiroConfig: isPlainObject(airoConfig),
@@ -259,6 +261,7 @@ export class PaaSPublishStrategy implements PublishStrategy {
       hasPackageJson: isPlainObject(packageJson),
       hasStartScript: startScript !== null,
       startScript,
+      packageManager,
     };
   }
 
@@ -268,7 +271,9 @@ export class PaaSPublishStrategy implements PublishStrategy {
    *
    * If no `serve.command` is present, resolve one via the shared fallback
    * chain (user → scripts.start → scripts.dev → default — same logic as
-   * import and restart) and write it with `createPaasConfig`.
+   * import and restart) and write it with `createPaasConfig`. This includes
+   * apps that only define `scripts.start`: paas-run.sh reads
+   * `runtime.serve.command` for the zero-dep install skip path.
    *
    * The file does not need to be committed — `getUntrackedExclusions`
    * explicitly preserves `.airo/` in the archive even when untracked.
@@ -286,10 +291,7 @@ export class PaaSPublishStrategy implements PublishStrategy {
       return;
     }
 
-    // A committed `scripts.start` already ships in the archive (package.json is
-    // tracked) and satisfies paas-run.sh, so when neither a config serve command
-    // nor a start script exists we must synthesize one from the fallback chain.
-    if (!state.serveCommand && !state.startScript) {
+    if (!state.serveCommand) {
       const packageManager = await detectPackageManager(tasks);
       const scripts = await readPackageJsonScripts(tasks, '/app', appId);
       const { startCommand, serveCommandSource } = resolveStartCommand(
@@ -316,14 +318,17 @@ export class PaaSPublishStrategy implements PublishStrategy {
         serveCommandSource,
         appId
       );
-    } else if (!state.serveCommand) {
-      // package.json's scripts.start already covers the runtime — nothing to
-      // persist. (No config file may exist, so don't attempt to commit one.)
-      logger.info(`route.publish.${this.key}.start-command.persisted`, {
-        appId,
-        reason: 'start-script-sufficient',
-      });
-      return;
+    }
+
+    if (state.hasAiroConfig && state.serveCommand && !state.packageManager) {
+      const packageManager = await detectPackageManager(tasks);
+      const patched = await appRestartService.patchPaasPackageManager(appPath, packageManager, appId);
+      if (patched) {
+        logger.info(`route.publish.${this.key}.package-manager.persisted`, {
+          appId,
+          packageManager,
+        });
+      }
     }
 
     logger.info(`route.publish.${this.key}.start-command.persisted`, {

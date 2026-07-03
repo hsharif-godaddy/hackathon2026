@@ -1100,6 +1100,98 @@ describe('GitUtils', () => {
           expect(tarCallArgs.command).toContain('--exclude=random.txt');
         });
 
+        it('should filter out preview build output from untracked exclusions', async () => {
+          const commitHash = 'abc1234';
+
+          mockTasks.runCommandSync
+            .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })
+            .mockResolvedValueOnce({
+              exitCode: 0,
+              stdout: '.next\u0000.next/BUILD_ID\u0000dist\u0000dist/index.js\u0000distribution/foo\u0000.nextconfig/bar\u0000tmp/cache.db\u0000',
+              stderr: '',
+              timedOut: false,
+              executionTimeMs: 0,
+              taskId: 't',
+            })
+            .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' });
+
+          await gitUtils.createArchive('/app', commitHash, undefined, { includeSource: true, excludeUntracked: true });
+
+          const tarCallArgs = mockTasks.runCommandSync.mock.calls[2][0];
+          expect(tarCallArgs.command).not.toMatch(/--exclude=\.next['"\s]/);
+          expect(tarCallArgs.command).not.toContain('--exclude=.next/BUILD_ID');
+          expect(tarCallArgs.command).not.toContain('--exclude=dist/index.js');
+          expect(tarCallArgs.command).toContain('--exclude=distribution/foo');
+          expect(tarCallArgs.command).toContain('--exclude=.nextconfig/bar');
+          expect(tarCallArgs.command).toContain('--exclude=tmp/cache.db');
+        });
+
+        it('should log hasBuildOutput and hasLockfile in archive manifest', async () => {
+          const commitHash = 'abc1234';
+          const infoSpy = vi.spyOn(logger, 'info').mockImplementation(() => undefined as never);
+
+          mockTasks.runCommandSync
+            .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })
+            .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })
+            .mockResolvedValueOnce({
+              exitCode: 0,
+              stdout: [
+                '4096',
+                '---entries---',
+                './package.json',
+                './.next/BUILD_ID',
+                './package-lock.json',
+              ].join('\n'),
+              stderr: '',
+              timedOut: false,
+              executionTimeMs: 0,
+              taskId: 't',
+            });
+
+          await gitUtils.createArchive('/app', commitHash, undefined, { includeSource: true });
+          await new Promise<void>((resolve) => { setImmediate(resolve); });
+
+          expect(infoSpy).toHaveBeenCalledWith(
+            'git.archive.create.manifest',
+            expect.objectContaining({
+              hasBuildOutput: true,
+              hasLockfile: true,
+            })
+          );
+
+          infoSpy.mockRestore();
+        });
+
+        it('should log hasBuildOutput false when archive has no build output dirs', async () => {
+          const commitHash = 'abc1234';
+          const infoSpy = vi.spyOn(logger, 'info').mockImplementation(() => undefined as never);
+
+          mockTasks.runCommandSync
+            .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })
+            .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })
+            .mockResolvedValueOnce({
+              exitCode: 0,
+              stdout: ['4096', '---entries---', './package.json'].join('\n'),
+              stderr: '',
+              timedOut: false,
+              executionTimeMs: 0,
+              taskId: 't',
+            });
+
+          await gitUtils.createArchive('/app', commitHash, undefined, { includeSource: true });
+          await new Promise<void>((resolve) => { setImmediate(resolve); });
+
+          expect(infoSpy).toHaveBeenCalledWith(
+            'git.archive.create.manifest',
+            expect.objectContaining({
+              hasBuildOutput: false,
+              hasLockfile: false,
+            })
+          );
+
+          infoSpy.mockRestore();
+        });
+
         it('should continue archive creation when listing untracked files fails', async () => {
           const commitHash = 'abc1234';
 

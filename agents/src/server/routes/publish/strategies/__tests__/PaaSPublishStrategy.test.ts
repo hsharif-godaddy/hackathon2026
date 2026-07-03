@@ -114,6 +114,7 @@ describe('PaaSPublishStrategy', () => {
     getCurrentCommit: ReturnType<typeof vi.fn>;
   };
   let createPaasConfigSpy: ReturnType<typeof vi.spyOn>;
+  let patchPaasPackageManagerSpy: ReturnType<typeof vi.spyOn>;
   let mockLogger: {
     info: ReturnType<typeof vi.fn>;
     warn: ReturnType<typeof vi.fn>;
@@ -142,14 +143,24 @@ describe('PaaSPublishStrategy', () => {
     // exec router's mutable state so the subsequent preflight read sees it.
     createPaasConfigSpy = vi
       .spyOn(appRestartService, 'createPaasConfig')
-      .mockImplementation(async (_appPath, _bt, startCommand) => {
+      .mockImplementation(async (_appPath, _bt, startCommand, _pid, _dev, packageManager) => {
         execState.airoConfig = {
           runtime: {
             serve: { command: startCommand ?? 'npm start' },
             build: { command: 'npm run build' },
             dev: { command: startCommand ?? 'npm start' },
+            packageManager: packageManager ?? 'npm',
           },
         };
+      });
+
+    patchPaasPackageManagerSpy = vi
+      .spyOn(appRestartService, 'patchPaasPackageManager')
+      .mockImplementation(async (_appPath, packageManager) => {
+        if (execState.airoConfig?.runtime) {
+          execState.airoConfig.runtime.packageManager = packageManager;
+        }
+        return true;
       });
 
     mockLogger = {
@@ -175,6 +186,7 @@ describe('PaaSPublishStrategy', () => {
 
   afterEach(() => {
     createPaasConfigSpy.mockRestore();
+    patchPaasPackageManagerSpy.mockRestore();
   });
 
   describe('prepareBuild', () => {
@@ -396,11 +408,21 @@ describe('PaaSPublishStrategy', () => {
 
       await expect(strategy.prepareBuild(mockContext)).resolves.toBeDefined();
 
+      expect(createPaasConfigSpy).toHaveBeenCalledWith(
+        '/tmp/test-app',
+        undefined,
+        'NODE_ENV=production npm start',
+        undefined,
+        undefined,
+        'npm',
+        'scripts.start',
+        'test-app-id'
+      );
       expect(mockLogger.info).toHaveBeenCalledWith(
         'route.publish.paas.preflight.config',
         expect.objectContaining({
-          hasAiroConfig: false,
-          serveCommand: null,
+          hasAiroConfig: true,
+          serveCommand: 'NODE_ENV=production npm start',
           hasPackageJson: true,
           hasStartScript: true,
           startScript: 'node server.js',
@@ -504,11 +526,48 @@ describe('PaaSPublishStrategy', () => {
 
       await expect(strategy.prepareBuild(mockContext)).resolves.toBeDefined();
 
-      // Existing serve command is preserved — never re-resolved/overwritten.
       expect(createPaasConfigSpy).not.toHaveBeenCalled();
+      expect(patchPaasPackageManagerSpy).toHaveBeenCalledWith(
+        '/tmp/test-app',
+        'npm',
+        'test-app-id'
+      );
     });
 
-    it('does not write a config when package.json already defines scripts.start', async () => {
+    it('does not patch packageManager when config already has one', async () => {
+      installExecRouter(mockTasks, {
+        airoConfig: {
+          runtime: {
+            serve: { command: 'node dist/server.js' },
+            packageManager: 'pnpm',
+          },
+        },
+        packageJson: { scripts: {} },
+      });
+
+      await expect(strategy.prepareBuild(mockContext)).resolves.toBeDefined();
+
+      expect(createPaasConfigSpy).not.toHaveBeenCalled();
+      expect(patchPaasPackageManagerSpy).not.toHaveBeenCalled();
+    });
+
+    it('does not log package-manager.persisted when patch returns false', async () => {
+      patchPaasPackageManagerSpy.mockResolvedValue(false);
+      installExecRouter(mockTasks, {
+        airoConfig: { runtime: { serve: { command: 'node dist/server.js' } } },
+        packageJson: { scripts: {} },
+      });
+
+      await expect(strategy.prepareBuild(mockContext)).resolves.toBeDefined();
+
+      expect(patchPaasPackageManagerSpy).toHaveBeenCalled();
+      expect(mockLogger.info).not.toHaveBeenCalledWith(
+        'route.publish.paas.package-manager.persisted',
+        expect.anything()
+      );
+    });
+
+    it('writes config from scripts.start when no serve command is present', async () => {
       installExecRouter(mockTasks, {
         airoConfig: null,
         packageJson: { scripts: { start: 'node server.js' } },
@@ -516,11 +575,19 @@ describe('PaaSPublishStrategy', () => {
 
       await expect(strategy.prepareBuild(mockContext)).resolves.toBeDefined();
 
-      // scripts.start ships in the tracked package.json — nothing to persist.
-      expect(createPaasConfigSpy).not.toHaveBeenCalled();
+      expect(createPaasConfigSpy).toHaveBeenCalledWith(
+        '/tmp/test-app',
+        undefined,
+        'NODE_ENV=production npm start',
+        undefined,
+        undefined,
+        'npm',
+        'scripts.start',
+        'test-app-id'
+      );
       expect(mockLogger.info).toHaveBeenCalledWith(
         'route.publish.paas.start-command.persisted',
-        expect.objectContaining({ reason: 'start-script-sufficient' })
+        expect.objectContaining({ hadServeCommand: false })
       );
     });
 
