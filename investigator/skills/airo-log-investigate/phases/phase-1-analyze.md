@@ -1,6 +1,6 @@
 # Phase 1: Analyze Evidence Indexes
 
-**Default mental model:** the bug is in the customer's app by default. Start from the customer app code (`$APP_CODE_DIR`) and the agent conversation (`$CONVERSATIONS_PATH`). Escalate to the platform code-review-graph only when a stack trace, conversation turn, or log template points at platform internals (agents/preview/publish/dev-supervisor/control-plane).
+**Default mental model:** the bug is in the customer's app by default. Start from the customer app code (`$APP_CODE_DIR`) and the agent conversation (`$CONVERSATIONS_PATH`). Always include at least one platform code-review-graph query in the parallel drill turn alongside app-code reads — platform code is always potentially relevant. When calling `crgQuery`, pass the path provided in the system prompt as `repoRoot` for platform graph queries; omit `repoRoot` for customer app queries (defaults to app directory). When calling MCP CRG tools directly, always pass the platform graph path explicitly as `repo_root`.
 
 **Before flagging anything as missing / broken / a defect, rule out by-design behavior.** Read `references/aab-behaviors.md` — it documents AAB conventions that look like bugs but are not (homepage-built-first / pages-on-demand, routes needing explicit registration, expected startup log noise, customer-facing plan limits). Two checks:
 

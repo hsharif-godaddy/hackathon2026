@@ -96,3 +96,30 @@ test('crgQuery semantic_search passes target as { query }, not { target } (regre
   assert.equal(receivedParams.query, 'cart checkout routes');
   assert.equal(receivedParams.target, undefined);
 });
+
+test('crgQuery forwards explicit repoRoot when provided', async () => {
+  let receivedParams = null;
+  const fakeTool = { execute: async (params) => { receivedParams = params; return { nodes: [] }; } };
+  const fakeClient = { tools: async () => ({ 'semantic_search_nodes': fakeTool }) };
+  const tools = createRetrievalTools({ appCodeDir: '/tmp/app', crgClient: fakeClient });
+  await tools.crgQuery.execute({ op: 'semantic_search', target: 'publish pipeline', repoRoot: '/tmp/platform-graph' });
+  assert.equal(receivedParams.repo_root, '/tmp/platform-graph');
+});
+
+test('crgQuery falls back to closure appCodeDir when repoRoot omitted', async () => {
+  let receivedParams = null;
+  const fakeTool = { execute: async (params) => { receivedParams = params; return { nodes: [] }; } };
+  const fakeClient = { tools: async () => ({ 'semantic_search_nodes': fakeTool }) };
+  const tools = createRetrievalTools({ appCodeDir: '/tmp/app', crgClient: fakeClient });
+  await tools.crgQuery.execute({ op: 'semantic_search', target: 'auth flow' });
+  assert.equal(receivedParams.repo_root, '/tmp/app');
+});
+
+test('crgQuery returns ok:false when both repoRoot and appCodeDir are unset', async () => {
+  const fakeTool = { execute: async () => ({ nodes: [] }) };
+  const fakeClient = { tools: async () => ({ 'semantic_search_nodes': fakeTool }) };
+  const tools = createRetrievalTools({ appCodeDir: '', crgClient: fakeClient });
+  const r = await tools.crgQuery.execute({ op: 'semantic_search', target: 'anything' });
+  assert.equal(r.ok, false);
+  assert.match(r.error, /no repo root/);
+});

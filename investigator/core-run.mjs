@@ -35,6 +35,7 @@ async function readSkillFile(skillDir, relPath) {
  *   hasConversations?: boolean,
  *   skillDir?: string,
  *   conversationsPath?: string,
+ *   platformGraphRoot?: string,
  *   models: { lead: any },
  *   crgClient?: any,
  *   onActivity: Function,
@@ -51,6 +52,7 @@ export async function runCore(opts) {
     hasAppCode = false, hasConversations = false,
     skillDir = '/opt/skills/airo-log-investigate',
     conversationsPath = '',
+    platformGraphRoot = '',
     models, crgClient = null,
     onActivity, onPhase,
     budget = { maxTurns: 20 },
@@ -96,6 +98,7 @@ export async function runCore(opts) {
   const system = buildSystemPrompt({
     hasAppCode, hasConversations, toolNames,
     aabBehaviors, analysisGuide, reportGuide, sentinel,
+    platformGraphRoot,
   });
   const user = buildUserPrompt({ appId, feedback, timeWindow, sentinel });
 

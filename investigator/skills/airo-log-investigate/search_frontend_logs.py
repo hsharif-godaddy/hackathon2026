@@ -1159,7 +1159,11 @@ def _fetch_loki_all_sources(
     buckets = build_time_buckets(window, bucket_hours)
     use_sm = _use_structured_metadata(window)
     # Two merged queries: data-plane (service_name-scoped) and control-plane
-    # (plane="control"). Both cluster-scoped. Each runs across every bucket.
+    # (plane="control"). Data-plane is cluster-scoped (mandatory — without it
+    # the selector scans ~386 GiB/hr). Control-plane streams have no `cluster`
+    # label, so passing cluster here would silently drop all results (verified:
+    # mgmt-api-airo-go has no cluster label and is completely excluded when
+    # cluster is set, hiding publish-workflow events from investigations).
     data_query = _loki_selector(
         "data", app_id, env,
         cluster=cluster, service_name_re=_LOKI_DATA_PLANE_SERVICE_RE,
@@ -1167,7 +1171,7 @@ def _fetch_loki_all_sources(
     )
     control_query = _loki_selector(
         "control", app_id, env,
-        cluster=cluster,
+        cluster=None,
         use_structured_metadata=use_sm,
     )
     # Loki uses its own per-page timeout / per-bucket budget (constants
@@ -1356,9 +1360,12 @@ def _collect_aggregation(
     """Run the Stage-1 data-plane + control-plane Loki aggregations.
 
     Returns a compact digest: a level histogram (summed across services) and a
-    per-service breakdown. Cluster-scoped only — an unset cluster or any error
-    returns a shaped soft-fail (`error` key, empty maps) and never issues an
-    unbounded scan or throws.
+    per-service breakdown. The data-plane sub-query is cluster-scoped (an unset
+    cluster soft-fails rather than issue an unbounded scan). The control-plane
+    sub-query is intentionally not cluster-scoped — control-plane streams carry
+    no cluster label, so adding one silently drops all results. Any error in
+    either sub-query returns a shaped soft-fail (`error` key, empty maps) and
+    never throws.
     """
     endpoint = os.environ.get("LOKI_ENDPOINT", "").rstrip("/")
     if not endpoint:
@@ -1385,7 +1392,7 @@ def _collect_aggregation(
         window_s, cluster=cluster, service_name_re=_LOKI_DATA_PLANE_SERVICE_RE,
     )
     control_query = _loki_agg_query(
-        "control", app_id, env, window_s, cluster=cluster,
+        "control", app_id, env, window_s, cluster=None,
     )
 
     try:
@@ -1603,14 +1610,15 @@ def fetch_log_lines(
     None omits it so the query covers every service in the plane+cluster.
     `contains` appends a `|= "<contains>"` line filter (embedded quotes
     escaped). Returns {"ok": True, "lines": [...], "count": n} newest-first,
-    capped to `limit`. Cluster-scoped: an unset cluster (or any error) returns
-    {"ok": False, "error": str, "lines": []} and never issues an unbounded
-    scan.
+    capped to `limit`. Data-plane queries are cluster-scoped (an unset cluster
+    returns {"ok": False, "error": str, "lines": []} and never issues an
+    unbounded scan). Control-plane streams have no cluster label, so cluster
+    is omitted for plane="control" regardless of whether one is set.
     """
     env = env or _loki_env()
     cluster = cluster or os.environ.get("LOKI_CLUSTER") or None
-    if not cluster:
-        # Mandatory label scoping is missing — refuse an unbounded scan.
+    if not cluster and plane != "control":
+        # Mandatory label scoping is missing for data-plane — refuse an unbounded scan.
         return {"ok": False, "error": "cluster unavailable", "lines": []}
 
     try:
@@ -1621,7 +1629,7 @@ def fetch_log_lines(
         win = parse_window(window)
         query = _loki_selector(
             plane, app_id, env,
-            cluster=cluster,
+            cluster=(None if plane == "control" else cluster),
             service_name_re=(service_name or None),
             use_structured_metadata=_use_structured_metadata(win),
         )

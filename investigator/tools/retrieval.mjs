@@ -233,10 +233,12 @@ export function createRetrievalTools({ appCodeDir = '/tmp', crgClient = null, ex
       op: z.enum(['callers_of', 'callees_of', 'impact_radius', 'tests_for', 'imports_of', 'semantic_search'])
         .describe('relationship to query; use semantic_search to localize first'),
       target: z.string().describe('a symbol/function name (e.g. useCart) or path for the relationship ops; a natural-language description for semantic_search'),
-      repoRoot: z.string().optional().describe('repo root to scope the query; omit to use the default app graph'),
+      repoRoot: z.string().optional().describe('repo root to scope the query; omit for customer app graph (defaults to app dir); pass the platform graph path from the system prompt for platform code'),
     }),
     execute: async ({ op, target, repoRoot }) => {
       if (!crgClient) return { ok: false, error: 'code graph unavailable (CRG not initialised)' };
+      const resolvedRoot = repoRoot || appCodeDir || '';
+      if (!resolvedRoot) return { ok: false, error: 'code graph unavailable (no repo root — pass repoRoot explicitly or ensure appCodeDir is set)' };
       try {
         const availableTools = await crgClient.tools();
         const availableNames = Object.keys(availableTools);
@@ -265,7 +267,7 @@ export function createRetrievalTools({ appCodeDir = '/tmp', crgClient = null, ex
         } else {
           params.target = target;
         }
-        if (repoRoot) params.repo_root = repoRoot;
+        if (resolvedRoot) params.repo_root = resolvedRoot;
         if (toolName === 'query_graph' || toolName.includes('query_graph')) params.pattern = op;
         const result = await crgTool.execute(params);
         return { ok: true, op, target, result };

@@ -77,6 +77,7 @@ If the evidence is genuinely too rich for these caps, prefer fewer findings over
 ## Citations
 
 - The Sources table at the top of the report is the only place evidence is cited. It proves coverage at a glance.
+- **Include every source in the table, even those with 0 lines.** Zero lines is diagnostic information — it means either no activity occurred (e.g. no publish attempted → no control-plane events) or coverage was incomplete. Omitting a source silently hides that signal.
 - **Do NOT include raw-ref paths inline** (no `airo-app/b004-p0000.json#$.logs[2]`, no file paths, no JSON pointers in the body).
 - Each observation bullet ends with the source name in parentheses — `(airo-app)`, `(airo-agents)`, etc. That is enough.
 

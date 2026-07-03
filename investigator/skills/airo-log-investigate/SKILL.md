@@ -39,13 +39,13 @@ The run also provides these non-log evidence sources, available to read directly
 
 This skill currently enables these registered log sources:
 
-| Skill source        | Console source  | Purpose                                                                                                                                                               |
-| ------------------- | --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `airo-app-frontend` | `airo-app`      | Frontend/browser-facing runtime logs for one Airo app                                                                                                                 |
-| `control-plane`     | `control_plane` | Hosting/control-plane app activity                                                                                                                                    |
-| `airo-agents`       | `airo-agents`   | Agent service logs                                                                                                                                                    |
-| `airo-preview`      | `airo-preview`  | Preview app container logs                                                                                                                                            |
-| `airo-publish`      | `airo-publish`  | Published app container logs                                                                                                                                          |
+| Skill source        | Console source  | `fetch_log_lines --plane` | Purpose                                                                                                                                  |
+| ------------------- | --------------- | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `airo-app-frontend` | `airo-app`      | _(ES — not applicable)_   | Frontend/browser-facing runtime logs for one Airo app                                                                                    |
+| `control-plane`     | `control_plane` | `control`                 | Hosting/control-plane app activity (mgmt-api-airo-go, mgmt-api-hosting). Pass `--plane control` when drilling — these streams have no cluster label and live outside the data plane. |
+| `airo-agents`       | `airo-agents`   | `data`                    | Agent service logs                                                                                                                       |
+| `airo-preview`      | `airo-preview`  | `data`                    | Preview app container logs                                                                                                               |
+| `airo-publish`      | `airo-publish`  | `data`                    | Published app container logs                                                                                                             |
 
 The `airo-app-frontend` contract was checked against `sre-airo-feedback-tool` references:
 

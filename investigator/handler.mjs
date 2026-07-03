@@ -1076,6 +1076,7 @@ export async function handler(event) {
           conversationsPath: process.env.CONVERSATIONS_PATH || '',
           hasAppCode: appCodeAvailable,
           hasConversations: conversationsAvailable,
+          platformGraphRoot: process.env.PLATFORM_GRAPH_ROOT || '',
           models: coreModels,
           crgClient,
           onActivity: (a) => {

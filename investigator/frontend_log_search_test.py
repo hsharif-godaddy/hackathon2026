@@ -166,11 +166,15 @@ class FrontendLogSearchTest(unittest.TestCase):
             result = search_frontend_logs._fetch_loki_all_sources("app123", window, None, 5)
         for sid in ("airo-agents", "airo-preview", "airo-publish", "control-plane"):
             self.assertIn(sid, result)
-        # Both data-plane and control-plane selectors are cluster-scoped.
+        # Data-plane selector is cluster-scoped; control-plane is not (control-plane
+        # streams have no cluster label — adding it silently drops all results).
         self.assertTrue(captured_queries)
-        self.assertTrue(all('cluster="c24"' in q for q in captured_queries))
-        self.assertTrue(any('plane="data"' in q for q in captured_queries))
-        self.assertTrue(any('plane="control"' in q for q in captured_queries))
+        data_queries = [q for q in captured_queries if 'plane="data"' in q]
+        control_queries = [q for q in captured_queries if 'plane="control"' in q]
+        self.assertTrue(data_queries)
+        self.assertTrue(control_queries)
+        self.assertTrue(all('cluster="c24"' in q for q in data_queries))
+        self.assertTrue(all('cluster="c24"' not in q for q in control_queries))
 
     def test_loki_agg_query_shape(self):
         q = search_frontend_logs._loki_agg_query("data", "x", "prod", "1h",
@@ -274,6 +278,45 @@ class FrontendLogSearchTest(unittest.TestCase):
             res = search_frontend_logs.fetch_log_lines("x", cluster=None, env="prod")
         self.assertFalse(res["ok"])
         self.assertEqual(res["lines"], [])
+
+    def test_fetch_log_lines_control_plane_omits_cluster_and_succeeds_without_one(self):
+        # Control-plane streams have no cluster label — fetch_log_lines must not
+        # add cluster to the selector and must not hard-fail when cluster is unset.
+        with mock.patch.dict(os.environ, {"LOKI_ENDPOINT": "https://loki"}, clear=True), \
+             mock.patch.object(search_frontend_logs, "_http_get_json",
+                               return_value={"data": {"result": [
+                                   {"stream": {"service_name": "mgmt-api-airo-go"},
+                                    "values": [["1700000000000000000", "Publish workflow started"]]}
+               ]}}) as m:
+            res = search_frontend_logs.fetch_log_lines(
+                "x", plane="control", env="prod", cluster=None, limit=10)
+        self.assertTrue(res["ok"])
+        self.assertEqual(res["count"], 1)
+        query = m.call_args[0][2]["query"]
+        self.assertNotIn("cluster=", query)
+        self.assertIn('plane="control"', query)
+
+    def test_collect_aggregation_data_plane_scoped_control_plane_not(self):
+        # Data-plane agg query must carry cluster; control-plane must not.
+        window = search_frontend_logs.parse_window("1h")
+        captured_queries: list[str] = []
+
+        def fake_http_get_json(url, headers, params, timeout):
+            captured_queries.append(params.get("query", ""))
+            return {"data": {"result": []}}
+
+        env = dict(os.environ)
+        env["LOKI_ENDPOINT"] = "https://loki.example.com"
+        with mock.patch.dict(os.environ, env, clear=True), \
+             mock.patch.object(search_frontend_logs, "_http_get_json", side_effect=fake_http_get_json):
+            search_frontend_logs._collect_aggregation("x", window, "prod", "c24", 5)
+
+        data_queries = [q for q in captured_queries if 'plane="data"' in q]
+        control_queries = [q for q in captured_queries if 'plane="control"' in q]
+        self.assertTrue(data_queries, "expected at least one data-plane agg query")
+        self.assertTrue(control_queries, "expected at least one control-plane agg query")
+        self.assertTrue(all('cluster="c24"' in q for q in data_queries))
+        self.assertTrue(all('cluster="c24"' not in q for q in control_queries))
 
     def test_console_base_url_allows_only_expected_https_hosts(self):
         self.assertEqual(

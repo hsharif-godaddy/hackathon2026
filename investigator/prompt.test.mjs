@@ -89,3 +89,17 @@ test('buildSystemPrompt omits skill-file sections when contents are empty (soft-
   assert.doesNotMatch(s, /Report format/i);
   assert.doesNotMatch(s, /by-design behaviors \(consult/i);
 });
+
+test('buildSystemPrompt injects platform graph path and always-query instruction when platformGraphRoot is set', () => {
+  const s = buildSystemPrompt({ hasAppCode: true, hasConversations: true, toolNames: ['logDigest', 'crgQuery'], platformGraphRoot: '/tmp/platform-graph' });
+  assert.match(s, /\/tmp\/platform-graph/);
+  assert.match(s, /always.*platform crgQuery|platform crgQuery.*always/i);
+  // must tell agent to pass path as repoRoot (not an env-var name)
+  assert.match(s, /repoRoot/);
+  assert.doesNotMatch(s, /\$PLATFORM_GRAPH_ROOT/);
+});
+
+test('buildSystemPrompt omits platform graph note when platformGraphRoot is empty', () => {
+  const s = buildSystemPrompt({ hasAppCode: true, hasConversations: true, toolNames: ['logDigest', 'crgQuery'], platformGraphRoot: '' });
+  assert.doesNotMatch(s, /platform.*graph.*available at/i);
+});
