@@ -143,7 +143,7 @@ describe('normalizeEvalResult', () => {
 
   describe('verdict normalization', () => {
     const validVerdicts = [
-      'pass', 'partial', 'fail', 'unknown', 'observed',
+      'pass', 'fail', 'incomplete', 'directional',
     ] as const;
 
     for (const v of validVerdicts) {
@@ -155,22 +155,45 @@ describe('normalizeEvalResult', () => {
       });
     }
 
-    it('coerces invalid verdict to unknown', () => {
+    it('coerces invalid verdict to incomplete', () => {
       const output = normalizeEvalResult(
         makeResult({
           verdict: 'invalid' as unknown as EvalResult['verdict'],
         }),
       );
-      expect(output.verdict).toBe('unknown');
+      expect(output.verdict).toBe('incomplete');
     });
 
-    it('coerces null verdict to unknown', () => {
+    it('coerces null verdict to incomplete', () => {
       const output = normalizeEvalResult(
         makeResult({
           verdict: null as unknown as EvalResult['verdict'],
         }),
       );
-      expect(output.verdict).toBe('unknown');
+      expect(output.verdict).toBe('incomplete');
+    });
+  });
+
+  describe('compat verdict mapping', () => {
+    it('maps legacy partial to fail', () => {
+      const output = normalizeEvalResult(
+        makeResult({ verdict: 'partial' as unknown as EvalResult['verdict'] }),
+      );
+      expect(output.verdict).toBe('fail');
+    });
+
+    it('maps legacy unknown to incomplete', () => {
+      const output = normalizeEvalResult(
+        makeResult({ verdict: 'unknown' as unknown as EvalResult['verdict'] }),
+      );
+      expect(output.verdict).toBe('incomplete');
+    });
+
+    it('maps legacy observed to directional', () => {
+      const output = normalizeEvalResult(
+        makeResult({ verdict: 'observed' as unknown as EvalResult['verdict'] }),
+      );
+      expect(output.verdict).toBe('directional');
     });
   });
 
@@ -203,64 +226,64 @@ describe('normalizeEvalResult', () => {
     it('passes through a typical LatencyEvaluator-shaped result unchanged', () => {
       const details = { medianTTFC: 1200, halfLifeMs: 2000 };
       const input = makeResult({
-        verdict: 'observed' as EvalResult['verdict'],
+        verdict: 'directional',
         score: 0.75,
         reason: 'Median TTFC within half-life',
         details,
       });
       const output = normalizeEvalResult(input);
-      expect(output.verdict).toBe('observed');
+      expect(output.verdict).toBe('directional');
       expect(output.score).toBe(0.75);
       expect(output.reason).toBe('Median TTFC within half-life');
       expect(output.details).toEqual(details);
     });
 
-    it('preserves boundary score 0 with observed verdict', () => {
+    it('preserves boundary score 0 with directional verdict', () => {
       const output = normalizeEvalResult(
-        makeResult({ verdict: 'observed' as EvalResult['verdict'], score: 0 }),
+        makeResult({ verdict: 'directional', score: 0 }),
       );
       expect(output.score).toBe(0);
-      expect(output.verdict).toBe('observed');
+      expect(output.verdict).toBe('directional');
     });
 
-    it('preserves boundary score 1 with observed verdict', () => {
+    it('preserves boundary score 1 with directional verdict', () => {
       const output = normalizeEvalResult(
-        makeResult({ verdict: 'observed' as EvalResult['verdict'], score: 1 }),
+        makeResult({ verdict: 'directional', score: 1 }),
       );
       expect(output.score).toBe(1);
-      expect(output.verdict).toBe('observed');
+      expect(output.verdict).toBe('directional');
     });
 
-    it('passes through score > 1 unclamped for observed verdict', () => {
+    it('passes through score > 1 unclamped for directional verdict', () => {
       const output = normalizeEvalResult(
-        makeResult({ verdict: 'observed' as EvalResult['verdict'], score: 7500 }),
+        makeResult({ verdict: 'directional', score: 7500 }),
       );
       expect(output.score).toBe(7500);
-      expect(output.verdict).toBe('observed');
+      expect(output.verdict).toBe('directional');
     });
 
-    it('passes through score 1.5 unclamped for observed verdict', () => {
+    it('passes through score 1.5 unclamped for directional verdict', () => {
       const output = normalizeEvalResult(
-        makeResult({ verdict: 'observed' as EvalResult['verdict'], score: 1.5 }),
+        makeResult({ verdict: 'directional', score: 1.5 }),
       );
       expect(output.score).toBe(1.5);
-      expect(output.verdict).toBe('observed');
+      expect(output.verdict).toBe('directional');
     });
 
-    it('coerces NaN to 0 even for observed verdict', () => {
+    it('coerces NaN to 0 even for directional verdict', () => {
       const output = normalizeEvalResult(
-        makeResult({ verdict: 'observed' as EvalResult['verdict'], score: NaN }),
+        makeResult({ verdict: 'directional', score: NaN }),
       );
       expect(output.score).toBe(0);
-      expect(output.verdict).toBe('observed');
+      expect(output.verdict).toBe('directional');
     });
 
-    it('coerces Infinity to 0 even for observed verdict', () => {
+    it('coerces Infinity to 0 even for directional verdict', () => {
       const output = normalizeEvalResult(
-        makeResult({ verdict: 'observed' as EvalResult['verdict'], score: Infinity }),
+        makeResult({ verdict: 'directional', score: Infinity }),
       );
       expect(output.score).toBe(0);
-      expect(output.verdict).toBe('observed');
+      expect(output.verdict).toBe('directional');
     });
   });
 
@@ -295,11 +318,12 @@ describe('normalizeEvalResult — console.warn on fallback', () => {
     vi.restoreAllMocks();
   });
 
-  it('warns when verdict is invalid', () => {
+  it('warns when verdict is invalid and coerces to incomplete', () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(function () {});
-    normalizeEvalResult(
+    const result = normalizeEvalResult(
       makeResult({ verdict: 'yes' as unknown as EvalResult['verdict'] }),
     );
+    expect(result.verdict).toBe('incomplete');
     expect(warnSpy).toHaveBeenCalledWith(
       expect.stringContaining('verdict'),
       expect.anything(),

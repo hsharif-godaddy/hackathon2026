@@ -38,8 +38,8 @@ export interface GoalJudgment {
   goal: ScenarioGoal;
   /** false = N/A (matching transition never occurred in transcript) */
   applicable: boolean;
-  /** Verdict from LLM judge (or 'unknown' if not applicable / parse failure) */
-  verdict: 'pass' | 'fail' | 'unknown';
+  /** 'pass'/'fail' from the LLM judge, or 'incomplete' for infra/parse failures and N/A goals */
+  verdict: 'pass' | 'fail' | 'incomplete';
   /** Human-readable explanation from the LLM judge */
   reason: string;
   /** Quoted chat content that triggered the verdict */

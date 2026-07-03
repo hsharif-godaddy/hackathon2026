@@ -1,9 +1,13 @@
 import { createSkillEval } from './create-skill-eval.js';
+import { getSkillEvalBaseInjection }
+  from './skill-eval-base.js';
 import type { IGocodeClient }
   from '../../clients/gocode-client.js';
 import type { AABCtrlPlaneClient }
   from '../../clients/aab-ctrl-plane-client.js';
 import type { Scenario } from '../types.js';
+import type { Config }
+  from '../../../config/environments/types.js';
 
 /**
  * Reproduces **skill non-selection on SEO**. The seo skill was one of the
@@ -24,14 +28,18 @@ import type { Scenario } from '../types.js';
  * (non-selection caught); the required `skillInstructions` give the narrow LLM
  * judge a second, instrumentation-independent signal.
  *
- * NOTE: skill-load detection needs `SKILL_DIAGNOSTICS=true` on the agent, or
- * the skill-load check degrades to an `unknown` verdict (dropped from the pass
- * rate) and only the instruction signals remain.
+ * NOTE: this scenario runs through `createSkillEval` with
+ * `requireSkillDiagnostics: true`, so `SKILL_DIAGNOSTICS=true` is required on
+ * the agent. Without it the skill-load check hard-fails (a broken gate)
+ * rather than degrading to `unknown`; the required `skillInstructions` still
+ * give the narrow LLM judge an instrumentation-independent signal.
  */
 export function seoNonSelectionScenario(
   gocode: IGocodeClient,
   ctrlPlane: AABCtrlPlaneClient,
+  config?: Config,
 ): Scenario {
+  const base = getSkillEvalBaseInjection(config);
   return createSkillEval(
     {
       name: 'skill-non-selection-seo',
@@ -73,8 +81,10 @@ export function seoNonSelectionScenario(
           priority: 'required',
         },
       ],
+      statefulInjection: base?.injection,
     },
     gocode,
     ctrlPlane,
+    base?.seedSummary,
   );
 }

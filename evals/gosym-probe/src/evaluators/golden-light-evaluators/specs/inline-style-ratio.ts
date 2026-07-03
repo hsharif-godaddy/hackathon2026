@@ -1,4 +1,4 @@
-import type { StructuralEvalSpec, StructuralScoreResult } from '../dom-eval-types.js';
+import type { ChecklistItemOutcome, ScoreSpec, StructuralScoreResult } from '../dom-eval-types.js';
 import { safeRatio } from '../dom-eval-types.js';
 
 /**
@@ -32,11 +32,12 @@ function isFrameworkOnlyStyle(styleValue: string): boolean {
   });
 }
 
-export const inlineStyleRatioSpec: StructuralEvalSpec = {
+export const inlineStyleRatioSpec: ScoreSpec = {
   name: 'inline-style-ratio',
   dimension: 'inline-style-ratio',
   description: 'Fraction of elements without authored inline styles (framework vars excluded)',
   evalVersion: '1.0',
+  comparisonMode: 'score',
 
   score(bodyHtml: string): StructuralScoreResult {
     const elements = [...bodyHtml.matchAll(ELEMENT_RE)];
@@ -67,5 +68,26 @@ export const inlineStyleRatioSpec: StructuralEvalSpec = {
       reason: `${withAuthoredStyle} element(s) with authored inline styles out of ${totalElements}`,
       details: { totalElements, withAuthoredStyle },
     };
+  },
+
+  toChecklistItems(bodyHtml: string): ChecklistItemOutcome[] {
+    const elements = [...bodyHtml.matchAll(ELEMENT_RE)];
+    if (elements.length === 0) {
+      return [{ id: 'low-inline-style', type: 'directional', status: 'incomplete', reason: 'No elements found' }];
+    }
+    const withAuthoredStyle = elements.filter((m) => {
+      const attrs = m[2] ?? '';
+      const styleMatch = attrs.match(STYLE_ATTR_RE);
+      if (!styleMatch) return false;
+      return !isFrameworkOnlyStyle(styleMatch[1]);
+    }).length;
+    return [{
+      id: 'low-inline-style',
+      type: 'directional',
+      status: withAuthoredStyle === 0 ? 'pass' : 'fail',
+      reason: withAuthoredStyle === 0
+        ? 'No authored inline styles found'
+        : `${withAuthoredStyle} element(s) with authored inline styles`,
+    }];
   },
 };

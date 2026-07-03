@@ -49,13 +49,13 @@ describe('baseline LLM evaluators', function baselineTests() {
   it('zeros numerical score when verdict is unknown', async function unknown() {
     const gocode = {
       complete: async () =>
-        JSON.stringify({ score: 0.7, verdict: 'unknown', reason: 'unclear' }),
+        JSON.stringify({ score: 0.7, verdict: 'incomplete', reason: 'unclear' }),
     } as unknown as GocodeClient;
 
     const evs = createBaselineLLMEvaluators(gocode);
     const ev = evs.find((e) => e.name === 'intent-inference-quality');
     const res = await ev!.evaluate(makeTranscript(), scenario);
-    expect(res.verdict).toBe('unknown');
+    expect(res.verdict).toBe('incomplete');
     expect(res.score).toBe(0);
   });
 
@@ -77,7 +77,7 @@ describe('baseline LLM evaluators', function baselineTests() {
       complete: async () =>
         JSON.stringify({
           value: 'acceptable',
-          verdict: 'partial',
+          verdict: 'fail',
           reason: 'fine',
         }),
     } as unknown as GocodeClient;
@@ -85,8 +85,8 @@ describe('baseline LLM evaluators', function baselineTests() {
     const evs = createBaselineLLMEvaluators(gocode);
     const ev = evs.find((e) => e.name === 'visual-layout-sanity');
     const res = await ev!.evaluate(makeTranscript(), scenario);
-    expect(res.verdict).toBe('partial');
-    expect(res.score).toBe(0.5);
+    expect(res.verdict).toBe('fail');
+    expect(res.score).toBe(0);
   });
 
   it('rejects categorical values outside allowed values', async function invalidCategorical() {
@@ -102,7 +102,7 @@ describe('baseline LLM evaluators', function baselineTests() {
     const evs = createBaselineLLMEvaluators(gocode);
     const ev = evs.find((e) => e.name === 'visual-layout-sanity');
     const res = await ev!.evaluate(makeTranscript(), scenario);
-    expect(res.verdict).toBe('unknown');
+    expect(res.verdict).toBe('incomplete');
     expect(res.score).toBe(0);
     expect(res.reason).toBe('LLM judge response did not match expected schema');
   });

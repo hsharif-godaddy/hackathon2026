@@ -32,7 +32,7 @@ export class TokenUsageEvaluator extends ProbeUsageEvaluator {
     return {
       evaluator: this.name,
       score: aabTotalTokens,
-      verdict: 'observed',
+      verdict: 'directional',
       reason:
         `aab=${aabTotalTokens} probe=${probeDelta.totalTokens}` +
         ` total=${totalTokens} tokens`,

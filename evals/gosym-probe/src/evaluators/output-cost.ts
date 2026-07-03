@@ -66,7 +66,7 @@ export class OutputCostEvaluator extends ProbeUsageEvaluator {
     return {
       evaluator: this.name,
       score: aabOutputCost,
-      verdict: 'observed',
+      verdict: 'directional',
       reason:
         `aab=$${aabOutputCost.toFixed(4)} probe=$${probeOutputCost.toFixed(4)}` +
         ` total=$${totalOutputCost.toFixed(4)} output cost` +

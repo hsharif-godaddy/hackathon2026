@@ -13,6 +13,7 @@ import { promisify } from 'node:util';
 const execFile = promisify(execFileCb);
 import type { Config } from '../../config/environments/types.js';
 import type { EvalResult } from '../evaluators/evaluator.js';
+import { normalizeEvalResult } from '../evaluators/normalize-eval-result.js';
 import type { Scenario } from '../scenarios/types.js';
 import type { ScenarioResult, TrialResult } from '../runner/types.js';
 import type { Transcript } from '../runner/transcript.js';
@@ -665,7 +666,7 @@ export class EvalStore {
 
     return {
       trialIndex,
-      evalResults,
+      evalResults: evalResults.map((r) => normalizeEvalResult(r)),
       transcript: {
         scenarioName: transcript.scenarioName,
         trialIndex: transcript.trialIndex,
@@ -699,12 +700,13 @@ export class EvalStore {
   ): Promise<EvalResult[] | null> {
     const dir = await this.findRunDir(runId);
     if (!dir) return null;
-    return this.loadJsonFile<EvalResult[]>(
+    const evalResults = await this.loadJsonFile<EvalResult[]>(
       join(
         this.trialDirFrom(dir, scenarioName, trialIndex),
         'eval-results.json',
       ),
     );
+    return evalResults?.map((r) => normalizeEvalResult(r)) ?? null;
   }
 
   async loadAggregated(
@@ -1196,6 +1198,7 @@ export class EvalStore {
         ...(agg.lowerIsBetter !== undefined && {
           lowerIsBetter: agg.lowerIsBetter,
         }),
+        ...(agg.wilsonCI !== undefined && { wilsonCI: agg.wilsonCI }),
       };
     }
 

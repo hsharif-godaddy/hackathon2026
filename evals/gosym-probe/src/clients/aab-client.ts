@@ -404,6 +404,10 @@ export class AABClient implements AgentClient {
     });
 
     on('skill_diagnostics', (data) => {
+      if (data.event === 'ready') {
+        this.dispatch({ type: 'skill_diagnostics', event: 'ready' });
+        return;
+      }
       const event = data.event === 'unload' ? 'unload' : 'load';
       const skill = typeof data.skill === 'string' ? data.skill : '';
       if (!skill) return;

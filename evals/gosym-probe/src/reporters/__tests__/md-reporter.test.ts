@@ -10,6 +10,7 @@ import type {
   StatisticalMetadata,
   RegressionEvalResult,
 } from '../../baselines/types.js';
+import type { WilsonCI } from '../../util/pass-at-k.js';
 import { makeTurn, makeToolCall, makeTurnWithToolCalls } from './fixtures.js';
 
 vi.mock('node:fs/promises');
@@ -25,10 +26,9 @@ function makeEvalResult(
   evaluator: string,
   verdict:
     | 'pass'
-    | 'partial'
     | 'fail'
-    | 'unknown'
-    | 'observed',
+    | 'incomplete'
+    | 'directional',
   score = 1.0,
   reason = 'test',
 ) {
@@ -82,7 +82,7 @@ const BASELINED_RESULT: ScenarioResult = {
       [
         makeEvalResult('bug-hit-rate', 'pass'),
         makeEvalResult(
-          'jtbd-completion', 'unknown', 0,
+          'jtbd-completion', 'incomplete', 0,
           'Insufficient info',
         ),
       ],
@@ -95,7 +95,7 @@ const BASELINED_RESULT: ScenarioResult = {
       2,
       [
         makeEvalResult('bug-hit-rate', 'pass'),
-        makeEvalResult('jtbd-completion', 'partial', 0.5),
+        makeEvalResult('jtbd-completion', 'fail', 0.5),
       ],
       [
         makeTurn('user', 'Build page', 3000000),
@@ -110,6 +110,7 @@ const BASELINED_RESULT: ScenarioResult = {
       passHatK: [{ k: 1, value: 1.0 }, { k: 2, value: 1.0 }],
       passingTrials: 3,
       totalTrials: 3,
+      comparisonMode: 'passRate',
     },
     'jtbd-completion': {
       passAt1: 0.5,
@@ -117,6 +118,7 @@ const BASELINED_RESULT: ScenarioResult = {
       passHatK: [{ k: 1, value: 0.5 }],
       passingTrials: 1,
       totalTrials: 2,
+      comparisonMode: 'passRate',
     },
   },
 };
@@ -134,6 +136,7 @@ const NO_BASELINE_RESULT: ScenarioResult = {
       passHatK: [{ k: 1, value: 1.0 }],
       passingTrials: 1,
       totalTrials: 1,
+      comparisonMode: 'passRate',
     },
   },
 };
@@ -202,7 +205,7 @@ describe('MdReporter', () => {
 
     expect(content).toContain('## Suite Summary');
     expect(content).toContain('### Evaluator rollup (across scenarios)');
-    expect(content).toContain('| Evaluator | pass | partial | fail | unknown | pass rate |');
+    expect(content).toContain('| Evaluator | pass | fail | incomplete | pass rate |');
   });
 
   it('renders trial links in a separate section at bottom', () => {
@@ -229,7 +232,7 @@ describe('MdReporter', () => {
 
     expect(content).toContain('| Scenario | Evaluator | pass@1 | pass@k | pass^k | Pass Rate | T1 | T2 | T3 |');
     expect(content).toContain(
-      '| build-landing-page | jtbd-completion | 0.50 | 1:0.50 | 1:0.50 | 1/2 (50%) | pass | ⚠️ unknown | partial |',
+      '| build-landing-page | jtbd-completion | 0.50 (n=2) | 1:0.50 | 1:0.50 | 1/2 (50%) | pass | ⚠️ incomplete | fail |',
     );
   });
 
@@ -291,13 +294,13 @@ describe('MdReporter', () => {
     expect(content as string).toContain('T3');
   });
 
-  it('flags unknown verdicts in human review section', async () => {
+  it('flags incomplete verdicts in human review section', async () => {
     const reporter = new MdReporter();
     await reporter.write('run-001', [BASELINED_RESULT]);
 
     const [, content] = mockWriteFile.mock.calls[0];
     expect(content as string).toContain(
-      '## \u26a0\ufe0f Unknown Verdicts \u2014 Require Human Review',
+      '## \u26a0\ufe0f Incomplete Verdicts \u2014 Require Human Review',
     );
     expect(content as string).toContain('Insufficient info');
   });
@@ -347,7 +350,7 @@ describe('MdReporter', () => {
       stabilityLevel: 'low',
       trials: [
         makeTrial(0, [makeEvalResult('expected-artifact-match', 'pass', 1, 'ok')]),
-        makeTrial(1, [makeEvalResult('expected-artifact-match', 'partial', 0.5, 'meh')]),
+        makeTrial(1, [makeEvalResult('expected-artifact-match', 'fail', 0.5, 'meh')]),
       ],
       aggregated: {},
     };
@@ -373,26 +376,26 @@ describe('MdReporter', () => {
     expect(content).not.toContain('Grader Stability');
   });
 
-  it('shows T2 label for unknown verdict from trialIndex 1', async () => {
+  it('shows T2 label for incomplete verdict from trialIndex 1', async () => {
     const reporter = new MdReporter();
     await reporter.write('run-001', [BASELINED_RESULT]);
 
     const [, content] = mockWriteFile.mock.calls[0];
     // trialIndex 1 → T2 (1-based)
     const lines = (content as string).split('\n');
-    const unknownRow = lines.find(
+    const incompleteRow = lines.find(
       (l) => l.includes('jtbd-completion') && l.includes('T2'),
     );
-    expect(unknownRow).toBeDefined();
+    expect(incompleteRow).toBeDefined();
   });
 
-  it('sanitizes | in unknown verdict reason to prevent table corruption', async () => {
+  it('sanitizes | in incomplete verdict reason to prevent table corruption', async () => {
     const resultWithPipe: ScenarioResult = {
       scenarioName: 'pipe-scenario',
       stabilityLevel: 'medium',
       trials: [
         makeTrial(0, [
-          makeEvalResult('my-eval', 'unknown', 0, 'col1 | col2'),
+          makeEvalResult('my-eval', 'incomplete', 0, 'col1 | col2'),
         ]),
       ],
       aggregated: {
@@ -402,6 +405,7 @@ describe('MdReporter', () => {
           passHatK: [{ k: 1, value: 0 }],
           passingTrials: 0,
           totalTrials: 1,
+          comparisonMode: 'passRate',
         },
       },
     };
@@ -409,11 +413,11 @@ describe('MdReporter', () => {
     await reporter.write('run-001', [resultWithPipe]);
 
     const [, content] = mockWriteFile.mock.calls[0];
-    const unknownsSection = (content as string).split(
-      '## ⚠️ Unknown Verdicts',
+    const incompletesSection = (content as string).split(
+      '## ⚠️ Incomplete Verdicts',
     )[1];
-    expect(unknownsSection).toBeDefined();
-    const rows = unknownsSection!.split('\n').filter((l) => l.startsWith('|'));
+    expect(incompletesSection).toBeDefined();
+    const rows = incompletesSection!.split('\n').filter((l) => l.startsWith('|'));
     // Skip header and separator rows; find the data row
     const dataRow = rows.find((l) => l.includes('my-eval'));
     expect(dataRow).toBeDefined();
@@ -422,13 +426,13 @@ describe('MdReporter', () => {
     expect(cells).toHaveLength(4);
   });
 
-  it('sanitizes newlines in unknown verdict reason', async () => {
+  it('sanitizes newlines in incomplete verdict reason', async () => {
     const resultWithNewline: ScenarioResult = {
       scenarioName: 'nl-scenario',
       stabilityLevel: 'medium',
       trials: [
         makeTrial(0, [
-          makeEvalResult('my-eval', 'unknown', 0, 'line1\nline2'),
+          makeEvalResult('my-eval', 'incomplete', 0, 'line1\nline2'),
         ]),
       ],
       aggregated: {
@@ -438,6 +442,7 @@ describe('MdReporter', () => {
           passHatK: [{ k: 1, value: 0 }],
           passingTrials: 0,
           totalTrials: 1,
+          comparisonMode: 'passRate',
         },
       },
     };
@@ -445,11 +450,11 @@ describe('MdReporter', () => {
     await reporter.write('run-001', [resultWithNewline]);
 
     const content = mockWriteFile.mock.calls[0][1] as string;
-    const unknownsSection = content.split(
-      '## \u26a0\ufe0f Unknown Verdicts',
+    const incompletesSection = content.split(
+      '## \u26a0\ufe0f Incomplete Verdicts',
     )[1];
-    expect(unknownsSection).toBeDefined();
-    const dataRows = unknownsSection!
+    expect(incompletesSection).toBeDefined();
+    const dataRows = incompletesSection!
       .split('\n')
       .filter((l) => l.startsWith('|') && l.includes('my-eval'));
     expect(dataRows).toHaveLength(1);
@@ -458,12 +463,12 @@ describe('MdReporter', () => {
     expect(cells).toHaveLength(4);
   });
 
-  it('uses fallback text when unknown verdict reason is empty', async () => {
+  it('uses fallback text when incomplete verdict reason is empty', async () => {
     const resultEmpty: ScenarioResult = {
       scenarioName: 'empty-reason',
       stabilityLevel: 'medium',
       trials: [
-        makeTrial(0, [makeEvalResult('my-eval', 'unknown', 0, '')]),
+        makeTrial(0, [makeEvalResult('my-eval', 'incomplete', 0, '')]),
       ],
       aggregated: {
         'my-eval': {
@@ -472,6 +477,7 @@ describe('MdReporter', () => {
           passHatK: [{ k: 1, value: 0 }],
           passingTrials: 0,
           totalTrials: 1,
+          comparisonMode: 'passRate',
         },
       },
     };
@@ -497,6 +503,7 @@ describe('MdReporter', () => {
           passHatK: [{ k: 1, value: 1.0 }],
           passingTrials: 2,
           totalTrials: 2,
+          comparisonMode: 'passRate',
         },
       },
     };
@@ -507,8 +514,8 @@ describe('MdReporter', () => {
     expect(content as string).not.toContain('<details>');
   });
 
-  it('omits unknown verdicts section when none present', async () => {
-    const noUnknown: ScenarioResult = {
+  it('omits incomplete verdicts section when none present', async () => {
+    const noIncomplete: ScenarioResult = {
       scenarioName: 'clean',
       stabilityLevel: 'medium',
       trials: [
@@ -521,14 +528,15 @@ describe('MdReporter', () => {
           passHatK: [{ k: 1, value: 1.0 }],
           passingTrials: 1,
           totalTrials: 1,
+          comparisonMode: 'passRate',
         },
       },
     };
     const reporter = new MdReporter();
-    await reporter.write('run-001', [noUnknown]);
+    await reporter.write('run-001', [noIncomplete]);
 
     const [, content] = mockWriteFile.mock.calls[0];
-    expect(content as string).not.toContain('Unknown Verdicts');
+    expect(content as string).not.toContain('Incomplete Verdicts');
   });
 
   it('notes informational section is informational', async () => {
@@ -575,16 +583,16 @@ describe('MdReporter', () => {
   });
 
   it(
-    'renders observed verdict in trial table',
+    'renders directional verdict in trial table',
     async () => {
-      const observed: ScenarioResult = {
+      const directional: ScenarioResult = {
         scenarioName: 'latency-check',
         stabilityLevel: 'medium',
         trials: [
           makeTrial(0, [
             makeEvalResult(
               'latency',
-              'observed',
+              'directional',
               0.75,
             ),
           ]),
@@ -594,17 +602,17 @@ describe('MdReporter', () => {
             passingTrials: 0,
             totalTrials: 1,
             aggregateScore: 0.75,
-            regressionMode: 'score',
+            comparisonMode: 'score',
           },
         },
       };
       const reporter = new MdReporter();
-      await reporter.write('run-001', [observed]);
+      await reporter.write('run-001', [directional]);
 
       const [, content] =
         mockWriteFile.mock.calls[0];
       expect(content as string).toContain(
-        'observed',
+        'directional',
       );
       expect(content as string).not.toContain(
         'undefined',
@@ -825,14 +833,14 @@ describe('MdReporter — per-scenario sections', () => {
     expect(content).toContain('Insufficient info');
   });
 
-  it('shows "(no reason given)" placeholder for fail/partial with empty reason', () => {
+  it('shows "(no reason given)" placeholder for fail with empty reason', () => {
     const emptyReasonResult: ScenarioResult = {
       scenarioName: 'empty-reasons',
       stabilityLevel: 'medium',
       trials: [
         makeTrial(0, [
           makeEvalResult('eval-a', 'fail', 0.0, ''),
-          makeEvalResult('eval-b', 'partial', 0.5, ''),
+          makeEvalResult('eval-b', 'fail', 0.5, ''),
         ]),
       ],
       aggregated: {
@@ -842,6 +850,7 @@ describe('MdReporter — per-scenario sections', () => {
           passHatK: [{ k: 1, value: 0 }],
           passingTrials: 0,
           totalTrials: 1,
+          comparisonMode: 'passRate',
         },
         'eval-b': {
           passAt1: 1.0,
@@ -849,6 +858,7 @@ describe('MdReporter — per-scenario sections', () => {
           passHatK: [{ k: 1, value: 1.0 }],
           passingTrials: 1,
           totalTrials: 1,
+          comparisonMode: 'passRate',
         },
       },
     };
@@ -872,6 +882,7 @@ describe('MdReporter — per-scenario sections', () => {
           passHatK: [{ k: 1, value: 0 }],
           passingTrials: 0,
           totalTrials: 1,
+          comparisonMode: 'passRate',
         },
       },
     };
@@ -880,19 +891,19 @@ describe('MdReporter — per-scenario sections', () => {
     expect(content).not.toContain('NaN');
   });
 
-  it('does not include unknown verdict reason in <details> block', () => {
-    // unknown verdicts have their own ## Unknown Verdicts section;
+  it('does not include incomplete verdict reason in <details> block', () => {
+    // incomplete verdicts have their own ## Incomplete Verdicts section;
     // they must not also appear in the per-scenario <details> block
     const reporter = new MdReporter();
     const content = reporter.render('run-001', [BASELINED_RESULT]);
 
-    // BASELINED_RESULT has an unknown verdict with reason 'Insufficient info'
-    // on jtbd-completion T2. It should appear only in the unknowns table,
+    // BASELINED_RESULT has an incomplete verdict with reason 'Insufficient info'
+    // on jtbd-completion T2. It should appear only in the incompletes table,
     // not in the <details> reasoning block.
     const detailsSection = content.split('<details>')[1]?.split('</details>')[0];
     expect(detailsSection).not.toContain('Insufficient info');
 
-    // But the unknowns table should still contain it
+    // But the incompletes table should still contain it
     expect(content).toContain('Insufficient info');
   });
 
@@ -912,6 +923,7 @@ describe('MdReporter — per-scenario sections', () => {
           passHatK: [{ k: 1, value: 0 }],
           passingTrials: 0,
           totalTrials: 1,
+          comparisonMode: 'passRate',
         },
       },
     };
@@ -940,6 +952,7 @@ describe('MdReporter — per-scenario sections', () => {
           passHatK: [{ k: 1, value: 0 }],
           passingTrials: 0,
           totalTrials: 1,
+          comparisonMode: 'passRate',
         },
       },
     };
@@ -956,7 +969,7 @@ describe('MdReporter — per-scenario sections', () => {
       stabilityLevel: 'medium',
       trials: [
         makeTrial(0, [makeEvalResult('eval-x', 'fail', 0.0)]),
-        makeTrial(1, [makeEvalResult('eval-x', 'partial', 0.5)]),
+        makeTrial(1, [makeEvalResult('eval-x', 'fail', 0.5)]),
         makeTrial(2, [makeEvalResult('eval-x', 'pass', 1.0)]),
       ],
       aggregated: {
@@ -966,6 +979,7 @@ describe('MdReporter — per-scenario sections', () => {
           passHatK: [{ k: 1, value: 0.33 }, { k: 2, value: 0.0 }],
           passingTrials: 1,
           totalTrials: 3,
+          comparisonMode: 'passRate',
         },
       },
     };
@@ -1001,6 +1015,7 @@ describe('MdReporter — failure/error counts', () => {
           passHatK: [{ k: 1, value: 0 }],
           passingTrials: 0,
           totalTrials: 1,
+          comparisonMode: 'passRate',
         },
       },
     };
@@ -1028,6 +1043,7 @@ describe('MdReporter — failure/error counts', () => {
           passHatK: [{ k: 1, value: 0 }],
           passingTrials: 0,
           totalTrials: 1,
+          comparisonMode: 'passRate',
         },
       },
     };
@@ -1055,6 +1071,7 @@ describe('MdReporter — failure/error counts', () => {
           passHatK: [{ k: 1, value: 0 }],
           passingTrials: 0,
           totalTrials: 1,
+          comparisonMode: 'passRate',
         },
       },
     };
@@ -1082,6 +1099,7 @@ describe('MdReporter — failure/error counts', () => {
           passHatK: [{ k: 1, value: 1.0 }],
           passingTrials: 1,
           totalTrials: 1,
+          comparisonMode: 'passRate',
         },
       },
     };
@@ -1104,6 +1122,7 @@ describe('MdReporter — failure/error counts', () => {
           passHatK: [{ k: 1, value: 1.0 }],
           passingTrials: 1,
           totalTrials: 1,
+          comparisonMode: 'passRate',
         },
       },
     };
@@ -1132,6 +1151,7 @@ describe('MdReporter — failure/error counts', () => {
           passHatK: [{ k: 1, value: 1.0 }],
           passingTrials: 1,
           totalTrials: 1,
+          comparisonMode: 'passRate',
         },
       },
     };
@@ -1154,6 +1174,7 @@ describe('MdReporter — failure/error counts', () => {
           passHatK: [{ k: 1, value: 1.0 }],
           passingTrials: 1,
           totalTrials: 1,
+          comparisonMode: 'passRate',
         },
       },
     };
@@ -1187,6 +1208,7 @@ describe('MdReporter — failure/error counts', () => {
           passHatK: [{ k: 1, value: 0 }],
           passingTrials: 0,
           totalTrials: 2,
+          comparisonMode: 'passRate',
         },
       },
     };
@@ -1209,14 +1231,14 @@ describe('MdReporter — score-mode pass@k rendering', () => {
       scenarioName: 'latency-check',
       stabilityLevel: 'medium',
       trials: [
-        makeTrial(0, [makeEvalResult('latency', 'observed', 0.75)]),
+        makeTrial(0, [makeEvalResult('latency', 'directional', 0.75)]),
       ],
       aggregated: {
         'latency': {
           passingTrials: 0,
           totalTrials: 1,
           aggregateScore: 0.75,
-          regressionMode: 'score',
+          comparisonMode: 'score',
         },
       },
     };
@@ -1242,16 +1264,16 @@ describe('MdReporter — score-mode pass@k rendering', () => {
       scenarioName: 'tost-scenario',
       stabilityLevel: 'medium',
       trials: [
-        makeTrial(0, [makeEvalResult('latency', 'observed', 0.5)]),
-        makeTrial(1, [makeEvalResult('latency', 'observed', 0.4)]),
-        makeTrial(2, [makeEvalResult('latency', 'observed', 0.6)]),
+        makeTrial(0, [makeEvalResult('latency', 'directional', 0.5)]),
+        makeTrial(1, [makeEvalResult('latency', 'directional', 0.4)]),
+        makeTrial(2, [makeEvalResult('latency', 'directional', 0.6)]),
       ],
       aggregated: {
         'latency': {
           passingTrials: 0,
           totalTrials: 3,
           aggregateScore: 0.5,
-          regressionMode: 'score',
+          comparisonMode: 'score',
           baselinePassingTrials: 3,
         },
       },
@@ -1264,25 +1286,26 @@ describe('MdReporter — score-mode pass@k rendering', () => {
     expect(row).toContain('| 3/3 (100%) |');
   });
 
-  it('renders — for all estimators when they are undefined and regressionMode is absent', () => {
-    const noModeResult: ScenarioResult = {
-      scenarioName: 'no-mode',
+  it('renders — for all estimators when pass-at-k fields are undefined', () => {
+    const noEstimatorsResult: ScenarioResult = {
+      scenarioName: 'no-estimators',
       stabilityLevel: 'medium',
       trials: [
-        makeTrial(0, [makeEvalResult('my-eval', 'observed', 0.5)]),
+        makeTrial(0, [makeEvalResult('my-eval', 'directional', 0.5)]),
       ],
       aggregated: {
         'my-eval': {
           passingTrials: 0,
           totalTrials: 1,
+          comparisonMode: 'passRate',
         },
       },
     };
     const reporter = new MdReporter();
-    const content = reporter.render('run-001', [noModeResult]);
+    const content = reporter.render('run-001', [noEstimatorsResult]);
     const lines = content.split('\n');
     const row = lines.find((l) =>
-      l.startsWith('| no-mode | my-eval |'));
+      l.startsWith('| no-estimators | my-eval |'));
     expect(row).toContain('| — | — | — |');
   });
 });
@@ -1310,6 +1333,7 @@ describe('MdReporter — formatDuration', () => {
           passHatK: [{ k: 1, value: 1.0 }],
           passingTrials: 1,
           totalTrials: 1,
+          comparisonMode: 'passRate',
         },
       },
     };
@@ -1339,6 +1363,7 @@ describe('MdReporter — formatDuration', () => {
           passHatK: [{ k: 1, value: 1.0 }],
           passingTrials: 1,
           totalTrials: 1,
+          comparisonMode: 'passRate',
         },
       },
     };
@@ -1365,51 +1390,61 @@ describe('MdReporter — formatDuration', () => {
   });
 });
 
-// ── Composite breakdown section ──────────────────────────────
+// ── Checklist items breakdown section ───────────────────────
 
-function makeCompositeEvalResult(
+function makeChecklistEvalResult(
   evaluatorName: string,
-  breakdown: Array<{ evaluator: string; score: number; verdict: string; reason: string; scoreable: boolean }>,
-  score = 0.8,
+  items: Array<{ id: string; type: 'invariance' | 'directional'; status: 'pass' | 'fail' | 'incomplete'; reason: string }>,
+  hardFailures: string[] = [],
+  score = 1.0,
 ): ReturnType<typeof makeEvalResult> & { details: Record<string, unknown> } {
   return {
     evaluator: evaluatorName,
     score,
-    verdict: 'pass',
-    reason: `Composite of ${breakdown.length}/${breakdown.length} sub-evaluators`,
+    verdict: hardFailures.length > 0 ? 'fail' : 'pass',
+    reason: 'checklist result',
     details: {
-      _composite: true,
-      breakdown,
-      scoredCount: breakdown.filter((e) => e.scoreable).length,
-      totalCount: breakdown.length,
+      _composite: 'binary',
+      breakdown: items.map((item) => ({
+        evaluator: item.id,
+        score: item.status === 'pass' ? 1 : 0,
+        verdict: item.status === 'pass' ? 'pass' : item.status === 'fail' ? 'fail' : 'incomplete',
+        reason: item.reason,
+        scoreable: item.status !== 'incomplete',
+      })),
+      scoredCount: items.filter((i) => i.status !== 'incomplete').length,
+      totalCount: items.length,
+      hardFailures,
+      ...(items.length > 0 && { items }),
     },
   };
 }
 
-describe('MdReporter — composite breakdown', () => {
+describe('MdReporter — checklist items breakdown', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockMkdir.mockResolvedValue(undefined);
     mockWriteFile.mockResolvedValue(undefined);
   });
 
-  it('renders a breakdown <details> block for a composite evaluator', () => {
-    const composite = makeCompositeEvalResult('output-quality', [
-      { evaluator: 'heading-hierarchy', score: 0.9, verdict: 'pass', reason: 'ok', scoreable: true },
-      { evaluator: 'visual-coherence', score: 0.7, verdict: 'pass', reason: 'ok', scoreable: true },
-    ]);
+  it('renders a checklist <details> block for an evaluator with details.items', () => {
+    const evalResult = makeChecklistEvalResult('output-quality-passrate', [
+      { id: 'heading-skips', type: 'invariance', status: 'pass', reason: 'no violations' },
+      { id: 'broken-links', type: 'invariance', status: 'fail', reason: '2 broken' },
+    ], ['broken-links']);
 
     const result: ScenarioResult = {
-      scenarioName: 'composite-scenario',
+      scenarioName: 'checklist-scenario',
       stabilityLevel: 'medium',
-      trials: [makeTrial(0, [composite])],
+      trials: [makeTrial(0, [evalResult])],
       aggregated: {
-        'output-quality': {
-          passAt1: 1.0,
-          passAtK: [{ k: 1, value: 1.0 }],
-          passHatK: [{ k: 1, value: 1.0 }],
-          passingTrials: 1,
+        'output-quality-passrate': {
+          passAt1: 0.0,
+          passAtK: [{ k: 1, value: 0.0 }],
+          passHatK: [{ k: 1, value: 0.0 }],
+          passingTrials: 0,
           totalTrials: 1,
+          comparisonMode: 'passRate',
         },
       },
     };
@@ -1417,12 +1452,12 @@ describe('MdReporter — composite breakdown', () => {
     const reporter = new MdReporter();
     const content = reporter.render('run-001', [result]);
 
-    expect(content).toContain('output-quality breakdown');
-    expect(content).toContain('heading-hierarchy');
-    expect(content).toContain('visual-coherence');
+    expect(content).toContain('output-quality-passrate checklist');
+    expect(content).toContain('heading-skips');
+    expect(content).toContain('broken-links');
   });
 
-  it('does not render a breakdown block for non-composite evaluator results', () => {
+  it('does not render a checklist block for evaluators without details.items', () => {
     const result: ScenarioResult = {
       scenarioName: 'plain-scenario',
       stabilityLevel: 'medium',
@@ -1434,6 +1469,7 @@ describe('MdReporter — composite breakdown', () => {
           passHatK: [{ k: 1, value: 1.0 }],
           passingTrials: 1,
           totalTrials: 1,
+          comparisonMode: 'passRate',
         },
       },
     };
@@ -1441,33 +1477,34 @@ describe('MdReporter — composite breakdown', () => {
     const reporter = new MdReporter();
     const content = reporter.render('run-001', [result]);
 
-    expect(content).not.toContain('breakdown');
+    expect(content).not.toContain('checklist');
   });
 
-  it('shows per-trial sub-evaluator scores in the breakdown table', () => {
-    const breakdownT1 = [
-      { evaluator: 'heading-hierarchy', score: 0.9, verdict: 'pass', reason: 'ok', scoreable: true },
-      { evaluator: 'visual-coherence', score: 0.5, verdict: 'partial', reason: 'ok', scoreable: true },
+  it('shows per-check status icons across trials', () => {
+    const itemsT1 = [
+      { id: 'heading-skips', type: 'invariance' as const, status: 'pass' as const, reason: 'ok' },
+      { id: 'broken-links', type: 'invariance' as const, status: 'fail' as const, reason: '1 broken' },
     ];
-    const breakdownT2 = [
-      { evaluator: 'heading-hierarchy', score: 0.6, verdict: 'partial', reason: 'ok', scoreable: true },
-      { evaluator: 'visual-coherence', score: 0.8, verdict: 'pass', reason: 'ok', scoreable: true },
+    const itemsT2 = [
+      { id: 'heading-skips', type: 'invariance' as const, status: 'pass' as const, reason: 'ok' },
+      { id: 'broken-links', type: 'invariance' as const, status: 'pass' as const, reason: 'none' },
     ];
 
     const result: ScenarioResult = {
-      scenarioName: 'multi-trial-composite',
+      scenarioName: 'multi-trial-checklist',
       stabilityLevel: 'medium',
       trials: [
-        makeTrial(0, [makeCompositeEvalResult('output-quality', breakdownT1, 0.7)]),
-        makeTrial(1, [makeCompositeEvalResult('output-quality', breakdownT2, 0.7)]),
+        makeTrial(0, [makeChecklistEvalResult('output-quality-passrate', itemsT1, ['broken-links'], 0.5)]),
+        makeTrial(1, [makeChecklistEvalResult('output-quality-passrate', itemsT2, [], 1.0)]),
       ],
       aggregated: {
-        'output-quality': {
-          passAt1: 1.0,
-          passAtK: [{ k: 1, value: 1.0 }],
-          passHatK: [{ k: 1, value: 1.0 }],
-          passingTrials: 2,
+        'output-quality-passrate': {
+          passAt1: 0.5,
+          passAtK: [{ k: 2, value: 1.0 }],
+          passHatK: [{ k: 2, value: 1.0 }],
+          passingTrials: 1,
           totalTrials: 2,
+          comparisonMode: 'passRate',
         },
       },
     };
@@ -1475,14 +1512,37 @@ describe('MdReporter — composite breakdown', () => {
     const reporter = new MdReporter();
     const content = reporter.render('run-001', [result]);
 
-    // Sub-evaluator rows present
-    expect(content).toContain('heading-hierarchy');
-    expect(content).toContain('visual-coherence');
-    // Per-trial scores present
-    expect(content).toContain('0.90');
-    expect(content).toContain('0.50');
-    expect(content).toContain('0.60');
-    expect(content).toContain('0.80');
+    expect(content).toContain('heading-skips');
+    expect(content).toContain('broken-links');
+    expect(content).toContain('✓ pass');
+    expect(content).toContain('✗ fail');
+  });
+
+  it('shows hard failures line when present', () => {
+    const evalResult = makeChecklistEvalResult('output-quality-passrate', [
+      { id: 'img-alt', type: 'invariance', status: 'fail', reason: 'missing alts' },
+    ], ['img-alt'], 0.0);
+
+    const result: ScenarioResult = {
+      scenarioName: 'hard-fail-scenario',
+      stabilityLevel: 'medium',
+      trials: [makeTrial(0, [evalResult])],
+      aggregated: {
+        'output-quality-passrate': {
+          passAt1: 0.0,
+          passAtK: [{ k: 1, value: 0.0 }],
+          passHatK: [{ k: 1, value: 0.0 }],
+          passingTrials: 0,
+          totalTrials: 1,
+          comparisonMode: 'passRate',
+        },
+      },
+    };
+
+    const reporter = new MdReporter();
+    const content = reporter.render('run-001', [result]);
+
+    expect(content).toContain('T1 hard failures: img-alt');
   });
 });
 
@@ -1560,7 +1620,7 @@ const SCORE_MODE_ENRICHED_RESULT: ScenarioResult = {
       passHatK: [{ k: 1, value: 0.5 }],
       passingTrials: 1,
       totalTrials: 2,
-      regressionMode: 'score',
+      comparisonMode: 'score',
       aggregateScore: 0.5,
     },
   },
@@ -1590,8 +1650,8 @@ describe('MdReporter — score-mode evaluators with baseline comparison', () => 
     const content = reporter.render('run-001', [SCORE_MODE_ENRICHED_RESULT]);
     const rollupSection = content.split('### Evaluator rollup (across scenarios)')[1];
     expect(rollupSection).toBeDefined();
-    // latency: 1 pass, 0 partial, 1 fail, 0 unknown → 50% pass rate
-    expect(rollupSection).toContain('| latency | 1 | 0 | 1 | 0 | 50% |');
+    // latency: 1 pass, 1 fail, 0 incomplete → 50% pass rate
+    expect(rollupSection).toContain('| latency | 1 | 1 | 0 | 50% |');
   });
 
   it('reasoning block includes evaluator name, diagnostic reason, and baseline comparison for fail trial', () => {
@@ -1604,25 +1664,25 @@ describe('MdReporter — score-mode evaluators with baseline comparison', () => 
     expect(detailsSection).toContain('latency: 0.9 vs baseline 1 (threshold 25%) → fail');
   });
 
-  it('unenriched (skip-baseline) trials keep observed in per-trial cells and are excluded from rollup', () => {
+  it('unenriched (skip-baseline) trials keep directional in per-trial cells and are excluded from rollup', () => {
     const unenriched: ScenarioResult = {
       scenarioName: 'latency-unenriched',
       stabilityLevel: 'medium',
       trials: [
-        makeTrial(0, [makeEvalResult('latency', 'observed', 0.5)]),
+        makeTrial(0, [makeEvalResult('latency', 'directional', 0.5)]),
       ],
       aggregated: {
         latency: {
           passingTrials: 0,
           totalTrials: 1,
-          regressionMode: 'score',
+          comparisonMode: 'score',
           aggregateScore: 0.5,
         },
       },
     };
     const reporter = new MdReporter();
     const content = reporter.render('run-001', [unenriched]);
-    expect(content).toContain('observed (0.50)');
+    expect(content).toContain('directional (0.50)');
     // Isolate just the rollup table: it ends before the run-details table
     // (renderRunDetails starts with '| Field | Value |')
     const afterRollupHeading = content.split('### Evaluator rollup (across scenarios)')[1];
@@ -2213,6 +2273,7 @@ const NUMERIC_ESTIMATOR_RESULT: ScenarioResult = {
       passHatK: [{ k: 1, value: 0.6 }, { k: 2, value: 0.3 }, { k: 3, value: 0.1 }],
       passingTrials: 3,
       totalTrials: 5,
+      comparisonMode: 'passRate',
     },
   },
 };
@@ -2240,7 +2301,7 @@ describe('MdReporter — numeric pass-estimator rendering', () => {
       .split('\n')
       .find((l) => l.startsWith('| numeric-estimators | jtbd-completion |'));
     expect(matrixRow).toBeDefined();
-    expect(matrixRow).toContain('| 0.60 |');
+    expect(matrixRow).toContain('| 0.60 (n=5) |');
   });
 
   it('renders pass@k and pass^k as semicolon-separated k:value vectors', () => {
@@ -2265,13 +2326,13 @@ describe('MdReporter — numeric pass-estimator rendering', () => {
     const scoreModeResult: ScenarioResult = {
       scenarioName: 'latency-check',
       stabilityLevel: 'medium',
-      trials: [makeTrial(0, [makeEvalResult('latency', 'observed', 0.75)])],
+      trials: [makeTrial(0, [makeEvalResult('latency', 'directional', 0.75)])],
       aggregated: {
         latency: {
           passingTrials: 0,
           totalTrials: 1,
           aggregateScore: 0.75,
-          regressionMode: 'score',
+          comparisonMode: 'score',
         },
       },
     };
@@ -2351,7 +2412,7 @@ describe('MdReporter — pass-rate comparison (main vs our-change)', () => {
         'bug-hit-rate': base.aggregated['bug-hit-rate'],
         'jtbd-completion': {
           ...base.aggregated['jtbd-completion'],
-          regressionMode: 'score',
+          comparisonMode: 'score',
         },
       },
     };
@@ -2401,7 +2462,7 @@ describe('MdReporter — pass-rate comparison (main vs our-change)', () => {
     const result: ScenarioResult = {
       ...base,
       aggregated: {
-        'token-usage': { ...base.aggregated['jtbd-completion'], regressionMode: 'score' },
+        'token-usage': { ...base.aggregated['jtbd-completion'], comparisonMode: 'score' },
       },
     };
     const section = passRateSection(new MdReporter().render('run-001', [result]));
@@ -2434,5 +2495,132 @@ describe('MdReporter — pass-rate comparison (main vs our-change)', () => {
     ]);
     const section = passRateSection(new MdReporter().render('run-001', [result]));
     expect(section).toContain('⚠️ warning');
+  });
+});
+
+// ── Wilson CI rendering in reporter ──────────────────────────────────────────
+
+describe('MdReporter — Wilson CI in pass@1 cell', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockMkdir.mockResolvedValue(undefined);
+    mockWriteFile.mockResolvedValue(undefined);
+  });
+
+  const wilsonCI: WilsonCI = { lower: 0.23, upper: 0.88, n: 5 };
+
+  it('renders CI in category matrix for pass-rate evaluator', () => {
+    const result: ScenarioResult = {
+      scenarioName: 'ci-scenario',
+      stabilityLevel: 'medium',
+      trials: [
+        makeTrial(0, [makeEvalResult('jtbd-completion', 'pass')]),
+        makeTrial(1, [makeEvalResult('jtbd-completion', 'pass')]),
+        makeTrial(2, [makeEvalResult('jtbd-completion', 'fail', 0)]),
+        makeTrial(3, [makeEvalResult('jtbd-completion', 'pass')]),
+        makeTrial(4, [makeEvalResult('jtbd-completion', 'fail', 0)]),
+      ],
+      aggregated: {
+        'jtbd-completion': {
+          comparisonMode: 'passRate',
+          passAt1: 0.60,
+          passAtK: [{ k: 1, value: 0.60 }],
+          passHatK: [{ k: 1, value: 0.60 }],
+          passingTrials: 3,
+          totalTrials: 5,
+          wilsonCI,
+        },
+      },
+    };
+    const reporter = new MdReporter();
+    const content = reporter.render('run-001', [result]);
+    const matrixRow = content
+      .split('\n')
+      .find((l) => l.startsWith('| ci-scenario | jtbd-completion |'));
+    expect(matrixRow).toBeDefined();
+    expect(matrixRow).toContain('0.60 (n=5) [0.23, 0.88]');
+  });
+
+  it('renders CI in per-scenario table for pass-rate evaluator', () => {
+    const result: ScenarioResult = {
+      scenarioName: 'ci-scenario',
+      stabilityLevel: 'medium',
+      trials: [
+        makeTrial(0, [makeEvalResult('jtbd-completion', 'pass')]),
+        makeTrial(1, [makeEvalResult('jtbd-completion', 'pass')]),
+        makeTrial(2, [makeEvalResult('jtbd-completion', 'fail', 0)]),
+        makeTrial(3, [makeEvalResult('jtbd-completion', 'pass')]),
+        makeTrial(4, [makeEvalResult('jtbd-completion', 'fail', 0)]),
+      ],
+      aggregated: {
+        'jtbd-completion': {
+          comparisonMode: 'passRate',
+          passAt1: 0.60,
+          passAtK: [{ k: 1, value: 0.60 }],
+          passHatK: [{ k: 1, value: 0.60 }],
+          passingTrials: 3,
+          totalTrials: 5,
+          wilsonCI,
+        },
+      },
+    };
+    const reporter = new MdReporter();
+    const content = reporter.render('run-001', [result]);
+    const perScenarioRow = content
+      .split('\n')
+      .find((l) => l.startsWith('| jtbd-completion |') && l.includes('0.60'));
+    expect(perScenarioRow).toBeDefined();
+    expect(perScenarioRow).toContain('0.60 (n=5) [0.23, 0.88]');
+  });
+
+  it('omits CI for score-mode evaluator (wilsonCI undefined)', () => {
+    const result: ScenarioResult = {
+      scenarioName: 'score-ci-scenario',
+      stabilityLevel: 'medium',
+      trials: [
+        makeTrial(0, [makeEvalResult('latency', 'directional', 0.5)]),
+      ],
+      aggregated: {
+        latency: {
+          passingTrials: 0,
+          totalTrials: 1,
+          comparisonMode: 'score',
+          aggregateScore: 0.5,
+        },
+      },
+    };
+    const reporter = new MdReporter();
+    const content = reporter.render('run-001', [result]);
+    expect(content).not.toContain('[0.');
+  });
+
+  it('renders n without CI when wilsonCI is absent but totalTrials is defined', () => {
+    const result: ScenarioResult = {
+      scenarioName: 'n-only-scenario',
+      stabilityLevel: 'medium',
+      trials: [
+        makeTrial(0, [makeEvalResult('jtbd-completion', 'pass')]),
+        makeTrial(1, [makeEvalResult('jtbd-completion', 'fail', 0)]),
+        makeTrial(2, [makeEvalResult('jtbd-completion', 'pass')]),
+      ],
+      aggregated: {
+        'jtbd-completion': {
+          comparisonMode: 'passRate',
+          passAt1: 0.67,
+          passAtK: [{ k: 1, value: 0.67 }],
+          passHatK: [{ k: 1, value: 0.67 }],
+          passingTrials: 2,
+          totalTrials: 3,
+        },
+      },
+    };
+    const reporter = new MdReporter();
+    const content = reporter.render('run-001', [result]);
+    const matrixRow = content
+      .split('\n')
+      .find((l) => l.startsWith('| n-only-scenario | jtbd-completion |'));
+    expect(matrixRow).toBeDefined();
+    expect(matrixRow).toContain('0.67 (n=3)');
+    expect(matrixRow).not.toContain('[');
   });
 });

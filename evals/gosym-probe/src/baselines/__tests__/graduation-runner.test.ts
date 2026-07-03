@@ -36,6 +36,7 @@ function makeAgg(
     ...(passAt1 !== undefined && { passAt1, passAtK: [{ k: 1, value: passAt1 }], passHatK: [{ k: 1, value: passAt1 }] }),
     passingTrials,
     totalTrials,
+    comparisonMode: 'passRate' as const,
   };
 }
 
@@ -153,13 +154,15 @@ const mockConfig: ResolvedConfig = {
 };
 
 const mockBaselineStore = {
+  backend: 'local' as const,
   save: vi.fn<
     (
       runId: string,
       result: ScenarioResult,
       options?: { defaultThreshold?: number },
-    ) => Promise<void>
-  >().mockResolvedValue(undefined),
+    ) => Promise<string>
+  >().mockResolvedValue('baselines/scenario/ts_run.json'),
+  locationFor: vi.fn<(path: string) => string>((path) => path),
 };
 
 // ── GraduationRunner ──────────────────────────────────────────────────────────
@@ -692,7 +695,7 @@ describe('GraduationRunner', () => {
   describe('baseline save sanity check', () => {
     it('skips baseline save when all trial verdicts are unknown', async () => {
       mockSuiteRunnerRun.mockResolvedValue([
-        makeScenarioResult(['unknown', 'unknown', 'unknown']),
+        makeScenarioResult(['incomplete', 'incomplete', 'incomplete']),
       ]);
 
       const runner = new GraduationRunner({
@@ -724,7 +727,7 @@ describe('GraduationRunner', () => {
 
     it('saves baseline when mix of pass and unknown', async () => {
       mockSuiteRunnerRun.mockResolvedValue([
-        makeScenarioResult(['pass', 'unknown', 'unknown']),
+        makeScenarioResult(['pass', 'incomplete', 'incomplete']),
       ]);
 
       const runner = new GraduationRunner({

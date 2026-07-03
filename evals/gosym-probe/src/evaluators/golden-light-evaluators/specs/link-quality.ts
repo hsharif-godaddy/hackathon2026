@@ -1,4 +1,4 @@
-import type { StructuralEvalSpec, StructuralScoreResult } from '../dom-eval-types.js';
+import type { ChecklistItemOutcome, PassRateSpec, StructuralScoreResult } from '../dom-eval-types.js';
 import { safeRatio } from '../dom-eval-types.js';
 
 const ANCHOR_TAG_RE = /<a\b([^>]*)>/gi;
@@ -22,11 +22,12 @@ function classifyHref(href: string | undefined): LinkClass {
   return 'valid';
 }
 
-export const linkQualitySpec: StructuralEvalSpec = {
+export const linkQualitySpec: PassRateSpec = {
   name: 'link-quality',
   dimension: 'link-quality',
   description: 'Ratio of valid/anchor links to total anchor elements',
   evalVersion: '1.0',
+  comparisonMode: 'passRate',
 
   score(bodyHtml: string): StructuralScoreResult {
     const anchors = [...bodyHtml.matchAll(ANCHOR_TAG_RE)];
@@ -60,5 +61,25 @@ export const linkQualitySpec: StructuralEvalSpec = {
       reason: `${valid + anchor} usable link(s) out of ${anchors.length} total`,
       details: { totalLinks: anchors.length, valid, anchor, invalid },
     };
+  },
+
+  toChecklistItems(bodyHtml: string): ChecklistItemOutcome[] {
+    const anchors = [...bodyHtml.matchAll(ANCHOR_TAG_RE)];
+    if (anchors.length === 0) {
+      return [{ id: 'broken-links', type: 'invariance', status: 'incomplete', reason: 'No anchor elements found' }];
+    }
+    let invalid = 0;
+    for (const [, attrs] of anchors) {
+      const hrefMatch = HREF_RE.exec(attrs);
+      if (classifyHref(hrefMatch?.[1]) === 'invalid') invalid++;
+    }
+    return [{
+      id: 'broken-links',
+      type: 'invariance',
+      status: invalid === 0 ? 'pass' : 'fail',
+      reason: invalid === 0
+        ? `All ${anchors.length} link(s) are valid`
+        : `${invalid} invalid link(s) out of ${anchors.length} total`,
+    }];
   },
 };

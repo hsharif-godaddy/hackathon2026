@@ -46,13 +46,14 @@ function makeEvaluator(
   const gocode = { complete: vi.fn(complete) } as unknown as GocodeClient;
   const evaluator = new LLMJudgeEvaluator(gocode, {
     name: 'test-evaluator',
+    comparisonMode: 'passRate',
     evalVersion: opts.evalVersion,
     schema: TestSchema,
     prompt: () => 'evaluate this',
     toEvalResult: (parsed, _transcript, _scenario) => ({
       evaluator: 'test-evaluator',
       score: opts.scoreOverride ?? parsed.score,
-      verdict: parsed.verdict,
+      verdict: parsed.verdict as 'pass' | 'fail' | 'incomplete' | 'directional',
       reason: parsed.reason,
     }),
   });
@@ -67,7 +68,7 @@ describe('LLMJudgeEvaluator — error paths', () => {
       throw new Error('network timeout');
     });
     const result = await evaluator.evaluate(makeTranscript(), testScenario);
-    expect(result.verdict).toBe('unknown');
+    expect(result.verdict).toBe('incomplete');
     expect(result.score).toBe(0);
     expect(result.reason).toContain('network timeout');
   });
@@ -75,7 +76,7 @@ describe('LLMJudgeEvaluator — error paths', () => {
   it('returns unknown when response contains no JSON object', async () => {
     const { evaluator } = makeEvaluator(async () => 'I cannot evaluate this.');
     const result = await evaluator.evaluate(makeTranscript(), testScenario);
-    expect(result.verdict).toBe('unknown');
+    expect(result.verdict).toBe('incomplete');
     expect(result.score).toBe(0);
     expect(result.reason).toContain('No JSON object found in LLM judge response');
   });
@@ -83,7 +84,7 @@ describe('LLMJudgeEvaluator — error paths', () => {
   it('returns unknown when JSON is syntactically malformed', async () => {
     const { evaluator } = makeEvaluator(async () => '{score: 0.8 verdict: pass}');
     const result = await evaluator.evaluate(makeTranscript(), testScenario);
-    expect(result.verdict).toBe('unknown');
+    expect(result.verdict).toBe('incomplete');
     expect(result.score).toBe(0);
     expect(result.reason).toContain('LLM judge response contained malformed JSON');
   });
@@ -93,7 +94,7 @@ describe('LLMJudgeEvaluator — error paths', () => {
       JSON.stringify({ unexpected: 'shape' }),
     );
     const result = await evaluator.evaluate(makeTranscript(), testScenario);
-    expect(result.verdict).toBe('unknown');
+    expect(result.verdict).toBe('incomplete');
     expect(result.score).toBe(0);
     expect(result.reason).toContain('did not match expected schema');
   });
@@ -129,34 +130,34 @@ describe('LLMJudgeEvaluator — JSON extraction boundaries', () => {
   it('extracts outermost JSON when response contains nested objects', async () => {
     const withNested = JSON.stringify({
       score: 0.6,
-      verdict: 'partial',
+      verdict: 'fail',
       reason: 'ok',
       meta: { extra: 'ignored' },
     });
     // LLMJudgeEvaluator uses indexOf / lastIndexOf so the outer braces are captured
     const { evaluator } = makeEvaluator(async () => withNested);
     const result = await evaluator.evaluate(makeTranscript(), testScenario);
-    expect(result.verdict).toBe('partial');
+    expect(result.verdict).toBe('fail');
     expect(result.score).toBeCloseTo(0.6);
   });
 
   it('returns unknown when response has closing brace but no opening brace', async () => {
     const { evaluator } = makeEvaluator(async () => 'score: 0.8 }');
     const result = await evaluator.evaluate(makeTranscript(), testScenario);
-    expect(result.verdict).toBe('unknown');
+    expect(result.verdict).toBe('incomplete');
   });
 
   it('returns unknown when response has opening brace but no closing brace', async () => {
     const { evaluator } = makeEvaluator(async () => '{ score: 0.8');
     const result = await evaluator.evaluate(makeTranscript(), testScenario);
-    expect(result.verdict).toBe('unknown');
+    expect(result.verdict).toBe('incomplete');
   });
 
   it('returns unknown when closing brace appears before opening brace', async () => {
     // indexOf('{') > lastIndexOf('}') → end <= start
     const { evaluator } = makeEvaluator(async () => '} then {');
     const result = await evaluator.evaluate(makeTranscript(), testScenario);
-    expect(result.verdict).toBe('unknown');
+    expect(result.verdict).toBe('incomplete');
   });
 });
 
@@ -236,6 +237,7 @@ describe('LLMJudgeEvaluator — validateEvidence', () => {
     const gocode = { complete: vi.fn(async function () { return validResponse(); }) } as unknown as GocodeClient;
     const evaluator = new LLMJudgeEvaluator(gocode, {
       name: 'test-evaluator',
+      comparisonMode: 'passRate',
       evalVersion: 'v1',
       schema: TestSchema,
       canEvaluate: () => true,
@@ -244,14 +246,14 @@ describe('LLMJudgeEvaluator — validateEvidence', () => {
       toEvalResult: (parsed) => ({
         evaluator: 'test-evaluator',
         score: parsed.score,
-        verdict: parsed.verdict,
+        verdict: parsed.verdict as 'pass' | 'fail' | 'incomplete' | 'directional',
         reason: parsed.reason,
       }),
     });
 
     const result = await evaluator.evaluate(makeTranscript(), testScenario);
 
-    expect(result.verdict).toBe('unknown');
+    expect(result.verdict).toBe('incomplete');
     expect(result.score).toBe(0);
     expect(result.reason).toContain('Evidence validation failed');
     expect(result.evalVersion).toBe('v1');
@@ -262,6 +264,7 @@ describe('LLMJudgeEvaluator — validateEvidence', () => {
     const gocode = { complete: vi.fn(async function () { return validResponse(0.9); }) } as unknown as GocodeClient;
     const evaluator = new LLMJudgeEvaluator(gocode, {
       name: 'test-evaluator',
+      comparisonMode: 'passRate',
       schema: TestSchema,
       canEvaluate: () => true,
       validateEvidence: async () => true,
@@ -269,7 +272,7 @@ describe('LLMJudgeEvaluator — validateEvidence', () => {
       toEvalResult: (parsed) => ({
         evaluator: 'test-evaluator',
         score: parsed.score,
-        verdict: parsed.verdict,
+        verdict: parsed.verdict as 'pass' | 'fail' | 'incomplete' | 'directional',
         reason: parsed.reason,
       }),
     });
@@ -285,12 +288,13 @@ describe('LLMJudgeEvaluator — validateEvidence', () => {
     const gocode = { complete: vi.fn(async function () { return validResponse(0.7); }) } as unknown as GocodeClient;
     const evaluator = new LLMJudgeEvaluator(gocode, {
       name: 'test-evaluator',
+      comparisonMode: 'passRate',
       schema: TestSchema,
       prompt: () => 'evaluate this',
       toEvalResult: (parsed) => ({
         evaluator: 'test-evaluator',
         score: parsed.score,
-        verdict: parsed.verdict,
+        verdict: parsed.verdict as 'pass' | 'fail' | 'incomplete' | 'directional',
         reason: parsed.reason,
       }),
     });
@@ -309,9 +313,10 @@ describe('LLMJudgeEvaluator — class properties', () => {
     const gocode = { complete: vi.fn() } as unknown as GocodeClient;
     const ev = new LLMJudgeEvaluator(gocode, {
       name: 'my-evaluator',
+      comparisonMode: 'passRate',
       schema: z.object({ value: z.number() }),
       prompt: () => '',
-      toEvalResult: () => ({ evaluator: 'my-evaluator', score: 0, verdict: 'unknown', reason: '' }),
+      toEvalResult: () => ({ evaluator: 'my-evaluator', score: 0, verdict: 'incomplete', reason: '' }),
     });
     expect(ev.name).toBe('my-evaluator');
   });
@@ -352,7 +357,7 @@ describe('LLMJudgeEvaluator — request failure handling', () => {
       throw makeRateLimitError();
     });
     const result = await evaluator.evaluate(makeTranscript(), testScenario);
-    expect(result.verdict).toBe('unknown');
+    expect(result.verdict).toBe('incomplete');
     expect(gocode.complete).toHaveBeenCalledTimes(1);
     expect(vi.mocked(sleep)).not.toHaveBeenCalled();
   });
@@ -362,7 +367,7 @@ describe('LLMJudgeEvaluator — request failure handling', () => {
       throw makeRateLimitError(60);
     });
     const result = await evaluator.evaluate(makeTranscript(), testScenario);
-    expect(result.verdict).toBe('unknown');
+    expect(result.verdict).toBe('incomplete');
   });
 
   it('flags a RateLimitError as a rate limit in the warning', async () => {
@@ -381,7 +386,7 @@ describe('LLMJudgeEvaluator — request failure handling', () => {
       throw new Error('network timeout');
     });
     const result = await evaluator.evaluate(makeTranscript(), testScenario);
-    expect(result.verdict).toBe('unknown');
+    expect(result.verdict).toBe('incomplete');
     expect(gocode.complete).toHaveBeenCalledTimes(1);
     expect(vi.mocked(sleep)).not.toHaveBeenCalled();
   });
@@ -403,7 +408,7 @@ describe('LLMJudgeEvaluator — request failure handling', () => {
       { evalVersion: 'v2' },
     );
     const result = await evaluator.evaluate(makeTranscript(), testScenario);
-    expect(result.verdict).toBe('unknown');
+    expect(result.verdict).toBe('incomplete');
     expect(result.evalVersion).toBe('v2');
   });
 });

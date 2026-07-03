@@ -2402,7 +2402,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
       execMeta.debugStatsEnabled = true
     }
     execMeta.agentName = resolvedAgentId
-    execMeta.eventEmitter = {
+    const skillEventEmitter: { emit: (type: string, data: unknown) => void } = {
       emit: (type: string, data: unknown): void => {
         if (type === 'subagent_event') {
           this.publishNonTerminal(appId, conversationId, {
@@ -2431,6 +2431,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
         }
       },
     }
+    execMeta.eventEmitter = skillEventEmitter
 
     // Resolve the agent profile from the JWT only — the BFF-resolved
     // switchboard/hivemind profile is the sole source. There is no per-message
@@ -2834,7 +2835,16 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
         ? () => otelContext.with(extendedCtx, runWithOverride)
         : runWithOverride
 
+      // Skill-diagnostics liveness sentinel. Emitted once per turn through the
+      // same gated emitter the skill tool uses, so it appears on the wire only
+      // when SKILL_DIAGNOSTICS=true. It lets the eval harness distinguish
+      // "instrumentation on, agent loaded zero skills" (a real non-selection to
+      // score 'fail') from "instrumentation off" (genuinely 'unknown') — without
+      // it, both collapse to no events and the non-selection is silently dropped.
+      skillEventEmitter.emit('skill_diagnostics', { event: 'ready', conversationId })
+
       const automationsEnabled = agentCtx?.automationsEnabled ?? false
+
       // Resolve turnscript per turn from the Switchboard flag + shopperId (+ env fallback)
       // and wrap the loop so the develop agent's resolvers can read it via the ALS. Nested
       // inside runWithAutomations so resolvers see both contexts; off by default.

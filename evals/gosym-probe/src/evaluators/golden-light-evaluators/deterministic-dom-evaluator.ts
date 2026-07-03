@@ -3,7 +3,8 @@ import type { Scenario } from '../../scenarios/types.js';
 import type { EvalResult, Evaluator } from '../evaluator.js';
 import { extractBodyHtml, clamp01, readSnapshotHtml } from '../shared.js';
 import { scoreToVerdict } from '../eval-utils.js';
-import type { StructuralEvalSpec } from './dom-eval-types.js';
+import { reduceChecklistOutcomes } from '../checklist-verdict.js';
+import type { ChecklistItemOutcome, PassRateSpec, StructuralEvalSpec } from './dom-eval-types.js';
 import { stripDevAttributes } from './dom-eval-types.js';
 
 /**
@@ -12,16 +13,18 @@ import { stripDevAttributes } from './dom-eval-types.js';
  * Responsibilities:
  * - Extract and clean HTML before delegating to the spec
  * - Isolate spec errors (returns unknown instead of throwing)
- * - Clamp score to [0, 1]
+ * - Clamp score to [0, 1] (score mode) or reduce checklist outcomes (passRate mode)
  * - Inject dimension into details for traceability
  */
 export class DeterministicDomEvaluator implements Evaluator {
   readonly name: string;
   readonly evalVersion?: string;
+  readonly comparisonMode: 'passRate' | 'score';
 
   constructor(private readonly spec: StructuralEvalSpec) {
     this.name = spec.name;
     this.evalVersion = spec.evalVersion;
+    this.comparisonMode = spec.comparisonMode;
   }
 
   async evaluate(
@@ -51,8 +54,33 @@ export class DeterministicDomEvaluator implements Evaluator {
       return this.unknown('Spec threw during scoring');
     }
 
+    const checklistItems: ChecklistItemOutcome[] | undefined =
+      this.spec.comparisonMode === 'passRate'
+        ? this.spec.toChecklistItems(cleanHtml)
+        : this.spec.toChecklistItems?.(cleanHtml);
+
     if (!result.canScore) {
-      return this.unknown(result.reason || 'Insufficient HTML to score this dimension');
+      const unknownResult = this.unknown(result.reason || 'Insufficient HTML to score this dimension');
+      if (checklistItems !== undefined) {
+        unknownResult.details = { items: checklistItems };
+      }
+      return unknownResult;
+    }
+
+    if (this.spec.comparisonMode === 'passRate' && checklistItems !== undefined) {
+      const reduced = reduceChecklistOutcomes(checklistItems);
+      return {
+        evaluator: this.name,
+        score: reduced.score,
+        verdict: reduced.verdict,
+        reason: reduced.reason,
+        details: {
+          dimension: this.spec.dimension,
+          ...result.details,
+          items: checklistItems,
+        },
+        ...(this.evalVersion !== undefined && { evalVersion: this.evalVersion }),
+      };
     }
 
     const score = clamp01(result.score);
@@ -64,6 +92,7 @@ export class DeterministicDomEvaluator implements Evaluator {
       details: {
         dimension: this.spec.dimension,
         ...result.details,
+        ...(checklistItems !== undefined && { items: checklistItems }),
       },
       ...(this.evalVersion !== undefined && { evalVersion: this.evalVersion }),
     };
@@ -73,7 +102,7 @@ export class DeterministicDomEvaluator implements Evaluator {
     return {
       evaluator: this.name,
       score: 0,
-      verdict: 'unknown',
+      verdict: 'incomplete',
       reason,
       ...(this.evalVersion !== undefined && { evalVersion: this.evalVersion }),
     };

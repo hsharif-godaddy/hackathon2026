@@ -61,6 +61,7 @@ pnpm run eval          # headless eval with flags
 --verbose                Print capture diagnostic events (capture.conversation.complete, capture.phase.complete, capture.phase.failed, capture.turn.timeout); suppressed by default
 --skip-baseline          Skip baseline comparison
 --baseline <run-id>      Compare against a specific baseline run instead of the most recent
+--s3                     Use the shared S3 bucket instead of the local tree (requires storage.s3.bucket; throws if unset). `eval --s3` is read-only and gates against S3 baselines — a missing baseline fails closed (hard error, not a skipped gate). `save-baseline --s3` is the sole write path. Rejected with --graduate/--graduate-suite (graduate locally, then promote via save-baseline --s3). See docs/storage-backends.md.
 --fan-out                Dispatch trials round-robin across a worker pool (capped by maxConcurrency); workers stay busy until the queue drains
 --graduate <name>        Stability check one scenario before promoting
 --graduate-suite <name>  Stability check all scenarios in a suite
@@ -150,14 +151,19 @@ This blocks a zero-output run — e.g. a misconfigured agent 401ing every
 trial (see `OPENAI_BASE_URL` above) — from pinning the regression floor to
 garbage; vacuous evaluators (`bug-hit-rate`) emit `pass` on an empty build,
 so the verdict alone isn't enough. A skipped save logs the reason
-(`no-agent-output` / `all-unknown-verdicts` / `no-trials`).
+(`no-agent-output` / `all-incomplete-verdicts` / `no-trials`).
 
 ### `pnpm run save-baseline` usage
 
 ```bash
-pnpm run save-baseline <run-id>               # snapshot all scenarios
-pnpm run save-baseline <run-id> --suite <name> # snapshot one suite
+pnpm run save-baseline <run-id>               # snapshot all scenarios (local)
+pnpm run save-baseline <run-id> --suite <name> # snapshot one suite (local)
+pnpm run save-baseline <run-id> --s3          # push the snapshot to the shared S3 bucket
 ```
+
+`--s3` is the manual promotion step: only push clean, vetted baselines, since an
+S3 baseline becomes the shared gating source of truth (`eval --s3` reads it).
+Requires `storage.s3.bucket`; see `docs/storage-backends.md`.
 
 ---
 
@@ -363,6 +369,7 @@ import type { Scenario } from "../scenarios/types.js";
 
 export class MyEvaluator implements Evaluator {
   readonly name = "my-evaluator";
+  readonly comparisonMode = "passRate" as const;
 
   async evaluate(
     transcript: Transcript,
@@ -373,7 +380,7 @@ export class MyEvaluator implements Evaluator {
     return {
       evaluator: this.name,
       score: 1.0, // 0.0–1.0
-      verdict: "pass", // 'pass' | 'partial' | 'fail' | 'unknown' | 'observed'
+      verdict: "pass", // 'pass' | 'fail' | 'incomplete' | 'directional'
       reason: "All checks passed",
     };
   }
@@ -382,13 +389,13 @@ export class MyEvaluator implements Evaluator {
 
 **Key rules:**
 
-- `score` must be in `[0.0, 1.0]` for non-observed verdicts (`pass`,
-  `fail`, `partial`, `unknown`). For `observed`-verdict evaluators
-  (`regressionMode: 'score'`), emit the raw measurement (e.g. token
-  count, USD cost); `normalizeEvalResult` leaves it unclamped.
-- Return `verdict: 'unknown'` when inputs are insufficient to judge.
-- Return `verdict: 'observed'` for score-mode evaluators that record a
-  measurement (no pass/fail semantics).
+- `score` must be in `[0.0, 1.0]` for pass/fail verdicts. For
+  `directional`-verdict evaluators (`comparisonMode: 'score'`), emit
+  the raw measurement (e.g. token count, USD cost);
+  `normalizeEvalResult` leaves it unclamped.
+- Return `verdict: 'incomplete'` when inputs are insufficient to judge.
+- Return `verdict: 'directional'` for score-mode evaluators that record
+  a measurement (no pass/fail semantics).
 
 Wire the evaluator into a scenario's `evaluators` array:
 
@@ -400,4 +407,4 @@ evaluators: [
 ```
 
 Write tests in `src/evaluators/__tests__/` with fixture transcripts
-covering pass, partial, fail, and unknown cases.
+covering pass, fail, incomplete, and directional cases.

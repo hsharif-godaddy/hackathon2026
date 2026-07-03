@@ -9,6 +9,7 @@ import {
   LLM_PROMPT_SANITIZED_HTML_MAX_CHARS,
   readSnapshotHtml,
 } from './shared.js';
+import { mapLegacyVerdict } from './verdict-compat.js';
 
 function buildTranscriptText(transcript: Transcript): string {
   return transcript.turns
@@ -30,11 +31,10 @@ function buildGoalsText(scenario: Scenario): string {
 
 function verdictToScore(verdict: EvalResult['verdict']): number {
   switch (verdict) {
-    case 'pass':    return 1.0;
-    case 'partial': return 0.5;
-    case 'fail':    return 0.0;
-    case 'unknown':  return 0.0;
-    case 'observed': return 0.0;
+    case 'pass':        return 1.0;
+    case 'fail':        return 0.0;
+    case 'incomplete':  return 0.0;
+    case 'directional': return 0.0;
     default: {
       const _exhaustive: never = verdict;
       return _exhaustive;
@@ -49,16 +49,18 @@ function buildHtmlSection(rawHtml: string): string {
 }
 
 function parseVerdict(response: string): EvalResult['verdict'] {
-  const lower = response.trim().toLowerCase();
-  if (lower.includes('partial')) return 'partial';
-  if (lower.includes('pass'))    return 'pass';
-  if (lower.includes('fail'))    return 'fail';
-  if (lower.includes('unknown')) return 'unknown';
-  return 'unknown';
+  const lower: string = response.trim().toLowerCase();
+  if (lower.includes('incomplete')) return 'incomplete';
+  if (lower.includes('pass'))       return 'pass';
+  if (lower.includes('fail'))       return 'fail';
+  if (lower.includes('partial'))    return mapLegacyVerdict('partial');
+  if (lower.includes('unknown'))    return mapLegacyVerdict('unknown');
+  return 'incomplete';
 }
 
 export class JTBDCompletionEvaluator implements Evaluator {
   readonly name = 'jtbd-completion';
+  readonly comparisonMode = 'passRate' as const;
 
   constructor(private readonly gocodeClient: IGocodeClient) {}
 
@@ -71,7 +73,7 @@ export class JTBDCompletionEvaluator implements Evaluator {
       return {
         evaluator: this.name,
         score: 0,
-        verdict: 'unknown',
+        verdict: 'incomplete',
         reason: 'No goals defined for scenario',
       };
     }
@@ -105,8 +107,8 @@ export class JTBDCompletionEvaluator implements Evaluator {
       goalsText,
       refSection,
       ...(htmlSection ? [htmlSection] : []),
-      'Reply with exactly one word: pass, partial, fail, or unknown.',
-      'Use "unknown" if the transcript provides insufficient information',
+      'Reply with exactly one word: pass, fail, or incomplete.',
+      'Use "incomplete" if the transcript provides insufficient information',
       'to make a determination.',
     ].join('\n');
 

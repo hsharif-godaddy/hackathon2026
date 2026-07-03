@@ -55,6 +55,7 @@ const SCENARIO_RESULT: ScenarioResult = {
       passHatK: [{ k: 1, value: 2 / 3 }, { k: 2, value: 1 / 3 }],
       passingTrials: 2,
       totalTrials: 3,
+      comparisonMode: 'passRate' as const,
     },
     'prompt-efficiency': {
       passAt1: 0,
@@ -62,6 +63,7 @@ const SCENARIO_RESULT: ScenarioResult = {
       passHatK: [{ k: 1, value: 0 }, { k: 2, value: 0 }],
       passingTrials: 0,
       totalTrials: 3,
+      comparisonMode: 'passRate' as const,
     },
   },
 };
@@ -246,6 +248,7 @@ describe('BaselineStore', () => {
               passingTrials: 2,
               totalTrials: 3,
               aggregateScore: 0.67,
+              comparisonMode: 'passRate' as const,
             },
           },
         };
@@ -275,7 +278,7 @@ describe('BaselineStore', () => {
               passingTrials: 3,
               totalTrials: 3,
               aggregateScore: 0.75,
-              regressionMode: 'score',
+              comparisonMode: 'score',
             },
           },
         };
@@ -302,7 +305,7 @@ describe('BaselineStore', () => {
             passingTrials: 3,
             totalTrials: 3,
             aggregateScore: 0.75,
-            regressionMode: 'score',
+            comparisonMode: 'score',
           },
         },
       };
@@ -376,7 +379,7 @@ describe('BaselineStore', () => {
           passingTrials: 3,
           totalTrials: 3,
           aggregateScore: 0.8,
-          regressionMode: 'score',
+          comparisonMode: 'score',
         },
       },
     };
@@ -1156,7 +1159,7 @@ describe('BaselineStore', () => {
           makeTrialWithResults(1, [{ evaluator: 'jtbd', score: 0.0, verdict: 'fail' }]),
           makeTrialWithResults(2, [{ evaluator: 'jtbd', score: 1.0, verdict: 'pass' }]),
         ],
-        aggregated: { jtbd: { passingTrials: 2, totalTrials: 3 } },
+        aggregated: { jtbd: { passingTrials: 2, totalTrials: 3, comparisonMode: 'passRate' as const } },
       };
       await store.save('run-001', result);
 
@@ -1175,7 +1178,7 @@ describe('BaselineStore', () => {
           makeTrialWithResults(1, [{ evaluator: 'jtbd', score: 0.0, verdict: 'fail', evaluatorFailed: true }]),
           makeTrialWithResults(2, [{ evaluator: 'jtbd', score: 1.0, verdict: 'pass' }]),
         ],
-        aggregated: { jtbd: { passingTrials: 2, totalTrials: 2 } },
+        aggregated: { jtbd: { passingTrials: 2, totalTrials: 2, comparisonMode: 'passRate' as const } },
       };
       await store.save('run-001', result);
 
@@ -1191,10 +1194,10 @@ describe('BaselineStore', () => {
         stabilityLevel: 'medium',
         trials: [
           makeTrialWithResults(0, [{ evaluator: 'jtbd', score: 0.8, verdict: 'pass' }]),
-          makeTrialWithResults(1, [{ evaluator: 'jtbd', score: 0.0, verdict: 'unknown' }]),
-          makeTrialWithResults(2, [{ evaluator: 'jtbd', score: 0.6, verdict: 'partial' }]),
+          makeTrialWithResults(1, [{ evaluator: 'jtbd', score: 0.0, verdict: 'incomplete' }]),
+          makeTrialWithResults(2, [{ evaluator: 'jtbd', score: 0.6, verdict: 'fail' }]),
         ],
-        aggregated: { jtbd: { passingTrials: 1, totalTrials: 3 } },
+        aggregated: { jtbd: { passingTrials: 1, totalTrials: 3, comparisonMode: 'passRate' as const } },
       };
       await store.save('run-001', result);
 
@@ -1209,10 +1212,10 @@ describe('BaselineStore', () => {
         scenarioName: 'build-landing-page',
         stabilityLevel: 'medium',
         trials: [
-          makeTrialWithResults(0, [{ evaluator: 'jtbd', score: 0.0, verdict: 'unknown' }]),
-          makeTrialWithResults(1, [{ evaluator: 'jtbd', score: 0.0, verdict: 'unknown' }]),
+          makeTrialWithResults(0, [{ evaluator: 'jtbd', score: 0.0, verdict: 'incomplete' }]),
+          makeTrialWithResults(1, [{ evaluator: 'jtbd', score: 0.0, verdict: 'incomplete' }]),
         ],
-        aggregated: { jtbd: { passingTrials: 0, totalTrials: 0 } },
+        aggregated: { jtbd: { passingTrials: 0, totalTrials: 0, comparisonMode: 'passRate' as const } },
       };
       await store.save('run-001', result);
 
@@ -1227,16 +1230,16 @@ describe('BaselineStore', () => {
         scenarioName: 'build-landing-page',
         stabilityLevel: 'medium',
         trials: [
-          makeTrialWithResults(0, [{ evaluator: 'latency', score: 1200, verdict: 'observed' }]),
-          makeTrialWithResults(1, [{ evaluator: 'latency', score: 950, verdict: 'observed' }]),
-          makeTrialWithResults(2, [{ evaluator: 'latency', score: 1100, verdict: 'observed' }]),
+          makeTrialWithResults(0, [{ evaluator: 'latency', score: 1200, verdict: 'directional' }]),
+          makeTrialWithResults(1, [{ evaluator: 'latency', score: 950, verdict: 'directional' }]),
+          makeTrialWithResults(2, [{ evaluator: 'latency', score: 1100, verdict: 'directional' }]),
         ],
         aggregated: {
           latency: {
             passingTrials: 3,
             totalTrials: 3,
             aggregateScore: 1083.3,
-            regressionMode: 'score',
+            comparisonMode: 'score',
           },
         },
       };
@@ -1255,16 +1258,16 @@ describe('BaselineStore', () => {
         trials: [
           makeTrialWithResults(0, [
             { evaluator: 'jtbd', score: 1.0, verdict: 'pass' },
-            { evaluator: 'latency', score: 800, verdict: 'observed' },
+            { evaluator: 'latency', score: 800, verdict: 'directional' },
           ]),
           makeTrialWithResults(1, [
             { evaluator: 'jtbd', score: 0.0, verdict: 'fail' },
-            { evaluator: 'latency', score: 1100, verdict: 'observed' },
+            { evaluator: 'latency', score: 1100, verdict: 'directional' },
           ]),
         ],
         aggregated: {
-          jtbd: { passingTrials: 1, totalTrials: 2 },
-          latency: { passingTrials: 2, totalTrials: 2, aggregateScore: 950, regressionMode: 'score' },
+          jtbd: { passingTrials: 1, totalTrials: 2, comparisonMode: 'passRate' as const },
+          latency: { passingTrials: 2, totalTrials: 2, aggregateScore: 950, comparisonMode: 'score' },
         },
       };
       await store.save('run-001', result);

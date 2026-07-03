@@ -33,7 +33,7 @@ export function campaignNoChannelPromptScenario(
       userIntent: 'Help me promote my business and run a holiday promotion',
       contextClaims: { marketingCampaignsEnabled: true },
       expectedAgent: MARKETING_AGENT_DISPLAY_NAME,
-      trials: 3,
+      trials: 5,
       goals: [
         {
           description:

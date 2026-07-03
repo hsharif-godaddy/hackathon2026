@@ -1,4 +1,7 @@
 import { clamp01 } from '../shared.js';
+import type { ChecklistItemOutcome } from '../checklist-verdict.js';
+
+export type { ChecklistItemOutcome };
 
 export interface StructuralScoreResult {
   /** Normalized score in [0.0, 1.0]. */
@@ -9,7 +12,7 @@ export interface StructuralScoreResult {
   details: Record<string, unknown>;
 }
 
-export interface StructuralEvalSpec {
+interface StructuralEvalSpecBase {
   /** Matches the `evaluator` field on EvalResult and the evaluator's `name`. */
   name: string;
   /** Short label injected into EvalResult.details.dimension for traceability. */
@@ -31,6 +34,34 @@ export interface StructuralEvalSpec {
    */
   needsFullDocument?: true;
 }
+
+export interface PassRateSpec extends StructuralEvalSpecBase {
+  /**
+   * Determines the verdict path in DeterministicDomEvaluator and the composite
+   * track this evaluator belongs to.
+   * - 'passRate': verdict derived from reduceChecklistOutcomes (binary pass/fail/unknown)
+   */
+  comparisonMode: 'passRate';
+  /**
+   * Returns typed binary checklist outcomes for the checks this spec owns.
+   * A check whose source element is absent emits status: 'unknown'.
+   * Never throws on empty/malformed HTML — returns all-unknown in that case.
+   * Checks are computed from typed locals, NOT from StructuralScoreResult.details.
+   */
+  toChecklistItems: (bodyHtml: string) => ChecklistItemOutcome[];
+}
+
+export interface ScoreSpec extends StructuralEvalSpecBase {
+  /**
+   * Determines the verdict path in DeterministicDomEvaluator and the composite
+   * track this evaluator belongs to.
+   * - 'score': verdict derived from scoreToVerdict(clamp01(result.score))
+   */
+  comparisonMode: 'score';
+  toChecklistItems?: (bodyHtml: string) => ChecklistItemOutcome[];
+}
+
+export type StructuralEvalSpec = PassRateSpec | ScoreSpec;
 
 const DATA_DEV_ATTR_RE = /\s+data-dev-[^\s=/>]+(?:=["'][^"']*["']|=[^\s"'>]+)?/g;
 

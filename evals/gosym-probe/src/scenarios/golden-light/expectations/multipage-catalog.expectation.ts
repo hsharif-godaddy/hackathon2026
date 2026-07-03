@@ -26,7 +26,10 @@ export const multipageCatalogExpectation: ExpectedArtifactSpec = {
     'Build a multi-page handmade-crafts storefront: homepage, a product '
     + 'catalog with category filters, and an about page — shared nav, '
     + 'API-fed products.',
-  evalVersion: 'v1',
+  // v2: mentions-catalog moved from items into directionalItems (scored by the
+  // score-mode DirectionalSignalEvaluator, no longer a binary item). Bumped so
+  // baseline comparison skips the changed denominator.
+  evalVersion: 'v2',
   items: [
     {
       id: 'home-route-reachable',
@@ -47,10 +50,11 @@ export const multipageCatalogExpectation: ExpectedArtifactSpec = {
       domMatcher: (site) => reachableSubRoutes(site) >= 1,
     },
     noModuleNotFoundItem,
+  ],
+  directionalItems: [
     {
       id: 'mentions-catalog',
       description: 'rendered copy references products / catalog / shop',
-      type: 'directional',
       domMatcher: (site) =>
         site.perRoute.some((rc) => {
           const r = rc.rendered;

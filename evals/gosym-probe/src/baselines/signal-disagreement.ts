@@ -27,9 +27,7 @@ const INVESTIGATE: Record<DisagreementKind, string> = {
 };
 
 /**
- * 'pass' is the only "good" verdict; 'fail'/'partial' are "not-good"
- * (treating 'partial' as not-fully-passing so a directional miss on one
- * signal but not the other still surfaces as a disagreement). Only called
+ * 'pass' is the only "good" verdict; 'fail' is "not-good". Only called
  * on verdicts that comparable() has already admitted.
  */
 function isGood(verdict: EvalResult['verdict']): boolean {
@@ -37,12 +35,12 @@ function isGood(verdict: EvalResult['verdict']): boolean {
 }
 
 /**
- * A verdict carries pass/fail signal (excludes 'unknown'/'observed').
+ * A verdict carries pass/fail signal (excludes 'incomplete'/'directional').
  * These non-comparable verdicts are filtered here so isGood() and classify()
- * only ever see pass/fail/partial.
+ * only ever see pass/fail.
  */
 export function comparable(verdict: EvalResult['verdict']): boolean {
-  return verdict === 'pass' || verdict === 'fail' || verdict === 'partial';
+  return verdict === 'pass' || verdict === 'fail';
 }
 
 function classify(
@@ -62,7 +60,7 @@ function classify(
  * core review signal: static and judge share the same checklist, so when
  * they diverge something is worth investigating (bad static test, bad
  * judgment, or a genuinely-different-but-valid solution). Agreements and
- * non-comparable verdicts (unknown/observed/absent) produce no entry.
+ * non-comparable verdicts (incomplete/directional/absent) produce no entry.
  */
 export function findSignalDisagreements(
   results: ScenarioResult[],

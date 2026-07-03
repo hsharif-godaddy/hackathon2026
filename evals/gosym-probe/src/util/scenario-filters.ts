@@ -48,6 +48,7 @@ export interface RunFlags {
   captureConcurrency?: string;
   maxRoutes?: string;
   maxTurns?: string;
+  useS3?: boolean;
 }
 
 /**
@@ -64,6 +65,18 @@ export function validateRunFlags(flags: RunFlags): string | null {
   if (flags.graduateSuite && flags.graduate) {
     return (
       '--graduate-suite cannot be combined with --graduate.'
+    );
+  }
+  if (flags.useS3 && (flags.graduate || flags.graduateSuite)) {
+    // Graduation writes a baseline on eligibility, but a graduation run is
+    // routinely redone with --resume after dropped/timed-out trials, so
+    // auto-publishing graduated baselines to the shared bucket is fragile.
+    // Keep S3 writes to the single deliberate path: graduate locally, then
+    // promote a vetted result with `save-baseline <run-id> --s3`.
+    return (
+      '--s3 cannot be combined with --graduate or --graduate-suite. '
+      + 'Graduate to the local tree, then push the vetted baseline with '
+      + '`save-baseline <run-id> --s3`.'
     );
   }
   if (flags.stability && !flags.graduate && !flags.graduateSuite) {

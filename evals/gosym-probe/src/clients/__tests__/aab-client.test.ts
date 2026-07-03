@@ -671,6 +671,13 @@ describe('AABClient (SSE)', () => {
       source.dispatch('skill_diagnostics', { event: 'load' });
       expect(received).toHaveLength(0);
     });
+
+    it('dispatches a skill_diagnostics ready sentinel (no skill name)', () => {
+      source.dispatch('skill_diagnostics', { event: 'ready' });
+      expect(received).toEqual([
+        { type: 'skill_diagnostics', event: 'ready' },
+      ]);
+    });
   });
 
   describe('disconnect()', () => {

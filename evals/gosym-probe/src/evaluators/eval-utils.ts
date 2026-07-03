@@ -2,7 +2,6 @@ import type { EvalResult } from './evaluator.js';
 import type { ProbeUsage } from '../clients/gocode-client.js';
 
 export const PASS_THRESHOLD = 0.7;
-export const PARTIAL_THRESHOLD = 0.4;
 
 export const ZERO_PROBE: ProbeUsage = {
   promptTokens: 0,
@@ -12,9 +11,7 @@ export const ZERO_PROBE: ProbeUsage = {
 };
 
 export function scoreToVerdict(score: number): EvalResult['verdict'] {
-  if (score >= PASS_THRESHOLD) return 'pass';
-  if (score >= PARTIAL_THRESHOLD) return 'partial';
-  return 'fail';
+  return score >= PASS_THRESHOLD ? 'pass' : 'fail';
 }
 
 export function computeProbeDelta(

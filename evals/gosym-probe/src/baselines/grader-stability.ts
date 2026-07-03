@@ -32,15 +32,15 @@ export interface GraderStability {
 }
 
 /**
- * 'observed' (score-mode) evaluators have no pass/fail verdict, so a
- * flip-rate over them is meaningless — exclude them. Note 'unknown' is
+ * 'directional' (score-mode) evaluators have no pass/fail verdict, so a
+ * flip-rate over them is meaningless — exclude them. Note 'incomplete' is
  * deliberately NOT excluded: a grader that emits pass on some trials and
- * unknown on others is genuinely unstable, so 'unknown' counts toward the
- * per-evaluator flip-rate (unlike the disagreement rate, which compares
- * only pass/fail/partial via comparable()).
+ * incomplete on others is genuinely unstable, so 'incomplete' counts toward
+ * the per-evaluator flip-rate (unlike the disagreement rate, which compares
+ * only pass/fail via comparable()).
  */
 function isVerdictMode(verdict: EvalResult['verdict']): boolean {
-  return verdict !== 'observed';
+  return verdict !== 'directional';
 }
 
 /**

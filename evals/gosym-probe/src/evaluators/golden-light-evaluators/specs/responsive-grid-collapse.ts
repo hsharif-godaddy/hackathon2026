@@ -1,4 +1,4 @@
-import type { StructuralEvalSpec, StructuralScoreResult } from '../dom-eval-types.js';
+import type { ChecklistItemOutcome, PassRateSpec, StructuralScoreResult } from '../dom-eval-types.js';
 import { safeRatio } from '../dom-eval-types.js';
 
 /**
@@ -261,13 +261,14 @@ function tallyStylesheetGrids(html: string): GridTally {
   return tally;
 }
 
-export const responsiveGridCollapseSpec: StructuralEvalSpec = {
+export const responsiveGridCollapseSpec: PassRateSpec = {
   name: 'responsive-grid-collapse',
   dimension: 'responsive-grid-collapse',
   description:
     'AIROBUILD-2756: share of multi-column grids (Tailwind, inline style, or ' +
     'stylesheet) that collapse on mobile instead of keeping >= 3 fixed columns.',
   evalVersion: '1.0',
+  comparisonMode: 'passRate',
   needsFullDocument: true,
 
   score(html: string): StructuralScoreResult {
@@ -303,5 +304,24 @@ export const responsiveGridCollapseSpec: StructuralEvalSpec = {
         offenders,
       },
     };
+  },
+
+  toChecklistItems(html: string): ChecklistItemOutcome[] {
+    const tailwind: GridTally = tallyTailwindGrids(html);
+    const inline: GridTally = tallyInlineStyleGrids(html);
+    const stylesheet: GridTally = tallyStylesheetGrids(html);
+    const total: number = tailwind.total + inline.total + stylesheet.total;
+    if (total === 0) {
+      return [{ id: 'grid-collapse', type: 'invariance', status: 'incomplete', reason: 'No multi-column grids found to assess' }];
+    }
+    const offenders: string[] = [...tailwind.offenders, ...inline.offenders, ...stylesheet.offenders];
+    return [{
+      id: 'grid-collapse',
+      type: 'invariance',
+      status: offenders.length === 0 ? 'pass' : 'fail',
+      reason: offenders.length === 0
+        ? `All ${total} multi-column grid(s) collapse on mobile`
+        : `${offenders.length} of ${total} multi-column grid(s) stay fixed on mobile`,
+    }];
   },
 };

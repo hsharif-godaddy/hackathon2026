@@ -255,6 +255,7 @@ function extractJsonObject(text: string): string | null {
 
 export class TodoLifecycleEvaluator implements Evaluator {
   readonly name = 'todo-lifecycle';
+  readonly comparisonMode = 'passRate' as const;
   readonly deterministic = false;
 
   constructor(private readonly gocodeClient: IGocodeClient) {}
@@ -268,7 +269,7 @@ export class TodoLifecycleEvaluator implements Evaluator {
       return {
         evaluator: this.name,
         score: 0,
-        verdict: 'unknown',
+        verdict: 'incomplete',
         reason: 'No todoList create_list call found in transcript',
       };
     }
@@ -289,7 +290,7 @@ export class TodoLifecycleEvaluator implements Evaluator {
       return {
         evaluator: this.name,
         score: 0,
-        verdict: 'unknown',
+        verdict: 'incomplete',
         reason: 'No JSON object found in LLM judge response',
         details: { rawResponse: response.slice(0, 800) },
         evaluatorFailed: true,
@@ -303,7 +304,7 @@ export class TodoLifecycleEvaluator implements Evaluator {
       return {
         evaluator: this.name,
         score: 0,
-        verdict: 'unknown',
+        verdict: 'incomplete',
         reason: 'LLM judge response contained malformed JSON',
         details: { rawResponse: response.slice(0, 800) },
         evaluatorFailed: true,
@@ -315,7 +316,7 @@ export class TodoLifecycleEvaluator implements Evaluator {
       return {
         evaluator: this.name,
         score: 0,
-        verdict: 'unknown',
+        verdict: 'incomplete',
         reason: 'LLM judge JSON missing "questions" array',
         details: { rawResponse: response.slice(0, 800) },
         evaluatorFailed: true,
@@ -358,7 +359,7 @@ export class TodoLifecycleEvaluator implements Evaluator {
       return {
         evaluator: this.name,
         score: 0,
-        verdict: 'unknown',
+        verdict: 'incomplete',
         reason: 'Failed to parse LLM judge response — no valid questions in JSON',
         details: { rawResponse: response.slice(0, 800) },
         evaluatorFailed: true,

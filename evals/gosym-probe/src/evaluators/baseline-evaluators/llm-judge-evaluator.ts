@@ -5,20 +5,7 @@ import type { IGocodeClient } from '../../clients/gocode-client.js';
 import type { DOMSnapshot, Transcript } from '../../runner/transcript.js';
 import type { Scenario } from '../../scenarios/types.js';
 import { clamp01 } from './shared.js';
-
-function extractJsonObject(text: string): string | null {
-  const start = text.indexOf('{');
-  const end = text.lastIndexOf('}');
-  if (start === -1 || end === -1 || end <= start) return null;
-  return text.slice(start, end + 1);
-}
-
-export const JudgeVerdictSchema = z.enum([
-  'pass',
-  'partial',
-  'fail',
-  'unknown',
-]);
+import { JudgeVerdictSchema, extractJsonObject } from '../judge-schema.js';
 
 export const JudgeNumericalSchema = z.object({
   score: z.number().min(0).max(1),
@@ -45,6 +32,7 @@ export type JudgeCategorical = z.infer<typeof JudgeCategoricalSchema>;
 export interface LLMJudgeEvaluatorConfig<T> {
   name: string;
   evalVersion?: string;
+  comparisonMode: 'passRate' | 'score';
   schema: z.ZodType<T>;
   prompt: (transcript: Transcript, scenario: Scenario, snapshot?: DOMSnapshot) => string | Promise<string>;
   toEvalResult: (
@@ -58,6 +46,7 @@ export interface LLMJudgeEvaluatorConfig<T> {
 export class LLMJudgeEvaluator<T> implements Evaluator {
   readonly name: string;
   readonly evalVersion?: string;
+  readonly comparisonMode: 'passRate' | 'score';
 
   constructor(
     private readonly gocode: IGocodeClient,
@@ -65,6 +54,7 @@ export class LLMJudgeEvaluator<T> implements Evaluator {
   ) {
     this.name = config.name;
     this.evalVersion = config.evalVersion;
+    this.comparisonMode = config.comparisonMode;
   }
 
   async evaluate(
@@ -80,7 +70,7 @@ export class LLMJudgeEvaluator<T> implements Evaluator {
       return {
         evaluator: this.name,
         score: 0,
-        verdict: 'unknown',
+        verdict: 'incomplete',
         reason: `LLM judge request failed: ${err instanceof Error ? err.message : String(err)}`,
         ...(this.evalVersion !== undefined && { evalVersion: this.evalVersion }),
       };
@@ -91,7 +81,7 @@ export class LLMJudgeEvaluator<T> implements Evaluator {
       return {
         evaluator: this.name,
         score: 0,
-        verdict: 'unknown',
+        verdict: 'incomplete',
         reason: 'Failed to parse LLM judge JSON response',
         details: { response: response.slice(0, 800) },
         ...(this.evalVersion !== undefined && { evalVersion: this.evalVersion }),
@@ -105,7 +95,7 @@ export class LLMJudgeEvaluator<T> implements Evaluator {
       return {
         evaluator: this.name,
         score: 0,
-        verdict: 'unknown',
+        verdict: 'incomplete',
         reason: 'Failed to parse LLM judge JSON response',
         details: { response: response.slice(0, 800) },
         ...(this.evalVersion !== undefined && { evalVersion: this.evalVersion }),
@@ -117,7 +107,7 @@ export class LLMJudgeEvaluator<T> implements Evaluator {
       return {
         evaluator: this.name,
         score: 0,
-        verdict: 'unknown',
+        verdict: 'incomplete',
         reason: 'LLM judge response did not match expected schema',
         details: {
           issues: parsed.error.issues,

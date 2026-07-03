@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
 import { headingHierarchySpec } from '../specs/heading-hierarchy.js';
-import { semanticDensitySpec } from '../specs/semantic-density.js';
 import { accessibilityCoverageSpec } from '../specs/accessibility-coverage.js';
 import { linkQualitySpec } from '../specs/link-quality.js';
 import { responsiveReadinessSpec } from '../specs/responsive-readiness.js';
@@ -68,56 +67,6 @@ describe('headingHierarchySpec', function headingHierarchy() {
   it('details includes sequence array', function sequenceDetails() {
     const result = headingHierarchySpec.score('<h1>A</h1><h2>B</h2>');
     expect(result.details).toMatchObject({ sequence: [1, 2] });
-  });
-});
-
-// ---------------------------------------------------------------------------
-// semantic-density
-// ---------------------------------------------------------------------------
-
-describe('semanticDensitySpec', function semanticDensity() {
-  it('canScore: false on empty body', function empty() {
-    const result = semanticDensitySpec.score('');
-    expect(result.canScore).toBe(false);
-  });
-
-  it('canScore: false when no block-level elements', function noElements() {
-    const result = semanticDensitySpec.score('<span>text only</span>');
-    expect(result.canScore).toBe(false);
-  });
-
-  it('score 0 when only non-empty divs', function allDivs() {
-    const result = semanticDensitySpec.score(
-      '<div><p>A</p></div><div><p>B</p></div>',
-    );
-    expect(result.canScore).toBe(true);
-    expect(result.score).toBe(0);
-  });
-
-  it('score 1.0 when only semantic elements', function allSemantic() {
-    const result = semanticDensitySpec.score(
-      '<main><section>A</section></main><nav>B</nav><footer>C</footer>',
-    );
-    expect(result.canScore).toBe(true);
-    expect(result.score).toBe(1.0);
-  });
-
-  it('mixed content produces score between 0 and 1', function mixed() {
-    const result = semanticDensitySpec.score(
-      '<main><p>Content</p></main><div><p>Wrapper</p></div>',
-    );
-    expect(result.canScore).toBe(true);
-    expect(result.score).toBeGreaterThan(0);
-    expect(result.score).toBeLessThan(1);
-  });
-
-  it('all semantic tags score: nav, main, section, article, header, footer, aside, figure', function allTags() {
-    const result = semanticDensitySpec.score(
-      '<nav></nav><main></main><section></section><article></article>' +
-      '<header></header><footer></footer><aside></aside><figure></figure>',
-    );
-    expect(result.canScore).toBe(true);
-    expect(result.score).toBe(1.0);
   });
 });
 
@@ -388,56 +337,31 @@ describe('responsiveReadinessSpec', function responsiveReadiness() {
     expect(result.canScore).toBe(true);
   });
 
-  it('score 0 when none of the signals are present', function noSignals() {
-    const result = responsiveReadinessSpec.score('<div>plain content</div>');
+  it('score 0 when no viewport meta', function noViewport() {
+    const result = responsiveReadinessSpec.score('<div class="md:flex grid">content</div>');
     expect(result.score).toBe(0);
+    expect(result.details).toMatchObject({ hasViewport: false });
   });
 
-  it('adds 0.3 for viewport meta tag', function viewportMeta() {
+  it('score 1.0 when viewport meta present', function hasViewport() {
     const result = responsiveReadinessSpec.score(
       '<meta name="viewport" content="width=device-width, initial-scale=1">',
     );
-    expect(result.score).toBeCloseTo(0.3, 5);
+    expect(result.score).toBe(1.0);
+    expect(result.details).toMatchObject({ hasViewport: true });
   });
 
-  it('adds 0.4 for responsive class patterns (md:, lg:, sm:)', function responsiveClasses() {
-    // Use md:block/lg:hidden to avoid triggering the flex/grid signal
+  it('responsive classes alone do not affect score (dropped signals)', function responsiveClassesDropped() {
     const result = responsiveReadinessSpec.score(
       '<div class="md:block lg:hidden sm:text-sm">content</div>',
     );
-    expect(result.score).toBeCloseTo(0.4, 5);
+    expect(result.score).toBe(0);
   });
 
-  it('adds 0.3 for flex or grid classes', function flexGrid() {
+  it('flex/grid classes alone do not affect score (dropped signals)', function flexGridDropped() {
     const result = responsiveReadinessSpec.score(
       '<div class="flex items-center">content</div>',
     );
-    expect(result.score).toBeCloseTo(0.3, 5);
-  });
-
-  it('score 1.0 when all three signals present', function allSignals() {
-    const result = responsiveReadinessSpec.score(
-      '<meta name="viewport" content="width=device-width">' +
-      '<div class="md:flex grid lg:hidden">content</div>',
-    );
-    expect(result.score).toBeCloseTo(1.0, 5);
-  });
-
-  it('score 0.7 for viewport + responsive classes', function viewportPlusResponsive() {
-    const result = responsiveReadinessSpec.score(
-      '<meta name="viewport" content="width=device-width">' +
-      '<div class="md:block lg:hidden">content</div>',
-    );
-    expect(result.score).toBeCloseTo(0.7, 5);
-  });
-
-  it('text content containing "flexible grid" does NOT trigger layout signal', function textContentFalsePositive() {
-    // The word "flexible" and "grid" appear only in text content, not in a class attribute.
-    // The spec must not award the flex/grid point for this.
-    const result = responsiveReadinessSpec.score(
-      '<p>We use a flexible grid layout for our design system.</p>',
-    );
-    expect(result.details).toMatchObject({ hasFlexGrid: false });
     expect(result.score).toBe(0);
   });
 });

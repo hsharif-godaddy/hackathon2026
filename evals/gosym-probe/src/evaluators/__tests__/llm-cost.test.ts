@@ -19,12 +19,12 @@ describe('LLMCostEvaluator', () => {
     expect(evaluator.name).toBe('llm-cost');
   });
 
-  it('has regressionMode "score"', () => {
+  it('has comparisonMode "score"', () => {
     const evaluator = new LLMCostEvaluator({
       collector: makeMockCollector(),
       gocodeClient: makeMockGocodeClient(),
     });
-    expect(evaluator.regressionMode).toBe('score');
+    expect(evaluator.comparisonMode).toBe('score');
   });
 
   it('has lowerIsBetter true', () => {
@@ -99,7 +99,7 @@ describe('LLMCostEvaluator', () => {
         makeScenario(),
       );
 
-      expect(result.verdict).toBe('unknown');
+      expect(result.verdict).toBe('incomplete');
     });
 
     it('clears afterSnapshot alongside baseline', async () => {
@@ -118,7 +118,7 @@ describe('LLMCostEvaluator', () => {
 
       const result = await evaluator.evaluate(makeTranscript(0), makeScenario());
 
-      expect(result.verdict).toBe('unknown');
+      expect(result.verdict).toBe('incomplete');
     });
   });
 
@@ -150,7 +150,7 @@ describe('LLMCostEvaluator', () => {
 
       const result = await evaluator.evaluate(makeTranscript(0), makeScenario());
 
-      expect(result.verdict).toBe('unknown');
+      expect(result.verdict).toBe('incomplete');
       expect(result.score).toBe(0);
     });
 
@@ -165,7 +165,7 @@ describe('LLMCostEvaluator', () => {
       await evaluator.evaluate(makeTranscript(0), makeScenario());
       const result = await evaluator.evaluate(makeTranscript(0), makeScenario());
 
-      expect(result.verdict).toBe('unknown');
+      expect(result.verdict).toBe('incomplete');
     });
 
     it('returns verdict unknown with score 0 when collector returns null', async () => {
@@ -178,7 +178,7 @@ describe('LLMCostEvaluator', () => {
       evaluator.hookClient(makeMockClient(), 0);
       const result = await evaluator.evaluate(makeTranscript(0), makeScenario());
 
-      expect(result.verdict).toBe('unknown');
+      expect(result.verdict).toBe('incomplete');
       expect(result.score).toBe(0);
       expect(result.reason).toContain('collector returned null');
     });
@@ -197,7 +197,7 @@ describe('LLMCostEvaluator', () => {
       evaluator.hookClient(makeMockClient(), 0);
       const result = await evaluator.evaluate(makeTranscript(0), makeScenario());
 
-      expect(result.verdict).toBe('observed');
+      expect(result.verdict).toBe('directional');
       expect(result.score).toBeCloseTo(0.25);
     });
 
@@ -213,7 +213,7 @@ describe('LLMCostEvaluator', () => {
       evaluator.hookClient(makeMockClient(), 0);
       const result = await evaluator.evaluate(makeTranscript(0), makeScenario());
 
-      expect(result.verdict).toBe('observed');
+      expect(result.verdict).toBe('directional');
       expect(result.score).toBe(0);
     });
 
@@ -405,7 +405,7 @@ describe('LLMCostEvaluator', () => {
 
       const result = await evaluator.evaluate(makeTranscript(0), makeScenario());
 
-      expect(result.verdict).toBe('observed');
+      expect(result.verdict).toBe('directional');
       expect(result.score).toBeCloseTo(0.05); // aab cost flows through
     });
 
@@ -542,8 +542,8 @@ describe('LLMCostEvaluator', () => {
 
       expect(result0.score).toBeCloseTo(0.10); // aab totalCost for trial 0
       expect(result1.score).toBeCloseTo(0.20); // aab totalCost for trial 1
-      expect(result0.verdict).toBe('observed');
-      expect(result1.verdict).toBe('observed');
+      expect(result0.verdict).toBe('directional');
+      expect(result1.verdict).toBe('directional');
     });
 
     it('details total costUsd is correct per trial', async () => {

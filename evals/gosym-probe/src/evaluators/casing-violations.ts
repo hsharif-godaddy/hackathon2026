@@ -20,7 +20,7 @@ const EVAL_VERSION = '1.0.0';
 export class CasingViolationsEvaluator implements Evaluator {
   readonly name = 'casing-violations';
   readonly evalVersion = EVAL_VERSION;
-  readonly regressionMode = 'score' as const;
+  readonly comparisonMode = 'score' as const;
   readonly lowerIsBetter = true;
 
   async evaluate(_transcript: Transcript, _scenario: Scenario, snapshot?: DOMSnapshot): Promise<EvalResult> {
@@ -29,7 +29,7 @@ export class CasingViolationsEvaluator implements Evaluator {
         evaluator: this.name,
         evalVersion: EVAL_VERSION,
         score: 0,
-        verdict: 'unknown',
+        verdict: 'incomplete',
         reason: 'No DOM snapshot captured; casing audit could not run.',
       };
     }
@@ -40,7 +40,7 @@ export class CasingViolationsEvaluator implements Evaluator {
         evaluator: this.name,
         evalVersion: EVAL_VERSION,
         score: 0,
-        verdict: 'unknown',
+        verdict: 'incomplete',
         reason: 'DOM snapshot captured but the casing audit did not run (no casingAudit field).',
       };
     }
@@ -59,7 +59,7 @@ export class CasingViolationsEvaluator implements Evaluator {
       evaluator: this.name,
       evalVersion: EVAL_VERSION,
       score,
-      verdict: 'observed',
+      verdict: 'directional',
       reason,
       details: {
         textNodesScanned,

@@ -18,10 +18,10 @@ function makeAssistantTurn(toolCalls: ToolCall[]) {
 }
 
 describe('ToolParallelismEvaluator — properties', () => {
-  it('has correct name, regressionMode=score, lowerIsBetter=false', () => {
+  it('has correct name, comparisonMode=score, lowerIsBetter=false', () => {
     const evaluator = new ToolParallelismEvaluator();
     expect(evaluator.name).toBe('tool-parallelism');
-    expect(evaluator.regressionMode).toBe('score');
+    expect(evaluator.comparisonMode).toBe('score');
     expect(evaluator.lowerIsBetter).toBe(false);
   });
 });
@@ -31,7 +31,7 @@ describe('ToolParallelismEvaluator — error paths (unknown)', () => {
 
   it('returns unknown for empty transcript', async () => {
     const result = await evaluator.evaluate(makeTranscript([]), makeScenario());
-    expect(result.verdict).toBe('unknown');
+    expect(result.verdict).toBe('incomplete');
     expect(result.score).toBe(0);
   });
 
@@ -40,7 +40,7 @@ describe('ToolParallelismEvaluator — error paths (unknown)', () => {
       makeTranscript([makeUserTurn(), makeUserTurn()]),
       makeScenario(),
     );
-    expect(result.verdict).toBe('unknown');
+    expect(result.verdict).toBe('incomplete');
   });
 
   it('returns unknown when all assistant turns have 0 tool calls', async () => {
@@ -48,7 +48,7 @@ describe('ToolParallelismEvaluator — error paths (unknown)', () => {
       makeTranscript([makeAssistantTurn([])]),
       makeScenario(),
     );
-    expect(result.verdict).toBe('unknown');
+    expect(result.verdict).toBe('incomplete');
   });
 
   it('returns unknown when all assistant turns have exactly 1 tool call (no pairs)', async () => {
@@ -58,7 +58,7 @@ describe('ToolParallelismEvaluator — error paths (unknown)', () => {
       ]),
       makeScenario(),
     );
-    expect(result.verdict).toBe('unknown');
+    expect(result.verdict).toBe('incomplete');
   });
 
   it('returns unknown when all tool calls have invalid timing (endTime <= startTime)', async () => {
@@ -71,7 +71,7 @@ describe('ToolParallelismEvaluator — error paths (unknown)', () => {
       ]),
       makeScenario(),
     );
-    expect(result.verdict).toBe('unknown');
+    expect(result.verdict).toBe('incomplete');
   });
 
   it('returns unknown when all tool calls have startTime=0 and endTime=0', async () => {
@@ -84,7 +84,7 @@ describe('ToolParallelismEvaluator — error paths (unknown)', () => {
       ]),
       makeScenario(),
     );
-    expect(result.verdict).toBe('unknown');
+    expect(result.verdict).toBe('incomplete');
   });
 });
 
@@ -102,7 +102,7 @@ describe('ToolParallelismEvaluator — validation boundary (invalid timing exclu
       ]),
       makeScenario(),
     );
-    expect(result.verdict).toBe('unknown');
+    expect(result.verdict).toBe('incomplete');
   });
 
   it('excludes tool calls with NaN endTime', async () => {
@@ -115,7 +115,7 @@ describe('ToolParallelismEvaluator — validation boundary (invalid timing exclu
       ]),
       makeScenario(),
     );
-    expect(result.verdict).toBe('unknown');
+    expect(result.verdict).toBe('incomplete');
   });
 
   it('excludes tool calls with Infinity startTime', async () => {
@@ -128,7 +128,7 @@ describe('ToolParallelismEvaluator — validation boundary (invalid timing exclu
       ]),
       makeScenario(),
     );
-    expect(result.verdict).toBe('unknown');
+    expect(result.verdict).toBe('incomplete');
   });
 
   it('excludes tool calls with Infinity endTime', async () => {
@@ -141,7 +141,7 @@ describe('ToolParallelismEvaluator — validation boundary (invalid timing exclu
       ]),
       makeScenario(),
     );
-    expect(result.verdict).toBe('unknown');
+    expect(result.verdict).toBe('incomplete');
   });
 
   it('excludes tool calls where endTime === startTime', async () => {
@@ -155,7 +155,7 @@ describe('ToolParallelismEvaluator — validation boundary (invalid timing exclu
       ]),
       makeScenario(),
     );
-    expect(result.verdict).toBe('unknown');
+    expect(result.verdict).toBe('incomplete');
   });
 
   it('keeps valid calls alongside invalid ones; uses only valid for scoring', async () => {
@@ -172,7 +172,7 @@ describe('ToolParallelismEvaluator — validation boundary (invalid timing exclu
       makeScenario(),
     );
     // a and b overlap (b starts at 150 < a ends at 300): 1 overlapping pair out of 1 possible
-    expect(result.verdict).toBe('observed');
+    expect(result.verdict).toBe('directional');
     expect(result.score).toBeCloseTo(1.0);
   });
 });
@@ -191,7 +191,7 @@ describe('ToolParallelismEvaluator — edge cases (scoring)', () => {
       ]),
       makeScenario(),
     );
-    expect(result.verdict).toBe('observed');
+    expect(result.verdict).toBe('directional');
     expect(result.score).toBeCloseTo(1.0);
   });
 
@@ -206,7 +206,7 @@ describe('ToolParallelismEvaluator — edge cases (scoring)', () => {
       ]),
       makeScenario(),
     );
-    expect(result.verdict).toBe('observed');
+    expect(result.verdict).toBe('directional');
     expect(result.score).toBeCloseTo(0.0);
   });
 
@@ -221,7 +221,7 @@ describe('ToolParallelismEvaluator — edge cases (scoring)', () => {
       ]),
       makeScenario(),
     );
-    expect(result.verdict).toBe('observed');
+    expect(result.verdict).toBe('directional');
     expect(result.score).toBeCloseTo(1.0);
   });
 
@@ -238,7 +238,7 @@ describe('ToolParallelismEvaluator — edge cases (scoring)', () => {
       ]),
       makeScenario(),
     );
-    expect(result.verdict).toBe('observed');
+    expect(result.verdict).toBe('directional');
     expect(result.score).toBeCloseTo(1.0);
   });
 
@@ -259,7 +259,7 @@ describe('ToolParallelismEvaluator — edge cases (scoring)', () => {
       ]),
       makeScenario(),
     );
-    expect(result.verdict).toBe('observed');
+    expect(result.verdict).toBe('directional');
     expect(result.score).toBeCloseTo(1 / 3);
   });
 
@@ -279,7 +279,7 @@ describe('ToolParallelismEvaluator — edge cases (scoring)', () => {
       ]),
       makeScenario(),
     );
-    expect(result.verdict).toBe('observed');
+    expect(result.verdict).toBe('directional');
     expect(result.score).toBeCloseTo(1.0);
   });
 });
@@ -304,7 +304,7 @@ describe('ToolParallelismEvaluator — multiple turns weighted average', () => {
       ]),
       makeScenario(),
     );
-    expect(result.verdict).toBe('observed');
+    expect(result.verdict).toBe('directional');
     expect(result.score).toBeCloseTo(0.5);
   });
 
@@ -329,7 +329,7 @@ describe('ToolParallelismEvaluator — multiple turns weighted average', () => {
       ]),
       makeScenario(),
     );
-    expect(result.verdict).toBe('observed');
+    expect(result.verdict).toBe('directional');
     expect(result.score).toBeCloseTo(4 / 6);
   });
 
@@ -349,7 +349,7 @@ describe('ToolParallelismEvaluator — multiple turns weighted average', () => {
       ]),
       makeScenario(),
     );
-    expect(result.verdict).toBe('observed');
+    expect(result.verdict).toBe('directional');
     expect(result.score).toBeCloseTo(1.0);
   });
 
@@ -365,7 +365,7 @@ describe('ToolParallelismEvaluator — multiple turns weighted average', () => {
       ]),
       makeScenario(),
     );
-    expect(result.verdict).toBe('observed');
+    expect(result.verdict).toBe('directional');
     expect(result.score).toBeCloseTo(1.0);
   });
 });
@@ -384,10 +384,10 @@ describe('ToolParallelismEvaluator — integration seam (EvalResult shape)', () 
     );
     expect(result.evaluator).toBe('tool-parallelism');
     expect(typeof result.score).toBe('number');
-    expect(result.verdict).toBe('observed');
+    expect(result.verdict).toBe('directional');
     expect(typeof result.reason).toBe('string');
     // score-mode with lowerIsBetter=false: higher ratio is better
-    expect(evaluator.regressionMode).toBe('score');
+    expect(evaluator.comparisonMode).toBe('score');
     expect(evaluator.lowerIsBetter).toBe(false);
   });
 });

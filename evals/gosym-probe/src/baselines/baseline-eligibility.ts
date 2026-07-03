@@ -3,7 +3,7 @@ import type { ScenarioResult, TrialResult } from '../runner/types.js';
 export interface BaselineEligibility {
   eligible: boolean;
   /** Machine-readable reason a run was rejected; undefined when eligible. */
-  reason?: 'no-trials' | 'no-agent-output' | 'all-unknown-verdicts';
+  reason?: 'no-trials' | 'no-agent-output' | 'all-incomplete-verdicts';
   /** Human-readable explanation for logs. */
   detail?: string;
 }
@@ -15,10 +15,10 @@ function hasAgentOutput(trial: TrialResult): boolean {
   return trial.transcript.turns.some((t) => t.role === 'assistant');
 }
 
-/** True when a trial produced at least one pass/fail/partial verdict —
+/** True when a trial produced at least one pass/fail verdict —
  * i.e. an evaluator could actually judge it. */
 function hasComparableVerdict(trial: TrialResult): boolean {
-  return trial.evalResults.some((e) => e.verdict !== 'unknown');
+  return trial.evalResults.some((e) => e.verdict !== 'incomplete');
 }
 
 /**
@@ -33,7 +33,7 @@ function hasComparableVerdict(trial: TrialResult): boolean {
  *   turn-0 empty-build case, which the older all-unknown check missed
  *   because vacuous evaluators (bug-hit-rate, tool-call-verification)
  *   still emit `pass` on an empty transcript.
- * - **all-unknown verdicts**: agent output may exist but no evaluator
+ * - **all-incomplete verdicts**: agent output may exist but no evaluator
  *   could judge any trial (infrastructure failure during grading).
  *
  * A run is eligible only when at least one trial both produced agent
@@ -63,8 +63,8 @@ export function assessBaselineEligibility(
   if (!result.trials.some(hasComparableVerdict)) {
     return {
       eligible: false,
-      reason: 'all-unknown-verdicts',
-      detail: 'all trials produced only unknown verdicts',
+      reason: 'all-incomplete-verdicts',
+      detail: 'all trials produced only incomplete verdicts',
     };
   }
 

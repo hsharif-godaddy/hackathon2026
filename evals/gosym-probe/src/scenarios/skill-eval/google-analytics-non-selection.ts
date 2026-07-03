@@ -1,9 +1,13 @@
 import { createSkillEval } from './create-skill-eval.js';
+import { getSkillEvalBaseInjection }
+  from './skill-eval-base.js';
 import type { IGocodeClient }
   from '../../clients/gocode-client.js';
 import type { AABCtrlPlaneClient }
   from '../../clients/aab-ctrl-plane-client.js';
 import type { Scenario } from '../types.js';
+import type { Config }
+  from '../../../config/environments/types.js';
 
 /**
  * Reproduces **skill non-selection on Google Analytics**. The GA refactor
@@ -24,13 +28,18 @@ import type { Scenario } from '../types.js';
  * skill never loads scores `fail`; the required `skillInstructions` give the
  * narrow LLM judge an instrumentation-independent second signal.
  *
- * NOTE: needs `SKILL_DIAGNOSTICS=true`, else the skill-load check degrades to
- * `unknown` (dropped from the pass rate).
+ * NOTE: this scenario runs through `createSkillEval` with
+ * `requireSkillDiagnostics: true`, so `SKILL_DIAGNOSTICS=true` is required on
+ * the agent. Without it the skill-load check hard-fails (a broken gate),
+ * rather than degrading to `unknown`; the required `skillInstructions` still
+ * give the narrow LLM judge an instrumentation-independent signal.
  */
 export function googleAnalyticsNonSelectionScenario(
   gocode: IGocodeClient,
   ctrlPlane: AABCtrlPlaneClient,
+  config?: Config,
 ): Scenario {
+  const base = getSkillEvalBaseInjection(config);
   return createSkillEval(
     {
       name: 'skill-non-selection-google-analytics',
@@ -63,6 +72,8 @@ export function googleAnalyticsNonSelectionScenario(
         },
         {
           id: 'no-inline-gtag',
+          // nosemgrep: javascript.lang.security.audit.unknown-value-with-script-tag.unknown-value-with-script-tag
+          // False positive: string literal in eval instruction, not DOM injection
           instruction:
             'The agent must not inject an inline <script> gtag tracking '
             + 'snippet or hardcode a Measurement ID outside the skill\'s '
@@ -71,8 +82,10 @@ export function googleAnalyticsNonSelectionScenario(
           priority: 'required',
         },
       ],
+      statefulInjection: base?.injection,
     },
     gocode,
     ctrlPlane,
+    base?.seedSummary,
   );
 }

@@ -14,6 +14,7 @@ import type { SiteCapture } from '../clients/dom-capture.js';
 import type { ScenarioResult, TrialResult } from '../runner/types.js';
 import type { EvalStore } from '../store/eval-store.js';
 import type { BaselineSaveOptions } from './baseline-store.js';
+import type { StorageBackend } from '../storage/file-store.js';
 import { pickGitFields } from './types.js';
 import { assessBaselineEligibility } from './baseline-eligibility.js';
 import type { TrialLifecycle } from '../clients/trial-lifecycle.js';
@@ -22,11 +23,13 @@ import type { ProgressReporter } from '../util/progress-reporter.js';
 import { downloadLogoSnapshots } from '../util/download-logo-snapshots.js';
 
 interface BaselineStore {
+  readonly backend: StorageBackend;
   save(
     runId: string,
     result: ScenarioResult,
     options?: BaselineSaveOptions,
-  ): Promise<void>;
+  ): Promise<string>;
+  locationFor(path: string): string;
 }
 
 interface GraduationRunnerOptionsBase {
@@ -201,10 +204,17 @@ export class GraduationRunner {
     const eligibility = assessBaselineEligibility(result);
 
     if (eligibility.eligible) {
-      await baselineStore.save(runId, result, {
+      const writtenPath: string = await baselineStore.save(runId, result, {
         defaultThreshold: config.regression.fallbackThresholds.defaultThreshold,
         ...pickGitFields(runMetadata),
       });
+      // Surface where the baseline landed — always a local path, since --s3 is
+      // rejected with --graduate; promote it with `save-baseline --s3`.
+      log(
+        `[GraduationRunner] Saved baseline (${baselineStore.backend}): `
+        + baselineStore.locationFor(writtenPath),
+        { scenarioName: scenario.name, runId },
+      );
     } else {
       log(
         `[GraduationRunner] Skipping baseline save: ${eligibility.detail}.`,

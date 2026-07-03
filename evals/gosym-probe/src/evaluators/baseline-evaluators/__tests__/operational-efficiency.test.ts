@@ -28,7 +28,7 @@ describe('TotalTimeTakenEvaluator', function operationalTests() {
 
     const evaluator = new TotalTimeTakenEvaluator();
     const res = await evaluator.evaluate(t, scenario);
-    expect(res.verdict).toBe('observed');
+    expect(res.verdict).toBe('directional');
     expect(res.score).toBe(1);
     expect(res.details).toMatchObject({ unit: 'seconds' });
     expect(res.evalVersion).toBe('2.0');
@@ -49,7 +49,7 @@ describe('TotalTimeTakenEvaluator', function operationalTests() {
 
     const evaluator = new TotalTimeTakenEvaluator();
     const res = await evaluator.evaluate(transcript, scenario);
-    expect(res.verdict).toBe('observed');
+    expect(res.verdict).toBe('directional');
     expect(res.score).toBe(0);
   });
 
@@ -68,7 +68,7 @@ describe('TotalTimeTakenEvaluator', function operationalTests() {
 
     const evaluator = new TotalTimeTakenEvaluator();
     const res = await evaluator.evaluate(transcript, scenario);
-    expect(res.verdict).toBe('observed');
+    expect(res.verdict).toBe('directional');
     expect(res.score).toBe(720);
   });
 
@@ -84,14 +84,14 @@ describe('TotalTimeTakenEvaluator', function operationalTests() {
 
     const evaluator = new TotalTimeTakenEvaluator();
     const res = await evaluator.evaluate(transcript, scenario);
-    expect(res.verdict).toBe('unknown');
+    expect(res.verdict).toBe('incomplete');
   });
 
   it('has correct properties', function props() {
     const evaluator = new TotalTimeTakenEvaluator();
     expect(evaluator.name).toBe('total-time-taken');
     expect(evaluator.evalVersion).toBe('2.0');
-    expect(evaluator.regressionMode).toBe('score');
+    expect(evaluator.comparisonMode).toBe('score');
     expect(evaluator.lowerIsBetter).toBe(true);
   });
 });

@@ -4,7 +4,7 @@ import type { Scenario } from '../scenarios/types.js';
 
 export class TurnDurationEvaluator implements Evaluator {
   readonly name = 'turn-duration';
-  readonly regressionMode = 'score' as const;
+  readonly comparisonMode = 'score' as const;
   readonly lowerIsBetter = true;
 
   async evaluate(
@@ -20,7 +20,7 @@ export class TurnDurationEvaluator implements Evaluator {
       return {
         evaluator: this.name,
         score: 0,
-        verdict: 'unknown',
+        verdict: 'incomplete',
         reason: 'No assistant turns with durationMs data',
         details: {},
       };
@@ -32,7 +32,7 @@ export class TurnDurationEvaluator implements Evaluator {
     return {
       evaluator: this.name,
       score: totalDurationMs,
-      verdict: 'observed',
+      verdict: 'directional',
       reason: `Total AAB duration: ${totalDurationMs}ms across ${definedDurations.length} turns (avg ${averageDurationMs.toFixed(0)}ms)`,
       details: {
         totalDurationMs,

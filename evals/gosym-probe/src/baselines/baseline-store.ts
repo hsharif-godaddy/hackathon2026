@@ -1,9 +1,3 @@
-import {
-  readFile,
-  readdir,
-  writeFile,
-  mkdir,
-} from 'node:fs/promises';
 import { join } from 'node:path';
 import type { ScenarioResult } from '../runner/types.js';
 import type { StabilityLevel } from '../scenarios/types.js';
@@ -11,9 +5,11 @@ import type { StoredAggregated } from '../store/types.js';
 import type { BaselineScores } from './types.js';
 import { extractAllTrialScores } from './trial-scores.js';
 import { toCompactTimestamp } from '../util/timestamp.js';
+import type { FileStore, StorageBackend } from '../storage/file-store.js';
+import { LocalFileStore } from '../storage/local-file-store.js';
 
 export interface BaselineSaveOptions {
-  /** Names of evaluators with regressionMode === 'score'. */
+  /** Names of evaluators with comparisonMode === 'score'. */
   scoreEvaluatorNames?: string[];
   /** Config default; used when no existing threshold is stored. */
   defaultThreshold?: number;
@@ -39,21 +35,42 @@ export interface BaselineSaveOptions {
 }
 
 export class BaselineStore {
-  constructor(private readonly dir: string = 'baselines') {}
+  private readonly store: FileStore;
+
+  constructor(
+    private readonly dir: string = 'baselines',
+    store: FileStore = new LocalFileStore(),
+  ) {
+    this.store = store;
+  }
+
+  /** Backend label of the underlying store, for operator-facing diagnostics. */
+  get backend(): StorageBackend {
+    return this.store.backend;
+  }
+
+  /**
+   * Copy-pasteable location a saved-baseline path resolves to in the active
+   * backend (filesystem path locally, `s3://…` on S3). Delegates to the store
+   * so the printed destination can't drift from the real key.
+   */
+  locationFor(path: string): string {
+    return this.store.locationFor(path);
+  }
 
   async save(
     runId: string,
     result: ScenarioResult,
     options?: BaselineSaveOptions,
-  ): Promise<void> {
+  ): Promise<string> {
     const scenarioDir = join(this.dir, result.scenarioName);
-    await mkdir(scenarioDir, { recursive: true });
+    await this.store.mkdir(scenarioDir);
 
     const scoreNames =
       options?.scoreEvaluatorNames
       ?? Object.entries(result.aggregated)
         .filter(
-          ([, agg]) => agg.regressionMode === 'score',
+          ([, agg]) => agg.comparisonMode === 'score',
         )
         .map(([name]) => name);
     const scoreNamesSet = new Set(scoreNames);
@@ -112,10 +129,12 @@ export class BaselineStore {
     };
 
     const fileName = this.versionedFileName(runId);
-    await writeFile(
-      join(scenarioDir, fileName),
+    const writtenPath = join(scenarioDir, fileName);
+    await this.store.writeFile(
+      writtenPath,
       JSON.stringify(baseline, null, 2),
     );
+    return writtenPath;
   }
 
   /**
@@ -126,7 +145,7 @@ export class BaselineStore {
    * Callers MUST provide `options.scoreEvaluatorNames` when score-mode
    * evaluators exist. Unlike {@link save}, this method cannot infer
    * score-mode evaluators because {@link StoredAggregated} does not
-   * carry `regressionMode`. Throws if evaluators with `aggregateScore`
+   * carry `comparisonMode`. Throws if evaluators with `aggregateScore`
    * are detected but `scoreEvaluatorNames` is empty or omitted.
    */
   async saveFromStored(
@@ -134,9 +153,9 @@ export class BaselineStore {
     stored: StoredAggregated,
     stabilityLevel?: StabilityLevel,
     options?: BaselineSaveOptions,
-  ): Promise<void> {
+  ): Promise<string> {
     const scenarioDir = join(this.dir, stored.scenarioName);
-    await mkdir(scenarioDir, { recursive: true });
+    await this.store.mkdir(scenarioDir);
 
     const firstEval = Object.values(stored.evaluators)[0];
     const stabilityTrials = firstEval?.totalTrials;
@@ -213,10 +232,12 @@ export class BaselineStore {
     };
 
     const fileName = this.versionedFileName(runId);
-    await writeFile(
-      join(scenarioDir, fileName),
+    const writtenPath = join(scenarioDir, fileName);
+    await this.store.writeFile(
+      writtenPath,
       JSON.stringify(baseline, null, 2),
     );
+    return writtenPath;
   }
 
   /**
@@ -249,30 +270,17 @@ export class BaselineStore {
     selectFile: (jsonFiles: string[]) => string | undefined,
   ): Promise<{ scores: BaselineScores; filePath: string } | null> {
     const scenarioDir = join(this.dir, scenarioName);
-    let files: string[];
-    try {
-      files = await readdir(scenarioDir) as string[];
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
-        return null;
-      }
-      throw err;
-    }
+    const files = await this.store.readdir(scenarioDir);
+    if (files === null) return null;
 
     const jsonFiles = files.filter((f) => f.endsWith('.json'));
     const selected = selectFile(jsonFiles);
     if (!selected) return null;
 
     const filePath = join(scenarioDir, selected);
-    let raw: string;
-    try {
-      raw = await readFile(filePath, 'utf-8');
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
-        return null;
-      }
-      throw err;
-    }
+    const raw = await this.store.readFile(filePath);
+    if (raw === null) return null;
+
     try {
       return { scores: JSON.parse(raw) as BaselineScores, filePath };
     } catch (err) {

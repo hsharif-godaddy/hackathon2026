@@ -1,0 +1,193 @@
+{
+  "scenarioName": "skill-non-selection-google-reviews",
+  "runId": "1dee004d-5037-4a89-8c6d-2395ac4eda70",
+  "createdAt": "2026-06-29T17:56:39.989Z",
+  "stabilityTrials": 1,
+  "gitSha": "8673c47eecdcb54cc39270f26fa185a8bc963281",
+  "gitBranch": "jchilcher/ae-1d-skill-eval-verify",
+  "scores": {
+    "skill-selection": {
+      "passAt1": 1,
+      "passAtK": [
+        {
+          "k": 1,
+          "value": 1
+        }
+      ],
+      "passHatK": [
+        {
+          "k": 1,
+          "value": 1
+        }
+      ],
+      "passingTrials": 1,
+      "totalTrials": 1,
+      "trialScores": [
+        1
+      ]
+    },
+    "skill-outcome": {
+      "passAt1": 0,
+      "passAtK": [
+        {
+          "k": 1,
+          "value": 0
+        }
+      ],
+      "passHatK": [
+        {
+          "k": 1,
+          "value": 0
+        }
+      ],
+      "passingTrials": 0,
+      "totalTrials": 1,
+      "trialScores": [
+        0.5
+      ]
+    },
+    "bug-hit-rate": {
+      "passAt1": 1,
+      "passAtK": [
+        {
+          "k": 1,
+          "value": 1
+        }
+      ],
+      "passHatK": [
+        {
+          "k": 1,
+          "value": 1
+        }
+      ],
+      "passingTrials": 1,
+      "totalTrials": 1,
+      "trialScores": [
+        1
+      ]
+    },
+    "tool-failure-rate": {
+      "passingTrials": 0,
+      "totalTrials": 1,
+      "aggregateScore": 0.14285714285714285,
+      "lowerIsBetter": true,
+      "trialScores": [
+        0.14285714285714285
+      ]
+    },
+    "prompt-efficiency": {
+      "passingTrials": 0,
+      "totalTrials": 1,
+      "aggregateScore": 8,
+      "evalVersion": "2.0",
+      "lowerIsBetter": true,
+      "trialScores": [
+        8
+      ]
+    },
+    "tool-call-verification": {
+      "passAt1": 1,
+      "passAtK": [
+        {
+          "k": 1,
+          "value": 1
+        }
+      ],
+      "passHatK": [
+        {
+          "k": 1,
+          "value": 1
+        }
+      ],
+      "passingTrials": 1,
+      "totalTrials": 1,
+      "trialScores": [
+        1
+      ]
+    },
+    "jtbd-completion": {
+      "passAt1": 0,
+      "passAtK": [
+        {
+          "k": 1,
+          "value": 0
+        }
+      ],
+      "passHatK": [
+        {
+          "k": 1,
+          "value": 0
+        }
+      ],
+      "passingTrials": 0,
+      "totalTrials": 1,
+      "trialScores": [
+        0.5
+      ]
+    },
+    "tool-parallelism": {
+      "passingTrials": 0,
+      "totalTrials": 1,
+      "aggregateScore": 0.013157894736842105,
+      "lowerIsBetter": false,
+      "trialScores": [
+        0.013157894736842105
+      ]
+    },
+    "turn-duration": {
+      "passingTrials": 0,
+      "totalTrials": 1,
+      "aggregateScore": 206180,
+      "lowerIsBetter": true,
+      "trialScores": [
+        206180
+      ]
+    },
+    "token-usage": {
+      "passingTrials": 0,
+      "totalTrials": 1,
+      "aggregateScore": 1146302,
+      "lowerIsBetter": true,
+      "trialScores": [
+        1146302
+      ]
+    },
+    "llm-cost": {
+      "passingTrials": 0,
+      "totalTrials": 1,
+      "aggregateScore": 0.7436171999999999,
+      "lowerIsBetter": true,
+      "trialScores": [
+        0.7436171999999999
+      ]
+    },
+    "output-token-usage": {
+      "passingTrials": 0,
+      "totalTrials": 1,
+      "aggregateScore": 7406,
+      "lowerIsBetter": true,
+      "trialScores": [
+        7406
+      ]
+    },
+    "output-cost": {
+      "passingTrials": 0,
+      "totalTrials": 1,
+      "aggregateScore": 0.11109,
+      "lowerIsBetter": true,
+      "trialScores": [
+        0.11109
+      ]
+    }
+  },
+  "regressionThresholds": {
+    "tool-failure-rate": 0.25,
+    "prompt-efficiency": 0.25,
+    "tool-parallelism": 0.25,
+    "turn-duration": 0.25,
+    "token-usage": 0.25,
+    "llm-cost": 0.25,
+    "output-token-usage": 0.25,
+    "output-cost": 0.25
+  }
+}

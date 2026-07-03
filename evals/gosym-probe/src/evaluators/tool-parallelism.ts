@@ -4,7 +4,7 @@ import type { Scenario } from '../scenarios/types.js';
 
 export class ToolParallelismEvaluator implements Evaluator {
   readonly name = 'tool-parallelism';
-  readonly regressionMode = 'score' as const;
+  readonly comparisonMode = 'score' as const;
   readonly lowerIsBetter = false;
 
   async evaluate(
@@ -33,7 +33,7 @@ export class ToolParallelismEvaluator implements Evaluator {
       return {
         evaluator: this.name,
         score: 0,
-        verdict: 'unknown',
+        verdict: 'incomplete',
         reason: 'No assistant turns with 2+ valid tool calls',
         details: { turnsAnalyzed: 0, totalWeight: 0, perTurnRatios: [] },
       };
@@ -44,7 +44,7 @@ export class ToolParallelismEvaluator implements Evaluator {
     return {
       evaluator: this.name,
       score,
-      verdict: 'observed',
+      verdict: 'directional',
       reason: `Tool parallelism ratio: ${(score * 100).toFixed(0)}%`,
       details: {
         turnsAnalyzed: perTurnRatios.length,

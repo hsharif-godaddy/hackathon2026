@@ -3,6 +3,8 @@ import { publishFlowExpectation }
   from '../expectations/publish-flow.expectation.js';
 import { ExpectedArtifactMatchEvaluator }
   from '../../../evaluators/expected-artifact-match.js';
+import { DirectionalSignalEvaluator }
+  from '../../../evaluators/directional-signal.js';
 import type { Transcript, Turn } from '../../../runner/transcript.js';
 import type { CapturedSite } from '../../../clients/site-capture/types.js';
 import type { Scenario } from '../../types.js';
@@ -66,8 +68,8 @@ function makeTranscript(turns: Turn[]): Transcript {
 describe('publishFlowExpectation fixture', () => {
   const evaluator = new ExpectedArtifactMatchEvaluator();
 
-  it('is at evalVersion v1', () => {
-    expect(publishFlowExpectation.evalVersion).toBe('v1');
+  it('is at evalVersion v2', () => {
+    expect(publishFlowExpectation.evalVersion).toBe('v2');
   });
 
   it('passes when the site renders and a publish tool was called', async () => {
@@ -93,5 +95,37 @@ describe('publishFlowExpectation fixture', () => {
     );
     expect(result.verdict).toBe('fail');
     expect(result.details?.hardFailures).toContain('invoked-publish-tool');
+  });
+});
+
+describe('publishFlowExpectation directional signal (transcript-source)', () => {
+  const directional = new DirectionalSignalEvaluator();
+
+  it('scores 1 when the transcript references publish/deploy status', async () => {
+    // publishTurn().content contains "Publishing ... to production".
+    const result = await directional.evaluate(
+      makeTranscript([publishTurn()]),
+      makeScenario(),
+    );
+    expect(result.verdict).toBe('directional');
+    expect(result.score).toBe(1);
+    expect(result.details?.metCount).toBe(1);
+  });
+
+  it('scores 0 when the transcript never references publish/deploy status', async () => {
+    const silentTurn: Turn = {
+      role: 'assistant',
+      content: 'I updated the header colors as requested.',
+      toolCalls: [
+        { id: 't1', name: 'writeFile', startTime: 0, endTime: 1 },
+      ],
+      timestamp: 0,
+    };
+    const result = await directional.evaluate(
+      makeTranscript([silentTurn]),
+      makeScenario(),
+    );
+    expect(result.verdict).toBe('directional');
+    expect(result.score).toBe(0);
   });
 });

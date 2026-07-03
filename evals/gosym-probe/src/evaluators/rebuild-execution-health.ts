@@ -110,7 +110,7 @@ export function websiteRebuildOk(outcome: WebsiteRebuildOutcome): boolean {
 
 export class RebuildExecutionHealthEvaluator implements Evaluator {
   readonly name = 'rebuild-execution-health';
-  readonly regressionMode = 'score' as const;
+  readonly comparisonMode = 'score' as const;
 
   async evaluate(
     transcript: Transcript,
@@ -122,7 +122,7 @@ export class RebuildExecutionHealthEvaluator implements Evaluator {
       return {
         evaluator: this.name,
         score: 0,
-        verdict: 'unknown',
+        verdict: 'incomplete',
         reason: 'No rebuild tools in transcript',
         details: { rebuildToolCount: 0 },
       };
@@ -158,7 +158,7 @@ export class RebuildExecutionHealthEvaluator implements Evaluator {
     return {
       evaluator: this.name,
       score,
-      verdict: 'observed',
+      verdict: 'directional',
       reason: reasonParts.join('; '),
       details: {
         errorEventCount,

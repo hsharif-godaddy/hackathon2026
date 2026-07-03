@@ -11,12 +11,12 @@ export interface EvalResult {
   evaluator: string;
   /**
    * Evaluator-specific numeric score.
-   * - Non-observed-verdict evaluators: normalized to [0.0, 1.0].
-   * - Observed-verdict evaluators (regressionMode: 'score'): unclamped
+   * - Non-directional-verdict evaluators: normalized to [0.0, 1.0].
+   * - Directional-verdict evaluators (comparisonMode: 'score'): unclamped
    *   raw measurement (e.g. step count, turn count, token count, seconds).
    */
   score: number;
-  verdict: 'pass' | 'partial' | 'fail' | 'unknown' | 'observed';
+  verdict: 'pass' | 'fail' | 'incomplete' | 'directional';
   reason: string;
   details?: Record<string, unknown>;
   evalVersion?: string;
@@ -31,15 +31,26 @@ export interface Evaluator {
   evalVersion?: string;
   /**
    * Controls how RegressionComparator handles this evaluator.
-   * - 'passRate' (default): compare pass-rate across trials
+   * - 'passRate': compare pass-rate across trials
    * - 'score': compare aggregate score across trials
    */
-  regressionMode?: 'passRate' | 'score';
+  comparisonMode: 'passRate' | 'score';
   /**
    * When true, a score *increase* is treated as a regression (lower is better).
-   * Only meaningful when regressionMode is 'score'.
+   * Only meaningful when comparisonMode is 'score'.
    */
   lowerIsBetter?: boolean;
+  /**
+   * When true, this evaluator GATES the scenario: a crash (a synthesized
+   * `evaluatorFailed` result) must count as a hard fail in pass@k rather than
+   * being dropped from the trial sample. A gate that could not run is a broken
+   * gate, and a broken gate must fail loud — not silently shrink the denominator
+   * (the same fail-open class the skill-eval `requireSkillDiagnostics` work
+   * closes, on the aggregation path). Default (false): a crashed trial is
+   * excluded from the sample, the historical behavior for best-effort metrics
+   * (e.g. an LLM judge parse error).
+   */
+  gating?: boolean;
   evaluate(
     transcript: Transcript,
     scenario: Scenario,

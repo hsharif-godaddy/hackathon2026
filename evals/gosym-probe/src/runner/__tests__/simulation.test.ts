@@ -311,6 +311,56 @@ describe('Simulation', () => {
     expect([...transcript.loadedSkills!].sort()).toEqual(['payments', 'seo']);
   });
 
+  it('ready sentinel alone yields empty loadedSkills (instrumentation on, zero skills loaded)', async () => {
+    const scenario = makeScenario();
+    const syntheticUser: SyntheticUserAgent = {
+      nextMessage: vi.fn().mockResolvedValueOnce('hi').mockResolvedValue(null),
+    };
+    const agent = new MockAgentClient();
+    agent.send = vi.fn().mockImplementation(function (msg: string) {
+      agent.sent.push(msg);
+      Promise.resolve().then(() => {
+        agent.emit({ type: 'skill_diagnostics', event: 'ready' });
+        agent.emit({ type: 'complete', content: 'done' });
+      });
+    });
+
+    const transcript = await new Simulation({
+      scenario,
+      agentClient: agent,
+      syntheticUser,
+      config: mockConfig,
+    }).run(0);
+
+    expect(transcript.loadedSkills).toBeDefined();
+    expect(transcript.loadedSkills).toEqual([]);
+  });
+
+  it('ready sentinel followed by a load reconstructs that skill', async () => {
+    const scenario = makeScenario();
+    const syntheticUser: SyntheticUserAgent = {
+      nextMessage: vi.fn().mockResolvedValueOnce('hi').mockResolvedValue(null),
+    };
+    const agent = new MockAgentClient();
+    agent.send = vi.fn().mockImplementation(function (msg: string) {
+      agent.sent.push(msg);
+      Promise.resolve().then(() => {
+        agent.emit({ type: 'skill_diagnostics', event: 'ready' });
+        agent.emit({ type: 'skill_diagnostics', event: 'load', skill: 'payments' });
+        agent.emit({ type: 'complete', content: 'done' });
+      });
+    });
+
+    const transcript = await new Simulation({
+      scenario,
+      agentClient: agent,
+      syntheticUser,
+      config: mockConfig,
+    }).run(0);
+
+    expect(transcript.loadedSkills).toEqual(['payments']);
+  });
+
   it('attributes token_usage_summary events to the in-flight turn', async () => {
     // Two-turn trial: each turn emits a distinct token event. The per-turn
     // tokens must bucket separately (not sum into one), and sum to the trial

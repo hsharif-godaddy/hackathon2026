@@ -21,7 +21,7 @@ const EVAL_VERSION = '1.0.0';
 export class ContrastViolationsEvaluator implements Evaluator {
   readonly name = 'contrast-violations';
   readonly evalVersion = EVAL_VERSION;
-  readonly regressionMode = 'score' as const;
+  readonly comparisonMode = 'score' as const;
   readonly lowerIsBetter = true;
 
   async evaluate(_transcript: Transcript, _scenario: Scenario, snapshot?: DOMSnapshot): Promise<EvalResult> {
@@ -30,7 +30,7 @@ export class ContrastViolationsEvaluator implements Evaluator {
         evaluator: this.name,
         evalVersion: EVAL_VERSION,
         score: 0,
-        verdict: 'unknown',
+        verdict: 'incomplete',
         reason: 'No DOM snapshot captured; contrast audit could not run.',
       };
     }
@@ -41,7 +41,7 @@ export class ContrastViolationsEvaluator implements Evaluator {
         evaluator: this.name,
         evalVersion: EVAL_VERSION,
         score: 0,
-        verdict: 'unknown',
+        verdict: 'incomplete',
         reason: 'DOM snapshot captured but the contrast audit did not run (no contrastAudit field).',
       };
     }
@@ -67,7 +67,7 @@ export class ContrastViolationsEvaluator implements Evaluator {
       evaluator: this.name,
       evalVersion: EVAL_VERSION,
       score,
-      verdict: 'observed',
+      verdict: 'directional',
       reason,
       details: {
         attributable: attributable.length,

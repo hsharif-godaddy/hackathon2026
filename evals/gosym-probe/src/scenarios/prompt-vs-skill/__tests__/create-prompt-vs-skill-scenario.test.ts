@@ -5,14 +5,19 @@ import {
   makeGocodeClient,
   makeCtrlPlaneClient,
 } from "../../__tests__/scenario-test-helpers.js";
+import type { AABCtrlPlaneClient }
+  from "../../../clients/aab-ctrl-plane-client.js";
 import type { Evaluator, EvalResult } from "../../../evaluators/evaluator.js";
 import type { Transcript } from "../../../runner/transcript.js";
 import type { Scenario } from "../../types.js";
 import type { PromptVsSkillConfig } from "../create-prompt-vs-skill-scenario.js";
+import type { StatefulAppOptions, SummarySeeder }
+  from "../../stateful/create-stateful-app.js";
 
 function makeMockEvaluator(name: string): Evaluator {
   return {
     name,
+    comparisonMode: 'passRate' as const,
     evaluate: async (_transcript: Transcript, _scenario: Scenario): Promise<EvalResult> => ({
       evaluator: name,
       score: 1.0,
@@ -208,6 +213,87 @@ describe("createPromptVsSkillScenario", () => {
           makeCtrlPlaneClient(),
         ),
       ).toThrow(Error);
+    });
+  });
+
+  describe("integration seam — stateful injection", () => {
+    function makeStatefulCtrlPlane(): AABCtrlPlaneClient {
+      return {
+        provisionApp: vi.fn().mockResolvedValue({
+          appId: "shared-app",
+          previewUrl: "http://shared",
+        }),
+        deleteApp: vi.fn().mockResolvedValue(undefined),
+        resetApp: vi.fn().mockResolvedValue(undefined),
+      } as unknown as AABCtrlPlaneClient;
+    }
+
+    it("sets requiresSerialTrials when statefulInjection is provided", () => {
+      const injection: StatefulAppOptions = {
+        existingApp: { appId: "pre-built", previewUrl: "http://pre" },
+      };
+      const scenario = createPromptVsSkillScenario(
+        { ...minimalConfig(), statefulInjection: injection },
+        makeGocodeClient(),
+        makeStatefulCtrlPlane(),
+      );
+      expect(scenario.requiresSerialTrials).toBe(true);
+    });
+
+    it("does not set requiresSerialTrials when statefulInjection is absent", () => {
+      const scenario = createPromptVsSkillScenario(
+        minimalConfig(),
+        makeGocodeClient(),
+        makeCtrlPlaneClient(),
+      );
+      expect(scenario.requiresSerialTrials).toBeUndefined();
+    });
+
+    it("seedSummary callback is invoked during setup when seededSummary is set", async () => {
+      const seedSummaryMock: SummarySeeder = vi.fn().mockResolvedValue(undefined);
+      const seedInput = {
+        summaryText: "A dental practice site",
+        messageCount: 8,
+        originalTokenCount: 1500,
+      };
+      const injection: StatefulAppOptions = {
+        existingApp: { appId: "pre-built", previewUrl: "http://pre" },
+        seededSummary: seedInput,
+      };
+      const scenario = createPromptVsSkillScenario(
+        { ...minimalConfig(), statefulInjection: injection },
+        makeGocodeClient(),
+        makeStatefulCtrlPlane(),
+        seedSummaryMock,
+      );
+      await scenario.setup?.();
+      expect(seedSummaryMock).toHaveBeenCalledWith("pre-built", seedInput);
+    });
+
+    it("seedSummary provided without statefulInjection is a no-op (no error)", () => {
+      const seedSummaryMock: SummarySeeder = vi.fn().mockResolvedValue(undefined);
+      expect(() =>
+        createPromptVsSkillScenario(
+          minimalConfig(),
+          makeGocodeClient(),
+          makeCtrlPlaneClient(),
+          seedSummaryMock,
+        ),
+      ).not.toThrow();
+    });
+
+    it("fallback path (no injection) is identical to current behavior", async () => {
+      const ctrlPlane = makeCtrlPlaneClient();
+      const deleteSpy = vi.spyOn(ctrlPlane, "deleteApp");
+      const scenario = createPromptVsSkillScenario(
+        minimalConfig(),
+        makeGocodeClient(),
+        ctrlPlane,
+      );
+      const ctx = await scenario.setup?.();
+      expect(ctx).toEqual({ appId: "test-app", previewUrl: "http://test" });
+      await scenario.teardown?.({ appId: "test-app" });
+      expect(deleteSpy).toHaveBeenCalledWith("test-app");
     });
   });
 });

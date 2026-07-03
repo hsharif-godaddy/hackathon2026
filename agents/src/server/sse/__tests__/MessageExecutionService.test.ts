@@ -1772,6 +1772,45 @@ describe('MessageExecutionService', () => {
     })
   })
 
+  describe('skill-diagnostics ready sentinel', () => {
+    const previous = process.env.SKILL_DIAGNOSTICS
+
+    afterEach(() => {
+      if (previous === undefined) delete process.env.SKILL_DIAGNOSTICS
+      else process.env.SKILL_DIAGNOSTICS = previous
+    })
+
+    it('publishes a ready sentinel before the agent loop when SKILL_DIAGNOSTICS=true', async () => {
+      process.env.SKILL_DIAGNOSTICS = 'true'
+      deps = createMockDeps([{ type: 'text-delta', text: 'hi' }])
+      service = new MessageExecutionService(deps as any)
+
+      await service.execute(DEFAULT_PARAMS)
+
+      expect(deps.eventChannel.publish).toHaveBeenCalledWith(
+        'conv_1',
+        expect.objectContaining({
+          type: 'skill_diagnostics',
+          data: expect.objectContaining({ event: 'ready' }),
+        }),
+      )
+    })
+
+    it('does not publish the sentinel when SKILL_DIAGNOSTICS is unset', async () => {
+      delete process.env.SKILL_DIAGNOSTICS
+      deps = createMockDeps([{ type: 'text-delta', text: 'hi' }])
+      service = new MessageExecutionService(deps as any)
+
+      await service.execute(DEFAULT_PARAMS)
+
+      const publishedSkillEvents = deps.eventChannel.publish.mock.calls.filter(
+        (call: unknown[]) =>
+          (call[1] as { type?: string } | undefined)?.type === 'skill_diagnostics',
+      )
+      expect(publishedSkillEvents).toHaveLength(0)
+    })
+  })
+
   describe('persistence via AgentsMessagePersistence', () => {
     it('calls continueConversation to save user message', async () => {
       await service.execute(DEFAULT_PARAMS)

@@ -21,6 +21,7 @@ import type {
 import type { Persona } from '../../personas/types.js';
 import type { Transcript } from '../../runner/transcript.js';
 import type { Scenario } from '../../scenarios/types.js';
+import type { EvalResult } from '../evaluator.js';
 import { WebsiteQualityEvaluator } from '../website-quality.js';
 
 const mockPersona: Persona = {
@@ -92,15 +93,15 @@ describe('WebsiteQualityEvaluator', () => {
     await rm(tmpRoot, { recursive: true, force: true });
   });
 
-  describe('unknown — no captured site', () => {
-    it('returns unknown when transcript has no capturedSite', async () => {
+  describe('incomplete — no captured site', () => {
+    it('returns incomplete when transcript has no capturedSite', async () => {
       const result = await evaluator.evaluate(
         makeTranscript(),
         makeScenario(),
       );
 
       expect(result.evaluator).toBe('website-quality');
-      expect(result.verdict).toBe('unknown');
+      expect(result.verdict).toBe('incomplete');
       expect(result.score).toBe(0);
       expect(mockGocode.complete).not.toHaveBeenCalled();
     });
@@ -130,8 +131,8 @@ describe('WebsiteQualityEvaluator', () => {
     });
   });
 
-  describe('unknown — route discovery infrastructure failure', () => {
-    it('returns unknown when routes is empty and capture errors exist', async () => {
+  describe('incomplete — route discovery infrastructure failure', () => {
+    it('returns incomplete when routes is empty and capture errors exist', async () => {
       const captured: CapturedSite = {
         previewUrl: 'https://localhost:8443',
         generatedAt: new Date().toISOString(),
@@ -149,7 +150,7 @@ describe('WebsiteQualityEvaluator', () => {
         makeScenario(),
       );
 
-      expect(result.verdict).toBe('unknown');
+      expect(result.verdict).toBe('incomplete');
       expect(result.score).toBe(0);
       expect(result.reason).toContain('Route discovery failed');
       expect(mockGocode.complete).not.toHaveBeenCalled();
@@ -198,8 +199,8 @@ describe('WebsiteQualityEvaluator', () => {
     });
   });
 
-  describe('partial — mixed viewport scores', () => {
-    it('returns partial when mobile is broken and laptop is ok', async () => {
+  describe('fail — mixed viewport scores below pass threshold', () => {
+    it('returns fail when mobile is broken and laptop is ok (score 0.5 < 0.8)', async () => {
       const tilePath = await writeTile();
       const route = makeRoute();
       const routeCapture: RouteCapture = {
@@ -229,9 +230,9 @@ describe('WebsiteQualityEvaluator', () => {
       mockGocode.complete.mockImplementation(async function () {
         callIndex += 1;
         if (callIndex === 1) {
-          return JSON.stringify({ verdict: 'broken', score: 0.1, summary: 'Layout broken on mobile' });
+          return JSON.stringify({ verdict: 'fail', score: 0.1, summary: 'Layout broken on mobile' });
         }
-        return JSON.stringify({ verdict: 'ok', score: 0.9, summary: 'Desktop fine' });
+        return JSON.stringify({ verdict: 'pass', score: 0.9, summary: 'Desktop fine' });
       });
 
       const result = await evaluator.evaluate(
@@ -239,7 +240,7 @@ describe('WebsiteQualityEvaluator', () => {
         makeScenario(),
       );
 
-      expect(result.verdict).toBe('partial');
+      expect(result.verdict).toBe('fail');
       expect(result.score).toBe(0.5);
     });
   });
@@ -424,6 +425,50 @@ describe('WebsiteQualityEvaluator', () => {
       expect(result.verdict).toBe('pass');
       expect(result.score).toBe(0.8);
       expect(mockGocode.complete).toHaveBeenCalledTimes(4);
+    });
+  });
+
+  describe('overall verdict boundary at 0.8', () => {
+    async function evaluateAtScore(score: number): Promise<EvalResult> {
+      const tilePath: string = await writeTile();
+      const route: DiscoveredRoute = makeRoute();
+      const routeCapture: RouteCapture = {
+        route,
+        rendered: { title: 'T', h1: 'H', headingText: 'H', bodyPreview: 'B' },
+        perViewport: {
+          mobile: makeViewportCapture([tilePath]),
+          laptop: makeViewportCapture([tilePath]),
+        },
+      };
+      const captured: CapturedSite = {
+        previewUrl: 'https://localhost:8443',
+        generatedAt: new Date().toISOString(),
+        durationMs: 1000,
+        outputDir: tmpRoot,
+        routes: [route],
+        perRoute: [routeCapture],
+        errors: [],
+      };
+
+      mockGocode.complete.mockResolvedValue(
+        JSON.stringify({ verdict: 'pass', score, summary: 'Fine' }),
+      );
+
+      return evaluator.evaluate(makeTranscript(captured), makeScenario());
+    }
+
+    it('returns pass when overall score is exactly 0.8', async () => {
+      const result: EvalResult = await evaluateAtScore(0.8);
+
+      expect(result.score).toBe(0.8);
+      expect(result.verdict).toBe('pass');
+    });
+
+    it('returns fail when overall score is just below 0.8', async () => {
+      const result: EvalResult = await evaluateAtScore(0.7);
+
+      expect(result.score).toBe(0.7);
+      expect(result.verdict).toBe('fail');
     });
   });
 });

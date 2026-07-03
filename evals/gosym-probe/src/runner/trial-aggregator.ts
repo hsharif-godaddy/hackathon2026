@@ -25,7 +25,7 @@ export class TrialAggregator {
     const modeMap = new Map<string, 'passRate' | 'score'>(
       scenario.evaluators.map((e) => [
         e.name,
-        e.regressionMode ?? 'passRate',
+        e.comparisonMode,
       ]),
     );
 
@@ -34,6 +34,10 @@ export class TrialAggregator {
         .filter((e): e is typeof e & { lowerIsBetter: boolean } =>
           e.lowerIsBetter !== undefined)
         .map((e) => [e.name, e.lowerIsBetter]),
+    );
+
+    const gatingNames = new Set<string>(
+      scenario.evaluators.filter((e) => e.gating === true).map((e) => e.name),
     );
 
     // Single pass: collect verdicts and scores per evaluator
@@ -63,10 +67,20 @@ export class TrialAggregator {
     for (const [name, { verdicts, scores, failed, versions, versionedResults }] of evalDataMap) {
       const failedCount = failed.filter(Boolean).length;
       const passingTrials = verdicts.filter((v, i) => v === 'pass' && !failed[i]).length;
-      const totalTrials = verdicts.length - failedCount;
+      // A gating evaluator's crash is a hard fail, not a dropped trial: it stays
+      // in the pass@k denominator (never a pass, so it drives the rate down)
+      // instead of silently shrinking the sample. For non-gating evaluators a
+      // crash is excluded, the historical behavior for best-effort metrics.
+      const isGating = gatingNames.has(name);
+      const totalTrials = isGating ? verdicts.length : verdicts.length - failedCount;
       const mode = modeMap.get(name);
+      if (!mode) {
+        throw new Error(
+          `[TrialAggregator] evaluator "${name}" found in trial results but not declared in scenario.evaluators`,
+        );
+      }
       const filteredAggregate = mode === 'score'
-        ? trimmedMean(scores.filter((_, i) => verdicts[i] !== 'unknown' && !failed[i]))
+        ? trimmedMean(scores.filter((_, i) => verdicts[i] !== 'incomplete' && !failed[i]))
         : null;
       const lowerIsBetter = lowerIsBetterMap.get(name);
 
@@ -87,7 +101,7 @@ export class TrialAggregator {
         totalTrials,
         ...(failedCount > 0 && { failedTrials: failedCount }),
         ...(filteredAggregate != null && { aggregateScore: filteredAggregate }),
-        ...(mode !== undefined && { regressionMode: mode }),
+        comparisonMode: mode,
         ...(versions.size === 1 &&
           versionedResults === verdicts.length && { evalVersion: [...versions][0] }),
         ...(mode === 'score' && lowerIsBetter !== undefined && { lowerIsBetter }),

@@ -154,4 +154,4 @@ pnpm --filter gosym-probe run eval --suite golden-light --fan-out
 ```
 
 See [docs/regression-gating.md](regression-gating.md) for threshold configuration and
-per-evaluator regression modes.
+per-evaluator comparison modes.

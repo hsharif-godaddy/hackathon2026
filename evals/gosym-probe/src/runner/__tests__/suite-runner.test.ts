@@ -88,6 +88,7 @@ function makeEvaluator(
 ): Evaluator {
   return {
     name,
+    comparisonMode: 'passRate' as const,
     evaluate: vi.fn().mockResolvedValue(result),
   };
 }
@@ -350,7 +351,8 @@ describe('SuiteRunner', () => {
     expect(order).toEqual(['start:0', 'end:0', 'start:1']);
   });
 
-  it('throws when a requiresSerialTrials scenario runs with concurrency > 1', async () => {
+  it('clamps concurrency to 1 and warns when a requiresSerialTrials scenario runs with concurrency > 1', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(function () {});
     mockSimulationRun.mockResolvedValue(makeTranscript());
     const scenario = makeScenario({ trials: 3, requiresSerialTrials: true });
     const concurrentConfig = {
@@ -358,16 +360,19 @@ describe('SuiteRunner', () => {
       eval: { ...mockConfig.eval, maxConcurrency: 2 },
     };
 
-    await expect(
-      new SuiteRunner({
-        scenarios: [scenario],
-        config: concurrentConfig,
-        makeAgentClient,
-        syntheticUser: mockSyntheticUser,
-        trialConcurrency: 2,
-      }).run(),
-    ).rejects.toThrow(/requires serial trials/);
-    expect(mockSimulationRun).not.toHaveBeenCalled();
+    await new SuiteRunner({
+      scenarios: [scenario],
+      config: concurrentConfig,
+      makeAgentClient,
+      syntheticUser: mockSyntheticUser,
+      trialConcurrency: 2,
+    }).run();
+
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringMatching(/requires serial trials.*clamping concurrency from 2 to 1/),
+    );
+    expect(mockSimulationRun).toHaveBeenCalledTimes(3);
+    warnSpy.mockRestore();
   });
 
   it('allows a requiresSerialTrials scenario at concurrency 1', async () => {
@@ -820,6 +825,7 @@ describe('SuiteRunner — onTrialEvaluated callback', () => {
 
 describe('SuiteRunner — score-mode enrichment', () => {
   const mockBaselineStore = {
+    backend: 'local' as const,
     load: vi.fn<() => Promise<{ scores: BaselineScores; filePath: string } | null>>().mockResolvedValue(null),
     loadByRunId: vi.fn<() => Promise<{ scores: BaselineScores; filePath: string } | null>>().mockResolvedValue(null),
   };
@@ -833,12 +839,12 @@ describe('SuiteRunner — score-mode enrichment', () => {
   it('enriches score-mode evaluator with passAtK when baseline has aggregateScore', async () => {
     const scoreEval: Evaluator = {
       name: 'token-count',
-      regressionMode: 'score',
+      comparisonMode: 'score',
       lowerIsBetter: true,
       evaluate: vi.fn().mockResolvedValue({
         evaluator: 'token-count',
         score: 95,
-        verdict: 'observed',
+        verdict: 'directional',
         reason: 'measured',
       }),
     };
@@ -877,11 +883,11 @@ describe('SuiteRunner — score-mode enrichment', () => {
   it('leaves score-mode passAtK undefined when no baseline exists', async () => {
     const scoreEval: Evaluator = {
       name: 'token-count',
-      regressionMode: 'score',
+      comparisonMode: 'score',
       evaluate: vi.fn().mockResolvedValue({
         evaluator: 'token-count',
         score: 95,
-        verdict: 'observed',
+        verdict: 'directional',
         reason: 'measured',
       }),
     };
@@ -902,6 +908,7 @@ describe('SuiteRunner — score-mode enrichment', () => {
 
 describe('SuiteRunner — baseline comparison', () => {
   const mockBaselineStore = {
+    backend: 'local' as const,
     load: vi.fn<() => Promise<{ scores: BaselineScores; filePath: string } | null>>().mockResolvedValue(null),
     loadByRunId: vi.fn<() => Promise<{ scores: BaselineScores; filePath: string } | null>>().mockResolvedValue(null),
   };
@@ -1075,6 +1082,95 @@ describe('SuiteRunner — baseline comparison', () => {
   });
 });
 
+describe('SuiteRunner — S3 baseline gate fails closed', () => {
+  const mockS3BaselineStore = {
+    backend: 's3' as const,
+    load: vi.fn<() => Promise<{ scores: BaselineScores; filePath: string } | null>>().mockResolvedValue(null),
+    loadByRunId: vi.fn<() => Promise<{ scores: BaselineScores; filePath: string } | null>>().mockResolvedValue(null),
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockSimulationRun.mockResolvedValue(makeTranscript());
+    mockS3BaselineStore.load.mockResolvedValue(null);
+  });
+
+  it('throws (not skip-gate) when an S3 baseline is missing', async () => {
+    // A missing baseline on the shared S3 gating store is most likely a config
+    // fault (wrong prefix / list-scoped creds); silently skipping the gate
+    // would exit 0 — the false-green this guard prevents.
+    const scenario = makeScenario({ name: 'gated-scenario', trials: 1 });
+
+    await expect(
+      new SuiteRunner({
+        scenarios: [scenario],
+        config: mockConfig,
+        makeAgentClient,
+        syntheticUser: mockSyntheticUser,
+        baselineStore: mockS3BaselineStore,
+      }).run(),
+    ).rejects.toThrow(/No S3 baseline found for scenario "gated-scenario"/);
+  });
+
+  it('does NOT throw on a local store with a missing baseline (gate skip is valid in local dev)', async () => {
+    const localStore = {
+      backend: 'local' as const,
+      load: vi.fn<() => Promise<{ scores: BaselineScores; filePath: string } | null>>().mockResolvedValue(null),
+      loadByRunId: vi.fn<() => Promise<{ scores: BaselineScores; filePath: string } | null>>().mockResolvedValue(null),
+    };
+    const scenario = makeScenario({ name: 'new-scenario', trials: 1 });
+
+    const [result] = await new SuiteRunner({
+      scenarios: [scenario],
+      config: mockConfig,
+      makeAgentClient,
+      syntheticUser: mockSyntheticUser,
+      baselineStore: localStore,
+    }).run();
+
+    expect(result.regressionStatus).toBeUndefined();
+  });
+
+  it('compares normally when the S3 baseline IS present', async () => {
+    mockS3BaselineStore.load.mockResolvedValue({
+      filePath: 's3://bucket/baselines/gated-scenario/baseline.json',
+      scores: {
+        scenarioName: 'gated-scenario',
+        runId: 'baseline-run',
+        createdAt: '2026-01-01T00:00:00Z',
+        scores: {
+          'test-eval': {
+            passAt1: 1,
+            passAtK: [{ k: 1, value: 1 }, { k: 2, value: 1 }],
+            passHatK: [{ k: 1, value: 1 }, { k: 2, value: 1 }],
+            passingTrials: 3,
+            totalTrials: 3,
+          },
+        },
+      },
+    });
+    const evaluator = makeEvaluator('test-eval', makePassResult('test-eval'));
+    const scenario = makeScenario({
+      name: 'gated-scenario',
+      trials: 1,
+      evaluators: [evaluator],
+    });
+
+    const [result] = await new SuiteRunner({
+      scenarios: [scenario],
+      config: mockConfig,
+      makeAgentClient,
+      syntheticUser: mockSyntheticUser,
+      baselineStore: mockS3BaselineStore,
+    }).run();
+
+    expect(result.regressionStatus).toBeDefined();
+    expect(result.baselineFilePath).toBe(
+      's3://bucket/baselines/gated-scenario/baseline.json',
+    );
+  });
+});
+
 describe('SuiteRunner — suiteMode: parallel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -1238,6 +1334,7 @@ describe('SuiteRunner — evaluator error resilience', () => {
   it('returns verdict unknown when evaluator.evaluate rejects', async () => {
     const failingEval: Evaluator = {
       name: 'failing-eval',
+      comparisonMode: 'passRate',
       evaluate: vi.fn().mockRejectedValue(new Error('eval crashed')),
     };
     const scenario = makeScenario({
@@ -1253,7 +1350,7 @@ describe('SuiteRunner — evaluator error resilience', () => {
     }).run();
 
     const evalResult = result.trials[0].evalResults[0];
-    expect(evalResult.verdict).toBe('unknown');
+    expect(evalResult.verdict).toBe('incomplete');
     expect(evalResult.evaluator).toBe('failing-eval');
     expect(evalResult.score).toBe(0);
   });
@@ -1261,6 +1358,7 @@ describe('SuiteRunner — evaluator error resilience', () => {
   it('other evaluators still produce results when one fails', async () => {
     const failingEval: Evaluator = {
       name: 'failing',
+      comparisonMode: 'passRate',
       evaluate: vi.fn().mockRejectedValue(new Error('boom')),
     };
     const passingEval = makeEvaluator(
@@ -1283,7 +1381,7 @@ describe('SuiteRunner — evaluator error resilience', () => {
     expect(evalResults).toHaveLength(2);
     expect(
       evalResults.find((r) => r.evaluator === 'failing')?.verdict,
-    ).toBe('unknown');
+    ).toBe('incomplete');
     expect(
       evalResults.find((r) => r.evaluator === 'passing')?.verdict,
     ).toBe('pass');
@@ -1292,6 +1390,7 @@ describe('SuiteRunner — evaluator error resilience', () => {
   it('captures error message in reason field', async () => {
     const failingEval: Evaluator = {
       name: 'failing',
+      comparisonMode: 'passRate',
       evaluate: vi.fn().mockRejectedValue(
         new Error('specific error message'),
       ),
@@ -1480,7 +1579,7 @@ describe('SuiteRunner — EvalResult normalization', () => {
       {
         evaluator: 'multiline',
         score: 0.5,
-        verdict: 'partial',
+        verdict: 'fail',
         reason: 'line1\nline2\r\nline3',
       },
     );
@@ -1504,6 +1603,7 @@ describe('SuiteRunner — EvalResult normalization', () => {
   it('normalizes catch-path result when evaluator throws', async () => {
     const failingEval: Evaluator = {
       name: 'throwing',
+      comparisonMode: 'passRate',
       evaluate: vi.fn().mockRejectedValue(
         new Error('line1\nline2\r\nline3'),
       ),
@@ -1522,7 +1622,7 @@ describe('SuiteRunner — EvalResult normalization', () => {
 
     const evalResult = result.trials[0].evalResults[0];
     expect(evalResult.reason).toBe('line1 line2 line3');
-    expect(evalResult.verdict).toBe('unknown');
+    expect(evalResult.verdict).toBe('incomplete');
     expect(evalResult.score).toBe(0);
   });
 });
@@ -1813,6 +1913,7 @@ describe('first-turn inactivity retry', () => {
     const unhookTrialSpy = vi.fn();
     const evaluator: Evaluator = {
       name: 'hook-tracker',
+      comparisonMode: 'passRate',
       evaluate: vi.fn().mockResolvedValue(makePassResult('hook-tracker')),
       hookClient: vi.fn(),
       unhookTrial: unhookTrialSpy,
@@ -2906,6 +3007,7 @@ describe('SuiteRunner — afterSimFailures annotation', () => {
   it('annotates evalResult with afterSimulationFailed when afterSimulation throws', async () => {
     const throwingEvaluator: Evaluator = {
       name: 'throwing-eval',
+      comparisonMode: 'passRate',
       evaluate: vi.fn().mockResolvedValue(makePassResult('throwing-eval')),
       afterSimulation: vi.fn().mockImplementation(function () {
         throw new Error('afterSim boom');
@@ -2930,11 +3032,13 @@ describe('SuiteRunner — afterSimFailures annotation', () => {
   it('non-throwing evaluators are not annotated with afterSimulationFailed', async () => {
     const okEvaluator: Evaluator = {
       name: 'ok-eval',
+      comparisonMode: 'passRate',
       evaluate: vi.fn().mockResolvedValue(makePassResult('ok-eval')),
       afterSimulation: vi.fn(),
     };
     const throwingEvaluator: Evaluator = {
       name: 'throwing-eval',
+      comparisonMode: 'passRate',
       evaluate: vi.fn().mockResolvedValue(makePassResult('throwing-eval')),
       afterSimulation: vi.fn().mockImplementation(function () {
         throw new Error('afterSim boom');
@@ -2966,6 +3070,7 @@ describe('SuiteRunner — afterSimFailures annotation', () => {
     let callCount = 0;
     const flakyEvaluator: Evaluator = {
       name: 'flaky-eval',
+      comparisonMode: 'passRate',
       evaluate: vi.fn().mockResolvedValue(makePassResult('flaky-eval')),
       afterSimulation: vi.fn().mockImplementation(function () {
         callCount++;

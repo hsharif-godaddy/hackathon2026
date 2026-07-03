@@ -29,6 +29,27 @@ export interface PassEstimatorEntry {
   value: number;
 }
 
+/** Wilson score confidence interval for a proportion. */
+export interface WilsonCI {
+  /** Lower bound, clamped to [0, 1]. */
+  lower: number;
+  /** Upper bound, clamped to [0, 1]. */
+  upper: number;
+  /** Trial count the interval was computed from; the sample size reporters render. */
+  n: number;
+}
+
+/**
+ * Sample-size and interval annotations for a `pass@1` value. Modeled as a
+ * single object rather than independent `n`/`ci` parameters so that a caller
+ * cannot render a confidence interval without the sample size it was computed
+ * from: `n` is always the count the `ci` (when present) was derived from.
+ */
+export interface Pass1Stats {
+  n: number;
+  ci?: WilsonCI;
+}
+
 /** Estimators bundled onto an aggregated result, one entry per reporting `k`. */
 export interface PassEstimators {
   /** Headline probability a task passes on the first try: `c / n`. */
@@ -37,6 +58,8 @@ export interface PassEstimators {
   passAtK?: PassEstimatorEntry[];
   /** `pass^k` per reporting `k`: probability all `k` draws pass (reliability). */
   passHatK?: PassEstimatorEntry[];
+  /** 95% Wilson score CI for `passAt1`. Absent when `n <= 0`. */
+  wilsonCI?: WilsonCI;
 }
 
 /** Clamp an observed pass count into the valid `[0, n]` range defensively. */
@@ -120,6 +143,36 @@ export function resolveReportingKs(vector: readonly number[], n: number): number
 }
 
 /**
+ * Wilson score confidence interval for `c` passes in `n` trials at z-score `z`
+ * (default 1.96 for 95% CI). Returns `null` for degenerate inputs.
+ *
+ * Uses `(n, c)` rather than `(p, n)` so this function shares the same trust
+ * boundary as the other estimators -- `c` is clamped here, not by callers.
+ */
+export function wilsonConfidenceInterval(n: number, c: number, z: number = 1.96): WilsonCI | null {
+  if (!Number.isFinite(n) || n <= 0) {
+    return null;
+  }
+  if (!Number.isFinite(c)) {
+    return null;
+  }
+  if (!Number.isFinite(z) || z <= 0) {
+    return null;
+  }
+  const passes: number = clampPassCount(n, c);
+  const p: number = passes / n;
+  const z2: number = z * z;
+  const center: number = (p + z2 / (2 * n)) / (1 + z2 / n);
+  const width: number =
+    (z * Math.sqrt((p * (1 - p)) / n + z2 / (4 * n * n))) / (1 + z2 / n);
+  return {
+    lower: Math.max(0, center - width),
+    upper: Math.min(1, center + width),
+    n,
+  };
+}
+
+/**
  * Compute every estimator once for a producer to store on its aggregated
  * result. `ks` is the configured reporting vector; it is resolved against `n`
  * internally so each keyed entry is guaranteed non-null. Returns an empty
@@ -145,23 +198,51 @@ export function buildPassEstimators(n: number, c: number, ks: readonly number[])
     atK.push({ k, value: atKValue });
     hatK.push({ k, value: hatKValue });
   }
+  const ci: WilsonCI | null = wilsonConfidenceInterval(n, c);
   return {
     passAt1: pass1,
     passAtK: atK,
     passHatK: hatK,
+    ...(ci !== null ? { wilsonCI: ci } : {}),
   };
 }
 
 /**
- * Render a headline `pass@1` value for a report, using `emptySentinel` for
- * absent or non-finite values. Shared by every reporter so the formatting
- * contract lives next to the estimator math.
+ * Render a `WilsonCI` as `[lower, upper]` with 2 decimal places, or return
+ * `emptySentinel` when absent.
  */
-export function formatPass1(value: number | undefined, emptySentinel: string): string {
+export function formatWilsonCI(ci: WilsonCI | undefined, emptySentinel: string): string {
+  if (ci === undefined) {
+    return emptySentinel;
+  }
+  return `[${ci.lower.toFixed(2)}, ${ci.upper.toFixed(2)}]`;
+}
+
+/**
+ * Render a headline `pass@1` value for a report, using `emptySentinel` for
+ * absent or non-finite values. When `stats` is provided the trial count is
+ * appended as `(n=N)`; when `stats.ci` is also present its Wilson interval is
+ * appended. Sourcing the sample size from `stats` (rather than a separate
+ * parameter) keeps the rendered count and interval from ever disagreeing.
+ * Shared by every reporter so the formatting contract lives next to the
+ * estimator math.
+ */
+export function formatPass1(
+  value: number | undefined,
+  emptySentinel: string,
+  stats?: Pass1Stats,
+): string {
   if (value === undefined || !Number.isFinite(value)) {
     return emptySentinel;
   }
-  return value.toFixed(2);
+  let result: string = value.toFixed(2);
+  if (stats !== undefined) {
+    result += ` (n=${stats.n})`;
+    if (stats.ci !== undefined) {
+      result += ` ${formatWilsonCI(stats.ci, emptySentinel)}`;
+    }
+  }
+  return result;
 }
 
 /**

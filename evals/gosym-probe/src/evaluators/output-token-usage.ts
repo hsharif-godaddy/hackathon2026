@@ -45,7 +45,7 @@ export class OutputTokenUsageEvaluator extends ProbeUsageEvaluator {
     return {
       evaluator: this.name,
       score: aabOutputTokens,
-      verdict: 'observed',
+      verdict: 'directional',
       reason:
         `aab=${aabOutputTokens} probe=${probeDelta.completionTokens}` +
         ` total=${totalOutputTokens} output tokens`,

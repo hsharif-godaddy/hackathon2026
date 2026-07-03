@@ -33,12 +33,12 @@ describe('createTokenEvaluators', () => {
     expect(names).toContain('output-cost');
   });
 
-  it('all evaluators have regressionMode "score"', () => {
+  it('all evaluators have comparisonMode "score"', () => {
     const gocode = makeMockGocode();
     const evaluators = createTokenEvaluators(gocode);
 
     for (const ev of evaluators) {
-      expect(ev.regressionMode).toBe('score');
+      expect(ev.comparisonMode).toBe('score');
     }
   });
 

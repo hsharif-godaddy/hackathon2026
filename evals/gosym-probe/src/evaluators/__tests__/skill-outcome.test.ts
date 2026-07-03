@@ -36,6 +36,12 @@ const advisoryInstruction: SkillInstruction = {
   priority: 'advisory',
 };
 
+const secondAdvisoryInstruction: SkillInstruction = {
+  id: 'uses-aria-labels',
+  instruction: 'Agent should add aria-labels to inputs',
+  priority: 'advisory',
+};
+
 describe('skill-outcome evaluator', () => {
   let gocode: ReturnType<typeof mockGocode>;
 
@@ -60,7 +66,7 @@ describe('skill-outcome evaluator', () => {
         makeTranscriptWith(),
         makeScenario(),
       );
-      expect(result.verdict).toBe('unknown');
+      expect(result.verdict).toBe('incomplete');
       expect(gocode.complete).not.toHaveBeenCalled();
     });
 
@@ -72,7 +78,7 @@ describe('skill-outcome evaluator', () => {
         makeTranscriptWith(),
         makeScenario({ skillInstructions: undefined }),
       );
-      expect(result.verdict).toBe('unknown');
+      expect(result.verdict).toBe('incomplete');
       expect(gocode.complete).not.toHaveBeenCalled();
     });
 
@@ -84,7 +90,7 @@ describe('skill-outcome evaluator', () => {
         makeTranscriptWith(),
         makeScenario({ skillInstructions: [] }),
       );
-      expect(result.verdict).toBe('unknown');
+      expect(result.verdict).toBe('incomplete');
       expect(gocode.complete).not.toHaveBeenCalled();
     });
 
@@ -102,7 +108,7 @@ describe('skill-outcome evaluator', () => {
         makeScenario({ skillInstructions: [requiredInstruction] }),
       );
       expect(gocode.complete).toHaveBeenCalled();
-      expect(result.verdict).not.toBe('unknown');
+      expect(result.verdict).not.toBe('incomplete');
     });
   });
 
@@ -119,7 +125,7 @@ describe('skill-outcome evaluator', () => {
         makeTranscriptWith(),
         makeScenario({ skillInstructions: [requiredInstruction] }),
       );
-      expect(result.verdict).toBe('unknown');
+      expect(result.verdict).toBe('incomplete');
       expect(result.score).toBe(0);
     });
 
@@ -132,7 +138,7 @@ describe('skill-outcome evaluator', () => {
         makeTranscriptWith(),
         makeScenario({ skillInstructions: [requiredInstruction] }),
       );
-      expect(result.verdict).toBe('unknown');
+      expect(result.verdict).toBe('incomplete');
     });
 
     it('returns unknown when LLM returns valid JSON missing item IDs', async () => {
@@ -148,8 +154,8 @@ describe('skill-outcome evaluator', () => {
         makeTranscriptWith(),
         makeScenario({ skillInstructions: [requiredInstruction] }),
       );
-      expect(result.verdict).toBe('unknown');
-      expect(result.details?.unknownCount).toBe(1);
+      expect(result.verdict).toBe('incomplete');
+      expect(result.details?.incompleteCount).toBe(1);
     });
 
     it('returns unknown when LLM response has wrong schema shape', async () => {
@@ -163,7 +169,7 @@ describe('skill-outcome evaluator', () => {
         makeTranscriptWith(),
         makeScenario({ skillInstructions: [requiredInstruction] }),
       );
-      expect(result.verdict).toBe('unknown');
+      expect(result.verdict).toBe('incomplete');
     });
   });
 
@@ -209,7 +215,7 @@ describe('skill-outcome evaluator', () => {
       expect(result.details?.hardFailures).toContain('uses-form-component');
     });
 
-    it('returns partial when only an advisory instruction is not followed', async () => {
+    it('advisory-only: verdict is unknown (advisory never gates) but adherence is reported', async () => {
       gocode.complete.mockResolvedValue(
         JSON.stringify({
           items: [
@@ -224,11 +230,12 @@ describe('skill-outcome evaluator', () => {
         makeTranscriptWith(),
         makeScenario({ skillInstructions: [advisoryInstruction] }),
       );
-      expect(result.verdict).toBe('partial');
-      expect(result.details?.directionalFailures).toContain('adds-placeholder-text');
+      // No required instruction to gate on → incomplete verdict (never 'partial').
+      expect(result.verdict).toBe('incomplete');
+      expect(result.details?.advisoryAdherence).toBe(0);
     });
 
-    it('returns fail when required fails even if advisory passes (required dominates)', async () => {
+    it('returns fail when a required instruction fails, regardless of advisory', async () => {
       gocode.complete.mockResolvedValue(
         JSON.stringify({
           items: [
@@ -246,8 +253,58 @@ describe('skill-outcome evaluator', () => {
           skillInstructions: [requiredInstruction, advisoryInstruction],
         }),
       );
+      // Verdict is driven only by the required instruction (failed → fail);
+      // the passing advisory is reported separately, not folded into score.
       expect(result.verdict).toBe('fail');
-      expect(result.score).toBe(0.5);
+      expect(result.score).toBe(0);
+      expect(result.details?.advisoryAdherence).toBe(1);
+    });
+
+    it('reports a partial advisory adherence fraction (1 of 2 followed → 0.5)', async () => {
+      gocode.complete.mockResolvedValue(
+        JSON.stringify({
+          items: [
+            { id: 'uses-form-component', followed: true, reason: 'form present' },
+            { id: 'adds-placeholder-text', followed: true, reason: 'placeholders present' },
+            { id: 'uses-aria-labels', followed: false, reason: 'no aria labels' },
+          ],
+        }),
+      );
+      const evaluator = createSkillOutcomeEvaluator(
+        gocode as unknown as IGocodeClient,
+      );
+      const result = await evaluator.evaluate(
+        makeTranscriptWith(),
+        makeScenario({
+          skillInstructions: [
+            requiredInstruction,
+            advisoryInstruction,
+            secondAdvisoryInstruction,
+          ],
+        }),
+      );
+      // Required passed → pass verdict; advisory adherence is 1 of 2 = 0.5.
+      expect(result.verdict).toBe('pass');
+      expect(result.details?.advisoryAdherence).toBe(0.5);
+    });
+
+    it('omits advisoryAdherence entirely when there are no advisory instructions', async () => {
+      gocode.complete.mockResolvedValue(
+        JSON.stringify({
+          items: [
+            { id: 'uses-form-component', followed: true, reason: 'form present' },
+          ],
+        }),
+      );
+      const evaluator = createSkillOutcomeEvaluator(
+        gocode as unknown as IGocodeClient,
+      );
+      const result = await evaluator.evaluate(
+        makeTranscriptWith(),
+        makeScenario({ skillInstructions: [requiredInstruction] }),
+      );
+      expect(result.verdict).toBe('pass');
+      expect(result.details?.advisoryAdherence).toBeUndefined();
     });
 
     it('includes instruction IDs and text in the judge prompt', async () => {

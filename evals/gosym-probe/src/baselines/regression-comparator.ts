@@ -46,7 +46,7 @@ export class RegressionComparator {
     config: StatisticalRegressionConfig,
   ): RegressionEvalResult[] {
     return Object.entries(result.aggregated).map(([name, agg]) => {
-      if (agg.regressionMode === 'score') {
+      if (agg.comparisonMode === 'score') {
         return this.buildScoreModeResult(name, agg, baseline, config, result.trials);
       }
       return this.buildPassRateResult(name, agg, baseline, config, result.trials);

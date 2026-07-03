@@ -1,5 +1,5 @@
 import { escapeRegExp } from '../../shared.js';
-import type { StructuralEvalSpec, StructuralScoreResult } from '../dom-eval-types.js';
+import type { ChecklistItemOutcome, PassRateSpec, StructuralScoreResult } from '../dom-eval-types.js';
 import { safeRatio } from '../dom-eval-types.js';
 
 interface SubScore {
@@ -67,11 +67,12 @@ function interactiveAccessibleNames(html: string): SubScore {
   return { score: safeRatio(withName, matches.length), canScore: true };
 }
 
-export const accessibilityCoverageSpec: StructuralEvalSpec = {
+export const accessibilityCoverageSpec: PassRateSpec = {
   name: 'accessibility-coverage',
   dimension: 'accessibility-coverage',
   description: 'Weighted: image alt (0.4) + form label (0.4) + interactive accessible name (0.2)',
   evalVersion: '1.0',
+  comparisonMode: 'passRate',
 
   score(bodyHtml: string): StructuralScoreResult {
     const imgSub = imageAltCoverage(bodyHtml);
@@ -116,5 +117,44 @@ export const accessibilityCoverageSpec: StructuralEvalSpec = {
         interactiveName: interactiveSub.canScore ? interactiveSub.score : null,
       },
     };
+  },
+
+  toChecklistItems(bodyHtml: string): ChecklistItemOutcome[] {
+    const imgSub = imageAltCoverage(bodyHtml);
+    const formSub = formLabelCoverage(bodyHtml);
+    const interactiveSub = interactiveAccessibleNames(bodyHtml);
+
+    const subScoreToStatus = (sub: SubScore): ChecklistItemOutcome['status'] => {
+      if (!sub.canScore) return 'incomplete';
+      // Number.isFinite guard before === 1.0 comparison (defense in depth per plan)
+      return Number.isFinite(sub.score) && sub.score === 1.0 ? 'pass' : 'fail';
+    };
+
+    return [
+      {
+        id: 'img-alt',
+        type: 'invariance',
+        status: subScoreToStatus(imgSub),
+        reason: imgSub.canScore
+          ? imgSub.score === 1.0 ? 'All images have alt text' : 'Some images missing alt text'
+          : 'No images found',
+      },
+      {
+        id: 'form-labels',
+        type: 'invariance',
+        status: subScoreToStatus(formSub),
+        reason: formSub.canScore
+          ? formSub.score === 1.0 ? 'All form inputs are labeled' : 'Some form inputs missing labels'
+          : 'No labelable form inputs found',
+      },
+      {
+        id: 'interactive-names',
+        type: 'invariance',
+        status: subScoreToStatus(interactiveSub),
+        reason: interactiveSub.canScore
+          ? interactiveSub.score === 1.0 ? 'All interactive elements have accessible names' : 'Some interactive elements missing accessible names'
+          : 'No interactive elements found',
+      },
+    ];
   },
 };

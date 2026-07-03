@@ -34,6 +34,7 @@ function makeAgg(
     ...(passAt1 !== undefined && { passAt1, passAtK: [{ k: 1, value: passAt1 }], passHatK: [{ k: 1, value: passAt1 }] }),
     passingTrials,
     totalTrials,
+    comparisonMode: 'passRate' as const,
   };
 }
 
@@ -42,7 +43,7 @@ function makeScoreAgg(aggregateScore?: number): AggregatedResult {
     passingTrials: 0,
     totalTrials: 1,
     ...(aggregateScore !== undefined ? { aggregateScore } : {}),
-    regressionMode: 'score',
+    comparisonMode: 'score',
   };
 }
 
@@ -86,7 +87,7 @@ function makeTrialResult(
   index: number,
   evaluatorName: string,
   score: number,
-  verdict: 'pass' | 'fail' | 'observed' = score === 1 ? 'pass' : 'fail',
+  verdict: 'pass' | 'fail' | 'directional' = score === 1 ? 'pass' : 'fail',
 ): TrialResult {
   return {
     trialIndex: index,
@@ -708,10 +709,10 @@ describe('RegressionComparator', () => {
       const baselineTrialScores = [0.85, 0.80, 0.88, 0.82, 0.84];
       const currentScores = [0.82, 0.84, 0.83, 0.85, 0.81];
       const trials = currentScores.map((s, i) =>
-        makeTrialResult(i, 'latency', s, 'observed'),
+        makeTrialResult(i, 'latency', s, 'directional'),
       );
       const result = makeResult(
-        { latency: { ...makeScoreAgg(0.83), regressionMode: 'score' } },
+        { latency: { ...makeScoreAgg(0.83), comparisonMode: 'score' } },
         trials,
       );
       const baseline = makeScoreBaseline(0.838);
@@ -754,10 +755,10 @@ describe('RegressionComparator', () => {
       const baselineTrialScores = [0.80, 0.82, 0.81, 0.83, 0.79];
       const currentScores = [0.90, 0.92, 0.91, 0.93, 0.89];
       const trials = currentScores.map((s, i) =>
-        makeTrialResult(i, 'latency', s, 'observed'),
+        makeTrialResult(i, 'latency', s, 'directional'),
       );
       const result = makeResult(
-        { latency: { ...makeScoreAgg(0.91), regressionMode: 'score', lowerIsBetter: true } },
+        { latency: { ...makeScoreAgg(0.91), comparisonMode: 'score', lowerIsBetter: true } },
         trials,
       );
       const baseline = makeScoreBaseline(0.81);
@@ -997,7 +998,7 @@ describe('RegressionComparator', () => {
           trialIndex: 1,
           transcript: {} as Transcript,
           evalResults: [{
-            evaluator: 'jtbd-completion', score: 0.5, verdict: 'unknown' as const, reason: '',
+            evaluator: 'jtbd-completion', score: 0.5, verdict: 'incomplete' as const, reason: '',
           }],
         },
         makeTrialResult(2, 'jtbd-completion', 1, 'pass'),
@@ -1086,7 +1087,7 @@ describe('RegressionComparator', () => {
 
   describe('relative-floor comparator integration', () => {
     function makeScoreModeTrials(name: string, scores: number[]): TrialResult[] {
-      return scores.map((s, i) => makeTrialResult(i, name, s, 'observed'));
+      return scores.map((s, i) => makeTrialResult(i, name, s, 'directional'));
     }
 
     function makeLowerIsBetterResult(name: string, currentScores: number[]): ScenarioResult {

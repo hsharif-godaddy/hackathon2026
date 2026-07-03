@@ -60,6 +60,12 @@ function assertSkillEvalWiring(scenario: Scenario, expectedSkills: string[]): vo
   expect(scenario.expectedArtifact?.items.length).toBeGreaterThan(0);
   expect(scenario.expectedAgent).toBe('AI Developer');
   expect(scenario.expectedSkills).toEqual(expectedSkills);
+  // A scenario that declares directional signals MUST wire the score-mode
+  // evaluator that scores them, else the signals are defined-but-never-scored
+  // — the silent signal loss this taxonomy split exists to prevent.
+  if ((scenario.expectedArtifact?.directionalItems?.length ?? 0) > 0) {
+    expect(names).toContain('directional-signal');
+  }
 }
 
 describe('scenario shapes', () => {

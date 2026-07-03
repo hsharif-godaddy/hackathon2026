@@ -17,24 +17,24 @@ describe('isValidTrialScore', () => {
     expect(isValidTrialScore({ evaluatorFailed: false, verdict: 'fail' })).toBe(true);
   });
 
-  it('returns true for a partial result', () => {
-    expect(isValidTrialScore({ verdict: 'partial' })).toBe(true);
+  it('returns true for a fail result (still valid for scoring)', () => {
+    expect(isValidTrialScore({ verdict: 'fail' })).toBe(true);
   });
 
-  it('returns true for an observed result', () => {
-    expect(isValidTrialScore({ verdict: 'observed' })).toBe(true);
+  it('returns true for a directional result', () => {
+    expect(isValidTrialScore({ verdict: 'directional' })).toBe(true);
   });
 
   it('returns false when evaluatorFailed is true', () => {
     expect(isValidTrialScore({ evaluatorFailed: true, verdict: 'fail' })).toBe(false);
   });
 
-  it('returns false when verdict is unknown', () => {
-    expect(isValidTrialScore({ evaluatorFailed: false, verdict: 'unknown' })).toBe(false);
+  it('returns false when verdict is incomplete', () => {
+    expect(isValidTrialScore({ evaluatorFailed: false, verdict: 'incomplete' })).toBe(false);
   });
 
-  it('returns false when evaluatorFailed is true and verdict is unknown', () => {
-    expect(isValidTrialScore({ evaluatorFailed: true, verdict: 'unknown' })).toBe(false);
+  it('returns false when evaluatorFailed is true and verdict is incomplete', () => {
+    expect(isValidTrialScore({ evaluatorFailed: true, verdict: 'incomplete' })).toBe(false);
   });
 
   it('returns true when evaluatorFailed is undefined and verdict is pass', () => {
@@ -113,13 +113,13 @@ describe('extractTrialScoresForEvaluator', () => {
     expect(scores).toEqual([0.8]);
   });
 
-  it('skips trials where verdict is unknown', () => {
+  it('skips trials where verdict is incomplete', () => {
     const trials: TrialResult[] = [
       makeTrial(0, [
         makeEvalResult({ evaluator: 'accuracy', score: 0.8, verdict: 'pass' }),
       ]),
       makeTrial(1, [
-        makeEvalResult({ evaluator: 'accuracy', score: 0.0, verdict: 'unknown' }),
+        makeEvalResult({ evaluator: 'accuracy', score: 0.0, verdict: 'incomplete' }),
       ]),
     ];
 
@@ -152,7 +152,7 @@ describe('extractAllTrialScores', () => {
         makeEvalResult({ evaluator: 'speed', score: 0.5, verdict: 'pass' }),
       ]),
       makeTrial(1, [
-        makeEvalResult({ evaluator: 'accuracy', score: 0.9, verdict: 'partial' }),
+        makeEvalResult({ evaluator: 'accuracy', score: 0.9, verdict: 'fail' }),
         makeEvalResult({ evaluator: 'speed', score: 0.6, verdict: 'pass' }),
       ]),
     ];
@@ -174,13 +174,13 @@ describe('extractAllTrialScores', () => {
     expect(result.get('accuracy')).toEqual([0.8]);
   });
 
-  it('excludes unknown-verdict results', () => {
+  it('excludes incomplete-verdict results', () => {
     const trials: TrialResult[] = [
       makeTrial(0, [
         makeEvalResult({ evaluator: 'accuracy', score: 0.8, verdict: 'pass' }),
       ]),
       makeTrial(1, [
-        makeEvalResult({ evaluator: 'accuracy', score: 0.0, verdict: 'unknown' }),
+        makeEvalResult({ evaluator: 'accuracy', score: 0.0, verdict: 'incomplete' }),
       ]),
     ];
 
@@ -196,7 +196,7 @@ describe('extractAllTrialScores', () => {
   it('handles trials with no valid results', () => {
     const trials: TrialResult[] = [
       makeTrial(0, [
-        makeEvalResult({ evaluator: 'accuracy', score: 0.0, verdict: 'unknown' }),
+        makeEvalResult({ evaluator: 'accuracy', score: 0.0, verdict: 'incomplete' }),
         makeEvalResult({ evaluator: 'speed', score: 0.0, verdict: 'fail', evaluatorFailed: true }),
       ]),
     ];
@@ -205,10 +205,10 @@ describe('extractAllTrialScores', () => {
     expect(result.size).toBe(0);
   });
 
-  it('includes observed-verdict results', () => {
+  it('includes directional-verdict results', () => {
     const trials: TrialResult[] = [
       makeTrial(0, [
-        makeEvalResult({ evaluator: 'token-usage', score: 1500, verdict: 'observed' }),
+        makeEvalResult({ evaluator: 'token-usage', score: 1500, verdict: 'directional' }),
       ]),
     ];
 

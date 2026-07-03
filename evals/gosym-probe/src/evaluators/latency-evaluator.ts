@@ -243,7 +243,7 @@ function maxGapMs(times: number[]): number {
 
 export class LatencyEvaluator implements Evaluator {
   readonly name = 'latency';
-  readonly regressionMode = 'score' as const;
+  readonly comparisonMode = 'score' as const;
 
   private readonly collector =
     new ChunkTimingCollector();
@@ -292,7 +292,7 @@ export class LatencyEvaluator implements Evaluator {
       return Promise.resolve({
         evaluator: this.name,
         score: 0,
-        verdict: 'unknown',
+        verdict: 'incomplete',
         reason: 'No chunk events captured',
         details: {
           totalMs: null,
@@ -327,7 +327,7 @@ export class LatencyEvaluator implements Evaluator {
       return Promise.resolve({
         evaluator: this.name,
         score: 0,
-        verdict: 'unknown',
+        verdict: 'incomplete',
         reason: 'No chunk events captured',
         details: {
           totalMs: null,
@@ -368,9 +368,9 @@ export class LatencyEvaluator implements Evaluator {
                 ),
               ),
             ),
-            verdict: 'observed' as const,
+            verdict: 'directional' as const,
           }
-        : { score: 0, verdict: 'unknown' as const };
+        : { score: 0, verdict: 'incomplete' as const };
 
     const reason = this.buildReason(
       firstTurnTTFC,

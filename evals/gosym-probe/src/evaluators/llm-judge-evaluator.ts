@@ -7,20 +7,7 @@ import type { DOMSnapshot, Transcript } from '../runner/transcript.js';
 import type { Scenario } from '../scenarios/types.js';
 import { clamp01 } from './shared.js';
 import { warnLine } from '../util/warn-line.js';
-
-function extractJsonObject(text: string): string | null {
-  const start = text.indexOf('{');
-  const end = text.lastIndexOf('}');
-  if (start === -1 || end === -1 || end <= start) return null;
-  return text.slice(start, end + 1);
-}
-
-export const JudgeVerdictSchema = z.enum([
-  'pass',
-  'partial',
-  'fail',
-  'unknown',
-]);
+import { JudgeVerdictSchema, extractJsonObject } from './judge-schema.js';
 
 export const JudgeNumericalSchema = z.object({
   score: z.number().min(0).max(1),
@@ -33,7 +20,7 @@ export type JudgeNumerical = z.infer<typeof JudgeNumericalSchema>;
 export interface LLMJudgeEvaluatorConfig<T> {
   name: string;
   evalVersion?: string;
-  regressionMode?: 'passRate' | 'score';
+  comparisonMode: 'passRate' | 'score';
   lowerIsBetter?: boolean;
   schema: z.ZodType<T>;
   canEvaluate?: (transcript: Transcript, scenario: Scenario, snapshot?: DOMSnapshot) => boolean | Promise<boolean>;
@@ -50,7 +37,7 @@ export interface LLMJudgeEvaluatorConfig<T> {
 export class LLMJudgeEvaluator<T> implements Evaluator {
   readonly name: string;
   readonly evalVersion?: string;
-  readonly regressionMode?: 'passRate' | 'score';
+  readonly comparisonMode: 'passRate' | 'score';
   readonly lowerIsBetter?: boolean;
 
   constructor(
@@ -59,7 +46,7 @@ export class LLMJudgeEvaluator<T> implements Evaluator {
   ) {
     this.name = config.name;
     this.evalVersion = config.evalVersion;
-    this.regressionMode = config.regressionMode;
+    this.comparisonMode = config.comparisonMode;
     this.lowerIsBetter = config.lowerIsBetter;
   }
 
@@ -72,7 +59,7 @@ export class LLMJudgeEvaluator<T> implements Evaluator {
       return {
         evaluator: this.name,
         score: 0,
-        verdict: 'unknown',
+        verdict: 'incomplete',
         reason: 'Insufficient evidence to evaluate (no DOM snapshot)',
         ...(this.evalVersion !== undefined && { evalVersion: this.evalVersion }),
       };
@@ -83,7 +70,7 @@ export class LLMJudgeEvaluator<T> implements Evaluator {
       return {
         evaluator: this.name,
         score: 0,
-        verdict: 'unknown',
+        verdict: 'incomplete',
         reason: 'Evidence validation failed (snapshot unreadable or empty)',
         ...(this.evalVersion !== undefined && { evalVersion: this.evalVersion }),
       };
@@ -95,7 +82,7 @@ export class LLMJudgeEvaluator<T> implements Evaluator {
       // 429 retry (with Retry-After handling) is centralized in
       // GocodeClient.complete(), so the synthetic-user loop and every evaluator
       // share one retry budget. A RateLimitError reaching here means that
-      // budget was already exhausted; map it to an `unknown` verdict below.
+      // budget was already exhausted; map it to an `incomplete` verdict below.
       response = await this.gocode.complete([{ role: 'user', content: prompt }]);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err);
@@ -107,7 +94,7 @@ export class LLMJudgeEvaluator<T> implements Evaluator {
       return {
         evaluator: this.name,
         score: 0,
-        verdict: 'unknown',
+        verdict: 'incomplete',
         reason: `LLM judge request failed: ${errorMessage}`,
         ...(this.evalVersion !== undefined && { evalVersion: this.evalVersion }),
       };
@@ -115,10 +102,11 @@ export class LLMJudgeEvaluator<T> implements Evaluator {
 
     const jsonText = extractJsonObject(response);
     if (!jsonText) {
+      warnLine('No JSON object found in LLM judge response.', { evaluator: this.name });
       return {
         evaluator: this.name,
         score: 0,
-        verdict: 'unknown',
+        verdict: 'incomplete',
         reason: 'No JSON object found in LLM judge response',
         details: { response: response.slice(0, 800) },
         ...(this.evalVersion !== undefined && { evalVersion: this.evalVersion }),
@@ -129,10 +117,11 @@ export class LLMJudgeEvaluator<T> implements Evaluator {
     try {
       parsedUnknown = JSON.parse(jsonText);
     } catch {
+      warnLine('LLM judge response contained malformed JSON.', { evaluator: this.name });
       return {
         evaluator: this.name,
         score: 0,
-        verdict: 'unknown',
+        verdict: 'incomplete',
         reason: 'LLM judge response contained malformed JSON',
         details: { response: response.slice(0, 800) },
         ...(this.evalVersion !== undefined && { evalVersion: this.evalVersion }),
@@ -141,10 +130,11 @@ export class LLMJudgeEvaluator<T> implements Evaluator {
 
     const parsed = this.config.schema.safeParse(parsedUnknown);
     if (!parsed.success) {
+      warnLine('LLM judge response did not match expected schema.', { evaluator: this.name });
       return {
         evaluator: this.name,
         score: 0,
-        verdict: 'unknown',
+        verdict: 'incomplete',
         reason: 'LLM judge response did not match expected schema',
         details: {
           issues: parsed.error.issues,

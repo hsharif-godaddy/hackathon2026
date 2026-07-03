@@ -7,8 +7,8 @@ import type { Scenario, SkillInstruction } from '../scenarios/types.js';
 import {
   reduceChecklistOutcomes,
   type ChecklistItemOutcome,
+  type ChecklistItemStatus,
 } from './checklist-verdict.js';
-import type { ChecklistCheckType } from '../scenarios/types.js';
 import { safeStringify, truncate } from './shared.js';
 
 const MAX_TRANSCRIPT_CHARS = 6000;
@@ -41,12 +41,26 @@ const SYSTEM_INSTRUCTIONS = [
   'Include one entry per instruction, using the given ids.',
 ].join('\n');
 
-function priorityToCheckType(priority: SkillInstruction['priority']): ChecklistCheckType {
+interface JudgedInstruction {
+  id: string;
+  priority: SkillInstruction['priority'];
+  status: ChecklistItemStatus;
+  reason: string;
+}
+
+/**
+ * Whether a judged instruction gates the binary verdict. Only 'required'
+ * instructions do; 'advisory' ones are reported as an adherence fraction.
+ * Written as an exhaustive switch so a new SkillInstruction priority is a
+ * compile error here rather than silently falling out of both the gating
+ * filter and the adherence fraction.
+ */
+function gatesVerdict(priority: SkillInstruction['priority']): boolean {
   switch (priority) {
     case 'required':
-      return 'capability';
+      return true;
     case 'advisory':
-      return 'directional';
+      return false;
     default: {
       const exhaustive: never = priority;
       return exhaustive;
@@ -117,38 +131,56 @@ function buildPrompt(
   ].join('\n');
 }
 
-function toOutcomes(
+function judgeInstructions(
   parsed: SkillOutcomeResult,
   instructions: SkillInstruction[],
-): ChecklistItemOutcome[] {
+): JudgedInstruction[] {
   const byId = new Map(parsed.items.map((p) => [p.id, p]));
-  return instructions.map((instr): ChecklistItemOutcome => {
+  return instructions.map((instr): JudgedInstruction => {
     const judged = byId.get(instr.id);
     if (!judged) {
       return {
         id: instr.id,
-        type: priorityToCheckType(instr.priority),
-        status: 'unknown',
+        priority: instr.priority,
+        status: 'incomplete',
         reason: 'judge did not return a verdict for this instruction',
       };
     }
     return {
       id: instr.id,
-      type: priorityToCheckType(instr.priority),
+      priority: instr.priority,
       status: judged.followed ? 'pass' : 'fail',
       reason: judged.reason,
     };
   });
 }
 
+/** Fraction of non-gating (advisory) instructions followed, over those judged. */
+function advisoryAdherence(judged: JudgedInstruction[]): number | undefined {
+  const evaluated = judged.filter(
+    (j) => !gatesVerdict(j.priority) && j.status !== 'incomplete',
+  );
+  if (evaluated.length === 0) return undefined;
+  const followed = evaluated.filter((j) => j.status === 'pass').length;
+  return followed / evaluated.length;
+}
+
 /**
  * LLM-judge evaluator that checks whether the agent followed specific
- * skill instructions. Uses the shared checklist reducer for verdict
- * reduction: required instructions map to 'capability' (hard-fail),
- * advisory instructions map to 'directional' (soft partial).
+ * skill instructions. Only REQUIRED instructions drive the binary
+ * pass/fail verdict (via the shared checklist reducer, mapped to
+ * 'capability'): any required instruction unmet hard-fails the scenario.
  *
- * Returns 'unknown' when the scenario has no skillInstructions (non-skill-eval
- * scenarios). Inherits LLMJudgeEvaluator's 429-retry + parse/schema → 'unknown'
+ * ADVISORY instructions are a matter of degree, not a gate — they no
+ * longer downgrade the verdict to 'partial' (which deflated pass@k
+ * without being a clean fail). They are still judged and their adherence
+ * fraction is reported in `details.advisoryAdherence` for visibility, but
+ * they never change the pass/fail verdict. (A future score-mode pass can
+ * gate advisory adherence statistically if we want it enforced.)
+ *
+ * Returns 'incomplete' when the scenario has no skillInstructions (non-skill-eval
+ * scenarios), or when only advisory instructions exist and no required one is
+ * evaluable. Inherits LLMJudgeEvaluator's 429-retry + parse/schema → 'incomplete'
  * handling.
  */
 export function createSkillOutcomeEvaluator(
@@ -156,26 +188,41 @@ export function createSkillOutcomeEvaluator(
 ): LLMJudgeEvaluator<SkillOutcomeResult> {
   return new LLMJudgeEvaluator<SkillOutcomeResult>(gocode, {
     name: 'skill-outcome',
+    comparisonMode: 'passRate',
     schema: SkillOutcomeSchema,
     canEvaluate: (_transcript, scenario) =>
       (scenario.skillInstructions?.length ?? 0) > 0,
     prompt: (transcript, scenario) => buildPrompt(transcript, scenario),
     toEvalResult: (parsed, _transcript, scenario) => {
       const instructions = scenario.skillInstructions ?? [];
-      const outcomes = toOutcomes(parsed, instructions);
-      const reduced = reduceChecklistOutcomes(outcomes);
+      const judged = judgeInstructions(parsed, instructions);
+      // Only required instructions gate the verdict; advisory ones are
+      // reported as a degree signal and never hard/soft-fail.
+      const requiredOutcomes: ChecklistItemOutcome[] = judged
+        .filter((j) => gatesVerdict(j.priority))
+        .map((j) => ({
+          id: j.id,
+          status: j.status,
+          reason: j.reason,
+        }));
+      const reduced = reduceChecklistOutcomes(requiredOutcomes);
+      const advisory = advisoryAdherence(judged);
       return {
         evaluator: 'skill-outcome',
         score: reduced.score,
         verdict: reduced.verdict,
         reason: reduced.reason,
         details: {
-          items: outcomes,
+          // JudgedInstruction[] (id/priority/status/reason) — carries
+          // `priority` so advisory-vs-required is visible in the report;
+          // intentionally NOT ChecklistItemOutcome (the reducer only sees the
+          // required subset).
+          items: judged,
           passedCount: reduced.passedCount,
           failedCount: reduced.failedCount,
-          unknownCount: reduced.unknownCount,
+          incompleteCount: reduced.incompleteCount,
           hardFailures: reduced.hardFailures,
-          directionalFailures: reduced.directionalFailures,
+          ...(advisory !== undefined && { advisoryAdherence: advisory }),
         },
       };
     },

@@ -203,7 +203,7 @@ describe('RebuildExecutionHealthEvaluator', () => {
       scenario,
     );
 
-    expect(result.verdict).toBe('unknown');
+    expect(result.verdict).toBe('incomplete');
     expect(result.score).toBe(0);
   });
 
@@ -225,7 +225,7 @@ describe('RebuildExecutionHealthEvaluator', () => {
     );
 
     expect(result.score).toBe(1);
-    expect(result.verdict).toBe('observed');
+    expect(result.verdict).toBe('directional');
     expect(result.details?.handoffTriggered).toBe(true);
     expect(result.details?.penalty).toBe(0);
   });
@@ -252,7 +252,7 @@ describe('RebuildExecutionHealthEvaluator', () => {
     const result = await evaluator.evaluate(transcript, scenario);
 
     expect(result.score).toBe(0.25);
-    expect(result.verdict).toBe('observed');
+    expect(result.verdict).toBe('directional');
     expect(result.details?.penalty).toBe(3);
   });
 

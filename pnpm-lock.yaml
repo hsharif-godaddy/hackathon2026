@@ -1511,6 +1511,9 @@ importers:
       '@airo/ai-lib':
         specifier: workspace:*
         version: link:../../packages/ai-lib
+      '@aws-sdk/client-s3':
+        specifier: ^3.1049.0
+        version: 3.1076.0
       chalk:
         specifier: ^5.6.2
         version: 5.6.2

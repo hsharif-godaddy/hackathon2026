@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import type { ScenarioResult, AggregatedResult, TrialResult } from
   '../runner/types.js';
 import type { EvalResult } from '../evaluators/evaluator.js';
-import type { CompositeBreakdownEntry } from '../evaluators/composite-evaluator.js';
+import type { ChecklistItemOutcome } from '../evaluators/checklist-verdict.js';
 import type {
   RegressionEvalResult,
   RegressionResult,
@@ -28,7 +28,7 @@ import {
   type GraderStability,
 } from '../baselines/grader-stability.js';
 
-interface UnknownVerdict {
+interface IncompleteVerdict {
   scenario: string;
   evaluator: string;
   trialLabel: string;
@@ -61,8 +61,8 @@ function formatPassRate(agg: AggregatedResult): string {
 }
 
 function verdictWithScore(r: EvalResult): string {
-  const verdict = r.verdict === 'unknown'
-    ? '\u26a0\ufe0f unknown'
+  const verdict = r.verdict === 'incomplete'
+    ? '\u26a0\ufe0f incomplete'
     : r.verdict;
   const score = Number.isFinite(r.score)
     ? r.score.toFixed(2)
@@ -145,7 +145,7 @@ function renderPassRateComparison(results: ScenarioResult[]): string {
       if (evalResult.type !== 'compared') continue;
       // currentScore/baselineScore are a pass rate only in pass-rate mode;
       // skip score-mode evaluators rather than mislabel their aggregate score.
-      if (result.aggregated[evalResult.evaluator]?.regressionMode === 'score') {
+      if (result.aggregated[evalResult.evaluator]?.comparisonMode === 'score') {
         scoreModeExcluded += 1;
         continue;
       }
@@ -249,7 +249,7 @@ function renderEvaluatorReasoning(
     const reasonLines: string[] = [];
     for (let i = 0; i < trialCount; i++) {
       const r = evalIndex.get(i)?.get(name);
-      if (r && r.verdict !== 'pass' && r.verdict !== 'unknown' && r.verdict !== 'observed') {
+      if (r && r.verdict !== 'pass' && r.verdict !== 'incomplete' && r.verdict !== 'directional') {
         const reason = escapePipeForMarkdown(r.reason) || '(no reason given)';
         const comparison = r.baselineComparison
           ? ` [${escapePipeForMarkdown(r.baselineComparison)}]`
@@ -277,7 +277,7 @@ function renderEvaluatorReasoning(
   ].join('\n');
 }
 
-function renderCompositeBreakdown(
+function renderChecklistItemsBreakdown(
   evalNames: string[],
   evalIndex: Map<number, Map<string, EvalResult>>,
   trialCount: number,
@@ -285,65 +285,66 @@ function renderCompositeBreakdown(
   const blocks: string[] = [];
 
   for (const name of evalNames) {
-    const trialBreakdowns: Array<CompositeBreakdownEntry[] | undefined> = [];
+    const trialItems: Array<ChecklistItemOutcome[] | undefined> = [];
     for (let i = 0; i < trialCount; i++) {
       const r = evalIndex.get(i)?.get(name);
-      const bd = r?.details?.['breakdown'];
-      if (r?.details?.['_composite'] === true && Array.isArray(bd)) {
-        trialBreakdowns.push(bd as CompositeBreakdownEntry[]);
-      } else {
-        trialBreakdowns.push(undefined);
-      }
+      const items = r?.details?.['items'];
+      trialItems.push(Array.isArray(items) ? (items as ChecklistItemOutcome[]) : undefined);
     }
 
-    if (!trialBreakdowns.some((b) => b !== undefined)) continue;
+    if (!trialItems.some((items) => items !== undefined)) continue;
 
-    const subEvalNames: string[] = [];
+    const checkIds: string[] = [];
     const seen = new Set<string>();
-    for (const b of trialBreakdowns) {
-      if (!b) continue;
-      for (const entry of b) {
-        if (!seen.has(entry.evaluator)) {
-          seen.add(entry.evaluator);
-          subEvalNames.push(entry.evaluator);
+    for (const items of trialItems) {
+      if (!items) continue;
+      for (const item of items) {
+        if (!seen.has(item.id)) {
+          seen.add(item.id);
+          checkIds.push(item.id);
         }
       }
     }
 
-    const trialHeaders = Array.from(
-      { length: trialCount },
-      (_, i) => `T${i + 1}`,
-    );
-    const cols = ['Sub-Evaluator', ...trialHeaders];
+    const trialHeaders = Array.from({ length: trialCount }, (_, i) => `T${i + 1}`);
+    const cols = ['Check', 'Type', ...trialHeaders];
     const header = `| ${cols.join(' | ')} |`;
-    const separator = `|${cols
-      .map((c) => '-'.repeat(c.length + 2))
-      .join('|')}|`;
+    const separator = `|${cols.map((c) => '-'.repeat(c.length + 2)).join('|')}|`;
 
-    const rows = subEvalNames.map((subName) => {
-      const cells: string[] = [subName];
+    const rows = checkIds.map((id) => {
+      const firstItem = trialItems.find((t) => t !== undefined)?.find((item) => item.id === id);
+      const typePart = firstItem?.type ?? '\u2014';
+      const cells: string[] = [id, typePart];
       for (let i = 0; i < trialCount; i++) {
-        const b = trialBreakdowns[i];
-        const entry = b?.find((e) => e.evaluator === subName);
-        if (!entry) {
+        const item = trialItems[i]?.find((it) => it.id === id);
+        if (!item) {
           cells.push('\u2014');
-        } else if (entry.scoreable) {
-          cells.push(entry.score.toFixed(2));
         } else {
-          cells.push('unknown');
+          const icon = item.status === 'pass' ? '\u2713' : item.status === 'fail' ? '\u2717' : '?';
+          cells.push(`${icon} ${item.status}`);
         }
       }
       return `| ${cells.join(' | ')} |`;
     });
 
+    const hardFailureLines: string[] = [];
+    for (let i = 0; i < trialCount; i++) {
+      const r = evalIndex.get(i)?.get(name);
+      const hf = r?.details?.['hardFailures'];
+      if (Array.isArray(hf) && hf.length > 0) {
+        hardFailureLines.push(`T${i + 1} hard failures: ${(hf as string[]).join(', ')}`);
+      }
+    }
+
     blocks.push(
       '<details>',
-      `<summary>${name} breakdown</summary>`,
+      `<summary>${name} checklist</summary>`,
       '',
       header,
       separator,
       ...rows,
       '',
+      ...(hardFailureLines.length > 0 ? [...hardFailureLines, ''] : []),
       '</details>',
     );
   }
@@ -352,16 +353,16 @@ function renderCompositeBreakdown(
   return blocks.join('\n');
 }
 
-function collectUnknowns(
+function collectIncompletes(
   results: ScenarioResult[],
-): UnknownVerdict[] {
-  const unknowns: UnknownVerdict[] = [];
+): IncompleteVerdict[] {
+  const incompletes: IncompleteVerdict[] = [];
 
   for (const result of results) {
     for (const trial of result.trials) {
       for (const r of trial.evalResults) {
-        if (r.verdict === 'unknown') {
-          unknowns.push({
+        if (r.verdict === 'incomplete') {
+          incompletes.push({
             scenario: result.scenarioName,
             evaluator: r.evaluator,
             trialLabel: `T${trial.trialIndex + 1}`,
@@ -374,18 +375,18 @@ function collectUnknowns(
     }
   }
 
-  return unknowns;
+  return incompletes;
 }
 
-function renderUnknowns(
-  unknowns: UnknownVerdict[],
+function renderIncompletes(
+  incompletes: IncompleteVerdict[],
 ): string {
   const lines = [
-    '## \u26a0\ufe0f Unknown Verdicts \u2014 Require Human Review',
+    '## \u26a0\ufe0f Incomplete Verdicts \u2014 Require Human Review',
     '',
     '| Scenario | Evaluator | Trial | Reason |',
     '|----------|-----------|-------|--------|',
-    ...unknowns.map((u) => {
+    ...incompletes.map((u) => {
       const reason =
         escapePipeForMarkdown(u.reason) || '(no reason given)';
       const scenario = u.scenario.replace(/\|/g, '\\|');
@@ -453,7 +454,7 @@ function compactVerdict(
   result: EvalResult | undefined,
 ): string {
   if (!result) return '\u2014';
-  if (result.verdict === 'unknown') return '\u26a0\ufe0f unknown';
+  if (result.verdict === 'incomplete') return '\u26a0\ufe0f incomplete';
   return result.verdict;
 }
 
@@ -577,7 +578,7 @@ function renderCategoryMatrix(results: ScenarioResult[]): string[] {
       const cells = [
         escapePipeForMarkdown(result.scenarioName),
         escapePipeForMarkdown(name),
-        formatPass1(agg.passAt1, '\u2014'),
+        formatPass1(agg.passAt1, '\u2014', { n: agg.totalTrials, ci: agg.wilsonCI }),
         formatEstimatorVector(agg.passAtK, '\u2014'),
         formatEstimatorVector(agg.passHatK, '\u2014'),
         rate,
@@ -742,7 +743,7 @@ export class MdReporter {
   public render(runId: string, results: ScenarioResult[], options?: RenderOptions): string {
     const gated = results.filter((r) => r.regressionStatus !== undefined);
     const informational = results.filter((r) => r.regressionStatus === undefined);
-    const unknowns = collectUnknowns(results);
+    const incompletes = collectIncompletes(results);
     const disagreements = findSignalDisagreements(results);
     const trialCount = totalTrialCount(results);
 
@@ -794,8 +795,8 @@ export class MdReporter {
       sections.push('', renderSignalDisagreements(disagreements));
     }
 
-    if (unknowns.length > 0) {
-      sections.push('', renderUnknowns(unknowns));
+    if (incompletes.length > 0) {
+      sections.push('', renderIncompletes(incompletes));
     }
 
     sections.push('', this.renderTrialLinksSection(results));
@@ -828,33 +829,29 @@ export class MdReporter {
   ): string[] {
     const counts = new Map<
       string,
-      { pass: number; partial: number; fail: number; unknown: number }
+      { pass: number; fail: number; incomplete: number }
     >();
 
     for (const result of results) {
       for (const trial of result.trials) {
         for (const evalResult of trial.evalResults) {
-          if (evalResult.verdict === 'observed') continue;
+          if (evalResult.verdict === 'directional') continue;
           if (!counts.has(evalResult.evaluator)) {
             counts.set(evalResult.evaluator, {
               pass: 0,
-              partial: 0,
               fail: 0,
-              unknown: 0,
+              incomplete: 0,
             });
           }
           switch (evalResult.verdict) {
             case 'pass':
               counts.get(evalResult.evaluator)!.pass++;
               break;
-            case 'partial':
-              counts.get(evalResult.evaluator)!.partial++;
-              break;
             case 'fail':
               counts.get(evalResult.evaluator)!.fail++;
               break;
-            case 'unknown':
-              counts.get(evalResult.evaluator)!.unknown++;
+            case 'incomplete':
+              counts.get(evalResult.evaluator)!.incomplete++;
               break;
           }
         }
@@ -862,21 +859,19 @@ export class MdReporter {
     }
 
     const lines = [
-      '| Evaluator | pass | partial | fail | unknown | pass rate |',
-      '|----------|------|---------|------|---------|-----------|',
+      '| Evaluator | pass | fail | incomplete | pass rate |',
+      '|----------|------|------|------------|-----------|',
     ];
 
     for (const [evaluator, count] of [...counts.entries()].sort(
       ([a], [b]) => a.localeCompare(b),
     )) {
-      const total =
-        count.pass + count.partial + count.fail + count.unknown;
+      const total = count.pass + count.fail + count.incomplete;
       lines.push(
         `| ${escapePipeForMarkdown(evaluator)}`
         + ` | ${count.pass}`
-        + ` | ${count.partial}`
         + ` | ${count.fail}`
-        + ` | ${count.unknown}`
+        + ` | ${count.incomplete}`
         + ` | ${formatPercent(count.pass, total)} |`,
       );
     }
@@ -1070,7 +1065,7 @@ export class MdReporter {
       }
     }
 
-    const breakdown = renderCompositeBreakdown(evalNames, evalIndex, k);
+    const breakdown = renderChecklistItemsBreakdown(evalNames, evalIndex, k);
     if (breakdown) {
       lines.push('', breakdown);
     }
@@ -1087,7 +1082,7 @@ export class MdReporter {
     evalIndex: Map<number, Map<string, EvalResult>>,
     baselineCellValue?: string,
   ): string {
-    const pass1 = formatPass1(agg.passAt1, '\u2014');
+    const pass1 = formatPass1(agg.passAt1, '\u2014', { n: agg.totalTrials, ci: agg.wilsonCI });
     const passAtK = formatEstimatorVector(agg.passAtK, '\u2014');
     const passHatK = formatEstimatorVector(agg.passHatK, '\u2014');
 
@@ -1096,7 +1091,7 @@ export class MdReporter {
     const scores: number[] = [];
     for (let i = 0; i < trialCount; i++) {
       const r = evalIndex.get(i)?.get(evaluator);
-      if (r && Number.isFinite(r.score) && r.verdict !== 'unknown') scores.push(r.score);
+      if (r && Number.isFinite(r.score) && r.verdict !== 'incomplete') scores.push(r.score);
     }
     const stats = scores.length > 0 ? computeScoreStats(scores) : null;
     const mean = stats ? stats.mean.toFixed(2) : '\u2014';

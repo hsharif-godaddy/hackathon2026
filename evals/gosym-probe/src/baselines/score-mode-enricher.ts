@@ -3,6 +3,7 @@ import type { BaselineScores, RegressionResult } from './types.js';
 import { exceedsThreshold, resolveThreshold, hasVersionMismatch } from './threshold.js';
 import type { ThresholdConfig } from './threshold.js';
 import { buildPassEstimators } from '../util/pass-at-k.js';
+import type { PassEstimators } from '../util/pass-at-k.js';
 
 /** Reporting vector (plus per-evaluator overrides) for the pass@k estimators. */
 export interface ReportingKConfig {
@@ -27,7 +28,7 @@ function ksForEvaluator(name: string, reporting: ReportingKConfig): readonly num
  * - The baseline has no entry for the evaluator.
  * - The baseline aggregateScore is undefined or non-finite.
  * - evalVersion differs between current run and baseline.
- * - All trials have verdict 'unknown' (no valid comparison data).
+ * - All trials have verdict 'incomplete' (no valid comparison data).
  * - The trials array is empty (result.trials.length === 0).
  * - The evaluator is absent from every trial (no trial contains a matching evalResult).
  *
@@ -63,7 +64,7 @@ export function enrichScoreModePassRates(
   const tostResults = buildTostResultMap(regressionResult);
 
   for (const [name, agg] of Object.entries(result.aggregated)) {
-    if (agg.regressionMode !== 'score') {
+    if (agg.comparisonMode !== 'score') {
       enriched[name] = agg;
       continue;
     }
@@ -75,7 +76,7 @@ export function enrichScoreModePassRates(
     if (tostNonInferior !== undefined) {
       const validTrials = result.trials.filter((t) => {
         const er = t.evalResults.find((e) => e.evaluator === name);
-        return er !== undefined && er.verdict !== 'unknown';
+        return er !== undefined && er.verdict !== 'incomplete';
       }).length;
       enriched[name] = {
         ...agg,
@@ -119,7 +120,7 @@ export function enrichScoreModePassRates(
       const evalResult = trial.evalResults.find((e) => e.evaluator === name);
       if (evalResult === undefined) continue;
       foundAny = true;
-      if (evalResult.verdict === 'unknown') continue;
+      if (evalResult.verdict === 'incomplete') continue;
       if (!Number.isFinite(evalResult.score)) continue;
       validTrials++;
       const trialVerdict: 'pass' | 'fail' =
@@ -141,15 +142,20 @@ export function enrichScoreModePassRates(
       continue;
     }
 
-    // All present trials had unknown verdict: no valid comparison, skip enrichment.
+    // All present trials had incomplete verdict: no valid comparison, skip enrichment.
     if (validTrials === 0) {
       enriched[name] = agg;
       continue;
     }
 
+    const { wilsonCI: _unusedWilsonCI, ...estimators }: PassEstimators = buildPassEstimators(
+      validTrials,
+      passingTrials,
+      ksForEvaluator(name, reporting),
+    );
     enriched[name] = {
       ...agg,
-      ...buildPassEstimators(validTrials, passingTrials, ksForEvaluator(name, reporting)),
+      ...estimators,
       baselinePassingTrials: passingTrials,
     };
   }

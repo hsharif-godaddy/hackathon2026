@@ -14,3 +14,8 @@ export { onlineAppointmentsNonSelectionScenario }
   from './online-appointments-non-selection.js';
 export { commerceVsPaymentRoutingScenario }
   from './commerce-vs-payment-routing.js';
+export { emailNonSelectionScenario } from './email-non-selection.js';
+export { appointmentsVsConferencingRoutingScenario }
+  from './appointments-vs-conferencing-routing.js';
+export { inboxVsAiAgentRoutingScenario }
+  from './inbox-vs-ai-agent-routing.js';

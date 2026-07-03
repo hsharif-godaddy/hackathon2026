@@ -3,7 +3,6 @@ import {
   scoreToVerdict,
   computeProbeDelta,
   PASS_THRESHOLD,
-  PARTIAL_THRESHOLD,
   ZERO_PROBE,
 } from '../eval-utils.js';
 
@@ -14,16 +13,11 @@ describe('scoreToVerdict', () => {
     expect(scoreToVerdict(1.0)).toBe('pass');
   });
 
-  it('returns partial when score >= PARTIAL_THRESHOLD but < PASS_THRESHOLD', () => {
-    expect(scoreToVerdict(PARTIAL_THRESHOLD)).toBe('partial');
-    expect(scoreToVerdict(0.5)).toBe('partial');
-    expect(scoreToVerdict(0.69)).toBe('partial');
-  });
-
-  it('returns fail when score < PARTIAL_THRESHOLD', () => {
+  it('returns fail when score < PASS_THRESHOLD', () => {
+    expect(scoreToVerdict(0.69)).toBe('fail');
+    expect(scoreToVerdict(0.5)).toBe('fail');
     expect(scoreToVerdict(0.39)).toBe('fail');
     expect(scoreToVerdict(0.0)).toBe('fail');
-    expect(scoreToVerdict(0.1)).toBe('fail');
   });
 });
 

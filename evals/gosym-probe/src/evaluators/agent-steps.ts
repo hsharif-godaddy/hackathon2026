@@ -9,7 +9,7 @@ import type { Scenario } from '../scenarios/types.js';
 export class AgentStepsEvaluator implements Evaluator {
   readonly name = 'agent-steps';
   readonly evalVersion = '2.0';
-  readonly regressionMode = 'score' as const;
+  readonly comparisonMode = 'score' as const;
   readonly lowerIsBetter = true;
 
   async evaluate(
@@ -28,7 +28,7 @@ export class AgentStepsEvaluator implements Evaluator {
       return {
         evaluator: this.name,
         score: 0,
-        verdict: 'unknown',
+        verdict: 'incomplete',
         reason: 'No assistant turns with totalSteps data',
         details: {},
         evalVersion: this.evalVersion,
@@ -44,7 +44,7 @@ export class AgentStepsEvaluator implements Evaluator {
       return {
         evaluator: this.name,
         score: 0,
-        verdict: 'unknown',
+        verdict: 'incomplete',
         reason: `Invalid totalSteps sum: ${totalSteps}`,
         details: { totalSteps },
         evalVersion: this.evalVersion,
@@ -54,7 +54,7 @@ export class AgentStepsEvaluator implements Evaluator {
     return {
       evaluator: this.name,
       score: totalSteps,
-      verdict: 'observed',
+      verdict: 'directional',
       reason: `${totalSteps} agent steps`,
       details: { totalSteps },
       evalVersion: this.evalVersion,

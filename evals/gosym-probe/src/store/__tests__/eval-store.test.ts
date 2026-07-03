@@ -177,6 +177,7 @@ function makeScenario(
     evaluators: [
       {
         name: 'test-evaluator',
+        comparisonMode: 'passRate' as const,
         evaluate: vi.fn(),
       },
     ],
@@ -199,6 +200,7 @@ function makeScenarioResult(
         passHatK: [{ k: 1, value: 1 }],
         passingTrials: trials.length,
         totalTrials: trials.length,
+        comparisonMode: 'passRate' as const,
       },
     },
   };
@@ -798,6 +800,7 @@ describe('EvalStore', () => {
             passHatK: [{ k: 1, value: 0.5 }],
             passingTrials: 1,
             totalTrials: 2,
+            comparisonMode: 'passRate' as const,
           },
         },
       };
@@ -859,7 +862,7 @@ describe('EvalStore', () => {
           {
             evaluator: 'test-evaluator',
             score: 0.75,
-            verdict: 'observed',
+            verdict: 'directional',
             reason: 'measured',
           },
         ],
@@ -874,7 +877,7 @@ describe('EvalStore', () => {
             passingTrials: 0,
             totalTrials: 1,
             aggregateScore: 0.75,
-            regressionMode: 'score',
+            comparisonMode: 'score',
             lowerIsBetter: true,
           },
         },
@@ -944,6 +947,7 @@ describe('EvalStore', () => {
             passingTrials: 1,
             totalTrials: 1,
             evalVersion: '2.0',
+            comparisonMode: 'passRate' as const,
           },
         },
       };
@@ -973,6 +977,59 @@ describe('EvalStore', () => {
       const parsed = JSON.parse(call![1] as string);
       const evalSummary = parsed.evaluators['test-evaluator'];
       expect(evalSummary).not.toHaveProperty('evalVersion');
+    });
+
+    it('persists wilsonCI in aggregated.json when present on aggregated result', async () => {
+      const store = new EvalStore();
+      const trials = [
+        makeTrialResult(0, [], [1.0]),
+        makeTrialResult(1, [], [1.0]),
+        makeTrialResult(2, [], [0.0]),
+      ];
+      const scenario = makeScenario();
+      const ci = { lower: 0.29, upper: 0.96, n: 3 };
+      const result: ScenarioResult = {
+        scenarioName: scenario.name,
+        stabilityLevel: 'medium',
+        trials,
+        aggregated: {
+          'test-evaluator': {
+            comparisonMode: 'passRate',
+            passAt1: 0.67,
+            passAtK: [{ k: 1, value: 0.67 }],
+            passHatK: [{ k: 1, value: 0.67 }],
+            passingTrials: 2,
+            totalTrials: 3,
+            wilsonCI: ci,
+          },
+        },
+      };
+
+      await store.save('run-001', [result], [scenario], makeConfig());
+
+      const call = mockWriteFile.mock.calls.find(([p]) =>
+        (p as string).endsWith('aggregated.json'),
+      );
+      expect(call).toBeDefined();
+      const parsed = JSON.parse(call![1] as string);
+      const evalSummary = parsed.evaluators['test-evaluator'];
+      expect(evalSummary.wilsonCI).toEqual({ lower: 0.29, upper: 0.96, n: 3 });
+    });
+
+    it('omits wilsonCI from aggregated.json and deserializes cleanly when absent', async () => {
+      const store = new EvalStore();
+      const scenario = makeScenario();
+      const result = makeScenarioResult(scenario, [makeTrialResult()]);
+
+      await store.save('run-001', [result], [scenario], makeConfig());
+
+      const call = mockWriteFile.mock.calls.find(([p]) =>
+        (p as string).endsWith('aggregated.json'),
+      );
+      expect(call).toBeDefined();
+      const parsed = JSON.parse(call![1] as string) as { evaluators: Record<string, unknown> };
+      const evalSummary = parsed.evaluators['test-evaluator'];
+      expect(evalSummary).not.toHaveProperty('wilsonCI');
     });
 
     it('includes regressionStatus in aggregated.json when present', async () => {
@@ -2863,6 +2920,53 @@ describe('EvalStore', () => {
 
         expect(result).not.toBeNull();
         expect(result!.transcript.captureErrors).toEqual([]);
+      });
+
+      it('normalizes legacy verdicts read from disk on the --resume path', async () => {
+        const store = new EvalStore();
+        const storedTranscript: StoredTranscript = {
+          scenarioName: 'test-scenario',
+          trialIndex: 0,
+          turns: [],
+          snapshotCount: 0,
+          errors: [],
+          captureErrors: [],
+        };
+        const legacyEvalResults: EvalResult[] = [
+          {
+            evaluator: 'legacy-partial',
+            score: 0.4,
+            verdict: 'partial' as unknown as EvalResult['verdict'],
+            reason: 'stale partial verdict',
+          },
+          {
+            evaluator: 'legacy-unknown',
+            score: 0,
+            verdict: 'unknown' as unknown as EvalResult['verdict'],
+            reason: 'stale unknown verdict',
+          },
+          {
+            evaluator: 'legacy-observed',
+            score: 7500,
+            verdict: 'observed' as unknown as EvalResult['verdict'],
+            reason: 'stale observed verdict',
+          },
+        ];
+        mockReadFile.mockResolvedValueOnce(
+          JSON.stringify(storedTranscript),
+        );
+        mockReadFile.mockResolvedValueOnce(
+          JSON.stringify(legacyEvalResults),
+        );
+
+        const result = await store.loadTrialResultByDirName(
+          '20260409000000_run-001', 'test-scenario', 0,
+        );
+
+        expect(result).not.toBeNull();
+        const verdicts: EvalResult['verdict'][] =
+          result!.evalResults.map((r) => r.verdict);
+        expect(verdicts).toEqual(['fail', 'incomplete', 'directional']);
       });
     });
 

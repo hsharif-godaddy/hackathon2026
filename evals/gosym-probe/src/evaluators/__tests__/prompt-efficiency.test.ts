@@ -46,7 +46,7 @@ describe('PromptEfficiencyEvaluator', () => {
       makeScenario(),
     );
     expect(result.score).toBe(0);
-    expect(result.verdict).toBe('observed');
+    expect(result.verdict).toBe('directional');
   });
 
   it('returns raw user turn count for single turn', async () => {
@@ -55,7 +55,7 @@ describe('PromptEfficiencyEvaluator', () => {
       makeScenario(),
     );
     expect(result.score).toBe(1);
-    expect(result.verdict).toBe('observed');
+    expect(result.verdict).toBe('directional');
   });
 
   it('returns raw user turn count for multiple turns', async () => {
@@ -65,7 +65,7 @@ describe('PromptEfficiencyEvaluator', () => {
       makeScenario(),
     );
     expect(result.score).toBe(2);
-    expect(result.verdict).toBe('observed');
+    expect(result.verdict).toBe('directional');
   });
 
   it('only counts user turns; assistant turns are ignored', async () => {
@@ -78,7 +78,7 @@ describe('PromptEfficiencyEvaluator', () => {
       makeScenario(),
     );
     expect(result.score).toBe(2);
-    expect(result.verdict).toBe('observed');
+    expect(result.verdict).toBe('directional');
   });
 
   it('details contains userTurns', async () => {
@@ -100,7 +100,7 @@ describe('PromptEfficiencyEvaluator', () => {
 
   it('has correct properties', () => {
     expect(evaluator.name).toBe('prompt-efficiency');
-    expect(evaluator.regressionMode).toBe('score');
+    expect(evaluator.comparisonMode).toBe('score');
     expect(evaluator.evalVersion).toBe('2.0');
     expect(evaluator.lowerIsBetter).toBe(true);
   });

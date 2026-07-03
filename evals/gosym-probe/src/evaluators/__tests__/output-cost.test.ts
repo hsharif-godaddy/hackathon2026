@@ -18,12 +18,12 @@ describe('OutputCostEvaluator', () => {
     expect(evaluator.name).toBe('output-cost');
   });
 
-  it('has regressionMode "score" and lowerIsBetter true', () => {
+  it('has comparisonMode "score" and lowerIsBetter true', () => {
     const evaluator = new OutputCostEvaluator({
       collector: makeMockCollector(),
       gocodeClient: makeMockGocodeClient(),
     });
-    expect(evaluator.regressionMode).toBe('score');
+    expect(evaluator.comparisonMode).toBe('score');
     expect(evaluator.lowerIsBetter).toBe(true);
   });
 
@@ -65,7 +65,7 @@ describe('OutputCostEvaluator', () => {
       evaluator.unhookTrial(0);
       const result = await evaluator.evaluate(makeTranscript(0), makeScenario());
 
-      expect(result.verdict).toBe('unknown');
+      expect(result.verdict).toBe('incomplete');
     });
   });
 
@@ -79,7 +79,7 @@ describe('OutputCostEvaluator', () => {
 
       const result = await evaluator.evaluate(makeTranscript(0), makeScenario());
 
-      expect(result.verdict).toBe('unknown');
+      expect(result.verdict).toBe('incomplete');
       expect(result.score).toBe(0);
     });
 
@@ -93,7 +93,7 @@ describe('OutputCostEvaluator', () => {
       evaluator.hookClient(makeMockClient(), 0);
       const result = await evaluator.evaluate(makeTranscript(0), makeScenario());
 
-      expect(result.verdict).toBe('unknown');
+      expect(result.verdict).toBe('incomplete');
       expect(result.score).toBe(0);
       expect(result.reason).toContain('collector returned null');
     });
@@ -112,7 +112,7 @@ describe('OutputCostEvaluator', () => {
       evaluator.hookClient(makeMockClient(), 0);
       const result = await evaluator.evaluate(makeTranscript(0), makeScenario());
 
-      expect(result.verdict).toBe('observed');
+      expect(result.verdict).toBe('directional');
       // Isolates output cost from the cached-input-dominated total.
       expect(result.score).toBeCloseTo(0.02);
     });
@@ -185,7 +185,7 @@ describe('OutputCostEvaluator', () => {
       gocode.setUsage({ completionTokens: 2000 });
       const result = await evaluator.evaluate(makeTranscript(0), makeScenario());
 
-      expect(result.verdict).toBe('observed');
+      expect(result.verdict).toBe('directional');
       expect(result.score).toBeCloseTo(0.05);
       expect((result.details?.probe as Record<string, unknown>).outputCost).toBe(0);
       expect(result.reason).toContain('unknown-model-xyz');

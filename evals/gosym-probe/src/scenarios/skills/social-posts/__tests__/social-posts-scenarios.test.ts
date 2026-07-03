@@ -22,7 +22,7 @@ describe('social-posts scenarios', () => {
     expect(s.suite).toBe('social-posts');
     expect(s.expectedAgent).toBe(MARKETING_AGENT_DISPLAY_NAME);
     expect(s.expectedSkills).toContain('social-posts');
-    expect(s.trials).toBe(3);
+    expect(s.trials).toBe(5);
     expect(s.expectedTools).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ tool: 'skill', called: true }),

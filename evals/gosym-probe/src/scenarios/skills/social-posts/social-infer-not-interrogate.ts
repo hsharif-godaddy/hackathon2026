@@ -35,7 +35,7 @@ export function socialInferNotInterrogateScenario(
       suite: 'social-posts',
       userIntent: 'Create some Facebook posts for my coffee shop',
       expectedAgent: MARKETING_AGENT_DISPLAY_NAME,
-      trials: 3,
+      trials: 5,
       goals: [
         {
           description:

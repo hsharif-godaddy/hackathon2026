@@ -187,6 +187,43 @@ describe('validateRunFlags()', () => {
     ).toBeNull();
   });
 
+  it('returns error when --s3 is combined with graduate', () => {
+    const err = validateRunFlags({
+      skipBaseline: false,
+      graduate: 'build-landing-page',
+      graduateSuite: undefined,
+      stability: undefined,
+      useS3: true,
+    });
+    expect(err).toContain('--s3');
+    expect(err).toContain('--graduate');
+    expect(err).toContain('save-baseline');
+  });
+
+  it('returns error when --s3 is combined with graduate-suite', () => {
+    const err = validateRunFlags({
+      skipBaseline: false,
+      graduate: undefined,
+      graduateSuite: 'golden-light',
+      stability: undefined,
+      useS3: true,
+    });
+    expect(err).toContain('--s3');
+    expect(err).toContain('--graduate-suite');
+  });
+
+  it('allows --s3 on a non-graduation run', () => {
+    expect(
+      validateRunFlags({
+        skipBaseline: false,
+        graduate: undefined,
+        graduateSuite: undefined,
+        stability: undefined,
+        useS3: true,
+      }),
+    ).toBeNull();
+  });
+
   it('returns null when stability is used with graduate', () => {
     expect(
       validateRunFlags({

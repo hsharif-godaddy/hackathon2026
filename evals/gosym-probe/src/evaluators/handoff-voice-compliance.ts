@@ -8,9 +8,10 @@ import type {
   HandoffTransition,
   VoiceGoalMapping,
 } from './handoff-voice-compliance-types.js';
+import { extractJsonObject } from './judge-schema.js';
 
 const VoiceJudgmentSchema = z.object({
-  verdict: z.enum(['pass', 'fail', 'unknown']),
+  verdict: z.enum(['pass', 'fail']),
   reason: z.string().min(1),
   evidence: z.string(),
 });
@@ -93,8 +94,12 @@ export function resolveApplicableGoals(
 
 /**
  * Aggregate per-goal judgments into a single EvalResult.
- * Uses worst-of semantics: any fail = fail, all pass = pass, all N/A = unknown.
- * Score = proportion of applicable goals that passed.
+ * Uses worst-of semantics over conclusive judgments: any fail = fail,
+ * all pass = pass. 'incomplete' judgments (infra/parse failures) are
+ * excluded from pass/fail tallies; when no conclusive judgment remains
+ * the evaluator reports 'incomplete' rather than polluting regression
+ * gating with a transient judge flake.
+ * Score = proportion of conclusive judgments that passed.
  */
 export function aggregateJudgments(
   judgments: GoalJudgment[],
@@ -106,7 +111,7 @@ export function aggregateJudgments(
     return {
       evaluator: evaluatorName,
       score: 0,
-      verdict: 'unknown',
+      verdict: 'incomplete',
       reason: 'No applicable goals (all transitions were N/A)',
       details: { perGoalJudgments: judgments },
     };
@@ -114,25 +119,27 @@ export function aggregateJudgments(
 
   const passCount = applicableJudgments.filter((j) => j.verdict === 'pass').length;
   const failCount = applicableJudgments.filter((j) => j.verdict === 'fail').length;
-  const score = passCount / applicableJudgments.length;
+  const conclusiveCount: number = passCount + failCount;
 
-  let verdict: EvalResult['verdict'];
-  if (failCount > 0) {
-    verdict = 'fail';
-  } else if (passCount === applicableJudgments.length) {
-    verdict = 'pass';
-  } else {
-    verdict = 'unknown';
+  if (conclusiveCount === 0) {
+    return {
+      evaluator: evaluatorName,
+      score: 0,
+      verdict: 'incomplete',
+      reason: 'All applicable voice goals were inconclusive (judge failures)',
+      details: { perGoalJudgments: judgments },
+    };
   }
+
+  const score: number = passCount / conclusiveCount;
+  const verdict: EvalResult['verdict'] = failCount > 0 ? 'fail' : 'pass';
 
   const failedGoals = applicableJudgments
     .filter((j) => j.verdict === 'fail')
     .map((j) => j.reason);
   const reason = verdict === 'pass'
-    ? `All ${passCount} applicable voice goals passed`
-    : failedGoals.length > 0
-      ? `Failed: ${failedGoals.join('; ')}`
-      : 'Some goals could not be determined';
+    ? `All ${passCount} conclusive voice goals passed`
+    : `Failed: ${failedGoals.join('; ')}`;
 
   return {
     evaluator: evaluatorName,
@@ -184,19 +191,12 @@ function buildJudgePrompt(
     '## Response format',
     '```json',
     '{',
-    '  "verdict": "pass" | "fail" | "unknown",',
+    '  "verdict": "pass" | "fail",',
     '  "reason": "one-sentence explanation",',
     '  "evidence": "quoted text that triggered the verdict, or empty string"',
     '}',
     '```',
   ].join('\n');
-}
-
-function extractJsonObject(text: string): string | null {
-  const start = text.indexOf('{');
-  const end = text.lastIndexOf('}');
-  if (start === -1 || end === -1 || end <= start) return null;
-  return text.slice(start, end + 1);
 }
 
 async function judgeGoal(
@@ -213,7 +213,7 @@ async function judgeGoal(
     return {
       goal: mapping.goal,
       applicable: true,
-      verdict: 'unknown',
+      verdict: 'incomplete',
       reason: 'LLM judge request failed',
       evidence: '',
     };
@@ -224,7 +224,7 @@ async function judgeGoal(
     return {
       goal: mapping.goal,
       applicable: true,
-      verdict: 'unknown',
+      verdict: 'incomplete',
       reason: 'Failed to parse LLM judge JSON response',
       evidence: '',
     };
@@ -237,7 +237,7 @@ async function judgeGoal(
     return {
       goal: mapping.goal,
       applicable: true,
-      verdict: 'unknown',
+      verdict: 'incomplete',
       reason: 'Failed to parse LLM judge JSON response',
       evidence: '',
     };
@@ -248,7 +248,7 @@ async function judgeGoal(
     return {
       goal: mapping.goal,
       applicable: true,
-      verdict: 'unknown',
+      verdict: 'incomplete',
       reason: 'LLM judge response did not match expected schema',
       evidence: '',
     };
@@ -265,6 +265,7 @@ async function judgeGoal(
 
 export class HandoffVoiceComplianceEvaluator implements Evaluator {
   readonly name = 'handoff-voice-compliance';
+  readonly comparisonMode = 'passRate' as const;
 
   constructor(
     private readonly gocode: IGocodeClient,
@@ -285,7 +286,7 @@ export class HandoffVoiceComplianceEvaluator implements Evaluator {
     const skippedJudgments: GoalJudgment[] = skipped.map((mapping) => ({
       goal: mapping.goal,
       applicable: false,
-      verdict: 'unknown' as const,
+      verdict: 'incomplete' as const,
       reason: `N/A: no ${mapping.direction} transition found for agent "${mapping.agent}"`,
       evidence: '',
     }));

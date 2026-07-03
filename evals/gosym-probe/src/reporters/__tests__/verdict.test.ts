@@ -131,6 +131,7 @@ describe('computeVerdict no-baseline fallback', () => {
         'jtbd-completion': {
           passingTrials: 5,
           totalTrials: 5,
+          comparisonMode: 'passRate',
           passAt1: 1.0,
           passAtK: [{ k: 5, value: 1.0 }],
           passHatK: [{ k: 5, value: 1.0 }],
@@ -151,6 +152,7 @@ describe('computeVerdict no-baseline fallback', () => {
         'jtbd-completion': {
           passingTrials: 3,
           totalTrials: 5,
+          comparisonMode: 'passRate',
           passAt1: 0.6,
           passAtK: [{ k: 5, value: 0.922 }],
           passHatK: [{ k: 5, value: 0.078 }],
@@ -169,6 +171,7 @@ describe('computeVerdict no-baseline fallback', () => {
         'jtbd-completion': {
           passingTrials: 0,
           totalTrials: 5,
+          comparisonMode: 'passRate',
           passAt1: 0,
           passAtK: [{ k: 5, value: 0 }],
           passHatK: [{ k: 5, value: 0 }],
@@ -189,6 +192,7 @@ describe('computeVerdict no-baseline fallback', () => {
         'jtbd-completion': {
           passingTrials: 0,
           totalTrials: 5,
+          comparisonMode: 'passRate',
           passAt1: 0,
           passAtK: [{ k: 5, value: 0 }],
           passHatK: [{ k: 5, value: 0 }],
@@ -206,6 +210,7 @@ describe('computeVerdict no-baseline fallback', () => {
         'jtbd-completion': {
           passingTrials: 2,
           totalTrials: 5,
+          comparisonMode: 'passRate',
           passAt1: 0.4,
           passAtK: [{ k: 5, value: 0.922 }],
           passHatK: [{ k: 5, value: 0.01 }],
@@ -284,7 +289,7 @@ describe('computeVerdict edge cases', () => {
         'token-usage': {
           passingTrials: 0,
           totalTrials: 5,
-          regressionMode: 'score',
+          comparisonMode: 'score',
           aggregateScore: 1234,
           lowerIsBetter: true,
         },
@@ -397,7 +402,7 @@ describe('renderVerdictHeader', () => {
       makeScenarioResult({
         scenarioName: 'no-baseline-scenario',
         aggregated: {
-          'jtbd-completion': { passingTrials: 0, totalTrials: 5, passAt1: 0, passAtK: [{ k: 5, value: 0 }], passHatK: [{ k: 5, value: 0 }] },
+          'jtbd-completion': { passingTrials: 0, totalTrials: 5, passAt1: 0, passAtK: [{ k: 5, value: 0 }], passHatK: [{ k: 5, value: 0 }], comparisonMode: 'passRate' as const },
         },
       }),
     ];
@@ -442,7 +447,7 @@ describe('renderHealthLine', () => {
       scenarioName: 'no-baseline-scenario',
       trials: [makeNoToolCallTrial(0), makeNoToolCallTrial(1), makeToolCallTrial(2)],
       aggregated: {
-        'jtbd-completion': { passingTrials: 1, totalTrials: 3, passAt1: 0.333, passAtK: [{ k: 3, value: 0.704 }], passHatK: [{ k: 3, value: 0.037 }] },
+        'jtbd-completion': { passingTrials: 1, totalTrials: 3, passAt1: 0.333, passAtK: [{ k: 3, value: 0.704 }], passHatK: [{ k: 3, value: 0.037 }], comparisonMode: 'passRate' as const },
       },
     });
     const verdict: RunVerdict = computeVerdict([result], { runMode: 'eval' });
@@ -475,7 +480,7 @@ describe('renderScenarioOverview', () => {
     const result: ScenarioResult = makeScenarioResult({
       scenarioName: 'no-baseline-scenario',
       aggregated: {
-        'jtbd-completion': { passingTrials: 8, totalTrials: 20, passAt1: 0.4, passAtK: [{ k: 5, value: 0.922 }], passHatK: [{ k: 5, value: 0.078 }] },
+        'jtbd-completion': { passingTrials: 8, totalTrials: 20, passAt1: 0.4, passAtK: [{ k: 5, value: 0.922 }], passHatK: [{ k: 5, value: 0.078 }], comparisonMode: 'passRate' as const },
       },
     });
     const verdict: RunVerdict = computeVerdict([result], { runMode: 'eval' });
@@ -494,7 +499,7 @@ describe('renderScenarioOverview', () => {
         'token-usage': {
           passingTrials: 0,
           totalTrials: 5,
-          regressionMode: 'score',
+          comparisonMode: 'score',
           aggregateScore: 1234.5,
           lowerIsBetter: true,
         },

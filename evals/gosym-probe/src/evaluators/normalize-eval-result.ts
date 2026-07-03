@@ -1,9 +1,6 @@
 import { toFiniteNumber } from '../util/to-finite-number.js';
 import type { EvalResult } from './evaluator.js';
-
-const VALID_VERDICTS: ReadonlySet<string> = new Set([
-  'pass', 'partial', 'fail', 'unknown', 'observed',
-]);
+import { LEGACY_VERDICT_MAP, VALID_VERDICTS } from './verdict-compat.js';
 
 /**
  * Normalizes an EvalResult at the pipeline entry point so
@@ -11,11 +8,12 @@ const VALID_VERDICTS: ReadonlySet<string> = new Set([
  * can trust the data shape without per-site guards.
  *
  * - Coerces NaN/Infinity to 0. For pass/fail verdicts, also
- *   clamps to [0, 1]. Observed-verdict scores are left
+ *   clamps to [0, 1]. Directional-verdict scores are left
  *   unbounded (raw measurements like token counts or USD).
  * - Flattens multiline reasons to a single line.
  * - Defaults null/non-string reasons to empty string.
- * - Falls back to 'unknown' for invalid verdicts.
+ * - Maps legacy verdict values (partial→fail, unknown→incomplete, observed→directional).
+ * - Falls back to 'incomplete' for invalid verdicts.
  * - Falls back to 'unknown' for missing evaluator names.
  */
 export function normalizeEvalResult(
@@ -23,10 +21,11 @@ export function normalizeEvalResult(
   logger: { warn: (...args: unknown[]) => void } = console,
 ): EvalResult {
   const finiteScore = toFiniteNumber(raw.score, 0);
-  // Observed-verdict evaluators emit raw numeric measurements (e.g. token
+  // Directional-verdict evaluators emit raw numeric measurements (e.g. token
   // counts, cost in USD) that legitimately exceed [0, 1]. Skip the clamp but
   // still coerce NaN / Infinity to 0 via toFiniteNumber above.
-  const score = raw.verdict === 'observed'
+  const mappedForScore: string = LEGACY_VERDICT_MAP.get(raw.verdict) ?? raw.verdict;
+  const score = mappedForScore === 'directional'
     ? finiteScore
     : Math.min(1, Math.max(0, finiteScore));
 
@@ -35,16 +34,15 @@ export function normalizeEvalResult(
     ? rawReason.replace(/[\r\n]+/g, ' ').trim()
     : '';
 
+  const compatVerdict: EvalResult['verdict'] | undefined = LEGACY_VERDICT_MAP.get(raw.verdict);
   const verdictIsValid = VALID_VERDICTS.has(raw.verdict);
-  if (!verdictIsValid) {
+  if (!verdictIsValid && !compatVerdict) {
     logger.warn(
-      'normalizeEvalResult: invalid verdict coerced to unknown',
+      'normalizeEvalResult: invalid verdict coerced to incomplete',
       { received: raw.verdict, evaluator: raw.evaluator },
     );
   }
-  const verdict: EvalResult['verdict'] = verdictIsValid
-    ? raw.verdict
-    : 'unknown';
+  const verdict: EvalResult['verdict'] = compatVerdict ?? (verdictIsValid ? raw.verdict : 'incomplete');
 
   const evaluatorIsValid =
     typeof raw.evaluator === 'string' && raw.evaluator !== '';

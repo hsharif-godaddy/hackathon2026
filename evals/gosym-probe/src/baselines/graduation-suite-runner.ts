@@ -305,6 +305,11 @@ export class GraduationSuiteRunner {
       makeAgentClient: this.options.makeAgentClient,
       syntheticUser: this.options.syntheticUser,
       siteCapture: this.options.siteCapture,
+      // The production caller (index.ts) always supplies baselineStoreFactory,
+      // which threads in createFileStore(config) — so the S3 backend is honoured.
+      // This local-default fallback is reachable only from tests that omit the
+      // factory; it must NOT become the production path or baselines would
+      // silently persist to local disk instead of S3.
       baselineStore: this.options.baselineStoreFactory?.() ?? new BaselineStore(),
       stabilityLevelOverride: this.options.stabilityLevelOverride,
       trialConcurrency: this.trialConcurrency,
@@ -363,11 +368,22 @@ export class GraduationSuiteRunner {
     const eligibility = assessBaselineEligibility(result);
 
     if (eligibility.eligible) {
+      // test-only local-default fallback; production always passes the factory
+      // (createFileStore(config)) so S3 is honoured. See the note at the other
+      // baselineStoreFactory site above.
       const baselineStore = baselineStoreFactory?.() ?? new BaselineStore();
-      await baselineStore.save(runId, result, {
+      const writtenPath: string = await baselineStore.save(runId, result, {
         defaultThreshold: config.regression.fallbackThresholds.defaultThreshold,
         ...pickGitFields(runMetadata),
       });
+      // Surface where the baseline landed. Graduation always writes locally
+      // (--s3 is rejected with --graduate*), so this is a local path; promote
+      // it to the shared bucket afterward with `save-baseline --s3`.
+      this.log(
+        `[GraduationSuiteRunner] Saved baseline (${baselineStore.backend}): `
+        + baselineStore.locationFor(writtenPath),
+        { scenarioName: result.scenarioName, runId },
+      );
     } else {
       this.log(
         `[GraduationSuiteRunner] Skipping baseline save: ${eligibility.detail}.`,

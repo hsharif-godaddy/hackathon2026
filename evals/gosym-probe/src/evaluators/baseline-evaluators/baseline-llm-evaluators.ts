@@ -101,8 +101,6 @@ function version(spec: BaselineEvaluatorSpec): string {
 
 function verdictToScore(verdict: EvalResult['verdict']): number {
   if (verdict === 'pass') return 1.0;
-  if (verdict === 'partial') return 0.5;
-  if (verdict === 'fail') return 0.0;
   return 0.0;
 }
 
@@ -127,7 +125,7 @@ function protocol(): string {
     'EVALUATION PROTOCOL:',
     '- Use ONLY the evidence below. Do not assume unstated facts.',
     '- Prefer outcome-based signals over exact phrasing.',
-    '- If evidence is insufficient or ambiguous, return verdict=unknown.',
+    '- If evidence is insufficient or ambiguous, return verdict=incomplete.',
     '- Treat tool errors/timeouts as failures ONLY if they block the goal.',
     '- gosym-probe is a local harness: evaluate preview/local DOM, conversation, tool traces, and artifacts; do not require production publishing.',
     '- Do not penalize failed, missing, or timed-out publish/deployment/public-URL evidence unless the scenario explicitly tests publishing.',
@@ -178,20 +176,19 @@ function numericalPrompt(spec: NumericalBaselineEvaluatorSpec): (
     judgeHeader(spec),
     '',
     'Return ONLY valid JSON with this schema:',
-    '{"score": <0.0..1.0>, "verdict": "pass|partial|fail|unknown", "reason": "<brief>"}',
+    '{"score": <0.0..1.0>, "verdict": "pass|fail|incomplete", "reason": "<brief>"}',
     '',
     'Scoring guide:',
     '- 1.0: excellent / fully satisfied',
     '- 0.7-0.9: good, minor gaps',
     '- 0.4-0.6: partial, notable gaps',
     '- 0.0-0.3: poor / failed',
-    '- unknown: evidence is insufficient to judge',
+    '- incomplete: evidence is insufficient to judge',
     '',
     'Verdict guide:',
     '- pass: requirements are met with strong supporting evidence',
-    '- partial: mixed evidence; meaningful gaps but not a total failure',
     '- fail: clear violation or missing requirement, supported by evidence',
-    '- unknown: cannot determine from evidence provided',
+    '- incomplete: cannot determine from evidence provided',
     '',
     await baseEvidence(transcript, scenario, snapshot),
   ].join('\n');
@@ -213,9 +210,9 @@ function booleanPrompt(spec: BooleanBaselineEvaluatorSpec): (
     `Boolean polarity: ${spec.booleanTrueIsGood ? 'value=true means the requirement is satisfied (good)' : 'value=true means a problem is present (bad)'}.`,
     '',
     'Return ONLY valid JSON with this schema:',
-    '{"value": <true|false>, "verdict": "pass|partial|fail|unknown", "reason": "<brief>"}',
+    '{"value": <true|false>, "verdict": "pass|fail|incomplete", "reason": "<brief>"}',
     '',
-    'Use verdict=unknown if evidence is insufficient.',
+    'Use verdict=incomplete if evidence is insufficient.',
     await baseEvidence(transcript, scenario, snapshot),
   ].join('\n');
 }
@@ -236,20 +233,20 @@ function categoricalPrompt(spec: CategoricalBaselineEvaluatorSpec): (
     `Allowed values: ${spec.allowedValues.join(', ')}`,
     '',
     'Return ONLY valid JSON with this schema:',
-    '{"value": "<one allowed value>", "verdict": "pass|partial|fail|unknown", "reason": "<brief>"}',
+    '{"value": "<one allowed value>", "verdict": "pass|fail|incomplete", "reason": "<brief>"}',
     '',
-    'Use verdict=unknown if evidence is insufficient.',
+    'Use verdict=incomplete if evidence is insufficient.',
     await baseEvidence(transcript, scenario, snapshot),
   ].join('\n');
 }
 
 function mapNumerical(spec: NumericalBaselineEvaluatorSpec) {
   return (parsed: JudgeNumerical, transcript: Transcript): EvalResult => {
-    const unknown = parsed.verdict === 'unknown';
+    const mapped: EvalResult['verdict'] = parsed.verdict;
     return {
       evaluator: spec.name,
-      score: unknown ? 0 : clamp01(parsed.score),
-      verdict: parsed.verdict,
+      score: mapped === 'incomplete' ? 0 : clamp01(parsed.score),
+      verdict: mapped,
       reason: parsed.reason,
       details: {
         dimension: spec.dimension,
@@ -262,11 +259,11 @@ function mapNumerical(spec: NumericalBaselineEvaluatorSpec) {
 
 function mapBoolean(spec: BooleanBaselineEvaluatorSpec) {
   return (parsed: JudgeBoolean, transcript: Transcript): EvalResult => {
-    if (parsed.verdict === 'unknown') {
+    if (parsed.verdict === 'incomplete') {
       return {
         evaluator: spec.name,
         score: 0,
-        verdict: 'unknown',
+        verdict: 'incomplete',
         reason: parsed.reason,
         details: {
           dimension: spec.dimension,
@@ -293,18 +290,21 @@ function mapBoolean(spec: BooleanBaselineEvaluatorSpec) {
 }
 
 function mapCategorical(spec: CategoricalBaselineEvaluatorSpec) {
-  return (parsed: JudgeCategorical, transcript: Transcript): EvalResult => ({
-    evaluator: spec.name,
-    score: parsed.verdict === 'unknown' ? 0 : verdictToScore(parsed.verdict),
-    verdict: parsed.verdict,
-    reason: parsed.reason,
-    details: {
-      dimension: spec.dimension,
-      inputsUsed: spec.inputsUsed,
-      value: parsed.value,
-      transcriptErrors: transcript.errors.length,
-    },
-  });
+  return (parsed: JudgeCategorical, transcript: Transcript): EvalResult => {
+    const mapped: EvalResult['verdict'] = parsed.verdict;
+    return {
+      evaluator: spec.name,
+      score: mapped === 'incomplete' ? 0 : verdictToScore(mapped),
+      verdict: mapped,
+      reason: parsed.reason,
+      details: {
+        dimension: spec.dimension,
+        inputsUsed: spec.inputsUsed,
+        value: parsed.value,
+        transcriptErrors: transcript.errors.length,
+      },
+    };
+  };
 }
 
 const BASELINE_SPECS: BaselineEvaluatorSpec[] = [
@@ -447,6 +447,7 @@ function createEvaluatorFromSpec(
     return new LLMJudgeEvaluator(gocode, {
       name: spec.name,
       evalVersion: version(spec),
+      comparisonMode: 'passRate',
       schema: JudgeNumericalSchema,
       prompt: numericalPrompt(spec),
       toEvalResult: mapNumerical(spec),
@@ -457,6 +458,7 @@ function createEvaluatorFromSpec(
     return new LLMJudgeEvaluator(gocode, {
       name: spec.name,
       evalVersion: version(spec),
+      comparisonMode: 'passRate',
       schema: JudgeBooleanSchema,
       prompt: booleanPrompt(spec),
       toEvalResult: mapBoolean(spec),
@@ -467,6 +469,7 @@ function createEvaluatorFromSpec(
     return new LLMJudgeEvaluator(gocode, {
       name: spec.name,
       evalVersion: version(spec),
+      comparisonMode: 'passRate',
       schema: JudgeCategoricalSchema.extend({
         value: z.enum(spec.allowedValues),
       }),

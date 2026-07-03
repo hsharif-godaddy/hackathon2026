@@ -54,7 +54,7 @@ export class LLMCostEvaluator extends ProbeUsageEvaluator {
     return {
       evaluator: this.name,
       score: aabCost,
-      verdict: 'observed',
+      verdict: 'directional',
       reason:
         `aab=$${aabCost.toFixed(4)} probe=$${probeCost.toFixed(4)}` +
         ` total=$${totalCost.toFixed(4)}` +

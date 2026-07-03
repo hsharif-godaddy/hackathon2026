@@ -56,12 +56,12 @@ afterEach(() => {
 // ── selectTrialsNeedingInvestigation ─────────────────────────────────────────
 
 describe('selectTrialsNeedingInvestigation', () => {
-  it('selects trials with fail, partial, or unknown verdicts', () => {
+  it('selects trials with fail or incomplete verdicts', () => {
     const result: ScenarioResult = makeScenarioResult({
       trials: [
         trialWithVerdict(0, 'fail'),
-        trialWithVerdict(1, 'partial'),
-        trialWithVerdict(2, 'unknown'),
+        trialWithVerdict(1, 'fail'),
+        trialWithVerdict(2, 'incomplete'),
       ],
     });
     expect(selectTrialsNeedingInvestigation(result).map((t) => t.trialIndex)).toEqual([
@@ -76,9 +76,9 @@ describe('selectTrialsNeedingInvestigation', () => {
     expect(selectTrialsNeedingInvestigation(result)).toEqual([]);
   });
 
-  it('excludes score-mode observed-only trials with no errors', () => {
+  it('excludes score-mode directional-only trials with no errors', () => {
     const result: ScenarioResult = makeScenarioResult({
-      trials: [trialWithVerdict(0, 'observed')],
+      trials: [trialWithVerdict(0, 'directional')],
     });
     expect(selectTrialsNeedingInvestigation(result)).toEqual([]);
   });

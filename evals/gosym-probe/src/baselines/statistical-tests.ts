@@ -1,3 +1,6 @@
+import { wilsonConfidenceInterval } from '../util/pass-at-k.js';
+import type { WilsonCI } from '../util/pass-at-k.js';
+
 // ── Private helpers ───────────────────────────────────────────────────────────
 
 function populationSD(values: readonly number[]): number {
@@ -24,22 +27,19 @@ function mulberry32(seed: number): () => number {
 
 /**
  * Wilson score confidence interval for proportion p with n observations.
- * Clamps to [0, 1].
+ * Delegates the interval math to the shared `wilsonConfidenceInterval` (the
+ * sole trust boundary for estimator math) by recovering the pass count
+ * `c = round(p * n)`, and preserves this module's degenerate contract of
+ * `{ lower: 0, upper: 1 }` when `n === 0`.
  */
 function wilsonCI(
   p: number,
   n: number,
   z: number,
 ): { lower: number; upper: number } {
-  if (n === 0) return { lower: 0, upper: 1 };
-  const z2 = z * z;
-  const center = (p + z2 / (2 * n)) / (1 + z2 / n);
-  const width =
-    (z * Math.sqrt((p * (1 - p)) / n + z2 / (4 * n * n))) / (1 + z2 / n);
-  return {
-    lower: Math.max(0, center - width),
-    upper: Math.min(1, center + width),
-  };
+  const ci: WilsonCI | null = wilsonConfidenceInterval(n, Math.round(p * n), z);
+  if (ci === null) return { lower: 0, upper: 1 };
+  return { lower: ci.lower, upper: ci.upper };
 }
 
 /**

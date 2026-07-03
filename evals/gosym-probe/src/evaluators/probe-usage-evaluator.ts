@@ -46,7 +46,7 @@ export interface ProbeUsageMeasurement {
  */
 export abstract class ProbeUsageEvaluator implements Evaluator {
   abstract readonly name: string;
-  readonly regressionMode = 'score' as const;
+  readonly comparisonMode = 'score' as const;
   readonly lowerIsBetter = true;
 
   protected readonly collector: TokenUsageCollector;
@@ -128,7 +128,7 @@ export abstract class ProbeUsageEvaluator implements Evaluator {
     return {
       evaluator: this.name,
       score: 0,
-      verdict: 'unknown',
+      verdict: 'incomplete',
       reason,
     };
   }

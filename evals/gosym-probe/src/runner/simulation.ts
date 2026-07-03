@@ -126,8 +126,9 @@ interface RunState {
   lastDurationMs: number | undefined;
   /** Ordered skill load/unload events from the agents-service
    * skill.diagnostics stream (only populated when SKILL_DIAGNOSTICS=true).
-   * undefined until the first event, so transcript.loadedSkills stays
-   * absent when instrumentation is off. */
+   * Initialized (to []) by the first event — the 'ready' liveness sentinel or
+   * a load/unload, whichever arrives first — so transcript.loadedSkills stays
+   * absent only when instrumentation is off entirely. */
   skillEvents: { event: 'load' | 'unload'; skill: string }[] | undefined;
   /** token_usage_summary events accumulated for the in-flight assistant turn;
    * folded onto the Turn when it's built, then reset. undefined until the first
@@ -305,10 +306,18 @@ export class Simulation {
       if (event.type === 'step_start') {
         state.currentAgentId = event.agentName;
       } else if (event.type === 'skill_diagnostics') {
-        (state.skillEvents ??= []).push({
-          event: event.event,
-          skill: event.skill,
-        });
+        // The 'ready' sentinel proves instrumentation is live before any skill
+        // loads: it initializes the array so loadedSkills resolves to [] (a
+        // scorable zero-skill run → 'fail' on a non-selection scenario) rather
+        // than staying absent ('unknown'). Load/unload events carry a skill.
+        if (event.event === 'ready') {
+          state.skillEvents ??= [];
+        } else {
+          (state.skillEvents ??= []).push({
+            event: event.event,
+            skill: event.skill,
+          });
+        }
       } else if (event.type === 'token_usage_summary') {
         // One event per agent message-execution. Fold into the in-flight turn's
         // running total; attached to the Turn when it's built, then reset.

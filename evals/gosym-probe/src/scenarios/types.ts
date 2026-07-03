@@ -102,41 +102,80 @@ export interface Claims {
 }
 
 /**
- * CheckList behavioral-test category (Ribeiro et al., ACL 2020):
+ * CheckList behavioral-test category (Ribeiro et al., ACL 2020), narrowed
+ * to the two categories that reduce cleanly to a binary pass/fail:
  * - 'capability'  (MFT) — a required behavior must be present.
  *   Failure is a hard fail for the scenario.
  * - 'invariance'  (INV) — a property that must hold regardless of how
  *   the artifact was built (e.g. no module-not-found, publish did not
  *   500). Failure is a hard fail.
- * - 'directional' (DIR) — a "nice to have" signal that should be present
- *   but isn't required (e.g. the copy mentions the product category).
- *   Failure is soft (downgrades the scenario to 'partial'); it never
- *   hard-fails. (CheckList's original DIR is a baseline-relative
- *   expectation; here the shipped DIR items are binary presence checks
- *   treated as soft pass/fail.)
+ *
+ * The third CheckList category, DIR (directional), is intentionally NOT
+ * here. A directional signal is a matter of degree ("how much of this did
+ * we get"), not a hard yes/no, so folding it into this binary reducer
+ * produced a 'partial' verdict that lands in the pass@k denominator but
+ * never the numerator — silently deflating the pass rate like a fail
+ * without being a clean fail. Directional expectations now live on
+ * {@link ExpectedArtifactSpec.directionalItems} and are scored by the
+ * score-mode DirectionalSignalEvaluator (gated by TOST / Wilson CI against
+ * baseline) instead. See {@link DirectionalItem}.
  */
-export type ChecklistCheckType = 'capability' | 'invariance' | 'directional';
+export type ChecklistCheckType = 'capability' | 'invariance';
+
+/** Identity fields common to every artifact expectation. */
+interface MatchableItemBase {
+  /** Stable identifier, e.g. 'has-contact-form'. */
+  id: string;
+  /** Observable behavior/signal in plain language. */
+  description: string;
+}
+
+type DomMatcher = (site: CapturedSite, snapshots: DOMSnapshot[]) => boolean;
+type ToolMatcher = (toolCalls: ToolCall[]) => boolean;
+type RouteMatcher = { path: string | RegExp; mustBeReachable: boolean };
+type TextMatcher = { source: 'rendered' | 'transcript'; pattern: RegExp };
+
+/**
+ * The matcher surface shared by every artifact expectation, binary or
+ * directional. Matchers assert *capabilities* over the captured artifact,
+ * never string-equality against a golden output — so any valid
+ * implementation of the behavior passes.
+ *
+ * This is a discriminated union over the four matcher kinds: EXACTLY ONE
+ * matcher may be set per item (the others are `?: never`), so a two-matcher
+ * item — where `matchItem`'s fixed dom > route > tool > text priority would
+ * silently drop the extras — is a compile error rather than a latent bug.
+ *
+ * Both {@link ChecklistItem} and {@link DirectionalItem} build on this, so a
+ * new matcher kind added here propagates to both and the shared `matchItem`
+ * routine — and an item can be reclassified between binary and directional
+ * by moving it between arrays with no matcher rewrite.
+ */
+export type MatchableItem = MatchableItemBase &
+  (
+    | { domMatcher: DomMatcher; toolMatcher?: never; routeMatcher?: never; textMatcher?: never }
+    | { toolMatcher: ToolMatcher; domMatcher?: never; routeMatcher?: never; textMatcher?: never }
+    | { routeMatcher: RouteMatcher; domMatcher?: never; toolMatcher?: never; textMatcher?: never }
+    | { textMatcher: TextMatcher; domMatcher?: never; toolMatcher?: never; routeMatcher?: never }
+  );
 
 /**
  * A single binary behavioral expectation, checked deterministically
- * against trial data by the expected-artifact-match evaluator.
- *
- * Matchers assert *capabilities* over the captured artifact, never
- * string-equality against a golden output — so any valid
- * implementation of the behavior passes. Exactly one matcher should be
- * set per item.
+ * against trial data by the expected-artifact-match evaluator. Its
+ * capability/invariance `type` hard-gates the scenario (pass/fail).
  */
-export interface ChecklistItem {
-  /** Stable identifier, e.g. 'has-contact-form'. */
-  id: string;
-  /** Observable behavior in plain language. */
-  description: string;
-  type: ChecklistCheckType;
-  domMatcher?: (site: CapturedSite, snapshots: DOMSnapshot[]) => boolean;
-  toolMatcher?: (toolCalls: ToolCall[]) => boolean;
-  routeMatcher?: { path: string | RegExp; mustBeReachable: boolean };
-  textMatcher?: { source: 'rendered' | 'transcript'; pattern: RegExp };
-}
+export type ChecklistItem = MatchableItem & { type: ChecklistCheckType };
+
+/**
+ * A "nice to have" directional signal that should be present but isn't
+ * required (e.g. the copy mentions the product category). Scored as a
+ * degree — the fraction of directional items met per trial — by the
+ * score-mode DirectionalSignalEvaluator, and gated statistically (TOST /
+ * Wilson CI) against baseline rather than hard-gating the scenario. This
+ * is deliberately kept OUT of {@link ChecklistItem} (it carries no `type`)
+ * so the binary checklist reducer can never emit a 'partial'.
+ */
+export type DirectionalItem = MatchableItem;
 
 /**
  * The written-down "expected finished product" for a scenario: the
@@ -148,7 +187,14 @@ export interface ChecklistItem {
 export interface ExpectedArtifactSpec {
   /** Human-readable summary of what the user wanted. */
   intent: string;
+  /** Binary (capability / invariance) expectations — hard pass/fail. */
   items: ChecklistItem[];
+  /**
+   * Directional (degree) signals scored by the score-mode
+   * DirectionalSignalEvaluator, never hard-gating the scenario. Optional:
+   * scenarios with no directional signals omit it.
+   */
+  directionalItems?: DirectionalItem[];
   /**
    * Bumped whenever an item changes. Surfaces on EvalResult.evalVersion
    * so baseline comparison is skipped when the checklist changes,
@@ -166,7 +212,11 @@ export interface SkillInstruction {
   id: string;
   /** The specific instruction to check, in plain language. */
   instruction: string;
-  /** 'required' = hard-fail if not followed. 'advisory' = partial only. */
+  /**
+   * 'required' = hard-fails the skill-outcome verdict if not followed.
+   * 'advisory' = never gates the verdict; reported as an adherence fraction
+   * (details.advisoryAdherence) only.
+   */
   priority: 'required' | 'advisory';
 }
 
@@ -193,7 +243,7 @@ export interface Scenario {
    * asserted by the skill-selection evaluator. The skill-load check
    * is only enforced when SKILL_DIAGNOSTICS instrumentation populates
    * Transcript.loadedSkills; otherwise that sub-check returns
-   * 'unknown'.
+   * 'incomplete'.
    */
   expectedSkills?: string[];
   /**

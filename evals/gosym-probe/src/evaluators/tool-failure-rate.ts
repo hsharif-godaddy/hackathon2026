@@ -4,7 +4,7 @@ import type { Scenario } from '../scenarios/types.js';
 
 export class ToolFailureRateEvaluator implements Evaluator {
   readonly name = 'tool-failure-rate';
-  readonly regressionMode = 'score' as const;
+  readonly comparisonMode = 'score' as const;
   readonly lowerIsBetter = true;
 
   async evaluate(
@@ -19,7 +19,7 @@ export class ToolFailureRateEvaluator implements Evaluator {
       return {
         evaluator: this.name,
         score: 0,
-        verdict: 'unknown',
+        verdict: 'incomplete',
         reason: 'No tool calls in transcript',
         details: { failedCount: 0, totalCalls: 0, failedTools: [] },
       };
@@ -40,7 +40,7 @@ export class ToolFailureRateEvaluator implements Evaluator {
     return {
       evaluator: this.name,
       score: rate,
-      verdict: 'observed',
+      verdict: 'directional',
       reason,
       details: {
         failedCount,

@@ -2,6 +2,8 @@ import { createPromptVsSkillScenario } from './create-prompt-vs-skill-scenario.j
 import { contactPageExpectation } from './expectations/contact-page.expectation.js';
 import { ExpectedArtifactMatchEvaluator }
   from '../../evaluators/expected-artifact-match.js';
+import { DirectionalSignalEvaluator }
+  from '../../evaluators/directional-signal.js';
 import { createNarrowArtifactJudge }
   from '../../evaluators/narrow-artifact-judge.js';
 import { SkillSelectionEvaluator }
@@ -57,6 +59,7 @@ export function contactPageExpectationsScenario(
         + 'section with a headline, and a way for visitors to contact me.',
       extraEvaluators: [
         new ExpectedArtifactMatchEvaluator(),
+        new DirectionalSignalEvaluator(),
         new SkillSelectionEvaluator(),
       ],
       calibrationEvaluators: [createNarrowArtifactJudge(gocode)],

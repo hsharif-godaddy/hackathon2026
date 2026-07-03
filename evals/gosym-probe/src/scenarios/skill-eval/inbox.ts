@@ -1,14 +1,20 @@
 import { createSkillEval } from './create-skill-eval.js';
+import { getSkillEvalBaseInjection }
+  from './skill-eval-base.js';
 import type { IGocodeClient }
   from '../../clients/gocode-client.js';
 import type { AABCtrlPlaneClient }
   from '../../clients/aab-ctrl-plane-client.js';
 import type { Scenario } from '../types.js';
+import type { Config }
+  from '../../../config/environments/types.js';
 
 export function inboxSkillEvalScenario(
   gocode: IGocodeClient,
   ctrlPlane: AABCtrlPlaneClient,
+  config?: Config,
 ): Scenario {
+  const base = getSkillEvalBaseInjection(config);
   return createSkillEval(
     {
       name: 'skill-eval-inbox',
@@ -52,8 +58,10 @@ export function inboxSkillEvalScenario(
           priority: 'advisory',
         },
       ],
+      statefulInjection: base?.injection,
     },
     gocode,
     ctrlPlane,
+    base?.seedSummary,
   );
 }

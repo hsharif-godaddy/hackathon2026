@@ -12,10 +12,10 @@ function makeAssistantTurn(durationMs?: number) {
 }
 
 describe('TurnDurationEvaluator — properties', () => {
-  it('has correct name, regressionMode=score, lowerIsBetter=true', () => {
+  it('has correct name, comparisonMode=score, lowerIsBetter=true', () => {
     const evaluator = new TurnDurationEvaluator();
     expect(evaluator.name).toBe('turn-duration');
-    expect(evaluator.regressionMode).toBe('score');
+    expect(evaluator.comparisonMode).toBe('score');
     expect(evaluator.lowerIsBetter).toBe(true);
   });
 });
@@ -28,7 +28,7 @@ describe('TurnDurationEvaluator — error paths (unknown)', () => {
       makeTranscript([makeAssistantTurn()]),
       makeScenario(),
     );
-    expect(result.verdict).toBe('unknown');
+    expect(result.verdict).toBe('incomplete');
     expect(result.score).toBe(0);
   });
 
@@ -37,7 +37,7 @@ describe('TurnDurationEvaluator — error paths (unknown)', () => {
       makeTranscript([makeUserTurn()]),
       makeScenario(),
     );
-    expect(result.verdict).toBe('unknown');
+    expect(result.verdict).toBe('incomplete');
     expect(result.score).toBe(0);
   });
 
@@ -46,7 +46,7 @@ describe('TurnDurationEvaluator — error paths (unknown)', () => {
       makeTranscript([]),
       makeScenario(),
     );
-    expect(result.verdict).toBe('unknown');
+    expect(result.verdict).toBe('incomplete');
     expect(result.score).toBe(0);
   });
 });
@@ -59,7 +59,7 @@ describe('TurnDurationEvaluator — score-mode observed verdict', () => {
       makeTranscript([makeAssistantTurn(0)]),
       makeScenario(),
     );
-    expect(result.verdict).toBe('observed');
+    expect(result.verdict).toBe('directional');
     expect(result.score).toBe(0);
   });
 
@@ -68,7 +68,7 @@ describe('TurnDurationEvaluator — score-mode observed verdict', () => {
       makeTranscript([makeAssistantTurn(5000)]),
       makeScenario(),
     );
-    expect(result.verdict).toBe('observed');
+    expect(result.verdict).toBe('directional');
     expect(result.score).toBe(5000);
   });
 
@@ -77,7 +77,7 @@ describe('TurnDurationEvaluator — score-mode observed verdict', () => {
       makeTranscript([makeAssistantTurn(3000), makeAssistantTurn(7000)]),
       makeScenario(),
     );
-    expect(result.verdict).toBe('observed');
+    expect(result.verdict).toBe('directional');
     expect(result.score).toBe(10000);
   });
 
@@ -86,7 +86,7 @@ describe('TurnDurationEvaluator — score-mode observed verdict', () => {
       makeTranscript([makeAssistantTurn(2000), makeUserTurn()]),
       makeScenario(),
     );
-    expect(result.verdict).toBe('observed');
+    expect(result.verdict).toBe('directional');
     expect(result.score).toBe(2000);
   });
 });
@@ -140,7 +140,7 @@ describe('TurnDurationEvaluator — edge cases (mixed defined/undefined)', () =>
       ]),
       makeScenario(),
     );
-    expect(result.verdict).toBe('observed');
+    expect(result.verdict).toBe('directional');
     expect(result.score).toBe(3000);
   });
 
@@ -178,6 +178,6 @@ describe('TurnDurationEvaluator — edge cases (mixed defined/undefined)', () =>
       ]),
       makeScenario(),
     );
-    expect(result.verdict).toBe('unknown');
+    expect(result.verdict).toBe('incomplete');
   });
 });

@@ -2,7 +2,7 @@ import type { Transcript } from './transcript.js';
 import type { EvalResult } from '../evaluators/evaluator.js';
 import type { StabilityLevel } from '../scenarios/types.js';
 import type { RegressionResult } from '../baselines/types.js';
-import type { PassEstimatorEntry } from '../util/pass-at-k.js';
+import type { PassEstimatorEntry, WilsonCI } from '../util/pass-at-k.js';
 
 export type DiagnosticLogFn = (
   msg: string,
@@ -18,7 +18,7 @@ export interface TrialResult {
 export interface AggregatedResult {
   /**
    * Headline unbiased pass@1 estimate (`c / n`). For pass-rate evaluators this
-   * is always present. For score-mode evaluators (`regressionMode === 'score'`):
+   * is always present. For score-mode evaluators (`comparisonMode === 'score'`):
    * present only after baseline enrichment derives per-trial pass/fail; absent
    * when no baseline is available.
    */
@@ -54,16 +54,18 @@ export interface AggregatedResult {
   aggregateScore?: number;
   /**
    * Regression comparison mode for this evaluator.
-   * Absent / 'passRate': compare pass-rate across trials (default).
+   * 'passRate': compare pass-rate across trials.
    * 'score': compare aggregate score via relative delta.
    */
-  regressionMode?: 'passRate' | 'score';
+  comparisonMode: 'passRate' | 'score';
   evalVersion?: string;
   /**
    * When true, a score increase is treated as a regression.
    * Propagated from Evaluator.lowerIsBetter.
    */
   lowerIsBetter?: boolean;
+  /** Wilson 95% CI for pass@1. Present for pass-rate evaluators when n > 0. */
+  wilsonCI?: WilsonCI;
 }
 
 export interface ScenarioResult {

@@ -8,7 +8,7 @@ import type {
   ToolCallAssertion,
 } from '../scenarios/types.js';
 import type { Turn } from '../runner/transcript.js';
-import type { PassEstimatorEntry } from '../util/pass-at-k.js';
+import type { PassEstimatorEntry, WilsonCI } from '../util/pass-at-k.js';
 
 export interface RunMetadata {
   runId: string;
@@ -74,6 +74,8 @@ export interface EvaluatorSummary {
   evalVersion?: string;
   /** When true, score increase = regression. Present only for score-mode evaluators. */
   lowerIsBetter?: boolean;
+  /** Wilson 95% CI for pass@1. Present for pass-rate evaluators when n > 0. */
+  wilsonCI?: WilsonCI;
 }
 
 export interface TimingStats {

@@ -7,7 +7,9 @@ import { noModuleNotFoundItem } from '../../matchers/checklist-items.js';
  * Expectation fixture for the pvs-contact-page-expectations pilot
  * scenario. Encodes the "expected finished product" as CheckList
  * behavioral items (Ribeiro et al., ACL 2020): capability (MFT) and
- * invariance (INV) items hard-gate; directional (DIR) is soft.
+ * invariance (INV) items hard-gate (binary pass/fail). Directional (DIR)
+ * signals live in `directionalItems` and are scored separately by the
+ * score-mode DirectionalSignalEvaluator, never hard-gating the scenario.
  *
  * Matchers assert *capabilities* over the captured artifact — a
  * reachable route, rendered copy — never golden-output equality, so
@@ -47,12 +49,14 @@ export const contactPageExpectation: ExpectedArtifactSpec = {
   intent:
     'Build a landing page for a small business with a hero section and '
     + 'a way for visitors to make contact.',
-  // v3: has-rendered-content retuned from a rendered-signals-only scan to
-  // a domMatcher that falls back to snapshot HTML — RenderedSignals came
-  // back empty on fully-rendered pages (capture-timing artifact), causing
-  // false fails. v2: mentions-contact moved keyword→capability. Bumped so
-  // baseline comparison skips the changed items.
-  evalVersion: 'v3',
+  // v4: mentions-contact moved from items into directionalItems (scored by the
+  // score-mode DirectionalSignalEvaluator, no longer a binary item). v3:
+  // has-rendered-content retuned from a rendered-signals-only scan to a
+  // domMatcher that falls back to snapshot HTML — RenderedSignals came back
+  // empty on fully-rendered pages (capture-timing artifact), causing false
+  // fails. v2: mentions-contact moved keyword→capability. Bumped so baseline
+  // comparison skips the changed items.
+  evalVersion: 'v4',
   items: [
     {
       id: 'home-route-reachable',
@@ -67,11 +71,12 @@ export const contactPageExpectation: ExpectedArtifactSpec = {
       domMatcher: (site, snapshots) => hasRenderedContent(site, snapshots),
     },
     noModuleNotFoundItem,
+  ],
+  directionalItems: [
     {
       id: 'mentions-contact',
       description: 'the site provides a way to contact the business '
         + '(contact/about route or contact copy)',
-      type: 'directional',
       domMatcher: (site) => hasContactCapability(site),
     },
   ],

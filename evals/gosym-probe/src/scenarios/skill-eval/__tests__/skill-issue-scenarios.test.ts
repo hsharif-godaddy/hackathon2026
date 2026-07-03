@@ -12,6 +12,12 @@ import { onlineAppointmentsNonSelectionScenario }
   from '../online-appointments-non-selection.js';
 import { commerceVsPaymentRoutingScenario }
   from '../commerce-vs-payment-routing.js';
+import { emailNonSelectionScenario }
+  from '../email-non-selection.js';
+import { appointmentsVsConferencingRoutingScenario }
+  from '../appointments-vs-conferencing-routing.js';
+import { inboxVsAiAgentRoutingScenario }
+  from '../inbox-vs-ai-agent-routing.js';
 import type { Scenario } from '../../types.js';
 import type { IGocodeClient } from '../../../clients/gocode-client.js';
 import type { AABCtrlPlaneClient }
@@ -137,6 +143,12 @@ describe('skill-issue scenarios (1d)', () => {
       skill: 'online-appointments',
       forbiddenIntentWords: ['skill'],
     },
+    {
+      label: 'emailNonSelectionScenario',
+      factory: emailNonSelectionScenario,
+      skill: 'email',
+      forbiddenIntentWords: ['skill', 'email', 'nodemailer', 'smtp'],
+    },
   ];
 
   describe.each(nonSelectionCases)(
@@ -191,6 +203,57 @@ describe('skill-issue scenarios (1d)', () => {
       expect(noPayment).toBeDefined();
       expect(noPayment!.priority).toBe('required');
       expect(noPayment!.instruction.toLowerCase()).toContain('stripe');
+    });
+
+    it('wires the skill-selection evaluator', () => {
+      expect(scenario.evaluators.map((e) => e.name)).toContain(
+        'skill-selection',
+      );
+    });
+  });
+
+  describe('appointmentsVsConferencingRoutingScenario', () => {
+    const scenario = appointmentsVsConferencingRoutingScenario(
+      gocode,
+      ctrlPlane,
+    );
+
+    it('expects the online-appointments skill (the correct route)', () => {
+      expect(scenario.expectedSkills).toEqual(['online-appointments']);
+    });
+
+    it('forbids conferencing as the entry point so the misroute is caught', () => {
+      const noConferencing = (scenario.skillInstructions ?? []).find(
+        (i) => i.id === 'no-conferencing-entry-point',
+      );
+      expect(noConferencing).toBeDefined();
+      expect(noConferencing!.priority).toBe('required');
+      expect(noConferencing!.instruction.toLowerCase()).toContain(
+        'online-conferencing',
+      );
+    });
+
+    it('wires the skill-selection evaluator', () => {
+      expect(scenario.evaluators.map((e) => e.name)).toContain(
+        'skill-selection',
+      );
+    });
+  });
+
+  describe('inboxVsAiAgentRoutingScenario', () => {
+    const scenario = inboxVsAiAgentRoutingScenario(gocode, ctrlPlane);
+
+    it('expects the inbox skill (the correct route)', () => {
+      expect(scenario.expectedSkills).toEqual(['inbox']);
+    });
+
+    it('forbids the ai-agent skill so the misroute is caught by the judge', () => {
+      const noAiAgent = (scenario.skillInstructions ?? []).find(
+        (i) => i.id === 'no-ai-agent-skill',
+      );
+      expect(noAiAgent).toBeDefined();
+      expect(noAiAgent!.priority).toBe('required');
+      expect(noAiAgent!.instruction.toLowerCase()).toContain('ai-agent');
     });
 
     it('wires the skill-selection evaluator', () => {

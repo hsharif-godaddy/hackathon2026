@@ -308,7 +308,7 @@ export function buildContextPayload(
     for (const [evalName, agg] of Object.entries(result.aggregated)) {
       lines.push(`### Evaluator: ${evalName}`);
 
-      if (agg.regressionMode === 'score') {
+      if (agg.comparisonMode === 'score') {
         const raw = agg.aggregateScore;
         const score =
           typeof raw === 'number' && Number.isFinite(raw)
@@ -318,7 +318,7 @@ export function buildContextPayload(
         lines.push(`  Score (aggregate): ${score}${direction}`);
         lines.push(`  Pass@1: ${formatPass1(agg.passAt1, 'N/A')}`);
       } else {
-        lines.push(`  Pass@1: ${formatPass1(agg.passAt1, 'N/A')}`);
+        lines.push(`  Pass@1: ${formatPass1(agg.passAt1, 'N/A', { n: agg.totalTrials, ci: agg.wilsonCI })}`);
         lines.push(
           `  Pass@k: ${formatEstimatorVector(agg.passAtK, 'N/A')}`
           + ` | Pass^k: ${formatEstimatorVector(agg.passHatK, 'N/A')}`,

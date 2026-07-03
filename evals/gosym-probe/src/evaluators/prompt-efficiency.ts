@@ -9,7 +9,7 @@ import type { Scenario } from '../scenarios/types.js';
 export class PromptEfficiencyEvaluator implements Evaluator {
   readonly name = 'prompt-efficiency';
   readonly evalVersion = '2.0';
-  readonly regressionMode = 'score' as const;
+  readonly comparisonMode = 'score' as const;
   readonly lowerIsBetter = true;
 
   async evaluate(
@@ -24,7 +24,7 @@ export class PromptEfficiencyEvaluator implements Evaluator {
     return {
       evaluator: this.name,
       score: userTurns,
-      verdict: 'observed',
+      verdict: 'directional',
       reason: `${userTurns} user turns`,
       details: { userTurns },
       evalVersion: this.evalVersion,

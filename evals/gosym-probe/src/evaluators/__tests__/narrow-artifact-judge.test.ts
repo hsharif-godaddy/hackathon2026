@@ -16,10 +16,10 @@ const capItem: ChecklistItem = {
   type: 'capability',
   domMatcher: () => true,
 };
-const dirItem: ChecklistItem = {
+const secondCapItem: ChecklistItem = {
   id: 'mentions-fast',
   description: 'copy mentions speed',
-  type: 'directional',
+  type: 'capability',
   textMatcher: { source: 'rendered', pattern: /fast/i },
 };
 
@@ -47,7 +47,7 @@ describe('narrow-artifact-judge', () => {
       mockGocode as unknown as GocodeClient,
     );
     const result = await judge.evaluate(makeTranscript(), makeScenario());
-    expect(result.verdict).toBe('unknown');
+    expect(result.verdict).toBe('incomplete');
     expect(mockGocode.complete).not.toHaveBeenCalled();
   });
 
@@ -85,7 +85,7 @@ describe('narrow-artifact-judge', () => {
     expect(result.details?.hardFailures).toEqual(['has-contact']);
   });
 
-  it('downgrades to partial when only a directional item is not met', async () => {
+  it('fails when any binary item is not met (no partial verdict)', async () => {
     mockGocode.complete.mockResolvedValue(
       JSON.stringify({
         items: [
@@ -99,9 +99,9 @@ describe('narrow-artifact-judge', () => {
     );
     const result = await judge.evaluate(
       makeTranscript(),
-      makeScenario({ expectedArtifact: specOf(capItem, dirItem) }),
+      makeScenario({ expectedArtifact: specOf(capItem, secondCapItem) }),
     );
-    expect(result.verdict).toBe('partial');
+    expect(result.verdict).toBe('fail');
   });
 
   it('marks an item unknown when the judge omits its verdict', async () => {
@@ -115,8 +115,8 @@ describe('narrow-artifact-judge', () => {
       makeTranscript(),
       makeScenario({ expectedArtifact: specOf(capItem) }),
     );
-    expect(result.verdict).toBe('unknown');
-    expect(result.details?.unknownCount).toBe(1);
+    expect(result.verdict).toBe('incomplete');
+    expect(result.details?.incompleteCount).toBe(1);
   });
 
   it('returns unknown on a malformed (non-JSON) response', async () => {
@@ -128,7 +128,7 @@ describe('narrow-artifact-judge', () => {
       makeTranscript(),
       makeScenario({ expectedArtifact: specOf(capItem) }),
     );
-    expect(result.verdict).toBe('unknown');
+    expect(result.verdict).toBe('incomplete');
   });
 
   it('includes the checklist item ids in the judge prompt', async () => {

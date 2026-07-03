@@ -22,7 +22,10 @@ export const publishFlowExpectation: ExpectedArtifactSpec = {
   intent:
     'Build a hello-world site, publish it to production, health-check, '
     + 'and publish again.',
-  evalVersion: 'v1',
+  // v2: mentions-publish-outcome moved from items into directionalItems
+  // (scored by the score-mode DirectionalSignalEvaluator, no longer a binary
+  // item). Bumped so baseline comparison skips the changed denominator.
+  evalVersion: 'v2',
   items: [
     {
       id: 'home-route-reachable',
@@ -43,10 +46,11 @@ export const publishFlowExpectation: ExpectedArtifactSpec = {
       toolMatcher: (calls) => calledPublishTool(calls.map((c) => c.name)),
     },
     noModuleNotFoundItem,
+  ],
+  directionalItems: [
     {
       id: 'mentions-publish-outcome',
       description: 'the conversation references publish/deploy/live status',
-      type: 'directional',
       textMatcher: {
         source: 'transcript',
         pattern: /publish|deployed|live site|production|go live/i,

@@ -29,6 +29,27 @@ import type {
 } from '../types.js';
 import type { Persona } from '../../personas/types.js';
 import type { Evaluator } from '../../evaluators/evaluator.js';
+import { createStatefulApp } from '../stateful/create-stateful-app.js';
+import type { StatefulAppOptions, SummarySeeder }
+  from '../stateful/create-stateful-app.js';
+
+const statefulTeardowns = new Set<() => Promise<void>>();
+let handlersRegistered = false;
+
+function registerSharedHandlersOnce(): void {
+  if (handlersRegistered) return;
+  handlersRegistered = true;
+  process.setMaxListeners(Math.max(process.getMaxListeners(), 20));
+  process.once('beforeExit', (): void => {
+    void Promise.all([...statefulTeardowns].map((fn) => fn()));
+  });
+  for (const [signal, signo] of [['SIGINT', 2], ['SIGTERM', 15]] as const) {
+    process.once(signal, (): void => {
+      void Promise.all([...statefulTeardowns].map((fn) => fn()))
+        .finally(() => process.exit(128 + signo));
+    });
+  }
+}
 
 export interface PromptVsSkillConfig {
   name: string;
@@ -58,12 +79,20 @@ export interface PromptVsSkillConfig {
    */
   calibrationEvaluators?: Evaluator[];
   calibrate?: boolean;
+  /**
+   * Opt into stateful injection: reuse one provisioned app across all trials,
+   * resetting its workspace between trials. Requires serial trials. When set,
+   * the per-trial setup/teardown are the shared-app variants; teardown of the
+   * shared app runs on process exit via beforeExit/SIGINT/SIGTERM handlers.
+   */
+  statefulInjection?: StatefulAppOptions;
 }
 
 export function createPromptVsSkillScenario(
   config: PromptVsSkillConfig,
   gocode: IGocodeClient,
   ctrlPlane: AABCtrlPlaneClient,
+  seedSummary?: SummarySeeder,
 ): Scenario {
   if (config.trials !== undefined
     && (!Number.isFinite(config.trials) || config.trials <= 0)) {
@@ -99,6 +128,30 @@ export function createPromptVsSkillScenario(
     );
   }
 
+  const lifecycle = config.statefulInjection
+    ? createStatefulApp(ctrlPlane, config.statefulInjection, seedSummary)
+    : undefined;
+
+  if (lifecycle) {
+    let sharedTornDown = false;
+    const teardownShared = async (): Promise<void> => {
+      if (sharedTornDown) return;
+      sharedTornDown = true;
+      try {
+        await lifecycle.teardownShared();
+      } catch (err: unknown) {
+        // nosemgrep: javascript.lang.security.audit.unsafe-formatstring
+        console.warn(
+          '[%s] shared-app teardown failed:',
+          config.name,
+          err instanceof Error ? err.message : String(err),
+        );
+      }
+    };
+    statefulTeardowns.add(teardownShared);
+    registerSharedHandlersOnce();
+  }
+
   return {
     name: config.name,
     suite: config.suite ?? 'prompt-vs-skill',
@@ -113,17 +166,22 @@ export function createPromptVsSkillScenario(
     contextClaims: config.contextClaims,
     staticFirstMessage: config.staticFirstMessage,
     trials: config.trials ?? 1,
+    ...(lifecycle && { requiresSerialTrials: true }),
 
-    setup: async () => {
-      const { appId, previewUrl } = await ctrlPlane.provisionApp();
-      return { appId, previewUrl };
-    },
+    setup: lifecycle
+      ? lifecycle.setup
+      : async () => {
+        const { appId, previewUrl } = await ctrlPlane.provisionApp();
+        return { appId, previewUrl };
+      },
 
-    teardown: async (ctx) => {
-      const appId = ctx.appId;
-      if (appId) {
-        await ctrlPlane.deleteApp(appId);
-      }
-    },
+    teardown: lifecycle
+      ? lifecycle.teardown
+      : async (ctx) => {
+        const appId = ctx.appId;
+        if (appId) {
+          await ctrlPlane.deleteApp(appId);
+        }
+      },
   };
 }

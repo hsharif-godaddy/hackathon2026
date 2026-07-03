@@ -30,7 +30,7 @@ function lastSnapshotMs(snapshot?: DOMSnapshot): number | null {
 export class TotalTimeTakenEvaluator implements Evaluator {
   readonly name = 'total-time-taken';
   readonly evalVersion = '2.0';
-  readonly regressionMode = 'score' as const;
+  readonly comparisonMode = 'score' as const;
   readonly lowerIsBetter = true;
 
   async evaluate(
@@ -47,7 +47,7 @@ export class TotalTimeTakenEvaluator implements Evaluator {
       return {
         evaluator: this.name,
         score: 0,
-        verdict: 'unknown',
+        verdict: 'incomplete',
         reason: 'Insufficient timestamps to compute total time taken',
         evalVersion: this.evalVersion,
       };
@@ -59,7 +59,7 @@ export class TotalTimeTakenEvaluator implements Evaluator {
     return {
       evaluator: this.name,
       score: seconds,
-      verdict: 'observed',
+      verdict: 'directional',
       reason: `Total session time: ${seconds.toFixed(1)}s`,
       evalVersion: this.evalVersion,
       details: {

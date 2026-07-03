@@ -3,6 +3,8 @@ import { multipageCatalogExpectation }
   from '../expectations/multipage-catalog.expectation.js';
 import { ExpectedArtifactMatchEvaluator }
   from '../../../evaluators/expected-artifact-match.js';
+import { DirectionalSignalEvaluator }
+  from '../../../evaluators/directional-signal.js';
 import type { Transcript } from '../../../runner/transcript.js';
 import type { CapturedSite } from '../../../clients/site-capture/types.js';
 import type { Scenario } from '../../types.js';
@@ -68,8 +70,8 @@ function siteWith(paths: string[], body: string): CapturedSite {
 describe('multipageCatalogExpectation fixture', () => {
   const evaluator = new ExpectedArtifactMatchEvaluator();
 
-  it('is at evalVersion v1', () => {
-    expect(multipageCatalogExpectation.evalVersion).toBe('v1');
+  it('is at evalVersion v2', () => {
+    expect(multipageCatalogExpectation.evalVersion).toBe('v2');
   });
 
   it('passes a real multi-page catalog build', async () => {
@@ -88,10 +90,28 @@ describe('multipageCatalogExpectation fixture', () => {
     expect(result.details?.hardFailures).toContain('is-multi-page');
   });
 
-  it('downgrades to partial when only catalog copy is missing', async () => {
+  it('binary verdict still passes when only catalog copy (directional) is missing', async () => {
     const site = siteWith(['/', '/about'], 'Welcome to our company homepage');
     const result = await evaluator.evaluate(makeTranscript(site), makeScenario());
-    expect(result.verdict).toBe('partial');
-    expect(result.details?.directionalFailures).toEqual(['mentions-catalog']);
+    // 'mentions-catalog' is now a directional signal, not a binary item, so
+    // its absence no longer downgrades the binary artifact-match verdict.
+    expect(result.verdict).toBe('pass');
+  });
+
+  it('directional evaluator reports the unmet catalog signal as score 0 (directional)', async () => {
+    const directional = new DirectionalSignalEvaluator();
+    const site = siteWith(['/', '/about'], 'Welcome to our company homepage');
+    const result = await directional.evaluate(makeTranscript(site), makeScenario());
+    expect(result.verdict).toBe('directional');
+    expect(result.score).toBe(0);
+    expect(result.details?.metCount).toBe(0);
+  });
+
+  it('directional evaluator scores 1 when catalog copy is present', async () => {
+    const directional = new DirectionalSignalEvaluator();
+    const site = siteWith(['/', '/shop'], 'Browse our pottery and textiles catalog');
+    const result = await directional.evaluate(makeTranscript(site), makeScenario());
+    expect(result.verdict).toBe('directional');
+    expect(result.score).toBe(1);
   });
 });

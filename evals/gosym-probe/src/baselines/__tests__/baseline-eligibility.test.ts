@@ -54,12 +54,12 @@ describe('assessBaselineEligibility', () => {
     expect(r.reason).toBe('no-agent-output');
   });
 
-  it('rejects a run with agent output but only unknown verdicts', () => {
+  it('rejects a run with agent output but only incomplete verdicts', () => {
     const r = assessBaselineEligibility(
-      scenarioResult([trial([USER_TURN, AGENT_TURN], ['unknown', 'unknown'])]),
+      scenarioResult([trial([USER_TURN, AGENT_TURN], ['incomplete', 'incomplete'])]),
     );
     expect(r.eligible).toBe(false);
-    expect(r.reason).toBe('all-unknown-verdicts');
+    expect(r.reason).toBe('all-incomplete-verdicts');
   });
 
   it('accepts a run with agent output and a comparable verdict (fail counts)', () => {
@@ -73,7 +73,7 @@ describe('assessBaselineEligibility', () => {
   it('accepts when only some trials have output + verdicts', () => {
     const r = assessBaselineEligibility(
       scenarioResult([
-        trial([USER_TURN], ['unknown']),
+        trial([USER_TURN], ['incomplete']),
         trial([USER_TURN, AGENT_TURN], ['pass']),
       ]),
     );

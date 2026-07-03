@@ -1,11 +1,10 @@
 import type { EvalResult } from './evaluator.js';
-import type { ChecklistCheckType } from '../scenarios/types.js';
 
-export type ChecklistItemStatus = 'pass' | 'fail' | 'unknown';
+export type ChecklistItemStatus = 'pass' | 'fail' | 'incomplete';
 
 export interface ChecklistItemOutcome {
   id: string;
-  type: ChecklistCheckType;
+  type?: string;
   status: ChecklistItemStatus;
   reason: string;
 }
@@ -16,9 +15,8 @@ export interface ChecklistVerdict {
   reason: string;
   passedCount: number;
   failedCount: number;
-  unknownCount: number;
+  incompleteCount: number;
   hardFailures: string[];
-  directionalFailures: string[];
 }
 
 /**
@@ -28,11 +26,16 @@ export interface ChecklistVerdict {
  * rules and are therefore directly comparable in signal-disagreement
  * analysis.
  *
+ * Every checklist item is now binary (capability / invariance), so the
+ * reduction is a clean pass/fail — it never emits 'partial'. Directional
+ * (degree) signals were moved out to the score-mode
+ * DirectionalSignalEvaluator precisely because a 'partial' verdict
+ * deflated pass@k without being a clean fail (see ChecklistCheckType).
+ *
  * Rules:
- * - capability (MFT) / invariance (INV) failure → hard 'fail'
- * - directional (DIR) failure only → 'partial'
+ * - any capability (MFT) / invariance (INV) failure → hard 'fail'
  * - all evaluable items pass → 'pass'
- * - no item could be evaluated → 'unknown'
+ * - no item could be evaluated → 'incomplete'
  *
  * The verdict is the headline; score = passed / evaluated exists only
  * so the result aggregates cleanly in composites and pass@k.
@@ -40,53 +43,40 @@ export interface ChecklistVerdict {
 export function reduceChecklistOutcomes(
   outcomes: ChecklistItemOutcome[],
 ): ChecklistVerdict {
-  const evaluated = outcomes.filter((o) => o.status !== 'unknown');
-  const unknownCount = outcomes.length - evaluated.length;
+  const evaluated = outcomes.filter((o) => o.status !== 'incomplete');
+  const incompleteCount = outcomes.length - evaluated.length;
 
   if (evaluated.length === 0) {
     return {
-      verdict: 'unknown',
+      verdict: 'incomplete',
       score: 0,
       reason: 'No checklist item could be evaluated (insufficient data)',
       passedCount: 0,
       failedCount: 0,
-      unknownCount,
+      incompleteCount,
       hardFailures: [],
-      directionalFailures: [],
     };
   }
 
   const passed = evaluated.filter((o) => o.status === 'pass');
-  const failed = evaluated.filter((o) => o.status === 'fail');
-  const hardFailures = failed.filter(
-    (o) => o.type === 'capability' || o.type === 'invariance',
-  );
-  const directionalFailures = failed.filter((o) => o.type === 'directional');
+  const hardFailures = evaluated.filter((o) => o.status === 'fail');
 
   const verdict: EvalResult['verdict'] =
-    hardFailures.length > 0
-      ? 'fail'
-      : directionalFailures.length > 0
-        ? 'partial'
-        : 'pass';
+    hardFailures.length > 0 ? 'fail' : 'pass';
 
   const reason =
     verdict === 'pass'
       ? `All ${evaluated.length} evaluated checklist item(s) met`
-      : verdict === 'partial'
-        ? `${directionalFailures.length} directional expectation(s) unmet: ` +
-          directionalFailures.map((o) => o.id).join(', ')
-        : `${hardFailures.length} required expectation(s) unmet: ` +
-          hardFailures.map((o) => o.id).join(', ');
+      : `${hardFailures.length} required expectation(s) unmet: ` +
+        hardFailures.map((o) => o.id).join(', ');
 
   return {
     verdict,
     score: passed.length / evaluated.length,
     reason,
     passedCount: passed.length,
-    failedCount: failed.length,
-    unknownCount,
+    failedCount: hardFailures.length,
+    incompleteCount,
     hardFailures: hardFailures.map((o) => o.id),
-    directionalFailures: directionalFailures.map((o) => o.id),
   };
 }

@@ -20,7 +20,7 @@ import type { Scenario } from '../scenarios/types.js';
 export class ToolBatchingEfficiencyEvaluator implements Evaluator {
   readonly name = 'tool-batching-efficiency';
   readonly evalVersion = '1.2';
-  readonly regressionMode = 'score' as const;
+  readonly comparisonMode = 'score' as const;
   readonly lowerIsBetter = false;
 
   async evaluate(
@@ -36,7 +36,7 @@ export class ToolBatchingEfficiencyEvaluator implements Evaluator {
       return {
         evaluator: this.name,
         score: 0,
-        verdict: 'unknown',
+        verdict: 'incomplete',
         reason: 'No assistant turns with tool calls',
         details: { totalSuccessfulCalls: 0, productiveTurns: 0 },
         evalVersion: this.evalVersion,
@@ -52,7 +52,7 @@ export class ToolBatchingEfficiencyEvaluator implements Evaluator {
       return {
         evaluator: this.name,
         score: 0,
-        verdict: 'unknown',
+        verdict: 'incomplete',
         reason: `Only ${totalSuccessfulCalls} successful call(s) — cannot measure batching`,
         details: { totalSuccessfulCalls, productiveTurns: productiveTurns.length },
         evalVersion: this.evalVersion,
@@ -66,7 +66,7 @@ export class ToolBatchingEfficiencyEvaluator implements Evaluator {
     return {
       evaluator: this.name,
       score,
-      verdict: 'observed',
+      verdict: 'directional',
       reason: `${calls} successful calls across ${turns} productive turns`,
       details: { totalSuccessfulCalls: calls, productiveTurns: turns },
       evalVersion: this.evalVersion,

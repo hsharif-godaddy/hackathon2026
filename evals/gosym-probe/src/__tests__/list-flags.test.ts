@@ -34,6 +34,7 @@ function makeScenario(overrides: Partial<Scenario> = {}): Scenario {
 function makeEvaluator(name: string) {
   return {
     name,
+    comparisonMode: 'passRate' as const,
     evaluate: vi.fn(),
   };
 }

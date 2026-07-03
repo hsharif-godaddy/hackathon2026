@@ -87,7 +87,7 @@ describe('LatencyEvaluator', () => {
         makeTranscript(0),
         makeScenario(),
       );
-      expect(result.verdict).toBe('unknown');
+      expect(result.verdict).toBe('incomplete');
       expect(result.reason).toMatch(/no chunk events/i);
     });
 
@@ -244,7 +244,7 @@ describe('LatencyEvaluator', () => {
           makeScenario(),
         );
         expect(result.details?.chunkCount).toBe(0);
-        expect(result.verdict).toBe('unknown');
+        expect(result.verdict).toBe('incomplete');
       },
     );
   });
@@ -272,7 +272,7 @@ describe('LatencyEvaluator', () => {
         );
         // TTFC=500ms, halfLifeMs=4000
         // → score = 2^(-0.125) ≈ 0.917
-        expect(result.verdict).toBe('observed');
+        expect(result.verdict).toBe('directional');
         expect(result.score).toBeGreaterThan(0.5);
       },
     );
@@ -761,7 +761,7 @@ describe('LatencyEvaluator', () => {
           makeTranscript(0, turns),
           makeScenario(),
         );
-        expect(result.verdict).toBe('observed');
+        expect(result.verdict).toBe('directional');
         expect(result.score).toBeGreaterThan(0.5);
       },
     );
@@ -787,7 +787,7 @@ describe('LatencyEvaluator', () => {
           makeTranscript(0, turns),
           makeScenario(),
         );
-        expect(result.verdict).toBe('observed');
+        expect(result.verdict).toBe('directional');
         expect(result.score).toBeCloseTo(0.5);
       },
     );
@@ -814,7 +814,7 @@ describe('LatencyEvaluator', () => {
           makeTranscript(0, turns),
           makeScenario(),
         );
-        expect(result.verdict).toBe('observed');
+        expect(result.verdict).toBe('directional');
         expect(result.score).toBeLessThan(0.5);
       },
     );
@@ -887,7 +887,7 @@ describe('LatencyEvaluator', () => {
           makeTranscript(0, []),
           makeScenario(),
         );
-        expect(result.verdict).toBe('unknown');
+        expect(result.verdict).toBe('incomplete');
         expect(result.score).toBe(0);
       },
     );

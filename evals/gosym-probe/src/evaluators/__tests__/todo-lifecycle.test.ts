@@ -82,7 +82,7 @@ describe('TodoLifecycleEvaluator', () => {
       ],
     });
     const result = await evaluator.evaluate(transcript, makeScenario());
-    expect(result.verdict).toBe('unknown');
+    expect(result.verdict).toBe('incomplete');
     expect(result.reason).toContain('No todoList create_list');
     expect(mockGocode.complete).not.toHaveBeenCalled();
   });
@@ -98,7 +98,7 @@ describe('TodoLifecycleEvaluator', () => {
       ],
     });
     const result = await evaluator.evaluate(transcript, makeScenario());
-    expect(result.verdict).toBe('unknown');
+    expect(result.verdict).toBe('incomplete');
     expect(mockGocode.complete).not.toHaveBeenCalled();
   });
 
@@ -224,7 +224,7 @@ describe('TodoLifecycleEvaluator', () => {
       ],
     });
     const result = await evaluator.evaluate(transcript, makeScenario());
-    expect(result.verdict).toBe('unknown');
+    expect(result.verdict).toBe('incomplete');
     expect(result.reason).toContain('No JSON object found');
     expect(result.evaluatorFailed).toBe(true);
     expect(result.details).toEqual({
@@ -252,7 +252,7 @@ describe('TodoLifecycleEvaluator', () => {
       ],
     });
     const result = await evaluator.evaluate(transcript, makeScenario());
-    expect(result.verdict).not.toBe('unknown');
+    expect(result.verdict).not.toBe('incomplete');
     expect(result.evaluatorFailed).toBeUndefined();
   });
 
@@ -278,7 +278,7 @@ describe('TodoLifecycleEvaluator', () => {
       ],
     });
     const result = await evaluator.evaluate(transcript, makeScenario());
-    expect(result.verdict).not.toBe('unknown');
+    expect(result.verdict).not.toBe('incomplete');
     expect(result.evaluatorFailed).toBeUndefined();
   });
 
@@ -304,7 +304,7 @@ describe('TodoLifecycleEvaluator', () => {
       ],
     });
     const result = await evaluator.evaluate(transcript, makeScenario());
-    expect(result.verdict).not.toBe('unknown');
+    expect(result.verdict).not.toBe('incomplete');
     expect(result.evaluatorFailed).toBeUndefined();
   });
 

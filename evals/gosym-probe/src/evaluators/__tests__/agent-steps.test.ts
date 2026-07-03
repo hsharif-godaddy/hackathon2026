@@ -53,7 +53,7 @@ describe('AgentStepsEvaluator', () => {
       makeTranscript([makeAssistantTurn()]),
       makeScenario(),
     );
-    expect(result.verdict).toBe('unknown');
+    expect(result.verdict).toBe('incomplete');
   });
 
   it("returns 'unknown' when transcript has only user turns", async () => {
@@ -62,7 +62,7 @@ describe('AgentStepsEvaluator', () => {
       makeTranscript([makeUserTurn()]),
       makeScenario(),
     );
-    expect(result.verdict).toBe('unknown');
+    expect(result.verdict).toBe('incomplete');
   });
 
   it('returns score of 0 for totalSteps=0', async () => {
@@ -72,7 +72,7 @@ describe('AgentStepsEvaluator', () => {
       makeScenario(),
     );
     expect(result.score).toBe(0);
-    expect(result.verdict).toBe('observed');
+    expect(result.verdict).toBe('directional');
   });
 
   it('returns raw step count', async () => {
@@ -82,7 +82,7 @@ describe('AgentStepsEvaluator', () => {
       makeScenario(),
     );
     expect(result.score).toBe(4);
-    expect(result.verdict).toBe('observed');
+    expect(result.verdict).toBe('directional');
   });
 
   it('sums totalSteps across multiple assistant turns', async () => {
@@ -92,7 +92,7 @@ describe('AgentStepsEvaluator', () => {
       makeScenario(),
     );
     expect(result.score).toBe(8);
-    expect(result.verdict).toBe('observed');
+    expect(result.verdict).toBe('directional');
   });
 
   it('only counts assistant turns; user turns are ignored', async () => {
@@ -128,7 +128,7 @@ describe('AgentStepsEvaluator', () => {
       makeTranscript([makeAssistantTurn(NaN)]),
       makeScenario(),
     );
-    expect(result.verdict).toBe('unknown');
+    expect(result.verdict).toBe('incomplete');
     expect(result.reason).toContain('Invalid totalSteps');
     expect(result.evalVersion).toBe('2.0');
   });
@@ -140,13 +140,13 @@ describe('AgentStepsEvaluator', () => {
       makeScenario(),
     );
     expect(result.score).toBe(1000);
-    expect(result.verdict).toBe('observed');
+    expect(result.verdict).toBe('directional');
   });
 
   it('has correct name and properties', () => {
     const evaluator = new AgentStepsEvaluator();
     expect(evaluator.name).toBe('agent-steps');
-    expect(evaluator.regressionMode).toBe('score');
+    expect(evaluator.comparisonMode).toBe('score');
     expect(evaluator.evalVersion).toBe('2.0');
     expect(evaluator.lowerIsBetter).toBe(true);
   });

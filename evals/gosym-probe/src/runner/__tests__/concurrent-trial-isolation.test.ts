@@ -270,6 +270,7 @@ describe('TokenUsageEvaluator probe delta isolation via SuiteRunner', () => {
 
     const throwingEvaluator: Evaluator = {
       name: 'throwing-eval',
+      comparisonMode: 'passRate',
       evaluate: async () => ({ evaluator: 'throwing-eval', score: 1, verdict: 'pass' as const, reason: 'ok' }),
       afterSimulation: () => { throw new Error('afterSim boom'); },
     };
@@ -316,6 +317,7 @@ describe('TokenUsageEvaluator probe delta isolation via SuiteRunner', () => {
 
     const throwingEvaluator: Evaluator = {
       name: 'throwing-eval',
+      comparisonMode: 'passRate',
       evaluate: async () => ({ evaluator: 'throwing-eval', score: 1, verdict: 'pass' as const, reason: 'ok' }),
       afterSimulation: () => { throw new Error('afterSim boom'); },
     };

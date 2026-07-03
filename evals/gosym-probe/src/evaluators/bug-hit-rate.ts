@@ -4,6 +4,7 @@ import type { Scenario } from '../scenarios/types.js';
 
 export class BugHitRateEvaluator implements Evaluator {
   readonly name = 'bug-hit-rate';
+  readonly comparisonMode = 'passRate' as const;
 
   async evaluate(
     transcript: Transcript,

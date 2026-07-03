@@ -38,6 +38,14 @@ export type AgentEvent =
       skill: string;
     }
   | {
+      // Liveness sentinel emitted once per turn when SKILL_DIAGNOSTICS=true,
+      // before any skill loads. Proves instrumentation is on so the harness can
+      // record loadedSkills as [] (a scorable zero-skill run) rather than
+      // leaving it absent (unknown). Carries no skill name.
+      type: 'skill_diagnostics';
+      event: 'ready';
+    }
+  | {
       type: 'stream_timing_summary';
       timeToStreamStartMs: number;
       timeToFirstTextChunkMs: number | null;

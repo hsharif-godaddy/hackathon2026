@@ -29,21 +29,21 @@ describe('ColorSchemeSuggestEvaluator', () => {
   const evaluator = new ColorSchemeSuggestEvaluator();
 
   it('is score-mode, lower-is-better (more low-contrast options = regression)', () => {
-    expect(evaluator.regressionMode).toBe('score');
+    expect(evaluator.comparisonMode).toBe('score');
     expect(evaluator.lowerIsBetter).toBe(true);
   });
 
   it('scores 0 when every suggested scheme has AA-safe muted text', async () => {
     const res = await evaluator.evaluate(transcriptWith([suggestCall([PASS, PASS])]), NOOP_SCENARIO);
     expect(res.score).toBe(0);
-    expect(res.verdict).toBe('observed');
+    expect(res.verdict).toBe('directional');
     expect(res.details?.palettesSuggested).toBe(2);
   });
 
   it('counts each suggested scheme whose muted text fails AA', async () => {
     const res = await evaluator.evaluate(transcriptWith([suggestCall([PASS, FAIL, FAIL])]), NOOP_SCENARIO);
     expect(res.score).toBe(2);
-    expect(res.verdict).toBe('observed');
+    expect(res.verdict).toBe('directional');
     expect(res.details?.aaFailures).toBe(2);
   });
 
@@ -67,7 +67,7 @@ describe('ColorSchemeSuggestEvaluator', () => {
   it('returns verdict "unknown" when suggest mode was never called', async () => {
     const otherCall: ToolCall = { id: 'tc-3', name: 'readFile', startTime: 0, endTime: 1 };
     const res = await evaluator.evaluate(transcriptWith([otherCall]), NOOP_SCENARIO);
-    expect(res.verdict).toBe('unknown');
+    expect(res.verdict).toBe('incomplete');
     expect(res.score).toBe(0);
   });
 });

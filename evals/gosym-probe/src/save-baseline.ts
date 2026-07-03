@@ -6,6 +6,7 @@ import { AABCtrlPlaneClient } from './clients/aab-ctrl-plane-client.js';
 import { createAllScenarios } from './scenarios/registry.js';
 import { EvalStore } from './store/eval-store.js';
 import { BaselineStore } from './baselines/baseline-store.js';
+import { createFileStore } from './storage/create-file-store.js';
 import {
   buildScenarioIndex,
   findScenariosBySuite,
@@ -20,6 +21,7 @@ async function main(): Promise<void> {
     options: {
       suite: { type: 'string' },
       scenario: { type: 'string' },
+      s3: { type: 'boolean' },
     },
     allowPositionals: true,
   });
@@ -27,7 +29,7 @@ async function main(): Promise<void> {
   const runId = positionals[0];
   if (!runId) {
     process.stderr.write(
-      'Usage: save-baseline <run-id> [--suite <suite>] [--scenario <name>]\n',
+      'Usage: save-baseline <run-id> [--suite <suite>] [--scenario <name>] [--s3]\n',
     );
     process.exit(1);
   }
@@ -46,7 +48,10 @@ async function main(): Promise<void> {
   const gocodeClient = new GocodeClient(config.gocode);
   const allScenarios = createAllScenarios(gocodeClient, ctrlPlane, config);
   const evalStore = new EvalStore();
-  const baselineStore = new BaselineStore();
+  // --s3 promotes the snapshot to the shared bucket (the manual "only clean,
+  // ready baselines go up" step); default writes to the local working tree.
+  const useS3: boolean = values.s3 ?? false;
+  const baselineStore = new BaselineStore('baselines', createFileStore(config, useS3));
 
   const metadata = await evalStore.loadRunMetadata(runId);
   if (!metadata) {
@@ -114,10 +119,10 @@ async function main(): Promise<void> {
     const scenario = allScenarios.find((s) => s.name === scenarioName);
     const stabilityLevel = scenario?.stabilityLevel;
     const scoreEvaluatorNames = (scenario?.evaluators ?? [])
-      .filter((e) => e.regressionMode === 'score')
+      .filter((e) => e.comparisonMode === 'score')
       .map((e) => e.name);
 
-    await baselineStore.saveFromStored(
+    const writtenPath: string = await baselineStore.saveFromStored(
       runId,
       aggregated,
       stabilityLevel,
@@ -129,10 +134,11 @@ async function main(): Promise<void> {
       },
     );
 
-    process.stdout.write(
-      `Saved baseline: baselines/${scenarioName}/` +
-      `<timestamp>_${runId}.json\n`,
-    );
+    // Ask the store for the real destination so the confirmation can't drift
+    // from where the object actually landed (prefix join / separator collapse
+    // are owned by the store, not re-derived here).
+    const location = baselineStore.locationFor(writtenPath);
+    process.stdout.write(`Saved baseline (${useS3 ? 's3' : 'local'}): ${location}\n`);
   }
 }
 

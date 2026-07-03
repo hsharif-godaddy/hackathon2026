@@ -74,6 +74,7 @@ function passFail(
 
 export class HeroSectionPresenceEvaluator implements Evaluator {
   readonly name = 'hero-section-presence';
+  readonly comparisonMode = 'passRate' as const;
 
   async evaluate(
     _transcript: Transcript,
@@ -85,7 +86,7 @@ export class HeroSectionPresenceEvaluator implements Evaluator {
       return {
         evaluator: this.name,
         score: 0,
-        verdict: 'unknown',
+        verdict: 'incomplete',
         reason: 'No DOM snapshot available to evaluate hero section',
       };
     }
@@ -102,6 +103,7 @@ export class HeroSectionPresenceEvaluator implements Evaluator {
 
 export class NavigationPresenceEvaluator implements Evaluator {
   readonly name = 'navigation-presence';
+  readonly comparisonMode = 'passRate' as const;
 
   async evaluate(
     _transcript: Transcript,
@@ -113,7 +115,7 @@ export class NavigationPresenceEvaluator implements Evaluator {
       return {
         evaluator: this.name,
         score: 0,
-        verdict: 'unknown',
+        verdict: 'incomplete',
         reason: 'No DOM snapshot available to evaluate navigation',
       };
     }
@@ -128,6 +130,7 @@ export class NavigationPresenceEvaluator implements Evaluator {
 
 export class PrimaryCtaPresenceEvaluator implements Evaluator {
   readonly name = 'primary-cta-presence';
+  readonly comparisonMode = 'passRate' as const;
 
   async evaluate(
     _transcript: Transcript,
@@ -139,7 +142,7 @@ export class PrimaryCtaPresenceEvaluator implements Evaluator {
       return {
         evaluator: this.name,
         score: 0,
-        verdict: 'unknown',
+        verdict: 'incomplete',
         reason: 'No DOM snapshot available to evaluate CTA',
       };
     }
@@ -156,6 +159,7 @@ export class PrimaryCtaPresenceEvaluator implements Evaluator {
 // structure evaluators; createBaselineEvaluators() registers the components.
 export class MandatoryStructureComplianceEvaluator implements Evaluator {
   readonly name = 'mandatory-structure-compliance';
+  readonly comparisonMode = 'passRate' as const;
 
   async evaluate(
     _transcript: Transcript,
@@ -167,7 +171,7 @@ export class MandatoryStructureComplianceEvaluator implements Evaluator {
       return {
         evaluator: this.name,
         score: 0,
-        verdict: 'unknown',
+        verdict: 'incomplete',
         reason: 'Insufficient DOM snapshot to check mandatory structure',
       };
     }

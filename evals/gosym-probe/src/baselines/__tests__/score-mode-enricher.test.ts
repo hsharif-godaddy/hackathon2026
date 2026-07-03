@@ -11,7 +11,7 @@ import type { ThresholdConfig } from '../threshold.js';
 function makeTrialWithScore(
   evaluator: string,
   score: number,
-  verdict: EvalResult['verdict'] = 'observed',
+  verdict: EvalResult['verdict'] = 'directional',
 ): TrialResult {
   return {
     trialIndex: 0,
@@ -33,7 +33,7 @@ function makeScoreModeAgg(options: {
   aggregateScore?: number;
 } = {}): AggregatedResult {
   return {
-    regressionMode: 'score',
+    comparisonMode: 'score',
     passingTrials: 0,
     totalTrials: 3,
     aggregateScore: options.aggregateScore ?? 100,
@@ -165,7 +165,7 @@ describe('trialPassesBaseline boundary conditions', () => {
       expect(enriched['latency'].baselinePassingTrials).toBe(2);
       // The NaN trial's verdict is left untouched (never compared against baseline).
       const nanResult = enrichedTrials[1].evalResults.find((e) => e.evaluator === 'latency')!;
-      expect(nanResult.verdict).toBe('observed');
+      expect(nanResult.verdict).toBe('directional');
       expect(nanResult.baselineComparison).toBeUndefined();
     });
   });
@@ -329,8 +329,8 @@ describe('trialPassesBaseline boundary conditions', () => {
   describe('all trials verdict: unknown → skip enrichment', () => {
     it('estimators remain undefined when all trials are unknown', () => {
       const result = makeScenario('latency', [
-        makeTrialWithScore('latency', 90, 'unknown'),
-        makeTrialWithScore('latency', 95, 'unknown'),
+        makeTrialWithScore('latency', 90, 'incomplete'),
+        makeTrialWithScore('latency', 95, 'incomplete'),
       ]);
       const baseline = makeBaseline('latency', 100);
 
@@ -361,7 +361,7 @@ describe('enrichScoreModePassRates error paths', () => {
 
     expect(enriched['latency'].passAt1).toBeUndefined();
     expect(enriched['latency'].passAtK).toBeUndefined();
-    expect(enriched['latency'].regressionMode).toBe('score');
+    expect(enriched['latency'].comparisonMode).toBe('score');
   });
 
   it('evalVersion mismatch → evaluator unchanged', () => {
@@ -435,7 +435,7 @@ describe('enrichScoreModePassRates error paths', () => {
         errors: [],
         captureErrors: [],
       },
-      evalResults: [{ evaluator: 'other', score: 50, verdict: 'observed', reason: '' }],
+      evalResults: [{ evaluator: 'other', score: 50, verdict: 'directional', reason: '' }],
     };
     const result = makeScenario('latency', [trialWithoutEvaluator]);
     const baseline = makeBaseline('latency', 100);
@@ -622,6 +622,7 @@ describe('enrichScoreModePassRates core behavior', () => {
       passHatK: [{ k: 1, value: 0.6 }, { k: 2, value: 0.3 }],
       passingTrials: 3,
       totalTrials: 5,
+      comparisonMode: 'passRate',
     };
     const scenarioWithMixed: ScenarioResult = {
       scenarioName: 'test-scenario',
@@ -637,6 +638,25 @@ describe('enrichScoreModePassRates core behavior', () => {
     const { aggregated: enriched } = enrichScoreModePassRates(scenarioWithMixed, baseline, defaultConfig, defaultReporting);
 
     expect(enriched['bug-hit-rate']).toStrictEqual(passRateAgg);
+  });
+
+  it('wilsonCI is stripped from enriched score-mode rows (never leaks to aggregated.json)', () => {
+    // n=3, c=2 — a non-degenerate sample that causes buildPassEstimators to
+    // produce a wilsonCI interval. The enricher must strip it before writing
+    // back to aggregated so it never appears in aggregated.json output.
+    const result = makeScenario('latency', [
+      makeTrialWithScore('latency', 95),
+      makeTrialWithScore('latency', 120),
+      makeTrialWithScore('latency', 98),
+    ], { lowerIsBetter: true });
+    const baseline = makeBaseline('latency', 100);
+
+    const { aggregated: enriched } = enrichScoreModePassRates(result, baseline, defaultConfig, defaultReporting);
+
+    // Estimators must be present (confirming the threshold path ran and produced output).
+    expect(enriched['latency'].passAt1).toBeDefined();
+    // wilsonCI must be absent — the enricher deliberately strips it.
+    expect((enriched['latency'] as unknown as Record<string, unknown>)['wilsonCI']).toBeUndefined();
   });
 
   it('returns a new record — does not mutate input aggregated', () => {
@@ -656,7 +676,7 @@ describe('enrichScoreModePassRates core behavior', () => {
     // input trials array and EvalResult objects must not be mutated
     expect(result.trials[0]).toBe(originalTrial);
     expect(result.trials[0].evalResults[0]).toBe(originalEvalResult);
-    expect(result.trials[0].evalResults[0].verdict).toBe('observed');
+    expect(result.trials[0].evalResults[0].verdict).toBe('directional');
   });
 
   it('unknown-verdict trials excluded from denominator', () => {
@@ -664,7 +684,7 @@ describe('enrichScoreModePassRates core behavior', () => {
     const trials: TrialResult[] = [
       makeTrialWithScore('latency', 95),
       makeTrialWithScore('latency', 98),
-      makeTrialWithScore('latency', 200, 'unknown'),
+      makeTrialWithScore('latency', 200, 'incomplete'),
     ];
     const result: ScenarioResult = {
       scenarioName: 'test-scenario',
@@ -748,16 +768,17 @@ describe('enrichScoreModePassRates edge cases', () => {
           passHatK: [{ k: 1, value: 1 }],
           passingTrials: 3,
           totalTrials: 3,
+          comparisonMode: 'passRate' as const,
         },
         'latency': {
-          regressionMode: 'score',
+          comparisonMode: 'score',
           passingTrials: 0,
           totalTrials: 3,
           aggregateScore: 100,
           lowerIsBetter: true,
         },
         'cost': {
-          regressionMode: 'score',
+          comparisonMode: 'score',
           passingTrials: 0,
           totalTrials: 3,
           aggregateScore: 0.5,
@@ -829,7 +850,7 @@ describe('trial verdict enrichment — boundary tests', () => {
     const { trials: enrichedTrials } = enrichScoreModePassRates(result, baseline, defaultConfig, defaultReporting);
 
     const evalResult = enrichedTrials[0].evalResults.find((e) => e.evaluator === 'latency')!;
-    expect(evalResult.verdict).toBe('observed');
+    expect(evalResult.verdict).toBe('directional');
     expect(evalResult.baselineComparison).toBeUndefined();
   });
 
@@ -842,7 +863,7 @@ describe('trial verdict enrichment — boundary tests', () => {
     const { trials: enrichedTrials } = enrichScoreModePassRates(result, baseline, defaultConfig, defaultReporting);
 
     const evalResult = enrichedTrials[0].evalResults.find((e) => e.evaluator === 'latency')!;
-    expect(evalResult.verdict).toBe('observed');
+    expect(evalResult.verdict).toBe('directional');
     expect(evalResult.baselineComparison).toBeUndefined();
   });
 });
@@ -852,21 +873,21 @@ describe('trial verdict enrichment — boundary tests', () => {
 describe('trial verdict enrichment — error paths', () => {
   it('verdict: unknown stays unknown (not enriched)', () => {
     const result = makeScenario('latency', [
-      makeTrialWithScore('latency', 90, 'unknown'),
+      makeTrialWithScore('latency', 90, 'incomplete'),
     ], { lowerIsBetter: true });
     const baseline = makeBaseline('latency', 100);
 
     const { trials: enrichedTrials } = enrichScoreModePassRates(result, baseline, defaultConfig, defaultReporting);
 
     const evalResult = enrichedTrials[0].evalResults.find((e) => e.evaluator === 'latency')!;
-    expect(evalResult.verdict).toBe('unknown');
+    expect(evalResult.verdict).toBe('incomplete');
   });
 
   it('evaluatorFailed: true (verdict: unknown) stays unknown', () => {
     const trial: TrialResult = {
       trialIndex: 0,
       transcript: { scenarioName: 'test-scenario', trialIndex: 0, turns: [], snapshots: [], errors: [], captureErrors: [] },
-      evalResults: [{ evaluator: 'latency', score: 90, verdict: 'unknown', reason: 'evaluator threw', evaluatorFailed: true }],
+      evalResults: [{ evaluator: 'latency', score: 90, verdict: 'incomplete', reason: 'evaluator threw', evaluatorFailed: true }],
     };
     const result = makeScenario('latency', [trial], { lowerIsBetter: true });
     const baseline = makeBaseline('latency', 100);
@@ -874,7 +895,7 @@ describe('trial verdict enrichment — error paths', () => {
     const { trials: enrichedTrials } = enrichScoreModePassRates(result, baseline, defaultConfig, defaultReporting);
 
     const evalResult = enrichedTrials[0].evalResults.find((e) => e.evaluator === 'latency')!;
-    expect(evalResult.verdict).toBe('unknown');
+    expect(evalResult.verdict).toBe('incomplete');
   });
 
   it('unenriched evaluator (no baseline entry) stays observed', () => {
@@ -891,7 +912,7 @@ describe('trial verdict enrichment — error paths', () => {
     const { trials: enrichedTrials } = enrichScoreModePassRates(result, noEntryBaseline, defaultConfig, defaultReporting);
 
     const evalResult = enrichedTrials[0].evalResults.find((e) => e.evaluator === 'latency')!;
-    expect(evalResult.verdict).toBe('observed');
+    expect(evalResult.verdict).toBe('directional');
   });
 
   it('pass-rate evaluator trial verdict unchanged', () => {
@@ -905,7 +926,7 @@ describe('trial verdict enrichment — error paths', () => {
       stabilityLevel: 'medium',
       trials: [trial],
       aggregated: {
-        'bug-hit-rate': { passAt1: 1, passAtK: [{ k: 1, value: 1 }], passHatK: [{ k: 1, value: 1 }], passingTrials: 1, totalTrials: 1 },
+        'bug-hit-rate': { passAt1: 1, passAtK: [{ k: 1, value: 1 }], passHatK: [{ k: 1, value: 1 }], passingTrials: 1, totalTrials: 1, comparisonMode: 'passRate' as const },
       },
     };
     const baseline = makeBaseline('bug-hit-rate', 100);
@@ -926,8 +947,8 @@ describe('trial verdict enrichment — seam and edge cases', () => {
       trialIndex: 0,
       transcript: { scenarioName: 'test-scenario', trialIndex: 0, turns: [], snapshots: [], errors: [], captureErrors: [] },
       evalResults: [
-        { evaluator: 'latency', score: 120, verdict: 'observed', reason: '' },
-        { evaluator: 'quality', score: 95, verdict: 'observed', reason: '' },
+        { evaluator: 'latency', score: 120, verdict: 'directional', reason: '' },
+        { evaluator: 'quality', score: 95, verdict: 'directional', reason: '' },
       ],
     };
     const scenario: ScenarioResult = {
@@ -935,8 +956,8 @@ describe('trial verdict enrichment — seam and edge cases', () => {
       stabilityLevel: 'medium',
       trials: [trial],
       aggregated: {
-        latency: { regressionMode: 'score', passingTrials: 0, totalTrials: 1, aggregateScore: 100, lowerIsBetter: true },
-        quality: { regressionMode: 'score', passingTrials: 0, totalTrials: 1, aggregateScore: 100, lowerIsBetter: false },
+        latency: { comparisonMode: 'score', passingTrials: 0, totalTrials: 1, aggregateScore: 100, lowerIsBetter: true },
+        quality: { comparisonMode: 'score', passingTrials: 0, totalTrials: 1, aggregateScore: 100, lowerIsBetter: false },
       },
     };
     const baseline: BaselineScores = {
@@ -965,8 +986,8 @@ describe('trial verdict enrichment — seam and edge cases', () => {
       trialIndex: 0,
       transcript: { scenarioName: 'test-scenario', trialIndex: 0, turns: [], snapshots: [], errors: [], captureErrors: [] },
       evalResults: [
-        { evaluator: 'latency', score: 95, verdict: 'observed', reason: '' },
-        { evaluator: 'cost', score: 0.05, verdict: 'observed', reason: '' },
+        { evaluator: 'latency', score: 95, verdict: 'directional', reason: '' },
+        { evaluator: 'cost', score: 0.05, verdict: 'directional', reason: '' },
       ],
     };
     const scenario: ScenarioResult = {
@@ -974,8 +995,8 @@ describe('trial verdict enrichment — seam and edge cases', () => {
       stabilityLevel: 'medium',
       trials: [trial],
       aggregated: {
-        latency: { regressionMode: 'score', passingTrials: 0, totalTrials: 1, aggregateScore: 100, lowerIsBetter: true },
-        cost: { regressionMode: 'score', passingTrials: 0, totalTrials: 1, aggregateScore: 0.10, lowerIsBetter: true },
+        latency: { comparisonMode: 'score', passingTrials: 0, totalTrials: 1, aggregateScore: 100, lowerIsBetter: true },
+        cost: { comparisonMode: 'score', passingTrials: 0, totalTrials: 1, aggregateScore: 0.10, lowerIsBetter: true },
       },
     };
     const baseline: BaselineScores = {
@@ -994,7 +1015,7 @@ describe('trial verdict enrichment — seam and edge cases', () => {
     const costResult = enrichedTrials[0].evalResults.find((e) => e.evaluator === 'cost')!;
     expect(latencyResult.verdict).toBe('pass');
     expect(latencyResult.baselineComparison).toBe('latency: 95 vs baseline 100 (threshold 10%) → pass');
-    expect(costResult.verdict).toBe('observed');
+    expect(costResult.verdict).toBe('directional');
     expect(costResult.baselineComparison).toBeUndefined();
   });
 
@@ -1013,7 +1034,7 @@ describe('trial verdict enrichment — seam and edge cases', () => {
     expect(enrichedTrials[0].evalResults[0].verdict).toBe('fail');
     expect(enrichedTrials[0].evalResults[0].baselineComparison).toBe('latency: 120 vs baseline 100 (threshold 10%) → fail');
     // original input untouched
-    expect(inputTrial.evalResults[0].verdict).toBe('observed');
+    expect(inputTrial.evalResults[0].verdict).toBe('directional');
   });
 });
 
@@ -1052,7 +1073,7 @@ function makeTrialWithScoreAndIndex(
   evaluator: string,
   score: number,
   trialIndex: number,
-  verdict: EvalResult['verdict'] = 'observed',
+  verdict: EvalResult['verdict'] = 'directional',
 ): TrialResult {
   return {
     trialIndex,
@@ -1080,7 +1101,7 @@ describe('enrichScoreModePassRates — TOST path', () => {
     stabilityLevel: 'medium',
     trials: threeTrials,
     aggregated: {
-      latency: { regressionMode: 'score', passingTrials: 0, totalTrials: 3, aggregateScore: 0.5 },
+      latency: { comparisonMode: 'score', passingTrials: 0, totalTrials: 3, aggregateScore: 0.5 },
     },
   };
 
@@ -1109,7 +1130,7 @@ describe('enrichScoreModePassRates — TOST path', () => {
 
     for (const trial of enrichedTrials) {
       const er = trial.evalResults.find((e) => e.evaluator === 'latency')!;
-      expect(er.verdict).toBe('observed');
+      expect(er.verdict).toBe('directional');
       expect(er.baselineComparison).toBeUndefined();
     }
   });
@@ -1137,7 +1158,7 @@ describe('enrichScoreModePassRates — TOST path', () => {
 
     for (const trial of enrichedTrials) {
       const er = trial.evalResults.find((e) => e.evaluator === 'latency')!;
-      expect(er.verdict).toBe('observed');
+      expect(er.verdict).toBe('directional');
       expect(er.baselineComparison).toBeUndefined();
     }
   });
@@ -1197,7 +1218,7 @@ describe('enrichScoreModePassRates — TOST path', () => {
       stabilityLevel: 'medium',
       trials: [makeTrialWithScore('jtbd', 1, 'pass')],
       aggregated: {
-        jtbd: { regressionMode: 'passRate', passingTrials: 1, totalTrials: 1 },
+        jtbd: { comparisonMode: 'passRate', passingTrials: 1, totalTrials: 1 },
       },
     };
     const bl: BaselineScores = {
@@ -1212,21 +1233,21 @@ describe('enrichScoreModePassRates — TOST path', () => {
     // pass-rate evaluator must not be touched by the TOST path
     expect(enriched['jtbd'].passAt1).toBeUndefined();
     expect(enriched['jtbd'].passAtK).toBeUndefined();
-    expect(enriched['jtbd'].regressionMode).toBe('passRate');
+    expect(enriched['jtbd'].comparisonMode).toBe('passRate');
   });
 
   it('TOST passed with unknown trial: unknown trial excluded from baselinePassingTrials', () => {
     const trials = [
-      makeTrialWithScoreAndIndex('latency', 0.5, 0, 'observed'),
-      makeTrialWithScoreAndIndex('latency', 0.0, 1, 'unknown'),
-      makeTrialWithScoreAndIndex('latency', 0.6, 2, 'observed'),
+      makeTrialWithScoreAndIndex('latency', 0.5, 0, 'directional'),
+      makeTrialWithScoreAndIndex('latency', 0.0, 1, 'incomplete'),
+      makeTrialWithScoreAndIndex('latency', 0.6, 2, 'directional'),
     ];
     const scenario: ScenarioResult = {
       scenarioName: 'test-scenario',
       stabilityLevel: 'medium',
       trials,
       aggregated: {
-        latency: { regressionMode: 'score', passingTrials: 0, totalTrials: 3, aggregateScore: 0.5 },
+        latency: { comparisonMode: 'score', passingTrials: 0, totalTrials: 3, aggregateScore: 0.5 },
       },
     };
     const rr = makeRegressionResult([{ evaluator: 'latency', exceeded: false }]);
@@ -1256,7 +1277,7 @@ describe('enrichScoreModePassRates — numeric estimators do not alter the gate'
     stabilityLevel: 'medium',
     trials: threeTrials,
     aggregated: {
-      latency: { regressionMode: 'score', passingTrials: 0, totalTrials: 3, aggregateScore: 0.5 },
+      latency: { comparisonMode: 'score', passingTrials: 0, totalTrials: 3, aggregateScore: 0.5 },
     },
   };
   const baseline = makeBaseline('latency', 0.5);
@@ -1289,7 +1310,7 @@ describe('enrichScoreModePassRates — numeric estimators do not alter the gate'
       stabilityLevel: 'medium',
       trials: allPassTrials,
       aggregated: {
-        latency: { regressionMode: 'score', passingTrials: 0, totalTrials: 3, aggregateScore: 0.5 },
+        latency: { comparisonMode: 'score', passingTrials: 0, totalTrials: 3, aggregateScore: 0.5 },
       },
     };
 

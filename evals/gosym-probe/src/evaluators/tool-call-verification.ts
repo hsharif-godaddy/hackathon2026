@@ -51,6 +51,7 @@ function describeAssertion(assertion: ToolCallAssertion): string {
 
 export class ToolCallVerificationEvaluator implements Evaluator {
   readonly name = 'tool-call-verification';
+  readonly comparisonMode = 'passRate' as const;
 
   async evaluate(
     transcript: Transcript,

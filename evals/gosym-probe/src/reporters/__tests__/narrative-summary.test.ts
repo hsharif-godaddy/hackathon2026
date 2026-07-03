@@ -74,6 +74,7 @@ function makeResultWithRegression(
       'jtbd-completion': {
         passingTrials: 9,
         totalTrials: 10,
+        comparisonMode: 'passRate',
         passAt1: 0.9,
         passAtK: [
           { k: 1, value: 0.9 },
@@ -158,7 +159,7 @@ describe('buildContextPayload', () => {
         'token-usage': {
           passingTrials: 3,
           totalTrials: 3,
-          regressionMode: 'score',
+          comparisonMode: 'score',
           aggregateScore: NaN,
         },
       },
@@ -180,7 +181,7 @@ describe('buildContextPayload', () => {
         'cost-evaluator': {
           passingTrials: 3,
           totalTrials: 3,
-          regressionMode: 'score',
+          comparisonMode: 'score',
           aggregateScore: Infinity,
         },
       },
@@ -205,7 +206,7 @@ describe('buildContextPayload', () => {
     });
     const result = makeScenarioResult({
       aggregated: {
-        'jtbd-completion': { passingTrials: 4, totalTrials: 5 },
+        'jtbd-completion': { passingTrials: 4, totalTrials: 5, comparisonMode: 'passRate' as const },
       },
       regressionStatus: {
         scenarioName: 'test',
@@ -243,7 +244,7 @@ describe('buildContextPayload', () => {
     });
     const result = makeScenarioResult({
       aggregated: {
-        'jtbd-completion': { passingTrials: 1, totalTrials: 2 },
+        'jtbd-completion': { passingTrials: 1, totalTrials: 2, comparisonMode: 'passRate' as const },
       },
       trials: [trial0, trial1],
     });
@@ -295,6 +296,7 @@ function makeInvestigableResult(baselineFilePath?: string): ScenarioResult {
       'jtbd-completion': {
         passingTrials: 0,
         totalTrials: 1,
+        comparisonMode: 'passRate',
         passAt1: 0,
         passAtK: [{ k: 1, value: 0 }],
         passHatK: [{ k: 1, value: 0 }],
@@ -506,7 +508,7 @@ describe('NarrativeSummaryReporter.render()', () => {
         }),
       ],
       aggregated: {
-        'test-evaluator': { passingTrials: 1, totalTrials: 1, passAt1: 1, passAtK: [{ k: 1, value: 1 }], passHatK: [{ k: 1, value: 1 }] },
+        'test-evaluator': { passingTrials: 1, totalTrials: 1, passAt1: 1, passAtK: [{ k: 1, value: 1 }], passHatK: [{ k: 1, value: 1 }], comparisonMode: 'passRate' as const },
       },
     });
 
@@ -600,6 +602,7 @@ describe('buildContextPayload — numeric pass estimators', () => {
           ],
           passingTrials: 3,
           totalTrials: 5,
+          comparisonMode: 'passRate',
         },
       },
     });
@@ -623,7 +626,7 @@ describe('buildContextPayload — numeric pass estimators', () => {
           passAt1: 0.5,
           passingTrials: 1,
           totalTrials: 2,
-          regressionMode: 'score',
+          comparisonMode: 'score',
           aggregateScore: 0.5,
         },
       },
@@ -645,7 +648,7 @@ describe('buildContextPayload — numeric pass estimators', () => {
         latency: {
           passingTrials: 0,
           totalTrials: 1,
-          regressionMode: 'score',
+          comparisonMode: 'score',
           aggregateScore: 0.75,
         },
       },
@@ -659,5 +662,55 @@ describe('buildContextPayload — numeric pass estimators', () => {
 
     expect(payload).toContain('Pass@1: N/A');
     expect(payload).not.toContain('undefined');
+  });
+
+  it('emits Wilson CI in Pass@1 line for pass-rate evaluator with wilsonCI', () => {
+    const result = makeScenarioResult({
+      scenarioName: 'ci-payload',
+      aggregated: {
+        'jtbd-completion': {
+          comparisonMode: 'passRate',
+          passAt1: 0.6,
+          passAtK: [{ k: 1, value: 0.6 }],
+          passHatK: [{ k: 1, value: 0.6 }],
+          passingTrials: 3,
+          totalTrials: 5,
+          wilsonCI: { lower: 0.23, upper: 0.88, n: 5 },
+        },
+      },
+    });
+
+    const payload = buildContextPayload('run-ci-payload', [result], {
+      runMode: 'eval',
+      gitSha: null,
+      gitBranch: null,
+    });
+
+    expect(payload).toContain('Pass@1: 0.60 (n=5) [0.23, 0.88]');
+  });
+
+  it('omits Wilson CI in Pass@1 line for score-mode evaluator', () => {
+    const result = makeScenarioResult({
+      scenarioName: 'score-ci-payload',
+      aggregated: {
+        latency: {
+          passAt1: 0.5,
+          passingTrials: 1,
+          totalTrials: 2,
+          comparisonMode: 'score',
+          aggregateScore: 0.5,
+          wilsonCI: { lower: 0.09, upper: 0.91, n: 2 },
+        },
+      },
+    });
+
+    const payload = buildContextPayload('run-score-ci-payload', [result], {
+      runMode: 'eval',
+      gitSha: null,
+      gitBranch: null,
+    });
+
+    expect(payload).toContain('Pass@1: 0.50');
+    expect(payload).not.toContain('[0.09, 0.91]');
   });
 });

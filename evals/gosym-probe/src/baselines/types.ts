@@ -28,7 +28,7 @@ export interface BaselineEvalScores {
   lowerIsBetter?: boolean;
   /**
    * Per-trial scores used for statistical regression gating (TOST).
-   * Excludes trials with evaluatorFailed=true or verdict='unknown'.
+   * Excludes trials with evaluatorFailed=true or verdict='incomplete'.
    * Absent on legacy baselines saved before this field was introduced.
    */
   trialScores?: readonly number[];

@@ -1,39 +1,32 @@
-import { clamp01 } from '../../shared.js';
-import type { StructuralEvalSpec, StructuralScoreResult } from '../dom-eval-types.js';
+import type { ChecklistItemOutcome, PassRateSpec, StructuralScoreResult } from '../dom-eval-types.js';
 
 const VIEWPORT_META_RE = /<meta\b[^>]*\bname\s*=\s*["']viewport["'][^>]*>/i;
-const RESPONSIVE_CLASS_RE = /class=["'][^"']*\b(?:sm|md|lg|xl|2xl):/;
-const FLEX_GRID_RE = /class=["'][^"']*\b(?:flex|grid)\b/;
 
-export const responsiveReadinessSpec: StructuralEvalSpec = {
+export const responsiveReadinessSpec: PassRateSpec = {
   name: 'responsive-readiness',
   dimension: 'responsive-readiness',
-  description: 'Additive: viewport meta (0.3) + responsive classes (0.4) + flex/grid (0.3)',
-  evalVersion: '1.0',
+  description: 'Checks for viewport meta tag (INV)',
+  evalVersion: '2.0',
+  comparisonMode: 'passRate',
   needsFullDocument: true,
 
   score(bodyHtml: string): StructuralScoreResult {
     const hasViewport = VIEWPORT_META_RE.test(bodyHtml);
-    const hasResponsiveClasses = RESPONSIVE_CLASS_RE.test(bodyHtml);
-    const hasFlexGrid = FLEX_GRID_RE.test(bodyHtml);
-
-    const score = clamp01(
-      (hasViewport ? 0.3 : 0) +
-      (hasResponsiveClasses ? 0.4 : 0) +
-      (hasFlexGrid ? 0.3 : 0),
-    );
-
     return {
-      score,
+      score: hasViewport ? 1.0 : 0,
       canScore: true,
-      reason: [
-        hasViewport && 'viewport meta',
-        hasResponsiveClasses && 'responsive breakpoint classes',
-        hasFlexGrid && 'flex/grid layout',
-      ]
-        .filter(Boolean)
-        .join(', ') || 'No responsive signals detected',
-      details: { hasViewport, hasResponsiveClasses, hasFlexGrid },
+      reason: hasViewport ? 'Viewport meta tag present' : 'No viewport meta tag found',
+      details: { hasViewport },
     };
+  },
+
+  toChecklistItems(bodyHtml: string): ChecklistItemOutcome[] {
+    const hasViewport = VIEWPORT_META_RE.test(bodyHtml);
+    return [{
+      id: 'viewport-meta',
+      type: 'invariance',
+      status: hasViewport ? 'pass' : 'fail',
+      reason: hasViewport ? 'Viewport meta tag present' : 'No viewport meta tag found',
+    }];
   },
 };

@@ -1,5 +1,5 @@
 import { clamp01 } from '../../shared.js';
-import type { StructuralEvalSpec, StructuralScoreResult } from '../dom-eval-types.js';
+import type { ChecklistItemOutcome, ScoreSpec, StructuralScoreResult } from '../dom-eval-types.js';
 import { safeRatio } from '../dom-eval-types.js';
 
 const DEV_FILE_RE = /\bdata-dev-file\s*=\s*["']([^"']+)["']/gi;
@@ -26,15 +26,20 @@ function fileCountScore(uniqueFiles: number): number {
  */
 // Divisor used to normalise unique-directory count into a 0–1 score: (uniqueDirs - 1) / DIR_SEPARATION_DIVISOR
 const DIR_SEPARATION_DIVISOR = 2;
+
+// Checklist pass thresholds: derived from the score normalization targets above
+const FILE_COUNT_THRESHOLD = FILE_COUNT_DIVISOR + 1; // 5 unique files → score 1.0
+const DIR_THRESHOLD = DIR_SEPARATION_DIVISOR + 1;    // 3 unique dirs → score 1.0
 function dirSeparationScore(uniqueDirs: number): number {
   return clamp01((uniqueDirs - 1) / DIR_SEPARATION_DIVISOR);
 }
 
-export const componentDecompositionSpec: StructuralEvalSpec = {
+export const componentDecompositionSpec: ScoreSpec = {
   name: 'component-decomposition',
   dimension: 'component-decomposition',
   description: 'Measures component diversity via data-dev-file attrs: file count (0.4) + dir separation (0.4) + reuse (0.2)',
   evalVersion: '1.0',
+  comparisonMode: 'score',
   keepDevAttributes: true,
 
   score(bodyHtml: string): StructuralScoreResult {
@@ -75,5 +80,45 @@ export const componentDecompositionSpec: StructuralEvalSpec = {
         reuseScore: reuseSub,
       },
     };
+  },
+
+  toChecklistItems(bodyHtml: string): ChecklistItemOutcome[] {
+    const allFiles = [...bodyHtml.matchAll(DEV_FILE_RE)].map((m) => m[1]);
+    if (allFiles.length === 0) {
+      return [
+        { id: 'component-file-count', type: 'directional', status: 'incomplete', reason: 'No data-dev-file attributes found' },
+        { id: 'component-dir-separation', type: 'directional', status: 'incomplete', reason: 'No data-dev-file attributes found' },
+        { id: 'component-reuse', type: 'directional', status: 'incomplete', reason: 'No data-dev-file attributes found' },
+      ];
+    }
+
+    const uniqueFilesSet = new Set(allFiles);
+    const uniqueDirsSet = new Set([...uniqueFilesSet].map(dirOf));
+    const fileCounts = new Map<string, number>();
+    for (const f of allFiles) fileCounts.set(f, (fileCounts.get(f) ?? 0) + 1);
+    const reusedComponents = [...fileCounts.values()].filter((c) => c > 1).length;
+
+    return [
+      {
+        id: 'component-file-count',
+        type: 'directional',
+        status: uniqueFilesSet.size >= FILE_COUNT_THRESHOLD ? 'pass' : 'fail',
+        reason: `${uniqueFilesSet.size} unique file(s) (threshold: ${FILE_COUNT_THRESHOLD})`,
+      },
+      {
+        id: 'component-dir-separation',
+        type: 'directional',
+        status: uniqueDirsSet.size >= DIR_THRESHOLD ? 'pass' : 'fail',
+        reason: `${uniqueDirsSet.size} unique director(y/ies) (threshold: ${DIR_THRESHOLD})`,
+      },
+      {
+        id: 'component-reuse',
+        type: 'directional',
+        status: reusedComponents >= 1 ? 'pass' : 'fail',
+        reason: reusedComponents >= 1
+          ? `${reusedComponents} component(s) reused across files`
+          : 'No components reused across files',
+      },
+    ];
   },
 };

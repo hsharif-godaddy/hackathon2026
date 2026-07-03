@@ -14,12 +14,18 @@ const mockPersona: Persona = {
   systemPrompt: '',
 };
 
+const defaultEvaluator: Evaluator = {
+  name: 'eval',
+  comparisonMode: 'passRate',
+  evaluate: async () => ({ evaluator: 'eval', score: 0, verdict: 'pass' as const, reason: '' }),
+};
+
 function makeScenario(overrides: Partial<Scenario> = {}): Scenario {
   return {
     name: 'test-scenario',
     persona: mockPersona,
     goals: [],
-    evaluators: [],
+    evaluators: [defaultEvaluator],
     trials: 3,
     ...overrides,
   };
@@ -33,10 +39,7 @@ function makeTrial(
   const evalResults: EvalResult[] = Object.entries(verdicts).map(
     ([name, verdict]) => ({
       evaluator: name,
-      score:
-        verdict === 'pass' ? 1.0
-        : verdict === 'partial' ? 0.5
-        : 0.0,
+      score: verdict === 'pass' ? 1.0 : 0.0,
       verdict,
       reason: 'test',
       ...(evalVersions[name] !== undefined && {
@@ -83,7 +86,7 @@ describe('TrialAggregator', () => {
     it('computes passAt1=0 when no trials pass', () => {
       const trials = [
         makeTrial(0, { eval: 'fail' }),
-        makeTrial(1, { eval: 'partial' }),
+        makeTrial(1, { eval: 'fail' }),
       ];
       const result = agg.aggregate(makeScenario(), trials);
       // n=2, c=0 → passAt1=0, passAtK k=1: 0, passHatK k=1: 0
@@ -95,6 +98,13 @@ describe('TrialAggregator', () => {
     it('returns empty aggregated map for zero trials', () => {
       const result = agg.aggregate(makeScenario(), []);
       expect(result.aggregated).toEqual({});
+    });
+
+    it('throws when trial reports an evaluator not declared in scenario', () => {
+      const trials = [makeTrial(0, { undeclared: 'pass' })];
+      expect(() => agg.aggregate(makeScenario(), trials)).toThrow(
+        /not declared in scenario\.evaluators/,
+      );
     });
   });
 
@@ -125,10 +135,10 @@ describe('TrialAggregator', () => {
       expect(result.aggregated['eval'].passHatK!.find((e) => e.k === 2)?.value).toBeCloseTo(1 / 3);
     });
 
-    it('treats partial as non-pass', () => {
+    it('treats fail as non-pass', () => {
       const trials = [
         makeTrial(0, { eval: 'pass' }),
-        makeTrial(1, { eval: 'partial' }),
+        makeTrial(1, { eval: 'fail' }),
       ];
       const result = agg.aggregate(makeScenario(), trials);
       // n=2, c=1 → passAt1=0.5, passHatK k=1: 0.5
@@ -137,12 +147,12 @@ describe('TrialAggregator', () => {
     });
   });
 
-  describe('unknown verdicts', () => {
-    it('counts unknown as failure', () => {
+  describe('incomplete verdicts', () => {
+    it('counts incomplete as failure', () => {
       const trials = [
         makeTrial(0, { eval: 'pass' }),
-        makeTrial(1, { eval: 'unknown' }),
-        makeTrial(2, { eval: 'unknown' }),
+        makeTrial(1, { eval: 'incomplete' }),
+        makeTrial(2, { eval: 'incomplete' }),
       ];
       const result = agg.aggregate(makeScenario(), trials);
       const e = result.aggregated['eval'];
@@ -153,29 +163,29 @@ describe('TrialAggregator', () => {
       expect(e.totalTrials).toBe(3);
     });
 
-    it('passAt1 is 0 when all trials fail or are unknown', () => {
+    it('passAt1 is 0 when all trials fail or are incomplete', () => {
       const trials = [
         makeTrial(0, { eval: 'fail' }),
-        makeTrial(1, { eval: 'unknown' }),
+        makeTrial(1, { eval: 'incomplete' }),
       ];
       const result = agg.aggregate(makeScenario(), trials);
       expect(result.aggregated['eval'].passAt1).toBe(0);
     });
 
-    it('passAt1 is 0 when all trials are unknown', () => {
+    it('passAt1 is 0 when all trials are incomplete', () => {
       const trials = [
-        makeTrial(0, { eval: 'unknown' }),
-        makeTrial(1, { eval: 'unknown' }),
+        makeTrial(0, { eval: 'incomplete' }),
+        makeTrial(1, { eval: 'incomplete' }),
       ];
       const result = agg.aggregate(makeScenario(), trials);
       expect(result.aggregated['eval'].passAt1).toBe(0);
     });
 
-    it('totalTrials counts all verdicts including unknown', () => {
+    it('totalTrials counts all verdicts including incomplete', () => {
       const trials = [
         makeTrial(0, { eval: 'pass' }),
         makeTrial(1, { eval: 'fail' }),
-        makeTrial(2, { eval: 'unknown' }),
+        makeTrial(2, { eval: 'incomplete' }),
       ];
       const result = agg.aggregate(makeScenario(), trials);
       expect(result.aggregated['eval'].totalTrials).toBe(3);
@@ -183,10 +193,10 @@ describe('TrialAggregator', () => {
   });
 
   describe('passingTrials count', () => {
-    it('counts only pass verdicts, not partial', () => {
+    it('counts only pass verdicts', () => {
       const trials = [
         makeTrial(0, { eval: 'pass' }),
-        makeTrial(1, { eval: 'partial' }),
+        makeTrial(1, { eval: 'fail' }),
         makeTrial(2, { eval: 'fail' }),
       ];
       const result = agg.aggregate(makeScenario(), trials);
@@ -196,11 +206,13 @@ describe('TrialAggregator', () => {
 
   describe('multiple evaluators', () => {
     it('aggregates each evaluator independently', () => {
+      const eval1: Evaluator = { name: 'eval1', comparisonMode: 'passRate', evaluate: async () => ({ evaluator: 'eval1', score: 0, verdict: 'pass' as const, reason: '' }) };
+      const eval2: Evaluator = { name: 'eval2', comparisonMode: 'passRate', evaluate: async () => ({ evaluator: 'eval2', score: 0, verdict: 'pass' as const, reason: '' }) };
       const trials = [
         makeTrial(0, { eval1: 'pass', eval2: 'fail' }),
         makeTrial(1, { eval1: 'pass', eval2: 'fail' }),
       ];
-      const result = agg.aggregate(makeScenario(), trials);
+      const result = agg.aggregate(makeScenario({ evaluators: [eval1, eval2] }), trials);
       // eval1: n=2, c=2 → passAt1=1; eval2: n=2, c=0 → passAt1=0
       expect(result.aggregated['eval1'].passAt1).toBe(1);
       expect(result.aggregated['eval2'].passAt1).toBe(0);
@@ -264,6 +276,11 @@ describe('TrialAggregator', () => {
         { length: 10 },
         (_, i) => `eval-${i}`,
       );
+      const evaluators: Evaluator[] = evalNames.map((name) => ({
+        name,
+        comparisonMode: 'passRate' as const,
+        evaluate: async () => ({ evaluator: name, score: 0, verdict: 'pass' as const, reason: '' }),
+      }));
       // trial i passes eval j iff (i + j) % 3 === 0 (deterministic)
       const trials = Array.from({ length: 100 }, (_, i) => {
         const verdicts: Record<string, EvalResult['verdict']> = {};
@@ -274,7 +291,7 @@ describe('TrialAggregator', () => {
         return makeTrial(i, verdicts);
       });
 
-      const result = agg.aggregate(makeScenario(), trials);
+      const result = agg.aggregate(makeScenario({ evaluators }), trials);
 
       for (const name of evalNames) {
         const j = Number(name.split('-')[1]);
@@ -293,11 +310,11 @@ describe('TrialAggregator', () => {
   describe('aggregateScore', () => {
     const scoreEvaluator = {
       name: 'eval',
-      regressionMode: 'score' as const,
+      comparisonMode: 'score' as const,
       evaluate: async () => ({
         evaluator: 'eval',
         score: 0,
-        verdict: 'observed' as const,
+        verdict: 'directional' as const,
         reason: '',
       }),
     } satisfies Evaluator;
@@ -319,7 +336,7 @@ describe('TrialAggregator', () => {
         ([name, score]) => ({
           evaluator: name,
           score,
-          verdict: 'observed' as const,
+          verdict: 'directional' as const,
           reason: 'test',
         }),
       );
@@ -462,19 +479,19 @@ describe('TrialAggregator', () => {
     it('excludes unknown-verdict trials from aggregateScore', () => {
       const trials = [
         makeTrialWithScoreAndVerdict(0, {
-          eval: { score: 0, verdict: 'unknown' },
+          eval: { score: 0, verdict: 'incomplete' },
         }),
         makeTrialWithScoreAndVerdict(1, {
-          eval: { score: 0.8, verdict: 'observed' },
+          eval: { score: 0.8, verdict: 'directional' },
         }),
         makeTrialWithScoreAndVerdict(2, {
-          eval: { score: 0, verdict: 'unknown' },
+          eval: { score: 0, verdict: 'incomplete' },
         }),
         makeTrialWithScoreAndVerdict(3, {
-          eval: { score: 0.6, verdict: 'observed' },
+          eval: { score: 0.6, verdict: 'directional' },
         }),
         makeTrialWithScoreAndVerdict(4, {
-          eval: { score: 0, verdict: 'unknown' },
+          eval: { score: 0, verdict: 'incomplete' },
         }),
       ];
       const result = agg.aggregate(scoreScenario(), trials);
@@ -485,10 +502,10 @@ describe('TrialAggregator', () => {
     it('omits aggregateScore when all trials are unknown', () => {
       const trials = [
         makeTrialWithScoreAndVerdict(0, {
-          eval: { score: 0, verdict: 'unknown' },
+          eval: { score: 0, verdict: 'incomplete' },
         }),
         makeTrialWithScoreAndVerdict(1, {
-          eval: { score: 0, verdict: 'unknown' },
+          eval: { score: 0, verdict: 'incomplete' },
         }),
       ];
       const result = agg.aggregate(scoreScenario(), trials);
@@ -499,12 +516,12 @@ describe('TrialAggregator', () => {
   describe('lowerIsBetter propagation', () => {
     const lowerIsBetterEval = {
       name: 'token-usage',
-      regressionMode: 'score' as const,
+      comparisonMode: 'score' as const,
       lowerIsBetter: true,
       evaluate: async () => ({
         evaluator: 'token-usage',
         score: 5000,
-        verdict: 'observed' as const,
+        verdict: 'directional' as const,
         reason: '',
       }),
     } satisfies Evaluator;
@@ -527,7 +544,7 @@ describe('TrialAggregator', () => {
             {
               evaluator: 'token-usage',
               score: 5000,
-              verdict: 'observed' as const,
+              verdict: 'directional' as const,
               reason: '',
             },
           ],
@@ -566,7 +583,7 @@ describe('TrialAggregator', () => {
             {
               evaluator: 'explicit-false',
               score: 0.8,
-              verdict: 'observed' as const,
+              verdict: 'directional' as const,
               reason: '',
             },
           ],
@@ -580,11 +597,11 @@ describe('TrialAggregator', () => {
   describe('score-mode: estimators omitted', () => {
     const scoreModeEval = {
       name: 'score-eval',
-      regressionMode: 'score' as const,
+      comparisonMode: 'score' as const,
       evaluate: async () => ({
         evaluator: 'score-eval',
         score: 0,
-        verdict: 'observed' as const,
+        verdict: 'directional' as const,
         reason: '',
       }),
     } satisfies Evaluator;
@@ -609,7 +626,7 @@ describe('TrialAggregator', () => {
           evalResults: [{
             evaluator: 'score-eval',
             score: 0.5,
-            verdict: 'observed' as const,
+            verdict: 'directional' as const,
             reason: '',
           }],
         },
@@ -627,7 +644,7 @@ describe('TrialAggregator', () => {
           evalResults: [{
             evaluator: 'score-eval',
             score: 0.7,
-            verdict: 'observed' as const,
+            verdict: 'directional' as const,
             reason: '',
           }],
         },
@@ -639,38 +656,42 @@ describe('TrialAggregator', () => {
     });
 
     it('populates numeric estimators for pass-rate evaluator', () => {
+      const prEval: Evaluator = { name: 'pr-eval', comparisonMode: 'passRate', evaluate: async () => ({ evaluator: 'pr-eval', score: 0, verdict: 'pass' as const, reason: '' }) };
       const trials = [
         makeTrial(0, { 'pr-eval': 'pass' }),
         makeTrial(1, { 'pr-eval': 'fail' }),
       ];
-      const result = agg.aggregate(makeScenario(), trials);
+      const result = agg.aggregate(makeScenario({ evaluators: [prEval] }), trials);
       // n=2, c=1 → passAt1=0.5
       expect(result.aggregated['pr-eval'].passAt1).toBe(0.5);
       expect(result.aggregated['pr-eval'].passAtK).toEqual([{ k: 1, value: 0.5 }]);
       expect(result.aggregated['pr-eval'].passHatK).toEqual([{ k: 1, value: 0.5 }]);
     });
 
-    it('treats regressionMode absent as pass-rate (numeric estimators present)', () => {
-      const noModeEval = {
-        name: 'no-mode',
+    it('evaluator always emits comparisonMode in aggregated result', () => {
+      const explicitModeEval = {
+        name: 'explicit-mode',
+        comparisonMode: 'passRate' as const,
         evaluate: async () => ({
-          evaluator: 'no-mode',
+          evaluator: 'explicit-mode',
           score: 1.0,
           verdict: 'pass' as const,
           reason: '',
         }),
       } satisfies Evaluator;
-      const scenario = makeScenario({ evaluators: [noModeEval] });
-      const trials = [makeTrial(0, { 'no-mode': 'pass' })];
+      const scenario = makeScenario({ evaluators: [explicitModeEval] });
+      const trials = [makeTrial(0, { 'explicit-mode': 'pass' })];
       const result = agg.aggregate(scenario, trials);
-      expect(result.aggregated['no-mode'].passAt1).toBe(1);
-      expect(result.aggregated['no-mode'].passAtK).toEqual([{ k: 1, value: 1 }]);
-      expect(result.aggregated['no-mode'].passHatK).toEqual([{ k: 1, value: 1 }]);
+      expect(result.aggregated['explicit-mode'].passAt1).toBe(1);
+      expect(result.aggregated['explicit-mode'].passAtK).toEqual([{ k: 1, value: 1 }]);
+      expect(result.aggregated['explicit-mode'].passHatK).toEqual([{ k: 1, value: 1 }]);
+      expect(result.aggregated['explicit-mode'].comparisonMode).toBe('passRate');
     });
 
     it('mixed: score-mode omits estimators, pass-rate has them', () => {
       const passRateEval = {
         name: 'pass-rate-eval',
+        comparisonMode: 'passRate' as const,
         evaluate: async () => ({
           evaluator: 'pass-rate-eval',
           score: 0,
@@ -697,7 +718,7 @@ describe('TrialAggregator', () => {
             {
               evaluator: 'score-eval',
               score: 0.5,
-              verdict: 'observed' as const,
+              verdict: 'directional' as const,
               reason: '',
             },
             {
@@ -723,7 +744,7 @@ describe('TrialAggregator', () => {
             {
               evaluator: 'score-eval',
               score: 0.3,
-              verdict: 'observed' as const,
+              verdict: 'directional' as const,
               reason: '',
             },
             {
@@ -743,6 +764,8 @@ describe('TrialAggregator', () => {
       expect(result.aggregated['pass-rate-eval'].passAt1).toBe(0.5);
       expect(result.aggregated['pass-rate-eval'].passAtK).toEqual([{ k: 1, value: 0.5 }]);
       expect(result.aggregated['pass-rate-eval'].passHatK).toEqual([{ k: 1, value: 0.5 }]);
+      expect(result.aggregated['score-eval'].comparisonMode).toBe('score');
+      expect(result.aggregated['pass-rate-eval'].comparisonMode).toBe('passRate');
     });
   });
 
@@ -861,7 +884,7 @@ describe('TrialAggregator', () => {
         evalResults: [{
           evaluator: evalName,
           score: 0,
-          verdict: 'unknown',
+          verdict: 'incomplete',
           reason: 'judge parse error',
           evaluatorFailed: true,
         }],
@@ -921,14 +944,69 @@ describe('TrialAggregator', () => {
       expect(result.aggregated['eval'].totalTrials).toBe(2);
     });
 
+    it('keeps a gating evaluator crash in the denominator as a hard fail', () => {
+      const gatingEval: Evaluator = {
+        name: 'skill-selection',
+        comparisonMode: 'passRate' as const,
+        gating: true,
+        evaluate: async () => ({
+          evaluator: 'skill-selection',
+          score: 1,
+          verdict: 'pass' as const,
+          reason: '',
+        }),
+      };
+      const scenario = makeScenario({ evaluators: [gatingEval] });
+      const trials = [
+        makeTrial(0, { 'skill-selection': 'pass' }),
+        makeFailedTrial(1, 'skill-selection'),
+        makeFailedTrial(2, 'skill-selection'),
+      ];
+      const result = agg.aggregate(scenario, trials);
+      const e = result.aggregated['skill-selection'];
+      // Gating: crashed trials are NOT dropped — they stay in the sample as
+      // non-passes, so n=3, c=1 → passAt1 = 1/3 (a broken gate fails loud).
+      expect(e.totalTrials).toBe(3);
+      expect(e.passingTrials).toBe(1);
+      expect(e.passAt1).toBeCloseTo(1 / 3);
+      expect(e.failedTrials).toBe(2);
+    });
+
+    it('a gating evaluator that crashes on every trial reports passAt1 0, not an empty sample', () => {
+      const gatingEval: Evaluator = {
+        name: 'skill-selection',
+        comparisonMode: 'passRate' as const,
+        gating: true,
+        evaluate: async () => ({
+          evaluator: 'skill-selection',
+          score: 1,
+          verdict: 'pass' as const,
+          reason: '',
+        }),
+      };
+      const scenario = makeScenario({ evaluators: [gatingEval] });
+      const trials = [
+        makeFailedTrial(0, 'skill-selection'),
+        makeFailedTrial(1, 'skill-selection'),
+      ];
+      const result = agg.aggregate(scenario, trials);
+      const e = result.aggregated['skill-selection'];
+      // Contrast with the non-gating all-crashed case (totalTrials 0, undefined
+      // estimators): a gating gate that never ran must fail, not vanish.
+      expect(e.totalTrials).toBe(2);
+      expect(e.passingTrials).toBe(0);
+      expect(e.passAt1).toBe(0);
+      expect(e.failedTrials).toBe(2);
+    });
+
     it('excludes evaluatorFailed trials from score-mode aggregateScore', () => {
       const scoreEval: Evaluator = {
         name: 'metric',
-        regressionMode: 'score' as const,
+        comparisonMode: 'score' as const,
         evaluate: async () => ({
           evaluator: 'metric',
           score: 0,
-          verdict: 'observed' as const,
+          verdict: 'directional' as const,
           reason: '',
         }),
       };
@@ -937,17 +1015,17 @@ describe('TrialAggregator', () => {
         {
           trialIndex: 0,
           transcript: { scenarioName: 'test-scenario', trialIndex: 0, turns: [], snapshots: [], errors: [], captureErrors: [] },
-          evalResults: [{ evaluator: 'metric', score: 100, verdict: 'observed', reason: '' }],
+          evalResults: [{ evaluator: 'metric', score: 100, verdict: 'directional', reason: '' }],
         },
         {
           trialIndex: 1,
           transcript: { scenarioName: 'test-scenario', trialIndex: 1, turns: [], snapshots: [], errors: [], captureErrors: [] },
-          evalResults: [{ evaluator: 'metric', score: 200, verdict: 'observed', reason: '' }],
+          evalResults: [{ evaluator: 'metric', score: 200, verdict: 'directional', reason: '' }],
         },
         {
           trialIndex: 2,
           transcript: { scenarioName: 'test-scenario', trialIndex: 2, turns: [], snapshots: [], errors: [], captureErrors: [] },
-          evalResults: [{ evaluator: 'metric', score: 999, verdict: 'observed', reason: '', evaluatorFailed: true }],
+          evalResults: [{ evaluator: 'metric', score: 999, verdict: 'directional', reason: '', evaluatorFailed: true }],
         },
       ];
       const result = agg.aggregate(scenario, trials);

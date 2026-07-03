@@ -4,16 +4,16 @@ import type { TrialResult } from '../runner/types.js';
 /**
  * Returns true when an eval result should be included in trial score
  * aggregation. Excludes results where the evaluator itself failed or
- * where the verdict is 'unknown' (insufficient data to judge).
+ * where the verdict is 'incomplete' (insufficient data to judge).
  */
 export function isValidTrialScore(result: Pick<EvalResult, 'evaluatorFailed' | 'verdict'>): boolean {
-  if (result.evaluatorFailed || result.verdict === 'unknown') return false;
+  if (result.evaluatorFailed || result.verdict === 'incomplete') return false;
   return true;
 }
 
 /**
  * Extracts per-trial scores for a single named evaluator from trial results.
- * Skips trials where the evaluator is absent, failed, or returned 'unknown'.
+ * Skips trials where the evaluator is absent, failed, or returned 'incomplete'.
  */
 export function extractTrialScoresForEvaluator(name: string, trials: TrialResult[]): number[] {
   const scores: number[] = [];
@@ -27,7 +27,7 @@ export function extractTrialScoresForEvaluator(name: string, trials: TrialResult
 
 /**
  * Builds a map from evaluator name to per-trial scores across all trials.
- * Skips results where the evaluator failed or returned 'unknown'.
+ * Skips results where the evaluator failed or returned 'incomplete'.
  */
 export function extractAllTrialScores(trials: TrialResult[]): Map<string, number[]> {
   const scoresByEvaluator = new Map<string, number[]>();

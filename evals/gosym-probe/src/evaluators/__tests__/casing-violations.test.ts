@@ -50,32 +50,32 @@ describe('CasingViolationsEvaluator', () => {
       snapshotWith([violation('eyebrow', true), violation('label'), violation('label')]),
     );
     expect(res.score).toBe(3);
-    expect(res.verdict).toBe('observed');
+    expect(res.verdict).toBe('directional');
     expect((res.details?.byToken as Record<string, number>).eyebrow).toBe(1);
     expect((res.details?.byToken as Record<string, number>).label).toBe(2);
     expect(res.details?.wideTracking).toBe(1);
   });
 
   it('is score-mode, lower-is-better (more all-caps eyebrows = regression)', () => {
-    expect(evaluator.regressionMode).toBe('score');
+    expect(evaluator.comparisonMode).toBe('score');
     expect(evaluator.lowerIsBetter).toBe(true);
   });
 
   it('reports the text-nodes-scanned denominator so a clean score is interpretable', async () => {
     const res = await evaluator.evaluate(NOOP, NOOP, snapshotWith([], 120));
     expect(res.score).toBe(0);
-    expect(res.verdict).toBe('observed');
+    expect(res.verdict).toBe('directional');
     expect(res.details?.textNodesScanned).toBe(120);
     expect(res.reason).toContain('120 text node(s)');
   });
 
   it('returns verdict unknown when no snapshot was captured', async () => {
     const res = await evaluator.evaluate(NOOP, NOOP, undefined);
-    expect(res.verdict).toBe('unknown');
+    expect(res.verdict).toBe('incomplete');
   });
 
   it('returns verdict unknown when the snapshot has no casingAudit (audit did not run)', async () => {
     const res = await evaluator.evaluate(NOOP, NOOP, snapshotNoAudit());
-    expect(res.verdict).toBe('unknown');
+    expect(res.verdict).toBe('incomplete');
   });
 });

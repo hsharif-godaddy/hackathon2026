@@ -62,12 +62,6 @@ describe('findSignalDisagreements', () => {
     expect(out[0].kind).toBe('static-pass-judge-fail');
   });
 
-  it('treats partial as not-good (static-partial / judge-pass disagrees)', () => {
-    const out = findSignalDisagreements(pair('partial', 'pass'));
-    expect(out).toHaveLength(1);
-    expect(out[0].kind).toBe('static-fail-judge-pass');
-  });
-
   it('does not flag agreement (both pass)', () => {
     expect(findSignalDisagreements(pair('pass', 'pass'))).toHaveLength(0);
   });
@@ -76,9 +70,11 @@ describe('findSignalDisagreements', () => {
     expect(findSignalDisagreements(pair('fail', 'fail'))).toHaveLength(0);
   });
 
-  it('skips non-comparable verdicts (unknown)', () => {
-    expect(findSignalDisagreements(pair('unknown', 'pass'))).toHaveLength(0);
-    expect(findSignalDisagreements(pair('pass', 'unknown'))).toHaveLength(0);
+  it('skips non-comparable verdicts (incomplete, directional)', () => {
+    expect(findSignalDisagreements(pair('incomplete', 'pass'))).toHaveLength(0);
+    expect(findSignalDisagreements(pair('pass', 'incomplete'))).toHaveLength(0);
+    expect(findSignalDisagreements(pair('directional', 'pass'))).toHaveLength(0);
+    expect(findSignalDisagreements(pair('pass', 'directional'))).toHaveLength(0);
   });
 
   it('skips when one evaluator is absent', () => {

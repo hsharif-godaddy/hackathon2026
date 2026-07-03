@@ -52,12 +52,12 @@ async function loadJson<T>(path: string): Promise<T | null> {
 }
 
 function toAggregated(summary: EvaluatorSummary): AggregatedResult {
-  const regressionMode: 'passRate' | 'score' =
+  const comparisonMode: 'passRate' | 'score' =
     summary.aggregateScore !== undefined ? 'score' : 'passRate';
   return {
     passingTrials: summary.passingTrials,
     totalTrials: summary.totalTrials,
-    regressionMode,
+    comparisonMode,
     ...(summary.passAt1 !== undefined && { passAt1: summary.passAt1 }),
     ...(summary.passAtK !== undefined && { passAtK: summary.passAtK }),
     ...(summary.passHatK !== undefined && { passHatK: summary.passHatK }),

@@ -18,12 +18,12 @@ describe('OutputTokenUsageEvaluator', () => {
     expect(evaluator.name).toBe('output-token-usage');
   });
 
-  it('has regressionMode "score" and lowerIsBetter true', () => {
+  it('has comparisonMode "score" and lowerIsBetter true', () => {
     const evaluator = new OutputTokenUsageEvaluator({
       collector: makeMockCollector(),
       gocodeClient: makeMockGocodeClient(),
     });
-    expect(evaluator.regressionMode).toBe('score');
+    expect(evaluator.comparisonMode).toBe('score');
     expect(evaluator.lowerIsBetter).toBe(true);
   });
 
@@ -64,7 +64,7 @@ describe('OutputTokenUsageEvaluator', () => {
       evaluator.unhookTrial(0);
       const result = await evaluator.evaluate(makeTranscript(0), makeScenario());
 
-      expect(result.verdict).toBe('unknown');
+      expect(result.verdict).toBe('incomplete');
     });
   });
 
@@ -78,7 +78,7 @@ describe('OutputTokenUsageEvaluator', () => {
 
       const result = await evaluator.evaluate(makeTranscript(0), makeScenario());
 
-      expect(result.verdict).toBe('unknown');
+      expect(result.verdict).toBe('incomplete');
       expect(result.score).toBe(0);
     });
 
@@ -92,7 +92,7 @@ describe('OutputTokenUsageEvaluator', () => {
       evaluator.hookClient(makeMockClient(), 0);
       const result = await evaluator.evaluate(makeTranscript(0), makeScenario());
 
-      expect(result.verdict).toBe('unknown');
+      expect(result.verdict).toBe('incomplete');
       expect(result.score).toBe(0);
       expect(result.reason).toContain('collector returned null');
     });
@@ -111,7 +111,7 @@ describe('OutputTokenUsageEvaluator', () => {
       evaluator.hookClient(makeMockClient(), 0);
       const result = await evaluator.evaluate(makeTranscript(0), makeScenario());
 
-      expect(result.verdict).toBe('observed');
+      expect(result.verdict).toBe('directional');
       // The whole point: score isolates output, ignoring the ~1.16M total.
       expect(result.score).toBe(13000);
     });

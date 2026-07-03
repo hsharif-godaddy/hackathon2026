@@ -110,14 +110,12 @@ function toOutcomes(
     if (!judged) {
       return {
         id: item.id,
-        type: item.type,
-        status: 'unknown',
+        status: 'incomplete',
         reason: 'judge did not return a verdict for this item',
       };
     }
     return {
       id: item.id,
-      type: item.type,
       status: judged.met ? 'pass' : 'fail',
       reason: judged.reason,
     };
@@ -132,14 +130,15 @@ function toOutcomes(
  * shared checklist reducer so its verdict is produced by identical
  * rules — making static-vs-judge disagreement meaningful per item.
  *
- * Inherits LLMJudgeEvaluator's 429-retry + parse/schema → 'unknown'
- * handling. Returns 'unknown' when no expected artifact is defined.
+ * Inherits LLMJudgeEvaluator's 429-retry + parse/schema → 'incomplete'
+ * handling. Returns 'incomplete' when no expected artifact is defined.
  */
 export function createNarrowArtifactJudge(
   gocode: IGocodeClient,
 ): LLMJudgeEvaluator<NarrowJudgeResult> {
   return new LLMJudgeEvaluator<NarrowJudgeResult>(gocode, {
     name: 'narrow-artifact-judge',
+    comparisonMode: 'passRate',
     schema: NarrowJudgeSchema,
     canEvaluate: (_transcript, scenario) =>
       (scenario.expectedArtifact?.items.length ?? 0) > 0,
@@ -160,9 +159,8 @@ export function createNarrowArtifactJudge(
           items: outcomes,
           passedCount: reduced.passedCount,
           failedCount: reduced.failedCount,
-          unknownCount: reduced.unknownCount,
+          incompleteCount: reduced.incompleteCount,
           hardFailures: reduced.hardFailures,
-          directionalFailures: reduced.directionalFailures,
         },
       };
     },

@@ -13,7 +13,7 @@ import { toDataUrl } from '../util/image.js';
 import { runCapped } from '../runner/suite-runner.js';
 import type { EvalResult, Evaluator } from './evaluator.js';
 
-type RouteVerdict = 'ok' | 'partial' | 'concerning' | 'broken';
+type RouteVerdict = 'pass' | 'fail';
 
 interface ViewportDetail {
   viewport: ViewportName;
@@ -39,10 +39,8 @@ interface RouteDetail {
 }
 
 const VERDICT_SCORE: Record<RouteVerdict, number> = {
-  ok: 1,
-  partial: 0.5,
-  concerning: 0.25,
-  broken: 0,
+  pass: 1,
+  fail: 0,
 };
 
 const SYSTEM_PROMPT = `You are a QA reviewer inspecting screenshots of a live website page at a specific viewport size.
@@ -63,16 +61,14 @@ Judge the visual quality of this page at this viewport. Consider:
 
 Return JSON only, no prose:
 {
-  "verdict": "ok|partial|concerning|broken",
+  "verdict": "pass|fail",
   "score": 0.0-1.0,
   "summary": "one-line explanation (<=140 chars)"
 }
 
 Verdict guide:
-- "ok": page looks complete and well-rendered at this viewport.
-- "partial": page renders but has minor visual issues or missing non-critical content.
-- "concerning": significant problems — key content missing, layout broken, or goals unmet.
-- "broken": page is blank, shows an error, or is completely non-functional.`;
+- "pass": page looks complete and well-rendered at this viewport (may have minor issues).
+- "fail": page is blank, broken, or has significant problems that prevent goal completion.`;
 
 function renderedBlock(rendered: RenderedSignals | undefined): string {
   if (!rendered) return '(no rendered signals captured)';
@@ -147,11 +143,16 @@ interface ParsedViewport {
   summary: string;
 }
 
+function mapToRouteVerdict(raw: string | undefined): RouteVerdict {
+  if (raw === 'pass' || raw === 'ok') return 'pass';
+  return 'fail';
+}
+
 function parseViewportResponse(
   raw: string
 ): ParsedViewport {
   const fallback: ParsedViewport = {
-    verdict: 'broken',
+    verdict: 'fail',
     score: 0,
     summary: 'Failed to parse LLM response',
   };
@@ -169,13 +170,7 @@ function parseViewportResponse(
     };
   }
 
-  const verdict: RouteVerdict =
-    parsed.verdict === 'ok' ||
-    parsed.verdict === 'partial' ||
-    parsed.verdict === 'concerning' ||
-    parsed.verdict === 'broken'
-      ? parsed.verdict
-      : 'broken';
+  const verdict: RouteVerdict = mapToRouteVerdict(parsed.verdict);
 
   const score =
     typeof parsed.score === 'number' && !isNaN(parsed.score)
@@ -200,9 +195,7 @@ function average(values: number[]): number {
 function toOverallVerdict(
   score: number,
 ): EvalResult['verdict'] {
-  if (score >= 0.8) return 'pass';
-  if (score >= 0.5) return 'partial';
-  return 'fail';
+  return score >= 0.8 ? 'pass' : 'fail';
 }
 
 function buildRouteDetailForUnreachable(route: DiscoveredRoute): RouteDetail {
@@ -210,7 +203,7 @@ function buildRouteDetailForUnreachable(route: DiscoveredRoute): RouteDetail {
     viewport: vpName,
     width: VIEWPORTS[vpName].width,
     height: VIEWPORTS[vpName].height,
-    verdict: 'broken',
+    verdict: 'fail',
     score: 0,
     summary: `Route ${route.status} (HTTP ${route.httpStatus ?? '?'})`,
     tileCount: 0,
@@ -239,6 +232,7 @@ function buildCapturedSiteSummary(captured: CapturedSite) {
 
 export class WebsiteQualityEvaluator implements Evaluator {
   readonly name = 'website-quality';
+  readonly comparisonMode = 'passRate' as const;
   readonly deterministic = false;
 
   constructor(private readonly gocode: IGocodeClient) {}
@@ -252,7 +246,7 @@ export class WebsiteQualityEvaluator implements Evaluator {
       return {
         evaluator: this.name,
         score: 0,
-        verdict: 'unknown',
+        verdict: 'incomplete',
         reason: 'No captured site data on transcript.',
         details: {
           capture: null,
@@ -278,7 +272,7 @@ export class WebsiteQualityEvaluator implements Evaluator {
       return {
         evaluator: this.name,
         score: 0,
-        verdict: 'unknown',
+        verdict: 'incomplete',
         reason: `Route discovery failed: ${captured.errors[0]}`,
         details: {
           capture: buildCapturedSiteSummary(captured),
@@ -332,7 +326,7 @@ export class WebsiteQualityEvaluator implements Evaluator {
             viewport: vpName,
             width: vp.width,
             height: vp.height,
-            verdict: 'broken',
+            verdict: 'fail',
             score: 0,
             summary: 'No tiles captured.',
             tileCount: 0,
@@ -357,7 +351,7 @@ export class WebsiteQualityEvaluator implements Evaluator {
             viewport: vpName,
             width: vp.width,
             height: vp.height,
-            verdict: 'broken',
+            verdict: 'fail',
             score: 0,
             summary: 'Tile read failed.',
             tileCount: tiles.length,
@@ -392,7 +386,7 @@ export class WebsiteQualityEvaluator implements Evaluator {
             viewport: vpName,
             width: vp.width,
             height: vp.height,
-            verdict: 'broken',
+            verdict: 'fail',
             score: 0,
             summary: 'LLM call failed.',
             tileCount: tiles.length,

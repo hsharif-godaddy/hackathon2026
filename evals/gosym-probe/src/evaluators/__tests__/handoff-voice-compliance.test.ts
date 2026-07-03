@@ -347,21 +347,21 @@ describe('aggregateJudgments', () => {
     expect(result.score).toBe(0.5);
   });
 
-  it('returns unknown when all goals are N/A (not applicable)', () => {
+  it('returns incomplete when all goals are N/A (not applicable)', () => {
     const judgments = [
-      { goal: marketingOutboundGoal, applicable: false, verdict: 'unknown' as const, reason: 'N/A', evidence: '' },
-      { goal: developInboundGoal, applicable: false, verdict: 'unknown' as const, reason: 'N/A', evidence: '' },
+      { goal: marketingOutboundGoal, applicable: false, verdict: 'fail' as const, reason: 'N/A', evidence: '' },
+      { goal: developInboundGoal, applicable: false, verdict: 'fail' as const, reason: 'N/A', evidence: '' },
     ];
 
     const result = aggregateJudgments(judgments, 'handoff-voice-compliance');
-    expect(result.verdict).toBe('unknown');
+    expect(result.verdict).toBe('incomplete');
     expect(result.score).toBe(0);
   });
 
   it('excludes N/A goals from scoring and verdict', () => {
     const judgments = [
       { goal: developOutboundGoal, applicable: true, verdict: 'pass' as const, reason: 'Clean', evidence: '' },
-      { goal: marketingOutboundGoal, applicable: false, verdict: 'unknown' as const, reason: 'N/A', evidence: '' },
+      { goal: marketingOutboundGoal, applicable: false, verdict: 'fail' as const, reason: 'N/A', evidence: '' },
     ];
 
     const result = aggregateJudgments(judgments, 'handoff-voice-compliance');
@@ -369,10 +369,44 @@ describe('aggregateJudgments', () => {
     expect(result.score).toBe(1.0);
   });
 
-  it('returns unknown when judgments array is empty', () => {
+  it('returns incomplete when judgments array is empty', () => {
     const result = aggregateJudgments([], 'handoff-voice-compliance');
-    expect(result.verdict).toBe('unknown');
+    expect(result.verdict).toBe('incomplete');
     expect(result.score).toBe(0);
+  });
+
+  it('excludes incomplete (infra-failure) judgments from the denominator', () => {
+    const judgments = [
+      { goal: developOutboundGoal, applicable: true, verdict: 'pass' as const, reason: 'Clean', evidence: '' },
+      { goal: marketingInboundGoal, applicable: true, verdict: 'incomplete' as const, reason: 'Judge request failed', evidence: '' },
+    ];
+
+    const result = aggregateJudgments(judgments, 'handoff-voice-compliance');
+    expect(result.verdict).toBe('pass');
+    expect(result.score).toBe(1.0);
+  });
+
+  it('returns incomplete when all applicable judgments are incomplete', () => {
+    const judgments = [
+      { goal: developOutboundGoal, applicable: true, verdict: 'incomplete' as const, reason: 'Malformed JSON', evidence: '' },
+      { goal: marketingInboundGoal, applicable: true, verdict: 'incomplete' as const, reason: 'Schema mismatch', evidence: '' },
+    ];
+
+    const result = aggregateJudgments(judgments, 'handoff-voice-compliance');
+    expect(result.verdict).toBe('incomplete');
+    expect(result.score).toBe(0);
+  });
+
+  it('returns fail with proportional score when mixing pass, fail, and incomplete', () => {
+    const judgments = [
+      { goal: developOutboundGoal, applicable: true, verdict: 'pass' as const, reason: 'Clean', evidence: '' },
+      { goal: marketingInboundGoal, applicable: true, verdict: 'fail' as const, reason: 'Seam exposed', evidence: '"hand off"' },
+      { goal: marketingOutboundGoal, applicable: true, verdict: 'incomplete' as const, reason: 'Judge request failed', evidence: '' },
+    ];
+
+    const result = aggregateJudgments(judgments, 'handoff-voice-compliance');
+    expect(result.verdict).toBe('fail');
+    expect(result.score).toBe(0.5);
   });
 
   it('includes per-goal details in result', () => {
@@ -408,7 +442,7 @@ describe('HandoffVoiceComplianceEvaluator', () => {
     expect(evaluator.name).toBe('handoff-voice-compliance');
   });
 
-  it('returns unknown when no handoff transitions found in transcript', async () => {
+  it('returns incomplete when no handoff transitions found in transcript', async () => {
     const transcript = makeTranscript([
       makeTurn({ role: 'user', content: 'Build a page' }),
       makeTurn({ role: 'assistant', content: 'Building it now.', toolCalls: [] }),
@@ -419,7 +453,7 @@ describe('HandoffVoiceComplianceEvaluator', () => {
       makeScenario([developOutboundGoal, marketingInboundGoal]),
     );
 
-    expect(result.verdict).toBe('unknown');
+    expect(result.verdict).toBe('incomplete');
     expect(mockGocode.complete).not.toHaveBeenCalled();
   });
 
@@ -500,7 +534,7 @@ describe('HandoffVoiceComplianceEvaluator', () => {
     expect(result.score).toBe(0.5);
   });
 
-  it('handles malformed LLM JSON response gracefully as unknown', async () => {
+  it('handles malformed LLM JSON response gracefully as incomplete', async () => {
     mockGocode.complete.mockResolvedValue('not json at all');
 
     const transcript = makeTranscript([
@@ -528,8 +562,8 @@ describe('HandoffVoiceComplianceEvaluator', () => {
       makeScenario([developOutboundGoal, marketingInboundGoal]),
     );
 
-    // Both goals get unknown due to parse failure, which counts as unknown overall
-    expect(result.verdict).toBe('unknown');
+    // Both goals get incomplete due to parse failure, no conclusive judgments
+    expect(result.verdict).toBe('incomplete');
   });
 
   it('includes goal description verbatim in LLM prompt', async () => {

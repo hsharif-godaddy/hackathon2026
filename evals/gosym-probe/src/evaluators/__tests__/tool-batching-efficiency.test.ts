@@ -18,10 +18,10 @@ function failedCall(id: string): ToolCall {
 }
 
 describe('ToolBatchingEfficiencyEvaluator — properties', () => {
-  it('has correct name, regressionMode=score, lowerIsBetter=false', () => {
+  it('has correct name, comparisonMode=score, lowerIsBetter=false', () => {
     const evaluator = new ToolBatchingEfficiencyEvaluator();
     expect(evaluator.name).toBe('tool-batching-efficiency');
-    expect(evaluator.regressionMode).toBe('score');
+    expect(evaluator.comparisonMode).toBe('score');
     expect(evaluator.lowerIsBetter).toBe(false);
   });
 });
@@ -31,7 +31,7 @@ describe('ToolBatchingEfficiencyEvaluator — unknown paths', () => {
 
   it('returns unknown for empty transcript', async () => {
     const result = await evaluator.evaluate(makeTranscript([]), makeScenario());
-    expect(result.verdict).toBe('unknown');
+    expect(result.verdict).toBe('incomplete');
     expect(result.score).toBe(0);
   });
 
@@ -40,7 +40,7 @@ describe('ToolBatchingEfficiencyEvaluator — unknown paths', () => {
       makeTranscript([makeUserTurn(), makeUserTurn()]),
       makeScenario(),
     );
-    expect(result.verdict).toBe('unknown');
+    expect(result.verdict).toBe('incomplete');
     expect(result.score).toBe(0);
   });
 
@@ -49,7 +49,7 @@ describe('ToolBatchingEfficiencyEvaluator — unknown paths', () => {
       makeTranscript([makeAssistantTurn({ toolCalls: [] })]),
       makeScenario(),
     );
-    expect(result.verdict).toBe('unknown');
+    expect(result.verdict).toBe('incomplete');
     expect(result.score).toBe(0);
   });
 
@@ -59,7 +59,7 @@ describe('ToolBatchingEfficiencyEvaluator — unknown paths', () => {
       makeTranscript([makeAssistantTurn({ toolCalls: [successfulCall('c1')] })]),
       makeScenario(),
     );
-    expect(result.verdict).toBe('unknown');
+    expect(result.verdict).toBe('incomplete');
     expect(result.score).toBe(0);
   });
 
@@ -70,7 +70,7 @@ describe('ToolBatchingEfficiencyEvaluator — unknown paths', () => {
       ]),
       makeScenario(),
     );
-    expect(result.verdict).toBe('unknown');
+    expect(result.verdict).toBe('incomplete');
     expect(result.score).toBe(0);
   });
 });
@@ -85,7 +85,7 @@ describe('ToolBatchingEfficiencyEvaluator — scoring: (calls - turns) / (calls 
       makeTranscript([makeAssistantTurn({ toolCalls: calls })]),
       makeScenario(),
     );
-    expect(result.verdict).toBe('observed');
+    expect(result.verdict).toBe('directional');
     expect(result.score).toBe(1.0);
   });
 
@@ -95,7 +95,7 @@ describe('ToolBatchingEfficiencyEvaluator — scoring: (calls - turns) / (calls 
       makeAssistantTurn({ toolCalls: [successfulCall(`c${i}`)] }),
     );
     const result = await evaluator.evaluate(makeTranscript(turns), makeScenario());
-    expect(result.verdict).toBe('observed');
+    expect(result.verdict).toBe('directional');
     expect(result.score).toBe(0);
   });
 
@@ -111,7 +111,7 @@ describe('ToolBatchingEfficiencyEvaluator — scoring: (calls - turns) / (calls 
       makeTranscript([turn1, turn2]),
       makeScenario(),
     );
-    expect(result.verdict).toBe('observed');
+    expect(result.verdict).toBe('directional');
     expect(result.score).toBeCloseTo(10 / 11, 5);
   });
 
@@ -123,7 +123,7 @@ describe('ToolBatchingEfficiencyEvaluator — scoring: (calls - turns) / (calls 
       }),
     );
     const result = await evaluator.evaluate(makeTranscript(turns), makeScenario());
-    expect(result.verdict).toBe('observed');
+    expect(result.verdict).toBe('directional');
     expect(result.score).toBeCloseTo(8 / 11, 5);
   });
 
@@ -135,7 +135,7 @@ describe('ToolBatchingEfficiencyEvaluator — scoring: (calls - turns) / (calls 
       ]),
       makeScenario(),
     );
-    expect(result.verdict).toBe('observed');
+    expect(result.verdict).toBe('directional');
     expect(result.score).toBe(1.0);
   });
 
@@ -148,7 +148,7 @@ describe('ToolBatchingEfficiencyEvaluator — scoring: (calls - turns) / (calls 
       ]),
       makeScenario(),
     );
-    expect(result.verdict).toBe('observed');
+    expect(result.verdict).toBe('directional');
     expect(result.score).toBe(0);
   });
 });
@@ -163,7 +163,7 @@ describe('ToolBatchingEfficiencyEvaluator — failed calls excluded', () => {
     const t2 = makeAssistantTurn({ toolCalls: [failedCall('f1'), failedCall('f2')] });
     const t3 = makeAssistantTurn({ toolCalls: [successfulCall('b')] });
     const result = await evaluator.evaluate(makeTranscript([t1, t2, t3]), makeScenario());
-    expect(result.verdict).toBe('observed');
+    expect(result.verdict).toBe('directional');
     expect(result.score).toBe(0);
   });
 
@@ -183,7 +183,7 @@ describe('ToolBatchingEfficiencyEvaluator — failed calls excluded', () => {
       makeTranscript([turn1, turn2]),
       makeScenario(),
     );
-    expect(result.verdict).toBe('observed');
+    expect(result.verdict).toBe('directional');
     expect(result.score).toBeCloseTo(6 / 7, 5);
   });
 });
@@ -205,7 +205,7 @@ describe('ToolBatchingEfficiencyEvaluator — mixed turns', () => {
       ]),
       makeScenario(),
     );
-    expect(result.verdict).toBe('observed');
+    expect(result.verdict).toBe('directional');
     expect(result.score).toBe(1.0);
   });
 });
@@ -224,11 +224,11 @@ describe('ToolBatchingEfficiencyEvaluator — EvalResult shape', () => {
     );
     expect(result.evaluator).toBe('tool-batching-efficiency');
     expect(typeof result.score).toBe('number');
-    expect(result.verdict).toBe('observed');
+    expect(result.verdict).toBe('directional');
     expect(typeof result.reason).toBe('string');
     expect(result.details).toHaveProperty('totalSuccessfulCalls');
     expect(result.details).toHaveProperty('productiveTurns');
-    expect(evaluator.regressionMode).toBe('score');
+    expect(evaluator.comparisonMode).toBe('score');
     expect(evaluator.lowerIsBetter).toBe(false);
   });
 });

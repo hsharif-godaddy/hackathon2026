@@ -51,7 +51,7 @@ describe('computeGraderStability', () => {
       scenario([
         trial(0, [ev('judge', 'pass')]),
         trial(1, [ev('judge', 'fail')]),
-        trial(2, [ev('judge', 'partial')]),
+        trial(2, [ev('judge', 'incomplete')]),
         trial(3, [ev('judge', 'pass')]),
       ]),
     ]);
@@ -63,8 +63,8 @@ describe('computeGraderStability', () => {
   it('excludes observed (score-mode) evaluators from flip-rate', () => {
     const s = computeGraderStability([
       scenario([
-        trial(0, [ev('token-usage', 'observed')]),
-        trial(1, [ev('token-usage', 'observed')]),
+        trial(0, [ev('token-usage', 'directional')]),
+        trial(1, [ev('token-usage', 'directional')]),
       ]),
     ]);
     expect(find(s, 'token-usage')).toBeUndefined();
@@ -75,7 +75,7 @@ describe('computeGraderStability', () => {
       scenario([
         // disagree
         trial(0, [
-          ev('expected-artifact-match', 'partial'),
+          ev('expected-artifact-match', 'fail'),
           ev('narrow-artifact-judge', 'pass'),
         ]),
         // agree
@@ -86,7 +86,7 @@ describe('computeGraderStability', () => {
         // judge unknown → not comparable, excluded from denominator
         trial(2, [
           ev('expected-artifact-match', 'pass'),
-          ev('narrow-artifact-judge', 'unknown'),
+          ev('narrow-artifact-judge', 'incomplete'),
         ]),
       ]),
     ]);

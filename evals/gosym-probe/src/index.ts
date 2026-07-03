@@ -25,6 +25,7 @@ import { EvalStore } from './store/eval-store.js';
 import { resolveResumeState } from './store/resolve-resume-state.js';
 import type { ResumeState } from './store/resolve-resume-state.js';
 import { BaselineStore } from './baselines/baseline-store.js';
+import { createFileStore } from './storage/create-file-store.js';
 import {
   GraduationRunner,
 } from './baselines/graduation-runner.js';
@@ -70,7 +71,7 @@ function printGraduationResult(result: GraduationResult): void {
   if (baselineSaved) {
     console.log('  Baseline saved.');
   } else {
-    console.warn('  Baseline NOT saved (all trials produced unknown verdicts).');
+    console.warn('  Baseline NOT saved (all trials produced incomplete verdicts).');
   }
 }
 
@@ -90,6 +91,7 @@ async function main(): Promise<void> {
       verbose:            { type: 'boolean' },
       'skip-baseline':    { type: 'boolean' },
       baseline:           { type: 'string' },
+      s3:                 { type: 'boolean' },
       'fan-out':          { type: 'boolean' },
       graduate:           { type: 'string' },
       'graduate-suite':   { type: 'string' },
@@ -148,6 +150,11 @@ async function main(): Promise<void> {
 
   const skipBaseline = values['skip-baseline'] ?? false;
 
+  // --s3 opts this run's baseline reads into the shared S3 bucket (latest
+  // baseline per scenario for the regression gate). Local disk stays the
+  // default; createFileStore throws if --s3 is set with no bucket configured.
+  const useS3: boolean = values.s3 ?? false;
+
   const flagError = validateRunFlags({
     skipBaseline,
     baseline: values.baseline,
@@ -158,6 +165,7 @@ async function main(): Promise<void> {
     captureConcurrency: values['capture-concurrency'],
     maxRoutes: values['max-routes'],
     maxTurns: values['max-turns'],
+    useS3,
   });
   if (flagError) {
     console.error(`Error: ${flagError}`);
@@ -366,7 +374,11 @@ async function main(): Promise<void> {
         trialConcurrency,
         scenarioConcurrency: fanOut ? clampConcurrency(concurrencyOverride, maxConcurrency) : 1,
         suiteMode: fanOut ? 'parallel' : undefined,
-        baselineStoreFactory: () => new BaselineStore(),
+        // Graduation always writes to the local tree (validateRunFlags rejects
+        // --s3 with --graduate-suite): a graduation is routinely redone with
+        // --resume after dropped trials, so its baseline is promoted to the
+        // shared bucket deliberately afterward via `save-baseline --s3`.
+        baselineStoreFactory: () => new BaselineStore('baselines', createFileStore(config, false)),
         maxTurnsOverride,
         trialLifecycle: gocodeClient,
         onTrialEvaluated: makeProgressCallback(suiteReporter),
@@ -487,7 +499,9 @@ async function main(): Promise<void> {
       makeAgentClient,
       syntheticUser,
       siteCapture,
-      baselineStore: new BaselineStore(),
+      // Local only — validateRunFlags rejects --s3 with --graduate; promote a
+      // vetted graduated baseline to S3 afterward via `save-baseline --s3`.
+      baselineStore: new BaselineStore('baselines', createFileStore(config, false)),
       stabilityLevelOverride: stabilityOverride,
       trialConcurrency: concurrencyOverride,
       maxTurnsOverride,
@@ -521,7 +535,9 @@ async function main(): Promise<void> {
     process.exit(gradResult.baselineSaved && gradResult.droppedTrials === 0 ? 0 : 1);
   }
 
-  const baselineStore = skipBaseline ? undefined : new BaselineStore();
+  const baselineStore = skipBaseline
+    ? undefined
+    : new BaselineStore('baselines', createFileStore(config, useS3));
 
   if (values.baseline) {
     const baselineError = await validateBaselineRunId(

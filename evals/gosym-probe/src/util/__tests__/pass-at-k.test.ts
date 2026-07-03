@@ -5,6 +5,10 @@ import {
   passHatK,
   resolveReportingKs,
   buildPassEstimators,
+  wilsonConfidenceInterval,
+  formatWilsonCI,
+  formatPass1,
+  type WilsonCI,
 } from '../pass-at-k.js';
 
 describe('passAt1', () => {
@@ -180,5 +184,165 @@ describe('buildPassEstimators', () => {
     expect(result.passAt1).toBeUndefined();
     expect(result.passAtK).toBeUndefined();
     expect(result.passHatK).toBeUndefined();
+  });
+
+  it('includes wilsonCI when n>0', () => {
+    const result = buildPassEstimators(5, 3, [1, 2, 3]);
+    expect(result.wilsonCI).toBeDefined();
+    expect(result.wilsonCI?.n).toBe(5);
+  });
+
+  it('omits wilsonCI when n<=0', () => {
+    const result = buildPassEstimators(0, 0, [1, 2, 3]);
+    expect(result.wilsonCI).toBeUndefined();
+  });
+});
+
+describe('wilsonConfidenceInterval boundary guards', () => {
+  it('returns null for n=0', () => {
+    expect(wilsonConfidenceInterval(0, 0)).toBeNull();
+  });
+
+  it('returns null for negative n', () => {
+    expect(wilsonConfidenceInterval(-1, 0)).toBeNull();
+  });
+
+  it('returns null for n=NaN', () => {
+    expect(wilsonConfidenceInterval(NaN, 3)).toBeNull();
+  });
+
+  it('returns null for n=Infinity', () => {
+    expect(wilsonConfidenceInterval(Infinity, 3)).toBeNull();
+  });
+
+  it('returns null for c=NaN', () => {
+    expect(wilsonConfidenceInterval(5, NaN)).toBeNull();
+  });
+
+  it('returns null for c=Infinity', () => {
+    expect(wilsonConfidenceInterval(5, Infinity)).toBeNull();
+  });
+
+  it('returns null for z=0', () => {
+    expect(wilsonConfidenceInterval(5, 3, 0)).toBeNull();
+  });
+
+  it('returns null for z negative', () => {
+    expect(wilsonConfidenceInterval(5, 3, -1)).toBeNull();
+  });
+
+  it('returns null for z=NaN', () => {
+    expect(wilsonConfidenceInterval(5, 3, NaN)).toBeNull();
+  });
+
+  it('returns null for z=Infinity', () => {
+    expect(wilsonConfidenceInterval(5, 3, Infinity)).toBeNull();
+  });
+
+  it('clamps c>n to n', () => {
+    const clamped: WilsonCI = wilsonConfidenceInterval(5, 10) as WilsonCI;
+    const exact: WilsonCI = wilsonConfidenceInterval(5, 5) as WilsonCI;
+    expect(clamped).not.toBeNull();
+    expect(clamped.lower).toBeCloseTo(exact.lower, 10);
+    expect(clamped.upper).toBeCloseTo(exact.upper, 10);
+  });
+
+  it('clamps c<0 to 0', () => {
+    const clamped: WilsonCI = wilsonConfidenceInterval(5, -3) as WilsonCI;
+    const exact: WilsonCI = wilsonConfidenceInterval(5, 0) as WilsonCI;
+    expect(clamped).not.toBeNull();
+    expect(clamped.lower).toBeCloseTo(exact.lower, 10);
+    expect(clamped.upper).toBeCloseTo(exact.upper, 10);
+  });
+});
+
+describe('wilsonConfidenceInterval correctness', () => {
+  it('n=5/c=3: lower<=p<=upper, bounds in [0,1]', () => {
+    const ci: WilsonCI = wilsonConfidenceInterval(5, 3) as WilsonCI;
+    const p: number = 3 / 5;
+    expect(ci).not.toBeNull();
+    expect(ci.lower).toBeLessThanOrEqual(p);
+    expect(ci.upper).toBeGreaterThanOrEqual(p);
+    expect(ci.lower).toBeGreaterThanOrEqual(0);
+    expect(ci.upper).toBeLessThanOrEqual(1);
+    expect(ci.n).toBe(5);
+  });
+
+  it('n=100/c=67: lower<=p<=upper, bounds in [0,1]', () => {
+    const ci: WilsonCI = wilsonConfidenceInterval(100, 67) as WilsonCI;
+    const p: number = 67 / 100;
+    expect(ci.lower).toBeLessThanOrEqual(p);
+    expect(ci.upper).toBeGreaterThanOrEqual(p);
+    expect(ci.lower).toBeGreaterThanOrEqual(0);
+    expect(ci.upper).toBeLessThanOrEqual(1);
+  });
+
+  it('n=1/c=0: lower=0, upper covers uncertainty', () => {
+    const ci: WilsonCI = wilsonConfidenceInterval(1, 0) as WilsonCI;
+    expect(ci.lower).toBeCloseTo(0, 5);
+    expect(ci.upper).toBeGreaterThan(0);
+  });
+
+  it('n=1/c=1: upper=1, lower covers uncertainty', () => {
+    const ci: WilsonCI = wilsonConfidenceInterval(1, 1) as WilsonCI;
+    expect(ci.upper).toBeCloseTo(1, 5);
+    expect(ci.lower).toBeLessThan(1);
+  });
+
+  it('width narrows as n increases (same pass rate)', () => {
+    const small: WilsonCI = wilsonConfidenceInterval(5, 3) as WilsonCI;
+    const large: WilsonCI = wilsonConfidenceInterval(100, 60) as WilsonCI;
+    const smallWidth: number = small.upper - small.lower;
+    const largeWidth: number = large.upper - large.lower;
+    expect(largeWidth).toBeLessThan(smallWidth);
+  });
+
+  it('known value n=5/c=3/z=1.96: lower~0.2307, upper~0.8824', () => {
+    const ci: WilsonCI = wilsonConfidenceInterval(5, 3, 1.96) as WilsonCI;
+    expect(ci.lower).toBeCloseTo(0.2307, 3);
+    expect(ci.upper).toBeCloseTo(0.8824, 3);
+  });
+});
+
+describe('formatWilsonCI', () => {
+  it('returns sentinel when ci is undefined', () => {
+    expect(formatWilsonCI(undefined, '---')).toBe('---');
+  });
+
+  it('renders [lower, upper] as 2 decimal strings', () => {
+    const ci: WilsonCI = { lower: 0.23456, upper: 0.87654, n: 5 };
+    expect(formatWilsonCI(ci, '---')).toBe('[0.23, 0.88]');
+  });
+
+  it('renders 0.00 lower and 1.00 upper at boundaries', () => {
+    const ci: WilsonCI = { lower: 0, upper: 1, n: 1 };
+    expect(formatWilsonCI(ci, '---')).toBe('[0.00, 1.00]');
+  });
+});
+
+describe('formatPass1 extended signature', () => {
+  it('renders bare value when no n/ci given (backward compat)', () => {
+    expect(formatPass1(0.6, '---')).toBe('0.60');
+  });
+
+  it('returns sentinel for undefined value', () => {
+    expect(formatPass1(undefined, '---')).toBe('---');
+  });
+
+  it('returns sentinel for non-finite value', () => {
+    expect(formatPass1(NaN, '---')).toBe('---');
+  });
+
+  it('renders value with (n=N) when stats provided but no ci', () => {
+    expect(formatPass1(0.6, '---', { n: 5 })).toBe('0.60 (n=5)');
+  });
+
+  it('renders full format with n and ci', () => {
+    const ci: WilsonCI = { lower: 0.234, upper: 0.876, n: 5 };
+    expect(formatPass1(0.6, '---', { n: 5, ci })).toBe('0.60 (n=5) [0.23, 0.88]');
+  });
+
+  it('renders without ci annotation when ci is undefined even if stats provided', () => {
+    expect(formatPass1(0.6, '---', { n: 5, ci: undefined })).toBe('0.60 (n=5)');
   });
 });

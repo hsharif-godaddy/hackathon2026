@@ -68,7 +68,7 @@ describe('JTBDCompletionEvaluator', () => {
       makeTranscript(),
       makeScenario({ goals: [] }),
     );
-    expect(result.verdict).toBe('unknown');
+    expect(result.verdict).toBe('incomplete');
     expect(mockGocode.complete).not.toHaveBeenCalled();
   });
 
@@ -84,7 +84,7 @@ describe('JTBDCompletionEvaluator', () => {
     expect(result.score).toBe(1.0);
   });
 
-  it('maps "partial" response to partial verdict and score 0.5', async () => {
+  it('maps "partial" response to fail verdict and score 0.0 (compat mapping)', async () => {
     mockGocode.complete.mockResolvedValue('partial');
     const result = await evaluator.evaluate(
       makeTranscript(),
@@ -92,8 +92,8 @@ describe('JTBDCompletionEvaluator', () => {
         goals: [{ description: 'build', assertion: 'positive' }],
       }),
     );
-    expect(result.verdict).toBe('partial');
-    expect(result.score).toBe(0.5);
+    expect(result.verdict).toBe('fail');
+    expect(result.score).toBe(0.0);
   });
 
   it('maps "fail" response to fail verdict and score 0.0', async () => {
@@ -116,7 +116,21 @@ describe('JTBDCompletionEvaluator', () => {
         goals: [{ description: 'build', assertion: 'positive' }],
       }),
     );
-    expect(result.verdict).toBe('unknown');
+    expect(result.verdict).toBe('incomplete');
+  });
+
+  it('maps "incomplete" response to incomplete verdict and score 0', async () => {
+    mockGocode.complete.mockResolvedValue(
+      'incomplete: insufficient information in transcript',
+    );
+    const result = await evaluator.evaluate(
+      makeTranscript(),
+      makeScenario({
+        goals: [{ description: 'build', assertion: 'positive' }],
+      }),
+    );
+    expect(result.verdict).toBe('incomplete');
+    expect(result.score).toBe(0);
   });
 
   it('defaults to unknown on unrecognized LLM response', async () => {
@@ -127,7 +141,7 @@ describe('JTBDCompletionEvaluator', () => {
         goals: [{ description: 'build', assertion: 'positive' }],
       }),
     );
-    expect(result.verdict).toBe('unknown');
+    expect(result.verdict).toBe('incomplete');
   });
 
   it('includes "Did the agent accomplish" for positive goals', async () => {

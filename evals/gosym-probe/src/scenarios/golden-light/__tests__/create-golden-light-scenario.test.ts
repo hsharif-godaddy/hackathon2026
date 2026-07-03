@@ -27,6 +27,7 @@ function makeBaseConfig(): GoldenLightConfig {
 function makeMockEvaluator(name: string): Evaluator {
   return {
     name,
+    comparisonMode: 'passRate' as const,
     evaluate: async (
       _transcript: Transcript,
       _scenario: Scenario,
@@ -156,7 +157,7 @@ describe('createGoldenLightScenario', () => {
     };
     const result = await agentStepsEval!.evaluate(transcript, scenario);
     expect(result.score).toBe(5);
-    expect(result.verdict).toBe('observed');
+    expect(result.verdict).toBe('directional');
   });
 
   describe('config validation', () => {

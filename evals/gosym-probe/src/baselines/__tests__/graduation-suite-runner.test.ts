@@ -786,7 +786,7 @@ describe('GraduationSuiteRunner — suiteMode: parallel', () => {
     const mockBaselineStore = { save: vi.fn() };
     mockSuiteRunnerRun.mockResolvedValue([
       makeScenarioResult('alpha', {
-        trials: [makeTrialResult({ evalResults: [{ evaluator: 'test', score: 0, verdict: 'unknown', reason: '' }] })],
+        trials: [makeTrialResult({ evalResults: [{ evaluator: 'test', score: 0, verdict: 'incomplete', reason: '' }] })],
       }),
     ]);
 

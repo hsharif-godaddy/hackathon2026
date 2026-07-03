@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { contactPageExpectation } from '../expectations/contact-page.expectation.js';
+import { DirectionalSignalEvaluator }
+  from '../../../evaluators/directional-signal.js';
 import { ExpectedArtifactMatchEvaluator }
   from '../../../evaluators/expected-artifact-match.js';
 import type { DOMSnapshot, Transcript } from '../../../runner/transcript.js';
@@ -88,8 +90,8 @@ function siteWith(opts: {
 describe('contactPageExpectation fixture (capability matchers)', () => {
   const evaluator = new ExpectedArtifactMatchEvaluator();
 
-  it('is at evalVersion v3', () => {
-    expect(contactPageExpectation.evalVersion).toBe('v3');
+  it('is at evalVersion v4', () => {
+    expect(contactPageExpectation.evalVersion).toBe('v4');
   });
 
   it('passes has-rendered-content via snapshot HTML when rendered signals are empty', async () => {
@@ -141,7 +143,7 @@ describe('contactPageExpectation fixture (capability matchers)', () => {
     });
     const result = await evaluator.evaluate(makeTranscript(site), makeScenario());
     expect(result.verdict).toBe('pass');
-    expect(result.evalVersion).toBe('v3');
+    expect(result.evalVersion).toBe('v4');
   });
 
   it('passes mentions-contact via rendered copy when no contact route exists', async () => {
@@ -152,7 +154,7 @@ describe('contactPageExpectation fixture (capability matchers)', () => {
     expect(result.verdict).toBe('pass');
   });
 
-  it('downgrades to partial (not fail) when contact capability is absent', async () => {
+  it('binary verdict passes when only the contact (directional) signal is absent', async () => {
     const site = siteWith({
       rendered: {
         title: 'Acme',
@@ -162,8 +164,23 @@ describe('contactPageExpectation fixture (capability matchers)', () => {
       },
     });
     const result = await evaluator.evaluate(makeTranscript(site), makeScenario());
-    // capability + invariance still pass; only the directional misses
-    expect(result.verdict).toBe('partial');
-    expect(result.details?.directionalFailures).toEqual(['mentions-contact']);
+    // 'mentions-contact' is a directional signal now, scored separately;
+    // capability + invariance still pass, so the binary verdict is 'pass'.
+    expect(result.verdict).toBe('pass');
+  });
+
+  it('directional evaluator reports the absent contact signal as score 0 (directional)', async () => {
+    const directional = new DirectionalSignalEvaluator();
+    const site = siteWith({
+      rendered: {
+        title: 'Acme',
+        h1: 'Welcome',
+        headingText: 'Welcome',
+        bodyPreview: 'We fix pipes fast and reliably for your home',
+      },
+    });
+    const result = await directional.evaluate(makeTranscript(site), makeScenario());
+    expect(result.verdict).toBe('directional');
+    expect(result.score).toBe(0);
   });
 });

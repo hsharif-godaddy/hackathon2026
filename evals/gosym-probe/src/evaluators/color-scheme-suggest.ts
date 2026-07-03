@@ -24,7 +24,7 @@ const AA_NORMAL = 4.5;
 export class ColorSchemeSuggestEvaluator implements Evaluator {
   readonly name = 'color-scheme-suggest-contrast';
   readonly evalVersion = EVAL_VERSION;
-  readonly regressionMode = 'score' as const;
+  readonly comparisonMode = 'score' as const;
   readonly lowerIsBetter = true;
 
   async evaluate(transcript: Transcript, _scenario: Scenario, _snapshot?: DOMSnapshot): Promise<EvalResult> {
@@ -35,7 +35,7 @@ export class ColorSchemeSuggestEvaluator implements Evaluator {
         evaluator: this.name,
         evalVersion: EVAL_VERSION,
         score: 0,
-        verdict: 'unknown',
+        verdict: 'incomplete',
         reason: 'No colorScheme suggest output found in the transcript; the "show more color schemes" path was not exercised.',
       };
     }
@@ -55,7 +55,7 @@ export class ColorSchemeSuggestEvaluator implements Evaluator {
       evaluator: this.name,
       evalVersion: EVAL_VERSION,
       score,
-      verdict: 'observed',
+      verdict: 'directional',
       reason,
       details: {
         palettesSuggested: audited.length,

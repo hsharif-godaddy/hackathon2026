@@ -1,12 +1,14 @@
 import { describe, it, expect, vi } from 'vitest';
 
-import { createSkillEval } from '../create-skill-eval.js';
+import { createSkillEval, SKILL_EVAL_MIN_TRIALS } from '../create-skill-eval.js';
 import type { SkillEvalConfig } from '../create-skill-eval.js';
 import type { IGocodeClient } from '../../../clients/gocode-client.js';
 import type { AABCtrlPlaneClient }
   from '../../../clients/aab-ctrl-plane-client.js';
 import type { SkillInstruction } from '../../types.js';
 import type { Evaluator } from '../../../evaluators/evaluator.js';
+import type { StatefulAppOptions, SummarySeeder }
+  from '../../stateful/create-stateful-app.js';
 
 function stubGocode(): IGocodeClient {
   return {
@@ -104,6 +106,30 @@ describe('createSkillEval', () => {
       )).toThrow(/trials/i);
     });
 
+    it('throws on non-integer trials', () => {
+      expect(() => createSkillEval(
+        validConfig({ trials: 5.5 }),
+        gocode,
+        ctrlPlane,
+      )).toThrow(/integer/i);
+    });
+
+    it(`throws when trials is below the k>=${SKILL_EVAL_MIN_TRIALS} floor`, () => {
+      expect(() => createSkillEval(
+        validConfig({ trials: SKILL_EVAL_MIN_TRIALS - 1 }),
+        gocode,
+        ctrlPlane,
+      )).toThrow(/trials >=/i);
+    });
+
+    it(`accepts trials exactly at the k=${SKILL_EVAL_MIN_TRIALS} floor`, () => {
+      expect(() => createSkillEval(
+        validConfig({ trials: SKILL_EVAL_MIN_TRIALS }),
+        gocode,
+        ctrlPlane,
+      )).not.toThrow();
+    });
+
     it('throws on duplicate skillInstruction IDs', () => {
       expect(() => createSkillEval(
         validConfig({
@@ -115,6 +141,19 @@ describe('createSkillEval', () => {
         gocode,
         ctrlPlane,
       )).toThrow(/duplicate.*dup/i);
+    });
+
+    it('throws when no required instruction is present (advisory-only cannot gate)', () => {
+      expect(() => createSkillEval(
+        validConfig({
+          skillInstructions: [
+            { id: 'a1', instruction: 'nice to have', priority: 'advisory' },
+            { id: 'a2', instruction: 'also nice', priority: 'advisory' },
+          ],
+        }),
+        gocode,
+        ctrlPlane,
+      )).toThrow(/at least one 'required'/i);
     });
 
     it('does not throw on valid config with no optional fields', () => {
@@ -149,6 +188,7 @@ describe('createSkillEval', () => {
                 id: 'has-form',
                 description: 'Page has a contact form',
                 type: 'capability',
+                domMatcher: () => true,
               },
             ],
             evalVersion: '1',
@@ -180,6 +220,7 @@ describe('createSkillEval', () => {
     it('throws on duplicate evaluator names from extraEvaluators', () => {
       const dupe: Evaluator = {
         name: 'skill-selection',
+        comparisonMode: 'passRate' as const,
         evaluate: vi.fn(),
       };
       expect(() => createSkillEval(
@@ -242,6 +283,96 @@ describe('createSkillEval', () => {
     it('uses scenario name from config', () => {
       const scenario = createSkillEval(validConfig(), gocode, ctrlPlane);
       expect(scenario.name).toBe('test-scenario');
+    });
+
+    it(`defaults trials to the k=${SKILL_EVAL_MIN_TRIALS} floor when unset`, () => {
+      const scenario = createSkillEval(validConfig(), gocode, ctrlPlane);
+      expect(scenario.trials).toBe(SKILL_EVAL_MIN_TRIALS);
+    });
+
+    it('honors an explicit trials override at or above the floor', () => {
+      const scenario = createSkillEval(
+        validConfig({ trials: 10 }),
+        gocode,
+        ctrlPlane,
+      );
+      expect(scenario.trials).toBe(10);
+    });
+  });
+
+  describe('stateful injection seam tests', () => {
+    function makeStatefulCtrlPlane(): AABCtrlPlaneClient {
+      return {
+        provisionApp: vi.fn().mockResolvedValue({
+          appId: 'shared-app',
+          previewUrl: 'http://shared',
+        }),
+        deleteApp: vi.fn().mockResolvedValue(undefined),
+        resetApp: vi.fn().mockResolvedValue(undefined),
+      } as unknown as AABCtrlPlaneClient;
+    }
+
+    it('sets requiresSerialTrials when statefulInjection is provided', () => {
+      const injection: StatefulAppOptions = {
+        existingApp: { appId: 'pre-built', previewUrl: 'http://pre' },
+      };
+      const scenario = createSkillEval(
+        validConfig({ statefulInjection: injection }),
+        gocode,
+        makeStatefulCtrlPlane(),
+      );
+      expect(scenario.requiresSerialTrials).toBe(true);
+    });
+
+    it('does not set requiresSerialTrials when statefulInjection is absent', () => {
+      const scenario = createSkillEval(validConfig(), gocode, ctrlPlane);
+      expect(scenario.requiresSerialTrials).toBeUndefined();
+    });
+
+    it('seedSummary callback is invoked during setup when statefulInjection + seededSummary set', async () => {
+      const seedSummaryMock: SummarySeeder = vi.fn().mockResolvedValue(undefined);
+      const seedInput = {
+        summaryText: 'A dental practice site with 6 pages',
+        messageCount: 10,
+        originalTokenCount: 2000,
+      };
+      const injection: StatefulAppOptions = {
+        existingApp: { appId: 'pre-built', previewUrl: 'http://pre' },
+        seededSummary: seedInput,
+      };
+      const scenario = createSkillEval(
+        validConfig({ statefulInjection: injection }),
+        gocode,
+        makeStatefulCtrlPlane(),
+        seedSummaryMock,
+      );
+      await scenario.setup?.();
+      expect(seedSummaryMock).toHaveBeenCalledWith('pre-built', seedInput);
+    });
+
+    it('seedSummary without statefulInjection is a no-op (no error)', () => {
+      const seedSummaryMock: SummarySeeder = vi.fn().mockResolvedValue(undefined);
+      expect(() => createSkillEval(
+        validConfig(),
+        gocode,
+        ctrlPlane,
+        seedSummaryMock,
+      )).not.toThrow();
+    });
+
+    it('fallback path (no injection) setup provisions a fresh app', async () => {
+      const freshCtrl = makeStatefulCtrlPlane();
+      const scenario = createSkillEval(validConfig(), gocode, freshCtrl);
+      const ctx = await scenario.setup?.();
+      expect(ctx).toEqual({ appId: 'shared-app', previewUrl: 'http://shared' });
+      expect(freshCtrl.provisionApp).toHaveBeenCalledTimes(1);
+    });
+
+    it('fallback path (no injection) teardown deletes the app', async () => {
+      const freshCtrl = makeStatefulCtrlPlane();
+      const scenario = createSkillEval(validConfig(), gocode, freshCtrl);
+      await scenario.teardown?.({ appId: 'shared-app' });
+      expect(freshCtrl.deleteApp).toHaveBeenCalledWith('shared-app');
     });
   });
 });

@@ -24,9 +24,9 @@ describe('ToolFailureRateEvaluator — properties', () => {
   });
 
 
-  it('has regressionMode score', () => {
+  it('has comparisonMode score', () => {
     const evaluator = new ToolFailureRateEvaluator();
-    expect(evaluator.regressionMode).toBe('score');
+    expect(evaluator.comparisonMode).toBe('score');
   });
 
   it('has lowerIsBetter true', () => {
@@ -40,7 +40,7 @@ describe('ToolFailureRateEvaluator — edge case: zero tool calls', () => {
     const evaluator = new ToolFailureRateEvaluator();
     const result = await evaluator.evaluate(makeTranscript([]), makeScenario());
     expect(result.score).toBe(0);
-    expect(result.verdict).toBe('unknown');
+    expect(result.verdict).toBe('incomplete');
   });
 
   it('returns score 0 and verdict unknown when turns have empty toolCalls arrays', async () => {
@@ -50,7 +50,7 @@ describe('ToolFailureRateEvaluator — edge case: zero tool calls', () => {
       makeScenario(),
     );
     expect(result.score).toBe(0);
-    expect(result.verdict).toBe('unknown');
+    expect(result.verdict).toBe('incomplete');
   });
 });
 
@@ -68,7 +68,7 @@ describe('ToolFailureRateEvaluator — boundary: error string treatment', () => 
       makeScenario(),
     );
     expect(result.score).toBe(0);
-    expect(result.verdict).toBe('observed');
+    expect(result.verdict).toBe('directional');
   });
 });
 
@@ -85,7 +85,7 @@ describe('ToolFailureRateEvaluator — edge case: all tool calls succeed', () =>
       makeScenario(),
     );
     expect(result.score).toBe(0);
-    expect(result.verdict).toBe('observed');
+    expect(result.verdict).toBe('directional');
   });
 });
 
@@ -101,7 +101,7 @@ describe('ToolFailureRateEvaluator — boundary: single failure', () => {
       makeScenario(),
     );
     expect(result.score).toBe(1);
-    expect(result.verdict).toBe('observed');
+    expect(result.verdict).toBe('directional');
   });
 });
 
@@ -120,7 +120,7 @@ describe('ToolFailureRateEvaluator — multiple errors across turns', () => {
       makeScenario(),
     );
     expect(result.score).toBe(1);
-    expect(result.verdict).toBe('observed');
+    expect(result.verdict).toBe('directional');
   });
 });
 
@@ -139,7 +139,7 @@ describe('ToolFailureRateEvaluator — mixed success and failure', () => {
       makeScenario(),
     );
     expect(result.score).toBe(0.5);
-    expect(result.verdict).toBe('observed');
+    expect(result.verdict).toBe('directional');
   });
 });
 
@@ -224,7 +224,7 @@ describe('ToolFailureRateEvaluator — integration seam (EvalResult shape)', () 
     );
     expect(result.evaluator).toBe('tool-failure-rate');
     expect(typeof result.score).toBe('number');
-    expect(result.verdict).toBe('observed');
+    expect(result.verdict).toBe('directional');
     expect(typeof result.reason).toBe('string');
     expect(result.reason.length).toBeGreaterThan(0);
   });

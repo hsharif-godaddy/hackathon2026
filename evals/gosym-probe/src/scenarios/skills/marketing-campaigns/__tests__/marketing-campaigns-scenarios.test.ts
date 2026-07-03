@@ -25,7 +25,7 @@ describe('marketing-campaigns scenarios', () => {
       expect(s.suite).toBe('marketing-campaigns');
       expect(s.expectedAgent).toBe(MARKETING_AGENT_DISPLAY_NAME);
       expect(s.expectedSkills).toContain('marketing-campaigns');
-      expect(s.trials).toBe(3);
+      expect(s.trials).toBe(5);
     });
     it('gates the skill via the marketingCampaignsEnabled claim', () => {
       expect(s.contextClaims).toEqual({ marketingCampaignsEnabled: true });

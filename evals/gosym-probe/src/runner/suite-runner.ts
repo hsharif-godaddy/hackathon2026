@@ -12,6 +12,7 @@ import type { SyntheticUserAgent } from './synthetic-user.js';
 import type { SiteCapture } from '../clients/dom-capture.js';
 import type { DOMSnapshot, Transcript } from './transcript.js';
 import type { BaselineScores } from '../baselines/types.js';
+import type { StorageBackend } from '../storage/file-store.js';
 import type { EvalResult, Evaluator } from '../evaluators/evaluator.js';
 import { normalizeEvalResult } from '../evaluators/normalize-eval-result.js';
 import { effectiveConcurrency } from '../util/concurrency.js';
@@ -28,6 +29,7 @@ const RATE_LIMIT_WAIT_MS = 30_000;
 const MAX_RATE_LIMIT_RETRIES = 10;
 
 interface BaselineStore {
+  readonly backend: StorageBackend;
   load(scenarioName: string): Promise<{ scores: BaselineScores; filePath: string } | null>;
   loadByRunId(scenarioName: string, runId: string): Promise<{ scores: BaselineScores; filePath: string } | null>;
 }
@@ -288,6 +290,33 @@ export class SuiteRunner {
       result.aggregated = enrichedAggregated;
       result.trials = enrichedTrials;
       result.baselineFilePath = loaded.filePath;
+    } else if (baselineStore.backend === 's3') {
+      // S3 is the shared gating store: every expected scenario is pushed there
+      // via `save-baseline --s3` before a gating run. A miss here is therefore
+      // far more likely a config fault (wrong prefix, a list-scoped IAM policy
+      // returning an empty listing) than a legitimately-new scenario — and a
+      // silently-skipped gate on a green CI run is the exact false-green the
+      // readFile bucket-fault hardening exists to prevent, reached through the
+      // readdir door. Fail closed rather than exit 0 on a phantom pass. A
+      // genuinely-new scenario on S3 must get its first baseline pushed
+      // explicitly (manual `save-baseline --s3`), not be inferred from absence.
+      throw new Error(
+        `No S3 baseline found for scenario "${scenario.name}" — refusing to `
+        + 'skip the regression gate on the shared store (likely a wrong '
+        + 'storage.s3.prefix or a list-scoped credential). Push a baseline with '
+        + '`save-baseline --s3`, or run without --s3 for a new scenario.',
+      );
+    } else {
+      // Local store: a missing baseline is an expected, normal state for a
+      // legitimately-new scenario in local dev, so the run can still exit
+      // clean. Surface the skipped gate rather than silently green.
+      warnLine(
+        'Baseline not found — regression gate NOT applied for this scenario.',
+        {
+          scenarioName: scenario.name,
+          storageBackend: baselineStore.backend,
+        },
+      );
     }
   }
 
@@ -498,12 +527,14 @@ export class SuiteRunner {
     // both approaches are correct given the key-scoped access pattern.
     const afterSimFailures = new Set<string>();
 
-    const concurrency = effectiveConcurrency(trialConcurrency, config.eval.maxConcurrency);
-    if (scenario.requiresSerialTrials && concurrency > 1) {
-      throw new Error(
-        `Scenario "${scenario.name}" requires serial trials (stateful injection ` +
-        `shares one app workspace), but effective trial concurrency is ${concurrency}. ` +
-        `Re-run with --concurrency 1.`,
+    const rawConcurrency = effectiveConcurrency(trialConcurrency, config.eval.maxConcurrency);
+    const concurrency = (scenario.requiresSerialTrials && rawConcurrency > 1)
+      ? 1
+      : rawConcurrency;
+    if (scenario.requiresSerialTrials && rawConcurrency > 1) {
+      console.warn(
+        `[suite-runner] Scenario "${scenario.name}" requires serial trials; ` +
+        `clamping concurrency from ${rawConcurrency} to 1.`,
       );
     }
     let newTrialResults: TrialResult[];
@@ -830,7 +861,7 @@ export class SuiteRunner {
       return normalizeEvalResult({
         evaluator: evaluator.name,
         score: 0,
-        verdict: 'unknown',
+        verdict: 'incomplete',
         reason: err instanceof Error ? err.message : String(err),
         evaluatorFailed: true,
       });

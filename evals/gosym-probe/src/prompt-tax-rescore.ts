@@ -120,7 +120,7 @@ async function main(): Promise<void> {
   }
 
   // Build the scenario registry so each arm aggregates with its real evaluator
-  // config (regressionMode, lowerIsBetter). Network clients are constructed but
+  // config (comparisonMode, lowerIsBetter). Network clients are constructed but
   // never used — rescore only reads from disk.
   const ctrlPlane = new AABCtrlPlaneClient({ baseUrl: config.aab.controlPlaneUrl });
   const gocode = new GocodeClient(config.gocode);

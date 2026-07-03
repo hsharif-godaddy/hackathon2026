@@ -5,14 +5,12 @@ import { summarizeToolCalls } from '../store/tool-call-summarizer.js';
 
 /**
  * Verdicts that mark a trial as worth investigating. Passing trials and
- * score-mode `observed` measurements are excluded — a trial only earns
- * full-evidence treatment when it fails, partially fails, or could not be
- * judged.
+ * score-mode `directional` measurements are excluded — a trial only earns
+ * full-evidence treatment when it fails or could not be judged.
  */
 const INVESTIGABLE_VERDICTS: ReadonlySet<EvalResult['verdict']> = new Set([
   'fail',
-  'partial',
-  'unknown',
+  'incomplete',
 ]);
 
 const TRUNCATION_MARKER = '\n... [truncated]';

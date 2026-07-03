@@ -36,7 +36,7 @@ export function socialCreatePostsScenario(
       suite: 'social-posts',
       userIntent: 'Create Instagram posts about our weekend brunch special',
       expectedAgent: MARKETING_AGENT_DISPLAY_NAME,
-      trials: 3,
+      trials: 5,
       goals: [
         {
           description:

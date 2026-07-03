@@ -315,12 +315,12 @@ evaluators) per evaluator, not raw trial transcripts.
 **No baseline = informational.** Scenarios without a saved baseline are
 reported but never block. Pass `--skip-baseline` to skip comparison entirely.
 
-**How regression is detected:** two modes based on `regressionMode`:
+**How regression is detected:** two modes based on `comparisonMode`:
 
-- **Pass-rate evaluators** (default): compares pass rate
+- **Pass-rate evaluators** (`comparisonMode: 'passRate'`): compares pass rate
   (`passingTrials / totalTrials`) against baseline. A drop exceeding the
   threshold flags a regression.
-- **Score-mode evaluators** (`regressionMode: 'score'`): compares the
+- **Score-mode evaluators** (`comparisonMode: 'score'`): compares the
   aggregate score (trimmed mean) via relative percentage change against the
   baseline. Respects `lowerIsBetter` directionality. After regression
   comparison, `enrichScoreModePassRates` derives `passAtK`/`passToTheK` by

@@ -19,12 +19,12 @@ describe('TokenUsageEvaluator', () => {
     expect(evaluator.name).toBe('token-usage');
   });
 
-  it('has regressionMode "score"', () => {
+  it('has comparisonMode "score"', () => {
     const evaluator = new TokenUsageEvaluator({
       collector: makeMockCollector(),
       gocodeClient: makeMockGocodeClient(),
     });
-    expect(evaluator.regressionMode).toBe('score');
+    expect(evaluator.comparisonMode).toBe('score');
   });
 
   it('has lowerIsBetter true', () => {
@@ -99,7 +99,7 @@ describe('TokenUsageEvaluator', () => {
         makeScenario(),
       );
 
-      expect(result.verdict).toBe('unknown');
+      expect(result.verdict).toBe('incomplete');
     });
 
     it('clears afterSnapshot alongside baseline', async () => {
@@ -117,7 +117,7 @@ describe('TokenUsageEvaluator', () => {
 
       const result = await evaluator.evaluate(makeTranscript(0), makeScenario());
 
-      expect(result.verdict).toBe('unknown');
+      expect(result.verdict).toBe('incomplete');
     });
   });
 
@@ -152,7 +152,7 @@ describe('TokenUsageEvaluator', () => {
         makeScenario(),
       );
 
-      expect(result.verdict).toBe('unknown');
+      expect(result.verdict).toBe('incomplete');
       expect(result.score).toBe(0);
     });
 
@@ -167,7 +167,7 @@ describe('TokenUsageEvaluator', () => {
       await evaluator.evaluate(makeTranscript(0), makeScenario());
       const result = await evaluator.evaluate(makeTranscript(0), makeScenario());
 
-      expect(result.verdict).toBe('unknown');
+      expect(result.verdict).toBe('incomplete');
     });
 
     it('returns verdict unknown with score 0 when collector returns null', async () => {
@@ -180,7 +180,7 @@ describe('TokenUsageEvaluator', () => {
       evaluator.hookClient(makeMockClient(), 0);
       const result = await evaluator.evaluate(makeTranscript(0), makeScenario());
 
-      expect(result.verdict).toBe('unknown');
+      expect(result.verdict).toBe('incomplete');
       expect(result.score).toBe(0);
       expect(result.reason).toContain('collector returned null');
     });
@@ -199,7 +199,7 @@ describe('TokenUsageEvaluator', () => {
       evaluator.hookClient(makeMockClient(), 0);
       const result = await evaluator.evaluate(makeTranscript(0), makeScenario());
 
-      expect(result.verdict).toBe('observed');
+      expect(result.verdict).toBe('directional');
       expect(result.score).toBe(7000);
     });
 
@@ -215,7 +215,7 @@ describe('TokenUsageEvaluator', () => {
       evaluator.hookClient(makeMockClient(), 0);
       const result = await evaluator.evaluate(makeTranscript(0), makeScenario());
 
-      expect(result.verdict).toBe('observed');
+      expect(result.verdict).toBe('directional');
       expect(result.score).toBe(0);
     });
 
@@ -457,8 +457,8 @@ describe('TokenUsageEvaluator', () => {
 
       expect(result0.score).toBe(1000); // aab totalTokens for trial 0
       expect(result1.score).toBe(2000); // aab totalTokens for trial 1
-      expect(result0.verdict).toBe('observed');
-      expect(result1.verdict).toBe('observed');
+      expect(result0.verdict).toBe('directional');
+      expect(result1.verdict).toBe('directional');
     });
 
     it('details total tokens are correct per trial', async () => {

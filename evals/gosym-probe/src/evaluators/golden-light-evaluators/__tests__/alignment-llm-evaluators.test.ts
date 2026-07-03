@@ -114,20 +114,20 @@ describe('intent-to-output-alignment (numerical)', () => {
     );
     expect(result.evaluator).toBe('intent-to-output-alignment');
     expect(result.score).toBeCloseTo(0.9);
-    expect(result.verdict).toBe('observed');
+    expect(result.verdict).toBe('directional');
     expect((result.details as Record<string, unknown>)?.advisoryVerdict).toBe('pass');
     expect(result.reason).toBe('well aligned');
     expect(result.evalVersion).toBe(ALIGNMENT_EVAL_VERSION);
   });
 
   it('partial case: maps partial to observed with advisoryVerdict partial', async () => {
-    const ev = getEval(makeGocode({ score: 0.55, verdict: 'partial', reason: 'mostly aligned' }));
+    const ev = getEval(makeGocode({ score: 0.55, verdict: 'fail', reason: 'mostly aligned' }));
     const result = await ev.evaluate(
       makeTranscript(VALID_TURNS), makeScenario(), VALID_SNAPSHOT,
     );
     expect(result.score).toBeCloseTo(0.55);
-    expect(result.verdict).toBe('observed');
-    expect((result.details as Record<string, unknown>)?.advisoryVerdict).toBe('partial');
+    expect(result.verdict).toBe('directional');
+    expect((result.details as Record<string, unknown>)?.advisoryVerdict).toBe('fail');
   });
 
   it('fail case: maps fail to observed with advisoryVerdict fail', async () => {
@@ -136,17 +136,17 @@ describe('intent-to-output-alignment (numerical)', () => {
       makeTranscript(VALID_TURNS), makeScenario(), VALID_SNAPSHOT,
     );
     expect(result.score).toBeCloseTo(0.1);
-    expect(result.verdict).toBe('observed');
+    expect(result.verdict).toBe('directional');
     expect((result.details as Record<string, unknown>)?.advisoryVerdict).toBe('fail');
   });
 
   it('unknown verdict forces score to 0', async () => {
-    const ev = getEval(makeGocode({ score: 0.5, verdict: 'unknown', reason: 'insufficient' }));
+    const ev = getEval(makeGocode({ score: 0.5, verdict: 'incomplete', reason: 'insufficient' }));
     const result = await ev.evaluate(
       makeTranscript(VALID_TURNS), makeScenario(), VALID_SNAPSHOT,
     );
     expect(result.score).toBe(0);
-    expect(result.verdict).toBe('unknown');
+    expect(result.verdict).toBe('incomplete');
   });
 
   it('canEvaluate returns false for empty transcript → verdict unknown', async () => {
@@ -155,7 +155,7 @@ describe('intent-to-output-alignment (numerical)', () => {
       makeTranscript([]), makeScenario(), VALID_SNAPSHOT,
     );
     expect(result.score).toBe(0);
-    expect(result.verdict).toBe('unknown');
+    expect(result.verdict).toBe('incomplete');
   });
 
   it('LLM failure returns verdict unknown', async () => {
@@ -164,7 +164,7 @@ describe('intent-to-output-alignment (numerical)', () => {
       makeTranscript(VALID_TURNS), makeScenario(), VALID_SNAPSHOT,
     );
     expect(result.score).toBe(0);
-    expect(result.verdict).toBe('unknown');
+    expect(result.verdict).toBe('incomplete');
     expect(result.reason).toContain('network timeout');
   });
 
@@ -177,7 +177,7 @@ describe('intent-to-output-alignment (numerical)', () => {
       makeTranscript(VALID_TURNS), makeScenario(), VALID_SNAPSHOT,
     );
     expect(result.score).toBe(0);
-    expect(result.verdict).toBe('unknown');
+    expect(result.verdict).toBe('incomplete');
   });
 
   it('schema mismatch from LLM returns verdict unknown', async () => {
@@ -186,7 +186,7 @@ describe('intent-to-output-alignment (numerical)', () => {
       makeTranscript(VALID_TURNS), makeScenario(), VALID_SNAPSHOT,
     );
     expect(result.score).toBe(0);
-    expect(result.verdict).toBe('unknown');
+    expect(result.verdict).toBe('incomplete');
   });
 
   it('validateEvidence rejects empty body HTML → verdict unknown', async () => {
@@ -196,7 +196,7 @@ describe('intent-to-output-alignment (numerical)', () => {
       makeTranscript(VALID_TURNS), makeScenario(), emptyBodySnapshot,
     );
     expect(result.score).toBe(0);
-    expect(result.verdict).toBe('unknown');
+    expect(result.verdict).toBe('incomplete');
     expect(result.reason).toContain('Evidence validation failed');
   });
 
@@ -231,7 +231,7 @@ describe('implicit-feature-gap (numerical, score-mode)', () => {
     const result = await ev.evaluate(
       makeTranscript(VALID_TURNS), makeScenario(), VALID_SNAPSHOT,
     );
-    expect(result.verdict).toBe('observed');
+    expect(result.verdict).toBe('directional');
     expect(result.score).toBeCloseTo(0.8);
     expect((result.details as Record<string, unknown>)?.advisoryVerdict).toBe('pass');
   });
@@ -241,7 +241,7 @@ describe('implicit-feature-gap (numerical, score-mode)', () => {
     const result = await ev.evaluate(
       makeTranscript(VALID_TURNS), makeScenario(), VALID_SNAPSHOT,
     );
-    expect(result.verdict).toBe('observed');
+    expect(result.verdict).toBe('directional');
     expect(result.score).toBeCloseTo(0.2);
     expect((result.details as Record<string, unknown>)?.advisoryVerdict).toBe('fail');
   });
@@ -260,12 +260,12 @@ describe('implicit-feature-gap (numerical, score-mode)', () => {
   });
 
   it('unknown verdict forces score to 0 and verdict unknown', async () => {
-    const ev = getEval(makeGocode({ score: 0.5, verdict: 'unknown', reason: 'unclear' }));
+    const ev = getEval(makeGocode({ score: 0.5, verdict: 'incomplete', reason: 'unclear' }));
     const result = await ev.evaluate(
       makeTranscript(VALID_TURNS), makeScenario(), VALID_SNAPSHOT,
     );
     expect(result.score).toBe(0);
-    expect(result.verdict).toBe('unknown');
+    expect(result.verdict).toBe('incomplete');
   });
 
   it('canEvaluate returns false for empty transcript → verdict unknown', async () => {
@@ -274,7 +274,7 @@ describe('implicit-feature-gap (numerical, score-mode)', () => {
       makeTranscript([]), makeScenario(), VALID_SNAPSHOT,
     );
     expect(result.score).toBe(0);
-    expect(result.verdict).toBe('unknown');
+    expect(result.verdict).toBe('incomplete');
   });
 
   it('LLM failure returns verdict unknown', async () => {
@@ -283,7 +283,7 @@ describe('implicit-feature-gap (numerical, score-mode)', () => {
       makeTranscript(VALID_TURNS), makeScenario(), VALID_SNAPSHOT,
     );
     expect(result.score).toBe(0);
-    expect(result.verdict).toBe('unknown');
+    expect(result.verdict).toBe('incomplete');
   });
 });
 
@@ -303,7 +303,7 @@ describe('silent-hallucination (numerical, score-mode)', () => {
     const result = await ev.evaluate(
       makeTranscript(VALID_TURNS), makeScenario(), VALID_SNAPSHOT,
     );
-    expect(result.verdict).toBe('observed');
+    expect(result.verdict).toBe('directional');
     expect(result.score).toBeCloseTo(0.9);
     expect((result.details as Record<string, unknown>)?.advisoryVerdict).toBe('pass');
   });
@@ -313,7 +313,7 @@ describe('silent-hallucination (numerical, score-mode)', () => {
     const result = await ev.evaluate(
       makeTranscript(VALID_TURNS), makeScenario(), VALID_SNAPSHOT,
     );
-    expect(result.verdict).toBe('observed');
+    expect(result.verdict).toBe('directional');
     expect(result.score).toBeCloseTo(0.1);
     expect((result.details as Record<string, unknown>)?.advisoryVerdict).toBe('fail');
   });
@@ -332,12 +332,12 @@ describe('silent-hallucination (numerical, score-mode)', () => {
   });
 
   it('unknown verdict forces score to 0 and verdict unknown', async () => {
-    const ev = getEval(makeGocode({ score: 0.5, verdict: 'unknown', reason: 'unclear' }));
+    const ev = getEval(makeGocode({ score: 0.5, verdict: 'incomplete', reason: 'unclear' }));
     const result = await ev.evaluate(
       makeTranscript(VALID_TURNS), makeScenario(), VALID_SNAPSHOT,
     );
     expect(result.score).toBe(0);
-    expect(result.verdict).toBe('unknown');
+    expect(result.verdict).toBe('incomplete');
   });
 
   it('canEvaluate returns false for empty transcript → verdict unknown', async () => {
@@ -346,7 +346,7 @@ describe('silent-hallucination (numerical, score-mode)', () => {
       makeTranscript([]), makeScenario(), VALID_SNAPSHOT,
     );
     expect(result.score).toBe(0);
-    expect(result.verdict).toBe('unknown');
+    expect(result.verdict).toBe('incomplete');
   });
 
   it('LLM failure returns verdict unknown', async () => {
@@ -355,7 +355,7 @@ describe('silent-hallucination (numerical, score-mode)', () => {
       makeTranscript(VALID_TURNS), makeScenario(), VALID_SNAPSHOT,
     );
     expect(result.score).toBe(0);
-    expect(result.verdict).toBe('unknown');
+    expect(result.verdict).toBe('incomplete');
   });
 });
 
@@ -364,10 +364,10 @@ describe('silent-hallucination (numerical, score-mode)', () => {
 // ---------------------------------------------------------------------------
 
 describe('score-mode regression configuration', () => {
-  it('all 3 evaluators have regressionMode: score', () => {
+  it('all 3 evaluators have comparisonMode: score', () => {
     const evs = createAlignmentLLMEvaluators(makeGocode({}));
     for (const ev of evs) {
-      expect(ev.regressionMode).toBe('score');
+      expect(ev.comparisonMode).toBe('score');
     }
   });
 
@@ -393,7 +393,7 @@ describe('mapScoreMode boundary tests (via implicit-feature-gap)', () => {
   it('score=0.0 with non-unknown verdict → verdict observed, score 0', async () => {
     const ev = getEval(makeGocode({ score: 0.0, verdict: 'fail', reason: 'many gaps' }));
     const result = await ev.evaluate(makeTranscript(VALID_TURNS), makeScenario(), VALID_SNAPSHOT);
-    expect(result.verdict).toBe('observed');
+    expect(result.verdict).toBe('directional');
     expect(result.score).toBeCloseTo(0.0);
     expect((result.details as Record<string, unknown>)?.advisoryVerdict).toBe('fail');
   });
@@ -401,23 +401,30 @@ describe('mapScoreMode boundary tests (via implicit-feature-gap)', () => {
   it('score=1.0 with verdict pass → verdict observed, score 1', async () => {
     const ev = getEval(makeGocode({ score: 1.0, verdict: 'pass', reason: 'all features present' }));
     const result = await ev.evaluate(makeTranscript(VALID_TURNS), makeScenario(), VALID_SNAPSHOT);
-    expect(result.verdict).toBe('observed');
+    expect(result.verdict).toBe('directional');
     expect(result.score).toBeCloseTo(1.0);
     expect((result.details as Record<string, unknown>)?.advisoryVerdict).toBe('pass');
   });
 
   it('verdict=unknown → score 0, verdict unknown, advisoryVerdict unknown', async () => {
-    const ev = getEval(makeGocode({ score: 0.5, verdict: 'unknown', reason: 'insufficient evidence' }));
+    const ev = getEval(makeGocode({ score: 0.5, verdict: 'incomplete', reason: 'insufficient evidence' }));
     const result = await ev.evaluate(makeTranscript(VALID_TURNS), makeScenario(), VALID_SNAPSHOT);
-    expect(result.verdict).toBe('unknown');
+    expect(result.verdict).toBe('incomplete');
     expect(result.score).toBe(0);
-    expect((result.details as Record<string, unknown>)?.advisoryVerdict).toBe('unknown');
+    expect((result.details as Record<string, unknown>)?.advisoryVerdict).toBe('incomplete');
   });
 
   it('score=0.0 with verdict fail is included in aggregation (not filtered as unknown)', async () => {
     const ev = getEval(makeGocode({ score: 0.0, verdict: 'fail', reason: 'worst case' }));
     const result = await ev.evaluate(makeTranscript(VALID_TURNS), makeScenario(), VALID_SNAPSHOT);
-    expect(result.verdict).toBe('observed');
+    expect(result.verdict).toBe('directional');
     expect(result.score).toBeCloseTo(0.0);
+  });
+
+  it('legacy verdict=unknown is rejected by narrowed schema -> incomplete, score 0', async () => {
+    const ev = getEval(makeGocode({ score: 0.5, verdict: 'unknown', reason: 'legacy token' }));
+    const result = await ev.evaluate(makeTranscript(VALID_TURNS), makeScenario(), VALID_SNAPSHOT);
+    expect(result.score).toBe(0);
+    expect(result.verdict).toBe('incomplete');
   });
 });

@@ -121,7 +121,31 @@ export interface Config {
     appReadyTimeoutMs?: number;
   };
   regression: StatisticalRegressionConfig;
-  storage?: {
-    maxRuns?: number;
-  };
+  storage?: StorageConfig;
+}
+
+/** Bucket/prefix/region for S3 baseline storage (squad task 1c.i). */
+export interface S3StorageConfig {
+  bucket: string;
+  /**
+   * Key prefix for shared baselines, e.g. 'evals/gosym-probe'. Baselines are
+   * the gating source of truth, so this prefix should NOT carry a destructive
+   * lifecycle/expiry rule (see docs/storage-backends.md).
+   */
+  prefix?: string;
+  region?: string;
+}
+
+/**
+ * Storage settings. S3 is **not** an alternate backend the user must choose
+ * between — local disk is always the default, and `--s3` opts a specific
+ * command into the shared bucket at call time (read latest baseline for the
+ * gate; manually push a clean baseline). `s3` here is just the connection
+ * config that `--s3` needs; its absence when `--s3` is passed fails loud in
+ * `createFileStore`. `maxRuns` is unrelated to S3 — it bounds local run-dir
+ * pruning.
+ */
+export interface StorageConfig {
+  maxRuns?: number;
+  s3?: S3StorageConfig;
 }

@@ -4,6 +4,8 @@ import { multipageCatalogExpectation }
   from './expectations/multipage-catalog.expectation.js';
 import { ExpectedArtifactMatchEvaluator }
   from '../../evaluators/expected-artifact-match.js';
+import { DirectionalSignalEvaluator }
+  from '../../evaluators/directional-signal.js';
 import { createNarrowArtifactJudge }
   from '../../evaluators/narrow-artifact-judge.js';
 import { SkillSelectionEvaluator }
@@ -42,6 +44,7 @@ export function multipageCatalogScenario(
       staticFirstMessage: STATIC_PROMPT,
       extraEvaluators: [
         new ExpectedArtifactMatchEvaluator(),
+        new DirectionalSignalEvaluator(),
         new SkillSelectionEvaluator(),
       ],
       calibrationEvaluators: [createNarrowArtifactJudge(gocode)],

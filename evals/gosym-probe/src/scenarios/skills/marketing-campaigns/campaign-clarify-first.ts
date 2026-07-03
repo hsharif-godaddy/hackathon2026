@@ -38,7 +38,7 @@ export function campaignClarifyFirstScenario(
       userIntent: 'Create a marketing campaign for my summer sale',
       contextClaims: { marketingCampaignsEnabled: true },
       expectedAgent: MARKETING_AGENT_DISPLAY_NAME,
-      trials: 3,
+      trials: 5,
       goals: [
         {
           description:

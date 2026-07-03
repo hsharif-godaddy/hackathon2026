@@ -156,8 +156,8 @@ evaluator type:
 
 | Evaluator type | Method | Source |
 |---------------|--------|--------|
-| Binary pass/fail (`regressionMode` default) | Wilson-score CI on difference of proportions | `tostProportions()` |
-| Continuous score-mode (`regressionMode: 'score'`) | Permutation test (exact or Monte Carlo) | `tostPermutation()` |
+| Binary pass/fail (`comparisonMode: 'passRate'`) | Wilson-score CI on difference of proportions | `tostProportions()` |
+| Continuous score-mode (`comparisonMode: 'score'`) | Permutation test (exact or Monte Carlo) | `tostPermutation()` |
 
 **Permutation test path:** When `n_baseline + n_current ≤ 15`, all
 `C(n, n_current)` permutations are enumerated exactly (e.g., n=5+5 gives

@@ -122,7 +122,7 @@ function noBaselineVerdict(
 ): ScenarioVerdict {
   const passRateEvaluators: [string, AggregatedResult][] = Object.entries(
     result.aggregated,
-  ).filter(([, agg]) => agg.regressionMode !== 'score');
+  ).filter(([, agg]) => agg.comparisonMode !== 'score');
 
   const totalMisses: string[] = passRateEvaluators
     .filter(([, agg]) => agg.totalTrials > 0 && agg.passingTrials === 0)
@@ -205,7 +205,7 @@ function passRatesForDrivers(result: ScenarioResult, drivers: string[]): string 
 }
 
 function bestPassRate(agg: AggregatedResult): string {
-  if (agg.regressionMode === 'score') {
+  if (agg.comparisonMode === 'score') {
     return Number.isFinite(agg.aggregateScore)
       ? `score ${(agg.aggregateScore as number).toFixed(3)}`
       : 'score N/A';
