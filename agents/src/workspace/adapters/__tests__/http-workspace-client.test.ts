@@ -56,7 +56,8 @@ describe('HttpWorkspaceClient', () => {
     expect(caps.methods['files.tree']).toBe('live');
     expect(caps.methods['files.edit']).toBe('live');
 
-    expect(caps.methods['runtime.start']).toBe('stubbed');
+    expect(caps.methods['runtime.start']).toBe('live');
+    expect(caps.methods['runtime.check']).toBe('live');
     expect(caps.methods['deployments.prepare']).toBe('stubbed');
 
     expect(caps.methods['deployments.activate']).toBe('variant-not-applicable');

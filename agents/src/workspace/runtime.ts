@@ -51,6 +51,9 @@ export interface RuntimeStatus extends ProcessSnapshot {
   };
 }
 
+/** Health + restart stats without the process/PID snapshot; counterpart to status(). */
+export type HealthSnapshot = Pick<RuntimeStatus, 'health' | 'restarts'>;
+
 export interface HealthConfigUpdate {
   healthCheck?: HealthCheckConfig;
   restartPolicy?: RestartPolicy;
@@ -65,11 +68,18 @@ export interface RestartOptions {
   graceful?: boolean;
 }
 
+export interface StartOptions {
+  /** Passed verbatim to dev-supervisor; caller owns sh -c wrapping/escaping. */
+  command: string;
+  workingDir?: string;
+  env?: Record<string, string>;
+}
+
 export interface WorkspaceRuntime {
   status(): Promise<RuntimeStatus>;
-  start(): Promise<void>;
+  start(options: StartOptions): Promise<void>;
   stop(options?: StopOptions): Promise<void>;
   restart(options?: RestartOptions): Promise<void>;
-  check(): Promise<RuntimeStatus['health']>;
+  check(): Promise<HealthSnapshot>;
   configureHealth(update: HealthConfigUpdate): Promise<void>;
 }

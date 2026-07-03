@@ -1,18 +1,22 @@
 import type {
   DevSupervisorClient,
   HealthCheckConfig as HealthCheckConfigWire,
+  HealthStatus,
+  ProcessInfo,
   RestartPolicy as RestartPolicyWire,
+  RestartStats,
 } from '../../services/DevSupervisorClient.js';
 import type {
   WorkspaceRuntime,
   RuntimeStatus,
+  HealthSnapshot,
   StopOptions,
   RestartOptions,
+  StartOptions,
   HealthConfigUpdate,
   HealthCheckConfig,
   RestartPolicy,
 } from '../runtime.js';
-import { WorkspaceNotImplementedError } from '../errors.js';
 import { parseDurationToSeconds } from './duration.js';
 import { safeDate } from './wire.js';
 
@@ -51,6 +55,24 @@ function toRestartPolicyWire(policy: RestartPolicy): RestartPolicyWire {
   return wire;
 }
 
+function mapHealthAndRestarts(health: HealthStatus, restart: RestartStats): HealthSnapshot {
+  return {
+    health: {
+      status: health.status,
+      message: health.message,
+      lastCheckedAt: safeDate(health.last_check),
+      consecutiveFailures: health.consecutive_failures,
+      consecutiveSuccesses: health.consecutive_successes,
+    },
+    restarts: {
+      total: restart.total_restarts,
+      recent: restart.recent_restarts,
+      windowSeconds: parseDurationToSeconds(restart.restart_window),
+      maxRestarts: restart.max_restarts,
+    },
+  };
+}
+
 export class HttpRuntime implements WorkspaceRuntime {
   constructor(private readonly client: DevSupervisorClient) {}
 
@@ -67,24 +89,46 @@ export class HttpRuntime implements WorkspaceRuntime {
       startedAt: safeDate(proc.start_time),
       exitCode: proc.exit_code,
       lastError: proc.error,
-      health: {
-        status: health.status,
-        message: health.message,
-        lastCheckedAt: safeDate(health.last_check),
-        consecutiveFailures: health.consecutive_failures,
-        consecutiveSuccesses: health.consecutive_successes,
-      },
-      restarts: {
-        total: restart.total_restarts,
-        recent: restart.recent_restarts,
-        windowSeconds: parseDurationToSeconds(restart.restart_window),
-        maxRestarts: restart.max_restarts,
-      },
+      ...mapHealthAndRestarts(health, restart),
     };
   }
 
-  async start(): Promise<void> {
-    throw new WorkspaceNotImplementedError('runtime.start');
+  async start(options: StartOptions): Promise<void> {
+    const processInfo: ProcessInfo = await this.client.startProcess({
+      command: options.command,
+      working_dir: options.workingDir,
+      env: options.env,
+    });
+    if (processInfo.state === 'error') {
+      throw new Error(`runtime.start failed: ${processInfo.error ?? 'unknown error'}`);
+    }
+
+    // Brief poll to detect immediate-exit processes that resolve as 'starting'
+    // but die before reaching 'running'.
+    if (processInfo.state === 'starting' || processInfo.state === 'running') {
+      await this.waitForProcessRunning();
+    }
+  }
+
+  private async waitForProcessRunning(): Promise<void> {
+    const maxAttempts = 3;
+    const intervalMs = 500;
+
+    for (let i = 0; i < maxAttempts; i++) {
+      await new Promise(resolve => setTimeout(resolve, intervalMs));
+      const status: ProcessInfo = await this.client.getProcessStatus();
+
+      if (status.state === 'running') {
+        return;
+      }
+      if (status.state === 'stopped' || status.state === 'error') {
+        throw new Error(
+          `runtime.start failed: process exited immediately${status.error ? `: ${status.error}` : ''}`
+        );
+      }
+      // still 'starting' — continue polling
+    }
+    // Still starting after polling — accept it (some processes take a while)
   }
 
   async stop(options?: StopOptions): Promise<void> {
@@ -106,8 +150,12 @@ export class HttpRuntime implements WorkspaceRuntime {
     }
   }
 
-  async check(): Promise<RuntimeStatus['health']> {
-    throw new WorkspaceNotImplementedError('runtime.check');
+  async check(): Promise<HealthSnapshot> {
+    const [health, restart] = await Promise.all([
+      this.client.getHealthStatus(),
+      this.client.getRestartStats(),
+    ]);
+    return mapHealthAndRestarts(health, restart);
   }
 
   async configureHealth(update: HealthConfigUpdate): Promise<void> {

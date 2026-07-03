@@ -9,14 +9,12 @@ import {
   readPackageJsonScripts,
   resolveStartCommand,
 } from '../AppRestartService.js';
-import { DevSupervisorClientFactory } from '../../utils/dev-supervisor-client-factory.js';
 import { createForWorkspace } from '../../workspace/index.js';
 import { makeRunCommandResult } from '../../workspace/__tests__/mock-helpers.js';
 import { TerminalTool } from '../../tools/terminal.js';
 import * as fs from 'node:fs/promises';
 
 // Mock dependencies
-vi.mock('../../utils/dev-supervisor-client-factory.js');
 vi.mock('../../workspace/index.js', () => ({
   createForWorkspace: vi.fn(),
 }));
@@ -29,6 +27,7 @@ const { mockLoggerWarn } = vi.hoisted(() => ({
 vi.mock('../../logging/index.js', () => ({
   Logger: {
     create: () => ({
+      debug: vi.fn(),
       info: vi.fn(),
       warn: mockLoggerWarn,
       error: vi.fn(),
@@ -38,11 +37,10 @@ vi.mock('../../logging/index.js', () => ({
 
 describe('AppRestartService', () => {
   let service: AppRestartService;
-  let mockDevSupervisor: {
-    exec: Mock;
-    stopProcess: Mock;
-    restartProcess: Mock;
-    startProcess: Mock;
+  let mockRuntime: {
+    stop: Mock;
+    start: Mock;
+    restart: Mock;
   };
   let mockTerminalTool: {
     executeCommand: Mock;
@@ -89,6 +87,7 @@ describe('AppRestartService', () => {
     });
     vi.mocked(createForWorkspace).mockReturnValue({
       tasks: { runCommandSync: mockRunCommandSync },
+      runtime: mockRuntime,
     } as any);
   }
 
@@ -96,12 +95,11 @@ describe('AppRestartService', () => {
     vi.clearAllMocks();
     mockLoggerWarn.mockClear();
 
-    // Create mock DevSupervisor client (used for stop/start/restart and readPackageJsonScripts)
-    mockDevSupervisor = {
-      exec: vi.fn(),
-      stopProcess: vi.fn(),
-      restartProcess: vi.fn(),
-      startProcess: vi.fn(),
+    // Create mock runtime (used for stop/start/restart)
+    mockRuntime = {
+      stop: vi.fn().mockResolvedValue(undefined),
+      start: vi.fn().mockResolvedValue(undefined),
+      restart: vi.fn().mockResolvedValue(undefined),
     };
 
     // Create mock TerminalTool
@@ -109,12 +107,10 @@ describe('AppRestartService', () => {
       executeCommand: vi.fn(),
     };
 
-    // Setup factory mock
-    vi.mocked(DevSupervisorClientFactory.createForApp).mockReturnValue(mockDevSupervisor as any);
-
-    // Setup workspace mock (used by runInstall, runBuild, measureAppDirSize)
+    // Setup workspace mock (used by runInstall, runBuild, measureAppDirSize, stop/start/restart)
     vi.mocked(createForWorkspace).mockReturnValue({
       tasks: { runCommandSync: vi.fn().mockResolvedValue(makeRunCommandResult()) },
+      runtime: mockRuntime,
     } as any);
 
     // Setup TerminalTool mock
@@ -188,18 +184,16 @@ describe('AppRestartService', () => {
 
   describe('stopDevServer', () => {
     it('should successfully stop dev server', async () => {
-      mockDevSupervisor.stopProcess.mockResolvedValue(true);
-
       const result = await service.stopDevServer(testAppId);
 
       expect(result.success).toBe(true);
       expect(result.error).toBeUndefined();
-      expect(DevSupervisorClientFactory.createForApp).toHaveBeenCalledWith(testAppId);
-      expect(mockDevSupervisor.stopProcess).toHaveBeenCalled();
+      expect(createForWorkspace).toHaveBeenCalledWith(testAppId, 'preview');
+      expect(mockRuntime.stop).toHaveBeenCalled();
     });
 
-    it('should return error when dev supervisor is not available', async () => {
-      vi.mocked(DevSupervisorClientFactory.createForApp).mockReturnValue(null);
+    it('should return error when workspace is not available', async () => {
+      vi.mocked(createForWorkspace).mockReturnValue(null);
 
       const result = await service.stopDevServer(testAppId);
 
@@ -207,17 +201,17 @@ describe('AppRestartService', () => {
       expect(result.error).toBe('Dev supervisor not available');
     });
 
-    it('should return error when stop fails', async () => {
-      mockDevSupervisor.stopProcess.mockResolvedValue(false);
+    it('should handle stop failure', async () => {
+      mockRuntime.stop.mockRejectedValue(new Error('runtime.stop failed'));
 
       const result = await service.stopDevServer(testAppId);
 
       expect(result.success).toBe(false);
-      expect(result.error).toBe('Failed to stop dev server');
+      expect(result.error).toBe('runtime.stop failed');
     });
 
     it('should handle exceptions', async () => {
-      mockDevSupervisor.stopProcess.mockRejectedValue(new Error('Connection refused'));
+      mockRuntime.stop.mockRejectedValue(new Error('Connection refused'));
 
       const result = await service.stopDevServer(testAppId);
 
@@ -488,40 +482,34 @@ describe('AppRestartService', () => {
 
   describe('restartDevServer', () => {
     it('should restart without command using graceful restart', async () => {
-      mockDevSupervisor.restartProcess.mockResolvedValue({ success: true });
-
       const result = await service.restartDevServer(testAppId);
 
       expect(result.success).toBe(true);
-      expect(mockDevSupervisor.restartProcess).toHaveBeenCalledWith({ graceful: true });
+      expect(mockRuntime.restart).toHaveBeenCalledWith({ graceful: true });
     });
 
     it('should restart with custom command', async () => {
-      mockDevSupervisor.stopProcess.mockResolvedValue(true);
-      mockDevSupervisor.startProcess.mockResolvedValue({ state: 'running' });
-
       const customCommand = 'npm run dev';
       const result = await service.restartDevServer(testAppId, customCommand);
 
       expect(result.success).toBe(true);
-      expect(mockDevSupervisor.stopProcess).toHaveBeenCalled();
-      expect(mockDevSupervisor.startProcess).toHaveBeenCalledWith({
-        command: `sh -c "${customCommand}"`,
-        working_dir: '/app',
+      expect(mockRuntime.stop).toHaveBeenCalled();
+      expect(mockRuntime.start).toHaveBeenCalledWith({
+        command: customCommand,
+        workingDir: '/app',
       });
     });
 
-    it('should return error for empty command', async () => {
-      mockDevSupervisor.stopProcess.mockResolvedValue(true);
-
+    it('should return error for empty command without stopping server', async () => {
       const result = await service.restartDevServer(testAppId, '   ');
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('Invalid command: empty after port substitution');
+      expect(mockRuntime.stop).not.toHaveBeenCalled();
     });
 
-    it('should return error when dev supervisor is not available', async () => {
-      vi.mocked(DevSupervisorClientFactory.createForApp).mockReturnValue(null);
+    it('should return error when workspace is not available', async () => {
+      vi.mocked(createForWorkspace).mockReturnValue(null);
 
       const result = await service.restartDevServer(testAppId);
 
@@ -530,7 +518,7 @@ describe('AppRestartService', () => {
     });
 
     it('should return error when restart fails', async () => {
-      mockDevSupervisor.restartProcess.mockResolvedValue({ success: false, error: 'HTTP 400: restart_failed: port 3000 still in use' });
+      mockRuntime.restart.mockRejectedValue(new Error('HTTP 400: restart_failed: port 3000 still in use'));
 
       const result = await service.restartDevServer(testAppId);
 
@@ -538,29 +526,34 @@ describe('AppRestartService', () => {
       expect(result.error).toBe('HTTP 400: restart_failed: port 3000 still in use');
     });
 
-    it('should return error when startProcess returns error state', async () => {
-      mockDevSupervisor.stopProcess.mockResolvedValue(true);
-      mockDevSupervisor.startProcess.mockResolvedValue({
-        state: 'error',
-        error: 'Process crashed',
-      });
+    it('should return error when start fails', async () => {
+      mockRuntime.start.mockRejectedValue(new Error('runtime.start failed: Process crashed'));
 
       const result = await service.restartDevServer(testAppId, 'npm run dev');
 
       expect(result.success).toBe(false);
-      expect(result.error).toBe('Process crashed');
+      expect(result.error).toBe('runtime.start failed: Process crashed');
     });
 
-    it('should escape double quotes in command', async () => {
-      mockDevSupervisor.stopProcess.mockResolvedValue(true);
-      mockDevSupervisor.startProcess.mockResolvedValue({ state: 'running' });
+    it('should proceed with start even if stop fails (process already dead)', async () => {
+      mockRuntime.stop.mockRejectedValue(new Error('runtime.stop failed'));
 
+      const result = await service.restartDevServer(testAppId, 'npm run dev');
+
+      expect(result.success).toBe(true);
+      expect(mockRuntime.start).toHaveBeenCalledWith({
+        command: 'npm run dev',
+        workingDir: '/app',
+      });
+    });
+
+    it('should pass command verbatim (dev-supervisor handles sh -c wrapping)', async () => {
       const commandWithQuotes = 'echo "hello"';
       await service.restartDevServer(testAppId, commandWithQuotes);
 
-      expect(mockDevSupervisor.startProcess).toHaveBeenCalledWith({
-        command: 'sh -c "echo \\"hello\\""',
-        working_dir: '/app',
+      expect(mockRuntime.start).toHaveBeenCalledWith({
+        command: 'echo "hello"',
+        workingDir: '/app',
       });
     });
   });
@@ -749,8 +742,6 @@ describe('AppRestartService', () => {
   describe('performFullRestartCycle', () => {
     beforeEach(() => {
       // Setup default successful mocks for full cycle
-      mockDevSupervisor.stopProcess.mockResolvedValue(true);
-      mockDevSupervisor.startProcess.mockResolvedValue({ state: 'running' });
       mockTerminalTool.executeCommand.mockResolvedValue({
         success: true,
         exitCode: 0,
@@ -803,9 +794,9 @@ describe('AppRestartService', () => {
         devCommand: customCommand,
       });
 
-      expect(mockDevSupervisor.startProcess).toHaveBeenCalledWith({
-        command: 'sh -c "NODE_ENV=production node server.js"',
-        working_dir: '/app',
+      expect(mockRuntime.start).toHaveBeenCalledWith({
+        command: 'NODE_ENV=production node server.js',
+        workingDir: '/app',
       });
     });
 
@@ -837,9 +828,9 @@ describe('AppRestartService', () => {
         commands: { start: 'node custom.js' },
       });
 
-      expect(mockDevSupervisor.startProcess).toHaveBeenCalledWith({
-        command: 'sh -c "NODE_ENV=production node custom.js"',
-        working_dir: '/app',
+      expect(mockRuntime.start).toHaveBeenCalledWith({
+        command: 'NODE_ENV=production node custom.js',
+        workingDir: '/app',
       });
     });
 
@@ -929,10 +920,7 @@ describe('AppRestartService', () => {
     });
 
     it('should fail when restart fails', async () => {
-      mockDevSupervisor.startProcess.mockResolvedValue({
-        state: 'error',
-        error: 'Failed to start process',
-      });
+      mockRuntime.start.mockRejectedValue(new Error('Failed to start process'));
 
       const result = await service.performFullRestartCycle(testAppId, testAppPath);
 
@@ -944,7 +932,7 @@ describe('AppRestartService', () => {
     });
 
     it('should continue even when stop fails', async () => {
-      mockDevSupervisor.stopProcess.mockResolvedValue(false);
+      mockRuntime.stop.mockRejectedValueOnce(new Error('Stop failed'));
 
       const result = await service.performFullRestartCycle(testAppId, testAppPath);
 
@@ -953,7 +941,9 @@ describe('AppRestartService', () => {
     });
 
     it('should handle unexpected exceptions', async () => {
-      mockDevSupervisor.stopProcess.mockRejectedValue(new Error('Unexpected error'));
+      vi.mocked(createForWorkspace).mockImplementation(() => {
+        throw new Error('Unexpected error');
+      });
 
       const result = await service.performFullRestartCycle(testAppId, testAppPath);
 
@@ -965,8 +955,6 @@ describe('AppRestartService', () => {
       let mockRunCommandSync: Mock;
 
       beforeEach(() => {
-        mockDevSupervisor.stopProcess.mockResolvedValue(true);
-        mockDevSupervisor.startProcess.mockResolvedValue({ state: 'running' });
         mockTerminalTool.executeCommand.mockResolvedValue({
           success: true,
           exitCode: 0,
@@ -991,6 +979,7 @@ describe('AppRestartService', () => {
         });
         vi.mocked(createForWorkspace).mockReturnValue({
           tasks: { runCommandSync: mockRunCommandSync },
+          runtime: mockRuntime,
         } as any);
       });
 
@@ -1184,8 +1173,6 @@ describe('AppRestartService', () => {
 
   describe('metrics collection', () => {
     beforeEach(() => {
-      mockDevSupervisor.stopProcess.mockResolvedValue(true);
-      mockDevSupervisor.startProcess.mockResolvedValue({ state: 'running' });
       mockTerminalTool.executeCommand.mockResolvedValue({
         success: true,
         exitCode: 0,
@@ -1193,6 +1180,7 @@ describe('AppRestartService', () => {
         stderr: '',
       });
       vi.mocked(createForWorkspace).mockReturnValue({
+        runtime: mockRuntime,
         tasks: {
           runCommandSync: vi.fn().mockImplementation(function ({ command }: { command: string }) {
             if (command.includes('pnpm-lock.yaml') || command.includes('yarn.lock')) {
@@ -1231,6 +1219,7 @@ describe('AppRestartService', () => {
 
     it('should handle du command failure gracefully', async () => {
       vi.mocked(createForWorkspace).mockReturnValue({
+        runtime: mockRuntime,
         tasks: {
           runCommandSync: vi.fn().mockImplementation(function ({ command }: { command: string }) {
             if (command.includes('pnpm-lock.yaml') || command.includes('yarn.lock')) {
@@ -1257,6 +1246,7 @@ describe('AppRestartService', () => {
 
     it('should handle invalid du output gracefully', async () => {
       vi.mocked(createForWorkspace).mockReturnValue({
+        runtime: mockRuntime,
         tasks: {
           runCommandSync: vi.fn().mockImplementation(function ({ command }: { command: string }) {
             if (command.includes('pnpm-lock.yaml') || command.includes('yarn.lock')) {

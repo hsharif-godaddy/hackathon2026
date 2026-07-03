@@ -11,8 +11,9 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { Logger } from '../logging/index.js';
 import { TerminalTool } from '../tools/terminal.js';
-import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-factory.js';
+import { getErrorMessage } from '../utils/error.js';
 import { createForWorkspace } from '../workspace/index.js';
+import type { WorkspaceClient } from '../workspace/client.js';
 import type { WorkspaceTasks } from '../workspace/tasks.js';
 import { measureAppDirSize } from '../utils/container-metrics.js';
 
@@ -347,25 +348,24 @@ export class AppRestartService {
     this.logger.info('app-restart.cycle.begin', { appId });
 
     try {
-      // Step 1: Stop dev server (uses HTTP client directly, no workspace needed)
-      const stopResult = await this.stopDevServer(appId);
-      if (!stopResult.success) {
-        this.logger.warn('app-restart.stop-server.failed', {
-          appId,
-          error: stopResult.error,
-        });
-        // Continue anyway - the process might not have been running
-      } else {
-        // Wait for process to fully terminate and release file locks
-        await new Promise(resolve => setTimeout(resolve, 2000));
-      }
-
-      // Create workspace for install/build/start phases
-      const workspace = createForWorkspace(appId, 'preview');
+      const workspace: WorkspaceClient | null = createForWorkspace(appId, 'preview');
       if (!workspace) {
         this.logger.error('app-restart.cycle.workspace.unavailable', { appId });
         result.error = 'Dev supervisor not available';
         return result;
+      }
+
+      // Step 1: Stop dev server
+      try {
+        await workspace.runtime.stop();
+        // Wait for process to fully terminate and release file locks
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      } catch (stopError) {
+        this.logger.warn('app-restart.stop-server.failed', {
+          appId,
+          error: getErrorMessage(stopError),
+        });
+        // Continue anyway - the process might not have been running
       }
 
       // Detect package manager from lock files
@@ -459,20 +459,11 @@ export class AppRestartService {
       // .airo/config.json does not need to be committed — the archive's
       // getUntrackedExclusions preserves .airo/ even when untracked.
 
-      // Step 5: Restart dev server with resolved start command
+      // Step 5: Start dev server with resolved start command
       const restartStartTime = Date.now();
-      const restartResult = await this.restartDevServer(appId, startCommand);
+      await workspace.runtime.start({ command: startCommand, workingDir: '/app' });
       const startDurationMs = Date.now() - restartStartTime;
       metrics.startDurationMs = startDurationMs;
-
-      if (!restartResult.success) {
-        result.error = restartResult.error || 'Failed to restart dev server';
-        this.logger.error('app-restart.restart.failed', {
-          appId,
-          error: result.error,
-        });
-        return result;
-      }
       result.phases.restart = true;
 
       // Measure /app directory size (workspace already validated above)
@@ -485,7 +476,7 @@ export class AppRestartService {
       this.logger.info('app-restart.cycle.success', { appId });
       return result;
     } catch (error) {
-      result.error = error instanceof Error ? error.message : 'Unknown error during restart cycle';
+      result.error = getErrorMessage(error);
       this.logger.error('app-restart.cycle.error', {
         appId,
         error: result.error,
@@ -500,7 +491,7 @@ export class AppRestartService {
    */
   async removeNodeModules(appId: string, appPath: string): Promise<{ success: boolean; error?: string }> {
     try {
-      const workspace = createForWorkspace(appId, 'preview');
+      const workspace: WorkspaceClient | null = createForWorkspace(appId, 'preview');
 
       if (!workspace) {
         return { success: false, error: 'Workspace not available' };
@@ -540,7 +531,7 @@ export class AppRestartService {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Failed to remove node_modules',
+        error: getErrorMessage(error),
       };
     }
   }
@@ -608,7 +599,7 @@ export class AppRestartService {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : `${command} failed`,
+        error: getErrorMessage(error),
       };
     }
   }
@@ -618,22 +609,18 @@ export class AppRestartService {
    */
   async stopDevServer(appId: string): Promise<{ success: boolean; error?: string }> {
     try {
-      const devSupervisor = DevSupervisorClientFactory.createForApp(appId);
+      const workspace: WorkspaceClient | null = createForWorkspace(appId, 'preview');
 
-      if (!devSupervisor) {
+      if (!workspace) {
         return { success: false, error: 'Dev supervisor not available' };
       }
 
-      const success = await devSupervisor.stopProcess();
-
-      const result: { success: boolean; error?: string } = { success };
-      if (!success) result.error = 'Failed to stop dev server';
-      return result;
+      await workspace.runtime.stop();
+      return { success: true };
     } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to stop dev server',
-      };
+      const message: string = getErrorMessage(error);
+      this.logger.error('app-restart.stop.failure', { appId, error: message });
+      return { success: false, error: message };
     }
   }
 
@@ -651,7 +638,7 @@ export class AppRestartService {
     installOptions: InstallCommandOptions = {}
   ): Promise<{ success: boolean; output?: string; error?: string; exitCode?: number }> {
     try {
-      const workspace = createForWorkspace(appId, 'preview');
+      const workspace: WorkspaceClient | null = createForWorkspace(appId, 'preview');
 
       if (!workspace) {
         return {
@@ -683,7 +670,7 @@ export class AppRestartService {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'install failed',
+        error: getErrorMessage(error),
       };
     }
   }
@@ -701,7 +688,7 @@ export class AppRestartService {
     { production = false }: { production?: boolean } = {}
   ): Promise<{ success: boolean; output?: string; error?: string; exitCode?: number }> {
     try {
-      const workspace = createForWorkspace(appId, 'preview');
+      const workspace: WorkspaceClient | null = createForWorkspace(appId, 'preview');
 
       if (!workspace) {
         return {
@@ -733,7 +720,7 @@ export class AppRestartService {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'build failed',
+        error: getErrorMessage(error),
       };
     }
   }
@@ -843,48 +830,47 @@ export class AppRestartService {
    */
   async restartDevServer(appId: string, command?: string): Promise<{ success: boolean; error?: string }> {
     try {
-      const devSupervisor = DevSupervisorClientFactory.createForApp(appId);
+      const workspace: WorkspaceClient | null = createForWorkspace(appId, 'preview');
 
-      if (!devSupervisor) {
+      if (!workspace) {
         return { success: false, error: 'Dev supervisor not available' };
       }
 
       if (command) {
         this.logger.info('app-restart.restart.with-command', { appId, command });
-        await devSupervisor.stopProcess();
 
         if (!command.trim()) {
           return { success: false, error: 'Invalid command: empty after port substitution' };
+        }
+
+        try {
+          await workspace.runtime.stop();
+        } catch (stopError) {
+          this.logger.debug('app-restart.restart.stop-skipped', {
+            appId,
+            error: getErrorMessage(stopError),
+          });
         }
 
         if (command.includes('&&') || command.includes(';') || command.includes('|')) {
           this.logger.warn('app-restart.restart.suspicious-command', { appId, command });
         }
 
-        const escapedCommand = command.replace(/"/g, '\\"');
-        const processInfo = await devSupervisor.startProcess({
-          command: `sh -c "${escapedCommand}"`,
-          working_dir: '/app',
+        // dev-supervisor wraps in sh -c internally — pass the command verbatim
+        await workspace.runtime.start({
+          command,
+          workingDir: '/app',
         });
-
-        if (processInfo.state === 'error') {
-          return { success: false, error: processInfo.error || 'Failed to start process with custom command' };
-        }
 
         return { success: true };
       }
 
-      const restartResult = await devSupervisor.restartProcess({ graceful: true });
-
-      if (!restartResult.success) {
-        return { success: false, error: restartResult.error || 'Failed to restart dev server' };
-      }
+      await workspace.runtime.restart({ graceful: true });
       return { success: true };
     } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to restart dev server',
-      };
+      const message: string = getErrorMessage(error);
+      this.logger.error('app-restart.restart.failure', { appId, error: message });
+      return { success: false, error: message };
     }
   }
 }

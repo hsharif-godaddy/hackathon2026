@@ -45,10 +45,10 @@ const BASE_VERSIONS: Record<WorkspaceNamespaceKey, string> = {
 
 const COMMON_METHODS = {
   'runtime.status': 'live',
-  'runtime.start': 'stubbed',
+  'runtime.start': 'live',
   'runtime.stop': 'live',
   'runtime.restart': 'live',
-  'runtime.check': 'stubbed',
+  'runtime.check': 'live',
   'runtime.configureHealth': 'live',
   'diagnostics.logs': 'live',
   'diagnostics.errors': 'stubbed',
