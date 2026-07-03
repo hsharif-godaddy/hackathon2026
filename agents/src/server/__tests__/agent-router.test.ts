@@ -7,9 +7,11 @@ import { logger } from '../../logging/index.js'
 import type { ProfileData } from '../../profiles/types.js'
 
 describe('agent-router', function agentRouterTests() {
+  const allAgentIds: string[] = ['initial', 'initial-v3', 'initial-v3-exp', 'initial-v3-initial-agent-design-system', 'initial-design-system-homepage-build', 'initial-prompt-enhancer', 'develop', 'marketing', 'deep-build']
   const resolveAgent = createAgentRouter({
     hasMessagesForApp: () => false,
     getModeIds: () => [],
+    getStartableAgentIds: () => allAgentIds,
   })
 
   let resolveProfileSpy: ReturnType<typeof vi.spyOn>
@@ -281,6 +283,7 @@ describe('agent-router', function agentRouterTests() {
       const resolve = createAgentRouter({
         hasMessagesForApp: () => true,
         getModeIds: () => [],
+        getStartableAgentIds: () => allAgentIds,
         getPersistedAgentForApp: async () => 'initial',
       })
 
@@ -292,6 +295,7 @@ describe('agent-router', function agentRouterTests() {
       const resolve = createAgentRouter({
         hasMessagesForApp: () => true,
         getModeIds: () => [],
+        getStartableAgentIds: () => allAgentIds,
         getPersistedAgentForApp: async () => 'initial-v3-exp',
       })
 
@@ -307,6 +311,7 @@ describe('agent-router', function agentRouterTests() {
       const resolve = createAgentRouter({
         hasMessagesForApp: () => true,
         getModeIds: () => [],
+        getStartableAgentIds: () => allAgentIds,
         getPersistedAgentForApp: async () => 'develop',
       })
 
@@ -325,6 +330,7 @@ describe('agent-router', function agentRouterTests() {
       const resolve = createAgentRouter({
         hasMessagesForApp: () => true,
         getModeIds: () => [],
+        getStartableAgentIds: () => allAgentIds,
         getPersistedAgentForApp: async () => 'develop',
       })
 
@@ -339,6 +345,7 @@ describe('agent-router', function agentRouterTests() {
       const resolve = createAgentRouter({
         hasMessagesForApp: () => true,
         getModeIds: () => [],
+        getStartableAgentIds: () => allAgentIds,
         getPersistedAgentForApp: async () => 'initial-v3-initial-agent-design-system',
       })
 
@@ -350,6 +357,7 @@ describe('agent-router', function agentRouterTests() {
       const resolve = createAgentRouter({
         hasMessagesForApp: () => false,
         getModeIds: () => [],
+        getStartableAgentIds: () => allAgentIds,
         getPersistedAgentForApp: async () => undefined,
       })
 
@@ -362,6 +370,7 @@ describe('agent-router', function agentRouterTests() {
       const resolve = createAgentRouter({
         hasMessagesForApp: () => false,
         getModeIds: () => [],
+        getStartableAgentIds: () => allAgentIds,
         getPersistedAgentForApp: async () => { throw new Error('sqlite locked') },
       })
 
@@ -379,6 +388,7 @@ describe('agent-router', function agentRouterTests() {
       const resolve = createAgentRouter({
         hasMessagesForApp: () => true,
         getModeIds: () => [],
+        getStartableAgentIds: () => allAgentIds,
         getPersistedAgentForApp: async () => { throw new Error('sqlite locked') },
       })
 
@@ -393,6 +403,7 @@ describe('agent-router', function agentRouterTests() {
       const resolve = createAgentRouter({
         hasMessagesForApp: () => { throw new Error('heuristic down') },
         getModeIds: () => [],
+        getStartableAgentIds: () => allAgentIds,
         getPersistedAgentForApp: async () => { throw new Error('sqlite locked') },
       })
 
@@ -411,6 +422,7 @@ describe('agent-router', function agentRouterTests() {
       const resolve = createAgentRouter({
         hasMessagesForApp: () => true,
         getModeIds: () => [],
+        getStartableAgentIds: () => allAgentIds,
         getPersistedAgentForApp: async () => 'initial',
       })
       const stateManager = {
@@ -437,6 +449,7 @@ describe('agent-router', function agentRouterTests() {
       const resolve = createAgentRouter({
         hasMessagesForApp: () => true,
         getModeIds: () => [],
+        getStartableAgentIds: () => allAgentIds,
         getPersistedAgentForApp: async () => 'initial',
       })
       const session = coldSession()
@@ -454,6 +467,7 @@ describe('agent-router', function agentRouterTests() {
       const resolve = createAgentRouter({
         hasMessagesForApp: () => true,
         getModeIds: () => [],
+        getStartableAgentIds: () => allAgentIds,
         getPersistedAgentForApp,
       })
       const stateManager = {
@@ -478,6 +492,7 @@ describe('agent-router', function agentRouterTests() {
       const resolve = createAgentRouter({
         hasMessagesForApp: () => true,
         getModeIds: () => [],
+        getStartableAgentIds: () => allAgentIds,
         getPersistedAgentForApp,
       })
       const stateManager = createSessionStateManager({ defaultAgentId: 'initial' })
@@ -509,6 +524,7 @@ describe('agent-router', function agentRouterTests() {
     const resolve = createAgentRouter({
       hasMessagesForApp: () => true,
       getModeIds: () => [],
+      getStartableAgentIds: () => allAgentIds,
       getPersistedAgentForApp: async () => 'develop',
     })
 
@@ -521,6 +537,7 @@ describe('agent-router', function agentRouterTests() {
     const resolve = createAgentRouter({
       hasMessagesForApp: () => true,
       getModeIds: () => [],
+      getStartableAgentIds: () => allAgentIds,
       getPersistedAgentForApp,
     })
     const stateManager = {
@@ -558,4 +575,66 @@ describe('agent-router', function agentRouterTests() {
   // initial-v3-{profile} no longer exist. Profile-driven prompt and tool
   // gating happens per turn inside the agent's resolvers (see agents/CLAUDE.md
   // and develop-agent.ts / initial-agent.ts).
+
+  describe('invalid persisted agent self-heal', function invalidPersistedAgent() {
+    const appId = 'app_stuck'
+
+    it('falls back to develop and calls repairPersistedAgent when persisted agent is not in factory', async function invalidAgentSelfHeals() {
+      const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(function () {})
+      const repairPersistedAgent = vi.fn().mockResolvedValue(undefined)
+      const resolve = createAgentRouter({
+        hasMessagesForApp: () => true,
+        getModeIds: () => [],
+        getStartableAgentIds: () => ['initial', 'develop', 'marketing'],
+        getPersistedAgentForApp: async () => 'develop-prompt-optimization',
+        repairPersistedAgent,
+      })
+
+      const id = await resolve({ appId })
+      expect(id).toBe('develop')
+      expect(warnSpy).toHaveBeenCalledWith(
+        'agent_router.persisted_agent_invalid',
+        expect.objectContaining({ appId, invalidAgentId: 'develop-prompt-optimization', fallback: 'develop' }),
+      )
+      expect(repairPersistedAgent).toHaveBeenCalledWith(appId, 'develop')
+      warnSpy.mockRestore()
+    })
+
+    it('does not repair when persisted agent is valid', async function validAgentNoRepair() {
+      const repairPersistedAgent = vi.fn().mockResolvedValue(undefined)
+      const resolve = createAgentRouter({
+        hasMessagesForApp: () => true,
+        getModeIds: () => [],
+        getStartableAgentIds: () => ['initial', 'develop', 'marketing'],
+        getPersistedAgentForApp: async () => 'develop',
+        repairPersistedAgent,
+      })
+
+      const id = await resolve({ appId })
+      expect(id).toBe('develop')
+      expect(repairPersistedAgent).not.toHaveBeenCalled()
+    })
+
+    it('does not abort the turn when repairPersistedAgent throws', async function repairFailureNonFatal() {
+      const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(function () {})
+      const repairPersistedAgent = vi.fn().mockRejectedValue(new Error('write failed'))
+      const resolve = createAgentRouter({
+        hasMessagesForApp: () => true,
+        getModeIds: () => [],
+        getStartableAgentIds: () => ['initial', 'develop', 'marketing'],
+        getPersistedAgentForApp: async () => 'develop-prompt-optimization',
+        repairPersistedAgent,
+      })
+
+      const id = await resolve({ appId })
+      expect(id).toBe('develop')
+      await Promise.resolve()
+      await Promise.resolve()
+      expect(warnSpy).toHaveBeenCalledWith(
+        'agent_router.persisted_agent_repair_failed',
+        expect.objectContaining({ appId }),
+      )
+      warnSpy.mockRestore()
+    })
+  })
 })

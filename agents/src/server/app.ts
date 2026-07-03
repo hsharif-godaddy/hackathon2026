@@ -42,6 +42,7 @@ import {
   getKvMemoryStore,
   getMessageStore,
 } from '../memory/adapters/index.js';
+import type { ConversationLifecycleStore } from '../memory/interfaces/conversation-store.js';
 import { workspaceScopeFromAppId } from '../memory/interfaces/scope.js';
 import { ConversationContextManager } from '../services/ConversationContextManager.js';
 import { getModeIds } from '../agents/mode-registry.js';
@@ -95,6 +96,16 @@ const resolveAgent = createAgentRouter({
   // SSE has no in-memory session, so this is what keeps a conversation in its
   // persisted phase instead of defaulting to `develop` once messages exist.
   getPersistedAgentForApp: (appId) => getPersistedAgentIdForApp(getConversationLifecycleStore(), appId),
+  repairPersistedAgent: async (appId: string, correctedAgentId: string): Promise<void> => {
+    const store: ConversationLifecycleStore = getConversationLifecycleStore()
+    const conv = await store.getLatestForApp(workspaceScopeFromAppId(appId))
+    if (conv) {
+      await store.updateAgentId(conv.id, correctedAgentId)
+      logger.info('agent_router.persisted_agent_repaired', { appId, conversationId: conv.id, correctedAgentId })
+    } else {
+      logger.warn('agent_router.persisted_agent_repair_no_conversation', { appId, correctedAgentId })
+    }
+  },
   // Durable per-app agent mode: written by tools (e.g. setAgentMode for deep-build).
   // New conversations on an app with a mode set inherit it without re-selection.
   getAppAgentMode: async (appId: string): Promise<string | undefined> => {

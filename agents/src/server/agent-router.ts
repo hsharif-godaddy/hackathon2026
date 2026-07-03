@@ -23,6 +23,12 @@ interface AgentRouterDeps {
    */
   getPersistedAgentForApp?: (appId: string) => Promise<string | undefined>
   /**
+   * Self-heal a stale/invalid persisted agent (e.g. a deleted develop-<profile>
+   * variant). Called fire-and-forget when the router detects an unrecognized id.
+   * `correctedAgentId` is always 'develop' — the safe fallback for an existing app.
+   */
+  repairPersistedAgent?: (appId: string, correctedAgentId: string) => Promise<void>
+  /**
    * Durable per-app agent mode override written by tools (e.g. deep-build). Checked
    * after the session cache but before the persisted-conversation agent so new
    * conversations on an app with a mode set inherit it automatically.
@@ -158,6 +164,14 @@ export function createAgentRouter(deps: AgentRouterDeps) {
       return hasMessages ? 'develop' : freezeInitialAgent()
     }
     if (persistedAgent) {
+      const startable: string[] = deps.getStartableAgentIds()
+      if (startable.length > 0 && !startable.includes(persistedAgent)) {
+        logger.warn('agent_router.persisted_agent_invalid', { appId, invalidAgentId: persistedAgent, fallback: 'develop' })
+        deps.repairPersistedAgent?.(appId, 'develop').catch(err => {
+          logger.warn('agent_router.persisted_agent_repair_failed', { appId, ...errorFields(err) })
+        })
+        persistedAgent = 'develop'
+      }
       if (session) rehydrateSession(session, persistedAgent, 'agent_router.session_rehydrate_error')
       logger.info('agent_router.persisted_agent', { appId, agentId: persistedAgent })
       return persistedAgent
