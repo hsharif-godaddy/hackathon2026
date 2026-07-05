@@ -2,23 +2,59 @@ import { getBudgetServiceClient } from '../../services/budget-service-instance.j
 import { BudgetInsufficientCreditsError, BudgetNoCapacityError } from '@airo/ai-lib/budget';
 import { logger } from '../../logging/index.js';
 import { MemoryRepository } from '../../database/repositories/MemoryRepository.js';
-import { DocumentType, complianceDocChargedMemoryKey } from '../../services/ComplianceService.js';
-
-/** Each compliance document costs 1 credit, charged once per (app, documentType). */
-const COMPLIANCE_DOC_CREDIT_COST = '1';
+import {
+  DocumentType,
+  complianceDocChargedMemoryKey,
+  complianceDocConfirmationMemoryKey,
+} from '../../services/ComplianceService.js';
+import { getComplianceDocCreditCost } from './pricing.js';
 
 const memoryRepository = new MemoryRepository();
 
 export type ComplianceChargeResult = { ok: true } | { ok: false; error: string };
 
+async function markerIsTrue(appId: string, key: string): Promise<boolean> {
+  const marker = await memoryRepository.get(appId, key);
+  return Boolean(marker.success && marker.exists && marker.value === true);
+}
+
 /**
- * Charge 1 credit for a compliance document before it is produced.
+ * Whether a compliance document may be charged+generated without first showing
+ * the charge dialog — true when the document is free, OR was already charged
+ * (regeneration is free, so no consent prompt), OR the user has explicitly
+ * accepted the charge via the confirm route ([[complianceDocConfirmationMemoryKey]]).
+ *
+ * This is the authoritative consent gate for the money path, so it is
+ * fail-closed: any marker read failure resolves to `false` (block and re-prompt)
+ * rather than risk charging without recorded consent. That is the opposite
+ * stance from the best-effort `.charged` short-circuit inside
+ * [[chargeForComplianceDoc]], which fails open because the BMS idempotency key
+ * is its authoritative double-charge guard.
+ */
+export async function isComplianceChargeConfirmed(
+  appId: string,
+  documentType: DocumentType,
+): Promise<boolean> {
+  // Free documents need no consent — nothing is charged.
+  if (getComplianceDocCreditCost() <= 0) {
+    return true;
+  }
+  if (await markerIsTrue(appId, complianceDocChargedMemoryKey(documentType))) {
+    return true;
+  }
+  return markerIsTrue(appId, complianceDocConfirmationMemoryKey(documentType));
+}
+
+/**
+ * Charge the per-document credit cost ([[getComplianceDocCreditCost]]) before a
+ * compliance document is produced. The cost is variable and may be 0 (free), in
+ * which case nothing is charged.
  *
  * Idempotent: the BMS idempotency key is deterministic per (app, documentType),
- * so the FIRST generation charges 1 credit and any later regeneration replays
- * that same charge (the budget-service returns the prior result without
- * deducting again). This is what makes "charge the first time each document is
- * produced" hold while keeping regeneration free.
+ * so the FIRST generation charges and any later regeneration replays that same
+ * charge (the budget-service returns the prior result without deducting again).
+ * This is what makes "charge the first time each document is produced" hold while
+ * keeping regeneration free.
  *
  * Blocking: when budgeting is active (a budget id + client are present) the
  * charge must succeed before the document is generated — if the budget cannot
@@ -46,6 +82,13 @@ export async function chargeForComplianceDoc(params: {
   documentType: DocumentType;
 }): Promise<ComplianceChargeResult> {
   const { bmsBudgetId, appId, documentType } = params;
+
+  const cost = getComplianceDocCreditCost();
+  if (cost <= 0) {
+    // Free document — nothing to charge.
+    logger.info('skills.compliance-docs.charge.free', { appId, documentType });
+    return { ok: true };
+  }
 
   const client = getBudgetServiceClient();
   if (!client) {
@@ -79,7 +122,7 @@ export async function chargeForComplianceDoc(params: {
   const idempotencyKey = `compliance-doc:${appId}:${documentType}`;
   try {
     await client.deductCredits(bmsBudgetId, {
-      credits: COMPLIANCE_DOC_CREDIT_COST,
+      credits: String(cost),
       idempotencyKey,
       reason: `compliance-doc:${documentType}`,
       metadata: { appId, documentType, kind: 'compliance-doc' },

@@ -3,6 +3,16 @@ import { log } from '../../logging/index.js';
 import { createForWorkspace } from '../../workspace/index.js';
 import { validateAppOwnership } from '../middleware/app-ownership.js';
 import { patchFieldValue, setSectionValue, validateFieldValue } from '../../services/compliance-field-patch.js';
+import { MemoryRepository } from '../../database/repositories/MemoryRepository.js';
+import { DocumentType, complianceDocConfirmationMemoryKey } from '../../services/ComplianceService.js';
+
+const memoryRepository = new MemoryRepository();
+
+const DOC_TYPE_VALUES: ReadonlySet<string> = new Set<string>([DocumentType.PrivacyPolicy, DocumentType.TermsOfUse]);
+
+interface ConfirmChargeBody {
+  documentType?: string;
+}
 
 const router: Router = Router();
 
@@ -113,6 +123,35 @@ router.post('/:id/compliance/section', async (req: Request, res: Response) => {
     contextLogger.error('compliance.section.toggle.failure', { appId, documentType, sectionKey, error: message });
     return res.status(500).json({ error: 'Failed to toggle section', details: message });
   }
+});
+
+/**
+ * Record that the user accepted the 1-credit charge for a compliance document.
+ * Server-authoritative consent: the generate tools refuse to charge until this
+ * marker exists, so it must only be set in response to a real user Accept (the
+ * in-chat charge dialog calls this on accept). Idempotent — re-accepting is a
+ * no-op set.
+ */
+router.post('/:id/compliance/confirm', async (req: Request, res: Response) => {
+  const { id: appId } = req.params;
+  if (!appId) {
+    return res.status(400).json({ error: 'App ID is required' });
+  }
+  const { documentType } = (req.body ?? {}) as ConfirmChargeBody;
+  const contextLogger = log.forApp(appId);
+
+  if (typeof documentType !== 'string' || !DOC_TYPE_VALUES.has(documentType)) {
+    return res.status(400).json({ error: 'Invalid documentType' });
+  }
+
+  const result = await memoryRepository.set(appId, complianceDocConfirmationMemoryKey(documentType as DocumentType), true);
+  if (!result.success) {
+    contextLogger.error('compliance.charge.confirm.failure', { appId, documentType, error: result.error });
+    return res.status(500).json({ error: 'Failed to record charge confirmation' });
+  }
+
+  contextLogger.info('compliance.charge.confirm.success', { appId, documentType });
+  return res.json({ success: true, documentType });
 });
 
 export default router;

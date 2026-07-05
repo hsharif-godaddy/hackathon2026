@@ -13,6 +13,7 @@ import CampaignPlanProposeToolRenderer from './CampaignPlanProposeToolRenderer'
 import CampaignPlanToolRenderer from './CampaignPlanToolRenderer'
 import ColorSchemeToolRenderer from './ColorSchemeToolRenderer'
 import CommerceMcpToolRenderer from './CommerceMcpToolRenderer'
+import ComplianceChargeConfirmToolRenderer from './ComplianceChargeConfirmToolRenderer'
 import CssColorToolRenderer from './CssColorToolRenderer'
 import CssSuggestToolRenderer from './CssSuggestToolRenderer'
 import DefaultToolRenderer, { type DefaultToolRendererProps } from './DefaultToolRenderer'
@@ -92,6 +93,7 @@ export const toolRendererRegistry = {
   commerce_search_tools: CommerceMcpToolRenderer,
   commerceExecuteTool: CommerceMcpToolRenderer,
   commerce_execute_tool: CommerceMcpToolRenderer,
+  'compliance-docs__request_charge_confirmation': ComplianceChargeConfirmToolRenderer,
   cssColor: CssColorToolRenderer,
   listDesignSystems: DesignSystemToolRenderer,
   installDesignSystem: DesignSystemToolRenderer,

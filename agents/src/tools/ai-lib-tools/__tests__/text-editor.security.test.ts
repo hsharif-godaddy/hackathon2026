@@ -72,6 +72,7 @@ import {
   handleView,
 } from '../../text-editor-workspace.js';
 import { isFileBlocked } from '../../read-file.js';
+import { skills } from '../../../services/features.js';
 import { textEditorAITool, textEditorSchemaAITool } from '../text-editor.js';
 import { clearPostEditHandlers, registerPostEditHandler } from '../post-edit-handlers.js';
 import { seoRoutesPostEditHandler } from '../../../services/seo-routes-post-edit-handler.js';
@@ -543,6 +544,91 @@ describe('textEditorAITool — rebuild inline font guard', function rebuildFontG
     );
 
     expect(handleStrReplace).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('textEditorAITool — compliance page guard (GAI-1614)', function complianceGuardTests() {
+  let appPath: string;
+  const appId = 'test-text-editor-compliance-app';
+
+  beforeEach(function setup() {
+    vi.clearAllMocks();
+    clearPostEditHandlers();
+    const unique = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    appPath = join(tmpdir(), `text-editor-compliance-${unique}`);
+    mkdirSync(appPath, { recursive: true });
+    mockFindById.mockReturnValue({ id: appId, path: appPath });
+    mockFiles.view.mockResolvedValue({ content: '', encoding: 'utf-8', lines: 0, size: 0, truncated: false, path: '' });
+  });
+
+  afterEach(function teardown() {
+    vi.restoreAllMocks();
+    clearPostEditHandlers();
+    if (appPath && existsSync(appPath)) {
+      rmSync(appPath, { recursive: true, force: true });
+    }
+  });
+
+  it('blocks create of privacy.tsx when the compliance skill is available', async function blockPrivacyCreate() {
+    vi.spyOn(skills, 'isEnabled').mockImplementation((id: string) => id === 'complianceDocs');
+
+    await expect(
+      textEditorAITool.execute(
+        { command: 'create', path: 'src/pages/privacy.tsx', file_text: '<html></html>' },
+        createExecutionOptions(appId),
+      ),
+    ).rejects.toThrow(/managed by the compliance tool/);
+
+    expect(handleCreate).not.toHaveBeenCalled();
+  });
+
+  it('blocks str_replace of terms.tsx when the compliance skill is available', async function blockTermsReplace() {
+    vi.spyOn(skills, 'isEnabled').mockImplementation((id: string) => id === 'complianceDocs');
+
+    await expect(
+      textEditorAITool.execute(
+        { command: 'str_replace', path: 'src/pages/terms.tsx', old_str: 'a', new_str: 'b' },
+        createExecutionOptions(appId),
+      ),
+    ).rejects.toThrow(/managed by the compliance tool/);
+
+    expect(handleStrReplace).not.toHaveBeenCalled();
+  });
+
+  it('allows create of privacy.tsx when the compliance skill is NOT available', async function allowWhenUnavailable() {
+    vi.spyOn(skills, 'isEnabled').mockReturnValue(false);
+    vi.mocked(handleCreate).mockResolvedValue('created');
+
+    await textEditorAITool.execute(
+      { command: 'create', path: 'src/pages/privacy.tsx', file_text: '<html></html>' },
+      createExecutionOptions(appId),
+    );
+
+    expect(handleCreate).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not block other src/pages files even when the compliance skill is available', async function allowOtherPages() {
+    vi.spyOn(skills, 'isEnabled').mockImplementation((id: string) => id === 'complianceDocs');
+    vi.mocked(handleCreate).mockResolvedValue('created');
+
+    await textEditorAITool.execute(
+      { command: 'create', path: 'src/pages/about.tsx', file_text: '<html></html>' },
+      createExecutionOptions(appId),
+    );
+
+    expect(handleCreate).toHaveBeenCalledTimes(1);
+  });
+
+  it('allows view of privacy.tsx even when the compliance skill is available', async function allowView() {
+    vi.spyOn(skills, 'isEnabled').mockImplementation((id: string) => id === 'complianceDocs');
+    vi.mocked(handleView).mockResolvedValue('viewed');
+
+    await textEditorAITool.execute(
+      { command: 'view', path: 'src/pages/privacy.tsx' },
+      createExecutionOptions(appId),
+    );
+
+    expect(handleView).toHaveBeenCalledTimes(1);
   });
 });
 

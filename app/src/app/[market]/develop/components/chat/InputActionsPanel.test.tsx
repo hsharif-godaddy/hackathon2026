@@ -66,7 +66,8 @@ vi.mock('@/stores/useTodoListStore', () => ({
 }))
 
 vi.mock('./useLatestNBAs', () => ({
-  useLatestNBAs: vi.fn()
+  useLatestNBAs: vi.fn(),
+  useAwaitingChargeConfirmation: vi.fn(() => false)
 }))
 
 vi.mock('./useFirstBuildFeedback', () => ({

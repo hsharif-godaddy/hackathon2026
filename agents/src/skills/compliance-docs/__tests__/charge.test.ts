@@ -1,15 +1,20 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { BudgetInsufficientCreditsError, BudgetNoCapacityError } from '@airo/ai-lib/budget';
 
-const { mockGetClient, mockDeduct, mockMemGet, mockMemSet } = vi.hoisted(() => ({
+const { mockGetClient, mockDeduct, mockMemGet, mockMemSet, mockGetCost } = vi.hoisted(() => ({
   mockGetClient: vi.fn(),
   mockDeduct: vi.fn(),
   mockMemGet: vi.fn(),
   mockMemSet: vi.fn(),
+  mockGetCost: vi.fn<[], number>(() => 1),
 }));
 
 vi.mock('../../../services/budget-service-instance.js', () => ({
   getBudgetServiceClient: mockGetClient,
+}));
+
+vi.mock('../pricing.js', () => ({
+  getComplianceDocCreditCost: mockGetCost,
 }));
 
 vi.mock('../../../database/repositories/MemoryRepository.js', () => ({
@@ -23,7 +28,7 @@ vi.mock('../../../logging/index.js', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
-import { chargeForComplianceDoc } from '../charge.js';
+import { chargeForComplianceDoc, isComplianceChargeConfirmed } from '../charge.js';
 import { DocumentType } from '../../../services/ComplianceService.js';
 
 beforeEach(() => {
@@ -31,6 +36,7 @@ beforeEach(() => {
   mockDeduct.mockReset();
   mockMemGet.mockResolvedValue({ success: true, exists: false });
   mockMemSet.mockResolvedValue({ success: true });
+  mockGetCost.mockReturnValue(1);
 });
 
 describe('chargeForComplianceDoc', () => {
@@ -116,5 +122,47 @@ describe('chargeForComplianceDoc', () => {
     expect(res.ok).toBe(false);
     if (!res.ok) expect(res.error).toMatch(/could not process/i);
     expect(mockMemSet).not.toHaveBeenCalled();
+  });
+
+  it('is a no-op (ok, no deduct) when the document is free (cost 0)', async () => {
+    mockGetCost.mockReturnValue(0);
+    mockGetClient.mockReturnValue({ deductCredits: mockDeduct });
+    const res = await chargeForComplianceDoc({ bmsBudgetId: 'b1', appId: 'app1', documentType: DocumentType.PrivacyPolicy });
+    expect(res).toEqual({ ok: true });
+    expect(mockDeduct).not.toHaveBeenCalled();
+  });
+});
+
+describe('isComplianceChargeConfirmed', () => {
+  it('is true when the charged marker is present (free regeneration, no dialog)', async () => {
+    mockMemGet.mockResolvedValue({ success: true, exists: true, value: true });
+    expect(await isComplianceChargeConfirmed('app1', DocumentType.PrivacyPolicy)).toBe(true);
+  });
+
+  it('is true when only the confirmation marker is present (user accepted)', async () => {
+    mockMemGet.mockImplementation((_appId: string, key: string) =>
+      Promise.resolve(
+        key.endsWith('.confirmed')
+          ? { success: true, exists: true, value: true }
+          : { success: true, exists: false },
+      ),
+    );
+    expect(await isComplianceChargeConfirmed('app1', DocumentType.TermsOfUse)).toBe(true);
+  });
+
+  it('is false when neither marker is present', async () => {
+    mockMemGet.mockResolvedValue({ success: true, exists: false });
+    expect(await isComplianceChargeConfirmed('app1', DocumentType.PrivacyPolicy)).toBe(false);
+  });
+
+  it('is false (fail-closed) when the marker reads fail', async () => {
+    mockMemGet.mockResolvedValue({ success: false, exists: false, error: 'db down' });
+    expect(await isComplianceChargeConfirmed('app1', DocumentType.PrivacyPolicy)).toBe(false);
+  });
+
+  it('is true (no consent needed) when the document is free, regardless of markers', async () => {
+    mockGetCost.mockReturnValue(0);
+    mockMemGet.mockResolvedValue({ success: true, exists: false });
+    expect(await isComplianceChargeConfirmed('app1', DocumentType.PrivacyPolicy)).toBe(true);
   });
 });

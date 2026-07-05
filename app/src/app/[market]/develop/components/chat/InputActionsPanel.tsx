@@ -18,7 +18,7 @@ import ThemePreviewInputPanel from '@/app/[market]/develop/components/chat/Theme
 import ThinkingTip from '@/app/[market]/develop/components/chat/ThinkingTip'
 import { useCollapseActionsPanelOnCommanderFloat } from '@/app/[market]/develop/components/chat/useCollapseActionsPanelOnCommanderFloat'
 import { useFirstBuildFeedback } from '@/app/[market]/develop/components/chat/useFirstBuildFeedback'
-import { type LatestNBAData, useLatestNBAs } from '@/app/[market]/develop/components/chat/useLatestNBAs'
+import { type LatestNBAData, useAwaitingChargeConfirmation, useLatestNBAs } from '@/app/[market]/develop/components/chat/useLatestNBAs'
 import { useThinkerIndicator } from '@/app/[market]/develop/components/chat/useThinkerIndicator'
 import { useThinkerLabel } from '@/app/[market]/develop/components/chat/useThinkerLabel'
 import AskQuestionToolRenderer from '@/app/[market]/develop/components/tool-renderers/AskQuestionToolRenderer'
@@ -749,12 +749,16 @@ function InputActionsPanelThemeSelection({
 
   const hasNoBAs = !isActionableNbaData(nbaData)
   const hasConversationHistory = messages.length > 0
+  // Suppress next-action suggestions while a compliance charge-confirmation
+  // dialog is awaiting the user's Accept/Cancel — don't recommend new work until
+  // the pending prompt is acknowledged.
+  const awaitingChargeConfirmation = useAwaitingChargeConfirmation()
   const { data: nextActionsData, isError: isNextActionsError, error: nextActionsError } = useNextActions(
     appId,
-    hasNoBAs && !isProcessing && hasConversationHistory && !hasPendingPlanItems,
+    hasNoBAs && !isProcessing && hasConversationHistory && !hasPendingPlanItems && !awaitingChargeConfirmation,
   )
   if (isNextActionsError) logger.warn('input-actions-panel.next-actions-error', { appId }, { error: nextActionsError as Error })
-  const nextActionSuggestions = nextActionsData?.suggestions ?? []
+  const nextActionSuggestions = awaitingChargeConfirmation ? [] : (nextActionsData?.suggestions ?? [])
 
   // Get the currently applied theme to prepend to suggestions
   const currentAppliedTheme = useMemo(() => findLatestAppliedColorScheme(messages), [messages])
@@ -1322,6 +1326,13 @@ function InputActionsPanelThemeSelection({
 
   // ── Mode A: Agent idle, nothing to show ──────────────────────────────────
   if (secretsComposerTakeover != null) {
+    return null
+  }
+
+  // While a charge-confirmation prompt is unanswered, hide the entire
+  // "Continue building" panel (plan preview, NBAs, and next-action suggestions)
+  // so we never suggest new work in parallel with the pending Accept/Cancel.
+  if (awaitingChargeConfirmation) {
     return null
   }
 

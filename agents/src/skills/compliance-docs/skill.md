@@ -1,7 +1,7 @@
 ---
 name: compliance-docs
 description: Generate legal compliance pages (Privacy Policy, Terms of Use).
-whenToUse: User wants to add, create, or generate a privacy policy, terms of use, or legal pages — either by name (phrases like "add a privacy policy", "add a terms of use", "generate terms of use", "I need legal pages", "create a ToU page") OR by path (any request to build/create a page at `/privacy`, `/privacy-policy`, `/terms`, `/terms-of-use`, or `/tos`, including path-only build requests from the preview's "page doesn't exist" popup that arrive as messages like `"The page at path /privacy doesn't exist yet, please build it with appropriate content."`).
+whenToUse: User wants to add, create, or generate a privacy policy, terms of use, or legal pages — either by name (phrases like "add a privacy policy", "add a terms of use", "generate terms of use", "I need legal pages", "create a ToU page") OR by path (any request to build/create a page at `/privacy`, `/privacy-policy`, `/terms`, `/terms-of-use`, or `/tos`, including path-only build requests from the preview's "page doesn't exist" popup that arrive as messages like `"The page at path /privacy doesn't exist yet, please build it with appropriate content."`). ALWAYS load this skill for these requests and generate the document through it — never hand-write `src/pages/privacy.tsx` / `src/pages/terms.tsx` yourself. This applies even if a prior charge prompt was cancelled — a repeat request is a brand-new request, so load this skill again rather than trying to hand-build a free version.
 enablementId: complianceDocs
 markets:
   - en-US
@@ -55,6 +55,25 @@ You MUST explicitly ask the user for ALL required fields before calling the tool
 - Terms of use requires: `businessName`, `domainName`, `children` (under 18, selling to minors), `jurisdiction`
 - The `children` question is DIFFERENT between the two — you must ask it separately for each
 - Terms of use does NOT use `email`; privacy policy does NOT use `domainName` or `jurisdiction`
+
+### Generating a document (and its charge)
+
+Once you have gathered ALL required fields, just call the matching generate tool
+(`compliance-docs__generate_privacy_policy` or `compliance-docs__generate_terms_of_use`). The charge is
+handled for you — do NOT quote a price or assume a cost, as it is variable and may be free:
+
+- If the tool **succeeds**, the document was generated (and any charge applied). Continue with the follow-up tasks below.
+- If the tool returns **CONFIRMATION_REQUIRED**, a charge applies that the user hasn't approved. Call
+  `compliance-docs__request_charge_confirmation` with the matching `documentType` to show the Accept/Cancel
+  dialog, then:
+  - If the user **accepts**, call the generate tool again with the same fields.
+  - If the user **cancels**, do NOT generate the document for that request. Briefly acknowledge and stop.
+
+Never call `compliance-docs__request_charge_confirmation` on its own — only in response to a
+CONFIRMATION_REQUIRED result. Free documents and regenerations of an already-paid document generate
+directly with no dialog. If the user requests both documents, handle each separately.
+
+**A cancellation applies only to that one prompt — it is NOT a standing instruction.** If the user later asks again to add, create, or generate the document (e.g. "add a privacy policy page"), treat it as a brand-new request: gather any missing fields and call the generate tool again. NEVER refuse a document the user is actively asking for just because an earlier attempt was cancelled.
 
 ### After the Tool Succeeds
 

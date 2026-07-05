@@ -7,7 +7,14 @@ import { DocumentType, complianceService, complianceDocStatusMemoryKey } from '.
 import { appRepository } from '../../../database/repositories/index.js';
 import { MemoryRepository } from '../../../database/repositories/MemoryRepository.js';
 import { readAppFqdn } from '../../../lib/app-fqdn.js';
-import { chargeForComplianceDoc } from '../charge.js';
+import { chargeForComplianceDoc, isComplianceChargeConfirmed } from '../charge.js';
+import { getComplianceDocPricing } from '../pricing.js';
+
+/** Steers the model to the confirmation step when an unapproved charge applies. */
+const CHARGE_NOT_CONFIRMED_ERROR =
+  'CONFIRMATION_REQUIRED: this document has a credit charge the user has not approved yet. ' +
+  'Call compliance-docs__request_charge_confirmation for this document to show the charge dialog, ' +
+  'then call this tool again after the user accepts.';
 
 const memoryRepository = new MemoryRepository();
 
@@ -145,9 +152,17 @@ export const generatePrivacyPolicyTool: SkillToolDefinition = {
       return { error: 'Unable to determine app path for file creation' };
     }
 
-    // Charge 1 credit before producing the document (idempotent per app+type, so
-    // a regeneration replays the original charge). Block generation if the
-    // budget cannot cover it.
+    // Gate the charge on recorded user consent (Accept in the in-chat dialog),
+    // unless the document was already charged once (free regeneration). The
+    // marker is server-set by the confirm route, so the model cannot bypass it.
+    if (!(await isComplianceChargeConfirmed(appId, DocumentType.PrivacyPolicy))) {
+      logger.info('skills.compliance-docs.tools.generate_privacy_policy.unconfirmed', { appId });
+      return { error: CHARGE_NOT_CONFIRMED_ERROR };
+    }
+
+    // Charge the per-document cost before producing it (idempotent per app+type,
+    // so a regeneration replays the original charge; free docs are a no-op).
+    // Block generation if the budget cannot cover it.
     const bmsBudgetId = (context as { metadata?: { bmsBudgetId?: string } })?.metadata?.bmsBudgetId;
     const charge = await chargeForComplianceDoc({
       bmsBudgetId,
@@ -253,9 +268,17 @@ export const generateTermsOfUseTool: SkillToolDefinition = {
       return { error: 'Unable to determine app path for file creation' };
     }
 
-    // Charge 1 credit before producing the document (idempotent per app+type, so
-    // a regeneration replays the original charge). Block generation if the
-    // budget cannot cover it.
+    // Gate the charge on recorded user consent (Accept in the in-chat dialog),
+    // unless the document was already charged once (free regeneration). The
+    // marker is server-set by the confirm route, so the model cannot bypass it.
+    if (!(await isComplianceChargeConfirmed(appId, DocumentType.TermsOfUse))) {
+      logger.info('skills.compliance-docs.tools.generate_terms_of_use.unconfirmed', { appId });
+      return { error: CHARGE_NOT_CONFIRMED_ERROR };
+    }
+
+    // Charge the per-document cost before producing it (idempotent per app+type,
+    // so a regeneration replays the original charge; free docs are a no-op).
+    // Block generation if the budget cannot cover it.
     const bmsBudgetId = (context as { metadata?: { bmsBudgetId?: string } })?.metadata?.bmsBudgetId;
     const charge = await chargeForComplianceDoc({
       bmsBudgetId,
@@ -350,8 +373,70 @@ export const getPurchasedDomainTool: SkillToolDefinition = {
   },
 };
 
+const ChargeConfirmationInputSchema = z.object({
+  documentType: z
+    .enum([DocumentType.PrivacyPolicy, DocumentType.TermsOfUse])
+    .describe('Which compliance document the user is about to generate'),
+});
+
+type ChargeConfirmationInput = z.infer<typeof ChargeConfirmationInputSchema>;
+
+/**
+ * Charge consent dialog. Pauses the turn (stopAfter) and renders an in-chat
+ * Accept/Cancel dialog stating the (variable) credit cost. The user's Accept
+ * records server-side consent (POST /:id/compliance/confirm); the generate tools
+ * refuse to charge until that consent exists.
+ *
+ * Invoked ONLY when a generate tool returns CONFIRMATION_REQUIRED — i.e. a real,
+ * unapproved charge. Free and already-paid documents never reach here (their
+ * generate call proceeds directly), so this always shows the dialog.
+ */
+export const requestChargeConfirmationTool: SkillToolDefinition = {
+  name: 'request_charge_confirmation',
+  description:
+    'Show the user the credit-charge confirmation dialog for a compliance document. ' +
+    'Call this ONLY when generate_privacy_policy / generate_terms_of_use returns CONFIRMATION_REQUIRED. ' +
+    'It pauses for the user to Accept or Cancel; call the matching generate tool again once the user accepts.',
+
+  parameters: ChargeConfirmationInputSchema,
+
+  async execute(input: ChargeConfirmationInput, context?: unknown) {
+    const appId = (context as { metadata?: { appId?: string } })?.metadata?.appId;
+    if (!appId) {
+      logger.error('skills.compliance-docs.tools.request_charge_confirmation.noAppId', {
+        documentType: input.documentType,
+      });
+      return { error: 'Unable to determine app identity for charge confirmation' };
+    }
+
+    // Send the raw pricing to the client; the dialog copy is localized there
+    // (i18n keys builder_compliance_charge_*). Never build user-facing English here.
+    const { cost, showCost } = getComplianceDocPricing();
+    logger.info('skills.compliance-docs.tools.request_charge_confirmation.prompt', {
+      appId,
+      documentType: input.documentType,
+      cost,
+      showCost,
+    });
+    return {
+      widgetType: 'compliance-charge-confirm',
+      widgetData: {
+        documentType: input.documentType,
+        cost,
+        showCost,
+      },
+      text: `Awaiting the user's decision on the charge for the ${input.documentType} document. Do not generate it until the user accepts.`,
+    };
+  },
+
+  config: {
+    stopAfter: true,
+  },
+};
+
 export const tools: SkillToolDefinition[] = [
   generatePrivacyPolicyTool,
   generateTermsOfUseTool,
   getPurchasedDomainTool,
+  requestChargeConfirmationTool,
 ];

@@ -22,7 +22,7 @@ export function complianceDocStatusMemoryKey(documentType: DocumentType): string
 }
 
 /**
- * Memory (per-app KV) key marking that the 1-credit charge for a compliance
+ * Memory (per-app KV) key marking that the credit charge for a compliance
  * document of the given type has already been committed for an app. Set after a
  * successful charge and read before charging, this is a local short-circuit that
  * stops the BMS deduct call from even being made on a regeneration — a layer of
@@ -32,6 +32,19 @@ export function complianceDocStatusMemoryKey(documentType: DocumentType): string
  */
 export function complianceDocChargedMemoryKey(documentType: DocumentType): string {
   return `compliance.document.${documentType}.charged`;
+}
+
+/**
+ * Memory (per-app KV) key marking that the user has explicitly accepted the
+ * credit charge for a compliance document of the given type. Written only by
+ * the authenticated `POST /:id/compliance/confirm` route when the user clicks
+ * Accept in the in-chat charge dialog, and read before charging so a charge can
+ * never happen without server-recorded consent (the model cannot forge it).
+ * Distinct from `.charged`: consent precedes the charge, and an already-`.charged`
+ * document skips the dialog entirely (regeneration is free).
+ */
+export function complianceDocConfirmationMemoryKey(documentType: DocumentType): string {
+  return `compliance.confirmation.${documentType}.confirmed`;
 }
 
 export interface PrivacyPolicyInput {

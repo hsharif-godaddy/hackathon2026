@@ -31,6 +31,8 @@ import {
   resolveSourceFile,
   resolveFilePath
 } from '../file-edit-utils.js';
+import { isComplianceManagedPath, COMPLIANCE_MANAGED_WRITE_ERROR } from '../../skills/compliance-docs/managed-paths.js';
+import { skills } from '../../services/features.js';
 import { markUploadsPlaced } from '../../services/renderers/upload-classification-persistence.js';
 import {
   handleView,
@@ -159,6 +161,13 @@ async function executeTextEditor(input: TextEditorInput, context: AgentContext |
   if (['str_replace', 'create', 'insert'].includes(command)) {
     if (isProtectedWorkspacePath(fullPath, app.path)) {
       throw new Error(`${path} is in a protected directory and cannot be modified.`);
+    }
+    // Compliance legal pages are owned by the compliance skill's charged flow —
+    // block direct edits only when that skill is available (GAI-1614). Pass the
+    // workspace-relative `path` (not the resolved host-absolute `fullPath`):
+    // the matcher normalizes docker/relative paths itself.
+    if (isComplianceManagedPath(path) && skills.isEnabled('complianceDocs')) {
+      throw new Error(COMPLIANCE_MANAGED_WRITE_ERROR);
     }
   }
 

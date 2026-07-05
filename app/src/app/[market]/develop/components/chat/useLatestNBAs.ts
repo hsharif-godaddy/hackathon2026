@@ -146,6 +146,59 @@ export function isParkedOnAskQuestion(messages: ChatMessage[]): boolean {
   return nba?.source === 'askQuestion'
 }
 
+const CHARGE_CONFIRM_WIDGET_TYPE = 'compliance-charge-confirm'
+
+// Detect the charge dialog by its widget, NOT the tool name — robust to which
+// tool emits it (request_charge_confirmation today) and to skill-prefix changes.
+function isChargeConfirmWidget(result: ToolCall['result']): boolean {
+  if (!result || typeof result !== 'object') return false
+  const r = result as { output?: Record<string, unknown> } & Record<string, unknown>
+  const output = (r.output ?? r) as { widgetType?: unknown; widgetData?: { documentType?: unknown; showCost?: unknown } }
+  if (output?.widgetType === CHARGE_CONFIRM_WIDGET_TYPE) return true
+  // Fallback in case widgetType is dropped from the persisted result: the dialog's
+  // widgetData carries a documentType and a showCost flag (what the renderer needs).
+  const wd = output?.widgetData
+  return typeof wd?.documentType === 'string' && typeof wd?.showCost === 'boolean'
+}
+
+function toolCallsHavePendingChargeConfirmation(toolCalls: ToolCall[] | undefined): boolean {
+  if (!toolCalls?.length) return false
+  for (let i = toolCalls.length - 1; i >= 0; i--) {
+    const toolCall = toolCalls[i]
+    if (toolCall.status !== 'completed' || !toolCall.result) continue
+    if (isChargeConfirmWidget(toolCall.result)) return true
+  }
+  return false
+}
+
+/**
+ * True while the latest assistant turn is parked on an unanswered compliance
+ * charge-confirmation dialog (the Accept/Cancel prompt), so next-action
+ * suggestions stay suppressed until the user decides.
+ *
+ * The active stream IS the current turn: if its latest tool is the confirmation
+ * widget, the user hasn't acted yet (Accept/Cancel sends a new message and starts
+ * a fresh stream). We must NOT reuse the askQuestion-style `hasNbaResponseAfter`
+ * check here — the compliance flow's earlier askQuestion answers are themselves
+ * `isActionRequest` messages and would falsely read as "answered". The
+ * history-based check applies only once the turn has settled into `messages`.
+ */
+export function useAwaitingChargeConfirmation(): boolean {
+  const messages = useMessages()
+  const activeStream = useActiveStream()
+
+  return useMemo(() => {
+    if (activeStream?.toolCalls && toolCallsHavePendingChargeConfirmation(activeStream.toolCalls)) {
+      return true
+    }
+
+    const lastAssistantIndex = findLastAssistantIndex(messages)
+    if (lastAssistantIndex < 0) return false
+    if (!toolCallsHavePendingChargeConfirmation(messages[lastAssistantIndex].toolCalls)) return false
+    return !hasNbaResponseAfter(messages, lastAssistantIndex)
+  }, [messages, activeStream])
+}
+
 /**
  * Hook that extracts the latest NBA (suggested response) data from conversation messages.
  * Returns null when no NBA data is available, or when feedbackActive is true.

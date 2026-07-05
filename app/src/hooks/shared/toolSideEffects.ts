@@ -191,6 +191,16 @@ function trackPaymentFailure(
  * Handle side effects when a tool_call event arrives.
  * Marks files as streaming in CodeSyncStore.
  */
+/**
+ * Compliance skill invocation impression. Fired on skill LOAD (upstream of any
+ * cohort/charge branching) so it emits for every cohort — including FREE, which
+ * never sees the charge dialog. Mirrors trackPaymentSkillInvoked. The cohort is
+ * auto-merged into custom_properties downstream by the analytics layer.
+ */
+function trackComplianceSkillInvoked(appId: string | null): void {
+  logImpressionEvent('develop.compliance.skill_invoked', { appId: appId ?? '' })();
+}
+
 export function handleToolCallSideEffects(
   tool: { name: string; input?: any },
   appId: string | null
@@ -215,6 +225,9 @@ export function handleToolCallSideEffects(
         action === 'complete'
       ) {
         trackSkillCompleted(appId, skillName);
+      }
+      if (skillName === 'compliance-docs' && action === 'load') {
+        trackComplianceSkillInvoked(appId);
       }
     } else if (tool.name === 'stripe__setup') {
       trackPaymentSetupStarted(appId, 'stripe');

@@ -190,6 +190,18 @@ describe('detectRebuildIntent', () => {
   });
 });
 
+describe('handleToolCallSideEffects — compliance skill invoked', () => {
+  it('emits the impression on compliance-docs load (fires for every cohort, including free)', () => {
+    handleToolCallSideEffects({ name: 'skill', input: { skill: 'compliance-docs', action: 'load' } }, 'app-1');
+    expect(mockLogImpressionEvent).toHaveBeenCalledWith('develop.compliance.skill_invoked', { appId: 'app-1' });
+  });
+
+  it('does not emit for a non-load compliance-docs action', () => {
+    handleToolCallSideEffects({ name: 'skill', input: { skill: 'compliance-docs', action: 'unload' } }, 'app-1');
+    expect(mockLogImpressionEvent).not.toHaveBeenCalledWith('develop.compliance.skill_invoked', expect.anything());
+  });
+});
+
 describe('handleToolCallSideEffects — funnel.rebuild.started', () => {
   it('emits funnel.rebuild.started for websiteRebuild', () => {
     handleToolCallSideEffects({ name: 'websiteRebuild' }, 'app-1');

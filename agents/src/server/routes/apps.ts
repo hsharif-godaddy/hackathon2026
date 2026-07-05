@@ -44,7 +44,9 @@ import { ServerManagementTool } from '../../tools/server-management-tool.js';
 import { getNameSuggestionService } from '../../services/name-suggestion.js';
 import { getDomainSeedSuggestionService } from '../../services/domain-seed-suggestion.js';
 import { Logger, log } from '../../logging/index.js';
-import { BYPASS_SITE_IDS } from '../../services/features.js';
+import { BYPASS_SITE_IDS, skills } from '../../services/features.js';
+import { getProfileRegistry, runWithProfile } from '../../profiles/index.js';
+import { isComplianceManagedPath, COMPLIANCE_MANAGED_WRITE_ERROR } from '../../skills/compliance-docs/managed-paths.js';
 import { searchCode } from '../../utils/code-search.js';
 import type { AuthenticatedRequest } from '../middleware/jwt-auth.js';
 import { validateAppOwnership } from '../middleware/app-ownership.js';
@@ -53,6 +55,20 @@ import { getScreenshotStore, type ScreenshotStore } from './screenshot-store.js'
 const router: IRouter = Router();
 
 const appRepo = new AppRepository();
+
+/**
+ * Whether the compliance-docs skill is available for the request's agent profile.
+ * Routes don't run inside a profile ALS context, so resolve the profile from the
+ * JWT and evaluate the canonical predicate inside `runWithProfile`. Safe default
+ * is false (can't determine → don't block) so non-compliance apps are unaffected.
+ */
+function complianceSkillAvailable(req: Request): boolean {
+  const profileName = (req as AuthenticatedRequest).agentContext?.agentProfile;
+  if (!profileName) return false;
+  const profile = getProfileRegistry().get(profileName);
+  if (!profile) return false;
+  return runWithProfile(profile, () => skills.isEnabled('complianceDocs'));
+}
 const astStyleEditor = new ASTStyleEditor();
 const astTextEditor = new ASTTextEditor();
 
@@ -719,6 +735,11 @@ router.post('/:id/files/write', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'File path and content are required' });
     }
 
+    const appPath = appRepo.findById(id)?.path;
+    if (appPath && isComplianceManagedPath(filePath) && complianceSkillAvailable(req)) {
+      return res.status(403).json({ error: COMPLIANCE_MANAGED_WRITE_ERROR });
+    }
+
     const workspace = createForWorkspace(id, 'preview');
     if (!workspace) {
       return res.status(404).json({ error: 'Workspace not available' });
@@ -759,6 +780,11 @@ router.post('/:id/files/edit', async (req: Request, res: Response) => {
 
     if (!filePath || !edits || !Array.isArray(edits)) {
       return res.status(400).json({ error: 'File path and edits array are required' });
+    }
+
+    const appPath = appRepo.findById(id)?.path;
+    if (appPath && isComplianceManagedPath(filePath) && complianceSkillAvailable(req)) {
+      return res.status(403).json({ error: COMPLIANCE_MANAGED_WRITE_ERROR });
     }
 
     const workspace = createForWorkspace(id, 'preview');

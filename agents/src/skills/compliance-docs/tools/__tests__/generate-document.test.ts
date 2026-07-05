@@ -1,8 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { mockMemorySet, mockCharge } = vi.hoisted(() => ({
+const { mockMemorySet, mockMemoryGet, mockCharge, mockChargeConfirmed } = vi.hoisted(() => ({
   mockMemorySet: vi.fn().mockResolvedValue({ success: true }),
+  mockMemoryGet: vi.fn().mockResolvedValue({ success: true, exists: false }),
   mockCharge: vi.fn().mockResolvedValue({ ok: true }),
+  mockChargeConfirmed: vi.fn().mockResolvedValue(true),
 }));
 
 vi.mock('../../../../logging/index.js', () => ({
@@ -27,6 +29,11 @@ vi.mock('../../../../services/ComplianceService.js', () => ({
 
 vi.mock('../../charge.js', () => ({
   chargeForComplianceDoc: mockCharge,
+  isComplianceChargeConfirmed: mockChargeConfirmed,
+}));
+
+vi.mock('../../pricing.js', () => ({
+  getComplianceDocPricing: () => ({ cost: 1, showCost: true }),
 }));
 
 vi.mock('../../../../database/repositories/index.js', () => ({
@@ -38,6 +45,7 @@ vi.mock('../../../../database/repositories/index.js', () => ({
 vi.mock('../../../../database/repositories/MemoryRepository.js', () => ({
   MemoryRepository: class {
     set = mockMemorySet;
+    get = mockMemoryGet;
   },
 }));
 
@@ -54,7 +62,7 @@ vi.mock('../../../../lib/app-fqdn.js', () => ({
   readAppFqdn: mockReadAppFqdn,
 }));
 
-import { generatePrivacyPolicyTool, generateTermsOfUseTool, getPurchasedDomainTool } from '../index.js';
+import { generatePrivacyPolicyTool, generateTermsOfUseTool, getPurchasedDomainTool, requestChargeConfirmationTool } from '../index.js';
 import { complianceService } from '../../../../services/ComplianceService.js';
 import { appRepository } from '../../../../database/repositories/index.js';
 import { writeFile } from 'fs/promises';
@@ -67,6 +75,27 @@ describe('generate_privacy_policy tool', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockCharge.mockResolvedValue({ ok: true });
+    mockChargeConfirmed.mockResolvedValue(true);
+    mockMemoryGet.mockResolvedValue({ success: true, exists: false });
+  });
+
+  it('blocks generation and does not charge when the charge is not confirmed', async () => {
+    mockFindById.mockReturnValue({ customerId: 'cust-abc', path: '/tmp/apps/app-123' } as any);
+    mockChargeConfirmed.mockResolvedValue(false);
+
+    const result = await generatePrivacyPolicyTool.execute(
+      {
+        businessName: 'Test Biz',
+        email: 'test@example.com',
+        children: false,
+      },
+      { metadata: { appId: 'app-123', bmsBudgetId: 'budget-xyz' } },
+    );
+
+    expect(result).toMatchObject({ error: expect.stringContaining('request_charge_confirmation') });
+    expect(mockCharge).not.toHaveBeenCalled();
+    expect(mockGenerateDocument).not.toHaveBeenCalled();
+    expect(mockWriteFile).not.toHaveBeenCalled();
   });
 
   it('returns error when no customerId can be resolved', async () => {
@@ -202,6 +231,28 @@ describe('generate_terms_of_use tool', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockCharge.mockResolvedValue({ ok: true });
+    mockChargeConfirmed.mockResolvedValue(true);
+    mockMemoryGet.mockResolvedValue({ success: true, exists: false });
+  });
+
+  it('blocks generation and does not charge when the charge is not confirmed', async () => {
+    mockFindById.mockReturnValue({ customerId: 'cust-abc', path: '/tmp/apps/app-123' } as any);
+    mockChargeConfirmed.mockResolvedValue(false);
+
+    const result = await generateTermsOfUseTool.execute(
+      {
+        businessName: 'Test Biz',
+        domainName: 'testbiz.com',
+        children: false,
+        jurisdiction: 'Texas',
+      },
+      { metadata: { appId: 'app-123', bmsBudgetId: 'budget-xyz' } },
+    );
+
+    expect(result).toMatchObject({ error: expect.stringContaining('request_charge_confirmation') });
+    expect(mockCharge).not.toHaveBeenCalled();
+    expect(mockGenerateDocument).not.toHaveBeenCalled();
+    expect(mockWriteFile).not.toHaveBeenCalled();
   });
 
   it('returns error when no customerId can be resolved', async () => {
@@ -337,6 +388,42 @@ describe('generate_terms_of_use tool', () => {
     });
     expect(mockGenerateDocument).toHaveBeenCalledTimes(1);
     expect(result).toMatchObject({ documentType: 'terms-of-use', filePath: 'src/pages/terms.tsx' });
+  });
+});
+
+describe('request_charge_confirmation tool', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockMemoryGet.mockResolvedValue({ success: true, exists: false });
+  });
+
+  it('is a stop-after tool so the turn pauses for the user', () => {
+    expect(requestChargeConfirmationTool.config?.stopAfter).toBe(true);
+  });
+
+  it('returns the charge-confirm widget with raw pricing (localized client-side)', async () => {
+    const result = await requestChargeConfirmationTool.execute(
+      { documentType: 'privacy-policy' },
+      { metadata: { appId: 'app-123' } },
+    );
+
+    expect(result).toMatchObject({
+      widgetType: 'compliance-charge-confirm',
+      widgetData: {
+        documentType: 'privacy-policy',
+        cost: 1,
+        showCost: true,
+      },
+    });
+  });
+
+  it('errors without an appId', async () => {
+    const result = await requestChargeConfirmationTool.execute(
+      { documentType: 'privacy-policy' },
+      { metadata: {} },
+    );
+
+    expect(result).toMatchObject({ error: expect.stringContaining('app identity') });
   });
 });
 

@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { renderHook } from '@testing-library/react'
 
 import type { ChatMessage, StreamingMessage, ToolCall } from '@/stores/useStreamingConversationStore'
-import { isParkedOnAskQuestion, useLatestNBAs } from './useLatestNBAs'
+import { isParkedOnAskQuestion, useAwaitingChargeConfirmation, useLatestNBAs } from './useLatestNBAs'
 
 // ─── Store mocks ─────────────────────────────────────────────────────────────
 
@@ -690,6 +690,77 @@ describe('useLatestNBAs', () => {
       const { result } = renderHook(() => useLatestNBAs())
       expect(result.current).toBeNull()
     })
+  })
+})
+
+describe('useAwaitingChargeConfirmation', () => {
+  function makeChargeConfirmToolCall(overrides: Partial<ToolCall> = {}): ToolCall {
+    return {
+      id: 'tc-cc',
+      name: 'compliance-docs__request_charge_confirmation',
+      status: 'completed',
+      input: {},
+      result: {
+        widgetType: 'compliance-charge-confirm',
+        widgetData: { documentType: 'privacy-policy', cost: 1, showCost: true },
+      },
+      ...overrides,
+    }
+  }
+
+  it('is true while the confirmation widget is parked in an incomplete stream', () => {
+    mockActiveStream = makeActiveStream(false, [makeChargeConfirmToolCall()])
+    const { result } = renderHook(() => useAwaitingChargeConfirmation())
+    expect(result.current).toBe(true)
+  })
+
+  it('is true when the confirmation widget is in a completed stream, even with prior askQuestion action messages', () => {
+    // Regression: the compliance flow gathers fields via askQuestion, whose answers
+    // are isActionRequest messages. Those must NOT read as "the charge was answered".
+    mockActiveStream = makeActiveStream(true, [makeChargeConfirmToolCall()])
+    mockMessages = [
+      makeAssistantMessage([]),
+      makeActionUserMessage('California'),
+    ]
+    const { result } = renderHook(() => useAwaitingChargeConfirmation())
+    expect(result.current).toBe(true)
+  })
+
+  it('is true when settled into messages with no user response yet', () => {
+    mockMessages = [makeAssistantMessage([makeChargeConfirmToolCall()])]
+    const { result } = renderHook(() => useAwaitingChargeConfirmation())
+    expect(result.current).toBe(true)
+  })
+
+  it('detects the dialog by its widget regardless of the tool name', () => {
+    mockMessages = [makeAssistantMessage([
+      makeChargeConfirmToolCall({ name: 'some-other-tool-name' }),
+    ])]
+    const { result } = renderHook(() => useAwaitingChargeConfirmation())
+    expect(result.current).toBe(true)
+  })
+
+  it('is false once the user accepts/cancels (isActionRequest after the confirmation turn)', () => {
+    mockMessages = [
+      makeAssistantMessage([makeChargeConfirmToolCall()]),
+      makeActionUserMessage('I accept the 1 credit charge.'),
+    ]
+    const { result } = renderHook(() => useAwaitingChargeConfirmation())
+    expect(result.current).toBe(false)
+  })
+
+  it('is false for the already-paid passthrough (no widgetData)', () => {
+    mockActiveStream = makeActiveStream(true, [
+      makeChargeConfirmToolCall({ result: { text: 'already paid', documentType: 'privacy-policy', alreadyPaid: true } }),
+    ])
+    const { result } = renderHook(() => useAwaitingChargeConfirmation())
+    expect(result.current).toBe(false)
+  })
+
+  it('is false when there is no confirmation tool', () => {
+    mockMessages = [makeAssistantMessage([makeSuggestedResponseToolCall()])]
+    const { result } = renderHook(() => useAwaitingChargeConfirmation())
+    expect(result.current).toBe(false)
   })
 })
 

@@ -3,6 +3,12 @@ import { resolveEnv } from '../utils/gd-env.js'
 
 const SWITCHBOARD_APP = 'default|airo-app-builder'
 
+// Hivemind experiments live under their own switchboard app ('hivemind' is the
+// fully-qualified app id per @switchboard/client). It's a restricted store, so
+// retrieval is scoped to the 'airo-builder' label.
+const HIVEMIND_APP = 'hivemind'
+const HIVEMIND_LABELS = ['airo-builder']
+
 const SWITCHBOARD_ENV_MAP = { dev: 'development', test: 'test', prod: 'production' } as const
 
 export interface SwitchboardCriteria {
@@ -38,6 +44,7 @@ export async function initSwitchboard(): Promise<void> {
       },
       dataRetrieval: {
         [SWITCHBOARD_APP]: {},
+        [HIVEMIND_APP]: { labels: HIVEMIND_LABELS },
       },
     })
     initialized = true
@@ -87,6 +94,30 @@ export function getSwitchboardValue<T extends string | number | boolean>(setting
 
 export function getShopperFlag(setting: string, shopperId: string | undefined, defaultValue = false): boolean {
   return getSwitchboardFlag(setting, defaultValue, shopperId ? { shopperId } : undefined)
+}
+
+/**
+ * Read a typed value for a Hivemind experiment (under the @hivemind app), scoped
+ * to the shopper's cohort. Returns `defaultValue` when switchboard is
+ * uninitialized/unavailable or the lookup throws.
+ */
+export function getHivemindValue<T>(setting: string, defaultValue: T, shopperId?: string): T {
+  if (!initialized || !switchboardModule) return defaultValue
+  try {
+    const client = switchboardModule.getClient(false)
+    if (!client) return defaultValue
+    return client.getValue<T>(HIVEMIND_APP, setting, shopperId ? { shopperId } : undefined, defaultValue)
+  } catch (err: unknown) {
+    const now = Date.now()
+    if (now - lastWarnAt > 60_000) {
+      lastWarnAt = now
+      logger.warn('switchboard.getHivemindValue.failed', {
+        setting,
+        error: err instanceof Error ? err.message : String(err),
+      })
+    }
+    return defaultValue
+  }
 }
 
 export function destroySwitchboard(): void {
