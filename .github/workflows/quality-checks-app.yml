@@ -6,6 +6,8 @@ on:
     types: [opened, synchronize, reopened]
     paths:
       - 'app/**'
+      - 'tests/**'
+      - 'playwright.config.ts'
       - 'packages/pattern-library/**'
       - 'packages/shared/**'
       - 'package.json'
@@ -21,6 +23,8 @@ on:
     branches: [main]
     paths:
       - 'app/**'
+      - 'tests/**'
+      - 'playwright.config.ts'
       - 'packages/pattern-library/**'
       - 'packages/shared/**'
       - 'package.json'
@@ -80,3 +84,56 @@ jobs:
       testla-pcp-app-id: '6082'
       testla-run-name: 'App - Integration Tests'
     secrets: inherit
+
+  # Standalone typecheck for the repo-root Playwright suite (tests/). tests/ is
+  # not a workspace package, so `turbo run typecheck` never covers it. tsc is
+  # not on the root PATH under pnpm's isolated linker, so it is invoked through
+  # the `website` package (which owns typescript) against tests/tsconfig.json.
+  quality-checks-app-tests-typecheck:
+    runs-on:
+      labels:
+        - airo-cicd-runners
+        - self-hosted
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - name: Setup Artifactory and Node.js
+        id: setup
+        uses: jfrog/setup-jfrog-cli@1641575d87647fb969c0545f0b6a76873e328b7c
+        env:
+          JF_URL: ${{ vars.JF_URL }}
+        with:
+          oidc-provider-name: github
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: '22.12'
+      - name: Enable Corepack and configure pnpm
+        env:
+          OIDC_TOKEN: ${{ steps.setup.outputs.oidc-token }}
+        run: |
+          echo "::add-mask::$OIDC_TOKEN"
+          # Node 22.12's bundled corepack can't verify pnpm@10.33.0's signature; upgrade it first (matches _quality-checks.yml).
+          npm install -g corepack@latest
+          corepack enable
+          EXPECTED_VERSION=$(node -p "
+            const pm = require('./package.json').packageManager || '';
+            const match = pm.match(/^pnpm@(.+?)(\+|$)/);
+            if (!match) { console.error('Cannot parse packageManager:', pm); process.exit(1); }
+            match[1];
+          ")
+          corepack prepare "pnpm@${EXPECTED_VERSION}" --activate
+          echo "registry=https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/" > .npmrc
+          echo "//gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/:_authToken=${OIDC_TOKEN}" >> .npmrc
+          echo "//gdartifactory1.jfrog.io/artifactory/api/npm/npm-gasket-core-local/:_authToken=${OIDC_TOKEN}" >> .npmrc
+          echo "//gdartifactory1.jfrog.io/artifactory/api/npm/npm-user-experience-local/:_authToken=${OIDC_TOKEN}" >> .npmrc
+      - name: Cache pnpm store
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ~/.local/share/pnpm/store
+          key: pnpm-store-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: pnpm-store-${{ runner.os }}-
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Typecheck E2E tests
+        run: pnpm --filter website exec tsc --noEmit -p "${GITHUB_WORKSPACE}/tests/tsconfig.json"

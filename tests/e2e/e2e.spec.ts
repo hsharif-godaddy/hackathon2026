@@ -48,6 +48,7 @@ import {
   expectPublishSuccessVisible,
   logTestResult,
   logTestStart,
+  submitHomepage,
   waitForChatInput,
   waitForDevelopPage,
   waitForGenerationComplete,
@@ -116,20 +117,7 @@ test.describe('E2E - Critical Path', () => {
         `${getSpecPrefix('e2e')} Simple landing page with a hero section and a call to action button - do not ask follow up questions and publish this app`,
       );
 
-      // data-eid is server-rendered so its presence doesn't prove React hydration,
-      // and the disabled-state flips synchronously even before the click handler
-      // is attached. Empirically 10 s is enough to cover hydration on the slowest
-      // of the four target environments (dev/pre-test/test/prod). networkidle was
-      // tried (commit ee364cdee) and was unreliable because background polling
-      // requests prevent the page from ever going idle. If a hydration marker is
-      // ever exposed (e.g. a data-hydrated attribute on the form), prefer
-      // page.waitForFunction over this fixed wait.
-      const submitButton = page.getByTestId('homepage-prompt-submit');
-      await expect(submitButton).toBeEnabled({ timeout: DEFAULT_TIMEOUT });
-      await page.waitForTimeout(10_000);
-      console.log('  Submit button ready');
-
-      await submitButton.click();
+      await submitHomepage(page);
       console.log('  Submit clicked');
 
       // Handle SSO login if needed (user may already be authenticated from a previous session)
@@ -461,15 +449,8 @@ test.describe('E2E - Critical Path', () => {
       // other app disconnects. Per-env subdomains sidestep that race.
       const TARGET_DOMAIN = `e2e-${env}.airotesting.shop`;
       const MAX_DOMAIN_ATTEMPTS = 3;
-      
-      const escapedTarget = TARGET_DOMAIN.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const domainRowContainer = page
-        .locator('div')
-        .filter({ has: page.getByText(new RegExp(`^${escapedTarget}`)) })
-        .filter({
-          has: page.getByRole('button', { name: /builder_common_options|^Options$/i }),
-        })
-        .last();
+
+      const domainRowContainer = page.getByTestId(`domain-row-${TARGET_DOMAIN.trim().toLowerCase()}`);
 
       // Retry loop: the domain-add API in test environments is intermittently
       // slow or silently fails. Rather than a single 300s blind wait (which
@@ -625,14 +606,9 @@ test.describe('E2E - Critical Path', () => {
         }
       }
 
-      // DNS instructions panel renders when the domain is external. Anchor
-      // on the i18n key (untranslated) or the English fallback.
-      const dnsRegion = page
-        .locator('div')
-        .filter({
-          has: page.getByText(/builder_domain_dns_instructions|To finish connecting/i),
-        })
-        .first();
+      // DNS instructions panel renders when the domain is external, scoped
+      // by the `domain-dns-instructions` testid (DomainDNS.tsx).
+      const dnsRegion = page.getByTestId('domain-dns-instructions');
       await expect(dnsRegion).toBeVisible({ timeout: LONG_TIMEOUT });
 
       // Assert the A record renders — `getDnsRecords` in @/utils/domain

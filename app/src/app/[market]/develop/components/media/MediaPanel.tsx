@@ -217,6 +217,7 @@ export default function MediaPanel() {
           type="button"
           onClick={handleBack}
           className="shrink-0 flex items-center gap-1 text-sm text-intents-ux-textSubtle-textColor hover:text-intents-ux-text-textColor transition-colors hover:cursor-pointer"
+          data-testid="media-panel-back-button"
         >
           <ChevronLeftIcon className="size-2 rtl:scale-x-[-1]" />
           <span>{t('builder_common_back')}</span>

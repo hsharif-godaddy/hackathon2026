@@ -99,7 +99,7 @@ export function MediaSlotsGrid({
 
   if (!manifest || slotNames.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center h-48 text-center px-4">
+      <div className="flex flex-col items-center justify-center h-48 text-center px-4" data-testid="media-slots-empty-state">
         <p className="text-intents-ux-textSubtle-textColor">
           {t('builder_mediaslot_no_images')}
         </p>

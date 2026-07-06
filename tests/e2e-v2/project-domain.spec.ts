@@ -245,8 +245,8 @@ test.describe('E2E v2 - Project Domain card', () => {
 
     // Error message about minimum length should appear
     await expect(
-      page.getByText(/at least 5 characters|builder_project_domain_error_min_length/i),
-    ).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+      page.getByTestId('project-domain-error'),
+    ).toContainText(/at least 5 characters|builder_project_domain_error_min_length/i, { timeout: DEFAULT_TIMEOUT });
 
     // Save should remain disabled
     const editActions = page.getByTestId('project-domain-edit-actions');
@@ -286,8 +286,8 @@ test.describe('E2E v2 - Project Domain card', () => {
 
     // Error about invalid characters
     await expect(
-      page.getByText(/letters, numbers, periods.*and hyphens|builder_project_domain_error_invalid_characters/i),
-    ).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+      page.getByTestId('project-domain-error'),
+    ).toContainText(/letters, numbers, periods.*and hyphens|builder_project_domain_error_invalid_characters/i, { timeout: DEFAULT_TIMEOUT });
 
     // Save should be disabled
     const editActions = page.getByTestId('project-domain-edit-actions');
@@ -324,8 +324,8 @@ test.describe('E2E v2 - Project Domain card', () => {
 
     // Error about invalid bounds
     await expect(
-      page.getByText(/start and end with a letter or number|builder_project_domain_error_invalid_bounds/i),
-    ).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+      page.getByTestId('project-domain-error'),
+    ).toContainText(/start and end with a letter or number|builder_project_domain_error_invalid_bounds/i, { timeout: DEFAULT_TIMEOUT });
 
     // Save should be disabled
     const editActions = page.getByTestId('project-domain-edit-actions');

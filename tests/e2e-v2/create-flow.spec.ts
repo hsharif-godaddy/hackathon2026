@@ -29,13 +29,12 @@ import { deleteApp, deleteAppsWithPrefix, evictOldestE2eAppsToFitLimit } from '.
 import { detectSsoType, handleSsoLogin, isSignInUIResult } from '../helpers/auth';
 import {
   CHAT_INPUT_TIMEOUT,
-  DEFAULT_TIMEOUT,
   E2E_NO_DELETE,
   LONG_TIMEOUT,
   PREVIEW_TIMEOUT,
   getSpecPrefix,
 } from '../helpers/constants';
-import { dismissOverlays, logTestResult, logTestStart, waitForDevelopPage } from '../helpers/ui';
+import { dismissOverlays, logTestResult, logTestStart, submitHomepage, waitForDevelopPage } from '../helpers/ui';
 
 const SPEC_NAME = 'create-flow';
 
@@ -81,20 +80,7 @@ test.describe('E2E v2 - Create flow', () => {
       `${getSpecPrefix(SPEC_NAME)} Simple landing page with a hero section and a call to action button`,
     );
 
-    // data-eid is server-rendered so its presence doesn't prove React hydration,
-    // and the disabled-state flips synchronously even before the click handler
-    // is attached. Empirically 10 s is enough to cover hydration on the slowest
-    // of the four target environments (dev/pre-test/test/prod). networkidle was
-    // tried (commit ee364cdee) and was unreliable because background polling
-    // requests prevent the page from ever going idle. If a hydration marker is
-    // ever exposed (e.g. a data-hydrated attribute on the form), prefer
-    // page.waitForFunction over this fixed wait.
-    const submitButton = page.getByTestId('homepage-prompt-submit');
-    await expect(submitButton).toBeEnabled({ timeout: DEFAULT_TIMEOUT });
-    await page.waitForTimeout(10_000);
-    console.log('  Submit button ready');
-
-    await submitButton.click();
+    await submitHomepage(page);
     console.log('  Submit clicked');
 
     const ssoResult = await detectSsoType(page, true);

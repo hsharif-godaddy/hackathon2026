@@ -15,7 +15,7 @@ import { test, expect } from '../helpers/test-fixtures';
 import { deleteAppsWithPrefix, evictOldestE2eAppsToFitLimit } from '../helpers/api';
 import { loginViaSsoDirect, ensureAuthenticated } from '../helpers/auth';
 import { LONG_TIMEOUT, DEFAULT_TIMEOUT, AI_RESPONSE_TIMEOUT_MS, E2E_NO_DELETE, getSpecPrefix } from '../helpers/constants';
-import { dismissOverlays, logTestResult, logTestStart, waitForDevelopPage } from '../helpers/ui';
+import { dismissOverlays, logTestResult, logTestStart, submitHomepage, waitForDevelopPage } from '../helpers/ui';
 
 /** Spec prefixes used by `getSpecPrefix(...)` calls in this describe block. */
 const SPEC_PREFIXES = ['brand-book'] as const;
@@ -74,13 +74,7 @@ test.describe('Brand Book Tab', () => {
     await promptInput.waitFor({ state: 'visible', timeout: LONG_TIMEOUT });
     await promptInput.fill(`${getSpecPrefix('brand-book')} Simple pet photography business - do not ask follow up questions`);
 
-    const submitButton = page.getByTestId('homepage-prompt-submit');
-    await expect(submitButton).toBeEnabled({ timeout: DEFAULT_TIMEOUT });
-    // The disabled→enabled flip is server-rendered, so toBeEnabled alone is not
-    // proof that React has hydrated. Without this wait, clicks land on the shell
-    // before event handlers attach and silently no-op (see authentication.spec.ts).
-    await page.waitForTimeout(10_000);
-    await submitButton.click();
+    await submitHomepage(page);
 
     await page.waitForURL(/\/develop\//, { timeout: LONG_TIMEOUT });
     await waitForDevelopPage(page);

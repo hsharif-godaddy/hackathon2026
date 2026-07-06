@@ -11,7 +11,7 @@ import { test, expect } from '../helpers/test-fixtures';
 
 import { clearAuthState, detectSsoType, loginViaSsoDirect, openUserMenu, userMenuTrigger, verifyAuthenticated } from '../helpers/auth';
 import { LONG_TIMEOUT, DEFAULT_TIMEOUT } from '../helpers/constants';
-import { logTestResult, logTestStart } from '../helpers/ui';
+import { logTestResult, logTestStart, submitHomepage } from '../helpers/ui';
 
 test.describe('Authentication', () => {
   test.beforeEach(async ({}, testInfo) => {
@@ -191,7 +191,7 @@ test.describe('Authentication', () => {
    * UNAUTHENTICATED FLOW
    * Tests all unauthenticated user scenarios in one continuous session
    */
-  test('Guest User - Protected Routes, Sign-In Redirect & Access Control', async ({ page, context }) => {
+  test('Guest User — unauthenticated homepage, user-menu Sign In, and SSO trigger', async ({ page, context }) => {
     // Clear any existing auth state
     await clearAuthState(context);
 
@@ -254,14 +254,7 @@ test.describe('Authentication', () => {
     // ========================================
     console.log('📝 Step 5: Testing SSO on app creation...');
     await page.getByTestId('homepage-prompt-input').fill('A simple page that displays hello world');
-    // Wait for React hydration before clicking — the disabled→enabled flip
-    // is server-rendered, so toBeEnabled alone isn't proof; pair with a
-    // fixed wait. Without this, clicks before hydration silently no-op and
-    // detectSsoType below times out with `null`.
-    const submitButton = page.getByTestId('homepage-prompt-submit');
-    await expect(submitButton).toBeEnabled({ timeout: DEFAULT_TIMEOUT });
-    await page.waitForTimeout(10_000);
-    await submitButton.click();
+    await submitHomepage(page);
 
     // SSO can appear as the post-29-Apr-2026 in-page modal (prod), the legacy
     // cross-origin SsoDeck iframe, or a full-page redirect (deployed test/dev
@@ -282,53 +275,36 @@ test.describe('Authentication', () => {
     // ========================================
     console.log('🔒 Step 6: Testing protected route /apps...');
     await page.goto('/apps');
-    await page.waitForTimeout(3000); // Wait for redirect or page load
+    await page.waitForLoadState('domcontentloaded');
 
-    // Protected route should redirect to SSO, auto-open SSO iframe/modal, or show auth message
-    const appsUrl = page.url();
-    const ssoSurfaceVisible =
-      (await page.locator('iframe[title="Container for sign in"], [role="dialog"] iframe').first().isVisible().catch(() => false)) ||
-      (await page.locator('.sso-login-modal').isVisible().catch(() => false));
-    if (appsUrl.includes('sso') || appsUrl.includes('login')) {
-      console.log('  ✓ Redirected to SSO');
-    } else if (ssoSurfaceVisible) {
-      console.log('  ✓ SSO Deck auto-opened on 401');
-    } else {
-      const bodyText = await page.locator('body').textContent() || '';
-      const hasAuthRequired = bodyText.includes('Authentication Required') || bodyText.includes('Sign In');
-      if (hasAuthRequired) {
-        console.log('  ✓ Shows auth required message');
-      } else {
-        console.log('  ⚠ Protected route accessible without auth (may be expected)');
-      }
-    }
+    // Unauthenticated access to a protected route must trigger SSO (full-page
+    // redirect or in-page surface). Soft-assert the gate — the old body-text
+    // check keyed on "Sign In" (always in the header menu), so it never failed.
+    const appsSsoSurface = page
+      .locator('iframe[title="Container for sign in"], [role="dialog"] iframe, .sso-login-modal')
+      .first();
+    const appsGated = await Promise.race([
+      page.waitForURL(/sso|login|sign-in|auth/i, { timeout: DEFAULT_TIMEOUT }).then(() => true).catch(() => false),
+      appsSsoSurface.waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT }).then(() => true).catch(() => false),
+    ]);
+    expect.soft(appsGated, 'Step 6: protected /apps should gate an unauthenticated user (SSO redirect or SSO surface)').toBe(true);
 
     // ========================================
     // STEP 7: Protected route /develop
     // ========================================
     console.log('🔒 Step 7: Testing protected route /develop...');
     await page.goto('/develop/test-123');
-    await page.waitForTimeout(3000);
+    await page.waitForLoadState('domcontentloaded');
 
-    const developUrl = page.url();
-    const ssoOnDevelop =
-      (await page.locator('iframe[title="Container for sign in"], [role="dialog"] iframe').first().isVisible().catch(() => false)) ||
-      (await page.locator('.sso-login-modal').isVisible().catch(() => false));
-    if (developUrl.includes('sso') || developUrl.includes('login')) {
-      console.log('  ✓ Develop page redirects to SSO');
-    } else if (ssoOnDevelop) {
-      console.log('  ✓ SSO Deck auto-opened on 401');
-    } else {
-      const bodyText = await page.locator('body').textContent() || '';
-      const requiresAuth = bodyText.includes('Authentication Required') ||
-                          bodyText.includes('Sign In') ||
-                          bodyText.includes('Loading');
-      if (requiresAuth) {
-        console.log('  ✓ Develop page requires auth');
-      } else {
-        console.log('  ⚠ Develop page accessible without auth (may be expected)');
-      }
-    }
+    // Same SSO gate as Step 6 (redirect or in-page surface), soft-asserted.
+    const developSsoSurface = page
+      .locator('iframe[title="Container for sign in"], [role="dialog"] iframe, .sso-login-modal')
+      .first();
+    const developGated = await Promise.race([
+      page.waitForURL(/sso|login|sign-in|auth/i, { timeout: DEFAULT_TIMEOUT }).then(() => true).catch(() => false),
+      developSsoSurface.waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT }).then(() => true).catch(() => false),
+    ]);
+    expect.soft(developGated, 'Step 7: protected /develop should gate an unauthenticated user (SSO redirect or SSO surface)').toBe(true);
 
     // ========================================
     // STEP 8: Auth API error handling

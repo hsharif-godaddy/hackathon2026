@@ -1114,6 +1114,7 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
   return (
     <SettingsSection
       title={t(isDomainConnectEnabled ? 'builder_domain_attach_main_title' : 'builder_custom_domain_title')}
+      testId="settings-section-custom-domain"
       description={t(isDomainConnectEnabled ? 'builder_domain_attach_main_description' : 'builder_custom_domain_description')}
       status={customDomainSectionStatus}
       useDomainConnectLayout={isDomainConnectEnabled}

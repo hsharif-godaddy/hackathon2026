@@ -11,6 +11,7 @@ import {
   E2E_NO_DELETE,
   LONG_TIMEOUT,
   PREVIEW_TIMEOUT,
+  SHORT_TIMEOUT,
   getEnvConfig,
   getSpecPrefix,
 } from '../helpers/constants'
@@ -183,7 +184,7 @@ test.describe.skip('Develop — DPP cold redirect → no re-send on reload', () 
     await logTestResult(page, testInfo)
   })
 
-  test('cold redirect auto-sends once, overlay clears, and reload (flag in place / cleared) does not re-send or re-show overlay', async ({
+  test('cold redirect auto-sends once, overlay clears, and reload (flag in place / cleared / cookie-less) does not re-send or re-show overlay', async ({
     page,
     context,
     request,
@@ -289,13 +290,12 @@ test.describe.skip('Develop — DPP cold redirect → no re-send on reload', () 
     await page.reload({ timeout: LONG_TIMEOUT })
     await waitForDevelopPage(page)
     await expect(transcript).toBeVisible({ timeout: LONG_TIMEOUT })
-    // Give any spurious auto-send a window to fire before locking in the
-    // count. The auto-send effect runs on the first `websocketConnected`
-    // tick, so 5s is comfortably past it.
-    await page.waitForTimeout(5_000)
-    await expect(
-      transcript.locator('[data-testid="chat-message-user"]').filter({ hasText: promptMarker }),
-    ).toHaveCount(1, { timeout: LONG_TIMEOUT })
+    // Reach the single auto-send, then hold a short stability window — a late
+    // or duplicate re-send would push the count to 2 and fail the guard.
+    await expect(userMessages).toHaveCount(1, { timeout: LONG_TIMEOUT })
+    await expect(async () => {
+      await expect(userMessages).toHaveCount(1, { timeout: SHORT_TIMEOUT })
+    }).toPass({ timeout: 3_000 })
     expect(
       await page.evaluate((key) => window.localStorage.getItem(key), flagKey(realAppId)),
     ).toBe('true')
@@ -311,10 +311,10 @@ test.describe.skip('Develop — DPP cold redirect → no re-send on reload', () 
     await page.reload({ timeout: LONG_TIMEOUT })
     await waitForDevelopPage(page)
     await expect(transcript).toBeVisible({ timeout: LONG_TIMEOUT })
-    await page.waitForTimeout(5_000)
-    await expect(
-      transcript.locator('[data-testid="chat-message-user"]').filter({ hasText: promptMarker }),
-    ).toHaveCount(1, { timeout: LONG_TIMEOUT })
+    await expect(userMessages).toHaveCount(1, { timeout: LONG_TIMEOUT })
+    await expect(async () => {
+      await expect(userMessages).toHaveCount(1, { timeout: SHORT_TIMEOUT })
+    }).toPass({ timeout: 3_000 })
     // Without the localStorage flag the conversation-history guard must hold,
     // and the overlay must still not re-appear.
     await expect(page.getByTestId('preview-iframe')).toBeVisible({ timeout: PREVIEW_TIMEOUT })
@@ -329,10 +329,10 @@ test.describe.skip('Develop — DPP cold redirect → no re-send on reload', () 
     await page.reload({ timeout: LONG_TIMEOUT })
     await waitForDevelopPage(page)
     await expect(transcript).toBeVisible({ timeout: LONG_TIMEOUT })
-    await page.waitForTimeout(5_000)
-    await expect(
-      transcript.locator('[data-testid="chat-message-user"]').filter({ hasText: promptMarker }),
-    ).toHaveCount(1, { timeout: LONG_TIMEOUT })
+    await expect(userMessages).toHaveCount(1, { timeout: LONG_TIMEOUT })
+    await expect(async () => {
+      await expect(userMessages).toHaveCount(1, { timeout: SHORT_TIMEOUT })
+    }).toPass({ timeout: 3_000 })
     await expect(page.getByTestId('preview-iframe')).toBeVisible({ timeout: PREVIEW_TIMEOUT })
     await expect(page.getByTestId('preview-building-overlay')).toHaveCount(0)
 

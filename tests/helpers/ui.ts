@@ -209,11 +209,40 @@ export async function dismissOverlays(page: Page): Promise<void> {
  */
 export async function waitForHomepage(page: Page): Promise<void> {
   // Wait for sites API
-  const response = page.waitForResponse('**/api/sites');
+  const response = page.waitForResponse('**/api/sites', { timeout: DEFAULT_TIMEOUT });
   await response;
 
   // Wait for main prompt input
   await page.getByTestId('homepage-prompt-input').waitFor({ state: 'visible', timeout: LONG_TIMEOUT });
+}
+
+/**
+ * Submit the homepage prompt, retrying the click until it demonstrably registers.
+ *
+ * The submit button's disabled→enabled flip is server-rendered, so the button
+ * can look ready before React hydrates and attaches its click handler — a click
+ * then silently no-ops. Instead of a fixed hydration sleep, retry the click
+ * until it takes effect. A registered click either flips the button into its
+ * loading (disabled) state — authenticated submits keep `isLoading` true across
+ * the create request — or replaces the homepage with an SSO surface / develop
+ * navigation (surfaced by `detectSsoType`). A pre-hydration no-op leaves the
+ * button idle+enabled, so `toPass` re-clicks. The bounded click timeout + catch
+ * stop a covered/detached button (after the first successful click) from
+ * stalling an iteration; the app's own `isLoading` re-entry guard prevents any
+ * duplicate create.
+ *
+ * Callers still drive their own post-submit flow afterward (SSO handling and/or
+ * `waitForURL(/develop/)`); this only guarantees the click was accepted.
+ */
+export async function submitHomepage(page: Page, timeout?: number): Promise<void> {
+  const submitButton = page.getByTestId('homepage-prompt-submit');
+  await expect(async () => {
+    await submitButton.click({ timeout: SHORT_TIMEOUT }).catch(() => {});
+    const registered =
+      (await submitButton.isDisabled().catch(() => false)) ||
+      (await detectSsoType(page, true, SHORT_TIMEOUT)) !== 'timeout';
+    expect(registered, 'homepage submit did not register (button still idle after click)').toBe(true);
+  }).toPass({ timeout: timeout ?? DEFAULT_TIMEOUT });
 }
 
 /**
@@ -625,7 +654,7 @@ export async function expectPublishSuccessVisible(
   page: Page,
   timeout = DEPLOYMENT_TIMEOUT_MS,
 ): Promise<void> {
-  const congratsModal = page.locator('#first-publish-congrats-modal');
+  const congratsModal = page.getByTestId('first-publish-congrats-modal');
   const popoverSuccess = page.getByTestId('publish-success-alert');
   const successGrowl = page.locator('#app-publish-success');
   await expect(congratsModal.or(popoverSuccess).or(successGrowl)).toBeVisible({ timeout });
@@ -655,10 +684,16 @@ export async function approveAgentPublish(page: Page, timeout = DEPLOYMENT_TIMEO
  * Dismiss the "Ready to Go Live?" modal if it appears after first publish
  */
 export async function dismissGoLiveModalIfPresent(page: Page, waitTime = GO_LIVE_MODAL_TIMEOUT): Promise<boolean> {
-  await page.waitForTimeout(waitTime);
-
   const laterButton = page.getByTestId('go-live-modal-later');
-  if (await laterButton.isVisible({ timeout: SHORT_TIMEOUT }).catch(() => false)) {
+
+  // Wait for the modal's dismiss button (it surfaces asynchronously after a
+  // first publish) instead of sleeping the full budget unconditionally.
+  const appeared = await laterButton
+    .waitFor({ state: 'visible', timeout: waitTime })
+    .then(() => true)
+    .catch(() => false);
+
+  if (appeared) {
     await laterButton.click();
     await expect(laterButton).not.toBeVisible({ timeout: DEFAULT_TIMEOUT });
     console.log('Dismissed Go Live modal (first publish)');
@@ -722,7 +757,7 @@ export async function waitForGenerationComplete(
       const found = await askQuestionSkip.waitFor({ state: 'visible', timeout: 10000 }).then(() => true, () => false);
       if (aborted.value) return;
       if (found) {
-        const firstOption = page.locator('.airo-input-choice-list [role="option"]').first();
+        const firstOption = page.getByTestId('ask-question-choice-list').locator('[role="option"]').first();
         if (await firstOption.isVisible().catch(() => false)) {
           console.log('  Ask-question detected, picking first option');
           await firstOption.click().catch((err) => console.log('  [option click failed]', err.message));

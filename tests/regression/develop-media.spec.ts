@@ -46,7 +46,7 @@ test.describe('Develop Page - Media Tab', () => {
     }
   });
 
-  test('Media tab - open grid, navigate to slot detail, verify upload flow', async ({ page }, testInfo) => {
+  test('Media tab - open grid, navigate to slot detail, verify select-then-confirm image swap', async ({ page }, testInfo) => {
     testInfo.setTimeout(AI_RESPONSE_TIMEOUT_MS + 60_000);
     // ========================================
     // STEP 1: Create an app with images
@@ -90,7 +90,7 @@ test.describe('Develop Page - Media Tab', () => {
 
     // Wait for media grid to settle (slots or empty state) — assertion-based, no hard wait
     const gridButtons = page.locator('[data-eid*="develop.media_panel.slot"]');
-    const emptyState = page.getByText(/no images/i);
+    const emptyState = page.getByTestId('media-slots-empty-state');
 
     await gridButtons.first()
       .waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT })
@@ -152,7 +152,7 @@ test.describe('Develop Page - Media Tab', () => {
       }
 
       // Navigate back to grid
-      const backButton = page.getByRole('button', { name: /back/i });
+      const backButton = page.getByTestId('media-panel-back-button');
       const hasBackButton = await backButton.isVisible().catch(() => false);
       if (hasBackButton) {
         await backButton.click();

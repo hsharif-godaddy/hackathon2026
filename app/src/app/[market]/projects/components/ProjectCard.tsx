@@ -43,6 +43,8 @@ import { formatDate } from '@/utils/common'
 import { generateClickEID } from '@/utils/instrumentation'
 import { getAppScreenshotUrl, hasBeenPublished } from '@/utils/site'
 
+const PROJECT_CARD_DISPLAY_NAME_TESTID = 'project-card-display-name'
+
 interface SelectionCheckboxProps {
   checked: boolean
   onChange: () => void
@@ -605,7 +607,7 @@ export default function ProjectCard({
                 {listThumbnailSelectionCheckbox}
               </div>
               <div className="flex min-w-0 items-center gap-[8px]">
-                <span className="truncate font-medium">{displayName}</span>
+                <span className="truncate font-medium" data-testid={PROJECT_CARD_DISPLAY_NAME_TESTID}>{displayName}</span>
                 {statusTag}
               </div>
               <text.span size={-1} emphasis="passive" className="truncate">
@@ -663,7 +665,7 @@ export default function ProjectCard({
         </div>
         <div className="flex items-center justify-between gap-2">
           <div className="min-w-0">
-            <div className="truncate font-medium">{displayName}</div>
+            <div className="truncate font-medium" data-testid={PROJECT_CARD_DISPLAY_NAME_TESTID}>{displayName}</div>
             <text.span size={-2} emphasis="passive">
               {updatedLabel}
             </text.span>

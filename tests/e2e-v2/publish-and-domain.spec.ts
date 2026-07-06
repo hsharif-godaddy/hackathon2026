@@ -59,15 +59,12 @@ const customDomainAttachSupported = env === 'prod';
  * after attaching but before disconnecting would otherwise leave the domain
  * attached and break this run's attach step.
  *
- * Caller must have the Domain settings panel already open. `escapedTarget`
- * is the regex-escaped domain (so `.` matches literally).
+ * Caller must have the Domain settings panel already open. `targetDomain`
+ * is the raw FQDN; it's normalized (trim + lowercase) to match the row's
+ * `domain-row-<fqdn>` testid (DomainItem.tsx).
  */
-async function disconnectDomainIfPresent(page: Page, escapedTarget: string): Promise<void> {
-  const existingRow = page
-    .locator('div')
-    .filter({ has: page.getByText(new RegExp(`^${escapedTarget}`)) })
-    .filter({ has: page.getByRole('button', { name: /builder_common_options|^Options$/i }) })
-    .last();
+async function disconnectDomainIfPresent(page: Page, targetDomain: string): Promise<void> {
+  const existingRow = page.getByTestId(`domain-row-${targetDomain.trim().toLowerCase()}`);
 
   // Short probe — the panel is already open, so a real leftover row is
   // visible immediately; absence is the common (clean-pool) case.
@@ -75,7 +72,7 @@ async function disconnectDomainIfPresent(page: Page, escapedTarget: string): Pro
   if (!present) return;
 
   console.log(`  Pre-cleanup: disconnecting leftover domain from pool app`);
-  await existingRow.getByRole('button', { name: /builder_common_options|^Options$/i }).click();
+   await existingRow.getByTestId('domain-row-options-button').click();
   await page.locator('[data-eid*="settings-domains.custom_domain.disconnect"]').click();
   const confirm = page.locator('[data-eid*="domain.disconnect.confirm"]');
   await expect(confirm).toBeVisible({ timeout: DEFAULT_TIMEOUT });
@@ -170,13 +167,10 @@ test.describe('E2E v2 - Publish and custom domain', () => {
     expect(publishedUrl).toMatch(airoDomainPattern);
   });
 
-  test('Custom domain attach + disconnect (e2e.airotesting.shop)', { tag: ['@thorough', '@publish'] }, async ({ page }, testInfo) => {
+  test('Custom domain UI renders; attach + disconnect (prod only)', { tag: ['@thorough', '@publish'] }, async ({ page }, testInfo) => {
     testInfo.setTimeout(DEPLOYMENT_TIMEOUT_MS + 120_000);
 
     const TARGET_DOMAIN = 'e2e.airotesting.shop';
-    // Escaped once here and reused for the pre-cleanup probe and the row
-    // locator below, so the `.` chars match literally, not as regex "any".
-    const escapedTarget = TARGET_DOMAIN.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
     await dismissOverlays(page);
     await ensureAuthenticated(page);
@@ -197,12 +191,11 @@ test.describe('E2E v2 - Publish and custom domain', () => {
     await expect(domainViewButton).toBeVisible({ timeout: DEFAULT_TIMEOUT });
     await domainViewButton.click();
 
-    // Use the heading role (renders as `text.h3` in SettingsSection.tsx)
-    // with an anchored regex. A bare `getByText(/Custom Domain/i).first()`
-    // would also match a hidden chat-suggestion `<p>` that contains the
-    // phrase, which is never visible — timing out the assertion.
+    // The Custom Domain section title carries a stable testid
+    // (`settings-section-custom-domain` on the SettingsSection `text.h3`),
+    // robust across the domain-connect flag's title-text variants.
     await expect(
-      page.getByRole('heading', { name: /^Custom Domain$/i }),
+      page.getByTestId('settings-section-custom-domain'),
     ).toBeVisible({ timeout: DEFAULT_TIMEOUT });
 
     const customDomainInput = page.locator('#custom-domain-slug');
@@ -222,7 +215,7 @@ test.describe('E2E v2 - Publish and custom domain', () => {
 
     // Idempotency against the long-lived pool app: clear any leftover
     // attachment from a prior run that failed mid-test before attaching.
-    await disconnectDomainIfPresent(page, escapedTarget);
+    await disconnectDomainIfPresent(page, TARGET_DOMAIN);
     await expect(customDomainInput).toBeVisible({ timeout: DEFAULT_TIMEOUT });
 
     await customDomainInput.fill(TARGET_DOMAIN);
@@ -251,52 +244,28 @@ test.describe('E2E v2 - Publish and custom domain', () => {
       page.getByText(/builder_custom_domain_modal_title|Are you sure/i),
     ).not.toBeVisible({ timeout: DEFAULT_TIMEOUT });
 
-    // Scope the row locator: filter divs to those containing BOTH the
-    // domain text AND the row's Options button. A bare getByText(TARGET_DOMAIN)
-    // is ambiguous once DNS records render. The DNS card has no Options
-    // button, so the dual filter uniquely picks the row Card.
-    // `escapedTarget` (defined at the top of this test) escapes the `.`
-    // chars in `e2e.airotesting.shop` so they match literally in the regex,
-    // not as the "any char" metachar.
-    const domainRowContainer = page
-      .locator('div')
-      .filter({ has: page.getByText(new RegExp(`^${escapedTarget}`)) })
-      .filter({
-        has: page.getByRole('button', { name: /builder_common_options|^Options$/i }),
-      })
-      .last();
+    // The per-domain row Card carries a stable `domain-row-<fqdn>` testid
+    // (DomainItem.tsx), so we no longer need the structural div/text/Options
+    // filter chain to disambiguate it from the DNS card.
+    const domainRowContainer = page.getByTestId(`domain-row-${TARGET_DOMAIN.trim().toLowerCase()}`);
     await expect(domainRowContainer).toBeVisible({ timeout: DEPLOYMENT_TIMEOUT_MS });
 
-    // DNS instructions panel renders when the domain is external. Anchor
-    // on the i18n key (untranslated) or the English fallback.
-    const dnsRegion = page
-      .locator('div')
-      .filter({
-        has: page.getByText(/builder_domain_dns_instructions|To finish connecting/i),
-      })
-      .first();
+    // DNS instructions panel renders when the domain is external, scoped by
+    // the `domain-dns-instructions` testid (DomainDNS.tsx).
+    const dnsRegion = page.getByTestId('domain-dns-instructions');
     await expect(dnsRegion).toBeVisible({ timeout: DEPLOYMENT_TIMEOUT_MS });
 
-    // Assert the A record renders — `getDnsRecords` in @/utils/domain
-    // always returns an aRecord regardless of root-vs-subdomain or DCV
-    // flag state, so this is the only DNS card guaranteed to be present
-    // across environments. CNAME presence varies:
-    //   - root domain → always a www CNAME (cnameRecord)
-    //   - subdomain   → no www CNAME; DCV CNAME only if appbuilder-domain-dcv
-    //                   is on AND the backend populated certificateValidationCname
-    // The row + DNS-panel scoping above already proves the panel belongs
-    // to TARGET_DOMAIN; asserting fqdn text inside the panel also doesn't
-    // work for subdomains since `getDnsRecords` only puts the subdomain
-    // segment (e.g. `e2e`) in the A-record name, not the full fqdn.
-    await expect(dnsRegion.getByText(/^A$/, { exact: true }).first()).toBeVisible({
+    // Assert the A record card renders. `getDnsRecords` in @/utils/domain
+    // always returns an aRecord regardless of root-vs-subdomain or DCV flag
+    // state, so it's the only DNS card guaranteed present across envs; it
+    // carries the `domain-dns-a-record` testid (DomainDNS.tsx).
+    await expect(page.getByTestId('domain-dns-a-record')).toBeVisible({
       timeout: DEFAULT_TIMEOUT,
     });
 
     // Scope the options button to THIS row so we don't hit the auto-prefix
     // domain or any other available-customer-domain rows.
-    const optionsButton = domainRowContainer.getByRole('button', {
-      name: /builder_common_options|^Options$/i,
-    });
+    const optionsButton = domainRowContainer.getByTestId('domain-row-options-button');
     await expect(optionsButton).toBeVisible({ timeout: DEFAULT_TIMEOUT });
     await optionsButton.click();
 

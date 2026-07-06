@@ -365,24 +365,26 @@ function ManagePlanContent() {
       {showCreditsModal &&
         builderEntitlementId &&
         subscription?.id && (
-          <CreditsUpgradeContainer
-            source={creditsModalSource ?? paywallSourceId}
-            entitlementId={builderEntitlementId}
-            subscriptionId={subscription.id}
-            initialGrantCount={grants.length}
-            itc={creditsModalItc ?? undefined}
-            onSuccess={() => {
-              closeCreditsModal();
-            }}
-            onClose={() => {
-              closeCreditsModal();
-              shipAnalyticsLog(`${paywallSourceId}.dismissed`, {});
-            }}
-            onErrorClick={() => {
-              closeCreditsModal();
-              shipAnalyticsLog(`${paywallSourceId}.error`, {});
-            }}
-          />
+          <div data-testid="credits-modal-container">
+            <CreditsUpgradeContainer
+              source={creditsModalSource ?? paywallSourceId}
+              entitlementId={builderEntitlementId}
+              subscriptionId={subscription.id}
+              initialGrantCount={grants.length}
+              itc={creditsModalItc ?? undefined}
+              onSuccess={() => {
+                closeCreditsModal();
+              }}
+              onClose={() => {
+                closeCreditsModal();
+                shipAnalyticsLog(`${paywallSourceId}.dismissed`, {});
+              }}
+              onErrorClick={() => {
+                closeCreditsModal();
+                shipAnalyticsLog(`${paywallSourceId}.error`, {});
+              }}
+            />
+          </div>
         )}
 
       {/* Fallback: Show upgrade modal for credits when entitlementId is missing */}

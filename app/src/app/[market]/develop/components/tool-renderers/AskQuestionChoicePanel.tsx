@@ -8,6 +8,8 @@ import ArrowRightIcon from '@ux/icon/arrow-right'
 
 import StepProgressTag from '@/app/[market]/develop/components/chat/StepProgressTag'
 
+const ASK_QUESTION_CHOICE_LIST_TESTID = 'ask-question-choice-list'
+
 interface Suggestion {
   text: string
   value?: string
@@ -377,6 +379,7 @@ export default function AskQuestionChoicePanel({
       ) : isMulti ? (
         <ChoiceList
           key={`multi-${activeStepIndex}`}
+          data-testid={ASK_QUESTION_CHOICE_LIST_TESTID}
           ariaLabel={activeQuestion?.question ?? ariaLabel}
           selectionMode="multiple"
           allowOther={allowOtherForStep}
@@ -399,6 +402,7 @@ export default function AskQuestionChoicePanel({
       ) : (
         <ChoiceList
           key={`single-${activeStepIndex}`}
+          data-testid={ASK_QUESTION_CHOICE_LIST_TESTID}
           ariaLabel={activeQuestion?.question ?? ariaLabel}
           allowOther={effectiveAllowOther}
           disabled={disabled}

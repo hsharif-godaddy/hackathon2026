@@ -101,7 +101,7 @@ async function sendChatMessage(
   // Snapshot how many responses have already completed (the pool app's
   // transcript accumulates across runs), so "done" means one MORE reaches
   // Completed — not an absolute count.
-  const completedStatus = page.getByTestId('response-metadata-status').filter({ hasText: /Completed/i });
+  const completedStatus = page.getByTestId('response-metadata-status');
   const completedBefore = await completedStatus.count();
 
   if (opts.via === 'enter') await chatInput.press('Enter');

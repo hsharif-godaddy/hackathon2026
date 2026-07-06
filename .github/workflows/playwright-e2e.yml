@@ -67,6 +67,11 @@ on:
         required: false
         type: boolean
         default: false
+      locale:
+        description: 'Browser locale for non-English smoke (e.g. de-DE). Leave empty for default en-US.'
+        required: false
+        default: ''
+        type: string
 
   # Allow triggering from other GitHub Actions
   workflow_call:
@@ -96,6 +101,11 @@ on:
         required: false
         type: boolean
         default: false
+      locale:
+        description: 'Browser locale for non-English smoke (e.g. de-DE). Leave empty for default en-US.'
+        required: false
+        default: ''
+        type: string
 
 permissions:
   id-token: write # required for artifactory token login
@@ -441,6 +451,7 @@ jobs:
           PROD_PASSWORD: ${{ steps.get-credentials.outputs.password }}
           PLAYWRIGHT_BASE_URL: ${{ steps.env-config.outputs.base_url }}
           PLAYWRIGHT_ENV: ${{ steps.env-config.outputs.environment }}
+          PLAYWRIGHT_LOCALE: ${{ inputs.locale }}
           TEST_ENVIRONMENT: ${{ steps.env-config.outputs.environment }}
           # When set (release pipeline's dark run), tests/helpers/auth.ts seeds the
           # x_katana_version cookie parsed from this URL so every spec — and any app

@@ -224,7 +224,7 @@ test.describe('Develop Page', () => {
     console.log('  ✓ History interactions re-enabled after publish');
   });
 
-  test('Chat input stages dropped and pasted attachments', async ({ page }, testInfo) => {
+  test('Chat input stages dropped and pasted attachments, and sends an attachment-only message', async ({ page }, testInfo) => {
     // Two phases, each up to two AI_RESPONSE_TIMEOUT_MS cycles: the initial
     // generation (createDevelopApp now allows 2 cycles for slow prod/test
     // builds) and step 6c's attachment-only send (a transcript wait + an

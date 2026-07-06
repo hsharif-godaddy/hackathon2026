@@ -97,14 +97,14 @@ test.describe('Auth-at-Edge SSO (ent persona)', () => {
       // without a page reload.
       await expect(publishButton).toBeEnabled({ timeout: DEFAULT_TIMEOUT });
 
-      logTestResult(testInfo, 'pass');
+      await logTestResult(page, testInfo);
     } catch (err) {
-      logTestResult(testInfo, 'fail', err);
+      await logTestResult(page, testInfo);
       throw err;
     }
   });
 
-  test('Share-link button is disabled for ent apps even after Save', async ({ page }, testInfo) => {
+  test('Share-link button is disabled for ent apps', async ({ page }, testInfo) => {
     try {
       // Share links bypass the IdP by design — for ent apps they're
       // permanently disabled regardless of whether SSO is configured.
@@ -116,9 +116,9 @@ test.describe('Auth-at-Edge SSO (ent persona)', () => {
       await expect(shareLinkButton).toBeVisible();
       await expect(shareLinkButton).toBeDisabled();
 
-      logTestResult(testInfo, 'pass');
+      await logTestResult(page, testInfo);
     } catch (err) {
-      logTestResult(testInfo, 'fail', err);
+      await logTestResult(page, testInfo);
       throw err;
     }
   });

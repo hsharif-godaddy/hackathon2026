@@ -40,6 +40,16 @@ const launchOptions = lnaDisabled
   : undefined;
 
 /**
+ * Non-en-US locale override for the `de-DE-smoke` project and manual/CI smoke
+ * runs. Driven by the playwright-e2e workflow's `locale` input (→
+ * PLAYWRIGHT_LOCALE). `locale` sets the browser's Accept-Language header, which
+ * Gasket's pluginIntl uses for locale detection. Left undefined on normal runs
+ * so every existing project keeps its en-US default — `locale: undefined` is a
+ * no-op in Playwright's contextOptions.
+ */
+const smokeLocale: string | undefined = process.env.PLAYWRIGHT_LOCALE || undefined;
+
+/**
  * Playwright E2E Test Configuration
  *
  * Three test suites:
@@ -142,6 +152,8 @@ export default defineConfig({
     screenshot: 'only-on-failure',
     /* Record video on failure */
     video: 'retain-on-failure',
+    /* Non-en-US locale override (PLAYWRIGHT_LOCALE); undefined = en-US default */
+    locale: smokeLocale,
   },
 
   /* Configure projects for major browsers */
@@ -227,6 +239,25 @@ export default defineConfig({
       name: 'regression',
       testDir: './tests/regression',
       use: { ...devices['Desktop Chrome'], ...(launchOptions && { launchOptions }) },
+    },
+    /**
+     * de-DE-smoke: non-English locale smoke over the fast `e2e-v2` specs.
+     * Catches locale-coupled locators (e.g. getByRole name-matching translated
+     * text) that pass in en-US but break in any other locale. Manual/opt-in —
+     * NOT part of the default CI matrix. Defaults to de-DE; PLAYWRIGHT_LOCALE
+     * retargets it (e.g. fr-FR). Mirrors the `e2e-v2` project (same testDir +
+     * `pool-resolve` dependency) so the shared-pool specs resolve their cached
+     * app ids. Run: pnpm test:e2e --project=de-DE-smoke --env=test
+     */
+    {
+      name: 'de-DE-smoke',
+      testDir: './tests/e2e-v2',
+      dependencies: ['pool-resolve'],
+      use: {
+        ...devices['Desktop Chrome'],
+        locale: smokeLocale ?? 'de-DE',
+        ...(launchOptions && { launchOptions }),
+      },
     },
   ],
 

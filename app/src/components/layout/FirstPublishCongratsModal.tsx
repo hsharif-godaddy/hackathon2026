@@ -114,6 +114,7 @@ export default function FirstPublishCongratsModal({ appId }: FirstPublishCongrat
       title={t('builder_first_publish_congrats_title_v2')}
       onClose={dismiss}
       id="first-publish-congrats-modal"
+      data-testid="first-publish-congrats-modal"
       description={t('builder_first_publish_congrats_description_v2')}
     >
       <Box orientation='vertical' gap='sm'>

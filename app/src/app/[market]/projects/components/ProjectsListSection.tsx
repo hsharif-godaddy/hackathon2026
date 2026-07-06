@@ -243,7 +243,7 @@ export default function ProjectsListSection({
       )}
 
       {total > PROJECTS_GRID_PAGE_SIZE && (
-        <div className="flex justify-center pt-2">
+        <div className="flex justify-center pt-2" data-testid="projects-pagination">
           <Pagination
             limit={PROJECTS_GRID_PAGE_SIZE}
             offset={(page - 1) * PROJECTS_GRID_PAGE_SIZE}

@@ -25,13 +25,12 @@ import { deleteApp, findPoolAppId, getPoolPrefix, getPublishedUrl, waitForPublis
 import { detectSsoType, handleSsoLogin, isSignInUIResult, loginViaSsoDirect } from '../helpers/auth';
 import {
   AI_RESPONSE_TIMEOUT_MS,
-  DEFAULT_TIMEOUT,
   LONG_TIMEOUT,
   PREVIEW_TIMEOUT,
   PUBLISH_TIMEOUT_MS,
   getEnvConfig,
 } from '../helpers/constants';
-import { dismissOverlays, waitForDevelopPage } from '../helpers/ui';
+import { dismissOverlays, submitHomepage, waitForDevelopPage } from '../helpers/ui';
 
 const { env } = getEnvConfig();
 // Auto-publish only works where the deployment pipeline exists (test/prod).
@@ -61,12 +60,7 @@ async function createPoolApp(
   await dismissOverlays(page);
   await promptInput.fill(prompt);
 
-  // 10 s fixed hydration wait — see create-flow.spec.ts for the rationale
-  // (data-eid present before hydration; networkidle unreliable here).
-  const submitButton = page.getByTestId('homepage-prompt-submit');
-  await expect(submitButton).toBeEnabled({ timeout: DEFAULT_TIMEOUT });
-  await page.waitForTimeout(10_000);
-  await submitButton.click();
+  await submitHomepage(page);
 
   const ssoResult = await detectSsoType(page, true);
   if (isSignInUIResult(ssoResult)) {

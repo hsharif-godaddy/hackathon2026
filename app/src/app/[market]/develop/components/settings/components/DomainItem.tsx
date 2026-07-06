@@ -27,6 +27,7 @@ import { logger } from '@/lib/request-context';
 import { Popover, PopoverContent, PopoverTrigger } from "@/lib/shadcn/popover"
 import { defaultMessageForDomainJobLabelKey } from '@/lib/translations/domain-job-label-defaults';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
+import { normalizeFqdn } from '@/utils/domain';
 import { CAA_REMEDIATION_NOT_GD_MANAGED, caaVariantForCode, translateDomainApiError } from '@/utils/domain-validation';
 import { generateClickEID, logClickEvent, logImpressionEvent } from '@/utils/instrumentation';
 import { DkimStatusBadge } from './DkimStatusBadge';
@@ -392,7 +393,7 @@ export default function DomainItem({
   }, [appDomain?.status, domainName]);
 
   return (
-    <Card space={{ inline: 'md', block: 'md' }}>
+    <Card space={{ inline: 'md', block: 'md' }} data-testid={`domain-row-${normalizeFqdn(domainName)}`}>
       <Box
         orientation="horizontal"
         blockAlignChildren="spaceBetween"
@@ -448,7 +449,7 @@ export default function DomainItem({
         </Box>
         <Popover open={open} onOpenChange={handlePopoverOpenChange}>
           <PopoverTrigger asChild>
-            <Button design="minimal" size="sm" icon={<MenuIcon />} aria-label={t('builder_common_options', undefined, 'Options')} />
+            <Button design="minimal" size="sm" icon={<MenuIcon />} aria-label={t('builder_common_options', undefined, 'Options')} data-testid="domain-row-options-button" />
           </PopoverTrigger>
           <PopoverContent align="end" className={isDomainConnectEnabled ? "w-auto p-1" : "w-[280px] p-1"}>
             {showConfirmation ? (

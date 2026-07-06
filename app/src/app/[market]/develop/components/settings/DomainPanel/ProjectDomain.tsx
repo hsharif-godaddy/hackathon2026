@@ -590,7 +590,7 @@ export default function ProjectDomain() {
               )
             : undefined
         }
-        errorMessage={inputErrorMessage}
+        errorMessage={inputErrorMessage ? <span data-testid="project-domain-error">{inputErrorMessage}</span> : undefined}
         invalid={!!inputErrorMessage}
         disabled={isMutationBusy || disableProjectDomain}
       />

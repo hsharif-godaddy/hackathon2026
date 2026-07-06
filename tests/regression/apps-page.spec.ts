@@ -345,12 +345,12 @@ test.describe('Apps Page & Navigation', () => {
       expect(firstPageCards).toBe(APPS_GRID_PAGE_SIZE);
       console.log(`  ✓ First page shows ${firstPageCards} cards (expected ${APPS_GRID_PAGE_SIZE})`);
 
-      await expect(page.getByText('Pagination App 1', { exact: true })).toBeVisible();
+      await expect(page.getByTestId('project-card-display-name').filter({ hasText: /^Pagination App 1$/ })).toBeVisible();
       await expect(page.getByText(`Pagination App ${APPS_GRID_PAGE_SIZE}`)).toBeVisible();
       await expect(page.getByText(`Pagination App ${APPS_GRID_PAGE_SIZE + 1}`)).not.toBeVisible();
       console.log('  ✓ Correct apps visible on page 1');
 
-      const paginationNav = page.locator('nav.ux-pagination');
+      const paginationNav = page.getByTestId('projects-pagination');
       await expect(paginationNav).toBeVisible();
       console.log('  ✓ Pagination controls visible');
 
@@ -358,7 +358,7 @@ test.describe('Apps Page & Navigation', () => {
       // STEP 4: Click Next, verify second page
       // ========================================
       console.log('➡️ Step 4: Navigating to page 2...');
-      const nextButton = page.getByRole('button', { name: 'Go to next page' });
+      const nextButton = page.getByTestId('projects-pagination').getByRole('button', { name: 'Go to next page' });
       await expect(nextButton).toBeEnabled();
       await nextButton.click();
 
@@ -379,7 +379,7 @@ test.describe('Apps Page & Navigation', () => {
       // STEP 5: Click Prev, verify return to page 1
       // ========================================
       console.log('⬅️ Step 5: Navigating back to page 1...');
-      const prevButton = page.getByRole('button', { name: 'Go to previous page' });
+      const prevButton = page.getByTestId('projects-pagination').getByRole('button', { name: 'Go to previous page' });
       await expect(prevButton).toBeEnabled();
       await prevButton.click();
 

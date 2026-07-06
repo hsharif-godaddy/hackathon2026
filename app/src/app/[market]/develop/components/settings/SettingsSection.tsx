@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils";
 interface SettingsSectionProps {
   children?: React.ReactNode
   title?: string
+  testId?: string
   description?: string
   status?: StatusValue
   hideStatus?: boolean
@@ -26,6 +27,7 @@ interface SettingsSectionProps {
 export default function SettingsSection({
   children,
   title,
+  testId,
   description,
   status,
   button,
@@ -43,7 +45,7 @@ export default function SettingsSection({
       blockAlignChildren="spaceBetween"
       className={cn(useDomainConnectLayout && 'w-full')}
     >
-      {title && <text.h3 as="title">{title}</text.h3>}
+      {title && <text.h3 as="title" data-testid={testId}>{title}</text.h3>}
       {showStatus && <SettingsSectionStatus status={status} />}
     </Box>
   ) : null

@@ -182,8 +182,10 @@ test.describe('Analytics Custom Period', () => {
     await customSegment.click();
 
     const flyout = page.getByTestId('analytics-period-custom-flyout');
+    // Scope to the Flyout's dialog (role="dialog" wraps the flyout Box) so an unrelated dialog can't match.
+    const customDialog = page.getByRole('dialog').filter({ has: page.getByTestId('analytics-period-custom-flyout') });
     await expect(flyout).toBeVisible({ timeout: DEFAULT_TIMEOUT });
-    await expect(page.getByRole('dialog')).toBeVisible();
+    await expect(customDialog).toBeVisible();
 
     const { fromDate, toDate } = recentCustomRange();
     await page.locator('#analytics-from-date').fill(fromDate);
@@ -201,7 +203,7 @@ test.describe('Analytics Custom Period', () => {
     await flyout.getByTestId('analytics-period-apply').click();
 
     await expect(flyout).not.toBeVisible({ timeout: DEFAULT_TIMEOUT });
-    await expect(page.getByRole('dialog')).not.toBeVisible({ timeout: DEFAULT_TIMEOUT });
+    await expect(customDialog).not.toBeVisible({ timeout: DEFAULT_TIMEOUT });
     await analyticsRequest;
 
     console.log('  Custom range applied and analytics refresh requested');

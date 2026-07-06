@@ -182,7 +182,7 @@ test.describe('Share Link', () => {
     await newPage.close();
   });
 
-  test('Preview auto-creates share token and shows expiry label', async ({ page }) => {
+  test('Preview auto-creates share token and displays the share URL', async ({ page }) => {
     console.log('Creating test app...');
     await page.goto('/');
 

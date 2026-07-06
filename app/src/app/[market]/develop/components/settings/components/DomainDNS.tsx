@@ -75,12 +75,14 @@ function DnsRecordCard({
   type,
   name,
   value,
-  ttl
+  ttl,
+  testId
 }: {
   type: string;
   name: string;
   value: string;
   ttl: string | number;
+  testId?: string;
 }) {
   const t = useTranslations();
   const isDomainConnectEnabled = useSwitchboard('appbuilder-domain-connect');
@@ -89,6 +91,7 @@ function DnsRecordCard({
     <Box
       orientation="vertical"
       className="p-2 rounded-md border border-intents-ux-border-subtle bg-intents-ux-box-backgroundColor"
+      data-testid={testId}
     >
       {isDomainConnectEnabled ? (
         <Box gap="sm" orientation="horizontal" inlineAlignChildren="center">
@@ -221,6 +224,7 @@ export default function DomainDNS({
       orientation="vertical"
       gap="md"
       className="w-full pb-2 mb-1 border-b"
+      data-testid="domain-dns-instructions"
     >
       <text.p className="text-sm">
         {t('builder_domain_dns_instructions')}
@@ -238,7 +242,7 @@ export default function DomainDNS({
       )}
 
       <Box orientation="vertical" gap="sm">
-        <DnsRecordCard {...dnsRecords.aRecord} />
+        <DnsRecordCard {...dnsRecords.aRecord} testId="domain-dns-a-record" />
         {dnsRecords.cnameRecord && <DnsRecordCard {...dnsRecords.cnameRecord} />}
         {dnsRecords.dcvRecord && <DnsRecordCard {...dnsRecords.dcvRecord} />}
         {emailRecordsReady && <DnsRecordCard {...SPF_RECORD} />}

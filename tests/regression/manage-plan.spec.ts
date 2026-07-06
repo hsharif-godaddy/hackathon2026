@@ -46,7 +46,7 @@ test.describe('Manage Plan - Deeplinks', function deeplinks() {
     console.log('⏳ Waiting for credits modal to open...');
     // The modal opens once subscription data loads. DEFAULT_TIMEOUT (30s)
     // covers the subscription fetch in every environment.
-    await expect(page.getByRole('dialog')).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+    await expect(page.getByTestId('credits-modal-container')).toBeVisible({ timeout: DEFAULT_TIMEOUT });
     console.log('✅ Credits modal is visible');
 
     // The deeplink handler strips action and source from the URL immediately

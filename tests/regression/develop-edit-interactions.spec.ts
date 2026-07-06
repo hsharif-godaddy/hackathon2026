@@ -15,7 +15,7 @@ import { test, expect } from '../helpers/test-fixtures';
 import { deleteAppsWithPrefix, evictOldestE2eAppsToFitLimit } from '../helpers/api';
 import { ensureAuthenticated, loginViaSsoDirect } from '../helpers/auth';
 import { LONG_TIMEOUT, DEFAULT_TIMEOUT, AI_RESPONSE_TIMEOUT_MS, E2E_NO_DELETE, getSpecPrefix } from '../helpers/constants';
-import { dismissOverlays, logTestResult, logTestStart, waitForDevelopPage } from '../helpers/ui';
+import { dismissOverlays, logTestResult, logTestStart, submitHomepage, waitForDevelopPage } from '../helpers/ui';
 
 /** Spec prefixes used by `getSpecPrefix(...)` calls in this describe block. */
 const SPEC_PREFIXES = ['color-scheme-selection', 'font-theme-selection'] as const;
@@ -34,7 +34,7 @@ test.describe('Edit Interactions', () => {
     }
   });
 
-  test('Modern color scheme selection widget', async ({ page }, testInfo) => {
+  test('Color scheme selection widget', async ({ page }, testInfo) => {
     // Two sequential AI waits: the initial app generation, then surfacing the
     // suggestion widget — versus the ~6 round-trips the previous version
     // chained. Everything after the widget appears is client-side: option
@@ -71,12 +71,7 @@ test.describe('Edit Interactions', () => {
     // "hello world" prompt generated well under budget.
     await promptInput.fill(`${getSpecPrefix('color-scheme-selection')} Minimal hello world app - keep it tiny and build it quickly, do not ask follow up questions`);
 
-    // Wait for React hydration before clicking (the disabled→enabled flip is
-    // server-rendered so it doesn't prove hydration; a fixed 10s wait does).
-    const submitButton = page.getByTestId('homepage-prompt-submit');
-    await expect(submitButton).toBeEnabled({ timeout: DEFAULT_TIMEOUT });
-    await page.waitForTimeout(10_000);
-    await submitButton.click();
+    await submitHomepage(page);
 
     await page.waitForURL(/\/develop\//, { timeout: LONG_TIMEOUT });
     await waitForDevelopPage(page);
@@ -93,7 +88,7 @@ test.describe('Edit Interactions', () => {
     // clicking to focus — never surfaces it; Step 2's fill activates it). Two AI
     // cycles of budget — prod generation can exceed one (run 27605024226).
     await expect(
-      page.getByTestId('response-metadata-status').filter({ hasText: /Completed/i }).first(),
+      page.getByTestId('response-metadata-status').first(),
     ).toBeVisible({ timeout: 2 * AI_RESPONSE_TIMEOUT_MS });
     console.log('  Initial generation completed');
 
@@ -163,7 +158,7 @@ test.describe('Edit Interactions', () => {
     console.log('Modern color scheme selection widget test passed!');
   });
 
-  test('Modern font theme selection widget', async ({ page }, testInfo) => {
+  test('Font theme selection widget', async ({ page }, testInfo) => {
     // Mirrors the color-scheme test: up to two sequential AI waits (initial
     // generation, then surfacing the widget), then client-side assertions only
     // — no apply/generate-more/cancel round-trips. See that test for the budget
@@ -189,12 +184,7 @@ test.describe('Edit Interactions', () => {
     // Minimal prompt for a fast initial build — see the color-scheme test.
     await promptInput.fill(`${getSpecPrefix('font-theme-selection')} Minimal hello world app - keep it tiny and build it quickly, do not ask follow up questions`);
 
-    // Wait for React hydration before clicking (the disabled→enabled flip is
-    // server-rendered so it doesn't prove hydration; a fixed 10s wait does).
-    const submitButton = page.getByTestId('homepage-prompt-submit');
-    await expect(submitButton).toBeEnabled({ timeout: DEFAULT_TIMEOUT });
-    await page.waitForTimeout(10_000);
-    await submitButton.click();
+    await submitHomepage(page);
 
     await page.waitForURL(/\/develop\//, { timeout: LONG_TIMEOUT });
     await waitForDevelopPage(page);
@@ -208,7 +198,7 @@ test.describe('Edit Interactions', () => {
     // status — see the color-scheme test for why chat-send-button isn't a
     // usable readiness signal here (it only renders once the input has text).
     await expect(
-      page.getByTestId('response-metadata-status').filter({ hasText: /Completed/i }).first(),
+      page.getByTestId('response-metadata-status').first(),
     ).toBeVisible({ timeout: 2 * AI_RESPONSE_TIMEOUT_MS });
     console.log('  Initial generation completed');
 

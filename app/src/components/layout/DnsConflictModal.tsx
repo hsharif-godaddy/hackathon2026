@@ -63,6 +63,7 @@ export default function DnsConflictModal({
       title={title}
       centered={false}
       onClose={onClose}
+      data-testid="dns-conflict-modal"
       actions={(
         <Box orientation='horizontal' gap='md' className='w-full justify-end'>
           <Button

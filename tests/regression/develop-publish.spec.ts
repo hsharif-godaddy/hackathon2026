@@ -433,8 +433,8 @@ test.describe('Publish Flow', () => {
     await expect(dialogPublishButton).toBeEnabled({ timeout: DEPLOYMENT_TIMEOUT_MS });
     await dialogPublishButton.click();
 
-    const dnsConflictTitle = page.getByText('Publish domain with DNS update?');
-    await expect(dnsConflictTitle).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+    const dnsConflictModal = page.getByTestId('dns-conflict-modal');
+    await expect(dnsConflictModal).toBeVisible({ timeout: DEFAULT_TIMEOUT });
     // @ux/modal accessible name may not match the title prop exactly (i18n / aria-labelledby
     // computation). Use stable DOM identifiers from DnsConflictModal.tsx instead.
     await page.locator('[data-eid*="dns_conflict.confirm"]').click();
@@ -445,7 +445,7 @@ test.describe('Publish Flow', () => {
     // useDnsConflictGate sets isOpen:false on confirm, but React batches the
     // re-render asynchronously. Wait for the modal to fully unmount so it
     // doesn't block the popover interaction in Step 4.
-    await expect(dnsConflictTitle).not.toBeVisible({ timeout: DEFAULT_TIMEOUT });
+    await expect(dnsConflictModal).not.toBeVisible({ timeout: DEFAULT_TIMEOUT });
     // The GET deployments mock now returns 'deployed', so useDeploymentsQuery
     // calls setPublishSuccess (clears isPublishing) and setShowFirstPublishCongrats
     // (isFirstPublish=true for a fresh app). The congrats modal requires fqdn to be
@@ -479,7 +479,7 @@ test.describe('Publish Flow', () => {
     });
     await expect(dialogPublishButton).toBeEnabled({ timeout: DEPLOYMENT_TIMEOUT_MS });
     await dialogPublishButton.click();
-    await expect(dnsConflictTitle).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+    await expect(dnsConflictModal).toBeVisible({ timeout: DEFAULT_TIMEOUT });
     await page.locator('#dns-update-consent').click();
     await page.locator('[data-eid*="dns_conflict.confirm"]').click();
 
