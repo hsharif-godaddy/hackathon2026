@@ -35,4 +35,9 @@ describe('normalizeCatalog', () => {
     expect(normalizeCatalog(raw)[1].whenToUse).toBe('')
     expect(normalizeCatalog(raw)[1].tags).toEqual([])
   })
+  it('includes tone and attributes from classification', () => {
+    const [first] = normalizeCatalog(raw)
+    expect(first.tone).toBe('light')
+    expect(first.attributes).toContain('warm')
+  })
 })

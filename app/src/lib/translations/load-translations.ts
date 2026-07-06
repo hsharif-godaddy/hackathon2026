@@ -1,4 +1,5 @@
 import { logger } from '@/lib/request-context';
+import { mergeDevPreviewOverrides } from '@/lib/translations/merge-dev-preview-overrides';
 
 interface TranslationStrings {
   [key: string]: string;
@@ -72,7 +73,7 @@ export async function loadTranslations(
       });
     }
 
-    return merged;
+    return mergeDevPreviewOverrides(merged as TranslationStrings);
   } catch (error) {
     logger.error('translations.load.error', {
       error: error instanceof Error ? {

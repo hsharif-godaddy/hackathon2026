@@ -328,6 +328,7 @@ describe('useHomepageSubmission', () => {
   describe('attached design kit survives the sign-in gate', () => {
     const KIT: DesignKit = {
       slug: 'golden-hour', displayName: 'Golden Hour', whenToUse: '', tags: [], thumbnailUrl: '',
+      tone: 'light', attributes: [],
     }
 
     beforeEach(() => { localStorage.clear() })

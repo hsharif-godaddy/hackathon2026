@@ -1,3 +1,4 @@
+import { mergeDevPreviewOverrides } from '@/lib/translations/merge-dev-preview-overrides';
 import { logger } from '../request-context';
 
 /**
@@ -90,7 +91,7 @@ export async function fetchTranslationPackages(
       });
     }
 
-    return merged;
+    return mergeDevPreviewOverrides(merged);
   } catch (error) {
     logger.error('translations.fetch.client.error', {
       error: error instanceof Error ? error.message : String(error),

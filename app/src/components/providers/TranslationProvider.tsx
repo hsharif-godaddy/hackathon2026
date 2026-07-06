@@ -2,10 +2,13 @@
 
 import React, { createContext, useContext, useMemo } from 'react';
 import { IntlProvider } from 'react-intl';
+import { IntlErrorCode } from '@formatjs/intl';
 
 import LoadingComponent from '@/components/auth/LoadingComponent';
 import { useGasketData } from '@/hooks/useGasketData';
 import { useTranslationPackages } from '@/hooks/useTranslationPackages';
+import { logger } from '@/lib/request-context';
+import { mergeDevPreviewOverrides } from '@/lib/translations/merge-dev-preview-overrides';
 
 interface TranslationsState {
   translationsLoading: boolean;
@@ -77,7 +80,10 @@ export function TranslationsProvider(props: TranslationsProviderProps) {
   const isSuccess = isServerSideMode || clientFetch.isSuccess;
 
   const locale = localeFromProps || gasketData?.intl?.locale || 'en-US';
-  const messages = messagesFromProps || clientFetch.data || {};
+  const messages = useMemo(
+    () => mergeDevPreviewOverrides(messagesFromProps || clientFetch.data || {}),
+    [messagesFromProps, clientFetch.data],
+  );
 
   const translationsState = useMemo<TranslationsState>(() => ({
     translationsLoading: isLoading,
@@ -87,7 +93,21 @@ export function TranslationsProvider(props: TranslationsProviderProps) {
 
   return (
     <TranslationsContext.Provider value={ translationsState }>
-      <IntlProvider locale={ locale } messages={ messages }>
+      <IntlProvider
+        defaultLocale={ locale }
+        locale={ locale }
+        messages={ messages }
+        onError={(error) => {
+          if (error.code === IntlErrorCode.MISSING_TRANSLATION) {
+            if (process.env.NODE_ENV !== 'development') {
+              logger.warn('translations.intl.missing', { code: error.code, message: error.message });
+            }
+            return;
+          }
+          logger.error('translations.intl.error', { code: error.code, message: error.message });
+          if (process.env.NODE_ENV === 'development') throw error;
+        }}
+      >
         { isLoading
           ? <LoadingComponent />
           : children
