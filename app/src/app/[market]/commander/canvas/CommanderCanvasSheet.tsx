@@ -7,6 +7,7 @@ import { BottomSheet } from '@airo-ux/pattern-library/surfaces/bottom-sheet'
 import { useTranslations } from '@/hooks/useTranslations'
 import { useCommanderStore } from '@/stores/useCommanderStore'
 import { logClickEvent } from '@/utils/instrumentation'
+import { useCanvasBadgeMap } from './badgeProviders'
 import { CANVAS_MENU_ORDER, CANVAS_REGISTRY, type CanvasId, PINNED_CANVAS_ID } from './registry'
 import { useCanvasFlagFilter } from './useCanvasFlagFilter'
 
@@ -23,6 +24,7 @@ export function CommanderCanvasSheet({ open, onOpenChange, clickContext }: Comma
   const activeCanvasId = useCommanderStore((state) => state.activeCanvasId)
   const openCanvas = useCommanderStore((state) => state.openCanvas)
   const closeMobileChat = useCommanderStore((state) => state.closeMobileChat)
+  const badges = useCanvasBadgeMap()
   const isFlagAllowed = useCanvasFlagFilter()
 
   const items = useMemo(
@@ -62,8 +64,13 @@ export function CommanderCanvasSheet({ open, onOpenChange, clickContext }: Comma
               'focus:outline-none focus-visible:ring-1 focus-visible:ring-intents-ux-action-borderColor',
             )}
           >
-            <span className="inline-flex shrink-0 items-center justify-center size-2.5">
+            <span className="relative inline-flex shrink-0 items-center justify-center size-2.5">
               <descriptor.Icon className="size-2.5" />
+              {badges[descriptor.id] && (
+                <span className="pointer-events-none absolute -right-1 -top-1 flex items-center">
+                  {badges[descriptor.id]}
+                </span>
+              )}
             </span>
             <span className="flex-1 truncate text-base">{label}</span>
           </button>

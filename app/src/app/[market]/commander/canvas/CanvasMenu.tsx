@@ -1,7 +1,7 @@
 'use client'
 
 import clsx from 'clsx'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import Button from '@ux/button'
 import PlusIcon from '@ux/icon/plus'
 import SearchIcon from '@ux/icon/search'
@@ -13,6 +13,8 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/lib/shadcn/popover'
 import { useCommanderStore } from '@/stores/useCommanderStore'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { logClickEvent } from '@/utils/instrumentation'
+import { hasAnyCanvasBadge, useCanvasBadgeMap } from './badgeProviders'
+import { CanvasBadgeDot } from './CanvasBadgeDot'
 import { CANVAS_MENU_ORDER, CANVAS_REGISTRY, type CanvasDescriptor, CanvasId } from './registry'
 import { useCanvasFlagFilter } from './useCanvasFlagFilter'
 
@@ -52,11 +54,13 @@ function MenuItem({
   label,
   onSelect,
   testId,
+  cornerBadge,
 }: {
   descriptor: CanvasDescriptor
   label: string
   onSelect: () => void
   testId: string
+  cornerBadge?: ReactNode
 }) {
   return (
     <button
@@ -70,8 +74,13 @@ function MenuItem({
         'cursor-pointer text-left',
       )}
     >
-      <span className="inline-flex shrink-0 items-center justify-center size-2.5">
+      <span className="relative inline-flex shrink-0 items-center justify-center size-2.5">
         <descriptor.Icon className="size-2.5" />
+        {cornerBadge && (
+          <span className="pointer-events-none absolute -right-1 -top-1 flex items-center">
+            {cornerBadge}
+          </span>
+        )}
       </span>
       <span className="truncate">{label}</span>
     </button>
@@ -88,6 +97,7 @@ export function CanvasMenu({ clickContext }: CanvasMenuProps) {
   const isMobile = useIsMobile()
   const openCanvasIds = useCommanderStore((state) => state.openCanvasIds)
   const openCanvas = useCommanderStore((state) => state.openCanvas)
+  const badges = useCanvasBadgeMap()
   const isFlagAllowed = useCanvasFlagFilter()
   const isSsoVisible = useDevelopPageStore(
     (state) => !!state.site?.ssoRequired || !!state.site?.ssoOverrideAllowed,
@@ -111,6 +121,11 @@ export function CanvasMenu({ clickContext }: CanvasMenuProps) {
     if (!q) return items
     return items.filter(({ label }) => label.toLowerCase().includes(q))
   }, [items, query])
+
+  const menuHasBadge = useMemo(
+    () => hasAnyCanvasBadge(badges, items.map(({ descriptor }) => descriptor.id)),
+    [badges, items],
+  )
 
   useEffect(() => {
     if (!open) return
@@ -147,19 +162,22 @@ export function CanvasMenu({ clickContext }: CanvasMenuProps) {
   return (
     <>
       <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger asChild>
-          <Button
-            ref={buttonRef}
-            data-testid="commander-canvas-tabs-menu-trigger"
-            design="tertiary"
-            size="sm"
-            icon={<PlusIcon />}
-            aria-label={t('builder_commander_canvas_menu_label')}
-            onMouseEnter={() => setShowTooltip(true)}
-            onMouseLeave={() => setShowTooltip(false)}
-            onClick={() => logClickEvent('commander.canvas_menu.open', clickContext)()}
-          />
-        </PopoverTrigger>
+        <span className="relative inline-flex shrink-0">
+          <PopoverTrigger asChild>
+            <Button
+              ref={buttonRef}
+              data-testid="commander-canvas-tabs-menu-trigger"
+              design="tertiary"
+              size="sm"
+              icon={<PlusIcon />}
+              aria-label={t('builder_commander_canvas_menu_label')}
+              onMouseEnter={() => setShowTooltip(true)}
+              onMouseLeave={() => setShowTooltip(false)}
+              onClick={() => logClickEvent('commander.canvas_menu.open', clickContext)()}
+            />
+          </PopoverTrigger>
+          {menuHasBadge && <CanvasBadgeDot testId="commander-canvas-tabs-menu-trigger-badge" />}
+        </span>
         <PopoverContent
           align="start"
           className="w-[260px] p-1"
@@ -209,6 +227,7 @@ export function CanvasMenu({ clickContext }: CanvasMenuProps) {
                     descriptor={descriptor}
                     label={label}
                     testId={`commander-canvas-tabs-menu-${descriptor.id}`}
+                    cornerBadge={badges[descriptor.id]}
                     onSelect={() => handleSelect(descriptor.id as CanvasId)}
                   />
                 ))

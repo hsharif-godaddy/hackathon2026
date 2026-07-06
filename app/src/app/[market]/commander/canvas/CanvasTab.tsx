@@ -17,6 +17,8 @@ interface CanvasTabProps {
   /** When true, the label stays icon-only regardless of active state. */
   collapseLabel: boolean
   closeLabel: string
+  /** Optional badge (e.g. inbox unresolved count) overhanging the icon's top-right corner. */
+  cornerBadge?: ReactNode
   onActivate: () => void
   onClose?: () => void
   testId?: string
@@ -30,6 +32,7 @@ export function CanvasTab({
   dismissible,
   collapseLabel,
   closeLabel,
+  cornerBadge,
   onActivate,
   onClose,
   testId,
@@ -120,6 +123,11 @@ export function CanvasTab({
         >
           {label}
         </span>
+        {cornerBadge && (
+          <span className="pointer-events-none absolute -right-0.5 top-0 flex items-center">
+            {cornerBadge}
+          </span>
+        )}
       </div>
       {collapseLabel && showTooltip && (
         <HeaderTooltip anchorRef={tabRef} label={label} />

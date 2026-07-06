@@ -140,6 +140,36 @@ describe('CanvasTab', () => {
     expect(labelSpan).toHaveClass('max-w-0')
   })
 
+  describe('cornerBadge', () => {
+    it('renders the corner badge node when provided', () => {
+      renderWithProviders(
+        <CanvasTab
+          {...baseProps}
+          cornerBadge={<span data-testid="corner-badge">3</span>}
+        />,
+      )
+      expect(screen.getByTestId('corner-badge')).toBeInTheDocument()
+    })
+
+    it('renders no corner badge node when omitted', () => {
+      renderWithProviders(<CanvasTab {...baseProps} />)
+      expect(screen.queryByTestId('corner-badge')).not.toBeInTheDocument()
+    })
+
+    it('keeps the corner badge visible on active dismissible tabs alongside the close affordance', () => {
+      renderWithProviders(
+        <CanvasTab
+          {...baseProps}
+          active
+          onClose={vi.fn()}
+          cornerBadge={<span data-testid="corner-badge">3</span>}
+        />,
+      )
+      expect(screen.getByTestId('corner-badge')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Close tab' })).toBeInTheDocument()
+    })
+  })
+
   describe('tooltip in collapsed mode', () => {
     it('shows tooltip on mouse enter when collapseLabel is true', () => {
       renderWithProviders(<CanvasTab {...baseProps} collapseLabel />)

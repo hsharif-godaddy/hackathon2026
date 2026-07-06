@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef } from 'react'
 import { useTranslations } from '@/hooks/useTranslations'
 import { useCommanderStore } from '@/stores/useCommanderStore'
 import { logClickEvent } from '@/utils/instrumentation'
+import { useCanvasBadgeMap } from './badgeProviders'
 import { CanvasMenu } from './CanvasMenu'
 import { CanvasTab } from './CanvasTab'
 import { CANVAS_OVERFLOW_THRESHOLD, CANVAS_REGISTRY, CanvasId } from './registry'
@@ -24,6 +25,8 @@ export function CanvasTabs({ clickContext }: CanvasTabsProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
 
   const collapseLabels = openCanvasIds.length > CANVAS_OVERFLOW_THRESHOLD
+
+  const badges = useCanvasBadgeMap()
 
   useEffect(() => {
     if (!activeCanvasId || !scrollRef.current) return
@@ -67,6 +70,7 @@ export function CanvasTabs({ clickContext }: CanvasTabsProps) {
                 dismissible={descriptor.dismissible}
                 collapseLabel={collapseLabels}
                 closeLabel={closeLabel}
+                cornerBadge={badges[descriptor.id]}
                 testId={`commander-canvas-tab-${descriptor.id}`}
                 onActivate={() => {
                   if (!isActive) {
