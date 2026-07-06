@@ -18,16 +18,18 @@ import { useAppIdFromParams } from '@/app/[market]/develop/components/utils'
 import ErrorBoundary from '@/components/ErrorBoundary'
 import { useAuth } from '@/hooks/useAuth'
 import { useGasketData } from '@/hooks/useGasketData'
-import { usePaywallEligibility } from '@/hooks/usePaywallEligibility'
+import { useSubscription } from '@/hooks/useSubscription'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 import { AUTHZ_FGA_RELATIONS } from '@/lib/authz-fga/relations'
 import { startReconcilePolling } from '@/lib/mgmt-airo/trigger-collaborator-reconcile'
-import { PAYWALL_ITC } from '@/lib/paywall/shared'
+import { isProfessionalOrAbove, PAYWALL_ITC } from '@/lib/paywall/shared'
 import { logger } from '@/lib/request-context'
 import { usePaywallStore } from '@/stores/usePaywallStore'
 import { useSiteStore } from '@/stores/useSiteStore'
 import RidingArrow from '@/svgs/riding-arrow'
+import { SubscriptionPlan } from '@/types/credits'
+import { getPlanFromSubscription } from '@/utils/credits'
 import { getRootDomain } from '@/utils/getRootDomain'
 import { generateClickEID } from '@/utils/instrumentation'
 
@@ -112,19 +114,27 @@ export default function TeamPanel() {
   const rawCustomerId = getUserInfo().customerId || site?.owner_customer_id
   const customerId = typeof rawCustomerId === 'string' ? rawCustomerId : undefined
 
-  // Inviting teammates is a paid feature. A free-tier OWNER sees the standard
-  // upgrade paywall instead of the invite UI. usePaywallEligibility carries the
-  // owner-pays bypass: an invited collaborator on a paid owner's app
-  // (sharedWithMe) gets showPaywall=false, so collaborators keep the full panel.
-  const { showPaywall, isLoading: isPaywallLoading } = usePaywallEligibility(appId)
+  // Inviting teammates is a Professional/Ultimate feature. Owners on lower tiers
+  // (Free, AiroPlus, Starter) see the upgrade paywall instead of the invite UI.
+  // Owner-pays bypass: an invited collaborator on a paid owner's app (sharedWithMe)
+  // gets showPaywall=false, so collaborators keep the full panel regardless of
+  // their own subscription.
+  const { data: subscription, isLoading: isSubscriptionLoading } = useSubscription()
+  const isSharedWithMe: boolean = site?.sharedWithMe === true
+  const resolvedPlan: SubscriptionPlan = subscription ? getPlanFromSubscription(subscription) : SubscriptionPlan.None
+  const showPaywall: boolean = !isSharedWithMe && !isProfessionalOrAbove(resolvedPlan)
+  // Collaborators bypass the paywall regardless — skip subscription wait for them.
+  const isPaywallLoading: boolean = isSharedWithMe
+    ? false
+    : isSubscriptionLoading || (!!appId && (isSiteLoading || !site))
   const openUpgradeModal = usePaywallStore((state) => state.openUpgradeModal)
 
   // When the flag is on but venture isn't provisioned yet, refetch the site to
   // pick up the team_venture_id that ensureAppTeamVenture wrote (via agent-token).
   // Polls up to 5 times at 3s intervals to handle the race where provisioning
   // just completed but the store has a stale site object from page load.
-  // Skipped for paywalled (free) owners — they can't invite, so there's nothing
-  // to provision a venture for here.
+  // Skipped for paywalled (sub-Professional) owners — they can't invite, so
+  // there's nothing to provision a venture for here.
   useEffect(function refetchUntilVenture() {
     if (multiUser !== true || ventureId || !appId || showPaywall) {
       return undefined
@@ -354,10 +364,10 @@ export default function TeamPanel() {
     return <PanelSkeleton panelType={ChatTab.SETTINGS} settingsSection={SettingsSectionEnum.TEAM} />
   }
 
-  // Free-tier owners can't invite — show the standard upgrade paywall (same
+  // Owners below Professional can't invite — show the upgrade paywall (same
   // Box + Upgrade-button treatment as the Domain paywall) instead of the
-  // multi-user invite UI. Collaborators are exempted upstream (owner-pays bypass
-  // in usePaywallEligibility), so this only ever gates the free OWNER.
+  // multi-user invite UI. Collaborators are exempted (owner-pays bypass above),
+  // so this only ever gates the sub-Professional OWNER.
   if (multiUser === true && showPaywall) {
     return (
       <Box
