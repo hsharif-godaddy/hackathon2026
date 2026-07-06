@@ -93,8 +93,8 @@ catalog:
   '@ux/text-entry': ^2500.11.1
   '@ux/tooltip': ^2500.11.1
   '@ux/util': ^2400.11.0
-  '@vitest/coverage-v8': ^4.1.0
-  '@vitest/ui': ^4.1.0
+  '@vitest/coverage-v8': ^4.1.9
+  '@vitest/ui': ^4.1.9
 
   # AI SDK
   ai: ^6.0.177
@@ -148,7 +148,7 @@ catalog:
   tsx: ^4.21.0
   typescript: 5.9.3
   uuid: ^11.1.1
-  vitest: 4.1.0
+  vitest: 4.1.9
   ws: ^8.21.0
   xlsx: ^0.18.5
   xlsx-populate: ^1.21.0
