@@ -1,4 +1,4 @@
-import featureConfig from "../appointment-features.json";
+import featureConfig from "../appointment-features.json" with { type: "json" };
 
 type FeatureConfig = typeof featureConfig.features;
 type Namespace = keyof FeatureConfig;

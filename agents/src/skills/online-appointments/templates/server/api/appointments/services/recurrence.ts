@@ -134,7 +134,8 @@ function expandMinutely(
       continue;
     }
 
-    const hours: number[] = rule.validations?.hour_of_day ?? Array.from({ length: 24 }, (_, i) => i);
+    const hours: number[] =
+      rule.validations?.hour_of_day ?? Array.from({ length: 24 }, (_, i) => i);
     for (const hour of hours) {
       let cursor: TZDate = new TZDate(
         currentDay.getFullYear(),
@@ -192,8 +193,10 @@ function expandHourly(
   while (isBefore(cursor, rangeEnd)) {
     const dow: number = getDay(cursor);
     const hour: number = getHours(cursor);
-    const validDay: boolean = !rule.validations?.day_of_week || rule.validations.day_of_week.includes(dow);
-    const validHour: boolean = !rule.validations?.hour_of_day || rule.validations.hour_of_day.includes(hour);
+    const validDay: boolean =
+      !rule.validations?.day_of_week || rule.validations.day_of_week.includes(dow);
+    const validHour: boolean =
+      !rule.validations?.hour_of_day || rule.validations.hour_of_day.includes(hour);
 
     if (
       validDay &&

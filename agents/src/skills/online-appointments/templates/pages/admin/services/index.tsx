@@ -998,11 +998,7 @@ export default function AdminServicesPage() {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">
-                      {s.cost ? (
-                        <span>{formatCost(s.cost, currency)}</span>
-                      ) : (
-                        "—"
-                      )}
+                      {s.cost ? <span>{formatCost(s.cost, currency)}</span> : "—"}
                     </td>
                     <td className="px-4 py-3">
                       {s.staffRole ? (

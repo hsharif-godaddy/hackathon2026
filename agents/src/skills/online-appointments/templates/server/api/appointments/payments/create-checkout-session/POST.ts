@@ -4,7 +4,7 @@ import { z } from "zod";
 import { uuidv7 } from "uuidv7";
 import { eq } from "drizzle-orm";
 import { db } from "../../../../db/client";
-import { booking, service, transaction } from "../../../../db/schema";
+import { booking, service, transaction, bookingAddon } from "../../../../db/schema";
 import { validateCoupon } from "../../services/coupons/validate.service";
 
 const schema = z.object({
@@ -46,7 +46,7 @@ export default async function handler(req: Request, res: Response) {
   if (bk.bookableType !== "Service" || bk.bookableId !== serviceId) {
     return res.status(403).json({
       error: "Service ID mismatch",
-      message: "The requested service does not match the booking"
+      message: "The requested service does not match the booking",
     });
   }
 
@@ -63,7 +63,19 @@ export default async function handler(req: Request, res: Response) {
   }
 
   // Only support full payment - deposit option not implemented
-  const rawAmount = parseFloat(svc.salesPrice ?? svc.cost ?? "0");
+  const baseAmount = parseFloat(svc.salesPrice ?? svc.cost ?? "0");
+
+  // Fetch addon prices from booking_addon table
+  const addonRows = await db
+    .select({ price: bookingAddon.price })
+    .from(bookingAddon)
+    .where(eq(bookingAddon.bookingId, bookingId));
+
+  const addonsTotal = addonRows.reduce((sum: number, row: { price: string }) => {
+    return sum + parseFloat(row.price);
+  }, 0);
+
+  const rawAmount = baseAmount + addonsTotal;
 
   // SECURITY: Validate coupon and calculate discount server-side
   // Never trust client-provided or stored discount amounts
@@ -130,7 +142,7 @@ export default async function handler(req: Request, res: Response) {
         .set({
           paymentSessionId: session.id,
           discountAmount: String((discountCents / 100).toFixed(2)),
-          updatedAt: now
+          updatedAt: now,
         })
         .where(eq(booking.id, bookingId));
 

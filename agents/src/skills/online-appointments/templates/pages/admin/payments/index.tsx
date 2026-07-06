@@ -75,7 +75,10 @@ export default function AdminPaymentsPage() {
     try {
       const params = new URLSearchParams({ page: String(page), per_page: String(perPage) });
       if (statusFilter !== "all") params.set("status", statusFilter);
-      const res = await adminFetch(`/api/appointments/admin/payments/transactions?${params}`, token);
+      const res = await adminFetch(
+        `/api/appointments/admin/payments/transactions?${params}`,
+        token,
+      );
       if (res.ok) setData((await res.json()) as PaginatedResponse);
     } finally {
       setLoading(false);

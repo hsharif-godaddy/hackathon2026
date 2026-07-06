@@ -10,6 +10,13 @@ import { getPublicConfig } from "@/lib/api-client";
 import { useAppConfig } from "@/contexts/AppConfigContext";
 import { formatCost } from "@/components/booking/service-utils";
 
+interface Addon {
+  id: string;
+  title: string;
+  price: string;
+  duration: string;
+}
+
 interface BookingDetail {
   id: string;
   confirmationCode: string | null;
@@ -28,6 +35,7 @@ interface BookingDetail {
   clientName?: string | null;
   clientEmail?: string | null;
   staffName?: string | null;
+  addons?: Addon[];
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -139,14 +147,16 @@ export default function AdminBookingDetailPage() {
     );
   }
 
-  const statusLabel =
-    booking.status.charAt(0).toUpperCase() + booking.status.slice(1);
-  const clientDisplayName = booking.clientName ?? (booking.bookerType === "Client" ? "Guest" : booking.bookerType);
+  const statusLabel = booking.status.charAt(0).toUpperCase() + booking.status.slice(1);
+  const clientDisplayName =
+    booking.clientName ?? (booking.bookerType === "Client" ? "Guest" : booking.bookerType);
   const clientInitial = clientDisplayName.charAt(0).toUpperCase();
   const durationLabel = fromIsoDuration(booking.serviceDuration);
+  const addonsTotal = booking.addons?.reduce((sum, addon) => sum + parseFloat(addon.price), 0) ?? 0;
   const finalPrice = booking.serviceCost
     ? String(
-        parseFloat(booking.serviceCost) -
+        parseFloat(booking.serviceCost) +
+          addonsTotal -
           (booking.discountAmount ? parseFloat(booking.discountAmount) : 0),
       )
     : null;
@@ -272,6 +282,17 @@ export default function AdminBookingDetailPage() {
         )}
         {booking.serviceCost && (
           <Row label="Service Cost" value={formatCost(booking.serviceCost, currency)} />
+        )}
+        {booking.addons && booking.addons.length > 0 && (
+          <>
+            {booking.addons.map((addon) => (
+              <Row
+                key={addon.id}
+                label={`+ ${addon.title}`}
+                value={formatCost(addon.price, currency)}
+              />
+            ))}
+          </>
         )}
         {booking.couponCode && (
           <>

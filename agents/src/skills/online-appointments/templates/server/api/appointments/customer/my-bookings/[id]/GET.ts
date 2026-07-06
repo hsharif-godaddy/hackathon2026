@@ -1,6 +1,12 @@
 import type { Request, Response } from "express";
 import { db } from "../../../../../db/client.js";
-import { booking, serviceSnapshot, answeredQuestion, question } from "../../../../../db/schema.js";
+import {
+  booking,
+  serviceSnapshot,
+  answeredQuestion,
+  question,
+  bookingAddon,
+} from "../../../../../db/schema.js";
 import { and, eq, isNull } from "drizzle-orm";
 
 export default async function handler(req: Request, res: Response) {
@@ -39,19 +45,35 @@ export default async function handler(req: Request, res: Response) {
       snapshot = s ?? null;
     }
 
-    const answers = await db
-      .select({
-        id: answeredQuestion.id,
-        body: answeredQuestion.body,
-        questionId: answeredQuestion.questionId,
-        questionBody: question.body,
-      })
-      .from(answeredQuestion)
-      .leftJoin(question, eq(answeredQuestion.questionId, question.id))
-      .where(eq(answeredQuestion.bookingId, bookingId));
+    const [answers, addons] = await Promise.all([
+      db
+        .select({
+          id: answeredQuestion.id,
+          body: answeredQuestion.body,
+          questionId: answeredQuestion.questionId,
+          questionBody: question.body,
+        })
+        .from(answeredQuestion)
+        .leftJoin(question, eq(answeredQuestion.questionId, question.id))
+        .where(eq(answeredQuestion.bookingId, bookingId)),
+      db
+        .select({
+          id: bookingAddon.id,
+          title: bookingAddon.title,
+          price: bookingAddon.price,
+          duration: bookingAddon.duration,
+        })
+        .from(bookingAddon)
+        .where(eq(bookingAddon.bookingId, bookingId)),
+    ]);
 
-    return res.json({ ...found, service: snapshot, answers });
-  } catch (_error) {
+    return res.json({ ...found, service: snapshot, answers, addons });
+  } catch (error) {
+    console.error("api.customer.my_booking_detail.error", {
+      bookingId: req.params.id,
+      clientId: req.query.client_id,
+      error: error instanceof Error ? error.message : String(error),
+    });
     return res.status(500).json({ error: "Internal Server Error" });
   }
 }

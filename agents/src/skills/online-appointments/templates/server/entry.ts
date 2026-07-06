@@ -11,6 +11,12 @@ import adminCouponsCreatePost from "./api/appointments/admin/coupons/POST";
 import adminCouponsGetGet from "./api/appointments/admin/coupons/[id]/GET";
 import adminCouponsUpdatePut from "./api/appointments/admin/coupons/[id]/PUT";
 import adminCouponsDeleteDelete from "./api/appointments/admin/coupons/[id]/DELETE";
+// Admin addon APIs
+import adminAddonsListGet from "./api/appointments/admin/addons/GET";
+import adminAddonsCreatePost from "./api/appointments/admin/addons/POST";
+import adminAddonsGetGet from "./api/appointments/admin/addons/[id]/GET";
+import adminAddonsUpdatePut from "./api/appointments/admin/addons/[id]/PUT";
+import adminAddonsDeleteDelete from "./api/appointments/admin/addons/[id]/DELETE";
 // Customer coupon APIs (internal operations)
 import customerCouponsIncrementPost from "./api/appointments/customer/coupons/[code]/incrementUse/POST";
 import customerCouponsDecrementPost from "./api/appointments/customer/coupons/[code]/decrementUse/POST";
@@ -22,6 +28,7 @@ import publicServiceSlugGet from "./api/appointments/public/services/slug/[slug]
 import publicServiceAvailableDatesGet from "./api/appointments/public/services/[id]/available-slots-by-date-range/GET";
 import publicServiceAvailabilityTimesGet from "./api/appointments/public/services/[id]/availability-times/GET";
 import publicServiceStaffGet from "./api/appointments/public/services/[id]/staff/GET";
+import publicServiceAddonsGet from "./api/appointments/public/services/[id]/addons/GET";
 import publicCategoriesGet from "./api/appointments/public/categories/GET";
 import publicCategoryServicesGet from "./api/appointments/public/categories/[id]/services/GET";
 import publicQuestionsGet from "./api/appointments/public/questions/GET";
@@ -55,6 +62,11 @@ import adminServiceDelete from "./api/appointments/admin/services/[id]/DELETE";
 import adminServiceAvailableDatesGet from "./api/appointments/admin/services/[id]/available-slots-by-date-range/GET";
 import adminServiceAvailabilityTimesGet from "./api/appointments/admin/services/[id]/availability-times/GET";
 import adminServiceBookingsCountGet from "./api/appointments/admin/services/[id]/bookings-count/GET";
+// admin — service addons
+import adminServiceAddonsGet from "./api/appointments/admin/services/addons/GET";
+import adminServiceAddonsPost from "./api/appointments/admin/services/addons/POST";
+import adminServiceAddonsPut from "./api/appointments/admin/services/addons/PUT";
+import adminServiceAddonsDelete from "./api/appointments/admin/services/addons/DELETE";
 // admin — clients
 import adminClientsGet from "./api/appointments/admin/clients/GET";
 import adminClientPost from "./api/appointments/admin/clients/POST";
@@ -152,7 +164,6 @@ app.use(express.urlencoded({ extended: true }));
 // Resolve the session cookie → req.authUser for all downstream handlers
 app.use(sessionMiddleware);
 
-
 // <api-registrations>
 app.get("/api/health", healthGet);
 // Admin coupon endpoints (protected)
@@ -161,6 +172,12 @@ app.post("/api/appointments/admin/coupons", requireAdmin, adminCouponsCreatePost
 app.get("/api/appointments/admin/coupons/:id", requireAdmin, adminCouponsGetGet);
 app.put("/api/appointments/admin/coupons/:id", requireAdmin, adminCouponsUpdatePut);
 app.delete("/api/appointments/admin/coupons/:id", requireAdmin, adminCouponsDeleteDelete);
+// Admin addon endpoints (protected)
+app.get("/api/appointments/admin/addons", requireAdmin, requireFeature("admin.addons"), adminAddonsListGet);
+app.post("/api/appointments/admin/addons", requireAdmin, requireFeature("admin.addons"), adminAddonsCreatePost);
+app.get("/api/appointments/admin/addons/:id", requireAdmin, requireFeature("admin.addons"), adminAddonsGetGet);
+app.put("/api/appointments/admin/addons/:id", requireAdmin, requireFeature("admin.addons"), adminAddonsUpdatePut);
+app.delete("/api/appointments/admin/addons/:id", requireAdmin, requireFeature("admin.addons"), adminAddonsDeleteDelete);
 // Public coupon endpoints
 app.post("/api/appointments/public/coupons/validate", publicCouponsValidatePost);
 // Customer coupon endpoints (called during customer checkout/cancellation flow)
@@ -181,6 +198,11 @@ app.get(
   "/api/appointments/public/services/:id/staff",
   requireFeature("customer.booking_flow.staff_selection"),
   publicServiceStaffGet,
+);
+app.get(
+  "/api/appointments/public/services/:id/addons",
+  requireFeature("customer.booking_flow.addons"),
+  publicServiceAddonsGet,
 );
 app.get(
   "/api/appointments/public/services/:id/available-slots-by-date-range",
@@ -352,6 +374,31 @@ app.post(
   requireFeature("admin.services"),
   adminServicePost,
 );
+// admin — service addons (link/unlink addons to services)
+app.get(
+  "/api/appointments/admin/services/:id/addons",
+  requireAdmin,
+  requireFeature("admin.addons"),
+  adminServiceAddonsGet,
+);
+app.post(
+  "/api/appointments/admin/services/:id/addons",
+  requireAdmin,
+  requireFeature("admin.addons"),
+  adminServiceAddonsPost,
+);
+app.put(
+  "/api/appointments/admin/services/:id/addons",
+  requireAdmin,
+  requireFeature("admin.addons"),
+  adminServiceAddonsPut,
+);
+app.delete(
+  "/api/appointments/admin/services/:id/addons",
+  requireAdmin,
+  requireFeature("admin.addons"),
+  adminServiceAddonsDelete,
+);
 // admin — clients
 app.get(
   "/api/appointments/admin/clients/:id/bookings",
@@ -485,7 +532,11 @@ app.get(
 app.get("/api/appointments/admin/payment-providers", requireAdmin, adminPaymentProvidersGet);
 app.post("/api/appointments/admin/payment-providers", requireAdmin, adminPaymentProvidersPost);
 app.patch("/api/appointments/admin/payment-providers/:id", requireAdmin, adminPaymentProviderPatch);
-app.delete("/api/appointments/admin/payment-providers/:id", requireAdmin, adminPaymentProviderDelete);
+app.delete(
+  "/api/appointments/admin/payment-providers/:id",
+  requireAdmin,
+  adminPaymentProviderDelete,
+);
 // </api-registrations>
 
 // ── Feature flag startup summary ───────────────────────────────────────────
@@ -646,8 +697,8 @@ if (import.meta.env.PROD) {
     process.exit(1);
   }, SSR_MODULE_LOAD_TIMEOUT_MS);
   loadTimeout.unref();
-  import("../entry-server").then(
-    (mod) => {
+  import("../entry-server.appointments").then(
+    (mod: { render: (url: string) => Promise<RenderResult> }) => {
       clearTimeout(loadTimeout);
       renderFn = mod.render;
     },

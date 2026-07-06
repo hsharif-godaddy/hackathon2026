@@ -6,6 +6,13 @@ import { cn } from "@/lib/utils";
 import { ArrowLeft, CalendarDays, Clock } from "lucide-react";
 import { getPublicConfig } from "@/lib/api-client";
 
+interface Addon {
+  id: string;
+  title: string;
+  price: string;
+  duration: string;
+}
+
 interface BookingDetail {
   id: string;
   uniqueId: string;
@@ -15,6 +22,7 @@ interface BookingDetail {
   quantity: number;
   service?: { name: string | null; cost: string | null; duration: string | null } | null;
   answers?: Array<{ id: string; body: string; questionLabel: string | null }>;
+  addons?: Addon[];
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -137,7 +145,28 @@ export default function MyBookingDetailPage() {
             value={<span className="font-mono text-xs">{booking.uniqueId}</span>}
           />
           <Row label="Quantity" value={booking.quantity} />
-          {booking.service?.cost && <Row label="Price" value={`$${booking.service.cost}`} />}
+          {booking.service?.cost && <Row label="Service" value={`$${booking.service.cost}`} />}
+          {booking.addons && booking.addons.length > 0 && (
+            <>
+              {booking.addons.map((addon) => (
+                <Row key={addon.id} label={`+ ${addon.title}`} value={`$${addon.price}`} />
+              ))}
+            </>
+          )}
+          {booking.service?.cost && booking.addons && booking.addons.length > 0 && (
+            <Row
+              label="Total"
+              value={
+                <span className="font-semibold">
+                  $
+                  {(
+                    parseFloat(booking.service.cost) +
+                    booking.addons.reduce((sum, addon) => sum + parseFloat(addon.price), 0)
+                  ).toFixed(2)}
+                </span>
+              }
+            />
+          )}
         </div>
 
         {booking.answers && booking.answers.length > 0 && (

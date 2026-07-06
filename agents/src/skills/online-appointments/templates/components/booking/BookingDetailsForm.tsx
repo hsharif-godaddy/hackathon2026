@@ -1,4 +1,11 @@
-import { type ReactNode, useEffect, useState } from "react";
+import {
+  cloneElement,
+  isValidElement,
+  type ReactElement,
+  type ReactNode,
+  useEffect,
+  useState,
+} from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -13,14 +20,17 @@ import {
   createPublicBooking,
   createCheckoutSession,
   getPublicQuestions,
+  getPublicServiceAddons,
   getPublicServiceStaff,
   incrementCouponUsage,
   decrementCouponUsage,
+  type Addon,
   type Booking,
   type PublicStaffMember,
   type Question,
   type Service,
 } from "@/lib/api-client";
+import { AddonSelector } from "../addons/AddonSelector";
 import { formatSlotTime, formatFullDate } from "./slot-utils";
 import { formatCost } from "./service-utils";
 import CouponValidator from "@/components/coupons/CouponValidator";
@@ -43,7 +53,10 @@ interface BookingDetailsFormProps {
   selectedTime: string;
   selectedStaffId?: string;
   onStaffSelect?: (staffId: string | undefined) => void;
-  onSuccess: (booking: Booking) => void;
+  onSuccess: (
+    booking: Booking,
+    addons?: Array<{ id: string; name: string; price: number }>,
+  ) => void;
   onBack: () => void;
   /** Pre-fetched staff list from parent to avoid double-fetching. */
   preloadedStaff?: PublicStaffMember[];
@@ -75,6 +88,17 @@ export function BookingDetailsForm({
   const [appliedCouponCode, setAppliedCouponCode] = useState<string | null>(null);
   const [discount, setDiscount] = useState(0);
   const [eligibleStaff, setEligibleStaff] = useState<PublicStaffMember[]>([]);
+  const [addons, setAddons] = useState<Addon[]>([]);
+  const [selectedAddonIds, setSelectedAddonIds] = useState<string[]>([]);
+
+  // Calculate totals
+  const serviceCost = service.cost ? parseFloat(service.cost) : 0;
+  const addonsCost = selectedAddonIds.reduce((sum, addonId) => {
+    const addon = addons.find((a) => a.id === addonId);
+    return sum + (addon?.price ? parseFloat(addon.price) : 0);
+  }, 0);
+  const subtotal = serviceCost + addonsCost;
+  const finalTotal = subtotal - discount / 100;
 
   const form = useForm<DetailsValues>({
     resolver: zodResolver(detailsSchema),
@@ -121,6 +145,21 @@ export function BookingDetailsForm({
     })();
   }, [service.id, preloadedStaff]);
 
+  useEffect(() => {
+    void (async () => {
+      try {
+        const data = await getPublicServiceAddons(service.id);
+        setAddons(data.addons);
+      } catch (err) {
+        console.error("booking_flow.fetch_addons.failed", {
+          serviceId: service.id,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        setAddons([]);
+      }
+    })();
+  }, [service.id]);
+
   async function onSubmit(values: DetailsValues) {
     setSubmitError(null);
 
@@ -151,8 +190,23 @@ export function BookingDetailsForm({
         },
         answers: values.answers.filter((a) => a.body.trim()),
         coupon_code: appliedCouponCode ?? undefined,
-        // discount_amount removed - discount is validated and applied server-side at checkout
+        addon_ids: selectedAddonIds.length > 0 ? selectedAddonIds : undefined,
       });
+
+      // Pass selected addons to parent
+      const selectedAddonsData = selectedAddonIds
+        .map((id) => {
+          const addon = addons.find((a) => a.id === id);
+          if (!addon) return null;
+          return {
+            id: addon.id,
+            name: addon.title,
+            price: parseFloat(addon.price),
+          };
+        })
+        .filter((a): a is { id: string; name: string; price: number } => a !== null);
+
+      onSuccess(result.booking, selectedAddonsData.length > 0 ? selectedAddonsData : undefined);
     } catch (err) {
       // Booking failed - roll back coupon increment
       if (appliedCouponCode) {
@@ -175,11 +229,11 @@ export function BookingDetailsForm({
           return;
         }
         // No checkout URL returned means payment not required after all
-      } catch (err) {
+      } catch (_err) {
         // Payment setup failed, but booking was already created
         // Show error but don't roll back - user can contact support to pay
         setSubmitError(
-          "Your booking was created, but we couldn't set up payment. Please contact us to complete payment."
+          "Your booking was created, but we couldn't set up payment. Please contact us to complete payment.",
         );
         return;
       }
@@ -206,7 +260,50 @@ export function BookingDetailsForm({
           {formatFullDate(selectedDate)} · {formatSlotTime(selectedTime, timezone)}
         </p>
         {service.cost && (
-          <p className="mt-1 text-xs font-semibold text-foreground">{formatCost(service.cost, currency)}</p>
+          <div className="mt-2 space-y-1">
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-muted-foreground">Service</span>
+              <span className="font-medium text-foreground">
+                {formatCost(service.cost, currency)}
+              </span>
+            </div>
+            {selectedAddonIds.length > 0 && (
+              <>
+                {selectedAddonIds.map((addonId) => {
+                  const addon = addons.find((a) => a.id === addonId);
+                  if (!addon) return null;
+                  return (
+                    <div key={addon.id} className="flex items-center justify-between text-xs">
+                      <span className="text-muted-foreground">+ {addon.title}</span>
+                      <span className="font-medium text-foreground">
+                        {formatCost(addon.price, currency)}
+                      </span>
+                    </div>
+                  );
+                })}
+                <div className="flex items-center justify-between border-t border-border pt-1 text-xs">
+                  <span className="text-muted-foreground">Subtotal</span>
+                  <span className="font-semibold text-foreground">
+                    {formatCost(String(subtotal), currency)}
+                  </span>
+                </div>
+              </>
+            )}
+            {discount > 0 && (
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-green-600 dark:text-green-400">Discount</span>
+                <span className="font-medium text-green-600 dark:text-green-400">
+                  -{formatCost(String(discount / 100), currency)}
+                </span>
+              </div>
+            )}
+            <div className="flex items-center justify-between border-t border-border pt-1.5">
+              <span className="text-sm font-semibold text-foreground">Total</span>
+              <span className="text-sm font-bold text-foreground">
+                {formatCost(String(finalTotal), currency)}
+              </span>
+            </div>
+          </div>
         )}
       </div>
 
@@ -296,6 +393,18 @@ export function BookingDetailsForm({
           />
         </Field>
 
+        <FeatureGate feature="customer.booking_flow.addons">
+          {addons.length > 0 && (
+            <div className="pt-1">
+              <AddonSelector
+                addons={addons}
+                selectedIds={selectedAddonIds}
+                onChange={setSelectedAddonIds}
+              />
+            </div>
+          )}
+        </FeatureGate>
+
         {questions.map((q, idx) => (
           <Field key={q.id} label={q.body} hint={q.required ? undefined : "Optional"}>
             <Textarea {...form.register(`answers.${idx}.body`)} rows={2} className="resize-none" />
@@ -307,19 +416,10 @@ export function BookingDetailsForm({
           {service.cost && (
             <div className="pt-2">
               <CouponValidator
-                cartTotal={Math.round(parseFloat(service.cost) * 100)}
+                cartTotal={Math.round(subtotal * 100)}
                 onCouponApplied={handleCouponApplied}
                 onCouponRemoved={handleCouponRemoved}
               />
-            </div>
-          )}
-
-          {/* Show discount if applied */}
-          {discount > 0 && (
-            <div className="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm dark:border-green-800 dark:bg-green-950">
-              <p className="font-medium text-green-900 dark:text-green-100">
-                Coupon applied! You save ${(discount / 100).toFixed(2)}
-              </p>
             </div>
           )}
         </FeatureGate>
@@ -363,13 +463,30 @@ function Field({
   error?: string;
   children: ReactNode;
 }) {
+  type ChildProps = {
+    id?: string;
+    "aria-labelledby"?: string;
+  };
+  const child = isValidElement(children) ? (children as ReactElement<ChildProps>) : null;
+  const childWithProps = child
+    ? cloneElement(child as ReactElement<{ id?: string; "aria-labelledby"?: string }>, {
+        id: child.props.id ?? `${label.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-field`,
+        "aria-labelledby": `${label.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-label`,
+      })
+    : children;
+
   return (
     <div className="space-y-1.5">
       <div className="flex items-baseline justify-between gap-2">
-        <Label className="text-sm font-medium text-foreground">{label}</Label>
+        <Label
+          id={`${label.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-label`}
+          className="text-sm font-medium text-foreground"
+        >
+          {label}
+        </Label>
         {hint && <span className="text-xs text-muted-foreground">{hint}</span>}
       </div>
-      {children}
+      {childWithProps}
       {error && <p className="text-xs text-destructive">{error}</p>}
     </div>
   );

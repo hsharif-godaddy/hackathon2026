@@ -35,6 +35,8 @@ const AdminClientsPage = lazy(() => import("./pages/admin/clients/index"));
 const AdminClientDetailPage = lazy(() => import("./pages/admin/clients/[id]"));
 const AdminCouponsPage = lazy(() => import("./pages/admin/coupons/index"));
 const AdminCouponDetailPage = lazy(() => import("./pages/admin/coupons/[id]"));
+const AdminAddonsPage = lazy(() => import("./pages/admin/addons/index"));
+const AdminAddonDetailPage = lazy(() => import("./pages/admin/addons/[id]"));
 const AdminSettingsPage = lazy(() => import("./pages/admin/settings"));
 const AdminAvailabilityPage = lazy(() => import("./pages/admin/availability"));
 const AdminStaffPage = lazy(() => import("./pages/admin/staff/index"));
@@ -227,6 +229,22 @@ export const adminRoutes: RouteObject[] = [
         ),
       },
       {
+        path: "/admin/addons",
+        element: (
+          <FeatureGate feature="admin.addons" fallback={<Navigate to="/admin" replace />}>
+            <AdminAddonsPage />
+          </FeatureGate>
+        ),
+      },
+      {
+        path: "/admin/addons/:id",
+        element: (
+          <FeatureGate feature="admin.addons" fallback={<Navigate to="/admin" replace />}>
+            <AdminAddonDetailPage />
+          </FeatureGate>
+        ),
+      },
+      {
         path: "/admin/payments",
         element: (
           <FeatureGate feature="admin.payments" fallback={<Navigate to="/admin" replace />}>
@@ -260,6 +278,8 @@ export type Path =
   | "/admin/staff/:id"
   | "/admin/coupons"
   | "/admin/coupons/:id"
+  | "/admin/addons"
+  | "/admin/addons/:id"
   | "/admin/settings";
 
 export type Params = Record<string, string | undefined>;

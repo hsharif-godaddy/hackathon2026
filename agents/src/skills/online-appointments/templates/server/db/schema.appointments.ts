@@ -722,3 +722,71 @@ export const paymentProvider = mysqlTable(
   },
   (table) => [uniqueIndex("idx_payment_provider_provider").on(table.provider)],
 );
+
+// ---------------------------------------------------------------------------
+// Addons (optional paid extras that can be attached to services/bookings)
+// ---------------------------------------------------------------------------
+
+export const addon = mysqlTable(
+  "addon",
+  {
+    id: varchar("id", { length: 36 })
+      .primaryKey()
+      .$defaultFn(() => generateId()),
+    title: varchar("title", { length: 255 }).notNull(),
+    description: mediumtext("description"),
+    price: decimal("price", { precision: 10, scale: 2 }).notNull().default("0.00"),
+    duration: varchar("duration", { length: 255 }).notNull().default("PT0M"),
+    active: boolean("active").notNull().default(true),
+    createdAt: datetime("created_at").default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: datetime("updated_at").default(sql`CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP`),
+    deletedAt: datetime("deleted_at"),
+  },
+  (table) => [
+    index("idx_addon_deleted").on(table.deletedAt),
+    index("idx_addon_active").on(table.active),
+  ],
+);
+
+export const serviceAddon = mysqlTable(
+  "service_addon",
+  {
+    id: varchar("id", { length: 36 })
+      .primaryKey()
+      .$defaultFn(() => generateId()),
+    serviceId: varchar("service_id", { length: 36 }).notNull(),
+    addonId: varchar("addon_id", { length: 36 }).notNull(),
+    createdAt: datetime("created_at").default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: datetime("updated_at").default(sql`CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP`),
+  },
+  (table) => [
+    uniqueIndex("uniq_service_addon").on(table.serviceId, table.addonId),
+    index("idx_service_addon_addon").on(table.addonId),
+  ],
+);
+
+export const bookingAddon = mysqlTable(
+  "booking_addon",
+  {
+    id: varchar("id", { length: 36 })
+      .primaryKey()
+      .$defaultFn(() => generateId()),
+    bookingId: varchar("booking_id", { length: 36 }).notNull(),
+    addonId: varchar("addon_id", { length: 36 }).notNull(),
+    title: varchar("title", { length: 255 }).notNull(),
+    price: decimal("price", { precision: 10, scale: 2 }).notNull().default("0.00"),
+    duration: varchar("duration", { length: 255 }).notNull().default("PT0M"),
+    createdAt: datetime("created_at").default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: datetime("updated_at").default(sql`CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP`),
+  },
+  (table) => [
+    index("idx_booking_addon_booking").on(table.bookingId),
+    index("idx_booking_addon_addon").on(table.addonId),
+  ],
+);
+
+// ---------------------------------------------------------------------------
+// Type exports
+// ---------------------------------------------------------------------------
+
+export type Addon = typeof addon.$inferSelect;

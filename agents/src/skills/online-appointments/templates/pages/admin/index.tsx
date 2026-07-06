@@ -21,13 +21,7 @@ import { useAdminAuth } from "@/contexts/AdminAuthContext";
 import { useAppConfig } from "@/contexts/AppConfigContext";
 import { useFeatureFlags } from "@/contexts/FeatureFlagsContext";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Card,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 
 import {
@@ -180,10 +174,10 @@ function StatCard({
           {loading ? <Skeleton className="h-9 w-24" /> : value}
         </CardTitle>
         {trendLabel && (
-            <Badge variant="outline" className={cn("gap-1 font-medium", trendClass)}>
-              <TrendIcon className="h-3 w-3" />
-              {trendLabel}
-            </Badge>
+          <Badge variant="outline" className={cn("gap-1 font-medium", trendClass)}>
+            <TrendIcon className="h-3 w-3" />
+            {trendLabel}
+          </Badge>
         )}
       </CardHeader>
       <CardFooter className="flex-col items-start gap-1 pt-3 text-sm">

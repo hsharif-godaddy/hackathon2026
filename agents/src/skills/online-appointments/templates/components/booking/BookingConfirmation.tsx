@@ -17,11 +17,19 @@ function formatFullDatetime(iso: string, timezone?: string): string {
   });
 }
 
+interface SelectedAddon {
+  id: string;
+  name: string;
+  price: number;
+}
+
 interface BookingConfirmationProps {
   booking: Booking;
   service: Service;
   timezone?: string;
   onBookAnother: () => void;
+  /** Selected addons to display (optional). */
+  selectedAddons?: SelectedAddon[];
   /** Override the success icon. Defaults to CheckCircle2. */
   icon?: ElementType;
   /** Override the success heading. Defaults to AppConfig.booking.confirmationTitle. */
@@ -39,6 +47,7 @@ export function BookingConfirmation({
   service,
   timezone,
   onBookAnother,
+  selectedAddons,
   icon: Icon = CheckCircle2,
   title,
   description,
@@ -46,6 +55,13 @@ export function BookingConfirmation({
   className,
 }: BookingConfirmationProps) {
   const { booking: bookingConfig } = useAppConfig();
+
+  const formatPrice = (price: number): string => {
+    return new Intl.NumberFormat([], {
+      style: "currency",
+      currency: booking.currency ?? "USD",
+    }).format(price);
+  };
 
   return (
     <div className={cn("space-y-6 py-4 text-center", className)}>
@@ -66,6 +82,21 @@ export function BookingConfirmation({
       <div className="divide-y divide-border rounded-2xl border border-border bg-card text-left text-sm">
         <Row label="Service" value={service.name} />
         <Row label="Date & time" value={formatFullDatetime(booking.start_time, timezone)} />
+        {selectedAddons && selectedAddons.length > 0 && (
+          <div className="px-4 py-3">
+            <span className="shrink-0 text-muted-foreground">Add-ons</span>
+            <div className="mt-2 space-y-1.5">
+              {selectedAddons.map((addon) => (
+                <div key={addon.id} className="flex items-center justify-between">
+                  <span className="text-sm text-foreground">{addon.name}</span>
+                  <span className="text-sm font-medium text-foreground">
+                    {formatPrice(addon.price)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
         <Row
           label="Confirmation Code"
           value={

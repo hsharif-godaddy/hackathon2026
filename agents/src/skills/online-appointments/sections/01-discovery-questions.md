@@ -8,10 +8,10 @@ Discovery is the most critical stage. A complete picture of the user's business 
 
 Call `generateDiscoveryQuestions` with the full conversation so far as `userRequirements`.
 
-The tool returns 12 questions covering two areas:
+The tool returns questions covering two areas:
 
 **Foundation** (questions 1–6): business type, location, services, pricing/duration, hours/timezone, team size.
-**Feature discovery** (questions 7–12): staff scheduling, coupons, payments, customer portal, categories, intake questions, cancellation policy.
+**Feature discovery** (questions 7–12): staff scheduling, coupons, payments, add-ons, customer portal, categories, intake questions, cancellation policy.
 
 ---
 
@@ -21,7 +21,7 @@ Do **not** ask all 12 at once. Analyse the returned questions against what you a
 
 **Selection rules:**
 - Always include at least one Foundation question if the business type, timezone, or service list is unknown.
-- Prioritise questions whose answer directly gates a feature flag (staff scheduling → `admin.staff`, coupons → `admin.coupons`, customer portal → `customer.my_bookings`).
+- Prioritise questions whose answer directly gates a feature flag (staff scheduling → `admin.staff`, coupons → `admin.coupons`, add-ons → `admin.addons`, customer portal → `customer.my_bookings`).
 - Skip questions already answered in the conversation.
 - Prefer questions with chips options over open-text questions — they're faster for the user.
 
@@ -57,6 +57,7 @@ Here's what I'll set up for your [business type]:
 ✓ Timezone: [timezone], open [hours]
 ✓ [If team: Multiple staff members — each can manage their own schedule]
 ✓ [If coupons: Discount codes — you'll be able to create and share promo codes]
+✓ [If add-ons: Optional service extras — customers can add extras to their bookings]
 ✓ [If payments: Payment integration — customers pay when booking, you track transactions]
 ✓ [If customer portal: Customer accounts — customers can log in and manage their bookings]
 ✓ [If categories: Services grouped into categories]
@@ -76,6 +77,7 @@ Wait for explicit **yes** (or equivalent) before proceeding to §2.
 |---|---|
 | Multiple staff members / each has their own schedule | `admin.staff`, `staff.exception_times` |
 | Wants discount / coupon codes | `admin.coupons`, `customer.booking_flow.coupons` |
+| Wants service add-ons / optional extras / upsells | `admin.addons`, `customer.booking_flow.addons` |
 | Wants to accept payments / paid appointments | `admin.payments`, `admin.settings.payment`, `customer.booking_flow.payment` |
 | Wants customer login / booking history portal | `customer.my_bookings` |
 | Wants to group services into categories | `admin.categories` |

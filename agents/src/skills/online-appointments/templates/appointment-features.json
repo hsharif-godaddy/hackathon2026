@@ -81,6 +81,10 @@
         "enabled": false,
         "description": "Create and manage discount coupon codes redeemable during checkout."
       },
+      "addons": {
+        "enabled": false,
+        "description": "Create and manage optional service add-ons (extras) that customers can select during booking."
+      },
       "settings": {
         "enabled": false,
         "description": "Top-level group for business configuration options.",
@@ -117,6 +121,10 @@
         "coupons": {
           "enabled": false,
           "description": "Allow customers to enter a coupon code during checkout to receive a discount."
+        },
+        "addons": {
+          "enabled": false,
+          "description": "Show optional service add-ons (extras) selector in the booking flow."
         },
         "staff_selection": {
           "enabled": false,

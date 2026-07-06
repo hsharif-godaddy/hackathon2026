@@ -30,7 +30,10 @@ export default async function handler(req: Request, res: Response) {
     }
 
     // TODO: wire to the email service to actually send the confirmation email
-    return res.status(501).json({ error: "Not implemented", message: "Email resend is not yet configured for this app." });
+    return res.status(501).json({
+      error: "Not implemented",
+      message: "Email resend is not yet configured for this app.",
+    });
   } catch (_error) {
     return res.status(500).json({
       error: "Internal Server Error",

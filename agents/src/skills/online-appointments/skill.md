@@ -157,6 +157,7 @@ All implementation details live in `sections/`. Load sections on demand using `l
 | `08-feature-categories-questions` | Service categories and custom intake questions |
 | `09-feature-settings` | Business settings panel |
 | `10-feature-customer-portal` | Customer my-bookings portal |
+| `19-feature-addons` | Service add-ons (extras, upgrades) |
 | `11-seeding` | Seeding initial data |
 | `12-user-journeys` | Complete user flow documentation |
 | `13-customization` | Labels, colors, branding, theme |

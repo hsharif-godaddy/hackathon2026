@@ -1,4 +1,4 @@
-import { eq, and, isNull } from "drizzle-orm";
+import { eq, and, isNull, inArray } from "drizzle-orm";
 import { db } from "../../../db/client.js";
 import {
   booking,
@@ -12,6 +12,9 @@ import {
   staff as staffTable,
   reminder,
   businessSetting,
+  bookingAddon,
+  addon,
+  serviceAddon,
 } from "../../../db/schema";
 import { generateId, generateConfirmationCode } from "../../../db/uuid";
 import { getAvailableTimeSlotsForDate } from "./availability";
@@ -36,6 +39,7 @@ interface CreateBookingInput {
   availability_time: string;
   quantity: number;
   staff_ids?: string[];
+  addon_ids?: string[];
   client: ClientInput;
   answers?: AnswerInput[];
   marketing_consent?: boolean;
@@ -240,6 +244,55 @@ export async function createBooking(input: CreateBookingInput): Promise<BookingR
           updatedAt: now,
         })),
       );
+    }
+
+    // Insert selected addons
+    if (input.addon_ids && input.addon_ids.length > 0) {
+      // Deduplicate addon IDs to prevent charging the same addon multiple times
+      const uniqueAddonIds: string[] = [...new Set(input.addon_ids)];
+
+      // SECURITY: Validate that addons are linked to this service via serviceAddon junction table
+      // and that they are active and not deleted. This prevents clients from attaching
+      // arbitrary addons from other services.
+      const selectedAddons = await tx
+        .select({
+          id: addon.id,
+          title: addon.title,
+          price: addon.price,
+          duration: addon.duration,
+        })
+        .from(addon)
+        .innerJoin(serviceAddon, eq(serviceAddon.addonId, addon.id))
+        .where(
+          and(
+            inArray(addon.id, uniqueAddonIds),
+            eq(serviceAddon.serviceId, svc.id),
+            eq(addon.active, true),
+            isNull(addon.deletedAt),
+          ),
+        );
+
+      const addonMap = new Map(selectedAddons.map((a) => [a.id, a]));
+      const addonsToInsert = uniqueAddonIds
+        .map((addonId) => {
+          const addonData = addonMap.get(addonId);
+          if (!addonData) return null;
+          return {
+            id: generateId(),
+            bookingId,
+            addonId,
+            title: addonData.title,
+            price: addonData.price,
+            duration: addonData.duration,
+            createdAt: now,
+            updatedAt: now,
+          };
+        })
+        .filter((a): a is NonNullable<typeof a> => a !== null);
+
+      if (addonsToInsert.length > 0) {
+        await tx.insert(bookingAddon).values(addonsToInsert);
+      }
     }
 
     // Insert reminder for email notification

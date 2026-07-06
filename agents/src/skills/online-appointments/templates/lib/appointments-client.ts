@@ -45,6 +45,15 @@ export interface Booking {
   status: string;
   start_time: string;
   end_time: string;
+  currency?: string;
+}
+
+export interface Addon {
+  id: string;
+  title: string;
+  description: string | null;
+  price: string;
+  duration: string;
 }
 
 export interface CreateBookingPayload {
@@ -62,6 +71,7 @@ export interface CreateBookingPayload {
   answers?: Array<{ question_id: string; body: string }>;
   marketing_consent?: boolean;
   coupon_code?: string;
+  addon_ids?: string[];
   // discount_amount removed - discount is calculated server-side at checkout
 }
 
@@ -125,6 +135,10 @@ export function getPublicServiceStaff(serviceId: string) {
 
 export function getPublicConfig() {
   return apiFetch<{ config: Record<string, string | null> }>("/public/config");
+}
+
+export function getPublicServiceAddons(serviceId: string) {
+  return apiFetch<{ addons: Addon[] }>(`/public/services/${serviceId}/addons`);
 }
 
 // ── Public: questions ──────────────────────────────────────────────────────

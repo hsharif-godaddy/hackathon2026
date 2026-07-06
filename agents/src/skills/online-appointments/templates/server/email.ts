@@ -94,7 +94,8 @@ export async function sendEmail(input: SendEmailInput): Promise<SendEmailResult>
   let response: Response;
   let body: GatewayResponse;
   try {
-    response = await fetch(EMAIL_GATEWAY_URL, { // nosemgrep: typescript.react.security.react-insecure-request.react-insecure-request
+    response = await fetch(EMAIL_GATEWAY_URL, {
+      // nosemgrep: typescript.react.security.react-insecure-request.react-insecure-request
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(payload),

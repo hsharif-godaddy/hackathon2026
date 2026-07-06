@@ -39,11 +39,12 @@ export function AppConfigProvider({ children, config }: AppConfigProviderProps) 
   useEffect(() => {
     getPublicConfig()
       .then(({ config: remote }) => {
-        const currency = typeof remote.currency === "string" && remote.currency.length === 3
-          ? remote.currency.toUpperCase()
-          : undefined;
+        const currency =
+          typeof remote.currency === "string" && remote.currency.length === 3
+            ? remote.currency.toUpperCase()
+            : undefined;
         if (currency) {
-          setResolved(prev => ({ ...prev, currency }));
+          setResolved((prev) => ({ ...prev, currency }));
         }
       })
       .catch(() => {

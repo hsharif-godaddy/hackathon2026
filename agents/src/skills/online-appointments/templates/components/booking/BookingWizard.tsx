@@ -195,6 +195,9 @@ export function BookingWizard({
   const [selectedStaffId, setSelectedStaffId] = useState<string | undefined>();
   const [booking, setBooking] = useState<Booking | null>(null);
   const [eligibleStaff, setEligibleStaff] = useState<PublicStaffMember[]>([]);
+  const [selectedAddons, setSelectedAddons] = useState<
+    Array<{ id: string; name: string; price: number }>
+  >([]);
 
   useEffect(() => {
     getPublicServiceStaff(service.id)
@@ -213,8 +216,14 @@ export function BookingWizard({
     setStep("details");
   }
 
-  function handleBookingSuccess(b: Booking) {
+  function handleBookingSuccess(
+    b: Booking,
+    addons?: Array<{ id: string; name: string; price: number }>,
+  ) {
     setBooking(b);
+    if (addons) {
+      setSelectedAddons(addons);
+    }
     setStep("confirmation");
   }
 
@@ -224,6 +233,7 @@ export function BookingWizard({
     setSelectedTime(undefined);
     setSelectedStaffId(undefined);
     setBooking(null);
+    setSelectedAddons([]);
   }
 
   const isConfirmation = step === "confirmation";
@@ -249,6 +259,8 @@ export function BookingWizard({
           service={service}
           onBookAnother={reset}
           icon={confirmationIcon}
+          selectedAddons={selectedAddons.length > 0 ? selectedAddons : undefined}
+          timezone={timezone}
         />
       ) : (
         <div className="grid grid-cols-1 gap-8 lg:grid-cols-[minmax(240px,_380px)_minmax(50%,_1fr)] lg:items-start">

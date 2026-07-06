@@ -7,6 +7,7 @@ const CreateBookingSchema = z.object({
   availability_time: z.string().datetime({ offset: true }),
   quantity: z.number().int().min(1).default(1),
   staff_ids: z.array(z.string().uuid()).optional(),
+  addon_ids: z.array(z.string().uuid()).optional(),
   client: z.object({
     first_name: z.string().min(1),
     last_name: z.string().min(1),

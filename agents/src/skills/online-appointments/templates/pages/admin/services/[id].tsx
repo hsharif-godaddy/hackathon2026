@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import { CheckSquare, Square } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAdminAuth, adminFetch } from "@/contexts/AdminAuthContext";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -96,6 +97,15 @@ interface ParsedSchedule {
 interface ServiceApiData {
   service?: Service;
   staff?: StaffInfo;
+}
+
+interface AddonOption {
+  id: string;
+  title: string;
+  description: string | null;
+  price: string;
+  duration: string;
+  active: boolean;
 }
 
 interface CountApiData {
@@ -218,6 +228,12 @@ export default function AdminServiceDetailPage() {
   const [bookingsCount, setBookingsCount] = useState<number | null>(null);
   const [staffInfo, setStaffInfo] = useState<StaffInfo | null>(null);
   const [timezone, setTimezone] = useState("UTC");
+  const [addonOptions, setAddonOptions] = useState<AddonOption[]>([]);
+  const [selectedAddonIds, setSelectedAddonIds] = useState<string[]>([]);
+  const [savingAddons, setSavingAddons] = useState(false);
+  const [addonsSaved, setAddonsSaved] = useState(false);
+  const [addonsError, setAddonsError] = useState<string | null>(null);
+  const [addonsLoadFailed, setAddonsLoadFailed] = useState(false);
 
   useEffect(() => {
     getPublicConfig()
@@ -253,6 +269,28 @@ export default function AdminServiceDetailPage() {
       if (countRes.ok) {
         const d = (await countRes.json()) as CountApiData;
         setBookingsCount(d.count ?? d.total ?? null);
+      }
+      setAddonsLoadFailed(false);
+      setAddonsError(null);
+      const [addonsRes, assignedRes] = await Promise.all([
+        adminFetch("/api/appointments/admin/addons", token),
+        adminFetch(`/api/appointments/admin/services/${id}/addons`, token),
+      ]);
+      if (addonsRes.ok) {
+        const d = (await addonsRes.json()) as { addons?: AddonOption[] };
+        setAddonOptions(d.addons ?? []);
+      }
+      if (assignedRes.ok) {
+        const d = (await assignedRes.json()) as { addons?: AddonOption[] };
+        setSelectedAddonIds((d.addons ?? []).map((addon) => addon.id));
+      } else {
+        // Do NOT leave selectedAddonIds as an empty [] on a failed load — saving
+        // that would replace (delete) the service's existing add-on links. Flag
+        // the failure so the panel shows an error and the Save button is disabled.
+        setAddonsLoadFailed(true);
+        setAddonsError(
+          "Couldn't load this service's current add-ons. Reload before editing — saving now could remove existing add-on links.",
+        );
       }
       setLoading(false);
     }
@@ -357,6 +395,31 @@ export default function AdminServiceDetailPage() {
     setSavingAvail(false);
   }
 
+  async function saveAddons() {
+    if (!service) return;
+    if (addonsLoadFailed) {
+      setAddonsError(
+        "Add-ons didn't load correctly. Reload the page before saving to avoid removing existing add-on links.",
+      );
+      return;
+    }
+    setSavingAddons(true);
+    setAddonsError(null);
+    const res = await adminFetch(`/api/appointments/admin/services/${service.id}/addons`, token, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ addon_ids: selectedAddonIds }),
+    });
+    if (res.ok) {
+      setAddonsSaved(true);
+      setTimeout(() => setAddonsSaved(false), 2000);
+    } else {
+      const d = (await res.json().catch(() => null)) as { message?: string } | null;
+      setAddonsError(d?.message ?? "Failed to save add-ons");
+    }
+    setSavingAddons(false);
+  }
+
   if (loading) {
     return (
       <div className="max-w-2xl space-y-4">
@@ -403,11 +466,7 @@ export default function AdminServiceDetailPage() {
 
       {service.imageUrl && (
         <div className="overflow-hidden rounded-xl border border-border">
-          <img
-            src={service.imageUrl}
-            alt={service.name}
-            className="h-48 w-full object-cover"
-          />
+          <img src={service.imageUrl} alt={service.name} className="h-48 w-full object-cover" />
         </div>
       )}
 
@@ -433,14 +492,7 @@ export default function AdminServiceDetailPage() {
         <Row label="Cost" value={formatCost(service.cost, currency)} />
         <Row label="Capacity" value={service.capacity ?? 1} />
         <Row label="Visible" value={service.visible ? "Yes" : "No"} />
-        <Row
-          label="Staff"
-          value={
-            staffInfo
-              ? (staffInfo.name ?? staffInfo.role)
-              : "None"
-          }
-        />
+        <Row label="Staff" value={staffInfo ? (staffInfo.name ?? staffInfo.role) : "None"} />
         {bookingsCount !== null && <Row label="Total Bookings" value={bookingsCount} />}
       </div>
 
@@ -621,6 +673,80 @@ export default function AdminServiceDetailPage() {
             </>
           )}
         </Button>
+      </div>
+
+      <div className="space-y-4 rounded-xl border border-border bg-card p-5">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h2 className="font-semibold text-foreground">Add-ons</h2>
+            <p className="text-sm text-muted-foreground">
+              Choose the optional extras available for this service.
+            </p>
+          </div>
+          <Button onClick={() => void saveAddons()} disabled={savingAddons || addonsLoadFailed}>
+            {addonsSaved ? (
+              <>
+                <CheckCircle className="mr-2 h-4 w-4 text-green-500" />
+                Saved
+              </>
+            ) : (
+              <>
+                <Save className="mr-2 h-4 w-4" />
+                {savingAddons ? "Saving…" : "Save Add-ons"}
+              </>
+            )}
+          </Button>
+        </div>
+
+        {addonsError && <p className="text-sm text-destructive">{addonsError}</p>}
+
+        <div className="space-y-2">
+          {addonOptions.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No add-ons have been created yet.</p>
+          ) : (
+            addonOptions.map((addon) => {
+              const checked = selectedAddonIds.includes(addon.id);
+              return (
+                <button
+                  key={addon.id}
+                  type="button"
+                  onClick={() =>
+                    setSelectedAddonIds((prev) =>
+                      prev.includes(addon.id)
+                        ? prev.filter((id) => id !== addon.id)
+                        : [...prev, addon.id],
+                    )
+                  }
+                  className={cn(
+                    "flex w-full items-start gap-3 rounded-lg border px-4 py-3 text-left transition-colors",
+                    checked
+                      ? "border-primary bg-accent/40"
+                      : "border-border bg-background hover:bg-accent/30",
+                  )}
+                >
+                  {checked ? (
+                    <CheckSquare className="mt-0.5 h-4 w-4 text-primary" />
+                  ) : (
+                    <Square className="mt-0.5 h-4 w-4 text-muted-foreground" />
+                  )}
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-center justify-between gap-2">
+                      <span className="text-sm font-medium text-foreground">{addon.title}</span>
+                      <span className="text-sm text-muted-foreground">
+                        {addon.price ? `$${addon.price}` : "Free"}
+                      </span>
+                    </span>
+                    {addon.description && (
+                      <span className="mt-1 block text-xs text-muted-foreground">
+                        {addon.description}
+                      </span>
+                    )}
+                  </span>
+                </button>
+              );
+            })
+          )}
+        </div>
       </div>
     </div>
   );

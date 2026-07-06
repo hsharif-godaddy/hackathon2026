@@ -8,6 +8,7 @@ import {
   contactDetail,
   bookedInstance,
   staff,
+  bookingAddon,
 } from "../../../../../db/schema.js";
 import { and, eq, isNull } from "drizzle-orm";
 
@@ -34,7 +35,7 @@ export default async function handler(req: Request, res: Response) {
       return res.status(404).json({ error: "Not found" });
     }
 
-    const [answers, clientName, clientEmail, staffName] = await Promise.all([
+    const [answers, clientName, clientEmail, staffName, addons] = await Promise.all([
       db.select().from(answeredQuestion).where(eq(answeredQuestion.bookingId, id)),
       (async (): Promise<string | null> => {
         if (result.booking.bookerType !== "Client" || !result.booking.bookerId) return null;
@@ -76,6 +77,15 @@ export default async function handler(req: Request, res: Response) {
           .limit(1);
         return s?.name ?? null;
       })(),
+      db
+        .select({
+          id: bookingAddon.id,
+          title: bookingAddon.title,
+          price: bookingAddon.price,
+          duration: bookingAddon.duration,
+        })
+        .from(bookingAddon)
+        .where(eq(bookingAddon.bookingId, id)),
     ]);
 
     return res.json({
@@ -88,6 +98,7 @@ export default async function handler(req: Request, res: Response) {
         clientEmail,
         staffName,
         answered_questions: answers,
+        addons,
       },
     });
   } catch (_error) {
