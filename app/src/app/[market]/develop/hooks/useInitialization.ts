@@ -392,8 +392,31 @@ export function isCompletedFileEdit(tc: { name: string; status: string; error?: 
   return true
 }
 
-/** Extract file paths from a tool call input, handling all known shapes */
-export function getEditPaths(tc: { input?: Record<string, unknown> }): string[] {
+/** A completed, successful `turnscript` run. Turnscript performs its file edits inside the
+ * sandbox and surfaces only a single opaque `turnscript` tool call — the individual edits
+ * never appear as file-edit tool calls. Its result text carries the written paths (see
+ * getEditPaths), so a turnscript that wrote src/pages/index reveals via the same
+ * hasPageFileEdit branch as a normal file edit. */
+export function isCompletedTurnscriptEdit(tc: { name: string; status: string; error?: string }): boolean {
+  return tc.name === 'turnscript' && tc.status === 'completed' && !tc.error
+}
+
+/** Turnscript batches its edits opaquely, but formatTurnscriptResult appends a trailing
+ * `[turnscript:edited] a, b, c` line to the tool result listing the files it wrote. Parse it
+ * so getEditPaths can surface those paths for hasPageFileEdit — giving turnscript builds the
+ * same specific-page-edit reveal as the direct file-edit tools.
+ * MUST stay in sync with the marker in agents/.../turnscript/turnscript-tool.ts. */
+export function parseTurnscriptEditedPaths(result: unknown): string[] {
+  if (typeof result !== 'string') return []
+  const match = result.match(/^\[turnscript:edited\] (.+)$/m)
+  if (!match?.[1]) return []
+  return match[1].split(', ').map((p) => p.trim()).filter(Boolean)
+}
+
+/** Extract file paths a tool call wrote, handling all known shapes. For turnscript the paths
+ * come from its result trailer (edits are opaque); every other tool exposes them on input. */
+export function getEditPaths(tc: { name?: string; input?: Record<string, unknown>; result?: unknown }): string[] {
+  if (tc.name === 'turnscript') return parseTurnscriptEditedPaths(tc.result)
   if (!tc.input) return []
   const paths: string[] = []
   if (typeof tc.input.path === 'string') paths.push(tc.input.path)
@@ -1067,12 +1090,14 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
 
     const toolCalls = activeStream?.toolCalls ?? []
 
-    // Reveal on homepage file edit (src/pages/index)
+    // Reveal on homepage file edit (src/pages/index). A completed turnscript reports its
+    // written paths via getEditPaths (its edits are opaque), so a turnscript build that wrote
+    // the homepage reveals here on the same specific-page-edit signal as a direct file edit.
     const hasPageFileEdit = toolCalls.some(
-      tc => isCompletedFileEdit(tc) && getEditPaths(tc).some(p => p.includes('src/pages/index'))
+      tc => (isCompletedFileEdit(tc) || isCompletedTurnscriptEdit(tc)) && getEditPaths(tc).some(p => p.includes('src/pages/index'))
     )
 
-    // Reveal on suggestedResponse if any file edit has already completed
+    // Reveal on suggestedResponse if any file edit has already completed.
     const hasAnyFileEdit = toolCalls.some(tc => isCompletedFileEdit(tc))
     const hasSuggestedResponse = toolCalls.some(
       tc => tc.name === 'suggestedResponse' && tc.status === 'completed'

@@ -25,6 +25,7 @@ function decodeEnvelope(stdout: string): {
   failureKind?: string
   dispatches: Array<{ tool: string; ok: boolean; status: string; error?: string }>
   logs: string[]
+  editedPaths?: string[]
 } {
   const chunks = new Map<number, string>()
   let total: number | undefined
@@ -44,6 +45,7 @@ function run(dir: string, userCode: string, env: Record<string, string> = {}): {
   failureKind?: string
   dispatches: Array<{ tool: string; ok: boolean; status: string; error?: string }>
   logs: string[]
+  editedPaths?: string[]
 } {
   mkdirSync(join(dir, '.airo'), { recursive: true })
   const scriptPath = join(dir, '.airo', 'turnscript-test.mjs')
@@ -93,6 +95,28 @@ describe('turnscript in-container shim', () => {
     expect(env.ok).toBe(true)
     expect(String(env.result)).toContain('Successfully created handler.ts')
     expect(readFileSync(join(dir, 'src/server/api/new/handler.ts'), 'utf8')).toBe('export const x = 1')
+  })
+
+  it('records editedPaths for successful writes (create/str_replace), deduped, reads excluded', () => {
+    writeFileSync(join(dir, 'existing.ts'), 'const a = 1')
+    const env = run(dir, `async () => {
+      await turnscript.str_replace_based_edit_tool({ command: 'create', path: 'src/pages/index.tsx', file_text: 'export default () => null' })
+      await turnscript.str_replace_based_edit_tool({ command: 'str_replace', path: 'existing.ts', old_str: 'const a = 1', new_str: 'const a = 2' })
+      await turnscript.readFile({ path: 'existing.ts' })
+      await turnscript.str_replace_based_edit_tool({ command: 'view', path: 'existing.ts' })
+      return 'done'
+    }`)
+    expect(env.ok).toBe(true)
+    // create + str_replace are recorded; the readFile and the str_replace_based_edit_tool `view`
+    // (both reads) are not.
+    expect(env.editedPaths).toEqual(['src/pages/index.tsx', 'existing.ts'])
+  })
+
+  it('does not record editedPaths for a failed write (multi-match str_replace)', () => {
+    writeFileSync(join(dir, 'dup.txt'), 'x\nx\n')
+    const env = run(dir, `async () => turnscript.str_replace_based_edit_tool({ command: 'str_replace', path: 'dup.txt', old_str: 'x', new_str: 'y' })`)
+    expect(env.ok).toBe(true) // dispatch error returned as data
+    expect(env.editedPaths ?? []).toEqual([])
   })
 
   it('str_replace recovers from indentation/whitespace drift via tolerant retry (P0)', () => {

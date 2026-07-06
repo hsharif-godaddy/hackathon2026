@@ -74,6 +74,34 @@ describe('turnscript-turnscript-tool', () => {
       expect(formatted.text).toContain('No edits were applied before the failure.')
     })
 
+    it('appends a [turnscript:edited] trailer listing written paths', () => {
+      const result: TurnscriptResult = {
+        ok: true,
+        result: 'built the homepage',
+        logs: [],
+        dispatches: [dispatch('str_replace_based_edit_tool', true)],
+        editedPaths: ['src/pages/index.tsx', 'src/components/Hero.tsx'],
+      }
+
+      const formatted = formatTurnscriptResult(result)
+
+      expect(formatted.text).toContain('[turnscript:edited] src/pages/index.tsx, src/components/Hero.tsx')
+      // The marker must not trip the failure-detection prefix regex.
+      expect(turnscriptReportedFailure(formatted.text)).toBe(false)
+    })
+
+    it('omits the trailer when no paths were written', () => {
+      const result: TurnscriptResult = {
+        ok: true,
+        result: 'read only, no edits',
+        logs: [],
+        dispatches: [dispatch('readFile', true)],
+        editedPaths: [],
+      }
+
+      expect(formatTurnscriptResult(result).text).not.toContain('[turnscript:edited]')
+    })
+
     it('surfaces the underlying tool error verbatim and does NOT advise fallback for runtime_throw', () => {
       const result: TurnscriptResult = {
         ok: false,

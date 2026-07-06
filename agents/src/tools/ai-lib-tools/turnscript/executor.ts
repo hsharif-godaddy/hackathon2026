@@ -56,4 +56,10 @@ export interface TurnscriptResult {
   failureKind?: TurnscriptFailureKind
   logs: string[]
   dispatches: DispatchRecord[]
+  /** Workspace-relative paths written by str_replace/create/insert dispatches (deduped, reads
+   * excluded). Surfaced so the tool layer can tell the client which files this run modified —
+   * the develop-page overlay dismisses on a src/pages/index write, otherwise invisible since
+   * turnscript applies its edits opaquely inside the sandbox. Optional: absent on older
+   * envelopes / result-transport failures, so consumers default to []. */
+  editedPaths?: string[]
 }

@@ -27,6 +27,10 @@ const MAX_DISPATCHES = Number(process.env.TURNSCRIPT_MAX_DISPATCHES || '200')
 
 const __dispatches = []
 const __logs = []
+// Paths written by str_replace/create/insert (not reads/views) so the tool layer can
+// surface which files this run modified — the client's first-build overlay dismissal
+// keys on a src/pages/index write, otherwise invisible since turnscript batches edits.
+const __editedPaths = new Set()
 let __count = 0
 
 // console.log/error from the model's script is captured (not streamed) so only the
@@ -259,21 +263,29 @@ function _strReplaceEdit({ command, path, view_range, old_str, new_str, file_tex
     const blocked = isFileBlocked(path)
     if (blocked.blocked) throw new Error(`File blocked: ${blocked.reason} Do not retry — use a different approach.`)
   }
+  let out
   switch (command) {
     case 'view': return _view(path, view_range)
     case 'str_replace':
       // == null catches null too (mirror text-editor.ts): a null new_str serializes to ""
       // downstream and would silently DELETE old_str instead of replacing it.
       if (!old_str || new_str == null) throw new Error('str_replace requires old_str and new_str')
-      return _strReplace(path, old_str, new_str)
+      out = _strReplace(path, old_str, new_str)
+      break
     case 'create':
       if (file_text == null) throw new Error('create requires file_text')
-      return _create(path, file_text)
+      out = _create(path, file_text)
+      break
     case 'insert':
       if (insert_line === undefined || !insert_text) throw new Error('insert requires insert_line and insert_text')
-      return _insert(path, insert_line, insert_text)
+      out = _insert(path, insert_line, insert_text)
+      break
     default: throw new Error(`Unknown command: ${command}`)
   }
+  // Reached only when a write command succeeded (the sub-handlers throw on failure, and
+  // `view` returns above), so this records genuine, successful writes only.
+  __editedPaths.add(path)
+  return out
 }
 
 function _grepSearch({ pattern, path, glob, type, '-i': caseInsensitive, output_mode }) {
@@ -362,14 +374,16 @@ Promise.resolve().then(async () => {
       throw new Error('not_a_function: script must evaluate to an async function')
     }
     const result = await globalThis.__turnscriptUserFn()
-    envelope = { ok: true, result, dispatches: __dispatches, logs: __logs }
+    envelope = { ok: true, result, dispatches: __dispatches, logs: __logs, editedPaths: [...__editedPaths] }
   } catch (e) {
     const raw = e && e.message ? e.message : String(e)
     const failureKind = raw.includes('__TURNSCRIPT_DISPATCH_CAP__') ? 'dispatch_cap'
       : raw.startsWith('not_a_function') ? 'not_a_function' : 'runtime_throw'
     const error = raw.includes('__TURNSCRIPT_DISPATCH_CAP__')
       ? `dispatch cap exceeded (${MAX_DISPATCHES})` : raw
-    envelope = { ok: false, result: null, error, failureKind, dispatches: __dispatches, logs: __logs }
+    // Include edits even on failure: the sub-handlers write before any later throw, so a
+    // partially-applied run still reports the files it touched.
+    envelope = { ok: false, result: null, error, failureKind, dispatches: __dispatches, logs: __logs, editedPaths: [...__editedPaths] }
   }
   // Cap the envelope so a script that returns large content (e.g. full file dumps)
   // doesn't blow the /exec stdout limit and truncate the JSON — which the runner would

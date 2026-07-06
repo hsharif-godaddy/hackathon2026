@@ -33,6 +33,8 @@ describe('actionToolGrouping', () => {
     expect(isActionToolGroupEligible(createToolCall({ name: 'readFile' }))).toBe(true)
     expect(isActionToolGroupEligible(createToolCall({ name: 'runAgent' }))).toBe(true)
     expect(isActionToolGroupEligible(createToolCall({ name: 'awaitAgents' }))).toBe(true)
+    // turnscript batches a turn's edits into one call — it collapses like the tools it replaces
+    expect(isActionToolGroupEligible(createToolCall({ name: 'turnscript' }))).toBe(true)
     expect(isActionToolGroupEligible(createToolCall({ name: 'unknownNewTool' }))).toBe(false)
     expect(isActionToolGroupEligible(createToolCall({ name: 'media-image__generate_image' }))).toBe(false)
     expect(isActionToolGroupEligible(createToolCall({ name: 'widgetRender' }))).toBe(false)

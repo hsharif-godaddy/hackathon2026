@@ -32,6 +32,9 @@ const ACTION_GROUP_TOOL_NAMES = new Set([
   'terminalCommand',
   'textEditor',
   'todoList',
+  // Turnscript batches a whole turn's discovery + edits into one orchestration call;
+  // collapse it into the action group like the discrete file/discovery tools it replaces.
+  'turnscript',
   'validateCode',
   'viewLogs',
   'websiteScraper',

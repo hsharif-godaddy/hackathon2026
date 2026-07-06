@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { SiteStatus } from '@/lib/control-plane/types';
 import type { Site } from '@/stores/useSitesStore';
-import { applyMarkInitialPromptSentEffects, checkHasInitialPrompt, deriveIsAwaitingStream, getEditPaths, isCompletedFileEdit, isInCreationHandoff, isSiteForCurrentApp, resetStaleAppContext, shouldFireSiteAwareHydration, shouldHydrateInitialPromptFromSite, shouldReplaceJobRoute, shouldRevealOnWizardReady } from './useInitialization';
+import { applyMarkInitialPromptSentEffects, checkHasInitialPrompt, deriveIsAwaitingStream, getEditPaths, isCompletedFileEdit, isCompletedTurnscriptEdit, isInCreationHandoff, isSiteForCurrentApp, parseTurnscriptEditedPaths, resetStaleAppContext, shouldFireSiteAwareHydration, shouldHydrateInitialPromptFromSite, shouldReplaceJobRoute, shouldRevealOnWizardReady } from './useInitialization';
 
 function makeSite(overrides: Partial<Site>): Site {
   return {
@@ -384,12 +384,13 @@ describe('useInitialization', function hookTests() {
   });
 
   describe('File edit detection helpers', function fileEditHelpers() {
-    function makeTc(overrides: Partial<{ name: string; status: string; error: string; input: Record<string, unknown> }> = {}) {
+    function makeTc(overrides: Partial<{ name: string; status: string; error: string; input: Record<string, unknown>; result: unknown }> = {}) {
       return {
         name: 'textEditor',
         status: 'completed',
         error: undefined as string | undefined,
         input: { command: 'str_replace', path: 'src/pages/index.tsx' } as Record<string, unknown>,
+        result: undefined as unknown,
         ...overrides,
       };
     }
@@ -424,6 +425,24 @@ describe('useInitialization', function hookTests() {
       });
     });
 
+    describe('isCompletedTurnscriptEdit', function isCompletedTurnscriptEditTests() {
+      it('should return true for a completed turnscript run', function completedTurnscript() {
+        expect(isCompletedTurnscriptEdit(makeTc({ name: 'turnscript' }))).toBe(true);
+      });
+
+      it('should return false for a running turnscript', function runningTurnscript() {
+        expect(isCompletedTurnscriptEdit(makeTc({ name: 'turnscript', status: 'running' }))).toBe(false);
+      });
+
+      it('should return false for an errored turnscript', function erroredTurnscript() {
+        expect(isCompletedTurnscriptEdit(makeTc({ name: 'turnscript', error: 'boom' }))).toBe(false);
+      });
+
+      it('should return false for a non-turnscript tool', function notTurnscript() {
+        expect(isCompletedTurnscriptEdit(makeTc({ name: 'str_replace_based_edit_tool' }))).toBe(false);
+      });
+    });
+
     describe('getEditPaths', function getEditPathsTests() {
       it('should extract path from input.path', function directPath() {
         expect(getEditPaths(makeTc())).toEqual(['src/pages/index.tsx']);
@@ -452,13 +471,37 @@ describe('useInitialization', function hookTests() {
       it('should return empty array when no paths found', function noPaths() {
         expect(getEditPaths({ input: {} })).toEqual([]);
       });
+
+      it('should extract turnscript paths from the result trailer, not input', function turnscriptResult() {
+        const tc = { name: 'turnscript', input: { code: 'irrelevant' }, result: 'Built it.\n[turnscript:edited] src/pages/index.tsx, src/components/Hero.tsx' };
+        expect(getEditPaths(tc)).toEqual(['src/pages/index.tsx', 'src/components/Hero.tsx']);
+      });
+
+      it('should return empty array for a turnscript with no trailer', function turnscriptNoTrailer() {
+        expect(getEditPaths({ name: 'turnscript', result: 'read-only run' })).toEqual([]);
+      });
+    });
+
+    describe('parseTurnscriptEditedPaths', function parseTurnscriptEditedPathsTests() {
+      it('parses the comma-separated paths from the [turnscript:edited] line', function parses() {
+        expect(parseTurnscriptEditedPaths('summary\n[turnscript:edited] a.tsx, b.tsx')).toEqual(['a.tsx', 'b.tsx']);
+      });
+
+      it('returns [] when there is no trailer', function noTrailer() {
+        expect(parseTurnscriptEditedPaths('just a summary, no marker')).toEqual([]);
+      });
+
+      it('returns [] for a non-string result', function nonString() {
+        expect(parseTurnscriptEditedPaths({ text: 'x' })).toEqual([]);
+        expect(parseTurnscriptEditedPaths(undefined)).toEqual([]);
+      });
     });
 
     describe('Big reveal detection logic', function bigRevealTests() {
       // Simulates the reveal logic from the useEffect
       function shouldReveal(toolCalls: ReturnType<typeof makeTc>[]) {
         const hasPageFileEdit = toolCalls.some(
-          tc => isCompletedFileEdit(tc) && getEditPaths(tc).some(p => p.includes('src/pages/index'))
+          tc => (isCompletedFileEdit(tc) || isCompletedTurnscriptEdit(tc)) && getEditPaths(tc).some(p => p.includes('src/pages/index'))
         );
         const hasAnyFileEdit = toolCalls.some(tc => isCompletedFileEdit(tc));
         const hasSuggestedResponse = toolCalls.some(
@@ -507,6 +550,32 @@ describe('useInitialization', function hookTests() {
 
       it('should not reveal on view-only command to page', function viewOnlyPage() {
         const toolCalls = [makeTc({ input: { command: 'view', path: 'src/pages/index.tsx' } })];
+        expect(shouldReveal(toolCalls)).toBe(false);
+      });
+
+      it('should reveal when a completed turnscript reports a src/pages/index write', function turnscriptPageEdit() {
+        // Turnscript's edits are opaque, but its result trailer lists the files it wrote — so a
+        // turnscript that built the homepage reveals via the same page-edit path as a direct edit.
+        const toolCalls = [makeTc({
+          name: 'turnscript',
+          input: {},
+          result: 'Built the homepage.\n[turnscript:edited] src/pages/index.tsx, src/components/Hero.tsx',
+        })];
+        expect(shouldReveal(toolCalls)).toBe(true);
+      });
+
+      it('should not reveal on a turnscript that wrote only non-page files', function turnscriptNonPage() {
+        const toolCalls = [makeTc({
+          name: 'turnscript',
+          input: {},
+          result: 'Tweaked components.\n[turnscript:edited] src/components/Header.tsx',
+        })];
+        expect(shouldReveal(toolCalls)).toBe(false);
+      });
+
+      it('should not reveal on a completed turnscript with no reported edits', function turnscriptNoEdits() {
+        // No edited-paths trailer (e.g. read-only run) and no suggestedResponse — stays hidden.
+        const toolCalls = [makeTc({ name: 'turnscript', input: {}, result: 'Explored the codebase.' })];
         expect(shouldReveal(toolCalls)).toBe(false);
       });
     });

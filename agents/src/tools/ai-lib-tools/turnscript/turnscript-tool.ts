@@ -225,7 +225,18 @@ export function formatTurnscriptResult(result: TurnscriptResult): FormattedTurns
     lines.push(`[logs] ${result.logs.slice(0, 20).join(' | ')}`.slice(0, 2000))
   }
 
-  return { text: lines.join('\n').slice(0, 8000), fallbackAdvised }
+  // Trailer listing the files this run wrote, appended AFTER the 8000-char body slice so it
+  // can't be truncated away. The client parses this exact `[turnscript:edited] ` prefix to
+  // dismiss the first-build overlay on a src/pages/index write (turnscript edits are otherwise
+  // invisible to the UI). The `[turnscript:` marker + hyphen-free suffix deliberately avoid the
+  // `[turnscript (failed:|runtime error]|error)` prefixes that turnscriptReportedFailure matches.
+  // KEEP IN SYNC with parseTurnscriptEditedPaths in app/.../develop/hooks/useInitialization.ts.
+  const body: string = lines.join('\n').slice(0, 8000)
+  const editedPaths: string[] = result.editedPaths ?? []
+  const trailer: string = editedPaths.length
+    ? `\n[turnscript:edited] ${editedPaths.join(', ').slice(0, 2000)}`
+    : ''
+  return { text: body + trailer, fallbackAdvised }
 }
 
 /**

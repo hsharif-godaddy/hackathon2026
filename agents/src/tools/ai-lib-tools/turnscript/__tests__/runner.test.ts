@@ -19,6 +19,20 @@ describe('turnscript runner envelope parsing', () => {
     expect(parsed.result).toBe('done')
   })
 
+  it('surfaces editedPaths from the envelope and filters non-string entries', () => {
+    const stdout = chunked(JSON.stringify({
+      ok: true, result: 'done', dispatches: [], logs: [],
+      editedPaths: ['src/pages/index.tsx', 42, 'src/components/Hero.tsx', null],
+    }))
+    const parsed = parseEnvelope(stdout, '', false)
+    expect(parsed.editedPaths).toEqual(['src/pages/index.tsx', 'src/components/Hero.tsx'])
+  })
+
+  it('defaults editedPaths to [] when the envelope omits it', () => {
+    const stdout = chunked(JSON.stringify({ ok: true, result: 'done', dispatches: [], logs: [] }))
+    expect(parseEnvelope(stdout, '', false).editedPaths).toEqual([])
+  })
+
   it('reassembles a multi-chunk (large) envelope intact', () => {
     const big = 'Q'.repeat(20000)
     const stdout = chunked(JSON.stringify({ ok: true, result: big, dispatches: [], logs: [] }))

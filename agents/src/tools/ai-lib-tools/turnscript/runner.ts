@@ -33,7 +33,7 @@ export interface RunTurnscriptOptions {
 }
 
 function failure(error: string, failureKind: TurnscriptFailureKind): TurnscriptResult {
-  return { ok: false, result: null, error, failureKind, logs: [], dispatches: [] }
+  return { ok: false, result: null, error, failureKind, logs: [], dispatches: [], editedPaths: [] }
 }
 
 type TsModule = typeof import('typescript')
@@ -177,6 +177,7 @@ export function parseEnvelopeJson(json: string): TurnscriptResult | null {
       failureKind,
       logs: Array.isArray(env.logs) ? env.logs.filter((l): l is string => typeof l === 'string') : [],
       dispatches: Array.isArray(env.dispatches) ? env.dispatches.filter(isDispatchRecord) : [],
+      editedPaths: Array.isArray(env.editedPaths) ? env.editedPaths.filter((p): p is string => typeof p === 'string') : [],
     }
   } catch {
     return null
