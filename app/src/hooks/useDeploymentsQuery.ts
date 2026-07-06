@@ -17,8 +17,9 @@ import { hasBeenPublished } from '@/utils/site';
 const INITIAL_POLL_DELAY_MS = 5000;  // Wait 5 seconds before first poll
 const FAST_POLLING_INTERVAL_MS = 2000;  // Poll every 2 seconds initially
 const SLOW_POLLING_INTERVAL_MS = 10000;  // Poll every 10 seconds after 3 minutes
-const FAST_POLLING_DURATION_MS = 3 * 60 * 1000;  // 3 minutes
-export const MAX_POLLING_DURATION_MS = 5 * 60 * 1000;  // Stop polling after 5 minutes
+const FAST_POLL_COUNT = 90;  // ~3 minutes at 2s intervals
+const MAX_POLL_COUNT = 102;  // ~5 minutes total active polling (90 fast + 11 slow + initial)
+export const MAX_POLLING_DURATION_MS = 5 * 60 * 1000;  // Wall-clock staleness guard for AppPublish
 
 /**
  * Options for useDeploymentsQuery hook
@@ -38,42 +39,17 @@ export interface UseDeploymentsQueryOptions {
  *
  * Uses TanStack Query for automatic caching, background refetching, and polling.
  * Includes built-in support for polling while deployment is in progress with
- * progressive intervals:
+ * progressive intervals and poll-count-based timeout:
  * - First poll after 5 seconds
- * - Then every 2 seconds for the first 3 minutes
- * - Then every 10 seconds until deployment completes or 5 minute timeout
- * - Stops polling after 5 minutes max (prevents infinite polling on stuck deployments)
+ * - Then every 2 seconds for ~90 polls (~3 minutes)
+ * - Then every 10 seconds for ~11 more polls
+ * - Stops after MAX_POLL_COUNT total polls (prevents infinite polling on stuck deployments)
+ *
+ * Timeout is poll-count-based, not wall-clock. Backgrounded tabs that fire no
+ * polls do not accumulate toward the limit.
  *
  * When a deployment completes successfully (reaches 'deployed' status), this hook
  * automatically triggers a success alert via the useDevelopPageStore.
- *
- * @param options - Configuration options
- * @param options.appId - App ID (required)
- * @param options.limit - Number of deployments to fetch (default: 20)
- * @param options.includeJobData - Whether to include job data (default: true)
- * @param options.dedupe - Whether to deduplicate by gitHash (default: true)
- * @param options.enabled - Whether the query should be enabled (default: true)
- * @param options.refetchInterval - Polling interval in ms, or false to disable (default: false)
- * @param options.shouldPoll - Function that determines if polling should continue based on data.
- *                             When provided, enables automatic progressive polling.
- * @returns Query result with deployments data
- *
- * @example
- * ```typescript
- * // Basic usage
- * const { data: deployments, isLoading } = useDeploymentsQuery({
- *   appId: 'app-789'
- * });
- *
- * // Auto-polling with progressive intervals based on deployment status
- * const { data: deployments } = useDeploymentsQuery({
- *   appId: 'app-789',
- *   shouldPoll: (data) => {
- *     const latest = data?.[0];
- *     return latest && !['deployed', 'failed'].includes(latest.status);
- *   }
- * });
- * ```
  */
 export function useDeploymentsQuery({
   appId,
@@ -82,8 +58,7 @@ export function useDeploymentsQuery({
   dedupe = true,
   enabled = true,
 }: UseDeploymentsQueryOptions) {
-  // Track when polling started for progressive intervals
-  const pollingStartTimeRef = useRef<number | null>(null);
+  const pollCountRef = useRef<number>(0);
   const queryClient = useQueryClient();
 
   // Get store methods to check and clear deployment in progress
@@ -102,6 +77,11 @@ export function useDeploymentsQuery({
     queryFn: async (): Promise<AiroDeployment[]> => {
       if (!appId) {
         return [];
+      }
+
+      const currentPublishState = getPublishState(appId);
+      if (currentPublishState.deploymentInProgressId) {
+        pollCountRef.current += 1;
       }
 
       const queryParams = new URLSearchParams({
@@ -139,7 +119,7 @@ export function useDeploymentsQuery({
             deploymentId: publishState.deploymentInProgressId,
             status: response.status,
           });
-          pollingStartTimeRef.current = null;
+          pollCountRef.current = 0;
           setDeploymentInProgressId(appId, null);
           setFirstPublishDeployPending(appId, false);
         }
@@ -174,65 +154,48 @@ export function useDeploymentsQuery({
     refetchInterval: (query) => {
           const data = query.state.data;
 
-          // Check if we have a deployment in progress from publish
           const publishState = getPublishState(appId);
           const deploymentInProgressId = publishState.deploymentInProgressId;
 
-          // If no deployment being tracked, don't poll
           if (!deploymentInProgressId) {
-            pollingStartTimeRef.current = null;
+            pollCountRef.current = 0;
             return false;
           }
 
-          // Find the deployment in progress if it exists in current data
           const deploymentInProgress = data?.find(d => d.id === deploymentInProgressId);
 
-          // If deployment is in final state, stop polling
           if (deploymentInProgress && ['deployed', 'failed'].includes(deploymentInProgress.status)) {
-            pollingStartTimeRef.current = null;
+            pollCountRef.current = 0;
             return false;
           }
 
-          // Start polling immediately if we have a deploymentInProgressId
-          if (!pollingStartTimeRef.current) {
-            pollingStartTimeRef.current = Date.now();
+          const count: number = pollCountRef.current;
+
+          if (count === 0) {
             logger.info('deployments-query.polling.started', {
               appId,
               deploymentId: deploymentInProgressId,
             });
+            return INITIAL_POLL_DELAY_MS;
           }
 
-          // Calculate progressive interval
-          if (!pollingStartTimeRef.current) return false;
-
-          const elapsed = Date.now() - pollingStartTimeRef.current;
-
-          // Stop polling after 5 minutes max (timeout)
-          if (elapsed >= MAX_POLLING_DURATION_MS) {
+          if (count >= MAX_POLL_COUNT) {
             logger.warn('deployments-query.polling.timeout', {
               appId,
               deploymentId: deploymentInProgressId,
-              elapsedMs: elapsed,
-              elapsedMinutes: Math.round(elapsed / 60000),
-              message: 'Polling stopped after 5 minutes - deployment may be stuck'
+              pollCount: count,
+              message: 'Polling stopped after max poll attempts - deployment may be stuck'
             });
-            pollingStartTimeRef.current = null;
+            pollCountRef.current = 0;
             setDeploymentInProgressId(appId, null);
             setFirstPublishDeployPending(appId, false);
             return false;
           }
 
-          // First poll: wait 5 seconds
-          if (elapsed < INITIAL_POLL_DELAY_MS) {
-            return INITIAL_POLL_DELAY_MS - elapsed;
-          }
-
-          // After initial delay, poll every 2 seconds for first 3 minutes
-          if (elapsed < FAST_POLLING_DURATION_MS) {
+          if (count <= FAST_POLL_COUNT) {
             return FAST_POLLING_INTERVAL_MS;
           }
 
-          // After 3 minutes, poll every 10 seconds (until 5 minute timeout)
           return SLOW_POLLING_INTERVAL_MS;
         },
     staleTime: 0,

@@ -126,14 +126,12 @@ describe('useDeploymentsQuery', function useDeploymentsQueryTests() {
     });
   });
 
-  describe('polling timeout cleanup', function pollingTimeoutTests() {
+  describe('poll-count-based timeout', function pollCountTimeoutTests() {
     afterEach(function restoreTimers() {
       vi.useRealTimers();
     });
 
-    // Fake timers interact with React Query's internal scheduling - if this test
-    // becomes flaky after a React Query upgrade, check timer compatibility first.
-    it('should clear deploymentInProgressId when polling times out', async function clearsOnTimeout() {
+    it('times out after max poll attempts with non-terminal status', async function timesOutOnStagnation() {
       vi.useFakeTimers();
 
       mockGetPublishState.mockReturnValue({
@@ -148,11 +146,109 @@ describe('useDeploymentsQuery', function useDeploymentsQueryTests() {
         useDeploymentsQuery({ appId: 'app-123' })
       );
 
-      // Advance past MAX_POLLING_DURATION_MS (5 minutes)
-      await vi.advanceTimersByTimeAsync(6 * 60 * 1000);
+      // Advance enough for max polls: 5s initial + 90*2s fast + 11*10s slow = 295s
+      await vi.advanceTimersByTimeAsync(310 * 1000);
 
       expect(mockSetDeploymentInProgressId).toHaveBeenCalledWith('app-123', null);
       expect(mockSetFirstPublishDeployPending).toHaveBeenCalledWith('app-123', false);
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        'deployments-query.polling.timeout',
+        expect.objectContaining({ appId: 'app-123', deploymentId: 'dep-in-progress' })
+      );
+    });
+
+    it('count only advances on successful fetch responses, not elapsed time', async function countTracksPolls() {
+      vi.useFakeTimers();
+
+      mockGetPublishState.mockReturnValue({
+        deploymentInProgressId: 'dep-in-progress',
+        firstPublishDeployPending: false,
+      });
+
+      const pendingDeployments = [{ id: 'dep-in-progress', status: DeploymentStatus.DEPLOYING }];
+      mockAppFetch.mockResolvedValue(createMockResponse(pendingDeployments));
+
+      renderHookWithProviders(() =>
+        useDeploymentsQuery({ appId: 'app-123' })
+      );
+
+      // Advance 15s: initial 5s delay + ~5 polls at 2s intervals
+      await vi.advanceTimersByTimeAsync(15 * 1000);
+      const fetchCountAfter15s: number = mockAppFetch.mock.calls.length;
+
+      // Timeout requires 102 poll responses. With only ~5 fetches in 15s,
+      // timeout cannot fire regardless of wall-clock elapsed time.
+      expect(mockSetDeploymentInProgressId).not.toHaveBeenCalledWith('app-123', null);
+      expect(fetchCountAfter15s).toBeGreaterThan(1);
+      expect(fetchCountAfter15s).toBeLessThan(102);
+    });
+
+    it('resets poll count when deployment reaches terminal state', async function resetsOnSuccess() {
+      vi.useFakeTimers();
+
+      mockGetPublishState.mockReturnValue({
+        deploymentInProgressId: 'dep-in-progress',
+        firstPublishDeployPending: false,
+      });
+
+      const pendingDeployments = [{ id: 'dep-in-progress', status: DeploymentStatus.DEPLOYING }];
+      mockAppFetch.mockResolvedValue(createMockResponse(pendingDeployments));
+
+      renderHookWithProviders(() =>
+        useDeploymentsQuery({ appId: 'app-123' })
+      );
+
+      // Accumulate ~80 polls (enough to blow budget if not reset)
+      await vi.advanceTimersByTimeAsync(165 * 1000);
+
+      // Deployment succeeds — refetchInterval resets counter
+      const deployedDeployments = [{ id: 'dep-in-progress', status: DeploymentStatus.DEPLOYED }];
+      mockAppFetch.mockResolvedValue(createMockResponse(deployedDeployments));
+      await vi.advanceTimersByTimeAsync(5 * 1000);
+
+      // Completion effect fires setDeploymentInProgressId(null) — expected
+      expect(mockSetDeploymentInProgressId).toHaveBeenCalledWith('app-123', null);
+      mockSetDeploymentInProgressId.mockClear();
+      mockLogger.warn.mockClear();
+
+      // Start a second deployment — counter must be fresh
+      mockGetPublishState.mockReturnValue({
+        deploymentInProgressId: 'dep-second',
+        firstPublishDeployPending: false,
+      });
+      const secondPending = [{ id: 'dep-second', status: DeploymentStatus.DEPLOYING }];
+      mockAppFetch.mockResolvedValue(createMockResponse(secondPending));
+
+      // Advance 60s (~30 polls) — well within budget if reset worked
+      await vi.advanceTimersByTimeAsync(60 * 1000);
+
+      // If the counter didn't reset, ~80 + 30 = 110 > MAX_POLL_COUNT (102) → timeout
+      expect(mockSetDeploymentInProgressId).not.toHaveBeenCalledWith('app-123', null);
+      expect(mockLogger.warn).not.toHaveBeenCalledWith(
+        'deployments-query.polling.timeout',
+        expect.anything()
+      );
+    });
+
+    it('times out even when fetch throws persistent network errors', async function networkErrorStillTimesOut() {
+      vi.useFakeTimers();
+
+      mockGetPublishState.mockReturnValue({
+        deploymentInProgressId: 'dep-in-progress',
+        firstPublishDeployPending: false,
+      });
+
+      mockAppFetch.mockRejectedValue(new Error('Network error'));
+
+      renderHookWithProviders(() =>
+        useDeploymentsQuery({ appId: 'app-123' })
+      );
+
+      // Counter increments in refetchInterval regardless of fetch outcome.
+      // Advance enough for 102 interval evaluations to fire timeout.
+      await vi.advanceTimersByTimeAsync(310 * 1000);
+
+      expect(mockSetDeploymentInProgressId).toHaveBeenCalledWith('app-123', null);
       expect(mockLogger.warn).toHaveBeenCalledWith(
         'deployments-query.polling.timeout',
         expect.objectContaining({ appId: 'app-123', deploymentId: 'dep-in-progress' })
