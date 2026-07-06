@@ -3,6 +3,9 @@ import { describe, expect, it, vi } from 'vitest';
 import { act, render, screen } from '@testing-library/react';
 
 import { AssemblingKit } from '../AssemblingKit';
+import { DESIGN_KIT_EID,fireDesignKitImpression } from '../designKitEvents';
+
+vi.mock('../designKitEvents');
 
 // Stable refetch spy (hoisted so the mock factory below can reference it).
 const { refetchSpy } = vi.hoisted(() => ({ refetchSpy: vi.fn() }));
@@ -31,6 +34,16 @@ vi.mock('@/hooks/useMediaManifest', () => ({
 }));
 
 describe('AssemblingKit', () => {
+  it('fires design_kit.assembling impression exactly once on mount, with source system', () => {
+    const { rerender } = render(<AssemblingKit appId="app1234567" step={2} />);
+
+    expect(vi.mocked(fireDesignKitImpression)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(fireDesignKitImpression)).toHaveBeenCalledWith(DESIGN_KIT_EID.assembling, { source: 'system' });
+
+    rerender(<AssemblingKit appId="app1234567" step={2} />);
+    expect(vi.mocked(fireDesignKitImpression)).toHaveBeenCalledTimes(1);
+  });
+
   it('fills the colors and fonts tiles when palette + typography are present', () => {
     render(<AssemblingKit appId="app1234567" step={2} />);
 

@@ -1,13 +1,27 @@
 'use client';
 
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
-import { type JSX } from 'react';
+import { type JSX, useEffect } from 'react';
 import WandIcon from '@ux/icon/wand';
 import text from '@ux/text';
 
+import { type WizardPhase } from '@/stores/useWizardStore';
 import { AssemblingKit } from './AssemblingKit';
+import { DESIGN_KIT_EID, DESIGN_KIT_MILESTONE, fireDesignKitImpression, fireDesignKitMilestone } from './designKitEvents';
 import { useWizardPhase } from './useWizardPhase';
 import { WebsiteHandoff } from './WebsiteHandoff';
+
+// `ready` is present only to satisfy the exhaustive Record type — this component
+// unmounts the instant the phase hits `ready` (see the docstring below), so a
+// `view` impression with phase `ready` never fires from here. The funnel's `ready`
+// signal is the `design_kit_ready` milestone (from the SSE build_phase path) plus
+// the `website_ready` impression from the celebration overlay.
+const SURFACE_BY_PHASE: Record<WizardPhase, 'vibe' | 'brand_panels' | 'website_handoff' | 'website_ready'> = {
+  gathering: 'vibe',
+  brand: 'brand_panels',
+  website: 'website_handoff',
+  ready: 'website_ready',
+};
 
 // The wizard chrome is Airo-branded (`--color-ai`), not the user's generated
 // brand colour — those appear only once the site is built.
@@ -40,6 +54,14 @@ export function DesignKitWizard({
 }): JSX.Element {
   const { phase } = useWizardPhase(appId);
   const reduce = useReducedMotion();
+
+  // Fire once per mount with the phase at mount time (the [phase] effect below
+  // owns subsequent phase changes). Empty deps are intentional — not a stale read.
+  useEffect(() => { fireDesignKitMilestone(DESIGN_KIT_MILESTONE.started, { phase }); }, []);
+
+  useEffect(() => {
+    fireDesignKitImpression(DESIGN_KIT_EID.view, { phase, surface: SURFACE_BY_PHASE[phase] });
+  }, [phase]);
 
   // Which visual to render. `website` and `ready` both show the website-assembly animation.
   // The `ready` build-complete beat (celebration + Preview reveal) is owned by the page-level

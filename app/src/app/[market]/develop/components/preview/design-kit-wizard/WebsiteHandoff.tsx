@@ -9,6 +9,7 @@ import text from '@ux/text';
 
 import { getSlotImageUrl } from '@/app/[market]/develop/components/media/MediaSlotDetail';
 import { useServerPollingStore } from '@/stores/useServerPollingStore';
+import { DESIGN_KIT_EID, fireDesignKitClick, fireDesignKitImpression, fireWebsiteReadyOnce, type WebsiteReadySource } from './designKitEvents';
 import { useBrandData } from './useBrandData';
 import { useLazyFontFaces } from './useLazyFontFaces';
 
@@ -127,6 +128,10 @@ export function WebsiteHandoff({ appId }: { appId: string }): JSX.Element {
   useEffect(() => {
     requestFonts([headingFamily, bodyFamily].filter((f): f is string => !!f));
   }, [requestFonts, headingFamily, bodyFamily]);
+
+  useEffect(() => {
+    fireDesignKitImpression(DESIGN_KIT_EID.websiteHandoff, { source: 'system' });
+  }, []);
 
   const [phaseLabel, setPhaseLabel] = useState<string>(reduce ? PHASES[PHASES.length - 1][1] : PHASES[0][1]);
   const building = phaseLabel === PHASES[PHASES.length - 1][1];
@@ -420,7 +425,15 @@ export function WebsiteHandoffDone({ onGo }: { onGo: () => void }): JSX.Element 
         <text.span className="text-lg font-semibold text-intents-ux-box-foregroundColor">Your website is on its way</text.span>
         <text.p as="caption" emphasis="passive">We&rsquo;re building your site from this brand kit.</text.p>
       </div>
-      <Button design="primary" data-testid="design-kit-watch-build" onClick={onGo} text="Watch it build" />
+      <Button
+        design="primary"
+        data-testid="design-kit-watch-build"
+        onClick={() => {
+          fireDesignKitClick(DESIGN_KIT_EID.watchBuild);
+          onGo();
+        }}
+        text="Watch it build"
+      />
     </div>
   );
 }
@@ -457,9 +470,13 @@ const BURST_DEGREES = [0, 36, 72, 108, 144, 180, 216, 252, 288, 324];
  *
  * data-testid: `design-kit-website-ready`.
  */
-export function WebsiteReadyCelebration(): JSX.Element | null {
+export function WebsiteReadyCelebration({ appId, source }: { appId: string; source: WebsiteReadySource }): JSX.Element | null {
   const reduce = useReducedMotion();
   const [visible, setVisible] = useState<boolean>(true);
+
+  useEffect(() => {
+    fireWebsiteReadyOnce(appId, { source });
+  }, [appId, source]);
 
   // One-shot confetti burst on mount (skipped for reduced motion). zIndex sits above the
   // overlay scrim so the particles render crisp over the blur.

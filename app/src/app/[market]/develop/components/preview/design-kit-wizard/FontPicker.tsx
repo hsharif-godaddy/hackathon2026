@@ -4,6 +4,7 @@ import { FONT_THEMES, type FontInfo, type GoogleFontEntry, loadGoogleFontsCatalo
 import Button from '@ux/button';
 
 import type { FontChoice } from './designKitApi';
+import { DESIGN_KIT_EID, fireDesignKitAction, fireDesignKitClick } from './designKitEvents';
 import { useDismiss } from './DesignKitPanels';
 import { ensureTagExampleFontsLoaded, useLazyFontFaces } from './useLazyFontFaces';
 
@@ -102,6 +103,7 @@ function Combobox({
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const ref = useRef<HTMLDivElement>(null);
   const requestFonts = useLazyFontFaces();
+  const picker: 'heading' | 'body' = testId.startsWith('heading') ? 'heading' : 'body';
   useDismiss(open, ref, () => setOpen(false));
 
   const groups = catalog ? buildTagGroups(catalog) : [];
@@ -127,7 +129,15 @@ function Combobox({
         data-testid={testId}
         aria-haspopup="listbox"
         aria-expanded={open}
-        onClick={() => { setOpen((o) => !o); setQuery(''); setScrollTop(0); onOpen(); }}
+        onClick={() => {
+          if (!open) {
+            fireDesignKitAction(DESIGN_KIT_EID.fontPicker, 'load', { picker });
+          }
+          setOpen((o) => !o);
+          setQuery('');
+          setScrollTop(0);
+          onOpen();
+        }}
         className="flex w-full cursor-pointer items-center gap-2 rounded-md text-left transition-colors"
       >
         <span className="min-w-0 truncate text-2xl leading-none text-intents-ux-box-foregroundColor" style={{ fontFamily: value }}>{value}</span>
@@ -149,7 +159,11 @@ function Combobox({
                 type="button"
                 data-testid={`${testId}-filters-toggle`}
                 aria-expanded={filtersOpen}
-                onClick={() => setFiltersOpen((f) => !f)}
+                onClick={() => {
+                  const next = !filtersOpen;
+                  fireDesignKitClick(DESIGN_KIT_EID.fontFilter, { picker, expanded: next });
+                  setFiltersOpen(next);
+                }}
                 className={`shrink-0 rounded-md border px-2 py-2 text-xs transition-colors ${selectedTags.length ? 'border-[color-mix(in_srgb,var(--color-ai)_55%,transparent)] text-intents-ux-box-foregroundColor' : 'border-intents-ux-box-borderColor text-intents-ux-boxPassive-foregroundColor'}`}
               >
                 Filters{selectedTags.length ? ` (${selectedTags.length})` : ''} ▾
@@ -174,7 +188,10 @@ function Combobox({
                           key={tag}
                           type="button"
                           aria-pressed={on}
-                          onClick={() => toggleTag(tag)}
+                          onClick={() => {
+                            fireDesignKitClick(DESIGN_KIT_EID.fontFilter, { picker, filter: tag });
+                            toggleTag(tag);
+                          }}
                           // Render the label in a font that exemplifies the tag (à la the
                           // Google Fonts sidebar). Falls back to inherited font if unmapped.
                           style={{ fontFamily: TAG_EXAMPLE_FONTS[tag] }}
@@ -201,7 +218,11 @@ function Combobox({
                 <li key={opt} role="option" aria-selected={selected} style={{ height: ROW_HEIGHT }}>
                   <button
                     type="button"
-                    onClick={() => { onSelect(opt); setOpen(false); }}
+                    onClick={() => {
+                      fireDesignKitAction(DESIGN_KIT_EID.fontPicker, 'load', { picker, font_family: opt });
+                      onSelect(opt);
+                      setOpen(false);
+                    }}
                     className={`flex h-full w-full cursor-pointer items-center justify-between gap-2 rounded-md px-2.5 text-left transition-colors hover:bg-intents-ux-boxLowContrast-backgroundColor ${selected ? 'bg-intents-ux-boxLowContrast-backgroundColor' : ''}`}
                   >
                     <span className="truncate text-base leading-none text-intents-ux-box-foregroundColor" style={{ fontFamily: opt }}>{opt}</span>
@@ -278,7 +299,14 @@ export function FontPicker({
               data-testid={`pairing-${id}`}
               design="secondary"
               size="sm"
-              onClick={() => onApply(theme.headerFont, theme.bodyFont)}
+              onClick={() => {
+                fireDesignKitAction(DESIGN_KIT_EID.fontPairing, 'load', {
+                  pairing_id: id,
+                  heading_font: theme.headerFont.name,
+                  body_font: theme.bodyFont.name,
+                });
+                onApply(theme.headerFont, theme.bodyFont);
+              }}
               text={theme.name}
             />
           ))}

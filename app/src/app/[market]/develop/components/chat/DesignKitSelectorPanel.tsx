@@ -10,6 +10,13 @@ import { useSendUserMessage } from '@/app/[market]/develop/components/chat/ChatC
 import type { SuggestedDesignKitOption } from '@/app/[market]/develop/components/utils/findLatestDesignKitSuggest'
 import { useTranslations } from '@/hooks/useTranslations'
 import { useIsActivelyStreaming, useIsLoading } from '@/stores/useStreamingConversationStore'
+import {
+  DESIGN_KIT_EID,
+  DESIGN_KIT_MILESTONE,
+  fireDesignKitClick,
+  fireDesignKitImpression,
+  fireDesignKitMilestone,
+} from '../preview/design-kit-wizard/designKitEvents'
 
 export interface DesignKitSelectorPanelProps {
   toolCallId: string
@@ -45,10 +52,37 @@ export default function DesignKitSelectorPanel({
     setSelectedIndex(0)
   }, [toolCallId])
 
+  const visibleSlugs = visibleKits.map((k) => k.slug).join('|')
+
+  // Record which cards were shown. Keyed on toolCallId (the fresh-suggestion
+  // identity, same key that resets selection above) as well as the slugs, so a
+  // re-suggest of the same three kits still counts as a new "shown" impression.
+  useEffect(() => {
+    if (!visibleKits.length) return
+    visibleKits.forEach((kit, index) => {
+      fireDesignKitImpression(DESIGN_KIT_EID.vibeOption, {
+        kit_id: kit.slug,
+        kit_index: index,
+        option_count: visibleKits.length,
+      })
+    })
+  }, [toolCallId, visibleSlugs])
+
   function handleChoose(): void {
     const kit: SuggestedDesignKitOption | undefined = visibleKits[selectedIndex]
     if (!kit || isProcessing || submitting || !sendUserMessage) return
     setSubmitting(true)
+
+    fireDesignKitClick(DESIGN_KIT_EID.vibeApply, {
+      kit_id: kit.slug,
+      kit_index: selectedIndex,
+      option_count: visibleKits.length,
+    })
+    fireDesignKitMilestone(DESIGN_KIT_MILESTONE.vibeSelected, {
+      kit_id: kit.slug,
+      kit_index: selectedIndex,
+    })
+
     sendUserMessage(
       t('builder_design_kit_vibe_use', { name: kit.displayName }, `Use the ${kit.displayName} vibe`),
       { isActionRequest: true }
@@ -58,6 +92,11 @@ export default function DesignKitSelectorPanel({
   function handleSkip(): void {
     if (isProcessing || submitting || !sendUserMessage) return
     setSubmitting(true)
+
+    fireDesignKitClick(DESIGN_KIT_EID.vibeSkip, {
+      option_count: visibleKits.length,
+    })
+
     sendUserMessage(
       t('builder_design_kit_vibe_skip', undefined, 'Skip — pick the best vibe for me'),
       { isActionRequest: true }
@@ -114,7 +153,14 @@ export default function DesignKitSelectorPanel({
                   name={radioName}
                   value={index}
                   checked={isSelected}
-                  onChange={() => setSelectedIndex(index)}
+                  onChange={() => {
+                    setSelectedIndex(index)
+                    fireDesignKitClick(DESIGN_KIT_EID.vibeOption, {
+                      kit_id: kit.slug,
+                      kit_index: index,
+                      option_count: visibleKits.length,
+                    })
+                  }}
                 />
                 <div
                   className="relative aspect-[3/4] w-full overflow-hidden bg-intents-ux-boxLowContrast-backgroundColor"

@@ -12,6 +12,7 @@ import { getLogoDisplayUrl, type LogoData } from '@/app/[market]/develop/compone
 import { BRAND_DATA_UPDATED_EVENT } from '@/hooks/useBrandData';
 import { useMediaManifest } from '@/hooks/useMediaManifest';
 import { useServerPollingStore } from '@/stores/useServerPollingStore';
+import { DESIGN_KIT_EID, fireDesignKitImpression } from './designKitEvents';
 import { useBrandData } from './useBrandData';
 import { useLazyFontFaces } from './useLazyFontFaces';
 
@@ -95,6 +96,10 @@ export function AssemblingKit({
   const [collapseYs, setCollapseYs] = useState<number[]>([]);
   const rowsRef = useRef<HTMLDivElement>(null);
   const assembledFiredRef = useRef(false);
+
+  useEffect(() => {
+    fireDesignKitImpression(DESIGN_KIT_EID.assembling, { source: 'system' });
+  }, []);
 
   // Re-fetch brand data immediately when the agent mutates brand assets so rows
   // fill live (and the last-written row lands before the step advances).

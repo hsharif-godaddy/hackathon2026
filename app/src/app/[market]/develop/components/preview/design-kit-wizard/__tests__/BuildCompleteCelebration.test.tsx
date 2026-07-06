@@ -15,6 +15,12 @@ vi.mock('framer-motion', async (importOriginal) => {
 });
 // canvas-confetti touches a real 2D context (null in jsdom); stub the one-shot burst.
 vi.mock('canvas-confetti', () => ({ default: vi.fn() }));
+
+import { fireWebsiteReadyOnce } from '../designKitEvents';
+vi.mock('../designKitEvents', () => ({
+  fireWebsiteReadyOnce: vi.fn(),
+}));
+
 // useSearchParams needs the app-router context (absent in a bare render); stub it empty so
 // the dev `?dkCelebrate=1` hook is inert and the store drives these tests.
 vi.mock('next/navigation', () => ({ useSearchParams: (): URLSearchParams => new URLSearchParams() }));
@@ -46,6 +52,7 @@ describe('BuildCompleteCelebration', () => {
 
     expect(screen.getByTestId('design-kit-website-ready')).toBeInTheDocument();
     expect(useDevelopPageStore.getState().viewMode).toBe(ViewMode.BRAND);
+    expect(fireWebsiteReadyOnce).toHaveBeenCalledWith(APP, { source: 'build_complete' });
 
     act(() => { vi.advanceTimersByTime(2700); }); // > CELEBRATE_MS (2600): reveal fires
     expect(useDevelopPageStore.getState().viewMode).toBe(ViewMode.PREVIEW);

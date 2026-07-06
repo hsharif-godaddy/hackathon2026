@@ -6,6 +6,7 @@ import { act, render, screen } from '@testing-library/react';
 import { ViewMode } from '@/app/[market]/develop/components/types';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { useWizardStore, type WizardPhase } from '@/stores/useWizardStore';
+import { DESIGN_KIT_EID, fireDesignKitImpression, fireDesignKitMilestone } from '../designKitEvents';
 import { DesignKitWizard } from '../DesignKitWizard';
 
 // AnimatePresence's `mode="wait"` holds the entering child until the exiting one
@@ -24,6 +25,26 @@ vi.mock('framer-motion', async (importOriginal) => {
 // module-level value so each test can pick the phase under test; `setPhase` is a
 // spy (the shell no longer calls it, but the hook still returns it).
 let mockPhase: WizardPhase = 'brand';
+vi.mock('../designKitEvents', () => ({
+  DESIGN_KIT_EID: {
+    view: 'develop.design_kit.view',
+    websiteHandoff: 'develop.design_kit.website_handoff',
+    watchBuild: 'develop.design_kit.watch_build',
+    websiteReady: 'develop.design_kit.website_ready',
+    assembling: 'develop.design_kit.assembling',
+  },
+  DESIGN_KIT_MILESTONE: {
+    started: 'design_kit_started',
+    vibeSelected: 'design_kit_vibe_selected',
+    brandStarted: 'design_kit_brand_started',
+    websiteStarted: 'design_kit_website_started',
+    ready: 'design_kit_ready',
+  },
+  fireDesignKitImpression: vi.fn(),
+  fireDesignKitMilestone: vi.fn(),
+  fireDesignKitClick: vi.fn(),
+  fireWebsiteReadyOnce: vi.fn(),
+}));
 const setPhase = vi.fn(async () => undefined);
 vi.mock('../useWizardPhase', () => ({
   useWizardPhase: (): {
@@ -225,5 +246,47 @@ describe('DesignKitWizard — build complete + resume', () => {
 
     expect(screen.getByTestId('design-kit-assembling')).toBeInTheDocument();
     expect(screen.queryByTestId('design-kit-watch-build')).not.toBeInTheDocument();
+  });
+});
+
+describe('DesignKitWizard — metrics', () => {
+  beforeEach(() => {
+    mockPhase = 'brand';
+    useWizardStore.setState({ phaseByApp: { app1234567: 'brand' } });
+    useDevelopPageStore.setState({ viewMode: ViewMode.BRAND, app: null });
+    setPhase.mockClear();
+    vi.mocked(fireDesignKitImpression).mockClear();
+    vi.mocked(fireDesignKitMilestone).mockClear();
+  });
+
+  it('fires started milestone once on mount and impression on phase changes', () => {
+    const { rerender } = render(<DesignKitWizard appId="app1234567" />);
+
+    // started milestone once on mount
+    expect(fireDesignKitMilestone).toHaveBeenCalledTimes(1);
+    expect(fireDesignKitMilestone).toHaveBeenCalledWith('design_kit_started', { phase: 'brand' });
+
+    // view impression once for initial phase
+    const viewCalls1 = vi.mocked(fireDesignKitImpression).mock.calls.filter(c => c[0] === DESIGN_KIT_EID.view);
+    expect(viewCalls1.length).toBe(1);
+    expect(viewCalls1[0]).toEqual([DESIGN_KIT_EID.view, { phase: 'brand', surface: 'brand_panels' }]);
+
+    // re-render with same phase -> no new impressions
+    rerender(<DesignKitWizard appId="app1234567" />);
+    expect(fireDesignKitMilestone).toHaveBeenCalledTimes(1);
+    const viewCalls2 = vi.mocked(fireDesignKitImpression).mock.calls.filter(c => c[0] === DESIGN_KIT_EID.view);
+    expect(viewCalls2.length).toBe(1);
+
+    // change phase -> new impression
+    act(() => {
+      mockPhase = 'website';
+      useWizardStore.setState({ phaseByApp: { app1234567: 'website' } });
+      rerender(<DesignKitWizard appId="app1234567" />);
+    });
+    
+    expect(fireDesignKitMilestone).toHaveBeenCalledTimes(1); // STILL 1
+    const viewCalls3 = vi.mocked(fireDesignKitImpression).mock.calls.filter(c => c[0] === DESIGN_KIT_EID.view);
+    expect(viewCalls3.length).toBe(2);
+    expect(viewCalls3[1]).toEqual([DESIGN_KIT_EID.view, { phase: 'website', surface: 'website_handoff' }]);
   });
 });

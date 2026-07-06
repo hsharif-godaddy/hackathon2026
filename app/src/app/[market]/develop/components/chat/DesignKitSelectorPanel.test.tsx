@@ -11,6 +11,7 @@ import * as StreamingStore from '@/stores/useStreamingConversationStore'
 import { renderWithProviders } from '@/tests/test-utils'
 import * as ChatContext from './ChatContext'
 import DesignKitSelectorPanel from './DesignKitSelectorPanel'
+import * as dke from '../preview/design-kit-wizard/designKitEvents'
 
 vi.mock('./ChatContext', () => ({
   useSendUserMessage: vi.fn(),
@@ -20,6 +21,8 @@ vi.mock('@/stores/useStreamingConversationStore', () => ({
   useIsActivelyStreaming: vi.fn(),
   useIsLoading: vi.fn(),
 }))
+
+vi.mock('../preview/design-kit-wizard/designKitEvents')
 
 const mockKits: SuggestedDesignKitOption[] = [
   {
@@ -224,6 +227,78 @@ describe('DesignKitSelectorPanel', () => {
       expect(screen.getByTestId('design-kit-selector-panel')).toBeInTheDocument()
       expect(screen.queryAllByTestId('design-kit-option')).toHaveLength(0)
       expect(screen.getByTestId('design-kit-apply')).toBeDisabled()
+    })
+  })
+
+  describe('telemetry', () => {
+    it('fires impression once per visible card on mount', () => {
+      renderWithProviders(<DesignKitSelectorPanel toolCallId="tc1" kits={mockKits} />)
+      expect(dke.fireDesignKitImpression).toHaveBeenCalledTimes(3)
+      expect(dke.fireDesignKitImpression).toHaveBeenNthCalledWith(1, dke.DESIGN_KIT_EID.vibeOption, {
+        kit_id: 'bold-studio',
+        kit_index: 0,
+        option_count: 3,
+      })
+      expect(dke.fireDesignKitImpression).toHaveBeenNthCalledWith(2, dke.DESIGN_KIT_EID.vibeOption, {
+        kit_id: 'soft-serif',
+        kit_index: 1,
+        option_count: 3,
+      })
+      expect(dke.fireDesignKitImpression).toHaveBeenNthCalledWith(3, dke.DESIGN_KIT_EID.vibeOption, {
+        kit_id: 'mono-minimal',
+        kit_index: 2,
+        option_count: 3,
+      })
+    })
+
+    it('fires click with vibeOption when a card is selected', async () => {
+      const { user } = renderWithProviders(<DesignKitSelectorPanel toolCallId="tc1" kits={mockKits} />)
+      await user.click(screen.getAllByTestId('design-kit-option')[1])
+      expect(dke.fireDesignKitClick).toHaveBeenCalledWith(dke.DESIGN_KIT_EID.vibeOption, {
+        kit_id: 'soft-serif',
+        kit_index: 1,
+        option_count: 3,
+      })
+    })
+
+    it('fires click with vibeApply and milestone when choose is clicked', async () => {
+      const { user } = renderWithProviders(<DesignKitSelectorPanel toolCallId="tc1" kits={mockKits} />)
+      await user.click(screen.getAllByTestId('design-kit-option')[1])
+      vi.clearAllMocks()
+
+      await user.click(screen.getByTestId('design-kit-apply'))
+      expect(dke.fireDesignKitClick).toHaveBeenCalledWith(dke.DESIGN_KIT_EID.vibeApply, {
+        kit_id: 'soft-serif',
+        kit_index: 1,
+        option_count: 3,
+      })
+      expect(dke.fireDesignKitMilestone).toHaveBeenCalledWith(dke.DESIGN_KIT_MILESTONE.vibeSelected, {
+        kit_id: 'soft-serif',
+        kit_index: 1,
+      })
+    })
+
+    it('fires click with vibeSkip when skip is clicked', async () => {
+      const { user } = renderWithProviders(<DesignKitSelectorPanel toolCallId="tc1" kits={mockKits} />)
+      vi.clearAllMocks()
+      await user.click(screen.getByTestId('design-kit-skip'))
+      expect(dke.fireDesignKitClick).toHaveBeenCalledWith(dke.DESIGN_KIT_EID.vibeSkip, {
+        option_count: 3,
+      })
+    })
+
+    it('re-fires impressions when a new suggestion arrives with the same slugs', () => {
+      const { rerender } = renderWithProviders(<DesignKitSelectorPanel toolCallId="tc1" kits={mockKits} />)
+      expect(dke.fireDesignKitImpression).toHaveBeenCalledTimes(3)
+      vi.clearAllMocks()
+
+      rerender(<DesignKitSelectorPanel toolCallId="tc2" kits={mockKits} />)
+      expect(dke.fireDesignKitImpression).toHaveBeenCalledTimes(3)
+    })
+
+    it('fires no impressions for an empty kit list', () => {
+      renderWithProviders(<DesignKitSelectorPanel toolCallId="tc1" kits={[]} />)
+      expect(dke.fireDesignKitImpression).not.toHaveBeenCalled()
     })
   })
 })

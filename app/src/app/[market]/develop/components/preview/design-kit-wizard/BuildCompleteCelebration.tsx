@@ -53,5 +53,5 @@ export function BuildCompleteCelebration({ appId }: { appId: string }): JSX.Elem
   }, [celebrate, appId, setViewMode, clearCelebration]);
 
   if (!celebrate) return null;
-  return <WebsiteReadyCelebration />;
+  return <WebsiteReadyCelebration appId={appId} source="build_complete" />;
 }

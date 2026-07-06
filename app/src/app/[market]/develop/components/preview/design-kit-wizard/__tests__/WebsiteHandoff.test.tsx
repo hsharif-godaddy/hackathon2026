@@ -64,6 +64,17 @@ vi.mock('@/app/[market]/develop/components/media/MediaSlotDetail', () => ({
 // celebration's one-shot burst is a no-op in tests.
 vi.mock('canvas-confetti', () => ({ default: vi.fn() }));
 
+import { DESIGN_KIT_EID, fireDesignKitClick, fireDesignKitImpression, fireWebsiteReadyOnce } from '../designKitEvents';
+vi.mock('../designKitEvents', () => ({
+  DESIGN_KIT_EID: {
+    websiteHandoff: 'websiteHandoff',
+    watchBuild: 'watchBuild',
+  },
+  fireDesignKitImpression: vi.fn(),
+  fireDesignKitClick: vi.fn(),
+  fireWebsiteReadyOnce: vi.fn(),
+}));
+
 import { WebsiteHandoff, WebsiteHandoffDone, WebsiteReadyCelebration } from '../WebsiteHandoff';
 
 beforeEach(() => {
@@ -78,6 +89,11 @@ afterEach(() => {
 });
 
 describe('WebsiteHandoff (blueprint build)', () => {
+  it('fires design kit impression on mount', () => {
+    render(<WebsiteHandoff appId="app1" />);
+    expect(fireDesignKitImpression).toHaveBeenCalledWith(DESIGN_KIT_EID.websiteHandoff, { source: 'system' });
+  });
+
   it('renders the finalizing blueprint with the brand wordmark and opening caption', () => {
     render(<WebsiteHandoff appId="app1" />);
     expect(screen.getByTestId('design-kit-finalizing')).toBeInTheDocument();
@@ -187,12 +203,18 @@ describe('WebsiteHandoffDone', () => {
     expect(screen.getByTestId('design-kit-finalizing')).toBeInTheDocument();
     act(() => { screen.getByTestId('design-kit-watch-build').click(); });
     expect(onGo).toHaveBeenCalledTimes(1);
+    expect(fireDesignKitClick).toHaveBeenCalledWith(DESIGN_KIT_EID.watchBuild);
   });
 });
 
 describe('WebsiteReadyCelebration', () => {
+  it('fires website ready event on mount', () => {
+    render(<WebsiteReadyCelebration appId="app1" source="website_handoff" />);
+    expect(fireWebsiteReadyOnce).toHaveBeenCalledWith('app1', { source: 'website_handoff' });
+  });
+
   it('full motion: shows the payoff copy and fires the sparkle burst', () => {
-    render(<WebsiteReadyCelebration />);
+    render(<WebsiteReadyCelebration appId="app1" source="website_handoff" />);
 
     expect(screen.getByTestId('design-kit-website-ready')).toBeInTheDocument();
     expect(screen.getByText('Your website is ready!')).toBeInTheDocument();
@@ -201,7 +223,7 @@ describe('WebsiteReadyCelebration', () => {
 
   it('reduced motion: keeps the copy but omits the decorative sparkle burst', () => {
     mockReducedMotion = true;
-    render(<WebsiteReadyCelebration />);
+    render(<WebsiteReadyCelebration appId="app1" source="website_handoff" />);
 
     expect(screen.getByTestId('design-kit-website-ready')).toBeInTheDocument();
     expect(screen.getByText('Your website is ready!')).toBeInTheDocument();
@@ -209,7 +231,7 @@ describe('WebsiteReadyCelebration', () => {
   });
 
   it('renders as a full-screen portal overlay (blurred backdrop over the builder)', () => {
-    const { container } = render(<WebsiteReadyCelebration />);
+    const { container } = render(<WebsiteReadyCelebration appId="app1" source="website_handoff" />);
 
     const overlay = screen.getByTestId('design-kit-website-ready');
     expect(overlay.className).toContain('fixed');
@@ -220,7 +242,7 @@ describe('WebsiteReadyCelebration', () => {
   });
 
   it('self-dismisses after CELEBRATE_MS so it can never linger', () => {
-    render(<WebsiteReadyCelebration />);
+    render(<WebsiteReadyCelebration appId="app1" source="website_handoff" />);
     expect(screen.getByTestId('design-kit-website-ready')).toBeInTheDocument();
 
     act(() => { vi.advanceTimersByTime(2700); }); // > CELEBRATE_MS (2600)

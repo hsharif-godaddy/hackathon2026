@@ -3,7 +3,10 @@ import { describe, expect, it, vi } from 'vitest';
 import type { GoogleFontEntry } from '@airo/shared/fonts';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 
+import { DESIGN_KIT_EID,fireDesignKitAction, fireDesignKitClick } from '../designKitEvents';
 import { buildTagGroups,filterByTags, FontPicker, visibleRange } from '../FontPicker';
+
+vi.mock('../designKitEvents');
 
 // Deterministic catalog: keep FONT_THEMES (and everything else) real via
 // importOriginal, but stub loadGoogleFontsCatalog with a tiny, fixed fixture so
@@ -128,5 +131,59 @@ describe('FontPicker', () => {
     });
     expect(screen.queryByText('Montserrat')).not.toBeInTheDocument();
     expect(screen.queryByText('Merriweather')).not.toBeInTheDocument();
+  });
+
+  describe('telemetry', () => {
+    it('fires fontPicker load action when opening a picker', () => {
+      render(<FontPicker headingName="Inter" bodyName="Inter" onApply={vi.fn()} />);
+      
+      fireEvent.click(screen.getByTestId('heading-font-select'));
+      expect(vi.mocked(fireDesignKitAction)).toHaveBeenCalledWith(DESIGN_KIT_EID.fontPicker, 'load', { picker: 'heading' });
+
+      fireEvent.click(screen.getByTestId('body-font-select'));
+      expect(vi.mocked(fireDesignKitAction)).toHaveBeenCalledWith(DESIGN_KIT_EID.fontPicker, 'load', { picker: 'body' });
+    });
+
+    it('fires fontPicker load action with font_family when selecting a font', async () => {
+      render(<FontPicker headingName="Inter" bodyName="Inter" onApply={vi.fn()} />);
+      
+      fireEvent.click(screen.getByTestId('heading-font-select'));
+      fireEvent.click(await screen.findByText('Merriweather'));
+      
+      expect(vi.mocked(fireDesignKitAction)).toHaveBeenCalledWith(DESIGN_KIT_EID.fontPicker, 'load', { picker: 'heading', font_family: 'Merriweather' });
+    });
+
+    it('fires fontFilter click when toggling filters', async () => {
+      render(<FontPicker headingName="Inter" bodyName="Inter" onApply={vi.fn()} />);
+      fireEvent.click(screen.getByTestId('body-font-select'));
+      
+      const toggle = await screen.findByTestId('body-font-select-filters-toggle');
+      fireEvent.click(toggle);
+      expect(vi.mocked(fireDesignKitClick)).toHaveBeenCalledWith(DESIGN_KIT_EID.fontFilter, { picker: 'body', expanded: true });
+      
+      fireEvent.click(toggle);
+      expect(vi.mocked(fireDesignKitClick)).toHaveBeenCalledWith(DESIGN_KIT_EID.fontFilter, { picker: 'body', expanded: false });
+    });
+
+    it('fires fontFilter click when toggling a tag chip', async () => {
+      render(<FontPicker headingName="Inter" bodyName="Inter" onApply={vi.fn()} />);
+      fireEvent.click(screen.getByTestId('heading-font-select'));
+      fireEvent.click(await screen.findByTestId('heading-font-select-filters-toggle'));
+      
+      fireEvent.click(screen.getByRole('button', { name: 'Calm' }));
+      expect(vi.mocked(fireDesignKitClick)).toHaveBeenCalledWith(DESIGN_KIT_EID.fontFilter, { picker: 'heading', filter: 'Feeling/Calm' });
+    });
+
+    it('fires fontPairing action when applying a curated pairing', () => {
+      render(<FontPicker headingName="Inter" bodyName="Inter" onApply={vi.fn()} />);
+      
+      fireEvent.click(screen.getByTestId('pairing-modern-professional'));
+      
+      expect(vi.mocked(fireDesignKitAction)).toHaveBeenCalledWith(DESIGN_KIT_EID.fontPairing, 'load', {
+        pairing_id: 'modern-professional',
+        heading_font: 'Montserrat',
+        body_font: 'Inter'
+      });
+    });
   });
 });

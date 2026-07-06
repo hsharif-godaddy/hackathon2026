@@ -20,6 +20,7 @@ import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { useServerPollingStore } from '@/stores/useServerPollingStore';
 import { compressImageFile } from '@/utils/image-compression';
 import { designKitApi, type FontChoice } from './designKitApi';
+import { DESIGN_KIT_EID, fireDesignKitAction, fireDesignKitClick, fireDesignKitImpression } from './designKitEvents';
 import { FontPicker } from './FontPicker';
 import type { BrandDataPalette } from './useBrandData';
 import { useBrandData } from './useBrandData';
@@ -214,15 +215,22 @@ export function DesignKitPanels({ appId }: { appId: string }): JSX.Element {
     previewThemeInIframe(paletteName, next as unknown as CompletePalette);
     if (saveColorsRef.current) clearTimeout(saveColorsRef.current);
     saveColorsRef.current = setTimeout(() => {
-      if (next.primary && next.background) void designKitApi.setColors(appId, paletteName, next);
+      if (next.primary && next.background) {
+        void designKitApi.setColors(appId, paletteName, next);
+        fireDesignKitAction(DESIGN_KIT_EID.brandColor, 'load', { element: 'color', source: 'direct', trigger: 'color_input' });
+      }
     }, 450);
   }
 
   function applyFonts(heading: FontChoice, body: FontChoice): void {
+    const changed = heading.name !== headingName || body.name !== bodyName;
     setHeadingName(heading.name);
     setBodyName(body.name);
     previewFontInIframe({ headerFont: heading, bodyFont: body });
     void designKitApi.setFonts(appId, heading, body);
+    if (changed) {
+      fireDesignKitAction(DESIGN_KIT_EID.brandFonts, 'load', { element: 'fonts', source: 'direct', trigger: 'apply' });
+    }
   }
 
   return (
@@ -264,6 +272,10 @@ export function ColorPanel({
   palette: Record<string, string>;
   onChange: (key: string, hex: string) => void;
 }): JSX.Element {
+  useEffect(() => {
+    fireDesignKitImpression(DESIGN_KIT_EID.brandColor, { element: 'color' });
+  }, []);
+
   return (
     <Panel testId="panel-color" title="Color Palette">
       <div className="grid grid-cols-3 gap-3">
@@ -284,6 +296,10 @@ export function FontsPanel({
   bodyName: string;
   onApply: (heading: FontChoice, body: FontChoice) => void;
 }): JSX.Element {
+  useEffect(() => {
+    fireDesignKitImpression(DESIGN_KIT_EID.brandFonts, { element: 'fonts' });
+  }, []);
+
   return (
     <Panel testId="panel-fonts" title="Fonts">
       <FontPicker headingName={headingName} bodyName={bodyName} onApply={onApply} />
@@ -322,6 +338,9 @@ export function LogoMoodBoardPanel({
   useEffect(() => { setKeyword(incomingKeyword ?? ''); }, [incomingKeyword]);
 
   useEffect(() => {
+    fireDesignKitImpression(DESIGN_KIT_EID.brandLogo, { element: 'logo' });
+    fireDesignKitImpression(DESIGN_KIT_EID.brandImagery, { element: 'imagery' });
+
     function handleLogoEvent(event: Event): void {
       const logo = (event as CustomEvent).detail;
       const url = logo?.transparentUrl || logo?.horizontalTransparentUrl || logo?.verticalTransparentUrl;
@@ -386,6 +405,7 @@ export function LogoMoodBoardPanel({
       }
       if (!uploaded) throw new Error('No logo slot available to upload to');
       logger.info('designKit.logoUpload.success', { appId });
+      fireDesignKitAction(DESIGN_KIT_EID.brandLogo, 'load', { element: 'logo', source: 'direct', trigger: 'upload' });
       setBroken(false);
       setPreviewLogoUrl(null); // let the refreshed manifest drive the displayed logo
       await refetch();
@@ -412,7 +432,10 @@ export function LogoMoodBoardPanel({
             data-testid="logo-upload-button"
             design="secondary"
             size="sm"
-            onClick={() => fileInputRef.current?.click()}
+            onClick={() => {
+              fireDesignKitClick(DESIGN_KIT_EID.logoUpload, { element: 'logo', source: 'direct' });
+              fileInputRef.current?.click();
+            }}
             disabled={isUploading}
             text={isUploading ? 'Uploading…' : logoUrl ? 'Replace logo' : 'Upload logo'}
           />
@@ -451,7 +474,11 @@ export function LogoMoodBoardPanel({
         value={keyword}
         placeholder="Mood board caption — e.g. minimal neutral fashion lifestyle"
         onChange={(e) => setKeyword(e.target.value)}
-        onBlur={() => void designKitApi.setImagery(appId, keyword)}
+        onBlur={() => {
+          if (keyword === (incomingKeyword ?? '')) return;
+          void designKitApi.setImagery(appId, keyword);
+          fireDesignKitAction(DESIGN_KIT_EID.brandImagery, 'load', { element: 'imagery', source: 'direct', trigger: 'blur' });
+        }}
         aria-label="Mood board caption"
       />
     </Panel>
@@ -465,20 +492,25 @@ export function VoicePanel({
   appId: string;
   voice?: { weAre?: string[] };
 }): JSX.Element {
+  useEffect(() => {
+    fireDesignKitImpression(DESIGN_KIT_EID.brandVoice, { element: 'voice' });
+  }, []);
+
   const incoming = (voice?.weAre ?? []).filter(Boolean);
   const [words, setWords] = useState<string[]>(incoming);
   const [draft, setDraft] = useState('');
   const sig = incoming.join('|');
   useEffect(() => { setWords(incoming.length ? incoming : []);   }, [sig]);
 
-  function commit(next: string[]): void {
+  function commit(next: string[], trigger: 'add' | 'remove'): void {
     setWords(next);
     void designKitApi.setVoice(appId, { weAre: next });
+    fireDesignKitAction(DESIGN_KIT_EID.brandVoice, 'load', { element: 'voice', source: 'direct', trigger, count: next.length });
   }
   function add(): void {
     const w = draft.trim();
     if (!w) return;
-    commit([...words, w]);
+    commit([...words, w], 'add');
     setDraft('');
   }
 
@@ -498,7 +530,7 @@ export function VoicePanel({
         {words.map((w, i) => (
           <span key={w + i} className="inline-flex items-center gap-1 rounded-full border border-intents-ux-box-borderColor bg-intents-ux-box-backgroundColor py-1 pl-3 pr-1.5">
             <text.span as="caption" className="font-medium">{w}</text.span>
-            <button type="button" aria-label={`Remove ${w}`} onClick={() => commit(words.filter((_, j) => j !== i))} className="flex h-4 w-4 cursor-pointer items-center justify-center rounded-full text-intents-ux-feedbackHighContrastPassive-feedbackColor hover:bg-intents-ux-boxLowContrast-backgroundColor">
+            <button type="button" aria-label={`Remove ${w}`} onClick={() => commit(words.filter((_, j) => j !== i), 'remove')} className="flex h-4 w-4 cursor-pointer items-center justify-center rounded-full text-intents-ux-feedbackHighContrastPassive-feedbackColor hover:bg-intents-ux-boxLowContrast-backgroundColor">
               <svg viewBox="0 0 24 24" className="h-2.5 w-2.5" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18" /></svg>
             </button>
           </span>
@@ -511,6 +543,10 @@ export function VoicePanel({
 /** Read-only, Airo-authored brand summary. Regenerates automatically when other
  *  brand elements change — no on-demand control (it is Airo's read of the brand). */
 export function SummaryPanel({ text: summary }: { text?: string }): JSX.Element {
+  useEffect(() => {
+    fireDesignKitImpression(DESIGN_KIT_EID.brandSummary, { element: 'summary' });
+  }, []);
+
   return (
     <Panel testId="panel-summary" tone="airo" title="Brand summary">
       <p className="text-sm leading-relaxed" style={{ color: 'color-mix(in srgb, var(--color-ai) 88%, #1b1b20)' }}>
