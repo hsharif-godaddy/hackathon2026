@@ -15,7 +15,7 @@
  *  8. Code view + unified search
  *  9. Publish button verification
  * 10. Manual feedback trigger category step
- * 11. Custom domain (e2e-{env}.airotesting.shop) — attach, verify DNS records, disconnect
+ * 11. Custom domain (e2e-{env}-{appId}.airotesting.shop) — attach, verify DNS records, disconnect
  * 12. Page refresh recovery
  *
  * Strategy:
@@ -104,6 +104,10 @@ test.describe('E2E - Critical Path', () => {
     const chatInput = page.getByTestId('chat-input-textarea');
     const transcript = page.getByTestId('chat-transcript');
 
+    // Captured in Step 1 and reused by Step 11 to build a per-app custom domain
+    // subdomain, so concurrent runs within the same environment never collide.
+    let appId = '';
+
     await test.step('Step 1: Homepage + SSO Login + App Creation', async () => {
       await page.goto('/');
 
@@ -137,7 +141,7 @@ test.describe('E2E - Critical Path', () => {
       // App id in /develop/:id may be a UUID (hyphens). [a-zA-Z0-9]+ truncates
       // hyphenated UUIDs (e.g. abc12345-def6-7890 → abc12345), causing logged
       // app IDs to be wrong and any downstream string-equality checks to fail.
-      const appId = page.url().match(/\/develop\/([^/?#]+)/)?.[1] ?? '';
+      appId = page.url().match(/\/develop\/([^/?#]+)/)?.[1] ?? '';
       console.log(`  App created: ${appId}`);
 
       await dismissOverlays(page);
@@ -440,14 +444,16 @@ test.describe('E2E - Critical Path', () => {
       console.log('  Modal closed');
     });
 
-    await test.step('Step 11: Custom domain (e2e-{env}.airotesting.shop) — attach, verify DNS, disconnect', async () => {
-      // Subdomain is env-scoped so parallel CI runs across environments
-      // (dev / pre-test / test / prod) never collide on the same FQDN.
-      // The previous shared `e2e.airotesting.shop` left the Add button
-      // disabled whenever a prior run in another env still owned the
-      // domain — the validation API returns available=false until the
-      // other app disconnects. Per-env subdomains sidestep that race.
-      const TARGET_DOMAIN = `e2e-${env}.airotesting.shop`;
+    await test.step('Step 11: Custom domain (e2e-{env}-{appId}.airotesting.shop) — attach, verify DNS, disconnect', async () => {
+      // Subdomain is env- AND app-scoped so parallel CI runs never collide on
+      // the same FQDN. An env-only subdomain (e2e-{env}.airotesting.shop) still
+      // races when a prior run in the SAME env hasn't disconnected yet — the
+      // validation API returns available=false until the other app releases the
+      // domain, leaving the Add button disabled. Appending the per-run appId
+      // guarantees a unique domain per app. Sanitized to a valid DNS label
+      // (lowercase alphanumerics/hyphens; UUID hyphens are already DNS-safe).
+      const appIdLabel = appId.trim().toLowerCase().replace(/[^a-z0-9-]/g, '');
+      const TARGET_DOMAIN = `e2e-${env}-${appIdLabel}.airotesting.shop`;
       const MAX_DOMAIN_ATTEMPTS = 3;
 
       const domainRowContainer = page.getByTestId(`domain-row-${TARGET_DOMAIN.trim().toLowerCase()}`);
