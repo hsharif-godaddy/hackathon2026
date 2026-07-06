@@ -100,7 +100,17 @@ export async function sendPendingAutoSendMessage(
       }
     }
 
-    const effectiveTemplateId = computeTemplateId(uploaded, templateId)
+    // A project restore/import ZIP (app-import or plain zip) was attached but
+    // none of them uploaded — the archive was corrupt or its contents weren't a
+    // recognizable Airo export, so nothing was written. Route to the zip-import
+    // mode with an explicit failure signal so the agent tells the user the file
+    // couldn't be used instead of sending them back to re-import the same ZIP.
+    const failedZipFiles: NonNullable<typeof uploadedFiles> = (uploadedFiles ?? []).filter(
+      f => (f.isAppImport || f.isZip) && failed.includes(f.name),
+    )
+    const zipImportFailed: boolean = failedZipFiles.length > 0 && !uploaded.some(f => f.isAppImport || f.isZip)
+
+    const effectiveTemplateId = zipImportFailed ? 'zip-import' : computeTemplateId(uploaded, templateId)
     const contextType = computeContextType(uploaded, templateId)
 
     if (designKitSlug) {
@@ -113,23 +123,43 @@ export async function sendPendingAutoSendMessage(
       templateId: effectiveTemplateId,
       overrideAgentId: overrideAgentId ?? undefined,
       designKitSlug: designKitSlug ?? undefined,
-      ...(uploaded.length > 0 && {
-        uploadedFileName: uploaded[0].fileName,
-        customContext: {
-          type: contextType,
-          persistence: 'save',
-          data: {
-            files: uploaded.map(f => ({
-              name: f.fileName,
-              isDesignMd: f.isDesignMd,
-              isZip: f.isZip,
-              isUiKit: f.isUiKit,
-              isAppImport: f.isAppImport,
-              isImage: f.isImage,
-            })),
+      ...(uploaded.length > 0
+        ? {
+          uploadedFileName: uploaded[0].fileName,
+          customContext: {
+            type: contextType,
+            persistence: 'save',
+            data: {
+              files: uploaded.map(f => ({
+                name: f.fileName,
+                isDesignMd: f.isDesignMd,
+                isZip: f.isZip,
+                isUiKit: f.isUiKit,
+                isAppImport: f.isAppImport,
+                isImage: f.isImage,
+              })),
+            },
           },
-        },
-      }),
+        }
+        : zipImportFailed
+          ? {
+            customContext: {
+              type: 'app_import_upload',
+              persistence: 'ephemeral',
+              data: {
+                failed: true,
+                files: failedZipFiles.map(f => ({
+                  name: f.name,
+                  isDesignMd: f.isDesignMd,
+                  isZip: f.isZip,
+                  isUiKit: f.isUiKit,
+                  isAppImport: f.isAppImport,
+                  isImage: f.isImage,
+                })),
+              },
+            },
+          }
+          : {}),
     })
     setInputValue('')
   } catch (error) {

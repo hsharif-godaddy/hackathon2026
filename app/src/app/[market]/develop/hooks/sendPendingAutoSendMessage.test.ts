@@ -333,6 +333,48 @@ describe('sendPendingAutoSendMessage', () => {
     }))
   })
 
+  it('routes a failed app-import ZIP to zip-import mode with a failed customContext', async () => {
+    const send = vi.fn<(options: SendMessageOptions) => Promise<void>>().mockResolvedValue()
+    mockRetrieveAndUploadFiles.mockResolvedValue({ uploaded: [], failed: ['app.zip'] })
+
+    await sendPendingAutoSendMessage(
+      buildOptions({
+        send,
+        uploadedFiles: [{ name: 'app.zip', content: '', isDesignMd: false, isZip: true, isAppImport: true }],
+      }),
+    )
+
+    expect(send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        templateId: 'zip-import',
+        customContext: expect.objectContaining({
+          type: 'app_import_upload',
+          persistence: 'ephemeral',
+          data: expect.objectContaining({ failed: true }),
+        }),
+      }),
+    )
+  })
+
+  it('does not send a failed customContext when an image (not a ZIP) fails', async () => {
+    const send = vi.fn<(options: SendMessageOptions) => Promise<void>>().mockResolvedValue()
+    mockRetrieveAndUploadFiles.mockResolvedValue({ uploaded: [], failed: ['photo.png'] })
+
+    await sendPendingAutoSendMessage(
+      buildOptions({
+        send,
+        uploadedFiles: [{ name: 'photo.png', content: '', isDesignMd: false, isImage: true }],
+      }),
+    )
+
+    expect(send).toHaveBeenCalledWith(expect.not.objectContaining({
+      customContext: expect.anything(),
+    }))
+    expect(send).toHaveBeenCalledWith(expect.not.objectContaining({
+      templateId: 'zip-import',
+    }))
+  })
+
   it('notifies onUploadsFailed with all expected files when retrieveAndUploadFiles throws', async () => {
     const onUploadsFailed = vi.fn()
     const send = vi.fn<(options: SendMessageOptions) => Promise<void>>().mockResolvedValue()

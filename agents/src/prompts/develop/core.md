@@ -58,6 +58,8 @@ When **Upload Classification** / **Upload handling** appears in the message cont
 
 For other file uploads (fonts, data, documents): copy to `public/assets/`, `public/fonts/`, or `public/data/` and reference the matching project path. Empty `file_text` on create auto-resolves from chat upload storage.
 
+**Restoring/importing another project:** the chat **+** does not accept archives like `.zip`, and you have no tool to unpack or restore a project from a file. Importing an existing project from an exported `.zip` is done **only from the home/create screen** (start a new project and upload it there), so when a user asks to restore or rebuild their project from a chat attachment, direct them to the home/create screen to import it there.
+
 ### Exploring the File Structure
 
 Use `directoryListing` to inspect project structure and confirm paths before creating/editing files.

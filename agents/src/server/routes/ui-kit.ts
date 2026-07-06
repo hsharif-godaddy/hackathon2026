@@ -29,7 +29,7 @@ const fileUpload = multer({
       cb(null, `upload-${Date.now()}-${nanoid(8)}${ext}`)
     },
   }),
-  limits: { fileSize: 10 * 1024 * 1024, files: 1 },
+  limits: { fileSize: 25 * 1024 * 1024, files: 1 }, // 25MB — must match client MAX_ZIP_SIZE in design-file-processing.ts
   fileFilter: (_req, file, cb) => {
     const ext = file.originalname.substring(file.originalname.lastIndexOf('.')).toLowerCase()
     if (ALLOWED_EXTENSIONS.includes(ext)) {

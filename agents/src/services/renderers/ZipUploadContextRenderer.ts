@@ -39,6 +39,16 @@ export class ZipUploadContextRenderer implements ContextAttachmentRenderer {
       conversationId?: string
     }
   ): RenderedContext | null {
+    const data = _attachment.data as { failed?: boolean } | undefined
+    if (data?.failed) {
+      return {
+        content:
+          'The uploaded project ZIP could not be imported — its contents were not a valid or recognizable exported Airo project, so no files were written to disk. Tell the user their project file could not be used, and that re-uploading the same file will not help. To restore their project they need to fix or re-export a valid project ZIP and import it again from the home/create screen. Do NOT offer to rebuild or restore the project from this chat — the chat cannot unpack a project ZIP.',
+        role: 'user',
+        insertionOrder: 'after_history',
+      }
+    }
+
     const appId = context?.appId
     const app = appId ? appRepo.findById(appId) : null
     const appPath = app?.path || context?.appPath
