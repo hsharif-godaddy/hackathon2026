@@ -23,8 +23,8 @@ import { isBuilderPagePath } from '@/lib/builder-route';
 import { generateClickEID } from '@/utils/instrumentation';
 
 const BELL_APP_KEYS: Record<string, string | undefined> = {
-  homepage: 'airoAppBuilderLanding',
-  sites: 'airoAppBuilderSites',
+  homepage: 'airo-app-builder-landing',
+  sites: 'airo-app-builder-sites',
 };
 
 export default function Header({ actions, onShowMockLogin, location = 'unknown', className }: HeaderProps) {
@@ -71,7 +71,7 @@ export default function Header({ actions, onShowMockLogin, location = 'unknown',
               {showAuthenticatedUI && !isDevelopPage && <InviteFriends location={location} />}
               {!isDevelopPage && <DiscordLink location={location} />}
               {showAuthenticatedUI && bellAppKey && (
-                <Notifications id={`site-notifications-${location}`} appKey={bellAppKey} />
+                <Notifications key={bellAppKey} id={`site-notifications-${location}`} appKey={bellAppKey} />
               )}
               <UserMenu
                 onShowMockLogin={onShowMockLogin}

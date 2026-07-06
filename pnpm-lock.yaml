@@ -822,8 +822,8 @@ importers:
         specifier: ^4.7.7
         version: 4.7.7
       '@site/notifications':
-        specifier: 3.0.8
-        version: 3.0.8(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(encoding@0.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react-transition-group@4.4.5(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(react@19.1.0)(typescript@5.9.3)
+        specifier: 3.0.9
+        version: 3.0.9(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(encoding@0.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react-transition-group@4.4.5(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(react@19.1.0)(typescript@5.9.3)
       '@social/social-flows':
         specifier: ^0.17.3
         version: 0.17.3(@types/react@19.2.14)(@ux/intents@2500.9.0)(@ux/spinner@2500.9.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react-intl@7.1.14(react@19.1.0)(typescript@5.9.3))(react-transition-group@4.4.5(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(react@19.1.0)
@@ -6327,8 +6327,8 @@ packages:
   '@site/multibrand-locales@1.3.3':
     resolution: {integrity: sha512-fFm6zYTqxMZYJpZGpLV9g8jD3kP7DAZ2R9d/nAikLftRdwkwb2mXelBsHkysG5m1T3ZthOWh78hIjVL1U/p9iA==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@site/multibrand-locales/-/@site/multibrand-locales-1.3.3.tgz}
 
-  '@site/notifications@3.0.8':
-    resolution: {integrity: sha512-xnni9oo/DvnA7hNljW9eXZ2bIn6NQ8tn+vR+bcGkLTI5V1hCxg7D2AbYfR5WAMUZAIP0i2WUduBJ8U3MVcge0w==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@site/notifications/-/@site/notifications-3.0.8.tgz}
+  '@site/notifications@3.0.9':
+    resolution: {integrity: sha512-g3ItqSsncmbvuwNPRLTz1y59QH1tPpyY5HPNBu+YVmkIgr/EzDpg2LA3JGtPpvhFmaE15Jno2NJnFUXH6uB7Wg==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@site/notifications/-/@site/notifications-3.0.9.tgz}
 
   '@site/utils@5.15.0':
     resolution: {integrity: sha512-jIrVB1rhNi241pfnXEUwublhxQGofWc0kVPb40x6/SvVWHvaxN9szA18aresxXZoa2S68bKTlqARG/TEBeeGIQ==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@site/utils/-/@site/utils-5.15.0.tgz}
@@ -19875,7 +19875,7 @@ snapshots:
     dependencies:
       '@godaddy/gasket-private-labels': 2.5.1
 
-  '@site/notifications@3.0.8(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(encoding@0.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react-transition-group@4.4.5(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(react@19.1.0)(typescript@5.9.3)':
+  '@site/notifications@3.0.9(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(encoding@0.1.13)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react-transition-group@4.4.5(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(react@19.1.0)(typescript@5.9.3)':
     dependencies:
       '@px/checkouts': 1.7.2(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@px/payments': 0.2.3
