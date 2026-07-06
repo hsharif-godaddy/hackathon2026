@@ -224,9 +224,30 @@ describe('useSettingsNavItems', () => {
     expect(localStorage.getItem('airo-feedback-shown:airo#app-builder')).toBeNull();
   });
 
-  it('should NOT include a team item even when aab-multi-user is enabled (moved to the header Share access popover)', () => {
+  it('should NOT include a team item on desktop (lives in the header Share access popover)', () => {
+    mockDevelopStore.isMobile = false;
     mockSwitchboardResults['aab-multi-user'] = true;
-    mockSwitchboardResults['appbuilder-settings-team'] = true;
+
+    const { result } = renderHookWithProviders(() => useSettingsNavItems());
+
+    const teamItem = result.current.find(item => item.id === SettingsSection.TEAM);
+    expect(teamItem).toBeUndefined();
+  });
+
+  it('should include a team item on mobile when aab-multi-user is enabled', () => {
+    mockDevelopStore.isMobile = true;
+    mockSwitchboardResults['aab-multi-user'] = true;
+
+    const { result } = renderHookWithProviders(() => useSettingsNavItems());
+
+    const teamItem = result.current.find(item => item.id === SettingsSection.TEAM);
+    expect(teamItem).toBeDefined();
+    expect(teamItem?.disabled).toBe(false);
+  });
+
+  it('should NOT include a team item on mobile when aab-multi-user is off', () => {
+    mockDevelopStore.isMobile = true;
+    mockSwitchboardResults['aab-multi-user'] = false;
 
     const { result } = renderHookWithProviders(() => useSettingsNavItems());
 

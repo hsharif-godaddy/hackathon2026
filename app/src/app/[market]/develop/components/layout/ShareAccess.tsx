@@ -44,7 +44,7 @@ import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
  */
 export default function ShareAccess(): React.ReactElement | null {
   const [open, setOpen] = useState(false);
-  const [headerHeight, setHeaderHeight] = useState(0);
+  const [headerBottom, setHeaderBottom] = useState(0);
   const multiUser = useSwitchboard('aab-multi-user');
   const chatPaneWidth = useDevelopPageStore((state) => state.chatPaneWidth);
   const isChatPaneCollapsed = useDevelopPageStore((state) => state.isChatPaneCollapsed);
@@ -132,7 +132,7 @@ export default function ShareAccess(): React.ReactElement | null {
     if (!header) {
       return undefined;
     }
-    const measure = (): void => setHeaderHeight(header.getBoundingClientRect().height);
+    const measure = (): void => setHeaderBottom(header.getBoundingClientRect().bottom);
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(header);
@@ -194,13 +194,13 @@ export default function ShareAccess(): React.ReactElement | null {
       return undefined;
     }
     const root = document.documentElement;
-    root.style.setProperty('--sa-top', `${headerHeight}px`);
+    root.style.setProperty('--sa-top', `${headerBottom}px`);
     root.style.setProperty('--sa-inline-start', `${inlineStart}px`);
     return () => {
       root.style.removeProperty('--sa-top');
       root.style.removeProperty('--sa-inline-start');
     };
-  }, [open, headerHeight, inlineStart]);
+  }, [open, headerBottom, inlineStart]);
 
   const t = useTranslations();
 
