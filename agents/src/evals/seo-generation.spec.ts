@@ -121,6 +121,18 @@ describe('SEO generation eval (static prompt assertions)', () => {
       expect(primerLower).toContain("don't hand-edit");
     });
 
+    it('RUBICON-558: IndexNow automatic submission on custom-domain publish', () => {
+      expect(primerLower).toContain('indexnow');
+      expect(primerLower).toContain('custom-domain publish');
+      expect(primerLower).toContain('bing');
+      expect(primerLower).toContain('yandex');
+      expect(primerLower).toContain('naver');
+      expect(primerLower).toContain('yahoo');
+      expect(primer).toContain('*.airoapp.ai');
+      expect(primerLower).toContain('google search console');
+      expect(primerLower).toContain('bing webmaster tools');
+    });
+
     it('AC7: primer does not reference the seo skill', () => {
       // AC7 wants SEO to fire during initial design preview without conflict
       // with the skill-load gate. Resolved by keeping the primer skill-

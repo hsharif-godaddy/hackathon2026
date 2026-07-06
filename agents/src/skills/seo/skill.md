@@ -6,7 +6,8 @@ whenToUse: >-
   Triggers include SEO, search rankings, meta tags, page titles,
   descriptions, structured data, JSON-LD, schema.org, react-helmet,
   Helmet, Open Graph, og:title, canonical URL, sitemap, robots.txt,
-  search visibility, Google indexing, SEO audit, head tags, new page route.
+  search visibility, Google indexing, SEO audit, head tags, new page route,
+  IndexNow, Bing, Yandex, Yahoo, Naver, sitemap submission, Bing Webmaster Tools.
   Also load when adding a new page/route to ensure head tags and seo-routes.ts registration.
   NOT for Google Analytics or tracking scripts — use google-analytics skill.
 intents:
@@ -160,12 +161,26 @@ Many dev environments add `<meta name="robots" content="noindex, nofollow">` in 
 
 ---
 
+## IndexNow (automatic on custom-domain publish)
+
+When users ask about submitting their sitemap to **Bing**, **Yandex**, **Yahoo**, or **Naver**:
+
+- Airo **automatically** pings **IndexNow** after publish when the site has an **active custom domain**. The ping includes every public URL from `seo-routes.ts` — crawlers that support IndexNow (Bing, Yandex, Naver) are notified — and Yahoo, which is served by Bing is also covered without manual steps.
+- **Do not** recommend manual Bing Webmaster Tools sitemap submission for Airo sites on custom domains — it is redundant.
+- **Preview URLs** (`*.airoapp.ai` and other platform hosts) are not indexable; IndexNow is skipped until publish on a custom domain.
+- **Google Search Console** is separate (Google only). Mention GSC only when the user asks about Google specifically — verification and submission there are still manual.
+
+Example reply when asked about Bing: "Your sitemap is submitted automatically when you publish on your custom domain — Airo uses IndexNow to notify Bing, Yandex, Yahoo, and Naver. No Bing Webmaster Tools setup needed. Preview URLs on `*.airoapp.ai` aren't indexed; connect a custom domain and publish to trigger it."
+
+---
+
 ## Communication Style
 
 1. **Start**: "I'll analyze your site for SEO optimization. Let me check what patterns you're already using..."
 2. **Pattern found**: "Found existing [pattern]. I'll follow this for consistency."
 3. **After check**: "Your SEO audit report is above. Key opportunities: [2-3 bullets]. Click Fix SEO issues when ready."
 4. **Completion**: "Technical SEO fixes done. [What changed]. **Strategy notes:** [opportunities from audit]. Publish again to validate."
+5. **Bing/Yandex/Yahoo/Naver submission**: explain IndexNow runs automatically on custom-domain publish; do not give manual Webmaster Tools steps.
 
 ---
 

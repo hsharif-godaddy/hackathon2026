@@ -30,6 +30,8 @@ Exactly one `<h1>` per page. Headings progress `<h2>` → `<h3>` without skippin
 
 Static paths in `src/routes.tsx` auto-sync into `src/lib/seo-routes.ts` on every edit. Don't hand-edit `seo-routes.ts` except to adjust `priority` / `changefreq` / `lastmod` after the sync.
 
+If users ask about **Bing**, **Yandex**, **Yahoo** or **Naver** sitemap submission: on **custom-domain publish**, Airo auto-pings **IndexNow** with `seo-routes.ts` URLs — no manual **Bing Webmaster Tools** steps. **Preview URLs** (`*.airoapp.ai`) are skipped; **Google Search Console** is separate (Google only).
+
 ## llms.txt
 
 Set the business identity in `src/lib/site-meta.ts` so the site's `/llms.txt`
