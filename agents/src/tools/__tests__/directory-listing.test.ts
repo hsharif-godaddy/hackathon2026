@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { DirectoryListingTool, DirectoryListingNotFoundError } from '../directory-listing.js';
 import { DevSupervisorError } from '../../services/DevSupervisorClient.js';
-import type { TreeOptions, TreeResult, WorkspaceFiles } from '../../workspace/files.js';
+import type { TreeOptions, TreeResult } from '../../workspace/files.js';
+import { createStubWorkspaceFiles } from '../../workspace/__tests__/test-workspace-files.js';
 
 vi.mock('../../logging/index.js', () => {
   const noop = vi.fn();
@@ -23,8 +24,8 @@ function makeTreeResult(entries: TreeResult['entries'], truncated = false): Tree
   return { entries, truncated };
 }
 
-function makeFiles(impl: (opts?: TreeOptions) => Promise<TreeResult>): WorkspaceFiles {
-  return { tree: vi.fn(impl), readText: vi.fn().mockResolvedValue('') } as unknown as WorkspaceFiles;
+function makeFiles(impl: (opts?: TreeOptions) => Promise<TreeResult>) {
+  return createStubWorkspaceFiles({ tree: vi.fn(impl), readText: vi.fn().mockResolvedValue('') });
 }
 
 describe('DirectoryListingTool', () => {
@@ -58,7 +59,7 @@ describe('DirectoryListingTool', () => {
 
     it('passes default ignore patterns as excludeGlobs to dev-supervisor', async () => {
       const treeFn = vi.fn(async () => makeTreeResult([]));
-      const tool = new DirectoryListingTool({ tree: treeFn } as unknown as WorkspaceFiles);
+      const tool = new DirectoryListingTool(createStubWorkspaceFiles({ tree: treeFn }));
 
       await tool.listDirectory({});
 
@@ -69,7 +70,7 @@ describe('DirectoryListingTool', () => {
 
     it('disables default ignore patterns when disableDefaultIgnores is set', async () => {
       const treeFn = vi.fn(async () => makeTreeResult([]));
-      const tool = new DirectoryListingTool({ tree: treeFn } as unknown as WorkspaceFiles);
+      const tool = new DirectoryListingTool(createStubWorkspaceFiles({ tree: treeFn }));
 
       await tool.listDirectory({ disableDefaultIgnores: true, ignorePatterns: ['*.bak'] });
 
@@ -79,7 +80,7 @@ describe('DirectoryListingTool', () => {
 
     it('maps maxDepth: 0 to a flat (non-recursive) listing', async () => {
       const treeFn = vi.fn(async () => makeTreeResult([]));
-      const tool = new DirectoryListingTool({ tree: treeFn } as unknown as WorkspaceFiles);
+      const tool = new DirectoryListingTool(createStubWorkspaceFiles({ tree: treeFn }));
 
       await tool.listDirectory({ maxDepth: 0 });
 
@@ -90,7 +91,7 @@ describe('DirectoryListingTool', () => {
 
     it('maps a finite maxDepth > 0 to recursive: true with the depth', async () => {
       const treeFn = vi.fn(async () => makeTreeResult([]));
-      const tool = new DirectoryListingTool({ tree: treeFn } as unknown as WorkspaceFiles);
+      const tool = new DirectoryListingTool(createStubWorkspaceFiles({ tree: treeFn }));
 
       await tool.listDirectory({ maxDepth: 3 });
 
@@ -101,7 +102,7 @@ describe('DirectoryListingTool', () => {
 
     it('maps Infinity (default) maxDepth to recursive: true with no maxDepth set', async () => {
       const treeFn = vi.fn(async () => makeTreeResult([]));
-      const tool = new DirectoryListingTool({ tree: treeFn } as unknown as WorkspaceFiles);
+      const tool = new DirectoryListingTool(createStubWorkspaceFiles({ tree: treeFn }));
 
       await tool.listDirectory({});
 
@@ -237,7 +238,7 @@ describe('DirectoryListingTool', () => {
 
     it('treats an empty path the same as no path (workspace root)', async () => {
       const treeFn = vi.fn(async () => makeTreeResult([]));
-      const tool = new DirectoryListingTool({ tree: treeFn } as unknown as WorkspaceFiles);
+      const tool = new DirectoryListingTool(createStubWorkspaceFiles({ tree: treeFn }));
 
       await tool.listDirectory({ path: '' });
       const optsEmpty = treeFn.mock.calls[0]?.[0];

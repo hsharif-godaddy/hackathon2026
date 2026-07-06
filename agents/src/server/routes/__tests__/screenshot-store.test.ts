@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { Readable } from 'node:stream'
 
+import { createStubWorkspaceFiles } from '../../../workspace/__tests__/test-workspace-files.js'
+
 vi.mock('../../../workspace/index.js', () => ({
   createForWorkspace: vi.fn(),
 }))
@@ -24,12 +26,12 @@ function createMockWorkspace(overrides?: {
   return {
     workspaceId: 'test-ws',
     variant: 'preview' as const,
-    files: {
+    files: createStubWorkspaceFiles({
       readText: vi.fn().mockResolvedValue(''),
       upload: overrides?.upload ?? vi.fn().mockResolvedValue({ bytesWritten: 100 }),
       download: overrides?.download ?? vi.fn().mockResolvedValue({ stream: Readable.from(Buffer.from('PNG')), contentType: 'image/png', contentLength: 3 }),
       stat: overrides?.stat ?? vi.fn().mockResolvedValue({ entries: [{ path: 'x', kind: 'file', size: 100, modifiedAt: '' }] }),
-    },
+    }),
   } as unknown as WorkspaceClient
 }
 

@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { createStubWorkspaceFiles } from '../../../workspace/__tests__/test-workspace-files.js'
 
 const { createForWorkspaceMock } = vi.hoisted(() => ({
   createForWorkspaceMock: vi.fn(),
@@ -26,9 +27,9 @@ interface Entry {
  * modify-write (and the lock that protects it) are observable. A small async
  * delay on readText forces interleaving in the concurrency test.
  */
-function makeWorkspace(initial: Entry[], readDelayMs = 0): { files: { readText: ReturnType<typeof vi.fn>; write: ReturnType<typeof vi.fn> }; current: () => Entry[] } {
+function makeWorkspace(initial: Entry[], readDelayMs = 0): { files: ReturnType<typeof createStubWorkspaceFiles>; current: () => Entry[] } {
   let store: { files: Entry[] } = { files: initial }
-  const files = {
+  const files = createStubWorkspaceFiles({
     readText: vi.fn(async () => {
       if (readDelayMs) await new Promise((r) => setTimeout(r, readDelayMs))
       return JSON.stringify(store)
@@ -37,7 +38,7 @@ function makeWorkspace(initial: Entry[], readDelayMs = 0): { files: { readText: 
       store = JSON.parse(content)
       return { bytesWritten: content.length }
     }),
-  }
+  })
   return { files, current: () => store.files }
 }
 

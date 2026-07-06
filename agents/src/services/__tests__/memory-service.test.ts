@@ -11,6 +11,7 @@ vi.mock('../../logging/index.js', () => ({
 
 import { MemoryService } from '../memory-service.js';
 import { createForWorkspace } from '../../workspace/index.js';
+import { createStubWorkspaceFiles } from '../../workspace/__tests__/test-workspace-files.js';
 
 describe('MemoryService.list error handling', () => {
   let service: MemoryService;
@@ -22,7 +23,7 @@ describe('MemoryService.list error handling', () => {
     mockTree = vi.fn();
     mockReadText = vi.fn();
     vi.mocked(createForWorkspace).mockReturnValue({
-      files: { tree: mockTree, readText: mockReadText },
+      files: createStubWorkspaceFiles({ tree: mockTree, readText: mockReadText }),
     } as any);
     service = new MemoryService();
   });

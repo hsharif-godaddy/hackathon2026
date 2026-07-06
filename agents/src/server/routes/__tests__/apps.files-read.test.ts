@@ -9,6 +9,7 @@ vi.mock('../../../workspace/index.js', () => ({
 import { createForWorkspace } from '../../../workspace/index.js';
 import { DevSupervisorError } from '../../../services/DevSupervisorClient.js';
 import { appsRouter } from '../apps.js';
+import { createStubWorkspaceFiles } from '../../../workspace/__tests__/test-workspace-files.js';
 
 const mockCreateForWorkspace = vi.mocked(createForWorkspace);
 
@@ -52,8 +53,8 @@ describe('GET /apps/:id/files/read', () => {
 
   it('should return 422 for binary files based on extension', async () => {
     mockCreateForWorkspace.mockReturnValue({
-      files: { readText: vi.fn() },
-    } as any);
+      files: createStubWorkspaceFiles({ readText: vi.fn() }),
+    });
 
     const response = await request(app)
       .get('/apps/abc1234567/files/read?path=public/assets/logo.png')
@@ -65,8 +66,8 @@ describe('GET /apps/:id/files/read', () => {
   it('should return file content with totalLines', async () => {
     const content = 'import React from "react";\n\nexport default function App() {}';
     mockCreateForWorkspace.mockReturnValue({
-      files: { readText: vi.fn().mockResolvedValue(content) },
-    } as any);
+      files: createStubWorkspaceFiles({ readText: vi.fn().mockResolvedValue(content) }),
+    });
 
     const response = await request(app)
       .get('/apps/abc1234567/files/read?path=src/app.tsx')
@@ -81,8 +82,8 @@ describe('GET /apps/:id/files/read', () => {
 
   it('reads .ts files as text (not video/mp2t)', async () => {
     mockCreateForWorkspace.mockReturnValue({
-      files: { readText: vi.fn().mockResolvedValue('const x: number = 1;') },
-    } as any);
+      files: createStubWorkspaceFiles({ readText: vi.fn().mockResolvedValue('const x: number = 1;') }),
+    });
 
     const response = await request(app)
       .get('/apps/abc1234567/files/read?path=src/utils.ts')
@@ -94,8 +95,8 @@ describe('GET /apps/:id/files/read', () => {
   it('reads .svg files as text (XML, not binary)', async () => {
     const svg = '<svg xmlns="http://www.w3.org/2000/svg"><rect width="10" height="10"/></svg>';
     mockCreateForWorkspace.mockReturnValue({
-      files: { readText: vi.fn().mockResolvedValue(svg) },
-    } as any);
+      files: createStubWorkspaceFiles({ readText: vi.fn().mockResolvedValue(svg) }),
+    });
 
     const response = await request(app)
       .get('/apps/abc1234567/files/read?path=public/assets/logo.svg')
@@ -106,8 +107,8 @@ describe('GET /apps/:id/files/read', () => {
 
   it('reads extensionless files as text', async () => {
     mockCreateForWorkspace.mockReturnValue({
-      files: { readText: vi.fn().mockResolvedValue('FROM node:20') },
-    } as any);
+      files: createStubWorkspaceFiles({ readText: vi.fn().mockResolvedValue('FROM node:20') }),
+    });
 
     const response = await request(app)
       .get('/apps/abc1234567/files/read?path=Dockerfile')
@@ -118,8 +119,8 @@ describe('GET /apps/:id/files/read', () => {
 
   it('maps a dev-supervisor not_found to 404 (benign absence, not a 500)', async () => {
     mockCreateForWorkspace.mockReturnValue({
-      files: { readText: vi.fn().mockRejectedValue(new DevSupervisorError('not_found', 404, 'no such file')) },
-    } as any);
+      files: createStubWorkspaceFiles({ readText: vi.fn().mockRejectedValue(new DevSupervisorError('not_found', 404, 'no such file')) }),
+    });
 
     const response = await request(app)
       .get('/apps/abc1234567/files/read?path=.source-site/pages/missing.json')
@@ -130,16 +131,16 @@ describe('GET /apps/:id/files/read', () => {
 
   it('maps a dev-supervisor permission_denied to 403', async () => {
     mockCreateForWorkspace.mockReturnValue({
-      files: { readText: vi.fn().mockRejectedValue(new DevSupervisorError('permission_denied', 403, 'denied')) },
-    } as any);
+      files: createStubWorkspaceFiles({ readText: vi.fn().mockRejectedValue(new DevSupervisorError('permission_denied', 403, 'denied')) }),
+    });
 
     await request(app).get('/apps/abc1234567/files/read?path=secret').expect(403);
   });
 
   it('returns 500 for a non-dev-supervisor error', async () => {
     mockCreateForWorkspace.mockReturnValue({
-      files: { readText: vi.fn().mockRejectedValue(new Error('boom')) },
-    } as any);
+      files: createStubWorkspaceFiles({ readText: vi.fn().mockRejectedValue(new Error('boom')) }),
+    });
 
     await request(app).get('/apps/abc1234567/files/read?path=src/app.tsx').expect(500);
   });
@@ -147,8 +148,8 @@ describe('GET /apps/:id/files/read', () => {
   it('returns raw content suitable for JSON.parse (no line-number prefixes)', async () => {
     const jsonContent = '{"skills":["stripe","google-analytics"],"version":1}';
     mockCreateForWorkspace.mockReturnValue({
-      files: { readText: vi.fn().mockResolvedValue(jsonContent) },
-    } as any);
+      files: createStubWorkspaceFiles({ readText: vi.fn().mockResolvedValue(jsonContent) }),
+    });
 
     const response = await request(app)
       .get('/apps/abc1234567/files/read?path=.airo/skills/applied.json')

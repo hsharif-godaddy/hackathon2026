@@ -58,9 +58,9 @@ vi.mock('../../../server/sse/registry-singleton.js', () => ({
   getSSERegistry: () => ({ sendToApp: mockSendToApp }),
 }))
 
-const fakeWorkspace = {}
+const mockCreateForWorkspace = vi.hoisted(() => vi.fn())
 vi.mock('../../../workspace/index.js', () => ({
-  createForWorkspace: () => ({ files: fakeWorkspace }),
+  createForWorkspace: mockCreateForWorkspace,
 }))
 
 let lastJob: LogoJob | null = null
@@ -99,6 +99,7 @@ vi.mock('../logo-reconciler.js', () => ({
 }))
 
 import { logoGenerationService } from '../LogoGenerationService.js'
+import { createStubWorkspaceFiles } from '../../../workspace/__tests__/test-workspace-files.js'
 
 const okResponse = { sessionId: 's', logo: { id: 'l', generatedAt: 'now', prompt: 'p', modelUsed: 'm', urls: { horizontal: {} } } }
 const baseParams = { appId: 'app-1', prompt: 'p', layouts: ['horizontal'] as const, customerId: 'c', budgetUserId: 'u', searchQuery: 'q' }
@@ -107,6 +108,7 @@ const abortable = () => mockGenerate.mockImplementation(({ signal }: { signal?: 
 
 beforeEach(() => {
   vi.clearAllMocks(); lastJob = null
+  mockCreateForWorkspace.mockReturnValue({ files: createStubWorkspaceFiles() })
   mockReadLogoJob.mockImplementation(async () => lastJob)
   mockWriteLogoJob.mockImplementation(async (_ws: unknown, _appId: string, job: LogoJob) => { lastJob = job })
   mockEnsureShimmer.mockResolvedValue({

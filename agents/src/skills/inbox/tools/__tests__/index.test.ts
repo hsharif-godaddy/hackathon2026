@@ -99,6 +99,8 @@ vi.mock('../../../../services/MediaManifestService.js', () => ({
 const { discoverAccountTool, setupWidgetTool, updateWidgetConfigTool, removeWidgetTool, setupFormTool, setFormEmailTool, removeFormTool, listFormsTool, getStaffSettingsTool, updateStaffSettingsTool } =
   await import('../index.js');
 
+import { createStubWorkspaceFiles } from '../../../../workspace/__tests__/test-workspace-files.js';
+
 // --- Test helpers ---
 
 const context = { metadata: { appId: 'app-123' }, socketId: 'socket-1' };
@@ -1026,14 +1028,14 @@ describe('inbox skill tools', () => {
       mockAccess.mockResolvedValue(undefined);
       mockWriteFile.mockResolvedValue(undefined);
       mockReadFile.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
-      mockCreateForWorkspace.mockReturnValue({ files: {} });
+      mockCreateForWorkspace.mockReturnValue({ files: createStubWorkspaceFiles() });
       mockRegenerateEntryApiRegistrations.mockResolvedValue({ changed: true, reason: 'rewritten', routeCount: 1 });
 
       const result = await setupFormTool.execute(formInput, context);
 
       expect(result.success).toBe(true);
       expect(result.routeRegistration).toEqual({ registered: true });
-      expect(mockRegenerateEntryApiRegistrations).toHaveBeenCalledWith({});
+      expect(mockRegenerateEntryApiRegistrations).toHaveBeenCalledWith(expect.objectContaining({ view: expect.any(Function) }));
     });
 
     it('reports routeRegistration.registered=false when markers are missing', async () => {
@@ -1041,7 +1043,7 @@ describe('inbox skill tools', () => {
       mockAccess.mockResolvedValue(undefined);
       mockWriteFile.mockResolvedValue(undefined);
       mockReadFile.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
-      mockCreateForWorkspace.mockReturnValue({ files: {} });
+      mockCreateForWorkspace.mockReturnValue({ files: createStubWorkspaceFiles() });
       mockRegenerateEntryApiRegistrations.mockResolvedValue({ changed: false, reason: 'markers-missing', routeCount: 1 });
 
       const result = await setupFormTool.execute(formInput, context);
@@ -1069,7 +1071,7 @@ describe('inbox skill tools', () => {
       mockAccess.mockResolvedValue(undefined);
       mockWriteFile.mockResolvedValue(undefined);
       mockReadFile.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
-      mockCreateForWorkspace.mockReturnValue({ files: {} });
+      mockCreateForWorkspace.mockReturnValue({ files: createStubWorkspaceFiles() });
       mockRegenerateEntryApiRegistrations.mockRejectedValue(new Error('workspace connection lost'));
 
       const result = await setupFormTool.execute(formInput, context);
@@ -1459,12 +1461,12 @@ describe('inbox skill tools', () => {
     it('regenerates entry registrations when last form is removed and workspace available', async () => {
       const existingConfig = { forms: { 'contact-us': { brandId: 'brand-1', categoryId: 1 } } };
       mockReadFile.mockResolvedValue(JSON.stringify(existingConfig));
-      mockCreateForWorkspace.mockReturnValue({ files: {} });
+      mockCreateForWorkspace.mockReturnValue({ files: createStubWorkspaceFiles() });
       mockRegenerateEntryApiRegistrations.mockResolvedValue({ changed: true, routeCount: 0 });
 
       await removeFormTool.execute({ formName: 'contact-us' }, context);
 
-      expect(mockRegenerateEntryApiRegistrations).toHaveBeenCalledWith({});
+      expect(mockRegenerateEntryApiRegistrations).toHaveBeenCalledWith(expect.objectContaining({ view: expect.any(Function) }));
     });
 
     it('does not regenerate entry when workspace is unavailable', async () => {

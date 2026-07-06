@@ -59,6 +59,7 @@ import { AppContextManager } from '../AppContextManager.js';
 import { AppRepository } from '../../database/repositories/AppRepository.js';
 import { MemoryRepository } from '../../database/repositories/MemoryRepository.js';
 import { createForWorkspace } from '../../workspace/index.js';
+import { createStubWorkspaceFiles } from '../../workspace/__tests__/test-workspace-files.js';
 
 describe('AppContextManager publish state', () => {
   let manager: AppContextManager;
@@ -173,7 +174,7 @@ describe('AppContextManager publish state', () => {
         entries: paths.map((path) => ({ path, error: 'not_found' as const })),
       }));
       (createForWorkspace as ReturnType<typeof vi.fn>).mockReturnValue({
-        files: { readText: mockReadText, stat: mockStat },
+        files: createStubWorkspaceFiles({ readText: mockReadText, stat: mockStat }),
       });
     });
 
@@ -262,7 +263,7 @@ describe('AppContextManager publish state', () => {
     beforeEach(() => {
       mockStat.mockReset();
       (createForWorkspace as ReturnType<typeof vi.fn>).mockReturnValue({
-        files: { stat: mockStat },
+        files: createStubWorkspaceFiles({ stat: mockStat }),
       });
     });
 

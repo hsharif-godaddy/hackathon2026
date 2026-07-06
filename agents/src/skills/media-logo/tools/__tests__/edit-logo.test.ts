@@ -47,7 +47,9 @@ vi.mock('../../../../services/logo/LogoGenerationService.js', () => ({
   logoGenerationService: { start: mockStart },
 }));
 
-const mockCreateForWorkspace = vi.fn(() => ({ files: {} }));
+import { createStubWorkspaceFiles } from '../../../../workspace/__tests__/test-workspace-files.js';
+
+const mockCreateForWorkspace = vi.fn(() => ({ files: createStubWorkspaceFiles() }));
 vi.mock('../../../../workspace/index.js', () => ({
   createForWorkspace: mockCreateForWorkspace,
 }));
@@ -88,7 +90,7 @@ describe('media-logo edit_logo tool', () => {
       status: 'queued', jobId: 'job-1', slots: ['logo/horizontal'], done: Promise.resolve(),
     });
 
-    mockCreateForWorkspace.mockReturnValue({ files: {} });
+    mockCreateForWorkspace.mockReturnValue({ files: createStubWorkspaceFiles() });
     mockReadLogoJob.mockResolvedValue({ jobId: 'job-1', status: 'completed', logoId: 'logo-abc' });
   });
 

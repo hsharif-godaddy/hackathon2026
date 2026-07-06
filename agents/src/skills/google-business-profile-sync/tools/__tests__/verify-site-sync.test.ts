@@ -27,6 +27,7 @@ vi.mock('../../../../tools/ai-lib-tools/drivers/website-scraper-driver.js', () =
 }));
 
 import { verifySiteSyncTool } from '../verify-site-sync.js';
+import { createStubWorkspaceFiles } from '../../../../workspace/__tests__/test-workspace-files.js';
 
 const CTX = { metadata: { appId: 'app1' } };
 
@@ -39,7 +40,7 @@ describe('google-business-profile-sync verifySiteSync tool', () => {
     vi.clearAllMocks();
     mockFindById.mockReturnValue({ id: 'app1', previewUrl: 'https://preview.example.com' });
     mockSearch.mockResolvedValue([]);
-    mockCreateForWorkspace.mockReturnValue({ files: { search: mockSearch } });
+    mockCreateForWorkspace.mockReturnValue({ files: createStubWorkspaceFiles({ search: mockSearch }) });
   });
 
   describe('execute', () => {

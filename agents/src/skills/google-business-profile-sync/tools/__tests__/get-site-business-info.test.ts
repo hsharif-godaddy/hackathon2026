@@ -17,6 +17,7 @@ vi.mock('../../../../workspace/index.js', () => ({
 // parseJsonLdBlocks / flattenSchemaNodes / extractKeyContent run for real (no mock).
 
 import { getSiteBusinessInfoTool } from '../get-site-business-info.js';
+import { createStubWorkspaceFiles } from '../../../../workspace/__tests__/test-workspace-files.js';
 
 const JSONLD_SOURCE = `export default function Layout() { return (<script type="application/ld+json">${JSON.stringify({
   '@context': 'https://schema.org',
@@ -51,7 +52,7 @@ function run(context: Record<string, unknown> = CTX) {
 describe('google-business-profile-sync getSiteBusinessInfo tool (source-first)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockCreateForWorkspace.mockReturnValue({ files: { search: mockSearch, view: mockView, readText: mockReadText } });
+    mockCreateForWorkspace.mockReturnValue({ files: createStubWorkspaceFiles({ search: mockSearch, view: mockView, readText: mockReadText }) });
     mockSearch.mockResolvedValue(matches('src/Layout.tsx'));
     mockReadText.mockImplementation(readTextOf({ 'src/Layout.tsx': JSONLD_SOURCE }));
     mockView.mockImplementation(viewOf({ 'src/Layout.tsx': JSONLD_SOURCE }));

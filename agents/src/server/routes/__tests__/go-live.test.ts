@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import request from 'supertest';
 import express, { type Request, type Response, type NextFunction } from 'express';
+import { createStubWorkspaceFiles } from '../../../workspace/__tests__/test-workspace-files.js';
 
 const { mockView, mockWrite, mockReadText, mockCreateForWorkspace } = vi.hoisted(() => ({
   mockView: vi.fn(),
@@ -46,7 +47,7 @@ function createTestApp(canPublish = true): express.Express {
 describe('go-live routes', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockCreateForWorkspace.mockReturnValue({ files: { view: mockView, write: mockWrite, readText: mockReadText } });
+    mockCreateForWorkspace.mockReturnValue({ files: createStubWorkspaceFiles({ view: mockView, write: mockWrite, readText: mockReadText }) });
   });
 
   describe('GET /apps/:id/go-live-status', () => {

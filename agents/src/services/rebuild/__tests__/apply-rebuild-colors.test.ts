@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { applyRebuildColors } from '../apply-rebuild-colors.js'
 import { generatePalette, updateCssColors } from '../../../tools/css-color-tool.js'
 import { createForWorkspace } from '../../../workspace/index.js'
+import { createStubWorkspaceFiles } from '../../../workspace/__tests__/test-workspace-files.js'
 
 const { kitTokensLockedMock } = vi.hoisted(() => ({ kitTokensLockedMock: vi.fn(() => false) }))
 
@@ -11,7 +12,7 @@ vi.mock('../../../tools/css-color-tool.js', () => ({
 }))
 
 vi.mock('../../../workspace/index.js', () => ({
-  createForWorkspace: vi.fn(() => ({ files: {} })),
+  createForWorkspace: vi.fn(),
 }))
 
 vi.mock('../../design-system/kit-tokens-locked.js', () => ({ kitTokensLocked: kitTokensLockedMock }))
@@ -22,6 +23,7 @@ function metadataWith(primary: string[]) {
 
 describe('applyRebuildColors', () => {
   beforeEach(() => {
+    vi.mocked(createForWorkspace).mockReturnValue({ files: createStubWorkspaceFiles() } as any)
     vi.mocked(updateCssColors).mockResolvedValue(undefined)
     kitTokensLockedMock.mockReturnValue(false)
   })

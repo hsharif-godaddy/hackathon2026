@@ -10,7 +10,6 @@ const mockKitTokensLocked = vi.hoisted(() => vi.fn())
 const mockView = vi.fn()
 const mockReadText = vi.fn().mockResolvedValue('')
 const mockWrite = vi.fn().mockResolvedValue({ bytesWritten: 100 })
-const mockFiles = { view: mockView, write: mockWrite, readText: mockReadText } as any
 const mockGenerateTextWithTracking = vi.fn()
 
 vi.mock('../../../services/design-system/kit-tokens-locked.js', () => ({
@@ -18,7 +17,7 @@ vi.mock('../../../services/design-system/kit-tokens-locked.js', () => ({
 }))
 
 vi.mock('../../../workspace/index.js', () => ({
-  createForWorkspace: vi.fn(function () { return { files: mockFiles } }),
+  createForWorkspace: vi.fn(),
 }))
 
 vi.mock('../../../logging/index.js', () => ({
@@ -48,6 +47,9 @@ vi.mock('@airo/ai-lib', async (importOriginal) => {
   }
 })
 
+import { createStubWorkspaceFiles } from '../../../workspace/__tests__/test-workspace-files.js'
+import { createForWorkspace } from '../../../workspace/index.js'
+
 const mockCss = `@layer base {
   :root {
     --font-sans: -apple-system, sans-serif;
@@ -61,6 +63,9 @@ describe('fontTheme — kit lock (Fix B)', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.mocked(createForWorkspace).mockReturnValue({
+      files: createStubWorkspaceFiles({ view: mockView, write: mockWrite, readText: mockReadText })
+    } as any)
     mockReadText.mockResolvedValue(mockCss)
     mockWrite.mockResolvedValue({ bytesWritten: 100 })
     originalFetch = global.fetch

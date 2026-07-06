@@ -21,12 +21,16 @@ vi.mock('../../../services/RebuildOrchestrationService.js', () => ({
 const mockView = vi.fn();
 const mockReadText = vi.fn();
 vi.mock('../../../workspace/index.js', () => ({
-  createForWorkspace: vi.fn(() => ({ files: { view: mockView, readText: mockReadText } })),
+  createForWorkspace: vi.fn(),
 }));
 
 vi.mock('../../../services/DevSupervisorClient.js', () => ({
   DevSupervisorError: class extends Error { code = 'unknown'; },
 }));
+
+import { createStubWorkspaceFiles } from '../../../workspace/__tests__/test-workspace-files.js'
+import { createForWorkspace } from '../../../workspace/index.js'
+vi.mocked(createForWorkspace).mockReturnValue({ files: createStubWorkspaceFiles({ view: mockView, readText: mockReadText }) } as any)
 
 const { rebuildPageSelectorAITool } = await import('../rebuild-page-selector.js');
 

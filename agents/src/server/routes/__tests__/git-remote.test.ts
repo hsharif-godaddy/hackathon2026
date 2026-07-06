@@ -2,6 +2,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import request from 'supertest';
 import express from 'express';
 
+import { createStubWorkspaceFiles } from '../../../workspace/__tests__/test-workspace-files.js';
+
 // Mock capability-config before importing git-remote
 vi.mock('../../../utils/capability-config.js', () => ({
   isCapabilityEnabled: vi.fn(),
@@ -37,7 +39,7 @@ vi.mock('../../../utils/dev-supervisor-client-factory.js', () => ({
 }));
 
 vi.mock('../../../workspace/index.js', () => ({
-  createForWorkspace: vi.fn(function () { return { tasks: {}, files: { readText: vi.fn().mockResolvedValue('') } }; }),
+  createForWorkspace: vi.fn(),
 }));
 
 vi.mock('../../middleware/app-ownership.js', () => ({
@@ -83,7 +85,7 @@ describe('git-remote routes', function gitRemoteTests() {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(createForWorkspace).mockReturnValue({ tasks: {}, files: { readText: vi.fn().mockResolvedValue('') } } as any);
+    vi.mocked(createForWorkspace).mockReturnValue({ tasks: {}, files: createStubWorkspaceFiles({ readText: vi.fn().mockResolvedValue('') }) } as any);
     app = createTestApp();
   });
 

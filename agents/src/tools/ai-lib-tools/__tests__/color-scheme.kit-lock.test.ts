@@ -24,7 +24,7 @@ vi.mock('../../css-color-tool.js', () => ({
 }))
 
 vi.mock('../../../workspace/index.js', () => ({
-  createForWorkspace: vi.fn(() => ({ files: { view: vi.fn(), write: vi.fn(), readText: vi.fn().mockResolvedValue('') } })),
+  createForWorkspace: vi.fn(),
 }))
 
 vi.mock('../../../database/repositories/AppRepository.js', () => ({
@@ -58,6 +58,9 @@ vi.mock('@airo/ai-lib', async (importOriginal) => {
   }
 })
 
+import { createStubWorkspaceFiles } from '../../../workspace/__tests__/test-workspace-files.js'
+import { createForWorkspace } from '../../../workspace/index.js'
+
 const fullPalette = {
   primary: '#9333EA', primaryForeground: '#fff', secondary: '#64748b', secondaryForeground: '#fff',
   accent: '#8b5cf6', accentForeground: '#fff', background: '#fff', foreground: '#000',
@@ -70,6 +73,9 @@ const fullPalette = {
 describe('colorScheme — kit lock (Fix B)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.mocked(createForWorkspace).mockReturnValue({
+      files: createStubWorkspaceFiles({ view: vi.fn(), write: vi.fn(), readText: vi.fn().mockResolvedValue('') })
+    } as any)
     mockFindById.mockReturnValue({ id: 'test-app', path: '/repo/test-app' })
     mockGeneratePalette.mockReturnValue(fullPalette)
     mockUpdateCssColorPalette.mockResolvedValue({ success: true, palette: fullPalette, message: 'ok' })

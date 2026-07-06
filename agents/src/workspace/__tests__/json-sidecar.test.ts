@@ -4,9 +4,10 @@ import { readJsonSidecar } from '../json-sidecar.js';
 import { DevSupervisorError } from '../../services/DevSupervisorClient.js';
 import type { WorkspaceFiles } from '../files.js';
 import type { ViewResult } from '../files.js';
+import { createStubWorkspaceFiles } from './test-workspace-files.js';
 
 function makeFiles(viewImpl: () => Promise<ViewResult>): WorkspaceFiles {
-  return { view: vi.fn(viewImpl), readText: vi.fn(async () => (await viewImpl()).content) } as unknown as WorkspaceFiles;
+  return createStubWorkspaceFiles({ view: vi.fn(viewImpl), readText: vi.fn(async () => (await viewImpl()).content) });
 }
 
 function viewReturning(content: string): () => Promise<ViewResult> {

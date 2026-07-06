@@ -55,6 +55,8 @@ const {
   hooks,
 } = await import('../index.js');
 
+import { createStubWorkspaceFiles } from '../../../../../workspace/__tests__/test-workspace-files.js';
+
 function runTool(
   tool: {
     execute: (input: Record<string, unknown>, context: Record<string, unknown>) => Promise<unknown>;
@@ -76,11 +78,11 @@ describe('GoDaddy Payments skill MCP tools', () => {
       executeAction: mockExecuteAction,
     });
     mockCreateForWorkspace.mockReturnValue({
-      files: {
+      files: createStubWorkspaceFiles({
         view: mockWorkspaceView,
         write: mockWorkspaceWrite,
         readText: mockWorkspaceReadText,
-      },
+      }),
     });
     mockWorkspaceWrite.mockResolvedValue({ bytesWritten: 100 });
     mockWorkspaceReadText.mockResolvedValue('');

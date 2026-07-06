@@ -2,13 +2,12 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdir, writeFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { createStubWorkspaceFiles } from '../../../workspace/__tests__/test-workspace-files.js';
 
 const { workspaceView, workspaceReadText, createForWorkspaceMock } = vi.hoisted(() => {
   const workspaceView = vi.fn();
   const workspaceReadText = vi.fn().mockResolvedValue('');
-  const createForWorkspaceMock = vi.fn(function () { return {
-    files: { view: workspaceView, readText: workspaceReadText },
-  }; });
+  const createForWorkspaceMock = vi.fn();
   return { workspaceView, workspaceReadText, createForWorkspaceMock };
 });
 
@@ -40,7 +39,10 @@ describe('DiagnoseContextService', () => {
 
   beforeEach(async () => {
     workspaceView.mockReset();
-    createForWorkspaceMock.mockClear();
+    createForWorkspaceMock.mockReset();
+    createForWorkspaceMock.mockReturnValue({
+      files: createStubWorkspaceFiles({ view: workspaceView, readText: workspaceReadText }),
+    });
     root = join(tmpdir(), `diagnose-ctx-${Date.now()}`);
     await mkdir(root, { recursive: true });
     await writeFile(

@@ -5,9 +5,10 @@ import { readFile, writeFile, mkdir, rm } from 'fs/promises';
 import { join } from 'path';
 import { appsRouter } from '../apps.js';
 import { AppRepository } from '../../../database/index.js';
+import { createStubWorkspaceFiles } from '../../../workspace/__tests__/test-workspace-files.js';
 
 vi.mock('../../../workspace/index.js', () => ({
-  createForWorkspace: vi.fn(function () { return { files: { readText: vi.fn().mockResolvedValue('') } }; }),
+  createForWorkspace: vi.fn(function () { return { files: createStubWorkspaceFiles({ readText: vi.fn().mockResolvedValue('') }) }; }),
 }));
 
 vi.mock('../../../utils/git.js', () => {

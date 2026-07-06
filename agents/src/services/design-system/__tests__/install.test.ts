@@ -5,6 +5,7 @@ import { join } from 'path'
 import { createHash } from 'crypto'
 import { create as createTar } from 'tar'
 import type { WorkspaceClient } from '../../../workspace/index.js'
+import { createStubWorkspaceFiles } from '../../../workspace/__tests__/test-workspace-files.js'
 import { logger } from '../../../logging/index.js'
 
 // --- installDesignKitForApp unit tests ---
@@ -40,7 +41,7 @@ const ENTRY = {
   tarball: 'kit.tar.gz',
   tarballHash: 'sha256-abcdef',
 }
-const mockWorkspaceObj = { workspaceId: 'w', variant: 'preview' as const, files: { upload: vi.fn() } }
+const mockWorkspaceObj = { workspaceId: 'w', variant: 'preview' as const, files: createStubWorkspaceFiles() }
 
 describe('installDesignKitForApp', () => {
   beforeEach(() => {
@@ -413,12 +414,12 @@ function createMockWorkspace(): { workspace: WorkspaceClient; uploads: Map<strin
   const workspace = {
     workspaceId: 'test-workspace',
     variant: 'preview' as const,
-    files: {
+    files: createStubWorkspaceFiles({
       upload: vi.fn().mockImplementation(async (opts: { path: string; data: Buffer }) => {
         uploads.set(opts.path, opts.data)
         return { bytesWritten: opts.data.length }
       }),
-    },
+    }),
   } as unknown as WorkspaceClient
   return { workspace, uploads }
 }
@@ -640,13 +641,13 @@ describe('design-system/install', () => {
     const workspace = {
       workspaceId: 'test-workspace',
       variant: 'preview' as const,
-      files: {
+      files: createStubWorkspaceFiles({
         upload: vi.fn().mockImplementation(async (opts: { path: string; data: Buffer }) => {
           if (opts.path.includes('/primitives/')) throw new Error('upload failed (simulated transient)')
           uploads.set(opts.path, opts.data)
           return { bytesWritten: opts.data.length }
         }),
-      },
+      }),
     } as unknown as WorkspaceClient
 
     const { installDesignSystem } = await import('../install.js')

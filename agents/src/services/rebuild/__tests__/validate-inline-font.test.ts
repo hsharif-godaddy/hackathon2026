@@ -6,6 +6,7 @@ import {
   isAppInRebuildFlow,
   validateNoHardcodedFonts,
 } from '../validate-inline-font.js';
+import { createStubWorkspaceFiles } from '../../../workspace/__tests__/test-workspace-files.js';
 
 const { loadWorkflowStateMock, createForWorkspaceMock } = vi.hoisted(() => ({
   loadWorkflowStateMock: vi.fn(),
@@ -196,14 +197,14 @@ describe('rebuild validate-inline-font', function packageTests() {
 
   describe('#isAppInRebuildFlow', function rebuildFlowTests() {
     it('returns true when workflow status is building', async function building() {
-      createForWorkspaceMock.mockReturnValue({ files: {} });
+      createForWorkspaceMock.mockReturnValue({ files: createStubWorkspaceFiles() });
       loadWorkflowStateMock.mockResolvedValue({ status: 'building' });
 
       await expect(isAppInRebuildFlow('app1234567')).resolves.toBe(true);
     });
 
     it('returns false when workflow status is complete', async function complete() {
-      createForWorkspaceMock.mockReturnValue({ files: {} });
+      createForWorkspaceMock.mockReturnValue({ files: createStubWorkspaceFiles() });
       loadWorkflowStateMock.mockResolvedValue({ status: 'complete' });
 
       await expect(isAppInRebuildFlow('app1234567')).resolves.toBe(false);

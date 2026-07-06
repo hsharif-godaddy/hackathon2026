@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
+import { createStubWorkspaceFiles } from '../../workspace/__tests__/test-workspace-files.js'
+
 const { viewMock, readTextMock, writeMock, createForWorkspaceMock } = vi.hoisted(() => ({
   viewMock: vi.fn(),
   readTextMock: vi.fn(),
@@ -19,7 +21,7 @@ import { recordUploadSlotUrl } from '../upload-classification-store.js'
 
 function workspaceWith(content: string | (() => never)) {
   return {
-    files: {
+    files: createStubWorkspaceFiles({
       view: viewMock.mockImplementation(async () => {
         if (typeof content === 'function') content()
         return { content, encoding: 'utf-8', path: 'docs/.upload-classifications.json', lines: 1, size: 1, truncated: false }
@@ -29,7 +31,7 @@ function workspaceWith(content: string | (() => never)) {
         return content as string
       }),
       write: writeMock.mockResolvedValue(undefined),
-    },
+    }),
   }
 }
 

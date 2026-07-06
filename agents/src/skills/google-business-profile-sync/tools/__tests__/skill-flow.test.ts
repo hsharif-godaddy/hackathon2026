@@ -64,6 +64,7 @@ import {
   verifySiteSyncTool,
 } from '../index.js';
 import { GBP_PROFILE_READY, GBP_UPDATE_DONE } from '../../../../types/social.js';
+import { createStubWorkspaceFiles } from '../../../../workspace/__tests__/test-workspace-files.js';
 
 const APP_ID = 'app1';
 const SOCIAL_ID = 'gbp-123';
@@ -103,7 +104,7 @@ describe('google-business-profile-sync — full flow composition', () => {
     mockReadText.mockResolvedValue(SITE_HTML);
     mockView.mockResolvedValue({ path: 'src/components/Footer.tsx', content: SITE_HTML, encoding: 'utf-8', lines: 1, size: 1, truncated: false });
     mockEdit.mockResolvedValue({ applied: 1 });
-    mockCreateForWorkspace.mockReturnValue({ files: { search: mockSearch, view: mockView, edit: mockEdit, readText: mockReadText } });
+    mockCreateForWorkspace.mockReturnValue({ files: createStubWorkspaceFiles({ search: mockSearch, view: mockView, edit: mockEdit, readText: mockReadText }) });
   });
 
   it('connects, reads both sides, diffs, and syncs the phone both directions', async () => {

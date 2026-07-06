@@ -3,6 +3,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import os from 'os';
 import type { WorkspaceFiles } from '../../workspace/files.js';
+import { createStubWorkspaceFiles } from '../../workspace/__tests__/test-workspace-files.js';
 import { DevSupervisorError } from '../../services/DevSupervisorClient.js';
 import {
   scanApiDir,
@@ -28,7 +29,7 @@ async function writeFile(rel: string, content: string): Promise<void> {
 }
 
 function createMockFiles(): WorkspaceFiles {
-  return {
+  return createStubWorkspaceFiles({
     view: async ({ path: filePath }) => {
       const full = path.join(tmp, filePath);
       try {
@@ -86,7 +87,7 @@ function createMockFiles(): WorkspaceFiles {
       await walk(base, true);
       return { entries, truncated: false };
     },
-  } as unknown as WorkspaceFiles;
+  });
 }
 
 describe('scanApiDir', () => {

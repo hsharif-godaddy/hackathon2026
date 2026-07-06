@@ -81,8 +81,9 @@ import {
   reconcileAllStaleLogoJobs,
   reconcilePendingLogoSlotsForPublish,
 } from '../logo-reconciler.js'
+import { createStubWorkspaceFiles } from '../../../workspace/__tests__/test-workspace-files.js'
 
-const fakeFiles = {}
+const fakeFiles = createStubWorkspaceFiles()
 
 const staleJob = (overrides: Partial<LogoJob> = {}): LogoJob => ({
   jobId: 'job-1',

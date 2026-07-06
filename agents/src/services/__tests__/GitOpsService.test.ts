@@ -106,12 +106,13 @@ import { appRestartService } from '../AppRestartService.js';
 import { projectSourceDetectionService } from '../ProjectSourceDetectionService.js';
 import { clearNomadConfigCache } from '../../utils/nomad-config.js';
 import { createForWorkspace } from '../../workspace/index.js';
+import { createStubWorkspaceFiles } from '../../workspace/__tests__/test-workspace-files.js';
 import { GitRemoteTokenManager } from '../GitRemoteTokenManager.js';
 
 // Minimal bindable workspace stub: a no-op tasks handle plus a package.json
 // read that returns `{}`, enough for the availability guard and background job.
 const stubWorkspace = () =>
-  ({ tasks: {}, files: { view: vi.fn().mockResolvedValue({ content: '{}' }), readText: vi.fn().mockResolvedValue('{}') } }) as any;
+  ({ tasks: {}, files: createStubWorkspaceFiles({ view: vi.fn().mockResolvedValue({ content: '{}' }), readText: vi.fn().mockResolvedValue('{}') }) }) as any;
 
 describe('GitOpsService', () => {
   let service: GitOpsService;
@@ -532,10 +533,10 @@ describe('GitOpsService', () => {
       const transportErr = new Error('supervisor unreachable: connect ECONNREFUSED');
       vi.mocked(createForWorkspace).mockReturnValue({
         tasks: {},
-        files: {
+        files: createStubWorkspaceFiles({
           view: vi.fn().mockRejectedValue(transportErr),
           readText: vi.fn().mockRejectedValue(transportErr),
-        },
+        }),
       } as any);
 
       mockGitTool.executeGitOperation
@@ -647,7 +648,7 @@ describe('GitOpsService', () => {
       mockRunCommandSync = vi.fn().mockResolvedValue({ exitCode: 0, stdout: '', stderr: '' });
       vi.mocked(createForWorkspace).mockReturnValue({
         tasks: { runCommandSync: mockRunCommandSync },
-        files: { view: vi.fn().mockResolvedValue({ content: '{}' }), readText: vi.fn().mockResolvedValue('{}') },
+        files: createStubWorkspaceFiles({ view: vi.fn().mockResolvedValue({ content: '{}' }), readText: vi.fn().mockResolvedValue('{}') }),
       } as any);
 
       mockGitTool.executeGitOperation.mockResolvedValue({ success: true, output: 'Pull successful' });

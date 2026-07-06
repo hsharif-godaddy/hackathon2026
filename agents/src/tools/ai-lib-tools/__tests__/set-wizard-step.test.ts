@@ -6,7 +6,7 @@ const { setMock, publishMock, getConversationsByAppMock, syncBrandTokensCssMock,
   publishMock: vi.fn(),
   getConversationsByAppMock: vi.fn(() => ['conv-1']),
   syncBrandTokensCssMock: vi.fn(async () => undefined),
-  createForWorkspaceMock: vi.fn(() => ({ files: { write: vi.fn(), readText: vi.fn().mockResolvedValue('') } })),
+  createForWorkspaceMock: vi.fn(),
 }))
 
 // The tool builds its memory store at module load via a module-level
@@ -49,6 +49,7 @@ vi.mock('../../../logging/index.js', () => ({
 }))
 
 // Import after mocks.
+import { createStubWorkspaceFiles } from '../../../workspace/__tests__/test-workspace-files.js'
 import { setWizardStepAITool, StepSchema } from '../set-wizard-step.js'
 
 // createTool remaps the AI SDK invocation `{ experimental_context: { metadata } }`
@@ -66,6 +67,7 @@ describe('setWizardStepAITool execution', () => {
     getConversationsByAppMock.mockReturnValue(['conv-1'])
     syncBrandTokensCssMock.mockClear()
     createForWorkspaceMock.mockClear()
+    createForWorkspaceMock.mockReturnValue({ files: createStubWorkspaceFiles({ write: vi.fn(), readText: vi.fn().mockResolvedValue('') }) })
     setMock.mockResolvedValue({ success: true })
   })
 

@@ -74,6 +74,7 @@ import {
   themedCatalogFallback,
 } from '../typography.js';
 import { detectFontCategory } from '../../../tools/ai-lib-tools/font-theme.js';
+import { createStubWorkspaceFiles } from '../../../workspace/__tests__/test-workspace-files.js';
 
 const sampleCatalog: GoogleFontEntry[] = [
   { family: 'Cormorant Garamond', category: 'serif', weights: ['400', '600', '700'], tags: [] },
@@ -100,7 +101,7 @@ describe('rebuild-typography', function packageTests() {
     clampWeightsToAvailableMock.mockImplementation(async (_family: string, weights: string[]) => weights);
     validateFontPairingMock.mockResolvedValue({ valid: true, networkError: false });
     updateCssFontVariablesMock.mockResolvedValue({ success: true, message: 'ok' });
-    createForWorkspaceMock.mockReturnValue({ files: { view: vi.fn(), write: vi.fn(), readText: vi.fn().mockResolvedValue('') } });
+    createForWorkspaceMock.mockReturnValue({ files: createStubWorkspaceFiles({ readText: vi.fn().mockResolvedValue('') }) });
     memorySetMock.mockResolvedValue({ success: true });
     appPlanExecuteMock.mockResolvedValue({ success: true });
     syncBrandTokensCssMock.mockResolvedValue(undefined);

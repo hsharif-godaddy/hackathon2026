@@ -1,12 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { createStubWorkspaceFiles } from '../../../workspace/__tests__/test-workspace-files.js'
 
 const mockView = vi.fn()
 const mockReadText = vi.fn().mockResolvedValue('')
 const mockWrite = vi.fn().mockResolvedValue({ bytesWritten: 100 })
-const mockFiles = { view: mockView, write: mockWrite, readText: mockReadText } as any
+const mockFiles = createStubWorkspaceFiles({ view: mockView, write: mockWrite, readText: mockReadText })
 
 vi.mock('../../../workspace/index.js', () => ({
-  createForWorkspace: vi.fn(function () { return { files: mockFiles }; })
+  createForWorkspace: vi.fn(),
 }))
 vi.mock('../../../logging/index.js', () => ({
   Logger: {
@@ -57,6 +58,7 @@ vi.mock('@airo/ai-lib', async (importOriginal) => {
 // Import after mocks are set up
 const { updateCssFontVariables, FONT_THEMES, clearFontValidationCache, validateAndFilterFonts, rebuildKeepsSourceFonts, fontThemeAITool } = await import('../font-theme.js')
 const { createForWorkspace } = await import('../../../workspace/index.js')
+vi.mocked(createForWorkspace).mockReturnValue({ files: mockFiles } as any)
 
 describe('font-theme', function packageTests() {
   describe('#updateCssFontVariables', function updateTests() {

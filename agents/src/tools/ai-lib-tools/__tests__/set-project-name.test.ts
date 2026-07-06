@@ -14,6 +14,7 @@ const mockCreateForWorkspace = vi.fn()
 vi.mock('../../../workspace/index.js', () => ({
   createForWorkspace: (...args: unknown[]) => mockCreateForWorkspace(...args),
 }))
+import { createStubWorkspaceFiles } from '../../../workspace/__tests__/test-workspace-files.js'
 vi.mock('../../git-tool.js', () => ({
   GitTool: vi.fn(function () { return {
     executeGitOperation: mockExecuteGitOperation,
@@ -73,7 +74,7 @@ describe('set-project-name', function setProjectNameTests() {
     mockMemorySet.mockResolvedValue({ success: true })
     // Default: workspace available, edit succeeds, git succeeds
     mockCreateForWorkspace.mockReturnValue({
-      files: { edit: mockFilesEdit, readText: vi.fn().mockResolvedValue('') },
+      files: createStubWorkspaceFiles({ edit: mockFilesEdit, readText: vi.fn().mockResolvedValue('') }),
       tasks: {},
     })
     mockFilesEdit.mockResolvedValue({ applied: 1 })

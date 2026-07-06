@@ -97,6 +97,7 @@ vi.mock('../../../database/repositories/SimpleCampaignRepository.js', () => ({
 
 import { tools, campaignPlanPropose, campaignPlanCreate, campaignCreate, campaignScaffoldPage, campaignApplyBlogUtm, sanitizeSlug, buildLandingPage } from '../tools/index.js'
 import { createForWorkspace } from '../../../workspace/index.js'
+import { createStubWorkspaceFiles } from '../../../workspace/__tests__/test-workspace-files.js'
 import { setLandingPages, getPageBySlug, getPageById, getAllPages } from '../templates/lib/landing-pages.js'
 import { SocialPlatform } from '../../../types/social.js'
 
@@ -671,7 +672,7 @@ describe('campaignScaffoldPage scaffold behavior', () => {
 
   it('returns success:false with no files when the write throws', async () => {
     vi.mocked(createForWorkspace).mockReturnValue({
-      files: { write: vi.fn().mockRejectedValue(new Error('disk full')), readText: vi.fn().mockResolvedValue('') },
+      files: createStubWorkspaceFiles({ write: vi.fn().mockRejectedValue(new Error('disk full')), readText: vi.fn().mockResolvedValue('') }),
     } as any)
     const result = await run(campaignScaffoldPage, {
       startDate: '2026-07-01',
@@ -704,7 +705,7 @@ describe('campaignScaffoldPage scaffold behavior', () => {
       if (path === 'src/routes.tsx') return { content: ROUTES_CONTENT }
       notFound()
     })
-    vi.mocked(createForWorkspace).mockReturnValue({ files: { write, view, readText } } as any)
+    vi.mocked(createForWorkspace).mockReturnValue({ files: createStubWorkspaceFiles({ write, view, readText }) } as any)
     const result = await run(campaignScaffoldPage, {
       startDate: '2026-07-01',
       endDate: '2026-07-07',
@@ -751,7 +752,7 @@ describe('campaignScaffoldPage scaffold behavior', () => {
       if (path === 'src/routes.tsx') return { content: ROUTES_CONTENT_NO_CATCH_ALL }
       notFound()
     })
-    vi.mocked(createForWorkspace).mockReturnValue({ files: { write, view, readText } } as any)
+    vi.mocked(createForWorkspace).mockReturnValue({ files: createStubWorkspaceFiles({ write, view, readText }) } as any)
 
     const result = await run(campaignScaffoldPage, {
       startDate: '2026-07-01',
@@ -894,7 +895,7 @@ describe('campaignApplyBlogUtm', () => {
   function fakeWorkspace(markdownByPath: Record<string, string>): { writes: { path: string; content: string }[] } {
     const writes: { path: string; content: string }[] = []
     vi.mocked(createForWorkspace).mockReturnValue({
-      files: {
+      files: createStubWorkspaceFiles({
         view: vi.fn(async ({ path }: { path: string }) => {
           if (markdownByPath[path] === undefined) throw new Error('not found')
           return { path, content: markdownByPath[path] }
@@ -904,7 +905,7 @@ describe('campaignApplyBlogUtm', () => {
           if (markdownByPath[path] === undefined) throw new Error('not found')
           return markdownByPath[path]
         }),
-      },
+      }),
     } as never)
     return { writes }
   }

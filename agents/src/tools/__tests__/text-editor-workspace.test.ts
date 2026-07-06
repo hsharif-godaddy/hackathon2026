@@ -1,26 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
-import type { WorkspaceFiles, ViewResult, TreeResult } from '../../workspace/files.js';
+import type { ViewResult, TreeResult } from '../../workspace/files.js';
 import { DevSupervisorError } from '../../services/DevSupervisorClient.js';
 import { handleView, handleStrReplace, handleCreate, handleInsert } from '../text-editor-workspace.js';
-
-function createMockFiles(overrides?: Partial<WorkspaceFiles>): WorkspaceFiles {
-  return {
-    tree: vi.fn(),
-    stat: vi.fn(),
-    view: vi.fn(),
-    readText: vi.fn(),
-    search: vi.fn(),
-    write: vi.fn(),
-    edit: vi.fn(),
-    insert: vi.fn(),
-    delete: vi.fn(),
-    move: vi.fn(),
-    upload: vi.fn(),
-    download: vi.fn(),
-    archive: vi.fn(),
-    ...overrides,
-  } as unknown as WorkspaceFiles;
-}
+import { createStubWorkspaceFiles } from '../../workspace/__tests__/test-workspace-files.js';
 
 describe('text-editor-workspace', () => {
   describe('handleView', () => {
@@ -33,7 +15,7 @@ describe('text-editor-workspace', () => {
         size: 29,
         truncated: false,
       });
-      const files = createMockFiles({ view: mockView });
+      const files = createStubWorkspaceFiles({ view: mockView });
 
       const result = await handleView(files, 'src/index.ts', [5, 7]);
 
@@ -50,7 +32,7 @@ describe('text-editor-workspace', () => {
         size: 20,
         truncated: false,
       });
-      const files = createMockFiles({ view: mockView });
+      const files = createStubWorkspaceFiles({ view: mockView });
 
       const result = await handleView(files, 'src/index.ts', [10, -1]);
 
@@ -62,7 +44,7 @@ describe('text-editor-workspace', () => {
       const mockView = vi.fn().mockRejectedValue(
         new DevSupervisorError('binary_file', 422, 'file is binary'),
       );
-      const files = createMockFiles({ view: mockView });
+      const files = createStubWorkspaceFiles({ view: mockView });
 
       const result = await handleView(files, 'image.dat');
 
@@ -71,7 +53,7 @@ describe('text-editor-workspace', () => {
 
     it('detects binary by extension before calling API', async () => {
       const mockView = vi.fn();
-      const files = createMockFiles({ view: mockView });
+      const files = createStubWorkspaceFiles({ view: mockView });
 
       const result = await handleView(files, 'logo.png');
 
@@ -82,7 +64,7 @@ describe('text-editor-workspace', () => {
 
     it('detects document extensions before calling API', async () => {
       const mockView = vi.fn();
-      const files = createMockFiles({ view: mockView });
+      const files = createStubWorkspaceFiles({ view: mockView });
 
       const result = await handleView(files, 'report.pdf');
 
@@ -93,7 +75,7 @@ describe('text-editor-workspace', () => {
 
     it('detects other binary extensions before calling API', async () => {
       const mockView = vi.fn();
-      const files = createMockFiles({ view: mockView });
+      const files = createStubWorkspaceFiles({ view: mockView });
 
       const result = await handleView(files, 'data.zip');
 
@@ -113,7 +95,7 @@ describe('text-editor-workspace', () => {
         ],
         truncated: false,
       });
-      const files = createMockFiles({ view: mockView, tree: mockTree });
+      const files = createStubWorkspaceFiles({ view: mockView, tree: mockTree });
 
       const result = await handleView(files, 'src');
 
@@ -131,7 +113,7 @@ describe('text-editor-workspace', () => {
         size: 11,
         truncated: false,
       });
-      const files = createMockFiles({ view: mockView });
+      const files = createStubWorkspaceFiles({ view: mockView });
 
       const result = await handleView(files, 'icon.svg');
 
@@ -143,7 +125,7 @@ describe('text-editor-workspace', () => {
   describe('handleStrReplace', () => {
     it('returns success message on successful edit', async () => {
       const mockEdit = vi.fn().mockResolvedValue({ applied: 1 });
-      const files = createMockFiles({ edit: mockEdit });
+      const files = createStubWorkspaceFiles({ edit: mockEdit });
 
       const result = await handleStrReplace(files, 'src/index.ts', 'old text', 'new text');
 
@@ -158,7 +140,7 @@ describe('text-editor-workspace', () => {
     it('throws enriched error on no_match', async () => {
       const mockEdit = vi.fn().mockRejectedValue(new DevSupervisorError('no_match', 400, 'oldString not found in file'));
       const mockReadText = vi.fn().mockResolvedValue('actual content\nof the file');
-      const files = createMockFiles({ edit: mockEdit, readText: mockReadText });
+      const files = createStubWorkspaceFiles({ edit: mockEdit, readText: mockReadText });
 
       await expect(handleStrReplace(files, 'src/index.ts', 'missing text', 'new text'))
         .rejects.toThrow('No match found for old_str');
@@ -171,7 +153,7 @@ describe('text-editor-workspace', () => {
         new DevSupervisorError('ambiguous_match', 400, 'oldString found 3 times'),
       );
       const mockReadText = vi.fn().mockResolvedValue('foo\nfoo\nfoo\nbar');
-      const files = createMockFiles({ edit: mockEdit, readText: mockReadText });
+      const files = createStubWorkspaceFiles({ edit: mockEdit, readText: mockReadText });
 
       await expect(handleStrReplace(files, 'src/index.ts', 'foo', 'baz'))
         .rejects.toThrow(/Found \d+ matches/);
@@ -181,7 +163,7 @@ describe('text-editor-workspace', () => {
 
     it('rethrows unexpected errors without enrichment', async () => {
       const mockEdit = vi.fn().mockRejectedValue(new Error('HTTP 500: internal server error'));
-      const files = createMockFiles({ edit: mockEdit });
+      const files = createStubWorkspaceFiles({ edit: mockEdit });
 
       await expect(handleStrReplace(files, 'src/index.ts', 'old', 'new'))
         .rejects.toThrow('HTTP 500: internal server error');
@@ -191,7 +173,7 @@ describe('text-editor-workspace', () => {
   describe('handleCreate', () => {
     it('writes file and returns success message', async () => {
       const mockWrite = vi.fn().mockResolvedValue({ bytesWritten: 13 });
-      const files = createMockFiles({ write: mockWrite });
+      const files = createStubWorkspaceFiles({ write: mockWrite });
 
       const result = await handleCreate(files, 'src/new-file.ts', 'file content');
 
@@ -203,7 +185,7 @@ describe('text-editor-workspace', () => {
   describe('handleInsert', () => {
     it('inserts text and returns success message', async () => {
       const mockInsert = vi.fn().mockResolvedValue({ lines: 3 });
-      const files = createMockFiles({ insert: mockInsert });
+      const files = createStubWorkspaceFiles({ insert: mockInsert });
 
       const result = await handleInsert(files, 'src/index.ts', 5, 'inserted line');
 

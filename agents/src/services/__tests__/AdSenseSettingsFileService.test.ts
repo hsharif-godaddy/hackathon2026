@@ -47,6 +47,7 @@ vi.mock('../DevSupervisorClient.js', () => ({
 }));
 
 import { WorkspaceUnavailableError } from '../../workspace/errors.js';
+import { createStubWorkspaceFiles } from '../../workspace/__tests__/test-workspace-files.js';
 import {
   AdSenseSettingsFileService,
   AdSenseSettingsValidationError,
@@ -76,7 +77,7 @@ describe('AdSenseSettingsFileService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockCreateForWorkspace.mockReturnValue({
-      files: mockFiles,
+      files: createStubWorkspaceFiles(mockFiles),
     });
   });
 

@@ -6,6 +6,7 @@ import * as connection from '../../../database/connection.js';
 import { createForWorkspace } from '../../../workspace/index.js';
 import { AppCommerceBindingRepository } from '../../../database/repositories/AppCommerceBindingRepository.js';
 import { getCommercePublishEnv } from '../publish-env.js';
+import { createStubWorkspaceFiles } from '../../../workspace/__tests__/test-workspace-files.js';
 
 vi.mock('../../../database/connection.js');
 vi.mock('../../../workspace/index.js', () => ({
@@ -111,8 +112,7 @@ describe('getCommercePublishEnv', () => {
   it('reconstructs a binding from preview .env as a one-time fallback', async () => {
     insertApp(db);
     vi.mocked(createForWorkspace).mockReturnValue({
-      files: {
-        view: vi.fn(),
+      files: createStubWorkspaceFiles({
         readText: vi.fn().mockResolvedValue(
           [
             'GODADDY_STORE_ID=store-env',
@@ -120,7 +120,7 @@ describe('getCommercePublishEnv', () => {
             'GODADDY_API_BASE_URL=https://api.dev-godaddy.com',
           ].join('\n'),
         ),
-      },
+      }),
     } as any);
 
     const result = await getCommercePublishEnv(APP_ID);

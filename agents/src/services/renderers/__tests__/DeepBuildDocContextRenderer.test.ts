@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { createStubWorkspaceFiles } from '../../../workspace/__tests__/test-workspace-files.js'
 import { DeepBuildDocContextRenderer } from '../DeepBuildDocContextRenderer.js'
 
 vi.mock('../../../workspace/index.js', () => ({
@@ -28,7 +29,7 @@ describe('DeepBuildDocContextRenderer', () => {
     mockReadText.mockResolvedValue('# Brief\nbody')
     mockWrite.mockResolvedValue({ bytesWritten: 0 })
     ;(createForWorkspace as ReturnType<typeof vi.fn>).mockReturnValue({
-      files: { readText: mockReadText, write: mockWrite },
+      files: createStubWorkspaceFiles({ readText: mockReadText, write: mockWrite }),
     })
   })
 

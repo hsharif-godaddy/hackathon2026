@@ -1,14 +1,15 @@
 import { generatePalette, getContrastRatio, getLuminance, updateCssColorPalette } from '../css-color-tool.js'
+import { createStubWorkspaceFiles } from '../../workspace/__tests__/test-workspace-files.js'
+import { describe, it, expect, vi } from 'vitest'
 import type { WorkspaceFiles } from '../../workspace/files.js'
-import { describe, it, expect } from 'vitest'
 
 /** Minimal WorkspaceFiles stub for the color writer (only view/write are used). */
 function fakeFiles(content: string): WorkspaceFiles {
-  return {
-    view: async () => ({ content }),
-    readText: async () => content,
-    write: async () => undefined,
-  } as unknown as WorkspaceFiles
+  return createStubWorkspaceFiles({
+    view: vi.fn().mockResolvedValue({ content }),
+    readText: vi.fn().mockResolvedValue(content),
+    write: vi.fn().mockResolvedValue(undefined),
+  })
 }
 
 describe('css-color-tool', function packageTests() {

@@ -1,5 +1,6 @@
 import { Readable } from 'node:stream'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { createStubWorkspaceFiles } from '../../../workspace/__tests__/test-workspace-files.js'
 import { DevSupervisorError } from '../../../services/DevSupervisorClient.js'
 import { FileUploadContextRenderer, classifyUploadImage } from '../FileUploadContextRenderer.js'
 
@@ -62,7 +63,7 @@ describe('FileUploadContextRenderer', () => {
     renderer = new FileUploadContextRenderer()
     mockWrite.mockResolvedValue({ bytesWritten: 0 })
     ;(createForWorkspace as ReturnType<typeof vi.fn>).mockReturnValue({
-      files: { readText: mockReadText, download: mockDownload, write: mockWrite },
+      files: createStubWorkspaceFiles({ readText: mockReadText, download: mockDownload, write: mockWrite }),
     })
   })
 

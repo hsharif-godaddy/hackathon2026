@@ -1,6 +1,7 @@
 import express from 'express';
 import request from 'supertest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { createStubWorkspaceFiles } from '../../../workspace/__tests__/test-workspace-files.js';
 
 const view = vi.hoisted(() => vi.fn());
 const write = vi.hoisted(() => vi.fn());
@@ -48,7 +49,7 @@ beforeEach(() => {
   view.mockReset();
   write.mockReset();
   createForWorkspace.mockReset();
-  createForWorkspace.mockReturnValue({ files: { view, write, readText } });
+  createForWorkspace.mockReturnValue({ files: createStubWorkspaceFiles({ view, write, readText }) });
   write.mockResolvedValue({ bytesWritten: 1 });
   // Default: ownership passes. Individual tests can override to simulate a
   // cross-tenant request.

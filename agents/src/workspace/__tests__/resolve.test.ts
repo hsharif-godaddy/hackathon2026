@@ -4,8 +4,9 @@ import { resolveWorkspace, resolveWorkspaceFiles } from '../resolve.js';
 import { WorkspaceUnavailableError } from '../errors.js';
 import type { CreateForWorkspace, WorkspaceClient } from '../client.js';
 import type { WorkspaceFiles } from '../files.js';
+import { createStubWorkspaceFiles } from './test-workspace-files.js';
 
-const fakeFiles: WorkspaceFiles = {} as WorkspaceFiles;
+const fakeFiles: WorkspaceFiles = createStubWorkspaceFiles();
 
 const fakeClient: WorkspaceClient = {
   workspaceId: 'app123',

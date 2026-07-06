@@ -1,14 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { generateQRCode, QRCodeTool } from '../qr-code-tool.js'
 import { AppRepository } from '../../database/repositories/AppRepository.js'
+import { createStubWorkspaceFiles } from '../../workspace/__tests__/test-workspace-files.js'
 
 const mockUpload = vi.fn().mockResolvedValue({ bytesWritten: 1024 })
 
 // Mock workspace
 vi.mock('../../workspace/index.js', () => ({
-  createForWorkspace: vi.fn().mockReturnValue({
-    files: { upload: (...args: unknown[]) => mockUpload(...args), readText: vi.fn().mockResolvedValue('') }
-  })
+  createForWorkspace: vi.fn(),
 }))
 
 // Mock AppRepository
@@ -25,8 +24,12 @@ vi.mock('../../database/repositories/AppRepository.js', () => ({
 describe('qr-code-tool', function packageTests() {
   const testAppId = 'test-app-123'
 
-  beforeEach(() => {
+  beforeEach(async () => {
     mockUpload.mockClear()
+    const { createForWorkspace } = await import('../../workspace/index.js')
+    vi.mocked(createForWorkspace).mockReturnValue({
+      files: createStubWorkspaceFiles({ upload: (...args: unknown[]) => mockUpload(...args), readText: vi.fn().mockResolvedValue('') })
+    } as any)
   })
 
   describe('#generateQRCode', function generateTests() {

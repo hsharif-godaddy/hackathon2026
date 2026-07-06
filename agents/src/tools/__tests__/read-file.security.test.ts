@@ -2,26 +2,8 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 import { ReadFileTool, isFileBlocked } from '../read-file';
 import { DevSupervisorError } from '../../services/DevSupervisorClient';
-import type { WorkspaceFiles, ViewResult } from '../../workspace/files';
-
-function createMockFiles(overrides?: Partial<WorkspaceFiles>): WorkspaceFiles {
-  return {
-    tree: vi.fn(),
-    view: vi.fn(),
-    readText: vi.fn(),
-    search: vi.fn(),
-    write: vi.fn(),
-    edit: vi.fn(),
-    insert: vi.fn(),
-    delete: vi.fn(),
-    move: vi.fn(),
-    upload: vi.fn(),
-    download: vi.fn(),
-    stat: vi.fn(),
-    archive: vi.fn(),
-    ...overrides,
-  } as unknown as WorkspaceFiles;
-}
+import type { ViewResult, WorkspaceFiles } from '../../workspace/files';
+import { createStubWorkspaceFiles } from '../../workspace/__tests__/test-workspace-files.js';
 
 /** Simulate server-formatted view response (pre-numbered lines). */
 function viewResult(content: string, lines?: number): ViewResult {
@@ -35,7 +17,7 @@ describe('ReadFileTool', () => {
 
   beforeEach(() => {
     // view() now returns pre-numbered content from the server.
-    mockFiles = createMockFiles({
+    mockFiles = createStubWorkspaceFiles({
       view: vi.fn().mockResolvedValue(viewResult('1|line1\n2|line2\n3|line3', 3)),
     });
     readFileTool = new ReadFileTool(mockFiles);
@@ -73,7 +55,7 @@ describe('ReadFileTool', () => {
   describe('binary detection from server error', () => {
     it('should return friendly error when server rejects binary file', async () => {
       const binaryErr = new DevSupervisorError('binary_file', 422, 'file is binary');
-      mockFiles = createMockFiles({
+      mockFiles = createStubWorkspaceFiles({
         view: vi.fn().mockRejectedValue(binaryErr),
       });
       readFileTool = new ReadFileTool(mockFiles);
@@ -85,7 +67,7 @@ describe('ReadFileTool', () => {
 
     it('should return image-specific message for image extensions', async () => {
       const binaryErr = new DevSupervisorError('binary_file', 422, 'file is binary');
-      mockFiles = createMockFiles({
+      mockFiles = createStubWorkspaceFiles({
         view: vi.fn().mockRejectedValue(binaryErr),
       });
       readFileTool = new ReadFileTool(mockFiles);
@@ -105,7 +87,7 @@ describe('ReadFileTool', () => {
     });
 
     it('should report linesRead when range requested', async () => {
-      mockFiles = createMockFiles({
+      mockFiles = createStubWorkspaceFiles({
         view: vi.fn().mockResolvedValue(viewResult('line5\nline6', 10)),
       });
       readFileTool = new ReadFileTool(mockFiles);
@@ -117,7 +99,7 @@ describe('ReadFileTool', () => {
     });
 
     it('should error when startLine exceeds file length', async () => {
-      mockFiles = createMockFiles({
+      mockFiles = createStubWorkspaceFiles({
         view: vi.fn().mockResolvedValue(viewResult('', 3)),
       });
       readFileTool = new ReadFileTool(mockFiles);
@@ -130,7 +112,7 @@ describe('ReadFileTool', () => {
 
   describe('truncation propagation', () => {
     it('should propagate truncated flag and include linesRead', async () => {
-      mockFiles = createMockFiles({
+      mockFiles = createStubWorkspaceFiles({
         view: vi.fn().mockResolvedValue({
           path: 'big.ts', content: 'line1\nline2', encoding: 'utf-8', lines: 5000, size: 50000, truncated: true,
         }),
@@ -160,7 +142,7 @@ describe('ReadFileTool', () => {
 
   describe('error propagation', () => {
     it('should wrap workspace errors', async () => {
-      mockFiles = createMockFiles({
+      mockFiles = createStubWorkspaceFiles({
         view: vi.fn().mockRejectedValue(new Error('ENOENT: no such file')),
       });
       readFileTool = new ReadFileTool(mockFiles);
@@ -171,7 +153,7 @@ describe('ReadFileTool', () => {
     });
 
     it('should surface path-traversal rejections from supervisor', async () => {
-      mockFiles = createMockFiles({
+      mockFiles = createStubWorkspaceFiles({
         view: vi.fn().mockRejectedValue(new Error('path escapes workspace root')),
       });
       readFileTool = new ReadFileTool(mockFiles);

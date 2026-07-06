@@ -45,6 +45,7 @@ vi.mock('../../../logging/index.js', () => ({
   Logger: { create: vi.fn(() => mockLogger) },
 }))
 
+import { createStubWorkspaceFiles } from '../../../workspace/__tests__/test-workspace-files.js'
 import { loadUiKitAITool } from '../load-ui-kit.js'
 
 type StatEntry =
@@ -89,7 +90,7 @@ describe('loadUiKitAITool', () => {
     mockLogger.warn.mockClear()
     mockLogger.error.mockClear()
     mockLogger.debug.mockClear()
-    workspaceMockState.value = { files: workspaceFilesMock }
+    workspaceMockState.value = { files: createStubWorkspaceFiles({ stat: workspaceFilesMock.stat, tree: workspaceFilesMock.tree, view: workspaceFilesMock.view, readText: workspaceFilesMock.readText }) }
   })
 
   it('returns error when context lacks appId', async () => {

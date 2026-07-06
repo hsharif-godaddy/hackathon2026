@@ -52,6 +52,7 @@ vi.mock('../../../../database/repositories/AppRepository.js', () => ({
 import { createForWorkspace } from '../../../../workspace/index.js';
 import { DevSupervisorError } from '../../../../services/DevSupervisorClient.js';
 import { checkConfigurationTool, installAnalyticsTool } from '../index.js';
+import { createStubWorkspaceFiles } from '../../../../workspace/__tests__/test-workspace-files.js';
 
 const mockCreateForWorkspace = vi.mocked(createForWorkspace);
 
@@ -62,12 +63,11 @@ function makeContext(appId?: string): unknown {
 function makeWorkspace() {
   return {
     tasks: {},
-    files: {
+    files: createStubWorkspaceFiles({
       view: mockView,
       readText: mockReadText,
       insert: mockInsert,
-      write: vi.fn(),
-    },
+    }),
   };
 }
 

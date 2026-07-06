@@ -53,6 +53,8 @@ const {
   validateCheckoutTool,
 } = await import('../index.js');
 
+import { createStubWorkspaceFiles } from '../../../../workspace/__tests__/test-workspace-files.js';
+
 function runTool(
   tool: {
     execute: (input: Record<string, unknown>, context: Record<string, unknown>) => Promise<unknown>;
@@ -77,13 +79,13 @@ describe('commerce skill MCP tools', () => {
       executeAction: mockExecuteAction,
     });
     mockCreateForWorkspace.mockReturnValue({
-      files: {
+      files: createStubWorkspaceFiles({
         stat: mockWorkspaceStat,
         tree: mockWorkspaceTree,
         view: mockWorkspaceView,
         readText: mockWorkspaceReadText,
         write: mockWorkspaceWrite,
-      },
+      }),
     });
     mockWorkspaceStat.mockResolvedValue({ entries: [] });
     mockWorkspaceTree.mockResolvedValue({ entries: [], truncated: false });

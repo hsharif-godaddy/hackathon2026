@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { createStubWorkspaceFiles } from '../../../workspace/__tests__/test-workspace-files.js'
 
 const mockUpdateColors = vi.hoisted(() => vi.fn())
 const mockUpdateFonts = vi.hoisted(() => vi.fn())
@@ -80,7 +81,7 @@ describe('mapKitPaletteToColorPalette', () => {
 describe('applyKitDesignTokens', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockCreateForWorkspace.mockReturnValue({ workspaceId: 'w', variant: 'preview', files: {} })
+    mockCreateForWorkspace.mockReturnValue({ workspaceId: 'w', variant: 'preview', files: createStubWorkspaceFiles() })
     mockUpdateColors.mockResolvedValue({ success: true, palette: { primary: '#ffffff', background: '#000000' }, message: 'ok' })
     mockUpdateFonts.mockResolvedValue({ success: true, message: 'ok' })
     mockMemSet.mockResolvedValue({ success: true })
@@ -99,16 +100,16 @@ describe('applyKitDesignTokens', () => {
 
     expect(res).toEqual({ appliedColors: true, appliedFonts: true })
     // colors applied with the kit's dark hexes, not anything domain-derived
-    expect(mockUpdateColors).toHaveBeenCalledWith({}, expect.objectContaining({ primary: '#ffffff', background: '#000000' }))
+    expect(mockUpdateColors).toHaveBeenCalledWith(expect.objectContaining({ view: expect.any(Function) }), expect.objectContaining({ primary: '#ffffff', background: '#000000' }))
     // distinct header/body fonts preserved (the tool path would have collapsed them)
     expect(mockUpdateFonts).toHaveBeenCalledWith(
-      {},
+      expect.objectContaining({ view: expect.any(Function) }),
       { name: 'Sora', weights: ['700'], category: 'sans-serif' },
       { name: 'Manrope', weights: ['400', '700'], category: 'sans-serif' },
     )
     // memory written for the brand-data API + brand-tokens sync
-    expect(mockMemSet).toHaveBeenCalledWith(expect.anything(), 'brand.colors.palette', expect.objectContaining({ name: 'Obsidian' }))
-    expect(mockMemSet).toHaveBeenCalledWith(expect.anything(), 'brand.typography', expect.objectContaining({
+    expect(mockMemSet).toHaveBeenCalledWith(expect.objectContaining({ appId: expect.any(String) }), 'brand.colors.palette', expect.objectContaining({ name: 'Obsidian' }))
+    expect(mockMemSet).toHaveBeenCalledWith(expect.objectContaining({ appId: expect.any(String) }), 'brand.typography', expect.objectContaining({
       name: 'Obsidian',
       heading: { family: 'Sora', weights: ['700'] },
       body: { family: 'Manrope', weights: ['400', '700'] },
@@ -120,7 +121,7 @@ describe('applyKitDesignTokens', () => {
     const oneFont = { typography: { body: { family: "'Manrope', sans-serif", weights: ['400'] } } }
     await applyKitDesignTokens({ appId: 'a', design: oneFont, displayName: 'X' })
     expect(mockUpdateFonts).toHaveBeenCalledWith(
-      {},
+      expect.objectContaining({ view: expect.any(Function) }),
       { name: 'Manrope', weights: ['400'], category: 'sans-serif' },
       { name: 'Manrope', weights: ['400'], category: 'sans-serif' },
     )

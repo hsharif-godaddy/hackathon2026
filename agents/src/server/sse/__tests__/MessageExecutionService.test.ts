@@ -60,6 +60,7 @@ import { skillToolManager, resolveSkillToolMetadata } from '../../../tools/skill
 import { BudgetServiceConflictError } from '@airo/ai-lib/budget'
 import { BudgetExceededError } from '@airo/ai-common'
 import { APICallError, RetryError, TypeValidationError } from 'ai'
+import { createStubWorkspaceFiles } from '../../../workspace/__tests__/test-workspace-files.js'
 
 // Mock agent-runtime action service registry.
 // `actionServiceMap` is module-local so tests can assert registry state
@@ -382,9 +383,9 @@ describe('MessageExecutionService', () => {
     mockAppRepoFindById.mockReturnValue(undefined)
     mockCreateForWorkspace.mockReset()
     mockCreateForWorkspace.mockReturnValue({
-      files: {
+      files: createStubWorkspaceFiles({
         stat: vi.fn().mockResolvedValue({ entries: [{ path: 'docs/ui-kit/kit-meta.json', error: 'not_found' }] }),
-      },
+      }),
     })
     deps = createMockDeps()
     service = new MessageExecutionService(deps as any)
@@ -622,7 +623,7 @@ describe('MessageExecutionService', () => {
           ...(exists ? { kind: 'file' } : { error: 'not_found' }),
         }],
       })
-      mockCreateForWorkspace.mockReturnValue({ files: { stat } })
+      mockCreateForWorkspace.mockReturnValue({ files: createStubWorkspaceFiles({ stat }) })
       return stat
     }
 
@@ -717,7 +718,7 @@ describe('MessageExecutionService', () => {
       // per-path not_found) must default kitMetaExists=false and fall through to
       // the base variant — never reject the turn.
       const stat = vi.fn().mockRejectedValue(new Error('dev-supervisor unreachable'))
-      mockCreateForWorkspace.mockReturnValue({ files: { stat } })
+      mockCreateForWorkspace.mockReturnValue({ files: createStubWorkspaceFiles({ stat }) })
       const base = 'initial-design-system-homepage-build'
       const attached = `${base}-attached`
       const agents = createDesignKitAgents([base, attached])

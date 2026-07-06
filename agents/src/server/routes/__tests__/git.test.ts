@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import express from 'express';
 import request from 'supertest';
 
+import { createStubWorkspaceFiles } from '../../../workspace/__tests__/test-workspace-files.js';
+
 const mocks = vi.hoisted(() => {
   return {
     findById: vi.fn(),
@@ -72,7 +74,7 @@ vi.mock('../../../utils/dev-supervisor-client-factory.js', () => ({
 }));
 
 vi.mock('../../../workspace/index.js', () => ({
-  createForWorkspace: vi.fn(function () { return { tasks: {}, files: { readText: vi.fn().mockResolvedValue('') } }; }),
+  createForWorkspace: vi.fn(),
 }));
 
 vi.mock('../../../logging/index.js', async (importOriginal) => {
@@ -105,7 +107,7 @@ describe('git routes', function gitRouteTests() {
   beforeEach(function resetMocks() {
     vi.clearAllMocks();
 
-    vi.mocked(createForWorkspace).mockReturnValue({ tasks: {}, files: { readText: vi.fn().mockResolvedValue('') } } as ReturnType<typeof createForWorkspace>);
+    vi.mocked(createForWorkspace).mockReturnValue({ tasks: {}, files: createStubWorkspaceFiles({ readText: vi.fn().mockResolvedValue('') }) } as ReturnType<typeof createForWorkspace>);
     mocks.findById.mockReturnValue({ path: '/app' });
     mocks.getCurrentBranch.mockResolvedValue('main');
     mocks.getStatus.mockResolvedValue({ stagedFiles: 0 });

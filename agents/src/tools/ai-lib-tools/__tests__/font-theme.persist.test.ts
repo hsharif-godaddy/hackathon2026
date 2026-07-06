@@ -5,9 +5,7 @@ const mockReadText = vi.fn().mockResolvedValue('')
 const mockWrite = vi.fn().mockResolvedValue({ bytesWritten: 100 })
 
 vi.mock('../../../workspace/index.js', () => ({
-  createForWorkspace: vi.fn(function () { return {
-    files: { view: mockView, write: mockWrite, readText: mockReadText }
-  }; })
+  createForWorkspace: vi.fn(),
 }))
 vi.mock('../../../logging/index.js', () => ({
   Logger: {
@@ -62,6 +60,9 @@ vi.mock('@airo/ai-grants', () => ({
   LlmCallSource: { ToolFontTheme: 'tool-font-theme' }
 }))
 
+import { createStubWorkspaceFiles } from '../../../workspace/__tests__/test-workspace-files.js'
+import { createForWorkspace } from '../../../workspace/index.js'
+
 const { fontThemeAITool } = await import('../font-theme.js')
 
 const mockCss = `@layer base {
@@ -79,6 +80,9 @@ describe('font-theme persistence', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.mocked(createForWorkspace).mockReturnValue({
+      files: createStubWorkspaceFiles({ view: mockView, write: mockWrite, readText: mockReadText })
+    } as any)
     mockReadText.mockResolvedValue(mockCss)
     mockWrite.mockResolvedValue({ bytesWritten: 100 })
     mockAppPlanExecute.mockResolvedValue({ success: true })

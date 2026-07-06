@@ -43,8 +43,11 @@ vi.mock('../../../../services/logo/logo-job-state.js', () => ({
   readLogoJob: (...a: unknown[]) => mockReadLogoJob(),
 }));
 vi.mock('../../../../workspace/index.js', () => ({
-  createForWorkspace: () => ({ files: {} }),
+  createForWorkspace: vi.fn(),
 }));
+
+import { createForWorkspace } from '../../../../workspace/index.js';
+import { createStubWorkspaceFiles } from '../../../../workspace/__tests__/test-workspace-files.js';
 
 // LOGO_SLOT_PATHS values the tool looks up.
 const HORIZONTAL_PATH = 'logo/horizontal';
@@ -54,6 +57,7 @@ describe('media-logo set_venture_logo tool', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockReadLogoJob.mockResolvedValue(null);
+    vi.mocked(createForWorkspace).mockReturnValue({ files: createStubWorkspaceFiles() } as any);
   });
 
   const baseContext = { socketId: 'sock-1', metadata: { appId: 'app-1' } };

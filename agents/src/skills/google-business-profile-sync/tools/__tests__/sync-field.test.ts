@@ -24,6 +24,7 @@ vi.mock('../../../../workspace/index.js', () => ({
 
 import { syncFieldTool } from '../sync-field.js';
 import { GBP_UPDATE_DONE } from '../../../../types/social.js';
+import { createStubWorkspaceFiles } from '../../../../workspace/__tests__/test-workspace-files.js';
 
 const CTX = { metadata: { appId: 'app1' } };
 
@@ -37,7 +38,7 @@ describe('google-business-profile-sync syncField tool', () => {
     mockFindByAppAndPlatform.mockReturnValue([{ socialId: 'gbp-123' }]);
     mockSearch.mockResolvedValue([]);
     mockEdit.mockResolvedValue({ applied: 1 });
-    mockCreateForWorkspace.mockReturnValue({ files: { search: mockSearch, edit: mockEdit } });
+    mockCreateForWorkspace.mockReturnValue({ files: createStubWorkspaceFiles({ search: mockSearch, edit: mockEdit }) });
   });
 
   describe('execute — site-to-gbp', () => {
