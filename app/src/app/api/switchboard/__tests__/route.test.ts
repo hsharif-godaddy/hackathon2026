@@ -77,7 +77,7 @@ describe('GET /api/switchboard', () => {
     it('should filter out entries not in either allow-list', async () => {
       mockGetSwitchboardTree.mockResolvedValue({
         'appbuilder-share-links': true,
-        'airo-build-initial-agent': { cohortId: 'variant-a' },
+        'some-unlisted-experiment': { cohortId: 'variant-a' },
         'appbuilder-model-selector': false,
       });
 

@@ -49,10 +49,10 @@ describe('resolveInitialAgentId', function resolveInitialAgentTests() {
       expect(id).toBe('initial-v3')
     })
 
-    it('3. defaults to base initial when nothing applies', function defaultInitial() {
+    it('3. defaults to initial-v3 when nothing applies', function defaultInitial() {
       resolveProfileSpy.mockReturnValue(null)
       const id = resolveInitialAgentId({ appId: 'app_new', getModeIds: noTemplates })
-      expect(id).toBe('initial')
+      expect(id).toBe('initial-v3')
     })
 
     it('ignores an unregistered template', function unregisteredTemplate() {
@@ -62,7 +62,7 @@ describe('resolveInitialAgentId', function resolveInitialAgentTests() {
         templateId: 'not-a-template',
         getModeIds: () => ['v8'],
       })
-      expect(id).toBe('initial')
+      expect(id).toBe('initial-v3')
     })
   })
 
@@ -119,7 +119,7 @@ describe('resolveInitialAgentId', function resolveInitialAgentTests() {
         getStartableAgentIds: startable,
         getModeIds: noTemplates,
       })
-      expect(id).toBe('initial')
+      expect(id).toBe('initial-v3')
       expect(warnSpy).toHaveBeenCalledWith('agent_router.start_override_invalid', expect.objectContaining({ overrideAgentId: 'planning' }))
       warnSpy.mockRestore()
     })
@@ -132,7 +132,7 @@ describe('resolveInitialAgentId', function resolveInitialAgentTests() {
         getStartableAgentIds: startable,
         getModeIds: noTemplates,
       })
-      expect(id).toBe('initial')
+      expect(id).toBe('initial-v3')
     })
   })
 

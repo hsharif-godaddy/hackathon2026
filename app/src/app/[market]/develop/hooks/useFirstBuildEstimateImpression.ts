@@ -1,6 +1,5 @@
 import { useCallback, useRef } from 'react'
 
-import { EXPERIMENT_IDS } from '@/config/experiments'
 import { useAnalytics } from '@/hooks/useAnalytics'
 
 /**
@@ -13,15 +12,11 @@ import { useAnalytics } from '@/hooks/useAnalytics'
  * as a failed build, resume, or image-reload — which can satisfy the gating
  * conditions but render a different screen — never invoke it.
  *
- * Uses the initial-agent experiment id so the event is auto-stamped with the
- * user's initial-agent cohort (e.g. `initial_agent_v3`), letting the PM break the
- * count down by build strategy.
- *
  * @param appId - Current app id; resets the once-per-app guard when it changes.
  * @returns A stable callback to invoke from where the pill renders.
  */
 export function useFirstBuildEstimateImpression(appId: string): () => void {
-  const { logAnalytics } = useAnalytics({ experimentId: EXPERIMENT_IDS.initialAgent })
+  const { logAnalytics } = useAnalytics({})
   const loggedRef = useRef(false)
   const lastAppIdRef = useRef(appId)
 

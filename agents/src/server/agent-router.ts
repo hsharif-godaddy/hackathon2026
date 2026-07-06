@@ -24,8 +24,10 @@ interface AgentRouterDeps {
   getPersistedAgentForApp?: (appId: string) => Promise<string | undefined>
   /**
    * Self-heal a stale/invalid persisted agent (e.g. a deleted develop-<profile>
-   * variant). Called fire-and-forget when the router detects an unrecognized id.
-   * `correctedAgentId` is always 'develop' — the safe fallback for an existing app.
+   * variant or a retired initial-family agent). Called fire-and-forget when the
+   * router detects an unrecognized id. `correctedAgentId` is 'initial-v3' when the
+   * stale id is an initial-family agent (`initial` or `initial-*`, i.e. still
+   * mid-initial-build), else 'develop'.
    */
   repairPersistedAgent?: (appId: string, correctedAgentId: string) => Promise<void>
   /**
@@ -155,11 +157,12 @@ export function createAgentRouter(deps: AgentRouterDeps) {
     if (persistedAgent) {
       const startable: string[] = deps.getStartableAgentIds()
       if (startable.length > 0 && !startable.includes(persistedAgent)) {
-        logger.warn('agent_router.persisted_agent_invalid', { appId, invalidAgentId: persistedAgent, fallback: 'develop' })
-        deps.repairPersistedAgent?.(appId, 'develop').catch(err => {
+        const fallbackAgent: string = (persistedAgent === 'initial' || persistedAgent.startsWith('initial-')) ? 'initial-v3' : 'develop'
+        logger.warn('agent_router.persisted_agent_invalid', { appId, invalidAgentId: persistedAgent, fallback: fallbackAgent })
+        deps.repairPersistedAgent?.(appId, fallbackAgent).catch(err => {
           logger.warn('agent_router.persisted_agent_repair_failed', { appId, ...errorFields(err) })
         })
-        persistedAgent = 'develop'
+        persistedAgent = fallbackAgent
       }
       if (session) rehydrateSession(session, persistedAgent, 'agent_router.session_rehydrate_error')
       logger.info('agent_router.persisted_agent', { appId, agentId: persistedAgent })

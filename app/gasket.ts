@@ -430,8 +430,6 @@ export default makeGasket({
     dataRetrieval: {
       hivemind: {
         settings: [
-          // Canonical ID: EXPERIMENT_IDS.initialAgent in app/src/config/experiments.ts
-          'airo-build-initial-agent',
           // Canonical ID: EXPERIMENT_IDS.aabProgressTracker in app/src/config/experiments.ts
           'aab_progress_tracker',
           // Canonical ID: EXPERIMENT_IDS.promptStarter in app/src/config/experiments.ts

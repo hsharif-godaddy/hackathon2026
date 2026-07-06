@@ -92,6 +92,7 @@ proxy-logs/
 .claude/settings.local.json
 .claude/*.lock
 .superpowers/
+.omo/
 
 # Git worktrees
 .worktrees/

@@ -1,6 +1,6 @@
 {
   "name": "initial-agent-v1",
-  "description": "Pins the legacy 1.0 initial agent prompts (default routing path). Used by the airo-build-initial-agent Hivemind experiment to keep the 1.0 cohort stable across switchboard default changes.",
+  "description": "Pins the legacy 1.0 initial agent prompts. Retained for internal start-as selection until v1 is retired; no longer the default routing path (initial-v3 is the default).",
   "properties": {
     "initial.promptVersion": "1.0"
   }

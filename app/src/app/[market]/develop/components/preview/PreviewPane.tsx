@@ -36,12 +36,10 @@ import { useFirstBuildEstimateImpression } from '@/app/[market]/develop/hooks/us
 import { useWorkflowHydration } from '@/app/[market]/develop/hooks/useWorkflowHydration'
 import ErrorBoundary from '@/components/ErrorBoundary'
 import { buildDynamicApiUrl } from '@/config/dynamic-api'
-import { EXPERIMENT_IDS, INITIAL_AGENT_V3_COHORT } from '@/config/experiments'
 import { useAabProgressTracker } from '@/experiments/aab-progress-tracker/useAabProgressTracker'
 import { useProgressTrackerExposure } from '@/experiments/aab-progress-tracker/useProgressTrackerExposure'
 import { useBuildingTipsVariant } from '@/experiments/building-tips-variant/useBuildingTipsVariant'
 import { isInitialBuildComplete, isInitialBuildFunnelActive } from '@/hooks/shared/initialBuildFunnel'
-import { useHivemind } from '@/hooks/useHivemind'
 import { useImpression } from '@/hooks/useImpression'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
@@ -379,14 +377,8 @@ export default function PreviewPane({
     return () => clearTimeout(timer)
   }, [activeUnsupportedFeatures.length, appId, clearPreviewUnsupportedFeatureWarnings, unsupportedFeaturesStr])
 
-  const isBuildTimeEstimateFlagOn = useSwitchboard('appbuilder-build-time-estimate') === true
-  const { cohort: initialAgentCohort } = useHivemind(EXPERIMENT_IDS.initialAgent)
-  const isBuildTimeEstimateEnabled =
-    isBuildTimeEstimateFlagOn || initialAgentCohort === INITIAL_AGENT_V3_COHORT
-
   const isFirstBuildScreen = showBuildingOverlay && !isAwaitingAskQuestion
-  const buildEstimateMinutes =
-    isFirstBuildScreen && isBuildTimeEstimateEnabled ? FIRST_BUILD_ESTIMATE_MINUTES : null
+  const buildEstimateMinutes = isFirstBuildScreen ? FIRST_BUILD_ESTIMATE_MINUTES : null
 
   const markBuildEstimateShown = useFirstBuildEstimateImpression(appId)
 

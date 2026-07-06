@@ -16,7 +16,6 @@ export type NavigatorDirection = 'back' | 'forward'
 export interface AskQuestionFlowContext {
   flowId: string
   appCreation: boolean
-  endgameCohort?: string
 }
 
 /** Stable unique id for one question set. Falls back when crypto.randomUUID is unavailable. */
@@ -31,7 +30,6 @@ function baseProps(ctx: AskQuestionFlowContext): Record<string, unknown> {
   return {
     flow_id: ctx.flowId,
     app_creation: ctx.appCreation,
-    ...(ctx.endgameCohort ? { endgame_cohort: ctx.endgameCohort } : {}),
   }
 }
 

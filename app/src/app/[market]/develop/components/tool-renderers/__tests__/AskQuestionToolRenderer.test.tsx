@@ -60,10 +60,6 @@ vi.mock('@/lib/askQuestionAnalytics', () => ({
   trackFlowCompleted: (...a: unknown[]) => mockTrackFlowCompleted(...a),
   generateFlowId: () => 'test-flow-id',
 }))
-vi.mock('@/hooks/useHivemind', () => ({
-  useHivemind: () => ({ cohort: 'initial_agent_v3', data: undefined, experiment: undefined }),
-}))
-
 vi.mock('framer-motion', () => ({
   motion: {
     button: ({ children, ...props }: any) => <button {...props}>{children}</button>,
@@ -1003,7 +999,7 @@ describe('AskQuestionToolRenderer', () => {
       mockIsInitialBuildComplete.mockReturnValue(false)
     })
 
-    it('fires flow_started once with total_questions, app_creation and endgame_cohort', () => {
+    it('fires flow_started once with total_questions and app_creation', () => {
       const result = makeResult([
         makeQuestion('Q1?', [{ text: 'A' }, { text: 'B' }]),
         makeQuestion('Q2?', [{ text: 'C' }, { text: 'D' }]),
@@ -1015,7 +1011,6 @@ describe('AskQuestionToolRenderer', () => {
         expect.objectContaining({
           flowId: expect.any(String),
           appCreation: true,
-          endgameCohort: 'initial_agent_v3',
         }),
         2,
       )
@@ -1133,13 +1128,13 @@ describe('AskQuestionToolRenderer', () => {
       )
     })
 
-    it('stamps app_creation=false and omits endgameCohort when not in the initial-build funnel', () => {
+    it('stamps app_creation=false when not in the initial-build funnel', () => {
       mockIsInitialBuildFunnelActive.mockReturnValue(false)
       mockIsInitialBuildComplete.mockReturnValue(true)
       const result = makeResult([makeQuestion('Q1?', [{ text: 'A' }, { text: 'B' }])])
       render(<AskQuestionToolRenderer {...defaultProps} result={result} />)
       expect(mockTrackFlowStarted).toHaveBeenCalledWith(
-        expect.objectContaining({ appCreation: false, endgameCohort: undefined }),
+        expect.objectContaining({ appCreation: false }),
         1,
       )
     })

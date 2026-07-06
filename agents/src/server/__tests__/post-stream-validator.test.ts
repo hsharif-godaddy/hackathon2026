@@ -241,7 +241,7 @@ describe('createPostStreamValidator', () => {
     expect(mocks.pollRuntimeErrors).toHaveBeenCalledTimes(1);
   });
 
-  it.each(['initial', 'initial-logo-designer'])('skips validation for %s agent before checking git state', async (agent) => {
+  it.each(['initial', 'initial-v3', 'initial-logo-designer'])('skips validation for %s agent before checking git state', async (agent) => {
     const { deps, mocks } = makeDeps({
       hasUncommittedChanges: async () => {
         throw new Error('git status should not run');

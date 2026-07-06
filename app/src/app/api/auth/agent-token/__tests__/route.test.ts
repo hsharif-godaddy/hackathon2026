@@ -147,7 +147,8 @@ vi.mock('@/lib/switchboard/server', function mockSwitchboardModule() {
 
 /**
  * Mock gasket — avoids triggering Atlas/Visitor plugin initialization during tests.
- * The route only uses gasket.actions.getExperimentCohorts for the Hivemind initial-agent experiment.
+ * The getExperimentCohorts action is stubbed for the gasket surface; the route's only
+ * consumer of it (the initial-agent experiment) was removed in AIROBUILD-3388.
  */
 vi.mock('../../../../../../gasket', function mockGasketModule() {
   return {
@@ -1442,7 +1443,7 @@ describe('agent-token', function packageTests() {
       });
     });
 
-    describe('Hivemind initial-agent experiment', function hivemindTests() {
+    describe('agent profile resolution (appbuilder-agent-profile)', function agentProfileTests() {
       beforeEach(function authedUser() {
         mockAuthenticateCustomer.mockResolvedValue({
           isAuthenticated: true,
@@ -1451,8 +1452,6 @@ describe('agent-token', function packageTests() {
         });
       });
 
-      const EXPERIMENT_ID = 'airo-build-initial-agent';
-
       function mockSwitchboardAgentProfile(value: string | null): void {
         mockCheckSwitchboardValue.mockImplementation(async function getValue(name: string) {
           if (name === 'appbuilder-agent-profile') return value;
@@ -1460,35 +1459,8 @@ describe('agent-token', function packageTests() {
         });
       }
 
-      it('cohort initial_agent_v1 → agentProfile initial-agent-v1', async function v1() {
-        mockGetExperimentCohorts.mockResolvedValue({ [EXPERIMENT_ID]: 'initial_agent_v1' });
-
-        const response = await POST(createMockRequest({ siteId: MOCK_SITE_ID }));
-
-        expect(response.status).toBe(200);
-        expect(mockJWTService.getToken).toHaveBeenCalledWith(
-          expect.objectContaining({ agentProfile: 'initial-agent-v1' })
-        );
-        expect(mockLogger.info).toHaveBeenCalledWith('hivemind.experiment.triggered', expect.objectContaining({
-          experimentId: EXPERIMENT_ID,
-          cohortId: 'initial_agent_v1',
-        }));
-      });
-
-      it('cohort initial_agent_v3 → agentProfile initial-agent-v3', async function v3() {
-        mockGetExperimentCohorts.mockResolvedValue({ [EXPERIMENT_ID]: 'initial_agent_v3' });
-
-        const response = await POST(createMockRequest({ siteId: MOCK_SITE_ID }));
-
-        expect(response.status).toBe(200);
-        expect(mockJWTService.getToken).toHaveBeenCalledWith(
-          expect.objectContaining({ agentProfile: 'initial-agent-v3' })
-        );
-      });
-
-      it('switchboard real profile name wins over cohort mapping', async function operatorOverride() {
+      it('real profile name is passed through as the agentProfile claim', async function operatorOverride() {
         mockSwitchboardAgentProfile('prompt-enhancer');
-        mockGetExperimentCohorts.mockResolvedValue({ [EXPERIMENT_ID]: 'initial_agent_v1' });
 
         const response = await POST(createMockRequest({ siteId: MOCK_SITE_ID }));
 
@@ -1496,56 +1468,10 @@ describe('agent-token', function packageTests() {
         expect(mockJWTService.getToken).toHaveBeenCalledWith(
           expect.objectContaining({ agentProfile: 'prompt-enhancer' })
         );
-        // Triggered log still fires — the cohort assignment is observed even though the operator override wins.
-        expect(mockLogger.info).toHaveBeenCalledWith('hivemind.experiment.triggered', expect.objectContaining({
-          cohortId: 'initial_agent_v1',
-        }));
       });
 
-      it("switchboard 'default' sentinel defers to cohort mapping", async function defaultSentinel() {
+      it("'default' sentinel resolves to no agentProfile (agents default to initial-v3)", async function defaultSentinel() {
         mockSwitchboardAgentProfile('default');
-        mockGetExperimentCohorts.mockResolvedValue({ [EXPERIMENT_ID]: 'initial_agent_v3' });
-
-        const response = await POST(createMockRequest({ siteId: MOCK_SITE_ID }));
-
-        expect(response.status).toBe(200);
-        expect(mockJWTService.getToken).toHaveBeenCalledWith(
-          expect.objectContaining({ agentProfile: 'initial-agent-v3' })
-        );
-      });
-
-      it("switchboard 'hivemind' sentinel defers to cohort mapping", async function hivemindSentinel() {
-        mockSwitchboardAgentProfile('hivemind');
-        mockGetExperimentCohorts.mockResolvedValue({ [EXPERIMENT_ID]: 'initial_agent_v1' });
-
-        const response = await POST(createMockRequest({ siteId: MOCK_SITE_ID }));
-
-        expect(response.status).toBe(200);
-        expect(mockJWTService.getToken).toHaveBeenCalledWith(
-          expect.objectContaining({ agentProfile: 'initial-agent-v1' })
-        );
-      });
-
-      it.each(['ineligible', 'unassigned', 'not_bucketed'])(
-        'excluded cohort %s → no override, no triggered log',
-        async function excluded(cohort) {
-          mockGetExperimentCohorts.mockResolvedValue({ [EXPERIMENT_ID]: cohort });
-
-          const response = await POST(createMockRequest({ siteId: MOCK_SITE_ID }));
-
-          expect(response.status).toBe(200);
-          expect(mockJWTService.getToken).toHaveBeenCalledWith(
-            expect.objectContaining({ agentProfile: undefined })
-          );
-          const triggeredCalls = mockLogger.info.mock.calls.filter(function isTriggered(call) {
-            return call[0] === 'hivemind.experiment.triggered';
-          });
-          expect(triggeredCalls).toHaveLength(0);
-        }
-      );
-
-      it('unrecognized cohort → no override, but triggered log still fires', async function unmapped() {
-        mockGetExperimentCohorts.mockResolvedValue({ [EXPERIMENT_ID]: '2.0' });
 
         const response = await POST(createMockRequest({ siteId: MOCK_SITE_ID }));
 
@@ -1553,24 +1479,28 @@ describe('agent-token', function packageTests() {
         expect(mockJWTService.getToken).toHaveBeenCalledWith(
           expect.objectContaining({ agentProfile: undefined })
         );
-        expect(mockLogger.info).toHaveBeenCalledWith('hivemind.experiment.triggered', expect.objectContaining({
-          cohortId: '2.0',
-        }));
       });
 
-      it('getExperimentCohorts rejection: 200, error log, switchboard value preserved', async function cohortRejects() {
-        mockSwitchboardAgentProfile('initial-agent-v3');
-        mockGetExperimentCohorts.mockRejectedValue(new Error('switchboard unreachable'));
+      it("'hivemind' sentinel resolves to no agentProfile (agents default to initial-v3)", async function hivemindSentinel() {
+        mockSwitchboardAgentProfile('hivemind');
 
         const response = await POST(createMockRequest({ siteId: MOCK_SITE_ID }));
 
         expect(response.status).toBe(200);
         expect(mockJWTService.getToken).toHaveBeenCalledWith(
-          expect.objectContaining({ agentProfile: 'initial-agent-v3' })
+          expect.objectContaining({ agentProfile: undefined })
         );
-        expect(mockLogger.warn).toHaveBeenCalledWith('hivemind.cohorts.fetch-error', expect.objectContaining({
-          error: 'switchboard unreachable',
-        }));
+      });
+
+      it('absent switchboard value resolves to no agentProfile', async function absentValue() {
+        mockSwitchboardAgentProfile(null);
+
+        const response = await POST(createMockRequest({ siteId: MOCK_SITE_ID }));
+
+        expect(response.status).toBe(200);
+        expect(mockJWTService.getToken).toHaveBeenCalledWith(
+          expect.objectContaining({ agentProfile: undefined })
+        );
       });
     });
 

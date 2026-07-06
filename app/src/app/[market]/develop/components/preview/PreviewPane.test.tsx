@@ -2054,8 +2054,7 @@ describe('first-build time-estimate pill', () => {
     mockInitialAgentCohort.current = undefined;
   });
 
-  it('shows the pill on the overlay (server ready) when in the initial_agent_v3 cohort', () => {
-    mockInitialAgentCohort.current = 'initial_agent_v3';
+  it('shows the pill on the overlay (server ready) during the first build', () => {
     mockServerPollingStore.getServerState = vi.fn(function () {
       return { isReady: true, url: 'http://localhost:3000', status: 'running' };
     });
@@ -2066,8 +2065,7 @@ describe('first-build time-estimate pill', () => {
     expect(mockMarkBuildEstimateShown).toHaveBeenCalled();
   });
 
-  it('shows the pill on the loading state (no serverState) when in the initial_agent_v3 cohort', () => {
-    mockInitialAgentCohort.current = 'initial_agent_v3';
+  it('shows the pill on the loading state (no serverState) during the first build', () => {
     mockServerPollingStore.getServerState = vi.fn(function () {
       return undefined;
     });
@@ -2079,23 +2077,10 @@ describe('first-build time-estimate pill', () => {
     expect(mockMarkBuildEstimateShown).toHaveBeenCalled();
   });
 
-  it('does not show the pill when not in v3 and the flag is off', () => {
-    mockInitialAgentCohort.current = 'initial_agent_v1';
-    mockServerPollingStore.getServerState = vi.fn(function () {
-      return { isReady: true, url: 'http://localhost:3000', status: 'running' };
-    });
-
-    renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} showBuildingOverlay />);
-
-    expect(screen.getByTestId('tips')).toHaveAttribute('data-time-estimate-minutes', '');
-    expect(mockMarkBuildEstimateShown).not.toHaveBeenCalled();
-  });
-
-  it('does not show the pill on a normal (non-build) load even in the v3 cohort', () => {
+  it('does not show the pill on a normal (non-build) load', () => {
     // The pill is gated on the first-build screen (showBuildingOverlay), not just
-    // the cohort. A normal (non-build) load in the v3 cohort must keep it off,
-    // so the showBuildingOverlay term in isFirstBuildScreen can't be dropped.
-    mockInitialAgentCohort.current = 'initial_agent_v3';
+    // reaching the preview, so the showBuildingOverlay term in isFirstBuildScreen
+    // can't be dropped.
     mockServerPollingStore.getServerState = vi.fn(function () {
       return undefined;
     });
@@ -2107,21 +2092,7 @@ describe('first-build time-estimate pill', () => {
     expect(mockMarkBuildEstimateShown).not.toHaveBeenCalled();
   });
 
-  it('shows the pill via the Switchboard flag even when not in v3', () => {
-    mockInitialAgentCohort.current = 'initial_agent_v1';
-    mockSwitchboardResults['appbuilder-build-time-estimate'] = true;
-    mockServerPollingStore.getServerState = vi.fn(function () {
-      return { isReady: true, url: 'http://localhost:3000', status: 'running' };
-    });
-
-    renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} showBuildingOverlay />);
-
-    expect(screen.getByTestId('tips')).toHaveAttribute('data-time-estimate-minutes', '5');
-    expect(mockMarkBuildEstimateShown).toHaveBeenCalled();
-  });
-
-  it('does not show the pill on the ask-question overlay even in the v3 cohort', () => {
-    mockInitialAgentCohort.current = 'initial_agent_v3';
+  it('does not show the pill on the ask-question overlay', () => {
     mockUseLatestNBAs.mockReturnValue({ source: 'askQuestion', question: 'Pick a color', suggestions: [] });
     mockServerPollingStore.getServerState = vi.fn(function () {
       return { isReady: true, url: 'http://localhost:3000', status: 'running' };
@@ -2133,11 +2104,10 @@ describe('first-build time-estimate pill', () => {
     expect(mockMarkBuildEstimateShown).not.toHaveBeenCalled();
   });
 
-  it('does not fire the impression on the resume early-return even when gating is enabled', () => {
+  it('does not fire the impression on the resume early-return', () => {
     // Regression: the impression must reflect a pill the user actually saw. The
     // resume early-return renders a PreviewLoadingState WITHOUT the pill, so even
-    // though gating (v3 cohort + first-build screen) is satisfied, nothing fires.
-    mockInitialAgentCohort.current = 'initial_agent_v3';
+    // though the first-build screen gate is satisfied, nothing fires.
     mockServerPollingStore.getServerState = vi.fn(function () {
       return { isReady: true, url: 'http://localhost:3000', status: 'running' };
     });

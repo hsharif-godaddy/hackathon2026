@@ -42,8 +42,8 @@ export interface ResolveInitialAgentParams {
   templateId?: string
   /**
    * The BFF-resolved profile name from the JWT (`agentContext.agentProfile`):
-   * switchboard → hivemind. This is the SOLE profile source — there is no
-   * per-message client profile.
+   * the `appbuilder-agent-profile` Switchboard operator override, or undefined.
+   * This is the SOLE profile source — there is no per-message client profile.
    */
   jwtAgentProfile?: string
   getModeIds: () => string[]
@@ -73,11 +73,11 @@ export function resolveStartOverrideAgentId(params: {
  *      + validated against the startable-agent allowlist) — highest priority,
  *      above `?template=` and the profile. Only reachable for internal callers.
  *   1. `?template=` → `initial-<templateId>`
- *   2. JWT switchboard/hivemind profile → base version selector (initial-v3
- *      or named variant). Per-profile initial-v3-<name> variants
+ *   2. JWT profile (Switchboard operator override) → base version selector
+ *      (initial-v3 or named variant). Per-profile initial-v3-<name> variants
  *      were flattened (#4346) — the single initial-v3 reads modularPromptFiles
  *      from the active profile per turn.
- *   3. Default base `initial`
+ *   3. Default `initial-v3`
  */
 export function resolveInitialAgentId(params: ResolveInitialAgentParams): string {
   const { appId, overrideAgentId, startOverrideEnabled, getStartableAgentIds, templateId, jwtAgentProfile, getModeIds } = params
@@ -107,14 +107,14 @@ export function resolveInitialAgentId(params: ResolveInitialAgentParams): string
     return `initial-${validTemplate}`
   }
 
-  // 2. JWT profile (switchboard → hivemind, resolved by the BFF at token mint).
+  // 2. JWT profile (Switchboard operator override, resolved by the BFF at token mint).
   const jwtProfile = resolveProfile({ jwtAgentProfile })
   if (jwtProfile) {
     return concreteInitialForProfile(jwtProfile, appId)
   }
 
-  // 3. Default base agent.
-  return 'initial'
+  // 3. Default agent.
+  return 'initial-v3'
 }
 
 /**

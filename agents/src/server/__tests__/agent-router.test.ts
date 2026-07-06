@@ -259,8 +259,8 @@ describe('agent-router', function agentRouterTests() {
       const id = await resolveAgent({ appId, session: { sessionId: 'sock-1', stateManager } })
 
       expect(stateManager.clearSession).toHaveBeenCalledWith('sock-1')
-      // The stale 'develop' must not leak through; the new app routes fresh to 'initial'.
-      expect(id).toBe('initial')
+      // The stale 'develop' must not leak through; the new app routes fresh to 'initial-v3'.
+      expect(id).toBe('initial-v3')
     })
   })
 
@@ -362,7 +362,7 @@ describe('agent-router', function agentRouterTests() {
       })
 
       const id = await resolve({ appId: 'app_brand_new' })
-      expect(id).toBe('initial')
+      expect(id).toBe('initial-v3')
     })
 
     it('does not abort the turn when the persisted-agent store read throws (falls through to heuristic)', async function persistedReadThrowsFallsThrough() {
@@ -375,7 +375,7 @@ describe('agent-router', function agentRouterTests() {
       })
 
       const id = await resolve({ appId })
-      expect(id).toBe('initial')
+      expect(id).toBe('initial-v3')
       expect(warnSpy).toHaveBeenCalledWith(
         'agent_router.persisted_agent_check_failed',
         expect.objectContaining({ appId }),
@@ -564,6 +564,27 @@ describe('agent-router', function agentRouterTests() {
         expect.objectContaining({ appId, invalidAgentId: 'develop-prompt-optimization', fallback: 'develop' }),
       )
       expect(repairPersistedAgent).toHaveBeenCalledWith(appId, 'develop')
+      warnSpy.mockRestore()
+    })
+
+    it('falls back to initial-v3 and repairs when a stale initial-* agent is persisted', async function staleInitialSelfHeals() {
+      const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(function () {})
+      const repairPersistedAgent = vi.fn().mockResolvedValue(undefined)
+      const resolve = createAgentRouter({
+        hasMessagesForApp: () => true,
+        getModeIds: () => [],
+        getStartableAgentIds: () => ['initial-v3', 'develop', 'marketing'],
+        getPersistedAgentForApp: async () => 'initial-prompt-enhancer',
+        repairPersistedAgent,
+      })
+
+      const id = await resolve({ appId })
+      expect(id).toBe('initial-v3')
+      expect(warnSpy).toHaveBeenCalledWith(
+        'agent_router.persisted_agent_invalid',
+        expect.objectContaining({ appId, invalidAgentId: 'initial-prompt-enhancer', fallback: 'initial-v3' }),
+      )
+      expect(repairPersistedAgent).toHaveBeenCalledWith(appId, 'initial-v3')
       warnSpy.mockRestore()
     })
 

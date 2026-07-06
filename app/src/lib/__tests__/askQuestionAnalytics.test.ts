@@ -15,17 +15,16 @@ import {
   trackQuestionSkipped,
 } from '../askQuestionAnalytics'
 
-const ctx = { flowId: 'flow-1', appCreation: true, endgameCohort: 'initial_agent_v3' }
+const ctx = { flowId: 'flow-1', appCreation: true }
 
 describe('askQuestionAnalytics', () => {
   beforeEach(() => mockShip.mockReset())
 
-  it('flow_started carries flow_id, app_creation, endgame_cohort, total_questions', () => {
+  it('flow_started carries flow_id, app_creation, total_questions', () => {
     trackFlowStarted(ctx, 3)
     expect(mockShip).toHaveBeenCalledWith('ask_question.flow_started', {
       flow_id: 'flow-1',
       app_creation: true,
-      endgame_cohort: 'initial_agent_v3',
       total_questions: 3,
     })
   })
@@ -35,7 +34,6 @@ describe('askQuestionAnalytics', () => {
     expect(mockShip).toHaveBeenCalledWith('ask_question.question_shown', {
       flow_id: 'flow-1',
       app_creation: true,
-      endgame_cohort: 'initial_agent_v3',
       position: 2,
     })
   })
@@ -45,7 +43,6 @@ describe('askQuestionAnalytics', () => {
     expect(mockShip).toHaveBeenCalledWith('ask_question.question_answered', {
       flow_id: 'flow-1',
       app_creation: true,
-      endgame_cohort: 'initial_agent_v3',
       position: 1,
     })
   })
@@ -55,7 +52,6 @@ describe('askQuestionAnalytics', () => {
     expect(mockShip).toHaveBeenCalledWith('ask_question.question_skipped', {
       flow_id: 'flow-1',
       app_creation: true,
-      endgame_cohort: 'initial_agent_v3',
       position: 1,
     })
   })
@@ -65,7 +61,6 @@ describe('askQuestionAnalytics', () => {
     expect(mockShip).toHaveBeenCalledWith('ask_question.navigator_clicked', {
       flow_id: 'flow-1',
       app_creation: true,
-      endgame_cohort: 'initial_agent_v3',
       position: 2,
       direction: 'back',
     })
@@ -76,7 +71,6 @@ describe('askQuestionAnalytics', () => {
     expect(mockShip).toHaveBeenCalledWith('ask_question.navigator_clicked', {
       flow_id: 'flow-1',
       app_creation: true,
-      endgame_cohort: 'initial_agent_v3',
       position: 1,
       direction: 'forward',
     })
@@ -87,15 +81,6 @@ describe('askQuestionAnalytics', () => {
     expect(mockShip).toHaveBeenCalledWith('ask_question.flow_completed', {
       flow_id: 'flow-1',
       app_creation: true,
-      endgame_cohort: 'initial_agent_v3',
-    })
-  })
-
-  it('omits endgame_cohort when not provided', () => {
-    trackFlowCompleted({ flowId: 'f2', appCreation: false })
-    expect(mockShip).toHaveBeenCalledWith('ask_question.flow_completed', {
-      flow_id: 'f2',
-      app_creation: false,
     })
   })
 

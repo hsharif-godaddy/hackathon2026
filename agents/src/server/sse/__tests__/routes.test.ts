@@ -121,14 +121,14 @@ describe('SSE routes', () => {
 
     it('freezes the default initial agent and ignores a client-sent agentId', async () => {
       // The create seam resolves the concrete INITIAL agent; a stale client
-      // `agentId` must never re-route. With no profile/template, that is `initial`.
+      // `agentId` must never re-route. With no profile/template, that is `initial-v3`.
       await request(app)
         .post('/api/conversations/abcdefghij')
         .send({ agentId: 'marketing' })
 
       expect(deps.lifecycle.getOrCreateForApp).toHaveBeenCalledWith(
         expect.objectContaining({ appId: 'abcdefghij' }),
-        'initial',
+        'initial-v3',
       )
       expect(deps.resolveAgent).not.toHaveBeenCalled()
     })
@@ -146,14 +146,14 @@ describe('SSE routes', () => {
       )
     })
 
-    it('ignores an unregistered template and falls back to initial', async () => {
+    it('ignores an unregistered template and falls back to initial-v3', async () => {
       await request(app)
         .post('/api/conversations/abcdefghij')
         .send({ templateId: 'not-a-template' })
 
       expect(deps.lifecycle.getOrCreateForApp).toHaveBeenCalledWith(
         expect.objectContaining({ appId: 'abcdefghij' }),
-        'initial',
+        'initial-v3',
       )
     })
 

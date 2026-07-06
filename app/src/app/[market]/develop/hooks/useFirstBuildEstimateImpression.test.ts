@@ -5,13 +5,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { renderHook } from '@testing-library/react'
 
 const logAnalytics = vi.fn()
-const useAnalyticsMock = vi.fn(() => ({ cohort: 'initial_agent_v3', logAnalytics }))
+const useAnalyticsMock = vi.fn(() => ({ logAnalytics }))
 
 vi.mock('@/hooks/useAnalytics', () => ({
   useAnalytics: (options: unknown) => useAnalyticsMock(options),
 }))
 
-import { EXPERIMENT_IDS } from '@/config/experiments'
 import { useFirstBuildEstimateImpression } from './useFirstBuildEstimateImpression'
 
 describe('useFirstBuildEstimateImpression', () => {
@@ -19,10 +18,10 @@ describe('useFirstBuildEstimateImpression', () => {
     vi.clearAllMocks()
   })
 
-  it('stamps the impression with the initial-agent experiment id', () => {
+  it('calls useAnalytics without an experiment id', () => {
     renderHook(() => useFirstBuildEstimateImpression('app-1'))
 
-    expect(useAnalyticsMock).toHaveBeenCalledWith({ experimentId: EXPERIMENT_IDS.initialAgent })
+    expect(useAnalyticsMock).toHaveBeenCalledWith({})
   })
 
   it('does not log until the returned callback is invoked', () => {

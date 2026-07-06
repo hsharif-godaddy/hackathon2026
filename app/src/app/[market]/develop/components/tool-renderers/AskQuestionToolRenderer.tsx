@@ -9,9 +9,7 @@ import AskQuestionChoicePanel, {
 import type { DefaultToolRendererProps } from '@/app/[market]/develop/components/tool-renderers/DefaultToolRenderer'
 import DefaultToolRenderer from '@/app/[market]/develop/components/tool-renderers/DefaultToolRenderer'
 import { useNumberKeySelection } from '@/app/[market]/develop/components/tool-renderers/useNumberKeySelection'
-import { EXPERIMENT_IDS } from '@/config/experiments'
 import { isInitialBuildComplete, isInitialBuildFunnelActive } from '@/hooks/shared/initialBuildFunnel'
-import { useHivemind } from '@/hooks/useHivemind'
 import { useTranslations } from '@/hooks/useTranslations'
 import {
   type AskQuestionFlowContext,
@@ -140,31 +138,25 @@ export default function AskQuestionToolRenderer({
     choiceListContainerRef: panelRef,
   })
 
-  const { cohort: endgameCohort } = useHivemind(EXPERIMENT_IDS.initialAgent)
-
   // One stable flow id per on-screen question set. `result` is the tool result for this
   // askQuestion call; when it changes the agent has asked a new set, so we regenerate.
-  // All three flow-context fields (id, appCreation, endgameCohort) are snapshotted at that
-  // moment and held constant for the life of the flow. app_creation is the same funnel state
-  // that drives intent_category='new_build' (strongly correlated), but NOT strictly identical
+  // Both flow-context fields (id, appCreation) are snapshotted at that moment and held
+  // constant for the life of the flow. app_creation is the same funnel state that drives
+  // intent_category='new_build' (strongly correlated), but NOT strictly identical
   // — e.g. rebuild flows are app_creation=false yet intent_category='rebuild'.
-  // endgameCohort is only stamped for initial-agent flows; develop-agent questions must not
-  // carry the cohort or they pollute per-cohort initial-agent analytics.
-  const flowBox = useRef<{ result: unknown; id: string; appCreation: boolean; endgameCohort: string | undefined } | null>(null)
+  const flowBox = useRef<{ result: unknown; id: string; appCreation: boolean } | null>(null)
   if (!flowBox.current || flowBox.current.result !== result) {
     const appCreation = isInitialBuildFunnelActive() && !isInitialBuildComplete()
     flowBox.current = {
       result,
       id: generateFlowId(),
       appCreation,
-      endgameCohort: appCreation ? endgameCohort : undefined,
     }
   }
   const flowId = flowBox.current.id
   const flowContext: AskQuestionFlowContext = {
     flowId,
     appCreation: flowBox.current.appCreation,
-    endgameCohort: flowBox.current.endgameCohort,
   }
 
   // Fire flow_started exactly once per question set, synchronously before the first question_shown.
