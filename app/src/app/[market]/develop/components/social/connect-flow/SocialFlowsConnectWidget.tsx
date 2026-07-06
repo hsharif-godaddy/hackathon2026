@@ -8,8 +8,8 @@ import { FBConnectFlow, GBPConnectFlow, IGConnectFlow, type onCompletePayload } 
 import Button from '@ux/button'
 import Modal from '@ux/modal'
 import Spinner from '@ux/spinner'
-import UxText from '@ux/text'
 
+import { createModalAlignedUxText } from '@/app/[market]/develop/components/social/connect-flow/createModalAlignedUxText'
 import { useLinkConnection } from '@/hooks/social/mutations/useLinkConnection'
 import { useUnlinkConnection } from '@/hooks/social/mutations/useUnlinkConnection'
 import { useSiteAssociations } from '@/hooks/useSocial'
@@ -37,7 +37,7 @@ function ensureUxGlobals(): void {
   const ux = win.ux as Record<string, unknown>
   ux.Button = ux.Button || Button
   ux.Modal = ux.Modal || Modal
-  ux.Text = ux.Text || UxText
+  ux.Text = createModalAlignedUxText()
   ux.Spinner = ux.Spinner || Spinner
 }
 
@@ -55,6 +55,9 @@ export interface SocialFlowsConnectWidgetProps {
   appId: string
   platform: string
   onSuccess: () => void
+  onClose?: () => void
+  /** When false, render inline inside a parent container instead of opening a modal. */
+  modal?: boolean
 }
 
 /**
@@ -68,6 +71,8 @@ const SocialFlowsConnectWidget = memo(
     appId,
     platform,
     onSuccess,
+    onClose,
+    modal = true,
   }: SocialFlowsConnectWidgetProps) {
     const params = useParams<{ market: string }>()
     const market = params.market || 'en-US'
@@ -153,12 +158,13 @@ const SocialFlowsConnectWidget = memo(
         } else if (result.status === 'INCOMPLETE_EXIT') {
           logger.info(`${logDomain}.incomplete-exit`, { appId })
           setStatus('incomplete')
+          onClose?.()
         } else {
           logger.error(`${logDomain}.error`, { appId, status: result.status })
           setStatus('error')
         }
       },
-      [appId, platform, logDomain, linkConnection, unlinkConnection, associationsData, onSuccess]
+      [appId, platform, logDomain, linkConnection, unlinkConnection, associationsData, onSuccess, onClose]
     )
 
     const handleConnection = useCallback(
@@ -221,7 +227,7 @@ const SocialFlowsConnectWidget = memo(
           market={market}
           rootDomain={rootDomain}
           sourceApp={SOURCE_APP}
-          modal={true}
+          modal={modal}
           onComplete={handleComplete}
           onConnection={handleConnection}
         />

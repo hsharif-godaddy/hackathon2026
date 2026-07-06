@@ -59,17 +59,21 @@ vi.mock('react-redux', () => ({
 }))
 
 let capturedOnComplete: ((result: any) => void) | undefined
+let capturedModal: boolean | null | undefined
 vi.mock('@social/social-flows', () => ({
   FBConnectFlow: (props: any) => {
     capturedOnComplete = props.onComplete
+    capturedModal = props.modal
     return <div data-testid="fb-connect-flow">FBConnectFlow</div>
   },
   IGConnectFlow: (props: any) => {
     capturedOnComplete = props.onComplete
+    capturedModal = props.modal
     return <div data-testid="ig-connect-flow">IGConnectFlow</div>
   },
   GBPConnectFlow: (props: any) => {
     capturedOnComplete = props.onComplete
+    capturedModal = props.modal
     return <div data-testid="gbp-connect-flow">GBPConnectFlow</div>
   },
 }))
@@ -87,12 +91,20 @@ describe('SocialFlowsConnectWidget', () => {
     beforeEach(() => {
       vi.clearAllMocks()
       capturedOnComplete = undefined
+      capturedModal = undefined
       mockAssociationsData.associations = []
     })
 
     it('renders FBConnectFlow', () => {
       render(<SocialFlowsConnectWidget {...defaultProps} />)
       expect(screen.getByTestId('fb-connect-flow')).toBeInTheDocument()
+      expect(capturedModal).toBe(true)
+    })
+
+    it('renders FBConnectFlow inline when modal is false', () => {
+      render(<SocialFlowsConnectWidget {...defaultProps} modal={false} />)
+      expect(screen.getByTestId('fb-connect-flow')).toBeInTheDocument()
+      expect(capturedModal).toBe(false)
     })
 
     it('calls onSuccess after successful link', async () => {
@@ -216,6 +228,17 @@ describe('SocialFlowsConnectWidget', () => {
         ).toBeInTheDocument()
       })
       expect(defaultProps.onSuccess).not.toHaveBeenCalled()
+    })
+
+    it('calls onClose on INCOMPLETE_EXIT when provided', async () => {
+      const onClose = vi.fn()
+      render(<SocialFlowsConnectWidget {...defaultProps} onClose={onClose} />)
+
+      capturedOnComplete!({ status: 'INCOMPLETE_EXIT' })
+
+      await waitFor(() => {
+        expect(onClose).toHaveBeenCalled()
+      })
     })
 
     it('shows error when result is undefined', async () => {

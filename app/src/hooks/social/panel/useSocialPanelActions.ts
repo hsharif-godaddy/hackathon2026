@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 
+import { usesSocialFlowsConnect } from '@/lib/social-platforms'
 import { useUnlinkConnection } from '../mutations/useUnlinkConnection'
 
 interface UseSocialPanelActionsParams {
@@ -11,6 +12,7 @@ interface UseSocialPanelActionsParams {
 interface UseSocialPanelActionsResult {
   // Modal state
   isModalOpen: boolean
+  isSocialFlowsWidgetOpen: boolean
   selectedPlatform: string
   selectedConnectionId: string | undefined
   unlinkingConnectionId: string | null
@@ -21,6 +23,8 @@ interface UseSocialPanelActionsResult {
   handleSelectConnection: (platform: string) => void
   handleModalClose: () => void
   handleModalSuccess: () => void
+  handleFlowsClose: () => void
+  openSocialFlowsFromModal: () => void
   handleUnlinkConnection: (socialId: string) => Promise<void>
   refreshConnections: () => void
 }
@@ -38,10 +42,19 @@ export function useSocialPanelActions({
 
   // Modal state
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const [isSocialFlowsWidgetOpen, setIsSocialFlowsWidgetOpen] = useState(false)
   const [selectedPlatform, setSelectedPlatform] = useState<string>('')
   const [selectedConnectionId, setSelectedConnectionId] = useState<string | undefined>()
   const [unlinkingConnectionId, setUnlinkingConnectionId] = useState<string | null>(null)
   const [oauthState, setOauthState] = useState<string>('')
+
+  const resetConnectState = useCallback(() => {
+    setIsModalOpen(false)
+    setIsSocialFlowsWidgetOpen(false)
+    setSelectedPlatform('')
+    setSelectedConnectionId(undefined)
+    setOauthState('')
+  }, [])
 
   const refreshConnections = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ['social-connections'] })
@@ -52,7 +65,13 @@ export function useSocialPanelActions({
     setSelectedPlatform(platform)
     setSelectedConnectionId(undefined)
     setOauthState(`${platform}-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`)
+    if (usesSocialFlowsConnect(platform)) {
+      setIsSocialFlowsWidgetOpen(true)
+      setIsModalOpen(false)
+      return
+    }
     setIsModalOpen(true)
+    setIsSocialFlowsWidgetOpen(false)
   }, [])
 
   const handleSelectConnection = useCallback((platform: string) => {
@@ -60,22 +79,26 @@ export function useSocialPanelActions({
     setSelectedConnectionId(undefined)
     setOauthState(`${platform}-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`)
     setIsModalOpen(true)
+    setIsSocialFlowsWidgetOpen(false)
+  }, [])
+
+  const openSocialFlowsFromModal = useCallback(() => {
+    setIsModalOpen(false)
+    setIsSocialFlowsWidgetOpen(true)
   }, [])
 
   const handleModalClose = useCallback(() => {
-    setIsModalOpen(false)
-    setSelectedPlatform('')
-    setSelectedConnectionId(undefined)
-    setOauthState('')
-  }, [])
+    resetConnectState()
+  }, [resetConnectState])
+
+  const handleFlowsClose = useCallback(() => {
+    resetConnectState()
+  }, [resetConnectState])
 
   const handleModalSuccess = useCallback(() => {
-    setIsModalOpen(false)
-    setSelectedPlatform('')
-    setSelectedConnectionId(undefined)
-    setOauthState('')
+    resetConnectState()
     queryClient.invalidateQueries({ queryKey: ['site-associations', siteId] })
-  }, [queryClient, siteId])
+  }, [queryClient, siteId, resetConnectState])
 
   const handleUnlinkConnection = useCallback(async (socialId: string) => {
     const association = siteLinks.find(link => link.socialId === socialId)
@@ -98,6 +121,7 @@ export function useSocialPanelActions({
 
   return {
     isModalOpen,
+    isSocialFlowsWidgetOpen,
     selectedPlatform,
     selectedConnectionId,
     unlinkingConnectionId,
@@ -106,6 +130,8 @@ export function useSocialPanelActions({
     handleSelectConnection,
     handleModalClose,
     handleModalSuccess,
+    handleFlowsClose,
+    openSocialFlowsFromModal,
     handleUnlinkConnection,
     refreshConnections
   }

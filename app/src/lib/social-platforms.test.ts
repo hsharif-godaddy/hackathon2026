@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { SocialPlatform } from '@/types/social'
-import { getPlatformStrategy, PLATFORM_STRATEGIES } from './social-platforms'
+import { getPlatformStrategy, PLATFORM_STRATEGIES, usesSocialFlowsConnect } from './social-platforms'
 
 describe('social-platforms', () => {
   describe('PLATFORM_STRATEGIES', () => {
@@ -152,6 +152,19 @@ describe('social-platforms', () => {
       expect(PLATFORM_STRATEGIES[SocialPlatform.GOOGLE].oauthParams).toBeUndefined()
       expect(PLATFORM_STRATEGIES[SocialPlatform.YELP].oauthParams).toBeUndefined()
       expect(PLATFORM_STRATEGIES[SocialPlatform.WHATSAPP].oauthParams).toBeUndefined()
+    })
+  })
+
+  describe('usesSocialFlowsConnect', () => {
+    it('returns true for Facebook, Instagram, and Google', () => {
+      expect(usesSocialFlowsConnect('facebook')).toBe(true)
+      expect(usesSocialFlowsConnect('INSTAGRAM')).toBe(true)
+      expect(usesSocialFlowsConnect('GOOGLE_BUSINESS_PROFILE')).toBe(true)
+    })
+
+    it('returns false for other platforms', () => {
+      expect(usesSocialFlowsConnect('tiktok')).toBe(false)
+      expect(usesSocialFlowsConnect('yelp')).toBe(false)
     })
   })
 })

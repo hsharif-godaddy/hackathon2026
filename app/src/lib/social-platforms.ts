@@ -263,5 +263,17 @@ export function getPlatformStrategy(platform: string): PlatformStrategy {
   return PLATFORM_STRATEGIES[normalizedPlatform] ?? DEFAULT_STRATEGY
 }
 
+const SOCIAL_FLOWS_CONNECT_PLATFORMS = new Set<SocialPlatform>([
+  SocialPlatform.FACEBOOK,
+  SocialPlatform.INSTAGRAM,
+  SocialPlatform.GOOGLE,
+])
+
+/** Platforms whose OAuth UI is owned by @social/social-flows (not AAB's connect modal). */
+export function usesSocialFlowsConnect(platform: string): boolean {
+  const normalizedPlatform = PLATFORM_TRANSFORMS.toDisplay(platform) as SocialPlatform
+  return SOCIAL_FLOWS_CONNECT_PLATFORMS.has(normalizedPlatform)
+}
+
 export type { SocialConnection } from '@/types/social'
 export { SocialPlatform } from '@/types/social'

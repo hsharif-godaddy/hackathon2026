@@ -30,6 +30,7 @@ export interface SocialConnectFlowOrchestratorProps {
   isActive: boolean
   onSuccess?: () => void
   onClose: () => void
+  onOpenSocialFlowsConnect?: () => void
 }
 
 export interface SocialConnectFlowHandlers {
@@ -78,6 +79,7 @@ export function useSocialConnectFlowOrchestrator({
   isActive,
   onSuccess,
   onClose,
+  onOpenSocialFlowsConnect,
 }: SocialConnectFlowOrchestratorProps): SocialConnectFlowOrchestratorResult {
   const t = useTranslations()
 
@@ -216,8 +218,12 @@ export function useSocialConnectFlowOrchestrator({
   }, [strategy.provider, enrichedPlatformConnections, dispatch, appId, linkMutation, platform, t])
 
   const handleConnectNew = useCallback(() => {
+    if ((isFacebookPlatform || isInstagramPlatform || isGBPPlatform) && onOpenSocialFlowsConnect) {
+      onOpenSocialFlowsConnect()
+      return
+    }
     dispatch({ type: SocialFlowAction.StartOAuth })
-  }, [dispatch])
+  }, [dispatch, isFacebookPlatform, isInstagramPlatform, isGBPPlatform, onOpenSocialFlowsConnect])
 
   const handleChangeConnection = useCallback(() => {
     dispatch({ type: SocialFlowAction.ForceNewConnection })

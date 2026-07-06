@@ -4,6 +4,7 @@ import { useTranslations } from '@/hooks/useTranslations'
 import { getErrorMessage } from '@/lib/errors'
 import type { PlatformConfig } from '@/lib/social-platforms'
 import { type EnrichedSocialConnection, type SocialConnection,SocialPlatform } from '@/types/social'
+import { OpenSocialFlowsConnectEffect } from './OpenSocialFlowsConnectEffect'
 import { SocialAuthPrompt } from './SocialAuthPrompt'
 import { FlowStateType, SocialConnectFlowState } from './SocialConnectFlowState'
 import { SocialConnectionSelector } from './SocialConnectionSelector'
@@ -106,6 +107,7 @@ interface GetRenderConfigParams {
   onClose?: () => void
   appId: string
   onSuccess?: () => void
+  onOpenSocialFlowsConnect?: () => void
   t: ReturnType<typeof useTranslations>
 }
 
@@ -141,6 +143,7 @@ export function getRenderConfig({
   onClose,
   appId,
   onSuccess,
+  onOpenSocialFlowsConnect,
   t
 }: GetRenderConfigParams): RenderConfig {
   switch (renderState) {
@@ -252,6 +255,14 @@ export function getRenderConfig({
       const isGBP = normalizedPlatform === SocialPlatform.GOOGLE
 
       if ((isFacebook || isInstagram || isGBP) && onSuccess) {
+        if (onOpenSocialFlowsConnect) {
+          return {
+            icon: config.Icon,
+            platformName: config.name,
+            content: <OpenSocialFlowsConnectEffect onOpen={onOpenSocialFlowsConnect} />
+          }
+        }
+
         return {
           icon: config.Icon,
           platformName: config.name,

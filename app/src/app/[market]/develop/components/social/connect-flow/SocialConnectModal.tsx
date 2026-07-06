@@ -16,6 +16,7 @@ interface SocialConnectModalProps {
   onSuccess?: () => void
   selectedConnectionId?: string
   oauthState: string
+  onOpenSocialFlowsConnect?: () => void
 }
 
 export function SocialConnectModal({
@@ -25,7 +26,8 @@ export function SocialConnectModal({
   onClose,
   onSuccess,
   selectedConnectionId,
-  oauthState
+  oauthState,
+  onOpenSocialFlowsConnect,
 }: SocialConnectModalProps) {
   const t = useTranslations()
 
@@ -60,6 +62,7 @@ export function SocialConnectModal({
           isActive={true}
           onSuccess={onSuccess}
           onClose={onClose}
+          onOpenSocialFlowsConnect={onOpenSocialFlowsConnect}
         />
       </div>
     </Modal>

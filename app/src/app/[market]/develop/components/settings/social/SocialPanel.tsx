@@ -5,11 +5,13 @@ import ShareIcon from '@ux/icon/forward'
 
 import SettingsSection from '@/app/[market]/develop/components/settings/SettingsSection'
 import { SocialConnectModal } from '@/app/[market]/develop/components/social/connect-flow/SocialConnectModal'
+import SocialFlowsConnectWidget from '@/app/[market]/develop/components/social/connect-flow/SocialFlowsConnectWidget'
 import EmptyStateCard from '@/components/layout/EmptyStateCard'
 import { useSocialPanelActions } from '@/hooks/social/panel/useSocialPanelActions'
 import { useSocialPanelData } from '@/hooks/social/panel/useSocialPanelData'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
+import { PLATFORM_TRANSFORMS } from '@/lib/social-platforms'
 import { PlatformConnectionsList } from './PlatformConnectionsList'
 import { SocialPanelLoadingSkeleton } from './SocialPanelLoadingSkeleton'
 import { VideoGenerationSection } from './VideoGenerationSection'
@@ -63,7 +65,17 @@ function SocialPlatformsSection({ siteId }: SocialPanelProps) {
         onSuccess={actions.handleModalSuccess}
         selectedConnectionId={actions.selectedConnectionId}
         oauthState={actions.oauthState}
+        onOpenSocialFlowsConnect={actions.openSocialFlowsFromModal}
       />
+
+      {actions.isSocialFlowsWidgetOpen && actions.selectedPlatform && (
+        <SocialFlowsConnectWidget
+          appId={siteId}
+          platform={PLATFORM_TRANSFORMS.toDisplay(actions.selectedPlatform)}
+          onSuccess={actions.handleModalSuccess}
+          onClose={actions.handleFlowsClose}
+        />
+      )}
     </>
   )
 }

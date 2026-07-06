@@ -23,6 +23,7 @@ interface SocialConnectFlowProps {
   isActive: boolean
   onSuccess?: () => void
   onClose: () => void
+  onOpenSocialFlowsConnect?: () => void
 }
 
 const SocialConnectFlow = memo(function SocialConnectFlow(props: SocialConnectFlowProps) {
@@ -81,6 +82,7 @@ const SocialConnectFlow = memo(function SocialConnectFlow(props: SocialConnectFl
     onClose: props.onClose,
     appId: props.appId,
     onSuccess: props.onSuccess,
+    onOpenSocialFlowsConnect: props.onOpenSocialFlowsConnect,
     t,
   })
 
