@@ -210,3 +210,9 @@ export { stringPayloadLength } from './payload-length.js'
 
 export { runPreflightTools } from './preflight-tools.js'
 export type { RunPreflightToolsInput } from './preflight-tools.js'
+
+// Background Task Registry (per-turn await of background tool work)
+export { BackgroundTaskRegistry } from './background-task-registry.js'
+export type { BackgroundTaskEntry, BackgroundTaskOutcome } from './background-task-registry.js'
+export { runBackgroundTaskAwait, formatBackgroundTaskOutcomes } from './background-task-await-runner.js'
+export type { BackgroundTaskAwaitParams, BackgroundTaskAwaitResult, BackgroundTaskAwaitLogger } from './background-task-await-runner.js'

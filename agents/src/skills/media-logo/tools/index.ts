@@ -19,7 +19,7 @@ import { z } from 'zod';
 import type { SkillToolDefinition } from '@airo/ai-skills';
 import { grantSessionManager } from '@airo/ai-grants';
 import { BudgetExceededError } from '@airo/ai-common';
-import { getCurrentTraceIds } from '@airo/ai-transport';
+import { getCurrentTraceIds, type BackgroundTaskRegistry, type BackgroundTaskOutcome } from '@airo/ai-transport';
 
 import { logger } from '../../../logging/index.js';
 import { appRepository } from '../../../database/repositories/index.js';
@@ -385,6 +385,53 @@ function toLogoModelOutput({ output }: { output?: unknown }): { type: 'text'; va
   return { type: 'text', value: JSON.stringify(lean) };
 }
 
+/** Extract the per-turn background task registry from tool context (present only when switchboard flag is on). */
+function getBackgroundTaskRegistry(context: unknown): BackgroundTaskRegistry | undefined {
+  return (context as { metadata?: { __backgroundTaskRegistry?: BackgroundTaskRegistry } })?.metadata?.__backgroundTaskRegistry;
+}
+
+/** Register a background logo task on the per-turn registry so the agent loop
+ *  awaits its outcome before finalizing. */
+function registerBackgroundTask(
+  registry: BackgroundTaskRegistry,
+  result: { jobId?: string; slots?: string[]; done?: Promise<import('../../../services/logo/LogoGenerationService.js').LogoRunOutcome> },
+  toolName: string,
+): void {
+  if (!result.done || !result.jobId) return;
+  const jobId: string = result.jobId;
+  const slots: string[] = result.slots ?? [];
+  registry.register({
+    taskId: jobId,
+    toolName,
+    timeoutMs: 240_000,
+    done: result.done.then((outcome): BackgroundTaskOutcome => {
+      if (outcome.status === 'completed') {
+        return {
+          status: 'completed',
+          taskId: jobId,
+          toolName,
+          result: {
+            slots,
+            logoId: outcome.logoId,
+            slotSaveFailed: outcome.slotSaveFailed,
+            skippedLayouts: outcome.skippedLayouts,
+          },
+        };
+      }
+      return {
+        status: 'failed',
+        taskId: jobId,
+        toolName,
+        error: outcome.status === 'cancelled'
+          ? 'Logo generation was cancelled.'
+          : outcome.status === 'superseded'
+            ? 'Logo generation was superseded by a newer request.'
+            : (outcome as { error?: string }).error ?? 'Logo generation failed.',
+      };
+    }),
+  });
+}
+
 /** Shared synchronous/background result handler for both generate_logo and edit_logo. */
 async function handleLogoResult(
   result: Awaited<ReturnType<typeof logoGenerationService.start>>,
@@ -495,6 +542,7 @@ export const generateLogoTool: SkillToolDefinition = {
     const traceparent: string | undefined = traceIds ? `00-${traceIds.traceId}-${traceIds.observationId}-01` : undefined;
 
     const inspirationUrls: string[] = resolveInspirationFromContext(context);
+    const backgroundRegistry: BackgroundTaskRegistry | undefined = getBackgroundTaskRegistry(context);
 
     logger.info('skill.media-logo.generate_logo.start', {
       appId,
@@ -551,11 +599,15 @@ export const generateLogoTool: SkillToolDefinition = {
       customerId,
       budgetUserId,
       searchQuery: input.prompt.slice(0, 80),
-      ...(input.background === false ? { suppressGrowl: true } : {}),
+      suppressGrowl: input.background === false || !!backgroundRegistry,
       ...(traceparent !== undefined ? { traceparent } : {}),
       ...(conversationId !== undefined ? { conversationId } : {}),
       ...(followUpVariants.length ? { followUpVariants } : {}),
     });
+
+    if (input.background !== false && backgroundRegistry) {
+      registerBackgroundTask(backgroundRegistry, result, 'generate_logo');
+    }
 
     return handleLogoResult(result, input, layouts, 'skill.media-logo.generate_logo', appId);
   },
@@ -592,6 +644,7 @@ export const editLogoTool: SkillToolDefinition = {
     const traceparent: string | undefined = traceIds ? `00-${traceIds.traceId}-${traceIds.observationId}-01` : undefined;
 
     const inspirationUrls: string[] = resolveInspirationFromContext(context);
+    const backgroundRegistry: BackgroundTaskRegistry | undefined = getBackgroundTaskRegistry(context);
 
     logger.info('skill.media-logo.edit_logo.start', {
       appId,
@@ -654,11 +707,15 @@ export const editLogoTool: SkillToolDefinition = {
       customerId,
       budgetUserId,
       searchQuery: input.prompt.slice(0, 80),
-      ...(input.background === false ? { suppressGrowl: true } : {}),
+      suppressGrowl: input.background === false || !!backgroundRegistry,
       ...(traceparent !== undefined ? { traceparent } : {}),
       ...(conversationId !== undefined ? { conversationId } : {}),
       ...(followUpVariants.length ? { followUpVariants } : {}),
     });
+
+    if (input.background !== false && backgroundRegistry) {
+      registerBackgroundTask(backgroundRegistry, result, 'edit_logo');
+    }
 
     return handleLogoResult(result, input, layouts, 'skill.media-logo.edit_logo', appId);
   },
@@ -761,6 +818,7 @@ export const generateLogoVariantTool: SkillToolDefinition = {
 
     const { palette, brandName } = await readBrandContext(appId);
     const colors: LogoColors | undefined = buildLogoColors(palette);
+    const backgroundRegistry: BackgroundTaskRegistry | undefined = getBackgroundTaskRegistry(context);
 
     const result = await logoGenerationService.startVariant({
       appId,
@@ -771,10 +829,14 @@ export const generateLogoVariantTool: SkillToolDefinition = {
       ...(brandName !== undefined ? { brandName } : {}),
       customerId,
       budgetUserId,
-      ...(input.background === false ? { suppressGrowl: true } : {}),
+      suppressGrowl: input.background === false || !!backgroundRegistry,
       ...(traceparent !== undefined ? { traceparent } : {}),
       ...(conversationId !== undefined ? { conversationId } : {}),
     });
+
+    if (input.background !== false && backgroundRegistry) {
+      registerBackgroundTask(backgroundRegistry, result, 'generate_logo_variant');
+    }
 
     const layouts: LogoLayout[] = input.variant === 'favicon' ? [] : [input.variant as LogoLayout];
     return handleLogoResult(result, input, layouts, 'skill.media-logo.generate_logo_variant', appId);

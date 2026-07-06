@@ -30,6 +30,8 @@ import {
   dropTrailingPrompt,
   captureResponseMetadata,
   recordTokenUsageObservability,
+  BackgroundTaskRegistry,
+  runBackgroundTaskAwait,
   TOOL_VALIDATION_ERROR_TYPE,
   BUSINESS_CONTEXT_SCHEMA_ID,
 } from '@airo/ai-transport'
@@ -106,6 +108,7 @@ import { getKvMemoryStore } from '../../memory/adapters/index.js'
 import { workspaceScopeFromAppId, customerIdFromContext } from '../../memory/interfaces/scope.js'
 import { buildAppliedSkillsContextMessage } from '../applied-skills-context.js'
 import { recordRolloutsOnSpan } from '../../lib/feature-rollouts.js'
+import { getSwitchboardFlag } from '../../services/switchboard.js'
 import { conformExistingPages } from '../../services/content-conform.js'
 import { buildWorkflowContextMessage } from '../workflow-context.js'
 import { runClassification } from '../prompt-classification.js'
@@ -2549,6 +2552,17 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
       let lastTurnResult: StreamAgentTurnResult | undefined
       let currentIteration = 0
 
+      // Per-turn registry: tools that run background work register their done
+      // promises here. The postStreamValidate callback drains settled outcomes
+      // mid-loop and blocks at turn end so the LLM can respond to results.
+      const backgroundTaskAwaitEnabled: boolean = getSwitchboardFlag('airo-builder-background-task-await', false)
+      const backgroundTaskRegistry = new BackgroundTaskRegistry()
+      if (backgroundTaskAwaitEnabled) {
+        const execMetaForRegistry = (executionContext.metadata ?? {}) as Record<string, unknown>
+        execMetaForRegistry.__backgroundTaskRegistry = backgroundTaskRegistry
+        executionContext.metadata = execMetaForRegistry
+      }
+
       // Deterministic rebuild "Build Page" (AIROBUILD-2104): substitute the
       // agent-facing content with the source-built page prompt. Runs after
       // continueConversation above, so the persisted/displayed user message
@@ -2720,21 +2734,21 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
           }
         },
         isAborted: () => abortController.signal.aborted,
-        ...(this.deps.postStreamValidator && {
-          postStreamValidate: async (agentName) => {
-            const meta = (executionContext.metadata as Record<string, unknown> | undefined) ?? {}
-            if (meta.__autoContinue === true) return
-            const toolCalls = turnSnapshot.streamingEvents
-              .filter((e: any) => e.type === 'tool_start' && e.data?.tool)
-              .map((e: any) => ({ toolName: e.data.tool.name, args: e.data.tool.input }))
+        postStreamValidate: async (agentName) => {
+          const meta = (executionContext.metadata as Record<string, unknown> | undefined) ?? {}
+          if (meta.__autoContinue === true) return
 
-            // Forward `stopAfterTools` to the validator so it can apply the
-            // combined gate (skip iff stop-after AND clean tree).
+          const toolCalls = turnSnapshot.streamingEvents
+            .filter((e: any) => e.type === 'tool_start' && e.data?.tool)
+            .map((e: any) => ({ toolName: e.data.tool.name, args: e.data.tool.input }))
+
+          // --- Existing post-stream validator (code quality self-repair) ---
+          if (this.deps.postStreamValidator) {
             const agent = this.deps.getAgent(agentName)
             const stopAfterTools = agent?.getConfig?.()?.stopAfterTools
 
             const result = await runPostStreamValidation({
-              validator: this.deps.postStreamValidator!,
+              validator: this.deps.postStreamValidator,
               socketId: sseSocketId,
               agentName,
               context: executionContext,
@@ -2757,11 +2771,6 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
                   data: data as unknown as Record<string, unknown>,
                   agentName,
                 })
-                // Deliberate divergence from WS (which returns sequence !== undefined):
-                // publishNonTerminal → guardedPublish has an internal .catch, so the
-                // await always resolves and no delivery signal is available. SSE's
-                // replay buffer means missed running-events still reach reconnecting
-                // clients, so gating terminal statuses on delivery is unnecessary.
                 return true
               },
               persistValidationMessage: async (continuationPrompt) => {
@@ -2787,9 +2796,26 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
               meta.__continuationPrompt = result.continuationPrompt
               executionContext.metadata = meta
               hadSelfRepair = true
+              return
             }
-          },
-        }),
+          }
+
+          // --- Background task awareness ---
+          const agent = this.deps.getAgent(agentName)
+          const bgResult = await runBackgroundTaskAwait({
+            registry: backgroundTaskRegistry,
+            toolCalls,
+            stopAfterTools: agent?.getConfig?.()?.stopAfterTools,
+            abortSignal: abortController.signal,
+            logger,
+            logContext: { appId, conversationId },
+          })
+          if (bgResult) {
+            meta.__autoContinue = true
+            meta.__continuationPrompt = bgResult.continuationPrompt
+            executionContext.metadata = meta
+          }
+        },
       }, {
         conversationId,
         onTelemetryError: (event, fields) => logger.warn(event, fields),
