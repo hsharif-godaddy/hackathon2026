@@ -131,6 +131,10 @@ export default function ProjectCard({
 
   const isPublished = isPublishedApp(site)
 
+  const sharedTag = site.sharedWithMe ? (
+    <Tag emphasis="info">{t('builder_apps_shared_with_you', undefined, 'Shared with you')}</Tag>
+  ) : null
+
   const statusTag = useMemo(() => {
     if (site.status === SiteStatus.Error || site.status === SiteStatus.Failed) {
       return <Tag emphasis="critical">{t('builder_status_error', undefined, 'Error')}</Tag>
@@ -608,6 +612,7 @@ export default function ProjectCard({
               </div>
               <div className="flex min-w-0 items-center gap-[8px]">
                 <span className="truncate font-medium" data-testid={PROJECT_CARD_DISPLAY_NAME_TESTID}>{displayName}</span>
+                {sharedTag}
                 {statusTag}
               </div>
               <text.span size={-1} emphasis="passive" className="truncate">
@@ -623,7 +628,12 @@ export default function ProjectCard({
                 size="sm"
               />
               <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                {statusTag && <span className="shrink-0 self-start">{statusTag}</span>}
+                {(sharedTag || statusTag) && (
+                  <div className="flex shrink-0 gap-1 self-start">
+                    {sharedTag}
+                    {statusTag}
+                  </div>
+                )}
                 <div className="truncate font-medium">{displayName}</div>
                 <text.span size={-2} emphasis="passive" className="truncate">
                   {formattedUpdatedAt}
@@ -656,8 +666,9 @@ export default function ProjectCard({
           {...longPressHandlers}
         >
           <AppThumbnail key={screenshotUrl} {...thumbnailProps} />
-          {statusTag && (
-            <div className="absolute top-2 left-2" data-partial="componentAiro">
+          {(sharedTag || statusTag) && (
+            <div className="absolute top-2 left-2 flex gap-1" data-partial="componentAiro">
+              {sharedTag}
               {statusTag}
             </div>
           )}
