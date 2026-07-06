@@ -325,8 +325,8 @@ export const skillAITool: Tool = createTool(
         throw new Error(result.error || 'Failed to install skill templates');
       }
 
-      // Run onInstall hook
-      await skillToolManager.runHook(input.skill, 'onInstall', {
+      // Run onInstall hook and capture any structured result it returns.
+      const hookResult = await skillToolManager.runHook(input.skill, 'onInstall', {
         skillName: input.skill,
         appPath: app.path,
         appId
@@ -421,6 +421,26 @@ export const skillAITool: Tool = createTool(
       }
 
       appliedSkillsRegistry.recordInstall(input.skill, appId);
+
+      if (hookResult != null) {
+        response.onInstallResult = hookResult;
+        const hookRecord = hookResult as Record<string, unknown>;
+        if (
+          Array.isArray(hookRecord.findings) &&
+          (hookRecord.findings as unknown[]).length > 0
+        ) {
+          const findingLines = (hookRecord.findings as Array<{ code: string; message: string }>)
+            .map((f) => `- [${f.code}] ${f.message}`)
+            .join('\n');
+          const statusLabel = typeof hookRecord.status === 'string'
+            ? hookRecord.status.toUpperCase()
+            : 'CHECK';
+          response.message = `${response.message}\n\nPOST-INSTALL CHECK (${statusLabel}): Resolve these before writing checkout UI:\n${findingLines}`;
+        }
+        if (typeof hookRecord.NEXT_STEP === 'string') {
+          response.message = `${response.message}\n\nNEXT_STEP: ${hookRecord.NEXT_STEP}`;
+        }
+      }
 
       safeEmitEvent(input.skill, 'install');
 

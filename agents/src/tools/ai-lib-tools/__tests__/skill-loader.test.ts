@@ -269,6 +269,40 @@ describe('skillAITool hooks', () => {
         appId: 'app-456'
       });
     });
+
+    it('embeds onInstallResult and appends POST-INSTALL CHECK message when hook returns findings', async () => {
+      const hookResult = {
+        status: 'failed',
+        findings: [
+          { code: 'order_status_not_wired', message: 'No file calls the order-status endpoint' },
+        ],
+      };
+      mockRunHook.mockResolvedValueOnce(hookResult);
+
+      const result = await executeTool({ action: 'install', skill: 'authentication' }, mockContext) as Record<string, unknown>;
+
+      expect(result).toMatchObject({ onInstallResult: hookResult });
+      expect(result.message).toContain('POST-INSTALL CHECK (FAILED)');
+      expect(result.message).toContain('[order_status_not_wired]');
+    });
+
+    it('embeds onInstallResult without appending message when hook returns empty findings', async () => {
+      const hookResult = { status: 'passed', findings: [] };
+      mockRunHook.mockResolvedValueOnce(hookResult);
+
+      const result = await executeTool({ action: 'install', skill: 'authentication' }, mockContext) as Record<string, unknown>;
+
+      expect(result).toMatchObject({ onInstallResult: hookResult });
+      expect(result.message).not.toContain('POST-INSTALL CHECK');
+    });
+
+    it('does not set onInstallResult when hook returns null', async () => {
+      mockRunHook.mockResolvedValueOnce(null);
+
+      const result = await executeTool({ action: 'install', skill: 'authentication' }, mockContext) as Record<string, unknown>;
+
+      expect(result).not.toHaveProperty('onInstallResult');
+    });
   });
 
   describe('list action', () => {

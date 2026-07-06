@@ -5,9 +5,12 @@ export interface CommerceCheckoutGuardFile {
 
 export type CommerceCheckoutGuardFindingCode =
   | 'payment_templates_missing'
+  | 'commerce_ui_templates_missing'
   | 'checkout_response_redirect_url'
   | 'manual_checkout_route'
-  | 'replacement_checkout_api';
+  | 'replacement_checkout_api'
+  | 'order_status_not_wired'
+  | 'success_page_missing_paid_status_gate';
 
 export interface CommerceCheckoutGuardFinding {
   code: CommerceCheckoutGuardFindingCode;
@@ -19,12 +22,16 @@ export interface CommerceCheckoutGuardFinding {
 export interface CommerceCheckoutGuardInput {
   expectCheckout: boolean;
   paymentTemplatesInstalled: boolean;
+  commerceUiTemplatesInstalled: boolean;
+  /** Paths of installed template files to exclude from user-code checks (prevents false negatives). */
+  installedTemplatePaths?: Set<string>;
   files: CommerceCheckoutGuardFile[];
 }
 
 export interface CommerceCheckoutGuardResult {
   status: 'passed' | 'failed';
   paymentTemplatesInstalled: boolean;
+  commerceUiTemplatesInstalled: boolean;
   findings: CommerceCheckoutGuardFinding[];
 }
 
@@ -32,11 +39,34 @@ const CHECKOUT_ROUTE_PATH = 'src/server/api/commerce/checkout/POST.ts';
 const ORDER_STATUS_ROUTE_PATH = 'src/server/api/commerce/order-status/GET.ts';
 const CHECKOUT_HELPER_PATH = 'src/lib/commerce/create-checkout-session.ts';
 
+const COMMERCE_UI_CART_ROUTE_PATH = 'src/server/api/commerce/cart/POST.ts';
+const COMMERCE_UI_PRODUCTS_ROUTE_PATH = 'src/server/api/commerce/products/GET.ts';
+
 export const GODADDY_PAYMENTS_TEMPLATE_PATHS = [
   CHECKOUT_ROUTE_PATH,
   ORDER_STATUS_ROUTE_PATH,
   CHECKOUT_HELPER_PATH,
 ] as const;
+
+/** Lib helpers installed by payment/godaddy-payments that are NOT in GODADDY_PAYMENTS_TEMPLATE_PATHS. */
+export const GODADDY_PAYMENTS_LIB_TEMPLATE_PATHS = [
+  'src/lib/commerce/get-order-status.ts',
+  'src/lib/commerce/checkout-subgraph.ts',
+  'src/lib/commerce/config.ts',
+  'src/lib/commerce/gql.ts',
+  'src/lib/commerce/order-subgraph.ts',
+] as const;
+
+export const COMMERCE_UI_TEMPLATE_PATHS = [
+  COMMERCE_UI_CART_ROUTE_PATH,
+  COMMERCE_UI_PRODUCTS_ROUTE_PATH,
+] as const;
+
+export const COMMERCE_UI_ROUTE_MARKERS: { pattern: string; routeFile: string }[] = [
+  { pattern: '/api/commerce/cart', routeFile: COMMERCE_UI_CART_ROUTE_PATH },
+  { pattern: '/api/commerce/products', routeFile: COMMERCE_UI_PRODUCTS_ROUTE_PATH },
+  { pattern: '/api/commerce/skus', routeFile: 'src/server/api/commerce/skus/[id]/GET.ts' },
+];
 
 function normalizePath(path: string): string {
   return path.replace(/\\/g, '/').replace(/^\.?\//, '');
@@ -57,6 +87,24 @@ function isReplacementCheckoutApi(path: string): boolean {
 
 function usesCheckoutRoute(content: string): boolean {
   return content.includes('/api/commerce/checkout');
+}
+
+function usesOrderStatusRoute(content: string): boolean {
+  return content.includes('/api/commerce/order-status') || content.includes('getOrderStatus');
+}
+
+function hasOrderStatusPaidGate(content: string): boolean {
+  // Accept any casing of "paid"/"fulfilled" — the GoDaddy API returns uppercase
+  // ("PAID", "FULFILLED") but client code often normalizes with toLowerCase/toUpperCase.
+  return /['"](?:paid|fulfilled)['"]/i.test(content);
+}
+
+function usesCatalogOrCartRoute(content: string): boolean {
+  return (
+    content.includes('/api/commerce/cart') ||
+    content.includes('/api/commerce/products') ||
+    content.includes('/api/commerce/skus')
+  );
 }
 
 function stripJavaScriptComments(content: string): string {
@@ -133,6 +181,62 @@ export function validateCommerceCheckoutImplementation(
     });
   }
 
+  if (input.installedTemplatePaths) {
+    for (const { pattern, routeFile } of COMMERCE_UI_ROUTE_MARKERS) {
+      const callers = input.files.filter((file) =>
+        stripJavaScriptComments(file.content).includes(pattern)
+      );
+      if (callers.length > 0 && !input.installedTemplatePaths.has(routeFile)) {
+        findings.push({
+          code: 'commerce_ui_templates_missing',
+          severity: 'error',
+          message: `Files call ${pattern} but the required commerce/ui route ${routeFile} is not installed. Install commerce/ui templates first: skill({ action: "install", skill: "commerce/ui" }). These templates provide the cart, product, and SKU API routes the UI depends on.`,
+        });
+      }
+    }
+  } else {
+    const filesUsingCatalogOrCart = input.files.filter((file) =>
+      usesCatalogOrCartRoute(stripJavaScriptComments(file.content))
+    );
+    if (filesUsingCatalogOrCart.length > 0 && !input.commerceUiTemplatesInstalled) {
+      findings.push({
+        code: 'commerce_ui_templates_missing',
+        severity: 'error',
+        message:
+          'Files call /api/commerce/cart, /api/commerce/products, or /api/commerce/skus but commerce/ui templates are not installed. Install commerce/ui templates first: skill({ action: "install", skill: "commerce/ui" }). These templates provide the cart and product API routes the UI depends on.',
+      });
+    }
+  }
+
+  if (input.expectCheckout && input.paymentTemplatesInstalled) {
+    const userFiles = input.installedTemplatePaths
+      ? input.files.filter((file) => !input.installedTemplatePaths!.has(normalizePath(file.path)))
+      : input.files;
+    const filesCallingOrderStatus = userFiles.filter((file) =>
+      usesOrderStatusRoute(stripJavaScriptComments(file.content))
+    );
+    if (filesCallingOrderStatus.length === 0) {
+      findings.push({
+        code: 'order_status_not_wired',
+        severity: 'error',
+        message:
+          'The checkout success page must call GET /api/commerce/order-status (or import getOrderStatus) to verify payment server-side before fulfilling the order. A success-page redirect alone is not payment confirmation.',
+      });
+    } else {
+      const anyHasPaidGate = filesCallingOrderStatus.some((file) =>
+        hasOrderStatusPaidGate(stripJavaScriptComments(file.content))
+      );
+      if (!anyHasPaidGate) {
+        findings.push({
+          code: 'success_page_missing_paid_status_gate',
+          severity: 'warning',
+          message:
+            'The success page calls order-status but never checks order.status against "PAID" or "FULFILLED". A "PENDING" order returns a 200 response — showing confirmation when status is "PENDING" means any user who abandons payment and revisits the success URL will see "Order Confirmed" without having paid.',
+        });
+      }
+    }
+  }
+
   for (const file of input.files) {
     const path = normalizePath(file.path);
     const codeContent = stripJavaScriptComments(file.content);
@@ -182,6 +286,7 @@ export function validateCommerceCheckoutImplementation(
   return {
     status: findings.some((finding) => finding.severity === 'error') ? 'failed' : 'passed',
     paymentTemplatesInstalled: input.paymentTemplatesInstalled,
+    commerceUiTemplatesInstalled: input.commerceUiTemplatesInstalled,
     findings,
   };
 }

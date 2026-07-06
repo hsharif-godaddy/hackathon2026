@@ -2,12 +2,8 @@ import { z } from 'zod';
 import type { SkillToolDefinition } from '@airo/ai-skills';
 
 import { logger } from '../../../logging/index.js';
-import { createForWorkspace } from '../../../workspace/index.js';
-import {
-  GODADDY_PAYMENTS_TEMPLATE_PATHS,
-  validateCommerceCheckoutImplementation,
-  type CommerceCheckoutGuardFile,
-} from '../checkout-guard.js';
+import { GODADDY_PAYMENTS_TEMPLATE_PATHS } from '../checkout-guard.js';
+import { runCheckoutGuardOnWorkspace } from '../checkout-guard-workspace.js';
 import { readCurrentCommerceBinding } from '../binding.js';
 import {
   callCommerceMcpTool,
@@ -335,7 +331,7 @@ IDEMPOTENT: Re-calling with the same or additional inputs resumes from the last 
       return {
         ...result,
         NEXT_STEP:
-          `Commerce is configured and env vars have been written. Classify the user's original request. For catalog, product detail, shop, or cart UI, the next skill calls must be ${COMMERCE_UI_TEMPLATE_LOAD_ACTION} and then ${COMMERCE_UI_TEMPLATE_INSTALL_ACTION} before writing UI, catalog hooks, or Commerce API routes. After templates are installed, use commerce__search_tools and commerce__execute_tool for requested product/catalog/inventory work. If the catalog is empty and the user did not provide products, ask whether to create starter products with the agent, manage products in Commerce Home, or continue with an empty catalog. Include the Commerce Home link from commerceHomeUrl or selectedCommerceResources.storeUrl when available. If checkout is also needed, call ${GODADDY_PAYMENTS_TEMPLATE_LOAD_ACTION}, then godaddy-payments__provision, then ${GODADDY_PAYMENTS_TEMPLATE_INSTALL_ACTION} before writing checkout UI or server code.`,
+          `Commerce is configured and env vars have been written. Classify the user's original request. For catalog, product detail, shop, or cart UI, the next skill calls must be ${COMMERCE_UI_TEMPLATE_LOAD_ACTION} and then ${COMMERCE_UI_TEMPLATE_INSTALL_ACTION} before writing UI, catalog hooks, or Commerce API routes. After templates are installed, use commerce__search_tools and commerce__execute_tool for requested product/catalog/inventory work. If the catalog is empty and the user did not provide products, ask whether to create starter products with the agent, manage products in Commerce Home, or continue with an empty catalog. Include the Commerce Home link from commerceHomeUrl or selectedCommerceResources.storeUrl when available. CRITICAL: If the user's request contains ANY cart, checkout button, buy button, hosted checkout, place order, or order confirmation — payment/godaddy-payments is REQUIRED, not optional. Do not build a Checkout button, /checkout page, or order-confirmation route without first calling ${GODADDY_PAYMENTS_TEMPLATE_LOAD_ACTION}, then godaddy-payments__provision, then ${GODADDY_PAYMENTS_TEMPLATE_INSTALL_ACTION}. A cart checkout button wired to nothing is a broken app — do not deliver it.`,
         capabilityChecklists: buildCommerceCapabilityChecklists(),
       };
     } catch (err) {
@@ -372,56 +368,12 @@ RETURNS:
   async execute(input, context) {
     try {
       const appId = requireAppId(context);
-      const workspace = createForWorkspace(appId, 'preview');
-      if (!workspace) {
+      const result = await runCheckoutGuardOnWorkspace(appId, input.expectCheckout ?? true);
+      if (!result) {
         return `commerce__validate_checkout error: workspace not available for app ${appId}`;
       }
-
-      const statResult = await workspace.files.stat({
-        paths: [...GODADDY_PAYMENTS_TEMPLATE_PATHS],
-      });
-      const foundTemplatePaths = new Set(
-        statResult.entries
-          .filter((entry) => !('error' in entry))
-          .map((entry) => entry.path.replace(/\\/g, '/').replace(/^\.?\//, ''))
-      );
-      const paymentTemplatesInstalled = GODADDY_PAYMENTS_TEMPLATE_PATHS.every((path) =>
-        foundTemplatePaths.has(path)
-      );
-
-      const tree = await workspace.files.tree({
-        path: 'src',
-        recursive: true,
-        kindFilter: 'file',
-        includeGlobs: ['src/**/*.ts', 'src/**/*.tsx', 'src/**/*.js', 'src/**/*.jsx'],
-      });
-      const candidatePaths = tree.entries
-        .filter((entry) => entry.kind === 'file')
-        .map((entry) => entry.path);
-
-      const files: CommerceCheckoutGuardFile[] = [];
-      for (const path of candidatePaths) {
-        try {
-          const content: string = await workspace.files.readText({ path });
-          files.push({ path, content });
-        } catch (err) {
-          logger.warn('commerce_checkout_guard.view_failed', {
-            appId,
-            path,
-            error: formatToolError(err),
-          });
-        }
-      }
-
-      const result = validateCommerceCheckoutImplementation({
-        expectCheckout: input.expectCheckout ?? true,
-        paymentTemplatesInstalled,
-        files,
-      });
-
       return {
         ...result,
-        scannedFiles: files.length,
         requiredTemplatePaths: GODADDY_PAYMENTS_TEMPLATE_PATHS,
         NEXT_STEP:
           result.status === 'passed'

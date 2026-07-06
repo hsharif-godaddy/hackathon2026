@@ -2,7 +2,7 @@
 name: ui
 description: Internal Commerce UI/routes implementation pack for product catalog UI, product detail pages, and cart management. The commerce router decides when to load and install it.
 whenToUse: Do not load directly for user intent. Load `commerce` first for store/catalog/cart requests; `commerce` loads and installs this pack only after store/channel setup.
-post-install-notes: 'Commerce catalog/cart routes and helpers are included in the templates. Do NOT create replacement src/server/api/commerce/products, src/server/api/commerce/cart, useProducts, or cart proxy files manually. Build UI against the installed routes/helpers. Checkout routes are not included in this pack; cart checkout requires payment/godaddy-payments provisioning plus template install.'
+post-install-notes: 'Commerce catalog/cart routes and helpers are included in the templates. Do NOT create replacement src/server/api/commerce/products, src/server/api/commerce/cart, useProducts, or cart proxy files manually. Build UI against the installed routes/helpers. Checkout routes are NOT included in this pack — if any cart checkout, buy button, or checkout page is needed, you MUST load and install payment/godaddy-payments before building checkout UI. Do not build a Checkout button without completing that sequence first.'
 ---
 
 # Commerce UI Template Pack
@@ -155,28 +155,35 @@ Override any of these if the user's prompt is explicit; otherwise these are the 
 - **Product catalog page** — responsive grid of product cards (image, name, price/price range), with pagination controls and a search input that filters by name. Clicking a card navigates to the product details page.
 - **Product details page** — single-product view: large primary image with a thumbnail strip if multiple media exist, name, price, description, variant/attribute selectors when applicable, quantity stepper, and an Add to cart button.
 
-## Checkout Handoff
+## MANDATORY GATE — Checkout Cannot Proceed Without Payment Skill
 
-This skill does not install checkout routes. If the user asked for cart checkout, buy buttons, "checkout", "place order", order confirmation, or a complete shop, the required sequence is:
+**If ANY of the following are true about the original request or what you have already built:**
+- A cart with a "Checkout" or "Proceed to Checkout" button
+- Any page named "checkout", "order", "place-order", or "order-confirmation"
+- Any buy button, hosted-checkout redirect, or complete-purchase flow
 
-1. Finish the catalog/PDP/cart UI using this pack's installed routes.
-2. Load `payment/godaddy-payments`:
+**STOP all cart/storefront work now and run this sequence exactly, in order, before writing a single line of checkout UI, checkout-adjacent buttons, or order pages:**
 
+1. Load the payment skill:
 ```ts
 skill({ action: 'load', skill: 'payment/godaddy-payments' });
 ```
-
-3. Call `godaddy-payments__provision`; it will reuse the Commerce binding for this app and verify payment readiness.
-4. When provision returns `status: "ready"`, install `payment/godaddy-payments` templates before writing checkout UI, checkout buttons, checkout pages, order-status code, or checkout server routes:
-
+2. Call `godaddy-payments__provision` (no params). Handle any `needs_*` responses per that skill's flow.
+3. When provision returns `status: "ready"`, install templates immediately:
 ```ts
 skill({ action: 'install', skill: 'payment/godaddy-payments' });
 ```
+4. Wire the cart checkout button to `POST /api/commerce/checkout` with `draftOrderId`, `returnUrl`, and `successUrl`, then redirect to `data.url`.
+5. Call `commerce__validate_checkout` and fix every finding before continuing.
 
-5. Wire the cart checkout button to `POST /api/commerce/checkout` with the cart's `draftOrderId`, `returnUrl`, and `successUrl`, then redirect to `data.url`.
-6. Run `commerce__validate_checkout` before reporting checkout as complete. Fix every finding first.
+**FORBIDDEN before this sequence is complete:**
+- Do NOT create a Checkout button that navigates anywhere
+- Do NOT build a `/checkout` page, route, or order-confirmation page
+- Do NOT tell the user "payment can be added later" or leave a placeholder
+- Do NOT mark the shop or cart as complete
+- Do NOT assume Commerce cart has a native checkout URL — it does not
 
-Do not stop after loading the payment skill. Do not assume Commerce cart has a native checkout URL. Do not build replacement `/api/commerce/checkout`, shipping-update, place-order, or order-status routes by hand. The installed GoDaddy Payments templates own hosted checkout session creation and order-status verification.
+Do not stop after loading the payment skill. Do not build replacement `/api/commerce/checkout`, shipping-update, place-order, or order-status routes by hand. The installed GoDaddy Payments templates own hosted checkout session creation and order-status verification.
 
 Cart checkout request shape after `payment/godaddy-payments` is installed:
 

@@ -735,27 +735,30 @@ export class SkillToolManager {
   /**
    * Run a lifecycle hook for a skill if one is registered.
    * Non-fatal: logs warnings on failure but never throws.
+   * Returns whatever the hook handler returns (undefined when no hook is registered).
    */
   async runHook(
     skillName: string,
     event: keyof SkillHooks,
     context: SkillHookContext
-  ): Promise<void> {
+  ): Promise<unknown> {
     const hooks = this.toolRegistry?.skillHooks.get(skillName);
-    if (!hooks) return;
+    if (!hooks) return undefined;
 
     const handler = hooks[event];
-    if (!handler) return;
+    if (!handler) return undefined;
 
     try {
-      await handler(context);
+      const result = await (handler as (ctx: SkillHookContext) => Promise<unknown>)(context);
       logger.info('skill.hook.success', { skillName, event });
+      return result;
     } catch (error) {
       logger.warn('skill.hook.failed', {
         skillName,
         event,
         error: error instanceof Error ? error.message : String(error)
       });
+      return undefined;
     }
   }
 

@@ -131,7 +131,7 @@ export interface SkillSessionAnnouncements {
 
 export interface SkillHooks {
   onLoad?: (context: SkillHookContext) => Promise<void> | void
-  onInstall?: (context: SkillHookContext) => Promise<void> | void
+  onInstall?: (context: SkillHookContext) => Promise<unknown> | unknown
   onUnload?: (context: SkillHookContext) => Promise<void> | void
   /**
    * Fired during app-scoped context bootstrapping to let a skill self-detect its

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { SkillToolDefinition } from '@airo/ai-skills';
+import type { SkillHooks, SkillToolDefinition } from '@airo/ai-skills';
 
 import { logger } from '../../../../logging/index.js';
 import {
@@ -8,6 +8,8 @@ import {
   isRecord,
 } from '../../../commerce/mcp.js';
 import { provisionCommerceForApp } from '../../../commerce/provisioning.js';
+import { runCheckoutGuardOnWorkspace } from '../../../commerce/checkout-guard-workspace.js';
+import type { CommerceCheckoutGuardFindingCode } from '../../../commerce/checkout-guard.js';
 
 const PAYMENT_TEMPLATE_INSTALL_ACTION =
   "skill({ action: 'install', skill: 'payment/godaddy-payments' })";
@@ -90,7 +92,7 @@ IDEMPOTENT: If commerce__provision already created a channel_ready binding for t
       return {
         ...result,
         NEXT_STEP:
-          `GoDaddy Payments is configured and env vars have been written. Immediately call ${PAYMENT_TEMPLATE_INSTALL_ACTION} before writing any payment UI or server code. Do not create checkout or order-status routes manually.`,
+          `GoDaddy Payments is configured and env vars have been written. Before writing any UI or server code, complete these steps in order: (1) If the user's request includes a product catalog, shopping cart, or product listing pages — call commerce__provision now (it will return ready instantly by reusing the binding just created) to enable catalog management tools (search_tools, execute_tool). Then install commerce/ui templates by calling skill({ action: 'install', skill: 'commerce/ui' }). Commerce/ui provides the hooks required to fetch products and manage cart state; writing catalog or cart UI without these templates produces broken pages. (2) Call ${PAYMENT_TEMPLATE_INSTALL_ACTION} to install the checkout and order-status server routes. Do not create checkout or order-status routes manually. (3) Only after all required template installs are complete, write the UI.`,
       };
     } catch (err) {
       logDispatchError('provision', err);
@@ -169,3 +171,34 @@ export const tools: SkillToolDefinition[] = [
   storeGetTool,
   storeChannelsGetTool,
 ];
+
+// These findings require user-written checkout UI to be meaningful.
+// At install time no UI exists yet, so they always fire as false positives.
+const INSTALL_TIME_FILTERED_CODES = new Set<CommerceCheckoutGuardFindingCode>([
+  'order_status_not_wired',
+  'success_page_missing_paid_status_gate',
+]);
+
+export const hooks: SkillHooks = {
+  async onInstall({ appId }) {
+    if (!appId) return null;
+    try {
+      const guardResult = await runCheckoutGuardOnWorkspace(appId);
+      if (!guardResult) return null;
+      const findings = guardResult.findings.filter((f) => !INSTALL_TIME_FILTERED_CODES.has(f.code));
+      return {
+        ...guardResult,
+        findings,
+        status: findings.some((f) => f.severity === 'error') ? 'failed' : 'passed',
+        NEXT_STEP:
+          'Templates are installed. After writing checkout UI and order-status code, call commerce__validate_checkout to verify the implementation before reporting checkout as complete.',
+      };
+    } catch (err) {
+      logger.warn('godaddy_payments.on_install.checkout_guard_failed', {
+        appId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return null;
+    }
+  },
+};

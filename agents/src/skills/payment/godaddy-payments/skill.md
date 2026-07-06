@@ -230,6 +230,45 @@ If checkout fails during preview after provision returned `ready`, treat it as a
 
 Do not hardcode known IDs into source to make preview pass. Fix the config reader, provision/env write, or request body.
 
+## Post-Install Verification (Required Before Declaring Checkout Live)
+
+Installing templates is not sufficient. Run all steps below immediately after template installation — do not offer them as choices, do not present them as optional, do not skip them if the user says "looks good." These are blocking gates, not suggestions.
+
+### Step A — Structural check
+
+Call `commerce__validate_checkout`. Fix every finding before proceeding.
+
+### Step B — Verify checkout session creation
+
+Call `POST /api/commerce/checkout` with the cart's `draftOrderId` (or a `lineItemData` body for non-catalog flows) and verify the response is `{ url, id, draftOrderId }` containing a real hosted checkout URL. A 400 or 500 response means the OAuth config, env vars, or request body shape is wrong — debug before continuing.
+
+This proves the full infrastructure chain works: OAuth token exchange, store/channel binding, and the Commerce checkout API.
+
+### Step C — Verify order-status is queryable
+
+If Step B returned `draftOrderId: null` (non-catalog / `lineItemData` flow), skip this step — there is no draft order to query. The order-status route is installed and the Commerce API binding was already confirmed by Step B's success response.
+
+Otherwise, using the `draftOrderId` returned in Step B, call:
+
+```
+GET /api/commerce/order-status?orderId=<draftOrderId>
+```
+
+Expect `order.status` to be `"PENDING"` — the order has been created but not paid yet, and that is correct at this stage. A clean response (not a 404 or 500) confirms the order-status route and Commerce API binding are functional.
+
+### Step D — Share the checkout URL with the user
+
+Provide the `url` from Step B so the user can open the real GoDaddy hosted checkout page and confirm the payment experience. Do not require a completed transaction as a verification gate — GoDaddy Payments has no sandbox mode, and a real card is needed to complete a purchase.
+
+### Only after Steps A–C pass, report checkout as live.
+
+**Do NOT claim checkout is working based on:**
+- Templates being installed
+- A fake or placeholder draft order ID (e.g., one containing the literal string `"test"`)
+- The user saying "it looks good" without Steps B and C passing
+- Step B passing alone — Step C (order-status queryable) is equally required unless Step B returned `draftOrderId: null` (non-catalog flow), in which case Step C is skipped
+- The success page "clearing the cart on arrival" — that describes a broken implementation where cart state is destroyed before payment is confirmed
+
 ## Payment Flows
 
 ### Non-Catalog Checkout
@@ -297,7 +336,7 @@ Embed `draftOrderId` into `successUrl` before sending, e.g. `${origin}/checkout/
 
 The response is `{ url, id, draftOrderId }`. Browser code must redirect to `data.url`; do not render a replacement shipping/payment checkout page and do not check `data.redirectUrl`.
 
-On the success page, read `orderId` from the query string, verify paid status server-side with `getOrderStatus(orderId)`, then clear persisted cart state.
+On the success page, read `orderId` from the query string, call `GET /api/commerce/order-status` on mount, and check `order.status` **case-insensitively** (the API returns uppercase — `"PAID"`, `"PENDING"`, `"FULFILLED"`). Show the order confirmation UI only when `order.status.toLowerCase() === "paid"` or `order.status.toLowerCase() === "fulfilled"`. For `"pending"` status, show a processing state and poll `GET /api/commerce/order-status` every 5 seconds until status becomes paid or fulfilled, then stop polling and show confirmation. Clear the polling interval on component unmount. Never show an order confirmation screen based on the order existing alone. Clear persisted cart state only after confirming paid or fulfilled.
 
 ## Checkout Session Defaults
 
@@ -316,13 +355,38 @@ The server checkout helper always sets `sourceApp` to `airo.ai.builder`; checkou
 | `enablePhoneCollection`           | `false`                                                                                                        |                                                            |
 | `enableTaxCollection`             | `false`                                                                                                        |                                                            |
 
+## Order Status Values
+
+`GET /api/commerce/order-status` returns `order.status` as a raw string from the GoDaddy API. **Always compare case-insensitively** — the API returns uppercase values (`"PAID"`, `"PENDING"`, `"FULFILLED"`) and that casing may change.
+
+| Value (canonical) | Meaning |
+| --- | --- |
+| `"PENDING"` | Order created, payment not yet received |
+| `"PAID"` | Payment confirmed — gate for showing order confirmation UI |
+| `"FULFILLED"` | Payment confirmed AND inventory decremented — also a valid confirmed state |
+
+The recommended pattern:
+
+```ts
+const status = order.status.toLowerCase();
+if (status === 'paid' || status === 'fulfilled') {
+  // show order confirmation
+} else if (status === 'pending') {
+  // show processing state, poll again
+}
+```
+
+The success page must NOT show order confirmation when status is `"pending"`, and must NOT show order confirmation based solely on the order existing (a 200 response with `status: "PENDING"` is not a paid order).
+
 ## Common Mistakes
 
 1. Creating a catalog product or SKU before a non-catalog checkout. `lineItemData` is checkout-session-only and does not need catalog data.
 2. Importing checkout/OAuth helpers into client code. Client code uses `fetch('/api/commerce/checkout')`; server code imports `createCheckoutSession`.
 3. Asking for `GODADDY_OAUTH_CLIENT_SECRET`. It is platform-mounted server config.
 4. Treating success redirect as proof of payment. Always verify status server-side before fulfilling.
-5. Forgetting to install this skill when cart UI exists. Cart UI does not install checkout routes.
-6. Dismissing preview checkout failures as expected. After provision returns `ready`, debug the route response and server config instead.
-7. Hardcoding Store ID, Channel ID, API base URL, or OAuth values in app source. Provision and `readCommerceConfig()` own those values.
-8. Checking `data.redirectUrl` after calling `/api/commerce/checkout`. The installed route returns `url`, so checkout buttons must redirect to `data.url`.
+5. Showing order confirmation when status is `"PENDING"`. A pending order exists but has not been paid — show a "processing" state and poll, or show an error. Confirmation UI is only correct for `"PAID"` or `"FULFILLED"`.
+6. Gating success page on order existence instead of order status. A 200 response from `/api/commerce/order-status` does not mean the payment succeeded — it only means the order record exists. Always read `order.status` and compare case-insensitively.
+7. Forgetting to install this skill when cart UI exists. Cart UI does not install checkout routes.
+8. Dismissing preview checkout failures as expected. After provision returns `ready`, debug the route response and server config instead.
+9. Hardcoding Store ID, Channel ID, API base URL, or OAuth values in app source. Provision and `readCommerceConfig()` own those values.
+10. Checking `data.redirectUrl` after calling `/api/commerce/checkout`. The installed route returns `url`, so checkout buttons must redirect to `data.url`.

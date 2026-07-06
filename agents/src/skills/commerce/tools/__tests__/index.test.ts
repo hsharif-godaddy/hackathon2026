@@ -69,6 +69,9 @@ describe('commerce skill MCP tools', () => {
     mockFindBindingByAppId.mockReset();
     mockGetActionService.mockReset();
     mockUpsertBinding.mockReset();
+    mockWorkspaceStat.mockReset();
+    mockWorkspaceTree.mockReset();
+    mockWorkspaceView.mockReset();
     mockWorkspaceReadText.mockReset();
     mockGetActionService.mockReturnValue({
       executeAction: mockExecuteAction,
@@ -776,8 +779,8 @@ describe('commerce skill MCP tools', () => {
       expect(commerceUiSkill).toContain('Manage products in Commerce Home');
       expect(commerceUiSkill).toContain('selectedCommerceResources.storeUrl');
       expect(commerceUiSkill).toContain('commerce__search_tools');
+      expect(commerceUiSkill).toContain('Do NOT assume Commerce cart has a native checkout URL');
       expect(commerceUiSkill).toContain('Do not stop after loading the payment skill');
-      expect(commerceUiSkill).toContain('Do not assume Commerce cart has a native checkout URL');
       expect(commerceUiSkill).toContain('Do not build replacement');
     });
 
@@ -819,19 +822,6 @@ describe('commerce skill MCP tools', () => {
             : 'export default async function handler() {}'
         )
       );
-      mockWorkspaceView.mockImplementation(({ path }: { path: string }) =>
-        Promise.resolve({
-          content:
-            path === 'src/routes/cart.tsx'
-              ? "const data = await fetch('/api/commerce/checkout'); window.location.href = data.redirectUrl;"
-              : 'export default async function handler() {}',
-          encoding: 'utf-8',
-          lines: 1,
-          size: 100,
-          truncated: false,
-          path,
-        })
-      );
 
       const result = await runTool(
         validateCheckoutTool,
@@ -842,6 +832,7 @@ describe('commerce skill MCP tools', () => {
       expect(result).toEqual(expect.objectContaining({
         status: 'failed',
         paymentTemplatesInstalled: false,
+        commerceUiTemplatesInstalled: false,
       }));
       expect(result.findings).toEqual(expect.arrayContaining([
         expect.objectContaining({ code: 'payment_templates_missing' }),
@@ -851,7 +842,7 @@ describe('commerce skill MCP tools', () => {
       ]));
     });
 
-    it('passes checkout validation when payment templates are installed and checkout redirects to data.url', async () => {
+    it('passes checkout validation when payment templates are installed, checkout redirects to data.url, and order-status is wired', async () => {
       mockWorkspaceStat.mockResolvedValue({
         entries: [
           {
@@ -872,6 +863,18 @@ describe('commerce skill MCP tools', () => {
             size: 100,
             modifiedAt: '2026-06-24T00:00:00.000Z',
           },
+          {
+            path: 'src/server/api/commerce/cart/POST.ts',
+            kind: 'file',
+            size: 100,
+            modifiedAt: '2026-06-24T00:00:00.000Z',
+          },
+          {
+            path: 'src/server/api/commerce/products/GET.ts',
+            kind: 'file',
+            size: 100,
+            modifiedAt: '2026-06-24T00:00:00.000Z',
+          },
         ],
       });
       mockWorkspaceTree.mockResolvedValue({
@@ -884,6 +887,12 @@ describe('commerce skill MCP tools', () => {
             modifiedAt: '2026-06-24T00:00:00.000Z',
           },
           {
+            path: 'src/routes/checkout/success.tsx',
+            kind: 'file',
+            size: 100,
+            modifiedAt: '2026-06-24T00:00:00.000Z',
+          },
+          {
             path: 'src/server/api/commerce/checkout/POST.ts',
             kind: 'file',
             size: 100,
@@ -891,26 +900,15 @@ describe('commerce skill MCP tools', () => {
           },
         ],
       });
-      mockWorkspaceReadText.mockImplementation(({ path }: { path: string }) =>
-        Promise.resolve(
-          path === 'src/routes/cart.tsx'
-            ? "const data = await fetch('/api/commerce/checkout'); window.location.assign(data.url);"
-            : 'export default async function handler() {}'
-        )
-      );
-      mockWorkspaceView.mockImplementation(({ path }: { path: string }) =>
-        Promise.resolve({
-          content:
-            path === 'src/routes/cart.tsx'
-              ? "const data = await fetch('/api/commerce/checkout'); window.location.assign(data.url);"
-              : 'export default async function handler() {}',
-          encoding: 'utf-8',
-          lines: 1,
-          size: 100,
-          truncated: false,
-          path,
-        })
-      );
+      mockWorkspaceReadText.mockImplementation(({ path }: { path: string }) => {
+        const contentMap: Record<string, string> = {
+          'src/routes/cart.tsx':
+            "const data = await fetch('/api/commerce/checkout'); window.location.assign(data.url);",
+          'src/routes/checkout/success.tsx':
+            "const order = await fetch('/api/commerce/order-status?orderId=' + orderId).then(r => r.json()); if (order.status === 'Paid') { showConfirmation(); }",
+        };
+        return Promise.resolve(contentMap[path] ?? 'export default async function handler() {}');
+      });
 
       const result = await runTool(
         validateCheckoutTool,
@@ -921,8 +919,331 @@ describe('commerce skill MCP tools', () => {
       expect(result).toEqual(expect.objectContaining({
         status: 'passed',
         paymentTemplatesInstalled: true,
+        commerceUiTemplatesInstalled: true,
         findings: [],
       }));
+    });
+
+    it('fails checkout validation when payment templates are installed but order-status is not wired', async () => {
+      mockWorkspaceStat.mockResolvedValue({
+        entries: [
+          {
+            path: 'src/server/api/commerce/checkout/POST.ts',
+            kind: 'file',
+            size: 100,
+            modifiedAt: '2026-06-24T00:00:00.000Z',
+          },
+          {
+            path: 'src/server/api/commerce/order-status/GET.ts',
+            kind: 'file',
+            size: 100,
+            modifiedAt: '2026-06-24T00:00:00.000Z',
+          },
+          {
+            path: 'src/lib/commerce/create-checkout-session.ts',
+            kind: 'file',
+            size: 100,
+            modifiedAt: '2026-06-24T00:00:00.000Z',
+          },
+          {
+            path: 'src/server/api/commerce/cart/POST.ts',
+            kind: 'file',
+            size: 100,
+            modifiedAt: '2026-06-24T00:00:00.000Z',
+          },
+          {
+            path: 'src/server/api/commerce/products/GET.ts',
+            kind: 'file',
+            size: 100,
+            modifiedAt: '2026-06-24T00:00:00.000Z',
+          },
+        ],
+      });
+      mockWorkspaceTree.mockResolvedValue({
+        truncated: false,
+        entries: [
+          {
+            path: 'src/routes/cart.tsx',
+            kind: 'file',
+            size: 100,
+            modifiedAt: '2026-06-24T00:00:00.000Z',
+          },
+        ],
+      });
+      mockWorkspaceReadText.mockResolvedValue(
+        "const data = await fetch('/api/commerce/checkout'); window.location.assign(data.url);"
+      );
+
+      const result = await runTool(
+        validateCheckoutTool,
+        { expectCheckout: true },
+        { socketId: 'socket-1', metadata: { appId: 'app-1' } }
+      ) as Record<string, unknown>;
+
+      expect(result).toEqual(expect.objectContaining({
+        status: 'failed',
+        paymentTemplatesInstalled: true,
+        commerceUiTemplatesInstalled: true,
+      }));
+      expect(result.findings).toEqual(expect.arrayContaining([
+        expect.objectContaining({ code: 'order_status_not_wired' }),
+      ]));
+    });
+
+    it('warns when order-status is wired but success page never checks for Paid status', async () => {
+      mockWorkspaceStat.mockResolvedValue({
+        entries: [
+          {
+            path: 'src/server/api/commerce/checkout/POST.ts',
+            kind: 'file',
+            size: 100,
+            modifiedAt: '2026-06-24T00:00:00.000Z',
+          },
+          {
+            path: 'src/server/api/commerce/order-status/GET.ts',
+            kind: 'file',
+            size: 100,
+            modifiedAt: '2026-06-24T00:00:00.000Z',
+          },
+          {
+            path: 'src/lib/commerce/create-checkout-session.ts',
+            kind: 'file',
+            size: 100,
+            modifiedAt: '2026-06-24T00:00:00.000Z',
+          },
+          {
+            path: 'src/server/api/commerce/cart/POST.ts',
+            kind: 'file',
+            size: 100,
+            modifiedAt: '2026-06-24T00:00:00.000Z',
+          },
+          {
+            path: 'src/server/api/commerce/products/GET.ts',
+            kind: 'file',
+            size: 100,
+            modifiedAt: '2026-06-24T00:00:00.000Z',
+          },
+        ],
+      });
+      mockWorkspaceTree.mockResolvedValue({
+        truncated: false,
+        entries: [
+          { path: 'src/routes/cart.tsx', kind: 'file', size: 100, modifiedAt: '2026-06-24T00:00:00.000Z' },
+          { path: 'src/routes/order-success.tsx', kind: 'file', size: 100, modifiedAt: '2026-06-24T00:00:00.000Z' },
+        ],
+      });
+      mockWorkspaceReadText.mockImplementation(({ path }: { path: string }) => {
+        const contentMap: Record<string, string> = {
+          'src/routes/cart.tsx':
+            "const data = await fetch('/api/commerce/checkout'); window.location.assign(data.url);",
+          'src/routes/order-success.tsx':
+            "const order = await fetch('/api/commerce/order-status?orderId=' + orderId).then(r => r.json()); if (order) { clearCart(); showConfirmation(); }",
+        };
+        return Promise.resolve(contentMap[path] ?? 'export default async function handler() {}');
+      });
+
+      const result = await runTool(
+        validateCheckoutTool,
+        { expectCheckout: true },
+        { socketId: 'socket-1', metadata: { appId: 'app-1' } }
+      ) as Record<string, unknown>;
+
+      expect(result).toEqual(expect.objectContaining({
+        status: 'passed',
+        paymentTemplatesInstalled: true,
+        commerceUiTemplatesInstalled: true,
+      }));
+      expect(result.findings).toEqual(expect.arrayContaining([
+        expect.objectContaining({ code: 'success_page_missing_paid_status_gate', severity: 'warning' }),
+      ]));
+    });
+
+    it('passes when order-status is wired and success page gates on fulfilled status', async () => {
+      mockWorkspaceStat.mockResolvedValue({
+        entries: [
+          {
+            path: 'src/server/api/commerce/checkout/POST.ts',
+            kind: 'file',
+            size: 100,
+            modifiedAt: '2026-06-24T00:00:00.000Z',
+          },
+          {
+            path: 'src/server/api/commerce/order-status/GET.ts',
+            kind: 'file',
+            size: 100,
+            modifiedAt: '2026-06-24T00:00:00.000Z',
+          },
+          {
+            path: 'src/lib/commerce/create-checkout-session.ts',
+            kind: 'file',
+            size: 100,
+            modifiedAt: '2026-06-24T00:00:00.000Z',
+          },
+          {
+            path: 'src/server/api/commerce/cart/POST.ts',
+            kind: 'file',
+            size: 100,
+            modifiedAt: '2026-06-24T00:00:00.000Z',
+          },
+          {
+            path: 'src/server/api/commerce/products/GET.ts',
+            kind: 'file',
+            size: 100,
+            modifiedAt: '2026-06-24T00:00:00.000Z',
+          },
+        ],
+      });
+      mockWorkspaceTree.mockResolvedValue({
+        truncated: false,
+        entries: [
+          { path: 'src/routes/cart.tsx', kind: 'file', size: 100, modifiedAt: '2026-06-24T00:00:00.000Z' },
+          { path: 'src/routes/order-success.tsx', kind: 'file', size: 100, modifiedAt: '2026-06-24T00:00:00.000Z' },
+        ],
+      });
+      mockWorkspaceReadText.mockImplementation(({ path }: { path: string }) => {
+        const contentMap: Record<string, string> = {
+          'src/routes/cart.tsx':
+            "const data = await fetch('/api/commerce/checkout'); window.location.assign(data.url);",
+          'src/routes/order-success.tsx':
+            "const order = await fetch('/api/commerce/order-status?orderId=' + orderId).then(r => r.json()); if (order.status === 'fulfilled') { clearCart(); showConfirmation(); }",
+        };
+        return Promise.resolve(contentMap[path] ?? 'export default async function handler() {}');
+      });
+
+      const result = await runTool(
+        validateCheckoutTool,
+        { expectCheckout: true },
+        { socketId: 'socket-1', metadata: { appId: 'app-1' } }
+      );
+
+      expect(result).toEqual(expect.objectContaining({
+        status: 'passed',
+        paymentTemplatesInstalled: true,
+        commerceUiTemplatesInstalled: true,
+        findings: [],
+      }));
+    });
+
+    it('passes when success page gates on uppercase PAID (real GoDaddy API casing)', async () => {
+      const allTemplateEntries = [
+        { path: 'src/server/api/commerce/checkout/POST.ts', kind: 'file', size: 100, modifiedAt: '2026-06-24T00:00:00.000Z' },
+        { path: 'src/server/api/commerce/order-status/GET.ts', kind: 'file', size: 100, modifiedAt: '2026-06-24T00:00:00.000Z' },
+        { path: 'src/lib/commerce/create-checkout-session.ts', kind: 'file', size: 100, modifiedAt: '2026-06-24T00:00:00.000Z' },
+        { path: 'src/server/api/commerce/cart/POST.ts', kind: 'file', size: 100, modifiedAt: '2026-06-24T00:00:00.000Z' },
+        { path: 'src/server/api/commerce/products/GET.ts', kind: 'file', size: 100, modifiedAt: '2026-06-24T00:00:00.000Z' },
+      ];
+      mockWorkspaceStat.mockResolvedValue({ entries: allTemplateEntries });
+      mockWorkspaceTree.mockResolvedValue({
+        truncated: false,
+        entries: [
+          { path: 'src/routes/cart.tsx', kind: 'file', size: 100, modifiedAt: '2026-06-24T00:00:00.000Z' },
+          { path: 'src/routes/order-success.tsx', kind: 'file', size: 100, modifiedAt: '2026-06-24T00:00:00.000Z' },
+        ],
+      });
+      mockWorkspaceReadText.mockImplementation(({ path }: { path: string }) => {
+        const contentMap: Record<string, string> = {
+          'src/routes/cart.tsx':
+            "const data = await fetch('/api/commerce/checkout'); window.location.assign(data.url);",
+          'src/routes/order-success.tsx':
+            "const order = await fetch('/api/commerce/order-status?orderId=' + orderId).then(r => r.json()); if (order.status === 'PAID') { showConfirmation(); }",
+        };
+        return Promise.resolve(contentMap[path] ?? 'export default async function handler() {}');
+      });
+
+      const result = await runTool(validateCheckoutTool, { expectCheckout: true }, { socketId: 'socket-1', metadata: { appId: 'app-1' } });
+
+      expect(result).toEqual(expect.objectContaining({ status: 'passed', findings: [] }));
+    });
+
+    it('passes when success page normalizes with toLowerCase and checks paid', async () => {
+      const allTemplateEntries = [
+        { path: 'src/server/api/commerce/checkout/POST.ts', kind: 'file', size: 100, modifiedAt: '2026-06-24T00:00:00.000Z' },
+        { path: 'src/server/api/commerce/order-status/GET.ts', kind: 'file', size: 100, modifiedAt: '2026-06-24T00:00:00.000Z' },
+        { path: 'src/lib/commerce/create-checkout-session.ts', kind: 'file', size: 100, modifiedAt: '2026-06-24T00:00:00.000Z' },
+        { path: 'src/server/api/commerce/cart/POST.ts', kind: 'file', size: 100, modifiedAt: '2026-06-24T00:00:00.000Z' },
+        { path: 'src/server/api/commerce/products/GET.ts', kind: 'file', size: 100, modifiedAt: '2026-06-24T00:00:00.000Z' },
+      ];
+      mockWorkspaceStat.mockResolvedValue({ entries: allTemplateEntries });
+      mockWorkspaceTree.mockResolvedValue({
+        truncated: false,
+        entries: [
+          { path: 'src/routes/cart.tsx', kind: 'file', size: 100, modifiedAt: '2026-06-24T00:00:00.000Z' },
+          { path: 'src/routes/order-success.tsx', kind: 'file', size: 100, modifiedAt: '2026-06-24T00:00:00.000Z' },
+        ],
+      });
+      mockWorkspaceReadText.mockImplementation(({ path }: { path: string }) => {
+        const contentMap: Record<string, string> = {
+          'src/routes/cart.tsx':
+            "const data = await fetch('/api/commerce/checkout'); window.location.assign(data.url);",
+          'src/routes/order-success.tsx':
+            "const order = await fetch('/api/commerce/order-status?orderId=' + orderId).then(r => r.json()); if (order.status.toLowerCase() === 'paid') { showConfirmation(); }",
+        };
+        return Promise.resolve(contentMap[path] ?? 'export default async function handler() {}');
+      });
+
+      const result = await runTool(validateCheckoutTool, { expectCheckout: true }, { socketId: 'socket-1', metadata: { appId: 'app-1' } });
+
+      expect(result).toEqual(expect.objectContaining({ status: 'passed', findings: [] }));
+    });
+
+    it('fails when cart/product routes are used but commerce/ui templates are not installed', async () => {
+      mockWorkspaceStat.mockResolvedValue({
+        entries: [
+          {
+            path: 'src/server/api/commerce/checkout/POST.ts',
+            kind: 'file',
+            size: 100,
+            modifiedAt: '2026-06-24T00:00:00.000Z',
+          },
+          {
+            path: 'src/server/api/commerce/order-status/GET.ts',
+            kind: 'file',
+            size: 100,
+            modifiedAt: '2026-06-24T00:00:00.000Z',
+          },
+          {
+            path: 'src/lib/commerce/create-checkout-session.ts',
+            kind: 'file',
+            size: 100,
+            modifiedAt: '2026-06-24T00:00:00.000Z',
+          },
+          // commerce/ui templates intentionally absent
+        ],
+      });
+      mockWorkspaceTree.mockResolvedValue({
+        truncated: false,
+        entries: [
+          { path: 'src/routes/products.tsx', kind: 'file', size: 100, modifiedAt: '2026-06-24T00:00:00.000Z' },
+          { path: 'src/routes/cart.tsx', kind: 'file', size: 100, modifiedAt: '2026-06-24T00:00:00.000Z' },
+          { path: 'src/routes/order-success.tsx', kind: 'file', size: 100, modifiedAt: '2026-06-24T00:00:00.000Z' },
+        ],
+      });
+      mockWorkspaceReadText.mockImplementation(({ path }: { path: string }) => {
+        const contentMap: Record<string, string> = {
+          'src/routes/products.tsx':
+            "const products = await fetch('/api/commerce/products').then(r => r.json());",
+          'src/routes/cart.tsx':
+            "const cart = await fetch('/api/commerce/cart', { method: 'POST' }).then(r => r.json()); const checkout = await fetch('/api/commerce/checkout'); window.location.assign(checkout.url);",
+          'src/routes/order-success.tsx':
+            "const order = await fetch('/api/commerce/order-status?orderId=' + orderId).then(r => r.json()); if (order.status === 'Paid') { clearCart(); showConfirmation(); }",
+        };
+        return Promise.resolve(contentMap[path] ?? 'export default async function handler() {}');
+      });
+
+      const result = await runTool(
+        validateCheckoutTool,
+        { expectCheckout: true },
+        { socketId: 'socket-1', metadata: { appId: 'app-1' } }
+      ) as Record<string, unknown>;
+
+      expect(result).toEqual(expect.objectContaining({
+        status: 'failed',
+        paymentTemplatesInstalled: true,
+        commerceUiTemplatesInstalled: false,
+      }));
+      expect(result.findings).toEqual(expect.arrayContaining([
+        expect.objectContaining({ code: 'commerce_ui_templates_missing' }),
+      ]));
     });
 
     it('ignores redirectUrl mentions in installed route comments', async () => {
@@ -946,6 +1267,18 @@ describe('commerce skill MCP tools', () => {
             size: 100,
             modifiedAt: '2026-06-24T00:00:00.000Z',
           },
+          {
+            path: 'src/server/api/commerce/cart/POST.ts',
+            kind: 'file',
+            size: 100,
+            modifiedAt: '2026-06-24T00:00:00.000Z',
+          },
+          {
+            path: 'src/server/api/commerce/products/GET.ts',
+            kind: 'file',
+            size: 100,
+            modifiedAt: '2026-06-24T00:00:00.000Z',
+          },
         ],
       });
       mockWorkspaceTree.mockResolvedValue({
@@ -958,6 +1291,12 @@ describe('commerce skill MCP tools', () => {
             modifiedAt: '2026-06-24T00:00:00.000Z',
           },
           {
+            path: 'src/routes/checkout/success.tsx',
+            kind: 'file',
+            size: 100,
+            modifiedAt: '2026-06-24T00:00:00.000Z',
+          },
+          {
             path: 'src/server/api/commerce/checkout/POST.ts',
             kind: 'file',
             size: 100,
@@ -965,34 +1304,19 @@ describe('commerce skill MCP tools', () => {
           },
         ],
       });
-      mockWorkspaceReadText.mockImplementation(({ path }: { path: string }) =>
-        Promise.resolve(
-          path === 'src/components/CartDrawer.tsx'
-            ? "const data = await fetch('/api/commerce/checkout'); window.location.assign(data.url);"
-            : `/**
+      mockWorkspaceReadText.mockImplementation(({ path }: { path: string }) => {
+        const contentMap: Record<string, string> = {
+          'src/components/CartDrawer.tsx':
+            "const data = await fetch('/api/commerce/checkout'); window.location.assign(data.url);",
+          'src/routes/checkout/success.tsx':
+            "const res = await fetch('/api/commerce/order-status?orderId=' + orderId).then(r => r.json()); if (res.order.status === 'Paid') { showConfirmation(); }",
+        };
+        return Promise.resolve(contentMap[path] ?? `/**
                    * Checkout returns { url, id, draftOrderId }.
                    * It does not return redirectUrl.
                    */
-                  export async function POST() {}`
-        )
-      );
-      mockWorkspaceView.mockImplementation(({ path }: { path: string }) =>
-        Promise.resolve({
-          content:
-            path === 'src/components/CartDrawer.tsx'
-              ? "const data = await fetch('/api/commerce/checkout'); window.location.assign(data.url);"
-              : `/**
-                   * Checkout returns { url, id, draftOrderId }.
-                   * It does not return redirectUrl.
-                   */
-                  export async function POST() {}`,
-          encoding: 'utf-8',
-          lines: 5,
-          size: 100,
-          truncated: false,
-          path,
-        })
-      );
+                  export async function POST() {}`);
+      });
 
       const result = await runTool(
         validateCheckoutTool,
@@ -1003,6 +1327,7 @@ describe('commerce skill MCP tools', () => {
       expect(result).toEqual(expect.objectContaining({
         status: 'passed',
         paymentTemplatesInstalled: true,
+        commerceUiTemplatesInstalled: true,
         findings: [],
       }));
     });
@@ -1028,6 +1353,18 @@ describe('commerce skill MCP tools', () => {
             size: 100,
             modifiedAt: '2026-06-24T00:00:00.000Z',
           },
+          {
+            path: 'src/server/api/commerce/cart/POST.ts',
+            kind: 'file',
+            size: 100,
+            modifiedAt: '2026-06-24T00:00:00.000Z',
+          },
+          {
+            path: 'src/server/api/commerce/products/GET.ts',
+            kind: 'file',
+            size: 100,
+            modifiedAt: '2026-06-24T00:00:00.000Z',
+          },
         ],
       });
       mockWorkspaceTree.mockResolvedValue({
@@ -1044,15 +1381,6 @@ describe('commerce skill MCP tools', () => {
       mockWorkspaceReadText.mockResolvedValue(
         "const data = await fetch('/api/commerce/checkout'); window.location.assign(data.redirectUrl);"
       );
-      mockWorkspaceView.mockResolvedValue({
-        content:
-          "const data = await fetch('/api/commerce/checkout'); window.location.assign(data.redirectUrl);",
-        encoding: 'utf-8',
-        lines: 1,
-        size: 100,
-        truncated: false,
-        path: 'src/components/BuyButton.tsx',
-      });
 
       const result = await runTool(
         validateCheckoutTool,
@@ -1063,6 +1391,7 @@ describe('commerce skill MCP tools', () => {
       expect(result).toEqual(expect.objectContaining({
         status: 'failed',
         paymentTemplatesInstalled: true,
+        commerceUiTemplatesInstalled: true,
       }));
       expect(result.findings).toEqual(expect.arrayContaining([
         expect.objectContaining({

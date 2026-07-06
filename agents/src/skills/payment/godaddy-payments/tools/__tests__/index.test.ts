@@ -11,6 +11,7 @@ const {
   mockUpsertBinding,
   mockWorkspaceWrite,
   mockWorkspaceView,
+  mockRunCheckoutGuardOnWorkspace,
   mockWorkspaceReadText,
 } = vi.hoisted(() => ({
   mockExecuteAction: vi.fn(),
@@ -20,6 +21,7 @@ const {
   mockUpsertBinding: vi.fn(),
   mockWorkspaceWrite: vi.fn(),
   mockWorkspaceView: vi.fn(),
+  mockRunCheckoutGuardOnWorkspace: vi.fn(),
   mockWorkspaceReadText: vi.fn(),
 }));
 
@@ -40,12 +42,17 @@ vi.mock('../../../../../workspace/index.js', () => ({
   createForWorkspace: mockCreateForWorkspace,
 }));
 
+vi.mock('../../../../../skills/commerce/checkout-guard-workspace.js', () => ({
+  runCheckoutGuardOnWorkspace: mockRunCheckoutGuardOnWorkspace,
+}));
+
 const {
   provisionTool,
   storeChannelsGetTool,
   storeGetTool,
   storeListTool,
   tools,
+  hooks,
 } = await import('../index.js');
 
 function runTool(
@@ -64,6 +71,7 @@ describe('GoDaddy Payments skill MCP tools', () => {
     mockFindBindingByAppId.mockReset();
     mockGetActionService.mockReset();
     mockUpsertBinding.mockReset();
+    mockRunCheckoutGuardOnWorkspace.mockReset();
     mockGetActionService.mockReturnValue({
       executeAction: mockExecuteAction,
     });
@@ -491,5 +499,62 @@ describe('GoDaddy Payments skill MCP tools', () => {
     const result = await runTool(storeListTool, {});
 
     expect(result).toMatch(/godaddy-payments__store_list error: .*client action service/);
+  });
+
+  describe('#hooks.onInstall', () => {
+    it('returns null when no appId is provided', async () => {
+      const result = await hooks.onInstall?.({ skillName: 'payment/godaddy-payments' });
+
+      expect(mockRunCheckoutGuardOnWorkspace).not.toHaveBeenCalled();
+      expect(result).toBeNull();
+    });
+
+    it('calls runCheckoutGuardOnWorkspace with appId and returns the result with NEXT_STEP', async () => {
+      const guardResult = {
+        status: 'passed',
+        findings: [],
+        paymentTemplatesInstalled: true,
+        commerceUiTemplatesInstalled: true,
+      };
+      mockRunCheckoutGuardOnWorkspace.mockResolvedValue(guardResult);
+
+      const result = await hooks.onInstall?.({ skillName: 'payment/godaddy-payments', appId: 'app-1' });
+
+      expect(mockRunCheckoutGuardOnWorkspace).toHaveBeenCalledWith('app-1');
+      expect(result).toEqual({
+        ...guardResult,
+        NEXT_STEP: expect.stringContaining('commerce__validate_checkout'),
+      });
+    });
+
+    it('filters out wiring findings that are always absent at install time', async () => {
+      const guardResult = {
+        status: 'failed',
+        findings: [
+          { code: 'order_status_not_wired', severity: 'error', message: 'order-status not wired' },
+          { code: 'success_page_missing_paid_status_gate', severity: 'warning', message: 'no paid gate' },
+          { code: 'checkout_response_redirect_url', severity: 'error', message: 'wrong redirect field', path: 'src/checkout.tsx' },
+        ],
+        paymentTemplatesInstalled: true,
+        commerceUiTemplatesInstalled: false,
+      };
+      mockRunCheckoutGuardOnWorkspace.mockResolvedValue(guardResult);
+
+      const result = await hooks.onInstall?.({ skillName: 'payment/godaddy-payments', appId: 'app-1' }) as Record<string, unknown>;
+
+      expect((result.findings as unknown[]).map((f: unknown) => (f as Record<string, unknown>).code)).toEqual([
+        'checkout_response_redirect_url',
+      ]);
+      expect(result.status).toBe('failed');
+      expect(result.NEXT_STEP).toEqual(expect.stringContaining('commerce__validate_checkout'));
+    });
+
+    it('returns null and does not throw when runCheckoutGuardOnWorkspace throws', async () => {
+      mockRunCheckoutGuardOnWorkspace.mockRejectedValue(new Error('workspace unavailable'));
+
+      const result = await hooks.onInstall?.({ skillName: 'payment/godaddy-payments', appId: 'app-1' });
+
+      expect(result).toBeNull();
+    });
   });
 });
