@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { useEffect, useMemo, useRef } from 'react';
 import Box from '@ux/box';
 import Growl from '@ux/growl';
-import Apps2Icon from '@ux/icon/apps2'
+import ChatIcon from '@ux/icon/chat'
 import CodeIcon from '@ux/icon/code'
 import ColorPaletteIcon from '@ux/icon/color-palette'
 import ConversationsIcon from '@ux/icon/conversations'
@@ -362,8 +362,8 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
           >
             <ButtonGroup.Item
               value={MobileMode.TOOLS}
-              icon={<Apps2Icon className="size-2.5" />}
-              label={t('builder_preview_button_tools')}
+              icon={<ChatIcon className="size-2.5 rtl:scale-x-[-1]" />}
+              label={t('builder_chat_toolbar_button_chat')}
             />
             <ButtonGroup.Item
               value={MobileMode.PREVIEW}
