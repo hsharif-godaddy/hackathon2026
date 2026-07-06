@@ -80,7 +80,8 @@ export enum ViewMode {
   MARKETING = 'marketing',
   DOCS = 'docs',
   AUTOMATIONS = 'automations',
-  MEDIA = 'media'
+  MEDIA = 'media',
+  DESIGN_KIT_BUILD = 'design-kit-build'
 }
 
 export type MarketingView = 'list' | 'detail' | 'socialPost'

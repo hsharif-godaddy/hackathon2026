@@ -2,6 +2,7 @@
  * @vitest-environment jsdom
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { DESIGN_KIT_BUILD_CANVAS_ID } from '@airo/shared'
 import { renderHook } from '@testing-library/react'
 
 import { DESIGN_KIT_WIZARD_PROFILE } from '@/app/[market]/develop/components/preview/design-kit-wizard/isDesignKitWizardProfile'
@@ -16,6 +17,7 @@ const OTHER_APP_ID = 'app-456'
 
 let mockAppId: string | undefined
 let mockCommanderEnabled: boolean | undefined
+let mockServerDrivenEnabled: boolean | undefined
 let mockAgentProfile: string | null | undefined
 let mockPersistedPhase: WizardPhase | undefined
 let mockBrandError: Error | null
@@ -27,7 +29,8 @@ vi.mock('@/app/[market]/develop/components/utils', () => ({
 }))
 
 vi.mock('@/hooks/useSwitchboard', () => ({
-  useSwitchboard: () => mockCommanderEnabled,
+  useSwitchboard: (flag: string) =>
+    flag === 'appbuilder-server-driven-layout' ? mockServerDrivenEnabled : mockCommanderEnabled,
   getSwitchboardValue: () => mockAgentProfile,
 }))
 
@@ -56,6 +59,12 @@ function setLiveWizardPhase(phase: WizardPhase | undefined): void {
   useWizardStore.setState({ phaseByApp: phase ? { [APP_ID]: phase } : {} })
 }
 
+function setServerDescriptor(descriptor: App['builderLayout']): void {
+  useDevelopPageStore.setState({
+    app: { id: APP_ID, builderLayout: descriptor } as unknown as App,
+  })
+}
+
 function setAppBuilt(initialBuildComplete: boolean): void {
   useDevelopPageStore.setState({ app: { id: APP_ID, initialBuildComplete } as unknown as App })
 }
@@ -64,6 +73,7 @@ describe('useBuilderLayout', () => {
   beforeEach(() => {
     mockAppId = APP_ID
     mockCommanderEnabled = false
+    mockServerDrivenEnabled = false
     mockAgentProfile = DESIGN_KIT_WIZARD_PROFILE
     mockPersistedPhase = undefined
     mockBrandError = null
@@ -71,110 +81,175 @@ describe('useBuilderLayout', () => {
     shipAnalyticsLogMock.mockClear()
     setLiveWizardPhase(undefined)
     useDevelopPageStore.setState({ app: null })
+    useWizardStore.setState({ builderLayoutByApp: {} })
   })
 
-  it('is Immersive for an in-progress design-kit session (live phase gathering)', () => {
-    setLiveWizardPhase('gathering')
-    const { result } = renderHook(() => useBuilderLayout())
-    expect(result.current).toBe(BuilderLayout.Immersive)
+  describe('flag ON — server descriptor is the authority', () => {
+    beforeEach(() => {
+      mockServerDrivenEnabled = true
+    })
+
+    it('renders Immersive from a server immersive descriptor', () => {
+      setServerDescriptor({
+        version: 1,
+        layout: 'immersive',
+        pinnedSurface: { canvasId: DESIGN_KIT_BUILD_CANVAS_ID },
+      })
+      const { result } = renderHook(() => useBuilderLayout())
+      expect(result.current).toBe(BuilderLayout.Immersive)
+    })
+
+    it('renders the base builder shell from a neutral builder descriptor (commander off → Develop)', () => {
+      setServerDescriptor({ version: 1, layout: 'default' })
+      const { result } = renderHook(() => useBuilderLayout())
+      expect(result.current).toBe(BuilderLayout.Develop)
+    })
+
+    it('renders Commander from a neutral builder descriptor when the commander flag is on', () => {
+      mockCommanderEnabled = true
+      setServerDescriptor({ version: 1, layout: 'default' })
+      const { result } = renderHook(() => useBuilderLayout())
+      expect(result.current).toBe(BuilderLayout.Commander)
+    })
+
+    it('prefers a live SSE descriptor from the wizard store over the App-record descriptor', () => {
+      setServerDescriptor({ version: 1, layout: 'default' })
+      useWizardStore.setState({
+        builderLayoutByApp: {
+          [APP_ID]: { version: 1, layout: 'immersive' },
+        },
+      })
+      const { result } = renderHook(() => useBuilderLayout())
+      expect(result.current).toBe(BuilderLayout.Immersive)
+    })
+
+    it('does NOT infer immersive from the wizard phase (phase is progress only)', () => {
+      setLiveWizardPhase('brand')
+      setServerDescriptor({ version: 1, layout: 'default' })
+      const { result } = renderHook(() => useBuilderLayout())
+      expect(result.current).toBe(BuilderLayout.Develop)
+    })
+
+    it('holds at base until the server layout resolves — never infers immersive from the phase (flag ON)', () => {
+      // Flag ON = server is the sole authority. Until the server layout resolves (no App-record
+      // value, no SSE yet) we render `base`, NOT the phase-inferred Immersive: the app-load
+      // skeleton covers this window, and phase inference must not compete with the server.
+      setLiveWizardPhase('brand')
+      useDevelopPageStore.setState({ app: { id: APP_ID } as unknown as App })
+      const { result } = renderHook(() => useBuilderLayout())
+      expect(result.current).toBe(BuilderLayout.Develop)
+    })
+
+    it('falls through to Develop when descriptor absent and not a design-kit session', () => {
+      mockAgentProfile = 'default'
+      useDevelopPageStore.setState({ app: { id: APP_ID } as unknown as App })
+      const { result } = renderHook(() => useBuilderLayout())
+      expect(result.current).toBe(BuilderLayout.Develop)
+    })
   })
 
-  it('is Immersive for a fresh design-kit session before any phase is known', () => {
-    // No live phase, no persisted phase yet (brand-data not loaded / a fresh create).
-    const { result } = renderHook(() => useBuilderLayout())
-    expect(result.current).toBe(BuilderLayout.Immersive)
-  })
+  describe('flag OFF — byte-identical to pre-server-driven main (phase inference)', () => {
+    it('is Immersive for an in-progress design-kit session (live phase gathering)', () => {
+      setLiveWizardPhase('gathering')
+      const { result } = renderHook(() => useBuilderLayout())
+      expect(result.current).toBe(BuilderLayout.Immersive)
+    })
 
-  it('hands off to Develop when the live wizard phase is ready', () => {
-    setLiveWizardPhase('ready')
-    const { result } = renderHook(() => useBuilderLayout())
-    expect(result.current).toBe(BuilderLayout.Develop)
-  })
+    it('is Immersive for a fresh design-kit session before any phase is known', () => {
+      const { result } = renderHook(() => useBuilderLayout())
+      expect(result.current).toBe(BuilderLayout.Immersive)
+    })
 
-  it('hands off to Develop on reload of a finished build (persisted phase ready, live store empty)', () => {
-    // Reload: the live store is empty, but brand-data reports the finished phase, so the
-    // app must NOT re-enter the takeover (the mobile-stuck / desktop-flash regression).
-    mockPersistedPhase = 'ready'
-    setLiveWizardPhase(undefined)
-    const { result } = renderHook(() => useBuilderLayout())
-    expect(result.current).toBe(BuilderLayout.Develop)
-  })
+    it('hands off to Develop when the live wizard phase is ready', () => {
+      setLiveWizardPhase('ready')
+      const { result } = renderHook(() => useBuilderLayout())
+      expect(result.current).toBe(BuilderLayout.Develop)
+    })
 
-  it('hydrates the persisted phase into the wizard store so the decision is stable across remounts', () => {
-    // The develop subtree remounts during load; persisting the phase to the singleton store
-    // means a fresh mount reads `ready` synchronously instead of restarting at Immersive
-    // (the reload flicker). Confirms the store gets seeded from brand-data.
-    mockPersistedPhase = 'ready'
-    setLiveWizardPhase(undefined)
-    expect(useWizardStore.getState().phaseByApp[APP_ID]).toBeUndefined()
-    renderHook(() => useBuilderLayout())
-    expect(useWizardStore.getState().phaseByApp[APP_ID]).toBe('ready')
-  })
+    it('hands off to Develop on reload of a finished build (persisted phase ready, live store empty)', () => {
+      mockPersistedPhase = 'ready'
+      setLiveWizardPhase(undefined)
+      const { result } = renderHook(() => useBuilderLayout())
+      expect(result.current).toBe(BuilderLayout.Develop)
+    })
 
-  it('does not clobber a live (SSE-driven) phase when brand-data reports a different one', () => {
-    mockPersistedPhase = 'ready'
-    setLiveWizardPhase('website')
-    renderHook(() => useBuilderLayout())
-    expect(useWizardStore.getState().phaseByApp[APP_ID]).toBe('website')
-  })
+    it('hydrates the persisted phase into the wizard store so the decision is stable across remounts', () => {
+      mockPersistedPhase = 'ready'
+      setLiveWizardPhase(undefined)
+      expect(useWizardStore.getState().phaseByApp[APP_ID]).toBeUndefined()
+      renderHook(() => useBuilderLayout())
+      expect(useWizardStore.getState().phaseByApp[APP_ID]).toBe('ready')
+    })
 
-  it('hands off to the builder when brand-data ERRORS but the App record says the build completed', () => {
-    // A hard brand-data failure leaves the persisted phase unreadable; falling back to
-    // app.initialBuildComplete keeps a finished app out of the takeover (it would otherwise
-    // be stuck on mobile, where DesignKitWizard never mounts to retry the fetch).
-    mockPersistedPhase = undefined
-    mockBrandError = new Error('brand-data 500')
-    setLiveWizardPhase(undefined)
-    setAppBuilt(true)
-    const { result } = renderHook(() => useBuilderLayout())
-    expect(result.current).toBe(BuilderLayout.Develop)
-  })
+    it('does not clobber a live (SSE-driven) phase when brand-data reports a different one', () => {
+      mockPersistedPhase = 'ready'
+      setLiveWizardPhase('website')
+      renderHook(() => useBuilderLayout())
+      expect(useWizardStore.getState().phaseByApp[APP_ID]).toBe('website')
+    })
 
-  it('stays Immersive on a brand-data error when the build is NOT complete (still gathering)', () => {
-    mockPersistedPhase = undefined
-    mockBrandError = new Error('brand-data 500')
-    setLiveWizardPhase(undefined)
-    setAppBuilt(false)
-    const { result } = renderHook(() => useBuilderLayout())
-    expect(result.current).toBe(BuilderLayout.Immersive)
-  })
+    it('hands off to the builder when brand-data ERRORS but the App record says the build completed', () => {
+      mockPersistedPhase = undefined
+      mockBrandError = new Error('brand-data 500')
+      setLiveWizardPhase(undefined)
+      setAppBuilt(true)
+      const { result } = renderHook(() => useBuilderLayout())
+      expect(result.current).toBe(BuilderLayout.Develop)
+    })
 
-  it('hands off to Commander when the commander flag is on and the build is finished', () => {
-    mockCommanderEnabled = true
-    mockPersistedPhase = 'ready'
-    const { result } = renderHook(() => useBuilderLayout())
-    expect(result.current).toBe(BuilderLayout.Commander)
-  })
+    it('stays Immersive on a brand-data error when the build is NOT complete (still gathering)', () => {
+      mockPersistedPhase = undefined
+      mockBrandError = new Error('brand-data 500')
+      setLiveWizardPhase(undefined)
+      setAppBuilt(false)
+      const { result } = renderHook(() => useBuilderLayout())
+      expect(result.current).toBe(BuilderLayout.Immersive)
+    })
 
-  it('is Develop for a non-design-kit session with the commander flag off', () => {
-    mockAgentProfile = 'default'
-    const { result } = renderHook(() => useBuilderLayout())
-    expect(result.current).toBe(BuilderLayout.Develop)
-  })
+    it('hands off to Commander when the commander flag is on and the build is finished', () => {
+      mockCommanderEnabled = true
+      mockPersistedPhase = 'ready'
+      const { result } = renderHook(() => useBuilderLayout())
+      expect(result.current).toBe(BuilderLayout.Commander)
+    })
 
-  it('is Commander for a non-design-kit session with the commander flag on', () => {
-    mockAgentProfile = 'default'
-    mockCommanderEnabled = true
-    const { result } = renderHook(() => useBuilderLayout())
-    expect(result.current).toBe(BuilderLayout.Commander)
-  })
+    it('is Develop for a non-design-kit session with the commander flag off', () => {
+      mockAgentProfile = 'default'
+      const { result } = renderHook(() => useBuilderLayout())
+      expect(result.current).toBe(BuilderLayout.Develop)
+    })
 
-  it('honors an explicit layoutProp over the commander flag (when not immersive)', () => {
-    mockAgentProfile = 'default'
-    const { result } = renderHook(() => useBuilderLayout(BuilderLayout.Commander))
-    expect(result.current).toBe(BuilderLayout.Commander)
-  })
+    it('is Commander for a non-design-kit session with the commander flag on', () => {
+      mockAgentProfile = 'default'
+      mockCommanderEnabled = true
+      const { result } = renderHook(() => useBuilderLayout())
+      expect(result.current).toBe(BuilderLayout.Commander)
+    })
 
-  it('the immersive takeover wins over an explicit layoutProp', () => {
-    setLiveWizardPhase('gathering')
-    const { result } = renderHook(() => useBuilderLayout(BuilderLayout.Develop))
-    expect(result.current).toBe(BuilderLayout.Immersive)
-  })
+    it('honors an explicit layoutProp over the commander flag (when not immersive)', () => {
+      mockAgentProfile = 'default'
+      const { result } = renderHook(() => useBuilderLayout(BuilderLayout.Commander))
+      expect(result.current).toBe(BuilderLayout.Commander)
+    })
 
-  it('is never Immersive without an appId, even for a design-kit profile', () => {
-    mockAppId = undefined
-    const { result } = renderHook(() => useBuilderLayout())
-    expect(result.current).toBe(BuilderLayout.Develop)
+    it('the immersive takeover wins over an explicit layoutProp', () => {
+      setLiveWizardPhase('gathering')
+      const { result } = renderHook(() => useBuilderLayout(BuilderLayout.Develop))
+      expect(result.current).toBe(BuilderLayout.Immersive)
+    })
+
+    it('is never Immersive without an appId, even for a design-kit profile', () => {
+      mockAppId = undefined
+      const { result } = renderHook(() => useBuilderLayout())
+      expect(result.current).toBe(BuilderLayout.Develop)
+    })
+
+    it('ignores a present server descriptor while the flag is OFF', () => {
+      setServerDescriptor({ version: 1, layout: 'immersive' })
+      setLiveWizardPhase('ready')
+      const { result } = renderHook(() => useBuilderLayout())
+      expect(result.current).toBe(BuilderLayout.Develop)
+    })
   })
 
   describe('Hivemind commander cohort', () => {

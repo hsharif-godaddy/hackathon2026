@@ -303,7 +303,7 @@ function ChatPaneInner({
   // Flag: appbuilder-queue. Disabled during the immersive design-kit onboarding
   // takeover (hideToolbar is passed true from exactly one call site — the immersive
   // design-kit ChatPane in develop/[id]/page.tsx, rendered via useBuilderLayout →
-  // ImmersiveDesignKitLayout) so queued messages can't pile up and overwhelm the
+  // ImmersiveLayout) so queued messages can't pile up and overwhelm the
   // initial plan/agent or break the guided flow. Queuing re-enables automatically
   // once the build is ready (AIROBUILD-3228).
   const isQueueEnabled = Boolean(useSwitchboard('appbuilder-queue')) && !hideToolbar;

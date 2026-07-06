@@ -58,17 +58,20 @@ export default function DevelopSkeleton({ isFallback = false }: { isFallback?: b
   // gets a minimal header + a centered, large chat column, not the full develop chrome.
   const layout: BuilderLayout = useBuilderLayout()
 
-  // Gate on `mounted` like the mobile/desktop swap below: `useBuilderLayout` reads
-  // client-only switchboard data, so the server renders `Develop` (the normal skeleton)
-  // and only the client knows it's a design-kit (Immersive) session. Without the gate the
-  // client's first render would diverge from the SSR'd fallback → hydration mismatch.
-  if (mounted && layout === BuilderLayout.Immersive) {
+  // Choose the immersive placeholder as soon as we can read the layout. `useBuilderLayout`
+  // reads client-only switchboard data (undefined during SSR → `Develop`), so gating purely on
+  // `mounted` would force one full-develop-chrome frame before flipping to the immersive
+  // skeleton — the boot-time develop→immersive flash. `isFallback` (both call sites: the
+  // ProtectedRoute + Suspense fallbacks) is client-only and never SSR-hydrated, so it can
+  // commit to Immersive on the first paint with no hydration mismatch. The `mounted` path
+  // stays for any non-fallback render that could be SSR'd.
+  if ((mounted || isFallback) && layout === BuilderLayout.Immersive) {
     return (
       <div
         data-testid="develop-skeleton"
         className={`absolute inset-0 flex flex-col overflow-hidden bg-develop-bg transition-opacity duration-200 ${mounted || isFallback ? 'opacity-100' : 'opacity-0'}`}
       >
-        {/* Minimal header — mirrors DesignKitChatHeader (Airo logo + user menu only). */}
+        {/* Minimal header — mirrors ImmersiveHeader (Airo logo + user menu only). */}
         <header className="flex shrink-0 items-center justify-between gap-2 p-1.5 md:p-2.5">
           <div className="flex items-center gap-1">
             <StaticSkeleton width="60px" height="24px" />

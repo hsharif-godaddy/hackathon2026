@@ -1,3 +1,4 @@
+import { type BuilderLayoutDescriptor } from '@airo/shared'
 import { isRestoreMetadata, type RestoreActionMetadata } from '@airo/shared/chat'
 
 import { buildApiUrl } from '@/config/api'
@@ -35,6 +36,7 @@ export interface App {
   initialPrompt?: string
   status: AppStatusType
   initialBuildComplete?: boolean
+  builderLayout?: BuilderLayoutDescriptor
   createdAt: string
   updatedAt: string
 }

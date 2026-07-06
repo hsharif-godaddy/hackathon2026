@@ -9,6 +9,7 @@ import ConversationsIcon from '@ux/icon/conversations'
 import DatabaseIcon from '@ux/icon/database'
 import GraphIcon from '@ux/icon/graph'
 import ImageIcon from '@ux/icon/image'
+import LayoutIcon from '@ux/icon/layout'
 import LockedIcon from '@ux/icon/locked'
 import MegaphoneIcon from '@ux/icon/megaphone'
 import PageIcon from '@ux/icon/page'
@@ -47,6 +48,7 @@ export enum CanvasId {
   SettingsSso = 'settings.sso',
   Media = 'media',
   Docs = 'docs',
+  DesignKitBuild = 'design-kit-build',
 }
 
 export interface CanvasActivation {
@@ -268,6 +270,15 @@ export const CANVAS_REGISTRY: Record<CanvasId, CanvasDescriptor> = {
     dismissible: true,
     defaultOpen: false,
     activation: { viewMode: ViewMode.DOCS },
+  },
+  [CanvasId.DesignKitBuild]: {
+    id: CanvasId.DesignKitBuild,
+    labelKey: 'builder_canvas_designKitBuild',
+    fallbackLabel: 'Design Kit',
+    Icon: LayoutIcon,
+    dismissible: false,
+    defaultOpen: false,
+    activation: { viewMode: ViewMode.DESIGN_KIT_BUILD },
   },
 }
 

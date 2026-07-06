@@ -17,8 +17,12 @@ import path from 'node:path';
 import { Router, Request, Response, IRouter } from 'express';
 
 import multer from 'multer';
+import { type BuilderLayoutDescriptor, DEFAULT_BUILDER_LAYOUT, type DesignKitBuildPhase, designKitLayoutForPhase, normalizeBuilderLayout } from '@airo/shared';
 import { AppRepository } from '../../database/index.js';
 import type { App, CreateAppRequest, UpdateAppRequest } from '../../database/index.js';
+import { AppMetadataRepository } from '../../database/repositories/AppMetadataRepository.js';
+import { getKvMemoryStore } from '../../memory/adapters/index.js';
+import { workspaceScopeFromAppId } from '../../memory/interfaces/scope.js';
 import { DirectoryListingTool, DirectoryListingNotFoundError } from '../../tools/directory-listing.js';
 import { BINARY_FILE_REGEX } from '../../utils/file-types.js';
 import { createForWorkspace } from '../../workspace/index.js';
@@ -55,6 +59,33 @@ import { getScreenshotStore, type ScreenshotStore } from './screenshot-store.js'
 const router: IRouter = Router();
 
 const appRepo = new AppRepository();
+
+const appMetadataRepo = new AppMetadataRepository();
+
+async function readDesignKitBuildPhase(appId: string, customerId: string | undefined): Promise<DesignKitBuildPhase | undefined> {
+  const result = await getKvMemoryStore().get(workspaceScopeFromAppId(appId, customerId), 'brand.wizard.phase');
+  if (!result.exists || !result.value || typeof result.value !== 'object') return undefined;
+  const phase = (result.value as { phase?: unknown }).phase;
+  return typeof phase === 'string' ? (phase as DesignKitBuildPhase) : undefined;
+}
+
+async function resolveAppBuilderLayout(appId: string, customerId: string | undefined): Promise<BuilderLayoutDescriptor> {
+  const metadata = appMetadataRepo.get(appId);
+  if (metadata.builderLayout !== undefined) {
+    return normalizeBuilderLayout(metadata.builderLayout);
+  }
+  const designKitBuildPhase = await readDesignKitBuildPhase(appId, customerId);
+  // Without a phase we cannot tell a fresh design-kit app from a non-design-kit one, so DON'T
+  // durably persist a neutral descriptor — that would mislabel a design-kit app until its
+  // first phase write. Return the default transiently; the next setWizardStep persists the
+  // real descriptor. Persist-and-backfill only once a phase exists.
+  if (designKitBuildPhase === undefined) {
+    return DEFAULT_BUILDER_LAYOUT;
+  }
+  const builderLayout = designKitLayoutForPhase(true, designKitBuildPhase);
+  appMetadataRepo.merge(appId, { builderLayout });
+  return builderLayout;
+}
 
 /**
  * Whether the compliance-docs skill is available for the request's agent profile.
@@ -218,7 +249,7 @@ router.use(
 /**
  * GET /apps/:id - Get a specific app
  */
-router.get('/:id', (req: Request, res: Response) => {
+router.get('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     if (!id) {
@@ -230,7 +261,18 @@ router.get('/:id', (req: Request, res: Response) => {
       return res.status(404).json({ error: 'App not found' });
     }
 
-    return res.json({ app });
+    const customerId = (req as AuthenticatedRequest).agentContext?.customerId;
+    let builderLayout: BuilderLayoutDescriptor;
+    try {
+      builderLayout = await resolveAppBuilderLayout(id, customerId);
+    } catch (layoutError) {
+      log.forApp(id).warn('route.apps.get.builder_layout.failed', {
+        error: layoutError instanceof Error ? layoutError.message : String(layoutError),
+      });
+      builderLayout = normalizeBuilderLayout(undefined);
+    }
+
+    return res.json({ app: { ...app, builderLayout } });
   } catch (error) {
     const contextLogger = req.params.id ? log.forApp(req.params.id) : logger;
     log.error(contextLogger, 'route.apps.get.error', error as Error, {});

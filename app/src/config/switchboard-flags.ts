@@ -28,3 +28,5 @@ export const SWITCHBOARD_APPBUILDER_WAKE_AWARE_VAT_RECOVERY =
   'appbuilder-wake-aware-vat-recovery';
 export const SWITCHBOARD_APPBUILDER_SSO_MODAL_FALLBACK =
   'appbuilder-sso-modal-fallback';
+export const SWITCHBOARD_APPBUILDER_SERVER_DRIVEN_LAYOUT =
+  'appbuilder-server-driven-layout';

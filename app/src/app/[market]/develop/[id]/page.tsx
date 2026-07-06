@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import dynamic from 'next/dynamic'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { isDesignKitBuildCanvas } from '@airo/shared'
 import { useQueryClient } from '@tanstack/react-query'
 import Growl from '@ux/growl'
 
@@ -14,7 +15,7 @@ import ChatPane from '@/app/[market]/develop/components/chat/ChatPane'
 import ChatPaneLoader, { ImageReloadLoaderPhase, ResumeLoaderPhase } from '@/app/[market]/develop/components/chat/ChatPaneLoader'
 import ChatToolbar from '@/app/[market]/develop/components/chat/ChatToolbar'
 import DevelopSkeleton from '@/app/[market]/develop/components/DevelopSkeleton'
-import { ImmersiveDesignKitLayout } from '@/app/[market]/develop/components/ImmersiveDesignKitLayout'
+import { ImmersiveLayout } from '@/app/[market]/develop/components/ImmersiveLayout'
 import DevelopHeader from '@/app/[market]/develop/components/layout/Header'
 import PanelSkeleton from '@/app/[market]/develop/components/PanelSkeleton'
 import { DevelopCreditsModal, PaywallErrorFallback, RenewalPollingModal, UpgradePollingModal } from '@/app/[market]/develop/components/paywall'
@@ -22,6 +23,7 @@ import { CdsEsmPreload } from '@/app/[market]/develop/components/paywall/CdsEsmP
 import BrandBookView from '@/app/[market]/develop/components/preview/brand-book'
 import { BuildCompleteCelebration } from '@/app/[market]/develop/components/preview/design-kit-wizard/BuildCompleteCelebration'
 import { DesignKitPanels } from '@/app/[market]/develop/components/preview/design-kit-wizard/DesignKitPanels'
+import { DesignKitWizard } from '@/app/[market]/develop/components/preview/design-kit-wizard/DesignKitWizard'
 import { useIsDesignKitWizardProfile } from '@/app/[market]/develop/components/preview/design-kit-wizard/isDesignKitWizardProfile'
 import PreviewPane, { type PublishSnapshotRequestDetail } from '@/app/[market]/develop/components/preview/PreviewPane'
 import type { PreviewFixContext } from '@/app/[market]/develop/components/preview/types'
@@ -50,7 +52,7 @@ import ErrorBoundary from '@/components/ErrorBoundary'
 import { FEEDBACK_ID } from '@/components/feedback/utils'
 import { UpgradeModal } from '@/components/upgrade/UpgradeModal'
 import { buildDynamicApiUrl, dynamicApiConfigService } from '@/config/dynamic-api'
-import { SWITCHBOARD_APPBUILDER_CMS_INLINE_EDIT } from '@/config/switchboard-flags'
+import { SWITCHBOARD_APPBUILDER_CMS_INLINE_EDIT, SWITCHBOARD_APPBUILDER_SERVER_DRIVEN_LAYOUT } from '@/config/switchboard-flags'
 import { ChatProvider } from '@/contexts/ChatContext'
 import { prefetchGitRemoteConfig } from '@/hooks/github/useGitRemoteConfig'
 import { activateInitialBuildFunnel } from '@/hooks/shared/initialBuildFunnel'
@@ -226,8 +228,22 @@ function DevelopPageContent({ layout: layoutProp }: { layout?: BuilderLayout }) 
 
   // Immersive design-kit flow (AIROBUILD-2855): a chat-driven phase machine
   // (gathering → brand → website → ready). The immersive layout (see useBuilderLayout)
-  // runs until phase is 'ready'; `wizardPhase` also drives the immersive chat dock below.
+  // runs until phase is 'ready'; `wizardPhase` also drives whether the wizard panel docks.
   const wizardPhase = useWizardStore((s) => s.phaseByApp[appId])
+  const serverDrivenLayoutEnabled = useSwitchboard(SWITCHBOARD_APPBUILDER_SERVER_DRIVEN_LAYOUT)
+  const liveLayout = useWizardStore((s) => s.builderLayoutByApp[appId])
+  const appRecordLayout = useDevelopPageStore((s) => s.app?.builderLayout)
+  // Whether to dock the design-kit wizard beside the immersive chat. Flag-gated like
+  // useBuilderLayout: when server-driven layout is ON, the server descriptor's pinned surface
+  // decides (the design-kit-build canvas → dock). Flag OFF → fall back to phase-timed docking
+  // (byte-identical to main). agents ships the descriptor unconditionally, so without the flag
+  // gate a flag-OFF reload would dock from the GET descriptor. The immersive layout itself is
+  // feature-agnostic — it docks whatever panel it's handed; the design-kit specifics live here.
+  const serverLayout = serverDrivenLayoutEnabled ? (liveLayout ?? appRecordLayout) : undefined
+  const pinnedSurface = serverLayout?.layout === 'immersive' ? serverLayout.pinnedSurface : undefined
+  const dockDesignKitWizard: boolean = pinnedSurface
+    ? isDesignKitBuildCanvas(pinnedSurface.canvasId)
+    : wizardPhase === 'brand' || wizardPhase === 'website'
 
   // Logo-designer handoff → website build: switch Brand → Preview when the
   // first page file edit lands. localStorage-gated per appId so a reload after
@@ -1386,13 +1402,17 @@ function DevelopPageContent({ layout: layoutProp }: { layout?: BuilderLayout }) 
             wizard, which unmounts the instant the phase turns `ready`) so it survives the
             hand-off to the builder. */}
         {appId && <BuildCompleteCelebration appId={appId} />}
-        {layout === BuilderLayout.Immersive && appId ? (
-          <ImmersiveDesignKitLayout
-            appId={appId}
+        {/* Gate the whole layout choice on a real appId. A falsy appId can't render any shell
+            meaningfully (children need it), so show the skeleton rather than let a layout branch
+            silently pick the wrong shell — e.g. Immersive demoting to Commander/Develop. */}
+        {!appId ? (
+          <DevelopSkeleton />
+        ) : layout === BuilderLayout.Immersive ? (
+          <ImmersiveLayout
             isMobile={isMobile}
-            wizardPhase={wizardPhase}
+            pinnedPanelNode={dockDesignKitWizard ? <DesignKitWizard appId={appId} /> : undefined}
             chatPaneNode={
-              // The immersive takeover always uses the Develop chat (never the
+              // The immersive layout always uses the Develop chat (never the
               // Commander chat dock), even for the commander cohort — it's a
               // full-screen guided flow, so Commander-specific chat behavior is
               // intentionally not used here.

@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import type { BuilderLayoutDescriptor } from '@airo/shared'
 
 /**
  * Design Kit Wizard phase (AIROBUILD-2679 Phase 2; extended in AIROBUILD-2855).
@@ -27,6 +28,8 @@ interface WizardState {
   celebrateByApp: Record<string, boolean>
   triggerCelebration: (appId: string) => void
   clearCelebration: (appId: string) => void
+  builderLayoutByApp: Record<string, BuilderLayoutDescriptor>
+  setBuilderLayout: (appId: string, descriptor: BuilderLayoutDescriptor) => void
 }
 
 export const useWizardStore = create<WizardState>((set, get) => ({
@@ -39,4 +42,7 @@ export const useWizardStore = create<WizardState>((set, get) => ({
     set((state) => ({ celebrateByApp: { ...state.celebrateByApp, [appId]: true } })),
   clearCelebration: (appId) =>
     set((state) => ({ celebrateByApp: { ...state.celebrateByApp, [appId]: false } })),
+  builderLayoutByApp: {},
+  setBuilderLayout: (appId, descriptor) =>
+    set((state) => ({ builderLayoutByApp: { ...state.builderLayoutByApp, [appId]: descriptor } })),
 }))

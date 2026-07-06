@@ -1,4 +1,5 @@
 import { createTool, type Tool } from '@airo/ai-lib'
+import { type BuilderLayoutDescriptor, designKitLayoutForPhase } from '@airo/shared'
 import { z } from 'zod'
 import { getKvMemoryStore } from '../../memory/adapters/index.js'
 import { customerIdFromContext, workspaceScopeFromAppId } from '../../memory/interfaces/scope.js'
@@ -7,6 +8,7 @@ import { syncBrandTokensCss } from '../../services/design-system/brand-tokens-cs
 import { Logger } from '../../logging/index.js'
 import { getSSERegistry } from '../../server/sse/registry-singleton.js'
 import { getEventChannel } from '../../server/agent-runtime.js'
+import { persistBuilderLayout, publishLayoutEvent } from '../../services/builder-layout/update-builder-layout.js'
 
 const logger = Logger.create({ component: 'set-wizard-step-tool' })
 const memoryStore = getKvMemoryStore()
@@ -61,14 +63,26 @@ export const setWizardStepAITool: Tool = createTool(
 
     const eventData = { phase: input.phase, appId }
 
+    // Persist the durable layout descriptor BEFORE any SSE emit, so a reload/GET between the
+    // phase write and the events never reads a stale app_metadata.builderLayout. If the persist
+    // FAILS, do NOT publish build_phase — advancing the phase while the layout metadata is stale
+    // is the exact inconsistency this ordering exists to prevent.
+    const builderLayout: BuilderLayoutDescriptor = designKitLayoutForPhase(true, input.phase)
     try {
-      // SSE delivery: publish to each active SSE conversation for this app via
-      // the event channel (mirrors the video route's wiring).
+      persistBuilderLayout(appId, builderLayout)
+    } catch (error) {
+      logger.warn('setWizardStep.builder_layout.persist_failed', { appId, error: error instanceof Error ? error.message : String(error) })
+      return '**Error:** Failed to save layout state. Please try again.'
+    }
+
+    try {
       const sseRegistry = getSSERegistry()
       const eventChannel = getEventChannel()
       if (sseRegistry && eventChannel) {
         for (const convId of sseRegistry.getConversationsByApp(appId)) {
-          eventChannel.publish(convId, {
+          // Await so build_phase is delivered before the builder_layout event below — the
+          // client applies the phase (wizard stepper) before the shell descriptor swaps.
+          await eventChannel.publish(convId, {
             conversationId: convId,
             type: 'build_phase',
             content: '',
@@ -79,6 +93,12 @@ export const setWizardStepAITool: Tool = createTool(
       }
     } catch (error) {
       logger.warn('setWizardStep.sse_emit.failed', { appId, error: error instanceof Error ? error.message : String(error) })
+    }
+
+    try {
+      await publishLayoutEvent(appId, builderLayout)
+    } catch (error) {
+      logger.warn('setWizardStep.builder_layout.emit_failed', { appId, error: error instanceof Error ? error.message : String(error) })
     }
 
     logger.info('setWizardStep.success', { appId, phase: input.phase })

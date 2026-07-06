@@ -1,13 +1,20 @@
+import { designKitLayoutForPhase } from '@airo/shared'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 // Hoisted mocks — declared before vi.mock factories that reference them.
-const { setMock, publishMock, getConversationsByAppMock, syncBrandTokensCssMock, createForWorkspaceMock } = vi.hoisted(() => ({
-  setMock: vi.fn(async () => ({ success: true })),
-  publishMock: vi.fn(),
-  getConversationsByAppMock: vi.fn(() => ['conv-1']),
-  syncBrandTokensCssMock: vi.fn(async () => undefined),
-  createForWorkspaceMock: vi.fn(),
-}))
+const { setMock, publishMock, getConversationsByAppMock, syncBrandTokensCssMock, createForWorkspaceMock, persistBuilderLayoutMock, publishLayoutEventMock, callOrder } = vi.hoisted(() => {
+  const callOrder: string[] = []
+  return {
+    callOrder,
+    setMock: vi.fn(async () => ({ success: true })),
+    publishMock: vi.fn(function build_phase() { callOrder.push('build_phase') }),
+    getConversationsByAppMock: vi.fn(() => ['conv-1']),
+    syncBrandTokensCssMock: vi.fn(async () => undefined),
+    createForWorkspaceMock: vi.fn(),
+    persistBuilderLayoutMock: vi.fn(function persist() { callOrder.push('persist') }),
+    publishLayoutEventMock: vi.fn(async function publishLayout() { callOrder.push('publish_layout') }),
+  }
+})
 
 // The tool builds its memory store at module load via a module-level
 // `const memoryStore = getKvMemoryStore()`, so this mock must be in place
@@ -32,6 +39,13 @@ vi.mock('../../../workspace/index.js', () => ({
 }))
 vi.mock('../../../services/design-system/brand-tokens-css.js', () => ({
   syncBrandTokensCss: syncBrandTokensCssMock,
+}))
+
+// The tool persists the layout descriptor then publishes it as a separate step; mock both so
+// this unit test asserts the persist-before-emit ordering without a DB write.
+vi.mock('../../../services/builder-layout/update-builder-layout.js', () => ({
+  persistBuilderLayout: persistBuilderLayoutMock,
+  publishLayoutEvent: publishLayoutEventMock,
 }))
 
 // Mock Logger so the module-level Logger.create() call is inert.
@@ -67,6 +81,9 @@ describe('setWizardStepAITool execution', () => {
     getConversationsByAppMock.mockReturnValue(['conv-1'])
     syncBrandTokensCssMock.mockClear()
     createForWorkspaceMock.mockClear()
+    persistBuilderLayoutMock.mockClear()
+    publishLayoutEventMock.mockClear()
+    callOrder.length = 0
     createForWorkspaceMock.mockReturnValue({ files: createStubWorkspaceFiles({ write: vi.fn(), readText: vi.fn().mockResolvedValue('') }) })
     setMock.mockResolvedValue({ success: true })
   })
@@ -114,6 +131,35 @@ describe('setWizardStepAITool execution', () => {
 
     expect(typeof result).toBe('string')
     expect(result).toContain('brand')
+  })
+
+  it('persists the resolved layout descriptor for the phase then publishes it', async () => {
+    await setWizardStepAITool.execute({ phase: 'website' }, createContext('app1234567') as never)
+
+    const expected = designKitLayoutForPhase(true, 'website')
+    expect(persistBuilderLayoutMock).toHaveBeenCalledWith('app1234567', expected)
+    expect(publishLayoutEventMock).toHaveBeenCalledWith('app1234567', expected)
+  })
+
+  it('persists BEFORE build_phase, and publishes the layout event AFTER build_phase', async () => {
+    await setWizardStepAITool.execute({ phase: 'brand' }, createContext('app1234567') as never)
+
+    expect(callOrder).toEqual(['persist', 'build_phase', 'publish_layout'])
+  })
+
+  it('does NOT publish build_phase (or the layout event) when the layout persist fails', async () => {
+    persistBuilderLayoutMock.mockImplementationOnce(function persistThrows() {
+      throw new Error('db down')
+    })
+
+    const result = await setWizardStepAITool.execute(
+      { phase: 'brand' },
+      createContext('app1234567') as never,
+    )
+
+    expect(result).toContain('Error')
+    expect(publishMock).not.toHaveBeenCalled()
+    expect(publishLayoutEventMock).not.toHaveBeenCalled()
   })
 
   it('returns an error and does not persist or emit when appId is missing', async () => {

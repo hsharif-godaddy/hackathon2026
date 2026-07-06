@@ -1,3 +1,5 @@
+import type { BuilderLayoutDescriptor } from '../builder-layout.js';
+
 /**
  * Per-app metadata: an open bag of arbitrary keys, stamped early in an app's
  * life by any producer and surfaced in the debug console. Stored as a single
@@ -30,4 +32,9 @@ export interface KnownAppMetadata {
    * are not stringly-typed across files.
    */
   designKitTokensLocked?: boolean;
+  /**
+   * Durable server-authoritative builder-layout descriptor (AIROBUILD-3406).
+   * Persisted by the agents layout resolver and returned on GET /apps/:id.
+   */
+  builderLayout?: BuilderLayoutDescriptor;
 }

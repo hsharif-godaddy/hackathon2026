@@ -13,7 +13,7 @@ import { CELEBRATE_EXIT_MS, CELEBRATE_MS, WebsiteReadyCelebration } from './Webs
  * point in the tree — mounted by the develop page, above the `BuilderLayout` swap.
  *
  * It must live here rather than inside `DesignKitWizard`: the wizard's host
- * (`ImmersiveDesignKitLayout`) unmounts the instant the wizard phase becomes `ready`
+ * (`ImmersiveLayout`) unmounts the instant the wizard phase becomes `ready`
  * (`useBuilderLayout` stops returning `BuilderLayout.Immersive`), which tore down the overlay
  * in the very commit it should appear — so the celebration never rendered. Driving it from a
  * one-shot store flag set only by a *live* `build_phase: ready` event decouples it from that

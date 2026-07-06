@@ -48,6 +48,7 @@ import { logImpressionEvent, setInstrumentationIntentCategory } from '@/utils/in
 import { readIntentCategoryFromSession } from '@/utils/traffic-signals'
 import { ensureFreshToken } from './github/useGitHubTokenHealth'
 import { resolveMessageDefaults } from './resolveMessageDefaults'
+import { handleBuilderLayoutNotification } from './shared/builderLayoutNotification'
 import { handleBuildPhaseNotification } from './shared/buildPhaseNotification'
 import { classifyConnectError } from './shared/classifyConnectError'
 import {
@@ -940,6 +941,14 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
                   raw: event.data as Record<string, unknown>,
                   clientAppId: store.currentAppId ?? '',
                   logPrefix: 'sse.build_phase',
+                })
+              } else if (type === 'builder_layout') {
+                // Server-driven layout descriptor changed (AIROBUILD-3409): update the
+                // per-app descriptor the builder-layout resolver reads.
+                handleBuilderLayoutNotification({
+                  raw: event.data as Record<string, unknown>,
+                  clientAppId: store.currentAppId ?? '',
+                  logPrefix: 'sse.builder_layout',
                 })
               } else if (type === 'logo') {
                 // Shared with the WS LogoHandler: store update (chat card swap),

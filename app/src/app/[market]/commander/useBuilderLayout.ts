@@ -5,60 +5,64 @@ import { useEffect, useRef } from 'react'
 import { useIsDesignKitWizardProfile } from '@/app/[market]/develop/components/preview/design-kit-wizard/isDesignKitWizardProfile'
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils'
 import { COHORT_ON, EXPERIMENT_IDS } from '@/config/experiments'
-import { SWITCHBOARD_APPBUILDER_COMMANDER } from '@/config/switchboard-flags'
+import { SWITCHBOARD_APPBUILDER_COMMANDER, SWITCHBOARD_APPBUILDER_SERVER_DRIVEN_LAYOUT } from '@/config/switchboard-flags'
 import { useBrandData } from '@/hooks/useBrandData'
 import { useHivemind } from '@/hooks/useHivemind'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { shipAnalyticsLog } from '@/lib/logging'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { useWizardStore } from '@/stores/useWizardStore'
+import { readBuilderLayoutDevOverride } from './builderLayoutDevOverride'
+import { descriptorToClientLayout } from './descriptorToClientLayout'
 import { BuilderLayout } from './types'
 
 /**
- * The single source of truth for which `BuilderLayout` a session renders in — a session is
- * only ever on one. Returns:
- * - `Immersive` for a design-kit session whose build has not finished,
- * - otherwise the explicit `layoutProp` (e.g. the /commander route), falling back to
- *   `Commander` when EITHER the `appbuilder-commander` Switchboard flag is true (dev/QA
- *   override) OR the user is bucketed into the `on` cohort of the `airo-builder-commander-UI`
- *   Hivemind experiment (real-customer rollout — 10%→100% ramp).
+ * The single source of truth for which `BuilderLayout` a session renders in.
  *
- * The two-knob pattern mirrors the `appbuilder-agent-profile` ↔ `airo-build-initial-agent`
- * precedent (see app/CLAUDE.md): Switchboard flag is a dev-targeted override; Hivemind cohort
- * drives real-customer rollout with metrics attached. The `/commander/[id]` route stays
- * Switchboard-only — real customers see Commander via this hook on their existing
- * `/develop/[id]` URL.
+ * The `base` (non-immersive) shell is `layoutProp ?? (commanderEnabled ? Commander : Develop)`,
+ * where `commanderEnabled` is true when EITHER the `appbuilder-commander` Switchboard flag is
+ * set (dev/QA override) OR the user is in the `on` cohort of the `airo-builder-commander-UI`
+ * Hivemind experiment (real-customer rollout). This mirrors the `appbuilder-agent-profile` ↔
+ * `airo-build-initial-agent` two-knob precedent (see app/CLAUDE.md).
  *
- * "Finished" is read from the *persisted* wizard phase (`brand-data`) as well as the live
- * wizard store. This hook also **hydrates** the persisted phase into the (singleton) wizard
- * store, so the decision is stable across the load-time remounts (Suspense fallback ↔
- * content); without it, each fresh mount restarts at `Immersive` (per-instance `useBrandData`
- * has no cache) and flickers to the builder once its own fetch lands.
+ * On top of that base, two fully separate authorities decide immersive-vs-base, gated by
+ * `appbuilder-server-driven-layout`:
  *
- * If the brand-data fetch *fails* (not just "phase not ready"), the persisted phase is
- * unreadable, so we fall back to the authoritative `app.initialBuildComplete` from the App
- * record — otherwise a hard fetch failure would trap a finished app in the takeover
- * (permanently on mobile, where `DesignKitWizard` never mounts to retry the fetch).
+ * - Flag ON: the server owns the layout. Use the server-resolved layout — the live
+ *   `builder_layout` SSE event, else the App-record value from `GET /apps/:id` — mapped by
+ *   `descriptorToClientLayout` onto the concrete shell over `base`. Until the server layout
+ *   resolves we return `base` and NEVER infer from the wizard phase: phase inference is the
+ *   legacy authority and must not compete with the server. The app-load skeleton covers the
+ *   brief pre-resolution window, so `base` rarely paints.
  *
- * Future, non-design-kit immersive entry points are added at `immersiveEligible`.
+ * - Flag OFF: the pre-server-driven behavior verbatim — infer immersive from the design-kit
+ *   wizard phase (live store + persisted brand-data, with an `initialBuildComplete` fallback on
+ *   a brand-data error), else `base`. Asserted byte-identical to main by the flag-OFF suite.
+ *
+ * A local dev descriptor override (`?builderLayout=` / localStorage, dev builds only) beats both.
  */
 export function useBuilderLayout(layoutProp?: BuilderLayout): BuilderLayout {
   const appId = useAppIdFromParams()
-  const devOverride = useSwitchboard(SWITCHBOARD_APPBUILDER_COMMANDER) === true
+  const commanderDevOverride = useSwitchboard(SWITCHBOARD_APPBUILDER_COMMANDER) === true
   const { cohort: commanderCohort } = useHivemind(EXPERIMENT_IDS.commanderUI)
   const inRolloutCohort = commanderCohort === COHORT_ON
-  const commanderEnabled = devOverride || inRolloutCohort
+  const commanderEnabled = commanderDevOverride || inRolloutCohort
+  const serverDrivenEnabled = useSwitchboard(SWITCHBOARD_APPBUILDER_SERVER_DRIVEN_LAYOUT)
   const immersiveEligible = useIsDesignKitWizardProfile()
   const wizardPhase = useWizardStore((state) => (appId ? state.phaseByApp[appId] : undefined))
   const setPhase = useWizardStore((state) => state.setPhase)
+  const liveServerLayout = useWizardStore((state) => (appId ? state.builderLayoutByApp[appId] : undefined))
+  const appRecordLayout = useDevelopPageStore((state) =>
+    state.app?.id === appId ? state.app?.builderLayout : undefined,
+  )
   const initialBuildComplete = useDevelopPageStore((state) =>
     state.app?.id === appId ? (state.app?.initialBuildComplete ?? false) : false,
   )
   const { data: brandData, error: brandError } = useBrandData(appId, { enabled: immersiveEligible })
   const persistedPhase = brandData?.wizard?.phase
 
-  // Seed the live store from the persisted phase once, so the layout stays stable across
-  // the load-time remounts. Guarded on `undefined` so it never clobbers a live SSE phase.
+  // Seed the live store from the persisted phase once, so the flag-OFF layout stays stable
+  // across load-time remounts. Guarded on `undefined` so it never clobbers a live SSE phase.
   useEffect(() => {
     if (appId && persistedPhase && useWizardStore.getState().phaseByApp[appId] === undefined) {
       setPhase(appId, persistedPhase)
@@ -79,6 +83,21 @@ export function useBuilderLayout(layoutProp?: BuilderLayout): BuilderLayout {
     })
   }, [appId, commanderCohort])
 
+  const base = layoutProp ?? (commanderEnabled ? BuilderLayout.Commander : BuilderLayout.Develop)
+  const devOverride = readBuilderLayoutDevOverride()
+
+  if (devOverride) {
+    return descriptorToClientLayout(devOverride, base)
+  }
+
+  // Flag ON: server is the sole authority. Map its layout onto the shell when resolved,
+  // otherwise hold at `base` — never fall through to phase inference (the legacy authority).
+  if (serverDrivenEnabled) {
+    const serverLayout = liveServerLayout ?? appRecordLayout
+    return serverLayout ? descriptorToClientLayout(serverLayout, base) : base
+  }
+
+  // Flag OFF: legacy phase inference, byte-identical to main.
   // A brand-data error leaves `persistedPhase` undefined; fall back to the App record so a
   // known-built app still hands off instead of being routed back into the takeover.
   const buildFinished =
@@ -89,5 +108,5 @@ export function useBuilderLayout(layoutProp?: BuilderLayout): BuilderLayout {
   if (appId && immersiveEligible && !buildFinished) {
     return BuilderLayout.Immersive
   }
-  return layoutProp ?? (commanderEnabled ? BuilderLayout.Commander : BuilderLayout.Develop)
+  return base
 }

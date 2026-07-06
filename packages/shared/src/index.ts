@@ -128,3 +128,21 @@ export type {
   BrandDataTypography,
   BrandDataVoice,
 } from './brand-data/index.js';
+
+// Builder Layout (server-driven builder-layout descriptor + helpers)
+export type {
+  BuilderCanvasId,
+  BuilderLayoutDescriptor,
+  BuilderLayoutKind,
+  BuilderPinnedSurface,
+} from './builder-layout.js';
+export {
+  BUILDER_LAYOUT_VERSION,
+  DEFAULT_BUILDER_LAYOUT,
+  builderLayoutVariant,
+  normalizeBuilderLayout,
+} from './builder-layout.js';
+
+// Design-kit layout translation (phase → descriptor; design-kit-specific)
+export type { DesignKitBuildPhase } from './design-kit-layout.js';
+export { DESIGN_KIT_BUILD_CANVAS_ID, designKitLayoutForPhase, isDesignKitBuildCanvas } from './design-kit-layout.js';

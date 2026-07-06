@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-import { DesignKitChatHeader } from '../DesignKitChatHeader';
+import { ImmersiveHeader } from '../ImmersiveHeader';
 
 // Pin the appId so the click-context assertion is deterministic.
 vi.mock('@/app/[market]/develop/components/utils', () => ({
@@ -35,23 +35,23 @@ vi.mock('@ux/tag', () => ({
   ),
 }));
 
-const logClickEvent = vi.fn(() => vi.fn());
+const logClickEvent = vi.fn((..._args: unknown[]) => vi.fn());
 vi.mock('@/utils/instrumentation', () => ({
   logClickEvent: (...args: unknown[]): (() => void) => logClickEvent(...args),
 }));
 
-describe('DesignKitChatHeader', () => {
+describe('ImmersiveHeader', () => {
   it('renders the minimal bar: home-linked Airo logo, beta tag, and the user menu', () => {
-    render(<DesignKitChatHeader />);
+    render(<ImmersiveHeader />);
 
-    expect(screen.getByTestId('design-kit-chat-header')).toBeInTheDocument();
+    expect(screen.getByTestId('immersive-header')).toBeInTheDocument();
     expect(screen.getByLabelText('Airo Logo')).toBeInTheDocument();
     expect(screen.getByRole('link')).toHaveAttribute('href', '/');
     expect(screen.getByTestId('user-menu')).toBeInTheDocument();
   });
 
   it('does not render the develop chrome (no preview/edit toggles or chat toolbar)', () => {
-    render(<DesignKitChatHeader />);
+    render(<ImmersiveHeader />);
 
     expect(screen.queryByTestId('chat-toolbar')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /preview|edit|code/i })).not.toBeInTheDocument();
@@ -59,7 +59,7 @@ describe('DesignKitChatHeader', () => {
 
   it('logs the airo home-link click', async () => {
     const user = userEvent.setup();
-    render(<DesignKitChatHeader />);
+    render(<ImmersiveHeader />);
 
     await user.click(screen.getByRole('link'));
 

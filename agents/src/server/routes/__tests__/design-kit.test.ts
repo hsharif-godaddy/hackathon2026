@@ -1,3 +1,4 @@
+import { designKitLayoutForPhase } from '@airo/shared';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import request from 'supertest';
 import express, { type Express, type Request, type Response, type NextFunction } from 'express';
@@ -5,7 +6,7 @@ import express, { type Express, type Request, type Response, type NextFunction }
 // All mock fns are created via vi.hoisted so the (hoisted) vi.mock factories below
 // can close over them without a temporal-dead-zone "Cannot access X before
 // initialization" error.
-const { setMock, getMock, filesWrite, updateCssColorPalette, updateCssFontVariables, syncBrandTokensCss, validateFontPairing, appPlanExecute, getConversationsByApp, ssePublish, getSSERegistry, getEventChannel } =
+const { setMock, getMock, filesWrite, updateCssColorPalette, updateCssFontVariables, syncBrandTokensCss, validateFontPairing, appPlanExecute, getConversationsByApp, ssePublish, getSSERegistry, getEventChannel, persistBuilderLayoutMock, publishLayoutEventMock } =
   vi.hoisted(() => {
     const getConversationsByApp = vi.fn(() => [] as string[]);
     const ssePublish = vi.fn();
@@ -26,6 +27,8 @@ const { setMock, getMock, filesWrite, updateCssColorPalette, updateCssFontVariab
       ssePublish,
       getSSERegistry: vi.fn(() => ({ getConversationsByApp })),
       getEventChannel: vi.fn(() => ({ publish: ssePublish })),
+      persistBuilderLayoutMock: vi.fn(),
+      publishLayoutEventMock: vi.fn(async () => undefined),
     };
   });
 
@@ -53,6 +56,11 @@ vi.mock('../../../services/design-system/brand-tokens-css.js', () => ({ syncBran
 
 // App plan tool — colours/fonts routes mirror colorScheme/fontTheme by also persisting here.
 vi.mock('../../../tools/app-plan-tool.js', () => ({ appPlanTool: { execute: appPlanExecute } }));
+
+vi.mock('../../../services/builder-layout/update-builder-layout.js', () => ({
+  persistBuilderLayout: persistBuilderLayoutMock,
+  publishLayoutEvent: publishLayoutEventMock,
+}));
 
 // SSE emit on the wizard-step route mirrors set-wizard-step.ts: publish to each
 // active SSE conversation for the app via the event channel.
@@ -103,6 +111,8 @@ describe('design-kit direct-edit routes', () => {
     ssePublish.mockClear();
     getSSERegistry.mockClear();
     getEventChannel.mockClear();
+    persistBuilderLayoutMock.mockClear();
+    publishLayoutEventMock.mockClear();
   });
 
   it('PUT colors applies the palette, persists memory, syncs tokens', async () => {
@@ -251,6 +261,17 @@ describe('design-kit direct-edit routes', () => {
       'conv-a',
       expect.objectContaining({ type: 'build_phase', data: expect.objectContaining({ phase: 'brand', appId: 'app1234567' }) }),
     );
+  });
+
+  it('PUT wizard-step persists the resolved layout descriptor for the phase then publishes it', async () => {
+    const res = await request(makeApp())
+      .put('/apps/app1234567/design-kit/wizard-step')
+      .send({ phase: 'brand' });
+
+    expect(res.status).toBe(200);
+    const expected = designKitLayoutForPhase(true, 'brand');
+    expect(persistBuilderLayoutMock).toHaveBeenCalledWith('app1234567', expected);
+    expect(publishLayoutEventMock).toHaveBeenCalledWith('app1234567', expected);
   });
 
   it('PUT wizard-step publishes build_phase to active SSE conversations', async () => {

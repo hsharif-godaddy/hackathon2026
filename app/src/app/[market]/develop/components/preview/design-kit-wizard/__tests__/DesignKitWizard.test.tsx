@@ -175,25 +175,11 @@ describe('DesignKitWizard — build complete + resume', () => {
     // animation plays and the view stays on the Logo & Brand (BRAND) tab.
     mockPhase = 'website';
     useWizardStore.setState({ phaseByApp: { app1234567: 'website' } });
-    useDevelopPageStore.setState({
-      viewMode: ViewMode.BRAND,
-      app: { id: 'app1234567', initialBuildComplete: false },
-    } as Parameters<typeof useDevelopPageStore.setState>[0]);
+    useDevelopPageStore.setState({ viewMode: ViewMode.BRAND, app: null });
     const { rerender } = render(<DesignKitWizard appId="app1234567" />);
 
     expect(screen.getByTestId('design-kit-finalizing')).toBeInTheDocument();
     expect(useDevelopPageStore.getState().viewMode).toBe(ViewMode.BRAND);
-
-    // AIROBUILD-2871 regression guard: initialBuildComplete flips early (e.g.
-    // setProjectName's title commit during brand assembly). That must NOT reveal —
-    // the animation keeps playing and the view stays on BRAND.
-    act(() => {
-      useDevelopPageStore.setState({
-        app: { id: 'app1234567', initialBuildComplete: true },
-      } as Parameters<typeof useDevelopPageStore.setState>[0]);
-      rerender(<DesignKitWizard appId="app1234567" />);
-    });
-    expect(screen.getByTestId('design-kit-finalizing')).toBeInTheDocument();
 
     // The agent emits `ready`. In production the wizard unmounts on this edge (the immersive
     // layout hands off to the builder — see useBuilderLayout); rendered in isolation it just
@@ -213,18 +199,31 @@ describe('DesignKitWizard — build complete + resume', () => {
     expect(useDevelopPageStore.getState().viewMode).toBe(ViewMode.BRAND);
   });
 
-  it('resuming directly into a finished build shows the watch-build panel, does not auto-switch, and the button goes to Preview', () => {
-    // beforeEach set mockPhase='ready' → startedAtReadyRef is true at mount, so the
-    // calm WebsiteHandoffDone panel renders instead of replaying the assembly.
+  it('shows the website-assembly animation (not a separate resume panel) when mounted at the ready phase', () => {
+    // beforeEach set mockPhase='ready'. There is no longer a distinct "resume-done" panel:
+    // a live `ready` never mounts here (the layout tears the wizard down on `ready`), and the
+    // brief resume window is covered by the app-load skeleton. If the wizard does render at
+    // `ready` it shows the same website-assembly animation as the `website` phase.
     render(<DesignKitWizard appId="app1234567" />);
-    expect(screen.getByTestId('design-kit-watch-build')).toBeInTheDocument();
+    expect(screen.getByTestId('design-kit-finalizing')).toBeInTheDocument();
+    expect(screen.queryByTestId('design-kit-watch-build')).not.toBeInTheDocument();
+  });
 
-    // It must NOT auto-flip, even past when the celebration timer would elapse.
-    act(() => { vi.advanceTimersByTime(5000); });
-    expect(useDevelopPageStore.getState().viewMode).toBe(ViewMode.BRAND);
+  it('mounts to Building-your-brand when the brand phase is live even if initialBuildComplete already flipped', () => {
+    // Regression: setProjectName + design-system install commit to git during the brand
+    // phase, so initialBuildComplete is already true when the wizard first mounts. The
+    // resume detection must NOT use it — a live brand phase shows the brand view, not the
+    // calm "watch it build" resume panel.
+    mockPhase = 'brand';
+    useWizardStore.setState({ phaseByApp: { app1234567: 'brand' } });
+    useDevelopPageStore.setState({
+      viewMode: ViewMode.BRAND,
+      app: { id: 'app1234567', initialBuildComplete: true },
+    } as Parameters<typeof useDevelopPageStore.setState>[0]);
 
-    // The button manually switches to the Preview tab.
-    act(() => { screen.getByTestId('design-kit-watch-build').click(); });
-    expect(useDevelopPageStore.getState().viewMode).toBe(ViewMode.PREVIEW);
+    render(<DesignKitWizard appId="app1234567" />);
+
+    expect(screen.getByTestId('design-kit-assembling')).toBeInTheDocument();
+    expect(screen.queryByTestId('design-kit-watch-build')).not.toBeInTheDocument();
   });
 });

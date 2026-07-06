@@ -6,6 +6,7 @@
  * UI's responsibility (postMessage); these own persistence + token sync.
  */
 import { Router, type Request, type Response } from 'express';
+import { type BuilderLayoutDescriptor, type DesignKitBuildPhase, designKitLayoutForPhase } from '@airo/shared';
 import { log } from '../../logging/index.js';
 import { getKvMemoryStore } from '../../memory/adapters/index.js';
 import { workspaceScopeFromAppId } from '../../memory/interfaces/scope.js';
@@ -16,6 +17,7 @@ import { updateCssColorPalette, type ColorPalette } from '../../tools/css-color-
 import { updateCssFontVariables, validateFontPairing } from '../../tools/ai-lib-tools/font-theme.js';
 import { syncBrandTokensCss } from '../../services/design-system/brand-tokens-css.js';
 import { appPlanTool } from '../../tools/app-plan-tool.js';
+import { persistBuilderLayout, publishLayoutEvent } from '../../services/builder-layout/update-builder-layout.js';
 import { getSSERegistry } from '../sse/registry-singleton.js';
 import { getEventChannel } from '../agent-runtime.js';
 
@@ -222,15 +224,23 @@ router.put('/apps/:id/design-kit/wizard-step', validateAppOwnership, async (req:
       log.forApp(appId).error('designKit.wizardStep.persist_failed', { appId, error: writeResult.error });
       res.status(500).json({ error: 'Failed to set wizard phase' }); return;
     }
+    // Persist the durable layout descriptor BEFORE any SSE emit, so a reload/GET between the
+    // phase write and the events never reads a stale app_metadata.builderLayout. If the persist
+    // FAILS, do NOT publish build_phase — advancing the phase while the layout metadata is stale
+    // is the exact inconsistency this ordering exists to prevent.
+    const builderLayout: BuilderLayoutDescriptor = designKitLayoutForPhase(true, phase as DesignKitBuildPhase);
     try {
-      // SSE delivery: publish to each active SSE conversation for this app via
-      // the event channel (mirrors set-wizard-step.ts).
+      persistBuilderLayout(appId, builderLayout);
+    } catch (error) {
+      log.forApp(appId).error('designKit.wizardStep.builder_layout.persist_failed', { appId, error: error instanceof Error ? error.message : String(error) });
+      res.status(500).json({ error: 'Failed to save layout state' }); return;
+    }
+    try {
       const sseRegistry = getSSERegistry();
       const eventChannel = getEventChannel();
       if (sseRegistry && eventChannel) {
         for (const convId of sseRegistry.getConversationsByApp(appId)) {
-          // Await so a rejected publish is caught by the surrounding try/catch;
-          // a bare fire-and-forget call would escape as an unhandled rejection.
+          // Await so build_phase is delivered before the builder_layout event below.
           await eventChannel.publish(convId, {
             conversationId: convId,
             type: 'build_phase',
@@ -240,7 +250,14 @@ router.put('/apps/:id/design-kit/wizard-step', validateAppOwnership, async (req:
           });
         }
       }
-    } catch { /* non-fatal */ }
+    } catch (error) {
+      log.forApp(appId).warn('designKit.wizardStep.sse_emit.failed', { appId, error: error instanceof Error ? error.message : String(error) });
+    }
+    try {
+      await publishLayoutEvent(appId, builderLayout);
+    } catch (error) {
+      log.forApp(appId).warn('designKit.wizardStep.builder_layout.emit_failed', { appId, error: error instanceof Error ? error.message : String(error) });
+    }
     res.json({ success: true, wizard: { phase } });
   } catch (error) {
     log.forApp(appId).error('designKit.wizardStep.failed', { appId, error: error instanceof Error ? error.message : String(error) });
