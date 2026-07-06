@@ -366,7 +366,7 @@ export const publishAction: ClientActionExecutor = async (params, context, reque
 
     // Regenerate JWT with fresh permissions before publish
     logger.info('websocket.client-action.publish.regenerate-token', { appId })
-    const tokenResult = await regenerateToken({ siteId: appId, force: true })
+    const tokenResult = await regenerateToken({ siteId: appId, force: true, authLevel: 3 })
 
     // Get agent URL for this site
     const apiConfig = await dynamicApiConfigService.getConfigForSite(appId)
@@ -387,7 +387,7 @@ export const publishAction: ClientActionExecutor = async (params, context, reque
       async: isAsyncPublishEnabled !== false,
       refreshToken: async function refreshPublishToken() {
         logger.info('websocket.client-action.publish.token-stale-retry', { appId })
-        return regenerateToken({ siteId: appId, force: true })
+        return regenerateToken({ siteId: appId, force: true, authLevel: 3 })
       },
     })
 
@@ -470,7 +470,7 @@ export const publishAction: ClientActionExecutor = async (params, context, reque
         tokenResult.token,
         {
           refreshToken: async function refreshPollToken() {
-            return regenerateToken({ siteId: appId, force: true })
+            return regenerateToken({ siteId: appId, force: true, authLevel: 3 })
           },
         },
       )

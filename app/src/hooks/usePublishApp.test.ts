@@ -184,6 +184,10 @@ describe('usePublishApp', () => {
       gitHash: 'abc123',
       dnsUpdateConsent: true,
     });
+
+    // Publish is a level-3 op: the token regen must request level-3 recovery
+    // so a 401 routes through an HBI step-up rather than dead-ending.
+    expect(mockRegenerateToken).toHaveBeenCalledWith({ siteId: 'app-123', force: true, authLevel: 3 });
   });
 
   it('omits dnsUpdateConsent when it is undefined', async () => {

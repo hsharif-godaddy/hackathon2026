@@ -16,6 +16,14 @@ export interface RegenerateTokenOptions {
    * Default: true
    */
   force?: boolean;
+  /**
+   * Auth level to recover at if the token request 401s. Routes the failure
+   * through resolveAuth (SSO recovery / modal) instead of dead-ending as a
+   * generic error. Omit for the default (level 2, IAT-based) — matching the
+   * ordinary browser agent-token path in agent-fetch. Pass 3 for sensitive
+   * operations (publish, deploy, go-live) so an HBI step-up routes to /hbi.
+   */
+  authLevel?: 1 | 2 | 3;
 }
 
 export interface RegenerateTokenResult {
@@ -38,7 +46,7 @@ export interface RegenerateTokenResult {
 export async function regenerateToken(
   options: RegenerateTokenOptions
 ): Promise<RegenerateTokenResult> {
-  const { siteId, force = true } = options;
+  const { siteId, force = true, authLevel } = options;
 
   try {
     logger.info('jwt.regenerate.start', { siteId, force });
@@ -58,7 +66,13 @@ export async function regenerateToken(
         // Internal-only "start-as" profile (?profile=); server ignores it unless internal.
         agentProfileOverride: getStoredStartProfile(siteId) ?? undefined,
       }),
-    });
+      // Route a 401 through resolveAuth (SSO recovery / modal + single-retry)
+      // instead of returning it to the caller as a generic failure. Without
+      // this, an expired session leaves every token-minting op (publish, media,
+      // logo, go-live, ...) dead-ended with no way to re-authenticate in place.
+      // `true` probes at level 2 (default); level-3 callers (publish, deploy,
+      // go-live) pass authLevel: 3 so an HBI step-up routes to /hbi.
+    }, { handle401: authLevel ? { level: authLevel } : true });
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({

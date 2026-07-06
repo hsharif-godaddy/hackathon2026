@@ -148,8 +148,9 @@ const saveGoLiveStatus = async (appId: string) => {
     const { dynamicApiConfigService } = await import('@/config/dynamic-api');
     const { regenerateToken } = await import('@/lib/jwt-regeneration');
 
-    // Regenerate token with canPublish permission
-    await regenerateToken({ siteId: appId, force: true });
+    // Regenerate token with canPublish permission. Level 3: go-live is a
+    // sensitive operation, so a 401 should route through an HBI step-up.
+    await regenerateToken({ siteId: appId, force: true, authLevel: 3 });
 
     const apiConfig = await dynamicApiConfigService.getConfigForSite(appId);
     if (!apiConfig.agentUrl) {

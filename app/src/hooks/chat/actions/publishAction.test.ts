@@ -765,7 +765,7 @@ describe('publishAction', () => {
       await publishAction(params, context)
 
       // Verify JWT regeneration
-      expect(regenerateToken).toHaveBeenCalledWith({ siteId: 'app-123', force: true })
+      expect(regenerateToken).toHaveBeenCalledWith({ siteId: 'app-123', force: true, authLevel: 3 })
 
       // Verify dynamic API config fetch
       expect(dynamicApiConfigService.getConfigForSite).toHaveBeenCalledWith('app-123')
@@ -829,7 +829,7 @@ describe('publishAction', () => {
 
       // Should have called regenerateToken twice: once before initial call, once for retry
       expect(regenerateToken).toHaveBeenCalledTimes(2)
-      expect(regenerateToken).toHaveBeenLastCalledWith({ siteId: 'app-123', force: true })
+      expect(regenerateToken).toHaveBeenLastCalledWith({ siteId: 'app-123', force: true, authLevel: 3 })
       // Two fetch calls to the publish endpoint
       expect(global.fetch).toHaveBeenCalledTimes(2)
     })
@@ -1723,7 +1723,7 @@ describe('publishAction', () => {
       expect(mockStoreActions.setIsPublishing).toHaveBeenCalledWith('app-123', true)
       expect(mockStoreActions.setLastPublishedCommitHash).toHaveBeenCalledWith('app-123', 'fetched-hash')
       expect(mockStoreActions.setDeploymentInProgressId).toHaveBeenCalledWith('app-123', 'deploy-789')
-      expect(regenerateToken).toHaveBeenCalledWith({ siteId: 'app-123', force: true })
+      expect(regenerateToken).toHaveBeenCalledWith({ siteId: 'app-123', force: true, authLevel: 3 })
       expect(dynamicApiConfigService.getConfigForSite).toHaveBeenCalledWith('app-123')
 
       expect(result).toEqual({

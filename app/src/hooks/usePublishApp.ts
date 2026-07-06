@@ -306,7 +306,7 @@ export function usePublishApp() {
       // Regenerate JWT and fetch agent URL in parallel (independent lookups)
       logger.info('publish.regenerate-token', { appId });
       const [tokenResult, apiConfig] = await Promise.all([
-        regenerateToken({ siteId: appId, force: true }),
+        regenerateToken({ siteId: appId, force: true, authLevel: 3 }),
         dynamicApiConfigService.getConfigForSite(appId),
       ]);
 
@@ -340,7 +340,7 @@ export function usePublishApp() {
             {
               signal: pollController.signal,
               refreshToken: async function refreshPublishToken() {
-                return regenerateToken({ siteId: appId, force: true });
+                return regenerateToken({ siteId: appId, force: true, authLevel: 3 });
               },
             },
           );
@@ -426,7 +426,7 @@ export function usePublishApp() {
           {
             signal: pollController.signal,
             refreshToken: async function refreshPublishToken() {
-              return regenerateToken({ siteId: appId, force: true });
+              return regenerateToken({ siteId: appId, force: true, authLevel: 3 });
             },
           },
         );
