@@ -44,7 +44,7 @@ func TestModeToAccessFS_Create(t *testing.T) {
 	t.Parallel()
 	access := modeToAccessFS("c")
 
-	// c should include all make/remove/refer flags
+	// c should include all make/remove/refer/ioctl-dev flags
 	wantFlags := []landlock.AccessFSSet{
 		landlock.AccessFSSet(llsyscall.AccessFSMakeReg),
 		landlock.AccessFSSet(llsyscall.AccessFSMakeDir),
@@ -56,6 +56,7 @@ func TestModeToAccessFS_Create(t *testing.T) {
 		landlock.AccessFSSet(llsyscall.AccessFSRemoveFile),
 		landlock.AccessFSSet(llsyscall.AccessFSRemoveDir),
 		landlock.AccessFSSet(llsyscall.AccessFSRefer),
+		landlock.AccessFSSet(llsyscall.AccessFSIoctlDev),
 	}
 	for _, flag := range wantFlags {
 		if access&flag == 0 {
@@ -226,5 +227,18 @@ func TestPathToRule_Nonexistent(t *testing.T) {
 	_, ok := pathToRule(sandbox.PathRule{Mode: "r", Path: "/nonexistent/path"})
 	if ok {
 		t.Error("pathToRule returned true for nonexistent path")
+	}
+}
+
+func TestModeToAccessFS_RWCXCoversAllV6HandledBits(t *testing.T) {
+	t.Parallel()
+	// go-landlock V6 handledAccessFS = (1 << 16) - 1 (all 16 FS bits).
+	// If a library upgrade adds new handled bits, this test fails — signaling
+	// that modeToAccessFS needs updating to avoid silent REFER breakage.
+	const v6HandledAccessFS landlock.AccessFSSet = (1 << 16) - 1
+	access := modeToAccessFS("rwcx")
+	if access != v6HandledAccessFS {
+		t.Errorf("modeToAccessFS(\"rwcx\") = 0x%x, want 0x%x (all V6 handled FS bits)\n"+
+			"missing bits: 0x%x", access, v6HandledAccessFS, v6HandledAccessFS&^access)
 	}
 }

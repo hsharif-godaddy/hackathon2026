@@ -116,12 +116,12 @@ Full list in `cmd/airo-sandbox/defaults.go`.
 
 Paths use OpenBSD-style unveil permissions:
 
-| Char | Meaning       | Landlock flags                                                       |
-| ---- | ------------- | -------------------------------------------------------------------- |
-| `r`  | Read          | `ReadFile`, `ReadDir`                                                |
-| `w`  | Write         | `WriteFile`, `Truncate`                                              |
-| `x`  | Execute       | `Execute`                                                            |
-| `c`  | Create/delete | `MakeReg`, `MakeDir`, `MakeSock`, `RemoveFile`, `RemoveDir`, `Refer` |
+| Char | Meaning       | Landlock flags                                                                                                    |
+| ---- | ------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `r`  | Read          | `ReadFile`, `ReadDir`                                                                                             |
+| `w`  | Write         | `WriteFile`, `Truncate`                                                                                           |
+| `x`  | Execute       | `Execute`                                                                                                         |
+| `c`  | Create/delete | `MakeReg`, `MakeDir`, `MakeSock`, `MakeFifo`, `MakeBlock`, `MakeSym`, `MakeChar`, `RemoveFile`, `RemoveDir`, `Refer`, `IoctlDev` |
 
 ## Platform Behavior
 

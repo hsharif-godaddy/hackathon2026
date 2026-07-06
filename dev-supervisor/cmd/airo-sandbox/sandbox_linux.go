@@ -82,11 +82,15 @@ func modeToAccessFS(mode string) landlock.AccessFSSet {
 		case 'x':
 			access |= llsyscall.AccessFSExecute
 		case 'c':
+			// IoctlDev is included so that 'rwcx' grants ALL V6 handled FS bits.
+			// The Landlock REFER fast-path requires every handled bit to be satisfied;
+			// a single missing bit (even one irrelevant to the operation) blocks renames.
 			access |= llsyscall.AccessFSMakeReg | llsyscall.AccessFSMakeDir |
 				llsyscall.AccessFSMakeSock | llsyscall.AccessFSMakeFifo |
 				llsyscall.AccessFSMakeBlock | llsyscall.AccessFSMakeSym |
 				llsyscall.AccessFSMakeChar | llsyscall.AccessFSRemoveFile |
-				llsyscall.AccessFSRemoveDir | llsyscall.AccessFSRefer
+				llsyscall.AccessFSRemoveDir | llsyscall.AccessFSRefer |
+				llsyscall.AccessFSIoctlDev
 		}
 	}
 	return access
