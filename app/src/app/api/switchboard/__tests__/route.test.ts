@@ -2,9 +2,10 @@
  * GET /api/switchboard route tests
  *
  * Covers allow-list-based filtering of the Gasket switchboard tree into
- * `hivemind` (ALLOWED_EXPERIMENT_IDS entries) and `switchboard`
- * (ALLOWED_SWITCHBOARD_CONFIGS entries), plus error handling when the
- * upstream call fails.
+ * `hivemind` (entries named by the `appbuilder-allowed-experiment-ids`
+ * tree value) and `switchboard` (entries named by the
+ * `appbuilder-allowed-switchboard-configs` tree value), plus error handling
+ * when the upstream call fails.
  */
 
 import { NextRequest } from 'next/server';
@@ -86,6 +87,41 @@ describe('GET /api/switchboard', () => {
 
       expect(res.status).toBe(200);
       expect(body).toStrictEqual({ hivemind: {}, switchboard: {} });
+    });
+
+    it('should return entries named by the allow-list settings in the tree itself', async () => {
+      mockGetSwitchboardTree.mockResolvedValue({
+        'appbuilder-allowed-experiment-ids': ['airo-build-initial-agent'],
+        'appbuilder-allowed-switchboard-configs': ['appbuilder-share-links'],
+        'airo-build-initial-agent': { cohortId: 'variant-a' },
+        'appbuilder-share-links': true,
+        'appbuilder-model-selector': false,
+      });
+
+      const res = await GET(makeRequest());
+      const body = await res.json();
+
+      expect(res.status).toBe(200);
+      expect(body).toStrictEqual({
+        hivemind: { 'airo-build-initial-agent': { cohortId: 'variant-a' } },
+        switchboard: { 'appbuilder-share-links': true },
+      });
+    });
+
+    it('should ignore non-string entries in the allow-list settings', async () => {
+      mockGetSwitchboardTree.mockResolvedValue({
+        'appbuilder-allowed-experiment-ids': ['airo-build-initial-agent', 42, null],
+        'airo-build-initial-agent': { cohortId: 'variant-a' },
+      });
+
+      const res = await GET(makeRequest());
+      const body = await res.json();
+
+      expect(res.status).toBe(200);
+      expect(body).toStrictEqual({
+        hivemind: { 'airo-build-initial-agent': { cohortId: 'variant-a' } },
+        switchboard: {},
+      });
     });
   });
 
