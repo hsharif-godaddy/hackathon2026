@@ -13,12 +13,12 @@ vi.mock('../../utils/model-selection.js', () => ({
 // Mock prompt builder
 vi.mock('@airo/ai-lib', async () => {
   const actual = await vi.importActual('@airo/ai-lib');
+  const { createMockPromptBuilder } = await import('./helpers/mock-prompt-builder.js');
   return {
     ...actual,
-    createPromptBuilder: () => ({
-      file: vi.fn().mockReturnThis(),
-      text: vi.fn().mockReturnThis(),
-      build: vi.fn().mockResolvedValue(`# Airo Marketer
+    createPromptBuilder: () =>
+      createMockPromptBuilder({
+        buildResult: `# Airo Marketer
 
 You are an expert Airo Marketer focused on SEO and search engine optimization.
 
@@ -28,8 +28,8 @@ You are an expert Airo Marketer focused on SEO and search engine optimization.
 - You are a strategist
 
 ## Modern SEO
-- Answer Engine Optimization for AI assistants`)
-    })
+- Answer Engine Optimization for AI assistants`
+      })
   };
 });
 

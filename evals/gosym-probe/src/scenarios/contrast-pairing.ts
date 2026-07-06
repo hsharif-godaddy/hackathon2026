@@ -15,10 +15,19 @@ import type { Scenario, ScenarioGoal } from './types.js';
  * `ContrastViolationsEvaluator` scores the result.
  *
  * Two scenarios, frozen as a matched pair for the before/after baseline:
- * - `contrast-pairing-kit`: design-system auto-select profile (kit's `--ink-tertiary`
- *   is in context → the headline case).
+ * - `contrast-pairing-kit`: design-system profile + forced `designKitSlug` (Aether),
+ *   so the kit is installed before the loop (kitMetaExists true → the per-turn anchor
+ *   fires on turn 1). Deterministic light kit → reliably reproduces the symptom.
  * - `contrast-pairing-control`: same prompt, default profile → template baseline +
  *   the non-kit regression guard for the PR-B guardrail.
+ *
+ * Plus one isolation arm (AIROBUILD-3143):
+ * - `contrast-pairing-kit-autoselect`: same design-system profile but NO
+ *   `designKitSlug`, so the agent auto-picks the kit MID-stream. kitMetaExists is
+ *   false at homepage-build context time → the anchor does NOT fire on turn 1, so
+ *   only the auto-select prompt fold-in covers it. NON-DETERMINISTIC: the agent may
+ *   pick a dark kit where the low-emphasis-on-light symptom never manifests — run
+ *   more trials and filter to light-kit builds when reading results.
  *
  * Run notes: drive with `--max-turns 1` (single-shot build — the synthetic user has
  * no context compaction, so a second turn replays the whole transcript and exceeds
@@ -77,5 +86,23 @@ export function buildContrastScenarios(
     ctrlPlane,
   );
 
-  return [kit, control];
+  // Isolation arm for the auto-select initial-prompt fold-in (AIROBUILD-3143):
+  // same design-system profile but NO designKitSlug, so the kit is chosen by the
+  // agent mid-stream and the per-turn anchor misses turn 1. Non-deterministic on
+  // kit choice (see doc comment) — read alongside the deterministic `-kit` arm.
+  const autoselect: Scenario = createGoldenLightScenario(
+    {
+      name: 'contrast-pairing-kit-autoselect',
+      suite: 'contrast',
+      agentProfile: 'initial-agent-design-system-homepage-build',
+      staticFirstMessage: CONTRAST_PROMPT,
+      goals: CONTRAST_GOALS,
+      trials: 3,
+      extraEvaluators: [new ContrastViolationsEvaluator()],
+    },
+    gocode,
+    ctrlPlane,
+  );
+
+  return [kit, autoselect, control];
 }

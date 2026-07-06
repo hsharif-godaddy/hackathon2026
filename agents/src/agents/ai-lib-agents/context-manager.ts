@@ -10,7 +10,7 @@ import type { KvMemoryStore, MessageStore, SummaryStore } from '../../memory/int
 import { customerIdFromContext, workspaceScopeFromAppId } from '../../memory/interfaces/scope.js'
 import type { EnhancedAgentContext, ContextMessage, ContextGenerationConfig, AgentContextPreferences } from './types.js'
 import { DEFAULT_CONTEXT_CONFIG } from './types.js'
-import { UI_KIT_COPY_GUARDRAIL } from '../../prompts/ui-kit-guardrail.js'
+import { UI_KIT_COPY_GUARDRAIL, UI_KIT_COLOR_CONTRAST_GUARDRAIL } from '../../prompts/ui-kit-guardrail.js'
 import { logger, log } from '../../logging/index.js'
 import { getAgentConfig } from '../../services/features.js'
 import type { FormattedContext } from '../../services/helpers/ContextFormatter.js'
@@ -273,9 +273,10 @@ export class AILibContextManager {
                     '',
                     'How to work with the kit:',
                     '- Default to kit components for every UI need — reach for them before inventing anything new.',
-                    '- Use the kit\'s color tokens, spacing scale, typography, border radii, and motion patterns in all code you write.',
+                    '- Use the kit\'s color tokens for surfaces, backgrounds, and interactive states, plus its spacing scale, typography, border radii, and motion patterns in all code you write.',
+                    UI_KIT_COLOR_CONTRAST_GUARDRAIL,
                     '- When you need something the kit doesn\'t explicitly provide, compose existing kit components or extend them in a way that matches the kit\'s style and tokens.',
-                    '- Never contradict the kit — don\'t override its colors, introduce fonts it doesn\'t define, or break its component patterns.',
+                    '- Never contradict the kit on your own initiative — don\'t re-theme its colors unprompted, introduce fonts it doesn\'t define, or break its component patterns. (An explicit customer request still wins — honor it via the kit\'s tokens, per the color & contrast note above.)',
                     `- ${UI_KIT_COPY_GUARDRAIL}`,
                     '',
                     'The kit is your anchor. Everything you produce should look like it belongs to this design system.',

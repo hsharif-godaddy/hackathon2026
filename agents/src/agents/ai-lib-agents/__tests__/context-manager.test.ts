@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { AILibContextManager, collectAttachedUploadStoredFilenames } from '../context-manager.js'
 import type { ContextAttachment } from '@airo/shared/context-attachment'
-import { UI_KIT_COPY_GUARDRAIL } from '../../../prompts/ui-kit-guardrail.js'
+import { UI_KIT_COPY_GUARDRAIL, UI_KIT_COLOR_CONTRAST_GUARDRAIL } from '../../../prompts/ui-kit-guardrail.js'
 
 const { latestSummary, getMessageById, summaryStore, pinnedSummaryId } = vi.hoisted(() => ({
   latestSummary: { value: null as any },
@@ -380,6 +380,41 @@ describe('AILibContextManager', () => {
       expect(workspaceFilesMock.stat).toHaveBeenCalledWith({
         paths: ['docs/ui-kit/kit-meta.json'],
       })
+    })
+
+    it('kit anchor injects the color & contrast guardrail (AIROBUILD-3143)', async () => {
+      statHasFile('docs/ui-kit/kit-meta.json')
+
+      const cm = new AILibContextManager()
+      const result = await cm.buildContextMessages(
+        '',
+        { metadata: { appId: 'app-123' } },
+        { includeTemplateDescription: false, includeAppContext: false }
+      )
+
+      const anchor = result.contextMessages.find((m) => m.content.includes('UI kit design system'))
+      expect(anchor).toBeDefined()
+      // The kit anchor carries the color/contrast guardrail verbatim from the
+      // single shared source (phrase-level pinning lives in contrast-guidance.spec.ts).
+      expect(anchor!.content).toContain(UI_KIT_COLOR_CONTRAST_GUARDRAIL)
+    })
+
+    it('no anchor and no color/contrast guardrail for non-kit builds (AIROBUILD-3143 scoping)', async () => {
+      // Hard constraint: no kit-meta.json → no anchor → no guardrail. Proves the
+      // color/contrast guardrail cannot leak into non-kit / PaaS builds.
+      workspaceFilesMock.stat.mockImplementation(async ({ paths }: { paths: string[] }) => ({
+        entries: paths.map((p) => ({ path: p, error: 'not_found' as const })),
+      }))
+
+      const cm = new AILibContextManager()
+      const result = await cm.buildContextMessages(
+        '',
+        { metadata: { appId: 'app-123' } },
+        { includeTemplateDescription: false, includeAppContext: false }
+      )
+
+      expect(result.contextMessages.find((m) => m.content.includes('UI kit design system'))).toBeUndefined()
+      expect(result.contextMessages.every((m) => !m.content.includes('semantic foreground tokens'))).toBe(true)
     })
 
     it('reuses stashed kitMetaExists=true instead of statting kit-meta again', async () => {

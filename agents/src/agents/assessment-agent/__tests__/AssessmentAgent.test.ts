@@ -26,13 +26,13 @@ vi.mock('@airo/ai-grants', () => ({
   LlmCallSource: { AgentAssessment: 'agent:assessment' },
 }))
 
-vi.mock('@airo/ai-lib', () => ({
-  getModel: mocks.getModel,
-  createPromptBuilder: () => ({
-    file: vi.fn().mockReturnThis(),
-    build: vi.fn(),
-  }),
-}))
+vi.mock('@airo/ai-lib', async () => {
+  const { createMockPromptBuilder } = await import('../../__tests__/helpers/mock-prompt-builder.js')
+  return {
+    getModel: mocks.getModel,
+    createPromptBuilder: () => createMockPromptBuilder(),
+  }
+})
 
 vi.mock('ai', () => ({ generateText: mocks.generateText }))
 

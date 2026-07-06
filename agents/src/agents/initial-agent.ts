@@ -16,6 +16,7 @@ import { skillToolManager } from '../tools/skill-tool-manager.js'
 import { SkillLoaderTool } from '../tools/skill-loader-tool.js'
 import { createAgentHandoffTool } from '../tools/create-agent-handoff-tool.js'
 import { profileValue } from '../profiles/index.js'
+import { UI_KIT_COLOR_CONTRAST_GUARDRAIL } from '../prompts/ui-kit-guardrail.js'
 import {
   MODULAR_PROMPT_FILES_KEY,
   parseModularPromptFilesCsv,
@@ -193,6 +194,16 @@ async function buildInitialSystemPrompt(
   const versionManifestPath = paths.getAgentFile(versionDir, 'manifest.json')
   if (existsSync(versionManifestPath)) {
     const preflightTools = loadFromManifest(promptBuilder, paths, versionManifestPath, versionDir, `version ${version}`)
+    // The auto-select design-system homepage build installs the kit MID-stream, so
+    // the per-turn kit anchor (gated on kitMetaExists) does not fire on this first
+    // turn. Fold the shared color/contrast guardrail into the prompt so the initial
+    // homepage is covered; later develop turns get it via the anchor. The attached
+    // variant already gets the anchor on turn 1 (its forced install runs first).
+    // (Once the kit installs, later turns of this same agent also see the anchor —
+    // a benign, harmless redundancy with this prompt copy.)
+    if (version === 'design-system-homepage-build') {
+      promptBuilder.text(UI_KIT_COLOR_CONTRAST_GUARDRAIL)
+    }
     promptBuilder.file(paths.getSharedFile('communication.md'))
     promptBuilder.file(paths.getSharedFile('security.md'))
     promptBuilder.file(paths.getSharedFile('consent-requirements.md'))

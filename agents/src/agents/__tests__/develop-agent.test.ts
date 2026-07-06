@@ -1,5 +1,6 @@
 import { createDevelopAgent, directToolsAdmitted, __resetTurnscriptConversationState } from '../develop-agent.js';
 import { logger } from '../../logging/index.js';
+import type { PromptBuilder } from '@airo/ai-lib';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { mockGetAgentModelWithName, mockPromptBuilders, mockIsTurnscriptEnabled } = vi.hoisted(() => ({
@@ -37,17 +38,14 @@ vi.mock('node:fs/promises', async () => {
 
 vi.mock('@airo/ai-lib', async () => {
   const actual = await vi.importActual('@airo/ai-lib');
+  const { createMockPromptBuilder } = await import('./helpers/mock-prompt-builder.js');
   const mockBuilder = function builder() {
-    const self: Record<string, any> = { files: [] };
-    self.file = vi.fn(function file(path: string) {
-      self.files.push(path);
-      return self;
-    });
-    self.text = vi.fn().mockReturnValue(self);
-    self.template = vi.fn().mockReturnValue(self);
-    self.build = vi.fn().mockResolvedValue(
-      '# AI Developer\nYou are a senior web developer.'
-    );
+    const files: string[] = [];
+    const self = createMockPromptBuilder({
+      buildResult: '# AI Developer\nYou are a senior web developer.',
+      onFile: (path: string) => files.push(path),
+    }) as PromptBuilder & { files: string[] };
+    self.files = files;
     mockPromptBuilders.push(self);
     return self;
   };

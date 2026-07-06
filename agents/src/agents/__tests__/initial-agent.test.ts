@@ -52,18 +52,14 @@ vi.mock('../../utils/model-selection.js', () => ({
 
 vi.mock('@airo/ai-lib', async () => {
   const actual = await vi.importActual('@airo/ai-lib');
+  const { createMockPromptBuilder } = await import('./helpers/mock-prompt-builder.js');
   return {
     ...actual,
-    createPromptBuilder: () => {
-      const builder = {
-        file: vi.fn().mockImplementation(function (path: string) {
-          fileCalls.push(path);
-          return builder;
-        }),
-        build: vi.fn().mockResolvedValue('# Initial Agent\nYou are a senior product designer.')
-      };
-      return builder;
-    },
+    createPromptBuilder: () =>
+      createMockPromptBuilder({
+        buildResult: '# Initial Agent\nYou are a senior product designer.',
+        onFile: (path: string) => fileCalls.push(path),
+      }),
     createHandoffTool: vi.fn().mockReturnValue({ execute: vi.fn() })
   };
 });

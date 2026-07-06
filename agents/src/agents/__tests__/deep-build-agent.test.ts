@@ -10,13 +10,11 @@ vi.mock('../../utils/model-selection.js', () => ({
 
 vi.mock('@airo/ai-lib', async () => {
   const actual = await vi.importActual('@airo/ai-lib')
+  const { createMockPromptBuilder } = await import('./helpers/mock-prompt-builder.js')
   return {
     ...actual,
-    createPromptBuilder: () => ({
-      file: vi.fn().mockReturnThis(),
-      text: vi.fn().mockReturnThis(),
-      build: vi.fn().mockResolvedValue('# Deep Build\nYou are the orchestrator.')
-    })
+    createPromptBuilder: () =>
+      createMockPromptBuilder({ buildResult: '# Deep Build\nYou are the orchestrator.' })
   }
 })
 

@@ -12,17 +12,13 @@ vi.mock('../../utils/model-selection.js', () => ({
 // Mock the prompt builder + handoff tool so prompt assembly is hermetic.
 vi.mock('@airo/ai-lib', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@airo/ai-lib')>()
+  const { createMockPromptBuilder } = await import('./helpers/mock-prompt-builder.js')
   return {
     ...actual,
-    createPromptBuilder: () => {
-      const builder = {
-        file: vi.fn().mockImplementation(function (_path: string) {
-          return builder
-        }),
-        build: vi.fn().mockResolvedValue('# Design Kit Wizard\nYou drive the brand wizard.'),
-      }
-      return builder
-    },
+    createPromptBuilder: () =>
+      createMockPromptBuilder({
+        buildResult: '# Design Kit Wizard\nYou drive the brand wizard.',
+      }),
     createHandoffTool: vi.fn().mockReturnValue({ execute: vi.fn() }),
   }
 })

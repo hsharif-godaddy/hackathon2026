@@ -188,11 +188,12 @@ describe('scenario shapes', () => {
     expect(scenario.staticFirstMessage).toBeTruthy();
   });
 
-  it('contrast-pairing-kit + control have valid shape and the contrast evaluator', () => {
-    const [kit, control] = buildContrastScenarios(gocode, ctrlPlane);
+  it('contrast-pairing kit + autoselect + control have valid shape and the contrast evaluator', () => {
+    const [kit, autoselect, control] = buildContrastScenarios(gocode, ctrlPlane);
     assertScenarioShape(kit, 'contrast-pairing-kit');
+    assertScenarioShape(autoselect, 'contrast-pairing-kit-autoselect');
     assertScenarioShape(control, 'contrast-pairing-control');
-    for (const scenario of [kit, control]) {
+    for (const scenario of [kit, autoselect, control]) {
       expect(scenario.suite).toBe('contrast');
       expect(scenario.evaluators.map((e) => e.name)).toContain('contrast-violations');
     }
