@@ -17,6 +17,7 @@ import { reAskInToolCallScenario } from '../todo-lifecycle/re-ask-in-tool-call.j
 import { inboxSkillEvalScenario } from '../skill-eval/inbox.js';
 import { buildContrastScenarios } from '../contrast-pairing.js';
 import { buildCasingScenarios } from '../casing-eyebrows.js';
+import { buildEmptyBandScenarios } from '../empty-band-splits.js';
 import { buildColorSchemeOptionsScenario } from '../color-scheme-options.js';
 import {
   makeGocodeClient,
@@ -206,6 +207,16 @@ describe('scenario shapes', () => {
     for (const scenario of [kit, control]) {
       expect(scenario.suite).toBe('casing');
       expect(scenario.evaluators.map((e) => e.name)).toContain('casing-violations');
+    }
+  });
+
+  it('empty-band-splits-kit + control have valid shape and the empty-band evaluator', () => {
+    const [kit, control] = buildEmptyBandScenarios(gocode, ctrlPlane);
+    assertScenarioShape(kit, 'empty-band-splits-kit');
+    assertScenarioShape(control, 'empty-band-splits-control');
+    for (const scenario of [kit, control]) {
+      expect(scenario.suite).toBe('empty-band');
+      expect(scenario.evaluators.map((e) => e.name)).toContain('empty-band-violations');
     }
   });
 

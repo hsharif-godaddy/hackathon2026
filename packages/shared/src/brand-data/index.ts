@@ -27,3 +27,11 @@ export type {
   KitPaletteInput,
   KitTypographyInput,
 } from './design-kit-spec.js'
+
+export { classifyBand, computeEmptyBands } from './empty-band.js'
+export type {
+  EmptyBandAuditResult,
+  EmptyBandKind,
+  EmptyBandViolation,
+  RawBandNode,
+} from './empty-band.js'

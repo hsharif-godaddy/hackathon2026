@@ -1511,6 +1511,9 @@ importers:
       '@airo/ai-lib':
         specifier: workspace:*
         version: link:../../packages/ai-lib
+      '@airo/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
       '@aws-sdk/client-s3':
         specifier: ^3.1049.0
         version: 3.1076.0

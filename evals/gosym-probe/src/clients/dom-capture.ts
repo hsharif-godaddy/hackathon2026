@@ -29,6 +29,8 @@ import { captureContrastAudit } from './site-capture/contrast-audit.js';
 import type { ContrastAuditResult } from './site-capture/contrast.js';
 import { captureCasingAudit } from './site-capture/casing-audit.js';
 import type { CasingAuditResult } from './site-capture/casing.js';
+import { captureEmptyBandAudit } from './site-capture/empty-band-audit.js';
+import type { EmptyBandAuditResult } from '@airo/shared/brand-data';
 import { createSemaphore } from '../util/semaphore.js';
 import type { Semaphore } from '../util/semaphore.js';
 
@@ -56,6 +58,8 @@ export interface DOMSnapshot {
   contrastAudit?: ContrastAuditResult;
   /** Capture-time casing audit: gratuitous all-caps eyebrow/label nodes (AIROBUILD-2976 #2; omitted when the audit did not run). */
   casingAudit?: CasingAuditResult;
+  /** Capture-time empty-band audit: content-less divider / full-bleed split bands (AIROBUILD-2976 #4; omitted when the audit did not run). */
+  emptyBandAudit?: EmptyBandAuditResult;
 }
 
 export interface CapturedTrial {
@@ -212,6 +216,12 @@ export class SiteCapture {
             return undefined;
           })
         : undefined;
+      const emptyBandAudit: EmptyBandAuditResult | undefined = homepagePage
+        ? await captureEmptyBandAudit(homepagePage).catch((err: unknown) => {
+            console.warn('SiteCapture: empty-band audit failed', err);
+            return undefined;
+          })
+        : undefined;
       const snapshot: DOMSnapshot = {
         url: previewUrl,
         screenshotPath,
@@ -223,6 +233,7 @@ export class SiteCapture {
         ...(networkFailures.length > 0 && { networkFailures }),
         ...(contrastAudit && { contrastAudit }),
         ...(casingAudit && { casingAudit }),
+        ...(emptyBandAudit && { emptyBandAudit }),
       };
 
       const capturedSite = await captureRoutes({

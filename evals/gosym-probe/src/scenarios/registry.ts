@@ -28,6 +28,7 @@ import { buildCookieConsentGtmScenario } from './cookie-consent-gtm.js';
 import { rebuildFromUrlScenario } from './rebuild/index.js';
 import { buildContrastScenarios } from './contrast-pairing.js';
 import { buildCasingScenarios } from './casing-eyebrows.js';
+import { buildEmptyBandScenarios } from './empty-band-splits.js';
 import { buildColorSchemeOptionsScenario } from './color-scheme-options.js';
 import {
   addUserTableScenario,
@@ -143,6 +144,7 @@ export function createAllScenarios(
     ...buildPortfolioPromptTaxScenarios(gocode, ctrlPlane),
     ...buildContrastScenarios(gocode, ctrlPlane),
     ...buildCasingScenarios(gocode, ctrlPlane),
+    ...buildEmptyBandScenarios(gocode, ctrlPlane),
     buildColorSchemeOptionsScenario(gocode, ctrlPlane),
     addUserTableScenario(gocode, ctrlPlane),
     crudApiHandlerScenario(gocode, ctrlPlane),
