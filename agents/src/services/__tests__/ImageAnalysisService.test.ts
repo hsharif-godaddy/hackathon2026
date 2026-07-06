@@ -8,12 +8,33 @@ vi.mock("../../tools/ai-lib-tools/drivers/knowb-driver.js", () => ({
   },
 }));
 
+vi.mock("../../utils/image-resize.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../utils/image-resize.js")>();
+  return {
+    ...actual,
+    resizeForVision: vi.fn(actual.resizeForVision),
+  };
+});
+
+vi.mock("@airo/ai-lib", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@airo/ai-lib")>();
+  return {
+    ...actual,
+    getModel: vi.fn(actual.getModel),
+    createAgentFactory: vi.fn(actual.createAgentFactory),
+    createFileInputFromBuffer: vi.fn(actual.createFileInputFromBuffer),
+    processFile: vi.fn(actual.processFile),
+  };
+});
+
 import {
   ImageAnalysisService,
   CachedAnalysis,
   GettyImage,
 } from "../ImageAnalysisService.js";
+import { getModel } from "@airo/ai-lib";
 import { knowBDriver } from "../../tools/ai-lib-tools/drivers/knowb-driver.js";
+import { resizeForVision } from "../../utils/image-resize.js";
 
 describe("ImageAnalysisService", () => {
   let service: ImageAnalysisService;
@@ -139,6 +160,59 @@ describe("ImageAnalysisService", () => {
       const result = await service.analyzeImage(image);
 
       expect(result).toBeNull();
+    });
+
+    it("should skip via fail-open when downloaded bytes are not a decodable image", async () => {
+      const oversizedBuffer = Buffer.alloc(6 * 1024 * 1024, 1);
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue({
+          ok: true,
+          headers: {
+            get: (name: string) => (name === "content-type" ? "image/jpeg" : null),
+          },
+          arrayBuffer: async () =>
+            oversizedBuffer.buffer.slice(
+              oversizedBuffer.byteOffset,
+              oversizedBuffer.byteOffset + oversizedBuffer.byteLength
+            ),
+        })
+      );
+
+      const result = await service.analyzeImage({
+        id: "getty-oversized",
+        urls: { preview: "https://example.com/oversized.jpg" },
+      });
+
+      expect(result).toBeNull();
+      vi.unstubAllGlobals();
+    });
+
+    it("should skip when resizeForVision returns a still-oversized buffer", async () => {
+      const stillOversized: Buffer = Buffer.alloc(4_500_000);
+      vi.mocked(resizeForVision).mockResolvedValueOnce({
+        buffer: stillOversized,
+        mimeType: "image/jpeg",
+      });
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue({
+          ok: true,
+          headers: {
+            get: (name: string) => (name === "content-type" ? "image/jpeg" : null),
+          },
+          arrayBuffer: async () => new ArrayBuffer(8),
+        })
+      );
+
+      const result = await service.analyzeImage({
+        id: "getty-still-oversized",
+        urls: { preview: "https://example.com/image.jpg" },
+      });
+
+      expect(result).toBeNull();
+      expect(getModel).not.toHaveBeenCalled();
+      vi.unstubAllGlobals();
     });
   });
 

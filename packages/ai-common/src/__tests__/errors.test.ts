@@ -33,6 +33,16 @@ describe('errors', () => {
       expect(isTransientBadRequest('JSON parsing error - Bad Request')).toBe(false)
     })
 
+    it('returns false for Anthropic oversized image validation errors', () => {
+      expect(isTransientBadRequest('Bad Request: image exceeds 5 MB maximum')).toBe(false)
+      expect(
+        isTransientBadRequest(
+          'Bad Request',
+          'messages.0.content.1.image.source.base64: image exceeds 5 MB maximum: 6296424 bytes > 5242880 bytes'
+        )
+      ).toBe(false)
+    })
+
     it('returns false when response body contains budget exceeded pattern', () => {
       expect(isTransientBadRequest('Bad Request', 'exceededbudget limit reached')).toBe(false)
       expect(isTransientBadRequest('Bad Request', 'User is over budget')).toBe(false)
@@ -102,7 +112,8 @@ describe('errors', () => {
     it('NON_RETRYABLE_400_PATTERNS contains expected patterns', () => {
       expect(NON_RETRYABLE_400_PATTERNS).toContain('toolUse.input')
       expect(NON_RETRYABLE_400_PATTERNS).toContain('JSON parsing')
-      expect(NON_RETRYABLE_400_PATTERNS.length).toBe(2)
+      expect(NON_RETRYABLE_400_PATTERNS).toContain('image exceeds')
+      expect(NON_RETRYABLE_400_PATTERNS.length).toBe(3)
     })
 
     it('BUDGET_EXCEEDED_PATTERNS contains expected patterns', () => {

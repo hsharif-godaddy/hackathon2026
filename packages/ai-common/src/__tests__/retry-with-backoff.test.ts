@@ -131,6 +131,23 @@ describe('retry-with-backoff simplified', () => {
     expect(err.message).toContain('toolUse.input')
   })
 
+  it('Anthropic oversized image 400 is NOT retried', async () => {
+    const fn = vi.fn().mockRejectedValue(
+      createAPICallErrorWithHeaders(
+        400,
+        {},
+        'Bad Request: image exceeds 5 MB maximum: 6296424 bytes > 5242880 bytes'
+      )
+    )
+    const p = retryWithBackoff(fn, DEFAULT_RETRY_CONFIG, { operation: 'generate', logger })
+    const caught = p.catch(e => e)
+    await vi.runAllTimersAsync()
+    await caught
+    expect(fn).toHaveBeenCalledTimes(1)
+    expect(events.warn).toHaveLength(0)
+    expect(events.error).toHaveLength(1)
+  })
+
   it('isRetryableError identifies transient vs non-transient 400s', () => {
     // Transient 400 (generic "Bad Request") should be retryable
     expect(isRetryableError(createTransientBadRequestError('Bad Request'))).toBe(true)

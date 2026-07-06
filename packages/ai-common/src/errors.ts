@@ -47,8 +47,9 @@ export function containsBudgetExceededPattern(text: string): boolean {
  * Patterns:
  * - toolUse.input: AI SDK tool input validation failure (malformed JSON in tool call)
  * - JSON parsing: JSON syntax error in request/response parsing
+ * - image exceeds: Anthropic vision payload exceeds the 5 MB base64-encoded limit
  */
-export const NON_RETRYABLE_400_PATTERNS = ['toolUse.input', 'JSON parsing'] as const;
+export const NON_RETRYABLE_400_PATTERNS = ['toolUse.input', 'JSON parsing', 'image exceeds'] as const;
 
 /**
  * Check if a 400 Bad Request error is potentially transient and worth retrying.
@@ -65,11 +66,11 @@ export const NON_RETRYABLE_400_PATTERNS = ['toolUse.input', 'JSON parsing'] as c
  *
  * Returns true if the error:
  * - Contains "bad request" in the message (generic 400 indicator)
- * - Does NOT contain known non-retryable validation patterns (toolUse.input, JSON parsing)
+ * - Does NOT contain known non-retryable validation patterns (toolUse.input, JSON parsing, image exceeds)
  * - Does NOT indicate a budget exceeded error
  *
  * @param message - The error message from the API
- * @param responseBody - Optional response body to check for budget patterns
+ * @param responseBody - Optional response body searched for non-retryable patterns and budget exceeded errors
  * @returns true if the error may be transient and worth retrying
  */
 export function isTransientBadRequest(message: string, responseBody?: string): boolean {
@@ -80,9 +81,11 @@ export function isTransientBadRequest(message: string, responseBody?: string): b
     return false;
   }
 
-  // Check for known non-retryable patterns
+  const searchableText = responseBody ? `${message}\n${responseBody}` : message;
+
+  // Check for known non-retryable patterns in message and response body
   const hasNonRetryablePattern = NON_RETRYABLE_400_PATTERNS.some(
-    pattern => message.includes(pattern)
+    pattern => searchableText.includes(pattern)
   );
   if (hasNonRetryablePattern) {
     return false;

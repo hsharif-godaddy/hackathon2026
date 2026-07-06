@@ -16,6 +16,7 @@ import { llmMetadataContext, type LitellmMetadata } from "@airo/ai-common";
 import { Logger } from "../logging/index.js";
 import { createAgentTelemetryLogger } from "../utils/agent-logger.js";
 import { knowBDriver } from "../tools/ai-lib-tools/drivers/knowb-driver.js";
+import { ANTHROPIC_MAX_IMAGE_BYTES, exceedsAnthropicVisionPayload, resizeForVision } from "../utils/image-resize.js";
 
 /**
  * Execution context for cost tracking and LiteLLM tagging
@@ -258,7 +259,7 @@ export class ImageAnalysisService {
       }
 
       const arrayBuffer = await response.arrayBuffer();
-      const buffer = Buffer.from(arrayBuffer);
+      const downloadedBuffer = Buffer.from(arrayBuffer);
 
       // Determine MIME type from content-type header or URL
       const contentType = response.headers.get("content-type") || "image/jpeg";
@@ -268,10 +269,21 @@ export class ImageAnalysisService {
         ? (rawMimeType as typeof supportedMimeTypes[number])
         : "image/jpeg";
 
+      const resized: { buffer: Buffer; mimeType: string } = await resizeForVision(downloadedBuffer, mimeType);
+      const { buffer, mimeType: visionMimeType } = resized;
+      if (exceedsAnthropicVisionPayload(buffer.length)) {
+        this.logger.warn("image-analysis.oversized.skip", {
+          gettyId: image.id,
+          byteLength: buffer.length,
+          maxRawBytes: ANTHROPIC_MAX_IMAGE_BYTES,
+        });
+        return { analysis: null };
+      }
+
       // Process image using ai-lib
       const fileInput = createFileInputFromBuffer(
         buffer,
-        mimeType,
+        visionMimeType as typeof supportedMimeTypes[number],
         `getty-${image.id}.jpg`
       );
       const processedFile = await processFile(fileInput);
