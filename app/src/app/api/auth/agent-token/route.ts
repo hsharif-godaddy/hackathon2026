@@ -371,6 +371,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
     let automationsEnabled = false;
     let marketingCampaignsEnabled = false;
     let googleBusinessProfileSyncEnabled = false;
+    let aiVisibilityEnabled = false;
     let asmDualWriteEnabled = false;
     let logoBrandColorsEnabled = false;
     let purchaseIntentClassifierEnabled = false;
@@ -403,7 +404,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       setApmAppId(body.siteId);
       setApmCustomerId(user.customerId);
       const parallelStart = Date.now();
-      const [paywallResult, domainPurchaseResult, testBudgetResult, budgetServiceResult, bmsExistingResult, siteInfoResult, assessmentAgentResult, assessmentOverrideResult, assessmentClassifierResult, modelSelectorResult, modelOverrideResult, agentProfileResult, costAttributionDryRunResult, useAtlasCrawlerResult, rebuildIntakeFormResult, debugDrawerResult, automationsResult, marketingCampaignsResult, googleBusinessProfileSyncResult, asmDualWriteResult, logoBrandColorsResult, purchaseIntentClassifierResult, skillSuggestionsResult, rebuildSourceImagesResult, fixSessionResult, agentStartOverrideResult] = await Promise.allSettled([
+      const [paywallResult, domainPurchaseResult, testBudgetResult, budgetServiceResult, bmsExistingResult, siteInfoResult, assessmentAgentResult, assessmentOverrideResult, assessmentClassifierResult, modelSelectorResult, modelOverrideResult, agentProfileResult, costAttributionDryRunResult, useAtlasCrawlerResult, rebuildIntakeFormResult, debugDrawerResult, automationsResult, marketingCampaignsResult, googleBusinessProfileSyncResult, aiVisibilityResult, asmDualWriteResult, logoBrandColorsResult, purchaseIntentClassifierResult, skillSuggestionsResult, rebuildSourceImagesResult, fixSessionResult, agentStartOverrideResult] = await Promise.allSettled([
         checkPaywallEligibility(
           new ServerPaywallProvider(authContext.jwt || '', user.customerId, request.headers),
           body.siteId,
@@ -427,6 +428,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
         checkSwitchboardFlag('appbuilder-automations', request),
         checkSwitchboardFlag('appbuilder-marketing-campaigns', request),
         checkSwitchboardFlag('appbuilder-google-business-profile-sync', request),
+        checkSwitchboardFlag('appbuilder-ai-visibility', request),
         checkSwitchboardFlag('appbuilder-asm-dual-write', request),
         checkSwitchboardFlag('appbuilder-logo-brand-colors', request),
         checkSwitchboardFlag('appbuilder-purchase-intent-classifier', request),
@@ -469,6 +471,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       automationsEnabled = resolveBooleanFlag(automationsResult, 'agent-token.automations-flag-check-failed', body.siteId, user.customerId);
       marketingCampaignsEnabled = resolveBooleanFlag(marketingCampaignsResult, 'agent-token.marketing-campaigns-flag-check-failed', body.siteId, user.customerId);
       googleBusinessProfileSyncEnabled = resolveBooleanFlag(googleBusinessProfileSyncResult, 'agent-token.google-business-profile-sync-flag-check-failed', body.siteId, user.customerId);
+      aiVisibilityEnabled = resolveBooleanFlag(aiVisibilityResult, 'agent-token.ai-visibility-flag-check-failed', body.siteId, user.customerId);
       asmDualWriteEnabled = resolveBooleanFlag(asmDualWriteResult, 'agent-token.asm-dual-write-flag-check-failed', body.siteId, user.customerId);
       logoBrandColorsEnabled = resolveBooleanFlag(logoBrandColorsResult, 'agent-token.logo-brand-colors-flag-check-failed', body.siteId, user.customerId);
       purchaseIntentClassifierEnabled = resolveBooleanFlag(purchaseIntentClassifierResult, 'agent-token.purchase-intent-classifier-flag-check-failed', body.siteId, user.customerId);
@@ -486,7 +489,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       setApmAppId(body.siteId);
       setApmCustomerId(user.customerId);
       const parallelStart = Date.now();
-      const [siteResult, paywallResult, domainPurchaseResult, testBudgetResult, budgetServiceResult, bmsExistingResult, siteInfoResult, assessmentAgentResult, assessmentOverrideResult, assessmentClassifierResult, modelSelectorResult, modelOverrideResult, agentProfileResult, costAttributionDryRunResult, useAtlasCrawlerResult, rebuildIntakeFormResult, debugDrawerResult, automationsResult, marketingCampaignsResult, googleBusinessProfileSyncResult, asmDualWriteResult, logoBrandColorsResult, purchaseIntentClassifierResult, skillSuggestionsResult, rebuildSourceImagesResult, fixSessionResult, agentStartOverrideResult] = await Promise.allSettled([
+      const [siteResult, paywallResult, domainPurchaseResult, testBudgetResult, budgetServiceResult, bmsExistingResult, siteInfoResult, assessmentAgentResult, assessmentOverrideResult, assessmentClassifierResult, modelSelectorResult, modelOverrideResult, agentProfileResult, costAttributionDryRunResult, useAtlasCrawlerResult, rebuildIntakeFormResult, debugDrawerResult, automationsResult, marketingCampaignsResult, googleBusinessProfileSyncResult, aiVisibilityResult, asmDualWriteResult, logoBrandColorsResult, purchaseIntentClassifierResult, skillSuggestionsResult, rebuildSourceImagesResult, fixSessionResult, agentStartOverrideResult] = await Promise.allSettled([
         validateSiteAccess(body.siteId, user, authContext.jwt || '', body.owningProduct, multiUserEnabled),
         checkPaywallEligibility(
           new ServerPaywallProvider(authContext.jwt || '', user.customerId, request.headers),
@@ -511,6 +514,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
         checkSwitchboardFlag('appbuilder-automations', request),
         checkSwitchboardFlag('appbuilder-marketing-campaigns', request),
         checkSwitchboardFlag('appbuilder-google-business-profile-sync', request),
+        checkSwitchboardFlag('appbuilder-ai-visibility', request),
         checkSwitchboardFlag('appbuilder-asm-dual-write', request),
         checkSwitchboardFlag('appbuilder-logo-brand-colors', request),
         checkSwitchboardFlag('appbuilder-purchase-intent-classifier', request),
@@ -564,6 +568,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       automationsEnabled = resolveBooleanFlag(automationsResult, 'agent-token.automations-flag-check-failed', body.siteId, user.customerId);
       marketingCampaignsEnabled = resolveBooleanFlag(marketingCampaignsResult, 'agent-token.marketing-campaigns-flag-check-failed', body.siteId, user.customerId);
       googleBusinessProfileSyncEnabled = resolveBooleanFlag(googleBusinessProfileSyncResult, 'agent-token.google-business-profile-sync-flag-check-failed', body.siteId, user.customerId);
+      aiVisibilityEnabled = resolveBooleanFlag(aiVisibilityResult, 'agent-token.ai-visibility-flag-check-failed', body.siteId, user.customerId);
       asmDualWriteEnabled = resolveBooleanFlag(asmDualWriteResult, 'agent-token.asm-dual-write-flag-check-failed', body.siteId, user.customerId);
       logoBrandColorsEnabled = resolveBooleanFlag(logoBrandColorsResult, 'agent-token.logo-brand-colors-flag-check-failed', body.siteId, user.customerId);
       purchaseIntentClassifierEnabled = resolveBooleanFlag(purchaseIntentClassifierResult, 'agent-token.purchase-intent-classifier-flag-check-failed', body.siteId, user.customerId);
@@ -931,6 +936,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       automationsEnabled,
       marketingCampaignsEnabled,
       googleBusinessProfileSyncEnabled,
+      aiVisibilityEnabled,
       asmDualWriteEnabled,
       logoBrandColorsEnabled,
       purchaseIntentClassifierEnabled,

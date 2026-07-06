@@ -1,0 +1,106 @@
+metadata:
+  name: Skill Loader - AI Visibility
+  version: 1.0.0
+
+cases:
+  # --- Positive: ai-visibility skill should load ---
+
+  - id: can-llms-find-me
+    prompt: 'Can LLMs find my business?'
+    expectedSkill: ai-visibility
+    tags: [positive]
+    rationale: Direct question matching the primary intent phrase in skill.md
+
+  - id: can-ai-find-my-business
+    prompt: 'Can AI find my business?'
+    expectedSkill: ai-visibility
+    tags: [positive]
+    rationale: Generic AI findability question — core use case
+
+  - id: does-chatgpt-know-about-me
+    prompt: 'Does ChatGPT know about my business?'
+    expectedSkill: ai-visibility
+    tags: [positive]
+    rationale: Platform-specific question naming ChatGPT directly
+
+  - id: check-ai-visibility
+    prompt: 'Check my AI visibility'
+    expectedSkill: ai-visibility
+    tags: [positive]
+    rationale: Exact phrase from skill.md whenToUse
+
+  - id: do-ai-chatbots-recommend-me
+    prompt: 'Do AI chatbots recommend my business?'
+    expectedSkill: ai-visibility
+    tags: [positive]
+    rationale: Recommendation framing — covered by skill.md intent phrases
+
+  - id: am-i-visible-to-ai
+    prompt: 'Am I visible to AI assistants?'
+    expectedSkill: ai-visibility
+    tags: [positive]
+    rationale: Visibility framing matching skill.md phrase
+
+  - id: ai-citation-check
+    prompt: 'Run an AI citation check for my site'
+    expectedSkill: ai-visibility
+    tags: [positive]
+    rationale: Citation terminology matches skill.md intent
+
+  - id: does-claude-mention-me
+    prompt: 'Does Claude mention my business?'
+    expectedSkill: ai-visibility
+    tags: [positive]
+    rationale: Platform-specific question naming Claude directly
+
+  # --- Positive: harder cases (no literal trigger phrase) ---
+
+  - id: show-up-in-ai-search
+    prompt: 'How do I show up when people ask AI about businesses like mine?'
+    expectedSkill: ai-visibility
+    tags: [positive, hard]
+    rationale: No literal keyword but clearly about AI discoverability
+
+  - id: ai-recommends-competitors
+    prompt: 'When I ask ChatGPT for a bakery recommendation it never mentions me'
+    expectedSkill: ai-visibility
+    tags: [positive, hard]
+    rationale: Describes the AI visibility problem without using the skill phrase
+
+  - id: found-by-ai-tools
+    prompt: 'I want to make sure my business gets found by AI tools'
+    expectedSkill: ai-visibility
+    tags: [positive, hard]
+    rationale: AI findability intent without exact trigger phrase
+
+  # --- Negative: tricky near-misses that should NOT load the skill ---
+
+  - id: seo-improvement
+    prompt: 'How do I improve my SEO?'
+    expectedSkill: null
+    tags: [negative, hard]
+    rationale: SEO is a related concept but routes to the seo skill, not ai-visibility
+
+  - id: google-ranking
+    prompt: 'Why is my site not showing up in Google search results?'
+    expectedSkill: null
+    tags: [negative, hard]
+    rationale: Google search ranking is SEO territory, not AI assistant visibility
+
+  - id: write-content
+    prompt: 'Help me write better content for my homepage'
+    expectedSkill: null
+    tags: [negative]
+    rationale: Content writing with no AI visibility intent
+
+  - id: add-hero-section
+    prompt: 'Add a hero section to my homepage'
+    expectedSkill: null
+    tags: [negative]
+    rationale: UI feature request — no AI visibility intent
+
+  - id: social-media-visibility
+    prompt: 'How do I get more visibility on social media?'
+    expectedSkill: null
+    tags: [negative, hard]
+    rationale: Visibility on social platforms is unrelated to AI assistant discoverability

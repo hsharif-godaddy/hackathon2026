@@ -244,6 +244,7 @@ interface LifecycleContext {
     automationsEnabled?: boolean
     marketingCampaignsEnabled?: boolean
     googleBusinessProfileSyncEnabled?: boolean
+    aiVisibilityEnabled?: boolean
     skillSuggestionsEnabled?: boolean
     shopperId?: string
   }
@@ -2381,6 +2382,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
         automationsEnabled: agentCtx?.automationsEnabled ?? false,
         marketingCampaignsEnabled: agentCtx?.marketingCampaignsEnabled ?? false,
         googleBusinessProfileSyncEnabled: agentCtx?.googleBusinessProfileSyncEnabled ?? false,
+        ...(agentCtx?.aiVisibilityEnabled && { aiVisibilityEnabled: true }),
         ...(agentCtx?.useTestBudget !== undefined && { useTestBudget: agentCtx.useTestBudget }),
         ...(agentCtx?.useAtlasCrawler && { useAtlasCrawler: true }),
         ...(agentCtx?.rebuildIntakeFormEnabled && { rebuildIntakeFormEnabled: true }),

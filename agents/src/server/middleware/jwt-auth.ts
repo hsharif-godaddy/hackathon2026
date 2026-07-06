@@ -67,6 +67,7 @@ export interface AgentContext {
   automationsEnabled?: boolean; // Enable Automations skill (switchboard: appbuilder-automations)
   marketingCampaignsEnabled?: boolean; // Enable Marketing Campaigns feature (switchboard: appbuilder-marketing-campaigns)
   googleBusinessProfileSyncEnabled?: boolean; // Enable Google Business Profile sync skill (switchboard: appbuilder-google-business-profile-sync)
+  aiVisibilityEnabled?: boolean; // Enable AI Visibility skill (switchboard: appbuilder-ai-visibility)
   logoBrandColorsEnabled?: boolean; // Send structured brand colors to the logo API (switchboard: appbuilder-logo-brand-colors)
   market?: string; // BCP-47 market/locale from token mint (BFF-resolved from URL)
   fqdn?: string; // Purchased domain carried in from the DPP handoff (SiteInfo.fqdn); readable by agent tools
@@ -134,6 +135,7 @@ export function buildAgentContext(raw: Record<string, unknown>): AgentContext {
     automationsEnabled: (raw.automationsEnabled as boolean) ?? false,
     marketingCampaignsEnabled: (raw.marketingCampaignsEnabled as boolean) ?? false,
     googleBusinessProfileSyncEnabled: (raw.googleBusinessProfileSyncEnabled as boolean) ?? false,
+    aiVisibilityEnabled: (raw.aiVisibilityEnabled as boolean) ?? false,
     logoBrandColorsEnabled: (raw.logoBrandColorsEnabled as boolean) ?? false,
     market: typeof raw.market === 'string' && raw.market.length > 0 ? raw.market : undefined,
     fqdn: typeof raw.fqdn === 'string' && raw.fqdn.length > 0 ? raw.fqdn : undefined,
@@ -239,6 +241,7 @@ export class JWTAuthMiddleware {
           agentProfile: tokenClaims.agentProfile as string | undefined,
           asmDualWriteEnabled: (tokenClaims.asmDualWriteEnabled as boolean) ?? false,
           googleBusinessProfileSyncEnabled: (tokenClaims.googleBusinessProfileSyncEnabled as boolean) ?? false,
+          aiVisibilityEnabled: (tokenClaims.aiVisibilityEnabled as boolean) ?? false,
           exp: now + 3600,
           iat: now
         };

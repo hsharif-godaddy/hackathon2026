@@ -50,6 +50,7 @@ export interface CreateTokenOptions {
   automationsEnabled?: boolean; // Enable Automations skill (switchboard: appbuilder-automations)
   marketingCampaignsEnabled?: boolean; // Enable Marketing Campaigns feature (switchboard: appbuilder-marketing-campaigns)
   googleBusinessProfileSyncEnabled?: boolean; // Enable Google Business Profile sync skill (switchboard: appbuilder-google-business-profile-sync)
+  aiVisibilityEnabled?: boolean; // Enable AI Visibility skill (switchboard: appbuilder-ai-visibility)
   asmDualWriteEnabled?: boolean; // Mirror SQLite conversation writes to ASM (switchboard: appbuilder-asm-dual-write)
   logoBrandColorsEnabled?: boolean; // Send structured brand colors to the logo API (switchboard: appbuilder-logo-brand-colors)
   purchaseIntentClassifierEnabled?: boolean; // Enable LLM purchase-intent classifier on credit=0 402 path (switchboard: appbuilder-purchase-intent-classifier)
@@ -244,6 +245,7 @@ export class JWTService {
       automationsEnabled: options.automationsEnabled ?? false,
       marketingCampaignsEnabled: options.marketingCampaignsEnabled ?? false,
       googleBusinessProfileSyncEnabled: options.googleBusinessProfileSyncEnabled ?? false,
+      aiVisibilityEnabled: options.aiVisibilityEnabled ?? false,
       asmDualWriteEnabled: options.asmDualWriteEnabled ?? false,
       logoBrandColorsEnabled: options.logoBrandColorsEnabled ?? false,
       purchaseIntentClassifierEnabled: options.purchaseIntentClassifierEnabled ?? false,
@@ -315,7 +317,7 @@ export class JWTService {
    */
   private getCacheKey(options: CreateTokenOptions): string {
     const authType = options.authType || 'basic';
-    return `${options.siteId}:${options.customerId || ''}:${options.canDownload}:${options.canPublish}:${options.canPurchaseDomain ?? false}:${authType}:${options.useTestBudget ?? false}:${options.budgetServiceEnabled ?? false}:${options.subscriptionId || ''}:${options.enableAssessmentAgent ?? false}:${options.enableAssessmentOverride ?? false}:${options.assessmentClassifier || ''}:${options.product || 'AiroAppBuilder'}:${options.modelOverride || ''}:${options.modelSelectorEnabled ?? false}:${options.agentProfile || ''}:${options.agentStartOverrideEnabled ?? false}:${options.costAttributionDryRun ?? false}:${options.bmsBudgetId || ''}:${options.useAtlasCrawler ?? false}:${options.rebuildIntakeFormEnabled ?? false}:${options.rebuildSourceImagesEnabled ?? false}:${options.debugStatsEnabled ?? false}:${options.market || ''}:${options.fqdn || ''}:${options.automationsEnabled ?? false}:${options.marketingCampaignsEnabled ?? false}:${options.googleBusinessProfileSyncEnabled ?? false}:${options.asmDualWriteEnabled ?? false}:${options.logoBrandColorsEnabled ?? false}:${options.purchaseIntentClassifierEnabled ?? false}:${options.skillSuggestionsEnabled ?? false}:${options.ssoRequired ?? false}:${options.ssoConfigured ?? false}:${options.ownerProduct ?? ''}:${options.careAgentId || ''}:${options.careAgentUsernameHash || ''}`;
+    return `${options.siteId}:${options.customerId || ''}:${options.canDownload}:${options.canPublish}:${options.canPurchaseDomain ?? false}:${authType}:${options.useTestBudget ?? false}:${options.budgetServiceEnabled ?? false}:${options.subscriptionId || ''}:${options.enableAssessmentAgent ?? false}:${options.enableAssessmentOverride ?? false}:${options.assessmentClassifier || ''}:${options.product || 'AiroAppBuilder'}:${options.modelOverride || ''}:${options.modelSelectorEnabled ?? false}:${options.agentProfile || ''}:${options.agentStartOverrideEnabled ?? false}:${options.costAttributionDryRun ?? false}:${options.bmsBudgetId || ''}:${options.useAtlasCrawler ?? false}:${options.rebuildIntakeFormEnabled ?? false}:${options.rebuildSourceImagesEnabled ?? false}:${options.debugStatsEnabled ?? false}:${options.market || ''}:${options.fqdn || ''}:${options.automationsEnabled ?? false}:${options.marketingCampaignsEnabled ?? false}:${options.googleBusinessProfileSyncEnabled ?? false}:${options.aiVisibilityEnabled ?? false}:${options.asmDualWriteEnabled ?? false}:${options.logoBrandColorsEnabled ?? false}:${options.purchaseIntentClassifierEnabled ?? false}:${options.skillSuggestionsEnabled ?? false}:${options.ssoRequired ?? false}:${options.ssoConfigured ?? false}:${options.ownerProduct ?? ''}:${options.careAgentId || ''}:${options.careAgentUsernameHash || ''}`;
 
   }
 

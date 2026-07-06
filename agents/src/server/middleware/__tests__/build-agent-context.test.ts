@@ -30,6 +30,7 @@ describe('buildAgentContext', function suite() {
     expect(ctx).toEqual({
       siteId: 'site-123',
       customerId: undefined,
+      shopperId: undefined,
       visitorId: undefined,
       trafficSessionId: undefined,
       canDownload: true,
@@ -56,6 +57,7 @@ describe('buildAgentContext', function suite() {
       debugStatsEnabled: false,
       marketingCampaignsEnabled: false,
       googleBusinessProfileSyncEnabled: false,
+      aiVisibilityEnabled: false,
       fqdn: undefined,
       market: undefined,
       shopperId: undefined,
@@ -220,6 +222,7 @@ describe('buildAgentContext', function suite() {
       'automationsEnabled',
       'marketingCampaignsEnabled',
       'googleBusinessProfileSyncEnabled',
+      'aiVisibilityEnabled',
       'asmDualWriteEnabled',
       'logoBrandColorsEnabled',
       'purchaseIntentClassifierEnabled',
