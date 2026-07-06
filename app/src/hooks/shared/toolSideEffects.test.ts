@@ -273,6 +273,72 @@ describe('handleToolCallSideEffects — funnel.rebuild.started', () => {
   });
 });
 
+describe('handleToolResultSideEffects — develop.rebuild.error', () => {
+  it('emits develop.rebuild.error when websiteRebuild returns error result', async () => {
+    await handleToolResultSideEffects({
+      name: 'websiteRebuild',
+      output: {
+        success: false,
+        errorCode: 'import_failed',
+        sourceUrl: 'https://example.com',
+        isUserFacingError: true,
+      },
+      error: true,
+      is_error: true,
+    }, 'app-1');
+
+    expect(mockLogImpressionEvent).toHaveBeenCalledWith('develop.rebuild.error', {
+      appId: 'app-1',
+      errorCode: 'import_failed',
+      sourceUrl: 'https://example.com',
+      isUserFacingError: true,
+    });
+    expect(mockLogImpressionEventInner).toHaveBeenCalled();
+  });
+
+  it('does not emit error event for successful rebuild', async () => {
+    await handleToolResultSideEffects({
+      name: 'websiteRebuild',
+      output: { success: true }
+    }, 'app-1');
+
+    const errorCall = (mockLogImpressionEvent.mock.calls as any).find(
+      (call: any) => call[0] === 'develop.rebuild.error'
+    );
+    expect(errorCall).toBeUndefined();
+  });
+
+  it('does not emit error event for non-rebuild tools', async () => {
+    await handleToolResultSideEffects({
+      name: 'fileEdit',
+      output: { success: false, error: 'some error' },
+      error: true,
+      is_error: true,
+    }, 'app-1');
+
+    const errorCall = (mockLogImpressionEvent.mock.calls as any).find(
+      (call: any) => call[0] === 'develop.rebuild.error'
+    );
+    expect(errorCall).toBeUndefined();
+  });
+
+  it('uses default values when error details are missing', async () => {
+    await handleToolResultSideEffects({
+      name: 'websiteRebuild',
+      output: { success: false },
+      error: true,
+      is_error: true,
+    }, 'app-1');
+
+    expect(mockLogImpressionEvent).toHaveBeenCalledWith('develop.rebuild.error', {
+      appId: 'app-1',
+      errorCode: 'unknown',
+      sourceUrl: '',
+      isUserFacingError: false,
+    });
+  });
+});
+
 describe('handleToolCallSideEffects — skill completion funnel', () => {
   it('emits commerce.skill.completed when the commerce skill is marked complete', () => {
     handleToolCallSideEffects(

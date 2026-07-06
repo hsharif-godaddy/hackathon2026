@@ -185,6 +185,7 @@ develop.initialBuild.start        ← create flow begins
 | EID | Type | Fires when | Extra fields |
 |---|---|---|---|
 | `develop.rebuild.started` | impression | Rebuild tool fires | `priorArtifactHash` (optional) |
+| `develop.rebuild.error` | impression | Rebuild tool returns error | `errorCode`, `sourceUrl`, `isUserFacingError` |
 | `develop.rebuild.intakewaiting` | impression | Rebuild enters `awaiting_intake` (before scope estimates load) | `sourceUrl` |
 | `develop.rebuild.intakeform` | impression | Rebuild intake form renders (scope + design) | `sourceUrl` |
 | `develop.rebuild.intakeform.error` | impression | Scope estimates failed or returned empty while awaiting intake | `sourceUrl`, `reason` (`fetch_failed` \| `empty_estimates`) |
@@ -301,7 +302,7 @@ For every successful publish, AiroHQ fires twice — at attempt (`completedTask:
 | `app/[market]/develop/[id]/page.tsx` | `funnel.develop_page.loaded` · `funnel.chat_loader.hidden` · `funnel.initial_prompt.sent` · `develop.page.view` · AiroHQ page view |
 | `hooks/shared/initialBuildFunnel.ts` | `funnel.initial_build.*` · `develop.initialBuild.start` · `develop.generation.triggered` · `develop.firstBuild.complete` |
 | `hooks/shared/contextGatheringTracker.ts` | `funnel.context_gathering.*` · `develop.contextGathering.*` |
-| `hooks/shared/toolSideEffects.ts` | `funnel.rebuild.started` · `develop.rebuild.started` |
+| `hooks/shared/toolSideEffects.ts` | `funnel.rebuild.started` · `develop.rebuild.started` · `develop.rebuild.error` |
 | `app/.../rebuild/RebuildIntakeForm.tsx` | `develop.rebuild.intakewaiting` · `develop.rebuild.intakeform` · `develop.rebuild.intakeform.error` · `develop.rebuild.intakesubmit` · `develop.rebuild.intakedefaults` · `develop.rebuild.intaketimeout` |
 | `app/.../tool-renderers/WebsiteRebuildToolRenderer.tsx` | `develop.rebuild.intaketimeout` (backup when user returns after timeout) |
 | `components/chat/ChatPane.tsx` | `chat.prompt.sent` · `funnel.user_first_message.sent` · `funnel.edit.triggered` · `develop.edit.triggered` · AiroHQ prompt submit |

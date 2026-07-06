@@ -648,6 +648,43 @@ export async function handleToolResultSideEffects(
     }
   }
 
+  // Rebuild error tracking — check result content directly, not tool.error/is_error envelope
+  if (tool.name === 'websiteRebuild') {
+    try {
+      const raw: unknown = tool.output ?? tool.result;
+      const parsed: unknown = typeof raw === 'string' ? JSON.parse(raw) : raw;
+
+      // Type guard for rebuild error result
+      if (
+        parsed &&
+        typeof parsed === 'object' &&
+        'success' in parsed &&
+        parsed.success === false
+      ) {
+        const result = parsed as {
+          success: false;
+          error?: string;
+          errorCode?: string;
+          sourceUrl?: string;
+          isUserFacingError?: boolean;
+        };
+
+        logImpressionEvent('develop.rebuild.error', {
+          appId: appId ?? '',
+          errorCode: result.errorCode || 'unknown',
+          sourceUrl: result.sourceUrl || '',
+          isUserFacingError: result.isUserFacingError === true,
+        })();
+      }
+    } catch (err) {
+      logger.warn('toolSideEffects.rebuild.error.analytics.failed', {
+        appId,
+        toolName: tool.name,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
   // Logo generation completed — surface the first logo so Brand Book UI can
   // preview it without refetching the whole manifest.
   const isLogoTool =
