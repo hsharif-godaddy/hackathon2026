@@ -1,3 +1,5 @@
+import { Readable } from 'node:stream';
+import { STREAMING_UPLOAD_TIMEOUT_MS } from '../../services/DevSupervisorClient.js';
 import type { DevSupervisorClient } from '../../services/DevSupervisorClient.js';
 import {
   collectBuffer,
@@ -110,7 +112,25 @@ export class HttpFiles implements WorkspaceFiles {
     if (options.root) {
       url += `&root=${encodeURIComponent(options.root)}`;
     }
-    const response = await this.client.putRaw(url, options.data);
+    if (options.createOnly) {
+      url += '&createOnly=true';
+    }
+
+    let body: Readable;
+    let contentLength: number | undefined = options.contentLength;
+
+    if (options.data instanceof Readable) {
+      body = options.data;
+    } else {
+      const buf: Buffer = typeof options.data === 'string'
+        ? Buffer.from(options.data, 'utf-8')
+        : Buffer.isBuffer(options.data) ? options.data : Buffer.from(options.data);
+      contentLength ??= buf.length;
+      body = Readable.from([buf]);
+    }
+
+    const timeoutMs: number | undefined = options.data instanceof Readable ? STREAMING_UPLOAD_TIMEOUT_MS : undefined;
+    const response = await this.client.putStream(url, body, contentLength, timeoutMs);
     return response as WriteResult;
   }
 

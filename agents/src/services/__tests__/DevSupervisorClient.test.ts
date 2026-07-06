@@ -1,5 +1,6 @@
+import { Readable } from 'node:stream';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { DevSupervisorClient, DevSupervisorError, isDevSupervisorAvailable, createDevSupervisorClient } from '../DevSupervisorClient.js';
+import { DevSupervisorClient, DevSupervisorError, STREAMING_UPLOAD_TIMEOUT_MS, isDevSupervisorAvailable, createDevSupervisorClient } from '../DevSupervisorClient.js';
 import * as fs from 'fs';
 import http from 'http';
 
@@ -10,6 +11,11 @@ vi.mock('fs', () => ({
 
 // Mock http module
 vi.mock('http');
+
+// Mock pipeline to avoid needing a real writable stream
+vi.mock('node:stream/promises', () => ({
+  pipeline: vi.fn().mockResolvedValue(undefined),
+}));
 
 describe('DevSupervisorClient', () => {
   let client: DevSupervisorClient;
@@ -435,6 +441,104 @@ describe('DevSupervisorClient getRaw', () => {
       .rejects.toSatisfy((err: unknown) =>
         err instanceof DevSupervisorError && err.statusCode === 500 && err.message === 'internal error'
       );
+  });
+
+  describe('putStream', () => {
+    it('sends PUT with Content-Length when provided', async () => {
+      const mockRequest = createMockRequest(200, { bytesWritten: 5 });
+      vi.mocked(http.request).mockReturnValue(mockRequest as any);
+
+      const body: Readable = Readable.from([Buffer.from('hello')]);
+      await client.putStream('/workspace/files/upload?path=test.txt', body, 5);
+
+      expect(http.request).toHaveBeenCalledWith(
+        expect.objectContaining({
+          socketPath: '/tmp/test.sock',
+          method: 'PUT',
+          path: '/workspace/files/upload?path=test.txt',
+          headers: { 'Content-Type': 'application/octet-stream', 'Content-Length': 5 },
+        }),
+        expect.any(Function),
+      );
+    });
+
+    it('omits Content-Length when not provided (chunked encoding)', async () => {
+      const mockRequest = createMockRequest(200, { bytesWritten: 3 });
+      vi.mocked(http.request).mockReturnValue(mockRequest as any);
+
+      const body: Readable = Readable.from([Buffer.from('abc')]);
+      await client.putStream('/workspace/files/upload?path=x', body);
+
+      expect(http.request).toHaveBeenCalledWith(
+        expect.objectContaining({
+          headers: { 'Content-Type': 'application/octet-stream' },
+        }),
+        expect.any(Function),
+      );
+    });
+
+    it('sets Content-Length: 0 for empty uploads (not omitted)', async () => {
+      const mockRequest = createMockRequest(200, { bytesWritten: 0 });
+      vi.mocked(http.request).mockReturnValue(mockRequest as any);
+
+      const body: Readable = Readable.from([Buffer.alloc(0)]);
+      await client.putStream('/workspace/files/upload?path=empty', body, 0);
+
+      expect(http.request).toHaveBeenCalledWith(
+        expect.objectContaining({
+          headers: { 'Content-Type': 'application/octet-stream', 'Content-Length': 0 },
+        }),
+        expect.any(Function),
+      );
+    });
+
+    it('rejects with DevSupervisorError on non-2xx response', async () => {
+      const mockRequest = createMockRequest(409, { error: 'file_exists', message: 'file already exists: foo.txt' });
+      vi.mocked(http.request).mockReturnValue(mockRequest as any);
+
+      const body: Readable = Readable.from([Buffer.from('data')]);
+      await expect(client.putStream('/workspace/files/upload?path=foo.txt&createOnly=true', body, 4))
+        .rejects.toSatisfy((err: unknown) =>
+          err instanceof DevSupervisorError &&
+          err.code === 'file_exists' &&
+          err.statusCode === 409
+        );
+    });
+
+    it('rejects with DevSupervisorError on 507 disk_full', async () => {
+      const mockRequest = createMockRequest(507, { error: 'disk_full', message: 'no space left on device' });
+      vi.mocked(http.request).mockReturnValue(mockRequest as any);
+
+      const body: Readable = Readable.from([Buffer.from('x')]);
+      await expect(client.putStream('/workspace/files/upload?path=big.bin', body, 1))
+        .rejects.toSatisfy((err: unknown) =>
+          err instanceof DevSupervisorError &&
+          err.code === 'disk_full' &&
+          err.statusCode === 507
+        );
+    });
+
+    it('uses TCP options when connectionPath is tcp://', async () => {
+      const tcpClient: DevSupervisorClient = new DevSupervisorClient('tcp://localhost:8080');
+      const mockRequest = createMockRequest(200, { bytesWritten: 1 });
+      vi.mocked(http.request).mockReturnValue(mockRequest as any);
+
+      const body: Readable = Readable.from([Buffer.from('x')]);
+      await tcpClient.putStream('/workspace/files/upload?path=f', body, 1);
+
+      expect(http.request).toHaveBeenCalledWith(
+        expect.objectContaining({
+          hostname: 'localhost',
+          port: 8080,
+          method: 'PUT',
+        }),
+        expect.any(Function),
+      );
+    });
+
+    it('exports STREAMING_UPLOAD_TIMEOUT_MS for callers', () => {
+      expect(STREAMING_UPLOAD_TIMEOUT_MS).toBe(5 * 60_000);
+    });
   });
 });
 

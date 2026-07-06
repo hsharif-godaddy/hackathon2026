@@ -4,7 +4,7 @@ import type { DevSupervisorClient } from '../../../services/DevSupervisorClient.
 import { HttpFiles } from '../http-files.js';
 
 function makeClient() {
-  return { post: vi.fn(), postStream: vi.fn(), getStream: vi.fn() } as unknown as DevSupervisorClient;
+  return { post: vi.fn(), postStream: vi.fn(), getStream: vi.fn(), putStream: vi.fn() } as unknown as DevSupervisorClient;
 }
 
 function bufferStream(content: string): Readable {
@@ -215,6 +215,99 @@ describe('HttpFiles', () => {
         from: 'old.ts',
         to: 'new.ts',
       });
+    });
+  });
+
+  describe('upload()', () => {
+    it('uploads a Buffer via putStream with content length', async () => {
+      (client.putStream as ReturnType<typeof vi.fn>).mockResolvedValue({ bytesWritten: 5 });
+
+      const result = await files.upload({ path: 'img/logo.png', data: Buffer.from('hello') });
+
+      expect(client.putStream).toHaveBeenCalledWith(
+        '/workspace/files/upload?path=img/logo.png',
+        expect.any(Readable),
+        5,
+        undefined,
+      );
+      expect(result.bytesWritten).toBe(5);
+    });
+
+    it('uploads a Uint8Array via putStream with content length', async () => {
+      (client.putStream as ReturnType<typeof vi.fn>).mockResolvedValue({ bytesWritten: 3 });
+      const data: Uint8Array = new Uint8Array([1, 2, 3]);
+
+      const result = await files.upload({ path: 'bin/data.bin', data });
+
+      expect(client.putStream).toHaveBeenCalledWith(
+        '/workspace/files/upload?path=bin/data.bin',
+        expect.any(Readable),
+        3,
+        undefined,
+      );
+      expect(result.bytesWritten).toBe(3);
+    });
+
+    it('uploads a string via putStream', async () => {
+      (client.putStream as ReturnType<typeof vi.fn>).mockResolvedValue({ bytesWritten: 11 });
+
+      const result = await files.upload({ path: 'readme.txt', data: 'hello world' });
+
+      expect(client.putStream).toHaveBeenCalledWith(
+        '/workspace/files/upload?path=readme.txt',
+        expect.any(Readable),
+        11,
+        undefined,
+      );
+      expect(result.bytesWritten).toBe(11);
+    });
+
+    it('uploads a Readable stream directly with streaming timeout', async () => {
+      (client.putStream as ReturnType<typeof vi.fn>).mockResolvedValue({ bytesWritten: 6 });
+      const stream: Readable = Readable.from([Buffer.from('stream')]);
+
+      const result = await files.upload({ path: 'data.bin', data: stream });
+
+      expect(client.putStream).toHaveBeenCalledWith(
+        '/workspace/files/upload?path=data.bin',
+        stream,
+        undefined,
+        300_000,
+      );
+      expect(result.bytesWritten).toBe(6);
+    });
+
+    it('passes contentLength when provided with a Readable', async () => {
+      (client.putStream as ReturnType<typeof vi.fn>).mockResolvedValue({ bytesWritten: 1024 });
+      const stream: Readable = Readable.from([Buffer.alloc(1024)]);
+
+      const result = await files.upload({ path: 'big.bin', data: stream, contentLength: 1024 });
+
+      expect(client.putStream).toHaveBeenCalledWith(
+        '/workspace/files/upload?path=big.bin',
+        stream,
+        1024,
+        300_000,
+      );
+      expect(result.bytesWritten).toBe(1024);
+    });
+
+    it('appends createOnly query param when set', async () => {
+      (client.putStream as ReturnType<typeof vi.fn>).mockResolvedValue({ bytesWritten: 4 });
+
+      await files.upload({ path: 'new.txt', data: Buffer.from('test'), createOnly: true });
+
+      const url: string = (client.putStream as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      expect(url).toContain('createOnly=true');
+    });
+
+    it('appends root query param when set', async () => {
+      (client.putStream as ReturnType<typeof vi.fn>).mockResolvedValue({ bytesWritten: 4 });
+
+      await files.upload({ path: 'asset.png', data: Buffer.from('test'), root: 'public-assets' });
+
+      const url: string = (client.putStream as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      expect(url).toContain('root=public-assets');
     });
   });
 });

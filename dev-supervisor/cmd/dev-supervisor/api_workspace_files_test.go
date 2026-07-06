@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/airo-ai-builder/dev-supervisor/internal/config"
@@ -36,6 +37,7 @@ func postJSON(t *testing.T, handler http.HandlerFunc, body any) *httptest.Respon
 	req := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(data))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
+	req.Body = http.MaxBytesReader(w, req.Body, wsFilesMaxBodySize)
 	handler(w, req)
 	return w
 }
@@ -1119,6 +1121,69 @@ func TestWorkspaceFilesUpload_MissingPath(t *testing.T) {
 	}
 }
 
+func TestWorkspaceFilesWrite_OversizedBody_Returns413(t *testing.T) {
+	server, _ := newTestServerWithDir(t)
+
+	oversizedContent := strings.Repeat("x", 11*1024*1024)
+	w := postJSON(t, server.handleWorkspaceFilesWrite, map[string]any{
+		"path":    "big.txt",
+		"content": oversizedContent,
+	})
+
+	if w.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("expected 413, got %d: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "request_too_large") {
+		t.Errorf("expected error code request_too_large, got: %s", w.Body.String())
+	}
+}
+
+func TestWorkspaceFilesUpload_CreateOnly_NewFile(t *testing.T) {
+	server, dir := newTestServerWithDir(t)
+	data := []byte("brand new content")
+
+	req := httptest.NewRequest(http.MethodPut,
+		"/workspace/files/upload?path=new-file.txt&createOnly=true",
+		bytes.NewReader(data))
+	req.Header.Set("Content-Type", "application/octet-stream")
+	w := httptest.NewRecorder()
+	server.handleWorkspaceFilesUpload(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	written, err := os.ReadFile(filepath.Join(dir, "new-file.txt"))
+	if err != nil {
+		t.Fatalf("file not created: %v", err)
+	}
+	if !bytes.Equal(written, data) {
+		t.Error("content mismatch")
+	}
+}
+
+func TestWorkspaceFilesUpload_CreateOnly_Conflict(t *testing.T) {
+	server, dir := newTestServerWithDir(t)
+	os.WriteFile(filepath.Join(dir, "existing.txt"), []byte("original"), 0o644)
+
+	req := httptest.NewRequest(http.MethodPut,
+		"/workspace/files/upload?path=existing.txt&createOnly=true",
+		bytes.NewReader([]byte("overwrite attempt")))
+	req.Header.Set("Content-Type", "application/octet-stream")
+	w := httptest.NewRecorder()
+	server.handleWorkspaceFilesUpload(w, req)
+
+	if w.Code != http.StatusConflict {
+		t.Fatalf("expected 409 Conflict, got %d: %s", w.Code, w.Body.String())
+	}
+
+	// Verify original content is unchanged
+	data, _ := os.ReadFile(filepath.Join(dir, "existing.txt"))
+	if string(data) != "original" {
+		t.Error("existing file was modified")
+	}
+}
+
 // --- Download tests ---
 
 func getRaw(t *testing.T, handler http.HandlerFunc, path string) *httptest.ResponseRecorder {
@@ -1734,5 +1799,35 @@ func TestWorkspaceFilesUpload_WithRoot(t *testing.T) {
 	}
 	if string(data) != "binary-data" {
 		t.Errorf("unexpected content: %q", data)
+	}
+}
+
+// --- sendWsFilesError classification tests ---
+
+func TestSendWsFilesError_ENOSPC(t *testing.T) {
+	server, _ := newTestServerWithDir(t)
+	w := httptest.NewRecorder()
+
+	server.sendWsFilesError(w, "workspace.files.write", "big.bin", fmt.Errorf("write big.bin: %w", syscall.ENOSPC))
+
+	if w.Code != http.StatusInsufficientStorage {
+		t.Fatalf("expected 507, got %d: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "disk_full") {
+		t.Errorf("expected error code disk_full, got: %s", w.Body.String())
+	}
+}
+
+func TestSendWsFilesError_EDQUOT(t *testing.T) {
+	server, _ := newTestServerWithDir(t)
+	w := httptest.NewRecorder()
+
+	server.sendWsFilesError(w, "workspace.files.upload", "file.bin", fmt.Errorf("write file.bin: %w", syscall.EDQUOT))
+
+	if w.Code != http.StatusInsufficientStorage {
+		t.Fatalf("expected 507, got %d: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "quota_exceeded") {
+		t.Errorf("expected error code quota_exceeded, got: %s", w.Body.String())
 	}
 }

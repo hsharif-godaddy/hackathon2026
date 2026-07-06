@@ -183,7 +183,11 @@ export interface MoveOptions {
 export interface FileUploadOptions {
   root?: StorageRoot;
   path: string;
-  data: Buffer | Uint8Array;
+  data: Readable | Buffer | Uint8Array | string;
+  /** Fail with 409 if the file already exists. */
+  createOnly?: boolean;
+  /** Total byte length of the upload. Set when data is a Readable and the size is known upfront. */
+  contentLength?: number;
 }
 
 export interface ReadTextOptions {

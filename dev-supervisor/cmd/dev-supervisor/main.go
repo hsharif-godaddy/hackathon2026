@@ -293,10 +293,10 @@ func (s *Server) setupRoutes() {
 	wsFilesRouter.HandleFunc("/move", s.handleWorkspaceFilesMove).Methods("POST")
 	wsFilesRouter.HandleFunc("/archive", s.handleWorkspaceFilesArchive).Methods("POST")
 
-	// Binary upload registered separately — needs 100MB limit, not the 10MB JSON limit
-	s.router.Handle("/workspace/files/upload", wsFilesUploadMiddleware(
-		http.HandlerFunc(s.handleWorkspaceFilesUpload),
-	)).Methods("PUT")
+	// Binary upload — streams directly to disk with no body size cap. Memory is safe
+	// (io.Copy, not buffer-then-write); disk quota (EDQUOT → 507) is the intended backstop.
+	// The route is PeerSec-gated (internal socket only, not externally reachable).
+	s.router.HandleFunc("/workspace/files/upload", s.handleWorkspaceFilesUpload).Methods("PUT")
 
 	// Binary download — raw file streaming (no body size middleware needed)
 	s.router.HandleFunc("/workspace/files/download", s.handleWorkspaceFilesDownload).Methods("GET")

@@ -19,6 +19,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 	"unicode/utf8"
 
@@ -35,9 +36,8 @@ const (
 	wsFilesKindFile      = "file"
 	wsFilesKindDirectory = "directory"
 
-	wsFilesMaxEditBytes   = 1 * 1024 * 1024   // 1MB max file for edit (full in-memory replacement)
-	wsFilesMaxBodySize    = 10 * 1024 * 1024  // 10MB max request body (JSON endpoints)
-	wsFilesMaxUploadBytes = 100 * 1024 * 1024 // 100MB max binary upload
+	wsFilesMaxEditBytes = 1 * 1024 * 1024  // 1MB max file for edit (full in-memory replacement)
+	wsFilesMaxBodySize  = 10 * 1024 * 1024 // 10MB max request body (JSON endpoints)
 
 	wsFilesDefaultMaxEntries = 1000
 	wsFilesMaxMaxDepth       = 100
@@ -313,12 +313,24 @@ func wsFilesMaxBodyMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+// sendJSONDecodeError sends the appropriate error for a failed JSON body decode.
+// Distinguishes MaxBytesError (413) from malformed JSON (400).
+func (s *Server) sendJSONDecodeError(w http.ResponseWriter, err error) {
+	var maxBytesErr *http.MaxBytesError
+	if errors.As(err, &maxBytesErr) {
+		s.sendError(w, http.StatusRequestEntityTooLarge, "request_too_large",
+			fmt.Sprintf("request body exceeds %d byte limit", maxBytesErr.Limit))
+		return
+	}
+	s.sendError(w, http.StatusBadRequest, "invalid_request", "Invalid JSON payload")
+}
+
 // --- Handlers ---
 
 func (s *Server) handleWorkspaceFilesTree(w http.ResponseWriter, r *http.Request) {
 	var req wsFilesTreeRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		s.sendError(w, http.StatusBadRequest, "invalid_request", "Invalid JSON payload")
+		s.sendJSONDecodeError(w, err)
 		return
 	}
 
@@ -613,7 +625,7 @@ func wsFilesKindMatches(kindFilter string, isDir bool) bool {
 func (s *Server) handleWorkspaceFilesView(w http.ResponseWriter, r *http.Request) {
 	var req wsFilesViewRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		s.sendError(w, http.StatusBadRequest, "invalid_request", "Invalid JSON payload")
+		s.sendJSONDecodeError(w, err)
 		return
 	}
 
@@ -816,7 +828,7 @@ func countLines(r io.Reader, fileSize int64) (int, error) {
 func (s *Server) handleWorkspaceFilesSearch(w http.ResponseWriter, r *http.Request) {
 	var req wsFilesSearchRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		s.sendError(w, http.StatusBadRequest, "invalid_request", "Invalid JSON payload")
+		s.sendJSONDecodeError(w, err)
 		return
 	}
 
@@ -980,10 +992,71 @@ func parseWsFilesSearchOutput(data []byte, baseDir string, maxResults int) []wsF
 	return matches
 }
 
+// atomicWriteFromReader streams body into a temp file and atomically renames it
+// into resolved. If createOnly is true and resolved already exists, it returns
+// 409 Conflict. Returns the number of bytes written, or -1 on error (error
+// already sent to the client).
+func (s *Server) atomicWriteFromReader(
+	w http.ResponseWriter, op string, path string, resolved string, body io.Reader, createOnly bool,
+) int64 {
+	// Best-effort under concurrency (stat-then-rename TOCTOU). Acceptable because
+	// each workspace has a single writer (the agent process). Use O_EXCL + link if
+	// strict atomicity is ever required.
+	if createOnly {
+		if _, statErr := os.Stat(resolved); statErr == nil {
+			s.sendError(w, http.StatusConflict, "file_exists",
+				fmt.Sprintf("file already exists: %s", path))
+			return -1
+		}
+	}
+
+	dir := filepath.Dir(resolved)
+	if mkdirErr := os.MkdirAll(dir, 0o750); mkdirErr != nil {
+		s.sendWsFilesError(w, op, path, mkdirErr)
+		return -1
+	}
+
+	f, err := os.CreateTemp(dir, ".ws-*.tmp")
+	if err != nil {
+		s.sendWsFilesError(w, op, path, err)
+		return -1
+	}
+	tmpFile := f.Name()
+
+	written, copyErr := io.Copy(f, body)
+	closeErr := f.Close()
+
+	if copyErr != nil {
+		_ = os.Remove(tmpFile)
+		s.sendWsFilesError(w, op, path, copyErr)
+		return -1
+	}
+	if closeErr != nil {
+		_ = os.Remove(tmpFile)
+		s.sendWsFilesError(w, op, path, closeErr)
+		return -1
+	}
+
+	//nolint:gosec // workspace files are intentionally world-readable
+	if err := os.Chmod(tmpFile, 0o644); err != nil {
+		_ = os.Remove(tmpFile)
+		s.sendWsFilesError(w, op, path, err)
+		return -1
+	}
+
+	if err := os.Rename(tmpFile, resolved); err != nil {
+		_ = os.Remove(tmpFile)
+		s.sendWsFilesError(w, op, path, err)
+		return -1
+	}
+
+	return written
+}
+
 func (s *Server) handleWorkspaceFilesWrite(w http.ResponseWriter, r *http.Request) {
 	var req wsFilesWriteRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		s.sendError(w, http.StatusBadRequest, "invalid_request", "Invalid JSON payload")
+		s.sendJSONDecodeError(w, err)
 		return
 	}
 
@@ -1004,14 +1077,6 @@ func (s *Server) handleWorkspaceFilesWrite(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	if req.CreateOnly {
-		if _, statErr := os.Stat(resolved); statErr == nil {
-			s.sendError(w, http.StatusConflict, "file_exists",
-				fmt.Sprintf("file already exists: %s", req.Path))
-			return
-		}
-	}
-
 	slog.Debug("workspace.files.write.start", "path", req.Path)
 
 	var data []byte
@@ -1025,30 +1090,22 @@ func (s *Server) handleWorkspaceFilesWrite(w http.ResponseWriter, r *http.Reques
 		data = []byte(req.Content)
 	}
 
-	// Auto-create parent directories
-	dir := filepath.Dir(resolved)
-	if mkdirErr := os.MkdirAll(dir, 0o750); mkdirErr != nil {
-		s.sendWsFilesError(w, "workspace.files.write", req.Path, mkdirErr)
+	written := s.atomicWriteFromReader(
+		w,
+		"workspace.files.write",
+		req.Path,
+		resolved,
+		bytes.NewReader(data),
+		req.CreateOnly,
+	)
+	if written < 0 {
 		return
 	}
 
-	// Atomic write: tmp + rename so readers never see a partial file
-	tmpFile := resolved + ".tmp"
-	//nolint:gosec // workspace files are intentionally world-readable
-	if err := os.WriteFile(tmpFile, data, 0o644); err != nil {
-		s.sendWsFilesError(w, "workspace.files.write", req.Path, err)
-		return
-	}
-	if err := os.Rename(tmpFile, resolved); err != nil {
-		_ = os.Remove(tmpFile)
-		s.sendWsFilesError(w, "workspace.files.write", req.Path, err)
-		return
-	}
-
-	slog.Debug("workspace.files.write.completed", "path", req.Path, "bytes_written", len(data))
+	slog.Debug("workspace.files.write.completed", "path", req.Path, "bytes_written", written)
 
 	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(wsFilesWriteResponse{BytesWritten: int64(len(data))}); err != nil {
+	if err := json.NewEncoder(w).Encode(wsFilesWriteResponse{BytesWritten: written}); err != nil {
 		slog.Error("workspace.files.write.encode_failed", "error", err)
 	}
 }
@@ -1056,7 +1113,7 @@ func (s *Server) handleWorkspaceFilesWrite(w http.ResponseWriter, r *http.Reques
 func (s *Server) handleWorkspaceFilesEdit(w http.ResponseWriter, r *http.Request) {
 	var req wsFilesEditRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		s.sendError(w, http.StatusBadRequest, "invalid_request", "Invalid JSON payload")
+		s.sendJSONDecodeError(w, err)
 		return
 	}
 
@@ -1152,7 +1209,7 @@ func (s *Server) handleWorkspaceFilesEdit(w http.ResponseWriter, r *http.Request
 func (s *Server) handleWorkspaceFilesInsert(w http.ResponseWriter, r *http.Request) {
 	var req wsFilesInsertRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		s.sendError(w, http.StatusBadRequest, "invalid_request", "Invalid JSON payload")
+		s.sendJSONDecodeError(w, err)
 		return
 	}
 
@@ -1253,7 +1310,7 @@ func (s *Server) handleWorkspaceFilesInsert(w http.ResponseWriter, r *http.Reque
 func (s *Server) handleWorkspaceFilesDelete(w http.ResponseWriter, r *http.Request) {
 	var req wsFilesDeleteRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		s.sendError(w, http.StatusBadRequest, "invalid_request", "Invalid JSON payload")
+		s.sendJSONDecodeError(w, err)
 		return
 	}
 
@@ -1297,7 +1354,7 @@ func (s *Server) handleWorkspaceFilesDelete(w http.ResponseWriter, r *http.Reque
 func (s *Server) handleWorkspaceFilesMove(w http.ResponseWriter, r *http.Request) {
 	var req wsFilesMoveRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		s.sendError(w, http.StatusBadRequest, "invalid_request", "Invalid JSON payload")
+		s.sendJSONDecodeError(w, err)
 		return
 	}
 
@@ -1371,41 +1428,12 @@ func (s *Server) handleWorkspaceFilesUpload(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	createOnly := r.URL.Query().Get("createOnly") == "true"
+
 	slog.Debug("workspace.files.upload.start", "path", path)
 
-	// Auto-create parent directories
-	if mkdirErr := os.MkdirAll(filepath.Dir(resolved), 0o750); mkdirErr != nil {
-		s.sendWsFilesError(w, "workspace.files.upload", path, mkdirErr)
-		return
-	}
-
-	// Stream body directly to a temp file — avoids buffering the full upload in memory
-	tmpFile := resolved + ".upload.tmp"
-	//nolint:gosec // workspace files are intentionally world-readable
-	f, err := os.OpenFile(tmpFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
-	if err != nil {
-		s.sendWsFilesError(w, "workspace.files.upload", path, err)
-		return
-	}
-
-	written, copyErr := io.Copy(f, r.Body)
-	closeErr := f.Close()
-
-	if copyErr != nil {
-		_ = os.Remove(tmpFile)
-		s.sendError(w, http.StatusBadRequest, "upload_failed", copyErr.Error())
-		return
-	}
-	if closeErr != nil {
-		_ = os.Remove(tmpFile)
-		s.sendWsFilesError(w, "workspace.files.upload", path, closeErr)
-		return
-	}
-
-	// Atomic rename into place
-	if err := os.Rename(tmpFile, resolved); err != nil {
-		_ = os.Remove(tmpFile)
-		s.sendWsFilesError(w, "workspace.files.upload", path, err)
+	written := s.atomicWriteFromReader(w, "workspace.files.upload", path, resolved, r.Body, createOnly)
+	if written < 0 {
 		return
 	}
 
@@ -1486,7 +1514,7 @@ func (s *Server) handleWorkspaceFilesDownload(w http.ResponseWriter, r *http.Req
 func (s *Server) handleWorkspaceFilesArchive(w http.ResponseWriter, r *http.Request) {
 	var req wsFilesArchiveRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		s.sendError(w, http.StatusBadRequest, "invalid_request", "Invalid JSON payload")
+		s.sendJSONDecodeError(w, err)
 		return
 	}
 
@@ -1673,14 +1701,6 @@ func (ab *wsArchiveBuilder) walkFunc(p string, d fs.DirEntry, err error) error {
 	return nil
 }
 
-// wsFilesUploadMiddleware limits binary upload body size separately from JSON endpoints.
-func wsFilesUploadMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		r.Body = http.MaxBytesReader(w, r.Body, wsFilesMaxUploadBytes)
-		next.ServeHTTP(w, r)
-	})
-}
-
 // handleWorkspaceFilesStat returns metadata for one or more paths in a single
 // round-trip. This is the cheap stat-equivalent that callers should reach for
 // instead of view() (which downloads file content) or tree() (which walks a
@@ -1694,7 +1714,7 @@ func wsFilesUploadMiddleware(next http.Handler) http.Handler {
 func (s *Server) handleWorkspaceFilesStat(w http.ResponseWriter, r *http.Request) {
 	var req wsFilesStatRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		s.sendError(w, http.StatusBadRequest, "invalid_request", "Invalid JSON payload")
+		s.sendJSONDecodeError(w, err)
 		return
 	}
 
@@ -1768,6 +1788,16 @@ func (s *Server) sendWsFilesError(w http.ResponseWriter, operation string, path 
 	}
 	if os.IsPermission(err) {
 		s.sendError(w, http.StatusForbidden, "permission_denied", fmt.Sprintf("%s: %s", path, err.Error()))
+		return
+	}
+	if errors.Is(err, syscall.ENOSPC) {
+		slog.Error(operation+".disk_full", "path", path, "error", err)
+		s.sendError(w, http.StatusInsufficientStorage, "disk_full", "no space left on device")
+		return
+	}
+	if errors.Is(err, syscall.EDQUOT) {
+		slog.Error(operation+".quota_exceeded", "path", path, "error", err)
+		s.sendError(w, http.StatusInsufficientStorage, "quota_exceeded", "disk quota exceeded")
 		return
 	}
 	slog.Error(operation+".failed", "path", path, "error", err)

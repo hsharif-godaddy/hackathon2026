@@ -1,6 +1,8 @@
-import http from 'http';
-import { existsSync } from 'fs';
-import { execSync } from 'child_process';
+import http from 'node:http';
+import { existsSync } from 'node:fs';
+import { execSync } from 'node:child_process';
+import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 import { Logger } from '../logging/index.js';
 import { getErrorMessage } from '../utils/error.js';
 import { validateHostPort } from '../utils/network-validation.js';
@@ -8,6 +10,7 @@ import { buildCurlCommand } from '../utils/command-builder.js';
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const RESTART_REQUEST_TIMEOUT_MS = 60_000;
+export const STREAMING_UPLOAD_TIMEOUT_MS = 5 * 60_000;
 
 /**
  * Structured error from the dev-supervisor HTTP API.
@@ -1099,10 +1102,100 @@ export class DevSupervisorClient {
   }
 
   /**
-   * Raw PUT with binary body. Used for binary uploads to workspace.
+   * Raw PUT with binary body. Convenience wrapper over putStream for callers
+   * that already have a complete buffer.
    */
   putRaw(path: string, data: Buffer | Uint8Array): Promise<unknown> {
-    return this.makeRequest('PUT', path, undefined, undefined, data);
+    const stream: Readable = Readable.from([data]);
+    return this.putStream(path, stream, data.length);
+  }
+
+  /**
+   * Streaming PUT. Pipes body through to the server without buffering the full
+   * payload in the Node.js heap. contentLength is optional — when provided it
+   * sets Content-Length so the server knows the total; when omitted the request
+   * uses chunked transfer encoding.
+   */
+  putStream(path: string, body: Readable, contentLength?: number, timeoutMs?: number): Promise<unknown> {
+    return new Promise((resolve, reject) => {
+      const headers: Record<string, string | number> = {
+        'Content-Type': 'application/octet-stream',
+      };
+      if (contentLength !== undefined) {
+        headers['Content-Length'] = contentLength;
+      }
+
+      let options: http.RequestOptions;
+
+      if (this.useTcp) {
+        const url = new URL(this.connectionPath);
+        options = {
+          hostname: url.hostname || 'localhost',
+          port: parseInt(url.port) || 8080,
+          method: 'PUT',
+          path,
+          headers,
+        };
+      } else {
+        options = {
+          socketPath: this.connectionPath,
+          method: 'PUT',
+          path,
+          headers,
+        };
+      }
+
+      const req = http.request(options, (res) => {
+        let responseBody: string = '';
+
+        res.on('data', (chunk: Buffer) => {
+          responseBody += chunk;
+        });
+
+        res.on('error', (err: Error) => {
+          clearTimeout(timer);
+          reject(err);
+        });
+
+        res.on('end', () => {
+          clearTimeout(timer);
+          try {
+            const response: { error?: string; message?: string } = responseBody ? JSON.parse(responseBody) : {};
+
+            if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
+              resolve(response);
+            } else {
+              const code: string = response.error || 'unknown';
+              const detail: string = response.message || 'Request failed';
+              reject(new DevSupervisorError(code, res.statusCode ?? 500, detail));
+            }
+          } catch (cause) {
+            reject(new Error(`Failed to parse response: ${responseBody}`, { cause }));
+          }
+        });
+      });
+
+      req.on('error', (error) => {
+        clearTimeout(timer);
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+          reject(new Error(`dev-supervisor not available at ${this.connectionPath}`));
+        } else if ((error as NodeJS.ErrnoException).code === 'ECONNREFUSED') {
+          reject(new Error(`dev-supervisor TCP connection refused at ${this.connectionPath}`));
+        } else {
+          reject(error);
+        }
+      });
+
+      const effectiveTimeout: number = timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
+      const timer = setTimeout(() => {
+        req.destroy(new Error(`Request timeout after ${effectiveTimeout}ms: PUT ${path}`));
+      }, effectiveTimeout);
+
+      pipeline(body, req).catch((err: Error) => {
+        clearTimeout(timer);
+        reject(err);
+      });
+    });
   }
 
   /**

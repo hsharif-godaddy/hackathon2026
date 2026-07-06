@@ -11,6 +11,7 @@ import { Readable } from 'node:stream';
 import { vi } from 'vitest';
 
 import { DevSupervisorError } from '../../services/DevSupervisorClient.js';
+import { collectBuffer } from '../files.js';
 import type {
   DeleteOptions,
   DownloadOptions,
@@ -162,9 +163,17 @@ export function createMockWorkspaceFiles(seed: Record<string, string> = {}): Moc
     store.set(options.to, content);
   });
 
-  const upload = vi.fn(async (options: { path: string; data: Buffer | Uint8Array }): Promise<WriteResult> => {
-    store.set(options.path, Buffer.from(options.data).toString('utf8'));
-    return { bytesWritten: options.data.length };
+  const upload = vi.fn(async (options: { path: string; data: Readable | Buffer | Uint8Array | string }): Promise<WriteResult> => {
+    let buf: Buffer;
+    if (options.data instanceof Readable) {
+      buf = await collectBuffer(options.data);
+    } else if (typeof options.data === 'string') {
+      buf = Buffer.from(options.data, 'utf-8');
+    } else {
+      buf = Buffer.from(options.data);
+    }
+    store.set(options.path, buf.toString('utf8'));
+    return { bytesWritten: buf.length };
   });
 
   const readText = vi.fn(async (options: ReadTextOptions): Promise<string> => {
