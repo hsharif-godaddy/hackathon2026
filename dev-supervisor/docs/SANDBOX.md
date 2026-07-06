@@ -162,5 +162,5 @@ make test-docker    # Docker integration (verifies Landlock blocks)
 
 ## Dependencies
 
-- [`go-landlock`](https://github.com/landlock-lsm/go-landlock) v0.7.0 - Go bindings for Landlock LSM
+- [`go-landlock`](https://github.com/landlock-lsm/go-landlock) v0.9.0 - Go bindings for Landlock LSM
 - `kernel.org/pub/linux/libs/security/libcap/psx` - Cross-thread syscall support

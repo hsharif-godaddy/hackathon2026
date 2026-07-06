@@ -5,6 +5,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/landlock-lsm/go-landlock/landlock"
@@ -240,5 +241,32 @@ func TestModeToAccessFS_RWCXCoversAllV6HandledBits(t *testing.T) {
 	if access != v6HandledAccessFS {
 		t.Errorf("modeToAccessFS(\"rwcx\") = 0x%x, want 0x%x (all V6 handled FS bits)\n"+
 			"missing bits: 0x%x", access, v6HandledAccessFS, v6HandledAccessFS&^access)
+	}
+}
+
+// TestV6ConfigStillCarriesScoping verifies that landlock.V6's config includes
+// IPC scoping bits, confirming that V6.Restrict() alone enforces scoping — no
+// separate RestrictScoped() call is needed.
+//
+// This is a library-assumption tripwire, not a behavioral test. The actual
+// behavioral guard (cross-directory rename succeeds under sandbox) is validated
+// by make test-linux and the production deploy verification. This test catches
+// the case where a go-landlock upgrade removes scoping from the V6 preset.
+//
+// Background: a separate RestrictScoped() creates a second Landlock layer with
+// handled_access_fs=0. The kernel's LANDLOCK_ACCESS_FS_INITIALLY_DENIED causes
+// every layer to implicitly handle REFER. A layer with no FS path rules can
+// never satisfy REFER, making all cross-directory renames return EXDEV.
+func TestV6ConfigStillCarriesScoping(t *testing.T) {
+	t.Parallel()
+	// landlock.V6 fields are unexported; String() is the only introspection.
+	// V6 with all scoped bits set renders "Scoped: all"; zero renders "Scoped: ∅".
+	const wantFragment = "Scoped: all"
+	str := landlock.V6.String()
+	if !strings.Contains(str, wantFragment) {
+		t.Errorf("landlock.V6.String() = %q, want substring %q\n"+
+			"If V6 no longer carries scoping, applySandboxAndExec needs a "+
+			"separate RestrictScoped call (but see REFER layer poisoning caveat in "+
+			"sandbox_linux.go — a second layer poisons REFER)", str, wantFragment)
 	}
 }

@@ -55,15 +55,13 @@ func applySandboxAndExec(cfg *SandboxConfig, env []string) error {
 	rules := buildLandlockRules(cfg)
 
 	// Apply Landlock strictly (no BestEffort — we've verified ABI above).
+	// V6.Restrict already includes scoped=ABSTRACT_UNIX_SOCKET|SIGNAL in the
+	// ruleset attributes, so IPC scoping is enforced by this single call.
+	// A separate RestrictScoped() would create a second layer that implicitly
+	// "handles" REFER (via LANDLOCK_ACCESS_FS_INITIALLY_DENIED) with no rules
+	// to satisfy it — making cross-directory renames impossible (EXDEV).
 	if err := landlock.V6.Restrict(rules...); err != nil {
 		return fmt.Errorf("failed to apply landlock restrictions: %w", err)
-	}
-
-	// Restrict IPC scoping (V6+): prevents sandboxed processes from sending
-	// signals to or connecting abstract Unix sockets of processes outside the
-	// Landlock domain (e.g. dev-supervisor itself).
-	if err := landlock.V6.RestrictScoped(); err != nil {
-		return fmt.Errorf("failed to apply landlock IPC scoping: %w", err)
 	}
 
 	return execCommand(cfg, env)
