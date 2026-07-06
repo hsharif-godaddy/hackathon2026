@@ -10,6 +10,8 @@ RootLayout is the recommended way to create consistent multi-page **websites** (
 - **For dashboards/admin panels**: Use the `Dashboard` component instead (includes sidebar navigation and top bar)
 - **For games/fullscreen apps**: Remove `<Header />` and `<Footer />` from RootLayout
 
+> **`App.tsx` is already wired.** The template ships `App.tsx` with RootLayout, a `<Suspense>` boundary, a dev-only error boundary, and the `<CookieBanner>` already in place. You normally do **not** edit `App.tsx`: add pages in `src/routes.tsx`, change chrome in `Header.tsx`/`Footer.tsx`, and (only to drop the header/footer) edit `RootLayout.tsx`. The `App.tsx` snippets below show the routing shape for reference — never paste them over the real file or you will delete the cookie banner and error boundaries.
+
 ## Why Use RootLayout?
 
 ### Problems It Solves
@@ -22,11 +24,10 @@ RootLayout is the recommended way to create consistent multi-page **websites** (
 ### RootLayout Pattern
 
 ```tsx
-// ✅ Use RootLayout in App.tsx
+// ✅ RootLayout is already applied in App.tsx (shown for reference — a pathless layout route)
 // src/App.tsx
 const router = createBrowserRouter([
   {
-    path: "/",
     element: (
       <RootLayout>
         <Outlet />
@@ -71,32 +72,9 @@ const navItems = [
 
 ## Setup Guide
 
-### Step 1: Use RootLayout in App.tsx
+### Step 1: RootLayout is already applied
 
-Open `src/App.tsx` and wrap your routes with RootLayout:
-
-```tsx
-import { createBrowserRouter, RouterProvider, Outlet } from "react-router-dom";
-import RootLayout from "./layouts/RootLayout";
-import { routes } from "./routes";
-
-// Apply to all routes
-const router = createBrowserRouter([
-  {
-    path: "/",
-    element: (
-      <RootLayout>
-        <Outlet />
-      </RootLayout>
-    ),
-    children: routes,
-  },
-]);
-
-export default function App() {
-  return <RouterProvider router={router} />;
-}
-```
+`src/App.tsx` already wraps every route in RootLayout — you don't edit `App.tsx` to set this up. It also mounts `<Suspense>`, a dev error boundary, and `<CookieBanner>`, so don't replace it. Skip to Step 2 to add your pages.
 
 ### Step 2: Create Simple Pages
 

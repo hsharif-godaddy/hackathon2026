@@ -386,8 +386,11 @@ The Dashboard layout is fully responsive:
 
 ### Active State Management
 ```tsx
-// Determine active state based on current route
-const currentPath = window.location.pathname;
+// Determine active state from the current route.
+// SSR-safe: use React Router's useLocation() inside the component.
+// NEVER use window.location.pathname — window is undefined during server render and crashes it.
+import { useLocation } from 'react-router-dom';
+const { pathname } = useLocation();
 
 navigation: {
   main: [
@@ -395,13 +398,13 @@ navigation: {
       title: 'Dashboard', 
       href: '/', 
       icon: Home, 
-      active: currentPath === '/'
+      active: pathname === '/'
     },
     { 
       title: 'Users', 
       href: '/users', 
       icon: Users,
-      active: currentPath.startsWith('/users')
+      active: pathname.startsWith('/users')
     }
   ]
 }
@@ -495,4 +498,4 @@ navigation: {
 
 ## Integration with Other Components
 
-The Dashboard layout works seamlessly with all shadcn/ui components:
+The Dashboard layout works seamlessly with all shadcn/ui components from `@/components/ui/` — drop in `Card`, `Table`, `Tabs`, `Dialog`, and the rest directly inside the dashboard content area.

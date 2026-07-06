@@ -29,6 +29,8 @@ const router = createBrowserRouter([{
 
 The layout route has no `path` — it is a pathless wrapper so its `RootLayout` + `ScrollRestoration` apply to every child route. Pages stay in the flat `routes` array in `routes.tsx`; the wrapping lives only in `App.tsx` / `entry-server.tsx`.
 
+> **`App.tsx` is already wired.** The template ships with RootLayout, a `<Suspense>` boundary, a dev-only error boundary, and `<CookieBanner>` already in place. Do **not** edit `App.tsx` — add pages in `src/routes.tsx`, change chrome in `Header.tsx`/`Footer.tsx`, and (only to drop the header/footer) edit `RootLayout.tsx`.
+
 ### Customizing Header and Footer
 
 Edit the component files directly — they are designed to be modified per-project:
@@ -57,7 +59,16 @@ interface WebsiteConfig {
 
 Default: `maxWidth: 'full'`, `padding: 'md'`, `background: 'default'`, `minHeight: true`.
 
-Use `RootLayout` in preference to `Website` directly.
+Use `RootLayout` in preference to `Website` directly. For advanced usage (custom layout without Header/Footer), `Header` and `Footer` take no props — edit the component files to customize:
+
+```tsx
+// Direct usage (advanced) — Website takes config.layout; Header/Footer take no props
+<Website config={{ layout: { background: 'gradient' } }}>
+  <Header />
+  <main>Your content</main>
+  <Footer />
+</Website>
+```
 
 ## Dashboard
 
@@ -92,6 +103,22 @@ Provides sidebar navigation + top header + scrollable main content. Fully respon
 ```
 
 Dashboard is used directly by page components (not in App.tsx router), so each dashboard page wraps itself.
+
+### Active State (SSR-safe)
+
+Use `useLocation()` from React Router — **never** `window.location.pathname` (crashes SSR):
+
+```tsx
+import { useLocation } from 'react-router-dom';
+const { pathname } = useLocation();
+
+navigation: {
+  main: [
+    { title: 'Dashboard', href: '/', icon: Home, active: pathname === '/' },
+    { title: 'Users', href: '/users', icon: Users, active: pathname.startsWith('/users') },
+  ]
+}
+```
 
 ## Pages are Content-Only
 

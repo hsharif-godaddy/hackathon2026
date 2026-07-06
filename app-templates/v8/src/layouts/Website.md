@@ -10,14 +10,13 @@ The Website layout provides the structural container for website pages. For most
 
 ### Correct Implementation ✅
 
-**Step 1: Use RootLayout in `App.tsx`**
+**Step 1: RootLayout is already applied in `App.tsx`** — you don't edit it to set this up. For reference, the routing shape is a single pathless layout route whose `children` are your `routes`:
 
 ```tsx
 import RootLayout from "./layouts/RootLayout";
 
 const router = createBrowserRouter([
   {
-    path: "/",
     element: (
       <RootLayout>
         <Outlet />

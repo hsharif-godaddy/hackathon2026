@@ -35,16 +35,16 @@ interface WebsiteProps {
  *
  * @example
  * ```tsx
- * // Typical usage with RootLayout (recommended)
- * <RootLayout config={{ header: {...}, footer: {...} }}>
+ * // Typical usage with RootLayout (recommended) — children only; edit Header.tsx/Footer.tsx to customize
+ * <RootLayout>
  *   <YourPage />
  * </RootLayout>
  *
- * // Direct usage (advanced)
+ * // Direct usage (advanced) — Website takes config.layout; Header/Footer take no props
  * <Website config={{ layout: { background: 'gradient' } }}>
- *   <Header config={headerConfig} />
+ *   <Header />
  *   <main>Your content</main>
- *   <Footer config={footerConfig} />
+ *   <Footer />
  * </Website>
  * ```
  */

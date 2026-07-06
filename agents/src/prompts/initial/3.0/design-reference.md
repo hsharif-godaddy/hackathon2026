@@ -406,7 +406,7 @@ src/
 ├── routes.tsx             # Route definitions (don't modify)
 ├── App.tsx                # App setup (don't modify)
 ├── layouts/
-│   └── RootLayout.md      # Header/footer config docs
+│   └── RootLayout.md      # Header/footer layout docs
 └── components/
     └── ui/                # Reusable UI components
 ```

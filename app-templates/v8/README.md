@@ -155,25 +155,16 @@ The template includes:
 
 ### Layout System
 
-**RootLayout Pattern** (Recommended for multi-page sites):
+**RootLayout Pattern** (recommended for multi-page sites):
 
-Configure header and footer once in `App.tsx`, applies to all pages:
+`App.tsx` already wraps every route in RootLayout, which renders a shared header and footer on every page. Customize them by editing `src/layouts/parts/Header.tsx` and `Footer.tsx` directly — there is no config prop. For reference, the routing shape is a pathless layout route:
 
 ```tsx
-// src/App.tsx
-const headerConfig = {
-  logo: { text: "MyApp" },
-  navItems: [
-    { href: "/", label: "Home" },
-    { href: "/about", label: "About" },
-  ],
-};
-
+// src/App.tsx (already wired)
 const router = createBrowserRouter([
   {
-    path: "/",
     element: (
-      <RootLayout config={{ header: headerConfig, footer: footerConfig }}>
+      <RootLayout>
         <Outlet />
       </RootLayout>
     ),

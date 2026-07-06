@@ -548,7 +548,47 @@ const SYNC_MANIFEST = [
     known_hashes: [
       '94d013b24a8cc29588ffdf1dc0687458', // before .airo/turnscript-* ignore (turnscript release)
     ],
-    force: false
+    force: false,
+  },
+  {
+    file: 'src/layouts/RootLayout.md',
+    description: 'Agent-read layout doc (RootLayout usage, header/footer, removing chrome)',
+    known_hashes: [
+      '4c83618b661db174e21e5f1f108a3ca2', // before doc-accuracy fix: drop App.tsx-rewrite Step 1, pathless layout route
+    ],
+    force: false,
+  },
+  {
+    file: 'src/layouts/Dashboard.md',
+    description: 'Agent-read layout doc (Dashboard config shape + usage patterns)',
+    known_hashes: [
+      '9469e8203937238cde78cbca27aa8239', // before doc-accuracy fix: window.location -> useLocation (SSR-safe), completed truncated section
+    ],
+    force: false,
+  },
+  {
+    file: 'src/layouts/Website.md',
+    description: 'Agent-read layout doc (Website base shell; prefer RootLayout)',
+    known_hashes: [
+      '8c02f9ea512c8946dfc947c27d80e2bf', // before doc-accuracy fix: pathless layout route, "already applied" note
+    ],
+    force: false,
+  },
+  {
+    file: 'src/layouts/Website.tsx',
+    description: 'Base structural layout shell wrapped by RootLayout/Dashboard',
+    known_hashes: [
+      'c9e1775f872d1d22f779732abc26e6fd', // before doc-accuracy fix: JSDoc dropped nonexistent <RootLayout/Header/Footer config> props
+    ],
+    force: false,
+  },
+  {
+    file: 'README.md',
+    description: 'Template README (layout + SEO usage guidance)',
+    known_hashes: [
+      '9357402532fcf2d03048b152338e7600', // before doc-accuracy fix: removed nonexistent <RootLayout config> example, pathless route
+    ],
+    force: false,
   }
 ];
 

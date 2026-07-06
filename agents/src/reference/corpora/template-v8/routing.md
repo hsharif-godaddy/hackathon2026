@@ -67,11 +67,28 @@ SSR renders with `renderToString`. Helmet-collected head tags (`title`, `meta`, 
 
 ## Data Loaders
 
-Route `loader` functions run on the server during SSR, so loaded data ships in the initial HTML — use them for anything crawlers or social previews must see, and `useEffect` fetches only for client-only data. A loader that throws `new Response(null, { status: 404 })` sets the SSR HTTP status; pair it with a route `errorElement` to render a user-facing error page instead of a blank shell.
+Route `loader` functions run on the server during SSR, so loaded data ships in the initial HTML — use them for anything crawlers or social previews must see. For **client-only** data (post-hydration interactions, user-triggered refetches, anything that needn't be indexed), use `useEffect(() => fetch(...))` or `useQuery` from `@tanstack/react-query` — its `QueryClientProvider` is already mounted in both `main.tsx` and `entry-server.tsx`. Neither resolves during `renderToString`, so client-fetched data is **not** in the SSR HTML; never use it for content a crawler must see — use a loader for that.
+
+A loader that throws `new Response(null, { status: 404 })` sets the SSR HTTP status; pair it with a route `errorElement` to render a user-facing error page instead of a blank shell.
 
 ## Navigation
 
 Standard React Router `<Link>` / `useNavigate()`. The `Path` union exported from `routes.tsx` gives type-safe paths — extend it when adding routes.
+
+## Standalone Static Pages (MPA)
+
+A standalone page is served as a plain static file at its `.html` URL (`/about.html`, `/nested/index.html`) — it is **not** part of the React Router SSR app, so it has no shared Header/Footer, `<Helmet>`, or route loaders. Use it for self-contained pages (campaign/landing pages, legal text). For anything needing the shared layout, SSR, or per-page SEO, add a route to `src/routes.tsx` instead.
+
+- **Hand-written HTML (no bundling):** drop the file in `public/` → copied to `dist/client/` as-is, served at its path.
+- **HTML that imports TS/JS or needs hashed assets:** put it in the project root and register it as a build input in the **client (non-SSR) build branch** of `vite.config.ts` — always keep `main` (the SSR template):
+
+```ts
+// vite.config.ts — client build branch
+input: {
+  main: path.resolve(__dirname, "index.html"),
+  about: path.resolve(__dirname, "about.html"),
+},
+```
 
 ## Sitemap & SEO Routes (auto-synced)
 
