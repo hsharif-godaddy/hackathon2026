@@ -100,7 +100,6 @@ function loadDomainFeedbackFallbackKeys() {
   return loadFallbackKeysFromDefaultsFile(DOMAIN_FEEDBACK_DEFAULTS_PATH, "domain-feedback-defaults.ts");
 }
 
-
 /**
  * Get list of staged files from git
  * @returns {string[]} Array of staged file paths

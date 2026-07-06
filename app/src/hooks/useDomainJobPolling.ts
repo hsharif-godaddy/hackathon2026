@@ -61,6 +61,14 @@ export type JobStep = {
   status?: string;
 };
 
+/** One step in the ordered connection progress list exposed to UI consumers. */
+export type ParsedJobStep = {
+  /** i18n message id for the step label (e.g. `builder_domain_job_configuring_dns`) */
+  label: string;
+  /** Step execution status from the API (e.g. `SUCCESS`, `RUNNING`, `FAILED`) or null if not yet started */
+  status: string | null;
+};
+
 export interface DomainJobPollPayload {
   /** i18n id read from API `current.label` (or `dynamic.current.label`) — exposed as `labelKey` for the UI */
   labelKey: string | null;
@@ -68,10 +76,14 @@ export interface DomainJobPollPayload {
   status: string | null;
   /** Job-wide status from `overallStatus`; used when `current` is absent or for terminal detection */
   overallStatus: string | null;
+  /** Ordered list of all job steps with their per-step status; empty when the API does not return step data */
+  steps: ParsedJobStep[];
 }
 
 export interface DomainJobPollResult extends DomainJobPollPayload {
   isLoading: boolean;
+  /** True during any active network request, including automatic re-polls and manual invalidations */
+  isFetching: boolean;
   error: Error | null;
 }
 
@@ -87,10 +99,59 @@ interface JobApiBody {
   current?: JobStep | null;
   dynamic?: {
     current?: JobStep | null;
+    steps?: unknown[];
+    stepDefinitions?: unknown[];
   };
   steps?: unknown[];
   stepDefinitions?: unknown[];
   code?: string;
+}
+
+// Canonical display order — backend returns configuring_dns before verifying_domain
+// but verifying_domain executes first; sort to match actual execution sequence.
+const CANONICAL_STEP_ORDER: readonly string[] = [
+  'builder_domain_job_starting_connection',
+  'builder_domain_job_verifying_domain',
+  'builder_domain_job_configuring_dns',
+  'builder_domain_job_waiting_for_dns',
+  'builder_domain_job_connecting_domain',
+  'builder_domain_job_checking_propagation',
+  'builder_domain_job_connected',
+];
+
+function parseSteps(body: JobApiBody): ParsedJobStep[] {
+  // Prefer dynamic.steps (complete ordered list with per-step status from mgmt-airo)
+  const rawSteps: unknown[] = Array.isArray(body.dynamic?.steps)
+    ? (body.dynamic.steps as unknown[])
+    : Array.isArray(body.steps)
+      ? body.steps
+      : [];
+  const parsed: ParsedJobStep[] = rawSteps
+    .map((s): ParsedJobStep | null => {
+      const step = s as JobStep;
+      if (typeof step.label !== 'string' || !step.label.trim()) return null;
+      return {
+        label: step.label.trim(),
+        status: typeof step.status === 'string' && step.status ? step.status : null,
+      };
+    })
+    .filter((s): s is ParsedJobStep => s !== null);
+
+  // Always show all canonical steps — add any missing ones as null-status so the full
+  // progress roadmap is visible from the start even before the API reports them.
+  const seenLabels: Set<string> = new Set(parsed.map((s: ParsedJobStep) => s.label));
+  const withCanonical: ParsedJobStep[] = [
+    ...parsed,
+    ...CANONICAL_STEP_ORDER
+      .filter((label: string) => !seenLabels.has(label))
+      .map((label: string): ParsedJobStep => ({ label, status: null })),
+  ];
+
+  return withCanonical.sort((a: ParsedJobStep, b: ParsedJobStep) => {
+    const ai: number = CANONICAL_STEP_ORDER.indexOf(a.label);
+    const bi: number = CANONICAL_STEP_ORDER.indexOf(b.label);
+    return (ai === -1 ? Number.MAX_SAFE_INTEGER : ai) - (bi === -1 ? Number.MAX_SAFE_INTEGER : bi);
+  });
 }
 
 export function parseJobResponse(json: unknown): DomainJobPollPayload {
@@ -105,6 +166,7 @@ export function parseJobResponse(json: unknown): DomainJobPollPayload {
     labelKey,
     status: typeof cur?.status === 'string' ? cur.status : null,
     overallStatus,
+    steps: parseSteps(body),
   };
 }
 
@@ -119,7 +181,7 @@ async function fetchDomainJob(siteId: string, fqdn: string): Promise<DomainJobPo
     if (body?.code === 'SITE_NOT_FOUND') {
       throw new Error(`Failed to fetch domain job: site not found for ${siteId}`);
     }
-    return { labelKey: null, status: null, overallStatus: 'NOT_FOUND' };
+    return { labelKey: null, status: null, overallStatus: 'NOT_FOUND', steps: [] };
   }
   if (!response.ok) {
     throw new Error(`Failed to fetch domain job: ${response.status} ${response.statusText}`);
@@ -180,12 +242,15 @@ export function useDomainJobPolling(
   const labelKey = query.data?.labelKey ?? null;
   const status = query.data?.status ?? null;
   const overallStatus = query.data?.overallStatus ?? null;
+  const steps = query.data?.steps ?? [];
 
   return {
     labelKey,
     status,
     overallStatus,
+    steps,
     isLoading: query.isPending,
+    isFetching: query.isFetching,
     error: query.error instanceof Error ? query.error : null,
   };
 }

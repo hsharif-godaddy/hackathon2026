@@ -58,6 +58,18 @@ describe('useDomainJobPolling', function useDomainJobPollingSuite() {
   });
 
   describe('#parseJobResponse', function parseTests() {
+    // parseSteps always supplements missing canonical steps as null-status so the full 7-step
+    // roadmap is visible from the start — even before the API has reported individual steps.
+    const ALL_CANONICAL_NULL_STEPS = [
+      { label: 'builder_domain_job_starting_connection', status: null },
+      { label: 'builder_domain_job_verifying_domain', status: null },
+      { label: 'builder_domain_job_configuring_dns', status: null },
+      { label: 'builder_domain_job_waiting_for_dns', status: null },
+      { label: 'builder_domain_job_connecting_domain', status: null },
+      { label: 'builder_domain_job_checking_propagation', status: null },
+      { label: 'builder_domain_job_connected', status: null },
+    ];
+
     it('should read current from dynamic.current', function dynamicCurrent() {
       expect(
         parseJobResponse({
@@ -74,6 +86,7 @@ describe('useDomainJobPolling', function useDomainJobPollingSuite() {
         labelKey: 'builder_domain_job_configuring_dns',
         status: 'RUNNING',
         overallStatus: 'RUNNING',
+        steps: ALL_CANONICAL_NULL_STEPS,
       });
     });
 
@@ -90,6 +103,7 @@ describe('useDomainJobPolling', function useDomainJobPollingSuite() {
         labelKey: 'builder_domain_job_verifying_domain',
         status: 'RUNNING',
         overallStatus: 'RUNNING',
+        steps: ALL_CANONICAL_NULL_STEPS,
       });
     });
 
@@ -106,6 +120,7 @@ describe('useDomainJobPolling', function useDomainJobPollingSuite() {
         labelKey: 'builder_domain_job_starting_connection',
         status: 'RUNNING',
         overallStatus: 'RUNNING',
+        steps: ALL_CANONICAL_NULL_STEPS,
       });
     });
 
@@ -119,7 +134,144 @@ describe('useDomainJobPolling', function useDomainJobPollingSuite() {
         labelKey: null,
         status: null,
         overallStatus: 'SUCCESS',
+        steps: ALL_CANONICAL_NULL_STEPS,
       });
+    });
+
+    it('should extract steps from dynamic.steps', function dynamicSteps() {
+      const result = parseJobResponse({
+        overallStatus: 'RUNNING',
+        dynamic: {
+          current: { label: 'builder_domain_job_configuring_dns', status: 'RUNNING' },
+          steps: [
+            { id: 's1', label: 'builder_domain_job_starting_connection', status: 'SUCCESS' },
+            { id: 's2', label: 'builder_domain_job_configuring_dns', status: 'RUNNING' },
+            { id: 's3', label: 'builder_domain_job_verifying_domain', status: null },
+          ],
+        },
+      });
+      expect(result.steps).toEqual([
+        { label: 'builder_domain_job_starting_connection', status: 'SUCCESS' },
+        { label: 'builder_domain_job_verifying_domain', status: null },
+        { label: 'builder_domain_job_configuring_dns', status: 'RUNNING' },
+        { label: 'builder_domain_job_waiting_for_dns', status: null },
+        { label: 'builder_domain_job_connecting_domain', status: null },
+        { label: 'builder_domain_job_checking_propagation', status: null },
+        { label: 'builder_domain_job_connected', status: null },
+      ]);
+    });
+
+    it('should fall back to top-level steps when dynamic.steps is absent', function topLevelSteps() {
+      const result = parseJobResponse({
+        overallStatus: 'RUNNING',
+        current: { label: 'builder_domain_job_configuring_dns', status: 'RUNNING' },
+        steps: [
+          { label: 'builder_domain_job_starting_connection', status: 'SUCCESS' },
+          { label: 'builder_domain_job_configuring_dns', status: 'RUNNING' },
+        ],
+      });
+      expect(result.steps).toEqual([
+        { label: 'builder_domain_job_starting_connection', status: 'SUCCESS' },
+        { label: 'builder_domain_job_verifying_domain', status: null },
+        { label: 'builder_domain_job_configuring_dns', status: 'RUNNING' },
+        { label: 'builder_domain_job_waiting_for_dns', status: null },
+        { label: 'builder_domain_job_connecting_domain', status: null },
+        { label: 'builder_domain_job_checking_propagation', status: null },
+        { label: 'builder_domain_job_connected', status: null },
+      ]);
+    });
+
+    it('should prefer dynamic.steps over top-level steps', function prefersDynamicSteps() {
+      const result = parseJobResponse({
+        overallStatus: 'RUNNING',
+        steps: [{ label: 'top_level_step', status: 'SUCCESS' }],
+        dynamic: {
+          current: { label: 'builder_domain_job_configuring_dns', status: 'RUNNING' },
+          steps: [{ label: 'builder_domain_job_configuring_dns', status: 'RUNNING' }],
+        },
+      });
+      expect(result.steps).toEqual([
+        { label: 'builder_domain_job_starting_connection', status: null },
+        { label: 'builder_domain_job_verifying_domain', status: null },
+        { label: 'builder_domain_job_configuring_dns', status: 'RUNNING' },
+        { label: 'builder_domain_job_waiting_for_dns', status: null },
+        { label: 'builder_domain_job_connecting_domain', status: null },
+        { label: 'builder_domain_job_checking_propagation', status: null },
+        { label: 'builder_domain_job_connected', status: null },
+      ]);
+    });
+
+    it('should return all canonical steps when neither dynamic.steps nor top-level steps present', function noSteps() {
+      const result = parseJobResponse({
+        overallStatus: 'RUNNING',
+        dynamic: { current: { label: 'builder_domain_job_configuring_dns', status: 'RUNNING' } },
+      });
+      expect(result.steps).toEqual(ALL_CANONICAL_NULL_STEPS);
+    });
+
+    it('should filter out steps with missing or blank labels', function filtersBlankLabels() {
+      const result = parseJobResponse({
+        overallStatus: 'RUNNING',
+        dynamic: {
+          steps: [
+            { label: 'builder_domain_job_starting_connection', status: 'SUCCESS' },
+            { label: '', status: 'RUNNING' },
+            { status: 'RUNNING' },
+            { label: '   ', status: null },
+            { label: 'builder_domain_job_verifying_domain', status: null },
+          ],
+        },
+      });
+      expect(result.steps).toEqual([
+        { label: 'builder_domain_job_starting_connection', status: 'SUCCESS' },
+        { label: 'builder_domain_job_verifying_domain', status: null },
+        { label: 'builder_domain_job_configuring_dns', status: null },
+        { label: 'builder_domain_job_waiting_for_dns', status: null },
+        { label: 'builder_domain_job_connecting_domain', status: null },
+        { label: 'builder_domain_job_checking_propagation', status: null },
+        { label: 'builder_domain_job_connected', status: null },
+      ]);
+    });
+
+    it('should coerce non-string step status to null', function coercesStatus() {
+      const result = parseJobResponse({
+        overallStatus: 'RUNNING',
+        dynamic: {
+          steps: [
+            { label: 'builder_domain_job_starting_connection', status: 42 as unknown as string },
+            { label: 'builder_domain_job_configuring_dns' },
+          ],
+        },
+      });
+      expect(result.steps).toEqual([
+        { label: 'builder_domain_job_starting_connection', status: null },
+        { label: 'builder_domain_job_verifying_domain', status: null },
+        { label: 'builder_domain_job_configuring_dns', status: null },
+        { label: 'builder_domain_job_waiting_for_dns', status: null },
+        { label: 'builder_domain_job_connecting_domain', status: null },
+        { label: 'builder_domain_job_checking_propagation', status: null },
+        { label: 'builder_domain_job_connected', status: null },
+      ]);
+    });
+
+    it('should trim whitespace from step labels', function trimsLabels() {
+      const result = parseJobResponse({
+        overallStatus: 'RUNNING',
+        dynamic: {
+          steps: [
+            { label: '  builder_domain_job_starting_connection  ', status: 'SUCCESS' },
+          ],
+        },
+      });
+      expect(result.steps).toEqual([
+        { label: 'builder_domain_job_starting_connection', status: 'SUCCESS' },
+        { label: 'builder_domain_job_verifying_domain', status: null },
+        { label: 'builder_domain_job_configuring_dns', status: null },
+        { label: 'builder_domain_job_waiting_for_dns', status: null },
+        { label: 'builder_domain_job_connecting_domain', status: null },
+        { label: 'builder_domain_job_checking_propagation', status: null },
+        { label: 'builder_domain_job_connected', status: null },
+      ]);
     });
   });
 

@@ -3,11 +3,14 @@ import { useQueryClient } from '@tanstack/react-query';
 import Box from "@ux/box";
 import Button from "@ux/button";
 import Card from "@ux/card";
+import ChevronDownIcon from '@ux/icon/chevron-down';
 import EditIcon from '@ux/icon/edit';
 import LinkIcon from '@ux/icon/link';
 import MenuIcon from '@ux/icon/menu';
+import RefreshIcon from '@ux/icon/refresh';
 import UnlinkIcon from '@ux/icon/unlink';
 import Radio from "@ux/radio";
+import Spinner from "@ux/spinner";
 import Tag from "@ux/tag";
 import text from "@ux/text";
 
@@ -25,13 +28,13 @@ import type { AiroDomainErrorResponse } from '@/lib/mgmt-airo';
 import { CdnStatus } from "@/lib/mgmt-airo/types";
 import { logger } from '@/lib/request-context';
 import { Popover, PopoverContent, PopoverTrigger } from "@/lib/shadcn/popover"
-import { defaultMessageForDomainJobLabelKey } from '@/lib/translations/domain-job-label-defaults';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { normalizeFqdn } from '@/utils/domain';
 import { CAA_REMEDIATION_NOT_GD_MANAGED, caaVariantForCode, translateDomainApiError } from '@/utils/domain-validation';
 import { generateClickEID, logClickEvent, logImpressionEvent } from '@/utils/instrumentation';
 import { DkimStatusBadge } from './DkimStatusBadge';
 import DomainConnectConfirmation from './DomainConnectConfirmation';
+import DomainConnectionStatusStepper from './DomainConnectionStatusStepper';
 
 function getDomainUrl(domain: string): string {
   if (!domain) return '';
@@ -107,11 +110,13 @@ export default function DomainItem({
   const t = useTranslations();
   const isDomainConnectEnabled = useSwitchboard('appbuilder-domain-connect');
   const isCaaRemediationEnabled = useSwitchboard('appbuilder-domain-caa-remediation');
+  const isConnectionStatusViewEnabled = useSwitchboard('appbuilder-domain-connection-status-view');
   const queryClient = useQueryClient();
   const { config } = useGasketConfig();
   const caaRemediation = useCaaRemediation();
   const [open, setOpen] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
+  const [stepperExpanded, setStepperExpanded] = useState<boolean>(true);
   const [domainError, setDomainError] = useState<AiroDomainErrorResponse | null>(null);
   const errorShownRef = useRef<string | null>(null); // keyed on domainName + errorCode
   const mutationErrorShownRef = useRef<string | null>(null); // keyed on domainName
@@ -131,15 +136,27 @@ export default function DomainItem({
     domainJobForApp && domainJobForApp.fqdn === domainName.trim().toLowerCase()
       ? domainJobForApp
       : null;
-  const shouldPollJob =
+  /** A domain is "connecting" while it has an active job or sits in PENDING/FAILED/ERROR. */
+  const isConnectingState: boolean =
+    Boolean(activeJobForDomain)
+    || appDomain?.status === DomainStatus.PENDING
+    || appDomain?.status === DomainStatus.FAILED
+    || appDomain?.status === DomainStatus.ERROR;
+  const shouldPollJob: boolean =
     Boolean(activeJobForDomain)
     || (isCustomDomain
       && appDomain != null
-      && (appDomain.status == null || appDomain.status === DomainStatus.PENDING));
+      && (appDomain.status == null || appDomain.status === DomainStatus.PENDING))
+    || (isConnectionStatusViewEnabled === true && isConnectingState);
+  /** Render the connection status stepper for any connecting domain when the flag is on. */
+  const showConnectionStepper: boolean =
+    isConnectionStatusViewEnabled === true && isConnectingState;
   const {
     labelKey: polledLabelKey,
     status: polledStatus,
     overallStatus: polledOverallStatus,
+    steps: polledSteps,
+    isFetching: isJobFetching,
     error: jobPollError,
   } = useDomainJobPolling(
     siteId,
@@ -147,13 +164,11 @@ export default function DomainItem({
     shouldPollJob,
   );
 
-  const translatedPolledLabel = polledLabelKey
-    ? t(
-        polledLabelKey,
-        undefined,
-        defaultMessageForDomainJobLabelKey(polledLabelKey),
-      )
-    : null;
+  function handleRefreshJobStatus(): void {
+    void queryClient.invalidateQueries({ queryKey: domainJobQueryKey(siteId, domainName) });
+  }
+
+  const translatedPolledLabel: string | null = polledLabelKey ? t(polledLabelKey) : null;
 
   const hasActiveJob = Boolean(activeJobForDomain);
   const polledTerminal =
@@ -399,7 +414,22 @@ export default function DomainItem({
         blockAlignChildren="spaceBetween"
         inlineAlignChildren="center"
       >
-        <Box orientation="horizontal" gap="md">
+        <Box orientation="horizontal" gap="md" inlineAlignChildren="center">
+          {showConnectionStepper && (
+            <Button
+              design="minimal"
+              size="sm"
+              className="!bg-transparent"
+              icon={
+                <ChevronDownIcon
+                  className={`transition-transform duration-200 motion-reduce:transition-none text-intents-ux-box-foregroundColor ${stepperExpanded ? '' : '-rotate-90'}`}
+                />
+              }
+              aria-expanded={stepperExpanded}
+              aria-label={t('builder_domain_status_view_toggle_details')}
+              onClick={() => setStepperExpanded((prev: boolean) => !prev)}
+            />
+          )}
           {isDomainConnectEnabled && radioMode ? (
             <Radio
               id={`domain-radio-${domainName}`}
@@ -447,7 +477,21 @@ export default function DomainItem({
             <DkimStatusBadge appId={appId} domain={domainName} />
           )}
         </Box>
-        <Popover open={open} onOpenChange={handlePopoverOpenChange}>
+        <Box orientation="horizontal" gap="sm" inlineAlignChildren="center">
+          {showConnectionStepper && (
+            <Button
+              design="tertiary"
+              size="sm"
+              disabled={isJobFetching}
+              icon={isJobFetching ? <Spinner size="sm" /> : <RefreshIcon />}
+              text={t('builder_domain_status_view_check_status')}
+              onClick={() => {
+                logClickEvent('settings.domains.check_status_button')();
+                handleRefreshJobStatus();
+              }}
+            />
+          )}
+          <Popover open={open} onOpenChange={handlePopoverOpenChange}>
           <PopoverTrigger asChild>
             <Button design="minimal" size="sm" icon={<MenuIcon />} aria-label={t('builder_common_options', undefined, 'Options')} data-testid="domain-row-options-button" />
           </PopoverTrigger>
@@ -544,6 +588,7 @@ export default function DomainItem({
             )}
           </PopoverContent>
         </Popover>
+        </Box>
       </Box>
       {domainSpecificErrorMsg && (
         <Box className="mt-2">
@@ -651,7 +696,7 @@ export default function DomainItem({
           )}
         </Box>
       )}
-      {!domainSpecificErrorMsg && !caaVariant && domainErrorMessage && (
+      {!domainSpecificErrorMsg && !caaVariant && domainErrorMessage && (!isConnectionStatusViewEnabled || (appDomain?.status !== DomainStatus.FAILED && appDomain?.status !== DomainStatus.ERROR)) && (
         <Box className="mt-2">
           <text.p className="ux-text ux-text-caption">
             {domainError?.error?.action === 'CONTACT_SUPPORT' ? (
@@ -697,6 +742,19 @@ export default function DomainItem({
             {t('builder_domain_dns_drift_explanation', undefined, 'Your DNS settings were changed. Reconnect if you want your app to work again with the domain.')}
           </text.p>
         </Box>
+      )}
+      {showConnectionStepper && stepperExpanded && (
+        <DomainConnectionStatusStepper
+          fqdn={domainName}
+          siteId={siteId}
+          steps={polledSteps}
+          overallStatus={polledOverallStatus}
+          appDomainStatus={appDomain?.status}
+          domainError={domainError}
+          onRefresh={handleRefreshJobStatus}
+          onDisconnect={() => onDisconnect(domainName)}
+          isRefreshing={isJobFetching}
+        />
       )}
     </Card>
   );

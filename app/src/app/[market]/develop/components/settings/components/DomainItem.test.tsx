@@ -17,7 +17,7 @@ import { CdnStatus } from '@/lib/mgmt-airo/types';
 import { logger } from '@/lib/request-context';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { renderWithProviders } from '@/tests/test-utils';
-import { logImpressionEvent } from '@/utils/instrumentation';
+import { logClickEvent, logImpressionEvent } from '@/utils/instrumentation';
 
 const SUPPORT_URL = 'https://support.test/contact';
 const { mockUseDomainJobPolling, mockUseDomainConflictCheck, mockCaaMutate, mockCaaReset, mockCaaError } = vi.hoisted(() => ({
@@ -84,6 +84,10 @@ vi.mock('@/hooks/useCaaRemediation', () => ({
   }),
 }));
 
+vi.mock('@/app/[market]/develop/components/settings/components/DomainConnectionStatusStepper', () => ({
+  default: () => <div data-testid="connection-status-stepper" />,
+}));
+
 const baseDomain: Domain = {
   domain: 'example.com',
 };
@@ -125,11 +129,14 @@ describe('DomainItem', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.restoreAllMocks();
+    vi.mocked(useSwitchboard).mockReturnValue(true);
     mockUseDomainJobPolling.mockReturnValue({
       labelKey: null,
       status: null,
       overallStatus: null,
+      steps: [],
       isLoading: false,
+      isFetching: false,
       error: null,
     });
     mockUseDomainConflictCheck.mockReturnValue({ hasDnsDrift: false });
@@ -139,6 +146,9 @@ describe('DomainItem', () => {
   });
 
   describe('error action rendering', () => {
+    beforeEach(() => {
+      vi.mocked(useSwitchboard).mockImplementation((flag: string) => flag !== 'appbuilder-domain-connection-status-view');
+    });
     const errorAppDomain: AppDomain = {
       fqdn: 'example.com',
       isPrimary: true,
@@ -381,8 +391,12 @@ describe('DomainItem', () => {
     });
 
     it('hides the CAA banner and shows the generic error when the flag is off', async () => {
+      // Both the CAA and connection-status-view features gate the generic error block;
+      // disable both so the legacy generic error renders (either flag on would own the error).
       vi.mocked(useSwitchboard).mockImplementation(
-        (flag: string) => flag !== 'appbuilder-domain-caa-remediation',
+        (flag: string) =>
+          flag !== 'appbuilder-domain-caa-remediation' &&
+          flag !== 'appbuilder-domain-connection-status-view',
       );
       mockFetchDomainError(buildCaaErrorResponse('CLOUDFLARE_CAA_INTERNAL_MISMATCH'));
 
@@ -582,7 +596,9 @@ describe('DomainItem', () => {
         labelKey: 'builder_domain_job_verifying_domain',
         status: 'RUNNING',
         overallStatus: 'RUNNING',
+        steps: [],
         isLoading: false,
+        isFetching: false,
         error: null,
       });
 
@@ -609,7 +625,9 @@ describe('DomainItem', () => {
         labelKey: null,
         status: null,
         overallStatus: 'NOT_FOUND',
+        steps: [],
         isLoading: false,
+        isFetching: false,
         error: null,
       });
 
@@ -637,7 +655,9 @@ describe('DomainItem', () => {
         labelKey: null,
         status: null,
         overallStatus: null,
+        steps: [],
         isLoading: false,
+        isFetching: false,
         error: new Error('network failed'),
       });
 
@@ -660,7 +680,9 @@ describe('DomainItem', () => {
         labelKey: null,
         status: null,
         overallStatus: null,
+        steps: [],
         isLoading: false,
+        isFetching: false,
         error: new Error('site not found'),
       });
 
@@ -683,7 +705,9 @@ describe('DomainItem', () => {
         labelKey: 'builder_domain_job_verifying_domain',
         status: 'SUCCESS',
         overallStatus: 'SUCCESS',
+        steps: [],
         isLoading: false,
+        isFetching: false,
         error: null,
       });
 
@@ -701,7 +725,9 @@ describe('DomainItem', () => {
         labelKey: 'builder_domain_job_verifying_domain',
         status: 'RUNNING',
         overallStatus: 'RUNNING',
+        steps: [],
         isLoading: false,
+        isFetching: false,
         error: null,
       });
 
@@ -712,6 +738,115 @@ describe('DomainItem', () => {
       expect(screen.queryByText('Verifying domain...')).not.toBeInTheDocument();
       expect(screen.queryByText('builder_domain_job_verifying_domain')).not.toBeInTheDocument();
       expect(screen.queryByText('builder_domain_status_not_connected')).not.toBeInTheDocument();
+    });
+
+    it('should enable polling for FAILED custom domain when connection status view flag is on', function failedPollingEnabled() {
+      renderWithProviders(
+        <DomainItem
+          {...defaultProps}
+          appDomain={{ fqdn: 'example.com', isPrimary: true, status: DomainStatus.FAILED }}
+          isCustomDomain
+        />
+      );
+      expect(mockUseDomainJobPolling).toHaveBeenCalledWith('site-123', 'example.com', true);
+    });
+
+    it('should enable polling for ERROR custom domain when connection status view flag is on', function errorPollingEnabled() {
+      renderWithProviders(
+        <DomainItem
+          {...defaultProps}
+          appDomain={{ fqdn: 'example.com', isPrimary: true, status: DomainStatus.ERROR }}
+          isCustomDomain
+        />
+      );
+      expect(mockUseDomainJobPolling).toHaveBeenCalledWith('site-123', 'example.com', true);
+    });
+  });
+
+  describe('connection status stepper gate', () => {
+    // Copy lives only in i18n now (no defaultMessage): with the empty test catalog, react-intl
+    // renders each key as its id, so the accessible name is the key.
+    const TOGGLE_LABEL = 'builder_domain_status_view_toggle_details';
+    const CHECK_STATUS_LABEL = 'builder_domain_status_view_check_status';
+
+    it('shows the stepper and chevron toggle for a PENDING domain when the flag is on', () => {
+      renderWithProviders(
+        <DomainItem
+          {...defaultProps}
+          appDomain={{ fqdn: 'example.com', isPrimary: true, status: DomainStatus.PENDING }}
+        />,
+      );
+      expect(screen.getByTestId('connection-status-stepper')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: TOGGLE_LABEL })).toBeInTheDocument();
+    });
+
+    it('shows the Check connection status button in the header for a connecting domain', () => {
+      renderWithProviders(
+        <DomainItem
+          {...defaultProps}
+          appDomain={{ fqdn: 'example.com', isPrimary: true, status: DomainStatus.PENDING }}
+        />,
+      );
+      expect(screen.getByRole('button', { name: CHECK_STATUS_LABEL })).toBeInTheDocument();
+    });
+
+    it('fires the check_status_button click event when the header button is clicked', () => {
+      renderWithProviders(
+        <DomainItem
+          {...defaultProps}
+          appDomain={{ fqdn: 'example.com', isPrimary: true, status: DomainStatus.PENDING }}
+        />,
+      );
+      fireEvent.click(screen.getByRole('button', { name: CHECK_STATUS_LABEL }));
+      expect(vi.mocked(logClickEvent)).toHaveBeenCalledWith('settings.domains.check_status_button');
+    });
+
+    it('does not show the Check connection status button for an ACTIVE domain with no job', () => {
+      renderWithProviders(
+        <DomainItem
+          {...defaultProps}
+          appDomain={{ fqdn: 'example.com', isPrimary: true, status: DomainStatus.ACTIVE }}
+        />,
+      );
+      expect(screen.queryByRole('button', { name: CHECK_STATUS_LABEL })).not.toBeInTheDocument();
+    });
+
+    it('collapses the stepper when the chevron toggle is clicked', () => {
+      renderWithProviders(
+        <DomainItem
+          {...defaultProps}
+          appDomain={{ fqdn: 'example.com', isPrimary: true, status: DomainStatus.PENDING }}
+        />,
+      );
+      const toggle = screen.getByRole('button', { name: TOGGLE_LABEL });
+      expect(toggle).toHaveAttribute('aria-expanded', 'true');
+      fireEvent.click(toggle);
+      expect(toggle).toHaveAttribute('aria-expanded', 'false');
+      expect(screen.queryByTestId('connection-status-stepper')).not.toBeInTheDocument();
+    });
+
+    it('does not show the stepper for an ACTIVE domain with no active job', () => {
+      renderWithProviders(
+        <DomainItem
+          {...defaultProps}
+          appDomain={{ fqdn: 'example.com', isPrimary: true, status: DomainStatus.ACTIVE }}
+        />,
+      );
+      expect(screen.queryByTestId('connection-status-stepper')).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: TOGGLE_LABEL })).not.toBeInTheDocument();
+    });
+
+    it('does not show the stepper when the flag is off, even for a PENDING domain', () => {
+      vi.mocked(useSwitchboard).mockImplementation(
+        (flag: string) => flag !== 'appbuilder-domain-connection-status-view',
+      );
+      renderWithProviders(
+        <DomainItem
+          {...defaultProps}
+          appDomain={{ fqdn: 'example.com', isPrimary: true, status: DomainStatus.PENDING }}
+        />,
+      );
+      expect(screen.queryByTestId('connection-status-stepper')).not.toBeInTheDocument();
     });
   });
 
