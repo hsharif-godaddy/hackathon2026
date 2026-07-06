@@ -64,6 +64,9 @@ export interface StartLogoResult {
   /** Resolves with this job's terminal outcome when the background run settles.
    *  Background callers ignore it; synchronous callers and tests await it. */
   done?: Promise<LogoRunOutcome>
+  /** Resolves when all chained follow-up variants settle (parallel).
+   *  Only present when followUpVariants were requested and the primary succeeded. */
+  chainDone?: Promise<LogoRunOutcome[]>
 }
 
 export interface StartVariantParams {
@@ -83,12 +86,23 @@ export interface StartVariantParams {
 const MAX_ATTEMPTS = 3
 const RETRY_BACKOFF_MS = [1000, 3000]
 
+interface RevertContext {
+  slots: string[]
+  previousSlots: Record<string, MediaSlot>
+}
+
+interface ChainDeferred {
+  promise: Promise<LogoRunOutcome[]>
+  resolve: (outcomes: LogoRunOutcome[]) => void
+}
+
 type RunContext = StartLogoParams & {
   jobId: string
   slots: string[]
   previousSlots: Record<string, MediaSlot>
   controller: AbortController
   workspace: WorkspaceFiles
+  chainDeferred?: ChainDeferred
 }
 
 type VariantRunContext = StartVariantParams & {
@@ -110,18 +124,35 @@ interface InFlightEntry {
   workspace: WorkspaceFiles
 }
 
+/** Per-variant dedup + slot-level supersession. Keyed by
+ *  `appId::variant::sourceUrl::prompt` so identical concurrent requests
+ *  return the same promise and different-params requests for the same slot
+ *  abort the previous job. */
+interface ActiveVariantEntry {
+  jobId: string
+  controller: AbortController
+  done: Promise<LogoRunOutcome>
+  result: StartLogoResult
+}
+
 class LogoGenerationService {
   private readonly inFlight = new Map<string, InFlightEntry>()
+  private readonly activeVariants = new Map<string, ActiveVariantEntry>()
 
   /** True when a logo job is live in memory for this app (a worker holds an
    *  AbortController). When `jobId` is given, the live entry must also match it.
+   *  Checks both primary (`inFlight`) and variant (`activeVariants`) maps.
    *  Used by the reconciler + the lazy restart backstop to distinguish a genuinely
    *  running job from an orphan left in `.airo/logo.json` after an agent restart
-   *  (where the in-flight Map — memory-only — is empty). Keeps `inFlight` private. */
+   *  (where the in-memory Maps are empty). */
   isInFlight(appId: string, jobId?: string): boolean {
-    const entry = this.inFlight.get(appId)
-    if (!entry) return false
-    return jobId ? entry.jobId === jobId : true
+    const primary: InFlightEntry | undefined = this.inFlight.get(appId)
+    if (primary) return jobId ? primary.jobId === jobId : true
+    if (!jobId) return false
+    for (const entry of this.activeVariants.values()) {
+      if (entry.jobId === jobId) return true
+    }
+    return false
   }
 
   async start(params: StartLogoParams): Promise<StartLogoResult> {
@@ -164,6 +195,15 @@ class LogoGenerationService {
     if (existing) {
       logger.warn('logo.async.superseded_previous', { appId, previousJobId: existing.jobId, newJobId: jobId })
       existing.controller.abort('superseded')
+    }
+
+    // Abort any in-progress follow-up variants for this app — they derive from
+    // a stale parent and would produce outdated assets.
+    for (const [key, entry] of this.activeVariants) {
+      if (key.startsWith(`${appId}::`)) {
+        entry.controller.abort('superseded')
+        this.activeVariants.delete(key)
+      }
     }
 
     // Guard the synchronous setup: if shimmer placement or the job write throws,
@@ -211,13 +251,22 @@ class LogoGenerationService {
       appId, jobId, layouts, slots, hasReferenceLogo: !!params.references?.logo, inspirationCount: params.references?.inspiration?.length ?? 0, isRegeneration,
     })
 
+    // chainDeferred resolves when all chained follow-up variants settle (parallel).
+    const chainDeferred: ChainDeferred | undefined = params.followUpVariants?.length
+      ? (() => {
+        let resolve!: (outcomes: LogoRunOutcome[]) => void
+        const promise = new Promise<LogoRunOutcome[]>((r) => { resolve = r })
+        return { promise, resolve }
+      })()
+      : undefined
+
     // Detach the run onto the next macrotask so start() returns with the job
     // observably in `queued` state before the worker flips it to `generating`
     // (the "kickoff returns immediately" contract). `done` resolves with this
     // job's terminal outcome — background callers ignore it; sync callers/tests await it.
     const done = new Promise<LogoRunOutcome>((resolve) => {
       setImmediate(() => {
-        this.run({ ...params, jobId, slots, previousSlots, controller, workspace })
+        this.run({ ...params, jobId, slots, previousSlots, controller, workspace, chainDeferred })
           .then(resolve)
           .catch(async (err) => {
             // Truly unexpected throw (run() handles its known errors internally).
@@ -230,15 +279,45 @@ class LogoGenerationService {
       })
     })
 
-    return { status: 'queued', jobId, slots, done }
+    // Fallback: if the parent doesn't complete successfully, chainDeferred is
+    // never resolved from run()'s followup block. Resolve with [] so it doesn't hang.
+    if (chainDeferred) {
+      done.then((outcome: LogoRunOutcome) => {
+        if (outcome.status !== 'completed') chainDeferred.resolve([])
+      })
+    }
+
+    return { status: 'queued', jobId, slots, done, chainDone: chainDeferred?.promise }
+  }
+
+  private variantDedupKey(appId: string, variant: LogoVariant, sourceUrl: string, prompt?: string): string {
+    return `${appId}::${variant}::${sourceUrl}::${prompt?.trim() || ''}`
   }
 
   async startVariant(params: StartVariantParams): Promise<StartLogoResult> {
-    const { appId, variant } = params
+    const { appId, variant, sourceUrl } = params
     const workspace = createForWorkspace(appId, 'preview')?.files ?? null
     if (!workspace) {
       logger.error('logo.variant.no_workspace', { appId })
       return { status: 'error', error: 'Workspace unavailable for logo variant generation' }
+    }
+
+    // --- Dedup check: return existing active promise if compatible ---
+    const dedupKey: string = this.variantDedupKey(appId, variant, sourceUrl, params.prompt)
+    const exact: ActiveVariantEntry | undefined = this.activeVariants.get(dedupKey)
+    if (exact) {
+      logger.info('logo.variant.dedup_hit', { appId, variant, existingJobId: exact.jobId })
+      return exact.result
+    }
+
+    // Slot supersession: different params for same appId+variant → abort old
+    const slotPrefix: string = `${appId}::${variant}::`
+    for (const [key, entry] of this.activeVariants) {
+      if (key.startsWith(slotPrefix) && key !== dedupKey) {
+        logger.info('logo.variant.slot_superseded', { appId, variant, oldJobId: entry.jobId })
+        entry.controller.abort('superseded')
+        this.activeVariants.delete(key)
+      }
     }
 
     try {
@@ -258,25 +337,19 @@ class LogoGenerationService {
       })
     }
 
-    const slotPath = variant === 'favicon' ? FAVICON_SLOT_PATH : LOGO_SLOT_PATHS[variant as LogoLayout]
-    const jobId = randomUUID()
-
-    const existing = this.inFlight.get(appId)
-    if (existing) {
-      logger.warn('logo.variant.superseded_previous', { appId, previousJobId: existing.jobId, newJobId: jobId })
-      existing.controller.abort('superseded')
-    }
+    const slotPath: string = variant === 'favicon' ? FAVICON_SLOT_PATH : LOGO_SLOT_PATHS[variant as LogoLayout]
+    const jobId: string = randomUUID()
 
     let previousSlots: Record<string, MediaSlot> = {}
     let isRegeneration = false
     try {
-      const shimmerUrl = await ensureShimmerAsset(workspace, appId, 'square')
+      const shimmerUrl: string = await ensureShimmerAsset(workspace, appId, 'square')
       const snapshot = await snapshotSlots(appId, [slotPath])
       previousSlots = snapshot.previousSlots
       isRegeneration = snapshot.isRegeneration
       await placeShimmerSlots(appId, [slotPath], jobId, { [slotPath]: shimmerUrl }, previousSlots)
 
-      const now = new Date().toISOString()
+      const now: string = new Date().toISOString()
       const job: LogoJob = {
         jobId,
         status: 'queued',
@@ -300,7 +373,6 @@ class LogoGenerationService {
     }
 
     const controller = new AbortController()
-    this.inFlight.set(appId, { jobId, controller, slots: [slotPath], previousSlots, workspace })
     logger.info('logo.variant.kickoff', { appId, jobId, variant, slotPath, isRegeneration })
 
     const done = new Promise<LogoRunOutcome>((resolve) => {
@@ -311,12 +383,23 @@ class LogoGenerationService {
             logger.error('logo.variant.worker.unhandled', {
               appId, jobId, error: err instanceof Error ? err.message : String(err),
             })
-            resolve(await this.fail(appId, jobId, workspace, 0, err, { suppressGrowl: params.suppressGrowl }))
+            resolve(await this.fail(appId, jobId, workspace, 0, err, {
+              suppressGrowl: params.suppressGrowl,
+              revertContext: { slots: [slotPath], previousSlots },
+            }))
           })
       })
     })
 
-    return { status: 'queued', jobId, slots: [slotPath], done }
+    const startResult: StartLogoResult = { status: 'queued', jobId, slots: [slotPath], done }
+    this.activeVariants.set(dedupKey, { jobId, controller, done, result: startResult })
+    done.finally(() => {
+      if (this.activeVariants.get(dedupKey)?.jobId === jobId) {
+        this.activeVariants.delete(dedupKey)
+      }
+    })
+
+    return startResult
   }
 
   private async runVariant(ctx: VariantRunContext): Promise<LogoRunOutcome> {
@@ -327,12 +410,10 @@ class LogoGenerationService {
       return { status: 'cancelled', jobId }
     }
 
-    const job = await readLogoJob(workspace, appId)
-    if (!job || job.jobId !== jobId) {
-      logger.warn('logo.variant.worker.superseded_drop', { appId, jobId, currentJobId: job?.jobId })
-      return { status: 'superseded', jobId }
-    }
-    await writeLogoJob(workspace, appId, { ...job, status: 'generating', updatedAt: new Date().toISOString() })
+    // Abort signal (from activeVariants dedup map) is the sole supersession
+    // authority for variants. Mid-run job-file reads are skipped because parallel
+    // variants share one .airo/logo.json — reads would race. A terminal write
+    // happens at the end so the backstop doesn't reconcile the stale 'queued' entry.
     logger.info('logo.variant.worker.begin', { appId, jobId, variant: ctx.variant })
 
     let response: LogoSessionResponse | undefined
@@ -362,27 +443,31 @@ class LogoGenerationService {
           return { status: 'cancelled', jobId }
         }
         if (this.isHardError(err) || attempt >= MAX_ATTEMPTS) {
-          return this.fail(appId, jobId, workspace, attempt, err, { suppressGrowl: ctx.suppressGrowl })
+          return this.fail(appId, jobId, workspace, attempt, err, {
+            suppressGrowl: ctx.suppressGrowl,
+            revertContext: { slots: [slotPath], previousSlots: ctx.previousSlots },
+          })
         }
         const delayMs = RETRY_BACKOFF_MS[attempt - 1] ?? 3000
         logger.warn('logo.variant.worker.retry', {
           appId, jobId, attempt, delayMs, reason: err instanceof Error ? err.message : String(err),
         })
-        await writeLogoJob(workspace, appId, { ...job, status: 'generating', attempt, updatedAt: new Date().toISOString() })
         await new Promise((r) => setTimeout(r, delayMs))
       }
     }
     if (!response) return { status: 'failed', jobId }
 
-    const current = await readLogoJob(workspace, appId)
-    if (!current || current.jobId !== jobId || controller.signal.aborted) {
-      logger.warn('logo.variant.worker.superseded_drop', { appId, jobId, currentJobId: current?.jobId })
-      return controller.signal.aborted ? { status: 'cancelled', jobId } : { status: 'superseded', jobId }
+    if (controller.signal.aborted) {
+      logger.warn('logo.variant.worker.aborted_post_generate', { appId, jobId })
+      return { status: 'cancelled', jobId }
     }
 
     const transparentUrl = response.logo.urls.square?.transparent
     if (!transparentUrl) {
-      return this.fail(appId, jobId, workspace, MAX_ATTEMPTS, new Error('Variant response missing transparent URL'), { suppressGrowl: ctx.suppressGrowl })
+      return this.fail(appId, jobId, workspace, MAX_ATTEMPTS, new Error('Variant response missing transparent URL'), {
+        suppressGrowl: ctx.suppressGrowl,
+        revertContext: { slots: [slotPath], previousSlots: ctx.previousSlots },
+      })
     }
 
     const groupId: string = await this.resolveOrCreateGroupId(appId, ctx.sourceUrl, jobId)
@@ -396,23 +481,31 @@ class LogoGenerationService {
 
     logger.info('logo.variant.worker.slot_saved', { appId, jobId, slotPath, saved })
 
-    const afterSave = await readLogoJob(workspace, appId)
-    if (controller.signal.aborted || !afterSave || afterSave.jobId !== jobId) {
-      logger.warn('logo.variant.worker.cancelled_during_save', {
-        appId, jobId, aborted: controller.signal.aborted, currentJobId: afterSave?.jobId,
-      })
+    if (controller.signal.aborted) {
+      logger.warn('logo.variant.worker.cancelled_during_save', { appId, jobId })
       await revertSlots(appId, { jobId, slots: [slotPath], previousSlots: ctx.previousSlots }).catch(() => { })
-      return controller.signal.aborted ? { status: 'cancelled', jobId } : { status: 'superseded', jobId }
+      return { status: 'cancelled', jobId }
     }
 
-    await writeLogoJob(workspace, appId, {
-      ...current,
-      status: 'completed',
-      sessionId: response.sessionId,
-      logoId: response.logo.id,
-      updatedAt: new Date().toISOString(),
-    })
-    if (this.inFlight.get(appId)?.jobId === jobId) this.inFlight.delete(appId)
+    // Write terminal state so the backstop doesn't see stale 'queued' and revert
+    // the just-saved slot. Guard: only write if the file still has OUR jobId — if a
+    // new primary (or another variant's setup) already overwrote it, they own the
+    // file now and our write would clobber their 'queued', causing their run() to
+    // bail incorrectly as 'superseded'.
+    const currentJob: LogoJob | null = await readLogoJob(workspace, appId).catch(() => null)
+    if (currentJob && currentJob.jobId === jobId) {
+      await writeLogoJob(workspace, appId, {
+        ...currentJob,
+        status: 'completed',
+        sessionId: response.sessionId,
+        logoId: response.logo.id,
+        updatedAt: new Date().toISOString(),
+      }).catch((err: unknown) => {
+        logger.warn('logo.variant.terminal_write_failed', {
+          appId, jobId, error: err instanceof Error ? err.message : String(err),
+        })
+      })
+    }
 
     this.emitLogoEvent(appId, {
       status: 'completed',
@@ -624,23 +717,30 @@ class LogoGenerationService {
     })
 
     if (ctx.followUpVariants?.length && !slotSaveFailed) {
-      this.chainFollowUpVariants(appId, ctx, savedSlots).catch((err) => {
-        logger.warn('logo.worker.followup_chain_failed', {
-          appId, jobId, error: err instanceof Error ? err.message : String(err),
+      this.fireFollowUpVariants(appId, ctx, savedSlots)
+        .then((outcomes: LogoRunOutcome[]) => ctx.chainDeferred?.resolve(outcomes))
+        .catch((err) => {
+          logger.warn('logo.worker.followup_chain_failed', {
+            appId, jobId, error: err instanceof Error ? err.message : String(err),
+          })
+          ctx.chainDeferred?.resolve([])
         })
-      })
+    } else {
+      ctx.chainDeferred?.resolve([])
     }
 
     return { status: 'completed', jobId, logoId: response.logo.id, logo: response.logo, sessionId: response.sessionId, slotSaveFailed, failedLayouts, skippedLayouts }
   }
 
-  private async chainFollowUpVariants(
+  private async fireFollowUpVariants(
     appId: string,
     ctx: RunContext,
     savedSlots: Partial<Record<LogoLayout, string>>,
-  ): Promise<void> {
+  ): Promise<LogoRunOutcome[]> {
+    // Bail if a new primary started (old followups are stale)
+    if (this.inFlight.has(appId)) return []
+
     // Resolve source URL from just-saved slots (same priority as generate_logo_variant tool).
-    // savedSlots is keyed by layout name; we read the actual slot to get the CDN currentUrl.
     const candidateOrder: LogoLayout[] = ['square', 'horizontal', 'vertical']
     let sourceUrl: string | undefined
     for (const layout of candidateOrder) {
@@ -654,22 +754,16 @@ class LogoGenerationService {
     }
     if (!sourceUrl) {
       logger.warn('logo.worker.followup_no_source', { appId, jobId: ctx.jobId })
-      return
+      return []
     }
 
-    for (const variant of ctx.followUpVariants!) {
-      const current = this.inFlight.get(appId)
-      if (current) {
-        logger.info('logo.worker.followup_chain_aborted', {
-          appId, parentJobId: ctx.jobId, supersededByJobId: current.jobId,
-        })
-        return
-      }
-      try {
-        logger.info('logo.worker.followup_start', { appId, parentJobId: ctx.jobId, variant })
-        const result: StartLogoResult = await this.startVariant({
+    logger.info('logo.worker.followup_fire', { appId, parentJobId: ctx.jobId, variants: ctx.followUpVariants })
+
+    const results: StartLogoResult[] = await Promise.all(
+      ctx.followUpVariants!.map((variant: LogoVariant) =>
+        this.startVariant({
           appId,
-          sourceUrl,
+          sourceUrl: sourceUrl!,
           variant,
           customerId: ctx.customerId,
           budgetUserId: ctx.budgetUserId,
@@ -677,37 +771,49 @@ class LogoGenerationService {
           ...(ctx.brandName ? { brandName: ctx.brandName } : {}),
           ...(ctx.colors ? { colors: ctx.colors } : {}),
           ...(ctx.conversationId ? { conversationId: ctx.conversationId } : {}),
-        })
-        if (result.done) await result.done
-      } catch (err) {
-        logger.warn('logo.worker.followup_variant_failed', {
-          appId, parentJobId: ctx.jobId, variant,
-          error: err instanceof Error ? err.message : String(err),
-        })
-      }
-    }
+        }).catch((err: unknown): StartLogoResult => {
+          logger.warn('logo.worker.followup_variant_failed', {
+            appId, parentJobId: ctx.jobId, variant,
+            error: err instanceof Error ? err.message : String(err),
+          })
+          return { status: 'error', error: err instanceof Error ? err.message : String(err) }
+        }),
+      ),
+    )
+
+    const started: StartLogoResult[] = results.filter((r: StartLogoResult): boolean => !!r.done)
+    const settled: PromiseSettledResult<LogoRunOutcome>[] = await Promise.allSettled(
+      started.map((r: StartLogoResult) => r.done!),
+    )
+    return settled.map((s: PromiseSettledResult<LogoRunOutcome>, i: number): LogoRunOutcome =>
+      s.status === 'fulfilled'
+        ? s.value
+        : { status: 'failed', jobId: started[i]?.jobId ?? '', error: s.reason instanceof Error ? s.reason.message : String(s.reason) },
+    )
   }
 
   private async fail(
-    appId: string, jobId: string, workspace: WorkspaceFiles, attempt: number, err: unknown, opts?: { suppressGrowl?: boolean },
+    appId: string, jobId: string, workspace: WorkspaceFiles, attempt: number, err: unknown,
+    opts?: { suppressGrowl?: boolean; revertContext?: RevertContext },
   ): Promise<LogoRunOutcome> {
-    const errorKind = BudgetExceededError.isInstance(err) ? 'budget' : 'error'
-    const message = err instanceof Error ? err.message : String(err)
+    const errorKind: string = BudgetExceededError.isInstance(err) ? 'budget' : 'error'
+    const message: string = err instanceof Error ? err.message : String(err)
     logger.error('logo.worker.failed', { appId, jobId, attempt, errorKind, error: message })
 
     // Best-effort read; a supervisor read outage must not stop us clearing the shimmer.
-    const job = await readLogoJob(workspace, appId).catch(() => null)
-    const entry = this.inFlight.get(appId)
+    const job: LogoJob | null = await readLogoJob(workspace, appId).catch(() => null)
+    const entry: InFlightEntry | undefined = this.inFlight.get(appId)
     const silentFlag = opts?.suppressGrowl ? { suppressGrowl: true } : {}
     if (job && job.jobId === jobId) {
       await revertSlots(appId, job).catch(() => { })
       await writeLogoJob(workspace, appId, { ...job, status: 'failed', error: message, updatedAt: new Date().toISOString() }).catch(() => { })
       this.emitLogoEvent(appId, { status: 'failed', jobId, slots: job.slots, error: message, errorKind, ...silentFlag })
     } else if (entry && entry.jobId === jobId) {
-      // Job file missing/superseded but this job is still the in-flight owner —
-      // revert + emit from the in-memory snapshot so the slot clears regardless.
       await revertSlots(appId, entry).catch(() => { })
       this.emitLogoEvent(appId, { status: 'failed', jobId, slots: entry.slots, error: message, errorKind, ...silentFlag })
+    } else if (opts?.revertContext) {
+      await revertSlots(appId, { jobId, slots: opts.revertContext.slots, previousSlots: opts.revertContext.previousSlots }).catch(() => { })
+      this.emitLogoEvent(appId, { status: 'failed', jobId, slots: opts.revertContext.slots, error: message, errorKind, ...silentFlag })
     }
     if (this.inFlight.get(appId)?.jobId === jobId) this.inFlight.delete(appId)
     return { status: 'failed', jobId, error: message }

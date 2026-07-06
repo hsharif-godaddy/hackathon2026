@@ -28,7 +28,7 @@ import { mediaManifestService } from '../../../services/MediaManifestService.js'
 import { getKvMemoryStore } from '../../../memory/adapters/index.js';
 import { workspaceScopeFromAppId } from '../../../memory/interfaces/scope.js';
 import { LOGO_SLOT_PATHS, FAVICON_SLOT_PATH, ALL_LAYOUTS } from '../../../services/logo/logo-slots.js';
-import { logoGenerationService } from '../../../services/logo/LogoGenerationService.js';
+import { logoGenerationService, type LogoRunOutcome } from '../../../services/logo/LogoGenerationService.js';
 import { createForWorkspace } from '../../../workspace/index.js';
 import { readLogoJob } from '../../../services/logo/logo-job-state.js';
 import {
@@ -394,7 +394,7 @@ function getBackgroundTaskRegistry(context: unknown): BackgroundTaskRegistry | u
  *  awaits its outcome before finalizing. */
 function registerBackgroundTask(
   registry: BackgroundTaskRegistry,
-  result: { jobId?: string; slots?: string[]; done?: Promise<import('../../../services/logo/LogoGenerationService.js').LogoRunOutcome> },
+  result: { jobId?: string; slots?: string[]; done?: Promise<LogoRunOutcome> },
   toolName: string,
 ): void {
   if (!result.done || !result.jobId) return;
@@ -426,7 +426,9 @@ function registerBackgroundTask(
           ? 'Logo generation was cancelled.'
           : outcome.status === 'superseded'
             ? 'Logo generation was superseded by a newer request.'
-            : (outcome as { error?: string }).error ?? 'Logo generation failed.',
+            : outcome.status === 'failed'
+              ? outcome.error ?? 'Logo generation failed.'
+              : 'Logo generation failed.',
       };
     }),
   });
@@ -605,6 +607,9 @@ export const generateLogoTool: SkillToolDefinition = {
       ...(followUpVariants.length ? { followUpVariants } : {}),
     });
 
+    // Only the primary job's `done` is registered. chainDone (follow-up variant
+    // outcomes) is NOT registered because the registry is per-turn and variants
+    // settle after the turn ends. Upgrade path: session-scoped registry.
     if (input.background !== false && backgroundRegistry) {
       registerBackgroundTask(backgroundRegistry, result, 'generate_logo');
     }

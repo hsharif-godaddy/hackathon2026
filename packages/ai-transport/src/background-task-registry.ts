@@ -18,12 +18,16 @@ export interface BackgroundTaskEntry {
   done: Promise<BackgroundTaskOutcome>
   /** Per-task timeout in ms. When elapsed, the task is marked as timed out. */
   timeoutMs: number
+  /** When false, the task is picked up by drain() if settled but does NOT block
+   *  the agent loop (hasPending/awaitNext ignore it). Default: true. */
+  blocking?: boolean
 }
 
 interface InternalEntry extends BackgroundTaskEntry {
   registeredAt: number
   settled: boolean
   outcome: BackgroundTaskOutcome | null
+  blocking: boolean
 }
 
 export class BackgroundTaskRegistry {
@@ -35,6 +39,7 @@ export class BackgroundTaskRegistry {
       toolName: entry.toolName,
       done: entry.done,
       timeoutMs: entry.timeoutMs,
+      blocking: entry.blocking !== false,
       registeredAt: Date.now(),
       settled: false,
       outcome: null,
@@ -58,7 +63,7 @@ export class BackgroundTaskRegistry {
   }
 
   hasPending(): boolean {
-    return this.entries.some((e: InternalEntry) => !e.settled)
+    return this.entries.some((e: InternalEntry) => !e.settled && e.blocking)
   }
 
   /** Non-blocking: return all outcomes that have already settled and remove them from the registry. */
@@ -80,7 +85,7 @@ export class BackgroundTaskRegistry {
    *  array when nothing left to await (all expired or empty). */
   async awaitNext(): Promise<BackgroundTaskOutcome[]> {
     this.expireOverdue()
-    const pending: InternalEntry[] = this.entries.filter((e: InternalEntry) => !e.settled)
+    const pending: InternalEntry[] = this.entries.filter((e: InternalEntry) => !e.settled && e.blocking)
     if (pending.length === 0) return this.drain()
 
     // If any entries already settled, return them immediately without blocking

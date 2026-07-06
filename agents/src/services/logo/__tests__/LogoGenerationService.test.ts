@@ -427,55 +427,50 @@ describe('LogoGenerationService followUpVariants', () => {
     expect(mockSaveSlots).not.toHaveBeenCalled()
   })
 
-  it('aborts follow-up chain when a user job registers between variants', async () => {
-    let generateCallCount = 0
-    mockGenerate.mockImplementation(async ({ signal }: { signal?: AbortSignal }) => {
-      generateCallCount++
-      if (generateCallCount === 1) return okResponse
-      if (generateCallCount === 2) {
-        // First variant (square): block until the abort signal fires.
-        // A user job starting for the same app will supersede this variant.
-        return new Promise((resolve, reject) => {
-          if (signal?.aborted) { reject(new DOMException('aborted', 'AbortError')); return }
-          signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')))
-          // If never aborted, hang forever (test would time out — signals the test is wrong)
-        })
+  it('skips follow-ups entirely when a new primary is already in flight', async () => {
+    // Exercise the `inFlight.has(appId)` guard at the top of fireFollowUpVariants.
+    // Scenario: A completes and enters fireFollowUpVariants, but B registered in
+    // inFlight during A's final writeLogoJob — so the guard fires and returns [].
+    let secondStarted = false
+    let secondResult: { done?: Promise<unknown> } | undefined
+    const originalWriteImpl = async (_ws: unknown, _appId: string, job: LogoJob): Promise<void> => { lastJob = job }
+
+    // A's generate resolves immediately; B's hangs (stays in-flight).
+    mockGenerate
+      .mockResolvedValueOnce(okResponse)
+      .mockImplementation(({ signal }: { signal?: AbortSignal }) =>
+        new Promise((_res, rej) => signal?.addEventListener('abort', () => rej(new DOMException('aborted', 'AbortError')))))
+
+    // When A's run writes 'completed', trigger B's start (which supersedes A in
+    // inFlight). B's start completes before this mock returns, so A sees B in
+    // inFlight at line 681 and can't delete — fireFollowUpVariants bails.
+    mockWriteLogoJob.mockImplementation(async (_ws: unknown, _appId: string, job: LogoJob) => {
+      lastJob = job
+      if (job.status === 'completed' && !secondStarted) {
+        secondStarted = true
+        secondResult = await logoGenerationService.start({ ...baseParams, layouts: ['horizontal'] })
       }
-      // Call 3: user job's generate
-      return okResponse
-    })
-    mockManifestGetSlot.mockImplementation(async (_appId: string, path: string) => {
-      if (path === 'logo/horizontal') {
-        return {
-          success: true,
-          slot: {
-            currentUrl: 'https://cdn/horizontal.png',
-            logoSourceMap: { 'https://cdn/horizontal.png': { sessionId: 's', logoId: 'l', groupId: 'g1' } },
-            logoGroupId: 'g1',
-          },
-        }
-      }
-      return { success: false }
     })
 
-    const res = await logoGenerationService.start({
+    const first = await logoGenerationService.start({
       ...baseParams, followUpVariants: ['square', 'favicon'],
     })
-    await res.done
+    const outcome = await first.done
     await flushAsync()
 
-    // Variant 'square' is now in-flight, paused in generate (waiting on abort).
-    // Start a user job — it supersedes the variant (aborts it) and registers in inFlight.
-    const userRes = await logoGenerationService.start({ ...baseParams, layouts: ['horizontal'] })
-    await flushAsync()
-
-    // Chain should have detected the user job in inFlight and bailed before favicon.
-    // Calls: parent (1) + square variant aborted (2) + user job (3). No favicon (4).
-    expect(generateCallCount).toBe(3)
-    // saveSingleSlot is only called for successful follow-up variants — none completed.
+    // A completed (not cancelled) — the generate succeeded and slots saved.
+    expect(outcome).toMatchObject({ status: 'completed' })
+    // But the inFlight guard prevented any variant generates from running.
     expect(mockSaveSingleSlot).not.toHaveBeenCalled()
+    // chainDone resolved with [] (no variants fired).
+    const chainOutcomes = await first.chainDone
+    expect(chainOutcomes).toEqual([])
 
-    await userRes.done
+    // Cleanup: cancel B so it doesn't leak.
+    if (secondResult?.done) {
+      await logoGenerationService.cancel('app-1')
+      await Promise.allSettled([secondResult.done])
+    }
   })
 })
 
@@ -556,5 +551,220 @@ describe('LogoGenerationService.startVariant groupId', () => {
     const groupArg: string = mockSaveSingleSlot.mock.calls[0][7]
     // Falls back to jobId as the groupId
     expect(groupArg).toBe(res.jobId)
+  })
+})
+
+describe('LogoGenerationService.startVariant dedup', () => {
+  const flushAsync = async (): Promise<void> => {
+    for (let i = 0; i < 10; i++) await new Promise((r) => setImmediate(r))
+  }
+
+  const variantResponse = {
+    sessionId: 'vs',
+    logo: { id: 'vl', generatedAt: 'now', prompt: 'p', modelUsed: 'm', urls: { square: { transparent: 'https://cdn/fav.png' } } },
+  }
+  const variantParams = {
+    appId: 'app-1', variant: 'favicon' as const, sourceUrl: 'https://cdn/source.png',
+    customerId: 'c', budgetUserId: 'u',
+  }
+
+  it('returns existing promise on exact dedup hit (same variant+source+prompt)', async () => {
+    mockGenerate.mockImplementation(() => new Promise((resolve) => {
+      setTimeout(() => resolve(variantResponse), 100)
+    }))
+    mockManifestGetSlot.mockResolvedValue({ success: false })
+
+    const first = await logoGenerationService.startVariant(variantParams)
+    const second = await logoGenerationService.startVariant(variantParams)
+
+    // Same jobId and same result reference — dedup hit
+    expect(second.jobId).toBe(first.jobId)
+    expect(second).toBe(first)
+
+    // Only one generate call
+    await first.done
+    await flushAsync()
+    expect(mockGenerate).toHaveBeenCalledTimes(1)
+  })
+
+  it('aborts old job on slot supersession (different params, same variant)', async () => {
+    mockGenerate.mockImplementation(({ signal }: { signal?: AbortSignal }) =>
+      new Promise((resolve, reject) => {
+        if (signal?.aborted) { reject(new DOMException('aborted', 'AbortError')); return }
+        signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')))
+        setTimeout(() => resolve(variantResponse), 100)
+      }),
+    )
+    mockManifestGetSlot.mockResolvedValue({ success: false })
+
+    const first = await logoGenerationService.startVariant(variantParams)
+    const second = await logoGenerationService.startVariant({ ...variantParams, sourceUrl: 'https://cdn/different.png' })
+
+    // Different jobIds — supersession, not dedup
+    expect(second.jobId).not.toBe(first.jobId)
+
+    const firstOutcome = await first.done
+    expect(firstOutcome!.status).toBe('cancelled')
+
+    await second.done
+    await flushAsync()
+  })
+
+  it('isInFlight returns true for active variant jobs by jobId', async () => {
+    mockGenerate.mockImplementation(() => new Promise((resolve) => {
+      setTimeout(() => resolve(variantResponse), 100)
+    }))
+    mockManifestGetSlot.mockResolvedValue({ success: false })
+
+    const res = await logoGenerationService.startVariant(variantParams)
+    expect(logoGenerationService.isInFlight('app-1', res.jobId)).toBe(true)
+    expect(logoGenerationService.isInFlight('app-1', 'other-job')).toBe(false)
+
+    await res.done
+    await flushAsync()
+    expect(logoGenerationService.isInFlight('app-1', res.jobId)).toBe(false)
+  })
+
+  it('writes terminal completed state so backstop does not reconcile/revert the slot', async () => {
+    mockGenerate.mockResolvedValue(variantResponse)
+    mockManifestGetSlot.mockResolvedValue({ success: false })
+
+    const res = await logoGenerationService.startVariant(variantParams)
+    await res.done
+    await flushAsync()
+
+    // The last writeLogoJob call should be 'completed' (not stale 'queued')
+    const lastWriteCall = mockWriteLogoJob.mock.calls[mockWriteLogoJob.mock.calls.length - 1]
+    const writtenJob = lastWriteCall[2] as { status: string; jobId: string }
+    expect(writtenJob.status).toBe('completed')
+    expect(writtenJob.jobId).toBe(res.jobId)
+
+    // A subsequent startVariant should NOT trigger reconcileStaleLogoJob
+    mockReconcileStale.mockClear()
+    mockGenerate.mockResolvedValue(variantResponse)
+    const next = await logoGenerationService.startVariant({ ...variantParams, sourceUrl: 'https://cdn/other.png' })
+    await next.done
+    await flushAsync()
+    expect(mockReconcileStale).not.toHaveBeenCalled()
+  })
+
+  it('skips terminal write when job file has a different jobId (ownership guard)', async () => {
+    mockGenerate.mockResolvedValue(variantResponse)
+    mockManifestGetSlot.mockResolvedValue({ success: false })
+
+    // Simulate a new primary overwriting the job file mid-variant-run:
+    // readLogoJob returns a job whose jobId differs from this variant's.
+    const foreignJobId = 'foreign-primary-job-id'
+    mockReadLogoJob.mockImplementation(async () => ({
+      jobId: foreignJobId,
+      status: 'queued',
+      prompt: 'p',
+      layouts: ['horizontal'],
+      slots: ['logo/horizontal'],
+      isRegeneration: false,
+      previousSlots: {},
+      attempt: 1,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    }))
+
+    const writeCountBefore: number = mockWriteLogoJob.mock.calls.length
+    const res = await logoGenerationService.startVariant(variantParams)
+    // startVariant itself writes 'queued' — count that
+    const writeCountAfterSetup: number = mockWriteLogoJob.mock.calls.length
+
+    await res.done
+    await flushAsync()
+
+    // No additional writeLogoJob after the setup write — guard skipped the terminal write
+    expect(mockWriteLogoJob.mock.calls.length).toBe(writeCountAfterSetup)
+    // But the slot was still saved (generation succeeded)
+    expect(mockSaveSingleSlot).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('LogoGenerationService.start chainDone', () => {
+  const flushAsync = async (): Promise<void> => {
+    for (let i = 0; i < 10; i++) await new Promise((r) => setImmediate(r))
+  }
+
+  const variantOkResponse = {
+    sessionId: 'vs',
+    logo: { id: 'vl', generatedAt: 'now', prompt: 'p', modelUsed: 'm', urls: { square: { transparent: 'https://cdn/fav.png' } } },
+  }
+
+  it('chainDone resolves with variant outcomes when followUpVariants present', async () => {
+    mockGenerate.mockResolvedValueOnce(okResponse).mockResolvedValue(variantOkResponse)
+    mockManifestGetSlot.mockImplementation(async (_appId: string, path: string) => {
+      if (path === 'logo/horizontal') {
+        return {
+          success: true,
+          slot: {
+            currentUrl: 'https://cdn/horizontal.png',
+            logoSourceMap: { 'https://cdn/horizontal.png': { sessionId: 's', logoId: 'l', groupId: 'g1' } },
+            logoGroupId: 'g1',
+          },
+        }
+      }
+      return { success: false }
+    })
+
+    const res = await logoGenerationService.start({ ...baseParams, followUpVariants: ['favicon'] })
+    expect(res.chainDone).toBeDefined()
+
+    await res.done
+    await flushAsync()
+    const chainOutcomes = await res.chainDone!
+    expect(chainOutcomes).toHaveLength(1)
+    expect(chainOutcomes[0]!.status).toBe('completed')
+  })
+
+  it('chainDone is undefined when no followUpVariants requested', async () => {
+    mockGenerate.mockResolvedValue(okResponse)
+    const res = await logoGenerationService.start(baseParams)
+    expect(res.chainDone).toBeUndefined()
+    await res.done
+  })
+
+  it('chainDone resolves with all variant outcomes when multiple followups run in parallel', async () => {
+    mockGenerate.mockResolvedValueOnce(okResponse).mockResolvedValue(variantOkResponse)
+    mockManifestGetSlot.mockImplementation(async (_appId: string, path: string) => {
+      if (path === 'logo/horizontal') {
+        return {
+          success: true,
+          slot: {
+            currentUrl: 'https://cdn/horizontal.png',
+            logoSourceMap: { 'https://cdn/horizontal.png': { sessionId: 's', logoId: 'l', groupId: 'g1' } },
+            logoGroupId: 'g1',
+          },
+        }
+      }
+      return { success: false }
+    })
+
+    const res = await logoGenerationService.start({
+      ...baseParams, followUpVariants: ['square', 'favicon'],
+    })
+    await res.done
+    await flushAsync()
+
+    const chainOutcomes = await res.chainDone!
+    expect(chainOutcomes).toHaveLength(2)
+    expect(chainOutcomes.every((o) => o.status === 'completed')).toBe(true)
+    // Both variants saved their slots independently
+    expect(mockSaveSingleSlot).toHaveBeenCalledTimes(2)
+    // Parent + 2 variants = 3 generate calls
+    expect(mockGenerate).toHaveBeenCalledTimes(3)
+  })
+
+  it('chainDone resolves empty when parent fails (no followups fire)', async () => {
+    mockGenerate.mockRejectedValue(new FakeBudgetError('budget'))
+    const res = await logoGenerationService.start({ ...baseParams, followUpVariants: ['favicon'] })
+    expect(res.chainDone).toBeDefined()
+
+    await res.done
+    await flushAsync()
+    const chainOutcomes = await res.chainDone!
+    expect(chainOutcomes).toEqual([])
   })
 })

@@ -272,6 +272,89 @@ describe('BackgroundTaskRegistry', () => {
     })
   })
 
+  describe('non-blocking entries', () => {
+    it('hasPending ignores non-blocking tasks', () => {
+      const registry = new BackgroundTaskRegistry()
+      const { promise } = createDeferred()
+      registry.register({ taskId: 'nb-1', toolName: 'generate_logo', done: promise, timeoutMs: 300_000, blocking: false })
+      expect(registry.hasPending()).toBe(false)
+      expect(registry.size).toBe(1)
+    })
+
+    it('awaitNext does not block on non-blocking tasks', async () => {
+      const registry = new BackgroundTaskRegistry()
+      const { promise } = createDeferred()
+      registry.register({ taskId: 'nb-1', toolName: 'generate_logo', done: promise, timeoutMs: 300_000, blocking: false })
+
+      const results: BackgroundTaskOutcome[] = await registry.awaitNext()
+      expect(results).toEqual([])
+    })
+
+    it('drain returns settled non-blocking outcomes', async () => {
+      const registry = new BackgroundTaskRegistry()
+      const outcome: BackgroundTaskOutcome = { status: 'completed', taskId: 'nb-1', toolName: 'generate_logo', result: { variants: 1 } }
+      registry.register({ taskId: 'nb-1', toolName: 'generate_logo', done: Promise.resolve(outcome), timeoutMs: 300_000, blocking: false })
+
+      await vi.advanceTimersByTimeAsync(0)
+
+      const drained: BackgroundTaskOutcome[] = registry.drain()
+      expect(drained).toHaveLength(1)
+      expect(drained[0]).toEqual(outcome)
+      expect(registry.size).toBe(0)
+    })
+
+    it('mixed blocking + non-blocking: hasPending only counts blocking', () => {
+      const registry = new BackgroundTaskRegistry()
+      const d1 = createDeferred()
+      const d2 = createDeferred()
+      registry.register({ taskId: 'blocking-1', toolName: 'generate_logo', done: d1.promise, timeoutMs: 240_000 })
+      registry.register({ taskId: 'nb-1', toolName: 'generate_logo', done: d2.promise, timeoutMs: 300_000, blocking: false })
+
+      expect(registry.hasPending()).toBe(true)
+      expect(registry.size).toBe(2)
+    })
+
+    it('awaitNext only races blocking tasks, ignores non-blocking', async () => {
+      const registry = new BackgroundTaskRegistry()
+      const d1 = createDeferred()
+      const d2 = createDeferred()
+      registry.register({ taskId: 'blocking-1', toolName: 'generate_logo', done: d1.promise, timeoutMs: 240_000 })
+      registry.register({ taskId: 'nb-1', toolName: 'generate_logo', done: d2.promise, timeoutMs: 300_000, blocking: false })
+
+      const awaitPromise: Promise<BackgroundTaskOutcome[]> = registry.awaitNext()
+      d1.resolve({ status: 'completed', taskId: 'blocking-1', toolName: 'generate_logo' })
+      await vi.advanceTimersByTimeAsync(0)
+
+      const results: BackgroundTaskOutcome[] = await awaitPromise
+      expect(results).toHaveLength(1)
+      expect(results[0]!.taskId).toBe('blocking-1')
+      // non-blocking still tracked
+      expect(registry.size).toBe(1)
+    })
+
+    it('drain picks up both blocking and non-blocking settled entries', async () => {
+      const registry = new BackgroundTaskRegistry()
+      const o1: BackgroundTaskOutcome = { status: 'completed', taskId: 'blocking-1', toolName: 'a' }
+      const o2: BackgroundTaskOutcome = { status: 'completed', taskId: 'nb-1', toolName: 'b', result: { variants: 2 } }
+      registry.register({ taskId: 'blocking-1', toolName: 'a', done: Promise.resolve(o1), timeoutMs: 240_000 })
+      registry.register({ taskId: 'nb-1', toolName: 'b', done: Promise.resolve(o2), timeoutMs: 300_000, blocking: false })
+
+      await vi.advanceTimersByTimeAsync(0)
+
+      const drained: BackgroundTaskOutcome[] = registry.drain()
+      expect(drained).toHaveLength(2)
+      const ids: string[] = drained.map((d: BackgroundTaskOutcome) => d.taskId).sort()
+      expect(ids).toEqual(['blocking-1', 'nb-1'])
+    })
+
+    it('blocking: true (explicit) behaves same as default', () => {
+      const registry = new BackgroundTaskRegistry()
+      const { promise } = createDeferred()
+      registry.register({ taskId: 'explicit-1', toolName: 'generate_logo', done: promise, timeoutMs: 240_000, blocking: true })
+      expect(registry.hasPending()).toBe(true)
+    })
+  })
+
   describe('consumer pattern (postStreamValidate simulation)', () => {
     it('fast-settled task is surfaced even when hasPending is false', async () => {
       // Simulates: tool registers a promise that resolves before postStreamValidate runs
