@@ -10,10 +10,11 @@ import ImageIcon from '@ux/icon/image'
 import EyeIcon from '@ux/icon/show'
 import text from '@ux/text'
 
+import { useOpenSocialPostCanvas } from '@/app/[market]/develop/components/settings/Campaigns/useOpenSocialPostCanvas'
 import { useTranslations } from '@/hooks/useTranslations'
 import type { SiteAssociation } from '@/types/social'
-import { PublishTiming, SocialPostData, SocialPostState } from '@/types/social-posts'
-import { PostModal } from './PostModal'
+import { SocialPostData, SocialPostState } from '@/types/social-posts'
+import { onPostUpdated } from '@/utils/social/events'
 
 interface PostImageThumbnailProps {
   post: SocialPostData
@@ -22,7 +23,7 @@ interface PostImageThumbnailProps {
 const PostImageThumbnail = memo(({ post }: PostImageThumbnailProps) => {
   const t = useTranslations();
 
-  const imagesRequested = !!(post as any).imagePrompt || (post.images && post.images.length > 0)
+  const imagesRequested = !!post.imagePrompt || (post.images && post.images.length > 0)
   const hasValidImage = post.images && post.images.length > 0
 
   const containerClasses = clsx(
@@ -102,7 +103,7 @@ const PostListItem = memo(({ post, onClick }: PostListItemProps) => {
         <div className="flex gap-1.5 items-start">
           <PostImageThumbnail post={post} />
 
-          <div className="flex-grow min-w-0">
+          <div className="grow min-w-0">
             <PostContentPreview content={post.content}/>
             <div className="flex items-center justify-between mt-1">
               <text.span
@@ -145,15 +146,15 @@ interface SocialPostListProps {
 export function PostList({
   posts: propsPosts = [],
   appId,
-  onPublish,
+  onPublish: _onPublish,
   onPostUpdate,
-  associations = [],
-  initialScheduledDate,
-  initialScheduledTime
+  associations: _associations = [],
+  initialScheduledDate: _initialScheduledDate,
+  initialScheduledTime: _initialScheduledTime,
 }: SocialPostListProps = {}) {
 
   const [localPosts, setLocalPosts] = useState<SocialPostData[]>([])
-  const [selectedPost, setSelectedPost] = useState<SocialPostData | null>(null)
+  const { openFromChat } = useOpenSocialPostCanvas()
 
   // Initialize local posts when props posts changes
   useEffect(() => {
@@ -162,23 +163,28 @@ export function PostList({
     }
   }, [propsPosts])
 
+  useEffect(() => {
+    const unsubscribe = onPostUpdated((updatedPost) => {
+      const sourcePosts = localPosts.length > 0 ? localPosts : propsPosts
+      if (!sourcePosts.some((post) => post.id === updatedPost.id)) return
+
+      setLocalPosts(sourcePosts.map((post) => post.id === updatedPost.id ? updatedPost : post))
+      if (onPostUpdate) {
+        onPostUpdate(updatedPost)
+      }
+    })
+
+    return unsubscribe
+  }, [localPosts, onPostUpdate, propsPosts])
+
   const posts = useMemo(() => {
     return localPosts.length > 0 ? localPosts : propsPosts
   }, [propsPosts, localPosts]);
 
   const handlePostClick = useCallback((post: SocialPostData) => {
-    setSelectedPost(post)
-  }, [])
-
-  const handleSaveEdit = useCallback((updatedPost: SocialPostData) => {
-    setLocalPosts(prevPosts =>
-      prevPosts.map(p => p.id === updatedPost.id ? updatedPost : p)
-    )
-    setSelectedPost(updatedPost)
-    if (onPostUpdate) {
-      onPostUpdate(updatedPost)
-    }
-  }, [onPostUpdate])
+    if (!appId) return
+    openFromChat(post)
+  }, [appId, openFromChat])
 
   return (
     <>
@@ -199,20 +205,6 @@ export function PostList({
           </div>
         </div>
       </div>
-
-      {selectedPost && appId && (
-        <PostModal
-          post={selectedPost}
-          appId={appId}
-          onClose={() => setSelectedPost(null)}
-          onSave={handleSaveEdit}
-          onPublish={onPublish}
-          associations={associations}
-          initialTiming={initialScheduledDate || initialScheduledTime ? PublishTiming.LATER : undefined}
-          initialDate={initialScheduledDate}
-          initialTime={initialScheduledTime}
-        />
-      )}
     </>
   )
 }

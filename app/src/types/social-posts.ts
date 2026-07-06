@@ -11,18 +11,10 @@ export type { PostImageData, ValidationDetails } from '@airo/shared/social'
  * Represents the lifecycle state after a publish attempt
  */
 export enum SocialPostState {
+  DRAFT = 'DRAFT',           // Persisted draft not yet published
   PUBLISHED = 'PUBLISHED',   // Successfully published to platform
   SCHEDULED = 'SCHEDULED',   // Scheduled for future publishing
   FAILED = 'FAILED',         // Publish attempt failed
-}
-
-/**
- * View states for the social post modal
- */
-export enum PostModalView {
-  PREVIEW = 'preview',
-  EDIT = 'edit',
-  SCHEDULING = 'scheduling'
 }
 
 /**
@@ -38,18 +30,21 @@ export enum PublishTiming {
  */
 export interface SocialPostData {
   id?: string               // Unique identifier generated for each post
+  campaignId?: string
+  campaignContentId?: string
   name?: string             // Human-readable name for the post
   topic?: string            // Topic or theme of the post
   styleLabel: string
   styleDescription?: string
   content: string
+  imagePrompt?: string
   hashtags: string[]
   platform?: PublishablePlatform  // Optional - for backwards compatibility and display
   callToAction?: string
   images?: PostImageData[]
   hasImages?: boolean       // Flag indicating if post has images
   validation?: ValidationDetails
-  publishedState?: SocialPostState  // Publication state (PUBLISHED, SCHEDULED, FAILED)
+  publishedState?: SocialPostState  // Publication state (DRAFT, PUBLISHED, SCHEDULED, FAILED)
 }
 
 export enum PublishFlowState {

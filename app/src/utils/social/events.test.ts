@@ -4,7 +4,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { SocialPostState } from '@/types/social-posts'
-import { emitPostPublished, onPostPublished } from './events'
+import { emitPostPublished, emitPostUpdated, onPostPublished, onPostUpdated } from '@/utils/social/events'
 
 describe('social events', () => {
   let mockWindow: typeof window
@@ -152,6 +152,68 @@ describe('social events', () => {
       expect(callback).toHaveBeenNthCalledWith(1, 'post-1', SocialPostState.PUBLISHED)
       expect(callback).toHaveBeenNthCalledWith(2, 'post-2', SocialPostState.SCHEDULED)
       expect(callback).toHaveBeenNthCalledWith(3, 'post-3', SocialPostState.FAILED)
+    })
+  })
+
+  describe('emitPostUpdated', () => {
+    it('should dispatch custom event with updated post detail', () => {
+      const dispatchSpy = vi.spyOn(mockWindow, 'dispatchEvent')
+
+      emitPostUpdated({
+        id: 'post-123',
+        styleLabel: 'Instagram',
+        content: 'Updated copy',
+        hashtags: [],
+      })
+
+      expect(dispatchSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'social:post:updated',
+          detail: {
+            post: expect.objectContaining({
+              id: 'post-123',
+              content: 'Updated copy',
+            })
+          }
+        })
+      )
+    })
+  })
+
+  describe('onPostUpdated', () => {
+    it('should call callback when update event is emitted', () => {
+      const callback = vi.fn()
+
+      onPostUpdated(callback)
+      emitPostUpdated({
+        id: 'post-123',
+        styleLabel: 'Instagram',
+        content: 'Fresh content',
+        hashtags: [],
+      })
+
+      expect(callback).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: 'post-123',
+          content: 'Fresh content',
+        })
+      )
+    })
+
+    it('should return unsubscribe function that removes update listener', () => {
+      const callback = vi.fn()
+
+      const unsubscribe = onPostUpdated(callback)
+      unsubscribe()
+
+      emitPostUpdated({
+        id: 'post-123',
+        styleLabel: 'Instagram',
+        content: 'Fresh content',
+        hashtags: [],
+      })
+
+      expect(callback).not.toHaveBeenCalled()
     })
   })
 

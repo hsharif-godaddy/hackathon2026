@@ -38,10 +38,12 @@ vi.mock('@/hooks/useSocial', () => ({
 vi.mock('@/app/[market]/develop/components/social/post/PostList', () => ({
   PostList: ({
     posts,
+    onPostUpdate,
     initialScheduledDate,
     initialScheduledTime
   }: {
     posts: Array<{ id: string; publishedState?: string }>;
+    onPostUpdate?: (post: { id: string; publishedState?: string; content?: string }) => void;
     initialScheduledDate?: string;
     initialScheduledTime?: string;
   }) => (
@@ -59,6 +61,13 @@ vi.mock('@/app/[market]/develop/components/social/post/PostList', () => ({
           Post {post.id}: {post.publishedState || 'draft'}
         </div>
       ))}
+      <button
+        type="button"
+        data-testid="trigger-post-update"
+        onClick={() => onPostUpdate?.({ ...posts[0], content: 'Updated content from chat' })}
+      >
+        Trigger Update
+      </button>
     </div>
   )
 }))
@@ -134,8 +143,22 @@ describe('SocialPostCreateToolRenderer', () => {
         expect(screen.getByTestId('social-post-list')).toBeInTheDocument()
       })
 
-      // Note: handlePostUpdate is called internally by SocialPostList
-      // The sync happens when posts are edited, not on initial render
+      screen.getByTestId('trigger-post-update').click()
+
+      await waitFor(() => {
+        expect(mockSyncResult).toHaveBeenCalledWith({
+          widget: {
+            widgetData: {
+              posts: [
+                expect.objectContaining({
+                  id: 'post-1',
+                  content: 'Updated content from chat'
+                })
+              ]
+            }
+          }
+        })
+      })
     })
 
     it('should NOT sync on initial render (only on edits)', async () => {

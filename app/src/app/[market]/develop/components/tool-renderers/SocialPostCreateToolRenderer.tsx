@@ -37,11 +37,7 @@ export default function SocialPostCreateToolRenderer({
   const [scheduledTime, setScheduledTime] = useState<string | undefined>()
   const initializedRef = useRef(false)
 
-  // Fetch site associations to detect existing connections for publishing
-  const { data: associationsData } = useSiteAssociations(
-    currentAppId || '',
-    true
-  )
+  const { data: associationsData } = useSiteAssociations(currentAppId || '', true)
 
   // Sync to conversation history
   const syncResult = useToolResultSync({
@@ -101,15 +97,14 @@ export default function SocialPostCreateToolRenderer({
     return unsubscribe
   }, [syncResult])
 
-  // Handle post edits from modal - sync immediately after edit
   const handlePostUpdate = useCallback((updatedPost: SocialPostData) => {
-    setPosts(prevPosts => {
-      const newPosts = prevPosts.map(p => p.id === updatedPost.id ? updatedPost : p)
+    setPosts((prevPosts) => {
+      if (!prevPosts.some((post) => post.id === updatedPost.id)) return prevPosts
+      const newPosts = prevPosts.map((post) => post.id === updatedPost.id ? updatedPost : post)
       syncResult({ widget: { widgetData: { posts: newPosts } } })
       return newPosts
     })
   }, [syncResult])
-
 
   if (!isVisible) {
     return null

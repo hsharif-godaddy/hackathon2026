@@ -4,7 +4,7 @@ import { immer } from 'zustand/middleware/immer'
 
 import { CANVAS_REGISTRY } from '@/app/[market]/commander/canvas/registry'
 import { DEFAULT_DESKTOP_DEVICE, DEFAULT_MOBILE_DEVICE, DEFAULT_TABLET_DEVICE } from '@/app/[market]/develop/components/preview/devicePresets'
-import { buildEditModeEnabledMessage, ChatTab, IframeMessageType, type MarketingView, MobileMode, PreviewViewMode, SettingsSection, ViewMode } from '@/app/[market]/develop/components/types'
+import { buildEditModeEnabledMessage, ChatTab, IframeMessageType, type MarketingSocialOrigin, type MarketingView, MobileMode, PreviewViewMode, SettingsSection, ViewMode } from '@/app/[market]/develop/components/types'
 import type { LogoSessionLogo } from '@/app/[market]/develop/components/widgets/logo-utils'
 import type { FeedbackCategory } from '@/components/feedback/types'
 import { SWITCHBOARD_APPBUILDER_CMS_INLINE_EDIT } from '@/config/switchboard-flags'
@@ -16,6 +16,7 @@ import { type App, appService } from '@/services/AppService'
 import { useCommanderStore } from '@/stores/useCommanderStore'
 import { type Site, useSitesStore } from '@/stores/useSitesStore'
 import { SubscriptionPlan } from '@/types/credits'
+import type { SocialPostData } from '@/types/social-posts'
 import type { BusMediaDeletePayload, BusUnsupportedFeature } from '@/utils/eventBus'
 import { logImpressionEvent } from '@/utils/instrumentation'
 import { postMessageToIframe } from '@/utils/postMessage'
@@ -306,6 +307,8 @@ interface DevelopPageStore {
   // Marketing campaigns canvas
   marketingView: MarketingView
   selectedCampaignId: string | null
+  selectedSocialPost: SocialPostData | null
+  marketingSocialOrigin: MarketingSocialOrigin | null
 
   // Version history UI
   isVersionHistoryOpen: boolean
@@ -433,8 +436,11 @@ interface DevelopPageStore {
   setInboxCategoryId: (categoryId: number | string | null) => void
   openMarketingList: () => void
   openMarketingDetail: (campaignId: string) => void
+  openMarketingSocialPost: (post: SocialPostData, origin: MarketingSocialOrigin) => void
   showMarketingList: () => void
   showMarketingDetail: (campaignId: string) => void
+  showMarketingSocialPost: (post: SocialPostData, origin: MarketingSocialOrigin) => void
+  closeMarketingSocialPost: () => void
   setInboxAccountId: (accountId: string | null) => void
   setIsMobile: (isMobile: boolean) => void
   setIsVersionHistoryOpen: (open: boolean) => void
@@ -650,6 +656,8 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     inboxCategoryId: null,
     marketingView: 'list' as MarketingView,
     selectedCampaignId: null,
+    selectedSocialPost: null,
+    marketingSocialOrigin: null,
     inboxAccountId: null,
     isVersionHistoryOpen: false,
 
@@ -777,6 +785,8 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
         state.viewMode = ViewMode.MARKETING
         state.marketingView = 'list'
         state.selectedCampaignId = null
+        state.selectedSocialPost = null
+        state.marketingSocialOrigin = null
       })
     },
     openMarketingDetail: (campaignId) => {
@@ -785,15 +795,50 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
         state.viewMode = ViewMode.MARKETING
         state.marketingView = 'detail'
         state.selectedCampaignId = campaignId
+        state.selectedSocialPost = null
+        state.marketingSocialOrigin = null
+      })
+    },
+    openMarketingSocialPost: (post, origin) => {
+      syncEditModeForViewMode(get, set, ViewMode.MARKETING)
+      set((state) => {
+        state.viewMode = ViewMode.MARKETING
+        state.marketingView = 'socialPost'
+        state.selectedCampaignId = origin.source === 'campaign'
+          ? origin.campaignId
+          : null
+        state.selectedSocialPost = post
+        state.marketingSocialOrigin = origin
       })
     },
     showMarketingList: () => set((state) => {
       state.marketingView = 'list'
       state.selectedCampaignId = null
+      state.selectedSocialPost = null
+      state.marketingSocialOrigin = null
     }),
     showMarketingDetail: (campaignId) => set((state) => {
       state.marketingView = 'detail'
       state.selectedCampaignId = campaignId
+      state.selectedSocialPost = null
+      state.marketingSocialOrigin = null
+    }),
+    showMarketingSocialPost: (post, origin) => set((state) => {
+      state.marketingView = 'socialPost'
+      state.selectedCampaignId = origin.source === 'campaign'
+        ? origin.campaignId
+        : null
+      state.selectedSocialPost = post
+      state.marketingSocialOrigin = origin
+    }),
+    closeMarketingSocialPost: () => set((state) => {
+      const campaignId = state.marketingSocialOrigin?.source === 'campaign'
+        ? state.marketingSocialOrigin.campaignId
+        : null
+      state.marketingView = campaignId ? 'detail' : 'list'
+      state.selectedCampaignId = campaignId
+      state.selectedSocialPost = null
+      state.marketingSocialOrigin = null
     }),
     setInboxAccountId: (accountId) => set((state) => { state.inboxAccountId = accountId }),
     setIsMobile: (isMobile) => {

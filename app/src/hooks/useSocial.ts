@@ -2,10 +2,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { buildDynamicApiUrl } from '@/config/dynamic-api'
 import { agentFetch } from '@/lib/agent-fetch'
+import { logger } from '@/lib/request-context'
 import { SOCIAL_CACHE_CONFIG, SocialV2Client } from '@/lib/social'
 import { getPlatformStrategy } from '@/lib/social-platforms'
 import { SocialPlatform, SocialPlatformKey } from '@/types/social'
-import { SocialPostState } from '@/types/social-posts'
+import { type SocialPostData, SocialPostState } from '@/types/social-posts'
 import { SOCIAL_SCOPES } from '@/types/social-scopes'
 import { getRootDomain } from '@/utils/getRootDomain'
 
@@ -75,6 +76,65 @@ interface SiteAssociation {
 
 interface SiteAssociationsResponse {
   associations: SiteAssociation[]
+}
+
+interface SocialPostPayload {
+  message?: string
+  hashtags?: string[]
+  callToAction?: string
+  imageUrls?: string[]
+}
+
+interface SocialPostRecord {
+  id: string
+  platform: string
+  state: string
+  payload: SocialPostPayload | string
+}
+
+interface SocialPostsResponse {
+  posts: SocialPostRecord[]
+}
+
+export function toPostState(state: string): SocialPostState | undefined {
+  const values: string[] = Object.values(SocialPostState)
+  return values.includes(state) ? (state as SocialPostState) : undefined
+}
+
+export function parsePayload(payload: SocialPostPayload | string): SocialPostPayload {
+  if (typeof payload === 'string') {
+    try {
+      return JSON.parse(payload) as SocialPostPayload
+    } catch (error) {
+      logger.warn('social.posts.parse-payload.failed', {
+        payload,
+        error: error instanceof Error ? error.message : String(error),
+      })
+      return {}
+    }
+  }
+  return payload ?? {}
+}
+
+function mapPost(post: SocialPostRecord): SocialPostData {
+  const payload = parsePayload(post.payload)
+  const imageUrls = payload.imageUrls ?? []
+  return {
+    id: post.id,
+    styleLabel: formatPlatformLabel(post.platform),
+    content: payload.message ?? '',
+    hashtags: payload.hashtags ?? [],
+    callToAction: payload.callToAction,
+    images: imageUrls.map((url) => ({ url, width: 1024, height: 1024 })),
+    publishedState: toPostState(post.state),
+  }
+}
+
+function formatPlatformLabel(platform: string): string {
+  const normalizedPlatform = platform.toLowerCase()
+  if (normalizedPlatform === 'facebook') return 'Facebook Post'
+  if (normalizedPlatform === 'instagram') return 'Instagram Post'
+  return 'Social Post'
 }
 
 export function useValidatePermissions(
@@ -286,6 +346,27 @@ export function useSiteAssociations(siteId: string, enabled = true) {
     staleTime: FIVE_MINUTES,
     gcTime: THIRTY_MINUTES,
     enabled: enabled && !!siteId
+  })
+}
+
+export function useSocialPosts(siteId: string, enabled = true) {
+  return useQuery({
+    queryKey: ['social-posts', siteId],
+    queryFn: async () => {
+      const apiUrl = await buildDynamicApiUrl('social/posts', siteId)
+      const response = await agentFetch(apiUrl, {
+        siteId,
+        method: 'GET',
+      })
+      if (!response.ok) {
+        throw new Error(`Failed to fetch social posts: ${response.status}`)
+      }
+      const data: SocialPostsResponse = await response.json()
+      return (data.posts || []).map(mapPost)
+    },
+    staleTime: FIVE_MINUTES,
+    gcTime: THIRTY_MINUTES,
+    enabled: enabled && !!siteId,
   })
 }
 

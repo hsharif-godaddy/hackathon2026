@@ -25,7 +25,9 @@ export default function MarketingPanel() {
   // Track whether the user entered via a campaign flow ("See Details").
   // Resets when the panel unmounts (user switched to a different canvas tab
   // and came back), so the calendar view is the default landing state.
-  const [inCampaignFlow, setInCampaignFlow] = useState(isCanvasTabsEnabled && marketingView === 'detail')
+  const [inCampaignFlow, setInCampaignFlow] = useState(
+    isCanvasTabsEnabled && (marketingView === 'detail' || marketingView === 'socialPost'),
+  )
 
   if (!appId) {
     return (
@@ -41,7 +43,7 @@ export default function MarketingPanel() {
 
   // In canvas-tabs mode, delegate list/detail orchestration entirely to
   // MarketingCanvasPane when the user entered via a campaign flow.
-  if (isCanvasTabsEnabled && (inCampaignFlow || marketingView === 'detail')) {
+  if (isCanvasTabsEnabled && (inCampaignFlow || marketingView === 'detail' || marketingView === 'socialPost')) {
     return (
       <MarketingCanvasPane onBack={() => setInCampaignFlow(false)} />
     )

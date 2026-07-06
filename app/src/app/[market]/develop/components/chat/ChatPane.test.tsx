@@ -3,7 +3,7 @@
  */
 import '@testing-library/jest-dom';
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, screen, waitFor } from '@testing-library/react';
 import Growl from '@ux/growl';
 
@@ -180,6 +180,9 @@ const mockStreamingStore = {
 const mockDevelopPageStore = {
   expandedPlan: false,
   isMobile: false,
+  marketingView: 'list',
+  marketingSocialOrigin: null,
+  selectedSocialPost: null,
   isAnnotationModeEnabled: false,
   toggleAnnotationMode: vi.fn(),
   toggleExpandedPlan: vi.fn(),
@@ -347,6 +350,9 @@ describe('ChatPane', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockDevelopPageStore.isMobile = false;
+    mockDevelopPageStore.marketingView = 'list';
+    mockDevelopPageStore.marketingSocialOrigin = null;
+    mockDevelopPageStore.selectedSocialPost = null;
     mockChatTabs.activeChatTab = ChatTab.CHAT;
     mockStreamingStore.messages = [];
     mockStreamingStore.activeStream = null;
@@ -385,6 +391,76 @@ describe('ChatPane', () => {
 
     expect(screen.getByTestId('chat-input')).toBeInTheDocument();
   });
+
+  it('attaches selected social post target context when sending from social post canvas', async () => {
+    mockStreamingStore.inputValue = 'edit the content'
+    mockDevelopPageStore.marketingView = 'socialPost'
+    mockDevelopPageStore.marketingSocialOrigin = { source: 'campaign' }
+    mockDevelopPageStore.selectedSocialPost = {
+      id: 'post-123',
+      campaignId: 'camp-123',
+      campaignContentId: 'cont-123',
+      styleLabel: 'Social Post',
+      content: 'Old content',
+      hashtags: [],
+    }
+
+    const { user } = renderWithProviders(<ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />)
+    await user.click(screen.getByRole('button', { name: 'Send' }))
+
+    expect(mockSendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        customContext: expect.objectContaining({
+          customAttachments: expect.arrayContaining([
+            expect.objectContaining({
+              type: 'social_post_target',
+              data: expect.objectContaining({
+                contentId: 'cont-123',
+                postId: 'post-123',
+                campaignId: 'camp-123',
+                source: 'campaign',
+              }),
+            }),
+          ]),
+        }),
+      }),
+    )
+  })
+
+  it('falls back to post id in social post target context when campaign content id is missing', async () => {
+    mockStreamingStore.inputValue = 'edit this post'
+    mockDevelopPageStore.marketingView = 'socialPost'
+    mockDevelopPageStore.marketingSocialOrigin = { source: 'chat' }
+    mockDevelopPageStore.selectedSocialPost = {
+      id: 'post-standalone-1',
+      campaignId: null,
+      campaignContentId: null,
+      styleLabel: 'Standalone Post',
+      content: 'Standalone content',
+      hashtags: ['sale'],
+    }
+
+    const { user } = renderWithProviders(<ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />)
+    await user.click(screen.getByRole('button', { name: 'Send' }))
+
+    expect(mockSendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        customContext: expect.objectContaining({
+          customAttachments: expect.arrayContaining([
+            expect.objectContaining({
+              type: 'social_post_target',
+              data: expect.objectContaining({
+                contentId: 'post-standalone-1',
+                postId: 'post-standalone-1',
+                campaignId: null,
+                source: 'chat',
+              }),
+            }),
+          ]),
+        }),
+      }),
+    )
+  })
 
   it('should render chat input', () => {
     renderWithProviders(<ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />);

@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
  */
 import { act } from '@testing-library/react';
 
+import { CanvasId } from '@/app/[market]/commander/canvas/registry';
 import { ChatTab, MobileMode, SettingsSection, ViewMode } from '@/app/[market]/develop/components/types';
 import * as postMessageModule from '@/utils/postMessage';
 import { useDevelopPageStore } from './useDevelopPageStore';
@@ -1618,6 +1619,8 @@ describe('useDevelopPageStore', function useDevelopPageStoreTests() {
           viewMode: ViewMode.PREVIEW,
           marketingView: 'list',
           selectedCampaignId: null,
+          selectedSocialPost: null,
+          marketingSocialOrigin: null,
           isEditModeEnabled: false,
         });
       });
@@ -1632,6 +1635,8 @@ describe('useDevelopPageStore', function useDevelopPageStoreTests() {
       expect(state.viewMode).toBe(ViewMode.MARKETING);
       expect(state.marketingView).toBe('list');
       expect(state.selectedCampaignId).toBeNull();
+      expect(state.selectedSocialPost).toBeNull();
+      expect(state.marketingSocialOrigin).toBeNull();
     });
 
     it('openMarketingDetail switches to detail view with campaign id', function openDetail() {
@@ -1643,6 +1648,8 @@ describe('useDevelopPageStore', function useDevelopPageStoreTests() {
       expect(state.viewMode).toBe(ViewMode.MARKETING);
       expect(state.marketingView).toBe('detail');
       expect(state.selectedCampaignId).toBe('camp-123');
+      expect(state.selectedSocialPost).toBeNull();
+      expect(state.marketingSocialOrigin).toBeNull();
     });
 
     it('showMarketingList returns to list and clears selected campaign', function showList() {
@@ -1660,6 +1667,80 @@ describe('useDevelopPageStore', function useDevelopPageStoreTests() {
       const state = useDevelopPageStore.getState();
       expect(state.marketingView).toBe('list');
       expect(state.selectedCampaignId).toBeNull();
+      expect(state.selectedSocialPost).toBeNull();
+      expect(state.marketingSocialOrigin).toBeNull();
+    });
+
+    it('openMarketingSocialPost stores selected post and origin', function openSocialPost() {
+      const post = {
+        id: 'post-1',
+        styleLabel: 'Facebook Post',
+        content: 'content',
+        hashtags: [],
+      };
+
+      act(function run() {
+        useDevelopPageStore.getState().openMarketingSocialPost(post, { source: 'campaign', campaignId: 'camp-123' });
+      });
+
+      const state = useDevelopPageStore.getState();
+      expect(state.viewMode).toBe(ViewMode.MARKETING);
+      expect(state.marketingView).toBe('socialPost');
+      expect(state.selectedCampaignId).toBe('camp-123');
+      expect(state.selectedSocialPost?.id).toBe('post-1');
+      expect(state.marketingSocialOrigin?.source).toBe('campaign');
+    });
+
+    it('closeMarketingSocialPost returns to detail for campaign origin', function closeSocialPostCampaignOrigin() {
+      act(function setup() {
+        useDevelopPageStore.setState({
+          marketingView: 'socialPost',
+          selectedCampaignId: 'camp-123',
+          selectedSocialPost: {
+            id: 'post-1',
+            styleLabel: 'Facebook Post',
+            content: 'content',
+            hashtags: [],
+          },
+          marketingSocialOrigin: { source: 'campaign', campaignId: 'camp-123' },
+        });
+      });
+
+      act(function run() {
+        useDevelopPageStore.getState().closeMarketingSocialPost();
+      });
+
+      const state = useDevelopPageStore.getState();
+      expect(state.marketingView).toBe('detail');
+      expect(state.selectedCampaignId).toBe('camp-123');
+      expect(state.selectedSocialPost).toBeNull();
+      expect(state.marketingSocialOrigin).toBeNull();
+    });
+
+    it('closeMarketingSocialPost returns to list for chat origin', function closeSocialPostChatOrigin() {
+      act(function setup() {
+        useDevelopPageStore.setState({
+          marketingView: 'socialPost',
+          selectedCampaignId: null,
+          selectedSocialPost: {
+            id: 'post-1',
+            styleLabel: 'Facebook Post',
+            content: 'content',
+            hashtags: [],
+          },
+          marketingSocialOrigin: { source: 'chat', previousCanvasId: CanvasId.Preview },
+        });
+      });
+
+      act(function run() {
+        useDevelopPageStore.getState().closeMarketingSocialPost();
+      });
+
+      const state = useDevelopPageStore.getState();
+      expect(state.marketingView).toBe('list');
+      expect(state.selectedCampaignId).toBeNull();
+      expect(state.selectedSocialPost).toBeNull();
+      expect(state.marketingSocialOrigin).toBeNull();
     });
 
     it('openMarketingList disables edit mode when leaving edit view', function disableEditOnMarketing() {

@@ -1,3 +1,5 @@
+import type { CanvasId } from '@/app/[market]/commander/canvas/registry'
+
 /**
  * Type Consolidation
  *
@@ -81,7 +83,17 @@ export enum ViewMode {
   MEDIA = 'media'
 }
 
-export type MarketingView = 'list' | 'detail'
+export type MarketingView = 'list' | 'detail' | 'socialPost'
+
+export type MarketingSocialOrigin =
+  | {
+    source: 'campaign'
+    campaignId: string
+  }
+  | {
+    source: 'chat'
+    previousCanvasId: CanvasId | null
+  }
 
 /** Message types sent to the preview iframe via postMessage */
 export enum IframeMessageType {

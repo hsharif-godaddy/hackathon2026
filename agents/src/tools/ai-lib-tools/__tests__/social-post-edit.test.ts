@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 const mockRepo = vi.hoisted(() => ({ findContentById: vi.fn(), findById: vi.fn(), updateContent: vi.fn() }));
 const { mockSocialPostRepo, mockUtmRepo } = vi.hoisted(() => ({
-  mockSocialPostRepo: { update: vi.fn(), delete: vi.fn() },
+  mockSocialPostRepo: { findById: vi.fn(), update: vi.fn(), delete: vi.fn() },
   mockUtmRepo: { deleteByContentRefId: vi.fn() },
 }));
 vi.mock('../../../database/repositories/SimpleCampaignRepository.js', () => ({
@@ -46,6 +46,7 @@ describe('socialPostEdit', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockRepo.findById.mockReturnValue(ownerCampaign);
+    mockSocialPostRepo.findById.mockReturnValue(null);
   });
 
   it('merges edited fields into raw_content and refreshes content_preview', async () => {
@@ -111,6 +112,80 @@ describe('socialPostEdit', () => {
     const res = await exec({ contentId: 'nope', message: 'x' });
     expect(res.success).toBe(false);
     expect(res.error).toMatch(/not found/i);
+  });
+
+  it('edits a standalone draft social post when content id is the post id', async () => {
+    mockRepo.findContentById.mockReturnValue(null);
+    mockSocialPostRepo.findById.mockReturnValue({
+      id: 'post_123',
+      appId: APP_ID,
+      state: 'DRAFT',
+      payload: { message: 'old', hashtags: ['a'], callToAction: 'Old CTA' },
+    });
+    mockSocialPostRepo.update.mockReturnValue({
+      id: 'post_123',
+      appId: APP_ID,
+      state: 'DRAFT',
+      payload: { message: 'new', hashtags: ['b'], callToAction: 'Book now' },
+    });
+
+    const res = await exec({ contentId: 'post_123', message: 'new', hashtags: ['b'], callToAction: 'Book now' });
+
+    expect(res.success).toBe(true);
+    expect(mockSocialPostRepo.update).toHaveBeenCalledWith(
+      'post_123',
+      { payload: { message: 'new', hashtags: ['b'], callToAction: 'Book now' } },
+    );
+  });
+
+  it('preserves standalone message and hashtags on callToAction-only edit', async () => {
+    mockRepo.findContentById.mockReturnValue(null);
+    mockSocialPostRepo.findById.mockReturnValue({
+      id: 'post_123',
+      appId: APP_ID,
+      state: 'DRAFT',
+      payload: { message: 'old', hashtags: ['a'], callToAction: 'Old CTA', platform: 'instagram' },
+    });
+
+    const res = await exec({ contentId: 'post_123', callToAction: 'New CTA' });
+
+    expect(res.success).toBe(true);
+    expect(mockSocialPostRepo.update).toHaveBeenCalledWith(
+      'post_123',
+      { payload: { message: 'old', hashtags: ['a'], callToAction: 'New CTA', platform: 'instagram' } },
+    );
+  });
+
+  it('rejects editing a standalone social post that belongs to another app', async () => {
+    mockRepo.findContentById.mockReturnValue(null);
+    mockSocialPostRepo.findById.mockReturnValue({
+      id: 'post_123',
+      appId: 'other-app',
+      state: 'DRAFT',
+      payload: { message: 'old', hashtags: [] },
+    });
+
+    const res = await exec({ contentId: 'post_123', message: 'new' });
+
+    expect(res.success).toBe(false);
+    expect(res.error).toMatch(/not found/i);
+    expect(mockSocialPostRepo.update).not.toHaveBeenCalled();
+  });
+
+  it('rejects editing a standalone social post after draft state', async () => {
+    mockRepo.findContentById.mockReturnValue(null);
+    mockSocialPostRepo.findById.mockReturnValue({
+      id: 'post_123',
+      appId: APP_ID,
+      state: 'PUBLISHED',
+      payload: { message: 'old', hashtags: [] },
+    });
+
+    const res = await exec({ contentId: 'post_123', message: 'new' });
+
+    expect(res.success).toBe(false);
+    expect(res.error).toMatch(/managed on the platform/i);
+    expect(mockSocialPostRepo.update).not.toHaveBeenCalled();
   });
 
   it('returns a structured error when no editable fields are provided', async () => {

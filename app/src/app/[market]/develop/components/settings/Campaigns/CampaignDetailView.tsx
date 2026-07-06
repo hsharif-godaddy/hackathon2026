@@ -32,6 +32,7 @@ interface CampaignDetailViewProps {
   campaign: Campaign
   onBack: () => void
   onDelete?: () => void
+  onEditAsset?: (asset: CampaignAsset) => void
 }
 
 const STATUS_EMPHASIS: Record<CampaignAssetStatus, 'info' | 'success' | 'warning' | 'neutral' | 'passive'> = {
@@ -59,11 +60,12 @@ function AssetTypeIcon({ assetType }: { assetType: CampaignAssetType | string })
   return null
 }
 
-function CampaignAssetRow({ asset }: { asset: CampaignAsset }) {
+function CampaignAssetRow({ asset, onEditAsset }: { asset: CampaignAsset; onEditAsset?: (asset: CampaignAsset) => void }) {
   const t = useTranslations()
   const intl = useIntl()
   const dateStr = formatAssetDateTime(intl, t, asset.scheduledDate)
   const comingSoon = translateCampaignKey(t, CAMPAIGN_KEYS.comingSoon)
+  const canEdit = asset.assetType === 'social' && onEditAsset
 
   return (
     <Card space={{ block: 'md', inline: 'md' }}>
@@ -122,8 +124,9 @@ function CampaignAssetRow({ asset }: { asset: CampaignAsset }) {
           size="small"
           icon={<InlineEditIcon width={14} height={14} />}
           text={translateCampaignKey(t, CAMPAIGN_KEYS.editAsset)}
-          disabled
-          title={comingSoon}
+          disabled={!canEdit}
+          title={canEdit ? undefined : comingSoon}
+          onClick={canEdit ? () => onEditAsset(asset) : undefined}
         />
       </div>
     </div>
@@ -131,7 +134,7 @@ function CampaignAssetRow({ asset }: { asset: CampaignAsset }) {
   )
 }
 
-export default function CampaignDetailView({ campaign, onBack, onDelete }: CampaignDetailViewProps) {
+export default function CampaignDetailView({ campaign, onBack, onDelete, onEditAsset }: CampaignDetailViewProps) {
   const t = useTranslations()
   const intl = useIntl()
   const assets = campaign.assets || []
@@ -229,7 +232,7 @@ export default function CampaignDetailView({ campaign, onBack, onDelete }: Campa
         ) : (
           <Box gap="lg">
             {assets.map((asset) => (
-              <CampaignAssetRow key={asset.id} asset={asset} />
+              <CampaignAssetRow key={asset.id} asset={asset} onEditAsset={onEditAsset} />
             ))}
           </Box>
         )}

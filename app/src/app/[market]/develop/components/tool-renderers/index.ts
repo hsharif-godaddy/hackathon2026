@@ -49,6 +49,7 @@ import ShowDocToolRenderer from './ShowDocToolRenderer'
 import SkillToolRenderer from './SkillToolRenderer'
 import SocialConnectToolRenderer from './SocialConnectToolRenderer'
 import SocialPostCreateToolRenderer from './SocialPostCreateToolRenderer'
+import SocialPostEditToolRenderer from './SocialPostEditToolRenderer'
 import SocialPublishToolRenderer from './SocialPublishToolRenderer'
 import SuggestedResponseToolRenderer from './SuggestedResponseToolRenderer'
 import TerminalCommandToolRenderer from './TerminalCommandToolRenderer'
@@ -103,6 +104,7 @@ export const toolRendererRegistry = {
   'custom-domain__domainPurchase': DomainToolRenderer,
   fontTheme: FontThemeToolRenderer,
   socialPostCreate: SocialPostCreateToolRenderer,
+  socialPostEdit: SocialPostEditToolRenderer,
   socialPostPublish: SocialPublishToolRenderer,
   end_conversation: EndConversationToolRenderer,
   googleReviews: GoogleReviewsToolRenderer, // Legacy global tool (backwards compatibility)
@@ -221,6 +223,7 @@ export {
   ShowDocToolRenderer,
   SkillToolRenderer,
   SocialPostCreateToolRenderer,
+  SocialPostEditToolRenderer,
   SocialPublishToolRenderer,
   SuggestedResponseToolRenderer,
   TerminalCommandToolRenderer,

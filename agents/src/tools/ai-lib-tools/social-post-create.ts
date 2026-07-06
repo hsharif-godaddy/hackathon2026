@@ -1,6 +1,8 @@
 import { SocialPost, PostImageData } from '../../types/social-posts.js'
 import { createTool, type Tool } from '@airo/ai-lib'
 import { logger } from '../../logging/index.js'
+import { SocialPostRepository } from '../../database/repositories/SocialPostRepository.js'
+import { PostState } from '../../types/social.js'
 import { findMedia } from '../media-search-tool.js'
 import { z } from 'zod'
 
@@ -11,6 +13,8 @@ import { z } from 'zod'
 export function generatePostId(): string {
   return `post_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`
 }
+
+const socialPostRepo = new SocialPostRepository()
 
 /**
  * Normalize time format to 24-hour format for TimePicker
@@ -147,6 +151,37 @@ function assignPostMetadata(posts: SocialPost[], topic: string): SocialPost[] {
     id: generatePostId(),
     topic
   }))
+}
+
+function persistStandalonePosts(posts: SocialPost[], appId: string): SocialPost[] {
+  return posts.map((post) => {
+    try {
+      const created = socialPostRepo.create({
+        appId,
+        associationId: null,
+        platform: post.platform ?? null,
+        state: PostState.DRAFT,
+        payload: {
+          message: post.content,
+          hashtags: post.hashtags,
+          ...(post.callToAction ? { callToAction: post.callToAction } : {}),
+          ...(post.platform ? { platform: post.platform } : {}),
+        },
+        campaignId: null,
+      })
+      return {
+        ...post,
+        id: created.id,
+      }
+    } catch (error) {
+      logger.error('socialPostCreate.persist_standalone.failed', {
+        appId,
+        postId: post.id,
+        error: error instanceof Error ? error.message : String(error),
+      })
+      return post
+    }
+  })
 }
 
 /**
@@ -625,6 +660,10 @@ IMPORTANT: Generate posts that feel natural and authentic to the business, not g
           imageProvider
         })
       }
+    }
+
+    if (appId) {
+      posts = persistStandalonePosts(posts, appId)
     }
 
     const platformCounts = calculatePlatformDistribution(posts)

@@ -5,6 +5,7 @@ import dynamic from 'next/dynamic';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { isEmployeeAuthType } from '@airo/shared/auth';
+import type { ContextAttachment } from '@airo/shared/context-attachment';
 import Growl from '@ux/growl';
 
 import { CanvasActionsVariant } from '@/app/[market]/commander/canvas/actions';
@@ -167,6 +168,14 @@ interface ChatPaneProps {
   hideToolbar?: boolean;
 }
 
+interface SocialPostTargetData {
+  contentId: string
+  postId: string | null
+  campaignId: string | null
+  source: string | null
+  instruction: string
+}
+
 function mapUploadedFilesToAssetItems(files: UploadedFile[], agentUrl: string): AssetManagerItem[] {
   return files.map((file) => {
     let mediaType: MediaType;
@@ -283,6 +292,9 @@ function ChatPaneInner({
   const removeAiEditContext = useRemoveAiEditContext();
   const clearAiEditContexts = useClearAiEditContexts();
   const isMultiElementSelect = useDevelopPageStore((state) => state.isMultiSelectEnabled);
+  const marketingView = useDevelopPageStore((state) => state.marketingView);
+  const marketingSocialOrigin = useDevelopPageStore((state) => state.marketingSocialOrigin);
+  const selectedSocialPost = useDevelopPageStore((state) => state.selectedSocialPost);
   const isAnnotationModeEnabled = useDevelopPageStore((state) => state.isAnnotationModeEnabled);
   const toggleAnnotationMode = useDevelopPageStore((state) => state.toggleAnnotationMode);
   const setBuildErrorContext = useSetBuildErrorContext();
@@ -1093,18 +1105,48 @@ function ChatPaneInner({
           }]
         : [];
 
+      const socialPostTargetId = selectedSocialPost?.campaignContentId ?? selectedSocialPost?.id ?? null;
+      const socialPostTargetAttachment: ContextAttachment<SocialPostTargetData>[] = selectedSocialPost && socialPostTargetId
+        ? [{
+            type: 'social_post_target',
+            data: {
+              contentId: socialPostTargetId,
+              postId: selectedSocialPost.id ?? null,
+              campaignId: selectedSocialPost.campaignId ?? null,
+              source: marketingSocialOrigin?.source ?? null,
+              instruction: 'Use this contentId as the primary social post target when the user asks to edit or delete the selected social post. This id may be a campaign content id or a standalone post id.',
+            },
+            persistence: 'ephemeral' as const,
+            renderStrategy: 'before_prompt' as const,
+            metadata: { source: 'marketing-social-post-canvas' },
+          }]
+        : [];
+      const typedCustomAttachment = options?.customContext?.type && options.customContext.data
+        ? [{
+            type: options.customContext.type,
+            data: options.customContext.data,
+            persistence: options.customContext.persistence || 'ephemeral',
+            renderStrategy: 'before_prompt' as const,
+            metadata: { source: options.customContext.source || 'custom-context' },
+          }]
+        : [];
+
+      const customAttachments = [
+        ...(options?.customContext?.customAttachments ?? []),
+        ...typedCustomAttachment,
+        ...annotationAttachment,
+        ...socialPostTargetAttachment,
+      ];
+
       // Merge referenced files with any custom context from the caller (e.g. plan item instructions)
       const mergedCustomContext =
-        options?.customContext || referencedFiles.length > 0 || annotationAttachment.length > 0
+        options?.customContext || referencedFiles.length > 0 || customAttachments.length > 0
           ? {
               ...options?.customContext,
               ...(referencedFiles.length > 0 ? { referencedFiles } : {}),
-              ...(annotationAttachment.length > 0
+              ...(customAttachments.length > 0
                 ? {
-                    customAttachments: [
-                      ...(options?.customContext?.customAttachments ?? []),
-                      ...annotationAttachment,
-                    ],
+                    customAttachments,
                   }
                 : {}),
             }
@@ -1229,6 +1271,9 @@ function ChatPaneInner({
       isAwaitingStream,
       queueLength,
       enqueueMessage,
+      marketingSocialOrigin?.source,
+      marketingView,
+      selectedSocialPost,
       setInputValue,
       isAnnotationModeEnabled,
       toggleAnnotationMode,
