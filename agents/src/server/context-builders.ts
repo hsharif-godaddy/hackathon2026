@@ -6,6 +6,7 @@ import { BudgetOverride } from '@airo/ai-grants'
 import { logger } from '../logging/index.js'
 
 const appRepo = new AppRepository()
+const languageDisplayNames = new Intl.DisplayNames(['en'], { type: 'language', fallback: 'none' })
 
 export interface ContextMessage {
   role: 'user' | 'system'
@@ -28,6 +29,24 @@ export function buildDynamicDataMessage(metadata: Record<string, unknown>): Cont
   const userTimezone = metadata?.userTimezone
   if (userTimezone) {
     sections.push(`User's timezone: ${userTimezone}`)
+  }
+
+  const market = metadata?.market as string | undefined
+  if (market) {
+    try {
+      const languageCode: string = market.split('-')[0] ?? market
+      const languageName = languageDisplayNames.of(languageCode)
+      if (languageName) {
+        sections.push(
+          `Conversation language: ${languageName}. Respond to the user in ${languageName} in chat and progress messages (this does not change the language of generated site content).`
+        )
+      }
+    } catch (err) {
+      logger.warn('context.dynamic.language_lookup_failed', {
+        market,
+        error: err instanceof Error ? err.message : String(err),
+      })
+    }
   }
 
   const appId = metadata?.appId as string | undefined
