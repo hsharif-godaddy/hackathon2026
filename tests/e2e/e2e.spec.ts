@@ -29,7 +29,7 @@
  */
 import { test, expect } from '../helpers/test-fixtures';
 
-import { deleteAppsWithPrefix, evictOldestE2eAppsToFitLimit } from '../helpers/api';
+import { captureDomainEvidence, deleteAppsWithPrefix, detachDomain, evictOldestE2eAppsToFitLimit } from '../helpers/api';
 import { detectSsoType, handleSsoLogin, isSignInUIResult, ensureAuthenticated } from '../helpers/auth';
 import {
   AI_RESPONSE_TIMEOUT_MS,
@@ -458,6 +458,13 @@ test.describe('E2E - Critical Path', () => {
 
       const domainRowContainer = page.getByTestId(`domain-row-${TARGET_DOMAIN.trim().toLowerCase()}`);
 
+      // Idempotency: the domain is app-scoped, but a retry of this same test
+      // against the same app (or a prior aborted run that attached but never
+      // disconnected) leaves it owned — the validation API then returns
+      // available=false and the Add button never enables. Detach any stale
+      // attachment first (best-effort; no-op when nothing is attached).
+      await detachDomain(page, appId, TARGET_DOMAIN);
+
       // Retry loop: the domain-add API in test environments is intermittently
       // slow or silently fails. Rather than a single 300s blind wait (which
       // lets auth expire), use a shorter timeout per attempt with re-auth
@@ -606,6 +613,7 @@ test.describe('E2E - Critical Path', () => {
         if (attempt < MAX_DOMAIN_ATTEMPTS) {
           console.log(`  Domain row did not appear (attempt ${attempt}/${MAX_DOMAIN_ATTEMPTS}), retrying...`);
         } else {
+          await captureDomainEvidence(page, appId, TARGET_DOMAIN);
           throw new Error(
             `Domain row not visible after ${MAX_DOMAIN_ATTEMPTS} attempts (${LONG_TIMEOUT}ms each). Page URL: ${page.url()}`,
           );

@@ -670,6 +670,112 @@ export async function evictOldestE2eAppsToFitLimit(
   return evicted;
 }
 
+/**
+ * Best-effort detach of a custom domain from an app via the domain-modify API.
+ * Idempotency guard for the fixed, reused prod domain
+ * (`e2e-prod.airotesting.shop`): a prior run that aborted after attaching but
+ * before disconnecting leaves the domain owned by the app, which makes the
+ * validation API return available=false and the Add button never enables.
+ * Detaching first clears that stale state so the test's re-attach can proceed.
+ *
+ * Mirrors the UI's `executeDisconnectDomain` (DomainAttach.tsx): same route,
+ * same `domainsToDelete: [{ fqdn }]` body. Never throws — if the domain isn't
+ * attached, mgmt-airo returns a benign error we log and swallow, since a clean
+ * pool (nothing to detach) is the common case and must not fail the test.
+ *
+ * Route source: `app/src/app/api/sites/[id]/domains/route.ts` (POST, level 3).
+ * Caller must be authenticated and on the app host (same-origin fetch).
+ */
+export async function detachDomain(page: Page, appId: string, fqdn: string): Promise<void> {
+  if (!appId || !fqdn) {
+    console.log(`  detachDomain skipped: appId='${appId}' fqdn='${fqdn}'`);
+    return;
+  }
+
+  const result: { ok: boolean; status: number; body: string } = await page.evaluate(
+    async ({ id, domain }) => {
+      try {
+        const response = await fetch(`/api/sites/${id}/domains`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ domainsToDelete: [{ fqdn: domain }] }),
+        });
+        return { ok: response.ok, status: response.status, body: await response.text() };
+      } catch (err) {
+        return { ok: false, status: 0, body: String(err) };
+      }
+    },
+    { id: appId, domain: fqdn },
+  );
+
+  if (result.ok) {
+    console.log(`  Idempotency: detached pre-existing '${fqdn}' from ${appId} (HTTP ${result.status})`);
+  } else {
+    console.log(
+      `  Idempotency: no active detach for '${fqdn}' on ${appId} ` +
+        `(HTTP ${result.status} — expected when nothing was attached): ${redactSecrets(result.body).slice(0, 200)}`,
+    );
+  }
+}
+
+/**
+ * Strip sensitive auth values from a response body before it reaches CI logs.
+ * `GET /api/sites/[id]` injects a live `?airoShareToken=<7-day preview-auth
+ * credential>` into `preview_url` (see sites/[id]/route.ts), so logging the raw
+ * body would publish a valid token to anyone who can read the job output.
+ * Redacts the value of any `*token`/`auth`/`authorization` query param or JSON
+ * field, case-insensitively (both regexes carry `i`, so `TOKEN`/`Authorization`
+ * are caught too).
+ */
+function redactSecrets(body: string): string {
+  return body
+    .replace(/([?&][a-z]*token|[?&]authorization|[?&]auth)=([^&"\\\s]+)/gi, '$1=<redacted>')
+    .replace(/("[a-z]*token"|"authorization"|"auth")(\s*:\s*")([^"]+)(")/gi, '$1$2<redacted>$4');
+}
+
+/**
+ * Capture and log actionable backend state for the domain-row-not-visible
+ * failure path in the custom-domain step. Purely diagnostic: it distinguishes a
+ * real product break (attach accepted but the domain never lists / the job
+ * stalls — an attach/list eventual-consistency bug) from stale test state.
+ *
+ * Reads, all same-origin and authed:
+ *  - the domain-modify job status for the target FQDN
+ *    (`GET /api/sites/[id]/domains/job?fqdn=`) — the reachable attach-API state;
+ *  - the current domain-list state for the app
+ *    (`GET /api/sites/[id]?includeCdn=true` → `domains[]`) — what the UI polls
+ *    via useAppDetails/useDomainPolling.
+ *
+ * Logged bodies are passed through `redactSecrets` first — the list route
+ * injects a live share token into `preview_url`.
+ *
+ * Never throws: every fetch is wrapped so a diagnostics failure can't mask or
+ * replace the caller's original assertion error. Route sources:
+ * `app/src/app/api/sites/[id]/domains/job/route.ts` and
+ * `app/src/hooks/useAppDetails.ts` (`GET /api/sites/[id]?includeCdn=true`).
+ */
+export async function captureDomainEvidence(page: Page, appId: string, fqdn: string): Promise<void> {
+  console.log(
+    `  📋 Domain failure evidence — appId='${appId}' targetDomain='${fqdn}' pageUrl='${page.url()}'`,
+  );
+
+  const job: { status: number; body: string } = await page
+    .evaluate(async ({ id, domain }) => {
+      const response = await fetch(`/api/sites/${id}/domains/job?fqdn=${encodeURIComponent(domain)}`);
+      return { status: response.status, body: await response.text() };
+    }, { id: appId, domain: fqdn })
+    .catch((err: unknown) => ({ status: 0, body: `evidence fetch threw: ${String(err)}` }));
+  console.log(`  📋 domain-attach job (HTTP ${job.status}): ${redactSecrets(job.body).slice(0, 800)}`);
+
+  const list: { status: number; body: string } = await page
+    .evaluate(async (id) => {
+      const response = await fetch(`/api/sites/${id}?includeCdn=true`);
+      return { status: response.status, body: await response.text() };
+    }, appId)
+    .catch((err: unknown) => ({ status: 0, body: `evidence fetch threw: ${String(err)}` }));
+  console.log(`  📋 domain-list state (HTTP ${list.status}): ${redactSecrets(list.body).slice(0, 800)}`);
+}
+
 /** Terminal deployment statuses that should stop polling */
 const TERMINAL_STATUSES = ['deployed', 'failed', 'error', 'cancelled', 'canceled'];
 

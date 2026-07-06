@@ -55,6 +55,38 @@ export async function logPageState(page: Page, label: string): Promise<void> {
 }
 
 /**
+ * Read the resolved value of a Switchboard feature flag for the CURRENT
+ * account, from the same client source the app's `useSwitchboard` hook reads:
+ * the serialized `<script id="GasketData">` payload (`switchboard[flag]`).
+ * This reflects the per-account resolved boolean, not the rule definition, so
+ * a spec can skip when a flag is legitimately off for the CI shopper.
+ *
+ * Returns the boolean value, or `undefined` when the flag is absent/non-boolean
+ * (e.g. GasketData not yet injected, or the flag not in the public allow-list).
+ * Requires the page to be on an app runtime route (post-navigation).
+ *
+ * Source refs: `app/src/hooks/useSwitchboard.ts` (reads
+ * `window.gasketData.switchboard[flag]`); `@gasket/data` parses
+ * `document.getElementById('GasketData').textContent`.
+ */
+export async function switchboardFlag(page: Page, flag: string): Promise<boolean | undefined> {
+  const raw: string = await page.evaluate(
+    (): string => document.getElementById('GasketData')?.textContent || '{}',
+  );
+  let parsed: { switchboard?: Record<string, unknown> };
+  try {
+    parsed = JSON.parse(raw) as { switchboard?: Record<string, unknown> };
+  } catch (err: unknown) {
+    // Malformed GasketData collapses to undefined (→ skip), same as a legit
+    // off flag; log so a corrupt app-shell is distinguishable from flag-off.
+    console.log(`  ⚠ switchboardFlag('${flag}'): GasketData parse failed, treating as absent: ${String(err)}`);
+    return undefined;
+  }
+  const value: unknown = parsed.switchboard?.[flag];
+  return typeof value === 'boolean' ? value : undefined;
+}
+
+/**
  * Log test start banner. Use in beforeEach to mark the beginning of each test.
  */
 export function logTestStart(testInfo: TestInfo): void {
@@ -399,7 +431,7 @@ function previewGateSignatureOwner(signature: PreviewGateSignature): string {
  */
 async function logPreviewGateTimeout(page: Page, startedAtMs: number, caughtError: unknown): Promise<void> {
   try {
-    const elapsedSec: number = Math.round((Date.now() - startedAtMs) / 1000);
+    const elapsedMs: number = Date.now() - startedAtMs;
     const url: string = page.url();
     const { isTypeJob, developId }: { isTypeJob: boolean; developId: string } = parseDevelopUrl(url);
 
@@ -415,6 +447,10 @@ async function logPreviewGateTimeout(page: Page, startedAtMs: number, caughtErro
       .getByTestId('preview-iframe')
       .isVisible()
       .catch((): boolean => false);
+    const iframeSrc: string | null = await page
+      .getByTestId('preview-iframe')
+      .getAttribute('src')
+      .catch((): null => null);
 
     const probe: SitesProbeResult | null = await probeSitesForId(page, developId);
     const resolvedIsJob: boolean =
@@ -433,9 +469,11 @@ async function logPreviewGateTimeout(page: Page, startedAtMs: number, caughtErro
     console.log('  [PREVIEW GATE TIMEOUT DIAGNOSTICS]');
     console.log(`    signature: ${signature}`);
     console.log(`    failed at: ${failedAt.slice(0, 200)}`);
-    console.log(`    stage: ${stage} (elapsed ~${elapsedSec}s)`);
+    console.log(`    stage: ${stage} (elapsed ~${Math.round(elapsedMs / 1000)}s)`);
+    console.log(`    elapsed ms: ${elapsedMs}`);
     console.log(`    url: ${url}`);
     console.log(`    type=job in url: ${isTypeJob} (develop id: ${developId || '<none>'})`);
+    console.log(`    app id: ${developId || '<none>'}`);
     if (probe === null) {
       console.log('    GET /api/sites?site_id: <not probed>');
     } else {
@@ -448,6 +486,7 @@ async function logPreviewGateTimeout(page: Page, startedAtMs: number, caughtErro
     console.log(`    develop-skeleton visible: ${skeletonVisible}`);
     console.log(`    develop-chat-pane-loader visible: ${loaderVisible}`);
     console.log(`    preview-iframe visible: ${iframeVisible}`);
+    console.log(`    preview-iframe src: ${iframeSrc ?? '<none>'}`);
     // A build-stage timeout that still carries job signals may hide unresolved
     // jobs inside the build-latency bucket — flag it for cron analysis.
     if (signature === 'build-latency' && (isTypeJob || resolvedIsJob)) {
@@ -777,4 +816,3 @@ export async function waitForGenerationComplete(
     await Promise.allSettled([handlePublishLoop, handleAskQuestionLoop]);
   }
 }
-

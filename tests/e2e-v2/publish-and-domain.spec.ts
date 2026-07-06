@@ -18,7 +18,7 @@
 import type { Page } from '@playwright/test';
 import { test, expect } from '../helpers/test-fixtures';
 
-import { getPublishedUrl } from '../helpers/api';
+import { captureDomainEvidence, detachDomain, getPublishedUrl } from '../helpers/api';
 import { ensureAuthenticated, loginViaSsoDirect } from '../helpers/auth';
 import {
   CHAT_INPUT_TIMEOUT,
@@ -214,7 +214,10 @@ test.describe('E2E v2 - Publish and custom domain', () => {
     }
 
     // Idempotency against the long-lived pool app: clear any leftover
-    // attachment from a prior run that failed mid-test before attaching.
+    // attachment from a prior run that failed mid-test before attaching. The
+    // API detach guards stale mgmt-airo state (fixed/reused domain) even when
+    // no UI row rendered; the UI pre-clean removes a still-visible row.
+    await detachDomain(page, appId, TARGET_DOMAIN);
     await disconnectDomainIfPresent(page, TARGET_DOMAIN);
     await expect(customDomainInput).toBeVisible({ timeout: DEFAULT_TIMEOUT });
 
@@ -248,7 +251,15 @@ test.describe('E2E v2 - Publish and custom domain', () => {
     // (DomainItem.tsx), so we no longer need the structural div/text/Options
     // filter chain to disambiguate it from the DNS card.
     const domainRowContainer = page.getByTestId(`domain-row-${TARGET_DOMAIN.trim().toLowerCase()}`);
-    await expect(domainRowContainer).toBeVisible({ timeout: DEPLOYMENT_TIMEOUT_MS });
+    // Mirror of legacy e2e Step 11: on the domain-row-not-visible failure,
+    // capture the attach-job + domain-list API state before rethrowing so a
+    // flaky attach/list eventual-consistency break is diagnosable, not masked.
+    await expect(domainRowContainer)
+      .toBeVisible({ timeout: DEPLOYMENT_TIMEOUT_MS })
+      .catch(async (error: unknown) => {
+        await captureDomainEvidence(page, appId, TARGET_DOMAIN);
+        throw error;
+      });
 
     // DNS instructions panel renders when the domain is external, scoped by
     // the `domain-dns-instructions` testid (DomainDNS.tsx).

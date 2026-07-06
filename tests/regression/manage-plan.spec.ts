@@ -12,7 +12,7 @@ import { test, expect } from '../helpers/test-fixtures';
 
 import { loginViaSsoDirect } from '../helpers/auth';
 import { DEFAULT_TIMEOUT, LONG_TIMEOUT } from '../helpers/constants';
-import { dismissOverlays, logTestResult, logTestStart } from '../helpers/ui';
+import { dismissOverlays, logTestResult, logTestStart, switchboardFlag } from '../helpers/ui';
 
 test.describe('Manage Plan - Deeplinks', function deeplinks() {
   test.beforeEach(async function setup({ page }, testInfo) {
@@ -27,6 +27,21 @@ test.describe('Manage Plan - Deeplinks', function deeplinks() {
     // Without this, the browser is still on the SSO host and the direct goto
     // to /manage-plan?... races the SSO redirect and gets ERR_ABORTED.
     await page.goto('/');
+
+    // The credits deeplink is gated by the `appbuilder-credits-deeplink`
+    // Switchboard flag (useCreditsDeeplink.ts). In TEST it resolves true only
+    // for three-letter/employee shoppers in a percentage bucket, so for the
+    // standard CI account the modal never opens — asserting it would be a
+    // false failure, not a product regression. Read it from the same GasketData
+    // source the app hook uses.
+    //
+    // `undefined` means the read itself failed (GasketData missing, timing,
+    // parse error) — fail on that rather than skip, otherwise a broken read
+    // would silently green-by-skip forever, the exact rot this suite guards
+    // against. Skip ONLY on a genuine resolved `false`.
+    const deeplinkEnabled = await switchboardFlag(page, 'appbuilder-credits-deeplink');
+    expect(deeplinkEnabled, 'appbuilder-credits-deeplink should be readable from GasketData on /').not.toBeUndefined();
+    test.skip(deeplinkEnabled === false, 'appbuilder-credits-deeplink flag off for this account');
   });
 
   test.afterEach(async function teardown({ page }, testInfo) {
