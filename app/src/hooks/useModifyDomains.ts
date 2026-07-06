@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
+import { startDomainJourney, trackDomainMilestone } from '@/hooks/shared/domainJourneyFunnel';
 import { agentFetch } from '@/lib/agent-fetch';
 import { DomainType, type SiteDomain } from '@/lib/control-plane/types';
 import { appFetch } from '@/lib/gasket-config';
@@ -268,6 +269,11 @@ export function useModifyDomains() {
           startedAt: Date.now(),
           jobStatus: data.status,
         });
+        // Milestone 8 (funnel.domain.connect_started): single chokepoint for all
+        // connect entry points (attach widget, DomainBar expedite, CAA re-attach).
+        // Reuse-or-mint stitches onto a purchase journey when one is active.
+        startDomainJourney({ appId: variables.siteId, fqdn });
+        trackDomainMilestone('connect_started', 'success', { appId: variables.siteId, fqdn });
       }
 
       // Single store read shared by the delete-sync below and the agent push.

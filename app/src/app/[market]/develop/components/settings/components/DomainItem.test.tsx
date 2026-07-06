@@ -4,9 +4,10 @@
 import '@testing-library/jest-dom';
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 
 import DomainItem from '@/app/[market]/develop/components/settings/components/DomainItem';
+import { finishDomainJourney, trackDomainConnectStep } from '@/hooks/shared/domainJourneyFunnel';
 import type { AppDomain } from '@/hooks/useAppDetails';
 import type { Domain } from '@/hooks/useDomainsQuery';
 import { DomainMutationError } from '@/hooks/useModifyDomains';
@@ -42,6 +43,20 @@ vi.mock('@/hooks/useDomainJobPolling', () => ({
     ['domain-job', siteId, fqdn.trim().toLowerCase()] as const,
   useDomainJobPolling: (...args: unknown[]) => mockUseDomainJobPolling(...args),
 }));
+
+// Funnel is exercised in its own test; stub it here so DomainItem's terminal/
+// sub-step effects don't invoke real analytics plumbing.
+vi.mock('@/hooks/shared/domainJourneyFunnel', () => ({
+  startDomainJourney: vi.fn(),
+  getDomainJourneyId: vi.fn(),
+  trackDomainMilestone: vi.fn(),
+  trackDomainConnectStep: vi.fn(),
+  finishDomainJourney: vi.fn(),
+  resetDomainJourneyFunnel: vi.fn(),
+}));
+
+const mockFinishDomainJourney = vi.mocked(finishDomainJourney);
+const mockTrackDomainConnectStep = vi.mocked(trackDomainConnectStep);
 
 vi.mock('@/hooks/useDomainConflictCheck', () => ({
   useDomainConflictCheck: (...args: unknown[]) => mockUseDomainConflictCheck(...args),
@@ -576,7 +591,7 @@ describe('DomainItem', () => {
         <DomainItem {...defaultProps} appDomain={pendingDomain} isCustomDomain />
       );
 
-      expect(mockUseDomainJobPolling).toHaveBeenCalledWith('site-123', 'example.com', true);
+      expect(mockUseDomainJobPolling).toHaveBeenCalledWith('site-123', 'example.com', true, expect.any(Function));
     });
 
     it('should enable polling when custom domain status is undefined', () => {
@@ -588,7 +603,7 @@ describe('DomainItem', () => {
         />
       );
 
-      expect(mockUseDomainJobPolling).toHaveBeenCalledWith('site-123', 'example.com', true);
+      expect(mockUseDomainJobPolling).toHaveBeenCalledWith('site-123', 'example.com', true, expect.any(Function));
     });
 
     it('should render polled verifying label while job is running', () => {
@@ -639,6 +654,11 @@ describe('DomainItem', () => {
       await waitFor(function storeCleared() {
         expect(useDevelopPageStore.getState().domainJobsInProgress['site-123']).toBeUndefined();
       });
+      expect(mockFinishDomainJourney).toHaveBeenCalledWith(
+        'connect_failed',
+        'failure',
+        expect.objectContaining({ appId: 'site-123', fqdn: 'example.com', errorType: 'NOT_FOUND' })
+      );
     });
 
     it('should clear stale in-progress job when job polling errors', async () => {
@@ -673,6 +693,11 @@ describe('DomainItem', () => {
         fqdn: 'example.com',
         error: 'network failed',
       });
+      expect(mockFinishDomainJourney).toHaveBeenCalledWith(
+        'connect_failed',
+        'failure',
+        expect.objectContaining({ appId: 'site-123', fqdn: 'example.com', errorType: 'poll_error' })
+      );
     });
 
     it('should log polling errors even without an in-progress store job', async () => {
@@ -718,6 +743,104 @@ describe('DomainItem', () => {
       expect(screen.getByText('builder_domain_status_pending')).toBeInTheDocument();
       expect(screen.queryByText('Verifying domain...')).not.toBeInTheDocument();
       expect(screen.queryByText('builder_domain_job_verifying_domain')).not.toBeInTheDocument();
+      // No store job → activeJobForDomain is null → terminal effect exits early
+      expect(mockFinishDomainJourney).not.toHaveBeenCalled();
+    });
+
+    it('should emit connect_completed when SUCCESS polled and store job is set', async () => {
+      useDevelopPageStore.setState({
+        domainJobsInProgress: {
+          'site-123': {
+            fqdn: 'example.com',
+            startedAt: Date.now(),
+            jobStatus: 'RUNNING',
+          },
+        },
+      });
+      mockUseDomainJobPolling.mockReturnValue({
+        labelKey: 'builder_domain_job_verifying_domain',
+        status: 'SUCCESS',
+        overallStatus: 'SUCCESS',
+        isLoading: false,
+        error: null,
+      });
+
+      renderWithProviders(
+        <DomainItem {...defaultProps} appDomain={pendingDomain} isCustomDomain />
+      );
+
+      await waitFor(function connectCompleted() {
+        expect(mockFinishDomainJourney).toHaveBeenCalledWith(
+          'connect_completed',
+          'success',
+          { appId: 'site-123', fqdn: 'example.com' }
+        );
+      });
+    });
+
+    it('should emit connect_step only once per distinct labelKey', async () => {
+      useDevelopPageStore.setState({
+        domainJobsInProgress: {
+          'site-123': {
+            fqdn: 'example.com',
+            startedAt: Date.now(),
+            jobStatus: 'RUNNING',
+          },
+        },
+      });
+      mockUseDomainJobPolling.mockReturnValue({
+        labelKey: 'builder_domain_job_verifying_domain',
+        status: 'RUNNING',
+        overallStatus: 'RUNNING',
+        isLoading: false,
+        error: null,
+      });
+
+      const { rerender } = renderWithProviders(
+        <DomainItem {...defaultProps} appDomain={pendingDomain} isCustomDomain />
+      );
+
+      await waitFor(function stepEmitted() {
+        expect(mockTrackDomainConnectStep).toHaveBeenCalledWith(
+          'builder_domain_job_verifying_domain',
+          { appId: 'site-123', fqdn: 'example.com' }
+        );
+      });
+
+      rerender(<DomainItem {...defaultProps} appDomain={pendingDomain} isCustomDomain />);
+      await act(async () => { await Promise.resolve(); });
+
+      expect(mockTrackDomainConnectStep).toHaveBeenCalledTimes(1);
+    });
+
+    it('should emit connect_failed timeout when poll timeout callback fires', async () => {
+      let capturedOnPollTimeout: ((elapsedMs: number) => void) | undefined;
+
+      mockUseDomainJobPolling.mockImplementation(
+        function (_siteId: unknown, _fqdn: unknown, _shouldPoll: unknown, onPollTimeout: unknown) {
+          capturedOnPollTimeout = onPollTimeout as (elapsedMs: number) => void;
+          return {
+            labelKey: 'builder_domain_job_verifying_domain',
+            status: 'RUNNING',
+            overallStatus: 'RUNNING',
+            isLoading: false,
+            error: null,
+          };
+        }
+      );
+
+      renderWithProviders(
+        <DomainItem {...defaultProps} appDomain={pendingDomain} isCustomDomain />
+      );
+
+      expect(capturedOnPollTimeout).toBeTypeOf('function');
+      act(() => { capturedOnPollTimeout!(30000); });
+
+      expect(mockFinishDomainJourney).toHaveBeenCalledWith(
+        'connect_failed',
+        'timeout',
+        { appId: 'site-123', fqdn: 'example.com', errorType: 'poll_timeout', elapsedMs: 30000 }
+      );
     });
 
     it('should not render stale polled label when polling is disabled and domain is disconnected', () => {
@@ -748,7 +871,7 @@ describe('DomainItem', () => {
           isCustomDomain
         />
       );
-      expect(mockUseDomainJobPolling).toHaveBeenCalledWith('site-123', 'example.com', true);
+      expect(mockUseDomainJobPolling).toHaveBeenCalledWith('site-123', 'example.com', true, expect.any(Function));
     });
 
     it('should enable polling for ERROR custom domain when connection status view flag is on', function errorPollingEnabled() {
@@ -759,7 +882,7 @@ describe('DomainItem', () => {
           isCustomDomain
         />
       );
-      expect(mockUseDomainJobPolling).toHaveBeenCalledWith('site-123', 'example.com', true);
+      expect(mockUseDomainJobPolling).toHaveBeenCalledWith('site-123', 'example.com', true, expect.any(Function));
     });
   });
 

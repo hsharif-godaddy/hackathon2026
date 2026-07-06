@@ -13,6 +13,15 @@ vi.mock('@/hooks/useTranslations', () => ({
   useTranslations: () => (key: string) => key,
 }));
 
+vi.mock('@/hooks/shared/domainJourneyFunnel', () => ({
+  startDomainJourney: vi.fn(),
+  getDomainJourneyId: vi.fn(),
+  trackDomainMilestone: vi.fn(),
+  trackDomainConnectStep: vi.fn(),
+  finishDomainJourney: vi.fn(),
+  resetDomainJourneyFunnel: vi.fn(),
+}));
+
 vi.mock('@/app/[market]/develop/components/widgets/DomainPurchaseWidget', () => ({
   default: ({ brandName, domain, appId }: { brandName?: string; domain?: string; appId?: string }) => (
     <div data-testid="domain-purchase-widget" data-brand={brandName} data-domain={domain} data-appid={appId}>

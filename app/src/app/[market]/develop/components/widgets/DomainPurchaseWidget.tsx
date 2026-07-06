@@ -17,6 +17,7 @@ import TextInput from '@ux/text-input';
 
 import { useSendUserMessage } from '@/app/[market]/develop/components/chat/ChatContext';
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils';
+import { finishDomainJourney, trackDomainMilestone } from '@/hooks/shared/domainJourneyFunnel';
 import { useDomainSearch } from '@/hooks/useDomainSearch';
 import { useIscResolver } from '@/hooks/useIscResolver';
 import { useOfferEligibility } from '@/hooks/useOfferEligibility';
@@ -217,8 +218,22 @@ export default function DomainPurchaseWidget({
       spinsFulfilled: searchMeta.spinsFulfilled,
       spinsRejected: searchMeta.spinsRejected,
     });
+
+    // Milestone 3 (funnel.domain.search_completed): results arrived. Carries the
+    // context snapshot (business name, query, seeds, counts) for the funnel.
+    trackDomainMilestone('search_completed', 'success', {
+      appId,
+      conversationId,
+      brandName,
+      query: searchQuery,
+      domainsFound,
+      seedsUsed: searchMeta.seedsUsed,
+      exactMatchCount: searchMeta.exactMatchCount,
+    });
   }, [
     appId,
+    conversationId,
+    brandName,
     searchQuery,
     resultSetKey,
     domainsFound,
@@ -250,6 +265,7 @@ export default function DomainPurchaseWidget({
       query: q,
       brandName,
     });
+    trackDomainMilestone('search_triggered', 'success', { appId, conversationId, query: q, brandName });
     setSubmittedQuery(q);
     setPurchaseStatus('idle');
     setSelectedDomain(null);
@@ -287,7 +303,13 @@ export default function DomainPurchaseWidget({
         ...spinContext,
       });
 
+      // Milestone 4 (funnel.domain.selection_made): user picked a domain and
+      // initiated add-to-cart.
+      trackDomainMilestone('selection_made', 'success', { appId, conversationId, fqdn: domain.fqdn });
+
       if (newBasketId) {
+        // Milestone 5 (funnel.domain.cart_added): add-to-cart produced a basket.
+        trackDomainMilestone('cart_added', 'success', { appId, conversationId, fqdn: domain.fqdn });
         setShowSearchInput(false);
         setSelectedDomain(domain);
         setBasketId(newBasketId);
@@ -349,6 +371,13 @@ export default function DomainPurchaseWidget({
       ...spinContext,
     });
 
+    // Milestone 6 (funnel.domain.purchase_completed): checkout succeeded.
+    trackDomainMilestone('purchase_completed', 'success', {
+      appId,
+      conversationId,
+      fqdn: purchasedDomain ?? null,
+    });
+
     // Notify parent component (e.g., DomainAttachWidget which will handle connection)
     if (onPurchaseComplete && purchasedDomain) {
       onPurchaseComplete(purchasedDomain);
@@ -391,6 +420,14 @@ export default function DomainPurchaseWidget({
       ...spinContext,
     });
 
+    // Milestone 7 (funnel.domain.purchase_failed): checkout errored.
+    finishDomainJourney('purchase_failed', 'failure', {
+      appId,
+      conversationId,
+      fqdn: selectedDomain?.fqdn ?? null,
+      errorType: error.name ?? error.reasonCode ?? null,
+    });
+
     // Restore search input defensively — the checkout component may unmount
     // without triggering handleBackFromCheckout, leaving showSearchInput stuck false.
     setShowSearchInput(true);
@@ -420,6 +457,14 @@ export default function DomainPurchaseWidget({
         domain: domain.fqdn,
         error: error?.message || String(error),
         ...spinContext,
+      });
+
+      // Milestone 7 (funnel.domain.purchase_failed): add-to-cart errored.
+      finishDomainJourney('purchase_failed', 'failure', {
+        appId,
+        conversationId,
+        fqdn: domain.fqdn,
+        errorType: error?.name ?? 'add_to_cart_error',
       });
 
       // Error is shown in the widget UI - no need to send chat message

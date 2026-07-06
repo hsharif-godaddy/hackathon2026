@@ -1,7 +1,12 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 
-const { mockSetMemory } = vi.hoisted(() => ({
+const { mockSetMemory, mockEmitCustomEvent } = vi.hoisted(() => ({
     mockSetMemory: vi.fn().mockResolvedValue({ success: true }),
+    mockEmitCustomEvent: vi.fn(),
+}))
+
+vi.mock('@godaddy/agent-otel-sdk', () => ({
+    emitCustomEvent: mockEmitCustomEvent,
 }))
 
 vi.mock('../../../../logging/index.js', () => ({
@@ -43,6 +48,68 @@ function execute(input: Record<string, unknown>, context: Record<string, unknown
 describe('custom-domain', function packageTests() {
     beforeEach(function reset() {
         vi.clearAllMocks()
+    })
+
+    describe('#task OTel events', function taskEventTests() {
+        function emitCallFor(schemaId: string): { conversationId?: string; eventData: { schemaId: string; data: Record<string, unknown> } } | undefined {
+            const found = mockEmitCustomEvent.mock.calls.find((call) => call[0]?.eventData?.schemaId === schemaId)
+            return found?.[0]
+        }
+
+        it('emits task-start then task-complete on a successful action', async function complete() {
+            await execute(
+                { action: 'purchase', brandName: 'Test Brand' },
+                { metadata: { appId: 'app-123', permissions: { canPurchaseDomain: true } } }
+            )
+
+            expect(emitCallFor('urn:shared:ai:event:/agent/domain/task-start/v1')).toBeTruthy()
+            const complete = emitCallFor('urn:shared:ai:event:/agent/domain/task-complete/v1')
+            expect(complete).toBeTruthy()
+            expect(complete?.eventData.data.success).toBe(true)
+            expect(complete?.eventData.data.action).toBe('purchase')
+            expect(typeof complete?.eventData.data.durationMs).toBe('number')
+            expect(emitCallFor('urn:shared:ai:event:/agent/domain/task-failed/v1')).toBeFalsy()
+        })
+
+        it('emits task-failed when the handler returns success:false', async function failed() {
+            await execute(
+                { action: 'purchase' },
+                { metadata: { appId: 'app-123', permissions: { canPurchaseDomain: false } } }
+            )
+
+            expect(emitCallFor('urn:shared:ai:event:/agent/domain/task-start/v1')).toBeTruthy()
+            const taskFailed = emitCallFor('urn:shared:ai:event:/agent/domain/task-failed/v1')
+            expect(taskFailed).toBeTruthy()
+            expect(taskFailed?.eventData.data.success).toBe(false)
+            expect(typeof taskFailed?.eventData.data.durationMs).toBe('number')
+            expect(emitCallFor('urn:shared:ai:event:/agent/domain/task-complete/v1')).toBeFalsy()
+        })
+
+        it('does not emit task events when appId is missing (before task-start)', async function noAppId() {
+            await execute({ action: 'purchase' }, { metadata: {} })
+            expect(mockEmitCustomEvent).not.toHaveBeenCalled()
+        })
+
+        it('emits task-failed when the handler throws', async function handlerThrows() {
+            mockGetClientActionService.mockImplementation(function () {
+                throw new Error('service crashed')
+            })
+
+            await expect(execute(
+                { action: 'attach', domain: 'mydomain.com' },
+                {
+                    metadata: { appId: 'app-123', permissions: { canPurchaseDomain: true } },
+                    socketId: 'socket-123',
+                }
+            )).rejects.toThrow('service crashed')
+
+            expect(emitCallFor('urn:shared:ai:event:/agent/domain/task-start/v1')).toBeTruthy()
+            const taskFailed = emitCallFor('urn:shared:ai:event:/agent/domain/task-failed/v1')
+            expect(taskFailed).toBeTruthy()
+            expect(taskFailed?.eventData.data.success).toBe(false)
+            expect(typeof taskFailed?.eventData.data.durationMs).toBe('number')
+            expect(emitCallFor('urn:shared:ai:event:/agent/domain/task-complete/v1')).toBeFalsy()
+        })
     })
 
     describe('#shared validation', function sharedTests() {

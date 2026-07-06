@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect, useRef } from 'react'
 import Box from '@ux/box'
 import CartIcon from '@ux/icon/cart'
 import LinkIcon from '@ux/icon/link'
@@ -11,6 +12,7 @@ import ToolHeader from '@/app/[market]/develop/components/tool-renderers/ToolHea
 import DomainAttachWidget from '@/app/[market]/develop/components/widgets/DomainAttachWidget'
 import DomainPurchaseWidget from '@/app/[market]/develop/components/widgets/DomainPurchaseWidget'
 import ErrorBoundary from '@/components/ErrorBoundary'
+import { startDomainJourney } from '@/hooks/shared/domainJourneyFunnel'
 import { useDkimAutoOnboard } from '@/hooks/useDkimAutoOnboard'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
@@ -68,6 +70,17 @@ export default function DomainToolRenderer({
     domain,
     enabled: dkimEnabled,
   })
+
+  // Milestone 1 (funnel.domain.started): the domain widget became visible from
+  // an agent tool call. Fires once per appId on the active message only, so
+  // historical tool messages don't re-open a journey.
+  const journeyStartedRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (toolStatus !== 'completed' || !isSuccess || !isLastAssistantMessage || !appId) return
+    if (journeyStartedRef.current === appId) return
+    journeyStartedRef.current = appId
+    startDomainJourney({ appId, conversationId, fqdn: domain ?? null })
+  }, [toolStatus, isSuccess, isLastAssistantMessage, appId, conversationId, domain])
 
   return (
     <div>

@@ -79,6 +79,15 @@ vi.mock('@/lib/logging', () => ({
   shipAnalyticsLog: vi.fn(),
 }));
 
+vi.mock('@/hooks/shared/domainJourneyFunnel', () => ({
+  startDomainJourney: vi.fn(),
+  getDomainJourneyId: vi.fn(),
+  trackDomainMilestone: vi.fn(),
+  trackDomainConnectStep: vi.fn(),
+  finishDomainJourney: vi.fn(),
+  resetDomainJourneyFunnel: vi.fn(),
+}));
+
 const { shipAnalyticsLog } = await import('@/lib/logging');
 const mockShipAnalyticsLog = vi.mocked(shipAnalyticsLog);
 

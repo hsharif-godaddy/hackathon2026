@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, waitFor } from '@testing-library/react';
 
+import { startDomainJourney, trackDomainMilestone } from '@/hooks/shared/domainJourneyFunnel';
 import { DomainStatus, DomainType, type SiteDomain } from '@/lib/control-plane/types';
 import { appFetch } from '@/lib/gasket-config';
 import { logger } from '@/lib/request-context';
@@ -36,6 +37,11 @@ vi.mock('@/stores/useDevelopPageStore', () => ({
       setDomainJobInProgress,
     }),
   },
+}));
+
+vi.mock('@/hooks/shared/domainJourneyFunnel', () => ({
+  startDomainJourney: vi.fn(),
+  trackDomainMilestone: vi.fn(),
 }));
 
 describe('useModifyDomains', () => {
@@ -147,6 +153,14 @@ describe('useModifyDomains', () => {
       startedAt: expect.any(Number),
       jobStatus: 'pending',
     });
+    expect(vi.mocked(startDomainJourney)).toHaveBeenCalledWith(
+      expect.objectContaining({ appId: 'app-123', fqdn: 'new.example.com' })
+    );
+    expect(vi.mocked(trackDomainMilestone)).toHaveBeenCalledWith(
+      'connect_started',
+      'success',
+      expect.objectContaining({ appId: 'app-123', fqdn: 'new.example.com' })
+    );
   });
 
   it('should not track domain job for delete-only success', async function deleteNoJobTrack() {

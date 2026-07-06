@@ -13,6 +13,7 @@ import { ChatTab } from '@/app/[market]/develop/components/types'
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils'
 import DomainCheckoutModal from '@/app/[market]/develop/components/widgets/DomainCheckoutModal'
 import { useChatContext } from '@/contexts/ChatContext'
+import { trackDomainMilestone } from '@/hooks/shared/domainJourneyFunnel'
 import { useDomainSearch } from '@/hooks/useDomainSearch'
 import { useModifyDomains } from '@/hooks/useModifyDomains'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
@@ -297,6 +298,10 @@ export default function DomainBar() {
       suggestedDomain,
       orderId: order?.orderId,
     });
+    // Milestone 6 (funnel.domain.purchase_completed): expedite-path checkout
+    // succeeded. connect_started fires from the useModifyDomains chokepoint
+    // when the auto-attach mutation below resolves.
+    trackDomainMilestone('purchase_completed', 'success', { appId, fqdn: suggestedDomain });
     setShowCheckout(false);
     setBasketId(null);
 

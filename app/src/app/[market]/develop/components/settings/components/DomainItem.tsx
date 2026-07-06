@@ -14,6 +14,7 @@ import Spinner from "@ux/spinner";
 import Tag from "@ux/tag";
 import text from "@ux/text";
 
+import { finishDomainJourney, trackDomainConnectStep } from '@/hooks/shared/domainJourneyFunnel';
 import type { AppDomain } from '@/hooks/useAppDetails';
 import { useCaaRemediation } from '@/hooks/useCaaRemediation';
 import { useDomainConflictCheck } from '@/hooks/useDomainConflictCheck';
@@ -122,6 +123,8 @@ export default function DomainItem({
   const mutationErrorShownRef = useRef<string | null>(null); // keyed on domainName
   const statusShownRef = useRef<string | null>(null); // keyed on domainName + status
   const caaBannerShownRef = useRef<string | null>(null); // keyed on domainName + variant
+  const lastConnectStepRef = useRef<string | null>(null); // funnel connect_step dedupe, keyed on labelKey
+  const connectTimeoutFiredRef = useRef<boolean>(false); // funnel connect_failed timeout latch
   const domainName = domain.domain || domain.name || '';
   /** True when app details include this domain (any status: PENDING, ACTIVE, …). Not the same as “ACTIVE only”. */
   const isConnected = !!appDomain;
@@ -162,6 +165,18 @@ export default function DomainItem({
     siteId,
     domainName,
     shouldPollJob,
+    // Milestone 11 (funnel.domain.connect_failed, outcome=timeout): poll exhausted
+    // its max duration while the job was still running. Latched so it fires once.
+    (elapsedMs: number) => {
+      if (connectTimeoutFiredRef.current) return;
+      connectTimeoutFiredRef.current = true;
+      finishDomainJourney('connect_failed', 'timeout', {
+        appId: siteId,
+        fqdn: domainName,
+        errorType: 'poll_timeout',
+        elapsedMs,
+      });
+    },
   );
 
   function handleRefreshJobStatus(): void {
@@ -196,6 +211,21 @@ export default function DomainItem({
     queryClient.removeQueries({ queryKey: domainJobQueryKey(siteId, domainName) });
   }, [appDomain?.status, queryClient, siteId, domainName]);
 
+  // Milestone 9 (funnel.domain.connect_step): emit each mgmt-airo job sub-step as
+  // it changes. Deduped on labelKey so a step isn't re-emitted across polls; the
+  // latches re-arm whenever polling stops so a later connect attempt tracks fresh.
+  useEffect(() => {
+    if (!shouldPollJob) {
+      lastConnectStepRef.current = null;
+      connectTimeoutFiredRef.current = false;
+      return;
+    }
+    if (jobPollError || !polledLabelKey) return;
+    if (lastConnectStepRef.current === polledLabelKey) return;
+    lastConnectStepRef.current = polledLabelKey;
+    trackDomainConnectStep(polledLabelKey, { appId: siteId, fqdn: domainName });
+  }, [shouldPollJob, jobPollError, polledLabelKey, siteId, domainName]);
+
   // Clear in-progress job when poll reports terminal job status or when app domain reaches a terminal status.
   useEffect(() => {
     function clearJobWhenTerminal() {
@@ -206,6 +236,12 @@ export default function DomainItem({
           error: jobPollError.message,
         });
         if (activeJobForDomain) {
+          // Milestone 11 (funnel.domain.connect_failed): poll request errored.
+          finishDomainJourney('connect_failed', 'failure', {
+            appId: siteId,
+            fqdn: domainName,
+            errorType: 'poll_error',
+          });
           useDevelopPageStore.getState().clearDomainJobInProgress(siteId);
         }
         return;
@@ -214,16 +250,39 @@ export default function DomainItem({
         return;
       }
       if (polledTerminal) {
+        const succeeded = polledStatus === 'SUCCESS' || polledOverallStatus === 'SUCCESS';
+        if (succeeded) {
+          // Milestone 10 (funnel.domain.connect_completed): job reached SUCCESS.
+          finishDomainJourney('connect_completed', 'success', { appId: siteId, fqdn: domainName });
+        } else {
+          // Milestone 11 (funnel.domain.connect_failed): job FAILED / NOT_FOUND.
+          finishDomainJourney('connect_failed', 'failure', {
+            appId: siteId,
+            fqdn: domainName,
+            errorType: polledOverallStatus ?? polledStatus ?? 'poll_terminal_failed',
+          });
+        }
         useDevelopPageStore.getState().clearDomainJobInProgress(siteId);
         return;
       }
       if (!appDomain) return;
       const { status } = appDomain;
       if (status !== DomainStatus.ACTIVE && status !== DomainStatus.FAILED) return;
+      if (status === DomainStatus.ACTIVE) {
+        // Milestone 10 (funnel.domain.connect_completed): domain reached ACTIVE.
+        finishDomainJourney('connect_completed', 'success', { appId: siteId, fqdn: domainName });
+      } else {
+        // Milestone 11 (funnel.domain.connect_failed): domain reached FAILED.
+        finishDomainJourney('connect_failed', 'failure', {
+          appId: siteId,
+          fqdn: domainName,
+          errorType: 'domain_failed',
+        });
+      }
       useDevelopPageStore.getState().clearDomainJobInProgress(siteId);
     }
     clearJobWhenTerminal();
-  }, [siteId, activeJobForDomain, appDomain?.status, polledTerminal, jobPollError, domainName]);
+  }, [siteId, activeJobForDomain, appDomain?.status, polledTerminal, polledStatus, polledOverallStatus, jobPollError, domainName]);
 
   useEffect(() => {
     const abortController = new AbortController();

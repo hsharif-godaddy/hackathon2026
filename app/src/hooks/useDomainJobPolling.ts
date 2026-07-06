@@ -198,6 +198,7 @@ export function useDomainJobPolling(
   siteId: string,
   fqdn: string,
   enabled: boolean,
+  onPollTimeout?: (elapsedMs: number) => void,
 ): DomainJobPollResult {
   const startTimeRef = useRef<number | null>(null);
   const normalizedFqdn = fqdn.trim();
@@ -231,6 +232,7 @@ export function useDomainJobPolling(
               fqdn: normalizedFqdn,
               elapsed,
             });
+            onPollTimeout?.(elapsed);
           },
         },
       );

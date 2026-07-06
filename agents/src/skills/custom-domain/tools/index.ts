@@ -536,6 +536,36 @@ async function storePurchasedDomain(appId: string, fqdn: string, context?: { met
     }
 }
 
+/** Shape returned by the purchase/attach/forward handlers. */
+interface DomainToolResult {
+    success: boolean
+    error?: string
+    message?: string
+    widgetType?: string
+    widgetData?: Record<string, unknown>
+    requiresPublish?: boolean
+    alreadyConnected?: boolean
+    primaryDomain?: string
+    forwardingInstructions?: Record<string, unknown>
+}
+
+/**
+ * Emit the domain task-complete / task-failed OTel event, mirroring the existing
+ * task-start emit. The schemaId URNs are new URNs requiring registry addition,
+ * or events may be dropped downstream.
+ */
+function emitDomainTaskEvent(conversationId: string | null, success: boolean, data: Record<string, unknown>): void {
+    emitCustomEvent({
+        conversationId: conversationId ?? undefined,
+        eventData: {
+            schemaId: success
+                ? 'urn:shared:ai:event:/agent/domain/task-complete/v1'
+                : 'urn:shared:ai:event:/agent/domain/task-failed/v1',
+            data: { success, ...data },
+        },
+    })
+}
+
 export const domainPurchaseTool: SkillToolDefinition = {
     name: 'domainPurchase',
     description: `Purchase, attach, or forward a domain.
@@ -585,9 +615,51 @@ Rules:
             },
         })
 
-        if (input.action === 'purchase') return purchase(input, context, appId)
-        if (input.action === 'forward') return forward(input, context, appId)
-        return attach(input, context, appId)
+        const startedAtMs: number = Date.now()
+        let result: DomainToolResult
+        try {
+            if (input.action === 'purchase') {
+                result = await purchase(input, context, appId)
+            } else if (input.action === 'forward') {
+                result = await forward(input, context, appId)
+            } else {
+                result = await attach(input, context, appId)
+            }
+        } catch (error) {
+            try {
+                emitDomainTaskEvent(conversationId, false, {
+                    action: input.action,
+                    error: error instanceof Error ? error.message : String(error),
+                    durationMs: Date.now() - startedAtMs,
+                    appName: app?.name ?? null,
+                    conversationId,
+                })
+            } catch (otelError) {
+                logger.warn('domain.task-event.emit-failed', {
+                    action: input.action,
+                    error: otelError instanceof Error ? otelError.message : String(otelError),
+                })
+            }
+            throw error
+        }
+
+        try {
+            emitDomainTaskEvent(conversationId, result.success, {
+                action: input.action,
+                widgetType: result.widgetType ?? null,
+                requiresPublish: result.requiresPublish ?? null,
+                error: result.error ?? null,
+                durationMs: Date.now() - startedAtMs,
+                appName: app?.name ?? null,
+                conversationId,
+            })
+        } catch (otelError) {
+            logger.warn('domain.task-event.emit-failed', {
+                action: input.action,
+                error: otelError instanceof Error ? otelError.message : String(otelError),
+            })
+        }
+        return result
     },
     computeState(input: any, output: any) {
         if (input.action !== 'attach') return null;

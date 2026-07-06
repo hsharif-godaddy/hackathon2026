@@ -34,6 +34,7 @@ export const POST = withCustomerAuth(async (
   authContext: CustomerAuthContext,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> => {
+  const startedAtMs: number = Date.now();
   let siteId: string | undefined;
 
   try {
@@ -202,6 +203,7 @@ export const POST = withCustomerAuth(async (
       siteId,
       statusJobId: response.statusJobId,
       status: response.status,
+      durationMs: Date.now() - startedAtMs,
     });
 
     return NextResponse.json(response);
@@ -215,6 +217,7 @@ export const POST = withCustomerAuth(async (
       siteId,
       error: error instanceof Error ? error.message : 'Unknown error',
       errorBody: error instanceof AiroHttpError ? JSON.stringify(error) : undefined,
+      durationMs: Date.now() - startedAtMs,
     });
 
     let errorMessage: string | AiroApiError | AiroApiErrorV2 = 'Unknown error';
