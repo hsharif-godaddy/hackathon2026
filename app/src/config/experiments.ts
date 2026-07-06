@@ -16,6 +16,8 @@ export const EXPERIMENT_IDS = {
   upgradeBannerPlacement: 'aab-upgrade-banner-placement',
   /** Publish button label: 3-way A/B/C test on button copy to improve publish rate. */
   publishButtonLabel: 'aab_publish_button_label',
+  /** Commander UI rollout: cohort 'on' switches real-customer BuilderLayout to Commander. Read client-side in useBuilderLayout. Dev override via appbuilder-commander flag. */
+  commanderUI: 'airo-builder-commander-UI',
 } as const
 
 export const INELIGIBLE_COHORT = 'ineligible' as const

@@ -1,12 +1,15 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 
 import { useIsDesignKitWizardProfile } from '@/app/[market]/develop/components/preview/design-kit-wizard/isDesignKitWizardProfile'
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils'
+import { COHORT_ON, EXPERIMENT_IDS } from '@/config/experiments'
 import { SWITCHBOARD_APPBUILDER_COMMANDER } from '@/config/switchboard-flags'
 import { useBrandData } from '@/hooks/useBrandData'
+import { useHivemind } from '@/hooks/useHivemind'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
+import { shipAnalyticsLog } from '@/lib/logging'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { useWizardStore } from '@/stores/useWizardStore'
 import { BuilderLayout } from './types'
@@ -16,7 +19,15 @@ import { BuilderLayout } from './types'
  * only ever on one. Returns:
  * - `Immersive` for a design-kit session whose build has not finished,
  * - otherwise the explicit `layoutProp` (e.g. the /commander route), falling back to
- *   `Commander` or `Develop` per the `appbuilder-commander` flag.
+ *   `Commander` when EITHER the `appbuilder-commander` Switchboard flag is true (dev/QA
+ *   override) OR the user is bucketed into the `on` cohort of the `airo-builder-commander-UI`
+ *   Hivemind experiment (real-customer rollout — 10%→100% ramp).
+ *
+ * The two-knob pattern mirrors the `appbuilder-agent-profile` ↔ `airo-build-initial-agent`
+ * precedent (see app/CLAUDE.md): Switchboard flag is a dev-targeted override; Hivemind cohort
+ * drives real-customer rollout with metrics attached. The `/commander/[id]` route stays
+ * Switchboard-only — real customers see Commander via this hook on their existing
+ * `/develop/[id]` URL.
  *
  * "Finished" is read from the *persisted* wizard phase (`brand-data`) as well as the live
  * wizard store. This hook also **hydrates** the persisted phase into the (singleton) wizard
@@ -33,7 +44,10 @@ import { BuilderLayout } from './types'
  */
 export function useBuilderLayout(layoutProp?: BuilderLayout): BuilderLayout {
   const appId = useAppIdFromParams()
-  const commanderEnabled = useSwitchboard(SWITCHBOARD_APPBUILDER_COMMANDER)
+  const devOverride = useSwitchboard(SWITCHBOARD_APPBUILDER_COMMANDER) === true
+  const { cohort: commanderCohort } = useHivemind(EXPERIMENT_IDS.commanderUI)
+  const inRolloutCohort = commanderCohort === COHORT_ON
+  const commanderEnabled = devOverride || inRolloutCohort
   const immersiveEligible = useIsDesignKitWizardProfile()
   const wizardPhase = useWizardStore((state) => (appId ? state.phaseByApp[appId] : undefined))
   const setPhase = useWizardStore((state) => state.setPhase)
@@ -50,6 +64,20 @@ export function useBuilderLayout(layoutProp?: BuilderLayout): BuilderLayout {
       setPhase(appId, persistedPhase)
     }
   }, [appId, persistedPhase, setPhase])
+
+  // Real customers reach Commander via /develop/[id], so the triggered log can only fire client-side; both `on` and `off` are the metric denominator.
+  const triggeredLogAppRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (!appId) return
+    if (triggeredLogAppRef.current === appId) return
+    if (commanderCohort !== 'on' && commanderCohort !== 'off') return
+    triggeredLogAppRef.current = appId
+    shipAnalyticsLog('hivemind.experiment.triggered', {
+      experimentId: EXPERIMENT_IDS.commanderUI,
+      cohortId: commanderCohort,
+      appId,
+    })
+  }, [appId, commanderCohort])
 
   // A brand-data error leaves `persistedPhase` undefined; fall back to the App record so a
   // known-built app still hands off instead of being routed back into the takeover.

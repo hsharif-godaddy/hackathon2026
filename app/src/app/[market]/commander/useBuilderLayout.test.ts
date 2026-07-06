@@ -12,12 +12,15 @@ import { BuilderLayout } from './types'
 import { useBuilderLayout } from './useBuilderLayout'
 
 const APP_ID = 'app-123'
+const OTHER_APP_ID = 'app-456'
 
 let mockAppId: string | undefined
 let mockCommanderEnabled: boolean | undefined
 let mockAgentProfile: string | null | undefined
 let mockPersistedPhase: WizardPhase | undefined
 let mockBrandError: Error | null
+let mockCommanderCohort: string | undefined
+const shipAnalyticsLogMock = vi.fn()
 
 vi.mock('@/app/[market]/develop/components/utils', () => ({
   useAppIdFromParams: () => mockAppId,
@@ -26,6 +29,18 @@ vi.mock('@/app/[market]/develop/components/utils', () => ({
 vi.mock('@/hooks/useSwitchboard', () => ({
   useSwitchboard: () => mockCommanderEnabled,
   getSwitchboardValue: () => mockAgentProfile,
+}))
+
+vi.mock('@/hooks/useHivemind', () => ({
+  useHivemind: () => ({
+    cohort: mockCommanderCohort,
+    data: undefined,
+    experiment: undefined,
+  }),
+}))
+
+vi.mock('@/lib/logging', () => ({
+  shipAnalyticsLog: (event: string, data: Record<string, unknown>) => shipAnalyticsLogMock(event, data),
 }))
 
 // The persisted phase (brand-data) is what lets a finished app hand off to the builder
@@ -52,6 +67,8 @@ describe('useBuilderLayout', () => {
     mockAgentProfile = DESIGN_KIT_WIZARD_PROFILE
     mockPersistedPhase = undefined
     mockBrandError = null
+    mockCommanderCohort = undefined
+    shipAnalyticsLogMock.mockClear()
     setLiveWizardPhase(undefined)
     useDevelopPageStore.setState({ app: null })
   })
@@ -158,5 +175,123 @@ describe('useBuilderLayout', () => {
     mockAppId = undefined
     const { result } = renderHook(() => useBuilderLayout())
     expect(result.current).toBe(BuilderLayout.Develop)
+  })
+
+  describe('Hivemind commander cohort', () => {
+    beforeEach(() => {
+      // Anchor these cases to a non-design-kit session so the layout decision is driven by
+      // the flag+cohort branch, not the immersive takeover.
+      mockAgentProfile = 'default'
+    })
+
+    it('is Commander when the cohort is `on` and the switchboard flag is off (real-customer rollout path)', () => {
+      mockCommanderCohort = 'on'
+      const { result } = renderHook(() => useBuilderLayout())
+      expect(result.current).toBe(BuilderLayout.Commander)
+    })
+
+    it('is Develop when the cohort is `off` and the switchboard flag is off', () => {
+      mockCommanderCohort = 'off'
+      const { result } = renderHook(() => useBuilderLayout())
+      expect(result.current).toBe(BuilderLayout.Develop)
+    })
+
+    it('is Commander when the switchboard flag is on regardless of cohort (dev override wins)', () => {
+      mockCommanderEnabled = true
+      mockCommanderCohort = 'off'
+      const { result } = renderHook(() => useBuilderLayout())
+      expect(result.current).toBe(BuilderLayout.Commander)
+    })
+
+    it('fires hivemind.experiment.triggered exactly once when cohort is `on`', () => {
+      mockCommanderCohort = 'on'
+      const { rerender } = renderHook(() => useBuilderLayout())
+      rerender()
+      rerender()
+      expect(shipAnalyticsLogMock).toHaveBeenCalledTimes(1)
+      expect(shipAnalyticsLogMock).toHaveBeenCalledWith('hivemind.experiment.triggered', {
+        experimentId: 'airo-builder-commander-UI',
+        cohortId: 'on',
+        appId: APP_ID,
+      })
+    })
+
+    it('fires hivemind.experiment.triggered when cohort is `off` (both cohorts are the denominator)', () => {
+      mockCommanderCohort = 'off'
+      renderHook(() => useBuilderLayout())
+      expect(shipAnalyticsLogMock).toHaveBeenCalledTimes(1)
+      expect(shipAnalyticsLogMock).toHaveBeenCalledWith('hivemind.experiment.triggered', {
+        experimentId: 'airo-builder-commander-UI',
+        cohortId: 'off',
+        appId: APP_ID,
+      })
+    })
+
+    it('does NOT fire the triggered log for `unassigned` / `ineligible` / `not_bucketed` cohorts', () => {
+      for (const excluded of ['unassigned', 'ineligible', 'not_bucketed'] as const) {
+        shipAnalyticsLogMock.mockClear()
+        mockCommanderCohort = excluded
+        renderHook(() => useBuilderLayout())
+        expect(shipAnalyticsLogMock, `cohort ${excluded}`).not.toHaveBeenCalled()
+      }
+    })
+
+    it('does NOT fire the triggered log when there is no cohort assignment (undefined)', () => {
+      mockCommanderCohort = undefined
+      renderHook(() => useBuilderLayout())
+      expect(shipAnalyticsLogMock).not.toHaveBeenCalled()
+    })
+
+    it('does NOT fire the triggered log when only the switchboard flag is on (dev override, no real assignment)', () => {
+      mockCommanderEnabled = true
+      mockCommanderCohort = undefined
+      renderHook(() => useBuilderLayout())
+      expect(shipAnalyticsLogMock).not.toHaveBeenCalled()
+    })
+
+    it('re-fires the triggered log when navigating to a different appId', () => {
+      mockCommanderCohort = 'on'
+      const { rerender } = renderHook(() => useBuilderLayout())
+      expect(shipAnalyticsLogMock).toHaveBeenCalledTimes(1)
+      mockAppId = OTHER_APP_ID
+      rerender()
+      expect(shipAnalyticsLogMock).toHaveBeenCalledTimes(2)
+      expect(shipAnalyticsLogMock).toHaveBeenLastCalledWith('hivemind.experiment.triggered', {
+        experimentId: 'airo-builder-commander-UI',
+        cohortId: 'on',
+        appId: OTHER_APP_ID,
+      })
+    })
+
+    it('is Commander with a single triggered log when BOTH the flag and cohort `on` are set', () => {
+      // Guards against a double-firing regression if the effect deps or the OR expression drift.
+      mockCommanderEnabled = true
+      mockCommanderCohort = 'on'
+      const { result } = renderHook(() => useBuilderLayout())
+      expect(result.current).toBe(BuilderLayout.Commander)
+      expect(shipAnalyticsLogMock).toHaveBeenCalledTimes(1)
+    })
+
+    it('fires the triggered log with cohortId=off when the flag override forces Commander over an off assignment', () => {
+      // The dev override changes the visible layout but does NOT change the real cohort
+      // assignment — metrics must still record this user in the `off` denominator.
+      mockCommanderEnabled = true
+      mockCommanderCohort = 'off'
+      renderHook(() => useBuilderLayout())
+      expect(shipAnalyticsLogMock).toHaveBeenCalledWith('hivemind.experiment.triggered', {
+        experimentId: 'airo-builder-commander-UI',
+        cohortId: 'off',
+        appId: APP_ID,
+      })
+    })
+
+    it('does NOT fire the triggered log for unexpected cohort strings and stays Develop', () => {
+      // Defensive: someone renaming `on` in the Hivemind portal to `treatment` would silently
+      // land here — we neither fire the triggered log nor activate the rollout branch.
+      mockCommanderCohort = 'treatment'
+      const { result } = renderHook(() => useBuilderLayout())
+      expect(result.current).toBe(BuilderLayout.Develop)
+      expect(shipAnalyticsLogMock).not.toHaveBeenCalled()
+    })
   })
 })
