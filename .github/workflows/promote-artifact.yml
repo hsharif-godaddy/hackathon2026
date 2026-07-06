@@ -36,6 +36,11 @@ on:
         options:
           - 'simple'
           - 'dark_release'
+      dark_ttl:
+        description: 'dark_release only: how long before Katana demotes the dark artifact, as a duration like 3h or 90m. Default 3h. Ignored for simple deploys (they never carry a TTL).'
+        required: false
+        type: string
+        default: '3h'
       skip_e2e:
         description: 'Skip E2E tests (used by release manager which triggers E2E separately)'
         required: false
@@ -144,6 +149,33 @@ jobs:
         with:
           path: /${{ inputs.component }}
 
+      # dark_ttl is a human duration (3h / 90m); Katana's ttl wants seconds, so
+      # convert here. Only runs for dark_release — simple deploys carry no TTL.
+      - name: Resolve dark TTL (duration → seconds)
+        id: dark-ttl
+        if: ${{ inputs.strategy == 'dark_release' }}
+        env:
+          DARK_TTL: ${{ inputs.dark_ttl }}
+        run: |
+          set -euo pipefail
+          v="${DARK_TTL:-3h}"
+          case "$v" in
+            *h) num="${v%h}"; mult=3600 ;;
+            *m) num="${v%m}"; mult=60 ;;
+            *)  echo "::error::dark_ttl must be a duration like 3h or 90m (got: '$v')"; exit 1 ;;
+          esac
+          # Validate the numeric part explicitly — awk would silently coerce a bad
+          # prefix (e.g. 'abch', '2xh', '0h') to 0 ⇒ ttl:0 ⇒ immediate demotion.
+          if [[ ! "$num" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
+            echo "::error::dark_ttl must be a positive number followed by h or m, e.g. 3h or 90m (got: '$v')"; exit 1
+          fi
+          secs=$(awk -v n="$num" -v m="$mult" 'BEGIN { printf "%d", n * m }')
+          if [ "$secs" -le 0 ]; then
+            echo "::error::dark_ttl must be greater than zero (got: '$v')"; exit 1
+          fi
+          echo "seconds=$secs" >> "$GITHUB_OUTPUT"
+          echo "Dark artifact TTL: $v → ${secs}s"
+
       # Promote the artifact
       - name: ${{ inputs.component }} - Promote ${{ inputs.artifact_id }} to ${{ steps.resolve.outputs.TARGET_ENV }}
         id: promote
@@ -154,10 +186,11 @@ jobs:
           environment: ${{ steps.resolve.outputs.TARGET_ENV }}
           artifact_id: ${{ inputs.artifact_id }}
           strategy: ${{ inputs.strategy }}
-          # dark_release: cap at 12 dark artifacts (current + 11 retained); ttl demotes each after 24h.
+          # dark_release: cap at 12 dark artifacts (current + 11 retained); ttl (from dark_ttl,
+          # default 3h) demotes each.
           # simple/canary: keep 1 warm standby for rollback; no ttl.
           retain_previous_count: ${{ inputs.strategy == 'dark_release' && '11' || '1' }}
-          ttl: ${{ inputs.strategy == 'dark_release' && '86400' || '' }}
+          ttl: ${{ inputs.strategy == 'dark_release' && steps.dark-ttl.outputs.seconds || '' }}
 
       - name: Promotion Success
         if: success()

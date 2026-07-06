@@ -230,6 +230,13 @@ pipeline:
             environment: prod
             artifact_id: '{{test.deploy-app.artifact_id}}'
             strategy: dark_release
+            # Keep prod-dark at 24h (promote-artifact's default is now 3h, for dev
+            # dark releases). Prod-dark sits behind the release-prod-approval gate,
+            # where the approver manually tests the dark URL — an unbounded wait
+            # (overnight / weekend / cross-tz). A 3h artifact demotion would kill the
+            # review URL mid-approval; 24h covers a realistic gate wait and keeps the
+            # abort-path safety note (headless.go: "rolloutPct=0 + 24h ttl") valid.
+            dark_ttl: '24h'
             skip_e2e: 'true'
 
         - id: dark-create-rg
@@ -251,6 +258,13 @@ pipeline:
             # the dark-release-dev default. 0 (the release-group-simple default) would
             # leave the dark stack cold (AI Chat, etc. unresponsive).
             preProvsPerInventoryTarget: '35'
+            # Couple the RG rollout TTL to the dark artifact's 24h (dark-deploy-app).
+            # The dark URL is reachable only while BOTH the artifact exists AND the RG
+            # is bound; leaving this at the release-group-simple 3h default would roll
+            # the RG back at 3h and kill the reviewer's dark URL mid-approval-gate even
+            # though the artifact lives 24h. 24h covers a realistic gate wait; the
+            # supersede janitor still frees a truly-stale gate sooner.
+            ttlHours: '24'
           outputs:
             release_group_id:
               from: run-log

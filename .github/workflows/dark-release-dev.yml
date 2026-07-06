@@ -8,6 +8,8 @@ name: Dark Release (dev)
 #      each emits its own immutable pi-<sha>-ext-<sha> tag in its own run log)
 #   2. Katana dark release of the builder app at 0% traffic (in-repo aws-deploy-app.yml, dark_release)
 #   3. Create + bind a cohort-less Release Group to the build (pioneer-infra release-group-simple.yml)
+# The Release Group carries a TTL (ttl_hours input, default 3h) after which the whole
+# dark stack — UI/app + agent + preview + publish — auto-rolls-back as a unit.
 # action=Rollback tears the Release Group down again.
 #
 # Pure GHA: it dispatches the three building-block workflows (two live in
@@ -64,6 +66,10 @@ on:
         description: 'Warm RG-tagged preprovs per inventory target (capped at the stable row target_count) so the dark stack (AI Chat, etc.) is responsive on first load. 5 suits a dev dark release; raise toward the stable target_count to cover more cells; 0 = none.'
         type: string
         default: '5'
+      ttl_hours:
+        description: 'How long the dark stack stays live before auto-rollback, in hours. This one value drives both TTL layers together — the Release Group rollout TTL and the Katana dark-artifact demotion — so the whole rollout (dark UI/app + agent + preview/publish) tears down as a unit. Default 3h. Stick to 10m (≈0.167) to 24h: only the Release Group enforces that range (downstream), while the artifact layer accepts any value > 0 — so a sub-10m value would be accepted by the artifact but rejected by the RG bind (a failed, half-applied dark release). Create + Reload only (ignored on Rollback).'
+        type: string
+        default: '3'
       release_group_id:
         description: 'Release Group ID to roll back (REQUIRED when action=Rollback)'
         type: string
@@ -115,6 +121,7 @@ jobs:
           COMPOSITION_ID: ${{ inputs.composition_id }}
           COMPOSITION_VERSION: ${{ inputs.composition_version }}
           PREPROV_COUNT: ${{ inputs.preprov_count }}
+          TTL_HOURS: ${{ inputs.ttl_hours }}
           PUBLISH_IMAGE: ${{ inputs.publish_image }}
           RG_ID_INPUT: ${{ inputs.release_group_id }}
         run: |
@@ -256,8 +263,12 @@ jobs:
           # here instead of letting the RG bind a never-deployed stack.
           echo "::group::2/3 katana dark release ($DARK_WF)"
           before=$(ts_since)
+          # Match the Katana dark-artifact demotion TTL to the RG rollout TTL so
+          # the artifact isn't demoted before the rollout expires (ttl_hours → "<n>h";
+          # aws-deploy-app parses the duration back to seconds for Katana).
           gh workflow run "$DARK_WF" --repo "$AGENT_REPO" --ref "$BRANCH" \
-            -f DEPLOY_TO_ENV="$APP_ENV" -f sha="$SHA" -f strategy=dark_release
+            -f DEPLOY_TO_ENV="$APP_ENV" -f sha="$SHA" -f strategy=dark_release \
+            -f dark_ttl="${TTL_HOURS:-3}h"
           dark_rid=$(discover_run "$GH_TOKEN" "$AGENT_REPO" "$DARK_WF" "$before") \
             || { echo "::error::could not find the dispatched $DARK_WF run"; exit 1; }
           echo "dark-release run: https://github.com/$AGENT_REPO/actions/runs/$dark_rid"
@@ -276,7 +287,8 @@ jobs:
             -f publishImageTag="${BUILD_TAG[publish]}" \
             -f compositionId="$COMPOSITION_ID" \
             -f compositionVersion="$COMPOSITION_VERSION" \
-            -f preProvsPerInventoryTarget="$PREPROV_COUNT"
+            -f preProvsPerInventoryTarget="$PREPROV_COUNT" \
+            -f ttlHours="${TTL_HOURS:-3}" # ttlHours: input on pioneer-infra release-group-simple.yml (hours). ${:-3} matches the dark_ttl fallback so both TTL layers stay in sync even if ttl_hours arrives empty.
           rg_rid=$(discover_run "$PIONEER_INFRA_TOKEN" "$PIONEER_REPO" "$RG_WF" "$before") \
             || { echo "::error::could not find the dispatched $RG_WF run"; exit 1; }
           echo "release-group run: https://github.com/$PIONEER_REPO/actions/runs/$rg_rid"
