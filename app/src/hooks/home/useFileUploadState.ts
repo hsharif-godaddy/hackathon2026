@@ -1,7 +1,6 @@
 import { useRef, useState } from 'react'
 
 import type { UploadedDesignFile } from '@/app/[market]/components/types'
-import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useDesignFileDrop } from './useDesignFileDrop'
 
 interface UseFileUploadStateOptions {
@@ -13,13 +12,11 @@ interface UseFileUploadStateOptions {
 interface UseFileUploadStateResult {
   fileUploadError: string | null
   setFileUploadError: (error: string | null) => void
-  isPickerProcessing: boolean
   setIsPickerProcessing: (processing: boolean) => void
   processingFiles: string[]
   setProcessingFiles: (names: string[]) => void
   isProcessing: boolean
   isFileDragOver: boolean
-  isDesignUploadEnabled: boolean | undefined
   uploadedFilesRef: React.RefObject<UploadedDesignFile[]>
   dragProps: {
     onDragEnter: (e: React.DragEvent) => void
@@ -35,7 +32,6 @@ export function useFileUploadState({
   isLoading,
 }: UseFileUploadStateOptions): UseFileUploadStateResult {
   const [fileUploadError, setFileUploadError] = useState<string | null>(null)
-  const isDesignUploadEnabled = useSwitchboard('appbuilder-design-upload')
 
   const uploadedFilesRef = useRef(uploadedFiles ?? [])
   uploadedFilesRef.current = uploadedFiles ?? []
@@ -48,7 +44,7 @@ export function useFileUploadState({
     onFilesChange: onFilesChange ?? (() => {}),
     onError: setFileUploadError,
     onProcessingFilesChange: setProcessingFiles,
-    disabled: !isDesignUploadEnabled || isLoading || isPickerProcessing,
+    disabled: isLoading || isPickerProcessing,
   })
 
   const isProcessing = isDropProcessing || isPickerProcessing
@@ -56,13 +52,11 @@ export function useFileUploadState({
   return {
     fileUploadError,
     setFileUploadError,
-    isPickerProcessing,
     setIsPickerProcessing,
     processingFiles,
     setProcessingFiles,
     isProcessing,
     isFileDragOver,
-    isDesignUploadEnabled,
     uploadedFilesRef,
     dragProps,
   }

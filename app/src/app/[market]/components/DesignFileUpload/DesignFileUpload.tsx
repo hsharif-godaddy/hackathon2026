@@ -4,7 +4,6 @@ import AttachmentIcon from '@ux/icon/attachment'
 
 import { MutedIconButton } from '@/components/home/MutedIconButton'
 import { useBreakpoints } from '@/hooks/useBreakpoints'
-import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 import { generateClickEID, logImpressionEvent } from '@/utils/instrumentation'
 import type { UploadedDesignFile } from '../types'
@@ -22,7 +21,6 @@ interface DesignFileUploadProps {
 }
 
 export default function DesignFileUpload({ currentFilesRef, onFilesChange, onError, isProcessing, onProcessingChange, onProcessingFilesChange, disabled, appearance = 'default' }: DesignFileUploadProps) {
-  const isEnabled = useSwitchboard('appbuilder-design-upload')
   const inputRef = useRef<HTMLInputElement>(null)
   const { isBelowSmBreakpoint } = useBreakpoints()
   const t = useTranslations()
@@ -58,10 +56,6 @@ export default function DesignFileUpload({ currentFilesRef, onFilesChange, onErr
     }
     if (inputRef.current) inputRef.current.value = ''
   }, [currentFilesRef, isProcessing, onError, onFilesChange, onProcessingChange, onProcessingFilesChange, t])
-
-  if (!isEnabled) {
-    return null
-  }
 
   return (
     <>

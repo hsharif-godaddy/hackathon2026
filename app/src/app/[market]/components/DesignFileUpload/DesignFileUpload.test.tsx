@@ -6,7 +6,6 @@ import '@testing-library/jest-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, waitFor } from '@testing-library/react'
 
-import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { renderWithProviders } from '@/tests/test-utils'
 import DesignFileUpload from './DesignFileUpload'
 import type { UploadedDesignFile } from '../types'
@@ -30,10 +29,6 @@ vi.mock('./design-file-processing', async (importOriginal) => {
 vi.mock('@/utils/instrumentation', () => ({
   generateClickEID: mockGenerateClickEID,
   logImpressionEvent: mockLogImpressionEvent,
-}))
-
-vi.mock('@/hooks/useSwitchboard', () => ({
-  useSwitchboard: vi.fn(() => true),
 }))
 
 vi.mock('@/hooks/useBreakpoints', () => ({
@@ -105,18 +100,6 @@ describe('DesignFileUpload (picker path)', () => {
     const button = container.querySelector('button') as HTMLButtonElement
     await user.click(button)
     expect(clickSpy).toHaveBeenCalled()
-  })
-
-  it('renders nothing when switchboard flag is disabled', () => {
-    vi.mocked(useSwitchboard).mockReturnValueOnce(false)
-
-    const { container } = renderWithProviders(
-      <DesignFileUpload
-        currentFilesRef={{ current: [] }}
-        onFilesChange={vi.fn()}
-      />,
-    )
-    expect(container.firstChild).toBeNull()
   })
 
   it('does nothing when change event fires with null file list', () => {

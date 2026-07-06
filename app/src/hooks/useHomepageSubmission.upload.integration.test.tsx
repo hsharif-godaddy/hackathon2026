@@ -45,10 +45,8 @@ vi.mock('@/hooks/useBreakpoints', () => ({
     isXlBreakpoint: true,
   }),
 }))
-// Flag-aware: enables DesignFileUpload's input while leaving the hook's
-// appbuilder-template-selector lookup falsy (matches the unit-test default).
 vi.mock('@/hooks/useSwitchboard', () => ({
-  useSwitchboard: (flag: string) => flag === 'appbuilder-design-upload',
+  useSwitchboard: () => false,
 }))
 vi.mock('@/hooks/useTranslations', () => ({ useTranslations: () => (key: string) => key }))
 

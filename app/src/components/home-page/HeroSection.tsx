@@ -87,10 +87,15 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
     examples: isPromptStarterEnabled ? STARTER_PLACEHOLDERS[selectedStarterCategory ?? 'new_website'] : undefined,
   })
   const {
-    fileUploadError, setFileUploadError,
-    isPickerProcessing, setIsPickerProcessing,
-    processingFiles, setProcessingFiles,
-    isProcessing, isFileDragOver, uploadedFilesRef, dragProps,
+    fileUploadError,
+    setFileUploadError,
+    setIsPickerProcessing,
+    processingFiles,
+    setProcessingFiles,
+    isProcessing,
+    isFileDragOver,
+    uploadedFilesRef,
+    dragProps
   } = useFileUploadState({ uploadedFiles, onFilesChange, isLoading })
 
   useImperativeHandle(ref, () => ({
