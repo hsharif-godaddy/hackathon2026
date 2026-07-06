@@ -14,7 +14,7 @@ import { MessageCompressor } from './compression/MessageCompressor.js';
 import type { CompressionStrategy } from './compression/MessageCompressor.js';
 import type { SummarizationStrategy } from './summarization/SummarizationStrategy.js';
 import { LLMSummarizationStrategy } from './summarization/LLMSummarizationStrategy.js';
-import { safeStringify } from '@airo/shared';
+import stringify from 'safe-stable-stringify';
 
 const ANTHROPIC_TOOL_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
 
@@ -418,7 +418,7 @@ export class ConversationHistoryLoader {
         const serializedResult =
           typeof segment.tool_call.toolResult === 'string'
             ? segment.tool_call.toolResult.trim()
-            : safeStringify(segment.tool_call.toolResult);
+            : stringify(segment.tool_call.toolResult) ?? '';
         // Legacy healing: rows written before the onToolError fix stored toolResult as {} instead
         // of the error string. Without this fallback, those rows emit an orphaned tool_use with
         // no tool_result, causing a permanent 400 from the Anthropic API.
@@ -1080,7 +1080,7 @@ export class ConversationHistoryLoader {
       type: 'function',
       function: {
         name: toolCall.toolName === 'textEditor' ? 'str_replace_based_edit_tool' : toolCall.toolName,
-        arguments: typeof toolCall.toolArgs === 'string' ? toolCall.toolArgs : safeStringify(toolCall.toolArgs),
+        arguments: typeof toolCall.toolArgs === 'string' ? toolCall.toolArgs : stringify(toolCall.toolArgs) ?? '',
       },
     };
   }

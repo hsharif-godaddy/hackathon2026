@@ -1,3 +1,4 @@
+import stringify from 'safe-stable-stringify';
 import { z } from 'zod';
 
 import { LLMJudgeEvaluator } from './llm-judge-evaluator.js';
@@ -9,7 +10,7 @@ import {
   type ChecklistItemOutcome,
   type ChecklistItemStatus,
 } from './checklist-verdict.js';
-import { safeStringify, truncate } from './shared.js';
+import { truncate } from './shared.js';
 
 const MAX_TRANSCRIPT_CHARS = 6000;
 
@@ -89,7 +90,7 @@ function toolCallsBlock(transcript: Transcript): string {
   if (allToolCalls.length === 0) return '(no tool calls)';
   return truncate(
     allToolCalls
-      .map((tc) => `- ${tc.name} input=${truncate(safeStringify(tc.input), MAX_TOOL_INPUT_CHARS)}`)
+      .map((tc) => `- ${tc.name} input=${truncate(stringify(tc.input) ?? '[unserializable]', MAX_TOOL_INPUT_CHARS)}`)
       .join('\n'),
     MAX_TRANSCRIPT_CHARS,
   );

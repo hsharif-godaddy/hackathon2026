@@ -11,6 +11,7 @@
 import Database from 'better-sqlite3';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import stringify from 'safe-stable-stringify';
 
 type ExportDetail = 'summary' | 'full';
 
@@ -61,14 +62,6 @@ function normalizeToolCall(tc: ToolCall): { toolName: string; toolArgs: unknown;
   };
 }
 
-function safeStringify(value: unknown): string {
-  try {
-    return JSON.stringify(value, null, 2);
-  } catch {
-    return String(value);
-  }
-}
-
 function formatToolCallSummary(tc: ToolCall): string {
   const n = normalizeToolCall(tc);
   const status = n.status === 'success' ? '✓' : n.status === 'error' ? '✗' : '·';
@@ -84,13 +77,13 @@ function formatToolCallFull(tc: ToolCall): string {
   if (n.toolArgs !== undefined) {
     lines.push('Arguments:');
     lines.push('```json');
-    lines.push(safeStringify(n.toolArgs));
+    lines.push(stringify(n.toolArgs, undefined, 2) ?? String(n.toolArgs));
     lines.push('```');
   }
   if (n.toolResult !== undefined) {
     lines.push('Result:');
     lines.push('```');
-    lines.push(typeof n.toolResult === 'string' ? n.toolResult : safeStringify(n.toolResult));
+    lines.push(typeof n.toolResult === 'string' ? n.toolResult : stringify(n.toolResult, undefined, 2) ?? String(n.toolResult));
     lines.push('```');
   }
   if (n.error) {

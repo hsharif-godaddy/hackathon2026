@@ -5,6 +5,7 @@
 
 import * as XLSX from 'xlsx';
 import XlsxPopulate from 'xlsx-populate';
+import stringify from 'safe-stable-stringify';
 import { v4 as uuidv4 } from 'uuid';
 import {
   sanitizeText,
@@ -768,23 +769,10 @@ export function mapCsvRowToTranscript(
     subcategory: sanitizeText(row.call_type) || undefined,
     sentiment_score: mapSentimentToScore(row.customer_sentiment ?? null) || undefined,
     language: mapCountryToLanguage(row.country ?? null) || undefined,
-    raw_data: safeJsonStringify(raw_data),
+    raw_data: stringify(raw_data) ?? '{}',
   };
 
   return record;
-}
-
-/**
- * Safe JSON.stringify with error handling
- */
-function safeJsonStringify(data: any): string {
-  try {
-    return JSON.stringify(data);
-  } catch (error) {
-    logger.warn('supportplane.l1_transcript.ingestion.json_stringify_failed', {}, { error: error as Error });
-    // Return minimal valid JSON
-    return '{}';
-  }
 }
 
 /**

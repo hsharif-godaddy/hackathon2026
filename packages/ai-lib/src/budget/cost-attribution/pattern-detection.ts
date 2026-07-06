@@ -13,6 +13,7 @@
  * - edit_read_loops: Edit→read→edit cycles on same file (threshold: 3)
  */
 
+import stringify from 'safe-stable-stringify'
 import {
   PATTERN_THRESHOLDS,
   PatternType,
@@ -153,24 +154,6 @@ interface CollectedOperations {
   allToolCalls: ToolCallOp[]
 }
 
-/**
- * Create a stable JSON string representation of an object for deduplication.
- * Uses recursive key sorting to ensure consistent output regardless of key order,
- * while preserving arrays intact (the replacer-array form of JSON.stringify
- * drops array contents since array indices aren't string keys).
- */
-function stableStringify(obj: unknown): string {
-  try {
-    return JSON.stringify(obj, (_, v) =>
-      v && typeof v === 'object' && !Array.isArray(v)
-        ? Object.fromEntries(Object.entries(v as object).sort())
-        : v
-    )
-  } catch {
-    return String(obj)
-  }
-}
-
 function collectOperations(steps: ExecutionStep[]): CollectedOperations {
   const terminalOps: TerminalOp[] = []
   const fileOps: FileOp[] = []
@@ -197,7 +180,7 @@ function collectOperations(steps: ExecutionStep[]): CollectedOperations {
         allToolCalls.push({
           callId,
           toolName: toolName.toLowerCase(),
-          argsSignature: stableStringify(input ?? {}),
+          argsSignature: stringify(input ?? {}) ?? String(input),
           stepIdx,
         })
       }

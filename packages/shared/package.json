@@ -39,10 +39,6 @@
       "types": "./dist/budget/index.d.ts",
       "import": "./dist/budget/index.js"
     },
-    "./json": {
-      "types": "./dist/json/index.d.ts",
-      "import": "./dist/json/index.js"
-    },
     "./errors": {
       "types": "./dist/errors/index.d.ts",
       "import": "./dist/errors/index.js"
@@ -110,9 +106,6 @@
       ],
       "budget": [
         "dist/budget/index.d.ts"
-      ],
-      "json": [
-        "dist/json/index.d.ts"
       ],
       "errors": [
         "dist/errors/index.d.ts"

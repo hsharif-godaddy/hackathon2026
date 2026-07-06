@@ -80,8 +80,6 @@ export {
 } from './secrets-composer-outcome/index.js';
 export type { SecretsComposerOutcomeKind } from './secrets-composer-outcome/index.js';
 
-// JSON
-export { safeStringify } from './json/index.js';
 
 // Media
 export {

@@ -132,6 +132,7 @@
     "openai": "catalog:",
     "qrcode": "^1.5.4",
     "recast": "0.23.11",
+    "safe-stable-stringify": "catalog:",
     "sharp": "^0.34.5",
     "tar": "catalog:",
     "typescript": "catalog:",

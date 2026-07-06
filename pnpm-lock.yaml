@@ -234,6 +234,9 @@ catalogs:
     remark-gfm:
       specifier: ^4.0.1
       version: 4.0.1
+    safe-stable-stringify:
+      specifier: ^2.5.0
+      version: 2.5.0
     supertest:
       specifier: ^7.2.2
       version: 7.2.2
@@ -547,6 +550,9 @@ importers:
       recast:
         specifier: 0.23.11
         version: 0.23.11
+      safe-stable-stringify:
+        specifier: 'catalog:'
+        version: 2.5.0
       sharp:
         specifier: ^0.34.5
         version: 0.34.5
@@ -1379,6 +1385,9 @@ importers:
       remark-gfm:
         specifier: 'catalog:'
         version: 4.0.1
+      safe-stable-stringify:
+        specifier: 'catalog:'
+        version: 2.5.0
       tsx:
         specifier: 'catalog:'
         version: 4.21.0
@@ -1529,6 +1538,9 @@ importers:
       playwright:
         specifier: ^1.59.1
         version: 1.59.1
+      safe-stable-stringify:
+        specifier: 'catalog:'
+        version: 2.5.0
       undici:
         specifier: '>=8.5.0 <9'
         version: 8.5.0
@@ -1733,6 +1745,9 @@ importers:
       openai:
         specifier: 'catalog:'
         version: 6.37.0(ws@8.21.0(bufferutil@4.1.0))(zod@4.4.3)
+      safe-stable-stringify:
+        specifier: 'catalog:'
+        version: 2.5.0
       undici:
         specifier: ^6.27.0
         version: 6.27.0
@@ -1831,6 +1846,9 @@ importers:
       negotiator:
         specifier: ^1.0.0
         version: 1.0.0
+      safe-stable-stringify:
+        specifier: 'catalog:'
+        version: 2.5.0
       zod:
         specifier: 'catalog:'
         version: 4.4.3
@@ -22250,7 +22268,7 @@ snapshots:
     dependencies:
       tslib: 2.8.1
 
-  '@wsb/advanced-apm-rum@1.2.0(@reduxjs/toolkit@1.9.7(react-redux@8.1.3(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(redux@5.0.1))(react@19.1.0))(react-redux@8.1.3(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(redux@5.0.1))(react@19.1.0)':
+  '@wsb/advanced-apm-rum@1.2.0(@reduxjs/toolkit@1.9.7(react-redux@7.2.9(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(react@19.1.0))(react-redux@8.1.3(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(redux@5.0.1))(react@19.1.0)':
     dependencies:
       '@elastic/apm-rum': 5.17.4
       '@elastic/apm-rum-core': 5.25.2
@@ -22280,7 +22298,7 @@ snapshots:
       '@ux/text-input': 2500.11.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/text-lockup': 2400.19.2(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/util': 2400.11.0(encoding@0.1.13)
-      '@wsb/advanced-apm-rum': 1.2.0(@reduxjs/toolkit@1.9.7(react-redux@8.1.3(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(redux@5.0.1))(react@19.1.0))(react-redux@8.1.3(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(redux@5.0.1))(react@19.1.0)
+      '@wsb/advanced-apm-rum': 1.2.0(@reduxjs/toolkit@1.9.7(react-redux@7.2.9(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(react@19.1.0))(react-redux@8.1.3(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(redux@5.0.1))(react@19.1.0)
       '@wsb/modal-loader': 5.1.3(@ux/intents@2500.9.0)(@ux/modal@2500.11.1(@types/react@19.2.14)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(@ux/spinner@2500.9.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react-intl@5.25.1(react@19.1.0)(typescript@5.9.3))(react-transition-group@4.4.5(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(react@19.1.0)
       buffer: 6.0.3
       diagnostics: 2.0.2

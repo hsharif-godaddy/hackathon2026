@@ -1,5 +1,7 @@
 import path from 'node:path';
 
+import stringify from 'safe-stable-stringify';
+
 import { AppRepository } from '../database/repositories/AppRepository.js';
 import type { App } from '../database/schema.js';
 import { logger } from '../logging/index.js';
@@ -255,20 +257,8 @@ function deriveFormatOverrideScope(file: string): FormatOverrideScope {
   };
 }
 
-function sortJsonValue(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(sortJsonValue);
-  if (value && typeof value === 'object') {
-    return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>)
-        .sort(([left], [right]) => left.localeCompare(right))
-        .map(([key, nestedValue]) => [key, sortJsonValue(nestedValue)]),
-    );
-  }
-  return value;
-}
-
 function stableStringify(value: unknown): string {
-  return `${JSON.stringify(sortJsonValue(value), null, 2)}\n`;
+  return `${stringify(value, undefined, 2) ?? '{}'}\n`;
 }
 
 function normalizedPayloadMatches(

@@ -4,7 +4,7 @@ import { getDatabase } from '../connection.js';
 import type { Conversation, ConversationMessage, ToolCall, MessageSegment } from '../schema.js';
 import type { DatabaseMessage } from '../../types/conversation-messages.js';
 import { logger } from '../../logging/index.js';
-import { safeStringify } from '@airo/shared';
+import stringify from 'safe-stable-stringify';
 
 /**
  * Pagination result type for getMessagesPaginated
@@ -295,10 +295,10 @@ export class ConversationRepository {
       sender,
       content,
       options.messageType || null,
-      options.toolCalls ? safeStringify(options.toolCalls) : null,
-      options.segments ? safeStringify(options.segments) : null,
-      options.metadata ? safeStringify(options.metadata) : null,
-      options.contextAttachments ? safeStringify(options.contextAttachments) : null,
+      options.toolCalls ? stringify(options.toolCalls) : null,
+      options.segments ? stringify(options.segments) : null,
+      options.metadata ? stringify(options.metadata) : null,
+      options.contextAttachments ? stringify(options.contextAttachments) : null,
       origin,
       now
     );
@@ -450,12 +450,12 @@ export class ConversationRepository {
 
     if (updates.toolCalls !== undefined) {
       updateFields.push('tool_calls = ?');
-      values.push(safeStringify(updates.toolCalls));
+      values.push(stringify(updates.toolCalls));
     }
 
     if (updates.segments !== undefined) {
       updateFields.push('segments = ?');
-      values.push(safeStringify(updates.segments));
+      values.push(stringify(updates.segments));
     }
 
     if (updates.metadata !== undefined) {
@@ -468,10 +468,10 @@ export class ConversationRepository {
         const existingMetadata = row.metadata ? JSON.parse(row.metadata) : {};
         const mergedMetadata = { ...existingMetadata, ...updates.metadata };
         updateFields.push('metadata = ?');
-        values.push(safeStringify(mergedMetadata));
+        values.push(stringify(mergedMetadata));
       } else {
         updateFields.push('metadata = ?');
-        values.push(safeStringify(updates.metadata));
+        values.push(stringify(updates.metadata));
       }
     }
 

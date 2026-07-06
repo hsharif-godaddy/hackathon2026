@@ -6,7 +6,7 @@
  */
 
 import { basename } from 'node:path';
-import { safeStringify } from '@airo/shared';
+import stringify from 'safe-stable-stringify';
 
 export interface ToolCallResult {
   id: string
@@ -293,10 +293,10 @@ ${hasMore ? `*Full file content available (${lineCount} total lines)*` : '*Compl
       return `Tool execution failed: ${toolCall.error}`
     }
 
-    const args = safeStringify(toolCall.toolArgs, 2)
+    const args = stringify(toolCall.toolArgs, undefined, 2)
     const result = typeof toolCall.toolResult === 'string'
       ? toolCall.toolResult
-      : safeStringify(toolCall.toolResult, 2)
+      : stringify(toolCall.toolResult, undefined, 2)
 
     return `🔧 **Tool: \`${toolCall.toolName}\`**
 

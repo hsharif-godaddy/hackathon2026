@@ -44,6 +44,7 @@
     "react-markdown": "catalog:",
     "recharts": "^2.15.4",
     "remark-gfm": "catalog:",
+    "safe-stable-stringify": "catalog:",
     "tsx": "catalog:",
     "uuid": "catalog:",
     "xlsx": "catalog:",

@@ -1,3 +1,4 @@
+import stringify from 'safe-stable-stringify'
 import { BackgroundTaskRegistry, type BackgroundTaskOutcome } from './background-task-registry.js'
 
 export interface BackgroundTaskAwaitLogger {
@@ -23,7 +24,7 @@ export function formatBackgroundTaskOutcomes(outcomes: BackgroundTaskOutcome[]):
   const lines: string[] = ['[System: Background tasks settled]']
   for (const outcome of outcomes) {
     if (outcome.status === 'completed') {
-      const detail: string = outcome.result ? safeStringify(outcome.result) : ''
+      const detail: string = outcome.result ? (stringify(outcome.result) ?? '[unserializable]') : ''
       lines.push(`- ${outcome.toolName} (${outcome.taskId}): completed.${detail ? ` Result: ${detail}` : ''}`)
     } else if (outcome.status === 'failed') {
       lines.push(`- ${outcome.toolName} (${outcome.taskId}): FAILED. Error: ${outcome.error ?? 'unknown'}`)
@@ -113,10 +114,3 @@ function isStopAfterTool(
   return lastTool !== undefined && stopAfterTools.includes(lastTool.toolName)
 }
 
-function safeStringify(value: unknown): string {
-  try {
-    return JSON.stringify(value)
-  } catch {
-    return '[unserializable]'
-  }
-}

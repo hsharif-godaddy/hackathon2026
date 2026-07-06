@@ -23,6 +23,7 @@
     "eventsource": "^4.1.0",
     "openai": "catalog:",
     "playwright": "^1.59.1",
+    "safe-stable-stringify": "catalog:",
     "undici": "^8.2.0",
     "yaml": "catalog:",
     "zod": "catalog:"

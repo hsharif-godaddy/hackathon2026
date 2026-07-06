@@ -36,6 +36,7 @@
     "@signals/sdk": "^2.1.0",
     "ai": "catalog:",
     "negotiator": "^1.0.0",
+    "safe-stable-stringify": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {

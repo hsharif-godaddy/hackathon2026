@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises';
+import stringify from 'safe-stable-stringify';
 
 import type { DOMSnapshot, Turn, ToolCall } from '../runner/transcript.js';
 
@@ -124,14 +125,6 @@ function turnToLine(turn: Turn): string {
   return `${turn.role.toUpperCase()}: ${(turn.content ?? '').trim()}`;
 }
 
-export function safeStringify(value: unknown): string {
-  try {
-    return JSON.stringify(value);
-  } catch {
-    return '[unserializable]';
-  }
-}
-
 export function buildConversationText(turns: Turn[]): string {
   if (turns.length === 0) return '';
   return truncate(turns.map(turnToLine).join('\n'), MAX_TEXT_CHARS);
@@ -144,9 +137,9 @@ export function summarizeToolCalls(toolCalls: ToolCall[]): string {
       .map((tc) => {
         const status = tc.error ? `error=${tc.error}` : 'ok';
         const output = tc.output !== undefined
-          ? safeStringify(tc.output)
+          ? stringify(tc.output) ?? '[unserializable]'
           : '(no output)';
-        return `- ${tc.name} (${status}) input=${safeStringify(tc.input)} output=${truncate(output, MAX_TOOL_OUTPUT_CHARS)}`;
+        return `- ${tc.name} (${status}) input=${stringify(tc.input) ?? '[unserializable]'} output=${truncate(output, MAX_TOOL_OUTPUT_CHARS)}`;
       })
       .join('\n'),
     MAX_TEXT_CHARS,

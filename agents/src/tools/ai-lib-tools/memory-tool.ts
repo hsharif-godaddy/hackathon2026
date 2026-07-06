@@ -1,5 +1,5 @@
 import { createTool, type Tool } from '@airo/ai-lib'
-import { safeStringify } from '@airo/shared'
+import stringify from 'safe-stable-stringify'
 import { z } from 'zod'
 import { MemoryTool, MemorySetOptions, MemoryReadOptions, MemorySearchOptions } from '../memory-tool.js'
 import { AppRepository } from '../../database/repositories/AppRepository.js'
@@ -74,7 +74,7 @@ export const memoryReadAITool: Tool = createTool(
     let response = `📖 Memory key '${result.key}':\n`
     
     if (typeof result.value === 'object') {
-      response += '```json\n' + safeStringify(result.value, 2) + '\n```'
+      response += '```json\n' + stringify(result.value, undefined, 2) + '\n```'
     } else {
       response += `${result.value}`
     }
@@ -122,7 +122,7 @@ export const memorySearchAITool: Tool = createTool(
       response += `${index + 1}. **${item.key}** (score: ${item.score?.toFixed(2) || 'N/A'})\n`
       
       if (typeof item.value === 'object') {
-        response += '   ```json\n   ' + safeStringify(item.value, 2).replace(/\n/g, '\n   ') + '\n   ```\n'
+        response += '   ```json\n   ' + (stringify(item.value, undefined, 2) ?? '').replace(/\n/g, '\n   ') + '\n   ```\n'
       } else {
         const valueStr = String(item.value)
         const truncated = valueStr.length > 100 ? valueStr.substring(0, 100) + '...' : valueStr

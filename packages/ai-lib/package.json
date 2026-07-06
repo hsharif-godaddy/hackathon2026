@@ -68,6 +68,7 @@
     "dotenv": "catalog:",
     "gd-auth-client": "catalog:",
     "openai": "catalog:",
+    "safe-stable-stringify": "catalog:",
     "undici": "^6.27.0",
     "zod": "catalog:"
   },
