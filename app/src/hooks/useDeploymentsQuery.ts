@@ -18,7 +18,7 @@ const INITIAL_POLL_DELAY_MS = 5000;  // Wait 5 seconds before first poll
 const FAST_POLLING_INTERVAL_MS = 2000;  // Poll every 2 seconds initially
 const SLOW_POLLING_INTERVAL_MS = 10000;  // Poll every 10 seconds after 3 minutes
 const FAST_POLLING_DURATION_MS = 3 * 60 * 1000;  // 3 minutes
-const MAX_POLLING_DURATION_MS = 5 * 60 * 1000;  // Stop polling after 5 minutes
+export const MAX_POLLING_DURATION_MS = 5 * 60 * 1000;  // Stop polling after 5 minutes
 
 /**
  * Options for useDeploymentsQuery hook

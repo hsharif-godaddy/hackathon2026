@@ -37,7 +37,7 @@ import { SWITCHBOARD_APPBUILDER_GO_LIVE_FEATURE } from '@/config/switchboard-fla
 import { usePublishButtonLabel } from '@/experiments/publish-button-label/usePublishButtonLabel'
 import { useAppSsoStatus } from '@/hooks/useAppSsoStatus';
 import { useChatTabs } from '@/hooks/useChatTabs';
-import { useDeploymentsQuery } from '@/hooks/useDeploymentsQuery';
+import { MAX_POLLING_DURATION_MS, useDeploymentsQuery } from '@/hooks/useDeploymentsQuery';
 import { useDnsConflictGate } from '@/hooks/useDnsConflictGate';
 import { useDomainsQuery } from '@/hooks/useDomainsQuery';
 import { useGitHistoryQuery } from '@/hooks/useGitHistory';
@@ -484,6 +484,24 @@ export default function AppPublish({ location = 'develop', triggerClassName }: {
     }
 
     const status = mostRecentDeployment.status;
+    const isNonTerminal: boolean = ![DeploymentStatus.DEPLOYED, DeploymentStatus.FAILED].includes(status as DeploymentStatus);
+
+    // Guard: stale non-terminal deployments (older than the polling window) should
+    // surface as an error rather than holding the spinner indefinitely.
+    if (isNonTerminal && mostRecentDeployment.createdAt) {
+      const ageMs: number = Date.now() - Date.parse(mostRecentDeployment.createdAt);
+      if (!Number.isFinite(ageMs) || ageMs >= MAX_POLLING_DURATION_MS) {
+        logger.warn('app-publish.deployment.stale-timeout', {
+          appId: currentAppId,
+          deploymentId: mostRecentDeployment.id,
+          status,
+          ageMs,
+        });
+        setIsPublishing(currentAppId, false);
+        setPublishError(currentAppId, true);
+        return;
+      }
+    }
 
     if (isDeploymentInProgress) {
       setIsPublishing(currentAppId, true);

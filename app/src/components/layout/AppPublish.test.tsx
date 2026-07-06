@@ -113,7 +113,7 @@ const mockDevelopStore = {
   openFeedbackModal: vi.fn(),
 };
 
-let mockDeploymentsData: Array<{ id: string; status: string }> = [];
+let mockDeploymentsData: Array<{ id: string; status: string; createdAt?: string }> = [];
 
 const mockSiteStore = {
   getSite: vi.fn(),
@@ -154,6 +154,7 @@ vi.mock('@/hooks/useChatTabs', () => ({
 }));
 
 vi.mock('@/hooks/useDeploymentsQuery', () => ({
+  MAX_POLLING_DURATION_MS: 5 * 60 * 1000,
   useDeploymentsQuery: () => ({
     data: mockDeploymentsData,
     isLoading: false,
@@ -2255,5 +2256,101 @@ describe('AppPublish — closePopover state clearing', () => {
       expect(screen.getByText('builder_publish_popover_title')).toBeInTheDocument();
     });
     expect(screen.queryByTestId('publish-success-alert')).not.toBeInTheDocument();
+  });
+});
+
+describe('AppPublish — stale deployment guard', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockPathname = '/develop/app-123';
+    mockDevelopStore.currentAppId = 'app-123';
+    mockDevelopStore.isMobile = false;
+    mockDevelopStore.publishStates = {};
+    mockDeploymentsData = [];
+    mockStreaming.isLoading = false;
+    mockStreaming.streamingState = 'idle';
+    mockRunGate.mockResolvedValue({ proceed: true });
+    mockSiteStore.getSite.mockReturnValue(
+      createMockSite({ id: 'app-123', agent_url: 'https://app-123.agent.test' })
+    );
+    global.ResizeObserver = vi.fn().mockImplementation(function () { return {
+      observe: vi.fn(),
+      unobserve: vi.fn(),
+      disconnect: vi.fn(),
+    }; });
+    useCommanderStore.setState({
+      openCanvasIds: [CanvasId.Preview, CanvasId.Brand, CanvasId.Domain],
+      activeCanvasId: CanvasId.Preview,
+    });
+    mockLogImpressionEvent.mockReturnValue(vi.fn());
+  });
+
+  it('should set publishError when deployment is non-terminal and older than 5 minutes', async function staleDeployingSetsError() {
+    const sixMinutesAgo = new Date(Date.now() - 6 * 60 * 1000).toISOString();
+    mockDeploymentsData = [{ id: 'dep-1', status: 'deploying', createdAt: sixMinutesAgo }];
+
+    renderWithProviders(<AppPublish />);
+
+    await waitFor(() => {
+      expect(mockDevelopStore.setIsPublishing).toHaveBeenCalledWith('app-123', false);
+      expect(mockDevelopStore.setPublishError).toHaveBeenCalledWith('app-123', true);
+    });
+  });
+
+  it('should set publishError when pending deployment is older than 5 minutes', async function stalePendingSetsError() {
+    const sixMinutesAgo = new Date(Date.now() - 6 * 60 * 1000).toISOString();
+    mockDeploymentsData = [{ id: 'dep-1', status: 'pending', createdAt: sixMinutesAgo }];
+
+    renderWithProviders(<AppPublish />);
+
+    await waitFor(() => {
+      expect(mockDevelopStore.setIsPublishing).toHaveBeenCalledWith('app-123', false);
+      expect(mockDevelopStore.setPublishError).toHaveBeenCalledWith('app-123', true);
+    });
+  });
+
+  it('should set isPublishing when non-terminal deployment is fresh (under 5 minutes)', async function freshDeployingSetsPublishing() {
+    const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000).toISOString();
+    mockDeploymentsData = [{ id: 'dep-1', status: 'deploying', createdAt: twoMinutesAgo }];
+
+    renderWithProviders(<AppPublish />);
+
+    await waitFor(() => {
+      expect(mockDevelopStore.setIsPublishing).toHaveBeenCalledWith('app-123', true);
+    });
+  });
+
+  it('should clear isPublishing for terminal deployed status regardless of age', async function deployedClearsPublishing() {
+    const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+    mockDeploymentsData = [{ id: 'dep-1', status: DeploymentStatus.DEPLOYED, createdAt: tenMinutesAgo }];
+
+    renderWithProviders(<AppPublish />);
+
+    await waitFor(() => {
+      expect(mockDevelopStore.setIsPublishing).toHaveBeenCalledWith('app-123', false);
+      expect(mockDevelopStore.setPublishError).toHaveBeenCalledWith('app-123', false);
+    });
+  });
+
+  it('should handle deployment at exactly the 5-minute boundary as stale', async function boundaryIsStale() {
+    const exactlyFiveMinAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+    mockDeploymentsData = [{ id: 'dep-1', status: 'deploying', createdAt: exactlyFiveMinAgo }];
+
+    renderWithProviders(<AppPublish />);
+
+    await waitFor(() => {
+      expect(mockDevelopStore.setIsPublishing).toHaveBeenCalledWith('app-123', false);
+      expect(mockDevelopStore.setPublishError).toHaveBeenCalledWith('app-123', true);
+    });
+  });
+
+  it('should preserve existing behavior when no deployment exists', async function noDeploymentClearsState() {
+    mockDeploymentsData = [];
+
+    renderWithProviders(<AppPublish />);
+
+    await waitFor(() => {
+      expect(mockDevelopStore.setIsPublishing).toHaveBeenCalledWith('app-123', false);
+    });
   });
 });
